@@ -25,6 +25,14 @@ branch.
   **v1.24.1** only hid/reclaimed already-created covered copies and fixed Windows
   flash-window startup; **v1.24.2** stops the misclassification source and repairs
   existing user directories without rewriting authoritative JSONL/WAL/sidecar data.
+  **v1.24.3** adds periodic lineage refresh after repair completes: the initial
+  scan marks all sessions as `turns_state='unknown'`, so `promoteCanonicalLeaves`
+  cannot determine the longest branch and all recovery sessions stay marked as
+  `diverged`. After background repair finishes, a 5-second ticker re-runs lineage
+  classification for directories with recently repaired recovery sessions, correctly
+  promoting canonical branches and hiding covered copies. Users on 1.24.3 who still
+  see duplicate sessions can run `/doctor sessions --reindex` once to trigger
+  immediate lineage refresh.
 
 - Goal now runs continuously by default: the former 16-round per-Run boundary,
   10/20/40 cross-Run quotas, default wall-clock budget, and numeric
