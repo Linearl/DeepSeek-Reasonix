@@ -17,8 +17,10 @@ branch.
   changing provider-visible prompt bytes. Catalog upgrades to disposable
   `session-catalog/v3.sqlite` with recovery lineage roles
   (`normal|covered_copy|adopted|diverged`); covered idle copies move to the
-  recoverable trash after a 15-minute post-startup grace, while independent
-  diverged branches stay and are listed for user choice. v1/v2 catalogs are
+  recoverable `.trash` using a 15-minute idle threshold applied on two early
+  sweeps (at startup and ~20 minutes later), then a 24-hour threshold on the
+  6-hour background ticker; independent diverged branches stay and are listed
+  for user choice. v1/v2 catalogs are
   left byte-unchanged for coexistence/downgrade.
   **v1.24.1** only hid/reclaimed already-created covered copies and fixed Windows
   flash-window startup; **v1.24.2** stops the misclassification source and repairs

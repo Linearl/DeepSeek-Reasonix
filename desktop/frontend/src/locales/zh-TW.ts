@@ -2548,6 +2548,7 @@ export const zhTW: Record<DictKey, string> = {
   "projectTree.status.backgroundJob": "背景任務",
   "projectTree.status.paused": "已暫停",
   "projectTree.status.error": "異常",
+  "projectTree.status.divergedRecovery": "多個復原分支",
   "projectTree.collapseAllTooltip": "收起所有專案",
   "projectTree.restoreCollapsedTooltip": "恢復上次展開",
   "projectTree.timeFilter": "按時間篩選",

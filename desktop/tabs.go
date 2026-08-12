@@ -257,6 +257,10 @@ const (
 	topicStatusBackgroundJob       = "background_job"
 	topicStatusPaused              = "paused"
 	topicStatusError               = "error"
+	// topicStatusDivergedRecovery marks a topic holding two or more independent
+	// recovery branches. It is informational: the user picks which to keep, so
+	// it must not gate archiving the way live runtime states do.
+	topicStatusDivergedRecovery = "diverged_recovery"
 )
 
 type readFileRecord struct {
@@ -6465,7 +6469,7 @@ type ProjectNode struct {
 
 func normalizeTopicStatus(status string) string {
 	switch status {
-	case topicStatusThinking, topicStatusStreaming, topicStatusWaitingConfirmation, topicStatusBackgroundJob, topicStatusPaused, topicStatusError:
+	case topicStatusThinking, topicStatusStreaming, topicStatusWaitingConfirmation, topicStatusBackgroundJob, topicStatusPaused, topicStatusError, topicStatusDivergedRecovery:
 		return status
 	default:
 		return ""

@@ -17,13 +17,10 @@ const recoveryGCInterval = 6 * time.Hour
 // next 6-hour tick.
 const recoveryGCFollowUpDelay = 20 * time.Minute
 
-// startRecoveryGC waits for tab restore to complete, runs a short-grace
-// startup sweep (and one follow-up), then repeats on the long interval until
-// the app context is cancelled. The wait is load-bearing: restoreOrBuildTabs
-// populates a.tabs asynchronously, and a sweep against the pre-restore empty
-// tab map would see every saved tab's session as closed — and DeleteSession's
-// tab-list persistence would then overwrite desktop-tabs.json with that empty
-// snapshot.
+// startRecoveryGC waits for tab restore, runs a short-grace startup sweep (and
+// one follow-up), then repeats on the long interval until cancelled. The wait
+// is load-bearing: a pre-restore sweep sees every saved tab as closed, letting
+// DeleteSession overwrite desktop-tabs.json with an empty snapshot.
 func (a *App) startRecoveryGC() {
 	a.goSafe("recoveryGC", func() {
 		select {

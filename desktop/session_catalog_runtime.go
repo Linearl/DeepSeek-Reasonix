@@ -341,9 +341,9 @@ func (a *App) projectNodeFromCatalogTopic(topic sessioncatalog.TopicRecord, topi
 		}
 	}
 	if diverged >= 2 {
-		// Surface a non-destructive choice prompt; never auto-merge/delete.
-		node.Label = node.Label + " · " + "multiple recovery branches"
-		node.Status = "diverged_recovery"
+		// Non-destructive choice prompt. The frontend renders the label from
+		// this status so it stays translated.
+		node.Status = topicStatusDivergedRecovery
 	}
 	for _, session := range visible {
 		sessionKind := "session"

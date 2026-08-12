@@ -1281,6 +1281,7 @@ export const en = {
   "projectTree.status.backgroundJob": "background job",
   "projectTree.status.paused": "paused",
   "projectTree.status.error": "error",
+  "projectTree.status.divergedRecovery": "multiple recovery branches",
   "projectTree.removeProject": "Remove from sidebar",
   "projectTree.confirmRemoveProject": "Confirm remove from sidebar",
   "projectTree.removeProjectShort": "Remove",
