@@ -370,14 +370,8 @@ type Agent struct {
 	// Shared by root and sub-agents for the same controller task. nil disables
 	// recovery checks (Ask/YOLO, headless without wiring, or feature off).
 	recoveryGate RecoveryGate
-	// recoveryAgentID labels this agent on recovery cards (empty = root).
-	recoveryAgentID string
-	// recoveryTaskID isolates recovery state across concurrent top-level tasks.
-	// Empty shares the root task bucket.
-	recoveryTaskID string
-	// recoveryRunSeq gives ordinary (non-goal) runs a collision-free host scope.
-	// Goal runs use their stable delivery scope instead.
-	recoveryRunSeq atomic.Uint64
+	// recovery is who this agent is to the shared gate above.
+	recovery recoveryIdentity
 
 	// planModeReadOnlyTrust is retained for legacy controller wiring. The main
 	// Plan execution path no longer consults it.
@@ -535,27 +529,23 @@ type Agent struct {
 
 	// Context management keeps the canonical transcript immutable and installs
 	// at most one provider-visible checkpoint each time compactRatio is crossed.
-	contextWindow       int
-	compactRatio        float64
-	recentKeep          int
-	archiveDir          string
-	keepPolicy          KeepPolicy
-	compactStuck        bool
-	consecutiveCompacts int
-	sessionPath         string // bound transcript path for projection sidecars
-	workspaceID         string // stable prompt-cache lineage component
-	cacheState          string // legacy resume telemetry; never provider-visible
-	checkpointState     string // none|restored|applied; runtime-only
-	compactionState     CompactionState
+	contextWindow   int
+	compactRatio    float64
+	recentKeep      int
+	archiveDir      string
+	keepPolicy      KeepPolicy
+	compaction      compactionProgress
+	sessionPath     string // bound transcript path for projection sidecars
+	workspaceID     string // stable prompt-cache lineage component
+	cacheState      string // legacy resume telemetry; never provider-visible
+	checkpointState string // none|restored|applied; runtime-only
+	compactionState CompactionState
 	// compactionMu guards projection snapshots/install and the in-memory sidecar
 	// generation. Network summarization never runs while this lock is held.
 	compactionMu sync.Mutex
 	// compactionRunMu singleflights the expensive summary transaction without
 	// holding the session lock during network I/O.
-	compactionRunMu sync.Mutex
-	// lastCompactionTurn prevents the post-turn observer and pre-send preflight
-	// from paying for two summaries during one active tool loop.
-	lastCompactionTurn     atomic.Int64
+	compactionRunMu        sync.Mutex
 	strictAlternatingRoles bool // coalesce adjacent user turns on provider request copies
 	// activeTurnCreatedAt identifies the real/synthetic user message that began
 	// the currently running turn. Compaction may rewrite older history while a
@@ -703,8 +693,8 @@ func (a *Agent) SetRecoveryIdentity(agentID, taskID string) {
 	if a == nil {
 		return
 	}
-	a.recoveryAgentID = strings.TrimSpace(agentID)
-	a.recoveryTaskID = strings.TrimSpace(taskID)
+	a.recovery.agentID = strings.TrimSpace(agentID)
+	a.recovery.taskID = strings.TrimSpace(taskID)
 }
 
 // RecoveryGate returns the attached Auto Guard (may be nil).
@@ -837,9 +827,9 @@ func (a *Agent) SetSession(s *Session) {
 	a.compactionState = CompactionState{} // lineage change; disk reloaded on Resume
 	a.cacheState = CacheStateUnknown
 	a.compactionMu.Unlock()
-	a.compactStuck = false
-	a.consecutiveCompacts = 0
-	a.lastCompactionTurn.Store(0)
+	a.compaction.stuck = false
+	a.compaction.consecutive = 0
+	a.compaction.lastTurn.Store(0)
 	if s != nil {
 		a.rebuildTodoState(s.Snapshot())
 	}
@@ -1301,25 +1291,27 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 		reasoningByteLimit = defaultReasoningByteLimit
 	}
 	a := &Agent{
-		prov:                      prov,
-		tools:                     tools,
-		session:                   session,
-		taskBudget:                runBudget{limit: normalizeTaskBudget(opts.TaskBudget)},
-		maxSteps:                  opts.MaxSteps,
-		maxStepsKey:               maxStepsKey,
-		reasoningByteLimit:        reasoningByteLimit,
-		maxOutputTokens:           opts.MaxOutputTokens,
-		temperature:               opts.Temperature,
-		pricing:                   opts.Pricing,
-		usageSource:               usageSourceOrDefault(opts.UsageSource, event.UsageSourceExecutor),
-		modelRef:                  strings.TrimSpace(opts.ModelRef),
-		sink:                      sink,
-		requireVisibleFinal:       opts.RequireVisibleFinal,
-		gate:                      gate,
-		extensions:                opts.Extensions,
-		recoveryGate:              opts.RecoveryGate,
-		recoveryAgentID:           strings.TrimSpace(opts.RecoveryAgentID),
-		recoveryTaskID:            strings.TrimSpace(opts.RecoveryTaskID),
+		prov:                prov,
+		tools:               tools,
+		session:             session,
+		taskBudget:          runBudget{limit: normalizeTaskBudget(opts.TaskBudget)},
+		maxSteps:            opts.MaxSteps,
+		maxStepsKey:         maxStepsKey,
+		reasoningByteLimit:  reasoningByteLimit,
+		maxOutputTokens:     opts.MaxOutputTokens,
+		temperature:         opts.Temperature,
+		pricing:             opts.Pricing,
+		usageSource:         usageSourceOrDefault(opts.UsageSource, event.UsageSourceExecutor),
+		modelRef:            strings.TrimSpace(opts.ModelRef),
+		sink:                sink,
+		requireVisibleFinal: opts.RequireVisibleFinal,
+		gate:                gate,
+		extensions:          opts.Extensions,
+		recoveryGate:        opts.RecoveryGate,
+		recovery: recoveryIdentity{
+			agentID: strings.TrimSpace(opts.RecoveryAgentID),
+			taskID:  strings.TrimSpace(opts.RecoveryTaskID),
+		},
 		readOnlyExecution:         opts.ReadOnlyExecution,
 		plannerMCPExecution:       opts.PlannerMCPExecution,
 		planModeReadOnlyTrust:     planModeReadOnlyTrust,
@@ -1464,7 +1456,7 @@ func (a *Agent) Run(ctx context.Context, input string) (runErr error) {
 			runMaxStepsKey = limit.key
 		}
 	}
-	a.recoveryRunSeq.Add(1)
+	a.recovery.runSeq.Add(1)
 	// All role settings participate in the workspace lease for the run; the
 	// exclusive write lock is still acquired lazily on the first real writer.
 	if a.workspaceLease != nil {
