@@ -831,13 +831,6 @@ func (s *Session) saveRecoveryBranchMeta(path string, opts RecoveryBranchOptions
 	return meta, nil
 }
 
-func recoverySessionPath(originalPath string, digest [sha256.Size]byte) string {
-	// Kept for tests/callers that still pass a digest; production recovery
-	// uses a Session-local lane so storms stay controller-bounded.
-	_ = digest
-	return fixedWriterRecoverySessionPath(originalPath)
-}
-
 func recoveryParentStem(parent string) string {
 	parent = strings.TrimSpace(parent)
 	if parent == "" {

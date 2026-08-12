@@ -46,9 +46,7 @@ func retrySameRevisionDivergedRewrite(s *agent.Session, path string, err error) 
 	if !errors.As(err, &conflict) || conflict == nil || conflict.BaseRevision != conflict.DiskRevision {
 		return err, false
 	}
-	if !s.WriteAuthority().Covers(path) && !s.NeedsRewriteSave() {
-		// Without authority, do not claim ownership via process lease.
-		// Digest-owned SaveRewrite may still succeed through ownsPersistedState.
-	}
+	// SaveRewrite itself requires digest ownership or a live authority; a
+	// process lease alone cannot claim the current bytes.
 	return s.SaveRewrite(path), true
 }

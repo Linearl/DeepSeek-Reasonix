@@ -83,14 +83,6 @@ func cliSessionRecoveredHandler(leases *control.SessionLeaseKeeper) func(control
 	}
 }
 
-// bindCLIControllerAuthority is used where the controller is in hand after Rebind.
-func bindCLIControllerAuthority(leases *control.SessionLeaseKeeper, ctrl *control.Controller) error {
-	if leases == nil || ctrl == nil {
-		return nil
-	}
-	return leases.BindControllerAuthority(ctrl)
-}
-
 func rebindCLIControllerAuthority(leases *control.SessionLeaseKeeper, ctrl *control.Controller) error {
 	if leases == nil || ctrl == nil {
 		return nil
