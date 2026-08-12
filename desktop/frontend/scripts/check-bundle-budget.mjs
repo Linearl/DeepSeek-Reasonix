@@ -88,5 +88,6 @@ const rawInitialBytes = [...initialJS, ...initialCSS, ...appShellCSS]
 // execution-setting receipts add small always-available contracts. Keep the
 // raw allowance ratcheted while gzip startup budgets stay flat.
 // The same contract adds 4.2 KiB raw (0.19%) over the 2,264.0 KiB base.
-assertBudget("initial raw JavaScript and CSS", rawInitialBytes, 2_268.5 * 1024);
+// Diverged-recovery status delivery and i18n adds 0.1 KiB (trilingual labels).
+assertBudget("initial raw JavaScript and CSS", rawInitialBytes, 2_268.7 * 1024);
 assertBudget("largest initial JavaScript chunk raw", largestInitialJSRaw, 1_000 * 1024);
