@@ -859,6 +859,9 @@ export interface SessionMeta {
   sessionSource?: string;
   recovered?: boolean; // created by conflict recovery, including a continued branch
   recoveryCopy?: boolean; // actual branch content is unchanged and covered by its parent
+  recoveryGroupId?: string;
+  recoveryRole?: string; // normal|covered_copy|adopted|diverged
+  recoveryCanonical?: boolean;
 }
 
 export type { HistoryIndexStatus, HistorySearchContextLine, HistorySearchContextRequest, HistorySearchHit, HistorySearchPage, HistorySearchRequest, HistorySessionPage, HistorySessionPageRequest } from "./historyCatalogTypes";

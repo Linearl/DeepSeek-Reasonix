@@ -333,6 +333,18 @@ func (a *App) projectNodeFromCatalogTopic(topic sessioncatalog.TopicRecord, topi
 	if len(visible) <= 1 {
 		return node, true
 	}
+	diverged := 0
+	for _, session := range visible {
+		if session.RecoveryRole == sessioncatalog.RecoveryRoleDiverged ||
+			(session.Recovered && !session.RecoveryCopy && session.RecoveryRole != sessioncatalog.RecoveryRoleAdopted) {
+			diverged++
+		}
+	}
+	if diverged >= 2 {
+		// Surface a non-destructive choice prompt; never auto-merge/delete.
+		node.Label = node.Label + " · " + "multiple recovery branches"
+		node.Status = "diverged_recovery"
+	}
 	for _, session := range visible {
 		sessionKind := "session"
 		if topic.Scope == "global" {
