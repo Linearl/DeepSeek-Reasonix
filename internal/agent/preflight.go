@@ -112,6 +112,18 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 		st.BlockedInputHash != "" ||
 		(st.LastReceipt != nil && (st.LastReceipt.Status == "blocked" || st.LastReceipt.Status == "failed" ||
 			st.LastReceipt.Status == "applied"))
+	if key != "" && !keyOK {
+		// Lineage key changed (upgrade, model/workspace switch). Rebind when
+		// the projection body still matches the canonical covered prefix.
+		var msgs []provider.Message
+		var version uint64
+		if a.session != nil {
+			msgs, version = a.session.snapshotMessagesVersion()
+		}
+		if projectionContentValid(st, msgs, version) {
+			normalized, keyOK = key, true
+		}
+	}
 	if (key != "" && !keyOK) || !hasMaintenanceSignal {
 		a.compactionState = CompactionState{}
 		a.checkpointState = "none"
