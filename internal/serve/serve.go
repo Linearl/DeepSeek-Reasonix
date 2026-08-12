@@ -123,13 +123,19 @@ func sessionLeaseRecoveryHandler(k *control.SessionLeaseKeeper) func(control.Ses
 	return k.HandleSessionRecovered
 }
 
-// rebindSessionLease moves the server's session lease to path. A nil keeper
-// gates nothing (tests, embedded use).
+// rebindSessionLease moves the server's session lease to path and rebinds the
+// write authority generation. A nil keeper gates nothing (tests, embedded use).
 func (s *Server) rebindSessionLease(path string) error {
 	if s.leases == nil {
 		return nil
 	}
-	return s.leases.Rebind(path)
+	if err := s.leases.Rebind(path); err != nil {
+		return err
+	}
+	if ctrl, ok := s.ctl().(*control.Controller); ok {
+		return s.leases.BindControllerAuthority(ctrl)
+	}
+	return nil
 }
 
 // resumeBindHookForTest, when set, runs inside /resume's critical sequence

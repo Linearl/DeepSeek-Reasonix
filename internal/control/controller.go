@@ -305,6 +305,10 @@ type Controller struct {
 	// Not reentrant — never call snapshot (or anything that snapshots, such as
 	// recoverInterruptedTurn or maybeColdResumePrune) while holding it.
 	snapshotMu sync.Mutex
+	// writeAuthGeneration is the generation last issued to this controller's
+	// session write authority. Rebind/replace always allocates a new value so
+	// previous authorities become stale immediately.
+	writeAuthGeneration atomic.Uint64
 	// turn counts model turns this session, passed to hooks in their payload.
 	turn int
 
@@ -3827,22 +3831,11 @@ func (c *Controller) snapshotWithDurability(markActivity, forceRewrite, shutdown
 	if strategyErr != nil {
 		return false, strategyErr
 	}
-	forceRewrite = forceRewrite || s.NeedsRewriteSave()
-	var err error
-	if forceRewrite {
-		err = s.SaveRewrite(path)
-	} else {
-		err = s.SaveSnapshot(path)
-		if errors.Is(err, agent.ErrSessionSnapshotConflict) {
-			// The no-rewrite decision may already be stale: auto-compaction
-			// can rewrite history between the decision and the write. Re-check
-			// and retry once as an owned rewrite before treating the failure as
-			// a real cross-runtime conflict.
-			if s.NeedsRewriteSave() {
-				forceRewrite = true
-				err = s.SaveRewrite(path)
-			}
-		}
+	err, forceRewrite := persistSessionSnapshot(s, path, forceRewrite)
+	if authoritySaveError(err) {
+		// Missing/stale authority must not enter diverged/recovery. Frontends
+		// rebind the lease or surface the typed error.
+		return false, err
 	}
 	if err != nil {
 		if shutdownRecovery && errors.Is(err, agent.ErrSessionFileLockHeld) {
@@ -3942,9 +3935,24 @@ type snapshotConflictDiagnostic struct {
 	ExistingRecovery bool      `json:"existing_recovery,omitempty"`
 }
 
+// conflictDiagDedup bounds repeated conflict event log lines for the same
+// {path, disk revision} key within a process. Authority generation is mixed
+// in by callers that rebind; without this, continuous autosave ticks re-append
+// the same outcome every 20–30s.
+var conflictDiagDedup sync.Map // key -> struct{}
+
 func appendSnapshotConflictDiagnostic(path, mode, outcome string, saveErr error, recoveryPath string, existing bool) {
 	path = strings.TrimSpace(path)
 	if path == "" {
+		return
+	}
+	var diskRev int64
+	var conflict *agent.SessionSnapshotConflictError
+	if errors.As(saveErr, &conflict) && conflict != nil {
+		diskRev = conflict.DiskRevision
+	}
+	dedupKey := path + "\x00" + outcome + "\x00" + strconv.FormatInt(diskRev, 10)
+	if _, loaded := conflictDiagDedup.LoadOrStore(dedupKey, struct{}{}); loaded {
 		return
 	}
 	rec := snapshotConflictDiagnostic{
@@ -3953,8 +3961,7 @@ func appendSnapshotConflictDiagnostic(path, mode, outcome string, saveErr error,
 		Mode:     mode,
 		Outcome:  outcome,
 	}
-	var conflict *agent.SessionSnapshotConflictError
-	if errors.As(saveErr, &conflict) && conflict != nil {
+	if conflict != nil {
 		rec.Kind = string(conflict.Kind)
 		rec.DiskMessages = conflict.ExistingMessages
 		rec.SnapshotMessages = conflict.SnapshotMessages
@@ -4154,9 +4161,9 @@ func (c *Controller) commitRecoveredSession(originalPath, reason string, info ag
 	c.sessionPath = info.Path
 	c.guardianPath = guardian.PathFor(info.Path)
 	c.mu.Unlock()
-	// Recovery branch is a new lineage path; do not keep writing the original
-	// session's projection sidecar.
-	c.bindExecutorProjection(info.Path, false)
+	// Recovery branch is a new lineage path. Load an inherited projection
+	// sidecar when present so the model view stays compressed across the fork.
+	c.bindExecutorProjection(info.Path, true)
 	c.setActiveJobSession(info.Path)
 	c.rebindCheckpoints(info.Path)
 	c.transplantInFlightTurnMarker(originalPath, info.Path)

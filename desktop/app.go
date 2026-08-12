@@ -2353,6 +2353,7 @@ func (a *App) clearActiveSessionRuntime(tab *WorkspaceTab, oldCtrl control.Sessi
 	tab.sink = newSink
 	tab.SessionPath = path
 	tab.Label = newCtrl.Label()
+	bindTabWriteAuthority(tab, newCtrl)
 	tab.Ready = true
 	clearTabStartupError(tab)
 	tab.goal = ""
@@ -2946,6 +2947,10 @@ type SessionMeta struct {
 	SessionSource  string `json:"sessionSource,omitempty"`
 	Recovered      bool   `json:"recovered,omitempty"`    // created by conflict recovery, including an adopted/continued branch
 	RecoveryCopy   bool   `json:"recoveryCopy,omitempty"` // actual branch content is unchanged and covered by its parent
+	// Optional v1.24.2 lineage fields; older clients ignore them safely.
+	RecoveryGroupID   string `json:"recoveryGroupId,omitempty"`
+	RecoveryRole      string `json:"recoveryRole,omitempty"` // normal|covered_copy|adopted|diverged
+	RecoveryCanonical bool   `json:"recoveryCanonical,omitempty"`
 }
 
 type channelSessionRoute struct {
@@ -3819,6 +3824,9 @@ func (a *App) ResumeSessionForTab(tabID, path string) ([]HistoryMessage, error) 
 	if tab == nil || ctrl == nil {
 		return []HistoryMessage{}, fmt.Errorf("tab is not ready")
 	}
+	if canonical := a.resolveCanonicalSessionPath(path); canonical != "" {
+		path = canonical
+	}
 	sessionPath, _, err := validateSessionPath(controllerSessionDir(ctrl), path)
 	if err != nil {
 		return nil, err
@@ -4166,6 +4174,7 @@ func (a *App) rebindTabToLoadedSessionPath(tab *WorkspaceTab, sessionPath string
 	tab.model = candidate.model
 	tab.Label = candidate.ctrl.Label()
 	applyNormalizedRuntimeToTabLocked(tab, candidate.runtime)
+	bindTabWriteAuthority(tab, candidate.ctrl)
 	tab.Ready = true
 	clearTabStartupError(tab)
 	tab.ActivityStatus = ""
@@ -10230,6 +10239,7 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 	tab.Label = newCtrl.Label()
 	applyNormalizedRuntimeToTabLocked(tab, restoredRuntime)
 	clearTabStartupError(tab)
+	bindTabWriteAuthority(tab, newCtrl)
 	tab.Ready = true
 	a.supersedeTabBuildLocked(tab)
 	a.saveTabsLocked()

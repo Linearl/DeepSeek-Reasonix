@@ -1414,6 +1414,9 @@ func (gw *BotGateway) handleSlashCommand(ctx context.Context, adapter Adapter, k
 					_ = gw.sendText(ctx, adapter, msg, "新会话创建失败：无法取得写入权限。请关闭其他 Reasonix 窗口或进程后重试。")
 					return
 				}
+				if c, ok := state.ctrl.(*control.Controller); ok {
+					_ = state.leases.BindControllerAuthority(c)
+				}
 			}
 			// /new leaves an attached transcript and continues in the freshly
 			// rotated path. Clear only the path pin while preserving any project
@@ -2365,6 +2368,12 @@ func (gw *BotGateway) getOrCreateSession(ctx context.Context, key string, msg In
 		ctrl.Close()
 		leases.Release()
 		gw.logger.Error("bot session lease failed", "err", control.SessionInUseMessage(err))
+		return nil
+	}
+	if err := leases.BindControllerAuthority(ctrl); err != nil {
+		ctrl.Close()
+		leases.Release()
+		gw.logger.Error("bot session write authority failed", "err", err)
 		return nil
 	}
 

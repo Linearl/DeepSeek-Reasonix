@@ -58,6 +58,14 @@ type Session struct {
 	// deliberately session-local so multiple runtimes cannot steal each other's
 	// observer registration.
 	persistObserver SessionPersistObserver
+	// writeAuth is the generation-bound write permit for this session's path.
+	// Controllers bind it after acquiring a SessionLease; save/ownership paths
+	// consult it instead of a process-level "I hold a lease" boolean.
+	writeAuth *SessionWriteAuthority
+	// authRequired becomes true once any authority has been bound. From then
+	// on, saves fail closed without a live authority rather than forking
+	// recovery under a stale controller.
+	authRequired bool
 }
 
 // NewSession initializes a session with an optional system prompt.

@@ -104,6 +104,29 @@ func (k *SessionLeaseKeeper) HeldPath() string {
 	return k.lease.Path()
 }
 
+// Lease returns the held lease for authority issuance. Callers must not
+// Release it; use Release/Rebind on the keeper instead.
+func (k *SessionLeaseKeeper) Lease() *agent.SessionLease {
+	if k == nil {
+		return nil
+	}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return k.lease
+}
+
+// BindControllerAuthority issues a fresh write authority from the held lease
+// onto c. Safe no-op when the keeper holds nothing.
+func (k *SessionLeaseKeeper) BindControllerAuthority(c *Controller) error {
+	if k == nil || c == nil {
+		return nil
+	}
+	k.mu.Lock()
+	lease := k.lease
+	k.mu.Unlock()
+	return c.BindSessionWriteAuthority(lease)
+}
+
 func (k *SessionLeaseKeeper) releaseLocked() {
 	if k.lease != nil {
 		k.lease.Release()

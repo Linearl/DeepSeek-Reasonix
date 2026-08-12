@@ -729,6 +729,10 @@ func runAgent(args []string, version string) int {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, control.SessionInUseMessage(err)+"; "+control.SessionLeaseCloseHint)
 		return 1
 	}
+	if err := leases.BindControllerAuthority(ctrl); err != nil {
+		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
+		return 1
+	}
 	reclaimCLIRecoveryBranches(ctrl.SessionDir())
 
 	runErr := ctrl.Run(ctx, prompt)
@@ -967,6 +971,10 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, control.SessionInUseMessage(err)+"; "+control.SessionLeaseCloseHint)
 		return 1
 	}
+	if err := leases.BindControllerAuthority(ctrl); err != nil {
+		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
+		return 1
+	}
 
 	srv := serve.New(ctrl, bc, serveCfg)
 	srv.SetSessionLeases(leases)
@@ -1176,6 +1184,10 @@ func chatREPL(args []string, version string) int {
 	// resumed path is already held, making this a no-op.
 	if err := leases.Rebind(ctrl.SessionPath()); err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, control.SessionInUseMessage(err)+"; "+control.SessionLeaseCloseHint)
+		return 1
+	}
+	if err := leases.BindControllerAuthority(ctrl); err != nil {
+		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		return 1
 	}
 	reclaimCLIRecoveryBranches(ctrl.SessionDir())

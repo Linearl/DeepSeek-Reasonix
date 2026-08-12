@@ -210,6 +210,18 @@ func SaveBranchMeta(sessionPath string, m BranchMeta) error {
 	})
 }
 
+// saveBranchMetaKeepInFlightTurn keeps any existing in-flight turn on rewrite.
+func saveBranchMetaKeepInFlightTurn(sessionPath string, m BranchMeta) error {
+	return UpdateBranchMeta(sessionPath, true, func(current *BranchMeta) error {
+		if m.InFlightTurn == nil {
+			m.InFlightTurn = current.InFlightTurn
+		}
+		preserveBranchMetaPersistence(&m, *current)
+		*current = m
+		return nil
+	})
+}
+
 func SaveBranchMetaPreserveUpdated(sessionPath string, m BranchMeta) error {
 	return UpdateBranchMeta(sessionPath, false, func(current *BranchMeta) error {
 		preserveBranchMetaPersistence(&m, *current)

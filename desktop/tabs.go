@@ -4106,6 +4106,7 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 	tab.Ctrl = ctrl
 	tab.Label = ctrl.Label()
 	applyNormalizedRuntimeToTabLocked(tab, restoredRuntime)
+	bindTabWriteAuthority(tab, ctrl)
 	tab.Ready = true
 	clearTabStartupError(tab)
 	a.bindSessionRuntimeKeyLocked(tab, tab.currentSessionPath())
@@ -6184,6 +6185,9 @@ func (a *App) handleTabSessionRecovered(tab *WorkspaceTab) func(control.SessionR
 				return fmt.Errorf("acquire recovery session lease: %w",
 					userFacingSessionLeaseError("", err))
 			}
+			// Rebind write authority to the recovery lease before the controller
+			// commits its path swap (atomic two-phase handoff).
+			bindTabWriteAuthority(tab, tab.Ctrl)
 		}
 		meta := info.Meta
 		scope := strings.TrimSpace(meta.Scope)
