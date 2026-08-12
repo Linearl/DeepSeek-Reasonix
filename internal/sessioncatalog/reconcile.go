@@ -528,7 +528,7 @@ func (c *Catalog) finishDirectoryScan(ctx context.Context, target DirectoryTarge
 		}
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE catalog_directories SET state='ready',error='',signature=?,
-		scan_cursor='',indexed=?,total=?,completed_at=? WHERE path=?`, signature, total, total, now, target.Path); err != nil {
+		scan_cursor='',indexed=?,total=?,completed_at=?,scan_finished_at=? WHERE path=?`, signature, total, total, now, now, target.Path); err != nil {
 		_ = tx.Rollback()
 		return err
 	}
@@ -599,6 +599,8 @@ func (c *Catalog) repairLoop() {
 	defer c.workers.Done()
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
+	lineageTicker := time.NewTicker(5 * time.Second)
+	defer lineageTicker.Stop()
 	for {
 		select {
 		case path := <-c.repairCh:
@@ -608,6 +610,8 @@ func (c *Catalog) repairLoop() {
 			runtime.Gosched()
 		case <-ticker.C:
 			c.drainUnknownRepairs(c.workerCtx, 64)
+		case <-lineageTicker.C:
+			c.refreshPendingLineage(c.workerCtx)
 		case <-c.stop:
 			return
 		}
@@ -688,6 +692,65 @@ func (c *Catalog) applyRepairResult(ctx context.Context, path, preview string, t
 	c.publishRevision(revision, []string{key.WorkspaceRoot}, reason)
 	c.refreshCounts(ctx)
 	return nil
+}
+
+// refreshPendingLineage checks directories with recently repaired recovery
+// sessions and re-runs lineage classification. This is necessary because the
+// initial reconcile scan marks all sessions as turns_state=unknown, so
+// promoteCanonicalLeaves cannot determine the longest branch. After repair
+// completes, turns are known and canonical promotion can succeed.
+func (c *Catalog) refreshPendingLineage(ctx context.Context) {
+	if c == nil || c.db == nil || c.opts.DisableRepair {
+		return
+	}
+	if err := ctx.Err(); err != nil {
+		return
+	}
+	rows, err := c.db.QueryContext(ctx, `
+		SELECT DISTINCT s.directory, d.scope, d.workspace_root
+		FROM catalog_sessions s
+		JOIN catalog_directories d ON s.directory = d.path
+		WHERE s.recovered = 1
+		  AND s.turns_state = 'valid'
+		  AND s.recovery_role = 'diverged'
+		  AND d.lineage_refreshed_at < d.scan_finished_at
+		LIMIT 8`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	type pending struct {
+		target DirectoryTarget
+		path   string
+	}
+	var targets []pending
+	for rows.Next() {
+		var p pending
+		if rows.Scan(&p.path, &p.target.Scope, &p.target.WorkspaceRoot) == nil {
+			p.target.Path = p.path
+			targets = append(targets, p)
+		}
+	}
+	rows.Close()
+	for _, p := range targets {
+		lock := c.directoryLock(p.path)
+		lock.Lock()
+		ordered, err := agent.ListSessionOrder(p.path)
+		if err != nil {
+			lock.Unlock()
+			continue
+		}
+		lineageRecords := make([]SessionRecord, 0, len(ordered))
+		for _, info := range ordered {
+			lineageRecords = append(lineageRecords, recordFromOrder(p.target, info))
+		}
+		if err := c.refreshDirectoryRecoveryLineage(ctx, p.target, lineageRecords); err == nil {
+			c.mutationMu.Lock()
+			_, _ = c.db.ExecContext(ctx, `UPDATE catalog_directories SET lineage_refreshed_at=? WHERE path=?`, c.opts.Now().UnixMilli(), p.path)
+			c.mutationMu.Unlock()
+		}
+		lock.Unlock()
+	}
 }
 
 // Rebuild replaces only the disposable catalog. Authoritative sessions and

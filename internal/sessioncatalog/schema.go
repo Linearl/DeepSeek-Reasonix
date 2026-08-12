@@ -113,6 +113,11 @@ CREATE INDEX IF NOT EXISTS idx_catalog_sessions_recovery_group
 ON catalog_sessions(recovery_group_id, recovery_role, last_activity_at DESC);
 `
 
+const migrationV6 = `
+ALTER TABLE catalog_directories ADD COLUMN scan_finished_at INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE catalog_directories ADD COLUMN lineage_refreshed_at INTEGER NOT NULL DEFAULT 0;
+`
+
 func sessionMigrations() []projectiondb.Migration {
 	return []projectiondb.Migration{
 		{Version: 1, Apply: func(ctx context.Context, tx *sql.Tx) error {
@@ -133,6 +138,10 @@ func sessionMigrations() []projectiondb.Migration {
 		}},
 		{Version: 5, Apply: func(ctx context.Context, tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, migrationV5)
+			return err
+		}},
+		{Version: 6, Apply: func(ctx context.Context, tx *sql.Tx) error {
+			_, err := tx.ExecContext(ctx, migrationV6)
 			return err
 		}},
 	}
