@@ -313,6 +313,12 @@ type acpSession struct {
 	// retargets the controller to a recovery branch, sessionRecoveredHandler
 	// moves transcript and this lease to the recovery file at commit time.
 	lease *agent.SessionLease
+	// retiredLeases tracks outgoing leases whose Release must run after the
+	// authority-guarded save that triggered a recovery callback returns. Any
+	// ACP operation that exposes a completed Snapshot waits for these channels,
+	// so callers never observe the old transcript as still owned after the
+	// handoff has completed.
+	retiredLeases []<-chan struct{}
 	// maintenanceDone is non-nil while session-owned maintenance, such as an
 	// idle config rebuild, is in flight outside mu.
 	maintenanceDone chan struct{}
@@ -500,6 +506,44 @@ func (s *acpSession) releaseSessionLease() {
 	if lease != nil {
 		lease.Release()
 	}
+	s.waitForRetiredSessionLeases()
+}
+
+// retireSessionLease defers Release until the authority-guarded save that
+// invoked a recovery callback can return. Releasing synchronously inside that
+// callback would wait on the very save executing the callback and deadlock.
+func (s *acpSession) retireSessionLease(lease *agent.SessionLease) {
+	if lease == nil {
+		return
+	}
+	done := make(chan struct{})
+	s.mu.Lock()
+	s.retiredLeases = append(s.retiredLeases, done)
+	s.mu.Unlock()
+	go func() {
+		lease.Release()
+		close(done)
+	}()
+}
+
+func (s *acpSession) waitForRetiredSessionLeases() {
+	s.mu.Lock()
+	retired := append([]<-chan struct{}(nil), s.retiredLeases...)
+	s.mu.Unlock()
+	for _, done := range retired {
+		<-done
+	}
+	s.mu.Lock()
+	pending := s.retiredLeases[:0]
+	for _, done := range s.retiredLeases {
+		select {
+		case <-done:
+		default:
+			pending = append(pending, done)
+		}
+	}
+	s.retiredLeases = pending
+	s.mu.Unlock()
 }
 
 // sessionLeaseBindError maps a lease-acquisition failure to the protocol
@@ -1280,7 +1324,7 @@ func (s *service) reloadSessionExtensionsLocked(ctx context.Context, sess *acpSe
 		sess.finishMaintenance(maintenanceDone)
 	}()
 
-	if err := cur.Snapshot(); err != nil {
+	if err := snapshotACPController(sess, cur); err != nil {
 		return nil, &RPCError{Code: ErrInternal, Message: sessionReloadExtensionsMethod + ": snapshot before reload: " + err.Error()}
 	}
 	// Read the path only after Snapshot: a conflict can retarget cur to a
@@ -1793,7 +1837,7 @@ func (s *service) rebuildSessionLocked(ctx context.Context, sess *acpSession, cf
 		sess.finishMaintenance(maintenanceDone)
 	}()
 
-	if err := cur.Snapshot(); err != nil {
+	if err := snapshotACPController(sess, cur); err != nil {
 		return &RPCError{Code: ErrInternal, Message: "session config: snapshot before switch: " + err.Error()}
 	}
 	// Capture the adopt path and history only after Snapshot: a snapshot
@@ -2421,7 +2465,7 @@ func (s *acpSession) persistAfterTurn(prompt string) {
 	ctrl := s.ctrl
 	s.mu.Unlock()
 
-	_ = ctrl.Snapshot()
+	_ = snapshotACPController(s, ctrl)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()

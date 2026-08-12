@@ -37,6 +37,12 @@ func resumeACPControllerForWrite(ctrl acpController, loaded *agent.Session, path
 	return bindACPWriteAuthorityOrClose(ctrl, lease)
 }
 
+func snapshotACPController(sess *acpSession, ctrl acpController) error {
+	err := ctrl.Snapshot()
+	sess.waitForRetiredSessionLeases()
+	return err
+}
+
 func (s *service) prepareACPReplacementAuthority(sess *acpSession, next *control.Controller, current acpController, path, snapshotAction string) error {
 	next.SetOnSessionRecovered(s.sessionRecoveredHandlerFor(sess.id, next))
 	sess.mu.Lock()
@@ -50,7 +56,7 @@ func (s *service) prepareACPReplacementAuthority(sess *acpSession, next *control
 	if path == "" {
 		return nil
 	}
-	if err := next.Snapshot(); err != nil {
+	if err := snapshotACPController(sess, next); err != nil {
 		_ = bindACPWriteAuthority(current, lease)
 		return fmt.Errorf("%s: %w", snapshotAction, err)
 	}
@@ -104,9 +110,7 @@ func (s *service) sessionRecoveredHandlerFor(id string, owner acpController) fun
 		sess.transcript = recoveryPath
 		meta := sess.metaLocked()
 		sess.mu.Unlock()
-		if old != nil {
-			go old.Release()
-		}
+		sess.retireSessionLease(old)
 		_ = saveACPMeta(recoveryPath, meta)
 		// The id-keyed sidecar is a single-hop redirect for restart-time lookup.
 		if dir := s.sessionDir(); dir != "" {
