@@ -259,6 +259,16 @@ type acpController interface {
 	control.Goals
 }
 
+// bindACPWriteAuthority issues a generation-bound write authority when ctrl is
+// a concrete *control.Controller. Test fakes without the method stay unbound.
+func bindACPWriteAuthority(ctrl acpController, lease *agent.SessionLease) error {
+	c, ok := ctrl.(*control.Controller)
+	if !ok || c == nil {
+		return nil
+	}
+	return c.BindSessionWriteAuthority(lease)
+}
+
 // acpSession is one open session: its controller, the on-disk transcript path
 // (empty when persistence is off), and the cancel func of the in-flight turn
 // (nil when idle) so session/cancel can abort it.
@@ -552,11 +562,13 @@ func (s *service) sessionRecoveredHandler(id string) func(control.SessionRecover
 		old := sess.lease
 		sess.lease = lease
 		sess.transcript = recoveryPath
+		ctrl := sess.ctrl
 		meta := sess.metaLocked()
 		sess.mu.Unlock()
 		if old != nil {
 			old.Release()
 		}
+		_ = bindACPWriteAuthority(ctrl, lease)
 		_ = saveACPMeta(recoveryPath, meta)
 		// Leave a redirect on the id-keyed sidecar so restart-time lookups
 		// (session/load, session/resume, session/delete, loadMeta) resolve the
@@ -753,6 +765,12 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
 		}
 		sess.lease = lease
 		ctrl.SetFreshSessionPath(sess.transcript)
+		if err := bindACPWriteAuthority(ctrl, lease); err != nil {
+			lease.Release()
+			sess.lease = nil
+			ctrl.Close()
+			return nil, sessionLeaseBindError("session/new", err)
+		}
 	}
 
 	s.mu.Lock()
@@ -1045,6 +1063,11 @@ func (s *service) openExistingSession(ctx context.Context, method, id, cwdParam 
 		return SessionConfigState{}, &RPCError{Code: ErrInvalidParams, Message: method + ": unknown session " + id}
 	}
 	ctrl.Resume(loaded, path)
+	if err := bindACPWriteAuthority(ctrl, lease); err != nil {
+		lease.Release()
+		ctrl.Close()
+		return SessionConfigState{}, sessionLeaseBindError(method, err)
+	}
 	toolApprovalMode := normalizeACPToolApprovalMode(saved.ToolApprovalMode)
 	ctrl.SetToolApprovalMode(toolApprovalMode)
 	modeID := normalizeACPCollaborationMode(saved.CollaborationMode)
