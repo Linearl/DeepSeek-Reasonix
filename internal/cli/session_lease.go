@@ -91,6 +91,16 @@ func bindCLIControllerAuthority(leases *control.SessionLeaseKeeper, ctrl *contro
 	return leases.BindControllerAuthority(ctrl)
 }
 
+func rebindCLIControllerAuthority(leases *control.SessionLeaseKeeper, ctrl *control.Controller) error {
+	if leases == nil || ctrl == nil {
+		return nil
+	}
+	if err := leases.Rebind(ctrl.SessionPath()); err != nil {
+		return err
+	}
+	return leases.BindControllerAuthority(ctrl)
+}
+
 func bindChatTUIAuthority(m *chatTUI) error {
 	if m == nil || m.leases == nil {
 		return nil

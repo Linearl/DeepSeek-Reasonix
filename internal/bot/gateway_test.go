@@ -933,9 +933,7 @@ func TestGatewayRecoveryRebindsLeaseAndRemembersSessionPath(t *testing.T) {
 		OnSessionRecovered: gw.botSessionRecoveredHandler(key, msg, state),
 	})
 	state.ctrl = ctrl
-	if err := leases.BindControllerAuthority(ctrl); err != nil {
-		t.Fatalf("bind controller authority: %v", err)
-	}
+	mustBindBotControllerAuthority(t, leases, ctrl)
 	t.Cleanup(gw.closeSessions)
 
 	if err := ctrl.Snapshot(); err != nil {
@@ -949,11 +947,7 @@ func TestGatewayRecoveryRebindsLeaseAndRemembersSessionPath(t *testing.T) {
 		t.Fatalf("held lease = %q, want recovery path %q", got, agent.CanonicalSessionPath(recoveryPath))
 	}
 	leases.WaitForRetiredLeases()
-	oldLease, err := agent.TryAcquireSessionLease(originalPath)
-	if err != nil {
-		t.Fatalf("original session lease was not released: %v", err)
-	}
-	oldLease.Release()
+	mustAcquireAndReleaseBotSessionLease(t, originalPath)
 
 	gw.mu.Lock()
 	gotStatePath := state.sessionPath

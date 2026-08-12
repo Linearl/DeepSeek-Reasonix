@@ -1407,15 +1407,12 @@ func (gw *BotGateway) handleSlashCommand(ctx context.Context, adapter Adapter, k
 				return
 			}
 			if state.leases != nil {
-				if err := state.leases.Rebind(state.ctrl.SessionPath()); err != nil {
+				if err := rebindBotSessionWriteAuthority(state, state.ctrl.SessionPath()); err != nil {
 					gw.logger.Warn("new session lease failed", "err", control.SessionInUseMessage(err))
 					gw.unlinkAndCloseSessionState(key, state)
 					gw.sessions.ForceRelease(key)
 					_ = gw.sendText(ctx, adapter, msg, "新会话创建失败：无法取得写入权限。请关闭其他 Reasonix 窗口或进程后重试。")
 					return
-				}
-				if c, ok := state.ctrl.(*control.Controller); ok {
-					_ = state.leases.BindControllerAuthority(c)
 				}
 			}
 			// /new leaves an attached transcript and continues in the freshly
@@ -2364,16 +2361,10 @@ func (gw *BotGateway) getOrCreateSession(ctx context.Context, key string, msg In
 	ctrl.EnableInteractiveApproval()
 	ctrl.SetToolApprovalMode(profile.toolApprovalMode)
 	ctrl.EnsureSessionPath()
-	if err := leases.Rebind(ctrl.SessionPath()); err != nil {
+	if err := rebindBotControllerWriteAuthority(leases, ctrl); err != nil {
 		ctrl.Close()
 		leases.Release()
 		gw.logger.Error("bot session lease failed", "err", control.SessionInUseMessage(err))
-		return nil
-	}
-	if err := leases.BindControllerAuthority(ctrl); err != nil {
-		ctrl.Close()
-		leases.Release()
-		gw.logger.Error("bot session write authority failed", "err", err)
 		return nil
 	}
 

@@ -471,54 +471,6 @@ func (t *WorkspaceTab) ensureSessionLease(path string) error {
 	return nil
 }
 
-// handoffSessionLease acquires path and publishes it on the tab without
-// releasing the previous lease. Recovery callbacks use the returned lease to
-// retire the old path only after the current authority-guarded save returns.
-func (t *WorkspaceTab) handoffSessionLease(path string) (*agent.SessionLease, error) {
-	if t == nil || t.ReadOnly {
-		return nil, nil
-	}
-	key := sessionRuntimeKey(path)
-	if key == "" {
-		return nil, nil
-	}
-	t.sessionLeaseMu.Lock()
-	if t.sessionLease != nil && sessionRuntimeKey(t.sessionLease.Path()) == key {
-		t.storeSessionLeaseRuntimeKey(key)
-		t.sessionLeaseMu.Unlock()
-		return nil, nil
-	}
-	lease, err := agent.TryAcquireSessionLease(key)
-	if err != nil {
-		t.sessionLeaseMu.Unlock()
-		return nil, err
-	}
-	if hook := sessionLeaseAcquireHookForTest; hook != nil {
-		hook()
-	}
-	old := t.sessionLease
-	t.sessionLease = lease
-	t.storeSessionLeaseRuntimeKey(key)
-	t.sessionLeaseMu.Unlock()
-	return old, nil
-}
-
-func (t *WorkspaceTab) swapSessionLease(lease *agent.SessionLease) *agent.SessionLease {
-	if t == nil {
-		return lease
-	}
-	t.sessionLeaseMu.Lock()
-	old := t.sessionLease
-	t.sessionLease = lease
-	key := ""
-	if lease != nil {
-		key = sessionRuntimeKey(lease.Path())
-	}
-	t.storeSessionLeaseRuntimeKey(key)
-	t.sessionLeaseMu.Unlock()
-	return old
-}
-
 func (t *WorkspaceTab) releaseSessionLease() {
 	if t == nil {
 		return
@@ -4145,19 +4097,7 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 	}
 	// Commit the scope while the final tab-generation check is still guarded.
 	// It only takes the plugin Host leaf lock and cannot call back into App.
-	if !registration.commit() {
-		a.mu.Unlock()
-		a.abandonSupersededBuild(tab, ctrl, rootKey, acquiredLeaseKey)
-		a.scheduleDeferredStartupBuild(tab.ID)
-		return
-	}
-	if err := bindTabWriteAuthority(tab, ctrl); err != nil {
-		setTabStartupError(tab, err)
-		tab.Ready = false
-		a.setSessionRuntimePhaseLocked(tab, sessionRuntimeFailed, err)
-		a.mu.Unlock()
-		a.abandonSupersededBuild(tab, ctrl, rootKey, acquiredLeaseKey)
-		a.emitReady(wailsCtx, tab.ID)
+	if !a.commitStartupWriteAuthorityLocked(tab, ctrl, registration, rootKey, acquiredLeaseKey, wailsCtx) {
 		return
 	}
 	tab.Ctrl = ctrl
@@ -6226,42 +6166,8 @@ func (a *App) handleTabSessionRecovered(tab *WorkspaceTab) func(control.SessionR
 		if strings.TrimSpace(info.RecoveryPath) == "" {
 			return nil
 		}
-		if tab != nil && !tab.ReadOnly {
-			transition, err := a.reserveSessionRuntimePath(tab, info.RecoveryPath)
-			if err != nil {
-				return fmt.Errorf("acquire recovery session lease: %w", userFacingSessionLeaseError("", err))
-			}
-			oldLease, err := tab.handoffSessionLease(info.RecoveryPath)
-			if err != nil {
-				a.rollbackSessionRuntimePath(transition)
-				slog.Warn("desktop: acquire recovery session lease", "path", info.RecoveryPath, "err", err)
-				reason := "lease_unavailable"
-				if errors.Is(err, agent.ErrSessionLeaseHeld) {
-					reason = "lease_held"
-				}
-				a.emitRuntimeEvent("session:recovery-failed", sessionRecoveryFailedEvent{Reason: reason})
-				// This error propagates out through ctrl.Snapshot() into chat
-				// notices and bridge returns (reportTabSnapshotError). The raw
-				// path/holder id stayed in the slog line above; keep it out of
-				// the surfaced message.
-				return fmt.Errorf("acquire recovery session lease: %w",
-					userFacingSessionLeaseError("", err))
-			}
-			// Rebind write authority to the recovery lease before the controller
-			// commits its path swap (atomic two-phase handoff).
-			if err := bindTabWriteAuthority(tab, tab.Ctrl); err != nil {
-				newLease := tab.swapSessionLease(oldLease)
-				_ = bindTabWriteAuthority(tab, tab.Ctrl)
-				a.rollbackSessionRuntimePath(transition)
-				if newLease != nil {
-					newLease.Release()
-				}
-				return fmt.Errorf("bind recovery session authority: %w", err)
-			}
-			a.commitSessionRuntimePath(transition)
-			if oldLease != nil {
-				go oldLease.Release()
-			}
+		if err := a.handoffTabRecoveryLease(tab, info.RecoveryPath); err != nil {
+			return err
 		}
 		meta := info.Meta
 		scope := strings.TrimSpace(meta.Scope)

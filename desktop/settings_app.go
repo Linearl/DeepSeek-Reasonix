@@ -1906,16 +1906,11 @@ func (a *App) rebuildSettingTurnLockedWithModel(setting string, tab *WorkspaceTa
 		return err
 	}
 	a.mu.Lock()
-	if current := a.tabs[tab.ID]; current != tab {
+	if err := a.authorizeTabReplacementLocked(tab, ctrl, "rebuilding settings", "rebuilt"); err != nil {
 		a.mu.Unlock()
 		ctrl.Close()
 		tab.releaseSessionLease()
-		return fmt.Errorf("tab %q changed while rebuilding settings; retry", tab.ID)
-	}
-	if err := bindTabWriteAuthority(tab, ctrl); err != nil {
-		a.mu.Unlock()
-		ctrl.Close()
-		return fmt.Errorf("bind rebuilt session authority: %w", err)
+		return err
 	}
 	tab.Ctrl = ctrl
 	tab.model = model

@@ -1,9 +1,11 @@
 package control
 
 import (
+	"context"
 	"errors"
 
 	"reasonix/internal/agent"
+	"reasonix/internal/event"
 )
 
 // BindSessionWriteAuthority issues a generation-bound write authority from
@@ -16,7 +18,6 @@ func (c *Controller) BindSessionWriteAuthority(lease *agent.SessionLease) error 
 		return nil
 	}
 	gen := agent.NextSessionWriteGeneration()
-	c.writeAuthGeneration.Store(gen)
 	if c.executor == nil {
 		return nil
 	}
@@ -43,10 +44,26 @@ func (c *Controller) BindSessionWriteAuthority(lease *agent.SessionLease) error 
 // WriteAuthorityGeneration reports the generation currently bound on this
 // controller. Tests use it to prove old generations become stale after rebind.
 func (c *Controller) WriteAuthorityGeneration() uint64 {
-	if c == nil {
+	if c == nil || c.executor == nil || c.executor.Session() == nil {
 		return 0
 	}
-	return c.writeAuthGeneration.Load()
+	return c.executor.Session().WriteAuthority().Generation()
+}
+
+func (c *Controller) submitCommandOrTurn(trimmed, input, display string, scopedRefsOnly bool, editedOriginal, format string) {
+	if err := c.ensureWriteAuthorityReady(); err != nil {
+		c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "input was not accepted: this session is no longer writable — reopen it and try again"})
+		return
+	}
+	c.submitCommandOrTurnReady(trimmed, input, display, scopedRefsOnly, editedOriginal, format)
+}
+
+// Run verifies the live write generation before synchronous headless turns.
+func (c *Controller) Run(ctx context.Context, input string) error {
+	if err := c.ensureWriteAuthorityReady(); err != nil {
+		return err
+	}
+	return c.runReady(ctx, input)
 }
 
 // RebindSessionWriteAuthority is a convenience for keepers that already hold a

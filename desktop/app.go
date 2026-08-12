@@ -2338,7 +2338,7 @@ func (a *App) clearActiveSessionRuntime(tab *WorkspaceTab, oldCtrl control.Sessi
 	newCtrl.SetFreshSessionPath(path)
 
 	a.mu.Lock()
-	if current := a.tabs[tab.ID]; current != tab {
+	if err := a.authorizeTabReplacementLocked(tab, newCtrl, "clearing the session", "fresh"); err != nil {
 		a.mu.Unlock()
 		// The old session is already destroyed either way; release what this
 		// clear acquired for the replaced tab (fresh controller and its
@@ -2347,12 +2347,7 @@ func (a *App) clearActiveSessionRuntime(tab *WorkspaceTab, oldCtrl control.Sessi
 		tab.releaseSessionLease()
 		oldCtrl.CloseAfterDestroy()
 		a.emitProjectTreeChangedForSessionDirs(newCtrl.SessionDir())
-		return SessionClearResult{}, fmt.Errorf("tab %q changed while clearing the session", tab.ID)
-	}
-	if err := bindTabWriteAuthority(tab, newCtrl); err != nil {
-		a.mu.Unlock()
-		newCtrl.Close()
-		return SessionClearResult{}, fmt.Errorf("bind fresh session authority: %w", err)
+		return SessionClearResult{}, err
 	}
 	tab.Ctrl = newCtrl
 	tab.sink = newSink
@@ -2922,39 +2917,6 @@ func (a *App) SummarizeUpToForTab(tabID string, turn int) error {
 		return nil
 	}
 	return ctrl.SummarizeUpTo(a.ctx, turn)
-}
-
-// SessionMeta summarises one saved session for the history panel.
-type SessionMeta struct {
-	Path           string `json:"path"`
-	Preview        string `json:"preview"`         // first user message
-	Title          string `json:"title,omitempty"` // user-chosen name, when set (overrides preview)
-	Turns          int    `json:"turns"`
-	TurnsState     string `json:"turnsState"`
-	CreatedAt      int64  `json:"createdAt"`      // unix milliseconds
-	LastActivityAt int64  `json:"lastActivityAt"` // unix milliseconds
-	ModTime        int64  `json:"modTime"`        // compatibility alias for lastActivityAt
-	DeletedAt      int64  `json:"deletedAt,omitempty"`
-	Current        bool   `json:"current"`
-	Open           bool   `json:"open"`
-	Scope          string `json:"scope,omitempty"`
-	WorkspaceRoot  string `json:"workspaceRoot,omitempty"`
-	TopicID        string `json:"topicId,omitempty"`
-	TopicTitle     string `json:"topicTitle,omitempty"`
-	Kind           string `json:"kind,omitempty"` // "channel" for external IM transcripts
-	Channel        string `json:"channel,omitempty"`
-	ChannelLabel   string `json:"channelLabel,omitempty"`
-	RemoteID       string `json:"remoteId,omitempty"`
-	ChatType       string `json:"chatType,omitempty"`
-	UserID         string `json:"userId,omitempty"`
-	ThreadID       string `json:"threadId,omitempty"`
-	SessionSource  string `json:"sessionSource,omitempty"`
-	Recovered      bool   `json:"recovered,omitempty"`    // created by conflict recovery, including an adopted/continued branch
-	RecoveryCopy   bool   `json:"recoveryCopy,omitempty"` // actual branch content is unchanged and covered by its parent
-	// Optional v1.24.2 lineage fields; older clients ignore them safely.
-	RecoveryGroupID   string `json:"recoveryGroupId,omitempty"`
-	RecoveryRole      string `json:"recoveryRole,omitempty"` // normal|covered_copy|adopted|diverged
-	RecoveryCanonical bool   `json:"recoveryCanonical,omitempty"`
 }
 
 type channelSessionRoute struct {
@@ -4144,19 +4106,9 @@ func (a *App) rebindTabToLoadedSessionPath(tab *WorkspaceTab, sessionPath string
 	// generation, atomically publish the target controller/lease/profile/path,
 	// and advance the epoch in the same App.mu commit.
 	a.mu.Lock()
-	if tab.removed ||
-		a.tabs[tab.ID] != tab ||
-		tab.Ctrl != source.ctrl ||
-		a.runtimeForTabLocked(tab) != transition.runtime ||
-		!a.sessionRuntimePathTransitionValidLocked(transition) {
+	if err := a.validateAndBindSessionRebindLocked(tab, source, transition, candidate, targetLease); err != nil {
 		a.mu.Unlock()
-		return fmt.Errorf("tab runtime changed while switching sessions; retry")
-	}
-	if candidateCtrl, ok := candidate.ctrl.(*control.Controller); ok {
-		if err := control.IssueAndBindWriteAuthority(candidateCtrl, targetLease); err != nil {
-			a.mu.Unlock()
-			return fmt.Errorf("resume session: bind write authority: %w", err)
-		}
+		return err
 	}
 	var oldLease *agent.SessionLease
 	oldCtrl := tab.Ctrl
@@ -10053,19 +10005,14 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 	timing.LeaseAndResume = time.Since(stageStarted)
 	stageStarted = time.Now()
 	a.mu.Lock()
-	if current := a.tabs[tab.ID]; current != tab {
+	if err := a.authorizeTabReplacementLocked(tab, newCtrl, "switching model", "model-switch"); err != nil {
 		// The tab was closed/replaced while we built the new controller off-lock;
 		// adopting it now would leak the runtime onto an orphaned tab and pin the
 		// session lease forever.
 		a.mu.Unlock()
 		newCtrl.Close()
 		tab.releaseSessionLease()
-		return fmt.Errorf("tab %q changed while switching model; retry", tab.ID)
-	}
-	if err := bindTabWriteAuthority(tab, newCtrl); err != nil {
-		a.mu.Unlock()
-		newCtrl.Close()
-		return fmt.Errorf("bind model-switch session authority: %w", err)
+		return err
 	}
 	tab.Ctrl = newCtrl
 	tab.model = name
@@ -10241,16 +10188,11 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 		return err
 	}
 	a.mu.Lock()
-	if current := a.tabs[tab.ID]; current != tab {
+	if err := a.authorizeTabReplacementLocked(tab, newCtrl, "switching effort", "effort-switch"); err != nil {
 		a.mu.Unlock()
 		newCtrl.Close()
 		tab.releaseSessionLease()
-		return fmt.Errorf("tab %q changed while switching effort; retry", tab.ID)
-	}
-	if err := bindTabWriteAuthority(tab, newCtrl); err != nil {
-		a.mu.Unlock()
-		newCtrl.Close()
-		return fmt.Errorf("bind effort-switch session authority: %w", err)
+		return err
 	}
 	tab.Ctrl = newCtrl
 	tab.model = modelRef

@@ -259,16 +259,6 @@ type acpController interface {
 	control.Goals
 }
 
-// bindACPWriteAuthority issues a generation-bound write authority when ctrl is
-// a concrete *control.Controller. Test fakes without the method stay unbound.
-func bindACPWriteAuthority(ctrl acpController, lease *agent.SessionLease) error {
-	c, ok := ctrl.(*control.Controller)
-	if !ok || c == nil {
-		return nil
-	}
-	return c.BindSessionWriteAuthority(lease)
-}
-
 // acpSession is one open session: its controller, the on-disk transcript path
 // (empty when persistence is off), and the cancel func of the in-flight turn
 // (nil when idle) so session/cancel can abort it.
@@ -525,96 +515,6 @@ func sessionLeaseBindError(method string, err error) *RPCError {
 	return &RPCError{Code: ErrInternal, Message: method + ": session lease: " + err.Error()}
 }
 
-// sessionRecoveredHandler returns the OnSessionRecovered callback wired into
-// every controller built for session id. When a snapshot conflict retargets
-// the controller to a recovery branch (turn-end autosave in persistAfterTurn,
-// or the pre-rebuild snapshot in rebuildSession), the ACP bookkeeping must
-// follow at commit time: session/prompt reports sess.transcript,
-// session/delete destroys it, and the session lease must guard the file the
-// controller actually writes. The recovery lease is acquired before the old
-// one is released so the outgoing transcript stays guarded until the new one
-// is secured; a failure aborts the recovery commit and the controller stays
-// on the original path (the next save retries).
-func (s *service) sessionRecoveredHandler(id string) func(control.SessionRecoveryInfo) error {
-	return s.sessionRecoveredHandlerFor(id, nil)
-}
-
-func (s *service) sessionRecoveredHandlerFor(id string, owner acpController) func(control.SessionRecoveryInfo) error {
-	return func(info control.SessionRecoveryInfo) error {
-		recoveryPath := strings.TrimSpace(info.RecoveryPath)
-		if recoveryPath == "" {
-			return nil
-		}
-		sess := s.session(id)
-		if sess == nil {
-			return nil
-		}
-		lease, err := agent.TryAcquireSessionLease(recoveryPath)
-		if err != nil {
-			if errors.Is(err, agent.ErrSessionLeaseHeld) {
-				return fmt.Errorf("bind recovery session: %s; %s",
-					control.SessionInUseMessage(err), control.SessionLeaseCloseHint)
-			}
-			return fmt.Errorf("bind recovery session: %w", err)
-		}
-		sess.mu.Lock()
-		if sess.deleted {
-			sess.mu.Unlock()
-			lease.Release()
-			return fmt.Errorf("bind recovery session: session is deleted")
-		}
-		old := sess.lease
-		ctrl := owner
-		if ctrl == nil {
-			ctrl = sess.ctrl
-		}
-		if err := bindACPWriteAuthority(ctrl, lease); err != nil {
-			if old != nil {
-				_ = bindACPWriteAuthority(ctrl, old)
-			}
-			sess.mu.Unlock()
-			lease.Release()
-			return fmt.Errorf("bind recovery session: unable to bind recovered transcript authority")
-		}
-		sess.lease = lease
-		sess.transcript = recoveryPath
-		meta := sess.metaLocked()
-		sess.mu.Unlock()
-		if old != nil {
-			go old.Release()
-		}
-		_ = saveACPMeta(recoveryPath, meta)
-		// Leave a redirect on the id-keyed sidecar so restart-time lookups
-		// (session/load, session/resume, session/delete, loadMeta) resolve the
-		// id to the recovery file; without it the next process reopens the
-		// pre-recovery transcript. Always written against the id-keyed path,
-		// so resolution stays a single hop even for recovery-of-recovery.
-		if dir := s.sessionDir(); dir != "" {
-			if idPath := transcriptPath(dir, id); idPath != recoveryPath {
-				idMeta, _, err := loadACPMeta(idPath)
-				if err != nil {
-					slog.Warn("acp: load id-keyed meta for recovery redirect", "err", err)
-					idMeta = acpSessionMeta{}
-				}
-				if idMeta.SessionID == "" {
-					idMeta.SessionID = id
-				}
-				if idMeta.Cwd == "" {
-					idMeta.Cwd = meta.Cwd
-				}
-				if idMeta.CreatedAt.IsZero() {
-					idMeta.CreatedAt = meta.CreatedAt
-				}
-				idMeta.ActiveTranscript = filepath.Base(recoveryPath)
-				if err := saveACPMeta(idPath, idMeta); err != nil {
-					slog.Warn("acp: save recovery redirect", "err", err)
-				}
-			}
-		}
-		return nil
-	}
-}
-
 // initialize advertises the agent's capability set: persisted load plus ACP v1
 // list/resume/close/delete lifecycle helpers, prompts carrying inline resource
 // text (embeddedContext) but not image/audio, and stdio / Streamable HTTP MCP
@@ -779,10 +679,8 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
 		}
 		sess.lease = lease
 		ctrl.SetFreshSessionPath(sess.transcript)
-		if err := bindACPWriteAuthority(ctrl, lease); err != nil {
-			lease.Release()
+		if err := bindACPWriteAuthorityOrClose(ctrl, lease); err != nil {
 			sess.lease = nil
-			ctrl.Close()
 			return nil, sessionLeaseBindError("session/new", err)
 		}
 	}
@@ -1076,10 +974,7 @@ func (s *service) openExistingSession(ctx context.Context, method, id, cwdParam 
 		ctrl.Close()
 		return SessionConfigState{}, &RPCError{Code: ErrInvalidParams, Message: method + ": unknown session " + id}
 	}
-	ctrl.Resume(loaded, path)
-	if err := bindACPWriteAuthority(ctrl, lease); err != nil {
-		lease.Release()
-		ctrl.Close()
+	if err := resumeACPControllerForWrite(ctrl, loaded, path, lease); err != nil {
 		return SessionConfigState{}, sessionLeaseBindError(method, err)
 	}
 	toolApprovalMode := normalizeACPToolApprovalMode(saved.ToolApprovalMode)
@@ -1414,7 +1309,6 @@ func (s *service) reloadSessionExtensionsLocked(ctx context.Context, sess *acpSe
 		return nil, &RPCError{Code: ErrInternal, Message: sessionReloadExtensionsMethod + ": " + err.Error()}
 	}
 	newCtrl.EnableInteractiveApproval()
-	newCtrl.SetOnSessionRecovered(s.sessionRecoveredHandlerFor(sess.id, newCtrl))
 	// Config on disk may have changed the effective planner/sandbox posture;
 	// recompute the status snapshot from the same resolved inputs.
 	runtimeState, err := s.sessionRuntimeState(ctx, SessionRuntimeStateParams{
@@ -1427,19 +1321,9 @@ func (s *service) reloadSessionExtensionsLocked(ctx context.Context, sess *acpSe
 	// Persist before publishing the replacement. If this fails, the outgoing
 	// controller and transcript still agree and remain fully usable (mirrors
 	// the config switch).
-	sess.mu.Lock()
-	lease := sess.lease
-	sess.mu.Unlock()
-	if err := bindACPWriteAuthority(newCtrl, lease); err != nil {
+	if err := s.prepareACPReplacementAuthority(sess, newCtrl, cur, prevPath, "snapshot after reload"); err != nil {
 		newCtrl.ReleaseResources()
-		return nil, &RPCError{Code: ErrInternal, Message: sessionReloadExtensionsMethod + ": bind replacement session authority"}
-	}
-	if prevPath != "" {
-		if err := newCtrl.Snapshot(); err != nil {
-			_ = bindACPWriteAuthority(cur, lease)
-			newCtrl.ReleaseResources()
-			return nil, &RPCError{Code: ErrInternal, Message: sessionReloadExtensionsMethod + ": snapshot after reload: " + err.Error()}
-		}
+		return nil, &RPCError{Code: ErrInternal, Message: sessionReloadExtensionsMethod + ": " + err.Error()}
 	}
 
 	sess.mu.Lock()
@@ -1964,7 +1848,6 @@ func (s *service) rebuildSessionLocked(ctx context.Context, sess *acpSession, cf
 		}
 	}
 	newCtrl.AdoptHistory(carried, prevPath)
-	newCtrl.SetOnSessionRecovered(s.sessionRecoveredHandlerFor(sess.id, newCtrl))
 	// Re-apply all three independent session axes. A controller rebuild must not
 	// turn Plan into tool approval, drop a running Goal, or reset Ask/Auto/Yolo.
 	newCtrl.SetToolApprovalMode(toolApprovalMode)
@@ -1994,19 +1877,9 @@ func (s *service) rebuildSessionLocked(ctx context.Context, sess *acpSession, cf
 	// first would report a successful switch whose refreshed profile contract
 	// disappears on restart. AdoptHistory preserves the loaded CAS baseline, so
 	// this compatible leading-system rewrite is safe to snapshot here.
-	sess.mu.Lock()
-	lease := sess.lease
-	sess.mu.Unlock()
-	if err := bindACPWriteAuthority(newCtrl, lease); err != nil {
+	if err := s.prepareACPReplacementAuthority(sess, newCtrl, cur, prevPath, "snapshot after switch"); err != nil {
 		newCtrl.ReleaseResources()
-		return &RPCError{Code: ErrInternal, Message: "session config: bind replacement session authority"}
-	}
-	if prevPath != "" {
-		if err := newCtrl.Snapshot(); err != nil {
-			_ = bindACPWriteAuthority(cur, lease)
-			newCtrl.ReleaseResources()
-			return &RPCError{Code: ErrInternal, Message: "session config: snapshot after switch: " + err.Error()}
-		}
+		return &RPCError{Code: ErrInternal, Message: "session config: " + err.Error()}
 	}
 
 	sess.mu.Lock()
