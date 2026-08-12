@@ -2545,21 +2545,6 @@ export default function App() {
     return { scope, workspaceRoot: activeWorkspaceRoot };
   }, [activeTab?.scope, activeTab?.workspaceRoot]);
 
-  useEffect(() => {
-    let live = true;
-    const ready = import("./lib/workspaceRefreshStore")
-      .then(({ default: startWorkspaceFocusReconciliation }) => live ? startWorkspaceFocusReconciliation(activeTabId, workspaceScopeKey, refreshTabMetas) : undefined)
-      .catch(() => undefined);
-    const stopProjectTree = onProjectTreeChanged(() => {
-      setProjectRevision((value) => value + 1);
-      void refreshTabMetas(undefined, { afterMutation: true });
-    });
-    return () => {
-      live = false;
-      stopProjectTree();
-      void ready.then((stop) => stop?.());
-    };
-  }, [activeTabId, refreshTabMetas, workspaceScopeKey]);
 
   // Bridge remote:* events into the remote store once, app-wide, so the
   // StatusBar chip, host manager, and explorer all see the same live state.
@@ -3726,6 +3711,27 @@ export default function App() {
     );
   }, [listSessions]);
 
+  useEffect(() => {
+    let live = true;
+    const ready = import("./lib/workspaceRefreshStore")
+      .then(({ default: startWorkspaceFocusReconciliation }) => live ? startWorkspaceFocusReconciliation(activeTabId, workspaceScopeKey, refreshTabMetas) : undefined)
+      .catch(() => undefined);
+    const stopProjectTree = onProjectTreeChanged(() => {
+      setProjectRevision((value) => value + 1);
+      void refreshTabMetas(undefined, { afterMutation: true });
+      // #8280: in-session renames / auto-titles emit project-tree:changed but
+      // the history panel snapshot (histView.sessions) was never refreshed, so
+      // the sidebar kept stale titles until a pull-triggering action. refreshHistoryView
+      // is a no-op while the panel is closed (kind !== "history").
+      void refreshHistoryView();
+    });
+    return () => {
+      live = false;
+      stopProjectTree();
+      void ready.then((stop) => stop?.());
+    };
+  }, [activeTabId, refreshTabMetas, workspaceScopeKey, refreshHistoryView]);
+
   const navigationSeqRef = useRef(0);
   const navigationRunningRef = useRef(false);
   const navigationPendingRef = useRef<PendingDesktopNavigationRequest | null>(null);
@@ -4261,10 +4267,12 @@ export default function App() {
     try {
       await app.RenameTopic(topicId, nextTitle);
       await refreshProjectsAndTabs();
+      // #8280: keep the history panel snapshot in sync after in-session renames.
+      await refreshHistoryView();
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err), "error");
     }
-  }, [refreshProjectsAndTabs, showToast]);
+  }, [refreshHistoryView, refreshProjectsAndTabs, showToast]);
 
   const startActiveTopicRename = useCallback(() => {
     if (!activeTab?.topicId) return;
