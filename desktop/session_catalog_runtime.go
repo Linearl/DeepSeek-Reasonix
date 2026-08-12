@@ -295,7 +295,7 @@ func (a *App) metadataTopicPage(req ProjectTopicPageRequest) ProjectTopicPage {
 	return page
 }
 
-func (a *App) projectNodeFromCatalogTopic(topic sessioncatalog.TopicRecord, topicOverlays, sessionOverlays map[string]catalogRuntimeOverlay) (ProjectNode, bool) {
+func (a *App) projectNodeFromCatalogTopic(topic sessioncatalog.TopicRecord, topicOverlays, sessionOverlays map[string]catalogRuntimeOverlay, preferred map[string]struct{}) (ProjectNode, bool) {
 	kind := "topic"
 	if topic.Scope == "global" {
 		kind = "global_topic"
@@ -309,13 +309,19 @@ func (a *App) projectNodeFromCatalogTopic(topic sessioncatalog.TopicRecord, topi
 		Pinned: topic.Pinned, Open: overlay.open, Running: overlay.running, Status: overlay.status,
 		Children: []ProjectNode{},
 	}
+	// Fall back to topic-local preference when the workspace map is unavailable
+	// so multi-fork topics still collapse instead of listing every replica.
+	localPreferred := preferred
+	if localPreferred == nil {
+		localPreferred = sessioncatalog.PreferredOrdinarySessionPaths(topic.Sessions)
+	}
 	visible := make([]sessioncatalog.SessionRecord, 0, len(topic.Sessions))
 	runtimeSessions := make([]runtimeSessionStatus, 0, len(topic.Sessions))
 	for _, session := range topic.Sessions {
 		sessionOverlay := sessionOverlays[sessionRuntimeKey(session.Path)]
-		// Idle covered recovery copies stay out of the ordinary tree. Open or
-		// running copies remain reachable so the user can still inspect them.
-		if session.RecoveryCopy && !sessionOverlay.open && !sessionOverlay.running {
+		// 1.23 ordinary-list contract: hide idle covered copies and non-
+		// preferred conflict forks. Open/running sessions stay reachable.
+		if !sessioncatalog.OrdinaryTreeSession(session, sessionOverlay.open, sessionOverlay.running, localPreferred) {
 			continue
 		}
 		visible = append(visible, session)
@@ -327,6 +333,14 @@ func (a *App) projectNodeFromCatalogTopic(topic sessioncatalog.TopicRecord, topi
 	if topicHiddenAsRecoveryOnly(summary, topic.Pinned, append(runtimeSessions, runtimeSessionStatus{
 		open: overlay.open, running: overlay.running,
 	})) {
+		return ProjectNode{Children: []ProjectNode{}}, false
+	}
+	// After filtering non-preferred recovery forks, a topic may have nothing
+	// left. Keep pinned/open shells; otherwise drop the empty row.
+	if len(visible) == 0 {
+		if topic.Pinned || overlay.open || overlay.running {
+			return node, true
+		}
 		return ProjectNode{Children: []ProjectNode{}}, false
 	}
 	// A single effective session collapses to a normal topic row.
@@ -416,6 +430,12 @@ func (a *App) ListProjectTopics(req ProjectTopicPageRequest) (ProjectTopicPage, 
 		limit = sessioncatalog.MaxLimit
 	}
 	topicOverlays, sessionOverlays := a.catalogRuntimeOverlays()
+	// Workspace-wide preference collapses cross-topic recovery replicas that
+	// share a lineage but were indexed as separate topic rows.
+	preferred, prefErr := catalog.PreferredOrdinarySessionPaths(a.bootContext(), req.Scope, req.WorkspaceRoot)
+	if prefErr != nil {
+		preferred = nil
+	}
 	cursor := req.Cursor
 	// Keep scanning past pages that are entirely idle recovery copies so the
 	// sidebar never shows an empty "no sessions" state when later pages still
@@ -430,7 +450,7 @@ func (a *App) ListProjectTopics(req ProjectTopicPageRequest) (ProjectTopicPage, 
 		}
 		out.Revision = page.Revision
 		for i, topic := range page.Items {
-			node, ok := a.projectNodeFromCatalogTopic(topic, topicOverlays, sessionOverlays)
+			node, ok := a.projectNodeFromCatalogTopic(topic, topicOverlays, sessionOverlays, preferred)
 			if !ok {
 				continue
 			}
@@ -470,7 +490,8 @@ func (a *App) GetTopicSummary(key ProjectTopicKey) (ProjectNode, error) {
 		}
 		if ok {
 			topicOverlays, sessionOverlays := a.catalogRuntimeOverlays()
-			if node, visible := a.projectNodeFromCatalogTopic(topic, topicOverlays, sessionOverlays); visible {
+			preferred, _ := catalog.PreferredOrdinarySessionPaths(a.bootContext(), key.Scope, key.WorkspaceRoot)
+			if node, visible := a.projectNodeFromCatalogTopic(topic, topicOverlays, sessionOverlays, preferred); visible {
 				return node, nil
 			}
 			return ProjectNode{Children: []ProjectNode{}}, nil
@@ -572,8 +593,14 @@ func (a *App) catalogSessionPathForTopic(scope, workspaceRoot, topicID string) s
 	if err != nil || !ok || len(topic.Sessions) == 0 {
 		return ""
 	}
+	preferred := sessioncatalog.PreferredOrdinarySessionPaths(topic.Sessions)
 	sort.SliceStable(topic.Sessions, func(i, j int) bool {
-		// Prefer real conversations over idle covered recovery copies.
+		// Prefer ordinary-tree survivors, then real conversations over copies.
+		iPref := sessioncatalog.OrdinaryTreeSession(topic.Sessions[i], false, false, preferred)
+		jPref := sessioncatalog.OrdinaryTreeSession(topic.Sessions[j], false, false, preferred)
+		if iPref != jPref {
+			return iPref
+		}
 		if topic.Sessions[i].RecoveryCopy != topic.Sessions[j].RecoveryCopy {
 			return !topic.Sessions[i].RecoveryCopy
 		}

@@ -41,7 +41,7 @@ func TestProjectNodeFromCatalogTopicFiltersIdleRecoveryCopies(t *testing.T) {
 	sessionOverlays := map[string]catalogRuntimeOverlay{
 		sessionRuntimeKey("/s/open-copy.jsonl"): {open: true},
 	}
-	node, ok := app.projectNodeFromCatalogTopic(topic, map[string]catalogRuntimeOverlay{}, sessionOverlays)
+	node, ok := app.projectNodeFromCatalogTopic(topic, map[string]catalogRuntimeOverlay{}, sessionOverlays, nil)
 	if !ok {
 		t.Fatal("mixed topic should stay visible")
 	}
@@ -64,7 +64,7 @@ func TestProjectNodeFromCatalogTopicHidesRecoveryOnlyIdleTopic(t *testing.T) {
 			{Path: "/s/only.jsonl", Recovered: true, RecoveryCopy: true, Turns: 2, TurnsState: sessioncatalog.TurnsValid, Health: sessioncatalog.HealthOK},
 		},
 	}
-	if _, ok := app.projectNodeFromCatalogTopic(topic, map[string]catalogRuntimeOverlay{}, map[string]catalogRuntimeOverlay{}); ok {
+	if _, ok := app.projectNodeFromCatalogTopic(topic, map[string]catalogRuntimeOverlay{}, map[string]catalogRuntimeOverlay{}, nil); ok {
 		t.Fatal("idle recovery-only topic must be hidden from the ordinary tree")
 	}
 }
@@ -77,7 +77,7 @@ func TestProjectNodeFromCatalogTopicKeepsPinnedRecoveryOnlyTopic(t *testing.T) {
 			{Path: "/s/pinned.jsonl", Recovered: true, RecoveryCopy: true, Turns: 2, TurnsState: sessioncatalog.TurnsValid, Health: sessioncatalog.HealthOK},
 		},
 	}
-	node, ok := app.projectNodeFromCatalogTopic(topic, map[string]catalogRuntimeOverlay{}, map[string]catalogRuntimeOverlay{})
+	node, ok := app.projectNodeFromCatalogTopic(topic, map[string]catalogRuntimeOverlay{}, map[string]catalogRuntimeOverlay{}, nil)
 	if !ok {
 		t.Fatal("pinned recovery-only topic must remain visible")
 	}
@@ -96,12 +96,51 @@ func TestProjectNodeFromCatalogTopicCollapsesWhenOnlyOneVisible(t *testing.T) {
 			{Path: "/s/copy.jsonl", Recovered: true, RecoveryCopy: true, Turns: 2, TurnsState: sessioncatalog.TurnsValid, Health: sessioncatalog.HealthOK},
 		},
 	}
-	node, ok := app.projectNodeFromCatalogTopic(topic, map[string]catalogRuntimeOverlay{}, map[string]catalogRuntimeOverlay{})
+	node, ok := app.projectNodeFromCatalogTopic(topic, map[string]catalogRuntimeOverlay{}, map[string]catalogRuntimeOverlay{}, nil)
 	if !ok {
 		t.Fatal("topic with parent should stay visible")
 	}
 	if len(node.Children) != 0 {
 		t.Fatalf("children = %d, want collapsed single effective session", len(node.Children))
+	}
+}
+
+func TestProjectNodeFromCatalogTopicCollapsesDivergedForksToOne(t *testing.T) {
+	app := &App{tabs: map[string]*WorkspaceTab{}, detachedSessions: map[string]*WorkspaceTab{}}
+	topic := sessioncatalog.TopicRecord{
+		Scope: "global", TopicID: "forks", Title: "WebView", Turns: 5,
+		Sessions: []sessioncatalog.SessionRecord{
+			{Path: "/s/root.jsonl", Turns: 3, TurnsState: sessioncatalog.TurnsValid, Health: sessioncatalog.HealthOK, LastActivityAt: 10},
+			{Path: "/s/fork-a.jsonl", Turns: 5, TurnsState: sessioncatalog.TurnsValid, Health: sessioncatalog.HealthOK,
+				Recovered: true, RecoveryRole: sessioncatalog.RecoveryRoleDiverged, ParentID: "root", RecoveryGroupID: "root", LastActivityAt: 30},
+			{Path: "/s/fork-b.jsonl", Turns: 4, TurnsState: sessioncatalog.TurnsValid, Health: sessioncatalog.HealthOK,
+				Recovered: true, RecoveryRole: sessioncatalog.RecoveryRoleDiverged, ParentID: "root", RecoveryGroupID: "root", LastActivityAt: 40},
+		},
+	}
+	node, ok := app.projectNodeFromCatalogTopic(topic, map[string]catalogRuntimeOverlay{}, map[string]catalogRuntimeOverlay{}, nil)
+	if !ok {
+		t.Fatal("topic with parent should stay visible")
+	}
+	// Parent remains; idle diverged forks hide while the normal root exists.
+	if len(node.Children) != 0 {
+		t.Fatalf("children = %d, want collapsed parent-only row, children=%+v", len(node.Children), node.Children)
+	}
+}
+
+func TestProjectNodeFromCatalogTopicHidesOrphanForkTopicsWhenPreferredElsewhere(t *testing.T) {
+	app := &App{tabs: map[string]*WorkspaceTab{}, detachedSessions: map[string]*WorkspaceTab{}}
+	// Separate topic that only holds a non-preferred diverged fork.
+	topic := sessioncatalog.TopicRecord{
+		Scope: "global", TopicID: "orphan-fork", Title: "WebView",
+		Sessions: []sessioncatalog.SessionRecord{
+			{Path: "/s/fork-only.jsonl", Turns: 2, TurnsState: sessioncatalog.TurnsValid, Health: sessioncatalog.HealthOK,
+				Recovered: true, RecoveryRole: sessioncatalog.RecoveryRoleDiverged, ParentID: "root", RecoveryGroupID: "root"},
+		},
+	}
+	// Workspace preference already chose the parent path for this lineage.
+	preferred := map[string]struct{}{"/s/root.jsonl": {}}
+	if _, ok := app.projectNodeFromCatalogTopic(topic, map[string]catalogRuntimeOverlay{}, map[string]catalogRuntimeOverlay{}, preferred); ok {
+		t.Fatal("orphan non-preferred recovery topic must stay out of the ordinary tree")
 	}
 }
 
