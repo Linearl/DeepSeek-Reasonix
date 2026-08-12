@@ -30225,6 +30225,20 @@ body > .mermaid-diagram--fullscreen {
   stroke-width: 1.9;
 }
 
+/* #8209: aggregate active-session indicator on collapsed project folders */
+.project-tree__folder-active-indicator {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  margin-left: 6px;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, currentColor 26%, transparent);
+  border-top-color: currentColor;
+  background: transparent;
+  animation: project-tree-spin 0.9s linear infinite;
+  pointer-events: none;
+}
+
 @keyframes project-tree-spin {
   to {
     transform: rotate(360deg);

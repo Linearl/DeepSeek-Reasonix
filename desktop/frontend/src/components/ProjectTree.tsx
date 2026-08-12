@@ -1698,6 +1698,15 @@ export function ProjectTree({
       );
     };
 
+    // #8209: aggregate "any active child session" onto the folder row so a
+    // collapsed project still shows live activity. projectTreeTopicArchiveBlocked
+    // matches exactly the in-flight states (thinking/streaming/waiting_confirmation/
+    // background_job/running); paused/error/diverged_recovery stay dim. Children
+    // are whatever the catalog already loaded - the indicator degrades to a
+    // best-effort under lazy pagination rather than forcing a full fetch.
+    const folderChildren = asArray(node.children);
+    const folderHasActive = folderChildren.some(projectTreeTopicArchiveBlocked);
+
     if (editingProject?.key === key) {
       return (
         <div key={key} className="project-tree__project-wrapper">
@@ -1760,6 +1769,9 @@ export function ProjectTree({
               {projectLabel}
               {node.isolatedWorktree && <WorktreeBadge size={11} />}
             </span>
+            {folderHasActive && (
+              <span className="project-tree__folder-active-indicator" aria-hidden="true" />
+            )}
           </button>
           {compactTopics && (
             <Tooltip label={t("projectTree.projectActions")} className="project-tree__folder-action-slot">
