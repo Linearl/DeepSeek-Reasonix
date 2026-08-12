@@ -69,11 +69,11 @@ type explicitCompressionSnapshot struct {
 }
 
 func (a *Agent) snapshotExplicitCompression() explicitCompressionSnapshot {
-	canonical, version := a.session.snapshotMessagesVersion()
+	canonical, version := a.sess.conversation.snapshotMessagesVersion()
 	cacheKey := a.currentPromptCacheKey()
-	a.compactionMu.Lock()
-	state := a.compactionState
-	a.compactionMu.Unlock()
+	a.sess.compactionMu.Lock()
+	state := a.sess.compactionState
+	a.sess.compactionMu.Unlock()
 	visible := canonical
 	if projectionValid(state, canonical, version, cacheKey) {
 		if projected := modelVisibleFromProjection(state.Projection, canonical); len(projected) > 0 {
@@ -164,8 +164,8 @@ func (a *Agent) compressVisibleRange(
 	preview string,
 	instructions string,
 ) (tool.CompressResult, error) {
-	a.compactionRunMu.Lock()
-	defer a.compactionRunMu.Unlock()
+	a.sess.compactionRunMu.Lock()
+	defer a.sess.compactionRunMu.Unlock()
 	if !a.explicitCompressionSnapshotCurrent(snap) {
 		return tool.CompressResult{}, errCompressStaleContext
 	}
@@ -243,11 +243,11 @@ func (a *Agent) compressVisibleRange(
 }
 
 func (a *Agent) explicitCompressionSnapshotCurrent(snap explicitCompressionSnapshot) bool {
-	current, version := a.session.snapshotMessagesVersion()
-	a.compactionMu.Lock()
-	projectionVersion := a.compactionState.Projection.ProjectionVersion
-	generation := a.compactionState.Generation
-	a.compactionMu.Unlock()
+	current, version := a.sess.conversation.snapshotMessagesVersion()
+	a.sess.compactionMu.Lock()
+	projectionVersion := a.sess.compactionState.Projection.ProjectionVersion
+	generation := a.sess.compactionState.Generation
+	a.sess.compactionMu.Unlock()
 	return version == snap.transcriptVersion && len(current) == len(snap.canonical) &&
 		coveredPrefixHash(current, len(current)) == snap.coveredHash &&
 		projectionVersion == snap.projectionVersion && generation == snap.generation &&
@@ -380,18 +380,18 @@ func (a *Agent) compact(ctx context.Context, trigger, instructions string, force
 // was foldable; callers at physical overflow must treat that as hard failure.
 // mustFree marks the fold the caller cannot proceed without.
 func (a *Agent) compactToProjection(ctx context.Context, trigger, instructions string, force, mustFree bool) (CompactionOutcome, error) {
-	a.compactionRunMu.Lock()
-	defer a.compactionRunMu.Unlock()
+	a.sess.compactionRunMu.Lock()
+	defer a.sess.compactionRunMu.Unlock()
 	activeTurn := a.activeTurnCreatedAt.Load()
-	if activeTurn != 0 && a.compaction.lastTurn.Load() == activeTurn && trigger != CompactionTriggerManual {
+	if activeTurn != 0 && a.sess.compaction.lastTurn.Load() == activeTurn && trigger != CompactionTriggerManual {
 		return CompactionNoop, nil
 	}
-	canonical, transcriptVersion := a.session.snapshotMessagesVersion()
-	a.compactionMu.Lock()
-	stateSnapshot := a.compactionState
-	startProjectionVersion := a.compactionState.Projection.ProjectionVersion
-	startGeneration := a.compactionState.Generation
-	a.compactionMu.Unlock()
+	canonical, transcriptVersion := a.sess.conversation.snapshotMessagesVersion()
+	a.sess.compactionMu.Lock()
+	stateSnapshot := a.sess.compactionState
+	startProjectionVersion := a.sess.compactionState.Projection.ProjectionVersion
+	startGeneration := a.sess.compactionState.Generation
+	a.sess.compactionMu.Unlock()
 	msgs := a.visibleInputForFold(stateSnapshot, canonical, transcriptVersion)
 	viewInputHash := providerVisibleFingerprint(provider.ModelMessages(msgs))
 	if trigger != CompactionTriggerManual && stateSnapshot.LastReceipt != nil && stateSnapshot.LastReceipt.Status == "applied" && stateSnapshot.LastReceipt.Action == "summary" && stateSnapshot.LastReceipt.InputHash == viewInputHash {

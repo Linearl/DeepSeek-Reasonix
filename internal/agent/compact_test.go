@@ -623,14 +623,14 @@ func TestMaybeCompactClearsStuckLatchAnywhereBelowTrigger(t *testing.T) {
 			sess := NewSession("sys")
 			sess.Add(provider.Message{Role: provider.RoleUser, Content: "hi"})
 			a := New(&fakeProvider{reply: "- summary"}, tool.NewRegistry(), sess, Options{ContextWindow: 20000}, event.Discard)
-			a.compaction.consecutive = 1
-			a.compaction.stuck = true
+			a.sess.compaction.consecutive = 1
+			a.sess.compaction.stuck = true
 
 			prepareForObservedUsage(a, context.Background(), &provider.Usage{PromptTokens: tc.prompt})
 
-			if a.compaction.consecutive != 0 || a.compaction.stuck {
+			if a.sess.compaction.consecutive != 0 || a.sess.compaction.stuck {
 				t.Fatalf("prompt %d sits under the trigger; want the latch cleared, got consecutiveCompacts=%d compactStuck=%v",
-					tc.prompt, a.compaction.consecutive, a.compaction.stuck)
+					tc.prompt, a.sess.compaction.consecutive, a.sess.compaction.stuck)
 			}
 		})
 	}
@@ -644,8 +644,8 @@ func TestMaybeCompactDefersWhenOnlyActiveTurnRemains(t *testing.T) {
 	a := New(&fakeProvider{reply: "- summary"}, tool.NewRegistry(), sess, Options{ContextWindow: 20000}, event.Discard)
 
 	prepareForObservedUsage(a, context.Background(), &provider.Usage{PromptTokens: 17000})
-	if a.compaction.stuck {
-		t.Fatalf("active turn should be deferred, not durably blocked: consecutiveCompacts=%d", a.compaction.consecutive)
+	if a.sess.compaction.stuck {
+		t.Fatalf("active turn should be deferred, not durably blocked: consecutiveCompacts=%d", a.sess.compaction.consecutive)
 	}
 	version := a.currentProjectionVersion()
 	prepareForObservedUsage(a, context.Background(), &provider.Usage{PromptTokens: 17000})

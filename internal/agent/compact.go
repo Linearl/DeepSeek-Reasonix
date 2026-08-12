@@ -505,7 +505,7 @@ func tailStart(msgs []provider.Message, head, budgetTokens int, tokPerChar float
 // actually sent (the provider strips it). Falls back to ~4 chars/token before
 // any usage is known, and ignores absurd ratios.
 func (a *Agent) tokPerChar() float64 {
-	if cal := a.promptCalibration.Load(); cal != nil && cal.compactChars > 0 {
+	if cal := a.sess.output.promptCalibration.Load(); cal != nil && cal.compactChars > 0 {
 		if r := float64(cal.promptTokens) / float64(cal.compactChars); r > 0.05 && r < 2 {
 			return r
 		}

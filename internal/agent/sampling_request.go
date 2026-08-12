@@ -76,13 +76,13 @@ func (a *Agent) prepareSamplingRequest(ctx context.Context) (samplingRequest, er
 			rebuilt.req.MaxTokens = budget2
 		}
 		shape := a.requestCalibrationShape(rebuilt.req)
-		a.activeReqShape.Store(&shape)
+		a.sess.output.activeReqShape.Store(&shape)
 		return samplingRequest{req: freezeProviderRequest(rebuilt.req)}, nil
 	} else if clipped {
 		frozen.req.MaxTokens = budget
 	}
 	shape := a.requestCalibrationShape(frozen.req)
-	a.activeReqShape.Store(&shape)
+	a.sess.output.activeReqShape.Store(&shape)
 	return samplingRequest{req: freezeProviderRequest(frozen.req)}, nil
 }
 

@@ -236,7 +236,7 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string) (rawInput string
 	if rawContent == "" {
 		rawContent = a.turnInput
 	}
-	a.session.Add(provider.Message{
+	a.sess.conversation.Add(provider.Message{
 		Role: provider.RoleUser, Content: input, RawContent: rawContent,
 		Images: userImages(ctx), CreatedAt: userCreatedAt,
 	})
@@ -272,7 +272,7 @@ func (a *Agent) runToolLoop(ctx context.Context, state *runLoopState) error {
 		// guidance (with a prefix), not a new task. One cache miss per
 		// steer is unavoidable — the model must see the new instruction.
 		if text, itemID, ok := a.consumeSteer(); ok {
-			a.session.Add(provider.Message{Role: provider.RoleUser, Content: a.withTurnPreferences(midTurnSteerMessage(text))})
+			a.sess.conversation.Add(provider.Message{Role: provider.RoleUser, Content: a.withTurnPreferences(midTurnSteerMessage(text))})
 			a.sink.Emit(event.Event{Kind: event.Steer, Text: text, ItemID: itemID})
 		} else if itemID != "" {
 			// Loader failed after dequeue: durable entry stays for inspection
@@ -281,8 +281,8 @@ func (a *Agent) runToolLoop(ctx context.Context, state *runLoopState) error {
 		}
 		schemas := a.tools.Schemas()
 		prefixShape := a.capturePrefixShape(schemas)
-		prevPrefixShape := a.lastPrefixShape
-		if !a.haveLastPrefixShape {
+		prevPrefixShape := a.sess.lastPrefixShape
+		if !a.sess.haveLastPrefixShape {
 			prevPrefixShape = prefixShape
 		}
 
@@ -291,7 +291,7 @@ func (a *Agent) runToolLoop(ctx context.Context, state *runLoopState) error {
 		// any prefix change to the operation that actually caused it, instead
 		// of a generic rewrite signal that also fires on local-only metadata
 		// edits.
-		contentReasons := a.session.DrainContentRewriteReasons()
+		contentReasons := a.sess.conversation.DrainContentRewriteReasons()
 
 		// Prefix shape is captured once before sampling and frozen for the
 		// whole attempt lifecycle — stream retries must not rewrite session
@@ -312,8 +312,8 @@ func (a *Agent) runToolLoop(ctx context.Context, state *runLoopState) error {
 			a.recordInterruptedDisplay(text, reasoning, partialCalls, true, state.workDurationMs())
 			return err
 		}
-		a.lastPrefixShape = prefixShape
-		a.haveLastPrefixShape = true
+		a.sess.lastPrefixShape = prefixShape
+		a.sess.haveLastPrefixShape = true
 		a.emitTurnUsage(usage, &cacheDiagnostics)
 		a.observeRunBudget(state, usage)
 		if msg, ok := finishReasonMessage(usage); ok {
@@ -325,7 +325,7 @@ func (a *Agent) runToolLoop(ctx context.Context, state *runLoopState) error {
 		// archive. Most OpenAI-compatible backends do not replay it; providers
 		// with an explicit round-trip contract retain the raw provider text.
 		calls = a.withPreviewFileDiffs(ctx, calls)
-		a.session.Add(provider.Message{
+		a.sess.conversation.Add(provider.Message{
 			Role:               provider.RoleAssistant,
 			Content:            text,
 			ReasoningContent:   reasoning,
@@ -578,7 +578,7 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *runLoopState, te
 				return false, fmt.Errorf("model finished without a visible final answer %d times", state.emptyFinalBlocks)
 			}
 			a.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeEmptyFinal, Text: emptyFinalNotice(), Detail: emptyFinalNoticeDetail(a.prov.Name(), usage, len(reasoning))})
-			a.session.Add(provider.Message{Role: provider.RoleUser, Content: a.withTurnPreferences(emptyFinalRetryMessage())})
+			a.sess.conversation.Add(provider.Message{Role: provider.RoleUser, Content: a.withTurnPreferences(emptyFinalRetryMessage())})
 			a.contextManager().ObserveUsage(usage)
 			return true, nil
 		}
@@ -586,7 +586,7 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *runLoopState, te
 	if state.executorHandoff && !state.usedAnyTool && state.handoffNudges < maxExecutorHandoffNudges && shouldNudgeExecutorHandoff(state.input, text) {
 		state.handoffNudges++
 		a.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeExecutorHandoff, Text: executorHandoffNoticeText(), Detail: "executor answered without taking any action; nudging it to use its tools"})
-		a.session.Add(provider.Message{Role: provider.RoleUser, Content: a.withTurnPreferences(executorHandoffRetryMessage())})
+		a.sess.conversation.Add(provider.Message{Role: provider.RoleUser, Content: a.withTurnPreferences(executorHandoffRetryMessage())})
 		a.contextManager().ObserveUsage(usage)
 		return true, nil
 	}
@@ -615,7 +615,7 @@ func (a *Agent) handleToolRound(ctx context.Context, state *runLoopState, step i
 	if len(unavailableContextTools) > 0 && state.contextToolRepairs > 0 {
 		msg := fmt.Sprintf("blocked: context-unavailable tools were called again after the repair instruction: %s", strings.Join(unavailableContextTools, ", "))
 		for _, call := range calls {
-			a.session.Add(provider.Message{Role: provider.RoleTool, Content: msg, ToolCallID: call.ID, Name: call.Name})
+			a.sess.conversation.Add(provider.Message{Role: provider.RoleTool, Content: msg, ToolCallID: call.ID, Name: call.Name})
 		}
 		if hasVisibleFinalAnswer(text) {
 			return a.handleFinalResponse(ctx, state, text, reasoning, usage)
@@ -652,7 +652,7 @@ func (a *Agent) handleToolRound(ctx context.Context, state *runLoopState, step i
 		if i < len(batch.executions) {
 			msg.ToolExecution = toProviderToolExecution(batch.executions[i])
 		}
-		a.session.Add(msg)
+		a.sess.conversation.Add(msg)
 	}
 	// If the context was cancelled during tool execution, return after storing
 	// the batch results so the session keeps paired tool-call history.
@@ -668,7 +668,7 @@ func (a *Agent) handleToolRound(ctx context.Context, state *runLoopState, step i
 		}
 		state.contextToolRepairs++
 		nudge := fmt.Sprintf("The following tools are unavailable in the current workflow phase: %s. Do not call them again. Respond to the user's request with visible answer text now; call a different tool only if it is still needed to complete the request.", strings.Join(unavailableContextTools, ", "))
-		a.session.Add(provider.Message{Role: provider.RoleUser, Content: a.withTurnPreferences(nudge)})
+		a.sess.conversation.Add(provider.Message{Role: provider.RoleUser, Content: a.withTurnPreferences(nudge)})
 	}
 	a.trackTodoProgress(ctx, state, receiptMark)
 
@@ -685,7 +685,7 @@ func (a *Agent) handleToolRound(ctx context.Context, state *runLoopState, step i
 			ctrl.MarkFinalizationOffered(a.recovery.taskID)
 		}
 		nudge := "Auto recovery has reached its limit for this turn. Do not call any more tools. Summarize what was completed, what failed, and what the user should do next. The user can continue in the next message."
-		a.session.Add(provider.Message{Role: provider.RoleUser, Content: a.withTurnPreferences(nudge)})
+		a.sess.conversation.Add(provider.Message{Role: provider.RoleUser, Content: a.withTurnPreferences(nudge)})
 		return true, nil
 	}
 
@@ -704,7 +704,7 @@ func (a *Agent) handleToolRound(ctx context.Context, state *runLoopState, step i
 
 func (a *Agent) pairUnexecutedGraceCalls(calls []provider.ToolCall, msg string) {
 	for _, call := range calls {
-		a.session.Add(provider.Message{Role: provider.RoleTool, Content: msg, ToolCallID: call.ID, Name: call.Name})
+		a.sess.conversation.Add(provider.Message{Role: provider.RoleTool, Content: msg, ToolCallID: call.ID, Name: call.Name})
 	}
 }
 

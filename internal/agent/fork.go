@@ -94,7 +94,7 @@ func (p *forkCaptureProvider) Stream(ctx context.Context, req provider.Request) 
 	a := p.a
 	if a.task.ebm.captureArmed && !a.task.ebm.captured {
 		a.task.ebm.captured = true
-		messages := a.session.Snapshot()
+		messages := a.sess.conversation.Snapshot()
 		seed := a.task.outcome.ForkSeed()
 		b := ForkBundle{
 			Version: forkBundleVersion, Policy: forkCapturePolicy(),
@@ -214,7 +214,7 @@ func (a *Agent) armForkContinuation(b *ForkBundle, nudge string) {
 		if nudge != "" {
 			applyForkTreatment(messages, nudge)
 		}
-		a.session.Replace(messages)
+		a.sess.conversation.Replace(messages)
 		a.task.outcome = evidence.RestoreOutcomeTracker(evidence.OutcomeSeed{
 			MutatedBases: b.MutatedBases, DebtAge: b.DebtAtFork,
 			BlindMutations: b.BlindAtFork, LocalExecSeen: b.LocalExecSeen,

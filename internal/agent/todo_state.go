@@ -29,24 +29,24 @@ func (a *Agent) ReplaceTodoState(todos []evidence.TodoItem) {
 
 // CanonicalTodoState returns a copy of the host-reconstructed task list.
 func (a *Agent) CanonicalTodoState() []evidence.TodoItem {
-	a.todoMu.Lock()
-	defer a.todoMu.Unlock()
-	return append([]evidence.TodoItem(nil), a.todoState...)
+	a.sess.todoMu.Lock()
+	defer a.sess.todoMu.Unlock()
+	return append([]evidence.TodoItem(nil), a.sess.todoState...)
 }
 
 func (a *Agent) incompleteCanonicalTodos() ([]evidence.TodoStepMatch, bool) {
-	a.todoMu.Lock()
-	defer a.todoMu.Unlock()
-	if len(a.todoState) == 0 {
+	a.sess.todoMu.Lock()
+	defer a.sess.todoMu.Unlock()
+	if len(a.sess.todoState) == 0 {
 		return nil, false
 	}
-	return evidence.IncompleteTodos(a.todoState), true
+	return evidence.IncompleteTodos(a.sess.todoState), true
 }
 
 func (a *Agent) hasIncompleteCanonicalCriteria() bool {
-	a.todoMu.Lock()
-	defer a.todoMu.Unlock()
-	return len(a.todoState) > 0 && len(evidence.IncompleteTodos(a.todoState)) > 0
+	a.sess.todoMu.Lock()
+	defer a.sess.todoMu.Unlock()
+	return len(a.sess.todoState) > 0 && len(evidence.IncompleteTodos(a.sess.todoState)) > 0
 }
 
 // recordTodoState logs the host-advanced list as a synthetic todo_write receipt

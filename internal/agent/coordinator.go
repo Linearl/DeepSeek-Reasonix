@@ -487,7 +487,7 @@ func lastNonEmptyLine(s string) string {
 }
 
 func (c *Coordinator) persistExecutorNoOp(ctx context.Context, input, plan string) {
-	if c == nil || c.executor == nil || c.executor.session == nil {
+	if c == nil || c.executor == nil || c.executor.sess.conversation == nil {
 		return
 	}
 	rawInput := RawUserInput(ctx, input)
@@ -496,11 +496,11 @@ func (c *Coordinator) persistExecutorNoOp(ctx context.Context, input, plan strin
 	if providerContent != rawInput {
 		rawContent = rawInput
 	}
-	c.executor.session.Add(provider.Message{
+	c.executor.sess.conversation.Add(provider.Message{
 		Role: provider.RoleUser, Content: providerContent, RawContent: rawContent,
 		Images: userImages(ctx), CreatedAt: time.Now().UnixMilli(),
 	})
-	c.executor.session.Add(provider.Message{Role: provider.RoleAssistant, Content: plan})
+	c.executor.sess.conversation.Add(provider.Message{Role: provider.RoleAssistant, Content: plan})
 }
 
 // plannerOutcome is one planning turn's result. A submitted plan is the

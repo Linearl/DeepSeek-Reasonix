@@ -135,7 +135,7 @@ func TestDeliveryResolvedReadOnlyBashDoesNotArmMutationReadiness(t *testing.T) {
 	if _, ok := a.task.ledger.LatestSuccessfulMutationIndex(); ok {
 		t.Fatal("resolved read-only bash was recorded as a mutation")
 	}
-	msgs := a.session.Snapshot()
+	msgs := a.sess.conversation.Snapshot()
 	var resolved bool
 	for _, msg := range msgs {
 		for _, call := range msg.ToolCalls {

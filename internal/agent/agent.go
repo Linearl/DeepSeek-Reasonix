@@ -282,10 +282,11 @@ type ToolHooks interface {
 // into the main loop.
 type Agent struct {
 	agentConfig
-	prov    provider.Provider
-	tools   *tool.Registry
-	session *Session
-	sessMu  sync.Mutex // guards the session pointer for external Session()/SetSession
+	prov  provider.Provider
+	tools *tool.Registry
+	// sess is the state one conversation owns; SetSession restarts it. See
+	// sessionstate.go.
+	sess sessionRuntime
 	// executorHandoffGuard is enabled by Coordinator only for the executor agent.
 	executorHandoffGuard bool
 	pricing              *provider.Pricing
@@ -297,28 +298,10 @@ type Agent struct {
 	// never nil because New defaults it to event.Discard.
 	sink                event.Sink
 	requireVisibleFinal bool // internal callers require final Content
-	// lastUsage caches the latest provider telemetry for per-turn readouts.
-	// The run loop writes it while a frontend reads it, so it is atomic.
-	lastUsage atomic.Pointer[provider.Usage]
-	outputBudgetState
 
-	// sessCacheHit/sessCacheMiss accumulate cache tokens across every API call
-	// this session, so frontends can show the aggregate hit-rate (Σhit/Σ(hit+miss))
-	// — a steadier, cost-oriented number than the single-turn rate. They are NOT
-	// reset on compaction, so the aggregate never craters when the model-visible
-	// prefix is summarized away. Atomic: the run
-	// loop accumulates them while the status line reads them.
-	sessCacheHit  atomic.Int64
-	sessCacheMiss atomic.Int64
-
-	// lastPrefixShape records the previous provider request's cacheable prefix
-	// so usage events can explain prefix churn on the next request.
-	lastPrefixShape     PrefixShape
-	haveLastPrefixShape bool
-
-	// missingReasoning is the live view of one missing-reasoning incident.
-	// Loop-owned; SetSession clears all of it but the resolve watermark.
-	missingReasoning missingReasoningWatch
+	// unwrittenResolve is the resolve watermark a failed state write still owes.
+	// It outlives the conversation, which is why it is not in sessionRuntime.
+	unwrittenResolve unwrittenResolve
 
 	// missingReasoningWarnState rate-limits recovery retries across sessions and
 	// processes by an opaque provider-configuration fingerprint (#7059). The
@@ -438,13 +421,6 @@ type Agent struct {
 	// turn. See taskstate.go.
 	task taskRuntime
 
-	// todoState is the host's canonical task list: the latest successful
-	// todo_write with completions applied by complete_step. Unlike the per-turn
-	// ledger it survives turn boundaries and compaction (it never rides in the
-	// prompt), so the final-answer gate still sees an unfinished plan a later
-	// turn would otherwise hide. Rebuilt from the session in SetSession.
-	todoMu       sync.Mutex
-	todoState    []evidence.TodoItem
 	planContract *plancontract.Plan // approved plan this turn executes, if any
 
 	// hostAdvanceSeq guarantees unique tool IDs across turns: every
@@ -519,19 +495,7 @@ type Agent struct {
 
 	// Context management keeps the canonical transcript immutable and installs
 	// at most one provider-visible checkpoint each time compactRatio is crossed.
-	keepPolicy      KeepPolicy
-	compaction      compactionProgress
-	sessionPath     string // bound transcript path for projection sidecars
-	workspaceID     string // stable prompt-cache lineage component
-	cacheState      string // legacy resume telemetry; never provider-visible
-	checkpointState string // none|restored|applied; runtime-only
-	compactionState CompactionState
-	// compactionMu guards projection snapshots/install and the in-memory sidecar
-	// generation. Network summarization never runs while this lock is held.
-	compactionMu sync.Mutex
-	// compactionRunMu singleflights the expensive summary transaction without
-	// holding the session lock during network I/O.
-	compactionRunMu        sync.Mutex
+	keepPolicy             KeepPolicy
 	strictAlternatingRoles bool // coalesce adjacent user turns on provider request copies
 	// activeTurnCreatedAt identifies the real/synthetic user message that began
 	// the currently running turn. Compaction may rewrite older history while a
@@ -759,9 +723,9 @@ func (a *Agent) MutationObserver() *checkpoint.MutationObserver {
 // /new handlers) can't race the swap. The run loop touches a.session directly and
 // only swaps it via SetSession while idle, so its reads need no lock.
 func (a *Agent) Session() *Session {
-	a.sessMu.Lock()
-	defer a.sessMu.Unlock()
-	return a.session
+	a.sess.mu.Lock()
+	defer a.sess.mu.Unlock()
+	return a.sess.conversation
 }
 
 // SetSession replaces the agent's conversation wholesale. Used by
@@ -769,27 +733,11 @@ func (a *Agent) Session() *Session {
 // so the model picks up exactly where it left off. Callers serialise it against a
 // running turn (it only fires while idle); sessMu guards the pointer swap itself.
 func (a *Agent) SetSession(s *Session) {
-	a.sessMu.Lock()
-	a.session = s
-	a.sessMu.Unlock()
-	a.sessCacheHit.Store(0)
-	a.sessCacheMiss.Store(0)
-	a.resetOutputBudgetState()
-	// pendingResolveAt is deliberately not cleared: an unwritten resolve
-	// watermark belongs to the provider configuration, not to the conversation
-	// being replaced, and the next missing turn still owes it a retry.
-	a.missingReasoning.active = false
-	a.missingReasoning.stateRecorded = false
-	a.missingReasoning.healthyStreak = 0
+	a.sess.reset(s)
+	// The replaced conversation's task is over, but the ledger and the bill
+	// answer to beginRunTurn's scope check rather than to this seam.
 	a.task.repeatFailures = nil
 	a.task.repeatScope = ""
-	a.compactionMu.Lock()
-	a.compactionState = CompactionState{} // lineage change; disk reloaded on Resume
-	a.cacheState = CacheStateUnknown
-	a.compactionMu.Unlock()
-	a.compaction.stuck = false
-	a.compaction.consecutive = 0
-	a.compaction.lastTurn.Store(0)
 	if s != nil {
 		a.rebuildTodoState(s.Snapshot())
 	}
@@ -799,12 +747,12 @@ func (a *Agent) SetSession(s *Session) {
 // reported (nil if no turn has run yet). The TUI uses it to show a context
 // gauge alongside the prompt; ContextManager.Prepare owns cache-breaking
 // maintenance decisions.
-func (a *Agent) LastUsage() *provider.Usage { return a.lastUsage.Load() }
+func (a *Agent) LastUsage() *provider.Usage { return a.sess.output.lastUsage.Load() }
 
 // SessionCache returns the cumulative cache hit/miss prompt tokens across every
 // API call this session — the basis for the status line's aggregate hit-rate.
 func (a *Agent) SessionCache() (hit, miss int) {
-	return int(a.sessCacheHit.Load()), int(a.sessCacheMiss.Load())
+	return int(a.sess.cacheHit.Load()), int(a.sess.cacheMiss.Load())
 }
 
 // ContextWindow returns the configured context-window size in tokens. 0
@@ -990,14 +938,14 @@ func UnappliedSteerNotice(text string) string {
 // before every provider request. itemID correlates the notice with the durable
 // session inbox entry when one exists.
 func (a *Agent) RecordUnappliedSteer(text string, itemID ...string) {
-	if a == nil || a.session == nil {
+	if a == nil || a.sess.conversation == nil {
 		return
 	}
 	id := ""
 	if len(itemID) > 0 {
 		id = itemID[0]
 	}
-	a.session.Add(provider.Message{
+	a.sess.conversation.Add(provider.Message{
 		Role:       provider.RoleTool,
 		Content:    a.withTurnPreferences(midTurnSteerMessage(text)),
 		ToolCallID: provider.LocalOnlyToolID,
@@ -1259,6 +1207,7 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 			temperature:        opts.Temperature,
 			usageSource:        usageSourceOrDefault(opts.UsageSource, event.UsageSourceExecutor),
 			modelRef:           strings.TrimSpace(opts.ModelRef),
+			workspaceID:        strings.TrimSpace(opts.WorkspaceID),
 			writeWorkspaceRoot: strings.TrimSpace(opts.WriteWorkspaceRoot),
 			subagentDepth:      subagentDepth,
 			maxSubagentDepth:   maxSubagentDepth,
@@ -1267,9 +1216,13 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 			recentKeep:         opts.RecentKeep,
 			archiveDir:         opts.ArchiveDir,
 		},
-		prov:    prov,
-		tools:   tools,
-		session: session,
+		prov:  prov,
+		tools: tools,
+		sess: sessionRuntime{
+			conversation: session,
+			path:         strings.TrimSpace(opts.SessionPath),
+			cacheState:   CacheStateUnknown,
+		},
 		task: taskRuntime{
 			ledger: evidence.NewLedger(),
 			budget: runBudget{limit: normalizeTaskBudget(opts.TaskBudget)},
@@ -1302,15 +1255,12 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 		capabilityLedger:          opts.CapabilityLedger,
 		capabilityAudit:           opts.CapabilityAudit,
 		keepPolicy:                opts.KeepPolicy,
-		sessionPath:               strings.TrimSpace(opts.SessionPath),
-		workspaceID:               strings.TrimSpace(opts.WorkspaceID),
-		cacheState:                CacheStateUnknown,
 		strictAlternatingRoles:    opts.StrictAlternatingRoles,
 		mutationObserver:          opts.MutationObserver,
 	}
-	a.outputBudget = outputBudgetOf(prov)
-	if a.sessionPath != "" {
-		a.LoadProjectionSidecar(a.sessionPath)
+	a.sess.output.outputBudget = outputBudgetOf(prov)
+	if a.sess.path != "" {
+		a.LoadProjectionSidecar(a.sess.path)
 	}
 	preset := strings.TrimSpace(opts.AgentPreset)
 	if preset == "" && opts.DeliveryProfile {
@@ -1584,15 +1534,15 @@ func (a *Agent) deliveryMutationCheckpointReady() bool {
 }
 
 func (a *Agent) setTodoState(todos []evidence.TodoItem) {
-	a.todoMu.Lock()
-	a.todoState = evidence.NormalizeSerialTodos(todos)
-	a.todoMu.Unlock()
+	a.sess.todoMu.Lock()
+	a.sess.todoState = evidence.NormalizeSerialTodos(todos)
+	a.sess.todoMu.Unlock()
 }
 
 func (a *Agent) hasActiveCanonicalTodo() bool {
-	a.todoMu.Lock()
-	defer a.todoMu.Unlock()
-	for _, todo := range a.todoState {
+	a.sess.todoMu.Lock()
+	defer a.sess.todoMu.Unlock()
+	for _, todo := range a.sess.todoState {
 		if canonicalTodoStatus(todo.Status) == "in_progress" {
 			return true
 		}
@@ -1601,11 +1551,11 @@ func (a *Agent) hasActiveCanonicalTodo() bool {
 }
 
 func (a *Agent) canonicalTodoProgress() (int, bool) {
-	a.todoMu.Lock()
-	defer a.todoMu.Unlock()
+	a.sess.todoMu.Lock()
+	defer a.sess.todoMu.Unlock()
 	completed := 0
 	incomplete := false
-	for _, todo := range a.todoState {
+	for _, todo := range a.sess.todoState {
 		status := canonicalTodoStatus(todo.Status)
 		if status == "completed" {
 			completed++
@@ -1637,18 +1587,18 @@ func registryHasWriterTools(reg *tool.Registry) bool {
 // synthetic todo_write so the task panel reflects it without the model
 // re-sending the whole list. No-op when nothing matches or it is already done.
 func (a *Agent) advanceCanonicalTodo(step string) {
-	a.todoMu.Lock()
-	if len(a.todoState) == 0 {
-		a.todoMu.Unlock()
+	a.sess.todoMu.Lock()
+	if len(a.sess.todoState) == 0 {
+		a.sess.todoMu.Unlock()
 		return
 	}
-	m, ok := evidence.MatchStep(step, a.todoState)
-	if !ok || !evidence.AdvanceSerialTodo(a.todoState, m.Index-1) {
-		a.todoMu.Unlock()
+	m, ok := evidence.MatchStep(step, a.sess.todoState)
+	if !ok || !evidence.AdvanceSerialTodo(a.sess.todoState, m.Index-1) {
+		a.sess.todoMu.Unlock()
 		return
 	}
-	snapshot := append([]evidence.TodoItem(nil), a.todoState...)
-	a.todoMu.Unlock()
+	snapshot := append([]evidence.TodoItem(nil), a.sess.todoState...)
+	a.sess.todoMu.Unlock()
 	a.recordTodoState(snapshot)
 	a.emitTodoState(snapshot, m.Index)
 }
@@ -2141,8 +2091,8 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 		case provider.ChunkUsage:
 			usage, a.lastReasoning = chunk.Usage, chunk.Usage.ReasoningTokens
 			a.storeLatestRequestUsage(chunk.Usage)
-			a.sessCacheHit.Add(int64(chunk.Usage.CacheHitTokens))
-			a.sessCacheMiss.Add(int64(chunk.Usage.CacheMissTokens))
+			a.sess.cacheHit.Add(int64(chunk.Usage.CacheHitTokens))
+			a.sess.cacheMiss.Add(int64(chunk.Usage.CacheMissTokens))
 		case provider.ChunkError:
 			if provider.IsStreamInterrupted(chunk.Err) {
 				stored, _ := finishReasoning()
@@ -2231,7 +2181,7 @@ func (a *Agent) recordInterruptedDisplay(text, reasoning string, calls []provide
 			interrupted = append(interrupted, name)
 		}
 	}
-	a.session.Add(provider.Message{
+	a.sess.conversation.Add(provider.Message{
 		Role:             provider.RoleTool,
 		Content:          text,
 		ReasoningContent: reasoning,
@@ -2250,12 +2200,12 @@ func (a *Agent) recordInterruptedDisplay(text, reasoning string, calls []provide
 }
 
 func (a *Agent) capturePrefixShape(schemas []provider.ToolSchema) PrefixShape {
-	return CaptureShape(a.systemPrompt(), schemas, a.session.RewriteVersion())
+	return CaptureShape(a.systemPrompt(), schemas, a.sess.conversation.RewriteVersion())
 }
 
 func (a *Agent) systemPrompt() string {
 	var b strings.Builder
-	for _, m := range a.session.Messages {
+	for _, m := range a.sess.conversation.Messages {
 		if m.Role != provider.RoleSystem {
 			continue
 		}

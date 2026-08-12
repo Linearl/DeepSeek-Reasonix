@@ -13,6 +13,9 @@ type agentConfig struct {
 	temperature        float64
 	usageSource        string
 	modelRef           string
+	// workspaceID is a prompt-cache lineage component, so it must not move
+	// while an agent lives — a change would silently rekey the cache.
+	workspaceID string
 	// writeWorkspaceRoot scopes write reservations when writeScheduler is set.
 	writeWorkspaceRoot string
 	// subagentDepth caps delegation; at maxSubagentDepth the recursive

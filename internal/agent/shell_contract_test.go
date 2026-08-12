@@ -29,14 +29,14 @@ func TestOrdinaryModeBlocksMixedMutationAndVerification(t *testing.T) {
 	if err := a.Run(context.Background(), "test"); err != nil {
 		t.Fatal(err)
 	}
-	got := toolResultByID(a.session, "m1")
+	got := toolResultByID(a.sess.conversation, "m1")
 	if strings.Contains(got, "bash done") {
 		t.Fatal("mixed command was executed")
 	}
 	if !strings.Contains(got, "state-changing segment") {
 		t.Fatalf("result = %q, want ordinary-mode mixed block", got)
 	}
-	for _, msg := range a.session.Snapshot() {
+	for _, msg := range a.sess.conversation.Snapshot() {
 		if msg.ToolCallID != "m1" {
 			continue
 		}
@@ -78,7 +78,7 @@ func TestOrdinaryModeRunsShortCircuitBuildAndVerify(t *testing.T) {
 			if err := a.Run(context.Background(), "test"); err != nil {
 				t.Fatal(err)
 			}
-			got := toolResultByID(a.session, "m1")
+			got := toolResultByID(a.sess.conversation, "m1")
 			if strings.Contains(got, "blocked:") {
 				t.Fatalf("ordinary mode blocked %q: %s", command, got)
 			}
@@ -100,7 +100,7 @@ func TestOrdinaryModeBlocksMaskedVerifierExit(t *testing.T) {
 	if err := a.Run(context.Background(), "test"); err != nil {
 		t.Fatal(err)
 	}
-	got := toolResultByID(a.session, "m1")
+	got := toolResultByID(a.sess.conversation, "m1")
 	if strings.Contains(got, "bash done") {
 		t.Fatal("masked exit command was executed")
 	}
@@ -121,7 +121,7 @@ func TestOrdinaryModeBlocksNonTerminalInlineInterpreter(t *testing.T) {
 	if err := a.Run(context.Background(), "test"); err != nil {
 		t.Fatal(err)
 	}
-	got := toolResultByID(a.session, "m1")
+	got := toolResultByID(a.sess.conversation, "m1")
 	if strings.Contains(got, "bash done") {
 		t.Fatal("non-terminal inline interpreter was executed")
 	}
@@ -154,13 +154,13 @@ func TestBatchDependencyBarrierSkipsVerificationAfterFailedMutation(t *testing.T
 	if err := a.Run(context.Background(), "edit then verify"); err != nil {
 		t.Fatal(err)
 	}
-	if got := toolResultByID(a.session, "v1"); !strings.Contains(got, "earlier modification") {
+	if got := toolResultByID(a.sess.conversation, "v1"); !strings.Contains(got, "earlier modification") {
 		t.Fatalf("verify result = %q, want dependency skip", got)
 	}
-	if strings.Contains(toolResultByID(a.session, "v1"), "bash done") {
+	if strings.Contains(toolResultByID(a.sess.conversation, "v1"), "bash done") {
 		t.Fatal("verification process should not have started")
 	}
-	for _, msg := range a.session.Snapshot() {
+	for _, msg := range a.sess.conversation.Snapshot() {
 		if msg.ToolCallID != "v1" {
 			continue
 		}
@@ -206,7 +206,7 @@ func TestBatchDependencyBarrierIgnoresFailedNonMutationMetaTool(t *testing.T) {
 	if err := a.Run(context.Background(), "track then edit"); err != nil {
 		t.Fatal(err)
 	}
-	if got := toolResultByID(a.session, "e1"); strings.Contains(got, "earlier modification") {
+	if got := toolResultByID(a.sess.conversation, "e1"); strings.Contains(got, "earlier modification") {
 		t.Fatalf("edit was blocked by a failed todo_write: %s", got)
 	}
 	got, err := os.ReadFile(path)
@@ -241,7 +241,7 @@ func TestBatchDependencyBarrierStopsAfterFailedWorkspaceWrite(t *testing.T) {
 	if err := a.Run(context.Background(), "two edits"); err != nil {
 		t.Fatal(err)
 	}
-	if got := toolResultByID(a.session, "e2"); !strings.Contains(got, "earlier modification") {
+	if got := toolResultByID(a.sess.conversation, "e2"); !strings.Contains(got, "earlier modification") {
 		t.Fatalf("second edit result = %q, want dependency skip", got)
 	}
 	got, err := os.ReadFile(filepath.Join(dir, "x.txt"))
@@ -343,7 +343,7 @@ func TestBatchDependencyBarrierBlocksResolvedMCPWriterAfterFailedMutation(t *tes
 	if _, err := os.Stat(proxyWrote); err == nil {
 		t.Fatal("proxy writer mutated disk after failed edit")
 	}
-	got := toolResultByID(a.session, "m1")
+	got := toolResultByID(a.sess.conversation, "m1")
 	if !strings.Contains(got, "earlier modification") {
 		t.Fatalf("proxy result = %q, want dependency skip", got)
 	}
@@ -377,7 +377,7 @@ func TestBatchDependencyBarrierAllowsReadOnlyDiagnosisAfterFailedMutation(t *tes
 	if err := a.Run(context.Background(), "fail then diagnose"); err != nil {
 		t.Fatal(err)
 	}
-	readOut := toolResultByID(a.session, "r1")
+	readOut := toolResultByID(a.sess.conversation, "r1")
 	if strings.Contains(readOut, "earlier modification") {
 		t.Fatalf("read_file was incorrectly dependency-skipped: %q", readOut)
 	}
@@ -388,10 +388,10 @@ func TestBatchDependencyBarrierAllowsReadOnlyDiagnosisAfterFailedMutation(t *tes
 	if !strings.Contains(readOut, "a") {
 		t.Fatalf("read_file body missing original file content: %q", readOut)
 	}
-	if got := toolResultByID(a.session, "v1"); !strings.Contains(got, "earlier modification") {
+	if got := toolResultByID(a.sess.conversation, "v1"); !strings.Contains(got, "earlier modification") {
 		t.Fatalf("verification should be dependency-skipped, got %q", got)
 	}
-	if strings.Contains(toolResultByID(a.session, "v1"), "bash done") {
+	if strings.Contains(toolResultByID(a.sess.conversation, "v1"), "bash done") {
 		t.Fatal("verification process must not start after failed mutation")
 	}
 }

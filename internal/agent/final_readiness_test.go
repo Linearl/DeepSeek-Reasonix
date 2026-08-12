@@ -164,7 +164,7 @@ func TestFinalReadinessIgnoresLoopGuardQuotedInToolOutput(t *testing.T) {
 	sess.Add(provider.Message{Role: provider.RoleUser, Content: "edit"})
 	sess.Add(provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "b1", Name: "bash"}}})
 	sess.Add(provider.Message{Role: provider.RoleTool, ToolCallID: "b1", Name: "bash", Content: "agent.go:2082: \"[loop guard] %s has now %s %d times\""})
-	a := &Agent{task: taskRuntime{ledger: readinessLedger(writer, todo)}, session: sess}
+	a := &Agent{task: taskRuntime{ledger: readinessLedger(writer, todo)}, sess: sessionRuntime{conversation: sess}}
 
 	if got := a.finalReadinessCheckFor(); got.reason == "" {
 		t.Fatal("finalReadinessCheckFor() reason empty, want quoted loop-guard text to be ignored")

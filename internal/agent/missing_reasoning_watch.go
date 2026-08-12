@@ -7,15 +7,21 @@ import (
 	"reasonix/internal/provider"
 )
 
-// missingReasoningWatch is this agent's live view of one incident: whether it
-// is active, whether the persisted state already records it, how many healthy
-// rounds have run since, and a resolve timestamp whose write failed. The four
-// only ever move together, and only observeMissingToolCallReasoning moves them.
+// missingReasoningWatch is this conversation's live view of one incident. Only
+// observeMissingToolCallReasoning moves these, and they belong to the session:
+// replacing the conversation ends the incident being watched.
 type missingReasoningWatch struct {
-	active           bool      // gates the one automatic retry, not a user-visible warning
-	stateRecorded    bool      // avoids a file transaction on every healthy tool-call turn
-	healthyStreak    int       // anti-flapping when no cross-process state dir is configured
-	pendingResolveAt time.Time // a resolve whose write failed; outlives SetSession
+	active        bool // gates the one automatic retry, not a user-visible warning
+	stateRecorded bool // avoids a file transaction on every healthy tool-call turn
+	healthyStreak int  // anti-flapping when no cross-process state dir is configured
+}
+
+// unwrittenResolve is a resolve whose state write failed. It answers to the
+// provider configuration rather than to any conversation, so it sits beside
+// missingReasoningWarnState instead of in sessionRuntime — a new session
+// inherits the debt because the retry it owes is still owed.
+type unwrittenResolve struct {
+	at time.Time
 }
 
 // observeMissingToolCallReasoning classifies a thinking-mode tool-call turn and
@@ -31,55 +37,55 @@ func (a *Agent) observeMissingToolCallReasoning(calls []provider.ToolCall, reaso
 	observedAt := time.Now()
 	if strings.TrimSpace(reasoning) != "" {
 		if a.missingReasoningWarnState == nil {
-			if a.missingReasoning.active {
-				a.missingReasoning.healthyStreak++
-				if a.missingReasoning.healthyStreak >= missingReasoningHealthyResolveStreak {
-					a.missingReasoning.active = false
-					a.missingReasoning.healthyStreak = 0
+			if a.sess.missingReasoning.active {
+				a.sess.missingReasoning.healthyStreak++
+				if a.sess.missingReasoning.healthyStreak >= missingReasoningHealthyResolveStreak {
+					a.sess.missingReasoning.active = false
+					a.sess.missingReasoning.healthyStreak = 0
 				}
 			}
 			return false, false
 		}
-		shouldResolve := !a.missingReasoning.stateRecorded || a.missingReasoning.active
+		shouldResolve := !a.sess.missingReasoning.stateRecorded || a.sess.missingReasoning.active
 		if shouldResolve {
 			result := missingReasoningResolveResult{Recorded: true, Resolved: true}
-			if pending := a.missingReasoning.pendingResolveAt; !pending.IsZero() {
+			if pending := a.unwrittenResolve.at; !pending.IsZero() {
 				result = a.missingReasoningWarnState.resolveAt(fingerprint, pending)
 				if result.Recorded {
-					a.missingReasoning.pendingResolveAt = time.Time{}
+					a.unwrittenResolve.at = time.Time{}
 				}
 			}
 			if result.Recorded {
 				result = a.missingReasoningWarnState.resolveAt(fingerprint, observedAt)
 			}
 			if !result.Recorded {
-				if observedAt.After(a.missingReasoning.pendingResolveAt) {
-					a.missingReasoning.pendingResolveAt = observedAt
+				if observedAt.After(a.unwrittenResolve.at) {
+					a.unwrittenResolve.at = observedAt
 				}
-				a.missingReasoning.active = true
-				a.missingReasoning.stateRecorded = false
+				a.sess.missingReasoning.active = true
+				a.sess.missingReasoning.stateRecorded = false
 			} else if result.Resolved {
-				a.missingReasoning.active = false
-				a.missingReasoning.stateRecorded = true
+				a.sess.missingReasoning.active = false
+				a.sess.missingReasoning.stateRecorded = true
 			} else {
-				a.missingReasoning.active = true
-				a.missingReasoning.stateRecorded = false
+				a.sess.missingReasoning.active = true
+				a.sess.missingReasoning.stateRecorded = false
 			}
 		}
 		return false, false
 	}
-	a.missingReasoning.healthyStreak = 0
+	a.sess.missingReasoning.healthyStreak = 0
 	if s := a.missingReasoningWarnState; s != nil {
 		stateReady := true
-		alreadyActive := a.missingReasoning.active
-		if pending := a.missingReasoning.pendingResolveAt; !pending.IsZero() {
+		alreadyActive := a.sess.missingReasoning.active
+		if pending := a.unwrittenResolve.at; !pending.IsZero() {
 			result := s.resolveAt(fingerprint, pending)
 			stateReady = result.Recorded
 			if result.Recorded {
-				a.missingReasoning.pendingResolveAt = time.Time{}
+				a.unwrittenResolve.at = time.Time{}
 				if result.Resolved {
 					alreadyActive = false
-					a.missingReasoning.active = false
+					a.sess.missingReasoning.active = false
 				}
 			}
 		}
@@ -87,19 +93,19 @@ func (a *Agent) observeMissingToolCallReasoning(calls []provider.ToolCall, reaso
 		if !claimed || alreadyActive {
 			// This exact configuration already attempted recovery for the active
 			// incident, so keep the empty-key fallback without doubling requests.
-			a.missingReasoning.active = true
-			a.missingReasoning.stateRecorded = true
+			a.sess.missingReasoning.active = true
+			a.sess.missingReasoning.stateRecorded = true
 			return true, false
 		}
 		if !stateReady {
-			a.missingReasoning.stateRecorded = false
+			a.sess.missingReasoning.stateRecorded = false
 		}
-	} else if a.missingReasoning.active {
+	} else if a.sess.missingReasoning.active {
 		return true, false
 	}
-	a.missingReasoning.active = true
-	if a.missingReasoning.pendingResolveAt.IsZero() {
-		a.missingReasoning.stateRecorded = true
+	a.sess.missingReasoning.active = true
+	if a.unwrittenResolve.at.IsZero() {
+		a.sess.missingReasoning.stateRecorded = true
 	}
 	return true, true
 }

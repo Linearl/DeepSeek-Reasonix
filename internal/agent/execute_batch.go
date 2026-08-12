@@ -90,7 +90,7 @@ func (a *Agent) executeBatch(ctx context.Context, calls []provider.ToolCall) bat
 		if earlierWriterRan && writer {
 			if refreshed, changed := refreshCurrentFileDiff(ctx, t, calls[i]); changed {
 				calls[i] = refreshed
-				a.session.UpdateToolCallPreview(refreshed)
+				a.sess.conversation.UpdateToolCallPreview(refreshed)
 				a.emitFullToolDispatch(ctx, refreshed, true)
 			}
 		}
@@ -126,7 +126,7 @@ func (a *Agent) executeBatch(ctx context.Context, calls []provider.ToolCall) bat
 	}
 	finalize := func(i int) {
 		if calls[i].ResolvedReadOnly != nil {
-			a.session.UpdateToolCallResolution(calls[i])
+			a.sess.conversation.UpdateToolCallResolution(calls[i])
 			a.emitResolvedToolDispatch(calls[i])
 		}
 		if surfaceWriters[i] || (outcomes[i].resolved && !outcomes[i].resolvedReadOnly) {

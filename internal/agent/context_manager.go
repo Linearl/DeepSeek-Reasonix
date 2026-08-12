@@ -74,7 +74,7 @@ func (m ContextManager) Prepare(ctx context.Context, policy ContextPreparePolicy
 
 func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePolicy) (PreparedContext, error) {
 	a := m.agent
-	if a == nil || a.session == nil {
+	if a == nil || a.sess.conversation == nil {
 		return PreparedContext{}, nil
 	}
 	visible := a.modelVisibleMessages()
@@ -105,10 +105,10 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
 		return prepared, nil
 	}
 	if est < fold {
-		a.compaction.consecutive = 0
-		a.compaction.stuck = false
+		a.sess.compaction.consecutive = 0
+		a.sess.compaction.stuck = false
 	}
-	if a.compaction.stuck && policy.Trigger == CompactionTriggerPressure {
+	if a.sess.compaction.stuck && policy.Trigger == CompactionTriggerPressure {
 		return prepared, nil
 	}
 	// One user trigger. Overflow is a one-shot physical recovery path only.
@@ -152,7 +152,7 @@ func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContex
 		return prepared, nil
 	}
 	if outcome == CompactionNoop {
-		canonical, _ := a.session.snapshotMessagesVersion()
+		canonical, _ := a.sess.conversation.snapshotMessagesVersion()
 		if policy.Trigger == CompactionTriggerPressure && a.activeTurnStart(canonical) >= 0 {
 			return prepared, nil
 		}
@@ -171,8 +171,8 @@ func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContex
 	if result.InputTokens >= fold {
 		reason := fmt.Sprintf("summary result remains above fold trigger (%d >= %d)", result.InputTokens, fold)
 		a.recordContextMaintenanceBlocked(a.contextMaintenanceInputHash(result.Messages), policy.Trigger, "summary", reason)
-		a.compaction.stuck = true
-		a.compaction.consecutive++
+		a.sess.compaction.stuck = true
+		a.sess.compaction.consecutive++
 		if policy.Trigger == CompactionTriggerOverflow || result.InputTokens >= hard {
 			return PreparedContext{}, fmt.Errorf("%w: %s", ErrCompactionRequired, reason)
 		}
