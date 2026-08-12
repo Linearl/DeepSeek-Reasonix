@@ -30225,6 +30225,13 @@ body > .mermaid-diagram--fullscreen {
   stroke-width: 1.9;
 }
 
+.project-tree__topic--drop-before {
+  box-shadow: inset 0 2px 0 currentColor;
+}
+.project-tree__topic--drop-after {
+  box-shadow: inset 0 -2px 0 currentColor;
+}
+
 @keyframes project-tree-spin {
   to {
     transform: rotate(360deg);

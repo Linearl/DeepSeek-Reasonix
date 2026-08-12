@@ -620,6 +620,7 @@ export interface AppBindings extends SessionCatalogBindings, HistoryCatalogBindi
   DeleteTopic(topicID: string): Promise<void>;
   TrashTopic(topicID: string): Promise<void>;
   SetTopicPinned(topicID: string, pinned: boolean): Promise<void>;
+  ReorderTopics(scope: string, workspaceRoot: string, orderedTopicIDs: string[]): Promise<void>;
   ContextPanel(tabID: string): Promise<ContextPanelInfo>;
   // New native-feel bindings (added with the desktop native-feel plan).
   ConfirmAction(req: NativeConfirmRequest): Promise<boolean>;
@@ -5339,6 +5340,21 @@ function makeMockApp(): AppBindings {
     },
     async SetTopicPinned(topicID: string, pinned: boolean) {
       setMockTopicPinned(topicID, pinned);
+    },
+    async ReorderTopics(scope: string, workspaceRoot: string, orderedTopicIDs: string[]) {
+      const parents = mockProjectTree.filter((node) =>
+        scope === "global" ? node.kind === "global_folder" : node.kind === "project" && node.root === workspaceRoot,
+      );
+      for (const parent of parents) {
+        const children = projectChildren(parent);
+        const topicIDs = children.map((child) => child.topicId).filter((id): id is string => Boolean(id));
+        if (!topicIDs.every((id) => orderedTopicIDs.includes(id))) continue;
+        const byID = new Map(children.filter((c) => c.topicId).map((c) => [c.topicId, c]));
+        parent.children = orderedTopicIDs
+          .map((id) => byID.get(id))
+          .filter((c): c is NonNullable<typeof c> => Boolean(c));
+        return;
+      }
     },
     async SaveWindowState(_state) {
       // no-op in browser dev — no real window geometry to persist

@@ -208,6 +208,21 @@ function reorderedProjectRoots(nodes: ProjectNode[], draggedRoot: string, target
   return next;
 }
 
+// reorderedTopicIDs computes the full topic order for the parent folder after
+// moving draggedID next to targetID. Returns null when the drag is invalid.
+function reorderedTopicIDs(nodes: ProjectNode[], draggedID: string, targetID: string, position: ProjectDropPosition): string[] | null {
+  const parent = nodes.find((n) => asArray(n.children).some((c) => c.topicId === draggedID || c.topicId === targetID));
+  if (!parent) return null;
+  const ids = asArray(parent.children)
+    .filter((c) => isTopicNode(c) && c.topicId)
+    .map((c) => c.topicId as string);
+  if (!ids.includes(draggedID) || !ids.includes(targetID)) return null;
+  const rest = ids.filter((id) => id !== draggedID);
+  const at = rest.indexOf(targetID);
+  const insertAt = position === "before" ? at : at + 1;
+  return [...rest.slice(0, insertAt), draggedID, ...rest.slice(insertAt)];
+}
+
 function applyProjectOrder(nodes: ProjectNode[], roots: string[]): ProjectNode[] {
   const projectEntries = nodes
     .map((node): [string, ProjectNode] => [projectOrderKey(node), node])
@@ -235,6 +250,12 @@ function sortWorkbenchChildren(children: ProjectNode[], sortMode: WorkbenchSortM
   return [...children].sort((a, b) => {
     if (!isTopicNode(a) || !isTopicNode(b)) return 0;
     if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
+    // #8194: manual topic order (persisted via ReorderTopics → catalog
+    // sort_order) wins over the activity-based fallback, so users can keep
+    // important sessions above the fold even when folders are collapsed.
+    const ao = typeof a.sortOrder === "number" ? a.sortOrder : Number.MAX_SAFE_INTEGER;
+    const bo = typeof b.sortOrder === "number" ? b.sortOrder : Number.MAX_SAFE_INTEGER;
+    if (ao !== bo) return ao - bo;
     return topicSortValue(b, sortMode) - topicSortValue(a, sortMode);
   });
 }
@@ -424,6 +445,10 @@ export function ProjectTree({
   const [confirmAction, setConfirmAction] = useState<{ topicId: string; action: "trash" } | null>(null);
   const [confirmRemoveProject, setConfirmRemoveProject] = useState<string | null>(null);
   const [dragProjectRoot, setDragProjectRoot] = useState<string | null>(null);
+  const [dragTopicID, setDragTopicID] = useState<string | null>(null);
+  const [dragTopicScope, setDragTopicScope] = useState<"global" | "project">("project");
+  const [dragTopicRoot, setDragTopicRoot] = useState("");
+  const [dropTopic, setDropTopic] = useState<{ topicID: string; position: "before" | "after" } | null>(null);
   const [dropProject, setDropProject] = useState<{ root: string; position: ProjectDropPosition } | null>(null);
   const [collapseSnapshot, setCollapseSnapshot] = useState<CollapseSnapshot | null>(null);
   const [platform, setPlatform] = useState("");
@@ -1118,6 +1143,19 @@ export function ProjectTree({
     }
   }, [onTopicsChanged, refresh, tree]);
 
+  const commitTopicReorder = useCallback(async (draggedID: string, targetID: string, position: "before" | "after") => {
+    if (!draggedID || draggedID === targetID) return;
+    const nextIDs = reorderedTopicIDs(tree, draggedID, targetID, position);
+    if (!nextIDs) return;
+    try {
+      await app.ReorderTopics(dragTopicScope, dragTopicRoot, nextIDs);
+      await refresh();
+      await onTopicsChanged?.();
+    } catch {
+      await refresh();
+    }
+  }, [dragTopicRoot, dragTopicScope, onTopicsChanged, refresh, tree]);
+
   const clearProjectDrag = useCallback(() => {
     setDragProjectRoot(null);
     setDropProject(null);
@@ -1274,10 +1312,57 @@ export function ProjectTree({
           sessionPath: openRequest.sessionPath,
         });
       }
+      // #8194: manual drag-to-reorder for topic rows (disabled while
+      // searching, renaming, or another drag is in flight).
+      const topicDraggable = !isSessionNode && !query && !menuTopic && !editingTopic && !dragProjectRoot && !creatingProject && Boolean(node.topicId);
+      const handleTopicDragStart = (event: React.DragEvent<HTMLDivElement>) => {
+        event.dataTransfer.setData("text/plain", key);
+        event.dataTransfer.effectAllowed = "move";
+        setDragTopicID(node.topicId ?? null);
+        setDragTopicScope(node.kind === "global_topic" ? "global" : "project");
+        setDragTopicRoot(node.root ?? "");
+      };
+      const handleTopicDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+        if (!dragTopicID || dragTopicID === node.topicId) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        const rect = event.currentTarget.getBoundingClientRect();
+        const position = event.clientY < rect.top + rect.height / 2 ? ("before" as const) : ("after" as const);
+        setDropTopic((prev) => (prev !== null && prev.topicID === node.topicId && prev.position === position ? prev : { topicID: node.topicId as string, position }));
+      };
+      const handleTopicDragLeave = () => {
+        setDropTopic((prev) => (prev?.topicID === node.topicId ? null : prev));
+      };
+      const handleTopicDrop = (event: React.DragEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        let dragged = dragTopicID;
+        if (!dragged) {
+          const transferKey = event.dataTransfer.getData("text/plain");
+          if (transferKey.startsWith("topic_")) dragged = transferKey.slice("topic_".length);
+          else if (transferKey.startsWith("global_topic_")) dragged = transferKey.slice("global_topic_".length);
+        }
+        if (dragged && dragged !== node.topicId) {
+          const rect = event.currentTarget.getBoundingClientRect();
+          const position = event.clientY < rect.top + rect.height / 2 ? ("before" as const) : ("after" as const);
+          void commitTopicReorder(dragged, node.topicId as string, position);
+        }
+        setDragTopicID(null);
+        setDropTopic(null);
+      };
+      const handleTopicDragEnd = () => {
+        setDragTopicID(null);
+        setDropTopic(null);
+      };
       const row = (
         <div
-          className={`project-tree__topic${scopeClass}${isSessionNode ? " project-tree__topic--session" : ""}${active ? " project-tree__topic--active" : ""}${node.running ? " project-tree__topic--running" : ""}${status ? ` project-tree__topic--status-${status}` : ""}${unread ? " project-tree__topic--unread" : ""}${!isSessionNode && pinned ? " project-tree__topic--pinned" : ""}${topicMenuOpen ? " project-tree__topic--menu-open" : ""}${sideTimeVisible && (timeLabel || showStatusInSide || showWaitingPill) ? " project-tree__topic--with-side" : metaFull ? " project-tree__topic--has-meta" : ""}${imSource ? " project-tree__topic--im-source" : ""}${shortcutIndex > 0 ? " project-tree__topic--show-shortcut" : ""}`}
+          className={`project-tree__topic${scopeClass}${isSessionNode ? " project-tree__topic--session" : ""}${active ? " project-tree__topic--active" : ""}${node.running ? " project-tree__topic--running" : ""}${status ? ` project-tree__topic--status-${status}` : ""}${unread ? " project-tree__topic--unread" : ""}${!isSessionNode && pinned ? " project-tree__topic--pinned" : ""}${topicMenuOpen ? " project-tree__topic--menu-open" : ""}${dropTopic !== null && dropTopic.topicID === node.topicId && dragTopicID !== null && dragTopicID !== node.topicId ? ` project-tree__topic--drop-${dropTopic.position}` : ""}${sideTimeVisible && (timeLabel || showStatusInSide || showWaitingPill) ? " project-tree__topic--with-side" : metaFull ? " project-tree__topic--has-meta" : ""}${imSource ? " project-tree__topic--im-source" : ""}${shortcutIndex > 0 ? " project-tree__topic--show-shortcut" : ""}`}
           style={accentStyle}
+          draggable={topicDraggable}
+          onDragStart={topicDraggable ? handleTopicDragStart : undefined}
+          onDragOver={topicDraggable ? handleTopicDragOver : undefined}
+          onDragLeave={topicDraggable ? handleTopicDragLeave : undefined}
+          onDrop={topicDraggable ? handleTopicDrop : undefined}
+          onDragEnd={topicDraggable ? handleTopicDragEnd : undefined}
           onContextMenu={isSessionNode ? undefined : openTopicMenu}
           onMouseEnter={classicTopics ? (event) => scheduleHoverCard(event.currentTarget, key, node) : undefined}
           onMouseLeave={classicTopics ? cancelHoverCard : undefined}

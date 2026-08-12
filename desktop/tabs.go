@@ -6459,6 +6459,7 @@ type ProjectNode struct {
 	Running                      bool          `json:"running,omitempty"`
 	Status                       string        `json:"status,omitempty"`
 	Pinned                       bool          `json:"pinned,omitempty"`
+	SortOrder                    int           `json:"sortOrder"` // manual topic order index (0-based); -1 when unknown
 	Recovered                    bool          `json:"recovered,omitempty"`
 	RecoveryReason               string        `json:"recoveryReason,omitempty"`
 	RecoveryDigest               string        `json:"recoveryDigest,omitempty"`
@@ -6756,6 +6757,77 @@ func (a *App) SetProjectPinned(workspaceRoot string, pinned bool) error {
 
 // ReorderProjects persists the user-defined order of project folders and,
 // when present, the virtual Global sidebar section.
+// ReorderTopics persists the user's manual topic order for a project or the
+// global workspace (#8194). orderedTopicIDs must be the complete desired order
+// for every topic in the scope; missing topics are appended in their previous
+// relative order so a stale client can never drop topics from the list.
+func (a *App) ReorderTopics(scope, workspaceRoot string, orderedTopicIDs []string) error {
+	scope = strings.TrimSpace(scope)
+	workspaceRoot = normalizeProjectRoot(workspaceRoot)
+	if scope != "global" && workspaceRoot == "" {
+		return fmt.Errorf("workspaceRoot is required for project scope")
+	}
+	if len(orderedTopicIDs) == 0 {
+		return fmt.Errorf("orderedTopicIDs is required")
+	}
+	if err := updateProjectsFile(func(f *desktopProjectFile) (bool, error) {
+		if scope == "global" {
+			next, err := completeTopicOrder(orderedTopicIDs, f.GlobalTopics)
+			if err != nil {
+				return false, err
+			}
+			if sameStringList(next, f.GlobalTopics) {
+				return false, nil
+			}
+			f.GlobalTopics = next
+			return true, nil
+		}
+		i := projectIndexByRoot(f.Projects, workspaceRoot)
+		if i < 0 {
+			return false, fmt.Errorf("project %q not found", workspaceRoot)
+		}
+		next, err := completeTopicOrder(orderedTopicIDs, f.Projects[i].Topics)
+		if err != nil {
+			return false, err
+		}
+		if sameStringList(next, f.Projects[i].Topics) {
+			return false, nil
+		}
+		f.Projects[i].Topics = next
+		return true, nil
+	}); err != nil {
+		return err
+	}
+	a.emitProjectTreeMetadataChanged()
+	return nil
+}
+
+// completeTopicOrder returns orderedTopicIDs deduplicated in order, followed by
+// any topics from previous that were not included (preserving their previous
+// relative order).
+func completeTopicOrder(orderedTopicIDs, previous []string) ([]string, error) {
+	seen := make(map[string]bool, len(orderedTopicIDs))
+	next := make([]string, 0, len(orderedTopicIDs))
+	for _, id := range orderedTopicIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if seen[id] {
+			return nil, fmt.Errorf("duplicate topic %q", id)
+		}
+		seen[id] = true
+		next = append(next, id)
+	}
+	for _, id := range previous {
+		if !seen[id] {
+			seen[id] = true
+			next = append(next, id)
+		}
+	}
+	return next, nil
+}
+
 func (a *App) ReorderProjects(workspaceRoots []string) error {
 	if err := updateProjectsFile(func(f *desktopProjectFile) (bool, error) {
 		var seenProjects []string
