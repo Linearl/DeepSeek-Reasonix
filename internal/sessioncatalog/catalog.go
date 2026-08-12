@@ -334,12 +334,14 @@ func (c *Catalog) upsertSessions(ctx context.Context, records []SessionRecord, g
 			_ = tx.QueryRowContext(ctx, `SELECT scan_generation FROM catalog_directories WHERE path=?`, record.Directory).Scan(&generation)
 			directoryGenerations[record.Directory] = generation
 		}
+		record = classifyRecoveryLineage(record)
 		if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_sessions(
             path,directory,scope,workspace_root,topic_id,topic_title,custom_title,
             created_at,last_activity_at,preview,turns,turns_state,recovered,
-            recovery_reason,recovery_digest,parent_id,recovery_copy,content_fingerprint,
+            recovery_reason,recovery_digest,parent_id,recovery_copy,recovery_group_id,
+            recovery_role,recovery_canonical,content_fingerprint,
             meta_fingerprint,health,missing_since,seen_generation
-        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(path) DO UPDATE SET
             directory=excluded.directory, scope=excluded.scope,
             workspace_root=excluded.workspace_root, topic_id=excluded.topic_id,
@@ -350,6 +352,9 @@ func (c *Catalog) upsertSessions(ctx context.Context, records []SessionRecord, g
             recovery_reason=excluded.recovery_reason,
             recovery_digest=excluded.recovery_digest, parent_id=excluded.parent_id,
             recovery_copy=excluded.recovery_copy,
+            recovery_group_id=excluded.recovery_group_id,
+            recovery_role=excluded.recovery_role,
+            recovery_canonical=excluded.recovery_canonical,
             content_fingerprint=excluded.content_fingerprint,
             meta_fingerprint=excluded.meta_fingerprint, health=excluded.health,
             missing_since=0, seen_generation=MAX(catalog_sessions.seen_generation, excluded.seen_generation)`,
@@ -357,7 +362,9 @@ func (c *Catalog) upsertSessions(ctx context.Context, records []SessionRecord, g
 			record.TopicID, record.TopicTitle, record.CustomTitle, record.CreatedAt,
 			record.LastActivityAt, record.Preview, record.Turns, record.TurnsState,
 			record.Recovered, record.RecoveryReason, record.RecoveryDigest,
-			record.ParentID, boolToInt(record.RecoveryCopy), record.ContentFingerprint, record.MetaFingerprint,
+			record.ParentID, boolToInt(record.RecoveryCopy), record.RecoveryGroupID,
+			record.RecoveryRole, boolToInt(record.RecoveryCanonical),
+			record.ContentFingerprint, record.MetaFingerprint,
 			record.Health, 0, generation); err != nil {
 			_ = tx.Rollback()
 			return err

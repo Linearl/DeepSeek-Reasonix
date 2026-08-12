@@ -9,16 +9,21 @@ import (
 )
 
 // recoveryGCInterval bounds how often the background sweep repeats after the
-// startup run. Recovery branches accumulate slowly (only on a save conflict),
-// so a low frequency is plenty and keeps the disk scan off the hot path.
+// startup run. Covered copies are also reclaimed by the shorter startup grace.
 const recoveryGCInterval = 6 * time.Hour
 
-// startRecoveryGC waits for tab restore to complete, runs one sweep, then
-// repeats on an interval until the app context is cancelled. The wait is
-// load-bearing: restoreOrBuildTabs populates a.tabs asynchronously, and a
-// sweep against the pre-restore empty tab map would see every saved tab's
-// session as closed — and DeleteSession's tab-list persistence would then
-// overwrite desktop-tabs.json with that empty snapshot.
+// recoveryGCFollowUpDelay re-runs the short-grace sweep once after startup so
+// branches that just crossed the 15-minute idle line are not left until the
+// next 6-hour tick.
+const recoveryGCFollowUpDelay = 20 * time.Minute
+
+// startRecoveryGC waits for tab restore to complete, runs a short-grace
+// startup sweep (and one follow-up), then repeats on the long interval until
+// the app context is cancelled. The wait is load-bearing: restoreOrBuildTabs
+// populates a.tabs asynchronously, and a sweep against the pre-restore empty
+// tab map would see every saved tab's session as closed — and DeleteSession's
+// tab-list persistence would then overwrite desktop-tabs.json with that empty
+// snapshot.
 func (a *App) startRecoveryGC() {
 	a.goSafe("recoveryGC", func() {
 		select {
@@ -26,13 +31,25 @@ func (a *App) startRecoveryGC() {
 		case <-a.ctx.Done():
 			return
 		}
-		a.sweepReclaimableRecoveryBranches()
+		// First pass: clear covered upgrade storms quickly (15m grace).
+		a.sweepReclaimableRecoveryBranchesWithGrace(agent.RecoveryGCStartupGracePeriod)
+		followUp := time.NewTimer(recoveryGCFollowUpDelay)
 		ticker := time.NewTicker(recoveryGCInterval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-a.ctx.Done():
+				if !followUp.Stop() {
+					select {
+					case <-followUp.C:
+					default:
+					}
+				}
 				return
+			case <-followUp.C:
+				// Second short-grace pass, then fall through to long-interval only.
+				a.sweepReclaimableRecoveryBranchesWithGrace(agent.RecoveryGCStartupGracePeriod)
+				followUp.C = nil
 			case <-ticker.C:
 				a.sweepReclaimableRecoveryBranches()
 			}
@@ -46,13 +63,20 @@ func (a *App) startRecoveryGC() {
 // not held by any runtime. Trashing — never hard deletion — keeps every swept
 // branch recoverable from the session trash. Returns how many were reclaimed.
 func (a *App) sweepReclaimableRecoveryBranches() int {
-	return a.reclaimRecoveryBranchesIn(recoveryGCDirs(), time.Now())
+	return a.sweepReclaimableRecoveryBranchesWithGrace(agent.RecoveryGCGracePeriod)
 }
 
-func (a *App) reclaimRecoveryBranchesIn(dirs []string, now time.Time) int {
+func (a *App) sweepReclaimableRecoveryBranchesWithGrace(grace time.Duration) int {
+	return a.reclaimRecoveryBranchesIn(recoveryGCDirs(), time.Now(), grace)
+}
+
+func (a *App) reclaimRecoveryBranchesIn(dirs []string, now time.Time, grace time.Duration) int {
+	if grace <= 0 {
+		grace = agent.RecoveryGCGracePeriod
+	}
 	reclaimed := 0
 	for _, dir := range dirs {
-		reclaimable, err := agent.ReclaimableRecoveryBranches(dir, now, agent.RecoveryGCGracePeriod)
+		reclaimable, err := agent.ReclaimableRecoveryBranches(dir, now, grace)
 		if err != nil {
 			slog.Warn("desktop: scan reclaimable recovery branches", "dir", dir, "err", err)
 			continue
@@ -74,7 +98,8 @@ func (a *App) reclaimRecoveryBranchesIn(dirs []string, now time.Time) int {
 		}
 	}
 	if reclaimed > 0 {
-		slog.Info("desktop: moved redundant recovery branches to the session trash", "count", reclaimed)
+		slog.Info("desktop: moved redundant recovery branches to the session trash",
+			"count", reclaimed, "grace", grace.String())
 	}
 	return reclaimed
 }

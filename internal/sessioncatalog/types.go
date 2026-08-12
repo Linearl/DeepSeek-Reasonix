@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	SchemaVersion = 4
+	SchemaVersion = 5
 	DefaultLimit  = 50
 	MaxLimit      = 200
 )
@@ -117,12 +117,28 @@ type SessionRecord struct {
 	RecoveryDigest string     `json:"recoveryDigest,omitempty"`
 	ParentID       string     `json:"parentId,omitempty"`
 	// RecoveryCopy is true only when real content is still covered by the parent.
-	RecoveryCopy       bool   `json:"recoveryCopy,omitempty"`
+	RecoveryCopy bool `json:"recoveryCopy,omitempty"`
+	// RecoveryGroupID clusters a lineage of normal + recovery branches that
+	// share content ancestry. Empty for ordinary non-recovery sessions.
+	RecoveryGroupID string `json:"recoveryGroupId,omitempty"`
+	// RecoveryRole is normal | covered_copy | adopted | diverged.
+	RecoveryRole string `json:"recoveryRole,omitempty"`
+	// RecoveryCanonical marks the unique leaf that covers the group and should
+	// be opened by default. Never moves or rewrites files.
+	RecoveryCanonical  bool   `json:"recoveryCanonical,omitempty"`
 	ContentFingerprint string `json:"contentFingerprint,omitempty"`
 	MetaFingerprint    string `json:"metaFingerprint,omitempty"`
 	Health             Health `json:"health"`
 	MissingSince       int64  `json:"missingSince,omitempty"`
 }
+
+// Recovery role constants for catalog lineage classification.
+const (
+	RecoveryRoleNormal      = "normal"
+	RecoveryRoleCoveredCopy = "covered_copy"
+	RecoveryRoleAdopted     = "adopted"
+	RecoveryRoleDiverged    = "diverged"
+)
 
 type TopicKey struct {
 	Scope         string `json:"scope"`
@@ -179,11 +195,13 @@ type SessionPage struct {
 }
 
 // DefaultPath is the disposable cache file under CacheDir ("" when unavailable).
-// v2.sqlite is independent of the 1.24.0 v1 cache so processes cannot cross-write.
+// v3.sqlite is independent of the 1.24.0/1.24.1 v1/v2 caches so processes cannot
+// cross-write; polluted older catalogs are ignored and rebuilt from authoritative
+// JSONL/WAL/sidecar data.
 func DefaultPath() string {
 	cache := strings.TrimSpace(config.CacheDir())
 	if cache == "" {
 		return ""
 	}
-	return filepath.Join(cache, "session-catalog", "v2.sqlite")
+	return filepath.Join(cache, "session-catalog", "v3.sqlite")
 }

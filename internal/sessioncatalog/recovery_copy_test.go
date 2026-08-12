@@ -19,8 +19,8 @@ func TestDefaultPathUsesV2CacheFile(t *testing.T) {
 		// CacheDir unavailable in this environment; empty is still valid.
 		return
 	}
-	if !strings.HasSuffix(filepath.ToSlash(path), "session-catalog/v2.sqlite") {
-		t.Fatalf("DefaultPath = %q, want .../session-catalog/v2.sqlite", path)
+	if !strings.HasSuffix(filepath.ToSlash(path), "session-catalog/v3.sqlite") {
+		t.Fatalf("DefaultPath = %q, want .../session-catalog/v3.sqlite", path)
 	}
 	if strings.Contains(path, "v1.sqlite") {
 		t.Fatalf("DefaultPath must not reuse the 1.24.0 v1 cache: %q", path)

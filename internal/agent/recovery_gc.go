@@ -22,9 +22,14 @@ import (
 // only those — are safe to reclaim automatically.
 
 // RecoveryGCGracePeriod is how long a reclaimable recovery branch must sit
-// idle before GC may collect it. A fresh fork is part of an active conflict
-// flow — the user may be comparing it against the original right now.
+// idle before the periodic GC may collect it. A fresh fork is part of an
+// active conflict flow — the user may be comparing it against the original.
 const RecoveryGCGracePeriod = 24 * time.Hour
+
+// RecoveryGCStartupGracePeriod is used for the first post-restore sweep so
+// upgrade storms of covered copies are cleared within minutes rather than a
+// full day, while still protecting a conflict the user is actively inspecting.
+const RecoveryGCStartupGracePeriod = 15 * time.Minute
 
 const (
 	recoveryTrashDir             = ".trash"
