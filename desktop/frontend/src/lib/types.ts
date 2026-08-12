@@ -509,6 +509,7 @@ export interface ProjectNode {
   running?: boolean;
   status?: ProjectTopicStatus;
   pinned?: boolean;
+  sortOrder?: number;
   recovered?: boolean;
   recoveryReason?: string;
   recoveryDigest?: string;
