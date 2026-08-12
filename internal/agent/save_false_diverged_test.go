@@ -249,22 +249,14 @@ func TestSaveSnapshotStaleAuthorityRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Keep old auth on session; newAuth proves generation advanced.
-	_ = newAuth
-	s.Add(provider.Message{Role: provider.RoleUser, Content: "more"})
-	// Old auth is still Valid() for same lease+generation... generation is on the token.
-	// Issue a *replacement* on the session with a higher generation, then try with old.
-	s.BindWriteAuthority(oldAuth)
-	// Release and re-acquire so ownerID changes → old auth stale.
-	lease.Release()
-	leas2, err := TryAcquireSessionLease(path)
-	if err != nil {
-		t.Fatal(err)
+	if !newAuth.Valid() {
+		t.Fatal("replacement authority should be valid")
 	}
-	defer leas2.Release()
+	s.Add(provider.Message{Role: provider.RoleUser, Content: "more"})
+	s.BindWriteAuthority(oldAuth)
 	err = s.SaveSnapshot(path)
-	if !errors.Is(err, ErrSessionWriteAuthorityStale) && !errors.Is(err, ErrSessionWriteAuthorityMissing) {
-		t.Fatalf("err = %v, want stale/missing authority", err)
+	if !errors.Is(err, ErrSessionWriteAuthorityStale) {
+		t.Fatalf("err = %v, want stale authority", err)
 	}
 	if got := recoveryJSONL(dir); len(got) != 0 {
 		t.Fatalf("recovery files = %v, want none", got)

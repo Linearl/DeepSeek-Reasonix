@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
-	"time"
 )
 
 func TestWriteAuthorityStaleAfterRelease(t *testing.T) {
@@ -44,33 +43,22 @@ func TestWriteAuthorityReleaseWaitsForInFlightSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var wg sync.WaitGroup
-	started := make(chan struct{})
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		close(started)
-		lease.Release()
-	}()
-	<-started
-	// Release must not finish while save is active.
-	select {
-	case <-func() chan struct{} {
-		done := make(chan struct{})
-		go func() { wg.Wait(); close(done) }()
-		return done
-	}():
-		t.Fatal("Release returned while save still in flight")
-	case <-time.After(50 * time.Millisecond):
-	}
-	releaseSave()
+	releaseWaiting := make(chan struct{})
+	var waitOnce sync.Once
+	lease.beforeReleaseWait = func() { waitOnce.Do(func() { close(releaseWaiting) }) }
 	done := make(chan struct{})
-	go func() { wg.Wait(); close(done) }()
+	go func() {
+		lease.Release()
+		close(done)
+	}()
+	<-releaseWaiting
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("Release did not complete after save finished")
+		t.Fatal("Release returned while save still in flight")
+	default:
 	}
+	releaseSave()
+	<-done
 }
 
 func TestWriteAuthorityGenerationInvalidatesPriorToken(t *testing.T) {
@@ -84,21 +72,17 @@ func TestWriteAuthorityGenerationInvalidatesPriorToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Same lease, new generation still Valid on both tokens until release —
-	// generation is checked only against the token's own fields + live lease.
-	// Controller rebind replaces the session-bound token; the old token
-	// remains Valid() for BeginSave until lease identity changes.
-	if !oldAuth.Valid() {
-		t.Fatal("old generation still tied to live lease owner")
-	}
-	// Reclaim path changes ownerID → stale.
-	lease.Release()
-	lease2, err := TryAcquireSessionLease(path)
+	newAuth, err := lease.IssueWriteAuthority(2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lease2.Release()
 	if oldAuth.Valid() {
-		t.Fatal("old authority must not survive owner change")
+		t.Fatal("old generation remained valid after replacement authority")
+	}
+	if _, err := oldAuth.BeginSave(path); !errors.Is(err, ErrSessionWriteAuthorityStale) {
+		t.Fatalf("old BeginSave = %v, want stale", err)
+	}
+	if !newAuth.Valid() {
+		t.Fatal("replacement authority should be valid")
 	}
 }

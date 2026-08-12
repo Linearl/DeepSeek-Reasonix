@@ -109,11 +109,15 @@ func (s *Server) ctl() control.SessionAPI {
 // model switches that rotate the path) then move the lease along with the
 // active session and refuse to bind a session held by another runtime.
 // Call it before serving; a nil keeper leaves lease gating off.
-func (s *Server) SetSessionLeases(k *control.SessionLeaseKeeper) {
+func (s *Server) SetSessionLeases(k *control.SessionLeaseKeeper) error {
 	s.leases = k
 	if ctrl, ok := s.ctl().(*control.Controller); ok {
 		ctrl.SetOnSessionRecovered(sessionLeaseRecoveryHandler(k))
+		if k != nil {
+			return k.BindControllerAuthority(ctrl)
+		}
 	}
+	return nil
 }
 
 func sessionLeaseRecoveryHandler(k *control.SessionLeaseKeeper) func(control.SessionRecoveryInfo) error {
@@ -126,13 +130,18 @@ func sessionLeaseRecoveryHandler(k *control.SessionLeaseKeeper) func(control.Ses
 // rebindSessionLease moves the server's session lease to path and rebinds the
 // write authority generation. A nil keeper gates nothing (tests, embedded use).
 func (s *Server) rebindSessionLease(path string) error {
+	ctrl, _ := s.ctl().(*control.Controller)
+	return s.rebindSessionLeaseFor(path, ctrl)
+}
+
+func (s *Server) rebindSessionLeaseFor(path string, ctrl *control.Controller) error {
 	if s.leases == nil {
 		return nil
 	}
 	if err := s.leases.Rebind(path); err != nil {
 		return err
 	}
-	if ctrl, ok := s.ctl().(*control.Controller); ok {
+	if ctrl != nil {
 		return s.leases.BindControllerAuthority(ctrl)
 	}
 	return nil
@@ -262,6 +271,7 @@ func (s *Server) switchModelLocked(ctx context.Context, ref string) error {
 		}
 	}
 	newCtrl.AdoptHistory(carried, newPath)
+	newCtrl.SetOnSessionRecovered(sessionLeaseRecoveryHandler(s.leases))
 	// A rebuild must not force the user to re-approve tools already granted
 	// this session, or re-trust Plan-mode read-only commands already trusted
 	// this session.
@@ -272,18 +282,24 @@ func (s *Server) switchModelLocked(ctx context.Context, ref string) error {
 	// the on-disk transcript coherent and lets the caller retry; publishing first
 	// would report a successful switch whose refreshed system contract disappears
 	// on restart. AdoptHistory retained the loaded CAS baseline for this rewrite.
+	if err := s.rebindSessionLeaseFor(newPath, newCtrl); err != nil {
+		newCtrl.Close()
+		if errors.Is(err, agent.ErrSessionLeaseHeld) {
+			return fmt.Errorf("switch model: %s", sessionInUseError(err))
+		}
+		return fmt.Errorf("switch model: unable to secure replacement session")
+	}
 	if newPath != "" {
 		if err := newCtrl.Snapshot(); err != nil {
+			if oldCtrl, ok := cur.(*control.Controller); ok {
+				_ = s.rebindSessionLeaseFor(prevPath, oldCtrl)
+			}
 			newCtrl.Close()
 			return fmt.Errorf("switch model: snapshot adopted history: %w", err)
 		}
 	}
-
-	// Acquire the replacement controller's actual post-snapshot path before
-	// publishing it. Its initial snapshot can itself recover onto a new branch;
-	// binding the pre-snapshot newPath would leave that branch unguarded.
 	activePath := newCtrl.SessionPath()
-	if err := s.rebindSessionLease(activePath); err != nil {
+	if err := s.rebindSessionLeaseFor(activePath, newCtrl); err != nil {
 		newCtrl.Close()
 		if errors.Is(err, agent.ErrSessionLeaseHeld) {
 			return fmt.Errorf("switch model: %s", sessionInUseError(err))
@@ -291,7 +307,6 @@ func (s *Server) switchModelLocked(ctx context.Context, ref string) error {
 		slog.Error("serve: bind replacement session lease", "err", err)
 		return fmt.Errorf("switch model: unable to secure replacement session")
 	}
-	newCtrl.SetOnSessionRecovered(sessionLeaseRecoveryHandler(s.leases))
 
 	// Publish the swap under a short write lock. bindMu already serializes
 	// switches — today the only writer of s.ctrl — so the identity re-check is
@@ -301,7 +316,8 @@ func (s *Server) switchModelLocked(ctx context.Context, ref string) error {
 	s.mu.Lock()
 	if s.ctrl != cur {
 		s.mu.Unlock()
-		if restoreErr := s.rebindSessionLease(cur.SessionPath()); restoreErr != nil {
+		oldCtrl, _ := cur.(*control.Controller)
+		if restoreErr := s.rebindSessionLeaseFor(cur.SessionPath(), oldCtrl); restoreErr != nil {
 			newCtrl.Close()
 			slog.Error("serve: restore outgoing session lease after aborted model switch", "err", restoreErr)
 			return fmt.Errorf("switch model: session changed during switch; unable to restore outgoing session ownership")
@@ -363,25 +379,33 @@ func (s *Server) reloadExtensions(ctx context.Context) error {
 		return fmt.Errorf("reload extensions: %w", err)
 	}
 	newCtrl.EnableInteractiveApproval()
-	if newCtrl.SessionPath() != "" {
-		if err := newCtrl.Snapshot(); err != nil {
-			newCtrl.Close()
-			return fmt.Errorf("reload extensions: snapshot migrated session: %w", err)
-		}
-	}
-	if err := s.rebindSessionLease(newCtrl.SessionPath()); err != nil {
+	newCtrl.SetOnSessionRecovered(sessionLeaseRecoveryHandler(s.leases))
+	if err := s.rebindSessionLeaseFor(newCtrl.SessionPath(), newCtrl); err != nil {
 		newCtrl.Close()
 		if errors.Is(err, agent.ErrSessionLeaseHeld) {
 			return fmt.Errorf("reload extensions: %s", sessionInUseError(err))
 		}
 		return fmt.Errorf("reload extensions: unable to secure replacement session")
 	}
-	newCtrl.SetOnSessionRecovered(sessionLeaseRecoveryHandler(s.leases))
+	if newCtrl.SessionPath() != "" {
+		if err := newCtrl.Snapshot(); err != nil {
+			_ = s.rebindSessionLeaseFor(cur.SessionPath(), cur)
+			newCtrl.Close()
+			return fmt.Errorf("reload extensions: snapshot migrated session: %w", err)
+		}
+	}
+	if err := s.rebindSessionLeaseFor(newCtrl.SessionPath(), newCtrl); err != nil {
+		newCtrl.Close()
+		if errors.Is(err, agent.ErrSessionLeaseHeld) {
+			return fmt.Errorf("reload extensions: %s", sessionInUseError(err))
+		}
+		return fmt.Errorf("reload extensions: unable to secure replacement session")
+	}
 
 	s.mu.Lock()
 	if s.ctrl != curAPI {
 		s.mu.Unlock()
-		if restoreErr := s.rebindSessionLease(cur.SessionPath()); restoreErr != nil {
+		if restoreErr := s.rebindSessionLeaseFor(cur.SessionPath(), cur); restoreErr != nil {
 			newCtrl.Close()
 			slog.Error("serve: restore outgoing session lease after aborted extension reload", "err", restoreErr)
 			return fmt.Errorf("reload extensions: session changed during reload; unable to restore outgoing session ownership")
@@ -1197,13 +1221,15 @@ func (s *Server) resume(w http.ResponseWriter, r *http.Request) {
 	}
 	// Refuse to bind a session another runtime is writing (a desktop window,
 	// another CLI); on success the lease now guards the resume target.
-	if err := s.rebindSessionLease(realPath); err != nil {
-		if errors.Is(err, agent.ErrSessionLeaseHeld) {
-			http.Error(w, sessionInUseError(err), http.StatusConflict)
-		} else {
-			http.Error(w, "session lease: "+err.Error(), http.StatusInternalServerError)
+	if s.leases != nil {
+		if err := s.leases.Rebind(realPath); err != nil {
+			if errors.Is(err, agent.ErrSessionLeaseHeld) {
+				http.Error(w, sessionInUseError(err), http.StatusConflict)
+			} else {
+				http.Error(w, "session lease: "+err.Error(), http.StatusInternalServerError)
+			}
+			return
 		}
-		return
 	}
 	loaded, err := agent.LoadSession(realPath)
 	if err != nil {
@@ -1217,6 +1243,12 @@ func (s *Server) resume(w http.ResponseWriter, r *http.Request) {
 		hook()
 	}
 	s.ctl().Resume(loaded, realPath)
+	if ctrl, ok := s.ctl().(*control.Controller); ok && s.leases != nil {
+		if err := s.leases.BindControllerAuthority(ctrl); err != nil {
+			http.Error(w, "session authority: unable to bind resumed session", http.StatusInternalServerError)
+			return
+		}
+	}
 	s.bc.ResetSession()
 	w.WriteHeader(http.StatusNoContent)
 }

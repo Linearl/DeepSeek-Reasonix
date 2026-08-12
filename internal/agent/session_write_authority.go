@@ -57,6 +57,7 @@ func (l *SessionLease) IssueWriteAuthority(generation uint64) (*SessionWriteAuth
 	if l.released || l.leaseLock == nil {
 		return nil, ErrSessionWriteAuthorityStale
 	}
+	l.writeGeneration = generation
 	return &SessionWriteAuthority{
 		path:       l.path,
 		ownerID:    l.ownerID,
@@ -92,7 +93,7 @@ func (a *SessionWriteAuthority) Valid() bool {
 	if a.lease.released || a.lease.leaseLock == nil {
 		return false
 	}
-	if a.lease.path != a.path || a.lease.ownerID != a.ownerID {
+	if a.lease.path != a.path || a.lease.ownerID != a.ownerID || a.lease.writeGeneration != a.generation {
 		return false
 	}
 	// Active-owner registry must still name this generation's lease. A reclaim
@@ -122,15 +123,20 @@ func (a *SessionWriteAuthority) BeginSave(path string) (func(), error) {
 	if a == nil {
 		return nil, ErrSessionWriteAuthorityMissing
 	}
-	if !a.Covers(path) {
-		if a.lease == nil || a.generation == 0 {
-			return nil, ErrSessionWriteAuthorityMissing
-		}
-		return nil, ErrSessionWriteAuthorityStale
+	if a.lease == nil || a.generation == 0 {
+		return nil, ErrSessionWriteAuthorityMissing
 	}
 	a.lease.mu.Lock()
 	defer a.lease.mu.Unlock()
-	if a.lease.released || a.lease.leaseLock == nil || a.lease.ownerID != a.ownerID {
+	if a.path != canonicalSessionSavePath(path) ||
+		a.lease.released || a.lease.leaseLock == nil ||
+		a.lease.path != a.path || a.lease.ownerID != a.ownerID ||
+		a.lease.writeGeneration != a.generation {
+		return nil, ErrSessionWriteAuthorityStale
+	}
+	owner, ok := sessionLeaseActiveOwners.Load(a.path)
+	id, okID := owner.(uint64)
+	if !ok || !okID || id != a.ownerID {
 		return nil, ErrSessionWriteAuthorityStale
 	}
 	a.lease.activeSaves++
@@ -164,6 +170,30 @@ func (s *Session) BindWriteAuthority(auth *SessionWriteAuthority) {
 	if auth != nil {
 		s.authRequired = true
 	}
+}
+
+// RequireWriteAuthority permanently puts this Session on the production
+// fail-closed path. Controllers call it before attempting lease issuance so a
+// failed or interrupted bind cannot leave a persisted session writable through
+// the legacy unbound test path.
+func (s *Session) RequireWriteAuthority() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.authRequired = true
+	s.mu.Unlock()
+}
+
+// WriteAuthorityRequired reports whether production admission and saves must
+// present a live path-bound authority.
+func (s *Session) WriteAuthorityRequired() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.authRequired
 }
 
 // WriteAuthority returns the currently bound authority, if any.

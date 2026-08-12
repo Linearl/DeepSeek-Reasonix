@@ -2349,11 +2349,15 @@ func (a *App) clearActiveSessionRuntime(tab *WorkspaceTab, oldCtrl control.Sessi
 		a.emitProjectTreeChangedForSessionDirs(newCtrl.SessionDir())
 		return SessionClearResult{}, fmt.Errorf("tab %q changed while clearing the session", tab.ID)
 	}
+	if err := bindTabWriteAuthority(tab, newCtrl); err != nil {
+		a.mu.Unlock()
+		newCtrl.Close()
+		return SessionClearResult{}, fmt.Errorf("bind fresh session authority: %w", err)
+	}
 	tab.Ctrl = newCtrl
 	tab.sink = newSink
 	tab.SessionPath = path
 	tab.Label = newCtrl.Label()
-	bindTabWriteAuthority(tab, newCtrl)
 	tab.Ready = true
 	clearTabStartupError(tab)
 	tab.goal = ""
@@ -4148,6 +4152,12 @@ func (a *App) rebindTabToLoadedSessionPath(tab *WorkspaceTab, sessionPath string
 		a.mu.Unlock()
 		return fmt.Errorf("tab runtime changed while switching sessions; retry")
 	}
+	if candidateCtrl, ok := candidate.ctrl.(*control.Controller); ok {
+		if err := control.IssueAndBindWriteAuthority(candidateCtrl, targetLease); err != nil {
+			a.mu.Unlock()
+			return fmt.Errorf("resume session: bind write authority: %w", err)
+		}
+	}
 	var oldLease *agent.SessionLease
 	oldCtrl := tab.Ctrl
 	oldSink := tab.sink
@@ -4174,7 +4184,6 @@ func (a *App) rebindTabToLoadedSessionPath(tab *WorkspaceTab, sessionPath string
 	tab.model = candidate.model
 	tab.Label = candidate.ctrl.Label()
 	applyNormalizedRuntimeToTabLocked(tab, candidate.runtime)
-	bindTabWriteAuthority(tab, candidate.ctrl)
 	tab.Ready = true
 	clearTabStartupError(tab)
 	tab.ActivityStatus = ""
@@ -10053,6 +10062,11 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 		tab.releaseSessionLease()
 		return fmt.Errorf("tab %q changed while switching model; retry", tab.ID)
 	}
+	if err := bindTabWriteAuthority(tab, newCtrl); err != nil {
+		a.mu.Unlock()
+		newCtrl.Close()
+		return fmt.Errorf("bind model-switch session authority: %w", err)
+	}
 	tab.Ctrl = newCtrl
 	tab.model = name
 	tab.effort = cloneStringPtr(effortOverride)
@@ -10233,13 +10247,17 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 		tab.releaseSessionLease()
 		return fmt.Errorf("tab %q changed while switching effort; retry", tab.ID)
 	}
+	if err := bindTabWriteAuthority(tab, newCtrl); err != nil {
+		a.mu.Unlock()
+		newCtrl.Close()
+		return fmt.Errorf("bind effort-switch session authority: %w", err)
+	}
 	tab.Ctrl = newCtrl
 	tab.model = modelRef
 	tab.effort = &effort
 	tab.Label = newCtrl.Label()
 	applyNormalizedRuntimeToTabLocked(tab, restoredRuntime)
 	clearTabStartupError(tab)
-	bindTabWriteAuthority(tab, newCtrl)
 	tab.Ready = true
 	a.supersedeTabBuildLocked(tab)
 	a.saveTabsLocked()

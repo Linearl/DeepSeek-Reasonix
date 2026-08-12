@@ -24,6 +24,7 @@ func (c *Controller) BindSessionWriteAuthority(lease *agent.SessionLease) error 
 	if sess == nil {
 		return nil
 	}
+	sess.RequireWriteAuthority()
 	if lease == nil {
 		sess.ClearWriteAuthority()
 		return nil
@@ -72,8 +73,9 @@ func (c *Controller) ensureWriteAuthorityReady() error {
 	}
 	auth := sess.WriteAuthority()
 	if auth == nil {
-		// Not yet bound: production frontends bind on lease acquire. Unit tests
-		// that never bind keep the legacy path.
+		if sess.WriteAuthorityRequired() {
+			return agent.ErrSessionWriteAuthorityMissing
+		}
 		return nil
 	}
 	if auth.Covers(path) {

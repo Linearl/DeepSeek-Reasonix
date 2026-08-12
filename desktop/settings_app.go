@@ -1912,12 +1912,16 @@ func (a *App) rebuildSettingTurnLockedWithModel(setting string, tab *WorkspaceTa
 		tab.releaseSessionLease()
 		return fmt.Errorf("tab %q changed while rebuilding settings; retry", tab.ID)
 	}
+	if err := bindTabWriteAuthority(tab, ctrl); err != nil {
+		a.mu.Unlock()
+		ctrl.Close()
+		return fmt.Errorf("bind rebuilt session authority: %w", err)
+	}
 	tab.Ctrl = ctrl
 	tab.model = model
 	tab.Label = ctrl.Label()
 	applyNormalizedRuntimeToTabLocked(tab, restoredRuntime)
 	clearTabStartupError(tab)
-	bindTabWriteAuthority(tab, ctrl)
 	tab.Ready = true
 	// Supersede any in-flight startup build: it would otherwise finish later,
 	// pass its generation check, and overwrite the controller just installed.

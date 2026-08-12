@@ -69,4 +69,51 @@ func TestFixedWriterRecoverySessionPathSeparatesSiblingLineages(t *testing.T) {
 	if again := fixedWriterRecoverySessionPath(root); again != root {
 		t.Fatalf("isolated copy is not a fixed point: %s -> %s", root, again)
 	}
+	suffix := strings.TrimPrefix(BranchID(root), "session-recovery-")
+	if len(suffix) != 16 {
+		t.Fatalf("recovery suffix length = %d, want 16 for legacy discovery: %q", len(suffix), suffix)
+	}
+}
+
+func TestRecoveryLaneCollisionPreservesIndependentTranscript(t *testing.T) {
+	dir := t.TempDir()
+	original := filepath.Join(dir, "session.jsonl")
+	first := NewSession("sys")
+	first.Add(provider.Message{Role: provider.RoleUser, Content: "first"})
+	first.Add(provider.Message{Role: provider.RoleAssistant, Content: "one"})
+	firstInfo, err := first.SaveConflictRecoveryBranch(RecoveryBranchOptions{OriginalPath: original})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	second := NewSession("sys")
+	second.Add(provider.Message{Role: provider.RoleUser, Content: "second"})
+	second.Add(provider.Message{Role: provider.RoleAssistant, Content: "two"})
+	// Force the allocator onto the first live session's lane. The save must
+	// rotate instead of replacing that independent history.
+	second.recoveryLane = first.recoveryLane
+	secondInfo, err := second.SaveConflictRecoveryBranch(RecoveryBranchOptions{OriginalPath: original})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secondInfo.Path == firstInfo.Path {
+		t.Fatalf("independent sessions shared recovery lane %q", firstInfo.Path)
+	}
+	kept, err := LoadSession(firstInfo.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := kept.Snapshot()[2].Content; got != "one" {
+		t.Fatalf("first recovery content = %q, want preserved", got)
+	}
+
+	second.Add(provider.Message{Role: provider.RoleUser, Content: "continued"})
+	second.Add(provider.Message{Role: provider.RoleAssistant, Content: "again"})
+	again, err := second.SaveConflictRecoveryBranch(RecoveryBranchOptions{OriginalPath: secondInfo.Path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Path != secondInfo.Path {
+		t.Fatalf("owned recovery lane rotated: %q -> %q", secondInfo.Path, again.Path)
+	}
 }

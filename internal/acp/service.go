@@ -536,6 +536,10 @@ func sessionLeaseBindError(method string, err error) *RPCError {
 // is secured; a failure aborts the recovery commit and the controller stays
 // on the original path (the next save retries).
 func (s *service) sessionRecoveredHandler(id string) func(control.SessionRecoveryInfo) error {
+	return s.sessionRecoveredHandlerFor(id, nil)
+}
+
+func (s *service) sessionRecoveredHandlerFor(id string, owner acpController) func(control.SessionRecoveryInfo) error {
 	return func(info control.SessionRecoveryInfo) error {
 		recoveryPath := strings.TrimSpace(info.RecoveryPath)
 		if recoveryPath == "" {
@@ -560,15 +564,25 @@ func (s *service) sessionRecoveredHandler(id string) func(control.SessionRecover
 			return fmt.Errorf("bind recovery session: session is deleted")
 		}
 		old := sess.lease
+		ctrl := owner
+		if ctrl == nil {
+			ctrl = sess.ctrl
+		}
+		if err := bindACPWriteAuthority(ctrl, lease); err != nil {
+			if old != nil {
+				_ = bindACPWriteAuthority(ctrl, old)
+			}
+			sess.mu.Unlock()
+			lease.Release()
+			return fmt.Errorf("bind recovery session: unable to bind recovered transcript authority")
+		}
 		sess.lease = lease
 		sess.transcript = recoveryPath
-		ctrl := sess.ctrl
 		meta := sess.metaLocked()
 		sess.mu.Unlock()
 		if old != nil {
-			old.Release()
+			go old.Release()
 		}
-		_ = bindACPWriteAuthority(ctrl, lease)
 		_ = saveACPMeta(recoveryPath, meta)
 		// Leave a redirect on the id-keyed sidecar so restart-time lookups
 		// (session/load, session/resume, session/delete, loadMeta) resolve the
@@ -1400,6 +1414,7 @@ func (s *service) reloadSessionExtensionsLocked(ctx context.Context, sess *acpSe
 		return nil, &RPCError{Code: ErrInternal, Message: sessionReloadExtensionsMethod + ": " + err.Error()}
 	}
 	newCtrl.EnableInteractiveApproval()
+	newCtrl.SetOnSessionRecovered(s.sessionRecoveredHandlerFor(sess.id, newCtrl))
 	// Config on disk may have changed the effective planner/sandbox posture;
 	// recompute the status snapshot from the same resolved inputs.
 	runtimeState, err := s.sessionRuntimeState(ctx, SessionRuntimeStateParams{
@@ -1412,8 +1427,16 @@ func (s *service) reloadSessionExtensionsLocked(ctx context.Context, sess *acpSe
 	// Persist before publishing the replacement. If this fails, the outgoing
 	// controller and transcript still agree and remain fully usable (mirrors
 	// the config switch).
+	sess.mu.Lock()
+	lease := sess.lease
+	sess.mu.Unlock()
+	if err := bindACPWriteAuthority(newCtrl, lease); err != nil {
+		newCtrl.ReleaseResources()
+		return nil, &RPCError{Code: ErrInternal, Message: sessionReloadExtensionsMethod + ": bind replacement session authority"}
+	}
 	if prevPath != "" {
 		if err := newCtrl.Snapshot(); err != nil {
+			_ = bindACPWriteAuthority(cur, lease)
 			newCtrl.ReleaseResources()
 			return nil, &RPCError{Code: ErrInternal, Message: sessionReloadExtensionsMethod + ": snapshot after reload: " + err.Error()}
 		}
@@ -1941,6 +1964,7 @@ func (s *service) rebuildSessionLocked(ctx context.Context, sess *acpSession, cf
 		}
 	}
 	newCtrl.AdoptHistory(carried, prevPath)
+	newCtrl.SetOnSessionRecovered(s.sessionRecoveredHandlerFor(sess.id, newCtrl))
 	// Re-apply all three independent session axes. A controller rebuild must not
 	// turn Plan into tool approval, drop a running Goal, or reset Ask/Auto/Yolo.
 	newCtrl.SetToolApprovalMode(toolApprovalMode)
@@ -1970,8 +1994,16 @@ func (s *service) rebuildSessionLocked(ctx context.Context, sess *acpSession, cf
 	// first would report a successful switch whose refreshed profile contract
 	// disappears on restart. AdoptHistory preserves the loaded CAS baseline, so
 	// this compatible leading-system rewrite is safe to snapshot here.
+	sess.mu.Lock()
+	lease := sess.lease
+	sess.mu.Unlock()
+	if err := bindACPWriteAuthority(newCtrl, lease); err != nil {
+		newCtrl.ReleaseResources()
+		return &RPCError{Code: ErrInternal, Message: "session config: bind replacement session authority"}
+	}
 	if prevPath != "" {
 		if err := newCtrl.Snapshot(); err != nil {
+			_ = bindACPWriteAuthority(cur, lease)
 			newCtrl.ReleaseResources()
 			return &RPCError{Code: ErrInternal, Message: "session config: snapshot after switch: " + err.Error()}
 		}

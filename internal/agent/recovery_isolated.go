@@ -36,14 +36,37 @@ func (s *Session) ownsWritableBaseline(path string, existingDigest, rawDigest [s
 // so depth-cap / shutdown isolation rewrites in place instead of forking a new
 // digest-keyed file on every conflict tick.
 func fixedWriterRecoverySessionPath(originalPath string) string {
-	writerDigest := sha256.Sum256([]byte(SessionWriterID()))
-	suffix := fmt.Sprintf("-recovery-%x", writerDigest[:6])
+	return recoverySessionPathForLane(originalPath, SessionWriterID())
+}
+
+func recoverySessionPathForLane(originalPath, lane string) string {
+	writerDigest := sha256.Sum256([]byte(lane))
+	// Keep the established 16-hex suffix so metadata-less recovery files are
+	// still recognized by older desktop fallback discovery.
+	suffix := fmt.Sprintf("-recovery-%x", writerDigest[:8])
 	id := BranchID(originalPath)
 	if strings.HasSuffix(id, suffix) {
 		return originalPath
 	}
 	return filepath.Join(filepath.Dir(originalPath),
 		fmt.Sprintf("%s%s.jsonl", recoveryParentStem(id), suffix))
+}
+
+func (s *Session) isolatedRecoverySessionPath(originalPath string) (string, string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.recoveryLane == "" {
+		s.recoveryLane = newSessionWriterID()
+	}
+	return recoverySessionPathForLane(originalPath, s.recoveryLane), s.recoveryLane
+}
+
+func (s *Session) rotateRecoveryLane(current string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.recoveryLane == current {
+		s.recoveryLane = newSessionWriterID()
+	}
 }
 
 // writeRecoveryEventLog writes a recovery event log. Isolated writer lanes

@@ -100,6 +100,14 @@ func (c *Catalog) ReconcileDirectory(ctx context.Context, target DirectoryTarget
 		}
 		runtime.Gosched()
 	}
+	lineageRecords := make([]SessionRecord, 0, len(ordered))
+	for _, info := range ordered {
+		lineageRecords = append(lineageRecords, recordFromOrder(target, info))
+	}
+	if err := c.refreshDirectoryRecoveryLineage(ctx, target, lineageRecords); err != nil {
+		c.failDirectoryScan(context.Background(), target.Path, err)
+		return err
+	}
 	if err := c.finishDirectoryScan(ctx, target, signature, generation, now, len(ordered)); err != nil {
 		return err
 	}
@@ -539,16 +547,6 @@ func (c *Catalog) finishDirectoryScan(ctx context.Context, target DirectoryTarge
 	c.status.LastError = ""
 	c.statusMu.Unlock()
 	return nil
-}
-
-func (c *Catalog) failDirectoryScan(ctx context.Context, path string, scanErr error) {
-	c.mutationMu.Lock()
-	_, _ = c.db.ExecContext(ctx, `UPDATE catalog_directories SET state='degraded',error=? WHERE path=?`, scanErr.Error(), path)
-	c.mutationMu.Unlock()
-	c.statusMu.Lock()
-	c.status.State = StateDegraded
-	c.status.LastError = scanErr.Error()
-	c.statusMu.Unlock()
 }
 
 func (c *Catalog) enqueueRepair(path string) {

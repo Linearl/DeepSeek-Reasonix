@@ -1400,6 +1400,10 @@ func (c *Controller) submitHTTPWithFormat(input, display, format string) {
 }
 
 func (c *Controller) submitCommandOrTurn(trimmed, input, display string, scopedRefsOnly bool, editedOriginal, format string) {
+	if err := c.ensureWriteAuthorityReady(); err != nil {
+		c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "input was not accepted: this session is no longer writable — reopen it and try again"})
+		return
+	}
 	runRefTurn := func(input, display string) {
 		c.runRefTurnWithFormat(input, display, format)
 	}
@@ -1952,6 +1956,9 @@ func (c *Controller) noticeDetail(text, detail string) {
 // headless `reasonix run` path, where the Sink renders to stdout and the caller
 // just needs the exit status — no TurnDone event, no cancel bookkeeping.
 func (c *Controller) Run(ctx context.Context, input string) (err error) {
+	if err := c.ensureWriteAuthorityReady(); err != nil {
+		return err
+	}
 	ctx = extension.ContextWithRuntimeOwner(ctx, c.RuntimeOwner())
 	if c.RuntimePhase() == RuntimePhaseDraining {
 		c.emitDrainingNotice()

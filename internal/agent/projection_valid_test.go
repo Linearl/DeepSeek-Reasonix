@@ -184,10 +184,8 @@ func TestLoadProjectionSidecarDropsForeignCacheKey(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "s.jsonl")
 	msgs := []provider.Message{{Role: provider.RoleSystem, Content: "sys"}}
-	// The covered prefix hash is computed from different content than the
-	// session actually holds, so content validation fails even though the
-	// stored key differs only by model: a lineage change must not resurrect
-	// a projection whose canonical prefix no longer matches.
+	// Content validation must fail despite a model-only key change: lineage
+	// rebinding cannot resurrect a projection whose canonical prefix differs.
 	foreign := []provider.Message{{Role: provider.RoleSystem, Content: "sys-old"}}
 	if err := SaveCompactionState(path, CompactionState{
 		SchemaVersion:  compactionStateSchemaV1,

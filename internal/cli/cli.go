@@ -977,7 +977,10 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 	}
 
 	srv := serve.New(ctrl, bc, serveCfg)
-	srv.SetSessionLeases(leases)
+	if err := srv.SetSessionLeases(leases); err != nil {
+		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
+		return 1
+	}
 	return runServeFrontend(ctrl, srv, serveCfg, serveFrontendOptions{
 		command: opts.command, address: *addr,
 		portFile: *portFile, tokenFile: *tokenFile, pidFile: *pidFile,

@@ -84,6 +84,24 @@ func RecoveryBranchCoveredByParent(path, parentDir string) bool {
 	return recoveryBranchCoveredByParent(path, parentDir, meta)
 }
 
+// SessionContentCovers reports whether covering contains the complete message
+// history stored in covered. It is intentionally conservative for catalog
+// canonical promotion: repaired or damaged loads cannot authorize a redirect.
+func SessionContentCovers(coveringPath, coveredPath string) bool {
+	covering, err := LoadSession(coveringPath)
+	if err != nil || covering == nil || covering.normalizedDirty || covering.eventLogDamaged {
+		return false
+	}
+	covered, err := LoadSession(coveredPath)
+	if err != nil || covered == nil || covered.normalizedDirty || covered.eventLogDamaged {
+		return false
+	}
+	coveringMessages := covering.Snapshot()
+	coveredMessages := covered.Snapshot()
+	return messagesHavePrefix(coveringMessages, coveredMessages) ||
+		messagesHavePrefixWithCompatibleSystem(coveringMessages, coveredMessages)
+}
+
 // TryAcquireRecoveryParentGuard verifies that a recovery branch is covered by
 // its parent while holding the parent's save and lease locks. The caller must
 // keep the returned guard until permanent deletion finishes, then Release it.

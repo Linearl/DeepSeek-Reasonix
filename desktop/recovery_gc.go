@@ -31,7 +31,17 @@ func (a *App) startRecoveryGC() {
 		case <-a.ctx.Done():
 			return
 		}
-		// First pass: clear covered upgrade storms quickly (15m grace).
+		startup := time.NewTimer(agent.RecoveryGCStartupGracePeriod)
+		if !waitRecoveryGCStartup(a.ctx.Done(), startup.C) {
+			if !startup.Stop() {
+				select {
+				case <-startup.C:
+				default:
+				}
+			}
+			return
+		}
+		// Protect every upgraded user for a full startup grace before reclaiming.
 		a.sweepReclaimableRecoveryBranchesWithGrace(agent.RecoveryGCStartupGracePeriod)
 		followUp := time.NewTimer(recoveryGCFollowUpDelay)
 		ticker := time.NewTicker(recoveryGCInterval)
@@ -55,6 +65,15 @@ func (a *App) startRecoveryGC() {
 			}
 		}
 	})
+}
+
+func waitRecoveryGCStartup(done <-chan struct{}, elapsed <-chan time.Time) bool {
+	select {
+	case <-elapsed:
+		return true
+	case <-done:
+		return false
+	}
 }
 
 // sweepReclaimableRecoveryBranches trashes conflict-recovery branches that

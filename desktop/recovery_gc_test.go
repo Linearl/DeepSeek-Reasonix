@@ -11,6 +11,20 @@ import (
 	"reasonix/internal/provider"
 )
 
+func TestRecoveryGCStartupWaitIsCancellationAware(t *testing.T) {
+	done := make(chan struct{})
+	elapsed := make(chan time.Time, 1)
+	elapsed <- time.Now()
+	if !waitRecoveryGCStartup(done, elapsed) {
+		t.Fatal("elapsed startup grace should allow the first sweep")
+	}
+	done = make(chan struct{})
+	close(done)
+	if waitRecoveryGCStartup(done, make(chan time.Time)) {
+		t.Fatal("cancelled startup must skip the first sweep")
+	}
+}
+
 // forkCoveredRecoveryBranch builds the reclaimable shape in dir: a conflict
 // fork whose parent went on to contain everything the fork preserved.
 func forkCoveredRecoveryBranch(t *testing.T, dir, name string) (parentPath, branchPath string) {

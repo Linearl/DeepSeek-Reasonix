@@ -66,6 +66,10 @@ type Session struct {
 	// on, saves fail closed without a live authority rather than forking
 	// recovery under a stale controller.
 	authRequired bool
+	// recoveryLane is a session-instance identity, allocated lazily on the
+	// first true conflict. It bounds repeated saves by this live controller to
+	// one recovery file without letting a replacement controller overwrite it.
+	recoveryLane string
 }
 
 // NewSession initializes a session with an optional system prompt.
