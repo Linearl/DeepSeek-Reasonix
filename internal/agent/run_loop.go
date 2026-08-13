@@ -323,6 +323,15 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) error {
 		if !cont {
 			return terr
 		}
+		// #8170: the host asked to move the remainder of this turn to a
+		// background job. The current tool round already committed to the
+		// session, so the controller can snapshot it and continue as a job.
+		// The final-response branch above returns before this check, so a
+		// detach request that arrives while the model streams a final answer
+		// naturally falls through (best-effort: the turn just finishes).
+		if detach := turnDetachSignal(ctx); detach != nil && detach() {
+			return ErrTurnDetached
+		}
 	}
 	// Only reached when a positive maxSteps guard is configured. The work so far
 	// is already in the session, so the user can just send another message to pick

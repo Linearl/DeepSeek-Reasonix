@@ -282,6 +282,11 @@ func (o *turnOrchestrator) runOrchestratedTurn(ctx context.Context, turn orchest
 	if !turn.synthetic {
 		modelInput = c.withCapabilityRoute(ctx, input, turn.raw)
 	}
+	// #8170: surface the host's detach request to the run loop; it stops at
+	// the next tool-round boundary so the controller can snapshot and hand
+	// the remainder to a background job.
+	ctx = agent.WithTurnDetachSignal(ctx, c.detachRequestedSignal)
+	defer c.clearDetachRequested()
 	// Real user turns open a fresh Recovery Episode. Goal auto-continues and
 	// other synthetic turns inherit the current Episode so budgets accumulate
 	// only within one host-owned execution round.
@@ -291,6 +296,16 @@ func (o *turnOrchestrator) runOrchestratedTurn(ctx context.Context, turn orchest
 	err = c.runner.Run(ctx, modelInput)
 	c.captureGoalRunWorkDuration(startMessages)
 	c.persistGoalDeliveryCheckpoint()
+	if isTurnDetached(err) {
+		// #8170: the turn stopped cleanly at a detach boundary. The current
+		// tool round already committed; snapshot the session and continue the
+		// remainder as a background job. The turn itself finishes normally
+		// (no strip, no failure), and queued input dispatches right after.
+		if detachErr := c.performDetach(ctx, startMessages); detachErr != nil {
+			return detachErr
+		}
+		return nil
+	}
 	if err != nil {
 		// When the user explicitly cancels, keep the real prompt and any fully
 		// paired tool work. Partial reasoning/output remains durable for display
