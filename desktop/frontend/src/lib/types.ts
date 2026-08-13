@@ -569,6 +569,15 @@ export interface RecoveryCleanupResult {
   items: RecoveryCleanupItem[];
 }
 
+// SessionGroup is a user-created in-project (or global) session group: a
+// lightweight UI container that keeps a set of topics folded away without
+// moving their files (#8194).
+export interface SessionGroup {
+  id: string;
+  title: string;
+  topicIds?: string[];
+}
+
 export interface DeliveryWorktreeAvailability {
   available: boolean;
   reason?: string;

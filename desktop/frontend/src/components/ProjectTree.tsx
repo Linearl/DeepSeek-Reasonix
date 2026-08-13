@@ -5,14 +5,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
-import { Archive, ArrowDown, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch } from "lucide-react";
+import { Archive, ArrowDown, Pencil, Plus, Folder, FolderMinus, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch } from "lucide-react";
 import { asArray } from "../lib/array";
 import { useToast } from "../lib/toast";
 import { app } from "../lib/bridge";
 import { onProjectTreeChangedV2 } from "../lib/sessionCatalogBridge";
 import { isRuntimeSessionNode, isTopicNode, mergeProjectTopicPage, projectTreeDedupedExactTime, projectTreeEventAffectsFolder, projectTreeFolderDisclosure, projectTreeReadActivityKey, projectTreeRevisionIsFresh, projectTreeShellChildren, projectTreeShouldApplyShellSnapshot, projectTreeShouldRenderTopicActions, projectTreeShouldSuppressOpenForRename, projectTreeTopicArchiveBlocked, projectTreeTopicHasUnreadActivity, projectTreeTopicHoverCardModel, projectTreeTopicMenuOffersPin, projectTreeTopicMetaLine, projectTreeTopicOpenRequest, projectTreeWithoutTopic, topicActivityAt, topicActivityDateLabel, topicActivityLabel, topicIsActive, topicStatus, topicStatusLabel, topicUnknownTimeLabel, type ProjectTreePendingTopicOpen, type ProjectTreeReadActivity, type ProjectTreeTopicHoverCard, type ProjectTreeVariant } from "../lib/projectTreeTopic";
 export * from "../lib/projectTreeTopic";
-import type { ProjectNode, SessionCatalogStatus } from "../lib/types";
+import type { ProjectNode, SessionCatalogStatus, SessionGroup } from "../lib/types";
 import { topicActivityTime } from "../lib/session";
 import { useT, type Translator } from "../lib/i18n";
 import { PROJECT_COLOR_OPTIONS, projectColorValue } from "../lib/projectColors";
@@ -218,6 +218,19 @@ function reorderedProjectRoots(nodes: ProjectNode[], draggedRoot: string, target
   if (targetIndex < 0) return roots;
   next.splice(position === "before" ? targetIndex : targetIndex + 1, 0, draggedRoot);
   return next;
+}
+
+function groupKeyFor(node: ProjectNode): string {
+  return node.kind === "global_folder" ? "global|" : `project|${node.root ?? ""}`;
+}
+
+function groupKeyForTopic(node: ProjectNode): string {
+  return node.kind === "global_topic" ? "global|" : `project|${node.root ?? ""}`;
+}
+
+function splitGroupKey(key: string): { scope: "global" | "project"; root: string } {
+  if (key === "global|") return { scope: "global", root: "" };
+  return { scope: "project", root: key.slice("project|".length) };
 }
 
 // reorderedTopicIDs computes the full topic order for the parent folder after
@@ -462,6 +475,13 @@ export function ProjectTree({
   const [dragTopicScope, setDragTopicScope] = useState<"global" | "project">("project");
   const [dragTopicRoot, setDragTopicRoot] = useState("");
   const [dropTopic, setDropTopic] = useState<{ topicID: string; position: "before" | "after" } | null>(null);
+  // #8194: session groups per project (key = "project|<root>" | "global|").
+  const [groupsByKey, setGroupsByKey] = useState<Record<string, SessionGroup[]>>({});
+  const loadedGroupsRef = useRef<Set<string>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [editingGroup, setEditingGroup] = useState<{ key: string; id: string } | null>(null);
+  const [groupDraft, setGroupDraft] = useState("");
+  const [menuGroup, setMenuGroup] = useState<{ key: string; id: string } | null>(null);
   const [dropProject, setDropProject] = useState<{ root: string; position: ProjectDropPosition } | null>(null);
   const [collapseSnapshot, setCollapseSnapshot] = useState<CollapseSnapshot | null>(null);
   const [platform, setPlatform] = useState("");
@@ -585,6 +605,28 @@ export function ProjectTree({
           void loadProjectTopicsRef.current(project);
         }
       }
+      // #8194: load session groups for every project in parallel (best-effort,
+      // non-blocking; each key fetched once per session).
+      void (async () => {
+        const entries = await Promise.all(
+          projects.map(async (project) => {
+            const key = groupKeyFor(project);
+            if (loadedGroupsRef.current.has(key)) return null;
+            try {
+              const groups = await app.ListProjectGroups(project.kind === "global_folder" ? "global" : "project", project.root ?? "");
+              loadedGroupsRef.current.add(key);
+              return { key, groups };
+            } catch {
+              return null;
+            }
+          }),
+        );
+        const merged: Record<string, SessionGroup[]> = {};
+        for (const entry of entries) {
+          if (entry && entry.groups.length > 0) merged[entry.key] = entry.groups;
+        }
+        if (Object.keys(merged).length > 0) setGroupsByKey((prev) => ({ ...prev, ...merged }));
+      })();
     } catch {
       /* bridge unavailable */
     }
@@ -1141,6 +1183,93 @@ export function ProjectTree({
     }
   }, [onTopicsChanged, refresh, tree]);
 
+  const commitTopicToGroup = useCallback(async (topicID: string, groupID: string, key: string) => {
+    const groups = groupsByKey[key] ?? [];
+    const updated = groups.map((g) => (g.id === groupID ? { ...g, topicIds: [...new Set([...(g.topicIds ?? []), topicID])] } : g));
+    setGroupsByKey((prev) => ({ ...prev, [key]: updated }));
+    const { scope, root } = splitGroupKey(key);
+    try {
+      await app.SaveSessionGroups(scope, root, updated);
+    } catch {
+      const fresh = await app.ListProjectGroups(scope, root).catch(() => null);
+      if (fresh) setGroupsByKey((prev) => ({ ...prev, [key]: fresh }));
+    }
+  }, [groupsByKey]);
+
+  const removeTopicFromGroup = useCallback(async (topicID: string, key: string) => {
+    const groups = groupsByKey[key] ?? [];
+    const updated = groups.map((g) => ({ ...g, topicIds: (g.topicIds ?? []).filter((id) => id !== topicID) }));
+    setGroupsByKey((prev) => ({ ...prev, [key]: updated }));
+    const { scope, root } = splitGroupKey(key);
+    try {
+      await app.SaveSessionGroups(scope, root, updated);
+    } catch {
+      const fresh = await app.ListProjectGroups(scope, root).catch(() => null);
+      if (fresh) setGroupsByKey((prev) => ({ ...prev, [key]: fresh }));
+    }
+  }, [groupsByKey]);
+
+  const startRenameGroup = useCallback((key: string, id: string, title: string) => {
+    setEditingGroup({ key, id });
+    setGroupDraft(title);
+  }, []);
+
+  const commitRenameGroup = useCallback(async () => {
+    if (!editingGroup) return;
+    const { key, id } = editingGroup;
+    const title = groupDraft.trim();
+    const groups = groupsByKey[key] ?? [];
+    const updated = title ? groups.map((g) => (g.id === id ? { ...g, title } : g)) : groups.filter((g) => g.id !== id);
+    setGroupsByKey((prev) => ({ ...prev, [key]: updated }));
+    setEditingGroup(null);
+    const { scope, root } = splitGroupKey(key);
+    try {
+      await app.SaveSessionGroups(scope, root, updated);
+    } catch {
+      const fresh = await app.ListProjectGroups(scope, root).catch(() => null);
+      if (fresh) setGroupsByKey((prev) => ({ ...prev, [key]: fresh }));
+    }
+  }, [editingGroup, groupDraft, groupsByKey]);
+
+  const deleteGroup = useCallback(async (key: string, id: string) => {
+    const groups = groupsByKey[key] ?? [];
+    const updated = groups.filter((g) => g.id !== id);
+    setGroupsByKey((prev) => ({ ...prev, [key]: updated }));
+    setMenuGroup(null);
+    const { scope, root } = splitGroupKey(key);
+    try {
+      await app.SaveSessionGroups(scope, root, updated);
+    } catch {
+      const fresh = await app.ListProjectGroups(scope, root).catch(() => null);
+      if (fresh) setGroupsByKey((prev) => ({ ...prev, [key]: fresh }));
+    }
+  }, [groupsByKey]);
+
+  const createGroup = useCallback(async (key: string, title: string) => {
+    const groups = groupsByKey[key] ?? [];
+    const group: SessionGroup = { id: `group-${Date.now()}`, title, topicIds: [] };
+    const updated = [...groups, group];
+    setGroupsByKey((prev) => ({ ...prev, [key]: updated }));
+    const { scope, root } = splitGroupKey(key);
+    try {
+      await app.SaveSessionGroups(scope, root, updated);
+    } catch {
+      const fresh = await app.ListProjectGroups(scope, root).catch(() => null);
+      if (fresh) setGroupsByKey((prev) => ({ ...prev, [key]: fresh }));
+    }
+    setCollapsedGroups((prev) => new Set(prev).add(`${key}|${group.id}`));
+  }, [groupsByKey]);
+
+  const toggleGroupCollapsed = useCallback((key: string, id: string) => {
+    const ck = `${key}|${id}`;
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(ck)) next.delete(ck);
+      else next.add(ck);
+      return next;
+    });
+  }, []);
+
   const commitTopicReorder = useCallback(async (draggedID: string, targetID: string, position: "before" | "after") => {
     if (!draggedID || draggedID === targetID) return;
     const nextIDs = reorderedTopicIDs(tree, draggedID, targetID, position);
@@ -1248,7 +1377,19 @@ export function ProjectTree({
         setMenuTopic(topicId);
         setConfirmAction(null);
       };
+      const topicGroupKey = groupKeyForTopic(node);
+      const topicGroup = (groupsByKey[topicGroupKey] ?? []).find((g) => (g.topicIds ?? []).includes(topicId));
       const topicMenuItems: ContextMenuItem[] = [
+        ...(topicGroup
+          ? [
+              {
+                key: "remove-from-group",
+                icon: <FolderMinus size={13} />,
+                label: t("projectTree.removeFromGroup"),
+                onSelect: () => void removeTopicFromGroup(topicId, topicGroupKey),
+              },
+            ]
+          : []),
         ...(projectTreeTopicMenuOffersPin(variant)
           ? [
               {
@@ -1612,6 +1753,12 @@ export function ProjectTree({
       : [];
     const projectMenuItems: ContextMenuItem[] = [
       {
+        key: "new-group",
+        icon: <FolderPlus size={13} />,
+        label: t("projectTree.newGroup"),
+        onSelect: () => void createGroup(groupKeyFor(node), t("projectTree.newGroup")),
+      },
+      {
         key: "new-session",
         icon: <Plus size={13} />,
         label: t("projectTree.newTopic"),
@@ -1751,10 +1898,102 @@ export function ProjectTree({
           </div>
         );
       }
+      // #8194: split children into ungrouped rows + per-group rows.
+      const groupKey = groupKeyFor(node);
+      const groups = groupsByKey[groupKey] ?? [];
+      const groupMemberSet = new Set<string>();
+      for (const g of groups) for (const id of g.topicIds ?? []) groupMemberSet.add(id);
       return (
         <div className={`project-tree__children${isExpanded ? " project-tree__children--expanded" : ""}`}>
           <div className="project-tree__children-inner">
-            {windowedChildren.map((child) => renderNode(child, depth + 1, section, isVisible && isExpanded))}
+            {windowedChildren.filter((child) => !groupMemberSet.has(child.topicId ?? "")).map((child) => renderNode(child, depth + 1, section, isVisible && isExpanded))}
+            {groups.map((group) => {
+              const groupCollapsedKey = `${groupKey}|${group.id}`;
+              const groupCollapsed = collapsedGroups.has(groupCollapsedKey);
+              const members = windowedChildren.filter((child) => (group.topicIds ?? []).includes(child.topicId ?? ""));
+              const groupEditing = editingGroup !== null && editingGroup.key === groupKey && editingGroup.id === group.id;
+              return (
+                <div key={group.id} className={`project-tree__group${groupCollapsed ? " project-tree__group--collapsed" : ""}`} style={{ paddingLeft: 14 + (depth + 1) * 16 }}>
+                  <button
+                    type="button"
+                    className="project-tree__group-main"
+                    title={group.title}
+                    onClick={() => toggleGroupCollapsed(groupKey, group.id)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setMenuGroup({ key: groupKey, id: group.id });
+                      setMenuPoint(contextMenuPointFromEvent(event));
+                    }}
+                    onDragOver={(event) => {
+                      if (dragTopicID && dragTopicID !== group.id) {
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                      }
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      if (dragTopicID) {
+                        void commitTopicToGroup(dragTopicID, group.id, groupKey);
+                        setDragTopicID(null);
+                        setDropTopic(null);
+                      }
+                    }}
+                  >
+                    <span className="project-tree__group-chevron" aria-hidden="true">{groupCollapsed ? "▸" : "▾"}</span>
+                    {groupEditing ? (
+                      <input
+                        autoFocus
+                        className="project-tree__group-input"
+                        value={groupDraft}
+                        onChange={(event) => setGroupDraft(event.target.value)}
+                        onFocus={(event) => event.target.select()}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") void commitRenameGroup();
+                          if (event.key === "Escape") setEditingGroup(null);
+                        }}
+                        onBlur={() => void commitRenameGroup()}
+                        onClick={(event) => event.stopPropagation()}
+                      />
+                    ) : (
+                      <span className="project-tree__group-title">{group.title}</span>
+                    )}
+                    <span className="project-tree__group-count">{group.topicIds?.length ?? 0}</span>
+                  </button>
+                  {menuGroup !== null && menuGroup.key === groupKey && menuGroup.id === group.id && (
+                    <ContextMenu
+                      open
+                      point={menuPoint}
+                      items={[
+                        {
+                          key: "rename",
+                          icon: <Pencil size={13} />,
+                          label: t("projectTree.renameGroup"),
+                          onSelect: () => {
+                            startRenameGroup(groupKey, group.id, group.title);
+                            setMenuGroup(null);
+                          },
+                        },
+                        {
+                          key: "delete",
+                          icon: <Archive size={13} />,
+                          label: t("projectTree.deleteGroup"),
+                          danger: true,
+                          onSelect: () => void deleteGroup(groupKey, group.id),
+                        },
+                      ]}
+                      minWidth={178}
+                      ariaLabel={t("projectTree.renameGroup")}
+                      onClose={() => setMenuGroup(null)}
+                    />
+                  )}
+                  {!groupCollapsed && members.length > 0 && (
+                    <div className="project-tree__group-children">
+                      {members.map((child) => renderNode(child, depth + 1, section, isVisible && isExpanded))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             {windowToggleVisible && (
               <button
                 type="button"

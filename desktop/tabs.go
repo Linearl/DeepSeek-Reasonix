@@ -4854,11 +4854,21 @@ const legacyProjectSidebarRecoveryMarker = "desktop-projects-legacy-recovered"
 var desktopProjectsFileMu sync.Mutex
 
 type desktopProject struct {
-	Root         string   `json:"root"`
-	Title        string   `json:"title,omitempty"`
-	Color        string   `json:"color,omitempty"`
-	Topics       []string `json:"topics"` // ordered topic IDs
-	PinnedTopics []string `json:"pinnedTopics,omitempty"`
+	Root         string         `json:"root"`
+	Title        string         `json:"title,omitempty"`
+	Color        string         `json:"color,omitempty"`
+	Topics       []string       `json:"topics"` // ordered topic IDs
+	PinnedTopics []string       `json:"pinnedTopics,omitempty"`
+	Groups       []desktopGroup `json:"groups,omitempty"` // #8194: in-project session groups (收纳容器)
+}
+
+// desktopGroup is a user-created in-project (or global) session group: a
+// lightweight UI container that keeps a set of topics folded away without
+// moving their files (#8194).
+type desktopGroup struct {
+	ID       string   `json:"id"`
+	Title    string   `json:"title"`
+	TopicIDs []string `json:"topicIds,omitempty"`
 }
 
 type desktopProjectFile struct {
@@ -4866,6 +4876,7 @@ type desktopProjectFile struct {
 	GlobalColor        string           `json:"globalColor,omitempty"`
 	GlobalTopics       []string         `json:"globalTopics,omitempty"`
 	GlobalPinnedTopics []string         `json:"globalPinnedTopics,omitempty"`
+	GlobalGroups       []desktopGroup   `json:"globalGroups,omitempty"` // #8194: groups for the global workspace`
 	DeletedTopics      []string         `json:"deletedTopics,omitempty"`
 	PinnedProjects     []string         `json:"pinnedProjects,omitempty"`
 	SidebarOrder       []string         `json:"sidebarOrder,omitempty"`
@@ -5317,6 +5328,7 @@ func normalizeProjectsFile(f desktopProjectFile) desktopProjectFile {
 		GlobalColor:        normalizeProjectColor(f.GlobalColor),
 		GlobalTopics:       uniqueStrings(f.GlobalTopics),
 		GlobalPinnedTopics: uniqueStrings(f.GlobalPinnedTopics),
+		GlobalGroups:       normalizeGroups(f.GlobalGroups),
 		DeletedTopics:      uniqueStrings(f.DeletedTopics),
 	}
 	for _, p := range f.Projects {
@@ -5329,6 +5341,7 @@ func normalizeProjectsFile(f desktopProjectFile) desktopProjectFile {
 		p.Color = normalizeProjectColor(p.Color)
 		p.Topics = uniqueStrings(p.Topics)
 		p.PinnedTopics = uniqueStrings(p.PinnedTopics)
+		p.Groups = normalizeGroups(p.Groups)
 		if i := projectIndexByRoot(out.Projects, root); i >= 0 {
 			if out.Projects[i].Title == "" && p.Title != "" {
 				out.Projects[i].Title = p.Title
@@ -5349,6 +5362,27 @@ func normalizeProjectsFile(f desktopProjectFile) desktopProjectFile {
 		}
 	}
 	out.SidebarOrder = normalizeSidebarOrder(f.SidebarOrder, out.Projects)
+	return out
+}
+
+// normalizeGroups deduplicates topic membership and trims titles. Empty groups
+// are kept (a user may create a group before adding topics).
+func normalizeGroups(groups []desktopGroup) []desktopGroup {
+	out := make([]desktopGroup, 0, len(groups))
+	seenGroup := make(map[string]bool, len(groups))
+	for _, g := range groups {
+		g.ID = strings.TrimSpace(g.ID)
+		g.Title = strings.TrimSpace(g.Title)
+		if g.ID == "" {
+			continue
+		}
+		if seenGroup[g.ID] {
+			continue
+		}
+		seenGroup[g.ID] = true
+		g.TopicIDs = uniqueStrings(g.TopicIDs)
+		out = append(out, g)
+	}
 	return out
 }
 
@@ -6794,6 +6828,73 @@ func (a *App) ReorderTopics(scope, workspaceRoot string, orderedTopicIDs []strin
 	}
 	a.emitProjectTreeMetadataChanged()
 	return nil
+}
+
+// ListProjectGroups returns the session groups for a project or the global
+// workspace (#8194). Groups are read straight from projects.json; the catalog
+// tree is untouched.
+func (a *App) ListProjectGroups(scope, workspaceRoot string) ([]desktopGroup, error) {
+	scope = strings.TrimSpace(scope)
+	workspaceRoot = normalizeProjectRoot(workspaceRoot)
+	if scope != "global" && workspaceRoot == "" {
+		return nil, fmt.Errorf("workspaceRoot is required for project scope")
+	}
+	f := loadProjectsFile()
+	if scope == "global" {
+		return normalizeGroups(f.GlobalGroups), nil
+	}
+	i := projectIndexByRoot(f.Projects, workspaceRoot)
+	if i < 0 {
+		return nil, nil
+	}
+	return normalizeGroups(f.Projects[i].Groups), nil
+}
+
+// SaveSessionGroups replaces the full set of session groups for a project or
+// the global workspace (#8194). Topic membership is deduplicated; groups
+// reference topics by ID only, so deleted topics are ignored at render time.
+func (a *App) SaveSessionGroups(scope, workspaceRoot string, groups []desktopGroup) error {
+	scope = strings.TrimSpace(scope)
+	workspaceRoot = normalizeProjectRoot(workspaceRoot)
+	if scope != "global" && workspaceRoot == "" {
+		return fmt.Errorf("workspaceRoot is required for project scope")
+	}
+	normalized := normalizeGroups(groups)
+	if err := updateProjectsFile(func(f *desktopProjectFile) (bool, error) {
+		if scope == "global" {
+			if equalGroups(normalized, f.GlobalGroups) {
+				return false, nil
+			}
+			f.GlobalGroups = normalized
+			return true, nil
+		}
+		i := projectIndexByRoot(f.Projects, workspaceRoot)
+		if i < 0 {
+			return false, fmt.Errorf("project %q not found", workspaceRoot)
+		}
+		if equalGroups(normalized, f.Projects[i].Groups) {
+			return false, nil
+		}
+		f.Projects[i].Groups = normalized
+		return true, nil
+	}); err != nil {
+		return err
+	}
+	a.emitProjectTreeMetadataChanged()
+	return nil
+}
+
+// equalGroups reports whether two group slices are identical (order-sensitive).
+func equalGroups(a, b []desktopGroup) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].ID != b[i].ID || a[i].Title != b[i].Title || !sameStringList(a[i].TopicIDs, b[i].TopicIDs) {
+			return false
+		}
+	}
+	return true
 }
 
 // completeTopicOrder returns orderedTopicIDs deduplicated in order, followed by

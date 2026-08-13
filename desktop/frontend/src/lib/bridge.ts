@@ -12,6 +12,7 @@ import { t } from "./i18n";
 import { providerIsConfigured, providerRequiresKey, removeProviderAccessesForMock } from "./providerModels";
 import { DEFAULT_STATUS_BAR_ITEMS, normalizeStatusBarItems } from "./statusBarItems";
 import { registerTrustedThemeBackgroundURLs } from "./themePack";
+import { SessionGroup } from "./types";
 import { modeHasAutoApproveTools, modeWithAutoApproveTools, modeWithPlan, normalizeCollaborationMode, normalizeMode, normalizeTokenMode, normalizeToolApprovalMode } from "./types";
 import { decisionSurfaceMockFromInput, isLongDecisionOptionsMockInput } from "./decisionSurfaceMock";
 import type {
@@ -621,6 +622,8 @@ export interface AppBindings extends SessionCatalogBindings, HistoryCatalogBindi
   TrashTopic(topicID: string): Promise<void>;
   SetTopicPinned(topicID: string, pinned: boolean): Promise<void>;
   ReorderTopics(scope: string, workspaceRoot: string, orderedTopicIDs: string[]): Promise<void>;
+  ListProjectGroups(scope: string, workspaceRoot: string): Promise<SessionGroup[]>;
+  SaveSessionGroups(scope: string, workspaceRoot: string, groups: SessionGroup[]): Promise<void>;
   ContextPanel(tabID: string): Promise<ContextPanelInfo>;
   // New native-feel bindings (added with the desktop native-feel plan).
   ConfirmAction(req: NativeConfirmRequest): Promise<boolean>;
@@ -1332,6 +1335,8 @@ function mockExternalOpenerIconDataURL(color: string, label: string): string {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="${color}"/><text x="32" y="40" text-anchor="middle" font-family="system-ui" font-size="25" font-weight="700" fill="white">${label}</text></svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
+
+const mockGroupsByKey: Record<string, SessionGroup[]> = {};
 
 function makeMockApp(): AppBindings {
   const scenario = mockScenario();
@@ -5355,6 +5360,12 @@ function makeMockApp(): AppBindings {
           .filter((c): c is NonNullable<typeof c> => Boolean(c));
         return;
       }
+    },
+    async ListProjectGroups(scope: string, workspaceRoot: string): Promise<SessionGroup[]> {
+      return mockGroupsByKey[scope === "global" ? "global|" : `project|${workspaceRoot}`] ?? [];
+    },
+    async SaveSessionGroups(scope: string, workspaceRoot: string, groups: SessionGroup[]) {
+      mockGroupsByKey[scope === "global" ? "global|" : `project|${workspaceRoot}`] = groups;
     },
     async SaveWindowState(_state) {
       // no-op in browser dev — no real window geometry to persist
