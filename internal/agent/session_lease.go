@@ -387,9 +387,10 @@ func TryAcquireSessionLeaseWithHandoff(path, sourceWriterID string) (*SessionLea
 	}
 	sessionLeaseActiveOwners.Delete(path)
 	lease := &SessionLease{path: path, ownerID: ownerID, leaseLock: leaseLock}
-	// Clear the reservation on the fresh lease info.
-	fresh := newSessionLeaseInfo(path)
-	if err := SaveSessionLeaseInfo(path, fresh); err != nil {
+	// Clear the reservation by publishing a fresh owner identity inside
+	// .lease.lock itself (new-format owner info; the legacy .lease.json
+	// sidecar is never written on the handoff path either).
+	if err := publishSessionLeaseOwner(leaseLock, path); err != nil {
 		lease.Release()
 		return nil, err
 	}
