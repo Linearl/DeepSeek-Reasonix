@@ -258,6 +258,8 @@ var Chinese = Messages{
 	CmdCls:              "清屏（保留 LLM 上下文）",
 	CmdCompact:          "压缩上下文",
 	CmdContinueChecks:   "继续已暂停的任务收尾检查",
+	CmdDetach:           "将运行中的任务转为后台",
+	SlashDetachQueued:   "任务将在下一个工具边界转入后台，可以继续输入",
 	CmdContext:          "查看上下文窗口、阈值与上次维护结果",
 	CmdRewind:           "回滚到更早的一轮",
 	CmdTree:             "查看对话分支树",

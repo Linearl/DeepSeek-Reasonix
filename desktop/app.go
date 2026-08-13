@@ -1251,6 +1251,20 @@ func (a *App) SteerForTab(tabID, text string) error {
 	return nil
 }
 
+// DetachRunningTurn moves the running turn of the given tab to a background
+// job at the next tool-round boundary (#8170). The tab stays open; queued
+// user input dispatches right after the turn finishes.
+func (a *App) DetachRunningTurn(tabID string) error {
+	tab, ctrl := a.tabAndCtrlByID(tabID)
+	if tab == nil || ctrl == nil {
+		return a.workspaceNotReadyErr(tab)
+	}
+	if a.tabIsReadOnly(tab) {
+		return readOnlyChannelErr()
+	}
+	return ctrl.RequestDetach()
+}
+
 func (a *App) tabAndCtrlByID(tabID string) (*WorkspaceTab, control.SessionAPI) {
 	a.mu.RLock()
 	tab := a.tabByIDLocked(tabID)

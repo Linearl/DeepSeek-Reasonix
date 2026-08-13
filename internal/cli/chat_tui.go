@@ -4668,6 +4668,13 @@ func (m *chatTUI) runSlashCommand(input string) tea.Cmd {
 		return m.startControllerTurn(input, input, func() {
 			m.ctrl.SubmitFinalReadinessRecovery(input, prompt)
 		})
+	case "/detach":
+		m.echoLocalCommand(input)
+		if err := m.ctrl.RequestDetach(); err != nil {
+			m.notice(fmt.Sprintf("/detach: %v", err))
+		} else {
+			m.notice(i18n.M.SlashDetachQueued)
+		}
 	case "/compact":
 		m.echoLocalCommand(input)
 		// Compaction makes a (network) summarizer call; run it off the Update loop

@@ -599,6 +599,7 @@ export const zhTW: Record<DictKey, string> = {
   "composer.guidanceEmptyPreview": "沒有預覽正文",
   "composer.guidanceMore": "更多引導選項",
   "composer.stop": "停止（Esc）",
+  "composer.detach": "轉為背景",
   "composer.stopShort": "停止",
   "composer.pastedLabel": "[已貼上文字 #{id} · {lines} 行]",
   "composer.pastedShowPreview": "預覽貼上文字",

@@ -7127,6 +7127,12 @@ body > .mermaid-diagram--fullscreen {
   background: color-mix(in srgb, var(--err) 14%, var(--bg-elev-2));
   color: var(--err);
 }
+.composer__btn--detach {
+  color: var(--color-text-muted, inherit);
+}
+.composer__btn--detach:hover {
+  color: var(--color-accent, inherit);
+}
 .composer__btn--stop:hover,
 .composer__btn--stop:focus-visible {
   color: var(--fg);

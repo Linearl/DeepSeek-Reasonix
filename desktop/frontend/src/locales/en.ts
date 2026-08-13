@@ -794,6 +794,7 @@ export const en = {
   "composer.shellMode": "Shell mode: prefix input with !",
   "composer.shellModeOn": "Shell mode on: click to remove !",
   "composer.stop": "Stop (Esc)",
+  "composer.detach": "Move to background",
   "composer.stopShort": "Stop",
   "composer.pastedLabel": "[Pasted text #{id} · {lines} lines]",
   "composer.pastedShowPreview": "Preview pasted text",

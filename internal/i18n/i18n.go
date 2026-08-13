@@ -242,6 +242,8 @@ type Messages struct {
 	CmdCls              string // /cls
 	CmdCompact          string // /compact
 	CmdContinueChecks   string // /continue-checks
+	CmdDetach           string // /detach
+	SlashDetachQueued   string // /detach accepted notice
 	CmdContext          string // /context
 	CmdRewind           string // /rewind
 	CmdTree             string // /tree

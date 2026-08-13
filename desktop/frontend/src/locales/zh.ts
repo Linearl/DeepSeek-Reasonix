@@ -795,6 +795,7 @@ export const zh: Record<DictKey, string> = {
   "composer.shellMode": "Shell 模式：给输入前加 !",
   "composer.shellModeOn": "Shell 模式已开：点击移除 !",
   "composer.stop": "停止（Esc）",
+  "composer.detach": "转后台",
   "composer.stopShort": "停止",
   "composer.pastedLabel": "[已粘贴文本 #{id} · {lines} 行]",
   "composer.pastedShowPreview": "预览粘贴文本",

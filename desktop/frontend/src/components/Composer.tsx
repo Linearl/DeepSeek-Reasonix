@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
-import { ArrowRight, ArrowUp, AtSign, Check, ChevronsUpDown, CornerDownRight, Equal, Eye, FilePlus2, FileText, Folder, Gauge, Hash, List, MessageSquare, PackageCheck, Plus, Search, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, X } from "lucide-react";
+import { ArrowRight, ArrowUp, AtSign, Check, ChevronsUpDown, CornerDownRight, Equal, Eye, FilePlus2, FileText, Folder, Gauge, Hash, List, MessageSquare, PackageCheck, Plus, Search, SendToBack, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, X } from "lucide-react";
 import { asArray } from "../lib/array";
 import { filterAtMatches } from "../lib/atMatches";
 import { DedupIndex, sha256 } from "../lib/attachDedup";
@@ -2742,6 +2742,16 @@ export function Composer({
 
   // handleCancel stops the in-flight turn; if it was cancelled before the server
   // replied, the just-sent text is handed back so we drop it back into the input.
+  const handleDetach = useCallback(async () => {
+    if (!tabId) return;
+    try {
+      await app.DetachRunningTurn(tabId);
+    } catch (err) {
+      console.warn("DetachRunningTurn failed", err);
+      showToast?.(err instanceof Error ? err.message : String(err), "error");
+    }
+  }, [tabId, showToast]);
+
   const handleCancel = async () => {
     const targetDraftKey = activeDraftKeyRef.current;
     if (cancelSettlingDraftsRef.current.has(targetDraftKey)) return;
@@ -4568,6 +4578,18 @@ export function Composer({
                   aria-label={t("composer.stop")}
                 >
                   <Square size={12} fill="currentColor" />
+                </button>
+              </Tooltip>
+            )}
+            {running && !readOnly && (
+              <Tooltip label={t("composer.detach")}>
+                <button
+                  className="composer__btn composer__btn--detach"
+                  type="button"
+                  onClick={() => void handleDetach()}
+                  aria-label={t("composer.detach")}
+                >
+                  <SendToBack size={14} />
                 </button>
               </Tooltip>
             )}

@@ -257,6 +257,8 @@ var English = Messages{
 	CmdCls:              "clear screen only (keep LLM context)",
 	CmdCompact:          "compact context",
 	CmdContinueChecks:   "continue a paused final-readiness check",
+	CmdDetach:           "move running turn to a background job",
+	SlashDetachQueued:   "turn will move to a background job at the next tool boundary; keep typing",
 	CmdContext:          "show context window, thresholds, and last maintenance",
 	CmdRewind:           "rewind to an earlier turn",
 	CmdTree:             "show conversation branches",
