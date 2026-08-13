@@ -1393,6 +1393,49 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		}
 		return agent.FormatSubagentRunResult(answer, run, false), nil
 	}
+
+	// detachRunner continues a foreground turn that the user moved to a
+	// background job (#8170). The controller hands it the session snapshot
+	// file; we copy it into the subagent transcript store and run the
+	// remainder as an isolated job with the main agent's registry and model.
+	// The job returns its reference immediately; completion surfaces through
+	// the jobs manager (notice + <background-jobs> on the next turn).
+	detachContinueInstruction := "Continue the task that was detached from the foreground turn. The session history before this message is your starting point; work autonomously until the task is done."
+	detachRunner := func(sctx context.Context, snapshotPath string, spec control.DetachSpec) (string, error) {
+		subSpec := agent.SubagentSpec{
+			Kind:          "detach",
+			Name:          spec.Label,
+			WorkspaceRoot: spec.WorkspaceRoot,
+			ParentSession: spec.ParentSession,
+			SystemPrompt:  spec.SystemPrompt,
+			Registry:      reg,
+			Model:         entry.Model,
+			Effort:        entry.Effort,
+		}
+		job := jm.StartForSession(spec.ParentSession, "detach", spec.Label, func(jobCtx context.Context, out io.Writer) (string, error) {
+			run, err := subagentStore.PrepareDetached(snapshotPath, subSpec)
+			if err != nil {
+				return "", err
+			}
+			defer run.Release()
+			runOptions := subagentSkillOptions(jobCtx, 0, entry.Price, entry.ContextWindow, 0)
+			answer, err := agent.RunSubAgentWithSession(jobCtx, execProv, reg, run.Session, detachContinueInstruction, runOptions, agent.NestedSink(jobCtx, event.Discard))
+			if err != nil {
+				_ = subagentStore.SaveFailed(run)
+				_ = subagentStore.DeleteTranscript(run.Ref)
+				return "", err
+			}
+			if err := subagentStore.SaveCompleted(run); err != nil {
+				_ = subagentStore.DeleteTranscript(run.Ref)
+				return "", err
+			}
+			// #8170: the isolated snapshot file is no longer needed once the
+			// job completes; the summary lives in the jobs manager.
+			_ = subagentStore.DeleteTranscript(run.Ref)
+			return agent.FormatSubagentRunResult(answer, run, false), nil
+		})
+		return job.ID, nil
+	}
 	skillProfile := func(sk skill.Skill) *event.Profile {
 		model, effort := subagentModelRef(cfg, sk), subagentEffortRef(cfg, sk)
 		if model == "" && effort == "" {
@@ -1748,6 +1791,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		DisableImplicitSkillInvocation: !implicitSkillInvocation,
 		SkillRunner:                    skillRunner,
 		ReadOnlySkillRunner:            readOnlySkillRunner,
+		DetachRunner:                   detachRunner,
 		SkillProfile:                   skillProfile,
 		Hooks:                          hookRunner,
 		Memory:                         mem,

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -373,6 +374,94 @@ func (s *SubagentStore) parentSessionPath(parentSession string) (string, bool) {
 		return "", false
 	}
 	return filepath.Join(filepath.Dir(s.dir), parentSession+".jsonl"), true
+}
+
+// PrepareDetached starts a subagent-style run from an existing session-file
+// snapshot — the detach point of a foreground turn (#8170). The snapshot is
+// copied into the transcript store so the detached run owns a fully isolated
+// file; the job deletes it again on completion (DeleteTranscript).
+func (s *SubagentStore) PrepareDetached(snapshotPath string, spec SubagentSpec) (*SubagentRun, error) {
+	if s == nil {
+		return nil, fmt.Errorf("subagent transcript store is required")
+	}
+	if err := requireParentSession(spec); err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(snapshotPath)
+	if err != nil {
+		return nil, fmt.Errorf("detach snapshot %q: %w", snapshotPath, err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("detach snapshot %q is not a regular file", snapshotPath)
+	}
+	ref, err := s.newRef()
+	if err != nil {
+		return nil, err
+	}
+	release, err := s.lock(ref)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	meta := metaFromSpec(ref, SubagentRunning, now, now, spec)
+	meta.Kind = "detach"
+	if err := copyFile(snapshotPath, s.sessionPath(ref)); err != nil {
+		release()
+		return nil, fmt.Errorf("copy detach snapshot: %w", err)
+	}
+	if err := s.saveMeta(meta); err != nil {
+		release()
+		return nil, err
+	}
+	sess, err := LoadSession(s.sessionPath(ref))
+	if err != nil {
+		release()
+		return nil, fmt.Errorf("load detach snapshot: %w", err)
+	}
+	return &SubagentRun{Ref: ref, Session: sess, Meta: meta, store: s, release: release}, nil
+}
+
+// DeleteTranscript removes the transcript file and its metadata for a ref.
+// Used after a detached job completes: the result summary lives in the jobs
+// manager, the isolated snapshot file is no longer needed (#8170).
+func (s *SubagentStore) DeleteTranscript(ref string) error {
+	if s == nil || strings.TrimSpace(ref) == "" {
+		return nil
+	}
+	release, err := s.lock(ref)
+	if err != nil {
+		return err
+	}
+	defer release()
+	if err := os.Remove(s.sessionPath(ref)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := os.Remove(s.metaPath(ref)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+// copyFile copies a regular file to dst, creating parent directories as
+// needed. Used for detach snapshots (#8170).
+func copyFile(src, dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 func (s *SubagentStore) PrepareFresh(spec SubagentSpec) (*SubagentRun, error) {

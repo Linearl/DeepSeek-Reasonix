@@ -272,6 +272,12 @@ type Controller struct {
 	finishing         bool // TurnDone is still being delivered; park a replacement turn
 	finishingBoundary turnFinishingBoundary
 	canceling         bool
+	// detachRequested is set by RequestDetach while a turn runs; the run loop
+	// consumes it at the next tool-round boundary (#8170). It self-clears so a
+	// turn that finishes first simply ends normally.
+	detachRequested bool
+	// detachRunner continues a detached turn as a background job (boot layer).
+	detachRunner DetachRunner
 	// closed marks the controller as terminally torn down (close() ran). It
 	// seals turn admission: without it, a submit arriving AFTER close cleared
 	// the parked queue — but while a still-running turn's TurnDone delivery
@@ -468,6 +474,9 @@ type Options struct {
 	// metadata for the synthetic top-level run_skill event.
 	SkillRunner         skill.SubagentRunner
 	ReadOnlySkillRunner skill.SubagentRunner
+	// DetachRunner continues a turn the user moved to a background job from a
+	// session snapshot (#8170). Nil disables RequestDetach.
+	DetachRunner DetachRunner
 	SkillProfile        skill.ProfileResolver
 	Hooks               *hook.Runner
 	Memory              *memory.Set
@@ -627,6 +636,7 @@ func New(opts Options) *Controller {
 		disableImplicitSkillInvocation:    opts.DisableImplicitSkillInvocation,
 		skillRunner:                       opts.SkillRunner,
 		readOnlySkillRunner:               opts.ReadOnlySkillRunner,
+		detachRunner:                      opts.DetachRunner,
 		skillProfile:                      opts.SkillProfile,
 		hooks:                             opts.Hooks,
 		memory:                            newMemoryManager(opts.Memory),
