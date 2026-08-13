@@ -1018,3 +1018,96 @@ func TestLegacyRunningGoalSidecarAllocatesScope(t *testing.T) {
 		t.Fatalf("legacy checkpoint scope = %q, want %q", got.ScopeID, id)
 	}
 }
+
+
+// --- #8774 escalation FSM ---
+
+func TestGoalEscalationSlowChannelSchedulesPlannerRevision(t *testing.T) {
+	g := &goalMachine{goal: "refactor the parser", status: GoalStatusRunning}
+	g.turnsLimit = unlimitedGoalTurns
+	g.noProgressLimit = 0
+	res := g.advance(goalAdvanceInput{escalate: &goalEscalation{reason: "progress", detail: "6 zero-gain rounds"}})
+	if !res.cont {
+		t.Fatal("escalation must keep the loop running")
+	}
+	if !g.escalated || g.escalationReason != "progress" || g.escalationCount != 1 {
+		t.Fatalf("escalation state wrong, want reason=progress count=1")
+	}
+	if g.status != GoalStatusRunning {
+		t.Fatalf("status = %s, want running (escalation is not a block)", g.status)
+	}
+}
+
+func TestGoalEscalationFastChannelTechnical(t *testing.T) {
+	g := &goalMachine{goal: "refactor the parser", status: GoalStatusRunning}
+	g.turnsLimit = unlimitedGoalTurns
+	g.noProgressLimit = 0
+	res := g.advance(goalAdvanceInput{report: &goalTurnReport{status: GoalStatusBlocked, reason: "the dependency API is deprecated", technical: true}})
+	if !res.cont {
+		t.Fatal("technical self-report must continue, not block")
+	}
+	if !g.escalated || g.escalationReason != "technical" || g.escalationCount != 1 {
+		t.Fatalf("escalation state wrong, want reason=technical count=1")
+	}
+	if g.status != GoalStatusRunning {
+		t.Fatalf("status = %s, want running", g.status)
+	}
+}
+
+func TestGoalEscalationClearedAfterEscalatedTurn(t *testing.T) {
+	g := &goalMachine{goal: "refactor the parser", status: GoalStatusRunning}
+	g.turnsLimit = unlimitedGoalTurns
+	g.noProgressLimit = 0
+	g.advance(goalAdvanceInput{escalate: &goalEscalation{reason: "progress", detail: "6 zero-gain rounds"}})
+	if !g.escalated {
+		t.Fatal("precondition: escalation pending")
+	}
+	res := g.advance(goalAdvanceInput{wasEscalated: true, report: &goalTurnReport{status: GoalStatusRunning, reason: "revised plan applied"}})
+	if !res.cont {
+		t.Fatal("cleared escalation must keep looping")
+	}
+	if g.escalated {
+		t.Fatal("escalation marker must clear after the escalated turn")
+	}
+	if g.escalationCount != 1 {
+		t.Fatalf("count = %d, want 1 (count persists for loop protection)", g.escalationCount)
+	}
+}
+
+func TestGoalEscalationBudgetExhausted(t *testing.T) {
+	g := &goalMachine{goal: "refactor the parser", status: GoalStatusRunning}
+	g.turnsLimit = unlimitedGoalTurns
+	g.noProgressLimit = 0
+	g.escalationCount = maxGoalEscalations
+	res := g.advance(goalAdvanceInput{escalate: &goalEscalation{reason: "progress", detail: "still stuck"}})
+	if res.cont {
+		t.Fatal("escalation budget exhausted must stop the loop")
+	}
+	if g.status != GoalStatusBlocked || g.stopCause != stopCauseEscalationExhausted {
+		t.Fatalf("status=%s cause=%s, want blocked/escalation_exhausted", g.status, g.stopCause)
+	}
+}
+
+func TestGoalReadinessFailuresEscalateAfterThreshold(t *testing.T) {
+	g := &goalMachine{goal: "refactor the parser", status: GoalStatusRunning}
+	g.turnsLimit = unlimitedGoalTurns
+	g.noProgressLimit = 0
+	readiness := agent.ReadinessResult{Ready: false, Missing: []string{"verification"}}
+	for i := 0; i < maxReadinessFailures; i++ {
+		res := g.advance(goalAdvanceInput{readiness: readiness})
+		if !res.cont {
+			t.Fatalf("round %d: loop stopped unexpectedly", i)
+		}
+		if i < maxReadinessFailures-1 && g.escalated {
+			t.Fatalf("round %d: escalated before threshold", i)
+		}
+	}
+	if !g.escalated || g.escalationReason != "readiness" {
+		t.Fatalf("escalation state wrong, want reason=readiness")
+	}
+	// A healthy round resets the failure streak.
+	res := g.advance(goalAdvanceInput{report: &goalTurnReport{status: GoalStatusRunning, reason: "verification passed"}})
+	if !res.cont || g.readinessFailures != 0 {
+		t.Fatalf("after healthy round: failures=%d cont=%v, want 0/true", g.readinessFailures, res.cont)
+	}
+}

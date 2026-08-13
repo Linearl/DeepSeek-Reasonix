@@ -14,6 +14,7 @@ import (
 
 const (
 	plannerReasonExplicitPlanMode    = "explicit_plan_mode"
+	plannerReasonEscalated           = "escalated" // #8774
 	plannerReasonSynthetic           = "synthetic"
 	plannerReasonSlash               = "slash_command"
 	plannerReasonShortReply          = "short_reply"
@@ -38,6 +39,8 @@ type plannerTurnMetadata struct {
 	Synthetic              bool
 	ExplicitPlanMode       bool
 	ExplicitGoalStart      bool
+	Escalated              bool   // #8774: pending planner-revision request
+	EscalationDetail       string // stuck-evidence summary for the planner input
 	HasConversationContext bool
 }
 
@@ -63,11 +66,14 @@ func (c *Controller) withPlannerTurnMetadata(ctx context.Context, userText strin
 		constraints.ForbidMutation = true
 	}
 	ctx = runtimepolicy.WithContext(ctx, constraints)
+	escReason, escDetail, _ := c.goals.escalationInfo()
 	return withPlannerTurnMetadata(ctx, plannerTurnMetadata{
 		UserText:               userText,
 		Synthetic:              synthetic,
 		ExplicitPlanMode:       c.PlanMode(),
 		ExplicitGoalStart:      c.consumeExplicitGoalStart(),
+		Escalated:              c.goals.escalationPending(),
+		EscalationDetail:       escReason + ": " + escDetail,
 		HasConversationContext: priorMessages > 1,
 	})
 }
@@ -85,6 +91,14 @@ func DecidePlannerRoute(ctx context.Context, input string) agent.PlannerDecision
 
 	if meta.ExplicitPlanMode || strings.HasPrefix(composedText, PlanModeMarker) {
 		return plannerExecutorDecision(plannerReasonExplicitPlanMode)
+	}
+	// #8774: a pending escalation request routes the next continuation turn
+	// through a light planner revision. This must precede the synthetic check
+	// (goal continuations are synthetic) and all feature heuristics.
+	if meta.Escalated {
+		d := plannerPlanDecision(agent.PlannerRoutePlanAndExecute, plannerReasonEscalated)
+		d.EscalationDetail = meta.EscalationDetail
+		return d
 	}
 	if meta.Synthetic || IsSyntheticUserMessage(text) {
 		return plannerExecutorDecision(plannerReasonSynthetic)

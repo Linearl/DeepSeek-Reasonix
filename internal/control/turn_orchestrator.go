@@ -617,6 +617,16 @@ func (o *turnOrchestrator) advanceGoalAfterTurn(ctx context.Context, expectedCon
 		progressEvidence = c.executor.HostProgressSignatures()
 	}
 
+	// #8774: slow-channel escalation signal from the goal-scoped progress
+	// guard stop tier (consumed once here). The fast channel (technical
+	// self-report) and the readiness-failure threshold are handled inside the
+	// FSM from report/readiness inputs.
+	var escalate *goalEscalation
+	if c.executor != nil {
+		if reason, detail := c.executor.ConsumeGoalEscalationSignal(); reason != "" {
+			escalate = &goalEscalation{reason: reason, detail: detail}
+		}
+	}
 	res := c.goals.advance(goalAdvanceInput{
 		report:           report,
 		readiness:        readiness,
@@ -627,6 +637,8 @@ func (o *turnOrchestrator) advanceGoalAfterTurn(ctx context.Context, expectedCon
 		pauseCause:       pauseCause,
 		pauseReason:      pauseReason,
 		expectedEpoch:    &expectedContinuationEpoch,
+		escalate:         escalate,
+		wasEscalated:     c.goals.escalationPending(),
 	})
 	c.persistGoalState(res.path, res.data, res.ok)
 	if res.notice != "" {

@@ -49,6 +49,36 @@ func (g *progressGuard) observe(receipts []Receipt) int {
 // Receipt aliases the evidence receipt for the guard's signature.
 type Receipt = evidence.Receipt
 
+// goalEscalationSignal is the host-visible request produced when the
+// goal-scoped progress guard reaches its stop tier (#8774). The controller
+// consumes it at the turn boundary and routes the next continuation turn
+// through the planner.
+type goalEscalationSignal struct {
+	Reason string
+	Detail string
+}
+
+// requestGoalEscalation records an escalation request. The in-prompt guidance
+// text stays unchanged; this is an additional host-visible side channel.
+func (a *Agent) requestGoalEscalation(reason, detail string) {
+	a.escalationMu.Lock()
+	defer a.escalationMu.Unlock()
+	a.goalEscalation = &goalEscalationSignal{Reason: reason, Detail: detail}
+}
+
+// ConsumeGoalEscalationSignal returns and clears any pending escalation
+// request produced by the goal-scoped progress guard stop tier.
+func (a *Agent) ConsumeGoalEscalationSignal() (reason, detail string) {
+	a.escalationMu.Lock()
+	defer a.escalationMu.Unlock()
+	if a.goalEscalation == nil || a.goalEscalation.Reason == "" {
+		return "", ""
+	}
+	sig := a.goalEscalation
+	a.goalEscalation = &goalEscalationSignal{}
+	return sig.Reason, sig.Detail
+}
+
 // applyBatchGuards collects this round's signals — storm breaker (failure
 // fixation), progress guard (zero-gain repetition), evidence nudge — and lets
 // the arbiter deliver them as one tail. The shadow trackers observe the same
@@ -132,6 +162,10 @@ func (a *Agent) applyProgressGuard(outcomes []toolOutcome, receiptMark int, goal
 			// Start a fresh intervention epoch. The evidence tracker stays intact,
 			// so repeated work remains visible while a changed strategy can recover.
 			a.turn.progress.streak = 0
+			// #8774: also surface a host-visible escalation request so the
+			// controller can route the next continuation turn through the
+			// planner instead of only injecting in-prompt guidance.
+			a.requestGoalEscalation("progress", detail)
 		} else {
 			guard = fmt.Sprintf(
 				"[progress guard] %d tool rounds in a row produced no new evidence (no new files, results, or changes). Stop exploring: produce your final answer now, stating what was established and what remains unknown.",

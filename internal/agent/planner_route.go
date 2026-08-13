@@ -27,6 +27,9 @@ type PlannerIntent = PlannerRoute
 type PlannerDecision struct {
 	Route  PlannerRoute
 	Reason string
+	// EscalationDetail carries the stuck-evidence summary for an #8774
+	// escalated planner revision turn; empty otherwise.
+	EscalationDetail string
 }
 
 // PlannerPolicy makes one deterministic routing decision from trusted turn
@@ -39,6 +42,7 @@ func normalizePlannerDecision(d PlannerDecision) PlannerDecision {
 	default:
 		d.Route = PlannerRouteExecutorOnly
 	}
+	d.EscalationDetail = strings.TrimSpace(d.EscalationDetail)
 	d.Reason = strings.TrimSpace(d.Reason)
 	if d.Reason == "" {
 		d.Reason = "default"

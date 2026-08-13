@@ -13,6 +13,10 @@ type GoalReport struct {
 	Reason string
 	// NextAction is an optional concrete next step (recommended for continue).
 	NextAction string
+	// BlockedKind distinguishes a technical blockage (the executor cannot
+	// make progress and asks the host to re-plan, #8774) from the ordinary
+	// user-blocked disposition. Empty means user-blocked.
+	BlockedKind string
 }
 
 // GoalTurnRecorder records the model's update_goal report for the active goal

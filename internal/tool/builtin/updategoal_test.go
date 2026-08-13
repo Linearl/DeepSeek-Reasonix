@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"reasonix/internal/evidence"
 	"reasonix/internal/tool"
 )
 
@@ -147,5 +148,57 @@ func TestUpdateGoalRecorderErrorsPropagate(t *testing.T) {
 	_, err := toolFn.Execute(ctx, json.RawMessage(`{"status":"complete"}`))
 	if err == nil || !strings.Contains(err.Error(), "conflicting reports") {
 		t.Fatalf("Execute() error = %v, want recorder error propagated", err)
+	}
+}
+
+
+// --- #8774 blocked_kind and the technical hard gate ---
+
+func TestUpdateGoalBlockedKindValidation(t *testing.T) {
+	toolFn, _, ctx := goalTool(t)
+	_, err := toolFn.Execute(ctx, json.RawMessage(`{"status":"blocked","blocked_kind":"weird","reason":"nope"}`))
+	if err == nil || !strings.Contains(err.Error(), "blocked_kind") {
+		t.Fatalf("err = %v, want blocked_kind validation error", err)
+	}
+}
+
+func TestUpdateGoalTechnicalBlockedHardGate(t *testing.T) {
+	toolFn, rec, baseCtx := goalTool(t)
+
+	// No evidence ledger at all → rejected.
+	_, err := toolFn.Execute(baseCtx, json.RawMessage(`{"status":"blocked","blocked_kind":"technical","reason":"stuck"}`))
+	if err == nil || !strings.Contains(err.Error(), "ledger") {
+		t.Fatalf("no-ledger err = %v, want ledger error", err)
+	}
+
+	// Ledger with 1 successful round → rejected (attempts < 2).
+	ledger := evidence.NewLedger()
+	ledger.Record(evidence.Receipt{ToolName: "bash", Success: true})
+	ctx := evidence.WithLedger(baseCtx, ledger)
+	_, err = toolFn.Execute(ctx, json.RawMessage(`{"status":"blocked","blocked_kind":"technical","reason":"stuck"}`))
+	if err == nil || !strings.Contains(err.Error(), "at least 2") {
+		t.Fatalf("1-round err = %v, want attempt-threshold error", err)
+	}
+
+	// Ledger with 2 successful rounds → rejected (no failure yet).
+	ledger2 := evidence.NewLedger()
+	ledger2.Record(evidence.Receipt{ToolName: "bash", Success: true})
+	ledger2.Record(evidence.Receipt{ToolName: "bash", Success: true})
+	ctx2 := evidence.WithLedger(baseCtx, ledger2)
+	_, err = toolFn.Execute(ctx2, json.RawMessage(`{"status":"blocked","blocked_kind":"technical","reason":"stuck"}`))
+	if err == nil || !strings.Contains(err.Error(), "at least 1 failure") {
+		t.Fatalf("2-success err = %v, want failure-threshold error", err)
+	}
+
+	// Ledger with 1 success + 1 failure → accepted and recorded as technical.
+	ledger3 := evidence.NewLedger()
+	ledger3.Record(evidence.Receipt{ToolName: "bash", Success: true})
+	ledger3.Record(evidence.Receipt{ToolName: "bash", Success: false})
+	ctx3 := evidence.WithLedger(baseCtx, ledger3)
+	if _, err := toolFn.Execute(ctx3, json.RawMessage(`{"status":"blocked","blocked_kind":"technical","reason":"deprecated API"}`)); err != nil {
+		t.Fatalf("qualified technical report rejected: %v", err)
+	}
+	if len(rec.reports) != 1 || rec.reports[0].BlockedKind != "technical" {
+		t.Fatalf("reports = %+v, want one technical record", rec.reports)
 	}
 }

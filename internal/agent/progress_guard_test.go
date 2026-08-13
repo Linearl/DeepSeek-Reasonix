@@ -126,3 +126,19 @@ func TestProgressGuardResetsOnNewEvidence(t *testing.T) {
 		t.Fatalf("fresh evidence must reset the streak, got %d", a.turn.progress.streak)
 	}
 }
+
+// TestGoalEscalationSignalRoundTrip pins the #8774 host-visible side channel:
+// the goal-scoped progress-guard stop tier records a request that the
+// controller consumes once at the turn boundary.
+func TestGoalEscalationSignalRoundTrip(t *testing.T) {
+	a := &Agent{}
+	a.requestGoalEscalation("progress", "6 zero-gain rounds — forcing a Goal re-plan")
+	reason, detail := a.ConsumeGoalEscalationSignal()
+	if reason != "progress" || !strings.Contains(detail, "zero-gain") {
+		t.Fatalf("signal = (%q, %q), want progress with detail", reason, detail)
+	}
+	// Consumed once: a second read is empty.
+	if again, _ := a.ConsumeGoalEscalationSignal(); again != "" {
+		t.Fatalf("second consume = %q, want empty", again)
+	}
+}

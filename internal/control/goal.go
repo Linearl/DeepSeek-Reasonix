@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"strconv"
 	"time"
 
 	"reasonix/internal/agent"
@@ -23,6 +24,9 @@ const (
 	goalContinueTurn   = "Continue pursuing the active goal under its task contract. Do the next useful work, then call update_goal with your disposition: continue (include the next concrete step in next_action), complete (when the request is done and verification was attempted or reported unavailable), or blocked (when only the user can unblock)."
 	goalCompleteNotice = "goal complete"
 	unlimitedGoalTurns = -1
+	// #8774 escalation budget and slow-channel thresholds.
+	maxGoalEscalations   = 3
+	maxReadinessFailures = 3
 
 	// Bound the persisted novelty window. Signatures are compact hashes, and
 	// retaining the most recent window is enough to stop short repeat cycles
@@ -42,6 +46,7 @@ const (
 const (
 	stopCauseBudgetTurns   = "budget_turns" // legacy; the class-derived turn quota is gone
 	stopCauseBudgetSpend   = "budget_spend"
+	stopCauseEscalationExhausted = "escalation_exhausted" // #8774
 	stopCauseBudgetTokens  = "budget_tokens"   // legacy; never written by current runtime
 	stopCauseNoProgress    = "no_progress"     // legacy; never written by current runtime
 	stopCauseGoalRunBudget = "goal_run_budget" // legacy; the per-Run round ceiling is gone
@@ -102,6 +107,14 @@ type goalMachine struct {
 	stopCause              string
 	budgetExtensions       int // deprecated historical sidecar field
 	progressEvidence       []string
+	// #8774 escalation state: set when a stuck continuation turn requests a
+	// planner revision; the next continuation turn routes plan_and_execute
+	// light, then the marker is cleared by the FSM.
+	escalated          bool
+	escalationReason   string
+	escalationDetail   string
+	escalationCount    int
+	readinessFailures  int // consecutive FinalReadiness failures (slow channel)
 	// stateExtra preserves fields written by a newer peer during read/modify/
 	// write cycles. Known current fields always win on serialization.
 	stateExtra map[string]json.RawMessage
@@ -148,6 +161,12 @@ type goalState struct {
 	StopCause              string   `json:"stopCause,omitempty"`
 	BudgetExtensions       int      `json:"budgetExtensions,omitempty"`
 	ProgressEvidence       []string `json:"progressEvidence,omitempty"`
+
+	Escalated          bool   `json:"escalated,omitempty"`
+	EscalationReason   string `json:"escalationReason,omitempty"`
+	EscalationDetail   string `json:"escalationDetail,omitempty"`
+	EscalationCount    int    `json:"escalationCount,omitempty"`
+	ReadinessFailures  int    `json:"readinessFailures,omitempty"`
 }
 
 // goalAdvanceInput carries everything the FSM needs for one continuation step,
@@ -164,6 +183,18 @@ type goalAdvanceInput struct {
 	pauseCause       string   // explicit spend boundary reported by the Agent
 	pauseReason      string
 	expectedEpoch    *uint64
+	// #8774: escalation request produced by the fast channel (model
+	// self-report) or the slow channel (progress guard stop / repeated
+	// readiness failures); wasEscalated marks that the finished turn itself
+	// was an escalated planner revision turn (the marker is then cleared).
+	escalate      *goalEscalation
+	wasEscalated  bool
+}
+
+// goalEscalation is one #8774 re-plan request.
+type goalEscalation struct {
+	reason string
+	detail string
 }
 
 // goalEvaluatorVerdict is the bounded evaluator's structured outcome.
@@ -260,6 +291,21 @@ func newGoalScopeID() string {
 }
 
 // active reports whether a goal is currently running.
+// escalated reports whether a #8774 planner-revision request is pending for
+// the next continuation turn.
+func (g *goalMachine) escalationPending() bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.escalated
+}
+
+// escalationInfo returns the pending escalation marker for planner routing.
+func (g *goalMachine) escalationInfo() (reason, detail string, count int) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.escalationReason, g.escalationDetail, g.escalationCount
+}
+
 func (g *goalMachine) active() bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -494,6 +540,29 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 	// A top-level goal turn (the first turn or a synthetic continuation) counts
 	// as an observational statistic; the in-Run model/tool loop is not re-counted.
 	g.turnsUsed++
+	// #8774: an escalated planner-revision turn clears the marker when it
+	// finishes (the count stays for loop protection).
+	if in.wasEscalated {
+		g.escalated = false
+		g.escalationReason = ""
+		g.escalationDetail = ""
+	}
+	// Slow-channel readiness accounting: consecutive FinalReadiness failures
+	// escalate once the threshold is crossed.
+	if !in.readiness.Ready && len(in.readiness.Missing) > 0 {
+		g.readinessFailures++
+	} else if in.escalate == nil {
+		g.readinessFailures = 0
+	}
+	// Slow-channel escalation: consecutive readiness failures cross the
+	// threshold → request a planner revision (unless a signal already exists).
+	if in.escalate == nil && !in.readiness.Ready && len(in.readiness.Missing) > 0 &&
+		g.readinessFailures >= maxReadinessFailures {
+		in.escalate = &goalEscalation{
+			reason: "readiness",
+			detail: strings.Join(in.readiness.Missing, "; "),
+		}
+	}
 	var notice string
 	var intercept string
 	var interceptNotice string
@@ -505,6 +574,24 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 	complete := g.completeDecision(in, reportComplete, evaluatorComplete)
 	g.observeGoalProgress(in, complete.accept || reportBlocked || evaluatorBlocked)
 	switch {
+	case reportBlocked && in.report.technical:
+		// #8774 fast channel: the executor self-reported a technical blockage
+		// (hard-gated in update_goal: >=2 attempted rounds with >=1 failure).
+		// Route the next continuation turn through the planner instead of
+		// blocking on the user.
+		if g.escalationCount >= maxGoalEscalations {
+			g.status = GoalStatusBlocked
+			g.stopCause = stopCauseEscalationExhausted
+			g.block = clipGoalReason("technical blockage after " + strconv.Itoa(g.escalationCount) + " escalations: " + in.report.reason)
+			g.lastContinuationReason = clipGoalReason(in.report.reason)
+			notice = "goal paused: escalation budget exhausted (" + in.report.reason + ")"
+		} else {
+			g.escalated = true
+			g.escalationReason = "technical"
+			g.escalationDetail = cleanGoalBlockReason(in.report.reason)
+			g.escalationCount++
+			g.lastContinuationReason = clipGoalReason(in.report.reason)
+		}
 	case reportBlocked:
 		// A single blocked report ends the goal immediately; the host no longer
 		// repeats a three-turn confirmation ritual.
@@ -553,6 +640,22 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 		g.block = clipGoalReason(reason)
 		g.lastEvaluatorReason = clipGoalReason(reason)
 		notice = "goal paused: " + reason
+	case in.escalate != nil:
+		// #8774 slow channel: the host observed a stuck continuation
+		// (progress-guard stop tier or repeated readiness failures).
+		if g.escalationCount >= maxGoalEscalations {
+			g.status = GoalStatusBlocked
+			g.stopCause = stopCauseEscalationExhausted
+			g.block = clipGoalReason("stuck after " + strconv.Itoa(g.escalationCount) + " escalations: " + in.escalate.reason)
+			g.lastContinuationReason = clipGoalReason(in.escalate.detail)
+			notice = "goal paused: escalation budget exhausted (" + in.escalate.reason + ")"
+		} else {
+			g.escalated = true
+			g.escalationReason = in.escalate.reason
+			g.escalationDetail = in.escalate.detail
+			g.escalationCount++
+			g.lastContinuationReason = clipGoalReason(in.escalate.detail)
+		}
 	case in.pauseCause != "":
 		reason := strings.TrimSpace(in.pauseReason)
 		if reason == "" {
@@ -650,6 +753,11 @@ func (g *goalMachine) buildStateLocked(todos []evidence.TodoItem) (path string, 
 		StopCause:              g.stopCause,
 		BudgetExtensions:       g.budgetExtensions,
 		ProgressEvidence:       append([]string(nil), g.progressEvidence...),
+		Escalated:              g.escalated,
+		EscalationReason:       g.escalationReason,
+		EscalationDetail:       g.escalationDetail,
+		EscalationCount:        g.escalationCount,
+		ReadinessFailures:      g.readinessFailures,
 	}
 	// GoalResearchOff is a downgrade fence for ordinary Goal sidecars. A
 	// fail-closed legacy migration keeps its task identity and compatibility mode
@@ -792,6 +900,11 @@ func (g *goalMachine) restoreFromState(sessionPath string) (path string, data []
 	g.stopCause = state.StopCause
 	g.budgetExtensions = state.BudgetExtensions
 	g.progressEvidence, _ = mergeGoalProgressEvidence(nil, state.ProgressEvidence)
+	g.escalated = state.Escalated
+	g.escalationReason = state.EscalationReason
+	g.escalationDetail = state.EscalationDetail
+	g.escalationCount = state.EscalationCount
+	g.readinessFailures = state.ReadinessFailures
 	g.lastContinuationReason = state.LastContinuationReason
 	g.lastEvaluatorReason = state.LastEvaluatorReason
 	// Old sidecars carry Turns (pre-budget counting); treat it as turn usage.
@@ -948,6 +1061,7 @@ type goalTurnRecorder struct {
 	status           string
 	reason           string
 	nextAction       string
+	technical        bool // blocked_kind=technical (#8774)
 	tokensUsed       int
 	requestsUsed     int
 	workDurationMs   int64
@@ -990,6 +1104,7 @@ func (r *goalTurnRecorder) RecordGoalReport(report tool.GoalReport) (string, err
 	r.status = report.Status
 	r.reason = report.Reason
 	r.nextAction = report.NextAction
+	r.technical = report.Status == GoalStatusBlocked && report.BlockedKind == "technical"
 	if report.Status != GoalStatusRunning {
 		r.terminal = true
 	}
@@ -1045,7 +1160,7 @@ func (r *goalTurnRecorder) validReport(expectedEpoch uint64) *goalTurnReport {
 	if !r.recorded || r.epoch != expectedEpoch || !r.machine.turnActive(r.scopeID, r.epoch) {
 		return nil
 	}
-	return &goalTurnReport{status: r.status, reason: r.reason, nextAction: r.nextAction}
+	return &goalTurnReport{status: r.status, reason: r.reason, nextAction: r.nextAction, technical: r.technical}
 }
 
 // goalTurnReport is the validated update_goal report for one goal turn.
@@ -1053,6 +1168,7 @@ type goalTurnReport struct {
 	status     string
 	reason     string
 	nextAction string
+	technical  bool // blocked_kind=technical (#8774)
 }
 
 // turnActive reports whether the machine's goal lifecycle matches the binding.

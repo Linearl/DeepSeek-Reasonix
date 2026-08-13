@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"reasonix/internal/evidence"
 	"reasonix/internal/tool"
 )
 
@@ -23,7 +24,7 @@ type updateGoal struct{}
 func (updateGoal) Name() string { return "update_goal" }
 
 func (updateGoal) Description() string {
-	return "Report this turn's disposition for the active goal. Call it at the end of every goal turn instead of using prose markers: `continue` (work is ongoing — give a concrete next_action), `complete` (the request is fully done, output format and constraints satisfied, and verification was attempted or reported unavailable), or `blocked` (only the user can unblock: missing user-only information, an irreversible/externally visible operation, or changed scope). The host validates your claim against Delivery acceptance criteria and decides whether to continue automatically. Fields: `status` (required, one of continue|complete|blocked), `reason` (required for continue and blocked, optional for complete), `next_action` (optional concrete next step; recommended for continue), `completion` (recommended with complete: `verified` is checked against real receipts, while `unverified` and `risks` are yours to declare and never count against you)."
+	return "Report this turn's disposition for the active goal. Call it at the end of every goal turn instead of using prose markers: `continue` (work is ongoing — give a concrete next_action), `complete` (the request is fully done, output format and constraints satisfied, and verification was attempted or reported unavailable), or `blocked` (only the user can unblock: missing user-only information, an irreversible/externally visible operation, or changed scope). For `blocked` you may pass `blocked_kind: \"technical\"` when you are stuck and need the host to re-plan (you tried at least 2 tool rounds and at least one failed) instead of waiting for the user; the host verifies the attempt threshold before acting. The host validates your claim against Delivery acceptance criteria and decides whether to continue automatically. Fields: `status` (required, one of continue|complete|blocked), `blocked_kind` (optional, one of user|technical; default user), `reason` (required for continue and blocked, optional for complete), `next_action` (optional concrete next step; recommended for continue), `completion` (recommended with complete: `verified` is checked against real receipts, while `unverified` and `risks` are yours to declare and never count against you)."
 }
 
 func (updateGoal) Schema() json.RawMessage {
@@ -31,6 +32,7 @@ func (updateGoal) Schema() json.RawMessage {
 "type":"object",
 "properties":{
   "status":{"type":"string","enum":["continue","complete","blocked"],"description":"continue = keep working autonomously; complete = the goal is fully done and verified; blocked = only the user can unblock."},
+  "blocked_kind":{"type":"string","enum":["user","technical"],"description":"Optional with blocked. user (default) = only the user can unblock; technical = the executor is stuck and asks the host to re-plan (requires >=2 attempted tool rounds with >=1 failure — verified by the host)."},
   "reason":{"type":"string","description":"Short explanation. REQUIRED for continue and blocked; optional for complete."},
   "next_action":{"type":"string","description":"Optional concrete next step. Recommended for continue so the host can guide the next turn."},
   "completion":{
@@ -63,10 +65,11 @@ func (updateGoal) PlanModeSafe() bool { return true }
 
 func (updateGoal) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var p struct {
-		Status     string `json:"status"`
-		Reason     string `json:"reason"`
-		NextAction string `json:"next_action"`
-		Completion struct {
+		Status      string `json:"status"`
+		BlockedKind string `json:"blocked_kind"`
+		Reason      string `json:"reason"`
+		NextAction  string `json:"next_action"`
+		Completion  struct {
 			Verified   []string `json:"verified"`
 			Unverified []string `json:"unverified"`
 			Risks      []string `json:"risks"`
@@ -84,6 +87,22 @@ func (updateGoal) Execute(ctx context.Context, args json.RawMessage) (string, er
 	if (p.Status == "continue" || p.Status == "blocked") && strings.TrimSpace(p.Reason) == "" {
 		return "", fmt.Errorf("update_goal: reason is required for %s — no goal state was changed", p.Status)
 	}
+	blockedKind := strings.ToLower(strings.TrimSpace(p.BlockedKind))
+	switch blockedKind {
+	case "", "user", "technical":
+	default:
+		return "", fmt.Errorf("update_goal: blocked_kind must be one of user|technical, got %q — no goal state was changed", blockedKind)
+	}
+	// #8774 hard gate: a technical self-report is only honored after the
+	// executor actually tried at least minSelfReportRounds tool rounds with
+	// at least one failure or zero-gain round. This is a host-side hard check,
+	// not a prompt soft constraint — a first-round bailout is rejected and the
+	// model must keep working.
+	if p.Status == "blocked" && blockedKind == "technical" {
+		if err := checkTechnicalAttempts(ctx); err != nil {
+			return "", err
+		}
+	}
 	for i, command := range p.Completion.Verified {
 		if strings.TrimSpace(command) == "" {
 			return "", fmt.Errorf("update_goal: completion.verified[%d] is empty — cite the command as it actually ran, or leave the list out", i)
@@ -94,9 +113,10 @@ func (updateGoal) Execute(ctx context.Context, args json.RawMessage) (string, er
 		return "", fmt.Errorf("update_goal is only available while an active goal turn is running — no goal state was changed")
 	}
 	result, err := recorder.RecordGoalReport(tool.GoalReport{
-		Status:     p.Status,
-		Reason:     strings.TrimSpace(p.Reason),
-		NextAction: strings.TrimSpace(p.NextAction),
+		Status:      p.Status,
+		BlockedKind: blockedKind,
+		Reason:      strings.TrimSpace(p.Reason),
+		NextAction:  strings.TrimSpace(p.NextAction),
 	})
 	if err != nil || p.Status != "complete" {
 		return result, err
@@ -113,4 +133,31 @@ func completionNote(verified, unverified, risks int) string {
 	}
 	return fmt.Sprintf(" Completion account recorded (%d verified, %d unverified, %d risks); the verified commands are reconciled against this session's receipts.",
 		verified, unverified, risks)
+}
+
+// checkTechnicalAttempts enforces the #8774 fast-channel hard gate: the
+// executor must have attempted at least two tool rounds with at least one
+// failure before a technical self-report is honored. The evidence ledger is
+// session-scoped, so attempts from earlier continuation turns of the same
+// Goal count toward the threshold.
+func checkTechnicalAttempts(ctx context.Context) error {
+	ledger, ok := evidence.FromContext(ctx)
+	if !ok || ledger == nil {
+		return fmt.Errorf("update_goal: blocked_kind=technical requires the goal evidence ledger — no goal state was changed")
+	}
+	receipts := ledger.Receipts()
+	attempts := 0
+	failed := 0
+	for _, r := range receipts {
+		if r.Success {
+			attempts++
+		} else {
+			attempts++
+			failed++
+		}
+	}
+	if attempts < 2 || failed < 1 {
+		return fmt.Errorf("update_goal: blocked_kind=technical requires at least 2 attempted tool rounds with at least 1 failure (got %d attempts, %d failures) — keep working and retry later; no goal state was changed", attempts, failed)
+	}
+	return nil
 }

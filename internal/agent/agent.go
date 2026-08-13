@@ -322,6 +322,10 @@ type Agent struct {
 
 	// recovery is who this agent is to the shared gate above.
 	recovery recoveryIdentity
+	// goalEscalation carries the goal-scoped progress-guard stop signal to
+	// the controller at the turn boundary (#8774).
+	escalationMu    sync.Mutex
+	goalEscalation *goalEscalationSignal
 
 	// writeWorkspaceRoot is the workspace used to normalize parent write
 	// reservations when writeScheduler is set.

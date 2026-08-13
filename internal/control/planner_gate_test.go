@@ -145,3 +145,32 @@ func TestPlannerPolicyUsesPristineMetadataInsteadOfInjectedContext(t *testing.T)
 		t.Fatalf("decision used injected context instead of pristine user text: %+v", got)
 	}
 }
+
+
+// TestEscalatedRoutesToLightPlanner pins the #8774 routing rule: a pending
+// escalation request beats the synthetic check (goal continuations are
+// synthetic) and routes to a light planner revision carrying the stuck
+// evidence. Without the marker, the synthetic continuation stays executor-only.
+func TestEscalatedRoutesToLightPlanner(t *testing.T) {
+	ctx := withPlannerTurnMetadata(context.Background(), plannerTurnMetadata{
+		Synthetic:        true,
+		Escalated:        true,
+		EscalationDetail: "progress: 6 zero-gain rounds",
+	})
+	got := DecidePlannerRoute(ctx, goalContinueTurn)
+	if got.Route != agent.PlannerRoutePlanAndExecute {
+		t.Fatalf("route = %s, want plan_and_execute", got.Route)
+	}
+	if got.Reason != plannerReasonEscalated {
+		t.Fatalf("reason = %s, want %s", got.Reason, plannerReasonEscalated)
+	}
+	if got.EscalationDetail != "progress: 6 zero-gain rounds" {
+		t.Fatalf("detail = %q, want the stuck-evidence summary", got.EscalationDetail)
+	}
+
+	ctxPlain := withPlannerTurnMetadata(context.Background(), plannerTurnMetadata{Synthetic: true})
+	gotPlain := DecidePlannerRoute(ctxPlain, goalContinueTurn)
+	if gotPlain.Route != agent.PlannerRouteExecutorOnly {
+		t.Fatalf("non-escalated synthetic route = %s, want executor_only", gotPlain.Route)
+	}
+}

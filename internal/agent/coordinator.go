@@ -647,11 +647,15 @@ func plannerSink(sink event.Sink) event.Sink {
 }
 
 func plannerTurnInput(input string, decision PlannerDecision) string {
+	escalation := ""
+	if decision.EscalationDetail != "" {
+		escalation = fmt.Sprintf("\nescalation_reason: %s\nescalation_detail: %s", decision.Reason, decision.EscalationDetail)
+	}
 	return fmt.Sprintf(`%s
 
 <planner-turn>
-route: %s
-</planner-turn>`, strings.TrimSpace(input), decision.Route)
+route: %s%s
+</planner-turn>`, strings.TrimSpace(input), decision.Route, escalation)
 }
 
 func formatHandoff(task, plan string, toolContext ...string) string {
