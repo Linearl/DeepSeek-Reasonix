@@ -1547,7 +1547,14 @@ func (s *Server) releaseSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := strings.TrimSpace(body.Name)
-	if name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
+	target := strings.TrimSpace(body.To)
+	if target == "" {
+		// Validate the required handoff target up front: a missing target is a
+		// client error (400), not a deferred conflict (409).
+		http.Error(w, "handoff target (to) is required", http.StatusBadRequest)
+		return
+	}
+	if name == "." || name == ".." || strings.ContainsAny(name, `\/`) {
 		http.Error(w, "invalid session name", http.StatusBadRequest)
 		return
 	}
@@ -1556,22 +1563,39 @@ func (s *Server) releaseSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "sessions disabled", http.StatusBadRequest)
 		return
 	}
-	abs := filepath.Join(dir, name+".jsonl")
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		http.Error(w, "invalid session dir", http.StatusBadRequest)
 		return
 	}
+	abs := filepath.Join(absDir, name+".jsonl")
 	rel, err := filepath.Rel(absDir, abs)
 	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
 		http.Error(w, "path outside session dir", http.StatusForbidden)
 		return
 	}
-	if filepath.Clean(abs) != filepath.Clean(s.ctl().SessionPath()) {
+	currentPath, err := filepath.Abs(s.ctl().SessionPath())
+	if err != nil {
+		http.Error(w, "invalid current session path", http.StatusInternalServerError)
+		return
+	}
+	if filepath.Clean(abs) != filepath.Clean(currentPath) {
 		// Only the currently bound session is this runtime's to release.
 		http.Error(w, "session is not held by this runtime", http.StatusConflict)
 		return
 	}
+	// A handoff mid-turn would race the session writes: the controller is
+	// single-owner and releaseSession must not hand off while a turn is
+	// executing (between saves).
+	if s.ctl().Running() {
+		http.Error(w, "cannot hand off a session while a turn is running", http.StatusConflict)
+		return
+	}
+	// Serialize with the other session-path-changing endpoints (/resume,
+	// /new, /fork, /takeover-session, model switch) that hold bindMu, so the
+	// lease cannot be handed off while a rebind is mid-flight.
+	s.bindMu.Lock()
+	defer s.bindMu.Unlock()
 	keeper := s.leases
 	if keeper == nil {
 		http.Error(w, "lease keeper unavailable", http.StatusInternalServerError)
@@ -1582,8 +1606,13 @@ func (s *Server) releaseSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no lease held for current session", http.StatusConflict)
 		return
 	}
-	target := strings.TrimSpace(body.To)
 	if err := lease.ReleaseForHandoff(target); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	// Drop the released lease from the local keeper so a later rebind to the
+	// same path is a real acquire, not a no-op against a released lease.
+	if err := keeper.Rebind(""); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
