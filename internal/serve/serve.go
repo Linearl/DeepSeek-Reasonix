@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -489,6 +490,7 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /events", s.events)
 	mux.HandleFunc("GET /history", s.history)
 	mux.HandleFunc("GET /context", s.context)
+	mux.HandleFunc("POST /attachments", s.uploadAttachment)
 	mux.HandleFunc("POST /submit", s.submit)
 	s.registerInboxRoutes(mux)
 	mux.HandleFunc("POST /cancel", s.cancel)
@@ -540,7 +542,13 @@ func csrfGuard(next http.Handler) http.Handler {
 			if i := strings.IndexByte(ct, ';'); i >= 0 {
 				ct = ct[:i]
 			}
-			if !strings.EqualFold(strings.TrimSpace(ct), "application/json") {
+			ct = strings.TrimSpace(ct)
+			// image/* is exempted for POST /attachments: unlike text/plain or
+			// form encodings, an image/* body is NOT a CORS "simple" content
+			// type, so a cross-site POST would require a preflight the
+			// unauthenticated server never answers — the CSRF defense holds
+			// for the upload endpoint as well.
+			if !strings.EqualFold(ct, "application/json") && !strings.HasPrefix(strings.ToLower(ct), "image/") {
 				http.Error(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
 				return
 			}
@@ -686,6 +694,56 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+// maxServeUploadBytes bounds a single attachment upload (matches the desktop
+// attachment pipeline cap in internal/control).
+const maxServeUploadBytes = 10 << 20
+
+// uploadAttachment accepts image uploads for non-desktop clients (#8855):
+// the mobile web/companion clients have no host filesystem access, so they
+// POST the bytes here and get back the repo-relative @-ref to embed into
+// POST /submit input. Bytes land in .reasonix/attachments/ through the same
+// pipeline the desktop paste path uses (SaveImageBytesInRoot + mime sniffing),
+// so the agent-side @ref resolution is unchanged.
+//
+// Accepts either a multipart/form-data field "file" or a raw image body with
+// Content-Type: image/*.
+func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
+	if r.Body == nil {
+		http.Error(w, "missing file body", http.StatusBadRequest)
+		return
+	}
+	ct := r.Header.Get("Content-Type")
+	if i := strings.IndexByte(ct, ';'); i >= 0 {
+		ct = ct[:i]
+	}
+	ct = strings.TrimSpace(ct)
+	if !strings.HasPrefix(strings.ToLower(ct), "image/") {
+		http.Error(w, "Content-Type must be image/*", http.StatusUnsupportedMediaType)
+		return
+	}
+	declaredMime := ct
+	root := strings.TrimSpace(s.ctl().WorkspaceRoot())
+	if root == "" {
+		root = "."
+	}
+	raw, _ := io.ReadAll(io.LimitReader(r.Body, maxServeUploadBytes+1))
+	if len(raw) == 0 {
+		http.Error(w, "empty upload", http.StatusBadRequest)
+		return
+	}
+	if len(raw) > maxServeUploadBytes {
+		http.Error(w, "image must be at most 10 MB", http.StatusRequestEntityTooLarge)
+		return
+	}
+	ref, err := control.SaveImageBytesInRoot(root, declaredMime, raw)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"ref": ref})
 }
 
 // submit runs raw user input as a turn (slash commands and @-references

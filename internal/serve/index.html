@@ -214,6 +214,10 @@ input,textarea{font:inherit;color:inherit}
 .composer__input{flex:1;border:none;background:none;color:var(--fg);font-size:14px;line-height:1.5;padding:9px 0;outline:none;resize:none;min-height:22px;max-height:140px;field-sizing:content}
 .composer__input::placeholder{color:var(--muted-2)}
 .composer__btn{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9px;flex-shrink:0;transition:background .18s ease,transform .15s ease}
+.composer__btn--attach{color:var(--muted)}
+.composer__btn--attach:hover{background:var(--panel-2);color:var(--fg)}
+.composer__btn--busy{animation:attach-pulse 1s ease-in-out infinite}
+@keyframes attach-pulse{50%{opacity:.35}}
 .composer__btn--send{background:var(--accent);color:oklch(99% 0 0)}
 .composer__btn--send:hover{transform:scale(1.05)}
 .composer__btn--send:disabled{background:var(--panel-2);color:var(--muted);cursor:default;transform:none}
@@ -500,6 +504,10 @@ input,textarea{font:inherit;color:inherit}
     <div class="composer">
       <span class="composer__caret">&#8250;</span>
       <textarea class="composer__input" id="in" placeholder="__('placeholder')" rows="1" autofocus></textarea>
+      <button class="composer__btn composer__btn--attach" id="btn-attach" title="__('attach')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+      </button>
+      <input type="file" id="attach-input" accept="image/*" style="display:none">
       <button class="composer__btn composer__btn--send" id="btn-send" title="__('send')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
       </button>
@@ -634,6 +642,9 @@ const __T = {
     'connected': 'Connected',
     'reconnecting': 'Reconnecting...',
     'disconnected': 'Disconnected',
+    'attach': 'Attach image',
+    'upload_failed': 'Upload failed',
+    'attach_not_image': 'Only image files can be attached',
     'placeholder': 'Message Reasonix...  / for commands',
     'cmd_compact': 'Compact conversation',
     'cmd_new': 'New session',
@@ -780,6 +791,9 @@ const __T = {
     'connected': '已连接',
     'reconnecting': '重新连接...',
     'disconnected': '已断开',
+    'attach': '上传图片',
+    'upload_failed': '上传失败',
+    'attach_not_image': '只能上传图片文件',
     'placeholder': '给 Reasonix 发消息...  / 查看命令',
     'cmd_compact': '压缩对话',
     'cmd_new': '新建会话',
@@ -944,6 +958,58 @@ const statusDotSidebar = $('#status-dot'), statusModel = $('#status-model');
 const welcome = $('#welcome');
 const welcomeModel = $('#welcome-model'), welcomeCwd = $('#welcome-cwd');
 const slashAnchor = $('#slash-menu-anchor');
+
+// ── image attachment upload (#8855) ──
+// Non-desktop clients can't touch the host filesystem; the POST /attachments
+// endpoint stores the bytes and returns the @-ref to embed in the input.
+const btnAttach = $('#btn-attach'), attachInput = $('#attach-input');
+function insertRefAtCursor(ref) {
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? input.value.length;
+  input.value = input.value.slice(0, start) + ref + ' ' + input.value.slice(end);
+  input.selectionStart = input.selectionEnd = start + ref.length + 1;
+  input.dispatchEvent(new Event('input'));
+  input.focus();
+}
+function uploadImageFile(file) {
+  if (!file) return;
+  if (!/^image\//.test(file.type)) { alert(__('attach_not_image')); return; }
+  btnAttach.classList.add('composer__btn--busy');
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/attachments');
+  xhr.setRequestHeader('Content-Type', file.type);
+  xhr.onload = () => {
+    btnAttach.classList.remove('composer__btn--busy');
+    if (xhr.status === 200) {
+      try { const r = JSON.parse(xhr.responseText); if (r.ref) insertRefAtCursor(r.ref); return; } catch {}
+    }
+    alert(__('upload_failed') + ' (HTTP ' + xhr.status + ')');
+  };
+  xhr.onerror = () => { btnAttach.classList.remove('composer__btn--busy'); alert(__('upload_failed')); };
+  xhr.send(file);
+}
+btnAttach.addEventListener('click', () => attachInput.click());
+attachInput.addEventListener('change', () => {
+  if (attachInput.files && attachInput.files[0]) uploadImageFile(attachInput.files[0]);
+  attachInput.value = '';
+});
+document.addEventListener('paste', (e) => {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  for (const it of items) {
+    if (it.type && it.type.startsWith('image/')) {
+      const f = it.getAsFile();
+      if (f) { uploadImageFile(f); e.preventDefault(); return; }
+    }
+  }
+});
+log.addEventListener('dragover', (e) => e.preventDefault());
+log.addEventListener('drop', (e) => {
+  e.preventDefault();
+  const files = e.dataTransfer && e.dataTransfer.files;
+  if (!files) return;
+  for (const f of files) { if (f.type && f.type.startsWith('image/')) uploadImageFile(f); }
+});
 
 // Token links use a URL fragment so the secret never appears in the initial
 // HTTP request, browser history, referrers, or access logs. Exchange it for an

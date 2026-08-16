@@ -36,6 +36,19 @@ func TestServeRejectsNonJSONPost(t *testing.T) {
 		}
 	}
 
+	// image/* is exempted for POST /attachments: it is not a CORS simple
+	// content type, so the preflight defense still blocks cross-site POSTs.
+	reqImg, _ := http.NewRequest(http.MethodPost, srv.URL+"/submit", strings.NewReader("fake-image-bytes"))
+	reqImg.Header.Set("Content-Type", "image/png")
+	respImg, err := http.DefaultClient.Do(reqImg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	respImg.Body.Close()
+	if respImg.StatusCode == http.StatusUnsupportedMediaType {
+		t.Fatal("image/png POST was rejected by the CSRF guard; want it past the guard (submit decodes JSON and returns 400)")
+	}
+
 	select {
 	case in := <-got:
 		t.Fatalf("a non-JSON POST reached the runner with %q — CSRF guard bypassed", in)
