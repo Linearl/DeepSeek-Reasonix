@@ -364,7 +364,16 @@ func TryAcquireSessionLeaseWithHandoff(path, sourceWriterID string) (*SessionLea
 	if info.HandoffTo == "" {
 		return nil, &SessionLeaseError{Path: path, Info: info}
 	}
-	if sourceWriterID != "" && info.HandoffTo != sourceWriterID {
+	// Only the named handoff target may acquire: the acquiring runtime's own
+	// writer identity must match the reservation. The caller-supplied
+	// sourceWriterID identifies the RELEASING runtime and must match
+	// info.WriterID (the releasing side) — not handoff_to, so a runtime that
+	// merely reads the lease info cannot spoof the target check by echoing
+	// handoff_to back at us.
+	if SessionWriterID() != info.HandoffTo {
+		return nil, &SessionLeaseError{Path: path, Info: info}
+	}
+	if sourceWriterID != "" && info.WriterID != sourceWriterID {
 		return nil, &SessionLeaseError{Path: path, Info: info}
 	}
 	if !info.HandoffExpiresAt.IsZero() && time.Now().UTC().After(info.HandoffExpiresAt) {
