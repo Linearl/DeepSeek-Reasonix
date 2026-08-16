@@ -81,6 +81,24 @@ input,textarea{font:inherit;color:inherit}
 .msg--user{display:flex;gap:9px;align-items:baseline}
 .msg__caret{color:var(--accent);font-family:var(--mono);font-weight:600;flex-shrink:0;font-size:15px}
 .msg__text{white-space:pre-wrap;word-break:break-word;font-weight:500;line-height:1.65}
+.msg__text.md-src{display:none}
+.msg__text.md{white-space:normal}
+.msg__text.md p{margin:0 0 6px}
+.msg__text.md p:last-child{margin-bottom:0}
+.msg__text.md h1,.msg__text.md h2,.msg__text.md h3,.msg__text.md h4,.msg__text.md h5{margin:10px 0 6px;font-weight:700;line-height:1.35}
+.msg__text.md h1{font-size:1.25em}.msg__text.md h2{font-size:1.15em}.msg__text.md h3{font-size:1.08em}.msg__text.md h4{font-size:1em}.msg__text.md h5{font-size:0.95em}
+.msg__text.md ul,.msg__text.md ol{margin:4px 0 8px;padding-left:22px}
+.msg__text.md li{margin:2px 0}
+.msg__text.md pre{margin:6px 0;padding:8px 10px;background:var(--bg-2);border:1px solid var(--border);border-radius:6px;overflow-x:auto;font-family:var(--mono);font-size:12px;line-height:1.5}
+.msg__text.md code{font-family:var(--mono);font-size:0.92em;background:var(--bg-2);padding:1px 4px;border-radius:4px}
+.msg__text.md pre code{background:none;padding:0;font-size:12px}
+.msg__text.md blockquote{margin:6px 0;padding:2px 10px;border-left:3px solid var(--border);color:var(--fg-2)}
+.msg__text.md .md-table-wrap{overflow-x:auto;margin:6px 0}
+.msg__text.md table{border-collapse:collapse;font-size:12.5px}
+.msg__text.md th,.msg__text.md td{border:1px solid var(--border);padding:4px 8px;text-align:left;vertical-align:top}
+.msg__text.md th{background:var(--bg-2);font-weight:600}
+.msg__text.md hr{margin:8px 0;border:0;border-top:1px solid var(--border)}
+.msg__text.md a{color:var(--accent);text-decoration:underline;word-break:break-all}
 .msg--assistant{color:var(--fg);line-height:1.7}
 .msg--assistant .msg__text{font-weight:400}
 .msg--system{font-size:13px;color:var(--fg-2);border-left:2px solid var(--border);padding:4px 12px;margin:8px auto}
@@ -1111,11 +1129,243 @@ function setConnState(state) {
 }
 
 // ── messages ──
-function addUserMsg(text) { hasVisibleHistory=true; updateActionAvailability(); hideWelcome(); const d=el('div','msg msg--user'); d.appendChild(el('span','msg__caret','›')); d.appendChild(el('div','msg__text',text)); log.appendChild(d); scrollDown(true); currentMsg=null;currentText=null;currentReasoning=null; }
+function addUserMsg(text) { hasVisibleHistory=true; updateActionAvailability(); hideWelcome(); const d=el('div','msg msg--user'); d.appendChild(el('span','msg__caret','›')); const body=el('div','msg__text'); body.appendChild(mdRender(text)); d.appendChild(body); log.appendChild(d); scrollDown(true); currentMsg=null;currentText=null;currentReasoning=null; }
 function ensureMsg() { if(!currentMsg){hasVisibleHistory=true; updateActionAvailability(); hideWelcome();currentMsg=el('div','msg msg--assistant');log.appendChild(currentMsg);} return currentMsg; }
-function appendText(t) { const m=ensureMsg(); if(!currentText){currentText=document.createElement('span');currentText.className='msg__text'; const old=m.querySelector('.cursor');if(old)old.remove(); m.appendChild(currentText); m.appendChild(el('span','cursor'));} currentText.textContent+=t; scrollDown(); }
+function appendText(t) { const m=ensureMsg(); if(!currentText){currentText=document.createElement('span');currentText.className='msg__text md-src'; const old=m.querySelector('.cursor');if(old)old.remove(); m.appendChild(currentText); ensureMdNodes(m); m.appendChild(el('span','cursor'));} currentText.textContent+=t; mdTailSpan.textContent=currentText.textContent.slice(mdLastLen); scheduleCommit(); scrollDown(); }
 function appendReasoning(t) { const m=ensureMsg(); if(!currentReasoning){const w=el('div','reasoning'); const b=el('button','reasoning__toggle'); b.innerHTML='<span class="reasoning__chevron">▶</span> '+__('thinking'); const body=el('div','reasoning__body'); body.style.display='none'; b.onclick=()=>{body.style.display=body.style.display==='none'?'':'none';b.querySelector('.reasoning__chevron').className='reasoning__chevron'+(body.style.display!=='none'?' reasoning__chevron--open':'');}; w.appendChild(b);w.appendChild(body); if(currentText) m.insertBefore(w,currentText); else m.appendChild(w); currentReasoning=body;} currentReasoning.textContent+=t; scrollDown(); }
-function finalizeMsg() { if(currentMsg){const c=currentMsg.querySelector('.cursor');if(c)c.remove();} currentMsg=null;currentText=null;currentReasoning=null; }
+// ── minimal streaming Markdown renderer (#6741) ──
+// Zero-dependency; builds DOM via createElement/textContent only (no
+// innerHTML on user content). Streaming semantics mirror the desktop client's
+// streamingCommitTarget: while a turn streams, only the prefix up to the last
+// completed block (blank line, closed fence, closed $$ math, heading boundary)
+// is rendered; the in-progress block rides a plain-text tail. On finalize the
+// whole message renders once.
+let mdRenderDiv = null, mdTailSpan = null, mdTimer = null, mdLastLen = 0;
+
+function isTableSeparator(line) {
+  return /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(line);
+}
+
+function isTableSeparator(line) {
+  return /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(line);
+}
+
+function mdCommitTarget(text) {
+  let lineStart = 0, fence = null, displayMath = false, table = false, boundary = 0;
+  while (lineStart < text.length) {
+    const nl = text.indexOf('\n', lineStart);
+    const lineEnd = nl === -1 ? text.length : nl + 1;
+    const line = text.slice(lineStart, nl === -1 ? text.length : nl).replace(/\r$/, '');
+    const terminated = nl !== -1;
+    if (fence) {
+      if (new RegExp('^ {0,3}' + fence.marker + '{' + fence.length + ',}[ \t]*$').test(line)) {
+        fence = null;
+        if (terminated) boundary = lineEnd;
+      }
+    } else if (displayMath) {
+      if (line.trim() === '$$') { displayMath = false; if (terminated) boundary = lineEnd; }
+    } else if (table) {
+      if (line.includes('|')) {
+        if (terminated) boundary = lineEnd; // every terminated data row commits
+      } else {
+        table = false;
+        if (terminated && line.trim() === '') boundary = lineEnd;
+        else if (/^ {0,3}#{1,6}[ \t]+/.test(line)) boundary = terminated ? lineEnd : lineStart;
+      }
+    } else {
+      const fm = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+      if (fm) fence = { marker: fm[1][0], length: fm[1].length };
+      else if (line.trim() === '$$') displayMath = true;
+      else if (terminated && line.trim() === '') boundary = lineEnd;
+      else if (/^ {0,3}#{1,6}[ \t]+/.test(line)) boundary = terminated ? lineEnd : lineStart;
+      else if (terminated && line.includes('|')) {
+        const rest = text.slice(lineEnd);
+        const nl2 = rest.indexOf('\n');
+        const next = (nl2 === -1 ? rest : rest.slice(0, nl2)).replace(/\r$/, '');
+        if (isTableSeparator(next)) table = true; // header row: commits once the separator row lands
+      }
+    }
+    lineStart = lineEnd;
+  }
+  // No live code highlighting here (unlike the desktop worker), so an open
+  // fence keeps only the committed prefix; the open block rides the tail.
+  return text.slice(0, boundary);
+}
+
+function mdCommitInterval(len) { return len >= 32000 ? 300 : len >= 8000 ? 150 : 50; }
+
+function mdUrl(u) {
+  try {
+    const x = new URL(u, location.href);
+    return (x.protocol === 'http:' || x.protocol === 'https:' || x.protocol === 'mailto:') ? x.href : '';
+  } catch { return ''; }
+}
+
+function mdInlineAppend(frag, s) {
+  const re = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*\s][^*]*\*|~~[^~]+~~|!\[[^\]]*\]\([^)\s]+(?:\s+"[^"]*")?\)|\[[^\]]*\]\([^)\s]+(?:\s+"[^"]*")?\))/g;
+  let last = 0, m;
+  while ((m = re.exec(s))) {
+    if (m.index > last) frag.appendChild(document.createTextNode(s.slice(last, m.index)));
+    const tok = m[0];
+    if (tok[0] === '`') { const c = document.createElement('code'); c.textContent = tok.slice(1, -1); frag.appendChild(c); }
+    else if (tok.startsWith('**')) { const b = document.createElement('strong'); mdInlineAppend(b, tok.slice(2, -2)); frag.appendChild(b); }
+    else if (tok.startsWith('~~')) { const d = document.createElement('del'); mdInlineAppend(d, tok.slice(2, -2)); frag.appendChild(d); }
+    else if (tok.startsWith('*')) { const e = document.createElement('em'); mdInlineAppend(e, tok.slice(1, -1)); frag.appendChild(e); }
+    else if (tok.startsWith('![')) {
+      const mm = tok.match(/^!\[([^\]]*)\]\(([^)\s]+)/);
+      const a = document.createElement('a');
+      a.href = mdUrl(mm[2]);
+      a.textContent = '\uD83D\uDCF7 ' + (mm[1] || 'image');
+      a.target = '_blank'; a.rel = 'noopener noreferrer';
+      frag.appendChild(a);
+    }
+    else {
+      const mm = tok.match(/^\[([^\]]*)\]\(([^)\s]+)/);
+      const u = mdUrl(mm[2]);
+      if (u) { const a = document.createElement('a'); a.href = u; a.textContent = mm[1]; a.target = '_blank'; a.rel = 'noopener noreferrer'; frag.appendChild(a); }
+      else frag.appendChild(document.createTextNode(tok));
+    }
+    last = re.lastIndex;
+  }
+  if (last < s.length) frag.appendChild(document.createTextNode(s.slice(last)));
+}
+
+function mdSplitRow(row) {
+  let x = row.trim();
+  if (x.startsWith('|')) x = x.slice(1);
+  if (x.endsWith('|')) x = x.slice(0, -1);
+  return x.split('|').map(v => v.trim());
+}
+
+function mdRender(text) {
+  const frag = document.createDocumentFragment();
+  const lines = String(text || '').split(/\r\n|\r|\n/);
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const fence = /^ {0,3}(`{3,}|~{3,})(\S*)[ \t]*$/.exec(line);
+    if (fence) {
+      const pre = document.createElement('pre');
+      const code = document.createElement('code');
+      if (fence[2]) code.className = 'lang-' + fence[2];
+      const buf = [];
+      i++;
+      while (i < lines.length && !new RegExp('^ {0,3}' + fence[1][0] + '{' + fence[1].length + ',}[ \\t]*$').test(lines[i])) { buf.push(lines[i]); i++; }
+      if (i < lines.length) i++;
+      code.textContent = buf.join('\n');
+      pre.appendChild(code);
+      frag.appendChild(pre);
+      continue;
+    }
+    const heading = /^ {0,3}(#{1,6})[ \t]+(.*)$/.exec(line);
+    if (heading) {
+      const h = document.createElement('h' + heading[1].length);
+      mdInlineAppend(h, heading[2]);
+      frag.appendChild(h);
+      i++;
+      continue;
+    }
+    if (/^ {0,3}([-*+])([ \t]+)/.test(line)) {
+      const ul = document.createElement('ul');
+      while (i < lines.length) {
+        const lm = /^ {0,3}([-*+])([ \t]+)(.*)$/.exec(lines[i]);
+        if (!lm) break;
+        const li = document.createElement('li');
+        mdInlineAppend(li, lm[3]);
+        ul.appendChild(li);
+        i++;
+      }
+      frag.appendChild(ul);
+      continue;
+    }
+    if (/^ {0,3}\d{1,9}[.)][ \t]+/.test(line)) {
+      const ol = document.createElement('ol');
+      while (i < lines.length) {
+        const lm = /^ {0,3}\d{1,9}[.)][ \t]+(.*)$/.exec(lines[i]);
+        if (!lm) break;
+        const li = document.createElement('li');
+        mdInlineAppend(li, lm[1]);
+        ol.appendChild(li);
+        i++;
+      }
+      frag.appendChild(ol);
+      continue;
+    }
+    if (/^ {0,3}>[ \t]?/.test(line)) {
+      const q = document.createElement('blockquote');
+      while (i < lines.length) {
+        const qm = /^ {0,3}>[ \t]?(.*)$/.exec(lines[i]);
+        if (!qm) break;
+        if (q.childNodes.length) q.appendChild(document.createElement('br'));
+        mdInlineAppend(q, qm[1]);
+        i++;
+      }
+      frag.appendChild(q);
+      continue;
+    }
+    if (/^ {0,3}(-{3,}|\*{3,}|_{3,})[ \t]*$/.test(line)) { frag.appendChild(document.createElement('hr')); i++; continue; }
+    if (line.includes('|') && i + 1 < lines.length && /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(lines[i + 1])) {
+      const wrap = document.createElement('div');
+      wrap.className = 'md-table-wrap';
+      const tbl = document.createElement('table');
+      const thead = document.createElement('thead');
+      const headRow = document.createElement('tr');
+      mdSplitRow(line).forEach(h => { const th = document.createElement('th'); mdInlineAppend(th, h); headRow.appendChild(th); });
+      thead.appendChild(headRow);
+      tbl.appendChild(thead);
+      const tbody = document.createElement('tbody');
+      i += 2;
+      while (i < lines.length && lines[i].includes('|')) {
+        const tr = document.createElement('tr');
+        mdSplitRow(lines[i]).forEach(c => { const td = document.createElement('td'); mdInlineAppend(td, c); tr.appendChild(td); });
+        tbody.appendChild(tr);
+        i++;
+      }
+      tbl.appendChild(tbody);
+      wrap.appendChild(tbl);
+      frag.appendChild(wrap);
+      continue;
+    }
+    if (/^\s*$/.test(line)) { i++; continue; }
+    const p = document.createElement('p');
+    const para = [];
+    while (i < lines.length && !/^\s*$/.test(lines[i])) { para.push(lines[i]); i++; }
+    mdInlineAppend(p, para.join(' '));
+    frag.appendChild(p);
+  }
+  return frag;
+}
+
+function ensureMdNodes(m) {
+  if (mdRenderDiv) return;
+  mdRenderDiv = document.createElement('div');
+  mdRenderDiv.className = 'msg__text md';
+  mdTailSpan = document.createElement('span');
+  mdTailSpan.className = 'msg__text md-tail';
+  m.appendChild(mdRenderDiv);
+  m.appendChild(mdTailSpan);
+}
+
+function commitMarkdown() {
+  if (mdTimer) { clearTimeout(mdTimer); mdTimer = null; }
+  if (!currentText || !mdRenderDiv) return;
+  const full = currentText.textContent;
+  const target = mdCommitTarget(full);
+  if (target.length > mdLastLen) {
+    mdRenderDiv.replaceChildren(mdRender(target));
+    mdLastLen = target.length;
+  }
+  mdTailSpan.textContent = full.slice(target.length);
+  scrollDown();
+}
+
+function scheduleCommit() {
+  if (mdTimer) clearTimeout(mdTimer);
+  const len = currentText ? currentText.textContent.length : 0;
+  mdTimer = setTimeout(commitMarkdown, mdCommitInterval(len));
+}
+
+function finalizeMsg() { if(currentMsg){const c=currentMsg.querySelector('.cursor');if(c)c.remove(); if(currentText){ if(mdTimer){clearTimeout(mdTimer);mdTimer=null;} if(mdRenderDiv){ mdRenderDiv.replaceChildren(mdRender(currentText.textContent)); const tail=currentMsg.querySelector('.msg__text.md-tail'); if(tail)tail.remove(); const src=currentMsg.querySelector('.msg__text.md-src'); if(src)src.remove(); } } } currentMsg=null;currentText=null;currentReasoning=null; mdRenderDiv=null; mdTailSpan=null; mdLastLen=0; }
 
 // ── tool cards (v1 pattern) ──
 function toolIcon(kind) {
