@@ -193,5 +193,57 @@ const scenario = (id: string): UIPerfScenario => {
   eq(r.reasoningMarkdownParses, 0, "06: background reasoning performs no Markdown parsing");
 }
 
+// --- UI-PERF-07: GFM table rows commit per terminated row (streaming parity) ---
+{
+  // Every terminated table row is a complete block: it commits immediately,
+  // no trailing blank line required.
+  eq(
+    streamingCommitTarget("| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |"),
+    "| a | b |\n|---|---|\n| 1 | 2 |\n",
+    "07: terminated table rows commit one by one",
+  );
+  eq(
+    streamingCommitTarget("| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n"),
+    "| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n",
+    "07: table with trailing newline commits fully",
+  );
+  eq(
+    streamingCommitTarget("| a | b |\n"),
+    "",
+    "07: header row alone waits for the delimiter row",
+  );
+  // A plain non-pipe line is swallowed into the table as a single-cell row by
+  // GFM: it rides the tail and keeps the table open, never closes it.
+  eq(
+    streamingCommitTarget("| a | b |\n|---|---|\n| 1 | 2 |\nplain"),
+    "| a | b |\n|---|---|\n| 1 | 2 |\n",
+    "07: plain line after rows is swallowed into the table (tail)",
+  );
+  eq(
+    streamingCommitTarget("| a | b |\n|---|---|\n| 1 | 2 |\n\n# heading"),
+    "| a | b |\n|---|---|\n| 1 | 2 |\n\n",
+    "07: blank line closes the table and commits",
+  );
+  // Block starts close the table (GFM parity): a terminated heading commits
+  // itself; an unterminated list line rides the tail.
+  eq(
+    streamingCommitTarget("| a | b |\n|---|---|\n| 1 | 2 |\n# heading\n"),
+    "| a | b |\n|---|---|\n| 1 | 2 |\n# heading\n",
+    "07: block start (heading) closes the table and commits itself",
+  );
+  eq(
+    streamingCommitTarget("| a | b |\n|---|---|\n| 1 | 2 |\n- item"),
+    "| a | b |\n|---|---|\n| 1 | 2 |\n",
+    "07: block start (list) closes the table, list rides tail",
+  );
+  // An open fence after the table keeps the whole text parsed (live code
+  // highlighting), matching the pre-existing fence semantics.
+  eq(
+    streamingCommitTarget("| a | b |\n|---|---|\n| 1 | 2 |\n```\ncode"),
+    "| a | b |\n|---|---|\n| 1 | 2 |\n```\ncode",
+    "07: block start (fence) closes the table; open fence keeps whole text",
+  );
+}
+
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

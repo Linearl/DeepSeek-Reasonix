@@ -143,12 +143,19 @@ function isStreamingListItemLine(line: string): boolean {
   return STREAMING_LIST_ITEM_RE.test(line) && !STREAMING_THEMATIC_BREAK_RE.test(line);
 }
 
+// isTableSeparatorRow reports whether a line is a GFM table delimiter row
+// (|---|---| or --- | ---), the second row that turns two pipe lines into a table.
+function isTableSeparatorRow(line: string): boolean {
+  return /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(line);
+}
+
 // Live parse prefix: last completed block. A later list marker commits prior
 // items only — the new item stays in the tail so indented continuations can join.
 export function streamingCommitTarget(text: string): string {
   let lineStart = 0;
   let fence: { marker: string; length: number } | null = null;
   let displayMath = false;
+  let table = false;
   let boundary = 0;
   while (lineStart < text.length) {
     const newline = text.indexOf("\n", lineStart);
@@ -156,7 +163,7 @@ export function streamingCommitTarget(text: string): string {
     const line = text.slice(lineStart, newline === -1 ? text.length : newline).replace(/\r$/, "");
     const terminated = newline !== -1;
     if (fence) {
-      if (new RegExp(`^ {0,3}${fence.marker}{${fence.length},}[ \\t]*$`).test(line)) {
+      if (new RegExp(`^ {0,3}${fence.marker}{${fence.length},}[ \t]*$`).test(line)) {
         fence = null;
         if (terminated) boundary = lineEnd;
       }
@@ -164,6 +171,39 @@ export function streamingCommitTarget(text: string): string {
       if (line.trim() === "$$") {
         displayMath = false;
         if (terminated) boundary = lineEnd;
+      }
+    } else if (table) {
+      // GFM tables extend row by row: every terminated row is a complete
+      // block, so it commits immediately — no trailing blank line needed.
+      if (line.includes("|")) {
+        if (terminated) boundary = lineEnd;
+      } else if (terminated && line.trim() === "") {
+        table = false;
+        boundary = lineEnd;
+      } else {
+        const fenceMatch = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+        if (fenceMatch) {
+          table = false;
+          fence = { marker: fenceMatch[1][0], length: fenceMatch[1].length };
+        } else if (line.trim() === "$$") {
+          table = false;
+          displayMath = true;
+        } else if (/^ {0,3}#{1,6}[ \t]+/.test(line)) {
+          table = false;
+          boundary = terminated ? lineEnd : lineStart;
+        } else if (
+          /^ {0,3}([-*+]|\d{1,9}[.)])[ \t]+/.test(line) ||
+          /^ {0,3}>[ \t]?/.test(line) ||
+          /^ {0,3}(-{3,}|\*{3,}|_{3,})[ \t]*$/.test(line)
+        ) {
+          // List, blockquote or thematic break: a GFM block start closes the
+          // table. The line itself commits on its own boundary rules and
+          // rides the tail until then.
+          table = false;
+        } else {
+          // Any other non-blank line is swallowed into the table as a
+          // single-cell row by GFM — keep the table open, ride the tail.
+        }
       }
     } else {
       const fenceMatch = /^ {0,3}(`{3,}|~{3,})/.exec(line);
@@ -174,6 +214,14 @@ export function streamingCommitTarget(text: string): string {
       // completes everything before it; a terminated one is itself complete.
       else if (/^ {0,3}#{1,6}[ \t]+/.test(line)) boundary = terminated ? lineEnd : lineStart;
       else if (isStreamingListItemLine(line)) boundary = lineStart;
+      // A terminated pipe line whose next line is a GFM delimiter row starts
+      // a table: the header row commits once the delimiter row lands.
+      else if (terminated && line.includes("|")) {
+        const rest = text.slice(lineEnd);
+        const nl2 = rest.indexOf("\n");
+        const next = (nl2 === -1 ? rest : rest.slice(0, nl2)).replace(/\r$/, "");
+        if (isTableSeparatorRow(next)) table = true;
+      }
     }
     lineStart = lineEnd;
   }
