@@ -3022,6 +3022,7 @@ export const en = {
   "notice.deliveryIncompleteContinue": "Continue checks",
   "notice.deliveryIncompleteAccept": "Accept as done",
   "notice.deliveryIncompleteContinuePrompt": "Continue and complete the remaining task checks.",
+  "notice.deliveryIncompleteAccept": "Accept as done",
   "notice.completionAttentionTitle": "This turn still needs attention",
   "notice.completionGapsBody": "Some verification is incomplete or limited. Review the changes for details.",
   "notice.completionFailedTitle": "Checks failed",

@@ -3025,6 +3025,7 @@ export const zh: Record<DictKey, string> = {
   "notice.deliveryIncompleteContinue": "继续检查",
   "notice.deliveryIncompleteAccept": "接受验收",
   "notice.deliveryIncompleteContinuePrompt": "继续完成剩余的任务收尾检查。",
+  "notice.deliveryIncompleteAccept": "接受验收（免模型）",
   "notice.completionAttentionTitle": "本轮仍需处理",
   "notice.completionGapsBody": "部分验证未完成或受限，请查看改动详情。",
   "notice.completionFailedTitle": "测试未通过",

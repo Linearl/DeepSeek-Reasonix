@@ -3557,6 +3557,16 @@ export default function App() {
       send: (tabId) => recoverDeliveryToTab(tabId, t("notice.deliveryIncompleteContinuePrompt")),
     });
   }, [controllerReady, recoverDeliveryToTab, resumeControllerGoalForTab, state.meta?.goal, t]);
+
+  const handleAcceptDelivery = useCallback(async (tabId: string) => {
+    if (!tabId) return;
+    try {
+      await app.AcceptDeliveryToTab(tabId);
+      refreshTabMetas(undefined, { afterMutation: true });
+    } catch (error) {
+      console.warn("Failed to accept delivery", error);
+    }
+  }, [refreshTabMetas]);
   commitThenSendRef.current = commitThenSend;
 
   const handleMessageAction = useCallback((turn: number, scope: string) => {
@@ -4899,7 +4909,7 @@ export default function App() {
                       footerHeight={footerHeight}
                       onPrompt={handleTranscriptPrompt}
                       onDeliveryContinue={() => void handleDeliveryContinue()}
-                      onAcceptDelivery={() => void app.AcceptDeliveryToTab(activeTabIdRef.current ?? "")}
+                      onAcceptDelivery={(tabId) => void handleAcceptDelivery(tabId)}
                       onOpenChanges={() => openRightDockMode("changed")}
                       onOpenVerification={openTurnVerification}
                       onEditPrompt={handleEditPrompt}
