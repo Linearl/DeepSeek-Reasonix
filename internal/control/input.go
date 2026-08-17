@@ -157,6 +157,7 @@ func (c *Controller) composeWithGoal(
 ) string {
 	c.mu.Lock()
 	plan := c.sessionSettings.planMode
+	subagentPolicy := c.subagentPolicy
 	responseLanguage := c.responseLanguage
 	reasoningLanguage := c.reasoningLanguage
 	c.mu.Unlock()
@@ -168,6 +169,9 @@ func (c *Controller) composeWithGoal(
 	}
 	if plan {
 		text = PlanModeMarker + "\n\n" + text
+	}
+	if guidance := agent.SubagentPolicyGuidance(subagentPolicy); guidance != "" {
+		text = guidance + "\n\n" + text
 	}
 	text = agent.WithResponseLanguage(text, responseLanguage)
 	text = agent.WithReasoningLanguageForSource(text, reasoningLanguage, source)
