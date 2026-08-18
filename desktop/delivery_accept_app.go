@@ -3,22 +3,28 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 // AcceptDeliveryToTab clears an awaiting_delivery ("待完成验证") tab activity
 // state without starting a model turn. This gives the user an explicit,
 // model-free way to dismiss the "待完成验证" label when they consider the task
-// acceptable. (Issue #9036 — Phase 1 minimal.)
+// acceptable. (Issue #9036 — Phase 1 minimal + Phase 2 lightweight trace.)
 //
-// A durable user_acceptance receipt is intentionally deferred to Phase 2; here
-// we only reset the in-memory runtime projection so the sidebar stops treating
-// the conversation as running/awaiting.
+// Phase 2 lightweight: after clearing, emit a "delivery:accepted" runtime
+// event (tabId + timestamp) as a desktop-visible, traceable record. We do NOT
+// write a durable evidence-ledger receipt or change FinalReadiness semantics —
+// that deeper integration is intentionally deferred to keep the fix low-risk.
 func (a *App) AcceptDeliveryToTab(tabID string) error {
 	if strings.TrimSpace(tabID) == "" {
 		return fmt.Errorf("tab id is required")
 	}
 	if a.clearTabActivityStatusIf(tabID, topicStatusAwaitingDelivery) {
 		a.emitProjectTreeRuntimeChangedWithLegacy()
+		a.emitRuntimeEvent("delivery:accepted", map[string]string{
+			"tabId":      tabID,
+			"acceptedAt": time.Now().Format(time.RFC3339Nano),
+		})
 	}
 	return nil
 }

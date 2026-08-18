@@ -955,6 +955,15 @@ export function onReady(cb: (tabId?: string) => void): () => void {
   return () => {};
 }
 
+export function onDeliveryAccepted(cb: (event: { tabId?: string; acceptedAt?: string }) => void): () => void {
+  if (realApp() && typeof window !== "undefined" && window.runtime) {
+    return window.runtime.EventsOn("delivery:accepted", (payload?: unknown) => {
+      if (payload && typeof payload === "object") cb(payload as { tabId?: string; acceptedAt?: string });
+    });
+  }
+  return () => {};
+}
+
 export function onProjectTreeChanged(cb: () => void): () => void {
   if (realApp() && typeof window !== "undefined" && window.runtime) {
     return window.runtime.EventsOn("project-tree:changed", (payload?: unknown) => (payload as { reason?: unknown } | undefined)?.reason !== "runtime" && (payload as { reason?: unknown } | undefined)?.reason !== "catalog-v2" && cb());

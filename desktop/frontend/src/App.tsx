@@ -33,7 +33,7 @@ import { asArray } from "./lib/array";
 import { createBoundedRefreshCoordinator, sameTabMetaLists, shouldRefreshTabMetaForEvent, TAB_META_MAX_IN_FLIGHT } from "./lib/tabMetaRefresh";
 import { clearLegacyLangPref, normalizeLangPref, readLegacyLangPref, t, useI18n, useT, type Translator } from "./lib/i18n";
 import { localizedNoticeText, useController, type HistoryLoadTrigger, type Item, type LiveStream } from "./lib/useController";
-import { app, onEvent, onProjectTreeChanged, onReady, onRemoteForwards, onRemoteServer, onRemoteStatus, onRuntimeRebuilt, onSessionRecovered, openExternal } from "./lib/bridge";
+import { app, onDeliveryAccepted, onEvent, onProjectTreeChanged, onReady, onRemoteForwards, onRemoteServer, onRemoteStatus, onRuntimeRebuilt, onSessionRecovered, openExternal } from "./lib/bridge";
 import { useConfigLoadWarnings } from "./lib/useConfigLoadWarnings";
 import { generativeMusic, isGenerativeMusicEnabled } from "./lib/generative-music";
 import { clearAttentionChimeKeys, playAttentionChime, playSuccessChime, shouldPlayAttentionChimeForEvent } from "./lib/sound";
@@ -3567,6 +3567,15 @@ export default function App() {
       console.warn("Failed to accept delivery", error);
     }
   }, [refreshTabMetas]);
+
+  useEffect(() => {
+    const unsub = onDeliveryAccepted((event) => {
+      if (event.tabId && activeTabIdRef.current === event.tabId) {
+        showToast(t("notice.deliveryAccepted"), "info");
+      }
+    });
+    return unsub;
+  }, [showToast, t]);
   commitThenSendRef.current = commitThenSend;
 
   const handleMessageAction = useCallback((turn: number, scope: string) => {
