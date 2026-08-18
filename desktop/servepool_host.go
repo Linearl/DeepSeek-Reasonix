@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/config"
 	"reasonix/internal/servepool"
 )
@@ -36,7 +37,7 @@ func (a *App) startServePool(ctx context.Context) {
 		return
 	}
 	token := loadOrCreateGatewayToken()
-	gw := servepool.NewGateway(mgr, token)
+	gw := servepool.NewGateway(mgr, token, a)
 	port := gatewayPort()
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
@@ -98,4 +99,42 @@ func gatewayPort() int {
 		}
 	}
 	return 18789
+}
+
+// HandoffSession implements servepool.HostHook (#8987): releases a
+// desktop-held session to the requesting serve writer via a handoff
+// reservation. The gateway only calls this for takeover-session 409s whose
+// holder is this process (the desktop), so no cross-machine authorization is
+// involved — the request already passed the gateway token gate.
+func (a *App) HandoffSession(projectID, sessionName, targetWriterID string) error {
+	if strings.TrimSpace(sessionName) == "" || strings.ContainsAny(sessionName, `/\`) {
+		return fmt.Errorf("handoff: invalid session name")
+	}
+	root := ""
+	for _, p := range projectRootsFromRegistry() {
+		if servepool.WorkspaceSlug(p) == projectID {
+			root = p
+			break
+		}
+	}
+	if root == "" {
+		return fmt.Errorf("handoff: unknown project %q", projectID)
+	}
+	dir := config.ProjectSessionDir(root)
+	if dir == "" {
+		return fmt.Errorf("handoff: no session dir for project %q", projectID)
+	}
+	path := filepath.Join(dir, sessionName+".jsonl")
+	if !strings.HasPrefix(filepath.Clean(path), filepath.Clean(dir)+string(filepath.Separator)) {
+		return fmt.Errorf("handoff: path outside session dir")
+	}
+	lease, err := agent.TryReclaimCurrentProcessSessionLease(path)
+	if err != nil {
+		return fmt.Errorf("handoff: %w", err)
+	}
+	defer lease.Release()
+	if err := lease.ReleaseForHandoff(strings.TrimSpace(targetWriterID)); err != nil {
+		return fmt.Errorf("handoff: %w", err)
+	}
+	return nil
 }

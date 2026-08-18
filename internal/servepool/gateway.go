@@ -1,13 +1,27 @@
 package servepool
 
 import (
+	"bytes"
 	"crypto/subtle"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strings"
 )
+
+// HostHook lets the embedding host (the desktop) participate in session
+// ownership handoff (#8987): when a proxied takeover-session request hits a
+// 409 "held by another runtime" and the holder is the gateway's own host,
+// the hook releases the session (with a handoff reservation) so the gateway
+// can retry. A nil hook disables the retry (standalone serve --pool host).
+type HostHook interface {
+	// HandoffSession releases the session (identified by its project id and
+	// session name) to targetWriterID. The host resolves the absolute
+	// session path itself. Return nil when the handoff was granted.
+	HandoffSession(projectID, sessionName, targetWriterID string) error
+}
 
 // Gateway is the single-entry HTTP surface in front of the serve pool.
 // Remote clients (GrandCouncil, Reasonix-web) talk to exactly one endpoint;
@@ -16,16 +30,18 @@ import (
 type Gateway struct {
 	mgr   *Manager
 	token string
+	hook  HostHook
 	proxy map[string]*httputil.ReverseProxy
 }
 
 // NewGateway builds the gateway handler. token must be a non-empty secret
 // (desktop-generated and shown in settings; clients configure it once).
-func NewGateway(mgr *Manager, token string) *Gateway {
+// hook enables takeover-session retry for host-held sessions (nil = off).
+func NewGateway(mgr *Manager, token string, hook HostHook) *Gateway {
 	if strings.TrimSpace(token) == "" {
 		token = newToken()
 	}
-	return &Gateway{mgr: mgr, token: token, proxy: map[string]*httputil.ReverseProxy{}}
+	return &Gateway{mgr: mgr, token: token, hook: hook, proxy: map[string]*httputil.ReverseProxy{}}
 }
 
 // Token returns the gateway bearer token (for UI display / first setup).
@@ -123,8 +139,61 @@ func (g *Gateway) proxyFor(id string, port int) *httputil.ReverseProxy {
 		req.URL.Scheme = target.Scheme
 		req.URL.Host = target.Host
 	}
+	if g.hook != nil {
+		p.Transport = &takeoverRetryTransport{
+			base:      http.DefaultTransport,
+			hook:      g.hook,
+			projectID: id,
+		}
+	}
 	g.proxy[id] = p
 	return p
+}
+
+// takeoverRetryTransport wraps the project-serve transport so a
+// takeover-session 409 ("held by another runtime") can be resolved by the
+// host's HandoffSession hook and retried once (#8987).
+type takeoverRetryTransport struct {
+	base      http.RoundTripper
+	hook      HostHook
+	projectID string
+}
+
+func (t *takeoverRetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	isTakeover := strings.HasSuffix(req.URL.Path, "/takeover-session")
+	var body []byte
+	var bodyErr error
+	if isTakeover && req.Body != nil {
+		body, bodyErr = io.ReadAll(req.Body)
+		req.Body.Close()
+		req.Body = io.NopCloser(bytes.NewReader(body))
+	}
+	resp, err := t.base.RoundTrip(req)
+	if err != nil || !isTakeover || resp.StatusCode != http.StatusConflict {
+		return resp, err
+	}
+	if bodyErr != nil || len(body) == 0 {
+		return resp, err
+	}
+	// The project serve cannot hand us the session because its holder is the
+	// gateway's own host (desktop). Ask the host to release it, then retry.
+	var target struct {
+		Name string `json:"name"`
+		From string `json:"from,omitempty"`
+	}
+	_ = json.Unmarshal(body, &target)
+	if strings.TrimSpace(target.Name) == "" {
+		return resp, err
+	}
+	if err := t.hook.HandoffSession(t.projectID, target.Name, target.From); err != nil {
+		// Keep the 409 response (with its body) intact for the client; the
+		// hook error is diagnostic only.
+		return resp, nil
+	}
+	req2 := req.Clone(req.Context())
+	req2.Body = io.NopCloser(bytes.NewReader(body))
+	req2.ContentLength = int64(len(body))
+	return t.base.RoundTrip(req2)
 }
 
 func itoa(n int) string {
