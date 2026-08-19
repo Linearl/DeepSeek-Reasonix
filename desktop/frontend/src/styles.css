@@ -5427,7 +5427,6 @@ button.reasoning-summary:focus-visible {
    it the full content width. Keep a standards-compatible fallback for
    browsers that do not implement the WebKit value. */
 .md .katex .fbox {
-  width: 100%;
   width: -webkit-fill-available;
 }
 .md--stream-tail {
