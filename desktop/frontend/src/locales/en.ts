@@ -3189,7 +3189,7 @@ export const en = {
   "context.budgetSourceOpencode": "OpenCode metadata",
   "context.budgetSourceLearned": "Learned from a 400",
   "context.budgetSourceUnknown": "Unknown",
-  "context.budgetWhyOverflow": "The usage ring is prompt ÷ window. A 63% prompt can still overflow because the provider also reserves completion tokens in the same window.",
+  "context.budgetWhyOverflow": "The budget card shows prompt ÷ window. A 63% prompt can still overflow because the provider also reserves completion tokens in the same window.",
   "context.budgetRecoveryClip": "Output was clipped before send so prompt + completion fit.",
   "context.budgetRecoveryRetry": "Recovered from a context 400 by lowering the output budget.",
   "context.budgetRecoveryCompacted": "Recovered from a context 400 by compacting once and retrying.",

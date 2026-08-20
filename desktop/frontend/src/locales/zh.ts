@@ -3192,7 +3192,7 @@ export const zh: Record<DictKey, string> = {
   "context.budgetSourceOpencode": "OpenCode 元数据",
   "context.budgetSourceLearned": "400 学习",
   "context.budgetSourceUnknown": "未知",
-  "context.budgetWhyOverflow": "圆环显示的是 prompt ÷ 窗口。prompt 只用了 63% 仍可能超窗，因为服务端会把输出预算算进同一个窗口。",
+  "context.budgetWhyOverflow": "预算卡片显示的是 prompt ÷ 窗口。prompt 只用了 63% 仍可能超窗，因为服务端会把输出预算算进同一个窗口。",
   "context.budgetRecoveryClip": "发送前已裁剪输出，使 prompt + 输出能放进窗口。",
   "context.budgetRecoveryRetry": "已通过下调输出预算从上下文 400 中恢复。",
   "context.budgetRecoveryCompacted": "已压缩一次并重试，从上下文 400 中恢复。",
