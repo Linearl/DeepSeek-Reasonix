@@ -159,6 +159,14 @@ func LoadBranchMeta(sessionPath string) (BranchMeta, bool, error) {
 	}
 	var m BranchMeta
 	if err := json.Unmarshal(b, &m); err != nil {
+		// A zero-filled or all-whitespace sidecar is a torn/incomplete write (for
+		// example a Windows non-atomic ReplaceFile copy truncated by a forced
+		// reboot — see #6325). Treat it as absent so callers rebuild the meta
+		// instead of failing every save/close. Genuine partial JSON is still an
+		// error so we do not silently swallow real corruption.
+		if metaIsUnparseableAsAbsent(b) {
+			return BranchMeta{}, false, nil
+		}
 		return BranchMeta{}, false, fmt.Errorf("decode branch meta %s: %w", metaPath, err)
 	}
 	if m.ID == "" {
@@ -166,6 +174,23 @@ func LoadBranchMeta(sessionPath string) (BranchMeta, bool, error) {
 	}
 	m.sanitizeDisplayFields()
 	return m, true, nil
+}
+
+// metaIsUnparseableAsAbsent reports whether an undecodable branch-meta file is
+// an empty/zero-filled torn write (safe to treat as absent and rebuild) rather
+// than genuine partial JSON. A sidecar truncated by a forced reboot or a
+// non-atomic in-place copy leaves all-NUL (or all-whitespace) bytes; JSON never
+// otherwise begins that way, so this is a low-false-positive signal.
+func metaIsUnparseableAsAbsent(b []byte) bool {
+	if len(b) == 0 {
+		return true
+	}
+	for _, c := range b {
+		if c != 0x00 && c != ' ' && c != '\t' && c != '\r' && c != '\n' {
+			return false
+		}
+	}
+	return true
 }
 
 // sanitizeDisplayFields cleans persisted display strings that older builds
