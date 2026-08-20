@@ -428,10 +428,10 @@ func (c *Config) SetColdResumePrune(enabled bool) error {
 }
 
 // SetCompactRatio updates the sole user-controlled automatic compaction
-// threshold. Allowed range is 0.65–0.85; presets are 0.70 / 0.80 / 0.85.
+// threshold. Allowed range is 0.30–0.85; presets are 0.70 / 0.80 / 0.85.
 func (c *Config) SetCompactRatio(ratio float64) error {
-	if math.IsNaN(ratio) || math.IsInf(ratio, 0) || ratio < 0.65 || ratio > 0.85 {
-		return fmt.Errorf("compact ratio %v: must be between 0.65 and 0.85", ratio)
+	if math.IsNaN(ratio) || math.IsInf(ratio, 0) || ratio < 0.30 || ratio > 0.85 {
+		return fmt.Errorf("compact ratio %v: must be between 0.30 and 0.85", ratio)
 	}
 	c.Agent.CompactRatio = ratio
 	return nil
