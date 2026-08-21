@@ -66,6 +66,13 @@ func (a *Agent) acquireWorkspaceLease(ctx context.Context, plan *toolCallPlan) (
 			for i := range paths {
 				paths[i] = resolveMaybeRelative(a.writeWorkspaceRoot, paths[i])
 			}
+			// Optimistic-write mode (#9213): a path-bound writer with an explicit
+			// target does not take the whole-path serialization hold — parallelism
+			// is guarded by the write-if-unchanged ("expected") stale-content check
+			// inside the tool instead of by a lock.
+			if a.svc.optimisticWrite {
+				return noop, nil
+			}
 			return a.svc.workspaceLease.HoldWriteForPaths(ctx, paths)
 		}
 	}
