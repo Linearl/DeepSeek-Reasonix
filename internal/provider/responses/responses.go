@@ -140,10 +140,12 @@ func New(cfg Config) provider.Provider {
 		sessionCache = *cfg.SessionCache
 	}
 	vision, _ := cfg.Extra["vision"].(bool)
-	// DeepSeek's official Responses endpoint is currently text-only. Keep this
-	// provider-boundary guard so stale config or extension metadata cannot emit
-	// unsupported input_image items.
-	vision = vision && vendor != "deepseek"
+	// DeepSeek's official Responses endpoint is historically text-only, but
+	// explicitly vision-named models (e.g. deepseek-v4-flash-vision-exp) may
+	// accept input_image items. Keep the guard for text-only DeepSeek models so
+	// stale config or extension metadata cannot emit unsupported input_image
+	// items for them.
+	vision = vision && !(vendor == "deepseek" && !provider.IsLikelyVisionModelName(cfg.Model))
 	httpClient := &http.Client{}
 	if built, err := netclient.NewHTTPClient(cfg.Proxy, netclient.TransportOptions{
 		DialTimeout: 30 * time.Second, KeepAlive: 30 * time.Second,

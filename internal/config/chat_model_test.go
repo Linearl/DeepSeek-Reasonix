@@ -69,7 +69,7 @@ func TestIsLikelyChatModel_DoesNotFilterVoiceAlone(t *testing.T) {
 func TestIsLikelyVisionModel(t *testing.T) {
 	for _, model := range []string{
 		"mimo-v2.5", "mimo-v2-omni", "gpt-4o", "gpt-4o-mini",
-		"qwen2.5-vl-72b-instruct", "custom-vision-chat",
+		"qwen2.5-vl-72b-instruct", "custom-vision-chat", "deepseek-v4-flash-vision-exp",
 	} {
 		if !IsLikelyVisionModel(model) {
 			t.Errorf("IsLikelyVisionModel(%q) = false, want true", model)

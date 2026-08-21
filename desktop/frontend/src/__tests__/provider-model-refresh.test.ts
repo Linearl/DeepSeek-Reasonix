@@ -104,9 +104,10 @@ eq(
     isLikelyVisionModel("mimo-v2.5"),
     isLikelyVisionModel("mimo-v2-omni"),
     isLikelyVisionModel("qwen2.5-vl-72b-instruct"),
+    isLikelyVisionModel("deepseek-v4-flash-vision-exp"),
     isLikelyVisionModel("mimo-v2.5-asr"),
   ],
-  [true, false, false, true, true, true, false],
+  [true, false, false, true, true, true, true, false],
   "detects likely image-capable chat model IDs",
 );
 

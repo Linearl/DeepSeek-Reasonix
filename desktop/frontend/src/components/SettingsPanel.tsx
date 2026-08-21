@@ -6,7 +6,7 @@ import { botAccessEntryCount, botAccessReady, botConnectionCredentialSummary, bo
 import { useDeferredClose } from "../lib/useMountTransition";
 import { app, openExternal } from "../lib/bridge";
 import { normalizeLangPref, useI18n, useT, type DictKey, type LangPref } from "../lib/i18n";
-import { apiKeyEnvFromProviderName, createLatestRequestGate, inferredVisionModels, mergedFetchedProviderModels, mergeProviderModelContextWindows, providerApiKeyEnvForSave, providerDefaultModel, providerIsConfigured, providerModelCandidates, providerModelContextWindowDrafts, providerModelContextWindowIsSmall, providerRequiresKey } from "../lib/providerModels";
+import { apiKeyEnvFromProviderName, createLatestRequestGate, inferredVisionModels, isLikelyVisionModel, mergedFetchedProviderModels, mergeProviderModelContextWindows, providerApiKeyEnvForSave, providerDefaultModel, providerIsConfigured, providerModelCandidates, providerModelContextWindowDrafts, providerModelContextWindowIsSmall, providerRequiresKey } from "../lib/providerModels";
 import { cachedFetchProviderModels, invalidateProviderCacheByAPIKeyEnv, shouldSkipAutoRefresh } from "../lib/providerModelCache";
 import { providerBaseURLForSave, providerRequestURLFromConfig, trimmedBaseURL } from "../lib/providerEndpoint";
 import { opencodeGoPresetDescriptionKeys } from "../lib/providerPresetDescriptions";
@@ -6268,8 +6268,11 @@ export function providerSupportsServerWebSearchForView(
   return providerSupportsServerWebSearch(provider.kind, provider.baseUrl);
 }
 
-function providerVisionCapability(kind: string, baseUrl: string): ProviderVisionCapability {
+function providerVisionCapability(kind: string, baseUrl: string, models: string[] = []): ProviderVisionCapability {
   if (!isDeepSeekOfficialEndpoint(baseUrl)) return "configurable";
+  // DeepSeek official endpoints stay conservative for text-only models, but a
+  // model that explicitly names vision support may be configured for images.
+  if (models.some((model) => isLikelyVisionModel(model))) return "configurable";
   switch (kind.trim().toLowerCase()) {
     case "openai":
     case "responses":
@@ -6281,12 +6284,12 @@ function providerVisionCapability(kind: string, baseUrl: string): ProviderVision
 }
 
 export function providerVisionCapabilityForView(
-  provider: Pick<ProviderView, "kind" | "baseUrl" | "visionCapability">,
+  provider: Pick<ProviderView, "kind" | "baseUrl" | "visionCapability" | "models">,
 ): ProviderVisionCapability {
   if (provider.visionCapability === "unsupported" || provider.visionCapability === "configurable") {
     return provider.visionCapability;
   }
-  return providerVisionCapability(provider.kind, provider.baseUrl);
+  return providerVisionCapability(provider.kind, provider.baseUrl, provider.models ?? []);
 }
 
 function canonicalOfficialProviderName(name: string): string {
@@ -6591,6 +6594,7 @@ export function ProviderEditor({
     kind: effectiveKind,
     baseUrl: effectiveBaseUrl,
     visionCapability: retainedVisionCapability,
+    models: initial?.models ?? [],
   });
   const retainedServerWebSearchCapability = initial &&
     effectiveKind.trim().toLowerCase() === initial.kind.trim().toLowerCase() &&

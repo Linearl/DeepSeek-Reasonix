@@ -133,27 +133,31 @@ ok(
   "older backend payloads do not infer support for arbitrary compatible endpoints",
 );
 ok(
-  providerVisionCapabilityForView({ kind: "openai", baseUrl: "https://custom.example/v1", visionCapability: "unsupported" }) === "unsupported",
+  providerVisionCapabilityForView({ kind: "openai", baseUrl: "https://custom.example/v1", visionCapability: "unsupported", models: [] }) === "unsupported",
   "backend vision capability overrides frontend endpoint inference",
 );
 ok(
-  providerVisionCapabilityForView({ kind: "openai", baseUrl: "https://api.deepseek.com" }) === "unsupported",
+  providerVisionCapabilityForView({ kind: "openai", baseUrl: "https://api.deepseek.com", models: [] }) === "unsupported",
   "older backend payloads retain the endpoint-based vision fallback",
 );
 ok(
-  providerVisionCapabilityForView({ kind: "anthropic", baseUrl: "https://eu.deepseek.com/anthropic" }) === "unsupported",
+  providerVisionCapabilityForView({ kind: "openai", baseUrl: "https://api.deepseek.com", models: ["deepseek-v4-flash", "deepseek-v4-flash-vision-exp"] }) === "configurable",
+  "vision-named DeepSeek models remain configurable on official endpoints",
+);
+ok(
+  providerVisionCapabilityForView({ kind: "anthropic", baseUrl: "https://eu.deepseek.com/anthropic", models: [] }) === "unsupported",
   "older backend payloads treat regional DeepSeek subdomains as text-only",
 );
 ok(
-  providerVisionCapabilityForView({ kind: "responses", baseUrl: "https://deepseek.com" }) === "configurable",
+  providerVisionCapabilityForView({ kind: "responses", baseUrl: "https://deepseek.com", models: [] }) === "configurable",
   "the DeepSeek apex does not inherit official vision restrictions",
 );
 ok(
-  providerVisionCapabilityForView({ kind: "openai", baseUrl: "https://deepseek.com.example/v1" }) === "configurable",
+  providerVisionCapabilityForView({ kind: "openai", baseUrl: "https://deepseek.com.example/v1", models: [] }) === "configurable",
   "lookalike domains with a DeepSeek prefix do not inherit official vision restrictions",
 );
 ok(
-  providerVisionCapabilityForView({ kind: "openai", baseUrl: "https://api.deepseek.com.example/v1" }) === "configurable",
+  providerVisionCapabilityForView({ kind: "openai", baseUrl: "https://api.deepseek.com.example/v1", models: [] }) === "configurable",
   "lookalike domains with an official-host prefix remain configurable",
 );
 

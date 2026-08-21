@@ -810,8 +810,11 @@ func TestEffectiveVisionRejectsOfficialDeepSeekOverridesButPreservesCustomGatewa
 		Model:        "deepseek-v5-vision",
 		VisionModels: []string{"deepseek-v5-vision"},
 	}
-	if EffectiveVision(future) {
-		t.Fatal("a future model name must not bypass the official DeepSeek wire constraint")
+	if !CanConfigureVision(future) {
+		t.Fatal("an explicitly vision-named DeepSeek model must allow vision configuration")
+	}
+	if !EffectiveVision(future) {
+		t.Fatal("an explicitly vision-named DeepSeek model must be able to use its persisted vision metadata")
 	}
 
 	visionOn := true
