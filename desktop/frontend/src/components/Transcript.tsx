@@ -66,6 +66,7 @@ const EMPTY_CHECKPOINTS: CheckpointMeta[] = [];
 const EMPTY_INVOCATION_METADATA: InvocationMetadataMap = {};
 const NO_HELD_ROWS: readonly TranscriptRow[] = [];
 const QuestionJumpBar = lazy(() => import("./QuestionJumpBar"));
+const QuestionSearchPanel = lazy(() => import("./QuestionSearchPanel"));
 const SHOW_SCROLL_DIAGNOSTICS = typeof __BUILD_CHANNEL__ === "undefined" || __BUILD_CHANNEL__ === "test" || import.meta.env.DEV;
 const ScrollDiagnosticPanel = SHOW_SCROLL_DIAGNOSTICS ? lazy(() => import("./ScrollDiagnosticPanel")) : null;
 
@@ -275,6 +276,8 @@ export function Transcript({
   rewindDisabled = false,
   running = false,
   questionNavigator = true,
+  questionSearchOpen = false,
+  onCloseQuestionSearch,
   welcomeVariant = "default",
   creationMode = false,
   actionHoverMenus = false,
@@ -308,6 +311,8 @@ export function Transcript({
   rewindDisabled?: boolean;
   running?: boolean;
   questionNavigator?: boolean;
+  questionSearchOpen?: boolean;
+  onCloseQuestionSearch?: () => void;
   welcomeVariant?: "default" | "creation";
   creationMode?: boolean;
   actionHoverMenus?: boolean;
@@ -1046,6 +1051,18 @@ export function Transcript({
             loadedQuestions={questions}
             totalQuestions={totalQuestions}
             activeTurn={activeQuestion}
+            onJump={handleJumpToQuestion}
+          />
+        </Suspense>
+      )}
+
+      {showQuestionNav && (
+        <Suspense fallback={null}>
+          <QuestionSearchPanel
+            open={Boolean(questionSearchOpen)}
+            onClose={() => onCloseQuestionSearch?.()}
+            questions={questions}
+            totalQuestions={totalQuestions}
             onJump={handleJumpToQuestion}
           />
         </Suspense>
