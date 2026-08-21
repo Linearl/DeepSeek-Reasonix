@@ -145,6 +145,7 @@ type SandboxView struct {
 	Network                bool     `json:"network"`
 	WorkspaceRoot          string   `json:"workspaceRoot"`
 	AllowWrite             []string `json:"allowWrite"`
+	OptimisticWrite        bool     `json:"optimisticWrite"`
 	EffectiveWorkspaceRoot string   `json:"effectiveWorkspaceRoot"`
 	EffectiveWriteRoots    []string `json:"effectiveWriteRoots"`
 	Shell                  string   `json:"shell"` // [tools.shell] prefer: auto|bash|powershell|pwsh
@@ -1028,6 +1029,7 @@ func (a *App) Settings() SettingsView {
 		Sandbox: SandboxView{
 			Bash: bash, Network: cfg.Sandbox.Network,
 			WorkspaceRoot: cfg.Sandbox.WorkspaceRoot, AllowWrite: nonNil(cfg.Sandbox.AllowWrite),
+			OptimisticWrite: cfg.Sandbox.OptimisticWrite,
 			EffectiveWorkspaceRoot: effectiveWorkspaceRoot, EffectiveWriteRoots: nonNil(writeRoots),
 			Shell: shell, EffectiveShell: sandboxEffectiveShellView(effectiveShell),
 		},
@@ -3255,6 +3257,16 @@ func (a *App) SetSandbox(bash string, network bool, workspaceRoot string, allowW
 		c.Sandbox.WorkspaceRoot = strings.TrimSpace(workspaceRoot)
 		c.Sandbox.AllowWrite = trimList(allowWrite)
 		c.Tools.Shell.Prefer = strings.TrimSpace(shell)
+		return nil
+	})
+}
+
+// SetOptimisticWrite toggles the optimistic-concurrency write mode (#9213).
+// When enabled, path-bound file writers skip the whole-path serialization wait
+// and rely on write-if-unchanged ("expected") stale-content detection instead.
+func (a *App) SetOptimisticWrite(enabled bool) error {
+	return a.applyConfigChange(func(c *config.Config) error {
+		c.Sandbox.OptimisticWrite = enabled
 		return nil
 	})
 }
