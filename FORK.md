@@ -34,9 +34,16 @@
 - 不要删除/替换 `reasonix-update-helper.exe`。
 - 回迁官方：优先官方安装器覆盖安装；也可重新开启 `check_updates` 等官方更高版本自动更新。
 
+### Fork release 产物
+
+- CLI：`bash scripts/fork-release.sh [version]` 本地构建多平台 CLI（unsigned）。
+- Desktop：`.github/workflows/release-fork.yml` 手动触发，构建 unsigned 安装包/归档并发布到 fork 的 GitHub Release。
+- 注意：fork release 不做 MINISIGN/SignPath/Apple 签名，不生成 `latest.json`，不镜像 R2；因此 fork 版请走手动安装，不要依赖自动更新。
+
 ## 验证状态
 
 - [x] `go build ./cmd/reasonix` 通过。
-- [ ] `go test ./...`、`make vet`、`scripts/cache-guard.sh`（需在允许验证的环境运行）。
-- [ ] 基于官方 `release-desktop.yml` / `release.yml` 改造 fork release workflow。
+- [x] 添加 `scripts/fork-release.sh`（CLI release 构建脚本）。
+- [x] 添加 `.github/workflows/release-fork.yml`（最小 unsigned desktop release workflow）。
+- [ ] `go test ./...`、`make vet`、`scripts/cache-guard.sh`（用户正在执行，等待结果）。
 - [ ] 安装 fork release 后验证并行写效果、自动化任务、周报正常。
