@@ -3,12 +3,30 @@ package main
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
 	"reasonix/internal/sessioncatalog"
 )
+
+func TestSessionCatalogTargetsIncludeRestoredProjectTab(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	app := NewApp()
+	root := t.TempDir()
+	sessionDir := desktopSessionDir(root)
+	app.tabs["restored"] = &WorkspaceTab{
+		ID: "restored", Scope: "project", WorkspaceRoot: root,
+		SessionPath: filepath.Join(sessionDir, "restored.jsonl"),
+	}
+	for _, target := range app.sessionCatalogTargets() {
+		if target.Path == sessionDir && target.Scope == "project" && target.WorkspaceRoot == root {
+			return
+		}
+	}
+	t.Fatalf("session catalog targets = %#v, want restored project directory %q", app.sessionCatalogTargets(), sessionDir)
+}
 
 func waitForCatalogSessionPath(t *testing.T, app *App, workspaceRoot, sessionDir, sessionPath string) sessioncatalog.SessionRecord {
 	t.Helper()

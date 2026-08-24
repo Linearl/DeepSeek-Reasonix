@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"reasonix/internal/provider"
 	"reasonix/internal/provider/openai"
 )
 
@@ -45,7 +46,7 @@ func (e *ProviderEntry) FetchModels(ctx context.Context) ([]string, error) {
 			AuthMode: authMode,
 		})
 		if err == nil {
-			return models, nil
+			return provider.FilterOfficialOpenCodeGoModels(e.Kind, e.BaseURL, models), nil
 		}
 		lastErr = err
 		if !openai.IsModelFetchEndpointMiss(err) && firstHardErr == nil {

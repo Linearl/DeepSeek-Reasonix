@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 )
 
@@ -300,5 +301,34 @@ func TestProviderFetchModelsUsesAnthropicAuthMode(t *testing.T) {
 				t.Fatalf("got %v, want [anthropic-model]", got)
 			}
 		})
+	}
+}
+
+func TestProviderFetchModelsFiltersOfficialOpenCodeGoCatalogByWireFormat(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]string{
+				{"id": "grok-4.5"},
+				{"id": "qwen3.7-plus"},
+				{"id": "minimax-m3"},
+				{"id": "glm-5.2"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	p := ProviderEntry{
+		Name:      "opencode-go-anthropic",
+		Kind:      "anthropic",
+		BaseURL:   "https://opencode.ai/zen/go",
+		ModelsURL: srv.URL,
+	}
+	got, err := p.FetchModels(context.Background())
+	if err != nil {
+		t.Fatalf("FetchModels: %v", err)
+	}
+	want := []string{"minimax-m3", "qwen3.7-plus"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("models = %v, want %v", got, want)
 	}
 }

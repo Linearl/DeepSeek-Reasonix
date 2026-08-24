@@ -77,8 +77,10 @@ func InspectRunPause(err error) (RunPauseInfo, bool) {
 	return RunPauseInfo{}, false
 }
 
-// ReadinessContinuationClass tells a host whether an observed readiness gap is
-// safe and concrete enough for a bounded synthetic follow-up turn.
+// ReadinessContinuationClass is retained for compatibility with hosts that
+// inspect FinalReadinessError. Ordinary Standard/Delivery turns never use it
+// to schedule another model request; only Goal/approved-Plan orchestration may
+// interpret the advisory class after the visible turn has ended.
 type ReadinessContinuationClass string
 
 const (
@@ -86,11 +88,10 @@ const (
 	// construct FinalReadinessError directly never opt into another model turn.
 	ReadinessContinuationNone ReadinessContinuationClass = ""
 	// ReadinessContinuationGeneric covers ordinary post-write verification and
-	// review gaps. Hosts may give it one bounded follow-up turn.
+	// review gaps for Goal/Plan diagnostics.
 	ReadinessContinuationGeneric ReadinessContinuationClass = "generic"
 	// ReadinessContinuationHighConfidence covers exact or strict, safely
-	// actionable readiness duties. Hosts may give it a second turn only after
-	// host-observable progress.
+	// actionable readiness duties for Goal/Plan diagnostics.
 	ReadinessContinuationHighConfidence ReadinessContinuationClass = "high_confidence"
 )
 

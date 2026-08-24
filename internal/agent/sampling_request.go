@@ -40,7 +40,20 @@ func (a *Agent) normalizeModelRequestMessages(msgs []provider.Message) []provide
 }
 
 func (a *Agent) streamProviderRequest(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
-	return a.svc.prov.Stream(ctx, req)
+	ch, err := a.svc.prov.Stream(ctx, req)
+	if err != nil {
+		if limit := provider.AsOutputLimitError(err); limit != nil && req.MaxTokens > limit.MaxOutputTokens {
+			a.learnOutputBudget(limit.MaxOutputTokens)
+			retryReq := req
+			retryReq.MaxTokens = limit.MaxOutputTokens
+			return a.svc.prov.Stream(ctx, retryReq)
+		}
+		return nil, err
+	}
+	// HTTP-level output-limit errors are returned before a stream channel is
+	// created by SendWithRetry. Preserve the original channel directly so
+	// cancellation and live chunk timing remain unchanged.
+	return ch, nil
 }
 
 func (a *Agent) handleSamplingError(

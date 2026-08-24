@@ -330,6 +330,20 @@ func (a *App) projectNodeFromCatalogTopic(topic sessioncatalog.TopicRecord, topi
 	if topic.Scope == "global" {
 		kind = "global_topic"
 	}
+	recoveryOnly := topic.RecoveryState == "recovery_only" && recoveryOnlyHasContent(topic.Sessions)
+	canonicalRecovery := topic.RecoveryState == "adopted" || topic.RecoveryState == "preferred"
+	recoveryState := ""
+	recoveryBranchCount := 0
+	recoveryUnresolvedCount := 0
+	recoveryCleanupEligibleCount := 0
+	if recoveryOnly {
+		recoveryState = topic.RecoveryState
+		recoveryBranchCount = topic.RecoveryBranchCount
+		recoveryUnresolvedCount = topic.RecoveryUnresolvedCount
+		recoveryCleanupEligibleCount = topic.RecoveryCleanupEligibleCount
+	} else if canonicalRecovery {
+		recoveryState = topic.RecoveryState
+	}
 	overlay := topicOverlays[topicSummaryKey(topic.Scope, topic.WorkspaceRoot, topic.TopicID)]
 	node := ProjectNode{
 		Key: kind + "_" + topic.TopicID, Kind: kind, Label: a.localizedTopicTitle(topic.Title, topic.TitleSource),
@@ -338,7 +352,10 @@ func (a *App) projectNodeFromCatalogTopic(topic sessioncatalog.TopicRecord, topi
 		TurnsState: string(topic.TurnsState), Health: string(topic.Health),
 		CreatedAt: topic.CreatedAt, LastActivityAt: topic.LastActivityAt,
 		Pinned: topic.Pinned, SortOrder: topic.SortOrder,
-		Open: overlay.open, Running: overlay.running, Status: overlay.status,
+		Recovered: recoveryOnly || canonicalRecovery, RecoveryState: recoveryState,
+		RecoveryBranchCount: recoveryBranchCount, RecoveryUnresolvedCount: recoveryUnresolvedCount,
+		RecoveryCleanupEligibleCount: recoveryCleanupEligibleCount,
+		Open:                         overlay.open, Running: overlay.running, Status: overlay.status,
 		// Ordinary tree is zero-config: never surface recovery counts, badges,
 		// or forced-handling status. History "other saved versions" owns that.
 		Children: []ProjectNode{},
@@ -368,6 +385,9 @@ func (a *App) projectNodeFromCatalogTopic(topic sessioncatalog.TopicRecord, topi
 		// preferred conflict forks. Open/running recovery is still not a
 		// second row — status is already aggregated above.
 		if !sessioncatalog.OrdinaryTreeSession(session, false, false, localPreferred) {
+			if session.Recovered || session.RecoveryCopy {
+				node.RecoveryCopyCount++
+			}
 			continue
 		}
 		visible = append(visible, session)
@@ -376,7 +396,7 @@ func (a *App) projectNodeFromCatalogTopic(topic sessioncatalog.TopicRecord, topi
 		})
 	}
 	summary := topicSummaryFromCatalogTopic(topic, visible)
-	if topicHiddenAsRecoveryOnly(summary, topic.Pinned, append(runtimeSessions, runtimeSessionStatus{
+	if !recoveryOnly && topicHiddenAsRecoveryOnly(summary, topic.Pinned, append(runtimeSessions, runtimeSessionStatus{
 		open: overlay.open || node.Open, running: overlay.running || node.Running,
 	})) {
 		return ProjectNode{Children: []ProjectNode{}}, false
@@ -385,8 +405,17 @@ func (a *App) projectNodeFromCatalogTopic(topic sessioncatalog.TopicRecord, topi
 		return ProjectNode{Children: []ProjectNode{}}, false
 	}
 	// After filtering non-preferred recovery forks, a topic may have nothing
-	// left. Keep pinned/open shells; otherwise drop the empty row.
+	// left. A recovery-only topic still gets one logical row so the user can
+	// reach its saved content; the physical copies remain history-only.
 	if len(visible) == 0 {
+		if recoveryOnly {
+			representative := recoveryOnlyRepresentative(topic.Sessions)
+			node.Recovered = true
+			node.Turns = representative.Turns
+			node.Preview = strings.TrimSpace(representative.Preview)
+			node.SessionPath = representative.Path
+			return node, true
+		}
 		if topic.Pinned || overlay.open || overlay.running || node.Open || node.Running {
 			return node, true
 		}
@@ -458,7 +487,7 @@ func (a *App) ListProjectTopics(req ProjectTopicPageRequest) (ProjectTopicPage, 
 	}
 	availability := a.catalogWorkspaceAvailability(catalog, req.Scope, req.WorkspaceRoot)
 	if !availability.usable {
-		// A freshly opened v4 cache is live but empty until the first directory
+		// A freshly opened v5 cache is live but empty until the first directory
 		// scan. Treat that the same as "catalog unavailable" so upgrade does
 		// not blank the sidebar that desktop-projects.json still knows about.
 		page := a.metadataTopicPage(req)
@@ -678,7 +707,6 @@ func (a *App) RebuildSessionCatalog() error {
 	}
 	go func() {
 		a.stopSessionCatalog(250 * time.Millisecond)
-		a.catalogRebuilding.Store(false)
 		a.startSessionCatalog(true)
 	}()
 	return nil

@@ -28,11 +28,12 @@ type finalReadinessCheck struct {
 	missingActionEvidence      int
 	missingMutation            int
 	missingCapabilities        int
+	incompleteTodoItems        []evidence.TodoStepMatch
 }
 
 func (c finalReadinessCheck) continuationClass() ReadinessContinuationClass {
-	if c.reason == "" || c.continuationUnsafe || c.missingActionEvidence > 0 ||
-		c.missingMutation > 0 || c.missingCapabilities > 0 {
+	if c.reason == "" || c.continuationUnsafe || c.missingActionEvidence > 0 || c.missingMutation > 0 ||
+		c.missingCapabilities > 0 {
 		return ReadinessContinuationNone
 	}
 	if c.continuationHighConfidence {
@@ -104,7 +105,7 @@ func (c finalReadinessCheck) progressSignature() string {
 }
 
 func (c finalReadinessCheck) missingIDs() []string {
-	missing := make([]string, 0, 9)
+	missing := make([]string, 0, 10)
 	add := func(id string, count int) {
 		if count > 0 {
 			missing = append(missing, id)
@@ -154,7 +155,7 @@ func (a *Agent) finalReadinessCheckFor() finalReadinessCheck {
 		return out
 	}
 	incomplete, hasTodos := a.task.ledger.IncompleteLatestTodos()
-	if !hasTodos && a.task.ledger.HasAnySuccessfulReceipt() {
+	if a.closedLoopActive() && !hasTodos && a.task.ledger.HasAnySuccessfulReceipt() {
 		incomplete, hasTodos = a.incompleteCanonicalTodos()
 	}
 	if msg := a.capabilityGateFailure(); msg != "" {
@@ -167,12 +168,11 @@ func (a *Agent) finalReadinessCheckFor() finalReadinessCheck {
 	if mutation, ok := a.task.ledger.LatestSuccessfulMutationIndex(); ok {
 		writer, hasWriter = mutation, true
 	}
-	// Incomplete todos contradict closed-loop delivery only. In open turns they
-	// are cross-turn work plans and must not trigger the recovery ceremony.
 	if a.closedLoopActive() && hasWriter && hasTodos && len(incomplete) > 0 {
 		out.applies = true
 		out.continuationHighConfidence = true
 		out.incompleteTodos = len(incomplete)
+		out.incompleteTodoItems = append([]evidence.TodoStepMatch(nil), incomplete...)
 		missing = append(missing, finalReadinessIncompleteTodos(incomplete))
 	}
 	for _, check := range a.projectChecks {
@@ -249,7 +249,7 @@ func (a *Agent) finalReadinessCheckFor() finalReadinessCheck {
 			a.turn.engine.NoteRecoveryAttempt()
 		}
 		out.reason = strings.Join(missing, "; ")
-		if !a.turn.automaticReadinessContinuation && !a.closedLoopActive() {
+		if !a.closedLoopActive() {
 			return a.applyPartialCheckWaiver(out)
 		}
 		return out

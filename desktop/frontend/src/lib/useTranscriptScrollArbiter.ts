@@ -8,7 +8,7 @@ import type {
 import type { SizeFunction, VirtuosoHandle } from "react-virtuoso";
 import { isEditableTarget } from "./keyboardShortcuts";
 import { findVerticalScrollTarget, normalizeWheelDelta } from "./nestedScrollHandoff";
-import { isNativeVerticalScrollbarPointer, measureTranscriptVirtuosoItem } from "./transcriptNativeScrollbar";
+import { hasPendingTranscriptGeometry, isNativeVerticalScrollbarPointer, measureTranscriptVirtuosoItem } from "./transcriptNativeScrollbar";
 import {
   INITIAL_TRANSCRIPT_SCROLL_STATE,
   isSubstantialTranscriptDisplacement,
@@ -27,7 +27,6 @@ import {
   CAPTURE_TRANSCRIPT_SCROLL_DIAGNOSTICS,
   recordTranscriptScrollTransition,
   type TranscriptScrollDiagnosticSource,
-  type TranscriptTailWriteDiagnostic,
 } from "./transcriptScrollDiagnosticProbe";
 import type {
   ActiveTranscriptRecovery,
@@ -35,13 +34,17 @@ import type {
   TranscriptRecoveryTerminal,
 } from "./transcriptScrollRecovery";
 import {
+  MIN_REVERSE_JUMP_PX,
   transcriptScrollEventCancelsReaderExtentGuard,
   transcriptKeyboardScrollDelta,
 } from "./transcriptReaderExtentStability";
-import { hasTranscriptScrollableRange, nativeTranscriptBottomTop, nativeTranscriptDistanceFromBottom, TRANSCRIPT_AT_BOTTOM_THRESHOLD_PX } from "./transcriptScrollGeometry";
+import { hasTranscriptScrollableRange, nativeTranscriptBottomTop, nativeTranscriptDistanceFromBottom, pinTranscriptTailAfterViewportShrink, TRANSCRIPT_AT_BOTTOM_THRESHOLD_PX, type TranscriptFollowGeometry } from "./transcriptScrollGeometry";
 import type { TranscriptRow } from "./transcriptRows";
+import { isTranscriptRowLayoutVariant, type TranscriptEstimateSource, type TranscriptRowLayoutVariant } from "./transcriptRowGeometry";
 import { captureTranscriptVirtuosoState } from "./transcriptStateSnapshot";
 import { captureTranscriptLayoutAnchor, type TranscriptLayoutAnchor } from "./transcriptVirtuosoRecovery";
+import { createTranscriptAnchorCompensation, type TranscriptAnchorCompensation } from "./transcriptAnchorCompensation";
+import { createTranscriptTailSettle, type TranscriptTailSettle } from "./transcriptTailSettle";
 import { useTranscriptReaderExtentStability } from "./useTranscriptReaderExtentStability";
 export type {
   TranscriptRecoveryRequestSpec,
@@ -50,12 +53,6 @@ export type {
 } from "./transcriptScrollRecovery";
 export { hasTranscriptScrollableRange, nativeTranscriptBottomTop, nativeTranscriptDistanceFromBottom, TRANSCRIPT_AT_BOTTOM_THRESHOLD_PX };
 
-const TAIL_STAGNANT_FRAME_LIMIT = 2;
-// Ignore one-frame extent oscillation; real growth remains displaced and
-// converges on the following frame (#9028/#9089).
-const TAIL_CONFIRM_OFF_BOTTOM_FRAMES = 2;
-const JUMP_TAIL_TRANSACTION_MS = 240;
-const LAYOUT_TRANSIENT_IDLE_MS = 160;
 const READER_INTENT_IDLE_MS = 180;
 // Slow WebView2 rows need a wall-clock mount budget. Expiry suspends without
 // an intermediate scrollBy, then retries after a bounded quiet window.
@@ -73,7 +70,16 @@ export function useTranscriptScrollArbiter({
    *  cancelled / expired); wired into session diagnostics by the caller. */
   onRecoveryTerminal?: (terminal: TranscriptRecoveryTerminal) => void;
   /** Receives real, unfrozen itemSize measurements; data-known-size is ignored. */
-  onItemMeasured?: (rowKey: string, kind: TranscriptRow["kind"], height: number, width: number, measurementVersion?: string) => void;
+  onItemMeasured?: (
+    rowKey: string,
+    kind: TranscriptRow["kind"],
+    layoutVariant: TranscriptRowLayoutVariant,
+    height: number,
+    width: number,
+    measurementVersion: string | undefined,
+    estimateSource: TranscriptEstimateSource | undefined,
+    staticEstimate: number | undefined,
+  ) => void;
 } = {}) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -83,26 +89,25 @@ export function useTranscriptScrollArbiter({
   const touchStartYRef = useRef<number | null>(null);
   const nativeScrollbarDragRef = useRef(false);
   const middlePointerScrollRef = useRef(false);
+  const deliverScrollRef = useRef<((element?: HTMLDivElement) => void) | null>(null);
   const generationRef = useRef(0);
   const followFrameRef = useRef<number | null>(null);
-  const tailSettleFrameRef = useRef<number | null>(null);
-  const tailSettleProgressRef = useRef<{
-    distance: number;
-    stagnantFrames: number;
-    offBottomFrames: number;
-  } | null>(null);
-  const jumpTailTimerRef = useRef<number | null>(null);
+  // Virtuoso reuses physical row elements. A known size from the previous
+  // logical row must not be treated as the current row's geometry contract.
+  const measuredRowKeyRef = useRef(new WeakMap<HTMLElement, string>());
   const layoutTransientRef = useRef(false);
-  const layoutTransientIdleTimerRef = useRef<number | null>(null);
   const resizeSettleFrameRef = useRef<number | null>(null);
   const readerIntentTimerRef = useRef<number | null>(null);
-  const lastFollowExtentRef = useRef<number | null>(null);
+  const followGeometryRef = useRef<TranscriptFollowGeometry>({ contentExtent: null, viewportExtent: null });
   const recoveryRef = useRef<ActiveTranscriptRecovery | null>(null);
   const nextRecoveryIdRef = useRef(0);
   // Last known-good viewport anchor: updated on every completed recovery, on
   // every user-takeover, and sampled on user scroll intent. The blank
   // watchdog restores from it instead of a nearest-mounted-row guess (#8657).
   const lastGoodAnchorRef = useRef<TranscriptLayoutAnchor | null>(null);
+  // Steady-state manual-mode anchor compensation (#8438/#8488/#8897) lives in
+  // its own controller; lazy-created once dispatch exists (below).
+  const anchorCompensationRef = useRef<TranscriptAnchorCompensation | null>(null);
   const onRecoveryTerminalRef = useRef(onRecoveryTerminal);
   onRecoveryTerminalRef.current = onRecoveryTerminal;
   const onItemMeasuredRef = useRef(onItemMeasured);
@@ -118,130 +123,13 @@ export function useTranscriptScrollArbiter({
   }, []);
   const readerExtent = useTranscriptReaderExtentStability({ generationRef, modeRef, scrollRef, writeCorrection: writeReaderCorrection });
 
-  // Native-extent writes converge against real DOM geometry and avoid
-  // scrollToIndex("LAST") retries against a stale Virtuoso size tree (#9028).
-  const scrollToTail = useCallback((
-    behavior: "auto" | "smooth",
-    diagnostic?: TranscriptTailWriteDiagnostic,
-  ) => {
-    const element = scrollRef.current;
-    if (!element) return;
-    const top = element.scrollHeight;
-    if (CAPTURE_TRANSCRIPT_SCROLL_DIAGNOSTICS && diagnostic) {
-      noteTranscriptScrollWrite({
-        owner: "tail-follow",
-        kind: "scrollTo",
-        top,
-        source: diagnostic.source,
-        phase: diagnostic.phase,
-        scrollTop: element.scrollTop,
-        scrollHeight: element.scrollHeight,
-        clientHeight: element.clientHeight,
-        bottomDistance: nativeTranscriptDistanceFromBottom(element),
-        mode: modeRef.current,
-        settleFrame: diagnostic.settle?.frame,
-        offBottomFrames: diagnostic.settle?.offBottomFrames,
-        stagnantFrames: diagnostic.settle?.stagnantFrames,
-      });
-    } else {
-      noteTranscriptScrollWrite({ owner: "tail-follow", kind: "scrollTo", top });
-    }
-    virtuosoRef.current?.scrollTo({ top, behavior });
-  }, []);
-
-  const cancelTailSettle = useCallback(() => {
-    if (tailSettleFrameRef.current !== null) cancelAnimationFrame(tailSettleFrameRef.current);
-    tailSettleFrameRef.current = null;
-    tailSettleProgressRef.current = null;
-    if (jumpTailTimerRef.current !== null) window.clearTimeout(jumpTailTimerRef.current);
-    jumpTailTimerRef.current = null;
-    if (layoutTransientIdleTimerRef.current !== null) window.clearTimeout(layoutTransientIdleTimerRef.current);
-    layoutTransientIdleTimerRef.current = null;
-    layoutTransientRef.current = false;
-  }, []);
-
-  const armLayoutTransientIdle = useCallback(() => {
-    if (layoutTransientIdleTimerRef.current !== null) window.clearTimeout(layoutTransientIdleTimerRef.current);
-    layoutTransientIdleTimerRef.current = window.setTimeout(() => {
-      layoutTransientIdleTimerRef.current = null;
-      if (tailSettleFrameRef.current !== null) return;
-      layoutTransientRef.current = false;
-      tailSettleProgressRef.current = null;
-    }, LAYOUT_TRANSIENT_IDLE_MS);
-  }, []);
-
-  const scheduleTailSettle = useCallback((jump: boolean, source?: TranscriptScrollDiagnosticSource) => {
-    const scrollElement = scrollRef.current;
-    if (!scrollElement) {
-      layoutTransientRef.current = false;
-      tailSettleProgressRef.current = null;
-      return;
-    }
-    layoutTransientRef.current = true;
-    if (layoutTransientIdleTimerRef.current !== null) {
-      window.clearTimeout(layoutTransientIdleTimerRef.current);
-      layoutTransientIdleTimerRef.current = null;
-    }
-    if (jump) {
-      if (jumpTailTimerRef.current !== null) window.clearTimeout(jumpTailTimerRef.current);
-      const transactionElement = scrollElement;
-      jumpTailTimerRef.current = window.setTimeout(() => {
-        jumpTailTimerRef.current = null;
-        const element = scrollRef.current;
-        if (element && element === transactionElement && modeRef.current === "tail-follow") {
-          const distance = nativeTranscriptDistanceFromBottom(element);
-          if (distance > TRANSCRIPT_AT_BOTTOM_THRESHOLD_PX) {
-            scrollToTail("auto", CAPTURE_TRANSCRIPT_SCROLL_DIAGNOSTICS && source
-              ? { source, phase: "settle", settle: { frame: 0, offBottomFrames: 0, stagnantFrames: 0 } }
-              : undefined);
-          }
-          armLayoutTransientIdle();
-        } else {
-          layoutTransientRef.current = false;
-        }
-      }, JUMP_TAIL_TRANSACTION_MS);
-    }
-    if (jumpTailTimerRef.current !== null) return;
-    if (tailSettleFrameRef.current !== null) return;
-    const generation = generationRef.current;
-    const tick = () => {
-      tailSettleFrameRef.current = null;
-      if (
-        generationRef.current !== generation
-        || scrollRef.current !== scrollElement
-        || modeRef.current !== "tail-follow"
-      ) {
-        tailSettleProgressRef.current = null;
-        layoutTransientRef.current = false;
-        return;
-      }
-      const element = scrollRef.current;
-      if (!element) return;
-      const distance = nativeTranscriptDistanceFromBottom(element);
-      if (distance <= TRANSCRIPT_AT_BOTTOM_THRESHOLD_PX) {
-        tailSettleProgressRef.current = null;
-        armLayoutTransientIdle();
-        return;
-      }
-      const previous = tailSettleProgressRef.current;
-      const offBottomFrames = (previous?.offBottomFrames ?? 0) + 1;
-      if (offBottomFrames < TAIL_CONFIRM_OFF_BOTTOM_FRAMES) {
-        tailSettleProgressRef.current = { distance, stagnantFrames: 0, offBottomFrames };
-        tailSettleFrameRef.current = requestAnimationFrame(tick);
-        return;
-      }
-      const stagnantFrames = previous && Math.abs(previous.distance - distance) <= 0.5
-        ? previous.stagnantFrames + 1
-        : 0;
-      scrollToTail("auto", CAPTURE_TRANSCRIPT_SCROLL_DIAGNOSTICS && source
-        ? { source, phase: "settle", settle: { frame: offBottomFrames, offBottomFrames, stagnantFrames } }
-        : undefined);
-      tailSettleProgressRef.current = { distance, stagnantFrames, offBottomFrames };
-      if (stagnantFrames < TAIL_STAGNANT_FRAME_LIMIT) tailSettleFrameRef.current = requestAnimationFrame(tick);
-      else armLayoutTransientIdle();
-    };
-    tailSettleFrameRef.current = requestAnimationFrame(tick);
-  }, [armLayoutTransientIdle, scrollToTail]);
+  // The tail writer and its bounded settle loop live in their own controller
+  // (file-size budget); all inputs are stable refs, so it is created once.
+  const tailSettleRef = useRef<TranscriptTailSettle | null>(null);
+  tailSettleRef.current ??= createTranscriptTailSettle({
+    virtuosoRef, scrollRef, modeRef, generationRef, layoutTransientRef,
+  });
+  const tailSettle = tailSettleRef.current;
 
   const invalidateAsyncFrames = useCallback(() => {
     generationRef.current += 1;
@@ -249,9 +137,10 @@ export function useTranscriptScrollArbiter({
     if (resizeSettleFrameRef.current !== null) cancelAnimationFrame(resizeSettleFrameRef.current);
     followFrameRef.current = null;
     resizeSettleFrameRef.current = null;
-    cancelTailSettle();
+    tailSettle.cancel();
+    anchorCompensationRef.current?.reset();
     readerExtent.cancel();
-  }, [cancelTailSettle, readerExtent]);
+  }, [readerExtent, tailSettle]);
 
   // Executes the reducer's CANCEL_RECOVERY command. The cancelling event
   // already cleared recoveryId in the published state, so no RECOVERY_END
@@ -277,8 +166,12 @@ export function useTranscriptScrollArbiter({
     stateRef.current = state;
     modeRef.current = state.mode;
     pinnedRef.current = state.mode === "tail-follow";
-    setIsAtBottom(state.atBottom);
-    if (scrollRef.current) scrollRef.current.dataset.scrollMode = state.mode;
+    // Keep jump-bottom manual-only while tail-follow repairs footer resize gaps.
+    setIsAtBottom(state.atBottom || state.mode === "tail-follow");
+    if (scrollRef.current) {
+      scrollRef.current.dataset.scrollMode = state.mode;
+      scrollRef.current.dataset.transcriptReaderIntent = state.readerIntent ? "true" : "false";
+    }
   }, []);
 
   const runCommand = useCallback((command: TranscriptScrollCommand, source?: TranscriptScrollDiagnosticSource) => {
@@ -288,16 +181,16 @@ export function useTranscriptScrollArbiter({
         // Virtuoso's autoscrollToBottom() is inert without the followOutput
         // prop (never passed here), so the rAF settle loop is the real
         // follow mechanism.
-        scheduleTailSettle(false, source);
+        tailSettle.schedule(false, source);
         return;
       case "SCROLL_TO_LAST":
-        scrollToTail(command.behavior, CAPTURE_TRANSCRIPT_SCROLL_DIAGNOSTICS && source
+        tailSettle.scrollToTail(command.behavior, CAPTURE_TRANSCRIPT_SCROLL_DIAGNOSTICS && source
           ? { source, phase: "initial" }
           : undefined);
         // Re-aim across a bounded number of frames: the first LAST request
         // can use Virtuoso's pre-measurement size tree, and late tail-row
         // measurements would otherwise park the view above the real bottom.
-        scheduleTailSettle(true, source);
+        tailSettle.schedule(true, source);
         return;
       case "SCROLL_TO_INDEX":
         noteTranscriptScrollWrite({ owner: "jump", kind: "scrollToIndex", index: command.index });
@@ -310,7 +203,7 @@ export function useTranscriptScrollArbiter({
       case "CANCEL_RECOVERY":
         cancelInFlightRecovery(command.id, command.reason);
     }
-  }, [cancelInFlightRecovery, scheduleTailSettle, scrollToTail]);
+  }, [cancelInFlightRecovery, tailSettle]);
 
   const dispatch = useCallback((event: TranscriptScrollEvent) => {
     if (
@@ -323,7 +216,7 @@ export function useTranscriptScrollArbiter({
       || event.type === "SCROLL_TO_OFFSET"
       || event.type === "CONTENT_SHRANK"
     ) {
-      cancelTailSettle();
+      tailSettle.cancel();
     }
     if (transcriptScrollEventCancelsReaderExtentGuard(event.type)) readerExtent.cancel();
     if (event.type === "RESET") lastGoodAnchorRef.current = null;
@@ -337,8 +230,19 @@ export function useTranscriptScrollArbiter({
     const source = recordTranscriptScrollTransition(event, previousState, result.state, result.commands, scrollRef.current);
     publishState(result.state);
     for (const command of result.commands) runCommand(command, source);
+    // Post-publish so the controller's SCROLL_DELIVERED anchor sampling sees
+    // the new state.
+    anchorCompensationRef.current?.noteEvent(event);
     return result;
-  }, [cancelTailSettle, publishState, readerExtent, runCommand]);
+  }, [publishState, readerExtent, runCommand, tailSettle]);
+
+  // All controller inputs are stable refs plus dispatch (itself stable: every
+  // dep is a ref-closing useCallback), so this runs once per hook instance.
+  anchorCompensationRef.current ??= createTranscriptAnchorCompensation({
+    scrollRef, modeRef, stateRef, generationRef, dispatch,
+    readerExtentIsActive: readerExtent.isActive,
+  });
+  const anchorCompensation = anchorCompensationRef.current;
 
   const endReaderIntent = useCallback(() => {
     if (readerIntentTimerRef.current !== null) window.clearTimeout(readerIntentTimerRef.current);
@@ -350,6 +254,11 @@ export function useTranscriptScrollArbiter({
     if (readerIntentTimerRef.current !== null) window.clearTimeout(readerIntentTimerRef.current);
     readerIntentTimerRef.current = window.setTimeout(() => {
       readerIntentTimerRef.current = null;
+      // A large wheel/touch gesture can clamp the browser to the physical
+      // bottom without emitting a second scroll event. Re-sample once before
+      // closing the intent window so the bottom-hold policy can complete on
+      // real WebView2/native scrolling as well as on synthetic deliveries.
+      deliverScrollRef.current?.(scrollRef.current ?? undefined);
       dispatch({ type: "READER_INTENT_ENDED" });
     }, READER_INTENT_IDLE_MS);
   }, [dispatch]);
@@ -366,6 +275,7 @@ export function useTranscriptScrollArbiter({
     });
     if (stateRef.current.readerIntent) armReaderIntentIdle();
   }, [armReaderIntentIdle, dispatch, readerExtent]);
+  deliverScrollRef.current = deliverScroll;
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     if (isTranscriptSelectionMode(modeRef.current)) return;
@@ -497,14 +407,16 @@ export function useTranscriptScrollArbiter({
   const reset = useCallback(() => {
     invalidateAsyncFrames();
     endReaderIntent();
-    lastFollowExtentRef.current = null;
+    followGeometryRef.current = { contentExtent: null, viewportExtent: null };
     dispatch({ type: "RESET" });
   }, [dispatch, endReaderIntent, invalidateAsyncFrames]);
 
   const setMode = useCallback((mode: TranscriptScrollMode, _reason?: string) => {
     switch (mode) {
       case "tail-follow": reset(); break;
-      case "manual": dispatch({ type: "MANUAL_READING" }); break;
+      case "manual":
+        dispatch({ type: "MANUAL_READING" });
+        break;
       case "user-resize": dispatch({ type: "USER_RESIZE_BEGIN" }); break;
       case "selection": dispatch({ type: "SELECTION_BEGIN" }); break;
       case "restoring": dispatch({ type: "PROGRAMMATIC_BEGIN" }); break;
@@ -522,11 +434,11 @@ export function useTranscriptScrollArbiter({
     endReaderIntent();
     nativeScrollbarDragRef.current = false;
     setNativeScrollbarDragging(false);
-    if (modeRef.current === "tail-follow") scheduleTailSettle(
+    if (modeRef.current === "tail-follow") tailSettle.schedule(
       false,
       CAPTURE_TRANSCRIPT_SCROLL_DIAGNOSTICS ? "native-scrollbar-release" : undefined,
     );
-  }, [deliverScroll, dispatch, endReaderIntent, scheduleTailSettle]);
+  }, [deliverScroll, dispatch, endReaderIntent, tailSettle]);
 
   const finishPointerIntent = useCallback(() => {
     if (nativeScrollbarDragRef.current) finishNativeScrollbarDrag();
@@ -554,28 +466,75 @@ export function useTranscriptScrollArbiter({
 
   useEffect(() => () => {
     if (followFrameRef.current !== null) cancelAnimationFrame(followFrameRef.current);
-    if (tailSettleFrameRef.current !== null) cancelAnimationFrame(tailSettleFrameRef.current);
     if (resizeSettleFrameRef.current !== null) cancelAnimationFrame(resizeSettleFrameRef.current);
     if (readerIntentTimerRef.current !== null) window.clearTimeout(readerIntentTimerRef.current);
-    if (layoutTransientIdleTimerRef.current !== null) window.clearTimeout(layoutTransientIdleTimerRef.current);
-    if (jumpTailTimerRef.current !== null) window.clearTimeout(jumpTailTimerRef.current);
     if (recoveryRef.current?.frame != null) cancelAnimationFrame(recoveryRef.current.frame);
+    tailSettle.cancel();
+    anchorCompensationRef.current?.reset();
     generationRef.current += 1;
     recoveryRef.current = null;
-    layoutTransientRef.current = false;
-    jumpTailTimerRef.current = null;
-  }, []);
+  }, [tailSettle]);
 
   const itemSize = useCallback<SizeFunction>((element, field) => {
+    // Native scrollbar dragging may keep the current Virtuoso size tree. Wheel
+    // and touch reading measure the current logical row normally; anchor
+    // compensation handles the settled layout delta instead of freezing a
+    // recycled DOM node to an estimate.
     const frozen = nativeScrollbarDragRef.current || nativeScrollbarDragging;
+    if (CAPTURE_TRANSCRIPT_SCROLL_DIAGNOSTICS && field === "offsetHeight" && stateRef.current.readerIntent) {
+      element.dataset.transcriptReaderFreeze = "true";
+    }
     const measured = measureTranscriptVirtuosoItem(element, field, frozen);
+    const pendingGeometry = field === "offsetHeight" && hasPendingTranscriptGeometry(element);
+    if (field === "offsetHeight" && frozen) {
+      const estimate = Number.parseFloat(element.dataset.transcriptEstimate ?? element.dataset.knownSize ?? element.dataset.staticEstimate ?? "");
+      if (Number.isFinite(estimate) && estimate > 0) {
+        // Native thumb dragging owns the physical track. Keep the currently
+        // measured row box stable for that drag only; wheel/touch reading does
+        // not enter this branch and never freezes a recycled row.
+        element.style.height = `${estimate}px`;
+        element.dataset.transcriptGeometryFrozen = "true";
+      }
+    } else if (field === "offsetHeight" && element.dataset.transcriptGeometryFrozen === "true") {
+      element.style.removeProperty("height");
+      delete element.dataset.transcriptGeometryFrozen;
+    }
+    if (field === "offsetHeight") {
+      const currentRowKey = element.dataset.rowKey;
+      if (currentRowKey) {
+        const previousRowKey = measuredRowKeyRef.current.get(element);
+        if (previousRowKey !== undefined && previousRowKey !== currentRowKey) element.dataset.transcriptRecycled = "true";
+        else delete element.dataset.transcriptRecycled;
+        measuredRowKeyRef.current.set(element, currentRowKey);
+      }
+    }
     if (CAPTURE_TRANSCRIPT_SCROLL_DIAGNOSTICS) noteTranscriptRowMeasurement(element, field, measured);
-    if (!frozen && field === "offsetHeight") {
+    if (!frozen && !pendingGeometry && field === "offsetHeight") {
       const rowKey = element.dataset.rowKey;
       const kind = element.dataset.rowKind as TranscriptRow["kind"] | undefined;
-      const width = Math.round(element.getBoundingClientRect().width);
-      if (rowKey && kind && measured > 0 && width > 0) {
-        onItemMeasuredRef.current?.(rowKey, kind, measured, width, element.dataset.layoutVersion);
+      const stateElement = element.querySelector<HTMLElement>("[data-transcript-layout-variant]");
+      const rawVariant = stateElement?.dataset.transcriptLayoutVariant ?? element.dataset.transcriptLayoutVariant;
+      const width = Number.parseFloat(element.dataset.transcriptContentWidth ?? "") || element.getBoundingClientRect().width;
+      const rawSource = element.dataset.estimateSource;
+      const estimateSource = rawSource === "exact" || rawSource === "calibrated" || rawSource === "static"
+        ? rawSource
+        : undefined;
+      const staticEstimate = Number.parseFloat(element.dataset.staticEstimate ?? "");
+      const staticEstimateMatchesState = rawVariant === element.dataset.transcriptLayoutVariant;
+      if (rowKey && kind && isTranscriptRowLayoutVariant(rawVariant) && measured > 0 && width > 0) {
+        const recycled = element.dataset.transcriptRecycled === "true";
+        if (!recycled) {
+          onItemMeasuredRef.current?.(
+            rowKey,
+            kind,
+            rawVariant,
+            measured,
+            width,
+            element.dataset.layoutVersion,
+            estimateSource,
+            staticEstimateMatchesState && Number.isFinite(staticEstimate) ? staticEstimate : undefined,
+          );
+        }
       }
     }
     return measured;
@@ -588,6 +547,7 @@ export function useTranscriptScrollArbiter({
       invalidateAsyncFrames();
     }
     scrollRef.current = element;
+    followGeometryRef.current.viewportExtent = element?.clientHeight ?? null;
     if (element) {
       element.dataset.scrollMode = stateRef.current.mode;
       deliverScroll(element);
@@ -609,14 +569,21 @@ export function useTranscriptScrollArbiter({
     ) {
       deliverScroll(element);
     }
-    if (readerDeltaY !== undefined) readerExtent.arm(readerDeltaY);
+    if (readerDeltaY !== undefined) {
+      // A downward reader gesture at (or close to) the physical bottom has no
+      // extent above it to reverse onto. Arming the guard here would let a
+      // later extent rebound snap the viewport back up and fight the wheel.
+      const nearBottom = element
+        && nativeTranscriptDistanceFromBottom(element) < MIN_REVERSE_JUMP_PX;
+      if (readerDeltaY <= 0 || !nearBottom) readerExtent.arm(readerDeltaY);
+    }
     armReaderIntentIdle();
   }, [armReaderIntentIdle, deliverScroll, dispatch, readerExtent]);
-
   const followGrowingTail = useCallback(() => {
-    layoutTransientRef.current = true;
-    armLayoutTransientIdle();
+    tailSettle.noteLayoutTransient();
     readerExtent.observe();
+    const pinnedTop = scrollRef.current && pinTranscriptTailAfterViewportShrink(scrollRef.current, followGeometryRef.current, pinnedRef.current);
+    if (pinnedTop !== null) tailSettle.scrollToTail("auto");
     if (followFrameRef.current !== null) return;
     const generation = generationRef.current;
     const scrollElement = scrollRef.current;
@@ -626,16 +593,18 @@ export function useTranscriptScrollArbiter({
       const element = scrollRef.current;
       if (element) {
         const scrollHeight = element.scrollHeight;
-        const previous = lastFollowExtentRef.current;
-        lastFollowExtentRef.current = scrollHeight;
+        const previous = followGeometryRef.current.contentExtent;
+        followGeometryRef.current.contentExtent = scrollHeight;
         if (previous != null && isTranscriptContentShrink(scrollHeight - previous)) {
           dispatch({ type: "CONTENT_SHRANK" });
+          anchorCompensation.schedule();
           return;
         }
       }
       dispatch({ type: "LAYOUT_HEIGHT_CHANGED" });
+      anchorCompensation.schedule();
     });
-  }, [armLayoutTransientIdle, dispatch, readerExtent]);
+  }, [anchorCompensation, dispatch, readerExtent, tailSettle]);
 
   const beginUserResize = useCallback(() => {
     dispatch({ type: "USER_RESIZE_BEGIN" });
@@ -651,14 +620,18 @@ export function useTranscriptScrollArbiter({
         resizeSettleFrameRef.current = null;
         if (generationRef.current !== generation || scrollRef.current !== scrollElement) return;
         dispatch({ type: "USER_RESIZE_END" });
+        // An in-row resize (fold toggle) may have pushed the viewport.
+        anchorCompensation.schedule();
       });
     });
-  }, [dispatch]);
+  }, [anchorCompensation, dispatch]);
 
   const atBottomStateChange = useCallback((_atBottom: boolean) => deliverScroll(), [deliverScroll]);
 
   const writeOffset = useCallback((owner: TranscriptScrollOwner, top: number, behavior: ScrollBehavior = "auto") => {
-    if (isTranscriptSelectionMode(modeRef.current) && owner !== "selection-edge-scroll") return false;
+    // Selection mode accepts only selection-stabilizing writes (its own edge
+    // scrolls and the in-row block-window prepend compensation).
+    if (isTranscriptSelectionMode(modeRef.current) && owner !== "selection-edge-scroll" && owner !== "block-window-prepend") return false;
     if (!scrollRef.current) return false;
     dispatch({ type: "SCROLL_TO_OFFSET", owner, top, behavior });
     return true;

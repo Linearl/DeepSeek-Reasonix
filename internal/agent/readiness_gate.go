@@ -5,14 +5,12 @@ import "reasonix/internal/taskcontract"
 // readinessPauseActive reports whether an unmet final-readiness requirement may
 // pause the turn and hand the user a recovery card.
 //
-// The floor alone decides this. The standard floor restores the pre-#8866
-// balanced feel across every execution mode: the host still records the
-// readiness audit, but a gap never stops the turn. Goal keeps driving because
-// its state machine reads Agent.ReadinessResult directly rather than consuming
-// this error, so suppressing the pause costs it no signal.
-func (a *Agent) readinessPauseActive() bool {
+// Delivery and closed-loop Goal/Plan turns pause on their readiness contract.
+// Standard reports quality gaps in its completion summary and ends normally.
+func (a *Agent) readinessPauseActive(check finalReadinessCheck) bool {
 	if a == nil {
 		return false
 	}
-	return a.turn.constraints.PolicyFloor == taskcontract.PolicyFloorDelivery
+	return a.turn.constraints.PolicyFloor == taskcontract.PolicyFloorDelivery ||
+		a.closedLoopActive() || a.planContractSnapshot() != nil
 }

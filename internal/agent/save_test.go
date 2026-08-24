@@ -1046,7 +1046,7 @@ func TestSaveSnapshotAppendsEventLogAndDisplayReadModel(t *testing.T) {
 	if !os.SameFile(checkpointBefore, checkpointAfter) {
 		t.Fatal("append-only snapshot replaced the display read model")
 	}
-	checkpoint, err := loadSessionMessagesFromJSONL(path)
+	checkpoint, err := loadSessionMessagesFromJSONL(path, nil)
 	if err != nil {
 		t.Fatalf("read display read model: %v", err)
 	}
@@ -1105,7 +1105,7 @@ func TestSaveRewriteAppendsReplaceEventAndRefreshesCheckpoint(t *testing.T) {
 	}
 	// Rewrites refresh the compatibility checkpoint so direct .jsonl readers
 	// and older binaries stay bounded-stale instead of frozen at first save.
-	anchor, err := loadSessionMessagesFromJSONL(path)
+	anchor, err := loadSessionMessagesFromJSONL(path, nil)
 	if err != nil {
 		t.Fatalf("read checkpoint after rewrite: %v", err)
 	}

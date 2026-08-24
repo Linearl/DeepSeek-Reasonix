@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"reasonix/internal/provider"
+	"reasonix/internal/provider/openai"
 )
 
 // ProviderPreset is a curated, editable provider starter template. Presets are
@@ -14,7 +15,22 @@ type ProviderPreset struct {
 	Label       string
 	Description string
 	KeyEnv      string
+	// Recommended marks the lowest-friction starter path in Settings. It is
+	// presentation metadata only; installed entries remain editable providers.
+	Recommended bool
+	// BillingMode tells the host whether usage should be presented as a
+	// subscription-equivalent plan rather than a token price estimate.
+	BillingMode string
 	Entries     []ProviderEntry
+
+	// Display metadata is presentation-only. It deliberately does not change
+	// provider routing or the persisted provider schema.
+	DisplayGroup   string
+	DisplaySection string
+	DisplayTier    string
+	RouteKind      string
+	Optional       bool
+	DisplayOrder   int
 }
 
 const (
@@ -59,6 +75,8 @@ func CuratedProviderPreset(id string) (ProviderPreset, bool) {
 
 func providerPresetDisplayRank(id string) int {
 	switch {
+	case id == "opencode-go-recommended":
+		return -3
 	case id == "deepseek-responses":
 		return -2
 	case id == "glm-cn" || id == "zai-global" || strings.HasPrefix(id, "glm-coding-plan-") || strings.HasPrefix(id, "zai-coding-plan-"):
@@ -82,9 +100,10 @@ var (
 	kimiAPIVisionModels = []string{"kimi-k3", "kimi-k2.7-code", "kimi-k2.7-code-highspeed", "kimi-k2.6", "kimi-k2.5"}
 	kimiCodingModels    = []string{"kimi-for-coding"}
 
-	longCat20Models   = []string{"LongCat-2.0"}
-	deepSeekV4Models  = []string{"deepseek-v4-flash", "deepseek-v4-pro"}
-	tokenRhythmModels = []string{
+	longCat20Models              = []string{"LongCat-2.0"}
+	deepSeekOfficialModels       = []string{"deepseek-v4-flash", "deepseek-v4-pro", openai.OfficialDeepSeekVisionModel}
+	deepSeekOfficialVisionModels = []string{openai.OfficialDeepSeekVisionModel}
+	tokenRhythmModels            = []string{
 		"deepseek-v4-flash", "deepseek-v4-pro", "glm-5", "glm-5.1",
 		"minimax-m2.7", "kimi-k2.5", "kimi-k2.6", "minimax-m2.5",
 		"mimo-v2.5-pro", "qwen3.7-max", "kimi-k2.7-code", "glm-5.2",
@@ -121,7 +140,7 @@ var (
 	stepfunAPIVisionModels = []string{"step-3.7-flash"}
 
 	legacyOpenCodeGoModels           = []string{"glm-5.2", "glm-5.1", "kimi-k2.7-code", "kimi-k2.6", "deepseek-v4-pro", "deepseek-v4-flash", "mimo-v2.5-pro", "mimo-v2.5"}
-	opencodeGoModels                 = []string{"glm-5.2", "glm-5.1", "kimi-k3", "kimi-k2.7-code", "kimi-k2.6", "deepseek-v4-pro", "deepseek-v4-flash", "mimo-v2.5-pro", "mimo-v2.5"}
+	opencodeGoModels                 = []string{"glm-5.3", "glm-5.2", "glm-5.1", "kimi-k3", "kimi-k2.7-code", "kimi-k2.6", "deepseek-v4-pro", "deepseek-v4-flash", "mimo-v2.5-pro", "mimo-v2.5", "hy3"}
 	opencodeGoVisionModels           = []string{"kimi-k3"}
 	opencodeZenAnthropicModels       = []string{"claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5", "qwen3.6-plus", "qwen3.5-plus", "qwen3.6-plus-free"}
 	opencodeZenAnthropicVisionModels = []string{"claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5"}
@@ -206,8 +225,9 @@ var curatedProviderPresets = []ProviderPreset{
 			Name:           "deepseek-anthropic",
 			Kind:           "anthropic",
 			BaseURL:        deepSeekAnthropicBaseURL,
-			Models:         deepSeekV4Models,
+			Models:         deepSeekOfficialModels,
 			Default:        "deepseek-v4-flash",
+			VisionModels:   deepSeekOfficialVisionModels,
 			APIKeyEnv:      "DEEPSEEK_API_KEY",
 			BalanceURL:     "https://api.deepseek.com/user/balance",
 			Thinking:       "enabled",
@@ -557,8 +577,9 @@ var curatedProviderPresets = []ProviderPreset{
 			Name:           "deepseek-responses",
 			Kind:           "responses",
 			BaseURL:        "https://api.deepseek.com",
-			Models:         deepSeekV4Models,
+			Models:         deepSeekOfficialModels,
 			Default:        "deepseek-v4-flash",
+			VisionModels:   deepSeekOfficialVisionModels,
 			APIKeyEnv:      "DEEPSEEK_API_KEY",
 			BalanceURL:     "https://api.deepseek.com/user/balance",
 			ContextWindow:  1_000_000,
@@ -667,20 +688,38 @@ var curatedProviderPresets = []ProviderPreset{
 		}},
 	},
 	{
-		ID:          "opencode-go",
-		Label:       "OpenCode Go",
-		Description: "OpenCode Go relay with per-model capability overrides.",
-		KeyEnv:      "OPENCODE_GO_API_KEY",
+		ID:             "opencode-go",
+		Label:          "OpenCode Go",
+		Description:    "OpenCode Go relay with per-model capability overrides.",
+		KeyEnv:         "OPENCODE_GO_API_KEY",
+		BillingMode:    "subscription_equivalent",
+		DisplayGroup:   "opencode",
+		DisplaySection: "go",
+		DisplayTier:    "compatibility",
+		RouteKind:      "chat",
+		DisplayOrder:   90,
 		Entries: []ProviderEntry{{
-			Name:          "opencode-go",
-			Kind:          "openai",
-			BaseURL:       "https://opencode.ai/zen/go/v1",
-			Models:        opencodeGoModels,
-			VisionModels:  opencodeGoVisionModels,
-			Default:       "glm-5.2",
-			APIKeyEnv:     "OPENCODE_GO_API_KEY",
-			ContextWindow: 128000,
+			Name:            "opencode-go",
+			Kind:            "openai",
+			BaseURL:         "https://opencode.ai/zen/go/v1",
+			Models:          opencodeGoModels,
+			VisionModels:    opencodeGoVisionModels,
+			Default:         "glm-5.2",
+			APIKeyEnv:       "OPENCODE_GO_API_KEY",
+			ContextWindow:   128000,
+			MaxOutputTokens: 32_768,
+			BillingMode:     "subscription_equivalent",
 			ModelOverrides: withOpenCodeGoChatContextOverrides(map[string]ProviderModelOverride{
+				"glm-5.3": {
+					ReasoningProtocol: ReasoningProtocolOpenAI,
+					SupportedEfforts:  []string{"low", "high", "max"},
+					DefaultEffort:     "high",
+				},
+				"glm-5.2": {
+					ReasoningProtocol: ReasoningProtocolOpenAI,
+					SupportedEfforts:  []string{"high", "max"},
+					DefaultEffort:     "high",
+				},
 				"deepseek-v4-flash": {
 					ReasoningProtocol: ReasoningProtocolDeepSeek,
 					SupportedEfforts:  []string{"disabled", "high", "max"},
@@ -706,17 +745,29 @@ var curatedProviderPresets = []ProviderPreset{
 					SupportedEfforts:  []string{"high", "max"},
 					DefaultEffort:     "max",
 				},
+				"hy3": {
+					ReasoningProtocol: ReasoningProtocolOpenAI,
+					SupportedEfforts:  []string{"none", "low", "high"},
+					DefaultEffort:     "high",
+				},
 			}),
 		}},
 	},
 	opencodeGoAnthropicPreset,
+	opencodeGoResponsesPreset,
 	opencodeGoDeepSeekAnthropicPreset,
 	opencodeGoDeepSeekResponsesPreset,
+	opencodeGoRecommendedPreset,
 	{
-		ID:          "opencode-zen-anthropic",
-		Label:       "OpenCode Zen Anthropic",
-		Description: "OpenCode Zen Anthropic-compatible route for Claude and Qwen models.",
-		KeyEnv:      "OPENCODE_API_KEY",
+		ID:             "opencode-zen-anthropic",
+		Label:          "OpenCode Zen Anthropic",
+		Description:    "OpenCode Zen Anthropic-compatible route for Claude and Qwen models.",
+		KeyEnv:         "OPENCODE_API_KEY",
+		DisplayGroup:   "opencode",
+		DisplaySection: "zen",
+		DisplayTier:    "primary",
+		RouteKind:      "zen-anthropic",
+		DisplayOrder:   100,
 		Entries: []ProviderEntry{{
 			Name:          "opencode-zen-anthropic",
 			Kind:          "anthropic",

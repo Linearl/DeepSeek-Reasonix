@@ -129,7 +129,6 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string) (rawInput string
 	// values are computed below. Cross-turn state (checkpoint, scope, failure
 	// budgets) lives in taskRuntime and is reconciled there.
 	a.turn = turnRuntime{}
-	a.turn.automaticReadinessContinuation = automaticReadinessContinuationFromContext(ctx)
 	a.resetStructuralRunGuards()
 	scope, scoped := DeliveryExecutionScopeFromContext(ctx)
 	preserveEvidence, readinessRecovered := a.beginFinalReadinessRecovery()
@@ -219,7 +218,7 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string) (rawInput string
 	}
 	a.sess.conversation.Add(provider.Message{
 		Role: provider.RoleUser, Content: input, RawContent: rawContent,
-		Images: userImages(ctx), CreatedAt: userCreatedAt,
+		Images: userImages(ctx), VisionSummary: VisionSummaryFromContext(ctx), CreatedAt: userCreatedAt,
 	})
 
 	// The loop fields join the classification computed above rather than
@@ -516,9 +515,9 @@ func sleepStreamRetryBackoff(ctx context.Context, attempt int) bool {
 }
 
 // handleFinalResponse processes a no-tool assistant turn: recovery pause,
-// readiness retry, empty final retry, executor handoff nudge, steer drain, and
-// final compaction. cont=true continues the tool loop; cont=false returns err
-// from Run (err may be nil for a clean final answer).
+// readiness boundary, empty-final retry, executor handoff nudge, steer drain,
+// and final compaction. cont=true continues the tool loop; cont=false returns
+// err from Run (err may be nil for a clean final answer).
 func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, text, reasoning string, usage *provider.Usage) (cont bool, err error) {
 	// Recovery finalization produced a summary. Keep it in the session,
 	// but still pause so Goal auto-continue cannot open another Run with
@@ -547,13 +546,10 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 		return false, a.gracePause(state)
 	}
 	if readiness.reason != "" {
-		// The host owns the concrete missing requirements. Return them to the
-		// controller when automatic continuation is armed (or for the existing
-		// strict/Goal path). Unfinished todos are hard failures only in closed-loop
-		// turns; in ordinary turns they remain visible cross-turn work state.
-		// readinessPauseActive keeps the standard floor out of this entirely.
-		if a.readinessPauseActive() &&
-			(a.turn.automaticReadinessContinuation || a.closedLoopActive() || readiness.missingSignoff > 0 || readiness.missingActionEvidence > 0) {
+		// Standard ends with its answer/quality summary. Delivery and Goal hand
+		// the structured gap to the controller, which exposes an explicit recovery
+		// action or lets the Goal FSM decide whether to continue.
+		if a.readinessPauseActive(readiness) {
 			event.RecordReadinessAudit(a.svc.sink, readiness.audit(evidence.ReadinessErrored, false))
 			a.pending.finalReadinessRecovery = true
 			a.persistFinalReadinessRecovery(readiness.missingIDs())

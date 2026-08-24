@@ -10,7 +10,7 @@ import { asArray } from "../lib/array";
 import { useToast } from "../lib/toast";
 import { app } from "../lib/bridge";
 import { onProjectTreeChangedV2 } from "../lib/sessionCatalogBridge";
-import { isRuntimeSessionNode, isTopicNode, loadWorkbenchOrganizeMode, loadWorkbenchSortMode, mergeIncompleteProjectTopicPage, mergeProjectTopicPage, projectTreeDedupedExactTime, projectTreeEventAffectsFolder, projectTreeFolderDisclosure, projectTreeReadActivityKey, projectTreeRevisionIsFresh, projectTreeShellChildren, projectTreeShellSignature, projectTreeShouldApplyShellSnapshot, projectTreeShouldRenderTopicActions, projectTreeShouldSuppressOpenForRename, projectTreeTopicArchiveBlocked, projectTreeTopicHasUnreadActivity, projectTreeTopicHoverCardModel, projectTreeTopicMenuOffersPin, projectTreeTopicMetaLine, projectTreeTopicOpenRequest, projectTreeTopicPageIsFresh, projectTreeTopicPageSignature, projectTreeWithoutTopic, topicActivityAt, topicActivityDateLabel, topicActivityLabel, topicIsActive, topicStatus, topicStatusLabel, topicUnknownTimeLabel, WORKBENCH_ORGANIZE_KEY, WORKBENCH_SORT_KEY, type ProjectTreePendingTopicOpen, type ProjectTreeReadActivity, type ProjectTreeTopicHoverCard, type ProjectTreeVariant, type WorkbenchOrganizeMode, type WorkbenchSortMode } from "../lib/projectTreeTopic";
+import { isRuntimeSessionNode, isTopicNode, loadWorkbenchOrganizeMode, loadWorkbenchSortMode, mergeIncompleteProjectTopicPage, mergeProjectTopicPage, projectTreeDedupedExactTime, projectTreeEventAffectsFolder, projectTreeFolderDisclosure, projectTreeReadActivityKey, projectTreeRevisionIsFresh, projectTreeShellChildren, projectTreeShellSignature, projectTreeShouldApplyShellSnapshot, projectTreeShouldRenderTopicActions, projectTreeShouldSuppressOpenForRename, projectTreeTopicArchiveBlocked, projectTreeTopicHasUnreadActivity, projectTreeTopicHoverCardModel, projectTreeTopicMenuOffersPin, projectTreeTopicMetaLine, projectTreeTopicOpenRequest, projectTreeTopicPageIsFresh, projectTreeTopicPageSignature, projectTreeTopicRecoveryCopyCount, projectTreeWithoutTopic, projectTreeWithTopicTitle, topicActivityAt, topicActivityDateLabel, topicActivityLabel, topicIsActive, topicStatus, topicStatusLabel, topicUnknownTimeLabel, WORKBENCH_ORGANIZE_KEY, WORKBENCH_SORT_KEY, type ProjectTreePendingTopicOpen, type ProjectTreeReadActivity, type ProjectTreeTopicHoverCard, type ProjectTreeVariant, type WorkbenchOrganizeMode, type WorkbenchSortMode } from "../lib/projectTreeTopic";
 export * from "../lib/projectTreeTopic";
 import { arrangeClassicProjectTree, arrangeWorkbenchTree, classicTopicWindow, CLASSIC_TOPIC_PREVIEW_LIMIT, splitPinnedProjectTree, type PinnedTreeSections } from "../lib/projectTreePresentation";
 export * from "../lib/projectTreePresentation";
@@ -26,6 +26,8 @@ import { Tooltip } from "./Tooltip";
 import { WorktreeBadge } from "./WorktreeBadge";
 import { useProjectCreation } from "./useProjectCreation";
 import { useProjectTreeRuntimeProjection } from "../lib/useProjectTreeRuntimeProjection";
+import { useProjectTreeFrontendDiagnostics, type ProjectTreeDiagnosticSnapshot } from "../lib/useProjectTreeFrontendDiagnostics";
+import { summarizeProjectTreeSessions } from "../lib/projectTreeDiagnostics";
 import { GLOBAL_PROJECT_ORDER_KEY, ProjectTreeFolderActivity, ProjectTreeGroupRows, applyProjectOrder, projectTreeProjectRoots, reorderedProjectRoots, useProjectTreeOrganization, type ProjectDropPosition } from "./ProjectTreeOrganization";
 
 interface ProjectTreeProps {
@@ -257,6 +259,7 @@ export function ProjectTree({
   const [catalogStatus, setCatalogStatus] = useState<SessionCatalogStatus>({
     state: "opening", revision: 0, indexed: 0, total: 0, repairPending: 0,
   });
+  const rebuildingCatalogRef = useRef(false);
   const [topicPageState, setTopicPageState] = useState<Record<string, { nextCursor?: string; loading: boolean }>>({});
   const topicPageStateRef = useRef(topicPageState);
   const updateTopicPageState = useCallback((key: string, next: { nextCursor?: string; loading: boolean }) => {
@@ -459,11 +462,26 @@ export function ProjectTree({
     }
   }, [applyRuntimeProjection]);
   refreshRef.current = refresh;
+
   const { addingProject, handleAddProject, openBlankProjectFlow, blankProjectFlow } = useProjectCreation({
     onAddProject,
     onRefresh: refresh,
     showToast,
   });
+
+  const rebuildSessionCatalog = useCallback(async () => {
+    if (rebuildingCatalogRef.current || catalogStatus.canRebuild === false) return;
+    rebuildingCatalogRef.current = true;
+    try {
+      await app.RebuildSessionCatalog();
+      showToast(t("projectTree.rebuildCatalog"), "info");
+      void refresh();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), "error", { durationMs: 6000 });
+    } finally {
+      rebuildingCatalogRef.current = false;
+    }
+  }, [catalogStatus.canRebuild, refresh, showToast, t]);
 
   useEffect(() => {
     treeRef.current = tree;
@@ -485,7 +503,12 @@ export function ProjectTree({
   }, [refresh, refreshSignal]);
 
   useEffect(() => onProjectTreeChangedV2((event) => {
-    if (!projectTreeRevisionIsFresh(latestRevisionRef.current, event.revision)) return;
+    // A stale or missed revision means the tree may have drifted from the
+    // catalog; refetch the full snapshot instead of dropping the event.
+    if (!projectTreeRevisionIsFresh(latestRevisionRef.current, event.revision)) {
+      void refresh();
+      return;
+    }
     latestRevisionRef.current = Math.max(latestRevisionRef.current, event.revision);
     if (event.reason === "metadata") setOrganizationRevision((current) => Math.max(current, event.revision));
     void app.GetSessionCatalogStatus().then(setCatalogStatus).catch(() => {});
@@ -769,6 +792,8 @@ export function ProjectTree({
     try {
       if (onRenameTopic) await onRenameTopic(topicId, title);
       else await app.RenameTopic(topicId, title);
+      // Paint the new label immediately; the catalog event round-trip can lag.
+      setTree((current) => applyRuntimeProjection(projectTreeWithTopicTitle(current, topicId, title)));
       await refresh();
       if (!onRenameTopic) await onTopicsChanged?.();
     } catch (err) {
@@ -1032,6 +1057,44 @@ export function ProjectTree({
     });
   }, [activeAncestorKeys, manuallyCollapsed]);
 
+  const projectTreeDiagnosticSnapshot = useMemo<ProjectTreeDiagnosticSnapshot>(() => {
+    const sessionSummary = summarizeProjectTreeSessions({
+      tree,
+      visibleTree,
+      expanded,
+      showAllTopics,
+      classicTruncationActive,
+      queryActive: query.trim().length > 0,
+      timeFilterActive: timeFilter !== "all",
+      projectNodeKey,
+      isActive: (node) => topicIsActive(node, activeScope, activeWorkspaceRoot, activeTopicId, activeSessionPath),
+      isUnread: (node) => projectTreeTopicHasUnreadActivity(node, readActivity, activeScope, activeWorkspaceRoot, activeTopicId, activeSessionPath, readBaselineAt),
+    });
+    return {
+      ...sessionSummary,
+      directoryState: catalogStatus.state,
+      scope: activeScope === "global" ? "global" : activeScope ? "project" : "unknown",
+      variant,
+      timeFilter,
+      queryActive: query.trim().length > 0,
+      timeFilterActive: timeFilter !== "all",
+      catalogPartial: catalogStatus.state !== "ready"
+        || catalogStatus.repairPending > 0
+        || (catalogStatus.unindexedTargetCount ?? 0) > 0
+        || Boolean(catalogStatus.lastError),
+      catalogRebuilding: catalogStatus.state === "rebuilding",
+      catalogRevision: catalogStatus.revision,
+      catalogIndexed: catalogStatus.indexed,
+      catalogTotal: catalogStatus.total,
+      unloadedSessions: Math.max(0, catalogStatus.total - sessionSummary.workspaceSessions),
+      repairPending: catalogStatus.repairPending,
+      treeRevision: latestRevisionRef.current,
+      organizationRevision,
+    };
+  }, [activeScope, activeSessionPath, activeTopicId, activeWorkspaceRoot, catalogStatus, classicTruncationActive, expanded, organizationRevision, query, readActivity, readBaselineAt, showAllTopics, timeFilter, tree, variant, visibleTree]);
+
+  useProjectTreeFrontendDiagnostics(projectTreeDiagnosticSnapshot);
+
   const renderNode = (node: ProjectNode | null | undefined, depth: number, section: "pinned" | "projects" = "projects", isVisible = true) => {
     if (!node) return null;
     const key = projectNodeKey(node, depth);
@@ -1050,7 +1113,9 @@ export function ProjectTree({
       const accentStyle = projectAccentStyle(node.projectColor, scope === "global" ? "var(--project-tree-global-accent)" : undefined);
       const active = topicIsActive(node, activeScope, activeWorkspaceRoot, activeTopicId, activeSessionPath);
       const label = (node.label || node.topicId || "Untitled").replace(/^●\s*/, "");
-      // Ordinary list never advertises recovery copies; History owns that view.
+      // Recovery copies stay folded behind the canonical row; the row only
+      // advertises how many converged, and History owns the full list (#8525).
+      const recoveryCopyCount = projectTreeTopicRecoveryCopyCount(node);
       const activityAt = node.lastActivityAt || node.createdAt || 0;
       // Every variant is a single-line row with the activity time on the right;
       // classic moved there too so turns and the exact date live in the hover
@@ -1076,7 +1141,12 @@ export function ProjectTree({
       const imSourceLabel = imSource?.label || "";
       const imSourceTitle = imSourceLabel ? t("msg.fromIm", { source: imSourceLabel }) : "";
       const imSourcePlatform = (imSource?.platform || "im").replace(/[^a-z0-9_-]/gi, "").toLowerCase() || "im";
-      const title = [node.preview || "", label, imSourceTitle, statusLabel, metaFull, projectTreeDedupedExactTime(metaFull, exactTimeLabel)].filter(Boolean).join(" · ");
+      const recoveryLabel = node.recoveryState === "recovery_only"
+        ? t("projectTree.recoveryOnly")
+        : node.recovered
+          ? t("projectTree.recovered")
+          : "";
+      const title = [node.preview || "", label, recoveryLabel, imSourceTitle, statusLabel, metaFull, projectTreeDedupedExactTime(metaFull, exactTimeLabel)].filter(Boolean).join(" · ");
       const topicMenuOpen = !isSessionNode && menuTopic === topicId;
       const pinned = Boolean(node.pinned);
       const pinLabel = t(pinned ? "projectTree.unpinTopic" : "projectTree.pinTopic");
@@ -1211,6 +1281,7 @@ export function ProjectTree({
             <span className="project-tree__topic-copy">
               <span className="project-tree__topic-heading">
                 <span className="project-tree__topic-label">{label}</span>
+                {recoveryLabel && <span className="project-tree__topic-recovery" title={recoveryLabel}>{recoveryLabel}</span>}
                 {imSource && (
                   <span
                     className={`project-tree__topic-im project-tree__topic-im--${imSourcePlatform}`}
@@ -1223,6 +1294,14 @@ export function ProjectTree({
                 )}
                 {!compactTopics && statusLabel && (!classicTopics || status === "paused" || status === "awaiting_delivery" || status === "error") && (
                   <span className={`project-tree__topic-status project-tree__topic-status--${status}`}>{statusLabel}</span>
+                )}
+                {recoveryCopyCount > 0 && (
+                  <span
+                    className="project-tree__topic-recovery-copies"
+                    title={t("projectTree.recoveryCopies", { count: recoveryCopyCount })}
+                  >
+                    {t("projectTree.recoveryCopies", { count: recoveryCopyCount })}
+                  </span>
                 )}
               </span>
             </span>
@@ -1551,6 +1630,23 @@ export function ProjectTree({
     const backendPage = topicPageState[key];
     const renderFolderChildren = () => {
       if (!hasChildren) {
+        // While the first topic page is still loading (cold start, catalog
+        // reconcile in flight), show a skeleton instead of a blank folder or
+        // a premature "no topics" placeholder.
+        if (backendPage?.loading) {
+          return (
+            <div className={`project-tree__children${isExpanded ? " project-tree__children--expanded" : ""}`}>
+              <div className="project-tree__children-inner">
+                <div className="project-tree__skeleton" style={{ paddingLeft: 14 + (depth + 1) * 16 }} aria-hidden="true">
+                  <span className="project-tree__skeleton-bar" />
+                  <span className="project-tree__skeleton-bar project-tree__skeleton-bar--short" />
+                  <span className="project-tree__skeleton-bar" />
+                  <span className="project-tree__skeleton-bar project-tree__skeleton-bar--short" />
+                </div>
+              </div>
+            </div>
+          );
+        }
         if (!classicTopics) return null;
         return (
           <div className={`project-tree__children${isExpanded ? " project-tree__children--expanded" : ""}`}>
@@ -2092,9 +2188,16 @@ export function ProjectTree({
           />
         </label>
       )}
-      {(catalogStatus.state === "opening" || catalogStatus.state === "rebuilding" || catalogStatus.repairPending > 0) && (
+      {(catalogStatus.state === "opening" || catalogStatus.state === "rebuilding" || catalogStatus.repairPending > 0 || (catalogStatus.unindexedTargetCount ?? 0) > 0 || Boolean(catalogStatus.lastError)) && (
         <div className="project-tree__catalog-progress" role="status">
-          {t("projectTree.indexingProgress", { done: catalogStatus.indexed, total: catalogStatus.total || "?" })}
+          <span>{catalogStatus.lastError
+            ? t("projectTree.rebuildCatalog")
+            : t("projectTree.indexingProgress", { done: catalogStatus.indexed, total: catalogStatus.total || "?" })}</span>
+          {catalogStatus.canRebuild !== false && catalogStatus.state !== "rebuilding" && (
+            <button type="button" className="project-tree__catalog-rebuild" onClick={() => void rebuildSessionCatalog()}>
+              {t("projectTree.rebuildCatalog")}
+            </button>
+          )}
         </div>
       )}
       {compactTopics ? (
@@ -2107,7 +2210,10 @@ export function ProjectTree({
               <>
                 {pinnedTreeSections.pinned.length > 0 && (
                   <div className="project-tree__section project-tree__section--pinned">
-                    <div className="project-tree__section-title">{t("projectTree.pinnedTitle")}</div>
+                    <div className="project-tree__section-title project-tree__section-title--pinned">
+                      <Pin size={14} className="project-tree__section-title-icon" aria-hidden="true" />
+                      <span>{t("projectTree.pinnedTitle")}</span>
+                    </div>
                     {pinnedTreeSections.pinned.map((node) => renderNode(node, 0, "pinned"))}
                   </div>
                 )}

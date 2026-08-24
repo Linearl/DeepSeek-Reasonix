@@ -40,6 +40,10 @@ export function useTranscriptReaderExtentStability({
     if (guard?.frame != null) cancelAnimationFrame(guard.frame);
   }, []);
 
+  // While a guard is armed it owns post-gesture extent corrections; the
+  // steady-state anchor compensation must stay out of its way.
+  const isActive = useCallback(() => guardRef.current !== null, []);
+
   const observe = useCallback((element = scrollRef.current) => {
     const guard = guardRef.current;
     if (!element || guard?.element !== element) return false;
@@ -117,5 +121,5 @@ export function useTranscriptReaderExtentStability({
 
   useEffect(() => cancel, [cancel]);
 
-  return useMemo(() => ({ arm, cancel, observe }), [arm, cancel, observe]);
+  return useMemo(() => ({ arm, cancel, observe, isActive }), [arm, cancel, observe, isActive]);
 }

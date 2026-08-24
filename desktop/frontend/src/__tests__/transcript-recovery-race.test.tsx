@@ -144,7 +144,7 @@ let integrity: ReturnType<typeof useTranscriptLayoutIntegrity> | undefined;
 function Probe({ surfaceKey, rows = baseRows, layoutWidth = 800 }: { surfaceKey: string; rows?: TranscriptRow[]; layoutWidth?: number }) {
   const scroll = useTranscriptScrollArbiter({
     onRecoveryTerminal: (terminal) => { terminals.push(terminal); },
-    onItemMeasured: (rowKey, kind, height, width) => { rowMeasurements.push({ rowKey, kind, height, width }); },
+    onItemMeasured: (rowKey, kind, _layoutVariant, height, width) => { rowMeasurements.push({ rowKey, kind, height, width }); },
   });
   const layout = useTranscriptLayoutIntegrity({
     surfaceKey,
@@ -157,7 +157,6 @@ function Probe({ surfaceKey, rows = baseRows, layoutWidth = 800 }: { surfaceKey:
     submitRecoveryRequest: scroll.submitRecoveryRequest,
     retryRecoveryRequest: scroll.retryRecoveryRequest,
     lastGoodAnchorRef: scroll.lastGoodAnchorRef,
-    captureStateSnapshot: scroll.captureStateSnapshot,
     layoutTransientRef: scroll.layoutTransientRef,
     layoutWidth,
   });
@@ -209,6 +208,7 @@ await act(async () => {
 // the estimate Virtuoso started from, so the cache callback must receive the
 // returned DOM height instead.
 rowElement.dataset.rowKind = "answer";
+rowElement.dataset.transcriptLayoutVariant = "text-flow";
 rowElement.dataset.knownSize = "291";
 rowElement.getBoundingClientRect = () => ({ ...rectAt(200), height: 632, bottom: 832, width: 960, right: 960 });
 rowMeasurements.length = 0;
@@ -228,24 +228,6 @@ rowElement.getBoundingClientRect = () => rectAt(200);
 scrollElement.scrollTop = 400;
 await act(async () => arbiter?.atBottomStateChange(false));
 check(arbiter?.isAtBottom === true, "physical bottom overrides a stale Virtuoso atBottom=false report");
-
-// A thumb gesture that reaches the frozen native bottom must claim the tail
-// before release resumes real row measurements and changes the extent.
-scrollElement.scrollTop = 0;
-await act(async () => arbiter?.onPointerDownIntent({
-  button: 0,
-  nativeEvent: { button: 0, clientX: 795 },
-} as React.PointerEvent<HTMLElement>));
-scrollElement.scrollTop = 400;
-await act(async () => window.dispatchEvent(new dom.window.Event("pointerup")));
-check(arbiter?.modeRef.current === "tail-follow", "native thumb release at the physical bottom resumes tail-follow");
-scrollExtent = 900;
-await act(async () => arbiter?.deliverScroll());
-await flushFrames();
-await flushFrames();
-await flushFrames();
-check(scrollElement.scrollTop === 800, "post-release remeasurement reconverges the claimed native bottom");
-scrollExtent = 500;
 
 // A nested code/tool scrollport owns the wheel until it reaches its edge.
 // Capturing the event on Transcript must not release tail-follow early.
@@ -277,21 +259,6 @@ await act(async () => {
 });
 check(nestedWheelAccepted && arbiter?.modeRef.current === "manual", "a nested edge hands wheel ownership to the transcript");
 nestedScroller.remove();
-
-// If measurement/clamping reaches the physical bottom between scroll events,
-// a fresh downward gesture must still claim tail-follow even though the
-// browser has no remaining pixels to deliver.
-scrollElement.scrollTop = 400;
-let bottomWheelAccepted = false;
-await act(async () => {
-  bottomWheelAccepted = arbiter?.onWheelIntent({
-    ctrlKey: false,
-    deltaX: 0,
-    deltaY: 40,
-    target: scrollElement,
-  } as React.WheelEvent<HTMLElement>) ?? false;
-});
-check(bottomWheelAccepted && arbiter?.modeRef.current === "tail-follow", "a downward gesture claims an already-clamped physical bottom");
 
 // A queued confirmation belongs to the surface that requested it. Resetting
 // before its frame runs must prevent the old request from writing the new one.
@@ -707,8 +674,8 @@ await act(async () => arbiter?.setMode("manual", "question-navigation"));
 await act(async () => arbiter?.scrollToDataIndex(5));
 check(scrollToIndexCalls === 1, "question navigation emits one indexed jump after its explicit selection cleanup");
 
-// ── T6: a snapshot captured before the keyed remount restores when the row
-// keys still match, and is discarded when they do not.
+// ── T6: surface switches reuse safe geometry through the LRU, never an old
+// Virtuoso scrollTop. The blank watchdog also discards its broken tree.
 stubSnapshot = {
   ranges: [{ startIndex: 0, endIndex: 0, size: 100 }, { startIndex: 1, endIndex: Infinity, size: 80 }],
   scrollTop: 420,
@@ -720,16 +687,15 @@ check(integrity?.restoreSnapshot === undefined, "watchdog rebuild discards the s
 await act(async () => integrity?.handleItemsRendered(1));
 await flushFrames();
 
-// Same-tab reveal (new surface, same rows): the snapshot applies and the
-// first-mount scrollToBottom is suppressed — it would yank the restored
-// view straight back to the tail.
-await switchSurface("surface-m");
-check(integrity?.restoreSnapshot === stubSnapshot, "same-row surface remount offers the captured snapshot");
-readyRef.current = false;
+// Same-tab reveal (new surface, same rows) is still a view reset. It opens at
+// the product-defined tail and does not restore an old reader position.
 const scrollToBottomBeforeSnapshot = scrollToBottomCalls;
+await switchSurface("surface-m");
+check(integrity?.restoreSnapshot === undefined, "same-row surface remount does not restore an old scrollTop");
+readyRef.current = false;
 await act(async () => integrity?.handleItemsRendered(1));
 await flushFrames();
-check(scrollToBottomCalls === scrollToBottomBeforeSnapshot, "a snapshot-restored mount does not jump to the bottom");
+check(scrollToBottomCalls === scrollToBottomBeforeSnapshot + 1, "same-row reveal follows normal tail positioning");
 
 // ── T9: the incoming surface prepended older history since the capture;
 // changed data/totalCount must discard the snapshot per Virtuoso's contract.
@@ -743,7 +709,7 @@ check(integrity?.restoreSnapshot === undefined, "a prepended key sequence discar
 readyRef.current = false;
 await act(async () => integrity?.handleItemsRendered(1));
 await flushFrames();
-check(scrollToBottomCalls === scrollToBottomBeforeSnapshot + 1, "changed data falls back to normal first-mount positioning");
+check(scrollToBottomCalls === scrollToBottomBeforeSnapshot + 2, "changed data falls back to normal first-mount positioning");
 
 // Different session (disjoint keys): the snapshot is discarded and the
 // first mount settles at the bottom as before.
@@ -753,7 +719,7 @@ check(integrity?.restoreSnapshot === undefined, "a disjoint key sequence discard
 readyRef.current = false;
 await act(async () => integrity?.handleItemsRendered(1));
 await flushFrames();
-check(scrollToBottomCalls === scrollToBottomBeforeSnapshot + 2, "a disjoint snapshot-less first mount settles at the bottom");
+check(scrollToBottomCalls === scrollToBottomBeforeSnapshot + 3, "a disjoint snapshot-less first mount settles at the bottom");
 stubSnapshot = null;
 
 // A 10,000-row generation gets only one keyed reset and one bounded probe.

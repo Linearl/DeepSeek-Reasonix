@@ -1395,10 +1395,10 @@ export function normalizeProviderView(p: ProviderView): ProviderView {
   };
 }
 
-type ProviderPresetStatus = NonNullable<ProviderPresetView["status"]>;
+type ProviderPresetStatus = NonNullable<ProviderPresetView["status"]> | "partial";
 
 function normalizeProviderPresetStatus(status: ProviderPresetView["status"] | undefined, added: boolean): ProviderPresetStatus {
-  if (status === "installed" || status === "installed_modified" || status === "name_conflict" || status === "similar_existing") return status;
+  if (status === "installed" || status === "installed_modified" || status === "partial" || status === "name_conflict" || status === "similar_existing") return status;
   return added ? "installed" : "available";
 }
 
@@ -1414,9 +1414,10 @@ function normalizeProviderPresetView(p: ProviderPresetView): ProviderPresetView 
     keyEnv: String(p.keyEnv ?? "").trim(),
     providerNames: asArray(p.providerNames),
     models: asArray(p.models),
-    added: Boolean(p.added || status === "installed" || status === "installed_modified" || status === "name_conflict"),
+    added: Boolean(p.added || status === "installed" || status === "installed_modified" || status === "partial" || status === "name_conflict"),
     status,
     statusProviderNames: asArray(p.statusProviderNames),
+    missingProviderNames: asArray(p.missingProviderNames),
     keySet: Boolean(p.keySet),
     requiresKey,
     configured,
@@ -4237,6 +4238,7 @@ function ModelsSection({ s, busy, apply, backgroundApply, initialFocus }: Models
   const defaultRef = toRef(s.defaultModel, s);
   const plannerRef = toRef(s.plannerModel, s);
   const subagentRef = toRef(s.subagentModel, s);
+  const visionRef = s.visionModel === "auto" ? "auto" : toRef(s.visionModel, s);
   const plannerSelectRef = plannerRef === defaultRef ? "" : plannerRef;
   const [defaultProvider] = defaultRef.split("/");
   const defaultProviderView = s.providers.find((p) => p.name === defaultProvider);
@@ -4279,6 +4281,20 @@ function ModelsSection({ s, busy, apply, backgroundApply, initialFocus }: Models
   const parallelWriters = Number.isFinite(agent.maxParallelWriters) && agent.maxParallelWriters > 0
     ? Math.max(1, Math.min(subagentConcurrency, Math.floor(agent.maxParallelWriters)))
     : Math.min(3, subagentConcurrency);
+  const visionRefs = useMemo(() => {
+    const defaultProviderName = defaultRef.split("/")[0];
+    const candidates = refs.filter((ref) => {
+      const [provider, ...parts] = ref.split("/");
+      const model = parts.join("/");
+      const view = s.providers.find((item) => item.name === provider);
+      return Boolean(view?.visionModels?.includes(model));
+    });
+    return candidates.sort((a, b) => {
+      const aSame = a.startsWith(`${defaultProviderName}/`);
+      const bSame = b.startsWith(`${defaultProviderName}/`);
+      return aSame === bSame ? a.localeCompare(b) : aSame ? -1 : 1;
+    });
+  }, [defaultRef, refs, s.providers]);
 
   useEffect(() => {
     setCompactRatioDraft(String(compactRatioPercent));
@@ -4447,6 +4463,19 @@ function ModelsSection({ s, busy, apply, backgroundApply, initialFocus }: Models
                 disabled={busy}
                 includeSameDefault
                 onPick={(ref) => void apply(() => app.SetPlannerModel(ref))}
+              />
+            </SettingsField>
+
+            <SettingsField label={t("settings.imageUnderstandingModel")} hint={t("settings.visionModelsHint")}>
+              <ModelPicker
+                s={s}
+                refs={visionRefs}
+                value={visionRef}
+                disabled={busy}
+                ariaLabel={t("settings.imageUnderstandingModel")}
+                emptyOptionLabel={t("common.none")}
+                autoOptionLabel={t("common.auto")}
+                onPick={(ref) => void apply(() => app.SetVisionModel(ref))}
               />
             </SettingsField>
 
@@ -4659,6 +4688,8 @@ export function ModelPicker({
   ariaLabel,
   emptyOptionLabel,
   emptyOptionHint,
+  autoOptionLabel,
+  autoOptionHint,
   onPick,
 }: {
   s: SettingsView;
@@ -4669,6 +4700,8 @@ export function ModelPicker({
   ariaLabel?: string;
   emptyOptionLabel?: string;
   emptyOptionHint?: string;
+  autoOptionLabel?: string;
+  autoOptionHint?: string;
   onPick: (ref: string) => void;
 }) {
   const t = useT();
@@ -4685,16 +4718,23 @@ export function ModelPicker({
   const emptyLabel = includeSameDefault ? t("settings.plannerNone") : emptyOptionLabel;
   const emptyHint = includeSameDefault ? t("settings.plannerNoneHint") : emptyOptionHint;
   const emptyMeta = includeSameDefault ? t("settings.plannerNoneHintShort") : emptyOptionHint;
+  const autoLabel = autoOptionLabel;
+  const autoHint = autoOptionHint;
   const selected = refs.includes(value) ? modelOptionFromRef(value, s) : null;
-  const selectedLabel = value === "" && emptyLabel
+  const selectedLabel = value === "auto" && autoLabel
+    ? autoLabel
+    : value === "" && emptyLabel
     ? emptyLabel
     : selected?.model || value || t("common.none");
-  const selectedMeta = value === "" && emptyLabel
+  const selectedMeta = value === "auto" && autoLabel
+    ? autoHint || ""
+    : value === "" && emptyLabel
     ? emptyMeta || ""
     : selected
     ? modelOptionMeta(selected, t)
     : t("settings.noModelsConfigured");
   const emptyOptionVisible = Boolean(emptyLabel) && (!q || `${emptyLabel} ${emptyHint || ""}`.toLowerCase().includes(q));
+  const autoOptionVisible = Boolean(autoLabel) && (!q || `${autoLabel} ${autoHint || ""}`.toLowerCase().includes(q));
 
   const groups = useMemo(() => {
     const providerOrder: string[] = [];
@@ -4791,6 +4831,21 @@ export function ModelPicker({
               {value === "" && <Check size={14} />}
             </button>
           )}
+          {autoOptionVisible && (
+            <button
+              type="button"
+              role="option"
+              aria-selected={value === "auto"}
+              className={`settings-model-picker__option settings-model-picker__option--pinned${value === "auto" ? " settings-model-picker__option--selected" : ""}`}
+              onClick={() => pick("auto")}
+            >
+              <span>
+                <strong>{autoLabel}</strong>
+                {autoHint && <small>{autoHint}</small>}
+              </span>
+              {value === "auto" && <Check size={14} />}
+            </button>
+          )}
           {groups.map((group) => (
             <div className="settings-model-picker__group" key={group.groupID}>
               <div className="settings-model-picker__group-title">
@@ -4815,7 +4870,7 @@ export function ModelPicker({
               ))}
             </div>
           ))}
-          {!emptyOptionVisible && groups.length === 0 && <div className="settings-model-picker__empty">{t("settings.noMatchingModels")}</div>}
+          {!emptyOptionVisible && !autoOptionVisible && groups.length === 0 && <div className="settings-model-picker__empty">{t("settings.noMatchingModels")}</div>}
         </div>
       </AnchoredPopover>
     </div>
@@ -4853,11 +4908,18 @@ function modelOptionGroupID(option: ModelPickerOption): string {
 }
 
 function uniqueModelOptions(options: ModelPickerOption[]): ModelPickerOption[] {
-  const seen = new Set<string>();
+  const indexByModel = new Map<string, number>();
   const out: ModelPickerOption[] = [];
   for (const option of options) {
-    if (seen.has(option.model)) continue;
-    seen.add(option.model);
+    const existingIndex = indexByModel.get(option.model);
+    if (existingIndex !== undefined) {
+      const existing = out[existingIndex];
+      if (!existing?.providerView?.webSearch && option.providerView?.webSearch) {
+        out[existingIndex] = option;
+      }
+      continue;
+    }
+    indexByModel.set(option.model, out.length);
     out.push(option);
   }
   return out;
@@ -4881,7 +4943,6 @@ function proxyModeLabel(mode: ProxyMode, t: ReturnType<typeof useT>): string {
 
 function ProvidersSection({ s, busy, apply }: SectionProps) {
   const t = useT();
-  const defaultProvider = toRef(s.defaultModel, s).split("/")[0];
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState<AddProviderMode>(null);
   const [revealedProvider, setRevealedProvider] = useState<string | null>(null);
@@ -4957,7 +5018,7 @@ function ProvidersSection({ s, busy, apply }: SectionProps) {
     const selected = mergedFetchedProviderModels(p.models, fetched, { preserveCurated: true });
     const visionCapability = providerVisionCapabilityForView(p);
     const visionSource = visionCapability === "unsupported"
-      ? []
+      ? p.visionModels
       : (p.visionModelsConfigured ? p.visionModels : inferredVisionModels(candidates));
     return {
       providerName: p.name,
@@ -5116,7 +5177,7 @@ function ProvidersSection({ s, busy, apply }: SectionProps) {
       await app.SaveProvider({
         ...provider,
         models,
-        visionModels: draft.visionCapability === "unsupported" ? [] : visionModels,
+        visionModels,
         visionModelsConfigured: true,
         default: providerDefaultModel(provider.default, models),
       });
@@ -5183,7 +5244,6 @@ function ProvidersSection({ s, busy, apply }: SectionProps) {
             fetching={fetchingProviders.has(group.id)}
             fetchResult={fetchResults[group.id]}
             modelDraft={modelDrafts[group.id]}
-            defaultProvider={defaultProvider}
             editing={editing}
             kinds={s.providerKinds}
             onEdit={setEditing}
@@ -5210,6 +5270,17 @@ function ProvidersSection({ s, busy, apply }: SectionProps) {
             }}
             onSaveDraftModels={() => void saveModelDraft(group)}
             onToggleWebSearch={(enabled) => {
+              if (group.id === "custom:opencode-go") {
+                const searchProviderNames = group.providers
+                  .map((provider) => provider.name)
+                  .filter((name) => name.startsWith("opencode-go-deepseek-"));
+                if (enabled) {
+                  void apply(() => app.AddProviderPresetAccess("opencode-go-deepseek-responses", ""));
+                } else if (searchProviderNames.length > 0) {
+                  void apply(() => app.RemoveProviderAccesses(searchProviderNames));
+                }
+                return;
+              }
               const providerNames = group.providers.map((provider) => provider.name);
               if (providerNames.length === 0) return;
               void apply(() => app.SetProviderWebSearch(providerNames, enabled));
@@ -5282,17 +5353,23 @@ const OFFICIAL_PROVIDER_CHOICES: Array<{ kind: OfficialProviderKind; labelKey: D
 
 type ProviderTemplateChoice =
   | { id: string; source: "official"; kind: OfficialProviderKind; label: string; description: string; keyEnv: string; added: boolean; keySet: boolean }
-  | { id: string; source: "preset"; presetID: string; label: string; description: string; keyEnv: string; added: boolean; status: ProviderPresetStatus; statusProviderNames: string[]; keySet: boolean };
+  | {
+    id: string; source: "preset"; presetID: string; label: string; description: string; keyEnv: string;
+    added: boolean; status: ProviderPresetStatus; statusProviderNames: string[]; missingProviderNames: string[]; keySet: boolean;
+    recommended: boolean; billingMode: string; displayGroup: string; displaySection: string;
+    displayTier: string; routeKind: string; optional: boolean; displayOrder: number;
+  };
 
 function providerTemplateCanAdd(choice: ProviderTemplateChoice | undefined): boolean {
   if (!choice) return false;
   if (choice.source === "official") return !choice.added;
-  return choice.status !== "installed" && choice.status !== "installed_modified" && choice.status !== "name_conflict";
+  return choice.status === "installed_modified" ? choice.missingProviderNames.length > 0 : choice.status !== "installed" && choice.status !== "name_conflict";
 }
 
 function providerTemplateStatusBadge(choice: ProviderTemplateChoice, t: ReturnType<typeof useT>): string {
   if (choice.source === "official") return choice.added ? t("settings.addProvider.addedBadge") : "";
   if (choice.status === "installed") return t("settings.addProvider.addedBadge");
+  if (choice.status === "partial") return t("settings.addProvider.partialBadge");
   if (choice.status === "installed_modified") return t("settings.addProvider.modifiedBadge");
   if (choice.status === "name_conflict") return t("settings.addProvider.nameConflictBadge");
   if (choice.status === "similar_existing") return t("settings.addProvider.similarExistingBadge");
@@ -5302,6 +5379,7 @@ function providerTemplateStatusBadge(choice: ProviderTemplateChoice, t: ReturnTy
 function providerTemplateActionLabel(choice: ProviderTemplateChoice | undefined, t: ReturnType<typeof useT>): string {
   if (!choice) return t("settings.addProvider.confirm");
   if (choice.source === "preset" && choice.status === "name_conflict") return t("settings.addProvider.nameConflictAction");
+  if (choice.source === "preset" && (choice.status === "partial" || (choice.status === "installed_modified" && choice.missingProviderNames.length > 0))) return t("settings.addProvider.completeBundleAction");
   if (!providerTemplateCanAdd(choice)) return t("settings.addProvider.alreadyAddedAction");
   return t("settings.addProvider.confirm");
 }
@@ -5368,7 +5446,7 @@ function providerPresetDescription(preset: ProviderPresetView, t: ReturnType<typ
       return t("settings.addProvider.preset.zaiCodingPlanGlobalDesc");
     case "zai-coding-plan-global-anthropic":
       return t("settings.addProvider.preset.zaiCodingPlanGlobalAnthropicDesc");
-    case "opencode-go": case "opencode-go-anthropic":
+    case "opencode-go-recommended": case "opencode-go": case "opencode-go-anthropic": case "opencode-go-responses":
     case "opencode-go-deepseek-anthropic": case "opencode-go-deepseek-responses":
       return t(opencodeGoPresetDescriptionKeys[preset.id]);
     case "opencode-zen-anthropic":
@@ -5420,6 +5498,10 @@ function providerPresetDescription(preset: ProviderPresetView, t: ReturnType<typ
 
 function providerPresetLabel(preset: ProviderPresetView, t: ReturnType<typeof useT>): string {
   switch (preset.id) {
+    case "opencode-go-recommended":
+      return t("settings.addProvider.opencodeGoRecommendedLabel");
+    case "opencode-go":
+      return t("settings.addProvider.opencodeGoCompatibilityLabel");
     case "deepseek-responses":
       return t("settings.addProvider.preset.deepseekResponsesLabel");
     case "token-rhythm":
@@ -5437,6 +5519,25 @@ function providerPresetLabel(preset: ProviderPresetView, t: ReturnType<typeof us
     default:
       return preset.label;
   }
+}
+
+function isOpenCodeProductChoice(
+  choice: ProviderTemplateChoice,
+): choice is Extract<ProviderTemplateChoice, { source: "preset" }> {
+  return choice.source === "preset"
+    && choice.displayGroup === "opencode"
+    && choice.displayTier === "primary";
+}
+
+function isFeaturedProviderChoice(choice: ProviderTemplateChoice): boolean {
+  return choice.source === "official"
+    || (choice.source === "preset" && choice.presetID === "opencode-go-recommended");
+}
+
+function isHiddenOpenCodeRouteChoice(choice: ProviderTemplateChoice): boolean {
+  return choice.source === "preset"
+    && choice.displayGroup === "opencode"
+    && !isOpenCodeProductChoice(choice);
 }
 
 export function AddProviderPanel({
@@ -5486,19 +5587,101 @@ export function AddProviderPanel({
       added: preset.added,
       status: normalizeProviderPresetStatus(preset.status, preset.added),
       statusProviderNames: asArray(preset.statusProviderNames),
+      missingProviderNames: asArray(preset.missingProviderNames),
       keySet: preset.keySet,
+      recommended: Boolean(preset.recommended),
+      billingMode: String(preset.billingMode ?? ""),
+      displayGroup: String(preset.displayGroup ?? ""),
+      displaySection: String(preset.displaySection ?? ""),
+      displayTier: String(preset.displayTier ?? ""),
+      routeKind: String(preset.routeKind ?? ""),
+      optional: Boolean(preset.optional),
+      displayOrder: Number(preset.displayOrder ?? 0),
     })),
   ], [officialProviders, providerPresets, t]);
-  const [templateID, setTemplateID] = useState("official:deepseek");
+  const visibleTemplateChoices = useMemo(
+    () => templateChoices.filter((choice) => !isHiddenOpenCodeRouteChoice(choice)),
+    [templateChoices],
+  );
+  const firstAvailableTemplateID = visibleTemplateChoices.find((choice) => choice.source === "preset" && choice.recommended && providerTemplateCanAdd(choice))?.id
+    ?? visibleTemplateChoices.find(providerTemplateCanAdd)?.id
+    ?? visibleTemplateChoices[0]?.id
+    ?? "";
+  const [templateID, setTemplateID] = useState(() => firstAvailableTemplateID);
   const [key, setKey] = useState("");
-  const firstAvailableTemplateID = templateChoices.find(providerTemplateCanAdd)?.id ?? templateChoices[0]?.id ?? "";
-  const selected = templateChoices.find((choice) => choice.id === templateID) ?? templateChoices.find((choice) => choice.id === firstAvailableTemplateID) ?? templateChoices[0];
+  const [showProviderCatalog, setShowProviderCatalog] = useState(false);
+  const selected = visibleTemplateChoices.find((choice) => choice.id === templateID)
+    ?? visibleTemplateChoices.find((choice) => choice.id === firstAvailableTemplateID)
+    ?? visibleTemplateChoices[0];
   useEffect(() => {
-    const current = templateChoices.find((choice) => choice.id === templateID);
+    const current = visibleTemplateChoices.find((choice) => choice.id === templateID);
     if (firstAvailableTemplateID && (!current || (!providerTemplateCanAdd(current) && firstAvailableTemplateID !== templateID))) {
       setTemplateID(firstAvailableTemplateID);
     }
-  }, [firstAvailableTemplateID, templateChoices, templateID]);
+  }, [firstAvailableTemplateID, templateID, visibleTemplateChoices]);
+
+  const renderTemplateChoice = (choice: ProviderTemplateChoice): ReactNode => {
+    const canAdd = providerTemplateCanAdd(choice);
+    const badge = providerTemplateStatusBadge(choice, t);
+    const recommendationBadge = choice.source === "preset" && choice.recommended ? t("settings.recommended") : "";
+    const conflictProviderName = providerTemplateConflictProviderName(choice);
+    if (choice.source === "preset" && (choice.status === "name_conflict" || (choice.status === "installed_modified" && choice.missingProviderNames.length === 0))) {
+      return (
+        <div
+          key={choice.id}
+          className={`provider-template-card${providerTemplateStatusClass(choice)}`}
+        >
+          <strong>
+            {choice.label}
+            {recommendationBadge ? ` · ${recommendationBadge}` : ""}
+            {badge ? ` · ${badge}` : ""}
+          </strong>
+          <span>{choice.description}</span>
+          <div className="provider-template-card__actions">
+            <button
+              type="button"
+              className="btn btn--small"
+              disabled={busy || !conflictProviderName}
+              onClick={() => onViewPresetConflict(conflictProviderName)}
+            >
+              {choice.status === "installed_modified" ? t("settings.addProvider.viewPresetProvider") : t("settings.addProvider.viewConflictProvider")}
+            </button>
+            <InlineConfirmButton
+              label={t("settings.addProvider.resetPreset")}
+              confirmLabel={t("settings.addProvider.confirmResetPreset")}
+              cancelLabel={t("common.cancel")}
+              disabled={busy}
+              danger
+              onConfirm={() => onResetPreset(choice.presetID)}
+            />
+          </div>
+        </div>
+      );
+    }
+    return (
+      <button
+        key={choice.id}
+        type="button"
+        className={`provider-template-card${selected?.id === choice.id ? " provider-template-card--active" : ""}${providerTemplateStatusClass(choice)}`}
+        disabled={busy || !canAdd}
+        onClick={() => {
+          setTemplateID(choice.id);
+          if (isFeaturedProviderChoice(choice)) setShowProviderCatalog(false);
+        }}
+      >
+        <strong>
+          {choice.label}
+          {recommendationBadge ? ` · ${recommendationBadge}` : ""}
+          {badge ? ` · ${badge}` : ""}
+        </strong>
+        <span>{choice.description}</span>
+      </button>
+    );
+  };
+
+  const featuredProviderChoices = visibleTemplateChoices.filter(isFeaturedProviderChoice);
+  const otherChoices = visibleTemplateChoices.filter((choice) => !isFeaturedProviderChoice(choice));
+  const focusedFeaturedProvider = selected && isFeaturedProviderChoice(selected) && !showProviderCatalog ? selected : null;
 
   const header = (
     <div className="provider-add-panel__head">
@@ -5537,65 +5720,85 @@ export function AddProviderPanel({
   );
 
   if (mode === "official") {
+    if (focusedFeaturedProvider) {
+      const canConnect = providerTemplateCanAdd(focusedFeaturedProvider)
+        && (focusedFeaturedProvider.keySet || key.trim().length > 0);
+      const setupHint = focusedFeaturedProvider.source === "official"
+        ? t("settings.addProvider.official.deepseekDesc")
+        : focusedFeaturedProvider.presetID === "opencode-go-recommended"
+          ? t("settings.addProvider.openCodeGoQuickSetupHint")
+          : t("settings.addProvider.zenCredentialHint");
+      const connect = () => {
+        if (focusedFeaturedProvider.source === "official") {
+          void onAddOfficial(focusedFeaturedProvider.kind, key.trim());
+        } else {
+          void onAddPreset(focusedFeaturedProvider.presetID, key.trim());
+        }
+      };
+      return (
+        <div className="provider-add-panel">
+          {header}
+          <section className="provider-quick-setup" aria-labelledby="provider-quick-setup-title">
+            <div className="provider-featured-picker">
+              <span className="provider-featured-picker__label">{t("settings.addProvider.featuredProviders")}</span>
+              <div className="provider-featured-grid">
+                {featuredProviderChoices.map(renderTemplateChoice)}
+              </div>
+            </div>
+            <div className="provider-quick-setup__intro">
+              <strong id="provider-quick-setup-title">{focusedFeaturedProvider.label}</strong>
+              <span>{setupHint}</span>
+            </div>
+            <label className="set-label" htmlFor="provider-quick-setup-key">API Key</label>
+            <input
+              id="provider-quick-setup-key"
+              className="mem-input provider-quick-setup__key"
+              type="password"
+              autoFocus
+              placeholder={t("settings.setKey", { env: focusedFeaturedProvider.keyEnv })}
+              value={key}
+              disabled={busy || !providerTemplateCanAdd(focusedFeaturedProvider)}
+              onChange={(event) => setKey(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && canConnect) {
+                  connect();
+                }
+              }}
+            />
+            <div className="provider-quick-setup__actions">
+              <button type="button" className="btn btn--small" disabled={busy} onClick={() => setShowProviderCatalog(true)}>
+                {t("settings.addProvider.chooseAnotherProvider")}
+              </button>
+              <button
+                type="button"
+                className="btn btn--primary btn--small"
+                disabled={busy || !canConnect}
+                onClick={connect}
+              >
+                {t("settings.addProvider.connectAndStart")}
+              </button>
+            </div>
+          </section>
+        </div>
+      );
+    }
     return (
       <div className="provider-add-panel">
         {header}
         {modeSwitch}
         <div className="provider-add-panel__hint">{t("settings.addProvider.officialHint")}</div>
-        <div className="provider-template-grid">
-          {templateChoices.map((choice) => {
-            const canAdd = providerTemplateCanAdd(choice);
-            const badge = providerTemplateStatusBadge(choice, t);
-            const conflictProviderName = providerTemplateConflictProviderName(choice);
-            if (choice.source === "preset" && (choice.status === "name_conflict" || choice.status === "installed_modified")) {
-              return (
-                <div
-                  key={choice.id}
-                  className={`provider-template-card${providerTemplateStatusClass(choice)}`}
-                >
-                  <strong>
-                    {choice.label}
-                    {badge ? ` · ${badge}` : ""}
-                  </strong>
-                  <span>{choice.description}</span>
-                  <div className="provider-template-card__actions">
-                    <button
-                      type="button"
-                      className="btn btn--small"
-                      disabled={busy || !conflictProviderName}
-                      onClick={() => onViewPresetConflict(conflictProviderName)}
-                    >
-                      {choice.status === "installed_modified" ? t("settings.addProvider.viewPresetProvider") : t("settings.addProvider.viewConflictProvider")}
-                    </button>
-                    <InlineConfirmButton
-                      label={t("settings.addProvider.resetPreset")}
-                      confirmLabel={t("settings.addProvider.confirmResetPreset")}
-                      cancelLabel={t("common.cancel")}
-                      disabled={busy}
-                      danger
-                      onConfirm={() => onResetPreset(choice.presetID)}
-                    />
-                  </div>
-                </div>
-              );
-            }
-            return (
-              <button
-                key={choice.id}
-                type="button"
-                className={`provider-template-card${selected?.id === choice.id ? " provider-template-card--active" : ""}${providerTemplateStatusClass(choice)}`}
-                disabled={busy || !canAdd}
-                onClick={() => setTemplateID(choice.id)}
-              >
-                <strong>
-                  {choice.label}
-                  {badge ? ` · ${badge}` : ""}
-                </strong>
-                <span>{choice.description}</span>
-              </button>
-            );
-          })}
-        </div>
+        {featuredProviderChoices.length > 0 ? (
+          <div className="provider-preset-group">
+            <h4>{t("settings.addProvider.featuredProviders")}</h4>
+            <div className="provider-featured-grid">{featuredProviderChoices.map(renderTemplateChoice)}</div>
+          </div>
+        ) : null}
+        {otherChoices.length > 0 ? (
+          <div className="provider-preset-group">
+            <h4>{t("settings.addProvider.otherProviders")}</h4>
+            <div className="provider-template-grid">{otherChoices.map(renderTemplateChoice)}</div>
+          </div>
+        ) : null}
         <label className="set-label">{t("settings.providerKeyOptional")}</label>
         <input
           className="mem-input"
@@ -5650,7 +5853,6 @@ export function ProviderAccessCard({
   fetching,
   fetchResult,
   modelDraft,
-  defaultProvider,
   editing,
   kinds,
   onEdit,
@@ -5674,7 +5876,6 @@ export function ProviderAccessCard({
   fetching: boolean;
   fetchResult?: ProviderFetchResult;
   modelDraft?: ProviderModelDraft;
-  defaultProvider: string;
   editing: string | null;
   kinds: string[];
   onEdit: (name: string) => void;
@@ -5695,14 +5896,45 @@ export function ProviderAccessCard({
 }) {
   const t = useT();
   const editableProvider = group.providers[0];
-  const isDefault = group.providers.some((p) => p.name === defaultProvider);
+  const isOpenCodeGoConnection = group.id === "custom:opencode-go";
   const editingProvider = group.providers.find((p) => editing === p.name);
   const upgradeProvider = group.providers.find((p) => p.recommendedUpgradeAvailable);
   const primaryProviderExpanded = Boolean(editableProvider && editing === editableProvider.name);
-  const supportsServerWebSearch = group.providers.length > 0 && group.providers.every(providerSupportsServerWebSearchForView);
-  const webSearchEnabled = supportsServerWebSearch && group.providers.every((provider) => Boolean(provider.webSearch));
+  const supportsServerWebSearch = isOpenCodeGoConnection
+    || (group.providers.length > 0 && group.providers.every(providerSupportsServerWebSearchForView));
+  const webSearchEnabled = supportsServerWebSearch && (isOpenCodeGoConnection
+    ? group.providers.some((provider) => provider.name.startsWith("opencode-go-deepseek-") && Boolean(provider.webSearch))
+    : group.providers.every((provider) => Boolean(provider.webSearch)));
   const visibleModels = group.models.slice(0, 6);
   const hiddenModelCount = Math.max(0, group.models.length - visibleModels.length);
+  const providerProfiles = (
+    <div className="provider-profiles">
+      {group.providers.map((p) => {
+        const profileExpanded = editing === p.name;
+        return (
+          <div className="provider-profile-row" key={p.name}>
+            <span>{p.name}</span>
+            <span>{p.models.join(", ") || t("common.none")}</span>
+            <button
+              className="btn btn--small provider-profile-row__refresh"
+              disabled={busy || fetching || !p.baseUrl || !providerIsConfigured(p)}
+              onClick={() => onRefresh(p)}
+            >
+              {fetching ? t("settings.fetchingModels") : t("settings.fetchModels")}
+            </button>
+            <button
+              className="btn btn--small provider-profile-row__configure"
+              disabled={busy}
+              aria-expanded={profileExpanded}
+              onClick={() => profileExpanded ? onCancelEdit() : onEdit(p.name)}
+            >
+              {profileExpanded ? t("common.collapse") : t("settings.configureProfile")}
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
   return (
     <article className={`provider-access-card${group.builtIn ? " provider-access-card--builtin" : ""}`}>
       <div className="provider-access-card__head">
@@ -5718,7 +5950,7 @@ export function ProviderAccessCard({
           </div>
         </div>
         <div className="provider-access-card__actions">
-          {editableProvider && (
+          {editableProvider && !isOpenCodeGoConnection && (
             <button
               className="btn btn--small"
               disabled={busy}
@@ -5740,7 +5972,6 @@ export function ProviderAccessCard({
           {editableProvider && onDelete && (
             <ProviderAccessMoreMenu
               busy={busy}
-              removeDisabled={isDefault && !group.builtIn}
               builtIn={group.builtIn}
               onRemove={() => onDelete(group.providers)}
             />
@@ -5818,34 +6049,12 @@ export function ProviderAccessCard({
 
       <ProviderTechnicalDetails group={group} />
 
-      {group.providers.length > 1 && (
-        <div className="provider-profiles">
-          {group.providers.map((p) => {
-            const profileExpanded = editing === p.name;
-            return (
-              <div className="provider-profile-row" key={p.name}>
-                <span>{p.name}</span>
-                <span>{p.models.join(", ") || t("common.none")}</span>
-                <button
-                  className="btn btn--small provider-profile-row__refresh"
-                  disabled={busy || fetching || !p.baseUrl || !providerIsConfigured(p)}
-                  onClick={() => onRefresh(p)}
-                >
-                  {fetching ? t("settings.fetchingModels") : t("settings.fetchModels")}
-                </button>
-                <button
-                  className="btn btn--small provider-profile-row__configure"
-                  disabled={busy}
-                  aria-expanded={profileExpanded}
-                  onClick={() => profileExpanded ? onCancelEdit() : onEdit(p.name)}
-                >
-                  {profileExpanded ? t("common.collapse") : t("settings.configureProfile")}
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {group.providers.length > 1 && (isOpenCodeGoConnection ? (
+        <details className="provider-route-settings">
+          <summary>{t("settings.addProvider.manageRoutes")}</summary>
+          {providerProfiles}
+        </details>
+      ) : providerProfiles)}
 
       {editingProvider && (
         <ProviderEditor
@@ -5946,20 +6155,18 @@ function providerProtocolDisplayName(kind: string): string {
 
 function ProviderAccessMoreMenu({
   busy,
-  removeDisabled,
   builtIn,
   onRemove,
 }: {
   busy: boolean;
-  removeDisabled: boolean;
   builtIn: boolean;
   onRemove: () => void | Promise<void>;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const disabled = busy || removeDisabled;
-  const tooltip = removeDisabled ? t("settings.cantDeleteDefault") : t("settings.themeGallery.moreActions");
+  const disabled = busy;
+  const tooltip = t("settings.themeGallery.moreActions");
 
   return (
     <div className="provider-access-more">
@@ -6093,7 +6300,7 @@ function ProviderModelDraftPicker({
               ) : (
                 <div className="provider-model-draft__capabilities" aria-label={t("settings.modelCapabilitiesAria", { model })}>
                   <span>{t("settings.textInput")}</span>
-                  <span>{t("settings.imageInputUnsupported")}</span>
+                  <span>{vision.has(model) ? t("settings.visionModel") : t("settings.imageInputUnsupported")}</span>
                 </div>
               )}
             </div>
@@ -6170,7 +6377,7 @@ function ProviderServiceCapabilities({
   );
 }
 
-function providerAccessGroups(providers: ProviderView[], t: ReturnType<typeof useT>): ProviderAccessGroup[] {
+export function providerAccessGroups(providers: ProviderView[], t: ReturnType<typeof useT>): ProviderAccessGroup[] {
   const groups = new Map<string, ProviderAccessGroup>();
   for (const p of providers) {
     const id = providerGroupID(p);
@@ -6221,10 +6428,6 @@ function providerBaseHost(baseUrl: string): string {
 
 type ProviderVisionCapability = "configurable" | "unsupported";
 
-function isDeepSeekOfficialEndpoint(baseUrl: string): boolean {
-  return providerBaseHost(baseUrl).endsWith(".deepseek.com");
-}
-
 export function providerSupportsServerWebSearch(kind: string, baseUrl: string): boolean {
   try {
     const endpoint = new URL(baseUrl.trim());
@@ -6260,25 +6463,13 @@ export function providerSupportsServerWebSearchForView(
   return providerSupportsServerWebSearch(provider.kind, provider.baseUrl);
 }
 
-function providerVisionCapability(kind: string, baseUrl: string): ProviderVisionCapability {
-  if (!isDeepSeekOfficialEndpoint(baseUrl)) return "configurable";
-  switch (kind.trim().toLowerCase()) {
-    case "openai":
-    case "responses":
-    case "anthropic":
-      return "unsupported";
-    default:
-      return "configurable";
-  }
-}
-
 export function providerVisionCapabilityForView(
   provider: Pick<ProviderView, "kind" | "baseUrl" | "visionCapability">,
 ): ProviderVisionCapability {
-  if (provider.visionCapability === "unsupported" || provider.visionCapability === "configurable") {
-    return provider.visionCapability;
+  if (provider.visionCapability === "unsupported") {
+    return "unsupported";
   }
-  return providerVisionCapability(provider.kind, provider.baseUrl);
+  return "configurable";
 }
 
 function canonicalOfficialProviderName(name: string): string {
@@ -6302,12 +6493,16 @@ function officialProviderKind(p: ProviderView): string {
 function providerGroupID(p: ProviderView): string {
   const official = officialProviderKind(p);
   if (official) return `builtin:${official}`;
+  if (isOpenCodeGoProviderName(p.name)) return "custom:opencode-go";
+  if (p.name === "opencode-zen-anthropic") return "custom:opencode-zen";
   return `custom:${p.name}`;
 }
 
 function providerGroupLabel(p: ProviderView, t?: ReturnType<typeof useT>): string {
   const id = providerGroupID(p);
   if (id === "builtin:deepseek") return t ? t("settings.providerLabel.deepseek") : "DeepSeek";
+  if (id === "custom:opencode-go") return t ? t("settings.providerLabel.opencodeGo") : "OpenCode Go";
+  if (id === "custom:opencode-zen") return t ? t("settings.providerLabel.opencodeZen") : "OpenCode Zen";
   return p.name;
 }
 
@@ -6316,7 +6511,22 @@ function providerGroupDescription(p: ProviderView, t: ReturnType<typeof useT>): 
   if (id === "builtin:deepseek") {
     return p.recommendedUpgradeAvailable ? "" : t("settings.providerDesc.deepseek");
   }
+  if (id === "custom:opencode-go") return t("settings.providerDesc.opencodeGo");
+  if (id === "custom:opencode-zen") return t("settings.providerDesc.opencodeZen");
   return "";
+}
+
+function isOpenCodeGoProviderName(name: string): boolean {
+  switch (name.trim()) {
+    case "opencode-go":
+    case "opencode-go-anthropic":
+    case "opencode-go-responses":
+    case "opencode-go-deepseek-anthropic":
+    case "opencode-go-deepseek-responses":
+      return true;
+    default:
+      return false;
+  }
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -6469,7 +6679,7 @@ export const ProviderEditorModelPicker = memo(function ProviderEditorModelPicker
               ) : (
                 <div className="provider-model-draft__capabilities" aria-label={t("settings.modelCapabilitiesAria", { model })}>
                   <span>{t("settings.textInput")}</span>
-                  <span>{t("settings.imageInputUnsupported")}</span>
+                  <span>{vision.has(model) ? t("settings.visionModel") : t("settings.imageInputUnsupported")}</span>
                 </div>
               )}
               <div className="provider-model-draft__context-field">

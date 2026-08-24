@@ -5,7 +5,9 @@
  *
  * Only the files in ALLOWED_WRITERS may issue imperative scroll calls
  * (scrollTo / scrollBy / scrollToIndex) against the transcript Virtuoso
- * handle. Every other module must route through the scroll coordinator's
+ * handle: the arbiter hook plus its extracted controllers (split out for the
+ * file-size budget — still one logical writer, driven only by the arbiter).
+ * Every other module must route through the scroll coordinator's
  * dispatch/writeOffset API. This guards the "one writer owns scrollTop"
  * invariant that keeps user scrolls, tail-follow, and anchor recovery from
  * fighting each other (#8657).
@@ -21,12 +23,31 @@ import { fileURLToPath } from "node:url";
 
 const SOURCE_ROOT = fileURLToPath(new URL("../src", import.meta.url));
 
-// Only the scroll-arbiter hook may write to the transcript Virtuoso handle;
-// every other module routes through its dispatch/writeOffset/recovery API.
+// Only the scroll-arbiter hook and its extracted controllers may write to the
+// transcript Virtuoso handle; every other module routes through the
+// dispatch/writeOffset/recovery API.
 const ALLOWED_WRITERS = new Set([
   "lib/useTranscriptScrollArbiter.ts",
+  "lib/transcriptTailSettle.ts",
 ]);
 
+// Raw `.scrollTop` writes bypass the Virtuoso handle entirely. The allowed
+// set is deliberate and non-transcript (or natively paired with the arbiter):
+// - lib/nestedScrollHandoff.ts: the trackpad handoff lane; every write is
+//   paired with onParentScrollIntent so the arbiter sees the gesture.
+// - components/SettingsPanel.tsx: the settings overlay's own scroller.
+// - components/WorkspacePanel.tsx: the project tree's own scroller.
+// - components/editors/LineNumberCode.tsx: the file viewer's own scroller —
+//   resets scroll when a virtual file is replaced by a non-virtual one.
+// - custom/features/heartbeat/HeartbeatPanel.tsx: the heartbeat list's custom
+//   scrollbar thumb drag, mapped to its own scroller.
+const ALLOWED_RAW_SCROLLTOP = new Set([
+  "lib/nestedScrollHandoff.ts",
+  "components/SettingsPanel.tsx",
+  "components/WorkspacePanel.tsx",
+  "components/editors/LineNumberCode.tsx",
+  "custom/features/heartbeat/HeartbeatPanel.tsx",
+]);
 // Matches imperative scroll calls on the transcript Virtuoso handle, whether
 // reached through `virtuosoRef.current` directly or a local `handle` alias.
 const VIRTUOSO_SCROLL_RE = /(?:virtuoso[A-Za-z]*\.current|\bhandle)\??\.\s*scroll(?:To|By|ToIndex)\s*\(/;

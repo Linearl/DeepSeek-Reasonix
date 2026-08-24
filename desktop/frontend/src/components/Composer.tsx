@@ -9,6 +9,7 @@ import { enqueueInboxGuidance } from "../lib/inboxSubmit";
 import { formatInboxError, isInboxItemMissing } from "../lib/inboxError";
 import { inboxScopeKey } from "../lib/composerInboxQueue";
 import { useComposerInboxRefresh } from "../lib/useComposerInboxRefresh";
+import { useComposerImeGuard } from "../lib/useComposerImeGuard";
 import { guidanceIsInFlight, guidanceNeedsRetry, guidanceTextMatches, kickIdleGuidance, markGuidanceQueued } from "../lib/composerGuidance";
 import { canUsePromptHistory, composerEnterAction, composerEscapeAction, composerMenuKeyAction, insertComposerNewline, isFnKeyEvent, isImeKeyEvent, promptHistoryDirectionFromEvent } from "../lib/composerKeyboard";
 import { cacheGeneration, loadOlder } from "../lib/composerHistory";
@@ -33,6 +34,7 @@ import type { ControllerLiveStore } from "../lib/useController";
 import { clearLayoutSize, loadOptionalLayoutSize, saveLayoutSize } from "../lib/layoutPreferences";
 import { createRafResizeUpdater } from "../lib/resizeDrag";
 import { observeComposerMenuViewport } from "../lib/composerMenuViewport";
+import { resolveComposerContentSizing } from "../lib/composerSizing";
 import { useToast } from "../lib/toast";
 import { type CollaborationMode, type CommandInfo, type ComposerInsertRequest, type ContextInfo, type DirEntry, type EffortInfo, type GoalRuntime, type HistoryMessage, type Mode, type PromptHistoryEntry, type QualityFloor, type SessionMeta, type SessionReference, type SlashArgItem, type SlashArgsResult, type ToolApprovalMode, type BalanceInfo } from "../lib/types";
 import {
@@ -382,6 +384,14 @@ function composerMaxHeight(): number {
   return Math.max(COMPOSER_MIN_HEIGHT, Math.min(COMPOSER_MAX_HEIGHT, Math.floor(window.innerHeight * COMPOSER_MAX_VIEWPORT_RATIO)));
 }
 
+// Hero (creation) input cap: the old 96px hard cap clipped longer drafts
+// before the card autosize took over; give the hero min(30vh, 160px) so a
+// visible scrollbar takes over instead (#8494/#8742/#9019).
+function composerHeroInputMaxHeight(): number {
+  if (typeof window === "undefined") return 160;
+  return Math.min(Math.floor(window.innerHeight * 0.3), 160);
+}
+
 // The rendered card includes the run strip while a turn runs; subtract it to
 // recover the user's logical height when measuring from the DOM.
 function composerLogicalHeight(card: HTMLElement): number {
@@ -392,10 +402,6 @@ function composerLogicalHeight(card: HTMLElement): number {
 
 function clampComposerHeight(height: number): number {
   return Math.min(Math.max(Math.round(height), COMPOSER_MIN_HEIGHT), composerMaxHeight());
-}
-
-function composerAutoInputMaxHeight(extraReservedHeight = 0): number {
-  return Math.max(32, composerMaxHeight() - COMPOSER_AUTO_RESERVED_HEIGHT - extraReservedHeight);
 }
 
 function loadComposerHeight(): number | null {
@@ -543,6 +549,7 @@ export function Composer({
   cwd,
   modelLabel,
   imageInputEnabled = true,
+  imageUnderstandingEnabled = false,
   tabId,
   effort,
   onSend,
@@ -613,6 +620,8 @@ export function Composer({
   cwd?: string;
   modelLabel: string;
   imageInputEnabled?: boolean;
+  /** True when text-only image turns are preprocessed by a configured vision model. */
+  imageUnderstandingEnabled?: boolean;
   tabId?: string;
   effort?: EffortInfo;
   onSend: (displayText: string, submitText?: string, tabId?: string, structured?: StructuredInvocationSubmit) => void | Promise<void>;
@@ -733,6 +742,8 @@ export function Composer({
   const [active, setActive] = useState(0);
   const [dismissed, setDismissed] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  // A saved manual height is a floor, not a hard cap: longer drafts may grow
+  // above it and return to it when their content shrinks.
   const [composerHeight, setComposerHeight] = useState<number | null>(loadComposerHeight);
   const [composerResizing, setComposerResizing] = useState(false);
   const [textareaAutoHeight, setTextareaAutoHeight] = useState<number | null>(null);
@@ -789,8 +800,6 @@ export function Composer({
   const intentHoverTimerRef = useRef<number | null>(null);
   const creationChrome = showContextWindowRing;
   const wasRunningByDraftRef = useRef<Record<string, boolean>>({ [draftKey]: running });
-  const composingRef = useRef(false);
-  const lastCompositionEndAt = useRef(0);
   const pastChatSearchComposingRef = useRef(false);
   const pastChatSearchLastCompositionEndAt = useRef(0);
   const lastSelectionRef = useRef({ start: 0, end: 0 });
@@ -822,6 +831,18 @@ export function Composer({
   const openPastedLabelsRef = useRef(openPastedLabels);
   const sessionRefsRef = useRef(sessionRefs);
   const selectedTextRefsRef = useRef(selectedTextRefs);
+  // Plain-textarea IME freeze: while a composition is active the textarea
+  // renders uncontrolled so no re-render can cancel it (#8593/#8409); the
+  // hook owns the composition lifecycle, resync, and force-sync semantics.
+  const { composingRef, lastCompositionEndAt, trackImeInputChange } = useComposerImeGuard({
+    taRef,
+    text,
+    invocationCount: invocations.length,
+    textRef,
+    lastSelectionRef,
+    setText,
+    setPlainSelection,
+  });
   textRef.current = text;
   invocationsRef.current = invocations;
   attachmentsRef.current = attachments;
@@ -2005,8 +2026,9 @@ export function Composer({
   const planModeOn = collaborationMode === "plan";
   const activeGoal = (goal ?? "").trim();
   const goalModeOn = collaborationMode === "goal";
-  const warnImageInputFallback = useCallback((message = t("composer.imageInputUnsupported")) => {
-    showToast(message, "warn");
+  const warnImageInputFallback = useCallback((message?: string) => {
+    const text = message ?? t("composer.imageInputUnsupported");
+    showToast(text, "warn");
   }, [showToast, t]);
 
   const submit = async () => {
@@ -2022,7 +2044,7 @@ export function Composer({
     const trimmedDraft = typedGoalDraft ?? rawDraft;
     const trimmedText = trimmedDraft.text;
     if (draftHasPendingPaste(submitDraftKey)) return;
-    if (!imageInputEnabled && hasImageAttachments(attachmentsRef.current)) {
+    if (!imageInputEnabled && !imageUnderstandingEnabled && hasImageAttachments(attachmentsRef.current)) {
       warnImageInputFallback();
     }
     const currentAttachments = attachmentsRef.current;
@@ -2927,11 +2949,6 @@ export function Composer({
   }, []);
 
   const measureTextareaAutoHeight = useCallback(() => {
-    if (composerHeight !== null) {
-      setTextareaAutoHeight(null);
-      setTextareaAutoOverflow(false);
-      return;
-    }
     // Creation empty hero starts single-line but must grow so multi-line drafts
     // stay readable before send (review: fixed 20px + overflow:hidden clipped).
     if (heroMode) {
@@ -2944,7 +2961,7 @@ export function Composer({
       const previousHeight = node.style.height;
       node.style.height = "auto";
       const scrollHeight = node.scrollHeight || 20;
-      const maxHeight = 96;
+      const maxHeight = composerHeroInputMaxHeight();
       const nextHeight = Math.min(Math.max(scrollHeight, 20), maxHeight);
       const nextOverflow = scrollHeight > maxHeight + 1;
       node.style.height = previousHeight;
@@ -2958,12 +2975,15 @@ export function Composer({
     const previousHeight = node?.style.height;
     if (node) node.style.height = "auto";
     const scrollHeight = richHeight || node?.scrollHeight || 0;
-    const maxHeight = composerAutoInputMaxHeight();
-    const nextHeight = Math.min(scrollHeight, maxHeight);
-    const nextOverflow = scrollHeight > maxHeight + 1;
+    const sizing = resolveComposerContentSizing({
+      contentHeight: scrollHeight,
+      manualLogicalHeight: composerHeight,
+      maxLogicalHeight: composerMaxHeight(),
+      reservedHeight: COMPOSER_AUTO_RESERVED_HEIGHT,
+    });
     if (node && previousHeight !== undefined) node.style.height = previousHeight;
-    setTextareaAutoHeight((current) => (current === nextHeight ? current : nextHeight));
-    setTextareaAutoOverflow((current) => (current === nextOverflow ? current : nextOverflow));
+    setTextareaAutoHeight((current) => (current === sizing.inputHeight ? current : sizing.inputHeight));
+    setTextareaAutoOverflow((current) => (current === sizing.overflow ? current : sizing.overflow));
   }, [composerHeight, heroMode, invocations.length]);
 
   useLayoutEffect(() => {
@@ -2971,7 +2991,6 @@ export function Composer({
   }, [text, measureTextareaAutoHeight]);
 
   useEffect(() => {
-    if (composerHeight !== null) return;
     let frame = 0;
     const update = () => {
       if (frame) window.cancelAnimationFrame(frame);
@@ -3009,7 +3028,7 @@ export function Composer({
 
     e.preventDefault();
     const startY = e.clientY;
-    const startHeight = composerHeight ?? composerLogicalHeight(card);
+    const startHeight = Math.max(composerHeight ?? COMPOSER_MIN_HEIGHT, composerLogicalHeight(card));
     let nextHeight = clampComposerHeight(startHeight);
     let moved = false;
     card.style.setProperty("--composer-height", `${nextHeight}px`);
@@ -3047,7 +3066,10 @@ export function Composer({
 
   const onComposerResizeKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
     const card = composerCardRef.current;
-    const current = composerHeight ?? (card ? composerLogicalHeight(card) : COMPOSER_MIN_HEIGHT);
+    const current = Math.max(
+      composerHeight ?? COMPOSER_MIN_HEIGHT,
+      card ? composerLogicalHeight(card) : COMPOSER_MIN_HEIGHT,
+    );
     const step = e.shiftKey ? 32 : 16;
     let next: number | null = null;
     if (e.key === "ArrowUp" || e.key === "PageUp") next = current + step;
@@ -3597,21 +3619,33 @@ export function Composer({
 
   // When the run strip is visible inside a user-resized card, the card grows
   // by the strip's reserved height so the meta row stays fully visible.
-  // --composer-height carries only the user's logical height; the reservation
-  // is a separate variable consumed by the CSS calc, so the live resize drag
-  // (which writes raw logical heights) stays consistent with this render path.
+  // --composer-height stays in logical card-height space. It may be the saved
+  // manual floor or a larger content-derived height; the run-strip reservation
+  // remains separate so the live resize writer uses the same coordinate space.
   const showRunStrip = Boolean(retry || running);
-  const composerCardStyle = composerHeight === null
+  const effectiveComposerHeight = composerHeight === null
+    ? null
+    : resolveComposerContentSizing({
+        contentHeight: textareaAutoHeight ?? 0,
+        manualLogicalHeight: composerHeight,
+        maxLogicalHeight: composerMaxHeight(),
+        reservedHeight: COMPOSER_AUTO_RESERVED_HEIGHT,
+      }).logicalHeight;
+  const composerCardStyle = effectiveComposerHeight === null
     ? undefined
     : ({
-        "--composer-height": `${composerHeight}px`,
+        "--composer-height": `${effectiveComposerHeight}px`,
         "--composer-run-strip-reserved": `${showRunStrip ? COMPOSER_RUN_STRIP_RESERVED : 0}px`,
       } as CSSProperties);
-  const textareaStyle = composerHeight === null && textareaAutoHeight !== null
+  const textareaStyle = !composerResizing && textareaAutoHeight !== null
     ? ({ height: `${textareaAutoHeight}px`, overflowY: textareaAutoOverflow ? "auto" : "hidden" } as CSSProperties)
     : undefined;
   const composerAutoExpanded = composerHeight === null && textareaAutoHeight !== null && textareaAutoHeight > 40;
-  const composerResizeValue = composerHeight ?? clampComposerHeight((textareaAutoHeight ?? 0) + COMPOSER_AUTO_RESERVED_HEIGHT);
+  // Autosize mode flips overflow-y to auto once content exceeds the max
+  // height; the card modifier restores a thin scrollbar for exactly that
+  // state so long drafts expose their scrollability (#8494/#8742/#9019).
+  const composerAutoOverflow = composerHeight === null && textareaAutoOverflow;
+  const composerResizeValue = effectiveComposerHeight ?? clampComposerHeight((textareaAutoHeight ?? 0) + COMPOSER_AUTO_RESERVED_HEIGHT);
   void onSetMode;
   const chooseApprovalMode = (nextMode: ToolApprovalMode) => {
     onSetToolApprovalMode(nextMode);
@@ -4399,7 +4433,7 @@ export function Composer({
         </div>
       )}
       <div
-        className={`composer-card${composerHeight !== null || composerResizing ? " composer-card--resized" : ""}${composerAutoExpanded ? " composer-card--autosized" : ""}${composerResizing ? " composer-card--resizing" : ""}${running ? (waitingPrompt ? " composer-card--waiting" : " composer-card--running") : ""}`}
+        className={`composer-card${composerHeight !== null || composerResizing ? " composer-card--resized" : ""}${composerAutoExpanded ? " composer-card--autosized" : ""}${composerAutoOverflow ? " composer-card--auto-overflow" : ""}${composerResizing ? " composer-card--resizing" : ""}${running ? (waitingPrompt ? " composer-card--waiting" : " composer-card--running") : ""}`}
         ref={composerCardRef}
         style={composerCardStyle}
       >
@@ -4511,7 +4545,7 @@ export function Composer({
                   ref={taRef}
                   className="composer__input"
                   aria-label={t("composer.placeholder")} spellCheck={false} autoCorrect="off" autoCapitalize="off"
-                  value={text}
+                  value={composingRef.current ? undefined : text}
                   onInputCapture={(e) => {
                     pendingNativeInputTypeRef.current = (e.nativeEvent as InputEvent).inputType;
                   }}
@@ -4520,6 +4554,7 @@ export function Composer({
                     const inputType = (e.nativeEvent as InputEvent).inputType
                       || pendingNativeInputTypeRef.current;
                     pendingNativeInputTypeRef.current = undefined;
+                    trackImeInputChange(e.nativeEvent as InputEvent, inputType, e.target.value);
                     resetPromptHistoryNavigation();
                     textRef.current = e.target.value;
                     setText(e.target.value);
@@ -4539,13 +4574,6 @@ export function Composer({
                   onContextMenu={openInputMenu}
                   onPaste={onPaste}
                   onKeyDown={onKeyDown}
-                  onCompositionStart={() => {
-                    composingRef.current = true;
-                  }}
-                  onCompositionEnd={() => {
-                    composingRef.current = false;
-                    lastCompositionEndAt.current = Date.now();
-                  }}
                   style={textareaStyle}
                   placeholder={composerPlaceholder}
                   rows={1}

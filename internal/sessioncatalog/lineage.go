@@ -495,6 +495,14 @@ func (c *Catalog) refreshDirectoryRecoveryLineage(ctx context.Context, target Di
 		if record.TopicID != "" {
 			affected[TopicKey{Scope: record.Scope, WorkspaceRoot: record.WorkspaceRoot, TopicID: record.TopicID}] = struct{}{}
 		}
+		if record.Recovered && previous.TopicID != "" && previous.TopicID != record.TopicID {
+			// The lineage re-anchor moved this recovery row off its old topic;
+			// tombstone it so SyncMetadata cannot resurrect the folded shell.
+			if err := rememberFoldedTopic(ctx, tx, previous, c.opts.Now().UnixMilli()); err != nil {
+				_ = tx.Rollback()
+				return err
+			}
+		}
 	}
 	if !changed {
 		return tx.Rollback()

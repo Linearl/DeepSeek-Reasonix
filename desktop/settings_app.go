@@ -88,25 +88,35 @@ type ProviderModelCatalogUpdate struct {
 }
 
 type ProviderPresetView struct {
-	ID                  string   `json:"id"`
-	Label               string   `json:"label"`
-	Description         string   `json:"description"`
-	KeyEnv              string   `json:"keyEnv"`
-	ProviderNames       []string `json:"providerNames"`
-	Models              []string `json:"models"`
-	Added               bool     `json:"added"`
-	Status              string   `json:"status"`
-	StatusProviderNames []string `json:"statusProviderNames"`
-	KeySet              bool     `json:"keySet"`
-	RequiresKey         bool     `json:"requiresKey"`
-	Configured          bool     `json:"configured"`
-	KeySource           string   `json:"keySource,omitempty"`
-	KeySourcePath       string   `json:"keySourcePath,omitempty"`
+	ID                   string   `json:"id"`
+	Label                string   `json:"label"`
+	Description          string   `json:"description"`
+	KeyEnv               string   `json:"keyEnv"`
+	Recommended          bool     `json:"recommended,omitempty"`
+	BillingMode          string   `json:"billingMode,omitempty"`
+	DisplayGroup         string   `json:"displayGroup,omitempty"`
+	DisplaySection       string   `json:"displaySection,omitempty"`
+	DisplayTier          string   `json:"displayTier,omitempty"`
+	RouteKind            string   `json:"routeKind,omitempty"`
+	Optional             bool     `json:"optional,omitempty"`
+	DisplayOrder         int      `json:"displayOrder,omitempty"`
+	ProviderNames        []string `json:"providerNames"`
+	Models               []string `json:"models"`
+	Added                bool     `json:"added"`
+	Status               string   `json:"status"`
+	StatusProviderNames  []string `json:"statusProviderNames"`
+	MissingProviderNames []string `json:"missingProviderNames,omitempty"`
+	KeySet               bool     `json:"keySet"`
+	RequiresKey          bool     `json:"requiresKey"`
+	Configured           bool     `json:"configured"`
+	KeySource            string   `json:"keySource,omitempty"`
+	KeySourcePath        string   `json:"keySourcePath,omitempty"`
 }
 
 const (
 	providerPresetStatusAvailable         = "available"
 	providerPresetStatusInstalled         = "installed"
+	providerPresetStatusPartial           = "partial"
 	providerPresetStatusInstalledModified = "installed_modified"
 	providerPresetStatusNameConflict      = "name_conflict"
 	providerPresetStatusSimilarExisting   = "similar_existing"
@@ -303,6 +313,7 @@ type BotSettingsView struct {
 type SettingsView struct {
 	DefaultModel                 string               `json:"defaultModel"`
 	PlannerModel                 string               `json:"plannerModel"`
+	VisionModel                  string               `json:"visionModel"`
 	SubagentModel                string               `json:"subagentModel"`
 	SubagentEffort               string               `json:"subagentEffort"`
 	AutoPlan                     string               `json:"autoPlan"`
@@ -756,33 +767,43 @@ func providerPresetViewsForRootWithResolver(cfg *config.Config, root string, res
 		if keyEnv != "" {
 			key = resolver.ResolveGlobalFirst(keyEnv)
 		}
-		status, statusNames := classifyProviderPresetStatus(cfg, preset)
+		status, statusNames, missingNames := classifyProviderPresetStatus(cfg, preset)
 		added := status == providerPresetStatusInstalled || status == providerPresetStatusInstalledModified || status == providerPresetStatusNameConflict
 		out = append(out, ProviderPresetView{
-			ID:                  preset.ID,
-			Label:               preset.Label,
-			Description:         preset.Description,
-			KeyEnv:              keyEnv,
-			ProviderNames:       nonNil(names),
-			Models:              nonNil(models),
-			Added:               added,
-			Status:              status,
-			StatusProviderNames: nonNil(statusNames),
-			KeySet:              key.Set,
-			RequiresKey:         requiresKey,
-			Configured:          !requiresKey || key.Set,
-			KeySource:           key.Source.Label,
-			KeySourcePath:       key.Source.Path,
+			ID:                   preset.ID,
+			Label:                preset.Label,
+			Description:          preset.Description,
+			KeyEnv:               keyEnv,
+			Recommended:          preset.Recommended,
+			BillingMode:          preset.BillingMode,
+			DisplayGroup:         preset.DisplayGroup,
+			DisplaySection:       preset.DisplaySection,
+			DisplayTier:          preset.DisplayTier,
+			RouteKind:            preset.RouteKind,
+			Optional:             preset.Optional,
+			DisplayOrder:         preset.DisplayOrder,
+			ProviderNames:        nonNil(names),
+			Models:               nonNil(models),
+			Added:                added,
+			Status:               status,
+			StatusProviderNames:  nonNil(statusNames),
+			MissingProviderNames: nonNil(missingNames),
+			KeySet:               key.Set,
+			RequiresKey:          requiresKey,
+			Configured:           !requiresKey || key.Set,
+			KeySource:            key.Source.Label,
+			KeySourcePath:        key.Source.Path,
 		})
 	}
 	return out
 }
 
-func classifyProviderPresetStatus(cfg *config.Config, preset config.ProviderPreset) (string, []string) {
+func classifyProviderPresetStatus(cfg *config.Config, preset config.ProviderPreset) (string, []string, []string) {
 	if cfg == nil {
-		return providerPresetStatusAvailable, nil
+		return providerPresetStatusAvailable, nil, nil
 	}
 	installed := make([]string, 0)
+	missing := make([]string, 0)
 	modified := make([]string, 0)
 	conflicts := make([]string, 0)
 	similar := make([]string, 0)
@@ -794,24 +815,28 @@ func classifyProviderPresetStatus(cfg *config.Config, preset config.ProviderPres
 		}
 		existing, ok := cfg.Provider(name)
 		if !ok {
+			missing = append(missing, name)
 			continue
 		}
-		if providerEntryMatchesPreset(*existing, entry, presetID) {
+		if providerEntryCoreMatches(*existing, entry) {
 			installed = append(installed, name)
-		} else if providerEntryUsesPresetID(*existing, presetID) {
+		} else if providerEntryBelongsToPreset(*existing, preset, entry) {
 			modified = append(modified, name)
 		} else {
 			conflicts = append(conflicts, name)
 		}
 	}
 	if len(conflicts) > 0 {
-		return providerPresetStatusNameConflict, uniqueNonEmptyStrings(conflicts)
+		return providerPresetStatusNameConflict, uniqueNonEmptyStrings(conflicts), uniqueNonEmptyStrings(missing)
 	}
 	if len(modified) > 0 {
-		return providerPresetStatusInstalledModified, uniqueNonEmptyStrings(modified)
+		return providerPresetStatusInstalledModified, uniqueNonEmptyStrings(modified), uniqueNonEmptyStrings(missing)
+	}
+	if len(installed) > 0 && len(missing) > 0 {
+		return providerPresetStatusPartial, uniqueNonEmptyStrings(installed), uniqueNonEmptyStrings(missing)
 	}
 	if len(installed) > 0 {
-		return providerPresetStatusInstalled, uniqueNonEmptyStrings(installed)
+		return providerPresetStatusInstalled, uniqueNonEmptyStrings(installed), nil
 	}
 	for i := range cfg.Providers {
 		existing := cfg.Providers[i]
@@ -830,19 +855,9 @@ func classifyProviderPresetStatus(cfg *config.Config, preset config.ProviderPres
 		}
 	}
 	if len(similar) > 0 {
-		return providerPresetStatusSimilarExisting, uniqueNonEmptyStrings(similar)
+		return providerPresetStatusSimilarExisting, uniqueNonEmptyStrings(similar), nil
 	}
-	return providerPresetStatusAvailable, nil
-}
-
-func providerEntryMatchesPreset(existing, preset config.ProviderEntry, presetID string) bool {
-	if strings.TrimSpace(existing.PresetID) != "" {
-		if providerEntryUsesPresetID(existing, presetID) {
-			return providerEntryCoreMatches(existing, preset)
-		}
-		return false
-	}
-	return providerEntryCoreMatches(existing, preset)
+	return providerPresetStatusAvailable, nil, nil
 }
 
 func providerEntrySimilarToPreset(existing, preset config.ProviderEntry, presetID string) bool {
@@ -855,6 +870,17 @@ func providerEntrySimilarToPreset(existing, preset config.ProviderEntry, presetI
 func providerEntryUsesPresetID(existing config.ProviderEntry, presetID string) bool {
 	presetID = strings.TrimSpace(presetID)
 	return presetID != "" && strings.TrimSpace(existing.PresetID) == presetID
+}
+
+func providerEntryBelongsToPreset(existing config.ProviderEntry, preset config.ProviderPreset, entry config.ProviderEntry) bool {
+	if providerEntryUsesPresetID(existing, preset.ID) {
+		return true
+	}
+	// The recommended OpenCode Go bundle was introduced after the individual
+	// route presets. Treat a modified legacy route as part of the bundle so the
+	// one-step installer can preserve it and add only the missing routes.
+	return strings.TrimSpace(preset.ID) == "opencode-go-recommended" &&
+		strings.TrimSpace(existing.PresetID) == strings.TrimSpace(entry.Name)
 }
 
 func providerEntryCoreMatches(existing, preset config.ProviderEntry) bool {
@@ -986,6 +1012,7 @@ func (a *App) Settings() SettingsView {
 	v := SettingsView{
 		DefaultModel:      cfg.DefaultModel,
 		PlannerModel:      cfg.Agent.PlannerModel,
+		VisionModel:       cfg.Agent.VisionModel,
 		SubagentModel:     cfg.Agent.SubagentModel,
 		SubagentEffort:    cfg.Agent.SubagentEffort,
 		AutoPlan:          "off", // deprecated JSON compatibility for older frontends
@@ -1362,11 +1389,23 @@ func (a *App) applyConfigChangeWithWarning(setting string, mutate func(*config.C
 	}
 	if err := a.rebuildSetting(setting); err != nil {
 		if warning, ok := a.deferredRebuildWarning(setting, err); ok {
+			a.refreshActiveTabMetaExtras()
 			return warning, nil
 		}
 		return "", err
 	}
+	a.refreshActiveTabMetaExtras()
 	return "", nil
+}
+
+// refreshActiveTabMetaExtras invalidates the cached model capability snapshot
+// after a settings rebuild. In particular, changing Agent.VisionModel should
+// immediately suppress the text-only image warning in the composer instead of
+// waiting for the normal metadata cache TTL.
+func (a *App) refreshActiveTabMetaExtras() {
+	if tab := a.activeTab(); tab != nil {
+		a.scheduleTabMetaExtrasRefresh(tab.ID)
+	}
 }
 
 // applyGlobalProviderConfigChange persists a provider-wide setting and refreshes
@@ -2160,6 +2199,23 @@ func (a *App) SetPlannerModel(ref string) error {
 	})
 }
 
+// SetVisionModel sets (or clears) the optional image-understanding fallback.
+func (a *App) SetVisionModel(ref string) error {
+	return a.applyConfigChange(func(c *config.Config) error {
+		ref = strings.TrimSpace(ref)
+		if ref == "" || strings.EqualFold(ref, "auto") {
+			c.Agent.VisionModel = strings.ToLower(ref)
+			return nil
+		}
+		resolved, err := selectableDesktopVisionModelRef(c, ref)
+		if err != nil {
+			return err
+		}
+		c.Agent.VisionModel = resolved
+		return nil
+	})
+}
+
 // SetSubagentModel sets (or clears) the default model used by subagent entry points.
 func (a *App) SetSubagentModel(ref string) error {
 	return a.applyConfigChange(func(c *config.Config) error {
@@ -2186,6 +2242,23 @@ func selectableDesktopModelRef(c *config.Config, ref string) (string, error) {
 	}
 	if !entry.Configured() {
 		return "", fmt.Errorf("model %q is not available because provider %q has no key", ref, entry.Name)
+	}
+	return entry.Name + "/" + entry.Model, nil
+}
+
+func selectableDesktopVisionModelRef(c *config.Config, ref string) (string, error) {
+	entry, ok := c.ResolveModel(strings.TrimSpace(ref))
+	if !ok {
+		return "", fmt.Errorf("unknown vision model %q", ref)
+	}
+	if !modelProviderAccessAllowed(c.Desktop.ProviderAccess, entry.Name) {
+		return "", fmt.Errorf("vision model %q is not available because provider %q is not added", ref, entry.Name)
+	}
+	if !entry.Configured() {
+		return "", fmt.Errorf("vision model %q is not available because provider %q has no key", ref, entry.Name)
+	}
+	if !config.EffectiveVision(entry) {
+		return "", fmt.Errorf("model %q does not support image input", ref)
 	}
 	return entry.Name + "/" + entry.Model, nil
 }
@@ -2795,8 +2868,12 @@ func (a *App) AddProviderPresetAccess(id, key string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if existing := existingProviderNames(cfg, preset.Entries); len(existing) > 0 {
-		return "", providerPresetAlreadyAddedError(preset.ID, existing)
+	missing, _, conflicts := providerPresetInstallPlan(cfg, preset)
+	if len(conflicts) > 0 {
+		return "", providerPresetAlreadyAddedError(preset.ID, conflicts)
+	}
+	if len(missing) == 0 {
+		return "", nil
 	}
 	keyEnv := strings.TrimSpace(preset.KeyEnv)
 	if keyEnv == "" {
@@ -2807,31 +2884,48 @@ func (a *App) AddProviderPresetAccess(id, key string) (string, error) {
 		}
 	}
 	keyWarning := ""
-	if strings.TrimSpace(key) != "" && keyEnv != "" {
-		var err error
-		keyWarning, err = a.saveProviderCredential(keyEnv, key)
-		if err != nil {
-			return "", err
-		}
-	}
 	rebuildWarning, err := a.applyConfigChangeWithWarning("provider access", func(c *config.Config) error {
-		if existing := existingProviderNames(c, preset.Entries); len(existing) > 0 {
-			return providerPresetAlreadyAddedError(preset.ID, existing)
+		missing, _, conflicts := providerPresetInstallPlan(c, preset)
+		if len(conflicts) > 0 {
+			return providerPresetAlreadyAddedError(preset.ID, conflicts)
 		}
-		names := make([]string, 0, len(preset.Entries))
-		for _, e := range preset.Entries {
+		if len(missing) == 0 {
+			return nil
+		}
+		if strings.TrimSpace(key) != "" && keyEnv != "" {
+			var err error
+			keyWarning, err = a.saveProviderCredential(keyEnv, key)
+			if err != nil {
+				return err
+			}
+		}
+		names := make([]string, 0, len(missing))
+		for _, e := range missing {
 			if err := c.UpsertProvider(e); err != nil {
 				return err
 			}
 			names = append(names, e.Name)
 		}
 		addProviderAccess(c, names...)
+		if preset.ID == "opencode-go-recommended" && providerDefaultNeedsReplacement(c) {
+			if err := c.SetDefaultModel("opencode-go/glm-5.3"); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	if err != nil {
 		return "", err
 	}
 	return appendSettingsWarning(keyWarning, rebuildWarning), nil
+}
+
+func providerDefaultNeedsReplacement(c *config.Config) bool {
+	if c == nil || strings.TrimSpace(c.DefaultModel) == "" {
+		return true
+	}
+	entry, ok := c.ResolveModel(c.DefaultModel)
+	return !ok || !entry.Configured()
 }
 
 // ResetProviderPresetAccess intentionally overwrites same-name provider entries
@@ -2888,6 +2982,37 @@ func existingProviderNames(c *config.Config, entries []config.ProviderEntry) []s
 		}
 	}
 	return names
+}
+
+// providerPresetInstallPlan makes preset installation idempotent while still
+// refusing to overwrite a same-name provider that belongs to another route.
+// Existing entries that match the preset's provider identity are preserved;
+// modified entries are reported separately, and only missing entries are
+// returned for installation.
+func providerPresetInstallPlan(c *config.Config, preset config.ProviderPreset) (missing, modified []config.ProviderEntry, conflicts []string) {
+	if c == nil {
+		return append([]config.ProviderEntry(nil), preset.Entries...), nil, nil
+	}
+	for _, entry := range preset.Entries {
+		name := strings.TrimSpace(entry.Name)
+		if name == "" {
+			continue
+		}
+		existing, ok := c.Provider(name)
+		if !ok {
+			missing = append(missing, entry)
+			continue
+		}
+		if providerEntryCoreMatches(*existing, entry) {
+			continue
+		}
+		if providerEntryBelongsToPreset(*existing, preset, entry) {
+			modified = append(modified, entry)
+			continue
+		}
+		conflicts = append(conflicts, name)
+	}
+	return missing, modified, conflicts
 }
 
 func providerPresetAlreadyAddedError(id string, names []string) error {

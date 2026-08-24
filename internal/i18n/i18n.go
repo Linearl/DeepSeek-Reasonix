@@ -523,6 +523,8 @@ type Messages struct {
 	ProviderErrContextOverflowFmt  string // 400/413/422 shared-window overflow with numbers
 	ProviderErrAuth                string // 401 — no key configured / sent
 	ProviderErrAuthRejected        string // 401 — a key was sent but the server rejected it
+	ProviderErrModelFormatMismatch string // provider rejected the model on the selected wire format
+	ProviderErrOpenCodeGoGrokRoute string // recovery hint for OpenCode Go Grok routing
 	ProviderErrInsufficientBalance string // 402
 	ProviderErrUnprocessable       string // 422
 	ProviderErrInputSensitive      string // MiniMax 1026

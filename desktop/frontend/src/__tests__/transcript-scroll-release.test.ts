@@ -8,6 +8,12 @@ import {
   type TranscriptScrollEvent,
   type TranscriptScrollState,
 } from "../lib/transcriptScrollArbiter";
+import { pinTranscriptTailAfterViewportShrink } from "../lib/transcriptScrollGeometry";
+import {
+  TRANSCRIPT_TAIL_REARM_MIN_HEIGHT_PX,
+  transcriptTailSettleBudgetExhausted,
+  transcriptTailShouldReaim,
+} from "../lib/transcriptTailSettle";
 
 let passed = 0;
 let failed = 0;
@@ -71,9 +77,56 @@ const returned = run([
   { type: "SCROLL_DELIVERED", atBottom: true, scrollable: true },
   { type: "USER_SCROLL_INTENT", canClaimTail: true },
   { type: "SCROLL_DELIVERED", atBottom: false, scrollable: true },
+  // The bottom must be held: two consecutive at-bottom deliveries inside the
+  // same reader-intent window re-engage tail-follow (#8709/#9099).
+  { type: "SCROLL_DELIVERED", atBottom: true, scrollable: true },
   { type: "SCROLL_DELIVERED", atBottom: true, scrollable: true },
 ]);
-check(returned.state.mode === "tail-follow", "reaching the real bottom re-engages tail-follow");
+check(returned.state.mode === "tail-follow", "holding the real bottom across two deliveries re-engages tail-follow");
+
+const touchDownOnce = run([
+  { type: "SCROLL_DELIVERED", atBottom: true, scrollable: true },
+  { type: "USER_SCROLL_INTENT", canClaimTail: true },
+  { type: "SCROLL_DELIVERED", atBottom: false, scrollable: true },
+  { type: "SCROLL_DELIVERED", atBottom: true, scrollable: true },
+]);
+check(touchDownOnce.state.mode === "manual", "a single touch-down at the bottom stays manual");
+
+const holdBrokenByUpwardGesture = run([
+  { type: "SCROLL_DELIVERED", atBottom: true, scrollable: true },
+  { type: "USER_SCROLL_INTENT", canClaimTail: true },
+  { type: "SCROLL_DELIVERED", atBottom: true, scrollable: true },
+  // An upward gesture inside the streak resets the hold; the next downward
+  // gesture starts again from zero.
+  { type: "USER_SCROLL_INTENT", canClaimTail: false },
+  { type: "USER_SCROLL_INTENT", canClaimTail: true },
+  { type: "SCROLL_DELIVERED", atBottom: true, scrollable: true },
+]);
+check(holdBrokenByUpwardGesture.state.mode === "manual", "an upward gesture breaks the bottom-hold streak");
+
+const holdEndsWithIntentWindow = run([
+  { type: "SCROLL_DELIVERED", atBottom: true, scrollable: true },
+  { type: "USER_SCROLL_INTENT", canClaimTail: true },
+  { type: "SCROLL_DELIVERED", atBottom: true, scrollable: true },
+  { type: "READER_INTENT_ENDED" },
+  { type: "USER_SCROLL_INTENT", canClaimTail: true },
+  { type: "SCROLL_DELIVERED", atBottom: true, scrollable: true },
+]);
+check(holdEndsWithIntentWindow.state.mode === "manual", "a closed intent window ends the bottom-hold streak");
+
+const steadyStateOffsetKeepsManual = run([
+  { type: "SCROLL_DELIVERED", atBottom: true, scrollable: true },
+  { type: "USER_SCROLL_INTENT", canClaimTail: false },
+  { type: "SCROLL_DELIVERED", atBottom: false, scrollable: true },
+  { type: "READER_INTENT_ENDED" },
+  { type: "SCROLL_TO_OFFSET", owner: "anchor-compensation", top: 640 },
+  { type: "SCROLL_TO_OFFSET", owner: "block-window-prepend", top: 680 },
+]);
+check(steadyStateOffsetKeepsManual.state.mode === "manual", "steady-state offset corrections keep manual ownership");
+check(
+  steadyStateOffsetKeepsManual.commands.join(",") === "SCROLL_TO_OFFSET,SCROLL_TO_OFFSET",
+  "steady-state offset corrections emit only their own commands",
+);
 
 const browserClamp = run([
   { type: "SCROLL_DELIVERED", atBottom: true, scrollable: true },
@@ -173,6 +226,12 @@ check(
   "delivered displacement and later growth both reconverge while tail-follow owns the viewport",
 );
 
+check(transcriptTailSettleBudgetExhausted(0) === false, "tail settle may re-aim before its bounded budget is spent");
+check(transcriptTailSettleBudgetExhausted(8) === true, "tail settle stops at its bounded re-aim budget");
+check(transcriptTailShouldReaim(null, 1_000) === true, "a fresh tail settle always re-aims");
+check(transcriptTailShouldReaim(1_000, 1_000 + TRANSCRIPT_TAIL_REARM_MIN_HEIGHT_PX - 1) === false, "sub-threshold tail measurement jitter does not re-aim");
+check(transcriptTailShouldReaim(1_000, 1_000 + TRANSCRIPT_TAIL_REARM_MIN_HEIGHT_PX) === true, "real tail growth re-arms the settle writer");
+
 const repeatedDisplacement = run([
   { type: "SCROLL_DELIVERED", atBottom: true, scrollable: true },
   { type: "SCROLL_DELIVERED", atBottom: false, scrollable: true },
@@ -205,6 +264,22 @@ const strandedAfterMisreadShrink = run([
 check(
   strandedAfterMisreadShrink.commands.join(",") === "AUTOSCROLL_TO_BOTTOM,AUTOSCROLL_TO_BOTTOM,AUTOSCROLL_TO_BOTTOM",
   "substantial displacements keep reconverging after a misread shrink",
+);
+
+const wrapScroller = { scrollHeight: 500, scrollTop: 400, clientHeight: 80 };
+check(pinTranscriptTailAfterViewportShrink(wrapScroller, { contentExtent: 500, viewportExtent: 100 }, true) === 420, "a composer-wrap shrink returns the native tail target");
+check(wrapScroller.scrollTop === 400, "geometry helper does not write the native scroll position");
+check(pinTranscriptTailAfterViewportShrink(wrapScroller, { contentExtent: 500, viewportExtent: 80 }, true) === null, "the same shrink revision does not schedule a second tail write");
+
+const foldScroller = { scrollHeight: 500, scrollTop: 400, clientHeight: 80 };
+check(
+  pinTranscriptTailAfterViewportShrink(foldScroller, { contentExtent: 540, viewportExtent: 100 }, true) === null,
+  "content collapse suppresses a coincident viewport-shrink pin",
+);
+check(foldScroller.scrollTop === 400, "content collapse leaves the browser-owned offset unchanged");
+check(
+  pinTranscriptTailAfterViewportShrink(foldScroller, { contentExtent: 500, viewportExtent: 100 }, false) === null,
+  "manual reading suppresses viewport-shrink pinning",
 );
 
 console.log(`\n${passed} passed, ${failed} failed`);

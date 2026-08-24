@@ -19,6 +19,10 @@ let failed = 0;
 const testDir = dirname(fileURLToPath(import.meta.url));
 const appSource = readFileSync(resolve(testDir, "../App.tsx"), "utf8");
 const stylesSource = readFileSync(resolve(testDir, "../styles.css"), "utf8");
+const moreMenuSource = [
+  readFileSync(resolve(testDir, "../components/TopicbarMoreMenu.tsx"), "utf8"),
+  readFileSync(resolve(testDir, "../components/TopicbarMoreMenuContent.tsx"), "utf8"),
+].join("\n");
 const terminalPanelSource = readFileSync(resolve(testDir, "../components/TerminalPanel.tsx"), "utf8");
 const terminalViewSource = readFileSync(resolve(testDir, "../components/TerminalView.tsx"), "utf8");
 const terminalRailSource = readFileSync(resolve(testDir, "../components/TerminalSessionRail.tsx"), "utf8");
@@ -160,7 +164,7 @@ eq(terminalMaxHeight(180), 120, "terminal maximum never falls below the accessib
 eq(clampTerminalHeight(680, 480), 240, "restored terminal height clamps after the window shrinks");
 eq(clampTerminalHeight(80, 720), 120, "terminal height clamps to its minimum");
 eq(
-  /const closeWorkspacePanel = useCallback\(\(\) => \{[\s\S]*?setLiveWorkspacePanelRenderWidth\(null\);[\s\S]*?setWorkspacePanelOpen\(false\);[\s\S]*?saveWorkspacePanelOpen\(false\);/.test(appSource),
+  /const closeWorkspacePanel = useCallback\(\(\) => \{[\s\S]*?setLiveWorkspacePanelRenderWidth\(null\);[\s\S]*?setWorkspacePanelOpen\(false\);[\s\S]*?saveWorkspacePanelOpen\(false, activeWorkspaceRoot\);/.test(appSource),
   true,
   "closing the dock clears the transient render width, hides the panel, and persists the collapsed preference",
 );
@@ -177,7 +181,7 @@ eq(
   "workspace resize has one guarded finish path for capture loss, blur, cancellation, and unmount",
 );
 eq(
-  /setWorkspacePanelOpen\(true\);[\s\S]*?saveWorkspacePanelOpen\(true\);/.test(appSource),
+  /setWorkspacePanelOpen\(true\);[\s\S]*?saveWorkspacePanelOpen\(true, activeWorkspaceRoot\);/.test(appSource),
   true,
   "opening the dock persists the expanded preference for the next launch",
 );
@@ -253,7 +257,8 @@ const workspaceDockTabsSource = appSource.match(/<div className="workbench-dock_
 eq(
   workspaceDockTabsSource.length > 0
     && !/rightDock\.terminal|terminalPanelOpen|toggleTerminalPanel/.test(workspaceDockTabsSource)
-    && /className="topicbar__action-btn topicbar__action-btn--icon topicbar__action-btn--utility"[\s\S]*?aria-label=\{t\("rightDock\.terminal"\)\}[\s\S]*?onClick=\{toggleTerminalPanel\}/.test(appSource),
+    && /<TopicbarMoreMenu[\s\S]*?toggleTerminal=\{toggleTerminalPanel\}/.test(appSource)
+    && /className="topicbar__menu-item"[\s\S]*?closeAndRun\(toggleTerminal\)[\s\S]*?t\("rightDock\.terminal"\)/.test(moreMenuSource),
   true,
   "workspace dock omits the terminal view while the topic bar keeps the terminal drawer action",
 );
@@ -324,11 +329,11 @@ eq(
   "terminal and xterm remain in a lazy chunk",
 );
 eq(
-  /onPointerEnter=\{prefetchTerminalPanel\}/.test(appSource)
-    && /onFocus=\{prefetchTerminalPanel\}/.test(appSource)
+  /onPointerEnter=\{prefetchTerminal\}/.test(moreMenuSource)
+    && /onFocus=\{prefetchTerminal\}/.test(moreMenuSource)
     && /void import\("\.\.\/components\/TerminalPanel"\)/.test(terminalLifecycleSource),
   true,
-  "pointer and keyboard intent prefetch the terminal chunk before opening",
+  "pointer and keyboard intent prefetch the terminal chunk before opening (More menu)",
 );
 eq(
   /useWarmTerminalPanel\(terminalPanelOpen, terminalResizing\)/.test(appSource)
@@ -368,6 +373,46 @@ eq(
     && /if \(!open\) setSelectionAction\(null\)/.test(terminalPanelSource),
   true,
   "closing a warm terminal removes portaled selection controls",
+);
+
+// C1: the chat pane keeps its 400px floor no matter how wide the dock is
+// dragged — the dock's available width is viewport minus sidebar minus the
+// 400px chat minimum minus the resizer, so chat can never be squeezed below it.
+const chatFloorDock = availableWorkspacePanelWidth({
+  viewportWidth: 1000,
+  sidebarCollapsed: false,
+  sidebarWidth: SIDEBAR_WIDTH,
+  chatMinWidth: CHAT_MIN_WIDTH,
+  resizerWidth: RESIZER_WIDTH,
+});
+eq(
+  chatFloorDock + SIDEBAR_WIDTH + CHAT_MIN_WIDTH + RESIZER_WIDTH <= 1000,
+  true,
+  "C1: dock width never consumes the chat 400px floor (chat stays readable)",
+);
+// Sanity: with a wide viewport the dock gets more room, but the chat floor is
+// still reserved — chat is never the thing that shrinks.
+const wideDock = availableWorkspacePanelWidth({
+  viewportWidth: 1600,
+  sidebarCollapsed: false,
+  sidebarWidth: SIDEBAR_WIDTH,
+  chatMinWidth: CHAT_MIN_WIDTH,
+  resizerWidth: RESIZER_WIDTH,
+});
+eq(wideDock > chatFloorDock, true, "C1: wider viewport gives the dock more room, chat floor untouched");
+
+// C3: switching dock tabs (context/files/changed) must never resize the dock —
+// the preferred width is a single source (rightDockTreeWidth), not a
+// detail-dependent ternary that would jump the sidebar per tab.
+eq(
+  /const preferredWorkspacePanelWidth = rightDockTreeWidth;/.test(appSource),
+  true,
+  "C3: preferredWorkspacePanelWidth is the single tree width (no detail ternary)",
+);
+eq(
+  /const preferredWorkspacePanelWidth = rightDockDetailActive \? rightDockPreviewWidth : rightDockTreeWidth;/.test(appSource),
+  false,
+  "C3: no preview-width dual system that would resize the sidebar on tab switch",
 );
 
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
