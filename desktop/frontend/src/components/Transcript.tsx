@@ -953,10 +953,12 @@ export function Transcript({
             </div>
           ) : <Welcome onPrompt={onPrompt} variant={welcomeVariant} />}
         </div>
-      ) : !geometryReady ? (
+      ) : !geometryReady && virtualRows.length === 0 ? (
         // Bootstrap the real readable width/font signature before Virtuoso
         // constructs its empty size tree. This element is the first scroller,
         // not a remount/recovery cycle; later environment changes stay live.
+        // If we already have rows (e.g. a resident transcript snapshot), skip
+        // the blank bootstrap and render them immediately.
         <div
           className={`transcript${creationMode ? " transcript--creation-scrollbar" : ""}`}
           ref={(node) => handleScrollerRef(node)}
