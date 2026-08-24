@@ -3457,7 +3457,7 @@ export default function App() {
     state.items.length === 0 &&
     state.hydratePlaceholderItems?.length,
   );
-  const transcriptHydrating = state.hydrating && !state.hydrateHistoryLoaded;
+  const transcriptHydrating = state.hydrating && !state.hydrateHistoryLoaded && !state.items.length;
   // Creation hero only after history hydration settles on a truly empty session.
   // Avoid flash while switching tabs: items may be empty while placeholders show.
   // Exclude IM/Bot detail: hero CSS collapses .main, which also hosts that panel.

@@ -172,13 +172,10 @@ export function hasReusableCachedTranscript(
   const expectedSessionPath = (sessionPath ?? "").trim();
   if (!expectedSessionPath) return true;
   if ((state.meta?.sessionPath ?? "").trim() !== expectedSessionPath) return false;
-  if (typeof revision === "number" && revision > 0) {
-    return state.historyRevision === revision && (digest ?? "") === (state.historyDigest ?? "");
-  }
-  if ((digest ?? "").trim() !== "") return state.historyDigest === digest;
-  // Missing backend fingerprints must not bless a resident page that already
-  // has one; the sidecar may be between atomic replacements.
-  return state.historyRevision === undefined && !state.historyDigest;
+  // Allow switching back to a resident transcript even when the metadata
+  // fingerprint differs slightly. The LRU/byte budgets still bound memory;
+  // a background refresh can reconcile the fingerprint after the fast switch.
+  return true;
 }
 
 // An empty surface has to apply history or switch-back shows Welcome. A turn

@@ -153,7 +153,7 @@ interface SessionTranscript {
   pendingContent: Map<string, { generation: number; promise: Promise<string | undefined> }>;
 }
 
-const DEFAULT_MAX_RESIDENT_SESSIONS = 3;
+const DEFAULT_MAX_RESIDENT_SESSIONS = 8;
 const DEFAULT_HISTORY_BODY_BUDGET = 32 << 20;
 const DEFAULT_MARKDOWN_BUDGET = 16 << 20;
 
@@ -788,8 +788,7 @@ export class TranscriptStore {
   ): Promise<TranscriptProjection | undefined> {
     const key = sessionKeyFor(tabId, sessionPath);
     const existing = this.sessions.get(key);
-    if (options.preferResident && existing && existing.records.length > 0 &&
-      this.matchesExpectedFingerprint(existing, options.expectedRevision, options.expectedDigest)) {
+    if (options.preferResident && existing && existing.records.length > 0) {
       this.touch(existing);
       return this.projectionOf(existing);
     }
