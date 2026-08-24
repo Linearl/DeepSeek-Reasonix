@@ -61,9 +61,9 @@ export interface TranscriptBackend {
 export interface TranscriptStoreOptions {
   /** Resident sessions with records (unpinned). Default 3. */
   maxResidentSessions?: number;
-  /** Total inline history body bytes across resident sessions. Default 32MiB. */
+  /** Total inline history body bytes across resident sessions. Default 64MiB. */
   historyBodyBudgetBytes?: number;
-  /** Parsed-markdown cache budget. Default 16MiB. */
+  /** Parsed-markdown cache budget. Default 32MiB. */
   markdownBudgetBytes?: number;
 }
 
@@ -154,8 +154,8 @@ interface SessionTranscript {
 }
 
 const DEFAULT_MAX_RESIDENT_SESSIONS = 8;
-const DEFAULT_HISTORY_BODY_BUDGET = 32 << 20;
-const DEFAULT_MARKDOWN_BUDGET = 16 << 20;
+const DEFAULT_HISTORY_BODY_BUDGET = 64 << 20;
+const DEFAULT_MARKDOWN_BUDGET = 32 << 20;
 
 function sessionKeyFor(tabId: string, sessionPath: string): string {
   return `${tabId}\n${sessionPath}`;

@@ -4484,9 +4484,13 @@ export function useController() {
     const sameSession = sameSessionHydrateIdentity(targetIdentity, currentTargetIdentity);
     const optimisticStatus = optimisticTab ? backendStatusFromRuntimeMeta(optimisticTab) : undefined;
     const adoptUnboundLiveSurface = canAdoptUnboundLiveSurface(targetIdentity, currentTargetIdentity, targetState, Boolean(optimisticStatus?.running), optimisticTab?.runtime?.epoch, runtimeEpochByTabRef.current.get(tabId));
-    const preserveTargetSurface = sameSession || adoptUnboundLiveSurface;
-    const placeholderItems = sameSession ? targetState?.items : undefined;
-    const preserveCachedHistory = sameSession && hasReusableCachedTranscript(targetState, targetSessionPath, targetSessionRevision, targetSessionDigest);
+    // A tab that already has transcript items is a local snapshot. Keep it
+    // visible on switch-back even when metadata identity/fingerprint differs,
+    // so returning to a previously opened conversation is instant.
+    const hasLocalItems = Boolean(targetState?.items?.length);
+    const preserveTargetSurface = hasLocalItems || sameSession || adoptUnboundLiveSurface;
+    const placeholderItems = hasLocalItems ? targetState?.items : undefined;
+    const preserveCachedHistory = hasLocalItems;
     addBreadcrumb("tab.switch", `click ${tabId}`);
     setActiveTabId(tabId);
     activeTabIdRef.current = tabId;
@@ -4539,7 +4543,7 @@ export function useController() {
         const tabs = await reconcileTabRuntime(tabId, { hydrateSessionData: false });
         if (!isNavigationIntentCurrent(navigationSeq)) return tabs;
         await loadSessionDataForTab(tabId, false, "switch-tab", {
-          skipHistory: sameSession && hasCachedLiveTurn(statesRef.current.get(tabId)),
+          skipHistory: hasLocalItems,
           placeholderItems,
           surfacePolicy: preserveTargetSurface ? "preserve-current" : "replace-surface",
           preserveCachedHistory,
