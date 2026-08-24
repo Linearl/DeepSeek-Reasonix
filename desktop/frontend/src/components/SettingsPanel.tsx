@@ -7309,9 +7309,9 @@ function PermissionsSection({ s, busy, apply }: SectionProps) {
         <label className="set-check set-check--inline">
           <input
             type="checkbox"
-            checked={!!s.sandbox?.optimisticWrite}
+            checked={!s.sandbox?.optimisticWrite}
             disabled={busy}
-            onChange={(e) => void apply(() => app.SetOptimisticWrite(e.target.checked))}
+            onChange={(e) => void apply(() => app.SetOptimisticWrite(!e.target.checked))}
           />
           {t("settings.optimisticWrite")}
         </label>
