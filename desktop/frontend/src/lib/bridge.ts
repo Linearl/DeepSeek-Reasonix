@@ -2472,7 +2472,7 @@ function makeMockApp(): AppBindings {
     async CloseMainWindow() {
       console.info("mock CloseMainWindow");
     },
-    async SetOptimisticWrite(enabled: boolean) {
+    async SetOptimisticWrite(_enabled: boolean) {
       // Mock hook kept for browser-preview API compatibility (#9213).
     },
     async Platform() {
