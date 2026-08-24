@@ -735,8 +735,6 @@ function realApp(): AppBindings | undefined {
 }
 
 let mockSingleton: AppBindings | null = null;
-// Mock state for optimistic-concurrency write mode (browser preview #9213).
-let mockOptimisticWrite = false;
 function getMock(): AppBindings {
   if (!mockSingleton) mockSingleton = makeMockApp();
   return mockSingleton;
@@ -2475,7 +2473,7 @@ function makeMockApp(): AppBindings {
       console.info("mock CloseMainWindow");
     },
     async SetOptimisticWrite(enabled: boolean) {
-      mockOptimisticWrite = enabled;
+      // Mock hook kept for browser-preview API compatibility (#9213).
     },
     async Platform() {
       const override = browserPlatformOverride();
