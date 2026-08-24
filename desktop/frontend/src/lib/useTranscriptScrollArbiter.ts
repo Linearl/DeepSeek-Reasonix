@@ -497,7 +497,11 @@ export function useTranscriptScrollArbiter({
     }
     const pendingGeometry = field === "offsetHeight" && hasPendingTranscriptGeometry(element);
     const measured = measureTranscriptVirtuosoItem(element, field, frozen);
-    if (field === "offsetHeight" && frozen) {
+    // Apply the frozen-height shim only to rows whose async content is still
+    // pending geometry. Already-rendered rows must keep their real measured
+    // height; forcing the old estimate on them is what left rows misaligned
+    // after a pointer/scroll gesture ended (#transcript-misalignment).
+    if (field === "offsetHeight" && frozen && pendingGeometry) {
       const estimate = Number.parseFloat(element.dataset.transcriptEstimate ?? "");
       if (Number.isFinite(estimate) && estimate > 0) {
         // Match the physical recycled row to the same logical seed returned
