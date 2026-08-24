@@ -165,8 +165,8 @@ export function hasCachedLiveTurn(state: HydrateLiveState | undefined): boolean 
 export function hasReusableCachedTranscript(
   state: (HydrateLiveState & { meta?: SessionHydrateIdentity }) | undefined,
   sessionPath?: string,
-  revision?: number,
-  digest?: string,
+  _revision?: number,
+  _digest?: string,
 ): boolean {
   if (!state || state.items.length === 0 || state.historyTotalTurns === 0) return false;
   const expectedSessionPath = (sessionPath ?? "").trim();
