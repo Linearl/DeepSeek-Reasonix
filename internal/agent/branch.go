@@ -179,8 +179,9 @@ func LoadBranchMeta(sessionPath string) (BranchMeta, bool, error) {
 // metaIsUnparseableAsAbsent reports whether an undecodable branch-meta file is
 // an empty/zero-filled torn write (safe to treat as absent and rebuild) rather
 // than genuine partial JSON. A sidecar truncated by a forced reboot or a
-// non-atomic in-place copy leaves all-NUL (or all-whitespace) bytes; JSON never
-// otherwise begins that way, so this is a low-false-positive signal.
+// non-atomic in-place copy leaves all-NUL (or all-whitespace) bytes; a valid
+// JSON value cannot consist solely of those bytes, so this is a low-false-
+// positive signal.
 func metaIsUnparseableAsAbsent(b []byte) bool {
 	if len(b) == 0 {
 		return true
