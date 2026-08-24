@@ -60,6 +60,10 @@ func activeWorkForController(ctrl control.SessionAPI) ActiveWorkView {
 	view.PendingPrompt = status.PendingPrompt
 	view.Cancellable = status.Cancellable
 	for _, job := range ctrl.Jobs() {
+		// Interrupted jobs are already stopped and must not block close/archive.
+		if string(job.Status) == "interrupted" {
+			continue
+		}
 		view.Jobs = append(view.Jobs, JobView{
 			ID: job.ID, Kind: job.Kind, Label: job.Label,
 			Status: job.Status, StartedAt: job.StartedAt,
