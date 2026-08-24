@@ -1147,11 +1147,10 @@ export function ProjectTree({
           ? t("projectTree.recovered")
           : "";
       const title = [node.preview || "", label, recoveryLabel, imSourceTitle, statusLabel, metaFull, projectTreeDedupedExactTime(metaFull, exactTimeLabel)].filter(Boolean).join(" · ");
-      const topicMenuOpen = !isSessionNode && menuTopic === topicId;
+      const topicMenuOpen = menuTopic === topicId;
       const pinned = Boolean(node.pinned);
       const pinLabel = t(pinned ? "projectTree.unpinTopic" : "projectTree.pinTopic");
       const openTopicMenu = (event: ReactMouseEvent<HTMLElement> | ReactKeyboardEvent<HTMLElement>) => {
-        if (isSessionNode) return;
         event.preventDefault();
         event.stopPropagation();
         setMenuProject(null);
@@ -1197,6 +1196,35 @@ export function ProjectTree({
           },
         },
       ];
+      const effectiveTopicMenuItems: ContextMenuItem[] = isSessionNode
+        ? [
+            {
+              key: "trash-session",
+              icon: <Archive className={topicTrashing ? "project-tree__archive-spinner" : undefined} size={13} />,
+              label: confirmAction?.topicId === topicId && confirmAction.action === "trash" ? t("history.confirmMoveToTrash") : t("history.moveToTrash"),
+              disabled: !node.sessionPath || topicTrashing,
+              danger: true,
+              onSelect: () => {
+                const sessionPath = node.sessionPath;
+                if (!sessionPath) return;
+                if (confirmAction?.topicId === topicId && confirmAction.action === "trash") {
+                  setConfirmAction(null);
+                  void (async () => {
+                    try {
+                      await app.DeleteSession(sessionPath);
+                      await refresh();
+                      await onTopicsChanged?.();
+                    } catch (err) {
+                      showToast(err instanceof Error ? err.message : String(err), "error");
+                    }
+                  })();
+                } else {
+                  setConfirmAction({ topicId, action: "trash" });
+                }
+              },
+            },
+          ]
+        : topicMenuItems;
       if (!isSessionNode && editingTopic === topicId) {
         return (
           <div
@@ -1381,11 +1409,11 @@ export function ProjectTree({
               </Tooltip>
             </span>
           )}
-          {!isSessionNode && (
+          {(
             <ContextMenu
               open={topicMenuOpen}
               point={menuPoint}
-              items={topicMenuItems}
+              items={effectiveTopicMenuItems}
               minWidth={178}
               ariaLabel={t("projectTree.topicActions")}
               onClose={closeMenu}
