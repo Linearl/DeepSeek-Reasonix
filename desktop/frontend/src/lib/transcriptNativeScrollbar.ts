@@ -31,7 +31,11 @@ export function measureTranscriptVirtuosoItem(
   field: Parameters<SizeFunction>[1],
   freeze: boolean,
 ): number {
-  if (freeze) {
+  // Freeze only rows whose async content is still pending geometry. Keeping
+  // the freeze narrowly scoped avoids returning stale estimates for already
+  // rendered rows, which would leave them visually misaligned after a manual
+  // scroll/selection gesture ends (#transcript-misalignment).
+  if (freeze && field === "offsetHeight" && hasPendingTranscriptGeometry(element)) {
     const transcriptEstimate = Number.parseFloat(element.dataset.transcriptEstimate ?? "");
     if (Number.isFinite(transcriptEstimate) && transcriptEstimate > 0) return transcriptEstimate;
     const knownSize = Number.parseFloat(element.dataset.knownSize ?? "");
