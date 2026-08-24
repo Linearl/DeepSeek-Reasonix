@@ -874,19 +874,6 @@ export class TranscriptStore {
     }
   }
 
-  private matchesExpectedFingerprint(session: SessionTranscript, expectedRevision?: number, expectedDigest?: string): boolean {
-    const digest = (expectedDigest ?? "").trim();
-    const revisionKnown = typeof expectedRevision === "number" && expectedRevision > 0;
-    if (digest !== "" && session.digest !== digest) return false;
-    if (revisionKnown && (!session.revisionKnown || session.revision !== expectedRevision)) return false;
-    if (!revisionKnown && digest === "") {
-      // Metadata identity temporarily missing cannot prove a known resident
-      // projection is current. A backend round trip is the safe fallback.
-      return !session.revisionKnown && session.digest === "";
-    }
-    return true;
-  }
-
   private sameFingerprint(session: SessionTranscript, slice: HistorySlice): boolean {
     return session.revision === (slice.revision ?? 0) &&
       session.revisionKnown === sliceRevisionKnown(slice) &&
