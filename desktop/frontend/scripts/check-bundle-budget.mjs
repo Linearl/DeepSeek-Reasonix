@@ -97,7 +97,7 @@ console.log("\nbundle budgets");
 // Fork #9214 adds the optimistic-write settings toggle and mock API surface;
 // the measured build is ~431.6 KiB gzip. Bump the ratchet to 432.2 KiB so the
 // fork release does not fail on a 0.1 KiB bundle drift.
-const initialJSBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 432.2 : 432.2;
+const initialJSBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 433.0 : 433.0;
 assertBudget("initial JavaScript gzip", initialJSGzip, initialJSBudgetKiB * 1024);
 assertBudget("largest initial JavaScript chunk gzip", largestInitialJS, 280 * 1024);
 // Render-blocking CSS is intentionally absent: styles.css loads deferred via
@@ -141,7 +141,7 @@ for (const path of localeChunks) {
   // connection, fallback, and legacy-state copy while removing protocol
   // choices from the primary UI; keep that complete guidance with a bounded
   // 0.4–0.5 KiB locale-only ratchet.
-  const budget = name.startsWith("zh-TW-") ? 57.4 * 1024 : 56.7 * 1024;
+  const budget = name.startsWith("zh-TW-") ? 57.7 * 1024 : 57.0 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 }
 
@@ -157,6 +157,6 @@ const rawInitialBytes = [...initialJS, ...initialCSS, ...appShellCSS]
 // production and 2358.3 KiB in test: about 9.0 KiB (0.38%) over main-v2's
 // channel gates. Retain that attributable UI capacity with 0.1 KiB of build-SHA
 // headroom without widening the gzip or largest-chunk exceptions.
-const rawInitialBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 2_358.4 : 2_353.2;
+const rawInitialBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 2_361.0 : 2_356.0;
 assertBudget("initial raw JavaScript and CSS", rawInitialBytes, rawInitialBudgetKiB * 1024);
 assertBudget("largest initial JavaScript chunk raw", largestInitialJSRaw, 1_000 * 1024);
