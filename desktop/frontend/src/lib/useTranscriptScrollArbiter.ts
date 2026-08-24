@@ -486,7 +486,7 @@ export function useTranscriptScrollArbiter({
     }
     const measured = measureTranscriptVirtuosoItem(element, field, frozen);
     const pendingGeometry = field === "offsetHeight" && hasPendingTranscriptGeometry(element);
-    if (field === "offsetHeight" && frozen) {
+    if (field === "offsetHeight" && frozen && pendingGeometry) {
       const estimate = Number.parseFloat(element.dataset.transcriptEstimate ?? element.dataset.knownSize ?? element.dataset.staticEstimate ?? "");
       if (Number.isFinite(estimate) && estimate > 0) {
         // Native thumb dragging owns the physical track. Keep the currently
