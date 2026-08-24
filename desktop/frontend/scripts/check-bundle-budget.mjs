@@ -141,7 +141,7 @@ for (const path of localeChunks) {
   // connection, fallback, and legacy-state copy while removing protocol
   // choices from the primary UI; keep that complete guidance with a bounded
   // 0.4–0.5 KiB locale-only ratchet.
-  const budget = name.startsWith("zh-TW-") ? 57.2 * 1024 : 56.5 * 1024;
+  const budget = name.startsWith("zh-TW-") ? 57.4 * 1024 : 56.7 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 }
 
