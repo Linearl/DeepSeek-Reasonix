@@ -57,6 +57,14 @@ func (a *Agent) acquireWorkspaceLease(ctx context.Context, plan *toolCallPlan) (
 	// Tool hooks are arbitrary user shell code, so their write surface cannot be
 	// narrowed to the concrete tool's path arguments.
 	if plan.hooksMayMutateWorkspace {
+		// Optimistic-write mode (#9213): the user has explicitly disabled the
+		// parallel-write safety check. Take no whole-workspace serialization
+		// hold for hooks either, so a hook in one session cannot block another
+		// session's path-bound writer. Concurrency safety is delegated to the
+		// write-if-unchanged checks / user acceptance.
+		if a.svc.optimisticWrite {
+			return noop, nil
+		}
 		return a.svc.workspaceLease.HoldWrite(ctx)
 	}
 	name := plan.runTool.Name()
@@ -75,6 +83,12 @@ func (a *Agent) acquireWorkspaceLease(ctx context.Context, plan *toolCallPlan) (
 			}
 			return a.svc.workspaceLease.HoldWriteForPaths(ctx, paths)
 		}
+	}
+	// Non-path-bound writers (bash, MCP, opaque tools). In optimistic-write mode
+	// skip the whole-workspace serialization hold too, matching the user's
+	// explicit choice to disable the parallel-write safety check.
+	if a.svc.optimisticWrite {
+		return noop, nil
 	}
 	return a.svc.workspaceLease.HoldWrite(ctx)
 }
