@@ -147,12 +147,16 @@ export function useProjectTreeArchiveController({
     for (const key of invalidatedKeys) {
       updateTopicPageState(key, { ...topicPageStateRef.current[key], loading: false });
     }
-    optimisticallyRemoveTopic(topicId);
     closeMenu();
 
     const queued = archiveQueueRef.current.catch(() => undefined).then(async () => {
       try {
+        // Only remove the topic from the tree after the backend archive
+        // succeeds. If TrashTopic rejects (e.g. active work in this topic),
+        // keep the group visible so the failed archive does not look like a
+        // successful move out of the group.
         await app.TrashTopic(topicId);
+        optimisticallyRemoveTopic(topicId);
       } catch (err) {
         endTrashingTopic(topicId);
         showToast(err instanceof Error ? err.message : String(err), "error");
