@@ -257,6 +257,12 @@ export function useTranscriptScrollArbiter({
     if (readerIntentTimerRef.current !== null) window.clearTimeout(readerIntentTimerRef.current);
     readerIntentTimerRef.current = window.setTimeout(() => {
       readerIntentTimerRef.current = null;
+      // End-of-gesture: release the manual measurement freeze so newly
+      // mounted/reused rows can re-measure after the user stops scrolling.
+      // Without this, a pointerup/scroll-end that lands in "manual" mode
+      // keeps the freeze active and rows can render misaligned until the
+      // next reset (#transcript-misalignment).
+      manualMeasurementFreezeRef.current = false;
       // A large wheel/touch gesture can clamp the browser to the physical
       // bottom without emitting a second scroll event. Re-sample once before
       // closing the intent window so the bottom-hold policy can complete on
