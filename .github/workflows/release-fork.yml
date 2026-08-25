@@ -138,5 +138,5 @@ jobs:
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --title "Reasonix fork $TAG" \
-            --notes "Fork release based on v1.31.3 with parallel-write fixes. Unsigned build for manual install; auto-update disabled." \
+            --notes-file release-notes/FORK-v1.31.3.md \
             dist/*
