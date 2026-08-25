@@ -4,7 +4,7 @@ import { useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as Re
 import { useT } from "../lib/i18n";
 import type { QuestionAnchor } from "../lib/transcriptGrouping";
 
-export const QUESTION_JUMP_MAX_MARKERS = 120;
+export const QUESTION_JUMP_MAX_MARKERS = 60;
 
 export function sampledQuestionTurns(totalQuestions: number, activeTurn: number | null, limit = QUESTION_JUMP_MAX_MARKERS): number[] {
   const total = Math.max(0, Math.floor(totalQuestions));
@@ -154,7 +154,7 @@ export function QuestionJumpBar({
     };
   };
 
-  const density = markerTurns.length > 80 ? "packed" : markerTurns.length > 40 ? "compact" : "normal";
+  const density = markerTurns.length > 40 ? "packed" : markerTurns.length > 20 ? "compact" : "normal";
   const activeValue = active ?? Math.max(0, total - 1);
 
   return (
