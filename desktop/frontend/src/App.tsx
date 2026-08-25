@@ -1094,6 +1094,7 @@ export default function App() {
     undoRewindForTab,
     setModel,
     setEffort,
+    setSubagentPolicyFromUi,
     cancelJob,
     switchTab,
     openProjectTab,
@@ -5158,6 +5159,8 @@ export default function App() {
               imageUnderstandingEnabled={state.meta?.visionFallbackEnabled === true}
               tabId={activeTabId}
               effort={state.effort}
+              subagentPolicy={state.meta?.subagentPolicy ?? "light"}
+              onSetSubagentPolicy={setSubagentPolicyFromUi}
               onSend={handleSend}
               onInvocationMetadataChange={handleInvocationMetadataChange}
               onSteer={handleSteer}

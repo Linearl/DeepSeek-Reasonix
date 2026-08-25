@@ -283,6 +283,12 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	} else {
 		b.WriteString("# max_subagent_depth = 2   # nested subagent delegation depth; set 1 to disable nested delegation\n")
 	}
+	policy := c.DefaultSubagentPolicy()
+	if policy != "light" {
+		fmt.Fprintf(&b, "subagent_policy = %q   # default sub-agent delegation tier for new sessions: light|balanced|aggressive\n", policy)
+	} else {
+		b.WriteString("# subagent_policy = \"light\"   # default sub-agent delegation tier for new sessions: light|balanced|aggressive\n")
+	}
 	if c.Agent.MaxSubagentConcurrency != defaults.Agent.MaxSubagentConcurrency {
 		fmt.Fprintf(&b, "max_subagent_concurrency = %d   # session-wide sub-agent concurrency (task/fleet/skills)\n", c.Agent.MaxSubagentConcurrency)
 	} else {

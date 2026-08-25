@@ -46,6 +46,10 @@ type BranchMeta struct {
 	QualityFloor     string `json:"quality_floor,omitempty"`
 	Mode             string `json:"mode,omitempty"`
 	ToolApprovalMode string `json:"tool_approval_mode,omitempty"`
+	// SubagentPolicy is the per-session sub-agent delegation tier (fork, #9004
+	// desktop integration). light (no guidance) is the default; empty maps to
+	// light on load. Old builds ignore the field (Go json drops unknown keys).
+	SubagentPolicy string `json:"subagent_policy,omitempty"`
 	Goal             string `json:"goal,omitempty"`
 	Recovered        bool   `json:"recovered,omitempty"`
 	RecoveryReason   string `json:"recovery_reason,omitempty"`
@@ -262,6 +266,18 @@ func SaveBranchMetaPreserveUpdated(sessionPath string, m BranchMeta) error {
 	return UpdateBranchMeta(sessionPath, false, func(current *BranchMeta) error {
 		preserveBranchMetaPersistence(&m, *current)
 		*current = m
+		return nil
+	})
+}
+
+// SaveBranchMetaSubagentPolicy persists only the per-session sub-agent
+// delegation tier to the session's BranchMeta, leaving every other field
+// untouched. It is a targeted read-modify-write so concurrent writers that
+// rely on the existing meta fields are not clobbered. Old builds that do not
+// know the field simply drop it (backward compatible).
+func SaveBranchMetaSubagentPolicy(sessionPath, policy string) error {
+	return UpdateBranchMeta(sessionPath, true, func(current *BranchMeta) error {
+		current.SubagentPolicy = policy
 		return nil
 	})
 }

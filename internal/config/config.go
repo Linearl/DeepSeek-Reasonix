@@ -536,6 +536,24 @@ func (c *Config) DesktopDefaultToolApprovalMode() string {
 	return NormalizeToolApprovalMode(c.Desktop.DefaultToolApprovalMode)
 }
 
+// DefaultSubagentPolicy returns the normalised sub-agent delegation tier used
+// as the default for newly created desktop sessions. Empty or invalid values
+// fall back to light; light|balanced|aggressive are accepted. Backward
+// compatible with builds that predate the key.
+func (c *Config) DefaultSubagentPolicy() string {
+	if c == nil {
+		return "light"
+	}
+	switch strings.ToLower(strings.TrimSpace(c.Agent.SubagentPolicy)) {
+	case "balanced":
+		return "balanced"
+	case "aggressive":
+		return "aggressive"
+	default:
+		return "light"
+	}
+}
+
 // DesktopStatusBarStyle normalizes the desktop status bar metric label style.
 // Default is "text"; explicit "icon" preserves the user's compact choice.
 func (c *Config) DesktopStatusBarStyle() string {
@@ -1323,6 +1341,11 @@ type AgentConfig struct {
 	// profile skills, nested children) may run at once in one session.
 	// 0 means the default (6). Values outside 1–32 are clamped on load.
 	MaxSubagentConcurrency int `toml:"max_subagent_concurrency"`
+	// SubagentPolicy is the default sub-agent delegation tier for newly
+	// created desktop sessions (fork integration): light|balanced|aggressive.
+	// Empty/"light" keeps the conservative default. Backward compatible — old
+	// builds ignore the key.
+	SubagentPolicy string `toml:"subagent_policy"`
 	// MaxParallelWriters bounds concurrent writer-capable sub-agents that
 	// declare non-overlapping write_paths. 0 means the default (3). Must not
 	// exceed MaxSubagentConcurrency after normalization.

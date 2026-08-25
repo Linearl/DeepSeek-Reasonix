@@ -132,6 +132,22 @@ func (c *Config) SetDesktopDefaultToolApprovalMode(mode string) error {
 	return nil
 }
 
+// SetDefaultSubagentPolicy sets the default sub-agent delegation tier for newly
+// created desktop sessions. Accepts light|balanced|aggressive.
+func (c *Config) SetDefaultSubagentPolicy(v string) error {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "light":
+		c.Agent.SubagentPolicy = "light"
+	case "balanced":
+		c.Agent.SubagentPolicy = "balanced"
+	case "aggressive":
+		c.Agent.SubagentPolicy = "aggressive"
+	default:
+		return fmt.Errorf("subagent_policy %q: must be light|balanced|aggressive", v)
+	}
+	return nil
+}
+
 // SetUIShortcutLayout selects the CLI keyboard shortcut layout. "classic" keeps
 // historical behavior; "desktop" enables the two-axis desktop-style shortcuts.
 func (c *Config) SetUIShortcutLayout(layout string) error {

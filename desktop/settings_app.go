@@ -339,6 +339,7 @@ type SettingsView struct {
 	StatusBarStyle               string               `json:"statusBarStyle"`
 	StatusBarItems               []string             `json:"statusBarItems"`
 	DefaultToolApprovalMode      string               `json:"defaultToolApprovalMode"`
+	DefaultSubagentPolicy        string               `json:"defaultSubagentPolicy"`
 
 	CheckUpdates      bool   `json:"checkUpdates"`
 	UpdateChannel     string `json:"updateChannel"`
@@ -1071,6 +1072,7 @@ func (a *App) Settings() SettingsView {
 		StatusBarStyle:               cfg.DesktopStatusBarStyle(),
 		StatusBarItems:               cfg.DesktopStatusBarItems(),
 		DefaultToolApprovalMode:      cfg.DesktopDefaultToolApprovalMode(),
+		DefaultSubagentPolicy:        cfg.DefaultSubagentPolicy(),
 		CheckUpdates:                 cfg.DesktopCheckUpdates(),
 		UpdateChannel:                cfg.DesktopUpdateChannel(),
 		Telemetry:                    cfg.DesktopTelemetry(),
@@ -2431,6 +2433,14 @@ func (a *App) SetAutoPlan(mode string) error {
 func (a *App) SetDefaultToolApprovalMode(mode string) error {
 	return a.applyConfigOnly(func(c *config.Config) error {
 		return c.SetDesktopDefaultToolApprovalMode(mode)
+	})
+}
+
+// SetDefaultSubagentPolicy updates the global default sub-agent delegation tier
+// for newly-created desktop sessions (light|balanced|aggressive).
+func (a *App) SetDefaultSubagentPolicy(policy string) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetDefaultSubagentPolicy(policy)
 	})
 }
 

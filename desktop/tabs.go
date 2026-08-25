@@ -237,6 +237,7 @@ type WorkspaceTab struct {
 	mode             string // "normal" | "plan" | "yolo" | "plan-yolo"; yolo/full access is runtime-only
 	goal             string
 	toolApprovalMode string
+	subagentPolicy   string // per-session sub-agent delegation tier (light|balanced|aggressive, fork)
 	disabledMCP      map[string]ServerView
 	mcpOrder         []string
 	lastBuildResult  *boot.BuildResult // incremental extension reload
@@ -2175,6 +2176,7 @@ type TabMeta struct {
 	Mode              string             `json:"mode"`
 	CollaborationMode string             `json:"collaborationMode"`
 	ToolApprovalMode  string             `json:"toolApprovalMode"`
+	SubagentPolicy    string             `json:"subagentPolicy"`
 	TokenMode         string             `json:"tokenMode"`
 	AgentPreset       string             `json:"agentPreset,omitempty"`
 	QualityFloor      string             `json:"qualityFloor,omitempty"`
@@ -2236,6 +2238,7 @@ func (a *App) tabMeta(tab *WorkspaceTab, active bool) TabMeta {
 		Mode:              currentTabMode(tab),
 		CollaborationMode: currentTabCollaborationMode(tab),
 		ToolApprovalMode:  currentTabToolApprovalMode(tab),
+		SubagentPolicy:    currentTabSubagentPolicy(tab),
 		QualityFloor:      floor.floor,
 		FloorInferred:     floor.inferred,
 		AgentPreset:       agentPresetForFloor(floor.floor),
@@ -2619,7 +2622,7 @@ func (a *App) ensureBlankTab(scope, workspaceRoot string) (TabMeta, error) {
 	if scope == "global" {
 		actualRoot = globalRoot
 	}
-	defaultModel, defaultToolApprovalMode := desktopNewSessionDefaults(scope, actualRoot)
+	defaultModel, defaultToolApprovalMode, defaultSubagentPolicy := desktopNewSessionDefaults(scope, actualRoot)
 
 	a.mu.Lock()
 	var reusable *WorkspaceTab
@@ -2659,6 +2662,7 @@ func (a *App) ensureBlankTab(scope, workspaceRoot string) (TabMeta, error) {
 	inheritedFloor := tabQualityFloor(workspaceRoot, a.activeTabLocked().qualityFloorSafe())
 	inheritedMode := tabModeFromAxes(false, defaultToolApprovalMode == control.ToolApprovalYolo)
 	inheritedToolApprovalMode := defaultToolApprovalMode
+	inheritedSubagentPolicy := defaultSubagentPolicy
 	inheritedDisabledMCP := map[string]ServerView{}
 	var inheritedMCPOrder []string
 	if active := a.activeTabLocked(); active != nil {
@@ -2692,6 +2696,7 @@ func (a *App) ensureBlankTab(scope, workspaceRoot string) (TabMeta, error) {
 			qualityFloor:     inheritedFloor,
 			mode:             inheritedMode,
 			toolApprovalMode: inheritedToolApprovalMode,
+			subagentPolicy:   inheritedSubagentPolicy,
 			disabledMCP:      inheritedDisabledMCP,
 			mcpOrder:         inheritedMCPOrder,
 		}
@@ -2748,6 +2753,7 @@ func (a *App) ensureBlankTab(scope, workspaceRoot string) (TabMeta, error) {
 		qualityFloor:     inheritedFloor,
 		mode:             inheritedMode,
 		toolApprovalMode: inheritedToolApprovalMode,
+		subagentPolicy:   inheritedSubagentPolicy,
 		disabledMCP:      inheritedDisabledMCP,
 		mcpOrder:         inheritedMCPOrder,
 	}
@@ -7451,6 +7457,23 @@ func currentTabToolApprovalMode(tab *WorkspaceTab) string {
 		return tab.Ctrl.ToolApprovalMode()
 	}
 	return normalizeToolApprovalMode(tab.toolApprovalMode)
+}
+
+// currentTabSubagentPolicy returns the tab's effective sub-agent delegation
+// tier: prefer the live controller value (which persists to the session's
+// BranchMeta), falling back to the tab field.
+func currentTabSubagentPolicy(tab *WorkspaceTab) string {
+	if tab == nil {
+		return "light"
+	}
+	if tab.Ctrl != nil {
+		return tab.Ctrl.SubagentPolicy()
+	}
+	p := tab.subagentPolicy
+	if p == "" {
+		return "light"
+	}
+	return p
 }
 
 // tabRuntimeSnapshot is a consistent under-a.mu copy of the per-tab fields

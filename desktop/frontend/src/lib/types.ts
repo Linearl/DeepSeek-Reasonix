@@ -459,6 +459,7 @@ export interface TabMeta {
   mode: Mode;
   collaborationMode?: CollaborationMode;
   toolApprovalMode?: ToolApprovalMode;
+  subagentPolicy?: SubagentPolicy;
   tokenMode?: TokenMode;
   agentPreset?: AgentPreset; // canonical role; prefer qualityFloor
   qualityFloor?: QualityFloor; // absent means standard
@@ -932,6 +933,7 @@ export interface Meta {
   bypass?: boolean; // legacy JSON key for YOLO/full-access tool auto-approval
   collaborationMode?: CollaborationMode;
   toolApprovalMode?: ToolApprovalMode;
+  subagentPolicy?: SubagentPolicy;
   tokenMode?: TokenMode;
   agentPreset?: AgentPreset; // canonical role; prefer qualityFloor
   qualityFloor?: QualityFloor; // absent means standard
@@ -944,6 +946,14 @@ export interface Meta {
 
 export type CollaborationMode = "normal" | "plan" | "goal";
 export type ToolApprovalMode = "ask" | "auto" | "yolo";
+// SubagentPolicy is the per-session sub-agent delegation tier (fork, #9004
+// desktop integration). light (conservative) is the default.
+export type SubagentPolicy = "light" | "balanced" | "aggressive";
+export function normalizeSubagentPolicy(policy?: string): SubagentPolicy {
+  const normalized = typeof policy === "string" ? policy.trim().toLowerCase() : "";
+  if (normalized === "balanced" || normalized === "aggressive") return normalized;
+  return "light";
+}
 // TokenMode is the dual-write wire value for the session quality floor.
 // The floor itself is standard|delivery; light and its aliases fold to
 // standard, and full/economy remain one compatibility version of old values.
@@ -2277,6 +2287,7 @@ export interface SettingsView {
   statusBarStyle: string; // "icon" | "text"
   statusBarItems: string[]; // ordered visible status bar item ids
   defaultToolApprovalMode: ToolApprovalMode | string; // default for newly-created sessions
+  defaultSubagentPolicy: SubagentPolicy; // default sub-agent delegation tier for new sessions
   checkUpdates: boolean; // check for new versions on startup
   updateChannel: string; // compatibility field; always "stable"
   telemetry: boolean; // anonymous launch ping + scrubbed next-launch native crash diagnostics
