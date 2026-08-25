@@ -7553,6 +7553,46 @@ func currentTabToolApprovalMode(tab *WorkspaceTab) string {
 	return normalizeToolApprovalMode(tab.toolApprovalMode)
 }
 
+// currentTabSubagentPolicy returns the tab's effective sub-agent delegation
+// tier: prefer the live controller value (which persists to the session's
+// BranchMeta), falling back to the tab field. A controller that was created
+// before its per-session tier was set reports "" for a fresh session, so it
+// must not shadow a tab-level default (the config default assigned at new-
+// session construction). Normalize and fall back in that case.
+func currentTabSubagentPolicy(tab *WorkspaceTab) string {
+	if tab == nil {
+		return "light"
+	}
+	if tab.Ctrl != nil {
+		if p := normalizeSubagentPolicyOrEmpty(tab.Ctrl.SubagentPolicy()); p != "" {
+			return p
+		}
+	}
+	p := tab.subagentPolicy
+	if p == "" {
+		return "light"
+	}
+	if norm := normalizeSubagentPolicyOrEmpty(p); norm != "" {
+		return norm
+	}
+	return "light"
+}
+
+// normalizeSubagentPolicyOrEmpty normalizes a tier label but preserves an empty
+// input as empty (meaning "unset") rather than collapsing it to "light". That
+// distinction matters for the controller value on a fresh session: a freshly
+// built controller reports "", which must fall back to the tab-level default
+// instead of shadowing it with "light".
+func normalizeSubagentPolicyOrEmpty(v string) string {
+	if strings.TrimSpace(v) == "" {
+		return ""
+	}
+	if norm, err := agent.NormalizeSubagentPolicy(v); err == nil && norm != "" {
+		return string(norm)
+	}
+	return ""
+}
+
 // tabRuntimeSnapshot is a consistent under-a.mu copy of the per-tab fields
 // that bound methods and rebuild paths need after releasing the lock. The
 // build/rebuild goroutines write these fields under a.mu, so lock-free reads
