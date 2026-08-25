@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
-import { Archive, ArrowDown, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles } from "lucide-react";
+import { Archive, ArchiveX, ArrowDown, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles } from "lucide-react";
 import { asArray } from "../lib/array";
 import { useToast } from "../lib/toast";
 import { app } from "../lib/bridge";
@@ -282,7 +282,7 @@ export function ProjectTree({
   const [projectDraft, setProjectDraft] = useState("");
   const [isolatingProject, setIsolatingProject] = useState<string | null>(null);
   const [worktreeAvailability, setWorktreeAvailability] = useState<Record<string, { available: boolean; reason?: string }>>({});
-  const [confirmAction, setConfirmAction] = useState<{ topicId: string; action: "trash" } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ topicId: string; action: "trash" | "forceTrash" } | null>(null);
   const [confirmRemoveProject, setConfirmRemoveProject] = useState<string | null>(null);
   const [dragProjectRoot, setDragProjectRoot] = useState<string | null>(null);
   const [dropProject, setDropProject] = useState<{ root: string; position: ProjectDropPosition } | null>(null);
@@ -315,7 +315,7 @@ export function ProjectTree({
   }, []);
   const topicLoadSeqRef = useRef<Record<string, number>>({});
   const refreshRef = useRef<ProjectTreeRefresh>(async () => {});
-  const { trashingTopics, currentArchiveTombstones, trashTopic } = useProjectTreeArchiveController({
+  const { trashingTopics, currentArchiveTombstones, trashTopic, forceArchiveTopic } = useProjectTreeArchiveController({
     treeRef, topicLoadSeqRef, topicPageStateRef, updateTopicPageState, refreshRef,
     optimisticallyRemoveTopic: (topicId) => setTree((current) => projectTreeWithoutTopic(current, topicId)),
     closeMenu, onTopicsChanged, showToast,
@@ -1193,6 +1193,20 @@ export function ProjectTree({
           onSelect: () => {
             if (confirmAction?.topicId === topicId && confirmAction.action === "trash") void trashTopic(topicId);
             else setConfirmAction({ topicId, action: "trash" });
+          },
+        },
+        {
+          key: "forceTrash",
+          icon: <ArchiveX className={topicTrashing ? "project-tree__archive-spinner" : undefined} size={13} />,
+          label: confirmAction?.topicId === topicId && confirmAction.action === "forceTrash" ? t("history.confirmForceArchive") : t("projectTree.forceArchiveTopic"),
+          danger: true,
+          onSelect: () => {
+            if (confirmAction?.topicId === topicId && confirmAction.action === "forceTrash") {
+              setConfirmAction(null);
+              void forceArchiveTopic(topicId);
+            } else {
+              setConfirmAction({ topicId, action: "forceTrash" });
+            }
           },
         },
       ];

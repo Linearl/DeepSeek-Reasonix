@@ -4931,6 +4931,15 @@ func (a *App) saveTabsCollectLocked() (string, []desktopTabEntry, string, uint64
 	var entries []desktopTabEntry
 	for _, id := range a.orderedTabIDsLocked() {
 		if tab := a.tabs[id]; tab != nil {
+			// A session that failed to recover must not be re-added to the
+			// startup restore list: it re-enters the holding-but-unbound
+			// state on every launch, so its runtime lease never releases and
+			// the topic archive stalls (write-authority stale loop). Keep the
+			// tab in-memory so the UI can still surface/recover/archive it,
+			// but skip persisting it to desktop-tabs.json.
+			if a.failedStartupTabLocked(tab) {
+				continue
+			}
 			entries = append(entries, desktopTabEntry{
 				ID:               tab.ID,
 				Scope:            tab.Scope,
@@ -4951,6 +4960,29 @@ func (a *App) saveTabsCollectLocked() (string, []desktopTabEntry, string, uint64
 	}
 	a.tabsSaveVersion++
 	return dir, entries, a.activeTabID, a.tabsSaveVersion
+}
+
+// failedStartupTabLocked reports whether a tab has NOT reached a usable runtime
+// and should be excluded from the startup-restore snapshot. A session whose
+// recovery failed (or is lease-blocked without a retry path) would otherwise be
+// persisted and re-created on the next launch, re-entering the holding-but-
+// unbound state and blocking clean archive of its topic. Must be called with
+// a.mu held; it reads the runtime registry owned by App.mu.
+func (a *App) failedStartupTabLocked(tab *WorkspaceTab) bool {
+	if tab == nil {
+		return false
+	}
+	if rt := a.runtimeForTabLocked(tab); rt != nil {
+		// A ready or starting runtime is healthy and may be persisted. Only a
+		// clearly failed phase is excluded. Lease-blocked sessions have a
+		// deferred retry (scheduleDeferredStartupBuild), so they are retained
+		// for the retry to re-attempt rather than dropped.
+		return rt.Phase == sessionRuntimeFailed
+	}
+	// No runtime registry entry: fall back to the tab's projected state. Only
+	// non-retryable startup failure is excluded; a lease-held error keeps its
+	// retry path.
+	return !tab.Ready && tab.StartupErr != "" && !tab.StartupErrLeaseHeld
 }
 
 // saveTabsWrite writes the tab-snapshot to disk. It does not require a.mu, but

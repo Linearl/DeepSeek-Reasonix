@@ -28,7 +28,18 @@ type topicArchiveTrace struct {
 }
 
 func (a *App) TrashTopic(topicID string) error {
-	return friendlySessionFileError(a.trashTopic(topicID))
+	return friendlySessionFileError(a.trashTopic(topicID, false))
+}
+
+// TrashTopicForce is the force-archive entry point used by the UI for a topic
+// that could not be archived through the regular path (e.g. a session that
+// failed to recover left its runtime lease held). It skips the active-work
+// gate — a failed session has already Ctrl.Close()'d and is not running — so a
+// blocked topic can still be trashed. File moves still use removal guards, so a
+// genuinely in-use session is protected; the skip only relaxes the red-flag
+// check that would otherwise reject the whole topic.
+func (a *App) TrashTopicForce(topicID string) error {
+	return friendlySessionFileError(a.trashTopic(topicID, true))
 }
 
 func (a *App) topicHasActiveRuntimeWork(topicID string) bool {
@@ -44,7 +55,7 @@ func (a *App) topicHasActiveRuntimeWork(topicID string) bool {
 	return false
 }
 
-func (a *App) trashTopic(topicID string) (retErr error) {
+func (a *App) trashTopic(topicID string, force bool) (retErr error) {
 	topicID = strings.TrimSpace(topicID)
 	if topicID == "" {
 		return fmt.Errorf("topicID is required")
@@ -59,7 +70,7 @@ func (a *App) trashTopic(topicID string) (retErr error) {
 		slog.Debug("desktop: topic archive timing", "outcome", outcome, "phase", trace.phase,
 			"total_ms", time.Since(started).Milliseconds(), "target_count", trace.targetCount, "runtime_count", trace.runtimeCount)
 	}()
-	fallback, changedDirs, err := a.commitTopicArchive(topicID, &trace)
+	fallback, changedDirs, err := a.commitTopicArchive(topicID, &trace, force)
 	if err != nil {
 		return err
 	}
@@ -99,7 +110,7 @@ func (a *App) trashTopic(topicID string) (retErr error) {
 	return nil
 }
 
-func (a *App) commitTopicArchive(topicID string, trace *topicArchiveTrace) (fallbackRuntimeTarget, []string, error) {
+func (a *App) commitTopicArchive(topicID string, trace *topicArchiveTrace, force bool) (fallbackRuntimeTarget, []string, error) {
 	trace.phase = "runtime_lock"
 	releaseRuntime, ok := a.tryLockRuntimeMutation("trash-topic")
 	if !ok {
@@ -112,7 +123,7 @@ func (a *App) commitTopicArchive(topicID string, trace *topicArchiveTrace) (fall
 	}
 	defer a.sessionRemovalMu.Unlock()
 	trace.phase = "active_work_check"
-	if a.topicHasActiveRuntimeWork(topicID) {
+	if !force && a.topicHasActiveRuntimeWork(topicID) {
 		return fallbackRuntimeTarget{}, nil, errTopicHasActiveWork
 	}
 	trace.phase = "target_scan"

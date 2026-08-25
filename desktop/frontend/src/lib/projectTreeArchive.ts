@@ -131,6 +131,14 @@ export function useProjectTreeArchiveController({
   const archiveQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   const trashTopic = useCallback(async (topicId: string) => {
+    return runArchive(topicId, false);
+  }, [beginTrashingTopic, closeMenu, endTrashingTopic, onTopicsChanged, optimisticallyRemoveTopic, refreshRef, releaseArchiveTombstone, showToast, topicLoadSeqRef, topicPageStateRef, treeRef, updateTopicPageState]);
+
+  const forceArchiveTopic = useCallback(async (topicId: string) => {
+    return runArchive(topicId, true);
+  }, [beginTrashingTopic, closeMenu, endTrashingTopic, onTopicsChanged, optimisticallyRemoveTopic, refreshRef, releaseArchiveTombstone, showToast, topicLoadSeqRef, topicPageStateRef, treeRef, updateTopicPageState]);
+
+  const runArchive = useCallback(async (topicId: string, force: boolean) => {
     if (!beginTrashingTopic(topicId)) return;
     const folderKey = projectTreeFolderKeyForTopic(treeRef.current, topicId);
     const reloadOptions: ProjectTreeRefreshOptions = {
@@ -152,10 +160,14 @@ export function useProjectTreeArchiveController({
     const queued = archiveQueueRef.current.catch(() => undefined).then(async () => {
       try {
         // Only remove the topic from the tree after the backend archive
-        // succeeds. If TrashTopic rejects (e.g. active work in this topic),
-        // keep the group visible so the failed archive does not look like a
-        // successful move out of the group.
-        await app.TrashTopic(topicId);
+        // succeeds. If the regular TrashTopic rejects (e.g. active work in
+        // this topic), keep the group visible so the failed archive does not
+        // look like a successful move out of the group.
+        if (force) {
+          await app.TrashTopicForce(topicId);
+        } else {
+          await app.TrashTopic(topicId);
+        }
         optimisticallyRemoveTopic(topicId);
       } catch (err) {
         endTrashingTopic(topicId);
@@ -174,5 +186,5 @@ export function useProjectTreeArchiveController({
     await queued;
   }, [beginTrashingTopic, closeMenu, endTrashingTopic, onTopicsChanged, optimisticallyRemoveTopic, refreshRef, releaseArchiveTombstone, showToast, topicLoadSeqRef, topicPageStateRef, treeRef, updateTopicPageState]);
 
-  return { trashingTopics, currentArchiveTombstones, trashTopic };
+  return { trashingTopics, currentArchiveTombstones, trashTopic, forceArchiveTopic };
 }
