@@ -1840,7 +1840,7 @@ export const en = {
   "settings.compactRatioCustomValue": "{percent}% · Custom",
   "settings.compactRatioApply": "Apply",
   "settings.compactRatioCustomAria": "Custom compaction threshold percentage",
-  "settings.compactRatioCustomHint": "Set 65%–85%. At the threshold, Reasonix prunes long tool results, summarizes the old prefix if needed, and keeps the newest 16% verbatim. Press Enter to apply or Esc to cancel.",
+  "settings.compactRatioCustomHint": "Set 30%–85%. At the threshold, Reasonix prunes long tool results, summarizes the old prefix if needed, and keeps the newest 16% verbatim. Press Enter to apply or Esc to cancel.",
   "settings.compactRatioPreset.70": "70% · Active",
   "settings.compactRatioPreset.80": "80% · Recommended",
   "settings.compactRatioPreset.85": "85% · Late",
