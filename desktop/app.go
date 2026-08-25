@@ -4217,6 +4217,13 @@ func (a *App) buildSessionRebindCandidate(
 		sharedHostKey: source.sharedHostKey, ownsSharedHostRef: ownsSharedHostRef,
 	}
 	a.bindControllerDisplayRecorder(ctrl)
+	// A freshly-built controller starts with an empty tier (normalize→light).
+	// Propagate the tab's session-level tier so a new session honors the
+	// global default and a rebound session keeps its last chosen tier; the
+	// controller persists it to BranchMeta on the first turn.
+	if p, err := agent.NormalizeSubagentPolicy(tab.subagentPolicy); err == nil && p != "" {
+		_ = ctrl.SetSubagentPolicy(tab.subagentPolicy)
+	}
 	configureControllerRuntime(ctrl, nil, runtimeProfile)
 	if err := a.runRebindCandidateHook("built"); err != nil {
 		candidate.close()
