@@ -129,8 +129,6 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string) (rawInput string
 	// values are computed below. Cross-turn state (checkpoint, scope, failure
 	// budgets) lives in taskRuntime and is reconciled there.
 	a.turn = turnRuntime{}
-	a.turn.automaticReadinessContinuation = automaticReadinessContinuationFromContext(ctx)
-	a.turn.mutationExpected = mutationExpectedFromContext(ctx)
 	a.resetStructuralRunGuards()
 	scope, scoped := DeliveryExecutionScopeFromContext(ctx)
 	preserveEvidence, readinessRecovered := a.beginFinalReadinessRecovery()
@@ -517,9 +515,9 @@ func sleepStreamRetryBackoff(ctx context.Context, attempt int) bool {
 }
 
 // handleFinalResponse processes a no-tool assistant turn: recovery pause,
-// readiness retry, empty final retry, executor handoff nudge, steer drain, and
-// final compaction. cont=true continues the tool loop; cont=false returns err
-// from Run (err may be nil for a clean final answer).
+// readiness boundary, empty-final retry, executor handoff nudge, steer drain,
+// and final compaction. cont=true continues the tool loop; cont=false returns
+// err from Run (err may be nil for a clean final answer).
 func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, text, reasoning string, usage *provider.Usage) (cont bool, err error) {
 	// Recovery finalization produced a summary. Keep it in the session,
 	// but still pause so Goal auto-continue cannot open another Run with
@@ -536,8 +534,7 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 		}
 	}
 	readiness := a.finalReadinessCheckFor()
-	controlReadiness := a.finalReadinessControlProjection(readiness, text)
-	if state.graceRound && (controlReadiness.reason != "" || !hasVisibleFinalAnswer(text)) {
+	if state.graceRound && (readiness.reason != "" || !hasVisibleFinalAnswer(text)) {
 		a.contextManager().ObserveUsage(usage)
 		return false, a.gracePause(state)
 	}
@@ -548,22 +545,20 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 		a.contextManager().ObserveUsage(usage)
 		return false, a.gracePause(state)
 	}
-	if readiness.reason != "" || controlReadiness.reason != "" {
-		// The host owns the concrete missing requirements. Return them to the
-		// controller when automatic continuation is armed (or for the existing
-		// strict/Goal path). Standard receives only the task-progress control
-		// projection; the complete observed facts still feed its readiness audit.
-		if controlReadiness.reason != "" && a.readinessPauseActive(controlReadiness) &&
-			(a.turn.automaticReadinessContinuation || a.closedLoopActive() || controlReadiness.missingSignoff > 0 || controlReadiness.missingActionEvidence > 0) {
+	if readiness.reason != "" {
+		// Standard ends with its answer/quality summary. Delivery and Goal hand
+		// the structured gap to the controller, which exposes an explicit recovery
+		// action or lets the Goal FSM decide whether to continue.
+		if a.readinessPauseActive(readiness) {
 			event.RecordReadinessAudit(a.svc.sink, readiness.audit(evidence.ReadinessErrored, false))
 			a.pending.finalReadinessRecovery = true
-			a.persistFinalReadinessRecovery(controlReadiness.missingIDs())
+			a.persistFinalReadinessRecovery(readiness.missingIDs())
 			return false, &FinalReadinessError{
 				Attempts:          1,
-				Reason:            controlReadiness.reason,
-				Missing:           controlReadiness.missingIDs(),
-				ContinuationClass: controlReadiness.continuationClass(),
-				ProgressKey:       a.finalReadinessProgressKey(controlReadiness),
+				Reason:            readiness.reason,
+				Missing:           readiness.missingIDs(),
+				ContinuationClass: readiness.continuationClass(),
+				ProgressKey:       readiness.progressSignature(),
 			}
 		}
 		event.RecordReadinessAudit(a.svc.sink, readiness.audit(evidence.ReadinessAllowed, a.turn.readinessRecovered))

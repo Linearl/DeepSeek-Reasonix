@@ -355,6 +355,13 @@ func (c *Catalog) upsertSessionsWithNotification(ctx context.Context, records []
 	if len(records) == 0 {
 		return nil
 	}
+	if len(records) == 1 && generations == nil {
+		record, skip := c.prepareExactPathProjection(ctx, records[0])
+		if skip {
+			return nil
+		}
+		records[0] = record
+	}
 	tx, err := c.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

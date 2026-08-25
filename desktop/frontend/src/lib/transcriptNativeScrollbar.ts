@@ -44,8 +44,6 @@ export function measureTranscriptVirtuosoItem(
     if (Number.isFinite(staticEstimate) && staticEstimate > 0) return staticEstimate;
   }
   if (field === "offsetHeight" && hasPendingTranscriptGeometry(element)) {
-    // Prefer the cache-calibrated seed attached to this exact logical row;
-    // staticEstimate is only the final fallback when no safe sample exists.
     const estimate = Number.parseFloat(element.dataset.transcriptEstimate ?? element.dataset.staticEstimate ?? "");
     if (Number.isFinite(estimate) && estimate > 0) return estimate;
   }

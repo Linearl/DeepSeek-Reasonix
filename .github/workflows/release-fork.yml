@@ -129,14 +129,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.resolve.outputs.tag }}
+          VERSION: ${{ needs.resolve.outputs.version }}
         run: |
           set -euo pipefail
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $TAG already exists; deleting and recreating"
             gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes
           fi
+          RELEASE_NOTES="release-notes/FORK-${VERSION}.md"
+          [ -f "$RELEASE_NOTES" ] || RELEASE_NOTES="release-notes/FORK-v1.31.3.md"
+          echo "Using release notes: $RELEASE_NOTES"
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --title "Reasonix fork $TAG" \
-            --notes-file release-notes/FORK-v1.31.3.md \
+            --notes-file "$RELEASE_NOTES" \
             dist/*

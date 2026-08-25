@@ -1412,19 +1412,14 @@ Reasonix uses **fact-driven execution**. Ordinary requests always enter the
 executor. There is no automatic task mode. The one session role is the quality floor: standard (default) or delivery; facts can still raise it. Planner,
 Goal, permission, sandbox, and the task contract are independent states.
 
-For an explicit write request, Standard gives the executor up to 12 bounded
-follow-up turns when no successful mutation has been observed, when a
-`todo_write` created during the current task still has unfinished items after a
-mutation, or when the assistant explicitly promises another implementation
-action after a mutation without creating a task todo. New host-observed progress
-resets the stall counter; two consecutive follow-ups without new progress pause
-the task. Repeating the same read, command, result, or prose does not qualify as
-progress. Historical canonical todos remain visible but do not block a new
-ordinary task, and a completed or cleared current-task todo remains authoritative.
-Standard still treats verification, review, and sign-off gaps as completion
-attention rather than Delivery-strength automatic closure. If the bounded
-follow-ups are exhausted, Reasonix pauses with a recoverable "Task is not
-complete" result and preserves the current evidence for `/continue-checks`.
+Standard and Delivery stop after the visible model turn. Readiness gaps are
+reported as a recoverable result and never trigger a hidden follow-up request.
+Delivery exposes the existing `Continue checks` action; the user must activate
+it before another recovery turn starts. Standard keeps verification, review and
+sign-off gaps as completion attention, while Goal and approved Plan retain their
+own state-machine continuation. Historical canonical todos remain visible, and
+provider-level stream/truncation recovery remains independent of final-readiness
+recovery.
 
 Every task shares the same provider-visible core tool surface: direct
 read/bash/edit/write, background-shell lifecycle tools, `ask`/`compress` when

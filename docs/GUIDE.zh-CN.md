@@ -1083,14 +1083,11 @@ server 无法在这里提升权限。严格只读边界比独立 Planner 更窄�
 Reasonix 使用**事实驱动执行**。普通请求一律进入 executor，没有自动任务模式；
 唯一的会话角色是质量底线（standard/delivery），事实仍可能高于它。Plan、Goal、permission、sandbox 与任务合同是互相独立的状态。
 
-对于明确要求修改的普通任务，若宿主尚未观察到成功 mutation、本任务内成功
-`todo_write` 创建的列表在 mutation 后仍有未完成项，或模型在已 mutation 且未建立本轮
-Todo 时明确承诺还要继续实施，Standard 最多自动追加 12 轮。每次新的宿主可验证进展会
-重置停滞计数；连续两轮没有新进展就暂停。完全相同的读取、命令、结果或纯文本不能伪造
-进展。历史 canonical Todo 继续显示，但不会阻塞新的普通任务；本轮 Todo 已完成或显式
-清空时仍以结构化状态为准。Standard 下的验证、复核和签收缺口仍只作为完成提示，不升级成
-Delivery 强度的自动闭环。达到轮次或停滞边界后，Reasonix 会以“任务尚未完成”暂停，并
-保留当前证据供 `/continue-checks` 恢复。
+Standard 和 Delivery 都在可见模型回合结束后停止。readiness 缺口只作为可恢复结果返回，
+不会再触发隐藏的后续模型请求。Delivery 展示现有的「继续检查」入口，只有用户主动点击后
+才会启动恢复回合；Standard 的验证、复核和签收缺口仍作为完成提示处理。Goal 和已批准
+Plan 继续由各自状态机控制连续执行；provider 层的流中断/截断恢复与 final-readiness 恢复
+相互独立。历史 canonical Todo 继续显示，但不会被普通回合隐式变成新的自动任务。
 
 所有任务共享同一套 provider 可见核心工具面（直接读/bash/编辑/写入、后台 shell
 生命周期工具，以及稳定的 `use_capability` 代理）。可选工具（搜索、MCP、skills、

@@ -310,8 +310,11 @@ func (a *Agent) planCompaction(msgs []provider.Message, min int, force bool) (he
 		budget := a.recentTailBudget()
 		// Never let a low compact threshold fold away the most recent turns:
 		// ratchet the verbatim tail up to a full recent user+assistant round
-		// so the latest exchange is always preserved verbatim.
-		if minBudget := a.minRecentTailBudget(msgs); minBudget > budget {
+		// so the latest exchange is always preserved verbatim. The ratchet is
+		// bounded by the fold trigger so a modest recent turns floor can never
+		// block reaching the compaction target.
+		fold := a.compactTrigger()
+		if minBudget := a.minRecentTailBudget(msgs); minBudget > budget && minBudget < fold {
 			budget = minBudget
 		}
 		if force {

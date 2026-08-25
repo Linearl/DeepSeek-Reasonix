@@ -432,7 +432,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "mcp_call_timeout_seconds = %d   # default MCP call safety cap; per-plugin/tool overrides may raise it\n\n", c.MCPCallTimeoutSeconds())
 
 	b.WriteString("[tools.background_jobs]\n")
-	fmt.Fprintf(&b, "stalled_warning_seconds = %d   # warn once per background job after this many quiet seconds; 0 disables\n\n", c.BackgroundJobStalledWarningSeconds())
+	fmt.Fprintf(&b, "stalled_warning_seconds = %d   # heads-up once per background job after this many quiet seconds; a quiet job is not necessarily stuck; 0 disables\n\n", c.BackgroundJobStalledWarningSeconds())
 
 	b.WriteString("[tools.shell]\n")
 	if c.Tools.Shell.Prefer != "" {

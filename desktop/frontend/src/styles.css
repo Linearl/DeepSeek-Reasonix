@@ -3595,6 +3595,14 @@ a[href] {
 .history-preview__body .transcript__row > * {
   max-width: none;
 }
+/* Keep the lazy Markdown source readable while Virtuoso waits for the real
+   parser result. The row itself remains free to measure once the marker is
+   removed; no manual-scroll path writes a forced row height. */
+.transcript__row .msg--assistant .msg__body > .md[data-transcript-geometry-pending] {
+  box-sizing: border-box;
+  height: max(0px, calc(var(--transcript-row-estimate) - 32px));
+  overflow: hidden;
+}
 /* Offscreen rows are unmounted by the virtualizer, so content-visibility
    culling is redundant inside rows — and skipping it keeps offsetHeight
    measurements exact instead of contain-intrinsic-size placeholders. */
@@ -3607,19 +3615,6 @@ a[href] {
 .transcript__row .md > * {
   content-visibility: visible;
   contain-intrinsic-size: none;
-}
-/* A lazy Markdown source fallback is readable but does not have the final
-   block geometry. Give it the same physical box as Virtuoso's row seed so
-   the first measurement is truthful; releasing this fixed box when parsing
-   completes guarantees ResizeObserver sees any real height difference. */
-.transcript__row .msg--assistant .msg__body > .md[data-transcript-geometry-pending] {
-  box-sizing: border-box;
-  /* .msg contributes its 18px block margins (with the row's first-child
-     margin normalization this is 32px total). Reserve the full outer-row
-     inset here so the lazy fallback cannot be 16px taller than its seed and
-     later collapse while the reader is moving upward. */
-  height: max(0px, calc(var(--transcript-row-estimate) - 32px));
-  overflow: hidden;
 }
 .transcript__jump-bottom {
   --wails-draggable: no-drag;
@@ -5324,6 +5319,19 @@ button.reasoning-summary:focus-visible {
 .md {
   font-family: var(--font-content-family);
   font-weight: var(--font-weight-regular);
+}
+/* KaTeX \boxed draws its frame as an empty .fbox span that relies on
+   width:100% resolving against an inline-table + table-layout:fixed row.
+   WKWebView resolves that percentage to the empty span's intrinsic width (0),
+   so the box's top/bottom borders collapse to nothing and the left/right
+   borders merge into a single tall vertical bar. Fill the frame to its
+   containing row with -webkit-fill-available instead, which preserves the
+   span's inline-block baseline alignment (its vertical position) while giving
+   it the full content width. Keep a standards-compatible fallback for
+   browsers that do not implement the WebKit value. */
+.md .katex .fbox {
+  width: 100%;
+  width: -webkit-fill-available;
 }
 .md--stream-tail {
   overflow-wrap: anywhere;
