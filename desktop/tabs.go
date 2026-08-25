@@ -7502,18 +7502,33 @@ func currentTabSubagentPolicy(tab *WorkspaceTab) string {
 		return "light"
 	}
 	if tab.Ctrl != nil {
-		if p, err := agent.NormalizeSubagentPolicy(tab.Ctrl.SubagentPolicy()); err == nil && p != "" {
-			return string(p)
+		if p := normalizeSubagentPolicyOrEmpty(tab.Ctrl.SubagentPolicy()); p != "" {
+			return p
 		}
 	}
 	p := tab.subagentPolicy
 	if p == "" {
 		return "light"
 	}
-	if norm, err := agent.NormalizeSubagentPolicy(p); err == nil && norm != "" {
-		return string(norm)
+	if norm := normalizeSubagentPolicyOrEmpty(p); norm != "" {
+		return norm
 	}
 	return "light"
+}
+
+// normalizeSubagentPolicyOrEmpty normalizes a tier label but preserves an empty
+// input as empty (meaning "unset") rather than collapsing it to "light". That
+// distinction matters for the controller value on a fresh session: a freshly
+// built controller reports "", which must fall back to the tab-level default
+// instead of shadowing it with "light".
+func normalizeSubagentPolicyOrEmpty(v string) string {
+	if strings.TrimSpace(v) == "" {
+		return ""
+	}
+	if norm, err := agent.NormalizeSubagentPolicy(v); err == nil && norm != "" {
+		return string(norm)
+	}
+	return ""
 }
 
 // tabRuntimeSnapshot is a consistent under-a.mu copy of the per-tab fields
