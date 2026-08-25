@@ -1430,7 +1430,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.compactRatioCustomValue": "{percent}% · 自訂",
   "settings.compactRatioApply": "套用",
   "settings.compactRatioCustomAria": "自訂壓縮閾值百分比",
-  "settings.compactRatioCustomHint": "65至85%。達閾值後先剪枝長工具結果，必要時摘要舊前綴，並原樣保留最近16%。Enter 套用。",
+  "settings.compactRatioCustomHint": "30至85%。達閾值後先剪枝長工具結果，必要時摘要舊前綴，並原樣保留最近16%。Enter 套用。",
   "settings.compactRatioPreset.70": "70% · 主動",
   "settings.compactRatioPreset.80": "80% · 推薦",
   "settings.compactRatioPreset.85": "85% · 較晚",
