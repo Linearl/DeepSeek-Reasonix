@@ -2696,9 +2696,10 @@ func (c *Controller) applyPlanMode(v bool) {
 }
 
 // SetSubagentPolicy switches the sub-agent delegation tier for subsequent
-// turns (#9004). In-memory only (like SetPlanMode): no rebuild, no
-// persistence; the tier rides each user turn as a transient block that is
-// stripped from stored history, so the prompt cache is unaffected.
+// turns (#9004). It persists the tier to the session's BranchMeta so the
+// choice survives restart; the tier rides each user turn as a transient block
+// that is stripped from stored history, so the prompt cache is unaffected.
+// Old builds ignore the new meta field, so this is backward compatible.
 func (c *Controller) SetSubagentPolicy(v string) error {
 	p, err := agent.NormalizeSubagentPolicy(v)
 	if err != nil {
@@ -2706,8 +2707,24 @@ func (c *Controller) SetSubagentPolicy(v string) error {
 	}
 	c.mu.Lock()
 	c.subagentPolicy = p
+	sessionPath := c.sessionPath
 	c.mu.Unlock()
+	// Persist outside the lock (file I/O must not hold controller mu). A
+	// missing/empty session path is a transient controller state (no session
+	// bound yet); skip persistence there — the tier still applies in memory.
+	if sessionPath != "" {
+		if err := agent.SaveBranchMetaSubagentPolicy(sessionPath, string(p)); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// SubagentPolicy returns the current in-memory sub-agent delegation tier.
+func (c *Controller) SubagentPolicy() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return string(c.subagentPolicy)
 }
 
 // SetResponseLanguage updates the final-answer language preference for
@@ -4746,6 +4763,7 @@ func (c *Controller) setSessionPath(p string, fresh bool) {
 		c.rotateSessionTemp()
 	} else {
 		c.loadRecoveryState(p)
+		c.loadSubagentPolicyFromMeta(p)
 	}
 	c.snapshotMu.Unlock()
 	c.rebindInbox()
@@ -4758,6 +4776,28 @@ func (c *Controller) setActiveJobSession(sessionPath string) {
 	if c.jobs != nil {
 		c.jobs.SetActiveSessionPath(agent.BranchID(sessionPath), sessionPath)
 	}
+}
+
+// loadSubagentPolicyFromMeta restores the per-session sub-agent delegation
+// tier from the session's BranchMeta (persisted by SetSubagentPolicy). If the
+// meta has no value, the in-memory tier is left as-is (caller/desktop may have
+// set a global default for fresh sessions). Old builds simply lack the field,
+// so this reads it defensively.
+func (c *Controller) loadSubagentPolicyFromMeta(sessionPath string) {
+	if sessionPath == "" {
+		return
+	}
+	meta, ok, err := agent.LoadBranchMeta(sessionPath)
+	if err != nil || !ok {
+		return
+	}
+	p, err := agent.NormalizeSubagentPolicy(meta.SubagentPolicy)
+	if err != nil || p == "" {
+		return
+	}
+	c.mu.Lock()
+	c.subagentPolicy = p
+	c.mu.Unlock()
 }
 
 // SessionDir reports the directory new session files land in ("" disables

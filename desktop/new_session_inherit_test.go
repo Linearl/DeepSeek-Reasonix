@@ -404,7 +404,7 @@ func TestDesktopNewSessionDefaultsHonorExplicitAsk(t *testing.T) {
 		t.Fatalf("save user config: %v", err)
 	}
 
-	_, approvalMode := desktopNewSessionDefaults("global", "")
+	_, approvalMode, _ := desktopNewSessionDefaults("global", "")
 	if approvalMode != control.ToolApprovalAsk {
 		t.Fatalf("explicit desktop approval default = %q, want ask", approvalMode)
 	}

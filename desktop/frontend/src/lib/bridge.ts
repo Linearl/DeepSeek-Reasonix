@@ -280,6 +280,8 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   SetToolApprovalMode(mode: string): Promise<void>;
   // Same drained-prompt-id contract as SetModeForTab.
   SetToolApprovalModeForTab(tabID: string, mode: string): Promise<string[] | void>;
+  // Per-session sub-agent delegation tier for a tab (light|balanced|aggressive).
+  SetSubagentPolicyForTab(tabID: string, policy: string): Promise<void>;
   // Atomically applies the controller-facing composer profile and reports any
   // approval prompts drained by the resulting tool-approval posture.
   SetComposerProfileForTab(tabID: string, collaborationMode: string, toolApprovalMode: string, goal: string): Promise<string[] | void>;
@@ -507,6 +509,7 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   SetMaxParallelWriters(n: number): Promise<void>;
   SetAutoPlan(mode: string): Promise<void>;
   SetDefaultToolApprovalMode(mode: string): Promise<void>;
+  SetDefaultSubagentPolicy(policy: string): Promise<void>;
   SetDefaultAutoRecoveryCheckpoint(enabled: boolean): Promise<void>;
 
   SaveProvider(p: ProviderView): Promise<void>;
@@ -1849,6 +1852,7 @@ function makeMockApp(): AppBindings {
     statusBarStyle: "text",
     statusBarItems: [...DEFAULT_STATUS_BAR_ITEMS],
     defaultToolApprovalMode: "auto",
+    defaultSubagentPolicy: "light",
     checkUpdates: true,
     updateChannel: "stable",
     telemetry: true,
@@ -3143,6 +3147,10 @@ function makeMockApp(): AppBindings {
               : tab,
           );
           return drainMockApprovalPreviews(next);
+        },
+        async SetSubagentPolicyForTab(tabID, policy) {
+          const next = normalizeSubagentPolicy(policy);
+          mockTabs = mockTabs.map((tab) => (tab.id === tabID ? { ...tab, subagentPolicy: next } : tab));
         },
         async SetComposerProfileForTab(tabID, collaborationMode, toolApprovalMode, goal) {
           const nextCollaboration = normalizeCollaborationMode(collaborationMode);
@@ -4499,6 +4507,9 @@ function makeMockApp(): AppBindings {
     },
     async SetDefaultToolApprovalMode(mode: string) {
       settings.defaultToolApprovalMode = normalizeToolApprovalMode(mode);
+    },
+    async SetDefaultSubagentPolicy(policy: string) {
+      settings.defaultSubagentPolicy = normalizeSubagentPolicy(policy);
     },
     async SetDefaultAutoRecoveryCheckpoint(_enabled: boolean) {
       // Legacy no-op; Auto Guard is always built into Auto.

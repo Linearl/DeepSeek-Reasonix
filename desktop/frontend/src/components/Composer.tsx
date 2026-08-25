@@ -36,7 +36,7 @@ import { createRafResizeUpdater } from "../lib/resizeDrag";
 import { observeComposerMenuViewport } from "../lib/composerMenuViewport";
 import { resolveComposerContentSizing } from "../lib/composerSizing";
 import { useToast } from "../lib/toast";
-import { type CollaborationMode, type CommandInfo, type ComposerInsertRequest, type ContextInfo, type DirEntry, type EffortInfo, type GoalRuntime, type HistoryMessage, type Mode, type PromptHistoryEntry, type QualityFloor, type SessionMeta, type SessionReference, type SlashArgItem, type SlashArgsResult, type ToolApprovalMode, type BalanceInfo } from "../lib/types";
+import { type CollaborationMode, type CommandInfo, type ComposerInsertRequest, type ContextInfo, type DirEntry, type EffortInfo, type GoalRuntime, type HistoryMessage, type Mode, type PromptHistoryEntry, type QualityFloor, type SessionMeta, type SessionReference, type SlashArgItem, type SlashArgsResult, type SubagentPolicy, type ToolApprovalMode, type BalanceInfo } from "../lib/types";
 import {
   formatWorkspaceReference,
   parseWorkspaceReference,
@@ -48,6 +48,7 @@ import { ArgMenu } from "./ArgMenu";
 import { ANCHORED_POPOVER_CLOSE_MS, AnchoredPopover } from "./AnchoredPopover";
 import { EffortSwitcher } from "./EffortSwitcher";
 import { ModelSwitcher } from "./ModelSwitcher";
+import { SubagentPolicySwitcher } from "./SubagentPolicySwitcher";
 import { Tooltip } from "./Tooltip";
 import { ComposerContextCard } from "./ComposerContextCard";
 import { Markdown } from "./Markdown";
@@ -566,6 +567,8 @@ export function Composer({
   onResumeGoal,
   onSwitchModel,
   onSetEffort,
+  subagentPolicy,
+  onSetSubagentPolicy,
   insertRequest,
   selectedTextRequest,
   disabled,
@@ -641,6 +644,8 @@ export function Composer({
   onResumeGoal: () => void;
   onSwitchModel: (name: string) => boolean | Promise<boolean>;
   onSetEffort: (level: string) => void;
+  subagentPolicy?: SubagentPolicy;
+  onSetSubagentPolicy?: (policy: SubagentPolicy) => void;
   insertRequest?: ComposerInsertRequest | null;
   selectedTextRequest?: SelectedTextInsertRequest | null;
   disabled?: boolean;
@@ -4775,6 +4780,11 @@ export function Composer({
             {!heroMode && hasEffort && (
               <div className="composer-meta__control composer-meta__control--effort">
                 <EffortSwitcher effort={effort} disabled={running} onPick={onSetEffort} />
+              </div>
+            )}
+            {!heroMode && onSetSubagentPolicy && (
+              <div className="composer-meta__control composer-meta__control--subagent">
+                <SubagentPolicySwitcher policy={subagentPolicy} disabled={running} onPick={onSetSubagentPolicy} />
               </div>
             )}
             {!heroMode && hasEffort && (

@@ -1,5 +1,5 @@
 import { lazy, memo, Suspense, startTransition, useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { ArrowRight, BrainCircuit, Check, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, ShieldCheck, SlidersHorizontal, Trash2, Volume2 } from "lucide-react";
+import { ArrowRight, BrainCircuit, Check, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, Network, PanelBottom, Play, Power, QrCode, RefreshCw, Send, ShieldCheck, SlidersHorizontal, Trash2, Volume2 } from "lucide-react";
 import { asArray } from "../lib/array";
 import { CHANNEL_ICONS } from "./channelIcons";
 import { botAccessEntryCount, botAccessReady, botConnectionCredentialSummary, botConnectionLabel, botConnectionScopeLabel, botConnectionSecretEnv, botConnectionSecretPatch, botInstallTargetForConnection, botInstallTargetMatchesConnection, botTargetHint, botTargetLabel, diagnosticMessage, diagnosticReportDetail, firstConnectionRemote, formatInstallTimeLeft, formatInstallUserCode, qqBotAdded, type BotInstallTarget, type BotOfficialInstallTarget } from "./botConnectionSettings";
@@ -51,7 +51,7 @@ import { getDisplayMode, onDisplayModeChange, setDisplayMode as setLocalDisplayM
 import { getProcessFoldPreference, onProcessFoldPreferenceChange, setProcessFoldPreference, type ProcessFoldPreference } from "../lib/processFoldPreference";
 import { applyReasoningDisplayMode, useReasoningDisplayMode, type ReasoningDisplayMode } from "../lib/reasoningDisplayPreference";
 import { normalizeStatusBarItems, type StatusBarItemId } from "../lib/statusBarItems";
-import { normalizeToolApprovalMode } from "../lib/types";
+import { normalizeSubagentPolicy, normalizeToolApprovalMode } from "../lib/types";
 import {
   comboFromKeyboardEvent,
   detectShortcutPlatform,
@@ -868,6 +868,7 @@ const THINKING_MODES: readonly string[] = ["", "enabled", "disabled", "adaptive"
 const PROXY_TYPES = ["http", "https", "socks5", "socks5h"] as const;
 const LANGUAGE_PREFS: LangPref[] = ["", "zh", "en"];
 const TOOL_APPROVAL_MODES = ["ask", "auto", "yolo"] as const;
+const SUBAGENT_POLICIES = ["light", "balanced", "aggressive"] as const;
 const BOT_TOOL_APPROVAL_MODES = ["", "ask", "auto", "yolo"] as const;
 const BOT_QUEUE_MODES = ["steer", "followup", "collect", "interrupt"] as const;
 const BOT_QUEUE_DROPS = ["summarize", "old", "new"] as const;
@@ -1473,6 +1474,7 @@ function normalizeSettingsView(view: SettingsView | null | undefined): SettingsV
     bot: normalizeBotSettings(view.bot),
     autoPlan: "off",
     defaultToolApprovalMode: normalizeToolApprovalMode(view.defaultToolApprovalMode),
+    defaultSubagentPolicy: normalizeSubagentPolicy(view.defaultSubagentPolicy),
     autoApproveTools: Boolean(view.autoApproveTools ?? view.bypass),
     bypass: Boolean(view.autoApproveTools ?? view.bypass),
     desktopLanguage: normalizeLangPref(view.desktopLanguage),
@@ -1634,6 +1636,7 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
   useEffect(() => onDisplayModeChange((mode) => setDisplayMode(mode)), []);
   useEffect(() => onProcessFoldPreferenceChange((pref) => setProcessFold(pref)), []);
   const defaultToolApprovalMode = normalizeToolApprovalMode(s.defaultToolApprovalMode);
+  const defaultSubagentPolicy = normalizeSubagentPolicy(s.defaultSubagentPolicy);
   const saveReasoningDisplayMode = useCallback(async (mode: ReasoningDisplayMode) => {
     const ok = await apply(() => app.SetReasoningDisplayMode(mode));
     if (ok) applyReasoningDisplayMode(mode);
@@ -1794,6 +1797,20 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
               onClick={() => void apply(() => app.SetDefaultToolApprovalMode(mode))}
             >
               {t(`settings.defaultToolApprovalMode.${mode}`)}
+            </button>
+          ))}
+        </div>
+      </SettingsField>
+      <SettingsField label={t("settings.defaultSubagentPolicy")} hint={t("settings.defaultSubagentPolicyHint")} icon={<Network size={18} />}>
+        <div className="set-seg">
+          {SUBAGENT_POLICIES.map((policy) => (
+            <button
+              key={policy}
+              className={`set-seg__btn${defaultSubagentPolicy === policy ? " set-seg__btn--on" : ""}`}
+              disabled={busy}
+              onClick={() => void apply(() => app.SetDefaultSubagentPolicy(policy))}
+            >
+              {t(`settings.defaultSubagentPolicy.${policy}`)}
             </button>
           ))}
         </div>

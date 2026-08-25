@@ -592,6 +592,7 @@ export function metaFromTab(tab: TabMeta, existing?: Meta): Meta {
     bypass: autoApproveTools,
     collaborationMode: tab.collaborationMode ?? existing?.collaborationMode ?? "normal",
     toolApprovalMode,
+    subagentPolicy: tab.subagentPolicy ?? existing?.subagentPolicy ?? "light",
     tokenMode: tab.tokenMode ?? existing?.tokenMode ?? "full",
     agentPreset: tab.agentPreset ?? existing?.agentPreset,
     qualityFloor: tab.qualityFloor ?? existing?.qualityFloor,
@@ -4337,6 +4338,17 @@ export function useController() {
     await refreshMetaForTab(activeTabId);
   }, [activeTabId, dispatchTo, refreshMetaForTab]);
 
+  const setSubagentPolicyFromUi = useCallback(async (policy: string) => {
+    if (!activeTabId) return;
+    try {
+      await app.SetSubagentPolicyForTab(activeTabId, policy);
+    } catch (err) {
+      dispatchTo(activeTabId, { type: "local_notice", level: "warn", text: t("composer.subagentPolicySwitchFailed") });
+      return;
+    }
+    await refreshMetaForTab(activeTabId);
+  }, [activeTabId, dispatchTo, refreshMetaForTab]);
+
   const cancelJob = useCallback(async (jobID: string): Promise<boolean> => {
     const tabId = activeTabId;
     if (!tabId || !jobID.trim()) return false;
@@ -4854,7 +4866,7 @@ export function useController() {
     newSession, clearSession, listSessions, listTrashedSessions, retrySessionHistory, resumeSession, openChannelSession, previewSession, deleteSession, restoreSession, purgeTrashedSession, renameSession,
     loadOlderHistory,
     requestHistoryFullContent,
-    refreshMeta, pickWorkspace, switchWorkspace, compact, rewind, rewindForTab, rewindForTabDetailed, undoRewindForTab, setModel, setEffort, cancelJob,
+    refreshMeta, pickWorkspace, switchWorkspace, compact, rewind, rewindForTab, rewindForTabDetailed, undoRewindForTab, setModel, setEffort, setSubagentPolicyFromUi, cancelJob,
     fetchMemory, remember, forget, saveDoc,
     switchTab, openProjectTab, openGlobalTab, openTopicSession, ensureBlankTab, activateTopic, ensureBlankSurface, createIsolatedWorktree, closeTab, reorderTabs,
     hasLocalTranscriptForTab,

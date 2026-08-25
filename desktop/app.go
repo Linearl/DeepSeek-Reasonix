@@ -784,7 +784,7 @@ func (a *App) createTabEntry(scope, workspaceRoot, topicID string) *WorkspaceTab
 	return a.createTabEntryWithID(scope, workspaceRoot, topicID, newTabID())
 }
 
-func desktopNewSessionDefaults(scope, workspaceRoot string) (string, string) {
+func desktopNewSessionDefaults(scope, workspaceRoot string) (string, string, string) {
 	userCfg := config.LoadForEdit(config.UserConfigPath())
 	modelCfg := userCfg
 	if strings.TrimSpace(scope) == "project" && strings.TrimSpace(workspaceRoot) != "" {
@@ -792,7 +792,7 @@ func desktopNewSessionDefaults(scope, workspaceRoot string) (string, string) {
 			modelCfg = cfg
 		}
 	}
-	return resolveNewSessionModel(modelCfg), normalizeToolApprovalMode(userCfg.DesktopDefaultToolApprovalMode())
+	return resolveNewSessionModel(modelCfg), normalizeToolApprovalMode(userCfg.DesktopDefaultToolApprovalMode()), userCfg.DefaultSubagentPolicy()
 }
 
 // resolveNewSessionModel picks the model a fresh session starts on. A
@@ -821,7 +821,7 @@ func resolveNewSessionModel(cfg *config.Config) string {
 }
 
 func (a *App) createTabEntryWithID(scope, workspaceRoot, topicID, id string) *WorkspaceTab {
-	model, toolApprovalMode := desktopNewSessionDefaults(scope, workspaceRoot)
+	model, toolApprovalMode, subagentPolicy := desktopNewSessionDefaults(scope, workspaceRoot)
 	return &WorkspaceTab{
 		ID:               id,
 		Scope:            scope,
@@ -833,6 +833,7 @@ func (a *App) createTabEntryWithID(scope, workspaceRoot, topicID, id string) *Wo
 		qualityFloor:     "",
 		mode:             tabModeFromAxes(false, toolApprovalMode == control.ToolApprovalYolo),
 		toolApprovalMode: toolApprovalMode,
+		subagentPolicy:   subagentPolicy,
 		disabledMCP:      map[string]ServerView{},
 	}
 }
@@ -2010,7 +2011,7 @@ func (a *App) applyNewSessionDefaultModel(tab *WorkspaceTab) error {
 		scope = "global"
 		root = ""
 	}
-	defaultModel, _ := desktopNewSessionDefaults(scope, root)
+	defaultModel, _, _ := desktopNewSessionDefaults(scope, root)
 	return a.alignReusableBlankTabModel(tab, defaultModel)
 }
 
@@ -3353,7 +3354,7 @@ func (a *App) openTransientBlankRuntime(scope, workspaceRoot string) error {
 		}
 	}
 
-	model, toolApprovalMode := desktopNewSessionDefaults(scope, actualRoot)
+	model, toolApprovalMode, subagentPolicy := desktopNewSessionDefaults(scope, actualRoot)
 	sessionPath, err := createEmptySessionFile(desktopSessionDir(actualRoot), model)
 	if err != nil {
 		return err
@@ -3371,6 +3372,7 @@ func (a *App) openTransientBlankRuntime(scope, workspaceRoot string) error {
 		qualityFloor:     "",
 		mode:             tabModeFromAxes(false, toolApprovalMode == control.ToolApprovalYolo),
 		toolApprovalMode: toolApprovalMode,
+		subagentPolicy:   subagentPolicy,
 		disabledMCP:      map[string]ServerView{},
 	}
 	a.mu.Lock()
@@ -6849,6 +6851,38 @@ func (a *App) SetToolApprovalModeForTab(tabID, mode string) []string {
 	}
 	a.mu.Unlock()
 	return drained
+}
+
+// SetSubagentPolicyForTab sets the per-session sub-agent delegation tier for a
+// tab (light|balanced|aggressive). The value is persisted by the controller to
+// the session's BranchMeta, so it survives restart. Returns an error on an
+// invalid tier or a missing tab.
+func (a *App) SetSubagentPolicyForTab(tabID, policy string) error {
+	tab := a.tabByID(tabID)
+	if tab == nil {
+		return fmt.Errorf("tab not found")
+	}
+	tab.turnStartMu.Lock()
+	defer tab.turnStartMu.Unlock()
+	a.mu.Lock()
+	if a.tabs[tab.ID] != tab {
+		a.mu.Unlock()
+		return fmt.Errorf("tab changed while setting subagent policy")
+	}
+	tab.subagentPolicy = policy
+	ctrl := tab.Ctrl
+	a.mu.Unlock()
+	if ctrl != nil {
+		if err := ctrl.SetSubagentPolicy(policy); err != nil {
+			return err
+		}
+	}
+	a.mu.Lock()
+	if a.tabs[tab.ID] == tab {
+		a.saveTabsLocked()
+	}
+	a.mu.Unlock()
+	return nil
 }
 
 // CommandInfo describes one available slash command for the composer's "/" menu.
