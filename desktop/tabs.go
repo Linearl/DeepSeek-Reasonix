@@ -7554,6 +7554,7 @@ type tabRuntimeSnapshot struct {
 	effort                        *string
 	tokenMode, qualityFloor, mode string
 	goal, toolApprovalMode        string
+	subagentPolicy                string
 }
 
 // normalizedTabRuntime is the internal, orthogonal runtime profile restored
@@ -7590,6 +7591,7 @@ func snapshotTabRuntimeLocked(tab *WorkspaceTab) tabRuntimeSnapshot {
 		mode:             tab.mode,
 		goal:             tab.goal,
 		toolApprovalMode: tab.toolApprovalMode,
+		subagentPolicy:   currentTabSubagentPolicy(tab),
 	}
 }
 
