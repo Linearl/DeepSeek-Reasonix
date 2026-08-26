@@ -223,36 +223,33 @@ func TestMimoEffortSupportsNone(t *testing.T) {
 	}
 }
 
-// TestMimoEffortAutoDetected verifies that MiMo entries on the public API
-// endpoint (api.xiaomimimo.com) resolve the OpenAI reasoning protocol through
-// auto-detection even when the provider entry does not explicitly set
-// reasoning_protocol.  Enterprise endpoints (e.g. token-plan-cn.xiaomimimo.com)
-// are NOT auto-detected — users must set supported_efforts explicitly.
+// TestMimoEffortAutoDetected verifies that MiMo entries on any *.xiaomimimo.com
+// endpoint resolve effort capability through auto-detection even when the
+// provider entry does not explicitly set reasoning_protocol.
 func TestMimoEffortAutoDetected(t *testing.T) {
-	// Public API endpoint: auto-detected → effort supported.
-	e := &ProviderEntry{
-		Kind:    "openai",
-		BaseURL: "https://api.xiaomimimo.com/v1",
-		Model:   "mimo-mimo-v2-flash",
-		// ReasoningProtocol intentionally omitted — auto-detection via EffortCapabilityForEntry.
-	}
-	cap := EffortCapabilityForEntry(e)
-	if !cap.Supported {
-		t.Fatalf("MiMo auto-detected effort must be supported; got %+v", cap)
-	}
-	for _, level := range []string{"auto", "none", "low", "medium", "high"} {
-		if !containsString(cap.Levels, level) {
-			t.Errorf("MiMo auto-detected capability missing %q: %v", level, cap.Levels)
-		}
-	}
-	// Enterprise endpoint: NOT auto-detected → effort unsupported (user must configure).
-	ent := &ProviderEntry{
-		Kind:    "openai",
-		BaseURL: "https://token-plan-cn.xiaomimimo.com/v1",
-		Model:   "mimo-v2.5-pro",
-	}
-	if cap := EffortCapabilityForEntry(ent); cap.Supported {
-		t.Fatalf("enterprise MiMo without SupportedEfforts should not be auto-detected, got %+v", cap)
+	for _, tc := range []struct {
+		name   string
+		baseURL string
+	}{
+		{"public API", "https://api.xiaomimimo.com/v1"},
+		{"enterprise", "https://token-plan-cn.xiaomimimo.com/v1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := &ProviderEntry{
+				Kind:    "openai",
+				BaseURL: tc.baseURL,
+				Model:   "mimo-v2.5-pro",
+			}
+			cap := EffortCapabilityForEntry(e)
+			if !cap.Supported {
+				t.Fatalf("MiMo %s effort must be supported; got %+v", tc.name, cap)
+			}
+			for _, level := range []string{"auto", "none", "low", "medium", "high"} {
+				if !containsString(cap.Levels, level) {
+					t.Errorf("MiMo capability missing %q: %v", level, cap.Levels)
+				}
+			}
+		})
 	}
 }
 
