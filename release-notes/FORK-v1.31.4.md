@@ -1,6 +1,6 @@
 # Reasonix Fork 桌面版 v1.31.4 — Release Notes
 
-> 基于官方 `v1.31.4`，**新增 4 项 fork 独有功能 + 12 项修复/改进**，并同步吸纳官方 8 项稳定性改进。
+> 基于官方 `v1.31.4`，**新增 4 项 fork 独有功能 + 13 项修复/改进**，并同步吸纳官方 8 项稳定性改进。
 > 数据/会话/记忆目录与官方版完全兼容，**覆盖安装即可，无需迁移**。
 > 前一版本 v1.31.3 的并行写入、子代理三档等增强已包含在内（详见 [v1.31.3 Release Notes](https://github.com/Linearl/DeepSeek-Reasonix/releases/tag/desktop-v1.31.3)）。
 
@@ -46,6 +46,7 @@ MiMo 模型（`*.xiaomimimo.com` 全域）无需显式设置 `reasoning_protocol
 - **滚动错排修复**：向上滑动后行测量冻结导致错排，仅对未就绪行应用冻结高度 shim。（#9366）
 - **config 持久化修复**：`optimistic_write` 配置写入 `config.toml` 时被漏掉，导致重启后设置丢失。
 - **provider deletion + OpenCode group 原子删除**修复。
+- **压缩后上下文面板不刷新**：手动压缩成功后右侧面板的上下文占用不变，导致用户误以为压缩未生效并重复触发。`compaction_done` 事件现在会触发面板刷新。
 
 ---
 
