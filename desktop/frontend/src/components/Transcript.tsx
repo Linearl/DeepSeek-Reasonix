@@ -85,6 +85,7 @@ const SHOW_FRONTEND_DIAGNOSTICS = typeof __BUILD_CHANNEL__ === "undefined"
 const FrontendDiagnosticsPanel = SHOW_FRONTEND_DIAGNOSTICS
   ? lazy(() => import("./FrontendDiagnosticsPanel"))
   : null;
+const QuestionSearchPanel = lazy(() => import("./QuestionSearchPanel"));
 const VIRTUAL_OVERSCAN_ROWS = 8;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -114,6 +115,8 @@ export function Transcript({
   rewindDisabled = false,
   running = false,
   questionNavigator = true,
+  questionSearchOpen = false,
+  onCloseQuestionSearch,
   welcomeVariant = "default",
   creationMode = false,
   actionHoverMenus = false,
@@ -149,6 +152,8 @@ export function Transcript({
   rewindDisabled?: boolean;
   running?: boolean;
   questionNavigator?: boolean;
+  questionSearchOpen?: boolean;
+  onCloseQuestionSearch?: () => void;
   welcomeVariant?: "default" | "creation";
   creationMode?: boolean;
   actionHoverMenus?: boolean;
@@ -1038,6 +1043,18 @@ export function Transcript({
             loadedQuestions={questions}
             totalQuestions={totalQuestions}
             activeTurn={activeQuestion}
+            onJump={handleJumpToQuestion}
+          />
+        </Suspense>
+      )}
+
+      {showQuestionNav && (
+        <Suspense fallback={null}>
+          <QuestionSearchPanel
+            open={Boolean(questionSearchOpen)}
+            onClose={() => onCloseQuestionSearch?.()}
+            questions={questions}
+            totalQuestions={totalQuestions}
             onJump={handleJumpToQuestion}
           />
         </Suspense>

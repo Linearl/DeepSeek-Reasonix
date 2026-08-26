@@ -7,6 +7,7 @@ import {
   Copy as RestoreIcon,
   Minus,
   Search,
+  ListTree,
   Server,
   Square,
   SquarePen,
@@ -1209,6 +1210,7 @@ export default function App() {
   const setSidebarWidth = useLayoutStore((s) => s.setSidebarWidth);
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const [tasksOpen, setTasksOpen] = useState<false | "session" | "all">(false);
+  const [questionSearchOpen, setQuestionSearchOpen] = useState(false);
   const [liveSidebarWidth, setLiveSidebarWidth] = useState<number | null>(null);
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window === "undefined" ? 1440 : window.innerWidth));
   const [viewportHeight, setViewportHeight] = useState(() => (typeof window === "undefined" ? 720 : window.innerHeight));
@@ -4801,6 +4803,17 @@ export default function App() {
                   <Search size={15} />
                 </button>
               </Tooltip>
+              <Tooltip label={t("questionSearch.label")}>
+                <button
+                  className="topicbar__action-btn topicbar__action-btn--icon topicbar__action-btn--utility"
+                  type="button"
+                  aria-label={t("questionSearch.label")}
+                  aria-expanded={questionSearchOpen}
+                  onClick={() => setQuestionSearchOpen((open) => !open)}
+                >
+                  <ListTree size={15} />
+                </button>
+              </Tooltip>
               {shouldMountExternalOpener(activeTab, Boolean(sidebarImDetailConnection)) && activeTab && (
                 <ExternalOpener key={activeTab.id} tabId={activeTab.id} dismissSignal={transientOverlayDismissSignal} />
               )}
@@ -4923,6 +4936,8 @@ export default function App() {
                       tabId={visibleTranscriptTabId}
                       geometrySessionKey={visibleTranscriptGeometryKey}
                       footerHeight={footerHeight}
+                      questionSearchOpen={questionSearchOpen}
+                      onCloseQuestionSearch={() => setQuestionSearchOpen(false)}
                       onPrompt={handleTranscriptPrompt}
                       onDeliveryContinue={() => void handleDeliveryContinue()}
                       onAcceptDelivery={() => void app.AcceptDeliveryToTab(activeTabIdRef.current ?? "")}
