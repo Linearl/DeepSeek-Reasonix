@@ -136,7 +136,7 @@ jobs:
             echo "Release $TAG already exists; deleting and recreating"
             gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes
           fi
-          RELEASE_NOTES="release-notes/FORK-v${VERSION}.md"
+          RELEASE_NOTES="release-notes/FORK-v${VERSION#v}.md"
           [ -f "$RELEASE_NOTES" ] || RELEASE_NOTES="release-notes/FORK-v1.31.3.md"
           echo "Using release notes: $RELEASE_NOTES"
           gh release create "$TAG" \
