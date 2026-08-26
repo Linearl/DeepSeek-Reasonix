@@ -59,6 +59,7 @@
 
 ## 🔧 修复（fork v1.31.3 保留）
 
+- **MiMo 推理档位消失**：MiMo 模型（`api.xiaomimimo.com`）在未显式设置 `reasoning_protocol` 时，右侧推理档位（low/medium/high）不显示。根因是 `EffortCapabilityForEntry` 的自动检测路径缺少 MiMo 入口。已在公共端点加精确 host 匹配，企业端点（如 `token-plan-cn.xiaomimimo.com`）不受影响。（#9435/#9436）
 - 会话 `meta` 文件损坏（如强制关机）自动重建，不再卡住保存/关闭（#9155）
 - `/compact` 压缩完成后不再一直转圈（#9231）
 - 会话改名/自动起标题后历史面板立即刷新（#8597）
