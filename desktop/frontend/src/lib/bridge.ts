@@ -417,6 +417,7 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   ClearMCPServerAuthentication(name: string): Promise<void>;
   PickSkillFolder(): Promise<string>;
   PickPluginFolder(): Promise<string>;
+  PickGlobalWriteDir(): Promise<string>;
   AddSkillPath(path: string): Promise<void>;
   RemoveSkillPath(path: string): Promise<void>;
   SetSkillPathEnabled(path: string, enabled: boolean): Promise<void>;
@@ -3939,6 +3940,9 @@ function makeMockApp(): AppBindings {
     },
     async PickPluginFolder() {
       return "~/plugins/superpowers";
+    },
+    async PickGlobalWriteDir() {
+      return "C:/tmp";
     },
     async AddSkillPath(path: string) {
       const dir = path.trim() || "~/my-skills";

@@ -2280,6 +2280,7 @@ export const en = {
   "settings.noGlobalWriteRoots": "No global common dirs",
   "settings.removeGlobalWriteRoot": "Remove this global common dir",
   "settings.globalWriteRootPlaceholder": "Enter a directory to authorize globally",
+  "settings.browseGlobalWriteRoot": "Browse",
   "settings.addGlobalWriteRoot": "Add",
   "settings.appearance": "Appearance",
   "settings.theme": "Color mode",
