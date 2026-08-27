@@ -7884,8 +7884,10 @@ function GlobalWriteRootsSection({ t, busy }: { t: ReturnType<typeof useT>; busy
   const refresh = useCallback(async () => {
     try {
       const r = await app.QueryAuthorizedWriteDirs();
+      console.warn("[query-writedirs] FE got:", JSON.stringify(r));
       setRoots(asArray(r.global));
-    } catch {
+    } catch (e) {
+      console.warn("[query-writedirs] FE refresh error:", e);
       setRoots([]);
     }
   }, []);

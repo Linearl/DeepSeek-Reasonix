@@ -42,6 +42,7 @@ func (a *App) QueryAuthorizedWriteDirs() (project, global, session []string) {
 	_, ctrl := a.activeTabAndCtrl()
 	if c, ok := ctrl.(*control.Controller); ok {
 		p, g, s := c.QueryAuthorizedWriteDirs()
+		fmt.Fprintf(os.Stderr, "[query-writedirs] controller path: project=%v global=%v session=%v\n", p, g, s)
 		return nonNilSlice(p), nonNilSlice(g), nonNilSlice(s)
 	}
 	// No live controller: fall back to reading the project config allow_write
@@ -50,6 +51,9 @@ func (a *App) QueryAuthorizedWriteDirs() (project, global, session []string) {
 		if cfg, err := config.LoadForRootReadOnly(root); err == nil && cfg != nil {
 			project = nonNilSlice(cfg.AllowWriteRoots())
 			global = nonNilSlice(cfg.GlobalAllowRoots())
+			fmt.Fprintf(os.Stderr, "[query-writedirs] fallback root=%q: project=%v global=%v\n", root, project, global)
+		} else if err != nil {
+			fmt.Fprintf(os.Stderr, "[query-writedirs] fallback root=%q load err=%v\n", root, err)
 		}
 	}
 	return project, global, session
