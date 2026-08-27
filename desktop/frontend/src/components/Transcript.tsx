@@ -86,6 +86,7 @@ const FrontendDiagnosticsPanel = SHOW_FRONTEND_DIAGNOSTICS
   ? lazy(() => import("./FrontendDiagnosticsPanel"))
   : null;
 const QuestionSearchPanel = lazy(() => import("./QuestionSearchPanel"));
+const QuestionHistoryPanel = lazy(() => import("./QuestionHistoryPanel").then((module) => ({ default: module.QuestionHistoryPanel })));
 const VIRTUAL_OVERSCAN_ROWS = 8;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -117,6 +118,8 @@ export function Transcript({
   questionNavigator = true,
   questionSearchOpen = false,
   onCloseQuestionSearch,
+  questionHistoryOpen = false,
+  onCloseQuestionHistory,
   welcomeVariant = "default",
   creationMode = false,
   actionHoverMenus = false,
@@ -154,6 +157,8 @@ export function Transcript({
   questionNavigator?: boolean;
   questionSearchOpen?: boolean;
   onCloseQuestionSearch?: () => void;
+  questionHistoryOpen?: boolean;
+  onCloseQuestionHistory?: () => void;
   welcomeVariant?: "default" | "creation";
   creationMode?: boolean;
   actionHoverMenus?: boolean;
@@ -1056,6 +1061,21 @@ export function Transcript({
             questions={questions}
             totalQuestions={totalQuestions}
             onJump={handleJumpToQuestion}
+          />
+        </Suspense>
+      )}
+
+      {showQuestionNav && (
+        <Suspense fallback={null}>
+          <QuestionHistoryPanel
+            open={Boolean(questionHistoryOpen)}
+            onClose={() => onCloseQuestionHistory?.()}
+            questions={questions}
+            totalQuestions={totalQuestions}
+            onJump={handleJumpToQuestion}
+            hasOlderHistory={hasOlderHistory}
+            loadingOlderHistory={loadingOlderHistory}
+            onReachTop={handleEarlierHistoryReached}
           />
         </Suspense>
       )}
