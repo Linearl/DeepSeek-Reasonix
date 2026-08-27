@@ -133,6 +133,7 @@ curl -X POST http://localhost:8788/submit \
 - **加载「更早会话」时后端 reload 兜底不再失效（#9469）**：此前后端用 reload 结果刷新页面时，会先被「会话身份（revision/digest）校验」拦截——reload 刚写入的新版本号与页面上一次读取的不一致，被误判为「会话身份已变更」而拒绝，导致「更早对话无法加载」且重试永远走同一条失败路径。现在 reload 结果**先应用、再跳过身份校验**，reload 兜底真正生效。触发点：打开旧历史 / 会话被后端重写后回退翻页时加载更早消息。
 - **会话恢复分支自动合并提案（#9470）**：新增 `docs/SESSION_RECOVERY_PROPOSAL.md` 设计文档，提出对恢复（recovery）产生的分支做自动合并/收口，减少长期运行产生分叉会话。本期为纯文档方案，供评审。
 - **`\boxed` 数学边框前端补充（#9141 收尾）**：`styles.css` 的 `.katex .fbox` 宽度统一为 `-webkit-fill-available`（此前仅含部分兜底声明），使 KaTeX `\boxed` 边框在 WebView2/Chromium 下保持完整矩形、不塌成竖线。
+- **高速模型标记（路线 A：高 TPS 模型专属执行策略）**：高 TPS 模型（如 1000 tps 的 MiMo-V2.5-Pro-UltraSpeed）下，工具调用延迟成为回合主导——你可以在 **设置 → 模型接入 → 配置** 里给模型勾选「高速模型」，此后该模型的每一轮对话会自动注入 `<exec-speed-mode>high</exec-speed-mode>` 引导：独立操作合并到同一轮发出、慢操作（测试/构建/网络）优先 `run_in_background=true` 放后台不同步等、派发后立即推进不依赖的工作、需要结果时才查 `bash_output`/`wait`。**纯用户显式标记、不靠模型名猜测**（`flash` 等未必高 TPS），未标记模型行为完全不变。
 
 ---
 
