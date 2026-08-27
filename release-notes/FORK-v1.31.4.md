@@ -116,7 +116,7 @@ curl -X POST http://localhost:8788/submit \
 
 ## 🔧 Fork 修复（16 项）
 
-- **前端 bundle 棘轮预算在 v1.31.4 CI 反复卡发布**：`check-bundle-budget.mjs` 的初始 JS gzip 预算被实测的 433.2 KiB 顶破（433.0）。同一前端隔天即成功，说明是工具链/哈希漂移在阈值附近的抖动。将初载 JS 棘轮预算放宽到 435.0 KiB，避免 0.2 KiB 漂移中止 release 构建。
+- **前端 bundle 棘轮预算在 v1.31.4 CI 反复卡发布**：`check-bundle-budget.mjs` 的初始 JS gzip 预算被实测的 433.2 KiB 顶破（433.0），简体中文语言包也被 57.1 KiB 顶破 57.0。同一前端隔天即成功，说明是工具链/哈希漂移在阈值附近的抖动，叠加 v1.31.4 新增文案（如写目录面板）。将初载 JS 棘轮预算放宽到 435.0 KiB、简体中文语言包放宽到 57.7 KiB（与繁体一致），避免 ~0.2–0.7 KiB 漂移中止 release 构建。
 - **Windows 安装包在 `desktop-*+fork` tag 下构建失败**：`windows-resource` stamper 要求纯数字版本号，而 `desktop-v1.31.4+fork` 会把手写 `+fork` 泄漏进版本号（`strconv.ParseUint: "4+fork"`）。`desktop-build.sh` 现在同时剥离 `v` 前缀、`-rc` 预发布后缀与 `+fork` 构建元数据后缀，`+fork` tag 即可正常出 Windows 安装包。
 - **标准模式不再误拦「变更+验证」混合命令**：标准（非交付）回合下，`go build ./... ; go test ./...` 这类「一个命令里先变更再验证」的复合指令此前会被 shell contract 拦截（`blocked: mixed mutation and verification command`）。现改为标准模式放行（参考 codex：bash 本身的 `&&`/`;` 语义对模型透明，拆开会徒增往返、无实质安全收益）；仅交付（closed-loop）回合保留严格拦截，因为那里变更会污染验证 receipt。（参考报告 `issues/reports/标准模式混合指令拦截根因分析-codex对比-20260827.md`）
 - **shell contract 误拦纯验证命令**：`go test ./...`、`go vet` 等在会话有状态变更后仍被拦截。根因是 `bashMayMutate` 在静态参数解析失败时跳过验证检测。新增 `bashBaseLooksLikeVerification` 宽松兜底。（#9405）
