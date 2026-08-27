@@ -549,7 +549,6 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("POST /plan-decision", s.foregroundMutation(s.planDecision))
 	mux.HandleFunc("POST /plan", s.foregroundMutation(s.plan))
 	mux.HandleFunc("POST /composer-profile", s.composerProfile)
-	mux.HandleFunc("GET /projects", s.listProjects)
 	mux.HandleFunc("POST /attachments", s.uploadAttachment)
 	mux.HandleFunc("POST /compact", s.foregroundMutation(s.compact))
 	mux.HandleFunc("POST /new", s.newSession)
