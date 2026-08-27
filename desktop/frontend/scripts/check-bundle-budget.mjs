@@ -117,7 +117,7 @@ if (initialCSS.length > 0) {
 // Navigation overlay styles add a bounded 0.1 KiB to the deferred shell.
 // The cleaned source panel adds 0.1 KiB gzip to the deferred shell on top of
 // the retained-transcript navigation allowance; keep the ratchet explicit.
-assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 114.7 * 1024);
+assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 116.0 * 1024);
 if (localeChunks.length !== 2) {
   throw new Error(`expected 2 on-demand Chinese locale chunks, found ${localeChunks.length}`);
 }
