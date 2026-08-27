@@ -39,18 +39,27 @@ func (a *App) QueryAuthorizedWriteDirs() (project, global, session []string) {
 	if a == nil {
 		return project, global, session
 	}
+	// Global common dirs are user-level: always read from the user config,
+	// independent of the active workspace root or controller (a controller
+	// whose workspaceRoot is empty would otherwise hide them).
+	if uc, err := config.LoadUserConfigReadOnly(); err == nil && uc != nil {
+		global = nonNilSlice(uc.GlobalAllowRoots())
+		fmt.Fprintf(os.Stderr, "[query-writedirs] user-config global=%v\n", global)
+	} else if err != nil {
+		fmt.Fprintf(os.Stderr, "[query-writedirs] user-config load err=%v\n", err)
+	}
 	_, ctrl := a.activeTabAndCtrl()
 	if c, ok := ctrl.(*control.Controller); ok {
-		p, g, s := c.QueryAuthorizedWriteDirs()
-		fmt.Fprintf(os.Stderr, "[query-writedirs] controller path: project=%v global=%v session=%v\n", p, g, s)
-		return nonNilSlice(p), nonNilSlice(g), nonNilSlice(s)
+		p, _, s := c.QueryAuthorizedWriteDirs()
+		fmt.Fprintf(os.Stderr, "[query-writedirs] controller path: project=%v session=%v (global from user config)\n", p, s)
+		return nonNilSlice(p), global, nonNilSlice(s)
 	}
 	// No live controller: fall back to reading the project config allow_write
 	// plus the user-global common dirs.
 	if root := a.activeWorkspaceRoot(); root != "" {
 		if cfg, err := config.LoadForRootReadOnly(root); err == nil && cfg != nil {
 			project = nonNilSlice(cfg.AllowWriteRoots())
-			global = nonNilSlice(cfg.GlobalAllowRoots())
+			global = nonNilSlice(appendUniq(global, cfg.GlobalAllowRoots()))
 			fmt.Fprintf(os.Stderr, "[query-writedirs] fallback root=%q: project=%v global=%v\n", root, project, global)
 		} else if err != nil {
 			fmt.Fprintf(os.Stderr, "[query-writedirs] fallback root=%q load err=%v\n", root, err)
@@ -187,6 +196,17 @@ func nonNilSlice(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// appendUniq appends extra strings into roots, skipping duplicates.
+func appendUniq(roots, extra []string) []string {
+	for _, e := range extra {
+		if e == "" || containsWriteDir(roots, e) {
+			continue
+		}
+		roots = append(roots, e)
+	}
+	return roots
 }
 
 // projectConfigPathForWriteAccess matches control's helper: workspaceRoot/
