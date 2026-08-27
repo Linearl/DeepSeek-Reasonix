@@ -28,31 +28,47 @@ const (
 	writeDirScopeSession = 1
 )
 
+// AuthorizedWriteDirs is the Wails-facing result for the write-directory
+// management panel. It is a single struct (not multiple return values) because
+// Wails binds only one value (or value+error); returning three scalars would be
+// dropped and the frontend would receive nil.
+type AuthorizedWriteDirs struct {
+	Project []string `json:"project"`
+	Global  []string `json:"global"`
+	Session []string `json:"session"`
+}
+
 // QueryAuthorizedWriteDirs returns the currently authorized write directories
-// for the active workspace, split by scope: project (config allow_write),
-// global (user-global common dirs), and session (active controller's session
-// roots).
-func (a *App) QueryAuthorizedWriteDirs() (project, global, session []string) {
-	project = []string{}
-	global = []string{}
-	session = []string{}
+// for the active workspace: project (config allow_write), global (user-global
+// common dirs), and session (active controller's session roots).
+func (a *App) QueryAuthorizedWriteDirs() *AuthorizedWriteDirs {
+	res := &AuthorizedWriteDirs{Project: []string{}, Global: []string{}, Session: []string{}}
 	if a == nil {
-		return project, global, session
+		return res
+	}
+	// Global common dirs are user-level: always read from the user config,
+	// independent of the active workspace root or controller (a controller
+	// whose workspaceRoot is empty would otherwise hide them).
+	if uc, err := config.LoadUserConfigReadOnly(); err == nil && uc != nil {
+		res.Global = nonNilSlice(uc.GlobalAllowRoots())
 	}
 	_, ctrl := a.activeTabAndCtrl()
 	if c, ok := ctrl.(*control.Controller); ok {
-		p, g, s := c.QueryAuthorizedWriteDirs()
-		return nonNilSlice(p), nonNilSlice(g), nonNilSlice(s)
+		p, _, s := c.QueryAuthorizedWriteDirs()
+		res.Project = nonNilSlice(p)
+		res.Session = nonNilSlice(s)
+		return res
+	}
 	}
 	// No live controller: fall back to reading the project config allow_write
 	// plus the user-global common dirs.
 	if root := a.activeWorkspaceRoot(); root != "" {
 		if cfg, err := config.LoadForRootReadOnly(root); err == nil && cfg != nil {
-			project = nonNilSlice(cfg.AllowWriteRoots())
-			global = nonNilSlice(cfg.GlobalAllowRoots())
+			res.Project = nonNilSlice(cfg.AllowWriteRoots())
+			res.Global = nonNilSlice(appendUniq(res.Global, cfg.GlobalAllowRoots()))
 		}
 	}
-	return project, global, session
+	return res
 }
 
 // AddAuthorizedWriteDir adds a writable directory at the given scope
