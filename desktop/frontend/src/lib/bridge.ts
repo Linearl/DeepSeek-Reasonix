@@ -136,17 +136,9 @@ import type {
   WorkspaceView,
   SessionClearResult,
 } from "./types";
-<<<<<<< HEAD
-<<<<<<< HEAD
 import { browserPreviewShellSupport } from "./shellSupportPreview";
 export * from "./remoteTabEvents";
 export const COMPACT_RATIO_MIN_PERCENT = 30, COMPACT_RATIO_MAX_PERCENT = 85;
-=======
->>>>>>> 9246b8ee3 (feat(control,desktop): user-global common write dirs without approval)
-=======
-export * from "./remoteTabEvents";
-export const COMPACT_RATIO_MIN_PERCENT = 30, COMPACT_RATIO_MAX_PERCENT = 85;
->>>>>>> 856413466 (fix(desktop): complete #9167 write-dir panel against upstream main-v2 base)
 
 export interface DesktopShellStatusView {
   trayState: "probing" | "ready" | "unavailable";
@@ -192,10 +184,6 @@ interface DesktopWindowState {
 // AppBindings is the hand-written React-to-Go contract. _CheckGeneratedBindings
 // catches generated methods missing here; update this interface and typecheck.
 export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganizationBindings, HistoryCatalogBindings, TaskCatalogBindings, BlankProjectBindings, QualityFloorBindings, SessionTitleBindings, ScrollDiagnosticBindings, RemoteProjectBindings, MCPAppBindings {
-  // Optimistic-concurrency write mode (#9213): when enabled, path-bound file
-  // writers skip the whole-path serialization wait and use write-if-unchanged
-  // stale-content detection instead.
-  SetOptimisticWrite(enabled: boolean): Promise<void>;
   // Authorized write-directory management (#9167).
   QueryAuthorizedWriteDirs(): Promise<{ project: string[]; global: string[]; session: string[] }>;
   AddAuthorizedWriteDir(scope: 0 | 1, dir: string): Promise<void>;
@@ -301,8 +289,6 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   RecoveryCheckpointEnabledTab(tabID: string): Promise<boolean>;
   AnswerQuestion(id: string, answers: QuestionAnswer[]): Promise<void>;
   AnswerQuestionForTab(tabID: string, id: string, answers: QuestionAnswer[]): Promise<void>;
-<<<<<<< HEAD
-<<<<<<< HEAD
   AnswerMCPInteractionForTab(
     tabID: string,
     id: string,
@@ -310,11 +296,6 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
     content: Record<string, unknown> | null,
   ): Promise<void>;
   AnswerPromptForTab?(tabID: string, turnID: string, id: string, answers: QuestionAnswer[]): Promise<void>;
-=======
->>>>>>> 9246b8ee3 (feat(control,desktop): user-global common write dirs without approval)
-=======
-  AnswerPromptForTab?(tabID: string, turnID: string, id: string, answers: QuestionAnswer[]): Promise<void>;
->>>>>>> 856413466 (fix(desktop): complete #9167 write-dir panel against upstream main-v2 base)
   ReplayPendingPrompts(): Promise<void>;
   ReplayPendingPromptsForTab(tabID: string): Promise<void>;
   SetPlanMode(on: boolean): Promise<void>;
