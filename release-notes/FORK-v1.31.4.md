@@ -134,6 +134,7 @@ curl -X POST http://localhost:8788/submit \
 - **会话恢复分支自动合并提案（#9470）**：新增 `docs/SESSION_RECOVERY_PROPOSAL.md` 设计文档，提出对恢复（recovery）产生的分支做自动合并/收口，减少长期运行产生分叉会话。本期为纯文档方案，供评审。
 - **`\boxed` 数学边框前端补充（#9141 收尾）**：`styles.css` 的 `.katex .fbox` 宽度统一为 `-webkit-fill-available`（此前仅含部分兜底声明），使 KaTeX `\boxed` 边框在 WebView2/Chromium 下保持完整矩形、不塌成竖线。
 - **高速模型标记（路线 A：高 TPS 模型专属执行策略）**：高 TPS 模型（如 1000 tps 的 MiMo-V2.5-Pro-UltraSpeed）下，工具调用延迟成为回合主导——你可以在 **设置 → 模型接入 → 配置** 里给模型勾选「高速模型」，此后该模型的每一轮对话会自动注入 `<exec-speed-mode>high</exec-speed-mode>` 引导：独立操作合并到同一轮发出、慢操作（测试/构建/网络）优先 `run_in_background=true` 放后台不同步等、派发后立即推进不依赖的工作、需要结果时才查 `bash_output`/`wait`。**纯用户显式标记、不靠模型名猜测**（`flash` 等未必高 TPS），未标记模型行为完全不变。
+- **高速模型标记可视化（展示修复）**：此前高速勾选入口只在「获取模型」弹出的编辑框里，保存后主界面的已配置模型列表完全看不到状态，难以确认生效。现在列表里被标记为高速的模型 chip 会显示「⚡ 高速」徽标（设置 → 模型接入 → 各 provider 的已配置模型），勾选结果一目了然。
 
 ---
 

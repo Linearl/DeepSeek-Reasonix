@@ -17868,6 +17868,21 @@ body > .mermaid-diagram--fullscreen {
   color: var(--fg-dim);
   font-family: inherit;
 }
+.provider-model-chip--highspeed {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.provider-model-chip__highspeed-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  font-size: 0.85em;
+  font-weight: 650;
+  white-space: nowrap;
+}
 .provider-card-status {
   width: fit-content;
   max-width: 100%;

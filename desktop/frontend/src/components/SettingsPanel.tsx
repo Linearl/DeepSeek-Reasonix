@@ -5949,6 +5949,7 @@ export function ProviderAccessCard({
     : group.providers.every((provider) => Boolean(provider.webSearch)));
   const visibleModels = group.models.slice(0, 6);
   const hiddenModelCount = Math.max(0, group.models.length - visibleModels.length);
+  const groupHighSpeedModels = providerGroupHighSpeedModels(group);
   const providerProfiles = (
     <div className="provider-profiles">
       {group.providers.map((p) => {
@@ -6048,6 +6049,7 @@ export function ProviderAccessCard({
           configured={group.configured}
           models={visibleModels}
           hiddenModelCount={hiddenModelCount}
+          highSpeedModels={groupHighSpeedModels}
         />
       )}
 
@@ -6083,6 +6085,7 @@ export function ProviderAccessCard({
           configured={group.configured}
           models={visibleModels}
           hiddenModelCount={hiddenModelCount}
+          highSpeedModels={groupHighSpeedModels}
           showModelSummary
           enabled={webSearchEnabled}
           disabled={busy}
@@ -6115,26 +6118,45 @@ export function ProviderAccessCard({
   );
 }
 
+function providerGroupHighSpeedModels(group: ProviderAccessGroup): string[] {
+  const enabled = new Set(group.models);
+  const out = new Set<string>();
+  for (const p of group.providers) {
+    for (const model of asArray(p.highSpeedModels)) {
+      if (enabled.has(model)) out.add(model);
+    }
+  }
+  return [...out];
+}
+
 function ProviderModelSummary({
   configured,
   models,
   hiddenModelCount,
+  highSpeedModels = [],
   compact = false,
 }: {
   configured: boolean;
   models: string[];
   hiddenModelCount: number;
+  highSpeedModels?: string[];
   compact?: boolean;
 }) {
   const t = useT();
   const label = t(configured ? "settings.enabledModels" : "settings.modelList");
+  const highSpeed = new Set(highSpeedModels);
   return (
     <div className={`provider-card-block${compact ? " provider-card-block--inline" : ""}`}>
       <div className="provider-card-block__label">{label}</div>
       <div className="provider-model-chips" aria-label={label}>
         {models.length > 0 ? models.map((model) => (
-          <span className="provider-model-chip" key={model}>
+          <span className={`provider-model-chip${highSpeed.has(model) ? " provider-model-chip--highspeed" : ""}`} key={model}>
             {model}
+            {highSpeed.has(model) && (
+              <span className="provider-model-chip__highspeed-badge" aria-label={t("settings.highSpeedModel")}>
+                ⚡ {t("settings.highSpeedModel")}
+              </span>
+            )}
           </span>
         )) : <span className="provider-model-chip provider-model-chip--empty">{t("settings.noModelsConfigured")}</span>}
         {hiddenModelCount > 0 && (
@@ -6382,6 +6404,7 @@ function ProviderServiceCapabilities({
   configured,
   models,
   hiddenModelCount,
+  highSpeedModels,
   showModelSummary = false,
   enabled,
   disabled,
@@ -6391,6 +6414,7 @@ function ProviderServiceCapabilities({
   configured?: boolean;
   models: string[];
   hiddenModelCount?: number;
+  highSpeedModels?: string[];
   showModelSummary?: boolean;
   enabled: boolean;
   disabled: boolean;
@@ -6409,6 +6433,7 @@ function ProviderServiceCapabilities({
           configured={Boolean(configured)}
           models={models}
           hiddenModelCount={hiddenModelCount ?? 0}
+          highSpeedModels={highSpeedModels}
           compact
         />
       )}
