@@ -128,6 +128,14 @@ curl -X POST http://localhost:8788/submit \
 
 ---
 
+### 补充构建（2026-08-27 晚）：加载更早会话的 reload 兜底修复
+
+- **加载「更早会话」时后端 reload 兜底不再失效（#9469）**：此前后端用 reload 结果刷新页面时，会先被「会话身份（revision/digest）校验」拦截——reload 刚写入的新版本号与页面上一次读取的不一致，被误判为「会话身份已变更」而拒绝，导致「更早对话无法加载」且重试永远走同一条失败路径。现在 reload 结果**先应用、再跳过身份校验**，reload 兜底真正生效。触发点：打开旧历史 / 会话被后端重写后回退翻页时加载更早消息。
+- **会话恢复分支自动合并提案（#9470）**：新增 `docs/SESSION_RECOVERY_PROPOSAL.md` 设计文档，提出对恢复（recovery）产生的分支做自动合并/收口，减少长期运行产生分叉会话。本期为纯文档方案，供评审。
+- **`\boxed` 数学边框前端补充（#9141 收尾）**：`styles.css` 的 `.katex .fbox` 宽度统一为 `-webkit-fill-available`（此前仅含部分兜底声明），使 KaTeX `\boxed` 边框在 WebView2/Chromium 下保持完整矩形、不塌成竖线。
+
+---
+
 ## 🔧 Fork 修复（17 项）
 
 - **`desktop-*+fork` tag 的发布说明错误回退到 v1.31.3**：`release-fork.yml` 用 `FORK-v1.31.4+fork.md` 查找发布说明（把 `+fork` 泄漏进文件名），文件不存在故回退到 `FORK-v1.31.3.md`，导致发布 body 引用旧版本说明。现在剥离 `v` 前缀与 `+...` 构建元数据后缀后再查 `FORK-v1.31.4.md`。
