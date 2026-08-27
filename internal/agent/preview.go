@@ -28,6 +28,7 @@ var TransientUserBlockTags = []string{
 	"interrupted-turn-recovery",
 	"execution-policy",
 	"subagent-policy",
+	"exec-speed-mode",
 }
 
 // reTrailingExecutionPolicy matches the host-appended execution-policy block at

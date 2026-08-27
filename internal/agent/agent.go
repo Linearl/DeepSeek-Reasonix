@@ -535,6 +535,7 @@ func (a *Agent) withTurnPreferences(input string) string {
 		}
 	}
 	input = WithReasoningLanguage(input, lang)
+	input = WithExecSpeedMode(input, a.modelRef)
 	return input
 }
 
