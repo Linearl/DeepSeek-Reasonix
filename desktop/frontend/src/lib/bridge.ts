@@ -180,9 +180,13 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   // stale-content detection instead.
   SetOptimisticWrite(enabled: boolean): Promise<void>;
   // Authorized write-directory management (#9167).
-  QueryAuthorizedWriteDirs(): Promise<{ project: string[]; session: string[] }>;
+  QueryAuthorizedWriteDirs(): Promise<{ project: string[]; global: string[]; session: string[] }>;
   AddAuthorizedWriteDir(scope: 0 | 1, dir: string): Promise<void>;
   RemoveAuthorizedWriteDir(scope: 0 | 1, dir: string): Promise<void>;
+  // User-global common directories (Settings → Permissions): honored for every
+  // project/session without approval, including subdirectories.
+  AddGlobalWriteDir(dir: string): Promise<void>;
+  RemoveGlobalWriteDir(dir: string): Promise<void>;
   Platform(): Promise<string>;
   MinimiseMainWindow(): Promise<void>;
   ToggleMaximiseMainWindow(): Promise<void>;
@@ -746,6 +750,7 @@ let mockSingleton: AppBindings | null = null;
 // Mock state for AuthorizedWriteDirs (browser preview #9167).
 let mockWriteDirsProject: string[] = [];
 let mockWriteDirsSession: string[] = [];
+let mockWriteDirsGlobal: string[] = [];
 function getMock(): AppBindings {
   if (!mockSingleton) mockSingleton = makeMockApp();
   return mockSingleton;
@@ -2488,7 +2493,7 @@ function makeMockApp(): AppBindings {
       // Mock hook kept for browser-preview API compatibility (#9213).
     },
     async QueryAuthorizedWriteDirs() {
-      return { project: [...mockWriteDirsProject], session: [...mockWriteDirsSession] };
+      return { project: [...mockWriteDirsProject], global: [...mockWriteDirsGlobal], session: [...mockWriteDirsSession] };
     },
     async AddAuthorizedWriteDir(scope: 0 | 1, dir: string) {
       if (!dir?.trim()) throw new Error("directory is required");
@@ -2502,6 +2507,14 @@ function makeMockApp(): AppBindings {
       if (!dir?.trim()) throw new Error("directory is required");
       if (scope === 1) mockWriteDirsSession = mockWriteDirsSession.filter((d) => d !== dir);
       else mockWriteDirsProject = mockWriteDirsProject.filter((d) => d !== dir);
+    },
+    async AddGlobalWriteDir(dir: string) {
+      if (!dir?.trim()) throw new Error("directory is required");
+      if (!mockWriteDirsGlobal.includes(dir)) mockWriteDirsGlobal.push(dir);
+    },
+    async RemoveGlobalWriteDir(dir: string) {
+      if (!dir?.trim()) throw new Error("directory is required");
+      mockWriteDirsGlobal = mockWriteDirsGlobal.filter((d) => d !== dir);
     },
     async Platform() {
       const override = browserPlatformOverride();

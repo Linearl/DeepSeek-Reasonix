@@ -189,6 +189,64 @@ func expandPersistedWritePath(raw, home string) string {
 	return abs
 }
 
+// SetGlobalWriteAccess rewrites the user-global [sandbox] allow_global list in
+// the user config.toml (replacement write, so removals are supported). The
+// global common dirs are honored for every project/session without approval,
+// including subdirectories. This is the user-config counterpart to
+// SetProjectWriteAccess and backs the Settings → Permissions global-dirs panel.
+func SetGlobalWriteAccess(allowGlobal []string) error {
+	path := UserConfigPath()
+	if path == "" {
+		return fmt.Errorf("set global write access: user config path unavailable")
+	}
+	unlock, err := LockConfigFileEdits(path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	resolved, exists, err := statConfigPath(path)
+	if err != nil {
+		return err
+	}
+	var raw []byte
+	if exists {
+		raw, err = fileencoding.ReadFileUTF8(resolved)
+		if err != nil {
+			return err
+		}
+	}
+	body := string(raw)
+
+	home, _ := os.UserHomeDir()
+	var normalized []string
+	for _, dir := range allowGlobal {
+		formatted := sandbox.FormatConfigWritePath(strings.TrimSpace(dir), home)
+		if formatted == "" {
+			continue
+		}
+		if writeRootCovered(normalized, formatted, home) {
+			continue
+		}
+		normalized = append(normalized, formatted)
+	}
+
+	if body == "" {
+		body = "[sandbox]\nallow_global = " + renderStringArray(normalized) + "\n"
+	} else {
+		body = upsertTOMLSectionKey(body, "sandbox", "allow_global", "allow_global = "+renderStringArray(normalized))
+	}
+
+	var candidate Config
+	if _, err := toml.Decode(body, &candidate); err != nil {
+		return fmt.Errorf("set global write access: validate updated config: %w", err)
+	}
+	if !slices.Equal(candidate.Sandbox.AllowGlobal, normalized) {
+		return fmt.Errorf("set global write access: validate updated allow_global: got %v, want %v", candidate.Sandbox.AllowGlobal, normalized)
+	}
+	return writeConfigFileResolved(resolved, body, configFilePerm(path))
+}
+
 func coveredPermissionRule(existing []string, candidate string) string {
 	for _, item := range existing {
 		if permission.RuleCoversString(item, candidate) {

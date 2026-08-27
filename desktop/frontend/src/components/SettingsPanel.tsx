@@ -7800,6 +7800,7 @@ function SandboxSection({ s, busy, apply, windows }: SectionProps & { windows: b
         onRemove={async (d) => { await set({ allowWrite: sb.allowWrite.filter((x) => x !== d) }); }}
       />
       <SessionWriteRootsSection t={t} busy={busy} />
+      <GlobalWriteRootsSection t={t} busy={busy} />
     </SettingsSection>
   );
 }
@@ -7865,6 +7866,74 @@ function SessionWriteRootsSection({ t, busy }: { t: ReturnType<typeof useT>; bus
         />
         <button className="btn btn--small" type="button" disabled={busy || !String(path || "").trim()} onClick={() => void add()}>
           {t("settings.addSessionWriteRoot")}
+        </button>
+      </div>
+    </SettingsField>
+  );
+}
+
+// GlobalWriteRootsSection lists the user-global common directories
+// ([sandbox] allow_global) honored for every project/session without approval,
+// including anything under them. This directly addresses the DeepSeek
+// `C:\tmp\<random>` repeat-approval pain point: once a parent is added, new
+// subdirectories under it no longer prompt.
+function GlobalWriteRootsSection({ t, busy }: { t: ReturnType<typeof useT>; busy: boolean }) {
+  const [roots, setRoots] = useState<string[]>([]);
+  const [path, setPath] = useState("");
+
+  const refresh = useCallback(async () => {
+    try {
+      const r = await app.QueryAuthorizedWriteDirs();
+      setRoots(asArray(r.global));
+    } catch {
+      setRoots([]);
+    }
+  }, []);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const add = async () => {
+    const d = String(path || "").trim();
+    if (!d) return;
+    try {
+      await app.AddGlobalWriteDir(d);
+      setPath("");
+      await refresh();
+    } catch { /* keep current list */ }
+  };
+  const remove = async (d: string) => {
+    try {
+      await app.RemoveGlobalWriteDir(d);
+      await refresh();
+    } catch { /* keep current list */ }
+  };
+
+  return (
+    <SettingsField label={t("settings.globalWriteRoots")} hint={t("settings.globalWriteRootsHint")} stacked>
+      <div className="set-rules set-rules--readonly">
+        <div className="set-rules__chips">
+          {roots.length === 0 && <span className="mem-empty">{t("settings.noGlobalWriteRoots")}</span>}
+          {roots.map((p, i) => (
+            <span className="set-rule set-rule--path" key={`${p}-${i}`}>
+              {p}
+              <button className="btn btn--small" type="button" style={{ marginLeft: 6 }} aria-label={t("settings.removeGlobalWriteRoot")} disabled={busy} onClick={() => void remove(p)}>
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <input
+          className="mem-input set-grow"
+          placeholder={t("settings.globalWriteRootPlaceholder")}
+          value={path}
+          disabled={busy}
+          onChange={(e) => setPath(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") void add(); }}
+        />
+        <button className="btn btn--small" type="button" disabled={busy || !String(path || "").trim()} onClick={() => void add()}>
+          {t("settings.addGlobalWriteRoot")}
         </button>
       </div>
     </SettingsField>
