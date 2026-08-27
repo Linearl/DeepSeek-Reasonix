@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
-import { Archive, ArchiveX, ArrowDown, Pencil, Plus, Folder, FolderPlus, FolderInput, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, Palette } from "lucide-react";
+import { Archive, ArchiveX, ArrowDown, Pencil, Plus, Folder, FolderPlus, FolderInput, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, SwatchBook } from "lucide-react";
 import { asArray } from "../lib/array";
 import { useToast } from "../lib/toast";
 import { app } from "../lib/bridge";
@@ -2007,7 +2007,7 @@ export function ProjectTree({
     },
     {
       key: "sort-color",
-      icon: <Palette size={13} />,
+      icon: <SwatchBook size={13} />,
       label: menuLabelWithCheck(t("projectTree.sortByColor"), workbenchSortMode === "color"),
       onSelect: () => {
         selectWorkbenchSortMode("color");
@@ -2267,7 +2267,7 @@ export function ProjectTree({
               setColorFilterMenuOpen(!colorFilterMenuOpen);
             }}
           >
-            <Palette size={mode === "workbench" ? 15 : 14} aria-hidden="true" />
+            <SwatchBook size={mode === "workbench" ? 15 : 14} aria-hidden="true" />
             {colorFilterBadge && <span className="project-tree__time-filter-label">{colorFilterBadge}</span>}
           </button>
           {colorFilterMenuOpen && (
