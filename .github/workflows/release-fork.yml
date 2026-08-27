@@ -136,7 +136,12 @@ jobs:
             echo "Release $TAG already exists; deleting and recreating"
             gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes
           fi
-          RELEASE_NOTES="release-notes/FORK-v${VERSION#v}.md"
+          # A build-metadata suffix like '+fork' (desktop-v1.31.4+fork) must
+          # not leak into the notes filename: lookup FORK-v1.31.4.md instead
+          # of FORK-v1.31.4+fork.md (which never exists and would fall back to
+          # an older release's notes). strip 'v' and any '+...' before lookup.
+          notes_ver="${VERSION#v}"; notes_ver="${notes_ver%%+*}"
+          RELEASE_NOTES="release-notes/FORK-v${notes_ver}.md"
           [ -f "$RELEASE_NOTES" ] || RELEASE_NOTES="release-notes/FORK-v1.31.3.md"
           echo "Using release notes: $RELEASE_NOTES"
           gh release create "$TAG" \
