@@ -2242,6 +2242,8 @@ export function ProjectTree({
           </div>
         )}
       </>
+    );
+  };
   const colorFilterBadge = colorFilter.length === 1 ? colorFilter[0] : colorFilter.length > 1 ? String(colorFilter.length) : "";
   const colorFilterActive = colorFilter.length > 0;
   const renderColorFilterControl = (mode: "classic" | "workbench") => {
@@ -2301,7 +2303,7 @@ export function ProjectTree({
             </div>
           )}
         </div>
-      </Tooltip> (feat(desktop): project color filter & sort in the project tree — #9221)
+      </Tooltip>
     );
   };
 
