@@ -26,28 +26,30 @@ const (
 )
 
 // QueryAuthorizedWriteDirs returns the currently authorized write directories
-// for the active workspace, split by scope: project (config allow_write) and
-// session (active controller's session roots).
-func (a *App) QueryAuthorizedWriteDirs() (project, session []string) {
+// for the active workspace, split by scope: project (config allow_write),
+// global (user-global common dirs), and session (active controller's session
+// roots).
+func (a *App) QueryAuthorizedWriteDirs() (project, global, session []string) {
 	project = []string{}
+	global = []string{}
 	session = []string{}
 	if a == nil {
-		return project, session
+		return project, global, session
 	}
 	_, ctrl := a.activeTabAndCtrl()
 	if c, ok := ctrl.(*control.Controller); ok {
-		p, s := c.QueryAuthorizedWriteDirs()
-		project = nonNilSlice(p)
-		session = nonNilSlice(s)
-		return project, session
+		p, g, s := c.QueryAuthorizedWriteDirs()
+		return nonNilSlice(p), nonNilSlice(g), nonNilSlice(s)
 	}
-	// No live controller: fall back to reading the project config allow_write.
+	// No live controller: fall back to reading the project config allow_write
+	// plus the user-global common dirs.
 	if root := a.activeWorkspaceRoot(); root != "" {
 		if cfg, err := config.LoadForRootReadOnly(root); err == nil && cfg != nil {
 			project = nonNilSlice(cfg.AllowWriteRoots())
+			global = nonNilSlice(cfg.GlobalAllowRoots())
 		}
 	}
-	return project, session
+	return project, global, session
 }
 
 // AddAuthorizedWriteDir adds a writable directory at the given scope
@@ -115,6 +117,55 @@ func (a *App) RemoveAuthorizedWriteDir(scope int, dir string) error {
 		}
 	}
 	return config.SetProjectWriteAccess(path, kept, "")
+}
+
+// AddGlobalWriteDir adds a user-global common directory (Settings → Permissions
+// → global common dirs). It is honored across every project/session without
+// approval, including subdirectories.
+func (a *App) AddGlobalWriteDir(dir string) error {
+	if a == nil {
+		return fmt.Errorf("no active app")
+	}
+	if strings.TrimSpace(dir) == "" {
+		return fmt.Errorf("directory is required")
+	}
+	_, ctrl := a.activeTabAndCtrl()
+	if c, ok := ctrl.(*control.Controller); ok {
+		return c.AddGlobalWriteDir(dir)
+	}
+	// No live controller: persist directly into the user config.
+	cfg := []string{dir}
+	if uc, err := config.LoadUserConfigReadOnly(); err == nil && uc != nil {
+		cfg = nonNilSlice(uc.GlobalAllowRoots())
+	}
+	if !containsWriteDir(cfg, dir) {
+		cfg = append(cfg, dir)
+	}
+	return config.SetGlobalWriteAccess(cfg)
+}
+
+// RemoveGlobalWriteDir removes a user-global common directory.
+func (a *App) RemoveGlobalWriteDir(dir string) error {
+	if a == nil {
+		return fmt.Errorf("no active app")
+	}
+	if strings.TrimSpace(dir) == "" {
+		return fmt.Errorf("directory is required")
+	}
+	_, ctrl := a.activeTabAndCtrl()
+	if c, ok := ctrl.(*control.Controller); ok {
+		return c.RemoveGlobalWriteDir(dir)
+	}
+	cfg := []string{}
+	if uc, err := config.LoadUserConfigReadOnly(); err == nil && uc != nil {
+		for _, g := range uc.GlobalAllowRoots() {
+			if writeDirEqual(g, dir) {
+				continue
+			}
+			cfg = append(cfg, g)
+		}
+	}
+	return config.SetGlobalWriteAccess(cfg)
 }
 
 func approvalScopeFromWriteDir(scope int) sandbox.ApprovalScope {

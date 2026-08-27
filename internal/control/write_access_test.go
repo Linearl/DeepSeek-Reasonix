@@ -273,7 +273,7 @@ func canonicalWriteTestDir(t *testing.T) string {
 
 func assertSessionRoots(t *testing.T, c *Controller, present, absent []string) {
 	t.Helper()
-	_, session := c.QueryAuthorizedWriteDirs()
+	_, _, session := c.QueryAuthorizedWriteDirs()
 	for _, p := range present {
 		if !writeRootsContains(session, p) {
 			t.Fatalf("session roots should contain %s, got %v", p, session)
@@ -316,7 +316,7 @@ func TestAuthorizedWriteDirsSessionAddQueryRemove(t *testing.T) {
 	assertSessionRoots(t, c, []string{a, b}, nil)
 
 	// Query reflects both.
-	project, session := c.QueryAuthorizedWriteDirs()
+	project, _, session := c.QueryAuthorizedWriteDirs()
 	if len(project) != 0 {
 		t.Fatalf("project roots should be empty (no workspaceRoot config), got %v", project)
 	}
@@ -343,7 +343,7 @@ allow_write = ["` + strings.ReplaceAll(extra, `\`, `\\`) + `"]
 	}
 	c := New(Options{WorkspaceRoot: ws, Policy: permission.New("allow", nil, nil, nil), WriteRoots: sandbox.NewWritableRootSet([]string{ws})})
 
-	project, session := c.QueryAuthorizedWriteDirs()
+	project, _, session := c.QueryAuthorizedWriteDirs()
 	if len(session) != 0 {
 		t.Fatalf("session roots should be empty, got %v", session)
 	}
