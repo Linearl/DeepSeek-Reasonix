@@ -2,8 +2,11 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"reasonix/internal/config"
 	"reasonix/internal/control"
@@ -214,4 +217,26 @@ func writeDirEqual(a, b string) bool {
 		return absA == absB
 	}
 	return strings.TrimSpace(a) == strings.TrimSpace(b)
+}
+
+// PickGlobalWriteDir opens a directory picker so the user can choose a folder to
+// add to the user-global common-directory list ([sandbox] allow_global) instead
+// of typing the path by hand. It only returns the selected absolute path;
+// AddGlobalWriteDir performs normalization and writes config.
+func (a *App) PickGlobalWriteDir() (string, error) {
+	if a == nil || a.ctx == nil {
+		return "", nil
+	}
+	cur := a.activeWorkspaceRoot()
+	if strings.TrimSpace(cur) == "" {
+		cur, _ = os.Getwd()
+	}
+	dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title:            "Choose global write directory",
+		DefaultDirectory: dialogDefaultDirectory(cur),
+	})
+	if err != nil || dir == "" {
+		return "", err
+	}
+	return filepath.Clean(dir), nil
 }
