@@ -338,6 +338,8 @@ export function isSteerNoticeText(text: string): boolean {
 interface State {
   items: Item[];
   running: boolean;
+  /** True while a context compaction is in flight (compaction_started → compaction_done). Kept separate from `running` so a manual /compact (not a turn) still surfaces an unambiguous in-progress indicator. */
+  compactionActive: boolean;
   turnActive: boolean;
   pendingPrompt: boolean;
   backgroundJobs: number;
@@ -475,6 +477,7 @@ interface State {
 export const initialState: State = {
   items: [],
   running: false,
+  compactionActive: false,
   turnActive: false,
   pendingPrompt: false,
   backgroundJobs: 0,
@@ -1719,18 +1722,18 @@ function applyEvent(s: State, e: WireEvent): State {
     case "phase":
       return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "phase", id: `p${s.seq}`, text: e.text ?? "" }] };
     case "compaction_started":
-      return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "compaction", id: `c${s.seq}`, pending: true, trigger: e.compaction?.trigger ?? "", messages: 0, summary: "", archive: "" }] };
+      return { ...s, compactionActive: true, seq: s.seq + 1, items: [...s.items, { kind: "compaction", id: `c${s.seq}`, pending: true, trigger: e.compaction?.trigger ?? "", messages: 0, summary: "", archive: "" }] };
     case "compaction_done": {
       const c = e.compaction;
       const idx = [...s.items].reverse().findIndex((it) => it.kind === "compaction" && it.pending);
       const at = idx < 0 ? -1 : s.items.length - 1 - idx;
       if (!c?.summary) {
         const items = at < 0 ? s.items : s.items.filter((_, i) => i !== at);
-        return { ...s, running: s.turnActive ? s.running : false, items };
+        return { ...s, compactionActive: false, running: s.turnActive ? s.running : false, items };
       }
       const filled: Item = { kind: "compaction", id: at < 0 ? `c${s.seq}` : (s.items[at] as Extract<Item, { kind: "compaction" }>).id, pending: false, trigger: c.trigger ?? "", messages: c.messages ?? 0, summary: c.summary, archive: c.archive ?? "" };
       const items = at < 0 ? [...s.items, filled] : s.items.map((it, i) => (i === at ? filled : it));
-      return { ...s, running: s.turnActive ? s.running : false, seq: s.seq + 1, items };
+      return { ...s, compactionActive: false, running: s.turnActive ? s.running : false, seq: s.seq + 1, items };
     }
     case "steer":
       if (isHostRecoveryGuidance(e.text ?? "")) return s;

@@ -2988,6 +2988,17 @@ a[href] {
   color: var(--ok);
   border-bottom: 1px solid var(--border-soft);
 }
+.banner--compacting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-elev));
+  color: var(--accent);
+  border-bottom: 1px solid var(--border-soft);
+}
+.banner--compacting .banner__msg {
+  font-weight: 600;
+}
 .banner--update {
   display: flex;
   align-items: center;

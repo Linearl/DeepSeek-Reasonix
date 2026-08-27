@@ -40,6 +40,7 @@ import { useConfigLoadWarnings } from "./lib/useConfigLoadWarnings";
 import { generativeMusic, isGenerativeMusicEnabled } from "./lib/generative-music";
 import { clearAttentionChimeKeys, playAttentionChime, playSuccessChime, shouldPlayAttentionChimeForEvent } from "./lib/sound";
 import { NoticeCard, Transcript } from "./components/Transcript";
+import { ProcessCompactIcon } from "./components/ProcessCard";
 import { Composer } from "./components/Composer";
 import { TodoPanel } from "./components/TodoPanel";
 import { ApprovalModal } from "./components/ApprovalModal";
@@ -4929,6 +4930,12 @@ export default function App() {
                       (node as HTMLElement & { inert?: boolean }).inert = runtimeTransitioning;
                     }}
                   >
+                    {state.compactionActive && (
+                      <div className="banner banner--compacting" role="status">
+                        <ProcessCompactIcon size={13} aria-hidden="true" />
+                        <span className="banner__msg">{t("compaction.working")}</span>
+                      </div>
+                    )}
                     <Transcript
                       items={visibleTranscriptItems}
                       live={runtimeTransitioning ? undefined : state.live}
