@@ -157,10 +157,21 @@ export function QuestionJumpBar({
   const density = markerTurns.length > 40 ? "packed" : markerTurns.length > 20 ? "compact" : "normal";
   const activeValue = active ?? Math.max(0, total - 1);
 
+  // When many history turns are marked, grow the rail's vertical extent so each
+  // marker keeps a comfortable ~12px gap instead of being packed into a fixed
+  // 240px column. The height grows with the marker count, capped at 70vh, so a
+  // long session stays readable without overflowing the transcript shell (#9218).
+  const RAIL_BASE_HEIGHT = 240;
+  const RAIL_MARKER_GAP = 12;
+  const railHeight = markerTurns.length > 20
+    ? `min(${Math.max(RAIL_BASE_HEIGHT, markerTurns.length * RAIL_MARKER_GAP + 24)}px, 70vh)`
+    : undefined;
+
   return (
     <nav
       className="jump-bar"
       ref={barRef}
+      style={railHeight ? { height: railHeight } : undefined}
       aria-label={t("questionNav.label")}
       onMouseLeave={() => {
         setHovered(null);
