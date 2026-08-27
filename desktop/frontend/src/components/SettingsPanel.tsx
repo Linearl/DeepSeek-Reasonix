@@ -7901,6 +7901,12 @@ function GlobalWriteRootsSection({ t, busy }: { t: ReturnType<typeof useT>; busy
       await refresh();
     } catch { /* keep current list */ }
   };
+  const pick = async () => {
+    try {
+      const dir = await app.PickGlobalWriteDir();
+      if (dir) setPath(dir);
+    } catch { /* keep current path */ }
+  };
 
   return (
     <SettingsField label={t("settings.globalWriteRoots")} hint={t("settings.globalWriteRootsHint")} stacked>
@@ -7926,6 +7932,9 @@ function GlobalWriteRootsSection({ t, busy }: { t: ReturnType<typeof useT>; busy
           onChange={(e) => setPath(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") void add(); }}
         />
+        <button className="btn btn--small" type="button" disabled={busy} onClick={() => void pick()}>
+          {t("settings.browseGlobalWriteRoot")}
+        </button>
         <button className="btn btn--small" type="button" disabled={busy || !String(path || "").trim()} onClick={() => void add()}>
           {t("settings.addGlobalWriteRoot")}
         </button>

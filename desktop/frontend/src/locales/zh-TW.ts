@@ -1627,6 +1627,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.noGlobalWriteRoots": "暫無全域公共目錄",
   "settings.removeGlobalWriteRoot": "移除該全域公共目錄",
   "settings.globalWriteRootPlaceholder": "輸入要全域授權的目錄",
+  "settings.browseGlobalWriteRoot": "瀏覽",
   "settings.addGlobalWriteRoot": "新增",
   "settings.appearance": "外觀",
   "settings.theme": "明暗模式",

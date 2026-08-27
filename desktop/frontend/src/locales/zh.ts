@@ -2368,6 +2368,7 @@ export const zh: Record<DictKey, string> = {
   "settings.noGlobalWriteRoots": "暂无全局公共目录",
   "settings.removeGlobalWriteRoot": "移除该全局公共目录",
   "settings.globalWriteRootPlaceholder": "输入要全局授权的目录",
+  "settings.browseGlobalWriteRoot": "浏览",
   "settings.addGlobalWriteRoot": "添加",
   "settings.appearance": "外观",
   "settings.theme": "明暗模式",
