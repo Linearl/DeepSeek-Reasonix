@@ -7816,7 +7816,7 @@ function SessionWriteRootsSection({ t, busy }: { t: ReturnType<typeof useT>; bus
   const refresh = useCallback(async () => {
     try {
       const r = await app.QueryAuthorizedWriteDirs();
-      setRoots(asArray(r.session));
+      setRoots(asArray(r?.session));
     } catch {
       setRoots([]);
     }
@@ -7884,10 +7884,8 @@ function GlobalWriteRootsSection({ t, busy }: { t: ReturnType<typeof useT>; busy
   const refresh = useCallback(async () => {
     try {
       const r = await app.QueryAuthorizedWriteDirs();
-      console.warn("[query-writedirs] FE got:", JSON.stringify(r));
-      setRoots(asArray(r.global));
-    } catch (e) {
-      console.warn("[query-writedirs] FE refresh error:", e);
+      setRoots(asArray(r?.global));
+    } catch {
       setRoots([]);
     }
   }, []);
