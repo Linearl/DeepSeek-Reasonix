@@ -2851,6 +2851,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.modelCandidatesSelected": "已選擇 {n} 個",
   "settings.visionModel": "圖片輸入",
   "settings.visionModelAria": "{model} 支援圖片輸入",
+  "settings.highSpeedModel": "高速模型",
+  "settings.highSpeedModelAria": "{model} 是高速模型（高吞吐）",
   "settings.modelCapabilitiesAria": "{model} 的輸入能力",
   "settings.textInput": "文字",
   "settings.imageInputUnsupported": "不支援圖片",

@@ -1360,6 +1360,7 @@ function normalizeExtraBodyMap(value: unknown): Record<string, unknown> {
 
 export function normalizeProviderView(p: ProviderView): ProviderView {
   const visionModels = asArray(p.visionModels);
+  const highSpeedModels = asArray(p.highSpeedModels);
   const requiresKey = providerRequiresKey(p);
   return {
     ...p,
@@ -1375,6 +1376,7 @@ export function normalizeProviderView(p: ProviderView): ProviderView {
     visionCapability: p.visionCapability === "unsupported" || p.visionCapability === "configurable"
       ? p.visionCapability
       : undefined,
+    highSpeedModels,
     modelsUrl: p.modelsUrl ?? "",
     headers: normalizeStringMap(p.headers),
     extraBody: normalizeExtraBodyMap(p.extraBody),
@@ -5043,6 +5045,7 @@ function ProvidersSection({ s, busy, apply }: SectionProps) {
       selected: candidates.filter((model) => selected.includes(model)),
       visionModels: candidates.filter((model) => visionSource.includes(model)),
       visionCapability,
+      highSpeedModels: candidates.filter((model) => asArray(p.highSpeedModels).includes(model)),
     };
   };
 
@@ -5072,6 +5075,22 @@ function ProvidersSection({ s, busy, apply }: SectionProps) {
           visionModels: draft.visionModels.includes(model)
             ? draft.visionModels.filter((candidate) => candidate !== model)
             : draft.candidates.filter((candidate) => candidate === model || draft.visionModels.includes(candidate)),
+        },
+      };
+    });
+  };
+
+  const toggleModelDraftHighSpeed = (groupID: string, model: string) => {
+    setModelDrafts((prev) => {
+      const draft = prev[groupID];
+      if (!draft) return prev;
+      return {
+        ...prev,
+        [groupID]: {
+          ...draft,
+          highSpeedModels: draft.highSpeedModels.includes(model)
+            ? draft.highSpeedModels.filter((candidate) => candidate !== model)
+            : draft.candidates.filter((candidate) => candidate === model || draft.highSpeedModels.includes(candidate)),
         },
       };
     });
@@ -5188,6 +5207,7 @@ function ProvidersSection({ s, busy, apply }: SectionProps) {
     const provider = draft ? group.providers.find((p) => p.name === draft.providerName) : null;
     const models = uniqueStrings(draft?.selected ?? []);
     const visionModels = uniqueStrings(draft?.visionModels ?? []).filter((model) => models.includes(model));
+    const highSpeedModels = uniqueStrings(draft?.highSpeedModels ?? []).filter((model) => models.includes(model));
     if (!draft || !provider || models.length === 0) return;
     let saved = false;
     await apply(async () => {
@@ -5195,6 +5215,7 @@ function ProvidersSection({ s, busy, apply }: SectionProps) {
         ...provider,
         models,
         visionModels,
+        highSpeedModels,
         visionModelsConfigured: true,
         default: providerDefaultModel(provider.default, models),
       });
@@ -5279,6 +5300,7 @@ function ProvidersSection({ s, busy, apply }: SectionProps) {
                 : [...draft.selected, model]
             ))}
             onToggleDraftVision={(model) => toggleModelDraftVision(group.id, model)}
+            onToggleDraftHighSpeed={(model) => toggleModelDraftHighSpeed(group.id, model)}
             onSelectAllDraftModels={() => updateModelDraftSelection(group.id, (draft) => draft.candidates)}
             onClearDraftModels={() => updateModelDraftSelection(group.id, () => [])}
             onCancelDraftModels={() => {
@@ -5359,6 +5381,7 @@ type ProviderModelDraft = {
   selected: string[];
   visionModels: string[];
   visionCapability: ProviderVisionCapability;
+  highSpeedModels: string[];
 };
 
 type AddProviderMode = null | "official" | "custom";
@@ -5878,6 +5901,7 @@ export function ProviderAccessCard({
   onRefresh,
   onToggleDraftModel,
   onToggleDraftVision,
+  onToggleDraftHighSpeed,
   onSelectAllDraftModels,
   onClearDraftModels,
   onCancelDraftModels,
@@ -5901,6 +5925,7 @@ export function ProviderAccessCard({
   onRefresh: (p: ProviderView) => void;
   onToggleDraftModel: (model: string) => void;
   onToggleDraftVision: (model: string) => void;
+  onToggleDraftHighSpeed: (model: string) => void;
   onSelectAllDraftModels: () => void;
   onClearDraftModels: () => void;
   onCancelDraftModels: () => void;
@@ -6044,6 +6069,7 @@ export function ProviderAccessCard({
           fetching={fetching}
           onToggle={onToggleDraftModel}
           onToggleVision={onToggleDraftVision}
+          onToggleHighSpeed={onToggleDraftHighSpeed}
           onSelectAll={onSelectAllDraftModels}
           onClear={onClearDraftModels}
           onCancel={onCancelDraftModels}
@@ -6233,6 +6259,7 @@ function ProviderModelDraftPicker({
   fetching,
   onToggle,
   onToggleVision,
+  onToggleHighSpeed,
   onSelectAll,
   onClear,
   onCancel,
@@ -6243,6 +6270,7 @@ function ProviderModelDraftPicker({
   fetching: boolean;
   onToggle: (model: string) => void;
   onToggleVision: (model: string) => void;
+  onToggleHighSpeed: (model: string) => void;
   onSelectAll: () => void;
   onClear: () => void;
   onCancel: () => void;
@@ -6258,6 +6286,7 @@ function ProviderModelDraftPicker({
   }, [query]);
   const selected = new Set(draft.selected);
   const vision = new Set(draft.visionModels);
+  const highSpeed = new Set(draft.highSpeedModels);
   const q = debouncedQuery.trim().toLowerCase();
   const visibleCandidates = useMemo(
     () => (q ? draft.candidates.filter((model) => model.toLowerCase().includes(q)) : draft.candidates),
@@ -6320,6 +6349,16 @@ function ProviderModelDraftPicker({
                   <span>{vision.has(model) ? t("settings.visionModel") : t("settings.imageInputUnsupported")}</span>
                 </div>
               )}
+              <label className="provider-model-draft__highspeed">
+                <input
+                  type="checkbox"
+                  checked={enabled && highSpeed.has(model)}
+                  disabled={disabled || !enabled}
+                  aria-label={t("settings.highSpeedModelAria", { model })}
+                  onChange={() => onToggleHighSpeed(model)}
+                />
+                <span>{t("settings.highSpeedModel")}</span>
+              </label>
             </div>
           );
         }) : (

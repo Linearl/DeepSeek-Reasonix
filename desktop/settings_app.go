@@ -52,6 +52,7 @@ type ProviderView struct {
 	VisionModels                []string                    `json:"visionModels"`
 	VisionModelsSet             bool                        `json:"visionModelsConfigured"`
 	VisionCapability            string                      `json:"visionCapability,omitempty"`
+	HighSpeedModels             []string                    `json:"highSpeedModels"`
 	ModelsURL                   string                      `json:"modelsUrl"`
 	Default                     string                      `json:"default"`
 	APIKeyEnv                   string                      `json:"apiKeyEnv"`
@@ -675,6 +676,7 @@ func providerViewFromEntryForRootWithResolverAndCredentials(p config.ProviderEnt
 	return ProviderView{
 		Name: p.Name, BuiltIn: builtIn, Added: added, Kind: p.Kind, BaseURL: p.BaseURL, ChatURL: p.ChatURL, RequestURL: p.RequestURL,
 		Models: nonNil(models), VisionModels: nonNil(providerVisionModels(models, visionModels)), VisionModelsSet: visionModelsSet, VisionCapability: visionCapability, ModelsURL: p.ModelsURL, Default: p.DefaultModel(),
+		HighSpeedModels:           nonNil(p.HighSpeedModels),
 		APIKeyEnv:                   p.APIKeyEnv,
 		Headers:                     nonNilStringMap(p.Headers),
 		ExtraBody:                   nonNilAnyMap(p.ExtraBody),
@@ -2573,6 +2575,7 @@ func saveProviderConfig(c *config.Config, p ProviderView) error {
 			e.Vision = false
 			e.VisionModels = providerVisionModels(models, p.VisionModels)
 		}
+		e.HighSpeedModels = providerVisionModels(models, p.HighSpeedModels)
 		if len(models) > 1 {
 			e.Default = providerDefaultForModels(p.Default, models)
 		}

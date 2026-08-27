@@ -1802,6 +1802,7 @@ export interface ProviderView {
   visionModels: string[]; // subset of models that accepts image input
   visionModelsConfigured: boolean; // true when an empty list is an explicit choice
   visionCapability?: "configurable" | "unsupported"; // backend authority; absent on older Wails payloads
+  highSpeedModels?: string[]; // subset of models the user marked as high-throughput
   modelsUrl: string; // optional override for model discovery; empty derives from baseUrl
   default: string;
   apiKeyEnv: string;

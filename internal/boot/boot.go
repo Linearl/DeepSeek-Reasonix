@@ -1654,6 +1654,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		Pricing:      entry.Price,
 		QuoteContext: quoteCtx,
 		ModelRef:     modelRef,
+		HighSpeedModels: entry.HighSpeedModels,
 		Gate:         headlessGate,
 		Hooks:        hookRunner,
 		Jobs:         jm,

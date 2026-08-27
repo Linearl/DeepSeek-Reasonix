@@ -535,7 +535,7 @@ func (a *Agent) withTurnPreferences(input string) string {
 		}
 	}
 	input = WithReasoningLanguage(input, lang)
-	input = WithExecSpeedMode(input, a.modelRef)
+	input = WithExecSpeedMode(input, a.modelRef, a.highSpeedModels)
 	return input
 }
 
@@ -889,6 +889,11 @@ type Options struct {
 	// provider instance. It is attached to emitted Usage events so downstream
 	// usage accounting can attribute tokens to the exact model.
 	ModelRef string
+	// HighSpeedModels lists the models of this agent's provider that the user
+	// explicitly marked as high-throughput (Model panel checkbox). When ModelRef
+	// matches one, each user turn is prefixed with the exec-speed-mode transient
+	// block coaching async/parallel execution. Never inferred from the model id.
+	HighSpeedModels []string
 	// RequireVisibleFinal makes internal callers reject reasoning-only responses.
 	RequireVisibleFinal bool
 	// Gate is the per-call permission gate. nil disables gating.
@@ -1110,6 +1115,7 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 			temperature:            opts.Temperature,
 			usageSource:            usageSourceOrDefault(opts.UsageSource, event.UsageSourceExecutor),
 			modelRef:               strings.TrimSpace(opts.ModelRef),
+			highSpeedModels:        opts.HighSpeedModels,
 			workspaceID:            strings.TrimSpace(opts.WorkspaceID),
 			classifierTaskText:     opts.ClassifierTaskText,
 			writeWorkspaceRoot:     strings.TrimSpace(opts.WriteWorkspaceRoot),

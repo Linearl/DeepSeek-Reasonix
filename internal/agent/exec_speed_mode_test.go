@@ -5,37 +5,40 @@ import (
 	"testing"
 )
 
-func TestIsHighSpeedModel(t *testing.T) {
+func TestIsHighSpeedConfigured(t *testing.T) {
 	cases := []struct {
-		ref  string
-		want bool
+		ref    string
+		marked []string
+		want   bool
 	}{
-		{"mimo-v2.5-pro-ultraspeed", true},
-		{"mimo-v2.5-pro-ultra-speed", true},
-		{"MIMO-V2.5-PRO-ULTRASPEED", true},
-		{"deepseek-v4-flash", true},
-		{"provider:mimo-v2.5-pro-ultraspeed@route", true},
-		{"mimo-v2.5-pro", false},
-		{"deepseek-v4", false},
-		{"", false},
-		{"   ", false},
+		{"mimo-v2.5-pro-ultraspeed", []string{"mimo-v2.5-pro-ultraspeed"}, true},
+		{"provider/mimo-v2.5-pro-ultraspeed", []string{"mimo-v2.5-pro-ultraspeed"}, true},
+		{"provider|mimo-v2.5-pro-ultraspeed", []string{"mimo-v2.5-pro-ultraspeed"}, true},
+		{"provider/mimo", []string{"mimo"}, true},
+		{"deepseek-v4", []string{"deepseek-v4"}, true},
+		// Explicit marking wins even for ids that mention "flash" — never inferred.
+		{"deepseek-v4-flash", []string{}, false},
+		{"mimo-v2.5-pro-ultraspeed", []string{}, false},
+		{"mimo", []string{"something-else"}, false},
+		{"", []string{"mimo"}, false},
+		{"mimo", nil, false},
 	}
 	for _, c := range cases {
-		if got := isHighSpeedModel(c.ref); got != c.want {
-			t.Errorf("isHighSpeedModel(%q) = %v, want %v", c.ref, got, c.want)
+		if got := isHighSpeedConfigured(c.ref, c.marked); got != c.want {
+			t.Errorf("isHighSpeedConfigured(%q, %v) = %v, want %v", c.ref, c.marked, got, c.want)
 		}
 	}
 }
 
 func TestWithExecSpeedMode(t *testing.T) {
-	// Normal model: no block, content unchanged.
-	if got := WithExecSpeedMode("hello", "mimo-v2.5-pro"); got != "hello" {
-		t.Fatalf("normal model should not inject; got %q", got)
+	// Unmarked model: no block, content unchanged.
+	if got := WithExecSpeedMode("hello", "mimo-v2.5-pro", []string{}); got != "hello" {
+		t.Fatalf("unmarked model should not inject; got %q", got)
 	}
-	// High-speed model: leading transient block injected.
-	got := WithExecSpeedMode("hello", "mimo-v2.5-pro-ultraspeed")
+	// Marked model: leading transient block injected.
+	got := WithExecSpeedMode("hello", "mimo-v2.5-pro-ultraspeed", []string{"mimo-v2.5-pro-ultraspeed"})
 	if !strings.HasPrefix(got, "<exec-speed-mode>high</exec-speed-mode>") {
-		t.Fatalf("high-speed model should inject exec-speed-mode block; got %q", got)
+		t.Fatalf("marked model should inject exec-speed-mode block; got %q", got)
 	}
 	if !strings.Contains(got, "run_in_background") {
 		t.Fatalf("block should carry the run_in_background strategy; got %q", got)
@@ -44,18 +47,18 @@ func TestWithExecSpeedMode(t *testing.T) {
 		t.Fatalf("block should prefix, not replace, content; got %q", got)
 	}
 	// Already-injected: must not double-inject.
-	already := WithExecSpeedMode("hello", "mimo-v2.5-pro-ultraspeed")
-	doubled := WithExecSpeedMode(already, "mimo-v2.5-pro-ultraspeed")
+	already := WithExecSpeedMode("hello", "mimo", []string{"mimo"})
+	doubled := WithExecSpeedMode(already, "mimo", []string{"mimo"})
 	if strings.Count(doubled, "<exec-speed-mode>") != 1 {
 		t.Fatalf("must not double-inject; got %q", doubled)
 	}
 }
 
-func TestExecSpeedModeBlockEmptyForNormal(t *testing.T) {
-	if ExecSpeedModeBlock("deepseek-v4") != "" {
-		t.Fatalf("ExecSpeedModeBlock should be empty for normal model")
+func TestExecSpeedModeBlockEmptyWhenUnmarked(t *testing.T) {
+	if ExecSpeedModeBlock("deepseek-v4", []string{}) != "" {
+		t.Fatal("ExecSpeedModeBlock should be empty for an unmarked model")
 	}
-	if ExecSpeedModeBlock("") != "" {
-		t.Fatalf("ExecSpeedModeBlock should be empty for empty ref")
+	if ExecSpeedModeBlock("", []string{"deepseek-v4"}) != "" {
+		t.Fatal("ExecSpeedModeBlock should be empty for an empty model ref")
 	}
 }

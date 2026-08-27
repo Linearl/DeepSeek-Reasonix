@@ -1908,6 +1908,8 @@ export const en = {
   "settings.modelCandidatesSelected": "{n} selected",
   "settings.visionModel": "Image input",
   "settings.visionModelAria": "{model} supports image input",
+  "settings.highSpeedModel": "High-speed",
+  "settings.highSpeedModelAria": "{model} is a high-throughput model",
   "settings.modelCapabilitiesAria": "Input capabilities for {model}",
   "settings.textInput": "Text",
   "settings.imageInputUnsupported": "No image input",

@@ -10,31 +10,29 @@ import (
 // from the user-facing preview, and excluded from cache-prefix shape.
 const execSpeedModeTag = "exec-speed-mode"
 
-// highSpeedModelSuffixes are model-id markers that identify high-throughput
-// models (high TPS / low per-token latency). When such a model is active, tool
-// call latency dominates round time: the model generates a batch instantly but
-// then blocks on slow tools (tests/build/network). Matching is conservative so
-// a normal model is never mislabeled.
-var highSpeedModelSuffixes = []string{
-	"ultraspeed",
-	"ultra-speed",
-	"ultra_speed",
-	"highspeed",
-	"high-speed",
-	"high_speed",
-	"flash",
-}
-
-// isHighSpeedModel reports whether modelRef names a high-throughput model. The
-// match is substring-based and lowercase, so provider-qualified IDs and the
-// dash/underscore variants are all caught; an empty ref is never high-speed.
-func isHighSpeedModel(modelRef string) bool {
-	ref := strings.ToLower(strings.TrimSpace(modelRef))
-	if ref == "" {
+// isHighSpeedConfigured reports whether modelRef (the running
+// "provider/model" identity) matches one of the user-maintained high-speed
+// models of its provider. High-speed is an explicit user choice (the Model
+// panel checkbox), never inferred from the model id: a "flash" suffix does not
+// imply high TPS, and an unmarked low-TPS model must stay on the sync path.
+// Matching accepts the plain model name as well as a provider-prefixed ref.
+func isHighSpeedConfigured(modelRef string, highSpeedModels []string) bool {
+	ref := strings.TrimSpace(modelRef)
+	if ref == "" || len(highSpeedModels) == 0 {
 		return false
 	}
-	for _, s := range highSpeedModelSuffixes {
-		if strings.Contains(ref, s) {
+	// Ref forms: "model", "provider/model", or a canonical "provider|model" —
+	// accept equality on the trailing model segment.
+	last := ref
+	if i := strings.LastIndexAny(ref, "/|"); i >= 0 && i+1 < len(ref) {
+		last = ref[i+1:]
+	}
+	for _, m := range highSpeedModels {
+		m = strings.TrimSpace(m)
+		if m == "" {
+			continue
+		}
+		if ref == m || last == m {
 			return true
 		}
 	}
@@ -42,11 +40,11 @@ func isHighSpeedModel(modelRef string) bool {
 }
 
 // ExecSpeedModeBlock returns a self-contained "<exec-speed-mode>high</exec-speed-mode>"
-// guidance block for a high-throughput model, or "" for a normal model. The
-// block carries the full execution-strategy directive inline so the model sees
-// the policy every round without needing a static system-prompt section.
-func ExecSpeedModeBlock(modelRef string) string {
-	if !isHighSpeedModel(modelRef) {
+// guidance block, or "" when modelRef is not marked high-speed. The block
+// carries the full execution-strategy directive inline so the model sees the
+// policy every round without needing a static system-prompt section.
+func ExecSpeedModeBlock(modelRef string, highSpeedModels []string) string {
+	if !isHighSpeedConfigured(modelRef, highSpeedModels) {
 		return ""
 	}
 	return "<" + execSpeedModeTag + ">high</" + execSpeedModeTag + ">\n" +
@@ -58,10 +56,11 @@ func ExecSpeedModeBlock(modelRef string) string {
 }
 
 // WithExecSpeedMode prefixes content with the transient high-speed-model block
-// when the active model is high-throughput, unless the turn already starts with
-// an injected exec-speed-mode block (host reseed must not double-inject).
-func WithExecSpeedMode(content, modelRef string) string {
-	block := ExecSpeedModeBlock(modelRef)
+// when the running model has been marked high-speed, unless the turn already
+// starts with an injected exec-speed-mode block (host reseed must not
+// double-inject).
+func WithExecSpeedMode(content, modelRef string, highSpeedModels []string) string {
+	block := ExecSpeedModeBlock(modelRef, highSpeedModels)
 	if block == "" || hasLeadingInjectedBlock(content, execSpeedModeTag) {
 		return content
 	}

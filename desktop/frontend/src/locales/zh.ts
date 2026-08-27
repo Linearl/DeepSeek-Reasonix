@@ -1910,6 +1910,8 @@ export const zh: Record<DictKey, string> = {
   "settings.modelCandidatesSelected": "已选择 {n} 个",
   "settings.visionModel": "图片输入",
   "settings.visionModelAria": "{model} 支持图片输入",
+  "settings.highSpeedModel": "高速模型",
+  "settings.highSpeedModelAria": "{model} 是高速模型（高吞吐）",
   "settings.modelCapabilitiesAria": "{model} 的输入能力",
   "settings.textInput": "文本",
   "settings.imageInputUnsupported": "不支持图片",
