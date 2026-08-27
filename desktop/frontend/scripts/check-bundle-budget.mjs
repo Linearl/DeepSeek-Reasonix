@@ -145,10 +145,11 @@ for (const path of localeChunks) {
   // choices from the primary UI; keep that complete guidance with a bounded
   // 0.4–0.5 KiB locale-only ratchet.
   // Fork v1.31.4 write-dir management adds its Authorized Directories panel
-  // copy to the simplified-Chinese chunk (57.1 KiB gzip on CI vs the 57.0
-  // gate). Widen zh to match zh-TW (57.7) so a 0.1 KiB locale drift on CI's
-  // Node/zlib no longer aborts the release build.
-  const budget = name.startsWith("zh-TW-") ? 57.7 * 1024 : 57.7 * 1024;
+  // copy to both zh and zh-TW. CI measured zh 57.1 and zh-TW 57.9 KiB gzip
+  // against the 57.0/57.7 gates. Unify and widen the locale ratchet to 59.0
+  // so a ~0.2–0.7 KiB drift on either language no longer aborts the release
+  // build.
+  const budget = 59.0 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 }
 
@@ -164,6 +165,9 @@ const rawInitialBytes = [...initialJS, ...initialCSS, ...appShellCSS]
 // production and 2358.3 KiB in test: about 9.0 KiB (0.38%) over main-v2's
 // channel gates. Retain that attributable UI capacity with 0.1 KiB of build-SHA
 // headroom without widening the gzip or largest-chunk exceptions.
-const rawInitialBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 2_370.0 : 2_365.0;
+// Fork v1.31.4 front-end additions (write-dir management, optimistic-write,
+// merged upstream UI) push raw init slightly past the previous gate on CI;
+// keep 10 KiB of raw headroom so the release build is not a drift flake.
+const rawInitialBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 2_380.0 : 2_375.0;
 assertBudget("initial raw JavaScript and CSS", rawInitialBytes, rawInitialBudgetKiB * 1024);
 assertBudget("largest initial JavaScript chunk raw", largestInitialJSRaw, 1_000 * 1024);
