@@ -59,7 +59,6 @@ func (a *App) QueryAuthorizedWriteDirs() *AuthorizedWriteDirs {
 		res.Session = nonNilSlice(s)
 		return res
 	}
-	}
 	// No live controller: fall back to reading the project config allow_write
 	// plus the user-global common dirs.
 	if root := a.activeWorkspaceRoot(); root != "" {
@@ -199,6 +198,17 @@ func nonNilSlice(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// appendUniq appends extra strings into roots, skipping duplicates.
+func appendUniq(roots, extra []string) []string {
+	for _, e := range extra {
+		if e == "" || containsWriteDir(roots, e) {
+			continue
+		}
+		roots = append(roots, e)
+	}
+	return roots
 }
 
 // projectConfigPathForWriteAccess matches control's helper: workspaceRoot/

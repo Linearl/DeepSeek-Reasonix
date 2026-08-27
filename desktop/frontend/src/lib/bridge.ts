@@ -13,12 +13,15 @@ import { t } from "./i18n";
 import { providerIsConfigured, providerRequiresKey, removeProviderAccessesForMock } from "./providerModels";
 import { DEFAULT_STATUS_BAR_ITEMS, normalizeStatusBarItems } from "./statusBarItems";
 import { registerTrustedThemeBackgroundURLs } from "./themePack";
-import { modeHasAutoApproveTools, modeWithAutoApproveTools, modeWithPlan, normalizeCollaborationMode, normalizeMode, normalizeSubagentPolicy, normalizeToolApprovalMode } from "./types";
+import { modeHasAutoApproveTools, modeWithAutoApproveTools, modeWithPlan, normalizeCollaborationMode, normalizeMode, normalizeToolApprovalMode } from "./types";
 import { makeMockProjectTreeOrganizationBindings } from "./mockProjectTreeOrganization";
 import { decisionSurfaceMockFromInput, isLongDecisionOptionsMockInput } from "./decisionSurfaceMock";
 import { mockWorkspaceFile } from "./mockWorkspaceFile";
 import { mockAIRenameSession, type SessionTitleBindings } from "./mockSessionTitle";
 import { mockHistoryContentField, mockHistorySlice } from "./bridgeHistoryFixtures";
+import { createMockRemoteProjects } from "./mockRemoteProjects";
+import { mockRemoteHostView } from "./mockRemoteHosts";
+import type { RemoteProjectBindings } from "./remoteProjectBridge";
 import type { ScrollDiagnosticBindings } from "./scrollDiagnosticBridge";
 import { makeMockMCPAppBindings, type MCPAppBindings } from "./mcpAppBridge";
 import type {
@@ -121,6 +124,7 @@ import type {
   TerminalWorkspaceView,
   TopicMeta,
   ToolApprovalMode,
+  TurnEventReplayView,
   UpdateInfo,
   UpdateProgress,
   WireEvent,
@@ -133,11 +137,16 @@ import type {
   SessionClearResult,
 } from "./types";
 <<<<<<< HEAD
+<<<<<<< HEAD
 import { browserPreviewShellSupport } from "./shellSupportPreview";
 export * from "./remoteTabEvents";
 export const COMPACT_RATIO_MIN_PERCENT = 30, COMPACT_RATIO_MAX_PERCENT = 85;
 =======
 >>>>>>> 9246b8ee3 (feat(control,desktop): user-global common write dirs without approval)
+=======
+export * from "./remoteTabEvents";
+export const COMPACT_RATIO_MIN_PERCENT = 30, COMPACT_RATIO_MAX_PERCENT = 85;
+>>>>>>> 856413466 (fix(desktop): complete #9167 write-dir panel against upstream main-v2 base)
 
 export interface DesktopShellStatusView {
   trayState: "probing" | "ready" | "unavailable";
@@ -211,6 +220,7 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   Submit(input: string): Promise<void>;
   SubmitToTab(tabID: string, input: string): Promise<void>;
   SubmitToTabWithID(tabID: string, input: string, submissionID: string): Promise<void>;
+  StartTurnForTab?(tabID: string, input: string, submissionID: string): Promise<{ turnId: string; status: string; runtimeEpoch?: string; submissionId?: string }>;
   SubmitDisplay(display: string, input: string): Promise<void>;
   SubmitDisplayToTab(tabID: string, display: string, input: string): Promise<void>;
   SubmitDisplayToTabWithID(tabID: string, display: string, input: string, submissionID: string): Promise<void>;
@@ -257,7 +267,11 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   EnqueueInboxFollowup(tabID: string, display: string, submit: string, idempotency: string): Promise<{ itemId: string; disposition: string; position: number; paused: boolean; idempotent?: boolean; error?: string }>;
   EnqueueInboxFollowupWithInvocations(tabID: string, display: string, submit: string, invocations: InvocationRequest[], idempotency: string): Promise<{ itemId: string; disposition: string; position: number; paused: boolean; idempotent?: boolean; error?: string }>;
   EnqueueInboxSteer(tabID: string, display: string, submit: string, idempotency: string): Promise<{ itemId: string; disposition: string; position: number; paused: boolean; idempotent?: boolean; error?: string }>;
+  EnqueueInboxSteerForTurn?(tabID: string, turnID: string, display: string, submit: string, idempotency: string): Promise<{ itemId: string; disposition: string; position: number; paused: boolean; idempotent?: boolean; error?: string }>;
   SteerInboxItem(tabID: string, itemID: string): Promise<{
+    itemId: string; disposition: string; position: number; paused: boolean; idempotent?: boolean; error?: string;
+  }>;
+  SteerInboxItemForTurn?(tabID: string, turnID: string, itemID: string): Promise<{
     itemId: string; disposition: string; position: number; paused: boolean; idempotent?: boolean; error?: string;
   }>;
   ReadInboxItem(tabID: string, id: string): Promise<{ id: string; displayText: string; rawText: string; submitText: string }>;
@@ -272,6 +286,9 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   CancelTab(tabID: string): Promise<void>;
   CancelTabWithInboxItems(tabID: string, itemIDs: string[]): Promise<void>;
   CancelTabWithInboxItemsResult?(tabID: string, itemIDs: string[]): Promise<{ discardedItemIds: string[]; warning?: string }>;
+  InterruptTurnForTab?(tabID: string, turnID: string): Promise<void>;
+  InterruptTurnWithInboxItemsForTab?(tabID: string, turnID: string, itemIDs: string[]): Promise<{ discardedItemIds: string[]; warning?: string }>;
+  TurnEventsForTab?(tabID: string, afterSeq: number): Promise<TurnEventReplayView>;
   Approve(id: string, allow: boolean, session: boolean, persist: boolean): Promise<void>;
   ApproveTab(tabID: string, id: string, allow: boolean, session: boolean, persist: boolean): Promise<void>;
   ResolvePlanDecision(id: string, action: "start_execution" | "revise_plan" | "exit_plan"): Promise<void>;
@@ -285,6 +302,7 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   AnswerQuestion(id: string, answers: QuestionAnswer[]): Promise<void>;
   AnswerQuestionForTab(tabID: string, id: string, answers: QuestionAnswer[]): Promise<void>;
 <<<<<<< HEAD
+<<<<<<< HEAD
   AnswerMCPInteractionForTab(
     tabID: string,
     id: string,
@@ -294,6 +312,9 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   AnswerPromptForTab?(tabID: string, turnID: string, id: string, answers: QuestionAnswer[]): Promise<void>;
 =======
 >>>>>>> 9246b8ee3 (feat(control,desktop): user-global common write dirs without approval)
+=======
+  AnswerPromptForTab?(tabID: string, turnID: string, id: string, answers: QuestionAnswer[]): Promise<void>;
+>>>>>>> 856413466 (fix(desktop): complete #9167 write-dir panel against upstream main-v2 base)
   ReplayPendingPrompts(): Promise<void>;
   ReplayPendingPromptsForTab(tabID: string): Promise<void>;
   SetPlanMode(on: boolean): Promise<void>;
@@ -306,8 +327,6 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   SetToolApprovalMode(mode: string): Promise<void>;
   // Same drained-prompt-id contract as SetModeForTab.
   SetToolApprovalModeForTab(tabID: string, mode: string): Promise<string[] | void>;
-  // Per-session sub-agent delegation tier for a tab (light|balanced|aggressive).
-  SetSubagentPolicyForTab(tabID: string, policy: string): Promise<void>;
   // Atomically applies the controller-facing composer profile and reports any
   // approval prompts drained by the resulting tool-approval posture.
   SetComposerProfileForTab(tabID: string, collaborationMode: string, toolApprovalMode: string, goal: string): Promise<string[] | void>;
@@ -440,6 +459,15 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   PickSkillFolder(): Promise<string>;
   PickPluginFolder(): Promise<string>;
   PickGlobalWriteDir(): Promise<string>;
+  // Authorized write-directory management (#9167): query project/global/session
+  // write roots and add/remove granted directories.
+  QueryAuthorizedWriteDirs(): Promise<{ project: string[]; global: string[]; session: string[] }>;
+  AddAuthorizedWriteDir(scope: 0 | 1, dir: string): Promise<void>;
+  RemoveAuthorizedWriteDir(scope: 0 | 1, dir: string): Promise<void>;
+  // User-global common directories (Settings → Permissions): honored for every
+  // project/session without approval, including subdirectories.
+  AddGlobalWriteDir(dir: string): Promise<void>;
+  RemoveGlobalWriteDir(dir: string): Promise<void>;
   AddSkillPath(path: string): Promise<void>;
   RemoveSkillPath(path: string): Promise<void>;
   SetSkillPathEnabled(path: string, enabled: boolean): Promise<void>;
@@ -540,7 +568,6 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   SetMaxParallelWriters(n: number): Promise<void>;
   SetAutoPlan(mode: string): Promise<void>;
   SetDefaultToolApprovalMode(mode: string): Promise<void>;
-  SetDefaultSubagentPolicy(policy: string): Promise<void>;
   SetDefaultAutoRecoveryCheckpoint(enabled: boolean): Promise<void>;
 
   SaveProvider(p: ProviderView): Promise<void>;
@@ -678,7 +705,6 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   DeleteTopic(topicID: string): Promise<void>;
   TrashTopic(topicID: string): Promise<void>;
   SetTopicPinned(topicID: string, pinned: boolean): Promise<void>;
-  TrashTopicForce(topicID: string): Promise<void>;
   ContextPanel(tabID: string): Promise<ContextPanelInfo>;
   // New native-feel bindings (added with the desktop native-feel plan).
   ConfirmAction(req: NativeConfirmRequest): Promise<boolean>;
@@ -704,14 +730,15 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   AddRemoteForward(hostId: string, input: RemoteForwardInput): Promise<RemoteForwardView>;
   RemoveRemoteForward(hostId: string, forwardId: string): Promise<void>;
   OpenRemoteWorkspace(hostId: string, workspace: string): Promise<void>;
-  StopRemoteServer(hostId: string): Promise<void>;
-  RemoteServerStatus(hostId: string): Promise<RemoteServerView>;
-  RemoteServerLogs(hostId: string, tailLines: number): Promise<string>;
+  PickRemoteIdentityFile(): Promise<string>;
+  CheckRemotePlatform(hostId: string): Promise<void>;
+  StopRemoteServer(hostId: string, workspace: string): Promise<void>;
+  RemoteServerStatus(hostId: string, workspace: string): Promise<RemoteServerView>;
+  RemoteServerLogs(hostId: string, workspace: string, tailLines: number): Promise<string>;
   RemoteLastWorkspace(hostId: string): Promise<string>;
   ScanRemoteLegacyWorkbenchData(): Promise<RemoteLegacyWorkbenchData>;
   CleanRemoteLegacyWorkbenchData(target: "mirrors" | "trust"): Promise<void>;
 }
-
 // Compile-time drift check. Exclude<A, B> extracts keys in A that are missing
 // from B. If that set is non-empty, AssertNever<non-never> fails with
 // "Type 'X' does not satisfy the constraint 'never'".
@@ -772,11 +799,12 @@ function realApp(): AppBindings | undefined {
   return typeof window !== "undefined" ? window.go?.main?.App : undefined;
 }
 
-let mockSingleton: AppBindings | null = null;
-// Mock state for AuthorizedWriteDirs (browser preview #9167).
+// browser-preview state for the authorized write-directories panel (#9167).
 let mockWriteDirsProject: string[] = [];
 let mockWriteDirsSession: string[] = [];
 let mockWriteDirsGlobal: string[] = [];
+
+let mockSingleton: AppBindings | null = null;
 function getMock(): AppBindings {
   if (!mockSingleton) mockSingleton = makeMockApp();
   return mockSingleton;
@@ -1062,8 +1090,6 @@ export function onRemoteServer(cb: (s: RemoteServerView) => void): () => void {
   return registerMockRemoteListener("server", cb as (v: unknown) => void);
 }
 
-
-
 // Mock event fan-out so browser-dev and tsx tests can drive remote:* events
 // without a Wails runtime.
 type MockRemoteChannel = "status" | "forwards" | "server";
@@ -1098,7 +1124,7 @@ function bridgeBreadcrumb(method: string): string {
   if (/^(AddSkillPath|RemoveSkillPath|SetSkillPathEnabled|RefreshSkills|SetSkillEnabled|SetSkillImplicitInvocation|AcceptSkillSuggestion|AvailableSubagentTools|CreateSubagentProfile|UpdateSubagentProfile|DeleteSubagentProfile|SetSubagentProfileModel|SetSubagentProfileEffort|TrySubagentProfile|CancelTrySubagentProfile)/.test(method))
     return `skill ${method}`;
   if (/^(MinimiseMainWindow|ToggleMaximiseMainWindow|IsMainWindowMaximised|CloseMainWindow)$/.test(method)) return `window ${method}`;
-  if (/^(OpenProjectTab|OpenGlobalTab|OpenTopicSession|EnsureBlankTab|ActivateTopic|StartTopicActivation|EnsureBlankSurface|SetActiveTab|CloseTab|ReorderTabs|CreateTopic|RenameTopic|DeleteTopic|TrashTopic|TrashTopicForce|RenameProject|RemoveWorkspace|SwitchWorkspace|PickWorkspace|IsolatedWorktreeAvailability|CreateIsolatedWorktree|DeliveryWorktreeAvailability|CreateDeliveryWorktree)/.test(method))
+  if (/^(OpenProjectTab|OpenGlobalTab|OpenTopicSession|EnsureBlankTab|ActivateTopic|StartTopicActivation|EnsureBlankSurface|SetActiveTab|CloseTab|ReorderTabs|CreateTopic|RenameTopic|DeleteTopic|TrashTopic|RenameProject|RemoveWorkspace|SwitchWorkspace|PickWorkspace|IsolatedWorktreeAvailability|CreateIsolatedWorktree|DeliveryWorktreeAvailability|CreateDeliveryWorktree)/.test(method))
     return `nav ${method}`;
   return "";
 }
@@ -1436,6 +1462,7 @@ function mockExternalOpenerIconDataURL(color: string, label: string): string {
 }
 function makeMockApp(): AppBindings {
   const scenario = mockScenario();
+  const remoteProjects = createMockRemoteProjects();
   const freshMock = scenario === "fresh";
   const guidanceMock = scenario === "guidance", recoveryMock = typeof import.meta.env !== "undefined" && import.meta.env.DEV && scenario === "recovery";
   const runningMock = scenario === "running" || guidanceMock;
@@ -1889,7 +1916,6 @@ function makeMockApp(): AppBindings {
     statusBarStyle: "text",
     statusBarItems: [...DEFAULT_STATUS_BAR_ITEMS],
     defaultToolApprovalMode: "auto",
-    defaultSubagentPolicy: "light",
     checkUpdates: true,
     updateChannel: "stable",
     telemetry: true,
@@ -2009,7 +2035,7 @@ function makeMockApp(): AppBindings {
   };
   const cloneProjectTree = () => {
     if (mockProjectTree.length === 0) ensureMockGlobalFolder();
-    return JSON.parse(JSON.stringify(mockProjectTreeForDisplay())) as ProjectNode[];
+    return remoteProjects.appendToTree(JSON.parse(JSON.stringify(mockProjectTreeForDisplay())) as ProjectNode[]);
   };
   const projectChildren = (node: ProjectNode): ProjectNode[] => Array.isArray(node.children) ? node.children : [];
   const findMockTopic = (topicId: string): ProjectNode | null => {
@@ -2513,33 +2539,6 @@ function makeMockApp(): AppBindings {
     },
     async CloseMainWindow() {
       console.info("mock CloseMainWindow");
-    },
-    async SetOptimisticWrite(_enabled: boolean) {
-      // Mock hook kept for browser-preview API compatibility (#9213).
-    },
-    async QueryAuthorizedWriteDirs() {
-      return { project: [...mockWriteDirsProject], global: [...mockWriteDirsGlobal], session: [...mockWriteDirsSession] };
-    },
-    async AddAuthorizedWriteDir(scope: 0 | 1, dir: string) {
-      if (!dir?.trim()) throw new Error("directory is required");
-      if (scope === 1) {
-        if (!mockWriteDirsSession.includes(dir)) mockWriteDirsSession.push(dir);
-      } else {
-        if (!mockWriteDirsProject.includes(dir)) mockWriteDirsProject.push(dir);
-      }
-    },
-    async RemoveAuthorizedWriteDir(scope: 0 | 1, dir: string) {
-      if (!dir?.trim()) throw new Error("directory is required");
-      if (scope === 1) mockWriteDirsSession = mockWriteDirsSession.filter((d) => d !== dir);
-      else mockWriteDirsProject = mockWriteDirsProject.filter((d) => d !== dir);
-    },
-    async AddGlobalWriteDir(dir: string) {
-      if (!dir?.trim()) throw new Error("directory is required");
-      if (!mockWriteDirsGlobal.includes(dir)) mockWriteDirsGlobal.push(dir);
-    },
-    async RemoveGlobalWriteDir(dir: string) {
-      if (!dir?.trim()) throw new Error("directory is required");
-      mockWriteDirsGlobal = mockWriteDirsGlobal.filter((d) => d !== dir);
     },
     async Platform() {
       const override = browserPlatformOverride();
@@ -3214,10 +3213,6 @@ function makeMockApp(): AppBindings {
               : tab,
           );
           return drainMockApprovalPreviews(next);
-        },
-        async SetSubagentPolicyForTab(tabID, policy) {
-          const next = normalizeSubagentPolicy(policy);
-          mockTabs = mockTabs.map((tab) => (tab.id === tabID ? { ...tab, subagentPolicy: next } : tab));
         },
         async SetComposerProfileForTab(tabID, collaborationMode, toolApprovalMode, goal) {
           const nextCollaboration = normalizeCollaborationMode(collaborationMode);
@@ -3976,6 +3971,30 @@ function makeMockApp(): AppBindings {
     async PickGlobalWriteDir() {
       return "C:/tmp";
     },
+    async QueryAuthorizedWriteDirs() {
+      return { project: [...mockWriteDirsProject], global: [...mockWriteDirsGlobal], session: [...mockWriteDirsSession] };
+    },
+    async AddAuthorizedWriteDir(scope: 0 | 1, dir: string) {
+      if (!dir?.trim()) throw new Error("directory is required");
+      if (scope === 1) {
+        if (!mockWriteDirsSession.includes(dir)) mockWriteDirsSession.push(dir);
+      } else {
+        if (!mockWriteDirsProject.includes(dir)) mockWriteDirsProject.push(dir);
+      }
+    },
+    async RemoveAuthorizedWriteDir(scope: 0 | 1, dir: string) {
+      if (!dir?.trim()) throw new Error("directory is required");
+      if (scope === 1) mockWriteDirsSession = mockWriteDirsSession.filter((d) => d !== dir);
+      else mockWriteDirsProject = mockWriteDirsProject.filter((d) => d !== dir);
+    },
+    async AddGlobalWriteDir(dir: string) {
+      if (!dir?.trim()) throw new Error("directory is required");
+      if (!mockWriteDirsGlobal.includes(dir)) mockWriteDirsGlobal.push(dir);
+    },
+    async RemoveGlobalWriteDir(dir: string) {
+      if (!dir?.trim()) throw new Error("directory is required");
+      mockWriteDirsGlobal = mockWriteDirsGlobal.filter((d) => d !== dir);
+    },
     async AddSkillPath(path: string) {
       const dir = path.trim() || "~/my-skills";
       if (!capSkillRoots.some((r) => r.scope === "custom" && r.dir === dir)) {
@@ -4581,9 +4600,6 @@ function makeMockApp(): AppBindings {
     async SetDefaultToolApprovalMode(mode: string) {
       settings.defaultToolApprovalMode = normalizeToolApprovalMode(mode);
     },
-    async SetDefaultSubagentPolicy(policy: string) {
-      settings.defaultSubagentPolicy = normalizeSubagentPolicy(policy);
-    },
     async SetDefaultAutoRecoveryCheckpoint(_enabled: boolean) {
       // Legacy no-op; Auto Guard is always built into Auto.
     },
@@ -5085,7 +5101,11 @@ function makeMockApp(): AppBindings {
       settings.agent = { ...settings.agent, temperature, maxSteps, plannerMaxSteps, systemPrompt };
     },
     async SetCompactRatio(ratio: number) {
-      if (!Number.isFinite(ratio) || ratio < 0.65 || ratio > 0.85) throw new Error("compact ratio must be between 0.65 and 0.85");
+      if (!Number.isFinite(ratio)
+        || ratio < COMPACT_RATIO_MIN_PERCENT / 100
+        || ratio > COMPACT_RATIO_MAX_PERCENT / 100) {
+        throw new Error(`compact ratio must be between ${COMPACT_RATIO_MIN_PERCENT / 100} and ${COMPACT_RATIO_MAX_PERCENT / 100}`);
+      }
       settings.agent = { ...settings.agent, compactRatio: ratio };
     },
     async SetReasoningLanguage(lang: string) {
@@ -5528,9 +5548,6 @@ function makeMockApp(): AppBindings {
     async TrashTopic(topicID: string) {
       deleteMockTopic(topicID);
     },
-    async TrashTopicForce(topicID: string) {
-      deleteMockTopic(topicID);
-    },
     async SetTopicPinned(topicID: string, pinned: boolean) {
       setMockTopicPinned(topicID, pinned);
     },
@@ -5679,7 +5696,7 @@ function makeMockApp(): AppBindings {
     },
     async ScanSSHConfig() {
       return [
-        { label: "gpu-box", host: "gpu-box", port: 0, user: "", identityFile: "", proxyJump: "", defaultWorkspace: "", serveInstall: "auto", useSSHConfig: true, preserveExistingSettings: true },
+        { label: "gpu-box", host: "gpu-box", port: 0, user: "", identityFile: "", proxyJump: "", defaultWorkspace: "", serveInstall: "auto", credentialMode: "remote", useSSHConfig: true, preserveExistingSettings: true },
       ];
     },
     async ConnectRemoteHost(id) {
@@ -5735,11 +5752,13 @@ function makeMockApp(): AppBindings {
       __emitMockRemote("forwards", { hostId, forwards: mockRemoteForwards[hostId] });
     },
     async OpenRemoteWorkspace() {},
-    async StopRemoteServer(hostId) {
-      __emitMockRemote("server", { hostId, workspace: "", state: "stopped" });
+    async PickRemoteIdentityFile() { return "~/.ssh/id_ed25519"; },
+    async CheckRemotePlatform() {},
+    async StopRemoteServer(hostId, workspace) {
+      __emitMockRemote("server", { hostId, workspace, state: "stopped" });
     },
-    async RemoteServerStatus(hostId) {
-      return { hostId, workspace: "~/app", state: "stopped" };
+    async RemoteServerStatus(hostId, workspace) {
+      return { hostId, workspace, state: "stopped" };
     },
     async RemoteServerLogs() {
       return "mock serve log line 1\nmock serve log line 2\n";
@@ -5757,30 +5776,13 @@ function makeMockApp(): AppBindings {
       return "";
     },
     async SubmitExtensionForm() {},
+    ...remoteProjects.bindings,
     async CleanRemoteLegacyWorkbenchData() {},
   };
 }
 
-// Mock remote state, module-scoped so it survives across mock method calls.
-function mockRemoteHostView(id: string, input: RemoteHostInput, previous?: RemoteHostView): RemoteHostView {
-  return {
-    id,
-    label: input.label,
-    host: input.host,
-    port: input.port,
-    user: input.user,
-    identityFile: input.identityFile,
-    proxyJump: input.proxyJump,
-    defaultWorkspace: input.defaultWorkspace,
-    serveInstall: input.serveInstall,
-    useSSHConfig: input.useSSHConfig,
-    passwordSet: input.password ? true : input.clearPassword ? false : previous?.passwordSet,
-    keyPassphraseSet: input.keyPassphrase ? true : input.clearPassphrase ? false : previous?.keyPassphraseSet,
-  };
-}
-
 let mockRemoteHosts: RemoteHostView[] = [
-  { id: "demo", label: "demo", host: "192.168.1.10", port: 22, user: "dev", identityFile: "", proxyJump: "", defaultWorkspace: "~/app", serveInstall: "auto", useSSHConfig: false },
+  { id: "demo", label: "demo", host: "192.168.1.10", port: 22, user: "dev", identityFile: "", proxyJump: "", defaultWorkspace: "~/app", serveInstall: "auto", credentialMode: "remote", useSSHConfig: false },
 ];
-const mockRemoteConn: Record<string, RemoteConnectionStatus["state"]> = {};
+const mockRemoteConn: Record<string, RemoteConnectionStatus["state"]> = { demo: "connected" };
 const mockRemoteForwards: Record<string, RemoteForwardView[]> = {};

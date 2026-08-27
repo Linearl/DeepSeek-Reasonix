@@ -1,11 +1,11 @@
 import { lazy, memo, Suspense, startTransition, useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { ArrowRight, BrainCircuit, Check, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, Network, PanelBottom, Play, Power, QrCode, RefreshCw, Send, ShieldCheck, SlidersHorizontal, Trash2, Volume2 } from "lucide-react";
+import { ArrowRight, BrainCircuit, Check, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, ShieldCheck, SlidersHorizontal, Trash2, Volume2 } from "lucide-react";
 import { asArray } from "../lib/array";
 import { ShellInterpreterFields } from "./SettingsShellSupport";
 import { CHANNEL_ICONS } from "./channelIcons";
 import { botAccessEntryCount, botAccessReady, botConnectionCredentialSummary, botConnectionLabel, botConnectionScopeLabel, botConnectionSecretEnv, botConnectionSecretPatch, botInstallTargetForConnection, botInstallTargetMatchesConnection, botTargetHint, botTargetLabel, diagnosticMessage, diagnosticReportDetail, firstConnectionRemote, formatInstallTimeLeft, formatInstallUserCode, qqBotAdded, type BotInstallTarget, type BotOfficialInstallTarget } from "./botConnectionSettings";
 import { useDeferredClose } from "../lib/useMountTransition";
-import { app, openExternal } from "../lib/bridge";
+import { app, COMPACT_RATIO_MAX_PERCENT, COMPACT_RATIO_MIN_PERCENT, openExternal } from "../lib/bridge";
 import { normalizeLangPref, useI18n, useT, type DictKey, type LangPref } from "../lib/i18n";
 import { apiKeyEnvFromProviderName, createLatestRequestGate, inferredVisionModels, mergedFetchedProviderModels, mergeProviderModelContextWindows, providerApiKeyEnvForSave, providerDefaultModel, providerIsConfigured, providerModelCandidates, providerModelContextWindowDrafts, providerModelContextWindowIsSmall, providerRequiresKey } from "../lib/providerModels";
 import { cachedFetchProviderModels, invalidateProviderCacheByAPIKeyEnv, shouldSkipAutoRefresh } from "../lib/providerModelCache";
@@ -52,7 +52,7 @@ import { getDisplayMode, onDisplayModeChange, setDisplayMode as setLocalDisplayM
 import { getProcessFoldPreference, onProcessFoldPreferenceChange, setProcessFoldPreference, type ProcessFoldPreference } from "../lib/processFoldPreference";
 import { applyReasoningDisplayMode, useReasoningDisplayMode, type ReasoningDisplayMode } from "../lib/reasoningDisplayPreference";
 import { normalizeStatusBarItems, type StatusBarItemId } from "../lib/statusBarItems";
-import { normalizeSubagentPolicy, normalizeToolApprovalMode } from "../lib/types";
+import { normalizeToolApprovalMode } from "../lib/types";
 import {
   comboFromKeyboardEvent,
   detectShortcutPlatform,
@@ -870,7 +870,6 @@ const THINKING_MODES: readonly string[] = ["", "enabled", "disabled", "adaptive"
 const PROXY_TYPES = ["http", "https", "socks5", "socks5h"] as const;
 const LANGUAGE_PREFS: LangPref[] = ["", "zh", "en"];
 const TOOL_APPROVAL_MODES = ["ask", "auto", "yolo"] as const;
-const SUBAGENT_POLICIES = ["light", "balanced", "aggressive"] as const;
 const BOT_TOOL_APPROVAL_MODES = ["", "ask", "auto", "yolo"] as const;
 const BOT_QUEUE_MODES = ["steer", "followup", "collect", "interrupt"] as const;
 const BOT_QUEUE_DROPS = ["summarize", "old", "new"] as const;
@@ -1476,7 +1475,6 @@ function normalizeSettingsView(view: SettingsView | null | undefined): SettingsV
     bot: normalizeBotSettings(view.bot),
     autoPlan: "off",
     defaultToolApprovalMode: normalizeToolApprovalMode(view.defaultToolApprovalMode),
-    defaultSubagentPolicy: normalizeSubagentPolicy(view.defaultSubagentPolicy),
     autoApproveTools: Boolean(view.autoApproveTools ?? view.bypass),
     bypass: Boolean(view.autoApproveTools ?? view.bypass),
     desktopLanguage: normalizeLangPref(view.desktopLanguage),
@@ -1638,7 +1636,6 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
   useEffect(() => onDisplayModeChange((mode) => setDisplayMode(mode)), []);
   useEffect(() => onProcessFoldPreferenceChange((pref) => setProcessFold(pref)), []);
   const defaultToolApprovalMode = normalizeToolApprovalMode(s.defaultToolApprovalMode);
-  const defaultSubagentPolicy = normalizeSubagentPolicy(s.defaultSubagentPolicy);
   const saveReasoningDisplayMode = useCallback(async (mode: ReasoningDisplayMode) => {
     const ok = await apply(() => app.SetReasoningDisplayMode(mode));
     if (ok) applyReasoningDisplayMode(mode);
@@ -1800,20 +1797,6 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
               onClick={() => void apply(() => app.SetDefaultToolApprovalMode(mode))}
             >
               {t(`settings.defaultToolApprovalMode.${mode}`)}
-            </button>
-          ))}
-        </div>
-      </SettingsField>
-      <SettingsField label={t("settings.defaultSubagentPolicy")} hint={t("settings.defaultSubagentPolicyHint")} icon={<Network size={18} />}>
-        <div className="set-seg">
-          {SUBAGENT_POLICIES.map((policy) => (
-            <button
-              key={policy}
-              className={`set-seg__btn${defaultSubagentPolicy === policy ? " set-seg__btn--on" : ""}`}
-              disabled={busy}
-              onClick={() => void apply(() => app.SetDefaultSubagentPolicy(policy))}
-            >
-              {t(`settings.defaultSubagentPolicy.${policy}`)}
             </button>
           ))}
         </div>
@@ -4290,8 +4273,8 @@ function ModelsSection({ s, busy, apply, backgroundApply, initialFocus }: Models
   const compactRatioDraftPercent = Number(compactRatioDraft);
   const compactRatioDraftValid = compactRatioDraft !== ""
     && Number.isFinite(compactRatioDraftPercent)
-    && compactRatioDraftPercent >= 30
-    && compactRatioDraftPercent <= 85;
+    && compactRatioDraftPercent >= COMPACT_RATIO_MIN_PERCENT
+    && compactRatioDraftPercent <= COMPACT_RATIO_MAX_PERCENT;
   const compactRatioDraftDirty = compactRatioDraftValid
     && Math.abs(compactRatioDraftPercent / 100 - compactRatio) > 0.0001;
   const defaultModel = defaultRef.startsWith(`${defaultProvider}/`) ? defaultRef.slice(defaultProvider.length + 1) : "";
@@ -4647,8 +4630,8 @@ function ModelsSection({ s, busy, apply, backgroundApply, initialFocus }: Models
                         id="settings-compact-ratio-custom"
                         className="mem-input set-narrow"
                         type="number"
-                        min={30}
-                        max={85}
+                        min={COMPACT_RATIO_MIN_PERCENT}
+                        max={COMPACT_RATIO_MAX_PERCENT}
                         step={0.1}
                         inputMode="decimal"
                         value={compactRatioDraft}
@@ -7329,17 +7312,6 @@ function PermissionsSection({ s, busy, apply }: SectionProps) {
           <option value="allow">{t("settings.modeAllow")}</option>
           <option value="deny">{t("settings.modeDeny")}</option>
         </select>
-      </SettingsField>
-      <SettingsField label={t("settings.optimisticWrite")} hint={t("settings.optimisticWriteHint")}>
-        <label className="set-check set-check--inline">
-          <input
-            type="checkbox"
-            checked={!s.sandbox?.optimisticWrite}
-            disabled={busy}
-            onChange={(e) => void apply(() => app.SetOptimisticWrite(!e.target.checked))}
-          />
-          {t("settings.optimisticWrite")}
-        </label>
       </SettingsField>
     </SettingsSection>
     <SettingsSection title={t("settings.permissionRules")} description={t("settings.ruleForm")}>
