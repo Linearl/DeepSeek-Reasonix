@@ -442,7 +442,7 @@ func TestDesktopNewSessionDefaultsSkipsKeylessDefaultModel(t *testing.T) {
 		t.Fatalf("save user config: %v", err)
 	}
 
-	model, _ := desktopNewSessionDefaults("global", "")
+	model, _, _ := desktopNewSessionDefaults("global", "")
 	if model != "test-prov/test-model" {
 		t.Fatalf("new session model = %q, want fallback to configured provider test-prov/test-model", model)
 	}
@@ -460,7 +460,7 @@ func TestDesktopNewSessionDefaultsKeepsConfiguredDefaultModel(t *testing.T) {
 		t.Fatalf("save user config: %v", err)
 	}
 
-	model, _ := desktopNewSessionDefaults("global", "")
+	model, _, _ := desktopNewSessionDefaults("global", "")
 	if model != "deepseek-pro/deepseek-v4-pro" {
 		t.Fatalf("new session model = %q, want configured default verbatim", model)
 	}
@@ -480,7 +480,7 @@ func TestDesktopNewSessionDefaultsKeepsKeylessDefaultWhenNothingConfigured(t *te
 
 	// With no configured provider at all, the raw default must survive so the
 	// boot-time missing-key notice still tells the user what to fix.
-	model, _ := desktopNewSessionDefaults("global", "")
+	model, _, _ := desktopNewSessionDefaults("global", "")
 	if model != "deepseek-pro/deepseek-v4-pro" {
 		t.Fatalf("new session model = %q, want raw keyless default preserved", model)
 	}
