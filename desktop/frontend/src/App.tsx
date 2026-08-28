@@ -8,7 +8,6 @@ import {
   Minus,
   Search,
   ListTree,
-  History,
   Server,
   Square,
   SquarePen,
@@ -1213,7 +1212,6 @@ export default function App() {
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const [tasksOpen, setTasksOpen] = useState<false | "session" | "all">(false);
   const [questionSearchOpen, setQuestionSearchOpen] = useState(false);
-  const [questionHistoryOpen, setQuestionHistoryOpen] = useState(false);
   const [liveSidebarWidth, setLiveSidebarWidth] = useState<number | null>(null);
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window === "undefined" ? 1440 : window.innerWidth));
   const [viewportHeight, setViewportHeight] = useState(() => (typeof window === "undefined" ? 720 : window.innerHeight));
@@ -4817,17 +4815,6 @@ export default function App() {
                   <ListTree size={15} />
                 </button>
               </Tooltip>
-              <Tooltip label={t("questionHistory.label")}>
-                <button
-                  className="topicbar__action-btn topicbar__action-btn--icon topicbar__action-btn--utility"
-                  type="button"
-                  aria-label={t("questionHistory.label")}
-                  aria-expanded={questionHistoryOpen}
-                  onClick={() => setQuestionHistoryOpen((open) => !open)}
-                >
-                  <History size={15} />
-                </button>
-              </Tooltip>
               {shouldMountExternalOpener(activeTab, Boolean(sidebarImDetailConnection)) && activeTab && (
                 <ExternalOpener key={activeTab.id} tabId={activeTab.id} dismissSignal={transientOverlayDismissSignal} />
               )}
@@ -4958,8 +4945,6 @@ export default function App() {
                       footerHeight={footerHeight}
                       questionSearchOpen={questionSearchOpen}
                       onCloseQuestionSearch={() => setQuestionSearchOpen(false)}
-                      questionHistoryOpen={questionHistoryOpen}
-                      onCloseQuestionHistory={() => setQuestionHistoryOpen(false)}
                       onPrompt={handleTranscriptPrompt}
                       onDeliveryContinue={() => void handleDeliveryContinue()}
                       onAcceptDelivery={() => void app.AcceptDeliveryToTab(activeTabIdRef.current ?? "")}

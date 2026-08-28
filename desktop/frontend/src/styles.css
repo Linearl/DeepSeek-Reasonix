@@ -4166,15 +4166,6 @@ a[href] {
   color: var(--fg-muted);
   font-size: 12px;
 }
-.question-history__title {
-  flex: 1;
-  min-width: 0;
-  color: var(--fg);
-  font-size: 13px;
-}
-.question-history__list {
-  scroll-behavior: smooth;
-}
 @keyframes jump-bar-in {
   to {
     opacity: 1;
