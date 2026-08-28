@@ -2180,6 +2180,8 @@ export const zhTW: Record<DictKey, string> = {
   "questionSearch.placeholder": "搜尋歷史提問…",
   "questionSearch.empty": "沒有符合的提問",
   "questionSearch.count": "共 {shown} / {total} 條提問",
+  "questionSearch.loadingOlder": "正在載入更早歷史…",
+  "questionSearch.olderAvailable": "捲動到頂部載入更早",
   "questionNav.progress": "問題 {current} / {total}",
   "questionNav.jump": "跳轉到問題 {n}",
   "questionNav.hint": "點擊跳轉到這次提問",

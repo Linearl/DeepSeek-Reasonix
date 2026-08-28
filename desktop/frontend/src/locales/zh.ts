@@ -3090,6 +3090,8 @@ export const zh: Record<DictKey, string> = {
   "questionSearch.placeholder": "搜索历史提问…",
   "questionSearch.empty": "没有匹配的提问",
   "questionSearch.count": "共 {shown} / {total} 条提问",
+  "questionSearch.loadingOlder": "正在加载更早历史…",
+  "questionSearch.olderAvailable": "滚动到顶部加载更早",
   "questionNav.progress": "问题 {current} / {total}",
   "questionNav.jump": "跳转到问题 {n}",
   "questionNav.hint": "点击跳转到这次提问",

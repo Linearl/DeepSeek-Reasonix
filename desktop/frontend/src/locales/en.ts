@@ -3087,6 +3087,8 @@ export const en = {
   "questionSearch.placeholder": "Search historical questions…",
   "questionSearch.empty": "No matching questions",
   "questionSearch.count": "{shown} / {total} questions",
+  "questionSearch.loadingOlder": "Loading earlier history…",
+  "questionSearch.olderAvailable": "Scroll to top to load earlier",
   "questionNav.progress": "Question {current} / {total}",
   "questionNav.jump": "Jump to question {n}",
   "questionNav.hint": "Click to jump to this question",

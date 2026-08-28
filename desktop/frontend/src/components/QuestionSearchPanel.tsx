@@ -1,9 +1,10 @@
 // QuestionSearchPanel: a callable panel to search and jump to prior user
 // questions in a long session. Top: a filter input. Below: cards for each
 // matching question, clickable to jump. The list scrolls when there are many
-// matches.
+// matches. Scrolling to the top of the list requests older history when the
+// session still has unloaded turns.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent as ReactUIEvent } from "react";
 import { Search, X } from "lucide-react";
 
 import { useT } from "../lib/i18n";
@@ -23,12 +24,19 @@ export function QuestionSearchPanel({
   questions,
   totalQuestions,
   onJump,
+  hasOlderHistory = false,
+  loadingOlderHistory = false,
+  onReachTop,
 }: {
   open: boolean;
   onClose: () => void;
   questions: QuestionAnchor[];
   totalQuestions: number;
   onJump: (question: QuestionAnchor) => void;
+  hasOlderHistory?: boolean;
+  loadingOlderHistory?: boolean;
+  /** Called when the list scrolls to the top so older history can be paged in. */
+  onReachTop?: () => void;
 }) {
   const t = useT();
   const [query, setQuery] = useState("");
@@ -43,6 +51,28 @@ export function QuestionSearchPanel({
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [open]);
+
+  const listRef = useRef<HTMLDivElement>(null);
+  const reachTopFiredRef = useRef(false);
+
+  // Fire onReachTop once when the list sits at the very top; the latch rearms
+  // as soon as the user scrolls away so a later return can page in again.
+  const handleScroll = useCallback((event: ReactUIEvent<HTMLDivElement>) => {
+    const el = event.currentTarget;
+    if (el.scrollTop > 8) {
+      reachTopFiredRef.current = false;
+      return;
+    }
+    if (reachTopFiredRef.current) return;
+    reachTopFiredRef.current = true;
+    onReachTop?.();
+  }, [onReachTop]);
+
+  // Rearm the reach-top latch when the panel reopens or new history lands.
+  useEffect(() => {
+    if (!open) return;
+    reachTopFiredRef.current = false;
+  }, [open, questions.length]);
 
   // Close on Escape or when clicking outside the panel.
   useEffect(() => {
@@ -94,7 +124,7 @@ export function QuestionSearchPanel({
           <X size={15} aria-hidden="true" />
         </button>
       </div>
-      <div className="question-search__results">
+      <div className="question-search__results" ref={listRef} onScroll={handleScroll}>
         {filtered.length === 0 && (
           <div className="question-search__empty">{t("questionSearch.empty")}</div>
         )}
@@ -112,7 +142,9 @@ export function QuestionSearchPanel({
         ))}
       </div>
       <div className="question-search__foot">
-        {t("questionSearch.count", { shown: filtered.length, total: totalQuestions })}
+        {loadingOlderHistory ? t("questionSearch.loadingOlder") : t("questionSearch.count", { shown: filtered.length, total: totalQuestions })}
+        {hasOlderHistory && !loadingOlderHistory && " · "}
+        {hasOlderHistory && !loadingOlderHistory && t("questionSearch.olderAvailable")}
       </div>
     </div>
   );

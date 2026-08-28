@@ -1056,6 +1056,9 @@ export function Transcript({
             questions={questions}
             totalQuestions={totalQuestions}
             onJump={handleJumpToQuestion}
+            hasOlderHistory={hasOlderHistory}
+            loadingOlderHistory={loadingOlderHistory}
+            onReachTop={onLoadOlderHistory ? () => void onLoadOlderHistory() : undefined}
           />
         </Suspense>
       )}
