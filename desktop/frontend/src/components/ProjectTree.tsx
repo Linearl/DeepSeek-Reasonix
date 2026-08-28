@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
-import { Archive, ArrowDown, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, Cloud } from "lucide-react";
+import { Archive, ArchiveX, ArrowDown, Pencil, Plus, Folder, FolderPlus, FolderInput, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, GitMerge, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, Cloud, SwatchBook } from "lucide-react";
 import { asArray } from "../lib/array";
 import { useToast } from "../lib/toast";
 import { app } from "../lib/bridge";
@@ -1155,6 +1155,39 @@ export function ProjectTree({
       };
       const topicMenuItems: ContextMenuItem[] = [
         ...organization.topicMenuItems(node, t),
+        ...(isSessionNode && node.sessionPath && !node.running
+          ? [
+              {
+                key: "consolidate-recovery-copies",
+                icon: <GitMerge size={13} />,
+                label: t("projectTree.consolidateRecoveryCopies"),
+                disabled: !node.sessionPath || node.running,
+                onSelect: () => {
+                  const sessionPath = node.sessionPath;
+                  if (!sessionPath) return;
+                  void (async () => {
+                    try {
+                      const report = await app.ConsolidateSessionRecoveryCopies(sessionPath);
+                      if (report.promoted) {
+                        showToast(
+                          t("projectTree.consolidateDone", { messages: report.mainMessageCount, count: report.trashed.length }),
+                          "info",
+                        );
+                      } else if (report.trashed.length > 0) {
+                        showToast(t("projectTree.consolidateFolded", { count: report.trashed.length }), "info");
+                      } else {
+                        showToast(t("projectTree.consolidateNothing"), "info");
+                      }
+                      await refresh();
+                      await onTopicsChanged?.();
+                    } catch (err) {
+                      showToast(err instanceof Error ? err.message : String(err), "error");
+                    }
+                  })();
+                },
+              },
+            ]
+          : []),
         ...(projectTreeTopicMenuOffersPin(variant)
           ? [
               {

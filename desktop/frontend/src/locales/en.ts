@@ -1318,6 +1318,10 @@ export const en = {
   "recovery.role.normal": "original",
 
   // project tree
+  "projectTree.consolidateRecoveryCopies": "Merge recovery copies",
+  "projectTree.consolidateDone": "Recovery copies merged: main keeps {messages} messages, {count} copies archived",
+  "projectTree.consolidateFolded": "Archived {count} redundant recovery copies",
+  "projectTree.consolidateNothing": "No recovery copies to merge",
   "projectTree.workspaceTitle": "Projects",
   "projectTree.pinnedTitle": "Pinned",
   "projectTree.searchPlaceholder": "Search projects or sessions",
