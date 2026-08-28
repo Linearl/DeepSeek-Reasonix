@@ -101,6 +101,41 @@ Use `go test ./path/to/target/` to detect cycles **before** pushing. A `[setup f
 - **One force-push per round of review feedback.** Multiple force-pushes destroy review history and confuse reviewers.
 - **Keep the PR diff minimal.** Only the files relevant to the PR's purpose — no stray changes from other branches.
 - **Amend, don't add commits, for review feedback** — keeps the commit history clean.
+- **Add files by explicit path.** `git add <file1> <file2>` (or `git add -u` for tracked files only). Never `git add -A` / `git add .` — those stage other branches' or sessions' uncommitted work. Always run `git status --short` before committing and confirm the staged set matches what this PR is about.
+
+## Git discipline for parallel agents
+
+Multiple subagents and Reasonix sessions may write to the same worktree at once. These rules keep that safe.
+
+### Committing
+- Commit only files you changed in this session.
+- Always include `fixes #<n>` / `closes #<n>` in the commit message when an issue or PR exists.
+- Stage files by explicit path (`git add internal/x/y.go internal/x/y_test.go`). Never `git add -A` / `git add .` — those sweep up other agents' uncommitted work.
+- Run `git status --short` before committing and verify the staged set is only your files.
+
+### Forbidden Git operations
+- `git reset --hard` — destroys uncommitted changes
+- `git checkout .` — destroys uncommitted changes
+- `git clean -fd` — deletes untracked files
+- `git stash` — stashes all changes including other agents' work
+- `git add -A` / `git add .` — stages other agents' uncommitted work
+- `git commit --no-verify` — bypasses required checks; never allowed
+
+### Safe workflow
+```bash
+git status --short                          # 1. see what is yours
+git add <file1> <file2> ...                  # 2. stage explicit paths only
+git commit -m "fix(scope): description"      # 3. commit
+git pull --rebase && git push                # 4. push (never reset/checkout)
+```
+
+### On rebase conflict
+- Resolve conflicts only in files you modified.
+- If the conflict is in a file you did not modify, abort and ask the user.
+- Never force push.
+
+### User override
+If user instructions conflict with these rules, ask for confirmation before executing.
 
 ## PR metadata gates
 
