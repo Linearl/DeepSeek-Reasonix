@@ -53,8 +53,12 @@ type ConsolidationReport struct {
 	WinnerPath         string // "" when the main transcript already was the winner
 	Promoted           bool
 	NormalizedMain     bool // an older-format main was rewritten in place first
-	MainMessageCount   int
-	WinnerMessageCount int
+	// BlockedByDivergence reports that the fullest copy and the main
+	// transcript each hold turns the other lacks (typical after a main-side
+	// compaction). Nothing was merged; the caller may retry with Force.
+	BlockedByDivergence bool
+	MainMessageCount    int
+	WinnerMessageCount  int
 	Trashed            []string
 	SkippedNotCovered  []string
 	SkippedUnloadable  []string
@@ -71,6 +75,24 @@ func validateConsolidationTarget(mainPath string) error {
 		return fmt.Errorf("consolidation targets the main transcript, not a recovery copy: %s", mainPath)
 	}
 	return nil
+}
+
+// normalizeTranscriptInPlaceIfDirty rewrites an older-format transcript in
+// place with its normalized view — exactly the rewrite the session's next
+// successful save would perform. Returns whether a rewrite happened. Load
+// failures other than "needs normalization" are returned untouched.
+func normalizeTranscriptInPlaceIfDirty(path string) (bool, error) {
+	s, err := LoadSession(path)
+	if err != nil || s == nil {
+		return false, err
+	}
+	if !s.normalizedDirty {
+		return false, nil
+	}
+	if err := s.SaveRewrite(path); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // recoveryCopiesForMain lists the recovery copies that belong to mainPath by
@@ -166,12 +188,28 @@ func ListSessionRecoveryBranches(mainPath string) ([]RecoveryBranchCandidate, er
 	return out, nil
 }
 
-// ConsolidateSessionRecoveryBranches merges the recovery copies of mainPath:
-// the fullest loadable copy becomes the canonical main transcript, the
-// previous main is archived whole under the recoverable .trash, and every
+// ConsolidateOptions tunes one consolidation run.
+type ConsolidateOptions struct {
+	// Force lets a winner that does NOT cover the current main transcript
+	// still be promoted. The previous main is archived whole under the
+	// recoverable .trash, so the user can always roll back; nothing is
+	// hard-deleted. Meant for an explicit user confirmation after the
+	// engine reported BlockedByDivergence.
+	Force bool
+}
+
+// ConsolidateSessionRecoveryBranches merges the recovery copies of mainPath
+// with default (conservative) options.
+func ConsolidateSessionRecoveryBranches(mainPath string) (ConsolidationReport, error) {
+	return ConsolidateSessionRecoveryBranchesWithOptions(mainPath, ConsolidateOptions{})
+}
+
+// ConsolidateSessionRecoveryBranchesWithOptions merges the recovery copies of
+// mainPath: the fullest loadable copy becomes the canonical main transcript,
+// the previous main is archived whole under the recoverable .trash, and every
 // copy fully covered by the winner is folded into the same trash. Copies with
 // unique content are preserved and reported. Nothing is ever hard-deleted.
-func ConsolidateSessionRecoveryBranches(mainPath string) (ConsolidationReport, error) {
+func ConsolidateSessionRecoveryBranchesWithOptions(mainPath string, opts ConsolidateOptions) (ConsolidationReport, error) {
 	mainPath = filepath.Clean(strings.TrimSpace(mainPath))
 	report := ConsolidationReport{MainPath: mainPath}
 	if err := validateConsolidationTarget(mainPath); err != nil {
@@ -190,16 +228,11 @@ func ConsolidateSessionRecoveryBranches(mainPath string) (ConsolidationReport, e
 
 	mainCand, mainOK := recoveryConsolidationCandidate(mainPath, true)
 	if !mainOK {
-		// Long-lived transcripts loaded from an older format normalize dirty:
-		// the in-memory view differs from the bytes on disk until the next
-		// successful save. The ordinary upstream path clears this on the
-		// session's next autosave; consolidation forces that same rewrite now
-		// (the lease check above already proved no runtime is writing), then
-		// re-reads the transcript.
-		if session, loadErr := LoadSession(mainPath); loadErr == nil && session != nil && session.normalizedDirty {
-			if rewriteErr := session.SaveRewrite(mainPath); rewriteErr != nil {
-				return report, fmt.Errorf("could not normalize the main transcript before consolidating %s: %w", mainPath, rewriteErr)
-			}
+		normalized, normErr := normalizeTranscriptInPlaceIfDirty(mainPath)
+		if normErr != nil {
+			return report, fmt.Errorf("could not normalize the main transcript before consolidating %s: %w", mainPath, normErr)
+		}
+		if normalized {
 			report.NormalizedMain = true
 			if mainCand, mainOK = recoveryConsolidationCandidate(mainPath, true); !mainOK {
 				return report, fmt.Errorf("main transcript still failed a conservative load after normalization %s", mainPath)
@@ -215,8 +248,18 @@ func ConsolidateSessionRecoveryBranches(mainPath string) (ConsolidationReport, e
 	for _, copy := range copies {
 		cand, ok := recoveryConsolidationCandidate(copy, false)
 		if !ok {
-			report.SkippedUnloadable = append(report.SkippedUnloadable, copy)
-			continue
+			// Recovery forks usually carry the same older-format payload as
+			// the main they forked from; normalize them the same way so they
+			// can participate instead of being silently skipped.
+			if normalized, normErr := normalizeTranscriptInPlaceIfDirty(copy); normErr == nil && normalized {
+				if cand, ok = recoveryConsolidationCandidate(copy, false); !ok {
+					report.SkippedUnloadable = append(report.SkippedUnloadable, copy)
+					continue
+				}
+			} else {
+				report.SkippedUnloadable = append(report.SkippedUnloadable, copy)
+				continue
+			}
 		}
 		cands = append(cands, cand)
 	}
@@ -237,7 +280,17 @@ func ConsolidateSessionRecoveryBranches(mainPath string) (ConsolidationReport, e
 		if SessionLeaseHeld(winner.Path) {
 			return report, ErrSessionLeaseHeldForConsolidation
 		}
-		if err := promoteRecoveryCopyToMain(mainPath, winner.Path, dir); err != nil {
+		// A main that went through compaction holds a summarized transcript
+		// whose prefix no longer matches the pre-compaction recovery fork, so
+		// neither side covers the other. Refuse with a structured report the
+		// UI can turn into an explicit confirmation instead of failing.
+		if !SessionContentCovers(winner.Path, mainPath) && !opts.Force {
+			report.BlockedByDivergence = true
+			report.WinnerPath = winner.Path
+			report.WinnerMessageCount = winner.MessageCount
+			return report, nil
+		}
+		if err := promoteRecoveryCopyToMain(mainPath, winner.Path, dir, opts.Force); err != nil {
 			return report, err
 		}
 		report.Promoted = true
@@ -268,7 +321,7 @@ func ConsolidateSessionRecoveryBranches(mainPath string) (ConsolidationReport, e
 // operation; the previous main is archived as one recoverable .trash entry
 // (transcript plus every sidecar) before the winner takes over, so a crash
 // between the two renames still leaves a complete rollback artifact.
-func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string) error {
+func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) error {
 	paths := []string{mainPath, winnerPath}
 	sort.Strings(paths)
 	guards := make([]*SessionRemovalGuard, 0, len(paths))
@@ -290,9 +343,13 @@ func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string) error {
 
 	// The swap direction is only safe when the winner contains the whole
 	// current main transcript; otherwise main-only turns would survive only
-	// inside the trash archive.
+	// inside the trash archive. Force skips this refusal after an explicit
+	// user confirmation — the previous main is still archived whole, so the
+	// swapped-out content stays recoverable.
 	if !SessionContentCovers(winnerPath, mainPath) {
-		return ErrMainNotCoveredByWinner
+		if !force {
+			return ErrMainNotCoveredByWinner
+		}
 	}
 
 	legacyMeta, legacyOK, err := LoadBranchMeta(mainPath)

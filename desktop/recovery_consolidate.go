@@ -24,7 +24,17 @@ func (a *App) ConsolidateTopicRecoveryCopies(scope, workspaceRoot, topicID strin
 	if strings.TrimSpace(path) == "" {
 		return agent.ConsolidationReport{}, friendlySessionFileError(errors.New("could not resolve the main transcript of this topic"))
 	}
-	return a.ConsolidateSessionRecoveryCopies(path)
+	return a.consolidateSessionRecoveryCopies(path, false)
+}
+
+// ForceConsolidateTopicRecoveryCopies mirrors ForceConsolidateSessionRecoveryCopies
+// for topic-resolved sessions.
+func (a *App) ForceConsolidateTopicRecoveryCopies(scope, workspaceRoot, topicID string) (agent.ConsolidationReport, error) {
+	path := a.catalogSessionPathForTopic(scope, workspaceRoot, topicID)
+	if strings.TrimSpace(path) == "" {
+		return agent.ConsolidationReport{}, friendlySessionFileError(errors.New("could not resolve the main transcript of this topic"))
+	}
+	return a.consolidateSessionRecoveryCopies(path, true)
 }
 
 // ConsolidateSessionRecoveryCopies is the desktop entry point behind the
@@ -36,6 +46,18 @@ func (a *App) ConsolidateTopicRecoveryCopies(scope, workspaceRoot, topicID strin
 // path (#9468/#9469). A running runtime keeps its lease and blocks the
 // merge until it is stopped.
 func (a *App) ConsolidateSessionRecoveryCopies(path string) (agent.ConsolidationReport, error) {
+	return a.consolidateSessionRecoveryCopies(path, false)
+}
+
+// ForceConsolidateSessionRecoveryCopies runs the merge after an explicit user
+// confirmation that the winner may replace a main transcript it does not
+// fully cover (typical after a main-side compaction). The previous main is
+// still archived whole under the recoverable trash.
+func (a *App) ForceConsolidateSessionRecoveryCopies(path string) (agent.ConsolidationReport, error) {
+	return a.consolidateSessionRecoveryCopies(path, true)
+}
+
+func (a *App) consolidateSessionRecoveryCopies(path string, force bool) (agent.ConsolidationReport, error) {
 	dir := a.activeSessionDir()
 	sessionPath, _, err := validateSessionPath(dir, path)
 	if err != nil {
@@ -48,7 +70,7 @@ func (a *App) ConsolidateSessionRecoveryCopies(path string) (agent.Consolidation
 		defer a.lockRuntimeMutation("consolidate-recovery-copies")()
 		a.sessionRemovalMu.Lock()
 		defer a.sessionRemovalMu.Unlock()
-		report, err := agent.ConsolidateSessionRecoveryBranches(sessionPath)
+		report, err := agent.ConsolidateSessionRecoveryBranchesWithOptions(sessionPath, agent.ConsolidateOptions{Force: force})
 		if err != nil {
 			switch {
 			case errors.Is(err, agent.ErrNoRecoveryBranches):
