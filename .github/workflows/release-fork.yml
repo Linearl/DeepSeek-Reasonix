@@ -1,0 +1,151 @@
+name: Release fork desktop
+
+# Minimal fork release pipeline: builds unsigned desktop installers/archives
+# and uploads them to a GitHub Release in the fork repository.
+# It intentionally does NOT:
+#   - sign with MINISIGN / SignPath / Apple notarization
+#   - publish latest.json or mirror to dl.reasonix.io / crash.reasonix.io
+#   - run the official release orchestrator
+#
+# Usage:
+#   1. Push main-v2-stable to the fork.
+#   2. Create a tag like `desktop-v1.31.3+fork` on the fork.
+#   3. Run this workflow manually with that tag.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Fork desktop tag to publish (e.g. desktop-v1.31.3+fork)"
+        required: true
+        type: string
+
+permissions:
+  contents: write # create the release and upload artifacts
+
+jobs:
+  resolve:
+    name: resolve fork release
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+      channel: ${{ steps.release.outputs.channel }}
+    steps:
+      - name: Resolve version
+        id: release
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          VERSION="${TAG#desktop-}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "channel=stable" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: build (${{ matrix.name }})
+    needs: [resolve]
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-14, platform: darwin/universal, name: darwin-universal }
+          - { runner: windows-latest, platform: windows/amd64, name: windows-amd64 }
+          - { runner: windows-11-arm, platform: windows/arm64, name: windows-arm64 }
+          - { runner: ubuntu-22.04, platform: linux/amd64, name: linux-amd64 }
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: desktop/go.mod
+          cache: true
+          cache-dependency-path: desktop/go.sum
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - uses: pnpm/action-setup@v6.0.9
+        with:
+          version: 10
+
+      - name: Install Linux build deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Install nfpm
+        if: runner.os == 'Linux'
+        run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.46.3
+
+      - name: Install NSIS
+        if: runner.os == 'Windows'
+        run: pwsh -NoProfile -File scripts/install-nsis.ps1
+
+      - name: Install create-dmg
+        if: runner.os == 'macOS'
+        run: brew install create-dmg
+
+      - name: Install Wails CLI
+        run: go install "github.com/wailsapp/wails/v2/cmd/wails@$(cat "$GITHUB_WORKSPACE/.wails-version")"
+
+      - name: Build and package (unsigned)
+        run: scripts/desktop-build.sh "${{ matrix.platform }}" "${{ needs.resolve.outputs.version }}" "${{ needs.resolve.outputs.channel }}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish GitHub release
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.resolve.outputs.tag }}
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: dist-*
+          merge-multiple: true
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; deleting and recreating"
+            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes
+          fi
+          # A build-metadata suffix like '+fork' (desktop-v1.31.4+fork) must
+          # not leak into the notes filename: lookup FORK-v1.31.4.md instead
+          # of FORK-v1.31.4+fork.md (which never exists and would fall back to
+          # an older release's notes). strip 'v' and any '+...' before lookup.
+          notes_ver="${VERSION#v}"; notes_ver="${notes_ver%%+*}"
+          RELEASE_NOTES="release-notes/FORK-v${notes_ver}.md"
+          [ -f "$RELEASE_NOTES" ] || RELEASE_NOTES="release-notes/FORK-v1.31.3.md"
+          echo "Using release notes: $RELEASE_NOTES"
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Reasonix fork $TAG" \
+            --notes-file "$RELEASE_NOTES" \
+            dist/*
