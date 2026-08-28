@@ -91,6 +91,7 @@ import type {
   PluginView,
   ProjectNode,
   ProjectTreeOrganizationBindings,
+  ConsolidationReport,
   RecoveryLineageView,
   RecoveryCleanupRequest,
   RecoveryCleanupResult,
@@ -340,6 +341,7 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   PreviewSession(path: string): Promise<HistoryMessage[]>;
   DeleteSession(path: string): Promise<void>;
   DeleteRecoveryCopy(path: string): Promise<void>;
+  ConsolidateSessionRecoveryCopies(path: string): Promise<ConsolidationReport>;
   GetRecoveryLineage(key: { scope: string; workspaceRoot?: string; topicId: string }): Promise<RecoveryLineageView>;
   ChooseRecoveryBranch(request: import("./types").RecoveryPreferenceRequest): Promise<void>;
   CleanRecoveryLineage(request: RecoveryCleanupRequest): Promise<RecoveryCleanupResult>;
@@ -3456,6 +3458,20 @@ function makeMockApp(): AppBindings {
     },
     async PurgeRecoveryCopy(path: string) {
       return this.PurgeTrashedSession(path);
+    },
+    async ConsolidateSessionRecoveryCopies(path: string): Promise<ConsolidationReport> {
+      // The browser mock keeps no recovery lineage, so consolidation is a
+      // well-formed no-op that reports "nothing to merge".
+      return {
+        mainPath: path,
+        winnerPath: "",
+        promoted: false,
+        mainMessageCount: 0,
+        winnerMessageCount: 0,
+        trashed: [],
+        skippedNotCovered: [],
+        skippedUnloadable: [],
+      };
     },
     async RenameSession(path: string, title: string) {
       const s = sessions.find((x) => x.path === path);
