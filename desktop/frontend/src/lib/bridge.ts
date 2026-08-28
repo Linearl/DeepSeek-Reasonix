@@ -352,6 +352,7 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   DeleteSession(path: string): Promise<void>;
   DeleteRecoveryCopy(path: string): Promise<void>;
   ConsolidateSessionRecoveryCopies(path: string): Promise<ConsolidationReport>;
+  ConsolidateTopicRecoveryCopies(scope: string, workspaceRoot: string, topicID: string): Promise<ConsolidationReport>;
   GetRecoveryLineage(key: { scope: string; workspaceRoot?: string; topicId: string }): Promise<RecoveryLineageView>;
   ChooseRecoveryBranch(request: import("./types").RecoveryPreferenceRequest): Promise<void>;
   CleanRecoveryLineage(request: RecoveryCleanupRequest): Promise<RecoveryCleanupResult>;
@@ -3454,6 +3455,9 @@ function makeMockApp(): AppBindings {
         skippedNotCovered: [],
         skippedUnloadable: [],
       };
+    },
+    async ConsolidateTopicRecoveryCopies(_scope: string, _workspaceRoot: string, topicID: string): Promise<ConsolidationReport> {
+      return this.ConsolidateSessionRecoveryCopies(`mock://topics/${topicID}`);
     },
     async RenameSession(path: string, title: string) {
       const s = sessions.find((x) => x.path === path);

@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"log/slog"
+	"strings"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/botruntime"
@@ -12,6 +13,19 @@ import (
 // the desktop: the fullest recovery copy does not contain the whole current
 // main transcript, so the swap was refused to avoid hiding main-only turns.
 var errConsolidationMainNotCovered = errors.New("the fullest recovery copy does not contain the current main transcript; nothing was merged")
+
+// ConsolidateTopicRecoveryCopies resolves the topic's canonical transcript
+// (the automatic open target) server-side and merges the recovery copies of
+// that session. Context menus call this instead of the path-based variant so
+// the action stays clickable even when the sidebar row predates the runtime
+// projection that would carry a session path.
+func (a *App) ConsolidateTopicRecoveryCopies(scope, workspaceRoot, topicID string) (agent.ConsolidationReport, error) {
+	path := a.catalogSessionPathForTopic(scope, workspaceRoot, topicID)
+	if strings.TrimSpace(path) == "" {
+		return agent.ConsolidationReport{}, friendlySessionFileError(errors.New("could not resolve the main transcript of this topic"))
+	}
+	return a.ConsolidateSessionRecoveryCopies(path)
+}
 
 // ConsolidateSessionRecoveryCopies is the desktop entry point behind the
 // "merge recovery copies" session action. It promotes the fullest recovery
