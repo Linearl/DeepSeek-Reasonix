@@ -108,6 +108,7 @@ import type {
   PluginView,
   ProjectNode,
   ProjectTreeOrganizationBindings,
+  ConsolidationReport,
   RecoveryLineageView,
   RecoveryCleanupRequest,
   RecoveryCleanupResult,
@@ -376,11 +377,16 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   TakeoverSession(tabId: string, mode: "wait" | "interrupt"): Promise<void>;
   DeleteSession(path: string): Promise<void>;
   DeleteRecoveryCopy(path: string): Promise<void>;
+<<<<<<< HEAD
   GetRecoveryLineage(key: { scope: string; workspaceRoot?: string; topicId: string; path?: string; recordClassification?: boolean }): Promise<RecoveryLineageView>;
   GetSessionVersionState(key: { scope: string; workspaceRoot?: string; topicId: string; path?: string; recordClassification?: boolean }): Promise<import("./types").SessionVersionStateView>;
   SetActiveSessionVersion(request: import("./types").RecoveryPreferenceRequest): Promise<void>;
   RetrySessionRecovery(request: import("./types").RecoveryPreferenceRequest): Promise<void>;
   ReconcileRecoveryVersions(key: { scope: string; workspaceRoot?: string; topicId: string; path?: string }): Promise<void>;
+=======
+  ConsolidateSessionRecoveryCopies(path: string): Promise<ConsolidationReport>;
+  GetRecoveryLineage(key: { scope: string; workspaceRoot?: string; topicId: string }): Promise<RecoveryLineageView>;
+>>>>>>> 8c2fdf42a (feat(desktop): merge session recovery copies from the project tree / 会话右键新增合并恢复副本，修复较早对话加载失败（#9470）)
   ChooseRecoveryBranch(request: import("./types").RecoveryPreferenceRequest): Promise<void>;
   CleanRecoveryLineage(request: RecoveryCleanupRequest): Promise<RecoveryCleanupResult>;
   RestoreSession(path: string): Promise<void>;
@@ -3474,6 +3480,20 @@ function makeMockApp(): AppBindings {
     },
     async PurgeRecoveryCopy(path: string) {
       return this.PurgeTrashedSession(path);
+    },
+    async ConsolidateSessionRecoveryCopies(path: string): Promise<ConsolidationReport> {
+      // The browser mock keeps no recovery lineage, so consolidation is a
+      // well-formed no-op that reports "nothing to merge".
+      return {
+        mainPath: path,
+        winnerPath: "",
+        promoted: false,
+        mainMessageCount: 0,
+        winnerMessageCount: 0,
+        trashed: [],
+        skippedNotCovered: [],
+        skippedUnloadable: [],
+      };
     },
     async RenameSession(path: string, title: string) {
       const s = sessions.find((x) => x.path === path);
