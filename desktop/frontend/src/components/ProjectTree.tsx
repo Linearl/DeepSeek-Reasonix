@@ -1159,7 +1159,7 @@ export function ProjectTree({
                 key: "consolidate-recovery-copies",
                 icon: <GitMerge size={13} />,
                 label: t("projectTree.consolidateRecoveryCopies"),
-                disabled: !node.sessionPath || node.running,
+                disabled: !node.sessionPath,
                 onSelect: () => {
                   const sessionPath = node.sessionPath;
                   if (!sessionPath) return;
