@@ -586,6 +586,11 @@ export interface ConsolidationReport {
   mainPath: string;
   winnerPath: string;
   promoted: boolean;
+  // True when the fullest copy and the main each hold turns the other lacks
+  // (typical after a main-side compaction): nothing was merged and the UI
+  // should ask the user whether to force the merge.
+  blockedByDivergence: boolean;
+  normalizedMain: boolean;
   mainMessageCount: number;
   winnerMessageCount: number;
   trashed: string[];

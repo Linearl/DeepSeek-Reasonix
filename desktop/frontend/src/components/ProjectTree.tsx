@@ -1260,6 +1260,31 @@ export function ProjectTree({
             void (async () => {
               try {
                 const report = await app.ConsolidateTopicRecoveryCopies(scope, openRequest?.workspaceRoot ?? node.root ?? "", topicId);
+if (report.blockedByDivergence) {
+                  showToast(
+                    t("projectTree.consolidateBlocked", { winner: report.winnerMessageCount, main: report.mainMessageCount }),
+                    "warn",
+                    {
+                      actionLabel: t("projectTree.consolidateForceAction"),
+                      onAction: () => {
+                        void (async () => {
+                          try {
+                            const forced = await app.ForceConsolidateTopicRecoveryCopies(scope, openRequest?.workspaceRoot ?? node.root ?? "", topicId);
+                            showToast(
+                              t("projectTree.consolidateDone", { messages: forced.mainMessageCount, count: forced.trashed.length }),
+                              "info",
+                            );
+                            await refresh();
+                            await onTopicsChanged?.();
+                          } catch (err) {
+                            showToast(err instanceof Error ? err.message : String(err), "error");
+                          }
+                        })();
+                      },
+                    },
+                  );
+                  return;
+                }
                 if (report.promoted) {
                   showToast(
                     t("projectTree.consolidateDone", { messages: report.mainMessageCount, count: report.trashed.length }),
@@ -1314,7 +1339,32 @@ export function ProjectTree({
                 void (async () => {
                   try {
                     const report = await app.ConsolidateTopicRecoveryCopies(scope, openRequest?.workspaceRoot ?? node.root ?? "", topicId);
-                    if (report.promoted) {
+    if (report.blockedByDivergence) {
+                  showToast(
+                    t("projectTree.consolidateBlocked", { winner: report.winnerMessageCount, main: report.mainMessageCount }),
+                    "warn",
+                    {
+                      actionLabel: t("projectTree.consolidateForceAction"),
+                      onAction: () => {
+                        void (async () => {
+                          try {
+                            const forced = await app.ForceConsolidateTopicRecoveryCopies(scope, openRequest?.workspaceRoot ?? node.root ?? "", topicId);
+                            showToast(
+                              t("projectTree.consolidateDone", { messages: forced.mainMessageCount, count: forced.trashed.length }),
+                              "info",
+                            );
+                            await refresh();
+                            await onTopicsChanged?.();
+                          } catch (err) {
+                            showToast(err instanceof Error ? err.message : String(err), "error");
+                          }
+                        })();
+                      },
+                    },
+                  );
+                  return;
+                }
+                if (report.promoted) {
                       showToast(
                         t("projectTree.consolidateDone", { messages: report.mainMessageCount, count: report.trashed.length }),
                         "info",

@@ -188,9 +188,14 @@ func TestConsolidateRefusesSwapWhenWinnerMissesMainTurns(t *testing.T) {
 	// The main also gained its own turn: neither side covers the other.
 	appendTurns(t, mainPath, provider.Message{Role: provider.RoleUser, Content: "main-only turn"})
 
+	// The conservative run refuses the swap with a structured report instead
+	// of an error, so the UI can turn it into an explicit confirmation.
 	report, err := ConsolidateSessionRecoveryBranches(mainPath)
-	if !errors.Is(err, ErrMainNotCoveredByWinner) {
-		t.Fatalf("err = %v, want ErrMainNotCoveredByWinner (report %+v)", err, report)
+	if err != nil {
+		t.Fatalf("err = %v, want nil (report %+v)", err, report)
+	}
+	if !report.BlockedByDivergence {
+		t.Fatalf("BlockedByDivergence = false, want true: %+v", report)
 	}
 	if report.Promoted {
 		t.Fatalf("unexpected promotion: %+v", report)
@@ -201,6 +206,22 @@ func TestConsolidateRefusesSwapWhenWinnerMissesMainTurns(t *testing.T) {
 	}
 	if got := sessionMessageCount(t, copyPath); got != 6 {
 		t.Fatalf("copy message count = %d, want 6 (unchanged)", got)
+	}
+
+	// The forced run promotes the fullest copy; the previous main is archived
+	// whole under the recoverable trash instead of being lost.
+	forced, err := ConsolidateSessionRecoveryBranchesWithOptions(mainPath, ConsolidateOptions{Force: true})
+	if err != nil {
+		t.Fatalf("forced consolidation: %v", err)
+	}
+	if !forced.Promoted {
+		t.Fatalf("forced report = %+v, want Promoted", forced)
+	}
+	if got := sessionMessageCount(t, mainPath); got != 6 {
+		t.Fatalf("main message count after force = %d, want 6", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".trash")); err != nil {
+		t.Fatalf("trash directory missing after forced swap: %v", err)
 	}
 }
 
