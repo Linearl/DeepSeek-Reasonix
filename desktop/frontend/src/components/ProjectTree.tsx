@@ -1253,6 +1253,35 @@ export function ProjectTree({
           onSelect: () => void aiRenameSession(topicId),
         },
         {
+          key: "consolidate-recovery-copies",
+          icon: <GitMerge size={13} />,
+          label: t("projectTree.consolidateRecoveryCopies"),
+          disabled: !node.sessionPath || node.running,
+          onSelect: () => {
+            const sessionPath = node.sessionPath;
+            if (!sessionPath) return;
+            void (async () => {
+              try {
+                const report = await app.ConsolidateSessionRecoveryCopies(sessionPath);
+                if (report.promoted) {
+                  showToast(
+                    t("projectTree.consolidateDone", { messages: report.mainMessageCount, count: report.trashed.length }),
+                    "info",
+                  );
+                } else if (report.trashed.length > 0) {
+                  showToast(t("projectTree.consolidateFolded", { count: report.trashed.length }), "info");
+                } else {
+                  showToast(t("projectTree.consolidateNothing"), "info");
+                }
+                await refresh();
+                await onTopicsChanged?.();
+              } catch (err) {
+                showToast(err instanceof Error ? err.message : String(err), "error");
+              }
+            })();
+          },
+        },
+        {
           key: "trash",
           icon: <Archive className={topicTrashing ? "project-tree__archive-spinner" : undefined} size={13} />,
           label: confirmAction?.topicId === topicId && confirmAction.action === "trash" ? t("history.confirmMoveToTrash") : t("history.moveToTrash"),
