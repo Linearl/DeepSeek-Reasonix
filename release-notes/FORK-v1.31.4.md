@@ -157,6 +157,7 @@ curl -X POST http://localhost:8788/submit \
 - **滚动错排修复**：向上滑动后行测量冻结导致错排，仅对未就绪行应用冻结高度 shim。（#9366）
 - **config 持久化修复**：`optimistic_write` 配置写入 `config.toml` 时被漏掉，导致重启后设置丢失。
 - **provider deletion + OpenCode group 原子删除**修复。
+- **会话目录目标按折叠路径去重（#9511）**：Windows / macOS（默认大小写不敏感文件系统）上，同一物理会话目录可能被以两种不同大小写 spell 收集（如 `C:\...\C--Users...` 与 `c:\...\c--users...`），导致 session catalog 对同一会话插入**两条 path 仅大小写不同**的记录，左栏"恢复副本×N"徽章虚高、合并恢复副本判定出错。现在 `sessionCatalogTargets()` 的去重 map 改用大小写折叠 key（`strings.ToLower`），同一物理目录只扫描一次，不再产生重复行。
 
 ---
 
