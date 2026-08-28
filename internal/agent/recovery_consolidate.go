@@ -464,7 +464,6 @@ func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) err
 			meta.QualityFloor = legacyMeta.QualityFloor
 			meta.Mode = legacyMeta.Mode
 			meta.ToolApprovalMode = legacyMeta.ToolApprovalMode
-			meta.SubagentPolicy = legacyMeta.SubagentPolicy
 			meta.Goal = legacyMeta.Goal
 			meta.CreatedAt = legacyMeta.CreatedAt
 			meta.DismissedTodoBatches = legacyMeta.DismissedTodoBatches
