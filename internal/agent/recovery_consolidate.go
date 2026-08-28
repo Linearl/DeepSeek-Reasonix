@@ -52,6 +52,7 @@ type ConsolidationReport struct {
 	MainPath           string
 	WinnerPath         string // "" when the main transcript already was the winner
 	Promoted           bool
+	NormalizedMain     bool // an older-format main was rewritten in place first
 	MainMessageCount   int
 	WinnerMessageCount int
 	Trashed            []string
@@ -189,7 +190,23 @@ func ConsolidateSessionRecoveryBranches(mainPath string) (ConsolidationReport, e
 
 	mainCand, mainOK := recoveryConsolidationCandidate(mainPath, true)
 	if !mainOK {
-		return report, fmt.Errorf("main transcript failed a conservative load; refusing to consolidate %s", mainPath)
+		// Long-lived transcripts loaded from an older format normalize dirty:
+		// the in-memory view differs from the bytes on disk until the next
+		// successful save. The ordinary upstream path clears this on the
+		// session's next autosave; consolidation forces that same rewrite now
+		// (the lease check above already proved no runtime is writing), then
+		// re-reads the transcript.
+		if session, loadErr := LoadSession(mainPath); loadErr == nil && session != nil && session.normalizedDirty {
+			if rewriteErr := session.SaveRewrite(mainPath); rewriteErr != nil {
+				return report, fmt.Errorf("could not normalize the main transcript before consolidating %s: %w", mainPath, rewriteErr)
+			}
+			report.NormalizedMain = true
+			if mainCand, mainOK = recoveryConsolidationCandidate(mainPath, true); !mainOK {
+				return report, fmt.Errorf("main transcript still failed a conservative load after normalization %s", mainPath)
+			}
+		} else {
+			return report, fmt.Errorf("main transcript failed a conservative load; refusing to consolidate %s", mainPath)
+		}
 	}
 	report.MainMessageCount = mainCand.MessageCount
 
