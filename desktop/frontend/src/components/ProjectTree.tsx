@@ -1256,13 +1256,10 @@ export function ProjectTree({
           key: "consolidate-recovery-copies",
           icon: <GitMerge size={13} />,
           label: t("projectTree.consolidateRecoveryCopies"),
-          disabled: !node.sessionPath,
           onSelect: () => {
-            const sessionPath = node.sessionPath;
-            if (!sessionPath) return;
             void (async () => {
               try {
-                const report = await app.ConsolidateSessionRecoveryCopies(sessionPath);
+                const report = await app.ConsolidateTopicRecoveryCopies(scope, openRequest?.workspaceRoot ?? node.root ?? "", topicId);
                 if (report.promoted) {
                   showToast(
                     t("projectTree.consolidateDone", { messages: report.mainMessageCount, count: report.trashed.length }),
@@ -1313,13 +1310,10 @@ export function ProjectTree({
               key: "consolidate-recovery-copies",
               icon: <GitMerge size={13} />,
               label: t("projectTree.consolidateRecoveryCopies"),
-              disabled: !node.sessionPath,
               onSelect: () => {
-                const sessionPath = node.sessionPath;
-                if (!sessionPath) return;
                 void (async () => {
                   try {
-                    const report = await app.ConsolidateSessionRecoveryCopies(sessionPath);
+                    const report = await app.ConsolidateTopicRecoveryCopies(scope, openRequest?.workspaceRoot ?? node.root ?? "", topicId);
                     if (report.promoted) {
                       showToast(
                         t("projectTree.consolidateDone", { messages: report.mainMessageCount, count: report.trashed.length }),
