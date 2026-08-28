@@ -266,3 +266,45 @@ func TestConsolidateNoCopiesAndValidation(t *testing.T) {
 		t.Fatalf("first candidate must be the main transcript: %+v", cands[0])
 	}
 }
+
+func TestConsolidateNormalizesDirtyMainFirst(t *testing.T) {
+	dir := t.TempDir()
+	mainPath := filepath.Join(dir, "dirty.jsonl")
+	// Dangling tool call: loading this older-format transcript normalizes
+	// dirty (a placeholder tool result gets fabricated), which is exactly the
+	// state that used to make consolidation refuse.
+	writeLegacyJSONLSession(t, mainPath, []provider.Message{
+		{Role: provider.RoleSystem, Content: "sys"},
+		{Role: provider.RoleUser, Content: "run it"},
+		{Role: provider.RoleAssistant, Content: "", ToolCalls: []provider.ToolCall{
+			{ID: "call_1", Name: "read_file", Arguments: `{"path":"a.go"}`},
+		}},
+	})
+	if s, err := LoadSession(mainPath); err != nil || !s.normalizedDirty {
+		t.Fatalf("precondition: normalizedDirty = %v err = %v, want true", s.normalizedDirty, err)
+	}
+
+	// The recovery copy continued past the repaired view: it is the fullest
+	// transcript and covers the main once normalized.
+	repaired := loadSnapshot(t, mainPath)
+	forkCopyFromSnapshot(t, mainPath, repaired, []provider.Message{
+		{Role: provider.RoleAssistant, Content: "post-recovery reply"},
+	})
+
+	report, err := ConsolidateSessionRecoveryBranches(mainPath)
+	if err != nil {
+		t.Fatalf("ConsolidateSessionRecoveryBranches: %v", err)
+	}
+	if !report.NormalizedMain {
+		t.Fatalf("expected the dirty main to be normalized in place: %+v", report)
+	}
+	if !report.Promoted {
+		t.Fatalf("expected promotion after normalization: %+v", report)
+	}
+	if got := sessionMessageCount(t, mainPath); got != len(repaired)+1 {
+		t.Fatalf("main message count = %d, want %d", got, len(repaired)+1)
+	}
+	if meta, ok, err := LoadBranchMeta(mainPath); err != nil || !ok || meta.Recovered {
+		t.Fatalf("promoted main meta: ok=%v recovered=%v err=%v", ok, meta.Recovered, err)
+	}
+}
