@@ -385,6 +385,7 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   ReconcileRecoveryVersions(key: { scope: string; workspaceRoot?: string; topicId: string; path?: string }): Promise<void>;
 =======
   ConsolidateSessionRecoveryCopies(path: string): Promise<ConsolidationReport>;
+  ConsolidateTopicRecoveryCopies(scope: string, workspaceRoot: string, topicID: string): Promise<ConsolidationReport>;
   GetRecoveryLineage(key: { scope: string; workspaceRoot?: string; topicId: string }): Promise<RecoveryLineageView>;
 >>>>>>> 8c2fdf42a (feat(desktop): merge session recovery copies from the project tree / 会话右键新增合并恢复副本，修复较早对话加载失败（#9470）)
   ChooseRecoveryBranch(request: import("./types").RecoveryPreferenceRequest): Promise<void>;
@@ -3494,6 +3495,9 @@ function makeMockApp(): AppBindings {
         skippedNotCovered: [],
         skippedUnloadable: [],
       };
+    },
+    async ConsolidateTopicRecoveryCopies(_scope: string, _workspaceRoot: string, topicID: string): Promise<ConsolidationReport> {
+      return this.ConsolidateSessionRecoveryCopies(`mock://topics/${topicID}`);
     },
     async RenameSession(path: string, title: string) {
       const s = sessions.find((x) => x.path === path);
