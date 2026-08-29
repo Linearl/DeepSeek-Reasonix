@@ -4,7 +4,9 @@ import { ArrowRight, ArrowUp, Check, ChevronsUpDown, CornerDownRight, Equal, Eye
 import { asArray } from "../lib/array";
 import { filterAtMatches } from "../lib/atMatches";
 import { DedupIndex, sha256 } from "../lib/attachDedup";
-import { loadPersistedComposerText, persistComposerText } from "../lib/composerDraftPersistence";
+import {
+  loadPersistedComposerDraft, persistComposerDraft,
+} from "../lib/composerDraftPersistence";
 import { app, onFilesDropped } from "../lib/bridge";
 import { enqueueInboxGuidanceForActiveTurn, steerInboxItemForActiveTurn } from "../lib/inboxSubmit";
 import { formatInboxError, isInboxItemMissing } from "../lib/inboxError";
@@ -1216,7 +1218,7 @@ export function Composer({
     draftsBySessionRef.current[previousKey] = previousSnapshot;
     // Flush the outgoing draft immediately: the app may close before the
     // debounced write fires (#9580).
-    persistComposerText(previousKey, previousSnapshot.text, true);
+    persistComposerDraft(previousKey, previousSnapshot, true);
     draftActivationEpochRef.current += 1;
     activeDraftKeyRef.current = draftKey;
     setGuidanceDraftKey(draftKey);
@@ -1226,10 +1228,21 @@ export function Composer({
       return;
     }
     // Cold start for this session: no in-memory draft yet — restore the
-    // persisted text (if any) so unsent drafts survive app restarts.
-    const persistedText = loadPersistedComposerText(draftKey);
+    // persisted draft (text + pasted blocks + attachments + refs) so unsent
+    // work survives app restarts.
+    const persisted = loadPersistedComposerDraft(draftKey);
     const draft = emptyComposerDraft();
-    if (persistedText) draft.text = persistedText;
+    if (persisted) {
+      draft.text = persisted.text;
+      draft.pastedBlocks = persisted.pastedBlocks.map((block) => ({ ...block }));
+      draft.attachments = persisted.attachments.map((a) => ({ ...a }));
+      draft.attachmentDedupKeys = { ...persisted.attachmentDedupKeys };
+      draft.workspaceRefs = persisted.workspaceRefs.map((ref) => ({ ...ref }));
+      draft.nextPasteId = persisted.pastedBlocks.reduce((max, b) => {
+        const match = /#(\d+)/.exec(b.label);
+        return match ? Math.max(max, Number(match[1])) : max;
+      }, 0) + 1;
+    }
     draftsBySessionRef.current[draftKey] = draft;
     restoreComposerDraft(draft);
   }, [draftKey]);
@@ -1240,19 +1253,33 @@ export function Composer({
   useComposerInboxRefresh(tabId, draftKey, guidanceDraftKey, inboxSessionKey, guidanceQueuePreviewKey, guidanceRetryNonce, running, applyInboxQueue, collapseInboxQueue, refreshInboxQueue);
 
   useEffect(() => {
-    // Cold start (#9580): the first draftKey's persisted text restores into
-    // the empty input. Later keys go through the switch effect above.
-    const persistedText = loadPersistedComposerText(draftKey);
-    if (persistedText) setText(persistedText);
+    // Cold start (#9580): the first draftKey's persisted draft restores into
+    // the empty input. Later keys go through the switch effect above. State
+    // mirrors (text/pastedBlocks/attachments/workspaceRefs) refresh their
+    // refs on the next render; dedup keys have no state and are set directly.
+    const persisted = loadPersistedComposerDraft(draftKey);
+    if (persisted && (persisted.text || persisted.pastedBlocks.length || persisted.attachments.length)) {
+      setText(persisted.text);
+      setPastedBlocks(persisted.pastedBlocks.map((block) => ({ ...block })));
+      setAttachments(persisted.attachments.map((a) => ({ ...a })));
+      setWorkspaceRefs(persisted.workspaceRefs.map((ref) => ({ ...ref })));
+      attachmentDedupKeysRef.current = { ...persisted.attachmentDedupKeys };
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    // Debounced write-through (#9580): every draft edit lands in
-    // localStorage ~500ms after typing stops; clearing the input removes the
-    // persisted entry.
-    persistComposerText(draftKey, text);
-  }, [draftKey, text]);
+    // Debounced write-through (#9580): draft edits land in localStorage
+    // ~500ms after they stop; an emptied composer removes the persisted
+    // entry. State mirrors live in refs updated during render.
+    persistComposerDraft(draftKey, {
+      text,
+      pastedBlocks: pastedBlocksRef.current,
+      attachments: attachmentsRef.current,
+      attachmentDedupKeys: attachmentDedupKeysRef.current,
+      workspaceRefs: workspaceRefsRef.current,
+    });
+  }, [draftKey, text, pastedBlocks, attachments, workspaceRefs]);
 
   useEffect(() => {
     return () => {
