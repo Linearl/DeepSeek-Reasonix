@@ -29,6 +29,7 @@ var TransientUserBlockTags = []string{
 	"execution-policy",
 	"subagent-policy",
 	"exec-speed-mode",
+	"context-budget",
 }
 
 // reTrailingExecutionPolicy matches the host-appended execution-policy block at
