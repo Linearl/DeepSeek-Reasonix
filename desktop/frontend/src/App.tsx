@@ -35,7 +35,7 @@ import { clearLegacyLangPref, normalizeLangPref, readLegacyLangPref, t, useI18n,
 import { useActiveRemoteSession } from "./lib/useRemoteSession";
 import { useRemoteTabOpened } from "./lib/useRemoteTabOpened";
 import { renameCurrentRemoteSession } from "./lib/remoteSessionActions";
-import { localizedNoticeText, useController, type HistoryLoadTrigger, type Item, type LiveStream } from "./lib/useController";
+import { localizedNoticeText, useController, type HistoryLoadTrigger, type Item } from "./lib/useController";
 import { app, onEvent, onProjectTreeChanged, onReady, onRemoteForwards, onRemoteServer, onRemoteStatus, onRuntimeRebuilt, onSessionRecovered, openExternal } from "./lib/bridge";
 import { useConfigLoadWarnings } from "./lib/useConfigLoadWarnings";
 import { generativeMusic, isGenerativeMusicEnabled } from "./lib/generative-music";
@@ -957,81 +957,6 @@ function workspaceDisplayName(path?: string): string {
   if (!path) return "";
   const parts = path.split(/[/\\]/).filter(Boolean);
   return parts.length > 0 ? parts[parts.length - 1] : path;
-}
-
-function materializeLiveItems(items: Item[], live?: LiveStream): Item[] {
-  if (!live) return items;
-  return items.map((item) => {
-    if (item.kind !== "assistant" || item.id !== live.id) return item;
-    return { ...item, text: live.text, reasoning: live.reasoning, streaming: true };
-  });
-}
-
-function fence(label: string, value: string): string {
-  if (!value.trim()) return "";
-  const fenceToken = value.includes("```") ? "````" : "```";
-  return `${label}\n${fenceToken}\n${value.trim()}\n${fenceToken}`;
-}
-
-function sessionItemsToMarkdown(title: string, items: Item[], live?: LiveStream): string {
-  const lines: string[] = [`# ${title.trim() || "Reasonix session"}`, ""];
-  for (const item of materializeLiveItems(items, live)) {
-    switch (item.kind) {
-      case "user":
-        lines.push("## User", "", item.text.trim(), "");
-        break;
-      case "assistant":
-        lines.push("## Assistant");
-        if (item.reasoning.trim()) {
-          lines.push("", "### Reasoning", "", item.reasoning.trim());
-        }
-        if (item.text.trim()) {
-          lines.push("", item.text.trim());
-        }
-        lines.push("");
-        break;
-      case "tool":
-        lines.push(`### Tool: ${item.name}`);
-        if (item.args.trim()) lines.push("", fence("Args", item.args));
-        if (item.output?.trim()) lines.push("", fence("Output", item.output));
-        if (item.error?.trim()) lines.push("", fence("Error", item.error));
-        lines.push("");
-        break;
-      case "phase":
-        lines.push(`### Phase`, "", item.text.trim(), "");
-        break;
-      case "notice":
-        lines.push(`### ${item.level === "warn" ? "Warning" : "Notice"}`, "", item.text.trim(), "");
-        if (item.detail?.trim()) {
-          lines.push("Details:", "", item.detail.trim(), "");
-        }
-        break;
-      case "compaction":
-        lines.push("### Context Compaction", "");
-        if (item.pending) {
-          lines.push("Compaction pending.");
-        } else {
-          lines.push(`Messages: ${item.messages}`);
-          if (item.trigger) lines.push(`Trigger: ${item.trigger}`);
-          if (item.summary.trim()) lines.push("", item.summary.trim());
-        }
-        lines.push("");
-        break;
-    }
-  }
-  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
-}
-
-function sessionItemsToJson(title: string, items: Item[], live?: LiveStream): string {
-  return JSON.stringify(
-    {
-      title,
-      exportedAt: new Date().toISOString(),
-      items: materializeLiveItems(items, live),
-    },
-    null,
-    2,
-  );
 }
 
 function safeFilename(name: string): string {
@@ -2140,11 +2065,11 @@ export default function App() {
     applyThemeScene(sessionHasContent ? "task" : "home");
   }, [sessionHasContent]);
   const getSessionMarkdown = useCallback(
-    () => sessionItemsToMarkdown(sessionTitle, exportItems, exportLive),
+    async () => (await import("./lib/sessionExportData")).sessionItemsToMarkdown(sessionTitle, exportItems, exportLive),
     [exportItems, exportLive, sessionTitle],
   );
   const getSessionJson = useCallback(
-    () => sessionItemsToJson(sessionTitle, exportItems, exportLive),
+    async () => (await import("./lib/sessionExportData")).sessionItemsToJson(sessionTitle, exportItems, exportLive),
     [exportItems, exportLive, sessionTitle],
   );
 
@@ -2166,21 +2091,21 @@ export default function App() {
         if (format === "json") {
           const path = await app.PickExportFile(`${base}.json`, "application/json");
           if (path) {
-            await app.SaveExportFile(path, getSessionJson(), false);
+            await app.SaveExportFile(path, await getSessionJson(), false);
             showToast(t("topicBar.exportSuccess", { count: 1 }), "info");
           }
         } else if (format === "pdf") {
           const path = await app.PickExportFile(`${base}.pdf`, "application/pdf");
           if (!path) return;
           const { blobToBase64, renderSessionPdfBlob } = await import("./lib/sessionExport");
-          const blob = await renderSessionPdfBlob(getSessionMarkdown(), sessionTitle);
+          const blob = await renderSessionPdfBlob(await getSessionMarkdown(), sessionTitle);
           await app.SaveExportFile(path, await blobToBase64(blob), true);
           showToast(t("topicBar.exportSuccess", { count: 1 }), "info");
         } else if (format === "image") {
           const path = await app.PickExportFile(`${base}.png`, "image/png");
           if (!path) return;
           const { renderSessionImageBase64Payloads } = await import("./lib/sessionExport");
-          const payloads = await renderSessionImageBase64Payloads(getSessionMarkdown());
+          const payloads = await renderSessionImageBase64Payloads(await getSessionMarkdown());
           await app.SaveExportImageFiles(path, payloads);
           showToast(
             payloads.length > 1
@@ -2191,7 +2116,7 @@ export default function App() {
         } else {
           const path = await app.PickExportFile(`${base}.md`, "text/markdown");
           if (path) {
-            await app.SaveExportFile(path, getSessionMarkdown(), false);
+            await app.SaveExportFile(path, await getSessionMarkdown(), false);
             showToast(t("topicBar.exportSuccess", { count: 1 }), "info");
           }
         }
@@ -5316,6 +5241,7 @@ export default function App() {
                 <Suspense fallback={null}>
                   <ContextPanel
                     tabId={remoteSurfaceActive ? undefined : activeTabId}
+                    items={exportItems}
                     context={visibleRuntimeState.context}
                     usage={visibleRuntimeState.usage}
                     sessionTokens={visibleRuntimeState.sessionTokens}

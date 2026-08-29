@@ -1243,7 +1243,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		if sysPrompt == "" {
 			sysPrompt = agent.DefaultReadOnlyTaskSystemPrompt
 		}
-		runOptions := subagentSkillOptions(sctx, steps, price, ctxWin, childDepth)
+		task, runOptions := reviewSubagentSkillOptions(sctx, sk.Name, task, steps, price, ctxWin, childDepth, subagentSkillOptions)
 		usageModelRef, _ := subagentIdentity(modelRef, effortRef)
 		runOptions.ModelRef = usageModelRef
 		// Review gates consume typed, host-verifiable reports so a review
@@ -1362,7 +1362,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 				steps = 5
 			}
 		}
-		runOptions := subagentSkillOptions(sctx, steps, price, ctxWin, childDepth)
+		task, runOptions := reviewSubagentSkillOptions(sctx, sk.Name, task, steps, price, ctxWin, childDepth, subagentSkillOptions)
 		runOptions.WriteRoots = childWriteRoots
 		usageModelRef, _ := subagentIdentity(modelRef, effortRef)
 		runOptions.ModelRef = usageModelRef

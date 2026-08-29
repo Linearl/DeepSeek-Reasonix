@@ -219,6 +219,9 @@ type ToolSchema struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description"`
 	Parameters  json.RawMessage `json:"parameters"`
+	Deferred    bool            `json:"deferred,omitempty"`
+	Strict      bool            `json:"strict,omitempty"`
+	Namespace   string          `json:"namespace,omitempty"`
 }
 
 // Request is a single completion request.
@@ -232,6 +235,7 @@ type Request struct {
 	// thecommonpathmuststaybyte-stableforpromptcaching.
 	ResponseFormat *ResponseFormat `json:"ResponseFormat,omitempty"`
 	EffortOverride string          `json:"EffortOverride,omitempty"` // per-call reasoning-depth override; adapters apply it only when the endpoint's effort vocabulary accepts it
+	ToolSearch     *ToolSearch     `json:"-"`
 }
 
 // ResponseFormat asks a provider to constrain its output shape.
@@ -270,23 +274,11 @@ func AutoOutputBudget(reasoningEnabled bool, effort string) int {
 	}
 }
 
-// TemperaturePtr wraps v in a pointer so callers that explicitly want aspecific temperature, including 0
-// fordeterministic output, can distinguishthat intent from "not set, use the provider default".
-func TemperaturePtr(v float64) *float64 { return &v }
-
-// OptionalTemperature returns nil when v is zero, matching the historicalconfig behavior where 0 meant
-// "notconfigured", and a pointer otherwise.
-func OptionalTemperature(v float64) *float64 {
-	if v == 0 {
-		return nil
-	}
-	return &v
-}
-
-// interruptedToolResult stands in for a tool result that never landed —
-// anassistanttool_callsturnwhoseexecution was cut short (interrupt, crash) and later resumed.
-// Sendingsuchaturn unanswered trips the OpenAI/DeepSeek 400 "An assistant message with 'tool_calls'
-// mustbefollowed by tool
+// interruptedToolResult stands in for a tool result that never landed — an
+// assistant tool_calls turn whose execution was cut short (interrupt, crash) and
+// later resumed. Sending such a turn unanswered trips the OpenAI/DeepSeek 400
+// "An assistant message with 'tool_calls' must be followed by tool messages
+// responding to each 'tool_call_id'".
 const interruptedToolResult = "[no result: the previous turn was interrupted before this tool call completed]"
 
 // SanitizeToolPairing is the provider-side alias for NormalizeMessages.
