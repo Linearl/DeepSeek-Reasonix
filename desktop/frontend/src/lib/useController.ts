@@ -3690,7 +3690,9 @@ export function useController() {
       }
       void submitPromise.then(
         (receipt) => {
-          if (receipt && typeof receipt === "object" && "turnId" in receipt && typeof receipt.turnId === "string") {
+          // An empty turnId means the input was accepted as a local command
+          // (slash session op / notice) — confirmed without turn association.
+          if (receipt && typeof receipt === "object" && "turnId" in receipt && typeof receipt.turnId === "string" && receipt.turnId) {
             dispatchTo(tabId, { type: "turn_admitted", turnId: receipt.turnId, submissionId });
           }
           dispatchTo(tabId, { type: "send_confirmed", submissionId });

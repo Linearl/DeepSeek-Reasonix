@@ -36,7 +36,21 @@ func (a *App) StartTurnForTab(tabID, input, submissionID string) (TurnStartView,
 		turnID = admitted.TurnIDForSubmission(submissionID)
 	}
 	if strings.TrimSpace(turnID) == "" {
-		return TurnStartView{}, fmt.Errorf("turn admission did not produce a durable turn id")
+		// The submission was accepted, but this input never becomes a turn:
+		// slash session ops (/compact /new /clear /model …), notices, and
+		// other local runtime verbs are handled by the controller without
+		// turn admission. Returning an error here made a *successful* local
+		// command show up as "Send failed: turn admission did not produce a
+		// durable turn id" (desktop report, 2026-08-29). Report an accepted
+		// receipt with an empty turnId instead — callers treat a missing
+		// turnId as "confirmed without turn association" (the turn_admitted
+		// reducer ignores falsy ids) and the command's own Notice events
+		// carry the outcome.
+		epoch := ""
+		if tab != nil && tab.sink != nil {
+			epoch = tab.sink.runtimeEpochSnapshot()
+		}
+		return TurnStartView{TurnID: "", Status: "", RuntimeEpoch: epoch, SubmissionID: submissionID}, nil
 	}
 	epoch := ""
 	if tab != nil && tab.sink != nil {
