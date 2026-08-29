@@ -4,6 +4,7 @@ import { ArrowRight, ArrowUp, Check, ChevronsUpDown, CornerDownRight, Equal, Eye
 import { asArray } from "../lib/array";
 import { filterAtMatches } from "../lib/atMatches";
 import { DedupIndex, sha256 } from "../lib/attachDedup";
+import { loadPersistedComposerText, persistComposerText } from "../lib/composerDraftPersistence";
 import { app, onFilesDropped } from "../lib/bridge";
 import { enqueueInboxGuidanceForActiveTurn, steerInboxItemForActiveTurn } from "../lib/inboxSubmit";
 import { formatInboxError, isInboxItemMissing } from "../lib/inboxError";
@@ -177,7 +178,6 @@ type GuidanceReceiptTracker = {
 
 const DEFAULT_COMPOSER_DRAFT_KEY = "__default_composer_draft__";
 const MAX_COMPOSER_EDIT_HISTORY = 50;
-
 function createGuidanceReceiptTracker(): GuidanceReceiptTracker {
   const inFlight = new Map<string, number>();
   const consumedBeforeReceipt = new Map<string, Set<string>>();
@@ -1212,17 +1212,47 @@ export function Composer({
   useLayoutEffect(() => {
     const previousKey = activeDraftKeyRef.current;
     if (previousKey === draftKey) return;
-    draftsBySessionRef.current[previousKey] = snapshotComposerDraft();
+    const previousSnapshot = snapshotComposerDraft();
+    draftsBySessionRef.current[previousKey] = previousSnapshot;
+    // Flush the outgoing draft immediately: the app may close before the
+    // debounced write fires (#9580).
+    persistComposerText(previousKey, previousSnapshot.text, true);
     draftActivationEpochRef.current += 1;
     activeDraftKeyRef.current = draftKey;
     setGuidanceDraftKey(draftKey);
-    restoreComposerDraft(draftsBySessionRef.current[draftKey] ?? emptyComposerDraft());
+    const inMemory = draftsBySessionRef.current[draftKey];
+    if (inMemory) {
+      restoreComposerDraft(inMemory);
+      return;
+    }
+    // Cold start for this session: no in-memory draft yet — restore the
+    // persisted text (if any) so unsent drafts survive app restarts.
+    const persistedText = loadPersistedComposerText(draftKey);
+    const draft = emptyComposerDraft();
+    if (persistedText) draft.text = persistedText;
+    draftsBySessionRef.current[draftKey] = draft;
+    restoreComposerDraft(draft);
   }, [draftKey]);
 
   const applyInboxQueue = useCallback((items: PendingGuidance[]) => updatePendingGuidanceForDraft(draftKey, () => items), [draftKey]);
   const collapseInboxQueue = useCallback(() => setGuidanceExpanded(false), []);
   const refreshInboxQueue = useCallback(() => setGuidanceRetryNonce((value) => value + 1), []);
   useComposerInboxRefresh(tabId, draftKey, guidanceDraftKey, inboxSessionKey, guidanceQueuePreviewKey, guidanceRetryNonce, running, applyInboxQueue, collapseInboxQueue, refreshInboxQueue);
+
+  useEffect(() => {
+    // Cold start (#9580): the first draftKey's persisted text restores into
+    // the empty input. Later keys go through the switch effect above.
+    const persistedText = loadPersistedComposerText(draftKey);
+    if (persistedText) setText(persistedText);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    // Debounced write-through (#9580): every draft edit lands in
+    // localStorage ~500ms after typing stops; clearing the input removes the
+    // persisted entry.
+    persistComposerText(draftKey, text);
+  }, [draftKey, text]);
 
   useEffect(() => {
     return () => {
