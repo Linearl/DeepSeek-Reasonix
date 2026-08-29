@@ -1517,6 +1517,16 @@ func (c *Controller) submitCommandOrTurnReady(trimmed, input, display string, sc
 		}()
 	case trimmed == "/context":
 		c.noticeDetail(c.ContextReport())
+	case trimmed == "/extract":
+		// #9082: chunked highlight extraction into a fresh session — the
+		// escape hatch for transcripts too long to compact in place.
+		go func() {
+			if err := c.ExtractHighlightsToNewSession(context.Background()); err != nil {
+				c.notice("extract failed: " + err.Error())
+			} else {
+				c.notice("highlights extracted into a new session")
+			}
+		}()
 	case trimmed == "/new":
 		c.runSessionVerb(c.NewSession, "new session", "new session failed: ")
 	case trimmed == "/clear":
@@ -2977,6 +2987,36 @@ func (c *Controller) Compact(ctx context.Context, instructions string) error {
 	}
 	defer c.endRotation()
 	return c.executor.CompactNow(ctx, instructions)
+}
+
+// ExtractHighlightsToNewSession summarizes the current (over-length) session
+// into one compaction-summary via chunked offline summary requests (#9082),
+// rotates to a fresh session, and seeds it with the briefing so work can
+// continue without carrying the over-window transcript. The extraction runs
+// without the rotation gate — it only reads a session snapshot — so the user
+// can keep chatting while it works; the session swap itself re-enters
+// NewSession's own gate and fails loudly when a turn is mid-flight.
+func (c *Controller) ExtractHighlightsToNewSession(ctx context.Context) error {
+	if c.executor == nil {
+		return fmt.Errorf("session is not ready")
+	}
+	sourcePath := c.SessionPath()
+	summary, err := c.executor.ExtractHighlights(ctx, func(done, total int) {
+		c.notice(fmt.Sprintf("extracting highlights: fragment %d/%d", done, total))
+	})
+	if err != nil {
+		return err
+	}
+	summary = strings.TrimSpace(summary)
+	if summary == "" {
+		return fmt.Errorf("extraction produced an empty briefing")
+	}
+	if err := c.NewSession(); err != nil {
+		return fmt.Errorf("create follow-up session: %w", err)
+	}
+	seed := fmt.Sprintf("The previous session at `%s` exceeded the context window and could not continue. Below is its structured highlight briefing (recovered via chunked extraction). Acknowledge the context in one short paragraph and propose the immediate next step.\n\n<compaction-summary>\n%s\n</compaction-summary>", sourcePath, summary)
+	c.Submit(seed)
+	return nil
 }
 
 // maybeSessionStart fires the SessionStart hook exactly once per session, lazily

@@ -246,6 +246,7 @@ var ChineseTraditional = Messages{
 	CmdNew:              "清空上下文並儲存歷史",
 	CmdCls:              "清除畫面（保留 LLM 上下文）",
 	CmdCompact:          "壓縮上下文",
+	CmdExtract:          "提取要點到新會話",
 	CmdContinueChecks:   "繼續已暫停的任務收尾檢查",
 	CmdContext:          "檢視上下文視窗、閾值與上次維護結果",
 	CmdRewind:           "回滾到更早的一輪",
