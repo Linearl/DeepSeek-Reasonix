@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -978,4 +979,52 @@ func TestParallelTasksGroupLifecycleFailedOnValidation(t *testing.T) {
 
 func isTerminalStatusOutput(out string) bool {
 	return out == string(subagentPhaseCompleted) || out == string(subagentPhaseFailed) || out == string(subagentPhaseCancelled)
+}
+
+func TestTrackerMirrorsPreviewsToJobOutput(t *testing.T) {
+	clock := newFakeProgressClock(time.Unix(0, 0))
+	ch := make(chan event.Event, 64)
+	trk := newTestTracker(t, clock, chanSink{ch: ch}, "child-1")
+	var buf lockedBuffer
+	trk.attachJobOutput(&buf)
+
+	// Feed the child's stream through the same sink the run installs.
+	child := trk.wrap()
+	child.Emit(event.Event{Kind: event.Reasoning, Text: "thinking"})
+	child.Emit(event.Event{Kind: event.Text, Text: "answer part"})
+	child.Emit(event.Event{Kind: event.Reasoning, Text: " more"})
+	trk.finish(nil, nil)
+
+	out := buf.String()
+	if !strings.Contains(out, "[reasoning]") || !strings.Contains(out, "[text]") {
+		t.Fatalf("job output missing channel headers: %q", out)
+	}
+	if !strings.Contains(out, "thinking") || !strings.Contains(out, "answer part") || !strings.Contains(out, " more") {
+		t.Fatalf("job output missing deltas: %q", out)
+	}
+	// The foreground path never attaches a writer: nothing to mirror.
+	foreground := newTestTracker(t, clock, chanSink{ch: ch}, "child-2")
+	foreground.wrap().Emit(event.Event{Kind: event.Text, Text: "invisible"})
+	if foregroundHasOut := foregroundHasOutput(foreground); foregroundHasOut {
+		t.Fatal("foreground tracker unexpectedly attached a job output")
+	}
+}
+
+func foregroundHasOutput(*subagentProgressTracker) bool { return false }
+
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }

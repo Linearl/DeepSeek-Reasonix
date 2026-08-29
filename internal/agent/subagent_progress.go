@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"slices"
 	"sync"
 	"time"
@@ -710,6 +712,14 @@ type subagentProgressTracker struct {
 	started    time.Time
 	ownsMerger bool
 	done       bool
+
+	// jobOut bridges the preview stream into a background task job's output
+	// buffer (#9522): wait/bash_output can read what the sub-agent is doing
+	// while it runs. Guarded by its own lock — job writes serialize on the
+	// job's own mutex, and the bridge is attached before any event flows.
+	jobOut        io.Writer
+	jobOutChannel subagentProgressChannel
+	jobOutUsed    bool
 }
 
 // newSubagentProgressTracker creates (or joins) the group merger and returns a
@@ -783,6 +793,39 @@ func (t *subagentProgressTracker) setPhaseLocked(p subagentProgressPhase) {
 	t.merger.statusEvent(t.childID, p)
 }
 
+// attachJobOutput bridges preview content into a background task job's output
+// buffer, so wait/bash_output show the sub-agent's live reasoning/text/notice
+// stream while it runs (#9522 Phase 1). Must be called before the first child
+// event; foreground runs never attach a writer.
+func (t *subagentProgressTracker) attachJobOutput(w io.Writer) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.jobOut = w
+}
+
+// writeJobPreview mirrors one preview delta into the attached job writer. A
+// section header is written when the channel changes so the interleaved
+// reasoning/text/notice stream stays readable in wait/bash_output output.
+// The caller holds t.mu (called from wrap's event switch).
+func (t *subagentProgressTracker) writeJobPreview(ch subagentProgressChannel, text string) {
+	if t.done || t.jobOut == nil || text == "" {
+		return
+	}
+	if t.jobOutChannel != ch || !t.jobOutUsed {
+		t.jobOutChannel = ch
+		t.jobOutUsed = true
+		label := "reasoning"
+		switch ch {
+		case subagentProgressChanText:
+			label = "text"
+		case subagentProgressChanNotice:
+			label = "notice"
+		}
+		fmt.Fprintf(t.jobOut, "\n[%s]\n", label)
+	}
+	fmt.Fprint(t.jobOut, text)
+}
+
 // wrap returns the sink the child agent emits into: reasoning/text/notice/
 // retrying become preview slots; tool activity and usage pass through
 // unchanged (the child's Message and anything else stay dropped, as before).
@@ -798,15 +841,18 @@ func (t *subagentProgressTracker) wrap() event.Sink {
 		case event.Reasoning:
 			t.setPhaseLocked(subagentPhaseReasoning)
 			t.merger.deltaEvent(t.childID, subagentProgressChanReasoning, e.Text)
+			t.writeJobPreview(subagentProgressChanReasoning, e.Text)
 		case event.Text:
 			t.setPhaseLocked(subagentPhaseResponding)
 			t.merger.deltaEvent(t.childID, subagentProgressChanText, e.Text)
+			t.writeJobPreview(subagentProgressChanText, e.Text)
 		case event.Notice:
 			text := e.Text
 			if text == "" {
 				text = e.Detail
 			}
 			t.merger.deltaEvent(t.childID, subagentProgressChanNotice, text)
+			t.writeJobPreview(subagentProgressChanNotice, text)
 		case event.Retrying:
 			t.setPhaseLocked(subagentPhaseRetrying)
 		case event.ToolDispatch, event.ToolResult, event.ToolProgress:

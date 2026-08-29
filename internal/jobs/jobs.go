@@ -403,7 +403,7 @@ func (m *Manager) startInvalid(parentSession, kind, label string, validationErr 
 	m.order = append(m.order, key)
 	m.mu.Unlock()
 	close(j.done)
-	m.recordCompletion(parentSession, id, kind, label, Failed, validationErr)
+	m.recordCompletion(parentSession, id, kind, label, Failed, validationErr, "")
 	return j
 }
 
@@ -527,7 +527,7 @@ func (m *Manager) StartForSession(parentSession, kind, label string, run func(ct
 		// completion, skip j.done, and DrainCompletedNote would race ahead of the
 		// bookkeeping (the TestDrainMultiple -race flake). Recording first makes an
 		// observed terminal status imply the note is already queued.
-		m.recordCompletion(parentSession, id, kind, label, st, err)
+		m.recordCompletion(parentSession, id, kind, label, st, err, resultDigestOf(st, result))
 
 		j.mu.Lock()
 		if j.status != Killed { // a concurrent Kill already published Killed — keep it
@@ -541,6 +541,26 @@ func (m *Manager) StartForSession(parentSession, kind, label string, run func(ct
 		close(j.done)
 	}()
 	return j
+}
+
+// resultDigestLimit caps the completion-note digest; runes keep the cut
+// UTF-8-safe for CJK output.
+const resultDigestLimit = 400
+
+// resultDigestOf extracts a short leading excerpt of a finished job's result
+// for the completion note. Only successful jobs carry a digest — failures
+// already surface their error text.
+func resultDigestOf(st Status, result string) string {
+	if st != Done || strings.TrimSpace(result) == "" {
+		return ""
+	}
+	trimmed := strings.TrimSpace(result)
+	runes := []rune(trimmed)
+	if len(runes) > resultDigestLimit {
+		trimmed = string(runes[:resultDigestLimit]) + "…"
+	}
+	// Collapse newlines so the note stays a single readable line.
+	return strings.ReplaceAll(trimmed, "\n", " ")
 }
 
 func runRecovered(ctx context.Context, out io.Writer, run func(context.Context, io.Writer) (string, error)) (result string, err error) {
@@ -775,7 +795,7 @@ func (m *Manager) monitorStalled(parentSession string, j *Job) {
 
 // recordCompletion queues the finished-job summary for DrainCompletedNote and
 // emits a closing Notice (warn for a failure, info otherwise).
-func (m *Manager) recordCompletion(parentSession, id, kind, label string, st Status, err error) {
+func (m *Manager) recordCompletion(parentSession, id, kind, label string, st Status, err error, resultDigest string) {
 	tag := id
 	if label != "" {
 		tag = fmt.Sprintf("%s (%s)", id, label)
@@ -787,9 +807,15 @@ func (m *Manager) recordCompletion(parentSession, id, kind, label string, st Sta
 		m.mu.Unlock()
 		return
 	}
+	// Phase 1b (#9522): a short result digest rides the completion note so the
+	// parent can continue without spending a turn on wait for every job.
+	text := fmt.Sprintf("%s — %s", tag, st)
+	if st == Done && resultDigest != "" {
+		text = fmt.Sprintf("%s — done — result begins: %s", tag, resultDigest)
+	}
 	m.completed = append(m.completed, completion{
 		sessionID: parentSession,
-		text:      fmt.Sprintf("%s — %s", tag, st),
+		text:      text,
 	})
 	active := m.active
 	shouldEmit = active == "" || parentSession == "" || active == parentSession

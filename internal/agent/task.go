@@ -877,10 +877,14 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 		// Emit queued before the job goroutine can start so the status slot
 		// never regresses to a stale queued after running.
 		trk.queued()
-		job := jm.StartForSession(jobs.SessionFromContext(ctx), "task", label, func(jobCtx context.Context, _ io.Writer) (result string, err error) {
+		job := jm.StartForSession(jobs.SessionFromContext(ctx), "task", label, func(jobCtx context.Context, out io.Writer) (result string, err error) {
 			if writerRegistered {
 				defer mutationObserver.UnregisterWriter(recoveryTaskID)
 			}
+			// Bridge the preview stream into the job buffer (#9522 Phase 1):
+			// wait/bash_output show the sub-agent's reasoning/text/notice
+			// stream while it runs instead of an opaque "running" status.
+			trk.attachJobOutput(out)
 			jobCtx = WithParentSession(jobCtx, parentSession)
 			jobCtx = evidence.WithLedger(jobCtx, backgroundEvidence)
 			defer run.Release()
