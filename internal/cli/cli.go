@@ -35,6 +35,7 @@ import (
 	"reasonix/internal/extension/providerext"
 	fileencoding "reasonix/internal/fileutil/encoding"
 	"reasonix/internal/i18n"
+	"reasonix/internal/netclient"
 	"reasonix/internal/notify"
 	"reasonix/internal/plugin"
 	"reasonix/internal/provider"
@@ -749,16 +750,7 @@ func runAgent(args []string, version string) int {
 		if exec := ctrl.Executor(); exec != nil {
 			if audit := exec.CapabilityAudit(); audit != nil {
 				snap := audit.Snapshot()
-				final.MergeCapabilityAuditCounters(
-					snap.Routes, snap.RoutedCandidates, snap.RoutedRequire, snap.RoutedPrefer, snap.RoutedSuggest, snap.Declines,
-					snap.SemanticRoutes, snap.SemanticFallbacks,
-					snap.RequireMissing, snap.RequireRecovered, snap.PreferMissing, snap.PreferRecovered,
-					snap.SkillInvocations, snap.SkillFailures, snap.SkillUnavailable,
-					snap.MCPInspect, snap.MCPCall, snap.MCPCallFailures,
-					snap.ReviewBlocks, snap.SecurityReviewBlocks,
-					snap.RouterPromptTokens, snap.RouterCompletionTokens,
-					snap.RouterCost, snap.RouterLatencyMs,
-				)
+				final.MergeCapabilityAudit(&snap)
 			}
 		}
 		if err := writeMetrics(*metricsPath, final); err != nil {
@@ -1614,14 +1606,14 @@ func familyStaticModels(providers []config.ProviderEntry, idxs []int) []string {
 // later wizard step), network/auth error, or a vendor without /models — it
 // silently returns the preset's static model list so the wizard can always
 // present something. The fetch has a 10s timeout and is best-effort.
-func fetchOrFallback(probe *config.ProviderEntry, famName string) []string {
+func fetchOrFallback(probe *config.ProviderEntry, famName string, proxy netclient.ProxySpec) []string {
 	static := probe.ModelList()
 	if probe.BaseURL == "" {
 		return static
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	models, err := probe.FetchModels(ctx)
+	models, err := probe.FetchModelsWithProxy(ctx, proxy)
 	if err != nil || len(models) == 0 {
 		if len(static) > 0 {
 			fmt.Fprintf(os.Stderr, "  %s\n", dim(fmt.Sprintf(i18n.M.FetchModelsUsingPresetsFmt, famName)))
@@ -1643,7 +1635,7 @@ func fetchOrFallback(probe *config.ProviderEntry, famName string) []string {
 // wizard's idea of "what models exist" diverged from the chat client's actual
 // endpoint. Returning the empty slice (not an error) on full miss lets the
 // wizard fall through to a manual text input without an error message.
-func fetchModelListCompat(ctx context.Context, baseURL, apiKey string) ([]string, error) {
+func fetchModelListCompat(ctx context.Context, baseURL, apiKey string, proxy netclient.ProxySpec) ([]string, error) {
 	candidates, err := config.BuildModelFetchURLs(baseURL, "")
 	if err != nil {
 		return nil, err
@@ -1651,7 +1643,7 @@ func fetchModelListCompat(ctx context.Context, baseURL, apiKey string) ([]string
 	var lastErr error
 	var firstHardErr error
 	for _, u := range candidates {
-		models, err := openai.FetchModels(ctx, u, apiKey, nil)
+		models, err := openai.FetchModelsWithOptions(ctx, u, apiKey, openai.FetchModelsOptions{Proxy: proxy})
 		if err == nil {
 			return models, nil
 		}
@@ -1880,7 +1872,7 @@ func newProviderPromptResult(entries []config.ProviderEntry, key, value string) 
 }
 
 // promptCustomProvider handles the custom provider entry flow.
-func promptCustomProvider() (providerPromptResult, error) {
+func promptCustomProvider(proxy netclient.ProxySpec) (providerPromptResult, error) {
 	methodIdx, err := selectOne(i18n.M.CustomAddMethodLabel, []menuItem{
 		{name: i18n.M.CustomMethodManual},
 		{name: i18n.M.CustomMethodURL},
@@ -1891,7 +1883,7 @@ func promptCustomProvider() (providerPromptResult, error) {
 	if methodIdx == 0 {
 		return promptCustomProviderManual()
 	}
-	return promptCustomProviderFromURL()
+	return promptCustomProviderFromURL(proxy)
 }
 
 // promptCustomProviderManual handles manual model entry.
@@ -1937,7 +1929,7 @@ func promptCustomProviderManualWith(in *bufio.Scanner, baseURL, keyEnv, apiKey s
 // endpoint and shows a checkbox of the returned models. If the call fails
 // (network error, auth failure, or a vendor without /models) it falls
 // through to manual entry, reusing the URL and key the user already typed.
-func promptCustomProviderFromURL() (providerPromptResult, error) {
+func promptCustomProviderFromURL(proxy netclient.ProxySpec) (providerPromptResult, error) {
 	in := bufio.NewScanner(os.Stdin)
 	fmt.Println()
 
@@ -1952,7 +1944,7 @@ func promptCustomProviderFromURL() (providerPromptResult, error) {
 	fmt.Printf("  %s\n", dim(fmt.Sprintf(i18n.M.FetchingModelsFmt, "custom")))
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	models, err := fetchModelListCompat(ctx, baseURL, apiKey)
+	models, err := fetchModelListCompat(ctx, baseURL, apiKey, proxy)
 	if err != nil || len(models) == 0 {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "  %s\n", dim(fmt.Sprintf(i18n.M.FetchModelsFailedFmt, "custom", err)))
@@ -1984,7 +1976,7 @@ func promptCustomProviderFromURL() (providerPromptResult, error) {
 }
 
 // promptAnthropicProvider handles the Anthropic compatible provider entry flow.
-func promptAnthropicProvider() (providerPromptResult, error) {
+func promptAnthropicProvider(proxy netclient.ProxySpec) (providerPromptResult, error) {
 	methodIdx, err := selectOne(i18n.M.AnthropicAddMethodLabel, []menuItem{
 		{name: i18n.M.AnthropicMethodManual},
 		{name: i18n.M.AnthropicMethodURL},
@@ -1995,7 +1987,7 @@ func promptAnthropicProvider() (providerPromptResult, error) {
 	if methodIdx == 0 {
 		return promptAnthropicProviderManual()
 	}
-	return promptAnthropicProviderFromURL()
+	return promptAnthropicProviderFromURL(proxy)
 }
 
 // promptAnthropicProviderManual handles manual model entry.
@@ -2040,7 +2032,7 @@ func promptAnthropicProviderManualWith(in *bufio.Scanner, baseURL, keyEnv, apiKe
 // — Anthropic's own API has no public model list — so on any failure the
 // flow falls through to manual entry with the URL/key already filled in,
 // rather than aborting the wizard.
-func promptAnthropicProviderFromURL() (providerPromptResult, error) {
+func promptAnthropicProviderFromURL(proxy netclient.ProxySpec) (providerPromptResult, error) {
 	in := bufio.NewScanner(os.Stdin)
 	fmt.Println()
 
@@ -2054,7 +2046,7 @@ func promptAnthropicProviderFromURL() (providerPromptResult, error) {
 	fmt.Printf("  %s\n", dim(fmt.Sprintf(i18n.M.AnthropicFetchingModelsFmt, "anthropic")))
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	models, err := fetchModelListCompat(ctx, baseURL, apiKey)
+	models, err := fetchModelListCompat(ctx, baseURL, apiKey, proxy)
 	if err != nil || len(models) == 0 {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "  %s\n", dim(fmt.Sprintf(i18n.M.AnthropicFetchModelsFailedFmt, "anthropic", err)))

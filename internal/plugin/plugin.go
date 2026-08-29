@@ -1554,7 +1554,9 @@ func (c *Client) call(ctx context.Context, method string, params any) (json.RawM
 		defer cancel()
 	}
 
+	started := time.Now()
 	res, err := c.callTransport(callCtx, method, params)
+	c.observeProtocol(method, res, time.Since(started), err)
 	if timeout > 0 && errors.Is(err, context.DeadlineExceeded) && callCtx.Err() == context.DeadlineExceeded && ctx.Err() == nil {
 		slog.Warn("plugin: MCP call timed out",
 			"server", c.name, "method", method, "tool", rawToolNameFromCallParams(params), "timeout", timeout)
@@ -1808,7 +1810,7 @@ func (t *remoteTool) ExecuteWithImages(ctx context.Context, args json.RawMessage
 		return "", nil, err
 	}
 	stampMCPAppResult(ctx, t, res)
-	return parseToolResult(res)
+	return parseToolResultWithSchema(res, t.outputSchema)
 }
 
 // ExecuteForApp returns the complete standard CallToolResult to an MCP App.
@@ -1878,6 +1880,7 @@ func (t *remoteTool) callRaw(ctx context.Context, args json.RawMessage) (json.Ra
 			return nil, fmt.Errorf("MCP server %q changed the authorization or destructive classification for tool %q; the call was blocked before dispatch — retry so Reasonix can re-apply the current Planner MCP safety boundary", t.client.name, t.rawName)
 		}
 	}
+	tool.ObserveRemoteDispatch(ctx)
 	res, err := t.client.call(ctx, "tools/call", map[string]any{
 		"name":      t.rawName,
 		"arguments": argMap,
