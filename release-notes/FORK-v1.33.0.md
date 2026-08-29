@@ -10,9 +10,9 @@
 
 ## 概览
 
-**Reasonix Fork v1.33.0 — 吸收上游 Shell 支持 + 通知音量 + 对话渲染事务化，修复历史加载回归**
+**Reasonix Fork v1.33.0 — 吸收上游 Shell 支持 + 通知音量 + 对话渲染事务化，五项 fork 修复**
 
-本版本合并上游 `v1.32.1 → v1.33.0 → main-v2 (bba8f8eb6)` 全部内容，同时修复了一处合并引入的历史加载回归（见下文 #9468）。
+本版本合并上游 `v1.32.1 → v1.33.0 → main-v2 (bba8f8eb6)` 全部内容，同时带来五项 fork 修复：历史加载 reload fallback（#9468）、kill_shell 终止持锁子代理（#9564）、MiMo 截断污染历史 400（#9566）、会话改名左侧树不同步（#8280 残留）、项目分组 classic/creation 布局渲染（#9222 完善 + CSS 恢复）。
 
 **版本对应说明**：上一版 fork v1.32.0 实际包含的上游内容为 v1.32.1；本版 fork v1.33.0 对应上游 v1.33.0 及其后的 main-v2 提交（#9513 系列），版本号与内容精确对齐。
 
@@ -58,11 +58,27 @@
 
 ---
 
-## 🐛 Fork 修复
+## 🔧 Fork 修复
 
 ### 历史加载 reload fallback（#9468，本版重新应用）
 
 上滑加载更早历史时，若后端已重写会话（快照恢复路径），上游的身份检查会误拒 reload 结果，导致"earlier conversation could not be loaded"且重试无效。本版恢复 v1.31.4 的修复顺序：reload 结果优先于 fingerprint 拒绝执行。该修复曾在 v1.32 合并时被上游同名区域改动覆盖。
+
+### kill_shell 无法终止持锁后台子代理（上游 #9564）
+
+`kill_shell` 被误分类为 workspace writer，后台写子代理持有 write path 锁期间，主对话用它终止该子代理会被同一把锁拦截（"write path is claimed by a running background subagent"），持锁子代理无法被杀。本版将 `kill_shell` 与 `wait`/`bash_output` 同列为非变更工具，从写锁协调中移除——终止操作不再需要锁。
+
+### MiMo 截断响应污染历史导致 HTTP 400（上游 #9566）
+
+MiMo 输出上限（128K）低于 DeepSeek（384K），长输出 turn 被服务端截断（finish_reason=length）时，流式中途拼接的 tool_call arguments 是非法 JSON 片段，被原样写入会话历史；下一轮请求回传后 MiMo 严格校验拒绝整个请求体（400 Invalid request parameters），点"继续"必复发，只能换模型逃生。本版在 assistant 消息入历史前做 repair：非法 JSON 的 arguments 修为 `{}`，请求体保持合法——工具以正常参数缺失错误收尾，模型可重试。
+
+### 会话面板改名后左侧项目树不同步 / 标题闪回（上游 #8280 残留）
+
+桌面端有两套会话标题存储：会话面板改名只写 Session 级（branch-meta CustomTitle），左侧项目树的权威标签读 Topic 级 titles 文件——改名后左侧长期显示旧自动名，且 catalog 状态翻转时短暂显示新名又闪回旧名。本版在改名链路上把手动标题投影到 Topic 级存储并更新已打开的 tab，两个改名入口收敛为同一个可见名字。
+
+### 项目分组在 classic/creation 布局不可见（#9222 完善）+ 样式恢复
+
+项目分组（A 套）的列表渲染此前只在 workbench 布局实现——classic/creation 用户能建组、能移入项目，但左侧列表完全看不到分组结构；且 1.32 合并时分组 CSS 被 auto-merge 静默丢弃（caret/图标/计数/操作按钮/移动分组面板共 194 行）。本版：① classic/creation 布局在有分组时渲染与 workbench 相同的分组结构（无分组时保持原纯平铺，零行为变化）；② 空分组也渲染标题行（创建后立即有视觉确认）；③ 恢复全部丢失的分组样式并适配 1.33 主题 token。
 
 ---
 
