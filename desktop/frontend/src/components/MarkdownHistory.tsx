@@ -184,12 +184,35 @@ export const MarkdownHistory = memo(function MarkdownHistory({
           commit();
           return;
         }
+        // A reader who is not at the bottom does not have to lose the
+        // rendered view (#9570): the deferred handoff below is only needed
+        // when swapping the fallback for the bounded tail window would
+        // visibly remove content the reader is looking at.
+        //
+        // 1. Answers within one tail window (total <= MARKDOWN_TAIL_BLOCKS)
+        //    render the full document in the block window — nothing is
+        //    removed, so the swap cannot yank the scroller.
+        if (result.blocks.length <= MARKDOWN_TAIL_BLOCKS) {
+          commit();
+          return;
+        }
+        // 2. Longer answers outside the viewport swap safely: any height
+        //    change happens off-screen, and the reader scrolling up meets
+        //    rendered blocks instead of the raw source.
+        const marker = fallbackMarkerRef.current;
+        const markerRect = marker?.getBoundingClientRect();
+        const markerInView = !!markerRect && window.innerHeight > 0
+          && markerRect.bottom > 0 && markerRect.top < window.innerHeight;
+        if (!markerInView) {
+          commit();
+          return;
+        }
 
-        // A fresh history mount uses the complete plain-text source while the
-        // worker parses. Replacing that source mid-read with the bounded tail
-        // block window removes the reader's visible blocks from the DOM and
-        // makes the native scroller jump to the end. Cache the result above,
-        // but keep the stable fallback until the reader deliberately returns
+        // 3. A long answer the reader is currently looking at keeps the
+        // stable fallback: replacing the complete plain-text source with the
+        // bounded tail block window removes the visible blocks from the DOM
+        // and makes the native scroller jump to the end. Cache the result
+        // above, but keep the fallback until the reader deliberately returns
         // to the bottom; that handoff needs no competing scroll write.
         const handleScroll = () => {
           if (isAtBottom()) commit();

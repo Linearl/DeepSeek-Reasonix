@@ -208,6 +208,17 @@ console.log("\nmarkdown history rendering");
   rootEl.scrollTop = 400;
   Object.defineProperty(rootEl, "scrollHeight", { configurable: true, value: 1_000 });
   Object.defineProperty(rootEl, "clientHeight", { configurable: true, value: 300 });
+  // The fallback marker sits inside the reader's viewport: the long answer
+  // keeps the stable fallback because the tail-window swap would remove the
+  // blocks being read (#9570 keeps that protection; short answers and
+  // off-screen rows commit immediately now).
+  const originalRectMidRead = dom.window.HTMLElement.prototype.getBoundingClientRect;
+  dom.window.HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
+    if (this.hasAttribute("data-markdown-fallback-marker")) {
+      return { top: 100, bottom: 400, left: 0, right: 0, width: 0, height: 300, x: 0, y: 100, toJSON: () => ({}) };
+    }
+    return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) };
+  };
   (globalThis as { Worker?: unknown }).Worker = class {};
   let resolveParse: ((result: ReturnType<typeof parseMarkdown>) => void) | null = null;
   const deferred = new MarkdownWorkerClient({
@@ -244,6 +255,30 @@ console.log("\nmarkdown history rendering");
   ok(rootEl.querySelector('.md[data-markdown-blocks="120"]'), "returning to bottom commits the cached parsed blocks");
   ok(rootEl.textContent?.includes("Anchor 60"), "the parsed tail is visible after the safe handoff");
   await act(async () => root5.unmount());
+  dom.window.HTMLElement.prototype.getBoundingClientRect = originalRectMidRead;
+  rootEl.className = "";
+  delete (globalThis as { Worker?: unknown }).Worker;
+  setMarkdownWorkerClientForTest(newSpyClient());
+}
+
+// ── an off-screen long answer commits without waiting for the reader ─────────
+{
+  rootEl.className = "transcript";
+  rootEl.scrollTop = 400;
+  Object.defineProperty(rootEl, "scrollHeight", { configurable: true, value: 50_000 });
+  Object.defineProperty(rootEl, "clientHeight", { configurable: true, value: 300 });
+  // jsdom gives every element a zero rect, which already reads as
+  // "off-screen": the row must render instead of waiting for a scroll that
+  // may never come (#9570 — the natural session end parked mid-history).
+  const root5b = createRoot(rootEl);
+  const text = Array.from({ length: 90 }, (_, index) => `# Away ${index + 1}\n\nBody ${index + 1}.`).join("\n\n");
+  await act(async () => {
+    root5b.render(<MarkdownHistory text={text} entryId="md-history-offscreen" fallback={<div className="md">{text}</div>} />);
+  });
+  await flush();
+  ok(rootEl.querySelector('.md[data-markdown-blocks="180"]'), "the off-screen long answer renders immediately");
+  ok(!rootEl.textContent?.includes("Away 1\n\nBody 1."), "the raw fallback is replaced by the bounded tail window");
+  await act(async () => root5b.unmount());
   rootEl.className = "";
   delete (globalThis as { Worker?: unknown }).Worker;
   setMarkdownWorkerClientForTest(newSpyClient());
