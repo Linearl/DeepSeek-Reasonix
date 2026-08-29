@@ -1,6 +1,7 @@
 export type TranscriptScrollMode =
   | "tail-follow"
   | "manual"
+  | "native-thumb"
   | "user-resize"
   | "selection"
   | "restoring";
@@ -43,6 +44,8 @@ export type TranscriptScrollEvent =
   | { type: "USER_SCROLL_INTENT"; canClaimTail: boolean }
   | { type: "MANUAL_READING" }
   | { type: "READER_INTENT_ENDED" }
+  | { type: "NATIVE_SCROLLBAR_BEGIN" }
+  | { type: "NATIVE_SCROLLBAR_END"; claimTail: boolean }
   | { type: "SCROLL_DELIVERED"; atBottom: boolean; scrollable: boolean; substantial?: boolean }
   | { type: "TAIL_CONTENT_CHANGED" }
   | { type: "CONTENT_SHRANK" }
@@ -156,9 +159,39 @@ export function reduceTranscriptScroll(
           ? { ...state, readerIntent: false, readerIntentCanClaimTail: false, bottomHoldCount: 0 }
           : state,
       );
+    case "NATIVE_SCROLLBAR_BEGIN":
+      return preempt({
+        ...state,
+        mode: "native-thumb",
+        readerIntent: false,
+        readerIntentCanClaimTail: false,
+        bottomHoldCount: 0,
+        settleMode: "manual",
+      });
+    case "NATIVE_SCROLLBAR_END":
+      if (state.mode !== "native-thumb") return transition(state);
+      return transition({
+        ...state,
+        mode: event.claimTail ? "tail-follow" : "manual",
+        atBottom: event.claimTail || state.atBottom,
+        readerIntent: false,
+        readerIntentCanClaimTail: false,
+        bottomHoldCount: 0,
+        settleMode: event.claimTail ? "tail-follow" : "manual",
+      });
     case "SCROLL_DELIVERED": {
       if (!event.scrollable) {
         return transition({ ...state, mode: "tail-follow", atBottom: true, scrollable: false, readerIntent: false, readerIntentCanClaimTail: false, bottomHoldCount: 0, settleMode: "tail-follow" });
+      }
+      if (state.mode === "native-thumb") {
+        return transition({
+          ...state,
+          atBottom: event.atBottom,
+          scrollable: true,
+          readerIntent: false,
+          readerIntentCanClaimTail: false,
+          bottomHoldCount: 0,
+        });
       }
       // The hold streak only accrues in manual mode (the only mode that can
       // re-enter tail-follow this way) and breaks whenever the delivery is

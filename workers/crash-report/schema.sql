@@ -54,6 +54,69 @@ CREATE TABLE IF NOT EXISTS reports (
 
 CREATE INDEX IF NOT EXISTS reports_fingerprint ON reports (fingerprint);
 
+-- Firebase Spark delivery is coordinated through D1 so an unavailable or
+-- quota-limited Realtime Database never loses a sanitized report. The payload
+-- is deleted immediately after Firebase accepts the group/sample projection.
+CREATE TABLE IF NOT EXISTS firebase_crash_outbox (
+  event_id TEXT PRIMARY KEY,
+  fingerprint TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'queued' CHECK (state IN ('queued', 'processing', 'projected')),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS firebase_crash_outbox_retry
+  ON firebase_crash_outbox (state, next_attempt_at, created_at);
+
+CREATE TABLE IF NOT EXISTS firebase_crash_receipts (
+  event_id TEXT PRIMARY KEY,
+  projected_at TEXT NOT NULL,
+  group_count INTEGER NOT NULL,
+  latest_slot INTEGER NOT NULL,
+  first_sample INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS firebase_crash_receipts_projected
+  ON firebase_crash_receipts (projected_at);
+
+-- Serializes each group's D1 projection, Firebase ring update, metadata sync,
+-- and administrative deletion across Worker isolates. Expired owners are
+-- recoverable, while owner-checked release prevents an old request from
+-- deleting a newer lease.
+CREATE TABLE IF NOT EXISTS firebase_crash_group_leases (
+  fingerprint TEXT PRIMARY KEY,
+  owner TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+
+-- Durable Firebase lifecycle, capacity reservation, and fencing state. The
+-- older lease table above remains for rolling-deployment compatibility only.
+CREATE TABLE IF NOT EXISTS firebase_crash_group_state (
+  fingerprint TEXT PRIMARY KEY,
+  sample_state TEXT NOT NULL DEFAULT 'active'
+    CHECK (sample_state IN ('active', 'compacted', 'archiving', 'archived')),
+  sample_epoch INTEGER NOT NULL DEFAULT 1 CHECK (sample_epoch >= 1),
+  epoch_first_event_id TEXT NOT NULL DEFAULT '',
+  reserved_bytes INTEGER NOT NULL DEFAULT 655360 CHECK (reserved_bytes >= 0),
+  last_seen TEXT NOT NULL,
+  compacted_at TEXT NOT NULL DEFAULT '',
+  archived_at TEXT NOT NULL DEFAULT '',
+  archive_reason TEXT NOT NULL DEFAULT ''
+    CHECK (archive_reason IN ('', 'retention', 'admin')),
+  lease_owner TEXT NOT NULL DEFAULT '',
+  lease_generation INTEGER NOT NULL DEFAULT 0 CHECK (lease_generation >= 0),
+  lease_expires_at TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS firebase_crash_group_state_lifecycle
+  ON firebase_crash_group_state (sample_state, last_seen);
+
+CREATE INDEX IF NOT EXISTS firebase_crash_group_state_lease
+  ON firebase_crash_group_state (lease_expires_at);
+
 CREATE TABLE IF NOT EXISTS pings (
   date TEXT NOT NULL,
   install_id TEXT NOT NULL,

@@ -1,6 +1,4 @@
 import type { RefObject } from "react";
-import type { VirtuosoHandle } from "react-virtuoso";
-import { noteTranscriptScrollWrite } from "./transcriptScrollProbe";
 import {
   CAPTURE_TRANSCRIPT_SCROLL_DIAGNOSTICS,
   type TranscriptScrollDiagnosticSource,
@@ -8,6 +6,7 @@ import {
 } from "./transcriptScrollDiagnosticProbe";
 import type { TranscriptScrollMode } from "./transcriptScrollArbiter";
 import { nativeTranscriptBottomTop, nativeTranscriptDistanceFromBottom, TRANSCRIPT_AT_BOTTOM_THRESHOLD_PX } from "./transcriptScrollGeometry";
+import type { TranscriptScrollWriter } from "./transcriptScrollWriter";
 
 const TAIL_STAGNANT_FRAME_LIMIT = 2;
 const TAIL_SETTLE_MAX_ATTEMPTS = 8;
@@ -50,16 +49,18 @@ export type TranscriptTailSettle = {
  * window.setTimeout clocks, so the fake-clock race harness drives it.
  */
 export function createTranscriptTailSettle({
-  virtuosoRef,
+  writer,
   scrollRef,
   modeRef,
   generationRef,
+  geometryRevisionRef,
   layoutTransientRef,
 }: {
-  virtuosoRef: RefObject<VirtuosoHandle | null>;
+  writer: TranscriptScrollWriter;
   scrollRef: RefObject<HTMLDivElement | null>;
   modeRef: RefObject<TranscriptScrollMode>;
   generationRef: RefObject<number>;
+  geometryRevisionRef: RefObject<number>;
   layoutTransientRef: RefObject<boolean>;
 }): TranscriptTailSettle {
   let tailSettleFrame: number | null = null;
@@ -83,26 +84,19 @@ export function createTranscriptTailSettle({
     const top = nativeTranscriptBottomTop(element);
     lastBottomHeight = element.scrollHeight;
     tailPinned = false;
-    if (CAPTURE_TRANSCRIPT_SCROLL_DIAGNOSTICS && diagnostic) {
-      noteTranscriptScrollWrite({
-        owner: "tail-follow",
-        kind: "scrollTo",
-        top,
-        source: diagnostic.source,
-        phase: diagnostic.phase,
-        scrollTop: element.scrollTop,
-        scrollHeight: element.scrollHeight,
-        clientHeight: element.clientHeight,
-        bottomDistance: nativeTranscriptDistanceFromBottom(element),
-        mode: modeRef.current,
-        settleFrame: diagnostic.settle?.frame,
-        offBottomFrames: diagnostic.settle?.offBottomFrames,
-        stagnantFrames: diagnostic.settle?.stagnantFrames,
-      });
-    } else {
-      noteTranscriptScrollWrite({ owner: "tail-follow", kind: "scrollTo", top });
-    }
-    virtuosoRef.current?.scrollTo({ top, behavior });
+    writer.write({
+      owner: "tail-follow",
+      operation: "scrollTo",
+      top,
+      behavior,
+      source: diagnostic?.source ?? "tail-follow",
+      phase: diagnostic?.phase,
+      expectedGeneration: generationRef.current,
+      geometryRevision: geometryRevisionRef.current,
+      settleFrame: diagnostic?.settle?.frame,
+      offBottomFrames: diagnostic?.settle?.offBottomFrames,
+      stagnantFrames: diagnostic?.settle?.stagnantFrames,
+    });
   };
 
   const cancel = () => {

@@ -62,8 +62,10 @@ MCP（含 `auto_start=false`）。宿主根据真实工具动作建立验证义�
 发现的 capability 在 handoff 后仍可直接调用；两者 ledger/audit 隔离，但共享 Host 连接。
 单模型会话不启用独立 Planner。
 
-`use_capability` 的解析阶段无副作用：`action=list` 返回已配置 MCP 服务器的排序列表且不启动服务器；
-对未连接服务器的 `action=call` 只生成惰性目标；Plan 只会对真实目标重新检查显式阶段 opt-out，服务器进程只在
+`use_capability` 的解析阶段无副作用：`action=list` 只返回已配置 MCP 服务器的精简排序摘要，
+不会展开每个缓存工具的 description，也不会启动服务器；需要某个已启用服务器的实时或缓存工具目录时，
+对对应 `mcp-server:<name>` 使用 `action=inspect`，同样不会启动服务器。对未连接服务器的
+`action=call` 只生成惰性目标；Plan 只会对真实目标重新检查显式阶段 opt-out，服务器进程只在
 权限门禁与 PreToolUse Hook 放行之后才启动。按需启动的
 子进程随会话存活（不会随单次调用结束而退出）；`action=inspect` 对已连接服务器列出实时工具，未连接
 时只读取缓存 schema，绝不启动进程。无 schema 缓存的服务器首次发现走 `mcp-server:` id 的
@@ -109,8 +111,8 @@ registry 中供调度，但不会展开到 top-level provider schema；模型通
 每个任务共享同一套精简的 provider 可见核心：直接编码工具、后台 shell 生命周期工具，
 以及稳定的能力代理：
 
-`bash`, `bash_output`, `edit_file`, `kill_shell`, `read_file`, `wait`,
-`write_file`, `compress`（若注册），以及 `use_capability`。
+`bash`, `bash_output`, `edit_file`, `kill_shell`, `read_file`,
+`wait`, `write_file`, `compress`（若注册），以及 `use_capability`。
 
 可选工具（`glob`、`grep`、`ls`、`web_fetch`、MCP、skills、subagents、docs、会话历史、
 记忆写入、workflow 等）仍在 host registry 中可调度；模型通过 `use_capability` 列举、

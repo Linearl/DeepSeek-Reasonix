@@ -537,7 +537,7 @@ func (t *UseCapabilityTool) CloneForAgent(ledger *capability.Ledger, audit *capa
 func (*UseCapabilityTool) Name() string { return "use_capability" }
 
 func (*UseCapabilityTool) Description() string {
-	return "Unified capability proxy with a fixed schema: list catalog capabilities, inspect metadata, call a capability by stable id (tool:grep, skill:review, mcp-tool:server/tool, task:subagent, workflow:name, web:/lsp:/session:/memory: namespaces), or decline a prefer capability with a non-empty reason. Calling does not change the provider-visible tool schema. Resolved writers still pass permission, plan mode, sandbox, write-path, and workspace-lease checks. The Planner leaves destructive MCP for the Executor."
+	return "Fixed-schema capability proxy: list, inspect, call by stable id (tool:grep, skill:review, mcp-tool:server/tool, task:subagent, workflow:name, web:/lsp:/session:/memory: namespaces), or decline a prefer capability with a reason. memory:remember saves facts (description+body required; activation=\"relevant\" on create; omit activation on update; \"pinned\" only if user asks); memory:forget(name); tool:memory(operation=search|read|list). Calls keep the provider-visible schema fixed. Writers still pass permission, plan mode, sandbox, write-path, and workspace-lease checks. The Planner leaves destructive MCP for the Executor."
 }
 
 func (*UseCapabilityTool) ReadOnly() bool { return true }
@@ -562,17 +562,10 @@ func (*UseCapabilityTool) Schema() json.RawMessage {
 // ResolveCall implements tool.CallResolver so the agent can run permission,
 // hooks, and evidence against the real MCP target before execution.
 func (t *UseCapabilityTool) ResolveCall(ctx context.Context, args json.RawMessage) (tool.ResolvedCall, error) {
-	var p struct {
-		Action       string          `json:"action"`
-		CapabilityID string          `json:"capability_id"`
-		Arguments    json.RawMessage `json:"arguments"`
-		Reason       string          `json:"reason"`
+	p, action, id, err := parseUseCapabilityArgs(args)
+	if err != nil {
+		return tool.ResolvedCall{}, err
 	}
-	if err := json.Unmarshal(args, &p); err != nil {
-		return tool.ResolvedCall{}, fmt.Errorf("invalid args: %w", err)
-	}
-	action := strings.ToLower(strings.TrimSpace(p.Action))
-	id := strings.TrimSpace(p.CapabilityID)
 	base := tool.ResolvedCall{
 		DisplayName:  "use_capability",
 		ProxyAction:  action,
@@ -718,123 +711,6 @@ func (t *UseCapabilityTool) Execute(ctx context.Context, args json.RawMessage) (
 	return out, nil
 }
 
-// listServerInfo is one configured MCP server entry returned by action=list.
-// It never starts a server or opens a network connection.
-type listServerInfo struct {
-	Name         string `json:"name"`
-	CapabilityID string `json:"capability_id"`
-	Status       string `json:"status"`
-	Authorized   bool   `json:"authorized"`
-	Connected    bool   `json:"connected"`
-}
-
-// listCapabilities returns the unified catalog summary: MCP servers plus
-// non-provider-visible tools and skills available through this proxy. The
-// top-level "servers" key stays compatible with restricted subagent list
-// filtering.
-func (t *UseCapabilityTool) listCapabilities() (string, error) {
-	type capInfo struct {
-		ID          string `json:"id"`
-		Kind        string `json:"kind"`
-		Name        string `json:"name"`
-		Status      string `json:"status,omitempty"`
-		ReadOnly    bool   `json:"read_only,omitempty"`
-		Description string `json:"description,omitempty"`
-	}
-	var caps []capInfo
-	if t.currentToolResultTarget() != nil {
-		caps = append(caps, capInfo{
-			ID: sessionToolResultCapabilityID, Kind: "session", Name: "tool_result", Status: "ready", ReadOnly: true,
-			Description: "Read one bounded page from a complete tool result retained in this agent's current session.",
-		})
-	}
-	if t.catalog != nil {
-		for _, e := range t.catalog().Entries {
-			// Skip provider-visible core tools — they are already top-level.
-			if e.Kind == capability.KindTool && t.registry != nil && t.registry.ProviderVisible(e.ToolName) {
-				continue
-			}
-			caps = append(caps, capInfo{
-				ID:          e.ID,
-				Kind:        string(e.Kind),
-				Name:        e.Name,
-				Status:      string(e.Status),
-				ReadOnly:    e.ReadOnly,
-				Description: e.Description,
-			})
-		}
-	}
-	serversJSON, err := t.listServers()
-	if err != nil {
-		return "", err
-	}
-	var serversPayload struct {
-		Servers []listServerInfo `json:"servers"`
-		Note    string           `json:"note"`
-	}
-	_ = json.Unmarshal([]byte(serversJSON), &serversPayload)
-	payload := map[string]any{
-		"capabilities": caps,
-		"servers":      serversPayload.Servers,
-		"note":         "Call action=call with a capability_id to invoke a non-core tool, skill, MCP tool, or other catalog entry without changing the provider tool schema.",
-	}
-	if serversPayload.Note != "" {
-		payload["note"] = payload["note"].(string) + " " + serversPayload.Note
-	}
-	b, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
-}
-
-// listServers returns sorted configured MCP server names, status, and
-// capability IDs without starting servers. Used by Planner discovery when no
-// specific capability route was provided.
-func (t *UseCapabilityTool) listServers() (string, error) {
-	configured := t.configuredServers()
-	list := make([]listServerInfo, 0, len(configured))
-	for _, server := range configured {
-		spec := server.spec
-		name := strings.TrimSpace(spec.Name)
-		if name == "" {
-			continue
-		}
-		// Apply stored project grants without process/network side effects so
-		// list status matches resolve/execute authorization.
-		resolved := plugin.ResolveStoredAuthorization(context.Background(), spec)
-		connected := server.enabled && resolved.ServerAuthorized() && t.host != nil && t.host.HasClientForSpec(resolved)
-		status := "configured"
-		if !server.enabled {
-			status = "disabled"
-		} else if connected {
-			status = "ready"
-		} else if t.host != nil {
-			for _, f := range t.host.Failures() {
-				if f.Name == name && strings.TrimSpace(f.Error) != "" {
-					status = "failed"
-					break
-				}
-			}
-		}
-		list = append(list, listServerInfo{
-			Name:         name,
-			CapabilityID: "mcp-server:" + name,
-			Status:       status,
-			Authorized:   resolved.ServerAuthorized(),
-			Connected:    connected,
-		})
-	}
-	b, err := json.MarshalIndent(map[string]any{
-		"servers": list,
-		"note":    "list does not start MCP servers. Call action=call on mcp-server:<name> to connect after authorization, or mcp-tool:<server>/<tool> for a concrete tool.",
-	}, "", "  ")
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
-}
-
 func (t *UseCapabilityTool) inspect(ctx context.Context, id string) (string, error) {
 	cat := t.currentCatalog()
 	if e, ok := cat.Lookup(id); ok {
@@ -875,7 +751,7 @@ func (t *UseCapabilityTool) inspect(ctx context.Context, id string) (string, err
 			}
 			if server != "" {
 				if !t.serverEnabled(server) {
-					return string(b) + "\n\nServer is disabled in this session.", nil
+					return string(b) + "\n\n" + t.serverUnavailableReason(server), nil
 				}
 				if t.host != nil && t.host.HasClient(server) {
 					// serverTools refreshes the snapshot too: inspecting a
@@ -991,7 +867,7 @@ func (t *UseCapabilityTool) resolveCall(ctx context.Context, id string, args jso
 		return tool.ResolvedCall{}, err
 	}
 	if !t.serverEnabled(server) {
-		return t.resolveUnavailable(base, id, plugin.ModelToolName(server, raw), fmt.Sprintf("MCP server %q is disabled in this session", server)), nil
+		return t.resolveUnavailable(base, id, plugin.ModelToolName(server, raw), t.serverUnavailableReason(server)), nil
 	}
 	var runtimeSpec plugin.Spec
 	releaseRuntime := func() {}
@@ -1062,7 +938,7 @@ func (t *UseCapabilityTool) resolveCall(ctx context.Context, id string, args jso
 		var ok bool
 		spec, ok = t.specFor(server)
 		if !ok {
-			return t.resolveUnavailable(base, id, modelName, fmt.Sprintf("MCP server %q is not configured", server)), nil
+			return t.resolveUnavailable(base, id, modelName, mcpServerUnregisteredMessage(server)), nil
 		}
 		spec = plugin.ResolveStoredAuthorization(ctx, spec)
 	}
@@ -1383,7 +1259,7 @@ func (t *UseCapabilityTool) lockAuthorizedRuntimeServer(ctx context.Context, ser
 	if t.runtime == nil {
 		spec, ok := t.specFor(server)
 		if !ok {
-			return plugin.Spec{}, func() {}, fmt.Errorf("MCP server %q is not configured", server)
+			return plugin.Spec{}, func() {}, mcpServerUnregisteredError(server)
 		}
 		spec = plugin.ResolveStoredAuthorization(ctx, spec)
 		if !spec.ServerAuthorized() {
@@ -1399,11 +1275,11 @@ func (t *UseCapabilityTool) lockAuthorizedRuntimeServer(ctx context.Context, ser
 	t.runtime.mu.RUnlock()
 	if !ok {
 		unlock()
-		return plugin.Spec{}, func() {}, fmt.Errorf("MCP server %q is not configured", server)
+		return plugin.Spec{}, func() {}, mcpServerUnregisteredError(server)
 	}
 	if !configured.enabled {
 		unlock()
-		return plugin.Spec{}, func() {}, fmt.Errorf("MCP server %q is disabled in this session", server)
+		return plugin.Spec{}, func() {}, mcpServerDisabledError(server)
 	}
 	spec := plugin.ResolveStoredAuthorization(ctx, cloneMCPSpec(configured.spec))
 	if !spec.ServerAuthorized() {
@@ -1496,7 +1372,7 @@ func parseMCPServerCapabilityID(id string) (string, bool) {
 func (t *UseCapabilityTool) resolveServerConnect(ctx context.Context, server string, base tool.ResolvedCall) (tool.ResolvedCall, error) {
 	id := "mcp-server:" + server
 	if !t.serverEnabled(server) {
-		return t.resolveUnavailable(base, id, plugin.ToolPrefix(server), fmt.Sprintf("MCP server %q is disabled in this session", server)), nil
+		return t.resolveUnavailable(base, id, plugin.ToolPrefix(server), t.serverUnavailableReason(server)), nil
 	}
 	if t.host != nil && t.host.HasClient(server) {
 		out, err := t.listServerTools(ctx, server)

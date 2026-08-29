@@ -614,6 +614,16 @@ export function renderStats(
       gpuStates: BarRow[];
     };
     installationLinkedSince?: string;
+    firebaseStorage?: {
+      active: number;
+      compacted: number;
+      archiving: number;
+      archived: number;
+      reservedBytes: number;
+      budgetBytes: number;
+      outboxCount: number;
+      oldestOutboxSeconds: number;
+    };
     overview: OverviewCounts;
     latestVersion: string;
     filters: {
@@ -734,6 +744,20 @@ export function renderStats(
     (row) => row.kind === "performance" && !isDevelopmentDiagnostic(row),
   );
   const developmentDiagnostics = data.crashes.filter(isDevelopmentDiagnostic);
+  const firebaseStorage = data.firebaseStorage ? (() => {
+    const storage = data.firebaseStorage;
+    const percent = storage.budgetBytes > 0 ? storage.reservedBytes / storage.budgetBytes * 100 : 0;
+    const tone = percent >= 100 ? "bad" : percent >= 80 ? "warn" : "good";
+    const waiting = storage.oldestOutboxSeconds > 0
+      ? `${Math.floor(storage.oldestOutboxSeconds / 3600)}h ${Math.floor(storage.oldestOutboxSeconds % 3600 / 60)}m`
+      : "none";
+    return `<section class="module-panel"><h3>${i18n("Firebase Spark storage", "Firebase Spark 存储")}</h3>
+<div class="overview-grid">
+${statCard({ en: "Reserved", zh: "已预留" }, `${(storage.reservedBytes / 1048576).toFixed(1)} MiB`, `${percent.toFixed(1)}% / 700 MiB`, "#", tone)}
+${statCard({ en: "Lifecycle", zh: "生命周期" }, `${storage.active}/${storage.compacted}/${storage.archiving}/${storage.archived}`, i18n("active / compacted / archiving / archived", "活跃 / 已压缩 / 归档中 / 已归档"), "#")}
+${statCard({ en: "Outbox", zh: "待投递" }, String(storage.outboxCount), i18nHTML(`oldest ${waiting}`, `最老 ${waiting === "none" ? "无" : waiting}`), "#", storage.outboxCount >= 4000 ? "warn" : "good")}
+</div></section>`;
+  })() : "";
   const overview = `<section class="overview-grid">
 ${statCard({ en: "Active today", zh: "今日活跃" }, String(totalUsers), i18n("anonymous installs", "匿名安装"), filterQS({}, "usage"))}
 ${statCard({ en: "Latest adoption", zh: "最新版本占比" }, latestVersionShare(data.overview.latestAdoptionPct), i18nHTML(`latest ${esc(data.latestVersion || "n/a")}`, `最新 ${esc(data.latestVersion || "n/a")}`), filterQS({}, "usage"))}
@@ -781,6 +805,7 @@ ${anyPing ? dailyChart(days) : `<div class="empty">${i18n("No pings yet — data
 </div></section>`;
   const diagnosticsModule = `<section id="diagnostics" class="card full module-card"><div class="module-head"><div><span>${i18n("Module", "模块")}</span><h2>${i18n("Diagnostic triage", "诊断分诊")}</h2></div><a class="module-action" href="#top">${i18n("Back to overview", "回到概览")}</a></div>
 <p class="sub">${i18n("Installation-linked data is available only from the diagnostics-v2 deployment date; historical device counts are not backfilled.", "可关联安装的数据仅从 diagnostics-v2 部署日起提供；历史设备数不回填。")}</p>
+${firebaseStorage}
 <section class="module-panel"><h3>${i18nHTML("Needs attention <b>— top 10 release crashes and exceptions</b>", "优先处理 <b>— 正式版崩溃与异常 Top 10</b>")}</h3>${reportGroups(releaseCrashes.slice(0, 10), true)}</section>
 ${performanceDiagnostics.length ? `<section class="module-panel"><h3>${i18nHTML("Performance signals <b>— tracked separately from crashes</b>", "性能信号 <b>— 与崩溃分开统计</b>")}</h3>${reportGroups(performanceDiagnostics.slice(0, 5), true)}</section>` : ""}
 ${developmentDiagnostics.length ? `<section class="module-panel"><h3>${i18nHTML("Development diagnostics <b>— excluded from release priority</b>", "开发版诊断 <b>— 不计入正式版优先级</b>")}</h3>${reportGroups(developmentDiagnostics.slice(0, 5), true)}</section>` : ""}

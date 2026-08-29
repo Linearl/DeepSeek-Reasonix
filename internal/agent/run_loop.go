@@ -255,7 +255,7 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) error {
 			// (unapplied path marks uncertain + pause via the notice sink).
 			a.RecordUnappliedSteer("(body load failed)", itemID)
 		}
-		schemas := a.svc.tools.Schemas()
+		schemas := a.providerToolSchemas()
 		prefixShape := a.capturePrefixShape(schemas)
 		prevPrefixShape := a.sess.lastPrefixShape
 		if !a.sess.haveLastPrefixShape {
@@ -590,6 +590,10 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 		a.contextManager().ObserveUsage(usage)
 		return true, nil
 	}
+	if a.continueStandardTodo(ctx, state) {
+		a.contextManager().ObserveUsage(usage)
+		return true, nil
+	}
 	if readiness.applies || a.turn.readinessRecovered {
 		event.RecordReadinessAudit(a.svc.sink, readiness.audit(evidence.ReadinessAllowed, a.turn.readinessRecovered))
 	}
@@ -636,6 +640,11 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
 		receiptMark = a.task.ledger.Len()
 	}
 	batch := a.executeBatch(ctx, state, calls)
+	if batch.err != nil {
+		// No call from the batch has executed: executeBatch commits every full
+		// dispatch before entering its execution scheduler.
+		return false, batch.err
+	}
 	results, images := batch.results, batch.images
 	for i, call := range calls {
 		msg := provider.Message{

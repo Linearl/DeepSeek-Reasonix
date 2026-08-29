@@ -129,9 +129,9 @@ export function projectTreeWithoutTopic(tree: ProjectNode[], topicId: string): P
   return projectTreeWithoutTopics(tree, new Set([id]));
 }
 
-// Pending archive IDs are a client-side tombstone overlay. Apply it to every
-// incoming page as well as the resident tree so an older request cannot paint
-// a topic back while its backend mutation is still queued or running.
+// Post-commit archive IDs are a client-side tombstone overlay. Apply it to
+// every incoming page as well as the resident tree so a pre-commit request
+// cannot paint a topic back before the canonical reload acquires its sequence.
 export function projectTreeWithoutTopics(tree: ProjectNode[], topicIds: ReadonlySet<string>): ProjectNode[] {
   if (topicIds.size === 0) return tree;
   let changed = false;
@@ -188,6 +188,20 @@ export function projectTreeFolderKeyForTopic(tree: ProjectNode[], topicId: strin
   for (const node of tree) {
     if (node.kind !== "project" && node.kind !== "global_folder") continue;
     if (asArray(node.children).some((child) => child.topicId === id)) return node.key;
+  }
+  return "";
+}
+
+export function projectTreeFolderKeyForSession(tree: ProjectNode[], sessionPath: string): string {
+  const path = sessionPath.trim();
+  if (!path) return "";
+  const containsSession = (nodes: ProjectNode[]): boolean => nodes.some((node) =>
+    (isRuntimeSessionNode(node) && node.sessionPath?.trim() === path)
+    || containsSession(asArray(node.children)),
+  );
+  for (const node of tree) {
+    if (node.kind !== "project" && node.kind !== "global_folder") continue;
+    if (containsSession(asArray(node.children))) return node.key;
   }
   return "";
 }
@@ -288,6 +302,11 @@ export function topicIsActive(node: ProjectNode, activeScope?: string, activeWor
   }
   if (!isTopicNode(node)) return false;
   if (activeSessionPath && asArray(node.children).some(isRuntimeSessionNode)) return false;
+  // Remote filesystem paths are not globally unique: two hosts can expose the
+  // same absolute session path. Their synthesized rows already carry a
+  // host-qualified topicId, so never let the generic path fallback mark a row
+  // from another host active.
+  if (node.remoteSession) return topicMatchesActiveIdentity(node, activeScope, activeWorkspaceRoot, activeTopicId);
   if (topicMatchesActiveIdentity(node, activeScope, activeWorkspaceRoot, activeTopicId)) return true;
   return Boolean(node.sessionPath && activeSessionPath && activeSessionPath === node.sessionPath);
 }

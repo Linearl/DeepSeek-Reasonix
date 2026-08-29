@@ -16,6 +16,8 @@ export type TranscriptScrollDiagnosticSource =
   | "user-scroll-intent"
   | "manual-reading"
   | "reader-intent-ended"
+  | "native-scrollbar-begin"
+  | "native-scrollbar-end"
   | "scroll-delivered"
   | "tail-content-changed"
   | "content-shrank"
@@ -46,6 +48,8 @@ function sourceForEvent(event: TranscriptScrollEvent["type"]): TranscriptScrollD
     case "USER_SCROLL_INTENT": return "user-scroll-intent";
     case "MANUAL_READING": return "manual-reading";
     case "READER_INTENT_ENDED": return "reader-intent-ended";
+    case "NATIVE_SCROLLBAR_BEGIN": return "native-scrollbar-begin";
+    case "NATIVE_SCROLLBAR_END": return "native-scrollbar-end";
     case "SCROLL_DELIVERED": return "scroll-delivered";
     case "TAIL_CONTENT_CHANGED": return "tail-content-changed";
     case "CONTENT_SHRANK": return "content-shrank";

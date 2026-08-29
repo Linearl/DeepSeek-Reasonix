@@ -4992,6 +4992,8 @@ export default function App() {
                 key={scopedTodoBatch}
                 stateKey={scopedTodoBatch}
                 todos={todos}
+                running={state.running}
+                pendingPrompt={state.pendingPrompt}
                 onDismiss={dismissTodos}
               />
             )}

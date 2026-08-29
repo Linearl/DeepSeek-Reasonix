@@ -6,7 +6,7 @@ import { z } from "zod";
 import type { Env } from "./env";
 import { html, redirect } from "./shell";
 import { renderStats, type StatsModule } from "./stats";
-import { renderGroup, type Group } from "./group";
+import { renderGroup, type Group, type ReportSample } from "./group";
 import { renderAccount } from "./auth_pages";
 import { renderUsers, renderAudit, type UserRow, type AuditRow } from "./admin";
 import {
@@ -46,6 +46,46 @@ import {
 } from "./diagnostics_v2";
 import { Report, WebRuntimeDiagnostic, type ReportPayload } from "./report_schema";
 import { statsFilters, type StatsFilters } from "./stats_filters";
+import {
+  acquireFirebaseGroupLease,
+  claimFirebaseCrash,
+  crashStorageMode,
+  enqueueFirebaseCrash,
+  firebaseEventExists,
+  firebaseGroupState,
+  firebaseProjectionExists,
+  firebaseStorageReady,
+  projectionCompletionStatements,
+  purgeFirebaseDeliveryState,
+  recordFirebaseRetry,
+  reclaimUnusedFirebaseReservation,
+  releaseFirebaseGroupLease,
+  renewFirebaseGroupLease,
+  reserveFirebaseGroup,
+  type FirebaseGroupLease,
+} from "./crash_delivery";
+import {
+  readFirebaseCrashGroup,
+  writeFirebaseGroupMeta,
+} from "./firebase_rtdb";
+import {
+  deliverCrashEventToFirebase,
+  drainFirebaseCrashOutbox as drainFirebaseOutbox,
+  type StoredCrashEvent,
+} from "./firebase_delivery";
+import {
+  archiveFirebaseGroupForAdmin,
+  firebaseStorageSummary,
+  runFirebaseCrashLifecycle,
+  FIREBASE_OUTBOX_WARNING,
+  type FirebaseStorageSummary,
+} from "./firebase_lifecycle";
+import {
+  firebaseMeta,
+  firebaseSamples,
+  loadFirebaseGroupMeta,
+  type FirebaseGroupRow,
+} from "./firebase_crash_view";
 export { Report } from "./report_schema";
 export { diagnosticWindowWhere, effectiveGroupSeverity, isDevelopmentGroup } from "./diagnostics_v2";
 const MAX_BODY_BYTES = 96 * 1024;
@@ -513,14 +553,183 @@ async function readJSON(request: Request): Promise<unknown | Response> {
   }
 }
 
-// Ingest writes fail together when the database is unhealthy (e.g. the D1
-// size cap: every INSERT throws while reads stay fine). Surface that as a
-// deliberate 503 with a loud log instead of an opaque worker exception, so
-// `wrangler tail` / observability show the root cause and clients see a
-// retryable status.
+// Storage operations surface a deliberate 503 with a loud but credential-free
+// log instead of an opaque worker exception, so clients retain retryable state.
 function storageUnavailable(op: string, err: unknown): Response {
-  console.error(`${op}: D1 write failed`, err);
+  console.error(`${op}: storage unavailable`, err);
   return new Response("storage unavailable", { status: 503 });
+}
+
+async function prepareCrashEvent(r: ReportPayload, keepD1Sample: boolean): Promise<StoredCrashEvent> {
+  const message = scrubSensitiveText(r.message);
+  const errorMessage = scrubSensitiveText(r.errorMessage ?? "");
+  const stack = scrubSensitiveText(r.stack ?? "");
+  const componentStack = scrubSensitiveText(r.componentStack ?? "");
+  const topFrame = scrubSensitiveText(r.topFrame ?? "");
+  const fingerprintHint = scrubSensitiveText(r.fingerprintHint ?? "");
+  const view = scrubSensitiveText(r.view ?? "");
+  const breadcrumbs = (r.breadcrumbs ?? []).map((breadcrumb) => ({
+    ...breadcrumb,
+    msg: breadcrumb.msg ? scrubSensitiveText(breadcrumb.msg) : breadcrumb.msg,
+  }));
+  const webRuntime = normalizedWebRuntime(r);
+  const webview2 = r.webview2
+    ? {
+        ...r.webview2,
+        processDescription: scrubSensitiveText(r.webview2.processDescription ?? "").slice(0, 255),
+        failureSourceModule: basenameOnly(r.webview2.failureSourceModule),
+      }
+    : undefined;
+  const report: ReportPayload = {
+    ...r,
+    eventId: r.eventId ?? crypto.randomUUID().replaceAll("-", ""),
+    message,
+    errorMessage,
+    stack,
+    componentStack,
+    topFrame,
+    fingerprintHint,
+    view,
+    breadcrumbs,
+    webRuntime,
+    webview2,
+  };
+  const fingerprintBasis = (
+    report.source === "web.runtime.native" || report.source === "webview2.process.native"
+  ) && webRuntime
+    ? nativeWebRuntimeFingerprintBasis(webRuntime)
+    : hasStructuredCrashFields(report)
+      ? normalizeForFingerprint({
+        kind: report.kind,
+        message,
+        source: report.source,
+        label: report.label,
+        errorType: report.errorType,
+        errorMessage,
+        topFrame,
+        fingerprintHint,
+      })
+      : normalizeForFingerprint(report.kind, message);
+  const severityInput = {
+    kind: report.kind,
+    version: report.version,
+    source: report.source ?? "legacy",
+    label: report.label ?? "",
+    errorType: report.errorType ?? "",
+    errorMessage,
+    topFrame,
+    channel: report.channel ?? "",
+    recovery: webRuntime?.recovery,
+  };
+  const development = isDevelopmentReport(severityInput);
+  return {
+    eventId: report.eventId!,
+    fingerprint: namespaceReportFingerprint(await sha256Hex(fingerprintBasis), development),
+    receivedAt: new Date().toISOString(),
+    keepD1Sample,
+    report,
+  };
+}
+
+async function projectCrashEvent(env: Env, event: StoredCrashEvent): Promise<void> {
+  const firebaseDelivery = crashStorageMode(env) !== "d1";
+  if (firebaseDelivery && await firebaseProjectionExists(env, event.eventId)) {
+    await env.DB.prepare(
+      "UPDATE firebase_crash_outbox SET state = 'projected', updated_at = ?2 WHERE event_id = ?1",
+    ).bind(event.eventId, new Date().toISOString()).run();
+    return;
+  }
+  const r = event.report;
+  const webRuntime = normalizedWebRuntime(r);
+  const webview2 = r.webview2;
+  const message = r.message;
+  const errorMessage = r.errorMessage ?? "";
+  const topFrame = r.topFrame ?? "";
+  const source = r.source ?? "legacy";
+  const label = r.label ?? "";
+  const errorType = r.errorType ?? "";
+  const buildCommit = r.buildCommit ?? "";
+  const channel = r.channel ?? "";
+  const severity = severityForReport({
+    kind: r.kind,
+    version: r.version,
+    source,
+    label,
+    errorType,
+    errorMessage,
+    topFrame,
+    channel,
+    recovery: webRuntime?.recovery,
+  });
+  const prior = await env.DB.prepare("SELECT status FROM groups WHERE fingerprint = ?1")
+    .bind(event.fingerprint)
+    .first<{ status: string }>();
+  const regressedAt = prior?.status === "resolved" ? event.receivedAt : "";
+  const groupWrite = env.DB.prepare(
+    `INSERT INTO groups (
+       fingerprint, kind, count, first_seen, last_seen, first_version, last_version,
+       status, title, source, label, error_type, top_frame, severity,
+       last_os, last_arch, last_build_commit, last_channel, last_sample_at, regressed_at
+     )
+     VALUES (?1, ?2, 1, ?3, ?3, ?4, ?4, 'open', ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?3, ?15)
+     ON CONFLICT (fingerprint) DO UPDATE SET
+       kind = CASE
+         WHEN severity = 'critical' THEN kind
+         WHEN (CASE ?10 WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END) >
+              (CASE severity WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END)
+           THEN ?2 ELSE kind END,
+       count = count + 1, last_seen = ?3, last_version = ?4, title = ?5,
+       source = ?6, label = ?7, error_type = ?8, top_frame = ?9,
+       severity = CASE
+         WHEN severity = 'critical' THEN severity
+         WHEN (CASE ?10 WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END) >
+              (CASE severity WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END)
+           THEN ?10 ELSE severity END,
+       last_os = ?11, last_arch = ?12, last_build_commit = ?13, last_channel = ?14,
+       last_sample_at = ?3,
+       status = CASE WHEN status = 'resolved' THEN 'open' ELSE status END,
+       regressed_at = CASE WHEN status = 'resolved' THEN ?3 ELSE regressed_at END`,
+  ).bind(
+    event.fingerprint, r.kind, event.receivedAt, r.version, crashTitle(message), source,
+    label, errorType, topFrame, severity, r.os, r.arch, buildCommit, channel, regressedAt,
+  );
+  const statements: D1PreparedStatement[] = [groupWrite];
+  if (event.keepD1Sample) {
+    statements.push(env.DB.prepare(
+      `INSERT INTO reports (
+         fingerprint, kind, version, os, arch, message, device, created_at,
+         source, label, error_type, error_message, top_frame, build_commit, channel,
+         language, view, breadcrumbs, component_stack, stack, occurred_at, webview2, web_runtime
+       ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)`,
+    ).bind(
+      event.fingerprint, r.kind, r.version, r.os, r.arch, message,
+      JSON.stringify(r.device ?? {}), event.receivedAt, source, label, errorType, errorMessage,
+      topFrame, buildCommit, channel, r.language ?? "", r.view ?? "",
+      JSON.stringify(r.breadcrumbs ?? []), r.componentStack ?? "", r.stack ?? "",
+      r.occurredAt ?? "", webview2 ? JSON.stringify(webview2) : "",
+      webRuntime ? JSON.stringify(webRuntime) : "",
+    ));
+  }
+  statements.push(...reportAggregateStatements(env.DB, r, event.fingerprint, channel, webRuntime));
+  if (event.keepD1Sample) {
+    statements.push(env.DB.prepare(
+      `DELETE FROM reports WHERE fingerprint = ?1 AND id NOT IN (
+         SELECT id FROM (SELECT id FROM reports WHERE fingerprint = ?1 ORDER BY id ASC LIMIT 1)
+         UNION
+         SELECT id FROM (SELECT id FROM reports WHERE fingerprint = ?1 ORDER BY id DESC LIMIT ?2)
+       )`,
+    ).bind(event.fingerprint, LATEST_SAMPLES_PER_GROUP));
+  }
+  if (firebaseDelivery) {
+    statements.push(...projectionCompletionStatements(
+      env.DB, event.eventId, event.fingerprint, event.receivedAt,
+    ));
+  }
+  await env.DB.batch(statements);
+}
+
+export async function drainFirebaseCrashOutbox(env: Env): Promise<void> {
+  return drainFirebaseOutbox(env, projectCrashEvent);
 }
 
 async function handleReport(request: Request, env: Env): Promise<Response> {
@@ -532,158 +741,59 @@ async function handleReport(request: Request, env: Env): Promise<Response> {
   if (raw instanceof Response) return raw;
   const parsed = Report.safeParse(raw);
   if (!parsed.success) return new Response("bad request", { status: 400 });
-  const r = parsed.data;
-  const message = scrubSensitiveText(r.message);
-  const errorMessage = scrubSensitiveText(r.errorMessage ?? "");
-  const stack = scrubSensitiveText(r.stack ?? "");
-  const componentStack = scrubSensitiveText(r.componentStack ?? "");
-  const topFrame = scrubSensitiveText(r.topFrame ?? "");
-  const fingerprintHint = scrubSensitiveText(r.fingerprintHint ?? "");
-  const view = scrubSensitiveText(r.view ?? "");
-  const breadcrumbs = (r.breadcrumbs ?? []).map((b) => ({
-    ...b,
-    msg: b.msg ? scrubSensitiveText(b.msg) : b.msg,
-  }));
-  const webRuntime = normalizedWebRuntime(r);
-  const webview2 = r.webview2
-    ? {
-        ...r.webview2,
-        processDescription: scrubSensitiveText(r.webview2.processDescription ?? "").slice(0, 255),
-        failureSourceModule: basenameOnly(r.webview2.failureSourceModule),
-      }
-    : undefined;
-
-  const fingerprintBasis = (r.source === "web.runtime.native" || r.source === "webview2.process.native") && webRuntime
-    ? nativeWebRuntimeFingerprintBasis(webRuntime)
-    : hasStructuredCrashFields(r)
-      ? normalizeForFingerprint({
-        kind: r.kind,
-        message,
-        source: r.source,
-        label: r.label,
-        errorType: r.errorType,
-        errorMessage,
-        topFrame,
-        fingerprintHint,
-        })
-      : normalizeForFingerprint(r.kind, message);
-  const now = new Date().toISOString();
-  const title = crashTitle(message);
-  const source = r.source ?? "legacy";
-  const label = r.label ?? "";
-  const errorType = r.errorType ?? "";
-  const buildCommit = r.buildCommit ?? "";
-  const channel = r.channel ?? "";
-  const severityInput = {
-    kind: r.kind,
-    version: r.version,
-    source,
-    label,
-    errorType,
-    errorMessage,
-    topFrame,
-    channel,
-    recovery: webRuntime?.recovery,
-  };
-  const development = isDevelopmentReport(severityInput);
-  const fingerprint = namespaceReportFingerprint(await sha256Hex(fingerprintBasis), development);
-  const severity = severityForReport(severityInput);
+  let mode;
   try {
-    const prior = await env.DB.prepare("SELECT status FROM groups WHERE fingerprint = ?1")
-      .bind(fingerprint)
-      .first<{ status: string }>();
-    const regressedAt = prior?.status === "resolved" ? now : "";
-
-    const groupWrite = env.DB.prepare(
-      `INSERT INTO groups (
-         fingerprint, kind, count, first_seen, last_seen, first_version, last_version,
-         status, title, source, label, error_type, top_frame, severity,
-         last_os, last_arch, last_build_commit, last_channel, last_sample_at, regressed_at
-       )
-       VALUES (?1, ?2, 1, ?3, ?3, ?4, ?4, 'open', ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?3, ?15)
-       ON CONFLICT (fingerprint) DO UPDATE SET
-         kind = CASE
-           WHEN severity = 'critical' THEN kind
-           WHEN (CASE ?10 WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END) >
-                (CASE severity WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END)
-             THEN ?2 ELSE kind END,
-         count = count + 1,
-         last_seen = ?3,
-         last_version = ?4,
-         title = ?5,
-         source = ?6,
-         label = ?7,
-         error_type = ?8,
-         top_frame = ?9,
-         severity = CASE
-           WHEN severity = 'critical' THEN severity
-           WHEN (CASE ?10 WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END) >
-                (CASE severity WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END)
-             THEN ?10 ELSE severity END,
-         last_os = ?11,
-         last_arch = ?12,
-         last_build_commit = ?13,
-         last_channel = ?14,
-         last_sample_at = ?3,
-         status = CASE WHEN status = 'resolved' THEN 'open' ELSE status END,
-         regressed_at = CASE WHEN status = 'resolved' THEN ?3 ELSE regressed_at END`,
-    )
-      .bind(fingerprint, r.kind, now, r.version, title, source, label, errorType, topFrame, severity, r.os, r.arch, buildCommit, channel, regressedAt);
-
-    const sampleWrite = env.DB.prepare(
-      `INSERT INTO reports (
-         fingerprint, kind, version, os, arch, message, device, created_at,
-         source, label, error_type, error_message, top_frame, build_commit, channel,
-         language, view, breadcrumbs, component_stack, stack, occurred_at, webview2, web_runtime
-       )
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)`,
-    )
-      .bind(
-        fingerprint,
-        r.kind,
-        r.version,
-        r.os,
-        r.arch,
-        message,
-        JSON.stringify(r.device ?? {}),
-        now,
-        source,
-        label,
-        errorType,
-        errorMessage,
-        topFrame,
-        buildCommit,
-        channel,
-        r.language ?? "",
-        view,
-        JSON.stringify(breadcrumbs),
-        componentStack,
-        stack,
-        r.occurredAt ?? "",
-        webview2 ? JSON.stringify(webview2) : "",
-        webRuntime ? JSON.stringify(webRuntime) : "",
+    mode = crashStorageMode(env);
+    if (!firebaseStorageReady(env)) throw new Error("firebase crash storage is not configured");
+  } catch (err) {
+    console.error("report: crash storage configuration failed", err);
+    return new Response("storage unavailable", { status: 503 });
+  }
+  const event = await prepareCrashEvent(parsed.data, mode !== "firebase");
+  if (mode !== "d1") {
+    let lease: FirebaseGroupLease | null = null;
+    try {
+      if (await firebaseEventExists(env, event.eventId)) return new Response("ok", { status: 202 });
+      if (await reserveFirebaseGroup(env, event.fingerprint, event.receivedAt) === "full") {
+        return new Response("storage unavailable", { status: 503 });
+      }
+      const enqueued = await enqueueFirebaseCrash(
+        env, event.eventId, event.fingerprint, JSON.stringify(event), event.receivedAt,
       );
-
-    const pruneSamples = env.DB.prepare(
-      `DELETE FROM reports
-       WHERE fingerprint = ?1
-         AND id NOT IN (
-           SELECT id FROM (SELECT id FROM reports WHERE fingerprint = ?1 ORDER BY id ASC LIMIT 1)
-           UNION
-           SELECT id FROM (SELECT id FROM reports WHERE fingerprint = ?1 ORDER BY id DESC LIMIT ?2)
-         )`,
-    ).bind(fingerprint, LATEST_SAMPLES_PER_GROUP);
-
-    await env.DB.batch([
-      groupWrite,
-      sampleWrite,
-      ...reportAggregateStatements(env.DB, r, fingerprint, channel, webRuntime),
-      pruneSamples,
-    ]);
+      if (enqueued === "duplicate") return new Response("ok", { status: 202 });
+      if (enqueued === "full") {
+        await reclaimUnusedFirebaseReservation(env, event.fingerprint);
+        return new Response("storage unavailable", { status: 503 });
+      }
+      lease = await acquireFirebaseGroupLease(env, event.fingerprint);
+    } catch (err) {
+      return storageUnavailable("report outbox", err);
+    }
+    if (!lease) return new Response("ok", { status: 202 });
+    try {
+      if (!await claimFirebaseCrash(env, event.eventId, new Date().toISOString())) {
+        return new Response("ok", { status: 202 });
+      }
+      try {
+        await projectCrashEvent(env, event);
+      } catch (err) {
+        console.error("report: buffered D1 projection failed", err);
+        await recordFirebaseRetry(env, event.eventId, "queued", 0);
+        return new Response("ok", { status: 202 });
+      }
+      await deliverCrashEventToFirebase(env, event, 0, lease);
+      return new Response("ok", { status: 202 });
+    } finally {
+      await releaseFirebaseGroupLease(env, event.fingerprint, lease).catch((error) => {
+        console.error("firebase crash group lease release failed", error);
+      });
+    }
+  }
+  try {
+    await projectCrashEvent(env, event);
   } catch (err) {
     return storageUnavailable("report", err);
   }
-
   return new Response("ok", { status: 202 });
 }
 
@@ -961,6 +1071,7 @@ async function handleStats(request: Request, env: Env, user: User, activeModule:
     criticalOpenReports: 0,
   };
   let latestVersion = "";
+  let firebaseStorage: FirebaseStorageSummary | undefined;
 
   if (activeModule === "usage") {
     latestVersion = await latestObservedVersion(env, surface);
@@ -992,6 +1103,7 @@ async function handleStats(request: Request, env: Env, user: User, activeModule:
     platforms = facets.platforms;
     diagnosticFacets = facets;
     installationLinkedSince = linkedSince?.value ?? "";
+    if (crashStorageMode(env) !== "d1") firebaseStorage = await firebaseStorageSummary(env);
   } else if (activeModule === "preferences") {
     metrics = await metricRows(env, days, surface);
   } else {
@@ -1005,7 +1117,8 @@ async function handleStats(request: Request, env: Env, user: User, activeModule:
 
   return html(
     renderStats(
-      { daily, versions, platforms, crashes, metrics, previousMetrics, sources, diagnosticFacets, installationLinkedSince, overview, latestVersion, filters },
+      { daily, versions, platforms, crashes, metrics, previousMetrics, sources, diagnosticFacets,
+        installationLinkedSince, overview, latestVersion, filters, firebaseStorage },
       user,
       activeModule,
     ),
@@ -1016,36 +1129,67 @@ async function handleGroup(env: Env, fingerprint: string, user: User): Promise<R
   const group = await env.DB.prepare("SELECT * FROM groups WHERE fingerprint = ?1").bind(fingerprint).first<Group>();
   if (!group) return new Response("not found", { status: 404 });
   group.severity = effectiveGroupSeverity(group);
-  const reports = await env.DB.prepare(
-    `SELECT version, os, arch, message, device, created_at, source, label, error_type, error_message,
-      top_frame, build_commit, channel, language, view, breadcrumbs, component_stack, stack, occurred_at, webview2, web_runtime
-     FROM reports WHERE fingerprint = ?1 ORDER BY id DESC`,
-  )
-    .bind(fingerprint)
-    .all<{
-      version: string;
-      os: string;
-      arch: string;
-      message: string;
-      device: string;
-      created_at: string;
-      source: string;
-      label: string;
-      error_type: string;
-      error_message: string;
-      top_frame: string;
-      build_commit: string;
-      channel: string;
-      language: string;
-      view: string;
-      breadcrumbs: string;
-      component_stack: string;
-      stack: string;
-      occurred_at: string;
-      webview2: string;
-      web_runtime: string;
-    }>();
-  return html(renderGroup(group, reports.results, user, await groupDiagnosticSummary(env, fingerprint)));
+  const state = crashStorageMode(env) === "d1" ? null : await firebaseGroupState(env, fingerprint);
+  let reports: ReportSample[];
+  if (crashStorageMode(env) === "firebase") {
+    if (state?.sample_state === "archived") {
+      reports = [];
+    } else {
+      try {
+        const stored = await readFirebaseCrashGroup(env, fingerprint);
+        reports = firebaseSamples(stored?.samples);
+      } catch (error) {
+        return storageUnavailable("firebase group detail", error);
+      }
+    }
+  } else {
+    const stored = await env.DB.prepare(
+      `SELECT version, os, arch, message, device, created_at, source, label, error_type, error_message,
+        top_frame, build_commit, channel, language, view, breadcrumbs, component_stack, stack, occurred_at, webview2, web_runtime
+       FROM reports WHERE fingerprint = ?1 ORDER BY id DESC`,
+    ).bind(fingerprint).all<ReportSample>();
+    reports = stored.results;
+  }
+  return html(renderGroup(
+    group, reports, user, await groupDiagnosticSummary(env, fingerprint),
+    state ? { state: state.sample_state, epoch: Number(state.sample_epoch) } : undefined,
+  ));
+}
+
+async function syncFirebaseGroupMetaLocked(
+  env: Env,
+  fingerprint: string,
+  lease?: FirebaseGroupLease,
+): Promise<void> {
+  if (crashStorageMode(env) === "d1") return;
+  if (!lease) throw new Error("firebase crash group lease is missing");
+  const [group, state] = await Promise.all([
+    loadFirebaseGroupMeta(env, fingerprint),
+    firebaseGroupState(env, fingerprint),
+  ]);
+  if (!group || !state) return;
+  if (state.sample_state === "archived") return;
+  await writeFirebaseGroupMeta(
+    env, fingerprint, firebaseMeta(group), lease.generation, Number(state.sample_epoch),
+    state.sample_state, () => renewFirebaseGroupLease(env, fingerprint, lease),
+  );
+}
+
+async function withFirebaseGroupLease<T>(
+  env: Env,
+  fingerprint: string,
+  operation: (lease?: FirebaseGroupLease) => Promise<T>,
+): Promise<T> {
+  if (crashStorageMode(env) === "d1") return operation();
+  const lease = await acquireFirebaseGroupLease(env, fingerprint);
+  if (!lease) throw new Error("firebase crash group is busy");
+  try {
+    return await operation(lease);
+  } finally {
+    await releaseFirebaseGroupLease(env, fingerprint, lease).catch((error) => {
+      console.error("firebase crash group lease release failed", error);
+    });
+  }
 }
 
 async function handleGroupAction(request: Request, env: Env, admin: User, fingerprint: string): Promise<Response> {
@@ -1055,23 +1199,37 @@ async function handleGroupAction(request: Request, env: Env, admin: User, finger
   const a = parsed.data;
 
   if (a.action === "delete") {
-    await env.DB.batch([
-      env.DB.prepare("DELETE FROM reports WHERE fingerprint = ?1").bind(fingerprint),
-      env.DB.prepare("DELETE FROM report_daily WHERE fingerprint = ?1").bind(fingerprint),
-      env.DB.prepare("DELETE FROM report_installations WHERE fingerprint = ?1").bind(fingerprint),
-      env.DB.prepare("DELETE FROM report_event_dimensions WHERE fingerprint = ?1").bind(fingerprint),
-      env.DB.prepare("DELETE FROM groups WHERE fingerprint = ?1").bind(fingerprint),
-    ]);
+    try {
+      if (crashStorageMode(env) !== "d1") {
+        await archiveFirebaseGroupForAdmin(env, fingerprint);
+      } else {
+        await env.DB.batch([
+          env.DB.prepare("DELETE FROM reports WHERE fingerprint = ?1").bind(fingerprint),
+          env.DB.prepare("DELETE FROM report_daily WHERE fingerprint = ?1").bind(fingerprint),
+          env.DB.prepare("DELETE FROM report_installations WHERE fingerprint = ?1").bind(fingerprint),
+          env.DB.prepare("DELETE FROM report_event_dimensions WHERE fingerprint = ?1").bind(fingerprint),
+          env.DB.prepare("DELETE FROM firebase_crash_outbox WHERE fingerprint = ?1").bind(fingerprint),
+          env.DB.prepare("DELETE FROM groups WHERE fingerprint = ?1").bind(fingerprint),
+        ]);
+      }
+    } catch (error) {
+      return storageUnavailable("firebase group deletion", error);
+    }
     await logAction(env, admin, "delete_group", fingerprint.slice(0, 8));
     return redirect("/stats");
   }
   if (a.action === "status") {
     const status = a.status ?? "open";
-    await env.DB.prepare(
-      "UPDATE groups SET status = ?1, resolved_at = CASE WHEN ?1 = 'resolved' THEN ?3 ELSE resolved_at END WHERE fingerprint = ?2",
-    )
-      .bind(status, fingerprint, new Date().toISOString())
-      .run();
+    try {
+      await withFirebaseGroupLease(env, fingerprint, async (lease) => {
+        await env.DB.prepare(
+          "UPDATE groups SET status = ?1, resolved_at = CASE WHEN ?1 = 'resolved' THEN ?3 ELSE resolved_at END WHERE fingerprint = ?2",
+        ).bind(status, fingerprint, new Date().toISOString()).run();
+        await syncFirebaseGroupMetaLocked(env, fingerprint, lease);
+      });
+    } catch (error) {
+      return storageUnavailable("firebase group metadata", error);
+    }
     await logAction(env, admin, "set_status", fingerprint.slice(0, 8), status);
     return redirect(`/stats/group/${fingerprint}`);
   }
@@ -1083,10 +1241,18 @@ async function handleGroupAction(request: Request, env: Env, admin: User, finger
     return redirect(`/stats/group/${fingerprint}`);
   }
   if (a.action === "severity") {
-    await env.DB.prepare("UPDATE groups SET severity = ?1 WHERE fingerprint = ?2")
-      .bind(a.severity ?? "medium", fingerprint)
-      .run();
-    await logAction(env, admin, "set_severity", fingerprint.slice(0, 8), a.severity ?? "medium");
+    const severity = a.severity ?? "medium";
+    try {
+      await withFirebaseGroupLease(env, fingerprint, async (lease) => {
+        await env.DB.prepare("UPDATE groups SET severity = ?1 WHERE fingerprint = ?2")
+          .bind(severity, fingerprint)
+          .run();
+        await syncFirebaseGroupMetaLocked(env, fingerprint, lease);
+      });
+    } catch (error) {
+      return storageUnavailable("firebase group metadata", error);
+    }
+    await logAction(env, admin, "set_severity", fingerprint.slice(0, 8), severity);
     return redirect(`/stats/group/${fingerprint}`);
   }
   await env.DB.prepare("UPDATE groups SET note = ?1 WHERE fingerprint = ?2").bind(a.note ?? "", fingerprint).run();
@@ -1288,6 +1454,20 @@ async function sendAlert(env: Env, text: string): Promise<void> {
 
 async function runIngestSentinel(env: Env): Promise<void> {
   const problems: string[] = [];
+  if (crashStorageMode(env) !== "d1") {
+    try {
+      const storage = await firebaseStorageSummary(env);
+      if (storage.reservedBytes >= storage.budgetBytes * 0.8) {
+        problems.push(`Firebase reserved storage is ${Math.round(storage.reservedBytes / 1048576)} MiB`);
+      }
+      if (storage.stuckArchiving > 0) problems.push(`${storage.stuckArchiving} Firebase archives are stuck`);
+      if (storage.outboxCount >= FIREBASE_OUTBOX_WARNING) {
+        problems.push(`Firebase outbox contains ${storage.outboxCount} rows`);
+      }
+    } catch (err) {
+      problems.push(`Firebase storage sentinel failed: ${errText(err)}`);
+    }
+  }
   try {
     await env.DB.prepare(
       `INSERT INTO pings (date, install_id, version, os, arch, opens)
@@ -1478,9 +1658,17 @@ export default {
 
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     if (controller.cron === SENTINEL_CRON) {
-      ctx.waitUntil(runIngestSentinel(env));
+      ctx.waitUntil(Promise.all([
+        runIngestSentinel(env),
+        drainFirebaseCrashOutbox(env),
+      ]).then(() => undefined));
       return;
     }
-    ctx.waitUntil(purgeExpiredStatsRows(env));
+    ctx.waitUntil(Promise.all([
+      purgeExpiredStatsRows(env),
+      crashStorageMode(env) === "d1" ? Promise.resolve() : purgeFirebaseDeliveryState(env),
+      drainFirebaseCrashOutbox(env),
+      crashStorageMode(env) === "d1" ? Promise.resolve() : runFirebaseCrashLifecycle(env),
+    ]).then(() => undefined));
   },
 };

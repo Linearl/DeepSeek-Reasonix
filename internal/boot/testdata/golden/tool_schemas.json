@@ -417,7 +417,7 @@
   },
   {
     "Name": "use_capability",
-    "Description": "Unified capability proxy with a fixed schema: list catalog capabilities, inspect metadata, call a capability by stable id (tool:grep, skill:review, mcp-tool:server/tool, task:subagent, workflow:name, web:/lsp:/session:/memory: namespaces), or decline a prefer capability with a non-empty reason. Calling does not change the provider-visible tool schema. Resolved writers still pass permission, plan mode, sandbox, write-path, and workspace-lease checks. The Planner leaves destructive MCP for the Executor.",
+    "Description": "Fixed-schema capability proxy: list, inspect, call by stable id (tool:grep, skill:review, mcp-tool:server/tool, task:subagent, workflow:name, web:/lsp:/session:/memory: namespaces), or decline a prefer capability with a reason. memory:remember saves facts (description+body required; activation=\"relevant\" on create; omit activation on update; \"pinned\" only if user asks); memory:forget(name); tool:memory(operation=search|read|list). Calls keep the provider-visible schema fixed. Writers still pass permission, plan mode, sandbox, write-path, and workspace-lease checks. The Planner leaves destructive MCP for the Executor.",
     "ReadOnly": true,
     "Schema": {
       "properties": {

@@ -1188,7 +1188,7 @@ type headlessTaskTestProvider struct {
 
 func (p *headlessTaskTestProvider) Name() string { return "boot-headless-test" }
 
-func (p *headlessTaskTestProvider) Stream(context.Context, provider.Request) (<-chan provider.Chunk, error) {
+func (p *headlessTaskTestProvider) Stream(_ context.Context, req provider.Request) (<-chan provider.Chunk, error) {
 	p.mu.Lock()
 	call := p.calls
 	p.calls++
@@ -1431,7 +1431,7 @@ type headlessTaskWriteTestProvider struct {
 
 func (p *headlessTaskWriteTestProvider) Name() string { return "boot-headless-write-test" }
 
-func (p *headlessTaskWriteTestProvider) Stream(context.Context, provider.Request) (<-chan provider.Chunk, error) {
+func (p *headlessTaskWriteTestProvider) Stream(_ context.Context, req provider.Request) (<-chan provider.Chunk, error) {
 	p.mu.Lock()
 	call := p.calls
 	p.calls++
@@ -4314,7 +4314,6 @@ model = "x"
 	target := filepath.Join(extra, "sandboxed.txt")
 	command := "printf ok > " + strconv.Quote(target)
 	prov := testutil.NewMock("additional-dir-bash",
-		testutil.Turn{ToolCalls: []provider.ToolCall{{ID: "todo-1", Name: "todo_write", Arguments: `{"todos":[{"content":"write sandboxed file","status":"in_progress"}]}`}}},
 		testutil.Turn{ToolCalls: []provider.ToolCall{{ID: "bash-1", Name: "bash", Arguments: fmt.Sprintf(`{"command":%q}`, command)}}},
 		testutil.Turn{Text: "done"},
 	)

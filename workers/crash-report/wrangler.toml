@@ -18,6 +18,10 @@ routes = [{ pattern = "crash.reasonix.io", custom_domain = true }]
 crons = ["47 19 * * *", "17 1,7,13,19 * * *"]
 
 [vars]
+# Safe rollout default. Change to `dual` only after the Firebase database URL
+# and service-account secrets have been installed; use `firebase` after the
+# seven-day shadow comparison completes.
+CRASH_STORAGE_MODE = "d1"
 # Emails force-promoted to dashboard admin — the owner is never locked out even
 # if the role migration misses them.
 ADMIN_EMAILS = "359807859@qq.com"

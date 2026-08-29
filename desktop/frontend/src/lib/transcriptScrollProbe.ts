@@ -24,6 +24,9 @@ export type TranscriptScrollWriteRecord = {
   clientHeight?: number;
   bottomDistance?: number;
   mode?: string;
+  sequence?: number;
+  generation?: number;
+  geometryRevision?: number;
   settleFrame?: number;
   offBottomFrames?: number;
   stagnantFrames?: number;
@@ -71,6 +74,9 @@ export function noteTranscriptScrollWrite(write: TranscriptScrollWriteRecord): v
       clientHeight: write.clientHeight,
       bottomDistance: write.bottomDistance,
       mode: write.mode,
+      sequence: write.sequence,
+      generation: write.generation,
+      geometryRevision: write.geometryRevision,
       settleFrame: write.settleFrame,
       offBottomFrames: write.offBottomFrames,
       stagnantFrames: write.stagnantFrames,

@@ -120,6 +120,7 @@ export function transcriptScrollEventCancelsReaderExtentGuard(type: TranscriptSc
   return type === "RESET"
     || type === "USER_SCROLL_INTENT"
     || type === "MANUAL_READING"
+    || type === "NATIVE_SCROLLBAR_BEGIN"
     || type === "VIEWPORT_RESIZED"
     || type === "USER_RESIZE_BEGIN"
     || type === "SELECTION_BEGIN"

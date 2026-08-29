@@ -5,8 +5,7 @@
  *
  * Only the files in ALLOWED_WRITERS may issue imperative scroll calls
  * (scrollTo / scrollBy / scrollToIndex) against the transcript Virtuoso
- * handle: the arbiter hook plus its extracted controllers (split out for the
- * file-size budget — still one logical writer, driven only by the arbiter).
+ * handle: the generation-aware writer gateway owned by the arbiter.
  * Every other module must route through the scroll coordinator's
  * dispatch/writeOffset API. This guards the "one writer owns scrollTop"
  * invariant that keeps user scrolls, tail-follow, and anchor recovery from
@@ -23,12 +22,9 @@ import { fileURLToPath } from "node:url";
 
 const SOURCE_ROOT = fileURLToPath(new URL("../src", import.meta.url));
 
-// Only the scroll-arbiter hook and its extracted controllers may write to the
-// transcript Virtuoso handle; every other module routes through the
-// dispatch/writeOffset/recovery API.
+// Every arbiter/controller command routes through this one gateway.
 const ALLOWED_WRITERS = new Set([
-  "lib/useTranscriptScrollArbiter.ts",
-  "lib/transcriptTailSettle.ts",
+  "lib/transcriptScrollWriter.ts",
 ]);
 
 // Raw `.scrollTop` writes bypass the Virtuoso handle entirely. The allowed

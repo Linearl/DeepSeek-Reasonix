@@ -39,6 +39,11 @@ const (
 	listAllow = "allow"
 	listAsk   = "ask"
 	listDeny  = "deny"
+
+	// CompactRatioMin and CompactRatioMax are the bounds shared by the
+	// programmatic config editor and all CLI/Desktop callers.
+	CompactRatioMin = 0.30
+	CompactRatioMax = 0.85
 )
 
 // SetDefaultModel points default_model at an existing model. It accepts both
@@ -128,22 +133,6 @@ func (c *Config) SetDesktopDefaultToolApprovalMode(mode string) error {
 		c.Desktop.DefaultToolApprovalMode = "yolo"
 	default:
 		return fmt.Errorf("default_tool_approval_mode %q: must be ask|auto|yolo", mode)
-	}
-	return nil
-}
-
-// SetDefaultSubagentPolicy sets the default sub-agent delegation tier for newly
-// created desktop sessions. Accepts light|balanced|aggressive.
-func (c *Config) SetDefaultSubagentPolicy(v string) error {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "light":
-		c.Agent.SubagentPolicy = "light"
-	case "balanced":
-		c.Agent.SubagentPolicy = "balanced"
-	case "aggressive":
-		c.Agent.SubagentPolicy = "aggressive"
-	default:
-		return fmt.Errorf("subagent_policy %q: must be light|balanced|aggressive", v)
 	}
 	return nil
 }
@@ -444,10 +433,11 @@ func (c *Config) SetColdResumePrune(enabled bool) error {
 }
 
 // SetCompactRatio updates the sole user-controlled automatic compaction
-// threshold. Allowed range is 0.30–0.85; presets are 0.70 / 0.80 / 0.85.
+// threshold. Allowed range is CompactRatioMin–CompactRatioMax; presets are
+// 0.70 / 0.80 / 0.85.
 func (c *Config) SetCompactRatio(ratio float64) error {
-	if math.IsNaN(ratio) || math.IsInf(ratio, 0) || ratio < 0.30 || ratio > 0.85 {
-		return fmt.Errorf("compact ratio %v: must be between 0.30 and 0.85", ratio)
+	if math.IsNaN(ratio) || math.IsInf(ratio, 0) || ratio < CompactRatioMin || ratio > CompactRatioMax {
+		return fmt.Errorf("compact ratio %v: must be between %.2f and %.2f", ratio, CompactRatioMin, CompactRatioMax)
 	}
 	c.Agent.CompactRatio = ratio
 	return nil
@@ -2487,3 +2477,18 @@ func (c *Config) SaveForRoot(root string) error {
 	}
 	return c.SaveTo(projectTOML)
 }
+
+func (c *Config) SetDefaultSubagentPolicy(v string) error {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "light":
+		c.Agent.SubagentPolicy = "light"
+	case "balanced":
+		c.Agent.SubagentPolicy = "balanced"
+	case "aggressive":
+		c.Agent.SubagentPolicy = "aggressive"
+	default:
+		return fmt.Errorf("subagent_policy %q: must be light|balanced|aggressive", v)
+	}
+	return nil
+}
+

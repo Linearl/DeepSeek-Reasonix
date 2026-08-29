@@ -813,6 +813,7 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 	portFile := fs.String("port-file", "", "write the actual bound listen address (host:port) to this file after binding")
 	tokenFile := fs.String("token-file", "", "read the auth=token pre-shared token from this file (overrides --token; keeps the secret out of argv)")
 	pidFile := fs.String("pid-file", "", "write the server process id to this file")
+	registerServeCapabilityFlags(fs)
 	openBrowser := fs.Bool("open", opts.openBrowser, "open the Web UI in the default browser")
 	noOpen := fs.Bool("no-open", false, "do not open the Web UI in the default browser")
 	if code, ok := parseCommandFlags(fs, args); !ok {
@@ -855,8 +856,7 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 	}
 
 	ctx := context.Background()
-	bc := serve.NewBroadcaster()
-	cfg, _ := config.Load()
+	bc, sessionTag, cfg := newServeBootstrap()
 
 	// Build serve config, merging CLI flags over config file.
 	serveCfg := serveConfigWithCommandDefaults(opts.command, authExplicit, cfg.Serve)
@@ -931,10 +931,7 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 	// Keep the browser reachable when the selected provider has no saved key.
 	// The loopback-only provider setup surface stores the missing credential and
 	// rebuilds this controller in place before the normal web UI is exposed.
-	ctrl, err := setupProfileWithOverrides(ctx, *model, *maxSteps, false, bc, cliBuildOverrides{
-		Preset:             deprecatedMode,
-		OnSessionRecovered: cliSessionRecoveredHandler(leases),
-	})
+	ctrl, serveBuildOpts, err := setupCLIMultiSessionProfile(ctx, *model, *maxSteps, deprecatedMode, sessionTag, leases)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		return 1
@@ -961,8 +958,8 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 		return 1
 	}
 
-	srv := serve.New(ctrl, bc, serveCfg)
-	_ = srv.SetSessionLeases(leases) // same live keeper was bound above
+	srv := newCLIMultiSessionServer(ctrl, bc, sessionTag, serveCfg, leases, serveBuildOpts)
+	defer srv.Close()
 	return runServeFrontend(ctrl, srv, serveCfg, serveFrontendOptions{
 		command: opts.command, address: *addr,
 		portFile: *portFile, tokenFile: *tokenFile, pidFile: *pidFile,
@@ -2570,8 +2567,10 @@ func configCompactRatioCommand(args []string) int {
 		return 0
 	}
 	percent, err := strconv.ParseFloat(strings.TrimSpace(rest[0]), 64)
-	if err != nil || math.IsNaN(percent) || math.IsInf(percent, 0) || percent < 65 || percent > 85 {
-		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, "compact ratio must be a percentage between 65 and 85")
+	minPercent := config.CompactRatioMin * 100
+	maxPercent := config.CompactRatioMax * 100
+	if err != nil || math.IsNaN(percent) || math.IsInf(percent, 0) || percent < minPercent || percent > maxPercent {
+		fmt.Fprintf(os.Stderr, "%s compact ratio must be a percentage between %.0f and %.0f\n", i18n.M.ErrorPrefix, minPercent, maxPercent)
 		return 2
 	}
 	ratio := percent / 100
@@ -2640,7 +2639,7 @@ func formatCompactRatioPercent(ratio float64) string {
 func configUsage() {
 	fmt.Print(`Usage:
   reasonix config reasoning-language [--local] [auto|zh|en]
-  reasonix config compact-ratio [--local] [65..85]
+  reasonix config compact-ratio [--local] [30..85]
   reasonix config currency [auto|CNY|USD]
   reasonix config telemetry [auto|on|off]
 `)
@@ -2654,7 +2653,7 @@ func configTelemetryUsage() {
 
 func configCompactRatioUsage() {
 	fmt.Print(`Usage:
-  reasonix config compact-ratio [--local] [65..85]
+  reasonix config compact-ratio [--local] [30..85]
 `)
 }
 

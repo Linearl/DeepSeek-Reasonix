@@ -76,8 +76,11 @@ capability discovered during planning remains directly callable after handoff;
 their ledgers/audits are isolated while Host connections are shared. A
 single-model session has no independent Planner.
 
-`use_capability` resolution is side-effect free: `action=list` returns sorted
-configured MCP servers without starting them; `action=call` on a
+`use_capability` resolution is side-effect free: `action=list` returns compact,
+sorted configured MCP server summaries without expanding every cached tool
+description or starting any server. Use `action=inspect` on one enabled
+`mcp-server:<name>` to read that server's live or cached tool directory without
+starting it. `action=call` on a
 not-yet-connected server resolves to a deferred target, Plan re-checks only an
 explicit phase opt-out on the real target, and the server process starts only
 after the permission gate and PreToolUse hooks approve the call. On-demand children
@@ -140,8 +143,8 @@ flags and canonical schemas.
 Every task starts with the same lean provider-visible core: direct
 coding tools, background-shell lifecycle tools, and the stable capability proxy:
 
-`bash`, `bash_output`, `edit_file`, `kill_shell`, `read_file`, `wait`,
-`write_file`, `compress` (when registered), and `use_capability`.
+`bash`, `bash_output`, `edit_file`, `kill_shell`, `read_file`,
+`wait`, `write_file`, `compress` (when registered), and `use_capability`.
 
 Optional tools (`glob`, `grep`, `ls`, `web_fetch`, MCP, skills, subagents, docs,
 session history, memory mutation, workflow, and so on) remain in the host

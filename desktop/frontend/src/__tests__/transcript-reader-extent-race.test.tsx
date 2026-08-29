@@ -213,6 +213,45 @@ await flushFrames();
 check(scrollByCalls === 0 && scrollWrites.length === 0,
   "selection ownership cancels a pending reader transaction");
 
+// A question jump owns the whole masked paging/landing transaction, not only
+// the final indexed write. Entering it must invalidate a queued reader
+// correction, and a generic scrollend from the indexed placement must not
+// release ownership before the matching paint terminal.
+await act(async () => arbiter?.reset());
+scrollExtent = 5_000;
+scrollElement.scrollTop = 2_000;
+rowElement.getBoundingClientRect = () => rectAt(20);
+await act(async () => arbiter?.deliverScroll());
+await act(async () => arbiter?.releaseTailFollow());
+await act(async () => arbiter?.onWheelIntent({
+  ctrlKey: false,
+  deltaMode: 0,
+  deltaX: 0,
+  deltaY: 133.33,
+  target: scrollElement,
+} as React.WheelEvent<HTMLElement>));
+scrollExtent = 4_000;
+scrollElement.scrollTop = 1_000;
+rowElement.getBoundingClientRect = () => rectAt(1_020);
+await act(async () => arbiter?.deliverScroll());
+await act(async () => arbiter?.beginQuestionJump(77));
+scrollWrites.length = 0;
+scrollByCalls = 0;
+scrollExtent = 5_000;
+await act(async () => arbiter?.followGrowingTail());
+await flushFrames();
+check(scrollWrites.length === 0 && scrollByCalls === 0,
+  "question-jump ownership cancels queued reader and tail writers");
+await act(async () => arbiter?.finishProgrammaticScroll());
+check(String(arbiter?.modeRef.current) === "restoring",
+  "generic scrollend cannot release a masked question jump");
+await act(async () => arbiter?.finishQuestionJump(76));
+check(String(arbiter?.modeRef.current) === "restoring",
+  "a stale question-jump terminal cannot release the current transaction");
+await act(async () => arbiter?.finishQuestionJump(77));
+check(String(arbiter?.modeRef.current) === "manual",
+  "the matching paint terminal releases question-jump ownership");
+
 // A downward wheel at the physical bottom must not arm reader-extent
 // recovery. A later extent rebound would otherwise snap the viewport upward
 // and fight the user's wheel input.
@@ -236,6 +275,58 @@ await act(async () => arbiter?.followGrowingTail());
 await flushFrames();
 check(scrollByCalls === 0 && scrollWrites.length === 0,
   "near-bottom downward wheel does not arm the reader-extent guard");
+
+// A replacement native-thumb gesture owns a new pointer transaction. A late
+// pointerup from the displaced gesture must not release or demote it.
+await act(async () => arbiter?.reset());
+scrollExtent = 5_000;
+Object.defineProperties(scrollElement, {
+  offsetWidth: { configurable: true, value: 800 },
+  clientWidth: { configurable: true, value: 780 },
+  clientLeft: { configurable: true, value: 0 },
+});
+scrollElement.getBoundingClientRect = () => rectAt(0);
+scrollElement.scrollTop = 1_000;
+const thumbPointer = (pointerId: number) => ({
+  button: 0,
+  clientX: 795,
+  nativeEvent: { button: 0, clientX: 795, pointerId },
+}) as unknown as React.PointerEvent<HTMLElement>;
+await act(async () => {
+  arbiter?.onPointerDownIntent(thumbPointer(1));
+  arbiter?.onPointerDownIntent(thumbPointer(2));
+});
+const staleRelease = new dom.window.Event("pointerup", { bubbles: true });
+Object.defineProperty(staleRelease, "pointerId", { value: 1 });
+await act(async () => dom.window.dispatchEvent(staleRelease));
+check(scrollElement.dataset.nativeScrollbarDrag === "true",
+  "a stale pointerup cannot release the replacement native thumb");
+check(String(arbiter?.modeRef.current) === "native-thumb",
+  "the replacement thumb retains explicit scroll ownership");
+
+// A stationary release at the physical bottom is insufficient: the same
+// pointer transaction must have observed forward native progress.
+scrollElement.scrollTop = 4_275;
+await act(async () => arbiter?.deliverScroll(scrollElement));
+const activeRelease = new dom.window.Event("pointerup", { bubbles: true });
+Object.defineProperty(activeRelease, "pointerId", { value: 2 });
+await act(async () => dom.window.dispatchEvent(activeRelease));
+check(String(arbiter?.modeRef.current) === "tail-follow",
+  "the active thumb may commit tail ownership after forward native progress");
+
+await act(async () => arbiter?.onPointerDownIntent(thumbPointer(3)));
+const stationaryRelease = new dom.window.Event("pointerup", { bubbles: true });
+Object.defineProperty(stationaryRelease, "pointerId", { value: 3 });
+await act(async () => dom.window.dispatchEvent(stationaryRelease));
+check(String(arbiter?.modeRef.current) === "manual",
+  "a stationary thumb at the bottom cannot claim tail ownership");
+
+await act(async () => arbiter?.onPointerDownIntent(thumbPointer(4)));
+await act(async () => arbiter?.reset());
+check(scrollElement.dataset.nativeScrollbarDrag === undefined,
+  "a generation reset clears the native-thumb DOM transaction");
+check(String(arbiter?.modeRef.current) === "tail-follow",
+  "a generation reset cannot retain native-thumb ownership");
 
 await act(async () => root.unmount());
 dom.window.close();

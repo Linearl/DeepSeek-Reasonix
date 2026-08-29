@@ -23,6 +23,13 @@ type turnFinalizer interface {
 	finalizesTurn()
 }
 
+func (a *Agent) providerToolSchemas() []provider.ToolSchema {
+	if a == nil || a.svc.tools == nil || !provider.SupportsTools(a.svc.prov) {
+		return []provider.ToolSchema{}
+	}
+	return a.svc.tools.Schemas()
+}
+
 func (a *Agent) singleTurnFinalizer(calls []provider.ToolCall) bool {
 	if a == nil || a.svc.tools == nil || len(calls) != 1 {
 		return false
