@@ -12,6 +12,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"reasonix/internal/ablation"
@@ -272,6 +274,10 @@ type TaskTool struct {
 	// scheduler is the session-scoped concurrency + write-claim controller.
 	// nil falls back to the legacy jobs.ReserveStart cap for background tasks.
 	scheduler *SubagentScheduler
+	// steerSlots tracks background sub-agent runs by job id for mid-flight
+	// guidance (#9522 Phase 2). Slots live for the tool's lifetime so a
+	// finished run can still be continued via task_id.
+	steerSlots sync.Map
 	// profileLookup resolves profile= names from the live Skill store without
 	// embedding the name list in the tool schema (cache stability).
 	profileLookup ProfileLookup
@@ -484,7 +490,8 @@ func (t *TaskTool) Schema() json.RawMessage {
   "run_in_background":{"type":"boolean","description":"Run the sub-agent asynchronously: returns a job id immediately and keeps working across turns. Collect its final answer with wait, and you'll be notified when it finishes. Use for long, independent sub-tasks you don't need to block on right now."},
   "model":{"type":"string","description":"Optional model override for the sub-agent (a configured provider/model name). Precedence: persistent profile config, this argument, profile frontmatter, global subagent default, parent model."},
   "effort":{"type":"string","description":"Optional reasoning effort for the sub-agent (e.g. high, max). Same precedence as model."},
-  "continue_from":{"type":"string","description":"Continue a prior compatible subagent transcript in the current conversation context. Pass only the 'sa_...' value from the prior result's 'Subagent reference: ...' line. If the ref belongs to an ancestor conversation, the framework continues a current-conversation copy."}
+  "continue_from":{"type":"string","description":"Continue a prior compatible subagent transcript in the current conversation context. Pass only the 'sa_...' value from the prior result's 'Subagent reference: ...' line. If the ref belongs to an ancestor conversation, the framework continues a current-conversation copy."},
+  "task_id":{"type":"string","description":"Follow-up channel for a background task: pass the job id (e.g. task-3) that run_in_background returned together with prompt as additional guidance. Running task: the guidance is injected at the sub-agent's next turn boundary — already-done work is preserved. Finished task: the transcript continues with prompt as the follow-up and the answer returns directly. Not valid for foreground tasks."}
 },
 "required":["prompt"]
 }`)
@@ -493,6 +500,47 @@ func (t *TaskTool) Schema() json.RawMessage {
 // ReadOnly is false: a sub-agent can invoke any whitelisted tool, including
 // writers. Conservative classification keeps the parallel-dispatch path from
 // running two sub-agents at once and letting their writes race.
+// steerBackgroundTask delivers follow-up guidance for a background task
+// (#9522 Phase 2). Running: the guidance is queued on the live child agent and
+// consumed at its next turn boundary — work already done stays valid. Queued
+// or starting: rejected with a retry hint (no agent exists to queue on yet).
+// Finished: the guidance continues the finished transcript in the foreground
+// so the parent gets the follow-up answer directly.
+func (t *TaskTool) steerBackgroundTask(ctx context.Context, taskID, guidance string) (string, error) {
+	taskID = strings.TrimSpace(taskID)
+	v, ok := t.steerSlots.Load(taskID)
+	if !ok {
+		return "", fmt.Errorf("unknown task_id %q: pass the job id (e.g. task-3) that run_in_background returned when the task was dispatched", taskID)
+	}
+	slot := v.(*taskSteerSlot)
+	if a := slot.agent.Load(); a != nil {
+		if a.Steer(guidance) {
+			return fmt.Sprintf("Guidance delivered to running task %q. The sub-agent consumes it at its next turn boundary; existing work and context are preserved. It will be notified-shaped: collect the final answer with wait when you need it, or wait for the completion notification.", taskID), nil
+		}
+		// Steer rejected: the run just ended. Fall through to the continue path.
+	}
+	if !slot.started.Load() {
+		return "", fmt.Errorf("task %q is still queued (no concurrency/write slot yet); deliver guidance once it starts running", taskID)
+	}
+	// Running but the agent reference is gone, or finished: continue the
+	// transcript with the guidance as the follow-up prompt. Foreground, so
+	// the parent gets the follow-up answer in this turn.
+	ref, _ := slot.ref.Load().(string)
+	if ref == "" {
+		return "", fmt.Errorf("task %q has no sub-agent transcript to continue", taskID)
+	}
+	if jm, ok := jobs.FromContext(ctx); ok {
+		if status, jobOK := jm.StatusForSession(jobs.SessionFromContext(ctx), taskID); jobOK && status == jobs.Running {
+			return "", fmt.Errorf("task %q is still starting up; deliver guidance again in a moment", taskID)
+		}
+	}
+	spec, err := t.buildTaskSpec(ctx, guidance, "follow-up", "", nil, nil, 0, "", "", ref, "", false, false)
+	if err != nil {
+		return "", err
+	}
+	return t.RunProfileSpec(ctx, spec)
+}
+
 func (t *TaskTool) ReadOnly() bool { return false }
 
 // ResolveProfile extracts model/effort from task args (and optional profile
@@ -617,6 +665,32 @@ func (t *TaskTool) effectiveProfile(model, effort string) (string, string) {
 	return model, effort
 }
 
+// taskSteerSlot tracks one background sub-agent run for mid-flight guidance
+// (#9522 Phase 2). agent is set while the child Agent instance is live (its
+// own steerRunActive gate rejects steers after the run ends, and a rejected
+// steer falls through to the continue path); ref keeps the transcript
+// reference so a finished run can be continued with new instructions.
+type taskSteerSlot struct {
+	agent   atomic.Pointer[Agent]
+	ref     atomic.Value // string: sa_... transcript reference
+	started atomic.Bool  // set when the job goroutine begins executing
+}
+
+// subagentSteerHookKey carries the dispatcher's agent-registration hook into
+// RunSubAgentWithSession so the live child agent can be published to the slot.
+type subagentSteerHookKey struct{}
+
+func withSubagentSteerHook(ctx context.Context, hook func(*Agent)) context.Context {
+	return context.WithValue(ctx, subagentSteerHookKey{}, hook)
+}
+
+func subagentSteerHookFromContext(ctx context.Context) func(*Agent) {
+	if hook, ok := ctx.Value(subagentSteerHookKey{}).(func(*Agent)); ok {
+		return hook
+	}
+	return nil
+}
+
 func (t *TaskTool) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var p struct {
 		Prompt          string   `json:"prompt"`
@@ -630,9 +704,16 @@ func (t *TaskTool) Execute(ctx context.Context, args json.RawMessage) (string, e
 		Effort          string   `json:"effort"`
 		ContinueFrom    string   `json:"continue_from"`
 		ForkFrom        string   `json:"fork_from"`
+		TaskID          string   `json:"task_id"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
+	}
+	if taskID := strings.TrimSpace(p.TaskID); taskID != "" {
+		// Phase 2 (#9522): a task_id follow-up either steers the running
+		// sub-agent or continues the finished transcript — prompt is the
+		// additional guidance in both cases.
+		return t.steerBackgroundTask(ctx, taskID, p.Prompt)
 	}
 	if strings.TrimSpace(p.Prompt) == "" {
 		return "", fmt.Errorf("prompt is required")
@@ -877,7 +958,18 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 		// Emit queued before the job goroutine can start so the status slot
 		// never regresses to a stale queued after running.
 		trk.queued()
-		job := jm.StartForSession(jobs.SessionFromContext(ctx), "task", label, func(jobCtx context.Context, out io.Writer) (result string, err error) {
+		// Register the steering slot for task_id follow-ups (#9522 Phase 2).
+		// The hook rides the outer ctx so the job goroutine's derived ctx
+		// publishes the live child agent into the slot; the slot itself is
+		// stored under job.ID right after Start returns, before the job id
+		// reaches the model, so a task_id lookup never races creation.
+		steer := &taskSteerSlot{}
+		steer.ref.Store(run.Ref)
+		hookCtx := withSubagentSteerHook(ctx, func(a *Agent) {
+			steer.agent.Store(a)
+		})
+		job := jm.StartForSession(jobs.SessionFromContext(hookCtx), "task", label, func(jobCtx context.Context, out io.Writer) (result string, err error) {
+			steer.started.Store(true)
 			if writerRegistered {
 				defer mutationObserver.UnregisterWriter(recoveryTaskID)
 			}
@@ -918,6 +1010,9 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 			return FormatSubagentRunResult(answer, run, false), nil
 		})
 		releaseStart()
+		// Published before the job id reaches the model: from here on a
+		// task_id follow-up can always find the slot (#9522 Phase 2).
+		t.steerSlots.Store(job.ID, steer)
 		// Hand the tracker to the job goroutine: the outer defer must not
 		// finish (and close) it while the job still runs.
 		backgroundHandoff = true
@@ -1764,6 +1859,12 @@ func RunSubAgentWithSession(ctx context.Context, prov provider.Provider, reg *to
 	opts.RequireVisibleFinal = true
 	sub := New(prov, reg, sess, opts, sink)
 	sub.SetPlanMode(planWorkflow)
+	// Publish the live child agent to the dispatcher's steer slot (#9522
+	// Phase 2): a task_id follow-up queues guidance on this instance and the
+	// run loop consumes it at the next tool-call boundary.
+	if hook := subagentSteerHookFromContext(ctx); hook != nil {
+		hook(sub)
+	}
 	if err := sub.Run(ctx, prompt); err != nil {
 		// Still merge any partial child evidence so parent gates see real writes.
 		mergeChildEvidence(ctx, sub)

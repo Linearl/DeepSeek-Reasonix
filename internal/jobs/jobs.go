@@ -983,6 +983,20 @@ func (j *Job) readArtifactAllLocked() string {
 	return string(b)
 }
 
+// StatusForSession returns the current status of id without consuming any
+// pending result — a side-effect-free probe for callers that only need the
+// lifecycle phase (task steering, #9522 Phase 2). ok is false when the id is
+// unknown.
+func (m *Manager) StatusForSession(parentSession, id string) (status Status, ok bool) {
+	j := m.get(parentSession, id)
+	if j == nil {
+		return "", false
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.status, true
+}
+
 // Kill cancels a running job. Returns false when the id is unknown or the job has
 // already finished.
 func (m *Manager) Kill(id string) bool {
