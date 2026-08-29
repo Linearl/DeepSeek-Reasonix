@@ -49,9 +49,23 @@ type PendingScrollAnchor = {
   scroller: HTMLElement | null;
 };
 
+/**
+ * Cache key for one markdown body. `he:<entryId>` history rows carry a
+ * durable transcript entry id; remote/serve hydration produces `h<seq>` rows
+ * whose id is a per-load sequence number, so those rows historically missed
+ * the cache on every mount (#9573). Such rows derive the key from the content
+ * revision instead — the revision is already an FNV-1a fingerprint of the
+ * source, and the cache's stored-source comparison is the fidelity backstop.
+ * Identical texts share one entry, which is correct: identical markdown
+ * renders identically.
+ */
+function markdownCacheKey(entryId: string | undefined, revision: number): string {
+  return entryId ?? `h:${revision}`;
+}
+
 function cachedBlocks(entryId: string | undefined, revision: number, text: string): MarkdownBlock[] | undefined {
-  if (!entryId) return undefined;
-  const cached = getTranscriptStore().getMarkdown(entryId, revision);
+  const key = markdownCacheKey(entryId, revision);
+  const cached = getTranscriptStore().getMarkdown(key, revision);
   // The revision is a content hash; the stored source comparison is the
   // fidelity backstop against collisions and stale writes.
   return cached && cached.source === text ? cached.blocks : undefined;
@@ -156,15 +170,16 @@ export const MarkdownHistory = memo(function MarkdownHistory({
     handle.promise
       .then((result) => {
         if (cancelled || !result) return;
-        if (entryId) {
-          getTranscriptStore().setMarkdown(entryId, revision, {
-            source: text,
-            blocks: result.blocks,
-            selectionText: result.selectionText,
-            selectionRevision: result.selectionRevision,
-            bytes: text.length * 2 + result.selectionText.length * 2 + estimateHastBytes(result.blocks),
-          });
-        }
+        // Cache under the durable entry id when present, else under the
+        // content-derived key — remote/serve `h<seq>` rows then survive
+        // session switches instead of re-parsing every mount (#9573).
+        getTranscriptStore().setMarkdown(markdownCacheKey(entryId, revision), revision, {
+          source: text,
+          blocks: result.blocks,
+          selectionText: result.selectionText,
+          selectionRevision: result.selectionRevision,
+          bytes: text.length * 2 + result.selectionText.length * 2 + estimateHastBytes(result.blocks),
+        });
         const next = { text, blocks: result.blocks };
         const commit = () => {
           if (cancelled) return;
