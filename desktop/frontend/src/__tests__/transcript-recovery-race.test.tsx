@@ -1,6 +1,5 @@
 // Run: tsx src/__tests__/transcript-recovery-race.test.tsx
 
-import { JSDOM } from "jsdom";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import type { StateSnapshot, VirtuosoHandle } from "react-virtuoso";
@@ -11,6 +10,7 @@ import type { TranscriptScrollWriteRecord } from "../lib/transcriptScrollProbe";
 import { buildTranscriptRows, buildTurnModels, EMPTY_FOLDS, transcriptRowMeasurementVersion, type TranscriptRow } from "../lib/transcriptRows";
 import type { Item } from "../lib/useController";
 import { installTranscriptRaceClock } from "./helpers/transcriptRaceClock";
+import { installTranscriptRecoveryRaceDom } from "./helpers/transcriptRecoveryRaceDom";
 
 let passed = 0;
 let failed = 0;
@@ -27,38 +27,9 @@ function check(condition: unknown, label: string) {
 
 console.log("\ntranscript recovery races");
 
-const dom = new JSDOM('<!doctype html><html><body><div id="root"></div><div id="scroll"><div class="transcript__row" data-row-key="row-a"></div></div></body></html>', {
-  pretendToBeVisual: true,
-  url: "http://localhost/",
-});
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-globalThis.window = dom.window as unknown as Window & typeof globalThis;
-globalThis.document = dom.window.document;
-globalThis.HTMLElement = dom.window.HTMLElement;
-globalThis.Element = dom.window.Element;
-globalThis.Node = dom.window.Node;
-
-let nextFrame = 1;
-const frames = new Map<number, FrameRequestCallback>();
-const requestFrame = (callback: FrameRequestCallback) => {
-  const id = nextFrame;
-  nextFrame += 1;
-  frames.set(id, callback);
-  return id;
-};
-const cancelFrame = (id: number) => void frames.delete(id);
-globalThis.requestAnimationFrame = requestFrame;
-globalThis.cancelAnimationFrame = cancelFrame;
-dom.window.requestAnimationFrame = requestFrame;
-dom.window.cancelAnimationFrame = cancelFrame;
+const { dom, flushFrames } = installTranscriptRecoveryRaceDom();
 
 const { advanceClock, restore: restoreClock } = installTranscriptRaceClock(dom.window as unknown as Window);
-
-async function flushFrames() {
-  const pending = [...frames.entries()];
-  frames.clear();
-  await act(async () => pending.forEach(([, callback]) => callback(performance.now())));
-}
 
 // Runtime capture of every imperative scroll write (Phase 0 probe).
 const scrollWrites: TranscriptScrollWriteRecord[] = [];
@@ -92,15 +63,17 @@ let scrollToBottomCalls = 0;
 // Null disables snapshot capture; the snapshot sections opt in explicitly so
 // the pre-snapshot scenarios keep their first-mount scrollToBottom behavior.
 let stubSnapshot: StateSnapshot | null = null;
+const applyScrollTo = (options?: { top?: number }) => {
+  scrollToCalls += 1;
+  const top = options?.top ?? 0;
+  scrollElement.scrollTop = Math.max(0, Math.min(scrollExtent - scrollElement.clientHeight, top));
+};
+scrollElement.scrollTo = applyScrollTo;
 const virtuosoHandle = {
   scrollBy: () => { scrollByCalls += 1; },
   scrollToIndex: () => { scrollToIndexCalls += 1; },
   // Browser semantics: an offset write clamps against the current extent.
-  scrollTo: (options?: { top?: number }) => {
-    scrollToCalls += 1;
-    const top = options?.top ?? 0;
-    scrollElement.scrollTop = Math.max(0, Math.min(scrollExtent - scrollElement.clientHeight, top));
-  },
+  scrollTo: applyScrollTo,
   getState: (callback: (state: StateSnapshot) => void) => {
     if (stubSnapshot) callback(stubSnapshot);
   },
@@ -196,6 +169,28 @@ scrollElement.scrollTop = 400;
 await act(async () => arbiter?.atBottomStateChange(false));
 check(arbiter?.isAtBottom === true, "physical bottom overrides a stale Virtuoso atBottom=false report");
 
+// A live-footer structural commit (answer -> tool) can expose the new native
+// extent before Virtuoso reports its footer height. Tail ownership repairs the
+// offset synchronously so WebView2 never paints the clamped intermediate frame.
+scrollExtent = 700;
+scrollElement.scrollTop = 477;
+scrollToCalls = 0;
+await act(async () => arbiter?.pinLiveTailBeforePaint());
+check(
+  scrollElement.scrollTop === 600 && scrollToCalls === 1,
+  "a claimed live tail pins the new native extent before paint",
+);
+await act(async () => arbiter?.releaseTailFollow());
+scrollExtent = 800;
+scrollElement.scrollTop = 500;
+scrollToCalls = 0;
+await act(async () => arbiter?.pinLiveTailBeforePaint());
+check(
+  scrollElement.scrollTop === 500 && scrollToCalls === 0,
+  "a manual reader is never moved by live-tail commit stabilization",
+);
+await act(async () => arbiter?.reset());
+
 // A nested code/tool scrollport owns the wheel until it reaches its edge.
 // Capturing the event on Transcript must not release tail-follow early.
 const nestedScroller = dom.window.document.createElement("div");
@@ -246,11 +241,12 @@ await triggerWatchdogRebuild();
 check(integrity?.resetKey === keyBeforeJumpBlank, "jump-bottom transients cannot trigger a blank size-tree rebuild");
 await advanceClock(350);
 
-// Tail-follow is a persistent mode, not a six-frame retry window. As long as
-// growth keeps arriving (streaming), each height notification re-arms another
-// coalesced convergence and the view keeps landing on the current bottom.
+// Tail-follow is a persistent mode, not a six-frame retry window. Successful
+// writes may follow real growth revisions; only ineffective writes enter the
+// quiet-window quarantine.
 scrollToCalls = 0;
 await act(async () => arbiter?.scrollToBottom());
+scrollToCalls = 0;
 for (let i = 0; i < 14; i += 1) {
   scrollExtent += 200;
   await advanceClock(40);
@@ -488,7 +484,8 @@ check(
   "a blank confirmed by two consecutive idle checks earns a rebuild",
 );
 
-// ── Restore waits for a slow-mounting anchor row beyond the old 8-frame budget
+// ── Restore waits for a slow-mounting anchor row without repeating the same
+// writer phase inside one geometry revision.
 await switchSurface("surface-f");
 await act(async () => arbiter?.releaseTailFollow());
 const keySurfaceF = integrity?.resetKey;
@@ -499,7 +496,7 @@ scrollByCalls = 0;
 scrollToIndexCalls = 0;
 await act(async () => integrity?.handleItemsRendered(1));
 for (let i = 0; i < 10; i += 1) await flushFrames();
-check(scrollToIndexCalls > 8, "restore keeps re-aiming past the old 8-frame budget while the anchor row is unmounted");
+check(scrollToIndexCalls === 1, "restore writes its mount anchor at most once per geometry revision");
 check(scrollByCalls === 0, "no intermediate scrollBy lands while the anchor row is unmounted");
 scrollElement.appendChild(rowElement);
 rowElement.getBoundingClientRect = () => rectAt(50);

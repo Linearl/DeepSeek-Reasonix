@@ -157,6 +157,11 @@ export function useTranscriptSelectionRetention({
     const next = Math.max(0, Math.min(max, scroll.scrollTop + speed));
     if (next === scroll.scrollTop) {
       scheduleLogicalFocus();
+      // A transient Virtuoso extent can clamp the native scrollTop at a false
+      // boundary before the range commit catches up. Keep one edge observer
+      // alive for the active drag so a later extent/range rebound can resume
+      // scrolling and refresh the logical focus without another pointermove.
+      edgeFrameRef.current = requestAnimationFrame(edgeScrollTick);
       return;
     }
     if (!writeOffset("selection-edge-scroll", next)) return;

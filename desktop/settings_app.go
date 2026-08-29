@@ -141,18 +141,6 @@ type PermissionsView struct {
 	Deny  []string `json:"deny"`
 }
 
-type SandboxView struct {
-	Bash                   string   `json:"bash"`
-	Network                bool     `json:"network"`
-	WorkspaceRoot          string   `json:"workspaceRoot"`
-	AllowWrite             []string `json:"allowWrite"`
-	OptimisticWrite        bool     `json:"optimisticWrite"`
-	EffectiveWorkspaceRoot string   `json:"effectiveWorkspaceRoot"`
-	EffectiveWriteRoots    []string `json:"effectiveWriteRoots"`
-	Shell                  string   `json:"shell"` // [tools.shell] prefer: auto|bash|powershell|pwsh
-	EffectiveShell         string   `json:"effectiveShell,omitempty"`
-}
-
 type NetworkProxyView struct {
 	Type     string `json:"type"`
 	Server   string `json:"server"`
@@ -1000,19 +988,13 @@ func (a *App) Settings() SettingsView {
 	if err != nil {
 		return a.defaultSettingsView()
 	}
-	ctrl := a.activeCtrl()
-	bash := cfg.BashMode()
-	shell := cfg.Tools.Shell.Prefer
-	if shell == "" {
-		shell = "auto"
-	}
 	root := a.activeWorkspaceRoot()
 	writeRoots := cfg.WriteRootsForRoot(root)
 	effectiveWorkspaceRoot := ""
 	if len(writeRoots) > 0 {
 		effectiveWorkspaceRoot = writeRoots[0]
 	}
-	effectiveShell := sandbox.ResolveShell(cfg.Tools.Shell.Prefer, cfg.Tools.Shell.Path, nil)
+	ctrl := a.activeCtrl()
 	v := SettingsView{
 		DefaultModel:      cfg.DefaultModel,
 		PlannerModel:      cfg.Agent.PlannerModel,
@@ -1029,13 +1011,7 @@ func (a *App) Settings() SettingsView {
 			Ask:   nonNil(cfg.Permissions.Ask),
 			Deny:  nonNil(cfg.Permissions.Deny),
 		},
-		Sandbox: SandboxView{
-			Bash: bash, Network: cfg.Sandbox.Network,
-			WorkspaceRoot: cfg.Sandbox.WorkspaceRoot, AllowWrite: nonNil(cfg.Sandbox.AllowWrite),
-			OptimisticWrite: cfg.Sandbox.OptimisticWrite,
-			EffectiveWorkspaceRoot: effectiveWorkspaceRoot, EffectiveWriteRoots: nonNil(writeRoots),
-			Shell: shell, EffectiveShell: sandboxEffectiveShellView(effectiveShell),
-		},
+		Sandbox: a.sandboxViewFor(cfg, ctrl, writeRoots, effectiveWorkspaceRoot),
 		Network: NetworkView{
 			ProxyMode: cfg.NetworkProxyMode(),
 			ProxyURL:  cfg.Network.ProxyURL,
@@ -1105,20 +1081,6 @@ func (a *App) Settings() SettingsView {
 		v.Providers = append(v.Providers, providerView)
 	}
 	return v
-}
-
-func sandboxEffectiveShellView(sh sandbox.Shell) string {
-	if sh.Kind == sandbox.ShellPowerShell {
-		if sh.SupportsChaining() {
-			return "pwsh"
-		}
-		return "powershell"
-	}
-	path := strings.ToLower(strings.ReplaceAll(sh.Path, "\\", "/"))
-	if strings.Contains(path, "/git/") && strings.HasSuffix(path, "bash.exe") {
-		return "git-bash"
-	}
-	return "bash"
 }
 
 func botSettingsView(b config.BotConfig) BotSettingsView {
@@ -1841,15 +1803,6 @@ func (a *App) activeWorkspaceRoot() string {
 		}
 	}
 	return "."
-}
-
-func (a *App) saveProviderCredential(apiKeyEnv, value string) (string, error) {
-	apiKeyEnv = strings.TrimSpace(apiKeyEnv)
-	value = strings.TrimSpace(value)
-	if err := upsertDotEnv(apiKeyEnv, value); err != nil {
-		return "", err
-	}
-	return providerCredentialSourceNotice(apiKeyEnv, value), nil
 }
 
 func providerCredentialSourceNotice(apiKeyEnv, value string) string {
@@ -3209,7 +3162,8 @@ func (a *App) ensureProviderAccessForKey(apiKeyEnv string) error {
 // ClearProviderKey removes a provider secret from Reasonix's global .env
 // and rebuilds so the provider immediately becomes unauthenticated.
 func (a *App) ClearProviderKey(apiKeyEnv string) error {
-	if strings.TrimSpace(apiKeyEnv) == "" {
+	apiKeyEnv = strings.TrimSpace(apiKeyEnv)
+	if apiKeyEnv == "" {
 		return fmt.Errorf("this provider has no api_key_env set")
 	}
 	if err := a.ensureActiveTabRebuildAllowed("provider key"); err != nil {
@@ -3218,6 +3172,7 @@ func (a *App) ClearProviderKey(apiKeyEnv string) error {
 	if err := removeDotEnv(apiKeyEnv); err != nil {
 		return err
 	}
+	a.revokeCredentialProxyRoutesByCredential(apiKeyEnv)
 	if err := a.rebuildSetting("provider key"); err != nil {
 		if _, ok := a.deferredRebuildWarning("provider key", err); ok {
 			return nil
@@ -3251,6 +3206,10 @@ func (a *App) ReloadSettings() error {
 	if err := a.ensureActiveTabRebuildAllowed("settings"); err != nil {
 		return err
 	}
+	// A manual Git Bash/Bash repair changes the host filesystem without a
+	// config write. The explicit reload action is the user's request to re-check
+	// that environment now rather than wait for the discovery TTL.
+	sandbox.InvalidateShellInventory()
 	if err := a.rebuild(); err != nil {
 		// The on-disk config already diverged from the runtime; retry the
 		// refresh once the other window releases the session lease.

@@ -15,14 +15,14 @@ type NativeScrollbarTransaction = {
 export function useTranscriptNativeScrollbarOwnership({
   scrollRef,
   modeRef,
-  readerIntentTimerRef,
+  cancelReaderTransaction,
   deliverScroll,
   dispatch,
   tailSettle,
 }: {
   scrollRef: RefObject<HTMLDivElement | null>;
   modeRef: RefObject<TranscriptScrollMode>;
-  readerIntentTimerRef: RefObject<number | null>;
+  cancelReaderTransaction: () => void;
   deliverScroll: (element?: HTMLDivElement) => void;
   dispatch: (event: TranscriptScrollEvent) => unknown;
   tailSettle: TranscriptTailSettle;
@@ -40,13 +40,12 @@ export function useTranscriptNativeScrollbarOwnership({
   const begin = useCallback((pointerId: number, element: HTMLDivElement) => {
     const displaced = transactionRef.current;
     if (displaced?.element !== element) delete displaced?.element.dataset.nativeScrollbarDrag;
-    if (readerIntentTimerRef.current !== null) window.clearTimeout(readerIntentTimerRef.current);
-    readerIntentTimerRef.current = null;
+    cancelReaderTransaction();
     transactionRef.current = { pointerId, element, lastTop: element.scrollTop, observedForwardProgress: false };
     element.dataset.nativeScrollbarDrag = "true";
     setDragging(true);
     dispatch({ type: "NATIVE_SCROLLBAR_BEGIN" });
-  }, [dispatch, readerIntentTimerRef]);
+  }, [cancelReaderTransaction, dispatch]);
 
   const finish = useCallback((pointerId?: number) => {
     const transaction = transactionRef.current;

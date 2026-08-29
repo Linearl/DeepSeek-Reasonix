@@ -94,13 +94,11 @@ console.log("\nbundle budgets");
 // its filtered count matches the assistant Sources panel. The measured build
 // is 431.509 KiB gzip; keep 0.1 KiB of explicit headroom for hash/toolchain
 // drift instead of relying on a rounded equality.
-// Fork #9214 adds the optimistic-write settings toggle and mock API surface;
-// the measured build is ~431.6 KiB gzip. Bump the ratchet to 432.2 KiB so the
-// fork release does not fail on a 0.1 KiB bundle drift.
-// Fork v1.31.4 CI measured 433.2 KiB gzip on the same frontend that passed a
-// day earlier (toolchain/hash drift near the threshold). Widen the ratchet to
-// 435.0 KiB so a ~0.2 KiB drift no longer aborts the release build.
-const initialJSBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 445.0 : 445.0;
+// Upstream v1.33.0's reader transaction contract and shell-support surface
+// bring the merged main-v2 baseline to 453.736 KiB gzip; fork additions
+// (write-dir management, optimistic-write, subagent tiers) ride on top of it.
+// The ratchet follows the upstream value so both lineages build.
+const initialJSBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 453.8 : 453.8;
 assertBudget("initial JavaScript gzip", initialJSGzip, initialJSBudgetKiB * 1024);
 assertBudget("largest initial JavaScript chunk gzip", largestInitialJS, 280 * 1024);
 // Render-blocking CSS is intentionally absent: styles.css loads deferred via
@@ -170,12 +168,44 @@ const rawInitialBytes = [...initialJS, ...initialCSS, ...appShellCSS]
 // KiB and test from 2346.2 to 2348.8 KiB; the pinned heading adds 0.5 KiB raw
 // (0.021%). The workspace panel rework (change-row hover/revert, status badges,
 // More menu, completion summary) makes the latest-base merge 2353.1 KiB in
-// production and 2358.3 KiB in test: about 9.0 KiB (0.38%) over main-v2's
-// channel gates. Retain that attributable UI capacity with 0.1 KiB of build-SHA
-// headroom without widening the gzip or largest-chunk exceptions.
-// Fork v1.31.4 front-end additions (write-dir management, optimistic-write,
-// merged upstream UI) push raw init slightly past the previous gate on CI;
-// keep 10 KiB of raw headroom so the release build is not a drift flake.
-const rawInitialBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 2_420.0 : 2_420.0;
+// production and test channels both measure 2357.92 KiB after project-group
+// wiring. Exact-turn routing, checkpoint resets, and failure-atomic navigation
+// bring the current main-v2 path to 2379.22 KiB. The remote approval
+// fences, extracted ownership modules, and remote status-bar isolation bring
+// the measured initial payload to 2380.9 KiB; retain 0.1 KiB of bounded
+// raw/toolchain headroom. Scoped remote approvals, status reconciliation, and
+// runtime command dispatch bring the measured payload to 2382.9 KiB. The
+// remaining review fences measure 2383.2 KiB; retain 0.1 KiB of headroom.
+// Final remote-runtime parity measures 2384.4 KiB raw. The current main-v2
+// runtime additions bring the combined path to 2404.364 KiB. The final merged
+// restored-shell activation and disconnected-state revival path measures
+// 2404.898 KiB; retain 0.102 KiB of bounded headroom alongside the gzip
+// ratchet above.
+// Runtime-aware Todo status and exact-tab continuation then add to the same
+// initial path. The combined payload measures 2406.2 KiB; retain 0.1 KiB of
+// raw/toolchain headroom for both owners.
+// The same transcript transaction measures 2413.012 KiB raw (+0.28%) against
+// the 2406.204 KiB baseline. Retain 0.188 KiB of bounded headroom.
+// The notification-volume control adds one persisted master gain, per-source
+// loudness trims, and its accessible Settings surface. Current main-v2 moves
+// from 2413.183 to 2414.879 KiB raw (+1.696 KiB); retain 0.121 KiB of bounded
+// headroom.
+// Owner-lifecycle reasoning disclosure, pre-paint tail pinning, and the live
+// footer growth floor then add 2.390 KiB after extracting ownership modules
+// below repolint's source ceilings. Lifecycle fencing adds 0.258 KiB; the
+// combined path measures 2417.526 KiB. Retain 0.074 KiB while preventing
+// phase-boundary reverse flashes and cross-surface floor leaks.
+// The same shell-support surface moves the merged path from 2417.526 to
+// 2422.371 KiB raw (+4.845 KiB). Retain 0.129 KiB of bounded headroom without
+// widening unrelated chunk ceilings.
+// The WebView2 extent rebound prepaint handoff adds 0.204 KiB raw so a native
+// scroll delivery can restore mounted coverage before the next visible frame.
+// Retain 0.096 KiB of headroom without widening gzip or chunk ceilings.
+// The reader transaction contract then adds a measured 15.317 KiB raw on the
+// merged main-v2 baseline (including its own prepaint port), bringing the
+// path to 2437.892 KiB; retain 0.108 KiB of bounded headroom.
+// Fork v1.33.0 additions (write-dir management, optimistic-write, subagent
+// tiers) ride on top of the upstream baseline; the ratchet follows upstream.
+const rawInitialBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 2_438.0 : 2_438.0;
 assertBudget("initial raw JavaScript and CSS", rawInitialBytes, rawInitialBudgetKiB * 1024);
 assertBudget("largest initial JavaScript chunk raw", largestInitialJSRaw, 1_000 * 1024);

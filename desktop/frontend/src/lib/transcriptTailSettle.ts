@@ -7,6 +7,7 @@ import {
 import type { TranscriptScrollMode } from "./transcriptScrollArbiter";
 import { nativeTranscriptBottomTop, nativeTranscriptDistanceFromBottom, TRANSCRIPT_AT_BOTTOM_THRESHOLD_PX } from "./transcriptScrollGeometry";
 import type { TranscriptScrollWriter } from "./transcriptScrollWriter";
+import type { TranscriptGeometryChangeSource } from "./transcriptGeometryRevision";
 
 const TAIL_STAGNANT_FRAME_LIMIT = 2;
 const TAIL_SETTLE_MAX_ATTEMPTS = 8;
@@ -39,7 +40,9 @@ export type TranscriptTailSettle = {
    *  transient over). */
   cancel: () => void;
   /** Mark a layout-transient window and arm its bounded idle expiry. */
-  noteLayoutTransient: () => void;
+  noteLayoutTransient: (source?: TranscriptGeometryChangeSource) => void;
+  /** Repair an already-owned live tail before a structural Footer commit paints. */
+  pinLiveTailBeforePaint: () => boolean;
 };
 
 /**
@@ -53,6 +56,7 @@ export function createTranscriptTailSettle({
   scrollRef,
   modeRef,
   generationRef,
+  ownershipEpochRef,
   geometryRevisionRef,
   layoutTransientRef,
 }: {
@@ -60,6 +64,7 @@ export function createTranscriptTailSettle({
   scrollRef: RefObject<HTMLDivElement | null>;
   modeRef: RefObject<TranscriptScrollMode>;
   generationRef: RefObject<number>;
+  ownershipEpochRef: RefObject<number>;
   geometryRevisionRef: RefObject<number>;
   layoutTransientRef: RefObject<boolean>;
 }): TranscriptTailSettle {
@@ -74,6 +79,26 @@ export function createTranscriptTailSettle({
   let layoutTransientIdleTimer: number | null = null;
   let lastBottomHeight: number | null = null;
   let tailPinned = false;
+  let ineffectivePin = false;
+  let pendingPin: { top: number; height: number } | null = null;
+  // 0=fresh, 1=awaiting LAST commit, 2=LAST committed, 3=quiet retry spent.
+  let fallbackState = 0;
+  let fallbackEpoch = -1;
+
+  const requestTailMount = () => {
+    if (fallbackState !== 0) return;
+    if (writer.write({
+      owner: "tail-follow",
+      operation: "scrollToIndex",
+      index: "LAST",
+      align: "end",
+      reason: "tail-range-mount",
+      phase: "mount-anchor",
+      expectedSurfaceGeneration: generationRef.current,
+      expectedOwnershipEpoch: ownershipEpochRef.current,
+      expectedGeometryRevision: geometryRevisionRef.current,
+    })) fallbackState = 1;
+  };
 
   const scrollToTail = (
     behavior: "auto" | "smooth",
@@ -82,21 +107,34 @@ export function createTranscriptTailSettle({
     const element = scrollRef.current;
     if (!element) return;
     const top = nativeTranscriptBottomTop(element);
+    const beforeTop = element.scrollTop;
+    if (fallbackEpoch !== ownershipEpochRef.current) {
+      fallbackEpoch = ownershipEpochRef.current;
+      fallbackState = 0;
+    }
     lastBottomHeight = element.scrollHeight;
     tailPinned = false;
-    writer.write({
+    if (!writer.write({
       owner: "tail-follow",
-      operation: "scrollTo",
+      operation: "pinTail",
       top,
       behavior,
-      source: diagnostic?.source ?? "tail-follow",
+      reason: diagnostic?.source ?? "tail-follow",
       phase: diagnostic?.phase,
-      expectedGeneration: generationRef.current,
-      geometryRevision: geometryRevisionRef.current,
+      expectedSurfaceGeneration: generationRef.current,
+      expectedOwnershipEpoch: ownershipEpochRef.current,
+      expectedGeometryRevision: geometryRevisionRef.current,
       settleFrame: diagnostic?.settle?.frame,
       offBottomFrames: diagnostic?.settle?.offBottomFrames,
       stagnantFrames: diagnostic?.settle?.stagnantFrames,
-    });
+    })) return;
+    // WebKit/Virtuoso can accept a physical tail target while its size tree
+    // still clamps the native scroller to the previous mounted range. Quarantine
+    // that no-op until the quiet window instead of retrying every revision.
+    ineffectivePin = nativeTranscriptDistanceFromBottom(element) > TRANSCRIPT_AT_BOTTOM_THRESHOLD_PX
+      && Math.abs(element.scrollTop - beforeTop) <= 0.5;
+    pendingPin = ineffectivePin ? null : { top, height: element.scrollHeight };
+    if (ineffectivePin) requestTailMount();
   };
 
   const cancel = () => {
@@ -105,6 +143,9 @@ export function createTranscriptTailSettle({
     tailSettleProgress = null;
     lastBottomHeight = null;
     tailPinned = false;
+    ineffectivePin = false;
+    pendingPin = null;
+    fallbackState = 0;
     if (jumpTailTimer !== null) window.clearTimeout(jumpTailTimer);
     jumpTailTimer = null;
     if (layoutTransientIdleTimer !== null) window.clearTimeout(layoutTransientIdleTimer);
@@ -119,12 +160,38 @@ export function createTranscriptTailSettle({
       if (tailSettleFrame !== null) return;
       layoutTransientRef.current = false;
       tailSettleProgress = null;
+      if (ineffectivePin && modeRef.current === "tail-follow" && fallbackState !== 1 && fallbackState !== 3) {
+        fallbackState = 3;
+        ineffectivePin = false;
+        schedule(false, "layout-height-changed");
+      }
     }, LAYOUT_TRANSIENT_IDLE_MS);
   };
 
-  const noteLayoutTransient = () => {
+  const noteLayoutTransient = (source?: TranscriptGeometryChangeSource) => {
+    // A failed physical pin may be retried only for a new product-level
+    // geometry input. Virtuoso's own row/range observations are often emitted
+    // by the failed write itself and must not create a feedback loop.
+    if (ineffectivePin && fallbackState === 1 && source === "items-rendered") {
+      ineffectivePin = false;
+      fallbackState = 2;
+    } else if (ineffectivePin && (source === "data-change" || source === "footer-resize")) {
+      ineffectivePin = false;
+      fallbackState = 0;
+    }
     layoutTransientRef.current = true;
     armLayoutTransientIdle();
+  };
+
+  const pinLiveTailBeforePaint = () => {
+    if (!scrollRef.current || modeRef.current !== "tail-follow") return false;
+    geometryRevisionRef.current += 1;
+    noteLayoutTransient();
+    scrollToTail("auto", CAPTURE_TRANSCRIPT_SCROLL_DIAGNOSTICS
+      ? { source: "tail-content-changed", phase: "initial" }
+      : undefined);
+    schedule(false, "tail-content-changed");
+    return true;
   };
 
   const schedule = (jump: boolean, source?: TranscriptScrollDiagnosticSource) => {
@@ -160,6 +227,13 @@ export function createTranscriptTailSettle({
     }
     if (jumpTailTimer !== null) return;
     if (tailSettleFrame !== null) return;
+    if (ineffectivePin) {
+      if (nativeTranscriptDistanceFromBottom(scrollElement) <= TRANSCRIPT_AT_BOTTOM_THRESHOLD_PX) {
+        tailPinned = true;
+      }
+      armLayoutTransientIdle();
+      return;
+    }
     // Virtuoso emits small layout updates while a mounted row settles. Once
     // the tail has been pinned, those updates must not start another writer;
     // only a real height revision is allowed to re-arm it.
@@ -188,6 +262,45 @@ export function createTranscriptTailSettle({
       const element = scrollRef.current;
       if (!element) return;
       const distance = nativeTranscriptDistanceFromBottom(element);
+      if (pendingPin) {
+        const collapseThreshold = Math.max(96, element.clientHeight * 0.5);
+        const collapsedAfterPin = pendingPin.height - element.scrollHeight >= collapseThreshold;
+        const held = distance <= TRANSCRIPT_AT_BOTTOM_THRESHOLD_PX
+          || Math.abs(element.scrollTop - pendingPin.top) <= TRANSCRIPT_AT_BOTTOM_THRESHOLD_PX;
+        const sameExtent = Math.abs(element.scrollHeight - pendingPin.height) <= 1;
+        if (collapsedAfterPin) {
+          // The write landed only by collapsing Virtuoso's intermediate
+          // extent. Treat the smaller physical bottom as safe, but keep the
+          // write quarantined so the subsequent size-tree rebound cannot
+          // start another pin/measure cycle.
+          pendingPin = null;
+          ineffectivePin = true;
+          requestTailMount();
+          tailPinned = distance <= TRANSCRIPT_AT_BOTTOM_THRESHOLD_PX;
+          tailSettleProgress = null;
+          armLayoutTransientIdle();
+          return;
+        }
+        if (held) pendingPin = null;
+        else if (sameExtent) {
+          // The browser accepted the write synchronously, then Virtuoso
+          // restored the previous range on the next frame. Quarantine that
+          // revision rather than chasing it with another write.
+          pendingPin = null;
+          ineffectivePin = true;
+          requestTailMount();
+          tailSettleProgress = null;
+          armLayoutTransientIdle();
+          return;
+        } else {
+          pendingPin = null;
+        }
+      }
+      if (ineffectivePin) {
+        tailSettleProgress = null;
+        armLayoutTransientIdle();
+        return;
+      }
       if (distance <= TRANSCRIPT_AT_BOTTOM_THRESHOLD_PX) {
         tailPinned = true;
         tailSettleProgress = null;
@@ -220,5 +333,5 @@ export function createTranscriptTailSettle({
     tailSettleFrame = requestAnimationFrame(tick);
   };
 
-  return { scrollToTail, schedule, cancel, noteLayoutTransient };
+  return { scrollToTail, schedule, cancel, noteLayoutTransient, pinLiveTailBeforePaint };
 }

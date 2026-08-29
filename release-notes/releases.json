@@ -2,6 +2,236 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "1.33.0",
+      "date": "2026-08-28",
+      "channel": "stable",
+      "targetingVersion": 1,
+      "title": {
+        "en": "Reasonix v1.33.0",
+        "zh": "Reasonix v1.33.0"
+      },
+      "summary": {
+        "en": "This release improves shell configuration, remote credential security, interface stability, and adds notification volume control.",
+        "zh": "此版本改进了 Shell 配置、远程凭据安全性、界面稳定性，并新增通知音量控制。"
+      },
+      "surfaces": [
+        "desktop"
+      ],
+      "guides": [],
+      "highlights": [
+        {
+          "kind": "new",
+          "targets": [
+            "desktop"
+          ],
+          "title": {
+            "en": "Safe cross-platform shell support",
+            "zh": "安全的跨平台 Shell 支持"
+          },
+          "body": {
+            "en": "Added a process-level cached shell inventory with deterministic Git for Windows discovery. macOS resolves Bash, native zsh, and POSIX sh; Linux execution remains Bash-only. Git is modeled as an independent capability. Windows repair is manual-only, and macOS/Linux repair guidance provides copy-only commands.",
+            "zh": "新增进程级缓存的 Shell 清单，并支持确定性的 Git for Windows 发现。macOS 可解析 Bash、原生 zsh 和 POSIX sh；Linux 执行仍仅限 Bash。Git 被建模为独立能力。Windows 修复仅支持手动操作，macOS/Linux 修复指导仅提供复制命令。"
+          },
+          "refs": [
+            9519
+          ]
+        },
+        {
+          "kind": "fixed",
+          "targets": [
+            "desktop"
+          ],
+          "title": {
+            "en": "Stable running turn transitions",
+            "zh": "稳定的运行任务切换"
+          },
+          "body": {
+            "en": "Fixed interface jitter during task execution by keeping reasoning and process disclosures open throughout the active turn lifecycle and using a monotonic height floor to stabilize live footer commits.",
+            "zh": "修复了任务执行期间的界面抽动问题，通过在整个活动轮次生命周期内保持推理和进程披露展开，并使用单调高度下限稳定实时页脚提交。"
+          },
+          "refs": [
+            9540
+          ]
+        },
+        {
+          "kind": "security",
+          "targets": [
+            "desktop"
+          ],
+          "title": {
+            "en": "Secure remote credential proxy routing",
+            "zh": "安全的远程凭据代理路由"
+          },
+          "body": {
+            "en": "Remote local proxy routes now keep stable scoped virtual tokens while the desktop holds real provider credentials. Saving, clearing, or deleting credentials synchronously rebuilds or revokes only affected routes, and revoked tokens return HTTP 401.",
+            "zh": "远程本地代理路由现在保持稳定的作用域虚拟令牌，而桌面端持有真实提供商凭据。保存、清除或删除凭据会同步重建或撤销仅受影响的路由，被撤销的令牌返回 HTTP 401。"
+          },
+          "refs": [
+            9542
+          ]
+        },
+        {
+          "kind": "new",
+          "targets": [
+            "desktop"
+          ],
+          "title": {
+            "en": "Adjustable notification volume",
+            "zh": "可调通知音量"
+          },
+          "body": {
+            "en": "Added a 0–100% notification volume slider in Sound settings with a default of 70%. All notification sounds now route through one master gain, normalizing bundled WAV assets to consistent loudness.",
+            "zh": "在声音设置中新增 0–100% 的通知音量滑块，默认值为 70%。所有通知声音现在通过一个主增益路由，将内置 WAV 资源标准化为一致的响度。"
+          },
+          "refs": [
+            9535
+          ]
+        }
+      ],
+      "changes": {
+        "new": [
+          {
+            "targets": [
+              "desktop"
+            ],
+            "title": {
+              "en": "Open wizard host suggestions from an explicit arrow",
+              "zh": "通过明确的箭头打开向导主机建议"
+            },
+            "body": {
+              "en": "Step 1's host field now shows saved SSH connections through an explicit chevron dropdown, listing all saved connections unfiltered and appending non-22 ports.",
+              "zh": "第一步的主机字段现在通过明确的箭头下拉菜单显示已保存的 SSH 连接，列出所有已保存的连接且不过滤，并附加非 22 端口。"
+            },
+            "refs": [
+              9536
+            ]
+          }
+        ],
+        "improved": [
+          {
+            "targets": [
+              "desktop"
+            ],
+            "title": {
+              "en": "Bounded session index rebuild lifecycle",
+              "zh": "有界的会话索引重建生命周期"
+            },
+            "body": {
+              "en": "Manual session index rebuilds are now bounded and awaitable transactions. The sidebar no longer gets stuck in “Organizing history / Rebuilding index” after updates or repairs.",
+              "zh": "手动会话索引重建现在是有界且可等待的事务。更新或修复后，侧边栏不再卡在“整理历史记录 / 重建索引”状态。"
+            },
+            "refs": [
+              9528
+            ]
+          },
+          {
+            "targets": [
+              "desktop"
+            ],
+            "title": {
+              "en": "Auto-collapse completed Todo panel",
+              "zh": "完成待办后自动收起面板"
+            },
+            "body": {
+              "en": "Completed Todo panels now fade out after a short hold, and restoring a session does not reattach completed batches.",
+              "zh": "已完成的待办面板现在会在短暂停留后淡出，恢复会话时不会重新附加已完成的批次。"
+            },
+            "refs": [
+              9529
+            ]
+          }
+        ],
+        "fixed": [
+          {
+            "targets": [
+              "desktop"
+            ],
+            "title": {
+              "en": "Stale status races no longer crash",
+              "zh": "过时的状态竞争不再导致崩溃"
+            },
+            "body": {
+              "en": "A /status poll losing the race against an SSE-derived frame is now treated as a benign stale snapshot instead of an unhandled rejection crash.",
+              "zh": "与 SSE 派生帧竞争失败的 /status 轮询现在被视为良性的过时快照，而不再表现为未处理的拒绝崩溃。"
+            },
+            "refs": [
+              9541
+            ]
+          },
+          {
+            "targets": [
+              "desktop"
+            ],
+            "title": {
+              "en": "Reliable in-memory history indexing",
+              "zh": "可靠的内存历史索引"
+            },
+            "body": {
+              "en": "Background history and session indexes now use isolated in-memory SQLite databases, and history flushes finish every registered root before reporting completion, preventing migration collisions and skipped rescans under Windows load.",
+              "zh": "后台历史记录和会话索引现在使用相互隔离的内存 SQLite 数据库，历史记录排空会在报告完成前处理所有已登记根目录，避免在 Windows 负载下发生迁移冲突或漏掉重新扫描。"
+            },
+            "refs": [
+              9557
+            ]
+          },
+          {
+            "targets": [
+              "desktop"
+            ],
+            "title": {
+              "en": "Wait for mounted extent rebound",
+              "zh": "等待高度恢复后的挂载覆盖"
+            },
+            "body": {
+              "en": "Transcript browser replay now waits for stable geometry and preserves extent samples on failure, fixing a race that could expose blank frames in Windows WebView2.",
+              "zh": "转录浏览器回放现在等待稳定的几何信息并在失败时保留范围样本，修复了 Windows WebView2 中可能暴露空白帧的竞争条件。"
+            },
+            "refs": [
+              9551
+            ]
+          },
+          {
+            "targets": [
+              "desktop"
+            ],
+            "title": {
+              "en": "Correct blank rebound before paint",
+              "zh": "绘制前修正空白高度回弹"
+            },
+            "body": {
+              "en": "Corrects a recoverable blank transcript rebound synchronously from the native scroll delivery before the next visible frame, preventing blank frames.",
+              "zh": "在下一个可见帧之前，从原生滚动传递同步修正可恢复的空白转录回弹，防止空白帧。"
+            },
+            "refs": [
+              9553
+            ]
+          }
+        ]
+      },
+      "upgrade": [],
+      "risks": [],
+      "contributors": [
+        "SivanCola",
+        "github-actions[bot]",
+        "mchenziyi",
+        "XTLine"
+      ],
+      "links": {
+        "github": "https://github.com/esengine/DeepSeek-Reasonix/releases/tag/desktop-v1.33.0",
+        "compare": "https://github.com/esengine/DeepSeek-Reasonix/compare/desktop-v1.32.1...desktop-v1.33.0",
+        "download": "https://reasonix.io/?download=desktop&channel=stable#start"
+      },
+      "releaseId": "1.33.0",
+      "baseVersion": "1.33.0",
+      "status": "reviewed",
+      "previousRelease": "1.32.1",
+      "builds": {
+        "cli": "v1.33.0",
+        "desktop": "v1.33.0",
+        "npm": "1.33.0"
+      }
+    },
+    {
       "version": "1.32.1",
       "date": "2026-08-28",
       "channel": "stable",
