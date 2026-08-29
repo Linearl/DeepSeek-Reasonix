@@ -145,7 +145,7 @@ glm-5.x 等 1M 共享窗口模型上，投影失效（切模型）后可见视�
 ## 🐛 已知问题
 
 - ~~`kill_shell` 被误判为 workspace writer~~ 已在本版修复（`kill_shell` 列为非变更工具，见上游 issue [#9564](https://github.com/esengine/DeepSeek-Reasonix/issues/9564)）。
-- 运行中子代理的 `task_id` 追加指引（#9522 Phase 2）尚未实现；Phase 1 可观测能力本版已交付。
+- ~~运行中子代理的 `task_id` 追加指引（#9522 Phase 2）尚未实现~~ 已在本版第二次重构建交付（`task_id` 参数：运行中注入指引 / 已结束续跑 transcript）。
 
 ---
 
