@@ -24759,6 +24759,67 @@ body > .mermaid-diagram--fullscreen {
   font-weight: 400;
 }
 
+/* Color filter (#9221): relative anchor for the absolute menu, swatch
+   options, and the filter button. Restored after an auto-merge dropped the
+   block (项目颜色筛选按钮无效-根因诊断-20260829). Tokens follow
+   time-filter-opt — --fg-faint replaced the retired --fg-muted; the swatch
+   border uses --border-soft instead of hardcoded black. */
+.project-tree__color-filter {
+  position: relative;
+}
+.project-tree__color-opt {
+  --wails-draggable: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--fg-faint);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.project-tree__color-opt:hover {
+  background: var(--sidebar-hover);
+  color: var(--fg);
+}
+.project-tree__color-opt--on {
+  color: var(--accent);
+}
+.project-tree__color-swatch {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 3px;
+  border: 1px solid var(--border-soft);
+}
+.project-tree__action-btn {
+  --wails-draggable: no-drag;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fg-faint);
+  padding: 0;
+  opacity: 0.78;
+  cursor: pointer;
+}
+.project-tree__action-btn--active {
+  color: var(--accent);
+}
+.project-tree__action-btn--active svg {
+  color: var(--accent);
+}
+
 .project-tree__time-filter-sep {
   height: 1px;
   margin: 4px 8px;
