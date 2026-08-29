@@ -261,6 +261,7 @@ var English = Messages{
 	CmdClear:            "discard current context",
 	CmdCls:              "clear screen only (keep LLM context)",
 	CmdCompact:          "compact context",
+	CmdExtract:          "extract highlights into a new session",
 	CmdContinueChecks:   "continue a paused final-readiness check",
 	CmdContext:          "show context window, thresholds, and last maintenance",
 	CmdRewind:           "rewind to an earlier turn",

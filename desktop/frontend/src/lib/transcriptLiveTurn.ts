@@ -1,5 +1,12 @@
 import { userRowKey, type AssistantItem, type TranscriptRow, type TurnModel } from "./transcriptRows";
 
+// #9579: the live region keeps only the most recent rows (plus everything
+// streaming); rows beyond this budget fall back into the virtual list body
+// so an uncollapsed long turn stacks naturally instead of crowding the
+// user message. Folded turns render compact headers, so a small budget
+// leaves their behaviour unchanged.
+const LIVE_TAIL_ROW_KEEP = 5;
+
 // The streaming turn renders in Virtuoso's Footer, outside its measured size
 // tree. Keep the active user's row in history and preserve every later row's
 // visual order in the live region.
@@ -54,9 +61,19 @@ export function splitTranscriptLiveRows(
   }
   const userIndex = rows.findIndex((row) => row.key === userRowKey(activeUser.id));
   if (userIndex < 0) return { historyRows: [...rows], liveRows: [], liveActive: false };
+  // #9579: when the active turn is not folded, pulling *every* post-user row
+  // into the Footer live block crowds dozens of expanded tool rows right
+  // under the user message instead of letting them stack naturally in the
+  // conversation flow. Keep only the most recent rows in the live region
+  // (queued follow-up user rows are part of that tail, preserving #9540's
+  // visual order); completed rows move back into the virtual list body,
+  // which is exactly where they end up once the turn settles. Folded turns
+  // render compact headers, so a small budget leaves their behaviour
+  // unchanged.
+  const tailStart = Math.max(userIndex + 1, rows.length - LIVE_TAIL_ROW_KEEP);
   return {
-    historyRows: rows.slice(0, userIndex + 1),
-    liveRows: rows.slice(userIndex + 1),
+    historyRows: rows.slice(0, tailStart),
+    liveRows: rows.slice(tailStart),
     liveActive: true,
   };
 }
