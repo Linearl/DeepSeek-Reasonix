@@ -77,11 +77,25 @@ func (r *Runner) Has(event Event) bool {
 // keeps streaming reasoning live unless a transform is actually wired up.
 func (r *Runner) HasPostLLMCall() bool { return r.Has(PostLLMCall) }
 
-// ToolMutationHooksEnabled reports whether any hook runs around a tool call.
-// These hooks execute user shell code and may mutate paths that the tool itself
-// does not declare, so checkpoint coverage must account for them.
+// ToolMutationHooksEnabled reports whether any hook runs around a tool call
+// and may mutate workspace files. These hooks execute user shell code, so
+// checkpoint coverage and whole-workspace write claims must account for them
+// — unless the hook author declared it read-only via MutatesWorkspace=false
+// (#9592), in which case it no longer forces that coverage.
 func (r *Runner) ToolMutationHooksEnabled() bool {
-	return r.Has(PreToolUse) || r.Has(PostToolUse) || r.Has(PostToolUseFailure)
+	if r == nil {
+		return false
+	}
+	for _, h := range r.hooks {
+		if h.Event != PreToolUse && h.Event != PostToolUse && h.Event != PostToolUseFailure {
+			continue
+		}
+		if h.MutatesWorkspace != nil && !*h.MutatesWorkspace {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // PreToolUse fires before a tool call. block=true means the call must be

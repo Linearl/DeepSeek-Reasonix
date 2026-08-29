@@ -40,6 +40,17 @@ func (a *Agent) prepareWriteCoordination(ctx context.Context, plan *toolCallPlan
 func (a *Agent) reserveCoordinatedParentWrite(plan *toolCallPlan) (func(), error) {
 	if plan.hooksMayMutateWorkspace &&
 		a.svc.writeScheduler != nil && a.subagentDepth == 0 {
+		// #9592: read-only tools never write, and meta/delegation tools
+		// (wait, kill_shell, task, …) are scheduler management —
+		// parentWriteGuardTarget excludes them precisely "so the parent can
+		// still schedule while background writers run". Giving either group
+		// the whole-workspace hold froze every read/wait/kill while a
+		// background writer ran, cutting off the self-healing path. The
+		// residual hook-write exposure equals hook writes at any non-tool
+		// moment, which no claim covers anyway.
+		if !plan.effects.WorkspaceMutation && !parentWriteGuardTarget(plan.runTool.Name()) {
+			return func() {}, nil
+		}
 		claim, err := WholeWorkspaceWriteClaim(a.writeWorkspaceRoot)
 		if err != nil {
 			return func() {}, err

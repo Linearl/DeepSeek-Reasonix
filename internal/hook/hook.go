@@ -149,6 +149,13 @@ type HookConfig struct {
 	Cwd string `json:"cwd,omitempty"`
 	// Env adds environment variables for this hook invocation.
 	Env map[string]string `json:"env,omitempty"`
+	// MutatesWorkspace declares whether this hook can write workspace files
+	// while it runs. Pre/PostToolUse hooks default to true (conservative:
+	// they are arbitrary user code), which forces whole-workspace write
+	// claims for every tool call. Declaring false marks the hook read-only so
+	// it no longer forces that coverage (#9592) — computer-use style
+	// observation hooks should set it.
+	MutatesWorkspace *bool `json:"mutatesWorkspace,omitempty"`
 	// Async and PayloadFormat are internal compatibility metadata populated for
 	// imported Claude hooks. Native Reasonix settings keep their old behavior.
 	Async         bool   `json:"-"`

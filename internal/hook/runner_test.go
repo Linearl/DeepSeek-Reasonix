@@ -62,6 +62,23 @@ func TestToolMutationHooksEnabled(t *testing.T) {
 			}
 		})
 	}
+	// #9592: a hook declaring itself read-only no longer forces mutation
+	// coverage, while a mutating sibling keeps it on.
+	readOnly := false
+	declaredReadOnly := NewRunner([]ResolvedHook{
+		{HookConfig: HookConfig{MutatesWorkspace: &readOnly}, Event: PreToolUse},
+		{HookConfig: HookConfig{MutatesWorkspace: &readOnly}, Event: PostToolUse},
+	}, "/tmp", nil, nil)
+	if declaredReadOnly.ToolMutationHooksEnabled() {
+		t.Fatal("read-only declared hooks must not force mutation coverage")
+	}
+	mixed := NewRunner([]ResolvedHook{
+		{HookConfig: HookConfig{MutatesWorkspace: &readOnly}, Event: PreToolUse},
+		{Event: PostToolUse}, // undeclared = default mutating
+	}, "/tmp", nil, nil)
+	if !mixed.ToolMutationHooksEnabled() {
+		t.Fatal("one undeclared mutating hook must keep coverage on")
+	}
 }
 
 // Runner.PreToolUse
