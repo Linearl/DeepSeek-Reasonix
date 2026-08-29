@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { startPreviewServer } from "./vite-preview-server.mjs";
 
 const frontendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 process.env.PLAYWRIGHT_BROWSERS_PATH = !process.env.PLAYWRIGHT_BROWSERS_PATH || process.env.PLAYWRIGHT_BROWSERS_PATH === ".pw-browsers"
@@ -290,12 +290,7 @@ async function waitForServer() {
   throw new Error("transcript scroll preview did not become ready");
 }
 
-const packageManager = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-const preview = spawn(packageManager, ["exec", "vite", "preview", "--port", String(port), "--strictPort", "--host", "127.0.0.1"], {
-  cwd: frontendDir,
-  stdio: "ignore",
-  shell: process.platform === "win32",
-});
+const preview = await startPreviewServer(frontendDir, port);
 
 let browser;
 try {
@@ -1861,5 +1856,5 @@ try {
   process.stdout.write("\ntranscript scroll stability browser gate passed\n");
 } finally {
   await browser?.close();
-  preview.kill("SIGTERM");
+  await preview.close();
 }

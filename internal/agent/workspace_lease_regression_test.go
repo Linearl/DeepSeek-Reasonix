@@ -129,7 +129,7 @@ func TestWritableHooksUseWorkspaceLease(t *testing.T) {
 	a.writeWorkspaceRoot = root
 	a.svc.hooks = hooks
 	call := providerToolCall("write", writer.Name())
-	call.Arguments = `{}`
+	call.Arguments = `{"path":"probe.go","content":"probe"}`
 	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
 	out := a.executeOne(ctx, &a.turn, call)
 	cancel()
@@ -164,7 +164,7 @@ func TestWritableHooksReserveWholeParentWorkspace(t *testing.T) {
 	a.svc.writeScheduler = scheduler
 	a.writeWorkspaceRoot = root
 	call := providerToolCall("write", writer.Name())
-	call.Arguments = `{}`
+	call.Arguments = `{"path":"probe.go","content":"probe"}`
 	out := a.executeOne(context.Background(), &a.turn, call)
 	if out.blocked || out.errMsg != "" {
 		t.Fatalf("executeOne failed: %+v", out)

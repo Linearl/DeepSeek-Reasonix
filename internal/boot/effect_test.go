@@ -65,6 +65,9 @@ default_model = "test-model"
 [agent]
 system_prompt = "BASE"
 
+[environment]
+enabled = false
+
 [[providers]]
 name = "test-model"
 kind = "`+kind+`"

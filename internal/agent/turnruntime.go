@@ -75,6 +75,8 @@ type turnRuntime struct {
 	// repeatSuccessCounts catches the shape stormSig cannot see: the same write
 	// succeeding over and over leaves no error for a failure-only breaker.
 	repeatSuccessCounts map[string]int
+	loop                turnLoopState
+	softBudgetMutation  bool
 
 	// constraints and engine are frozen at the start of the Run.
 	constraints runtimepolicy.Constraints
@@ -96,6 +98,8 @@ type turnRuntime struct {
 	// lastReasoning is the previous executor round's reasoning-token spend,
 	// read by the governor trigger (live policy and fork capture alike).
 	lastReasoning int
+
+	phase phaseClock
 }
 
 // pendingTurn is what someone outside the Run arms for the next one: a

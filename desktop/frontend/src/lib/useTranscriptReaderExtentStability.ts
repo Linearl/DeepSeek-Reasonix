@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { TranscriptScrollMode } from "./transcriptScrollArbiter";
 import { MIN_REVERSE_JUMP_PX, TRANSCRIPT_READER_IDLE_MS, TRANSCRIPT_READER_SETTLE_MS, transcriptReaderDirection } from "./transcriptReaderExtentStability";
-import { nativeTranscriptDistanceFromBottom, TRANSCRIPT_AT_BOTTOM_THRESHOLD_PX } from "./transcriptScrollGeometry";
+import { nativeTranscriptBottomTop, nativeTranscriptDistanceFromBottom, TRANSCRIPT_AT_BOTTOM_THRESHOLD_PX } from "./transcriptScrollGeometry";
 import { recordTranscriptScrollDiagnostic, type TranscriptScrollWriteRecord } from "./transcriptScrollProbe";
 import { transcriptElementViewportIsBlank } from "./transcriptVirtuosoRecovery";
 
@@ -408,7 +408,7 @@ export function useTranscriptReaderExtentStability({
           // can replace that transform without a visual jump.
           ? element.scrollTop + anchorRow.getBoundingClientRect().top - transaction.visualOffset - viewportTop - transaction.anchor.offset
           : transaction.expectedTop;
-        const correction = Math.max(0, Math.min(element.scrollHeight - element.clientHeight, targetTop)) - element.scrollTop;
+        const correction = Math.max(0, Math.min(nativeTranscriptBottomTop(element), targetTop)) - element.scrollTop;
         if ((transaction.mountAnchorWritten ? Math.abs(correction) : transaction.direction * correction) > 1) {
           correctionWrittenThisFrame = writeCorrection({
             owner: "reader-stability",
@@ -533,7 +533,7 @@ export function useTranscriptReaderExtentStability({
       current.idleDelivered = false;
       current.stableFrames = 0;
       current.canClaimTail = current.canClaimTail || canClaimTail;
-      current.expectedTop = Math.max(0, Math.min(element.scrollHeight - element.clientHeight, current.expectedTop + deltaY));
+      current.expectedTop = Math.max(0, Math.min(nativeTranscriptBottomTop(element), current.expectedTop + deltaY));
       recordTranscriptScrollDiagnostic("reader-transaction", {
         transactionId: current.id,
         ownershipEpoch: current.ownershipEpoch,
@@ -569,7 +569,7 @@ export function useTranscriptReaderExtentStability({
       baselineHeight: inheritedHeight,
       minimumHeight: element.scrollHeight,
       lastAcceptedTop: element.scrollTop,
-      expectedTop: Math.max(0, Math.min(element.scrollHeight - element.clientHeight, element.scrollTop + deltaY)),
+      expectedTop: Math.max(0, Math.min(nativeTranscriptBottomTop(element), element.scrollTop + deltaY)),
       anchor: captureLogicalAnchor(element),
       stableFrames: 0,
       lastGeometryRevision: geometryRevisionRef.current,
