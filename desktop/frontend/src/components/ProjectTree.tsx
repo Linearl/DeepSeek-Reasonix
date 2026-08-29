@@ -29,8 +29,9 @@ import { useProjectCreation } from "./useProjectCreation";
 import { MoveToGroupPanel } from "./MoveToGroupPanel";
 import { NewGroupPanel } from "./NewGroupPanel";
 import {
-  addProjectGroup, deleteProjectGroup, groupForProject, loadProjectGroupAssign, loadProjectGroups,
-  moveProjectToGroup, renameProjectGroup, type ProjectGroup,
+  addProjectGroup, deleteProjectGroup, dropProjectGroupCollapsed, groupForProject, loadProjectGroupAssign,
+  loadProjectGroupCollapsed, loadProjectGroups, moveProjectToGroup, persistProjectGroupCollapsed,
+  renameProjectGroup, type ProjectGroup,
 } from "../lib/projectGroups";
 import { useProjectTreeRuntimeProjection } from "../lib/useProjectTreeRuntimeProjection";
 import { useProjectTreeFrontendDiagnostics, type ProjectTreeDiagnosticSnapshot } from "../lib/useProjectTreeFrontendDiagnostics";
@@ -305,7 +306,7 @@ export function ProjectTree({
   const [assign, setAssign] = useState<Record<string, string>>(loadProjectGroupAssign);
   const [groupTarget, setGroupTarget] = useState<ProjectNode | null>(null);
   const [newGroupOpen, setNewGroupOpen] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(loadProjectGroupCollapsed);
 
   const groupForProjectRoot = useCallback((root?: string): ProjectGroup | null => {
     const id = groupForProject(assign, root);
@@ -332,6 +333,10 @@ export function ProjectTree({
     setCollapsedGroups((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
+      // Persist so the expanded/collapsed state survives app restarts and
+      // project-tree remounts (#9222 follow-up): symmetric with the group
+      // assignment persistence above.
+      persistProjectGroupCollapsed(next);
       return next;
     });
   }, []);
@@ -1023,6 +1028,9 @@ export function ProjectTree({
     const res = deleteProjectGroup(groups, assign, group.id);
     setGroups(res.groups);
     setAssign(res.assign);
+    // Drop the deleted group's persisted collapsed marker so the stored set
+    // never accumulates stale ids.
+    setCollapsedGroups((prev) => dropProjectGroupCollapsed(prev, group.id));
     if (alsoDelete) {
       for (const member of members) {
         if (member.root) void removeProject(member.root);

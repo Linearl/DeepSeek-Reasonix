@@ -11,6 +11,7 @@ export interface ProjectGroup {
 
 const GROUPS_KEY = "projectTree:groups";
 const ASSIGN_KEY = "projectTree:projectGroupAssign";
+const COLLAPSED_KEY = "projectTree:projectGroupCollapsed";
 
 let groupSeq = 0;
 function nextGroupID(): string {
@@ -52,6 +53,29 @@ export function loadProjectGroupAssign(): Record<string, string> {
 
 function persistAssign(assign: Record<string, string>): void {
   write(ASSIGN_KEY, assign);
+}
+
+// loadProjectGroupCollapsed restores the per-group expanded/collapsed state
+// across app restarts and project-tree remounts. Only collapsed ids are
+// persisted, so groups created later default to expanded. Local-only, same
+// precedent as the groups/assign keys.
+export function loadProjectGroupCollapsed(): ReadonlySet<string> {
+  const raw = read<string[]>(COLLAPSED_KEY);
+  return new Set(Array.isArray(raw) ? raw : []);
+}
+
+export function persistProjectGroupCollapsed(ids: ReadonlySet<string>): void {
+  write(COLLAPSED_KEY, [...ids]);
+}
+
+// dropProjectGroupCollapsed removes a deleted group's collapsed marker so the
+// persisted set never accumulates stale ids.
+export function dropProjectGroupCollapsed(ids: ReadonlySet<string>, id: string): ReadonlySet<string> {
+  if (!ids.has(id)) return ids;
+  const next = new Set(ids);
+  next.delete(id);
+  persistProjectGroupCollapsed(next);
+  return next;
 }
 
 export function addProjectGroup(title: string, groups: ProjectGroup[]): { groups: ProjectGroup[]; group: ProjectGroup } {
