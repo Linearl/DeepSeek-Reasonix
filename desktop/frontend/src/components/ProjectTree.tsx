@@ -2299,8 +2299,7 @@ if (report.blockedByDivergence) {
     return (
       <>
         {orderedGroups.map((group) => {
-          const members = byGroup.get(group.id);
-          if (!members) return null;
+          const members = byGroup.get(group.id) ?? [];
           const collapsed = collapsedGroups.has(group.id);
           return (
             <div className="project-tree__group" key={group.id}>
@@ -2642,7 +2641,14 @@ if (report.blockedByDivergence) {
                   </div>
                 )}
                 <div className="project-tree__section project-tree__section--projects">
-                  {pinnedTreeSections.projects.map((node) => renderNode(node, 0, "projects"))}
+                  {/* Fork #9222: project groups were rendered only by the
+                      workbench branch, so classic/creation users could create
+                      groups and assign projects without ever seeing them.
+                      Render the same grouped structure here; with no groups
+                      defined the plain flat list is kept verbatim. */}
+                  {groups.length > 0
+                    ? renderGroupedProjects(pinnedTreeSections.projects)
+                    : pinnedTreeSections.projects.map((node) => renderNode(node, 0, "projects"))}
                 </div>
               </>
             )}
