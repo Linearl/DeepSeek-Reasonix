@@ -468,7 +468,7 @@ func (t *TaskTool) WithCapabilityRuntime(rt *MCPCapabilityRuntime) *TaskTool {
 func (t *TaskTool) Name() string { return "task" }
 
 func (t *TaskTool) Description() string {
-	return "Spawn a sub-agent for a focused sub-task. Optional profile selects a runAs=subagent Skill whose body becomes the full system prompt (no implicit concise default). Optional write_paths declare non-overlapping write targets so background writers may run in parallel; omitting write_paths on a writer claims the whole workspace and serializes writers. When the concrete targets are known, prefer declaring individual file paths over whole directories, since declaring a directory that only contains other writers' disjoint files needlessly serializes those parallel writers. The sub-agent runs in its own session with a filtered tool list (defaults to every parent tool, then applies the subagent boundary: " + subagentToolBoundarySummary + "). Only its final answer is returned."
+	return "Spawn a sub-agent for a focused sub-task. Optional profile selects a runAs=subagent Skill whose body becomes the full system prompt (no implicit concise default). Optional write_paths declare non-overlapping write targets so background writers may run in parallel; omitting write_paths on a writer claims the whole workspace and serializes writers. When the concrete targets are known, prefer declaring individual file paths over whole directories, since declaring a directory that only contains other writers' disjoint files needlessly serializes those parallel writers. The sub-agent runs in its own session with a filtered tool list (defaults to every parent tool, then applies the subagent boundary: " + subagentToolBoundarySummary + "). Only its final answer is returned. Background mode: run_in_background=true launches the sub-agent asynchronously and returns a job id immediately. Foreground is the default; use it when you need the result before continuing. Use background for independent sub-tasks that can run while you continue elsewhere — e.g. dispatch several independent sub-tasks as parallel background tasks in the same turn, or use fleet for a dependency graph. You will be notified when each finishes."
 }
 
 func (t *TaskTool) Schema() json.RawMessage {
@@ -926,9 +926,9 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 			queuedNote = " It may wait in the session queue until a concurrency/write slot is free."
 		}
 		if run != nil && run.Ref != "" {
-			return fmt.Sprintf("Started background task %q (%s).%s\n%s\nIt runs across turns; collect its final answer with wait (or wait will return it once done), and you'll be notified when it finishes.", job.ID, label, queuedNote, FormatSubagentReference(run)), nil
+			return fmt.Sprintf("Started background task %q (%s).%s\n%s\nIt runs across turns; collect its final answer with wait (or wait will return it once done), and you'll be notified when it finishes. Do not sleep or poll for progress — work on non-overlapping tasks, or briefly tell the user what you launched and end your response.", job.ID, label, queuedNote, FormatSubagentReference(run)), nil
 		}
-		return fmt.Sprintf("Started background task %q (%s).%s It runs across turns; collect its final answer with wait (or wait will return it once done), and you'll be notified when it finishes.", job.ID, label, queuedNote), nil
+		return fmt.Sprintf("Started background task %q (%s).%s It runs across turns; collect its final answer with wait (or wait will return it once done), and you'll be notified when it finishes. Do not sleep or poll for progress — work on non-overlapping tasks, or briefly tell the user what you launched and end your response.", job.ID, label, queuedNote), nil
 	}
 
 	// Foreground: acquire a slot (queue if needed), then run synchronously.
