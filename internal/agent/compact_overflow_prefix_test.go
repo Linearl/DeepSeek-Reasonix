@@ -81,3 +81,36 @@ func TestMaximumSafeSummaryPrefixKeepsToolPairsTogether(t *testing.T) {
 		t.Fatalf("fold boundary = %d, want 2 so the assistant call and both results stay in the tail", end)
 	}
 }
+
+// opaqueWindowProvider declares no ContextBudgetPolicy (Unknown window mode)
+// and is never admitted, reproducing the #9572 shape: a freshly switched-to
+// gateway whose summary request used to bypass the safe-prefix cap entirely.
+type opaqueWindowProvider struct {
+	requests []provider.Request
+}
+
+func (p *opaqueWindowProvider) Name() string { return "opaque-window" }
+
+func (p *opaqueWindowProvider) Stream(_ context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+	p.requests = append(p.requests, req)
+	return chunks(
+		provider.Chunk{Type: provider.ChunkText, Text: "compact durable summary"},
+		provider.Chunk{Type: provider.ChunkDone},
+	), nil
+}
+
+func TestPressureSummaryCappedByConfiguredWindowWithoutAdmission(t *testing.T) {
+	sess := foldableSessionOverForce(120)
+	prov := &opaqueWindowProvider{}
+	a := agentOverForceWindow(t, prov, sess, 60_000)
+	if err := prepareContext(context.Background(), a, CompactionTriggerPressure); err != nil {
+		t.Fatalf("pressure maintenance: %v", err)
+	}
+	if len(prov.requests) != 1 {
+		t.Fatalf("summary requests = %d, want 1", len(prov.requests))
+	}
+	req := prov.requests[0]
+	if got, max := a.estimatedRequestTokens(req), a.effectiveContextWindow()-outputBudgetReserve-256; got > max {
+		t.Fatalf("summary request tokens = %d, exceeds configured-window cap %d", got, max)
+	}
+}

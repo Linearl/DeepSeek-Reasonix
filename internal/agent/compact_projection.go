@@ -402,7 +402,9 @@ func (a *Agent) compact(ctx context.Context, trigger, instructions string, force
 // stable prefix + one structured digest + recent verbatim tail.
 // The canonical transcript is never rewritten. CompactionNoop means nothing
 // was foldable; callers at physical overflow must treat that as hard failure.
-// mustFree marks the fold the caller cannot proceed without.
+// mustFree marks the fold the caller cannot proceed without. Automatic
+// triggers always cap the summary input via maximumSafeSummaryPrefixEnd
+// (#9572); manual compaction keeps the uncapped user-requested range.
 func (a *Agent) compactToProjection(ctx context.Context, trigger, instructions string, force, mustFree bool) (CompactionOutcome, error) {
 	a.sess.compactionRunMu.Lock()
 	defer a.sess.compactionRunMu.Unlock()
@@ -441,11 +443,21 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 			instructions += hookInstr
 		}
 	}
-	if mustFree {
+	// Automatic maintenance caps the summary input on every trigger path
+	// (#9572): a pressure fold after projection invalidation can read the full
+	// canonical transcript, and an uncapped summary request then exceeds the
+	// provider window (observed: 994,833-token request vs a 1M shared window).
+	// mustFree additionally hard-fails when no balanced prefix remains.
+	if trigger != CompactionTriggerManual {
 		start = a.maximumSafeSummaryPrefixEnd(msgs, head, start, instructions)
 		if start <= head {
 			a.emitCompactionAborted(trigger)
-			return CompactionNoop, fmt.Errorf("%w: no balanced prefix leaves enough room for a summary response", errCheckpointRejected)
+			if mustFree {
+				return CompactionNoop, fmt.Errorf("%w: no balanced prefix leaves enough room for a summary response", errCheckpointRejected)
+			}
+			// Soft skip: folding nothing this round beats sending a request the
+			// provider must reject; the next maintenance attempt re-plans.
+			return CompactionNoop, nil
 		}
 	}
 
@@ -593,12 +605,14 @@ func (a *Agent) maximumSafeSummaryPrefixEnd(msgs []provider.Message, head, end i
 	}
 	policy := contextBudgetPolicyOf(a.svc.prov)
 	if policy.WindowMode == provider.ContextWindowUnknown {
-		// A learned overflow makes an unknown gateway shared-window. Otherwise
-		// preserve the request because the configured window may be an estimate.
-		if a.lastAdmission().ObservedWindow <= 0 {
-			return end
+		// A learned overflow makes an unknown gateway shared-window. An
+		// unknown gateway that never admitted a request still honors the
+		// configured window (#9572): leaving the summary request uncapped on
+		// that path is exactly how the 1261 death spiral started. fits(end)
+		// keeps requests that already fit the configured window intact.
+		if a.lastAdmission().ObservedWindow > 0 || a.contextWindow > 0 {
+			policy.WindowMode = provider.ContextWindowShared
 		}
-		policy.WindowMode = provider.ContextWindowShared
 	}
 	maxPromptTokens := a.hardInputCeiling()
 	if policy.WindowMode == provider.ContextWindowShared {
