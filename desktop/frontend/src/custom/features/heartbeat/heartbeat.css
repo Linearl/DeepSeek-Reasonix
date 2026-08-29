@@ -1877,3 +1877,14 @@
 .heartbeat-task-menu__item--danger {
   color: var(--danger);
 }
+
+/* Model override inputs (#9070): two side-by-side text fields. */
+.heartbeat-editor__model-override {
+  display: flex;
+  gap: 8px;
+}
+
+.heartbeat-editor__model-override .heartbeat-editor__input {
+  flex: 1;
+  min-width: 0;
+}

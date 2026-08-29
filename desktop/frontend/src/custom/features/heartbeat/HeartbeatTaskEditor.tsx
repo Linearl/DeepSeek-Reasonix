@@ -80,7 +80,9 @@ export function TaskEditor({
     || draft.scope !== initialTaskRef.current.scope
     || draft.workspaceRoot !== initialTaskRef.current.workspaceRoot
     || draft.timeWindowStart !== initialTaskRef.current.timeWindowStart
-    || draft.timeWindowEnd !== initialTaskRef.current.timeWindowEnd;
+    || draft.timeWindowEnd !== initialTaskRef.current.timeWindowEnd
+    || draft.provider !== initialTaskRef.current.provider
+    || draft.model !== initialTaskRef.current.model;
 
   useEffect(() => {
     onDirtyChange?.(isDirty);
@@ -317,6 +319,30 @@ export function TaskEditor({
           placeholder={t("heartbeat.promptPlaceholder")}
           rows={5}
         />
+      </div>
+
+      {/* Model override（#9070，可选项） */}
+      <div className="heartbeat-editor__field">
+        <label>
+          {t("heartbeat.fieldModelOverride")} <span className="heartbeat-editor__optional">{t("heartbeat.optional")}</span>
+        </label>
+        <div className="heartbeat-editor__model-override">
+          <input
+            className="heartbeat-editor__input"
+            type="text"
+            value={draft.provider ?? ""}
+            onChange={(e) => set("provider", e.target.value)}
+            placeholder={t("heartbeat.providerPlaceholder")}
+          />
+          <input
+            className="heartbeat-editor__input"
+            type="text"
+            value={draft.model ?? ""}
+            onChange={(e) => set("model", e.target.value)}
+            placeholder={t("heartbeat.modelPlaceholder")}
+          />
+        </div>
+        <span className="heartbeat-editor__mode-hint">{t("heartbeat.modelOverrideHint")}</span>
       </div>
 
       {/* Approval Mode（竖排） */}

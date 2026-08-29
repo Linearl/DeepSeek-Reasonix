@@ -49,6 +49,12 @@ type HeartbeatTask struct {
 	TimeWindowStart        string         `json:"timeWindowStart,omitempty"` // "HH:MM" — interval tasks only run after this time (inclusive)
 	TimeWindowEnd          string         `json:"timeWindowEnd,omitempty"`   // "HH:MM" — interval tasks only run before this time (exclusive)
 	NotifyChannels         *bool          `json:"notifyChannels,omitempty"`  // true = push to bot channels; nil/false = skip
+	// Per-task model override (#9070). Empty keeps the topic's current model.
+	// Accepts the Config.ResolveModel ref forms: "provider/model", a provider
+	// name (its default model), or a bare model name. Invalid refs are logged
+	// and the run falls back to the tab's current model instead of skipping.
+	Provider string `json:"provider,omitempty"`
+	Model    string `json:"model,omitempty"`
 }
 
 // HeartbeatRun records a single successful execution of a heartbeat task.
@@ -116,6 +122,25 @@ func (s heartbeatConfigSnapshot) view() HeartbeatConfigView {
 		etag = hex.EncodeToString(s.digest[:])
 	}
 	return HeartbeatConfigView{Revision: s.cfg.Revision, ETag: etag, Tasks: tasks}
+}
+
+// heartbeatModelRef combines the optional per-task provider/model override
+// (#9070) into a single SetModelForTab ref. Forms: "provider/model", a bare
+// provider name (its default model), or a bare model name — all resolved by
+// the tab's SetModelForTab via Config.ResolveModel. Empty pair means "keep
+// the topic's current model".
+func heartbeatModelRef(provider, model string) string {
+	provider = strings.TrimSpace(provider)
+	model = strings.TrimSpace(model)
+	switch {
+	case provider != "" && model != "":
+		return provider + "/" + model
+	case provider != "":
+		return provider
+	case model != "":
+		return model
+	}
+	return ""
 }
 
 // ── Engine ──────────────────────────────────────────────────────────────────
@@ -453,6 +478,17 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 	mode := normalizeHeartbeatApprovalMode(t.ApprovalMode)
 	t.ApprovalMode = mode
 	e.app.SetToolApprovalModeForTab(tabMeta.ID, mode)
+
+	// Per-task model override (#9070): switch the tab onto the task's
+	// provider/model before submitting so one heartbeat task always runs on
+	// the model its prompt was written for, regardless of which topic it
+	// reuses. An invalid ref logs and degrades to the tab's current model —
+	// the run still happens rather than being skipped.
+	if ref := heartbeatModelRef(t.Provider, t.Model); ref != "" {
+		if err := e.app.SetModelForTab(tabMeta.ID, ref); err != nil {
+			log.Printf("[heartbeat] model override %q for %q ignored: %s", ref, t.Title, secrets.RedactError(err))
+		}
+	}
 
 	// Attach bot event forwarding if the bot runtime is active and has
 	// session-mapped targets. The forwarder is set on the tab's event sink

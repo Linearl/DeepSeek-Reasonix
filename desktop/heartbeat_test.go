@@ -305,6 +305,13 @@ func (s *heartbeatExecuteTaskCtrlStub) ToolApprovalMode() string {
 	return s.approvalMode
 }
 
+// SubagentPolicy satisfies the control.SessionAPI surface tabs.go's
+// currentTabSubagentPolicy reads when rendering a tab's meta; heartbeat
+// stubs have no delegation tier of their own.
+func (s *heartbeatExecuteTaskCtrlStub) SubagentPolicy() string {
+	return ""
+}
+
 func (s *heartbeatExecuteTaskCtrlStub) SetSessionPath(string) {}
 
 func (s *heartbeatExecuteTaskCtrlStub) SessionPath() string {
