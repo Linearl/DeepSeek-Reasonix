@@ -1,19 +1,26 @@
 # Reasonix Fork 桌面版 v1.32.0 — Release Notes
 
-> 本版本基于官方 `v1.32.0`（远程 SSH 工作区 + 持久有序回合 + 对话导航改进），在完整吸收上游改进的同时保留了 fork 全部增强功能。数据/会话/记忆目录与官方版完全兼容，**覆盖安装即可，无需迁移**。
-> v1.31.3/v1.31.4 的实时引导、子代理三档、写目录管理、项目分组、压缩刷新记忆等增强已包含在内（详见 [v1.31.4 Release Notes](https://github.com/Linearl/DeepSeek-Reasonix/releases/tag/desktop-v1.31.4)）。
+> 本版本基于官方 `v1.32.0`，完整吸收上游远程 SSH 工作区、持久有序回合、对话导航改进等新特性，同时保留全部 fork 增强。数据/会话/记忆目录与官方版完全兼容，**覆盖安装即可，无需迁移**。
+> v1.31.4 的实时引导、子代理三档、写目录管理、项目分组、压缩刷新记忆、MiMo 推理档位等增强已包含在内（详见 [v1.31.4 Release Notes](https://github.com/Linearl/DeepSeek-Reasonix/releases/tag/desktop-v1.31.4)）。
+
+## 使用攻略
+
+- 所有 fork 功能均可在 **设置 → 权限 / 通用** 或**会话输入框右上角**找到入口；CLI/TUI 用斜杠命令。
+- 安装**覆盖安装即可**，无需卸载、无需迁移数据；已关闭自动更新，未来可随时切回官方版。
 
 ## 概览
 
-**Reasonix Fork v1.32.0 — 吸收上游远程工作区 + 持久回合 + 对话导航改进，保留全部 fork 增强**
+**Reasonix Fork v1.32.0 — 吸收上游远程工作区 + 持久回合 + 对话导航改进**
 
-本版本合并上游 v1.32.0 全部内容（远程 SSH 工作区、持久有序回合、对话导航改进、Windows/状态恢复可靠性增强），同时完整保留 fork 的全部魔改功能。
+本版本合并上游 v1.32.0 全部内容（远程 SSH 工作区、持久有序回合、对话导航改进、Windows/状态恢复可靠性增强），同时完整保留 fork 的全部魔改功能（详见 v1.31.4 Release Notes）。
 
-发布日期：2026-08-29（fork 合并构建）
+上游 v1.32.0 已吸收我们的 #9158（压缩阈值）、#9374（会话归档）、#9376（记忆能力）、#9155（损坏 meta 重建）、#9032（分组标题字号）5 个已合并 PR。
+
+发布日期：2026-08-29
 
 ---
 
-## ✨ 上游 v1.32.0 新特性（已吸收）
+## ✨ 上游 v1.32.0 新特性
 
 ### 远程 SSH 工作区
 
@@ -21,7 +28,7 @@
 
 ### 持久有序回合
 
-回合生命周期管理改进，确保对话顺序一致性和持久化可靠性。
+回合生命周期管理改进，确保对话顺序一致性和持久化可靠性。（#9409）
 
 ### 对话导航改进
 
@@ -33,34 +40,21 @@
 
 ---
 
-## 🔧 Fork 增强（完整保留，与 v1.31.4 一致）
+## 🔧 Fork 增强
 
-| 功能 | 说明 |
-|------|------|
-| **实时引导** | bash 等耗时工具执行期间可继续对话，bash 后台继续运行 |
-| **子代理三档** | Conservative / Balanced / Aggressive 三级子代理委派策略（#9004） |
-| **写目录管理** | 已授权写目录面板 + 全局公共目录，减少审批弹窗（#9167） |
-| **项目分组** | 项目树分组 + 颜色筛选排序（#9222 #9221） |
-| **搜索面板** | 项目树内搜索（#9218） |
-| **压缩刷新记忆** | 压缩后自动刷新持久记忆（#9450） |
-| **合并恢复副本** | 分歧副本二次确认强制合并（#9470） |
-| **MiMo 推理档位** | MiMo 模型推理档位自动检测（#9435） |
-| **serve 端点扩展** | 多项目浏览 + 图片上传（#8789 #8855） |
-| **压缩横幅** | 压缩进度可视化 |
-| **会话秒切** | 高速模型标记 |
-| **catalog 路径大小写去重** | 会话目录按折叠路径去重（#9511） |
+所有 fork 增强功能（实时引导、子代理三档、写目录管理、项目分组、搜索面板、压缩刷新记忆、MiMo 推理档位、serve 端点扩展等）均已包含，详见 [v1.31.4 Release Notes](https://github.com/Linearl/DeepSeek-Reasonix/releases/tag/desktop-v1.31.4)。
 
 ---
 
 ## 📝 合并说明
 
-本次合并基于 upstream/main-v2 `bba8f8eb6`（2026-08-29 fetch），fork base `e182e9ff3`（v1.31.4）。
+本次合并基于 upstream/main-v2 `bba8f8eb6`（2026-08-29），fork base `e182e9ff3`（v1.31.4）。
 
-**后端**：上游为基，逐处补回 fork 魔改（SubagentPolicy/MemorySystemReload/subagentPolicy 字段/写目录方法等）。`go build ./...` 通过。
+- **后端**：上游为基，逐处补回 fork 魔改（SubagentPolicy/MemorySystemReload/写目录方法等）。`go build ./...` 通过。
+- **前端**：上游为基，补回 fork 独有功能（bridge mock 桩/compactionActive/setSubagentPolicyFromUi/hasLocalTranscriptForTab）。`tsc --noEmit` 通过。
+- **本地安装包构建**：wails build win-amd64 + NSIS 安装器通过。
 
-**前端**：上游为基，补回 fork 独有功能（bridge mock 桩/写目录方法/compactionActive/setSubagentPolicyFromUi/hasLocalTranscriptForTab）。`tsc --noEmit` 通过。
-
-**已确认上游吸收的 fork PR**：#9158 compact_ratio 0.30、#9374 单会话归档、#9376 记忆能力、#9155 损坏 meta 重建、#9032 分组标题字号。
+**已确认上游吸收的 fork PR**：#9158 compact_ratio、#9374 单会话归档、#9376 记忆能力、#9155 损坏 meta 重建、#9032 分组标题字号。
 
 ---
 
