@@ -51,6 +51,7 @@ export type TranscriptScrollEvent =
   | { type: "NATIVE_SCROLLBAR_END"; claimTail: boolean }
   | { type: "SCROLL_DELIVERED"; atBottom: boolean; scrollable: boolean; substantial?: boolean }
   | { type: "TAIL_CONTENT_CHANGED" }
+  | { type: "TAIL_SETTLE_EXHAUSTED" }
   | { type: "CONTENT_SHRANK" }
   | { type: "LAYOUT_HEIGHT_CHANGED" }
   | { type: "VIEWPORT_RESIZED" }
@@ -232,6 +233,10 @@ export function reduceTranscriptScroll(
     case "LAYOUT_HEIGHT_CHANGED":
     case "VIEWPORT_RESIZED":
       return transition(state, state.mode === "tail-follow" ? [{ type: "AUTOSCROLL_TO_BOTTOM" }] : []);
+    case "TAIL_SETTLE_EXHAUSTED":
+      return state.mode === "tail-follow"
+        ? transition({ ...state, atBottom: false })
+        : transition(state);
     case "CONTENT_SHRANK":
       // Auto-fold collapse shortens the transcript. Keep tail ownership but
       // let the browser's native scrollTop clamp settle the new bottom; a

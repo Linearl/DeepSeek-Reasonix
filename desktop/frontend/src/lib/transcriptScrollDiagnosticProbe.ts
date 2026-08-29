@@ -23,6 +23,7 @@ export type TranscriptScrollDiagnosticSource =
   | "native-scrollbar-end"
   | "scroll-delivered"
   | "tail-content-changed"
+  | "tail-settle-exhausted"
   | "content-shrank"
   | "layout-height-changed"
   | "viewport-resized"
@@ -58,6 +59,7 @@ function sourceForEvent(event: TranscriptScrollEvent["type"]): TranscriptScrollD
     case "NATIVE_SCROLLBAR_END": return "native-scrollbar-end";
     case "SCROLL_DELIVERED": return "scroll-delivered";
     case "TAIL_CONTENT_CHANGED": return "tail-content-changed";
+    case "TAIL_SETTLE_EXHAUSTED": return "tail-settle-exhausted";
     case "CONTENT_SHRANK": return "content-shrank";
     case "LAYOUT_HEIGHT_CHANGED": return "layout-height-changed";
     case "VIEWPORT_RESIZED": return "viewport-resized";

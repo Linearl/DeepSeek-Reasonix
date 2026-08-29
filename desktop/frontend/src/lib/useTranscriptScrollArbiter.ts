@@ -166,6 +166,7 @@ export function useTranscriptScrollArbiter({
   const tailSettleRef = useRef<TranscriptTailSettle | null>(null);
   tailSettleRef.current ??= createTranscriptTailSettle({
     writer, scrollRef, modeRef, generationRef, ownershipEpochRef, geometryRevisionRef, layoutTransientRef,
+    onStranded: () => dispatchRef.current({ type: "TAIL_SETTLE_EXHAUSTED" }),
   });
   const tailSettle = tailSettleRef.current;
   const geometryControllerRef = useRef<TranscriptGeometryRevisionController | null>(null);
@@ -216,8 +217,8 @@ export function useTranscriptScrollArbiter({
     stateRef.current = state;
     modeRef.current = state.mode;
     pinnedRef.current = state.mode === "tail-follow";
-    // Keep jump-bottom manual-only while tail-follow repairs footer resize gaps.
-    setIsAtBottom(state.atBottom || state.mode === "tail-follow");
+    // Exhausted tails may still reconverge while exposing jump-bottom recovery.
+    setIsAtBottom(state.atBottom || (state.mode === "tail-follow" && layoutTransientRef.current));
     if (scrollRef.current) {
       scrollRef.current.dataset.scrollMode = state.mode;
       scrollRef.current.dataset.transcriptReaderIntent = state.readerIntent ? "true" : "false";

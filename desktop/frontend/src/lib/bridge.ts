@@ -1256,6 +1256,7 @@ function mockProviderTemplate(p: Pick<ProviderView, "name" | "kind" | "baseUrl" 
     headers: p.headers,
     extraBody: p.extraBody,
     authHeader: p.authHeader,
+    noProxy: p.noProxy,
     keySet: Boolean(p.keySet),
     balanceUrl: p.balanceUrl ?? "",
     contextWindow: p.contextWindow ?? 0,

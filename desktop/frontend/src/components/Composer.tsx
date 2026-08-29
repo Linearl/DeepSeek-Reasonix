@@ -795,6 +795,7 @@ export function Composer({
   const [, setHistoryIndex] = useState(-1);
   const savedTextRef = useRef("");
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const measureTaRef = useRef<HTMLTextAreaElement>(null);
   const richInputRef = useRef<RichComposerInputHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editHistoryByDraftRef = useRef<Record<string, ComposerEditHistory>>({});
@@ -2973,36 +2974,29 @@ export function Composer({
     // Creation empty hero starts single-line but must grow so multi-line drafts
     // stay readable before send (review: fixed 20px + overflow:hidden clipped).
     if (heroMode) {
-      const node = taRef.current;
-      if (!node) {
+      const measureNode = measureTaRef.current;
+      if (!measureNode) {
         setTextareaAutoHeight(20);
         setTextareaAutoOverflow(false);
         return;
       }
-      const previousHeight = node.style.height;
-      node.style.height = "auto";
-      const scrollHeight = node.scrollHeight || 20;
+      const scrollHeight = measureNode.scrollHeight || 20;
       const maxHeight = composerHeroInputMaxHeight();
       const nextHeight = Math.min(Math.max(scrollHeight, 20), maxHeight);
       const nextOverflow = scrollHeight > maxHeight + 1;
-      node.style.height = previousHeight;
       setTextareaAutoHeight((current) => (current === nextHeight ? current : nextHeight));
       setTextareaAutoOverflow((current) => (current === nextOverflow ? current : nextOverflow));
       return;
     }
     const richHeight = invocationsRef.current.length > 0 ? richInputRef.current?.scrollHeight() : 0;
-    const node = taRef.current;
-    if (!richHeight && !node) return;
-    const previousHeight = node?.style.height;
-    if (node) node.style.height = "auto";
-    const scrollHeight = richHeight || node?.scrollHeight || 0;
+    const scrollHeight = richHeight || measureTaRef.current?.scrollHeight || 0;
+    if (!scrollHeight) return;
     const sizing = resolveComposerContentSizing({
       contentHeight: scrollHeight,
       manualLogicalHeight: composerHeight,
       maxLogicalHeight: composerMaxHeight(),
       reservedHeight: COMPOSER_AUTO_RESERVED_HEIGHT,
     });
-    if (node && previousHeight !== undefined) node.style.height = previousHeight;
     setTextareaAutoHeight((current) => (current === sizing.inputHeight ? current : sizing.inputHeight));
     setTextareaAutoOverflow((current) => (current === sizing.overflow ? current : sizing.overflow));
   }, [composerHeight, heroMode, invocations.length]);
@@ -4532,45 +4526,51 @@ export function Composer({
                   }}
                 />
               ) : (
-                <textarea
-                  id="composer-input"
-                  ref={taRef}
-                  className="composer__input"
-                  aria-label={t("composer.placeholder")} spellCheck={false} autoCorrect="off" autoCapitalize="off"
-                  value={composingRef.current ? undefined : text}
-                  onInputCapture={(e) => {
-                    pendingNativeInputTypeRef.current = (e.nativeEvent as InputEvent).inputType;
-                  }}
-                  onChange={(e) => {
-                    const targetDraftKey = activeDraftKeyRef.current;
-                    const inputType = (e.nativeEvent as InputEvent).inputType
-                      || pendingNativeInputTypeRef.current;
-                    pendingNativeInputTypeRef.current = undefined;
-                    trackImeInputChange(e.nativeEvent as InputEvent, inputType, e.target.value);
-                    resetPromptHistoryNavigation();
-                    textRef.current = e.target.value;
-                    setText(e.target.value);
-                    const nextSelection = {
-                      start: e.target.selectionStart ?? e.target.value.length,
-                      end: e.target.selectionEnd ?? e.target.value.length,
-                    };
-                    lastSelectionRef.current = nextSelection;
-                    setPlainSelection(nextSelection);
-                    syncComposerNativeHistory(targetDraftKey, inputType);
-                    if (composerPrompt) setComposerPrompt(null);
-                  }}
-                  onSelect={rememberCaret}
-                  onClick={rememberCaret}
-                  onKeyUp={rememberCaret}
-                  onFocus={rememberCaret}
-                  onContextMenu={openInputMenu}
-                  onPaste={onPaste}
-                  onKeyDown={onKeyDown}
-                  style={textareaStyle}
-                  placeholder={composerPlaceholder}
-                  rows={1}
-                  disabled={disabled || readOnly}
-                />
+                <>
+                  <textarea
+                    id="composer-input"
+                    ref={taRef}
+                    className="composer__input"
+                    aria-label={t("composer.placeholder")} spellCheck={false} autoCorrect="off" autoCapitalize="off"
+                    value={composingRef.current ? undefined : text}
+                    onInputCapture={(e) => {
+                      pendingNativeInputTypeRef.current = (e.nativeEvent as InputEvent).inputType;
+                    }}
+                    onChange={(e) => {
+                      const targetDraftKey = activeDraftKeyRef.current;
+                      const inputType = (e.nativeEvent as InputEvent).inputType
+                        || pendingNativeInputTypeRef.current;
+                      pendingNativeInputTypeRef.current = undefined;
+                      trackImeInputChange(e.nativeEvent as InputEvent, inputType, e.target.value);
+                      resetPromptHistoryNavigation();
+                      textRef.current = e.target.value;
+                      setText(e.target.value);
+                      const nextSelection = {
+                        start: e.target.selectionStart ?? e.target.value.length,
+                        end: e.target.selectionEnd ?? e.target.value.length,
+                      };
+                      lastSelectionRef.current = nextSelection;
+                      setPlainSelection(nextSelection);
+                      syncComposerNativeHistory(targetDraftKey, inputType);
+                      if (composerPrompt) setComposerPrompt(null);
+                    }}
+                    onSelect={rememberCaret}
+                    onClick={rememberCaret}
+                    onKeyUp={rememberCaret}
+                    onFocus={rememberCaret}
+                    onContextMenu={openInputMenu}
+                    onPaste={onPaste}
+                    onKeyDown={onKeyDown}
+                    style={textareaStyle}
+                    placeholder={composerPlaceholder}
+                    rows={1}
+                    disabled={disabled || readOnly}
+                  />
+                  <textarea
+                    ref={measureTaRef} className="composer__input composer__input--measure"
+                    value={text} readOnly aria-hidden="true" tabIndex={-1}
+                  />
+                </>
               )}
             </div>
             {composerPrompt && (
