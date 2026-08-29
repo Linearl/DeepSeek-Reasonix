@@ -240,7 +240,12 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string) (rawInput string
 
 // runToolLoop owns the main tool-round budget and dispatches each streamed
 // assistant turn into final-response or tool-round handling.
-func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) error {
+func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr error) {
+	releaseMCPListObserver := a.activateMCPListObserver()
+	defer func() {
+		a.recordReadonlySoftBudgetSample(state, runErr)
+		releaseMCPListObserver()
+	}()
 	ctx = a.withAgentContext(ctx)
 	for step := 0; state.runMaxSteps <= 0 || step < state.runMaxSteps || state.graceRound || state.recoveryGraceRound; step++ {
 		// Consume a queued steer and persist it to the session so it
@@ -286,6 +291,11 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) error {
 			// bounded LocalOnly recovery record for the next real user message.
 			// Intermediate failed attempts never wrote session state.
 			a.recordInterruptedDisplay(text, reasoning, partialCalls, true, state.workDurationMs())
+			// A broken provider stream can otherwise look like a silent hang
+			// followed only by the generic interrupted-turn notice (#9560).
+			if code, msg := streamInterruptNotice(err); msg != "" {
+				a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Code: code, Text: msg})
+			}
 			return err
 		}
 		a.sess.lastPrefixShape = prefixShape

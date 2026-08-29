@@ -3,9 +3,11 @@ package agent
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"reasonix/internal/event"
 	"reasonix/internal/provider"
+	"reasonix/internal/tool"
 )
 
 // landCause is why a turn was told to finalize. kind selects the pause the Run
@@ -27,7 +29,36 @@ func (a *Agent) providerToolSchemas() []provider.ToolSchema {
 	if a == nil || a.svc.tools == nil || !provider.SupportsTools(a.svc.prov) {
 		return []provider.ToolSchema{}
 	}
-	return a.svc.tools.Schemas()
+	schemas := a.svc.tools.Schemas()
+	if !provider.NativeToolSearchEnabled(a.svc.prov) {
+		return schemas
+	}
+	return provider.ApplyNativeToolSearch(schemas, deferredMCPSchemas(a.svc.tools), a.svc.prov)
+}
+
+func deferredMCPSchemas(reg *tool.Registry) []provider.ToolSchema {
+	if reg == nil {
+		return nil
+	}
+	var extra []provider.ToolSchema
+	for _, name := range reg.AllNames() {
+		if !strings.HasPrefix(name, "mcp__") {
+			continue
+		}
+		if reg.ProviderVisible(name) {
+			continue
+		}
+		target, ok := reg.Get(name)
+		if !ok {
+			continue
+		}
+		extra = append(extra, provider.ToolSchema{
+			Name:        target.Name(),
+			Description: target.Description(),
+			Parameters:  target.Schema(),
+		})
+	}
+	return extra
 }
 
 func (a *Agent) singleTurnFinalizer(calls []provider.ToolCall) bool {
