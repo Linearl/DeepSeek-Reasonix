@@ -39574,13 +39574,13 @@ body > .mermaid-diagram--fullscreen {
 .project-tree__group-caret {
   width: 12px;
   flex: none;
-  color: var(--color-text-muted, inherit);
+  color: var(--fg-faint);
   font-size: 10px;
   text-align: center;
 }
 .project-tree__group-icon {
   flex: none;
-  color: var(--color-text-muted, inherit);
+  color: var(--fg-faint);
 }
 .project-tree__group-name {
   flex: 1;
@@ -39613,7 +39613,7 @@ body > .mermaid-diagram--fullscreen {
   border: none;
   border-radius: 4px;
   background: transparent;
-  color: var(--color-text-muted, inherit);
+  color: var(--fg-faint);
   cursor: pointer;
 }
 .project-tree__group-act:hover {
@@ -39649,7 +39649,7 @@ body > .mermaid-diagram--fullscreen {
   border-bottom: 1px solid var(--border);
 }
 .move-group__header svg {
-  color: var(--color-text-muted, inherit);
+  color: var(--fg-faint);
   flex: none;
 }
 .move-group__title {
@@ -39661,7 +39661,7 @@ body > .mermaid-diagram--fullscreen {
   font-size: 13px;
 }
 .move-group__project {
-  color: var(--color-text-muted, inherit);
+  color: var(--fg-faint);
   font-style: normal;
 }
 .move-group__list {
@@ -39699,7 +39699,7 @@ body > .mermaid-diagram--fullscreen {
   height: 12px;
   flex: none;
   border-radius: 3px;
-  background: var(--color-text-muted, inherit);
+  background: var(--fg-faint);
   border: 1px solid rgba(0, 0, 0, 0.2);
 }
 .move-group__swatch--empty {
