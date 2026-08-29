@@ -42,6 +42,25 @@ func newSubagentSkillOptionsFactory(
 	}
 }
 
+func reviewSubagentSkillOptions(
+	ctx context.Context,
+	profile, task string,
+	steps int,
+	price *provider.Pricing,
+	ctxWin, childDepth int,
+	factory func(context.Context, int, *provider.Pricing, int, int) agent.Options,
+) (string, agent.Options) {
+	reviewTokens := 0
+	if reviewTask, reviewSteps, tokens, ok := agent.PrepareReviewSubagentContext(ctx, profile, task); ok {
+		task, steps, reviewTokens = reviewTask, reviewSteps, tokens
+	}
+	opts := factory(ctx, steps, price, ctxWin, childDepth)
+	if reviewTokens > 0 {
+		opts.MaxOutputTokens = reviewTokens
+	}
+	return task, opts
+}
+
 func skillSubagentRegistry(
 	sk skill.Skill,
 	parent *tool.Registry,

@@ -662,6 +662,7 @@ func (c *Client) publishToolCatalog(candidate toolCatalogSnapshot, targetRevisio
 	c.toolsMu.Lock()
 	changed := !c.toolCatalog.listed || c.toolCatalog.fingerprint != candidate.fingerprint
 	if changed {
+		oldFingerprints := catalogSchemaFingerprints(c.toolCatalog.adapters)
 		c.catalogGeneration++
 		candidate.generation = c.catalogGeneration
 		for _, adapters := range [][]tool.Tool{candidate.adapters, candidate.appAdapters} {
@@ -672,11 +673,23 @@ func (c *Client) publishToolCatalog(candidate toolCatalogSnapshot, targetRevisio
 			}
 		}
 		c.toolCatalog = candidate
+		tool.InvalidateArgumentSchemas(oldFingerprints)
 	}
 	tools := append([]tool.Tool(nil), c.toolCatalog.adapters...)
 	c.toolsMu.Unlock()
 	c.advancePublishedToolListRevision(targetRevision)
 	return tools, changed, nil
+}
+
+func catalogSchemaFingerprints(adapters []tool.Tool) []string {
+	out := make([]string, 0, len(adapters))
+	for _, adapter := range adapters {
+		if adapter == nil {
+			continue
+		}
+		out = append(out, tool.SchemaFingerprint(adapter.Schema()))
+	}
+	return out
 }
 
 func (c *Client) advancePublishedToolListRevision(revision uint64) {

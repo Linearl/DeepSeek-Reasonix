@@ -37,7 +37,9 @@ type MCPCapabilityRuntime struct {
 	servers    map[string]mcpRuntimeServer
 	gates      mcpServerGates
 	// shared connection observation across all frontends on this session.
-	state *mcpProxySharedState
+	state       *mcpProxySharedState
+	frontendsMu sync.RWMutex
+	frontends   map[*UseCapabilityTool]int
 }
 
 type mcpRuntimeServer struct {
@@ -76,12 +78,13 @@ func (t *UseCapabilityTool) hostProfileFor() plugin.HostProfile {
 // on-demand MCP child process lifetimes; specs must be the boot-converted specs.
 func NewMCPCapabilityRuntime(lifeCtx context.Context, host *plugin.Host, specs []plugin.Spec, reg *tool.Registry, catalog func() capability.Catalog) *MCPCapabilityRuntime {
 	r := &MCPCapabilityRuntime{
-		lifeCtx:  lifeCtx,
-		host:     host,
-		registry: reg,
-		catalog:  catalog,
-		servers:  map[string]mcpRuntimeServer{},
-		state:    &mcpProxySharedState{connected: map[string]bool{}},
+		lifeCtx:   lifeCtx,
+		host:      host,
+		registry:  reg,
+		catalog:   catalog,
+		servers:   map[string]mcpRuntimeServer{},
+		state:     &mcpProxySharedState{connected: map[string]bool{}},
+		frontends: map[*UseCapabilityTool]int{},
 	}
 	r.ConfigureServers(nil, specs, nil)
 	if host != nil {
@@ -326,7 +329,11 @@ func cachedToolsForSpec(spec plugin.Spec, profile plugin.HostProfile) ([]plugin.
 }
 
 func runtimePluginEntry(entry config.PluginEntry) config.PluginEntry {
-	out := config.PluginEntry{Name: strings.TrimSpace(entry.Name), Source: entry.Source}
+	out := config.PluginEntry{
+		Name:        strings.TrimSpace(entry.Name),
+		Concurrency: strings.ToLower(strings.TrimSpace(entry.Concurrency)),
+		Source:      entry.Source,
+	}
 	if entry.AutoStart != nil {
 		value := *entry.AutoStart
 		out.AutoStart = &value
@@ -375,7 +382,7 @@ func (r *MCPCapabilityRuntime) NewFrontend(ledger *capability.Ledger, audit *cap
 	if r == nil {
 		return NewUseCapabilityTool(context.Background(), nil, nil, nil, ledger, audit, nil)
 	}
-	return &UseCapabilityTool{
+	frontend := &UseCapabilityTool{
 		host:     r.host,
 		lifeCtx:  r.lifeCtx,
 		runtime:  r,
@@ -384,6 +391,56 @@ func (r *MCPCapabilityRuntime) NewFrontend(ledger *capability.Ledger, audit *cap
 		audit:    audit,
 		catalog:  r.catalog,
 		state:    r.state,
+	}
+	return frontend
+}
+
+func (r *MCPCapabilityRuntime) activateFrontend(frontend *UseCapabilityTool) func() {
+	if r == nil || frontend == nil {
+		return func() {}
+	}
+	r.frontendsMu.Lock()
+	if r.frontends == nil {
+		r.frontends = map[*UseCapabilityTool]int{}
+	}
+	r.frontends[frontend]++
+	r.frontendsMu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			r.frontendsMu.Lock()
+			if r.frontends[frontend] <= 1 {
+				delete(r.frontends, frontend)
+			} else {
+				r.frontends[frontend]--
+			}
+			r.frontendsMu.Unlock()
+		})
+	}
+}
+
+func (r *MCPCapabilityRuntime) notifyToolListChanged(server string, tools []tool.Tool) {
+	if r == nil {
+		return
+	}
+	schemaBytes := 0
+	for _, target := range tools {
+		if target != nil {
+			schemaBytes += len(target.Schema())
+		}
+	}
+	r.frontendsMu.RLock()
+	frontends := make([]*UseCapabilityTool, 0, len(r.frontends))
+	for frontend := range r.frontends {
+		frontends = append(frontends, frontend)
+	}
+	r.frontendsMu.RUnlock()
+	for _, frontend := range frontends {
+		frontend.capabilityAudit().RecordMCPList("remote", "list_changed", 0, len(tools), schemaBytes)
+		frontend.observeMCPList(mcpListObservation{
+			Server: server, Source: "remote", Trigger: "list_changed",
+			ToolCount: len(tools), SchemaBytes: schemaBytes, NetworkCall: true,
+		})
 	}
 }
 
@@ -444,6 +501,8 @@ type UseCapabilityTool struct {
 	// leak into planner or child frontends before their Agent binds them.
 	toolResultMu      sync.RWMutex
 	toolResultSession func() *Session
+	mcpListMu         sync.RWMutex
+	mcpListObserver   func(mcpListObservation)
 	// state is session-shared connection observation when built via
 	// MCPCapabilityRuntime; nil falls back to a private map for tests.
 	state *mcpProxySharedState
@@ -539,7 +598,7 @@ func (t *UseCapabilityTool) CloneForAgent(ledger *capability.Ledger, audit *capa
 	if state == nil {
 		state = &mcpProxySharedState{connected: map[string]bool{}}
 	}
-	return &UseCapabilityTool{
+	clone := &UseCapabilityTool{
 		host:     t.host,
 		lifeCtx:  t.lifeCtx,
 		specs:    t.specs,
@@ -550,12 +609,13 @@ func (t *UseCapabilityTool) CloneForAgent(ledger *capability.Ledger, audit *capa
 		catalog:  t.catalog,
 		state:    state,
 	}
+	return clone
 }
 
 func (*UseCapabilityTool) Name() string { return "use_capability" }
 
 func (*UseCapabilityTool) Description() string {
-	return "Fixed-schema capability proxy: list, inspect, call by stable id (tool:grep, skill:review, mcp-tool:server/tool, task:subagent, workflow:name, web:/lsp:/session:/memory: namespaces), or decline a prefer capability with a reason. memory:remember saves facts (description+body required; activation=\"relevant\" on create; omit activation on update; \"pinned\" only if user asks); memory:forget(name); tool:memory(operation=search|read|list). Calls keep the provider-visible schema fixed. Writers still pass permission, plan mode, sandbox, write-path, and workspace-lease checks. The Planner leaves destructive MCP for the Executor."
+	return "Fixed-schema capability proxy. Prefer search(query, limit<=8), then inspect one exact capability, then call it. list is a compact diagnostic inventory only. Supports stable ids such as tool:grep, skill:review, mcp-tool:server/tool, task:subagent, workflow:name, and web:/lsp:/session:/memory: namespaces. memory:remember saves facts (description+body required; activation=\"relevant\" on create; omit activation on update; \"pinned\" only if user asks); memory:forget(name); tool:memory(operation=search|read|list). decline records a reason for a prefer capability. Independent list/search/inspect calls are read-only and may be issued together. Calls keep the provider-visible schema fixed; real writers still pass permission, plan mode, sandbox, write-path, and workspace-lease checks."
 }
 
 func (*UseCapabilityTool) ReadOnly() bool { return true }
@@ -568,12 +628,15 @@ func (*UseCapabilityTool) Schema() json.RawMessage {
 	return json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"action":{"type":"string","description":"list | inspect | call | decline"},
+			"action":{"type":"string","enum":["list","search","inspect","call","decline"],"description":"Use search for discovery, inspect one exact result, then call. list is diagnostic only."},
 			"capability_id":{"type":"string","description":"Capability id such as skill:review, mcp-server:github, or mcp-tool:github/search_issues. Not required for action=list."},
+			"query":{"type":"string","description":"Local catalog query required for action=search. No process or network is started."},
+			"limit":{"type":"integer","minimum":1,"maximum":8,"default":5,"description":"Maximum search results; defaults to 5."},
 			"arguments":{"type":"object","description":"Raw MCP tool arguments for action=call"},
 			"reason":{"type":"string","description":"Required non-empty reason when action=decline"}
 		},
-		"required":["action"]
+		"required":["action"],
+		"additionalProperties":false
 	}`)
 }
 
@@ -591,49 +654,8 @@ func (t *UseCapabilityTool) ResolveCall(ctx context.Context, args json.RawMessag
 		Args:         p.Arguments,
 	}
 	switch action {
-	case "list":
-		out, err := t.listCapabilities()
-		if err != nil {
-			if t.audit != nil {
-				t.audit.RecordMCPProxy(true, false, true)
-			}
-			return tool.ResolvedCall{}, err
-		}
-		if t.audit != nil {
-			t.audit.RecordMCPProxy(true, false, false)
-		}
-		base.SkipExecute = true
-		base.Result = out
-		base.ReadOnly = true
-		return base, nil
-	case "inspect":
-		if id == "" {
-			return tool.ResolvedCall{}, fmt.Errorf("capability_id is required for action=inspect")
-		}
-		if id == sessionToolResultCapabilityID {
-			out, err := t.inspectSessionToolResult()
-			if err != nil {
-				return tool.ResolvedCall{}, err
-			}
-			base.SkipExecute = true
-			base.Result = out
-			base.ReadOnly = true
-			return base, nil
-		}
-		out, err := t.inspect(ctx, id)
-		if err != nil {
-			if t.audit != nil {
-				t.audit.RecordMCPProxy(true, false, true)
-			}
-			return tool.ResolvedCall{}, err
-		}
-		if t.audit != nil {
-			t.audit.RecordMCPProxy(true, false, false)
-		}
-		base.SkipExecute = true
-		base.Result = out
-		base.ReadOnly = true
-		return base, nil
+	case "list", "search", "inspect":
+		return t.resolveDiscovery(ctx, p, action, id, base)
 	case "decline":
 		if id == "" {
 			return tool.ResolvedCall{}, fmt.Errorf("capability_id is required for action=decline")
@@ -673,7 +695,7 @@ func (t *UseCapabilityTool) ResolveCall(ctx context.Context, args json.RawMessag
 		}
 		return t.resolveCall(ctx, id, p.Arguments, base)
 	default:
-		return tool.ResolvedCall{}, fmt.Errorf("unknown action %q; use list, inspect, call, or decline", p.Action)
+		return tool.ResolvedCall{}, fmt.Errorf("unknown action %q; use list, search, inspect, call, or decline", p.Action)
 	}
 }
 
@@ -727,131 +749,6 @@ func (t *UseCapabilityTool) Execute(ctx context.Context, args json.RawMessage) (
 		t.ledger.MarkSucceeded(resolved.CapabilityID)
 	}
 	return out, nil
-}
-
-func (t *UseCapabilityTool) inspect(ctx context.Context, id string) (string, error) {
-	cat := t.currentCatalog()
-	if e, ok := cat.Lookup(id); ok {
-		b, _ := json.MarshalIndent(map[string]any{
-			"id":          e.ID,
-			"kind":        e.Kind,
-			"name":        e.Name,
-			"description": e.Description,
-			"status":      e.Status,
-			"read_only":   e.ReadOnly,
-			"auto_use":    e.AutoUse,
-			"requires":    e.Requires,
-			"profiles":    e.Profiles,
-			"tool_name":   e.ToolName,
-			"auto_start":  e.AutoStart,
-		}, "", "  ")
-		// For MCP entries, list tools without side effects: live tools when the
-		// server is already connected, cached schema otherwise. Inspect runs
-		// during call resolution — before permission and hook gates — so it must
-		// never start a subprocess or open a network connection.
-		if e.Kind == capability.KindMCPServer || e.Kind == capability.KindMCPTool {
-			server := e.Source
-			if server == "" {
-				server = e.ConnectName
-			}
-			toolFilter := ""
-			if e.Kind == capability.KindMCPTool {
-				parsedServer, raw, err := parseMCPCapabilityID(e.ID)
-				if err != nil {
-					return string(b), nil
-				}
-				if server == "" {
-					server = parsedServer
-				} else if parsedServer != server {
-					return string(b), nil
-				}
-				toolFilter = raw
-			}
-			if server != "" {
-				if !t.serverEnabled(server) {
-					return string(b) + "\n\n" + t.serverUnavailableReason(server), nil
-				}
-				if t.host != nil && t.host.HasClient(server) {
-					// serverTools refreshes the snapshot too: inspecting a
-					// server another tab connected restores tool routing here.
-					tools, err := t.serverTools(ctx, server)
-					if err != nil {
-						return string(b) + "\n\nTool listing failed: " + err.Error(), nil
-					}
-					return string(b) + "\n\nTools:\n" + inspectToolListJSON(server, filterInspectTools(tools, toolFilter)), nil
-				}
-				if spec, ok := t.specFor(server); ok {
-					if cs, ok := plugin.LoadCachedSchemaForSpecProfile(spec, t.hostProfileFor()); ok && len(cs.Tools) > 0 {
-						var list []inspectToolInfo
-						for _, ct := range cs.Tools {
-							if toolFilter != "" && ct.Name != toolFilter {
-								continue
-							}
-							list = append(list, inspectToolInfo{
-								ID:          "mcp-tool:" + server + "/" + ct.Name,
-								Name:        plugin.ModelToolName(server, ct.Name),
-								Description: ct.Description,
-								ReadOnly:    ct.ReadOnly,
-								Schema:      ct.Schema,
-							})
-						}
-						extra, _ := json.MarshalIndent(list, "", "  ")
-						return string(b) + "\n\nTools (from cached schema; server not started):\n" + string(extra), nil
-					}
-					return string(b) + "\n\nServer not connected and no cached tool schema; call use_capability(action=\"call\", capability_id=\"mcp-server:" + server + "\") to connect (after approval) and list its tools.", nil
-				}
-			}
-		}
-		return string(b), nil
-	}
-	return "", fmt.Errorf("unknown capability_id %q", id)
-}
-
-// filterInspectTools narrows concrete mcp-tool inspection to that exact tool.
-// Server inspection intentionally keeps the full directory. This prevents a
-// restricted sub-agent allowed one tool from discovering sibling tool schemas
-// through action=inspect on its allowed capability ID.
-func filterInspectTools(tools []tool.Tool, raw string) []tool.Tool {
-	if raw == "" {
-		return tools
-	}
-	filtered := make([]tool.Tool, 0, 1)
-	for _, tl := range tools {
-		if m, ok := tl.(tool.MCPMetadata); ok && m.MCPRawToolName() == raw {
-			filtered = append(filtered, tl)
-			break
-		}
-	}
-	return filtered
-}
-
-type inspectToolInfo struct {
-	ID          string          `json:"id"`
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	ReadOnly    bool            `json:"read_only"`
-	Schema      json.RawMessage `json:"input_schema,omitempty"`
-}
-
-// inspectToolListJSON renders a server's live tools as the capability-id
-// directory shared by inspect and the first-discovery connect result.
-func inspectToolListJSON(server string, tools []tool.Tool) string {
-	var list []inspectToolInfo
-	for _, tl := range tools {
-		raw := ""
-		if m, ok := tl.(tool.MCPMetadata); ok {
-			raw = m.MCPRawToolName()
-		}
-		list = append(list, inspectToolInfo{
-			ID:          "mcp-tool:" + server + "/" + raw,
-			Name:        tl.Name(),
-			Description: tl.Description(),
-			ReadOnly:    tl.ReadOnly(),
-			Schema:      tl.Schema(),
-		})
-	}
-	extra, _ := json.MarshalIndent(list, "", "  ")
-	return string(extra)
 }
 
 func (t *UseCapabilityTool) resolveCall(ctx context.Context, id string, args json.RawMessage, base tool.ResolvedCall) (tool.ResolvedCall, error) {
@@ -1070,6 +967,7 @@ type onDemandMCPTool struct {
 	// execution boundary.
 	destructive bool
 	readOnly    bool
+	schema      json.RawMessage
 }
 
 func (o *onDemandMCPTool) Name() string { return o.modelName }
@@ -1078,7 +976,12 @@ func (o *onDemandMCPTool) Description() string {
 	return "on-demand MCP tool " + o.server + "/" + o.raw + " (connects when first used)"
 }
 
-func (o *onDemandMCPTool) Schema() json.RawMessage { return json.RawMessage(`{"type":"object"}`) }
+func (o *onDemandMCPTool) Schema() json.RawMessage {
+	if len(o.schema) > 0 {
+		return o.schema
+	}
+	return json.RawMessage(`{"type":"object"}`)
+}
 
 func (o *onDemandMCPTool) ReadOnly() bool {
 	return o.readOnly
@@ -1166,6 +1069,9 @@ func (o *onDemandMCPTool) executeWithImages(ctx context.Context, args json.RawMe
 			return "", nil, fmt.Errorf("MCP server %q changed the authorization or destructive classification for tool %q; the call was blocked before dispatch — retry so Reasonix can re-apply the current Planner MCP safety boundary", o.server, o.raw)
 		}
 	}
+	if blocked, msg := hostValidateBeforeDispatch(target, args); blocked {
+		return "", nil, fmt.Errorf("%s", msg)
+	}
 	if imageTool, ok := target.(tool.ImageTool); ok {
 		return imageTool.ExecuteWithImages(ctx, args)
 	}
@@ -1186,6 +1092,7 @@ func (t *UseCapabilityTool) ensureServerToolsForSpec(ctx context.Context, server
 	if life == nil {
 		life = context.Background()
 	}
+	started := time.Now()
 	result := t.host.EnsureConnectedInBackground(life, spec)
 	waitBudget := plugin.DefaultStartupWaitBudget()
 	timer := time.NewTimer(waitBudget)
@@ -1209,6 +1116,16 @@ func (t *UseCapabilityTool) ensureServerToolsForSpec(ctx context.Context, server
 		return nil, fmt.Errorf("connect %q: %w", server, err)
 	}
 	t.ensureState().markConnected(server)
+	schemaBytes := 0
+	for _, target := range tools {
+		schemaBytes += len(target.Schema())
+	}
+	durationMs := time.Since(started).Milliseconds()
+	t.capabilityAudit().RecordMCPList("remote", "connect", durationMs, len(tools), schemaBytes)
+	t.observeMCPList(mcpListObservation{
+		Server: server, Source: "remote", Trigger: "connect", DurationMs: durationMs,
+		ToolCount: len(tools), SchemaBytes: schemaBytes, NetworkCall: true,
+	})
 	// Intentionally do NOT add tools to t.registry — provider schema stays stable.
 	_ = tools
 	return t.serverToolsForSpec(ctx, server, spec)
@@ -1520,8 +1437,9 @@ func parseMCPCapabilityID(id string) (server, raw string, err error) {
 
 // Ensure UseCapabilityTool satisfies the tool contracts used by the agent.
 var (
-	_ tool.Tool         = (*UseCapabilityTool)(nil)
-	_ tool.CallResolver = (*UseCapabilityTool)(nil)
+	_ tool.Tool            = (*UseCapabilityTool)(nil)
+	_ tool.CallResolver    = (*UseCapabilityTool)(nil)
+	_ tool.BatchClassifier = (*UseCapabilityTool)(nil)
 )
 
 // EmitProxyAudit is a helper for frontends: returns a notice describing the
