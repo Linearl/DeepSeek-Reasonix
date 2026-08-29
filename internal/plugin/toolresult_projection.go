@@ -10,6 +10,20 @@ import (
 	"unicode/utf8"
 )
 
+// mcpApplicationError is a successful tools/call response whose MCP isError
+// flag is set. It is deterministic application feedback, not a transport
+// failure, so the agent must never retry it merely because its human-readable
+// message contains words such as "timeout" or "unavailable".
+type mcpApplicationError struct {
+	message string
+}
+
+func (e *mcpApplicationError) Error() string { return e.message }
+
+// RetryableToolError is consumed by the agent retry classifier without
+// creating a plugin dependency in the tool package.
+func (*mcpApplicationError) RetryableToolError() bool { return false }
+
 // Rich MCP content is additive to the ordinary text projection. Bound it
 // separately so structured data and embedded resources cannot unexpectedly
 // consume an entire model context or smuggle large inline binary payloads into
@@ -123,15 +137,33 @@ func parseToolResultProjection(res json.RawMessage, includeRich bool) (string, [
 		}
 	}
 	if includeRich && hasToolResultStructuredContent(out.StructuredContent) {
-		block, err := projectToolResultStructuredContent(out.StructuredContent)
-		if err != nil {
-			return "", nil, err
+		structured := bytes.TrimSpace(out.StructuredContent)
+		visible := strings.TrimSpace(sb.String())
+		switch {
+		case visible == "" && len(structured) <= maxToolResultRichItemBytes:
+			canonical, err := canonicalToolResultJSON(structured)
+			if err != nil {
+				return "", nil, fmt.Errorf("decode tool result structured content: %w", err)
+			}
+			var compact bytes.Buffer
+			if err := json.Compact(&compact, canonical); err != nil {
+				return "", nil, fmt.Errorf("compact tool result structured content: %w", err)
+			}
+			projection.writeInline(&sb, compact.String())
+		case visible != "" && toolResultJSONEqual(visible, structured):
+			// A text JSON block and structuredContent with the same value are one
+			// result, not two independent model observations.
+		default:
+			block, err := projectToolResultStructuredContent(structured)
+			if err != nil {
+				return "", nil, err
+			}
+			projection.writeBlock(&sb, "structured content", block, false)
 		}
-		projection.writeBlock(&sb, "structured content", block, false)
 	}
 	text := sb.String()
 	if out.IsError {
-		return text, images, fmt.Errorf("plugin tool reported error: %s", text)
+		return text, images, &mcpApplicationError{message: fmt.Sprintf("plugin tool reported error: %s", text)}
 	}
 	return text, images, nil
 }
@@ -312,6 +344,15 @@ func canonicalToolResultJSON(raw json.RawMessage) ([]byte, error) {
 		return nil, err
 	}
 	return json.MarshalIndent(value, "", "  ")
+}
+
+func toolResultJSONEqual(text string, structured json.RawMessage) bool {
+	left, err := canonicalToolResultJSON(json.RawMessage(text))
+	if err != nil {
+		return false
+	}
+	right, err := canonicalToolResultJSON(structured)
+	return err == nil && bytes.Equal(left, right)
 }
 
 func projectToolResultResourceLink(raw json.RawMessage) (string, error) {

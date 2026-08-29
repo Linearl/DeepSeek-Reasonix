@@ -38,7 +38,11 @@ const (
 	swShow             = 5
 	pmRemove           = 0x0001
 	inputMouse         = 0
+	inputKeyboard      = 1
 	mouseEventFWheel   = 0x0800
+	keyEventFKeyUp     = 0x0002
+	keyEventFUnicode   = 0x0004
+	virtualKeyBack     = 0x08
 )
 
 type smokeWindowClass struct {
@@ -86,10 +90,25 @@ type smokeInput struct {
 	mouse  smokeMouseInput
 }
 
+type smokeKeyboardInput struct {
+	virtualKey uint16
+	scanCode   uint16
+	flags      uint32
+	time       uint32
+	extraInfo  uintptr
+}
+
 type transcriptWheelState struct {
 	next       time.Time
 	sustained  int
 	finish     int
+	finishSent bool
+}
+
+type composerKeyboardState struct {
+	active     bool
+	next       time.Time
+	index      int
 	finishSent bool
 }
 
@@ -133,6 +152,32 @@ func (state *transcriptWheelState) shouldFinish(now time.Time) bool {
 	return state.finish >= finishWheelTicks && !state.finishSent && now.After(state.next.Add(700*time.Millisecond))
 }
 
+func (state *composerKeyboardState) advance(now time.Time) error {
+	if !state.active || state.finishSent || now.Before(state.next) {
+		return nil
+	}
+	if state.index < 6 {
+		if err := sendUnicodeKey(rune('a' + state.index)); err != nil {
+			return err
+		}
+		state.index++
+		state.next = now.Add(80 * time.Millisecond)
+		return nil
+	}
+	if state.index < 12 {
+		if err := sendVirtualKey(virtualKeyBack); err != nil {
+			return err
+		}
+		state.index++
+		state.next = now.Add(80 * time.Millisecond)
+	}
+	return nil
+}
+
+func (state *composerKeyboardState) shouldFinish(now time.Time) bool {
+	return state.active && state.index >= 12 && !state.finishSent && now.After(state.next.Add(350*time.Millisecond))
+}
+
 func createTranscriptSmokeWindow() (windows.Handle, error) {
 	var instance windows.Handle
 	if err := windows.GetModuleHandleEx(0, nil, &instance); err != nil {
@@ -165,7 +210,7 @@ func createTranscriptSmokeWindow() (windows.Handle, error) {
 	return windows.Handle(hwnd), nil
 }
 
-func transcriptSmokeTimeoutError(navigationCompleted bool, ready *smokeMessage, wheelState transcriptWheelState) error {
+func transcriptSmokeTimeoutError(navigationCompleted bool, ready *smokeMessage, composerState composerKeyboardState, wheelState transcriptWheelState) error {
 	phase := "startup"
 	if ready != nil {
 		phase = "native-input"
@@ -174,11 +219,33 @@ func transcriptSmokeTimeoutError(navigationCompleted bool, ready *smokeMessage, 
 		phase = "result"
 	}
 	return fmt.Errorf(
-		"WebView2 smoke timed out: phase=%s navigationCompleted=%t ready=%t sustained=%d/%d finish=%d/%d finishSent=%t",
+		"WebView2 smoke timed out: phase=%s navigationCompleted=%t ready=%t composer=%t composerKeys=%d/12 composerFinishSent=%t sustained=%d/%d finish=%d/%d finishSent=%t",
 		phase, navigationCompleted, ready != nil,
+		composerState.active, composerState.index, composerState.finishSent,
 		wheelState.sustained, sustainedWheelTicks,
 		wheelState.finish, finishWheelTicks, wheelState.finishSent,
 	)
+}
+
+func activateComposerKeyboard(state *composerKeyboardState, deadline *time.Time, hwnd windows.Handle, chromium *edge.Chromium) {
+	*deadline = time.Now().Add(transcriptSmokeStartupTimeout)
+	state.active = true
+	state.next = time.Now()
+	setForegroundWindow.Call(uintptr(hwnd))
+	setFocus.Call(uintptr(hwnd))
+	chromium.Focus()
+}
+
+func activateTranscriptWheel(message smokeMessage, ready *smokeMessage, deadline *time.Time, hwnd windows.Handle, state *transcriptWheelState) *smokeMessage {
+	if ready == nil {
+		*deadline = time.Now().Add(transcriptSmokeInteractionTimeout)
+	}
+	copy := message
+	var screenPoint = smokePoint{x: int32(message.Point.X), y: int32(message.Point.Y)}
+	clientToScreen.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&screenPoint)))
+	setCursorPos.Call(uintptr(screenPoint.x), uintptr(screenPoint.y))
+	state.next = time.Now()
+	return &copy
 }
 
 func runTranscriptNativeSmoke(url, script string) (string, error) {
@@ -237,6 +304,7 @@ func runTranscriptNativeSmoke(url, script string) (string, error) {
 	var ready *smokeMessage
 	var result string
 	wheelState := transcriptWheelState{}
+	composerState := composerKeyboardState{}
 	for result == "" && time.Now().Before(deadline) {
 		pumpWindowsMessages()
 		select {
@@ -258,16 +326,12 @@ func runTranscriptNativeSmoke(url, script string) (string, error) {
 					continue
 				}
 				switch message.Type {
-				case "ready":
-					if ready == nil {
-						deadline = time.Now().Add(transcriptSmokeInteractionTimeout)
+				case "composer-ready":
+					if !composerState.active {
+						activateComposerKeyboard(&composerState, &deadline, hwnd, chromium)
 					}
-					copy := message
-					ready = &copy
-					var screenPoint = smokePoint{x: int32(message.Point.X), y: int32(message.Point.Y)}
-					clientToScreen.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&screenPoint)))
-					setCursorPos.Call(uintptr(screenPoint.x), uintptr(screenPoint.y))
-					wheelState.next = time.Now()
+				case "ready":
+					ready = activateTranscriptWheel(message, ready, &deadline, hwnd, &wheelState)
 				case "result", "error":
 					result = raw
 				}
@@ -286,10 +350,20 @@ func runTranscriptNativeSmoke(url, script string) (string, error) {
 				chromium.Eval("window.__reasonixNativeTranscriptSmoke.finish()")
 			}
 		}
+		if ready == nil && composerState.active {
+			now := time.Now()
+			if err := composerState.advance(now); err != nil {
+				return "", err
+			}
+			if composerState.shouldFinish(now) {
+				composerState.finishSent = true
+				chromium.Eval("window.__reasonixNativeTranscriptSmoke.finishComposer()")
+			}
+		}
 		time.Sleep(time.Millisecond)
 	}
 	if result == "" {
-		return "", transcriptSmokeTimeoutError(navigationCompleted, ready, wheelState)
+		return "", transcriptSmokeTimeoutError(navigationCompleted, ready, composerState, wheelState)
 	}
 	return result, nil
 }
@@ -320,6 +394,43 @@ func sendControllerWheelInput(delta int32) error {
 	inserted, _, err := sendInput.Call(1, uintptr(unsafe.Pointer(&input)), unsafe.Sizeof(input))
 	if inserted != 1 {
 		return fmt.Errorf("send WebView2 controller wheel input: %w", err)
+	}
+	return nil
+}
+
+func keyboardInput(input *smokeInput) *smokeKeyboardInput {
+	return (*smokeKeyboardInput)(unsafe.Pointer(&input.mouse))
+}
+
+func sendUnicodeKey(key rune) error {
+	var inputs [2]smokeInput
+	inputs[0].typeID = inputKeyboard
+	inputs[1].typeID = inputKeyboard
+	keyboardInput(&inputs[0]).scanCode = uint16(key)
+	keyboardInput(&inputs[0]).flags = keyEventFUnicode
+	keyboardInput(&inputs[1]).scanCode = uint16(key)
+	keyboardInput(&inputs[1]).flags = keyEventFUnicode | keyEventFKeyUp
+	return sendKeyboardInputs(inputs[:])
+}
+
+func sendVirtualKey(key uint16) error {
+	var inputs [2]smokeInput
+	inputs[0].typeID = inputKeyboard
+	inputs[1].typeID = inputKeyboard
+	keyboardInput(&inputs[0]).virtualKey = key
+	keyboardInput(&inputs[1]).virtualKey = key
+	keyboardInput(&inputs[1]).flags = keyEventFKeyUp
+	return sendKeyboardInputs(inputs[:])
+}
+
+func sendKeyboardInputs(inputs []smokeInput) error {
+	inserted, _, err := sendInput.Call(
+		uintptr(len(inputs)),
+		uintptr(unsafe.Pointer(&inputs[0])),
+		unsafe.Sizeof(inputs[0]),
+	)
+	if inserted != uintptr(len(inputs)) {
+		return fmt.Errorf("send WebView2 controller keyboard input: inserted %d/%d: %w", inserted, len(inputs), err)
 	}
 	return nil
 }
