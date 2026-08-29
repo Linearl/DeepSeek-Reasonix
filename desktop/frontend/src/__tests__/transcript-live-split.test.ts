@@ -133,6 +133,47 @@ check(resolveLiveTurnGrowthFloor(5, 4, 420, 420) === 420, "an active floor survi
   check(keys(split.liveRows) === keys(rows), "a prelude turn's rows all render in the live region");
 }
 
+// ── Long uncollapsed turn: completed rows fall back to the list body ─────────
+{
+  const live: TranscriptLiveFlags = { id: "a9", hasAnswerText: false, hasReasoning: true };
+  const tools: Item[] = Array.from({ length: 8 }, (_, i) => ({
+    kind: "tool" as const,
+    id: `t${i}`,
+    name: i % 2 ? "bash" : "read_file",
+    args: "{}",
+    readOnly: false,
+    status: "completed" as const,
+  }));
+  const { models, rows } = rowsFor([user("u1"), ...tools, assistant("a9", { streaming: true })], live, true);
+  const split = splitTranscriptLiveRows(models, rows, "a9", true);
+  check(split.liveActive, "long turn keeps the live region active");
+  check(split.liveRows.length === 5, `live region keeps only the row budget (got ${split.liveRows.length})`);
+  check(split.historyRows.length === rows.length - 5, "rows beyond the budget fall back into history");
+  check(split.historyRows[0].key === userRowKey("u1"), "the user message stays first in history");
+  check(split.historyRows[split.historyRows.length - 1].kind !== "user", "no stray user row lands at the history tail");
+  check(
+    keys(split.liveRows) === keys(rows.slice(rows.length - 5)),
+    "live region keeps the most recent rows in order",
+  );
+}
+
+// ── Long turn with a queued follow-up: the queued row stays in the tail ──────
+{
+  const live: TranscriptLiveFlags = { id: "a1", hasAnswerText: false, hasReasoning: true };
+  const tools: Item[] = Array.from({ length: 8 }, (_, i) => ({
+    kind: "tool" as const,
+    id: `t${i}`,
+    name: i % 2 ? "bash" : "read_file",
+    args: "{}",
+    readOnly: false,
+    status: "completed" as const,
+  }));
+  const { models, rows } = rowsFor([user("u1"), ...tools, assistant("a1", { streaming: true }), user("u2")], live, true);
+  const split = splitTranscriptLiveRows(models, rows, "a1", true);
+  check(split.liveRows.length === 5, `queued follow-up stays within the row budget tail (got ${split.liveRows.length})`);
+  check(split.liveRows[split.liveRows.length - 1].key === userRowKey("u2"), "the queued follow-up user row stays in the live region");
+}
+
 if (failed > 0) {
   console.error(`\n${failed} transcript live-split test(s) failed; ${passed} passed.`);
   process.exit(1);
