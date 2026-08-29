@@ -513,9 +513,20 @@ export function Transcript({
     cancelStreamingScroll: cancelStreamingAndFollow,
   });
   const clearTranscriptSelection = selectionRetention.clear;
+  // A reveal boundary (tab switch, session adoption, model takeover) must open
+  // pinned to the tail (#4584). The arbiter reset at the boundary flips the
+  // pin, but the remounted Virtuoso can still park wherever its first paint
+  // lands — resetScroll's tail intent was observed lost after model-takeover
+  // remounts, leaving the newest turns above the viewport (#9567). Enforce the
+  // tail once the incoming surface has committed its first paint.
+  const handleSurfacePaintReady = useCallback((token: string, outcome: "ready" | "degraded") => {
+    stick.current = true;
+    scrollToBottom();
+    onSurfacePaintReady?.(token, outcome);
+  }, [onSurfacePaintReady, scrollToBottom]);
   const { readySurfaceKey: surfacePaintReadySurfaceKey, markItemsRendered: markSurfaceItemsRendered } = useTranscriptSurfaceCommit({
     token: surfaceCommitToken, hydrating, layoutSurfaceKey, virtualRowCount: virtualRows.length, scrollRef, virtuosoReadyRef,
-    layoutTransientRef, scheduleRecovery: scheduleBlankViewportCheck, onReady: onSurfacePaintReady,
+    layoutTransientRef, scheduleRecovery: scheduleBlankViewportCheck, onReady: handleSurfacePaintReady,
   });
   const pagingAuthorization = useTranscriptPagingAuthorization({
     layoutSurfaceKey, nativeScrollbarDragging, scrollRef, noteUserScrollIntent, onWheelIntent, onWheelAccepted: SHOW_SCROLL_DIAGNOSTICS ? (deltaY) => recordTranscriptScrollDiagnostic("wheel", { deltaY }) : undefined,
