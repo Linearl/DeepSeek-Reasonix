@@ -183,22 +183,32 @@ func TestLoadProjectionSidecarRebindsMatchingContentAcrossLineage(t *testing.T) 
 func TestLoadProjectionSidecarDropsForeignCacheKey(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "s.jsonl")
-	msgs := []provider.Message{{Role: provider.RoleSystem, Content: "sys"}}
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: "sys"},
+		{Role: provider.RoleUser, Content: "task"},
+	}
 	// Content validation must fail despite a model-only key change: lineage
 	// rebinding cannot resurrect a projection whose canonical prefix differs.
-	foreign := []provider.Message{{Role: provider.RoleSystem, Content: "sys-old"}}
+	// The divergence is in a user turn — a system-only swap is tolerated (the
+	// cross-model rebind test below), any other prefix edit is not.
+	foreign := []provider.Message{
+		{Role: provider.RoleSystem, Content: "sys"},
+		{Role: provider.RoleUser, Content: "task-EDITED"},
+	}
 	if err := SaveCompactionState(path, CompactionState{
 		SchemaVersion:  compactionStateSchemaV1,
 		PromptCacheKey: "ws|s|other-model",
 		Projection: ContextProjection{
 			Messages:          msgs,
-			CoveredCount:      1,
-			CoveredPrefixHash: coveredPrefixHash(foreign, 1),
+			CoveredCount:      2,
+			CoveredPrefixHash: coveredPrefixHash(foreign, 2),
 		},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	a := New(nil, nil, NewSession("sys"), Options{
+	sess := NewSession("sys")
+	sess.Add(provider.Message{Role: provider.RoleUser, Content: "task"})
+	a := New(nil, nil, sess, Options{
 		SessionPath: path,
 		WorkspaceID: "ws",
 		ModelRef:    "this-model",
@@ -210,6 +220,141 @@ func TestLoadProjectionSidecarDropsForeignCacheKey(t *testing.T) {
 	}
 	if _, ok, err := LoadCompactionState(path); err != nil || !ok {
 		t.Fatalf("sidecar should remain on disk: ok=%v err=%v", ok, err)
+	}
+}
+
+func TestProjectionContentValidToleratesSystemPromptSwap(t *testing.T) {
+	oldSys, newSys := "sys-for-model-a", "sys-for-model-b"
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: oldSys},
+		{Role: provider.RoleUser, Content: "task-v1"},
+		{Role: provider.RoleAssistant, Content: "done"},
+		{Role: provider.RoleUser, Content: "next"},
+	}
+	st := CompactionState{
+		PromptCacheKey: "ws|sess|model-a",
+		Projection: ContextProjection{
+			Messages: []provider.Message{
+				{Role: provider.RoleSystem, Content: oldSys},
+				{Role: provider.RoleUser, Content: "summary"},
+			},
+			CoveredCount:      3,
+			CoveredPrefixHash: coveredPrefixHash(msgs, 3),
+		},
+	}
+	if !projectionContentValid(st, msgs) {
+		t.Fatal("expected valid projection for the exact creation-time transcript")
+	}
+	// Model switch: only the leading system prompt was swapped in the carried
+	// transcript; the fold body is model-agnostic, so content stays valid.
+	swapped := append([]provider.Message(nil), msgs...)
+	swapped[0] = provider.Message{Role: provider.RoleSystem, Content: newSys}
+	if !projectionContentValid(st, swapped) {
+		t.Fatal("system-only swap must keep projection content valid")
+	}
+	// A real prefix edit behind the swapped system still fails closed.
+	edited := append([]provider.Message(nil), swapped...)
+	edited[1].Content = "task-EDITED"
+	if projectionContentValid(st, edited) {
+		t.Fatal("user-turn edit behind the system swap must invalidate")
+	}
+	// Failure modes that must not unlock the retry path.
+	if projectionContentValid(st, nil) {
+		t.Fatal("empty transcript must invalidate")
+	}
+	noSys := append([]provider.Message(nil), swapped...)
+	noSys[0] = provider.Message{Role: provider.RoleUser, Content: newSys}
+	if projectionContentValid(st, noSys) {
+		t.Fatal("transcript without a leading system message must not validate against a stored system")
+	}
+	projNoSys := st
+	projNoSys.Projection.Messages = []provider.Message{{Role: provider.RoleUser, Content: "summary"}}
+	if projectionContentValid(projNoSys, swapped) {
+		t.Fatal("projection without a stored system must not unlock the swap retry")
+	}
+}
+
+func TestLoadProjectionSidecarRebindsAcrossModelSystemSwap(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "s.jsonl")
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: "sys-for-model-a"},
+		{Role: provider.RoleUser, Content: "task"},
+	}
+	if err := SaveCompactionState(path, CompactionState{
+		SchemaVersion:     compactionStateSchemaV1,
+		PromptCacheKey:    "ws|s|model-a",
+		TranscriptVersion: 1,
+		Projection: ContextProjection{
+			Messages: []provider.Message{
+				{Role: provider.RoleSystem, Content: "sys-for-model-a"},
+				{Role: provider.RoleUser, Content: "fold summary"},
+			},
+			CoveredCount:      2,
+			CoveredPrefixHash: coveredPrefixHash(msgs, 2),
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// The rebuilt controller resumes with the fresh system prompt of the new
+	// model while the sidecar still carries the model-a key and hash.
+	sess := NewSession("sys-for-model-b")
+	sess.Add(provider.Message{Role: provider.RoleUser, Content: "task"})
+	a := New(nil, nil, sess, Options{
+		SessionPath: path,
+		WorkspaceID: "ws",
+		ModelRef:    "model-b",
+	}, event.Discard)
+	if len(a.sess.compactionState.Projection.Messages) == 0 {
+		t.Fatal("projection was dropped on model switch despite a system-only prefix change")
+	}
+	wantKey := promptCacheKey("ws", BranchID(path), "model-b")
+	if a.sess.compactionState.PromptCacheKey != wantKey {
+		t.Fatalf("PromptCacheKey = %q, want %q", a.sess.compactionState.PromptCacheKey, wantKey)
+	}
+	if a.sess.checkpointState != "restored" {
+		t.Fatalf("checkpointState = %q, want restored", a.sess.checkpointState)
+	}
+	// The visible view must carry the live system prompt of the new model.
+	visible := a.modelVisibleMessages()
+	if len(visible) == 0 || visible[0].Content != "sys-for-model-b" {
+		t.Fatalf("visible[0] = %+v, want the model-b system prompt", visible)
+	}
+	if len(visible) != 2 || visible[1].Content != "fold summary" {
+		t.Fatalf("visible = %+v, want the projection body after the live system", visible)
+	}
+}
+
+func TestModelVisibleFromProjectionCarriesLiveSystem(t *testing.T) {
+	proj := ContextProjection{
+		Messages: []provider.Message{
+			{Role: provider.RoleSystem, Content: "old-sys"},
+			{Role: provider.RoleUser, Content: "summary"},
+		},
+		CoveredCount: 2,
+	}
+	canonical := []provider.Message{
+		{Role: provider.RoleSystem, Content: "new-sys"},
+		{Role: provider.RoleUser, Content: "summary"},
+		{Role: provider.RoleUser, Content: "tail"},
+	}
+	visible := modelVisibleFromProjection(proj, canonical)
+	if len(visible) != 3 {
+		t.Fatalf("len(visible) = %d, want 3", len(visible))
+	}
+	if visible[0].Content != "new-sys" {
+		t.Fatalf("visible[0].Content = %q, want the live system prompt", visible[0].Content)
+	}
+	if visible[1].Content != "summary" || visible[2].Content != "tail" {
+		t.Fatalf("visible body spliced wrong: %+v", visible)
+	}
+	// Identical system prompts stay untouched (no copy churn on the hot path).
+	same := modelVisibleFromProjection(proj, []provider.Message{
+		{Role: provider.RoleSystem, Content: "old-sys"},
+		{Role: provider.RoleUser, Content: "summary"},
+	})
+	if len(same) != 2 || same[0].Content != "old-sys" {
+		t.Fatalf("identical system case changed: %+v", same)
 	}
 }
 

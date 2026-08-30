@@ -490,17 +490,43 @@ func projectionContentValid(st CompactionState, msgs []provider.Message) bool {
 	if st.Projection.CoveredPrefixHash == "" {
 		return false
 	}
-	if coveredPrefixHash(msgs, n) != st.Projection.CoveredPrefixHash {
-		return false
+	if coveredPrefixHash(msgs, n) == st.Projection.CoveredPrefixHash {
+		return true
 	}
-	// TranscriptVersion is a process-local CAS generation that resets on load.
-	// The covered prefix hash is the durable identity across append-only growth
-	// and exact tail truncation.
-	return true
+	// A model switch rewrites the leading system prompt in the carried
+	// transcript (desktop resume swaps in the fresh prompt) while the fold
+	// body itself is model-agnostic. Retry with the stored system restored:
+	// reproducing the covered hash proves only the system prompt changed and
+	// the projection may rebind; any other prefix edit still fails closed.
+	return coveredPrefixHash(projectionStoredSystemPrefix(msgs, st.Projection.Messages), n) == st.Projection.CoveredPrefixHash
+}
+
+// projectionStoredSystemPrefix returns a copy of msgs whose leading system
+// message is replaced by the one frozen in the projection body, or nil when
+// the substitution does not apply (missing/differing leading roles, or an
+// identical system where a retry cannot change the outcome). The projection
+// body stores the system prompt verbatim at index 0 because compaction pins
+// it outside the fold region, so this restores the exact compaction-time view.
+func projectionStoredSystemPrefix(msgs, projMsgs []provider.Message) []provider.Message {
+	if len(msgs) == 0 || len(projMsgs) == 0 {
+		return nil
+	}
+	if msgs[0].Role != provider.RoleSystem || projMsgs[0].Role != provider.RoleSystem {
+		return nil
+	}
+	if msgs[0].Content == projMsgs[0].Content {
+		return nil
+	}
+	out := append([]provider.Message(nil), msgs...)
+	out[0] = projMsgs[0]
+	return out
 }
 
 // modelVisibleFromProjection splices the projection with any messages appended
 // after it was built. LocalOnly messages stay excluded via ModelMessages later.
+// A cross-model rebind keeps the stored fold body, so the leading system prompt
+// is refreshed from the canonical transcript: the request must carry the live
+// system of the bound model, not the one frozen at compaction time.
 func modelVisibleFromProjection(proj ContextProjection, canonical []provider.Message) []provider.Message {
 	if len(proj.Messages) == 0 {
 		return nil
@@ -508,6 +534,11 @@ func modelVisibleFromProjection(proj ContextProjection, canonical []provider.Mes
 	out := append([]provider.Message(nil), proj.Messages...)
 	if proj.CoveredCount >= 0 && proj.CoveredCount < len(canonical) {
 		out = append(out, canonical[proj.CoveredCount:]...)
+	}
+	if len(out) > 0 && len(canonical) > 0 &&
+		out[0].Role == provider.RoleSystem && canonical[0].Role == provider.RoleSystem &&
+		out[0].Content != canonical[0].Content {
+		out[0] = canonical[0]
 	}
 	return out
 }
