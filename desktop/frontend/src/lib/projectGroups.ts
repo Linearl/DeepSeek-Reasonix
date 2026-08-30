@@ -68,6 +68,21 @@ export function persistProjectGroupCollapsed(ids: ReadonlySet<string>): void {
   write(COLLAPSED_KEY, [...ids]);
 }
 
+// Session groups (#8194 family, ProjectTreeOrganization) carry their own
+// collapse state keyed by `${organizationKey}|${groupId}`. It used to live
+// only in component memory, so every reopen auto-expanded every group —
+// persist it exactly like the project-group collapse above.
+const SESSION_GROUP_COLLAPSED_KEY = "projectTree:sessionGroupCollapsed";
+
+export function loadSessionGroupCollapsed(): ReadonlySet<string> {
+  const raw = read<string[]>(SESSION_GROUP_COLLAPSED_KEY);
+  return new Set(Array.isArray(raw) ? raw : []);
+}
+
+export function persistSessionGroupCollapsed(ids: ReadonlySet<string>): void {
+  write(SESSION_GROUP_COLLAPSED_KEY, [...ids]);
+}
+
 // dropProjectGroupCollapsed removes a deleted group's collapsed marker so the
 // persisted set never accumulates stale ids.
 export function dropProjectGroupCollapsed(ids: ReadonlySet<string>, id: string): ReadonlySet<string> {

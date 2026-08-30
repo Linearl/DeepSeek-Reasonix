@@ -34,6 +34,7 @@ const CHECKS = [
   { feature: "#9082 会话要点提取", file: "internal/agent/session_extract.go", patterns: ["ExtractHighlights", "splitExtractChunks", "extractChunkOverlapBytes"] },
   { feature: "#9082 /extract 命令", file: "internal/control/controller.go", patterns: ["ExtractHighlightsToNewSession", "/extract"] },
   { feature: "#9601 验收框 parked 消费", file: "desktop/frontend/src/lib/useController.ts", patterns: ["parkedDelivery", "parkedConsumed"] },
+  { feature: "会话分组折叠持久化", file: "desktop/frontend/src/components/ProjectTreeOrganization.tsx", patterns: ["loadSessionGroupCollapsed", "persistSessionGroupCollapsed"] },
   { feature: "#9580 草稿 v2 接入", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["loadPersistedComposerDraft", "persistComposerDraft", "persisted.pastedBlocks.map"] },
   { feature: "#9570 Markdown 门控放宽", file: "desktop/frontend/src/components/MarkdownHistory.tsx", patterns: ["markerInView", "MARKDOWN_TAIL_BLOCKS) {"] },
   { feature: "#9567 接管钉尾", file: "desktop/frontend/src/components/Transcript.tsx", patterns: ["handleSurfacePaintReady", "stick.current = true"] },

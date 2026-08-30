@@ -4,6 +4,7 @@ import { app } from "../lib/bridge";
 import { asArray } from "../lib/array";
 import type { Translator } from "../lib/i18n";
 import { isTopicNode, projectTreeTopicArchiveBlocked } from "../lib/projectTreeTopic";
+import { loadSessionGroupCollapsed, persistSessionGroupCollapsed } from "../lib/projectGroups";
 import type { ProjectTreeRefresh } from "../lib/projectTreeArchive";
 import type { ProjectNode, ProjectTreeOrganizationBindings, SessionGroup } from "../lib/types";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
@@ -120,7 +121,7 @@ export function useProjectTreeOrganization({
   const groupLoadSequencesRef = useRef<Record<string, number>>({});
   const groupSaveChainsRef = useRef(new Map<string, Promise<void>>());
   const organizationRevisionRef = useRef(organizationRevision);
-  const [collapsedGroups, setCollapsedGroups] = useState(new Set<string>());
+  const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(loadSessionGroupCollapsed);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -293,6 +294,10 @@ export function useProjectTreeOrganization({
       setCollapsedGroups((current) => {
         const next = new Set(current), collapseKey = `${key}|${id}`;
         if (next.has(collapseKey)) next.delete(collapseKey); else next.add(collapseKey);
+        // Persist so the collapse state survives app restarts and project-tree
+        // remounts — it used to live only in component memory, so every reopen
+        // auto-expanded every session group.
+        persistSessionGroupCollapsed(next);
         return next;
       });
     },
