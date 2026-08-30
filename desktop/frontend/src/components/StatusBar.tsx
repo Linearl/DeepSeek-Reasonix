@@ -191,6 +191,7 @@ export function StatusBar({
   remoteStatuses = {},
   jobs = [],
   onCancelJob,
+  onJobsRefresh,
   backgroundRuntimes = [],
   onCancelRuntimeJob,
   onRevealRuntime,
@@ -226,6 +227,9 @@ export function StatusBar({
   remoteStatuses?: Record<string, RemoteConnectionStatus>;
   jobs?: JobView[];
   onCancelJob?: (jobID: string) => Promise<boolean>;
+  // Re-pulls the active tab's job table so the popover shows live elapsed and
+  // the sub-agent TPS heartbeat (#9521) when it opens.
+  onJobsRefresh?: () => void;
   backgroundRuntimes?: BackgroundRuntimeView[];
   onCancelRuntimeJob?: (tabID: string, jobID: string) => Promise<boolean>;
   onRevealRuntime?: (tabID: string) => Promise<void>;
@@ -470,6 +474,7 @@ export function StatusBar({
           jobs={jobs}
           activeJobsRemote={false}
           onCancelJob={onCancelJob}
+          onJobsRefresh={onJobsRefresh}
           runtimes={backgroundRuntimes}
           onCancelRuntimeJob={onCancelRuntimeJob}
           onRevealRuntime={onRevealRuntime}
@@ -520,10 +525,21 @@ function ExtensionStatusBarChips({ statuses }: { statuses: ExtensionStatusEntry[
   );
 }
 
+function formatJobElapsed(startedAt: number, now: number): string {
+  const total = Math.max(0, Math.floor((now - startedAt) / 1000));
+  if (total < 60) return `${total}s`;
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  if (m < 60) return `${m}m${String(s).padStart(2, "0")}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h${String(m % 60).padStart(2, "0")}m`;
+}
+
 function JobsStatusBarChip({
   jobs,
   activeJobsRemote,
   onCancelJob,
+  onJobsRefresh,
   runtimes,
   onCancelRuntimeJob,
   onRevealRuntime,
@@ -531,6 +547,7 @@ function JobsStatusBarChip({
   jobs: JobView[];
   activeJobsRemote: boolean;
   onCancelJob?: (jobID: string) => Promise<boolean>;
+  onJobsRefresh?: () => void;
   runtimes: BackgroundRuntimeView[];
   onCancelRuntimeJob?: (tabID: string, jobID: string) => Promise<boolean>;
   onRevealRuntime?: (tabID: string) => Promise<void>;
@@ -538,7 +555,21 @@ function JobsStatusBarChip({
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [stopping, setStopping] = useState<Set<string>>(() => new Set());
+  const [now, setNow] = useState(() => Date.now());
   const triggerRef = useRef<HTMLButtonElement>(null);
+  // Live elapsed + TPS heartbeat: refresh the job table when the popover
+  // opens and every second while it stays open (a cheap in-memory read), so
+  // the elapsed clock ticks and the sub-agent TPS stays fresh (#9521).
+  useEffect(() => {
+    if (!open) return;
+    const tick = () => {
+      onJobsRefresh?.();
+      setNow(Date.now());
+    };
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [open, onJobsRefresh]);
   const groups = runtimes.filter((runtime) => runtime.running || runtime.pendingPrompt || runtime.jobs.length > 0);
   // BackgroundRuntimes is process-local, while jobs from the active controller
   // snapshot may come from another runtime. Keep both sources visible.
@@ -617,7 +648,11 @@ function JobsStatusBarChip({
                     <div className="jobs-popover__job" key={`${runtime.tabId}:${job.id}`}>
                       <span className="jobs-popover__copy">
                         <strong>{job.label || job.kind}</strong>
-                        <small>{job.kind} · {job.status}</small>
+                        <small>
+                          {job.kind} · {job.status}
+                          {open ? ` · ${formatJobElapsed(job.startedAt, now)}` : ""}
+                          {job.tps ? ` · ~${job.tps} tok/s` : ""}
+                        </small>
                       </span>
                       <button
                         type="button"

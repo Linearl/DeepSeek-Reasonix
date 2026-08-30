@@ -220,6 +220,12 @@ type subagentProgressMerger struct {
 	order  []string // child IDs in registration order, for round-robin
 	rr     int      // rotating scan start for fairness
 
+	// rateSink forwards the latest sampled tok/s to the owning background
+	// task's jobs entry (#9521 popover heartbeat). Set only when a single
+	// tracker owns this merger (task runs); group fleets leave it nil so the
+	// popover keeps per-job semantics unambiguous.
+	rateSink func(tps int)
+
 	tokens     float64 // preview budget: subagentProgressGroupEventsPerSec
 	lastRefill time.Time
 
@@ -576,12 +582,27 @@ func (m *subagentProgressMerger) refillLocked() {
 	}
 }
 
+// setRateSink installs the popover heartbeat sink (#9521). Called from
+// attachJobRate (which holds the tracker lock); taking m.mu here keeps the
+// write serialized against emitStatusLocked's reads.
+func (m *subagentProgressMerger) setRateSink(fn func(tps int)) {
+	m.mu.Lock()
+	m.rateSink = fn
+	m.mu.Unlock()
+}
+
 func (m *subagentProgressMerger) emitStatusLocked(childID string, phase subagentProgressPhase, durationMs int64) {
 	var tps int
 	if phase != subagentPhaseQueued && phase != subagentPhaseCompleted && phase != subagentPhaseFailed && phase != subagentPhaseCancelled {
 		// Terminal/queued states carry no rate; live states sample the window.
 		if rate := m.rates[childID]; rate != nil {
 			tps = rate.rate(m.clock.Now())
+		}
+		// #9521 popover heartbeat: forward every live sample (not only the
+		// >=2 tok/s re-publish deltas) so the popover shows a fresh rate on
+		// each emitted status; downstream throttles are advisory.
+		if tps > 0 && m.rateSink != nil {
+			m.rateSink(tps)
 		}
 	}
 	m.emitToolProgressLocked(childID, event.SubagentProgressStatusName, string(phase), false, durationMs, tps)
@@ -793,7 +814,21 @@ func (t *subagentProgressTracker) setPhaseLocked(p subagentProgressPhase) {
 	t.merger.statusEvent(t.childID, p)
 }
 
+// attachJobRate wires the tracker's sampled streaming rate into a background
+// task job's jobs entry (#9521 popover heartbeat). Only meaningful when this
+// tracker owns its merger (single-child task runs); group fleets keep it nil.
+// Safe to call before or after events start flowing — the sink write takes
+// the merger lock.
+func (t *subagentProgressTracker) attachJobRate(fn func(tps int)) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.ownsMerger && t.merger != nil {
+		t.merger.setRateSink(fn)
+	}
+}
+
 // attachJobOutput bridges preview content into a background task job's output
+
 // buffer, so wait/bash_output show the sub-agent's live reasoning/text/notice
 // stream while it runs (#9522 Phase 1). Must be called before the first child
 // event; foreground runs never attach a writer.

@@ -4430,8 +4430,22 @@ export function useController() {
     await refreshMetaForTab(activeTabId);
   }, [activeTabId, dispatchTo, refreshMetaForTab]);
 
-  const cancelJob = useCallback(async (jobID: string): Promise<boolean> => {
+  // refreshJobs re-pulls the background-job table for the active tab. The
+  // status-bar jobs popover calls it when it opens (and on its 1s tick's
+  // mount edge) so job rows show a live elapsed time and the sub-agent TPS
+  // heartbeat (#9521) without waiting for the next ancillary refresh.
+  const refreshJobs = useCallback(async (): Promise<void> => {
     const tabId = activeTabId;
+    if (!tabId) return;
+    try {
+      const jobs = asArray(await app.JobsForTab(tabId));
+      dispatchTo(tabId, { type: "jobs", jobs });
+    } catch {
+      // Best-effort: the popover keeps showing the last snapshot.
+    }
+  }, [activeTabId, dispatchTo]);
+
+  const cancelJob = useCallback(async (jobID: string): Promise<boolean> => {    const tabId = activeTabId;
     if (!tabId || !jobID.trim()) return false;
     try {
       const cancelled = await app.CancelJobForTab(tabId, jobID);
@@ -4983,7 +4997,7 @@ export function useController() {
     newSession, clearSession, listSessions, listTrashedSessions, retrySessionHistory, resumeSession, openChannelSession, previewSession, deleteSession, restoreSession, purgeTrashedSession, renameSession,
     loadOlderHistory,
     requestHistoryFullContent,
-    refreshMeta, pickWorkspace, switchWorkspace, compact, rewind, rewindForTab, rewindForTabDetailed, undoRewindForTab, setModel, setEffort, setSubagentPolicyFromUi, cancelJob,
+    refreshMeta, pickWorkspace, switchWorkspace, compact, rewind, rewindForTab, rewindForTabDetailed, undoRewindForTab, setModel, setEffort, setSubagentPolicyFromUi, cancelJob, refreshJobs,
     fetchMemory, remember, forget, saveDoc,
     switchTab, switchRemoteTab, openProjectTab, openGlobalTab, openTopicSession, ensureBlankTab, activateTopic, ensureBlankSurface, createIsolatedWorktree, commitSingleSurfaceNavigation, closeTab, reorderTabs,
     hasLocalTranscriptForTab,

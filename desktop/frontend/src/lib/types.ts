@@ -1859,6 +1859,7 @@ export interface JobView {
   label: string;
   status: string; // "running"
   startedAt: number; // unix milliseconds
+  tps?: number; // sub-agent streaming rate in tok/s (#9521 popover heartbeat); omitted when unknown
 }
 
 export interface ActiveWorkView {

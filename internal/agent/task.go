@@ -1016,6 +1016,9 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 		// Hand the tracker to the job goroutine: the outer defer must not
 		// finish (and close) it while the job still runs.
 		backgroundHandoff = true
+		// Publish the sampled streaming rate into the jobs entry so the
+		// status-bar popover can show a live "~N tok/s" heartbeat (#9521).
+		trk.attachJobRate(func(tps int) { jm.SetJobRate(job.ID, tps) })
 		queuedNote := ""
 		if t.scheduler != nil {
 			queuedNote = " It may wait in the session queue until a concurrency/write slot is free."

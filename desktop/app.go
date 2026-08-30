@@ -6552,6 +6552,7 @@ type JobView struct {
 	Label     string `json:"label"`
 	Status    string `json:"status"`
 	StartedAt int64  `json:"startedAt"`
+	Tps       int    `json:"tps,omitempty"` // sub-agent streaming rate (tok/s), omitted when unknown (#9521)
 }
 
 // Jobs returns the still-running background jobs for the status bar. It refreshes
@@ -6610,7 +6611,7 @@ func (a *App) jobsForCtrl(ctrl control.SessionAPI, out []JobView) []JobView {
 		return out
 	}
 	for _, v := range ctrl.Jobs() {
-		out = append(out, JobView{ID: v.ID, Kind: v.Kind, Label: v.Label, Status: v.Status, StartedAt: v.StartedAt})
+		out = append(out, JobView{ID: v.ID, Kind: v.Kind, Label: v.Label, Status: v.Status, StartedAt: v.StartedAt, Tps: v.Tps})
 	}
 	return out
 }

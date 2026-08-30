@@ -64,6 +64,10 @@ type View struct {
 	Label     string `json:"label"`
 	Status    string `json:"status"`
 	StartedAt int64  `json:"startedAt"` // unix milliseconds
+	// Tps is the sub-agent's latest sampled streaming rate in tokens/second
+	// (#9521 popover heartbeat). Zero means unknown — bash jobs and jobs that
+	// have not emitted a rate yet omit it on the wire (omitempty).
+	Tps int `json:"tps,omitempty"`
 }
 
 // Result is one job's terminal (or current) state returned by Wait.
@@ -146,6 +150,21 @@ type Job struct {
 
 	evidence          evidence.ChildEvidenceSummary
 	evidenceCommitted bool
+
+	// rate holds the latest sampled streaming rate in tokens/second for task
+	// jobs (#9521 popover heartbeat). Written by the sub-agent progress tracker
+	// through Manager.SetJobRate while the job runs; atomic so the Jobs snapshot
+	// never takes the job lock for a value that is advisory-only in the UI.
+	rate atomic.Int64
+}
+
+// SetRate publishes the latest sampled tok/s for this job. Safe to call at
+// any time; calls after completion are harmless (the snapshot simply stops
+// being read by the UI once the job leaves the running surface).
+func (j *Job) SetRate(tps int) {
+	if tps > 0 {
+		j.rate.Store(int64(tps))
+	}
 }
 
 // Manager is the session's background-job table. It is safe for concurrent use.
@@ -244,6 +263,20 @@ func WithTaskRecorder(r TaskRecorder) Option {
 func (m *Manager) SetTaskRecorder(r TaskRecorder) { m.taskRecorder = r }
 
 // TeardownGrace reports the manager's configured close/destroy wait window.
+// SetJobRate publishes the latest sampled streaming rate (tok/s) for a running
+// task job (#9521 popover heartbeat). Unknown/stale ids are ignored so a
+// tracker publishing just after its job left the table is a harmless no-op.
+func (m *Manager) SetJobRate(jobID string, tps int) {
+	m.mu.Lock()
+	// The jobs table is keyed by (session, id); the tracker only knows the
+	// bare job id, so resolve it through the id index.
+	j := m.findJobLocked("", jobID)
+	m.mu.Unlock()
+	if j != nil {
+		j.SetRate(tps)
+	}
+}
+
 func (m *Manager) TeardownGrace() time.Duration { return m.teardownGrace }
 
 // NewManager returns a Manager whose jobs run under a fresh session-scoped
@@ -1142,7 +1175,7 @@ func (m *Manager) RunningForSession(parentSession string) []View {
 		// runtime idle early. The public view remains "running" while a stop is
 		// in flight; clients may render a local "stopping" state after they
 		// request cancellation.
-		out = append(out, View{ID: j.ID, Kind: j.Kind, Label: j.Label, Status: string(Running), StartedAt: j.startedAt})
+		out = append(out, View{ID: j.ID, Kind: j.Kind, Label: j.Label, Status: string(Running), StartedAt: j.startedAt, Tps: int(j.rate.Load())})
 		j.mu.Unlock()
 	}
 	return out

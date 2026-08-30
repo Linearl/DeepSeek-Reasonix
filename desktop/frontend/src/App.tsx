@@ -1098,6 +1098,7 @@ export default function App() {
     setEffort,
     setSubagentPolicyFromUi,
     cancelJob,
+    refreshJobs,
     switchTab,
     openProjectTab,
     createIsolatedWorktree,
@@ -5429,6 +5430,7 @@ export default function App() {
             running={state.running || rewindCommitting}
             jobs={state.jobs}
             onCancelJob={cancelJob}
+            onJobsRefresh={refreshJobs}
             backgroundRuntimes={backgroundRuntimes}
             onCancelRuntimeJob={cancelRuntimeJob}
             onRevealRuntime={revealBackgroundRuntime}

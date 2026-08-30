@@ -1028,3 +1028,63 @@ func (b *lockedBuffer) String() string {
 	defer b.mu.Unlock()
 	return b.buf.String()
 }
+
+// TestSubagentProgressJobRateSinkForwardsLiveSamples covers the #9521 popover
+// heartbeat bridge: emitStatusLocked on a live phase forwards the sampled
+// tok/s through the rate sink installed by attachJobRate, while terminal
+// phases and unset sinks stay silent.
+func TestSubagentProgressJobRateSinkForwardsLiveSamples(t *testing.T) {
+	clock := newFakeProgressClock(time.Unix(0, 0))
+	ch := make(chan event.Event, 64)
+	m := newSubagentProgressMerger(clock, chanSink{ch: ch}, "group-1")
+	defer m.Close()
+
+	rates := make(chan int, 8)
+	m.setRateSink(func(tps int) { rates <- tps })
+
+	m.mu.Lock()
+	r := &progressRateSampler{}
+	// Fill the window, roll it past the window length so the sampled rate is
+	// positive, then keep a non-empty window for the live sample.
+	r.add(clock.Now(), strings.Repeat("x", 4096))
+	clock.Advance(subagentRateWindow + time.Second)
+	r.add(clock.Now(), strings.Repeat("y", 4096))
+	m.rates["child-1"] = r
+	m.status["child-1"] = &progressStatusSlot{}
+	m.emitStatusLocked("child-1", subagentPhaseReasoning, 0)
+	m.mu.Unlock()
+
+	select {
+	case tps := <-rates:
+		if tps <= 0 {
+			t.Fatalf("rate sink forwarded %d, want a positive sample", tps)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("rate sink was not called for a live status sample")
+	}
+
+	// Terminal phases carry no rate and must not call the sink again.
+	m.mu.Lock()
+	m.emitStatusLocked("child-1", subagentPhaseCompleted, 0)
+	m.mu.Unlock()
+	select {
+	case tps := <-rates:
+		t.Fatalf("terminal status unexpectedly forwarded tps=%d", tps)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+// TestSubagentProgressAttachJobRateRequiresOwnedMerger ensures the tracker
+// only installs the rate sink when it owns its merger (single-child task
+// runs); group-fleet trackers must not hijack the shared merger's sink.
+func TestSubagentProgressAttachJobRateRequiresOwnedMerger(t *testing.T) {
+	clock := newFakeProgressClock(time.Unix(0, 0))
+	ch := make(chan event.Event, 64)
+	trk := newTestTracker(t, clock, chanSink{ch: ch}, "child-1") // joins a shared merger: ownsMerger=false
+	trk.attachJobRate(func(tps int) {
+		t.Fatal("rate sink must not be installed on a shared (fleet) merger")
+	})
+	if trk.merger.rateSink != nil {
+		t.Fatal("shared merger gained a rate sink through attachJobRate")
+	}
+}
