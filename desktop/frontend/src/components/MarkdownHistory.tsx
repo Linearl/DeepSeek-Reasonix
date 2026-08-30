@@ -134,12 +134,15 @@ export const MarkdownHistory = memo(function MarkdownHistory({
   text,
   plainStatusBlocks = false,
   entryId,
+  cacheKey,
   fallback,
   onParsed,
   onError,
 }: {
   text: string;
   plainStatusBlocks?: boolean;
+  /** Stable transcripter item key — enables cache reuse across live/history hosts (#9565). */
+  cacheKey?: string;
   /** History entry id (`he:<entryId>` rows) — enables the parsed-block cache. */
   entryId?: string;
   /** What to show while the worker parses (plain text or the streaming view). */
@@ -147,18 +150,22 @@ export const MarkdownHistory = memo(function MarkdownHistory({
   onParsed?: () => void;
   onError?: () => void;
 }) {
+  // #9565 prefer the stable item key so live and history mounts share one
+  // parsed block cache entry; fall back to entryId, then to the fork #9573
+  // content-derived key for remote/serve `h<seq>` rows.
+  const stableCacheKey = cacheKey ?? entryId;
   const revision = useMemo(() => markdownContentRevision(text), [text]);
   // Parsed state is keyed by its source text: a text change renders the
   // fallback (never stale blocks) until the new parse lands.
   const [parsed, setParsed] = useState<{ text: string; blocks: MarkdownBlock[] } | undefined>(() => {
-    const cached = cachedBlocks(entryId, revision, text);
+    const cached = cachedBlocks(stableCacheKey, revision, text);
     return cached ? { text, blocks: cached } : undefined;
   });
   const blocks = parsed && parsed.text === text ? parsed.blocks : undefined;
   const fallbackMarkerRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
-    const cached = cachedBlocks(entryId, revision, text);
+    const cached = cachedBlocks(stableCacheKey, revision, text);
     if (cached) {
       setParsed({ text, blocks: cached });
       onParsed?.();
@@ -170,10 +177,11 @@ export const MarkdownHistory = memo(function MarkdownHistory({
     handle.promise
       .then((result) => {
         if (cancelled || !result) return;
-        // Cache under the durable entry id when present, else under the
-        // content-derived key — remote/serve `h<seq>` rows then survive
+        // Cache under the stable cache key when present, else the durable
+        // entry id, else the content-derived key — live/history hosts then
+        // share one parse (#9565), and remote/serve `h<seq>` rows survive
         // session switches instead of re-parsing every mount (#9573).
-        getTranscriptStore().setMarkdown(markdownCacheKey(entryId, revision), revision, {
+        getTranscriptStore().setMarkdown(markdownCacheKey(stableCacheKey, revision), revision, {
           source: text,
           blocks: result.blocks,
           selectionText: result.selectionText,
@@ -242,7 +250,7 @@ export const MarkdownHistory = memo(function MarkdownHistory({
     // onParsed/onError are stable caller callbacks; re-running per identity
     // change would re-request parses the cache already serves.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text, entryId, revision]);
+  }, [text, stableCacheKey, revision]);
 
   const components = useMemo(() => createComponents(plainStatusBlocks), [plainStatusBlocks]);
   const totalBlocks = blocks?.length ?? 0;

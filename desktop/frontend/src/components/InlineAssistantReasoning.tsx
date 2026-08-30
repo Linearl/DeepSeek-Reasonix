@@ -57,11 +57,7 @@ export function InlineAssistantReasoning({
     setOpen(!open);
   }, [beginUserResize, onManualOpen, open]);
   const reasoning = shown.reasoning.trim();
-
-  // Follow the running reasoning pane's own tail until the reader scrolls up
-  // (upstream #9565 useReasoningScrollFollow, nested-scroll lane).
   const [reasoningScrollRef, onReasoningScroll] = useReasoningScrollFollow(shown.reasoning, open && running);
-
   if (!reasoning) return null;
   const layoutVariant = open
     ? "reasoning-expanded"
@@ -77,10 +73,16 @@ export function InlineAssistantReasoning({
         <ChevronRight className={`reasoning__chevron${open ? " reasoning__chevron--open" : ""}`} size={12} />
       </button>
       {open ? (
-        <div ref={reasoningScrollRef} onScroll={onReasoningScroll} className="turn-collapse__inline-reasoning reasoning__body" data-nested-scroll data-transcript-selectable="reasoning">
+        <div
+          ref={reasoningScrollRef}
+          className="turn-collapse__inline-reasoning reasoning__body"
+          data-transcript-selectable="reasoning"
+          data-nested-scroll
+          onScroll={onReasoningScroll}
+        >
           {running
             ? <StreamingReasoningText text={shown.reasoning} />
-            : <Markdown text={shown.reasoning} streaming={false} />}
+            : <Markdown text={shown.reasoning} streaming={false} cacheKey={item.id} wasStreamed={item.wasStreamed} />}
         </div>
       ) : (
         <ReasoningSummary text={shown.reasoning} streaming={running} onOpen={toggle} />

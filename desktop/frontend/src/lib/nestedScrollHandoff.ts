@@ -31,7 +31,7 @@ export type NestedScrollHandoff = {
   detach: () => void;
 };
 
-/** Pin a nested reasoning pane to its own scroll bottom (nested-scroll lane). */
+/** Inner reasoning scrollports are independent of transcript ownership. */
 export function scrollReasoningToBottom(element: HTMLElement): void {
   element.scrollTop = element.scrollHeight;
 }

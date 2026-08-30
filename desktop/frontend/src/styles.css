@@ -5338,6 +5338,11 @@ button.reasoning-summary:focus-visible {
   white-space: pre-wrap;
 }
 
+/* Lazy reasoning reserve geometry while the worker parses (#9565): keep the
+   collapsed/bounded puzzle stable instead of letting the panel jump. */
+.reasoning--loading { height: 58px; }
+.reasoning--loading[data-expanded] { height: min(40vh, 480px); }
+
 .reasoning__body > .md,
 .turn-collapse__inline-reasoning > .md,
 .tool__subagent-preview-text--markdown > .md {
