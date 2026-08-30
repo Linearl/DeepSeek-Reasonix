@@ -7863,22 +7863,35 @@ function SandboxSection({ s, busy, apply, windows }: SectionProps & { windows: b
   );
 }
 
-// SessionWriteRootsSection lists the write directories granted for the current
-// session (process-memory session roots, #9167), distinct from the project-level
-// [sandbox].allow_write list above. Users can view, add, and remove session-level
-// grants here.
+// SessionWriteRootsSection lists the write directories granted for a session
+// (process-memory session roots, #9167), distinct from the project-level
+// [sandbox].allow_write list above. A session picker (#9623) targets the
+// grants: it defaults to the active tab and can view/add/remove grants for any
+// in-process session with a live controller.
 function SessionWriteRootsSection({ t, busy }: { t: ReturnType<typeof useT>; busy: boolean }) {
+  const [sessions, setSessions] = useState<{ tabId: string; title: string; session: string[]; active: boolean }[]>([]);
+  const [pickedTab, setPickedTab] = useState("");
   const [roots, setRoots] = useState<string[]>([]);
   const [path, setPath] = useState("");
 
   const refresh = useCallback(async () => {
     try {
-      const r = await app.QueryAuthorizedWriteDirs();
-      setRoots(asArray(r?.session));
+      const list = await app.ListSessionWriteDirs();
+      const safe = asArray(list).map((s) => ({ tabId: String(s?.tabId || ""), title: String(s?.title || ""), session: asArray(s?.session), active: Boolean(s?.active) }));
+      setSessions(safe);
+      setPickedTab((current) => (current && safe.some((s) => s.tabId === current) ? current : safe.find((s) => s.active)?.tabId || safe[0]?.tabId || ""));
     } catch {
+      setSessions([]);
       setRoots([]);
     }
   }, []);
+
+  // Roots derive from the picked session so both refresh and picker changes
+  // land through one path.
+  useEffect(() => {
+    const picked = sessions.find((s) => s.tabId === pickedTab) || sessions.find((s) => s.active) || sessions[0];
+    setRoots(asArray(picked?.session));
+  }, [pickedTab, sessions]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -7886,46 +7899,66 @@ function SessionWriteRootsSection({ t, busy }: { t: ReturnType<typeof useT>; bus
     const d = String(path || "").trim();
     if (!d) return;
     try {
-      await app.AddAuthorizedWriteDir(1, d);
+      await app.AddAuthorizedWriteDirForTab(pickedTab, 1, d);
       setPath("");
       await refresh();
     } catch { /* keep current list */ }
   };
   const remove = async (d: string) => {
     try {
-      await app.RemoveAuthorizedWriteDir(1, d);
+      await app.RemoveAuthorizedWriteDirForTab(pickedTab, 1, d);
       await refresh();
     } catch { /* keep current list */ }
   };
 
   return (
     <SettingsField label={t("settings.sessionWriteRoots")} hint={t("settings.sessionWriteRootsHint")} stacked>
-      <div className="set-rules set-rules--readonly">
-        <div className="set-rules__chips">
-          {roots.length === 0 && <span className="mem-empty">{t("settings.noSessionWriteRoots")}</span>}
-          {roots.map((p, i) => (
-            <span className="set-rule set-rule--path" key={`${p}-${i}`}>
-              {p}
-              <button className="btn btn--small" type="button" style={{ marginLeft: 6 }} aria-label={t("settings.removeSessionWriteRoot")} disabled={busy} onClick={() => void remove(p)}>
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      </div>
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <input
-          className="mem-input set-grow"
-          placeholder={t("settings.sessionWriteRootPlaceholder")}
-          value={path}
+      {sessions.length > 0 && (
+        <select
+          className="mem-input"
+          value={pickedTab}
           disabled={busy}
-          onChange={(e) => setPath(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") void add(); }}
-        />
-        <button className="btn btn--small" type="button" disabled={busy || !String(path || "").trim()} onClick={() => void add()}>
-          {t("settings.addSessionWriteRoot")}
-        </button>
-      </div>
+          onChange={(e) => setPickedTab(e.target.value)}
+          aria-label={t("settings.sessionWriteRootsPicker")}
+        >
+          {sessions.map((s) => (
+            <option key={s.tabId} value={s.tabId}>
+              {s.title}{s.active ? ` · ${t("settings.sessionWriteRootsActive")}` : ""}
+            </option>
+          ))}
+        </select>
+      )}
+      {sessions.length === 0 && <span className="mem-empty">{t("settings.noSessionForWriteRoots")}</span>}
+      {sessions.length > 0 && (
+        <div className="set-rules set-rules--readonly">
+          <div className="set-rules__chips">
+            {roots.length === 0 && <span className="mem-empty">{t("settings.noSessionWriteRoots")}</span>}
+            {roots.map((p, i) => (
+              <span className="set-rule set-rule--path" key={`${p}-${i}`}>
+                {p}
+                <button className="btn btn--small" type="button" style={{ marginLeft: 6 }} aria-label={t("settings.removeSessionWriteRoot")} disabled={busy} onClick={() => void remove(p)}>
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {sessions.length > 0 && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            className="mem-input set-grow"
+            placeholder={t("settings.sessionWriteRootPlaceholder")}
+            value={path}
+            disabled={busy}
+            onChange={(e) => setPath(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") void add(); }}
+          />
+          <button className="btn btn--small" type="button" disabled={busy || !String(path || "").trim()} onClick={() => void add()}>
+            {t("settings.addSessionWriteRoot")}
+          </button>
+        </div>
+      )}
     </SettingsField>
   );
 }

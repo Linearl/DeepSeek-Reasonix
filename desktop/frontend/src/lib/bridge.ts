@@ -198,6 +198,12 @@ interface DesktopWindowState {
 // catches generated methods missing here; update this interface and typecheck.
 export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganizationBindings, HistoryCatalogBindings, TaskCatalogBindings, BlankProjectBindings, QualityFloorBindings, SessionTitleBindings, ScrollDiagnosticBindings, RemoteProjectBindings {
   AddAuthorizedWriteDir(scope: 0 | 1, dir: string): Promise<void>;
+  AddAuthorizedWriteDirForTab(tabId: string, scope: 0 | 1, dir: string): Promise<void>;
+  // One selectable session for the write-directory panel's session picker
+  // (#9623): the tab to target, a display title, its session roots, and
+  // whether it is the active tab (the picker default).
+  ListSessionWriteDirs(): Promise<{ tabId: string; title: string; session: string[]; active: boolean }[]>;
+  RemoveAuthorizedWriteDirForTab(tabId: string, scope: 0 | 1, dir: string): Promise<void>;
   // User-global common directories (Settings → Permissions): honored for every
   // project/session without approval, including subdirectories.
   AddGlobalWriteDir(dir: string): Promise<void>;
@@ -1168,6 +1174,7 @@ let mockPendingTopicActivation: { requestId: string; tabId: string } | undefined
 let mockTopicActivationCounter = 0;
 let mockWriteDirsProject: string[] = [];
 let mockWriteDirsSession: string[] = [];
+let mockWriteDirsOther: string[] = [];
 let mockWriteDirsGlobal: string[] = [];
 
 function mockSubscribe(cb: (e: WireEvent) => void): () => void {
@@ -2532,6 +2539,33 @@ function makeMockApp(): AppBindings {
     },
     async QueryAuthorizedWriteDirs() {
       return { project: [...mockWriteDirsProject], global: [...mockWriteDirsGlobal], session: [...mockWriteDirsSession] };
+    },
+    async ListSessionWriteDirs() {
+      const sessions = [
+        { tabId: "mock-tab-active", title: "Active mock session", session: [...mockWriteDirsSession], active: true },
+        { tabId: "mock-tab-other", title: "Second mock session", session: [...mockWriteDirsOther], active: false },
+      ];
+      return sessions;
+    },
+    async AddAuthorizedWriteDirForTab(tabId: string, scope: 0 | 1, dir: string) {
+      if (!dir?.trim()) throw new Error("directory is required");
+      const list = tabId === "mock-tab-other" ? mockWriteDirsOther : mockWriteDirsSession;
+      if (scope === 1) {
+        if (!list.includes(dir)) list.push(dir);
+      } else {
+        if (!mockWriteDirsProject.includes(dir)) mockWriteDirsProject.push(dir);
+      }
+    },
+    async RemoveAuthorizedWriteDirForTab(tabId: string, scope: 0 | 1, dir: string) {
+      if (!dir?.trim()) throw new Error("directory is required");
+      if (scope === 1) {
+        const list = tabId === "mock-tab-other" ? mockWriteDirsOther : mockWriteDirsSession;
+        const next = list.filter((d) => d !== dir);
+        list.length = 0;
+        list.push(...next);
+      } else {
+        mockWriteDirsProject = mockWriteDirsProject.filter((d) => d !== dir);
+      }
     },
     async AddAuthorizedWriteDir(scope: 0 | 1, dir: string) {
       if (!dir?.trim()) throw new Error("directory is required");

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -36,6 +37,80 @@ type AuthorizedWriteDirs struct {
 	Project []string `json:"project"`
 	Global  []string `json:"global"`
 	Session []string `json:"session"`
+}
+
+// SessionWriteDirsView is one selectable session in the write-directory panel's
+// session picker (#9623): the tab id to target for grants, a display title,
+// the session roots that tab's controller currently holds, and whether it is
+// the active tab (the picker's default).
+type SessionWriteDirsView struct {
+	TabID   string   `json:"tabId"`
+	Title   string   `json:"title"`
+	Session []string `json:"session"`
+	Active  bool     `json:"active"`
+}
+
+// ListSessionWriteDirs enumerates the in-process sessions that have a live
+// controller so the panel can show and target any of them. Session roots are
+// per-controller process memory (#9167), so this covers the tabs of the
+// current window — tabs still booting (no controller) are skipped.
+func (a *App) ListSessionWriteDirs() []*SessionWriteDirsView {
+	res := []*SessionWriteDirsView{}
+	if a == nil {
+		return res
+	}
+	activeID := ""
+	if tab, _ := a.activeTabAndCtrl(); tab != nil {
+		activeID = tab.ID
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	for _, tab := range a.tabs {
+		if tab == nil || tab.removed || tab.Ctrl == nil {
+			continue
+		}
+		view := &SessionWriteDirsView{
+			TabID:   tab.ID,
+			Title:   strings.TrimSpace(tab.TopicTitle),
+			Session: []string{},
+			Active:  tab.ID == activeID,
+		}
+		if view.Title == "" {
+			view.Title = tab.ID
+		}
+		if c, ok := tab.Ctrl.(*control.Controller); ok {
+			_, _, session := c.QueryAuthorizedWriteDirs()
+			view.Session = nonNilSlice(session)
+		}
+		res = append(res, view)
+	}
+	sort.Slice(res, func(i, j int) bool {
+		if res[i].Active != res[j].Active {
+			return res[i].Active
+		}
+		return res[i].Title < res[j].Title
+	})
+	return res
+}
+
+// sessionWriteDirsController resolves the controller a panel action should
+// target: the given tab when set (the picker's selection), else the active tab.
+func (a *App) sessionWriteDirsController(tabID string) (*control.Controller, error) {
+	_, ctrl := a.activeTabAndCtrl()
+	if strings.TrimSpace(tabID) == "" {
+		if c, ok := ctrl.(*control.Controller); ok {
+			return c, nil
+		}
+		return nil, fmt.Errorf("no active session for session-scope write directory")
+	}
+	tab := a.tabByID(tabID)
+	if tab == nil || tab.removed || tab.Ctrl == nil {
+		return nil, fmt.Errorf("session %q is not available for write directories", tabID)
+	}
+	if c, ok := tab.Ctrl.(*control.Controller); ok {
+		return c, nil
+	}
+	return nil, fmt.Errorf("session %q is not available for write directories", tabID)
 }
 
 // QueryAuthorizedWriteDirs returns the currently authorized write directories
@@ -73,22 +148,41 @@ func (a *App) QueryAuthorizedWriteDirs() *AuthorizedWriteDirs {
 // AddAuthorizedWriteDir adds a writable directory at the given scope
 // (0=project, 1=session) for the active workspace/session.
 func (a *App) AddAuthorizedWriteDir(scope int, dir string) error {
+	return a.AddAuthorizedWriteDirForTab("", scope, dir)
+}
+
+// AddAuthorizedWriteDirForTab adds a writable directory at the given scope,
+// targeting the picked session's controller when tabID is set (#9623); an
+// empty tabID keeps the active-tab behavior.
+func (a *App) AddAuthorizedWriteDirForTab(tabID string, scope int, dir string) error {
 	if a == nil {
 		return fmt.Errorf("no active app")
 	}
 	if strings.TrimSpace(dir) == "" {
 		return fmt.Errorf("directory is required")
 	}
-	_, ctrl := a.activeTabAndCtrl()
-	if c, ok := ctrl.(*control.Controller); ok {
-		s := approvalScopeFromWriteDir(scope)
-		return c.AddAuthorizedWriteDir(s, dir)
+	if scope == writeDirScopeSession {
+		c, err := a.sessionWriteDirsController(tabID)
+		if err != nil {
+			return err
+		}
+		return c.AddAuthorizedWriteDir(sandbox.ApprovalScopeSession, dir)
 	}
-	// No controller: project-only fallback using the active workspace root.
-	if scope != writeDirScopeProject {
-		return fmt.Errorf("no active session for session-scope write directory")
+	// Project scope is workspace-level: honor the picked tab's workspace when
+	// one is picked, else the active tab's.
+	var root string
+	if strings.TrimSpace(tabID) != "" {
+		if tab := a.tabByID(tabID); tab != nil {
+			a.mu.RLock()
+			root = tab.WorkspaceRoot
+			a.mu.RUnlock()
+		}
+	} else {
+		root = a.activeWorkspaceRoot()
 	}
-	root := a.activeWorkspaceRoot()
+	if root == "" {
+		root = a.activeWorkspaceRoot()
+	}
 	if root == "" {
 		return fmt.Errorf("no active workspace")
 	}
@@ -106,21 +200,38 @@ func (a *App) AddAuthorizedWriteDir(scope int, dir string) error {
 // RemoveAuthorizedWriteDir removes a writable directory at the given scope
 // (0=project, 1=session) for the active workspace/session.
 func (a *App) RemoveAuthorizedWriteDir(scope int, dir string) error {
+	return a.RemoveAuthorizedWriteDirForTab("", scope, dir)
+}
+
+// RemoveAuthorizedWriteDirForTab removes a writable directory at the given
+// scope, targeting the picked session's controller when tabID is set (#9623).
+func (a *App) RemoveAuthorizedWriteDirForTab(tabID string, scope int, dir string) error {
 	if a == nil {
 		return fmt.Errorf("no active app")
 	}
 	if strings.TrimSpace(dir) == "" {
 		return fmt.Errorf("directory is required")
 	}
-	_, ctrl := a.activeTabAndCtrl()
-	if c, ok := ctrl.(*control.Controller); ok {
-		s := approvalScopeFromWriteDir(scope)
-		return c.RemoveAuthorizedWriteDir(s, dir)
+	if scope == writeDirScopeSession {
+		c, err := a.sessionWriteDirsController(tabID)
+		if err != nil {
+			return err
+		}
+		return c.RemoveAuthorizedWriteDir(sandbox.ApprovalScopeSession, dir)
 	}
-	if scope != writeDirScopeProject {
-		return fmt.Errorf("no active session for session-scope write directory")
+	var root string
+	if strings.TrimSpace(tabID) != "" {
+		if tab := a.tabByID(tabID); tab != nil {
+			a.mu.RLock()
+			root = tab.WorkspaceRoot
+			a.mu.RUnlock()
+		}
+	} else {
+		root = a.activeWorkspaceRoot()
 	}
-	root := a.activeWorkspaceRoot()
+	if root == "" {
+		root = a.activeWorkspaceRoot()
+	}
 	if root == "" {
 		return fmt.Errorf("no active workspace")
 	}
@@ -184,13 +295,6 @@ func (a *App) RemoveGlobalWriteDir(dir string) error {
 		}
 	}
 	return config.SetGlobalWriteAccess(cfg)
-}
-
-func approvalScopeFromWriteDir(scope int) sandbox.ApprovalScope {
-	if scope == writeDirScopeSession {
-		return sandbox.ApprovalScopeSession
-	}
-	return sandbox.ApprovalScopeProject
 }
 
 func nonNilSlice(s []string) []string {
