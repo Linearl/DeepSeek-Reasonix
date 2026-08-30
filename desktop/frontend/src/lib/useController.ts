@@ -81,6 +81,7 @@ import type {
   WireTool,
   WireUsage,
   WireShellExecution,
+  WireFinalReadiness,
 } from "./types";
 export { foregroundRunningFromRuntimeMeta } from "./runtimeMeta";
 export {
@@ -416,6 +417,11 @@ export interface State {
   pendingUser?: string;
   pendingSubmissionId?: string;
   deliveryRecoveryActive: boolean;
+  // #9601: a replaced turn's final_readiness outcome — the backend already
+  // recorded the awaiting_delivery badge, but the newer turn owned the tab
+  // when the event landed, so the acceptance card could not be placed inline.
+  // Parked here and surfaced as soon as the newer turn settles.
+  parkedDelivery?: { readiness?: WireFinalReadiness; err?: string };
   discardTurn?: boolean;
   turnStartAt: number;
   turnDoneAt: number;
@@ -1863,7 +1869,19 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "notice", id: `g${s.seq}`, level, text: formatGuardianAssessmentNotice(e.guardian) }] };
     }
     case "turn_done": {
-      if (e.turnId && s.activeTurnId && e.turnId !== s.activeTurnId) return s;
+      if (e.turnId && s.activeTurnId && e.turnId !== s.activeTurnId) {
+        // A replaced turn finishing while a newer turn owns the tab: per-turn
+        // finalization must not touch the newer turn's in-flight items. But a
+        // final_readiness outcome is a persistent tab-level fact the backend
+        // has already recorded (the awaiting_delivery badge, tabs.go) —
+        // dropping it silently leaves the badge hanging with no acceptance
+        // card (#9601). Park the outcome; the card surfaces as soon as the
+        // newer turn settles.
+        if (e.outcome === "final_readiness") {
+          return { ...s, seq: s.seq + 1, parkedDelivery: { readiness: e.readiness, err: e.err } };
+        }
+        return s;
+      }
       const now = Date.now();
       s = snapshotCompletedTurnTelemetry(s, now);
       const workDurationMs = currentTurnDurationMs(s, now);
@@ -1950,6 +1968,28 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       // Plan approval can arrive before turn_done on some Wails event paths.
       // Keep that gate visible instead of clearing the only UI that can answer it.
       const keepPlanApproval = s.approval?.tool === "exit_plan_mode";
+      // Consume a parked final_readiness outcome from a replaced turn (#9601):
+      // once the newer turn settles without producing its own readiness card,
+      // surface the parked acceptance card so the badge never hangs without
+      // one. When this turn produced its own final_readiness card, the parked
+      // outcome is simply superseded and dropped.
+      let parkedConsumed: State["parkedDelivery"];
+      if (s.parkedDelivery) {
+        parkedConsumed = s.parkedDelivery;
+        if (e.outcome !== "final_readiness") {
+          items = [...items, {
+            kind: "notice",
+            id: `ep${s.seq}`,
+            level: "info",
+            variant: "delivery",
+            title: t("notice.deliveryIncompleteTitle"),
+            text: t("notice.deliveryIncompleteBody"),
+            detail: deliveryReadinessDetail(parkedConsumed.readiness, parkedConsumed.err),
+            action: "continue_delivery",
+            missing: readinessMissingIds(parkedConsumed.readiness),
+          }];
+        }
+      }
       let next: State = {
         ...s,
         items: applyTurnCheckpoint(items, e.submissionId, e.checkpointTurn),
@@ -1966,6 +2006,7 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         approval: keepPlanApproval ? s.approval : undefined,
         ask: undefined,
         deliveryRecoveryActive: false,
+        parkedDelivery: parkedConsumed ? undefined : s.parkedDelivery,
         turnLifecycleObservedAt: promptEventClock(),
         seq: s.seq + 1,
       };
