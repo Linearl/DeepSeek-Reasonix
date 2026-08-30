@@ -8,6 +8,23 @@ import (
 
 const summaryOutputReserve = summaryOutputMaxTokens
 
+// minSummaryOutputTokens floors the window-scaled digest budget: even a tiny
+// window reserves enough output for a usable briefing.
+const minSummaryOutputTokens = 512
+
+// summaryOutputBudget is the digest output cap for summary requests. It scales
+// with the window so small-window models still reserve input room for a fold:
+// a fixed 8192-token output reserve on a ≤16K window leaves maxPromptTokens ≤ 0
+// in maximumSafeSummaryPrefixEnd, so automatic compaction soft-skips forever
+// (#9572 follow-up). Large windows keep the full 8192 reserve.
+func (a *Agent) summaryOutputBudget() int {
+	window := a.effectiveContextWindow()
+	if window <= 0 {
+		return summaryOutputMaxTokens
+	}
+	return min(summaryOutputMaxTokens, max(window/4, minSummaryOutputTokens))
+}
+
 // foldSummary is what compaction reports about turning a fold into a digest.
 // It is populated even when the call fails, so telemetry still records how
 // large the attempt was and that exactly one call was used.
@@ -37,7 +54,7 @@ func (a *Agent) summaryInputBudget(instructions string) int {
 	if window <= 0 {
 		return 0
 	}
-	return max(0, window-summaryOutputReserve-estimateTextTokens(compactionInstruction)-estimateTextTokens(instructions)-protocolReserveTokens)
+	return max(0, window-a.summaryOutputBudget()-estimateTextTokens(compactionInstruction)-estimateTextTokens(instructions)-protocolReserveTokens)
 }
 
 // foldToSummary turns a fold region into one digest with exactly one provider
