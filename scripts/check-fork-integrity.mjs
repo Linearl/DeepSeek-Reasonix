@@ -30,7 +30,7 @@ const CHECKS = [
   { feature: "#9518 分组计数后端权威", file: "desktop/frontend/src/components/ProjectTreeOrganization.tsx", patterns: ["memberCount", "group.topicIds?.length ?? 0"] },
   { feature: "projectGroups 存储层", file: "desktop/frontend/src/lib/projectGroups.ts", patterns: ["loadProjectGroupCollapsed", "persistProjectGroupCollapsed", "dropProjectGroupCollapsed"] },
   { feature: "#9580 草稿持久化存储层", file: "desktop/frontend/src/lib/composerDraftPersistence.ts", patterns: ["composer:drafts:v1", "pagehide", "MAX_PERSISTED_BYTES"] },
-  { feature: "#9579 live region 尾部预算", file: "desktop/frontend/src/lib/transcriptLiveTurn.ts", patterns: ["LIVE_TAIL_ROW_KEEP", "tailStart"] },
+  { feature: "#9565 live footer 上游语义（#9579 尾部预算已有意还原）", file: "desktop/frontend/src/lib/transcriptLiveTurn.ts", patterns: ["slice(userIndex + 1)", "liveRows"] },
   { feature: "#9082 会话要点提取", file: "internal/agent/session_extract.go", patterns: ["ExtractHighlights", "splitExtractChunks", "extractChunkOverlapBytes"] },
   { feature: "#9082 /extract 命令", file: "internal/control/controller.go", patterns: ["ExtractHighlightsToNewSession", "/extract"] },
   { feature: "#9601 验收框 parked 消费", file: "desktop/frontend/src/lib/useController.ts", patterns: ["parkedDelivery", "parkedConsumed"] },
