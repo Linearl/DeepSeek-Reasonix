@@ -447,18 +447,22 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 	// (#9572): a pressure fold after projection invalidation can read the full
 	// canonical transcript, and an uncapped summary request then exceeds the
 	// provider window (observed: 994,833-token request vs a 1M shared window).
-	// mustFree additionally hard-fails when no balanced prefix remains.
 	if trigger != CompactionTriggerManual {
-		start = a.maximumSafeSummaryPrefixEnd(msgs, head, start, instructions)
-		if start <= head {
-			a.emitCompactionAborted(trigger)
-			if mustFree {
-				return CompactionNoop, fmt.Errorf("%w: no balanced prefix leaves enough room for a summary response", errCheckpointRejected)
-			}
+		if capped := a.maximumSafeSummaryPrefixEnd(msgs, head, start, instructions); capped > head {
+			start = capped
+		} else if !mustFree {
 			// Soft skip: folding nothing this round beats sending a request the
 			// provider must reject; the next maintenance attempt re-plans.
+			a.emitCompactionAborted(trigger)
 			return CompactionNoop, nil
 		}
+		// mustFree (est at or above the hard ceiling) with no balanced prefix
+		// keeps the uncapped fold (#9572 follow-up): the fold must be attempted
+		// anyway, and on small configured windows the fixed instruction+output
+		// budget alone can exceed the cap — hard-failing there would dead-lock
+		// recovery on a fold that may well fit the real provider window. If the
+		// provider rejects the uncapped request, the existing overflow recovery
+		// takes over with the same signal the hard error used to produce.
 	}
 
 	covered, bodySuffix := projectionCoverageForFold(stateSnapshot, msgs, start, onProjection)
@@ -616,7 +620,10 @@ func (a *Agent) maximumSafeSummaryPrefixEnd(msgs []provider.Message, head, end i
 	}
 	maxPromptTokens := a.hardInputCeiling()
 	if policy.WindowMode == provider.ContextWindowShared {
-		maxPromptTokens = window - outputBudgetReserve - 256
+		// The digest output budget scales with the window (#9572 follow-up): a
+		// fixed 8192 reserve made maxPromptTokens ≤ 0 on ≤16K windows and
+		// soft-skipped every automatic fold.
+		maxPromptTokens = window - a.summaryOutputBudget() - protocolReserveTokens
 	}
 	if maxPromptTokens <= 0 {
 		return head
@@ -642,8 +649,22 @@ func (a *Agent) maximumSafeSummaryPrefixEnd(msgs []provider.Message, head, end i
 	// A tail beginning with a tool result would split it from the assistant
 	// tool-call message. Move the fold boundary back across the whole result
 	// group; the assistant call and all of its results then remain together.
+	bisectBest := best
 	for best > head && best < len(msgs) && msgs[best].Role == provider.RoleTool {
 		best--
+	}
+	// A cap that leaves a fold too small to be worth summarizing deadlocks
+	// automatic maintenance: the next round re-plans the same region and skips
+	// again (#9572 follow-up). Fall through to the uncapped fold — it either
+	// fits the real provider window (the configured one was conservative) or
+	// fails into the existing overflow recovery, which calibrates the window.
+	// The #9572 shape (fold ≈ window, fits(end)) never reaches this branch
+	// because fits(end) returns early. Judged on the bisect boundary before
+	// the tool-pair retreat, with the same economics the fold path applies, so
+	// a boundary pulled back to keep a result group verbatim is not mistaken
+	// for a useless fold.
+	if bisectBest > head && estimateMessagesTokens(msgs[head:bisectBest]) < minFoldTokens {
+		return end
 	}
 	return best
 }

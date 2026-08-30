@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"reasonix/internal/provider"
@@ -61,21 +62,22 @@ func TestOverflowSummarizesLargestAdmissibleContiguousPrefix(t *testing.T) {
 }
 
 func TestMaximumSafeSummaryPrefixKeepsToolPairsTogether(t *testing.T) {
+	// A 10k window yields a 7244-token cap (10000 - 2500 scaled output budget
+	// - 256): the boundary must fall between the pair's first result and the
+	// oversized second one, then retreat to keep both results verbatim.
 	msgs := []provider.Message{
 		{Role: provider.RoleSystem, Content: "system"},
 		{Role: provider.RoleUser, Content: "old task"},
 		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "call-1", Name: "read", Arguments: `{}`}}},
-		{Role: provider.RoleTool, ToolCallID: "call-1", Name: "read", Content: "first result"},
-		{Role: provider.RoleTool, ToolCallID: "call-1", Name: "read", Content: "second result"},
+		{Role: provider.RoleTool, ToolCallID: "call-1", Name: "read", Content: strings.Repeat("first result payload. ", 150)},
+		{Role: provider.RoleTool, ToolCallID: "call-1", Name: "read", Content: strings.Repeat("second result payload. ", 1500)},
 		{Role: provider.RoleUser, Content: "recent task"},
 	}
 	a := &Agent{
-		agentConfig: agentConfig{contextWindow: 100_000},
+		agentConfig: agentConfig{contextWindow: 10_000},
 		svc:         agentServices{prov: &overflowSummaryProvider{}},
 		sess:        sessionRuntime{conversation: &Session{Messages: msgs}},
 	}
-	promptThroughFirstResult := a.estimatedRequestTokens(a.summaryRequest(msgs[1:4], ""))
-	a.contextWindow = promptThroughFirstResult + outputBudgetReserve + 256
 	end := a.maximumSafeSummaryPrefixEnd(msgs, 1, len(msgs)-1, "")
 	if end != 2 {
 		t.Fatalf("fold boundary = %d, want 2 so the assistant call and both results stay in the tail", end)

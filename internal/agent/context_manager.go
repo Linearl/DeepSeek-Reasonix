@@ -17,6 +17,11 @@ type compactionProgress struct {
 	stuck          bool   // a fold landed above the trigger, so the same-view pressure retry is pointless
 	stuckInputHash string // provider-visible view covered by stuck; changed input may retry
 	consecutive    int    // back-to-back folds since one last helped
+	// recoveredViewHash is the provider-visible view an overflow recovery just
+	// landed on. Another overflow signal over the same view is refused: new
+	// provider-visible input, not a repeated signal, permits same-turn
+	// recovery (#9572 follow-up).
+	recoveredViewHash string
 	// failedTurn backs off changed-view retries within one active tool loop.
 	// A later user turn may retry, while hard-ceiling recovery bypasses it.
 	failedTurn atomic.Int64
@@ -112,10 +117,18 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
 		policy.Trigger != CompactionTriggerOverflow && est < hard {
 		return prepared, nil
 	}
+	// An overflow recovery just landed on this exact view (#9572 follow-up):
+	// repeating the signal without new provider-visible input must not pay for
+	// another summary, so refuse it with the recovery error callers expect.
+	if policy.Trigger == CompactionTriggerOverflow && est < hard &&
+		a.sess.compaction.recoveredViewHash != "" && a.sess.compaction.recoveredViewHash == inputHash {
+		return PreparedContext{}, fmt.Errorf("%w: overflow view already recovered; new input is required", ErrCompactionRequired)
+	}
 	if est < fold {
 		a.sess.compaction.consecutive = 0
 		a.sess.compaction.stuck = false
 		a.sess.compaction.stuckInputHash = ""
+		a.sess.compaction.recoveredViewHash = ""
 		a.sess.compaction.failedTurn.Store(0)
 	}
 	if a.sess.compaction.stuck && a.sess.compaction.stuckInputHash != inputHash {
@@ -161,7 +174,12 @@ func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContex
 	}
 	result := prepared
 	for range maxSummaries {
-		mustFree := policy.Trigger != CompactionTriggerManual && (policy.Trigger == CompactionTriggerOverflow || result.InputTokens >= hard)
+		// mustFree marks a true physical overflow: the view is at or above the
+		// hard input ceiling and the turn cannot proceed without a fold. An
+		// overflow-triggered retry on an already-recovered view (est < hard)
+		// is NOT mustFree — it rides the capped/soft-skip path so the same
+		// view cannot pay for another summary (#9572 follow-up).
+		mustFree := policy.Trigger != CompactionTriggerManual && result.InputTokens >= hard
 		outcome, err := a.compactToProjectionLocked(ctx, policy.Trigger, policy.Instructions, forceFold, mustFree)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -207,6 +225,12 @@ func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContex
 			a.sess.compaction.stuckInputHash = ""
 			a.sess.compaction.consecutive = 0
 			a.sess.compaction.failedTurn.Store(0)
+			if policy.Trigger == CompactionTriggerOverflow {
+				// Remember the view this recovery landed on: a repeated
+				// overflow signal over the same view is refused at Prepare so
+				// it cannot pay for another summary (#9572 follow-up).
+				a.sess.compaction.recoveredViewHash = a.contextMaintenanceInputHash(result.Messages)
+			}
 			return result, nil
 		}
 		forceFold = false

@@ -161,12 +161,14 @@ func (a *Agent) minRecentTailBudget(msgs []provider.Message) int {
 	return budget
 }
 
+// minFoldTokens is the smallest region worth one summarization round-trip.
+const minFoldTokens = 400
+
 // foldEconomics estimates whether compacting the given region saves enough
 // tokens to justify the summarization API call. It returns false when the
 // region is too small for the savings to outweigh the extra round-trip cost
 // and latency of calling the summarizer.
 func foldEconomics(region []provider.Message) bool {
-	const minFoldTokens = 400
 	return estimateMessagesTokens(region) >= minFoldTokens
 }
 
@@ -443,7 +445,7 @@ func (a *Agent) summaryRequest(region []provider.Message, instructions string) p
 	return provider.Request{
 		Messages:    messages,
 		Tools:       schemas,
-		MaxTokens:   summaryOutputMaxTokens,
+		MaxTokens:   a.summaryOutputBudget(),
 		Temperature: provider.OptionalTemperature(a.temperature),
 	}
 }
