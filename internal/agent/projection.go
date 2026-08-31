@@ -44,6 +44,7 @@ const (
 const (
 	CompactionModeNative     = "native"
 	CompactionModeSummarized = "summarized"
+	CompactionModeChunked    = "chunked"
 	CompactionModeDegraded   = "degraded"
 	CompactionModeSnip       = "snip"
 )

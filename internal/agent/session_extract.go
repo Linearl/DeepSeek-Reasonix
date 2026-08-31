@@ -115,22 +115,20 @@ func splitExtractChunks(msgs []provider.Message, overlap int) [][]provider.Messa
 	return chunks
 }
 
-// ExtractHighlights summarizes the canonical transcript into one
-// compaction-summary without touching the live projection or session state.
-// progress, when non-nil, reports (chunks summarized, total chunks). The
-// total grows when a fragment is split for retry.
-func (a *Agent) ExtractHighlights(ctx context.Context, progress func(done, total int)) (string, error) {
-	sess := a.Session()
-	if sess == nil {
-		return "", fmt.Errorf("session transcript is empty")
+// chunkedFoldSummary summarizes a fold too large for one summarizer request:
+// byte-budgeted fragments (exponentially decaying, newest finest), each
+// summarized with the resilient half-split retry, and the digests merged via
+// tree-reduce. It is the compaction fallback for over-length folds (#9082
+// #9572 follow-up): the projection still installs in the same session, so
+// work continues in place. progress, when non-nil, reports (chunks
+// summarized, total chunks); the total grows when a fragment splits.
+func (a *Agent) chunkedFoldSummary(ctx context.Context, fold []provider.Message, instructions string, progress func(done, total int)) (foldSummary, error) {
+	if len(fold) == 0 {
+		return foldSummary{}, fmt.Errorf("fold is empty")
 	}
-	msgs := sess.Snapshot()
-	if len(msgs) == 0 {
-		return "", fmt.Errorf("session transcript is empty")
-	}
-	chunks := splitExtractChunks(msgs, extractChunkOverlapBytes)
+	chunks := splitExtractChunks(fold, extractChunkOverlapBytes)
 	if len(chunks) == 0 {
-		return "", fmt.Errorf("session transcript is empty")
+		return foldSummary{}, fmt.Errorf("fold is empty")
 	}
 	report := orNoopProgress(progress)
 	// Fragments may split in half on summarizer failure (see
@@ -147,26 +145,20 @@ func (a *Agent) ExtractHighlights(ctx context.Context, progress func(done, total
 		}
 		report(done, total)
 	}
-	if len(chunks) == 1 {
-		// Fast path: a single fragment is exactly one compaction request -
-		// reuse the canonical template verbatim so the output is directly
-		// comparable to a normal compaction summary.
-		text, err := a.extractFragmentResilient(ctx, chunks[0], compactionInstruction, advance)
-		if err != nil {
-			return "", err
-		}
-		return text, nil
-	}
 	parts := make([]string, 0, len(chunks))
 	for i, chunk := range chunks {
-		instructions := fmt.Sprintf(extractFragmentInstructionTmpl, i+1, len(chunks))
-		res, err := a.extractFragmentResilient(ctx, chunk, instructions, advance)
+		fragInstr := fmt.Sprintf(extractFragmentInstructionTmpl, i+1, len(chunks))
+		res, err := a.extractFragmentResilient(ctx, chunk, fragInstr, advance)
 		if err != nil {
-			return "", fmt.Errorf("fragment %d/%d: %w", i+1, len(chunks), err)
+			return foldSummary{}, fmt.Errorf("fragment %d/%d: %w", i+1, len(chunks), err)
 		}
 		parts = append(parts, res)
 	}
-	return a.mergeFragments(ctx, parts)
+	text, err := a.mergeFragments(ctx, parts)
+	if err != nil {
+		return foldSummary{}, err
+	}
+	return foldSummary{Text: text, Mode: CompactionModeChunked, Spans: len(chunks)}, nil
 }
 
 // extractFragmentResilient summarizes one extract fragment, splitting it in
