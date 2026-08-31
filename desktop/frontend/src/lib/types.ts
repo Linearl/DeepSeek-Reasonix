@@ -1600,7 +1600,7 @@ export interface MemoryView {
 }
 
 // SettingsTab is the top-level navigation item in the Settings Centre modal.
-export type SettingsTab = "general" | "models" | "providers" | "bots" | "mcp" | "remote" | "skills" | "subagents" | "plugins" | "memory" | "hooks" | "diagnostics" | "shortcuts" | "permissions" | "sandbox" | "network" | "appearance" | "storage" | "updates";
+export type SettingsTab = "general" | "models" | "providers" | "bots" | "mcp" | "remote" | "localserver" | "skills" | "subagents" | "plugins" | "memory" | "hooks" | "diagnostics" | "shortcuts" | "permissions" | "sandbox" | "network" | "appearance" | "storage" | "updates";
 
 /** Extension runtime doctor report from App.RuntimeDoctor. */
 export interface RuntimeDoctorReport {

@@ -198,6 +198,10 @@ interface DesktopWindowState {
 // AppBindings is the hand-written React-to-Go contract. _CheckGeneratedBindings
 // catches generated methods missing here; update this interface and typecheck.
 export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganizationBindings, HistoryCatalogBindings, TaskCatalogBindings, BlankProjectBindings, QualityFloorBindings, SessionTitleBindings, ScrollDiagnosticBindings, RemoteProjectBindings, MCPAppBindings {
+  // Serve pool remote gateway (Settings → 集成与连接 → 本地服务器服务).
+  ServePoolStatus(): Promise<{ enabled: boolean; running: boolean; bind: string; addr: string; port: number; token: string; listen: string }>;
+  SetServePoolEnabled(enabled: boolean): Promise<void>;
+  GatewayToken(): Promise<string>;
   AddAuthorizedWriteDir(scope: 0 | 1, dir: string): Promise<void>;
   AddAuthorizedWriteDirForTab(tabId: string, scope: 0 | 1, dir: string): Promise<void>;
   // One selectable session for the write-directory panel's session picker
@@ -2533,6 +2537,15 @@ function makeMockApp(): AppBindings {
   return {
     ...makeMockSessionCatalogBindings(cloneProjectTree),
     ...makeMockBlankProjectBindings(),
+    async ServePoolStatus() {
+      return { enabled: false, running: false, bind: "", addr: "", port: 18789, token: "mock-gateway-token", listen: "0.0.0.0:18789" };
+    },
+    async SetServePoolEnabled() {
+      // dev mock: no-op
+    },
+    async GatewayToken() {
+      return "mock-gateway-token";
+    },
     async MinimiseMainWindow() {
       console.info("mock MinimiseMainWindow");
     },

@@ -26,13 +26,13 @@ import { useT, type DictKey } from "../lib/i18n";
 import type { SettingsTab } from "../lib/types";
 
 export const SETTINGS_NAV_TABS: SettingsTab[] = [
-  "general", "models", "bots", "mcp", "remote", "skills", "subagents", "plugins", "memory",
+  "general", "models", "bots", "mcp", "remote", "localserver", "skills", "subagents", "plugins", "memory",
   "hooks", "diagnostics", "shortcuts", "permissions", "sandbox", "network", "appearance", "storage", "updates",
 ];
 
 const SETTINGS_TAB_GROUPS: { labelKey: DictKey; tabs: SettingsTab[] }[] = [
   { labelKey: "settings.navGroup.preferences", tabs: ["general", "models", "bots"] },
-  { labelKey: "settings.navGroup.connections", tabs: ["mcp", "remote"] },
+  { labelKey: "settings.navGroup.connections", tabs: ["mcp", "remote", "localserver"] },
   { labelKey: "settings.navGroup.capabilities", tabs: ["skills", "subagents", "plugins"] },
   { labelKey: "settings.navGroup.context", tabs: ["memory"] },
   { labelKey: "settings.navGroup.automation", tabs: ["hooks", "diagnostics", "shortcuts"] },

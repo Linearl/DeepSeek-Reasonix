@@ -351,6 +351,7 @@ type App struct {
 	servePool              *servepool.Manager
 	gatewaySrv             *http.Server
 	gatewayAddr            string
+	gatewayBind            string
 	remoteWindowLifecycles remoteWindowLifecycleRegistry
 	remoteWindowOpener     func(remoteWindowLaunch) error // test-only injection
 	// Remote project tabs are in-app surfaces bound to a remote workspace.
@@ -506,7 +507,11 @@ func (a *App) startup(ctx context.Context) {
 		return
 	}
 	installSystemQuitHook()
-	a.startServePool(ctx)
+	// Serve pool gateway is opt-in via the Settings → 集成与连接 panel; only
+	// start it on launch if the user previously enabled the toggle.
+	if servepoolEnabled() {
+		a.startServePool(ctx)
+	}
 	a.startTray()
 	a.enableDeferredRebuildRetry()
 	a.startHistoryIndexMigration()
