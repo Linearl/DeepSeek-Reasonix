@@ -56,7 +56,7 @@
 
 ### GLM 思考强度档暴露（#9642）
 
-GLM-5.2/5.3 系列其实支持 `reasoning_effort` 强度档（low/medium/high/max），但 Reasonix 的 `glmEffortCapability()` 只暴露开关（auto/enabled/disabled），且把 low/medium/high 全归一为 enabled、请求构造故意置空 `reasoning_effort`——UI 只能看到 auto。本版：① `glmEffortCapability()` 暴露 `auto/disabled/low/medium/high/max`；② `normalizeGLMEffort` 保留强度档不再归一；③ openai.go zhipu 分支按档位发送 `reasoning_effort`（low/medium/high/max → thinking.enabled + reasoning_effort=X；disabled → 仅 thinking.disabled）；④ 前端 supportedEfforts 同步更新；⑤ 修正过时注释（reasoning_effort 自 GLM-5.2 起支持）。
+GLM-5.2/5.3 系列其实支持 `reasoning_effort` 强度档（low/medium/high/max），但 Reasonix 的 `glmEffortCapability()` 只暴露开关（auto/enabled/disabled），且把 low/medium/high 全归一为 enabled、请求构造故意置空 `reasoning_effort`——UI 只能看到 auto。本版：① `glmEffortCapability()` 暴露 `auto/disabled/low/medium/high/max`；② `normalizeGLMEffort` 保留强度档不再归一；③ openai.go zhipu 分支按档位发送 `reasoning_effort`（low/medium/high/max → thinking.enabled + reasoning_effort=X；disabled → 仅 thinking.disabled）；④ 前端 supportedEfforts 同步更新；⑤ 修正过时注释（reasoning_effort 自 GLM-5.2 起支持）；⑥ **修正 openai.go zhipu 校验层**：早期只放行 `enabled/disabled` 二元、强度档在 boot-time 被拒（报「effort must be enabled or disabled」），现放行 `auto/disabled/low/medium/high/max`，与发送端双值对映射一致——每个档位映射为 `(thinking.type, reasoning_effort)` 一对值而非单值。用户实测修正后切换强度档成功。
 
 ### 搜索历史提问面板样式恢复（#9218）
 
@@ -69,6 +69,14 @@ GLM-5.2/5.3 系列其实支持 `reasoning_effort` 强度档（low/medium/high/ma
 ### 交付验收框间歇缺失修复（#9601）
 
 交付回合结束 `turn_done` 在 `tabEventSink.ctx==nil` 时被静默丢弃，但同一次 Emit 仍写入 `awaiting_delivery` 徽章——造成"徽章挂了、验收框没出现"（分屏/切换/定时器竞态）。本版新增 `pendingRuntimeEvents` 缓冲：ctx 为 nil 时不再丢弃，而在 `setContext` 安装真实 wails ctx 后 flush，前端永不遗漏已记账的 turn_done。
+
+### /compact 分块降级交互体验优化（#9082）
+
+超长会话 `/compact` 走分块提取回归时（几分钟无反馈）：① 后端新增 `CompactionProgress` 事件，把 `chunkedFoldSummary` 每个 fragment 的 `done/total` 实时透传（原 `progress` 回调被传 `nil` 丢弃）；② 前端压缩卡片从静态"正在压缩…"改为**"分块压缩中 N/M"**并随进度递增；③ 过程折叠段含 compaction 事件时按 **pending 状态**显示——压缩中显示"分块压缩中 N/M"/"正在压缩对话…"，只有 `compaction_done` 后才显示"上下文已压缩"，避免把进行中的压缩误标为"已压缩"；④ 顶部 `compactionActive` 横幅保留。用户实测反馈"压缩中直接显示已压缩不合理"已修正。
+
+### 搜索历史提问面板滚轮加载修复（#9218 补充）
+
+搜索面板在顶部向上滚时无法加载更早提问：冒泡阶段 `onWheel` 收不到事件（被嵌套滚动处理器拦截）。本版改**捕获阶段 `onWheelCapture`**——`deltaY<0 && scrollTop<=8` 时调用 `onReachTop` 加载更早问题并 `preventDefault`/`stopPropagation`。用户实测确认正常。
 
 ---
 
