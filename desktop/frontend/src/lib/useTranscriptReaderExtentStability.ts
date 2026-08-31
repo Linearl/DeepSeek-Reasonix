@@ -48,6 +48,9 @@ type ActiveReaderTransaction = TranscriptReaderTransaction & {
   transient: boolean;
   visualOffset: number;
   postCorrectionSettleDeadline: number;
+  /** Wall-clock bound for a history-prepend geometry commit. Reader input may
+   *  extend its own settle window, but must not postpone the prepend forever. */
+  commitAt: number;
   /** Last tick's native height: a rebound correction spends its budget only
    *  after one unchanged-height interval with mounted viewport coverage. */
   correctionHeightSample: number;
@@ -79,8 +82,17 @@ function captureLogicalAnchor(element: HTMLDivElement): { index: number; offset:
   return intersecting;
 }
 
-function rowForAnchor(element: HTMLDivElement, anchor: TranscriptReaderTransaction["anchor"]): HTMLElement | undefined {
+function rowForAnchor(
+  element: HTMLDivElement,
+  anchor: TranscriptReaderTransaction["anchor"],
+  requireStableKey = false,
+): HTMLElement | undefined {
   if (!anchor) return undefined;
+  if (requireStableKey) {
+    if (!anchor.key) return undefined;
+    return Array.from(element.querySelectorAll<HTMLElement>(".transcript__row[data-row-key]"))
+      .find((row) => row.dataset.rowKey === anchor.key);
+  }
   return element.querySelector<HTMLElement>(`.transcript__row[data-index="${anchor.index}"]`) ?? undefined;
 }
 
@@ -103,11 +115,15 @@ export function useTranscriptReaderExtentStability({
   geometryRevisionRef,
   modeRef,
   scrollRef,
+  geometryCommitBlockedRef,
+  geometryCommitReadyRef,
+  stableAnchorRequiredRef,
   writeCorrection,
   onStart,
   onIdleDeadline,
   onStabilitySample,
   onTailHandoff,
+  onGeometryCommitReady,
   onEnd,
 }: {
   generationRef: RefObject<number>;
@@ -115,11 +131,21 @@ export function useTranscriptReaderExtentStability({
   geometryRevisionRef: RefObject<number>;
   modeRef: RefObject<TranscriptScrollMode>;
   scrollRef: RefObject<HTMLDivElement | null>;
+  /** A history-prepend lease may observe and visually guard geometry, but it
+   *  cannot spend the reader's single physical correction budget. */
+  geometryCommitBlockedRef: RefObject<boolean>;
+  /** Becomes true only after the reader's bounded wall-clock settle window
+   *  has seen stable geometry while a commit is blocked. */
+  geometryCommitReadyRef: RefObject<boolean>;
+  /** Keeps the prepend's row-key anchor authoritative through the one final
+   *  reader correction, after the layout lease itself is released. */
+  stableAnchorRequiredRef: RefObject<boolean>;
   writeCorrection: (write: TranscriptScrollWriteRecord) => boolean;
   onStart: (transaction: TranscriptReaderTransaction) => void;
   onIdleDeadline: (transaction: TranscriptReaderTransaction) => void;
   onStabilitySample: (transaction: TranscriptReaderTransaction, stable: boolean, tailEligible: boolean) => void;
   onTailHandoff: (transaction: TranscriptReaderTransaction) => void;
+  onGeometryCommitReady: () => void;
   onEnd: (transaction: TranscriptReaderTransaction, reason: "stable-manual" | "timeout" | "cancelled") => void;
 }) {
   const transactionRef = useRef<ActiveReaderTransaction | null>(null);
@@ -137,11 +163,12 @@ export function useTranscriptReaderExtentStability({
   // cancel(). A new reader epoch must inherit the same lease without toggling
   // the Virtuoso range in between.
   const [readerLayoutLease, setReaderLayoutLease] = useState(false);
-  const callbacksRef = useRef({ onStart, onIdleDeadline, onStabilitySample, onTailHandoff, onEnd });
-  callbacksRef.current = { onStart, onIdleDeadline, onStabilitySample, onTailHandoff, onEnd };
+  const callbacksRef = useRef({ onStart, onIdleDeadline, onStabilitySample, onTailHandoff, onGeometryCommitReady, onEnd });
+  callbacksRef.current = { onStart, onIdleDeadline, onStabilitySample, onTailHandoff, onGeometryCommitReady, onEnd };
   const finish = useCallback((transaction: ActiveReaderTransaction, reason: "stable-manual" | "timeout" | "cancelled", notify = true) => {
     if (transactionRef.current !== transaction) return;
     transactionRef.current = null;
+    stableAnchorRequiredRef.current = false;
     if (transaction.frame !== null) cancelAnimationFrame(transaction.frame);
     transaction.frame = null;
     transaction.tick = undefined;
@@ -155,7 +182,7 @@ export function useTranscriptReaderExtentStability({
     requestAnimationFrame(() => {
       if (mountedRef.current && transactionRef.current === null) setActive(false);
     });
-  }, []);
+  }, [stableAnchorRequiredRef]);
 
   const cancel = useCallback((notify = true) => {
     setReaderLayoutLease(false);
@@ -164,6 +191,10 @@ export function useTranscriptReaderExtentStability({
   }, [finish]);
 
   const isActive = useCallback(() => transactionRef.current !== null, []);
+  const anchorIsMounted = useCallback(() => {
+    const transaction = transactionRef.current;
+    return !transaction || Boolean(rowForAnchor(transaction.element, transaction.anchor, true));
+  }, []);
 
   const observe = useCallback((element = scrollRef.current) => {
     const transaction = transactionRef.current;
@@ -176,15 +207,21 @@ export function useTranscriptReaderExtentStability({
       ? transaction.lastAcceptedTop - element.scrollTop
       : element.scrollTop - transaction.lastAcceptedTop;
     const viewport = element.getBoundingClientRect();
-    let anchorRow = rowForAnchor(element, transaction.anchor);
-    if (anchorRow && transaction.visualOffset === 0 && !extentCollapsed && reverse < threshold) {
+    let anchorRow = rowForAnchor(element, transaction.anchor, geometryCommitBlockedRef.current || stableAnchorRequiredRef.current);
+    if (
+      !geometryCommitBlockedRef.current
+      && anchorRow
+      && transaction.visualOffset === 0
+      && !extentCollapsed
+      && reverse < threshold
+    ) {
       const rect = anchorRow.getBoundingClientRect();
       if (rect.bottom <= viewport.top || rect.top >= viewport.top + element.clientHeight) {
         // A harmless Virtuoso range replacement can leave the transaction's
         // old row mounted only in overscan. It is no longer a viewport anchor:
         // guarding its drift would move rows that are already visually stable.
         transaction.anchor = captureLogicalAnchor(element) ?? transaction.anchor;
-        anchorRow = rowForAnchor(element, transaction.anchor);
+        anchorRow = rowForAnchor(element, transaction.anchor, geometryCommitBlockedRef.current || stableAnchorRequiredRef.current);
       }
     }
     const renderedAnchorDrift = anchorRow && transaction.anchor
@@ -197,6 +234,9 @@ export function useTranscriptReaderExtentStability({
     // Extent collapse needs the half-viewport transient threshold, but the
     // user-visible screen anchor has the stricter 96px acceptance contract.
     const anchorDisplaced = reverseAnchorDisplacement >= MIN_REVERSE_JUMP_PX;
+    if (
+      Math.abs(element.scrollHeight - transaction.lastHeight) > GEOMETRY_EPSILON_PX || anchorDisplaced
+    ) geometryCommitReadyRef.current = false;
     if (anchorRow) transaction.anchorDisplacementObserved = anchorDisplaced;
     const rejected = (extentCollapsed && reverse >= threshold) || anchorDisplaced;
     const remainsCollapsed = extentCollapsed
@@ -249,6 +289,7 @@ export function useTranscriptReaderExtentStability({
         && reverse >= threshold
         && element.scrollHeight >= transaction.baselineHeight - threshold
         && transcriptElementViewportIsBlank(element)
+        && !geometryCommitBlockedRef.current
         && !syncTickInFlightRef.current
       ) {
         transaction.prepaint = true;
@@ -263,14 +304,14 @@ export function useTranscriptReaderExtentStability({
       }
       return true;
     }
-    if (!extentCollapsed && !anchorDisplaced && transaction.visualOffset !== 0) clearVisualGuard(transaction);
+    if (!geometryCommitBlockedRef.current && !extentCollapsed && !anchorDisplaced && transaction.visualOffset !== 0) clearVisualGuard(transaction);
     const directionConsistent = transaction.direction > 0
       ? element.scrollTop >= transaction.lastAcceptedTop - 1
       : element.scrollTop <= transaction.lastAcceptedTop + 1;
     const movedInDirection = transaction.direction > 0
       ? element.scrollTop > transaction.lastAcceptedTop + 1
       : element.scrollTop < transaction.lastAcceptedTop - 1;
-    if (directionConsistent && movedInDirection && !transaction.mountAnchorWritten) {
+    if (!geometryCommitBlockedRef.current && directionConsistent && movedInDirection && !transaction.mountAnchorWritten) {
       // Accumulate the gesture's accepted directional travel: the proof that
       // the reader genuinely navigated this range. A collapse clamp or an
       // in-place wheel at a fabricated bottom adds nothing.
@@ -319,7 +360,7 @@ export function useTranscriptReaderExtentStability({
       });
     }
     return transaction.transient;
-  }, [scrollRef]);
+  }, [geometryCommitBlockedRef, geometryCommitReadyRef, scrollRef, stableAnchorRequiredRef]);
 
   const schedule = useCallback((transaction: ActiveReaderTransaction) => {
     const tick = () => {
@@ -365,8 +406,13 @@ export function useTranscriptReaderExtentStability({
       // from a still-collapsed range once the reader idle deadline has passed.
       // A recovered extent or a row-only displacement remains immediately
       // correctable, so ordinary measurement drift does not linger onscreen.
-      if (!transaction.correctionWritten && correctionReady && (!extentStillCollapsed || !beforeIdleDeadline)) {
-        const anchorRow = rowForAnchor(element, transaction.anchor);
+      if (
+        !geometryCommitBlockedRef.current
+        && !transaction.correctionWritten
+        && correctionReady
+        && (!extentStillCollapsed || !beforeIdleDeadline)
+      ) {
+        const anchorRow = rowForAnchor(element, transaction.anchor, geometryCommitBlockedRef.current || stableAnchorRequiredRef.current);
         if (!anchorRow && transaction.anchor && !transaction.mountAnchorWritten) {
           transaction.mountAnchorWritten = writeCorrection({
             owner: "reader-stability",
@@ -438,7 +484,7 @@ export function useTranscriptReaderExtentStability({
       if (correctionWrittenThisFrame) {
         transaction.anchorDisplacementObserved = false;
         clearVisualGuard(transaction);
-      } else if (collapseReady && reverse < threshold && !transaction.anchorDisplacementObserved) {
+      } else if (!geometryCommitBlockedRef.current && collapseReady && reverse < threshold && !transaction.anchorDisplacementObserved) {
         clearVisualGuard(transaction);
       }
 
@@ -467,6 +513,14 @@ export function useTranscriptReaderExtentStability({
       transaction.lastBottomDistance = bottomDistance;
 
       if (transaction.stableFrames >= STABLE_FRAMES_REQUIRED) {
+        if (geometryCommitBlockedRef.current) {
+          if (now >= transaction.commitAt && !geometryCommitReadyRef.current) {
+            geometryCommitReadyRef.current = true;
+            callbacksRef.current.onGeometryCommitReady();
+          }
+          transaction.frame = requestAnimationFrame(tick);
+          return;
+        }
         // A corrective scroll can make Virtuoso commit a replacement range
         // well after the first two quiet animation frames. Keep observing (but
         // never reopen the writer budget) through one bounded quiet window so
@@ -495,6 +549,14 @@ export function useTranscriptReaderExtentStability({
         return;
       }
       if (now >= transaction.settleDeadline) {
+        if (geometryCommitBlockedRef.current) {
+          if (now >= transaction.commitAt + 620 && !geometryCommitReadyRef.current) {
+            geometryCommitReadyRef.current = true;
+            callbacksRef.current.onGeometryCommitReady();
+          }
+          transaction.frame = requestAnimationFrame(tick);
+          return;
+        }
         recordTranscriptScrollDiagnostic("scroll-anomaly", {
           transactionId: transaction.id,
           direction: transaction.direction,
@@ -510,7 +572,29 @@ export function useTranscriptReaderExtentStability({
     // Exposed so a blank rebound delivery can run the correction before paint.
     transaction.tick = tick;
     if (transaction.frame === null) transaction.frame = requestAnimationFrame(tick);
-  }, [finish, generationRef, geometryRevisionRef, modeRef, observe, ownershipEpochRef, scrollRef, writeCorrection]);
+  }, [finish, generationRef, geometryCommitBlockedRef, geometryCommitReadyRef, geometryRevisionRef, modeRef, observe, ownershipEpochRef, scrollRef, stableAnchorRequiredRef, writeCorrection]);
+
+  const holdGeometryCommit = useCallback((captureAnchor: boolean) => {
+    geometryCommitReadyRef.current = false;
+    const transaction = transactionRef.current;
+    if (!transaction) return;
+    const now = Date.now();
+    if (captureAnchor) transaction.anchor = captureLogicalAnchor(transaction.element) ?? transaction.anchor;
+    transaction.settleDeadline = Math.max(
+      transaction.settleDeadline,
+      now + TRANSCRIPT_READER_IDLE_MS + TRANSCRIPT_READER_SETTLE_MS,
+    );
+    transaction.commitAt = Math.max(
+      transaction.commitAt,
+      now + TRANSCRIPT_READER_IDLE_MS + TRANSCRIPT_READER_SETTLE_MS,
+    );
+    transaction.stableFrames = 0;
+    if (captureAnchor) {
+      transaction.correctionWritten = false;
+      transaction.mountAnchorWritten = false;
+    }
+    schedule(transaction);
+  }, [geometryCommitReadyRef, schedule]);
 
   const arm = useCallback((deltaY: number, canClaimTail: boolean) => {
     const element = scrollRef.current;
@@ -591,6 +675,7 @@ export function useTranscriptReaderExtentStability({
       transient: inheritedCollapse,
       visualOffset: 0,
       postCorrectionSettleDeadline: 0,
+      commitAt: now + TRANSCRIPT_READER_IDLE_MS + TRANSCRIPT_READER_SETTLE_MS,
       correctionHeightSample: element.scrollHeight,
       prepaint: false,
     };
@@ -620,7 +705,9 @@ export function useTranscriptReaderExtentStability({
     arm,
     cancel,
     observe,
+    holdGeometryCommit,
+    anchorIsMounted,
     isActive,
     active: active || readerLayoutLease,
-  }), [active, arm, cancel, readerLayoutLease, observe, isActive]);
+  }), [active, anchorIsMounted, arm, cancel, holdGeometryCommit, readerLayoutLease, observe, isActive]);
 }

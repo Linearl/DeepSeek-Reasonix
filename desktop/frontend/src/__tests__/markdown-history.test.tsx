@@ -259,7 +259,8 @@ console.log("\nmarkdown history rendering");
   ok(rootEl.textContent?.includes("Anchor 1"), "the reader's prefix remains mounted during the deferred handoff");
 
   rootEl.scrollTop = 692;
-  ok(observeNativeTranscriptTailClamp(rootEl, 692), "a native no-op tail write records the reachable bottom");
+  ok(!observeNativeTranscriptTailClamp(rootEl, 692), "the first native no-op tail write remains pending");
+  ok(observeNativeTranscriptTailClamp(rootEl, 692), "a repeated native no-op tail write confirms the reachable bottom");
   eq(nativeTranscriptDistanceFromBottom(rootEl), 0, "the shared transcript geometry treats the native clamp as bottom");
   await act(async () => {
     rootEl.dispatchEvent(new dom.window.Event("scroll"));
