@@ -12,6 +12,8 @@
 package event
 
 import (
+	"encoding/json"
+
 	"reasonix/internal/billing"
 	"reasonix/internal/evidence"
 	"reasonix/internal/nilutil"
@@ -128,6 +130,10 @@ const (
 	TurnStatusChanged
 	// PromptAnswered records that a durable Ask/approval item was answered and the same turn resumed; ItemID carries the stable prompt id and answer content remains in its purpose-built decision receipt.
 	PromptAnswered
+	// MCPInteractionRequest carries a server-initiated MCP elicitation (form
+	// or URL) for the frontend to answer via the MCP interaction resolve call.
+	// Appended last to keep the Kind values before it wire-stable.
+	MCPInteractionRequest
 	// SessionChanged is a content-free Serve routing barrier for all-session clients.
 	SessionChanged
 	// KindCount is a sentinel one past the last real Kind. New event kinds must
@@ -335,6 +341,20 @@ type Ask struct {
 	Questions []AskQuestion
 }
 
+// MCPInteraction carries one MCPInteractionRequest: a server-initiated
+// elicitation the frontend must answer with accept/decline/cancel. Mode is
+// "form" (RequestedSchema is a flat primitive JSON schema) or "url" (URL is a
+// credential-free HTTP(S) target the user opens explicitly).
+type MCPInteraction struct {
+	ID              string
+	Server          string
+	Mode            string
+	Message         string
+	RequestedSchema json.RawMessage
+	URL             string
+	ElicitationID   string
+}
+
 // Extension surface kind values carried by ExtensionSurfacePayload.Kind. They
 // mirror the extension protocol's structured surface kinds; "request" is
 // reserved for stage-8b request surfaces (stage 8a routes blocking prompts
@@ -539,6 +559,7 @@ type Event struct {
 	Audience        NoticeAudience           // Notice: empty = ordinary frontend delivery; operator = no end-user chat forwarding
 	Approval        Approval                 // ApprovalRequest
 	Ask             Ask                      // AskRequest
+	MCPInteraction  MCPInteraction           // MCPInteractionRequest
 	Extension       *ExtensionSurfacePayload // ExtensionSurface / ExtensionStatus (nil for every other kind)
 	Err             error                    // TurnDone: non-nil on failure
 	Cancelled       bool                     // TurnDone: Cancel was requested while the turn was active

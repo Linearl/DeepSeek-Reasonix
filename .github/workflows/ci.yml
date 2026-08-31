@@ -388,6 +388,7 @@ jobs:
         run: |
           pnpm --dir frontend test:terminal
           pnpm --dir frontend test:task-monitor
+          pnpm --dir frontend test:mcp-app
           pnpm --dir frontend test:workspace
           pnpm --dir frontend test:stream
           pnpm --dir frontend test:motion
@@ -603,7 +604,7 @@ jobs:
           pnpm --dir frontend exec playwright install chromium
           pnpm --dir frontend test:transcript-browser
 
-      - name: Test WebView2 native transcript scrolling
+      - name: Test WebView2 native transcript and composer scrolling
         timeout-minutes: 5
         run: |
           pnpm --dir frontend exec vite preview --host 127.0.0.1 --port 4173 --strictPort > "$RUNNER_TEMP/reasonix-transcript-preview.log" 2>&1 &
@@ -614,7 +615,7 @@ jobs:
             sleep 0.1
           done
           go run -tags reasonix_transcript_smoke ./cmd/transcript-native-smoke \
-            -url 'http://127.0.0.1:4173/?mock=bench&bench=1' \
+            -url 'http://127.0.0.1:4173/?mock=bench&bench=1&nativeComposer=1' \
             -script transcript_native_smoke_contract.js
 
       - name: Test WebView2 native smoke state machine

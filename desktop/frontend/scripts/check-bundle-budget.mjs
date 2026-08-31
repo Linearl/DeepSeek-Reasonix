@@ -94,11 +94,73 @@ console.log("\nbundle budgets");
 // its filtered count matches the assistant Sources panel. The measured build
 // is 431.509 KiB gzip; keep 0.1 KiB of explicit headroom for hash/toolchain
 // drift instead of relying on a rounded equality.
-// Upstream v1.33.0's reader transaction contract and shell-support surface
-// bring the merged main-v2 baseline to 453.736 KiB gzip; fork additions
-// (write-dir management, optimistic-write, subagent tiers) ride on top of it.
-// The ratchet follows the upstream value so both lineages build.
-const initialJSBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 453.8 : 453.8;
+// Remote onboarding [0.5/3] adds project-group and credential-chain wiring on
+// top of the lazy wizard. Exact-turn routing, the extracted event-gap
+// projector, checkpoint resets, and the navigation surface transaction bring
+// the current main-v2 path to 437.36 KiB gzip.
+// The full remote-session surface adds the lazy transcript bridge and tab
+// lifecycle on top of [0.5/3]. Keep the measured stack's narrow ratchet.
+// Remote approval hardening adds authoritative composer-profile hydration,
+// scoped rewind dispatch, and attachment/inbox fences to the always-mounted
+// remote hook. The measured production path is 438.38 KiB gzip after keeping
+// the integration modules below repolint's ownership ceilings; retain 0.12 KiB
+// toolchain headroom with a bounded 1.4 KiB ratchet.
+// Remote status isolation keeps the always-mounted status bar on the active
+// remote transcript and routes job cancellation to that host. Parsers and
+// retry policy remain lazy; the measured selector adds under 0.1 KiB gzip.
+// Remote runtime parity adds scoped approvals, status-only reconciliation,
+// session quality-floor routing, dropped-frame reconciliation, and remote
+// runtime-command dispatch. The measured initial path is 439.60 KiB;
+// retain 0.10 KiB of bounded toolchain headroom.
+// Closing the remaining review gaps adds generation-fenced hydration plus
+// remote-only tool payload, Todo, and terminal isolation. The measured path is
+// 439.74 KiB; retain 0.06 KiB of headroom with a 0.1 KiB ratchet.
+// The final remote-runtime parity pass adds remote run-strip telemetry,
+// explicit session verbs, and specialized plan decisions. The measured path
+// is 440.02 KiB. The current main-v2 turn-event, finish-protocol, and session
+// repair runtime then moves the combined path to 445.097 KiB; retain 0.103 KiB
+// of bounded build/toolchain headroom.
+// Atomic remote profile changes, exact approval draining, and generation-safe
+// history handoff bring the measured path to 445.228 KiB. Retain 0.072 KiB of
+// headroom with the smallest existing decimal ratchet.
+// Direct pending-prompt recovery and authoritative remote Goal state bring the
+// measured path to 445.473 KiB. Retain 0.027 KiB of bounded headroom.
+// Restored remote shells now activate their backend session immediately and
+// keep disconnected state out of the mounted surface. The merged production
+// path measures 445.614 KiB; retain 0.086 KiB of bounded build/toolchain
+// headroom with the smallest existing decimal ratchet.
+// Runtime-aware Todo presentation plus exact-tab continuation adds 0.3 KiB gzip
+// to the always-mounted footer path. Keep the state/routing guard with a narrow
+// ratchet rather than showing idle restored work as actively running. The
+// combined path measures 445.9 KiB; retain 0.1 KiB of toolchain headroom.
+// Transcript surface ownership and the token-fenced unloaded-question commit
+// move the exact main-v2 baseline from 445.865 to 447.587 KiB gzip (+0.39%).
+// The final 0.266 KiB retains jump ownership through paint-ready instead of
+// allowing a native scrollend to release it. Keep only 0.213 KiB headroom;
+// native validation hosts and test fixtures stay outside the production graph.
+// Cross-platform shell inventory, current-session vs after-reload rows,
+// manual repair guidance, and exact download-host allowlisting move the merged
+// path from 448.692 to 449.758 KiB (+1.066 KiB). Retain 0.142 KiB of bounded
+// build/toolchain headroom.
+// The reader transaction contract (geometry revisions, generation-fenced
+// writer requests, gesture travel proof, stabilized-shrink extent acceptance,
+// and the blank-rebound prepaint lane) adds a measured 3.978 KiB gzip on the
+// merged main-v2 baseline. MCP elicitation and the inline Apps lifecycle remain
+// on that startup graph; the combined path measures 455.0 KiB. Retain 0.2 KiB
+// of bounded build/toolchain headroom.
+// Generic elicitation validation adds field-specific localized accessibility
+// copy to the English startup dictionary. The interaction code and CSS remain
+// lazy; the measured path is 455.437 KiB. Retain 0.163 KiB of headroom.
+// Stream-failure visibility (#9560) adds the last-discard reason and one
+// terminal-notice dedupe flag, while provider no_proxy copy now states the
+// custom-proxy precedence. The merged path measures 455.9 KiB; retain 0.1 KiB
+// of bounded build/toolchain headroom.
+// Exhausted tail repair now releases ownership so jump-bottom remains usable
+// after a stranded native WebView extent. The WebView2 reachable-tail clamp
+// then absorbs a second post-quiet extent without an unbounded write loop.
+// The combined path measures 456.316 KiB; retain 0.084 KiB with the smallest
+// one-decimal ratchet.
+const initialJSBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 456.4 : 456.4;
 assertBudget("initial JavaScript gzip", initialJSGzip, initialJSBudgetKiB * 1024);
 assertBudget("largest initial JavaScript chunk gzip", largestInitialJS, 280 * 1024);
 // Render-blocking CSS is intentionally absent: styles.css loads deferred via
@@ -146,16 +208,18 @@ for (const path of localeChunks) {
   // not a startup-performance regression (single-language chunk loads lazily,
   // ~57-59 KiB gzip), so do not hard-fail the release on a few hundred bytes
   // of UI copy. Upstream hard-fails and bumps the ratchet by hand each time a
-  // feature adds copy; we instead keep a soft (warn-only) threshold at 59.0
+  // feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
   // KiB and a generous 70.0 KiB hard ceiling purely as an anti-runaway guard.
+  // Stream-failure diagnostics and reachable-tail recovery copy: zh 58.923,
+  // zh-TW 59.710 KiB measured.
   const localeBytes = gzipBytes(path);
   if (localeBytes > 70.0 * 1024) {
     throw new Error(`${name} gzip is ${formatKiB(localeBytes)}; hard ceiling is 70.0 KiB`);
   }
-  if (localeBytes > 59.0 * 1024) {
+  if (localeBytes > 60.0 * 1024) {
     console.warn(`  WARN  ${name} gzip: ${formatKiB(localeBytes)} (UI copy growth; release proceeds)`);
   } else {
-    process.stdout.write(`  PASS  ${name} gzip: ${formatKiB(localeBytes)} / warn ${formatKiB(59.0 * 1024)}\n`);
+    process.stdout.write(`  PASS  ${name} gzip: ${formatKiB(localeBytes)} / warn ${formatKiB(60.0 * 1024)}\n`);
   }
 }
 
@@ -202,10 +266,23 @@ const rawInitialBytes = [...initialJS, ...initialCSS, ...appShellCSS]
 // scroll delivery can restore mounted coverage before the next visible frame.
 // Retain 0.096 KiB of headroom without widening gzip or chunk ceilings.
 // The reader transaction contract then adds a measured 15.317 KiB raw on the
-// merged main-v2 baseline (including its own prepaint port), bringing the
-// path to 2437.892 KiB; retain 0.108 KiB of bounded headroom.
-// Fork v1.33.0 additions (write-dir management, optimistic-write, subagent
-// tiers) ride on top of the upstream baseline; the ratchet follows upstream.
-const rawInitialBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 2_438.0 : 2_438.0;
+// merged main-v2 baseline (including its own prepaint port). MCP elicitation
+// and Apps add their bounded payload on the shared graph; the combined path
+// measures 2442.6 KiB. Retain 0.4 KiB of bounded build/toolchain headroom.
+// The browser MCP interaction preview adds 0.6 KiB of route wiring while its
+// 0.75 KiB form fixture and lifecycle remain lazy. The combined path measures
+// 2443.2 KiB; retain 0.1 KiB of bounded build/toolchain headroom.
+// Generic field copy adds 1.134 KiB raw to the startup dictionary; all schema
+// parsing, rendering, and CSS remain lazy. The measured path is 2444.334 KiB;
+// retain 0.166 KiB of bounded build/toolchain headroom.
+// The off-flow composer measurement mirror adds 0.472 KiB raw while removing
+// live-textarea layout mutation. The merged path measures 2444.806 KiB; retain
+// 0.194 KiB of bounded toolchain headroom without widening gzip/chunk gates.
+// Stream-failure visibility and corrected proxy guidance bring the merged path
+// to 2446.6 KiB; retain the smallest existing decimal ratchet.
+// The stranded-tail recovery transition plus the WebView2 reachable-tail clamp
+// bring the measured initial payload to 2447.953 KiB. Retain 0.047 KiB with
+// the smallest one-decimal ratchet.
+const rawInitialBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 2_448.0 : 2_448.0;
 assertBudget("initial raw JavaScript and CSS", rawInitialBytes, rawInitialBudgetKiB * 1024);
 assertBudget("largest initial JavaScript chunk raw", largestInitialJSRaw, 1_000 * 1024);

@@ -1383,6 +1383,7 @@ export function normalizeProviderView(p: ProviderView): ProviderView {
     headers: normalizeStringMap(p.headers),
     extraBody: normalizeExtraBodyMap(p.extraBody),
     authHeader: Boolean(p.authHeader),
+    noProxy: Boolean(p.noProxy),
     reasoningProtocol: normalizeReasoningProtocol(p.reasoningProtocol),
     thinking: normalizeThinkingMode(p.thinking),
     webSearch: Boolean(p.webSearch),
@@ -6852,6 +6853,7 @@ export function ProviderEditor({
   const [headersDraft, setHeadersDraft] = useState(formatProviderHeaders(initial?.headers));
   const [extraBodyDraft, setExtraBodyDraft] = useState(formatProviderExtraBody(initial?.extraBody));
   const [authHeader, setAuthHeader] = useState(Boolean(initial?.authHeader));
+  const [noProxy, setNoProxy] = useState(Boolean(initial?.noProxy));
   const [keyDraft, setKeyDraft] = useState("");
   const [balanceUrl, setBalanceUrl] = useState(initial?.balanceUrl ?? "");
   // Empty when unset so the placeholder (and its "0 = disabled" hint) reads instead
@@ -6963,6 +6965,7 @@ export function ProviderEditor({
         headers: effectiveHeaders,
         extraBody: effectiveExtraBody,
         authHeader,
+        noProxy,
         keySet: Boolean(keyDraft.trim()) || (initial?.keySet ?? false),
         balanceUrl: balanceUrl.trim(),
         contextWindow: Number(ctx) || 0,
@@ -7019,6 +7022,7 @@ export function ProviderEditor({
       headers: effectiveHeaders,
       extraBody: effectiveExtraBody,
       authHeader,
+      noProxy,
       modelsUrl: effectiveModelsUrl,
       keySet: Boolean(keyDraft.trim()) || (initial?.keySet ?? false),
       balanceUrl: balanceUrl.trim(),
@@ -7182,6 +7186,15 @@ export function ProviderEditor({
           {t("settings.providerAuthHeader")}
         </label>
         <div className="mem-hint">{t("settings.providerAuthHeaderHint")}</div>
+        <label className="set-check">
+          <input
+            type="checkbox"
+            checked={noProxy}
+            onChange={(e) => setNoProxy(e.target.checked)}
+          />
+          {t("settings.providerNoProxy")}
+        </label>
+        <div className="mem-hint">{t("settings.providerNoProxyHint")}</div>
         <label className="set-label">{t("settings.reasoningProtocol")}</label>
         <select className="mem-select" value={reasoningProtocol} onChange={(e) => setReasoningProtocol(e.target.value)}>
           {REASONING_PROTOCOLS.map((protocol) => (

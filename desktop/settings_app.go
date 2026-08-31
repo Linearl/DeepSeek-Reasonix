@@ -27,6 +27,7 @@ import (
 	"reasonix/internal/botruntime"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
+	"reasonix/internal/netclient"
 	"reasonix/internal/provider"
 	"reasonix/internal/sandbox"
 )
@@ -59,6 +60,7 @@ type ProviderView struct {
 	Headers                     map[string]string           `json:"headers"`
 	ExtraBody                   map[string]any              `json:"extraBody"`
 	AuthHeader                  bool                        `json:"authHeader"`
+	NoProxy                     bool                        `json:"noProxy"`
 	KeySet                      bool                        `json:"keySet"` // the env var currently resolves to a non-empty value
 	RequiresKey                 bool                        `json:"requiresKey"`
 	Configured                  bool                        `json:"configured"` // selectable: either key is present or no key is required
@@ -669,6 +671,7 @@ func providerViewFromEntryForRootWithResolverAndCredentials(p config.ProviderEnt
 		Headers:                     nonNilStringMap(p.Headers),
 		ExtraBody:                   nonNilAnyMap(p.ExtraBody),
 		AuthHeader:                  p.AuthHeader,
+		NoProxy:                     p.NoProxy,
 		KeySet:                      key.Set,
 		RequiresKey:                 requiresKey,
 		Configured:                  !requiresKey || key.Set,
@@ -2501,6 +2504,7 @@ func saveProviderConfig(c *config.Config, p ProviderView) error {
 	e.Headers = p.Headers
 	e.ExtraBody = p.ExtraBody
 	e.AuthHeader = p.AuthHeader
+	e.NoProxy = p.NoProxy
 	e.BalanceURL = strings.TrimSpace(p.BalanceURL)
 	e.ContextWindow = p.ContextWindow
 	e.ReasoningProtocol = p.ReasoningProtocol
@@ -2994,7 +2998,10 @@ func providerPresetNoExistingProviderError(id string) error {
 // FetchProviderModels probes the provider's OpenAI-compatible model-list
 // endpoint and returns the available model IDs. This is a settings-only helper:
 // it never touches chat request serialization or provider-visible prompt data.
+// The probe rides the configured network proxy so a broken proxy path fails
+// here, at setup time, instead of succeeding and stalling chat later (#9560).
 func (a *App) FetchProviderModels(p ProviderView) ([]string, error) {
+	root := a.activeWorkspaceRoot()
 	e := config.ProviderEntry{
 		Name:       p.Name,
 		Kind:       p.Kind,
@@ -3004,14 +3011,47 @@ func (a *App) FetchProviderModels(p ProviderView) ([]string, error) {
 		Headers:    p.Headers,
 		AuthHeader: p.AuthHeader,
 	}
-	e.ResolveAPIKeyForRoot(a.activeWorkspaceRoot())
+	e.ResolveAPIKeyForRoot(root)
 	ctx, cancel := context.WithTimeout(a.reqCtx(), 15*time.Second)
 	defer cancel()
-	models, err := e.FetchModels(ctx)
+	models, err := e.FetchModelsWithProxy(ctx, withProbeDirectHost(a.networkProxySpecForRoot(root), e.BaseURL, p.NoProxy))
 	if err != nil {
 		return []string{}, err
 	}
 	return nonNil(chatProviderModels(models)), nil
+}
+
+// networkProxySpecForRoot resolves the effective proxy policy chat requests use
+// for this workspace. The load includes project reasonix.toml and project .env
+// expansion but never pins provider credentials into the process environment.
+// A missing or unreadable config falls back to the default policy rather than
+// blocking model discovery.
+func (a *App) networkProxySpecForRoot(root string) netclient.ProxySpec {
+	cfg, err := config.LoadForRootWithoutCredentialsReadOnly(root)
+	if err != nil || cfg == nil {
+		return netclient.ProxySpec{}
+	}
+	return cfg.NetworkProxySpec()
+}
+
+// withProbeDirectHost mirrors the runtime's per-provider no_proxy bypass for the
+// unsaved editor state: when the edited provider is marked no_proxy, its
+// endpoint must also be probed directly. Custom proxy mode wins over provider
+// no_proxy, matching NetworkProxySpec's behavior.
+func withProbeDirectHost(spec netclient.ProxySpec, baseURL string, noProxy bool) netclient.ProxySpec {
+	if !noProxy || netclient.NormalizeMode(spec.Mode) == netclient.ModeCustom {
+		return spec
+	}
+	u, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil {
+		return spec
+	}
+	host := u.Hostname()
+	if host == "" || slices.Contains(spec.DirectHosts, host) {
+		return spec
+	}
+	spec.DirectHosts = append([]string{host}, spec.DirectHosts...)
+	return spec
 }
 
 // FetchAllProviderModels fetches model lists for all providers in a single
@@ -3024,6 +3064,7 @@ func (a *App) FetchAllProviderModels(providers []ProviderView) map[string][]stri
 	g, ctx := errgroup.WithContext(a.reqCtx())
 	g.SetLimit(4)
 	root := a.activeWorkspaceRoot()
+	proxy := a.networkProxySpecForRoot(root)
 	for i := range providers {
 		p := providers[i]
 		g.Go(func() error {
@@ -3039,7 +3080,7 @@ func (a *App) FetchAllProviderModels(providers []ProviderView) map[string][]stri
 			e.ResolveAPIKeyForRoot(root)
 			ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 			defer cancel()
-			models, err := e.FetchModels(ctx)
+			models, err := e.FetchModelsWithProxy(ctx, proxy)
 			if err != nil {
 				// Omit failed providers so the frontend can retry them through
 				// the cached single-provider path without emitting JSON null.

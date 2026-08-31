@@ -1,6 +1,6 @@
 // MarkdownHistory — history (non-streaming) Markdown rendering driven by the
 // parse worker (Phase E). Mounted rows: check the transcript markdown cache
-// (entryId + content revision) → on miss request a worker parse → render the
+// (stable row key + content revision) → on miss request a worker parse → render the
 // resulting HAST blocks with the same components map react-markdown uses.
 // Unmounted rows never reach this component, so cold-zone rows never parse.
 //
@@ -133,6 +133,7 @@ function useBlockWindowSentinel(
 export const MarkdownHistory = memo(function MarkdownHistory({
   text,
   plainStatusBlocks = false,
+  cacheKey,
   entryId,
   cacheKey,
   fallback,
@@ -153,6 +154,7 @@ export const MarkdownHistory = memo(function MarkdownHistory({
   // #9565 prefer the stable item key so live and history mounts share one
   // parsed block cache entry; fall back to entryId, then to the fork #9573
   // content-derived key for remote/serve `h<seq>` rows.
+
   const stableCacheKey = cacheKey ?? entryId;
   const revision = useMemo(() => markdownContentRevision(text), [text]);
   // Parsed state is keyed by its source text: a text change renders the

@@ -34,7 +34,10 @@ import { useWailsResizeFix } from "./lib/useWailsResizeFix";
 import { asArray } from "./lib/array";
 import { createBoundedRefreshCoordinator, sameTabMetaLists, shouldRefreshTabMetaForEvent, TAB_META_MAX_IN_FLIGHT } from "./lib/tabMetaRefresh";
 import { clearLegacyLangPref, normalizeLangPref, readLegacyLangPref, t, useI18n, useT, type Translator } from "./lib/i18n";
-import { localizedNoticeText, useController, type Item, type LiveStream } from "./lib/useController";
+import { useActiveRemoteSession } from "./lib/useRemoteSession";
+import { useRemoteTabOpened } from "./lib/useRemoteTabOpened";
+import { renameCurrentRemoteSession } from "./lib/remoteSessionActions";
+import { localizedNoticeText, useController, type HistoryLoadTrigger, type Item, type LiveStream } from "./lib/useController";
 import { app, onEvent, onProjectTreeChanged, onReady, onRemoteForwards, onRemoteServer, onRemoteStatus, onRuntimeRebuilt, onSessionRecovered, openExternal } from "./lib/bridge";
 import { useConfigLoadWarnings } from "./lib/useConfigLoadWarnings";
 import { generativeMusic, isGenerativeMusicEnabled } from "./lib/generative-music";
@@ -51,6 +54,9 @@ import { RuntimeDecisionCard } from "./components/RuntimeDecisionCard";
 import { decisionSurfaceMockFromInput, type DecisionSurfaceKind as MockDecisionSurfaceKind } from "./lib/decisionSurfaceMock";
 const UndoRewindBanner = lazy(() => import("./components/UndoRewindBanner").then((module) => ({ default: module.UndoRewindBanner })));
 const ProjectTree = lazy(() => import("./components/ProjectTree").then((module) => ({ default: module.ProjectTree })));
+const RemoteSessionSurface = lazy(() => import("./components/RemoteSessionSurface").then((module) => ({ default: module.RemoteSessionSurface })));
+const ExtensionFormDialog = lazy(() => import("./components/ExtensionFormDialog").then((module) => ({ default: module.ExtensionFormDialog })));
+const MCPInteractionCard = lazy(() => import("./components/MCPInteractionCard").then((module) => ({ default: module.MCPInteractionCard })));
 /** Footer decision surface kinds. Runtime blockers are explicit recovery choices. */
 type DecisionSurfaceKind = MockDecisionSurfaceKind | "extension_form";
 import { StatusBar } from "./components/StatusBar";
@@ -954,81 +960,6 @@ function workspaceDisplayName(path?: string): string {
   return parts.length > 0 ? parts[parts.length - 1] : path;
 }
 
-function materializeLiveItems(items: Item[], live?: LiveStream): Item[] {
-  if (!live) return items;
-  return items.map((item) => {
-    if (item.kind !== "assistant" || item.id !== live.id) return item;
-    return { ...item, text: live.text, reasoning: live.reasoning, streaming: true };
-  });
-}
-
-function fence(label: string, value: string): string {
-  if (!value.trim()) return "";
-  const fenceToken = value.includes("```") ? "````" : "```";
-  return `${label}\n${fenceToken}\n${value.trim()}\n${fenceToken}`;
-}
-
-function sessionItemsToMarkdown(title: string, items: Item[], live?: LiveStream): string {
-  const lines: string[] = [`# ${title.trim() || "Reasonix session"}`, ""];
-  for (const item of materializeLiveItems(items, live)) {
-    switch (item.kind) {
-      case "user":
-        lines.push("## User", "", item.text.trim(), "");
-        break;
-      case "assistant":
-        lines.push("## Assistant");
-        if (item.reasoning.trim()) {
-          lines.push("", "### Reasoning", "", item.reasoning.trim());
-        }
-        if (item.text.trim()) {
-          lines.push("", item.text.trim());
-        }
-        lines.push("");
-        break;
-      case "tool":
-        lines.push(`### Tool: ${item.name}`);
-        if (item.args.trim()) lines.push("", fence("Args", item.args));
-        if (item.output?.trim()) lines.push("", fence("Output", item.output));
-        if (item.error?.trim()) lines.push("", fence("Error", item.error));
-        lines.push("");
-        break;
-      case "phase":
-        lines.push(`### Phase`, "", item.text.trim(), "");
-        break;
-      case "notice":
-        lines.push(`### ${item.level === "warn" ? "Warning" : "Notice"}`, "", item.text.trim(), "");
-        if (item.detail?.trim()) {
-          lines.push("Details:", "", item.detail.trim(), "");
-        }
-        break;
-      case "compaction":
-        lines.push("### Context Compaction", "");
-        if (item.pending) {
-          lines.push("Compaction pending.");
-        } else {
-          lines.push(`Messages: ${item.messages}`);
-          if (item.trigger) lines.push(`Trigger: ${item.trigger}`);
-          if (item.summary.trim()) lines.push("", item.summary.trim());
-        }
-        lines.push("");
-        break;
-    }
-  }
-  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
-}
-
-function sessionItemsToJson(title: string, items: Item[], live?: LiveStream): string {
-  return JSON.stringify(
-    {
-      title,
-      exportedAt: new Date().toISOString(),
-      items: materializeLiveItems(items, live),
-    },
-    null,
-    2,
-  );
-}
-
 function safeFilename(name: string): string {
   const cleaned = name.trim().replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").slice(0, 80);
   return cleaned || "reasonix-session";
@@ -1064,6 +995,7 @@ export default function App() {
     resolvePlanDecision,
     resolveRecovery,
     answerQuestion,
+    answerMCPInteraction,
     setControllerMode,
     dismissExtensionForm,
     drainExtensionNotifications,
@@ -1802,12 +1734,13 @@ export default function App() {
       return state.approval.tool === "exit_plan_mode" ? "plan_approval" : "tool_approval";
     }
     if (state.ask) return "ask";
+    if (state.mcpInteraction) return "mcp_interaction";
     if (state.extensionForm) return "extension_form";
     if (workspaceConflict) return "workspace_conflict";
     if (pendingClose) return "close_active";
     if (clearContextPending) return "clear_context";
     return null;
-  }, [clearContextPending, pendingClose, state.approval, state.ask, state.extensionForm, workspaceConflict]);
+  }, [clearContextPending, pendingClose, state.approval, state.ask, state.extensionForm, state.mcpInteraction, workspaceConflict]);
   const visibleDecisionSurface = runtimeTransitioning ? null : decisionSurface;
   const composerSurfaceHidden = runtimeTransitioning || Boolean(decisionSurface);
   decisionSurfaceRef.current = decisionSurface;
@@ -2155,12 +2088,12 @@ export default function App() {
     applyThemeScene(sessionHasContent ? "task" : "home");
   }, [sessionHasContent]);
   const getSessionMarkdown = useCallback(
-    () => sessionItemsToMarkdown(sessionTitle, state.items, liveStore.getSnapshot(activeTabId) ?? state.live),
-    [activeTabId, liveStore, sessionTitle, state.items, state.live],
+    async () => (await import("./lib/sessionExportData")).sessionItemsToMarkdown(sessionTitle, exportItems, exportLive),
+    [exportItems, exportLive, sessionTitle],
   );
   const getSessionJson = useCallback(
-    () => sessionItemsToJson(sessionTitle, state.items, liveStore.getSnapshot(activeTabId) ?? state.live),
-    [activeTabId, liveStore, sessionTitle, state.items, state.live],
+    async () => (await import("./lib/sessionExportData")).sessionItemsToJson(sessionTitle, exportItems, exportLive),
+    [exportItems, exportLive, sessionTitle],
   );
 
   useEffect(() => {
@@ -2181,21 +2114,21 @@ export default function App() {
         if (format === "json") {
           const path = await app.PickExportFile(`${base}.json`, "application/json");
           if (path) {
-            await app.SaveExportFile(path, getSessionJson(), false);
+            await app.SaveExportFile(path, await getSessionJson(), false);
             showToast(t("topicBar.exportSuccess", { count: 1 }), "info");
           }
         } else if (format === "pdf") {
           const path = await app.PickExportFile(`${base}.pdf`, "application/pdf");
           if (!path) return;
           const { blobToBase64, renderSessionPdfBlob } = await import("./lib/sessionExport");
-          const blob = await renderSessionPdfBlob(getSessionMarkdown(), sessionTitle);
+          const blob = await renderSessionPdfBlob(await getSessionMarkdown(), sessionTitle);
           await app.SaveExportFile(path, await blobToBase64(blob), true);
           showToast(t("topicBar.exportSuccess", { count: 1 }), "info");
         } else if (format === "image") {
           const path = await app.PickExportFile(`${base}.png`, "image/png");
           if (!path) return;
           const { renderSessionImageBase64Payloads } = await import("./lib/sessionExport");
-          const payloads = await renderSessionImageBase64Payloads(getSessionMarkdown());
+          const payloads = await renderSessionImageBase64Payloads(await getSessionMarkdown());
           await app.SaveExportImageFiles(path, payloads);
           showToast(
             payloads.length > 1
@@ -2206,7 +2139,7 @@ export default function App() {
         } else {
           const path = await app.PickExportFile(`${base}.md`, "text/markdown");
           if (path) {
-            await app.SaveExportFile(path, getSessionMarkdown(), false);
+            await app.SaveExportFile(path, await getSessionMarkdown(), false);
             showToast(t("topicBar.exportSuccess", { count: 1 }), "info");
           }
         }
@@ -5081,6 +5014,18 @@ export default function App() {
                 }}
               />
               )
+            : visibleDecisionSurface === "mcp_interaction"
+              ? state.mcpInteraction && (
+              <Suspense fallback={null}>
+                <MCPInteractionCard
+                  key={`${activeTabId ?? ""}:${state.mcpInteraction.id}`}
+                  interaction={state.mcpInteraction}
+                  busy={false}
+                  onAnswer={(id, action, content) => answerMCPInteraction(id, action, content)}
+                  onOpenLink={(url) => openExternal(url)}
+                />
+              </Suspense>
+              )
             : visibleDecisionSurface === "extension_form"
               ? state.extensionForm && (
               <ExtensionFormDialog
@@ -5325,12 +5270,13 @@ export default function App() {
               ) : rightDockMode === "context" && desktopLayoutStyle !== "creation" ? (
                 <Suspense fallback={null}>
                   <ContextPanel
-                    tabId={activeTabId}
-                    context={state.context}
-                    usage={state.usage}
-                    sessionTokens={state.sessionTokens}
-                    sessionCost={state.sessionCost}
-                    sessionCurrency={state.sessionCurrency}
+                    tabId={remoteSurfaceActive ? undefined : activeTabId}
+                    items={exportItems}
+                    context={visibleRuntimeState.context}
+                    usage={visibleRuntimeState.usage}
+                    sessionTokens={visibleRuntimeState.sessionTokens}
+                    sessionCost={visibleRuntimeState.sessionCost}
+                    sessionCurrency={visibleRuntimeState.sessionCurrency}
                     sessionTurns={sessionTurns}
                     turnTokens={state.turnTotalTokens}
                     turnCost={state.turnCost}

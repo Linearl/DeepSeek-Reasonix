@@ -72,6 +72,7 @@ import type {
   TurnEventReplayView,
   WireApproval,
   WireAsk,
+  WireMCPInteraction,
   WireCompletionSummary,
   WireDecisionReceipt,
   WireEvent,
@@ -273,7 +274,7 @@ export type Item =
   | { kind: "user"; id: string; submissionId?: string; text: string; submitText?: string; failed?: boolean; createdAt?: number; checkpointTurn?: number; historyTurn?: number }
   | { kind: "assistant"; id: string; text: string; reasoning: string; streaming: boolean; wasStreamed?: true; reasoningComplete?: boolean; reasoningDurationMs?: number; workDurationMs?: number; memoryCitations?: MemoryCitation[]; searchSources?: SearchSource[] }
   | { kind: "phase"; id: string; text: string }
-  | { kind: "notice"; id: string; level: "info" | "warn"; text: string; detail?: string; title?: string; variant?: "delivery" | "completion"; action?: "continue_delivery" | "open_changes"; completionSummary?: WireCompletionSummary; decisionReceipt?: WireDecisionReceipt; missing?: string[]; inboxItemId?: string }
+  | { kind: "notice"; id: string; level: "info" | "warn"; text: string; detail?: string; code?: string; title?: string; variant?: "delivery" | "completion"; action?: "continue_delivery" | "open_changes"; completionSummary?: WireCompletionSummary; decisionReceipt?: WireDecisionReceipt; missing?: string[]; inboxItemId?: string }
   | {
       kind: "compaction";
       id: string;
@@ -386,6 +387,7 @@ export interface State {
   completionSummary?: WireCompletionSummary;
   approval?: WireApproval;
   ask?: WireAsk;
+  mcpInteraction?: WireMCPInteraction;
   usage?: WireUsage;
   context: ContextInfo;
   meta?: Meta;
@@ -518,6 +520,14 @@ export interface State {
   // Speculative sampling-attempt journal for Codex-style stream replay.
   // Host-local only; never hydrated from history.
   streamAttemptJournal?: StreamAttemptJournal;
+  // Most recent discarded sampling attempt's failure reason within this turn
+  // (idle_timeout | premature_eof | connection_reset). Host-local; used to
+  // explain an interrupted turn whose stream had already been failing (#9560).
+  lastStreamInterrupt?: { reason: string; attempt: number; at: number };
+  // True after the agent emitted the safe terminal stream-failure notice. The
+  // following turn_done carries the same failure in err; suppress that duplicate
+  // while keeping the agent notice available to non-Desktop event consumers.
+  streamInterruptNoticeShown?: boolean;
 }
 
 type NavigationSourceSnapshot = {
@@ -1303,6 +1313,17 @@ function applyExtensionForm(s: State, surface: WireExtensionSurface): State {
   };
 }
 
+// streamInterruptReasonText localizes the closed host enum a stream-attempt
+// discard carries (idle_timeout | premature_eof | connection_reset).
+function streamInterruptReasonText(reason: string): string {
+  switch (reason) {
+    case "idle_timeout": return t("notice.streamInterruptReason.idleTimeout");
+    case "premature_eof": return t("notice.streamInterruptReason.prematureEof");
+    case "connection_reset": return t("notice.streamInterruptReason.connectionReset");
+    default: return t("notice.streamInterruptReason.unknown");
+  }
+}
+
 function applyStreamAttempt(s: State, e: WireEvent): State {
   const sa = e.streamAttempt;
   if (!sa?.id || !sa.action) return s;
@@ -1356,6 +1377,9 @@ function applyStreamAttempt(s: State, e: WireEvent): State {
         live,
         turnArgChars: journal.baselineTurnArgChars,
         streamAttemptJournal: undefined,
+        lastStreamInterrupt: sa.reason
+          ? { reason: sa.reason, attempt: sa.attempt ?? 0, at: promptEventClock() }
+          : s.lastStreamInterrupt,
         running: true,
         turnActive: true,
         cancellable: true,
@@ -1513,6 +1537,8 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         pendingPrompt: false,
         cancelRequested: false,
         cancellable: true,
+        lastStreamInterrupt: undefined,
+        streamInterruptNoticeShown: undefined,
         turnLifecycleObservedAt: promptEventClock(),
         ...resetTurnTiming(resolveTurnStartedAt(fresh.running || fresh.turnActive ? fresh.turnStartAt : 0, e.turnStartedAt)),
       };
@@ -1536,7 +1562,7 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
             cancellable: true,
           };
         case "cancelling":
-          return endPromptWait({ ...s, cancelRequested: true, pendingPrompt: false, approval: undefined, ask: undefined, cancellable: true });
+          return endPromptWait({ ...s, cancelRequested: true, pendingPrompt: false, approval: undefined, ask: undefined, mcpInteraction: undefined, cancellable: true });
         case "waiting_user":
           return { ...s, running: true, turnActive: true, pendingPrompt: true, cancellable: true };
         case "in_progress":
@@ -1547,11 +1573,12 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
     }
     case "prompt_answered": {
       if (e.turnId && s.activeTurnId && e.turnId !== s.activeTurnId) return s;
-      if (e.itemId && s.approval?.id !== e.itemId && s.ask?.id !== e.itemId) return s;
+      if (e.itemId && s.approval?.id !== e.itemId && s.ask?.id !== e.itemId && s.mcpInteraction?.id !== e.itemId) return s;
       return endPromptWait({
         ...s,
         approval: undefined,
         ask: undefined,
+        mcpInteraction: undefined,
         pendingPrompt: false,
         running: true,
         turnActive: true,
@@ -1802,8 +1829,10 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       // arguments, so drop the live estimate rather than double-count it.
       return { ...settled, usage, context: { ...settled.context, used, sessionTokens }, turnTokens, turnOutputTokens, turnOutputCharsAtUsage, turnOutputEstimated, turnTotalTokens, turnCost, turnRateBand, turnArgChars: updateContextGauge ? 0 : settled.turnArgChars, sessionTokens, sessionCost, sessionCurrency, usageSeq: settled.usageSeq + 1, lastRequestTps, pendingRequestModelMs: updateContextGauge ? undefined : settled.pendingRequestModelMs };
     }
-    case "notice":
-      return appendNoticeToState(s, e.level ?? "info", e.text ?? "", e.detail, e.code, e.decisionReceipt);
+    case "notice": {
+      const next = appendNoticeToState(s, e.level ?? "info", e.text ?? "", e.detail, e.code, e.decisionReceipt);
+      return e.code?.startsWith("stream_interrupted_") ? { ...next, streamInterruptNoticeShown: true } : next;
+    }
     case "context_maintenance": {
       const m = e.maintenance;
       if (!m || m.status === "noop") return s;
@@ -1860,6 +1889,21 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         ask: e.ask,
         promptArrivedAt: e.ask?.id === s.promptArrivedId ? s.promptArrivedAt : promptEventClock(),
         promptArrivedId: e.ask?.id,
+        pendingPrompt: true,
+        running: true,
+        turnActive: true,
+        cancellable: true,
+      });
+    }
+    case "mcp_interaction": {
+      if (s.cancelRequested) return s;
+      if (e.mcpInteraction?.id !== undefined && e.mcpInteraction.id === s.resolvedPromptId) return s;
+      return beginPromptWait({
+        ...s,
+        activeTurnId: e.turnId ?? s.activeTurnId,
+        mcpInteraction: e.mcpInteraction,
+        promptArrivedAt: e.mcpInteraction?.id === s.promptArrivedId ? s.promptArrivedAt : promptEventClock(),
+        promptArrivedId: e.mcpInteraction?.id,
         pendingPrompt: true,
         running: true,
         turnActive: true,
@@ -1947,13 +1991,24 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
           text: t("notice.recoveryPausedBody"),
         }];
       } else if (e.status === "interrupted") {
-        items = [...finalized, {
+        const interruptItems: Item[] = [{
           kind: "notice",
           id: `e${s.seq}`,
           level: "info",
           text: t("notice.cancelledTurnDisplay"),
         }];
-      } else if (e.err) {
+        // A stop during a broken provider stream would otherwise look like an
+        // unexplained silence; surface the last known failure reason (#9560).
+        if (s.lastStreamInterrupt?.reason) {
+          interruptItems.push({
+            kind: "notice",
+            id: `e${s.seq + 1}`,
+            level: "warn",
+            text: t("notice.streamInterruptReason", { reason: streamInterruptReasonText(s.lastStreamInterrupt.reason) }),
+          });
+        }
+        items = [...finalized, ...interruptItems];
+      } else if (e.err && !s.streamInterruptNoticeShown) {
         items = [...finalized, { kind: "notice", id: `e${s.seq}`, level: "warn", text: e.err }];
       }
       // Plan approval can arrive before turn_done on some Wails event paths.
@@ -1997,10 +2052,13 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         activeTurnId: undefined,
         approval: keepPlanApproval ? s.approval : undefined,
         ask: undefined,
+        mcpInteraction: undefined,
         deliveryRecoveryActive: false,
         parkedDelivery: parkedConsumed ? undefined : s.parkedDelivery,
         turnLifecycleObservedAt: promptEventClock(),
-        seq: s.seq + 1,
+        seq: s.seq + Math.max(items.length - finalized.length, 1),
+        lastStreamInterrupt: undefined,
+        streamInterruptNoticeShown: undefined,
       };
       // Close user-wait unless the plan approval gate remains open.
       if (!keepPlanApproval) next = endPromptWait(next, now);
@@ -2036,6 +2094,7 @@ export function reducer(s: State, a: Action): State {
         assistantSegmentOrdinal: 0,
         live: undefined,
         streamAttemptJournal: undefined,
+        streamInterruptNoticeShown: undefined,
         deliveryRecoveryActive: Boolean(a.deliveryRecovery),
         discardTurn: false,
       };
@@ -2052,6 +2111,7 @@ export function reducer(s: State, a: Action): State {
         cancellable: false,
         approval: undefined,
         ask: undefined,
+        mcpInteraction: undefined,
         promptArrivedAt: undefined,
         promptArrivedId: undefined,
         live: undefined,
@@ -2066,6 +2126,7 @@ export function reducer(s: State, a: Action): State {
         cancelRequested: true,
         approval: undefined,
         ask: undefined,
+        mcpInteraction: undefined,
         promptArrivedAt: undefined,
         promptArrivedId: undefined,
         cancellable: s.running || s.turnActive,
@@ -2145,6 +2206,7 @@ export function reducer(s: State, a: Action): State {
         streamAttemptJournal: undefined,
         approval: undefined,
         ask: undefined,
+        mcpInteraction: undefined,
         retry: undefined,
       });
     }
@@ -2320,7 +2382,13 @@ export function reducer(s: State, a: Action): State {
       return endPromptWaitIfIdle(next);
     }
     case "clearAsk": {
-      const next = { ...s, ask: undefined, pendingPrompt: Boolean(s.approval), resolvedPromptId: s.ask?.id ?? s.resolvedPromptId };
+      const next = {
+        ...s,
+        ask: undefined,
+        mcpInteraction: undefined,
+        pendingPrompt: Boolean(s.approval),
+        resolvedPromptId: s.ask?.id ?? s.mcpInteraction?.id ?? s.resolvedPromptId,
+      };
       return endPromptWaitIfIdle(next);
     }
     case "clearExtensionForm": return s.extensionForm ? { ...s, extensionForm: undefined } : s;
@@ -2423,7 +2491,7 @@ function appendNoticeItem(items: Item[], seq: number, id: string, level: "info" 
     return { items, seq };
   }
   const trimmedDetail = detail?.trim();
-  return { items: [...items, { kind: "notice", id, level, text, ...(trimmedDetail ? { detail: trimmedDetail } : {}), ...(decisionReceipt ? { decisionReceipt } : {}) }], seq: seq + 1 };
+  return { items: [...items, { kind: "notice", id, level, text, ...(trimmedDetail ? { detail: trimmedDetail } : {}), ...(code ? { code } : {}), ...(decisionReceipt ? { decisionReceipt } : {}) }], seq: seq + 1 };
 }
 
 function appendNoticeToState(s: State, level: "info" | "warn", text: string, detail?: string, code?: string, decisionReceipt?: WireDecisionReceipt): State {
@@ -3938,6 +4006,18 @@ export function useController() {
     });
   }, [activeTabId, dispatchTo]);
 
+  const answerMCPInteraction = useCallback(
+    (id: string, action: "accept" | "decline" | "cancel", content?: Record<string, unknown>) => {
+      if (!activeTabId) return;
+      const tabId = activeTabId;
+      dispatchTo(tabId, { type: "clearAsk" });
+      app.AnswerMCPInteractionForTab(tabId, id, action, content ?? null).catch(() => {
+        replayPendingPromptsForActiveTab(tabId);
+      });
+    },
+    [activeTabId, dispatchTo],
+  );
+
   const setControllerMode = useCallback((mode: Mode): Promise<void> => {
     if (!activeTabId) return Promise.resolve();
     const tabId = activeTabId;
@@ -4991,7 +5071,7 @@ export function useController() {
     state: activeState,
     liveStore,
     activeTabId,
-    send, sendToTab, recoverDeliveryToTab, runShell, runShellForTab, steer, steerForTab, notice, cancel, approve, resolvePlanDecision, resolveRecovery, answerQuestion, setControllerMode,
+    send, sendToTab, recoverDeliveryToTab, runShell, runShellForTab, steer, steerForTab, notice, cancel, approve, resolvePlanDecision, resolveRecovery, answerQuestion, answerMCPInteraction, setControllerMode,
     dismissExtensionForm, drainExtensionNotifications,
     setCollaborationMode, setCollaborationModeForTab, setToolApprovalMode, setToolApprovalModeForTab, setQualityFloor, setComposerProfileForTab, setGoal, setGoalForTab, clearGoal, clearGoalForTab, resumeGoal, resumeGoalForTab, pauseGoal, pauseGoalForTab,
     newSession, clearSession, listSessions, listTrashedSessions, retrySessionHistory, resumeSession, openChannelSession, previewSession, deleteSession, restoreSession, purgeTrashedSession, renameSession,

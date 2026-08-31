@@ -90,12 +90,9 @@ func agentKeepPolicy(keep []string) agent.KeepPolicy {
 	return p
 }
 
-// Options carries the per-run knobs a frontend chooses; everything else is read
-// from configuration. Model "" falls back to the configured default_model;
-// MaxSteps 0 uses automatic execution. RequireKey forces the executor's API key to
-// be present (run/serve pass true so a missing key fails fast; chat/desktop pass
-// false so the UI is reachable before a key is set). Sink receives the agent's
-// typed event stream.
+// Options carries the per-run knobs a frontend chooses; everything else is
+// read from configuration. Model "" falls back to default_model; MaxSteps 0
+// uses automatic execution; RequireKey fails fast on a missing key.
 type Options struct {
 	Model       string
 	MaxSteps    int
@@ -147,6 +144,9 @@ type Options struct {
 	// instead of creating new subprocesses, and the caller manages the host's
 	// lifecycle. When nil, Build creates and owns a new host as before.
 	SharedHost *plugin.Host
+	// MCPHostProfile is the capability surface for hosts Build creates;
+	// ignored when SharedHost is set (it fixed its own profile).
+	MCPHostProfile plugin.HostProfile
 	// CleanupPendingReconciler retries delayed physical cleanup for session
 	// artifacts left by a previous process. Nil uses the core physical-delete
 	// reconciler; frontends with different deletion semantics can override it.
@@ -751,7 +751,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// instead of one per tab). Otherwise construct a private host per controller.
 	pluginHost := opts.SharedHost
 	if pluginHost == nil {
-		pluginHost = plugin.NewHost()
+		pluginHost = plugin.NewHostWithProfile(opts.MCPHostProfile)
 	}
 
 	// Enabled MCP servers enter the tool catalog at boot. Cached schemas
@@ -1268,7 +1268,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		if sysPrompt == "" {
 			sysPrompt = agent.DefaultReadOnlyTaskSystemPrompt
 		}
-		runOptions := subagentSkillOptions(sctx, steps, price, ctxWin, childDepth)
+		task, runOptions := reviewSubagentSkillOptions(sctx, sk.Name, task, steps, price, ctxWin, childDepth, subagentSkillOptions)
 		usageModelRef, _ := subagentIdentity(modelRef, effortRef)
 		runOptions.ModelRef = usageModelRef
 		// Review gates consume typed, host-verifiable reports so a review
@@ -1387,7 +1387,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 				steps = 5
 			}
 		}
-		runOptions := subagentSkillOptions(sctx, steps, price, ctxWin, childDepth)
+		task, runOptions := reviewSubagentSkillOptions(sctx, sk.Name, task, steps, price, ctxWin, childDepth, subagentSkillOptions)
 		runOptions.WriteRoots = childWriteRoots
 		usageModelRef, _ := subagentIdentity(modelRef, effortRef)
 		runOptions.ModelRef = usageModelRef
@@ -1572,7 +1572,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	var capLedger *capability.Ledger
 	var capAudit *capability.Audit
 	capEntries, capSpecs := capabilityServerInventory(cfg.Plugins, root, pluginSpecOptions, extraSpecs, enabledMCPNames)
-	cachedTools, cacheKeyOK := capability.LoadCachedToolsForSpecs(capSpecs)
+	cachedTools, cacheKeyOK := capability.LoadCachedToolsForSpecs(capSpecs, pluginHost.Profile())
 	skillStore.ConfigureToolBindings(func(sk skill.Skill) []tool.MCPBinding {
 		return skillMCPBindings(sk, reg, capSpecs, cachedTools, cacheKeyOK)
 	})

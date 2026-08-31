@@ -2,6 +2,526 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "1.34.0",
+      "date": "2026-08-30",
+      "channel": "stable",
+      "targetingVersion": 1,
+      "title": {
+        "en": "Reasonix 1.34.0",
+        "zh": "Reasonix 1.34.0"
+      },
+      "summary": {
+        "en": "Security hardening for serve and git operations, MCP 2026 interactions and Apps, cache-stable capability controls, and multiple desktop stability fixes.",
+        "zh": "serve 与 git 操作的安全加固、MCP 2026 交互与 Apps、缓存稳定的能力控制，以及多项桌面稳定性修复。"
+      },
+      "surfaces": [
+        "desktop",
+        "cli"
+      ],
+      "guides": [
+        {
+          "title": {
+            "en": "Subagent Profiles",
+            "zh": "子代理配置文件"
+          },
+          "body": {
+            "en": "Documentation for subagent profiles.",
+            "zh": "子代理配置文件文档。"
+          },
+          "href": "https://github.com/esengine/DeepSeek-Reasonix/blob/ef25a7fe36367c057fc775af63036a45fee2554e/docs/SUBAGENT_PROFILES.md"
+        },
+        {
+          "title": {
+            "en": "Subagent Profiles (Chinese)",
+            "zh": "子代理配置文件（中文）"
+          },
+          "body": {
+            "en": "Chinese documentation for subagent profiles.",
+            "zh": "子代理配置文件中文文档。"
+          },
+          "href": "https://github.com/esengine/DeepSeek-Reasonix/blob/ef25a7fe36367c057fc775af63036a45fee2554e/docs/SUBAGENT_PROFILES.zh-CN.md"
+        },
+        {
+          "title": {
+            "en": "Task Contract",
+            "zh": "任务契约"
+          },
+          "body": {
+            "en": "Documentation for the task contract.",
+            "zh": "任务契约文档。"
+          },
+          "href": "https://github.com/esengine/DeepSeek-Reasonix/blob/ef25a7fe36367c057fc775af63036a45fee2554e/docs/TASK_CONTRACT.md"
+        },
+        {
+          "title": {
+            "en": "Task Contract (Chinese)",
+            "zh": "任务契约（中文）"
+          },
+          "body": {
+            "en": "Chinese documentation for the task contract.",
+            "zh": "任务契约中文文档。"
+          },
+          "href": "https://github.com/esengine/DeepSeek-Reasonix/blob/ef25a7fe36367c057fc775af63036a45fee2554e/docs/TASK_CONTRACT.zh-CN.md"
+        },
+        {
+          "title": {
+            "en": "Tool Contract",
+            "zh": "工具契约"
+          },
+          "body": {
+            "en": "Documentation for the tool contract.",
+            "zh": "工具契约文档。"
+          },
+          "href": "https://github.com/esengine/DeepSeek-Reasonix/blob/ef25a7fe36367c057fc775af63036a45fee2554e/docs/TOOL_CONTRACT.md"
+        },
+        {
+          "title": {
+            "en": "Tool Contract (Chinese)",
+            "zh": "工具契约（中文）"
+          },
+          "body": {
+            "en": "Chinese documentation for the tool contract.",
+            "zh": "工具契约中文文档。"
+          },
+          "href": "https://github.com/esengine/DeepSeek-Reasonix/blob/ef25a7fe36367c057fc775af63036a45fee2554e/docs/TOOL_CONTRACT.zh-CN.md"
+        },
+        {
+          "title": {
+            "en": "Capability Replay",
+            "zh": "能力使用回放"
+          },
+          "body": {
+            "en": "Documentation for capability replay evaluation.",
+            "zh": "能力使用回放评估文档。"
+          },
+          "href": "https://github.com/esengine/DeepSeek-Reasonix/blob/ef25a7fe36367c057fc775af63036a45fee2554e/docs/eval/use-capability-replay.md"
+        },
+        {
+          "title": {
+            "en": "Capability Replay (Chinese)",
+            "zh": "能力使用回放（中文）"
+          },
+          "body": {
+            "en": "Chinese documentation for capability replay evaluation.",
+            "zh": "能力使用回放评估中文文档。"
+          },
+          "href": "https://github.com/esengine/DeepSeek-Reasonix/blob/ef25a7fe36367c057fc775af63036a45fee2554e/docs/eval/use-capability-replay.zh-CN.md"
+        },
+        {
+          "title": {
+            "en": "MCP 2026 Apps",
+            "zh": "MCP 2026 Apps"
+          },
+          "body": {
+            "en": "Documentation for MCP 2026 Apps support.",
+            "zh": "MCP 2026 Apps 支持文档。"
+          },
+          "href": "https://github.com/esengine/DeepSeek-Reasonix/blob/ef25a7fe36367c057fc775af63036a45fee2554e/docs/mcp-2026-apps.md"
+        }
+      ],
+      "highlights": [
+        {
+          "kind": "new",
+          "targets": [
+            "desktop",
+            "cli"
+          ],
+          "title": {
+            "en": "MCP 2026 interactions and Apps",
+            "zh": "MCP 2026 交互与 Apps"
+          },
+          "body": {
+            "en": "Added support for MCP 2026 multi-round interactions and Desktop Apps with sandboxed rendering.",
+            "zh": "新增对 MCP 2026 多轮交互和桌面 Apps 的支持，并采用沙箱渲染。"
+          },
+          "refs": [
+            9547
+          ]
+        },
+        {
+          "kind": "new",
+          "targets": [
+            "desktop",
+            "cli"
+          ],
+          "title": {
+            "en": "Cache-stable capability controls",
+            "zh": "缓存稳定的能力控制"
+          },
+          "body": {
+            "en": "Landed use_capability speed and quality controls, including parallel scheduling, review budgets, and metrics.",
+            "zh": "落地 use_capability 的速度与质量控制，包括并行调度、审查预算和指标。"
+          },
+          "refs": [
+            9569
+          ]
+        },
+        {
+          "kind": "security",
+          "targets": [
+            "cli"
+          ],
+          "title": {
+            "en": "Serve and git security hardening",
+            "zh": "serve 与 git 操作安全加固"
+          },
+          "body": {
+            "en": "Closed six security-boundary gaps including DNS rebinding, preview confinement, and git clean-filter neutralization.",
+            "zh": "封堵六个安全边界缺口，包括 DNS 重绑定、预览越界读与 git clean 过滤器执行。"
+          },
+          "refs": [
+            9599
+          ]
+        },
+        {
+          "kind": "fixed",
+          "targets": [
+            "desktop"
+          ],
+          "title": {
+            "en": "Stabilized transcript scrolling",
+            "zh": "稳定对话滚动"
+          },
+          "body": {
+            "en": "Fixed transcript reader transactions to prevent reverse jumps and blank frames during high-speed reasoning.",
+            "zh": "修复对话阅读滚动事务，防止高速推理时的反向跳跃和空白帧。"
+          },
+          "refs": [
+            9513
+          ]
+        },
+        {
+          "kind": "fixed",
+          "targets": [
+            "desktop"
+          ],
+          "title": {
+            "en": "Preserved multi-round reasoning timeline",
+            "zh": "修复多轮思考时间线"
+          },
+          "body": {
+            "en": "Fixed multi-round reasoning overwrites and tool timeline misalignment in the same turn.",
+            "zh": "修复同一 turn 内多次模型采样导致的多轮思考覆盖和工具时间线错位。"
+          },
+          "refs": [
+            9565
+          ]
+        },
+        {
+          "kind": "fixed",
+          "targets": [
+            "desktop"
+          ],
+          "title": {
+            "en": "Stabilized composer autosize scrolling",
+            "zh": "修复输入框自动高度抖动"
+          },
+          "body": {
+            "en": "Fixed composer autosize causing session viewport bounce by using an off-flow textarea mirror.",
+            "zh": "通过使用离流 textarea 镜像修复输入框自动高度导致的会话视口抖动。"
+          },
+          "refs": [
+            9568
+          ]
+        },
+        {
+          "kind": "fixed",
+          "targets": [
+            "desktop",
+            "cli"
+          ],
+          "title": {
+            "en": "Aligned model discovery with chat proxy policy",
+            "zh": "修复自定义供应商刷新正常但对话无响应"
+          },
+          "body": {
+            "en": "Fixed custom provider model discovery using a different network policy than chat, and made stream failures visible.",
+            "zh": "修复自定义供应商模型发现与聊天使用不同网络策略的问题，并使流失败可见。"
+          },
+          "refs": [
+            9563
+          ]
+        },
+        {
+          "kind": "fixed",
+          "targets": [
+            "desktop"
+          ],
+          "title": {
+            "en": "Kept remote project roots out of local topic state",
+            "zh": "远端项目根不再触碰本地 Topic 元数据"
+          },
+          "body": {
+            "en": "Fixed a user-visible toast error when opening remote projects on Windows due to invalid path components.",
+            "zh": "修复在 Windows 上打开远端项目时因无效路径组件导致的用户可见 toast 错误。"
+          },
+          "refs": [
+            9594
+          ]
+        },
+        {
+          "kind": "fixed",
+          "targets": [
+            "desktop"
+          ],
+          "title": {
+            "en": "Kept new-session blank row visible in remote groups",
+            "zh": "远端项目组新会话行稳定显示"
+          },
+          "body": {
+            "en": "Fixed the new-session blank row flashing and disappearing in remote workspace sidebars.",
+            "zh": "修复远端工作区侧边栏中新会话行闪烁后消失的问题。"
+          },
+          "refs": [
+            9595
+          ]
+        },
+        {
+          "kind": "fixed",
+          "targets": [
+            "desktop",
+            "cli"
+          ],
+          "title": {
+            "en": "Kept write path alive across in-place resume",
+            "zh": "修复 /resume 之后 /new 报写授权缺失"
+          },
+          "body": {
+            "en": "Fixed a 500 error when creating a new session after an in-place resume due to missing write authority.",
+            "zh": "修复原地 /resume 后创建新会话时因写授权缺失导致的 500 错误。"
+          },
+          "refs": [
+            9596
+          ]
+        },
+        {
+          "kind": "fixed",
+          "targets": [
+            "desktop"
+          ],
+          "title": {
+            "en": "Hardened Streamable HTTP compatibility",
+            "zh": "修复 Streamable HTTP 兼容性"
+          },
+          "body": {
+            "en": "Fixed MCP Streamable HTTP compatibility issues with stateless bridges and pinned the Go MCP SDK.",
+            "zh": "修复 MCP Streamable HTTP 与无状态桥接的兼容性问题，并固定 Go MCP SDK。"
+          },
+          "refs": [
+            9602
+          ]
+        }
+      ],
+      "changes": {
+        "new": [
+          {
+            "targets": [
+              "desktop",
+              "cli"
+            ],
+            "title": {
+              "en": "MCP 2026 interactions and Apps",
+              "zh": "MCP 2026 交互与 Apps"
+            },
+            "body": {
+              "en": "Added support for MCP 2026 multi-round interactions and Desktop Apps with sandboxed rendering.",
+              "zh": "新增对 MCP 2026 多轮交互和桌面 Apps 的支持，并采用沙箱渲染。"
+            },
+            "refs": [
+              9547
+            ]
+          },
+          {
+            "targets": [
+              "desktop",
+              "cli"
+            ],
+            "title": {
+              "en": "Cache-stable capability controls",
+              "zh": "缓存稳定的能力控制"
+            },
+            "body": {
+              "en": "Landed use_capability speed and quality controls, including parallel scheduling, review budgets, and metrics.",
+              "zh": "落地 use_capability 的速度与质量控制，包括并行调度、审查预算和指标。"
+            },
+            "refs": [
+              9569
+            ]
+          }
+        ],
+        "improved": [
+          {
+            "targets": [
+              "desktop"
+            ],
+            "title": {
+              "en": "Stabilized transcript scrolling",
+              "zh": "稳定对话滚动"
+            },
+            "body": {
+              "en": "Improved transcript reader transactions to prevent reverse jumps and blank frames during high-speed reasoning.",
+              "zh": "改进对话阅读滚动事务，防止高速推理时的反向跳跃和空白帧。"
+            },
+            "refs": [
+              9513
+            ]
+          },
+          {
+            "targets": [
+              "desktop"
+            ],
+            "title": {
+              "en": "Preserved multi-round reasoning timeline",
+              "zh": "修复多轮思考时间线"
+            },
+            "body": {
+              "en": "Improved multi-round reasoning timeline rendering and tool timeline alignment.",
+              "zh": "改进多轮思考时间线渲染和工具时间线对齐。"
+            },
+            "refs": [
+              9565
+            ]
+          },
+          {
+            "targets": [
+              "desktop"
+            ],
+            "title": {
+              "en": "Stabilized composer autosize scrolling",
+              "zh": "修复输入框自动高度抖动"
+            },
+            "body": {
+              "en": "Improved composer autosize to prevent session viewport bounce.",
+              "zh": "改进输入框自动高度，防止会话视口抖动。"
+            },
+            "refs": [
+              9568
+            ]
+          },
+          {
+            "targets": [
+              "desktop",
+              "cli"
+            ],
+            "title": {
+              "en": "Aligned model discovery with chat proxy policy",
+              "zh": "修复自定义供应商刷新正常但对话无响应"
+            },
+            "body": {
+              "en": "Improved custom provider model discovery to use the same network policy as chat, and made stream failures visible.",
+              "zh": "改进自定义供应商模型发现以使用与聊天相同的网络策略，并使流失败可见。"
+            },
+            "refs": [
+              9563
+            ]
+          },
+          {
+            "targets": [
+              "desktop"
+            ],
+            "title": {
+              "en": "Hardened Streamable HTTP compatibility",
+              "zh": "修复 Streamable HTTP 兼容性"
+            },
+            "body": {
+              "en": "Improved MCP Streamable HTTP compatibility with stateless bridges and pinned the Go MCP SDK.",
+              "zh": "改进 MCP Streamable HTTP 与无状态桥接的兼容性，并固定 Go MCP SDK。"
+            },
+            "refs": [
+              9602
+            ]
+          }
+        ],
+        "fixed": [
+          {
+            "targets": [
+              "cli"
+            ],
+            "title": {
+              "en": "Serve and git security hardening",
+              "zh": "serve 与 git 操作安全加固"
+            },
+            "body": {
+              "en": "Fixed six security-boundary gaps including DNS rebinding, preview confinement, and git clean-filter neutralization.",
+              "zh": "修复六个安全边界缺口，包括 DNS 重绑定、预览越界读与 git clean 过滤器执行。"
+            },
+            "refs": [
+              9599
+            ]
+          },
+          {
+            "targets": [
+              "desktop"
+            ],
+            "title": {
+              "en": "Kept remote project roots out of local topic state",
+              "zh": "远端项目根不再触碰本地 Topic 元数据"
+            },
+            "body": {
+              "en": "Fixed a user-visible toast error when opening remote projects on Windows due to invalid path components.",
+              "zh": "修复在 Windows 上打开远端项目时因无效路径组件导致的用户可见 toast 错误。"
+            },
+            "refs": [
+              9594
+            ]
+          },
+          {
+            "targets": [
+              "desktop"
+            ],
+            "title": {
+              "en": "Kept new-session blank row visible in remote groups",
+              "zh": "远端项目组新会话行稳定显示"
+            },
+            "body": {
+              "en": "Fixed the new-session blank row flashing and disappearing in remote workspace sidebars.",
+              "zh": "修复远端工作区侧边栏中新会话行闪烁后消失的问题。"
+            },
+            "refs": [
+              9595
+            ]
+          },
+          {
+            "targets": [
+              "desktop",
+              "cli"
+            ],
+            "title": {
+              "en": "Kept write path alive across in-place resume",
+              "zh": "修复 /resume 之后 /new 报写授权缺失"
+            },
+            "body": {
+              "en": "Fixed a 500 error when creating a new session after an in-place resume due to missing write authority.",
+              "zh": "修复原地 /resume 后创建新会话时因写授权缺失导致的 500 错误。"
+            },
+            "refs": [
+              9596
+            ]
+          }
+        ]
+      },
+      "upgrade": [],
+      "risks": [],
+      "contributors": [
+        "SivanCola",
+        "XTLine"
+      ],
+      "links": {
+        "github": "https://github.com/esengine/DeepSeek-Reasonix/releases/tag/desktop-v1.34.0",
+        "compare": "https://github.com/esengine/DeepSeek-Reasonix/compare/desktop-v1.33.0...desktop-v1.34.0",
+        "download": "https://reasonix.io/?download=desktop&channel=stable#start"
+      },
+      "releaseId": "1.34.0",
+      "baseVersion": "1.34.0",
+      "status": "reviewed",
+      "previousRelease": "1.33.0",
+      "builds": {
+        "cli": "v1.34.0",
+        "desktop": "v1.34.0",
+        "npm": "1.34.0"
+      }
+    },
+    {
       "version": "1.33.0",
       "date": "2026-08-28",
       "channel": "stable",
@@ -11,14 +531,45 @@
         "zh": "Reasonix v1.33.0"
       },
       "summary": {
-        "en": "This release improves shell configuration, remote credential security, interface stability, and adds notification volume control.",
-        "zh": "此版本改进了 Shell 配置、远程凭据安全性、界面稳定性，并新增通知音量控制。"
+        "en": "This release adds MCP 2026 elicitation and stable MCP Apps, improves shell configuration, remote credential security, interface stability, and notification volume control.",
+        "zh": "此版本新增 MCP 2026 交互与稳定版 MCP Apps，并改进 Shell 配置、远程凭据安全性、界面稳定性和通知音量控制。"
       },
       "surfaces": [
-        "desktop"
+        "desktop",
+        "cli"
       ],
-      "guides": [],
+      "guides": [
+        {
+          "title": {
+            "en": "MCP 2026 capability surface",
+            "zh": "MCP 2026 能力面"
+          },
+          "body": {
+            "en": "Host capability profiles, capability negotiation, elicitation, Apps sandboxing, and the cross-version cache contract.",
+            "zh": "宿主能力分层、能力协商、交互流程、Apps 沙箱与跨版本缓存契约。"
+          },
+          "href": "https://github.com/esengine/DeepSeek-Reasonix/blob/main-v2/docs/mcp-2026-apps.md"
+        }
+      ],
       "highlights": [
+        {
+          "kind": "new",
+          "targets": [
+            "desktop",
+            "cli"
+          ],
+          "title": {
+            "en": "MCP 2026 elicitation and stable Apps",
+            "zh": "MCP 2026 交互与稳定版 Apps"
+          },
+          "body": {
+            "en": "Added MCP 2026-07-28 multi-round-trip form and URL elicitation plus stable MCP Apps 2026-01-26 on Desktop, with explicit capability negotiation and safe cross-version fallbacks.",
+            "zh": "新增 MCP 2026-07-28 多轮表单及 URL 交互，并在桌面端支持稳定版 MCP Apps 2026-01-26，同时提供显式能力协商与安全的跨版本回退。"
+          },
+          "refs": [
+            9547
+          ]
+        },
         {
           "kind": "new",
           "targets": [

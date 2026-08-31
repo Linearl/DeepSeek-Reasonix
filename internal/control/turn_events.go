@@ -74,7 +74,8 @@ func (s *turnEventSink) Emit(e event.Event) {
 func turnEventSynchronousBarrier(kind event.Kind) bool {
 	switch kind {
 	case event.ToolDispatch, event.ToolResult, event.AskRequest, event.ApprovalRequest,
-		event.PromptAnswered, event.TurnStatusChanged, event.TurnStarted, event.TurnDone:
+		event.MCPInteractionRequest, event.PromptAnswered, event.TurnStatusChanged,
+		event.TurnStarted, event.TurnDone:
 		return true
 	default:
 		return false
@@ -168,7 +169,7 @@ func (s *turnEventSink) persistAndPublish(e event.Event) error {
 	switch e.Kind {
 	case event.TurnStarted:
 		status = event.TurnInProgress
-	case event.AskRequest, event.ApprovalRequest:
+	case event.AskRequest, event.ApprovalRequest, event.MCPInteractionRequest:
 		status = event.TurnWaitingUser
 	case event.TurnDone:
 		status = terminalTurnStatus(e)

@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 import type { VirtuosoHandle } from "react-virtuoso";
 import type { TranscriptScrollMode } from "./transcriptScrollArbiter";
+import { nativeTranscriptDistanceFromBottom } from "./transcriptScrollGeometry";
 import { noteTranscriptScrollWrite } from "./transcriptScrollProbe";
 
 export type TranscriptScrollWriterRequest = {
@@ -80,7 +81,7 @@ export function createTranscriptScrollWriter({
       scrollTop: element?.scrollTop,
       scrollHeight: element?.scrollHeight,
       clientHeight: element?.clientHeight,
-      bottomDistance: element ? element.scrollHeight - element.scrollTop - element.clientHeight : undefined,
+      bottomDistance: element ? nativeTranscriptDistanceFromBottom(element) : undefined,
       mode: modeRef.current,
       sequence,
       generation,

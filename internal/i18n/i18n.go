@@ -175,6 +175,11 @@ type Messages struct {
 	AskSubmitTitle     string // submit-tab title in the ask tool question card
 	AskUnanswered      string // placeholder for an unanswered ask question
 	AskSubmitHint      string // submit-tab keyboard hint
+	ElicitURLHint      string // url-mode elicitation keyboard hint
+	ElicitConfirmOnly  string // schema-less form elicitation hint
+	ElicitUnanswered   string // placeholder for an unanswered elicitation field
+	ElicitSubmit       string // elicitation submit row label
+	ElicitSubmitHint   string // elicitation keyboard hint
 
 	// output style listing (/output-style).
 	OutputStyleNone           string // no styles available

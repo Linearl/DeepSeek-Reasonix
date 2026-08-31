@@ -46,6 +46,7 @@ import (
 	"reasonix/internal/hook"
 	"reasonix/internal/i18n"
 	"reasonix/internal/jobs"
+	"reasonix/internal/mcpinteraction"
 	"reasonix/internal/memory"
 	"reasonix/internal/nilutil"
 	"reasonix/internal/permission"
@@ -177,12 +178,8 @@ type Controller struct {
 	// It is exposed only through a sanitized state snapshot for Desktop recovery.
 	workspaceLease *workspacelease.Owner
 
-	// mcp owns the session's live tool/plugin surface — the MCP plugin Host, the
-	// tool registry the executor reads each turn, and the session-scoped context a
-	// hot-added stdio server binds its subprocess to — behind its own lock, off
-	// c.mu. The Controller keeps the config-facing orchestration (persisting
-	// MCP entries to their global/project source on add/remove, building specs
-	// from entries). See mcp.go.
+	// mcp owns the session's live tool/plugin surface behind its own lock, off
+	// c.mu; the Controller keeps config-facing orchestration. See mcp.go.
 	mcp                   mcpManager
 	mcpDefaultCallTimeout time.Duration
 	mcpConfigureSpec      func(*plugin.Spec)
@@ -502,11 +499,14 @@ type Options struct {
 	SessionDir             string
 	SessionPath            string
 	Host                   *plugin.Host
-	Commands               []command.Command
-	Skills                 []skill.Skill
-	AllSkills              []skill.Skill
-	SkillStore             *skill.Store
-	AllSkillStore          *skill.Store
+	// MCPHostProfile is the surface lazily created hosts declare; injected
+	// hosts keep their own profile.
+	MCPHostProfile plugin.HostProfile
+	Commands       []command.Command
+	Skills         []skill.Skill
+	AllSkills      []skill.Skill
+	SkillStore     *skill.Store
+	AllSkillStore  *skill.Store
 	// DisableImplicitSkillInvocation controls model-facing discovery only;
 	// explicit /skill commands and management remain host-side capabilities.
 	DisableImplicitSkillInvocation bool
@@ -699,7 +699,7 @@ func New(opts Options) *Controller {
 		balanceClient:                     opts.BalanceClient,
 		jobs:                              opts.Jobs,
 		workspaceLease:                    opts.WorkspaceLease,
-		mcp:                               newMcpManager(opts.Host, opts.Registry, pluginCtx),
+		mcp:                               newMcpManager(opts.Host, opts.Registry, pluginCtx, opts.MCPHostProfile),
 		mcpDefaultCallTimeout:             opts.MCPDefaultCallTimeout,
 		mcpConfigureSpec:                  opts.MCPConfigureSpec,
 		capabilityRuntime:                 opts.CapabilityRuntime,
@@ -2255,6 +2255,7 @@ func (c *Controller) EnableInteractiveApproval() {
 		c.executor.SetWriteAccessGate(c)
 		c.executor.SetWriteRoots(c.writeAccess.roots)
 		c.executor.SetAsker(c)
+		c.executor.SetInteractionBroker(c)
 	}
 	if setter, ok := c.runner.(interface {
 		SetPlanModeReadOnlyTrustGate(agent.PlanModeReadOnlyTrustGate)
@@ -2290,6 +2291,9 @@ func (c *Controller) EnableInteractiveApproval() {
 	// surface the executor does instead of a parallel prose-question path.
 	if setter, ok := c.runner.(interface{ SetAsker(agent.Asker) }); ok {
 		setter.SetAsker(c)
+	}
+	if setter, ok := c.runner.(interface{ SetInteractionBroker(mcpinteraction.Broker) }); ok {
+		setter.SetInteractionBroker(c)
 	}
 }
 
@@ -2683,11 +2687,12 @@ func (c *Controller) ReplayPendingPromptsWith(sinkFactory func() event.Sink) {
 
 func (c *Controller) replayPendingPromptsTo(sink event.Sink) bool {
 	approvals, asks := c.approval.snapshotPrompts()
-	c.emitPendingPrompts(sink, approvals, asks)
+	interactions := c.approval.snapshotMCPInteractions()
+	c.emitPendingPrompts(sink, approvals, asks, interactions)
 	return len(approvals) == 0
 }
 
-func (c *Controller) emitPendingPrompts(sink event.Sink, approvals []event.Approval, asks []event.Ask) {
+func (c *Controller) emitPendingPrompts(sink event.Sink, approvals []event.Approval, asks []event.Ask, interactions []event.MCPInteraction) {
 	if sink == nil {
 		return
 	}
@@ -2696,6 +2701,9 @@ func (c *Controller) emitPendingPrompts(sink event.Sink, approvals []event.Appro
 	}
 	for _, a := range asks {
 		sink.Emit(event.Event{Kind: event.AskRequest, ItemID: a.ID, Ask: a})
+	}
+	for _, i := range interactions {
+		sink.Emit(event.Event{Kind: event.MCPInteractionRequest, ItemID: i.ID, MCPInteraction: i})
 	}
 }
 

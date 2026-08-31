@@ -27,6 +27,7 @@ type Event struct {
 	Usage           *Usage              `json:"usage,omitempty"`
 	Approval        *Approval           `json:"approval,omitempty"`
 	Ask             *Ask                `json:"ask,omitempty"`
+	MCPInteraction  *MCPInteraction     `json:"mcpInteraction,omitempty"`
 	Compaction      *Compaction         `json:"compaction,omitempty"`
 	Maintenance     *ContextMaintenance `json:"maintenance,omitempty"`
 	Guardian        *Guardian           `json:"guardian,omitempty"`
@@ -115,15 +116,7 @@ func ToWire(e event.Event) Event {
 	}
 	switch e.Kind {
 	case event.Notice:
-		w.Code = e.Code
-		if e.DecisionReceipt != nil {
-			w.DecisionReceipt = ToWireDecisionReceipt(e.DecisionReceipt)
-		}
-		if e.Level == event.LevelWarn {
-			w.Level = "warn"
-		} else {
-			w.Level = "info"
-		}
+		w.applyNotice(e)
 	case event.ToolDispatch, event.ToolResult, event.ToolProgress, event.ToolResultPreview:
 		wt := &Tool{
 			ID: e.Tool.ID, Name: e.Tool.Name, Args: e.Tool.Args,
@@ -163,6 +156,8 @@ func ToWire(e event.Event) Event {
 		w.Approval = toWireApproval(e.Approval)
 	case event.AskRequest:
 		w.Ask = ToWireAsk(e.Ask)
+	case event.MCPInteractionRequest:
+		w.MCPInteraction = ToWireMCPInteraction(e.MCPInteraction)
 	case event.CompactionStarted, event.CompactionDone:
 		w.Compaction = &Compaction{
 			Trigger: e.Compaction.Trigger, Messages: e.Compaction.Messages,
@@ -351,6 +346,41 @@ type AskQuestion struct {
 type Ask struct {
 	ID        string        `json:"id"`
 	Questions []AskQuestion `json:"questions"`
+}
+
+// MCPInteraction is the JSON form of an event.MCPInteraction: one
+// server-initiated elicitation awaiting the user's accept/decline/cancel.
+// Schema and URL come from the MCP server; form answers travel only in the
+// resolve call, never on this event.
+type MCPInteraction struct {
+	ID              string          `json:"id"`
+	Server          string          `json:"server"`
+	Mode            string          `json:"mode"`
+	Message         string          `json:"message" externalizable:"true"`
+	RequestedSchema json.RawMessage `json:"requestedSchema,omitempty"`
+	URL             string          `json:"url,omitempty"`
+	ElicitationID   string          `json:"elicitationId,omitempty"`
+}
+
+// applyNotice fills the Notice-specific wire fields.
+func (w *Event) applyNotice(e event.Event) {
+	w.Code = e.Code
+	if e.DecisionReceipt != nil {
+		w.DecisionReceipt = ToWireDecisionReceipt(e.DecisionReceipt)
+	}
+	if e.Level == event.LevelWarn {
+		w.Level = "warn"
+	} else {
+		w.Level = "info"
+	}
+}
+
+// ToWireMCPInteraction converts event.MCPInteraction to its wire form.
+func ToWireMCPInteraction(i event.MCPInteraction) *MCPInteraction {
+	return &MCPInteraction{
+		ID: i.ID, Server: i.Server, Mode: i.Mode, Message: i.Message,
+		RequestedSchema: i.RequestedSchema, URL: i.URL, ElicitationID: i.ElicitationID,
+	}
 }
 
 // Profile carries the subagent model/effort resolved for a tool call.
@@ -594,6 +624,7 @@ var kindNames = map[event.Kind]string{
 	event.CompletionSummary:       "completion_summary",
 	event.ToolResultPreview:       "tool_result_preview",
 	event.TurnStatusChanged:       "turn_status",
+	event.MCPInteractionRequest:   "mcp_interaction",
 	event.PromptAnswered:          "prompt_answered",
 	event.SessionChanged:          "session_changed",
 }

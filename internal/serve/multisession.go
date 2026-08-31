@@ -14,6 +14,7 @@ import (
 	"reasonix/internal/boot"
 	"reasonix/internal/control"
 	"reasonix/internal/event"
+	"reasonix/internal/plugin"
 )
 
 // sessionTagSink stamps every event from one controller with that
@@ -185,6 +186,7 @@ func (s *Server) buildTagged(ctx context.Context, ref string, inheritTemp bool) 
 		opts.Stderr = os.Stderr
 	}
 	opts.StatsSource = "serve"
+	opts.MCPHostProfile = plugin.HostProfileInteractive
 	if cur, ok := s.ctl().(*control.Controller); ok && cur != nil {
 		opts.SessionDir = cur.SessionDir()
 		opts.WorkspaceRoot = cur.WorkspaceRoot()

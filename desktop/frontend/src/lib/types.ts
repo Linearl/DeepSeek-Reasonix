@@ -18,6 +18,7 @@ export type EventKind =
   | "tool_result_preview"
   | "turn_status"
   | "prompt_answered" | "session_changed"
+  | "mcp_interaction"
   | "tool_progress"
   | "usage"
   | "notice"
@@ -258,6 +259,20 @@ export interface WireAsk {
   questions: WireAskQuestion[];
 }
 
+export type { MCPAppInstanceView, MCPAppPresentation } from "./mcpAppProtocol";
+
+// One server-initiated MCP elicitation awaiting accept/decline/cancel. Form
+// mode carries a flat primitive JSON schema; url mode a credential-free target.
+export interface WireMCPInteraction {
+  id: string;
+  server: string;
+  mode: "form" | "url";
+  message: string;
+  requestedSchema?: unknown;
+  url?: string;
+  elicitationId?: string;
+}
+
 // Extension UI surfaces (stage 8a) — structured-only documents published by
 // extension sidecars through the host UI hub. Exactly one sub-struct is set,
 // selected by `kind`.
@@ -361,6 +376,7 @@ export interface WireEvent {
   usage?: WireUsage;
   approval?: WireApproval;
   ask?: WireAsk;
+  mcpInteraction?: WireMCPInteraction;
   compaction?: WireCompaction;
   maintenance?: WireContextMaintenance;
   guardian?: WireGuardian;
@@ -1714,6 +1730,7 @@ export interface ProviderView {
   headers?: Record<string, string> | null; // optional extra request headers for compatible gateways
   extraBody?: Record<string, unknown> | null; // optional extra top-level request body fields for compatible gateways
   authHeader?: boolean; // Anthropic-compatible: send Authorization: Bearer instead of x-api-key
+  noProxy?: boolean; // reach this provider's endpoint directly, bypassing the configured/system proxy
   keySet: boolean; // the env var currently resolves to a value
   requiresKey?: boolean; // false for explicit no-auth providers
   configured?: boolean; // selectable: key is set or no key is required
