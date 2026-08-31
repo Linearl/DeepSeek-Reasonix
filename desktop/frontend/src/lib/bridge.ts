@@ -202,6 +202,7 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   ServePoolStatus(): Promise<{ enabled: boolean; running: boolean; bind: string; addr: string; port: number; token: string; listen: string }>;
   SetServePoolEnabled(enabled: boolean): Promise<void>;
   GatewayToken(): Promise<string>;
+  ServePoolAddress(): Promise<string>;
   AddAuthorizedWriteDir(scope: 0 | 1, dir: string): Promise<void>;
   AddAuthorizedWriteDirForTab(tabId: string, scope: 0 | 1, dir: string): Promise<void>;
   // One selectable session for the write-directory panel's session picker
@@ -2545,6 +2546,9 @@ function makeMockApp(): AppBindings {
     },
     async GatewayToken() {
       return "mock-gateway-token";
+    },
+    async ServePoolAddress() {
+      return "0.0.0.0:18789";
     },
     async MinimiseMainWindow() {
       console.info("mock MinimiseMainWindow");
