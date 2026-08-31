@@ -4,7 +4,7 @@
 // matches. Scrolling to the top of the list requests older history when the
 // session still has unloaded turns.
 
-import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent as ReactUIEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent as ReactUIEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { Search, X } from "lucide-react";
 
 import { useT } from "../lib/i18n";
@@ -68,6 +68,22 @@ export function QuestionSearchPanel({
     onReachTop?.();
   }, [onReachTop]);
 
+  // Wheel-up at the very top must page in older questions directly. The list
+  // scrollTop stays 0 while the user wheels up (it cannot scroll further), so
+  // no `scroll` event fires and handleScroll never runs — the wheel instead
+  // chains into the transcript behind it, which is why only dragging the
+  // scrollbar thumb down then back up seemed to work. Capture deltaY here and
+  // fire onReachTop on an upward wheel at the top, guarded by the latch so a
+  // single page-in request per gesture is not spammed.
+  const handleWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
+    if (event.deltaY >= 0) return; // downward wheel: normal list scroll
+    const el = event.currentTarget;
+    if (el.scrollTop > 8) return; // not at the top yet
+    if (reachTopFiredRef.current) return;
+    reachTopFiredRef.current = true;
+    onReachTop?.();
+  }, [onReachTop]);
+
   // Rearm the reach-top latch when the panel reopens or new history lands.
   useEffect(() => {
     if (!open) return;
@@ -124,7 +140,7 @@ export function QuestionSearchPanel({
           <X size={15} aria-hidden="true" />
         </button>
       </div>
-      <div className="question-search__results" ref={listRef} onScroll={handleScroll}>
+      <div className="question-search__results" ref={listRef} onScroll={handleScroll} onWheel={handleWheel}>
         {filtered.length === 0 && (
           <div className="question-search__empty">{t("questionSearch.empty")}</div>
         )}
