@@ -70,16 +70,20 @@ export function QuestionSearchPanel({
 
   // Wheel-up at the very top must page in older questions directly. The list
   // scrollTop stays 0 while the user wheels up (it cannot scroll further), so
-  // no `scroll` event fires and handleScroll never runs — the wheel instead
-  // chains into the transcript behind it, which is why only dragging the
-  // scrollbar thumb down then back up seemed to work. Capture deltaY here and
-  // fire onReachTop on an upward wheel at the top, guarded by the latch so a
-  // single page-in request per gesture is not spammed.
-  const handleWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
+  // no scroll event fires and handleScroll never runs. A capture-phase
+  // handler is required: Virtuoso's nested-scroll-handoff attaches a
+  // capture-phase wheel listener that would otherwise consume the edge wheel
+  // (preventDefault + scroll the parent transcript), so the React bubble
+  // onWheel never sees it. preventDefault/stopPropagation here isolates the
+  // panel from that handoff and lets an upward wheel at the top page in older
+  // questions, guarded by the reach-top latch.
+  const handleWheelCapture = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
     if (event.deltaY >= 0) return; // downward wheel: normal list scroll
     const el = event.currentTarget;
     if (el.scrollTop > 8) return; // not at the top yet
     if (reachTopFiredRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
     reachTopFiredRef.current = true;
     onReachTop?.();
   }, [onReachTop]);
@@ -140,7 +144,7 @@ export function QuestionSearchPanel({
           <X size={15} aria-hidden="true" />
         </button>
       </div>
-      <div className="question-search__results" ref={listRef} onScroll={handleScroll} onWheel={handleWheel}>
+      <div className="question-search__results" ref={listRef} onScroll={handleScroll} onWheelCapture={handleWheelCapture}>
         {filtered.length === 0 && (
           <div className="question-search__empty">{t("questionSearch.empty")}</div>
         )}
