@@ -2,8 +2,10 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"reasonix/internal/provider"
 )
@@ -114,7 +116,8 @@ func splitExtractChunks(msgs []provider.Message, overlap int) [][]provider.Messa
 
 // ExtractHighlights summarizes the canonical transcript into one
 // compaction-summary without touching the live projection or session state.
-// progress, when non-nil, reports (chunks summarized, total chunks).
+// progress, when non-nil, reports (chunks summarized, total chunks). The
+// total grows when a fragment is split for retry.
 func (a *Agent) ExtractHighlights(ctx context.Context, progress func(done, total int)) (string, error) {
 	sess := a.Session()
 	if sess == nil {
@@ -129,32 +132,79 @@ func (a *Agent) ExtractHighlights(ctx context.Context, progress func(done, total
 		return "", fmt.Errorf("session transcript is empty")
 	}
 	report := orNoopProgress(progress)
+	// Fragments may split in half on summarizer failure (see
+	// extractFragmentResilient), so the progress total grows as splits happen.
+	var progressMu sync.Mutex
+	done, total := 0, len(chunks)
+	advance := func(grown bool) {
+		progressMu.Lock()
+		defer progressMu.Unlock()
+		if grown {
+			total++
+		} else {
+			done++
+		}
+		report(done, total)
+	}
 	if len(chunks) == 1 {
 		// Fast path: a single fragment is exactly one compaction request -
 		// reuse the canonical template verbatim so the output is directly
 		// comparable to a normal compaction summary.
-		res, err := a.foldToSummary(ctx, chunks[0], compactionInstruction)
+		text, err := a.extractFragmentResilient(ctx, chunks[0], compactionInstruction, advance)
 		if err != nil {
 			return "", err
 		}
-		report(1, 1)
-		return res.Text, nil
+		return text, nil
 	}
 	parts := make([]string, 0, len(chunks))
 	for i, chunk := range chunks {
 		instructions := fmt.Sprintf(extractFragmentInstructionTmpl, i+1, len(chunks))
-		res, err := a.foldToSummary(ctx, chunk, instructions)
+		res, err := a.extractFragmentResilient(ctx, chunk, instructions, advance)
 		if err != nil {
 			return "", fmt.Errorf("fragment %d/%d: %w", i+1, len(chunks), err)
 		}
-		report(i+1, len(chunks))
-		parts = append(parts, strings.TrimSpace(res.Text))
+		parts = append(parts, res)
 	}
 	merged, err := a.foldToSummary(ctx, mergeDigestMessages(parts), extractMergeInstruction)
 	if err != nil {
 		return "", fmt.Errorf("merge: %w", err)
 	}
 	return merged.Text, nil
+}
+
+// extractFragmentResilient summarizes one extract fragment, splitting it in
+// half and extracting each half when the fragment cannot be summarized whole:
+// a very large fragment makes the summarizer output run into the provider's
+// output-token limit (the same failure that blocks in-place compaction on
+// over-length sessions), and on small-window models the fragment itself can
+// overflow the input window. Both are fixed by smaller fragments, so the
+// halves are extracted and their digests merged; depth is bounded by the
+// message count. report(true) grows the progress total (one fragment became
+// two); report(false) marks one leaf fragment summarized.
+func (a *Agent) extractFragmentResilient(ctx context.Context, chunk []provider.Message, instructions string, report func(grown bool)) (string, error) {
+	res, err := a.foldToSummary(ctx, chunk, instructions)
+	if err == nil {
+		return strings.TrimSpace(res.Text), nil
+	}
+	retriable := errors.Is(err, errSummaryOutputTruncated) || errors.Is(err, ErrCompactionRequired)
+	if !retriable || len(chunk) < 2 {
+		return "", err
+	}
+	report(true)
+	mid := len(chunk) / 2
+	left, err := a.extractFragmentResilient(ctx, chunk[:mid], instructions, report)
+	if err != nil {
+		return "", err
+	}
+	right, err := a.extractFragmentResilient(ctx, chunk[mid:], instructions, report)
+	if err != nil {
+		return "", err
+	}
+	merged, err := a.foldToSummary(ctx, mergeDigestMessages([]string{left, right}), extractMergeInstruction)
+	if err != nil {
+		return "", fmt.Errorf("merge split fragments: %w", err)
+	}
+	return strings.TrimSpace(merged.Text), nil
 }
 
 // mergeDigestMessages builds the merge request body: one user message per
