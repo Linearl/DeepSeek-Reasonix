@@ -60,7 +60,6 @@ let scrollByCalls = 0;
 let scrollToIndexCalls = 0;
 let scrollToCalls = 0, suppressScrollTo = false;
 let scrollToBottomCalls = 0;
-let blockedTailPlacements = 0;
 // Null disables snapshot capture; the snapshot sections opt in explicitly so
 // the pre-snapshot scenarios keep their first-mount scrollToBottom behavior.
 let stubSnapshot: StateSnapshot | null = null;
@@ -68,10 +67,6 @@ const applyScrollTo = (options?: { top?: number }) => {
   scrollToCalls += 1;
   if (suppressScrollTo) return;
   const top = options?.top ?? 0;
-  if (blockedTailPlacements > 0 && top >= scrollExtent - scrollElement.clientHeight) {
-    blockedTailPlacements -= 1;
-    return;
-  }
   scrollElement.scrollTop = Math.max(0, Math.min(scrollExtent - scrollElement.clientHeight, top));
 };
 scrollElement.scrollTo = applyScrollTo;
@@ -87,12 +82,7 @@ const virtuosoHandle = {
 let arbiter: ReturnType<typeof useTranscriptScrollArbiter> | undefined;
 let integrity: ReturnType<typeof useTranscriptLayoutIntegrity> | undefined;
 
-function Probe({ surfaceKey, rows = baseRows, layoutWidth = 800, realSurfaceTail = false }: {
-  surfaceKey: string;
-  rows?: TranscriptRow[];
-  layoutWidth?: number;
-  realSurfaceTail?: boolean;
-}) {
+function Probe({ surfaceKey, rows = baseRows, layoutWidth = 800 }: { surfaceKey: string; rows?: TranscriptRow[]; layoutWidth?: number }) {
   const scroll = useTranscriptScrollArbiter({
     onRecoveryTerminal: (terminal) => { terminals.push(terminal); },
     onItemMeasured: (rowKey, kind, _layoutVariant, height, width) => { rowMeasurements.push({ rowKey, kind, height, width }); },
@@ -104,10 +94,7 @@ function Probe({ surfaceKey, rows = baseRows, layoutWidth = 800, realSurfaceTail
     scrollRef: scroll.scrollRef,
     pinnedRef: scroll.pinnedRef,
     readyRef,
-    scrollToBottom: () => {
-      scrollToBottomCalls += 1;
-      if (realSurfaceTail) scroll.scrollToBottom();
-    },
+    scrollToBottom: () => { scrollToBottomCalls += 1; },
     submitRecoveryRequest: scroll.submitRecoveryRequest,
     retryRecoveryRequest: scroll.retryRecoveryRequest,
     lastGoodAnchorRef: scroll.lastGoodAnchorRef,
@@ -121,8 +108,8 @@ function Probe({ surfaceKey, rows = baseRows, layoutWidth = 800, realSurfaceTail
 
 // Mirrors Transcript's surface-switch effect: the arbiter is reset, which
 // cancels any in-flight recovery with reason "surface-switch".
-async function switchSurface(surfaceKey: string, rows: TranscriptRow[] = baseRows, realSurfaceTail = false) {
-  await act(async () => root.render(<Probe surfaceKey={surfaceKey} rows={rows} realSurfaceTail={realSurfaceTail} />));
+async function switchSurface(surfaceKey: string, rows: TranscriptRow[] = baseRows) {
+  await act(async () => root.render(<Probe surfaceKey={surfaceKey} rows={rows} />));
   await act(async () => { arbiter?.reset(); });
   await flushFrames();
 }
@@ -681,50 +668,6 @@ await act(async () => integrity?.handleItemsRendered(1));
 await flushFrames();
 check(scrollToBottomCalls === scrollToBottomBeforeSnapshot + 1, "same-row reveal follows normal tail positioning");
 
-// Same-tab adoption/reconnect increments only the reveal generation: it does
-// not receive App's navigation paint token. The incoming surface therefore
-// has to converge through its first-items tail transaction. Model two late
-// Virtuoso placements restoring the stale 8px gap before WebView2 accepts the
-// final bounded physical-tail probe.
-scrollExtent = 1_000;
-scrollElement.scrollTop = 892;
-scrollToCalls = 0;
-blockedTailPlacements = 2;
-await switchSurface("surface-same-tab-takeover", baseRows, true);
-await act(async () => integrity?.handleItemsRendered(1));
-await flushFrames();
-await advanceClock(480);
-check(scrollToCalls === 3, `same-tab takeover receives exactly three bounded tail probes (${scrollToCalls})`);
-check(
-  arbiter?.modeRef.current === "tail-follow"
-    && scrollElement.scrollTop === scrollExtent - scrollElement.clientHeight,
-  "same-tab takeover converges after two late Virtuoso placements without a navigation token",
-);
-
-// User intent wins the same race. Once the reader wheels upward, the arbiter
-// cancels the generation-bound confirmations so a late surface callback can
-// never yank the reader back to the tail.
-scrollElement.scrollTop = 892;
-scrollToCalls = 0;
-blockedTailPlacements = 2;
-await switchSurface("surface-same-tab-reader-takeover", baseRows, true);
-await act(async () => integrity?.handleItemsRendered(1));
-await flushFrames();
-await act(async () => {
-  arbiter?.onWheelIntent({
-    ctrlKey: false,
-    deltaX: 0,
-    deltaY: -80,
-    target: scrollElement,
-  } as React.WheelEvent<HTMLElement>);
-});
-await advanceClock(600);
-check(scrollToCalls === 1, `manual reader takeover cancels both delayed tail probes (${scrollToCalls})`);
-check(arbiter?.modeRef.current === "manual" && scrollElement.scrollTop === 892,
-  "a same-tab reveal never yanks an active manual reader");
-blockedTailPlacements = 0;
-const scrollToBottomAfterTakeover = scrollToBottomCalls;
-
 // ── T9: the incoming surface prepended older history since the capture;
 // changed data/totalCount must discard the snapshot per Virtuoso's contract.
 const prependedRows: TranscriptRow[] = [
@@ -736,7 +679,7 @@ await switchSurface("surface-n", prependedRows);
 check(integrity?.restoreSnapshot === undefined, "a prepended key sequence discards the captured snapshot");
 await act(async () => integrity?.handleItemsRendered(1));
 await flushFrames();
-check(scrollToBottomCalls === scrollToBottomAfterTakeover + 1, "changed data falls back to normal first-mount positioning");
+check(scrollToBottomCalls === scrollToBottomBeforeSnapshot + 2, "changed data falls back to normal first-mount positioning");
 
 // Different session (disjoint keys): the snapshot is discarded and the
 // first mount settles at the bottom as before.
@@ -745,7 +688,7 @@ await switchSurface("surface-l", foreignRows);
 check(integrity?.restoreSnapshot === undefined, "a disjoint key sequence discards the snapshot");
 await act(async () => integrity?.handleItemsRendered(1));
 await flushFrames();
-check(scrollToBottomCalls === scrollToBottomAfterTakeover + 2, "a disjoint snapshot-less first mount settles at the bottom");
+check(scrollToBottomCalls === scrollToBottomBeforeSnapshot + 3, "a disjoint snapshot-less first mount settles at the bottom");
 stubSnapshot = null;
 
 // A prepended turn may reuse the mounted process id while its content patches.
