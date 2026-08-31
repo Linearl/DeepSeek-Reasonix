@@ -512,19 +512,26 @@ func openAIEffortCapability() EffortCapability {
 }
 
 func glmEffortCapability() EffortCapability {
-	return EffortCapability{Supported: true, Levels: []string{"auto", "enabled", "disabled"}, Default: "enabled"}
+	// GLM-5.2/5.3 support reasoning_effort (low/medium/high/max etc).
+	// GLM-5.3/5.3-flash: thinking always enabled, cannot disable.
+	// GLM-5.2: thinking can be disabled (none/minimal = give up thinking).
+	// "auto" lets Reasonix pick the model default; strength levels map to reasoning_effort.
+	return EffortCapability{Supported: true, Levels: []string{"auto", "disabled", "low", "medium", "high", "max"}, Default: "auto"}
 }
 
 func normalizeGLMEffort(level string) (string, error) {
 	switch level {
-	case "enabled", "disabled":
+	case "auto", "disabled", "low", "medium", "high", "max":
 		return level, nil
 	case "off":
 		return "disabled", nil
-	case "low", "medium", "high", "xhigh", "max":
-		return "enabled", nil
+	case "enabled":
+		// Legacy: "enabled" mapped to thinking on with no strength → treat as "auto"
+		return "auto", nil
+	case "xhigh":
+		return "max", nil
 	default:
-		return "", fmt.Errorf("usage: /effort auto|enabled|disabled")
+		return "", fmt.Errorf("usage: /effort auto|disabled|low|medium|high|max")
 	}
 }
 

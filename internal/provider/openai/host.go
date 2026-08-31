@@ -144,10 +144,10 @@ func IsMiMo(baseURL string) bool {
 
 // IsZhipu reports whether baseURL points at Zhipu's OpenAI-compatible endpoint
 // for GLM models — either the China host (open.bigmodel.cn, *.bigmodel.cn) or
-// the international Z.ai host (api.z.ai, *.z.ai). Both speak the same wire shape,
-// where chain-of-thought is gated by `thinking.type` (enabled|disabled) and
-// `reasoning_effort` is silently ignored, so the client routes reasoning control
-// to the thinking knob for either host.
+// the international Z.ai host (api.z.ai, *.z.ai). Both speak the same wire shape.
+// GLM-5.2/5.3 support both `thinking.type` (enabled|disabled) and
+// `reasoning_effort` (low|medium|high|max) for thinking strength control.
+// GLM-4.x and earlier only support `thinking.type`; `reasoning_effort` is ignored.
 func IsZhipu(baseURL string) bool {
 	return matchesVendorHost(baseURL, "bigmodel.cn", "open.bigmodel.cn") ||
 		matchesVendorHost(baseURL, "z.ai", "api.z.ai")

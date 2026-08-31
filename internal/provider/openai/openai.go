@@ -815,18 +815,29 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
 		out.Thinking = &thinkingMode{Type: t}
 		out.ReasoningEffort = ""
 	case c.zhipu:
-		// Zhipu GLM's binary thinking knob: "enabled" (default, thinking on) or
-		// "disabled". reasoning_effort is silently ignored by the endpoint, so we
-		// omit it and drive chain-of-thought purely through thinking.type.
+		// GLM-5.2/5.3 support reasoning_effort for thinking strength.
+		// GLM-5.3/5.3-flash: thinking always enabled (cannot disable).
+		// GLM-5.2: thinking can be disabled (none/minimal).
+		// Strength levels (low/medium/high/max) → reasoning_effort + thinking.type=enabled.
+		// disabled → thinking.type=disabled, no reasoning_effort.
+		// auto → thinking.type=enabled (model default strength).
 		t := c.effort
-		if t == "" {
-			t = "enabled" // auto == the GLM default (thinking on)
+		re := ""
+		switch t {
+		case "disabled":
+			// thinking off
+		case "low", "medium", "high", "max":
+			re = t
+			t = "enabled"
+		default:
+			// auto, enabled, or empty → thinking on, no explicit strength
+			t = "enabled"
 		}
 		if c.thinkingType != "" {
 			t = c.thinkingType // explicit `thinking` config overrides the effort knob
 		}
 		out.Thinking = &thinkingMode{Type: t}
-		out.ReasoningEffort = ""
+		out.ReasoningEffort = re
 	case c.longcat:
 		// LongCat's binary thinking knob: "enabled" (default, thinking on) or
 		// "disabled". The API documents reasoning_content in OpenAI responses but

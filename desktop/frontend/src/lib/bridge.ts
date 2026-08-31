@@ -1327,7 +1327,7 @@ const mockKimiAPIModels = ["kimi-k3", "kimi-k2.7-code", "kimi-k2.7-code-highspee
 const mockLongCatModels = ["LongCat-2.0"];
 const mockTokenRhythmModels = ["deepseek-v4-flash", "deepseek-v4-pro", "glm-5", "glm-5.1", "minimax-m2.7", "kimi-k2.5", "kimi-k2.6", "minimax-m2.5", "mimo-v2.5-pro", "qwen3.7-max", "kimi-k2.7-code", "glm-5.2", "qwen3.8-max", "deepseek-v4-flash-0731"];
 const mockTokenRhythmModelOverrides = mockTokenRhythmModels.flatMap((model) => {
-  if (model.startsWith("glm-")) return [{ model, reasoningProtocol: "glm", supportedEfforts: ["enabled", "disabled"], defaultEffort: "enabled" }];
+  if (model.startsWith("glm-")) return [{ model, reasoningProtocol: "glm", supportedEfforts: ["auto", "disabled", "low", "medium", "high", "max"], defaultEffort: "auto" }];
   if (model.startsWith("deepseek-")) return [{ model, reasoningProtocol: "deepseek", supportedEfforts: model === "deepseek-v4-pro" ? ["disabled", "high", "max"] : ["disabled", "low", "high", "max"], defaultEffort: "high" }];
   return [];
 });

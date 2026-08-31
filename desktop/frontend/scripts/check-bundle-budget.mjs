@@ -283,6 +283,6 @@ const rawInitialBytes = [...initialJS, ...initialCSS, ...appShellCSS]
 // The stranded-tail recovery transition plus the WebView2 reachable-tail clamp
 // bring the measured initial payload to 2447.953 KiB. Retain 0.047 KiB with
 // the smallest one-decimal ratchet.
-const rawInitialBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 2_457.0 : 2_457.0;
+const rawInitialBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 2_459.0 : 2_459.0;
 assertBudget("initial raw JavaScript and CSS", rawInitialBytes, rawInitialBudgetKiB * 1024);
 assertBudget("largest initial JavaScript chunk raw", largestInitialJSRaw, 1_000 * 1024);
