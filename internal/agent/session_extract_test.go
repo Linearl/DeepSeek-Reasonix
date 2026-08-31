@@ -14,10 +14,7 @@ import (
 )
 
 func extractTestMsg(size int, tag string) provider.Message {
-	pad := size - len(tag)
-	if pad < 0 {
-		pad = 0
-	}
+	pad := max(0, size-len(tag))
 	return provider.Message{Role: provider.RoleUser, Content: tag + strings.Repeat("x", pad)}
 }
 
@@ -92,28 +89,23 @@ func TestSplitExtractChunksExponential(t *testing.T) {
 func TestSplitExtractChunksContiguousSlices(t *testing.T) {
 	msgs := make([]provider.Message, 24)
 	for i := range msgs {
-		msgs[i] = extractTestMsg(100<<10, "x")
+		msgs[i] = extractTestMsg(100<<10, fmt.Sprintf("<%06d>", i))
 	}
 	chunks := splitExtractChunks(msgs, extractChunkOverlapBytes)
-	lastEnd := -1
 	for i, chunk := range chunks {
-		start := indexOfMessage(msgs, chunk[0])
-		if start <= lastEnd && i > 0 {
-			// Overlap intentionally re-visits messages, but chunks must still
-			// be contiguous slices — verify by content identity.
-		}
-		for j, msg := range chunk {
-			if &msg == &chunk[j] {
-				continue
-			}
-		}
 		if len(chunk) == 0 {
 			t.Fatalf("chunk %d empty", i)
 		}
-		if chunk[0].Content == "" {
-			t.Fatalf("chunk %d has an empty message", i)
+		start := indexOfMessage(msgs, chunk[0])
+		if start < 0 || start+len(chunk) > len(msgs) {
+			t.Fatalf("chunk %d has invalid source span [%d:%d]", i, start, start+len(chunk))
 		}
-		lastEnd = start + len(chunk) - 1
+		for j, msg := range chunk {
+			want := msgs[start+j]
+			if msg.Role != want.Role || msg.Content != want.Content {
+				t.Fatalf("chunk %d message %d is not source message %d", i, j, start+j)
+			}
+		}
 	}
 }
 
@@ -230,34 +222,25 @@ func TestChunkedFoldSummarySingleMessageFragmentCannotSplit(t *testing.T) {
 	}
 }
 
-func TestChunkedFoldSummaryMergeGroupsWhenOverBudget(t *testing.T) {
+func TestMergeFragmentsGroupsWhenOverBudget(t *testing.T) {
 	// A 2k window shrinks mergeInputBudget to ~616 tokens. Two fragment
-	// briefings of ~390 tokens each overflow it, so the merge must group:
-	// one group merge (3 messages) replaces the whole-set merge, and the
-	// group request lands inside the budget.
-	prov := &extractStubProvider{reply: strings.Repeat("digest line. ", 120)}
-	sess := NewSession("sys")
-	for i := range 8 {
-		sess.Add(provider.Message{Role: provider.RoleUser, Content: fmt.Sprintf("task %d ", i) + strings.Repeat("u", 10_000)})
-		sess.Add(provider.Message{Role: provider.RoleAssistant, Content: strings.Repeat("a", 10_000)})
+	// briefings overflow that planning threshold but still fit the summary
+	// request itself, so the tree reducer must merge the pair in one request.
+	prov := &extractStubProvider{reply: "digest"}
+	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{ContextWindow: 2000}, event.Discard)
+	parts := []string{strings.Repeat("old ", 320), strings.Repeat("new ", 320)}
+	if estimateMessagesTokens(mergeDigestMessages(parts)) <= a.mergeInputBudget() {
+		t.Fatal("test setup did not exceed the merge planning budget")
 	}
-	a := New(prov, tool.NewRegistry(), sess, Options{ContextWindow: 2000}, event.Discard)
-	res, err := a.chunkedFoldSummary(context.Background(), a.Session().Snapshot(), compactionInstruction, nil)
+	merged, err := a.mergeFragments(context.Background(), parts)
 	if err != nil {
-		t.Fatalf("chunkedFoldSummary: %v", err)
+		t.Fatalf("mergeFragments: %v", err)
 	}
-	if strings.TrimSpace(res.Text) == "" {
-		t.Fatal("empty summary")
+	if merged != "digest" {
+		t.Fatalf("merged = %q, want digest", merged)
 	}
-	// 2 fragment summaries + 1 group merge (parts collapse to one) = 3 calls.
-	if prov.calls != 3 {
-		t.Fatalf("provider calls = %d, want 3 (2 fragments, 1 group merge)", prov.calls)
-	}
-	budget := a.mergeInputBudget()
-	for i, n := range prov.msgLens {
-		if n == 3 && prov.reqEsts[i] > budget {
-			t.Fatalf("merge request %d est = %d over budget %d; grouping did not happen", i, prov.reqEsts[i], budget)
-		}
+	if prov.calls != 1 {
+		t.Fatalf("provider calls = %d, want 1 grouped merge", prov.calls)
 	}
 }
 
@@ -271,6 +254,38 @@ func TestChunkedFoldSummarySkipsGroupingWithinBudget(t *testing.T) {
 	// Single chunk fast path: 1 fragment request, no merge needed.
 	if prov.calls != 1 {
 		t.Fatalf("provider calls = %d, want 1", prov.calls)
+	}
+}
+
+func TestMergeFragmentsRetriesFinalUnknownWindowMerge(t *testing.T) {
+	// An unknown window skips proactive grouping. If the final whole-set
+	// request still truncates, mergeGroup must split and tree-reduce instead
+	// of discarding briefings that are already in hand.
+	prov := &extractStubProvider{failFirst: 1, reply: "digest"}
+	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
+	merged, err := a.mergeFragments(context.Background(), []string{"one", "two", "three", "four"})
+	if err != nil {
+		t.Fatalf("mergeFragments: %v", err)
+	}
+	if merged != "digest" {
+		t.Fatalf("merged = %q, want digest", merged)
+	}
+	// 1 failing whole-set request + 2 successful halves + 1 final merge.
+	if prov.calls != 4 {
+		t.Fatalf("provider calls = %d, want 4", prov.calls)
+	}
+}
+
+func TestMergeDigestMessagesUsesDecimalFragmentIndexes(t *testing.T) {
+	msgs := mergeDigestMessages([]string{"oldest", "newest"})
+	if len(msgs) != 3 {
+		t.Fatalf("messages = %d, want 3", len(msgs))
+	}
+	for i, msg := range msgs[1:] {
+		want := fmt.Sprintf("<fragment index=%d>", i+1)
+		if !strings.Contains(msg.Content, want) {
+			t.Fatalf("fragment %d content = %q, want %q", i+1, msg.Content, want)
+		}
 	}
 }
 

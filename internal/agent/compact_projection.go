@@ -392,6 +392,21 @@ func compactionTelemetryFromSummary(trigger, cacheState string, sourceTokens int
 	return tele
 }
 
+// foldSummaryWithChunkedFallback retries summary size failures through the
+// resilient fragment/tree-reduce path used for over-length sessions.
+func (a *Agent) foldSummaryWithChunkedFallback(ctx context.Context, trigger string, fold []provider.Message, instructions string, sourceTokens int, inputMode string) (foldSummary, CompactionTelemetry, error) {
+	res, tele, err := a.foldSummaryWithTelemetry(ctx, trigger, fold, instructions, sourceTokens, inputMode)
+	if err == nil || (!errors.Is(err, errSummaryOutputTruncated) && !errors.Is(err, ErrCompactionRequired)) {
+		return res, tele, err
+	}
+	chunked, chunkedErr := a.chunkedFoldSummary(ctx, fold, instructions, nil)
+	if chunkedErr != nil {
+		tele.Error = fmt.Sprintf("%v (chunked fallback: %v)", err, chunkedErr)
+		return foldSummary{}, tele, chunkedErr
+	}
+	return chunked, compactionTelemetryFromSummary(trigger, a.CacheState(), sourceTokens, chunked), nil
+}
+
 // compact writes a context projection; trigger stays "auto"/"manual" for UI cards.
 func (a *Agent) compact(ctx context.Context, trigger, instructions string, force bool) error {
 	_, err := a.compactToProjection(ctx, trigger, instructions, force, false)
@@ -483,24 +498,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 	if providerVisibleFingerprint(modelInputMessages(fold)) != originalFoldHash {
 		inputMode = SummaryInputExtensionRewritten
 	}
-	res, tele, err := a.foldSummaryWithTelemetry(ctx, trigger, fold, instructions, sourceTokens, inputMode)
-	if err != nil && (errors.Is(err, errSummaryOutputTruncated) || errors.Is(err, ErrCompactionRequired)) {
-		// One request cannot summarize this fold: the output ran into the
-		// provider limit, or the fold itself overflows the window. Fall back
-		// to the chunked extract strategy (#9082 #9572 follow-up) — the
-		// projection still installs in this session, so over-length sessions
-		// recover with a plain /compact and work continues in place.
-		chunked, chunkedErr := a.chunkedFoldSummary(ctx, fold, instructions, nil)
-		if chunkedErr != nil {
-			tele.Error = fmt.Sprintf("%v (chunked fallback: %v)", err, chunkedErr)
-			a.emitCompactionTelemetry(tele)
-			a.emitCompactionAborted(trigger)
-			return CompactionNoop, chunkedErr
-		}
-		res = chunked
-		tele = compactionTelemetryFromSummary(trigger, a.CacheState(), sourceTokens, chunked)
-		err = nil
-	}
+	res, tele, err := a.foldSummaryWithChunkedFallback(ctx, trigger, fold, instructions, sourceTokens, inputMode)
 	if err != nil {
 		a.emitCompactionTelemetry(tele)
 		a.emitCompactionAborted(trigger)

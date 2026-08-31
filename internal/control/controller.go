@@ -2971,10 +2971,6 @@ func (c *Controller) Compact(ctx context.Context, instructions string) error {
 	return c.executor.CompactNow(ctx, instructions)
 }
 
-// ExtractHighlightsToNewSession was removed: compaction now falls back to the
-// chunked extract strategy in place (see agent.chunkedFoldSummary), so one
-// /compact command covers over-length sessions without a session rotation.
-
 // maybeSessionStart fires the SessionStart hook exactly once per session, lazily
 // on the first turn — by then the sink/notify is wired, and a resumed session
 // fires it too (its first post-resume turn).

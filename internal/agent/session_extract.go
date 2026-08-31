@@ -5,18 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"sync"
 
 	"reasonix/internal/provider"
 )
 
-// #9082 - extract structured highlights from an over-length/unusable session
-// into a fresh conversation. The canonical transcript is summarized in
-// exponentially decaying chunks (newest fragment first, so recent work keeps
-// the finest granularity), each summarized with exactly one provider call,
-// and the partial digests are merged into a single compaction-summary that a
-// fresh session can adopt as its resume briefing.
+// Chunked session recovery summarizes an over-length transcript in
+// exponentially decaying fragments and tree-reduces their digests.
+// It powers the #9082 in-place compaction fallback.
 
 const (
 	// Chunk byte budgets from newest to oldest (design doc 2026-08-18:
@@ -30,6 +28,7 @@ const (
 	// Adjacent chunks share this many bytes near their boundary so a fact
 	// spanning the cut is not lost between digests.
 	extractChunkOverlapBytes = 16 << 10
+	minMergeInputTokens      = 400
 )
 
 const extractFragmentInstructionTmpl = `This is fragment %d/%d of an over-length session being recovered after its context exceeded the model window. Compact the preceding fragment into a durable briefing under these exact headings, omitting a heading only if it has no content:
@@ -109,8 +108,8 @@ func splitExtractChunks(msgs []provider.Message, overlap int) [][]provider.Messa
 		spans[j].hi = hi
 	}
 	chunks := make([][]provider.Message, 0, len(spans))
-	for j := len(spans) - 1; j >= 0; j-- { // oldest first
-		chunks = append(chunks, msgs[spans[j].lo:spans[j].hi])
+	for _, current := range slices.Backward(spans) { // oldest first
+		chunks = append(chunks, msgs[current.lo:current.hi])
 	}
 	return chunks
 }
@@ -205,7 +204,7 @@ func (a *Agent) mergeInputBudget() int {
 	if window <= 0 {
 		return math.MaxInt
 	}
-	return max(minFoldTokens, (window-a.summaryOutputBudget()-protocolReserveTokens)/2)
+	return max(minMergeInputTokens, (window-a.summaryOutputBudget()-protocolReserveTokens)/2)
 }
 
 // mergeGroup merges one group of fragment briefings. A group that cannot be
@@ -265,11 +264,11 @@ func (a *Agent) mergeFragments(ctx context.Context, parts []string) (string, err
 	if len(parts) == 1 {
 		return parts[0], nil
 	}
-	merged, err := a.foldToSummary(ctx, mergeDigestMessages(parts), extractMergeInstruction)
+	merged, err := a.mergeGroup(ctx, parts)
 	if err != nil {
 		return "", fmt.Errorf("merge: %w", err)
 	}
-	return strings.TrimSpace(merged.Text), nil
+	return merged, nil
 }
 
 // mergeDigestMessages builds the merge request body: one user message per
@@ -283,7 +282,7 @@ func mergeDigestMessages(parts []string) []provider.Message {
 	for i, part := range parts {
 		msgs = append(msgs, provider.Message{
 			Role:    provider.RoleUser,
-			Content: fmt.Sprintf("<fragment index=%q>\n%s\n</fragment>", i+1, part),
+			Content: fmt.Sprintf("<fragment index=%d>\n%s\n</fragment>", i+1, part),
 		})
 	}
 	return msgs
