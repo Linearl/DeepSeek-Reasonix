@@ -159,8 +159,9 @@ console.log("\nbundle budgets");
 // after a stranded native WebView extent. The WebView2 reachable-tail clamp
 // then absorbs a second post-quiet extent without an unbounded write loop.
 // The combined path measures 456.316 KiB; retain 0.084 KiB with the smallest
-// one-decimal ratchet.
-const initialJSBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 457.5 : 457.5;
+// one-decimal ratchet. Bumped to 459.0 for the 集成与连接 → 本地服务器服务
+// settings panel (LocalServerPage) that ships with the serve pool gateway.
+const initialJSBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 459.0 : 459.0;
 assertBudget("initial JavaScript gzip", initialJSGzip, initialJSBudgetKiB * 1024);
 assertBudget("largest initial JavaScript chunk gzip", largestInitialJS, 280 * 1024);
 // Render-blocking CSS is intentionally absent: styles.css loads deferred via
@@ -283,6 +284,6 @@ const rawInitialBytes = [...initialJS, ...initialCSS, ...appShellCSS]
 // The stranded-tail recovery transition plus the WebView2 reachable-tail clamp
 // bring the measured initial payload to 2447.953 KiB. Retain 0.047 KiB with
 // the smallest one-decimal ratchet.
-const rawInitialBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 2_459.0 : 2_459.0;
+const rawInitialBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 2_461.0 : 2_461.0;
 assertBudget("initial raw JavaScript and CSS", rawInitialBytes, rawInitialBudgetKiB * 1024);
 assertBudget("largest initial JavaScript chunk raw", largestInitialJSRaw, 1_000 * 1024);
