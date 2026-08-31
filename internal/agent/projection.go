@@ -53,6 +53,7 @@ const (
 	SummaryInputCachePrefix        = "cache_prefix"
 	SummaryInputExtensionRewritten = "extension_rewritten"
 	SummaryInputNonPrefix          = "non_prefix"
+	SummaryInputChunked            = "chunked"
 )
 
 // ContextProjection is the model-visible view of a session. The canonical

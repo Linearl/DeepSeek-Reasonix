@@ -132,6 +132,7 @@ type extractStubProvider struct {
 	reply     string
 	msgLens   []int
 	reqEsts   []int
+	requests  []provider.Request
 }
 
 func (p *extractStubProvider) Name() string { return "extract-stub" }
@@ -141,6 +142,9 @@ func (p *extractStubProvider) Stream(_ context.Context, req provider.Request) (<
 	p.calls++
 	p.msgLens = append(p.msgLens, len(req.Messages))
 	p.reqEsts = append(p.reqEsts, estimateMessagesTokens(req.Messages))
+	requestCopy := req
+	requestCopy.Messages = append([]provider.Message(nil), req.Messages...)
+	p.requests = append(p.requests, requestCopy)
 	n := p.calls
 	p.mu.Unlock()
 	ch := make(chan provider.Chunk, 3)
@@ -150,15 +154,51 @@ func (p *extractStubProvider) Stream(_ context.Context, req provider.Request) (<
 		return ch, nil
 	}
 	if n <= p.failFirst {
-		ch <- provider.Chunk{Type: provider.ChunkUsage, Usage: &provider.Usage{FinishReason: "length", TotalTokens: 100}}
+		ch <- provider.Chunk{Type: provider.ChunkUsage, Usage: &provider.Usage{
+			PromptTokens: 10, TotalTokens: 10, CacheHitTokens: 3, CacheMissTokens: 7,
+			FinishReason: "length", RequestCount: 1,
+		}}
 		ch <- provider.Chunk{Type: provider.ChunkDone}
 		close(ch)
 		return ch, nil
 	}
 	ch <- provider.Chunk{Type: provider.ChunkText, Text: p.reply}
+	ch <- provider.Chunk{Type: provider.ChunkUsage, Usage: &provider.Usage{
+		PromptTokens: 10, CompletionTokens: 2, TotalTokens: 12,
+		CacheHitTokens: 3, CacheMissTokens: 7, RequestCount: 1,
+	}}
 	ch <- provider.Chunk{Type: provider.ChunkDone}
 	close(ch)
 	return ch, nil
+}
+
+func requestContains(req provider.Request, marker string) bool {
+	for _, msg := range req.Messages {
+		if strings.Contains(msg.Content, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func assertActualToolResultSurvives(t *testing.T, msgs []provider.Message, callID, marker string) {
+	t.Helper()
+	wire := provider.SanitizeToolPairing(msgs)
+	for i, msg := range wire {
+		if msg.Role != provider.RoleAssistant {
+			continue
+		}
+		for _, call := range msg.ToolCalls {
+			if call.ID != callID {
+				continue
+			}
+			if i+1 >= len(wire) || wire[i+1].Role != provider.RoleTool || wire[i+1].ToolCallID != callID || !strings.Contains(wire[i+1].Content, marker) {
+				t.Fatalf("tool result %q did not survive sanitization: %+v", marker, wire)
+			}
+			return
+		}
+	}
+	t.Fatalf("tool call %q missing after sanitization: %+v", callID, wire)
 }
 
 func extractStubSession() *Session {
@@ -183,6 +223,53 @@ func TestChunkedFoldSummarySplitsOnOutputTruncation(t *testing.T) {
 	// 1 failing root + 2 half fragments + 1 merge = 4 calls.
 	if prov.calls != 4 {
 		t.Fatalf("provider calls = %d, want 4 (fail, two halves, merge)", prov.calls)
+	}
+}
+
+func TestSplitExtractChunksKeepsToolTurnAtomic(t *testing.T) {
+	const marker = "ACTUAL-TOOL-RESULT"
+	msgs := []provider.Message{
+		extractTestMsg(200<<10, "old"),
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c1", Name: "read_file", Arguments: `{}`}}},
+		{Role: provider.RoleTool, ToolCallID: "c1", Name: "read_file", Content: marker + strings.Repeat("r", 80<<10)},
+		{Role: provider.RoleAssistant, Content: "done"},
+	}
+	chunks := splitExtractChunks(msgs, extractChunkOverlapBytes)
+	if len(chunks) < 2 {
+		t.Fatalf("chunks = %d, want a boundary around the oversized tool turn", len(chunks))
+	}
+	seen := 0
+	for _, chunk := range chunks {
+		containsMarker := false
+		for _, msg := range chunk {
+			containsMarker = containsMarker || strings.Contains(msg.Content, marker)
+		}
+		if containsMarker {
+			seen++
+			assertActualToolResultSurvives(t, chunk, "c1", marker)
+		}
+	}
+	if seen == 0 {
+		t.Fatal("no chunk retained the actual tool result")
+	}
+}
+
+func TestSplitExtractFragmentKeepsToolTurnAtomic(t *testing.T) {
+	const marker = "ACTUAL-SPLIT-RESULT"
+	chunk := []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c1", Name: "bash", Arguments: `{}`}}},
+		{Role: provider.RoleTool, ToolCallID: "c1", Name: "bash", Content: marker},
+		{Role: provider.RoleUser, Content: "next"},
+	}
+	left, right, ok := splitExtractFragment(chunk)
+	if !ok || len(left) != 2 || len(right) != 1 {
+		t.Fatalf("split = (%d, %d, %v), want (2, 1, true)", len(left), len(right), ok)
+	}
+	assertActualToolResultSurvives(t, left, "c1", marker)
+	for _, msg := range right {
+		if msg.Role == provider.RoleTool {
+			t.Fatalf("right half contains an orphan tool result: %+v", right)
+		}
 	}
 }
 
@@ -219,6 +306,22 @@ func TestChunkedFoldSummarySingleMessageFragmentCannotSplit(t *testing.T) {
 	a := New(prov, tool.NewRegistry(), sess, Options{}, event.Discard)
 	if _, err := a.chunkedFoldSummary(context.Background(), a.Session().Snapshot(), compactionInstruction, nil); err == nil {
 		t.Fatal("expected failure when every split level truncates and no split remains")
+	}
+}
+
+func TestChunkedFoldSummarySingleAtomicToolTurnCannotSplit(t *testing.T) {
+	prov := &extractStubProvider{failFirst: 99, reply: "digest"}
+	a := New(prov, tool.NewRegistry(), NewSession("sys"), Options{}, event.Discard)
+	chunk := []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c1", Name: "bash", Arguments: `{}`}}},
+		{Role: provider.RoleTool, ToolCallID: "c1", Name: "bash", Content: "actual"},
+	}
+	run := newChunkedSummaryRun(a)
+	if _, err := a.extractFragmentResilient(context.Background(), chunk, extractFragmentInstruction(1, 1, ""), extractMergeInstruction, func(bool) {}, run); err == nil {
+		t.Fatal("expected failure rather than splitting one atomic tool turn")
+	}
+	if prov.calls != 1 {
+		t.Fatalf("provider calls = %d, want 1 for an indivisible tool turn", prov.calls)
 	}
 }
 
@@ -273,6 +376,121 @@ func TestMergeFragmentsRetriesFinalUnknownWindowMerge(t *testing.T) {
 	// 1 failing whole-set request + 2 successful halves + 1 final merge.
 	if prov.calls != 4 {
 		t.Fatalf("provider calls = %d, want 4", prov.calls)
+	}
+}
+
+type noProgressMergeProvider struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (p *noProgressMergeProvider) Name() string { return "no-progress-merge" }
+
+func (p *noProgressMergeProvider) Stream(_ context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+	p.mu.Lock()
+	p.calls++
+	p.mu.Unlock()
+	parts := make([]string, 0, 2)
+	for _, msg := range req.Messages {
+		if !strings.HasPrefix(msg.Content, "<fragment index=") {
+			continue
+		}
+		if start := strings.IndexByte(msg.Content, '\n'); start >= 0 {
+			if end := strings.LastIndex(msg.Content, "\n</fragment>"); end > start {
+				parts = append(parts, msg.Content[start+1:end])
+			}
+		}
+	}
+	ch := make(chan provider.Chunk, 3)
+	if len(parts) >= 2 {
+		ch <- provider.Chunk{Type: provider.ChunkUsage, Usage: &provider.Usage{PromptTokens: 10, TotalTokens: 10, FinishReason: "length", RequestCount: 1}}
+	} else if len(parts) == 1 {
+		ch <- provider.Chunk{Type: provider.ChunkText, Text: parts[0]}
+		ch <- provider.Chunk{Type: provider.ChunkUsage, Usage: &provider.Usage{PromptTokens: 10, CompletionTokens: 1, TotalTokens: 11, RequestCount: 1}}
+	}
+	ch <- provider.Chunk{Type: provider.ChunkDone}
+	close(ch)
+	return ch, nil
+}
+
+func TestMergeFragmentsStopsWhenRecoveryMakesNoProgress(t *testing.T) {
+	prov := &noProgressMergeProvider{}
+	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
+	_, err := a.mergeFragments(context.Background(), []string{"one", "two"})
+	if err == nil || !strings.Contains(err.Error(), "made no progress") {
+		t.Fatalf("merge error = %v, want explicit no-progress failure", err)
+	}
+	if prov.calls != 3 {
+		t.Fatalf("provider calls = %d, want 3 bounded calls (pair + two singletons)", prov.calls)
+	}
+}
+
+func TestChunkedSummaryRunEnforcesCallBudget(t *testing.T) {
+	prov := &extractStubProvider{reply: "digest"}
+	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
+	run := newChunkedSummaryRun(a)
+	for i := 0; i < maxChunkedSummaryCalls; i++ {
+		if _, err := run.summarize(context.Background(), []provider.Message{{Role: provider.RoleUser, Content: "x"}}, extractMergeInstruction); err != nil {
+			t.Fatalf("call %d: %v", i+1, err)
+		}
+	}
+	if _, err := run.summarize(context.Background(), []provider.Message{{Role: provider.RoleUser, Content: "x"}}, extractMergeInstruction); err == nil || !strings.Contains(err.Error(), "call budget exhausted") {
+		t.Fatalf("budget error = %v", err)
+	}
+	if prov.calls != maxChunkedSummaryCalls {
+		t.Fatalf("provider calls = %d, want cap %d", prov.calls, maxChunkedSummaryCalls)
+	}
+}
+
+func TestChunkedFallbackPreservesFocusAndAggregatesTelemetry(t *testing.T) {
+	const focus = "KEEP-FOCUS-MARKER-9082"
+	prov := &extractStubProvider{failFirst: 2, reply: "digest"}
+	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
+	fold := a.Session().Snapshot()
+	res, tele, err := a.foldSummaryWithChunkedFallback(context.Background(), CompactionTriggerManual, fold, focus, 321, SummaryInputCachePrefix)
+	if err != nil {
+		t.Fatalf("foldSummaryWithChunkedFallback: %v", err)
+	}
+	if res.InputMode != SummaryInputChunked || tele.SummaryInputMode != SummaryInputChunked {
+		t.Fatalf("input modes = (%q, %q), want %q", res.InputMode, tele.SummaryInputMode, SummaryInputChunked)
+	}
+	if tele.FoldTokens <= 0 {
+		t.Fatalf("fold tokens = %d, want original fold estimate", tele.FoldTokens)
+	}
+	if tele.Spans != prov.calls || tele.RequestCount != prov.calls {
+		t.Fatalf("spans/requests/calls = %d/%d/%d, want exact aggregate", tele.Spans, tele.RequestCount, prov.calls)
+	}
+	if tele.InputTokens != prov.calls*10 || tele.CacheHitTokens != prov.calls*3 || tele.CacheMissTokens != prov.calls*7 {
+		t.Fatalf("aggregated usage = %+v, calls = %d", tele, prov.calls)
+	}
+	if len(prov.requests) < 2 {
+		t.Fatalf("requests = %d, want initial call plus fallback", len(prov.requests))
+	}
+	for i, req := range prov.requests[1:] {
+		if !requestContains(req, focus) {
+			t.Fatalf("fallback request %d discarded focus marker", i+1)
+		}
+	}
+}
+
+func TestChunkedFoldSummaryIgnoresLocalRawContentForChunking(t *testing.T) {
+	prov := &extractStubProvider{reply: "digest"}
+	sess := NewSession("sys")
+	sess.Add(provider.Message{Role: provider.RoleUser, Content: "visible-one", RawContent: strings.Repeat("r", 1<<20)})
+	sess.Add(provider.Message{Role: provider.RoleAssistant, Content: "visible-two", RawContent: strings.Repeat("p", 1<<20)})
+	a := New(prov, tool.NewRegistry(), sess, Options{}, event.Discard)
+	if _, err := a.chunkedFoldSummary(context.Background(), a.Session().Snapshot(), "", nil); err != nil {
+		t.Fatalf("chunkedFoldSummary: %v", err)
+	}
+	if prov.calls != 1 {
+		t.Fatalf("provider calls = %d, want one provider-visible fragment", prov.calls)
+	}
+	for _, req := range prov.requests {
+		for _, msg := range req.Messages {
+			if msg.RawContent != "" || msg.ProviderContent != "" {
+				t.Fatalf("local-only content reached fallback request: %+v", msg)
+			}
+		}
 	}
 }
 

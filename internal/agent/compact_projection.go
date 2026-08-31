@@ -373,8 +373,11 @@ func compactionTelemetryFromSummary(trigger, cacheState string, sourceTokens int
 		SourceTokens:      sourceTokens,
 		ProviderRequestID: res.RequestID,
 		FoldTokens:        res.FoldTokens,
-		Spans:             1, // one application-layer summary request per transaction
+		Spans:             res.Spans,
 		SummaryInputMode:  res.InputMode,
+	}
+	if tele.Spans <= 0 {
+		tele.Spans = 1
 	}
 	usage := res.Usage
 	if usage == nil {
@@ -400,9 +403,18 @@ func (a *Agent) foldSummaryWithChunkedFallback(ctx context.Context, trigger stri
 		return res, tele, err
 	}
 	chunked, chunkedErr := a.chunkedFoldSummary(ctx, fold, instructions, nil)
+	chunked.Usage = mergeSamplingUsage(res.Usage, chunked.Usage)
+	chunked.Spans += res.Spans
+	if chunked.FoldTokens <= 0 {
+		chunked.FoldTokens = res.FoldTokens
+	}
+	if chunked.RequestID == "" {
+		chunked.RequestID = res.RequestID
+	}
 	if chunkedErr != nil {
+		tele = compactionTelemetryFromSummary(trigger, a.CacheState(), sourceTokens, chunked)
 		tele.Error = fmt.Sprintf("%v (chunked fallback: %v)", err, chunkedErr)
-		return foldSummary{}, tele, chunkedErr
+		return chunked, tele, chunkedErr
 	}
 	return chunked, compactionTelemetryFromSummary(trigger, a.CacheState(), sourceTokens, chunked), nil
 }

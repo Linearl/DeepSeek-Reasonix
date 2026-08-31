@@ -29,6 +29,11 @@ const (
 	// spanning the cut is not lost between digests.
 	extractChunkOverlapBytes = 16 << 10
 	minMergeInputTokens      = 400
+	// A chunked recovery owns the compaction lock and can issue multiple paid
+	// requests. Keep the exceptional path finite even when a provider repeatedly
+	// truncates a digest without making it smaller.
+	maxChunkedSummaryCalls = 64
+	maxChunkedMergeDepth   = 8
 )
 
 const extractFragmentInstructionTmpl = `This is fragment %d/%d of an over-length session being recovered after its context exceeded the model window. Compact the preceding fragment into a durable briefing under these exact headings, omitting a heading only if it has no content:
@@ -45,6 +50,79 @@ Rules: be terse - bullet points and fragments, not prose. Preserve identifiers, 
 
 const extractMergeInstruction = `The following are sequential fragment briefings of one over-length session, ordered oldest to newest. Merge them into the session's final resume briefing under the same exact headings (## Standing facts & constraints / ## Goal / ## Decisions & rationale / ## Files & code / ## Commands & outcomes / ## Errors & fixes / ## Pending & next step). Later fragments supersede earlier ones - keep the final state of every fact, drop superseded entries, and preserve identifiers, paths, and numbers exactly. Output only the structured Markdown briefing. Do not call tools. Do not output reasoning.`
 
+type extractMessageSpan struct{ lo, hi int }
+
+// extractMessageUnits returns replay-safe units. An assistant tool-call message
+// and all of its contiguous results are indivisible because every provider
+// adapter sanitizes that pairing immediately before serialization.
+func extractMessageUnits(msgs []provider.Message) []extractMessageSpan {
+	units := make([]extractMessageSpan, 0, len(msgs))
+	for i := 0; i < len(msgs); {
+		j := i + 1
+		switch {
+		case msgs[i].Role == provider.RoleAssistant && len(msgs[i].ToolCalls) > 0:
+			for j < len(msgs) && msgs[j].Role == provider.RoleTool {
+				j++
+			}
+		case msgs[i].Role == provider.RoleTool:
+			// Keep malformed/orphan result runs together too. Sanitization may drop
+			// them, but chunking must never create additional orphan boundaries.
+			for j < len(msgs) && msgs[j].Role == provider.RoleTool {
+				j++
+			}
+		}
+		units = append(units, extractMessageSpan{lo: i, hi: j})
+		i = j
+	}
+	return units
+}
+
+func extractUnitWireBytes(msgs []provider.Message, unit extractMessageSpan) int {
+	total := 0
+	for _, msg := range msgs[unit.lo:unit.hi] {
+		total += messageWireBytes(msg)
+	}
+	return total
+}
+
+func extractInstructionWithFocus(base, instructions string) string {
+	if strings.TrimSpace(instructions) == "" {
+		return base
+	}
+	return base + "\n\nAdditional focus for this compaction (prioritize keeping this):\n" + strings.TrimSpace(instructions)
+}
+
+func extractFragmentInstruction(index, total int, instructions string) string {
+	return extractInstructionWithFocus(fmt.Sprintf(extractFragmentInstructionTmpl, index, total), instructions)
+}
+
+func extractMergeInstructionWithFocus(instructions string) string {
+	return extractInstructionWithFocus(extractMergeInstruction, instructions)
+}
+
+type chunkedSummaryRun struct {
+	a     *Agent
+	calls int
+	usage *provider.Usage
+}
+
+func newChunkedSummaryRun(a *Agent) *chunkedSummaryRun {
+	return &chunkedSummaryRun{a: a}
+}
+
+func (r *chunkedSummaryRun) summarize(ctx context.Context, fold []provider.Message, instructions string) (foldSummary, error) {
+	if err := ctx.Err(); err != nil {
+		return foldSummary{}, err
+	}
+	if r.calls >= maxChunkedSummaryCalls {
+		return foldSummary{}, fmt.Errorf("chunked summary call budget exhausted (%d)", maxChunkedSummaryCalls)
+	}
+	r.calls++
+	res, err := r.a.foldToSummary(ctx, fold, instructions)
+	r.usage = mergeSamplingUsage(r.usage, res.Usage)
+	return res, err
+}
+
 // extractChunkSizes returns the per-chunk byte budgets from newest to oldest.
 func extractChunkSizes() []int {
 	return []int{
@@ -56,11 +134,14 @@ func extractChunkSizes() []int {
 	}
 }
 
-// messageWireBytes approximates the transcript footprint of one message -
-// the full local original plus any reasoning payload, which is what a
-// summary request would have to carry.
+// messageWireBytes approximates the provider-visible transcript footprint of
+// one message. chunkedFoldSummary first removes local-only/raw fields through
+// modelInputMessages, so local storage metadata cannot distort boundaries.
 func messageWireBytes(msg provider.Message) int {
-	n := len(msg.Content) + len(msg.RawContent) + len(msg.ProviderContent) + len(msg.ReasoningContent)
+	n := len(msg.Content) + len(msg.ReasoningContent)
+	for _, tc := range msg.ToolCalls {
+		n += len(tc.ID) + len(tc.Name) + len(tc.Arguments) + len(tc.ThoughtSignature)
+	}
 	for _, img := range msg.Images {
 		n += len(img)
 	}
@@ -69,18 +150,19 @@ func messageWireBytes(msg provider.Message) int {
 
 // splitExtractChunks splits messages newest-tail-first into chunks following
 // the exponential size table, with adjacent chunks sharing `overlap` bytes
-// around their boundary. Boundaries never split a message: a chunk always
-// starts at a message boundary even when that overshoots the budget. Returns
+// around their boundary. Boundaries never split a replay-safe message unit:
+// tool calls and their contiguous results stay together even when that
+// overshoots the budget. Returns
 // chunks oldest-first. A transcript smaller than the newest chunk yields a
 // single chunk covering everything.
 func splitExtractChunks(msgs []provider.Message, overlap int) [][]provider.Message {
 	if len(msgs) == 0 {
 		return nil
 	}
+	units := extractMessageUnits(msgs)
 	sizes := extractChunkSizes()
-	type span struct{ lo, hi int }
-	var spans []span // newest -> oldest
-	end := len(msgs)
+	var spans []extractMessageSpan // unit indexes, newest -> oldest
+	end := len(units)
 	for i := 0; end > 0; i++ {
 		size := sizes[min(i, len(sizes)-1)]
 		if i > 0 {
@@ -90,9 +172,9 @@ func splitExtractChunks(msgs []provider.Message, overlap int) [][]provider.Messa
 		acc := 0
 		for lo > 0 && acc < size {
 			lo--
-			acc += messageWireBytes(msgs[lo])
+			acc += extractUnitWireBytes(msgs, units[lo])
 		}
-		spans = append(spans, span{lo: lo, hi: end})
+		spans = append(spans, extractMessageSpan{lo: lo, hi: end})
 		end = lo
 	}
 	// Widen every older chunk's right edge into its newer neighbor's head so
@@ -102,14 +184,16 @@ func splitExtractChunks(msgs []provider.Message, overlap int) [][]provider.Messa
 		hi := spans[j].hi // the older chunk ends where the newer one begins
 		acc := 0
 		for hi < spans[j-1].hi && acc < overlap {
-			acc += messageWireBytes(msgs[hi])
+			acc += extractUnitWireBytes(msgs, units[hi])
 			hi++
 		}
 		spans[j].hi = hi
 	}
 	chunks := make([][]provider.Message, 0, len(spans))
 	for _, current := range slices.Backward(spans) { // oldest first
-		chunks = append(chunks, msgs[current.lo:current.hi])
+		lo := units[current.lo].lo
+		hi := units[current.hi-1].hi
+		chunks = append(chunks, msgs[lo:hi])
 	}
 	return chunks
 }
@@ -121,13 +205,24 @@ func splitExtractChunks(msgs []provider.Message, overlap int) [][]provider.Messa
 // #9572 follow-up): the projection still installs in the same session, so
 // work continues in place. progress, when non-nil, reports (chunks
 // summarized, total chunks); the total grows when a fragment splits.
-func (a *Agent) chunkedFoldSummary(ctx context.Context, fold []provider.Message, instructions string, progress func(done, total int)) (foldSummary, error) {
-	if len(fold) == 0 {
-		return foldSummary{}, fmt.Errorf("fold is empty")
+func (a *Agent) chunkedFoldSummary(ctx context.Context, fold []provider.Message, instructions string, progress func(done, total int)) (result foldSummary, err error) {
+	fold = modelInputMessages(fold)
+	result = foldSummary{
+		Mode:       CompactionModeChunked,
+		FoldTokens: summaryInputTokens(fold),
+		InputMode:  SummaryInputChunked,
 	}
+	if len(fold) == 0 {
+		return result, fmt.Errorf("fold is empty")
+	}
+	run := newChunkedSummaryRun(a)
+	defer func() {
+		result.Usage = run.usage
+		result.Spans = run.calls
+	}()
 	chunks := splitExtractChunks(fold, extractChunkOverlapBytes)
 	if len(chunks) == 0 {
-		return foldSummary{}, fmt.Errorf("fold is empty")
+		return result, fmt.Errorf("fold is empty")
 	}
 	report := orNoopProgress(progress)
 	// Fragments may split in half on summarizer failure (see
@@ -145,19 +240,21 @@ func (a *Agent) chunkedFoldSummary(ctx context.Context, fold []provider.Message,
 		report(done, total)
 	}
 	parts := make([]string, 0, len(chunks))
+	mergeInstructions := extractMergeInstructionWithFocus(instructions)
 	for i, chunk := range chunks {
-		fragInstr := fmt.Sprintf(extractFragmentInstructionTmpl, i+1, len(chunks))
-		res, err := a.extractFragmentResilient(ctx, chunk, fragInstr, advance)
+		fragInstructions := extractFragmentInstruction(i+1, len(chunks), instructions)
+		res, err := a.extractFragmentResilient(ctx, chunk, fragInstructions, mergeInstructions, advance, run)
 		if err != nil {
-			return foldSummary{}, fmt.Errorf("fragment %d/%d: %w", i+1, len(chunks), err)
+			return result, fmt.Errorf("fragment %d/%d: %w", i+1, len(chunks), err)
 		}
 		parts = append(parts, res)
 	}
-	text, err := a.mergeFragments(ctx, parts)
+	text, err := a.mergeFragmentsWithRun(ctx, parts, mergeInstructions, run)
 	if err != nil {
-		return foldSummary{}, err
+		return result, err
 	}
-	return foldSummary{Text: text, Mode: CompactionModeChunked, Spans: len(chunks)}, nil
+	result.Text = text
+	return result, nil
 }
 
 // extractFragmentResilient summarizes one extract fragment, splitting it in
@@ -166,33 +263,42 @@ func (a *Agent) chunkedFoldSummary(ctx context.Context, fold []provider.Message,
 // output-token limit (the same failure that blocks in-place compaction on
 // over-length sessions), and on small-window models the fragment itself can
 // overflow the input window. Both are fixed by smaller fragments, so the
-// halves are extracted and their digests merged; depth is bounded by the
-// message count. report(true) grows the progress total (one fragment became
-// two); report(false) marks one leaf fragment summarized.
-func (a *Agent) extractFragmentResilient(ctx context.Context, chunk []provider.Message, instructions string, report func(grown bool)) (string, error) {
-	res, err := a.foldToSummary(ctx, chunk, instructions)
+// halves are extracted and their digests merged. Replay-safe units and the
+// shared call budget bound the recovery. report(true) grows the progress total
+// (one fragment became two); report(false) marks one leaf fragment summarized.
+func (a *Agent) extractFragmentResilient(ctx context.Context, chunk []provider.Message, instructions, mergeInstructions string, report func(grown bool), run *chunkedSummaryRun) (string, error) {
+	res, err := run.summarize(ctx, chunk, instructions)
 	if err == nil {
 		return strings.TrimSpace(res.Text), nil
 	}
 	retriable := errors.Is(err, errSummaryOutputTruncated) || errors.Is(err, ErrCompactionRequired)
-	if !retriable || len(chunk) < 2 {
+	leftChunk, rightChunk, splittable := splitExtractFragment(chunk)
+	if !retriable || !splittable {
 		return "", err
 	}
 	report(true)
-	mid := len(chunk) / 2
-	left, err := a.extractFragmentResilient(ctx, chunk[:mid], instructions, report)
+	left, err := a.extractFragmentResilient(ctx, leftChunk, instructions, mergeInstructions, report, run)
 	if err != nil {
 		return "", err
 	}
-	right, err := a.extractFragmentResilient(ctx, chunk[mid:], instructions, report)
+	right, err := a.extractFragmentResilient(ctx, rightChunk, instructions, mergeInstructions, report, run)
 	if err != nil {
 		return "", err
 	}
-	merged, err := a.mergeFragments(ctx, []string{left, right})
+	merged, err := a.mergeFragmentsWithRun(ctx, []string{left, right}, mergeInstructions, run)
 	if err != nil {
 		return "", fmt.Errorf("merge split fragments: %w", err)
 	}
 	return merged, nil
+}
+
+func splitExtractFragment(chunk []provider.Message) (left, right []provider.Message, ok bool) {
+	units := extractMessageUnits(chunk)
+	if len(units) < 2 {
+		return nil, nil, false
+	}
+	boundary := units[len(units)/2].lo
+	return chunk[:boundary], chunk[boundary:], true
 }
 
 // mergeInputBudget is the merge-request input ceiling in tokens: half of the
@@ -211,25 +317,35 @@ func (a *Agent) mergeInputBudget() int {
 // summarized whole (output truncation, input overflow) splits in half and
 // recurses — the briefings are already in hand, so the merge must not fail
 // with them discarded (#9082 follow-up).
-func (a *Agent) mergeGroup(ctx context.Context, group []string) (string, error) {
-	merged, err := a.foldToSummary(ctx, mergeDigestMessages(group), extractMergeInstruction)
+func (a *Agent) mergeGroup(ctx context.Context, group []string, instructions string, run *chunkedSummaryRun, depth int) (string, error) {
+	merged, err := run.summarize(ctx, mergeDigestMessages(group), instructions)
 	if err == nil {
 		return strings.TrimSpace(merged.Text), nil
 	}
+	mergeErr := err
 	retriable := errors.Is(err, errSummaryOutputTruncated) || errors.Is(err, ErrCompactionRequired)
 	if !retriable || len(group) < 2 {
 		return "", err
 	}
+	if depth >= maxChunkedMergeDepth {
+		return "", fmt.Errorf("merge recovery depth exhausted (%d): %w", maxChunkedMergeDepth, err)
+	}
+	before := estimateMessagesTokens(mergeDigestMessages(group))
 	mid := len(group) / 2
-	left, err := a.mergeGroup(ctx, group[:mid])
+	left, err := a.mergeGroup(ctx, group[:mid], instructions, run, depth+1)
 	if err != nil {
 		return "", err
 	}
-	right, err := a.mergeGroup(ctx, group[mid:])
+	right, err := a.mergeGroup(ctx, group[mid:], instructions, run, depth+1)
 	if err != nil {
 		return "", err
 	}
-	return a.mergeGroup(ctx, []string{left, right})
+	next := []string{left, right}
+	after := estimateMessagesTokens(mergeDigestMessages(next))
+	if after >= before {
+		return "", fmt.Errorf("merge recovery made no progress (%d >= %d tokens): %w", after, before, mergeErr)
+	}
+	return a.mergeGroup(ctx, next, instructions, run, depth+1)
 }
 
 // mergeFragments merges fragment briefings into one final briefing. When the
@@ -237,6 +353,11 @@ func (a *Agent) mergeGroup(ctx context.Context, group []string) (string, error) 
 // provider window), it is merged pairwise first — tree-reduce, so the merge
 // never fails with every fragment briefing already in hand.
 func (a *Agent) mergeFragments(ctx context.Context, parts []string) (string, error) {
+	run := newChunkedSummaryRun(a)
+	return a.mergeFragmentsWithRun(ctx, parts, extractMergeInstruction, run)
+}
+
+func (a *Agent) mergeFragmentsWithRun(ctx context.Context, parts []string, instructions string, run *chunkedSummaryRun) (string, error) {
 	if len(parts) == 0 {
 		return "", fmt.Errorf("no fragment briefings to merge")
 	}
@@ -250,7 +371,7 @@ func (a *Agent) mergeFragments(ctx context.Context, parts []string) (string, err
 				next = append(next, group[0])
 				continue
 			}
-			merged, err := a.mergeGroup(ctx, group)
+			merged, err := a.mergeGroup(ctx, group, instructions, run, 0)
 			if err != nil {
 				return "", err
 			}
@@ -264,7 +385,7 @@ func (a *Agent) mergeFragments(ctx context.Context, parts []string) (string, err
 	if len(parts) == 1 {
 		return parts[0], nil
 	}
-	merged, err := a.mergeGroup(ctx, parts)
+	merged, err := a.mergeGroup(ctx, parts, instructions, run, 0)
 	if err != nil {
 		return "", fmt.Errorf("merge: %w", err)
 	}
