@@ -25,7 +25,7 @@ func TestSplitExtractChunksSingleChunk(t *testing.T) {
 		extractTestMsg(100, "b"),
 		extractTestMsg(100, "c"),
 	}
-	chunks := splitExtractChunks(msgs, extractChunkOverlapBytes)
+	chunks := splitExtractChunks(msgs, extractChunkOverlapBytes, provider.SharedWindowInputPolicy{})
 	if len(chunks) != 1 {
 		t.Fatalf("chunks = %d, want 1", len(chunks))
 	}
@@ -42,7 +42,7 @@ func TestSplitExtractChunksExponential(t *testing.T) {
 	for i := range msgs {
 		msgs[i] = extractTestMsg(48<<10, fmt.Sprintf("<%06d>", i))
 	}
-	chunks := splitExtractChunks(msgs, extractChunkOverlapBytes)
+	chunks := splitExtractChunks(msgs, extractChunkOverlapBytes, provider.SharedWindowInputPolicy{})
 	if len(chunks) < 4 {
 		t.Fatalf("chunks = %d, want >= 4 for a 1.9MiB transcript", len(chunks))
 	}
@@ -91,7 +91,7 @@ func TestSplitExtractChunksContiguousSlices(t *testing.T) {
 	for i := range msgs {
 		msgs[i] = extractTestMsg(100<<10, fmt.Sprintf("<%06d>", i))
 	}
-	chunks := splitExtractChunks(msgs, extractChunkOverlapBytes)
+	chunks := splitExtractChunks(msgs, extractChunkOverlapBytes, provider.SharedWindowInputPolicy{})
 	for i, chunk := range chunks {
 		if len(chunk) == 0 {
 			t.Fatalf("chunk %d empty", i)
@@ -234,7 +234,7 @@ func TestSplitExtractChunksKeepsToolTurnAtomic(t *testing.T) {
 		{Role: provider.RoleTool, ToolCallID: "c1", Name: "read_file", Content: marker + strings.Repeat("r", 80<<10)},
 		{Role: provider.RoleAssistant, Content: "done"},
 	}
-	chunks := splitExtractChunks(msgs, extractChunkOverlapBytes)
+	chunks := splitExtractChunks(msgs, extractChunkOverlapBytes, provider.SharedWindowInputPolicy{})
 	if len(chunks) < 2 {
 		t.Fatalf("chunks = %d, want a boundary around the oversized tool turn", len(chunks))
 	}
@@ -317,7 +317,7 @@ func TestChunkedFoldSummarySingleAtomicToolTurnCannotSplit(t *testing.T) {
 		{Role: provider.RoleTool, ToolCallID: "c1", Name: "bash", Content: "actual"},
 	}
 	run := newChunkedSummaryRun(a)
-	if _, err := a.extractFragmentResilient(context.Background(), chunk, extractFragmentInstruction(1, 1, ""), extractMergeInstruction, func(bool) {}, run); err == nil {
+	if _, err := a.extractFragmentResilient(context.Background(), chunk, extractFragmentInstruction(1, 1, ""), extractMergeInstruction, func(bool) {}, run, 0); err == nil {
 		t.Fatal("expected failure rather than splitting one atomic tool turn")
 	}
 	if prov.calls != 1 {
@@ -430,11 +430,11 @@ func TestChunkedSummaryRunEnforcesCallBudget(t *testing.T) {
 	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
 	run := newChunkedSummaryRun(a)
 	for i := range maxChunkedSummaryCalls {
-		if _, err := run.summarize(context.Background(), []provider.Message{{Role: provider.RoleUser, Content: "x"}}, extractMergeInstruction); err != nil {
+		if _, err := run.summarize(context.Background(), []provider.Message{{Role: provider.RoleUser, Content: "x"}}, extractMergeInstruction, 0); err != nil {
 			t.Fatalf("call %d: %v", i+1, err)
 		}
 	}
-	if _, err := run.summarize(context.Background(), []provider.Message{{Role: provider.RoleUser, Content: "x"}}, extractMergeInstruction); err == nil || !strings.Contains(err.Error(), "call budget exhausted") {
+	if _, err := run.summarize(context.Background(), []provider.Message{{Role: provider.RoleUser, Content: "x"}}, extractMergeInstruction, 0); err == nil || !strings.Contains(err.Error(), "call budget exhausted") {
 		t.Fatalf("budget error = %v", err)
 	}
 	if prov.calls != maxChunkedSummaryCalls {
