@@ -45,9 +45,14 @@ func TestIsOfficialDeepSeekVisionModel(t *testing.T) {
 		{OfficialDeepSeekVisionModel, true},
 		{"DEEPSEEK-V4-FLASH-VISION-EXP", true},
 		{" deepseek-v4-flash-vision-exp ", true},
+		{"deepseek/deepseek-v4-flash-vision-exp", true},
+		{"DeepSeek/deepseek-v4-flash-vision-exp", true},
 		{"deepseek-v4-flash", false},
 		{"deepseek-v4-pro", false},
 		{"deepseek-v5-vision", false},
+		{"deepseek/deepseek-v4-flash", false},
+		{"deepseek-v4-flash-vision-exp/extra", false},
+		{"other/deepseek-v4-flash-vision-exp", false},
 		{"", false},
 	} {
 		if got := IsOfficialDeepSeekVisionModel(tc.model); got != tc.want {

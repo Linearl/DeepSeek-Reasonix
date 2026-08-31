@@ -43,9 +43,20 @@ func IsDeepSeek(baseURL string) bool {
 const OfficialDeepSeekVisionModel = "deepseek-v4-flash-vision-exp"
 
 // IsOfficialDeepSeekVisionModel reports whether model is the pinned official
-// DeepSeek vision SKU. Matching is case-insensitive and trims surrounding space.
+// DeepSeek vision SKU. Matching is case-insensitive, trims surrounding space,
+// and strips a leading "deepseek/" provider prefix (the model ref the user
+// commonly grants is "deepseek/deepseek-v4-flash-vision-exp"). Flash and Pro
+// remain text-only; a future name that merely contains "vision" must not
+// inherit this contract.
 func IsOfficialDeepSeekVisionModel(model string) bool {
-	return strings.EqualFold(strings.TrimSpace(model), OfficialDeepSeekVisionModel)
+	m := strings.TrimSpace(model)
+	// Accept a bare SKU or the "deepseek/<sku>" provider-ref form by dropping
+	// the leading provider segment. This keeps the pinned-SKU gate intact while
+	// not mis-gating the vision SKU when granted through a prefixed ref.
+	if slash := strings.LastIndexByte(m, '/'); slash >= 0 && strings.EqualFold(strings.TrimSpace(m[:slash]), "deepseek") {
+		m = strings.TrimSpace(m[slash+1:])
+	}
+	return strings.EqualFold(m, OfficialDeepSeekVisionModel)
 }
 
 // OfficialDeepSeekAllowsVision reports whether this official DeepSeek endpoint

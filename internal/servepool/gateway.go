@@ -63,11 +63,17 @@ func (g *Gateway) handleStatus(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (g *Gateway) authorized(r *http.Request) bool {
-	auth := strings.TrimSpace(r.Header.Get("Authorization"))
-	if !strings.HasPrefix(auth, "Bearer ") {
-		return false
+	// Accept both bearer-header and ?token= query auth, mirroring the
+	// single-serve auth (serve/auth.go reads r.URL.Query().Get("token")).
+	// GrandCouncil's HttpClientFactory injects ?token= (not a bearer header),
+	// so the gateway must honor it or remote clients get HTTP 401.
+	given := ""
+	if auth := strings.TrimSpace(r.Header.Get("Authorization")); strings.HasPrefix(auth, "Bearer ") {
+		given = strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
 	}
-	given := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+	if given == "" {
+		given = strings.TrimSpace(r.URL.Query().Get("token"))
+	}
 	if given == "" {
 		return false
 	}

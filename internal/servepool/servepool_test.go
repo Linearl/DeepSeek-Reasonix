@@ -96,6 +96,28 @@ func TestGatewayStatus(t *testing.T) {
 	if !strings.Contains(string(body), `"label"`) {
 		t.Fatalf("status body missing label: %s", body)
 	}
+
+	// ?token= query auth (what GrandCouncil's HttpClientFactory injects) → 200.
+	req, _ = http.NewRequest(http.MethodGet, ts.URL+"/status?token=secret", nil)
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("query token: status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	// Wrong ?token= query → 401.
+	req, _ = http.NewRequest(http.MethodGet, ts.URL+"/status?token=nope", nil)
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("wrong query token: status = %d, want %d", resp.StatusCode, http.StatusUnauthorized)
+	}
 }
 
 func TestGatewayManifestShape(t *testing.T) {
