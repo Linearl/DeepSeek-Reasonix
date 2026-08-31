@@ -12,6 +12,10 @@ import MarkdownHistory from "../components/MarkdownHistory";
 import { TranscriptScrollWriteProvider } from "../components/TranscriptLayoutIntentContext";
 import { parseMarkdown, markdownContentRevision } from "../lib/markdownPipeline";
 import {
+  nativeTranscriptDistanceFromBottom,
+  observeNativeTranscriptTailClamp,
+} from "../lib/transcriptScrollGeometry";
+import {
   disposeMarkdownWorkerClient,
   MarkdownWorkerClient,
   setMarkdownWorkerClientForTest,
@@ -254,7 +258,9 @@ console.log("\nmarkdown history rendering");
   ok(!rootEl.querySelector(".md[data-markdown-blocks]"), "worker completion keeps the full fallback while the reader is away from bottom");
   ok(rootEl.textContent?.includes("Anchor 1"), "the reader's prefix remains mounted during the deferred handoff");
 
-  rootEl.scrollTop = 700;
+  rootEl.scrollTop = 692;
+  ok(observeNativeTranscriptTailClamp(rootEl, 692), "a native no-op tail write records the reachable bottom");
+  eq(nativeTranscriptDistanceFromBottom(rootEl), 0, "the shared transcript geometry treats the native clamp as bottom");
   await act(async () => {
     rootEl.dispatchEvent(new dom.window.Event("scroll"));
     await new Promise((resolve) => setTimeout(resolve, 0));

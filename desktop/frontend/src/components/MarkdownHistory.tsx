@@ -18,6 +18,10 @@ import {
   type MarkdownBlock,
 } from "../lib/markdownPipeline";
 import { getMarkdownWorkerClient } from "../lib/markdownWorkerClient";
+import {
+  nativeTranscriptDistanceFromBottom,
+  TRANSCRIPT_AT_BOTTOM_THRESHOLD_PX,
+} from "../lib/transcriptScrollGeometry";
 import { getTranscriptStore } from "../lib/transcriptStore";
 import { createComponents } from "./markdownComponents";
 import { VirtualMarkdownSourceTable } from "./MarkdownTable";
@@ -34,7 +38,6 @@ const MARKDOWN_WINDOW_BLOCKS = MARKDOWN_TAIL_BLOCKS + MARKDOWN_PREPEND_BLOCKS * 
 const MARKDOWN_SENTINEL_STYLE = { display: "block", height: 1 } as const;
 const MARKDOWN_ANCHOR_STYLE = { display: "block", height: 0 } as const;
 const MARKDOWN_FALLBACK_MARKER_STYLE = { display: "none" } as const;
-const MARKDOWN_PARSE_SWAP_BOTTOM_EPSILON_PX = 2;
 
 type BlockWindow = {
   identity: MarkdownBlock[] | undefined;
@@ -196,7 +199,7 @@ export const MarkdownHistory = memo(function MarkdownHistory({
         };
         const scroller = fallbackMarkerRef.current?.closest<HTMLElement>(".transcript") ?? null;
         const isAtBottom = () => !scroller
-          || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= MARKDOWN_PARSE_SWAP_BOTTOM_EPSILON_PX;
+          || nativeTranscriptDistanceFromBottom(scroller) <= TRANSCRIPT_AT_BOTTOM_THRESHOLD_PX;
         if (isAtBottom()) {
           commit();
           return;
