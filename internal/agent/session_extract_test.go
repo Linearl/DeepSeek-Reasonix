@@ -429,7 +429,7 @@ func TestChunkedSummaryRunEnforcesCallBudget(t *testing.T) {
 	prov := &extractStubProvider{reply: "digest"}
 	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
 	run := newChunkedSummaryRun(a)
-	for i := 0; i < maxChunkedSummaryCalls; i++ {
+	for i := range maxChunkedSummaryCalls {
 		if _, err := run.summarize(context.Background(), []provider.Message{{Role: provider.RoleUser, Content: "x"}}, extractMergeInstruction); err != nil {
 			t.Fatalf("call %d: %v", i+1, err)
 		}
