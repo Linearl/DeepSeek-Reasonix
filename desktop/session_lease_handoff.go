@@ -131,6 +131,11 @@ func (a *App) handleTabSessionTransition(tab *WorkspaceTab) func(control.Session
 			return fmt.Errorf("bind target session: tab runtime changed; retry")
 		}
 		tab.SessionPath = canonicalTabSessionPath(info.TargetPath)
+		// Rotations initiated inside the controller (e.g. /extract's NewSession)
+		// bypass the desktop ClearSession wrapper, so the tab-local generation
+		// must bump here: the frontend watches it to re-hydrate the transcript
+		// onto the rotated session instead of keeping the stale one.
+		tab.SessionGeneration++
 		if a.tabs[tab.ID] == tab {
 			a.saveTabsLocked()
 		}

@@ -1,11 +1,16 @@
 package agent
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
+	"reasonix/internal/event"
 	"reasonix/internal/provider"
+	"reasonix/internal/tool"
 )
 
 func extractTestMsg(size int, tag string) provider.Message {
@@ -119,4 +124,102 @@ func indexOfMessage(msgs []provider.Message, target provider.Message) int {
 		}
 	}
 	return -1
+}
+
+// extractStubProvider fails the first `failFirst` summarize requests with the
+// output-truncation signal (FinishReason=length, the #9082 follow-up failure
+// mode on very large sessions), then replies normally. streamErr, when set,
+// is a non-retriable transport failure surfaced on every call.
+type extractStubProvider struct {
+	mu        sync.Mutex
+	calls     int
+	failFirst int
+	streamErr error
+	reply     string
+}
+
+func (p *extractStubProvider) Name() string { return "extract-stub" }
+
+func (p *extractStubProvider) Stream(_ context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+	p.mu.Lock()
+	p.calls++
+	n := p.calls
+	p.mu.Unlock()
+	ch := make(chan provider.Chunk, 3)
+	if p.streamErr != nil {
+		ch <- provider.Chunk{Type: provider.ChunkError, Err: p.streamErr}
+		close(ch)
+		return ch, nil
+	}
+	if n <= p.failFirst {
+		ch <- provider.Chunk{Type: provider.ChunkUsage, Usage: &provider.Usage{FinishReason: "length", TotalTokens: 100}}
+		ch <- provider.Chunk{Type: provider.ChunkDone}
+		close(ch)
+		return ch, nil
+	}
+	ch <- provider.Chunk{Type: provider.ChunkText, Text: p.reply}
+	ch <- provider.Chunk{Type: provider.ChunkDone}
+	close(ch)
+	return ch, nil
+}
+
+func extractStubSession() *Session {
+	sess := NewSession("sys")
+	sess.Add(provider.Message{Role: provider.RoleUser, Content: "task one"})
+	sess.Add(provider.Message{Role: provider.RoleAssistant, Content: "answer one"})
+	sess.Add(provider.Message{Role: provider.RoleUser, Content: "task two"})
+	sess.Add(provider.Message{Role: provider.RoleAssistant, Content: "answer two"})
+	return sess
+}
+
+func TestExtractHighlightsSplitsOnOutputTruncation(t *testing.T) {
+	prov := &extractStubProvider{failFirst: 1, reply: "digest"}
+	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
+	summary, err := a.ExtractHighlights(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ExtractHighlights: %v", err)
+	}
+	if summary == "" {
+		t.Fatal("empty summary after split recovery")
+	}
+	// 1 failing root + 2 half fragments + 1 merge = 4 calls.
+	if prov.calls != 4 {
+		t.Fatalf("provider calls = %d, want 4 (fail, two halves, merge)", prov.calls)
+	}
+}
+
+func TestExtractHighlightsDoesNotRetryTransportErrors(t *testing.T) {
+	prov := &extractStubProvider{streamErr: errors.New("provider down")}
+	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
+	if _, err := a.ExtractHighlights(context.Background(), nil); err == nil {
+		t.Fatal("expected the transport error to surface")
+	}
+	if prov.calls != 1 {
+		t.Fatalf("provider calls = %d, want 1 (no split retry on transport errors)", prov.calls)
+	}
+}
+
+func TestExtractHighlightsSplitsDeepOnRepeatedTruncation(t *testing.T) {
+	prov := &extractStubProvider{failFirst: 2, reply: "digest"}
+	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
+	summary, err := a.ExtractHighlights(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ExtractHighlights: %v", err)
+	}
+	if summary == "" {
+		t.Fatal("empty summary after deep split recovery")
+	}
+	if prov.calls < 6 {
+		t.Fatalf("provider calls = %d, want a deep split (>=6)", prov.calls)
+	}
+}
+
+func TestExtractHighlightsSingleMessageFragmentCannotSplit(t *testing.T) {
+	prov := &extractStubProvider{failFirst: 99, reply: "digest"}
+	sess := NewSession("sys")
+	sess.Add(provider.Message{Role: provider.RoleUser, Content: "only"})
+	a := New(prov, tool.NewRegistry(), sess, Options{}, event.Discard)
+	if _, err := a.ExtractHighlights(context.Background(), nil); err == nil {
+		t.Fatal("expected failure when every split level truncates and no split remains")
+	}
 }
