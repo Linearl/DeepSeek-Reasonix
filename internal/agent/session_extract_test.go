@@ -129,13 +129,17 @@ func indexOfMessage(msgs []provider.Message, target provider.Message) int {
 // extractStubProvider fails the first `failFirst` summarize requests with the
 // output-truncation signal (FinishReason=length, the #9082 follow-up failure
 // mode on very large sessions), then replies normally. streamErr, when set,
-// is a non-retriable transport failure surfaced on every call.
+// is a non-retriable transport failure surfaced on every call. Every request's
+// message count is recorded so merge-grouping tests can assert the merge
+// request never carried the whole fragment set.
 type extractStubProvider struct {
 	mu        sync.Mutex
 	calls     int
 	failFirst int
 	streamErr error
 	reply     string
+	msgLens   []int
+	reqEsts   []int
 }
 
 func (p *extractStubProvider) Name() string { return "extract-stub" }
@@ -143,6 +147,8 @@ func (p *extractStubProvider) Name() string { return "extract-stub" }
 func (p *extractStubProvider) Stream(_ context.Context, req provider.Request) (<-chan provider.Chunk, error) {
 	p.mu.Lock()
 	p.calls++
+	p.msgLens = append(p.msgLens, len(req.Messages))
+	p.reqEsts = append(p.reqEsts, estimateMessagesTokens(req.Messages))
 	n := p.calls
 	p.mu.Unlock()
 	ch := make(chan provider.Chunk, 3)
@@ -221,5 +227,49 @@ func TestExtractHighlightsSingleMessageFragmentCannotSplit(t *testing.T) {
 	a := New(prov, tool.NewRegistry(), sess, Options{}, event.Discard)
 	if _, err := a.ExtractHighlights(context.Background(), nil); err == nil {
 		t.Fatal("expected failure when every split level truncates and no split remains")
+	}
+}
+
+func TestExtractHighlightsMergeGroupsWhenOverBudget(t *testing.T) {
+	// A 2k window shrinks mergeInputBudget to ~616 tokens. Two fragment
+	// briefings of ~390 tokens each overflow it, so the merge must group:
+	// one group merge (3 messages) replaces the whole-set merge, and the
+	// group request lands inside the budget.
+	prov := &extractStubProvider{reply: strings.Repeat("digest line. ", 120)}
+	sess := NewSession("sys")
+	for i := range 8 {
+		sess.Add(provider.Message{Role: provider.RoleUser, Content: fmt.Sprintf("task %d ", i) + strings.Repeat("u", 10_000)})
+		sess.Add(provider.Message{Role: provider.RoleAssistant, Content: strings.Repeat("a", 10_000)})
+	}
+	a := New(prov, tool.NewRegistry(), sess, Options{ContextWindow: 2000}, event.Discard)
+	summary, err := a.ExtractHighlights(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ExtractHighlights: %v", err)
+	}
+	if summary == "" {
+		t.Fatal("empty summary")
+	}
+	// 2 fragment summaries + 1 group merge (parts collapse to one) = 3 calls.
+	if prov.calls != 3 {
+		t.Fatalf("provider calls = %d, want 3 (2 fragments, 1 group merge)", prov.calls)
+	}
+	budget := a.mergeInputBudget()
+	for i, n := range prov.msgLens {
+		if n == 3 && prov.reqEsts[i] > budget {
+			t.Fatalf("merge request %d est = %d over budget %d; grouping did not happen", i, prov.reqEsts[i], budget)
+		}
+	}
+}
+
+func TestExtractHighlightsSkipsGroupingWithinBudget(t *testing.T) {
+	// Unknown window (budget = MaxInt): the merge stays a single request.
+	prov := &extractStubProvider{reply: "digest"}
+	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
+	if _, err := a.ExtractHighlights(context.Background(), nil); err != nil {
+		t.Fatalf("ExtractHighlights: %v", err)
+	}
+	// Single chunk fast path: 1 fragment request, no merge needed.
+	if prov.calls != 1 {
+		t.Fatalf("provider calls = %d, want 1", prov.calls)
 	}
 }
