@@ -50,7 +50,7 @@ func TestManualCompactEscapesOverCeilingDeadlock(t *testing.T) {
 	if len(prov.requests) == 0 {
 		t.Fatal("manual compact never reached the summarizer")
 	}
-	maxPrompt := window - outputBudgetReserve - 256
+	maxPrompt := window - a.summaryOutputBudget() - protocolReserveTokens
 	for i, req := range prov.requests {
 		if got := a.estimatedRequestTokens(req); got > maxPrompt {
 			t.Fatalf("summary request %d estimated %d tokens, exceeds admissible %d", i, got, maxPrompt)
@@ -142,7 +142,7 @@ func TestManualCompactMultiBatchWhenSingleFoldInsufficient(t *testing.T) {
 	if len(prov.requests) < 2 {
 		t.Fatalf("summary calls = %d, want at least 2 rescue batches", len(prov.requests))
 	}
-	maxPrompt := window - outputBudgetReserve - 256
+	maxPrompt := window - a.summaryOutputBudget() - protocolReserveTokens
 	for i, req := range prov.requests {
 		if got := a.estimatedRequestTokens(req); got > maxPrompt {
 			t.Fatalf("summary request %d estimated %d tokens, exceeds admissible %d", i, got, maxPrompt)
