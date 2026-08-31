@@ -259,7 +259,7 @@ func TestEffortCapabilityZhipu(t *testing.T) {
 	if !cap.Supported {
 		t.Fatalf("GLM entry should expose /effort, got %+v", cap)
 	}
-	wantLevels := []string{"auto", "enabled", "disabled"}
+	wantLevels := []string{"auto", "disabled", "low", "medium", "high", "max"}
 	if len(cap.Levels) != len(wantLevels) {
 		t.Fatalf("levels = %v, want %v", cap.Levels, wantLevels)
 	}
@@ -268,8 +268,8 @@ func TestEffortCapabilityZhipu(t *testing.T) {
 			t.Errorf("levels[%d] = %q, want %q", i, cap.Levels[i], l)
 		}
 	}
-	if cap.Default != "enabled" {
-		t.Errorf("default = %q, want enabled (GLM ships with thinking on)", cap.Default)
+	if cap.Default != "auto" {
+		t.Errorf("default = %q, want auto (GLM ships with thinking on, default strength)", cap.Default)
 	}
 }
 
@@ -282,9 +282,9 @@ func TestEffortCapabilityExplicitGLMProtocolOnGateway(t *testing.T) {
 		ReasoningProtocol: ReasoningProtocolGLM,
 	}
 	cap := EffortCapabilityForEntry(e)
-	want := []string{"auto", "enabled", "disabled"}
-	if !cap.Supported || cap.Default != "enabled" || len(cap.Levels) != len(want) {
-		t.Fatalf("explicit GLM capability = %+v, want levels %v default enabled", cap, want)
+	want := []string{"auto", "disabled", "low", "medium", "high", "max"}
+	if !cap.Supported || cap.Default != "auto" || len(cap.Levels) != len(want) {
+		t.Fatalf("explicit GLM capability = %+v, want levels %v default auto", cap, want)
 	}
 	for i := range want {
 		if cap.Levels[i] != want[i] {
@@ -294,8 +294,8 @@ func TestEffortCapabilityExplicitGLMProtocolOnGateway(t *testing.T) {
 	if got, err := NormalizeEffort(e, "disabled"); err != nil || got != "disabled" {
 		t.Fatalf("explicit GLM disabled = %q/%v, want disabled/nil", got, err)
 	}
-	if got, err := NormalizeEffort(e, "high"); err != nil || got != "enabled" {
-		t.Fatalf("explicit GLM legacy high = %q/%v, want enabled/nil", got, err)
+	if got, err := NormalizeEffort(e, "high"); err != nil || got != "high" {
+		t.Fatalf("explicit GLM high = %q/%v, want high/nil", got, err)
 	}
 }
 
@@ -314,9 +314,9 @@ func TestGLMModelRegistryUpgradesLegacyGatewayConfig(t *testing.T) {
 				t.Fatalf("ReasoningProtocolForEntry() = %q, want %q", got, ReasoningProtocolGLM)
 			}
 			cap := EffortCapabilityForEntry(e)
-			want := []string{"auto", "enabled", "disabled"}
-			if !cap.Supported || cap.Default != "enabled" || !stringSlicesEqual(cap.Levels, want) {
-				t.Fatalf("legacy gateway GLM capability = %+v, want levels %v default enabled", cap, want)
+			want := []string{"auto", "disabled", "low", "medium", "high", "max"}
+			if !cap.Supported || cap.Default != "auto" || !stringSlicesEqual(cap.Levels, want) {
+				t.Fatalf("legacy gateway GLM capability = %+v, want levels %v default auto", cap, want)
 			}
 		})
 	}
@@ -404,17 +404,19 @@ func TestNormalizeEffortZhipu(t *testing.T) {
 		in, want string
 	}{
 		{"auto", ""}, // auto == leave to provider default == empty
-		{"enabled", "enabled"},
+		{"enabled", "auto"}, // legacy "thinking on, no strength" → auto
 		{"disabled", "disabled"},
-		{"ENABLED", "enabled"}, // case-insensitive
-		// Stale values from other vendors resolve to a valid GLM level rather
-		// than failing the /effort command.
+		{"ENABLED", "auto"}, // case-insensitive → legacy auto
+		// GLM-5.2/5.3 expose both a thinking on/off knob (thinking.type) and a
+		// reasoning strength scale (reasoning_effort). A single affordance maps
+		// to the pair; strength levels pass through intact so the wire can emit
+		// thinking.type=enabled + reasoning_effort=<strength>.
 		{"off", "disabled"}, // retired DeepSeek "no thinking"
-		{"low", "enabled"},
-		{"medium", "enabled"},
-		{"high", "enabled"},
-		{"xhigh", "enabled"},
-		{"max", "enabled"},
+		{"low", "low"},
+		{"medium", "medium"},
+		{"high", "high"},
+		{"xhigh", "max"}, // GLM-5.2 maps xhigh → max
+		{"max", "max"},
 	}
 	for _, tc := range cases {
 		got, err := NormalizeEffort(e, tc.in)

@@ -2922,15 +2922,17 @@ func TestUpsertProviderNormalizesCustomEffortFields(t *testing.T) {
 }
 
 func TestEffortCapabilityEmptySupportedEffortsNotConfigurable(t *testing.T) {
-	// mimo-pro without SupportedEfforts: no built-in heuristic, /effort must reject.
+	// A plain OpenAI-compatible gateway with no built-in heuristic and no
+	// supported_efforts: /effort must reject. (MiMo/Zhipu etc. auto-detect by
+	// host, so use a genuinely neutral endpoint.)
 	e := &ProviderEntry{
-		Name:    "mimo-pro",
+		Name:    "custom-gateway",
 		Kind:    "openai",
-		BaseURL: "https://token-plan-cn.xiaomimimo.com/v1",
-		Model:   "mimo-v2.5-pro",
+		BaseURL: "https://api.example-gateway.com/v1",
+		Model:   "my-model",
 	}
 	if cap := EffortCapabilityForEntry(e); cap.Supported {
-		t.Fatalf("mimo-pro without SupportedEfforts should not be configurable, got %+v", cap)
+		t.Fatalf("neutral provider without SupportedEfforts should not be configurable, got %+v", cap)
 	}
 	if _, err := NormalizeEffort(e, "high"); err == nil {
 		t.Fatal("NormalizeEffort should reject level for unsupported provider")

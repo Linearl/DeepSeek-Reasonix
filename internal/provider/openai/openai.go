@@ -166,14 +166,18 @@ func New(cfg provider.Config) (provider.Provider, error) {
 			return nil, fmt.Errorf("openai: provider %q uses MiniMax thinking; effort must be adaptive or disabled", name)
 		}
 	case zhipu:
-		// Zhipu GLM gates chain-of-thought through `thinking.type`
-		// (enabled|disabled) and silently ignores reasoning_effort, so /effort
-		// mirrors that binary knob. The config effort layer normalises depth
-		// levels onto one of these; "" means auto == the GLM default (thinking on).
+		// Zhipu GLM-5.2/5.3 support reasoning_effort for thinking strength.
+		// GLM-5.3/5.3-flash: thinking always enabled (cannot disable).
+		// GLM-5.2: thinking can be disabled (none/minimal).
+		// Strength levels (low/medium/high/max) → reasoning_effort + thinking.type=enabled.
+		// disabled → thinking.type=disabled, no reasoning_effort.
+		// auto/"" → thinking.type=enabled (model default strength).
+		// The config effort layer normalises here (enabled→auto, xhigh→max,
+		// off→disabled), so only the wire-level vocabulary arrives.
 		switch effort {
-		case "", "enabled", "disabled":
+		case "", "auto", "enabled", "disabled", "low", "medium", "high", "max":
 		default:
-			return nil, fmt.Errorf("openai: provider %q uses Zhipu thinking; effort must be enabled or disabled", name)
+			return nil, fmt.Errorf("openai: provider %q uses Zhipu thinking; effort must be auto, disabled, low, medium, high, or max", name)
 		}
 	case longcat:
 		// LongCat exposes a binary thinking knob on its OpenAI-compatible endpoint:

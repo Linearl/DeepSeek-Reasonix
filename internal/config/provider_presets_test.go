@@ -741,8 +741,8 @@ func TestCuratedProviderPresetCapabilities(t *testing.T) {
 	if !ok {
 		t.Fatal("glm-cn/glm-5.2 did not resolve")
 	}
-	if cap := EffortCapabilityForEntry(glm); !cap.Supported || cap.Default != "enabled" || !containsString(cap.Levels, "disabled") {
-		t.Fatalf("glm effort capability = %+v, want enabled/disabled", cap)
+	if cap := EffortCapabilityForEntry(glm); !cap.Supported || cap.Default != "auto" || !containsString(cap.Levels, "disabled") || !containsString(cap.Levels, "low") || !containsString(cap.Levels, "max") {
+		t.Fatalf("glm effort capability = %+v, want auto/disabled/low/.../max", cap)
 	}
 	if !glm.HasVisionModel("glm-5v-turbo") {
 		t.Fatalf("glm vision capability mismatch: %+v", glm.VisionModels)
@@ -751,8 +751,8 @@ func TestCuratedProviderPresetCapabilities(t *testing.T) {
 	if !ok {
 		t.Fatal("zai-global/glm-5.2 did not resolve")
 	}
-	if cap := EffortCapabilityForEntry(zaiGlobal); !cap.Supported || cap.Default != "enabled" {
-		t.Fatalf("zai-global effort capability = %+v, want enabled", cap)
+	if cap := EffortCapabilityForEntry(zaiGlobal); !cap.Supported || cap.Default != "auto" {
+		t.Fatalf("zai-global effort capability = %+v, want auto", cap)
 	}
 	glmPlanCN, ok := cfg.Provider("glm-coding-plan-cn")
 	if !ok {

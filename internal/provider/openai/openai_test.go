@@ -1449,37 +1449,46 @@ func TestNewMiniMaxSetsFlag(t *testing.T) {
 // it). Auto (empty effort) defaults to "enabled" — the GLM model default.
 func TestBuildRequestZhipuThinking(t *testing.T) {
 	for _, tc := range []struct {
-		name         string
-		effort       string
-		wantThinking string
+		name          string
+		effort        string
+		wantThinking  string
+		wantReasoning string
 	}{
-		{name: "auto-defaults-to-enabled", effort: "", wantThinking: "enabled"},
-		{name: "enabled", effort: "enabled", wantThinking: "enabled"},
-		{name: "disabled", effort: "disabled", wantThinking: "disabled"},
+		{name: "auto-defaults-to-enabled", effort: "", wantThinking: "enabled", wantReasoning: ""},
+		{name: "enabled", effort: "enabled", wantThinking: "enabled", wantReasoning: ""},
+		{name: "disabled", effort: "disabled", wantThinking: "disabled", wantReasoning: ""},
+		// GLM-5.2/5.3 expose a thinking on/off knob AND a reasoning strength
+		// scale; a single affordance maps to the (thinking.type, reasoning_effort)
+		// pair. Strength ≤ max goes through as reasoning_effort with thinking on.
+		{name: "low", effort: "low", wantThinking: "enabled", wantReasoning: "low"},
+		{name: "medium", effort: "medium", wantThinking: "enabled", wantReasoning: "medium"},
+		{name: "high", effort: "high", wantThinking: "enabled", wantReasoning: "high"},
+		{name: "max", effort: "max", wantThinking: "enabled", wantReasoning: "max"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			req := (&client{model: "glm-4.5-air", zhipu: true, effort: tc.effort}).buildRequest(provider.Request{})
 			if req.Thinking == nil || req.Thinking.Type != tc.wantThinking {
 				t.Fatalf("Thinking = %+v, want %q", req.Thinking, tc.wantThinking)
 			}
-			if req.ReasoningEffort != "" {
-				t.Fatalf("Zhipu must not send reasoning_effort, got %q", req.ReasoningEffort)
+			if req.ReasoningEffort != tc.wantReasoning {
+				t.Fatalf("ReasoningEffort = %q, want %q", req.ReasoningEffort, tc.wantReasoning)
 			}
 		})
 	}
 }
 
 // TestNewZhipuEffortValidation locks in boot-time validation for the Zhipu path.
-// The config effort layer remaps depth levels, so by the time effort reaches the
-// factory it must be one of: "", "enabled", "disabled".
+// GLM-5.2/5.3 expose both a thinking on/off knob (thinking.type) and a reasoning
+// strength scale (reasoning_effort), so a single affordance maps to the pair:
+// strength levels must reach the factory intact, plus the binary off state.
 func TestNewZhipuEffortValidation(t *testing.T) {
 	base := provider.Config{Name: "glm", BaseURL: "https://open.bigmodel.cn/api/paas/v4", Model: "glm-4.5-air", APIKey: "k"}
-	for _, ok := range []string{"", "enabled", "disabled"} {
+	for _, ok := range []string{"", "auto", "enabled", "disabled", "low", "medium", "high", "max"} {
 		if _, err := New(withEffort(base, ok)); err != nil {
 			t.Errorf("effort=%q should be accepted: %v", ok, err)
 		}
 	}
-	for _, bad := range []string{"high", "low", "max", "adaptive"} {
+	for _, bad := range []string{"adaptive", "xhigh", "none"} {
 		if _, err := New(withEffort(base, bad)); err == nil {
 			t.Errorf("effort=%q should be rejected", bad)
 		}
