@@ -164,7 +164,9 @@ console.log("\nbundle budgets");
 // full mounted coverage, and one final arbiter-owned correction. The measured
 // path is 457.406 KiB after extracting the lease owner to satisfy repolint;
 // retain 0.094 KiB with the same one-decimal ratchet.
-const initialJSBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 457.5 : 457.5;
+// Latest-base transcript settle ownership measures 457.523 KiB with this UX;
+// retain the smallest one-decimal ratchet without widening other chunk gates.
+const initialJSBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 457.6 : 457.6;
 assertBudget("initial JavaScript gzip", initialJSGzip, initialJSBudgetKiB * 1024);
 assertBudget("largest initial JavaScript chunk gzip", largestInitialJS, 280 * 1024);
 // Render-blocking CSS is intentionally absent: styles.css loads deferred via
@@ -283,9 +285,11 @@ const rawInitialBytes = [...initialJS, ...initialCSS, ...appShellCSS]
 // The stranded-tail recovery transition plus the WebView2 reachable-tail clamp
 // bring the measured initial payload to 2447.953 KiB. Retain 0.047 KiB with
 // the smallest one-decimal ratchet.
-// The extracted history-prepend owner adds 3.953 KiB of bounded transaction
-// state and stable-key coverage checks. The measured path is 2451.906 KiB;
-// retain 0.094 KiB with the same one-decimal ratchet.
-const rawInitialBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 2_452.0 : 2_452.0;
+// The extracted history-prepend owner and compact session-version host measure
+// 2452.7 KiB together; the recovery coordinator and dialog remain lazy. Retain
+// the smallest one-decimal headroom without widening unrelated chunk ceilings.
+// Latest-base transcript settle ownership brings the measured path to
+// 2452.821 KiB; retain the smallest one-decimal ratchet.
+const rawInitialBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 2_452.9 : 2_452.9;
 assertBudget("initial raw JavaScript and CSS", rawInitialBytes, rawInitialBudgetKiB * 1024);
 assertBudget("largest initial JavaScript chunk raw", largestInitialJSRaw, 1_000 * 1024);
