@@ -91,6 +91,7 @@ type Server struct {
 	detached      map[string]*detachedSession
 	tagsMu        sync.Mutex
 	tags          map[*control.Controller]*sessionTagSink
+	hostGate      hostGateState // hostGuard allowlist state; see hostguard.go
 }
 
 // SetControllerBuildOptions records the process-local options used to build
@@ -581,7 +582,7 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /skills", s.skills)
 	mux.HandleFunc("GET /todos", s.todos)
 	mux.HandleFunc("POST /delete-session", s.deleteSession)
-	return logMiddleware(gzipMiddleware(s.auth.middleware(csrfGuard(mux))))
+	return logMiddleware(gzipMiddleware(s.auth.middleware(s.hostGuard(csrfGuard(mux)))))
 }
 
 func (s *Server) reloadExtensionsHTTP(w http.ResponseWriter, r *http.Request) {
@@ -592,33 +593,11 @@ func (s *Server) reloadExtensionsHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// csrfGuard rejects state-changing requests that don't carry a JSON content type.
-// The command endpoints have no auth and bind to localhost, so a page the user
-// visits could otherwise drive them with a simple cross-origin POST (text/plain,
-// no preflight) — submitting prompts or auto-approving tool calls. Requiring
-// application/json forces a CORS preflight the unauthenticated server never
-// answers, blocking cross-site requests; the same-origin frontend (which always
-// sends JSON) is unaffected.
-func csrfGuard(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			ct := r.Header.Get("Content-Type")
-			if i := strings.IndexByte(ct, ';'); i >= 0 {
-				ct = ct[:i]
-			}
-			if !strings.EqualFold(strings.TrimSpace(ct), "application/json") {
-				http.Error(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
-				return
-			}
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
 // Run serves until the process is killed. Interactive approval is enabled so
 // "ask" decisions surface as approval_request events answered via POST /approve.
 func (s *Server) Run(addr string) error {
 	s.ctl().EnableInteractiveApproval()
+	s.setListenAddr(addr)
 	return http.ListenAndServe(addr, s.Handler())
 }
 
@@ -626,6 +605,7 @@ func (s *Server) Run(addr string) error {
 // the provided context and drains active connections for up to 10 seconds
 // before returning.
 func (s *Server) RunGraceful(ctx context.Context, addr string) error {
+	s.setListenAddr(addr)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
@@ -638,6 +618,7 @@ func (s *Server) RunGraceful(ctx context.Context, addr string) error {
 // listen first, record ln.Addr(), then hand the listener here.
 func (s *Server) RunGracefulListener(ctx context.Context, ln net.Listener) error {
 	s.ctl().EnableInteractiveApproval()
+	s.setListenAddr(ln.Addr().String())
 	srv := &http.Server{
 		Handler:           s.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,

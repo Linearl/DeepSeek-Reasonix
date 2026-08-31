@@ -131,7 +131,7 @@ equal(writer.write({
   expectedOwnershipEpoch: 7,
   expectedGeometryRevision: 11,
 }), true, "tail pinning writes the current physical scroller extent");
-equal(calls.at(-1), "nativeScrollTo", "pinTail bypasses Virtuoso's stale size-tree lane");
+equal(calls[calls.length - 1], "nativeScrollTo", "pinTail bypasses Virtuoso's stale size-tree lane");
 equal(element.scrollTop, 1_500, "the physical tail write lands synchronously");
 
 dom.window.close();

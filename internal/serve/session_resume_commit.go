@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"log/slog"
 	"net/http"
 
 	"reasonix/internal/agent"
@@ -36,6 +37,14 @@ func (s *Server) commitLoadedResume(w http.ResponseWriter, cur control.SessionAP
 	cur.Resume(loaded, realPath)
 	if !concrete {
 		return true
+	}
+	// Rebind dropped the controller handlers with the outgoing authority. Resume
+	// has now made loaded current, so restore its owner binding before the next
+	// /new, /clear, or /fork enters the ordinary authorized transition path.
+	if s.leases != nil {
+		if err := s.leases.BindControllerAuthority(ctrl); err != nil {
+			slog.Warn("serve: rebind controller authority after resume", "err", err)
+		}
 	}
 	if tag == nil {
 		s.setControllerPath(ctrl, realPath)

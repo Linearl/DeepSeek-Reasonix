@@ -4707,7 +4707,13 @@ func (m *chatTUI) runSlashCommand(input string) tea.Cmd {
 		m.notice(i18n.M.SlashNewDone)
 	case "/clear":
 		m.echoLocalCommand(input)
-		m.clearConfirm = &clearConfirm{confirm: 1}
+		if m.ctrl.ToolApprovalMode() == control.ToolApprovalYolo {
+			// YOLO is an explicit commitment to skip confirmations; /clear is
+			// rarely mistyped and the damage is recoverable, so clear directly.
+			return m.clearContext()
+		} else {
+			m.clearConfirm = &clearConfirm{confirm: 1}
+		}
 	case "/cls":
 		m.echoLocalCommand(input)
 		m.finalizeStreamed()

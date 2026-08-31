@@ -330,7 +330,7 @@ export function ProjectTree({
   const loadProjectTopicsRef = useRef<(project: ProjectNode, append?: boolean) => Promise<void>>(async () => {});
 
   const loadProjectTopics = useCallback(async (project: ProjectNode, append = false) => {
-    if (project.kind !== "project" && project.kind !== "global_folder") return;
+    if ((project.kind !== "project" && project.kind !== "global_folder") || project.remote) return;
     const key = project.key;
     const pageState = topicPageStateRef.current[key];
     const cursor = append ? pageState?.nextCursor ?? "" : "";

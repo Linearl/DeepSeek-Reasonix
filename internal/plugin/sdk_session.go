@@ -192,67 +192,6 @@ func hasExplicitMCPAuth(s Spec) bool {
 	return mcpdiag.HasAuthConfig(s.Headers, s.Env, s.URL)
 }
 
-func (t *sdkSessionTransport) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
-	managed, err := t.acquire(ctx)
-	if err != nil {
-		return nil, t.sanitizeError(err, nil)
-	}
-	result, err := t.invokeManaged(ctx, managed, method, params)
-	if err == nil {
-		t.clearRuntimeError(managed)
-		return result, nil
-	}
-
-	if errors.Is(err, mcpsdk.ErrSessionMissing) {
-		if managed.session.ID() == "" {
-			endpointErr := fmt.Errorf("MCP endpoint returned HTTP 404 without an established session: %w", err)
-			t.noteRuntimeError(managed, SessionErrorProtocol, endpointErr)
-			return nil, t.sanitizeError(endpointErr, managed)
-		}
-		t.noteRuntimeError(managed, SessionErrorSessionMissing, err)
-		t.invalidate(managed)
-		replacement, rebuildErr := t.acquire(ctx)
-		if rebuildErr != nil {
-			return nil, t.sanitizeError(fmt.Errorf("MCP session expired; rebuild failed: %w", rebuildErr), managed)
-		}
-		result, err = t.invokeManaged(ctx, replacement, method, params)
-		if err == nil {
-			t.clearRuntimeError(replacement)
-			return result, nil
-		}
-		return nil, t.sanitizeError(err, replacement)
-	}
-
-	if isTerminalSDKError(err) || isAmbiguousTransportError(err) || errors.Is(err, context.DeadlineExceeded) {
-		kind := SessionErrorStreamClosed
-		if errors.Is(err, context.DeadlineExceeded) {
-			kind = SessionErrorTimeout
-		} else if !isTerminalSDKError(err) {
-			kind = SessionErrorTransport
-		}
-		t.noteRuntimeError(managed, kind, err)
-		t.invalidate(managed)
-		if safeToReplayMCPMethod(method) {
-			replacement, rebuildErr := t.acquire(ctx)
-			if rebuildErr != nil {
-				return nil, t.sanitizeError(fmt.Errorf("MCP connection closed; rebuild failed: %w", rebuildErr), managed)
-			}
-			result, err = t.invokeManaged(ctx, replacement, method, params)
-			if err == nil {
-				t.clearRuntimeError(replacement)
-				return result, nil
-			}
-			return nil, t.sanitizeError(err, replacement)
-		}
-		t.startAutoReconnect()
-		return nil, t.sanitizeError(fmt.Errorf("MCP tool connection closed after dispatch; execution result is unknown and the call was not retried: %w", err), managed)
-	}
-
-	kind := classifySessionError(err)
-	t.noteRuntimeError(managed, kind, err)
-	return nil, t.sanitizeError(err, managed)
-}
-
 func (t *sdkSessionTransport) registerProgress(token string, sink tool.ProgressFunc) func() {
 	unregister := t.progress.registerProgress(token, sink)
 	var once sync.Once
@@ -413,6 +352,9 @@ func (t *sdkSessionTransport) build(ctx context.Context, generation uint64) (*ma
 			t.dispatchSDKProgress(generation, req.Params)
 		},
 	})
+	if canonicalMCPRuntimeTransport(t.spec.Type) == "streamable-http" {
+		client.AddSendingMiddleware(asyncStreamableHTTPSubscriptions)
+	}
 	for _, root := range mcpRoots(t.spec.WorkspaceRoot) {
 		//nolint:staticcheck // Preserve the existing workspace-root contract for legacy MCP servers.
 		client.AddRoots(&mcpsdk.Root{URI: root.URI, Name: root.Name})
@@ -560,7 +502,7 @@ func (t *sdkSessionTransport) handleSessionEnd(managed *managedMCPSession, err e
 		return
 	}
 	t.current = nil
-	if errors.Is(err, mcpsdk.ErrSessionMissing) && managed.session.ID() == "" {
+	if managed.session.ID() == "" && (errors.Is(err, mcpsdk.ErrSessionMissing) || t.isStreamableHTTPNotFound(err)) {
 		t.state = SessionStateFailed
 		t.lastErrorKind = SessionErrorProtocol
 		t.lastError = t.safeErrorText(fmt.Errorf("MCP endpoint returned HTTP 404 without an established session: %w", err), "")
