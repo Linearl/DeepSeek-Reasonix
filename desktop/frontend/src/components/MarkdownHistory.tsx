@@ -135,7 +135,6 @@ export const MarkdownHistory = memo(function MarkdownHistory({
   plainStatusBlocks = false,
   cacheKey,
   entryId,
-  cacheKey,
   fallback,
   onParsed,
   onError,

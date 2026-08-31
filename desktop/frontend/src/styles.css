@@ -39850,6 +39850,7 @@ body > .mermaid-diagram--fullscreen {
   background: var(--bg);
   color: var(--fg);
   font-size: 13px;
+}
 
 /* ── MCP Apps inline surface ─────────────────────────────────────────── */
 .mcp-app-card {
