@@ -1,44 +1,33 @@
-# `use_capability` 配对回放准入
+# `use_capability` 回放评测
 
-Reasonix 1.33.0 的速度与质量发布门槛必须使用真实的配对模型运行。
-`internal/eval/replay/testdata/paired_runs.json` 只是测试中位数计算器的合成夹具，
-发布门槛会明确拒绝它，不能再把固定数字当成性能证据。
+这个可选配对评测用于比较缓存稳定的 `use_capability` 代理，以及把 MCP 工具展开进
+provider 可见 schema 的基线。它是性能诊断工具，不是 Stable 发布门禁。真实模型
+运行可选，且必须使用一次性 Reasonix home。
 
-## 实跑要求
+## 测什么
 
-基线与候选版本必须在相同模型、effort、工作区、分支、技能、Agent 和 MCP 配置下
-运行同一固定任务集。使用一次性的 `REASONIX_HOME` 和 `REASONIX_CACHE_HOME`，至少
-完成五对运行。结果文件不得保存提示词、凭据、工具参数或机器本地路径。
+同一任务集中的每道任务各跑两次：
 
-每一侧记录以下无内容指标：
+1. **代理（默认）：** 只用 `use_capability`，共享 Host 与磁盘 schema 缓存。
+2. **基线：** 临时配置仍把 MCP 工具展开进 provider 请求，原生 Tool Search 保持关闭。
 
-- 总时长、总 Token、缓存命中率、主模型回合；
-- 工具参数失败、无效远端调用、澄清次数；
-- 候选版本的质量判定：发现数据源矛盾、尊重用户决定、没有悬而未决的实现选择、
-  代码锚点与验证方式正确。
+记录 `tools/list` 次数、首 Token 延迟和缓存命中 Token。不得上传提示词、密钥、
+工具参数或工作区路径。
 
-发布数据集是一个包含 `evidence_kind: "live_paired"`、`model`、`task_set` 和
-`pairs` 的对象。每一对包含 `name`、`baseline`、`candidate`，字段名与
-`internal/eval/replay/median.go` 中的 `replay.ReleaseRun` 一致。
+## 步骤
 
-## 阻塞门槛
-
-执行：
+1. 使用一次性 `REASONIX_HOME` 和 `REASONIX_CACHE_HOME`。
+2. 选择一组需要先发现再调用 MCP 的代表性任务。
+3. 每道任务分别运行代理和基线，并保持模型、effort、工作区、技能、Agent 与 MCP
+   配置一致。
+4. 记录与 `internal/eval/replay/testdata/paired_runs.json` 相同的无内容配对数据。
+5. 运行中位数工具测试：
 
 ```bash
-go run ./internal/eval/replay/cmd/gate -input /absolute/path/to/live-paired-runs.json
+go test ./internal/eval/replay/ -run TestMedianReportFivePairedRuns
 ```
 
-数据缺失、使用合成夹具或任一指标未达标时都会以非零状态退出。门槛为：
+仓库夹具是合成数据，只用于证明中位数工具。团队可按需用真实观测做性能分析，但
+Stable 发布不要求提供配对数据集，也不要求达到任何配对阈值。
 
-- 至少五对唯一的真实运行；
-- 中位总时长至少降低 40%；
-- 中位总 Token 至少降低 35%；
-- 中位缓存命中率下降不超过 2 个百分点；
-- 中位主模型回合不超过 12；
-- 候选版本无效远端调用和参数失败均为 0；
-- 每次候选运行澄清不超过 1 次；
-- 四项质量判定全部通过。
-
-报告同时输出候选版本的时长与 Token P90。第一方原生 Tool Search 仍默认关闭，
-不纳入本轮准入。
+第一方原生 Tool Search 仍默认关闭，不纳入本评测。

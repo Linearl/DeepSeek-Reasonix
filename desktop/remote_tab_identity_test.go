@@ -74,6 +74,10 @@ func TestRemoteTabAdoptsMaterializedSessionIdentity(t *testing.T) {
 	if want := "box\x00~/app\x00"; meta.TopicID != want {
 		t.Fatalf("blank TopicID = %q, want %q", meta.TopicID, want)
 	}
+	// Ready is published immediately before the fresh-session metadata update.
+	// Wait for that bootstrap event so it cannot race the adoption event below,
+	// which is especially visible under Windows scheduling.
+	waitForRemoteEventCount(t, log, "remote-tab:updated", 1)
 
 	// The first turn lands: the serve now lists the fresh session as Current.
 	fs.mu.Lock()

@@ -701,7 +701,7 @@ Picker and approval shortcuts:
 | Model, provider, or resume picker | `Up`/`Down` or `Ctrl+P`/`Ctrl+N`; `j`/`k` while search is empty; type to filter; `Enter`; `Esc` | Search, select an item, or close the picker. Once search input starts, `j`/`k` become query text. `/provider` opens that provider's model list. |
 | MCP import picker | `Up`/`Down` or `j`/`k`, `Space`, `Enter`, `Esc` / `Ctrl+C` | Move, select servers, import selected servers, or cancel. |
 | MCP manager | `Up`/`Down` or `j`/`k`, `Enter`, `Left`/`Right` or `h`/`l`, `r`, number keys, `q` / `Ctrl+C` | Navigate server lists/details, refresh, choose actions, or close. |
-| `/clear` confirmation | Arrow keys or `j`/`k` / `Tab`, `Enter`, `y`, `n`, `Esc` / `Ctrl+C` | Toggle Clear/Cancel, confirm clear, or cancel. |
+| `/clear` confirmation | Arrow keys or `j`/`k` / `Tab`, `Enter`, `y`, `n`, `Esc` / `Ctrl+C` | Toggle Clear/Cancel, confirm clear, or cancel. In YOLO mode `/clear` clears immediately without asking. |
 
 Mode meanings:
 
@@ -1012,8 +1012,10 @@ locally — `/help` lists them all. Built-in **skills** such as `/init`,
 `/reasonix-guide` when you need config or capability troubleshooting; it points
 at `reasonix doctor capabilities` (see
 [Capability diagnostics](./CAPABILITY_DIAGNOSTICS.md)). `/new` starts a new
-session while saving the previous transcript for history/resume; `/clear` asks
-for confirmation, then discards the current context without saving it. `/tree`
+session while saving the previous transcript for history/resume; `/clear`
+discards the current context without saving it — it asks for confirmation,
+except in YOLO mode where it clears immediately (YOLO already opts out of
+confirmations). `/tree`
 shows saved conversation branches, `/branch [name]` forks the current
 conversation tip, `/branch <turn> [name]` forks from an earlier checkpointed
 turn, and `/switch <id|name>` loads another branch. **Custom commands** are

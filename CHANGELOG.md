@@ -44,6 +44,46 @@ branch.
 
 ### Fixed
 
+- **serve Host-header allowlist:** `reasonix serve` now rejects requests whose
+  `Host` is neither loopback nor the actual listen address (HTTP 421), closing
+  the DNS-rebinding bypass of the JSON content-type CSRF guard — a rebind page
+  becomes same-origin with the loopback listener and could previously drive
+  `/bypass`, `/submit`, and read `/history`. `behind_proxy` deployments and
+  wildcard/non-loopback binds are exempt. The non-loopback plaintext-HTTP
+  startup warning now also fires — loudest — for the unauthenticated `auth =
+  none` case that used to stay silent.
+
+- **Preview read confinement:** `write_file` / `edit_file` / `multi_edit`
+  previews now apply the same `confinePreview` boundary as `delete_range` /
+  `delete_symbol`. A model-supplied absolute path outside the workspace roots
+  previously read the file (rendering its contents into the approval card and
+  session log) even though Execute would refuse the write.
+
+- **Clean-filter hardening on internal diffs:** gitcmd diff invocations now
+  neutralize every `filter.<driver>` defined in the repository's local
+  `.git/config` (`clean=` emptied, `required` forced off), so viewing a changed
+  file's diff can no longer execute a repository-configured clean filter via
+  `.gitattributes`. Emptied filters are identity pass-throughs: the diff still
+  renders the real working-tree change.
+
+- **install_source proxy SSRF parity:** the install_source SSRF dial guard now
+  also validates the request destination (IP literals) at the RoundTripper
+  boundary, so a configured HTTP/HTTPS proxy can no longer forward a blocked
+  target (cloud metadata, RFC1918, link-local, CGNAT) that the dial-time check
+  never sees — matching web_fetch's proxy-path behavior.
+
+- **awk approval classification:** the bash indirect-execution classifier now
+  treats `awk`/`gawk`/`mawk`/`nawk` with an inline program (anything not read
+  via `-f`/`--file`) like `python -c`: it always requires human approval and
+  can never be covered by a remembered reusable prefix rule. `awk
+  'BEGIN{system("…")}'` previously fell through to the reusable class.
+
+- **cargo check/doc read-only correction:** the legacy read-only command table
+  no longer lists `cargo check` / `cargo doc` as permission readers — cargo
+  executes the crate's `build.rs` for both. The effect classifier already
+  billed them as code-executing writers; the stale table entry (and its test)
+  now agree. Only `cargo search` remains read-only.
+
 - **Compact MCP discovery:** `use_capability(action=list)` now returns one
   compact summary per configured MCP server instead of expanding every cached
   tool description, including tools from disabled servers. Inspecting one

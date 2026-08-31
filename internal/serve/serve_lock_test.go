@@ -203,6 +203,7 @@ func TestForegroundMutationRejectsStaleSessionPath(t *testing.T) {
 	ctrl.SubmitHTTP("hi")
 	waitRunning(t, ctrl)
 	req := httptest.NewRequest(http.MethodPost, "/cancel", strings.NewReader(`{}`))
+	req.Host = "127.0.0.1"
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set(expectedSessionPathHeader, stalePath)
 	rec := httptest.NewRecorder()
@@ -215,6 +216,7 @@ func TestForegroundMutationRejectsStaleSessionPath(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/cancel", strings.NewReader(`{}`))
+	req.Host = "127.0.0.1"
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set(expectedSessionPathHeader, currentPath)
 	rec = httptest.NewRecorder()
