@@ -495,7 +495,11 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 		// to the chunked extract strategy (#9082 #9572 follow-up) — the
 		// projection still installs in this session, so over-length sessions
 		// recover with a plain /compact and work continues in place.
-		chunked, chunkedErr := a.chunkedFoldSummary(ctx, fold, instructions, nil)
+		// Stream the fragment progress to the frontend so the compaction card
+		// shows "compacting fragment N/M" instead of a silent spinner.
+		chunked, chunkedErr := a.chunkedFoldSummary(ctx, fold, instructions, func(done, total int) {
+			a.svc.sink.Emit(event.Event{Kind: event.CompactionProgress, Compaction: event.Compaction{Trigger: trigger, Done: done, Total: total}})
+		})
 		if chunkedErr != nil {
 			tele.Error = fmt.Sprintf("%v (chunked fallback: %v)", err, chunkedErr)
 			a.emitCompactionTelemetry(tele)

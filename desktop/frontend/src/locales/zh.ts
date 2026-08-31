@@ -3171,6 +3171,7 @@ export const zh: Record<DictKey, string> = {
   "questionNav.hint": "点击跳转到这次提问",
   "questionNav.notLoaded": "第 {n} 个问题（点击加载）",
   "compaction.working": "正在压缩对话…",
+  "compaction.progress": "分块压缩中 {done}/{total}",
   "compaction.title": "上下文已压缩",
   "compaction.messages": "{n} 条消息",
   "compaction.showSummary": "展开摘要",

@@ -136,6 +136,11 @@ const (
 	MCPInteractionRequest
 	// SessionChanged is a content-free Serve routing barrier for all-session clients.
 	SessionChanged
+	// CompactionProgress streams the chunked-summary fold progress during a
+	// /compact fallback (Compaction payload: Done/Total = fragments finished vs
+	// total). Emitted between CompactionStarted and CompactionDone so the UI can
+	// show "compacting fragment N/M" instead of a silent spinner.
+	CompactionProgress
 	// KindCount is a sentinel one past the last real Kind. New event kinds must
 	// be inserted above it so completeness tests cover them automatically.
 	KindCount
@@ -454,6 +459,8 @@ type Compaction struct {
 	Messages int    // Done: how many messages were folded into the summary
 	Summary  string // Done: the briefing the agent keeps relying on
 	Archive  string // Done: path the dropped originals were archived to ("" if none)
+	Done     int    // Progress: fragments summarized so far
+	Total    int    // Progress: total fragments in the chunked pass
 }
 
 // ContextMaintenance is the typed wire-safe receipt for snip/prune/noop/

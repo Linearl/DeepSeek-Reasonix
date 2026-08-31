@@ -283,6 +283,8 @@ export type Item =
       messages: number;
       summary: string;
       archive: string;
+      done: number;
+      total: number;
     }
   | {
       kind: "tool";
@@ -932,6 +934,8 @@ export function historyMessagesToItems(messages: HistoryMessage[], idPrefix: str
         messages: m.messages ?? 0,
         summary: m.summary ?? "",
         archive: m.archive ?? "",
+        done: m.done ?? 0,
+        total: m.total ?? 0,
       });
       seq++;
       continue;
@@ -1843,7 +1847,17 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
     case "phase":
       return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "phase", id: `p${s.seq}`, text: e.text ?? "" }] };
     case "compaction_started":
-      return { ...s, compactionActive: true, seq: s.seq + 1, items: [...s.items, { kind: "compaction", id: `c${s.seq}`, pending: true, trigger: e.compaction?.trigger ?? "", messages: 0, summary: "", archive: "" }] };
+      return { ...s, compactionActive: true, seq: s.seq + 1, items: [...s.items, { kind: "compaction", id: `c${s.seq}`, pending: true, trigger: e.compaction?.trigger ?? "", messages: 0, summary: "", archive: "", done: 0, total: 0 }] };
+    case "compaction_progress": {
+      const c = e.compaction;
+      if (!c) return s;
+      const idx = [...s.items].reverse().findIndex((it) => it.kind === "compaction" && it.pending);
+      const at = idx < 0 ? -1 : s.items.length - 1 - idx;
+      if (at < 0) return s;
+      const prev = s.items[at] as Extract<Item, { kind: "compaction" }>;
+      const updated: Item = { ...prev, done: c.done ?? prev.done, total: c.total ?? prev.total };
+      return { ...s, items: s.items.map((it, i) => (i === at ? updated : it)) };
+    }
     case "compaction_done": {
       const c = e.compaction;
       const idx = [...s.items].reverse().findIndex((it) => it.kind === "compaction" && it.pending);
@@ -1852,7 +1866,7 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         const items = at < 0 ? s.items : s.items.filter((_, i) => i !== at);
         return { ...s, compactionActive: false, running: s.turnActive ? s.running : false, items };
       }
-      const filled: Item = { kind: "compaction", id: at < 0 ? `c${s.seq}` : (s.items[at] as Extract<Item, { kind: "compaction" }>).id, pending: false, trigger: c.trigger ?? "", messages: c.messages ?? 0, summary: c.summary, archive: c.archive ?? "" };
+      const filled: Item = { kind: "compaction", id: at < 0 ? `c${s.seq}` : (s.items[at] as Extract<Item, { kind: "compaction" }>).id, pending: false, trigger: c.trigger ?? "", messages: c.messages ?? 0, summary: c.summary, archive: c.archive ?? "", done: c.done ?? 0, total: c.total ?? 0 };
       const items = at < 0 ? [...s.items, filled] : s.items.map((it, i) => (i === at ? filled : it));
       return { ...s, compactionActive: false, running: s.turnActive ? s.running : false, seq: s.seq + 1, items };
     }

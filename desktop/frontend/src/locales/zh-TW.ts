@@ -2225,6 +2225,7 @@ export const zhTW: Record<DictKey, string> = {
   "questionNav.hint": "點擊跳轉到這次提問",
   "questionNav.notLoaded": "第 {n} 個問題（點擊載入）",
   "compaction.working": "正在壓縮對話…",
+  "compaction.progress": "分塊壓縮中 {done}/{total}",
   "compaction.title": "上下文已壓縮",
   "compaction.messages": "{n} 條訊息",
   "compaction.showSummary": "展開摘要",

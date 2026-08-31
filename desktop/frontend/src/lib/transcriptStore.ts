@@ -267,6 +267,8 @@ function convertRecord(
       messages: m.messages ?? 0,
       summary: m.summary ?? "",
       archive: m.archive ?? "",
+      done: m.done ?? 0,
+      total: m.total ?? 0,
     });
     return { items, claims, unresolvedIds, pendingPositional, matches };
   }

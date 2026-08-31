@@ -28,6 +28,7 @@ export type EventKind =
   | "turn_done"
   | "compaction_started"
   | "compaction_done"
+  | "compaction_progress"
   | "mcp_surface_ready"
   | "retrying"
   | "steer"
@@ -76,6 +77,8 @@ export interface WireCompaction {
   messages?: number; // done: how many messages were folded into the summary
   summary?: string; // done: the briefing (empty on an aborted pass)
   archive?: string; // done: archive path, if any
+  done?: number; // progress: fragments summarized so far
+  total?: number; // progress: total fragments in the chunked pass
 }
 export interface WireProfile {
   model?: string;
@@ -780,6 +783,8 @@ export interface HistoryMessage {
   messages?: number;
   summary?: string;
   archive?: string;
+  done?: number;
+  total?: number;
   decisionReceipt?: WireDecisionReceipt;
   readiness?: WireFinalReadiness;
   serverSearch?: HistoryServerSearch[];

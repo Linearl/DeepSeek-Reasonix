@@ -3168,6 +3168,7 @@ export const en = {
   "questionNav.hint": "Click to jump to this question",
   "questionNav.notLoaded": "Question {n} (click to load)",
   "compaction.working": "Compacting conversation…",
+  "compaction.progress": "Compacting chunk {done}/{total}",
   "compaction.title": "Context compacted",
   "compaction.messages": "{n} messages",
   "compaction.showSummary": "show summary",

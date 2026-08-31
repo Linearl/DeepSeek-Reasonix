@@ -158,10 +158,11 @@ func ToWire(e event.Event) Event {
 		w.Ask = ToWireAsk(e.Ask)
 	case event.MCPInteractionRequest:
 		w.MCPInteraction = ToWireMCPInteraction(e.MCPInteraction)
-	case event.CompactionStarted, event.CompactionDone:
+	case event.CompactionStarted, event.CompactionDone, event.CompactionProgress:
 		w.Compaction = &Compaction{
 			Trigger: e.Compaction.Trigger, Messages: e.Compaction.Messages,
 			Summary: e.Compaction.Summary, Archive: e.Compaction.Archive,
+			Done: e.Compaction.Done, Total: e.Compaction.Total,
 		}
 	case event.ContextMaintenanceEvent:
 		if m := e.Maintenance; m != nil {
@@ -325,6 +326,8 @@ type Compaction struct {
 	Messages int    `json:"messages,omitempty"`
 	Summary  string `json:"summary,omitempty" externalizable:"true"`
 	Archive  string `json:"archive,omitempty" externalizable:"true"`
+	Done     int    `json:"done,omitempty"`
+	Total    int    `json:"total,omitempty"`
 }
 
 // AskOption is one JSON-formatted choice in a structured ask request.
@@ -610,6 +613,7 @@ var kindNames = map[event.Kind]string{
 	event.TurnDone:                "turn_done",
 	event.CompactionStarted:       "compaction_started",
 	event.CompactionDone:          "compaction_done",
+	event.CompactionProgress:      "compaction_progress",
 	event.ToolProgress:            "tool_progress",
 	event.MCPSurfaceReady:         "mcp_surface_ready",
 	event.Retrying:                "retrying",
