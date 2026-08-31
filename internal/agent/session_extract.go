@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 
@@ -165,11 +166,7 @@ func (a *Agent) ExtractHighlights(ctx context.Context, progress func(done, total
 		}
 		parts = append(parts, res)
 	}
-	merged, err := a.foldToSummary(ctx, mergeDigestMessages(parts), extractMergeInstruction)
-	if err != nil {
-		return "", fmt.Errorf("merge: %w", err)
-	}
-	return merged.Text, nil
+	return a.mergeFragments(ctx, parts)
 }
 
 // extractFragmentResilient summarizes one extract fragment, splitting it in
@@ -200,9 +197,85 @@ func (a *Agent) extractFragmentResilient(ctx context.Context, chunk []provider.M
 	if err != nil {
 		return "", err
 	}
-	merged, err := a.foldToSummary(ctx, mergeDigestMessages([]string{left, right}), extractMergeInstruction)
+	merged, err := a.mergeFragments(ctx, []string{left, right})
 	if err != nil {
 		return "", fmt.Errorf("merge split fragments: %w", err)
+	}
+	return merged, nil
+}
+
+// mergeInputBudget is the merge-request input ceiling in tokens: half of the
+// safe summarizer input, leaving room for the merge instruction and the
+// digest output inside the same request. An unknown window disables the
+// pre-splitting (the request fails into the provider's own error then).
+func (a *Agent) mergeInputBudget() int {
+	window := a.effectiveContextWindow()
+	if window <= 0 {
+		return math.MaxInt
+	}
+	return max(minFoldTokens, (window-a.summaryOutputBudget()-protocolReserveTokens)/2)
+}
+
+// mergeGroup merges one group of fragment briefings. A group that cannot be
+// summarized whole (output truncation, input overflow) splits in half and
+// recurses — the briefings are already in hand, so the merge must not fail
+// with them discarded (#9082 follow-up).
+func (a *Agent) mergeGroup(ctx context.Context, group []string) (string, error) {
+	merged, err := a.foldToSummary(ctx, mergeDigestMessages(group), extractMergeInstruction)
+	if err == nil {
+		return strings.TrimSpace(merged.Text), nil
+	}
+	retriable := errors.Is(err, errSummaryOutputTruncated) || errors.Is(err, ErrCompactionRequired)
+	if !retriable || len(group) < 2 {
+		return "", err
+	}
+	mid := len(group) / 2
+	left, err := a.mergeGroup(ctx, group[:mid])
+	if err != nil {
+		return "", err
+	}
+	right, err := a.mergeGroup(ctx, group[mid:])
+	if err != nil {
+		return "", err
+	}
+	return a.mergeGroup(ctx, []string{left, right})
+}
+
+// mergeFragments merges fragment briefings into one final briefing. When the
+// whole set would overflow the merge request (many fragments, or a small
+// provider window), it is merged pairwise first — tree-reduce, so the merge
+// never fails with every fragment briefing already in hand.
+func (a *Agent) mergeFragments(ctx context.Context, parts []string) (string, error) {
+	if len(parts) == 0 {
+		return "", fmt.Errorf("no fragment briefings to merge")
+	}
+	parts = append([]string(nil), parts...)
+	for len(parts) > 1 && estimateMessagesTokens(mergeDigestMessages(parts)) > a.mergeInputBudget() {
+		var next []string
+		for i := 0; i < len(parts); i += 2 {
+			group := parts[i:min(i+2, len(parts))]
+			if len(group) == 1 {
+				// Odd tail: carried into the next round unchanged.
+				next = append(next, group[0])
+				continue
+			}
+			merged, err := a.mergeGroup(ctx, group)
+			if err != nil {
+				return "", err
+			}
+			next = append(next, merged)
+		}
+		if len(next) >= len(parts) {
+			break // defensive: cannot shrink further; try the plain merge
+		}
+		parts = next
+	}
+	if len(parts) == 1 {
+		return parts[0], nil
+	}
+	merged, err := a.foldToSummary(ctx, mergeDigestMessages(parts), extractMergeInstruction)
+	if err != nil {
+		return "", fmt.Errorf("merge: %w", err)
 	}
 	return strings.TrimSpace(merged.Text), nil
 }
