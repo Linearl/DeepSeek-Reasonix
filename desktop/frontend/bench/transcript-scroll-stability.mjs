@@ -1603,10 +1603,16 @@ try {
   const stormApproach = await stormTranscript.evaluate((element) => ({
     writes: window.__stormProbe?.writes.length ?? null,
     mode: element.dataset.scrollMode,
+    readerIntent: element.dataset.transcriptReaderIntent,
+    historyPrependPending: element.dataset.transcriptHistoryPrependPending,
     top: Math.round(element.scrollTop),
     height: Math.round(element.scrollHeight),
     clientHeight: element.clientHeight,
     distance: Math.round(element.scrollHeight - element.scrollTop - element.clientHeight),
+    lastRowMounted: Boolean(element.querySelector('[data-transcript-last-row="true"]')),
+    diagnostics: element.dataset.scrollMode === "tail-follow"
+      ? undefined
+      : window.__stormProbe?.diagnostics.slice(-24) ?? [],
   }));
   stormApproach.gestures = stormAttempts;
   assert(
