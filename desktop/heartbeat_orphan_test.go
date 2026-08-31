@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 // TestHeartbeatTopicShellByCreatedAt pins the #9614 empty-shell signal: a topic
 // whose topic-state record has CreatedAtMS == 0 (heartbeat created it but never
@@ -16,6 +19,13 @@ func TestHeartbeatTopicShellByCreatedAt(t *testing.T) {
 	if err := createTopicState(root, "topic-real", defaultTopicTitle, topicTitleSourceAuto, 999); err != nil {
 		t.Fatalf("create real topic: %v", err)
 	}
+	// Give topic-real an actual session file so the hardened "has any session
+	// file" fallback sees it as a real topic (not a shell). Without it, the
+	// fallback would treat a non-indexed topic as a shell regardless of sqlite.
+	if err := os.MkdirAll(desktopSessionDir(root), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTopicSession(t, desktopSessionDir(root), "real.jsonl", "topic-real", "Real topic", root)
 
 	app := NewApp()
 	engine := newHeartbeatEngine(app)
@@ -24,7 +34,7 @@ func TestHeartbeatTopicShellByCreatedAt(t *testing.T) {
 		t.Fatal("empty-shell topic (CreatedAtMS==0) should be detected as a shell")
 	}
 	if engine.heartbeatTopicIsShell("topic-real", root) {
-		t.Fatal("real topic (CreatedAtMS>0) must not be treated as a shell")
+		t.Fatal("real topic (CreatedAtMS>0, has session file) must not be treated as a shell")
 	}
 	if engine.heartbeatTopicIsShell("topic-unknown", root) {
 		t.Fatal("unknown topic must not be treated as a shell")

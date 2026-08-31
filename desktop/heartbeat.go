@@ -634,25 +634,81 @@ func (e *HeartbeatEngine) prunePendingTopicsLocked(tasks []HeartbeatTask) {
 }
 
 // heartbeatTopicIsShell reports whether a topic is an empty shell left by a
-// heartbeat run that created it but never wrote real history (#9614). The
-// topic-state record for such shells carries CreatedAtMS == 0 (a real history
-// timestamp is always non-zero), which is the reliable signal the diagnostic
-// confirmed — unlike the session index, which cannot see a shell that has no
-// main *.jsonl. Returns false when the topic is unknown or holds real history.
+// heartbeatTopicIsShell reports whether a topic is an empty shell left by a
+// heartbeat run that created it but never wrote real history (#9614).
+//
+// Two signals, in order of precedence:
+//  1. The topic-state record carries CreatedAtMS == 0 (a real history timestamp
+//     is always non-zero) — the signal the diagnostic confirmed.
+//  2. Fallback: the topic is absent from the topic-state table but has no real
+//     session file at all. Such topics (e.g. earlier heartbeat ghosts whose
+//     orphan session files were removed but whose topic remained live in
+//     desktop-projects.json globalTopics) are shells too. Unlike the session
+//     index — which cannot see a shell that has no main *.jsonl — reusing the
+//     index here is correct: it only indexes .jsonl, so "not indexed" means
+//     "no real session file".
+//
+// Returns false when the topic holds real history or cannot be assessed.
 func (e *HeartbeatEngine) heartbeatTopicIsShell(topicID, workspaceRoot string) bool {
 	topicID = strings.TrimSpace(topicID)
-	if topicID == "" || e.app == nil || e.app.topicState == nil {
+	if topicID == "" || e.app == nil {
 		return false
 	}
-	snap, err := e.app.topicState.snapshot(workspaceRoot)
-	if err != nil {
+	if e.app.topicState != nil {
+		snap, err := e.app.topicState.snapshot(workspaceRoot)
+		if err == nil {
+			if rec, ok := snap.Records[topicID]; ok {
+				return rec.CreatedAtMS == 0
+			}
+		}
+	}
+	// Fallback: not in topic-state — treat as a shell only when the topic is
+	// actually registered (was created, e.g. a heartbeat topic that lingered in
+	// desktop-projects.json) but has no real session file. An unregistered,
+	// never-created topic id is NOT a shell to archive.
+	return e.topicRegistered(topicID) && !e.topicHasAnySessionFile(topicID)
+}
+
+// topicRegistered reports whether the topic exists in the project registry
+// (globalTopics or any project's Topics), i.e. it was created at some point.
+// An arbitrary/never-created id must never be treated as a shell to archive.
+func (e *HeartbeatEngine) topicRegistered(topicID string) bool {
+	if topicID == "" {
 		return false
 	}
-	rec, ok := snap.Records[topicID]
-	if !ok {
+	f := loadProjectsFile()
+	for _, t := range f.GlobalTopics {
+		if t == topicID {
+			return true
+		}
+	}
+	for _, p := range f.Projects {
+		for _, t := range p.Topics {
+			if t == topicID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// topicHasAnySessionFile reports whether any known session directory indexes a
+// session for the topic. A real session carries a main *.jsonl that the
+// topic-session index sees; a shell has none.
+func (e *HeartbeatEngine) topicHasAnySessionFile(topicID string) bool {
+	if topicID == "" || e.app == nil {
 		return false
 	}
-	return rec.CreatedAtMS == 0
+	for _, dir := range e.app.knownSessionDirs() {
+		index, err := topicSessionIndexForDir(dir)
+		if err != nil {
+			continue
+		}
+		if len(index.byTopic[topicID]) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // trashOrphanHeartbeatTopicsLocked is the #9614 cleanup: when a heartbeat task
