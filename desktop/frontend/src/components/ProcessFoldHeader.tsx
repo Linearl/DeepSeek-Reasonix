@@ -36,19 +36,32 @@ export function ProcessFoldHeader({
     : 0;
   const effectiveDurationMs = hasRunningWork ? Math.max(segment.durationMs, runningDurationMs) : segment.durationMs;
 
-  const baseLabel = workStatusLabel(effectiveDurationMs, hasRunningWork, t);
+  // A process fold that coalesces context-compaction events must not show a
+  // bare "worked Xm" label — the chunked /compact fallback (over-length
+  // sessions) runs minutes and produces no tool/assistant rows, so the fold
+  // reads as a mysteriously empty "worked" segment. Label it as context
+  // compaction instead, and hide the duration/counts that would otherwise
+  // imply timing for work that is really async summarization.
+  const hasCompaction = displayItems.some((it) => it.kind === "compaction");
+  const baseLabel = hasCompaction
+    ? t("compaction.title")
+    : workStatusLabel(effectiveDurationMs, hasRunningWork, t);
   // Surface what the closed fold hides — a bare duration reads as pure timing
   // and users have no way to know process detail sits behind it.
   const toolCount = displayItems.reduce((n, it) => n + (it.kind === "tool" ? 1 : 0), 0);
   const thoughtCount = displayItems.reduce((n, it) => n + (it.kind === "assistant" ? 1 : 0), 0);
   const countParts: string[] = [];
-  if (toolCount > 0) countParts.push(t("transcript.toolCount", { n: toolCount }));
-  if (thoughtCount > 0) countParts.push(t("transcript.thoughtCount", { n: thoughtCount }));
-  const label = segment.labelStyle === "counts"
-    ? (countParts.length > 0 ? countParts.join(" · ") : t("transcript.processed"))
-    : countParts.length > 0
-      ? `${baseLabel} · ${countParts.join(" · ")}`
-      : baseLabel;
+  if (!hasCompaction) {
+    if (toolCount > 0) countParts.push(t("transcript.toolCount", { n: toolCount }));
+    if (thoughtCount > 0) countParts.push(t("transcript.thoughtCount", { n: thoughtCount }));
+  }
+  const label = hasCompaction
+    ? baseLabel
+    : segment.labelStyle === "counts"
+      ? (countParts.length > 0 ? countParts.join(" · ") : t("transcript.processed"))
+      : countParts.length > 0
+        ? `${baseLabel} · ${countParts.join(" · ")}`
+        : baseLabel;
   return (
     <div className={`turn-collapse${open ? " turn-collapse--open" : ""}`} data-kind="reasoning" data-entrance={displayItems[0]?.id || undefined}>
       <button
