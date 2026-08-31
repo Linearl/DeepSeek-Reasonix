@@ -78,6 +78,10 @@ GLM-5.2/5.3 系列其实支持 `reasoning_effort` 强度档（low/medium/high/ma
 
 搜索面板在顶部向上滚时无法加载更早提问：冒泡阶段 `onWheel` 收不到事件（被嵌套滚动处理器拦截）。本版改**捕获阶段 `onWheelCapture`**——`deltaY<0 && scrollTop<=8` 时调用 `onReachTop` 加载更早问题并 `preventDefault`/`stopPropagation`。用户实测确认正常。
 
+### 心跳任务删除级联清理孤儿空壳会话（#9614）
+
+心跳任务 `NewConversationEachRun` 每次创建新 topic，若该次会话在写入真实历史前失败（如首个消息 400），topic 残留为空壳 Global 会话（无主 `*.jsonl`，仅 meta/context/inbox，`created_at_ms=0`）。本版：删除/停用心跳任务时（`ReplaceTasks`/`ReplaceConfig`），级联归档该任务创建/运行过的空壳 topic——以 **`topic-state.CreatedAtMS==0`** 为可靠空壳信号（正常历史时间戳恒非零；会话索引看不到无 jsonl 的壳）。清理复用 `TrashTopicForce`（removal guards + 回收站，绝不硬删）；有真实历史的 topic 与被保留的任务绝不被触碰。
+
 ---
 
 ## 📝 合并说明
