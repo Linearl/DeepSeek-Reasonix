@@ -1653,6 +1653,13 @@ type tabEventSink struct {
 	botSink       event.Sink // optional: when set, events are also forwarded here
 	botSinkGen    uint64
 	turn          turnSubmissionState // stays reserved through the end of TurnDone fan-out
+	// #9601: runtime events emitted while ctx is still nil (a tab sink is
+	// created before setContext installs the wails context) were previously
+	// dropped by emitRuntimeEvent, but the same Emit still set the
+	// awaiting_delivery badge via setTabActivityStatus — leaving a "badge yes,
+	// frame no" state. Buffer these envelopes here and flush on setContext so
+	// the frontend never misses a turn_done it already accounted for.
+	pendingRuntimeEvents []runtimeEventEnvelope
 }
 
 type closeableEventSink interface {
@@ -1833,7 +1840,18 @@ func (s *tabEventSink) cancelTurnStart() {
 func (s *tabEventSink) setContext(ctx context.Context) {
 	s.mu.Lock()
 	s.ctx = ctx
+	pending := s.pendingRuntimeEvents
+	s.pendingRuntimeEvents = nil
 	s.mu.Unlock()
+	// Flush any envelopes buffered while ctx was nil (#9601). Fill each with
+	// the freshly-installed wails ctx; emit outside the sink lock so the async
+	// emitter can enqueue without re-entering s.mu.
+	for i := range pending {
+		pending[i].ctx = ctx
+	}
+	for _, env := range pending {
+		s.runtimeEvents.Emit(env.ctx, env.name, env.payload...)
+	}
 }
 
 func (s *tabEventSink) context() context.Context {
@@ -1848,6 +1866,18 @@ func (s *tabEventSink) emitRuntimeEvent(name string, payload ...any) {
 	}
 	ctx := s.context()
 	if ctx == nil {
+		// #9601: buffer until setContext installs the ctx instead of silently
+		// dropping — the same Emit already recorded the awaiting_delivery badge.
+		// ctx is left nil here and filled in at flush time with the real wails
+		// context passed to setContext, so runtime.EventsEmit always gets a
+		// valid context that can address the webview.
+		env := runtimeEventEnvelope{
+			name:    name,
+			payload: append([]any(nil), payload...),
+		}
+		s.mu.Lock()
+		s.pendingRuntimeEvents = append(s.pendingRuntimeEvents, env)
+		s.mu.Unlock()
 		return
 	}
 	s.runtimeEvents.Emit(ctx, name, payload...)

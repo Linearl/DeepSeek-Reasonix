@@ -55,6 +55,43 @@ func (a *App) topicHasActiveRuntimeWork(topicID string) bool {
 	return false
 }
 
+// reclaimTopicSelfLeasesLocked releases session leases held by this process for
+// the archive targets when the holding tab has no real runtime work. Force
+// archive (TrashTopicForce) must succeed even when a session could not be
+// closed through the normal path — e.g. a tab in a readOnly/failed-restore
+// state that topicArchiveLeaseOwners cannot match — leaving its jsonl.lease.lock
+// held by this process and blocking the removal guard. Releasing here is safe:
+// it only touches leases whose owning tab reports no active work, so a genuinely
+// in-use session is never stripped. Caller holds sessionRemovalMu; a.mu is
+// taken here.
+func (a *App) reclaimTopicSelfLeasesLocked(topicID string, targets []topicTrashTarget) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, target := range targets {
+		key := sessionRuntimeKey(target.sessionPath)
+		if key == "" {
+			continue
+		}
+		for _, tabs := range []map[string]*WorkspaceTab{a.tabs, a.detachedSessions} {
+			for _, tab := range tabs {
+				if tab == nil || tab.TopicID != topicID {
+					continue
+				}
+				if tab.sessionLeaseRuntimeKey() != key {
+					continue
+				}
+				if tab.hasActiveRuntimeWork() {
+					continue // genuinely in use — protect
+				}
+				// No runtime activity: release the self-held lease so the
+				// removal guard can acquire it. Only release on the exact key
+				// so an unrelated rebuild's lease is untouched.
+				tab.releaseSessionLeaseForKey(key)
+			}
+		}
+	}
+}
+
 func (a *App) trashTopic(topicID string, force bool) (retErr error) {
 	topicID = strings.TrimSpace(topicID)
 	if topicID == "" {
@@ -130,6 +167,10 @@ func (a *App) commitTopicArchive(topicID string, trace *topicArchiveTrace, force
 	targets, err := a.topicTrashTargets(topicID)
 	if err != nil {
 		return fallbackRuntimeTarget{}, nil, err
+	}
+	trace.phase = "force_reclaim_self_lease"
+	if force {
+		a.reclaimTopicSelfLeasesLocked(topicID, targets)
 	}
 	trace.targetCount = len(targets)
 	changedDirs := make([]string, 0, len(targets))
