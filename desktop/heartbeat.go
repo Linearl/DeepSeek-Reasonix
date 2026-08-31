@@ -580,8 +580,10 @@ func (e *HeartbeatEngine) ReplaceTasks(tasks []HeartbeatTask) error {
 		return err
 	}
 	e.recordConfigSnapshotLocked(latest)
+	oldTasks := e.tasks
 	e.tasks = tasks
 	e.prunePendingTopicsLocked(tasks)
+	e.trashOrphanHeartbeatTopicsLocked(oldTasks, tasks)
 	return nil
 }
 
@@ -607,8 +609,10 @@ func (e *HeartbeatEngine) ReplaceConfig(update HeartbeatConfigUpdate) (Heartbeat
 		return HeartbeatConfigView{}, err
 	}
 	e.recordConfigSnapshotLocked(latest)
+	oldTasks := e.tasks
 	e.tasks = latest.cfg.Tasks
 	e.prunePendingTopicsLocked(e.tasks)
+	e.trashOrphanHeartbeatTopicsLocked(oldTasks, e.tasks)
 	return latest.view(), nil
 }
 
@@ -625,6 +629,71 @@ func (e *HeartbeatEngine) prunePendingTopicsLocked(tasks []HeartbeatTask) {
 	for id := range e.pendingTopics {
 		if !keep[id] {
 			delete(e.pendingTopics, id)
+		}
+	}
+}
+
+// heartbeatTopicIsShell reports whether a topic is an empty shell left by a
+// heartbeat run that created it but never wrote real history (#9614). The
+// topic-state record for such shells carries CreatedAtMS == 0 (a real history
+// timestamp is always non-zero), which is the reliable signal the diagnostic
+// confirmed — unlike the session index, which cannot see a shell that has no
+// main *.jsonl. Returns false when the topic is unknown or holds real history.
+func (e *HeartbeatEngine) heartbeatTopicIsShell(topicID, workspaceRoot string) bool {
+	topicID = strings.TrimSpace(topicID)
+	if topicID == "" || e.app == nil || e.app.topicState == nil {
+		return false
+	}
+	snap, err := e.app.topicState.snapshot(workspaceRoot)
+	if err != nil {
+		return false
+	}
+	rec, ok := snap.Records[topicID]
+	if !ok {
+		return false
+	}
+	return rec.CreatedAtMS == 0
+}
+
+// trashOrphanHeartbeatTopicsLocked is the #9614 cleanup: when a heartbeat task
+// is removed (deleted/disabled), cascade-archive any topic that task created
+// but left as an empty shell (created_at_ms=0). Safe by construction — only
+// empty shells are touched, via TrashTopicForce (removal guards + recycle, never
+// a hard delete). Called under e.mu.
+func (e *HeartbeatEngine) trashOrphanHeartbeatTopicsLocked(oldTasks, newTasks []HeartbeatTask) {
+	kept := make(map[string]bool, len(newTasks))
+	for _, task := range newTasks {
+		kept[task.ID] = true
+	}
+	removed := map[string]bool{}
+	for _, task := range oldTasks {
+		if !kept[task.ID] {
+			removed[task.ID] = true
+		}
+	}
+	touched := map[string]string{} // topicID -> workspaceRoot
+	for _, task := range oldTasks {
+		if !removed[task.ID] {
+			continue
+		}
+		wsRoot := task.WorkspaceRoot
+		if id := strings.TrimSpace(task.TopicID); id != "" {
+			touched[id] = wsRoot
+		}
+		for _, run := range task.RunHistory {
+			if id := strings.TrimSpace(run.TopicID); id != "" {
+				touched[id] = wsRoot
+			}
+		}
+	}
+	for topicID, wsRoot := range touched {
+		if !e.heartbeatTopicIsShell(topicID, wsRoot) {
+			continue
+		}
+		if err := e.app.TrashTopicForce(topicID); err != nil {
+			log.Printf("[heartbeat] orphan topic shell cleanup %s: %v", topicID, err)
+		} else {
+			log.Printf("[heartbeat] archived orphan topic shell %s", topicID)
 		}
 	}
 }
