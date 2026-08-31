@@ -178,14 +178,14 @@ func extractStubSession() *Session {
 	return sess
 }
 
-func TestExtractHighlightsSplitsOnOutputTruncation(t *testing.T) {
+func TestChunkedFoldSummarySplitsOnOutputTruncation(t *testing.T) {
 	prov := &extractStubProvider{failFirst: 1, reply: "digest"}
 	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
-	summary, err := a.ExtractHighlights(context.Background(), nil)
+	res, err := a.chunkedFoldSummary(context.Background(), a.Session().Snapshot(), compactionInstruction, nil)
 	if err != nil {
-		t.Fatalf("ExtractHighlights: %v", err)
+		t.Fatalf("chunkedFoldSummary: %v", err)
 	}
-	if summary == "" {
+	if strings.TrimSpace(res.Text) == "" {
 		t.Fatal("empty summary after split recovery")
 	}
 	// 1 failing root + 2 half fragments + 1 merge = 4 calls.
@@ -194,10 +194,10 @@ func TestExtractHighlightsSplitsOnOutputTruncation(t *testing.T) {
 	}
 }
 
-func TestExtractHighlightsDoesNotRetryTransportErrors(t *testing.T) {
+func TestChunkedFoldSummaryDoesNotRetryTransportErrors(t *testing.T) {
 	prov := &extractStubProvider{streamErr: errors.New("provider down")}
 	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
-	if _, err := a.ExtractHighlights(context.Background(), nil); err == nil {
+	if _, err := a.chunkedFoldSummary(context.Background(), a.Session().Snapshot(), compactionInstruction, nil); err == nil {
 		t.Fatal("expected the transport error to surface")
 	}
 	if prov.calls != 1 {
@@ -205,14 +205,14 @@ func TestExtractHighlightsDoesNotRetryTransportErrors(t *testing.T) {
 	}
 }
 
-func TestExtractHighlightsSplitsDeepOnRepeatedTruncation(t *testing.T) {
+func TestChunkedFoldSummarySplitsDeepOnRepeatedTruncation(t *testing.T) {
 	prov := &extractStubProvider{failFirst: 2, reply: "digest"}
 	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
-	summary, err := a.ExtractHighlights(context.Background(), nil)
+	res, err := a.chunkedFoldSummary(context.Background(), a.Session().Snapshot(), compactionInstruction, nil)
 	if err != nil {
-		t.Fatalf("ExtractHighlights: %v", err)
+		t.Fatalf("chunkedFoldSummary: %v", err)
 	}
-	if summary == "" {
+	if strings.TrimSpace(res.Text) == "" {
 		t.Fatal("empty summary after deep split recovery")
 	}
 	if prov.calls < 6 {
@@ -220,17 +220,17 @@ func TestExtractHighlightsSplitsDeepOnRepeatedTruncation(t *testing.T) {
 	}
 }
 
-func TestExtractHighlightsSingleMessageFragmentCannotSplit(t *testing.T) {
+func TestChunkedFoldSummarySingleMessageFragmentCannotSplit(t *testing.T) {
 	prov := &extractStubProvider{failFirst: 99, reply: "digest"}
 	sess := NewSession("sys")
 	sess.Add(provider.Message{Role: provider.RoleUser, Content: "only"})
 	a := New(prov, tool.NewRegistry(), sess, Options{}, event.Discard)
-	if _, err := a.ExtractHighlights(context.Background(), nil); err == nil {
+	if _, err := a.chunkedFoldSummary(context.Background(), a.Session().Snapshot(), compactionInstruction, nil); err == nil {
 		t.Fatal("expected failure when every split level truncates and no split remains")
 	}
 }
 
-func TestExtractHighlightsMergeGroupsWhenOverBudget(t *testing.T) {
+func TestChunkedFoldSummaryMergeGroupsWhenOverBudget(t *testing.T) {
 	// A 2k window shrinks mergeInputBudget to ~616 tokens. Two fragment
 	// briefings of ~390 tokens each overflow it, so the merge must group:
 	// one group merge (3 messages) replaces the whole-set merge, and the
@@ -242,11 +242,11 @@ func TestExtractHighlightsMergeGroupsWhenOverBudget(t *testing.T) {
 		sess.Add(provider.Message{Role: provider.RoleAssistant, Content: strings.Repeat("a", 10_000)})
 	}
 	a := New(prov, tool.NewRegistry(), sess, Options{ContextWindow: 2000}, event.Discard)
-	summary, err := a.ExtractHighlights(context.Background(), nil)
+	res, err := a.chunkedFoldSummary(context.Background(), a.Session().Snapshot(), compactionInstruction, nil)
 	if err != nil {
-		t.Fatalf("ExtractHighlights: %v", err)
+		t.Fatalf("chunkedFoldSummary: %v", err)
 	}
-	if summary == "" {
+	if strings.TrimSpace(res.Text) == "" {
 		t.Fatal("empty summary")
 	}
 	// 2 fragment summaries + 1 group merge (parts collapse to one) = 3 calls.
@@ -261,15 +261,37 @@ func TestExtractHighlightsMergeGroupsWhenOverBudget(t *testing.T) {
 	}
 }
 
-func TestExtractHighlightsSkipsGroupingWithinBudget(t *testing.T) {
+func TestChunkedFoldSummarySkipsGroupingWithinBudget(t *testing.T) {
 	// Unknown window (budget = MaxInt): the merge stays a single request.
 	prov := &extractStubProvider{reply: "digest"}
 	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
-	if _, err := a.ExtractHighlights(context.Background(), nil); err != nil {
-		t.Fatalf("ExtractHighlights: %v", err)
+	if _, err := a.chunkedFoldSummary(context.Background(), a.Session().Snapshot(), compactionInstruction, nil); err != nil {
+		t.Fatalf("chunkedFoldSummary: %v", err)
 	}
 	// Single chunk fast path: 1 fragment request, no merge needed.
 	if prov.calls != 1 {
 		t.Fatalf("provider calls = %d, want 1", prov.calls)
+	}
+}
+
+func TestCompactFallsBackToChunkedSummaryOnTruncation(t *testing.T) {
+	// The single-request summary hits the output limit; compaction must fall
+	// back to the chunked extract strategy and install the projection in the
+	// same session (one /compact covers over-length sessions, #9082 follow-up).
+	prov := &extractStubProvider{failFirst: 1, reply: "digest"}
+	sess := NewSession("sys")
+	for range 12 {
+		sess.Add(provider.Message{Role: provider.RoleUser, Content: strings.Repeat("u", 6000)})
+		sess.Add(provider.Message{Role: provider.RoleAssistant, Content: strings.Repeat("a", 6000)})
+	}
+	a := New(prov, tool.NewRegistry(), sess, Options{ContextWindow: 100_000, RecentKeep: 2, ArchiveDir: t.TempDir()}, event.Discard)
+	if err := a.CompactNow(context.Background(), ""); err != nil {
+		t.Fatalf("CompactNow: %v", err)
+	}
+	if len(a.sess.compactionState.Projection.Messages) == 0 {
+		t.Fatal("projection not installed after the chunked fallback")
+	}
+	if prov.calls < 4 {
+		t.Fatalf("provider calls = %d, want the failed single request plus chunks and merge (>=4)", prov.calls)
 	}
 }
