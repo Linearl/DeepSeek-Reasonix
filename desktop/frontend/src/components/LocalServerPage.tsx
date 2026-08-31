@@ -22,6 +22,7 @@ export function LocalServerPage() {
   const [busy, setBusy] = useState(false);
   const [ko, setKo] = useState("");
   const [copied, setCopied] = useState(false);
+  const [showToken, setShowToken] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -66,6 +67,22 @@ export function LocalServerPage() {
 
   return (
     <div className="settings-page settings-page--localserver">
+      <style>{`
+        .token-display {
+          display: flex; align-items: center; justify-content: space-between;
+          width: 100%; padding: 8px 12px; border-radius: 8px;
+          border: 1px solid color-mix(in srgb, var(--border, #888) 40%, transparent);
+          background: color-mix(in srgb, var(--muted, #888) 8%, transparent);
+          cursor: pointer; transition: border-color .15s ease;
+        }
+        .token-display:hover { border-color: color-mix(in srgb, var(--border, #888) 80%, transparent); }
+        .token-display__text {
+          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          font-size: 12px; letter-spacing: 0.06em; word-break: break-all;
+          color: var(--text, #222); text-align: left;
+        }
+        .token-display__eye { font-size: 14px; opacity: .7; margin-left: 8px; flex: none; }
+      `}</style>
       <div className="settings-section">
         <div className="settings-section__header">
           <h3>{t("localserver.title")}</h3>
@@ -95,9 +112,12 @@ export function LocalServerPage() {
 
         <div className="settings-field">
           <div className="settings-field__label">{t("localserver.token")}</div>
-          <div className="settings-field__value">
-            <code>{status?.token || "…"}</code>
-          </div>
+          <button className="token-display" onClick={() => setShowToken((v) => !v)} disabled={!status?.token} type="button">
+            <span className="token-display__text">
+              {showToken && status?.token ? status.token : "••••••••••••••••"}
+            </span>
+            <span className="token-display__eye">{showToken ? "🙈" : "👁"}</span>
+          </button>
           <div className="settings-actions">
             <button className="button button--secondary" onClick={copyToken} disabled={!status?.token}>
               {copied ? t("localserver.copied") : t("localserver.copyToken")}

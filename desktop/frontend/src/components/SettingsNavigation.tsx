@@ -12,6 +12,7 @@ import {
   Package,
   Palette,
   Plug,
+  Radio,
   RefreshCw,
   Search,
   Server,
@@ -132,6 +133,7 @@ function settingsTabIcon(id: SettingsTab): ReactNode {
     case "bots": return <Bot {...props} />;
     case "mcp": return <Plug {...props} />;
     case "remote": return <Server {...props} />;
+    case "localserver": return <Radio {...props} />;
     case "skills": return <Sparkles {...props} />;
     case "subagents": return <Users {...props} />;
     case "plugins": return <Package {...props} />;

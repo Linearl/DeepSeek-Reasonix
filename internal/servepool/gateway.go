@@ -37,6 +37,8 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case r.Method == http.MethodGet && r.URL.Path == "/status":
+		g.handleStatus(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/manifest":
 		g.handleManifest(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/projects/open":
@@ -46,6 +48,18 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+// handleStatus makes the gateway handshake-compatible with single-serve
+// clients (GrandCouncil's ConnectionTester probes GET /status and expects a
+// JSON body containing "label" or "plan"). It only answers after the gateway
+// Bearer auth, so it doubles as a liveness probe for remote clients.
+func (g *Gateway) handleStatus(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, map[string]any{
+		"label":  "serve pool gateway",
+		"gateway": true,
+		"plan":   false,
+	})
 }
 
 func (g *Gateway) authorized(r *http.Request) bool {

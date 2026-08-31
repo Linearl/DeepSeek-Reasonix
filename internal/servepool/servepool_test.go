@@ -2,6 +2,7 @@ package servepool
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -60,6 +61,40 @@ func TestGatewayAuth(t *testing.T) {
 		if resp.StatusCode != want {
 			t.Fatalf("%s: status = %d, want %d", name, resp.StatusCode, want)
 		}
+	}
+}
+
+func TestGatewayStatus(t *testing.T) {
+	m := newTestManager(t)
+	g := NewGateway(m, "secret")
+	ts := httptest.NewServer(g)
+	defer ts.Close()
+
+	// No token → 401.
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/status", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("no token: status = %d, want %d", resp.StatusCode, http.StatusUnauthorized)
+	}
+
+	// Correct token → 200 + JSON containing "label" (GrandCouncil handshake probe).
+	req, _ = http.NewRequest(http.MethodGet, ts.URL+"/status", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("with token: status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), `"label"`) {
+		t.Fatalf("status body missing label: %s", body)
 	}
 }
 
