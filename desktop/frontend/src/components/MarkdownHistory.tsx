@@ -57,6 +57,23 @@ function cachedBlocks(cacheKey: string | undefined, revision: number, text: stri
   return cached && cached.source === text ? cached.blocks : undefined;
 }
 
+/** Conservatively detect whether the pending history row intersects its scroller. */
+function fallbackRowIntersectsTranscript(marker: HTMLElement | null, scroller: HTMLElement): boolean {
+  const row = marker?.closest<HTMLElement>(".transcript__row") ?? null;
+  if (!row || scroller.clientHeight <= 0) return true;
+  const rowRect = row.getBoundingClientRect();
+  const scrollerRect = scroller.getBoundingClientRect();
+  if (
+    !Number.isFinite(rowRect.top)
+    || !Number.isFinite(rowRect.bottom)
+    || !Number.isFinite(scrollerRect.top)
+    || rowRect.bottom <= rowRect.top
+  ) return true;
+  const viewportTop = scrollerRect.top;
+  const viewportBottom = viewportTop + scroller.clientHeight;
+  return rowRect.bottom > viewportTop && rowRect.top < viewportBottom;
+}
+
 /** Keep a bounded block window whose edges advance only on viewport demand. */
 function useProgressiveBlockWindow(total: number, identity: MarkdownBlock[] | undefined): [BlockWindow, (direction: "older" | "newer") => void] {
   const initial = useMemo<BlockWindow>(() => ({
@@ -196,14 +213,13 @@ export const MarkdownHistory = memo(function MarkdownHistory({
           commit();
           return;
         }
-        // 2. Longer answers outside the viewport swap safely: any height
+        // 2. Longer answers outside the transcript viewport swap safely: any height
         //    change happens off-screen, and the reader scrolling up meets
         //    rendered blocks instead of the raw source.
-        const marker = fallbackMarkerRef.current;
-        const markerRect = marker?.getBoundingClientRect();
-        const markerInView = !!markerRect && window.innerHeight > 0
-          && markerRect.bottom > 0 && markerRect.top < window.innerHeight;
-        if (!markerInView) {
+        //    Measure the real Virtuoso row, not the display:none marker: hidden
+        //    elements have an empty DOMRect and the app window is not the
+        //    transcript's scroll viewport.
+        if (scroller && !fallbackRowIntersectsTranscript(fallbackMarkerRef.current, scroller)) {
           commit();
           return;
         }
