@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"log/slog"
 	"net"
 	"net/http"
@@ -30,6 +31,7 @@ import (
 	"reasonix/internal/nilutil"
 	"reasonix/internal/plugin"
 	"reasonix/internal/provider"
+	"reasonix/internal/safego"
 	"reasonix/internal/sandbox"
 	"reasonix/internal/stats"
 	"reasonix/internal/store"
@@ -627,11 +629,15 @@ func (s *Server) RunGracefulListener(ctx context.Context, ln net.Listener) error
 		Handler:           s.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
+		// Server-level errors (accept failures, handler panics escaped from
+		// ErrServerClosed handling) go through the standard logger — the
+		// desktop redirects it to the rolling file; CLI keeps stderr.
+		ErrorLog: log.New(log.Writer(), "[serve-http] ", log.LstdFlags),
 	}
 	errCh := make(chan error, 1)
-	go func() {
+	safego.Go("serve.http", func() {
 		errCh <- srv.Serve(ln)
-	}()
+	})
 	select {
 	case err := <-errCh:
 		if errors.Is(err, http.ErrServerClosed) {

@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"reasonix/internal/safego"
 )
 
 // Config controls the pool.
@@ -45,39 +47,39 @@ type Config struct {
 
 // ProjectState mirrors the manifest entry a remote client sees.
 type ProjectState struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Root    string `json:"root"`
-	State   string `json:"state"` // stopped | starting | running | degraded | failed
-	Color   string `json:"color,omitempty"`
-	Group   string `json:"group,omitempty"`
-	Sessions int   `json:"sessions,omitempty"`
-	Err     string `json:"err,omitempty"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Root     string `json:"root"`
+	State    string `json:"state"` // stopped | starting | running | degraded | failed
+	Color    string `json:"color,omitempty"`
+	Group    string `json:"group,omitempty"`
+	Sessions int    `json:"sessions,omitempty"`
+	Err      string `json:"err,omitempty"`
 }
 
 // Manager owns the pool. All methods are safe for concurrent use.
 type Manager struct {
-	cfg     Config
-	mu      sync.Mutex
-	bin     string
+	cfg      Config
+	mu       sync.Mutex
+	bin      string
 	projects map[string]*project // keyed by project id (workspace slug)
-	stop    chan struct{}
-	done    chan struct{}
+	stop     chan struct{}
+	done     chan struct{}
 }
 
 type project struct {
-	state    string
-	root     string
-	id       string
-	color    string
-	group    string
-	cmd      *exec.Cmd
-	port     int
-	token    string
-	lastUse  time.Time
-	failures int
+	state         string
+	root          string
+	id            string
+	color         string
+	group         string
+	cmd           *exec.Cmd
+	port          int
+	token         string
+	lastUse       time.Time
+	failures      int
 	degradedUntil time.Time
-	err      string
+	err           string
 }
 
 // NewManager builds a pool manager with the given config.
@@ -106,7 +108,9 @@ func NewManager(cfg Config) (*Manager, error) {
 	for _, root := range cfg.ProjectRoots {
 		m.addProjectLocked(root)
 	}
-	go m.loop()
+	// The manager loop runs for the process lifetime; a panic in it would
+	// kill the desktop (its goroutine is outside the App goSafe reach).
+	safego.Go("servepool.manager.loop", m.loop)
 	return m, nil
 }
 
@@ -371,4 +375,3 @@ func newToken() string {
 	}
 	return hex.EncodeToString(b)
 }
-

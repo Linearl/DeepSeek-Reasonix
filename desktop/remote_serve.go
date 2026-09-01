@@ -22,6 +22,7 @@ import (
 	"reasonix/internal/jobs"
 	"reasonix/internal/remote/bootstrap"
 	"reasonix/internal/remote/forward"
+	"reasonix/internal/safego"
 	"reasonix/internal/store"
 )
 
@@ -629,7 +630,8 @@ func (m *desktopRemoteManager) reloadServeProviders(ctx context.Context, generat
 			// EnsureServer currently holds serveMu.
 			if (strings.Contains(err.Error(), "status 404") || strings.Contains(err.Error(), "status 405")) && m.markCredFallback(hostID, ws) {
 				log.Printf("[remote] reloadServeProviders: legacy serve -> replacing host=%s ws=%s", hostID, ws)
-				go func(hostID, ws string) {
+				safego.Go("remote.reloadServeProviders.replaceLegacy", func() {
+					hostID, ws := hostID, ws
 					if err := m.StopServer(hostID, ws); err != nil {
 						log.Printf("[remote] reloadServeProviders: stop legacy serve failed host=%s ws=%s err=%v", hostID, ws, err)
 					}
@@ -638,7 +640,7 @@ func (m *desktopRemoteManager) reloadServeProviders(ctx context.Context, generat
 						// Keep logs useful for correlation without persisting that detail.
 						log.Printf("[remote] reloadServeProviders: restart legacy serve failed host=%s ws=%s", hostID, ws)
 					}
-				}(hostID, ws)
+				})
 			}
 			continue
 		}

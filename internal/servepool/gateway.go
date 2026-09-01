@@ -3,10 +3,12 @@ package servepool
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // Gateway is the single-entry HTTP surface in front of the serve pool.
@@ -32,22 +34,48 @@ func NewGateway(mgr *Manager, token string) *Gateway {
 func (g *Gateway) Token() string { return g.token }
 
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	rec := &loggingResponseWriter{ResponseWriter: w}
+	defer func() {
+		// Access log for the phone-connect/disconnect triage (2026-09-01
+		// desktop deaths): every request records method, path, status,
+		// duration, and remote address in the desktop rolling log.
+		log.Printf("[gateway] %s %s -> %d in %s remote=%s", r.Method, r.URL.Path, rec.status, time.Since(start).Round(time.Millisecond), r.RemoteAddr)
+	}()
 	if !g.authorized(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		http.Error(rec, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/status":
-		g.handleStatus(w, r)
+		g.handleStatus(rec, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/manifest":
-		g.handleManifest(w, r)
+		g.handleManifest(rec, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/projects/open":
-		g.handleOpen(w, r)
+		g.handleOpen(rec, r)
 	case strings.HasPrefix(r.URL.Path, "/p/"):
-		g.handleProxy(w, r)
+		g.handleProxy(rec, r)
 	default:
-		http.NotFound(w, r)
+		http.NotFound(rec, r)
 	}
+}
+
+// loggingResponseWriter captures the status code for the gateway access log.
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *loggingResponseWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *loggingResponseWriter) Write(p []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.ResponseWriter.Write(p)
 }
 
 // handleStatus makes the gateway handshake-compatible with single-serve
@@ -56,9 +84,9 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // Bearer auth, so it doubles as a liveness probe for remote clients.
 func (g *Gateway) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, map[string]any{
-		"label":  "serve pool gateway",
+		"label":   "serve pool gateway",
 		"gateway": true,
-		"plan":   false,
+		"plan":    false,
 	})
 }
 
@@ -139,9 +167,19 @@ func (g *Gateway) proxyFor(id string, port int) *httputil.ReverseProxy {
 	}
 	target, _ := url.Parse("http://127.0.0.1:" + itoa(port))
 	p := httputil.NewSingleHostReverseProxy(target)
+	p.FlushInterval = -1 // stream SSE/turn deltas to remote clients immediately
 	p.Director = func(req *http.Request) {
 		req.URL.Scheme = target.Scheme
 		req.URL.Host = target.Host
+	}
+	// Proxy write-back failures are the phone-disconnect signal the 2026-09-01
+	// desktop-death triage needs: log them through the standard logger (the
+	// desktop redirects it to the rolling file) instead of the silent default.
+	logger := log.New(log.Writer(), "[gateway-proxy] ", log.LstdFlags)
+	p.ErrorLog = logger
+	p.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		logger.Printf("proxy write-back failed project=%s %s %s: %v", id, r.Method, r.URL.Path, err)
+		writeJSONStatus(w, http.StatusBadGateway, map[string]string{"error": "upstream serve unreachable"})
 	}
 	g.proxy[id] = p
 	return p

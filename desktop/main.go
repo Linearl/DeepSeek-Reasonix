@@ -105,6 +105,10 @@ func preparePrimaryDesktopRuntime(app *App) {
 }
 
 func main() {
+	// Rolling file logging first: every later goroutine, http.Server, and
+	// slog line lands in logs\desktop\desktop.log instead of a console the
+	// GUI subsystem does not have (fd=2 writes are lost on Windows GUI).
+	installDesktopLogging()
 	prepareLinuxRendererCompatibilityEnvironment()
 	// Detached macOS self-update child: wait for the old PID, hold the shared
 	// repair mutation lock, then swap the .app bundle. Must run before Wails.
