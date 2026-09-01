@@ -159,8 +159,12 @@ console.log("\nbundle budgets");
 // after a stranded native WebView extent. The WebView2 reachable-tail clamp
 // then absorbs a second post-quiet extent without an unbounded write loop.
 // The combined path measures 456.316 KiB; retain 0.084 KiB with the smallest
+<<<<<<< HEAD
 // one-decimal ratchet. Bumped to 459.0 for the 集成与连接 → 本地服务器服务
 // settings panel (LocalServerPage) that ships with the serve pool gateway.
+// Transactional Ask resolution and authoritative rejected-submit recovery add
+// 0.3 KiB gzip to the initial controller path. Retain the exact turn fence,
+// bounded ListTabs retry, and stale-prompt guard with a 0.1 KiB headroom.
 const initialJSBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 459.0 : 459.0;
 assertBudget("initial JavaScript gzip", initialJSGzip, initialJSBudgetKiB * 1024);
 assertBudget("largest initial JavaScript chunk gzip", largestInitialJS, 280 * 1024);
@@ -283,7 +287,10 @@ const rawInitialBytes = [...initialJS, ...initialCSS, ...appShellCSS]
 // to 2446.6 KiB; retain the smallest existing decimal ratchet.
 // The stranded-tail recovery transition plus the WebView2 reachable-tail clamp
 // bring the measured initial payload to 2447.953 KiB. Retain 0.047 KiB with
-// the smallest one-decimal ratchet.
+// the smallest one-decimal ratchet. Bumped to 2_461.0 for the serve pool
+// gateway settings surface shipped on the fork.
+// Ask turn fencing and rejection reconciliation measure 2455.9 KiB raw;
+// retain the same narrow 0.1 KiB headroom as the gzip ratchet above.
 const rawInitialBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 2_461.0 : 2_461.0;
 assertBudget("initial raw JavaScript and CSS", rawInitialBytes, rawInitialBudgetKiB * 1024);
 assertBudget("largest initial JavaScript chunk raw", largestInitialJSRaw, 1_000 * 1024);

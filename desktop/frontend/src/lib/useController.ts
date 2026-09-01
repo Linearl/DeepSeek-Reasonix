@@ -10,7 +10,7 @@ import { invalidateCache } from "./composerHistory";
 import { formatInboxCancelError } from "./inboxError";
 import { mergeRateBand, type AggregatedRateBand } from "./costRateBand";
 import { requestInboxCancel, type CancelOutcome } from "./inboxCancel";
-import { resolveActiveTurnId } from "./inboxSubmit";
+import { answerPromptForActiveTurn, resolveActiveTurnId } from "./inboxSubmit";
 import { formatContextMaintenanceNotice, isNewMaintenanceOperation, rememberMaintenanceOperation } from "./contextMaintenanceTypes";
 import { formatGuardianAssessmentNotice } from "./guardianEvents";
 import { completionSummaryPresentation, normalizeCompletionSummary, sessionQualityFloor } from "./completionSummary";
@@ -821,6 +821,7 @@ type Action =
   | { type: "unsend" }
   | { type: "send_confirmed"; submissionId: string }
   | { type: "turn_admitted"; turnId: string; submissionId: string }
+  | { type: "turn_submit_rejected"; submissionId: string; error: string }
   | { type: "send_failed"; submissionId: string; error: string }
   | { type: "turn_interrupted" }
   | { type: "backend_status"; running: boolean; turnStartedAt?: number; pendingPrompt?: boolean; backgroundJobs?: number; cancelRequested?: boolean; cancellable?: boolean; turnId?: string; turnStatus?: string; snapshotAt?: number }
@@ -856,6 +857,7 @@ type Action =
   | { type: "clearExtensionForm" }
   | { type: "extension_notifications_drained" }
   | { type: "approval_drained"; ids: string[]; epoch: number }
+  | { type: "ask_submit_succeeded"; id: string; epoch: number }
   | { type: "submit_prompt_failed"; id: string; epoch: number }
   | { type: "controller_rebuilt" }
   | { type: "reset" }
@@ -2151,12 +2153,19 @@ export function reducer(s: State, a: Action): State {
       return s.pendingSubmissionId === a.submissionId && a.turnId
         ? { ...s, activeTurnId: a.turnId }
         : s;
+    case "turn_submit_rejected":
     case "send_failed": {
       if (s.pendingSubmissionId !== a.submissionId) return s;
       const idx = s.items.findIndex((it) => it.kind === "user" && it.submissionId === a.submissionId);
       const items = idx >= 0 ? s.items.map((it, i) => (i === idx ? { ...it, submissionId: undefined, failed: true } : it)) : s.items;
       const notice: Item = { kind: "notice", id: `n${s.seq}`, level: "warn", text: a.error };
-      return { ...s, pendingUser: undefined, pendingSubmissionId: undefined, deliveryRecoveryActive: false, running: false, turnActive: false, pendingPrompt: false, cancelRequested: false, cancellable: false, activeTurnId: undefined, currentAssistant: undefined, assistantSegmentOrdinal: 0, live: undefined, streamAttemptJournal: undefined, turnLifecycleObservedAt: promptEventClock(), seq: s.seq + 1, items: [...removeEmptyAssistantItems(items), notice] };
+      const next = { ...s, pendingUser: undefined, pendingSubmissionId: undefined, deliveryRecoveryActive: false, cancelRequested: false, seq: s.seq + 1, items: [...removeEmptyAssistantItems(items), notice] };
+      if (a.type === "turn_submit_rejected") {
+        // Admission failed, but the backend may still own an older turn. Stay
+        // conservatively blocked until ListTabs supplies authoritative truth.
+        return { ...next, running: true, turnActive: true, pendingPrompt: Boolean(s.approval || s.ask || s.mcpInteraction), cancellable: true };
+      }
+      return { ...next, running: false, turnActive: false, pendingPrompt: false, cancellable: false, activeTurnId: undefined, currentAssistant: undefined, assistantSegmentOrdinal: 0, live: undefined, streamAttemptJournal: undefined, turnLifecycleObservedAt: promptEventClock() };
     }
     case "turn_interrupted": {
       return withRemoteTurnInterrupted(s);
@@ -2169,6 +2178,7 @@ export function reducer(s: State, a: Action): State {
       const cancelRequested = Boolean(a.cancelRequested);
       const foregroundRunning = foregroundRunningFromRuntimeMeta({ running: a.running, pendingPrompt, backgroundJobs, cancellable: a.cancellable });
       const turnStartedAt = foregroundRunning ? resolveSnapshotTurnStartedAt(s.running || s.turnActive ? s.turnStartAt : 0, a.turnStartedAt) : s.turnStartAt;
+      const activeTurnId = foregroundRunning ? a.turnId ?? s.activeTurnId : undefined;
       // A retry event is newer evidence of foreground activity than an idle
       // snapshot whose fetch started earlier. Keep the turn cancellable until
       // a snapshot started after the retry confirms that it is actually idle.
@@ -2182,6 +2192,7 @@ export function reducer(s: State, a: Action): State {
         cancelRequested === s.cancelRequested &&
         cancellable === s.cancellable &&
         turnStartedAt === s.turnStartAt &&
+        activeTurnId === s.activeTurnId &&
         !clearsRetry
       ) return s;
       if (foregroundRunning) {
@@ -2193,7 +2204,7 @@ export function reducer(s: State, a: Action): State {
           backgroundJobs,
           cancelRequested,
           cancellable,
-          activeTurnId: a.turnId ?? s.activeTurnId,
+          activeTurnId,
           turnStartAt: turnStartedAt,
         };
       }
@@ -2416,6 +2427,11 @@ export function reducer(s: State, a: Action): State {
     case "approval_drained": {
       if (s.promptEpoch !== a.epoch || !s.approval || !a.ids.includes(s.approval.id)) return s;
       const next = { ...s, approval: undefined, pendingPrompt: Boolean(s.ask), resolvedPromptId: s.approval.id };
+      return endPromptWaitIfIdle(next);
+    }
+    case "ask_submit_succeeded": {
+      if (s.promptEpoch !== a.epoch || s.ask?.id !== a.id) return s;
+      const next = { ...s, ask: undefined, pendingPrompt: Boolean(s.approval), resolvedPromptId: a.id };
       return endPromptWaitIfIdle(next);
     }
     // The optimistic clearApproval/clearAsk tombstone was wrong: the backend
@@ -3350,6 +3366,25 @@ export function useController() {
     return tabs;
   }, [dispatchRuntimeStatusForTab, loadSessionDataForTab, refreshBalanceForTab]);
 
+  // A rejected mutation can race an already-running backend turn. Unlike the
+  // general background reconciler, this path must distinguish bridge failure
+  // from a successful empty snapshot: bridge failure keeps the composer
+  // conservatively blocked, while a confirmed missing tab settles it idle.
+  const reconcileRuntimeAfterRejectedMutation = useCallback(async (tabId: string): Promise<void> => {
+    for (const delay of CANCEL_RECONCILE_DELAYS_MS) {
+      if (delay) await new Promise((resolve) => window.setTimeout(resolve, delay));
+      const snapshotAt = promptEventClock();
+      try {
+        const tab = asArray(await app.ListTabs()).find((candidate) => candidate.id === tabId);
+        if (tab?.runtime?.epoch) runtimeEpochByTabRef.current.set(tabId, tab.runtime.epoch);
+        dispatchRuntimeStatusForTab(tabId, tab ?? { running: false }, snapshotAt);
+        return;
+      } catch {
+        // The stale-turn watchdog is the long-tail backstop after this burst.
+      }
+    }
+  }, [dispatchRuntimeStatusForTab]);
+
   // Authoritative backstop for the prompt-freshness heuristic: after the reducer
   // rejects a stale idle snapshot, refetch backend state once. If the backend
   // resolved the prompt, the fresh snapshot (fetched after any in-flight replay)
@@ -3749,6 +3784,16 @@ export function useController() {
     lastTurnActivityAtByTab, reconcile: reconcileStaleTurn,
   });
 
+  const rejectTurnSubmission = useCallback((tabId: string, submissionId: string, error: unknown) => {
+    if (statesRef.current.get(tabId)?.pendingSubmissionId !== submissionId) return;
+    dispatchTo(tabId, {
+      type: "turn_submit_rejected",
+      submissionId,
+      error: `Send failed: ${errorMessage(error)}`,
+    });
+    void reconcileRuntimeAfterRejectedMutation(tabId);
+  }, [dispatchTo, reconcileRuntimeAfterRejectedMutation]);
+
   // Replay any pending approval/ask prompts when switching tabs, so a
   // plan-mode session left awaiting confirmation rebuilds its modal (#4275).
   useEffect(() => {
@@ -3819,13 +3864,13 @@ export function useController() {
           }
           dispatchTo(tabId, { type: "send_confirmed", submissionId });
         },
-        (error) => dispatchTo(tabId, { type: "send_failed", submissionId, error: `Send failed: ${error instanceof Error ? error.message : String(error)}` }),
+        (error) => rejectTurnSubmission(tabId, submissionId, error),
       );
     } catch (error) {
-      dispatchTo(tabId, { type: "send_failed", submissionId, error: `Send failed: ${error instanceof Error ? error.message : String(error)}` });
+      rejectTurnSubmission(tabId, submissionId, error);
       throw error;
     }
-  }, [bumpCancelHydrateSeq, dispatchTo]);
+  }, [bumpCancelHydrateSeq, dispatchTo, rejectTurnSubmission]);
 
   const recoverDeliveryToTab = useCallback(async (tabId: string, displayText: string, submitText = displayText) => {
     if (!tabId) throw new Error(t("composer.workspaceStarting"));
@@ -3843,13 +3888,13 @@ export function useController() {
     try {
       void app.SubmitDeliveryRecoveryToTabWithID(tabId, display, submit, submissionId).then(
         () => dispatchTo(tabId, { type: "send_confirmed", submissionId }),
-        (error) => dispatchTo(tabId, { type: "send_failed", submissionId, error: `Send failed: ${error instanceof Error ? error.message : String(error)}` }),
+        (error) => rejectTurnSubmission(tabId, submissionId, error),
       );
     } catch (error) {
-      dispatchTo(tabId, { type: "send_failed", submissionId, error: `Send failed: ${error instanceof Error ? error.message : String(error)}` });
+      rejectTurnSubmission(tabId, submissionId, error);
       throw error;
     }
-  }, [dispatchTo]);
+  }, [dispatchTo, rejectTurnSubmission]);
 
   const send = useCallback((displayText: string, submitText = displayText) => {
     const tabId = activeTabIdRef.current ?? activeTabId;
@@ -4003,22 +4048,25 @@ export function useController() {
     });
   }, [activeTabId, dispatchTo]);
 
-  const answerQuestion = useCallback((id: string, answers: QuestionAnswer[]) => {
-    if (!activeTabId) return;
+  const answerQuestion = useCallback(async (id: string, answers: QuestionAnswer[]): Promise<void> => {
+    if (!activeTabId) throw new Error("active tab is unavailable");
     const tabId = activeTabId;
-    const epoch = statesRef.current.get(tabId)?.promptEpoch ?? 0;
-    const turnId = statesRef.current.get(tabId)?.activeTurnId;
-    dispatchTo(tabId, { type: "clearAsk" });
-    const request = typeof app.AnswerPromptForTab === "function"
-      ? turnId
-        ? app.AnswerPromptForTab(tabId, turnId, id, answers)
-        : Promise.reject(new Error("active turn id is unavailable"))
-      : app.AnswerQuestionForTab(tabId, id, answers);
-    request.catch(() => {
-      dispatchTo(tabId, { type: "submit_prompt_failed", id, epoch });
-      replayPendingPromptsForActiveTab(tabId);
-    });
-  }, [activeTabId, dispatchTo]);
+    const state = statesRef.current.get(tabId);
+    const epoch = state?.promptEpoch ?? 0;
+    try {
+      await answerPromptForActiveTurn(app, tabId, id, answers, state?.activeTurnId);
+      dispatchTo(tabId, { type: "ask_submit_succeeded", id, epoch });
+    } catch (error) {
+      dispatchTo(tabId, {
+        type: "local_notice",
+        level: "warn",
+        text: `Unable to submit answer: ${errorMessage(error)}`,
+        preserveRuntime: true,
+      });
+      void reconcileRuntimeAfterRejectedMutation(tabId);
+      throw error;
+    }
+  }, [activeTabId, dispatchTo, reconcileRuntimeAfterRejectedMutation]);
 
   const answerMCPInteraction = useCallback(
     (id: string, action: "accept" | "decline" | "cancel", content?: Record<string, unknown>) => {
