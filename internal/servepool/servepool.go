@@ -35,6 +35,9 @@ type Config struct {
 	// ProjectRoots is the initial project list (desktop-projects.json roots
 	// or CLI config); RefreshProjects can update it later.
 	ProjectRoots []string
+	// ProjectColors maps a project root (cleaned) to its color token, used to
+	// decorate the /manifest entries so remote clients can render the color.
+	ProjectColors map[string]string
 }
 
 // ProjectState mirrors the manifest entry a remote client sees.
@@ -43,6 +46,7 @@ type ProjectState struct {
 	Name    string `json:"name"`
 	Root    string `json:"root"`
 	State   string `json:"state"` // stopped | starting | running | degraded | failed
+	Color   string `json:"color,omitempty"`
 	Sessions int   `json:"sessions,omitempty"`
 	Err     string `json:"err,omitempty"`
 }
@@ -61,6 +65,7 @@ type project struct {
 	state    string
 	root     string
 	id       string
+	color    string
 	cmd      *exec.Cmd
 	port     int
 	token    string
@@ -120,7 +125,11 @@ func (m *Manager) addProjectLocked(root string) {
 	if _, ok := m.projects[id]; ok {
 		return
 	}
-	m.projects[id] = &project{state: "stopped", root: root, id: id}
+	color := ""
+	if m.cfg.ProjectColors != nil {
+		color = m.cfg.ProjectColors[root]
+	}
+	m.projects[id] = &project{state: "stopped", root: root, id: id, color: color}
 }
 
 // RefreshProjects replaces the project list, preserving running instances
@@ -150,7 +159,7 @@ func (m *Manager) Projects() []ProjectState {
 	defer m.mu.Unlock()
 	out := make([]ProjectState, 0, len(m.projects))
 	for _, p := range m.projects {
-		ps := ProjectState{ID: p.id, Root: p.root, State: p.state, Err: p.err}
+		ps := ProjectState{ID: p.id, Root: p.root, State: p.state, Err: p.err, Color: p.color}
 		if p.port > 0 {
 			ps.Name = filepath.Base(p.root)
 		} else {

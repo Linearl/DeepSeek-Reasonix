@@ -32,7 +32,10 @@ func (a *App) ServePoolAddress() string {
 // taken) and log a warning.
 func (a *App) startServePool(ctx context.Context) {
 	roots := projectRootsFromRegistry()
-	mgr, err := servepool.NewManager(servepool.Config{ProjectRoots: roots})
+	mgr, err := servepool.NewManager(servepool.Config{
+		ProjectRoots:   roots,
+		ProjectColors:  projectColorsFromRegistry(),
+	})
 	if err != nil {
 		slog.Warn("servepool: disabled", "err", err)
 		return
@@ -78,6 +81,21 @@ func projectRootsFromRegistry() []string {
 		}
 	}
 	return roots
+}
+
+// projectColorsFromRegistry maps each project root (cleaned) to its color
+// token from desktop-projects.json, so the serve pool /manifest can carry the
+// color for remote clients (GrandCouncil project coloring).
+func projectColorsFromRegistry() map[string]string {
+	f := loadProjectsFile()
+	colors := make(map[string]string, len(f.Projects))
+	for _, p := range f.Projects {
+		root := filepath.Clean(p.Root)
+		if root != "" && strings.TrimSpace(p.Color) != "" {
+			colors[root] = strings.TrimSpace(p.Color)
+		}
+	}
+	return colors
 }
 
 func loadOrCreateGatewayToken() string {
