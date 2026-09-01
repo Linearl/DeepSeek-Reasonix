@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"reasonix/internal/config"
@@ -128,22 +127,4 @@ func installDesktopLogging() {
 	// slog defaults to stderr too, and the serve/servepool layers log via
 	// slog — rebind the default logger so those lines land in the file.
 	slog.SetDefault(slog.New(slog.NewTextHandler(w, nil)))
-}
-
-// desktopLogTail returns up to the last maxBytes of the current desktop.log
-// (best effort) for crash reports / settings diagnostics.
-func desktopLogTail(maxBytes int64) string {
-	path := filepath.Join(config.MemoryUserDir(), desktopLogDirName, desktopLogSubDir, desktopLogFileName)
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	if int64(len(raw)) > maxBytes {
-		raw = raw[int64(len(raw))-maxBytes:]
-		// Drop the first (likely partial) line after the cut.
-		if idx := strings.IndexByte(string(raw), '\n'); idx >= 0 {
-			raw = raw[idx+1:]
-		}
-	}
-	return string(raw)
 }

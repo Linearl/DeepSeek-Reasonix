@@ -45,7 +45,7 @@ func TestRollingLogWriterKeepsBackupCeiling(t *testing.T) {
 
 	// Force enough rolls that a naive implementation would exceed 25 files.
 	chunk := []byte(strings.Repeat("x", 512<<10))
-	for range (desktopLogMaxSizeBytes/len(chunk)+2) * (desktopLogMaxBackups + 5) {
+	for range (desktopLogMaxSizeBytes/len(chunk) + 2) * (desktopLogMaxBackups + 5) {
 		if _, err := w.Write(chunk); err != nil {
 			t.Fatalf("write: %v", err)
 		}
