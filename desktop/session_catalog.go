@@ -608,8 +608,10 @@ func (a *App) pinnedTopicShells(scope, workspaceRoot string, topicIDs, pinnedIDs
 	sources := loadTopicTitleSources(workspaceRoot)
 	created := loadTopicCreatedAts(workspaceRoot)
 	available := make(map[string]bool, len(topicIDs)+len(titles))
-	for _, topicID := range orderedTopicIDs(topicIDs, titles) {
+	sortIndex := map[string]int{}
+	for index, topicID := range orderedTopicIDs(topicIDs, titles) {
 		available[topicID] = true
+		sortIndex[topicID] = index
 	}
 	kind := "topic"
 	if scope != "project" {
@@ -624,6 +626,14 @@ func (a *App) pinnedTopicShells(scope, workspaceRoot string, topicIDs, pinnedIDs
 		if title == "" {
 			title = defaultTopicTitle
 		}
+		// Shells must carry the manual-order index: the frontend merge
+		// spreads the shell over the resident row, and a zero-valued
+		// sortOrder there would flatten manual ordering back to activity
+		// sort (user-visible as "dragged order snaps back").
+		shellSortOrder := -1
+		if index, ok := sortIndex[topicID]; ok {
+			shellSortOrder = index
+		}
 		out = append(out, ProjectNode{
 			Key: kind + "_" + topicID, Kind: kind,
 			Label: a.localizedTopicTitle(title, sources[topicID]), Root: workspaceRoot,
@@ -631,7 +641,8 @@ func (a *App) pinnedTopicShells(scope, workspaceRoot string, topicIDs, pinnedIDs
 			// Keep pinned shells actionable for session-scoped context-menu
 			// entries (e.g. "merge recovery copies") even while collapsed.
 			SessionPath: a.catalogSessionPathForTopic(scope, workspaceRoot, topicID),
-			CreatedAt: topicCreatedAtForTree(created, topicID), Pinned: true,
+			CreatedAt:   topicCreatedAtForTree(created, topicID), Pinned: true,
+			SortOrder:  shellSortOrder,
 			TurnsState: string(sessioncatalog.TurnsUnknown), Health: string(sessioncatalog.HealthOK),
 			Children: []ProjectNode{},
 		})

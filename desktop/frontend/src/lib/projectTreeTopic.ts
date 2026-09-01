@@ -223,7 +223,10 @@ export function projectTreeShellChildren(
     const shell = shellByKey.get(node.key);
     if (!shell) return node.pinned ? { ...node, pinned: false } : node;
     shellByKey.delete(node.key);
-    return { ...node, ...shell, children: node.children ?? shell.children };
+    // Preserve the resident row's sortOrder: shells are metadata-only and a
+    // zero-valued sortOrder would flatten manual ordering back to activity
+    // sort (dragged order snapping back after refresh).
+    return { ...node, ...shell, sortOrder: node.sortOrder ?? shell.sortOrder, children: node.children ?? shell.children };
   });
   return [...next, ...shellByKey.values()];
 }
