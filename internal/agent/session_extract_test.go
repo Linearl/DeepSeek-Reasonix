@@ -133,13 +133,14 @@ func indexOfMessage(msgs []provider.Message, target provider.Message) int {
 // message count is recorded so merge-grouping tests can assert the merge
 // request never carried the whole fragment set.
 type extractStubProvider struct {
-	mu        sync.Mutex
-	calls     int
-	failFirst int
-	streamErr error
-	reply     string
-	msgLens   []int
-	reqEsts   []int
+	mu         sync.Mutex
+	calls      int
+	failFirst  int
+	limitFirst int // first N calls fail with a trusted provider.ContextLimitError
+	streamErr  error
+	reply      string
+	msgLens    []int
+	reqEsts    []int
 }
 
 func (p *extractStubProvider) Name() string { return "extract-stub" }
@@ -154,6 +155,17 @@ func (p *extractStubProvider) Stream(_ context.Context, req provider.Request) (<
 	ch := make(chan provider.Chunk, 3)
 	if p.streamErr != nil {
 		ch <- provider.Chunk{Type: provider.ChunkError, Err: p.streamErr}
+		close(ch)
+		return ch, nil
+	}
+	if n <= p.limitFirst {
+		ch <- provider.Chunk{Type: provider.ChunkError, Err: &provider.ContextLimitError{
+			APIError:         &provider.APIError{Provider: p.Name(), Status: 400, Body: "prompt too long"},
+			WindowTokens:     128_000,
+			RequestedTokens:  300_000,
+			PromptTokens:     290_000,
+			CompletionTokens: 10_000,
+		}}
 		close(ch)
 		return ch, nil
 	}
@@ -293,5 +305,29 @@ func TestCompactFallsBackToChunkedSummaryOnTruncation(t *testing.T) {
 	}
 	if prov.calls < 4 {
 		t.Fatalf("provider calls = %d, want the failed single request plus chunks and merge (>=4)", prov.calls)
+	}
+}
+
+func TestCompactFallsBackToChunkedSummaryOnContextLimitError(t *testing.T) {
+	// The single-request summary is rejected by the provider with a trusted
+	// context-window overflow (HTTP 400/413/422 → provider.ContextLimitError).
+	// The chunked fallback condition must accept that signal too, so an
+	// over-length session recovers with a plain /compact instead of aborting
+	// compaction with the raw provider error.
+	prov := &extractStubProvider{limitFirst: 1, reply: "digest"}
+	sess := NewSession("sys")
+	for range 12 {
+		sess.Add(provider.Message{Role: provider.RoleUser, Content: strings.Repeat("u", 6000)})
+		sess.Add(provider.Message{Role: provider.RoleAssistant, Content: strings.Repeat("a", 6000)})
+	}
+	a := New(prov, tool.NewRegistry(), sess, Options{ContextWindow: 100_000, RecentKeep: 2, ArchiveDir: t.TempDir()}, event.Discard)
+	if err := a.CompactNow(context.Background(), ""); err != nil {
+		t.Fatalf("CompactNow after context-limit rejection: %v", err)
+	}
+	if len(a.sess.compactionState.Projection.Messages) == 0 {
+		t.Fatal("projection not installed after the context-limit chunked fallback")
+	}
+	if prov.calls < 2 {
+		t.Fatalf("provider calls = %d, want the rejected single request plus at least one chunked request (>=2)", prov.calls)
 	}
 }

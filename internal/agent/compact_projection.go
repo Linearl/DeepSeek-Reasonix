@@ -489,12 +489,14 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 		inputMode = SummaryInputExtensionRewritten
 	}
 	res, tele, err := a.foldSummaryWithTelemetry(ctx, trigger, fold, instructions, sourceTokens, inputMode)
-	if err != nil && (errors.Is(err, errSummaryOutputTruncated) || errors.Is(err, ErrCompactionRequired)) {
+	if err != nil && (errors.Is(err, errSummaryOutputTruncated) || errors.Is(err, ErrCompactionRequired) || provider.AsContextLimitError(err) != nil) {
 		// One request cannot summarize this fold: the output ran into the
-		// provider limit, or the fold itself overflows the window. Fall back
-		// to the chunked extract strategy (#9082 #9572 follow-up) — the
-		// projection still installs in this session, so over-length sessions
-		// recover with a plain /compact and work continues in place.
+		// provider limit, the fold itself overflows the window, or the
+		// provider rejected the request with a trusted context-window
+		// overflow (HTTP 400/413/422). Fall back to the chunked
+		// extract strategy (#9082 #9572 follow-up) — the projection still
+		// installs in this session, so over-length sessions recover with a
+		// plain /compact and work continues in place.
 		// Stream the fragment progress to the frontend so the compaction card
 		// shows "compacting fragment N/M" instead of a silent spinner.
 		chunked, chunkedErr := a.chunkedFoldSummary(ctx, fold, instructions, func(done, total int) {
