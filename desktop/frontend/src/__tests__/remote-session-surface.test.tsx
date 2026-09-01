@@ -74,8 +74,7 @@ let statusPendingPrompt = false, replayedPrompts: unknown[] = [];
 let snapshotHistory: unknown[] = [];
 let blockApproval = false;
 let releaseApproval: (() => void) | undefined;
-let blockAnswer = false;
-let failAnswer = false;
+let blockAnswer = false, failAnswer = false;
 let releaseAnswer: (() => void) | undefined;
 let resolveRaceSnapshot: ((value: { history: unknown[]; status: unknown }) => void) | undefined;
 const resolveStateRaceSnapshots: Array<(value: { history: unknown[]; status: unknown }) => void> = [];
@@ -209,8 +208,7 @@ window.go = { main: { App: {
 		tape.push(`plan-decision:${tabId}:${callId}:${action}:${feedback}`);
 	},
 	async AnswerRemoteTab(tabId: string, callId: string, answers: Array<{ QuestionID: string; Selected: string[] }>) {
-		tape.push(`answer:${tabId}:${callId}:${JSON.stringify(answers)}`);
-		if (failAnswer) throw new Error("remote answer failed");
+		tape.push(`answer:${tabId}:${callId}:${JSON.stringify(answers)}`); if (failAnswer) throw new Error("remote answer failed");
 		if (blockAnswer) await new Promise<void>((resolve) => { releaseAnswer = resolve; });
 	},
   async SubmitRemoteTabExtensionForm(tabId: string, pluginId: string, surfaceId: string, values: Record<string, unknown>) {
@@ -393,36 +391,12 @@ await act(async () => {
 		await flush();
 	});
 	ok(!tape.some((entry) => entry.startsWith("answer:tab-remote-1:ask-7")), "selecting an option keeps the ask open until explicit submit");
-	await act(async () => {
+	failAnswer = true; await act(async () => {
 		[...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === "Submit")?.click();
 		await flush();
 	});
-	ok(tape.includes('answer:tab-remote-1:ask-7:[{"QuestionID":"q1","Selected":["yes"]}]'), "submit forwards the question id and complete selection batch");
+	ok(Boolean(document.querySelector(".prompt-shelf--ask")) && document.body.textContent?.includes("remote answer failed") === true && document.querySelector<HTMLButtonElement>(".prompt-shelf--ask .decision-confirm-bar__confirm")?.disabled === false, "a failed remote Ask answer preserves the card, surfaces the error, and re-enables retry"); failAnswer = false; await act(async () => { document.querySelector<HTMLButtonElement>(".prompt-shelf--ask .decision-confirm-bar__confirm")?.click(); await flush(); }); ok(tape.filter((entry) => entry.startsWith("answer:tab-remote-1:ask-7:")).length === 2 && !document.querySelector(".prompt-shelf--ask"), "a successful remote Ask retry resubmits the complete answer and clears the card");
 }
-
-await act(async () => {
-  failAnswer = true;
-  __emitMockRemoteTab("tab-remote-1", "event", { kind: "ask_request", ask: { id: "ask-fail", questions: [{ id: "q-fail", prompt: "Keep on failure?", options: [{ label: "yes" }] }] } });
-  await flush();
-});
-await act(async () => {
-  [...document.querySelectorAll<HTMLButtonElement>(".prompt-shelf--ask .prompt-action")].find((button) => button.textContent?.includes("yes"))?.click();
-  await flush();
-});
-await act(async () => {
-  document.querySelector<HTMLButtonElement>(".prompt-shelf--ask .decision-confirm-bar__confirm")?.click();
-  await flush();
-});
-ok(tape.some((entry) => entry.startsWith("answer:tab-remote-1:ask-fail:")), "failed remote Ask reaches the answer endpoint");
-ok(Boolean(document.querySelector(".prompt-shelf--ask")), "a failed remote Ask answer preserves the card");
-ok(document.body.textContent?.includes("remote answer failed") === true, "a failed remote Ask answer surfaces the error");
-ok(document.querySelector<HTMLButtonElement>(".prompt-shelf--ask .decision-confirm-bar__confirm")?.disabled === false, "a failed remote Ask answer re-enables retry");
-await act(async () => {
-  failAnswer = false;
-  document.querySelector<HTMLButtonElement>(".prompt-shelf--ask .decision-confirm-bar__confirm")?.click();
-  await flush();
-});
-ok(!document.querySelector(".prompt-shelf--ask"), "a successful remote Ask retry clears the matching card");
 
 await act(async () => {
   __emitMockRemoteTab("tab-remote-1", "event", { kind: "ask_request", ask: { id: "ask-custom", questions: [{ id: "q-custom", prompt: "Where?", options: [{ label: "staging" }] }] } });

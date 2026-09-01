@@ -13,6 +13,20 @@ export async function resolveActiveTurnId(binding: Pick<AppBindings, "ListTabs">
 
 type AskAnswerBindings = Pick<AppBindings, "ListTabs" | "AnswerQuestionForTab" | "AnswerPromptForTab">;
 
+// Final frontend boundary before optimistic transcript state is created.
+export function normalizeTurnSubmit(displayText: string, submitText: string) {
+  const display = displayText.trim();
+  const submit = submitText.trim();
+  if (!submit) throw new Error("Message cannot be empty.");
+  return { display, submit };
+}
+
+// Host-only commands do not create an agent turn or receive a turn id.
+export function isLocalRuntimeCommand(input: string): boolean {
+  const trimmed = input.trim();
+  return trimmed === "/reload" || trimmed === "/effort" || trimmed.startsWith("/effort ");
+}
+
 export async function answerPromptForActiveTurn(
   binding: AskAnswerBindings,
   tabId: string,
