@@ -13,6 +13,7 @@ import (
 
 type scriptedProvider struct {
 	turns   []string // one response per call, recycled
+	reasoningTurns []string // if non-empty, emit ChunkReasoning instead of ChunkText
 	err     error    // stream-open error
 	timeout bool     // hang until ctx deadline
 	usage   *provider.Usage
@@ -36,7 +37,12 @@ func (s *scriptedProvider) Stream(ctx context.Context, _ provider.Request) (<-ch
 	if i >= len(s.turns) {
 		i = len(s.turns) - 1
 	}
-	ch <- provider.Chunk{Type: provider.ChunkText, Text: s.turns[i]}
+	if s.reasoningTurns != nil {
+		r := s.reasoningTurns[i%len(s.reasoningTurns)]
+		ch <- provider.Chunk{Type: provider.ChunkReasoning, Text: r}
+	} else {
+		ch <- provider.Chunk{Type: provider.ChunkText, Text: s.turns[i]}
+	}
 	if s.usage != nil {
 		ch <- provider.Chunk{Type: provider.ChunkUsage, Usage: s.usage}
 	}
@@ -73,6 +79,22 @@ func TestEvaluateParsesVerdicts(t *testing.T) {
 				t.Fatalf("outcome = %q, want %q", verdict.Outcome, tc.outcome)
 			}
 		})
+	}
+}
+
+func TestEvaluateReasoningOnly(t *testing.T) {
+	// DeepSeek thinking SKUs put the final JSON verdict in reasoning_content with
+	// an empty content block. boundedllm must surface it (not treat as "empty"),
+	// so parseVerdict can extract the verdict.
+	prov := &scriptedProvider{
+		reasoningTurns: []string{`Let me judge. {"outcome":"continue","reason":"more work remains"}`},
+	}
+	verdict, err := evaluate(t, prov, GoalEvidence{GoalContract: "fix the parser"})
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v (want no error for reasoning-only response)", err)
+	}
+	if verdict.Outcome != OutcomeContinue {
+		t.Fatalf("outcome = %q, want %q", verdict.Outcome, OutcomeContinue)
 	}
 }
 

@@ -136,6 +136,7 @@ func Call(ctx context.Context, cfg Config, system, evidence string) (string, err
 	}
 
 	var text strings.Builder
+	var reasoning strings.Builder
 	for chunk := range ch {
 		switch chunk.Type {
 		case provider.ChunkText:
@@ -144,6 +145,13 @@ func Call(ctx context.Context, cfg Config, system, evidence string) (string, err
 				cancel()
 				return "", fmt.Errorf("bounded reviewer output exceeded %d bytes", maxOutputBytes)
 			}
+		case provider.ChunkReasoning:
+			// Thinking-mode providers (e.g. official DeepSeek vision SKUs) may put
+			// the entire answer in reasoning_content with an empty content block.
+			// Accumulate it so a reasoning-only turn is not treated as "empty"
+			// (the goal evaluator / recovery reviewer / capability router all share
+			// this boundedllm channel and previously discarded ChunkReasoning).
+			reasoning.WriteString(chunk.Text)
 		case provider.ChunkUsage:
 			if chunk.Usage != nil {
 				u := *chunk.Usage
@@ -158,6 +166,16 @@ func Call(ctx context.Context, cfg Config, system, evidence string) (string, err
 	}
 	if callCtx.Err() != nil && text.Len() == 0 {
 		return "", callCtx.Err()
+	}
+	if text.Len() == 0 && reasoning.Len() > 0 {
+		// Reasoning-only response: surface the reasoning so parsers that
+		// tolerate leading text (parseVerdict extracts the JSON object) work.
+		// Clamp to maxOutputBytes to stay within the budget envelope.
+		r := reasoning.String()
+		if len(r) > maxOutputBytes {
+			r = r[:maxOutputBytes]
+		}
+		return r, nil
 	}
 	return text.String(), nil
 }
