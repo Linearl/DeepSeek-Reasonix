@@ -307,6 +307,11 @@ func (m *Manager) spawn(p *project) error {
 	}
 	p.cmd = cmd
 	p.token = token
+	// A stale port file from a previous spawn would be read on the first
+	// poll and report success before the new serve even bound a socket —
+	// proxying to a dead port (observed 502-in-48ms). Remove it first so
+	// only the freshly spawned serve can recreate it.
+	_ = os.Remove(portFile)
 	deadline := time.Now().Add(m.cfg.SpawnTimeout)
 	log.Printf("[servepool] spawning serve project=%q bin=%q portFile=%q", p.id, m.bin, portFile)
 	for time.Now().Before(deadline) {
