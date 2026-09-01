@@ -17,6 +17,7 @@ type desktopProject struct {
 	Root             string         `json:"root"`
 	Title            string         `json:"title,omitempty"`
 	Color            string         `json:"color,omitempty"`
+	ProjectGroup     string         `json:"projectGroup,omitempty"`
 	Topics           []string       `json:"topics"`
 	PinnedTopics     []string       `json:"pinnedTopics,omitempty"`
 	ManualTopicOrder bool           `json:"manualTopicOrder,omitempty"`

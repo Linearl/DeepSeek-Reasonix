@@ -35,6 +35,7 @@ func (a *App) startServePool(ctx context.Context) {
 	mgr, err := servepool.NewManager(servepool.Config{
 		ProjectRoots:   roots,
 		ProjectColors:  projectColorsFromRegistry(),
+		ProjectGroups:  projectGroupsFromRegistry(),
 	})
 	if err != nil {
 		slog.Warn("servepool: disabled", "err", err)
@@ -96,6 +97,21 @@ func projectColorsFromRegistry() map[string]string {
 		}
 	}
 	return colors
+}
+
+// projectGroupsFromRegistry maps each project root (cleaned) to its configured
+// project group name (desktop-projects.json projectGroup), so the serve pool
+// /manifest carries the grouping for remote clients (GrandCouncil folders).
+func projectGroupsFromRegistry() map[string]string {
+	f := loadProjectsFile()
+	groups := make(map[string]string, len(f.Projects))
+	for _, p := range f.Projects {
+		root := filepath.Clean(p.Root)
+		if root != "" && strings.TrimSpace(p.ProjectGroup) != "" {
+			groups[root] = strings.TrimSpace(p.ProjectGroup)
+		}
+	}
+	return groups
 }
 
 func loadOrCreateGatewayToken() string {
