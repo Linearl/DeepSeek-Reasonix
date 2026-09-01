@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -97,6 +98,15 @@ func NewManager(cfg Config) (*Manager, error) {
 			return nil, fmt.Errorf("servepool: resolve own binary: %w", err)
 		}
 		bin = self
+		// Launcher installs (upstream desktop layout) ship the real CLI beside
+		// the GUI exe as reasonix-cli.exe; the launcher itself ignores the
+		// "serve" subcommand, so spawning it would silently time out. Prefer
+		// the sibling CLI when present so per-project serves understand the
+		// CLI contract (--port-file etc).
+		cli := filepath.Join(filepath.Dir(self), "reasonix-cli.exe")
+		if st, statErr := os.Stat(cli); statErr == nil && !st.IsDir() {
+			bin = cli
+		}
 	}
 	m := &Manager{
 		cfg:      cfg,
@@ -290,11 +300,13 @@ func (m *Manager) spawn(p *project) error {
 	cmd.Stderr = io.Discard
 	if err := cmd.Start(); err != nil {
 		m.markFailed(p, fmt.Errorf("spawn serve: %w", err))
+		log.Printf("[servepool] spawn serve failed project=%q bin=%q: %v", p.id, m.bin, err)
 		return err
 	}
 	p.cmd = cmd
 	p.token = token
 	deadline := time.Now().Add(m.cfg.SpawnTimeout)
+	log.Printf("[servepool] spawning serve project=%q bin=%q portFile=%q", p.id, m.bin, portFile)
 	for time.Now().Before(deadline) {
 		if data, err := os.ReadFile(portFile); err == nil {
 			var port int
