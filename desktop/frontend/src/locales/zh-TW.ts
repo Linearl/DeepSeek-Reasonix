@@ -2142,6 +2142,7 @@ export const zhTW: Record<DictKey, string> = {
   "transcript.processedDuration": "已處理 {s}s",
   "notice.info": "提示",
   "notice.warning": "警告",
+  "notice.askSubmitFailed": "提交回答失敗：{error}",
   "notice.details": "詳情",
   "notice.decisionReceiptTitle": "已記錄決策",
   "notice.decisionReceiptTool": "工具核准",

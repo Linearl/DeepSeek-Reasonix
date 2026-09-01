@@ -4,6 +4,7 @@ import { JSDOM } from "jsdom";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import type { AppBindings } from "../lib/bridge";
+import { LocaleProvider, preloadLocale, useI18n } from "../lib/i18n";
 import { useController } from "../lib/useController";
 import type { BalanceInfo, CheckpointMeta, ContextInfo, EffortInfo, HistoryMessage, JobView, Meta, TabMeta, WireEvent } from "../lib/types";
 
@@ -151,8 +152,10 @@ window.go = {
 
 type Controller = ReturnType<typeof useController>;
 let controller: Controller | undefined;
+let setLocale: ReturnType<typeof useI18n>["setPref"] | undefined;
 
 function Probe() {
+  setLocale = useI18n().setPref;
   controller = useController();
   return null;
 }
@@ -162,7 +165,7 @@ if (!rootEl) throw new Error("missing root");
 const root = createRoot(rootEl);
 
 await act(async () => {
-  root.render(<Probe />);
+  root.render(<LocaleProvider><Probe /></LocaleProvider>);
   await flushPromises();
 });
 eq(controller?.activeTabId, undefined, "startup has no active tab when backend has no tabs");
@@ -214,6 +217,11 @@ await act(async () => {
 });
 rejectAnswer = true;
 let answerRejected = false;
+await preloadLocale("zh");
+await act(async () => {
+  setLocale?.("zh");
+  await flushPromises();
+});
 await act(async () => {
   try {
     await controller?.answerQuestion("ask-retry", [{ questionId: "q2", selected: ["yes"] }]);
@@ -225,6 +233,7 @@ await act(async () => {
 eq(answerRejected, true, "failed exact answer propagates to AskCard");
 eq(controller?.state.ask?.id, "ask-retry", "failed exact answer preserves the pending Ask");
 eq(controller?.state.pendingPrompt, true, "failed exact answer keeps the prompt gate active");
+eq(controller?.state.items.find((item) => item.kind === "notice" && item.text.includes("prompt write failed"))?.text, "提交回答失败：prompt write failed", "failed Ask answer uses the active locale");
 rejectAnswer = false;
 
 rejectSubmit = true;

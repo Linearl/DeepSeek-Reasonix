@@ -4009,7 +4009,7 @@ export function useController() {
     return answerPromptForActiveTurn(app, tabId, id, answers, state?.activeTurnId).then(
       () => dispatchTo(tabId, { type: "ask_submit_succeeded", id, epoch }),
       (error) => {
-        dispatchTo(tabId, { type: "local_notice", level: "warn", text: `Unable to submit answer: ${errorMessage(error)}`, preserveRuntime: true });
+        dispatchTo(tabId, { type: "local_notice", level: "warn", text: t("notice.askSubmitFailed", { error: errorMessage(error) }), preserveRuntime: true });
         void reconcileRuntimeAfterRejectedMutation(tabId);
         throw error;
       },

@@ -3085,6 +3085,7 @@ export const en = {
   "transcript.processedDuration": "Processed {s}s",
   "notice.info": "Notice",
   "notice.warning": "Warning",
+  "notice.askSubmitFailed": "Unable to submit answer: {error}",
   "notice.details": "Details",
   "notice.decisionReceiptTitle": "Decision recorded",
   "notice.decisionReceiptTool": "Tool approval",

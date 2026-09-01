@@ -3088,6 +3088,7 @@ export const zh: Record<DictKey, string> = {
   "transcript.processedDuration": "已处理 {s}s",
   "notice.info": "提示",
   "notice.warning": "警告",
+  "notice.askSubmitFailed": "提交回答失败：{error}",
   "notice.details": "详情",
   "notice.decisionReceiptTitle": "已记录决策",
   "notice.decisionReceiptTool": "工具审批",
