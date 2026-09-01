@@ -11,9 +11,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -309,8 +311,17 @@ func (m *Manager) spawn(p *project) error {
 	log.Printf("[servepool] spawning serve project=%q bin=%q portFile=%q", p.id, m.bin, portFile)
 	for time.Now().Before(deadline) {
 		if data, err := os.ReadFile(portFile); err == nil {
+			// The serve writes its actual bound listen address (host:port,
+			// cli.writeServeAddrFile); parse the port portion. Accept a bare
+			// port too so older serve builds keep working.
 			var port int
-			if _, err := fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &port); err == nil && port > 0 {
+			raw := strings.TrimSpace(string(data))
+			if _, portStr, splitErr := net.SplitHostPort(raw); splitErr == nil {
+				port, _ = strconv.Atoi(portStr)
+			} else {
+				port, _ = strconv.Atoi(raw)
+			}
+			if port > 0 {
 				m.mu.Lock()
 				p.port = port
 				p.state = "running"
