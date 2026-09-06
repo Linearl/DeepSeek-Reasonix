@@ -528,6 +528,11 @@ func (t *WorkspaceTab) adoptSessionLease(lease *agent.SessionLease) {
 	}
 	t.storeSessionLeaseRuntimeKey(key)
 	t.sessionLeaseMu.Unlock()
+	if lease != nil {
+		t.startTakeoverRequestWatcher(key)
+	} else {
+		t.stopTakeoverRequestWatcher()
+	}
 	if old != nil && old != lease {
 		old.Release()
 	}
