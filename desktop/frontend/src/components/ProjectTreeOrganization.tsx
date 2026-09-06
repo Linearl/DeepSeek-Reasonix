@@ -102,12 +102,16 @@ export function useProjectTreeOrganization({
   onTopicsChanged,
   organizationRevision = 0,
   bindings = app,
+  onLocalTopicReorder,
 }: {
   tree: ProjectNode[];
   refresh: ProjectTreeRefresh;
   onTopicsChanged?: () => Promise<void> | void;
   organizationRevision?: number;
   bindings?: ProjectTreeOrganizationBindings;
+  /** Optimistic local reorder: the topics page is signature-cached, so without
+   *  this the dropped order only lands after some later unrelated reload. */
+  onLocalTopicReorder?: (scope: "global" | "project", workspaceRoot: string, orderedTopicIDs: string[]) => void;
 }): ProjectTreeOrganizationController {
   const [dragTopicID, setDragTopicID] = useState<string | null>(null);
   const [dropTopic, setDropTopic] = useState<{ topicID: string; position: ProjectDropPosition } | null>(null);
@@ -261,13 +265,19 @@ export function useProjectTreeOrganization({
         const rect = event.currentTarget.getBoundingClientRect();
         const position = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
         const ordered = reorderedTopicIDs(tree, context.scope, context.root, draggedID, topicID, position);
-        if (ordered) void bindings.ReorderTopics(context.scope, context.root, ordered).then(() => refresh()).then(() => onTopicsChanged?.()).catch(() => refresh());
+        if (ordered) {
+          // Paint the dropped order immediately: the topics page reload is
+          // signature-cached and would otherwise keep the stale order on
+          // screen until some unrelated refresh happened to pull it.
+          onLocalTopicReorder?.(context.scope, context.root, ordered);
+          void bindings.ReorderTopics(context.scope, context.root, ordered).then(() => refresh()).then(() => onTopicsChanged?.()).catch(() => refresh());
+        }
       }
       clearTopicDrag();
     };
     props.onDragEnd = clearTopicDrag;
     return { className, props };
-  }, [bindings, clearTopicDrag, dragTopicID, dropTopic, onTopicsChanged, refresh, tree]);
+  }, [bindings, clearTopicDrag, dragTopicID, dropTopic, onLocalTopicReorder, onTopicsChanged, refresh, tree]);
 
   const removeTopicFromGroups = useCallback((node: ProjectNode) => {
     const topicID = node.topicId;

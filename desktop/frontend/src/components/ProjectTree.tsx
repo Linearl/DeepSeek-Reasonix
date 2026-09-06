@@ -1096,7 +1096,37 @@ export function ProjectTree({
     }
   }, [onTopicsChanged, refresh, tree]);
 
-  const organization = useProjectTreeOrganization({ tree, refresh, onTopicsChanged, organizationRevision });
+  let topicOrderIndex = 0;
+  const organization = useProjectTreeOrganization({
+    tree,
+    refresh,
+    onTopicsChanged,
+    organizationRevision,
+    onLocalTopicReorder: (scope, workspaceRoot, orderedTopicIDs) => {
+      topicOrderIndex = 0;
+      setTree((current) => {
+        const rank = new Map<string, number>();
+        orderedTopicIDs.forEach((topicID) => rank.set(topicID, topicOrderIndex++));
+        const reorderChildren = (node: ProjectNode): ProjectNode => {
+          const isTargetFolder = scope === "global"
+            ? node.kind === "global_folder"
+            : node.kind === "project" && (node.root ?? "") === workspaceRoot;
+          if (!isTargetFolder) {
+            const children = asArray(node.children);
+            const nextChildren = children.map(reorderChildren);
+            return nextChildren === children ? node : { ...node, children: nextChildren };
+          }
+          const children = asArray(node.children).map((child) => {
+            if (!isTopicNode(child)) return child;
+            const rankValue = rank.get(child.topicId ?? "");
+            return rankValue === undefined ? child : { ...child, sortOrder: rankValue };
+          });
+          return { ...node, children };
+        };
+        return current.map(reorderChildren);
+      });
+    },
+  });
 
   const clearProjectDrag = useCallback(() => {
     setDragProjectRoot(null);
