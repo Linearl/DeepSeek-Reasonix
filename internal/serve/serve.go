@@ -1654,6 +1654,7 @@ func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
+	yielded := false
 	lease, err := agent.TryAcquireSessionLeaseWithHandoff(abs, strings.TrimSpace(body.From))
 	if err != nil {
 		// Cross-runtime takeover: ask the current holder to yield, then poll
@@ -1664,7 +1665,6 @@ func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 		marker := filepath.Join(dir, name+".takeover-request")
 		_ = os.WriteFile(marker, []byte(agent.SessionWriterID()), 0o600)
 		deadline := time.Now().Add(9 * time.Second)
-		yielded := false
 		for time.Now().Before(deadline) {
 			time.Sleep(700 * time.Millisecond)
 			if retry, acquireErr := agent.TryAcquireSessionLease(abs); acquireErr == nil {
@@ -1690,6 +1690,14 @@ func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 	// operate on it. Rebind releases any lease this runtime previously held.
 	if err := s.leases.Rebind(abs); err != nil {
 		lease.Release()
+		// After an explicit takeover the holder has already yielded (the
+		// marker protocol above) — the takeover itself succeeded even if
+		// this runtime's lease bookkeeping could not rebind; the next write
+		// path acquires cleanly. Only a plain handoff consume fails here.
+		if yielded {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		http.Error(w, control.SessionInUseMessage(err), http.StatusConflict)
 		return
 	}
