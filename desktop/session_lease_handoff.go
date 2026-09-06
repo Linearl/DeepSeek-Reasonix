@@ -190,7 +190,10 @@ func (t *WorkspaceTab) startTakeoverRequestWatcher(path string) {
 					old.Release()
 				}
 				_ = os.Remove(marker)
-				t.ReadOnly = true // remote client now owns the write path
+				// Do NOT flip the tab to read-only here: ReadOnly persists in
+				// desktop-tabs.json and would lock the tab out of writing
+				// across restarts. Releasing the lease is enough — the next
+				// local message reacquires it cleanly.
 				slog.Info("desktop: session yielded to remote takeover", "path", path)
 				return
 			}
