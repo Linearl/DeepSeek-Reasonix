@@ -543,8 +543,13 @@ func (t *WorkspaceTab) storeSessionLeaseRuntimeKey(key string) {
 		if t != nil {
 			t.sessionLeaseKey.Store(nil)
 		}
+		t.stopTakeoverRequestWatcher()
 		return
 	}
+	// Single convergence point: every lease path (acquire, handoff, swap,
+	// adopt, deferred rebuild) funnels through here, so the takeover watcher
+	// always tracks whichever session lease the tab currently holds.
+	t.startTakeoverRequestWatcher(key)
 	stored := key
 	t.sessionLeaseKey.Store(&stored)
 }
