@@ -192,6 +192,10 @@ func (g *Gateway) proxyFor(id string, port int) *httputil.ReverseProxy {
 	p.ErrorLog = logger
 	p.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		logger.Printf("proxy write-back failed project=%s %s %s: %v", id, r.Method, r.URL.Path, err)
+		// The cached serve is unreachable (process died / port stale): drop
+		// the running cache so the next request re-spawns instead of every
+		// call failing against the dead port.
+		g.mgr.Invalidate(id)
 		writeJSONStatus(w, http.StatusBadGateway, map[string]string{"error": "upstream serve unreachable"})
 	}
 	g.proxy[id] = p

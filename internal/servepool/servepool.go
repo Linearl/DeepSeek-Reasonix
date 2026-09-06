@@ -252,6 +252,20 @@ func (m *Manager) Token(id string) string {
 	return ""
 }
 
+// Invalidate marks a project's cached serve as unresponsive so the next
+// Open re-spawns instead of proxying to a dead port. The gateway calls this
+// when a proxied write-back fails (dial refused after the serve died); the
+// manager's state=running cache would otherwise stick forever.
+func (m *Manager) Invalidate(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if p, ok := m.projects[id]; ok && p.state == "running" {
+		p.state = "degraded"
+		p.port = 0
+		p.failures++
+	}
+}
+
 // Close stops every running serve and the manager loop.
 func (m *Manager) Close() {
 	close(m.stop)
