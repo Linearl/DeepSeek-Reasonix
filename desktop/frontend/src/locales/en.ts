@@ -1277,6 +1277,8 @@ export const en = {
 
   // project tree
   "projectTree.consolidateRecoveryCopies": "Merge recovery copies",
+  "projectTree.requestOwnership": "Request ownership",
+  "projectTree.requestOwnershipDone": "Remote ownership release requested",
   "projectTree.consolidateDone": "Recovery copies merged: main keeps {messages} messages, {count} copies archived",
   "projectTree.consolidateFolded": "Archived {count} redundant recovery copies",
   "projectTree.consolidateNothing": "No recovery copies to merge",

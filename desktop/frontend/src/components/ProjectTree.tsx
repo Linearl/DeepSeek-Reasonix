@@ -1371,6 +1371,22 @@ if (report.blockedByDivergence) {
       const effectiveTopicMenuItems: ContextMenuItem[] = isSessionNode
         ? [
             {
+              key: "request-ownership",
+              label: t("projectTree.requestOwnership"),
+              onSelect: () => {
+                void (async () => {
+                  try {
+                    await app.RequestOwnershipFromRemote(node.root ?? "", topicId);
+                    showToast(t("projectTree.requestOwnershipDone"), "info");
+                    await refresh();
+                    await onTopicsChanged?.();
+                  } catch (err) {
+                    showToast(err instanceof Error ? err.message : String(err), "error");
+                  }
+                })();
+              },
+            },
+            {
               key: "consolidate-recovery-copies",
               icon: <GitMerge size={13} />,
               label: t("projectTree.consolidateRecoveryCopies"),

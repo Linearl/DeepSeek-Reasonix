@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"reasonix/internal/config"
 	"reasonix/internal/servepool"
@@ -33,9 +34,9 @@ func (a *App) ServePoolAddress() string {
 func (a *App) startServePool(ctx context.Context) {
 	roots := projectRootsFromRegistry()
 	mgr, err := servepool.NewManager(servepool.Config{
-		ProjectRoots:   roots,
-		ProjectColors:  projectColorsFromRegistry(),
-		ProjectGroups:  projectGroupsFromRegistry(),
+		ProjectRoots:  roots,
+		ProjectColors: projectColorsFromRegistry(),
+		ProjectGroups: projectGroupsFromRegistry(),
 	})
 	if err != nil {
 		slog.Warn("servepool: disabled", "err", err)
@@ -184,13 +185,13 @@ func (a *App) SetServePoolEnabled(enabled bool) error {
 // ServePoolStatus reports the gateway state for the settings panel.
 func (a *App) ServePoolStatus() map[string]any {
 	return map[string]any{
-		"enabled":  servepoolEnabled(),
-		"running":  a.gatewaySrv != nil,
-		"bind":     a.gatewayBind,
-		"addr":     a.gatewayAddr,
-		"port":     gatewayPort(),
-		"token":    loadOrCreateGatewayToken(),
-		"listen":   fmt.Sprintf("0.0.0.0:%d", gatewayPort()),
+		"enabled": servepoolEnabled(),
+		"running": a.gatewaySrv != nil,
+		"bind":    a.gatewayBind,
+		"addr":    a.gatewayAddr,
+		"port":    gatewayPort(),
+		"token":   loadOrCreateGatewayToken(),
+		"listen":  fmt.Sprintf("0.0.0.0:%d", gatewayPort()),
 	}
 }
 
@@ -198,4 +199,41 @@ func (a *App) ServePoolStatus() map[string]any {
 // offer "copy to clipboard".
 func (a *App) GatewayToken() string {
 	return loadOrCreateGatewayToken()
+}
+
+// RequestOwnershipFromRemote asks the project's spawned serve (if any) to
+// release its lease on topicID so the desktop can take the session back.
+// Used by the sidebar context menu ("请求获取所有权") while a session is
+// held by a remote client. A not-spawned project holds nothing: no-op.
+func (a *App) RequestOwnershipFromRemote(workspaceRoot, topicID string) error {
+	if a == nil || a.servePool == nil {
+		return nil // gateway disabled: nothing is held remotely
+	}
+	slug := servepool.WorkspaceSlug(workspaceRoot)
+	port := a.servePool.Port(slug)
+	if port == 0 {
+		return nil // serve not spawned: no remote lease to release
+	}
+	token := a.servePool.Token(slug)
+	body := fmt.Sprintf(`{"name":%q}`, topicID)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost,
+		fmt.Sprintf("http://127.0.0.1:%d/release-session?token=%s", port, token), strings.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 8 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("serve unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusOK {
+		slog.Info("servepool: remote ownership released", "project", slug, "topic", topicID)
+		return nil
+	}
+	if resp.StatusCode == http.StatusConflict {
+		return fmt.Errorf("会话未被远程持有（可能已释放）")
+	}
+	return fmt.Errorf("serve returned %d", resp.StatusCode)
 }

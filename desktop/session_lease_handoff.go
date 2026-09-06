@@ -169,6 +169,7 @@ func (t *WorkspaceTab) startTakeoverRequestWatcher(path string) {
 	t.takeoverWatchStop = stop
 	go func() {
 		marker := path[:len(path)-len(".jsonl")] + ".takeover-request"
+		slog.Info("desktop: takeover watcher started", "path", path, "marker", marker)
 		ticker := time.NewTicker(3 * time.Second)
 		defer ticker.Stop()
 		for {
@@ -179,6 +180,7 @@ func (t *WorkspaceTab) startTakeoverRequestWatcher(path string) {
 				if _, err := os.Stat(marker); err != nil {
 					continue
 				}
+				slog.Info("desktop: takeover request detected, yielding", "marker", marker)
 				// Yield: release the lease so the serve-side acquire succeeds.
 				t.sessionLeaseMu.Lock()
 				old := t.sessionLease

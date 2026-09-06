@@ -1278,6 +1278,8 @@ export const zh: Record<DictKey, string> = {
 
   // 项目树
   "projectTree.consolidateRecoveryCopies": "合并恢复副本",
+  "projectTree.requestOwnership": "请求获取所有权",
+  "projectTree.requestOwnershipDone": "已请求释放远程所有权",
   "projectTree.consolidateDone": "已合并恢复副本：主干保留 {messages} 条消息，{count} 个副本已归档",
   "projectTree.consolidateFolded": "已归档 {count} 个冗余恢复副本",
   "projectTree.consolidateNothing": "没有需要合并的恢复副本",

@@ -709,6 +709,7 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   SetProjectColor(workspaceRoot: string, color: string): Promise<void>;
   SetProjectPinned(workspaceRoot: string, pinned: boolean): Promise<void>;
   ReorderProjects(workspaceRoots: string[]): Promise<void>;
+  RequestOwnershipFromRemote(workspaceRoot: string, topicID: string): Promise<void>;
   CreateTopic(scope: string, workspaceRoot: string, title: string): Promise<TopicMeta>;
   RenameTopic(topicID: string, title: string): Promise<void>;
   DeleteTopic(topicID: string): Promise<void>;
@@ -5587,6 +5588,9 @@ function makeMockApp(): AppBindings {
       }
       if (ordered.length !== projects.length + globals.length) return;
       mockProjectTree.splice(0, mockProjectTree.length, ...ordered);
+    },
+    async RequestOwnershipFromRemote(_workspaceRoot: string, _topicID: string) {
+      // mock: no-op
     },
     async CreateTopic(_scope: string, _workspaceRoot: string, title: string) {
       const now = Date.now();
