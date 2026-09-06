@@ -31,7 +31,6 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"reasonix/internal/agent"
-	"reasonix/internal/servepool"
 	"reasonix/internal/billing"
 	"reasonix/internal/boot"
 	"reasonix/internal/botruntime"
@@ -53,6 +52,7 @@ import (
 	"reasonix/internal/proc"
 	"reasonix/internal/provider"
 	"reasonix/internal/repair"
+	"reasonix/internal/servepool"
 	"reasonix/internal/sessioncatalog"
 	"reasonix/internal/sessiontemp"
 	"reasonix/internal/skill"
@@ -4343,6 +4343,11 @@ func (a *App) acquireCandidateSessionLease(tab *WorkspaceTab, path string) (*age
 		}
 		return nil, err
 	})
+	if err == nil {
+		// Watch for remote takeover requests on every leased tab (the main
+		// lease path — remote clients yield the desktop via this watcher).
+		tab.startTakeoverRequestWatcher(sessionRuntimeKey(path))
+	}
 	if err != nil {
 		return nil, userFacingSessionLeaseError("", err)
 	}
