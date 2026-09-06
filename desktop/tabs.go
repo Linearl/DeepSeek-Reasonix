@@ -175,6 +175,7 @@ type WorkspaceTab struct {
 	runtimeID           string             // process-local SessionRuntime registry identity
 	sessionLease        *agent.SessionLease
 	sessionLeaseMu      sync.Mutex
+	takeoverWatchStop   chan struct{}
 	sessionLeaseKey     atomic.Pointer[string] // lock-free mirror; updated with sessionLease under sessionLeaseMu
 	sink                *tabEventSink          // routes events with this tab's ID
 	buildCancel         context.CancelFunc     // cancels in-flight boot for tabs removed before Ready

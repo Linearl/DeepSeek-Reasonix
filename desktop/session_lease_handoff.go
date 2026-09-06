@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"time"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/control"
@@ -38,6 +40,7 @@ func (t *WorkspaceTab) handoffSessionLease(path string) (*agent.SessionLease, er
 	t.sessionLease = lease
 	t.storeSessionLeaseRuntimeKey(key)
 	t.sessionLeaseMu.Unlock()
+	t.startTakeoverRequestWatcher(key)
 	return old, nil
 }
 
@@ -54,6 +57,11 @@ func (t *WorkspaceTab) swapSessionLease(lease *agent.SessionLease) *agent.Sessio
 	}
 	t.storeSessionLeaseRuntimeKey(key)
 	t.sessionLeaseMu.Unlock()
+	if lease != nil {
+		t.startTakeoverRequestWatcher(key)
+	} else {
+		t.stopTakeoverRequestWatcher()
+	}
 	return old
 }
 
@@ -146,4 +154,56 @@ func (a *App) handleTabSessionTransition(tab *WorkspaceTab) func(control.Session
 		a.emitProjectTreeChangedForSessionDirs(sessionDirectoryForPath(info.TargetPath))
 		return nil
 	}
+}
+
+// startTakeoverRequestWatcher polls for a remote takeover request marker
+// (<session>.takeover-request, written by the serve takeover endpoint) while
+// this tab holds the session lease. When a request arrives the tab yields:
+// the lease is released (so the serve-side acquire succeeds), the tab flips
+// to read-only, and the tree metadata refresh tells the frontend.
+func (t *WorkspaceTab) startTakeoverRequestWatcher(path string) {
+	if t == nil || t.takeoverWatchStop != nil {
+		return
+	}
+	stop := make(chan struct{})
+	t.takeoverWatchStop = stop
+	go func() {
+		marker := path[:len(path)-len(".jsonl")] + ".takeover-request"
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				if _, err := os.Stat(marker); err != nil {
+					continue
+				}
+				// Yield: release the lease so the serve-side acquire succeeds.
+				t.sessionLeaseMu.Lock()
+				old := t.sessionLease
+				t.sessionLease = nil
+				t.sessionLeaseMu.Unlock()
+				if old != nil {
+					old.Release()
+				}
+				_ = os.Remove(marker)
+				t.ReadOnly = true // remote client now owns the write path
+				slog.Info("desktop: session yielded to remote takeover", "path", path)
+				return
+			}
+		}
+	}()
+}
+
+func (t *WorkspaceTab) stopTakeoverRequestWatcher() {
+	if t == nil || t.takeoverWatchStop == nil {
+		return
+	}
+	select {
+	case <-t.takeoverWatchStop:
+	default:
+		close(t.takeoverWatchStop)
+	}
+	t.takeoverWatchStop = nil
 }

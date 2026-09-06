@@ -1656,8 +1656,35 @@ func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 	}
 	lease, err := agent.TryAcquireSessionLeaseWithHandoff(abs, strings.TrimSpace(body.From))
 	if err != nil {
-		http.Error(w, control.SessionInUseMessage(err), http.StatusConflict)
-		return
+		// Cross-runtime takeover: ask the current holder to yield, then poll
+		// for the handover. The desktop watches the marker file, releases its
+		// lease (flipping its tab to read-only), and this acquire succeeds —
+		// the user-authorized explicit takeover path. Without a holder
+		// response within the window the request surfaces as 409.
+		marker := filepath.Join(dir, name+".takeover-request")
+		_ = os.WriteFile(marker, []byte(agent.SessionWriterID()), 0o600)
+		deadline := time.Now().Add(9 * time.Second)
+		yielded := false
+		for time.Now().Before(deadline) {
+			time.Sleep(700 * time.Millisecond)
+			if retry, acquireErr := agent.TryAcquireSessionLease(abs); acquireErr == nil {
+				_ = os.Remove(marker)
+				retry.Release()
+				yielded = true
+				break
+			}
+		}
+		if !yielded {
+			http.Error(w, control.SessionInUseMessage(err)+` (takeover requested; holder did not yield)`, http.StatusConflict)
+			return
+		}
+		// The holder yielded: fall through to the normal acquire/rebind path
+		// below, which now succeeds.
+		lease, err = agent.TryAcquireSessionLease(abs)
+		if err != nil {
+			http.Error(w, control.SessionInUseMessage(err), http.StatusConflict)
+			return
+		}
 	}
 	// Point the controller at the acquired session so /submit and /history
 	// operate on it. Rebind releases any lease this runtime previously held.
