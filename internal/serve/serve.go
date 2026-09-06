@@ -45,6 +45,8 @@ var logoWordmarkSVG []byte
 
 // Server wires a controller to its HTTP surface. The Broadcaster must be the
 // same sink the controller was constructed with, so events reach SSE clients.
+const heartbeatExpiry = 90 * time.Second
+
 type Server struct {
 	mu sync.RWMutex // guards ctrl, which rebuild paths swap at runtime
 	// bindMu serializes every entry point that changes the active session
@@ -89,11 +91,16 @@ type Server struct {
 	leases        *control.SessionLeaseKeeper
 	leaseOwnersMu sync.Mutex
 	leaseOwners   map[*control.Controller]*control.SessionLeaseKeeper
-	detachedMu    sync.Mutex
-	detached      map[string]*detachedSession
-	tagsMu        sync.Mutex
-	tags          map[*control.Controller]*sessionTagSink
-	hostGate      hostGateState // hostGuard allowlist state; see hostguard.go
+	// Remote-client (GrandCouncil) takeover liveness: session name → last
+	// heartbeat. A held session whose remote client stopped beating for
+	// heartbeatExpiry is auto-released so the desktop can reacquire.
+	heartbeatMu sync.Mutex
+	heartbeats  map[string]time.Time
+	detachedMu  sync.Mutex
+	detached    map[string]*detachedSession
+	tagsMu      sync.Mutex
+	tags        map[*control.Controller]*sessionTagSink
+	hostGate    hostGateState // hostGuard allowlist state; see hostguard.go
 }
 
 // SetControllerBuildOptions records the process-local options used to build
@@ -588,6 +595,7 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("POST /delete-session", s.deleteSession)
 	mux.HandleFunc("POST /release-session", s.releaseSession)
 	mux.HandleFunc("POST /takeover-session", s.takeoverSession)
+	mux.HandleFunc("POST /heartbeat", s.heartbeat)
 	return logMiddleware(gzipMiddleware(s.auth.middleware(s.hostGuard(csrfGuard(mux)))))
 }
 
@@ -634,6 +642,7 @@ func (s *Server) RunGracefulListener(ctx context.Context, ln net.Listener) error
 		// desktop redirects it to the rolling file; CLI keeps stderr.
 		ErrorLog: log.New(log.Writer(), "[serve-http] ", log.LstdFlags),
 	}
+	s.startHeartbeatSweeper()
 	errCh := make(chan error, 1)
 	safego.Go("serve.http", func() {
 		errCh <- srv.Serve(ln)
@@ -1545,6 +1554,74 @@ func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request) {
 // be released; releasing an unheld or foreign-held session is a 409. A
 // running turn rejects the release with 409 so the handoff never tears a
 // mid-write session.
+// heartbeat records liveness for a remote-held session. The explicit
+// takeover protocol depends on it: when a remote client (GrandCouncil)
+// stops beating for heartbeatExpiry, its lease is auto-released so the
+// desktop can reacquire without waiting for the idle reclaim.
+func (s *Server) heartbeat(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Name) == "" {
+		http.Error(w, "name required", http.StatusBadRequest)
+		return
+	}
+	s.heartbeatMu.Lock()
+	if s.heartbeats == nil {
+		s.heartbeats = map[string]time.Time{}
+	}
+	s.heartbeats[strings.TrimSpace(body.Name)] = time.Now().UTC()
+	s.heartbeatMu.Unlock()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// releaseExpiredHeartbeats drops serve-held leases whose remote client
+// stopped beating past heartbeatExpiry. Called from the heartbeat sweep
+// goroutine and lazily before takeover checks.
+func (s *Server) releaseExpiredHeartbeats() {
+	s.heartbeatMu.Lock()
+	names := make([]string, 0, len(s.heartbeats))
+	for name, last := range s.heartbeats {
+		if time.Since(last) > heartbeatExpiry {
+			names = append(names, name)
+			delete(s.heartbeats, name)
+		}
+	}
+	s.heartbeatMu.Unlock()
+	if len(names) == 0 {
+		return
+	}
+	s.bindMu.Lock()
+	defer s.bindMu.Unlock()
+	keeper := s.leases
+	if keeper == nil {
+		return
+	}
+	lease := keeper.Lease()
+	if lease == nil {
+		return
+	}
+	current := strings.TrimSuffix(filepath.Base(lease.Path()), ".jsonl")
+	for _, name := range names {
+		if name == current {
+			lease.Release()
+			_ = keeper.Rebind("")
+			slog.Info("serve: released lease for silent remote client", "session", name)
+		}
+	}
+}
+
+// startHeartbeatSweeper runs the expiry sweep for the lifetime of the server.
+func (s *Server) startHeartbeatSweeper() {
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			s.releaseExpiredHeartbeats()
+		}
+	}()
+}
+
 func (s *Server) releaseSession(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name string `json:"name"`
@@ -1556,12 +1633,9 @@ func (s *Server) releaseSession(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimSpace(body.Name)
 	target := strings.TrimSpace(body.To)
-	if target == "" {
-		// Validate the required handoff target up front: a missing target is a
-		// client error (400), not a deferred conflict (409).
-		http.Error(w, "handoff target (to) is required", http.StatusBadRequest)
-		return
-	}
+	// target is optional: empty releases without a handoff reservation (the
+	// desktop reacquires on its next write); a non-empty target reserves the
+	// lease for that writer specifically.
 	if name == "." || name == ".." || strings.ContainsAny(name, `\/`) {
 		http.Error(w, "invalid session name", http.StatusBadRequest)
 		return
