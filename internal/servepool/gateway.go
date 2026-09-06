@@ -154,9 +154,18 @@ func (g *Gateway) handleProxy(w http.ResponseWriter, r *http.Request) {
 	if out.URL.RawPath != "" {
 		out.URL.RawPath = "/" + strings.TrimPrefix(out.URL.RawPath, "/p/"+id+"/")
 	}
-	// Forward the per-project token so the serve's auth=token accepts us.
+	// Forward per-project auth. Serves in token mode authenticate via the
+	// reasonix_token cookie or the ?token= query (checkToken) — they do not
+	// read Authorization headers, and the incoming request still carries the
+	// gateway's own ?token= which must not leak upstream (it would fail the
+	// serve's query check before the cookie path and yield 401).
 	if tok := g.mgr.Token(id); tok != "" {
+		out.Header.Set("Cookie", "reasonix_token="+tok)
 		out.Header.Set("Authorization", "Bearer "+tok)
+	}
+	if q := out.URL.Query(); q.Get("token") != "" {
+		q.Del("token")
+		out.URL.RawQuery = q.Encode()
 	}
 	proxy.ServeHTTP(w, out)
 }
