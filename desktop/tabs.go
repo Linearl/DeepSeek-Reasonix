@@ -6738,7 +6738,11 @@ func (a *App) CreateTopic(scope, workspaceRoot, title string) (TopicMeta, error)
 	// New topics should appear first in their project/global group so the item
 	// just created is immediately visible and selected in the sidebar.
 	_ = prependTopicInProjectsFile(workspaceRoot, topicID, workspaceRoot != "")
-	a.emitProjectTreeMetadataChanged()
+	// A brand-new topic is a tree-structure change, not a metadata-only one:
+	// remote clients list sessions through the session catalog, so the full
+	// refresh chain (metadata sync + directory reconcile) must run or the new
+	// session stays invisible to /p/<id>/sessions until some other event.
+	a.emitProjectTreeChanged()
 	return TopicMeta{ID: topicID, Title: a.localizedTopicTitle(trimmedTitle, titleSource), CreatedAt: createdAt}, nil
 }
 
