@@ -180,6 +180,10 @@ func (g *Gateway) proxyFor(id string, port int) *httputil.ReverseProxy {
 	p.Director = func(req *http.Request) {
 		req.URL.Scheme = target.Scheme
 		req.URL.Host = target.Host
+		// The serve's hostGuard (DNS-rebinding defense) rejects any Host that
+		// is not loopback/its listen address — keep the remote client's Host
+		// header (e.g. 10.0.2.2:18789) out of the proxied request.
+		req.Host = target.Host
 	}
 	// Proxy write-back failures are the phone-disconnect signal the 2026-09-01
 	// desktop-death triage needs: log them through the standard logger (the
