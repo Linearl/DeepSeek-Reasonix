@@ -32,6 +32,7 @@ func newTabScopedActionController() *tabScopedActionController {
 	}}
 }
 
+func (c *tabScopedActionController) SubagentPolicy() string { return "" }
 func (c *tabScopedActionController) RuntimeStatus() control.RuntimeStatus {
 	return control.RuntimeStatus{}
 }

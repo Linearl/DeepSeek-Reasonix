@@ -19,6 +19,7 @@ type billingRuntimeController struct {
 	err     error
 }
 
+func (c *billingRuntimeController) SubagentPolicy() string { return "" }
 func (c *billingRuntimeController) RuntimeStatus() control.RuntimeStatus { return c.status }
 func (c *billingRuntimeController) SessionPath() string                  { return "" }
 

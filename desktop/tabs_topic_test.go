@@ -21,6 +21,7 @@ type runtimeStatusSessionController struct {
 	status control.RuntimeStatus
 }
 
+func (c *runtimeStatusSessionController) SubagentPolicy() string { return "" }
 func (c *runtimeStatusSessionController) RuntimeStatus() control.RuntimeStatus {
 	return c.status
 }

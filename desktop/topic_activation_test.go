@@ -314,6 +314,8 @@ type activationStubController struct {
 	status      *control.RuntimeStatus
 }
 
+func (c *activationStubController) SubagentPolicy() string { return "" }
+
 func (c *activationStubController) RuntimeStatus() control.RuntimeStatus {
 	if c.status != nil {
 		return *c.status
