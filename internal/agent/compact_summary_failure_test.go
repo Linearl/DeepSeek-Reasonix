@@ -107,6 +107,25 @@ func TestSummarizerCancellationAtOverflowPropagatesWithoutFallback(t *testing.T)
 	}
 }
 
+// Thinking-mode providers (DeepSeek vision SKUs) may answer the summary
+// request with reasoning_content only and an empty content block. The
+// summarizer must surface the reasoning instead of failing with "summarizer
+// returned empty output" and retrying forever (observed on a 2M-token session:
+// chunked fallback reached fragment 2/14 and died on the same empty-output
+// check).
+func TestSummarizerReasoningOnlyIsSurfacedNotEmptied(t *testing.T) {
+	sess := foldableSessionOverForce(6)
+	a := agentOverForce(t, &fakeProvider{reasoningReply: "- kept: alpha constraint\n- kept: beta file path"}, sess)
+	before := estimateMessagesTokens(provider.ModelMessages(sess.Messages))
+
+	if err := prepareContext(context.Background(), a, CompactionTriggerOverflow); err != nil {
+		t.Fatalf("prepare with reasoning-only summary = %v, want applied fold", err)
+	}
+	if after := projectionTokens(a); after == 0 || after >= before {
+		t.Fatalf("reasoning-only summary installed projection tokens=%d (source=%d)", after, before)
+	}
+}
+
 // Overflow is the trigger that reports ErrCompactionRequired, so it is where a
 // failed summary turns into "context exceeds provider limit and compaction
 // failed" without installing fabricated fallback content.
