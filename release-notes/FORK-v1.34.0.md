@@ -17,7 +17,30 @@
 
 **版本对应说明**：本版 fork v1.34.0 对应上游 v1.34.0，版本号与内容精确对齐。
 
-发布日期：2026-08-31
+发布日期：2026-08-31（**2026-09-07 重发布**，追加下方内容）
+
+## 🔁 重发布追加（2026-09-07）
+
+本次重发布在 v1.34.0 基础上追加以下 fork 增强与修复（均已入 main-v2-stable）：
+
+### 会话所有权生命周期（多端写权协调）
+- **serve 接管协议**：显式接管（marker + 轮询让渡），重复接管不再误报冲突；`release-session` 的 `to` 参数改为可选（纯释放语义）。
+- **心跳自动释放**：`POST /heartbeat` + sweeper——远程端 90 秒无心跳自动释放写权；离开会话（onCleared）立即释放。
+- **desktop 让渡 watcher**：所有 lease 路径（打开/adopt/重建）收敛挂载，远程接管请求 3 秒内让渡；让渡不再把 tab 写成只读（修死锁）。
+- **desktop 侧栏右键「请求获取所有权」**：从远程端拿回写权。
+
+### serve/servepool 稳定性
+- CLI-spawn 优先用同目录 reasonix-cli.exe、port 解析（net.SplitHostPort）、stale port-file 清理、网关 cookie 认证 + 421 修复、失败实例自动 Invalidate。
+
+### 拖拽排序自动复位修复（2026-09-01 定判）
+- 根因 = catalog 双源同步时差：manual 排序页的渲染权威源回归 desktop-projects.json（`applyManualOrderFallback`），SQLite catalog 只供条目数据。拖拽后不复位、启动首屏顺序即正确（含回归测试钉住时差窗口）。
+
+### 其它
+- 超 1M 会话压缩失败（ContextLimitError）→ chunked 回退（与上游 #9572 同根因家族）。
+- 目标评估器空响应暂停修复（boundedllm 忽略 ChunkReasoning，对应上游 #9679 家族）。
+- 桌面日志增强（takeover/lease 全链路 slog）；GLM preset 深度思考档。
+
+> 与上游的差异全览见 [FORK-vs-upstream.md](./FORK-vs-upstream.md)。
 
 ---
 
