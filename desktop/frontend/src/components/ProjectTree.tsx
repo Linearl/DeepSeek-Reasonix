@@ -1187,7 +1187,6 @@ export function ProjectTree({
       timeFilterActive: timeFilter !== "all",
       catalogPartial: catalogStatus.state !== "ready"
         || catalogStatus.repairPending > 0
-        || (catalogStatus.unindexedTargetCount ?? 0) > 0
         || Boolean(catalogStatus.lastError),
       catalogRebuilding: catalogStatus.state === "rebuilding",
       catalogRevision: catalogStatus.revision,

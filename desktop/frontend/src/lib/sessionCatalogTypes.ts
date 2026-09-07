@@ -9,7 +9,6 @@ export interface SessionCatalogStatus {
   repairPending: number;
   repairReason?: string;
   sourceCount?: number;
-  unindexedTargetCount?: number;
   lastRepairAt?: number;
   canRebuild?: boolean;
   lastError?: string;
