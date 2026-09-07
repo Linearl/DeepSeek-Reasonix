@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"reasonix/internal/event"
 	"reasonix/internal/provider"
@@ -133,14 +134,17 @@ func indexOfMessage(msgs []provider.Message, target provider.Message) int {
 // message count is recorded so merge-grouping tests can assert the merge
 // request never carried the whole fragment set.
 type extractStubProvider struct {
-	mu         sync.Mutex
-	calls      int
-	failFirst  int
-	limitFirst int // first N calls fail with a trusted provider.ContextLimitError
-	streamErr  error
-	reply      string
-	msgLens    []int
-	reqEsts    []int
+	mu          sync.Mutex
+	calls       int
+	failFirst   int
+	limitFirst  int // first N calls fail with a trusted provider.ContextLimitError
+	streamErr   error
+	reply       string
+	msgLens     []int
+	reqEsts     []int
+	inFlight    int           // live concurrency, for parallel-fragment assertions
+	maxInFlight int           // peak concurrency observed across the whole run
+	holdUntil   chan struct{} // when non-nil, normal replies hold until it closes
 }
 
 func (p *extractStubProvider) Name() string { return "extract-stub" }
@@ -148,14 +152,24 @@ func (p *extractStubProvider) Name() string { return "extract-stub" }
 func (p *extractStubProvider) Stream(_ context.Context, req provider.Request) (<-chan provider.Chunk, error) {
 	p.mu.Lock()
 	p.calls++
+	p.inFlight++
+	if p.inFlight > p.maxInFlight {
+		p.maxInFlight = p.inFlight
+	}
 	p.msgLens = append(p.msgLens, len(req.Messages))
 	p.reqEsts = append(p.reqEsts, estimateMessagesTokens(req.Messages))
 	n := p.calls
 	p.mu.Unlock()
 	ch := make(chan provider.Chunk, 3)
+	done := func() {
+		p.mu.Lock()
+		p.inFlight--
+		p.mu.Unlock()
+		close(ch)
+	}
 	if p.streamErr != nil {
 		ch <- provider.Chunk{Type: provider.ChunkError, Err: p.streamErr}
-		close(ch)
+		done()
 		return ch, nil
 	}
 	if n <= p.limitFirst {
@@ -166,18 +180,21 @@ func (p *extractStubProvider) Stream(_ context.Context, req provider.Request) (<
 			PromptTokens:     290_000,
 			CompletionTokens: 10_000,
 		}}
-		close(ch)
+		done()
 		return ch, nil
 	}
 	if n <= p.failFirst {
 		ch <- provider.Chunk{Type: provider.ChunkUsage, Usage: &provider.Usage{FinishReason: "length", TotalTokens: 100}}
 		ch <- provider.Chunk{Type: provider.ChunkDone}
-		close(ch)
+		done()
 		return ch, nil
 	}
 	ch <- provider.Chunk{Type: provider.ChunkText, Text: p.reply}
+	if p.holdUntil != nil {
+		<-p.holdUntil
+	}
 	ch <- provider.Chunk{Type: provider.ChunkDone}
-	close(ch)
+	done()
 	return ch, nil
 }
 
@@ -329,5 +346,79 @@ func TestCompactFallsBackToChunkedSummaryOnContextLimitError(t *testing.T) {
 	}
 	if prov.calls < 2 {
 		t.Fatalf("provider calls = %d, want the rejected single request plus at least one chunked request (>=2)", prov.calls)
+	}
+}
+
+// A context-limit rejection on one fragment must half-split it (the fragment
+// overflowed the summarizer window; its halves fit) instead of failing the
+// whole chunked fold — small-window gateways depend on this.
+func TestChunkedFoldSummaryHalfSplitsOnContextLimitFragment(t *testing.T) {
+	prov := &extractStubProvider{limitFirst: 1, reply: "digest"}
+	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
+	res, err := a.chunkedFoldSummary(context.Background(), a.Session().Snapshot(), compactionInstruction, nil)
+	if err != nil {
+		t.Fatalf("chunkedFoldSummary: %v", err)
+	}
+	if strings.TrimSpace(res.Text) == "" {
+		t.Fatal("empty summary after context-limit split recovery")
+	}
+	if prov.calls != 4 {
+		t.Fatalf("provider calls = %d, want 4 (limit, two halves, merge)", prov.calls)
+	}
+}
+
+// Fragments are independent LLM calls and run with bounded parallelism: the
+// pool saturates at extractFragmentConcurrency without exceeding it, and the
+// merge still receives the digests in oldest-first order.
+func TestChunkedFoldSummaryRunsFragmentsInParallel(t *testing.T) {
+	msgs := make([]provider.Message, 40)
+	for i := range msgs {
+		msgs[i] = extractTestMsg(48<<10, fmt.Sprintf("<%06d>", i))
+	}
+	hold := make(chan struct{})
+	prov := &extractStubProvider{reply: "digest", holdUntil: hold}
+	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := a.chunkedFoldSummary(context.Background(), msgs, compactionInstruction, nil)
+		done <- err
+	}()
+
+	// Wait until the pool saturates (fragment calls in flight) before the
+	// barrier releases; fragments split exponentially on a 1.9MiB fold, so at
+	// least extractFragmentConcurrency of them exist. Note: do NOT break on
+	// inFlight==0 — at the very start no worker has entered Stream yet.
+	saturated := false
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		prov.mu.Lock()
+		calls := prov.calls
+		prov.mu.Unlock()
+		if calls >= extractFragmentConcurrency {
+			saturated = true
+			break
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("chunkedFoldSummary finished before saturation (calls=%d): %v", calls, err)
+		case <-time.After(time.Millisecond):
+		}
+	}
+	if !saturated {
+		t.Fatal("fragment pool never saturated")
+	}
+	close(hold)
+	if err := <-done; err != nil {
+		t.Fatalf("chunkedFoldSummary: %v", err)
+	}
+	prov.mu.Lock()
+	peak, calls := prov.maxInFlight, prov.calls
+	prov.mu.Unlock()
+	if peak < 2 || peak > extractFragmentConcurrency {
+		t.Fatalf("peak fragment concurrency = %d, want 2..%d", peak, extractFragmentConcurrency)
+	}
+	if calls < 5 { // >=4 fragments + the merge request
+		t.Fatalf("provider calls = %d, want >=5", calls)
 	}
 }

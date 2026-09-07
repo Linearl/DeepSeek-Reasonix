@@ -30,6 +30,13 @@ const (
 	// Adjacent chunks share this many bytes near their boundary so a fact
 	// spanning the cut is not lost between digests.
 	extractChunkOverlapBytes = 16 << 10
+
+	// extractFragmentConcurrency bounds the parallel fragment summaries.
+	// Fragments are independent LLM calls; running a few concurrently cuts the
+	// wall time of a 2M-token fold from tens of minutes to minutes while
+	// staying under provider rate limits (same 3-4 in-flight budget the
+	// subagent dispatch discipline uses).
+	extractFragmentConcurrency = 4
 )
 
 const extractFragmentInstructionTmpl = `This is fragment %d/%d of an over-length session being recovered after its context exceeded the model window. Compact the preceding fragment into a durable briefing under these exact headings, omitting a heading only if it has no content:
@@ -145,14 +152,50 @@ func (a *Agent) chunkedFoldSummary(ctx context.Context, fold []provider.Message,
 		}
 		report(done, total)
 	}
-	parts := make([]string, 0, len(chunks))
-	for i, chunk := range chunks {
-		fragInstr := fmt.Sprintf(extractFragmentInstructionTmpl, i+1, len(chunks))
-		res, err := a.extractFragmentResilient(ctx, chunk, fragInstr, advance)
-		if err != nil {
-			return foldSummary{}, fmt.Errorf("fragment %d/%d: %w", i+1, len(chunks), err)
+	// Fragments are independent LLM calls: summarize them with a bounded
+	// worker pool so a 2M-token fold stops paying N × per-fragment latency
+	// serially. Results are written by index to keep the merge order stable
+	// (oldest first); the first fragment failure cancels its siblings and
+	// becomes the returned error.
+	parts := make([]string, len(chunks))
+	{
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		var errMu sync.Mutex
+		var firstErr error
+		fail := func(i int, err error) {
+			errMu.Lock()
+			defer errMu.Unlock()
+			if firstErr == nil {
+				firstErr = fmt.Errorf("fragment %d/%d: %w", i+1, len(chunks), err)
+			}
+			cancel() // stop sibling fragments early
 		}
-		parts = append(parts, res)
+		sem := make(chan struct{}, extractFragmentConcurrency)
+		var wg sync.WaitGroup
+		for i, chunk := range chunks {
+			wg.Add(1)
+			go func(i int, chunk []provider.Message) {
+				defer wg.Done()
+				select {
+				case sem <- struct{}{}:
+					defer func() { <-sem }()
+				case <-ctx.Done():
+					return // a sibling already failed; firstErr is recorded
+				}
+				fragInstr := fmt.Sprintf(extractFragmentInstructionTmpl, i+1, len(chunks))
+				res, err := a.extractFragmentResilient(ctx, chunk, fragInstr, advance)
+				if err != nil {
+					fail(i, err)
+					return
+				}
+				parts[i] = res
+			}(i, chunk)
+		}
+		wg.Wait()
+		if firstErr != nil {
+			return foldSummary{}, firstErr
+		}
 	}
 	text, err := a.mergeFragments(ctx, parts)
 	if err != nil {
@@ -175,7 +218,13 @@ func (a *Agent) extractFragmentResilient(ctx context.Context, chunk []provider.M
 	if err == nil {
 		return strings.TrimSpace(res.Text), nil
 	}
-	retriable := errors.Is(err, errSummaryOutputTruncated) || errors.Is(err, ErrCompactionRequired)
+	// A context-limit rejection means the fragment itself overflowed the
+	// summarizer window — halving it is exactly the fix (the same reasoning as
+	// output truncation: smaller fragments, smaller requests). Without this,
+	// one oversized fragment fails the whole chunked fold on small-window
+	// gateways even though its halves would fit.
+	retriable := errors.Is(err, errSummaryOutputTruncated) || errors.Is(err, ErrCompactionRequired) ||
+		provider.AsContextLimitError(err) != nil
 	if !retriable || len(chunk) < 2 {
 		return "", err
 	}
