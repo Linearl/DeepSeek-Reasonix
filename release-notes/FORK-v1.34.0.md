@@ -2,6 +2,7 @@
 
 > 本版本基于官方 `v1.34.0`，完整吸收上游安全加固、MCP 2026 interactions/Apps、缓存稳定能力控制、桌面稳定性修复，并保留全部 fork 增强。数据/会话/记忆目录与官方版完全兼容，**覆盖安装即可，无需迁移**。
 > v1.31.4 的实时引导、子代理三档、写目录管理、项目分组、压缩刷新记忆、MiMo 推理档位等增强已包含在内（详见 [v1.31.4 Release Notes](https://github.com/Linearl/DeepSeek-Reasonix/releases/tag/desktop-v1.31.4)）。
+> **Fork 与上游差异全览**：本版及历版相较上游的全部改进点与上游吸收状态，见 [FORK-vs-upstream.md](./FORK-vs-upstream.md)（台账随每个版本维护）。
 
 ## 使用攻略
 

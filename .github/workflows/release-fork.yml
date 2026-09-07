@@ -144,6 +144,14 @@ jobs:
           RELEASE_NOTES="release-notes/FORK-v${notes_ver}.md"
           [ -f "$RELEASE_NOTES" ] || RELEASE_NOTES="release-notes/FORK-v1.31.3.md"
           echo "Using release notes: $RELEASE_NOTES"
+          # Template rule: every FORK-vX.Y.Z.md MUST reference the running
+          # fork-vs-upstream diff ledger (release-notes/FORK-vs-upstream.md)
+          # and that ledger MUST gain a table for the new version before this
+          # workflow runs. The reference line is "> **Fork 与上游差异全览**…".
+          grep -q "FORK-vs-upstream.md" "$RELEASE_NOTES" || {
+            echo "::error::release notes must reference release-notes/FORK-vs-upstream.md (差异台账)"
+            exit 1
+          }
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --title "Reasonix fork $TAG" \
