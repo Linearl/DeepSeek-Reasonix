@@ -38,6 +38,25 @@
 ### 其它
 - 超 1M 会话压缩失败（ContextLimitError）→ chunked 回退（与上游 #9572 同根因家族）。
 - 目标评估器空响应暂停修复（boundedllm 忽略 ChunkReasoning，对应上游 #9679 家族）。
+
+## 🔁 重发布追加第二轮（2026-09-07 下午）
+
+### 超长会话压缩死锁双修复（2M tokens 会话实测恢复）
+- **思考型模型摘要不再误判为空**：DeepSeek vision 系思考模型把整段摘要放进 reasoning_content（content 为空），分段摘要每个 fragment 都报"summarizer returned empty output"死循环。现在纯 reasoning-only 摘要会被正确采用（与 #9679 的 boundedllm 处理同族）；同时保留"reasoning + 工具调用 = 拒绝"的既有语义（私有思考不进摘要）。
+- **GLM 无数字超窗错误识别**：智谱 GLM 的 `1261 Prompt exceeds max length` 不带任何 token 数字，此前不被识别为超窗 → 分段回退不触发 → 超大请求每次透明失败。现在被信任为上下文超窗错误（窗口未知语义），分段压缩回退正常接管。
+
+### 分段压缩并行化（2M 会话压缩提速 ~4×）
+- 分块摘要的 fragment 由串行改为 **4 路有界并行**（首个失败快速取消兄弟、合并顺序不变）；fragment 本身超窗时自动**半切重试**（深度有界），小窗口网关（GLM）成功率大幅提升。
+- 实测：2,032,885 tokens 会话压缩完整跑通（修复前 fragment 2/14 即死循环）。
+
+### Ask 重放循环修复（对齐上游 #9693）
+- ask 卡片确认后循环弹出/切走再切回又弹的问题修复：Ask prompt 按 id 加 fence、失败提交与后端权威 turn 对账、答复提交失败本地化提示。
+
+### catalog"正在整理历史"横幅常驻修复
+- 大小写双目录账目错位导致的 SUM(total) 与实际行数永差 3（横幅 78/81 卡死）已在数据层修复；前端删除后端从不填充的 `unindexedTargetCount` 死分支；横幅不再被后台 repair 的 2 行历史遗留会话（解析失败）永久劫持——横幅只在真实整理动作（打开/重建）时显示。
+
+### 上游反馈
+- 以上压缩根因与修复已同步上游：[issue #9878](https://github.com/esengine/DeepSeek-Reasonix/issues/9878) + [PR #9882](https://github.com/esengine/DeepSeek-Reasonix/pull/9882)（正确性）、[PR #9885](https://github.com/esengine/DeepSeek-Reasonix/pull/9885)（并行化）。
 - 桌面日志增强（takeover/lease 全链路 slog）；GLM preset 深度思考档。
 
 > 与上游的差异全览见 [FORK-vs-upstream.md](./FORK-vs-upstream.md)。
