@@ -147,7 +147,7 @@ func (a *App) metadataProjectTopics(scope, workspaceRoot string) []ProjectNode {
 			Label: a.localizedTopicTitle(title, sources[topicID]), Root: workspaceRoot,
 			TopicID: topicID, ProjectColor: projectColor,
 			SessionPath: a.catalogSessionPathForTopic(scope, workspaceRoot, topicID),
-			CreatedAt: topicCreatedAtForTree(created, topicID), Pinned: containsDesktopString(pinnedIDs, topicID), SortOrder: sortOrder,
+			CreatedAt:   topicCreatedAtForTree(created, topicID), Pinned: containsDesktopString(pinnedIDs, topicID), SortOrder: sortOrder,
 			Open: overlay.open, Running: overlay.running, Status: overlay.status,
 			TurnsState: string(sessioncatalog.TurnsUnknown), Health: string(sessioncatalog.HealthOK),
 			Children: []ProjectNode{},
@@ -353,8 +353,8 @@ func (a *App) projectNodeFromCatalogTopic(topic sessioncatalog.TopicRecord, topi
 		// context-menu actions — e.g. "merge recovery copies" — work on
 		// topics that were never opened in this window.
 		SessionPath: topic.RepresentativePath,
-		Preview:    topicSessionPreview(topic.Sessions, topic.RepresentativePath),
-		TurnsState: string(topic.TurnsState), Health: string(topic.Health),
+		Preview:     topicSessionPreview(topic.Sessions, topic.RepresentativePath),
+		TurnsState:  string(topic.TurnsState), Health: string(topic.Health),
 		CreatedAt: topic.CreatedAt, LastActivityAt: topic.LastActivityAt,
 		Pinned: topic.Pinned, SortOrder: topic.SortOrder,
 		Recovered: recoveryOnly || canonicalRecovery, RecoveryState: recoveryState,
@@ -511,7 +511,62 @@ func (a *App) listProjectTopics(req ProjectTopicPageRequest) (ProjectTopicPage, 
 		page = a.mergeMetadataTopics(req, page)
 	}
 	page = availability.decorate(page, max(page.Revision, catalog.Status().Revision))
-	return a.withLiveTopics(catalog, req, page), nil
+	return a.applyManualOrderFallback(req, a.withLiveTopics(catalog, req, page)), nil
+}
+
+// applyManualOrderFallback reorders a manual-sorted first page by the
+// desktop-projects.json manual order. The SQLite catalog is synced from that
+// json by an async goroutine (#9466), so inside the sync window any re-pull
+// rendered the stale catalog order — the root cause of drag-reorder
+// "auto-reset" and startup misorder that self-healed a moment later
+// (2026-09-01 定判). json is the authoritative order source; the catalog only
+// supplies item data. Explicit non-manual sort modes (updated etc.) opt out,
+// and cursored pages keep the catalog's keyset split.
+func (a *App) applyManualOrderFallback(req ProjectTopicPageRequest, page ProjectTopicPage) ProjectTopicPage {
+	mode := strings.TrimSpace(req.SortMode)
+	if (mode != "" && mode != "manual") || strings.TrimSpace(req.Cursor) != "" || len(page.Items) < 2 {
+		return page
+	}
+	f := loadProjectsFile()
+	var order []string
+	manual := false
+	if scope, _ := normalizeDesktopTopicScope(req.Scope, req.WorkspaceRoot); scope == "global" {
+		order, manual = f.GlobalTopics, f.GlobalManualTopicOrder
+	} else {
+		root := strings.TrimSpace(req.WorkspaceRoot)
+		for i := range f.Projects {
+			if strings.EqualFold(strings.TrimSpace(f.Projects[i].Root), root) {
+				order, manual = f.Projects[i].Topics, f.Projects[i].ManualTopicOrder
+				break
+			}
+		}
+	}
+	if !manual || len(order) == 0 {
+		return page
+	}
+	rank := make(map[string]int, len(order))
+	for i, id := range order {
+		if _, dup := rank[id]; !dup {
+			rank[id] = i
+		}
+	}
+	if len(rank) == 0 {
+		return page
+	}
+	items := page.Items
+	sort.SliceStable(items, func(i, j int) bool {
+		ri, oki := rank[items[i].TopicID]
+		rj, okj := rank[items[j].TopicID]
+		if oki != okj {
+			return oki // rows missing from the manual list sink to the tail
+		}
+		if oki && okj {
+			return ri < rj
+		}
+		return false
+	})
+	page.Items = items
+	return page
 }
 
 func normalizeDesktopTopicScope(scope, workspaceRoot string) (string, string) {
