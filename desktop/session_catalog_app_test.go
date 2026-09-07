@@ -675,6 +675,11 @@ func (c *retargetRuntimeController) Goal() string                         { retu
 func (c *retargetRuntimeController) GoalStatus() string                   { return "" }
 func (c *retargetRuntimeController) ToolApprovalMode() string             { return control.ToolApprovalAsk }
 
+// SubagentPolicy overrides the stubSessionAPI-embedded nil *Controller:
+// currentTabSubagentPolicy (enrichTabMeta, via openTopicTab) reads it, and the
+// embedded nil would panic in (*Controller).SubagentPolicy's mutex lock.
+func (c *retargetRuntimeController) SubagentPolicy() string { return "" }
+
 func TestRetargetOpenTabsSkipsRunningSessions(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	dir := desktopSessionDir(globalWorkspaceRoot())
