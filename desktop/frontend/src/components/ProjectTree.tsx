@@ -1463,7 +1463,25 @@ if (report.blockedByDivergence) {
               },
             },
           ]
-        : topicMenuItems;
+        : [
+            {
+              key: "request-ownership",
+              label: t("projectTree.requestOwnership"),
+              onSelect: () => {
+                void (async () => {
+                  try {
+                    await app.RequestOwnershipFromRemote(node.root ?? "", topicId);
+                    showToast(t("projectTree.requestOwnershipDone"), "info");
+                    await refresh();
+                    await onTopicsChanged?.();
+                  } catch (err) {
+                    showToast(err instanceof Error ? err.message : String(err), "error");
+                  }
+                })();
+              },
+            },
+            ...topicMenuItems,
+          ];
       if (!isSessionNode && editingTopic === topicId) {
         return (
           <div
