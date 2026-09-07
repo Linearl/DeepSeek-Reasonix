@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,7 +12,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"reasonix/internal/fileutil"
 	fileencoding "reasonix/internal/fileutil/encoding"
 	"reasonix/internal/store"
 )
@@ -52,8 +52,16 @@ type BranchMeta struct {
 	SubagentPolicy string `json:"subagent_policy,omitempty"`
 	Goal             string `json:"goal,omitempty"`
 	Recovered        bool   `json:"recovered,omitempty"`
-	RecoveryReason   string `json:"recovery_reason,omitempty"`
-	RecoveryDigest   string `json:"recovery_digest,omitempty"`
+	// VersionKind separates ordinary transcripts, recovery copies, and
+	// session-backed subagents. Older sidecars infer recovery from Recovered.
+	VersionKind          SessionVersionKind  `json:"version_kind,omitempty"`
+	VersionState         SessionVersionState `json:"version_state,omitempty"`
+	ParentConversationID string              `json:"parent_conversation_id,omitempty"`
+	ParentVersionID      string              `json:"parent_version_id,omitempty"`
+	BaseRevision         int64               `json:"base_revision,omitempty"`
+	DiskRevision         int64               `json:"disk_revision,omitempty"`
+	RecoveryReason       string              `json:"recovery_reason,omitempty"`
+	RecoveryDigest       string              `json:"recovery_digest,omitempty"`
 	// RecoveryDepth is 1 for new stable recovery branches. Older nested
 	// files may still carry a larger historical value.
 	RecoveryDepth int `json:"recovery_depth,omitempty"`
@@ -79,6 +87,43 @@ type BranchMeta struct {
 	InFlightTurn         *InFlightTurnMeta `json:"in_flight_turn,omitempty"`
 	// Closed completed todo shelves; desktop remounts hide the same fingerprint.
 	DismissedTodoBatches []string `json:"dismissed_todo_batches,omitempty"`
+}
+
+// SessionVersionKind is the durable identity class of a physical transcript.
+// It is intentionally separate from Recovered for compatibility with older
+// sidecars and from subagent metadata, which carries richer child lifecycle.
+type SessionVersionKind string
+
+const (
+	VersionNormal   SessionVersionKind = "normal"
+	VersionRecovery SessionVersionKind = "recovery"
+	VersionSubagent SessionVersionKind = "subagent"
+)
+
+type SessionVersionState string
+
+const (
+	VersionActive   SessionVersionState = "active"
+	VersionPending  SessionVersionState = "pending"
+	VersionResolved SessionVersionState = "resolved"
+	VersionTrashed  SessionVersionState = "trashed"
+)
+
+func (m BranchMeta) EffectiveVersionKind() SessionVersionKind {
+	if m.VersionKind != "" {
+		return m.VersionKind
+	}
+	if m.Recovered {
+		return VersionRecovery
+	}
+	return VersionNormal
+}
+
+func (m BranchMeta) EffectiveVersionState() SessionVersionState {
+	if m.VersionState != "" {
+		return m.VersionState
+	}
+	return VersionActive
 }
 
 const (
@@ -239,18 +284,6 @@ func SaveBranchMeta(sessionPath string, m BranchMeta) error {
 	})
 }
 
-// saveBranchMetaKeepInFlightTurn keeps any existing in-flight turn on rewrite.
-func saveBranchMetaKeepInFlightTurn(sessionPath string, m BranchMeta) error {
-	return UpdateBranchMeta(sessionPath, true, func(current *BranchMeta) error {
-		if m.InFlightTurn == nil {
-			m.InFlightTurn = current.InFlightTurn
-		}
-		preserveBranchMetaPersistence(&m, *current)
-		*current = m
-		return nil
-	})
-}
-
 func SaveBranchMetaPreserveUpdated(sessionPath string, m BranchMeta) error {
 	return UpdateBranchMeta(sessionPath, false, func(current *BranchMeta) error {
 		preserveBranchMetaPersistence(&m, *current)
@@ -266,6 +299,10 @@ func SaveBranchMetaPreserveUpdatedLocked(sessionPath string, m BranchMeta) error
 }
 
 func saveBranchMeta(sessionPath string, m BranchMeta, touchUpdated bool) error {
+	return saveBranchMetaContext(context.Background(), sessionPath, m, touchUpdated)
+}
+
+func saveBranchMetaContext(ctx context.Context, sessionPath string, m BranchMeta, touchUpdated bool) error {
 	metaPath := BranchMetaPath(sessionPath)
 	if metaPath == "" {
 		return fmt.Errorf("empty session path")
@@ -289,34 +326,15 @@ func saveBranchMeta(sessionPath string, m BranchMeta, touchUpdated bool) error {
 	if existing, ok, err := LoadBranchMeta(sessionPath); err == nil && ok {
 		preserveBranchMetaPersistence(&m, existing)
 	}
-	fileutil.Crash("branch-meta", metaPath)
 	if err := os.MkdirAll(filepath.Dir(metaPath), 0o755); err != nil {
 		return err
 	}
-	b, err := json.MarshalIndent(m, "", "  ")
+	b, err := marshalJSONIndentContext(ctx, m)
 	if err != nil {
 		return err
 	}
 	b = append(b, '\n')
-	tmp, err := os.CreateTemp(filepath.Dir(metaPath), ".branch.*.tmp")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	if _, err := tmp.Write(b); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
-		return err
-	}
-	if err := fileutil.ReplaceFile(tmpPath, metaPath); err != nil {
-		os.Remove(tmpPath)
-		return err
-	}
-	return nil
+	return atomicWriteFileContext(ctx, metaPath, ".branch.*.tmp", "branch-meta", b, 0o600, false)
 }
 
 func preserveBranchMetaPersistence(next *BranchMeta, existing BranchMeta) {

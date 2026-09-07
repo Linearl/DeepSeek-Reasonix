@@ -126,7 +126,7 @@ func (p *forkCaptureProvider) Stream(ctx context.Context, req provider.Request) 
 // one turn per task); multi-turn capture would need the active turn's index.
 func forkTurnInput(messages []provider.Message) string {
 	for _, m := range messages {
-		if m.Role == provider.RoleUser {
+		if IsUserAuthoredTurnMessage(m) {
 			if m.RawContent != "" {
 				return m.RawContent
 			}

@@ -38,8 +38,39 @@ func (s *Server) expectedSessionPathErrorLocked(rawExpected string) error {
 	return nil
 }
 
+// expectedSessionIsSpectatorPinLocked reports whether the caller's expected
+// session is one a local runtime owns (a spectator pin). Such a caller is
+// deliberately viewing a non-foreground session; write commands to it must be
+// refused with the takeover wording, while foreground-switch commands may pass
+// (validated by validateSwitchExpectedLocked).
+func (s *Server) expectedSessionIsSpectatorPinLocked(r *http.Request) bool {
+	return s.sessionMirrored(r.Header.Get(expectedSessionPathHeader))
+}
+
 func (s *Server) validateExpectedSessionLocked(w http.ResponseWriter, r *http.Request) bool {
 	if err := s.expectedSessionErrorLocked(r); err != nil {
+		// A spectator pinned to a local-owned session is not misrouted — it is
+		// read-only by ownership. Answer with the takeover wording instead of
+		// the generic "active session changed".
+		if s.expectedSessionIsSpectatorPinLocked(r) {
+			http.Error(w, errSessionTakenOver, http.StatusConflict)
+			return false
+		}
+		http.Error(w, err.Error(), http.StatusConflict)
+		return false
+	}
+	return true
+}
+
+// validateSwitchExpectedLocked is the fence for foreground-switch commands
+// (/new, /clear, /resume). A spectator pinned to a local-owned session is
+// allowed to switch: it is leaving its read-only pin for a real foreground
+// session, which is the only way "the remote" regains the ability to act.
+func (s *Server) validateSwitchExpectedLocked(w http.ResponseWriter, r *http.Request) bool {
+	if err := s.expectedSessionErrorLocked(r); err != nil {
+		if s.expectedSessionIsSpectatorPinLocked(r) {
+			return true
+		}
 		http.Error(w, err.Error(), http.StatusConflict)
 		return false
 	}
@@ -54,6 +85,12 @@ func (s *Server) foregroundMutation(next http.HandlerFunc) http.HandlerFunc {
 		s.bindMu.Lock()
 		defer s.bindMu.Unlock()
 		if !s.validateExpectedSessionLocked(w, r) {
+			return
+		}
+		// A mirrored foreground is owned by a local runtime; every mutation
+		// (submit-adjacent commands, inbox, approvals) is read-only-refused
+		// until the remote side reclaims the session.
+		if s.rejectMirroredForegroundLocked(w) {
 			return
 		}
 		next(w, r)

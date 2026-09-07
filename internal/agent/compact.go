@@ -19,18 +19,17 @@ import (
 // and up to two cache-aligned summary checkpoints restore headroom.
 const (
 	defaultCompactRatio    = 0.80 // sole automatic maintenance trigger (new configs)
-	// recentTailBudgetFactor is the fraction of the compact threshold retained
-	// verbatim as the recent tail. The tail budget is therefore
-	// window × compactRatio × factor, so lowering the compact ratio shrinks the
-	// retained prefix instead of leaving it at a fixed share of the window.
-	recentTailBudgetFactor  = 0.20 // recent verbatim tail as a fraction of the compact threshold
-	summaryOutputMaxTokens  = 8192 // max digest output; further clipped by remaining candidate space
-	summaryReasoningMaxBytes = 32768 // clamp for reasoning-only summaries (~8k tokens of bytes)
-	minRecentKeep           = 2    // never keep fewer recent messages than this
-	minRecentKeepTurns      = 2    // never fold a whole recent user+assistant turn
-	minCompactMessages      = 2    // skip compaction below this many compactable messages
-	fallbackTokPerChar      = 0.25 // ~4 chars/token, used before any usage is available to calibrate
-	protocolReserveTokens   = 256  // provider framing and control fields not represented by message estimates
+	recentTailBudgetRatio  = 0.16 // recent verbatim tail as a fraction of the window
+	summaryOutputMaxTokens = 8192 // max digest output; further clipped by remaining candidate space
+
+	// summaryReasoningMaxBytes clamps a surfaced reasoning-only summary
+	// (~8k tokens of bytes), matching the summaryOutputMaxTokens envelope.
+	summaryReasoningMaxBytes = 32768
+
+	minRecentKeep         = 2    // never keep fewer recent messages than this
+	minCompactMessages    = 2    // skip compaction below this many compactable messages
+	fallbackTokPerChar    = 0.25 // ~4 chars/token, used before any usage is available to calibrate
+	protocolReserveTokens = 256  // provider framing and control fields not represented by message estimates
 )
 
 var (
@@ -78,6 +77,23 @@ Rules: be terse — bullet points and fragments, not prose. Preserve identifiers
 // budgets are intentionally absent: they are clipped against the final request
 // at send time and must never make compaction happen earlier than the user's
 // configured compact_ratio.
+func (a *Agent) compact(ctx context.Context, trigger, instructions string, force bool) error {
+	_, err := a.compactToProjectionWithChunked(ctx, trigger, instructions, foldRequest{
+		force: force, allowChunked: trigger == CompactionTriggerManual,
+	})
+	return err
+}
+
+func (a *Agent) compactToProjection(ctx context.Context, trigger, instructions string, force, mustFree bool) (CompactionOutcome, error) {
+	return a.compactToProjectionWithChunked(ctx, trigger, instructions, foldRequest{force: force, mustFree: mustFree})
+}
+
+func (a *Agent) compactToProjectionWithChunked(ctx context.Context, trigger, instructions string, req foldRequest) (CompactionOutcome, error) {
+	a.sess.compactionRunMu.Lock()
+	defer a.sess.compactionRunMu.Unlock()
+	return a.compactToProjectionLocked(ctx, trigger, instructions, req)
+}
+
 func (a *Agent) compactTrigger() int {
 	window := a.effectiveContextWindow()
 	if a == nil || window <= 0 {
@@ -104,79 +120,28 @@ func (a *Agent) hardInputCeiling() int {
 }
 
 // recentTailBudget is the content-construction budget for the recent verbatim
-// tail. Harness-style compaction retains a share of the compact threshold
-// (window × compact_ratio × recentTailBudgetFactor), so a lower threshold also
-// shrinks the retained verbatim tail; at the default 0.80 this equals the
-// historic 16% of the window.
+// tail. Harness-style compaction always retains 16% of the model window.
 func (a *Agent) recentTailBudget() int {
 	window := a.effectiveContextWindow()
 	if a == nil || window <= 0 {
 		return 1
 	}
-	ratio := a.compactRatio
-	if ratio <= 0 {
-		ratio = defaultCompactRatio
-	}
-	// Retain a share of the compact threshold, not of the window. Keeping this
-	// proportional to compact_ratio means lowering the threshold also lowers the
-	// retained verbatim tail (window × ratio × 0.20), so a 1M window at 0.80
-	// retains ~160k (140k+ preserved) while at 0.30 it retains ~60k.
-	return max(1, int(float64(window)*ratio*recentTailBudgetFactor))
+	return max(1, int(float64(window)*recentTailBudgetRatio))
 }
-
-// minRecentTailBudget returns the smallest verbatim-tail token budget that
-// still keeps the most recent user/assistant exchanges fully intact. The
-// budget covers the newest minRecentKeep messages and the newest
-// minRecentKeepTurns user messages (each with its assistant reply), so
-// lowering the compact threshold can never fold away the latest dialogue.
-func (a *Agent) minRecentTailBudget(msgs []provider.Message) int {
-	n := len(msgs)
-	if n == 0 {
-		return 1
-	}
-	tokPerChar := a.tokPerChar()
-	// Floor by the newest minRecentKeep messages.
-	budget := 0
-	for i := n - 1; i >= 0 && (n-1-i) < minRecentKeep; i-- {
-		budget += int(float64(msgChars(msgs[i])) * tokPerChar)
-	}
-	// Floor by the newest minRecentKeepTurns user messages (a user turn and its
-	// assistant reply), which preserves the most recent exchanges wholesale.
-	users := 0
-	turnBudget := 0
-	for i := n - 1; i >= 0; i-- {
-		turnBudget += int(float64(msgChars(msgs[i])) * tokPerChar)
-		if msgs[i].Role == provider.RoleUser {
-			users++
-			if users >= minRecentKeepTurns {
-				break
-			}
-		}
-	}
-	if turnBudget > budget {
-		budget = turnBudget
-	}
-	if budget <= 0 {
-		return 1
-	}
-	return budget
-}
-
-// minFoldTokens is the smallest region worth one summarization round-trip.
-const minFoldTokens = 400
 
 // foldEconomics estimates whether compacting the given region saves enough
 // tokens to justify the summarization API call. It returns false when the
 // region is too small for the savings to outweigh the extra round-trip cost
 // and latency of calling the summarizer.
 func foldEconomics(region []provider.Message) bool {
+	const minFoldTokens = 400
 	return estimateMessagesTokens(region) >= minFoldTokens
 }
 
 func estimateMessagesTokens(msgs []provider.Message) int {
 	total := 0
 	for _, m := range msgs {
-		if m.LocalOnly {
+		if m.LocalOnly || IsPinnedContextRevision(m) {
 			continue
 		}
 		total += 4 // chat-message framing overhead
@@ -311,15 +276,6 @@ func (a *Agent) planCompaction(msgs []provider.Message, min int, force bool) (he
 	head = a.pinnedPrefixLen(msgs)
 	if a.contextWindow > 0 {
 		budget := a.recentTailBudget()
-		// Never let a low compact threshold fold away the most recent turns:
-		// ratchet the verbatim tail up to a full recent user+assistant round
-		// so the latest exchange is always preserved verbatim. The ratchet is
-		// bounded by the fold trigger so a modest recent turns floor can never
-		// block reaching the compaction target.
-		fold := a.compactTrigger()
-		if minBudget := a.minRecentTailBudget(msgs); minBudget > budget && minBudget < fold {
-			budget = minBudget
-		}
 		if force {
 			if half := estimateMessagesTokens(modelInputMessages(msgs)) / 2; half > 0 && half < budget {
 				budget = half
@@ -438,7 +394,7 @@ func (a *Agent) summaryRequest(region []provider.Message, instructions string) p
 		}
 	}
 	messages := a.normalizeModelRequestMessages(prefix)
-	messages = append(messages, provider.Message{Role: provider.RoleUser, Content: compactionInstructionWithFocus(instructions)})
+	messages = append(messages, HostGeneratedUserMessage(compactionInstructionWithFocus(instructions)))
 	var schemas []provider.ToolSchema
 	if a.svc.tools != nil {
 		schemas = a.providerToolSchemas()
@@ -453,8 +409,16 @@ func (a *Agent) summaryRequest(region []provider.Message, instructions string) p
 
 // summarize asks the executor's own provider to distill a replayed prefix into
 // a briefing. instructions is optional /compact focus + PreCompact text.
+func (a *Agent) summarize(ctx context.Context, region []provider.Message, instructions string) (string, *provider.Usage, error) {
+	req := a.summaryRequest(region, instructions)
+	summary, usage, err := a.runSummaryRequest(ctx, req)
+	a.observeSummaryOutcome(req, usage, err)
+	return summary, usage, err
+}
+
+// runSummaryRequest admits, sends, and drains one summary request.
 // Named returns so defer can attach RequestCount and still return usage.
-func (a *Agent) summarize(ctx context.Context, region []provider.Message, instructions string) (summary string, usage *provider.Usage, err error) {
+func (a *Agent) runSummaryRequest(ctx context.Context, req provider.Request) (summary string, usage *provider.Usage, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	ctx = provider.WithRequestAttemptCounter(ctx)
@@ -465,12 +429,11 @@ func (a *Agent) summarize(ctx context.Context, region []provider.Message, instru
 		}
 	}()
 	defer trackPublishedHostStream(ctx, cancel)()
-	req := a.summaryRequest(region, instructions)
-	if err := a.applyAdmissionToRequest(&req); err != nil {
+	if err := a.applySummaryAdmissionToRequest(&req); err != nil {
 		return "", usage, err
 	}
-	if req.MaxTokens > summaryOutputMaxTokens {
-		req.MaxTokens = summaryOutputMaxTokens
+	if budget := a.summaryOutputBudget(); req.MaxTokens > budget {
+		req.MaxTokens = budget
 	}
 	if req.MaxTokens < 256 {
 		return "", usage, fmt.Errorf("summary output budget too small (%d tokens)", req.MaxTokens)
@@ -478,7 +441,7 @@ func (a *Agent) summarize(ctx context.Context, region []provider.Message, instru
 	if a.svc.prov == nil {
 		return "", usage, fmt.Errorf("summary unavailable")
 	}
-	ch, err := a.svc.prov.Stream(ctx, req)
+	ch, err := provider.StreamAuxiliary(provider.WithRecoverySleeper(ctx, recoverySleep), a.svc.prov, req)
 	if err != nil {
 		return "", usage, err
 	}
@@ -498,21 +461,14 @@ func (a *Agent) summarize(ctx context.Context, region []provider.Message, instru
 				}
 				s := strings.TrimSpace(b.String())
 				if s == "" {
-					// Thinking-mode providers (e.g. DeepSeek vision SKUs) may put the
-					// whole answer in reasoning_content with an empty content block
-					// (#9679 follow-up: same shape boundedllm learned to surface).
-					// Surface a pure reasoning-only summary so the turn is not misread
-					// as "empty output" and retried forever. A turn that also tried to
-					// call tools did not produce a briefing; keep rejecting that shape
-					// (the reasoning is private chain-of-thought, not digest material).
+					// Thinking providers may answer with reasoning_content only. Surface
+					// it as the briefing unless the turn also reached for tools: that
+					// reasoning is private chain-of-thought, not digest material.
 					r := strings.TrimSpace(reasoning.String())
 					if r == "" || toolCalls > 0 {
 						return "", usage, fmt.Errorf("summarizer returned empty output")
 					}
-					if len(r) > summaryReasoningMaxBytes {
-						r = r[:summaryReasoningMaxBytes]
-					}
-					return r, usage, nil
+					return truncateUTF8Bytes(r, summaryReasoningMaxBytes), usage, nil
 				}
 				return s, usage, nil
 			}
@@ -521,7 +477,7 @@ func (a *Agent) summarize(ctx context.Context, region []provider.Message, instru
 				b.WriteString(chunk.Text)
 			case provider.ChunkReasoning:
 				reasoning.WriteString(chunk.Text)
-			case provider.ChunkToolCall:
+			case provider.ChunkToolCall, provider.ChunkToolCallStart:
 				toolCalls++
 			case provider.ChunkUsage:
 				usage = chunk.Usage
@@ -539,7 +495,9 @@ func (a *Agent) summarizeOnce(ctx context.Context, fold []provider.Message, inst
 	return a.summarize(ctx, fold, instructions)
 }
 
-// renderTranscript flattens messages into a readable transcript for summarization.
+// renderTranscript flattens messages into a bounded transcript for the
+// transcript-form summary request. Tool bodies are the provider-visible
+// Content cut to slimToolResultRunes; RawContent never enters a summary.
 func renderTranscript(msgs []provider.Message) string {
 	var b strings.Builder
 	for _, m := range msgs {
@@ -558,11 +516,7 @@ func renderTranscript(msgs []provider.Message) string {
 			}
 			b.WriteString("\n")
 		case provider.RoleTool:
-			body := m.Content
-			if m.RawContent != "" {
-				body = m.RawContent
-			}
-			fmt.Fprintf(&b, "[tool %s result]\n%s\n\n", m.Name, body)
+			fmt.Fprintf(&b, "[tool %s result]\n%s\n\n", m.Name, slimToolResult(m.Content))
 		case provider.RoleSystem:
 			fmt.Fprintf(&b, "[system]\n%s\n\n", m.Content)
 		}

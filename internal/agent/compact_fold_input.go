@@ -6,18 +6,16 @@ import (
 	"reasonix/internal/provider"
 )
 
-const summaryOutputReserve = summaryOutputMaxTokens
-
-// minSummaryOutputTokens floors the window-scaled digest budget: even a tiny
-// window reserves enough output for a usable briefing.
 const minSummaryOutputTokens = 512
 
-// summaryOutputBudget is the digest output cap for summary requests. It scales
-// with the window so small-window models still reserve input room for a fold:
-// a fixed 8192-token output reserve on a ≤16K window leaves maxPromptTokens ≤ 0
-// in maximumSafeSummaryPrefixEnd, so automatic compaction soft-skips forever
-// (#9572 follow-up). Large windows keep the full 8192 reserve.
+// summaryOutputBudget scales only shared/unknown-window summaries. Providers
+// with an independent completion window keep the full digest cap; smaller
+// shared windows reserve one quarter for a useful briefing without crowding
+// every fold out of the prompt budget.
 func (a *Agent) summaryOutputBudget() int {
+	if contextBudgetPolicyOf(a.svc.prov).WindowMode == provider.ContextWindowIndependent {
+		return summaryOutputMaxTokens
+	}
 	window := a.effectiveContextWindow()
 	if window <= 0 {
 		return summaryOutputMaxTokens
@@ -66,6 +64,11 @@ func (a *Agent) foldToSummary(ctx context.Context, fold []provider.Message, inst
 
 func (a *Agent) foldToSummaryMode(ctx context.Context, fold []provider.Message, instructions, inputMode string) (foldSummary, error) {
 	res := foldSummary{Mode: CompactionModeSummarized, Spans: 1, FoldTokens: summaryInputTokens(fold), InputMode: inputMode}
+	if inputMode == SummaryInputSlim {
+		summary, usage, err := a.summarizeTranscript(ctx, fold, instructions)
+		res.Text, res.Usage = summary, usage
+		return res, err
+	}
 	return a.singleCallSummary(ctx, res, fold, instructions)
 }
 

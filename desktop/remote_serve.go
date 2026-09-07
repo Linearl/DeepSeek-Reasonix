@@ -288,23 +288,31 @@ func (m *desktopRemoteManager) healCredentialChannel(ctx context.Context, c desk
 	if !has {
 		return fmt.Errorf("credential proxy: reverse tunnel is not available")
 	}
+	// The tunnel secret rotates on every SSH reconnection even when the remote
+	// port is reused, and a running serve keeps validating the previous token
+	// until its providers are rebuilt from the healed disk config. So heal the
+	// tracked configs and reload unconditionally: both steps are idempotent,
+	// and skipping the config heal on a same-port rebind leaves every model
+	// call failing with "invalid credential proxy token".
 	if int(mh.credPort.Load()) != port || res.CredentialConfigChanged {
-		log.Printf("[remote] EnsureServer: cred port drift host=%s old=%d new=%d configChanged=%v -> reloading serve providers", hostID, mh.credPort.Load(), port, res.CredentialConfigChanged)
-		workspaces := m.trackedCredentialWorkspaces(hostID, workspace)
-		// base+token covers the Serve ensured by this round even if it has not
-		// reached the registry yet; tracked peers are reloaded alongside it.
-		if err := healCredentialConfigsBeforeReload(ctx, workspaces,
-			func(workspace string) (*bootstrap.CredentialProxyOptions, error) {
-				return m.credentialProxySetup(c, hostID, workspace)
-			},
-			func(ctx context.Context, opts *bootstrap.CredentialProxyOptions) error {
-				_, err := bootstrap.HealCredentialProvider(ctx, c, opts)
-				return err
-			},
-			func() bool { return m.reloadServeProviders(ctx, mh, hostID, workspace, base, token) },
-		); err != nil {
+		log.Printf("[remote] EnsureServer: cred port drift host=%s old=%d new=%d configChanged=%v -> healing serve credentials", hostID, mh.credPort.Load(), port, res.CredentialConfigChanged)
+	} else {
+		log.Printf("[remote] EnsureServer: same cred port %d -> healing serve credentials (fresh tunnel secret)", port)
+	}
+	workspaces := m.trackedCredentialWorkspaces(hostID, workspace)
+	// base+token covers the Serve ensured by this round even if it has not
+	// reached the registry yet; tracked peers are reloaded alongside it.
+	if err := healCredentialConfigsBeforeReload(ctx, workspaces,
+		func(workspace string) (*bootstrap.CredentialProxyOptions, error) {
+			return m.credentialProxySetup(c, hostID, workspace)
+		},
+		func(ctx context.Context, opts *bootstrap.CredentialProxyOptions) error {
+			_, err := bootstrap.HealCredentialProvider(ctx, c, opts)
 			return err
-		}
+		},
+		func() bool { return m.reloadServeProviders(ctx, mh, hostID, workspace, base, token) },
+	); err != nil {
+		return err
 	}
 	if perr := probeReverseTunnel(c, port); perr != nil {
 		log.Printf("[remote] EnsureServer: reverse probe FAILED host=%s ws=%s port=%d err=%v", hostID, workspace, port, perr)

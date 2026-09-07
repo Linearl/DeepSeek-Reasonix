@@ -13,6 +13,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"reasonix/internal/agent"
 )
 
 const (
@@ -32,6 +34,7 @@ type serveSessionEntry struct {
 	Turns      int    `json:"turns"`
 	Current    bool   `json:"current"`
 	Running    bool   `json:"running"`
+	TakenOver  bool   `json:"takenOver,omitempty"`
 	MtimeMilli int64  `json:"mtimeMilli"`
 }
 
@@ -450,17 +453,24 @@ listingAttempt:
 				authoritative := make(map[string]bool, len(entries))
 				for _, entry := range entries {
 					authoritative[entry.Path] = entry.Running
+					if agent.CanonicalSessionPath(entry.Path) == agent.CanonicalSessionPath(tab.routing.currentPath) {
+						tab.session.takenOver = entry.TakenOver
+					}
 				}
 				tab.routing.running = authoritative
 				if authoritativeCurrent != nil {
 					path := strings.TrimSpace(authoritativeCurrent.Path)
-					pathChanged := adoptRemoteTabSessionPathLocked(tab, path)
-					tab.session.name = strings.TrimSpace(authoritativeCurrent.Name)
-					if pathChanged {
-						tab.topicTitle = authoritativeTitle
-						meta := remoteTabMetaLocked(tab)
-						routeUpdate = &meta
-						routeReadyBarrier = remoteTabReadyBarrier(tab, true)
+					// The listing's "current" is Serve's foreground; it must not
+					// re-route a spectator's explicitly selected session.
+					if path == tab.routing.currentPath || !tab.session.takenOver {
+						pathChanged := adoptRemoteTabSessionPathLocked(tab, path)
+						tab.session.name = strings.TrimSpace(authoritativeCurrent.Name)
+						if pathChanged {
+							tab.topicTitle = authoritativeTitle
+							meta := remoteTabMetaLocked(tab)
+							routeUpdate = &meta
+							routeReadyBarrier = remoteTabReadyBarrier(tab, true)
+						}
 					}
 				}
 			} else {

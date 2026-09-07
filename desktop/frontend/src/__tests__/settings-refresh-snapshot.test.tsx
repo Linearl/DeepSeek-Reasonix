@@ -14,7 +14,7 @@ import {
 } from "../components/SettingsPanel";
 import { LocaleProvider } from "../lib/i18n";
 import type { AppBindings } from "../lib/bridge";
-import type { ProviderView, SettingsView } from "../lib/types";
+import type { ProviderModelCapabilityView, ProviderView, SettingsView } from "../lib/types";
 import {
   applyTypographyPreferences,
   createDefaultTypographyPreferences,
@@ -246,7 +246,7 @@ window.go = {
   main: {
     App: {
       Settings: async () => compactSettings,
-      FetchAllProviderModels: async () => ({}),
+      FetchAllProviderModelCatalogs: async () => ({}),
       SetCompactRatio: async (ratio: number) => {
         compactRatioCalls.push(ratio);
         compactSettings = { ...compactSettings, agent: { ...compactSettings.agent, compactRatio: ratio } };
@@ -751,8 +751,8 @@ providerRaceSettings.providers = [{
   modelOverrides: [],
   modelCatalogFingerprint: "old-fingerprint",
 }];
-let resolveProviderBatch: ((models: Record<string, string[]>) => void) | undefined;
-const providerBatch = new Promise<Record<string, string[]>>((resolve) => {
+let resolveProviderBatch: ((models: Record<string, ProviderModelCapabilityView[]>) => void) | undefined;
+const providerBatch = new Promise<Record<string, ProviderModelCapabilityView[]>>((resolve) => {
   resolveProviderBatch = resolve;
 });
 let providerBatchCalls = 0;
@@ -761,7 +761,7 @@ window.go = {
   main: {
     App: {
       Settings: async () => providerRaceSettings,
-      FetchAllProviderModels: async () => {
+      FetchAllProviderModelCatalogs: async () => {
         providerBatchCalls += 1;
         return providerBatch;
       },
@@ -794,7 +794,7 @@ await act(async () => {
   await flushPromises();
 });
 await act(async () => {
-  resolveProviderBatch?.({ "race-provider": ["old-model", "stale-fetched-model"] });
+  resolveProviderBatch?.({ "race-provider": ["old-model", "stale-fetched-model"].map((model) => ({ model, inputModalities: [], state: "unknown", source: "adapter" })) });
   await flushPromises();
 });
 await waitFor("stale provider discovery completion", () => providerBatchCalls === 1);
@@ -841,8 +841,8 @@ window.go = {
   main: {
     App: {
       Settings: async () => providerRefreshCancelSettings,
-      FetchAllProviderModels: async () => ({}),
-      FetchProviderModels: async () => ["deepseek-v4-flash", "deepseek-v4-pro"],
+      FetchAllProviderModelCatalogs: async () => ({}),
+      FetchProviderModelCatalogDraft: async () => ["deepseek-v4-flash", "deepseek-v4-pro"].map((model) => ({ model, inputModalities: ["text"], state: "unsupported", source: "adapter" })),
     } as Partial<AppBindings> as AppBindings,
   },
 };
@@ -871,26 +871,12 @@ await act(async () => {
   providerRefreshCancelButton.click();
   await flushPromises();
 });
-await waitFor(
-  "provider model draft",
-  () => providerRefreshCancelRootEl.textContent?.includes("Found 2 models for DeepSeek Official. Review and save the enabled list.") === true,
-);
-const providerModelDraftCancelButton = providerRefreshCancelRootEl.querySelector<HTMLButtonElement>(
-  ".provider-model-draft__actions button",
-);
-if (!providerModelDraftCancelButton) throw new Error("provider model draft cancel action did not render");
-await act(async () => {
-  providerModelDraftCancelButton.click();
-  await flushPromises();
-});
-ok(
-  providerRefreshCancelRootEl.textContent?.includes("Found 2 models for DeepSeek Official. Review and save the enabled list.") === false,
-  "cancelling a provider model draft clears its stale save instruction",
-);
-ok(
-  providerRefreshCancelRootEl.querySelector(".provider-model-draft") === null,
-  "cancelling a provider model draft closes the candidate editor",
-);
+await waitFor("provider model discovery", () => document.querySelector('[role="dialog"] .provider-discovery-list') !== null);
+const providerModelDraftCancelButton = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')).find((button) => button.textContent?.trim() === "Cancel");
+if (!providerModelDraftCancelButton) throw new Error("provider discovery cancel action did not render");
+await act(async () => { providerModelDraftCancelButton.click(); await flushPromises(); });
+ok(document.querySelector('[role="dialog"] .provider-discovery-list') === null, "cancelling model discovery closes the candidate dialog");
+ok(providerRefreshCancelSettings.providers[0].models.length === 1, "cancelling discovery preserves configured models");
 await act(async () => {
   providerRefreshCancelRoot.unmount();
 });
@@ -940,7 +926,7 @@ window.go = {
         upgradeFailureSettingsCalls += 1;
         return upgradeFailureSettings;
       },
-      FetchAllProviderModels: async () => ({}),
+      FetchAllProviderModelCatalogs: async () => ({}),
       UpgradeDeepSeekProviderAccess: async () => {
         upgradeFailureMutationCalls += 1;
         upgradeFailureSettings = {

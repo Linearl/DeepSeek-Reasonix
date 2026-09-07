@@ -222,13 +222,9 @@ func ParseContextLimitError(apiErr *APIError) *ContextLimitError {
 		} else if w, r, p, c, ok := parseContextLimitText(message); ok {
 			window, requested, prompt, completion = w, r, p, c
 		} else {
-			// Providers that report a bare overflow with no token numbers
-			// (Zhipu GLM: {"error":{"code":"1261","message":"Prompt exceeds max
-			// length"}}). The overflow is provider-confirmed; the window stays
-			// unknown (0), which every consumer treats as "learn nothing, fall
-			// back to the configured window" — and, critically, chunked
-			// compaction fallback triggers on this error instead of letting an
-			// oversized request fail transparently forever.
+			// A bare overflow with no token numbers (Zhipu GLM 1261) is still
+			// provider-confirmed: trust it with an unknown window so consumers
+			// fall back to the configured window instead of resending as-is.
 			if isUnnumberedPromptTooLong(message, apiErr.Body) {
 				return &ContextLimitError{APIError: apiErr}
 			}

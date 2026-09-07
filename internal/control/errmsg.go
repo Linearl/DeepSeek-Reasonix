@@ -32,15 +32,26 @@ func explainError(err error) error {
 	if provider.IsConnReset(err) {
 		return fmt.Errorf("model stream disconnected before completion after retry attempts: %s. Check the provider/proxy connection, then retry or ask Reasonix to continue", err.Error())
 	}
-	if limit := provider.AsContextLimitError(err); limit != nil {
+	// An overflow without token numbers has nothing to quote; the generic 400
+	// branch below keeps the provider's own reason instead of zeros.
+	if limit := provider.AsContextLimitError(err); limit != nil && limit.WindowTokens > 0 {
 		msg := fmt.Sprintf(i18n.M.ProviderErrContextOverflowFmt, limit.PromptTokens, limit.CompletionTokens, limit.RequestedTokens, limit.WindowTokens)
 		if reason := apiErrorReason(limit.APIError); reason != "" {
 			return fmt.Errorf("%s\n%s", msg, reason)
 		}
 		return errors.New(msg)
 	}
+	if quota := provider.AsQuotaError(err); quota != nil {
+		return fmt.Errorf(i18n.M.ProviderErrQuotaExhaustedFmt, quota.Provider, quota.Status)
+	}
 	var apiErr *provider.APIError
 	if errors.As(err, &apiErr) {
+		if provider.IsOpaqueBadRequest(err) {
+			if trace := provider.DiagnoseFailure(err).TraceID; trace != "" {
+				return fmt.Errorf("%s\nTrace ID: %s", i18n.M.ProviderErrReasonMissing, trace)
+			}
+			return errors.New(i18n.M.ProviderErrReasonMissing)
+		}
 		if msg := providerContentSafetyMessage(apiErr); msg != "" {
 			if reason := apiErrorReason(apiErr); reason != "" {
 				return fmt.Errorf("%s\n%s", msg, reason)

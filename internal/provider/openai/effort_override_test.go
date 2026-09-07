@@ -28,8 +28,9 @@ func TestEffortOverrideDeepSeekFlash(t *testing.T) {
 	if got := c.buildRequest(provider.Request{EffortOverride: "medium"}).ReasoningEffort; got != "high" {
 		t.Fatalf("override outside DeepSeek vocabulary must keep the default, got %q", got)
 	}
-	if got := c.buildRequest(provider.Request{EffortOverride: "disabled"}).ReasoningEffort; got != "high" {
-		t.Fatalf("override must never toggle thinking off, got %q", got)
+	request := c.buildRequest(provider.Request{EffortOverride: "disabled"})
+	if request.ReasoningEffort != "" || request.Thinking == nil || request.Thinking.Type != "disabled" {
+		t.Fatalf("disabled override = thinking:%#v effort:%q, want thinking disabled and no effort", request.Thinking, request.ReasoningEffort)
 	}
 }
 
@@ -62,8 +63,9 @@ func TestEffortOverrideHonorsSupportedEfforts(t *testing.T) {
 	if got := c.buildRequest(provider.Request{EffortOverride: "max"}).ReasoningEffort; got != "high" {
 		t.Fatalf("undeclared level must keep the default, got %q", got)
 	}
-	if got := c.buildRequest(provider.Request{EffortOverride: "disabled"}).ReasoningEffort; got != "high" {
-		t.Fatalf("disabled is a thinking toggle, not a depth; got %q", got)
+	request := c.buildRequest(provider.Request{EffortOverride: "disabled"})
+	if request.ReasoningEffort != "" || request.Thinking == nil || request.Thinking.Type != "disabled" {
+		t.Fatalf("disabled override = thinking:%#v effort:%q, want thinking disabled and no effort", request.Thinking, request.ReasoningEffort)
 	}
 }
 

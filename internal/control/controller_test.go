@@ -2207,6 +2207,17 @@ func TestSnapshotConflictLogAttrsCarryRevisionLedger(t *testing.T) {
 	}
 }
 
+func TestSnapshotConflictRevisionsExtractTypedConflict(t *testing.T) {
+	conflict := &agent.SessionSnapshotConflictError{BaseRevision: 4, DiskRevision: 8}
+	base, disk := snapshotConflictRevisions(fmt.Errorf("wrapped: %w", conflict))
+	if base != 4 || disk != 8 {
+		t.Fatalf("revisions = %d/%d, want 4/8", base, disk)
+	}
+	if base, disk := snapshotConflictRevisions(errors.New("other")); base != 0 || disk != 0 {
+		t.Fatalf("non-conflict revisions = %d/%d, want 0/0", base, disk)
+	}
+}
+
 type noticeSink struct {
 	mu     sync.Mutex
 	events []event.Event
@@ -2557,8 +2568,8 @@ func TestNewSessionQueuesSessionStartHookContext(t *testing.T) {
 func TestNewSessionResetsTwoModelPlannerContext(t *testing.T) {
 	dir := t.TempDir()
 	planner := &recordingProvider{name: "planner", streams: [][]provider.Chunk{
-		textTurn("OLD PLAN: inspect alpha.go"),
-		textTurn("NEW PLAN: inspect beta.go"),
+		planTurn("OLD PLAN: inspect alpha.go"),
+		planTurn("NEW PLAN: inspect beta.go"),
 	}}
 	execProv := &recordingProvider{name: "executor", streams: [][]provider.Chunk{
 		textTurn("old done"),
@@ -2566,7 +2577,7 @@ func TestNewSessionResetsTwoModelPlannerContext(t *testing.T) {
 	}}
 	exec := agent.New(execProv, tool.NewRegistry(), agent.NewSession("exec sys"), agent.Options{}, event.Discard)
 	plannerSess := agent.NewSession("planner sys")
-	coord := agent.NewCoordinator(planner, plannerSess, nil, tool.NewRegistry(), agent.Options{}, exec, 0, event.Discard, nil)
+	coord := agent.NewCoordinator(planner, plannerSess, nil, agent.PlannerToolRegistry(tool.NewRegistry()), agent.Options{}, exec, 0, event.Discard, nil)
 	path := filepath.Join(dir, "session.jsonl")
 	c := New(Options{Runner: coord, Executor: exec, SystemPrompt: "exec sys", SessionDir: dir, SessionPath: path, Label: "test"})
 
@@ -2595,13 +2606,13 @@ func TestNewSessionResetsTwoModelPlannerContext(t *testing.T) {
 func TestTwoModelPlannerApprovalUsesHostGate(t *testing.T) {
 	dir := t.TempDir()
 	planner := &recordingProvider{name: "planner", streams: [][]provider.Chunk{
-		textTurn("Plan:\n1. Edit main.go\n\n是否批准这个方案？"),
+		approvalPlanTurn("Plan:\n1. Edit main.go"),
 	}}
 	execProv := &recordingProvider{name: "executor", streams: [][]provider.Chunk{
 		textTurn("approved execution complete"),
 	}}
 	exec := agent.New(execProv, tool.NewRegistry(), agent.NewSession("exec sys"), agent.Options{}, event.Discard)
-	coord := agent.NewCoordinator(planner, agent.NewSession("planner sys"), nil, tool.NewRegistry(), agent.Options{}, exec, 0, event.Discard, nil)
+	coord := agent.NewCoordinator(planner, agent.NewSession("planner sys"), nil, agent.PlannerToolRegistry(tool.NewRegistry()), agent.Options{}, exec, 0, event.Discard, nil)
 
 	ids := make(chan string, 1)
 	var prompts int
@@ -2660,8 +2671,8 @@ func TestTwoModelPlannerApprovalUsesHostGate(t *testing.T) {
 func TestResumeResetsTwoModelPlannerContext(t *testing.T) {
 	dir := t.TempDir()
 	planner := &recordingProvider{name: "planner", streams: [][]provider.Chunk{
-		textTurn("OLD PLAN: inspect alpha.go"),
-		textTurn("RESUMED PLAN: inspect gamma.go"),
+		planTurn("OLD PLAN: inspect alpha.go"),
+		planTurn("RESUMED PLAN: inspect gamma.go"),
 	}}
 	execProv := &recordingProvider{name: "executor", streams: [][]provider.Chunk{
 		textTurn("old done"),
@@ -2669,7 +2680,7 @@ func TestResumeResetsTwoModelPlannerContext(t *testing.T) {
 	}}
 	exec := agent.New(execProv, tool.NewRegistry(), agent.NewSession("exec sys"), agent.Options{}, event.Discard)
 	plannerSess := agent.NewSession("planner sys")
-	coord := agent.NewCoordinator(planner, plannerSess, nil, tool.NewRegistry(), agent.Options{}, exec, 0, event.Discard, nil)
+	coord := agent.NewCoordinator(planner, plannerSess, nil, agent.PlannerToolRegistry(tool.NewRegistry()), agent.Options{}, exec, 0, event.Discard, nil)
 	c := New(Options{Runner: coord, Executor: exec, SystemPrompt: "exec sys", SessionDir: dir, SessionPath: filepath.Join(dir, "old.jsonl"), Label: "test"})
 
 	if err := c.Run(context.Background(), "old task alpha"); err != nil {
@@ -2697,8 +2708,8 @@ func TestResumeResetsTwoModelPlannerContext(t *testing.T) {
 func TestResetPlannerSessionClearsPlannerHistory(t *testing.T) {
 	dir := t.TempDir()
 	planner := &recordingProvider{name: "planner", streams: [][]provider.Chunk{
-		textTurn("FIRST PLAN: inspect alpha.go"),
-		textTurn("SECOND PLAN: inspect beta.go"),
+		planTurn("FIRST PLAN: inspect alpha.go"),
+		planTurn("SECOND PLAN: inspect beta.go"),
 	}}
 	execProv := &recordingProvider{name: "executor", streams: [][]provider.Chunk{
 		textTurn("first done"),
@@ -2706,7 +2717,7 @@ func TestResetPlannerSessionClearsPlannerHistory(t *testing.T) {
 	}}
 	exec := agent.New(execProv, tool.NewRegistry(), agent.NewSession("exec sys"), agent.Options{}, event.Discard)
 	plannerSess := agent.NewSession("planner sys")
-	coord := agent.NewCoordinator(planner, plannerSess, nil, tool.NewRegistry(), agent.Options{}, exec, 0, event.Discard, nil)
+	coord := agent.NewCoordinator(planner, plannerSess, nil, agent.PlannerToolRegistry(tool.NewRegistry()), agent.Options{}, exec, 0, event.Discard, nil)
 	path := filepath.Join(dir, "session.jsonl")
 	c := New(Options{Runner: coord, Executor: exec, SystemPrompt: "exec sys", SessionDir: dir, SessionPath: path, Label: "test"})
 
@@ -2743,7 +2754,7 @@ func TestTwoModelShortChoiceReplySkipsPlanner(t *testing.T) {
 	execSess.Add(provider.Message{Role: provider.RoleUser, Content: "先给我两个执行方案"})
 	execSess.Add(provider.Message{Role: provider.RoleAssistant, Content: "两个执行方式可选：\n\n1. Subagent-Driven（推荐）\n2. 当前会话执行\n\n你选哪种？"})
 	exec := agent.New(execProv, tool.NewRegistry(), execSess, agent.Options{}, event.Discard)
-	coord := agent.NewCoordinator(planner, agent.NewSession("planner sys"), nil, tool.NewRegistry(), agent.Options{}, exec, 0, event.Discard, NewPlannerGate())
+	coord := agent.NewCoordinator(planner, agent.NewSession("planner sys"), nil, agent.PlannerToolRegistry(tool.NewRegistry()), agent.Options{}, exec, 0, event.Discard, NewPlannerGate())
 	c := New(Options{Runner: coord, Executor: exec, SystemPrompt: "exec sys", SessionDir: dir, SessionPath: filepath.Join(dir, "session.jsonl"), Label: "test"})
 
 	if err := c.Run(context.Background(), "1"); err != nil {

@@ -14,7 +14,7 @@ const projectTreeSource = readFileSync(resolve(testDir, "../components/ProjectTr
 const topicShortcutsSource = readFileSync(resolve(testDir, "../lib/topicShortcuts.ts"), "utf8");
 const transcriptSource = readFileSync(resolve(testDir, "../components/Transcript.tsx"), "utf8");
 const composerSource = readFileSync(resolve(testDir, "../components/Composer.tsx"), "utf8");
-const controllerSource = readFileSync(resolve(testDir, "../lib/useController.ts"), "utf8");
+const controllerSource = readFileSync(resolve(testDir, "../lib/useController.ts"), "utf8"), forkWorktreeSource = readFileSync(resolve(testDir, "../lib/forkWorktree.ts"), "utf8");
 const bridgeSource = readFileSync(resolve(testDir, "../lib/bridge.ts"), "utf8");
 const workspacePanelSource = readFileSync(resolve(testDir, "../components/WorkspacePanel.tsx"), "utf8");
 const rewindCommitSource = readFileSync(resolve(testDir, "../lib/rewindCommit.ts"), "utf8");
@@ -408,7 +408,7 @@ ok(
 
 ok(
   /topicShortcutIndexFromEvent\(event, desktopPlatform\)/.test(appSource) &&
-    /useTopicShortcuts\(!sidebarCollapsed, desktopPlatform\)/.test(appSource),
+    /useTopicShortcuts\(!sidebarCollapsed && !managementActive, desktopPlatform\)/.test(appSource),
   "topic shortcuts use the resolved desktop platform",
 );
 
@@ -483,7 +483,7 @@ ok(
     /app\.PreviewRewindForTab\(sourceTabId, turn, scope\)/.test(rewindCommitSource) &&
     /app\.CommitRewindForTab\(sourceTabId, remoteLegacy \? "" : \(plan\.planId \|\| ""\), turn, scope\)/.test(rewindCommitSource) &&
     /app\.UndoRewindForTab\(sourceTabId, transactionId\)/.test(rewindCommitSource) &&
-    /app\.ForkForTab\(sourceTabId, turn\)/.test(controllerSource) &&
+    /bindings\.ForkForTab\(sourceTabId, turn\)[\s\S]*bindings\.ForkWorktreeForTab\(sourceTabId, turn\)/.test(forkWorktreeSource) &&
     /app\.SummarizeFromForTab\(sourceTabId, turn\)/.test(controllerSource) &&
     /NewSessionForTab\(tabID: string\)/.test(bridgeSource) &&
     /CompactForTab\(tabID: string\)/.test(bridgeSource) &&
@@ -510,7 +510,7 @@ ok(
   /const creationEmptyHero =/.test(appSource) &&
     /!sidebarImDetailConnection/.test(appSource) &&
     /!transcriptHydrating/.test(appSource) &&
-    /!hydratePlaceholderActive/.test(appSource) &&
+    /!hydratePlaceholderActive/.test(appSource) && /!state\.hydrateError/.test(appSource) &&
     /chat-pane\$\{creationEmptyHero \? " chat-pane--creation-empty" : ""\}/.test(appSource) &&
     /heroMode=\{creationEmptyHero\}/.test(appSource),
   "Creation empty hero waits for hydration and skips IM/Bot detail panels",
@@ -566,7 +566,7 @@ ok(
 );
 
 ok(
-  /const enterChatViewForTabNavigation = useCallback\(\(\) => \{\s*setMainView\("chat"\);/.test(appSource) &&
+  /const enterChatViewForTabNavigation = useCallback\(\(\) => \{\s*enterConversation\(\);/.test(appSource) &&
     /const enqueueTabSwitch = useCallback\([\s\S]*?enterChatViewForTabNavigation\(\);[\s\S]*?enqueueNavigationRequest/.test(appSource) &&
     /const revealBackgroundRuntime = useCallback[\s\S]*?enterChatViewForTabNavigation\(\);[\s\S]*?RevealBackgroundRuntime/.test(appSource) &&
     /const revealWorkspaceWriter = useCallback[\s\S]*?enterChatViewForTabNavigation\(\);[\s\S]*?RevealWorkspaceWriterForTab/.test(appSource),
@@ -579,7 +579,7 @@ ok(
 );
 
 ok(
-  /<HeartbeatView[\s\S]*onOpenTopic=\{\(scope, workspaceRoot, topicId\) => \{[\s\S]*void handleOpenTopic\(scope, workspaceRoot, topicId\);[\s\S]*\}\}/.test(appSource),
+  /onOpenTopic: openAutomationTopic/.test(appSource) && /const openAutomationTopic = useCallback[\s\S]*enqueueNavigationWithIntent\(\{ kind: "topic", scope, workspaceRoot, topicId \}, intent\)/.test(appSource),
   "heartbeat topic navigation uses the guarded open-topic path",
 );
 

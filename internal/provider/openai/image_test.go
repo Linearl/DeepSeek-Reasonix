@@ -32,6 +32,24 @@ func TestBuildRequestEmbedsImagesForVisionModel(t *testing.T) {
 	}
 }
 
+func TestModelInfoEnablesImageWireSerialization(t *testing.T) {
+	p, err := New(provider.Config{
+		Name: "catalog", BaseURL: "https://example.test/v1", Model: "kimi-k3",
+		ModelInfo: &provider.ModelInfo{ID: "kimi-k3", InputModalities: []provider.ModelModality{provider.ModalityText, provider.ModalityImage}},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	c := p.(*client)
+	if !c.vision {
+		t.Fatal("model metadata should enable image wire serialization")
+	}
+	req := c.buildRequest(provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "describe", Images: []string{"data:image/png;base64,AAAA"}}}})
+	if _, ok := req.Messages[0].Content.([]chatContentPart); !ok {
+		t.Fatalf("content = %#v, want image content parts", req.Messages[0].Content)
+	}
+}
+
 func TestBuildRequestEmbedsOfficialDeepSeekImageURLAndFileID(t *testing.T) {
 	c := &client{model: OfficialDeepSeekVisionModel, vision: true, deepseek: true}
 	req := c.buildRequest(provider.Request{
@@ -216,6 +234,31 @@ func TestOfficialDeepSeekVisionSKUEmbedsUserImages(t *testing.T) {
 	}}})
 	if s, ok := textOnly.Messages[0].Content.(string); !ok || s != "hello" {
 		t.Fatalf("vision SKU text-only content = %#v, want a string", textOnly.Messages[0].Content)
+	}
+}
+
+func TestOfficialRequestURLImageHardLimit(t *testing.T) {
+	p, err := New(provider.Config{BaseURL: "https://relay.test", Model: "deepseek-v4-flash", Extra: map[string]any{"request_url": "https://api.deepseek.com/v1/chat/completions", "vision": true}, ModelInfo: &provider.ModelInfo{InputModalities: []provider.ModelModality{provider.ModalityText, provider.ModalityImage}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(p.(*client).buildRequest(provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "describe", Images: []string{"data:image/png;base64,AAAA"}}}}))
+	if err != nil || strings.Contains(string(body), "AAAA") {
+		t.Fatalf("official request URL leaked image: %s %v", body, err)
+	}
+}
+
+func TestOfficialVisionExplicitOffRespectsResolvedMetadata(t *testing.T) {
+	p, err := New(provider.Config{BaseURL: "https://api.deepseek.com", Model: OfficialDeepSeekVisionModel, Extra: map[string]any{"vision": true}, ModelInfo: &provider.ModelInfo{InputModalities: []provider.ModelModality{provider.ModalityText}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(p.(*client).buildRequest(provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "describe", Images: []string{"data:image/png;base64,AAAA"}}}}))
+	if err != nil || strings.Contains(string(body), "AAAA") {
+		t.Fatalf("explicit off leaked image: %s %v", body, err)
+	}
+	if p.(provider.ModelInfoProvider).ModelInfo().SupportsInput(provider.ModalityImage) {
+		t.Fatal("metadata disagrees with serializer")
 	}
 }
 

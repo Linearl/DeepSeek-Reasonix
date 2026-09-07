@@ -275,6 +275,7 @@ type Settings interface {
 	// SubagentPolicy returns the current in-memory sub-agent delegation tier.
 	SubagentPolicy() string
 	ApplyComposerProfile(plan bool, toolApprovalMode, goal string) ([]string, error)
+	SystemPrompt() string
 }
 
 // SessionAPI is the full driving port — the composition of every sub-port. A

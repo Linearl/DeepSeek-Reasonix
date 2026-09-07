@@ -72,6 +72,8 @@ type toolOutcome struct {
 	// recoveryStopTurn is set when Auto Episode budgets are exhausted.
 	recoveryStopTurn   bool
 	recoveryStopReason string
+	incompleteRead     *incompleteReadDeferred
+	subagentOutcome    *SubagentOutcome
 }
 
 // batchExecution is the result of one provider tool-call batch.
@@ -88,8 +90,8 @@ type batchExecution struct {
 // executeBatch dispatches one model turn's tool calls. ToolDispatch events are
 // emitted up front in call order; contiguous known ReadOnly calls fan out
 // across goroutines while unknown and writer calls run serially so write/read
-// ordering stays provider-ordered. ToolResult events are emitted after the
-// batch in call order. Images are aligned by index with results.
+// ordering stays provider-ordered. Each completed serial call (or read-only
+// group) is checkpointed before the next group starts.
 func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []provider.ToolCall) batchExecution {
 	// The assistant message already stored this slice in Session. Keep execution
 	// state separate so refreshing a dependent preview never mutates shared
@@ -142,14 +144,7 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 		}
 		start := time.Now()
 		startedAt[i] = start.UnixMilli()
-		// Claude Code-style interrupt: tools with InterruptBehaviorContinue
-		// (bash) get a background-derived context so they keep running even
-		// when the turn is cancelled by a user interrupt.
-		toolCtx := ctx
-		if ib, ok := t.(tool.Interruptible); ok && ib.ToolInterruptBehavior() == tool.InterruptBehaviorContinue {
-			toolCtx = context.Background()
-		}
-		outcomes[i] = a.executeOne(toolCtx, turn, calls[i])
+		outcomes[i] = a.executeOne(ctx, turn, calls[i])
 		recordWorkspaceMutation(a.svc.sink, outcomes[i].workspaceMutation)
 		if outcomes[i].executed {
 			surfaceWriters[i] = outcomes[i].workspaceMutation != nil
@@ -164,10 +159,18 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 		durations[i] = time.Since(start).Milliseconds()
 		results[i] = outcomes[i].output
 	}
+	committed := make([]bool, len(calls))
 	finalize := func(i int) {
-		if calls[i].ResolvedReadOnly != nil {
-			a.sess.conversation.UpdateToolCallResolution(calls[i])
-			a.emitResolvedToolDispatch(calls[i])
+		if committed[i] {
+			return
+		}
+		committed[i] = true
+		a.finalizeIncompleteReadOutcome(outcomes[i].incompleteRead, &outcomes[i])
+		results[i] = outcomes[i].output
+		a.commitBatchCallResolution(calls[i])
+		a.storeBatchToolResult(calls[i], outcomes[i])
+		if err := a.emitBatchToolResult(calls[i], outcomes[i], durations[i], startedAt[i], ranParallel[i], batchStart); err != nil {
+			batchErrOnce.Do(func() { batchErr = fmt.Errorf("persist tool result %s: %w", calls[i].ID, err) })
 		}
 		if surfaceWriters[i] || (outcomes[i].resolved && !outcomes[i].resolvedReadOnly) {
 			earlierWriterRan = true
@@ -218,59 +221,12 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 	mutationBatchStop := false
 	a.mutationDependencyBarrier.Store(nil)
 	markDependencySkipped := func(start int, cause *mutationBarrierCause) {
-		if cause != nil {
-			a.mutationDependencyBarrier.CompareAndSwap(nil, cause)
-		}
-		cause = a.mutationDependencyBarrier.Load()
-		for j := start; j < len(calls); j++ {
-			if results[j] != "" {
-				continue
-			}
-			// Pre-classify when statically certain. Proxies and ambiguous
-			// targets fall through to run() so executeOne can resolve the real
-			// target and re-apply the barrier before Commit/Execute.
-			if !batchCallStaticallySkippable(a, calls[j]) {
-				continue
-			}
-			isVerification := calls[j].Name == "bash" && evidence.IsVerificationCommand(bashCommandFromArgs(json.RawMessage(calls[j].Arguments)))
-			msg := cause.message()
-			var ex *tool.ShellExecution
-			if calls[j].Name == "bash" {
-				ex = &tool.ShellExecution{
-					Kind:         "shell",
-					State:        tool.ShellStateNotRun,
-					FailurePhase: tool.ShellPhaseDependency,
-					MutationRisk: tool.ShellMutationNotStarted,
-					Verification: tool.ShellVerificationNotVerification,
-				}
-				if isVerification {
-					ex.Verification = tool.ShellVerificationNotRun
-				}
-				if t, _, amb := a.svc.tools.ResolveCall(calls[j].Name); t != nil && len(amb) == 0 {
-					if bt, ok := t.(tool.DetailedExecutor); ok {
-						if desc := bt.ExecutionDescriptor(json.RawMessage(calls[j].Arguments)); desc != nil {
-							ex.Shell = desc.Shell
-							ex.ShellVersion = desc.ShellVersion
-							ex.Platform = desc.Platform
-							ex.SupportsAndAnd = desc.SupportsAndAnd
-						}
-					}
-				}
-			}
-			results[j] = msg
-			outcomes[j] = toolOutcome{
-				output:    msg,
-				blocked:   true,
-				errMsg:    firstLine(msg),
-				execution: ex,
-			}
-			durations[j] = 0
-		}
+		a.markDependencySkipped(calls, outcomes, results, durations, start, cause)
 		mutationBatchStop = true
 	}
 
 	for _, batch := range a.toolCallBatches(calls) {
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || batchErr != nil {
 			markCancelled(batch.start)
 			break
 		}
@@ -309,18 +265,7 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 			// Before executing the next tool, check if context was cancelled.
 			// This prevents starting new tools when a previous tool's execution
 			// triggered cancellation.
-			if ctx.Err() != nil {
-				// Claude Code-style interrupt: tools with InterruptBehaviorContinue
-				// (bash) keep running in the background instead of being killed.
-				t, _, _ := a.svc.tools.ResolveCall(calls[i].Name)
-				if t != nil {
-					if ib, ok := t.(tool.Interruptible); ok && ib.ToolInterruptBehavior() == tool.InterruptBehaviorContinue {
-						go a.executeOne(context.Background(), turn, calls[i])
-						results[i] = "interrupted: running in background"
-						outcomes[i] = toolOutcome{output: results[i]}
-						continue
-					}
-				}
+			if ctx.Err() != nil || batchErr != nil {
 				markCancelled(i)
 				break
 			}
@@ -332,12 +277,14 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 				// Fill dependency skips for remaining mutating/verify calls, then
 				// allow any residual read-only diagnosis to run individually.
 				if results[i] != "" {
+					finalize(i)
 					continue
 				}
 				if batchCallStaticallySkippable(a, calls[i]) {
 					markDependencySkipped(i, nil)
 					// markDependencySkipped fills this index; move on.
 					if results[i] != "" {
+						finalize(i)
 						continue
 					}
 				}
@@ -373,8 +320,11 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 		}
 	}
 
-	a.emitBatchToolResults(calls, outcomes, durations, startedAt, ranParallel, batchStart)
+	for i := range calls {
+		finalize(i)
+	}
 	a.applyBatchGuards(ctx, cancelled, calls, outcomes, results, receiptMark)
+	a.storeBatchGuardResults(calls, results)
 	images := make([][]string, len(calls))
 	executions := make([]*tool.ShellExecution, len(calls))
 	for i := range outcomes {
@@ -396,6 +346,14 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 		recoveryStopTurn:   recoveryBatchStop,
 		recoveryStopReason: recoveryStopReason,
 	}
+}
+
+func (a *Agent) commitBatchCallResolution(call provider.ToolCall) {
+	if call.ResolvedReadOnly == nil {
+		return
+	}
+	a.sess.conversation.UpdateToolCallResolution(call)
+	a.emitResolvedToolDispatch(call)
 }
 
 // batchCallMutationFailureCause returns a sanitized effect description when a

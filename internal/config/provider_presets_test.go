@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"reasonix/internal/provider"
+	"reasonix/internal/provider/openai"
 )
 
 func TestCurrentBuiltInAnthropicCompatibleProvidersRemainLocalByCapability(t *testing.T) {
@@ -147,6 +148,25 @@ func TestOpenCodeGoContextWindowPresetsMatchModelsDev(t *testing.T) {
 	dsResp, _ := CuratedProviderPreset("opencode-go-deepseek-responses")
 	if dsResp.Entries[0].ContextWindow != 1_000_000 {
 		t.Fatalf("deepseek responses window = %d", dsResp.Entries[0].ContextWindow)
+	}
+}
+
+func TestOpenCodeGoChatPresetsExposeDeepSeekVisionModel(t *testing.T) {
+	for _, presetID := range []string{"opencode-go", "opencode-go-recommended"} {
+		preset, ok := CuratedProviderPreset(presetID)
+		if !ok {
+			t.Fatalf("missing %s preset", presetID)
+		}
+		var entry *ProviderEntry
+		for i := range preset.Entries {
+			if preset.Entries[i].Name == "opencode-go" {
+				entry = &preset.Entries[i]
+				break
+			}
+		}
+		if entry == nil || !entry.HasModel(openai.OfficialDeepSeekVisionModel) || !entry.HasVisionModel(openai.OfficialDeepSeekVisionModel) {
+			t.Fatalf("%s Chat entry = %+v, want DeepSeek vision SKU", presetID, entry)
+		}
 	}
 }
 

@@ -1,3 +1,4 @@
+import { searchOutputMetadata } from "../lib/searchSources";
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Suspense, lazy } from "react";
 import { ChevronRight, Compass } from "lucide-react";
@@ -60,8 +61,19 @@ function subagentPhaseLabel(t: Translator, phase: SubagentPhase): string {
     case "tool": return t("subagent.phase.tool");
     case "retrying": return t("subagent.phase.retrying");
     case "completed": return t("subagent.phase.completed");
+    case "partial": return t("subagent.phase.partial");
     case "failed": return t("subagent.phase.failed");
     case "cancelled": return t("subagent.phase.cancelled");
+  }
+}
+
+function subagentOutcomeLabel(t: Translator, status: string): string {
+  switch (status) {
+    case "completed": return t("subagent.outcome.completed");
+    case "partial": return t("subagent.outcome.partial");
+    case "failed": return t("subagent.outcome.failed");
+    case "cancelled": return t("subagent.outcome.cancelled");
+    default: return status;
   }
 }
 
@@ -314,7 +326,10 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId, displayN
   }, [isWebSearch, item.searchSources]);
   const searchVisibleCount = searchPresentation?.visible.length ?? item.searchSources?.length ?? 0;
   const searchHiddenCount = searchPresentation?.hiddenCount ?? 0;
-  const searchResultLabel = isWebSearch && searchVisibleCount === 0 && searchHiddenCount > 0
+  const searchMetadata = searchOutputMetadata(effectiveOutput);
+  const searchSummary = searchMetadata.summary ?? item.searchSummary;
+  const searchSourcesMissing = (item.searchSourcesStatus ?? searchMetadata.status) === "not_provided";
+  const searchResultLabel = searchSourcesMissing ? t("sources.notProvided") : isWebSearch && searchVisibleCount === 0 && searchHiddenCount > 0
     ? t("sources.noValid")
     : t("tool.searchResults", { n: searchVisibleCount });
   const isShellCard = Boolean(item.isShell || item.name === "bash" || execution);
@@ -337,14 +352,15 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId, displayN
   // user sees progress; closed by default once settled.
   const hasArchivedOnDemandBody = Boolean(item.dataArchived && tabId);
   const hasArgsOrOutput = !previewDiff && diffs.length === 0 && (isWebSearch
-    ? Boolean(effectiveArgs || searchVisibleCount || searchHiddenCount)
+    ? Boolean(effectiveArgs || searchVisibleCount || searchHiddenCount || searchSourcesMissing || searchSummary || hasArchivedOnDemandBody)
     : Boolean(effectiveArgs || displayOutput || hasArchivedOnDemandBody));
 
   // Shell output: split into preview + "show all" toggle.
   const shellOutput = isShellCard && displayOutput ? displayOutput : null;
   const shellPreview = shellOutput ? splitPreview(shellOutput, SHELL_PREVIEW_LINES) : null;
   const hasStderrDetails = Boolean(execution?.outputTail && execution.outputTail.trim());
-  const hasBody = Boolean(previewDiff || diffs.length || hasNested || shellPreview || (!shellPreview && hasArgsOrOutput) || item.error || hasSubagentPreview || hasStderrDetails || riskLabel || verificationLabel);
+  const hasSubagentOutcome = Boolean(item.subagentStatus || item.subagentRef);
+  const hasBody = Boolean(previewDiff || diffs.length || hasNested || shellPreview || (!shellPreview && hasArgsOrOutput) || item.error || hasSubagentPreview || hasSubagentOutcome || hasStderrDetails || riskLabel || verificationLabel);
   const errorText = item.error ? normalizeErrorText(item.error) : "";
   const errorSummary = errorText ? summarizeToolError(errorText, t("tool.errorReceiptMismatch")) : "";
   const hasErrorDetails = errorText ? errorNeedsDetails(errorText, errorSummary) : false;
@@ -511,6 +527,16 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId, displayN
           </div>
         )}
 
+        {open && hasSubagentOutcome && (
+          <div className="tool__subagent-outcome">
+            <div className="tool__subagent-outcome-status">
+              {t("subagent.outcome.label")} {subagentOutcomeLabel(t, item.subagentStatus ?? "unknown")}{item.subagentRetryable ? ` · ${t("subagent.outcome.retryable")}` : ""}
+            </div>
+            {item.subagentRef && <code>{item.subagentRef}</code>}
+            {item.subagentErrorCode && <div className="tool__note">{item.subagentErrorCode}</div>}
+          </div>
+        )}
+
         {hasNested && (
           <div className="tool__nested">
             {(() => {
@@ -563,6 +589,7 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId, displayN
         {isWebSearch && hasArgsOrOutput && (
           <div className="tool__search-summary">
             {subject && <div className="tool__search-query">{t("tool.searchQuery", { query: subject })}</div>}
+            {searchSummary && <div className="tool__search-summary-text">{searchSummary}</div>}
             <div className="tool__search-count">
               {searchResultLabel}
               {searchHiddenCount > 0 && ` · ${t("sources.hidden", { n: searchHiddenCount })}`}

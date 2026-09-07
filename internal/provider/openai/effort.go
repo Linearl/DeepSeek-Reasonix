@@ -84,6 +84,13 @@ func (c *client) requestEffort(req provider.Request) string {
 	return want
 }
 
+func (c *client) deepSeekRequestThinking(req provider.Request) string {
+	if c.thinkingType == "disabled" || strings.EqualFold(strings.TrimSpace(req.EffortOverride), "disabled") {
+		return "disabled"
+	}
+	return "enabled"
+}
+
 func supportsEffort(levels []string, want string) bool {
 	want = strings.ToLower(strings.TrimSpace(want))
 	for _, level := range levels {

@@ -18,6 +18,10 @@ import {
   type MarkdownBlock,
 } from "../lib/markdownPipeline";
 import { getMarkdownWorkerClient } from "../lib/markdownWorkerClient";
+import {
+  nativeTranscriptDistanceFromBottom,
+  TRANSCRIPT_AT_BOTTOM_THRESHOLD_PX,
+} from "../lib/transcriptScrollGeometry";
 import { getTranscriptStore } from "../lib/transcriptStore";
 import { createComponents } from "./markdownComponents";
 import { VirtualMarkdownSourceTable } from "./MarkdownTable";
@@ -34,7 +38,6 @@ const MARKDOWN_WINDOW_BLOCKS = MARKDOWN_TAIL_BLOCKS + MARKDOWN_PREPEND_BLOCKS * 
 const MARKDOWN_SENTINEL_STYLE = { display: "block", height: 1 } as const;
 const MARKDOWN_ANCHOR_STYLE = { display: "block", height: 0 } as const;
 const MARKDOWN_FALLBACK_MARKER_STYLE = { display: "none" } as const;
-const MARKDOWN_PARSE_SWAP_BOTTOM_EPSILON_PX = 2;
 
 type BlockWindow = {
   identity: MarkdownBlock[] | undefined;
@@ -69,6 +72,23 @@ function cachedBlocks(entryId: string | undefined, revision: number, text: strin
   // The revision is a content hash; the stored source comparison is the
   // fidelity backstop against collisions and stale writes.
   return cached && cached.source === text ? cached.blocks : undefined;
+}
+
+/** Conservatively detect whether the pending history row intersects its scroller. */
+function fallbackRowIntersectsTranscript(marker: HTMLElement | null, scroller: HTMLElement): boolean {
+  const row = marker?.closest<HTMLElement>(".transcript__row") ?? null;
+  if (!row || scroller.clientHeight <= 0) return true;
+  const rowRect = row.getBoundingClientRect();
+  const scrollerRect = scroller.getBoundingClientRect();
+  if (
+    !Number.isFinite(rowRect.top)
+    || !Number.isFinite(rowRect.bottom)
+    || !Number.isFinite(scrollerRect.top)
+    || rowRect.bottom <= rowRect.top
+  ) return true;
+  const viewportTop = scrollerRect.top;
+  const viewportBottom = viewportTop + scroller.clientHeight;
+  return rowRect.bottom > viewportTop && rowRect.top < viewportBottom;
 }
 
 /** Keep a bounded block window whose edges advance only on viewport demand. */
@@ -199,7 +219,7 @@ export const MarkdownHistory = memo(function MarkdownHistory({
         };
         const scroller = fallbackMarkerRef.current?.closest<HTMLElement>(".transcript") ?? null;
         const isAtBottom = () => !scroller
-          || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= MARKDOWN_PARSE_SWAP_BOTTOM_EPSILON_PX;
+          || nativeTranscriptDistanceFromBottom(scroller) <= TRANSCRIPT_AT_BOTTOM_THRESHOLD_PX;
         if (isAtBottom()) {
           commit();
           return;
@@ -216,15 +236,13 @@ export const MarkdownHistory = memo(function MarkdownHistory({
           commit();
           return;
         }
-        // 2. Longer answers outside the viewport swap safely: any height
+        // 2. Longer answers outside the transcript viewport swap safely: any height
         //    change happens off-screen, and the reader scrolling up meets
         //    rendered blocks instead of the raw source.
-        const marker = fallbackMarkerRef.current;
-        const markerRect = marker?.getBoundingClientRect();
-        const markerInView = !!markerRect && window.innerHeight > 0
-          && markerRect.bottom > 0 && markerRect.top < window.innerHeight;
-        if (!markerInView) {
-          commit();
+        //    Measure the real Virtuoso row, not the display:none marker: hidden
+        //    elements have an empty DOMRect and the app window is not the
+        //    transcript's scroll viewport.
+        if (scroller && !fallbackRowIntersectsTranscript(fallbackMarkerRef.current, scroller)) {          commit();
           return;
         }
 

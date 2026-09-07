@@ -18,8 +18,8 @@ func TestExplainError(t *testing.T) {
 	}
 
 	bal := explainError(&provider.APIError{Provider: "deepseek", Status: 402, Body: "Insufficient Balance"})
-	if !strings.Contains(bal.Error(), i18n.M.ProviderErrInsufficientBalance) || !strings.Contains(bal.Error(), "Insufficient Balance") {
-		t.Errorf("402 = %q, want the insufficient-balance message plus the provider body", bal.Error())
+	if bal.Error() != fmt.Sprintf(i18n.M.ProviderErrQuotaExhaustedFmt, "deepseek", 402) {
+		t.Errorf("402 = %q, want the localized quota message with actual HTTP status", bal.Error())
 	}
 
 	auth := explainError(&provider.AuthError{Provider: "deepseek", KeyEnv: "DEEPSEEK_API_KEY", Status: 401})
@@ -92,6 +92,16 @@ func TestExplainError(t *testing.T) {
 	})
 	if !strings.Contains(limit.Error(), "810882") || !strings.Contains(limit.Error(), "1048576") || !strings.Contains(limit.Error(), "Compact") {
 		t.Errorf("context overflow should name numbers and recovery, got %q", limit.Error())
+	}
+
+	unnumbered := explainError(&provider.ContextLimitError{
+		APIError: &provider.APIError{Provider: "glm", Status: 400, Body: `{"error":{"code":"1261","message":"Prompt exceeds max length"}}`},
+	})
+	if strings.Contains(unnumbered.Error(), fmt.Sprintf(i18n.M.ProviderErrContextOverflowFmt, 0, 0, 0, 0)) {
+		t.Errorf("an overflow without token numbers must not quote zeros, got %q", unnumbered.Error())
+	}
+	if !strings.Contains(unnumbered.Error(), i18n.M.ProviderErrBadRequest) || !strings.Contains(unnumbered.Error(), "Prompt exceeds max length") {
+		t.Errorf("an overflow without token numbers should keep the provider reason, got %q", unnumbered.Error())
 	}
 
 	toolSchema := explainError(&provider.APIError{
@@ -211,5 +221,23 @@ func TestRedactAuthReason(t *testing.T) {
 		if got := redactAuthReason(c.in); got != c.want {
 			t.Errorf("%s: redactAuthReason(%q) = %q, want %q", c.name, c.in, got, c.want)
 		}
+	}
+}
+
+func TestExplainObservedQuota401DoesNotAskToReplaceKey(t *testing.T) {
+	err := explainError(&provider.AuthError{Provider: "opencode-go", Status: 401, HasKey: true, Body: `{"error":{"type":"CreditsError","message":"Insufficient balance. https://example.test/private-billing"}}`})
+	if err == nil || strings.Contains(err.Error(), "private-billing") || strings.Contains(err.Error(), "invalid") || !strings.Contains(err.Error(), "401") {
+		t.Fatalf("misleading quota explanation: %v", err)
+	}
+}
+
+func TestOpaqueFailureExplainsWithoutGuessingAndUsesSafeTrace(t *testing.T) {
+	got := explainError(&provider.APIError{Status: 400, Body: `{"model":"deepseek"}`, TraceID: "trace-123"}).Error()
+	if !strings.Contains(got, i18n.M.ProviderErrReasonMissing) || !strings.Contains(got, "trace-123") || strings.Contains(got, "thinking") {
+		t.Fatalf("opaque explanation=%s", got)
+	}
+	got = explainError(&provider.APIError{Status: 400, Body: `{"model":"deepseek"}`, TraceID: "https://private.invalid/billing"}).Error()
+	if strings.Contains(got, "private.invalid") {
+		t.Fatal("unsafe trace escaped")
 	}
 }

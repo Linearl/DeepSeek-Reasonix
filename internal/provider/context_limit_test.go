@@ -26,11 +26,9 @@ func TestParseContextLimitErrorNumericJSON(t *testing.T) {
 }
 
 func TestParseContextLimitErrorGLMUnnumbered1261(t *testing.T) {
-	// Zhipu GLM reports a bare overflow with no token numbers (observed on a
-	// 2M-token session: glm-cn 400 {"code":"1261","message":"Prompt exceeds max
-	// length"}). It must be trusted as a context-limit error with an unknown
-	// window so chunked compaction fallback triggers instead of the oversized
-	// request failing transparently on every retry.
+	// Zhipu GLM reports a bare overflow with no token numbers. It must be
+	// trusted as a context-limit error with an unknown window rather than
+	// failing the same oversized request on every retry.
 	body := `{"error":{"code":"1261","message":"Prompt exceeds max length"}}`
 	got := ParseContextLimitError(&APIError{Status: 400, Body: body})
 	if got == nil {

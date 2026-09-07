@@ -28,6 +28,7 @@ type OptionalSinkCapabilities interface {
 	TurnCompletionSink
 	WorkspaceMutationSink
 	RunBudgetSink
+	SubagentLifecycleAuditSink
 }
 
 var _ OptionalSinkCapabilities = AuditForwarder{}
@@ -76,6 +77,10 @@ func (f AuditForwarder) RecordWorkspaceMutation(m WorkspaceMutation) {
 
 func (f AuditForwarder) RecordRunBudget(s RunBudgetSample) {
 	RecordRunBudget(f.Inner, s)
+}
+
+func (f AuditForwarder) RecordSubagentLifecycle(info SubagentLifecycleInfo) {
+	RecordSubagentLifecycle(f.Inner, info)
 }
 
 // DelegationAuditSink receives one receipt per completed sub-agent run.

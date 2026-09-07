@@ -121,7 +121,11 @@ func (a *App) resumeRemoteTabSessionPathForOpenSelection(tabID, name, sessionPat
 		return true
 	}
 	if tab.client == nil || tab.state != "ready" {
-		if selectionRevision != 0 && (tab.state == "connecting" || tab.state == "reconnecting") {
+		if tab.state == "connecting" || tab.state == "reconnecting" {
+			// Always defer the selection while connecting: the first click
+			// after a fresh desktop start has selectionRevision 0, which
+			// previously fell through to "return false" — the user's click
+			// was silently dropped because the SSH tunnel wasn't ready yet.
 			requeueRemoteTabOpenSelectionLocked(tab, &remoteTabPendingOpenSelection{
 				name: strings.TrimSpace(name), path: strings.TrimSpace(sessionPath), title: strings.TrimSpace(sessionTitle),
 				revision: selectionRevision, deferred: true, identityCommitted: true, previous: previous,
@@ -160,7 +164,8 @@ func (a *App) resumeRemoteTabSessionPathForOpenSelection(tabID, name, sessionPat
 		// before the request returns so the all-session pump does not discard its
 		// handoff output or prompt replay as background work.
 		route := a.beginRemoteTabProvisionalResume(tabID, tab, client, gen, target.Path)
-		if err := servePost(ctx, client, serveURL(base, "/resume"), body); err != nil {
+		mountedPath, err := servePostSessionPath(ctx, client, serveURL(base, "/resume"), body)
+		if err != nil {
 			var statusErr *serveHTTPStatusError
 			if errors.As(err, &statusErr) {
 				if !a.rollbackRemoteTabProvisionalResume(tabID, tab, client, gen, route) {
@@ -201,6 +206,9 @@ func (a *App) resumeRemoteTabSessionPathForOpenSelection(tabID, name, sessionPat
 				target.Title = current.Title
 			}
 			target.Running = target.Running || current.Running
+			target.TakenOver = current.TakenOver
+		} else {
+			target.TakenOver = strings.TrimSpace(mountedPath) != ""
 		}
 		title := strings.TrimSpace(target.Title)
 		if title == "" {
@@ -208,7 +216,9 @@ func (a *App) resumeRemoteTabSessionPathForOpenSelection(tabID, name, sessionPat
 		}
 		if !a.commitAndPublishRemoteTabResume(tabID, tab, client, gen, route, target, title) {
 			// A newer route won the publication fence; never restore the older
-			// selection over it.
+			// selection over it. The spectator pin was for the losing route —
+			// drop it so the winning session renders as foreground.
+			a.clearRemoteTabSpectator(tabID, gen)
 			return true
 		}
 		a.goRemoteTabSafe("remoteTabResumeStatus", func() { _, _ = a.RemoteTabStatus(tabID) })

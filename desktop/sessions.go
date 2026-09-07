@@ -160,7 +160,6 @@ func sessionTelemetryPath(sessionPath string) string {
 	}
 	return sessionPath + ".telemetry.json"
 }
-
 func sessionTrashArtifacts(sessionPath, key string) []sessionTrashArtifact {
 	stem := strings.TrimSuffix(key, ".jsonl")
 	return []sessionTrashArtifact{
@@ -173,6 +172,7 @@ func sessionTrashArtifacts(sessionPath, key string) []sessionTrashArtifact {
 		{src: store.SessionDisplayIndex(sessionPath), name: stem + ".display-index.json"},
 		{src: store.SessionConflictLog(sessionPath), name: stem + ".conflicts.jsonl"},
 		{src: store.SessionRecoveryState(sessionPath), name: stem + ".recovery.json"},
+		{src: store.SessionPinnedContext(sessionPath), name: stem + ".pinned-context.json"},
 		{src: sessionTelemetryPath(sessionPath), name: key + ".telemetry.json"},
 		{src: store.SessionCheckpointDir(sessionPath), name: stem + ".ckpt"},
 		{src: store.SessionJobsDir(sessionPath), name: stem + ".jobs"},

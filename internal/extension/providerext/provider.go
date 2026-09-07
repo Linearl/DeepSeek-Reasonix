@@ -41,6 +41,24 @@ func (p *Provider) Name() string {
 	return p.ref
 }
 
+// ModelInfo exposes the sidecar adapter's exact model capability metadata.
+// Older sidecars only provide the legacy vision bit, which is projected into
+// the canonical modality list for compatibility.
+func (p *Provider) ModelInfo() provider.ModelInfo {
+	if p == nil {
+		return provider.ModelInfo{}
+	}
+	info := provider.ModelInfo{ID: p.descriptor.Model, InputModalities: append([]provider.ModelModality(nil), p.descriptor.InputModalities...)}
+	if info.InputModalities == nil {
+		if p.descriptor.Vision {
+			info.InputModalities = []provider.ModelModality{provider.ModalityText, provider.ModalityImage}
+		} else {
+			info.InputModalities = []provider.ModelModality{provider.ModalityText}
+		}
+	}
+	return info
+}
+
 // SupportsTools binds the agent's structured-tool path to the extension's
 // declared provider capability. A text-only extension receives no schemas and
 // keeps the legacy visible-text completion contract.

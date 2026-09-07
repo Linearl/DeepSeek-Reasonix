@@ -158,6 +158,9 @@ func (t *readSessionTool) Execute(_ context.Context, args json.RawMessage) (stri
 	turnCount := 0
 loop:
 	for _, m := range msgs {
+		if agent.IsPinnedContextRevision(m) {
+			continue
+		}
 		switch m.Role {
 		case provider.RoleSystem:
 			// System prompts excluded for privacy (matching history tool).

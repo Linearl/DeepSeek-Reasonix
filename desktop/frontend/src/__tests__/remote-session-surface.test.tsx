@@ -81,6 +81,7 @@ const resolveStateRaceSnapshots: Array<(value: { history: unknown[]; status: unk
 let rotationSnapshotCalls = 0;
 let resolveRotationReconcile: ((value: { history: unknown[]; status: unknown }) => void) | undefined;
 window.go = { main: { App: {
+  async RegisterNavigationIntent(token: string) { tape.push(`navigation:${token}`); },
   async RemoteTabSnapshot(tabId: string) {
     tape.push(`snapshot:${tabId}`);
 		if (tabId === "tab-hydration-failure" && failHydration) throw new Error("history exceeds bridge limit");
@@ -403,14 +404,14 @@ await act(async () => {
   await flush();
 });
 await act(async () => {
-  [...document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.trim() === "Other answer")?.click();
+  document.querySelector<HTMLElement>(".ask-shelf__custom-row")?.click();
   await flush();
 });
 await act(async () => {
   const input = document.querySelector<HTMLInputElement>(".ask-shelf__custom");
   if (input) {
-    Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, "value")?.set?.call(input, "canary");
-    input.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+    const propsKey = Object.keys(input).find((key) => key.startsWith("__reactProps")); const props = propsKey ? (input as unknown as Record<string, { onChange?: (event: { target: { value: string } }) => void }>)[propsKey] : undefined;
+    props?.onChange?.({ target: { value: "canary" } });
   }
   await flush();
 });
@@ -456,6 +457,7 @@ await act(async () => {
     await flush();
   });
   ok(tape.includes("open:gpu-box:~/app:"), "serve_down retry preserves the backend's parked session target");
+  const reconnectNavigation = tape.findIndex((entry) => entry.startsWith("navigation:nav-remote-reconnect-")); ok(reconnectNavigation >= 0 && reconnectNavigation < tape.indexOf("open:gpu-box:~/app:"), "serve_down retry registers navigation before reopening the remote tab");
   failOpen = true;
   await act(async () => {
     warning?.querySelector<HTMLButtonElement>("button")?.click();
@@ -464,7 +466,6 @@ await act(async () => {
   ok(warning?.textContent?.includes("reconnect failed") === true, "serve_down retry failures render on the surface");
   failOpen = false;
 }
-
 // Mid-flight disconnected events also refuse the placeholder.
 await act(async () => { __emitMockRemoteTab("tab-remote-1", "state", { state: "disconnected" }); await flush(); });
 {
@@ -632,7 +633,6 @@ for (const want of [
 ]) {
   ok(tape.includes(want), `command forwarded: ${want}`);
 }
-
 await act(async () => {
   probeRoot.render(<LocaleProvider><HookProbe tabId="tab-pending-model" /></LocaleProvider>);
   await Promise.resolve();

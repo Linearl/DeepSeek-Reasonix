@@ -12,10 +12,29 @@ import (
 // TurnStartView is the synchronous admission receipt for the new Wails turn
 // API. Events remain the streaming authority after admission.
 type TurnStartView struct {
-	TurnID       string           `json:"turnId"`
-	Status       event.TurnStatus `json:"status"`
-	RuntimeEpoch string           `json:"runtimeEpoch,omitempty"`
-	SubmissionID string           `json:"submissionId,omitempty"`
+	TurnID       string                    `json:"turnId"`
+	Status       event.TurnStatus          `json:"status"`
+	Disposition  control.SubmitDisposition `json:"disposition"`
+	RuntimeEpoch string                    `json:"runtimeEpoch,omitempty"`
+	SubmissionID string                    `json:"submissionId,omitempty"`
+}
+
+// validatePromptIdentity fences a decision to the runtime and turn that
+// rendered its card. It is intentionally shared by every decision surface;
+// callers must still resolve the prompt on the same controller instance.
+func (a *App) validatePromptIdentity(tabID, turnID, runtimeEpoch string) (control.SessionAPI, error) {
+	tab, ctrl := a.tabAndCtrlByID(tabID)
+	if ctrl == nil {
+		return nil, a.workspaceNotReadyErr(tab)
+	}
+	status := ctrl.RuntimeStatus()
+	if strings.TrimSpace(turnID) == "" || status.TurnID != strings.TrimSpace(turnID) {
+		return nil, fmt.Errorf("turn %q is not the active turn for tab %q", turnID, tabID)
+	}
+	if epoch := strings.TrimSpace(runtimeEpoch); epoch != "" && tab != nil && tab.sink != nil && tab.sink.runtimeEpochSnapshot() != epoch {
+		return nil, fmt.Errorf("runtime changed while resolving prompt for tab %q", tabID)
+	}
+	return ctrl, nil
 }
 
 // StartTurnForTab is the turn-id-aware replacement for SubmitToTab. Existing
@@ -24,8 +43,12 @@ func (a *App) StartTurnForTab(tabID, input, submissionID string) (TurnStartView,
 	if strings.TrimSpace(submissionID) == "" {
 		return TurnStartView{}, fmt.Errorf("submissionId is required")
 	}
-	if err := a.SubmitToTabWithID(tabID, input, submissionID); err != nil {
+	result, err := a.submitToTabResult(tabID, input, false, true, submissionID)
+	if err != nil {
 		return TurnStartView{}, err
+	}
+	if result.Disposition == control.SubmitManagementHandled {
+		return TurnStartView{Disposition: result.Disposition, SubmissionID: submissionID}, nil
 	}
 	tab, ctrl := a.tabAndCtrlByID(tabID)
 	if ctrl == nil {
@@ -59,7 +82,7 @@ func (a *App) StartTurnForTab(tabID, input, submissionID string) (TurnStartView,
 	// This is an admission receipt, not a potentially raced runtime snapshot.
 	// Ordered events carry every later transition, including a provider that
 	// completed before the Wails Promise was delivered.
-	return TurnStartView{TurnID: turnID, Status: event.TurnQueued, RuntimeEpoch: epoch, SubmissionID: submissionID}, nil
+	return TurnStartView{TurnID: turnID, Status: event.TurnQueued, Disposition: control.SubmitTurnStarted, RuntimeEpoch: epoch, SubmissionID: submissionID}, nil
 }
 
 // InterruptTurnForTab cancels only the exact active turn. A stale Stop button

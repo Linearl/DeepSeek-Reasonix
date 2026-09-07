@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"reasonix/internal/event"
@@ -120,6 +121,7 @@ func splitLegacyCoalescedSummary(msg provider.Message) (provider.Message, provid
 		return provider.Message{}, provider.Message{}, false
 	}
 	summary := msg
+	summary.Origin = provider.MessageOriginHost
 	summary.Content = msg.Content[:i+len(summaryTagClose)]
 	summary.RawContent = ""
 	summary.Images = nil
@@ -128,6 +130,10 @@ func splitLegacyCoalescedSummary(msg provider.Message) (provider.Message, provid
 	summary.ServerSearch = nil
 	summary.CreatedAt = 0
 	user := msg
+	// The legacy coalesced record did not retain the following turn's
+	// provenance. Empty keeps old-session fallback available instead of
+	// asserting that an old host continuation was user-authored.
+	user.Origin = ""
 	user.Content = msg.Content[i+len(separator):]
 	user.RawContent = ""
 	return summary, user, true
@@ -137,7 +143,7 @@ func compressAnchorCandidate(msg provider.Message) bool {
 	if msg.Role != provider.RoleUser || msg.LocalOnly || isCompactionSummary(msg) {
 		return false
 	}
-	return IsUserAuthoredTurn(UserMessageText(msg))
+	return IsUserAuthoredTurnMessage(msg)
 }
 
 func anchorPreview(text string) string {
@@ -147,6 +153,7 @@ func anchorPreview(text string) string {
 type visibleCompressionPlan struct {
 	result    tool.CompressResult
 	foldMask  []bool
+	dropMask  []bool
 	fold      []provider.Message
 	firstFold int
 }
@@ -211,12 +218,23 @@ func (a *Agent) compressVisibleRange(
 	}
 
 	projection := buildVisibleCompressionProjection(snap.visible, plan, summary)
+	projection, pinnedCheckpoint, err := rebasePinnedContextProjection(projection, snap.canonical, len(snap.canonical))
+	if err != nil {
+		a.emitCompactionAborted(trigger)
+		return tool.CompressResult{}, err
+	}
 	projectionTokens := a.estimatedVisibleRequestTokens(projection)
 	tele.ProjectionTokens = projectionTokens
 	result.Messages = len(plan.fold)
 	result.ProjectionTokens = projectionTokens
 	result.Mode = res.Mode
 	if projectionTokens >= result.SourceTokens {
+		if pinnedCheckpoint {
+			result.Reason = "pinned-context-too-large: checkpoint prevents compaction from reducing context"
+			a.emitCompactionTelemetry(tele)
+			a.emitCompactionAborted(trigger)
+			return result, nil
+		}
 		result.Reason = "compressed context would not be smaller"
 		a.emitCompactionTelemetry(tele)
 		a.emitCompactionAborted(trigger)
@@ -310,10 +328,19 @@ func (a *Agent) planVisibleCompression(snap explicitCompressionSnapshot, directi
 	}
 
 	plan.foldMask = make([]bool, len(snap.visible))
+	plan.dropMask = make([]bool, len(snap.visible))
 	plan.firstFold = len(snap.visible)
+	latestContext := latestSessionContextIndex(snap.visible)
 	for i, msg := range snap.visible {
 		selected := i >= start && i < end
 		mergeSummary := i < completedEnd && isCompactionSummary(msg)
+		if isSessionContextMessage(msg) {
+			// Context never enters the summarizer. Once an older snapshot falls
+			// inside the explicitly compressed range, remove it from the
+			// projection; the latest valid snapshot remains byte-identical.
+			plan.dropMask[i] = selected && i != latestContext
+			continue
+		}
 		if msg.Role == provider.RoleSystem || i < head || (!selected && !mergeSummary) {
 			continue
 		}
@@ -339,8 +366,15 @@ func (a *Agent) prepareVisibleCompression(ctx context.Context, trigger string, f
 			instructions += hookInstructions
 		}
 	}
-	originalHash := providerVisibleFingerprint(modelInputMessages(fold))
-	preparedFold, preparedInstructions, err := a.interceptCompactionPrepare(ctx, fold, instructions)
+	filteredFold, removedPinned := withoutPinnedContextRevisions(fold)
+	if len(filteredFold) == 0 {
+		return preparedVisibleCompression{}, "selected range contains no summarizable messages", nil
+	}
+	if removedPinned {
+		inputMode = SummaryInputNonPrefix
+	}
+	originalHash := providerVisibleFingerprint(modelInputMessages(filteredFold))
+	preparedFold, preparedInstructions, err := a.interceptCompactionPrepare(ctx, filteredFold, instructions)
 	if err != nil {
 		return preparedVisibleCompression{}, "", err
 	}
@@ -348,7 +382,7 @@ func (a *Agent) prepareVisibleCompression(ctx context.Context, trigger string, f
 	if len(preparedFold) == 0 {
 		return preparedVisibleCompression{}, "compaction hook removed the selected range", nil
 	}
-	if providerVisibleFingerprint(modelInputMessages(preparedFold)) != originalHash {
+	if !removedPinned && providerVisibleFingerprint(modelInputMessages(preparedFold)) != originalHash {
 		inputMode = SummaryInputExtensionRewritten
 	}
 	return preparedVisibleCompression{fold: preparedFold, instructions: preparedInstructions, inputMode: inputMode}, "", nil
@@ -360,11 +394,11 @@ func buildVisibleCompressionProjection(visible []provider.Message, plan visibleC
 		if i == plan.firstFold {
 			projection = append(projection, formatSummaryMessage(summary))
 		}
-		if !plan.foldMask[i] {
+		if !plan.foldMask[i] && (len(plan.dropMask) <= i || !plan.dropMask[i]) {
 			projection = append(projection, msg)
 		}
 	}
-	return provider.ProjectionMessages(projection)
+	return projectionMessagesPreservingPinnedContext(projection)
 }
 
 func compactionTelemetryFromSummary(trigger, cacheState string, sourceTokens int, res foldSummary) CompactionTelemetry {
@@ -373,8 +407,11 @@ func compactionTelemetryFromSummary(trigger, cacheState string, sourceTokens int
 		SourceTokens:      sourceTokens,
 		ProviderRequestID: res.RequestID,
 		FoldTokens:        res.FoldTokens,
-		Spans:             1, // one application-layer summary request per transaction
+		Spans:             res.Spans,
 		SummaryInputMode:  res.InputMode,
+	}
+	if tele.Spans <= 0 {
+		tele.Spans = 1
 	}
 	usage := res.Usage
 	if usage == nil {
@@ -392,26 +429,49 @@ func compactionTelemetryFromSummary(trigger, cacheState string, sourceTokens int
 	return tele
 }
 
+// foldSummaryWithChunkedFallback retries summary size failures through the
+// resilient fragment/tree-reduce path used for over-length sessions.
+func (a *Agent) foldSummaryWithChunkedFallback(ctx context.Context, trigger string, fold []provider.Message, instructions string, sourceTokens int, inputMode string) (foldSummary, CompactionTelemetry, error) {
+	res, tele, err := a.foldSummaryWithTelemetry(ctx, trigger, fold, instructions, sourceTokens, inputMode)
+	if err == nil || !chunkedFallbackApplies(err, inputMode) {
+		return res, tele, err
+	}
+	chunked, chunkedErr := a.chunkedFoldSummary(ctx, fold, instructions, nil)
+	chunked.Usage = mergeSamplingUsage(res.Usage, chunked.Usage)
+	chunked.Spans += res.Spans
+	if chunked.FoldTokens <= 0 {
+		chunked.FoldTokens = res.FoldTokens
+	}
+	if chunked.RequestID == "" {
+		chunked.RequestID = res.RequestID
+	}
+	if chunkedErr != nil {
+		tele = compactionTelemetryFromSummary(trigger, a.CacheState(), sourceTokens, chunked)
+		tele.Error = fmt.Sprintf("%v (chunked fallback: %v)", err, chunkedErr)
+		return chunked, tele, chunkedErr
+	}
+	return chunked, compactionTelemetryFromSummary(trigger, a.CacheState(), sourceTokens, chunked), nil
+}
+
+// chunkedFallbackApplies reports a size failure the fragment path can fix. A
+// provider overflow qualifies only once the transcript form has failed too;
+// before that a re-planned replay is one request instead of many.
+func chunkedFallbackApplies(err error, inputMode string) bool {
+	if provider.AsContextLimitError(err) != nil {
+		return inputMode == SummaryInputSlim
+	}
+	return summarySizeFailure(err)
+}
+
 // compact writes a context projection; trigger stays "auto"/"manual" for UI cards.
-func (a *Agent) compact(ctx context.Context, trigger, instructions string, force bool) error {
-	_, err := a.compactToProjection(ctx, trigger, instructions, force, false)
-	return err
+func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provider.Message, instructions string, sourceTokens int, inputMode string, req foldRequest) (foldSummary, CompactionTelemetry, error) {
+	if req.allowChunked {
+		return a.foldSummaryWithChunkedFallback(ctx, trigger, fold, instructions, sourceTokens, inputMode)
+	}
+	return a.foldSummaryWithTelemetry(ctx, trigger, fold, instructions, sourceTokens, inputMode)
 }
 
-// compactToProjection installs one content-driven summary checkpoint:
-// stable prefix + one structured digest + recent verbatim tail.
-// The canonical transcript is never rewritten. CompactionNoop means nothing
-// was foldable; callers at physical overflow must treat that as hard failure.
-// mustFree marks the fold the caller cannot proceed without. Automatic
-// triggers always cap the summary input via maximumSafeSummaryPrefixEnd
-// (#9572); manual compaction keeps the uncapped user-requested range.
-func (a *Agent) compactToProjection(ctx context.Context, trigger, instructions string, force, mustFree bool) (CompactionOutcome, error) {
-	a.sess.compactionRunMu.Lock()
-	defer a.sess.compactionRunMu.Unlock()
-	return a.compactToProjectionLocked(ctx, trigger, instructions, force, mustFree)
-}
-
-func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instructions string, force, mustFree bool) (CompactionOutcome, error) {
+func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instructions string, req foldRequest) (CompactionOutcome, error) {
 	activeTurn := a.activeTurnCreatedAt.Load()
 	canonical, transcriptVersion := a.sess.conversation.snapshotMessagesVersion()
 	a.sess.compactionMu.Lock()
@@ -421,12 +481,13 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 	a.sess.compactionMu.Unlock()
 	msgs, onProjection := a.visibleInputForFold(stateSnapshot, canonical, transcriptVersion)
 	viewInputHash := providerVisibleFingerprint(modelInputMessages(msgs))
-	head, start, ok := a.planFoldRegion(msgs, force)
+	head, start, ok := a.planFoldRegion(msgs, req.force, req.mustFree)
 	if !ok {
 		return CompactionNoop, nil
 	}
-	_, preliminaryFold, _ := a.partitionFoldForProjection(msgs[head:start])
-	if len(preliminaryFold) == 0 || (!force && !foldEconomics(preliminaryFold)) {
+	latestContext := latestSessionContextIndex(msgs)
+	_, preliminaryFold, _ := a.partitionFoldForProjectionAt(msgs[head:start], head, latestContext)
+	if len(preliminaryFold) == 0 || (!req.force && !foldEconomics(preliminaryFold)) {
 		return CompactionNoop, nil
 	}
 	fixedPrefixTokens := a.estimatedVisibleRequestTokens(msgs[:head])
@@ -443,30 +504,20 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 			instructions += hookInstr
 		}
 	}
-	// Automatic maintenance caps the summary input on every trigger path
-	// (#9572): a pressure fold after projection invalidation can read the full
-	// canonical transcript, and an uncapped summary request then exceeds the
-	// provider window (observed: 994,833-token request vs a 1M shared window).
-	if trigger != CompactionTriggerManual {
-		if capped := a.maximumSafeSummaryPrefixEnd(msgs, head, start, instructions); capped > head {
-			start = capped
-		} else if !mustFree {
-			// Soft skip: folding nothing this round beats sending a request the
-			// provider must reject; the next maintenance attempt re-plans.
+	// Cap every automatic summary input (#9572), including pressure folds after
+	// projection invalidation. mustFree also covers the over-ceiling manual rescue
+	// merged in #9474; ordinary manual compaction keeps its requested range.
+	if req.mustFree || trigger != CompactionTriggerManual {
+		start = a.maximumSafeSummaryPrefixEnd(msgs, head, start, instructions)
+		if start <= head {
 			a.emitCompactionAborted(trigger)
-			return CompactionNoop, nil
+			return CompactionNoop, fmt.Errorf("%w: no balanced prefix leaves enough room for a summary response", errCheckpointRejected)
 		}
-		// mustFree (est at or above the hard ceiling) with no balanced prefix
-		// keeps the uncapped fold (#9572 follow-up): the fold must be attempted
-		// anyway, and on small configured windows the fixed instruction+output
-		// budget alone can exceed the cap — hard-failing there would dead-lock
-		// recovery on a fold that may well fit the real provider window. If the
-		// provider rejects the uncapped request, the existing overflow recovery
-		// takes over with the same signal the hard error used to produce.
 	}
 
 	covered, bodySuffix := projectionCoverageForFold(stateSnapshot, msgs, start, onProjection)
-	kept, fold, retention := a.partitionFoldForProjection(msgs[head:start])
+	regionHadPinnedRevision := containsPinnedContextRevision(msgs[head:start])
+	kept, fold, retention := a.partitionFoldForProjectionAt(msgs[head:start], head, latestContext)
 	if len(fold) == 0 {
 		a.emitCompactionAborted(trigger)
 		return CompactionNoop, nil
@@ -482,36 +533,17 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 		a.emitCompactionAborted(trigger)
 		return CompactionNoop, nil
 	}
+	if req.mustFree || trigger != CompactionTriggerManual {
+		if err := a.validateSafeSummaryRequest(fold, instructions, req.slim); err != nil {
+			a.emitCompactionAborted(trigger)
+			return CompactionNoop, err
+		}
+	}
 
 	sourceTokens := a.estimatedVisibleRequestTokens(msgs)
-	inputMode := SummaryInputCachePrefix
-	if providerVisibleFingerprint(modelInputMessages(fold)) != originalFoldHash {
-		inputMode = SummaryInputExtensionRewritten
-	}
-	res, tele, err := a.foldSummaryWithTelemetry(ctx, trigger, fold, instructions, sourceTokens, inputMode)
-	if err != nil && (errors.Is(err, errSummaryOutputTruncated) || errors.Is(err, ErrCompactionRequired) || provider.AsContextLimitError(err) != nil) {
-		// One request cannot summarize this fold: the output ran into the
-		// provider limit, the fold itself overflows the window, or the
-		// provider rejected the request with a trusted context-window
-		// overflow (HTTP 400/413/422). Fall back to the chunked
-		// extract strategy (#9082 #9572 follow-up) — the projection still
-		// installs in this session, so over-length sessions recover with a
-		// plain /compact and work continues in place.
-		// Stream the fragment progress to the frontend so the compaction card
-		// shows "compacting fragment N/M" instead of a silent spinner.
-		chunked, chunkedErr := a.chunkedFoldSummary(ctx, fold, instructions, func(done, total int) {
-			a.svc.sink.Emit(event.Event{Kind: event.CompactionProgress, Compaction: event.Compaction{Trigger: trigger, Done: done, Total: total}})
-		})
-		if chunkedErr != nil {
-			tele.Error = fmt.Sprintf("%v (chunked fallback: %v)", err, chunkedErr)
-			a.emitCompactionTelemetry(tele)
-			a.emitCompactionAborted(trigger)
-			return CompactionNoop, chunkedErr
-		}
-		res = chunked
-		tele = compactionTelemetryFromSummary(trigger, a.CacheState(), sourceTokens, chunked)
-		err = nil
-	}
+	inputMode := summaryInputModeFor(req, regionHadPinnedRevision,
+		providerVisibleFingerprint(modelInputMessages(fold)) != originalFoldHash)
+	res, tele, err := a.summarizeFold(ctx, trigger, fold, instructions, sourceTokens, inputMode, req)
 	if err != nil {
 		a.emitCompactionTelemetry(tele)
 		a.emitCompactionAborted(trigger)
@@ -530,14 +562,11 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 	// (rewind truncation, snips) stay visible without rebuilding the fold.
 	projMsgs := checkpointProjectionMessages(msgs, head, kept, summary)
 	if len(bodySuffix) > 0 {
-		projMsgs = append(projMsgs, provider.ProjectionMessages(bodySuffix)...)
+		projMsgs = append(projMsgs, projectionMessagesPreservingPinnedContext(bodySuffix)...)
 	}
-	spliced := append(append([]provider.Message(nil), projMsgs...), canonical[covered:]...)
-	projTokens := a.estimatedVisibleRequestTokens(spliced)
-	tele.ProjectionTokens = projTokens
 	tele.UserTurnsKept, tele.UserTurnsDropped = retention.Kept, retention.Dropped
-	a.emitCompactionTelemetry(tele)
-	if err := a.acceptCheckpointCandidate(trigger, sourceTokens, projTokens); err != nil {
+	projMsgs, spliced, projTokens, err := a.preparePinnedCheckpointCandidate(trigger, projMsgs, canonical, covered, sourceTokens, &tele)
+	if err != nil {
 		a.emitCompactionAborted(trigger)
 		return CompactionNoop, err
 	}
@@ -557,6 +586,29 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 		Trigger: trigger, Messages: len(fold), Summary: summary,
 	}})
 	return CompactionInstalled, nil
+}
+
+func (a *Agent) preparePinnedCheckpointCandidate(
+	trigger string,
+	projection, canonical []provider.Message,
+	covered, sourceTokens int,
+	tele *CompactionTelemetry,
+) ([]provider.Message, []provider.Message, int, error) {
+	projection, pinnedCheckpoint, err := rebasePinnedContextProjection(projection, canonical, covered)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	spliced := append(append([]provider.Message(nil), projection...), canonical[covered:]...)
+	projectionTokens := a.estimatedVisibleRequestTokens(spliced)
+	tele.ProjectionTokens = projectionTokens
+	a.emitCompactionTelemetry(*tele)
+	if err := a.acceptCheckpointCandidate(trigger, sourceTokens, projectionTokens); err != nil {
+		if pinnedCheckpoint {
+			return nil, nil, 0, fmt.Errorf("pinned-context-too-large: checkpoint prevents compaction acceptance: %w", err)
+		}
+		return nil, nil, 0, err
+	}
+	return projection, spliced, projectionTokens, nil
 }
 
 // projectionCoverageForFold maps a working-view boundary to canonical
@@ -589,8 +641,8 @@ func (a *Agent) visibleInputForFold(state CompactionState, canonical []provider.
 func checkpointProjectionMessages(msgs []provider.Message, head int, kept []provider.Message, summary string) []provider.Message {
 	projMsgs := make([]provider.Message, 0, head+1+len(kept))
 	projMsgs = append(projMsgs, msgs[:head]...)
-	projMsgs = append(projMsgs, formatSummaryMessage(summary))
 	projMsgs = append(projMsgs, kept...)
+	projMsgs = append(projMsgs, formatSummaryMessage(summary))
 	return provider.ProjectionMessages(projMsgs)
 }
 
@@ -608,7 +660,9 @@ func (a *Agent) acceptCheckpointCandidate(trigger string, sourceTokens, candidat
 }
 
 // planFoldRegion returns [head:start] to fold; force shrinks the recent tail.
-func (a *Agent) planFoldRegion(msgs []provider.Message, force bool) (head, start int, ok bool) {
+// splitActive lets an overflow rescue fold the active turn's older completed
+// rounds as well; otherwise the active turn stays verbatim.
+func (a *Agent) planFoldRegion(msgs []provider.Message, force, splitActive bool) (head, start int, ok bool) {
 	head, start, ok = a.planCompaction(msgs, minCompactMessages, force)
 	if !ok {
 		head, start, ok = a.planCompaction(msgs, 1, force)
@@ -617,79 +671,13 @@ func (a *Agent) planFoldRegion(msgs []provider.Message, force bool) (head, start
 		return head, start, false
 	}
 	if active := a.activeTurnStart(msgs); active >= head && active < start {
-		start = active
+		if splitActive {
+			start = activeTurnFoldBoundary(msgs, active, start)
+		} else {
+			start = active
+		}
 	}
 	return head, start, start > head
-}
-
-// maximumSafeSummaryPrefixEnd returns the largest balanced contiguous prefix
-// whose exact summary request leaves the collector's minimum output budget.
-// The remaining middle and tail stay verbatim in the projection.
-func (a *Agent) maximumSafeSummaryPrefixEnd(msgs []provider.Message, head, end int, instructions string) int {
-	window := a.effectiveContextWindow()
-	if window <= 0 || head < 0 || end <= head || end > len(msgs) {
-		return end
-	}
-	policy := contextBudgetPolicyOf(a.svc.prov)
-	if policy.WindowMode == provider.ContextWindowUnknown {
-		// A learned overflow makes an unknown gateway shared-window. An
-		// unknown gateway that never admitted a request still honors the
-		// configured window (#9572): leaving the summary request uncapped on
-		// that path is exactly how the 1261 death spiral started. fits(end)
-		// keeps requests that already fit the configured window intact.
-		if a.lastAdmission().ObservedWindow > 0 || a.contextWindow > 0 {
-			policy.WindowMode = provider.ContextWindowShared
-		}
-	}
-	maxPromptTokens := a.hardInputCeiling()
-	if policy.WindowMode == provider.ContextWindowShared {
-		// The digest output budget scales with the window (#9572 follow-up): a
-		// fixed 8192 reserve made maxPromptTokens ≤ 0 on ≤16K windows and
-		// soft-skipped every automatic fold.
-		maxPromptTokens = window - a.summaryOutputBudget() - protocolReserveTokens
-	}
-	if maxPromptTokens <= 0 {
-		return head
-	}
-	fits := func(candidate int) bool {
-		request := a.summaryRequest(msgs[head:candidate], instructions)
-		return a.estimatedRequestTokens(request) <= maxPromptTokens
-	}
-	if fits(end) {
-		return end
-	}
-
-	low, high, best := head+1, end-1, head
-	for low <= high {
-		mid := low + (high-low)/2
-		if fits(mid) {
-			best = mid
-			low = mid + 1
-		} else {
-			high = mid - 1
-		}
-	}
-	// A tail beginning with a tool result would split it from the assistant
-	// tool-call message. Move the fold boundary back across the whole result
-	// group; the assistant call and all of its results then remain together.
-	bisectBest := best
-	for best > head && best < len(msgs) && msgs[best].Role == provider.RoleTool {
-		best--
-	}
-	// A cap that leaves a fold too small to be worth summarizing deadlocks
-	// automatic maintenance: the next round re-plans the same region and skips
-	// again (#9572 follow-up). Fall through to the uncapped fold — it either
-	// fits the real provider window (the configured one was conservative) or
-	// fails into the existing overflow recovery, which calibrates the window.
-	// The #9572 shape (fold ≈ window, fits(end)) never reaches this branch
-	// because fits(end) returns early. Judged on the bisect boundary before
-	// the tool-pair retreat, with the same economics the fold path applies, so
-	// a boundary pulled back to keep a result group verbatim is not mistaken
-	// for a useless fold.
-	if bisectBest > head && estimateMessagesTokens(msgs[head:bisectBest]) < minFoldTokens {
-		return end
-	}
-	return best
 }
 
 type userTurnRetention struct {
@@ -698,16 +686,35 @@ type userTurnRetention struct {
 }
 
 func (a *Agent) partitionFoldForProjection(region []provider.Message) (kept, fold []provider.Message, retention userTurnRetention) {
-	for _, m := range region {
-		if m.LocalOnly {
+	return a.partitionFoldForProjectionAt(region, 0, latestSessionContextIndex(region))
+}
+
+func (a *Agent) partitionFoldForProjectionAt(region []provider.Message, offset, latestContext int) (kept, fold []provider.Message, retention userTurnRetention) {
+	for i, m := range region {
+		if m.LocalOnly || IsPinnedContextRevision(m) {
+			continue
+		}
+		if isSessionContextMessage(m) {
+			if offset+i == latestContext {
+				kept = append(kept, m)
+			}
 			continue
 		}
 		fold = append(fold, m)
-		if m.Role == provider.RoleUser && !isCompactionSummary(m) {
+		if IsUserAuthoredTurnMessage(m) {
 			retention.Dropped++
 		}
 	}
 	return kept, fold, retention
+}
+
+func latestSessionContextIndex(messages []provider.Message) int {
+	for i := range slices.Backward(messages) {
+		if isSessionContextMessage(messages[i]) {
+			return i
+		}
+	}
+	return -1
 }
 
 // runCompactionSummary uses the single local summarizer path for every provider.

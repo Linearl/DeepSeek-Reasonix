@@ -4467,7 +4467,7 @@ reasoning_protocol = "none"
 	}
 }
 
-func TestClassicLayoutQuickClicksSerializeWorkspaceRebuild(t *testing.T) {
+func TestLegacyClassicLayoutQuickClicksSerializeWorkspaceRebuild(t *testing.T) {
 	runQuickClickWorkspaceReconcileTest(t, "classic")
 }
 
@@ -5301,7 +5301,7 @@ func TestConnectKeyRestoresDeepSeekProviderAccess(t *testing.T) {
 	}
 }
 
-func TestConnectKeyFreshInstallUsesDeepSeekAnthropicDefaults(t *testing.T) {
+func TestConnectKeyFreshInstallUsesDeepSeekChatAndIndependentSearchDefaults(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	oldFetch := connectKeyBalanceFetch
 	connectKeyBalanceFetch = func(context.Context, *http.Client, string, string) (*billing.Balance, error) {
@@ -5332,9 +5332,9 @@ func TestConnectKeyFreshInstallUsesDeepSeekAnthropicDefaults(t *testing.T) {
 	if !ok {
 		t.Fatalf("default model %q did not resolve", cfg.DefaultModel)
 	}
-	if entry.Kind != "anthropic" || entry.BaseURL != "https://api.deepseek.com/anthropic" ||
-		entry.Thinking != "enabled" || !config.EffectiveWebSearch(entry) || config.EffectiveVision(entry) {
-		t.Fatalf("fresh-install DeepSeek entry = %+v; want Anthropic, thinking, web search, and text-only vision", entry)
+	if entry.Kind != "openai" || entry.BaseURL != "https://api.deepseek.com" ||
+		entry.Thinking != "enabled" || !config.EffectiveIndependentWebSearch(entry) || config.EffectiveVision(entry) {
+		t.Fatalf("fresh-install DeepSeek entry = %+v; want Chat Completions, thinking, independent search, and text-only vision", entry)
 	}
 	if app.NeedsOnboarding() {
 		t.Fatal("fresh-install onboarding should close after the validated DeepSeek key is stored")
@@ -7577,54 +7577,6 @@ func (r *appendingDesktopRunner) Run(_ context.Context, input string) error {
 	r.session.Add(provider.Message{Role: provider.RoleUser, Content: input})
 	r.session.Add(provider.Message{Role: provider.RoleAssistant, Content: "ok"})
 	return nil
-}
-
-func TestSubmitToTabHistoryDisplaysRawInputAfterMemoryCompose(t *testing.T) {
-	isolateDesktopUserDirs(t)
-	dir := config.SessionDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	path := filepath.Join(dir, "memory-display.jsonl")
-	sess := agent.NewSession("sys")
-	exec := agent.New(nil, nil, sess, agent.Options{}, event.Discard)
-	runner := &appendingDesktopRunner{session: sess, started: make(chan string, 1)}
-	ctrl := control.New(control.Options{
-		Runner:      runner,
-		Executor:    exec,
-		Sink:        event.Discard,
-		SessionDir:  dir,
-		SessionPath: path,
-		Label:       "test",
-	})
-	defer ctrl.Close()
-
-	app := NewApp()
-	app.setTestCtrl(ctrl, "deepseek/test")
-	ctrl.QueueMemory(`Saved memory "reasonix-contributions": contribution count updated`)
-
-	const prompt = "不要，删了"
-	app.SubmitToTab("test", prompt)
-	composed := <-runner.started
-	waitNotRunning(t, ctrl)
-
-	if !strings.Contains(composed, "<memory-update>") || !strings.HasSuffix(composed, prompt) {
-		t.Fatalf("model input should include memory update followed by prompt, got %q", composed)
-	}
-	got := app.HistoryForTab("test")
-	if len(got) < 2 {
-		t.Fatalf("history length = %d, want user + assistant", len(got))
-	}
-	if got[0].Role != "system" || got[1].Role != "user" {
-		t.Fatalf("history roles = %+v, want system then user", got[:min(len(got), 2)])
-	}
-	if got[1].Content != prompt {
-		t.Fatalf("displayed user content = %q, want %q", got[1].Content, prompt)
-	}
-	if strings.Contains(got[1].Content, "<memory-update>") {
-		t.Fatalf("displayed user content leaked memory update: %q", got[1].Content)
-	}
 }
 
 func TestForkCreatesActiveTabWithoutSwitchingSourceController(t *testing.T) {

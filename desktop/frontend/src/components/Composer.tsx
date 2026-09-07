@@ -1,3 +1,5 @@
+import { recoveryStatusText } from "../lib/recoveryStatus";
+import { useAppNavigationStore } from "../store/appNavigation";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { ArrowRight, ArrowUp, Check, ChevronsUpDown, CornerDownRight, Equal, Eye, FileText, Folder, Gauge, List, MessageSquare, PackageCheck, Plus, Search, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, X } from "lucide-react";
@@ -41,6 +43,7 @@ import { observeComposerMenuViewport } from "../lib/composerMenuViewport";
 import { resolveComposerContentSizing } from "../lib/composerSizing";
 import { useToast } from "../lib/toast";
 import { type CollaborationMode, type CommandInfo, type ComposerInsertRequest, type ContextInfo, type DirEntry, type EffortInfo, type GoalRuntime, type HistoryMessage, type Mode, type PromptHistoryEntry, type QualityFloor, type SessionMeta, type SessionReference, type SlashArgItem, type SlashArgsResult, type SubagentPolicy, type ToolApprovalMode, type BalanceInfo } from "../lib/types";
+import { ComposerPinnedFilesShelf } from "./ComposerPinnedFilesShelf";
 import {
   formatWorkspaceReference,
   parseWorkspaceReference,
@@ -51,7 +54,7 @@ import { SlashMenu, sortSlashCommandsForMenu } from "./SlashMenu";
 import { ArgMenu } from "./ArgMenu";
 import { ANCHORED_POPOVER_CLOSE_MS, AnchoredPopover } from "./AnchoredPopover";
 import { EffortSwitcher } from "./EffortSwitcher";
-import { ModelSwitcher } from "./ModelSwitcher";
+const ModelSwitcher = lazy(() => import("./ModelSwitcher").then((module) => ({ default: module.ModelSwitcher })));
 import { SubagentPolicySwitcher } from "./SubagentPolicySwitcher";
 import { Tooltip } from "./Tooltip";
 import { ComposerContextCard } from "./ComposerContextCard";
@@ -113,11 +116,7 @@ const COMPOSER_AUTO_RESERVED_HEIGHT = 58;
 const PROMPT_HISTORY_PREFETCH_REMAINING = 3;
 const FILE_REF_SEARCH_CACHE_TTL_MS = 5000;
 const ComposerGuidanceShelf = lazy(() => import("./ComposerGuidanceShelf").then((module) => ({ default: module.ComposerGuidanceShelf })));
-
-type PastedBlock = {
-  label: string;
-  text: string;
-};
+type PastedBlock = { label: string; text: string };
 
 type FileRefSearchCacheEntry = {
   entries: DirEntry[];
@@ -615,6 +614,7 @@ export function Composer({
   cacheHitTokens,
   cacheMissTokens,
   balance,
+  pinnedFiles,
   onInvocationMetadataChange,
 }: {
   running: boolean;
@@ -689,11 +689,9 @@ export function Composer({
   // tree — only the composer re-renders, matching the controller's live-store
   // contract (pure stream deltas must not re-render the controller owner).
   liveStore?: ControllerLiveStore;
-  // Streaming tool-call argument chars (no usage event yet) — folded into the
-  // pill as an estimated-token tail so a long write_file body reads as
-  // progress, not a stall.
+  // Streaming argument characters provide estimated progress before usage arrives.
   turnArgChars?: number;
-  retry?: { attempt: number; max: number };
+  retry?: { attempt: number; max: number; recovery?: { phase?: string; next_attempt_at?: number; waiting?: boolean } };
   // True while a footer decision surface (approval / ask / clear context) owns
   // the UI. Pauses the model-work ticker without rendering a "waiting approval"
   // run strip (the decision card already conveys that state).
@@ -722,6 +720,7 @@ export function Composer({
   cacheHitTokens?: number;
   cacheMissTokens?: number;
   balance?: BalanceInfo;
+  pinnedFiles?: import("../lib/pinnedContextBridge").PinnedFileInfo[];
 }) {
   const { t, locale } = useI18n();
   const { showToast } = useToast();
@@ -3864,7 +3863,7 @@ export function Composer({
     }
   })();
   const runStateText = retry
-    ? t("status.retrying", { attempt: retry.attempt, max: retry.max })
+    ? recoveryStatusText(t, retry, now)
     : waitingPrompt === "approval"
       ? t("composer.runWaitingApproval", { tool: pendingApprovalLabel ?? "" })
       : waitingPrompt === "ask"
@@ -4358,6 +4357,7 @@ export function Composer({
           />
         </Suspense>
       )}
+      <ComposerPinnedFilesShelf tabId={tabId || ""} pinnedFiles={pinnedFiles} />
       {(attachments.length > 0 || workspaceRefs.length > 0 || sessionRefs.length > 0 || selectedTextRefs.length > 0) && (
         <div className="composer-context" aria-label={t("composer.contextItems")}>
           {sortComposerAttachments(attachments).map((a) => {
@@ -4829,7 +4829,10 @@ export function Composer({
                   balance={balance}
                 />
               )}
-              <ModelSwitcher label={modelLabel} tabId={tabId} onPick={onSwitchModel} />
+              <Suspense fallback={<span className="modelsw__label">{modelLabel}</span>}><ModelSwitcher label={modelLabel} tabId={tabId} onPick={onSwitchModel} onManage={() => {
+                useAppNavigationStore.getState().setSettingsFocus({ target: "model-access" });
+                useAppNavigationStore.getState().setSettingsTarget("models");
+              }} /></Suspense>
             </div>
             {!heroMode && hasEffort && (
               <div className="composer-meta__control composer-meta__control--effort">

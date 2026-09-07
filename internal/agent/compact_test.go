@@ -28,6 +28,7 @@ func prepareForObservedUsage(a *Agent, ctx context.Context, usage *provider.Usag
 type fakeProvider struct {
 	reply          string
 	reasoningReply string // set (with empty reply) to emit ChunkReasoning: thinking-model shape
+	reasoningTool  bool   // with reasoningReply: also open a tool call, the shape that stays rejected
 	promptTokens   int
 	got            []provider.Message
 	streamErr      error // when set, Stream emits a ChunkError instead of the reply
@@ -35,6 +36,10 @@ type fakeProvider struct {
 }
 
 func (f *fakeProvider) Name() string { return "fake" }
+
+func (f *fakeProvider) ContextBudgetPolicy() provider.ContextBudgetPolicy {
+	return provider.ContextBudgetPolicy{WindowMode: provider.ContextWindowIndependent}
+}
 
 func (f *fakeProvider) Stream(_ context.Context, req provider.Request) (<-chan provider.Chunk, error) {
 	f.got = req.Messages
@@ -52,6 +57,9 @@ func (f *fakeProvider) Stream(_ context.Context, req provider.Request) (<-chan p
 	// switches to the thinking-model reasoning-only shape.
 	if f.reply == "" && f.reasoningReply != "" {
 		ch <- provider.Chunk{Type: provider.ChunkReasoning, Text: f.reasoningReply}
+		if f.reasoningTool {
+			ch <- provider.Chunk{Type: provider.ChunkToolCallStart, ToolCall: &provider.ToolCall{ID: "call-1", Name: "read_file"}}
+		}
 	} else {
 		ch <- provider.Chunk{Type: provider.ChunkText, Text: f.reply}
 	}

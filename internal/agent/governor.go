@@ -9,6 +9,7 @@ import (
 
 	"reasonix/internal/event"
 	"reasonix/internal/evidence"
+	"reasonix/internal/i18n"
 )
 
 // governorEnabled gates enforcement for the A/B experiment; eligibility is
@@ -55,7 +56,7 @@ func (a *Agent) applyGovernor(sample *evidence.OutcomeSample) {
 		if !a.task.governor.noticed {
 			a.task.governor.noticed = true
 			a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeReasoningGovernor,
-				Text:   "Exploration phase with expensive thinking; riding reduced reasoning depth until evidence work starts.",
+				Text:   i18n.M.ReasoningGovernor,
 				Detail: "reasoning governor engaged: no verification debt, no local execution, previous round over the reasoning threshold"})
 		}
 	}

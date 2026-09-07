@@ -2,6 +2,7 @@ package agent
 
 import (
 	"reasonix/internal/completion"
+	"reasonix/internal/provider"
 	"reasonix/internal/runtimepolicy"
 )
 
@@ -10,13 +11,12 @@ import (
 // State an external caller arms before a Run lives in pendingTurn; state that
 // outlives the Run lives in taskRuntime or sessionRuntime.
 type turnRuntime struct {
+	writeRecovery  map[string]provider.ToolCall // unresolved prior effects; reverified before reuse
 	runMaxSteps    int
 	runMaxStepsKey string
 
-	emptyFinalBlocks   int
-	handoffNudges      int
+	terminal           terminalProtocolState
 	usedAnyTool        bool
-	contextToolRepairs int
 	graceRound         bool
 	recoveryGraceRound bool
 
@@ -99,7 +99,28 @@ type turnRuntime struct {
 	// read by the governor trigger (live policy and fork capture alike).
 	lastReasoning int
 
+	// incompleteReads tracks unread read_file results within one Agent.Run; a
+	// fresh user turn may choose a different strategy, but this run cannot write
+	// or finish from a silent partial read.
+	incompleteReads incompleteReadState
+
 	phase phaseClock
+
+	// sessionContext is the content-free diagnostic for the snapshot selected
+	// before this real user turn. It is attached to Usage events only.
+	sessionContext turnContextDiagnostics
+}
+
+// terminalProtocolState groups the run's terminal-protocol bookkeeping: the
+type terminalProtocolState struct {
+	// emptyFinalBlocks counts consecutive reasoning-only stops retried for a
+	// visible final answer.
+	emptyFinalBlocks int
+	// handoffNudges counts executor-handoff repairs sent this run.
+	handoffNudges int
+	// contextToolRepairs counts contextual-tool repair rounds; a second
+	// violation after a repair ends the run in a recoverable pause.
+	contextToolRepairs int
 }
 
 // pendingTurn is what someone outside the Run arms for the next one: a

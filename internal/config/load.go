@@ -240,26 +240,9 @@ func loadForRoot(root string, opts loadForRootOptions) (*Config, error) {
 		cfg.mergeMCPJSON(loadLegacyMCP(legacyConfigPath()))
 	}
 	_ = mergeInstalledPluginPackages(cfg, root)
-	normalizePluginCommandLines(cfg)
-	normalizeLegacyEffort(cfg)
-	cfg.ignoredLegacyStepLimits = normalizeLegacyAgentStepLimits(cfg)
-	normalizeRetiredAutoPlan(cfg)
-	normalizeLegacyMCPTiers(cfg)
-	normalizeLegacyStepFunBaseURLs(cfg)
-	normalizeLegacyLongCatContextWindows(cfg)
-	normalizeLegacyQwenContextWindows(cfg)
-	normalizeLegacyKimiK3Catalog(cfg)
-	normalizeLegacyOpenCodeGoInstalls(cfg)
-	normalizeLegacyMimoCustomProviders(cfg)
-	normalizeLegacyProviderModels(cfg)
-	normalizeDesktopOfficialProviderAccess(cfg)
-	normalizeOfficialDeepSeekModels(cfg)
-	migrateBillingDisplayCurrency(cfg)
-	freezeProviderBillingCurrencies(cfg)
-	applyDeepSeekOfficialDefaultPricing(cfg)
-	backfillDeepSeekOfficialPrices(cfg)
-	normalizeEffortConfig(cfg)
-	backfillDeepSeekPro(cfg)
+	if err := normalizeLoadedConfig(cfg); err != nil {
+		return nil, err
+	}
 	if userDefaultModelExplicit {
 		restoreUnresolvableProjectDefaultModel(cfg, userDefaultModel)
 	}
@@ -1578,6 +1561,61 @@ func normalizeLegacyOpenCodeGoKimiK3Catalog(c *Config) (changed bool) {
 		changed = true
 	}
 	return changed
+}
+
+// normalizeLegacyOpenCodeGoVisionCatalog upgrades only the untouched Chat
+// catalog that predates OpenCode Go's DeepSeek vision SKU. Custom model lists
+// and explicit image-input choices remain user-owned.
+func normalizeLegacyOpenCodeGoVisionCatalog(c *Config) (changed bool) {
+	if c == nil {
+		return false
+	}
+	for i := range c.Providers {
+		p := &c.Providers[i]
+		presetID := strings.TrimSpace(p.PresetID)
+		if (presetID != "opencode-go" && (presetID != "" || strings.TrimSpace(p.Name) != "opencode-go")) ||
+			!strings.EqualFold(strings.TrimSpace(p.Kind), "openai") ||
+			normalizedBaseURLForMigration(p.BaseURL) != "https://opencode.ai/zen/go/v1" ||
+			!stringSlicesEqual(p.Models, preVisionOpenCodeGoModels) ||
+			strings.TrimSpace(p.Model) != "" {
+			continue
+		}
+		p.Models = append([]string(nil), opencodeGoModels...)
+		if p.VisionModels == nil || stringSlicesEqual(p.VisionModels, preVisionOpenCodeGoVisionModels) {
+			p.VisionModels = append([]string(nil), opencodeGoVisionModels...)
+		}
+		mergeMissingOpenCodeGoVisionOverride(p)
+		changed = true
+	}
+	return changed
+}
+
+func mergeMissingOpenCodeGoVisionOverride(p *ProviderEntry) {
+	if p.ModelOverrides == nil {
+		p.ModelOverrides = map[string]ProviderModelOverride{}
+	}
+	const model = "deepseek-v4-flash-vision-exp"
+	key := model
+	for candidate := range p.ModelOverrides {
+		if strings.EqualFold(strings.TrimSpace(candidate), model) {
+			key = candidate
+			break
+		}
+	}
+	override := p.ModelOverrides[key]
+	if strings.TrimSpace(override.ReasoningProtocol) == "" {
+		override.ReasoningProtocol = ReasoningProtocolDeepSeek
+	}
+	if override.SupportedEfforts == nil {
+		override.SupportedEfforts = []string{"disabled", "low", "high", "max"}
+	}
+	if strings.TrimSpace(override.DefaultEffort) == "" && containsString(normalizedEffortLevels(override.SupportedEfforts), "high") {
+		override.DefaultEffort = "high"
+	}
+	if override.ContextWindow <= 0 {
+		override.ContextWindow = 1_000_000
+	}
+	p.ModelOverrides[key] = override
 }
 
 func normalizeLegacyMimoProviderCatalogs(c *Config) bool {

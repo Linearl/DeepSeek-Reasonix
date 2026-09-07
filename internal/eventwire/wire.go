@@ -13,35 +13,41 @@ import (
 // externalizable:"true" marks large string payloads the Remote protocol may
 // offload via content refs without changing provider-visible semantics.
 type Event struct {
-	Kind            string              `json:"kind"`
-	TurnID          string              `json:"turnId,omitempty"`
-	Sequence        uint64              `json:"seq,omitempty"`
-	Status          string              `json:"status,omitempty"`
-	Text            string              `json:"text,omitempty" externalizable:"true"`
-	Detail          string              `json:"detail,omitempty" externalizable:"true"`
-	Code            string              `json:"code,omitempty"`
-	Reasoning       string              `json:"reasoning,omitempty" externalizable:"true"`
-	MemoryCitations []MemoryCitation    `json:"memoryCitations,omitempty"`
-	Level           string              `json:"level,omitempty"`
-	Tool            *Tool               `json:"tool,omitempty"`
-	Usage           *Usage              `json:"usage,omitempty"`
-	Approval        *Approval           `json:"approval,omitempty"`
-	Ask             *Ask                `json:"ask,omitempty"`
-	MCPInteraction  *MCPInteraction     `json:"mcpInteraction,omitempty"`
-	Compaction      *Compaction         `json:"compaction,omitempty"`
-	Maintenance     *ContextMaintenance `json:"maintenance,omitempty"`
-	Guardian        *Guardian           `json:"guardian,omitempty"`
-	DecisionReceipt *DecisionReceipt    `json:"decisionReceipt,omitempty"`
-	Extension       *ExtensionSurface   `json:"extension,omitempty"`
-	Err             string              `json:"err,omitempty" externalizable:"true"`
-	Outcome         string              `json:"outcome,omitempty"`
-	Readiness       *FinalReadiness     `json:"readiness,omitempty"`
-	Receipt         *CompletionReceipt  `json:"receipt,omitempty"`
-	CheckpointTurn  *int                `json:"checkpointTurn,omitempty"`
-	RetryAttempt    int                 `json:"retryAttempt,omitempty"`
-	RetryMax        int                 `json:"retryMax,omitempty"`
-	RetryScope      string              `json:"retryScope,omitempty"` // "headers" | "stream" | "protocol"; omit for older clients
-	StreamAttempt   *StreamAttempt      `json:"streamAttempt,omitempty"`
+	Kind             string                           `json:"kind"`
+	PromptID         string                           `json:"promptId,omitempty"`
+	PromptKind       string                           `json:"promptKind,omitempty"`
+	PromptLegacy     bool                             `json:"promptLegacy,omitempty"`
+	TurnID           string                           `json:"turnId,omitempty"`
+	Sequence         uint64                           `json:"seq,omitempty"`
+	Status           string                           `json:"status,omitempty"`
+	Text             string                           `json:"text,omitempty" externalizable:"true"`
+	Detail           string                           `json:"detail,omitempty" externalizable:"true"`
+	Code             string                           `json:"code,omitempty"`
+	Reasoning        string                           `json:"reasoning,omitempty" externalizable:"true"`
+	MemoryCitations  []MemoryCitation                 `json:"memoryCitations,omitempty"`
+	Level            string                           `json:"level,omitempty"`
+	Tool             *Tool                            `json:"tool,omitempty"`
+	Usage            *Usage                           `json:"usage,omitempty"`
+	Approval         *Approval                        `json:"approval,omitempty"`
+	Ask              *Ask                             `json:"ask,omitempty"`
+	MCPInteraction   *MCPInteraction                  `json:"mcpInteraction,omitempty"`
+	Compaction       *Compaction                      `json:"compaction,omitempty"`
+	Maintenance      *ContextMaintenance              `json:"maintenance,omitempty"`
+	Guardian         *Guardian                        `json:"guardian,omitempty"`
+	DecisionReceipt  *DecisionReceipt                 `json:"decisionReceipt,omitempty"`
+	Extension        *ExtensionSurface                `json:"extension,omitempty"`
+	Err              string                           `json:"err,omitempty" externalizable:"true"`
+	Outcome          string                           `json:"outcome,omitempty"`
+	Readiness        *FinalReadiness                  `json:"readiness,omitempty"`
+	ProtocolRecovery *provider.ProtocolRecoveryAction `json:"protocolRecovery,omitempty"`
+	Diagnostic       *provider.FailureDiagnostic      `json:"diagnostic,omitempty"`
+	Receipt          *CompletionReceipt               `json:"receipt,omitempty"`
+	CheckpointTurn   *int                             `json:"checkpointTurn,omitempty"`
+	Recovery         *event.RecoveryStatus            `json:"recovery,omitempty"`
+	RetryAttempt     int                              `json:"retryAttempt,omitempty"`
+	RetryMax         int                              `json:"retryMax,omitempty"`
+	RetryScope       string                           `json:"retryScope,omitempty"` // "headers" | "stream" | "protocol"; omit for older clients
+	StreamAttempt    *StreamAttempt                   `json:"streamAttempt,omitempty"`
 	// ItemID correlates Steer / TurnDone / unapplied-steer with a durable
 	// session-inbox entry. Empty for legacy text-only guidance.
 	ItemID string `json:"itemId,omitempty"`
@@ -77,6 +83,25 @@ type CompletionSummary struct {
 	Attention          bool     `json:"attention"`
 }
 
+func toWireCompletionSummary(c *event.CompletionSummaryInfo) *CompletionSummary {
+	if c == nil {
+		return nil
+	}
+	return &CompletionSummary{
+		Preset:             c.Preset,
+		Verdict:            c.Verdict,
+		Mutations:          c.Mutations,
+		ChecksPassed:       c.ChecksPassed,
+		ChecksFailed:       c.ChecksFailed,
+		ChecksSuppressed:   c.ChecksSuppressed,
+		Review:             c.Review,
+		GapKinds:           append([]string(nil), c.GapKinds...),
+		ConstraintDegraded: c.ConstraintDegraded,
+		Floor:              c.Floor,
+		Attention:          c.Attention,
+	}
+}
+
 type WorkspaceChanged struct {
 	Revisions  WorkspaceRevision     `json:"revisions"`
 	Changes    []WorkspacePathChange `json:"changes"`
@@ -110,7 +135,30 @@ type StreamAttempt struct {
 
 // ToWire converts a typed runtime event into the shared frontend JSON contract.
 func ToWire(e event.Event) Event {
-	w := Event{Kind: kindNames[e.Kind], TurnID: e.TurnID, Sequence: e.Sequence, Status: string(e.Status), Text: e.Text, Detail: e.Detail, Reasoning: e.Reasoning, ItemID: e.ItemID, SessionPath: e.SessionPath, SessionReset: e.SessionReset}
+	w := Event{Kind: kindNames[e.Kind], PromptKind: e.PromptKind, TurnID: e.TurnID, Sequence: e.Sequence, Status: string(e.Status), Text: e.Text, Detail: e.Detail, Reasoning: e.Reasoning, ItemID: e.ItemID, SessionPath: e.SessionPath, SessionReset: e.SessionReset}
+	if e.ItemID != "" {
+		promptEvent := false
+		switch e.Kind {
+		case event.AskRequest:
+			promptEvent = true
+			w.PromptKind = "ask"
+		case event.ApprovalRequest:
+			promptEvent = true
+			w.PromptKind = e.Approval.Kind
+			if w.PromptKind == "" {
+				w.PromptKind = "approval"
+			}
+		case event.MCPInteractionRequest:
+			promptEvent = true
+			w.PromptKind = "mcp"
+		case event.PromptAnswered:
+			promptEvent = true
+		}
+		if promptEvent {
+			w.PromptID = e.ItemID
+			w.PromptLegacy = e.TurnID == ""
+		}
+	}
 	if len(e.MemoryCitations) > 0 {
 		w.MemoryCitations = ToWireMemoryCitations(e.MemoryCitations)
 	}
@@ -129,6 +177,8 @@ func ToWire(e event.Event) Event {
 			TokensPerSec: e.Tool.TokensPerSec,
 			ParentID: e.Tool.ParentID, AttemptID: e.Tool.AttemptID,
 			Diff: e.Tool.Diff, Added: e.Tool.Added, Removed: e.Tool.Removed,
+			SubagentRef: e.Tool.SubagentRef, SubagentStatus: e.Tool.SubagentStatus,
+			SubagentErrorCode: e.Tool.SubagentErrorCode, SubagentRetryable: e.Tool.SubagentRetryable,
 		}
 		if e.Tool.Profile != nil {
 			wt.Profile = &Profile{Model: e.Tool.Profile.Model, Effort: e.Tool.Profile.Effort}
@@ -183,6 +233,8 @@ func ToWire(e event.Event) Event {
 		w.Outcome = e.Outcome
 		w.CheckpointTurn = e.CheckpointTurn
 		w.Receipt = completionReceiptWire(e.Receipt)
+		w.ProtocolRecovery = e.ProtocolRecovery
+		w.Diagnostic = e.Diagnostic
 		if e.Readiness != nil {
 			w.Readiness = &FinalReadiness{Attempts: e.Readiness.Attempts, Missing: append([]string(nil), e.Readiness.Missing...)}
 		}
@@ -190,6 +242,7 @@ func ToWire(e event.Event) Event {
 			w.Err = e.Err.Error()
 		}
 	case event.Retrying:
+		w.Recovery = e.Recovery
 		w.RetryAttempt = e.RetryAttempt
 		w.RetryMax = e.RetryMax
 		if e.RetryScope != "" {
@@ -209,21 +262,7 @@ func ToWire(e event.Event) Event {
 			w.Phase = e.Text
 		}
 	case event.CompletionSummary:
-		if c := e.Completion; c != nil {
-			w.Completion = &CompletionSummary{
-				Preset:             c.Preset,
-				Verdict:            c.Verdict,
-				Mutations:          c.Mutations,
-				ChecksPassed:       c.ChecksPassed,
-				ChecksFailed:       c.ChecksFailed,
-				ChecksSuppressed:   c.ChecksSuppressed,
-				Review:             c.Review,
-				GapKinds:           append([]string(nil), c.GapKinds...),
-				ConstraintDegraded: c.ConstraintDegraded,
-				Floor:              c.Floor,
-				Attention:          c.Attention,
-			}
-		}
+		w.Completion = toWireCompletionSummary(e.Completion)
 	}
 	return w
 }
@@ -349,6 +388,7 @@ type AskQuestion struct {
 type Ask struct {
 	ID        string        `json:"id"`
 	Questions []AskQuestion `json:"questions"`
+	TurnID    string        `json:"turnId,omitempty"`
 }
 
 // MCPInteraction is the JSON form of an event.MCPInteraction: one
@@ -363,6 +403,7 @@ type MCPInteraction struct {
 	RequestedSchema json.RawMessage `json:"requestedSchema,omitempty"`
 	URL             string          `json:"url,omitempty"`
 	ElicitationID   string          `json:"elicitationId,omitempty"`
+	TurnID          string          `json:"turnId,omitempty"`
 }
 
 // applyNotice fills the Notice-specific wire fields.
@@ -382,7 +423,7 @@ func (w *Event) applyNotice(e event.Event) {
 func ToWireMCPInteraction(i event.MCPInteraction) *MCPInteraction {
 	return &MCPInteraction{
 		ID: i.ID, Server: i.Server, Mode: i.Mode, Message: i.Message,
-		RequestedSchema: i.RequestedSchema, URL: i.URL, ElicitationID: i.ElicitationID,
+		RequestedSchema: i.RequestedSchema, URL: i.URL, ElicitationID: i.ElicitationID, TurnID: i.TurnID,
 	}
 }
 
@@ -394,29 +435,33 @@ type Profile struct {
 
 // Tool is the JSON form of an event.Tool.
 type Tool struct {
-	ID           string          `json:"id,omitempty"`
-	Name         string          `json:"name"`
-	Args         string          `json:"args,omitempty" externalizable:"true"`
-	ResolvedName string          `json:"resolvedName,omitempty"`
-	CapabilityID string          `json:"capabilityId,omitempty"`
-	Output       string          `json:"output,omitempty" externalizable:"true"`
-	Err          string          `json:"err,omitempty" externalizable:"true"`
-	ReadOnly     bool            `json:"readOnly"`
-	Truncated    bool            `json:"truncated,omitempty"`
-	DurationMs   int64           `json:"durationMs,omitempty"`
-	StartedAt    int64           `json:"startedAt,omitempty"` // unix ms; zero when the call never ran
-	EndedAt      int64           `json:"endedAt,omitempty"`
-	Partial      bool            `json:"partial,omitempty"`
-	ArgChars     int             `json:"argChars,omitempty"`
-	TokensPerSec int             `json:"tokensPerSec,omitempty"`
-	Refreshed    bool            `json:"refreshed,omitempty"`
-	ParentID     string          `json:"parentId,omitempty"`
-	AttemptID    string          `json:"attemptId,omitempty"` // host-local stream_attempt id for speculative partials
-	Diff         string          `json:"diff,omitempty" externalizable:"true"`
-	Added        int             `json:"added,omitempty"`
-	Removed      int             `json:"removed,omitempty"`
-	Profile      *Profile        `json:"profile,omitempty"`
-	Execution    *ShellExecution `json:"execution,omitempty"`
+	ID                string          `json:"id,omitempty"`
+	Name              string          `json:"name"`
+	Args              string          `json:"args,omitempty" externalizable:"true"`
+	ResolvedName      string          `json:"resolvedName,omitempty"`
+	CapabilityID      string          `json:"capabilityId,omitempty"`
+	Output            string          `json:"output,omitempty" externalizable:"true"`
+	Err               string          `json:"err,omitempty" externalizable:"true"`
+	ReadOnly          bool            `json:"readOnly"`
+	Truncated         bool            `json:"truncated,omitempty"`
+	DurationMs        int64           `json:"durationMs,omitempty"`
+	StartedAt         int64           `json:"startedAt,omitempty"` // unix ms; zero when the call never ran
+	EndedAt           int64           `json:"endedAt,omitempty"`
+	Partial           bool            `json:"partial,omitempty"`
+	ArgChars          int             `json:"argChars,omitempty"`
+TokensPerSec int             `json:"tokensPerSec,omitempty"`
+	Refreshed         bool            `json:"refreshed,omitempty"`
+	ParentID          string          `json:"parentId,omitempty"`
+	AttemptID         string          `json:"attemptId,omitempty"` // host-local stream_attempt id for speculative partials
+	SubagentRef       string          `json:"subagentRef,omitempty"`
+	SubagentStatus    string          `json:"subagentStatus,omitempty"`
+	SubagentErrorCode string          `json:"subagentErrorCode,omitempty"`
+	SubagentRetryable bool            `json:"subagentRetryable,omitempty"`
+	Diff              string          `json:"diff,omitempty" externalizable:"true"`
+	Added             int             `json:"added,omitempty"`
+	Removed           int             `json:"removed,omitempty"`
+	Profile           *Profile        `json:"profile,omitempty"`
+	Execution         *ShellExecution `json:"execution,omitempty"`
 }
 
 // ShellExecution is the JSON form of event.ShellExecution (local UI metadata).
@@ -493,15 +538,16 @@ type Usage struct {
 
 // CacheDiagnostics is the JSON form of cache prefix diagnostics.
 type CacheDiagnostics struct {
-	PrefixHash          string   `json:"prefixHash"`
-	PrefixChanged       bool     `json:"prefixChanged"`
-	PrefixChangeReasons []string `json:"prefixChangeReasons,omitempty"`
-	SystemHash          string   `json:"systemHash"`
-	ToolsHash           string   `json:"toolsHash"`
-	LogRewriteVersion   int      `json:"logRewriteVersion"`
-	ToolSchemaTokens    int      `json:"toolSchemaTokens"`
-	CacheMissTokens     int      `json:"cacheMissTokens"`
-	CacheHitTokens      int      `json:"cacheHitTokens"`
+	PrefixHash          string                     `json:"prefixHash"`
+	PrefixChanged       bool                       `json:"prefixChanged"`
+	PrefixChangeReasons []string                   `json:"prefixChangeReasons,omitempty"`
+	SystemHash          string                     `json:"systemHash"`
+	ToolsHash           string                     `json:"toolsHash"`
+	LogRewriteVersion   int                        `json:"logRewriteVersion"`
+	ToolSchemaTokens    int                        `json:"toolSchemaTokens"`
+	CacheMissTokens     int                        `json:"cacheMissTokens"`
+	CacheHitTokens      int                        `json:"cacheHitTokens"`
+	SessionContext      *SessionContextDiagnostics `json:"sessionContext,omitempty"`
 }
 
 // Guardian is the JSON form of an event.GuardianResult.
@@ -560,12 +606,12 @@ func ToWireAsk(a event.Ask) *Ask {
 		}
 		qs[i] = AskQuestion{ID: q.ID, Header: q.Header, Prompt: q.Prompt, Options: opts, Multi: q.Multi}
 	}
-	return &Ask{ID: a.ID, Questions: qs}
+	return &Ask{ID: a.ID, Questions: qs, TurnID: a.TurnID}
 }
 
 // ToWireCacheDiagnostics converts cache diagnostics into their JSON wire form.
 func ToWireCacheDiagnostics(d *event.CacheDiagnostics) *CacheDiagnostics {
-	return &CacheDiagnostics{
+	out := &CacheDiagnostics{
 		PrefixHash:          d.PrefixHash,
 		PrefixChanged:       d.PrefixChanged,
 		PrefixChangeReasons: append([]string(nil), d.PrefixChangeReasons...),
@@ -576,6 +622,18 @@ func ToWireCacheDiagnostics(d *event.CacheDiagnostics) *CacheDiagnostics {
 		CacheMissTokens:     d.CacheMissTokens,
 		CacheHitTokens:      d.CacheHitTokens,
 	}
+	if sc := d.SessionContext; sc != nil {
+		section := func(in event.SessionContextSectionDiagnostics) SessionContextSectionDiagnostics {
+			return SessionContextSectionDiagnostics{Digest: in.Digest, Chars: in.Chars}
+		}
+		out.SessionContext = &SessionContextDiagnostics{
+			Version: sc.Version, Digest: sc.Digest, TargetRole: sc.TargetRole,
+			Reasons:     append([]string(nil), sc.Reasons...),
+			Environment: section(sc.Environment), Workspace: section(sc.Workspace),
+			BackgroundMemory: section(sc.BackgroundMemory), SkillsCatalog: section(sc.SkillsCatalog),
+		}
+	}
+	return out
 }
 
 // KindNames returns every stable frontend event kind in event.Kind order. It is

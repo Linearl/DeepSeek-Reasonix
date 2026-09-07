@@ -41,6 +41,28 @@ export function reduceSubmitFailure(
   };
 }
 
+export function reduceManagementConfirmation(state: State, submissionId: string, observedAt: number): State {
+  if (state.pendingSubmissionId !== submissionId) return state;
+  return {
+    ...state,
+    items: state.items.filter((item) => !(item.kind === "user" && item.submissionId === submissionId)),
+    pendingUser: undefined,
+    pendingSubmissionId: undefined,
+    running: false,
+    turnActive: false,
+    pendingPrompt: false,
+    cancelRequested: false,
+    cancellable: false,
+    activeTurnId: undefined,
+    currentAssistant: undefined,
+    assistantSegmentOrdinal: 0,
+    live: undefined,
+    streamAttemptJournal: undefined,
+    deliveryRecoveryActive: false,
+    turnLifecycleObservedAt: observedAt,
+  };
+}
+
 export async function findTabAfterSubmitFailure(
   binding: Pick<AppBindings, "ListTabs">,
   tabId: string,
@@ -49,8 +71,11 @@ export async function findTabAfterSubmitFailure(
 ) {
   for (const delay of delays) {
     if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
-    const snapshotAt = clock();
     try {
+      // Fence at read start, so a delayed response cannot override a turn or
+      // prompt observed while it was in flight. Preserve a sub-tick advance
+      // for synchronous bridges called in the initiating event's clock tick.
+      const snapshotAt = clock() + 0.001;
       const tab = asArray(await binding.ListTabs()).find((candidate) => candidate.id === tabId);
       return [tab, snapshotAt] as const;
     } catch {
