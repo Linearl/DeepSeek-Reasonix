@@ -1181,10 +1181,16 @@ func messagesHavePrefixWithCompatibleSystem(full, prefix []provider.Message) boo
 }
 
 func messagesWithoutLeadingSystem(msgs []provider.Message) []provider.Message {
-	if len(msgs) > 0 && msgs[0].Role == provider.RoleSystem {
-		return msgs[1:]
+	// Resume refreshes the dynamic system header (fresh prompt, memory/tool
+	// sections) into one or more leading system messages that never landed on
+	// disk. Mirror the projection layer's semantics — leading system messages
+	// are outside every fold and outside every prefix comparison — by
+	// stripping the whole contiguous system header, not just the first entry.
+	out := msgs
+	for len(out) > 0 && out[0].Role == provider.RoleSystem {
+		out = out[1:]
 	}
-	return msgs
+	return out
 }
 
 func messagesEqualForStorage(a, b provider.Message) bool {
