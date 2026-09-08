@@ -206,7 +206,9 @@ console.log("\nbundle budgets");
 // explicit budget rather than failing on a rounded 467.0 KiB display value.
 // The latest main-v2 session-runtime fence and exact prompt protocol measure
 // 468.2 KiB here; retain a 0.1 KiB ceiling for platform zlib rounding.
-const initialJSBudgetKiB = 469.0; // fork: +0.7 KiB vs upstream 468.3 (LocalServerPage delta)
+// 1f8c3fe50: fork UI-restoration batch (TopicbarMoreMenu return, locale
+// backfills + recovered keys) measures 469.6 KiB; +0.4 KiB headroom on top.
+const initialJSBudgetKiB = 470.0; // fork: +1.7 KiB vs upstream 468.3
 // [fork note] settings panel (LocalServerPage) that ships with the serve pool gateway.
 assertBudget("initial JavaScript gzip", initialJSGzip, initialJSBudgetKiB * 1024);
 assertBudget("largest initial JavaScript chunk gzip", largestInitialJS, 280 * 1024);
