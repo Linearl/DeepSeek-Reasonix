@@ -669,15 +669,6 @@ func writeEmptyNamedSession(t *testing.T, dir, name, topicID, topicTitle, worksp
 	return path
 }
 
-func TestTrashTopicForceSkipsActiveWork(t *testing.T) {
-	isolateDesktopUserDirs(t)
-
-	projectRoot := t.TempDir()
-	topicID := "topic_force_trash"
-	if err := addProject(projectRoot, ""); err != nil {
-		t.Fatalf("add project: %v", err)
-	}
-	if err := setTopicTitle(projectRoot, topicID, "Force trash"); err != nil {
 func TestTrashTopicArchivesFailedRuntimeWithStaleWriteAuthority(t *testing.T) {
 	isolateDesktopUserDirs(t)
 
@@ -686,46 +677,13 @@ func TestTrashTopicArchivesFailedRuntimeWithStaleWriteAuthority(t *testing.T) {
 	if err := addProject(projectRoot, ""); err != nil {
 		t.Fatalf("add project: %v", err)
 	}
-	if err := setTopicTitle(projectRoot, topicID, "Failed authority"); err != nil {		t.Fatalf("set topic title: %v", err)
+	if err := setTopicTitle(projectRoot, topicID, "Failed authority"); err != nil {
+		t.Fatalf("set topic title: %v", err)
 	}
 	dir := config.SessionDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir sessions: %v", err)
 	}
-	sessionPath := writeTopicSession(t, dir, "force-topic.jsonl", topicID, "Force trash", projectRoot)
-
-	jm := jobs.NewManager(event.Discard)
-	ctrl := control.New(control.Options{SessionDir: dir, SessionPath: sessionPath, Label: "test", Jobs: jm, WorkspaceRoot: projectRoot})
-	releaseJob := startNonCooperativeSessionJob(t, jm, sessionPath)
-	defer func() {
-		releaseJob()
-		ctrl.Close()
-	}()
-
-	app := &App{
-		tabs: map[string]*WorkspaceTab{
-			"force": {
-				ID:            "force",
-				Scope:         "project",
-				WorkspaceRoot: projectRoot,
-				TopicID:       topicID,
-				TopicTitle:    "Force trash",
-				Ctrl:          ctrl,
-				Ready:         true,
-				disabledMCP:   map[string]ServerView{},
-			},
-		},
-		tabOrder:    []string{"force"},
-		activeTabID: "force",
-	}
-
-	// The regular archive must be rejected by the active-work gate.
-	if err := app.TrashTopic(topicID); !errors.Is(err, errTopicHasActiveWork) {
-		t.Fatalf("TrashTopic(background job) error = %v, want %v", err, errTopicHasActiveWork)
-	}
-	// The force variant relaxes the red-flag check and succeeds.
-	if err := app.TrashTopicForce(topicID); err != nil {
-		t.Fatalf("TrashTopicForce error = %v, want nil", err)
 	sessionPath := writeTopicSession(t, dir, "failed-authority.jsonl", topicID, "Failed authority", projectRoot)
 	ctrl := controllerWithContent(t, sessionPath)
 	defer ctrl.Close()
@@ -781,5 +739,57 @@ func TestTopicArchiveRejectsFailedRuntimeThatStartedRetrying(t *testing.T) {
 	}
 	if app.tabs[tab.ID] != tab || tab.removed {
 		t.Fatal("rejected stale archive changed the retrying tab")
+	}
+}
+
+func TestTrashTopicForceSkipsActiveWork(t *testing.T) {
+	isolateDesktopUserDirs(t)
+
+	projectRoot := t.TempDir()
+	topicID := "topic_force_trash"
+	if err := addProject(projectRoot, ""); err != nil {
+		t.Fatalf("add project: %v", err)
+	}
+	if err := setTopicTitle(projectRoot, topicID, "Force trash"); err != nil {
+		t.Fatalf("set topic title: %v", err)
+	}
+	dir := config.SessionDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir sessions: %v", err)
+	}
+	sessionPath := writeTopicSession(t, dir, "force-topic.jsonl", topicID, "Force trash", projectRoot)
+
+	jm := jobs.NewManager(event.Discard)
+	ctrl := control.New(control.Options{SessionDir: dir, SessionPath: sessionPath, Label: "test", Jobs: jm, WorkspaceRoot: projectRoot})
+	releaseJob := startNonCooperativeSessionJob(t, jm, sessionPath)
+	defer func() {
+		releaseJob()
+		ctrl.Close()
+	}()
+
+	app := &App{
+		tabs: map[string]*WorkspaceTab{
+			"force": {
+				ID:            "force",
+				Scope:         "project",
+				WorkspaceRoot: projectRoot,
+				TopicID:       topicID,
+				TopicTitle:    "Force trash",
+				Ctrl:          ctrl,
+				Ready:         true,
+				disabledMCP:   map[string]ServerView{},
+			},
+		},
+		tabOrder:    []string{"force"},
+		activeTabID: "force",
+	}
+
+	// The regular archive must be rejected by the active-work gate.
+	if err := app.TrashTopic(topicID); !errors.Is(err, errTopicHasActiveWork) {
+		t.Fatalf("TrashTopic(background job) error = %v, want %v", err, errTopicHasActiveWork)
+	}
+	// The force variant relaxes the red-flag check and succeeds.
+	if err := app.TrashTopicForce(topicID); err != nil {
+		t.Fatalf("TrashTopicForce error = %v, want nil", err)
 	}
 }

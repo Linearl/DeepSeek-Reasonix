@@ -994,6 +994,14 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 	// Prefer the resilient workspace load so config warnings surface on first paint.
 	if cfg, err := config.LoadForRootReadOnly(a.activeWorkspaceRoot()); err == nil {
 		view = desktopStartupSettingsFromConfig(cfg)
+		// Layout style is a user preference (fork: classic persistence fix):
+		// an explicit user-config value overrides the root/project default,
+		// otherwise switching to classic in Settings would not survive restart.
+		if userCfg, uerr := config.LoadForEditReadOnlyStrict(config.UserConfigPath()); uerr == nil {
+			if us := userCfg.DesktopLayoutStyle(); strings.TrimSpace(us) != "" {
+				view.DesktopLayoutStyle = us
+			}
+		}
 		view.ConfigWarnings = cfg.LoadWarnings()
 		view.ConfigPath = config.UserConfigPath()
 		return view
