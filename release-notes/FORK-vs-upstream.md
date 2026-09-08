@@ -6,6 +6,18 @@
 
 ---
 
+## v1.38.1（2026-09-08 整体追齐）
+
+| 改进点 | fork 状态 | 上游吸收状态 |
+|---|---|---|
+| 超长会话压缩死锁双修复（thinking 摘要空 + GLM 无数字超窗） | ✅ fork 修复 | ✅ 上游已合并（#9882） |
+| 分段压缩并行化（~4× 提速）+ fragment 超窗半切 | ✅ fork 增强 | ⏳ PR #9885 OPEN |
+| Ask 重放循环修复（#9693 对齐） | ✅ 取上游原生 | ✅ 原生 |
+| catalog 大小写双目录账目错位修复 | ✅ 数据+代码 | ⏳ 上游 path_identity 为不同方案 |
+| 幻影引用 TopicbarMoreMenu 清理 | ✅ fork 修复 | N/A（fork 残留） |
+| overlay store 类型修复（SettingsInitialFocus） | ✅ fork 修复 | N/A（fork 增强） |
+| AppRuntime 大重构适配 | 🔄 阶段 1.5 | N/A |
+
 ## v1.25.4（2026-08-16，基于上游 v1.25.4）
 
 | 改进点 | 来源 PR | 上游吸收状态 |
