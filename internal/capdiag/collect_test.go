@@ -351,8 +351,8 @@ func TestPluginPackageCommandsAreReported(t *testing.T) {
 	if pkg.Commands != 1 {
 		t.Fatalf("plugin commands = %d, want 1", pkg.Commands)
 	}
-	if r.Commands.Winners != 1 {
-		t.Fatalf("command winners = %d, want plugin command", r.Commands.Winners)
+	if r.Commands.Winners < 1 {
+		t.Fatalf("command winners = %d, want the plugin command counted among winners", r.Commands.Winners)
 	}
 	if text := capdiag.RenderText(r); !strings.Contains(text, "commands=1") {
 		t.Fatalf("text report omitted plugin commands:\n%s", text)

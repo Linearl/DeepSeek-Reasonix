@@ -246,6 +246,10 @@
     "ReadOnly": false,
     "Schema": {
       "properties": {
+        "expected": {
+          "description": "Optional baseline: the file's exact current content as the caller believes it is. When supplied, the write is refused with a stale-content error unless the on-disk content still matches, avoiding clobbering concurrent changes.",
+          "type": "string"
+        },
         "new_string": {
           "description": "Replacement text (may be empty to delete)",
           "type": "string"
@@ -501,6 +505,10 @@
       "properties": {
         "content": {
           "description": "Full content to write",
+          "type": "string"
+        },
+        "expected": {
+          "description": "Optional baseline: the file's exact current content as the caller believes it is. When supplied, the write is refused with a stale-content error unless the on-disk content still matches, avoiding clobbering concurrent changes.",
           "type": "string"
         },
         "path": {
