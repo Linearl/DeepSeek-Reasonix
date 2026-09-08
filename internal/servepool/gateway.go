@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -20,10 +21,23 @@ type Gateway struct {
 	mgr   *Manager
 	token string
 	proxy map[string]*httputil.ReverseProxy
-	// sessionsSources registers inline /sessions providers for virtual
-	// projects (no backing serve process). Keyed by project id.
-	sessionsMu      sync.RWMutex
-	sessionsSources map[string]func() []SessionEntry
+	// virtualSources carries the full inline contract (sessions + history +
+	// resume state) for virtual projects.
+	virtualMu  sync.Mutex
+	virtuals   map[string]*VirtualSource
+	virtualCur map[string]string // virtual id -> current session path (resume)
+}
+
+// VirtualSource is the inline handler bundle for a virtual project.
+type VirtualSource struct {
+	// Sessions builds the /sessions list.
+	Sessions func() []SessionEntry
+	// History renders one saved transcript as the /history payload.
+	History func(path string) (any, error)
+	// AllowedDir is the only directory resume/history may read from (the
+	// virtual scope's session dir). Required; resume/history reject any
+	// path outside it.
+	AllowedDir string
 }
 
 // NewGateway builds the gateway handler. token must be a non-empty secret
@@ -33,20 +47,44 @@ func NewGateway(mgr *Manager, token string) *Gateway {
 		token = newToken()
 	}
 	return &Gateway{
-		mgr:             mgr,
-		token:           token,
-		proxy:           map[string]*httputil.ReverseProxy{},
-		sessionsSources: map[string]func() []SessionEntry{},
+		mgr:        mgr,
+		token:      token,
+		proxy:      map[string]*httputil.ReverseProxy{},
+		virtuals:   map[string]*VirtualSource{},
+		virtualCur: map[string]string{},
 	}
 }
 
-// SetSessionsSource registers an inline /sessions provider for a virtual
-// project id. The provider runs on the gateway process (the desktop app),
-// so it can read session metadata without a spawned serve.
-func (g *Gateway) SetSessionsSource(id string, fn func() []SessionEntry) {
-	g.sessionsMu.Lock()
-	defer g.sessionsMu.Unlock()
-	g.sessionsSources[id] = fn
+// SetVirtualSource registers the full inline contract for a virtual project.
+func (g *Gateway) SetVirtualSource(id string, src VirtualSource) {
+	g.virtualMu.Lock()
+	defer g.virtualMu.Unlock()
+	g.virtuals[id] = &src
+}
+
+// virtualSource returns the registered source for a virtual id.
+func (g *Gateway) virtualSource(id string) *VirtualSource {
+	g.virtualMu.Lock()
+	defer g.virtualMu.Unlock()
+	return g.virtuals[id]
+}
+
+// virtualResumeTarget resolves the session path a virtual request should
+// read: the ?session= query when present, otherwise the path a previous
+// resume bound. The result is validated against the source's AllowedDir.
+func (g *Gateway) virtualResumeTarget(id, queryPath string, src *VirtualSource) (string, bool) {
+	path := strings.TrimSpace(queryPath)
+	if path == "" {
+		g.virtualMu.Lock()
+		path = g.virtualCur[id]
+		g.virtualMu.Unlock()
+	}
+	path = filepath.ToSlash(filepath.Clean(path))
+	allowed := filepath.ToSlash(filepath.Clean(src.AllowedDir))
+	if path == "" || !strings.EqualFold(filepath.ToSlash(filepath.Dir(path)), allowed) {
+		return "", false
+	}
+	return filepath.FromSlash(path), true
 }
 
 // Token returns the gateway bearer token (for UI display / first setup).
@@ -198,29 +236,74 @@ func (g *Gateway) handleProxy(w http.ResponseWriter, r *http.Request) {
 
 // handleVirtual serves a virtual project's requests inline from the gateway
 // process (which for the desktop is the app itself, with direct access to
-// session data). Only GET /sessions is supported for now; other paths answer
-// 501 so clients can degrade gracefully.
+// session data): GET /sessions lists the scope, POST /resume binds the
+// current session (body {"path"}), GET /history renders the bound (or
+// ?session=) transcript. All paths are confined to the source's AllowedDir;
+// unknown routes answer 501 so clients degrade gracefully.
 func (g *Gateway) handleVirtual(w http.ResponseWriter, r *http.Request, id, tail string) {
-	if r.Method != http.MethodGet || tail != "sessions" {
-		writeJSONStatus(w, http.StatusNotImplemented, map[string]string{
-			"error": "virtual project supports GET /sessions only",
-		})
-		return
-	}
-	g.sessionsMu.RLock()
-	fn := g.sessionsSources[id]
-	g.sessionsMu.RUnlock()
-	if fn == nil {
+	src := g.virtualSource(id)
+	if src == nil {
 		writeJSONStatus(w, http.StatusServiceUnavailable, map[string]string{
-			"error": "no sessions source registered for " + id,
+			"error": "no inline source registered for " + id,
 		})
 		return
 	}
-	sessions := fn()
-	if sessions == nil {
-		sessions = []SessionEntry{}
+	switch {
+	case r.Method == http.MethodGet && tail == "sessions":
+		fn := src.Sessions
+		if fn == nil {
+			writeJSON(w, []SessionEntry{})
+			return
+		}
+		sessions := fn()
+		if sessions == nil {
+			sessions = []SessionEntry{}
+		}
+		writeJSON(w, sessions)
+	case r.Method == http.MethodPost && tail == "resume":
+		var body struct {
+			Path string `json:"path"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Path) == "" {
+			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": `missing "path"`})
+			return
+		}
+		path, ok := g.virtualResumeTarget(id, body.Path, src)
+		if !ok {
+			writeJSONStatus(w, http.StatusForbidden, map[string]string{
+				"error": "path outside virtual scope",
+			})
+			return
+		}
+		g.virtualMu.Lock()
+		g.virtualCur[id] = path
+		g.virtualMu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	case r.Method == http.MethodGet && tail == "history":
+		if src.History == nil {
+			writeJSONStatus(w, http.StatusNotImplemented, map[string]string{
+				"error": "virtual project has no history renderer",
+			})
+			return
+		}
+		path, ok := g.virtualResumeTarget(id, r.URL.Query().Get("session"), src)
+		if !ok {
+			writeJSONStatus(w, http.StatusBadRequest, map[string]string{
+				"error": "no session bound (POST /resume first)",
+			})
+			return
+		}
+		payload, err := src.History(path)
+		if err != nil {
+			writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, payload)
+	default:
+		writeJSONStatus(w, http.StatusNotImplemented, map[string]string{
+			"error": "virtual project supports GET /sessions, POST /resume, GET /history only",
+		})
 	}
-	writeJSON(w, sessions)
 }
 
 func (g *Gateway) proxyFor(id string, port int) *httputil.ReverseProxy {

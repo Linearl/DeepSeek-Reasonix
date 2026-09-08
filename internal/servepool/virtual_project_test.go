@@ -2,9 +2,15 @@ package servepool
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+
+	"reasonix/internal/serve"
 )
 
 // TestVirtualProjectManifestAndSessions covers the task-16 protocol: a
@@ -38,10 +44,12 @@ func TestVirtualProjectManifestAndSessions(t *testing.T) {
 	}
 
 	g := NewGateway(m, "secret")
-	g.SetSessionsSource("global", func() []SessionEntry {
-		return []SessionEntry{
-			{Name: "sess-1", Path: `C:\sessions\sess-1.jsonl`, Title: "First", Turns: 3, MtimeMilli: 1234},
-		}
+	g.SetVirtualSource("global", VirtualSource{
+		Sessions: func() []SessionEntry {
+			return []SessionEntry{
+				{Name: "sess-1", Path: `C:\sessions\sess-1.jsonl`, Title: "First", Turns: 3, MtimeMilli: 1234},
+			}
+		},
 	})
 	ts := httptest.NewServer(g)
 	defer ts.Close()
@@ -93,8 +101,82 @@ func TestVirtualProjectManifestAndSessions(t *testing.T) {
 	}
 
 	// Other virtual paths answer 501 so clients degrade gracefully.
-	resp, _ = get("/p/global/history")
+	resp, _ = get("/p/global/status")
 	if resp.StatusCode != http.StatusNotImplemented {
-		t.Fatalf("virtual history status = %d, want 501", resp.StatusCode)
+		t.Fatalf("virtual status status = %d, want 501", resp.StatusCode)
+	}
+}
+
+// TestVirtualProjectResumeHistory covers the inline history flow (task 16
+// follow-up): resume binds a session inside AllowedDir, /history renders it;
+// paths outside AllowedDir are rejected; history without a bound session
+// answers 400.
+func TestVirtualProjectResumeHistory(t *testing.T) {
+	dir := t.TempDir()
+	sessionPath := filepath.Join(dir, "hist-1.jsonl")
+	// Minimal native event-log-free transcript: one user line.
+	if err := os.WriteFile(sessionPath, []byte(`{"role":"user","content":"hi"}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outsidePath := filepath.Join(t.TempDir(), "outside.jsonl")
+
+	m, err := NewManager(Config{
+		ReasonixBin: "definitely-not-a-real-binary",
+		Virtual:     []ProjectState{{ID: "global", Name: "Global", Root: "Global"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.Close)
+
+	g := NewGateway(m, "secret")
+	g.SetVirtualSource("global", VirtualSource{
+		Sessions:   func() []SessionEntry { return []SessionEntry{} },
+		History:    func(path string) (any, error) { return serve.HistoryJSONForFile(path) },
+		AllowedDir: dir,
+	})
+	ts := httptest.NewServer(g)
+	defer ts.Close()
+
+	do := func(method, path string, body string) (*http.Response, []byte) {
+		t.Helper()
+		var rd io.Reader
+		if body != "" {
+			rd = strings.NewReader(body)
+		}
+		req, _ := http.NewRequest(method, ts.URL+path, rd)
+		req.Header.Set("Authorization", "Bearer secret")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		buf := make([]byte, 64*1024)
+		n, _ := resp.Body.Read(buf)
+		return resp, buf[:n]
+	}
+
+	// History before resume → 400.
+	if resp, _ := do(http.MethodGet, "/p/global/history", ""); resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("history before resume = %d, want 400", resp.StatusCode)
+	}
+
+	// Resume with a path outside AllowedDir → 403.
+	body := `{"path":"` + strings.ReplaceAll(outsidePath, `\`, `\\`) + `"}`
+	if resp, _ := do(http.MethodPost, "/p/global/resume", body); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("resume outside scope = %d, want 403", resp.StatusCode)
+	}
+
+	// Resume inside scope → 204, then history → 200 with the user turn.
+	body = `{"path":"` + strings.ReplaceAll(sessionPath, `\`, `\\`) + `"}`
+	if resp, _ := do(http.MethodPost, "/p/global/resume", body); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("resume = %d, want 204", resp.StatusCode)
+	}
+	resp, raw := do(http.MethodGet, "/p/global/history", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("history = %d (%s)", resp.StatusCode, raw)
+	}
+	if !strings.Contains(string(raw), `"role":"user"`) || !strings.Contains(string(raw), `"hi"`) {
+		t.Fatalf("history payload missing user turn: %s", raw)
 	}
 }

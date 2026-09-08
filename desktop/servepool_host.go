@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"reasonix/internal/config"
+	"reasonix/internal/serve"
 	"reasonix/internal/servepool"
 )
 
@@ -53,7 +54,11 @@ func (a *App) startServePool(ctx context.Context) {
 	}
 	token := loadOrCreateGatewayToken()
 	gw := servepool.NewGateway(mgr, token)
-	gw.SetSessionsSource("global", a.globalServePoolSessions)
+	gw.SetVirtualSource("global", servepool.VirtualSource{
+		Sessions:   a.globalServePoolSessions,
+		History:    serve.HistoryJSONForFile,
+		AllowedDir: config.SessionDir(),
+	})
 	port := gatewayPort()
 	ln, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
 	if err != nil {
