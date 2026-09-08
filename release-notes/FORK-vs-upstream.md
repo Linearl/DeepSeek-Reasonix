@@ -18,6 +18,19 @@
 | overlay store 类型修复（SettingsInitialFocus） | ✅ fork 修复 | N/A（fork 增强） |
 | AppRuntime 大重构适配 | 🔄 阶段 1.5 | N/A |
 
+### v1.38.1 实测回归修复（2026-09-08 二批，commit b28cf270f / 6ea488bbe / 1f8c3fe50 / a99b4303e）
+
+| 问题 | 根因 | 修复 |
+|---|---|---|
+| 7 项 UI 回归（未分组/乐观写入/会话授权写目录/子代理委派/本地服务页/搜索历史/经典风格选项） | merge 时 fix-i18n-keys.py 用 Title-Case 英文 fallback 覆盖 fork 文案值（185 个）+ 15 个 keys 被删 | 回填 fork 旧值 + 恢复 keys（三语言） |
+| 项目栏上方按钮跟上游 | merge 用上游 TopicbarSessionActions 替换 fork TopicbarMoreMenu 三件套 | 恢复 fork 三件套，回退接线 |
+| 经典（classic）布局选项消失 | 上游 1.38 删除选项，fork 类型/渲染仍在 | 恢复 options 数组 |
+| styles.css 丢 topicbar__more / recovery-copies 样式 | merge 取上游 | 恢复 6 块 |
+| **恢复副本异常增生 + 对话分叉**（10 分钟 8 副本、单会话 110 副本文件、desktop.log 17 次 diverged） | resume 时多条 leading system（fresh prompt+memory 段）不落盘，`messagesWithoutLeadingSystem` 只剥 1 条 → `CloneWithMessagesIfCompatible` 判不兼容 → fallback `NewSession` **丢持久化基线** → 每轮 checkpoint 判 diverged → fork recovery branch | `messagesWithoutLeadingSystem` 剥全部连续头部 system（对齐投影层语义），resume 继承基线走正常 CAS |
+| TestWritableHooksReserveWholeParentWorkspace 失败（预存） | fork 提前实装的 #9592 排除段与上游 v1.38.1 最终设计冲突 | 回退排除段；**#9592 fork 提前实装作废，以上游为准** |
+| TestMalformedToolArgsReturnHostValidationContract 失败（预存） | fork `repairTruncatedToolCallArgs` 把完整但非法的 args 一律修成 `{}`，吞掉上游验证纠错契约 | 只修真截断（闭合未终止 string/括号+去尾逗号），完整非法原样放行 |
+| 11 个孤儿测试破坏 agent 包构建 | 引用未移植实现（#9521/#9522 等） | `git rm`（内容存 *.go.hold，移植实现后恢复） |
+
 ## v1.25.4（2026-08-16，基于上游 v1.25.4）
 
 | 改进点 | 来源 PR | 上游吸收状态 |
