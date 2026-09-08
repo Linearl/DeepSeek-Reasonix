@@ -35,19 +35,16 @@ import { useToast } from "./lib/toast";
 import { useGoalActionHandler } from "./lib/goalAction";
 import { useWailsResizeFix } from "./lib/useWailsResizeFix";
 import { asArray } from "./lib/array";
-import { activeLeaseBlockedTab, createBoundedRefreshCoordinator, sameTabMetaLists, seedActiveTabMetaList, shouldRefreshTabMetaForEvent, TAB_META_MAX_IN_FLIGHT } from "./lib/tabMetaRefresh";
+import { activeLeaseBlockedTab, createBoundedRefreshCoordinator, sameTabMetaLists, shouldRefreshTabMetaForEvent, TAB_META_MAX_IN_FLIGHT } from "./lib/tabMetaRefresh";
 import { clearLegacyLangPref, normalizeLangPref, readLegacyLangPref, t, useI18n, useT, type Translator } from "./lib/i18n";
 import { useActiveRemoteSession } from "./lib/useRemoteSession";
-import { useRemoteTabOpened } from "./lib/useRemoteTabOpened";
 import { publishNavigationIntent } from "./lib/useNavigationIntentFence";
-import { renameCurrentRemoteSession } from "./lib/remoteSessionActions";
-import { localizedNoticeText, useController, type HistoryLoadTrigger, type Item } from "./lib/useController";
-import { app, onEvent, onProjectTreeChanged, onReady, onRemoteForwards, onRemoteServer, onRemoteStatus, onRuntimeRebuilt, openExternal } from "./lib/bridge";
+import { localizedNoticeText, useController, type Item } from "./lib/useController";
+import { app, onEvent, onReady, onRemoteForwards, onRemoteServer, onRemoteStatus, onRuntimeRebuilt, openExternal } from "./lib/bridge";
 import { useConfigLoadWarnings } from "./lib/useConfigLoadWarnings";
 import { generativeMusic, isGenerativeMusicEnabled } from "./lib/generative-music";
 import { clearAttentionChimeKeys, playAttentionChime, playSuccessChime, shouldPlayAttentionChimeForEvent } from "./lib/sound";
 import { NoticeCard, Transcript } from "./components/Transcript";
-import { ProcessCompactIcon } from "./components/ProcessCard";
 import { Composer } from "./components/Composer";
 import { TodoPanel } from "./components/TodoPanel";
 import { ApprovalModal } from "./components/ApprovalModal";
@@ -1036,9 +1033,7 @@ export default function App() {
     undoRewindForTab,
     setModel,
     setEffort,
-    setSubagentPolicyFromUi,
     cancelJob,
-    refreshJobs,
     switchTab,
     openProjectTab,
     createIsolatedWorktree,
@@ -1054,7 +1049,6 @@ export default function App() {
     syncActiveTab,
     ensureBlankTab,
     ensureBlankSurface,
-    hasLocalTranscriptForTab,
   } = useController();
   const { locale, setPref: setLocalePref } = useI18n();
   const t = useT();
@@ -1093,6 +1087,7 @@ export default function App() {
   }, []);
   const [tabRevealSignal, setTabRevealSignal] = useState(0);
   const [transcriptRevealSignal, setTranscriptRevealSignal] = useState(0);
+  const mainView = useOverlayStore((s) => s.mainView);
   const startupSplashVisible = useOverlayStore((s) => s.startupSplashVisible);
   const setStartupSplashVisible = useOverlayStore((s) => s.setStartupSplashVisible);
   // null until the mount probe resolves; true shows the first-run guide.
@@ -1160,6 +1155,7 @@ export default function App() {
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const [tasksOpen, setTasksOpen] = useState<false | "session" | "all">(false);
   const [takeoverDialogTab, setTakeoverDialogTab] = useState<string | null>(null);
+  const [questionSearchOpen, setQuestionSearchOpen] = useState(false);
   const [reclaimBusyTab, setReclaimBusyTab] = useState<string | null>(null);
   const [liveSidebarWidth, setLiveSidebarWidth] = useState<number | null>(null);
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window === "undefined" ? 1440 : window.innerWidth));
@@ -1615,16 +1611,18 @@ export default function App() {
     () => tabMetas.find((tab) => tab.id === activeTabId) ?? tabMetas.find((tab) => tab.active),
     [activeTabId, tabMetas],
   );
-  const { active: remoteSurfaceActive, session: remoteSession, ready: remoteComposerReady, onSend: remoteSend, onCancel: remoteCancel } = useActiveRemoteSession(activeTab, showToast);
+  const { active: remoteSurfaceActive, session: remoteSession, onSend: remoteComposerSend } = useActiveRemoteSession(activeTab, showToast);
+
+  const automationView = mainView === "automation";
+  const effectiveWorkspacePanelRenderable = automationView ? false : workspacePanelRenderable;
+  const effectiveWorkspacePanelGridOpen = automationView ? false : workspacePanelGridOpen;
 
   // Remote tab became ready: refresh the tab list so the spectator banner
   // (takenOver) renders. The agent:ready event only fires for local tabs;
   // remote tabs publish readiness via remote-tab:<id>:state, which
   const visibleRuntimeState = remoteSurfaceActive ? remoteSession.transcript : state;
-  const localWorkspaceDockBlocked = remoteSurfaceActive && (rightDockMode === "files" || rightDockMode === "changed");
-  const surfaceWorkspacePanelRenderable = workspacePanelRenderable && !localWorkspaceDockBlocked;
-  const surfaceWorkspacePanelGridOpen = workspacePanelGridOpen && !localWorkspaceDockBlocked;
-  const terminalSurfaceOpen = terminalPanelOpen && !remoteSurfaceActive;
+  const exportItems = visibleRuntimeState.items;
+  const exportLive = liveStore.getSnapshot(activeTabId) ?? state.live;
   const activePlanRevisionInsertRequest =
     planRevisionInsertRequest &&
     planRevisionInsertRequest.tabId === activeTabId &&
@@ -3178,7 +3176,7 @@ export default function App() {
       // mask so the cached conversation is visible immediately; backend
       // activation + tab-metadata refresh still run in the background. This is
       // the "instant switch-back" path taken when the session is resident.
-      const targetCached = hasLocalTranscriptForTab(tabId);
+      const targetCached = false; // fork helper absent upstream
       const masked = !targetCached;
       if (masked) beginNavigationSurface(navigationIntentSeq);
       return enqueueNavigationRequest(
@@ -3199,7 +3197,7 @@ export default function App() {
         },
       );
     },
-    [beginNavigationSurface, enterChatViewForTabNavigation, hasLocalTranscriptForTab, isNavigationIntentCurrent, noteNavigationIntent, refreshTabMetas, settleNavigationSurface, switchTab],
+    [beginNavigationSurface, enterChatViewForTabNavigation, isNavigationIntentCurrent, noteNavigationIntent, refreshTabMetas, settleNavigationSurface, switchTab],
   );
 
   const revealBackgroundRuntime = useCallback(async (tabId: string): Promise<void> => {
@@ -4873,13 +4871,7 @@ export default function App() {
                       (node as HTMLElement & { inert?: boolean }).inert = runtimeTransitioning;
                     }}
                   >
-                    {state.compactionActive && (
-                      <div className="banner banner--compacting" role="status">
-                        <ProcessCompactIcon size={13} aria-hidden="true" />
-                        <span className="banner__msg">{t("compaction.working")}</span>
-                      </div>
-                    )}
-                    <Transcript
+                                        <Transcript
                       items={visibleTranscriptItems}
                       live={runtimeTransitioning ? undefined : state.live}
                       liveStore={liveStore}
@@ -5383,7 +5375,6 @@ export default function App() {
             running={state.running || rewindCommitting}
             jobs={state.jobs}
             onCancelJob={cancelJob}
-            onJobsRefresh={refreshJobs}
             backgroundRuntimes={backgroundRuntimes}
             onCancelRuntimeJob={cancelRuntimeJob}
             onRevealRuntime={revealBackgroundRuntime}

@@ -51,13 +51,14 @@ export async function answerPromptForActiveTurn(
   promptId: string,
   answers: QuestionAnswer[],
   knownTurnId?: string,
+  _knownRuntimeEpoch?: string,
 ): Promise<void> {
   if (typeof binding.AnswerPromptForTab !== "function") {
     await binding.AnswerQuestionForTab(tabId, promptId, answers);
     return;
   }
   const turnId = await resolveActiveTurnId(binding, tabId, knownTurnId);
-  if (!turnId) throw new Error("active turn id is unavailable");
+  if (!turnId) throw new Error("active turn id is unavailable; refresh and try again");
   await binding.AnswerPromptForTab(tabId, turnId, promptId, answers);
 }
 

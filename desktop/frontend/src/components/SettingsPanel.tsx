@@ -1361,6 +1361,7 @@ function normalizeExtraBodyMap(value: unknown): Record<string, unknown> {
 
 export function normalizeProviderView(p: ProviderView): ProviderView {
   const visionModels = asArray(p.visionModels);
+  const highSpeedModels = asArray(p.highSpeedModels);
   const modelCapabilities = asArray(p.modelCapabilities).flatMap((item) => {
     if (!item || typeof item !== "object") return [];
     const raw = item as Partial<ProviderModelCapabilityView>;
@@ -5086,6 +5087,7 @@ function ProvidersSection({ s, busy, apply }: SectionProps) {
     const selected = previous?.selected ?? mergedFetchedProviderModels(p.models, fetched, { preserveCurated: true });
     const configuredVision = p.visionModels;
     return {
+      highSpeedModels: previous?.highSpeedModels ?? [],
       providerName: p.name,
       baseURL: p.baseUrl,
       providerIdentity: providerModelDraftIdentity(p),
@@ -5114,21 +5116,6 @@ function ProvidersSection({ s, busy, apply }: SectionProps) {
   };
 
 
-  const toggleModelDraftHighSpeed = (groupID: string, model: string) => {
-    setModelDrafts((prev) => {
-      const draft = prev[groupID];
-      if (!draft) return prev;
-      return {
-        ...prev,
-        [groupID]: {
-          ...draft,
-          highSpeedModels: draft.highSpeedModels.includes(model)
-            ? draft.highSpeedModels.filter((candidate) => candidate !== model)
-            : draft.candidates.filter((candidate) => candidate === model || draft.highSpeedModels.includes(candidate)),
-        },
-      };
-    });
-  };
 
   const refreshModels = async (group: ProviderAccessGroup, p: ProviderView) => {
     const generation = beginGroupFetch(group.id);
