@@ -4,6 +4,8 @@ import { create } from "zustand";
 
 import { shouldShowStartupSplash } from "../components/StartupSplash";
 import type { ExtensionActionView, SessionMeta } from "../lib/types";
+import type { SettingsTab } from "../lib/types";
+import type { SettingsInitialFocus } from "../components/SettingsPanel";
 
 import { applySetState } from "./setState";
 
@@ -20,6 +22,11 @@ export type OverlayState = {
   transientOverlayDismissSignal: number;
   startupSplashVisible: boolean;
   needsOnboarding: boolean | null;
+  // Main workspace view: "chat" (default) or "automation" (heartbeat page).
+  mainView: "chat" | "automation";
+  // Settings panel deep-link target (null = plain settings).
+  settingsTarget: SettingsTab | null;
+  settingsFocus: SettingsInitialFocus | null;
   setPaletteOpen: Dispatch<SetStateAction<boolean>>;
   setPaletteSessions: Dispatch<SetStateAction<SessionMeta[]>>;
   setPaletteExtensionActions: Dispatch<SetStateAction<ExtensionActionView[]>>;
@@ -30,6 +37,9 @@ export type OverlayState = {
   setTransientOverlayDismissSignal: Dispatch<SetStateAction<number>>;
   setStartupSplashVisible: Dispatch<SetStateAction<boolean>>;
   setNeedsOnboarding: Dispatch<SetStateAction<boolean | null>>;
+  setMainView: Dispatch<SetStateAction<"chat" | "automation">>;
+  setSettingsTarget: Dispatch<SetStateAction<SettingsTab | null>>;
+  setSettingsFocus: Dispatch<SetStateAction<SettingsInitialFocus | null>>;
 };
 
 export const useOverlayStore = create<OverlayState>((set) => ({
@@ -43,6 +53,9 @@ export const useOverlayStore = create<OverlayState>((set) => ({
   transientOverlayDismissSignal: 0,
   startupSplashVisible: shouldShowStartupSplash(),
   needsOnboarding: null,
+  mainView: "chat",
+  settingsTarget: null,
+  settingsFocus: null,
   setPaletteOpen: (update) => set((s) => ({ paletteOpen: applySetState(s.paletteOpen, update) })),
   setPaletteSessions: (update) => set((s) => ({ paletteSessions: applySetState(s.paletteSessions, update) })),
   setPaletteExtensionActions: (update) => set((s) => ({ paletteExtensionActions: applySetState(s.paletteExtensionActions, update) })),
@@ -53,4 +66,7 @@ export const useOverlayStore = create<OverlayState>((set) => ({
   setTransientOverlayDismissSignal: (update) => set((s) => ({ transientOverlayDismissSignal: applySetState(s.transientOverlayDismissSignal, update) })),
   setStartupSplashVisible: (update) => set((s) => ({ startupSplashVisible: applySetState(s.startupSplashVisible, update) })),
   setNeedsOnboarding: (update) => set((s) => ({ needsOnboarding: applySetState(s.needsOnboarding, update) })),
+  setMainView: (value) => set((s) => ({ mainView: typeof value === "function" ? value(s.mainView) : value })),
+  setSettingsTarget: (value) => set((s) => ({ settingsTarget: typeof value === "function" ? value(s.settingsTarget) : value })),
+  setSettingsFocus: (value) => set((s) => ({ settingsFocus: typeof value === "function" ? value(s.settingsFocus) : value })),
 }));

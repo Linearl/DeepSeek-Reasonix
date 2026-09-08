@@ -3661,8 +3661,8 @@ export const en = {
   "settings.addGlobalWriteRoot": "Addglobalwriteroot",
   "settings.addSessionWriteRoot": "Addsessionwriteroot",
   "settings.browseGlobalWriteRoot": "Browseglobalwriteroot",
-  "settings.defaultSubagentPolicy": "Defaultsubagentpolicy",
-  "settings.defaultSubagentPolicyHint": "Defaultsubagentpolicyhint",
+  "settings.defaultSubagentPolicy": "Default sub-agent policy",
+  "settings.defaultSubagentPolicyHint": "Delegation tier used by new sessions",
   "settings.globalWriteRootPlaceholder": "Globalwriterootplaceholder",
   "settings.globalWriteRoots": "Globalwriteroots",
   "settings.globalWriteRootsHint": "Globalwriterootshint",
@@ -3682,6 +3682,10 @@ export const en = {
   "composer.subagentPolicy_light": "Light",
   "composer.subagentPolicy_balanced": "Balanced",
   "composer.subagentPolicy_aggressive": "Aggressive",
+
+  "settings.defaultSubagentPolicy.light": "Light",
+  "settings.defaultSubagentPolicy.balanced": "Balanced",
+  "settings.defaultSubagentPolicy.aggressive": "Aggressive",
 };
 
 export type DictKey = keyof typeof en;

@@ -7,6 +7,7 @@ export interface SessionCatalogStatus {
   indexed: number;
   total: number;
   repairPending: number;
+  unindexedTargetCount?: number;
   repairActive?: number;
   repairDeferred?: number;
   repairBlocked?: number;

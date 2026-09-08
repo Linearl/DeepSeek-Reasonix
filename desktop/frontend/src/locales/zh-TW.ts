@@ -3660,8 +3660,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.addGlobalWriteRoot": "Addglobalwriteroot",
   "settings.addSessionWriteRoot": "Addsessionwriteroot",
   "settings.browseGlobalWriteRoot": "Browseglobalwriteroot",
-  "settings.defaultSubagentPolicy": "Defaultsubagentpolicy",
-  "settings.defaultSubagentPolicyHint": "Defaultsubagentpolicyhint",
+  "settings.defaultSubagentPolicy": "預設子代理策略",
+  "settings.defaultSubagentPolicyHint": "新建會話使用的子代理委派檔位",
   "settings.globalWriteRootPlaceholder": "Globalwriterootplaceholder",
   "settings.globalWriteRoots": "Globalwriteroots",
   "settings.globalWriteRootsHint": "Globalwriterootshint",
@@ -3681,4 +3681,8 @@ export const zhTW: Record<DictKey, string> = {
   "composer.subagentPolicy_light": "輕量",
   "composer.subagentPolicy_balanced": "均衡",
   "composer.subagentPolicy_aggressive": "激進",
+
+  "settings.defaultSubagentPolicy.light": "輕量",
+  "settings.defaultSubagentPolicy.balanced": "均衡",
+  "settings.defaultSubagentPolicy.aggressive": "激進",
 };

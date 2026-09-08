@@ -3664,8 +3664,8 @@ export const zh: Record<DictKey, string> = {
   "settings.addGlobalWriteRoot": "Addglobalwriteroot",
   "settings.addSessionWriteRoot": "Addsessionwriteroot",
   "settings.browseGlobalWriteRoot": "Browseglobalwriteroot",
-  "settings.defaultSubagentPolicy": "Defaultsubagentpolicy",
-  "settings.defaultSubagentPolicyHint": "Defaultsubagentpolicyhint",
+  "settings.defaultSubagentPolicy": "默认子代理策略",
+  "settings.defaultSubagentPolicyHint": "新建会话使用的子代理委派档位",
   "settings.globalWriteRootPlaceholder": "Globalwriterootplaceholder",
   "settings.globalWriteRoots": "Globalwriteroots",
   "settings.globalWriteRootsHint": "Globalwriterootshint",
@@ -3685,4 +3685,8 @@ export const zh: Record<DictKey, string> = {
   "composer.subagentPolicy_light": "轻量",
   "composer.subagentPolicy_balanced": "均衡",
   "composer.subagentPolicy_aggressive": "激进",
+
+  "settings.defaultSubagentPolicy.light": "轻量",
+  "settings.defaultSubagentPolicy.balanced": "均衡",
+  "settings.defaultSubagentPolicy.aggressive": "激进",
 };
