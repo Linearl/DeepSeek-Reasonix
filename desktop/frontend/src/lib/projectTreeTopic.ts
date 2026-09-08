@@ -479,3 +479,12 @@ export function topicActivityDateLabel(ms: number): string {
   const dateLocale = locale === "zh" ? "zh-CN" : locale === "zh-TW" ? "zh-TW" : "en";
   return new Date(ms).toLocaleDateString(dateLocale);
 }
+
+// projectTreeTopicRecoveryCopyCount: placeholder for the (unimplemented)
+// recovery-copy consolidation counter. The consolidate menu action calls the
+// backend directly; this count was referenced by UI code that shipped before
+// the helper existed (fork 1.34-era residue). Returns 0 until the feature
+// lands; see fork task 11 follow-ups.
+export function projectTreeTopicRecoveryCopyCount(_topicID: string): number {
+	return 0;
+}

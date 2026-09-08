@@ -241,6 +241,11 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   // Per-session sub-agent delegation tier for a tab (light|balanced|aggressive).
   SetSubagentPolicyForTab(tabID: string, policy: string): Promise<void>;
   TrashTopicForce(topicID: string): Promise<void>;
+  AnswerQuestionForTab(tabID: string, id: string, answers: QuestionAnswer[]): Promise<void>;
+  Platform(): Promise<string>;
+  AnswerPromptForTab?(tabID: string, turnID: string, id: string, answers: QuestionAnswer[]): Promise<void>;
+  SteerInboxItemForTurn?(tabID: string, turnID: string, itemID: string): Promise<{ itemId: string; disposition: string }>;
+  EnqueueInboxSteerForTurn?(tabID: string, turnID: string, display: string, submit: string, idempotency: string): Promise<{ itemId: string; disposition: string; position: number; paused: boolean; idempotent?: boolean; error?: string }>;
   MinimiseMainWindow(): Promise<void>;
   ToggleMaximiseMainWindow(): Promise<void>;
   IsMainWindowMaximised(): Promise<boolean>;

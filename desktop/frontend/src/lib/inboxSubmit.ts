@@ -15,8 +15,6 @@ export async function resolveActiveTurnId(binding: Pick<AppBindings, "ListTabs">
   return authoritative;
 }
 
-type AskAnswerBindings = Pick<AppBindings, "ListTabs" | "ResolvePromptForTab">;
-
 export async function resolvePromptForTab(
   binding: Pick<AppBindings, "ListTabs" | "ResolvePromptForTab">,
   tabId: string,
@@ -30,26 +28,8 @@ export async function resolvePromptForTab(
   return submit.resolvePromptForTab(binding, tabId, promptId, kind, answer, knownTurnId, knownRuntimeEpoch);
 }
 
-// Final frontend boundary before optimistic transcript state is created.
-export function normalizeTurnSubmit(displayText: string, submitText: string) {
-  const display = displayText.trim();
-  const submit = submitText.trim();
-  if (!submit) throw new Error("Message cannot be empty.");
-  return { display, submit };
-}
 
-export async function answerPromptForActiveTurn(
-  binding: AskAnswerBindings,
-  tabId: string,
-  promptId: string,
-  answers: QuestionAnswer[],
-  knownTurnId?: string,
-  knownRuntimeEpoch?: string,
-): Promise<void> {
-  await resolvePromptForTab(binding, tabId, promptId, "ask", { questions: answers }, knownTurnId, knownRuntimeEpoch);
-}
-
-type AskAnswerBindings = Pick<AppBindings, "ListTabs" | "AnswerQuestionForTab" | "AnswerPromptForTab">;
+type AskAnswerBindings = Pick<AppBindings, "ListTabs" | "ResolvePromptForTab" | "AnswerQuestionForTab" | "AnswerPromptForTab">;
 
 // Final frontend boundary before optimistic transcript state is created.
 export function normalizeTurnSubmit(displayText: string, submitText: string) {
