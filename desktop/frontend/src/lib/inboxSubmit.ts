@@ -6,13 +6,18 @@ import type { QuestionAnswer } from "./types";
 type InboxEnqueueBindings = Pick<AppBindings, "EnqueueInboxFollowup" | "EnqueueInboxFollowupWithInvocations" | "EnqueueInboxSteer" | "EnqueueInboxSteerForTurn">;
 type ActiveTurnBindings = Pick<AppBindings, "ListTabs" | "SteerInboxItem" | "SteerInboxItemForTurn">;
 
-export async function resolveActiveTurnId(binding: Pick<AppBindings, "ListTabs">, tabId: string, _known?: string): Promise<string | undefined> {
+export async function resolveActiveTurnId(binding: Pick<AppBindings, "ListTabs">, tabId: string, known?: string): Promise<string | undefined> {
   // The cached id can outlive the controller turn during startup, recovery,
   // or a runtime rebuild. Always refresh from the tab owner before crossing
-  // the exact-turn answer/steer boundary; the optional value is only a hint
-  // for callers that have not received local state yet.
+  // the exact-turn answer/steer boundary. When the tab owner cannot answer
+  // (controller rebuild / recovery fork / backend busy — the #9944 family),
+  // fall back to the caller's known turn id instead of returning undefined:
+  // dropping it here dead-locks every later ask/approval submit behind the
+  // "active turn id is unavailable" guard while the server-side pending
+  // prompt waits forever. A stale id surfaces a visible exact-turn rejection
+  // instead of a silent self-lock, which is recoverable.
   const authoritative = asArray(await binding.ListTabs()).find((tab) => tab.id === tabId)?.turnId;
-  return authoritative;
+  return authoritative || known || undefined;
 }
 
 export async function resolvePromptForTab(

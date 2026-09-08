@@ -44,6 +44,11 @@ export function RecoveryLineageDialog({ topic, initial, onClose, onChanged, onOp
     try {
       await app.ChooseRecoveryBranch({ ...topic, path });
       await refresh();
+    } catch (error) {
+      // #9927: an unhandled rejection here crashed the whole app. Surface
+      // the failure as a toast instead — the dialog stays open, the user
+      // can pick another version or retry.
+      showToast(error instanceof Error ? error.message : String(error));
     } finally {
       setBusy(false);
     }

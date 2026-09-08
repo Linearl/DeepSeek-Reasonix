@@ -24,6 +24,13 @@ export function reduceSubmitFailure(
     seq: state.seq + 1,
     items: [...removeEmptyAssistantItems(items), { kind: "notice", id: `n${state.seq}`, level: "warn", text: error } as Item],
   };
+  // Keep the turn id alive while a server-side prompt (ask/approval/mcp)
+  // is still pending on that turn: clearing it dead-locks every later
+  // answer/steer behind the "active turn id is unavailable" guard while the
+  // server-side pending waits forever (#9923/#9944 family). A stale id
+  // surfaces a visible exact-turn rejection instead of a silent self-lock,
+  // which is recoverable.
+  const keepTurnId = Boolean(state.approval || state.ask || state.mcpInteraction);
   return {
     ...next,
     running: conservative,
@@ -31,7 +38,7 @@ export function reduceSubmitFailure(
     pendingPrompt: conservative && Boolean(state.approval || state.ask || state.mcpInteraction),
     cancellable: conservative,
     ...(conservative ? {} : {
-      activeTurnId: undefined,
+      activeTurnId: keepTurnId ? state.activeTurnId : undefined,
       currentAssistant: undefined,
       assistantSegmentOrdinal: 0,
       live: undefined,

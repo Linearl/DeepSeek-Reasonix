@@ -24,7 +24,18 @@ func SetRecoveryPreferred(paths []string, chosenPath string) error {
 	}
 	ordered, err := validatedRecoveryPreferenceMembers(unique)
 	if err != nil {
-		return err
+		// Fail-soft (#9927 family): a lineage accumulated by repeated
+		// recovery forks (e.g. after forced kills left the transcript tail
+		// damaged, #9890) can trip the strict member checks — multiple
+		// normal members or unreadable sidecars. Refusing here crashes the
+		// version chooser and leaves the user stuck; proceeding with the
+		// plain member list still records an explicit preference, which is
+		// strictly better than an unhandled rejection.
+		ordered = make([]string, 0, len(unique))
+		for path := range unique {
+			ordered = append(ordered, path)
+		}
+		sort.Strings(ordered)
 	}
 	for _, path := range ordered {
 		if err := UpdateBranchMeta(path, false, clearRecoveryPreference); err != nil {
@@ -32,8 +43,23 @@ func SetRecoveryPreferred(paths []string, chosenPath string) error {
 		}
 	}
 	chosen, err := LoadSession(chosenPath)
-	if err != nil || chosen == nil || chosen.normalizedDirty || chosen.eventLogDamaged {
-		return fmt.Errorf("could not fingerprint preferred recovery branch")
+	if err != nil || chosen == nil {
+		// Fail-soft: an unreadable transcript still gets its preference
+		// flag recorded (without a digest) instead of failing the whole
+		// choice operation (#9927).
+		return UpdateBranchMeta(chosenPath, false, func(meta *BranchMeta) error {
+			meta.RecoveryPreferred = true
+			return nil
+		})
+	}
+	if chosen.normalizedDirty || chosen.eventLogDamaged {
+		// Damaged tail (#9890): record the preference without a digest —
+		// digest mismatch is a soft signal for later reconciliation, not a
+		// reason to reject the user's explicit choice.
+		return UpdateBranchMeta(chosenPath, false, func(meta *BranchMeta) error {
+			meta.RecoveryPreferred = true
+			return nil
+		})
 	}
 	digest, err := digestSessionMessages(chosen.Snapshot())
 	if err != nil {
