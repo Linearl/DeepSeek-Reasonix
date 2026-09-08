@@ -50,8 +50,8 @@ type BranchMeta struct {
 	// desktop integration). light (no guidance) is the default; empty maps to
 	// light on load. Old builds ignore the field (Go json drops unknown keys).
 	SubagentPolicy string `json:"subagent_policy,omitempty"`
-	Goal             string `json:"goal,omitempty"`
-	Recovered        bool   `json:"recovered,omitempty"`
+	Goal           string `json:"goal,omitempty"`
+	Recovered      bool   `json:"recovered,omitempty"`
 	// VersionKind separates ordinary transcripts, recovery copies, and
 	// session-backed subagents. Older sidecars infer recovery from Recovered.
 	VersionKind          SessionVersionKind  `json:"version_kind,omitempty"`
@@ -717,4 +717,3 @@ func SaveBranchMetaSubagentPolicy(sessionPath, policy string) error {
 		return nil
 	})
 }
-

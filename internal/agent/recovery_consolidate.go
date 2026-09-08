@@ -49,19 +49,19 @@ type RecoveryBranchCandidate struct {
 
 // ConsolidationReport summarizes one consolidation run for the UI.
 type ConsolidationReport struct {
-	MainPath           string
-	WinnerPath         string // "" when the main transcript already was the winner
-	Promoted           bool
-	NormalizedMain     bool // an older-format main was rewritten in place first
+	MainPath       string
+	WinnerPath     string // "" when the main transcript already was the winner
+	Promoted       bool
+	NormalizedMain bool // an older-format main was rewritten in place first
 	// BlockedByDivergence reports that the fullest copy and the main
 	// transcript each hold turns the other lacks (typical after a main-side
 	// compaction). Nothing was merged; the caller may retry with Force.
 	BlockedByDivergence bool
 	MainMessageCount    int
 	WinnerMessageCount  int
-	Trashed            []string
-	SkippedNotCovered  []string
-	SkippedUnloadable  []string
+	Trashed             []string
+	SkippedNotCovered   []string
+	SkippedUnloadable   []string
 }
 
 // validateConsolidationTarget rejects paths that cannot be a consolidation
@@ -407,7 +407,7 @@ func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) err
 	winnerStem := strings.TrimSuffix(filepath.Base(winnerPath), ".jsonl")
 	mainStem := strings.TrimSuffix(filepath.Base(mainPath), ".jsonl")
 	dropSidecar := map[string]bool{
-		filepath.Base(store.SessionEventIndex(winnerPath)):  true,
+		filepath.Base(store.SessionEventIndex(winnerPath)):   true,
 		filepath.Base(store.SessionDisplayIndex(winnerPath)): true,
 	}
 	artifacts := append([]string{}, store.SessionSidecarFiles(winnerPath)...)
