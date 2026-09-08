@@ -72,7 +72,6 @@ import { ShortcutsCheatsheet } from "./components/ShortcutsCheatsheet";
 import { WorktreeBadge } from "./components/WorktreeBadge";
 import { CopyButton } from "./components/CopyButton";
 import { ExternalOpener, shouldMountExternalOpener } from "./components/ExternalOpener";
-import { TopicbarMoreMenu } from "./components/TopicbarMoreMenu";
 import { startTerminalEventBridge } from "./lib/terminalEvents";
 import { applyTerminalThemePreference } from "./lib/terminalTheme";
 import { formatTerminalOutputForComposer } from "./lib/terminalOutput";
@@ -4754,19 +4753,7 @@ export default function App() {
               {shouldMountExternalOpener(activeTab, Boolean(sidebarImDetailConnection)) && activeTab && (
                 <ExternalOpener key={activeTab.id} tabId={activeTab.id} dismissSignal={transientOverlayDismissSignal} />
               )}
-              {!sidebarImDetailConnection && (
-                <TopicbarMoreMenu
-                  sessionHasContent={sessionHasContent}
-                  getSessionMarkdown={getSessionMarkdown}
-                  exportSession={(format) => void exportSession(format)}
-                  openChangedDock={() => openRightDockMode("changed")}
-                  toggleTerminal={toggleTerminalPanel}
-                  prefetchTerminal={prefetchTerminalPanel}
-                  openSessionSummary={() => setTasksOpen((open) => open ? false : "session")}
-                  tasksOpen={Boolean(tasksOpen)}
-                />
-              )}
-              {sidebarCreation && dockToggleButton}
+                            {sidebarCreation && dockToggleButton}
               {tasksOpen && (
                 <div className="taskmonitor-popover" role="dialog" aria-label={t("summary.session")}>
                   <Suspense fallback={null}>

@@ -3,7 +3,7 @@ export { providerSupportsServerWebSearch } from "../lib/providerSearch";
 import { ManagementPageShell } from "./ManagementPageShell";
 import { useProviderT as useT } from "../lib/providerSettingsLocale";
 import { lazy, memo, Suspense, startTransition, useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { ArrowRight, BrainCircuit, Check, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, ShieldCheck, SlidersHorizontal, Trash2, Volume2 } from "lucide-react";
+import { ArrowRight, BrainCircuit, Check, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, ShieldCheck, SlidersHorizontal, Trash2, Volume2 } from "lucide-react";
 import { ProviderModelsEditor } from "./ProviderModelsEditor";
 import { asArray } from "../lib/array";
 import { ShellInterpreterFields } from "./SettingsShellSupport";
@@ -5443,6 +5443,7 @@ type ProviderModelDraft = {
   visionModels: string[];
   visionModelsConfigured: boolean; visionCapability?: ProviderVisionCapability;
   modelCapabilities: ProviderModelCapabilityView[];
+  highSpeedModels: string[];
 };
 
 type AddProviderMode = null | "official" | "custom";

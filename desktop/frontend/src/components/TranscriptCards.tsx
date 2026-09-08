@@ -121,7 +121,7 @@ export function CompactionCard({ item }: { item: CompactionItem }) {
   const [open, setOpen] = useState(false);
   const beginUserResize = useTranscriptUserResizeIntent();
   if (item.pending) {
-    const label = item.total > 0 ? t("compaction.progress", { done: item.done, total: item.total }) : t("compaction.working");
+    const label = (item.total ?? 0) > 0 ? t("compaction.progress", { done: item.done, total: (item.total ?? 0) }) : t("compaction.working");
     return <div className="compaction compaction--pending" data-entrance={item.id} data-transcript-layout-variant="static"><ProcessCompactIcon size={12} /><span>{label}</span></div>;
   }
   return (

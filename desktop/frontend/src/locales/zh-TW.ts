@@ -3678,4 +3678,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.sessionWriteRootsActive": "Sessionwriterootsactive",
   "settings.sessionWriteRootsHint": "Sessionwriterootshint",
   "settings.sessionWriteRootsPicker": "Sessionwriterootspicker",
+  "composer.subagentPolicy_light": "輕量",
+  "composer.subagentPolicy_balanced": "均衡",
+  "composer.subagentPolicy_aggressive": "激進",
 };

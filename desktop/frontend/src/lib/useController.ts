@@ -135,6 +135,7 @@ export type SubagentProgress = {
   truncated: boolean;
   durationMs?: number;
   startedAt: number;
+  tokensPerSec?: number; // fork #9521: TPS heartbeat for streaming output
 };
 export function isSubagentProgressName(name: string | undefined): boolean {
   return !!name && name.startsWith(SUBAGENT_PROGRESS_PREFIX);
@@ -277,6 +278,8 @@ export type Item =
       messages: number;
       summary: string;
       archive: string;
+      done?: number; // fork: chunked-compaction progress
+      total?: number;
     }
   | {
       kind: "tool";

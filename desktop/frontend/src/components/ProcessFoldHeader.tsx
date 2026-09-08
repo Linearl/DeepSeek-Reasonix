@@ -48,8 +48,8 @@ export function ProcessFoldHeader({
   const hasCompaction = compactionItem !== undefined;
   const baseLabel = compactionItem
     ? compactionItem.pending
-      ? compactionItem.done > 0
-        ? t("compaction.progress", { done: compactionItem.done, total: compactionItem.total })
+      ? (compactionItem.done ?? 0) > 0
+        ? t("compaction.progress", { done: (compactionItem.done ?? 0), total: (compactionItem.total ?? 0) })
         : t("compaction.working")
       : t("compaction.title")
     : workStatusLabel(effectiveDurationMs, hasRunningWork, t);

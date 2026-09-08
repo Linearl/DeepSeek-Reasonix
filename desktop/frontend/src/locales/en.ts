@@ -3679,6 +3679,9 @@ export const en = {
   "settings.sessionWriteRootsActive": "Sessionwriterootsactive",
   "settings.sessionWriteRootsHint": "Sessionwriterootshint",
   "settings.sessionWriteRootsPicker": "Sessionwriterootspicker",
+  "composer.subagentPolicy_light": "Light",
+  "composer.subagentPolicy_balanced": "Balanced",
+  "composer.subagentPolicy_aggressive": "Aggressive",
 };
 
 export type DictKey = keyof typeof en;
