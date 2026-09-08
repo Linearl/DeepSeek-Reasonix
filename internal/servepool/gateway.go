@@ -8,6 +8,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -19,6 +20,10 @@ type Gateway struct {
 	mgr   *Manager
 	token string
 	proxy map[string]*httputil.ReverseProxy
+	// sessionsSources registers inline /sessions providers for virtual
+	// projects (no backing serve process). Keyed by project id.
+	sessionsMu      sync.RWMutex
+	sessionsSources map[string]func() []SessionEntry
 }
 
 // NewGateway builds the gateway handler. token must be a non-empty secret
@@ -27,7 +32,21 @@ func NewGateway(mgr *Manager, token string) *Gateway {
 	if strings.TrimSpace(token) == "" {
 		token = newToken()
 	}
-	return &Gateway{mgr: mgr, token: token, proxy: map[string]*httputil.ReverseProxy{}}
+	return &Gateway{
+		mgr:             mgr,
+		token:           token,
+		proxy:           map[string]*httputil.ReverseProxy{},
+		sessionsSources: map[string]func() []SessionEntry{},
+	}
+}
+
+// SetSessionsSource registers an inline /sessions provider for a virtual
+// project id. The provider runs on the gateway process (the desktop app),
+// so it can read session metadata without a spawned serve.
+func (g *Gateway) SetSessionsSource(id string, fn func() []SessionEntry) {
+	g.sessionsMu.Lock()
+	defer g.sessionsMu.Unlock()
+	g.sessionsSources[id] = fn
 }
 
 // Token returns the gateway bearer token (for UI display / first setup).
@@ -128,7 +147,10 @@ func (g *Gateway) handleOpen(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleProxy routes /p/<id>/<rest> to the project's serve, lazily spawning
-// it on first use, stripping the /p/<id> prefix before forwarding.
+// it on first use, stripping the /p/<id> prefix before forwarding. Virtual
+// projects (manifest-only, no serve process) are served inline instead:
+// /sessions comes from the registered sessions source; other paths answer
+// 501 until inline handlers exist for them.
 func (g *Gateway) handleProxy(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/p/")
 	id, tail, ok := strings.Cut(rest, "/")
@@ -137,6 +159,10 @@ func (g *Gateway) handleProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id = strings.TrimSpace(id)
+	if g.mgr.IsVirtual(id) {
+		g.handleVirtual(w, r, id, tail)
+		return
+	}
 	if err := g.mgr.Open(id); err != nil {
 		writeJSONStatus(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
 		return
@@ -168,6 +194,33 @@ func (g *Gateway) handleProxy(w http.ResponseWriter, r *http.Request) {
 		out.URL.RawQuery = q.Encode()
 	}
 	proxy.ServeHTTP(w, out)
+}
+
+// handleVirtual serves a virtual project's requests inline from the gateway
+// process (which for the desktop is the app itself, with direct access to
+// session data). Only GET /sessions is supported for now; other paths answer
+// 501 so clients can degrade gracefully.
+func (g *Gateway) handleVirtual(w http.ResponseWriter, r *http.Request, id, tail string) {
+	if r.Method != http.MethodGet || tail != "sessions" {
+		writeJSONStatus(w, http.StatusNotImplemented, map[string]string{
+			"error": "virtual project supports GET /sessions only",
+		})
+		return
+	}
+	g.sessionsMu.RLock()
+	fn := g.sessionsSources[id]
+	g.sessionsMu.RUnlock()
+	if fn == nil {
+		writeJSONStatus(w, http.StatusServiceUnavailable, map[string]string{
+			"error": "no sessions source registered for " + id,
+		})
+		return
+	}
+	sessions := fn()
+	if sessions == nil {
+		sessions = []SessionEntry{}
+	}
+	writeJSON(w, sessions)
 }
 
 func (g *Gateway) proxyFor(id string, port int) *httputil.ReverseProxy {

@@ -37,6 +37,15 @@ func (a *App) startServePool(ctx context.Context) {
 		ProjectRoots:  roots,
 		ProjectColors: projectColorsFromRegistry(),
 		ProjectGroups: projectGroupsFromRegistry(),
+		// The desktop "global" session scope (config.SessionDir()) is not a
+		// project root, so GrandCouncil could never see it (#task16). Expose
+		// it as a manifest-only virtual project whose /sessions the gateway
+		// serves inline from the app below.
+		Virtual: []servepool.ProjectState{{
+			ID:   "global",
+			Name: "Global",
+			Root: "Global",
+		}},
 	})
 	if err != nil {
 		slog.Warn("servepool: disabled", "err", err)
@@ -44,6 +53,7 @@ func (a *App) startServePool(ctx context.Context) {
 	}
 	token := loadOrCreateGatewayToken()
 	gw := servepool.NewGateway(mgr, token)
+	gw.SetSessionsSource("global", a.globalServePoolSessions)
 	port := gatewayPort()
 	ln, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
 	if err != nil {
@@ -83,6 +93,40 @@ func projectRootsFromRegistry() []string {
 		}
 	}
 	return roots
+}
+
+// globalServePoolSessions lists the desktop global-scope sessions
+// (config.SessionDir() — the "Global" area of the app, not tied to any
+// project root) in the wire shape the gateway serves for virtual projects.
+// It reuses the history panel's catalog-backed listing so titles, turn
+// counts, and ordering match what the desktop UI shows.
+func (a *App) globalServePoolSessions() []servepool.SessionEntry {
+	dir := config.SessionDir()
+	if strings.TrimSpace(dir) == "" {
+		return []servepool.SessionEntry{}
+	}
+	metas := a.listSessionsFromDir(dir, "")
+	out := make([]servepool.SessionEntry, 0, len(metas))
+	for _, m := range metas {
+		name := strings.TrimSuffix(filepath.Base(m.Path), ".jsonl")
+		title := m.Title
+		if strings.TrimSpace(title) == "" {
+			title = m.Preview
+		}
+		if r := []rune(title); len(r) > 50 {
+			title = string(r[:47]) + "..."
+		}
+		out = append(out, servepool.SessionEntry{
+			Name:       name,
+			Path:       m.Path,
+			Title:      title,
+			Turns:      m.Turns,
+			Current:    m.Current,
+			Running:    m.Open,
+			MtimeMilli: m.LastActivityAt,
+		})
+	}
+	return out
 }
 
 // projectColorsFromRegistry maps each project root (cleaned) to its color

@@ -46,6 +46,27 @@ type Config struct {
 	// ProjectGroups maps a project root (cleaned) to its group name, used by
 	// remote clients to group projects (e.g. GrandCouncil project folders).
 	ProjectGroups map[string]string
+	// Virtual lists manifest-only projects with no backing serve process
+	// (e.g. the desktop "global" session scope). Open is a no-op and the
+	// gateway serves their /sessions inline from a registered source.
+	Virtual []ProjectState
+}
+
+// SessionEntry is one session-list row the gateway serves for a virtual
+// project. Shape-compatible with internal/serve's sessionListEntry JSON so
+// remote clients render virtual and real projects identically.
+type SessionEntry struct {
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	Title      string `json:"title,omitempty"`
+	Turns      int    `json:"turns,omitempty"`
+	Current    bool   `json:"current,omitempty"`
+	Running    bool   `json:"running,omitempty"`
+	TakenOver  bool   `json:"takenOver,omitempty"`
+	MtimeMilli int64  `json:"mtimeMilli"`
+	// HeldBy reports lease ownership for clients, same semantics as the
+	// real serve list: "me", "other", or "" (free).
+	HeldBy string `json:"heldBy,omitempty"`
 }
 
 // ProjectState mirrors the manifest entry a remote client sees.
@@ -66,6 +87,7 @@ type Manager struct {
 	mu       sync.Mutex
 	bin      string
 	projects map[string]*project // keyed by project id (workspace slug)
+	virtuals map[string]ProjectState
 	stop     chan struct{}
 	done     chan struct{}
 }
@@ -114,11 +136,18 @@ func NewManager(cfg Config) (*Manager, error) {
 		cfg:      cfg,
 		bin:      bin,
 		projects: map[string]*project{},
+		virtuals: map[string]ProjectState{},
 		stop:     make(chan struct{}),
 		done:     make(chan struct{}),
 	}
 	for _, root := range cfg.ProjectRoots {
 		m.addProjectLocked(root)
+	}
+	for _, v := range cfg.Virtual {
+		if v.ID = strings.TrimSpace(v.ID); v.ID != "" {
+			v.State = "running"
+			m.virtuals[v.ID] = v
+		}
 	}
 	// The manager loop runs for the process lifetime; a panic in it would
 	// kill the desktop (its goroutine is outside the App goSafe reach).
@@ -182,7 +211,7 @@ func (m *Manager) RefreshProjects(roots []string) {
 func (m *Manager) Projects() []ProjectState {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := make([]ProjectState, 0, len(m.projects))
+	out := make([]ProjectState, 0, len(m.projects)+len(m.virtuals))
 	for _, p := range m.projects {
 		ps := ProjectState{ID: p.id, Root: p.root, State: p.state, Err: p.err, Color: p.color, Group: p.group}
 		if p.port > 0 {
@@ -192,13 +221,29 @@ func (m *Manager) Projects() []ProjectState {
 		}
 		out = append(out, ps)
 	}
+	for _, v := range m.virtuals {
+		out = append(out, v)
+	}
 	return out
+}
+
+// IsVirtual reports whether the id is a manifest-only project with no serve
+// process; the gateway serves such projects' /sessions inline.
+func (m *Manager) IsVirtual(id string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, ok := m.virtuals[id]
+	return ok
 }
 
 // Open ensures the project's serve is running and returns its id. It blocks
 // until the serve is ready or the spawn times out.
 func (m *Manager) Open(id string) error {
 	m.mu.Lock()
+	if _, virtual := m.virtuals[id]; virtual {
+		m.mu.Unlock()
+		return nil
+	}
 	p, ok := m.projects[id]
 	if !ok {
 		m.mu.Unlock()
