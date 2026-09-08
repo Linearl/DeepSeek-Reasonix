@@ -291,7 +291,9 @@ for (const path of localeChunks) {
   // toolchains; keep the next one-decimal ceiling for cross-platform CI.
   // fork: locale soft-limit preserved from 1.31.x (UI copy growth is not a perf regression)
   // upstream 1.38.1 measured 61.2/62.0; fork +1.0 KiB for LocalServerPage/consolidate keys
-  const budget = name.startsWith("zh-TW-") ? 63.5 * 1024 : 62.7 * 1024;
+  // 1f8c3fe50 locale backfill: real Chinese copy is longer than the Title-Case
+  // fallback it replaced; zh measures 63.1 KiB gzip, zh-TW has the same keys.
+  const budget = name.startsWith("zh-TW-") ? 64.0 * 1024 : 63.3 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
