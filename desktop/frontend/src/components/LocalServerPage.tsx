@@ -82,6 +82,8 @@ export function LocalServerPage() {
           color: var(--text, #222); text-align: left;
         }
         .token-display__eye { font-size: 14px; opacity: .7; margin-left: 8px; flex: none; }
+        .settings-field__link { color: var(--link, #4a9eff); font-size: 13px; text-decoration: none; }
+        .settings-field__link:hover { text-decoration: underline; }
       `}</style>
       <div className="settings-section">
         <div className="settings-section__header">
@@ -119,13 +121,21 @@ export function LocalServerPage() {
             <span className="token-display__eye">{showToken ? "🙈" : "👁"}</span>
           </button>
           <div className="settings-actions">
-            <button className="button button--secondary" onClick={copyToken} disabled={!status?.token}>
+            <button className="btn btn--small" onClick={copyToken} disabled={!status?.token}>
               {copied ? t("localserver.copied") : t("localserver.copyToken")}
             </button>
-            <button className="button button--secondary" onClick={refresh} disabled={busy}>
+            <button className="btn btn--small" onClick={refresh} disabled={busy}>
               {t("localserver.refresh")}
             </button>
           </div>
+        </div>
+
+        <div className="settings-field">
+          <div className="settings-field__label">{t("localserver.grandCouncilTitle")}</div>
+          <div className="settings-field__value">{t("localserver.grandCouncilDesc")}</div>
+          <a className="settings-field__link" href="https://github.com/Linearl/GrandCouncil/releases" target="_blank" rel="noreferrer">
+            {t("localserver.grandCouncilDownload")}
+          </a>
         </div>
       </div>
     </div>
