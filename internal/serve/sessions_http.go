@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/store"
@@ -26,6 +27,10 @@ type sessionListEntry struct {
 }
 
 // sessions lists saved sessions with event-log-aware titles and turn counts.
+// Preview reads (which parse the transcript tail) run on a bounded worker
+// pool so a directory with many/large sessions responds in ~max(per-session)
+// instead of ~sum(per-session); titles never block on LLM generation
+// (sessionTitleNonBlocking: cached/preview title now, LLM title next request).
 func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 	ctrl := s.ctl()
 	dir := ctrl.SessionDir()
@@ -45,7 +50,16 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 		running[filepath.Clean(path)] = controllerHasActiveRuntimeWork(detached.ctrl)
 	}
 	s.detachedMu.Unlock()
-	out := make([]sessionListEntry, 0, len(entries))
+
+	type workItem struct {
+		name  string
+		path  string
+		modNs int64
+	}
+	// Cheap state-derived fields stay on this goroutine; the preview read
+	// (whole-file parse on cache miss) is the expensive part that parallelizes.
+	rows := make([]sessionListEntry, 0, len(entries))
+	jobs := make([]workItem, 0, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() || !store.IsSessionTranscriptName(entry.Name()) {
 			continue
@@ -72,18 +86,30 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 		} else if agent.SessionLeaseHeldByOtherRuntime(path) {
 			row.HeldBy = "other"
 		}
-		first, turns, cached := agent.SessionPreviewCached(path)
-		if !cached {
-			first, turns = agent.SessionPreview(path)
-		}
-		if turns > 0 {
-			row.Turns = turns
-			row.Title = s.sessionTitle(r.Context(), entry.Name(), first, mtime.UnixNano())
-		}
-		out = append(out, row)
+		rows = append(rows, row)
+		jobs = append(jobs, workItem{name: entry.Name(), path: path, modNs: mtime.UnixNano()})
 	}
-	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
-		out[i], out[j] = out[j], out[i]
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 8)
+	for i := range jobs {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			first, turns, cached := agent.SessionPreviewCached(jobs[i].path)
+			if !cached {
+				first, turns = agent.SessionPreview(jobs[i].path)
+			}
+			if turns > 0 {
+				rows[i].Turns = turns
+				rows[i].Title = s.sessionTitleNonBlocking(r.Context(), jobs[i].name, first, jobs[i].modNs)
+			}
+		}(i)
 	}
-	writeJSON(w, out)
+	wg.Wait()
+	for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
+		rows[i], rows[j] = rows[j], rows[i]
+	}
+	writeJSON(w, rows)
 }

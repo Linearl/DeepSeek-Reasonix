@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -81,6 +82,8 @@ type Server struct {
 	titleModelRef                string
 	titleUsageSink               event.Sink
 	titles                       *titleCache
+	titleInflight                sync.Map // "name|source|mod" -> in-flight background generation
+	titleSem                     chan struct{}
 	auth                         *authGate // nil when auth is disabled
 	providerSetupMu              sync.RWMutex
 	providerSetup                providerSetupState
@@ -125,6 +128,7 @@ func New(ctrl control.SessionAPI, bc *Broadcaster, serveCfg config.ServeConfig) 
 		ctrl:        ctrl,
 		bc:          bc,
 		titles:      newTitleCache(ctrl.SessionDir()),
+		titleSem:    make(chan struct{}, 2),
 		auth:        newAuthGate(serveCfg),
 		detached:    map[string]*detachedSession{},
 		tags:        map[*control.Controller]*sessionTagSink{},
@@ -1876,6 +1880,35 @@ func (s *Server) sessionTitle(ctx context.Context, name, first string, mod int64
 	if title := s.generateTitle(ctx, source); title != "" {
 		s.titles.put(name, title, source, mod)
 		return title
+	}
+	return previewTitle(source)
+}
+
+// sessionTitleNonBlocking never blocks the caller on LLM generation. A cache
+// hit returns the persisted title; a miss returns the preview-derived fallback
+// immediately and kicks off background generation so the next /sessions
+// request serves the LLM-quality title. Duplicate generation for the same
+// (name, source, mod) is collapsed via titleInflight, and at most
+// cap(titleSem) generations run concurrently.
+func (s *Server) sessionTitleNonBlocking(ctx context.Context, name, first string, mod int64) string {
+	source := titleSource(first)
+	if cached, ok := s.titles.get(name, source, mod); ok {
+		return cached
+	}
+	key := name + "|" + source + "|" + strconv.FormatInt(mod, 10)
+	if _, loaded := s.titleInflight.LoadOrStore(key, struct{}{}); !loaded {
+		go func() {
+			defer s.titleInflight.Delete(key)
+			s.titleSem <- struct{}{}
+			defer func() { <-s.titleSem }()
+			// Detach from the request context (it is canceled when the HTTP
+			// handler returns) and bound the background generation.
+			genCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+			defer cancel()
+			if title := s.generateTitle(genCtx, source); title != "" {
+				s.titles.put(name, title, source, mod)
+			}
+		}()
 	}
 	return previewTitle(source)
 }
