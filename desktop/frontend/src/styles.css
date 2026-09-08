@@ -24058,6 +24058,49 @@ body > .mermaid-diagram--fullscreen {
   display: none;
 }
 
+.topicbar__more {
+  position: relative;
+  display: inline-flex;
+}
+
+.topicbar__more .topicbar__action-btn,
+.topicbar__actions .topicbar__chrome-btn,
+.topicbar__actions .topicbar__action-btn--utility {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.topicbar__more .topicbar__action-btn:hover:not(:disabled),
+.topicbar__actions .topicbar__more .topicbar__action-btn:focus-visible:not(:disabled),
+.topicbar__actions .external-opener__primary:hover:not(:disabled),
+.topicbar__actions .external-opener__primary:focus-visible:not(:disabled),
+.topicbar__actions .external-opener__menu-trigger:hover:not(:disabled),
+.topicbar__actions .external-opener__menu-trigger:focus-visible:not(:disabled),
+.topicbar__actions .topicbar__action-btn--utility:hover:not(:disabled),
+.topicbar__actions .topicbar__action-btn--utility:focus-visible:not(:disabled),
+.topicbar__actions .topicbar__chrome-btn:hover:not(:disabled),
+.topicbar__actions .topicbar__chrome-btn:focus-visible:not(:disabled) {
+  background: var(--button-bg) !important;
+  color: var(--fg) !important;
+}
+
+.topicbar__more-menu,
+.topicbar__more-export-menu,
+.heartbeat-filter-menu,
+.heartbeat-project-menu,
+.heartbeat-task-menu {
+  background: var(--overlay-surface-bg);
+}
+
+.topicbar__more-menu,
+.topicbar__more-export-menu,
+.heartbeat-filter-menu,
+.heartbeat-project-menu,
+.heartbeat-task-menu {
+  background: var(--overlay-surface-bg);
+}
+
 .topicbar__actions {
   flex: 0 0 auto;
   display: flex;
@@ -25668,6 +25711,22 @@ body > .mermaid-diagram--fullscreen {
 .project-tree__topic-im--lark {
   background: color-mix(in srgb, #0ea5e9 11%, transparent);
   color: color-mix(in srgb, #0284c7 78%, var(--fg-dim));
+}
+
+.project-tree__topic-recovery-copies {
+  flex: 0 0 auto;
+  height: 17px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--fg-faint) 10%, transparent);
+  color: var(--fg-faint);
+  font-size: 10.5px;
+  font-weight: 620;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .project-tree__topic-status {

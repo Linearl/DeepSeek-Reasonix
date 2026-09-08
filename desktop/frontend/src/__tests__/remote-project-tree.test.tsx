@@ -30,7 +30,7 @@ const modeActionsSource = readFileSync(resolve(here, "../lib/useComposerModeActi
 const composerSource = readFileSync(resolve(here, "../components/Composer.tsx"), "utf8");
 const contentMenuSource = readFileSync(resolve(here, "../components/ComposerContentMenuActions.tsx"), "utf8");
 const remoteIntegrationSource = readFileSync(resolve(here, "../lib/useRemoteComposerIntegration.ts"), "utf8");
-const topicbarMenuSource = readFileSync(resolve(here, "../components/TopicbarSessionActions.tsx"), "utf8");
+const topicbarMenuSource = readFileSync(resolve(here, "../components/TopicbarMoreMenuContent.tsx"), "utf8");
 const bridgeSource = readFileSync(resolve(here, "../lib/remoteProjectBridge.ts"), "utf8");
 const remoteOpenSource = readFileSync(resolve(here, "../../../remote_projects.go"), "utf8");
 const remotePendingSelectionSource = readFileSync(resolve(here, "../../../remote_tab_pending_selection.go"), "utf8");
@@ -75,9 +75,9 @@ ok(
   "remote groups swap out the local project menu",
 );
 ok(
-  /publishNavigationIntent\("remote-project"\)[\s\S]*?app\.OpenRemoteProjectTab\(ref\.hostId, ref\.workspace,[\s\S]*?newSession: true/.test(remoteSource) &&
-    /app\.ConnectRemoteHost\(ref\.hostId\)[\s\S]*?waitForRemoteConnection\(ref\.hostId\)[\s\S]*?publishNavigationIntent\("remote-workspace"\)[\s\S]*?app\.OpenRemoteWorkspace\(ref\.hostId, ref\.workspace\)/.test(remoteSource),
-  "remote navigation registers its intent before switching either surface",
+  /app\.OpenRemoteProjectTab\(ref\.hostId, ref\.workspace,[\s\S]*?newSession: true/.test(remoteSource) &&
+    /app\.ConnectRemoteHost\(ref\.hostId\)[\s\S]*?waitForRemoteConnection\(ref\.hostId\)[\s\S]*?app\.OpenRemoteWorkspace\(ref\.hostId, ref\.workspace\)/.test(remoteSource),
+  "in-app tabs use the remote-session bridge while the browser surface reconnects first",
 );
 ok(
   /app\.RemoveRemoteProject\(ref\.hostId, ref\.workspace\)/.test(remoteSource) && /void refresh\(\);/.test(remoteSource),
@@ -188,7 +188,7 @@ ok(
 );
 ok(
   /localWorkspaceDockBlocked = remoteSurfaceActive && \(rightDockMode === "files" \|\| rightDockMode === "changed"\)/.test(appSource) &&
-    /surfaceWorkspacePanelRenderable = workspacePanelRenderable && !localWorkspaceDockBlocked/.test(appSource) &&
+    /surfaceWorkspacePanelRenderable = effectiveWorkspacePanelRenderable && !localWorkspaceDockBlocked/.test(appSource) &&
     /\{surfaceWorkspacePanelRenderable && \([\s\S]*?<WorkspacePanel/.test(appSource),
   "remote surfaces do not mount the local Files or Changes workspace panel",
 );
@@ -205,7 +205,7 @@ ok(
   /if \(remoteSurfaceActive\) return;[\s\S]*?setTerminalPanelOpen/.test(appSource) &&
     /!remoteSurfaceActive && terminalContentVisible/.test(appSource) &&
     /disabled=\{!terminalEnabled\}/.test(topicbarMenuSource),
-  "remote surfaces disable terminal shortcuts, mounting, and topic bar actions",
+  "remote surfaces disable terminal shortcuts, mounting, and menu actions",
 );
 ok(
   /SetRemoteTabComposerProfile\(activeTabId, controllerMode, toolApprovalMode, ""\)/.test(modeActionsSource) &&

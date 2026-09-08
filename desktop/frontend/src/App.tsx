@@ -77,7 +77,7 @@ import { ShortcutsCheatsheet } from "./components/ShortcutsCheatsheet";
 import { WorktreeBadge } from "./components/WorktreeBadge";
 import { CopyButton } from "./components/CopyButton";
 import { ExternalOpener, shouldMountExternalOpener } from "./components/ExternalOpener";
-import { TopicbarSessionActions } from "./components/TopicbarSessionActions";
+import { TopicbarMoreMenu } from "./components/TopicbarMoreMenu";
 import { RemoteReclaimBanner } from "./components/RemoteReclaimBanner";
 import { startTerminalEventBridge } from "./lib/terminalEvents";
 import { applyTerminalThemePreference } from "./lib/terminalTheme";
@@ -4726,12 +4726,12 @@ export default function App() {
                 <ExternalOpener key={`external-opener:${activeTab.id}`} tabId={activeTab.id} dismissSignal={transientOverlayDismissSignal} />
               )}
               {!sidebarImDetailConnection && (
-                <TopicbarSessionActions key={`session-actions:${activeTab?.id || "none"}`}
+                <TopicbarMoreMenu
                   sessionHasContent={sessionHasContent}
                   getSessionMarkdown={getSessionMarkdown}
                   exportSession={(format) => void exportSession(format)}
-                  toggleTerminal={toggleTerminalPanel} terminalEnabled={!remoteSurfaceActive}
-                  terminalOpen={terminalPanelOpen && !remoteSurfaceActive}
+                  openChangedDock={() => openRightDockMode("changed")}
+                  toggleTerminal={toggleTerminalPanel}
                   prefetchTerminal={prefetchTerminalPanel}
                   openSessionSummary={() => setTasksOpen((open) => open ? false : "session")}
                   tasksOpen={Boolean(tasksOpen)}

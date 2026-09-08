@@ -485,6 +485,11 @@ export function topicActivityDateLabel(ms: number): string {
 // backend directly; this count was referenced by UI code that shipped before
 // the helper existed (fork 1.34-era residue). Returns 0 until the feature
 // lands; see fork task 11 follow-ups.
-export function projectTreeTopicRecoveryCopyCount(_topicID: string): number {
-	return 0;
+// projectTreeTopicRecoveryCopyCount is the folded recovery-copy badge count for
+// a topic row. Runtime session rows and non-positive/missing counts render no
+// badge; the copies themselves stay folded behind the canonical row (#8525).
+export function projectTreeTopicRecoveryCopyCount(node: ProjectNode): number {
+	if (!isTopicNode(node)) return 0;
+	const count = node.recoveryCopyCount ?? 0;
+	return count > 0 ? Math.floor(count) : 0;
 }
