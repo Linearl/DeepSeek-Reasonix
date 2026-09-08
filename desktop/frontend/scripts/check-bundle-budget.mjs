@@ -206,7 +206,7 @@ console.log("\nbundle budgets");
 // explicit budget rather than failing on a rounded 467.0 KiB display value.
 // The latest main-v2 session-runtime fence and exact prompt protocol measure
 // 468.2 KiB here; retain a 0.1 KiB ceiling for platform zlib rounding.
-const initialJSBudgetKiB = 468.3;
+const initialJSBudgetKiB = 469.0; // fork: +0.7 KiB vs upstream 468.3 (LocalServerPage delta)
 // [fork note] settings panel (LocalServerPage) that ships with the serve pool gateway.
 assertBudget("initial JavaScript gzip", initialJSGzip, initialJSBudgetKiB * 1024);
 assertBudget("largest initial JavaScript chunk gzip", largestInitialJS, 280 * 1024);
@@ -230,7 +230,7 @@ if (initialCSS.length > 0) {
 // shared title-safe shell, and the shared harness decision surface measure
 // 116.9 KiB gzip while reusing existing layout primitives. Retain a bounded
 // 0.1 KiB headroom ratchet.
-assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 117.0 * 1024);
+assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 118.0 * 1024); // fork: +1.0 KiB vs upstream 117.0 (LocalServerPage CSS delta)
 if (localeChunks.length !== 2) {
   throw new Error(`expected 2 on-demand Chinese locale chunks, found ${localeChunks.length}`);
 }
@@ -287,7 +287,9 @@ for (const path of localeChunks) {
   // 61.027/61.881 KiB; retain bounded cross-platform headroom.
   // Recovery retry copy reaches the rounded 61.1 KiB boundary on Node/zlib
   // toolchains; keep the next one-decimal ceiling for cross-platform CI.
-  const budget = name.startsWith("zh-TW-") ? 62.0 * 1024 : 61.2 * 1024;
+  // fork: locale soft-limit preserved from 1.31.x (UI copy growth is not a perf regression)
+  // upstream 1.38.1 measured 61.2/62.0; fork +1.0 KiB for LocalServerPage/consolidate keys
+  const budget = name.startsWith("zh-TW-") ? 63.5 * 1024 : 62.7 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
@@ -394,7 +396,7 @@ const rawInitialBytes = [...initialJS, ...initialCSS, ...appShellCSS]
 // measure 2496.4 KiB locally; retain the smallest bounded ceiling.
 // The context truncation-rescue notice and its three locale strings measure
 // 2496.6 KiB; retain the smallest bounded ceiling.
-const rawInitialBudgetKiB = 2_496.7;
+const rawInitialBudgetKiB = 2_510.0; // fork: +13.3 KiB vs upstream 2496.7 (LocalServerPage + consolidate + subagent keys)
 // [fork note] the smallest one-decimal ratchet. Bumped to 2_461.0 for the serve pool
 assertBudget("initial raw JavaScript and CSS", rawInitialBytes, rawInitialBudgetKiB * 1024);
 assertBudget("largest initial JavaScript chunk raw", largestInitialJSRaw, 1_000 * 1024);

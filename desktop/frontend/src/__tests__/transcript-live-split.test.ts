@@ -142,7 +142,7 @@ check(resolveLiveTurnGrowthFloor(5, 4, 420, 420) === 420, "an active floor survi
     name: i % 2 ? "bash" : "read_file",
     args: "{}",
     readOnly: false,
-    status: "completed" as const,
+    status: "done" as const,
   }));
   const { models, rows } = rowsFor([user("u1"), ...tools, assistant("a9", { streaming: true })], live, true);
   const split = splitTranscriptLiveRows(models, rows, "a9", true);
@@ -166,7 +166,7 @@ check(resolveLiveTurnGrowthFloor(5, 4, 420, 420) === 420, "an active floor survi
     name: i % 2 ? "bash" : "read_file",
     args: "{}",
     readOnly: false,
-    status: "completed" as const,
+    status: "done" as const,
   }));
   const { models, rows } = rowsFor([user("u1"), ...tools, assistant("a1", { streaming: true }), user("u2")], live, true);
   const split = splitTranscriptLiveRows(models, rows, "a1", true);

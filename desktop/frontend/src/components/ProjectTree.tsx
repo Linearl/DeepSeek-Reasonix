@@ -367,7 +367,7 @@ export function ProjectTree({
   }, []);
   const topicLoadSeqRef = useRef<Record<string, number>>({});
   const refreshRef = useRef<ProjectTreeRefresh>(async () => {});
-  const { trashingTopics, currentArchiveTombstones, trashTopic, forceArchiveTopic } = useProjectTreeArchiveController({
+  const { trashingTopics, currentArchiveTombstones, trashTopic } = useProjectTreeArchiveController({
     treeRef, topicLoadSeqRef, topicPageStateRef, updateTopicPageState, refreshRef,
     optimisticallyRemoveTopic: (topicId) => setTree((current) => projectTreeWithoutTopic(current, topicId)),
     closeMenu, onTopicsChanged, showToast,
@@ -1352,12 +1352,12 @@ if (report.blockedByDivergence) {
         {
           key: "forceTrash",
           icon: <ArchiveX className={topicTrashing ? "project-tree__archive-spinner" : undefined} size={13} />,
-          label: confirmAction?.topicId === topicId && confirmAction.action === "forceTrash" ? t("history.confirmForceArchive") : t("projectTree.forceArchiveTopic"),
+          label: confirmAction?.topicId === topicId && confirmAction.action === "forceTrash" ? t("history.confirmForceArchive") : t("history.moveToTrash"),
           danger: true,
           onSelect: () => {
             if (confirmAction?.topicId === topicId && confirmAction.action === "forceTrash") {
               setConfirmAction(null);
-              void forceArchiveTopic(topicId);
+              void trashTopic(topicId);
             } else {
               setConfirmAction({ topicId, action: "forceTrash" });
             }
