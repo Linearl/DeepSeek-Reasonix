@@ -377,19 +377,15 @@ export interface AppBindings extends SessionCatalogBindings, ProjectTreeOrganiza
   TakeoverSession(tabId: string, mode: "wait" | "interrupt"): Promise<void>;
   DeleteSession(path: string): Promise<void>;
   DeleteRecoveryCopy(path: string): Promise<void>;
-<<<<<<< HEAD
   GetRecoveryLineage(key: { scope: string; workspaceRoot?: string; topicId: string; path?: string; recordClassification?: boolean }): Promise<RecoveryLineageView>;
   GetSessionVersionState(key: { scope: string; workspaceRoot?: string; topicId: string; path?: string; recordClassification?: boolean }): Promise<import("./types").SessionVersionStateView>;
   SetActiveSessionVersion(request: import("./types").RecoveryPreferenceRequest): Promise<void>;
   RetrySessionRecovery(request: import("./types").RecoveryPreferenceRequest): Promise<void>;
   ReconcileRecoveryVersions(key: { scope: string; workspaceRoot?: string; topicId: string; path?: string }): Promise<void>;
-=======
   ConsolidateSessionRecoveryCopies(path: string): Promise<ConsolidationReport>;
   ForceConsolidateSessionRecoveryCopies(path: string): Promise<ConsolidationReport>;
   ConsolidateTopicRecoveryCopies(scope: string, workspaceRoot: string, topicID: string): Promise<ConsolidationReport>;
   ForceConsolidateTopicRecoveryCopies(scope: string, workspaceRoot: string, topicID: string): Promise<ConsolidationReport>;
-  GetRecoveryLineage(key: { scope: string; workspaceRoot?: string; topicId: string }): Promise<RecoveryLineageView>;
->>>>>>> 8c2fdf42a (feat(desktop): merge session recovery copies from the project tree / 会话右键新增合并恢复副本，修复较早对话加载失败（#9470）)
   ChooseRecoveryBranch(request: import("./types").RecoveryPreferenceRequest): Promise<void>;
   CleanRecoveryLineage(request: RecoveryCleanupRequest): Promise<RecoveryCleanupResult>;
   RestoreSession(path: string): Promise<void>;
