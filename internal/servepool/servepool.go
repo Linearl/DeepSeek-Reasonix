@@ -340,7 +340,11 @@ func (m *Manager) spawn(p *project) error {
 			} else {
 				port, _ = strconv.Atoi(raw)
 			}
-			if port > 0 {
+			// portFile written != socket bound: the serve can flush the addr
+			// file just before listen(), so Open would return "ready" while
+			// the first proxy dial still fails (→ 502). Confirm the port is
+			// actually accepting connections before declaring readiness.
+			if port > 0 && dialPort(port) {
 				m.mu.Lock()
 				p.port = port
 				p.state = "running"
@@ -416,4 +420,17 @@ func newToken() string {
 		panic(err) // crypto/rand failure is unrecoverable
 	}
 	return hex.EncodeToString(b)
+}
+
+// dialPort reports whether a local TCP port is accepting connections. This
+// closes the spawn race where a freshly launched serve flushes its address
+// file just before listen(): without it Open() reports "ready" but the first
+// gateway proxy dial still fails (observed 502, "No connection").
+func dialPort(port int) bool {
+	conn, err := net.DialTimeout("tcp", "127.0.0.1:"+strconv.Itoa(port), 250*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }
