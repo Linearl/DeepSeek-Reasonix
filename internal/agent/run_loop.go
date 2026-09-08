@@ -469,14 +469,91 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 // switch models, instead of every continuation failing with a malformed-body
 // 400. Calls whose arguments are already valid (the overwhelmingly common
 // case) are returned unchanged.
+// repairTruncatedToolCallArgs rewrites tool-call arguments that are not valid
+// JSON because the stream was cut mid-arguments, so a tool_call cut off
+// mid-arguments still runs with the intent the model produced instead of a
+// 400. Arguments that are structurally complete but invalid (a mid-token
+// syntax error the model must correct) are left untouched so the host
+// validation contract reports them verbatim.
 func repairTruncatedToolCallArgs(calls []provider.ToolCall) []provider.ToolCall {
 	for i := range calls {
 		if calls[i].Arguments == "" || json.Valid([]byte(calls[i].Arguments)) {
 			continue
 		}
-		calls[i].Arguments = "{}"
+		if repaired, ok := closeTruncatedJSON(calls[i].Arguments); ok {
+			calls[i].Arguments = repaired
+		}
 	}
 	return calls
+}
+
+// closeTruncatedJSON closes an unterminated string and any open brackets left
+// by a truncated stream, dropping a dangling trailing comma first. It returns
+// ok=false when the payload is structurally complete but invalid — a
+// model-side syntax error rather than a truncation — so the caller leaves it
+// for the host validation contract to report instead of guessing intent.
+func closeTruncatedJSON(s string) (string, bool) {
+	var brackets []byte
+	inStr := false
+	escaped := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if inStr {
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\':
+				escaped = true
+			case c == '"':
+				inStr = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inStr = true
+		case '{', '[':
+			brackets = append(brackets, c)
+		case '}', ']':
+			want := byte('}')
+			if c == ']' {
+				want = '['
+			}
+			if len(brackets) == 0 || brackets[len(brackets)-1] != want {
+				return "", false
+			}
+			brackets = brackets[:len(brackets)-1]
+		}
+	}
+	trimmed := strings.TrimRight(s, " \t\r\n")
+	if !inStr && strings.HasSuffix(trimmed, ",") {
+		// A dangling trailing comma appears both when the stream cut right
+		// after a pair and when the model emitted one before closing; dropping
+		// it lets the bracket closure produce a valid object either way.
+		trimmed = strings.TrimRight(trimmed[:len(trimmed)-1], " \t\r\n")
+	}
+	var tail []byte
+	if inStr {
+		if escaped {
+			tail = append(tail, '\\')
+		}
+		tail = append(tail, '"')
+	}
+	for j := len(brackets) - 1; j >= 0; j-- {
+		if brackets[j] == '{' {
+			tail = append(tail, '}')
+		} else {
+			tail = append(tail, ']')
+		}
+	}
+	if len(tail) == 0 {
+		return "", false
+	}
+	candidate := trimmed + string(tail)
+	if !json.Valid([]byte(candidate)) {
+		return "", false
+	}
+	return candidate, true
 }
 
 func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step int, text, reasoning string, calls []provider.ToolCall, usage *provider.Usage) (cont bool, err error) {

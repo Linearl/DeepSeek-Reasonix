@@ -619,14 +619,18 @@ func TestRunResetsEvidenceLedger(t *testing.T) {
 
 func TestRepairTruncatedToolCallArgs(t *testing.T) {
 	calls := []provider.ToolCall{
-		{Name: "write_file", Arguments: `{"content": "unclosed`},                    // truncated mid-string
-		{Name: "bash", Arguments: `{"command":"ls",`},                               // truncated mid-object
-		{Name: "read_file", Arguments: `{"path":"a.go"}`},                           // valid: untouched
-		{Name: "complete_step", Arguments: ""},                                      // empty: untouched
+		{Name: "write_file", Arguments: `{"content": "unclosed`}, // truncated mid-string
+		{Name: "bash", Arguments: `{"command":"ls",`},            // truncated mid-object with a dangling comma
+		{Name: "read_file", Arguments: `{"path":"a.go"}`},        // valid: untouched
+		{Name: "complete_step", Arguments: ""},                   // empty: untouched
+		{Name: "ask", Arguments: `{"questions":["q":1]}`},        // structurally complete but invalid: left for the host validation contract
 	}
 	got := repairTruncatedToolCallArgs(calls)
-	if got[0].Arguments != "{}" || got[1].Arguments != "{}" {
-		t.Fatalf("truncated args not repaired: %q / %q", got[0].Arguments, got[1].Arguments)
+	if got[0].Arguments != `{"content": "unclosed"}` {
+		t.Fatalf("truncated string args not closed: %q", got[0].Arguments)
+	}
+	if got[1].Arguments != `{"command":"ls"}` {
+		t.Fatalf("truncated object args not closed: %q", got[1].Arguments)
 	}
 	if got[2].Arguments != `{"path":"a.go"}` {
 		t.Fatalf("valid args must stay verbatim, got %q", got[2].Arguments)
@@ -634,8 +638,11 @@ func TestRepairTruncatedToolCallArgs(t *testing.T) {
 	if got[3].Arguments != "" {
 		t.Fatalf("empty args must stay empty, got %q", got[3].Arguments)
 	}
+	if got[4].Arguments != `{"questions":["q":1]}` {
+		t.Fatalf("structurally complete but invalid args must stay verbatim for the validation contract, got %q", got[4].Arguments)
+	}
 	for i, c := range got {
-		if c.Arguments != "" && !json.Valid([]byte(c.Arguments)) {
+		if c.Arguments != "" && c.Arguments != `{"questions":["q":1]}` && !json.Valid([]byte(c.Arguments)) {
 			t.Fatalf("call %d arguments still invalid after repair: %q", i, c.Arguments)
 		}
 	}
