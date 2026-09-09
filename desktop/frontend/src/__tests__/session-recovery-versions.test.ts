@@ -76,4 +76,14 @@ const second = tracker.register({ ...event, recoveryPath: "/s/fork-2.jsonl" });
 assert.equal(second.occurrence, 2, "a later distinct recovery on the same topic is counted separately");
 assert.equal(tracker.resolve(second.pending!.eventKey, view({ state: "adopted", unresolved: 0 })), "clear");
 
+// #34: a fork avalanche mints a new recoveryPath for every copy, so the toast
+// must not repeat for a lineage whose divergence state has not changed.
+const avalanche = new SessionRecoveryDivergenceTracker();
+const a1 = avalanche.register(event);
+assert.equal(avalanche.resolve(a1.pending!.eventKey, view()), "notify");
+const a2 = avalanche.register({ ...event, recoveryPath: "/s/fork-3.jsonl" });
+assert.equal(avalanche.resolve(a2.pending!.eventKey, view()), "clear", "an unchanged lineage state must not re-toast");
+const a3 = avalanche.register({ ...event, recoveryPath: "/s/fork-4.jsonl" });
+assert.equal(avalanche.resolve(a3.pending!.eventKey, view({ branchCount: 4 })), "notify", "a changed lineage state notifies again");
+
 console.log("  PASS  session recovery divergence state machine");

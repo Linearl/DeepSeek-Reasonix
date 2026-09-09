@@ -86,6 +86,10 @@ export function sanitizedRecoveryReason(value: unknown): string {
 export class SessionRecoveryDivergenceTracker {
   private readonly pending = new Map<string, PendingSessionRecovery>();
   private readonly notified = new Set<string>();
+  // Fork (#34): a fork avalanche mints a new eventKey for every recovery copy
+  // (new recoveryPath), so keying only on eventKey re-toasts on each one.
+  // Track the last notified state per lineage and stay quiet until it changes.
+  private readonly notifiedLineageState = new Map<string, string>();
   private readonly topicOccurrences = new Map<string, number>();
 
   register(event: SessionRecoveryEvent): RecoveryEventRegistration {
@@ -108,9 +112,16 @@ export class SessionRecoveryDivergenceTracker {
   resolve(eventKey: string, view: RecoveryLineageView): RecoveryLineageResolution {
     const resolution = recoveryLineageResolution(view);
     if (resolution === "wait") return resolution;
+    const pending = this.pending.get(eventKey);
     this.pending.delete(eventKey);
     if (resolution !== "notify" || this.notified.has(eventKey)) return "clear";
     this.notified.add(eventKey);
+    if (pending) {
+      const topicKey = recoveryTopicOccurrenceKey(pending.topic);
+      const fingerprint = `${view.state}:${view.branchCount}:${view.unresolved}`;
+      if (this.notifiedLineageState.get(topicKey) === fingerprint) return "clear";
+      this.notifiedLineageState.set(topicKey, fingerprint);
+    }
     return "notify";
   }
 }
