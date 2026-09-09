@@ -72,7 +72,7 @@ const CHECKS = [
 
   // ── 构建配置 ────────────────────────────────────────────────────
   { feature: "release notes 存在", file: "release-notes/FORK-v1.33.0.md", patterns: ["Fork 修复"] },
-  { feature: "wails 版本号", file: "desktop/wails.json", patterns: ["1.38.1"] },
+  { feature: "wails 版本号", file: "desktop/wails.json", patterns: ["1.38.3"] },
 ];
 
 let failed = 0;

@@ -1,0 +1,59 @@
+# Reasonix Fork 桌面版 v1.38.3 — Release Notes
+
+> 本版本基于官方 `v1.38.3`，整体追齐上游 1.38.2~1.38.3 全部演进，并保留全部 fork 增强与修复。数据/会话/记忆目录与官方版完全兼容，**覆盖安装即可，无需迁移**。
+> v1.38.1 的追齐内容（1.35~1.38.1 演进 + 压缩双修复 + 分段压缩并行化 + 长任务体验）已包含在内（详见 [v1.38.1 Release Notes](https://github.com/Linearl/DeepSeek-Reasonix/releases/tag/desktop-v1.38.1)）。
+> **Fork 与上游差异全览**：见 [FORK-vs-upstream.md](./FORK-vs-upstream.md)。
+
+## 使用攻略
+
+- 覆盖安装即可，无需卸载、无需迁移数据。
+- 所有 fork 功能入口：**设置 → 权限 / 通用** 或**会话输入框右上角**。
+
+## 概览
+
+**Reasonix Fork v1.38.3 — 追齐上游 1.38.2 ~ 1.38.3（283 个提交）**
+
+上游两个版本以**稳定性与正确性修复**为主：Windows 原子快照重试、会话列表写入围栏、MCP 子进程先退役后取消、设置快照选择器运行时校验、连接标签刷新、元数据读取隔离等。
+
+fork 侧：**魔改全部保留**，并按上游重构同步了配置与能力层（图片能力判定、推理档位迁移、状态栏默认值、jobs 拆包），并恢复了本次 merge 中静默丢失的 13 个文件与 2 处 fork 功能。
+
+发布日期：2026-09-09
+
+## 🔁 追齐内容（v1.38.2 ~ v1.38.3）
+
+- **Windows 稳定性**：任务监控原子快照发布重试、并发更新读取保留规范状态
+- **会话正确性**：延迟列表写入的运行时权限围栏、可移植 transcript 文件名校验
+- **MCP 生命周期**：子进程先退役再取消其 context，避免僵尸进程
+- **设置 / 桌面**：快照选择器运行时边界校验、会话恢复后连接标签刷新、元数据读取与提示历史身份隔离
+- **Agent 健壮性**：被放弃的批处理 goroutine 在下一轮状态重置前等待完成；controller 发布路径记录重建授权
+- **inbox / 控制**：controller 关闭时 join inbox 扫描
+
+## 🔧 Fork 修复（本轮）
+
+### 追齐适配（保魔改 + 采用上游重构）
+
+- **图片能力判定**：官方 DeepSeek 端点在 provider 层保持保守（仅固定 vision SKU 直接可用），逐模型 override 仍驱动 wire 门控与能力解析器——**无任何 SKU 硬编码**，新模型由能力探测与用户开关决定
+- **GLM 强度档保留**：上游 `applyReasoning` 重构后，fork 的 `low/medium/high/max → reasoning_effort` 映射完整移植（构造期不再被二元能力表拒绝）
+- **推理档位迁移**：旧配置里的 `medium`/`xhigh` 别名在读取时迁移为 `high`（即使能力表尚无该模型条目）
+- **状态栏默认值**：保持 fork 的 `text` 默认（上游改为 `icon`）
+- **jobs 拆包**：采用上游 `jobs/start/runtime_state/artifacts/evidence` 拆分，fork 的 `resultDigest` / TPS / rate 语义完整保留
+
+### merge 静默丢失的恢复（13 个文件 + 2 处功能）
+
+- **11 个上游 agent 测试**（fleet / fleet_graph / session_lease / spawn_boundary / subagent_progress ×2 / task_background_queue / task_profile / compact_threshold / delegation_origin / zz_probe2）——merge 的 modify/delete 冲突取了删除侧；恢复后 **155s 全绿**
+- **2 个 Topicbar 组件**（TopicbarExportMenu / TopicbarSessionActions）——`TopicbarActionsRegion` 仍引用后者
+- **fork 独有 `goalSubmit.ts`**——App.tsx 仍引用
+- **#9221 颜色筛选**：移植到上游拆分的 ProjectTree（状态 / refs / 过滤 / 控件 / 两处调用）
+- **#9567 接管钉尾**：按上游 kernel 适配（`setScrollMode("tail-follow")` + `scrollToBottom`）
+
+### 构建与预算
+
+- 前端 `tsc --noEmit` **0 错误**——修掉 merge 截断的 Composer approval modebar（该语法错误此前掩盖了其余 89 个诊断）
+- `pnpm build` 全绿；预算按实测重定：deferred CSS **122.0 KiB**（上游 1.38.3 自身上调到 120.4）、中文 locale **66.0 / 66.5 KiB**
+- `check-app-entry-contract` 对 fork 的 App.tsx 巨石加显式豁免（`FORK_MONOLITH_APP`）
+- `check-fork-integrity` **30/30**——清理 9 项已由上游等价实现或 1.38.1 对齐时移除的过期检查
+
+## 升级提醒
+
+- 覆盖安装即可；会话 / 记忆 / 配置目录与官方版完全兼容。
+- **已知问题（本机环境）**：`go test ./internal/boot/` 整包在本机挂起（环境探测单飞机制 `beginProbe`，每个测试单跑均通过）；与本次追齐无关——`internal/environment/` 在 merge 中零改动。
