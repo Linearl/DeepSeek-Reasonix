@@ -34,6 +34,7 @@ export function useTranscriptRowRenderer({
   onDeliveryContinue,
   onAcceptDelivery,
   onOpenChanges,
+  onConsolidateRecovery,
   onOpenVerification,
   onEditPrompt,
   onRewind,
@@ -54,6 +55,7 @@ export function useTranscriptRowRenderer({
   onDeliveryContinue?: () => void;
   onAcceptDelivery?: () => void;
   onOpenChanges?: (summary?: WireCompletionSummary) => void;
+  onConsolidateRecovery?: () => void;
   onOpenVerification?: (summary: WireCompletionSummary) => void;
   onEditPrompt?: (turn: number, displayText: string, submitText?: string) => boolean | void | Promise<boolean | void>;
   onRewind?: (turn: number, scope: string) => void;
@@ -103,7 +105,8 @@ export function useTranscriptRowRenderer({
         if (isSteerNoticeText(row.item.text)) return <SteerCard id={row.item.id} text={row.item.text} />;
         const action = row.item.action === "continue_delivery"
           ? (onDeliveryContinue ?? (() => onPrompt(t("notice.deliveryIncompleteContinuePrompt"))))
-          : row.item.action === "open_changes" && onOpenChanges ? () => onOpenChanges(row.item.completionSummary) : undefined;
+          : row.item.action === "open_changes" && onOpenChanges ? () => onOpenChanges(row.item.completionSummary)
+            : row.item.code === "session_recovery_forked" && onConsolidateRecovery ? () => onConsolidateRecovery() : undefined;
         return <NoticeCard
           item={row.item} actionDisabled={running && row.item.action !== "open_changes"} onAction={action}
           onOpenVerification={row.item.variant === "completion" ? onOpenVerification : undefined}

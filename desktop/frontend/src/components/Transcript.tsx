@@ -85,6 +85,7 @@ export type TranscriptProps = {
   onDeliveryContinue?: () => void;
   onAcceptDelivery?: () => void;
   onOpenChanges?: (summary?: WireCompletionSummary) => void;
+  onConsolidateRecovery?: () => void;
   onOpenVerification?: (summary: WireCompletionSummary) => void;
   onEditPrompt?: (turn: number, displayText: string, submitText?: string) => boolean | void | Promise<boolean | void>;
   onRewind?: (turn: number, scope: string) => void;
@@ -116,7 +117,7 @@ export type TranscriptProps = {
 export function Transcript(props: TranscriptProps) {
   const {
     items, live: liveProp, liveStore, tabId, geometrySessionKey, footerHeight = 0,
-    onPrompt, onDeliveryContinue, onAcceptDelivery, onOpenChanges, onOpenVerification,
+    onPrompt, onDeliveryContinue, onAcceptDelivery, onOpenChanges, onOpenVerification, onConsolidateRecovery,
     onEditPrompt, onRewind, checkpoints = EMPTY_CHECKPOINTS, actionPending = false,
     rewindDisabled = false, running = false, questionNavigator = true,
     welcomeVariant = "default", creationMode = false, actionHoverMenus = false,
@@ -240,7 +241,7 @@ export function Transcript(props: TranscriptProps) {
     tabId, checkpoints, subcallsByParent, creationMode, running, actionPending,
     rewindDisabled, actionHoverMenus, turnStartAt, lastTurn,
     onFoldToggle: handleFoldToggle, onReasoningManualOpen: handleReasoningManualOpen,
-    onPrompt, onDeliveryContinue, onAcceptDelivery, onOpenChanges, onOpenVerification,
+    onPrompt, onDeliveryContinue, onAcceptDelivery, onOpenChanges, onOpenVerification, onConsolidateRecovery,
     onEditPrompt, onRewind,
   });
 

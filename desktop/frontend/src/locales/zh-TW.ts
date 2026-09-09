@@ -1123,6 +1123,8 @@ export const zhTW: Record<DictKey, string> = {
 
   // 會話恢復（歷史進階入口用詞，避免暴露內部術語）
   "recovery.noticeSavedCopy": "偵測到會話在磁碟上發生變化，未儲存的本機記錄已保留為其他儲存版本。",
+  "recovery.consolidated": "已把恢復副本合併回工作階段。",
+  "recovery.consolidateBlocked": "未合併：恢復副本未覆蓋目前對話記錄。",
   "recovery.noticeKeptCurrent": "偵測到重複儲存衝突，目前版本已單獨儲存。",
   "recovery.noticeAdopted": "偵測到會話在磁碟上發生變化，已採用較新的記錄。",
   "recovery.noticeAdoptedCovered": "偵測到會話在磁碟上發生變化，已採用較新的記錄；本機改動已包含其中。",

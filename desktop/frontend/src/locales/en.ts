@@ -1374,6 +1374,8 @@ export const en = {
 
   // session recovery (advanced History language — avoid exposing internal terms)
   "recovery.noticeSavedCopy": "The session changed on disk, so the unsaved local transcript was kept as another saved version.",
+  "recovery.consolidated": "Merged the recovery copy back into the session.",
+  "recovery.consolidateBlocked": "Not merged: the recovery copy does not cover the current transcript.",
   "recovery.noticeKeptCurrent": "Repeated save conflicts were detected, so the current version was saved separately.",
   "recovery.noticeAdopted": "The session changed on disk, so Reasonix adopted the newer transcript.",
   "recovery.noticeAdoptedCovered": "The session changed on disk, so Reasonix adopted the newer transcript; the local changes were already covered.",

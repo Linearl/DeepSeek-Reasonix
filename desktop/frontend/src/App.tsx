@@ -4882,6 +4882,15 @@ export default function App() {
                       onDeliveryContinue={() => void handleDeliveryContinue()}
                       onAcceptDelivery={() => void app.AcceptDeliveryToTab(activeTabIdRef.current ?? "")}
                       onOpenChanges={() => openRightDockMode("changed")}
+                      onConsolidateRecovery={() => {
+                        const path = (activeTab?.sessionPath ?? state.meta?.sessionPath ?? "").trim();
+                        if (!path) return;
+                        void app.ConsolidateSessionRecoveryCopies(path).then((report) => {
+                          showToast(report?.blockedByDivergence ? t("recovery.consolidateBlocked") : t("recovery.consolidated"), report?.blockedByDivergence ? "warn" : "info");
+                        }).catch((error) => {
+                          showToast(error instanceof Error ? error.message : String(error), "error");
+                        });
+                      }}
                       onOpenVerification={openTurnVerification}
                       onEditPrompt={handleEditPrompt}
                       onRewind={handleMessageAction}
