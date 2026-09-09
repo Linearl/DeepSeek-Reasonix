@@ -179,11 +179,31 @@ func verifyTodoCurrentContinuity(ctx context.Context, todos []todoItem) error {
 	return nil
 }
 
+// todoPlanSnapshot renders the host's current plan so a rejected todo_write can
+// be repaired without guessing. Upstream #10023: the three state-machine errors
+// used to name the rule but not the list, which deadlocked the model.
+func todoPlanSnapshot(previous []evidence.TodoItem) string {
+	if len(previous) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(" Current plan: ")
+	for i, item := range previous {
+		if i > 0 {
+			b.WriteString("; ")
+		}
+		fmt.Fprintf(&b, "%d. [%s] %s", i+1, item.Status, item.Content)
+	}
+	b.WriteString(".")
+	return b.String()
+}
+
 func verifyCompletedTodoPositions(ctx context.Context, todos []todoItem) error {
 	previous := todoBaseline(ctx)
 	if len(previous) == 0 {
 		return nil
 	}
+	snapshot := todoPlanSnapshot(previous)
 	// Reordering is allowed, duplication is not: a completed step must stay a
 	// single, unambiguous entry so later identity matching cannot pick the
 	// wrong one.
@@ -210,11 +230,11 @@ func verifyCompletedTodoPositions(ctx context.Context, todos []todoItem) error {
 		// plan already had. Inventing a brand-new "completed" entry stays
 		// rejected, as does letting a completed step regress (checked below).
 		if _, found := evidence.MatchTodoIdentity(toEvidenceTodo(todo), previous); !found {
-			return fmt.Errorf("completed todo %q is not a step from the current plan; completed items may be reordered, but not invented — keep the real step content or leave it out", todo.Content)
+			return fmt.Errorf("completed todo %q is not a step from the current plan; completed items may be reordered, but not invented — keep the real step content or leave it out.%s", todo.Content, snapshot)
 		}
 	}
 	if len(evidence.IncompleteTodos(previous)) > 0 && !evidence.PreservesCompletedTodoPositions(previous, toEvidenceTodos(todos)) {
-		return fmt.Errorf("a completed step disappeared or regressed to unfinished while the plan is active; keep every completed item in the list with status completed (reordering and inserting new steps are allowed)")
+		return fmt.Errorf("a completed step disappeared or regressed to unfinished while the plan is active; keep every completed item in the list with status completed (reordering and inserting new steps are allowed).%s", snapshot)
 	}
 	return nil
 }

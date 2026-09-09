@@ -274,6 +274,10 @@ func TestTodoWriteRejectsDuplicatedCompletedButAllowsReorder(t *testing.T) {
 	]}`)
 	if _, err := (todoWrite{}).Execute(ctx, invented); err == nil || !strings.Contains(err.Error(), "not a step from the current plan") {
 		t.Fatalf("invented completed step should be rejected: %v", err)
+	} else if !strings.Contains(err.Error(), "Current plan:") {
+		// #39 / upstream #10023: a rejected todo_write must show the plan so the
+		// model can repair the request instead of deadlocking.
+		t.Fatalf("rejection must include the current plan: %v", err)
 	}
 }
 

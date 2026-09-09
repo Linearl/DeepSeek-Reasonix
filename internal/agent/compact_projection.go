@@ -259,6 +259,9 @@ func (a *Agent) compressVisibleRange(
 		return tool.CompressResult{}, err
 	}
 	a.emitCompactionTelemetry(tele)
+	// The transcript was rewritten, so repeating a pre-compaction tool result is
+	// no longer a duplicate (#39 / upstream #10023).
+	a.turn.loop.clearResultFingerprints()
 	a.svc.sink.Emit(event.Event{Kind: event.CompactionDone, Compaction: event.Compaction{
 		Trigger: trigger, Messages: len(plan.fold), Summary: summary, Archive: state.LastReceipt.Archive,
 	}})

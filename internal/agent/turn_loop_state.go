@@ -48,6 +48,17 @@ func (s *turnLoopState) rememberFingerprint(fp, callID string) (prev string, see
 	return prev, seen
 }
 
+// clearResultFingerprints drops the duplicate-result memory. Compaction rewrites
+// the transcript, so a tool call that repeats a pre-compaction result is no
+// longer a duplicate: the model cannot see the earlier copy. Without this, a
+// legitimate re-issued todo_write after a mid-turn compaction is swallowed as a
+// duplicate and the model deadlocks (#39 / upstream #10023).
+func (s *turnLoopState) clearResultFingerprints() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.resultFingerprints = nil
+}
+
 func (s *turnLoopState) rememberDecision(id, question, answer string) {
 	s.rememberDecisionAmbiguity(id, question, answer, decisionAmbiguity{})
 }
