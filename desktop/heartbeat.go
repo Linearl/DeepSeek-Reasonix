@@ -55,6 +55,11 @@ type HeartbeatTask struct {
 	// and the run falls back to the tab's current model instead of skipping.
 	Provider string `json:"provider,omitempty"`
 	Model    string `json:"model,omitempty"`
+	// Goal mode (#31) keeps the scheduled task running until its goal is met
+	// instead of stopping after one turn. An empty GoalText falls back to
+	// Prompt, so a task that already states its objective needs no extra field.
+	GoalMode bool   `json:"goalMode,omitempty"`
+	GoalText string `json:"goalText,omitempty"`
 }
 
 // HeartbeatRun records a single successful execution of a heartbeat task.
@@ -497,6 +502,18 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 	var botForwarder event.Sink
 	if t.NotifyChannels != nil && *t.NotifyChannels {
 		botForwarder = e.newBotForwarder(tabMeta.ID)
+	}
+
+	// Goal mode (#31): set the goal before submitting so goal_run_boundary keeps
+	// the run going across turns instead of stopping after the first answer.
+	if t.GoalMode {
+		goal := t.GoalText
+		if goal == "" {
+			goal = t.Prompt
+		}
+		if err := e.app.SetGoalForTab(tabMeta.ID, goal); err != nil {
+			log.Printf("[heartbeat] goal mode for %q ignored: %s", t.Title, secrets.RedactError(err))
+		}
 	}
 
 	// Submit as a plain user turn so scheduled prompts cannot invoke desktop

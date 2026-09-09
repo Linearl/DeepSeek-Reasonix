@@ -380,6 +380,30 @@ export function TaskEditor({
         <span className="heartbeat-editor__mode-hint">{t("heartbeat.modelOverrideHint")}</span>
       </div>
 
+      {/* Goal 模式（#31）：提交后持续执行直到目标完成，而非一轮即停 */}
+      <div className="heartbeat-editor__field">
+        <label>
+          {t("heartbeat.fieldGoalMode")} <span className="heartbeat-editor__optional">{t("heartbeat.optional")}</span>
+        </label>
+        <label className="heartbeat-editor__toggle">
+          <input
+            type="checkbox"
+            checked={Boolean(draft.goalMode)}
+            onChange={(e) => set("goalMode", e.target.checked)}
+          />
+          <span>{t("heartbeat.goalModeHint")}</span>
+        </label>
+        {draft.goalMode && (
+          <textarea
+            className="heartbeat-editor__input"
+            value={draft.goalText ?? ""}
+            onChange={(e) => set("goalText", e.target.value)}
+            placeholder={t("heartbeat.goalTextPlaceholder")}
+            rows={2}
+          />
+        )}
+      </div>
+
       {/* Approval Mode（竖排） */}
       <div className="heartbeat-editor__field">
           <label>{t("heartbeat.fieldApprovalMode")}</label>

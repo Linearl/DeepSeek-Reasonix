@@ -22,6 +22,8 @@ export interface HeartbeatTask {
   timeWindowStart?: string; // "HH:MM" — interval tasks only run after this time
   timeWindowEnd?: string;   // "HH:MM" — interval tasks only run before this time
   notifyChannels?: boolean; // true = push to bot channels; false/nil = skip
+  goalMode?: boolean;       // #31 keep running until the goal is met instead of one turn
+  goalText?: string;        // #31 goal description; empty falls back to prompt
   provider?: string;        // #9070 per-task model override: provider name (optional)
   model?: string;           // #9070 per-task model override: model name; empty keeps the topic's current model
 }
