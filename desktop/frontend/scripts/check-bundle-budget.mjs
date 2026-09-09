@@ -232,7 +232,7 @@ if (initialCSS.length > 0) {
 // shared title-safe shell, and the shared harness decision surface measure
 // 116.9 KiB gzip while reusing existing layout primitives. Retain a bounded
 // 0.1 KiB headroom ratchet.
-assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 118.0 * 1024); // fork: +1.0 KiB vs upstream 117.0 (LocalServerPage CSS delta)
+assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 122.0 * 1024); // fork: upstream 1.38.3 raised its own budget to 120.4 KiB; the fork's LocalServerPage delta plus the merge measures 121.3 KiB, so keep a bounded 0.7 KiB headroom.
 if (localeChunks.length !== 2) {
   throw new Error(`expected 2 on-demand Chinese locale chunks, found ${localeChunks.length}`);
 }
@@ -293,7 +293,9 @@ for (const path of localeChunks) {
   // upstream 1.38.1 measured 61.2/62.0; fork +1.0 KiB for LocalServerPage/consolidate keys
   // 1f8c3fe50 locale backfill: real Chinese copy is longer than the Title-Case
   // fallback it replaced; zh measures 63.1 KiB gzip, zh-TW has the same keys.
-  const budget = name.startsWith("zh-TW-") ? 64.5 * 1024 : 63.3 * 1024;
+  // 1.38.3 merge: upstream copy plus the fork's own keys measure 65.3 KiB, so
+  // the ceiling moves to 66.0/66.5 with the same bounded headroom.
+  const budget = name.startsWith("zh-TW-") ? 66.5 * 1024 : 66.0 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
