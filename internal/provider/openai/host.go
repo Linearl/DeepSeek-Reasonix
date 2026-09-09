@@ -59,13 +59,25 @@ func IsOfficialDeepSeekVisionModel(model string) bool {
 	return strings.EqualFold(m, OfficialDeepSeekVisionModel)
 }
 
+// IsOfficialDeepSeekTextModel identifies known text-only models, not future SKUs.
+func IsOfficialDeepSeekTextModel(model string) bool {
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case "deepseek-v4-flash", "deepseek-v4-pro":
+		return true
+	}
+	return false
+}
+
 // DeepSeekImageInputAllowed applies the official endpoint hard limit after a
 // provider has resolved its configured or catalog-derived image capability.
 func DeepSeekImageInputAllowed(officialBase bool, requestURL, model string, metadataProvided, enabled bool) bool {
 	if !officialBase && !IsDeepSeek(requestURL) {
 		return enabled
 	}
-	return (!metadataProvided || enabled) && IsOfficialDeepSeekVisionModel(model)
+	if IsOfficialDeepSeekTextModel(model) {
+		return false
+	}
+	return enabled || (!metadataProvided && IsOfficialDeepSeekVisionModel(model))
 }
 
 // OfficialDeepSeekAllowsVision reports whether this official DeepSeek endpoint

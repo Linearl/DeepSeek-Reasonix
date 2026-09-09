@@ -281,21 +281,20 @@ func ApplyUserConfigUpgradesOnStartup(path string) (bool, error) {
 	if header.ConfigVersion > defaultVersion {
 		return false, nil
 	}
-	classicDesktopLayout := strings.EqualFold(strings.TrimSpace(header.Desktop.LayoutStyle), "classic")
-	if header.ConfigVersion == defaultVersion && !classicDesktopLayout {
+	// Fork: the classic desktop layout is a retained fork feature — the
+	// upstream startup migration that rewrote layout_style "classic" to
+	// "workbench" is deliberately not applied, so a user's explicit classic
+	// choice survives restarts.
+	if header.ConfigVersion == defaultVersion {
 		return false, nil
 	}
 	// Version 7 already completed the older migrations. Preserve its original
 	// TOML byte-for-byte except for the protocol scalars and version marker.
-	if header.ConfigVersion >= deepSeekScheduledPricingConfigVersion && header.ConfigVersion < deepSeekChatDefaultConfigVersion && !classicDesktopLayout {
+	if header.ConfigVersion >= deepSeekScheduledPricingConfigVersion && header.ConfigVersion < deepSeekChatDefaultConfigVersion {
 		return upgradeDeepSeekChatDefaultFileLocked(path)
 	}
 	cfg := LoadForEdit(path)
 	changed := false
-	if classicDesktopLayout {
-		cfg.Desktop.LayoutStyle = "workbench"
-		changed = true
-	}
 	if header.ConfigVersion < deepSeekPricingResetConfigVersion {
 		resetOfficialProviderPricingDefaults(cfg)
 		changed = true

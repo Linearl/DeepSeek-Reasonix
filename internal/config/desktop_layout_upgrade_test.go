@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestApplyUserConfigUpgradesOnStartupMigratesClassicDesktopLayout(t *testing.T) {
+func TestApplyUserConfigUpgradesOnStartupKeepsForkClassicDesktopLayout(t *testing.T) {
 	path := isolatedDesktopLayoutUserConfigPath(t)
 	original := fmt.Sprintf(`config_version = %d
 
@@ -20,27 +20,28 @@ theme = "dark"
 		t.Fatal(err)
 	}
 
+	// Fork: classic is a retained layout style — the startup upgrade must not
+	// rewrite it (upstream retired classic, the fork keeps it user-selectable).
 	changed, err := ApplyUserConfigUpgradesOnStartup(path)
 	if err != nil {
 		t.Fatalf("ApplyUserConfigUpgradesOnStartup: %v", err)
 	}
-	if !changed {
-		t.Fatal("classic desktop layout was not migrated")
+	if changed {
+		t.Fatal("fork classic desktop layout was rewritten by the startup upgrade")
 	}
 
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(raw)
-	if !strings.Contains(text, `layout_style = "workbench"`) || strings.Contains(text, `layout_style = "classic"`) {
-		t.Fatalf("migrated desktop layout not persisted:\n%s", text)
+	if !strings.Contains(string(raw), `layout_style = "classic"`) {
+		t.Fatalf("fork classic desktop layout was not preserved:\n%s", raw)
 	}
-	if !strings.Contains(text, `theme = "dark"`) {
-		t.Fatalf("desktop migration dropped an unrelated preference:\n%s", text)
+	if !strings.Contains(string(raw), `theme = "dark"`) {
+		t.Fatalf("desktop migration dropped an unrelated preference:\n%s", raw)
 	}
-	if got := LoadForEditWithoutCredentials(path).DesktopLayoutStyle(); got != "workbench" {
-		t.Fatalf("DesktopLayoutStyle() = %q, want workbench", got)
+	if got := LoadForEditWithoutCredentials(path).DesktopLayoutStyle(); got != "classic" {
+		t.Fatalf("DesktopLayoutStyle() = %q, want classic", got)
 	}
 
 	again, err := ApplyUserConfigUpgradesOnStartup(path)

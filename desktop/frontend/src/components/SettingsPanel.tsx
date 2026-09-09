@@ -7007,6 +7007,9 @@ export function ProviderEditor({
       <input className="mem-input" type="password" autoComplete="off" placeholder={t(initial?.keySet ? "providerUI.keySet" : "settings.providerKeyPlaceholder")} value={keyDraft} disabled={busy} onChange={(e) => setKeyDraft(e.target.value)} />
       {initial?.keySet && onClearKey && <InlineConfirmButton label={t("settings.clearKey")} confirmLabel={t("settings.confirmClearKey")} cancelLabel={t("common.cancel")} disabled={busy} danger onConfirm={() => onClearKey(apiKeyEnv)} />}
       {fetchFallback && <p role="alert" className="provider-fetch-status provider-fetch-status--warn">{fetchFallback}</p>}
+      {initial != null && JSON.stringify(parseProviderListInput(models)) !== JSON.stringify(initial.models ?? []) && (
+        <p role="status" className="provider-fetch-status provider-fetch-status--warn">{t("providerUI.unsavedModelChanges")}</p>
+      )}
       <ProviderModelsEditor provider={modelProvider} draft={!initial} disabled={busy} canFetch={canFetch} probeKey={keyDraft}
         onChange={(nextModels, nextOverrides, nextCapabilities) => {
           setModels(nextModels.join(", ")); setModelOverrides(nextOverrides); setModelCapabilities(nextCapabilities); setCapabilitiesIdentity(discoveryIdentity);

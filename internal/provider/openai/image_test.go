@@ -121,7 +121,7 @@ func TestOfficialDeepSeekProviderWideVisionInputMatchesTextOnlyRequest(t *testin
 	}
 }
 
-func TestOfficialDeepSeekExplicitModelVisionInputMatchesTextOnlyRequest(t *testing.T) {
+func TestOfficialDeepSeekUnknownModelExplicitVisionSerializesImages(t *testing.T) {
 	p, err := New(provider.Config{
 		Name:    "deepseek",
 		BaseURL: "https://api.deepseek.com",
@@ -135,8 +135,8 @@ func TestOfficialDeepSeekExplicitModelVisionInputMatchesTextOnlyRequest(t *testi
 		t.Fatalf("New: %v", err)
 	}
 	c := p.(*client)
-	if c.vision {
-		t.Fatal("explicit model-scoped vision must not bypass the official DeepSeek endpoint guard")
+	if !c.vision {
+		t.Fatal("explicit vision must enable unknown DeepSeek models")
 	}
 
 	textOnly := provider.Request{Messages: []provider.Message{{
@@ -154,8 +154,8 @@ func TestOfficialDeepSeekExplicitModelVisionInputMatchesTextOnlyRequest(t *testi
 	if err != nil {
 		t.Fatalf("marshal image request: %v", err)
 	}
-	if !bytes.Equal(imageBody, textBody) {
-		t.Fatalf("explicit official DeepSeek image request changed provider-visible bytes:\ntext:  %s\nimage: %s", textBody, imageBody)
+	if bytes.Equal(imageBody, textBody) || !bytes.Contains(imageBody, []byte("data:image/png;base64,AAAA")) {
+		t.Fatalf("explicit unknown DeepSeek image missing from request: %s", imageBody)
 	}
 }
 

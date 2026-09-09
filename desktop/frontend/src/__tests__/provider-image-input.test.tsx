@@ -68,10 +68,10 @@ assert(!modeInput("off").disabled);
 assert.equal(imageInputState("auto", { ...unknown, automaticState: undefined, source: "override", state: "supported" }), "unknown", "old backend must not fabricate automatic support");
 assert.equal(imageInputState("on", { ...unknown, imageInputEnableAllowed: false }), "unsupported");
 assert(imageInputHardBlocked("https://api.deepseek.com", "deepseek-v4-flash"));
-assert(imageInputHardBlocked("https://eu.deepseek.com/anthropic", "future-vision"));
+assert(!imageInputHardBlocked("https://eu.deepseek.com/anthropic", "future-vision"), "allowlist semantics: unknown/future models are not hard-blocked");
 assert(!imageInputHardBlocked("https://api.deepseek.com.relay.test", "deepseek-v4-flash"));
 assert(!imageInputHardBlocked("https://api.deepseek.com", "deepseek-v4-flash-vision-exp"));
-assert.equal(mergeImageInputModes(initial.modelOverrides, initial.models, { "RELAY-MODEL": "off" })[0].vision, false);
+assert.equal(mergeImageInputModes(initial.modelOverrides, initial.models, { "RELAY-MODEL": "off" })[0].vision, null);
 
 await render(<ProviderEditorModelPicker candidates={["relay-model"]} selectedModels={["relay-model"]} visionModels={[]} modelCapabilities={[unknown]} imageModes={{ "relay-model": "on" }} onImageInputChange={() => {}} contextWindows={{}} disabled={false} onToggleModel={() => {}} onContextWindowChange={() => {}} onSelectAll={() => {}} onClear={() => {}} />);
 assert(el.textContent?.includes("Manually enabled"));
