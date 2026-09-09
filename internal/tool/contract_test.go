@@ -57,21 +57,22 @@ func boolString(v bool) string {
 // which is the guard against a context-maintenance strategy silently desyncing
 // from the tool surface.
 var acceptsDefaultSnip = map[string]bool{
-	"bash_output":   true, // streamed job output; tailing handled by the job, not the snip pass
-	"code_index":    true,
-	"complete_step": true,
-	"compress":      true,
-	"delete_range":  true,
-	"delete_symbol": true,
-	"edit_file":     true,
-	"kill_shell":    true,
-	"move_file":     true,
-	"multi_edit":    true,
-	"notebook_edit": true,
-	"todo_write":    true,
-	"update_goal":   true,
-	"wait":          true,
-	"write_file":    true,
+	"bash_output":            true, // streamed job output; tailing handled by the job, not the snip pass
+	"code_index":             true,
+	"complete_step":          true,
+	"compress":               true,
+	"delete_range":           true,
+	"delete_symbol":          true,
+	"edit_file":              true,
+	"extend_research_budget": true, // one-line confirmation; generic head/tail split is fine
+	"kill_shell":             true,
+	"move_file":              true,
+	"multi_edit":             true,
+	"notebook_edit":          true,
+	"todo_write":             true,
+	"update_goal":            true,
+	"wait":                   true,
+	"write_file":             true,
 }
 
 func TestEveryBuiltinDeclaresSnipStance(t *testing.T) {

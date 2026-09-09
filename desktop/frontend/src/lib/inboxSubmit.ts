@@ -63,14 +63,23 @@ export async function answerPromptForActiveTurn(
     return;
   }
   const turnId = await resolveActiveTurnId(binding, tabId, knownTurnId);
-  if (!turnId) throw new Error("active turn id is unavailable; refresh and try again");
+  // Fork: without a turn id (turn owned by another process / recovery fork),
+  // degrade to the session-scoped answer instead of failing the user's reply.
+  if (!turnId) {
+    await binding.AnswerQuestionForTab(tabId, promptId, answers);
+    return;
+  }
   await binding.AnswerPromptForTab(tabId, turnId, promptId, answers);
 }
 
 export async function steerInboxItemForActiveTurn(binding: ActiveTurnBindings, tabId: string, itemId: string, knownTurnId?: string) {
   if (typeof binding.SteerInboxItemForTurn !== "function") return binding.SteerInboxItem(tabId, itemId);
   const turnId = await resolveActiveTurnId(binding, tabId, knownTurnId);
-  if (!turnId) throw new Error("active turn id is unavailable; refresh and try again");
+  // Fork: no turn id means the turn is owned elsewhere (second writer,
+  // recovery fork, or a controller rebuild). Fall back to the session-level
+  // steer instead of failing the user's action: the owner applies it to the
+  // running turn, and the item stays durable either way.
+  if (!turnId) return binding.SteerInboxItem(tabId, itemId);
   return binding.SteerInboxItemForTurn(tabId, turnId, itemId);
 }
 
@@ -107,7 +116,11 @@ export function enqueueInboxGuidance(
   }
   if (opts?.steer && typeof binding.EnqueueInboxSteer === "function") {
     if (typeof binding.EnqueueInboxSteerForTurn === "function") {
-      if (!opts.turnId) return Promise.reject(new Error("active turn id is unavailable; refresh and try again"));
+      // Fork: when the exact-turn id is unknown (turn owned by another
+      // process / recovery fork / controller rebuild), degrade to the
+      // session-level steer queue instead of rejecting the user's message.
+      // The host durably records the item and the owner picks it up.
+      if (!opts.turnId) return binding.EnqueueInboxSteer(tabId, display, submit || display, "");
       return binding.EnqueueInboxSteerForTurn(tabId, opts.turnId, display, submit || display, "");
     }
     return binding.EnqueueInboxSteer(tabId, display, submit || display, "");

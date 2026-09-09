@@ -3883,7 +3883,12 @@ export function useController() {
     const receipt = typeof app.EnqueueInboxSteerForTurn === "function"
       ? turnId
         ? await app.EnqueueInboxSteerForTurn(tabId, turnId, text, text, "")
-        : await Promise.reject(new Error("active turn id is unavailable; refresh and try again"))
+        // Fork: the turn id can be unavailable when the running turn is owned
+        // by another process (second writer / recovery fork / controller
+        // rebuild). Degrade to the session-level durable steer queue instead
+        // of rejecting the user's message; the host records it durably and a
+        // rejected steer becomes a follow-up (disposition queued_followup).
+        : await app.EnqueueInboxSteer(tabId, text, text, "")
       : await app.EnqueueInboxSteer(tabId, text, text, "");
     if (receipt?.error) throw new Error(receipt.error);
     // queued_followup is success: the instruction is durable and will run at

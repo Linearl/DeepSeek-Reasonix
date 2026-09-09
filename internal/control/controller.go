@@ -104,6 +104,12 @@ type Controller struct {
 	executor           *agent.Agent
 	guardianSess       *guardian.Session // nil when guardian is disabled
 	guardianPath       string            // persisted guardian session file ("" when disabled)
+	// lastSnapshotForkAt records when this controller last forked a recovery
+	// branch after a snapshot conflict. A second conflict inside the brake
+	// window means another writer keeps racing us (the repeated_in_process
+	// forks that split one conversation across copies), so the controller
+	// adopts the disk transcript instead of forking again.
+	lastSnapshotForkAt time.Time
 	// recoveryGate is the shared Auto Guard state for this controller.
 	// nil when the feature is not wired for this controller.
 	recoveryGate *recovery.Gate
@@ -4068,6 +4074,24 @@ func sessionRecoveryNotice(code, text string) event.Event {
 	}
 }
 
+// snapshotForkBrakeWindow bounds how soon a second recovery fork may happen
+// for one controller. Two conflicts inside it come from a racing writer (the
+// repeated_in_process forks seen in the field), not from two independent
+// edits, and forking again would only chain recovery copies.
+const snapshotForkBrakeWindow = 2 * time.Minute
+
+func (c *Controller) withinSnapshotForkBrakeWindow() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return !c.lastSnapshotForkAt.IsZero() && time.Since(c.lastSnapshotForkAt) < snapshotForkBrakeWindow
+}
+
+func (c *Controller) markSnapshotFork() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.lastSnapshotForkAt = time.Now()
+}
+
 func (c *Controller) recoverSnapshotConflict(path string, saveErr error, forceRewrite bool) (string, conflictOutcome, error) {
 	if c.executor == nil || strings.TrimSpace(path) == "" {
 		return "", conflictDropped, saveErr
@@ -4077,6 +4101,21 @@ func (c *Controller) recoverSnapshotConflict(path string, saveErr error, forceRe
 		mode = "rewrite"
 	}
 	logAttrs := snapshotConflictLogAttrs(saveErr, path, mode)
+	// Fork: avalanche brake. When this controller already forked a recovery
+	// branch moments ago, the conflict is a racing writer (the
+	// repeated_in_process forks observed in the field), not an independent
+	// edit. Forking again only chains recovery copies and splits the history
+	// further; adopt the disk transcript instead. The local snapshot that lost
+	// the race is already preserved in the copy the first fork created.
+	if c.withinSnapshotForkBrakeWindow() {
+		if c.adoptDiskSession(path) {
+			appendSnapshotConflictDiagnostic(path, mode, "adopted_disk_within_fork_brake", saveErr, "", true)
+			slog.Warn("controller: snapshot conflict inside the fork brake window; adopted disk transcript instead of forking again", logAttrs...)
+			c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryAdopted,
+				"session changed on disk again right after a recovery copy was created; adopted the disk transcript to stop splitting the history"))
+			return path, conflictAdoptedDisk, nil
+		}
+	}
 	if kind, ok := agent.SnapshotConflictKind(saveErr); ok && kind == agent.SessionSnapshotConflictStalePrefix {
 		if c.adoptDiskSession(path) {
 			appendSnapshotConflictDiagnostic(path, mode, "adopted_newer_disk_transcript", saveErr, "", false)
@@ -4124,6 +4163,7 @@ func (c *Controller) recoverSnapshotConflict(path string, saveErr error, forceRe
 	if err := c.commitRecoveredSession(path, reason, info); err != nil {
 		return "", conflictDropped, err
 	}
+	c.markSnapshotFork()
 	appendSnapshotConflictDiagnostic(path, mode, "forked_recovery_branch", saveErr, info.Path, info.Existing)
 	slog.Warn("controller: snapshot conflict; forked recovery branch",
 		append(logAttrs, "recovery", info.Path, "existing", info.Existing)...)
