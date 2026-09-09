@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,6 +30,11 @@ type snapshotConflictDiagnostic struct {
 	ExistingRecovery bool      `json:"existing_recovery,omitempty"`
 	Occurrence       int       `json:"occurrence,omitempty"`
 	Repeated         bool      `json:"repeated_in_process,omitempty"`
+	// Caller is the file:line of the code path that hit the conflict. Several
+	// writers share one session file and the counters alone cannot say which
+	// one raced the disk, so field reports could only prove "same process"
+	// (task 34 P0-1). This is what makes the next occurrence attributable.
+	Caller string `json:"caller,omitempty"`
 }
 
 // conflictDiagDedup bounds repeated conflict event log lines for the same
@@ -57,6 +63,15 @@ func RecordRecoveryLifecycle(path, outcome string) {
 	appendSnapshotConflictDiagnostic(path, mode, outcome, nil, "", false)
 }
 
+// snapshotConflictCaller reports the immediate caller of the diagnostic writer
+// as base(file):line. Skip 2 = the function that decided to write the record.
+func snapshotConflictCaller() string {
+	if _, file, line, ok := runtime.Caller(2); ok {
+		return filepath.Base(file) + ":" + strconv.Itoa(line)
+	}
+	return ""
+}
+
 func appendSnapshotConflictDiagnostic(path, mode, outcome string, saveErr error, recoveryPath string, existing bool) {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -72,6 +87,7 @@ func appendSnapshotConflictDiagnostic(path, mode, outcome string, saveErr error,
 		BranchID: agent.BranchID(path),
 		Mode:     mode,
 		Outcome:  outcome,
+		Caller:   snapshotConflictCaller(),
 	}
 	createsPhysicalRecovery := diagnosticCreatesPhysicalRecovery(outcome)
 	if createsPhysicalRecovery {
