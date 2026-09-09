@@ -7,10 +7,11 @@
 #   CI stamps version resources via cmd/windows-resource, which is NOT
 #   committed to the repo (upstream build.sh references an untracked tool),
 #   so local builds carry no version resource — cosmetic only.
-#   goversioninfo .syso embedding is NOT viable on go1.26 yet:
-#   "unknown relocation type 7" at link time (retry after toolchain updates
-#   or when upstream commits the stamper). Shortcuts in project.nsi now point
-#   their icon at the main exe instead of the bare launcher for this reason.
+#   Icon/version embedding: upstream stamps via cmd/windows-resource (never
+#   committed). goversioninfo .syso does NOT link on go1.26 ("unknown
+#   relocation type 7"), but github.com/akavel/rsrc works (pixel-verified
+#   2026-09-08) — this script embeds icon.ico into all four helpers via rsrc.
+#   Shortcuts in project.nsi also point their icon at the main exe.
 #
 # Usage:
 #   scripts/build-local-installer.sh [VERSION]   # VERSION defaults to
@@ -39,7 +40,12 @@ export REASONIX_CHANNEL="$CHANNEL"
 INS="$ROOT/desktop/build/windows/installer"
 mkdir -p "$INS"
 
-echo "==> [1/3] prebuilt helpers: guard / launcher / update-helper / cli (VER=$VER)"
+echo "==> [1/3] rsrc icon resources + prebuilt helpers (VER=$VER)"
+RSRC="$(go env GOPATH)/bin/rsrc.exe"
+[ -x "$RSRC" ] || go install github.com/akavel/rsrc@v0.10.2
+for pkg in cmd/reasonix-legacy-migrator cmd/reasonix-launcher desktop/cmd/update-helper cmd/reasonix; do
+	( cd "$ROOT/$pkg" && "$RSRC" -ico "$ROOT/desktop/build/windows/icon.ico" -o resource.syso )
+done
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
 	-ldflags="-s -w -X main.version=$VER" -o "$INS/reasonix-guard.exe" ./cmd/reasonix-legacy-migrator
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
@@ -49,6 +55,9 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
 	-ldflags="-s -w -X main.version=$VER -X main.channel=$CHANNEL" -o "$INS/reasonix-cli.exe" ./cmd/reasonix
 
+for pkg in cmd/reasonix-legacy-migrator cmd/reasonix-launcher desktop/cmd/update-helper cmd/reasonix; do
+	rm -f "$ROOT/$pkg/resource.syso"
+done
 echo "==> [2/3] wails build (never pass -s: it skips the frontend build)"
 cd "$ROOT/desktop"
 wails build -clean -platform windows/amd64 -nsis -webview2 embed
