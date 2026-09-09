@@ -75,6 +75,11 @@ func (s *SubagentScheduler) Limits() (total, writers int) {
 	return s.maxTotal, s.maxWriters
 }
 
+// parentHeldClaimReason marks a refusal caused by the parent turn itself
+// holding the path. A child queued on it can never be granted — the parent
+// releases only after the child returns — so it fails fast instead (#9688).
+const parentHeldClaimReason = "write path is held by the parent turn"
+
 // Acquire reserves a concurrency slot (and optional write claim). Nested
 // requests fail immediately when capacity is exhausted. Non-nested requests
 // queue until capacity is free or ctx is cancelled.
@@ -101,7 +106,7 @@ func (s *SubagentScheduler) AcquireWithID(ctx context.Context, req AcquireReques
 		id := s.activateLocked(req)
 		s.mu.Unlock()
 		return s.makeReleaseID(id), id, nil
-	} else if req.Nested {
+	} else if req.Nested || reason == parentHeldClaimReason {
 		s.mu.Unlock()
 		return noop, 0, fmt.Errorf("subagent concurrency limit reached (%s); nested subagents fail fast to avoid parent/child slot deadlock", reason)
 	}
@@ -326,7 +331,7 @@ func (s *SubagentScheduler) canStartLocked(req AcquireRequest) (bool, string) {
 	}
 	for _, active := range s.parentClaims {
 		if ScheduleOverlaps(req.WritePaths, active) {
-			return false, "write path conflict with a parent write in progress"
+			return false, parentHeldClaimReason
 		}
 	}
 	return true, ""
