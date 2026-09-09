@@ -38,6 +38,7 @@ import (
 	"reasonix/internal/config"
 	"reasonix/internal/control"
 	"reasonix/internal/event"
+	"reasonix/internal/eventwire"
 	"reasonix/internal/evidence"
 	"reasonix/internal/extension/providerext"
 	"reasonix/internal/fileref"
@@ -204,6 +205,8 @@ type App struct {
 	// startup.
 	projectTreeChangedHook func()
 	projectTreeRuntime     projectTreeRuntimeState
+	runtimeStateProjection desktopRuntimeProjection
+	remoteRuntimeSync      remoteRuntimeSync
 
 	// singleSurfaceMu serializes open/reuse plus visible-tab pruning for the
 	// one-conversation layout so overlapping navigation cannot remove the tab
@@ -372,7 +375,10 @@ type App struct {
 	// remoteTabModelMu makes the caller's current-model snapshot, the remote
 	// Serve rebuild, and the tab metadata commit one transaction. Without it,
 	// overlapping switches could roll remote config back to a stale model.
-	remoteTabModelMu sync.Mutex
+	remoteTabModelMu          sync.Mutex
+	modelSettingsSubmitMu     sync.Mutex
+	modelSettingsReceipts     map[string]modelSettingsReceipt
+	modelSettingsReceiptOrder []string
 	// remoteEventHook observes remote events in tests; production leaves it nil.
 	remoteEventHook func(name string, payload any)
 	// credProxy is the lazy app-wide key holder for local-proxy mode.
@@ -1386,7 +1392,7 @@ func (a *App) tabAndCtrlByID(tabID string) (*WorkspaceTab, control.SessionAPI) {
 		return nil, nil
 	}
 	ctrl := tab.Ctrl
-	retryStartup := ctrl == nil && tab.StartupErrLeaseHeld
+	retryStartup := ctrl == nil && (tab.StartupErrLeaseHeld || tab.modelApplication.startupRetry)
 	a.mu.RUnlock()
 	if retryStartup && a.tryRecoverStartupLeaseHeldTab(tab) {
 		a.mu.RLock()
@@ -1436,7 +1442,7 @@ func (a *App) controllerForTab(tab *WorkspaceTab) control.SessionAPI {
 	}
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	if tab.ID != "" && a.tabs[tab.ID] != tab {
+	if tab.ID != "" && !a.ownsRuntimeTabLocked(tab) {
 		return nil
 	}
 	return tab.Ctrl
@@ -2219,6 +2225,7 @@ func (a *App) clearActiveSessionRuntime(tab *WorkspaceTab, oldCtrl control.Sessi
 		PinnedContextLoader:      pinnedContextLoader(snap.workspaceRoot),
 		OnSessionRecovered:       a.handleTabSessionRecovered(tab),
 		OnSessionTransition:      a.handleTabSessionTransition(tab),
+		BeforeInboxDispatch:      a.beforeInboxDispatch,
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
 	})
 	if err != nil {
@@ -2528,73 +2535,6 @@ func (a *App) PreviewRewindForTab(tabID string, turn int, scope string) RewindPl
 		return view
 	}
 	view.OK = true
-	return view
-}
-
-// CommitRewindForTab executes prepare (if planID empty) then commit immediately.
-func (a *App) CommitRewindForTab(tabID, planID string, turn int, scope string) RewindResultView {
-	tab, ctrl := a.tabAndCtrlByID(tabID)
-	if a.tabIsReadOnly(tab) {
-		return RewindResultView{OK: false, Error: readOnlyChannelErr().Error()}
-	}
-	if ctrl == nil {
-		return RewindResultView{OK: false, Error: "no controller"}
-	}
-	s := control.RewindBoth
-	switch scope {
-	case "code":
-		s = control.RewindCode
-	case "conversation":
-		s = control.RewindConversation
-	}
-	if planID == "" {
-		plan, err := ctrl.PrepareRewind(turn, s)
-		if err != nil {
-			return RewindResultView{OK: false, Error: err.Error()}
-		}
-		// Conversation-only is allowed when its boundary is valid. File scopes
-		// never fall back to the legacy force-restore path.
-		if s == control.RewindConversation {
-			if !plan.CanConversation {
-				return RewindResultView{OK: false, Error: nonEmptyStr(plan.DisabledReason, "conversation rewind unavailable")}
-			}
-		} else if !plan.CanFiles {
-			return RewindResultView{OK: false, Error: nonEmptyStr(plan.DisabledReason, "file rewind unavailable"), Conflicts: conflictStrings(plan), Coverage: string(plan.Coverage)}
-		}
-		planID = plan.PlanID
-	}
-	result, err := ctrl.CommitRewind(planID)
-	view := rewindResultToView(result)
-	if err != nil {
-		view.OK = false
-		if view.Error == "" {
-			view.Error = err.Error()
-		}
-		return view
-	}
-	if view.OK && view.ConversationForked && strings.TrimSpace(view.Branch) != "" && tab != nil {
-		view = a.attachForkedRewindTab(tab, view)
-	}
-	return view
-}
-
-// UndoRewindForTab undoes the last successful rewind on the tab when available.
-func (a *App) UndoRewindForTab(tabID, transactionID string) RewindResultView {
-	tab, ctrl := a.tabAndCtrlByID(tabID)
-	if a.tabIsReadOnly(tab) {
-		return RewindResultView{OK: false, Error: readOnlyChannelErr().Error()}
-	}
-	if ctrl == nil {
-		return RewindResultView{OK: false, Error: "no controller"}
-	}
-	result, err := ctrl.UndoRewind(transactionID)
-	view := rewindResultToView(result)
-	if err != nil {
-		view.OK = false
-		if view.Error == "" {
-			view.Error = err.Error()
-		}
-	}
 	return view
 }
 
@@ -3801,6 +3741,7 @@ func (a *App) rebindTabToLoadedSessionPath(tab *WorkspaceTab, sessionPath string
 	if tab == nil {
 		return fmt.Errorf("tab is not ready")
 	}
+	pendingSequence := a.deferredRebuildSequence(tab.ID)
 	sessionPath = canonicalTabSessionPath(sessionPath)
 	if sessionPath == "" {
 		return fmt.Errorf("session path is required")
@@ -3920,7 +3861,7 @@ func (a *App) rebindTabToLoadedSessionPath(tab *WorkspaceTab, sessionPath string
 			oldLease.Release()
 		}
 
-		a.clearDeferredRebuild(tab.ID)
+		a.clearDeferredRebuildVersion(tab.ID, pendingSequence)
 		a.emitReady(a.ctx, tab.ID)
 
 		tab.turnStartMu.Unlock()
@@ -4080,7 +4021,7 @@ func (a *App) rebindTabToLoadedSessionPath(tab *WorkspaceTab, sessionPath string
 		}
 	}
 	a.persistTabSessionPath(tab, sessionPath)
-	a.clearDeferredRebuild(tab.ID)
+	a.clearDeferredRebuildVersion(tab.ID, pendingSequence)
 	a.notifyTabRuntimeRebuiltAtEpoch(tab, newEpoch)
 	a.emitReady(a.ctx, tab.ID)
 	return nil
@@ -4267,6 +4208,7 @@ func (a *App) buildSessionRebindCandidate(
 		PinnedContextLoader:      pinnedContextLoader(root),
 		OnSessionRecovered:       a.handleTabSessionRecovered(tab),
 		OnSessionTransition:      a.handleTabSessionTransition(tab),
+		BeforeInboxDispatch:      a.beforeInboxDispatch,
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
 	})
 	if err != nil {
@@ -4465,7 +4407,7 @@ func (a *App) scanPromptHistoryFromDir(dir string) ([]PromptHistoryEntry, error)
 
 func newPromptHistoryTape(dir, currentPath string) (*promptHistoryTape, error) {
 	tape := &promptHistoryTape{
-		nonce:       fmt.Sprintf("%d", time.Now().UnixNano()),
+		nonce:       rand.Text(),
 		dir:         dir,
 		currentPath: currentPath,
 		displays:    loadSessionDisplays(dir),
@@ -5193,22 +5135,25 @@ func (a *App) singleSurfaceLayoutEnabled() bool {
 // HistoryMessage is one prior turn, for the frontend to repopulate its transcript
 // after a reload.
 type HistoryMessage struct {
-	Role               string                    `json:"role"`
-	Content            string                    `json:"content"`
-	Detail             string                    `json:"detail,omitempty"`
-	Code               string                    `json:"code,omitempty"`
-	SubmitText         string                    `json:"submitText,omitempty"`
-	CheckpointTurn     *int                      `json:"checkpointTurn,omitempty"`
-	CreatedAt          int64                     `json:"createdAt,omitempty"`
-	Reasoning          string                    `json:"reasoning,omitempty"`
-	MemoryCitations    []provider.MemoryCitation `json:"memoryCitations,omitempty"`
-	WorkDurationMs     int64                     `json:"workDurationMs,omitempty"`
-	Level              string                    `json:"level,omitempty"`
-	ToolCalls          []HistoryToolCall         `json:"toolCalls,omitempty"`
-	ToolCallID         string                    `json:"toolCallId,omitempty"`
-	ToolName           string                    `json:"toolName,omitempty"`
-	ToolResultArchived bool                      `json:"toolResultArchived,omitempty"`
-	ToolResultError    string                    `json:"toolResultError,omitempty"`
+	CompletionReceipt  *eventwire.CompletionReceipt `json:"completionReceipt,omitempty"`
+	CompletionSummary  *eventwire.CompletionSummary `json:"completionSummary,omitempty"`
+	TurnID             string                       `json:"turnId,omitempty"`
+	Role               string                       `json:"role"`
+	Content            string                       `json:"content"`
+	Detail             string                       `json:"detail,omitempty"`
+	Code               string                       `json:"code,omitempty"`
+	SubmitText         string                       `json:"submitText,omitempty"`
+	CheckpointTurn     *int                         `json:"checkpointTurn,omitempty"`
+	CreatedAt          int64                        `json:"createdAt,omitempty"`
+	Reasoning          string                       `json:"reasoning,omitempty"`
+	MemoryCitations    []provider.MemoryCitation    `json:"memoryCitations,omitempty"`
+	WorkDurationMs     int64                        `json:"workDurationMs,omitempty"`
+	Level              string                       `json:"level,omitempty"`
+	ToolCalls          []HistoryToolCall            `json:"toolCalls,omitempty"`
+	ToolCallID         string                       `json:"toolCallId,omitempty"`
+	ToolName           string                       `json:"toolName,omitempty"`
+	ToolResultArchived bool                         `json:"toolResultArchived,omitempty"`
+	ToolResultError    string                       `json:"toolResultError,omitempty"`
 	// Execution is local shell metadata restored onto ToolCards after history
 	// reload. Omitted when absent so older frontends ignore it safely.
 	Execution        *provider.ToolExecution          `json:"execution,omitempty"`
@@ -5219,8 +5164,34 @@ type HistoryMessage struct {
 	Archive          string                           `json:"archive,omitempty"`
 	DecisionReceipt  *provider.DecisionReceipt        `json:"decisionReceipt,omitempty"`
 	Readiness        *event.FinalReadiness            `json:"readiness,omitempty"`
+	ReadPause        *provider.ReadPause              `json:"readPause,omitempty"`
 	ProtocolRecovery *provider.ProtocolRecoveryAction `json:"protocolRecovery,omitempty"`
+	Diagnostic       *provider.FailureDiagnostic      `json:"diagnostic,omitempty"`
 	ServerSearch     []provider.ServerSearchCall      `json:"serverSearch,omitempty"`
+}
+
+func interruptedTurnHistoryNotice(recovery *provider.InterruptedTurnRecovery) HistoryMessage {
+	if recovery != nil && recovery.TerminalStatus == "failed" {
+		diagnostic := recovery.FailureDiagnostic
+		message := "The provider request failed. Check the connection settings and try again."
+		detail := provider.FailureDiagnosticDetail(diagnostic)
+		if diagnostic != nil {
+			if statusMessage := i18n.M.ProviderStatusMessage(diagnostic.Status); statusMessage != "" {
+				message = statusMessage
+			} else if diagnostic.Status > 0 {
+				message = fmt.Sprintf("Provider request failed (HTTP %d).", diagnostic.Status)
+			}
+			label := provider.ProviderDisplayLabel(diagnostic.ProviderID, diagnostic.ProviderDisplayName, diagnostic.Protocol)
+			if label != "" {
+				message = label + ": " + message
+			}
+		}
+		return HistoryMessage{Role: "notice", Level: "warn", Code: event.NoticeCodeProviderRequestFailed, Content: message, Detail: detail, Diagnostic: diagnostic}
+	}
+	return HistoryMessage{
+		Role: "notice", Level: "info", Code: event.NoticeCodeCancelledTurn,
+		Content: "This turn was interrupted. Partial output is kept for reference; only completed tool pairs and a bounded recovery summary enter the next model turn. Inspect the workspace before continuing or reverting changes.",
+	}
 }
 
 type HistoryToolCall struct {
@@ -5701,10 +5672,7 @@ func (state *historyMessageConvertState) convertHistoryMessage(
 		})
 	}
 	if m.LocalOnly && m.InterruptedTurn != nil {
-		out = append(out, HistoryMessage{
-			Role: "notice", Level: "info", Code: event.NoticeCodeCancelledTurn,
-			Content: "This turn was interrupted. Partial output is kept for reference; only completed tool pairs and a bounded recovery summary enter the next model turn. Inspect the workspace before continuing or reverting changes.",
-		})
+		out = append(out, interruptedTurnHistoryNotice(m.InterruptedTurn))
 	}
 	if m.Role == provider.RoleUser {
 		key := messageDisplayKey(agent.UserMessageText(m))
@@ -6708,7 +6676,7 @@ func (a *App) loadConfigForVision(root string) (*config.Config, error) {
 	if hook := a.configLoadForRootHook; hook != nil {
 		hook(root)
 	}
-	return config.LoadForRoot(root)
+	return config.LoadForRootWithoutCredentialsReadOnly(root)
 }
 
 func (a *App) MetaForTab(tabID string) Meta {
@@ -9351,13 +9319,15 @@ type ModelInfo struct {
 	Current       bool   `json:"current"`
 	ContextWindow int    `json:"contextWindow,omitempty"`
 	Vision        bool   `json:"vision,omitempty"`
+	DisplayName   string `json:"displayName,omitempty"`
 }
 
 type EffortInfo struct {
-	Supported bool     `json:"supported"`
-	Current   string   `json:"current"`
-	Default   string   `json:"default"`
-	Levels    []string `json:"levels"`
+	Options   []provider.ReasoningOption `json:"options,omitempty"`
+	Supported bool                       `json:"supported"`
+	Current   string                     `json:"current"`
+	Default   string                     `json:"default"`
+	Levels    []string                   `json:"levels"`
 }
 
 // Models flattens the configured providers into their (provider, model) pairs —
@@ -9707,6 +9677,7 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 	if tab == nil {
 		return nil
 	}
+	pendingSequence := a.deferredRebuildSequence(tab.ID)
 	a.mu.RLock()
 	currentModel := tab.model
 	a.mu.RUnlock()
@@ -9726,10 +9697,7 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 	stageStarted = time.Now()
 	tab.turnStartMu.Lock()
 	defer tab.turnStartMu.Unlock()
-	prevPath := a.reconciledSessionPathForTab(tab)
-	if prevPath == "" {
-		prevPath = a.currentSessionPathFor(tab)
-	}
+	prevPath := a.sessionPathForSettingsRebuild(tab)
 	if a.controllerForTab(tab) == nil && prevPath != "" {
 		a.attachExistingSessionRuntime(tab, prevPath, a.ctx)
 	}
@@ -9739,10 +9707,7 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 	if err := a.ensureTabControllerWorkspace(tab); err != nil {
 		return err
 	}
-	prevPath = a.reconciledSessionPathForTab(tab)
-	if prevPath == "" {
-		prevPath = a.currentSessionPathFor(tab)
-	}
+	prevPath = a.sessionPathForSettingsRebuild(tab)
 	if a.controllerForTab(tab) == nil && prevPath != "" && a.attachExistingSessionRuntime(tab, prevPath, a.ctx) {
 		prevPath = a.reconciledSessionPathForTab(tab)
 		if prevPath == "" {
@@ -9835,6 +9800,7 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 		PinnedContextLoader:      pinnedContextLoader(snap.workspaceRoot),
 		OnSessionRecovered:       a.handleTabSessionRecovered(tab),
 		OnSessionTransition:      a.handleTabSessionTransition(tab),
+		BeforeInboxDispatch:      a.beforeInboxDispatch,
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
 		// Keep the private temporary directory across model switches (#7575).
 		SessionTemp: sessionTempFromController(oldCtrl),
@@ -9882,8 +9848,8 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 	if oldCtrl != nil {
 		oldCtrl.Close()
 	}
-	// The runtime now reflects the on-disk config; drop any deferred refresh.
-	a.clearDeferredRebuild(tab.ID)
+	// A refresh queued during this build still owns its newer sequence.
+	a.clearDeferredRebuildVersion(tab.ID, pendingSequence)
 	a.persistTabSessionPath(tab, path)
 	// Keep the provider identity in the session sidecar inside the same
 	// runtimeRebuildMu transaction as the controller swap. Empty sessions do
@@ -9921,7 +9887,7 @@ func (a *App) EffortForTab(tabID string) EffortInfo {
 	if levels == nil {
 		levels = []string{}
 	}
-	return EffortInfo{Supported: true, Current: config.EffortDisplay(entry), Default: cap.Default, Levels: levels}
+	return EffortInfo{Supported: true, Current: config.EffortDisplay(entry), Default: cap.Default, Levels: levels, Options: config.ReasoningCapabilityForEntry(entry).Options}
 }
 
 func (a *App) SetEffort(level string) error {
@@ -9947,6 +9913,7 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 	// Build+swap path; serialize with the other rebuild paths (see
 	// runtimeRebuildMu). The tab==nil branch above goes through
 	// applyProviderEffortConfig → rebuildSetting, which takes the lock itself.
+	pendingSequence := a.deferredRebuildSequence(tab.ID)
 	a.runtimeRebuildMu.Lock()
 	defer a.runtimeRebuildMu.Unlock()
 	tab.turnStartMu.Lock()
@@ -10024,6 +9991,7 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 		PinnedContextLoader:      pinnedContextLoader(snap.workspaceRoot),
 		OnSessionRecovered:       a.handleTabSessionRecovered(tab),
 		OnSessionTransition:      a.handleTabSessionTransition(tab),
+		BeforeInboxDispatch:      a.beforeInboxDispatch,
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
 		// Keep the private temporary directory across effort switches (#7575).
 		SessionTemp: sessionTempFromController(oldCtrl),
@@ -10063,8 +10031,7 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 	if oldCtrl != nil {
 		oldCtrl.Close()
 	}
-	// The rebuilt runtime reflects the on-disk config; drop any deferred refresh.
-	a.clearDeferredRebuild(tab.ID)
+	a.clearDeferredRebuildVersion(tab.ID, pendingSequence)
 	a.persistTabSessionPath(tab, path)
 	a.notifyTabRuntimeRebuilt(tab)
 	return nil
@@ -11901,29 +11868,10 @@ func (a *App) ConnectKey(apiKey string) (string, error) {
 	if apiKey == "" {
 		return "", fmt.Errorf("key is required")
 	}
-	if tab := a.activeTab(); tab != nil {
-		if err := rebuildControllerActiveWorkErrorFor(tab.Ctrl, "provider key"); err != nil {
-			return "", err
-		}
-	}
-	ctx, cancel := context.WithTimeout(a.ctx, 8*time.Second)
+	ctx, cancel := context.WithTimeout(a.reqCtx(), 8*time.Second)
 	defer cancel()
 	if _, err := connectKeyBalanceFetch(ctx, nil, onboardingBalanceURL, apiKey); err != nil {
 		return "", fmt.Errorf("validate: %w", err)
 	}
-	warning, err := a.saveProviderCredential(onboardingKeyEnv, apiKey)
-	if err != nil {
-		return "", fmt.Errorf("save: %w", err)
-	}
-	if err := a.ensureProviderAccessForKey(onboardingKeyEnv); err != nil {
-		return "", fmt.Errorf("enable provider: %w", err)
-	}
-	if err := a.rebuildSetting("provider key"); err != nil {
-		if rebuildWarning, ok := a.deferredRebuildWarning("provider key", err); ok {
-			warning = appendSettingsWarning(warning, rebuildWarning)
-		} else {
-			return "", err
-		}
-	}
-	return warning, nil
+	return a.AddOfficialProviderAccess("deepseek", apiKey)
 }

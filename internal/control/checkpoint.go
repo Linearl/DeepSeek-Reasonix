@@ -218,6 +218,11 @@ func (m *checkpointManager) fileState(path string) (checkpoint.FileState, bool) 
 	return store.FileState(path)
 }
 
+// CheckpointTurnChanges is read-only and never computes from the current tree.
+func (c *Controller) CheckpointTurnChanges(turn int) *checkpoint.TurnChanges {
+	return c.checkpoints.storeRef().TurnChanges(turn)
+}
+
 // snapshot records a pre-edit file change into the open checkpoint — the
 // executor's pre-edit hook. No-op when disabled.
 func (m *checkpointManager) snapshot(ch diff.Change) {

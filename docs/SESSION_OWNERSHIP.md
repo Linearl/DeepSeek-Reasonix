@@ -5,27 +5,57 @@ how rewind and workspace isolation interact.
 
 ## Session writers
 
-One session file has one cross-process writer at a time. The ticket and holder
-metadata share one session lease file (`.lease.lock`). Production controllers
-bind a generation-bound `SessionWriter`; a rebind invalidates every older
-generation. Legacy `.lease.json` metadata remains read-only compatible.
+A conversation lives in an append-only event log, `<id>.events.jsonl`
+(session format 2). Every message entry carries its own id and the id of its
+parent, so the log is a DAG: each path from a leaf back to the root is one
+version of the conversation, called a *head*. A log starts with one head,
+`main`; forks, rewinds, and concurrent writers add heads of kind `fork`,
+`rewind`, and `concurrent`. The transcript file `<id>.jsonl` is a derived cache
+of the selected head and is never the source of truth.
 
-Intentional path changes (`new`, `clear`, `fork`, `branch`, and `switch`) use a
-prepare-before-publish handoff: the frontend acquires the target lease and binds
-the unpublished Session before the controller swaps paths. Failure leaves the
-source intact for non-destructive transitions; `clear` never publishes an
-unleased replacement.
+The selected head is the last `select` marker that still points at a live
+head, otherwise the head with the newest activity. Opening a session by path
+opens that head. `.event-index.json` mirrors the heads so the session catalog
+can list them without replaying the log.
 
-Every save also takes the bounded `.jsonl.lock` compatibility flock. The
-session lease decides who may own a live transcript; the save lock keeps that
-owner serialized with supported older binaries and one-shot recovery/import
-writers that do not yet participate in the lease protocol.
+Writers append; they never rewrite or truncate the log. A save takes the
+bounded `.jsonl.lock` flock, reads whatever another writer appended since its
+own last save, and continues on its own head. The session lease
+(`.lease.lock`, with a generation-bound `SessionWriter`) no longer gates
+appending: it decides who writes the derived `.jsonl`, the indexes, and the
+turn ledger, so a second window can join the same conversation without
+waiting. A turn opens with a `turn_begin` marker and closes with `turn_end`;
+a crash between them is noticed on the next open and the incomplete tail is
+set aside with a `rewind` marker, never truncated. When the shutdown save
+cannot take the save lock within its bounded wait, it appends the unsaved
+tail without the lock on a fresh `concurrent` head and leaves the derived
+files to the next locked save; a shutdown never writes a copy of the session.
 
-The event log (`.events.jsonl`) is the source of truth. Writer-bound saves CAS
-against the log tail (size + index revision/digest) and a paired in-memory
-transcript view. `.jsonl` remains a compatibility projection.
+Path changes (`new`, `clear`) still use the prepare-before-publish handoff:
+the frontend acquires the target lease and binds the unpublished Session
+before the controller swaps paths. `fork`, `branch`, `switch`, and
+conversation rewind stay on the same path and move between heads instead.
+
+Sessions saved before Reasonix 1.39.0 use format 1: a whole-file transcript
+plus a position-based event log. A 1.39.0 or newer binary upgrades such a
+session in place on its first save, once it can prove it is the only writer;
+until then the session keeps the format-1 rules below. A binary older than
+1.39.0 refuses to open a format-2 log and leaves the file untouched;
+`reasonix doctor session <id> --export-v1 PATH.jsonl` writes the current head
+back out as a format-1 session when a rollback needs it.
 
 ## Conflicts
+
+Two processes appending to one format-2 log cannot conflict; they interleave.
+When a save finds that another writer extended the chain this session was on
+and this session added nothing, it follows the disk. When both added content,
+the save forks a `concurrent` head from the last shared message and continues
+there; both sides receive a notice (`session_concurrent_writer`). Reloading
+the log afterwards opens the newest head and lists the other one under *View
+versions* (`session_head_switched`). Nothing is copied into a `-recovery-`
+file, and a save never removes a head.
+
+Format-1 sessions keep the previous rules until they are upgraded:
 
 1. Event-log tail still matches this writer → normal save (no-op / append / replace).
 2. Disk already covers the local prefix → adopt disk, no branch.
@@ -34,14 +64,32 @@ transcript view. `.jsonl` remains a compatibility projection.
    Lease rebinds keep that lane; later conflicts update the same path. There is
    no recovery-on-recovery chain.
 
+## Heads as versions
+
+Fork-from-here, `/branch`, and a conversation rewind append a `fork` marker
+and a `select` marker: the new head starts at the chosen message and becomes
+current, and the previous chain stays as another version of the same
+conversation. The desktop switches the current tab to the new head in place;
+the terminal replays the transcript. *View versions* lists the live heads with
+their kind, makes another head current (`select`), renames a head, and
+removes *covered* heads: heads whose whole chain is already part of the
+current one. Removing appends a `retire` marker; a retired head leaves the
+version list, and its bytes are reclaimed only when a single writer rotates
+the log. Heads with unique content are never removed automatically, and a head
+that was active within the last minute is reported busy instead of retired.
+
 ## Rewind
 
 - **Code**: restore file before-images. Already-restored files (current ==
   before) are skipped. External changes refuse overwrite.
-- **Conversation**: fork a new session. The parent transcript is never
-  truncated.
-- **Both**: fork first, then restore files. A file conflict keeps the new
-  branch and reports `partial=true`.
+- **Conversation**: fork a `rewind` head at the turn boundary and make it
+  current. The previous chain is never truncated. A format-1 session forks a
+  new session file instead.
+- **Both**: fork first, then restore files. A file conflict keeps the new head
+  and reports `partial=true`.
+- **Undo**: restores the file after-images. If nothing was added on the rewind
+  head since, the controller returns to the parent head and retires the empty
+  rewind head; a continued rewind head stays as a version.
 
 New checkpoints write `turns/<turn>/meta.json` plus raw `files/NNNN.before`
 payloads (schema v3). The newest 100 turn directories are retained by default;

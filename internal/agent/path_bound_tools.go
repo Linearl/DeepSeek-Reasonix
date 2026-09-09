@@ -122,6 +122,22 @@ func (w pathBoundWriter) DeclareWriteAccess(args json.RawMessage) (tool.WriteAcc
 	return tool.WriteAccessDeclaration{}, nil
 }
 
+func (w pathBoundWriter) DeclareEvidenceTarget(ctx context.Context, args json.RawMessage) (tool.EvidenceTargetInfo, error) {
+	paths, err := extractWritePathsFromArgs(w.inner.Name(), w.workDir, args)
+	if err != nil {
+		return tool.EvidenceTargetInfo{}, err
+	}
+	for _, path := range paths {
+		if !w.claims.AllowsPath(path) {
+			return tool.EvidenceTargetInfo{}, fmt.Errorf("write target is outside declared write_paths")
+		}
+	}
+	if declarer, ok := w.inner.(tool.EvidenceDeclarer); ok {
+		return declarer.DeclareEvidenceTarget(ctx, args)
+	}
+	return tool.EvidenceTargetInfo{}, fmt.Errorf("writer does not declare evidence")
+}
+
 func (w pathBoundWriter) ResolveAnchoredTextTarget(ctx context.Context, args json.RawMessage) (tool.AnchoredTextTargetInfo, error) {
 	resolver, ok := w.inner.(tool.AnchoredTextTarget)
 	if !ok {

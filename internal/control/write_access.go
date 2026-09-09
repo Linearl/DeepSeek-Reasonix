@@ -215,6 +215,7 @@ func (c *Controller) requestWriteAccessDecision(ctx context.Context, toolName, s
 
 // ResolveApproval answers a pending approval with an explicit scope.
 func (c *Controller) ResolveApproval(id string, allow bool, scope sandbox.ApprovalScope) error {
+	defer c.refreshRuntimeState(event.Event{})
 	c.promptResolveMu.Lock()
 	defer c.promptResolveMu.Unlock()
 	return c.resolveApprovalLocked(id, allow, scope)

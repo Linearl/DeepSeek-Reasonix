@@ -45,11 +45,13 @@ const maxAuthRetries = 2
 // SendOptions carries the per-request context SendWithRetry needs to label
 // errors and decide whether a 401 is worth retrying.
 type SendOptions struct {
-	Provider   string // provider instance name, surfaced in errors
-	KeyEnv     string // api_key_env the key is read from, when known
-	KeySource  string // human-readable source of KeyEnv, when known
-	KeyPresent bool   // a non-empty key is being sent — separates "rejected" from "missing"
-	RetryAuth  bool   // the key has authenticated before — retry transient 401s instead of failing fast
+	Provider            string // stable provider instance id
+	ProviderDisplayName string // user-editable display label
+	Protocol            string // configured wire adapter id
+	KeyEnv              string // api_key_env the key is read from, when known
+	KeySource           string // human-readable source of KeyEnv, when known
+	KeyPresent          bool   // a non-empty key is being sent — separates "rejected" from "missing"
+	RetryAuth           bool   // the key has authenticated before — retry transient 401s instead of failing fast
 }
 
 // RetryInfo describes a backoff about to happen: Attempt is the 1-based retry
@@ -166,21 +168,25 @@ func recordRequestAttempt(ctx context.Context) {
 // carries the code so the display layer can map it to an actionable, localized
 // message; Body is a trimmed snippet of the response.
 type APIError struct {
-	RetryAfter  time.Duration // uncapped server delay for managed recovery
-	ShouldRetry string        // explicit provider retry hint
-	Provider    string
-	Status      int
-	Body        string
-	TraceID     string // provider trace identifier from the response headers, when present
-	ToolContext string // resolved Reasonix/MCP identity for provider-indexed tool schema errors
+	RetryAfter          time.Duration // uncapped server delay for managed recovery
+	ShouldRetry         string        // explicit provider retry hint
+	Provider            string        // stable provider instance id
+	ProviderDisplayName string
+	Protocol            string
+	Status              int
+	Body                string
+	TraceID             string // provider trace identifier from the response headers, when present
+	RequestPath         string // path only; query and URL userinfo are never retained
+	ToolContext         string // resolved Reasonix/MCP identity for provider-indexed tool schema errors
 }
 
 func (e *APIError) Error() string {
+	label := ProviderDisplayLabel(e.Provider, e.ProviderDisplayName, e.Protocol)
 	var base string
 	if e.Body == "" {
-		base = fmt.Sprintf("%s: status %d", e.Provider, e.Status)
+		base = fmt.Sprintf("%s: status %d", label, e.Status)
 	} else {
-		base = fmt.Sprintf("%s: status %d: %s", e.Provider, e.Status, e.Body)
+		base = fmt.Sprintf("%s: status %d: %s", label, e.Status, e.Body)
 	}
 	if e.ToolContext != "" {
 		return base + "\n" + e.ToolContext
@@ -286,6 +292,7 @@ func readErrorBody(resp *http.Response) []byte {
 // failures are not retried (the model has already emitted tokens).
 func SendWithRetry(ctx context.Context, httpClient *http.Client, opts SendOptions, newReq func(context.Context) (*http.Request, error)) (*http.Response, error) {
 	notify := retryNotifyFromContext(ctx)
+	identity := RequestIdentity{Provider: opts.Provider, DisplayName: opts.ProviderDisplayName, Protocol: opts.Protocol}
 	var lastErr error
 	var retryAfter time.Duration
 	authRetries := 0
@@ -310,15 +317,15 @@ func SendWithRetry(ctx context.Context, httpClient *http.Client, opts SendOption
 
 		req, err := newReq(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("%s: build request: %w", opts.Provider, err)
+			return nil, &RequestFailure{Identity: identity, Operation: "build request", Err: err}
 		}
 		recordRequestAttempt(ctx)
 		resp, err := httpClient.Do(req)
 		if err != nil {
 			if !transientErr(err) {
-				return nil, fmt.Errorf("%s: request failed: %w", opts.Provider, err)
+				return nil, &RequestFailure{Identity: identity, Operation: "request failed", Err: err}
 			}
-			lastErr = fmt.Errorf("%s: request failed: %w", opts.Provider, err)
+			lastErr = &RequestFailure{Identity: identity, Operation: "request failed", Err: err}
 			continue
 		}
 		if resp.StatusCode == http.StatusOK {
@@ -327,12 +334,12 @@ func SendWithRetry(ctx context.Context, httpClient *http.Client, opts SendOption
 
 		msg := readErrorBody(resp)
 		retryAfter = parseRetryAfter(resp)
-		if quota := QuotaErrorFromResponse(opts.Provider, resp.StatusCode, string(msg)); quota != nil {
+		if quota := QuotaErrorFromResponseWithIdentity(opts.Provider, opts.ProviderDisplayName, opts.Protocol, resp.StatusCode, string(msg)); quota != nil {
 			return nil, quota
 		}
 
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-			authErr := &AuthError{Provider: opts.Provider, KeyEnv: opts.KeyEnv, KeySource: opts.KeySource, Status: resp.StatusCode, HasKey: opts.KeyPresent, Body: strings.TrimSpace(string(msg))}
+			authErr := &AuthError{Provider: opts.Provider, ProviderDisplayName: opts.ProviderDisplayName, Protocol: opts.Protocol, KeyEnv: opts.KeyEnv, KeySource: opts.KeySource, Status: resp.StatusCode, HasKey: opts.KeyPresent, Body: strings.TrimSpace(string(msg))}
 			if !ManagedRecovery(ctx) && opts.RetryAuth && authRetries < maxAuthRetries {
 				authRetries++
 				lastErr = authErr
@@ -341,12 +348,15 @@ func SendWithRetry(ctx context.Context, httpClient *http.Client, opts SendOption
 			return nil, authErr
 		}
 		apiErr := &APIError{
-			RetryAfter:  retryAfter,
-			ShouldRetry: resp.Header.Get("x-should-retry"),
-			Provider:    opts.Provider,
-			Status:      resp.StatusCode,
-			Body:        strings.TrimSpace(string(msg)),
-			TraceID:     responseTraceID(resp.Header),
+			RetryAfter:          retryAfter,
+			ShouldRetry:         resp.Header.Get("x-should-retry"),
+			Provider:            opts.Provider,
+			ProviderDisplayName: opts.ProviderDisplayName,
+			Protocol:            opts.Protocol,
+			Status:              resp.StatusCode,
+			Body:                strings.TrimSpace(string(msg)),
+			TraceID:             responseTraceID(resp.Header),
+			RequestPath:         responseRequestPath(resp),
 		}
 		if !RetryableStatus(resp.StatusCode) {
 			if limitErr := ParseOutputLimitError(apiErr); limitErr != nil {
@@ -363,6 +373,17 @@ func SendWithRetry(ctx context.Context, httpClient *http.Client, opts SendOption
 		lastErr = apiErr
 	}
 	return nil, lastErr
+}
+
+func responseRequestPath(resp *http.Response) string {
+	if resp == nil || resp.Request == nil || resp.Request.URL == nil {
+		return ""
+	}
+	path := resp.Request.URL.EscapedPath()
+	if len(path) > 512 {
+		return path[:512]
+	}
+	return path
 }
 
 func responseTraceID(header http.Header) string {

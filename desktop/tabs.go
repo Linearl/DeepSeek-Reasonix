@@ -63,95 +63,6 @@ type pendingDisplayWrite struct {
 	onRetry     func()
 }
 
-// displayTextAccumulator retains provider chunks without repeatedly copying
-// the complete prefix. A turn only materializes the final string when its
-// display-only history is persisted; successful executor turns are discarded
-// without ever joining their chunks.
-type displayTextAccumulator struct {
-	parts []string
-	size  int
-}
-
-func (a *displayTextAccumulator) append(text string) {
-	if text == "" {
-		return
-	}
-	a.parts = append(a.parts, text)
-	a.size += len(text)
-}
-
-func (a *displayTextAccumulator) replace(text string) {
-	a.parts = nil
-	a.size = 0
-	a.append(text)
-}
-
-func (a *displayTextAccumulator) hasNonWhitespace() bool {
-	for _, part := range a.parts {
-		if strings.TrimSpace(part) != "" {
-			return true
-		}
-	}
-	return false
-}
-
-func (a *displayTextAccumulator) string() string {
-	switch len(a.parts) {
-	case 0:
-		return ""
-	case 1:
-		return a.parts[0]
-	}
-	var out strings.Builder
-	out.Grow(a.size)
-	for _, part := range a.parts {
-		out.WriteString(part)
-	}
-	return out.String()
-}
-
-type bufferedHistoryMessage struct {
-	message   HistoryMessage
-	content   displayTextAccumulator
-	reasoning displayTextAccumulator
-}
-
-func (m *bufferedHistoryMessage) materialize() HistoryMessage {
-	out := m.message
-	if out.Role == "assistant" {
-		out.Content = m.content.string()
-		out.Reasoning = m.reasoning.string()
-	}
-	if len(out.MemoryCitations) > 0 {
-		out.MemoryCitations = append([]provider.MemoryCitation(nil), out.MemoryCitations...)
-	}
-	if len(out.ToolCalls) > 0 {
-		out.ToolCalls = append([]HistoryToolCall(nil), out.ToolCalls...)
-	}
-	return out
-}
-
-type displayTurnBuffer struct {
-	messages []*bufferedHistoryMessage
-	tools    map[string]string
-}
-
-func (b *displayTurnBuffer) reset() {
-	b.messages = nil
-	b.tools = nil
-}
-
-func (b *displayTurnBuffer) materialize() []HistoryMessage {
-	if len(b.messages) == 0 {
-		return nil
-	}
-	out := make([]HistoryMessage, 0, len(b.messages))
-	for _, message := range b.messages {
-		out = append(out, message.materialize())
-	}
-	return out
-}
-
 // WorkspaceTab is one open conversation tab in the desktop. Each tab owns an
 // independent controller (its own agent, session, tool registry, plugin host,
 // memory, permissions) scoped to a workspace root, so multiple projects and
@@ -173,6 +84,7 @@ type WorkspaceTab struct {
 	Ready               bool                     // true once boot.Build completes
 	StartupErr          string                   // build error, surfaced to the frontend
 	StartupErrLeaseHeld bool                     // true when StartupErr can be retried after a session lease releases
+	modelApplication    tabModelApplicationState // guarded by App.mu; never persisted
 	runtimeID           string                   // process-local SessionRuntime registry identity
 	sessionLease        *agent.SessionLease
 	sessionLeaseMu      sync.Mutex
@@ -701,6 +613,8 @@ func cloneDetachedRuntimeTab(tab *WorkspaceTab, key, path string) *WorkspaceTab 
 		Ready:                    tab.Ready,
 		StartupErr:               tab.StartupErr,
 		StartupErrLeaseHeld:      tab.StartupErrLeaseHeld,
+		modelApplication:         tab.modelApplication,
+		lastBuildResult:          tab.lastBuildResult,
 		runtimeID:                tab.runtimeID,
 		sink:                     tab.sink,
 		ActivityStatus:           tab.ActivityStatus,
@@ -808,6 +722,8 @@ func applyRuntimeTab(target, source *WorkspaceTab, path string, wailsCtx context
 	}
 
 	target.Ctrl = source.Ctrl
+	target.modelApplication.failure = source.modelApplication.failure
+	target.lastBuildResult = source.lastBuildResult
 	target.sink = source.sink
 	target.adoptSessionLease(source.takeSessionLease())
 	target.SessionPath = canonicalTabSessionPath(path)
@@ -1270,192 +1186,6 @@ func (t *WorkspaceTab) adoptDisplayState(state *tabDisplayState) {
 	t.displayStateMu.Unlock()
 }
 
-func recordHistoryDisplayEvent(buffer *displayTurnBuffer, e event.Event) {
-	switch e.Kind {
-	case event.Phase:
-		if strings.TrimSpace(e.Text) != "" {
-			buffer.messages = append(buffer.messages, &bufferedHistoryMessage{message: HistoryMessage{Role: "phase", Content: e.Text}})
-		}
-	case event.Reasoning:
-		if e.Text != "" {
-			hm := ensureDisplayAssistant(buffer)
-			hm.reasoning.append(e.Text)
-		}
-	case event.Text:
-		if e.Text != "" {
-			hm := ensureDisplayAssistant(buffer)
-			hm.content.append(e.Text)
-		}
-	case event.Message:
-		if e.Text != "" || e.Reasoning != "" || len(e.MemoryCitations) > 0 {
-			hm := ensureDisplayAssistant(buffer)
-			if e.Text != "" {
-				hm.content.replace(e.Text)
-			}
-			if e.Reasoning != "" {
-				hm.reasoning.replace(e.Reasoning)
-			}
-			if len(e.MemoryCitations) > 0 {
-				hm.message.MemoryCitations = append([]provider.MemoryCitation(nil), e.MemoryCitations...)
-			}
-		}
-	case event.ToolDispatch:
-		if e.Tool.Partial || strings.TrimSpace(e.Tool.Name) == "" {
-			return
-		}
-		hm := ensureDisplayAssistantForTool(buffer)
-		resolvedReadOnly := e.Tool.ReadOnly
-		call := HistoryToolCall{
-			ID:               e.Tool.ID,
-			Name:             e.Tool.Name,
-			Arguments:        e.Tool.Args,
-			ResolvedName:     e.Tool.ResolvedName,
-			CapabilityID:     e.Tool.CapabilityID,
-			ResolvedReadOnly: &resolvedReadOnly,
-			Subject:          historyToolSubject(e.Tool.Name, e.Tool.Args),
-			Summary:          historyToolSummary(e.Tool.Name, e.Tool.Args, ""),
-			Diff:             e.Tool.Diff,
-			Added:            e.Tool.Added,
-			Removed:          e.Tool.Removed,
-		}
-		replaced := false
-		if call.ID != "" {
-			for i := range hm.message.ToolCalls {
-				if hm.message.ToolCalls[i].ID == call.ID {
-					hm.message.ToolCalls[i] = call
-					replaced = true
-					break
-				}
-			}
-			if buffer.tools == nil {
-				buffer.tools = map[string]string{}
-			}
-			buffer.tools[call.ID] = call.Name
-		}
-		if !replaced {
-			hm.message.ToolCalls = append(hm.message.ToolCalls, call)
-		}
-	case event.ToolResult:
-		callID := strings.TrimSpace(e.Tool.ID)
-		content := firstNonEmpty(e.Tool.Output, e.Tool.Err)
-		display, errPreview := plannerToolResultDisplay(content, e.Tool.Err != "")
-		if callID != "" {
-			updateBufferedHistoryToolCallSummary(buffer.messages, callID, content)
-		}
-		toolName := e.Tool.Name
-		if toolName == "" && buffer.tools != nil {
-			toolName = buffer.tools[callID]
-		}
-		buffer.messages = append(buffer.messages, &bufferedHistoryMessage{message: HistoryMessage{
-			Role:            "tool",
-			ToolCallID:      callID,
-			ToolName:        toolName,
-			Content:         display,
-			ToolResultError: errPreview,
-		}})
-	case event.Notice:
-		if strings.TrimSpace(e.Text) != "" {
-			level := "info"
-			if e.Level == event.LevelWarn {
-				level = "warn"
-			}
-			buffer.messages = append(buffer.messages, &bufferedHistoryMessage{message: HistoryMessage{
-				Role:            "notice",
-				Level:           level,
-				Content:         e.Text,
-				Detail:          e.Detail,
-				Code:            e.Code,
-				DecisionReceipt: cloneDecisionReceipt(e.DecisionReceipt),
-			}})
-		}
-	}
-}
-
-func displayEventFromEnvelope(envelope turnevent.Envelope) (event.Event, bool) {
-	w := envelope.Event
-	e := event.Event{
-		TurnID: envelope.TurnID, Sequence: envelope.Sequence, Status: envelope.Status,
-		Text: w.Text, Detail: w.Detail, Reasoning: w.Reasoning, ItemID: envelope.ItemID, Source: envelope.Source,
-	}
-	switch envelope.Kind {
-	case "phase":
-		e.Kind = event.Phase
-	case "reasoning":
-		e.Kind = event.Reasoning
-	case "text":
-		e.Kind = event.Text
-	case "message":
-		e.Kind = event.Message
-	case "tool_dispatch":
-		e.Kind = event.ToolDispatch
-	case "tool_result":
-		e.Kind = event.ToolResult
-	case "notice":
-		e.Kind = event.Notice
-	default:
-		return event.Event{}, false
-	}
-	if w.Level == "warn" {
-		e.Level = event.LevelWarn
-	}
-	e.Code = w.Code
-	if w.Tool != nil {
-		e.Tool = event.Tool{
-			ID: w.Tool.ID, Name: w.Tool.Name, Args: w.Tool.Args, ResolvedName: w.Tool.ResolvedName,
-			CapabilityID: w.Tool.CapabilityID, Output: w.Tool.Output, Err: w.Tool.Err,
-			ReadOnly: w.Tool.ReadOnly, Truncated: w.Tool.Truncated, DurationMs: w.Tool.DurationMs,
-			StartedAt: w.Tool.StartedAt, EndedAt: w.Tool.EndedAt, Partial: w.Tool.Partial,
-			ArgChars: w.Tool.ArgChars, Refreshed: w.Tool.Refreshed, ParentID: w.Tool.ParentID,
-			AttemptID: w.Tool.AttemptID, FileDiff: event.FileDiff{Diff: w.Tool.Diff, Added: w.Tool.Added, Removed: w.Tool.Removed},
-			SubagentRef: w.Tool.SubagentRef, SubagentStatus: w.Tool.SubagentStatus,
-			SubagentErrorCode: w.Tool.SubagentErrorCode, SubagentRetryable: w.Tool.SubagentRetryable,
-		}
-	}
-	if len(w.MemoryCitations) > 0 {
-		e.MemoryCitations = make([]provider.MemoryCitation, 0, len(w.MemoryCitations))
-		for _, citation := range w.MemoryCitations {
-			e.MemoryCitations = append(e.MemoryCitations, provider.MemoryCitation{
-				ID: citation.ID, Source: citation.Source, LineStart: citation.LineStart,
-				LineEnd: citation.LineEnd, Note: citation.Note, Kind: citation.Kind,
-			})
-		}
-	}
-	if w.DecisionReceipt != nil {
-		e.DecisionReceipt = &provider.DecisionReceipt{
-			ID: w.DecisionReceipt.ID, Kind: w.DecisionReceipt.Kind, Tool: w.DecisionReceipt.Tool,
-			Subject: w.DecisionReceipt.Subject, Outcome: w.DecisionReceipt.Outcome,
-		}
-	}
-	return e, true
-}
-
-func displayMessagesFromProjection(projection turnevent.PendingProjection) []HistoryMessage {
-	var planner displayTurnBuffer
-	var executor displayTurnBuffer
-	for _, envelope := range projection.Events {
-		e, ok := displayEventFromEnvelope(envelope)
-		if !ok {
-			continue
-		}
-		buffer := &executor
-		if strings.TrimSpace(e.Source) == event.UsageSourcePlanner {
-			buffer = &planner
-		}
-		recordHistoryDisplayEvent(buffer, e)
-	}
-	out := planner.materialize()
-	if projection.Status == event.TurnInterrupted {
-		out = append(out, executor.materialize()...)
-		if len(out) > 0 {
-			out = append(out, HistoryMessage{
-				Role: "notice", Level: "info", Code: event.NoticeCodeCancelledTurn,
-				Content: "This turn was interrupted. Partial output is kept for reference; only completed tool pairs and a bounded recovery summary enter the next model turn. Inspect the workspace before continuing or reverting changes.",
-			})
-		}
-	}
-	return out
-}
-
 func recoverPendingTurnProjections(tab *WorkspaceTab, ctrl control.SessionAPI) {
 	if tab == nil || ctrl == nil {
 		return
@@ -1565,6 +1295,9 @@ func (t *WorkspaceTab) takeDisplayTurn(cancelled bool) []HistoryMessage {
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	out := state.planner.materialize()
+	if !cancelled {
+		out = append(out, state.executor.resultMessages()...)
+	}
 	if cancelled {
 		out = append(out, state.executor.materialize()...)
 		if len(out) > 0 {
@@ -1755,6 +1488,7 @@ func (s *tabEventSink) Emit(e event.Event) {
 			s.recordTurnDone()
 		}
 		if e.Kind == event.TurnDone {
+			s.recordDisplay(e)
 			s.flushDisplay(e.TurnID, e.Cancelled)
 		}
 		if m := app.metrics.Load(); m != nil {
@@ -1781,7 +1515,7 @@ func (s *tabEventSink) Emit(e event.Event) {
 	if e.Kind == event.ToolResult && e.Tool.Name == "read_file" && e.Tool.Err == "" {
 		s.recordReadTelemetry(e)
 	}
-	if app != nil {
+	if app != nil && e.Kind != event.TurnDone {
 		s.recordDisplay(e)
 	}
 	// Persist after each turn so a force-kill loses at most the in-flight prompt.
@@ -2079,7 +1813,11 @@ func (a *App) notifyTabRuntimeRebuiltAtEpoch(tab *WorkspaceTab, epoch string) {
 	a.mu.RLock()
 	sink := tab.sink
 	tabID := tab.ID
+	ctrl, _ := tab.Ctrl.(*control.Controller)
 	a.mu.RUnlock()
+	if ctrl != nil {
+		go ctrl.NotifyInboxRuntimeReady()
+	}
 	if sink != nil && sink.context() != nil {
 		sink.emitRuntimeEvent("runtime:rebuilt", tabID, epoch)
 		return
@@ -3840,61 +3578,6 @@ func (a *App) desktopControllerSink(inner event.Sink, cfg config.NotificationsCo
 	return notify.NewSink(inner, sender, cfg)
 }
 
-func setTabStartupError(tab *WorkspaceTab, err error) bool {
-	if tab == nil {
-		return false
-	}
-	tab.StartupErr = userFacingSessionLeaseError("", err).Error()
-	tab.StartupErrLeaseHeld = errors.Is(err, agent.ErrSessionLeaseHeld)
-	return tab.StartupErrLeaseHeld
-}
-
-func clearTabStartupError(tab *WorkspaceTab) {
-	if tab == nil {
-		return
-	}
-	tab.StartupErr = ""
-	tab.StartupErrLeaseHeld = false
-}
-
-func (a *App) recordTabStartupFailure(tab *WorkspaceTab, buildGeneration uint64, wailsCtx context.Context, err error) {
-	a.mu.Lock()
-	if a.tabBuildSupersededLocked(tab, buildGeneration) {
-		a.mu.Unlock()
-		return
-	}
-	leaseHeld, save := a.markTabStartupFailureLocked(tab, err, keepStartupRestore)
-	tab.releaseSessionLease()
-	a.mu.Unlock()
-	a.writeTabsSaveRequest(save)
-	if leaseHeld {
-		a.scheduleDeferredStartupBuild(tab.ID)
-		tabID := tab.ID
-		// The deferred loop retries every 2s and re-enters this path. Only the
-		// first transition to lease_blocked needs the explicit meta push — a
-		// repeated push would re-fetch the same list and churn the frontend.
-		a.mu.RLock()
-		rt := a.runtimeForTabLocked(tab)
-		alreadyBlocked := rt != nil && rt.Phase == sessionRuntimeLeaseBlocked && rt.Issue != nil && rt.Issue.Code == "session_lease_held"
-		a.mu.RUnlock()
-		if alreadyBlocked {
-			a.emitReady(wailsCtx, tab.ID)
-			return
-		}
-		// A failed startup emits no agent events, so the frontend's tabMetas
-		// list would never refresh its runtime state and the takeover
-		// banner/button would have nothing to render. Push the authoritative
-		// tab meta (whose Runtime carries the lease_blocked view) explicitly.
-		a.goSafe("tab-meta-push-lease", func() {
-			if a.tabs[tabID] == nil {
-				return
-			}
-			a.emitRuntimeEvent(tabMetaRefreshEventChannel, TabMetaRefreshEvent{TabID: tabID, Meta: a.MetaForTab(tabID)})
-		})
-	}
-	a.emitReady(wailsCtx, tab.ID)
-}
-
 // closeTabBuildDone signals waiters (topic-activation completions) that the
 // build owning buildGeneration has terminated. Every build funnels through
 // buildTabControllerWithContextCore, whose deferred call guarantees
@@ -4117,6 +3800,7 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 		PinnedContextLoader:      pinnedContextLoader(root),
 		OnSessionRecovered:       a.handleTabSessionRecovered(tab),
 		OnSessionTransition:      a.handleTabSessionTransition(tab),
+		BeforeInboxDispatch:      a.beforeInboxDispatch,
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
 	})
 	if a.handleTabControllerBootError(tab, registration, rootKey, buildGeneration, wailsCtx, err) {
@@ -4303,6 +3987,12 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 		return
 	}
 	defer releasePublication()
+	if a.rejectStaleStartupModelSettings(tab, ctrl, buildGeneration, wailsCtx, func() {
+		registration.rollback()
+		a.abandonSupersededBuild(tab, ctrl, rootKey, acquiredLeaseKey)
+	}) {
+		return
+	}
 	a.mu.Lock()
 	if a.tabBuildSupersededLocked(tab, buildGeneration) {
 		a.mu.Unlock()
@@ -4323,15 +4013,7 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 	a.advanceSessionRuntimeEpochLocked(tab)
 	keepBuildContext = true
 	a.mu.Unlock()
-	// A directly-opened session announces itself to a resident serve so the
-	// remote side can watch it read-only and reclaim it (see
-	// adoptSessionFromLocalServe). First-open path of the takeover flow.
-	if path := strings.TrimSpace(tab.currentSessionPath()); path != "" && !tab.ReadOnly {
-		a.attachTakeoverMirror(tab.ID, path)
-		go a.adoptSessionFromLocalServe(tab.ID, path)
-	}
-	recoverPendingTurnProjections(tab, ctrl)
-	a.emitReady(wailsCtx, tab.ID)
+	a.finishStartupPublication(tab, ctrl, wailsCtx)
 }
 
 type sessionBinding struct {

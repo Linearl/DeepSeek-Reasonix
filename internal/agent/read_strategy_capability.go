@@ -18,7 +18,7 @@ type sessionReadStrategyReceiptTool struct {
 	state func() *incompleteReadState
 }
 
-func (*sessionReadStrategyReceiptTool) Name() string { return "session_read_strategy_receipt" }
+func (*sessionReadStrategyReceiptTool) Name() string { return tool.HostSessionReadStrategyReceipt }
 
 func (*sessionReadStrategyReceiptTool) Description() string {
 	return "Validate search and exact read_file evidence for one host-restricted incomplete read."

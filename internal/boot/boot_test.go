@@ -1679,7 +1679,7 @@ func TestNewProviderBuildsDeepSeekAnthropicPreset(t *testing.T) {
 	}
 }
 
-func TestNewProviderRejectsExplicitOfficialDeepSeekVisionModel(t *testing.T) {
+func TestNewProviderAllowsExplicitUnknownDeepSeekVisionModel(t *testing.T) {
 	var gotReq map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&gotReq); err != nil {
@@ -1724,15 +1724,15 @@ func TestNewProviderRejectsExplicitOfficialDeepSeekVisionModel(t *testing.T) {
 	if !ok {
 		t.Fatalf("message = %#v, want object", messages[0])
 	}
-	if got, ok := message["content"].(string); !ok || got != "describe" {
-		t.Fatalf("content = %#v, want plain text despite stale explicit vision metadata", message["content"])
+	if got, ok := message["content"].([]any); !ok || len(got) != 2 {
+		t.Fatalf("content = %#v, want text and explicitly enabled image", message["content"])
 	}
 	encoded, err := json.Marshal(gotReq)
 	if err != nil {
 		t.Fatalf("marshal captured request: %v", err)
 	}
-	if bytes.Contains(encoded, []byte("image_url")) || bytes.Contains(encoded, []byte("base64,AAAA")) {
-		t.Fatalf("official DeepSeek request leaked image payload: %s", encoded)
+	if !bytes.Contains(encoded, []byte("image_url")) || !bytes.Contains(encoded, []byte("base64,AAAA")) {
+		t.Fatalf("explicitly enabled image missing: %s", encoded)
 	}
 }
 
@@ -1997,7 +1997,7 @@ model = "x"
 
 	defaultReq := firstTokenProfileRequest(t, "")
 	balancedReq := firstTokenProfileRequest(t, "balanced")
-	if !reflect.DeepEqual(balancedReq.Messages, defaultReq.Messages) {
+	if !reflect.DeepEqual(withoutMessageIDs(balancedReq.Messages), withoutMessageIDs(defaultReq.Messages)) {
 		t.Fatal("balanced alias changed provider-visible messages")
 	}
 	if !reflect.DeepEqual(balancedReq.Tools, defaultReq.Tools) {
@@ -2311,6 +2311,7 @@ func unifiedBootToolNames() []string {
 		"todo_write",
 		"update_goal",
 		"use_capability",
+		"view_image",
 		"wait",
 		"write_file",
 	}

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -65,47 +64,50 @@ type incompleteReadReceipt struct {
 // complete coverage. Strategy phases deliberately prove only the exact windows
 // named by a validated receipt and never promote that into whole-file evidence.
 type incompleteRead struct {
-	key               string
-	readID            string
-	requestPath       string
-	path              string
-	phase             incompleteReadPhase
-	implicitWholeFile bool
-	cumulativeBytes   int
-	cumulativeTokens  int
-	toolCallID        string
-	resultRef         string
-	nextByteOffset    int
-	totalBytes        int
-	sha256            string
-	nextSourceOffset  int
-	nextSourceLimit   int
-	sourceWindowEnd   int
-	pendingObserved   []tool.ModelTextObservation
-	strategyVersion   incompleteReadFileVersion
-	searches          map[string]incompleteReadSearch
-	reads             map[string]incompleteReadWindow
-	targetReadID      string
-	targetObserved    []tool.ModelTextObservation
-	targetEnd         int
-	pendingReceipt    *incompleteReadReceipt
-	readTool          tool.Tool
-	strategyRevision  uint64
+	key              string
+	readID           string
+	requestPath      string
+	path             string
+	phase            incompleteReadPhase
+	fullRead         bool
+	cumulativeBytes  int
+	cumulativeTokens int
+	toolCallID       string
+	resultRef        string
+	nextByteOffset   int
+	totalBytes       int
+	sha256           string
+	nextSourceOffset int
+	nextSourceLimit  int
+	sourceWindowEnd  int
+	pendingObserved  []tool.ModelTextObservation
+	strategyVersion  incompleteReadFileVersion
+	searches         map[string]incompleteReadSearch
+	reads            map[string]incompleteReadWindow
+	targetReadID     string
+	targetObserved   []tool.ModelTextObservation
+	targetEnd        int
+	pendingReceipt   *incompleteReadReceipt
+	readTool         tool.Tool
+	strategyRevision uint64
 }
 
 // incompleteReadState is shared by all calls in one Agent.Run. Parallel calls
 // are committed to it in provider order by executeBatch.finalize.
 type incompleteReadState struct {
-	mu                    sync.Mutex
-	entries               map[string]*incompleteRead
-	order                 []string
-	budgetInitialized     bool
-	budgetMaxTokens       int
-	budgetConsumedTokens  int
-	roundProgress         bool
-	roundViolation        bool
-	consecutiveViolations int
-	failure               *IncompleteReadError
+	mu sync.Mutex
+	// legacyImplicitFullReads restores the pre-intent rule for diagnosis; it is
+	// fixed for the run and never enters provider bytes.
+	legacyImplicitFullReads bool
+	entries                 map[string]*incompleteRead
+	order                   []string
+	budgetInitialized       bool
+	budgetMaxTokens         int
+	budgetConsumedTokens    int
+	roundProgress           bool
+	roundViolation          bool
+	consecutiveViolations   int
+	failure                 *IncompleteReadError
 }
 
 type incompleteReadTransition struct {
@@ -133,115 +135,6 @@ type incompleteReadDeferred struct {
 	rawOutput    string
 	readObserver bool
 	visibleFull  bool
-}
-
-type readFileArgs struct {
-	Path           string
-	Offset         int
-	Limit          int
-	OffsetExplicit bool
-	LimitExplicit  bool
-}
-
-type readFileTrailer struct {
-	nextOffset   int
-	requestedEnd int
-	hasMore      bool
-	localSafety  bool
-}
-
-type sessionToolResultPageHeader struct {
-	ResultRef  string `json:"result_ref"`
-	Offset     int    `json:"offset"`
-	NextOffset int    `json:"next_offset"`
-	TotalBytes int    `json:"total_bytes"`
-	SHA256     string `json:"sha256"`
-	Complete   bool   `json:"complete"`
-}
-
-func parseReadFileArgs(args json.RawMessage) (readFileArgs, bool) {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(args, &fields); err != nil {
-		return readFileArgs{}, false
-	}
-	var out readFileArgs
-	if raw, ok := fields["path"]; ok {
-		_ = json.Unmarshal(raw, &out.Path)
-	}
-	if strings.TrimSpace(out.Path) == "" {
-		return readFileArgs{}, false
-	}
-	if raw, ok := fields["offset"]; ok {
-		out.OffsetExplicit = true
-		_ = json.Unmarshal(raw, &out.Offset)
-	}
-	if raw, ok := fields["limit"]; ok {
-		out.LimitExplicit = true
-		_ = json.Unmarshal(raw, &out.Limit)
-	}
-	return out, true
-}
-
-func parseReadFileTrailer(output string) readFileTrailer {
-	const safetyPrefix = "\n[read_file local safety page; next_offset="
-	if start := strings.LastIndex(output, safetyPrefix); start >= 0 && strings.HasSuffix(output, "]\n") {
-		fields := strings.TrimSuffix(output[start+len(safetyPrefix):], "]\n")
-		parts := strings.Fields(fields)
-		if len(parts) == 2 {
-			next, nextErr := strconv.Atoi(parts[0])
-			endText := strings.TrimPrefix(parts[1], "requested_end=")
-			end, endErr := strconv.Atoi(endText)
-			if nextErr == nil && endErr == nil && next >= 0 && end >= next {
-				return readFileTrailer{nextOffset: next, requestedEnd: end, hasMore: true, localSafety: true}
-			}
-		}
-	}
-	const prefix = "\n[more lines below; pass offset="
-	start := strings.LastIndex(output, prefix)
-	if start < 0 || !strings.HasSuffix(output, "]\n") {
-		return readFileTrailer{}
-	}
-	value := output[start+len(prefix):]
-	if end := strings.IndexAny(value, " ]\r\n"); end >= 0 {
-		value = value[:end]
-	}
-	n, err := strconv.Atoi(value)
-	if err != nil || n < 0 {
-		return readFileTrailer{}
-	}
-	return readFileTrailer{nextOffset: n, hasMore: true}
-}
-
-func readFileRecoveryOffset(output string) (int, bool) {
-	const marker = "\n\n…[truncated tool=read_file "
-	const field = " next_offset="
-	markerStart := strings.LastIndex(output, marker)
-	if markerStart < 0 {
-		return 0, false
-	}
-	start := strings.Index(output[markerStart:], field)
-	if start < 0 {
-		return 0, false
-	}
-	start += markerStart
-	value := output[start+len(field):]
-	if end := strings.IndexAny(value, " ]\r\n"); end >= 0 {
-		value = value[:end]
-	}
-	n, err := strconv.Atoi(value)
-	return n, err == nil && n >= 0
-}
-
-func parseSessionToolResultPage(output string) (sessionToolResultPageHeader, string, bool) {
-	headerText, body, ok := strings.Cut(output, "\n")
-	if !ok {
-		return sessionToolResultPageHeader{}, "", false
-	}
-	var header sessionToolResultPageHeader
-	if err := json.Unmarshal([]byte(headerText), &header); err != nil {
-		return sessionToolResultPageHeader{}, "", false
-	}
-	return header, body, true
 }
 
 func modelTextObservationFor(plan *toolCallPlan, output string) (tool.ModelTextObservation, bool) {
@@ -443,14 +336,14 @@ func (s *incompleteReadState) observeReadFile(
 		return s.observeStrategyReadLocked(entry, plan, args, rawOutput, truncated, recoveryOffset, resultRef, digest, trailer, observed, hasObservation, resultTokens, budget)
 	}
 
-	implicitWholeFile := entry != nil && entry.implicitWholeFile || !args.LimitExplicit
+	fullRead := entry != nil && entry.fullRead || args.fullRead() || s.legacyImplicitFullRead(args)
 	if entry == nil {
 		entry = &incompleteRead{
-			requestPath:       args.Path,
-			path:              resolvedPath,
-			implicitWholeFile: implicitWholeFile,
-			searches:          make(map[string]incompleteReadSearch),
-			reads:             make(map[string]incompleteReadWindow),
+			requestPath: args.Path,
+			path:        resolvedPath,
+			fullRead:    fullRead,
+			searches:    make(map[string]incompleteReadSearch),
+			reads:       make(map[string]incompleteReadWindow),
 		}
 		entry.readID = incompleteReadID(plan.call.ID, resultRef, entry.path)
 		entry.key = entry.readID
@@ -462,7 +355,7 @@ func (s *incompleteReadState) observeReadFile(
 		}
 	}
 
-	needsContinuation := truncated || trailer.localSafety || (implicitWholeFile && trailer.hasMore)
+	needsContinuation := truncated || trailer.localSafety || (fullRead && trailer.hasMore)
 	if needsContinuation && !s.reserveAutomaticLocked(resultTokens, budget) {
 		entry.cumulativeBytes += len(rawOutput)
 		entry.cumulativeTokens += resultTokens
@@ -487,7 +380,7 @@ func (s *incompleteReadState) observeReadFile(
 		return incompleteReadTransition{detected: true, localSafetyPaged: trailer.localSafety, readID: entry.readID, path: entry.path}
 	}
 
-	if trailer.localSafety || (implicitWholeFile && trailer.hasMore) {
+	if trailer.localSafety || (fullRead && trailer.hasMore) {
 		if hasObservation {
 			entry.pendingObserved = append(entry.pendingObserved, observed)
 		}
@@ -513,6 +406,11 @@ func (s *incompleteReadState) observeReadFile(
 	return transition
 }
 
+// legacyImplicitFullRead reproduces the pre-intent default for rollback only.
+func (s *incompleteReadState) legacyImplicitFullRead(args readFileArgs) bool {
+	return s.legacyImplicitFullReads && !args.LimitExplicit
+}
+
 func (s *incompleteReadState) configureAutoSourceLocked(entry *incompleteRead, args readFileArgs, trailer readFileTrailer) {
 	entry.nextSourceOffset = 0
 	entry.nextSourceLimit = 0
@@ -526,7 +424,7 @@ func (s *incompleteReadState) configureAutoSourceLocked(entry *incompleteRead, a
 		entry.nextSourceLimit = max(1, trailer.requestedEnd-trailer.nextOffset)
 		return
 	}
-	if entry.implicitWholeFile {
+	if entry.fullRead {
 		entry.nextSourceLimit = 2000
 	}
 }

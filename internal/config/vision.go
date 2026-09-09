@@ -141,11 +141,14 @@ func ExplicitModelVision(e *ProviderEntry) bool {
 }
 
 func officialDeepSeekEffectiveVision(e *ProviderEntry) bool {
-	if e == nil || !openai.IsOfficialDeepSeekVisionModel(e.Model) {
+	if e == nil || openai.IsOfficialDeepSeekTextModel(e.Model) {
 		return false
 	}
 	if enabled, explicit := explicitModelVision(e); explicit {
 		return enabled
+	}
+	if !openai.IsOfficialDeepSeekVisionModel(e.Model) {
+		return false
 	}
 	if e.Vision {
 		return true
@@ -172,7 +175,7 @@ func (e *ProviderEntry) HasVisionModel(model string) bool {
 		return false
 	}
 	for _, candidate := range e.VisionModels {
-		if strings.EqualFold(strings.TrimSpace(candidate), model) {
+		if strings.TrimSpace(candidate) == model {
 			return true
 		}
 	}

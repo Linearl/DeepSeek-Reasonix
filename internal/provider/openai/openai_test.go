@@ -1112,17 +1112,12 @@ func TestNewDeepSeekV4FlashForwardsLowEffort(t *testing.T) {
 	}
 }
 
-func TestDeepSeekV4EffortAliasesSerializeAsHigh(t *testing.T) {
+func TestDeepSeekV4EffortAliasesRejected(t *testing.T) {
 	for _, model := range []string{"deepseek-v4-flash", "deepseek-v4-pro", OfficialDeepSeekVisionModel} {
 		for _, alias := range []string{"medium", "xhigh"} {
-			p, err := New(provider.Config{Name: "deepseek", BaseURL: "https://api.deepseek.com", Model: model, APIKey: "test", Extra: map[string]any{
-				"effort": alias, "reasoning_protocol": "deepseek",
-			}})
-			if err != nil {
-				t.Fatalf("%s/%s: %v", model, alias, err)
-			}
-			if got := p.(*client).buildRequest(provider.Request{}).ReasoningEffort; got != "high" {
-				t.Fatalf("%s/%s reasoning_effort = %q", model, alias, got)
+			_, err := New(provider.Config{BaseURL: "https://api.deepseek.com", Model: model, Extra: map[string]any{"effort": alias}})
+			if err == nil {
+				t.Fatalf("%s accepted undeclared %s", model, alias)
 			}
 		}
 	}
@@ -1802,7 +1797,7 @@ func TestNewReadsEffortFromConfig(t *testing.T) {
 		Name:    "mimo",
 		BaseURL: "https://api.example.com",
 		Model:   "mimo-v2",
-		Extra:   map[string]any{"effort": "medium"},
+		Extra:   map[string]any{"effort": "medium", "supported_efforts": []string{"low", "medium", "high"}},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

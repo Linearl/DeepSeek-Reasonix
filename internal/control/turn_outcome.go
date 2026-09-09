@@ -10,6 +10,10 @@ import (
 // turnOutcome maps a finished run's typed pause onto the TurnDone outcome
 // string. Empty means an ordinary success or failure.
 func turnOutcome(err error) string {
+	var readErr *agent.IncompleteReadError
+	if errors.As(err, &readErr) {
+		return event.TurnOutcomeIncompleteRead
+	}
 	var readinessErr *agent.FinalReadinessError
 	if errors.As(err, &readinessErr) {
 		return event.TurnOutcomeFinalReadiness

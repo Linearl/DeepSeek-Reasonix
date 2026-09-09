@@ -175,13 +175,16 @@ func TestIDOnlyRelayImageInputSettingsToWire(t *testing.T) {
 	}
 }
 
-func TestImageInputSaveRebuildsActiveAndNextTurnRefreshesOtherTab(t *testing.T) {
+func TestImageInputSaveDefersAllTabsUntilNextTurn(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	root := t.TempDir()
 	t.Chdir(root)
 	app := NewApp()
 	view := ProviderView{Name: "relay", Kind: "openai", BaseURL: "http://127.0.0.1:1", Models: []string{"relay-model"}}
 	if err := app.SaveProvider(view); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.SetConnectionKey("relay", "test-key"); err != nil {
 		t.Fatal(err)
 	}
 	build := func() *control.Controller {
@@ -214,8 +217,8 @@ func TestImageInputSaveRebuildsActiveAndNextTurnRefreshesOtherTab(t *testing.T) 
 	if err := app.SaveProvider(view); err != nil {
 		t.Fatal(err)
 	}
-	if app.activeCtrl() == active || !app.Meta().ImageInputEnabled {
-		t.Fatal("save did not rebuild and publish active capability")
+	if app.activeCtrl() != active || app.Meta().ImageInputEnabled {
+		t.Fatal("save replaced active runtime before the next run")
 	}
 	if app.MetaForTab(otherTab.ID).ImageInputEnabled || otherTab.Ctrl != other {
 		t.Fatal("other idle tab displayed saved config before rebuilding")
@@ -227,6 +230,14 @@ func TestImageInputSaveRebuildsActiveAndNextTurnRefreshesOtherTab(t *testing.T) 
 	admission.abort()
 	if current == other || !app.MetaForTab(otherTab.ID).ImageInputEnabled {
 		t.Fatal("other tab admitted next turn with stale capability")
+	}
+	admission, current, err = app.beginTabTurn(app.activeTabID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admission.abort()
+	if current == active || !app.Meta().ImageInputEnabled {
+		t.Fatal("active tab did not apply settings before admission")
 	}
 }
 
@@ -303,13 +314,19 @@ func TestDiscoveryRejectsChangedCredentialsWhileWaiting(t *testing.T) {
 	defer srv.Close()
 	app := NewApp()
 	view := ProviderView{Name: "relay", Kind: "openai", BaseURL: srv.URL, NoProxy: true, APIKeyEnv: "REASONIX_IMAGE_TEST_KEY"}
-	if _, err := app.SaveProviderKey(view.APIKeyEnv, "local-test-before"); err != nil {
+	view.Models = []string{"relay-model"}
+	if _, err := app.SaveProviderWithKey(view, "local-test-before"); err != nil {
 		t.Fatal(err)
+	}
+	for _, saved := range app.Settings().Providers {
+		if saved.Name == view.Name {
+			view = saved
+		}
 	}
 	result := make(chan error, 1)
 	go func() { _, err := app.FetchProviderModelCatalog(view); result <- err }()
 	<-started
-	if _, err := app.SaveProviderKey(view.APIKeyEnv, "local-test-after"); err != nil {
+	if _, err := app.SetConnectionKey(view.Name, "local-test-after"); err != nil {
 		close(release)
 		t.Fatal(err)
 	}

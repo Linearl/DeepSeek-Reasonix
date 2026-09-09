@@ -83,6 +83,9 @@ export function SessionRecoveryVersionsHost({ sessions, onResumeSession, onRecov
   const openVersion = useCallback(async (member: RecoveryLineageMember) => {
     const topic = state?.topic;
     if (!topic) return;
+    // A head lives inside the session's own log: selecting it moves the open
+    // tab in place, and resuming the path afterwards lands on it when closed.
+    if (member.headId && !member.selected) await app.ChooseRecoveryBranch({ ...topic, path: member.path, headId: member.headId });
     const known = sessions?.find((session) => session.path === member.path);
     await onResumeSession(known ?? sessionFromVersion(topic, member));
   }, [onResumeSession, sessions, state?.topic]);

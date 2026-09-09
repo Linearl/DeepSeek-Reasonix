@@ -2,7 +2,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { create } from "zustand";
 
-import { shouldShowStartupSplash } from "../components/StartupSplash";
+import { shouldShowStartupSplash } from "../lib/startupSplashState";
 import type { ExtensionActionView, SessionMeta } from "../lib/types";
 import type { SettingsTab } from "../lib/types";
 import type { SettingsInitialFocus } from "../components/SettingsPanel";
@@ -27,6 +27,9 @@ export type OverlayState = {
   // Settings panel deep-link target (null = plain settings).
   settingsTarget: SettingsTab | null;
   settingsFocus: SettingsInitialFocus | null;
+  takeoverDialogTab: string | null;
+  reclaimBusyTab: string | null;
+  providerSetupNeeded: boolean;
   setPaletteOpen: Dispatch<SetStateAction<boolean>>;
   setPaletteSessions: Dispatch<SetStateAction<SessionMeta[]>>;
   setPaletteExtensionActions: Dispatch<SetStateAction<ExtensionActionView[]>>;
@@ -40,6 +43,9 @@ export type OverlayState = {
   setMainView: Dispatch<SetStateAction<"chat" | "automation">>;
   setSettingsTarget: Dispatch<SetStateAction<SettingsTab | null>>;
   setSettingsFocus: Dispatch<SetStateAction<SettingsInitialFocus | null>>;
+  setTakeoverDialogTab: Dispatch<SetStateAction<string | null>>;
+  setReclaimBusyTab: Dispatch<SetStateAction<string | null>>;
+  setProviderSetupNeeded: Dispatch<SetStateAction<boolean>>;
 };
 
 export const useOverlayStore = create<OverlayState>((set) => ({
@@ -56,6 +62,9 @@ export const useOverlayStore = create<OverlayState>((set) => ({
   mainView: "chat",
   settingsTarget: null,
   settingsFocus: null,
+  takeoverDialogTab: null,
+  reclaimBusyTab: null,
+  providerSetupNeeded: false,
   setPaletteOpen: (update) => set((s) => ({ paletteOpen: applySetState(s.paletteOpen, update) })),
   setPaletteSessions: (update) => set((s) => ({ paletteSessions: applySetState(s.paletteSessions, update) })),
   setPaletteExtensionActions: (update) => set((s) => ({ paletteExtensionActions: applySetState(s.paletteExtensionActions, update) })),
@@ -69,4 +78,7 @@ export const useOverlayStore = create<OverlayState>((set) => ({
   setMainView: (value) => set((s) => ({ mainView: typeof value === "function" ? value(s.mainView) : value })),
   setSettingsTarget: (value) => set((s) => ({ settingsTarget: typeof value === "function" ? value(s.settingsTarget) : value })),
   setSettingsFocus: (value) => set((s) => ({ settingsFocus: typeof value === "function" ? value(s.settingsFocus) : value })),
+  setTakeoverDialogTab: (update) => set((s) => ({ takeoverDialogTab: applySetState(s.takeoverDialogTab, update) })),
+  setReclaimBusyTab: (update) => set((s) => ({ reclaimBusyTab: applySetState(s.reclaimBusyTab, update) })),
+  setProviderSetupNeeded: (update) => set((s) => ({ providerSetupNeeded: applySetState(s.providerSetupNeeded, update) })),
 }));

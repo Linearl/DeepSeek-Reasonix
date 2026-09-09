@@ -26,7 +26,17 @@ type editSource struct {
 // decoded disk content. A non-UTF-8 file always stays on the disk route — the
 // overlay contract is text-only, so routing GBK or UTF-16 through it would
 // rewrite the file as UTF-8.
-func readEditSource(ctx context.Context, overlay FileOverlay, path string) (editSource, error) {
+func readEditSource(ctx context.Context, overlay FileOverlay, path string) (source editSource, readErr error) {
+	defer func() {
+		if readErr != nil {
+			return
+		}
+		if expected, ok := tool.ExpectedWriteSource(ctx); ok && expected.Path == path {
+			if (expected.SourceTextDigest != "" && expected.SourceTextDigest != digestText(source.content)) || (expected.Snapshot != "" && expected.Snapshot != source.readSnapshot(path)) {
+				readErr = fmt.Errorf("%w: source differs from the read-evidence preflight", ErrFileChanged)
+			}
+		}
+	}()
 	id, err := diskIdentity(path)
 	if err != nil {
 		return editSource{}, err
@@ -49,6 +59,14 @@ func readEditSource(ctx context.Context, overlay FileOverlay, path string) (edit
 		}
 	}
 	return editSource{content: content, enc: enc, id: id}, nil
+}
+
+func (s editSource) readSnapshot(path string) string {
+	kind, prefix := tool.ReadSourceDisk, "raw-sha256:"
+	if s.overlay {
+		kind, prefix = tool.ReadSourceOverlay, "overlay:"
+	}
+	return tool.SourceSnapshot(kind, path, fmt.Sprintf("%s%x", prefix, s.id.sum))
 }
 
 // write persists content on the same route the source was read from. An overlay

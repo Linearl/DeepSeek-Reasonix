@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"reasonix/internal/provider"
 )
 
 // ReasoningReplayFailure classifies why an assistant turn could not safely be
@@ -69,6 +71,7 @@ func PauseClass(err error) string {
 // only partially visible and the host refused to let the model silently treat
 // it as complete. It carries only routing/size metadata, never file contents.
 type IncompleteReadError struct {
+	Pause         *provider.ReadPause
 	Reason        string
 	Path          string
 	ToolCallID    string

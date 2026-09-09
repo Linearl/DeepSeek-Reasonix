@@ -305,6 +305,7 @@ type PromptAnswer struct {
 // specialized resolvers retain their validation and durable receipts; this
 // mutex makes their check-and-wake path single-writer for one controller.
 func (c *Controller) ResolvePromptExact(identity PromptIdentity, answer PromptAnswer) error {
+	defer c.refreshRuntimeState(event.Event{})
 	if c == nil {
 		return ErrPromptNotPending
 	}

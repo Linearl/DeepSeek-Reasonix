@@ -374,6 +374,7 @@ func (c *Config) SetDesktopStatusBarStyle(style string) error {
 	default:
 		return fmt.Errorf("status bar style %q: must be icon|text", style)
 	}
+	c.Desktop.StatusBarStyleInitialized = true
 	return nil
 }
 

@@ -68,6 +68,11 @@ func (a *Agent) parseToolCall(ctx context.Context, turn *turnRuntime, plan *tool
 	plan.evidenceName = canonicalName
 	plan.evidenceArgs = json.RawMessage(plan.call.Arguments)
 	plan.readOnly = t.ReadOnly()
+	if canonicalName == "read_file" {
+		if out, blocked := a.resolveReadCursor(plan); blocked {
+			return out, true
+		}
+	}
 	if canonicalName == "bash" {
 		var permissionReader bool
 		plan.effects, permissionReader = evidence.ClassifyBashToolCall(plan.execArgs)

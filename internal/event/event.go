@@ -141,6 +141,8 @@ const (
 	// total). Emitted between CompactionStarted and CompactionDone so the UI can
 	// show "compacting fragment N/M" instead of a silent spinner.
 	CompactionProgress
+	// ReadStatus upserts one logical read's delivery state instead of per page.
+	ReadStatus
 	// KindCount is a sentinel one past the last real Kind. New event kinds must
 	// be inserted above it so completeness tests cover them automatically.
 	KindCount
@@ -163,6 +165,7 @@ type CompletionSummaryInfo struct {
 	Preset             string // deprecated wire-compat label; pinned to "balanced"
 	Verdict            string // complete | partial | blocked | continue
 	Mutations          int
+	ChangedFiles       int
 	ChecksPassed       int
 	ChecksFailed       int
 	ChecksSuppressed   int
@@ -191,13 +194,6 @@ type StreamAttemptInfo struct {
 	Max     int // total attempts including the first (typically 6)
 	Reason  string
 }
-
-const TurnOutcomeFinalReadiness = "final_readiness"
-
-// TurnOutcomeRecoveryPaused marks an Auto recovery Episode budget stop. New
-// clients show an informational status (not send-failed); older clients still
-// read Err text and ignore the unknown outcome.
-const TurnOutcomeRecoveryPaused = "recovery_paused"
 
 // Level classifies a Notice so sinks can style or filter it.
 type Level int
@@ -230,9 +226,11 @@ type Profile struct {
 // Output/Err/Truncated are filled in. Args is the raw JSON arguments — a sink
 // compacts it for display.
 type Tool struct {
-	ID   string
-	Name string
-	Args string
+	// Verifying is emitted only once an authorized check actually enters execution.
+	Verifying bool
+	ID        string
+	Name      string
+	Args      string
 	// ResolvedName/CapabilityID describe the real target behind a stable proxy
 	// while Name/Args remain the provider-visible call. They are optional local
 	// display metadata and never enter provider requests.
@@ -569,6 +567,8 @@ type Event struct {
 	RetryMax           int                       // Retrying: total attempts before giving up
 	RetryScope         RetryScope                // Retrying: optional "headers" | "stream"; empty for older emitters
 	StreamAttempt      StreamAttemptInfo         // StreamAttempt lifecycle
+	ReadStatus         *ReadStatusPayload        // ReadStatus: one logical read's delivery state
+	ReadPause          *provider.ReadPause       // TurnDone: durable display-only pause receipt
 	ItemID             string                    // correlates durable inbox events
 	SessionPath        string                    // routes Serve frames
 	SessionReset       bool                      // SessionChanged came from /new or /clear, not resume/recovery

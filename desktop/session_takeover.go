@@ -348,9 +348,8 @@ func (a *App) TakeoverSession(tabID, mode string) error {
 
 	key := sessionRuntimeKey(path)
 	a.registerTakeoverMirror(key, tabID, path, record, client, grant)
-	previousStartupErr := tab.StartupErr
-	previousLeaseHeld := tab.StartupErrLeaseHeld
-	previousReady := tab.Ready
+	previousStartup := tab.startupState()
+	pendingSequence := a.deferredRebuildSequence(tab.ID)
 	err = a.rebuildStartupTabLocked(tab)
 	if err == nil {
 		ctrl := a.controllerForTab(tab)
@@ -368,9 +367,7 @@ func (a *App) TakeoverSession(tabID, mode string) error {
 		}
 		a.mu.Lock()
 		if a.tabs[tab.ID] == tab && !tab.removed && tab.Ctrl == nil {
-			tab.StartupErr = previousStartupErr
-			tab.StartupErrLeaseHeld = previousLeaseHeld
-			tab.Ready = previousReady
+			tab.restoreStartupState(previousStartup)
 			a.setSessionRuntimePhaseLocked(tab, sessionRuntimeLeaseBlocked, &sessionLeaseBusyError{})
 			a.saveTabsLocked()
 		}
@@ -378,7 +375,7 @@ func (a *App) TakeoverSession(tabID, mode string) error {
 		return err
 	}
 	a.setTabReadOnly(tabID, false)
-	a.clearDeferredRebuild(tabID)
+	a.clearDeferredRebuildVersion(tabID, pendingSequence)
 	return nil
 }
 

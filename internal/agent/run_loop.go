@@ -59,7 +59,14 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string, pinned pinnedRev
 	// A fresh user turn starts from zeroed per-turn host state; the new turn's
 	// values are computed below. Cross-turn state (checkpoint, scope, failure
 	// budgets) lives in taskRuntime and is reconciled there.
+	a.stragglers.drain(ctx, parallelStragglerGrace)
 	a.turn = turnRuntime{}
+	a.turn.readShadow = newReadShadowState(a.readCoordinatorShadow)
+	a.turn.incompleteReads.legacyImplicitFullReads = a.legacyImplicitFullReads
+	a.reads.runGen++
+	a.reads.tasks = newReadTasks(a.sess.path, a.reads.runGen)
+	a.reads.deliveries = make(map[string]readDelivery)
+	a.reads.visible = nil
 	a.resetStructuralRunGuards()
 	scope, scoped := DeliveryExecutionScopeFromContext(ctx)
 	preserveEvidence, readinessRecovered := a.beginFinalReadinessRecovery()
@@ -124,6 +131,7 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string, pinned pinnedRev
 			a.turn.constraints.ForbidMutation = true
 		}
 	}
+	a.recordRebuildAuthorization()
 	a.turn.engine = runtimepolicy.NewEngine(a.turn.constraints)
 	a.rebuildTurnContract()
 	// A cancelled/error turn leaves a provider-excluded recovery record at the
@@ -167,6 +175,7 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string, pinned pinnedRev
 // runToolLoop owns the main tool-round budget and dispatches each streamed
 // assistant turn into final-response or tool-round handling.
 func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr error) {
+	defer func() { a.finishReadRun(runErr) }()
 	releaseMCPListObserver := a.activateMCPListObserver()
 	defer func() {
 		a.recordReadonlySoftBudgetSample(state, runErr)
@@ -220,7 +229,7 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 			// Exhausted stream retries (or a non-retryable error): persist one
 			// bounded LocalOnly recovery record for the next real user message.
 			// Intermediate failed attempts never wrote session state.
-			a.recordInterruptedDisplay(text, reasoning, partialCalls, true, state.workDurationMs())
+			a.recordInterruptedDisplay(text, reasoning, partialCalls, true, err, state.workDurationMs())
 			// A broken provider stream can otherwise look like a silent hang
 			// followed only by the generic interrupted-turn notice (#9560).
 			if code, msg := streamInterruptNotice(err); msg != "" {
@@ -275,7 +284,7 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 
 		if usage != nil && usage.FinishReason == "length" {
 			truncatedRounds++
-			if err := a.recordTruncatedToolResults(calls); err != nil {
+			if err := a.recordTruncatedToolResults(ctx, calls); err != nil {
 				return err
 			}
 			if truncatedRounds > maxStreamRecoveries {
@@ -336,7 +345,9 @@ func sleepStreamRetryBackoff(ctx context.Context, attempt int) bool {
 	return recoverySleep(ctx, time.Duration(1<<min(max(attempt-1, 0), 2))*2*time.Second)
 }
 
-var recoverySleep = func(ctx context.Context, delay time.Duration) bool {
+var recoverySleep = sleepRecovery
+
+func sleepRecovery(ctx context.Context, delay time.Duration) bool {
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	select {
@@ -352,10 +363,23 @@ var recoverySleep = func(ctx context.Context, delay time.Duration) bool {
 // and final compaction. cont=true continues the tool loop; cont=false returns
 // err from Run (err may be nil for a clean final answer).
 func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, text, reasoning string, usage *provider.Usage) (cont bool, err error) {
+	if a.readPipelineActive() {
+		instruction, pause := a.readContinuation(true)
+		if pause != nil {
+			// The legacy twin observes the same usage before returning its
+			// pause; skipping it here would drop the final round's accounting.
+			a.contextManager().ObserveUsage(usage)
+			return false, pause
+		}
+		if instruction != "" {
+			a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(instruction)))
+			return true, nil
+		}
+	}
 	// A partial read is a host-owned protocol state, not advisory prose. Refuse
 	// a candidate final before every ordinary readiness/validator path so a
 	// model cannot silently answer from the visible prefix alone.
-	if instruction, pause := state.incompleteReads.blockFinal(); pause != nil {
+	if instruction, pause := a.legacyReadFinal(state); pause != nil {
 		a.contextManager().ObserveUsage(usage)
 		return false, pause
 	} else if instruction != "" {

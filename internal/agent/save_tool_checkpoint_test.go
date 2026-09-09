@@ -19,7 +19,7 @@ func (o *checkpointObserver) EnqueueSessionPersist(e SessionPersistEvent) bool {
 }
 
 func TestToolCheckpointDefersOnlyDerivedProjection(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "session.jsonl")
+	path := schemaOneSessionPath(t, "session.jsonl")
 	s := NewSession("system")
 	s.Add(provider.Message{Role: provider.RoleUser, Content: "task"})
 	bindSessionWriter(t, s, path)
@@ -106,7 +106,7 @@ func TestToolCheckpointRewriteKeepsCanonicalEvidence(t *testing.T) {
 }
 
 func TestToolCheckpointReloadRefreshesProjection(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "session.jsonl")
+	path := schemaOneSessionPath(t, "session.jsonl")
 	s := NewSession("system")
 	if err := s.SaveSnapshot(path); err != nil {
 		t.Fatal(err)

@@ -318,7 +318,7 @@ func TestBlankTabSessionPathRejectsOtherProjectWorkspace(t *testing.T) {
 }
 
 func TestForkKeepsProjectWorkspaceContext(t *testing.T) {
-	isolateDesktopUserDirs(t)
+	isolateDesktopUserDirsSchemaOne(t)
 
 	projectA := robustTempDir(t)
 	projectB := robustTempDir(t)

@@ -57,7 +57,8 @@ self-register; parents never import children. The Remote-SSH module layers
 `cli → remote/bootstrap → remote → {remote/forward, remote/sftpfs, config,
 netclient}`; `remote` and its subpackages never import `cli`, `agent`, or
 `serve`, and all interactivity flows through callbacks (host-key / secret
-prompts) so the desktop module consumes the same surface. See §Remote below.
+prompts) so the desktop module consumes the same surface. See the
+[Remote sessions](./REMOTE_SESSIONS.md) guide.
 
 ## 3. Core Abstractions
 

@@ -179,7 +179,7 @@ func TestRecoveryBranchCoveredByParentReadsActualContent(t *testing.T) {
 }
 
 func TestRecoveryParentGuardBlocksRewindAfterValidation(t *testing.T) {
-	dir := t.TempDir()
+	dir := schemaOneTempDir(t)
 	parentPath, branchPath, branchMsgs := forkRecoveryBranch(t, dir, "rewind-race")
 	coverBranchInParent(t, parentPath, branchMsgs)
 

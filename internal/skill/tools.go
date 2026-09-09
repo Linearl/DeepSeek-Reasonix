@@ -67,7 +67,7 @@ func NewRunSkillTool(store *Store, runner SubagentRunner, profileResolver ...Pro
 	return &runSkillTool{store: store, runner: runner, profileResolver: pr}
 }
 
-func (*runSkillTool) Name() string { return "run_skill" }
+func (*runSkillTool) Name() string { return tool.HostRunSkill }
 
 // ReadOnly is false: an invoked subagent skill could call writer tools, so
 // classify conservatively to keep the parallel-dispatch path from racing two
@@ -226,7 +226,7 @@ func NewReadOnlySkillTool(store *Store, runner SubagentRunner, profileResolver .
 	return &readOnlySkillTool{store: store, runner: runner, profileResolver: pr}
 }
 
-func (*readOnlySkillTool) Name() string { return "read_only_skill" }
+func (*readOnlySkillTool) Name() string { return tool.HostReadOnlySkill }
 
 func (*readOnlySkillTool) ReadOnly() bool { return true }
 
@@ -371,7 +371,7 @@ type readSkillTool struct {
 // playbooks without starting a subagent.
 func NewReadSkillTool(store *Store) tool.Tool { return &readSkillTool{store: store} }
 
-func (*readSkillTool) Name() string { return "read_skill" }
+func (*readSkillTool) Name() string { return tool.HostReadSkill }
 
 // ReadOnly is true: read_skill only renders an inline skill body, with no
 // subagent or side effects.
@@ -508,16 +508,16 @@ func BuiltinSubagentTools(store *Store, runner SubagentRunner, profileResolver .
 	specs := []struct {
 		toolName, skillName, description, taskDesc string
 	}{
-		{"explore", "explore",
+		{tool.HostExplore, "explore",
 			"Run a focused read-only codebase investigation in an isolated subagent. Use for broad survey questions across many files — 'find all places that X', 'how does Y work across the project', 'audit Z'. Returns one distilled answer with file:line citations. Its reads + reasoning never enter your context, unlike chained read_file.",
 			"Concrete investigation question. The subagent has none of your context — write a self-contained prompt naming the symbol / pattern / behavior to survey."},
-		{"research", "research",
+		{tool.HostResearch, "research",
 			"Combine web_fetch + code reading in an isolated subagent. Use when the answer needs both an external reference and local verification — 'is X supported by lib Y', 'compare our impl against the spec'. Returns one synthesis citing code (file:line) and web (URL).",
 			"Concrete research question. The subagent has none of your context — name the external thing to look up and the local code to compare against."},
-		{"review", "review",
+		{tool.HostReview, "review",
 			"Review the pending changes (current branch diff) in an isolated subagent — flags correctness / security / missing-tests / hidden behavior per file:line. Read-only; you decide what to act on. Use before suggesting a PR-shaped change or after finishing a multi-step edit.",
 			"What to focus the review on (e.g. 'focus on the auth changes' or 'general'). The subagent reads the diff itself."},
-		{"security_review", "security-review",
+		{tool.HostSecurityReview, "security-review",
 			"Security-focused review of the current branch diff in an isolated subagent — injection / authz / secrets / deserialization / path-traversal / crypto, severity-tagged. Read-only. Use when shipping changes that touch auth, input parsing, file IO, or external requests.",
 			"Optional scope hint (e.g. 'focus on token handling in internal/auth/') or 'full' for everything in the diff."},
 	}
@@ -553,7 +553,7 @@ func NewInstallSkillTool(store *Store, onInstalled InstalledHook) tool.Tool {
 	return &installSkillTool{store: store, onInstalled: onInstalled}
 }
 
-func (*installSkillTool) Name() string   { return "install_skill" }
+func (*installSkillTool) Name() string   { return tool.HostInstallSkill }
 func (*installSkillTool) ReadOnly() bool { return false }
 
 func (t *installSkillTool) Description() string {

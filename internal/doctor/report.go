@@ -216,7 +216,7 @@ func Collect(opts Options) Report {
 		Warnings: warnings,
 	}
 	// Skill / MCP capability health (optional diagnostics; never fail doctor).
-	if skStore := skill.New(skill.Options{ProjectRoot: cwd}); skStore != nil {
+	if skStore := skill.DiagnosticStore(cwd, "", "", cfg); skStore != nil {
 		report.Warnings = append(report.Warnings, CollectSkillHealthWarnings(SkillHealthOptions{
 			Skills:  skStore.List(),
 			Plugins: cfg.Plugins,

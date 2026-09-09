@@ -1,3 +1,5 @@
+import { selectSettingsValue, settingsOptionValues } from "./settingsSelectTestUtils";
+import catalogData from "../lib/providerCatalog.generated.json";
 // Run: tsx src/__tests__/provider-access-card.test.tsx
 
 import { JSDOM } from "jsdom";
@@ -288,9 +290,12 @@ window.go = {
   main: {
     App: {
       Settings: async () => defaultCustomSettings,
-      RemoveProviderAccesses: async (names: string[]) => {
+      ApplyModelSettings: async (change) => {
+        if (change.kind !== "access_remove") throw new Error("unexpected settings operation");
+        const names = change.names;
         removedDefaultCustomProviders = [...names];
         defaultCustomSettings.providers = defaultCustomSettings.providers.filter((provider) => !names.includes(provider.name));
+        return {requestId: change.requestId, persisted: true, revision: "removed", application: "not_required", targets: [], issues: [], appliedCatalogs: []};
       },
     } as Partial<AppBindings> as AppBindings,
   },
@@ -391,11 +396,8 @@ await act(async () => {
   );
   await flushPromises();
 });
-await act(async () => { rootEl.querySelector<HTMLButtonElement>(".provider-catalog-trigger")?.click(); await flushPromises(); });
-const installedOfficialChoice = Array.from(rootEl.querySelectorAll(".provider-catalog__list button"))
-  .find((button) => button.textContent?.includes("DeepSeek"));
-ok(installedOfficialChoice?.disabled === true, "installed official providers cannot be added again");
-ok(installedOfficialChoice?.textContent?.includes("Added") === true, "installed official providers show their backend status");
+ok(rootEl.querySelector<HTMLButtonElement>(".provider-catalog__detail .btn--primary")?.disabled === false, "installed brands allow independent new connections");
+ok(rootEl.querySelector(".provider-catalog__detail")?.textContent?.includes("API Key") === true, "new connection has its own credential field");
 
 const openCodePreset = (
   id: string,
@@ -404,6 +406,7 @@ const openCodePreset = (
   displayTier: "primary" | "advanced" | "compatibility",
   displaySection: "go" | "zen" = "go",
 ): ProviderPresetView => ({
+  catalog: (catalogData.catalogs as Record<string, NonNullable<ProviderPresetView["catalog"]>>)[id],
   id,
   label,
   description: `${label} description`,
@@ -451,19 +454,16 @@ await act(async () => {
   );
   await flushPromises();
 });
-ok(rootEl.querySelector(".provider-catalog__list") === null, "provider catalog starts compact and closed");
-await act(async () => { rootEl.querySelector<HTMLButtonElement>(".provider-catalog-trigger")?.click(); await flushPromises(); });
-const catalog = rootEl.querySelector(".provider-catalog__list");
-ok(catalog?.textContent?.includes("OpenCode Go Anthropic") === false, "catalog hides protocol-specific provider entries");
-ok(catalog?.textContent?.includes("Compatibility") === false, "catalog hides compatibility routes from new users");
-ok(catalog?.textContent?.includes("DeepSeek") === true && catalog.textContent.includes("OpenCode Go"), "catalog lists DeepSeek and OpenCode Go together");
-ok(catalog?.textContent?.includes("OpenCode Zen") === true, "OpenCode Zen remains an independent product choice");
-ok(rootEl.querySelector('input[placeholder="Search providers…"]') !== null, "provider catalog has search");
-const goChoice = Array.from(catalog?.querySelectorAll<HTMLButtonElement>("button") ?? []).find((button) => button.textContent?.includes("OpenCode Go"));
-await act(async () => { goChoice?.click(); await flushPromises(); });
-ok(rootEl.querySelector(".provider-catalog__list") === null, "choosing a provider closes the catalog");
-ok(rootEl.querySelector<HTMLInputElement>('input[type="password"]') !== null, "selecting OpenCode Go displays its credential field");
-ok(Array.from(rootEl.querySelectorAll("button")).some((button) => button.textContent?.trim() === "Add provider"), "selected preset offers a connect action");
+const brandButtons = rootEl.querySelectorAll(".provider-catalog__brand");
+ok(brandButtons.length === 2, "DeepSeek and all OpenCode products render as two brands");
+ok(Array.from(brandButtons).some(button => button.textContent?.includes("OpenCode")), "OpenCode has one selectable brand entry");
+ok(Array.from(brandButtons).every(button => !button.textContent?.includes("Anthropic")), "protocols never appear as top-level brands");
+await act(async () => { (Array.from(brandButtons).find(button => button.textContent?.includes("OpenCode")) as HTMLButtonElement).click(); });
+const products = rootEl.querySelector<HTMLButtonElement>('button.settings-select[id$="-product"]');
+ok((products ? await settingsOptionValues(products) : []).join(",") === "go,zen", "Go and Zen remain distinct access plans within OpenCode");
+if (products) await selectSettingsValue(products, "zen");
+ok(rootEl.querySelector<HTMLInputElement>('input[placeholder*="OPENCODE_API_KEY"]') !== null, "selecting Zen changes the credential reference");
+ok(rootEl.querySelector<HTMLButtonElement>('button.settings-select[id$="-format"]')?.value === "anthropic", "Zen selects its supported API format");
 
 const openCodeProviders: ProviderView[] = [
   { ...deepSeekAnthropic, builtIn: false, name: "opencode-go", kind: "openai", baseUrl: "https://opencode.ai/zen/go/v1", apiKeyEnv: "OPENCODE_GO_API_KEY", webSearch: false },

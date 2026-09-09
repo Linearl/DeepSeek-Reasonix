@@ -28,7 +28,7 @@ type sessionToolResultTool struct {
 	session func() *Session
 }
 
-func (*sessionToolResultTool) Name() string { return "session_tool_result" }
+func (*sessionToolResultTool) Name() string { return tool.HostSessionToolResult }
 
 func (*sessionToolResultTool) Description() string {
 	return "Read one bounded UTF-8 page from a complete tool result retained in the current agent session. This uses tr-... result references; for a sa_... subagent reference, use read_subagent_result instead."

@@ -331,6 +331,7 @@ func TestResumeWithFreshSystemPromptPreservesLoadedRewriteBaseline(t *testing.T)
 }
 
 func TestResumeWithFreshSystemPromptRejectsStaleCarriedHistoryBaseline(t *testing.T) {
+	t.Setenv(agent.SessionLogSchemaEnv, "v1")
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	current := agent.NewSession("old sys")
 	current.Add(provider.Message{Role: provider.RoleUser, Content: "first"})

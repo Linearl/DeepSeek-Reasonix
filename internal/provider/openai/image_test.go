@@ -264,7 +264,7 @@ func TestOfficialVisionExplicitOffRespectsResolvedMetadata(t *testing.T) {
 	}
 }
 
-func TestOfficialDeepSeekVisionSKUOmitsToolImages(t *testing.T) {
+func TestOfficialDeepSeekVisionSKUEmbedsToolImages(t *testing.T) {
 	p, err := New(provider.Config{
 		Name:    "deepseek",
 		BaseURL: "https://api.deepseek.com",
@@ -288,14 +288,14 @@ func TestOfficialDeepSeekVisionSKUOmitsToolImages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	if strings.Contains(string(body), "base64,AAAA") {
-		t.Fatalf("official DeepSeek vision SKU leaked tool image payload: %s", body)
+	if !strings.Contains(string(body), "base64,AAAA") {
+		t.Fatalf("official DeepSeek vision SKU omitted tool image payload: %s", body)
 	}
 	plainBody, err := json.Marshal(c.buildRequest(provider.Request{Messages: plain}))
 	if err != nil {
 		t.Fatalf("marshal plain: %v", err)
 	}
-	if !bytes.Equal(body, plainBody) {
+	if bytes.Equal(body, plainBody) {
 		t.Fatalf("tool images changed official DeepSeek vision SKU bytes:\nplain: %s\nimage: %s", plainBody, body)
 	}
 }

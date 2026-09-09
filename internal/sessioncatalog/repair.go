@@ -571,7 +571,11 @@ func (c *Catalog) preserveKnownSourceStates(ctx context.Context, directory strin
 	}
 	for i := range records {
 		state, ok := known[c.pathKey(records[i].Path)]
-		if !ok || records[i].TurnsState != TurnsUnknown || records[i].ContentFingerprint != state.contentFingerprint {
+		if !ok || records[i].TurnsState != TurnsUnknown {
+			continue
+		}
+		if records[i].ContentFingerprint != state.contentFingerprint {
+			fillKnownCountHints(&records[i], state.preview, state.turns)
 			continue
 		}
 		records[i].Preview = state.preview
@@ -580,4 +584,13 @@ func (c *Catalog) preserveKnownSourceStates(ctx context.Context, directory strin
 		records[i].Health = state.health
 	}
 	return records, nil
+}
+
+// fillKnownCountHints keeps a changed transcript's last certified preview and
+// count visible while it stays unknown; repair replaces them once it lands.
+func fillKnownCountHints(record *SessionRecord, preview string, turns int) {
+	if record.Turns != 0 || strings.TrimSpace(record.Preview) != "" {
+		return
+	}
+	record.Preview, record.Turns = preview, turns
 }

@@ -203,3 +203,85 @@ func TestIndependentSearchHonorsOfflineAndToolAllowlist(t *testing.T) {
 		})
 	}
 }
+
+func TestAssignedSearchRuntimeSnapshotAndStableSchema(t *testing.T) {
+	var mu sync.Mutex
+	var models []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			return
+		}
+		mu.Lock()
+		models = append(models, body["model"].(string))
+		mu.Unlock()
+		messages := body["input"].([]any)
+		if len(messages) != 1 {
+			t.Error("search inherited conversation")
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"type\":\"response.output_item.done\",\"item\":{\"id\":\"s\",\"type\":\"web_search_call\",\"status\":\"completed\",\"action\":{\"type\":\"search\",\"query\":\"test\"}}}\n\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"summary\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"r\",\"status\":\"completed\",\"usage\":{\"input_tokens\":2,\"output_tokens\":3}}}\n\n")
+	}))
+	defer srv.Close()
+	on, off := true, false
+	c := &config.Config{Providers: []config.ProviderEntry{{Name: "search", Kind: "responses", BaseURL: srv.URL, Models: []string{"first", "second"}, Default: "first", WebSearch: &on}}, Agent: config.AgentConfig{WebSearchModel: "search/first"}}
+	current := config.ProviderEntry{Name: "chat", Kind: "responses", Model: "main", WebSearch: &off}
+	var events []event.Event
+	sink := event.FuncSink(func(e event.Event) { mu.Lock(); defer mu.Unlock(); events = append(events, e) })
+	old := tool.NewRegistry()
+	addWebSearch(old, c, &current, netclient.ProxySpec{Mode: netclient.ModeOff}, sink)
+	c.Agent.WebSearchModel = "search/second"
+	next := tool.NewRegistry()
+	addWebSearch(next, c, &current, netclient.ProxySpec{Mode: netclient.ModeOff}, sink)
+	firstSchema, _ := json.Marshal(old.Schemas())
+	secondSchema, _ := json.Marshal(next.Schemas())
+	if string(firstSchema) != string(secondSchema) {
+		t.Fatal("assignment changed main tool prefix")
+	}
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Go(func() {
+			search, _ := old.Get("web_search")
+			if _, err := search.Execute(context.Background(), json.RawMessage(`{"query":"test"}`)); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	wg.Wait()
+	search, _ := next.Get("web_search")
+	if _, err := search.Execute(context.Background(), json.RawMessage(`{"query":"test"}`)); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(models) != 3 || models[0] != "first" || models[1] != "first" || models[2] != "second" {
+		t.Fatalf("runtime selection changed: %v", models)
+	}
+	var refs []string
+	for _, e := range events {
+		if e.Kind == event.Usage {
+			if e.UsageSource != "web-search" {
+				t.Fatal("wrong usage source")
+			}
+			refs = append(refs, e.ModelRef)
+		}
+	}
+	if len(refs) != 3 || refs[0] != "search/first" || refs[2] != "search/second" {
+		t.Fatalf("wrong usage models: %v", refs)
+	}
+}
+
+func TestInvalidAssignedSearchNotifiesWithoutFallback(t *testing.T) {
+	on := true
+	c := &config.Config{Providers: []config.ProviderEntry{{Name: "fallback", Kind: "responses", BaseURL: "http://localhost:1234", Model: "m", WebSearch: &on}}, Agent: config.AgentConfig{WebSearchModel: "removed/m"}}
+	reg := tool.NewRegistry()
+	var notices []event.Event
+	addWebSearch(reg, c, nil, netclient.ProxySpec{}, event.FuncSink(func(e event.Event) { notices = append(notices, e) }))
+	if _, found := reg.Get("web_search"); found {
+		t.Fatal("registered fallback")
+	}
+	if len(notices) != 1 || notices[0].Code != "web_search_model_unavailable" {
+		t.Fatalf("notices: %+v", notices)
+	}
+}

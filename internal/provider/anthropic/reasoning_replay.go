@@ -2,7 +2,6 @@ package anthropic
 
 import (
 	"encoding/json"
-	"strings"
 
 	"reasonix/internal/provider"
 )
@@ -63,22 +62,21 @@ func (c *client) applyDeepSeekThinking(r *anthRequest, req provider.Request) {
 	if c.effort == "disabled" {
 		t = "disabled"
 	}
-	effort := normalizeDeepSeekAnthropicEffort(c.model, c.effort)
-	switch override := strings.ToLower(strings.TrimSpace(req.EffortOverride)); override {
-	case "disabled":
-		t = "disabled"
-	case "":
-	default:
-		if normalized := normalizeDeepSeekAnthropicEffort(c.model, override); normalized != "" {
-			effort = normalized
+	effort := c.effort
+	if req.EffortOverride != "" {
+		effort = req.EffortOverride
+		if effort == "disabled" {
+			t = "disabled"
+		} else if c.thinking != "disabled" {
+			t = "enabled"
 		}
 	}
+
 	r.Thinking = &thinkingConfig{Type: t}
 	if t == "disabled" {
 		return
 	}
-	switch effort {
-	case "low", "high", "max":
+	if effort != "" {
 		r.OutputConfig = &outputConfig{Effort: effort}
 	}
 }

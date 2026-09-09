@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -74,46 +75,19 @@ func LoadSessionUserMessages(path string) ([]SessionUserMessage, error) {
 }
 
 func loadSessionUserMessagesWithLimits(path string, limits sessionReplayLimits) ([]SessionUserMessage, error) {
-	probe, err := probeSessionEventLogWithLimits(path, limits)
+	res, err := loadSessionTranscript(context.Background(), path, limits, nil)
 	if err != nil {
 		return nil, err
 	}
-	if probe.futureSchema {
-		return nil, fmt.Errorf("session event log for %s uses schema %d; this build supports up to %d", path, probe.schemaVersion, sessionEventSchemaVersion)
-	}
-	if probe.native && probe.size > 0 {
-		replay, err := replaySessionEventLogWithLimits(store.SessionEventLog(path), limits, nil)
-		if err != nil {
-			return nil, err
-		}
-		if replay.records > 0 {
-			out := make([]SessionUserMessage, 0, len(replay.msgs))
-			for i, m := range replay.msgs {
-				if m.Role != provider.RoleUser || IsPinnedContextRevision(m) {
-					continue
-				}
-				at := time.Time{}
-				if i < len(replay.times) {
-					at = replay.times[i]
-				}
-				if m.CreatedAt > 0 {
-					at = time.UnixMilli(m.CreatedAt)
-				}
-				out = append(out, SessionUserMessage{Message: m, At: at})
-			}
-			return out, nil
-		}
-	}
-	msgs, err := loadSessionMessagesFromJSONL(path, nil)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]SessionUserMessage, 0, len(msgs))
-	for _, m := range msgs {
+	out := make([]SessionUserMessage, 0, len(res.msgs))
+	for i, m := range res.msgs {
 		if m.Role != provider.RoleUser || IsPinnedContextRevision(m) {
 			continue
 		}
 		at := time.Time{}
+		if i < len(res.times) {
+			at = res.times[i]
+		}
 		if m.CreatedAt > 0 {
 			at = time.UnixMilli(m.CreatedAt)
 		}

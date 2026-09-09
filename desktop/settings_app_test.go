@@ -293,6 +293,7 @@ func TestSetProviderKeyDoesNotWarnWhenProjectEnvAlsoDefinesSavedKey(t *testing.T
 		tabs:        map[string]*WorkspaceTab{"project": {ID: "project", WorkspaceRoot: project}},
 		activeTabID: "project",
 	}
+	seedProviderCredentialReference(t, app, "TEST_PROVIDER_SHADOW")
 	warning, err := app.SetProviderKey("TEST_PROVIDER_SHADOW", "new-key")
 	if err != nil {
 		t.Fatalf("SetProviderKey: %v", err)
@@ -304,8 +305,9 @@ func TestSetProviderKeyDoesNotWarnWhenProjectEnvAlsoDefinesSavedKey(t *testing.T
 	if readErr != nil {
 		t.Fatalf("read credentials: %v", readErr)
 	}
-	if !strings.Contains(string(data), "TEST_PROVIDER_SHADOW=new-key") {
-		t.Fatalf("saved credentials missing new key:\n%s", data)
+	p, _ := config.LoadForEdit(config.UserConfigPath()).Provider("credential-test")
+	if p.APIKeyEnv == "TEST_PROVIDER_SHADOW" || !strings.Contains(string(data), p.APIKeyEnv+"=new-key") {
+		t.Fatal("saved credentials missing new isolated reference")
 	}
 }
 
@@ -314,6 +316,7 @@ func TestSetProviderKeyDoesNotWarnWhenEnvironmentAlsoDefinesSavedKey(t *testing.
 	t.Setenv("TEST_PROVIDER_EMPTY_ENV", "")
 
 	app := &App{}
+	seedProviderCredentialReference(t, app, "TEST_PROVIDER_EMPTY_ENV")
 	warning, err := app.SetProviderKey("TEST_PROVIDER_EMPTY_ENV", "new-key")
 	if err != nil {
 		t.Fatalf("SetProviderKey: %v", err)
@@ -325,8 +328,9 @@ func TestSetProviderKeyDoesNotWarnWhenEnvironmentAlsoDefinesSavedKey(t *testing.
 	if readErr != nil {
 		t.Fatalf("read credentials: %v", readErr)
 	}
-	if !strings.Contains(string(data), "TEST_PROVIDER_EMPTY_ENV=new-key") {
-		t.Fatalf("saved credentials missing new key:\n%s", data)
+	p, _ := config.LoadForEdit(config.UserConfigPath()).Provider("credential-test")
+	if p.APIKeyEnv == "TEST_PROVIDER_EMPTY_ENV" || !strings.Contains(string(data), p.APIKeyEnv+"=new-key") {
+		t.Fatal("saved credentials missing new isolated reference")
 	}
 }
 
@@ -343,12 +347,20 @@ func TestSetProviderKeyDoesNotWarnWhenEmptyProjectEnvAlsoDefinesSavedKey(t *test
 		tabs:        map[string]*WorkspaceTab{"project": {ID: "project", WorkspaceRoot: project}},
 		activeTabID: "project",
 	}
+	seedProviderCredentialReference(t, app, "TEST_PROVIDER_EMPTY_PROJECT")
 	warning, err := app.SetProviderKey("TEST_PROVIDER_EMPTY_PROJECT", "new-key")
 	if err != nil {
 		t.Fatalf("SetProviderKey: %v", err)
 	}
 	if warning != "" {
 		t.Fatalf("SetProviderKey warning = %q, want no warning because provider keys use global credentials only", warning)
+	}
+}
+
+func seedProviderCredentialReference(t *testing.T, app *App, env string) {
+	t.Helper()
+	if err := app.SaveProvider(ProviderView{Name: "credential-test", Kind: "openai", BaseURL: "https://example.invalid/v1", Models: []string{"model"}, APIKeyEnv: env}); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -655,7 +667,7 @@ func TestSaveProviderModelCatalogsRejectsStaleCredentialSnapshot(t *testing.T) {
 	provider, _ := cfg.Provider("credential-race")
 	oldFingerprint := providerModelCatalogFingerprint(*provider)
 
-	if _, err := app.SaveProviderKey("CREDENTIAL_RACE_API_KEY", "new-key-with-different-length"); err != nil {
+	if _, err := app.SetConnectionKey("credential-race", "new-key-with-different-length"); err != nil {
 		t.Fatalf("SaveProviderKey(new): %v", err)
 	}
 	applied, err := app.SaveProviderModelCatalogs([]ProviderModelCatalogUpdate{{
@@ -715,8 +727,9 @@ func TestSaveProviderModelCatalogsRejectsOverlappingCredentialRotation(t *testin
 
 	// Keep the replacement the same length as the old value: revision safety
 	// must come from credential contents and locking, not size or mtime luck.
-	if _, err := app.SaveProviderKey(keyEnv, "new-key"); err != nil {
-		t.Fatalf("SaveProviderKey(new): %v", err)
+	if _, err := config.SetCredential(provider.APIKeyEnv, "new-key"); err != nil {
+		close(releaseApply)
+		t.Fatalf("external credential rotation: %v", err)
 	}
 	close(releaseApply)
 	gotResult := <-catalogDone
@@ -1112,7 +1125,7 @@ func TestSetProviderWebSearchRejectsWholeGroupBeforeWriting(t *testing.T) {
 	}
 }
 
-func TestSetProviderWebSearchRebuildsEveryVisibleRuntime(t *testing.T) {
+func TestSetProviderWebSearchPreservesEveryVisibleRuntime(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	setDesktopTestCredential(t, "DEEPSEEK_API_KEY", "sk-test")
 	enabled := true
@@ -1158,8 +1171,8 @@ func TestSetProviderWebSearchRebuildsEveryVisibleRuntime(t *testing.T) {
 	if err := app.SetProviderWebSearch([]string{"deepseek"}, false); err != nil {
 		t.Fatalf("SetProviderWebSearch: %v", err)
 	}
-	if first.Ctrl == oldFirst || second.Ctrl == oldSecond || oldFirst.closeCount.Load() != 1 || oldSecond.closeCount.Load() != 1 {
-		t.Fatalf("web-search refresh: first=%T/%d second=%T/%d; want both replaced once", first.Ctrl, oldFirst.closeCount.Load(), second.Ctrl, oldSecond.closeCount.Load())
+	if first.Ctrl != oldFirst || second.Ctrl != oldSecond || oldFirst.closeCount.Load() != 0 || oldSecond.closeCount.Load() != 0 {
+		t.Fatal("saving web-search capability replaced a visible runtime")
 	}
 	got := config.LoadForEdit(config.UserConfigPath())
 	provider, ok := got.Provider("deepseek")
@@ -1168,7 +1181,7 @@ func TestSetProviderWebSearchRebuildsEveryVisibleRuntime(t *testing.T) {
 	}
 }
 
-func TestSetProviderWebSearchRejectsDetachedRuntimeBeforeMutation(t *testing.T) {
+func TestSetProviderWebSearchSavesWithDetachedRuntime(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	setDesktopTestCredential(t, "DEEPSEEK_API_KEY", "sk-test")
 	enabled := true
@@ -1191,13 +1204,13 @@ func TestSetProviderWebSearchRejectsDetachedRuntimeBeforeMutation(t *testing.T) 
 	t.Cleanup(detachedCtrl.Close)
 
 	err := app.SetProviderWebSearch([]string{"deepseek"}, false)
-	if err == nil || !strings.Contains(err.Error(), "background session is still open") {
-		t.Fatalf("SetProviderWebSearch error = %v, want detached-runtime guard", err)
+	if err != nil || detached.Ctrl != detachedCtrl {
+		t.Fatalf("SetProviderWebSearch must preserve detached runtime: %v", err)
 	}
 	got := config.LoadForEdit(config.UserConfigPath())
 	provider, ok := got.Provider("deepseek")
-	if !ok || provider.WebSearch == nil || !*provider.WebSearch {
-		t.Fatalf("rejected web-search mutation changed provider: %+v", provider)
+	if !ok || provider.WebSearch == nil || *provider.WebSearch {
+		t.Fatalf("web-search mutation was not saved: %+v", provider)
 	}
 }
 
@@ -1390,7 +1403,7 @@ price = { cache_hit = 0.2, input = 3.75, output = 6.75, currency = "T" }
 	}
 }
 
-func TestUpgradeDeepSeekProviderAccessSerializesRuntimeMutation(t *testing.T) {
+func TestUpgradeDeepSeekProviderAccessDoesNotWaitForRuntimeRebuild(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	path := config.UserConfigPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -1415,40 +1428,21 @@ api_key_env = "DEEPSEEK_API_KEY"
 			app.runtimeRebuildMu.Unlock()
 		}
 	}()
-	entered := make(chan struct{})
-	app.runtimeMutationBeforeLockHook = func(operation string) {
-		if operation == "upgrade-deepseek-provider" {
-			close(entered)
-		}
-	}
 	done := make(chan error, 1)
 	go func() {
 		_, err := app.UpgradeDeepSeekProviderAccess("deepseek")
 		done <- err
 	}()
 	select {
-	case <-entered:
-	case <-time.After(5 * time.Second):
-		t.Fatal("protocol upgrade did not reach the runtime mutation barrier")
-	}
-	before, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(before), `kind = "openai"`) {
-		t.Fatalf("protocol changed before acquiring the runtime mutation lock:\n%s", before)
-	}
-
-	app.runtimeRebuildMu.Unlock()
-	rebuildLocked = false
-	select {
 	case err := <-done:
 		if err != nil {
 			t.Fatalf("UpgradeDeepSeekProviderAccess: %v", err)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("protocol upgrade did not complete after releasing the runtime mutation lock")
+		t.Fatal("protocol save waited for the runtime mutation lock")
 	}
+	app.runtimeRebuildMu.Unlock()
+	rebuildLocked = false
 	after, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -1458,7 +1452,7 @@ api_key_env = "DEEPSEEK_API_KEY"
 	}
 }
 
-func TestUpgradeDeepSeekProviderAccessRebuildsEveryVisibleRuntime(t *testing.T) {
+func TestUpgradeDeepSeekProviderAccessPreservesEveryVisibleRuntime(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	setDesktopTestCredential(t, "DEEPSEEK_API_KEY", "sk-test")
 	path := config.UserConfigPath()
@@ -1528,11 +1522,11 @@ api_key_env = "DEEPSEEK_API_KEY"
 	if _, err := app.UpgradeDeepSeekProviderAccess("deepseek"); err != nil {
 		t.Fatalf("UpgradeDeepSeekProviderAccess: %v", err)
 	}
-	if tabA.Ctrl == oldA || tabB.Ctrl == oldB {
-		t.Fatalf("visible runtimes were not both rebuilt: active=%T inactive=%T", tabA.Ctrl, tabB.Ctrl)
+	if tabA.Ctrl != oldA || tabB.Ctrl != oldB {
+		t.Fatal("saving protocol replaced a visible runtime")
 	}
-	if oldA.closeCount.Load() != 1 || oldB.closeCount.Load() != 1 {
-		t.Fatalf("old controller close counts = %d, %d; want one each", oldA.closeCount.Load(), oldB.closeCount.Load())
+	if oldA.closeCount.Load() != 0 || oldB.closeCount.Load() != 0 {
+		t.Fatal("saving protocol closed an existing controller")
 	}
 	for _, tab := range []*WorkspaceTab{tabA, tabB} {
 		history := tab.Ctrl.History()
@@ -1542,7 +1536,7 @@ api_key_env = "DEEPSEEK_API_KEY"
 	}
 }
 
-func TestUpgradeDeepSeekProviderAccessContinuesAfterWorkspaceBuildFailure(t *testing.T) {
+func TestUpgradeDeepSeekProviderAccessSavesIndependentlyOfWorkspaceBuild(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	setDesktopTestCredential(t, "DEEPSEEK_API_KEY", "sk-test")
 	path := config.UserConfigPath()
@@ -1550,7 +1544,8 @@ func TestUpgradeDeepSeekProviderAccessContinuesAfterWorkspaceBuildFailure(t *tes
 		t.Fatal(err)
 	}
 	// The explicit Settings action runs after the one-time startup migration.
-	raw := `config_version = 8
+	// The running app has completed the startup migration before a manual switch.
+	raw := `config_version = 9
 default_model = "deepseek-flash/deepseek-v4-flash"
 
 [desktop]
@@ -1618,8 +1613,8 @@ system_prompt_file = "/outside-workspace/system.md"
 	})
 
 	warning, err := app.UpgradeDeepSeekProviderAccess("deepseek")
-	if err == nil || !strings.Contains(err.Error(), "relative path within the workspace") {
-		t.Fatalf("UpgradeDeepSeekProviderAccess error = %v, want first workspace build failure", err)
+	if err != nil {
+		t.Fatalf("UpgradeDeepSeekProviderAccess save: %v", err)
 	}
 	if warning != "" {
 		t.Fatalf("UpgradeDeepSeekProviderAccess warning = %q, want no lease warning", warning)
@@ -1634,12 +1629,12 @@ system_prompt_file = "/outside-workspace/system.md"
 	if broken.Ctrl != oldBroken || oldBroken.closeCount.Load() != 0 {
 		t.Fatalf("failed tab changed controller: ctrl=%T closes=%d", broken.Ctrl, oldBroken.closeCount.Load())
 	}
-	if working.Ctrl == oldWorking || oldWorking.closeCount.Load() != 1 {
-		t.Fatalf("working sibling was not rebuilt: ctrl=%T closes=%d", working.Ctrl, oldWorking.closeCount.Load())
+	if working.Ctrl != oldWorking || oldWorking.closeCount.Load() != 0 {
+		t.Fatal("saving protocol replaced the sibling runtime")
 	}
 }
 
-func TestUpgradeDeepSeekProviderAccessDefersLeasedTabAndRebuildsSibling(t *testing.T) {
+func TestUpgradeDeepSeekProviderAccessPreservesLeasedTabAndSibling(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	setDesktopTestCredential(t, "DEEPSEEK_API_KEY", "sk-test")
 	path := config.UserConfigPath()
@@ -1716,11 +1711,11 @@ api_key_env = "DEEPSEEK_API_KEY"
 	if err != nil {
 		t.Fatalf("UpgradeDeepSeekProviderAccess: %v", err)
 	}
-	if !strings.Contains(warning, "saved, but the current session could not refresh yet") {
-		t.Fatalf("UpgradeDeepSeekProviderAccess warning = %q, want deferred lease warning", warning)
+	if warning != "" {
+		t.Fatalf("protocol save acquired runtime lease: %q", warning)
 	}
-	if !app.deferredRebuildPending(leased.ID) {
-		t.Fatal("leased tab did not receive a tab-bound deferred rebuild")
+	if app.deferredRebuildPending(leased.ID) {
+		t.Fatal("saving protocol scheduled an immediate rebuild")
 	}
 	if app.deferredRebuildPending(working.ID) {
 		t.Fatal("working sibling unexpectedly received a deferred rebuild")
@@ -1728,12 +1723,12 @@ api_key_env = "DEEPSEEK_API_KEY"
 	if leased.Ctrl != oldLeased || oldLeased.closeCount.Load() != 0 {
 		t.Fatalf("leased tab changed controller: ctrl=%T closes=%d", leased.Ctrl, oldLeased.closeCount.Load())
 	}
-	if working.Ctrl == oldWorking || oldWorking.closeCount.Load() != 1 {
-		t.Fatalf("working sibling was not rebuilt: ctrl=%T closes=%d", working.Ctrl, oldWorking.closeCount.Load())
+	if working.Ctrl != oldWorking || oldWorking.closeCount.Load() != 0 {
+		t.Fatal("saving protocol replaced the sibling runtime")
 	}
 }
 
-func TestUpgradeDeepSeekProviderAccessRejectsDetachedRuntimeBeforeMutation(t *testing.T) {
+func TestUpgradeDeepSeekProviderAccessSavesWithDetachedRuntime(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	path := config.UserConfigPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -1758,15 +1753,15 @@ api_key_env = "DEEPSEEK_API_KEY"
 	t.Cleanup(detachedCtrl.Close)
 
 	_, err := app.UpgradeDeepSeekProviderAccess("deepseek")
-	if err == nil || !strings.Contains(err.Error(), "background session is still open") {
-		t.Fatalf("UpgradeDeepSeekProviderAccess error = %v, want detached-runtime guard", err)
+	if err != nil || app.detachedSessions["detached"].Ctrl != detachedCtrl {
+		t.Fatalf("protocol save must preserve detached runtime: %v", err)
 	}
 	after, readErr := os.ReadFile(path)
 	if readErr != nil {
 		t.Fatal(readErr)
 	}
-	if string(after) != raw {
-		t.Fatalf("protocol changed despite detached-runtime rejection:\n%s", after)
+	if !strings.Contains(string(after), `kind = "anthropic"`) {
+		t.Fatalf("protocol was not saved with detached runtime:\n%s", after)
 	}
 }
 

@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -33,6 +35,23 @@ func TestRecoveryDoesNotRetryPermanentOrUnknownErrors(t *testing.T) {
 		if ClassifyRecovery(err).Retryable {
 			t.Fatalf("retried %v", err)
 		}
+	}
+}
+
+func TestRecoveryWaitExhaustedIsTerminalAndDiagnosable(t *testing.T) {
+	cause := &APIError{Provider: "p", Status: 503, Body: `{"error":{"code":"overloaded"}}`, TraceID: "trace_1"}
+	err := fmt.Errorf("run: %w", &RecoveryWaitExhaustedError{Phase: "headers", Code: "overloaded", Status: 503, Waited: 10 * time.Minute, Attempts: 13, Cause: cause})
+	if f := ClassifyRecovery(err); f.Retryable || f.Phase != "headers" || f.Status != 503 || f.Code != "overloaded" {
+		t.Fatalf("failure=%+v", f)
+	}
+	if d := DiagnoseFailure(err); d.Kind != "recovery_wait_exhausted" || d.Status != 503 || d.TraceID != "trace_1" {
+		t.Fatalf("diagnostic=%+v", d)
+	}
+	if !errors.Is(err, cause) || !strings.Contains(err.Error(), "provider unreachable for 10m0s (headers): p: status 503") {
+		t.Fatalf("err=%v", err)
+	}
+	if AsRecoveryWaitExhausted(cause) != nil || AsRecoveryWaitExhausted(nil) != nil {
+		t.Fatal("plain failures must not read as an exhausted wait")
 	}
 }
 

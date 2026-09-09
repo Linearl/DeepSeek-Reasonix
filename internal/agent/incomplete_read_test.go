@@ -156,6 +156,16 @@ func recoveryCapabilityArgs(t *testing.T, callID, resultRef string, offset int) 
 	return string(args)
 }
 
+func newLegacyIncompleteReadTestAgent(prov provider.Provider, read tool.Tool, session *Session, sink event.Sink, extra ...tool.Tool) *Agent {
+	return newLegacyIncompleteReadTestAgentWithOptions(prov, read, session, sink, Options{ContextWindow: 64_000}, extra...)
+}
+
+func newLegacyIncompleteReadTestAgentWithOptions(prov provider.Provider, read tool.Tool, session *Session, sink event.Sink, opts Options, extra ...tool.Tool) *Agent {
+	opts.ReadPipeline.LegacyCoordinator = true
+	opts.ReadPipeline.LegacyImplicitFullReads = true
+	return newIncompleteReadTestAgentWithOptions(prov, read, session, sink, opts, extra...)
+}
+
 func newIncompleteReadTestAgent(prov provider.Provider, read tool.Tool, session *Session, sink event.Sink, extra ...tool.Tool) *Agent {
 	return newIncompleteReadTestAgentWithOptions(prov, read, session, sink, Options{ContextWindow: 64_000}, extra...)
 }
@@ -253,7 +263,7 @@ func TestIncompleteReadBlocksFinalUntilRecoveryAndDefersObservation(t *testing.T
 		}
 	}}
 	sink := &incompleteReadEventSink{}
-	agent = newIncompleteReadTestAgentWithOptions(
+	agent = newLegacyIncompleteReadTestAgentWithOptions(
 		prov, read, NewSession("sys"), sink, Options{ContextWindow: 64_000},
 	)
 	if err := agent.Run(context.Background(), "Read the complete rules file before answering."); err != nil {
@@ -290,7 +300,7 @@ func TestIncompleteReadSecondIgnoredFinalPausesRecoverably(t *testing.T) {
 		textTurn("first premature answer"),
 		textTurn("second premature answer"),
 	}}
-	agent := newIncompleteReadTestAgentWithOptions(prov, read, NewSession("sys"), event.Discard, Options{ContextWindow: 256_000})
+	agent := newLegacyIncompleteReadTestAgentWithOptions(prov, read, NewSession("sys"), event.Discard, Options{ContextWindow: 256_000})
 	err := agent.Run(context.Background(), "Read it fully.")
 	var pause *IncompleteReadError
 	if !errors.As(err, &pause) || PauseClass(err) != "incomplete_read" {
@@ -314,7 +324,7 @@ func TestIncompleteReadBlocksSameBatchMutationBeforeExecution(t *testing.T) {
 		},
 		textTurn("finish without recovery"),
 	}}
-	agent := newIncompleteReadTestAgent(prov, read, NewSession("sys"), event.Discard, writer)
+	agent := newLegacyIncompleteReadTestAgent(prov, read, NewSession("sys"), event.Discard, writer)
 	err := agent.Run(context.Background(), "Read the rules and then update state.")
 	var pause *IncompleteReadError
 	if !errors.As(err, &pause) {
@@ -358,7 +368,7 @@ func TestIncompleteReadRecoversParallelFilesBeforeFinal(t *testing.T) {
 		},
 		textTurn("Both files were recovered completely."),
 	}}
-	agent := newIncompleteReadTestAgentWithOptions(prov, read, NewSession("sys"), event.Discard, Options{ContextWindow: 256_000})
+	agent := newLegacyIncompleteReadTestAgentWithOptions(prov, read, NewSession("sys"), event.Discard, Options{ContextWindow: 256_000})
 	if err := agent.Run(context.Background(), "Read both rules files completely."); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -370,11 +380,11 @@ func TestIncompleteReadRecoversParallelFilesBeforeFinal(t *testing.T) {
 	}
 }
 
-func TestImplicitReadContinuesSourcePagesToEOF(t *testing.T) {
+func TestExplicitFullReadContinuesSourcePagesToEOF(t *testing.T) {
 	const tailKey = "SOURCE_PAGE_KEY_2050"
 	path := makeShortPagedReadFixture(t, "more-than-default-limit.txt", 2105, 2050, tailKey)
 	read := incompleteReadBuiltin(t)
-	firstArgs := fmt.Sprintf(`{"path":%q}`, path)
+	firstArgs := fmt.Sprintf(`{"path":%q,"intent":"full"}`, path)
 	secondArgs := fmt.Sprintf(`{"path":%q,"offset":2000,"limit":2000}`, path)
 	first := expectedReadOutput(t, read, firstArgs)
 	if len(first) >= maxToolOutputBytes || !strings.Contains(first, "pass offset=2000") {
@@ -388,13 +398,13 @@ func TestImplicitReadContinuesSourcePagesToEOF(t *testing.T) {
 	var agent *Agent
 	prov := &inspectingProvider{inner: inner, before: func(round int, req provider.Request) {
 		if round == 1 && len(agent.task.ledger.TextObservations()) != 0 {
-			t.Error("the first source window was credited before the implicit whole-file read reached EOF")
+			t.Error("the first source window was credited before the explicit full read reached EOF")
 		}
 		if round == 2 && !requestHasText(req, tailKey) {
 			t.Error("the accepted final request did not contain the source tail page")
 		}
 	}}
-	agent = newIncompleteReadTestAgent(prov, read, NewSession("sys"), event.Discard)
+	agent = newLegacyIncompleteReadTestAgent(prov, read, NewSession("sys"), event.Discard)
 	if err := agent.Run(context.Background(), "Read the entire file without a line limit."); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -415,7 +425,7 @@ func TestExplicitReadLimitConsumesOnlyRequestedWindow(t *testing.T) {
 		{toolCallChunk("window", "read_file", args), {Type: provider.ChunkDone}},
 		textTurn("The requested window is complete."),
 	}}
-	agent := newIncompleteReadTestAgent(prov, read, NewSession("sys"), event.Discard)
+	agent := newLegacyIncompleteReadTestAgent(prov, read, NewSession("sys"), event.Discard)
 	if err := agent.Run(context.Background(), "Read only the specified window."); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -455,7 +465,7 @@ func TestIncompleteReadAutomaticallyRecoversBeyondFormerByteAndTokenCaps(t *test
 	}
 	turns = append(turns, textTurn("The entire large file was read."))
 	prov := &scriptedProvider{name: "large-auto-recovery", turns: turns}
-	agent := newIncompleteReadTestAgentWithOptions(prov, read, NewSession("sys"), sink, Options{ContextWindow: 1_000_000})
+	agent := newLegacyIncompleteReadTestAgentWithOptions(prov, read, NewSession("sys"), sink, Options{ContextWindow: 1_000_000})
 	if err := agent.Run(context.Background(), "Read the complete oversized file."); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -496,7 +506,7 @@ func TestIncompleteReadContextLimitEntersSearchReadReceiptStrategy(t *testing.T)
 		{toolCallChunk("strategy-receipt", "use_capability", string(receipt)), {Type: provider.ChunkDone}},
 		textTurn("The answer is based on the searched and explicitly read rule window."),
 	}}
-	agent := newIncompleteReadTestAgentWithOptions(
+	agent := newLegacyIncompleteReadTestAgentWithOptions(
 		prov, read, NewSession("sys"), sink, Options{ContextWindow: 32_000}, grepTool,
 	)
 	if err := agent.Run(context.Background(), "Find and apply the key rule from the large rules file."); err != nil {
@@ -530,7 +540,7 @@ func TestIncompleteReadUnknownContextEntersStrategyWithoutImmediatePause(t *test
 		textTurn("second premature answer"),
 	}}
 	sink := &incompleteReadEventSink{}
-	agent := newIncompleteReadTestAgentWithOptions(prov, read, NewSession("sys"), sink, Options{})
+	agent := newLegacyIncompleteReadTestAgentWithOptions(prov, read, NewSession("sys"), sink, Options{})
 	err := agent.Run(context.Background(), "Read the complete file.")
 	var pause *IncompleteReadError
 	if !errors.As(err, &pause) {
@@ -575,7 +585,7 @@ func TestReadStrategyReceiptUnlocksOnlyAfterBatchBoundary(t *testing.T) {
 		},
 		textTurn("The receipt is now committed; no write was attempted again."),
 	}}
-	agent := newIncompleteReadTestAgentWithOptions(prov, read, NewSession("sys"), event.Discard, Options{ContextWindow: 32_000}, grepTool, writer)
+	agent := newLegacyIncompleteReadTestAgentWithOptions(prov, read, NewSession("sys"), event.Discard, Options{ContextWindow: 32_000}, grepTool, writer)
 	if err := agent.Run(context.Background(), "Search and read the key rule, then mutate only after the receipt boundary."); err != nil {
 		t.Fatalf("Run: %v", err)
 	}

@@ -17,5 +17,6 @@ type RecoveryStatus struct {
 	Reason        string `json:"reason,omitempty"`
 	NextAttemptAt int64  `json:"next_attempt_at,omitempty"`
 	WaitedMs      int64  `json:"waited_ms,omitempty"`
+	WaitBudgetMs  int64  `json:"wait_budget_ms,omitempty"`
 	Waiting       bool   `json:"waiting,omitempty"`
 }

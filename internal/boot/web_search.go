@@ -16,7 +16,11 @@ func addWebSearch(reg *tool.Registry, cfg *config.Config, current *config.Provid
 	if cfg.Environment.Offline || (len(cfg.Tools.Enabled) > 0 && !slices.Contains(cfg.Tools.Enabled, "web_search")) {
 		return
 	}
-	entry := cfg.ResolveWebSearchProvider(current)
+	selection := cfg.ResolveWebSearch(current)
+	if selection.Status == "invalid" && sink != nil {
+		sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: "web_search_model_unavailable", Text: i18n.M.SearchModelUnavailable + " " + selection.Reason})
+	}
+	entry := selection.Entry
 	if entry == nil {
 		return
 	}

@@ -55,7 +55,9 @@ func installStubControllerWithCurrentPrompt(t *testing.T, app *App, tab *Workspa
 		SessionContextStatic: sessioncontext.Sections{Workspace: "Current workspace: " + strconv.Quote(workspaceRoot)},
 		Sink:                 event.Discard,
 	})
+	app.mu.Lock()
 	tab.Ctrl = ctrl
+	app.mu.Unlock()
 	app.bindControllerDisplayRecorder(ctrl)
 	return ctrl
 }

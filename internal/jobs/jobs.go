@@ -64,10 +64,6 @@ type View struct {
 	Label     string `json:"label"`
 	Status    string `json:"status"`
 	StartedAt int64  `json:"startedAt"` // unix milliseconds
-	// Tps is the sub-agent's latest sampled streaming rate in tokens/second
-	// (#9521 popover heartbeat). Zero means unknown — bash jobs and jobs that
-	// have not emitted a rate yet omit it on the wire (omitempty).
-	Tps int `json:"tps,omitempty"`
 }
 
 // Result is one job's terminal (or current) state returned by Wait.
@@ -143,6 +139,7 @@ type Job struct {
 
 	artifactPath     string
 	artifactMetaPath string
+	artifactStatus   Status // last metadata phase; may precede published terminal status
 	artifactFile     *os.File
 	artifactComplete bool
 	artifactErr      string
@@ -150,32 +147,18 @@ type Job struct {
 
 	evidence          evidence.ChildEvidenceSummary
 	evidenceCommitted bool
-
-	// rate holds the latest sampled streaming rate in tokens/second for task
-	// jobs (#9521 popover heartbeat). Written by the sub-agent progress tracker
-	// through Manager.SetJobRate while the job runs; atomic so the Jobs snapshot
-	// never takes the job lock for a value that is advisory-only in the UI.
-	rate atomic.Int64
-}
-
-// SetRate publishes the latest sampled tok/s for this job. Safe to call at
-// any time; calls after completion are harmless (the snapshot simply stops
-// being read by the UI once the job leaves the running surface).
-func (j *Job) SetRate(tps int) {
-	if tps > 0 {
-		j.rate.Store(int64(tps))
-	}
 }
 
 // Manager is the session's background-job table. It is safe for concurrent use.
 type Manager struct {
-	sink       event.Sink
-	root       context.Context
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
-	onJobStart func(done <-chan struct{})
-	ownerID    string
-	ownerDone  sync.Once
+	runtimeObservers runtimeObservers
+	sink             event.Sink
+	root             context.Context
+	cancel           context.CancelFunc
+	wg               sync.WaitGroup
+	onJobStart       func(done <-chan struct{})
+	ownerID          string
+	ownerDone        sync.Once
 	// sessionOwnershipProbe authorizes destructive repair of persisted running
 	// artifacts. A nil probe is conservative: an observer that cannot prove it
 	// owns the transcript must never publish an interrupted tombstone.
@@ -263,20 +246,6 @@ func WithTaskRecorder(r TaskRecorder) Option {
 func (m *Manager) SetTaskRecorder(r TaskRecorder) { m.taskRecorder = r }
 
 // TeardownGrace reports the manager's configured close/destroy wait window.
-// SetJobRate publishes the latest sampled streaming rate (tok/s) for a running
-// task job (#9521 popover heartbeat). Unknown/stale ids are ignored so a
-// tracker publishing just after its job left the table is a harmless no-op.
-func (m *Manager) SetJobRate(jobID string, tps int) {
-	m.mu.Lock()
-	// The jobs table is keyed by (session, id); the tracker only knows the
-	// bare job id, so resolve it through the id index.
-	j := m.findJobLocked("", jobID)
-	m.mu.Unlock()
-	if j != nil {
-		j.SetRate(tps)
-	}
-}
-
 func (m *Manager) TeardownGrace() time.Duration { return m.teardownGrace }
 
 // NewManager returns a Manager whose jobs run under a fresh session-scoped
@@ -436,164 +405,9 @@ func (m *Manager) startInvalid(parentSession, kind, label string, validationErr 
 	m.order = append(m.order, key)
 	m.mu.Unlock()
 	close(j.done)
-	m.recordCompletion(parentSession, id, kind, label, Failed, validationErr, "")
+	m.recordCompletion(j, Failed, validationErr)
+	m.notifyRuntime(parentSession, id)
 	return j
-}
-
-// StartForSession launches a job owned by parentSession. Session-scoped readers
-// only see jobs whose owner matches the active session.
-func (m *Manager) StartForSession(parentSession, kind, label string, run func(ctx context.Context, out io.Writer) (string, error)) *Job {
-	parentSession = strings.TrimSpace(parentSession)
-	kind = strings.TrimSpace(kind)
-	if err := validatePathSegment(parentSession, "parentSession"); err != nil {
-		return m.startInvalid(parentSession, kind, label, err)
-	}
-	if err := validatePathSegment(kind, "kind"); err != nil {
-		return m.startInvalid(parentSession, kind, label, err)
-	}
-	m.mu.Lock()
-	m.seq++
-	id := fmt.Sprintf("%s-%d", kind, m.seq)
-	ctx, cancel := context.WithCancel(m.root)
-	startedAt := nowMs()
-	logPath, metaPath, file, artifactErr := m.openArtifactLocked(parentSession, id)
-	j := &Job{
-		ID:               id,
-		Kind:             kind,
-		Label:            label,
-		SessionID:        parentSession,
-		status:           Running,
-		startedAt:        startedAt,
-		activityAt:       startedAt,
-		cancel:           cancel,
-		done:             make(chan struct{}),
-		artifactPath:     logPath,
-		artifactMetaPath: metaPath,
-		artifactFile:     file,
-		artifactComplete: artifactErr == "",
-		artifactErr:      artifactErr,
-	}
-	ctx = WithSession(ctx, parentSession)
-	ctx = context.WithValue(ctx, jobCtxKey{}, j)
-	key := jobKey(parentSession, id)
-	m.jobs[key] = j
-	m.order = append(m.order, key)
-	m.mu.Unlock()
-	j.mu.Lock()
-	if err := m.writeJobMetaLocked(j, Running); err != nil {
-		j.artifactComplete = false
-		j.artifactErr = err.Error()
-	}
-	j.mu.Unlock()
-	if m.onJobStart != nil {
-		m.onJobStart(j.done)
-	}
-
-	m.emitIfActive(parentSession, event.Event{Kind: event.Notice, Level: event.LevelInfo, Text: startedText(kind, id, label)})
-
-	if !nilutil.IsNil(m.taskRecorder) {
-		m.taskRecorder.RecordStart(id, kind, label)
-	}
-
-	m.wg.Add(1)
-	if m.stalledWarning > 0 {
-		m.wg.Add(1)
-		go m.monitorStalled(parentSession, j)
-	}
-	go func() {
-		defer m.wg.Done()
-		result, err := runRecovered(ctx, jobWriter{j}, run)
-		j.mu.Lock()
-		j.runReturned = true
-		j.mu.Unlock()
-
-		var st Status
-		switch {
-		case ctx.Err() != nil:
-			st = Killed
-		case err != nil:
-			st = Failed
-			if result == "" {
-				result = err.Error()
-			}
-		default:
-			st = Done
-		}
-		finishedAt := nowMs()
-		if result != "" {
-			j.mu.Lock()
-			if j.artifactFile != nil {
-				if _, writeErr := j.artifactFile.WriteString(result); writeErr != nil {
-					j.artifactErr = writeErr.Error()
-				}
-			} else {
-				j.result = result
-			}
-			j.tail = appendTail(j.tail, []byte(result), defaultTailBytes)
-			j.mu.Unlock()
-		}
-		targetDir := m.artifactTargetDirForJob(j)
-		j.mu.Lock()
-		if j.artifactFile != nil {
-			if closeErr := j.artifactFile.Close(); closeErr != nil && j.artifactErr == "" {
-				j.artifactErr = closeErr.Error()
-			}
-			j.artifactFile = nil
-		}
-		if j.artifactErr != "" {
-			j.artifactComplete = false
-		}
-		j.finishedAt = finishedAt
-		if targetDir != "" {
-			if moveErr := j.moveArtifactToDirLocked(targetDir); moveErr != nil {
-				j.noteArtifactErr("migration: " + moveErr.Error())
-			}
-		}
-		metaErr := m.writeJobMetaLocked(j, st)
-		if metaErr != nil {
-			j.noteArtifactErr("metadata: " + metaErr.Error())
-		}
-		j.mu.Unlock()
-		// Queue the drain note (and emit the closing Notice) BEFORE publishing the
-		// terminal status. Wait(nil)/resolve only block on Running jobs, so if the
-		// status flipped to terminal before the note was queued, a Wait could observe
-		// completion, skip j.done, and DrainCompletedNote would race ahead of the
-		// bookkeeping (the TestDrainMultiple -race flake). Recording first makes an
-		// observed terminal status imply the note is already queued.
-		m.recordCompletion(parentSession, id, kind, label, st, err, resultDigestOf(st, result))
-
-		j.mu.Lock()
-		if j.status != Killed { // a concurrent Kill already published Killed — keep it
-			j.status = st
-		}
-		if j.artifactPath != "" && j.artifactComplete {
-			j.result = ""
-			j.tail = nil
-		}
-		j.mu.Unlock()
-		close(j.done)
-	}()
-	return j
-}
-
-// resultDigestLimit caps the completion-note digest; runes keep the cut
-// UTF-8-safe for CJK output.
-const resultDigestLimit = 400
-
-// resultDigestOf extracts a short leading excerpt of a finished job's result
-// for the completion note. Only successful jobs carry a digest — failures
-// already surface their error text.
-func resultDigestOf(st Status, result string) string {
-	if st != Done || strings.TrimSpace(result) == "" {
-		return ""
-	}
-	trimmed := strings.TrimSpace(result)
-	runes := []rune(trimmed)
-	if len(runes) > resultDigestLimit {
-		trimmed = string(runes[:resultDigestLimit]) + "…"
-	}
-	// Collapse newlines so the note stays a single readable line.
-	return strings.ReplaceAll(trimmed, "\n", " ")
 }
 
 func runRecovered(ctx context.Context, out io.Writer, run func(context.Context, io.Writer) (string, error)) (result string, err error) {
@@ -654,6 +468,7 @@ func (m *Manager) artifactDirLocked(parentSession string) string {
 }
 
 func (m *Manager) writeJobMetaLocked(j *Job, st Status) error {
+	j.artifactStatus = st
 	if j.artifactMetaPath == "" {
 		return nil
 	}
@@ -828,27 +643,22 @@ func (m *Manager) monitorStalled(parentSession string, j *Job) {
 
 // recordCompletion queues the finished-job summary for DrainCompletedNote and
 // emits a closing Notice (warn for a failure, info otherwise).
-func (m *Manager) recordCompletion(parentSession, id, kind, label string, st Status, err error, resultDigest string) {
+func (m *Manager) recordCompletion(j *Job, st Status, err error) string {
+	id, kind, label := j.ID, j.Kind, j.Label
 	tag := id
 	if label != "" {
 		tag = fmt.Sprintf("%s (%s)", id, label)
 	}
-	parentSession = strings.TrimSpace(parentSession)
 	shouldEmit := false
 	m.mu.Lock()
+	parentSession := strings.TrimSpace(j.SessionID)
 	if parentSession != "" && m.destroying[parentSession] {
 		m.mu.Unlock()
-		return
-	}
-	// Phase 1b (#9522): a short result digest rides the completion note so the
-	// parent can continue without spending a turn on wait for every job.
-	text := fmt.Sprintf("%s — %s", tag, st)
-	if st == Done && resultDigest != "" {
-		text = fmt.Sprintf("%s — done — result begins: %s", tag, resultDigest)
+		return parentSession
 	}
 	m.completed = append(m.completed, completion{
 		sessionID: parentSession,
-		text:      text,
+		text:      fmt.Sprintf("%s — %s", tag, st),
 	})
 	active := m.active
 	shouldEmit = active == "" || parentSession == "" || active == parentSession
@@ -870,6 +680,7 @@ func (m *Manager) recordCompletion(parentSession, id, kind, label string, st Sta
 	if shouldEmit {
 		m.sink.Emit(event.Event{Kind: event.Notice, Code: event.NoticeCodeBackgroundJobFinished, Level: level, Text: text, Detail: detail})
 	}
+	return parentSession
 }
 
 func (m *Manager) recordStalled(parentSession, id, kind, label string) {
@@ -1014,20 +825,6 @@ func (j *Job) readArtifactAllLocked() string {
 		return ""
 	}
 	return string(b)
-}
-
-// StatusForSession returns the current status of id without consuming any
-// pending result — a side-effect-free probe for callers that only need the
-// lifecycle phase (task steering, #9522 Phase 2). ok is false when the id is
-// unknown.
-func (m *Manager) StatusForSession(parentSession, id string) (status Status, ok bool) {
-	j := m.get(parentSession, id)
-	if j == nil {
-		return "", false
-	}
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	return j.status, true
 }
 
 // Kill cancels a running job. Returns false when the id is unknown or the job has
@@ -1175,7 +972,7 @@ func (m *Manager) RunningForSession(parentSession string) []View {
 		// runtime idle early. The public view remains "running" while a stop is
 		// in flight; clients may render a local "stopping" state after they
 		// request cancellation.
-		out = append(out, View{ID: j.ID, Kind: j.Kind, Label: j.Label, Status: string(Running), StartedAt: j.startedAt, Tps: int(j.rate.Load())})
+		out = append(out, View{ID: j.ID, Kind: j.Kind, Label: j.Label, Status: string(Running), StartedAt: j.startedAt})
 		j.mu.Unlock()
 	}
 	return out
@@ -1312,6 +1109,7 @@ func validateTrustedSessionPath(sessionPath string) error {
 // the session sidecar. sessionPath must come from the trusted store/controller
 // path; this method does not establish filesystem containment on its own.
 func (m *Manager) SetActiveSessionPath(parentSession, sessionPath string) {
+	defer func() { m.notifyRuntime("", "") }()
 	parentSession = strings.TrimSpace(parentSession)
 	sessionPath = strings.TrimSpace(sessionPath)
 	// Preserve the legacy active-only behavior for calls without a complete
@@ -1353,25 +1151,32 @@ func (m *Manager) SetActiveSessionPath(parentSession, sessionPath string) {
 	loaded := m.loaded[parentSession]
 	m.mu.Unlock()
 
+	var migrationErr error
 	if oldDir != "" && newDir != "" && oldDir != newDir {
 		oldSession := parentSession
 		if adoptDefault {
 			oldSession = ""
 		}
-		if err := m.migrateArtifactDirForSession(oldSession, oldDir, newDir); err != nil {
-			if adoptDefault {
-				m.mu.Lock()
-				m.adoptUnscopedJobsLocked(parentSession)
-				m.mu.Unlock()
+		migrationErr = m.migrateArtifactDirForSession(oldSession, oldDir, newDir)
+	}
+	if adoptDefault {
+		m.mu.Lock()
+		adopted := m.adoptUnscopedJobsLocked(parentSession)
+		m.mu.Unlock()
+		for _, j := range adopted {
+			j.mu.Lock()
+			st := j.artifactStatus
+			if st == "" {
+				st = j.status
 			}
-			m.recordArtifactMigrationError(parentSession, err)
-		} else {
-			m.mu.Lock()
-			if adoptDefault {
-				m.adoptUnscopedJobsLocked(parentSession)
+			if err := m.writeJobMetaLocked(j, st); err != nil {
+				j.noteArtifactErr("ownership metadata: " + err.Error())
 			}
-			m.mu.Unlock()
+			j.mu.Unlock()
 		}
+	}
+	if migrationErr != nil {
+		m.recordArtifactMigrationError(parentSession, migrationErr)
 	}
 	if !loaded {
 		m.loadSessionArtifacts(parentSession, sessionPath, newDir)
@@ -1387,10 +1192,11 @@ func (m *Manager) hasUnscopedJobsLocked() bool {
 	return false
 }
 
-func (m *Manager) adoptUnscopedJobsLocked(parentSession string) {
+func (m *Manager) adoptUnscopedJobsLocked(parentSession string) []*Job {
+	var adopted []*Job
 	parentSession = strings.TrimSpace(parentSession)
 	if parentSession == "" {
-		return
+		return adopted
 	}
 	for i := range m.completed {
 		if strings.TrimSpace(m.completed[i].sessionID) == "" {
@@ -1410,7 +1216,12 @@ func (m *Manager) adoptUnscopedJobsLocked(parentSession string) {
 			continue
 		}
 		delete(m.jobs, oldKey)
+		// Manager readers and artifact writers use distinct locks. Ownership
+		// changes hold both, always in manager-before-job order.
+		j.mu.Lock()
 		j.SessionID = parentSession
+		j.mu.Unlock()
+		adopted = append(adopted, j)
 		m.jobs[newKey] = j
 		for i, key := range m.order {
 			if key == oldKey {
@@ -1418,6 +1229,7 @@ func (m *Manager) adoptUnscopedJobsLocked(parentSession string) {
 			}
 		}
 	}
+	return adopted
 }
 
 func (m *Manager) recordArtifactMigrationError(parentSession string, err error) {

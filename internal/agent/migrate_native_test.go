@@ -11,6 +11,7 @@ import (
 )
 
 func TestMigrateLegacySessionsRehomesNativeWALAheadOfCheckpoint(t *testing.T) {
+	useSchemaOneLog(t)
 	src := t.TempDir()
 	global := t.TempDir()
 	workspace := t.TempDir()

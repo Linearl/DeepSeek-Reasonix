@@ -28,7 +28,6 @@ const here = dirname(fileURLToPath(import.meta.url));
 const appSource = readFileSync(resolve(here, "../App.tsx"), "utf8");
 const recoveryHostSource = readFileSync(resolve(here, "../components/SessionRecoveryVersionsHost.tsx"), "utf8");
 const recoveryRuntimeSource = readFileSync(resolve(here, "../lib/sessionRecoveryRuntime.ts"), "utf8");
-const controllerSource = readFileSync(resolve(here, "../lib/useController.ts"), "utf8");
 const noticesSource = readFileSync(resolve(here, "../lib/controllerNotices.ts"), "utf8");
 
 console.log("\nquiet recovery notifications and confirmed divergence");
@@ -43,8 +42,8 @@ ok(!appSource.includes("OpenTabRecoveryParent"), "App does not expose recovery c
 ok(!appSource.includes("recovery.openOriginalFailed"), "App does not carry recovery compare failure text");
 
 ok(noticesSource.includes("function quietTranscriptNoticeKey"), "controller centralizes quiet transcript notices");
-ok(controllerSource.includes("if (quietTranscriptNoticeKey(rawText, code))"), "raw quiet notices are skipped before localization");
-ok(controllerSource.includes("if (quietTranscriptNoticeKey(text, code))"), "localized quiet notices are skipped before rendering");
+ok(noticesSource.includes("if (quietTranscriptNoticeKey(rawText, code))"), "raw quiet notices are skipped before localization");
+ok(noticesSource.includes("if (quietTranscriptNoticeKey(text, code))"), "localized quiet notices are skipped before rendering");
 
 const removedPromptKeys = [
   "recovery.open",

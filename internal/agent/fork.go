@@ -84,6 +84,13 @@ type forkCaptureProvider struct {
 	a     *Agent
 }
 
+func (p *forkCaptureProvider) ReasoningCapability() provider.ReasoningCapability {
+	if owner, ok := p.inner.(provider.ReasoningProvider); ok {
+		return owner.ReasoningCapability()
+	}
+	return provider.ReasoningOptions("")
+}
+
 func (p *forkCaptureProvider) Name() string { return p.inner.Name() }
 
 func (p *forkCaptureProvider) OutputBudget() int { return outputBudgetOf(p.inner) }

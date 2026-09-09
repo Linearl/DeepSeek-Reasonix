@@ -23,6 +23,11 @@ type RecoveryLineageMember struct {
 	Preview         string `json:"preview,omitempty"`
 	CreatedAt       int64  `json:"createdAt,omitempty"`
 	LastActivityAt  int64  `json:"lastActivityAt,omitempty"`
+	// Head fields are set when the version is a head inside one schema-2 log.
+	HeadID   string `json:"headId,omitempty"`
+	HeadKind string `json:"headKind,omitempty"`
+	HeadName string `json:"headName,omitempty"`
+	Selected bool   `json:"selected,omitempty"`
 }
 
 type RecoveryLineageView struct {
@@ -57,12 +62,17 @@ func (a *App) GetSessionVersionState(key ProjectTopicKey) SessionVersionStateVie
 		if member.Canonical {
 			out.ActivePath = member.Path
 			out.ActiveVersionID = agent.BranchID(member.Path)
+			if member.HeadID != "" {
+				out.ActiveVersionID = member.HeadID
+			}
 			break
 		}
 	}
 	if key.Path != "" {
 		out.ActivePath = key.Path
-		out.ActiveVersionID = agent.BranchID(key.Path)
+		if view.State != sessionHeadLineageState {
+			out.ActiveVersionID = agent.BranchID(key.Path)
+		}
 	}
 	out.RequiresChoice = view.State == "diverged" && view.Unresolved > 0
 	if out.ActivePath != "" {
@@ -104,6 +114,16 @@ func (a *App) ReconcileRecoveryVersions(key ProjectTopicKey) error {
 func (a *App) SetActiveSessionVersion(req RecoveryPreferenceRequest) error {
 	a.sessionVersionActivationMu.Lock()
 	defer a.sessionVersionActivationMu.Unlock()
+	if req.HeadID != "" {
+		if err := a.chooseSessionHead(req); err != nil {
+			return err
+		}
+		a.emitRuntimeEvent("session:active-version-changed", sessionRecoveryEvent{
+			ConversationID: req.TopicID, ActiveVersionID: req.HeadID, RecoveryVersionID: req.HeadID,
+			Scope: req.Scope, WorkspaceRoot: req.WorkspaceRoot, TopicID: req.TopicID, CanContinue: true,
+		})
+		return nil
+	}
 	meta, ok, err := agent.LoadBranchMeta(req.Path)
 	if err != nil || !ok {
 		return errors.New("session version is unavailable")
@@ -197,10 +217,12 @@ type RecoveryPreferenceRequest struct {
 	WorkspaceRoot string `json:"workspaceRoot,omitempty"`
 	TopicID       string `json:"topicId"`
 	Path          string `json:"path"`
+	HeadID        string `json:"headId,omitempty"` // a head of the schema-2 log at Path
 }
 
 type RecoveryCleanupItem struct {
 	Path   string `json:"path"`
+	HeadID string `json:"headId,omitempty"`
 	Status string `json:"status"`
 	Error  string `json:"error,omitempty"`
 }
@@ -214,6 +236,9 @@ type RecoveryCleanupResult struct {
 	Items    []RecoveryCleanupItem `json:"items"`
 }
 
+// GetRecoveryLineage lists a conversation's versions: the heads of its
+// schema-2 log, the schema-1 recovery copies of its lineage, or both for a
+// family whose root was upgraded after copies had been made.
 func (a *App) GetRecoveryLineage(key ProjectTopicKey) RecoveryLineageView {
 	out := RecoveryLineageView{Members: []RecoveryLineageMember{}}
 	if a.catalogRebuilding.Load() {
@@ -228,7 +253,19 @@ func (a *App) GetRecoveryLineage(key ProjectTopicKey) RecoveryLineageView {
 	if err != nil || !ok {
 		return out
 	}
-	groupID, directory, ok := recoveryLineageSelection(topic, key.Path)
+	out = a.fileRecoveryLineage(catalog, topic, key.Path)
+	if heads, ok := a.sessionHeadLineage(topic, key.Path); ok {
+		out = mergeHeadLineage(out, heads)
+	}
+	if key.RecordClassification {
+		recordRecoveryLineageClassification(key.Path, out)
+	}
+	return out
+}
+
+func (a *App) fileRecoveryLineage(catalog *sessioncatalog.Catalog, topic sessioncatalog.TopicRecord, selectedPath string) RecoveryLineageView {
+	out := RecoveryLineageView{Members: []RecoveryLineageMember{}}
+	groupID, directory, ok := recoveryLineageSelection(topic, selectedPath)
 	if !ok {
 		return out
 	}
@@ -301,9 +338,6 @@ func (a *App) GetRecoveryLineage(key ProjectTopicKey) RecoveryLineageView {
 	// recovery notifications without polling forever.
 	if recoveryLineageIsCovered(out) {
 		out.State = "covered"
-	}
-	if key.RecordClassification {
-		recordRecoveryLineageClassification(key.Path, out)
 	}
 	return out
 }
@@ -397,6 +431,9 @@ func recoveryLineageIsCovered(view RecoveryLineageView) bool {
 // ChooseRecoveryBranch changes only the default open target. Diverged content
 // remains on disk and is never made cleanup-eligible by this choice.
 func (a *App) ChooseRecoveryBranch(req RecoveryPreferenceRequest) error {
+	if req.HeadID != "" {
+		return a.chooseSessionHead(req)
+	}
 	catalog := a.sessionCatalog.Load()
 	if catalog == nil {
 		return errors.New("session catalog is unavailable")
@@ -437,12 +474,17 @@ func (a *App) ChooseRecoveryBranch(req RecoveryPreferenceRequest) error {
 	if chosen == "" {
 		return errors.New("selected branch is outside the recovery lineage")
 	}
-	defer a.lockRuntimeMutation("choose-recovery-branch")()
-	a.sessionRemovalMu.Lock()
-	defer a.sessionRemovalMu.Unlock()
-	if err := agent.SetRecoveryPreferred(paths, chosen); err != nil {
+	if err := func() error {
+		defer a.lockRuntimeMutation("choose-recovery-branch")()
+		a.sessionRemovalMu.Lock()
+		defer a.sessionRemovalMu.Unlock()
+		return agent.SetRecoveryPreferred(paths, chosen)
+	}(); err != nil {
 		return errors.New("could not save the recovery branch choice")
 	}
+	// The rescan reads session files and rewrites only the catalog projection,
+	// so it needs neither barrier; only the preference write above must stay
+	// atomic with respect to session removal.
 	if err := catalog.ReconcileDirectory(a.bootContext(), sessioncatalog.DirectoryTarget{Path: dir, Scope: req.Scope, WorkspaceRoot: req.WorkspaceRoot}); err != nil {
 		return errors.New("the branch choice was saved but the session catalog could not refresh")
 	}
@@ -462,15 +504,10 @@ func (a *App) CleanRecoveryLineage(req RecoveryCleanupRequest) RecoveryCleanupRe
 	if err != nil || !ok {
 		return result
 	}
-	canonical := ""
-	rootID := ""
-	for _, record := range topic.Sessions {
-		if record.RecoveryCanonical && (record.RecoveryRole == sessioncatalog.RecoveryRoleAdopted || record.RecoveryRole == sessioncatalog.RecoveryRolePreferred) {
-			canonical = record.Path
-			rootID = record.RecoveryGroupID
-			break
-		}
+	if heads, ok := a.cleanTopicHeads(req, topic); ok {
+		return heads
 	}
+	canonical, rootID := recoveryCleanupCanonical(topic)
 	if canonical == "" || rootID == "" {
 		return result
 	}
@@ -548,4 +585,13 @@ func (a *App) CleanRecoveryLineage(req RecoveryCleanupRequest) RecoveryCleanupRe
 		a.invalidatePromptHistoryCache()
 	}
 	return result
+}
+
+func recoveryCleanupCanonical(topic sessioncatalog.TopicRecord) (canonical, rootID string) {
+	for _, record := range topic.Sessions {
+		if record.RecoveryCanonical && (record.RecoveryRole == sessioncatalog.RecoveryRoleAdopted || record.RecoveryRole == sessioncatalog.RecoveryRolePreferred) {
+			return record.Path, record.RecoveryGroupID
+		}
+	}
+	return "", ""
 }

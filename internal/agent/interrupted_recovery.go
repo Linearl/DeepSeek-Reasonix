@@ -29,6 +29,10 @@ func (a *Agent) pendingInterruptedRecovery() *provider.InterruptedTurnRecovery {
 		m := v
 		if m.LocalOnly && m.InterruptedTurn != nil && m.InterruptedTurn.Pending {
 			copy := *m.InterruptedTurn
+			if copy.FailureDiagnostic != nil {
+				diagnostic := *copy.FailureDiagnostic
+				copy.FailureDiagnostic = &diagnostic
+			}
 			copy.WriteChecks = append([]provider.WriteRecoveryCheck(nil), copy.WriteChecks...)
 			copy.SatisfiedWrites = append([]provider.InterruptedToolSummary(nil), copy.SatisfiedWrites...)
 			copy.CompletedTools = append([]provider.InterruptedToolSummary(nil), copy.CompletedTools...)

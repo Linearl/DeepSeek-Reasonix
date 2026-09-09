@@ -2,7 +2,6 @@ package main
 
 import (
 	"log/slog"
-	"strings"
 	"time"
 
 	"reasonix/internal/config"
@@ -63,23 +62,14 @@ func (a *App) remoteProxyModelCatalog(curModel string) []ModelInfo {
 	if err != nil {
 		return []ModelInfo{}
 	}
-	current, ok := cfg.ResolveModel(curModel)
-	if !ok {
-		return []ModelInfo{}
+	canonical := curModel
+	if current, ok := cfg.ResolveModel(curModel); ok {
+		canonical = current.Name + "/" + current.Model
 	}
-	kind := strings.TrimSpace(current.Kind)
-	if kind == "" {
-		kind = "openai"
-	}
-	canonical := current.Name + "/" + current.Model
 	out := []ModelInfo{}
 	for i := range cfg.Providers {
 		entry := &cfg.Providers[i]
-		entryKind := strings.TrimSpace(entry.Kind)
-		if entryKind == "" {
-			entryKind = "openai"
-		}
-		if !strings.EqualFold(entryKind, kind) || !modelProviderAccessAllowed(cfg.Desktop.ProviderAccess, entry.Name) || !entry.Configured() {
+		if !modelProviderAccessAllowed(cfg.Desktop.ProviderAccess, entry.Name) || !entry.Configured() {
 			continue
 		}
 		for _, model := range entry.ChatModelList() {
@@ -123,6 +113,7 @@ func (a *App) desktopModelCatalog(curModel, workspaceRoot string, ctrl control.S
 func configuredModelInfo(cfg *config.Config, name, model string, current bool) ModelInfo {
 	info := ModelInfo{Ref: name + "/" + model, Provider: name, Model: model, Current: current}
 	if entry, ok := cfg.ResolveModel(info.Ref); ok {
+		info.DisplayName = entry.DisplayName
 		info.ContextWindow = entry.ContextWindow
 		capability := config.NewModelCapabilityResolver().Resolve(entry)
 		info.Vision = string(capability.State) == "supported"

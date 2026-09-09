@@ -87,6 +87,8 @@ export interface ProjectGroupsSnapshot {
 }
 
 export interface SessionCatalogBindings {
+  GetRuntimeStateSnapshot?(): Promise<import("./runtimeStateStore").RuntimeProjection>;
+  SyncRuntimeState?(): Promise<import("./runtimeStateStore").RuntimeProjection>;
   GetProjectTreeSnapshot(): Promise<ProjectTreeSnapshot>;
   GetProjectTreeRuntimeSnapshot?(): Promise<ProjectTreeRuntimeSnapshot>;
   ListProjectTopics(req: ProjectTopicPageRequest): Promise<ProjectTopicPage>;

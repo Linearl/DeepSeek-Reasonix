@@ -1,6 +1,7 @@
 import { JSDOM } from "jsdom";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
+import type { AppBindings } from "../lib/bridge";
 import type { RecoveryLineageView } from "../lib/types";
 
 const dom = new JSDOM("<!doctype html><html><body><div id=\"root\"></div></body></html>", { pretendToBeVisual: true, url: "http://localhost/" });
@@ -19,6 +20,8 @@ globalThis.localStorage = dom.window.localStorage;
 
 const { RecoveryLineageDialog } = await import("../components/RecoveryLineageDialog");
 const { LocaleProvider } = await import("../lib/i18n");
+const { ToastProvider } = await import("../lib/toast");
+const { setFrontendDiagnosticSink } = await import("../lib/frontendDiagnosticBridge");
 
 const initial: RecoveryLineageView = {
   groupId: "group",
@@ -62,5 +65,63 @@ await act(async () => { openButtons[1].click(); });
 if (opened !== "/private/fork.jsonl") throw new Error("open action was not bound to the selected version");
 
 await act(async () => root.unmount());
-dom.window.close();
 console.log("  PASS  session version dialog hides persistence details");
+
+// A rejected backend call must end as a toast, never as an unhandledrejection
+// (which the global handler would otherwise paint as a full-screen crash).
+const rejections: unknown[] = [];
+const onProcessRejection = (reason: unknown) => { rejections.push(reason); };
+process.on("unhandledRejection", onProcessRejection);
+const diagnostics: string[] = [];
+setFrontendDiagnosticSink((_source, type) => { diagnostics.push(type); });
+window.go = {
+  main: {
+    App: {
+      ChooseRecoveryBranch: () => Promise.reject("selected branch is outside the recovery lineage"),
+      GetRecoveryLineage: async () => initial,
+    } as Partial<AppBindings> as AppBindings,
+  },
+};
+
+let closed = false;
+const failing = createRoot(document.getElementById("root")!);
+await act(async () => {
+  failing.render(
+    <LocaleProvider>
+      <ToastProvider>
+        <RecoveryLineageDialog
+          topic={{ scope: "global", topicId: "topic" }}
+          initial={initial}
+          onClose={() => { closed = true; }}
+          onChanged={() => {}}
+          onOpenVersion={() => Promise.reject(new Error("resume failed"))}
+        />
+      </ToastProvider>
+    </LocaleProvider>,
+  );
+});
+const findButton = (label: string) => Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.trim() === label);
+const errorToasts = () => Array.from(document.querySelectorAll(".toast--error .toast__text")).map((node) => node.textContent);
+
+await act(async () => { findButton("Set as default version")!.click(); });
+await act(async () => { await Promise.resolve(); });
+if (!errorToasts().includes("Could not set the default version: selected branch is outside the recovery lineage")) {
+  throw new Error(`rejected default-version choice did not toast: ${JSON.stringify(errorToasts())}`);
+}
+if (!diagnostics.includes("session.recovery-choose-failed")) throw new Error("rejected default-version choice did not record a diagnostic");
+if (findButton("Set as default version")?.disabled) throw new Error("dialog stayed busy after the rejected choice");
+
+await act(async () => { findButton("Open this version")!.click(); });
+await act(async () => { await Promise.resolve(); });
+if (!errorToasts().includes("Could not open this version: resume failed")) {
+  throw new Error(`rejected open-version did not toast: ${JSON.stringify(errorToasts())}`);
+}
+if (closed) throw new Error("dialog closed although opening the version failed");
+
+await act(async () => failing.unmount());
+await new Promise((resolve) => setTimeout(resolve, 0));
+process.off("unhandledRejection", onProcessRejection);
+if (rejections.length > 0) throw new Error(`recovery dialog leaked unhandled rejections: ${JSON.stringify(rejections)}`);
+console.log("  PASS  session version dialog contains rejected backend calls as toasts");
+
+dom.window.close();

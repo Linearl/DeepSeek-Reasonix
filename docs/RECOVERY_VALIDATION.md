@@ -4,6 +4,14 @@ Implementation date / 实施日期: 2026-09-05.
 
 ## Reference scope / 参考范围
 
+This document covers provider-protocol recovery: retries and stream
+resumption. Transcript persistence, session versions, and concurrent writers
+are described in [`SESSION_RECOVERY_AND_PARALLELISM.md`](SESSION_RECOVERY_AND_PARALLELISM.md)
+and [`SESSION_OWNERSHIP.md`](SESSION_OWNERSHIP.md).
+
+本文只覆盖 provider 协议层的恢复（重试与断流续传）。会话持久化、会话版本与
+并发写者见上述两份文档。
+
 Pi is pinned to `9841914c71a74d81abe07f751aefd271fd924e63`. The executable
 comparison uses its `packages/ai/src/utils/retry.ts` `retryAssistantCall`
 helper, with an injected zero delay. It is not an end-to-end comparison of the

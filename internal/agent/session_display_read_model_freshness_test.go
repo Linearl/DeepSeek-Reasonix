@@ -11,6 +11,7 @@ import (
 )
 
 func TestAppendSessionDisplayReadModelRejectsEqualMTime(t *testing.T) {
+	useSchemaOneLog(t)
 	path := filepath.Join(t.TempDir(), "equal-mtime.jsonl")
 	base := []provider.Message{
 		{Role: provider.RoleUser, Content: "question"},

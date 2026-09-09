@@ -10,6 +10,12 @@ import (
 	"reasonix/internal/provider"
 )
 
+// defaultRecoveryWaitBudget bounds continuous waiting on an unreachable
+// provider (#9889): mainstream agents stop after ~10 attempts or ~10 minutes.
+const defaultRecoveryWaitBudget = 10 * time.Minute
+
+var recoveryWaitBudget = defaultRecoveryWaitBudget
+
 type samplingRecoveryState struct {
 	frozen                             samplingRequest
 	context                            contextRecoveryBudget
@@ -77,6 +83,7 @@ func (a *Agent) streamWithSamplingRecovery(parent context.Context, turn int) (te
 		id := newStreamAttemptID(attempt)
 		a.emitStreamAttempt(id, event.StreamAttemptBegin, attempt, "", nil)
 		sink, attemptSink := a.samplingAttemptSinks()
+		a.freezeVisibleReads(state.frozen.req.Messages)
 		result := a.runSamplingAttempt(ctx, turn, attemptSink, &state.frozen, id)
 		state.billable, _ = a.recordSamplingAttempt(state.billable, result)
 		if ctx.Err() != nil {
@@ -94,7 +101,7 @@ func (a *Agent) streamWithSamplingRecovery(parent context.Context, turn int) (te
 		if attempt < maxSamplingAttempts && a.trySamplingRepair(ctx, &state, result, sink, attempt, id) {
 			continue
 		}
-		if a.waitSamplingRetry(ctx, &state, result, sink, attempt, id) {
+		if a.waitSamplingRetry(ctx, &state, &result, sink, attempt, id) {
 			continue
 		}
 		sink.Flush()
@@ -206,7 +213,7 @@ func (a *Agent) canWaitSampling(ctx context.Context, s *samplingRecoveryState, f
 	return f.Retryable && (f.Phase == "connect" || (f.Phase == "headers" && (f.Status == 408 || f.Status == 429 || f.Status >= 500)))
 }
 
-func (a *Agent) waitSamplingRetry(ctx context.Context, s *samplingRecoveryState, result streamedTurn, sink *deferredStreamSink, attempt int, id string) bool {
+func (a *Agent) waitSamplingRetry(ctx context.Context, s *samplingRecoveryState, result *streamedTurn, sink *deferredStreamSink, attempt int, id string) bool {
 	failure := provider.ClassifyRecovery(result.err)
 	waiting := attempt >= maxSamplingAttempts && a.canWaitSampling(ctx, s, failure)
 	if !failure.Retryable || (attempt >= maxSamplingAttempts && !waiting) {
@@ -218,13 +225,21 @@ func (a *Agent) waitSamplingRetry(ctx context.Context, s *samplingRecoveryState,
 		delay = time.Minute + time.Duration(rand.Intn(6001))*time.Millisecond
 	}
 	delay = max(delay, failure.RetryAfter)
+	if waiting && s.waited+delay > recoveryWaitBudget {
+		result.err = &provider.RecoveryWaitExhaustedError{Phase: failure.Phase, Code: failure.Code, Status: failure.Status, Waited: s.waited, Attempts: attempt, Cause: result.err}
+		return false
+	}
 	sink.Discard()
 	reason := failure.Phase
 	if provider.IsStreamInterrupted(result.err) {
 		reason = provider.StreamInterruptReason(result.err)
 	}
 	a.emitStreamAttempt(id, event.StreamAttemptDiscard, attempt, reason, result.err)
-	a.svc.sink.Emit(event.Event{Kind: event.Retrying, RetryAttempt: attempt, RetryMax: maxStreamRecoveries, RetryScope: event.RetryScopeStream, Recovery: &event.RecoveryStatus{Phase: failure.Phase, Reason: failure.Code, NextAttemptAt: time.Now().Add(delay).UnixMilli(), WaitedMs: s.waited.Milliseconds(), Waiting: waiting}})
+	status := &event.RecoveryStatus{Phase: failure.Phase, Reason: failure.Code, NextAttemptAt: time.Now().Add(delay).UnixMilli(), WaitedMs: s.waited.Milliseconds(), Waiting: waiting}
+	if waiting {
+		status.WaitBudgetMs = recoveryWaitBudget.Milliseconds()
+	}
+	a.svc.sink.Emit(event.Event{Kind: event.Retrying, RetryAttempt: attempt, RetryMax: maxStreamRecoveries, RetryScope: event.RetryScopeStream, Recovery: status})
 	s.waited += delay
 	if !waiting && failure.RetryAfter <= base {
 		return streamRetrySleep(ctx, attempt)

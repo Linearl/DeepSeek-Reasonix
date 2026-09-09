@@ -34,7 +34,7 @@ func TestLiveSessionContextFirstTurnMatrix(t *testing.T) {
 		t.Skip("set REASONIX_LIVE_SESSION_CONTEXT_MATRIX=1 to run the paid live matrix")
 	}
 	providers := []liveSessionContextProvider{
-		{name: "deepseek", keyEnv: "DEEPSEEK_API_KEY", kind: "anthropic", baseURL: "https://api.deepseek.com/anthropic", model: "deepseek-v4-flash", extra: map[string]any{"thinking": "disabled", "effort": "high"}},
+		{name: "deepseek", keyEnv: "DEEPSEEK_API_KEY", kind: "anthropic", baseURL: "https://api.deepseek.com/anthropic", model: "deepseek-v4-flash", extra: map[string]any{"thinking": "disabled", "effort": "disabled"}},
 		{name: "longcat", keyEnv: "LONGCAT_API_KEY", kind: "openai", baseURL: "https://api.longcat.chat/openai/v1", model: "LongCat-2.0", extra: map[string]any{"thinking": "disabled"}},
 		{name: "zhipu-coding", keyEnv: "ZHIPU_CODING_API_KEY", kind: "openai", baseURL: "https://api.z.ai/api/coding/paas/v4", model: "glm-5.1", extra: map[string]any{"thinking": "disabled"}},
 		{name: "opencode-go", keyEnv: "OPENCODE_GO_API_KEY", kind: "openai", baseURL: "https://opencode.ai/zen/go/v1", model: "glm-5.3", extra: map[string]any{"reasoning_protocol": "openai", "effort": "low"}},

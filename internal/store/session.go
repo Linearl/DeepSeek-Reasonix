@@ -106,6 +106,16 @@ func SessionEventLogDamaged(sessionPath string) string {
 	return SessionEventLog(sessionPath) + ".damaged"
 }
 
+// SessionEventLogRotating marks a schema-2 log whose rotation is between
+// reading the old file and publishing the new one; unlocked appenders wait
+// for it to clear before trusting that their bytes reached the current log.
+func SessionEventLogRotating(sessionPath string) string {
+	if sessionPath == "" {
+		return ""
+	}
+	return SessionEventLog(sessionPath) + ".rotating"
+}
+
 // SessionTurnEventLog is the append-only local runtime lifecycle ledger
 // (<id>.turns.jsonl). It is independent from the provider transcript so old
 // readers can continue to consume the primary session unchanged.
@@ -235,6 +245,7 @@ func SessionSidecarFiles(sessionPath string) []string {
 		SessionGoalState(sessionPath),
 		SessionEventLog(sessionPath),
 		SessionEventLogDamaged(sessionPath),
+		SessionEventLogRotating(sessionPath),
 		SessionTurnEventLog(sessionPath),
 		SessionTurnEventLogDamaged(sessionPath),
 		SessionEventIndex(sessionPath),

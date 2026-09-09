@@ -201,7 +201,7 @@ func repairSessionListingFromReplay(ctx context.Context, path string, meta Branc
 	if err := writeSessionMessagesContext(ctx, path, msgs); err != nil {
 		return SessionListingRepairResult{}, fmt.Errorf("write session display read model: %w", err)
 	}
-	if err := writeSessionEventIndexContext(ctx, path, msgs, state.Digest, meta.Revision); err != nil {
+	if err := refreshSessionEventIndexContext(ctx, path, msgs, state.Digest, meta.Revision); err != nil {
 		return SessionListingRepairResult{}, err
 	}
 	idx, err := BuildSessionDisplayIndexContext(ctx, msgs, meta.Revision, true, state.Digest)

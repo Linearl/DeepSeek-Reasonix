@@ -4,9 +4,10 @@ import type { ProviderModelOverrideView } from "./types";
 export type ModelDraft = { model: string; context: string; output: string; vision: "auto" | "yes" | "no" };
 
 /** Validate explicit overrides without turning an inherited value into a guessed limit. */
-export function modelDraftError(draft: ModelDraft, existing: string[], original?: string): "required" | "duplicate" | "context" | "output" | null {
+export function modelDraftError(draft: ModelDraft, existing: string[], original?: string): "required" | "duplicate" | "syntax" | "context" | "output" | null {
   const model = draft.model.trim();
   if (!model) return "required";
+  if (/[\s,，]/.test(model)) return "syntax";
   if (existing.some((name) => name !== original && name === model)) return "duplicate";
   const valid = (value: string, allowOmit = false) => !value.trim() || (Number.isSafeInteger(Number(value)) && (Number(value) > 0 || (allowOmit && Number(value) === -1)));
   if (!valid(draft.context)) return "context";

@@ -25,6 +25,16 @@ func (a *Agent) emitIncompleteReadNotice(code, text, detail string) {
 // resolveIncompleteReadToolRoundBoundary runs after every tool result is stored,
 // commits validated receipts, and counts at most one violation per model round.
 func (a *Agent) resolveIncompleteReadToolRoundBoundary(ctx context.Context, state *turnRuntime, usage *provider.Usage) (cont bool, err error, handled bool) {
+	if a.readPipelineActive() {
+		instruction, err := a.readContinuation(false)
+		if instruction != "" {
+			a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(instruction)))
+		}
+		if ctx.Err() != nil {
+			return false, ctx.Err(), true
+		}
+		return instruction != "", err, instruction != "" || err != nil
+	}
 	round := state.incompleteReads.finishToolRound()
 	for _, observed := range round.record {
 		a.recordModelTextObservationValue(observed)
@@ -42,7 +52,7 @@ func (a *Agent) resolveIncompleteReadToolRoundBoundary(ctx context.Context, stat
 		a.emitIncompleteReadNotice(event.NoticeCodeReadContinuationRequired, i18n.M.ReadContinuationRequired, "read continuation instruction appended")
 	}
 	if ctx.Err() != nil {
-		a.recordInterruptedDisplay("", "", nil, true, state.workDurationMs())
+		a.recordInterruptedDisplay("", "", nil, true, ctx.Err(), state.workDurationMs())
 		return false, ctx.Err(), true
 	}
 	if instruction == "" {
@@ -69,7 +79,40 @@ func (a *Agent) boundIncompleteReadAwareResult(plan *toolCallPlan, result string
 			_, readObserver = plan.execTool.(tool.ModelTextObserver)
 		}
 	}
-	body, truncMsg, original = a.boundProviderVisibleResult(result, plan.call.Name, plan.call.ID)
+	_, structuredReader := plan.execTool.(tool.ReadEnvelopeProvider)
+	if a.readPipelineActive() && structuredReader {
+		// Structured readers are deduplicated only in the ordered finalizer,
+		// against original text present in the frozen model request.
+		body, truncMsg = truncateToolOutputFor(result, plan.call.Name, plan.call.ID)
+		if body != result {
+			original = result
+		}
+	} else {
+		body, truncMsg, original = a.boundProviderVisibleResult(result, plan.call.Name, plan.call.ID)
+	}
+	readArgs, _ := parseReadFileArgs(plan.execArgs)
+	if a.readPipelineActive() && plan.evidenceName == "read_file" && (plan.readTaskID != "" || readArgs.fullRead()) {
+		budget := a.readAutoRecoveryBudgetFor()
+		if budget.known && a.estimatedReadResultTokens(body) > budget.maxTokens {
+			lo, hi := 0, len(body)
+			for lo < hi {
+				mid := lo + (hi-lo+1)/2
+				if a.estimatedReadResultTokens(body[:mid]) <= budget.maxTokens {
+					lo = mid
+				} else {
+					hi = mid - 1
+				}
+			}
+			end := strings.LastIndexByte(body[:lo], '\n')
+			if end < 0 {
+				body = ""
+			} else {
+				body = body[:end+1]
+			}
+			original = result
+			truncMsg = ""
+		}
+	}
 	return body, truncMsg, original, readObserver
 }
 
@@ -92,7 +135,17 @@ func readStrategyPreview(raw, readID string, totalTokens, limitTokens int) strin
 
 // finalizeIncompleteReadOutcome is called by executeBatch.finalize in provider
 // order, never from parallel execution goroutines.
-func (a *Agent) finalizeIncompleteReadOutcome(deferred *incompleteReadDeferred, out *toolOutcome) {
+func (a *Agent) finalizeIncompleteReadOutcome(ctx context.Context, deferred *incompleteReadDeferred, out *toolOutcome) {
+	if a.readPipelineActive() {
+		if deferred != nil && deferred.plan != nil && out != nil && deferred.plan.evidenceName == "read_file" {
+			// Parallel readers are clipped again in the ordered finalizer, after
+			// earlier deliveries consume their share of the common context.
+			body, _, original, _ := a.boundIncompleteReadAwareResult(deferred.plan, deferred.rawOutput)
+			out.output, out.rawOutput = body, original
+			out.truncated, out.truncMsg = original != "", ""
+		}
+		return
+	}
 	if a == nil || deferred == nil || deferred.plan == nil || out == nil {
 		return
 	}
@@ -101,6 +154,14 @@ func (a *Agent) finalizeIncompleteReadOutcome(deferred *incompleteReadDeferred, 
 	switch plan.evidenceName {
 	case "read_file":
 		observed, ok := modelTextObservationFor(plan, deferred.rawOutput)
+		if ok && observed.Snapshot == "" {
+			// The legacy owner stamps the same source version the pipeline owner
+			// does, so the evidence gate never reads its windows as unversioned
+			// and blocks every later write to the file.
+			if env, valid := a.finalizedReadEnvelope(ctx, plan.call, *out); valid {
+				observed.Snapshot = env.Source.Snapshot
+			}
+		}
 		transition = a.turn.incompleteReads.observeReadFile(plan, deferred.rawOutput, out.output, observed, ok, a.estimatedReadResultTokens(deferred.rawOutput), a.readAutoRecoveryBudgetFor())
 	case "session_tool_result":
 		transition = a.turn.incompleteReads.observeResultPage(plan, deferred.rawOutput, a.retainedReadPageMatches(plan, deferred.rawOutput))

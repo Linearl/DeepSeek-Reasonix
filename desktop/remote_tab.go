@@ -70,28 +70,10 @@ func (a *App) attachRemoteTabServe(ctx context.Context, tabID, base, token, inst
 		}
 	}
 
-	a.remoteTabMu.Lock()
-	if a.remoteTabs[tabID] != tab {
-		a.remoteTabMu.Unlock()
-		return false, fmt.Errorf("remote tab %q closed during bootstrap", tabID)
+	pumpCtx, gen, attachPathRevision, err := a.installRemoteTabAttachPump(ctx, tabID, tab, client, base, token, target.Path, !opts.NewSession)
+	if err != nil {
+		return false, err
 	}
-	// Retire any pump installed by a concurrent reconnect so exactly one
-	// generation owns the event stream.
-	tab.gen++
-	if tab.cancel != nil {
-		tab.cancel()
-	}
-	tab.client = client
-	tab.base = base
-	tab.token = token
-	if !opts.NewSession {
-		commitRemoteTabAttachRoute(tab, target.Path, false)
-	}
-	attachPathRevision := tab.routing.pathRevision
-	gen := tab.gen
-	pumpCtx, cancelPump := context.WithCancel(ctx)
-	tab.cancel = cancelPump
-	a.remoteTabMu.Unlock()
 
 	opened := make(chan error, 1)
 	a.goRemoteTabSafe("remoteTabPump", func() { a.remoteTabPump(pumpCtx, tabID, gen, opened) })
@@ -312,10 +294,14 @@ func (a *App) markRemoteTabAttached(tabID string, gen uint64) bool {
 }
 
 func (a *App) publishRemoteTabAttachedReady(tabID string, gen uint64) bool {
+	tab := a.lockRemoteTabPublication(tabID)
+	if tab == nil {
+		return false
+	}
 	a.remoteTabMu.Lock()
-	tab := a.remoteTabs[tabID]
-	if tab == nil || tab.gen != gen || tab.attachedGen != gen || tab.state != "connecting" {
+	if a.remoteTabs[tabID] != tab || tab.gen != gen || tab.attachedGen != gen || tab.state != "connecting" {
 		a.remoteTabMu.Unlock()
+		tab.routeEventMu.Unlock()
 		return false
 	}
 	tab.attachedGen = 0
@@ -323,6 +309,7 @@ func (a *App) publishRemoteTabAttachedReady(tabID string, gen uint64) bool {
 	tab.err = ""
 	a.remoteTabMu.Unlock()
 	a.emitRemoteEvent(fmt.Sprintf("remote-tab:%s:state", tabID), RemoteTabStateView{State: "ready"})
+	tab.routeEventMu.Unlock()
 	a.applyPendingRemoteTabOpenSelection(tabID)
 	return true
 }
@@ -332,83 +319,6 @@ func (a *App) remoteTabGenerationCurrent(tabID string, gen uint64) bool {
 	defer a.remoteTabMu.Unlock()
 	tab := a.remoteTabs[tabID]
 	return tab != nil && tab.gen == gen
-}
-
-func (a *App) retireRemoteTabGeneration(tabID string, gen uint64) {
-	a.remoteTabMu.Lock()
-	tab := a.remoteTabs[tabID]
-	if tab == nil || tab.gen != gen {
-		a.remoteTabMu.Unlock()
-		return
-	}
-	cancel := tab.cancel
-	tab.gen++
-	tab.attachedGen = 0
-	tab.cancel = nil
-	tab.client = nil
-	tab.base = ""
-	tab.token = ""
-	a.remoteTabMu.Unlock()
-	if cancel != nil {
-		cancel()
-	}
-}
-
-// reconnectRemoteTabGeneration retires a dead pump and atomically parks its
-// tab in reconnecting. The bool reports whether this pump should start the
-// retry loop; a pump opened by an existing retry loop leaves retries to its
-// caller so two loops cannot race each other.
-func (a *App) reconnectRemoteTabGeneration(tabID string, gen uint64) bool {
-	a.remoteTabMu.Lock()
-	tab := a.remoteTabs[tabID]
-	if tab == nil || tab.gen != gen {
-		a.remoteTabMu.Unlock()
-		return false
-	}
-	startRetry := tab.state != "reconnecting"
-	cancel := tab.cancel
-	tab.gen++
-	tab.attachedGen = 0
-	tab.cancel = nil
-	tab.client = nil
-	tab.base = ""
-	tab.token = ""
-	tab.state = "reconnecting"
-	tab.err = ""
-	a.remoteTabMu.Unlock()
-	if cancel != nil {
-		cancel()
-	}
-	a.emitRemoteEvent(fmt.Sprintf("remote-tab:%s:state", tabID), RemoteTabStateView{State: "reconnecting"})
-	return startRetry
-}
-
-func (a *App) emitRemoteTabStateForGeneration(tabID string, gen uint64, state, errMsg string) bool {
-	a.remoteTabMu.Lock()
-	tab := a.remoteTabs[tabID]
-	if tab == nil || tab.gen != gen {
-		a.remoteTabMu.Unlock()
-		return false
-	}
-	tab.state = state
-	tab.err = errMsg
-	a.remoteTabMu.Unlock()
-	a.emitRemoteEvent(fmt.Sprintf("remote-tab:%s:state", tabID), RemoteTabStateView{State: state, Error: errMsg})
-	return true
-}
-
-func (a *App) transitionRemoteTabState(tabID string, gen uint64, from, state, errMsg string) bool {
-	a.remoteTabMu.Lock()
-	tab := a.remoteTabs[tabID]
-	if tab == nil || tab.gen != gen || tab.state != from {
-		a.remoteTabMu.Unlock()
-		return false
-	}
-	tab.state = state
-	tab.err = errMsg
-	a.remoteTabMu.Unlock()
-	a.emitRemoteEvent(fmt.Sprintf("remote-tab:%s:state", tabID), RemoteTabStateView{State: state, Error: errMsg})
-	return true
 }
 
 // remoteTabPump forwards Serve events for one tab generation. Cancellation,
@@ -480,6 +390,10 @@ func (a *App) remoteTabPump(ctx context.Context, tabID string, gen uint64, opene
 			return
 		}
 		kind, framePath, current, reset := probeRemoteTabFrame(frame)
+		if kind == "runtime_state" {
+			a.acceptRemoteRuntimeFrame(tabID, gen, framePath, json.RawMessage(frame))
+			continue
+		}
 		// A takeover notice for the session this tab is viewing flips the
 		// spectator pin live: the entry-time probe only runs when the tab
 		// enters a session, so a mid-view takeover (or its reversal) would
@@ -781,6 +695,10 @@ func remoteSessionTakenOver(err error) bool {
 }
 
 func (a *App) SubmitRemoteTab(tabID, text string) error {
+	revision, err := a.ensureRemoteModelSettings(tabID)
+	if err != nil {
+		return err
+	}
 	client, base, expectedPath, err := a.remoteTabCommandTarget(tabID)
 	if err != nil {
 		return err
@@ -788,7 +706,7 @@ func (a *App) SubmitRemoteTab(tabID, text string) error {
 	ctx, cancel := commandContext(a)
 	defer cancel()
 	body, _ := json.Marshal(map[string]string{"input": text})
-	return servePostForSession(ctx, client, serveURL(base, "/submit"), body, expectedPath)
+	return servePostForSession(ctx, client, serveURL(base, "/submit"), body, expectedPath, revision)
 }
 
 func (a *App) CancelRemoteTab(tabID string) error {

@@ -35,6 +35,10 @@ func ClassifyRecovery(err error) RecoveryFailure {
 	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return f
 	}
+	if exhausted := AsRecoveryWaitExhausted(err); exhausted != nil {
+		f.Phase, f.Status, f.Code = exhausted.Phase, exhausted.Status, exhausted.Code
+		return f
+	}
 	if q := AsQuotaError(err); q != nil {
 		f.Phase, f.Status, f.Code = "quota", q.Status, q.Code
 		return f

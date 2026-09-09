@@ -3,6 +3,14 @@ import { useI18n, type DictKey } from "./i18n";
 
 // Loaded with model settings, keeping setup-only copy out of the chat startup bundle.
 const en = {
+  "providerUI.modelHelpLabel": "About {name}",
+  "providerUI.defaultModelHelp": "Used for new conversations. Existing conversations keep their saved model; change it in the conversation when needed.",
+  "providerUI.plannerModelHelp": "Follow conversation model: use the same model for planning and execution.\n\nChoose another model to handle planning separately; execution continues with the conversation model.",
+  "providerUI.visionModelHelp": "Provides image understanding when the conversation model cannot read images directly.\n\nAuto selects an image-capable model from the same connection. Select a model to use a specific connection, or None to disable this fallback. Native image support is unchanged.",
+  "providerUI.searchModelHelp": "Automatic: prefer the conversation account, otherwise choose an available account with search enabled.\n\nAssigned model: send queries through that connection and attribute search usage to it; do not switch accounts on failure.\n\nApplies when the runtime is recreated. Running tasks keep their existing configuration.",
+  "providerUI.subagentModelHelp": "Follow parent agent model: use the parent model when the task starts.\n\nSelect a model to set the default for subagent tasks. An explicit task or skill model takes precedence; the parent model stays unchanged.",
+  "providerUI.subagentEffortHelp": "Controls the default reasoning effort for subagent tasks. Auto uses the provider default; an explicit task setting takes precedence.\n\nHigher effort may increase latency and usage. Available levels depend on the selected model.",
+
   "providerUI.providers": "Providers",
   "providerUI.builtin": "Built-in providers",
   "providerUI.custom": "Custom providers",
@@ -12,6 +20,7 @@ const en = {
   "providerUI.manualAdd": "Add manually",
   "providerUI.addModel": "Add model",
   "providerUI.editModel": "Edit model",
+  "providerUI.deleteModel": "Delete model",
   "providerUI.modelID": "Model ID",
   "providerUI.context": "Context window",
   "providerUI.output": "Maximum output tokens",
@@ -32,6 +41,7 @@ const en = {
   "providerUI.selected": "{n} new models selected",
   "providerUI.addSelected": "Add selected models",
   "providerUI.validation.required": "Model ID is required.",
+  "providerUI.validation.syntax": "Model ID cannot contain spaces or commas.",
   "providerUI.validation.duplicate": "This model ID is already added.",
   "providerUI.validation.context": "Context must be a positive integer or empty.",
   "providerUI.validation.output": "Output limit must be a positive integer, -1, or empty.",
@@ -47,6 +57,14 @@ const en = {
   "providerUI.draftHint": "Changes stay in this form until you save.",
 };
 const zh: Record<keyof typeof en, string> = {
+  "providerUI.modelHelpLabel": "{name}说明",
+  "providerUI.defaultModelHelp": "用于新建会话。已有会话继续使用各自保存的模型，需要时可在会话中切换。",
+  "providerUI.plannerModelHelp": "跟随会话模型：使用同一个模型进行规划与执行。\n\n指定其它模型后，由它独立负责规划，执行仍使用会话模型。",
+  "providerUI.visionModelHelp": "会话模型无法直接读取图片时，由图片理解模型提供辅助。\n\n自动：从当前连接中选择支持图片的模型。也可指定模型及连接；选择“无”关闭此辅助，不影响主模型原生图片能力。",
+  "providerUI.searchModelHelp": "自动：优先使用会话账号，否则选择已开启搜索的可用账号。\n\n指定模型：通过所选连接搜索，查询和用量归属该连接；失败不会改用其它账号。\n\n运行时重建后生效，进行中的任务继续使用原配置。",
+  "providerUI.subagentModelHelp": "跟随主代理模型：使用发起任务时主代理的模型。\n\n指定模型后，作为子代理任务的默认模型；任务或技能显式指定的模型优先，不改变主代理模型。",
+  "providerUI.subagentEffortHelp": "设置子代理任务的默认推理强度。auto 使用模型服务默认值；任务单独指定时优先使用任务设置。\n\n较高强度可能增加耗时和用量，可选级别取决于所选模型。",
+
   "providerUI.providers": "供应商",
   "providerUI.builtin": "内置供应商",
   "providerUI.custom": "自定义供应商",
@@ -56,6 +74,7 @@ const zh: Record<keyof typeof en, string> = {
   "providerUI.manualAdd": "手动添加",
   "providerUI.addModel": "添加模型",
   "providerUI.editModel": "编辑模型",
+  "providerUI.deleteModel": "删除模型",
   "providerUI.modelID": "模型 ID",
   "providerUI.context": "上下文窗口",
   "providerUI.output": "最大输出 Token",
@@ -76,6 +95,7 @@ const zh: Record<keyof typeof en, string> = {
   "providerUI.selected": "已选择 {n} 个新模型",
   "providerUI.addSelected": "添加所选模型",
   "providerUI.validation.required": "模型 ID 不能为空。",
+  "providerUI.validation.syntax": "模型 ID 不能包含空格或逗号。",
   "providerUI.validation.duplicate": "此模型 ID 已存在。",
   "providerUI.validation.context": "上下文窗口必须为正整数，或留空使用默认值。",
   "providerUI.validation.output": "输出限制必须为正整数、-1，或留空。",
@@ -91,6 +111,14 @@ const zh: Record<keyof typeof en, string> = {
   "providerUI.draftHint": "更改暂存于表单，点击保存后生效。",
 };
 const zhTW: Record<keyof typeof en, string> = {
+  "providerUI.modelHelpLabel": "{name}說明",
+  "providerUI.defaultModelHelp": "用於新建對話。已有對話繼續使用各自儲存的模型，需要時可在對話中切換。",
+  "providerUI.plannerModelHelp": "跟隨對話模型：使用同一個模型進行規劃與執行。\n\n指定其他模型後，由它獨立負責規劃，執行仍使用對話模型。",
+  "providerUI.visionModelHelp": "對話模型無法直接讀取圖片時，由圖片理解模型提供輔助。\n\n自動：從目前連線選擇支援圖片的模型。也可指定模型及連線；選擇「無」關閉此輔助，不影響主模型原生圖片能力。",
+  "providerUI.searchModelHelp": "自動：優先使用對話帳號，否則選擇已開啟搜尋的可用帳號。\n\n指定模型：透過所選連線搜尋，查詢和用量歸屬該連線；失敗不會改用其他帳號。\n\n執行階段重建後生效，進行中的任務繼續使用原設定。",
+  "providerUI.subagentModelHelp": "跟隨主代理模型：使用發起任務時主代理的模型。\n\n指定模型後，作為子代理任務的預設模型；任務或技能明確指定的模型優先，不改變主代理模型。",
+  "providerUI.subagentEffortHelp": "設定子代理任務的預設推理強度。auto 使用模型服務預設值；任務單獨指定時優先使用任務設定。\n\n較高強度可能增加耗時和用量，可選級別取決於所選模型。",
+
   "providerUI.providers": "供應商",
   "providerUI.builtin": "內建供應商",
   "providerUI.custom": "自訂供應商",
@@ -100,6 +128,7 @@ const zhTW: Record<keyof typeof en, string> = {
   "providerUI.manualAdd": "手動新增",
   "providerUI.addModel": "新增模型",
   "providerUI.editModel": "編輯模型",
+  "providerUI.deleteModel": "刪除模型",
   "providerUI.modelID": "模型 ID",
   "providerUI.context": "上下文視窗",
   "providerUI.output": "最大輸出 Token",
@@ -120,6 +149,7 @@ const zhTW: Record<keyof typeof en, string> = {
   "providerUI.selected": "已選取 {n} 個新模型",
   "providerUI.addSelected": "新增所選模型",
   "providerUI.validation.required": "模型 ID 不可為空。",
+  "providerUI.validation.syntax": "模型 ID 不可包含空格或逗號。",
   "providerUI.validation.duplicate": "此模型 ID 已存在。",
   "providerUI.validation.context": "上下文視窗必須為正整數，或留空使用預設值。",
   "providerUI.validation.output": "輸出限制必須為正整數、-1，或留空。",

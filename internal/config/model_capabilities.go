@@ -139,10 +139,11 @@ func (r *ModelCapabilityResolver) resolveWithCredentialRevision(entry *ProviderE
 		requestURL = entry.ChatURL
 	}
 	// Fork: no official-DeepSeek SKU hard-gating here. Upstream pins image
-	// capability to deepseek-v4-flash-vision-exp and marks every other official
-	// model protocol-unsupported, which locks out future official SKUs (the
-	// desktop release always lags the API). Capability is resolved from the
-	// automatic probe and the user's per-model override only.
+	// capability to a known-text allowlist (deepseek-v4-flash/pro) and marks
+	// every other official model protocol-unsupported, which the fork rejects
+	// as unjustified hard-coding (the desktop release always lags the API).
+	// Capability is resolved from the automatic probe and the user's per-model
+	// override only.
 	resolved.ModelInfo.ID = resolved.Model
 	resolved.ModelInfo.InputModalities = append([]provider.ModelModality(nil), resolved.InputModalities...)
 	return resolved

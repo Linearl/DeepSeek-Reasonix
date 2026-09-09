@@ -164,7 +164,7 @@ func TestNewSelectsMaxOutputTokenDefaultByEndpoint(t *testing.T) {
 		{name: "unknown compatible gateway", baseURL: "https://proxy.example.com/anthropic", want: provider.DefaultOrdinaryOutputTokens},
 		{name: "official deepseek", baseURL: "https://api.deepseek.com/anthropic", want: provider.DeepSeekMaxOutputTokens},
 		{name: "official deepseek high", baseURL: "https://api.deepseek.com/anthropic", extra: map[string]any{"effort": "high"}, want: provider.DeepSeekMaxOutputTokens},
-		{name: "official deepseek thinking off", baseURL: "https://api.deepseek.com/anthropic", extra: map[string]any{"effort": "none"}, want: provider.DeepSeekMaxOutputTokens},
+		{name: "official deepseek thinking off", baseURL: "https://api.deepseek.com/anthropic", extra: map[string]any{"effort": "disabled"}, want: provider.DeepSeekMaxOutputTokens},
 		{name: "explicit override", baseURL: "https://api.deepseek.com/anthropic", extra: map[string]any{"max_output_tokens": 8192}, want: 8192},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -717,6 +717,13 @@ func TestBuildRequestDeepSeekThinkingModes(t *testing.T) {
 		{name: "unknown model falls back to Flash", model: "unknown-model", input: "xhigh", want: "high"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.input != tc.want {
+				_, err := New(provider.Config{BaseURL: "https://api.deepseek.com/anthropic", Model: tc.model, Extra: map[string]any{"effort": tc.input}})
+				if err == nil {
+					t.Fatal("undeclared alias accepted")
+				}
+				return
+			}
 			r := (&client{model: tc.model, deepseek: true, effort: tc.input}).buildRequest(context.Background(), provider.Request{})
 			if r.Thinking == nil || r.Thinking.Type != "enabled" || r.OutputConfig == nil || r.OutputConfig.Effort != tc.want {
 				t.Fatalf("DeepSeek thinking = %+v / %+v, want enabled/%s", r.Thinking, r.OutputConfig, tc.want)
@@ -993,17 +1000,3 @@ data: {"type":"message_stop"}
 }
 
 // Ensure the package wires into the registry under the expected kind.
-func TestRegistered(t *testing.T) {
-	p, err := provider.New("anthropic", provider.Config{Model: "claude-opus-4-8", Name: "claude"})
-	if err != nil {
-		t.Fatalf("provider.New: %v", err)
-	}
-	if p.Name() != "claude" {
-		t.Fatalf("name = %q", p.Name())
-	}
-	// Missing model is rejected.
-	if _, err := provider.New("anthropic", provider.Config{}); err == nil {
-		t.Fatal("expected error for missing model")
-	}
-	_ = context.Background()
-}

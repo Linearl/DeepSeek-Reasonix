@@ -30,4 +30,4 @@ assert.match(
 );
 assert.ok(!moreMenuSource.includes('aria-label="Session summary"'), "Session summary does not use a hard-coded English label");
 
-process.stdout.write("topicbar controls: 4 contracts passed\n");
+process.stdout.write("topicbar static presentation contracts passed\n");

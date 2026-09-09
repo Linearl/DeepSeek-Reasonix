@@ -85,10 +85,10 @@ func (a *Agent) verifyInterruptedWrites(ctx context.Context, r *provider.Interru
 }
 
 // A terminal length limit can leave syntactically valid but incomplete args.
-func (a *Agent) recordTruncatedToolResults(calls []provider.ToolCall) error {
+func (a *Agent) recordTruncatedToolResults(ctx context.Context, calls []provider.ToolCall) error {
 	for _, call := range calls {
 		outcome := toolOutcome{output: "error: tool was not executed because the model output reached its length limit; regenerate complete arguments", errMsg: "truncated tool arguments"}
-		a.storeBatchToolResult(call, outcome)
+		a.storeBatchToolResult(ctx, call, outcome)
 		if err := a.emitBatchToolResult(call, outcome, 0, 0, false, time.Time{}); err != nil {
 			return err
 		}

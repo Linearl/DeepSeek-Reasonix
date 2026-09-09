@@ -24,9 +24,13 @@ import (
 // — the caller emits ToolDispatch/ToolResult — so it is safe to invoke fromparallel goroutines. Stages:
 // parse → policy → prepare → finish.
 func (a *Agent) executeOne(ctx context.Context, turn *turnRuntime, call provider.ToolCall) (out toolOutcome) {
+	defer func() { out.runState = outcomeRunState(out) }()
 	ctx = withTurnState(a.withAgentContext(ctx), turn)
 	plan := &toolCallPlan{call: call}
 	defer func() {
+		out.readTaskID = plan.readTaskID
+		out.readEnvelope = plan.readEnvelope
+		out.readActiveMillis = plan.readActiveMillis
 		if plan.mutationObserved && !plan.mutationAfterDone {
 			a.observeAfterMutation(plan)
 		}
@@ -42,6 +46,7 @@ func (a *Agent) executeOne(ctx context.Context, turn *turnRuntime, call provider
 		if plan.resolvedMeta == nil {
 			return
 		}
+		out.readTaskID = plan.readTaskID
 		out.resolved = true
 		out.resolvedName = plan.resolvedMeta.TargetName
 		out.capabilityID = plan.resolvedMeta.CapabilityID
@@ -99,7 +104,10 @@ func (a *Agent) resolveToolPolicy(ctx context.Context, turn *turnRuntime, plan *
 	if blocked, early := a.applyExecutionPreflight(turn, plan); early {
 		return blocked, true
 	}
-	if msg, blocked := turn.incompleteReads.gate(plan); blocked {
+	if blocked, early := a.applyEvidenceGates(ctx, plan); early {
+		return blocked, true
+	}
+	if msg, blocked := a.gateReadOperation(ctx, plan); blocked {
 		return toolOutcome{output: msg, blocked: true, errMsg: firstLine(msg)}, true
 	}
 	if blocked, early := a.applyDeliveryPolicyGates(turn, plan); early {
@@ -580,6 +588,9 @@ func (a *Agent) prepareToolExecution(ctx context.Context, plan *toolCallPlan) (t
 func (a *Agent) finishToolExecution(ctx context.Context, plan *toolCallPlan) toolOutcome {
 	plan.executed = true
 	cctx := a.withWriteRecovery(plan.cctx, plan.call)
+	if plan.expectedWriteSource.Path != "" {
+		cctx = tool.WithExpectedWriteSource(cctx, plan.expectedWriteSource)
+	}
 	runTool := plan.runTool
 	call := plan.call
 	t := plan.tool
@@ -610,6 +621,9 @@ func (a *Agent) finishToolExecution(ctx context.Context, plan *toolCallPlan) too
 	}
 	plan.cctx = cctx
 	var execution *tool.ShellExecution
+	if plan.verification && a.svc.sink != nil {
+		a.svc.sink.Emit(event.Event{Kind: event.ToolProgress, Tool: event.Tool{ID: call.ID, Verifying: true}})
+	}
 	result, images, execution, err = a.dispatchResolvedTool(cctx, plan)
 	// tool.after: extensions rule on the executed result (success or error)
 	// before evidence, hooks, and recovery observation, so every downstreamconsumer sees the final
@@ -646,7 +660,8 @@ func (a *Agent) finishToolExecution(ctx context.Context, plan *toolCallPlan) too
 		rawErr := fmt.Sprintf("error: %v\n%s", err, detail)
 		body, truncMsg, original := a.boundProviderVisibleResult(rawErr, call.Name, call.ID)
 		out := toolOutcome{
-			output: body, errMsg: firstLine(err.Error()), truncated: truncMsg != "" || original != "", truncMsg: truncMsg,
+			runState: outcomeRunState(toolOutcome{executed: true, output: rawErr}),
+			output:   body, errMsg: firstLine(err.Error()), truncated: truncMsg != "" || original != "", truncMsg: truncMsg,
 			execution: execution, mcpApp: toProviderMCPApp(plan.mcpApp), recoveryGeneration: recoveryGen, subagentOutcome: subagentOutcomeFromError(err),
 		}
 		if original != "" {
@@ -664,9 +679,15 @@ func (a *Agent) finishToolExecution(ctx context.Context, plan *toolCallPlan) too
 	if a.svc.hooks != nil && call.Name == "task" && !isBackgroundTaskCall(call.Arguments) {
 		a.svc.hooks.SubagentStop(ctx, result)
 	}
+	runState := outcomeRunState(toolOutcome{executed: true, output: result})
+	var visionSummary *provider.VisionSummary
+	if runState == provider.ToolRunCompleted {
+		processed := a.processToolImages(cctx, result, images)
+		result, visionSummary = processed.text, processed.summary
+	}
 	body, truncMsg, original, readObserver := a.boundIncompleteReadAwareResult(plan, result)
 	out := toolOutcome{
-		output: body, images: images, truncated: truncMsg != "" || original != "", truncMsg: truncMsg,
+		runState: runState, output: body, images: images, visionSummary: visionSummary, truncated: truncMsg != "" || original != "", truncMsg: truncMsg,
 		execution: execution, mcpApp: toProviderMCPApp(plan.mcpApp), recoveryGeneration: recoveryGen,
 	}
 	if original != "" {

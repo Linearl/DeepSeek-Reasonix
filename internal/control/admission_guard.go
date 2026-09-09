@@ -94,6 +94,7 @@ func (c *Controller) admitGuardedTurn(body func(ctx context.Context) error, park
 	if onStart != nil {
 		onStart()
 	}
+	c.refreshRuntimeState(event.Event{})
 	c.spawnGuardedTurn(ctx, cancel, body)
 	return turnStarted
 }

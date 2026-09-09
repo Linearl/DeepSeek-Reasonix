@@ -351,6 +351,9 @@ export function topicUnknownTimeLabel(node: ProjectNode, t: Translator): string 
 
 const topicStatusLabels: Record<ProjectTopicStatus, DictKey> = {
   thinking: "projectTree.status.thinking",
+  finishing: "runtime.finishing",
+  unknown: "runtime.unknown",
+  cancelling: "status.jobStopping",
   streaming: "projectTree.status.streaming",
   waiting_confirmation: "projectTree.status.waitingConfirmation",
   background_job: "projectTree.status.backgroundJob",
@@ -361,6 +364,7 @@ const topicStatusLabels: Record<ProjectTopicStatus, DictKey> = {
 };
 
 export function normalizeTopicStatus(status?: string): ProjectTopicStatus | "" {
+  if (status === "finishing" || status === "cancelling" || status === "unknown") return status;
   if (!status) return "";
   if (status === "thinking" || status === "streaming" || status === "waiting_confirmation" || status === "background_job" || status === "paused" || status === "awaiting_delivery" || status === "error" || status === "diverged_recovery") {
     return status;
@@ -378,6 +382,7 @@ export function topicStatus(node: ProjectNode): ProjectTopicStatus | "" {
 }
 
 export function projectTreeTopicArchiveBlocked(node: ProjectNode): boolean {
+  if (node.status === "finishing" || node.status === "cancelling" || node.status === "unknown") return true;
   if (asArray(node.children).some(projectTreeTopicArchiveBlocked)) return true;
   const status = normalizeTopicStatus(node.status);
   if (status === "thinking" || status === "streaming" || status === "waiting_confirmation" || status === "background_job") return true;

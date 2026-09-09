@@ -271,67 +271,10 @@ Remote-SSH 式的体验。它在远端主机上引导一个常驻的 headless `r
 回环端口转发过去,再经隧道打开现有的 serve Web 客户端。agent、工具与文件全部原生运行在远端
 主机上,保真度 100%,不经过有损的文件代理。V1 支持 Linux 与 macOS 远端主机。
 
-主机保存在 `config.toml` 的用户级 `[remote]` 段。与 `[secrets]` 一样,项目级
-`reasonix.toml` 无法注入或覆盖远程主机 —— 克隆的仓库永远无法左右 Reasonix 向何处发起 SSH
-连接。凭据沿用 provider 惯例:主机只记录环境变量名(`passphrase_env`、`password_env`),其值
-存放在 Reasonix 全局 `.env` 中;私钥内容本身从不存储 —— `identity_file` 只是路径。
-
-```toml
-[remote]
-[[remote.hosts]]
-name          = "gpu-box"
-host          = "203.0.113.7"
-user          = "dev"
-identity_file = "~/.ssh/id_ed25519"
-workspace     = "~/projects/app"
-serve_install = "auto"            # 远端 CLI：auto | npm | upload | never
-
-[[remote.hosts.forwards]]
-type   = "local"                  # local (-L) | remote (-R)
-bind   = "127.0.0.1:5432"
-target = "127.0.0.1:5432"
-```
-
-命令行:
-
-```bash
-reasonix remote add gpu-box dev@203.0.113.7 --workspace '~/projects/app'
-reasonix remote import --all              # 导入别名；连接时通过 ssh -G 解析 Include/Match 等规则
-reasonix remote test gpu-box              # 拨号 + 认证 + 主机密钥确认
-reasonix remote connect gpu-box --open    # 引导 serve、建隧道、打开 URL
-reasonix remote serve status gpu-box
-reasonix remote fs ls gpu-box:'~/projects/app'
-```
-
-启用 `use_ssh_config` 的主机会通过本机 OpenSSH `ssh -G` 获取最终有效配置，因此支持
-`Include`、通配 `Host`、`Match`（包括 `Match exec`）、多个 `IdentityFile`、`ProxyJump` 和
-`IdentitiesOnly`。导入时只保存原始别名，不复制一份容易过期的解析结果。
-
-`connect` 是前台守护(相当于 `ssh -N` 加上 serve 引导):它保持隧道与已配置的转发存活,断线时
-以指数退避自动重连,并在重连后重新挂载转发。Ctrl-C 只断开本地一侧 —— 远端 serve 继续运行,
-下次 `connect` 会复用它。V1 无后台守护进程。
-
-主机密钥会对照你的 OpenSSH `~/.ssh/known_hosts`(只读)以及 Reasonix 托管的
-`~/.reasonix/remote/known_hosts` 校验。首次见到的密钥会提示 TOFU 确认并记入托管文件;与已记录
-密钥冲突的密钥会硬失败并指明出错的行,绝不自动接受。
-
-远端侧状态位于远端主机的 `~/.reasonix/remote/`:`serve-<工作区 slug>.json`(pid、绑定的回环
-地址、工作区)、`serve-<slug>.token`(0600;认证 token,经 `--token-file` 传给 serve,因此不会
-出现在 `ps` 中)、`serve-<slug>.log`。
-
-在桌面端，于 **设置 -> 远程 SSH** 管理主机。要从项目树添加远程项目，请打开“添加项目”菜单并
-选择 **远程连接**。三步向导会保存或复用 SSH 主机、连接并确认远端操作系统受支持，然后让你浏览
-并选择工作区，再在应用内打开远程会话标签页。密钥文件按钮使用原生文件选择器，因此保存的身份文件
-始终是桌面端绝对路径。也可以通过状态栏徽标或主机行的 **远程浏览器** 按钮经 SFTP 浏览与编辑
-文件、管理端口转发、启动/打开远程工作区。
-
-项目树会列出该工作区的远程会话。点击会话行会在共用的 Transcript 与 Composer 界面恢复这一
-精确会话；新建或恢复其他会话时，正在执行的远端回合会继续在后台运行，项目树会显示其运行状态。
-桌面端持有 SSH 隧道，并且不会把本地对话会话混入远程标签页。在 `remote` 凭据模式下，远端
-Serve 使用**远端**主机上的 Provider 配置与 API Key；在 `local-proxy` 模式下，Key 留在
-桌面本机，模型调用经带认证的反向转发返回，凭据 watchdog 会在转发短暂故障后修复该通道。短暂的
-SSH 中断会保留标签页，桌面端在后台重连并重新挂载转发；认证失败或主机密钥错误属于终止性故障，
-此时远程工作区会标记为不可用。
+独立的 **[远程会话系统](./REMOTE_SESSIONS.zh-CN.md)** 文档集中说明主机配置(`config.toml`
+的 `[remote]` 段)、`ssh -G` 解析与别名导入、`reasonix remote` CLI、远端 serve 引导与
+安装阶梯、远程会话生命周期与接管、桌面端远程工作、`remote` 与 `local-proxy` 凭据模式、
+连接故障语义与故障排查。
 
 ## 自定义 OpenAI-compatible provider
 

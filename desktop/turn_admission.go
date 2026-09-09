@@ -60,8 +60,21 @@ func (admission *tabTurnAdmission) abort() {
 
 // beginTabTurn reserves one tab until its TurnDone fan-out completes.
 func (a *App) beginTabTurn(tabID string, reclaim bool, submissionID ...string) (*tabTurnAdmission, control.SessionAPI, error) {
+	return a.beginRuntimeTurn(tabID, reclaim, false, submissionID...)
+}
+
+func (a *App) beginRuntimeTurn(tabID string, reclaim, detached bool, submissionID ...string) (*tabTurnAdmission, control.SessionAPI, error) {
 	for {
 		tab, ctrl := a.tabAndCtrlByID(tabID)
+		if detached {
+			a.mu.RLock()
+			tab = a.tabByEventSinkIDLocked(tabID)
+			ctrl = nil
+			if tab != nil {
+				ctrl = tab.Ctrl
+			}
+			a.mu.RUnlock()
+		}
 		if a.tabIsReadOnly(tab) {
 			return nil, nil, readOnlyChannelErr()
 		}
@@ -115,6 +128,20 @@ func (a *App) beginTabTurn(tabID string, reclaim bool, submissionID ...string) (
 			abort()
 			return nil, nil, control.ErrTurnRunning
 		}
+		if a.ctx != nil {
+			needed, err := modelSettingsNeedApply(ctrl)
+			if err != nil {
+				abort()
+				return nil, nil, fmt.Errorf("read saved model settings: %w", err)
+			}
+			if needed {
+				abort()
+				if err := a.refreshTabModelSettings(tab); err != nil {
+					return nil, nil, err
+				}
+				continue
+			}
+		}
 		if snapshot, ok := ctrl.(imageCapabilitySnapshot); a.ctx != nil && ok && snapshot.ImageCapabilityChanged() {
 			abort()
 			if err := a.refreshTabImageCapability(tab); err != nil {
@@ -137,4 +164,33 @@ func (a *App) beginTabTurn(tabID string, reclaim bool, submissionID ...string) (
 		}
 		return &tabTurnAdmission{app: a, tab: tab}, ctrl, nil
 	}
+}
+
+// Durable follow-ups are new runs even when a controller dispatches them on
+// its own after TurnDone. Resolve the runtime owner again after detach/attach.
+func (a *App) beforeInboxDispatch(ctrl *control.Controller) (func(), error) {
+	a.mu.RLock()
+	var owner *WorkspaceTab
+	for _, tab := range a.runtimeTabsLocked() {
+		if tab.Ctrl == ctrl {
+			owner = tab
+			break
+		}
+	}
+	a.mu.RUnlock()
+	if owner == nil {
+		return nil, control.ErrInboxRuntimeUnpublished
+	}
+	admission, current, err := a.beginRuntimeTurn(owner.ID, false, true)
+	if err != nil {
+		return nil, err
+	}
+	if current != ctrl {
+		admission.abort()
+		if replacement, ok := current.(*control.Controller); ok {
+			go replacement.NotifyInboxRuntimeReady()
+		}
+		return nil, control.ErrInboxRuntimeUnpublished
+	}
+	return func() { admission.finish(ctrl) }, nil
 }

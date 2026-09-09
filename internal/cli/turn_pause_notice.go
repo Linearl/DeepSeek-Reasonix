@@ -16,6 +16,8 @@ func (m *chatTUI) commitTurnPauseNotice(e event.Event) {
 	}
 	var text string
 	switch e.Outcome {
+	case event.TurnOutcomeIncompleteRead:
+		text = "⏸ " + i18n.M.IncompleteReadFinishBlocked
 	case event.TurnOutcomeRecoveryPaused:
 		text = "⏸ " + i18n.M.RecoveryPaused
 	case event.TurnOutcomeCompletionUncertain:

@@ -12,6 +12,11 @@ export interface RecoveryLineageMember {
   preview?: string;
   createdAt?: number;
   lastActivityAt?: number;
+  /** Set when the version is a head inside one schema-2 log rather than a file. */
+  headId?: string;
+  headKind?: "main" | "fork" | "rewind" | "concurrent" | string;
+  headName?: string;
+  selected?: boolean;
 }
 
 export interface RecoveryLineageView {

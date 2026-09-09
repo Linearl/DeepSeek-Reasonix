@@ -4,8 +4,25 @@ import (
 	"strings"
 	"testing"
 
+	"reasonix/internal/event"
 	"reasonix/internal/provider"
 )
+
+func TestCompletionLogSourcesUseStableLocalMessageIdentity(t *testing.T) {
+	receipt := &event.CompletionReceipt{Verifications: []event.ReceiptVerification{{ToolCallID: "call"}}}
+	messages := []provider.Message{{Role: provider.RoleTool, ID: "entry-one", ToolCallID: "call", Content: "first log"}}
+	bound := bindCompletionLogSources(receipt, messages)
+	if bound.Verifications[0].ToolResultID != "entry-one" || receipt.Verifications[0].ToolResultID != "" {
+		t.Fatal("source missing or executor receipt mutated")
+	}
+	messages = append(messages, provider.Message{Role: provider.RoleTool, ID: "entry-two", ToolCallID: "call", Content: "later log"})
+	if got := bindCompletionLogSources(receipt, messages); got.Verifications[0].ToolResultID != "" {
+		t.Fatal("ambiguous provider call ID accepted")
+	}
+	if bound.Verifications[0].ToolResultID != "entry-one" {
+		t.Fatal("later call changed the previously frozen source")
+	}
+}
 
 func TestLookupToolResultFindsServerSearch(t *testing.T) {
 	msgs := []provider.Message{{

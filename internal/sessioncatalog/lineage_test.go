@@ -445,8 +445,8 @@ func TestUpgradeMatrixV4RebuildKeepsSingleLogicalRowAndAuthority(t *testing.T) {
 		}
 	}
 	// v7 isolates the persistent v11 repair scheduler from older writers.
-	if !strings.HasSuffix(filepath.ToSlash(DefaultPath()), "session-catalog/v7.sqlite") && DefaultPath() != "" {
-		t.Fatalf("DefaultPath = %q, want v7.sqlite", DefaultPath())
+	if !strings.HasSuffix(filepath.ToSlash(DefaultPath()), "session-catalog/v8.sqlite") && DefaultPath() != "" {
+		t.Fatalf("DefaultPath = %q, want v8.sqlite", DefaultPath())
 	}
 }
 

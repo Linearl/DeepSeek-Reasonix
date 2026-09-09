@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	SchemaVersion       = 11
+	SchemaVersion       = 12
 	repairEngineVersion = 1
 	DefaultLimit        = 50
 	MaxLimit            = 200
@@ -155,7 +155,13 @@ type SessionRecord struct {
 	LogicalTopicID string `json:"logicalTopicId,omitempty"`
 	// OrdinaryVisible is true only for the single logical representative that
 	// may appear in the ordinary project tree.
-	OrdinaryVisible    bool   `json:"ordinaryVisible,omitempty"`
+	OrdinaryVisible bool `json:"ordinaryVisible,omitempty"`
+	// LogFormat is 2 for sessions whose event log is the append-only DAG; the
+	// head fields mirror its selected head and are zero for schema 1.
+	LogFormat          int    `json:"logFormat,omitempty"`
+	HeadCount          int    `json:"headCount,omitempty"`
+	SelectedHeadID     string `json:"selectedHeadId,omitempty"`
+	heads              []HeadRecord
 	ContentFingerprint string `json:"contentFingerprint,omitempty"`
 	MetaFingerprint    string `json:"metaFingerprint,omitempty"`
 	Health             Health `json:"health"`
@@ -238,7 +244,7 @@ type SessionPage struct {
 }
 
 // DefaultPath is the disposable cache file under CacheDir ("" when unavailable).
-// v7.sqlite isolates the persistent v11 repair scheduler from v6 writers.
+// v8.sqlite isolates the v12 head projection from v11 writers.
 // Session JSONL/WAL/sidecars remain authoritative and older binaries may keep
 // using their own disposable cache without cross-writing this one.
 func DefaultPath() string {
@@ -246,5 +252,5 @@ func DefaultPath() string {
 	if cache == "" {
 		return ""
 	}
-	return filepath.Join(cache, "session-catalog", "v7.sqlite")
+	return filepath.Join(cache, "session-catalog", "v8.sqlite")
 }

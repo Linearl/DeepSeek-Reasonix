@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"reasonix/internal/i18n"
 	"reasonix/internal/provider"
@@ -76,6 +77,17 @@ func TestExplainError(t *testing.T) {
 		if got.Error() == "" || got.Error() == (&provider.APIError{Provider: "p", Status: status}).Error() {
 			t.Errorf("status %d should map to a localized message, got %q", status, got.Error())
 		}
+	}
+
+	notFoundCause := &provider.APIError{Provider: "deepseek-anthropic", ProviderDisplayName: "Deepseek2", Protocol: "openai", Status: 404}
+	notFound := explainError(notFoundCause)
+	for _, want := range []string{"Deepseek2 · Chat Completions", i18n.M.ProviderErrNotFound} {
+		if !strings.Contains(notFound.Error(), want) {
+			t.Errorf("404 = %q, want %q", notFound.Error(), want)
+		}
+	}
+	if d := provider.DiagnoseFailure(notFound); d.ProviderID != "deepseek-anthropic" || d.ProviderDisplayName != "Deepseek2" || d.Protocol != "openai" || d.Status != 404 {
+		t.Fatalf("explained 404 diagnostic = %+v", d)
 	}
 
 	jsonBody := explainError(&provider.APIError{Provider: "deepseek", Status: 400, Body: `{"error":{"message":"This model's maximum context length is 65536 tokens.","type":"invalid_request_error"}}`})
@@ -189,6 +201,29 @@ func TestExplainError(t *testing.T) {
 	//nolint:errorlint // identity check: explainError must return the same error, unwrapped.
 	if explainError(plain) != plain {
 		t.Error("unknown errors should pass through unchanged")
+	}
+}
+
+func TestExplainRecoveryWaitExhaustedKeepsTypeAndCause(t *testing.T) {
+	cause := &provider.APIError{Provider: "deepseek", Status: 503, Body: `{"error":{"message":"upstream overloaded"}}`}
+	got := explainError(&provider.RecoveryWaitExhaustedError{Phase: "headers", Status: 503, Waited: 9*time.Minute + 33*time.Second + 400*time.Millisecond, Attempts: 13, Cause: cause})
+	for _, want := range []string{fmt.Sprintf(i18n.M.ProviderErrWaitExhaustedFmt, "9m33s"), "HTTP 503", "upstream overloaded"} {
+		if !strings.Contains(got.Error(), want) {
+			t.Errorf("explanation = %q, want it to contain %q", got.Error(), want)
+		}
+	}
+	if strings.Contains(got.Error(), i18n.M.ProviderErrServerBusy) || strings.Contains(got.Error(), "provider unreachable for") {
+		t.Errorf("explanation must describe the exhausted wait, not the last status: %q", got.Error())
+	}
+	if d := provider.DiagnoseFailure(got); d.Kind != "recovery_wait_exhausted" || d.Status != 503 {
+		t.Errorf("diagnostic = %+v", d)
+	}
+	if turnOutcome(got) != "" {
+		t.Errorf("an exhausted wait is an ordinary failure, got outcome %q", turnOutcome(got))
+	}
+	connect := explainError(&provider.RecoveryWaitExhaustedError{Phase: "connect", Waited: 10 * time.Minute, Attempts: 12, Cause: io.ErrUnexpectedEOF})
+	if !strings.Contains(connect.Error(), fmt.Sprintf(i18n.M.ProviderErrWaitExhaustedFmt, "10m0s")) || !strings.Contains(connect.Error(), io.ErrUnexpectedEOF.Error()) {
+		t.Errorf("connect explanation = %q", connect.Error())
 	}
 }
 

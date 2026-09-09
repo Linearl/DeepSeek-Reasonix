@@ -364,6 +364,9 @@ func exitBucket(e event.Event) string {
 	if e.Outcome == event.TurnOutcomeCompletionUncertain {
 		return "completion_uncertain"
 	}
+	if e.Outcome == event.TurnOutcomeIncompleteRead {
+		return "incomplete_read"
+	}
 	if e.Err != nil {
 		return "error"
 	}

@@ -48,6 +48,10 @@ func classifyRunCompletion(err error) runCompletion {
 	if err == nil {
 		return runCompletion{subtype: "success", class: "success"}
 	}
+	var readErr *agent.IncompleteReadError
+	if errors.As(err, &readErr) {
+		return runCompletion{outcome: event.TurnOutcomeIncompleteRead, subtype: event.TurnOutcomeIncompleteRead, class: event.TurnOutcomeIncompleteRead, exitCode: 1}
+	}
 	var pauseErr *agent.RecoveryPauseError
 	if errors.As(err, &pauseErr) {
 		return runCompletion{

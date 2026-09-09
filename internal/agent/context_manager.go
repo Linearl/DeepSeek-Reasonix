@@ -72,6 +72,13 @@ func (m ContextManager) ObserveUsage(u *provider.Usage) {
 // nothing. At or above the trigger it runs one single-flight prune/summary
 // transaction, with at most two successful summary attempts under pressure.
 func (m ContextManager) Prepare(ctx context.Context, policy ContextPreparePolicy) (PreparedContext, error) {
+	// Legacy desktop callers can compact before their runtime context is installed.
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return PreparedContext{}, err
+	}
 	if policy.Trigger == "" {
 		policy.Trigger = CompactionTriggerPressure
 	}
@@ -80,6 +87,11 @@ func (m ContextManager) Prepare(ctx context.Context, policy ContextPreparePolicy
 	}
 	m.agent.sess.compactionRunMu.Lock()
 	defer m.agent.sess.compactionRunMu.Unlock()
+	// Cancellation may have arrived while another maintenance transaction held the lock.
+	// Reject it before any fast path or projection maintenance can run.
+	if err := ctx.Err(); err != nil {
+		return PreparedContext{}, err
+	}
 	return m.prepareOnce(ctx, policy)
 }
 

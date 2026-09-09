@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 import { applyModelDraft, modelDraftError } from "../lib/providerModelDraft";
+import { providerVisionModelsForView } from "../lib/providerVisionCapability";
+import { modelCapabilityForModel } from "../lib/providerImageInput";
 import type { ProviderView, ProviderModelCapabilityView } from "../lib/types";
 
 const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: "http://localhost", pretendToBeVisual: true });
@@ -20,6 +22,14 @@ assert.equal(result.contextWindow, 0);
 assert.equal(result.maxOutputTokens, -1);
 assert.equal(result.vision, null);
 assert.equal(modelDraftError({ ...auto, model: "existing" }, ["existing"]), "duplicate");
+assert.equal(modelDraftError({ ...auto, model: "Existing" }, ["existing"]), null);
+assert.equal(modelDraftError({ ...auto, model: "bad model" }, []), "syntax");
+const distinct = applyModelDraft([override], {...auto, model:"Existing", vision:"yes"});
+assert.equal(distinct.length, 2, "case-distinct add must not replace another override");
+assert.deepEqual(distinct[0], override);
+assert.equal(distinct[1].reasoningProtocol, "", "new ID must not inherit another model's protocol");
+assert.deepEqual(providerVisionModelsForView({models:["existing","Existing"],visionModels:[],modelOverrides:[distinct[1]],modelCapabilities:[]}), ["Existing"]);
+assert.equal(modelCapabilityForModel([{model:"Existing",state:"supported"} as ProviderModelCapabilityView],"existing"), undefined);
 assert.equal(modelDraftError({ ...auto, context: "1.5" }, []), "context");
 assert.equal(modelDraftError({ ...auto, output: "0" }, []), "output");
 

@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"reasonix/internal/provider"
+	"reasonix/internal/tool"
 )
 
 const (
@@ -37,7 +38,7 @@ func NewSubagentResultTool(task *TaskTool) *SubagentResultTool {
 	return &SubagentResultTool{store: task.transcripts, workspaceRoot: task.workspaceRoot}
 }
 
-func (*SubagentResultTool) Name() string { return "read_subagent_result" }
+func (*SubagentResultTool) Name() string { return tool.HostReadSubagentResult }
 
 func (*SubagentResultTool) Description() string {
 	return "Read a completed or partial sub-agent's retained answer by the Subagent reference returned from task, parallel_tasks, or fleet. Failed runs may expose their last useful output and an explicit retryability status. Results are scoped to the current conversation lineage and paged by UTF-8 byte offset so large answers remain lossless without overflowing one tool result."

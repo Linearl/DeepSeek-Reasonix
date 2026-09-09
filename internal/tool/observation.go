@@ -13,6 +13,11 @@ type ModelTextObservation struct {
 	Path       string
 	StartLine  int
 	LineHashes []string
+	// Version is the window digest of the observed lines; Snapshot is the
+	// source content version the window belongs to, empty when the reader cannot
+	// bind one. Windows may only be combined when their snapshots match.
+	Version  string
+	Snapshot string
 }
 
 // ModelTextObserver is an optional reader capability. The agent passes the

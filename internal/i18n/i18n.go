@@ -104,6 +104,11 @@ type Messages struct {
 	ChatThoughtForFmt                      string // collapsed reasoning summary, "%d" = elapsed s
 	ChatStatusThinkingFmt                  string // "%s thinking… (%ds · <cancel hint>)" — %s = spinner, %d = elapsed s
 	TurnPhaseWorking                       string // host turn_phase label: working
+	ReadStatusReadingFmt                   string // read status: reading a file
+	ReadStatusCoveredFmt                   string // read status: covered lines
+	ReadStatusDoneFmt                      string // read status: finished a window
+	ReadStatusPausedFmt                    string // read status: paused, needs attention
+	ReadStatusRecovery                     string // next step after a bounded read stops
 	TurnPhaseChecking                      string // host turn_phase label: checking
 	TurnPhaseVerifying                     string // host turn_phase label: verifying
 	TurnPhaseReviewing                     string // host turn_phase label: reviewing
@@ -578,14 +583,17 @@ type Messages struct {
 	ProviderErrQuotaExhaustedFmt   string // provider name, actual HTTP status
 	ProviderErrReasonMissing       string
 	SearchSourcesNotProvided       string
+	SearchModelUnavailable         string
 	ProtocolRecoveryLabel          string
 	ProviderErrInsufficientBalance string // 402
+	ProviderErrNotFound            string // 404
 	ProviderErrUnprocessable       string // 422
 	ProviderErrInputSensitive      string // MiniMax 1026
 	ProviderErrOutputSensitive     string // MiniMax 1027
 	ProviderErrRateLimited         string // 429
 	ProviderErrServer              string // 500
 	ProviderErrServerBusy          string // 503
+	ProviderErrWaitExhaustedFmt    string // total time waited before giving up
 
 	// selection menus
 	SelectOneHint      string // "(↑/↓ · Enter · q to cancel)"
@@ -658,6 +666,8 @@ func (m Messages) ProviderStatusMessage(status int) string {
 		return m.ProviderErrAuth
 	case 402:
 		return m.ProviderErrInsufficientBalance
+	case 404:
+		return m.ProviderErrNotFound
 	case 422:
 		return m.ProviderErrUnprocessable
 	case 429:

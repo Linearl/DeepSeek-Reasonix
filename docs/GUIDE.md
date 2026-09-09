@@ -307,84 +307,12 @@ opens the existing serve web client through that tunnel. The agent, its tools,
 and its files all live on the remote host at full fidelity; nothing runs through
 a lossy file proxy. V1 supports Linux and macOS remote hosts.
 
-Hosts live in a user-global `[remote]` section of `config.toml`. Like
-`[secrets]`, a project `reasonix.toml` cannot inject or override remote hosts —
-a cloned repo can never steer where Reasonix opens SSH connections. Credentials
-follow the provider idiom: the host names an env var (`passphrase_env`,
-`password_env`) whose value lives in Reasonix's global `.env`; key material
-itself is never stored — `identity_file` is a path.
-
-```toml
-[remote]
-[[remote.hosts]]
-name          = "gpu-box"
-host          = "203.0.113.7"
-user          = "dev"
-identity_file = "~/.ssh/id_ed25519"
-workspace     = "~/projects/app"
-serve_install = "auto"            # Remote CLI: auto | npm | upload | never
-
-[[remote.hosts.forwards]]
-type   = "local"                  # local (-L) | remote (-R)
-bind   = "127.0.0.1:5432"
-target = "127.0.0.1:5432"
-```
-
-CLI:
-
-```bash
-reasonix remote add gpu-box dev@203.0.113.7 --workspace '~/projects/app'
-reasonix remote import --all              # import aliases; ssh -G resolves Include/Match rules when connecting
-reasonix remote test gpu-box              # dial + auth + host-key confirmation
-reasonix remote connect gpu-box --open    # bootstrap serve, tunnel, open the URL
-reasonix remote serve status gpu-box
-reasonix remote fs ls gpu-box:'~/projects/app'
-```
-
-Hosts with `use_ssh_config` enabled resolve the final effective configuration
-through the local OpenSSH `ssh -G`, including `Include`, wildcard `Host`,
-`Match` (including `Match exec`), repeated `IdentityFile`, `ProxyJump`, and
-`IdentitiesOnly`. Import stores the original alias instead of a stale snapshot.
-
-`connect` is a foreground supervisor (like `ssh -N` plus the serve bootstrap):
-it keeps the tunnel and configured forwards alive, auto-reconnects with
-exponential backoff if the link drops, and re-attaches forwards on reconnect.
-Ctrl-C disconnects the local side only — the remote serve keeps running, so the
-next `connect` reuses it. There is no background daemon in V1.
-
-Host keys are verified against your OpenSSH `~/.ssh/known_hosts` (read-only)
-plus a Reasonix-managed `~/.reasonix/remote/known_hosts`. A first-seen key
-prompts for trust-on-first-use and is recorded in the managed file; a key that
-contradicts a recorded one is a hard error that names the offending line and is
-never auto-accepted.
-
-Remote-side state lives under the remote host's `~/.reasonix/remote/`:
-`serve-<workspace-slug>.json` (pid, bound loopback address, workspace),
-`serve-<slug>.token` (0600; the auth token, passed to serve via `--token-file`
-so it never appears in `ps`), and `serve-<slug>.log`.
-
-In the desktop app, manage hosts under **Settings -> Remote SSH**. To add a
-remote project from the project tree, open the add-project menu and choose
-**Remote connection**. The three-step wizard saves or reuses an SSH host,
-connects and verifies that the remote OS is supported, then lets you browse and
-choose a workspace before opening an in-app remote session tab. The key-file
-button uses the native file picker so the saved identity is always an absolute
-desktop path. You can also use the status-bar chip or the host row's **Remote
-explorer** button to browse and edit files over SFTP, manage port forwards, and
-start/open the remote workspace.
-
-The project tree lists the workspace's remote sessions. Selecting a row resumes
-that exact session in the shared transcript and composer surface; starting or
-resuming another session leaves a busy turn running remotely and shows its
-running state in the tree. The desktop owns the SSH tunnel and never mixes local
-conversation sessions into the remote tab. In `remote` credential mode, the
-remote Serve uses provider configuration and API keys on the **remote** host.
-In `local-proxy` mode, the desktop keeps the key locally and model calls return
-through an authenticated reverse forward; the credential watchdog repairs that
-channel after transient forwarding failures. A transient SSH outage keeps the
-tab available while the desktop reconnects and re-attaches its forwards. An
-authentication or host-key failure is terminal and marks the remote workspace
-unavailable instead.
+The dedicated **[Remote sessions](./REMOTE_SESSIONS.md)** guide covers host
+configuration (`[remote]` in `config.toml`), SSH-config resolution and import,
+the `reasonix remote` CLI, the remote serve bootstrap and its install ladder,
+the remote session lifecycle and takeover, the desktop remote workspace, the
+`remote` and `local-proxy` credential modes, connection failure semantics, and
+troubleshooting.
 
 ## Custom OpenAI-compatible providers
 

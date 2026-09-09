@@ -30,6 +30,44 @@ is an explicit allowlist, include `web_search`. Offline mode omits this tool.
 Providers supplied exclusively by a remote broker or extension do not imply
 local search credentials: an enabled local search account is still needed.
 
+## Assigning a search model
+
+Desktop **Model preferences → Model assignment → Web search** offers Automatic
+or an explicit connection/model. Automatic preserves the account selection rules
+above. An explicit assignment uses the search switch on the assigned connection,
+independently of the conversation account's search switch.
+
+```toml
+[agent]
+web_search_model = "my-search-connection/deepseek-v4-flash"
+```
+
+Omission, an empty string, and `"auto"` mean automatic selection. Explicit values
+use `provider/model`, including model IDs containing `/`. Offline mode, the tool
+allowlist and connection access restrictions still apply. Third-party candidates
+indicate configured native-search eligibility, not live-verified model support.
+
+Desktop writes the global user setting and displays an effective project override
+when `reasonix.toml` owns the field. Selection is frozen when a runtime is built.
+Saving in an idle session rebuilds its runtime; a running task cannot be forcibly
+rebuilt by this setting. Other runtimes adopt it on their next rebuild.
+
+If an assigned connection is removed, disabled or loses credentials, the reference
+is retained. New runtimes omit the search tool and report the problem once; normal
+chat remains available. There is no fallback to another account. Select Automatic
+or a valid model to recover. Search requests and usage belong to the assigned
+connection/model, without changing the conversation model.
+
+No config-version or session migration is required. Previous versions ignore the
+new field and retain their old search-selection behavior. Their general config
+writer re-renders the file and may discard this field, comments and unknown keys;
+downgrading does not preserve explicit search-account selection. Saving this
+setting in the new Desktop changes only the field and preserves other content.
+
+Switching between valid search assignments preserves the main model's tool
+schema. Enabling or disabling the tool changes the tool list and may invalidate
+an existing prompt-cache prefix.
+
 ## Requests and results
 
 Each call contains only its query, so include necessary context in the query.
@@ -73,20 +111,28 @@ tool calls. Those calls still follow their provider's reasoning replay policy.
 
 New CLI defaults (`deepseek-flash`, `deepseek-pro`) and the Desktop `deepseek`
 template use Chat Completions, with Flash selected, thinking enabled, high effort
-and independent search enabled. Config version 8 restores historical built-in
-Messages defaults to Chat Completions while preserving model selection, key
-environment names, effort, prices and an explicit search disable.
-Separate Anthropic/Responses entries, explicit preset identities and custom
-transports or reasoning protocols are not migrated. Later manual protocol edits
-remain authoritative. Project configs and session files are not rewritten.
-Version 7 files receive a scalar-only edit preserving comments and unknown data;
+and independent search enabled. Config version 9 migrates existing official
+DeepSeek standard endpoints to Chat Completions, including renamed accounts,
+Anthropic/Responses presets and standard request URL overrides, which are
+cleared so the derived endpoint and its independent search still apply. Model
+selection, key references, headers, extra body, effort, prices and search
+settings survive.
+Third-party gateways, nonstandard paths and URLs containing queries are excluded.
+Later manual protocol edits remain authoritative. Project configs and session
+files are not rewritten. Version 7 and 8 files receive a scalar-only edit preserving comments and unknown data;
 earlier versions first run the existing config upgrades. Previous releases can
 read the OpenAI route but lack independent search. An older binary with the old
 startup migration may change minimal legacy provider entries again.
 
 | Field / format | New reader of old data | Previous reader of new data | Conclusion |
 | --- | --- | --- | --- |
-| `kind` / `base_url` | Eligible historical defaults are migrated | Existing OpenAI values remain readable | No new protocol enum |
-| `config_version` | One-time v8 upgrade; future versions remain untouched | Number remains readable; old automatic migrations have the limit above | Avoid mixing binaries with the retired migration |
+| `kind` / `base_url` / request URLs | Official standard endpoints are migrated | Existing OpenAI values remain readable | No new protocol enum |
+| `config_version` | One-time v9 upgrade; future versions remain untouched | Number remains readable; old automatic migrations have the limit above | Avoid mixing binaries with the retired migration |
 | Models, pricing, effort, search switch | Preserved by this protocol migration | Unchanged field formats | User settings retained |
 | Sessions | Unchanged files; existing adapter history projection | Unchanged file format | No session migration |
+
+The exact beta ID `DeepSeek-V4.1-Flash-Expires-On-0910` has an explicit
+Chat Completions wire alias `deepseek-v4.1-flash-expires-on-0910` on the official
+host. Stored IDs and override ownership remain unchanged; arbitrary IDs are not
+lowercased. This alias does not grant beta access or extend its availability.
+Protocol changes can affect prefix-cache reuse on the first subsequent request.

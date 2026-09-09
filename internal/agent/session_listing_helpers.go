@@ -36,6 +36,11 @@ type SessionOrderInfo struct {
 	ContentDigest        string
 	ListingRevision      int64
 	ListingContentDigest string
+	// Schema-2 sessions mirror their selected head here so listings never
+	// replay the log; LogSchema is 0 for schema-1 sidecars.
+	HeadID    string
+	HeadCount int
+	LogSchema int
 }
 
 // RecoveryPreferenceResolver validates one explicit recovery preference while

@@ -85,7 +85,8 @@ import { WorkspaceMediaPreview } from "./WorkspaceMediaPreview";
 import { buildWorkspacePathBreadcrumbs, WorkspacePathBreadcrumbs } from "./WorkspacePathBreadcrumbs";
 import { WorkspaceTreeRow, type WorkspaceTreeRowData } from "./WorkspaceTreeRow";
 import { WorkspaceTreeMenu } from "./WorkspaceTreeMenu";
-import { WORKSPACE_TURN_VERIFICATION_ID, WorkspaceTurnVerification } from "./WorkspaceTurnVerification";
+import { WORKSPACE_TURN_VERIFICATION_ID } from "./WorkspaceTurnVerification";
+import { WorkspaceTurnResult } from "./WorkspaceTurnResult";
 import { useWorkspaceChangesResource } from "../lib/useWorkspaceChangesResource";
 import {
   workspaceBasename as basename, workspaceEntryPath as entryPath,
@@ -104,7 +105,7 @@ const WORKSPACE_MAX_PREVIEW_TABS = 5;
 
 type WorkspaceRevealRequest = { id: number; path: string };
 export { WORKSPACE_TURN_VERIFICATION_ID } from "./WorkspaceTurnVerification";
-export type WorkspaceVerificationRevealRequest = { id: number; summary: WireCompletionSummary; tabId: string; turnStartAt: number; currentSummary?: WireCompletionSummary };
+export type WorkspaceVerificationRevealRequest = { id: number; summary: WireCompletionSummary; tabId: string; turnStartAt: number; currentSummary?: WireCompletionSummary; sessionPath?: string; view?: "changes" | "checks" };
 type WorkspaceFileListRequest = { id: number; paths: string[] };
 type WorkspaceChangeListEntry = { key: string; path: string; meta: string; time: string; detail: string };
 type WorkspaceChangeListRequest = { id: number; changes: WorkspaceChangeListEntry[] };
@@ -137,6 +138,8 @@ export function WorkspacePanel({
   revealPathRequest,
   changeRevealRequest,
   verificationRevealRequest,
+  sessionPath,
+  onDismissTurnResult,
   fileListRequest,
   changeListRequest,
   showViewTabs = true,
@@ -169,6 +172,8 @@ export function WorkspacePanel({
   revealPathRequest?: WorkspaceRevealRequest | null;
   changeRevealRequest?: WorkspaceRevealRequest | null;
   verificationRevealRequest?: WorkspaceVerificationRevealRequest | null;
+  sessionPath?: string;
+  onDismissTurnResult?: () => void;
   fileListRequest?: WorkspaceFileListRequest | null;
   changeListRequest?: WorkspaceChangeListRequest | null;
   showViewTabs?: boolean;
@@ -187,8 +192,9 @@ export function WorkspacePanel({
   const workspaceTabId = tabId ?? "";
   const activeVerificationRevealRequest = verificationRevealRequest?.tabId === workspaceTabId
     && verificationRevealRequest.turnStartAt === turnStartAt
-    && verificationRevealRequest.currentSummary === completionSummary ? verificationRevealRequest : null;
-  const visibleCompletionSummary = activeVerificationRevealRequest?.summary ?? completionSummary;
+    && verificationRevealRequest.sessionPath === sessionPath ? verificationRevealRequest : null;
+  const requestedSummary = activeVerificationRevealRequest?.summary;
+  const visibleCompletionSummary = requestedSummary?.turnId && requestedSummary.turnId === completionSummary?.turnId ? completionSummary : requestedSummary ?? completionSummary;
   const workspaceScopeKey = workspaceScopeKeyProp ?? `${workspaceTabId}\u0000${cwd ?? ""}`;
   const lastWorkspaceScopeKeyRef = useRef(workspaceScopeKey);
   const scopeSwitchPendingRef = useRef(false);
@@ -1628,7 +1634,9 @@ export function WorkspacePanel({
           onContextMenu={openSelectionMenu}
           onMouseUp={showSelectionToolbar}
         >
-          {viewMode === "changed" && scopedChangeRows ? (
+          {viewMode === "changed" && activeVerificationRevealRequest && visibleCompletionSummary ? (
+            <WorkspaceTurnResult key={activeVerificationRevealRequest.id} ref={verificationSummaryRef} summary={visibleCompletionSummary} qualityFloor={qualityFloor} tabId={workspaceTabId} sessionPath={sessionPath ?? ""} initialView={activeVerificationRevealRequest.view} onAllChanges={() => { onDismissTurnResult?.(); }} />
+          ) : viewMode === "changed" && scopedChangeRows ? (
             <div className="workspace-change-scope">
               <div className="workspace-change-scope__head">
                 <span className="workspace-change-scope__title">{t("context.sessionChanges")}</span>
@@ -1680,7 +1688,6 @@ export function WorkspacePanel({
             </div>
           ) : viewMode === "changed" && !selectedPath ? (
             <div className="workspace-git-history">
-              {visibleCompletionSummary && <WorkspaceTurnVerification ref={verificationSummaryRef} summary={visibleCompletionSummary} qualityFloor={qualityFloor} />}
               {workspaceGitWarning && (
                 <div className="workspace-note workspace-note--warning" role="status">
                   {workspaceGitWarning}

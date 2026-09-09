@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -85,16 +87,34 @@ func (a *Agent) recordToolExecutionAudit(readOnly, parallel bool, startedAt, dur
 	a.capabilityAudit.RecordToolExecution(readOnly, parallel, queueMs, durationMs, rawBytes, len(o.output))
 }
 
-func (a *Agent) storeBatchToolResult(call provider.ToolCall, o toolOutcome) {
-	state := provider.ToolRunCompleted
-	if !o.executed {
-		state = provider.ToolRunNotStarted
-	} else if provider.ToolResultRunState(provider.Message{Content: o.output + "\n" + o.errMsg}) == provider.ToolRunUnknown {
-		state = provider.ToolRunUnknown
-	}
-	msg := provider.Message{Role: provider.RoleTool, Content: o.output, Images: o.images, ToolCallID: call.ID, Name: call.Name, ToolRunState: state, ToolExecution: toProviderToolExecution(o.execution)}
+func (a *Agent) storeBatchToolResult(ctx context.Context, call provider.ToolCall, o toolOutcome) {
+	state := outcomeRunState(o)
+	msg := provider.Message{Role: provider.RoleTool, Content: o.output, Images: o.images, VisionSummary: o.visionSummary, ToolCallID: call.ID, Name: call.Name, ToolRunState: state, ToolExecution: toProviderToolExecution(o.execution)}
 	if o.rawOutput != "" && o.rawOutput != o.output {
 		msg.RawContent = o.rawOutput
+	}
+	if env, ok := a.finalizedReadEnvelope(ctx, call, o); ok {
+		if raw, err := json.Marshal(env); err == nil {
+			msg.ReadResult = raw
+		}
+		a.observeReadShadow(env, o.readActiveMillis)
+		a.rememberReadDelivery(call.ID, o.output, env)
+		if a.readPipelineActive() {
+			if observer, ok := tReadObserver(a, call); ok {
+				if observed, ok := observer.ObserveModelText(json.RawMessage(call.Arguments), o.output); ok {
+					if len(env.DeliveredRanges) == 0 {
+						observed.LineHashes = nil
+					} else {
+						count := env.DeliveredRanges[0].Lines()
+						observed.LineHashes = observed.LineHashes[:min(count, len(observed.LineHashes))]
+					}
+					observed.Snapshot = env.Source.Snapshot
+					a.recordModelTextObservationValue(observed)
+				}
+			}
+		}
+	} else if a.readPipelineActive() && (o.errMsg != "" || o.blocked) {
+		a.observeFailedRead(call, o)
 	}
 	a.sess.conversation.Add(msg)
 }

@@ -114,7 +114,16 @@ func editLegacyDeepSeekProtocolFile(path, target string, automatic bool) (bool, 
 		return false, err
 	}
 	defer unlock()
+	return editLegacyDeepSeekProtocolFileLocked(path, target, automatic)
+}
 
+// UpgradeDeepSeekProviderProtocolLocked is the narrow edit for a caller that
+// already owns LockUserConfigEdits, including a compare-and-save transaction.
+func UpgradeDeepSeekProviderProtocolLocked(path, name string) (bool, error) {
+	return editLegacyDeepSeekProtocolFileLocked(path, name, false)
+}
+
+func editLegacyDeepSeekProtocolFileLocked(path, target string, automatic bool) (bool, error) {
 	resolved, exists, err := statConfigPath(path)
 	if err != nil || !exists {
 		return false, err
@@ -214,6 +223,13 @@ func rewriteDeepSeekProtocol(raw, kind, baseURL string, eligible func(*ProviderE
 			tomlReplacement{start: block.kindStart, end: block.kindEnd, value: strconv.Quote(kind)},
 			tomlReplacement{start: block.baseURLStart, end: block.baseURLEnd, value: strconv.Quote(baseURL)},
 		)
+		if kind == "openai" {
+			// Clear the standard override rather than pin the canonical URL so
+			// the derived endpoint applies and independent search stays enabled.
+			for _, span := range block.chatEndpoints {
+				replacements = append(replacements, tomlReplacement{start: span[0], end: span[1], value: strconv.Quote("")})
+			}
+		}
 	}
 	if len(replacements) == 0 {
 		return raw, false, nil
@@ -327,6 +343,7 @@ func providerTOMLBlocks(lines []string) []providerTOMLBlock {
 }
 
 type providerTOMLInlineBlock struct {
+	chatEndpoints            [][2]int
 	start, end               int
 	kindStart, kindEnd       int
 	baseURLStart, baseURLEnd int
@@ -495,6 +512,11 @@ func parseProviderTOMLInlineBlock(raw string, start, end int) (providerTOMLInlin
 			valueStart, valueEnd = trimTOMLWhitespace(raw, valueStart, valueEnd)
 		}
 		switch key {
+		case "request_url", "chat_url":
+			// Empty overrides are equivalent to omission and stay empty.
+			if raw[valueStart:valueEnd] != `""` && raw[valueStart:valueEnd] != `''` {
+				block.chatEndpoints = append(block.chatEndpoints, [2]int{valueStart, valueEnd})
+			}
 		case "kind":
 			block.kindStart, block.kindEnd = valueStart, valueEnd
 		case "base_url":
@@ -696,100 +718,4 @@ func isProviderArrayTableHeader(line string) bool {
 	default:
 		return false
 	}
-}
-
-func rewriteDeepSeekProviderBlockAs(lines []string, block providerTOMLBlock, kind, baseURL string) error {
-	kindLine, baseURLLine := -1, -1
-	state := tomlOutside
-	for i := block.start + 1; i < block.end; i++ {
-		if state != tomlOutside {
-			state = advanceTOMLStringState(state, lines[i])
-			continue
-		}
-		nextState := advanceTOMLStringState(tomlOutside, lines[i])
-		if nextState != tomlOutside {
-			state = nextState
-			continue
-		}
-		switch {
-		case isTOMLKeyAssignment(lines[i], "kind"):
-			kindLine = i
-		case isTOMLKeyAssignment(lines[i], "base_url"):
-			baseURLLine = i
-		}
-		state = nextState
-	}
-	if kindLine < 0 || baseURLLine < 0 {
-		return fmt.Errorf("upgrade DeepSeek protocol: provider table is missing kind or base_url")
-	}
-	lines[kindLine] = replaceTOMLStringAssignment(lines[kindLine], kind)
-	lines[baseURLLine] = replaceTOMLStringAssignment(lines[baseURLLine], baseURL)
-	return nil
-}
-
-func replaceTOMLStringAssignment(line, value string) string {
-	return replaceTOMLScalarAssignment(line, strconv.Quote(value))
-}
-
-func replaceTOMLScalarAssignment(line, encoded string) string {
-	carriageReturn := strings.HasSuffix(line, "\r")
-	line = strings.TrimSuffix(line, "\r")
-	equals, err := findTOMLAssignmentEquals(line, 0, len(line))
-	if err != nil {
-		equals = strings.IndexByte(line, '=')
-	}
-	if equals < 0 {
-		return line
-	}
-	rhs := line[equals+1:]
-	leadingLen := len(rhs) - len(strings.TrimLeft(rhs, " \t"))
-	leading := rhs[:leadingLen]
-	suffix := ""
-	if comment := tomlInlineCommentIndex(rhs); comment >= 0 {
-		spaceStart := comment
-		for spaceStart > 0 && (rhs[spaceStart-1] == ' ' || rhs[spaceStart-1] == '\t') {
-			spaceStart--
-		}
-		suffix = rhs[spaceStart:]
-	}
-	next := line[:equals+1] + leading + encoded + suffix
-	if carriageReturn {
-		next += "\r"
-	}
-	return next
-}
-
-func tomlInlineCommentIndex(value string) int {
-	inBasic, inLiteral, escaped := false, false, false
-	for i := range len(value) {
-		ch := value[i]
-		if inBasic {
-			if escaped {
-				escaped = false
-				continue
-			}
-			switch ch {
-			case '\\':
-				escaped = true
-			case '"':
-				inBasic = false
-			}
-			continue
-		}
-		if inLiteral {
-			if ch == '\'' {
-				inLiteral = false
-			}
-			continue
-		}
-		switch ch {
-		case '"':
-			inBasic = true
-		case '\'':
-			inLiteral = true
-		case '#':
-			return i
-		}
-	}
-	return -1
 }

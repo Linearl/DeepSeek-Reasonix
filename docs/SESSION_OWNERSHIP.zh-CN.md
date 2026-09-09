@@ -6,25 +6,46 @@ Reasonix 如何决定谁可以写会话、冲突如何落盘，以及回溯和�
 
 ## 会话写者
 
-同一会话文件同一时刻只有一个跨进程写者。票据和持有者信息共用一个 session
-lease 文件（`.lease.lock`）。生产路径上的 Controller 绑定带 generation 的
-`SessionWriter`；重新绑定会使旧 generation 立即失效。旧 `.lease.json` 仅作为
-只读兼容来源。
+一个会话保存在只追加的事件日志 `<id>.events.jsonl` 中（会话格式 2）。每条
+消息条目都带有自己的 id 和父消息 id，因此日志是一张 DAG：从任一叶子回溯到
+根的路径就是该会话的一个版本，称为 *head*。日志初始只有一个 head `main`；
+分叉、回溯和并发写入会新增 kind 为 `fork`、`rewind`、`concurrent` 的 head。
+`<id>.jsonl` 只是选中 head 的派生缓存，永远不是权威来源。
 
-主动路径切换（`new`、`clear`、`fork`、`branch`、`switch`）采用“先准备、后发布”
-的交接：前端先取得目标 lease，并给尚未发布的 Session 绑定写权限，然后 Controller
-才替换路径。非破坏性切换失败时会保留源 Controller 及其 lease；`clear` 也不会
-发布一个没有 lease 的替代 Session。
+选中 head 由最后一条仍指向存活 head 的 `select` 标记决定，否则取活动时间最新
+的 head。按路径打开会话即打开该 head。`.event-index.json` 镜像全部 head，
+会话目录据此列出版本，无需重放日志。
 
-所有保存仍会获取有界等待的 `.jsonl.lock` 兼容锁。session lease 决定谁可以
-长期拥有 transcript；save lock 则让该 owner 与仍受支持的旧版本，以及尚未
-接入 lease 协议的一次性 recovery/import 写者保持互斥。
+写者只追加，从不改写或截断日志。每次保存获取有界等待的 `.jsonl.lock` flock，
+读入其他写者自上次保存以来追加的内容，然后继续写自己的 head。session lease
+（`.lease.lock`，绑定带 generation 的 `SessionWriter`）不再限制追加：它只决定
+谁写派生的 `.jsonl`、索引和回合账本，因此第二个窗口无需等待即可加入同一会话。
+回合以 `turn_begin` 标记开始、以 `turn_end` 结束；两者之间崩溃会在下次打开时
+被识别，未完成的尾部用 `rewind` 标记搁置，绝不截断字节。关机保存在有界等待内
+拿不到保存锁时，会不加锁地把未保存的尾部追加到一个新的 `concurrent` head 上，
+派生文件留给下一次加锁保存；关机永远不会复制出一份会话。
 
-事件日志（`.events.jsonl`）是权威来源。绑定写者的保存对日志尾部（size +
-index 的 revision/digest）做 CAS，并用配对的内存 transcript 视图判断
-no-op / append / replace。`.jsonl` 仍是兼容投影。
+路径切换（`new`、`clear`）仍采用“先准备、后发布”的交接：前端先取得目标
+lease 并给尚未发布的 Session 绑定写权限，Controller 才替换路径。`fork`、
+`branch`、`switch` 和对话回溯则停留在同一路径上，只在 head 之间移动。
+
+Reasonix 1.39.0 之前保存的会话使用格式 1：整文件 transcript 加基于位置的事件
+日志。1.39.0 及更新版本在首次保存时、且能证明自己是唯一写者的前提下，就地把
+它升级为格式 2；在此之前该会话沿用下文的格式 1 规则。早于 1.39.0 的版本会拒绝
+打开格式 2 日志，且一字节不改；需要回滚时，
+`reasonix doctor session <id> --export-v1 PATH.jsonl` 会把当前 head 导出为
+格式 1 会话。
 
 ## 冲突
+
+两个进程向同一格式 2 日志追加不会冲突，只会交错。若保存时发现另一写者延长了
+本会话所在的链而本地没有新增，就直接跟随磁盘；若双方都有新增，保存会从最后
+一条共同消息分叉出 `concurrent` head 继续写入，双方各收到一次提示
+（`session_concurrent_writer`）。之后重新加载会打开最新的 head，并在“查看
+版本”里列出另一个（`session_head_switched`）。不会再复制出 `-recovery-`
+文件，保存也绝不删除任何 head。
+
+格式 1 会话在升级前沿用原规则：
 
 1. 事件日志尾部仍匹配当前写者 → 正常保存。
 2. 磁盘已经覆盖本地前缀 → 采用磁盘版本，不建分支。
@@ -32,11 +53,25 @@ no-op / append / replace。`.jsonl` 仍是兼容投影。
    Session 首次 writer generation 决定的稳定 recovery 文件。lease 重绑不会
    改变该 lane；后续冲突更新同一路径，不再嵌套。
 
+## head 即版本
+
+从消息分叉、`/branch` 和对话回溯都会追加一条 `fork` 标记和一条 `select`
+标记：新 head 从所选消息开始并成为当前版本，原有链作为同一会话的另一个版本
+保留。桌面端就地把当前标签页切到新 head；终端重放 transcript。“查看版本”
+列出存活 head 及其类型，可以把另一个 head 设为当前（`select`）、给 head
+改名，以及清理*已覆盖*的 head——即整条链已经包含在当前链中的 head。清理只
+追加一条 `retire` 标记：退役 head 从版本列表消失，其字节只在单写者轮转日志
+时回收。含独有内容的 head 永远不会被自动清理；最近一分钟内仍有活动的 head
+会被报告为“正在使用”而不是退役。
+
 ## 回溯
 
 - **代码**：恢复 before-image。当前已等于 before 的文件跳过；外部修改拒绝覆盖。
-- **对话**：创建新会话分支。父会话 transcript 永不截断。
-- **两者**：先分叉，再恢复文件。文件冲突时保留新分支并返回 `partial=true`。
+- **对话**：在回合边界分叉出 `rewind` head 并设为当前。原有链永不截断。格式 1
+  会话则仍创建新的会话文件。
+- **两者**：先分叉，再恢复文件。文件冲突时保留新 head 并返回 `partial=true`。
+- **撤销**：恢复文件 after-image。若回溯 head 之后没有新增内容，Controller
+  回到父 head 并退役这个空的回溯 head；已经继续对话的回溯 head 作为版本保留。
 
 新 checkpoint 写入 `turns/<turn>/meta.json` 和原始字节
 `files/NNNN.before`（schema v3）。默认保留最近 100 个回合目录；新 checkpoint

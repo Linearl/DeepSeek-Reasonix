@@ -56,6 +56,7 @@ const (
 )
 
 func init() {
+	provider.RegisterReasoning("anthropic", ReasoningForConfig)
 	provider.Register("anthropic", New)
 }
 
@@ -106,8 +107,10 @@ func New(cfg provider.Config) (provider.Provider, error) {
 	keySource, _ := cfg.Extra["api_key_source"].(string)
 	thinking, _ := cfg.Extra["thinking"].(string)
 	thinking = strings.ToLower(strings.TrimSpace(thinking))
-	effort, _ := cfg.Extra["effort"].(string)
-	effort = strings.ToLower(strings.TrimSpace(effort))
+	effort, err := configuredEffort(cfg)
+	if err != nil {
+		return nil, err
+	}
 	vision, _ := cfg.Extra["vision"].(bool)
 	modelInfo := provider.ModelInfo{ID: cfg.Model, InputModalities: []provider.ModelModality{provider.ModalityText}}
 	if cfg.ModelInfo != nil {
@@ -152,7 +155,9 @@ func New(cfg provider.Config) (provider.Provider, error) {
 	}
 	return &client{
 		identityHeaders:  provider.NewClientIdentityHeaders(),
+		reasoning:        ReasoningForConfig(cfg),
 		name:             name,
+		identity:         provider.RequestIdentity{Provider: name, DisplayName: cfg.DisplayName, Protocol: cfg.Protocol},
 		apiKey:           cfg.APIKey,
 		keyEnv:           keyEnv,
 		keySource:        keySource,
@@ -176,6 +181,9 @@ func New(cfg provider.Config) (provider.Provider, error) {
 }
 
 func newHTTPClient(cfg provider.Config) (*http.Client, error) {
+	if cfg.HTTPClient != nil {
+		return cfg.HTTPClient, nil
+	}
 	spec, _ := cfg.Extra["proxy_spec"].(netclient.ProxySpec)
 	return netclient.NewHTTPClient(spec, netclient.TransportOptions{
 		DialTimeout:           30 * time.Second,
@@ -187,7 +195,9 @@ func newHTTPClient(cfg provider.Config) (*http.Client, error) {
 
 type client struct {
 	identityHeaders  http.Header
+	reasoning        provider.ReasoningCapability
 	name             string
+	identity         provider.RequestIdentity
 	apiKey           string
 	keyEnv           string // api_key_env name, surfaced in auth errors
 	keySource        string // source of keyEnv, surfaced in auth errors
@@ -223,24 +233,6 @@ func (c *client) ModelInfo() provider.ModelInfo {
 
 func (c *client) deepSeekThinkingEnabled() bool {
 	return c != nil && c.deepseek && c.thinking != "disabled" && c.effort != "disabled"
-}
-
-func normalizeDeepSeekAnthropicEffort(model, effort string) string {
-	_ = model
-	switch effort {
-	case "low":
-		return "low"
-	case "medium", "xhigh":
-		return "high"
-	case "high", "max":
-		return effort
-	default:
-		return ""
-	}
-}
-
-func (c *client) RequiresToolCallReasoning() bool {
-	return c.deepSeekThinkingEnabled()
 }
 
 func (c *client) RequiresAssistantReasoningReplay(m provider.Message) bool {
@@ -279,11 +271,13 @@ func (c *client) MissingToolCallReasoningWarningIdentity() string {
 
 func (c *client) sendOpts() provider.SendOptions {
 	return provider.SendOptions{
-		Provider:   c.name,
-		KeyEnv:     c.keyEnv,
-		KeySource:  c.keySource,
-		KeyPresent: c.apiKey != "",
-		RetryAuth:  c.authed.Load(),
+		Provider:            c.name,
+		ProviderDisplayName: c.identity.DisplayName,
+		Protocol:            c.identity.Protocol,
+		KeyEnv:              c.keyEnv,
+		KeySource:           c.keySource,
+		KeyPresent:          c.apiKey != "",
+		RetryAuth:           c.authed.Load(),
 	}
 }
 
@@ -327,6 +321,9 @@ var bufPool = sync.Pool{
 }
 
 func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+	if err := c.reasoning.Validate(c.model, req.EffortOverride); err != nil {
+		return nil, err
+	}
 	requestCtx := provider.WithRequestAttemptCounter(ctx)
 	buf := bufPool.Get().(*bytes.Buffer)
 	buf.Reset()
@@ -375,74 +372,7 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
 // turn. Consecutive same-role messages are coalesced because the API requires
 // alternating user/assistant turns (tool results are user turns).
 func (c *client) buildRequest(ctx context.Context, req provider.Request) anthRequest {
-	var system []textBlock
-	var msgs []anthMessage
-	// appendBlocks adds blocks under role, merging into the previous message when
-	// it shares the role (keeps user/assistant strictly alternating).
-	appendBlocks := func(role string, blocks ...contentBlock) {
-		if len(blocks) == 0 {
-			return
-		}
-		if n := len(msgs); n > 0 && msgs[n-1].Role == role {
-			msgs[n-1].Content = mergeThinkingFirst(msgs[n-1].Content, blocks)
-			return
-		}
-		msgs = append(msgs, anthMessage{Role: role, Content: blocks})
-	}
-
-	messages := c.replayMessages(req.Messages)
-	for _, m := range provider.SanitizeToolPairing(messages) {
-		switch m.Role {
-		case provider.RoleSystem:
-			if m.Content != "" {
-				system = append(system, textBlock{Type: "text", Text: m.Content})
-			}
-		case provider.RoleUser:
-			if m.Content != "" {
-				appendBlocks("user", sessionContextTextBlocks(m.Content)...)
-			}
-			if c.vision {
-				for _, ref := range m.Images {
-					if src := imageSourceFromRef(ref); src != nil {
-						appendBlocks("user", contentBlock{Type: "image", Source: src})
-					}
-				}
-			}
-		case provider.RoleTool:
-			content := m.Content
-			if content == "" {
-				content = "(no output)" // tool_result content must be non-empty
-			}
-			block := contentBlock{Type: "tool_result", ToolUseID: m.ToolCallID, Content: content}
-			if c.vision && !c.deepseek {
-				if blocks := toolResultBlocks(content, m.Images); blocks != nil {
-					block.Content = blocks
-				}
-			}
-			appendBlocks("user", block)
-		case provider.RoleAssistant:
-			var blocks []contentBlock
-			// Replay provider reasoning ahead of the content it led to. DeepSeek's
-			// thinking mode requires every historical assistant turn's thinking
-			// block back whenever the request declares tools — tool-call turn or
-			// not — even if the current request no longer declares tools or has
-			// since disabled thinking. Anthropic proper requires a signature, so
-			// reasoning without one cannot be replayed on that endpoint.
-			blocks = append(blocks, c.replayReasoningBlocks(m)...)
-			blocks = appendServerSearchBlocks(blocks, m.ServerSearch)
-			if m.Content != "" {
-				blocks = append(blocks, contentBlock{Type: "text", Text: m.Content})
-			}
-			for _, tc := range m.ToolCalls {
-				input := json.RawMessage(tc.Arguments)
-				if len(input) == 0 {
-					input = json.RawMessage("{}") // input is required, even when empty
-				}
-				blocks = append(blocks, contentBlock{Type: "tool_use", ID: tc.ID, Name: tc.Name, Input: input})
-			}
-			appendBlocks("assistant", blocks...)
-		}
-	}
+	system, msgs := c.buildMessages(req.Messages)
 
 	tools := encodeAnthTools(c, req)
 	if !c.deepseek {
@@ -464,6 +394,10 @@ func (c *client) buildRequest(ctx context.Context, req provider.Request) anthReq
 		Tools:     tools,
 		Stream:    true,
 	}
+	effort := c.effort
+	if req.EffortOverride != "" {
+		effort = req.EffortOverride
+	}
 	// Extended thinking is provider-specific. DeepSeek defaults to enabled and
 	// accepts output_config.effort alongside its binary toggle. Anthropic proper
 	// uses type=adaptive plus display/output_config. LongCat-style compatible
@@ -471,16 +405,20 @@ func (c *client) buildRequest(ctx context.Context, req provider.Request) anthReq
 	if c.deepseek {
 		c.applyDeepSeekThinking(&r, req)
 	} else {
-		switch c.thinking {
+		thinking := c.thinking
+		if effort != "" && thinking == "" {
+			thinking = "adaptive"
+		}
+		switch thinking {
 		case "adaptive":
 			r.Thinking = &thinkingConfig{Type: "adaptive", Display: "summarized"}
-			if c.effort != "" {
-				r.OutputConfig = &outputConfig{Effort: c.effort}
+			if effort != "" {
+				r.OutputConfig = &outputConfig{Effort: effort}
 			}
 		case "enabled", "disabled":
 			t := c.thinking
-			if c.effort == "enabled" || c.effort == "disabled" {
-				t = c.effort
+			if effort == "enabled" || effort == "disabled" {
+				t = effort
 			}
 			r.Thinking = &thinkingConfig{Type: t}
 		}

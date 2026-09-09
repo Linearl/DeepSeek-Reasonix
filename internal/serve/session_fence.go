@@ -11,9 +11,10 @@ import (
 )
 
 const (
-	sessionPathHeader         = "X-Reasonix-Session-Path"
-	expectedSessionPathHeader = "X-Reasonix-Expected-Session-Path"
-	foregroundMutationMaxBody = 8 << 20
+	sessionPathHeader           = "X-Reasonix-Session-Path"
+	expectedSessionPathHeader   = "X-Reasonix-Expected-Session-Path"
+	expectedModelSettingsHeader = "X-Reasonix-Expected-Model-Settings"
+	foregroundMutationMaxBody   = 8 << 20
 )
 
 var errExpectedSessionChanged = errors.New("active session changed; retry on the current session")
@@ -48,6 +49,13 @@ func (s *Server) expectedSessionIsSpectatorPinLocked(r *http.Request) bool {
 }
 
 func (s *Server) validateExpectedSessionLocked(w http.ResponseWriter, r *http.Request) bool {
+	if expected := r.Header.Get(expectedModelSettingsHeader); expected != "" {
+		snapshot, ok := s.ctl().(interface{ ModelSettingsSourceRevision() string })
+		if !ok || snapshot.ModelSettingsSourceRevision() != expected {
+			http.Error(w, "session model settings changed; apply the latest saved settings before starting this run", http.StatusConflict)
+			return false
+		}
+	}
 	if err := s.expectedSessionErrorLocked(r); err != nil {
 		// A spectator pinned to a local-owned session is not misrouted — it is
 		// read-only by ownership. Answer with the takeover wording instead of
@@ -92,6 +100,16 @@ func (s *Server) foregroundMutation(next http.HandlerFunc) http.HandlerFunc {
 		// until the remote side reclaims the session.
 		if s.rejectMirroredForegroundLocked(w) {
 			return
+		}
+		switch r.URL.Path {
+		case "/goal/resume", "/compact", "/summarize":
+			if err := s.refreshRunModelSettingsLocked(r.Context()); err != nil {
+				http.Error(w, err.Error(), http.StatusConflict)
+				return
+			}
+			if !s.validateExpectedSessionLocked(w, r) {
+				return
+			}
 		}
 		next(w, r)
 	}

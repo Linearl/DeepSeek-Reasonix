@@ -17,6 +17,10 @@ func TestCapabilityOverrideDirectCatalogResolution(t *testing.T) {
 	e := ProviderEntry{Name: "opencode-go", Kind: "openai", BaseURL: "https://opencode.ai/zen/go/v1", Model: "kimi-k3"}
 	auto := r.Resolve(&e)
 	e.ModelOverrides = map[string]ProviderModelOverride{"KIMI-K3": {Vision: capabilityBoolPtr(false), ContextWindow: 123456}}
+	if got := r.Resolve(&e); got.Source == CapabilitySourceOverride {
+		t.Fatal("differently cased override must not apply")
+	}
+	e.ModelOverrides["kimi-k3"] = e.ModelOverrides["KIMI-K3"]
 	got := r.Resolve(&e)
 	if got.State != CapabilityUnsupported || got.AutomaticState != CapabilitySupported || got.Source != CapabilitySourceOverride {
 		t.Fatalf("override = %+v", got)

@@ -141,7 +141,8 @@ const sessionInsertSQL = `INSERT INTO catalog_sessions(
     recovery_role,recovery_canonical,logical_topic_id,ordinary_visible,content_fingerprint,
 	meta_fingerprint,health,missing_since,seen_generation
 	,repair_state,repair_attempts,repair_retry_at,repair_error_kind,repair_source_fingerprint,repair_engine_version
-) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+	,log_format,head_count,selected_head_id
+) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(path_key) DO UPDATE SET `
 
 const repairScheduleUpdateSQL = `
@@ -166,7 +167,8 @@ const repairScheduleUpdateSQL = `
           OR catalog_sessions.repair_engine_version<>excluded.repair_engine_version THEN ''
         ELSE catalog_sessions.repair_error_kind END,
     repair_source_fingerprint=excluded.repair_source_fingerprint,
-    repair_engine_version=excluded.repair_engine_version`
+    repair_engine_version=excluded.repair_engine_version,
+    log_format=excluded.log_format, head_count=excluded.head_count, selected_head_id=excluded.selected_head_id`
 
 const directoryProjectionUpdateSQL = `
     path=excluded.path, directory=excluded.directory, directory_key=excluded.directory_key, scope=excluded.scope,
@@ -217,8 +219,10 @@ func (c *Catalog) upsertSessionRow(ctx context.Context, tx *sql.Tx, record Sessi
 	if mode == upsertExactSource {
 		updateSQL = exactSourceUpdateSQL
 	}
-	_, err := tx.ExecContext(ctx, sessionInsertSQL+updateSQL, c.sessionRowValues(record, pathKey, directoryKey, generation)...)
-	return err
+	if _, err := tx.ExecContext(ctx, sessionInsertSQL+updateSQL, c.sessionRowValues(record, pathKey, directoryKey, generation)...); err != nil {
+		return err
+	}
+	return upsertHeadRows(ctx, tx, pathKey, record.heads)
 }
 
 func (c *Catalog) sessionRowValues(record SessionRecord, pathKey, directoryKey string, generation int64) []any {
@@ -237,6 +241,7 @@ func (c *Catalog) sessionRowValues(record SessionRecord, pathKey, directoryKey s
 		record.ContentFingerprint, record.MetaFingerprint,
 		record.Health, 0, generation,
 		repairState, 0, 0, "", repairSourceFingerprint(record), repairEngineVersion,
+		max(record.LogFormat, 1), record.HeadCount, record.SelectedHeadID,
 	}
 }
 

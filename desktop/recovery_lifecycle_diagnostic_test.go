@@ -50,7 +50,7 @@ func recoveryLifecycleOutcomes(t *testing.T, sessionPaths ...string) []string {
 }
 
 func TestGetRecoveryLineagePersistsRequestedFinalClassification(t *testing.T) {
-	dir := t.TempDir()
+	dir := schemaOneTempDir(t)
 	root := filepath.Join(dir, "private-root.jsonl")
 	branch := filepath.Join(dir, "private-branch.jsonl")
 	save := func(path, unique string) {

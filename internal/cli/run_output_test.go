@@ -300,6 +300,10 @@ func TestClassifyRunCompletion(t *testing.T) {
 	if got := classifyRunCompletion(uncertain); got.outcome != event.TurnOutcomeCompletionUncertain || got.subtype != event.TurnOutcomeCompletionUncertain || got.isError || got.exitCode != 1 {
 		t.Fatalf("completion uncertain = %+v", got)
 	}
+	incomplete := fmt.Errorf("wrapped: %w", &agent.IncompleteReadError{Reason: "page budget"})
+	if got := classifyRunCompletion(incomplete); got.outcome != event.TurnOutcomeIncompleteRead || got.subtype != event.TurnOutcomeIncompleteRead || got.isError || got.exitCode != 1 {
+		t.Fatalf("incomplete read = %+v", got)
+	}
 	if got := classifyRunCompletion(errors.New("provider failed")); got.outcome != "" || !got.isError || got.exitCode != 1 {
 		t.Fatalf("error completion = %+v", got)
 	}

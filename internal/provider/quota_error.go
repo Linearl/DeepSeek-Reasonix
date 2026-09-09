@@ -11,22 +11,32 @@ import (
 // including gateways which encode billing failures as HTTP 401 or 429. Raw
 // bodies may contain private billing URLs or credentials and are not retained.
 type QuotaError struct {
-	Provider string
-	Status   int
-	Code     string
+	Provider            string
+	ProviderDisplayName string
+	Protocol            string
+	Status              int
+	Code                string
 }
 
 func (e *QuotaError) Error() string {
-	return fmt.Sprintf("provider %q credits or subscription quota exhausted (HTTP %d); check account allowance before continuing", e.Provider, e.Status)
+	return fmt.Sprintf("provider %q credits or subscription quota exhausted (HTTP %d); check account allowance before continuing", ProviderDisplayLabel(e.Provider, e.ProviderDisplayName, e.Protocol), e.Status)
 }
 
 // Unwrap preserves status-based APIError consumers without exposing the raw
 // billing response or making a quota rejection look like an AuthError.
 func (e *QuotaError) Unwrap() error {
-	return &APIError{Provider: e.Provider, Status: e.Status}
+	return &APIError{Provider: e.Provider, ProviderDisplayName: e.ProviderDisplayName, Protocol: e.Protocol, Status: e.Status}
 }
 
 func QuotaErrorFromResponse(name string, status int, body string) *QuotaError {
+	return quotaErrorFromResponse(name, "", "", status, body)
+}
+
+func QuotaErrorFromResponseWithIdentity(name, displayName, protocol string, status int, body string) *QuotaError {
+	return quotaErrorFromResponse(name, displayName, protocol, status, body)
+}
+
+func quotaErrorFromResponse(name, displayName, protocol string, status int, body string) *QuotaError {
 	var v struct {
 		Error struct {
 			Code    string `json:"code"`
@@ -42,11 +52,11 @@ func QuotaErrorFromResponse(name string, status int, body string) *QuotaError {
 	lower := strings.ToLower(body)
 	for _, marker := range []string{"insufficient_quota", "insufficient balance", "insufficient token quota", "out of budget", "quota exceeded", "freeusagelimiterror", "gousagelimiterror", "creditserror", "monthly usage limit reached", "available balance"} {
 		if strings.Contains(lower, marker) {
-			return &QuotaError{Provider: name, Status: status, Code: code}
+			return &QuotaError{Provider: name, ProviderDisplayName: displayName, Protocol: protocol, Status: status, Code: code}
 		}
 	}
 	if status == 402 {
-		return &QuotaError{Provider: name, Status: status, Code: code}
+		return &QuotaError{Provider: name, ProviderDisplayName: displayName, Protocol: protocol, Status: status, Code: code}
 	}
 	return nil
 }
@@ -59,11 +69,11 @@ func AsQuotaError(err error) *QuotaError {
 	}
 	var api *APIError
 	if errors.As(err, &api) {
-		return QuotaErrorFromResponse(api.Provider, api.Status, api.Body)
+		return QuotaErrorFromResponseWithIdentity(api.Provider, api.ProviderDisplayName, api.Protocol, api.Status, api.Body)
 	}
 	var auth *AuthError
 	if errors.As(err, &auth) {
-		return QuotaErrorFromResponse(auth.Provider, auth.Status, auth.Body)
+		return QuotaErrorFromResponseWithIdentity(auth.Provider, auth.ProviderDisplayName, auth.Protocol, auth.Status, auth.Body)
 	}
 	return nil
 }

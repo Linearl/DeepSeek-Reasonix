@@ -6,9 +6,10 @@
 // client with a spy — jsdom has no Worker.
 
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import React, { useLayoutEffect, act } from "react";
 import { createRoot } from "react-dom/client";
 import MarkdownHistory from "../components/MarkdownHistory";
+import { TranscriptPresentationProvider } from "../components/TranscriptPresentationContext";
 import { TranscriptScrollWriteProvider } from "../components/TranscriptLayoutIntentContext";
 import { parseMarkdown, markdownContentRevision } from "../lib/markdownPipeline";
 import {
@@ -125,7 +126,7 @@ console.log("\nmarkdown history rendering");
 
 // ── parse → render → cache; second mount does not re-parse ──────────────────
 {
-  const text = "# Cached\n\nFirst **render** parses.\n\nSecond mount must not.";
+  const text = "# Cached\n\nFirst **render** parses.\n\nSecond mount must not." + " source".repeat(1_400);
   const entryId = "md-history-cache-1";
 
   // A deferred fake worker keeps the parse in flight so the fallback can be
@@ -180,14 +181,16 @@ console.log("\nmarkdown history rendering");
 {
   const entryId = "md-history-cache-2";
   const root3 = createRoot(rootEl);
+  const firstVersion = "version one" + " source".repeat(1_400);
+  const nextVersion = "version two" + " source".repeat(1_400);
   await act(async () => {
-    root3.render(<MarkdownHistory text="version one" entryId={entryId} fallback={null} />);
+    root3.render(<MarkdownHistory text={firstVersion} entryId={entryId} fallback={null} />);
   });
   await flush();
   eq(parseCalls.length, 1, "first version parses");
-  eq(parseCalls[0], "version one", "the parse receives the exact source text");
+  eq(parseCalls[0], firstVersion, "the parse receives the exact source text");
   await act(async () => {
-    root3.render(<MarkdownHistory text="version two" entryId={entryId} fallback={null} />);
+    root3.render(<MarkdownHistory text={nextVersion} entryId={entryId} fallback={null} />);
   });
   await flush();
   eq(parseCalls.length, 2, "changed content (new revision) re-parses");
@@ -199,7 +202,7 @@ console.log("\nmarkdown history rendering");
 {
   const root4 = createRoot(rootEl);
   await act(async () => {
-    root4.render(<MarkdownHistory text="uncached live text" fallback={null} />);
+    root4.render(<MarkdownHistory text={"uncached live text" + " source".repeat(1_400)} fallback={null} />);
   });
   await flush();
   eq(parseCalls.length, 3, "live rows parse without a cache key");
@@ -212,7 +215,8 @@ console.log("\nmarkdown history rendering");
   rootEl.scrollTop = 400;
   Object.defineProperty(rootEl, "scrollHeight", { configurable: true, value: 1_000 });
   Object.defineProperty(rootEl, "clientHeight", { configurable: true, value: 300 });
-  // The pending Virtuoso row sits inside the transcript viewport: the long answer  // keeps the stable fallback because the tail-window swap would remove the
+  // The pending Transcript block sits inside the viewport: the long answer
+  // keeps the stable fallback because the tail-window swap would remove the
   // blocks being read (#9570 keeps that protection; short answers and
   // off-screen rows commit immediately now).
   const originalRectMidRead = dom.window.HTMLElement.prototype.getBoundingClientRect;
@@ -281,18 +285,54 @@ console.log("\nmarkdown history rendering");
   Object.defineProperty(rootEl, "scrollHeight", { configurable: true, value: 1_000 });
   Object.defineProperty(rootEl, "clientHeight", { configurable: true, value: 300 });
   const root5a = createRoot(rootEl);
+  let firstPaintFormatted = false;
+  function FirstPaint({ children }: { children: React.ReactNode }) {
+    useLayoutEffect(() => { firstPaintFormatted = Boolean(rootEl.querySelector(".md strong")); }, []);
+    return <TranscriptPresentationProvider value={{ gestureActive: false, windowed: true, geometryChanged: () => {} }}>{children}</TranscriptPresentationProvider>;
+  }
   const text = "# Short answer\n\nThis **must render** without a trip to the bottom.";
   await act(async () => {
     root5a.render(
-      <div className="transcript__row">
+      <FirstPaint><div className="transcript__row">
         <MarkdownHistory text={text} entryId="md-history-short-visible" fallback={<div className="md">{text}</div>} />
-      </div>,
+      </div></FirstPaint>,
     );
   });
   await flush();
+  ok(firstPaintFormatted, "short history materializes real Markdown in its first layout, before worker effects");
   ok(rootEl.querySelector('.md[data-markdown-blocks="2"]'), "a short visible answer commits while the reader remains above the bottom");
   ok(rootEl.querySelector(".md strong"), "the short answer exposes rendered markdown instead of the raw fallback");
   await act(async () => root5a.unmount());
+  rootEl.className = "";
+}
+
+// A large source can still be one block. It remains worker-owned, pauses
+// only for active input, and formats for a stationary reader without a trip
+// to the bottom. Its new DOM requests measurement before paint.
+{
+  rootEl.className = "transcript";
+  rootEl.scrollTop = 400;
+  Object.defineProperty(rootEl, "scrollHeight", { configurable: true, value: 1_000 });
+  Object.defineProperty(rootEl, "clientHeight", { configurable: true, value: 300 });
+  const rootLarge = createRoot(rootEl);
+  const text = "**Large complete answer** " + "source ".repeat(1_500);
+  let geometryChanges = 0;
+  const geometryChanged = () => { geometryChanges++; };
+  const render = (gestureActive: boolean) => rootLarge.render(
+    <TranscriptPresentationProvider value={{ gestureActive, windowed: true, geometryChanged }}>
+      <div className="transcript__row"><MarkdownHistory text={text} cacheKey="large-input-lease"
+        fallback={<div className="md">{text}</div>} /></div>
+    </TranscriptPresentationProvider>,
+  );
+  await act(async () => render(true));
+  await flush();
+  ok(Boolean(getTranscriptStore().getMarkdown("large-input-lease", markdownContentRevision(text))), "large worker output becomes cache-ready during input");
+  ok(!rootEl.querySelector("[data-markdown-blocks]"), "ready large output cannot replace displayed content during active input");
+  const before = geometryChanges;
+  await act(async () => render(false));
+  ok(rootEl.querySelector(".md strong"), "a stationary reader receives the complete large answer when input ends");
+  ok(geometryChanges > before, "the changed presentation invalidates window geometry in its layout commit");
+  await act(async () => rootLarge.unmount());
   rootEl.className = "";
 }
 
@@ -438,7 +478,7 @@ console.log("\nmarkdown history rendering");
   const root6 = createRoot(rootEl);
   await act(async () => {
     root6.render(
-      <MarkdownHistory text="broken" fallback={<div className="md">broken</div>} onError={() => { errors += 1; }} />,
+      <MarkdownHistory text={"broken".repeat(2_000)} fallback={<div className="md">broken</div>} onError={() => { errors += 1; }} />,
     );
   });
   await flush();

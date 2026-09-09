@@ -85,6 +85,12 @@ type BranchMeta struct {
 	ListingRevision      int64             `json:"listing_revision,omitempty"`
 	ListingContentDigest string            `json:"listing_content_digest,omitempty"`
 	InFlightTurn         *InFlightTurnMeta `json:"in_flight_turn,omitempty"`
+	// HeadID and its companions mirror the schema-2 log's selected head for
+	// listings that must not replay the log; they are absent for schema 1.
+	HeadID        string `json:"head_id,omitempty"`
+	HeadCount     int    `json:"head_count,omitempty"`
+	LogSchema     int    `json:"log_schema,omitempty"`
+	LogGeneration int64  `json:"log_generation,omitempty"`
 	// Closed completed todo shelves; desktop remounts hide the same fingerprint.
 	DismissedTodoBatches []string `json:"dismissed_todo_batches,omitempty"`
 }
@@ -153,6 +159,9 @@ type InFlightTurnMeta struct {
 	// this exact transcript on disk, the snapshot committed and only marker
 	// cleanup was interrupted; no message recovery is necessary.
 	CommitDigest string `json:"commit_digest,omitempty"`
+	// HeadID marks a schema-2 turn whose begin/end markers live in the log
+	// rather than in this sidecar; such markers are never persisted here.
+	HeadID string `json:"head_id,omitempty"`
 }
 
 func (m BranchMeta) DefaultScope() string {
@@ -172,6 +181,10 @@ type BranchInfo struct {
 	ModTime time.Time
 	Preview string
 	Turns   int
+	// HeadID and HeadKind are set for a head inside a schema-2 log; Path is
+	// then the log the head lives in and ID is the head id.
+	HeadID   string
+	HeadKind string
 }
 
 func BranchID(path string) string {

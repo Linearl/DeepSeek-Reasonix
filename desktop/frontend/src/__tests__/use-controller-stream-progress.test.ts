@@ -78,7 +78,7 @@ function ev(s: typeof initialState, e: WireEvent) {
       attention: true,
     },
   });
-  eq(after.items.length, complete.items.length + 1, "actionable completion summary adds one compact transcript notice");
+  eq(after.items.length, complete.items.length, "summary refresh replaces the same result notice");
   const notice = after.items[after.items.length - 1];
   eq(notice?.kind === "notice" ? notice.variant : "", "completion", "quality gap uses the completion notice variant");
   eq(notice?.kind === "notice" ? notice.action : "", "open_changes", "quality gap links to the change panel");
@@ -114,7 +114,7 @@ function ev(s: typeof initialState, e: WireEvent) {
     },
   });
   const suppressedNotice = suppressed.items[suppressed.items.length - 1];
-  eq(suppressedNotice?.kind === "notice" ? suppressedNotice.title : "", "This turn still needs attention", "required suppression uses a generic attention notice");
+  eq(suppressedNotice?.kind === "notice" ? suppressedNotice.title : "", "Turn result", "required suppression retains the fixed result title");
 
   const restarted = ev(after, { kind: "turn_started" });
   eq(restarted.completionSummary, undefined, "a new turn clears the previous turn's quality details");

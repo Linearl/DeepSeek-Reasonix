@@ -100,7 +100,14 @@ func (p *Provider) MissingToolCallReasoningWarningIdentity() string {
 
 // Stream opens one sidecar stream. Each call re-resolves the live backend so
 // rolling replacement keeps the same provider-visible ref (cache-stable).
+func (p *Provider) ReasoningCapability() provider.ReasoningCapability {
+	return provider.ReasoningOptions(p.descriptor.DefaultEffort, p.descriptor.Efforts...)
+}
+
 func (p *Provider) Stream(ctx context.Context, request provider.Request) (<-chan provider.Chunk, error) {
+	if err := p.ReasoningCapability().Validate(p.descriptor.Model, request.EffortOverride); err != nil {
+		return nil, err
+	}
 	if p == nil || p.resolver == nil {
 		return nil, fmt.Errorf("extension provider is unavailable")
 	}
@@ -155,9 +162,12 @@ func (r *Resolver) open(ctx context.Context, p *Provider, client ProviderClient,
 	})
 	r.installDrainCancel(id, stream, unregisterDrainCancel)
 
-	effort := ""
+	effort := p.descriptor.DefaultEffort
 	if p.effort != nil {
 		effort = *p.effort
+	}
+	if request.EffortOverride != "" {
+		effort = request.EffortOverride
 	}
 	idleTimeout := r.idleTimeout
 	if idleTimeout <= 0 {

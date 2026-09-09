@@ -55,6 +55,8 @@ func RecordToolRecovery(r *InterruptedTurnRecovery, call InterruptedToolSummary,
 // provider-excluded handoff for an unfinished turn. It contains bounded facts;
 // raw partial reasoning remains local for display.
 type InterruptedTurnRecovery struct {
+	TerminalStatus          string                   `json:"terminalStatus,omitempty"` // failed | interrupted; absent preserves legacy display
+	FailureDiagnostic       *FailureDiagnostic       `json:"failureDiagnostic,omitempty"`
 	WriteChecks             []WriteRecoveryCheck     `json:"write_checks,omitempty"`
 	SatisfiedWrites         []InterruptedToolSummary `json:"satisfied_writes,omitempty"`
 	Pending                 bool                     `json:"pending,omitempty"`

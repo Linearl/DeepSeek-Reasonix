@@ -141,7 +141,7 @@ func TestOfficialDeepSeekVisionSKUEmbedsURLAndFileID(t *testing.T) {
 	}
 }
 
-func TestOfficialDeepSeekVisionSKUOmitsToolImages(t *testing.T) {
+func TestOfficialDeepSeekVisionSKUEmbedsToolImages(t *testing.T) {
 	p, err := New(provider.Config{
 		Name:    "deepseek-anthropic",
 		BaseURL: "https://api.deepseek.com/anthropic",
@@ -152,13 +152,19 @@ func TestOfficialDeepSeekVisionSKUOmitsToolImages(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	c := p.(*client)
-	req := c.buildRequest(context.Background(), provider.Request{Messages: toolMessages([]string{"data:image/png;base64,QUFB"})})
+	messages := toolMessages([]string{"data:image/png;base64,QUFB"})
+	messages[1].ReasoningContent = "Inspect the requested image."
+	req := c.buildRequest(context.Background(), provider.Request{Messages: messages})
 	body, err := json.Marshal(req)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	if strings.Contains(string(body), `"type":"image"`) || strings.Contains(string(body), "QUFB") {
-		t.Fatalf("official DeepSeek vision SKU leaked tool image payload: %s", body)
+	if !strings.Contains(string(body), `"type":"image"`) || !strings.Contains(string(body), "QUFB") {
+		t.Fatalf("official DeepSeek vision SKU omitted tool image payload: %s", body)
+	}
+	last := req.Messages[len(req.Messages)-1]
+	if len(last.Content) != 2 || last.Content[0].Type != "tool_result" || last.Content[1].Type != "image" {
+		t.Fatalf("expected tool result then top-level image: %+v", last)
 	}
 }
 

@@ -100,15 +100,16 @@ func servePost(ctx context.Context, client *http.Client, url string, body []byte
 }
 
 const expectedSessionPathHeader = "X-Reasonix-Expected-Session-Path"
+const expectedModelSettingsHeader = "X-Reasonix-Expected-Model-Settings"
 
 // servePostForSession fences a foreground mutation to the session the Desktop
 // tab displayed when the command was issued. Older Serve binaries ignore the
 // optional header and retain their single-session behavior.
-func servePostForSession(ctx context.Context, client *http.Client, url string, body []byte, expectedPath string) error {
+func servePostForSession(ctx context.Context, client *http.Client, url string, body []byte, expectedPath string, modelRevision ...string) error {
 	if body == nil {
 		body = []byte("{}")
 	}
-	resp, err := serveDoForSession(ctx, client, http.MethodPost, url, body, expectedPath)
+	resp, err := serveDoForSession(ctx, client, http.MethodPost, url, body, expectedPath, modelRevision...)
 	if err != nil {
 		return err
 	}
@@ -152,12 +153,15 @@ func serveDo(ctx context.Context, client *http.Client, method, url string, body 
 	return serveDoForSession(ctx, client, method, url, body, "")
 }
 
-func serveDoForSession(ctx context.Context, client *http.Client, method, url string, body []byte, expectedPath string) (*http.Response, error) {
+func serveDoForSession(ctx context.Context, client *http.Client, method, url string, body []byte, expectedPath string, modelRevision ...string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if len(modelRevision) > 0 && modelRevision[0] != "" {
+		req.Header.Set(expectedModelSettingsHeader, modelRevision[0])
+	}
 	if expectedPath = strings.TrimSpace(expectedPath); expectedPath != "" {
 		req.Header.Set(expectedSessionPathHeader, expectedPath)
 	}

@@ -16,6 +16,7 @@ type AuditForwarder struct{ Inner Sink }
 // wrappers use compile-time assertions instead of maintaining partial lists in
 // tests that silently drift when a new capability is added.
 type OptionalSinkCapabilities interface {
+	RuntimeStateSink
 	DelegationAuditSink
 	ReadinessAuditSink
 	AnchorSafetyAuditSink

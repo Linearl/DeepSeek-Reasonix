@@ -5,7 +5,14 @@ export interface RecoveryStatus {
   reason?: string;
   next_attempt_at?: number;
   waited_ms?: number;
+  wait_budget_ms?: number;
   waiting?: boolean;
+}
+
+export interface RecoveryRetry {
+  attempt: number;
+  max: number;
+  recovery?: RecoveryStatus;
 }
 
 export interface RecoveryEventFields {
@@ -14,9 +21,12 @@ export interface RecoveryEventFields {
   retryMax?: number;
 }
 
-export function recoveryStatusText(t: Translator, retry: { attempt: number; max: number; recovery?: RecoveryStatus }, now: number): string {
+export function recoveryNextAttemptSeconds(recovery: RecoveryStatus, now: number): number {
+  return Math.max(0, Math.ceil(((recovery.next_attempt_at ?? now) - now) / 1000));
+}
+
+export function recoveryStatusText(t: Translator, retry: RecoveryRetry, now: number): string {
   if (!retry.recovery?.waiting) return t("status.retrying", { attempt: retry.attempt, max: retry.max });
   const phase = t(retry.recovery.phase === "connect" ? "status.recoveryNetwork" : "status.recoveryProvider");
-  const seconds = Math.max(0, Math.ceil(((retry.recovery.next_attempt_at ?? now) - now) / 1000));
-  return t("status.recoveryWaiting", { seconds, phase });
+  return t("status.recoveryWaiting", { seconds: recoveryNextAttemptSeconds(retry.recovery, now), phase });
 }

@@ -199,6 +199,7 @@ func (c *Catalog) indexSessionPath(ctx context.Context, target DirectoryTarget, 
 		order.ContentDigest = meta.ContentDigest
 		order.ListingRevision = meta.ListingRevision
 		order.ListingContentDigest = meta.ListingContentDigest
+		order.HeadID, order.HeadCount, order.LogSchema = meta.HeadID, meta.HeadCount, meta.LogSchema
 	}
 	if order.CreatedAt.IsZero() {
 		order.CreatedAt = info.ModTime()
@@ -229,12 +230,18 @@ func recordFromOrder(target DirectoryTarget, info agent.SessionOrderInfo) Sessio
 	if info.TopicID == "" {
 		scope, root = target.Scope, target.WorkspaceRoot
 	}
+	// A stale projection is never certified, but its last-known preview and
+	// count stay as display hints so the row does not vanish during repair.
 	turnsState := TurnsValid
 	if !info.ListingProjectionFresh() {
-		turnsState, info.Preview, info.Turns = TurnsUnknown, "", 0
+		turnsState = TurnsUnknown
 	}
-	contentFingerprint := sessionContentFingerprint(info.Path)
+	heads := projectSessionHeads(info)
+	contentFingerprint := sessionContentFingerprint(info.Path) + heads.fingerprint
 	metaFingerprint := fileFingerprint(agent.BranchMetaPath(info.Path))
+	if heads.stale {
+		turnsState = TurnsUnknown
+	}
 	createdAt := unixMilli(info.CreatedAt)
 	lastActivityAt := unixMilli(info.LastActivityAt)
 	// File mtime fills a missing clock. Do not raise a known sidecar UpdatedAt:
@@ -267,6 +274,10 @@ func recordFromOrder(target DirectoryTarget, info agent.SessionOrderInfo) Sessio
 		ParentID:           info.ParentID,
 		RecoveryPreferred:  info.RecoveryPreferred,
 		RecoveryCopy:       false,
+		LogFormat:          heads.logFormat,
+		HeadCount:          heads.headCount,
+		SelectedHeadID:     heads.selected,
+		heads:              heads.heads,
 		ContentFingerprint: contentFingerprint,
 		MetaFingerprint:    metaFingerprint,
 		Health:             HealthOK,
@@ -400,7 +411,7 @@ func (c *Catalog) commitDirectoryProjection(ctx context.Context, target Director
 				_ = stmt.Close()
 				return rollback(err)
 			}
-			if _, err := stmt.ExecContext(ctx, c.sessionRowValues(record, pathKey, directoryKey, generation)...); err != nil {
+			if err := c.writeDirectoryRow(ctx, tx, stmt, record, pathKey, directoryKey, generation); err != nil {
 				_ = stmt.Close()
 				return rollback(err)
 			}

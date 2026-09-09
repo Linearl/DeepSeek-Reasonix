@@ -183,6 +183,7 @@ func (c *Controller) AnswerMCPInteraction(id, action string, content map[string]
 // AnswerMCPInteractionChecked persists the prompt transition before releasing
 // the blocked MCP call, so a crashed frontend cannot lose an answered decision.
 func (c *Controller) AnswerMCPInteractionChecked(id, action string, content map[string]any) error {
+	defer c.refreshRuntimeState(event.Event{})
 	c.promptResolveMu.Lock()
 	defer c.promptResolveMu.Unlock()
 	return c.answerMCPInteractionCheckedLocked(id, action, content)
