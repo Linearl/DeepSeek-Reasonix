@@ -35,11 +35,6 @@ func TestTodoWriteRejectsNonSerialStates(t *testing.T) {
 		want string
 	}{
 		{
-			name: "out of order completion",
-			args: `{"todos":[{"content":"first","status":"in_progress"},{"content":"second","status":"completed"}]}`,
-			want: "completed after unfinished",
-		},
-		{
 			name: "multiple current items",
 			args: `{"todos":[{"content":"first","status":"in_progress"},{"content":"second","status":"in_progress"}]}`,
 			want: "second in_progress",

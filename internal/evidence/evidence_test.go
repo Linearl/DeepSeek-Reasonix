@@ -623,14 +623,6 @@ func TestValidateSerialTodosRejectsInvalidOrdering(t *testing.T) {
 		want  string
 	}{
 		{
-			name: "completed after current",
-			todos: []TodoItem{
-				{Content: "first", Status: "in_progress"},
-				{Content: "second", Status: "completed"},
-			},
-			want: "completed after unfinished",
-		},
-		{
 			name: "multiple current items",
 			todos: []TodoItem{
 				{Content: "first", Status: "in_progress"},
@@ -764,16 +756,6 @@ func TestValidateSerialTodosRejectsInvalidPhaseChains(t *testing.T) {
 				{Content: "Next", Status: "pending"},
 			},
 			want: "no phase above it",
-		},
-		{
-			name: "completed segment after the current chain",
-			todos: []TodoItem{
-				{Content: "Phase", Status: "pending"},
-				{Content: "sub one", Status: "in_progress", Level: 1},
-				{Content: "Second phase", Status: "completed"},
-				{Content: "sub two", Status: "completed", Level: 1},
-			},
-			want: "completed after unfinished",
 		},
 		{
 			name: "stale sub-step progress before the current item",

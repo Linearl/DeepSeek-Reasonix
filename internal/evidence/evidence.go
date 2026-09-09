@@ -65,9 +65,9 @@ func ValidateSerialTodos(todos []TodoItem) error {
 		}
 		switch state {
 		case "completed":
-			if seenCurrent || seenPending {
-				return fmt.Errorf("todo %d %q is completed after unfinished work; serial task lists require completed items to form a prefix", seg.head+1, todos[seg.head].Content)
-			}
+			// Parallel sub-agents finish out of order, so a completed item may
+			// follow unfinished ones (#9949 / task 23 P1-a). Only the single
+			// in_progress slot stays serial.
 		case "in_progress":
 			if seenPending {
 				ip := seg.head
@@ -83,16 +83,8 @@ func ValidateSerialTodos(todos []TodoItem) error {
 		case "pending":
 			seenPending = true
 		default: // stale: partially completed with no current item
-			if seenCurrent {
-				first := seg.head
-				for i := seg.head; i < seg.end; i++ {
-					if todoStatus(todos[i].Status) == "completed" {
-						first = i
-						break
-					}
-				}
-				return fmt.Errorf("todo %d %q is completed after unfinished work; serial task lists require completed items to form a prefix", first+1, todos[first].Content)
-			}
+			// Out-of-order completion is allowed (task 23 P1-a); the missing
+			// in_progress slot is reported by the caller-level check below.
 			seenPending = true
 		}
 	}
@@ -147,9 +139,7 @@ func validateSerialSegment(todos []TodoItem, seg todoSegment) (string, error) {
 		sub := todos[i]
 		switch todoStatus(sub.Status) {
 		case "completed":
-			if seenSubCurrent || seenSubPending {
-				return "", fmt.Errorf("todo %d %q is completed after unfinished work; serial task lists require completed items to form a prefix", i+1, sub.Content)
-			}
+			// Sub-steps may finish out of order too (#9949 / task 23 P1-a).
 			completedSubs++
 		case "in_progress":
 			if seenSubPending {
