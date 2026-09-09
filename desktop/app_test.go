@@ -6169,9 +6169,16 @@ func TestSearchFileRefsFindsNestedBasename(t *testing.T) {
 
 	app := &App{}
 	listed := app.ListDir("")
-	for _, hidden := range []string{".codex", ".npm", ".pnpm-store", "bin", "dist", "stage", "tmp"} {
+	for _, hidden := range []string{".codex", ".npm", ".pnpm-store", "dist"} {
 		if hasDirEntry(listed, hidden) {
 			t.Fatalf("ListDir should hide local noise %q, got %+v", hidden, listed)
+		}
+	}
+	// #10006 / task 37: the panel reflects the real disk layout, so generic
+	// top-level names stay visible even though @-search still skips them.
+	for _, visible := range []string{"bin", "stage", "tmp"} {
+		if !hasDirEntry(listed, visible) {
+			t.Fatalf("ListDir must show %q after #10006, got %+v", visible, listed)
 		}
 	}
 	desktopFrontend := app.ListDir("desktop/frontend")
