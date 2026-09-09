@@ -93,6 +93,7 @@ import { ShortcutComboDisplay } from "./ShortcutComboDisplay";
 import { SettingsNavigation, SETTINGS_NAV_TABS } from "./SettingsNavigation";
 import { StatusBarItemsEditor } from "./StatusBarItemsEditor";
 import { DesktopCloseBehaviorHint } from "./DesktopCloseBehaviorHint";
+import { ProviderModelsEditor } from "./ProviderModelsEditor";
 export type SettingsInitialFocus =
   | { target: "bot-allowlist"; connectionId?: string; requestId?: number }
   | { target: "model-access"; requestId?: number; onboarding?: boolean }
@@ -6208,6 +6209,10 @@ export function ProviderEditor({
   const effectiveBaseUrl = providerBaseURLForSave(initial, effectiveKind, effectiveRequestUrl);
   const effectiveLegacyChatUrl = effectiveKind.toLowerCase() === "openai" ? effectiveRequestUrl : initial?.chatUrl ?? "";
   const effectiveModelsUrl = modelsUrl.trim();
+  // Fork #33: identity of the discovery inputs, so stale probe/fetch results are
+  // dropped when the endpoint, key or parameters change.
+  const discoveryIdentity = JSON.stringify([name, effectiveKind, effectiveRequestUrl, effectiveBaseUrl, effectiveModelsUrl, apiKeyEnv, headersDraft, authHeader, noProxy, keyDraft, initial?.modelCatalogFingerprint]);
+  const [capabilitiesIdentity, setCapabilitiesIdentity] = useState(discoveryIdentity);
   const initialEffectiveBaseUrl = initial ? trimmedBaseURL(initial.baseUrl) : "";
   const retainedServerWebSearchCapability = initial &&
     effectiveKind.trim().toLowerCase() === initial.kind.trim().toLowerCase() &&
@@ -6415,6 +6420,18 @@ export function ProviderEditor({
     setModels("");
   };
 
+  // Fork #33: the draft provider the model list probes against (name/url/key as typed).
+  const modelProvider: ProviderView = {
+    ...initial, name: name.trim(), kind: effectiveKind, baseUrl: effectiveBaseUrl,
+    requestUrl: effectiveRequestUrl, chatUrl: effectiveLegacyChatUrl, modelsUrl: effectiveModelsUrl,
+    models: modelNames, modelOverrides: mergeProviderModelContextWindows(modelOverrides, modelNames, modelContextWindows),
+    modelCapabilities: capabilitiesIdentity === discoveryIdentity ? modelCapabilities : [], visionModels: legacyVisionModels, visionModelsConfigured,
+    apiKeyEnv: providerApiKeyEnvForSave(name, apiKeyEnv, keyDraft), headers: effectiveHeaders, extraBody: effectiveExtraBody,
+    authHeader, noProxy, builtIn: initial?.builtIn ?? false, added: true, keySet: Boolean(keyDraft.trim()) || Boolean(initial?.keySet),
+    default: providerDefaultModel(initial?.default ?? "", modelNames), balanceUrl: balanceUrl.trim(),
+    contextWindow: Number(ctx) || 0, reasoningProtocol, thinking, supportedEfforts: cleanedSupportedEfforts,
+    defaultEffort: cleanDefaultEffort, webSearch,
+  };
   const advancedFields = (
     <details className="provider-editor-advanced" open={advancedOpen} onToggle={(e) => setAdvancedOpen(e.currentTarget.open)}>
       <summary>
@@ -6600,6 +6617,14 @@ export function ProviderEditor({
         onEditModel={setModelDialog}
         onSelectAll={selectAllEditorModels}
         onClear={clearEditorModels}
+      />
+      <ProviderModelsEditor provider={modelProvider} draft={!initial} disabled={busy} canFetch={canFetch} probeKey={keyDraft}
+        onChange={(nextModels, nextOverrides, nextCapabilities) => {
+          setModels(nextModels.join(", ")); setModelOverrides(nextOverrides); setModelCapabilities(nextCapabilities); setCapabilitiesIdentity(discoveryIdentity);
+          setModelContextWindows(providerModelContextWindowDrafts(nextOverrides));
+        }}
+        onFetch={async () => { try { return await app.FetchProviderModelCatalogDraft(modelProvider, keyDraft.trim()); } catch (error) { throw new Error(providerModelFetchFallbackMessage(error, t)); } }}
+        onTest={(model) => app.TestProviderModelTimed(modelProvider, model, keyDraft.trim())}
       />
       <ProviderServiceCapabilities
         supported={effectiveServerWebSearchCapability}
