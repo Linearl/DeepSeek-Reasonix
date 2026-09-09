@@ -1881,6 +1881,17 @@ const ContextManagementPolicy = `This host maintains context automatically. When
 	`need to be rushed or abandoned. Plan large tasks in waves and delegate long ` +
 	`operations to background tasks.`
 
+// AutonomyPolicy tells the model to finish the work instead of stopping at a
+// partial state (task 6 P0-a). Codex's prompt carries the same intent; without
+// it the model tends to announce what it is about to do and end the turn.
+const AutonomyPolicy = `Persist until the task is fully handled end-to-end within the current turn. ` +
+	`Do not stop at analysis, a plan, or a partial fix, and do not end the turn ` +
+	`merely to report progress or to announce what you are about to do: carry it ` +
+	`out, then report what you did. Only terminate the turn when the problem is ` +
+	`solved, when you are genuinely blocked on information only the user can ` +
+	`provide, or when the user asks you to stop. When a verification step fails, ` +
+	`fix the cause instead of describing it.`
+
 // Default returns the built-in default configuration.
 func Default() *Config {
 	return &Config{

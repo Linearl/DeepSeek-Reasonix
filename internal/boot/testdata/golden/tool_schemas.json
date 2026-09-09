@@ -466,6 +466,13 @@
           "description": "Capability id such as skill:review, mcp-server:github, or mcp-tool:github/search_issues. Not required for action=list.",
           "type": "string"
         },
+        "capability_ids": {
+          "description": "Fork: action=decline only. Decline several capabilities in one call instead of one call per id.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "limit": {
           "default": 5,
           "description": "Maximum search results; defaults to 5.",
