@@ -65,7 +65,7 @@ type TerminalTimeoutError struct {
 
 func (e TerminalTimeoutError) Error() string {
 	if e.Timeout > 0 {
-		return fmt.Sprintf("command timed out after %s (terminal killed)", e.Timeout)
+		return fmt.Sprintf("command timed out after %s (terminal killed). Do not sleep to work around this: rerun the command with run_in_background=true and collect the result with bash_output (or wait), then continue.", e.Timeout)
 	}
 	return "command timed out (terminal killed)"
 }
