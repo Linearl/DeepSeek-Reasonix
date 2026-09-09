@@ -304,7 +304,9 @@ func EffectiveEffort(e *ProviderEntry) string {
 		if explicitReasoningProtocol(e) == ReasoningProtocolKimiK3 && !isKimiK3ReasoningEffort(effort) {
 			return ""
 		}
-		return effort
+		// Saved pre-contract aliases (medium/xhigh) keep working on official
+		// DeepSeek endpoints: resolve them to the declared high level.
+		return migrateStoredDeepSeekEffort(e, effort)
 	}
 	if explicitReasoningProtocol(e) == ReasoningProtocolKimiK3 {
 		return ""

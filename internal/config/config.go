@@ -507,16 +507,13 @@ func (c *Config) DefaultSubagentPolicy() string {
 // DesktopStatusBarStyle normalizes the desktop status bar metric label style.
 // Unmigrated configurations adopt icon labels once; later choices are preserved.
 func (c *Config) DesktopStatusBarStyle() string {
-	if !c.Desktop.StatusBarStyleInitialized {
-		return "icon"
-	}
 	switch strings.ToLower(strings.TrimSpace(c.Desktop.StatusBarStyle)) {
 	case "icon":
 		return "icon"
 	case "text":
 		return "text"
 	default:
-		return "icon"
+		return "text"
 	}
 }
 

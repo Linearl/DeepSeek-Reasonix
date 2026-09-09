@@ -141,14 +141,16 @@ func ExplicitModelVision(e *ProviderEntry) bool {
 }
 
 func officialDeepSeekEffectiveVision(e *ProviderEntry) bool {
-	if e == nil || openai.IsOfficialDeepSeekTextModel(e.Model) {
+	// Fork: the official DeepSeek endpoint stays conservative at the provider
+	// level — only the pinned vision SKU can answer yes. Per-model overrides
+	// still drive the wire gate (DeepSeekImageInputAllowed) and the capability
+	// resolver, so users can open image input for new SKUs there; this answer
+	// only feeds provider-level UI/validation.
+	if e == nil || !openai.IsOfficialDeepSeekVisionModel(e.Model) {
 		return false
 	}
 	if enabled, explicit := explicitModelVision(e); explicit {
 		return enabled
-	}
-	if !openai.IsOfficialDeepSeekVisionModel(e.Model) {
-		return false
 	}
 	if e.Vision {
 		return true
