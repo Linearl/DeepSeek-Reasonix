@@ -639,6 +639,62 @@ func TestUseCapabilityDeclineAndInspect(t *testing.T) {
 	}
 }
 
+func TestUseCapabilityDeclinesSeveralCapabilitiesInOneCall(t *testing.T) {
+	newTool := func(ledger *capability.Ledger, audit *capability.Audit) *UseCapabilityTool {
+		return NewUseCapabilityTool(context.Background(), nil, nil, tool.NewRegistry(), ledger, audit, nil)
+	}
+
+	ledger := capability.NewLedger()
+	ledger.SeedCandidates(capability.RouteDecision{Candidates: []capability.RouteCandidate{
+		{Entry: capability.Entry{ID: "skill:review"}, Policy: capability.AutoUsePrefer},
+		{Entry: capability.Entry{ID: "skill:format"}, Policy: capability.AutoUsePrefer},
+		{Entry: capability.Entry{ID: "tool:grep"}, Policy: capability.AutoUsePrefer},
+	}})
+	audit := &capability.Audit{}
+	out, err := newTool(ledger, audit).Execute(context.Background(),
+		json.RawMessage(`{"action":"decline","capability_ids":["skill:review","skill:format","tool:grep"],"reason":"not needed this turn"}`))
+	if err != nil || !strings.Contains(out, "3 capabilities") {
+		t.Fatalf("batch decline: out=%q err=%v", out, err)
+	}
+	if gate := ledger.CheckFinalGate(); gate.Reason != "" {
+		t.Fatalf("after batch decline gate = %+v", gate)
+	}
+	if got := audit.Snapshot().Declines; got != 3 {
+		t.Fatalf("batch decline audit = %d, want 3", got)
+	}
+
+	// A single id keeps the pre-batch wording.
+	single := capability.NewLedger()
+	single.SeedCandidates(capability.RouteDecision{Candidates: []capability.RouteCandidate{
+		{Entry: capability.Entry{ID: "skill:review"}, Policy: capability.AutoUsePrefer},
+	}})
+	out, err = newTool(single, &capability.Audit{}).Execute(context.Background(),
+		json.RawMessage(`{"action":"decline","capability_id":"skill:review","reason":"not needed"}`))
+	if err != nil || !strings.Contains(out, "declined capability skill:review") {
+		t.Fatalf("single decline wording: out=%q err=%v", out, err)
+	}
+
+	// One require member refuses the whole batch without touching the ledger.
+	mixed := capability.NewLedger()
+	mixed.SeedCandidates(capability.RouteDecision{Candidates: []capability.RouteCandidate{
+		{Entry: capability.Entry{ID: "skill:review"}, Policy: capability.AutoUsePrefer},
+		{Entry: capability.Entry{ID: "skill:must"}, Policy: capability.AutoUseRequire},
+	}})
+	if _, err := newTool(mixed, &capability.Audit{}).Execute(context.Background(),
+		json.RawMessage(`{"action":"decline","capability_ids":["skill:review","skill:must"],"reason":"no"}`)); err == nil {
+		t.Fatal("a batch containing a require capability must be refused")
+	}
+	if gate := mixed.CheckFinalGate(); gate.Reason == "" {
+		t.Fatal("a refused batch must not mutate the ledger")
+	}
+
+	// An empty batch is an input error, not a silent no-op.
+	if _, err := newTool(capability.NewLedger(), &capability.Audit{}).Execute(context.Background(),
+		json.RawMessage(`{"action":"decline","capability_ids":["   "],"reason":"no"}`)); err == nil {
+		t.Fatal("an empty batch should be rejected")
+	}
+}
+
 func TestUseCapabilityInspectMCPToolDoesNotListSiblingSchemas(t *testing.T) {
 	t.Setenv("REASONIX_CACHE_HOME", t.TempDir())
 	spec := plugin.Spec{Name: "db", Authorized: true}

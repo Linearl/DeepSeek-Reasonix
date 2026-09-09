@@ -115,14 +115,14 @@ func TestTodoWriteRejectsDroppingCurrentTodoWithoutReplacementAuth(t *testing.T)
 	})
 	ctx := evidence.WithLedger(context.Background(), ledger)
 
-	for _, args := range []string{
-		`{"todos":[]}`,
-		`{"todos":[{"content":"Write code","status":"in_progress"}]}`,
-	} {
-		_, err := (todoWrite{}).Execute(ctx, json.RawMessage(args))
-		if err == nil || !strings.Contains(err.Error(), "cannot be") {
-			t.Fatalf("dropping current todo with %s should require replacement approval: %v", args, err)
-		}
+	// Emptying the list stays rejected.
+	if _, err := (todoWrite{}).Execute(ctx, json.RawMessage(`{"todos":[]}`)); err == nil || !strings.Contains(err.Error(), "cannot be cleared") {
+		t.Fatalf("emptying the list should be rejected: %v", err)
+	}
+	// Fork: swapping which step is current is allowed — the plan still needs
+	// exactly one in_progress item (ValidateSerialTodos).
+	if _, err := (todoWrite{}).Execute(ctx, json.RawMessage(`{"todos":[{"content":"Write code","status":"in_progress"}]}`)); err != nil {
+		t.Fatalf("swapping the current todo should be allowed: %v", err)
 	}
 
 	authorized := tool.WithPlanReplacementAuthorization(ctx)
@@ -156,7 +156,7 @@ func TestTodoWriteApprovedPlanReplacementPreservesCompletedHistory(t *testing.T)
 	}
 
 	dropsHistory := json.RawMessage(`{"todos":[{"content":"Replace parser architecture","status":"in_progress"}]}`)
-	if _, err := (todoWrite{}).Execute(ctx, dropsHistory); err == nil || !strings.Contains(err.Error(), "completed task history") {
+	if _, err := (todoWrite{}).Execute(ctx, dropsHistory); err == nil || !strings.Contains(err.Error(), "completed step disappeared") {
 		t.Fatalf("approved replacement dropped completed history: %v", err)
 	}
 }
@@ -177,8 +177,11 @@ func TestTodoWriteDoesNotTreatNumericContentAsStepIndex(t *testing.T) {
 		{"content":"Replacement","status":"in_progress"}
 	]}`)
 
-	if _, err := (todoWrite{}).Execute(ctx, args); err == nil || !strings.Contains(err.Error(), "cannot be removed or replaced") {
-		t.Fatalf("numeric todo content should be matched by identity, got %v", err)
+	// Fork: replacing the active step is allowed. The numeric-content step is
+	// still matched by identity, not by index — completing it below would fail
+	// if "2" were read as a position.
+	if _, err := (todoWrite{}).Execute(ctx, args); err != nil {
+		t.Fatalf("replacing the active step should be allowed: %v", err)
 	}
 
 	completeNumeric := json.RawMessage(`{"todos":[
@@ -232,7 +235,7 @@ func TestTodoWriteCanCompleteCanonicalCurrentAcrossTurns(t *testing.T) {
 	}
 }
 
-func TestTodoWriteRejectsDuplicatedOrReorderedCompletedPrefix(t *testing.T) {
+func TestTodoWriteRejectsDuplicatedCompletedButAllowsReorder(t *testing.T) {
 	ledger := evidence.NewLedger()
 	ledger.Record(evidence.Receipt{
 		ToolName: "todo_write",
@@ -245,22 +248,37 @@ func TestTodoWriteRejectsDuplicatedOrReorderedCompletedPrefix(t *testing.T) {
 	})
 	ctx := evidence.WithLedger(context.Background(), ledger)
 
-	for _, args := range []string{
-		`{"todos":[
-			{"content":"Inspect environment","status":"completed"},
-			{"content":"Inspect environment","status":"completed"},
-			{"content":"Write code","status":"in_progress"}
-		]}`,
-		`{"todos":[
-			{"content":"Design solution","status":"completed"},
-			{"content":"Inspect environment","status":"completed"},
-			{"content":"Write code","status":"in_progress"}
-		]}`,
-	} {
-		_, err := (todoWrite{}).Execute(ctx, json.RawMessage(args))
-		if err == nil || !strings.Contains(err.Error(), "cannot be inserted, duplicated, or reordered") {
-			t.Fatalf("invalid completed prefix should be rejected: %v", err)
-		}
+	// Duplication stays rejected: two entries claiming the same completed step
+	// make later identity matching ambiguous.
+	duplicated := json.RawMessage(`{"todos":[
+		{"content":"Inspect environment","status":"completed"},
+		{"content":"Inspect environment","status":"completed"},
+		{"content":"Write code","status":"in_progress"}
+	]}`)
+	if _, err := (todoWrite{}).Execute(ctx, duplicated); err == nil || !strings.Contains(err.Error(), "appears more than once") {
+		t.Fatalf("duplicated completed step should be rejected: %v", err)
+	}
+
+	// Fork: reordering completed steps is allowed (parallel subagents finish
+	// out of order and the model may rewrite the whole list).
+	reordered := json.RawMessage(`{"todos":[
+		{"content":"Design solution","status":"completed"},
+		{"content":"Inspect environment","status":"completed"},
+		{"content":"Write code","status":"in_progress"}
+	]}`)
+	if _, err := (todoWrite{}).Execute(ctx, reordered); err != nil {
+		t.Fatalf("reordering completed steps should be accepted: %v", err)
+	}
+
+	// Inventing a completed step that was never in the plan stays rejected.
+	invented := json.RawMessage(`{"todos":[
+		{"content":"Inspect environment","status":"completed"},
+		{"content":"Design solution","status":"completed"},
+		{"content":"Ship it","status":"completed"},
+		{"content":"Write code","status":"in_progress"}
+	]}`)
+	if _, err := (todoWrite{}).Execute(ctx, invented); err == nil || !strings.Contains(err.Error(), "not a step from the current plan") {
+		t.Fatalf("invented completed step should be rejected: %v", err)
 	}
 }
 
@@ -449,8 +467,11 @@ func TestTodoWriteRejectsReplacingActiveSubStepWithoutReplacementAuth(t *testing
 		{"content":"Port the parser","status":"pending"},
 		{"content":"rewrite everything","status":"in_progress","level":1}]}`)
 
-	if _, err := (todoWrite{}).Execute(ctx, args); err == nil || !strings.Contains(err.Error(), "cannot be removed or replaced") {
-		t.Fatalf("replacing the active sub-step should require replacement approval: %v", err)
+	// Fork: replacing the active sub-step no longer needs replacement
+	// authorization — the model may rewrite the whole list, and the plan still
+	// requires exactly one in_progress item (ValidateSerialTodos).
+	if _, err := (todoWrite{}).Execute(ctx, args); err != nil {
+		t.Fatalf("replacing the active sub-step should be allowed: %v", err)
 	}
 	if _, err := (todoWrite{}).Execute(tool.WithPlanReplacementAuthorization(ctx), args); err != nil {
 		t.Fatalf("approved replacement of the active sub-step should succeed: %v", err)
@@ -545,7 +566,7 @@ func TestTodoWriteRejectsUnauthorizedCompletedHistoryRewrite(t *testing.T) {
 	ctx := evidence.WithLedger(context.Background(), ledger)
 	args := json.RawMessage(`{"todos":[{"content":"Write code","status":"in_progress"}]}`)
 
-	if _, err := (todoWrite{}).Execute(ctx, args); err == nil || !strings.Contains(err.Error(), "completed task history") {
+	if _, err := (todoWrite{}).Execute(ctx, args); err == nil || !strings.Contains(err.Error(), "completed step disappeared") {
 		t.Fatalf("unauthorized drop of completed history should be rejected: %v", err)
 	}
 }

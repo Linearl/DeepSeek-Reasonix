@@ -1220,7 +1220,7 @@ func TestEvidenceFlowRejectsReplacingCompletedTodoAfterNumericCompleteStep(t *te
 	}
 
 	results := toolResults(a.sess.conversation, "todo_write")
-	if len(results) < 2 || !strings.Contains(results[1], "completed prefix") {
+	if len(results) < 2 || !strings.Contains(results[1], "not a step from the current plan") {
 		t.Fatalf("todo_write results = %v, want completed history preserved", results)
 	}
 	got := a.CanonicalTodoState()

@@ -167,10 +167,13 @@ func verifyTodoCurrentContinuity(ctx context.Context, todos []todoItem) error {
 		}
 		match, found := evidence.MatchTodoIdentity(todo, next)
 		if !found {
-			return fmt.Errorf("current todo %d %q cannot be removed or replaced while it is in_progress; mark it completed or get host approval to replace the plan", i+1, todo.Content)
+			// Fork: the model may rewrite the whole list (renamed or regrouped
+			// steps). The plan still needs exactly one in_progress item, which
+			// ValidateSerialTodos enforces, so a rewrite is not hard-rejected.
+			continue
 		}
 		if match.Status == "pending" || match.Status == "" {
-			return fmt.Errorf("current todo %d %q cannot move back to pending; keep it in_progress, mark it completed, or get host approval to replace the plan", i+1, todo.Content)
+			return fmt.Errorf("current todo %d %q cannot move back to pending; keep it in_progress, mark it completed, or rewrite the list so another step is in_progress", i+1, todo.Content)
 		}
 	}
 	return nil
@@ -181,17 +184,37 @@ func verifyCompletedTodoPositions(ctx context.Context, todos []todoItem) error {
 	if len(previous) == 0 {
 		return nil
 	}
-	for i, todo := range todos {
+	// Reordering is allowed, duplication is not: a completed step must stay a
+	// single, unambiguous entry so later identity matching cannot pick the
+	// wrong one.
+	seenCompleted := make(map[string]struct{}, len(todos))
+	for _, todo := range todos {
 		if todo.Status != "completed" {
 			continue
 		}
-		match, found := evidence.MatchTodoIdentity(toEvidenceTodo(todo), previous)
-		if !found || match.Index != i+1 {
-			return fmt.Errorf("completed todo %d %q cannot be inserted, duplicated, or reordered; preserve the completed prefix", i+1, todo.Content)
+		key := strings.ToLower(strings.TrimSpace(todo.Content))
+		if key == "" {
+			continue
+		}
+		if _, dup := seenCompleted[key]; dup {
+			return fmt.Errorf("completed todo %q appears more than once; keep exactly one entry per completed step", todo.Content)
+		}
+		seenCompleted[key] = struct{}{}
+	}
+	for _, todo := range todos {
+		if todo.Status != "completed" {
+			continue
+		}
+		// Fork: completed items may be reordered or moved by later edits (the
+		// model often rewrites the whole list); they must still be steps the
+		// plan already had. Inventing a brand-new "completed" entry stays
+		// rejected, as does letting a completed step regress (checked below).
+		if _, found := evidence.MatchTodoIdentity(toEvidenceTodo(todo), previous); !found {
+			return fmt.Errorf("completed todo %q is not a step from the current plan; completed items may be reordered, but not invented — keep the real step content or leave it out", todo.Content)
 		}
 	}
 	if len(evidence.IncompleteTodos(previous)) > 0 && !evidence.PreservesCompletedTodoPositions(previous, toEvidenceTodos(todos)) {
-		return fmt.Errorf("completed task history cannot be removed, changed, or reordered while the plan is active; preserve every completed item at its original position")
+		return fmt.Errorf("a completed step disappeared or regressed to unfinished while the plan is active; keep every completed item in the list with status completed (reordering and inserting new steps are allowed)")
 	}
 	return nil
 }

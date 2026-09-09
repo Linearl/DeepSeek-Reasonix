@@ -1724,7 +1724,13 @@ type ToolsConfig struct {
 }
 
 const (
-	defaultBashTimeoutSeconds             = 120
+	// defaultBashTimeoutSeconds is the foreground bash safety cap. The fork
+	// raises it from the upstream 120s to 300s: real build/test commands
+	// (wails build, go test ./...) routinely run past two minutes, and a cap
+	// that forces every long command into a background job hurts more than the
+	// runaway-command protection is worth. Explicit config still wins, and 0
+	// disables the cap entirely.
+	defaultBashTimeoutSeconds             = 300
 	defaultMCPStartupTimeoutSeconds       = 30
 	defaultMCPCallTimeoutSeconds          = 300
 	defaultBackgroundJobStalledWarningSec = 900
@@ -1732,9 +1738,9 @@ const (
 )
 
 // BashTimeoutSeconds returns the foreground bash timeout in seconds. An omitted
-// config keeps the historical 120s safety cap, explicit 0 disables the
-// tool-local cap, and positive values set a custom cap. Negative values fall
-// back to the default so a typo cannot silently remove the safety net.
+// config keeps the safety cap (fork: 300s), explicit 0 disables the tool-local
+// cap, and positive values set a custom cap. Negative values fall back to the
+// default so a typo cannot silently remove the safety net.
 func (c *Config) BashTimeoutSeconds() int {
 	if c.Tools.BashTimeoutSeconds == nil || *c.Tools.BashTimeoutSeconds < 0 {
 		return defaultBashTimeoutSeconds

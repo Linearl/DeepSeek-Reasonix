@@ -11,8 +11,8 @@ func TestBashTimeoutSecondsDefaultsToSafetyCap(t *testing.T) {
 	if cfg.Tools.BashTimeoutSeconds != nil {
 		t.Fatalf("default raw bash timeout = %v, want nil", *cfg.Tools.BashTimeoutSeconds)
 	}
-	if got := cfg.BashTimeoutSeconds(); got != 120 {
-		t.Fatalf("BashTimeoutSeconds() = %d, want 120", got)
+	if got := cfg.BashTimeoutSeconds(); got != 300 {
+		t.Fatalf("BashTimeoutSeconds() = %d, want 300 (fork default)", got)
 	}
 }
 
@@ -40,8 +40,8 @@ func TestBashTimeoutSecondsParsesExplicitZero(t *testing.T) {
 func TestBashTimeoutSecondsFallsBackForNegative(t *testing.T) {
 	cfg := Default()
 	cfg.Tools.BashTimeoutSeconds = intPtr(-1)
-	if got := cfg.BashTimeoutSeconds(); got != 120 {
-		t.Fatalf("BashTimeoutSeconds() = %d, want 120", got)
+	if got := cfg.BashTimeoutSeconds(); got != 300 {
+		t.Fatalf("BashTimeoutSeconds() = %d, want 300 (fork default)", got)
 	}
 }
 

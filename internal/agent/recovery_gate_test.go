@@ -124,8 +124,12 @@ func TestPlanTransitionNeedsDedicatedReplacementAuthorization(t *testing.T) {
 		Name:      "todo_write",
 		Arguments: `{"todos":[{"content":"Replace parser architecture","status":"in_progress"}]}`,
 	})
-	if out.errMsg == "" || !strings.Contains(out.output, "cannot be removed or replaced") {
-		t.Fatalf("plain allow unexpectedly replaced current todo: %+v", out)
+	// Fork: a plain allow may now rewrite the current step — the model can
+	// rename or regroup the plan, and parallel subagents finish out of order.
+	// Clearing the whole list still requires the dedicated replacement
+	// authorization (checked below).
+	if out.errMsg != "" {
+		t.Fatalf("plain allow should be able to replace the current todo: %+v", out)
 	}
 
 	clearOut := a.executeOne(context.Background(), &a.turn, provider.ToolCall{
@@ -136,8 +140,8 @@ func TestPlanTransitionNeedsDedicatedReplacementAuthorization(t *testing.T) {
 	if clearOut.errMsg == "" || !strings.Contains(clearOut.output, "cannot be cleared") {
 		t.Fatalf("plain allow unexpectedly cleared the current todo: %+v", clearOut)
 	}
-	if got := a.CanonicalTodoState(); len(got) != 1 || got[0].Content != "Implement parser" {
-		t.Fatalf("canonical todo state = %+v, want the original current item", got)
+	if got := a.CanonicalTodoState(); len(got) != 1 || got[0].Content != "Replace parser architecture" {
+		t.Fatalf("canonical todo state = %+v, want the replacement current item", got)
 	}
 }
 

@@ -1025,19 +1025,18 @@ func MatchTodoIdentity(todo TodoItem, todos []TodoItem) (TodoStepMatch, bool) {
 }
 
 // PreservesCompletedTodoPositions reports whether every previously completed
-// item remains completed at the same index in the replacement list. Completed
-// sub-steps can sit behind a pending phase header, so this checks every item
-// rather than assuming the literal list begins with completed statuses.
+// item is still present and still completed in the replacement list. The fork
+// deliberately does not pin the index: parallel subagents finish out of order,
+// the model may rewrite the whole list, and inserting a new step above a
+// completed one is legitimate. What must never happen is a completed step
+// disappearing or regressing to an unfinished status.
 func PreservesCompletedTodoPositions(previous, next []TodoItem) bool {
-	for i, todo := range previous {
+	for _, todo := range previous {
 		if todoStatus(todo.Status) != "completed" {
 			continue
 		}
-		if i >= len(next) || todoStatus(next[i].Status) != "completed" {
-			return false
-		}
 		match, found := MatchTodoIdentity(todo, next)
-		if !found || match.Index != i+1 {
+		if !found || todoStatus(match.Status) != "completed" {
 			return false
 		}
 	}

@@ -18,10 +18,14 @@ func capabilityInputErrorf(format string, args ...any) error {
 type useCapabilityArgs struct {
 	Action       string          `json:"action"`
 	CapabilityID string          `json:"capability_id"`
-	Query        string          `json:"query"`
-	Limit        int             `json:"limit"`
-	Arguments    json.RawMessage `json:"arguments"`
-	Reason       string          `json:"reason"`
+	// CapabilityIDs lets action=decline dismiss several unrelated capabilities
+	// in one call (fork: the per-turn capability route can list dozens of
+	// candidates, and declining them one call at a time burns the turn).
+	CapabilityIDs []string        `json:"capability_ids"`
+	Query         string          `json:"query"`
+	Limit         int             `json:"limit"`
+	Arguments     json.RawMessage `json:"arguments"`
+	Reason        string          `json:"reason"`
 }
 
 func parseUseCapabilityArgs(raw json.RawMessage) (useCapabilityArgs, string, string, error) {

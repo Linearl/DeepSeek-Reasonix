@@ -618,6 +618,40 @@ func (*UseCapabilityTool) Description() string {
 	return "Fixed-schema capability proxy. Prefer search(query, limit<=8), then inspect one exact capability, then call it. list is a compact diagnostic inventory only. Supports stable ids such as tool:grep, skill:review, mcp-tool:server/tool, task:subagent, workflow:name, and web:/lsp:/session:/memory: namespaces. memory:remember saves facts (description+body required; activation=\"relevant\" on create; omit activation on update; \"pinned\" only if user asks); memory:forget(name); tool:memory(operation=search|read|list). decline records a reason for a prefer capability. Independent list/search/inspect calls are read-only and may be issued together. Calls keep the provider-visible schema fixed; real writers still pass permission, plan mode, sandbox, write-path, and workspace-lease checks."
 }
 
+// declineCapabilityIDs merges the single id and the batch list into a stable,
+// deduplicated order (single id first), so one call can dismiss many
+// candidates the capability route listed for the turn.
+func declineCapabilityIDs(id string, batch []string) []string {
+	candidates := make([]string, 0, len(batch)+1)
+	if trimmed := strings.TrimSpace(id); trimmed != "" {
+		candidates = append(candidates, trimmed)
+	}
+	candidates = append(candidates, batch...)
+	seen := make(map[string]struct{}, len(candidates))
+	out := candidates[:0]
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		if _, ok := seen[candidate]; ok {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		out = append(out, candidate)
+	}
+	return out
+}
+
+// declineResultText keeps the single-id wording byte-compatible with the
+// pre-batch tool result and summarizes batches compactly.
+func declineResultText(ids []string, reason string) string {
+	if len(ids) == 1 {
+		return fmt.Sprintf("declined capability %s: %s", ids[0], reason)
+	}
+	return fmt.Sprintf("declined %d capabilities (%s): %s", len(ids), strings.Join(ids, ", "), reason)
+}
+
 func (*UseCapabilityTool) ReadOnly() bool { return true }
 
 func (*UseCapabilityTool) Schema() json.RawMessage {
@@ -630,6 +664,7 @@ func (*UseCapabilityTool) Schema() json.RawMessage {
 		"properties":{
 			"action":{"type":"string","enum":["list","search","inspect","call","decline"],"description":"Use search for discovery, inspect one exact result, then call. list is diagnostic only."},
 			"capability_id":{"type":"string","description":"Capability id such as skill:review, mcp-server:github, or mcp-tool:github/search_issues. Not required for action=list."},
+			"capability_ids":{"type":"array","items":{"type":"string"},"description":"Fork: action=decline only. Decline several capabilities in one call instead of one call per id."},
 			"query":{"type":"string","description":"Local catalog query required for action=search. No process or network is started."},
 			"limit":{"type":"integer","minimum":1,"maximum":8,"default":5,"description":"Maximum search results; defaults to 5."},
 			"arguments":{"type":"object","description":"Raw MCP tool arguments for action=call"},
@@ -657,8 +692,9 @@ func (t *UseCapabilityTool) ResolveCall(ctx context.Context, args json.RawMessag
 	case "list", "search", "inspect":
 		return t.resolveDiscovery(ctx, p, action, id, base)
 	case "decline":
-		if id == "" {
-			return tool.ResolvedCall{}, capabilityInputErrorf("capability_id is required for action=decline")
+		ids := declineCapabilityIDs(id, p.CapabilityIDs)
+		if len(ids) == 0 {
+			return tool.ResolvedCall{}, capabilityInputErrorf("capability_id or capability_ids is required for action=decline")
 		}
 		reason := strings.TrimSpace(p.Reason)
 		if reason == "" {
@@ -667,21 +703,27 @@ func (t *UseCapabilityTool) ResolveCall(ctx context.Context, args json.RawMessag
 		// Decline must not skip require. The mutation itself is delayed until the
 		// agent has applied its post-resolution host boundary.
 		if t.ledger != nil {
-			if e, ok := t.ledger.Get(id); ok && e.Policy == capability.AutoUseRequire {
-				return tool.ResolvedCall{}, fmt.Errorf("cannot decline a require capability %q", id)
+			for _, candidate := range ids {
+				if e, ok := t.ledger.Get(candidate); ok && e.Policy == capability.AutoUseRequire {
+					return tool.ResolvedCall{}, fmt.Errorf("cannot decline a require capability %q", candidate)
+				}
 			}
 		}
 		base.SkipExecute = true
-		base.Result = fmt.Sprintf("declined capability %s: %s", id, reason)
+		base.Result = declineResultText(ids, reason)
 		base.ReadOnly = true
 		base.Commit = func() error {
 			if t.ledger != nil {
-				if err := t.ledger.MarkDeclined(id, reason); err != nil {
-					return err
+				for _, candidate := range ids {
+					if err := t.ledger.MarkDeclined(candidate, reason); err != nil {
+						return err
+					}
 				}
 			}
 			if t.audit != nil {
-				t.audit.RecordDecline()
+				for range ids {
+					t.audit.RecordDecline()
+				}
 			}
 			return nil
 		}
