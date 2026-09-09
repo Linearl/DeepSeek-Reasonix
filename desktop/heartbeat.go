@@ -422,6 +422,36 @@ func (e *HeartbeatEngine) resolveHeartbeatTopic(t HeartbeatTask, scope, workspac
 	return t, topicID, pendingSubmitted, true
 }
 
+func heartbeatTaskByID(tasks []HeartbeatTask, id string) *HeartbeatTask {
+	for i := range tasks {
+		if tasks[i].ID == id {
+			return &tasks[i]
+		}
+	}
+	return nil
+}
+
+// ClearGoalForHeartbeatTopic clears the goal of any open tab bound to
+// topicID. Missing tabs are fine: a goal only exists while its tab is open.
+func (a *App) ClearGoalForHeartbeatTopic(topicID string) {
+	if strings.TrimSpace(topicID) == "" {
+		return
+	}
+	a.mu.Lock()
+	var tabIDs []string
+	for _, tab := range a.runtimeTabsLocked() {
+		if tab != nil && tab.TopicID == topicID {
+			tabIDs = append(tabIDs, tab.ID)
+		}
+	}
+	a.mu.Unlock()
+	for _, id := range tabIDs {
+		if err := a.ClearGoalForTab(id); err != nil {
+			log.Printf("[heartbeat] clear goal for topic %q: %s", topicID, secrets.RedactError(err))
+		}
+	}
+}
+
 func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 	title := "Heartbeat: " + t.Title
 	scope := t.Scope
@@ -600,6 +630,17 @@ func (e *HeartbeatEngine) ReplaceTasks(tasks []HeartbeatTask) error {
 	oldTasks := e.tasks
 	e.tasks = tasks
 	e.prunePendingTopicsLocked(tasks)
+	// A task that stopped being goal-driven must not leave its goal running:
+	// clear it when the task is deleted or goal mode is switched off (#31).
+	for _, old := range oldTasks {
+		if !old.GoalMode {
+			continue
+		}
+		if still := heartbeatTaskByID(tasks, old.ID); still != nil && still.GoalMode {
+			continue
+		}
+		e.app.ClearGoalForHeartbeatTopic(old.TopicID)
+	}
 	e.trashOrphanHeartbeatTopicsLocked(oldTasks, tasks)
 	return nil
 }
