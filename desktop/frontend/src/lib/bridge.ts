@@ -330,6 +330,10 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   Cancel(): Promise<void>;
   CancelTab(tabID: string): Promise<void>;
   CancelTabWithResult(tabID: string): Promise<{ tabId: string; cancelled: boolean; ownerElsewhere: boolean; noRunningTurn: boolean }>;
+  // Fork: clear a heartbeat task's goal once it stops being goal-driven (#31).
+  ClearGoalForHeartbeatTopic(topicID: string): Promise<void>;
+  // Fork: connectivity probe plus TTFT/TPS measurements (#33).
+  TestProviderModelTimed(p: ProviderView, model: string, key: string): Promise<{ ok: boolean; ttftMs?: number; generationMs?: number; outputTokens?: number; tps?: number; preview?: string; error?: string }>;
   CancelTabWithInboxItems(tabID: string, itemIDs: string[]): Promise<void>;
   CancelTabWithInboxItemsResult?(tabID: string, itemIDs: string[]): Promise<{ discardedItemIds: string[]; warning?: string }>;
   InterruptTurnForTab?(tabID: string, turnID: string): Promise<void>;
@@ -3227,6 +3231,10 @@ function makeMockApp(): AppBindings {
         async CancelTabWithResult(_tabID) {
           await withMockTabScope(_tabID, () => this.Cancel());
           return { tabId: _tabID, cancelled: true, ownerElsewhere: false, noRunningTurn: false };
+        },
+        async ClearGoalForHeartbeatTopic(_topicID) {},
+        async TestProviderModelTimed(_p, _model, _key) {
+          return { ok: true, ttftMs: 123, generationMs: 400, outputTokens: 17, tps: 42.5, preview: "1 2 3 …" };
         },
         async CancelTabWithInboxItems(_tabID, _itemIDs) {
           await withMockTabScope(_tabID, () => this.Cancel());

@@ -138,6 +138,22 @@ export function TaskEditor({
     setDraft((prev) => ({ ...prev, [field]: value }));
   }, [setDraft]);
 
+  // #30: pick the model override from the providers the user already configured
+  // instead of retyping names. Empty selection keeps the tab's current model.
+  const [providerModels, setProviderModels] = useState<Record<string, string[]>>({});
+  useEffect(() => {
+    let cancelled = false;
+    void app.Settings().then((settings) => {
+      if (cancelled) return;
+      const map: Record<string, string[]> = {};
+      for (const provider of settings.providers ?? []) map[provider.name] = provider.models ?? [];
+      setProviderModels(map);
+    }).catch(() => { /* settings unavailable: keep the free-text fallback */ });
+    return () => { cancelled = true; };
+  }, []);
+  const providerNames = Object.keys(providerModels);
+  const modelOptions = draft.provider ? (providerModels[draft.provider] ?? []) : [];
+
   // 启用/暂停切换（状态文字入口 + 右侧按钮共用）：
   // 只持久化 enabled 变更，基于最近保存基线（initialTaskRef）翻转，
   // 不携带 draft 中尚未保存的 title/prompt/schedule 编辑；同时保留草稿，
@@ -362,20 +378,42 @@ export function TaskEditor({
           {t("heartbeat.fieldModelOverride")} <span className="heartbeat-editor__optional">{t("heartbeat.optional")}</span>
         </label>
         <div className="heartbeat-editor__model-override">
-          <input
-            className="heartbeat-editor__input"
-            type="text"
-            value={draft.provider ?? ""}
-            onChange={(e) => set("provider", e.target.value)}
-            placeholder={t("heartbeat.providerPlaceholder")}
-          />
-          <input
-            className="heartbeat-editor__input"
-            type="text"
-            value={draft.model ?? ""}
-            onChange={(e) => set("model", e.target.value)}
-            placeholder={t("heartbeat.modelPlaceholder")}
-          />
+          {providerNames.length > 0 ? (
+            <select
+              className="heartbeat-editor__input"
+              value={draft.provider ?? ""}
+              onChange={(e) => { set("provider", e.target.value); set("model", ""); }}
+            >
+              <option value="">{t("heartbeat.providerPlaceholder")}</option>
+              {providerNames.map((name) => <option key={name} value={name}>{name}</option>)}
+            </select>
+          ) : (
+            <input
+              className="heartbeat-editor__input"
+              type="text"
+              value={draft.provider ?? ""}
+              onChange={(e) => set("provider", e.target.value)}
+              placeholder={t("heartbeat.providerPlaceholder")}
+            />
+          )}
+          {modelOptions.length > 0 ? (
+            <select
+              className="heartbeat-editor__input"
+              value={draft.model ?? ""}
+              onChange={(e) => set("model", e.target.value)}
+            >
+              <option value="">{t("heartbeat.modelPlaceholder")}</option>
+              {modelOptions.map((model) => <option key={model} value={model}>{model}</option>)}
+            </select>
+          ) : (
+            <input
+              className="heartbeat-editor__input"
+              type="text"
+              value={draft.model ?? ""}
+              onChange={(e) => set("model", e.target.value)}
+              placeholder={t("heartbeat.modelPlaceholder")}
+            />
+          )}
         </div>
         <span className="heartbeat-editor__mode-hint">{t("heartbeat.modelOverrideHint")}</span>
       </div>
