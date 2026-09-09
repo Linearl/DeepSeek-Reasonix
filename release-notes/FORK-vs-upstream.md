@@ -39,6 +39,23 @@
 | **自定义模型图片开关被锁**（deepseek-v4.1 等新 SKU，用户实测） | 两层 SKU 硬编码：① capability resolver 对官方 deepseek 非 vision-exp 一律标「协议限制」+ `EnableAllowed=false`（前端走此分支）② wire 层 `DeepSeekImageInputAllowed` 固定 SKU 门控（openai/anthropic/responses 三个构建点共用） | ① 删除 resolver 特判 ② wire 层改为 fork 语义：已知纯文本（flash/pro）硬禁 + vision-exp 保留无 metadata 默认 + **其余模型信任 capability metadata 与用户 override** ③ 删除前端 deepseek.com fallback。原则：桌面版发布永远落后官方 API，不硬编码 SKU 挡新模型 |
 | 模型列表添加后未落盘（v4.1） | 编辑器 deferred save（添加只改表单 state，需再点表单「保存」）；叠加「活跃会话时保存被拒」的误导 | 模型列表 dirty 时显示未保存提示（en/zh/zh-TW）；「活跃会话禁止改配置」记入跟踪项待评估 |
 
+## v1.38.3（2026-09-09 追齐 1.38.2~1.38.3，283 commits）
+
+| 改进点 | fork 状态 | 上游吸收状态 |
+|---|---|---|
+| 图片能力判定：官方 DeepSeek 端点 provider 层保守（仅固定 vision SKU 直接可用），逐模型 override 驱动 wire 门控与能力解析器 | ✅ fork 语义（无 SKU 硬编码） | ⏳ 上游改为「非 text 模型即继承 vision」，fork 不采用（会让相似名静默继承） |
+| GLM 强度档（low/medium/high/max → `reasoning_effort`） | ✅ fork 移植到上游 `applyReasoning` | N/A（上游 GLM 仍二元 thinking） |
+| 旧推理档位别名迁移（`medium`/`xhigh` → `high`） | ✅ fork 保留 | ✅ 上游新增 `migrateStoredDeepSeekEffort` |
+| 状态栏默认值 `text` | ✅ fork 保留 | ⏳ 上游改为 `icon` + 一次性升级 |
+| jobs 拆包（`jobs`/`start`/`runtime_state`/`artifacts`/`evidence`） | 🔄 采用上游结构 + 保留 `resultDigest`/TPS/rate | ✅ 上游原生 |
+| `#9221` 项目颜色筛选 | ✅ 移植到上游拆分的 ProjectTree | N/A（fork 独有） |
+| `#9222` 项目分组 | 🔄 采用上游 `ProjectTreeGroupRows` + `useProjectTreeOrganization` | ✅ 上游等价实现 |
+| `#9567` 接管钉尾 | ✅ 按上游 kernel 适配（`setScrollMode("tail-follow")`） | N/A（fork 独有） |
+| merge 静默丢失的 13 个文件（11 agent 测试 + 2 Topicbar 组件） | ✅ 已恢复 | N/A（merge 冲突取删除侧所致） |
+| fork 独有 `goalSubmit.ts` | ✅ 已恢复 | N/A（上游删除该模块） |
+| App.tsx 组合边界（`check-app-entry-contract`） | 🔄 fork 显式豁免 `FORK_MONOLITH_APP` | ⏳ 上游要求 <200 行 + 组合 AppRuntime |
+| 构建预算（deferred CSS / locale chunk） | ✅ 按实测重定（122.0 / 66.0 / 66.5 KiB） | N/A（上游自身上调到 120.4） |
+
 ## v1.25.4（2026-08-16，基于上游 v1.25.4）
 
 | 改进点 | 来源 PR | 上游吸收状态 |
