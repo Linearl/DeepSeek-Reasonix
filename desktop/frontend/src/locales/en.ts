@@ -2081,6 +2081,7 @@ export const en = {
   "settings.compactRatioHint": "Global default · usually leave unchanged",
   "settings.compactRatioCurrent": "Current threshold: {value}",
   "settings.compactRatioImpact": "Lower values compact sooner and may reduce prompt-cache reuse.",
+  "settings.compactRatioImpactWithTokens": "The default model compacts at about {tokens} tokens. Lower values may reduce prompt-cache reuse.",
   "settings.compactRatioProjectOverride": "The active project overrides this global default; its effective threshold is {percent}%.",
   "settings.compactRatioCustom": "Custom threshold",
   "settings.compactRatioCustomOption": "Custom threshold…",

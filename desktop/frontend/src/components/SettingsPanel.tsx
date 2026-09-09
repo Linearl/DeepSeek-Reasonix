@@ -14,14 +14,14 @@ import { catalogForPreset } from "../lib/providerCatalog";
 import { ProviderCatalogPicker, type CatalogChoice } from "./ProviderCatalogPicker";
 import { Eye, EyeOff, Files } from "lucide-react";
 import { lazy, memo, Suspense, startTransition, useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { ArrowRight, BrainCircuit, Check, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, ShieldCheck, SlidersHorizontal, Trash2, Volume2 } from "lucide-react";
+import { ArrowRight, Check, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, ShieldCheck, SlidersHorizontal, Trash2, Volume2 } from "lucide-react";
 import { asArray } from "../lib/array";
 import { ShellInterpreterFields } from "./SettingsShellSupport";
 import { CHANNEL_ICONS } from "./channelIcons";
 import { botAccessEntryCount, botAccessReady, botConnectionCredentialSummary, botConnectionLabel, botConnectionScopeLabel, botConnectionSecretEnv, botConnectionSecretPatch, botInstallTargetForConnection, botInstallTargetMatchesConnection, botTargetHint, botTargetLabel, diagnosticMessage, diagnosticReportDetail, firstConnectionRemote, formatInstallTimeLeft, formatInstallUserCode, qqBotAdded, type BotInstallTarget, type BotOfficialInstallTarget } from "./botConnectionSettings";
 import { app, COMPACT_RATIO_MAX_PERCENT, COMPACT_RATIO_MIN_PERCENT, onRuntimeRebuilt, openExternal } from "../lib/bridge";
 import { normalizeLangPref, useI18n, type DictKey, type LangPref } from "../lib/i18n";
-import { apiKeyEnvFromProviderName, createLatestRequestGate, mergedFetchedProviderModels, mergeProviderModelContextWindows, providerApiKeyEnvForSave, providerDefaultModel, providerIsConfigured, providerModelCandidates, providerModelContextWindowDrafts, providerModelContextWindowIsSmall, providerRequiresKey, reconcileManualModels } from "../lib/providerModels";
+import { createLatestRequestGate, mergedFetchedProviderModels, mergeProviderModelContextWindows, providerApiKeyEnvForSave, providerDefaultModel, providerIsConfigured, providerModelCandidates, providerModelContextWindowDrafts, providerRequiresKey, reconcileManualModels } from "../lib/providerModels";
 import { cachedFetchProviderModelCatalog, cachedFetchProviderModels, invalidateProviderCacheByAPIKeyEnv, providerDiscoveryIdentity, shouldSkipAutoRefresh } from "../lib/providerModelCache";
 import { providerBaseURLForSave, providerEndpointMismatchDetail, providerRequestURLForCatalogFormatChange, providerRequestURLFromConfig, trimmedBaseURL } from "../lib/providerEndpoint";
 import { providerModelVisionCapability, providerVisionModelsForView } from "../lib/providerVisionCapability";
@@ -1650,10 +1650,6 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
   const soundPanelId = useId();
   const defaultToolApprovalMode = normalizeToolApprovalMode(s.defaultToolApprovalMode);
   const defaultSubagentPolicy = normalizeSubagentPolicy(s.defaultSubagentPolicy);
-  const saveReasoningDisplayMode = useCallback(async (mode: ReasoningDisplayMode) => {
-    const ok = await apply(() => app.SetReasoningDisplayMode(mode));
-    if (ok) applyReasoningDisplayMode(mode);
-  }, [apply]);
   const languagePref = normalizeLangPref(s.desktopLanguage);
   const desktopCurrency = normalizeDesktopCurrency(s.desktopCurrency);
   const desktopLayoutStyle = normalizeDesktopLayoutStyle(s.desktopLayoutStyle);
@@ -4187,8 +4183,6 @@ export function ModelsSection({ s, busy, apply, backgroundApply, subtab, onboard
     && Number.isFinite(compactRatioDraftPercent)
     && compactRatioDraftPercent >= COMPACT_RATIO_MIN_PERCENT
     && compactRatioDraftPercent <= COMPACT_RATIO_MAX_PERCENT;
-  const compactRatioDraftDirty = compactRatioDraftValid
-    && Math.abs(compactRatioDraftPercent / 100 - compactRatio) > 0.0001;
   const defaultModel = defaultRef.startsWith(`${defaultProvider}/`) ? defaultRef.slice(defaultProvider.length + 1) : "";
   const modelContextWindow = defaultProviderView?.modelOverrides?.find((override) => override.model === defaultModel)?.contextWindow ?? 0;
   const effectiveContextWindow = modelContextWindow > 0 ? modelContextWindow : (defaultProviderView?.contextWindow ?? 0);
@@ -4196,9 +4190,6 @@ export function ModelsSection({ s, busy, apply, backgroundApply, subtab, onboard
   const compactRatioImpact = compactTokens > 0
     ? t("settings.compactRatioImpactWithTokens", { percent: compactRatioPercent, tokens: compactTokens.toLocaleString() })
     : t("settings.compactRatioImpact", { percent: compactRatioPercent });
-  const compactRatioSelection = compactRatioPreset
-    ? t(compactRatioPreset[1])
-    : t("settings.compactRatioCustomValue", { percent: compactRatioPercent });
   const compactRatioOverrideHint = agent.compactRatioOverridden
     ? t("settings.compactRatioProjectOverride", { percent: Math.round((agent.effectiveCompactRatio ?? compactRatio) * 100) })
     : "";
@@ -4792,6 +4783,10 @@ function sameStringList(a: string[], b: string[]): boolean {
   return a.every((value, i) => value === b[i]);
 }
 
+function providerModelDraftIdentity(provider: ProviderView): string {
+  return JSON.stringify([providerDiscoveryIdentity(provider), provider.models, provider.modelOverrides, provider.visionModels, provider.visionModelsConfigured]);
+}
+
 function proxyModeLabel(mode: ProxyMode, t: ReturnType<typeof useT>): string {
   switch (mode) {
     case "auto":
@@ -5179,11 +5174,13 @@ type ProviderFetchResult = {
 };
 
 type ProviderModelDraft = {
+  baseURL?: string;
+  providerIdentity?: string;
   providerName: string;
   candidates: string[];
   selected: string[];
   visionModels: string[];
-  visionModelsConfigured: boolean;
+  visionModelsConfigured: boolean; visionCapability?: ProviderVisionCapability;
   modelCapabilities: ProviderModelCapabilityView[];
   highSpeedModels: string[];
 };

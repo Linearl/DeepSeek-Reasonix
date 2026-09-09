@@ -2305,44 +2305,6 @@ export interface BotConnectionDiagnostic {
   occurredAt: string;
 }
 
-export interface SettingsView {
-  defaultModel: string;
-  plannerModel: string;
-  visionModel: string;
-  subagentModel: string;
-  subagentEffort: string;
-  autoPlan: string;
-  providers: ProviderView[];
-  officialProviders: ProviderView[];
-  providerPresets: ProviderPresetView[];
-  permissions: PermissionsView;
-  sandbox: SandboxView;
-  network: NetworkView;
-  agent: AgentView;
-  bot: BotSettingsView;
-  desktopLanguage: string; // "" | "en" | "zh"; empty = auto
-  desktopCurrency?: string; // "" | "CNY" | "USD"; absent/empty = follow language
-  desktopLayoutStyle: string; // "classic" | "workbench" | "creation"
-  desktopTheme: string; // "auto" | "dark" | "light"
-  desktopThemeStyle: string;
-  desktopTerminalTheme: string; // "auto" follows app | "dark" | "light"
-  closeBehavior: string; // "background" | "quit"
-  displayMode: string; reasoningDisplayMode: string; reasoningDisplayModeExplicit?: boolean;
-  statusBarStyle: string; // "icon" | "text"
-  statusBarItems: string[]; // ordered visible status bar item ids
-  defaultToolApprovalMode: ToolApprovalMode | string; // default for newly-created sessions
-  defaultSubagentPolicy: SubagentPolicy; // default sub-agent delegation tier for new sessions
-  checkUpdates: boolean; // check for new versions on startup
-  updateChannel: string; // compatibility field; always "stable"
-  telemetry: boolean; // anonymous launch ping + scrubbed next-launch native crash diagnostics
-  metrics: boolean; // aggregate quality/lifecycle metrics (anonymous signal/bucket counts)
-  configPath: string;
-  shadowedByPath?: string; // workspace reasonix.toml that outranks configPath, when one exists
-  providerKinds: string[]; // provider implementations the kernel registered (for the kind picker)
-  autoApproveTools: boolean;
-  bypass: boolean; // legacy JSON key for live YOLO/full-access tool auto-approval
-  conversationWidth?: string; // "standard" | "full"; absent from older Wails payloads
-}
 export type { ModelSettingsChange, ModelSettingsResult } from "./modelSettingsTypes";
 
 export interface DesktopStartupSettingsView {

@@ -1,5 +1,5 @@
 import type { ProviderPresetView } from "./providerCatalogTypes";
-import type { AgentView, BotSettingsView, NetworkView, PermissionsView, ProviderView, SandboxView, ToolApprovalMode } from "./types";
+import type { AgentView, BotSettingsView, NetworkView, PermissionsView, ProviderView, SandboxView, SubagentPolicy, ToolApprovalMode } from "./types";
 
 export interface SettingsView {
   modelSettingsFingerprint?: string;
@@ -34,6 +34,7 @@ export interface SettingsView {
   statusBarStyle: string; // "icon" | "text"
   statusBarItems: string[]; // ordered visible status bar item ids
   defaultToolApprovalMode: ToolApprovalMode | string; // default for newly-created sessions
+  defaultSubagentPolicy: SubagentPolicy; // fork: default sub-agent delegation tier for new sessions
   checkUpdates: boolean; // check for new versions on startup
   updateChannel: string; // compatibility field; always "stable"
   telemetry: boolean; // anonymous launch ping + scrubbed next-launch native crash diagnostics

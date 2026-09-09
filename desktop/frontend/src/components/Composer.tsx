@@ -4618,18 +4618,6 @@ export function Composer({
                 </Tooltip>
               </div>
             )}
-            {!heroMode && <div className="composer-meta__control composer-meta__control--approval">
-              <ComposerChoice key={`approval-${tabId}`} label={toolApprovalMode === "yolo" ? "Yolo" : t(toolApprovalMode === "ask" ? "composer.accessAskShort" : "common.auto")}
-                showChevron
-                icon={toolApprovalMode === "yolo" ? <ShieldAlert size={16} /> : toolApprovalMode === "auto" ? <ShieldCheck size={16} /> : <Shield size={16} />}
-                tone={`composer-choice--permission-${toolApprovalMode}`}
-                value={toolApprovalMode} disabled={approvalBarDisabled} onPick={value => chooseApprovalMode(value as ToolApprovalMode)}
-                options={[
-                  { value: "ask", label: t("composer.accessAskShort"), icon: <Shield size={18} />, description: t("composer.accessAskDesc") },
-                  { value: "auto", label: t("common.auto"), icon: <ShieldCheck size={18} />, description: t("composer.accessAutoDesc") },
-                  { value: "yolo", label: "Yolo", icon: <ShieldAlert size={18} />, description: t("composer.accessYoloDesc"), title: t("composer.accessYoloTitle", { shortcut: yoloComboLabel }) },
-                ]} />
-            </div>}
             {!heroMode && collaborationMode !== "normal" && (
               <div className="composer-meta__control composer-meta__control--intent">
                 <Tooltip label={taskModeTooltipLabel} disabled={intentMenuOpen || intentMenuClosing}>
@@ -4675,6 +4663,32 @@ export function Composer({
                   >
                     <Shield size={14} />
                     <span>{t("composer.modeAsk")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`composer-modebar__item composer-modebar__item--auto${toolApprovalMode === "auto" ? " composer-modebar__item--active" : ""}`}
+                    onClick={() => chooseApprovalMode("auto")}
+                    disabled={approvalBarDisabled}
+                    aria-pressed={toolApprovalMode === "auto"}
+                    title={t("composer.accessAutoTitle")}
+                  >
+                    <ShieldCheck size={14} />
+                    <span>{t("composer.modeNormal")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`composer-modebar__item composer-modebar__item--yolo${toolApprovalMode === "yolo" ? " composer-modebar__item--active" : ""}`}
+                    onClick={() => chooseApprovalMode("yolo")}
+                    disabled={approvalBarDisabled}
+                    aria-pressed={toolApprovalMode === "yolo"}
+                    title={t("composer.accessYoloTitle", { shortcut: yoloComboLabel })}
+                  >
+                    <ShieldAlert size={14} />
+                    <span>{t("composer.modeYolo")}</span>
+                  </button>
+                </div>
+              </div>
+            )}
             {!heroMode && qualityFloor === "delivery" && (
               <div className="composer-meta__control composer-meta__control--delivery">
                 <Tooltip label={`${t("common.close")} ${t("composer.qualityFloorDelivery")}`}>

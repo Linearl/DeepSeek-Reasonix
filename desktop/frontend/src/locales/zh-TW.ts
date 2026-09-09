@@ -1633,6 +1633,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.compactRatioHint": "全域預設 · 通常無需修改",
   "settings.compactRatioCurrent": "目前閾值：{value}",
   "settings.compactRatioImpact": "調低會更早壓縮，可能降低快取複用。",
+  "settings.compactRatioImpactWithTokens": "約在 {tokens} tokens 時壓縮。調低可能降低快取複用。",
   "settings.compactRatioProjectOverride": "專案覆寫預設；生效 {percent}%。",
   "settings.compactRatioCustom": "自訂閾值",
   "settings.compactRatioCustomOption": "自訂閾值…",

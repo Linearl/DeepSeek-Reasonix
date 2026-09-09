@@ -2083,6 +2083,7 @@ export const zh: Record<DictKey, string> = {
   "settings.compactRatioHint": "全局默认 · 通常无需修改",
   "settings.compactRatioCurrent": "当前阈值：{value}",
   "settings.compactRatioImpact": "调低会更早压缩，可能降低缓存复用。",
+  "settings.compactRatioImpactWithTokens": "约在 {tokens} tokens 时压缩。调低可能降低缓存复用。",
   "settings.compactRatioProjectOverride": "项目覆盖默认；生效 {percent}%。",
   "settings.compactRatioCustom": "自定义阈值",
   "settings.compactRatioCustomOption": "自定义阈值…",

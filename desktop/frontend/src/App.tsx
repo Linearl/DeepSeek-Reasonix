@@ -4878,8 +4878,6 @@ export default function App() {
                       tabId={visibleTranscriptTabId}
                       geometrySessionKey={visibleTranscriptGeometryKey}
                       footerHeight={footerHeight}
-                      questionSearchOpen={questionSearchOpen}
-                      onCloseQuestionSearch={() => setQuestionSearchOpen(false)}
                       onPrompt={handleTranscriptPrompt}
                       onDeliveryContinue={() => void handleDeliveryContinue()}
                       onAcceptDelivery={() => void app.AcceptDeliveryToTab(activeTabIdRef.current ?? "")}
