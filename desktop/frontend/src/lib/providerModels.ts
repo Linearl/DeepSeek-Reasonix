@@ -42,6 +42,22 @@ export function providerModelCandidates(current: string[], fetched: string[]): s
   return uniqueStrings([...current, ...fetched]).filter(isLikelyChatModel);
 }
 
+// Models hand-added via the provider edit form live in provider.models, but a
+// model-catalog draft only refreshes its candidate set on fetch — a stale draft
+// neither shows hand-added models nor keeps them when its selection is saved
+// (the selection overwrites provider.models). Treat any current provider model
+// missing from the draft's candidates as hand-added: it must become visible
+// (candidates) and selected (adding a model is explicit intent to use it).
+export function reconcileManualModels(draft: { candidates: string[]; selected: string[] }, current: string[]): { candidates: string[]; selected: string[] } {
+  const tracked = new Set(draft.candidates);
+  const manual = uniqueStrings(current).filter((model) => !tracked.has(model));
+  if (manual.length === 0) return draft;
+  return {
+    candidates: uniqueStrings([...draft.candidates, ...manual]),
+    selected: uniqueStrings([...draft.selected, ...manual]),
+  };
+}
+
 export function inferredVisionModels(models: string[]): string[] {
   return uniqueStrings(models).filter((model) => isLikelyChatModel(model) && isLikelyVisionModel(model));
 }

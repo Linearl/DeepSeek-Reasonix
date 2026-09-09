@@ -15,6 +15,7 @@ import {
   providerModelContextWindowDrafts,
   providerModelContextWindowIsSmall,
   providerRequiresKey,
+  reconcileManualModels,
   removeProviderAccessesForMock,
 } from "../lib/providerModels";
 import type { ProviderView } from "../lib/types";
@@ -294,6 +295,28 @@ eq(
   mockProviders.map(({ name, added }) => ({ name, added })),
   [{ name: "deepseek", added: true }, { name: "custom", added: true }],
   "mock access removal does not mutate the previous settings snapshot",
+);
+
+// reconcileManualModels: hand-added models survive stale catalog drafts.
+eq(
+  reconcileManualModels({ candidates: ["m-a", "m-b"], selected: ["m-a"] }, ["m-a", "m-b", "m-hand"]),
+  { candidates: ["m-a", "m-b", "m-hand"], selected: ["m-a", "m-hand"] },
+  "hand-added model joins candidates and is selected by default",
+);
+eq(
+  reconcileManualModels({ candidates: ["m-a", "m-b", "m-hand"], selected: ["m-a", "m-hand"] }, ["m-a", "m-b", "m-hand"]),
+  { candidates: ["m-a", "m-b", "m-hand"], selected: ["m-a", "m-hand"] },
+  "fully tracked models leave the draft unchanged",
+);
+eq(
+  reconcileManualModels({ candidates: [], selected: [] }, ["m-hand", "m-hand2"]),
+  { candidates: ["m-hand", "m-hand2"], selected: ["m-hand", "m-hand2"] },
+  "empty draft adopts every current model",
+);
+eq(
+  reconcileManualModels({ candidates: ["m-a"], selected: ["m-a"] }, ["M-A"]),
+  { candidates: ["m-a", "M-A"], selected: ["m-a", "M-A"] },
+  "case-variant model id counts as hand-added (exact identity matching)",
 );
 
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);

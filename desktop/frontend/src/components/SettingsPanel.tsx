@@ -11,7 +11,7 @@ import { CHANNEL_ICONS } from "./channelIcons";
 import { botAccessEntryCount, botAccessReady, botConnectionCredentialSummary, botConnectionLabel, botConnectionScopeLabel, botConnectionSecretEnv, botConnectionSecretPatch, botInstallTargetForConnection, botInstallTargetMatchesConnection, botTargetHint, botTargetLabel, diagnosticMessage, diagnosticReportDetail, firstConnectionRemote, formatInstallTimeLeft, formatInstallUserCode, qqBotAdded, type BotInstallTarget, type BotOfficialInstallTarget } from "./botConnectionSettings";
 import { app, openExternal } from "../lib/bridge";
 import { normalizeLangPref, useI18n, type DictKey, type LangPref } from "../lib/i18n";
-import { apiKeyEnvFromProviderName, createLatestRequestGate, mergedFetchedProviderModels, mergeProviderModelContextWindows, providerApiKeyEnvForSave, providerDefaultModel, providerIsConfigured, providerModelCandidates, providerModelContextWindowDrafts, providerModelContextWindowIsSmall, providerRequiresKey } from "../lib/providerModels";
+import { apiKeyEnvFromProviderName, createLatestRequestGate, mergedFetchedProviderModels, mergeProviderModelContextWindows, providerApiKeyEnvForSave, providerDefaultModel, providerIsConfigured, providerModelCandidates, providerModelContextWindowDrafts, providerModelContextWindowIsSmall, providerRequiresKey, reconcileManualModels } from "../lib/providerModels";
 import { cachedFetchProviderModelCatalog, cachedFetchProviderModels, invalidateProviderCacheByAPIKeyEnv, providerDiscoveryIdentity, shouldSkipAutoRefresh } from "../lib/providerModelCache";
 import { providerBaseURLForSave, providerRequestURLFromConfig, trimmedBaseURL } from "../lib/providerEndpoint";
 import { providerModelVisionCapability, providerVisionModelsForView } from "../lib/providerVisionCapability";
@@ -5083,16 +5083,20 @@ function ProvidersSection({ s, busy, apply }: SectionProps) {
   };
 
   const modelDraftForFetch = (p: ProviderView, fetched: string[], capabilities: ProviderModelCapabilityView[] = [], previous?: ProviderModelDraft): ProviderModelDraft => {
-    const candidates = providerModelCandidates(previous?.candidates ?? p.models, fetched);
-    const selected = previous?.selected ?? mergedFetchedProviderModels(p.models, fetched, { preserveCurated: true });
+    // Always union the provider's current models into the candidate set: a
+    // model hand-added via the edit form after the last fetch must stay
+    // visible (and selected) instead of being dropped by the stale draft.
+    const candidates = providerModelCandidates([...(previous?.candidates ?? []), ...p.models], fetched);
+    const base = previous?.selected ?? mergedFetchedProviderModels(p.models, fetched, { preserveCurated: true });
+    const reconciled = reconcileManualModels({ candidates, selected: base }, p.models);
     const configuredVision = p.visionModels;
     return {
       highSpeedModels: previous?.highSpeedModels ?? [],
       providerName: p.name,
       baseURL: p.baseUrl,
       providerIdentity: providerModelDraftIdentity(p),
-      candidates,
-      selected: candidates.filter((model) => selected.includes(model)),
+      candidates: reconciled.candidates,
+      selected: reconciled.candidates.filter((model) => reconciled.selected.includes(model)),
       visionModels: configuredVision,
       visionModelsConfigured: p.visionModelsConfigured, visionCapability: p.visionCapability,
       modelCapabilities: [...(previous?.modelCapabilities ?? p.modelCapabilities ?? []).filter((old) => !modelCapabilityForModel(capabilities, old.model)), ...capabilities],
@@ -5234,7 +5238,10 @@ function ProvidersSection({ s, busy, apply }: SectionProps) {
   const saveModelDraft = async (group: ProviderAccessGroup) => {
     const draft = modelDrafts[group.id];
     const provider = draft ? group.providers.find((p) => p.name === draft.providerName) : null;
-    const models = uniqueStrings(draft?.selected ?? []);
+    // Safety net: models hand-added after this draft was taken are absent from
+    // draft.candidates; saving the draft must never erase them.
+    const manual = provider && draft ? provider.models.filter((model) => !draft.candidates.includes(model)) : [];
+    const models = uniqueStrings([...(draft?.selected ?? []), ...manual]);
     if (!draft || !provider || models.length === 0 || (draft.providerIdentity && draft.providerIdentity !== providerModelDraftIdentity(provider))) return;
     let saved = false;
     await apply(async () => {
