@@ -11,6 +11,7 @@ import (
 
 	"reasonix/internal/boundedllm"
 	"reasonix/internal/event"
+	"reasonix/internal/jsonutil"
 	"reasonix/internal/nilutil"
 	"reasonix/internal/provider"
 )
@@ -327,11 +328,10 @@ func parseReviewVerdict(text string) (ReviewVerdict, error) {
 	if text == "" {
 		return ReviewVerdict{}, fmt.Errorf("empty recovery reviewer response")
 	}
-	// Extract JSON object if the model wrapped it in fences or prose.
-	if i := strings.Index(text, "{"); i >= 0 {
-		if j := strings.LastIndex(text, "}"); j > i {
-			text = text[i : j+1]
-		}
+	// Extract the last complete JSON object; the model may wrap it in fences or
+	// quote example objects before the real verdict (#9679).
+	if candidate, ok := jsonutil.LastJSONObject(text); ok {
+		text = candidate
 	}
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(text), &raw); err != nil {
