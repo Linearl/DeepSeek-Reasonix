@@ -31,6 +31,14 @@
 | TestMalformedToolArgsReturnHostValidationContract 失败（预存） | fork `repairTruncatedToolCallArgs` 把完整但非法的 args 一律修成 `{}`，吞掉上游验证纠错契约 | 只修真截断（闭合未终止 string/括号+去尾逗号），完整非法原样放行 |
 | 11 个孤儿测试破坏 agent 包构建 | 引用未移植实现（#9521/#9522 等） | `git rm`（内容存 *.go.hold，移植实现后恢复） |
 
+### v1.38.1 封版批次（2026-09-09，commit 57e8e98bc / 5c048217b）
+
+| 问题 | 根因 | 修复 |
+|---|---|---|
+| **经典风格仍不持久化**（用户实测） | `ApplyUserConfigUpgradesOnStartup`（pricing.go:284）启动迁移把 `layout_style="classic"` 强写 `workbench`（上游 1.38 下架经典风格），fork 保留 classic 选项 → 每次启动被抹 | 移除该迁移段（fork 分歧点），测试改断言 classic 保留；此前 `862438ec7` 的读侧 overlay 修错了层 |
+| **自定义模型图片开关被锁**（deepseek-v4.1 等新 SKU，用户实测） | 两层 SKU 硬编码：① capability resolver 对官方 deepseek 非 vision-exp 一律标「协议限制」+ `EnableAllowed=false`（前端走此分支）② wire 层 `DeepSeekImageInputAllowed` 固定 SKU 门控（openai/anthropic/responses 三个构建点共用） | ① 删除 resolver 特判 ② wire 层改为 fork 语义：已知纯文本（flash/pro）硬禁 + vision-exp 保留无 metadata 默认 + **其余模型信任 capability metadata 与用户 override** ③ 删除前端 deepseek.com fallback。原则：桌面版发布永远落后官方 API，不硬编码 SKU 挡新模型 |
+| 模型列表添加后未落盘（v4.1） | 编辑器 deferred save（添加只改表单 state，需再点表单「保存」）；叠加「活跃会话时保存被拒」的误导 | 模型列表 dirty 时显示未保存提示（en/zh/zh-TW）；「活跃会话禁止改配置」记入跟踪项待评估 |
+
 ## v1.25.4（2026-08-16，基于上游 v1.25.4）
 
 | 改进点 | 来源 PR | 上游吸收状态 |
