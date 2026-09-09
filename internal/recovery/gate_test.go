@@ -1269,26 +1269,26 @@ func TestEpisodeBudgetIsSharedAcrossSubagentTaskIDs(t *testing.T) {
 		Outcome: ReviewContinue, ChangeKind: ChangeSameStrategy,
 	}}})
 	// Split the Episode failure budget across root and two sub-agents.
-	for i := range 2 {
+	for i := range 3 {
 		g.ObserveResult(context.Background(), Observation{
 			TaskID: "root", Tool: "bash", Subject: fmt.Sprintf("root-%d", i), Verification: true,
 			Args: json.RawMessage(fmt.Sprintf(`{"command":"root %d"}`, i)), ErrSummary: "fail",
 		})
 	}
-	for i := range 2 {
+	for i := range 3 {
 		g.ObserveResult(context.Background(), Observation{
 			TaskID: "subagent:a", Tool: "bash", Subject: fmt.Sprintf("a-%d", i), Verification: true,
 			Args: json.RawMessage(fmt.Sprintf(`{"command":"a %d"}`, i)), ErrSummary: "fail",
 		})
 	}
-	for i := range 2 {
+	for i := range 3 {
 		g.ObserveResult(context.Background(), Observation{
 			TaskID: "subagent:b", Tool: "bash", Subject: fmt.Sprintf("b-%d", i), Verification: true,
 			Args: json.RawMessage(fmt.Sprintf(`{"command":"b %d"}`, i)), ErrSummary: "fail",
 		})
 	}
-	// Sixth failure exhausted the shared Episode budget. A brand-new sub-agent
-	// must not receive a fresh ceiling.
+	// The shared Episode budget is exhausted. A brand-new sub-agent must not
+	// receive a fresh ceiling (3+3+3 failures vs MaxEpisodeFailures).
 	dec, err := g.BeforeMutation(context.Background(), Proposal{
 		TaskID: "subagent:fresh", Tool: "write_file", Subject: "x.go", Mutates: true,
 		Args: json.RawMessage(`{"path":"x.go","content":"x"}`),

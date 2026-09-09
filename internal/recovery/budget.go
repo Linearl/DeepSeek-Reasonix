@@ -10,7 +10,12 @@ const (
 	// accumulate inside one Episode since the last real progress before the
 	// Episode stops further mutation/verification. Parameter, command, or target
 	// changes do not reset it; host-proven read-only diagnosis remains available.
-	MaxEpisodeFailures = 6
+	//
+	// Raised 6 -> 8 (#6 P1): long sessions hit the old ceiling while still making
+	// real progress on multi-file work, which turned a safety envelope into a
+	// "send continue" interruption. Read-only diagnosis and the operation-level
+	// cap (MaxOperationFailures) still bound the loop.
+	MaxEpisodeFailures = 8
 	// MaxReviewRejects is how many cumulative reviewer rejections one Task may
 	// accumulate inside one Episode before the turn stops. Different candidates
 	// share this budget.
