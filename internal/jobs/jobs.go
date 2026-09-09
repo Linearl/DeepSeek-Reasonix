@@ -64,6 +64,9 @@ type View struct {
 	Label     string `json:"label"`
 	Status    string `json:"status"`
 	StartedAt int64  `json:"startedAt"` // unix milliseconds
+	// Tps is the sub-agent's latest sampled streaming rate in tokens/second
+	// (fork #9521 popover heartbeat). Zero means "no sample yet".
+	Tps int `json:"tps,omitempty"`
 }
 
 // Result is one job's terminal (or current) state returned by Wait.
@@ -133,9 +136,12 @@ type Job struct {
 	finishedAt  int64
 	activityAt  int64
 	runReturned bool
-	cancel      context.CancelFunc
-	done        chan struct{}
-	stalled     bool
+	// rate is the fork's sampled streaming rate (tok/s), published by
+	// SetRate/SetJobRate and read by the running-jobs View.
+	rate    atomic.Int64
+	cancel  context.CancelFunc
+	done    chan struct{}
+	stalled bool
 
 	artifactPath     string
 	artifactMetaPath string
@@ -147,6 +153,15 @@ type Job struct {
 
 	evidence          evidence.ChildEvidenceSummary
 	evidenceCommitted bool
+}
+
+// SetRate publishes the latest sampled tok/s for this job. Safe to call at
+// any time; calls after completion are harmless (the snapshot simply stops
+// being read by the UI once the job leaves the running surface).
+func (j *Job) SetRate(tps int) {
+	if tps > 0 {
+		j.rate.Store(int64(tps))
+	}
 }
 
 // Manager is the session's background-job table. It is safe for concurrent use.
@@ -246,6 +261,20 @@ func WithTaskRecorder(r TaskRecorder) Option {
 func (m *Manager) SetTaskRecorder(r TaskRecorder) { m.taskRecorder = r }
 
 // TeardownGrace reports the manager's configured close/destroy wait window.
+// SetJobRate publishes the latest sampled streaming rate (tok/s) for a running
+// task job (#9521 popover heartbeat). Unknown/stale ids are ignored so a
+// tracker publishing just after its job left the table is a harmless no-op.
+func (m *Manager) SetJobRate(jobID string, tps int) {
+	m.mu.Lock()
+	// The jobs table is keyed by (session, id); the tracker only knows the
+	// bare job id, so resolve it through the id index.
+	j := m.findJobLocked("", jobID)
+	m.mu.Unlock()
+	if j != nil {
+		j.SetRate(tps)
+	}
+}
+
 func (m *Manager) TeardownGrace() time.Duration { return m.teardownGrace }
 
 // NewManager returns a Manager whose jobs run under a fresh session-scoped
@@ -656,9 +685,23 @@ func (m *Manager) recordCompletion(j *Job, st Status, err error) string {
 		m.mu.Unlock()
 		return parentSession
 	}
+	// Fork Phase 1b (#9522): a short result digest rides the completion note so
+	// the parent can continue without spending a turn on wait for every job.
+	// The digest is read before taking m.mu (j.mu is the inner lock).
+	m.mu.Unlock()
+	digest := j.resultDigest(st)
+	m.mu.Lock()
+	if parentSession != "" && m.destroying[parentSession] {
+		m.mu.Unlock()
+		return parentSession
+	}
+	text := fmt.Sprintf("%s — %s", tag, st)
+	if st == Done && digest != "" {
+		text = fmt.Sprintf("%s — done — result begins: %s", tag, digest)
+	}
 	m.completed = append(m.completed, completion{
 		sessionID: parentSession,
-		text:      fmt.Sprintf("%s — %s", tag, st),
+		text:      text,
 	})
 	active := m.active
 	shouldEmit = active == "" || parentSession == "" || active == parentSession
@@ -972,7 +1015,7 @@ func (m *Manager) RunningForSession(parentSession string) []View {
 		// runtime idle early. The public view remains "running" while a stop is
 		// in flight; clients may render a local "stopping" state after they
 		// request cancellation.
-		out = append(out, View{ID: j.ID, Kind: j.Kind, Label: j.Label, Status: string(Running), StartedAt: j.startedAt})
+		out = append(out, View{ID: j.ID, Kind: j.Kind, Label: j.Label, Status: string(Running), StartedAt: j.startedAt, Tps: int(j.rate.Load())})
 		j.mu.Unlock()
 	}
 	return out

@@ -60,12 +60,15 @@ func (t *TaskTool) subagentOptions(ctx context.Context, maxSteps int, pricing *p
 // Prefer NewTaskToolWithOptions for new call sites; the positional NewTaskTool
 // remains as a compatibility wrapper for one full iteration cycle.
 type TaskToolOptions struct {
-	ImageInput                            *imageinput.Config
-	Provider                              provider.Provider
-	Pricing                               *provider.Pricing
-	QuoteContext                          *event.QuoteContext
-	ParentRegistry                        *tool.Registry
-	MaxSteps                              int
+	ImageInput     *imageinput.Config
+	Provider       provider.Provider
+	Pricing        *provider.Pricing
+	QuoteContext   *event.QuoteContext
+	ParentRegistry *tool.Registry
+	MaxSteps       int
+	// ReviewMaxSteps overrides the built-in step cap for review-family
+	// sub-agent runs (fork #9677).
+	ReviewMaxSteps                        int
 	ContextWindow                         int
 	RecentKeep                            int
 	SoftCompactRatio                      float64

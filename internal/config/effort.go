@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"reasonix/internal/provider"
 	"reasonix/internal/provider/openai"
 )
 
@@ -625,4 +626,23 @@ func normalizedModelOverrides(overrides map[string]ProviderModelOverride) map[st
 		return nil
 	}
 	return out
+}
+
+// ReasoningCapabilityForEntry returns the provider-level reasoning capability
+// for an entry. Upstream 1.38.3 moved this helper here; the fork keeps its own
+// effort-capability layering, so the shared helper is restored for callers
+// that expect the upstream contract (effort_legacy.go).
+func ReasoningCapabilityForEntry(e *ProviderEntry) provider.ReasoningCapability {
+	if e == nil {
+		return provider.ReasoningOptions("")
+	}
+	// Resolver-backed entries carry the remote adapter declaration, not a local kind.
+	if e.Kind == "" {
+		return provider.ReasoningOptions(e.DefaultEffort, e.SupportedEfforts...)
+	}
+	cfg := provider.Config{Name: e.Name, BaseURL: e.BaseURL, Model: e.Model, Extra: map[string]any{
+		"thinking": e.Thinking, "reasoning_protocol": ReasoningProtocolForEntry(e),
+		"supported_efforts": normalizedSupportedEfforts(e), "default_effort": normalizeEffortLevel(e.DefaultEffort),
+	}}
+	return provider.ReasoningForConfig(e.Kind, cfg)
 }

@@ -15,6 +15,7 @@ type Tool struct {
 	ReadOnly          bool            `json:"readOnly"`
 	Truncated         bool            `json:"truncated,omitempty"`
 	DurationMs        int64           `json:"durationMs,omitempty"`
+	TokensPerSec      int             `json:"tokensPerSec,omitempty"`
 	StartedAt         int64           `json:"startedAt,omitempty"` // unix ms; zero when the call never ran
 	EndedAt           int64           `json:"endedAt,omitempty"`
 	Partial           bool            `json:"partial,omitempty"`
@@ -44,7 +45,7 @@ func toWireTool(in event.Tool) *Tool {
 		StartedAt: in.StartedAt, EndedAt: in.EndedAt,
 		ArgChars: in.ArgChars, Refreshed: in.Refreshed,
 		TokensPerSec: in.TokensPerSec,
-		ParentID: in.ParentID, AttemptID: in.AttemptID,
+		ParentID:     in.ParentID, AttemptID: in.AttemptID,
 		Diff: in.Diff, Added: in.Added, Removed: in.Removed,
 		SubagentRef: in.SubagentRef, SubagentStatus: in.SubagentStatus,
 		SubagentErrorCode: in.SubagentErrorCode, SubagentRetryable: in.SubagentRetryable,
