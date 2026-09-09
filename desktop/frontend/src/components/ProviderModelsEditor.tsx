@@ -9,11 +9,17 @@ import { ModelImageInputControl } from "./ModelImageInputControl";
 import { imageInputModeForModel, imageInputModes, mergeImageInputModes, modelCapabilityForModel, matchingModelKey } from "../lib/providerImageInput";
 import { ProviderDialog } from "./ProviderDialog";
 
+// #33: what the probe measures on top of connectivity. Zero timing means the
+// endpoint did not stream, so the row keeps showing plain success.
+export type ModelProbeResult = {
+  ok: boolean; ttftMs?: number; generationMs?: number; outputTokens?: number; tps?: number; preview?: string; error?: string;
+};
+
 export function ProviderModelsEditor({ provider, disabled, canFetch, onChange, onFetch, onTest, probeKey, draft = false }: {
   provider: ProviderView; probeKey?: string; disabled: boolean; canFetch: boolean; draft?: boolean;
   onChange: (models: string[], overrides: ProviderModelOverrideView[], capabilities: ProviderModelCapabilityView[]) => void;
   onFetch: () => Promise<ProviderModelCapabilityView[]>;
-  onTest: (model: string) => Promise<void>;
+  onTest: (model: string) => Promise<ModelProbeResult>;
 }) {
   const t = useT();
   const [editor, setEditor] = useState<{ original?: string; value: ModelDraft } | null>(null);
@@ -22,7 +28,7 @@ export function ProviderModelsEditor({ provider, disabled, canFetch, onChange, o
   const [selection, setSelection] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [fetching, setFetching] = useState(false);
-  const [tests, setTests] = useState<Record<string, { busy: boolean; error?: string }>>({});
+  const [tests, setTests] = useState<Record<string, { busy: boolean; error?: string; probe?: ModelProbeResult }>>({});
   // An endpoint/key/parameter edit invalidates every in-flight result for this draft.
   const identity = JSON.stringify([provider, probeKey]);
   const identityRef = useRef(identity); identityRef.current = identity;
@@ -58,8 +64,8 @@ export function ProviderModelsEditor({ provider, disabled, canFetch, onChange, o
     const generation = epoch.current, fingerprint = identity;
     setTests((prev) => ({ ...prev, [model]: { busy: true } }));
     try {
-      await onTest(model);
-      if (generation === epoch.current && identityRef.current === fingerprint) setTests((prev) => ({ ...prev, [model]: { busy: false } }));
+      const probe = await onTest(model);
+      if (generation === epoch.current && identityRef.current === fingerprint) setTests((prev) => ({ ...prev, [model]: { busy: false, probe } }));
     } catch (e) {
       if (generation === epoch.current && identityRef.current === fingerprint) setTests((prev) => ({ ...prev, [model]: { busy: false, error: String((e as Error).message ?? e) } }));
     }
@@ -96,7 +102,11 @@ export function ProviderModelsEditor({ provider, disabled, canFetch, onChange, o
           </div>
           <ModelImageInputControl model={model} baseURL={provider.baseUrl} capability={modelCapabilityForModel(capabilities, model)} mode={imageInputModeForModel(imageInputModes(overrides), model)} disabled={disabled}
             onChange={(mode) => onChange(provider.models, mergeImageInputModes(overrides, provider.models, { ...imageInputModes(overrides), [model]: mode }), capabilities)} />
-          {result && <div role="status" className={`provider-fetch-status provider-fetch-status--${result.error ? "warn" : "ok"}`}>{result.busy ? t("providerUI.testing") : result.error || t("providerUI.testSuccess")}</div>}
+          {result && <div role="status" className={`provider-fetch-status provider-fetch-status--${result.error ? "warn" : "ok"}`}>{result.busy ? t("providerUI.testing") : result.error || (result.probe?.ttftMs
+              ? (result.probe.tps
+                ? t("providerUI.testTiming", { ttft: result.probe.ttftMs, tps: result.probe.tps.toFixed(1) })
+                : t("providerUI.testTimingTTFT", { ttft: result.probe.ttftMs }))
+              : t("providerUI.testSuccess"))}</div>}
         </div>;
       })}
     </div>
