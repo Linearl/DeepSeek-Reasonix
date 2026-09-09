@@ -78,7 +78,7 @@ func (s *SubagentScheduler) Limits() (total, writers int) {
 // parentHeldClaimReason marks a refusal caused by the parent turn itself
 // holding the path. A child queued on it can never be granted — the parent
 // releases only after the child returns — so it fails fast instead (#9688).
-const parentHeldClaimReason = "write path is held by the parent turn"
+const parentHeldClaimReason = "write path conflict with a parent write held by this same turn"
 
 // Acquire reserves a concurrency slot (and optional write claim). Nested
 // requests fail immediately when capacity is exhausted. Non-nested requests
