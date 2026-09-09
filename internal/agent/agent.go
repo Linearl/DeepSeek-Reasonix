@@ -2531,6 +2531,11 @@ func (a *Agent) repeatedSuccessBlock(call provider.ToolCall, t tool.Tool) (strin
 	if count < repeatSuccessBreakThreshold {
 		return "", false
 	}
+	if sig == "bash\x00sleep" {
+		return fmt.Sprintf(
+			"blocked: [loop guard] sleep has already run %d times in this user turn. Sleeping does not make progress and cannot outlast a foreground timeout — run the long command with run_in_background=true and collect it with bash_output (or wait) instead.",
+			count), true
+	}
 	return fmt.Sprintf(
 		"blocked: [loop guard] %q has already succeeded %d times with the same write-like arguments in this user turn. Re-running it is unlikely to help and may burn tokens or repeat file writes. Change approach: use edit_file or multi_edit for file changes, verify with a read/test command, or explain the blocker in your final answer.",
 		call.Name, count), true
@@ -2562,7 +2567,17 @@ func repeatSuccessSignature(call provider.ToolCall, t tool.Tool) (string, bool) 
 		if err := json.Unmarshal([]byte(call.Arguments), &p); err != nil {
 			return "", false
 		}
-		if p.RunInBackground || !isShellFileWriteCommand(p.Command) {
+		if p.RunInBackground {
+			return "", false
+		}
+		// A sleep is a stall, not work: the model sits out a foreground
+		// timeout it should have backgrounded (#26). Normalize the duration
+		// away so the third sleep in a turn is blocked instead of hiding
+		// behind a new number.
+		if isSleepOnlyCommand(p.Command) {
+			return "bash\x00sleep", true
+		}
+		if !isShellFileWriteCommand(p.Command) {
 			return "", false
 		}
 		return "bash\x00" + normalizeShellCommand(p.Command), true
@@ -2592,6 +2607,27 @@ func normalizeShellCommand(command string) string {
 		return strings.Join(fields, " ")
 	}
 	return strings.Join(strings.Fields(command), " ")
+}
+
+// isSleepOnlyCommand reports whether a shell command is a pure stall. The model
+// uses these to sit out a foreground timeout it should have backgrounded
+// (#26); the duration changes every time, which is exactly what defeats an
+// argument-sensitive loop guard.
+func isSleepOnlyCommand(command string) bool {
+	fields := strings.Fields(strings.TrimSpace(command))
+	if len(fields) < 2 || len(fields) > 3 || fields[0] != "sleep" {
+		return false
+	}
+	duration := strings.TrimSuffix(strings.TrimSuffix(fields[1], "s"), "m")
+	if duration == "" {
+		return false
+	}
+	for _, r := range duration {
+		if (r < '0' || r > '9') && r != '.' {
+			return false
+		}
+	}
+	return true
 }
 
 func isShellFileWriteCommand(command string) bool {
