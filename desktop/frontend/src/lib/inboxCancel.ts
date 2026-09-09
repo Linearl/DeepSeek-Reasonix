@@ -1,4 +1,4 @@
-import { isTurnNotRunning } from "./inboxError";
+import { CODE_PREFIX, isTurnNotRunning } from "./inboxError";
 
 export type InboxCancelReceipt = {
   discardedItemIds: string[];
@@ -11,6 +11,7 @@ export type CancelOutcome = InboxCancelReceipt & {
 
 type InboxCancelBridge = {
   CancelTab(tabId: string): Promise<void>;
+  CancelTabWithResult?(tabId: string): Promise<{ tabId: string; cancelled: boolean; ownerElsewhere: boolean; noRunningTurn: boolean }>;
   CancelTabWithInboxItems(tabId: string, itemIds: string[]): Promise<void>;
   CancelTabWithInboxItemsResult?(tabId: string, itemIds: string[]): Promise<InboxCancelReceipt>;
   InterruptTurnForTab?(tabId: string, turnId: string): Promise<void>;
@@ -63,6 +64,11 @@ export async function requestInboxCancel(
     // Compatibility fallback: an old backend has no per-item receipt, so
     // durable messages remain in the queue instead of returning to the draft.
     await app.CancelTabWithInboxItems(tabId, itemIds);
+  } else if (typeof app.CancelTabWithResult === "function") {
+    // Session-level stop: the backend reports whether the turn belongs to
+    // another process instead of leaving the user with a generic failure.
+    const outcome = await app.CancelTabWithResult(tabId);
+    if (outcome?.ownerElsewhere) throw new Error(`${CODE_PREFIX}owner_elsewhere`);
   } else {
     await app.CancelTab(tabId);
   }

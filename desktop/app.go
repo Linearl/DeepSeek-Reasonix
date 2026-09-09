@@ -1351,6 +1351,33 @@ func (a *App) CancelTab(tabID string) {
 	}
 }
 
+// CancelTabResult reports what a session-level stop actually did, so the
+// frontend can distinguish "cancelled here", "another process owns the turn"
+// and "nothing was running" instead of showing a blanket failure.
+type CancelTabResult struct {
+	TabID          string `json:"tabId"`
+	Cancelled      bool   `json:"cancelled"`
+	OwnerElsewhere bool   `json:"ownerElsewhere"`
+	NoRunningTurn  bool   `json:"noRunningTurn"`
+}
+
+// CancelTabWithResult stops whatever runs in this tab and reports the outcome.
+// A tab whose controller is absent but whose active work is visible still has
+// a running turn — it belongs to another process (heartbeat, serve pool, a
+// second writer), so the frontend says so rather than reporting a failure.
+func (a *App) CancelTabWithResult(tabID string) CancelTabResult {
+	if ctrl := a.ctrlByTabID(tabID); ctrl != nil {
+		if st := ctrl.RuntimeStatus(); st.Running || st.Cancellable || st.PendingPrompt || st.BackgroundJobs > 0 {
+			ctrl.Cancel()
+			return CancelTabResult{TabID: tabID, Cancelled: true}
+		}
+	}
+	if work := a.ActiveWorkForTab(tabID); work.Running || work.Cancellable || len(work.Jobs) > 0 {
+		return CancelTabResult{TabID: tabID, OwnerElsewhere: true}
+	}
+	return CancelTabResult{TabID: tabID, NoRunningTurn: true}
+}
+
 // Steer sends mid-turn guidance to the agent without interrupting the in-flight request.
 func (a *App) Steer(text string) error {
 	return a.SteerForTab("", text)

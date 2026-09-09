@@ -329,6 +329,7 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   InboxHasItems(tabID: string): Promise<boolean>;
   Cancel(): Promise<void>;
   CancelTab(tabID: string): Promise<void>;
+  CancelTabWithResult(tabID: string): Promise<{ tabId: string; cancelled: boolean; ownerElsewhere: boolean; noRunningTurn: boolean }>;
   CancelTabWithInboxItems(tabID: string, itemIDs: string[]): Promise<void>;
   CancelTabWithInboxItemsResult?(tabID: string, itemIDs: string[]): Promise<{ discardedItemIds: string[]; warning?: string }>;
   InterruptTurnForTab?(tabID: string, turnID: string): Promise<void>;
@@ -3222,6 +3223,10 @@ function makeMockApp(): AppBindings {
         },
         async CancelTab(_tabID) {
           await withMockTabScope(_tabID, () => this.Cancel());
+        },
+        async CancelTabWithResult(_tabID) {
+          await withMockTabScope(_tabID, () => this.Cancel());
+          return { tabId: _tabID, cancelled: true, ownerElsewhere: false, noRunningTurn: false };
         },
         async CancelTabWithInboxItems(_tabID, _itemIDs) {
           await withMockTabScope(_tabID, () => this.Cancel());

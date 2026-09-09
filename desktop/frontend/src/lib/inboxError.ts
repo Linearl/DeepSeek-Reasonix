@@ -1,6 +1,6 @@
 import type { Locale } from "./i18n";
 
-const CODE_PREFIX = "reasonix_error:";
+export const CODE_PREFIX = "reasonix_error:";
 
 // Message arrays share one stable code-to-index table so the three localized
 // copies do not repeat object keys in the initial desktop bundle.
@@ -19,6 +19,7 @@ const CODE_INDEX = {
   workspace_starting: 11,
   workspace_start_failed: 12,
   inbox_not_submitted: 16,
+  owner_elsewhere: 17,
 } as const;
 
 type InboxErrorCode = keyof typeof CODE_INDEX;
@@ -45,6 +46,7 @@ const ERROR_COPY: Record<Locale, readonly string[]> = {
     "The turn ended before guidance could be applied. It will remain queued for the next turn",
     "Cancel failed: {error}",
     "The message was not sent. Refresh the session and try again",
+    "That session is running in another process. Stop it there, or wait for it to finish",
   ],
   zh: [
     "收件箱已暂停",
@@ -64,6 +66,7 @@ const ERROR_COPY: Record<Locale, readonly string[]> = {
     "引导尚未应用时当前回合已结束；它会保留在队列中，供下一回合处理",
     "取消失败：{error}",
     "消息未发送，请刷新会话后重试",
+    "该会话正被其它进程运行，请在那边停止或等待其结束",
   ],
   "zh-TW": [
     "收件匣已暫停",
@@ -83,6 +86,7 @@ const ERROR_COPY: Record<Locale, readonly string[]> = {
     "引導尚未套用時目前回合已結束；它會保留在佇列中，供下一回合處理",
     "取消失敗：{error}",
     "訊息未傳送，請重新整理會話後重試",
+    "該工作階段正被其它程序執行，請在該處停止或等待其結束",
   ],
 };
 
