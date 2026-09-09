@@ -225,15 +225,55 @@ func buildEvidence(evidence GoalEvidence) (string, error) {
 
 // parseVerdict extracts the JSON object from the model's response (tolerating
 // fences or prose wrappers) and validates the outcome enum.
+// lastJSONObject returns the last complete top-level JSON object in text.
+// Thinking models routinely quote example objects before the final verdict
+// ("I considered {"outcome":"continue"} … Final: {"outcome":"complete"}"), and
+// a first-brace/last-brace slice spans both and fails to unmarshal (#9678 /
+// upstream #9679). Scan for balanced top-level braces instead, ignoring
+// braces inside strings.
+func lastJSONObject(text string) (string, bool) {
+	depth, start := 0, -1
+	inString, escaped := false, false
+	last := ""
+	for i, r := range text {
+		if inString {
+			switch {
+			case escaped:
+				escaped = false
+			case r == '\\':
+				escaped = true
+			case r == '"':
+				inString = false
+			}
+			continue
+		}
+		switch r {
+		case '"':
+			inString = true
+		case '{':
+			if depth == 0 {
+				start = i
+			}
+			depth++
+		case '}':
+			if depth > 0 {
+				depth--
+				if depth == 0 && start >= 0 {
+					last = text[start : i+1]
+				}
+			}
+		}
+	}
+	return last, last != ""
+}
+
 func parseVerdict(text string) (Verdict, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return Verdict{}, fmt.Errorf("empty goal evaluator response")
 	}
-	if i := strings.Index(text, "{"); i >= 0 {
-		if j := strings.LastIndex(text, "}"); j > i {
-			text = text[i : j+1]
-		}
+	if candidate, ok := lastJSONObject(text); ok {
+		text = candidate
 	}
 	var v Verdict
 	if err := json.Unmarshal([]byte(text), &v); err != nil {

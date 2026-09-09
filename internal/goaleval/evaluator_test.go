@@ -12,12 +12,12 @@ import (
 )
 
 type scriptedProvider struct {
-	turns   []string // one response per call, recycled
+	turns          []string // one response per call, recycled
 	reasoningTurns []string // if non-empty, emit ChunkReasoning instead of ChunkText
-	err     error    // stream-open error
-	timeout bool     // hang until ctx deadline
-	usage   *provider.Usage
-	calls   int
+	err            error    // stream-open error
+	timeout        bool     // hang until ctx deadline
+	usage          *provider.Usage
+	calls          int
 }
 
 func (s *scriptedProvider) Name() string { return "scripted" }
@@ -178,5 +178,29 @@ func TestEvidenceIsBoundedAndUntrusted(t *testing.T) {
 	}
 	if prov.calls != 1 {
 		t.Fatalf("provider calls = %d, want 1", prov.calls)
+	}
+}
+
+// #9678 / upstream #9679: thinking models quote example objects before the real
+// verdict, so parsing must take the last complete top-level object.
+func TestParseVerdictPrefersLastTopLevelObject(t *testing.T) {
+	text := `I considered {"outcome":"continue"} but the goal is done. Final: {"outcome":"complete","reason":"all checks passed"}`
+	v, err := parseVerdict(text)
+	if err != nil {
+		t.Fatalf("parseVerdict: %v", err)
+	}
+	if v.Outcome != OutcomeComplete || v.Reason != "all checks passed" {
+		t.Fatalf("verdict = %+v, want the final object", v)
+	}
+}
+
+func TestParseVerdictHandlesNestedStringsAndTrailingFragment(t *testing.T) {
+	v, err := parseVerdict(`{"outcome":"continue","reason":"saw {\"a\":1} inside a string"}`)
+	if err != nil || v.Outcome != OutcomeContinue {
+		t.Fatalf("nested braces in a string broke parsing: %+v err = %v", v, err)
+	}
+	v, err = parseVerdict(`{"outcome":"complete","reason":"ok"} {"outcome":`)
+	if err != nil || v.Outcome != OutcomeComplete {
+		t.Fatalf("trailing fragment masked the last complete object: %+v err = %v", v, err)
 	}
 }
