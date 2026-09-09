@@ -330,6 +330,12 @@ export function Transcript(props: TranscriptProps) {
       if (!geometry || (!empty && geometry.visibleBlocks.length === 0)) return;
       if (committedSurfaceRef.current === commitKey) return;
       committedSurfaceRef.current = commitKey;
+      // Fork (#9567): the remounted surface can park wherever its first paint
+      // lands — resetScroll's tail intent was observed lost after
+      // model-takeover remounts, leaving the newest turns above the viewport.
+      // Enforce the tail once the incoming surface has committed its paint.
+      setScrollMode("tail-follow");
+      scrollToBottom();
       onSurfacePaintReady(surfaceCommitToken, safeMode ? "degraded" : "ready");
     });
   }, [empty, hydrating, safeMode, snapshot, onSurfacePaintReady, projection, surfaceCommitToken, transcriptKernel]);
