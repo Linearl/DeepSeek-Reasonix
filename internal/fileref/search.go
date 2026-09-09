@@ -37,22 +37,44 @@ var skipDirNames = map[string]bool{
 	".dart_tool":    true,
 }
 
-// SkipEntry reports whether a workspace entry is hidden from file pickers. rel
-// is the entry's slash-separated path from the workspace root.
+// SkipEntry reports whether a workspace entry is hidden from the @-search
+// walker. rel is the entry's slash-separated path from the workspace root.
 func SkipEntry(rel, name string, isDir bool) bool {
+	if skipEntryNames[name] {
+		return true
+	}
+	return isDir && (skipDirNames[name] || skipDirPaths[rel] || searchSkipDirPaths[rel])
+}
+
+// SkipEntryForPanel reports whether the file panel and the workspace watcher
+// should hide an entry. Unlike SkipEntry it keeps common top-level directory
+// names (tmp/bin/stage) visible: the panel must reflect the real disk layout
+// (#10006) — search may skip them for relevance, browsing may not. Both
+// callers must agree, otherwise the panel would list a directory the watcher
+// ignores and never refresh.
+func SkipEntryForPanel(rel, name string, isDir bool) bool {
 	if skipEntryNames[name] {
 		return true
 	}
 	return isDir && (skipDirNames[name] || skipDirPaths[rel])
 }
 
+// skipDirPaths holds paths hidden everywhere: generated output inside the
+// Reasonix repository itself, which no one browses in the file panel.
 var skipDirPaths = map[string]bool{
-	"bin":                      true,
 	"desktop/frontend/wailsjs": true,
 	"npm/.stage":               true,
 	"site/.astro":              true,
-	"stage":                    true,
-	"tmp":                      true,
+}
+
+// searchSkipDirPaths hides common top-level directory names from the @-search
+// walker only. They are generic words that any user workspace may use for real
+// work (see #10006: D:/1.workspace/video_comprehension/tmp holds scripts), so
+// the panel must not inherit them.
+var searchSkipDirPaths = map[string]bool{
+	"bin":   true,
+	"stage": true,
+	"tmp":   true,
 }
 
 const (

@@ -10238,7 +10238,7 @@ func workspaceEntryRel(rel, name string) string {
 }
 
 func skipWorkspaceEntry(rel, name string, isDir bool) bool {
-	return fileref.SkipEntry(workspaceEntryRel(rel, name), name, isDir)
+	return fileref.SkipEntryForPanel(workspaceEntryRel(rel, name), name, isDir)
 }
 
 func (a *App) activeWorkspaceBase() (string, error) {
