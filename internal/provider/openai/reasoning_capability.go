@@ -53,6 +53,12 @@ func configuredEffort(cfg provider.Config) (string, error) {
 	if effort == "auto" || effort == "off" || protocol == "none" || configuredThinkingType(cfg) == "disabled" {
 		return effort, nil
 	}
+	// Fork: GLM carries a depth knob through reasoning_effort on top of the
+	// binary thinking.type. Its resolved capability only lists enabled/disabled,
+	// so validating against it would reject the fork's low..max strengths.
+	if protocol == "glm" || (protocol == "" && IsZhipu(cfg.BaseURL)) {
+		return effort, nil
+	}
 	return effort, cap.Validate(cfg.Model, effort)
 }
 
