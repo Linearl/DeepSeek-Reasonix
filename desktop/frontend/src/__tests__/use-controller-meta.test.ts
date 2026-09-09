@@ -737,6 +737,7 @@ eq(sameMeta(meta({ collaborationMode: "normal" }), meta({ collaborationMode: "pl
   s = reducer(s, { type: "history_older_start" });
   eq(s.historyOlderLoading, true, "older history request marks loading");
   s = reducer(s, { type: "history_older_error", error: "read failed" });
+  eq(s.historyOlderLoading, false, "an older-history error must release the loading gate (#10006)");
   eq(s.historyOlderError, "read failed", "older history failures remain available to the retry UI");
   s = reducer(s, { type: "history_older_start" });
   eq(s.historyOlderError, undefined, "retrying older history clears the previous failure");
