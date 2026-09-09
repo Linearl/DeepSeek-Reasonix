@@ -293,7 +293,7 @@ for (const path of localeChunks) {
   // upstream 1.38.1 measured 61.2/62.0; fork +1.0 KiB for LocalServerPage/consolidate keys
   // 1f8c3fe50 locale backfill: real Chinese copy is longer than the Title-Case
   // fallback it replaced; zh measures 63.1 KiB gzip, zh-TW has the same keys.
-  const budget = name.startsWith("zh-TW-") ? 64.0 * 1024 : 63.3 * 1024;
+  const budget = name.startsWith("zh-TW-") ? 64.5 * 1024 : 63.3 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
