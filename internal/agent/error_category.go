@@ -18,6 +18,13 @@ func errorCategory(toolName, errMsg string) string {
 		return toolName + ":exit:" + m[2]
 	}
 	lower := strings.ToLower(msg)
+	// A todo_write rejection names the offending item and its content, so the
+	// raw message differs on every retry and the storm breaker never sees a
+	// repeat (#9949 / task 23 P1-c). Normalize the validation family so
+	// repeated invalid submissions are caught instead of looping.
+	if toolName == "todo_write" && strings.Contains(lower, "todo ") {
+		return toolName + ":validation"
+	}
 	switch {
 	case strings.Contains(lower, "timeout") || strings.Contains(lower, "deadline"):
 		return toolName + ":transient:timeout"

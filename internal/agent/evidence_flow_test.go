@@ -1229,7 +1229,7 @@ func TestEvidenceFlowRejectsReplacingCompletedTodoAfterNumericCompleteStep(t *te
 	}
 }
 
-func TestEvidenceFlowRejectsReorderedTodoAndRecoversSerially(t *testing.T) {
+func TestEvidenceFlowAcceptsReorderedTodoAndCompletesSerially(t *testing.T) {
 	todoWrite, ok := tool.LookupBuiltin("todo_write")
 	if !ok {
 		t.Fatal("todo_write builtin not registered")
@@ -1276,8 +1276,8 @@ func TestEvidenceFlowRejectsReorderedTodoAndRecoversSerially(t *testing.T) {
 	}
 
 	results := toolResults(a.sess.conversation, "todo_write")
-	if len(results) != 2 || !strings.Contains(results[1], "completed after unfinished") {
-		t.Fatalf("reordered todo_write results = %v, want serial-order rejection", results)
+	if len(results) == 0 || strings.Contains(results[0], "completed after unfinished") {
+		t.Fatalf("reordered todo_write results = %v, want acceptance after the ordering relaxation (#23 P1-a)", results)
 	}
 	for i, todo := range a.CanonicalTodoState() {
 		if todo.Status != "completed" {
