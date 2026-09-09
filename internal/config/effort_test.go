@@ -23,8 +23,8 @@ func TestDeepSeekV4FlashEffortCapabilityIncludesLow(t *testing.T) {
 	if got, err := NormalizeEffort(flash, "low"); err != nil || got != "low" {
 		t.Fatalf("Flash low = %q/%v, want low/nil", got, err)
 	}
-	if _, err := NormalizeEffort(flash, "xhigh"); err == nil {
-		t.Fatal("undeclared xhigh must be rejected")
+	if got, err := NormalizeEffort(flash, "xhigh"); err != nil || got != "high" {
+		t.Fatalf("Flash xhigh = %q/%v, want high/nil", got, err)
 	}
 	flash.ReasoningProtocol = ReasoningProtocolDeepSeek
 	if got := EffortCapabilityForEntry(flash); len(got.Levels) != len(want) || got.Levels[2] != "low" {
@@ -33,23 +33,23 @@ func TestDeepSeekV4FlashEffortCapabilityIncludesLow(t *testing.T) {
 	if got, err := NormalizeEffort(flash, "low"); err != nil || got != "low" {
 		t.Fatalf("explicit DeepSeek Flash low = %q/%v, want low/nil", got, err)
 	}
-	if _, err := NormalizeEffort(flash, "xhigh"); err == nil {
-		t.Fatal("undeclared xhigh must be rejected")
+	if got, err := NormalizeEffort(flash, "xhigh"); err != nil || got != "high" {
+		t.Fatalf("explicit DeepSeek Flash xhigh = %q/%v, want high/nil", got, err)
 	}
 
 	pro := &ProviderEntry{Kind: "openai", BaseURL: "https://api.deepseek.com", Model: "deepseek-v4-pro"}
 	if got, err := NormalizeEffort(pro, "low"); err != nil || got != "low" {
 		t.Fatalf("Pro low = %q/%v, want low/nil", got, err)
 	}
-	if _, err := NormalizeEffort(pro, "xhigh"); err == nil {
-		t.Fatal("undeclared xhigh must be rejected")
+	if got, err := NormalizeEffort(pro, "xhigh"); err != nil || got != "high" {
+		t.Fatalf("Pro xhigh = %q/%v, want high/nil", got, err)
 	}
 	if cap := EffortCapabilityForEntry(pro); !containsString(cap.Levels, "low") {
 		t.Fatalf("Pro capability = %+v, want low", cap)
 	}
 }
 
-func TestDefaultDeepSeekV4EntriesRejectCompatibilityAliases(t *testing.T) {
+func TestDefaultDeepSeekV4EntriesAcceptCompatibilityAliases(t *testing.T) {
 	cfg := Default()
 	for _, ref := range []string{"deepseek-flash", "deepseek-pro"} {
 		entry, ok := cfg.ResolveModel(ref)
@@ -58,8 +58,8 @@ func TestDefaultDeepSeekV4EntriesRejectCompatibilityAliases(t *testing.T) {
 		}
 		for _, alias := range []string{"medium", "xhigh"} {
 			got, err := NormalizeEffort(entry, alias)
-			if err == nil {
-				t.Errorf("%s %s = %q: undeclared alias accepted", ref, alias, got)
+			if err != nil || got != "high" {
+				t.Errorf("%s %s = %q/%v, want high/nil", ref, alias, got, err)
 			}
 		}
 	}
@@ -388,12 +388,6 @@ func TestNormalizeEffortOllamaCloud(t *testing.T) {
 	}
 	for _, tc := range cases {
 		got, err := NormalizeEffort(e, tc.in)
-		if tc.in != tc.want && tc.in != "auto" {
-			if err == nil {
-				t.Errorf("undeclared %q was silently mapped to %q", tc.in, got)
-			}
-			continue
-		}
 		if err != nil {
 			t.Errorf("NormalizeEffort(%q) returned error: %v", tc.in, err)
 			continue
@@ -426,12 +420,6 @@ func TestNormalizeEffortZhipu(t *testing.T) {
 	}
 	for _, tc := range cases {
 		got, err := NormalizeEffort(e, tc.in)
-		if tc.in != tc.want && tc.in != "auto" {
-			if err == nil {
-				t.Errorf("undeclared %q was silently mapped to %q", tc.in, got)
-			}
-			continue
-		}
 		if err != nil {
 			t.Errorf("NormalizeEffort(%q) returned error: %v", tc.in, err)
 			continue
@@ -460,12 +448,6 @@ func TestNormalizeEffortLongCat(t *testing.T) {
 	}
 	for _, tc := range cases {
 		got, err := NormalizeEffort(e, tc.in)
-		if tc.in != tc.want && tc.in != "auto" {
-			if err == nil {
-				t.Errorf("undeclared %q was silently mapped to %q", tc.in, got)
-			}
-			continue
-		}
 		if err != nil {
 			t.Errorf("NormalizeEffort(%q) returned error: %v", tc.in, err)
 			continue
@@ -516,12 +498,6 @@ func TestNormalizeEffortMiniMax(t *testing.T) {
 	}
 	for _, tc := range cases {
 		got, err := NormalizeEffort(e, tc.in)
-		if tc.in != tc.want && tc.in != "auto" {
-			if err == nil {
-				t.Errorf("undeclared %q was silently mapped to %q", tc.in, got)
-			}
-			continue
-		}
 		if err != nil {
 			t.Errorf("NormalizeEffort(%q) returned error: %v", tc.in, err)
 			continue
@@ -540,7 +516,7 @@ func TestNormalizeEffortMiniMaxRejectsGarbage(t *testing.T) {
 	// errors. "off" is *not* in this list — it's a retired level we now
 	// migrate to "adaptive" (tested in TestNormalizeEffortMiniMax above).
 	cases := map[string]string{
-		"turbo": "UNSUPPORTED_REASONING_EFFORT",
+		"turbo": "auto|adaptive|disabled",
 		"":      "auto|<level>",
 	}
 	for in, wantHint := range cases {
