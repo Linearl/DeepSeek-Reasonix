@@ -17,7 +17,6 @@ import (
 
 	"reasonix/internal/fileutil"
 	"reasonix/internal/provider"
-	"reasonix/internal/provider/openai"
 )
 
 type CapabilityState string
@@ -139,13 +138,11 @@ func (r *ModelCapabilityResolver) resolveWithCredentialRevision(entry *ProviderE
 	if requestURL == "" && entry.Kind == "openai" {
 		requestURL = entry.ChatURL
 	}
-	if (openai.IsDeepSeek(entry.BaseURL) || openai.IsDeepSeek(requestURL)) && !openai.IsOfficialDeepSeekVisionModel(entry.Model) {
-		resolved.State, resolved.Source = CapabilityUnsupported, CapabilitySourceProtocol
-		resolved.InputModalities = []provider.ModelModality{provider.ModalityText}
-		resolved.AutomaticState, resolved.AutomaticSource = CapabilityUnsupported, CapabilitySourceProtocol
-		resolved.ImageInputEnableAllowed = false
-		resolved.ImageInputBlockReason = "official_deepseek_text_model"
-	}
+	// Fork: no official-DeepSeek SKU hard-gating here. Upstream pins image
+	// capability to deepseek-v4-flash-vision-exp and marks every other official
+	// model protocol-unsupported, which locks out future official SKUs (the
+	// desktop release always lags the API). Capability is resolved from the
+	// automatic probe and the user's per-model override only.
 	resolved.ModelInfo.ID = resolved.Model
 	resolved.ModelInfo.InputModalities = append([]provider.ModelModality(nil), resolved.InputModalities...)
 	return resolved

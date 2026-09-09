@@ -67,7 +67,7 @@ assert(modeInput("on").disabled);
 assert(!modeInput("off").disabled);
 assert.equal(imageInputState("auto", { ...unknown, automaticState: undefined, source: "override", state: "supported" }), "unknown", "old backend must not fabricate automatic support");
 assert.equal(imageInputState("on", { ...unknown, imageInputEnableAllowed: false }), "unsupported");
-assert(imageInputHardBlocked("https://api.deepseek.com", "deepseek-v4-flash"));
+assert(!imageInputHardBlocked("https://api.deepseek.com", "deepseek-v4-flash"), "fork: no SKU hard-list — the user's override decides");
 assert(!imageInputHardBlocked("https://eu.deepseek.com/anthropic", "future-vision"), "allowlist semantics: unknown/future models are not hard-blocked");
 assert(!imageInputHardBlocked("https://api.deepseek.com.relay.test", "deepseek-v4-flash"));
 assert(!imageInputHardBlocked("https://api.deepseek.com", "deepseek-v4-flash-vision-exp"));
