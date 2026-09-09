@@ -53,6 +53,48 @@ const maxStreamRecoveries = 3
 const maxSamplingAttempts = maxStreamRecoveries + 1
 const maxExecutorHandoffNudges = 1
 
+// maxStalledIntentNudges bounds the "you announced the next step instead of
+// taking it" repair to one nudge per run.
+const maxStalledIntentNudges = 1
+
+// stalledIntentPhrases catch the shape where the model narrates the next step
+// and stops. Only the answer tail is inspected: a final answer may legitimately
+// quote such phrasing earlier in its text.
+var stalledIntentPhrases = []string{
+	"i will now ", "i'll now ", "i am going to ", "next, i ", "next i ", "let me now ",
+	"i will ", "i'll ", "about to ",
+}
+
+var stalledIntentVerbs = []string{
+	"check", "run", "verify", "implement", "update", "fix", "edit", "add", "write",
+	"test", "apply", "install", "review", "build", "patch", "investigate", "examine", "look",
+}
+
+func shouldNudgeStalledIntent(text string) bool {
+	tail := text
+	if len(tail) > 400 {
+		tail = tail[len(tail)-400:]
+	}
+	lower := strings.ToLower(tail)
+	for _, phrase := range stalledIntentPhrases {
+		if !strings.Contains(lower, phrase) {
+			continue
+		}
+		for _, verb := range stalledIntentVerbs {
+			if strings.Contains(lower, verb) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func stalledIntentRetryMessage() string {
+	return "[host] You described the next step instead of taking it. Do the work now with the " +
+		"appropriate tools in this turn, then report what happened. If you are genuinely blocked, " +
+		"say exactly what you need from the user."
+}
+
 // defaultReasoningByteLimit caps stored hidden reasoning for one stream.
 // It does not cancel generation; official DeepSeek may emit up to 384K tokens.
 const defaultReasoningByteLimit = 8 << 20

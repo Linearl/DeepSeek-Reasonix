@@ -463,6 +463,17 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 		a.contextManager().ObserveUsage(usage)
 		return true, nil
 	}
+	// The model announced the next step and stopped. Neither the executor-handoff
+	// path (marker-scoped) nor the todo path (no todos here) catches it, so nudge
+	// once before accepting this as a final answer (#6 P0-c).
+	if a.hostContinuationEnabled(ctx) && state.terminal.intentNudges < maxStalledIntentNudges && shouldNudgeStalledIntent(text) {
+		state.terminal.intentNudges++
+		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeExecutorHandoff,
+			Text: executorHandoffNoticeText(), Detail: "model announced the next step without taking it; nudged once"})
+		a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(stalledIntentRetryMessage())))
+		a.contextManager().ObserveUsage(usage)
+		return true, nil
+	}
 	if readiness.applies || a.turn.readinessRecovered {
 		event.RecordReadinessAudit(a.svc.sink, readiness.audit(evidence.ReadinessAllowed, a.turn.readinessRecovered))
 	}

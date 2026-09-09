@@ -189,6 +189,8 @@ type terminalProtocolState struct {
 	emptyFinalBlocks int
 	// handoffNudges counts executor-handoff repairs sent this run.
 	handoffNudges int
+	// intentNudges counts stalled-intent repairs sent this run.
+	intentNudges int
 	// contextToolRepairs counts contextual-tool repair rounds; a second
 	// violation after a repair ends the run in a recoverable pause.
 	contextToolRepairs int
