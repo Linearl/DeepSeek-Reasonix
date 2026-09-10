@@ -118,6 +118,7 @@ import {
   type WireCompletionSummary,
   type WorkspaceConflictView,
 } from "./lib/types";
+import { loadCachedLayoutStyle, saveCachedLayoutStyle } from "./lib/layoutPreferences";
 import { runWorktreeMergeLifecycle } from "./lib/worktreeMergeLifecycle";
 import { showWorktreeCleanupNotice } from "./lib/worktreeCleanupNotice";
 import { requestSessionVersions } from "./lib/sessionRecoveryVersionHostBridge";
@@ -1108,7 +1109,13 @@ export default function App() {
   const setSettingsTarget = useAppNavigationStore((s) => s.setSettingsTarget);
   const settingsFocus = useAppNavigationStore((s) => s.settingsFocus);
   const setSettingsFocus = useAppNavigationStore((s) => s.setSettingsFocus);
-  const [desktopLayoutStyle, setDesktopLayoutStyle] = useState<DesktopLayoutStyle>("workbench");
+  // Task 40: seed from the synchronous first-paint cache so a classic-layout
+  // user never sees workbench flash before the async settings chain lands.
+  // The cached value is advisory only - applyDesktopPreferences overwrites it
+  // with the authoritative desktop config.
+  const [desktopLayoutStyle, setDesktopLayoutStyle] = useState<DesktopLayoutStyle>(
+    () => normalizeDesktopLayoutStyle(loadCachedLayoutStyle() ?? "workbench"),
+  );
   const singleSurfaceLayout = desktopLayoutStyle === "workbench" || desktopLayoutStyle === "creation";
   const { configLoadWarnings, applySnapshot: applyConfigWarningSnapshot, reload: reloadConfigWarnings, dismiss: dismissConfigWarnings } = useConfigLoadWarnings();
   const [startupUpdateChecksEnabled, setStartupUpdateChecksEnabled] = useState<boolean | null>(null);
@@ -1445,6 +1452,7 @@ export default function App() {
       applyConversationWidth(settings.conversationWidth);
       const nextLayoutStyle = normalizeDesktopLayoutStyle(settings.desktopLayoutStyle);
       setDesktopLayoutStyle(nextLayoutStyle);
+      saveCachedLayoutStyle(nextLayoutStyle);
       applyLayoutStyleDefaults(nextLayoutStyle);
       setLocalePref(normalizeLangPref(settings.desktopLanguage));
       setStartupUpdateChecksEnabled(settings.checkUpdates !== false);

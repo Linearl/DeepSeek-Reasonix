@@ -12,6 +12,11 @@ export type LayoutSizeKey =
 
 type LayoutPreferences = {
   sizes?: Partial<Record<LayoutSizeKey, number>>;
+  // layoutStyle is cached here for the FIRST PAINT only: the authoritative value
+  // lives in the desktop config and arrives asynchronously, so without a
+  // synchronous copy a classic-layout user sees workbench for a few frames
+  // (task 40 / #9796 fallout).
+  layoutStyle?: string;
 };
 
 const STORAGE_KEY = "reasonix.layoutPreferences.v1";
@@ -46,10 +51,31 @@ function readPrefs(): LayoutPreferences {
 function writePrefs(prefs: LayoutPreferences): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ sizes: prefs.sizes ?? {} }));
+    const payload: LayoutPreferences = { sizes: prefs.sizes ?? {} };
+    if (prefs.layoutStyle) payload.layoutStyle = prefs.layoutStyle;
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch {
     /* ignore storage failures */
   }
+}
+
+/** loadCachedLayoutStyle returns the synchronously readable layout style, or
+ * null when nothing usable is cached (first install, cleared storage, older
+ * cache shape). Callers fall back to the upstream default, workbench. */
+export function loadCachedLayoutStyle(): string | null {
+  const prefs = readPrefs();
+  const style = prefs.layoutStyle;
+  return typeof style === "string" && style.trim() !== "" ? style : null;
+}
+
+/** saveCachedLayoutStyle mirrors the authoritative desktop preference into the
+ * first-paint cache. Blank input is ignored so a cleared config cannot pin a
+ * stale style. */
+export function saveCachedLayoutStyle(style: string): void {
+  const trimmed = typeof style === "string" ? style.trim() : "";
+  if (trimmed === "") return;
+  const prefs = readPrefs();
+  writePrefs({ ...prefs, layoutStyle: trimmed });
 }
 
 function readLegacySize(key: LayoutSizeKey): number | null {
