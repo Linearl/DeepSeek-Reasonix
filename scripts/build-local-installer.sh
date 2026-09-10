@@ -58,10 +58,20 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
 for pkg in cmd/reasonix-legacy-migrator cmd/reasonix-launcher desktop/cmd/update-helper cmd/reasonix; do
 	rm -f "$ROOT/$pkg/resource.syso"
 done
-echo "==> [2/3] wails build (never pass -s: it skips the frontend build)"
+echo "==> [2/3] archive previous artifacts + wails build"
 cd "$ROOT/desktop"
-wails build -clean -platform windows/amd64 -nsis -webview2 embed
+# Move the previous build aside so a new build never silently overwrites an
+# installer the user may still be testing. Timestamped, so several runs coexist.
+if [ -d build/bin ] && [ -n "$(ls -A build/bin 2>/dev/null)" ]; then
+	ARCHIVE="build/bin-old/$(date +%Y%m%d%H%M%S)"
+	mkdir -p "$ARCHIVE"
+	mv build/bin/* "$ARCHIVE"/ 2>/dev/null || true
+	echo "    previous artifacts -> $ARCHIVE"
+fi
+# Inject the version: without it the About box and update checks see "dev".
+wails build -clean -platform windows/amd64 -nsis -webview2 embed -ldflags "-X main.version=$VER"
 
 echo "==> [3/3] artifacts"
 ls -la build/bin/ | grep -Ei "installer|reasonix-desktop"
+echo "    (previous builds archived under desktop/build/bin-old/)"
 echo "DONE: desktop/build/bin/reasonix-desktop-amd64-installer.exe (v$VER)"
