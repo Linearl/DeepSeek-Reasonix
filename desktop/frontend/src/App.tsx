@@ -101,7 +101,6 @@ import {
   type BackgroundRuntimeView,
   type CollaborationMode,
   type SubagentPolicy,
-  type QuickCommandEntry,
   type ComposerInsertRequest,
   type Mode,
   modeHasPlan,
@@ -116,6 +115,7 @@ import {
   type WorkspaceConflictView,
 } from "./lib/types";
 import { useComposerProfileStore } from "./app-runtime/composerProfileStore";
+import { useTabNavigationOwner } from "./app-runtime/tabNavigationOwner";
 import { useDialogSurfaceOwner } from "./app-runtime/dialogSurfaceOwner";
 import { useTranscriptRevealOwner } from "./app-runtime/transcriptRevealOwner";
 import { useViewportMetricsOwner } from "./app-runtime/viewportMetricsOwner";
@@ -790,8 +790,6 @@ export default function App() {
   const yoloRestoreToolApprovalModesRef = useRef<Record<string, RestorableToolApprovalMode>>({});
   const userPlanModeByTabRef = useRef<UserPlanModeIntents>({});
   const [tabMetas, setTabMetas] = useState<TabMeta[]>([]);
-  const [tabOrderIds, setTabOrderIds] = useState<string[]>([]);
-  const [navigationSurfaceIntent, setNavigationSurfaceIntent] = useState<number | null>(null);
   type PreservedTranscriptSurface = {
     tabId?: string;
     items: Item[];
@@ -847,7 +845,6 @@ export default function App() {
   );
   const singleSurfaceLayout = desktopLayoutStyle === "workbench" || desktopLayoutStyle === "creation";
   const { configLoadWarnings, applySnapshot: applyConfigWarningSnapshot, reload: reloadConfigWarnings, dismiss: dismissConfigWarnings } = useConfigLoadWarnings();
-  const [startupUpdateChecksEnabled, setStartupUpdateChecksEnabled] = useState<boolean | null>(null);
   const [histView, setHistView] = useState<HistoryViewState | null>(null);
   const paletteOpen = useOverlayStore((s) => s.paletteOpen);
   const setPaletteOpen = useOverlayStore((s) => s.setPaletteOpen);
@@ -949,6 +946,18 @@ export default function App() {
     });
   }, [activeTabId, tabMetas.length]);
 
+  // Task 38 B7: tab ordering and the two preference mirrors.
+  const {
+    tabOrderIds,
+    setTabOrderIds,
+    navigationSurfaceIntent,
+    setNavigationSurfaceIntent,
+    startupUpdateChecksEnabled,
+    setStartupUpdateChecksEnabled,
+    quickCommands,
+    setQuickCommands,
+  } = useTabNavigationOwner();
+
   // Task 38 B6: composer profiles keyed by tab.
   const { composerProfilesByTab, setComposerProfilesByTab } = useComposerProfileStore();
 
@@ -1025,7 +1034,6 @@ export default function App() {
   const [mainWindowMaximised, syncMainWindowMaximised] = useWindowsMaximised(windowsFramelessChrome);
   useWailsResizeFix(windowsFramelessChrome, mainWindowMaximised);
   const [statusBarStyle, setStatusBarStyle] = useState<"icon" | "text">("text");
-  const [quickCommands, setQuickCommands] = useState<QuickCommandEntry[]>([]);
   const [statusBarItems, setStatusBarItems] = useState<StatusBarItemId[]>(() => [...DEFAULT_STATUS_BAR_ITEMS]);
   const [renamingTopicId, setRenamingTopicId] = useState<string | null>(null);
   const [topicTitleDraft, setTopicTitleDraft] = useState("");
