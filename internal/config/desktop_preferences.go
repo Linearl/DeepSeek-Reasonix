@@ -22,6 +22,12 @@ type DesktopConfig struct {
 	StatusBarStyleInitialized bool     `toml:"status_bar_style_initialized"` // one-time icon default upgrade; later choices are user-owned
 	StatusBarItems            []string `toml:"status_bar_items"`             // ordered visible desktop status bar items
 	DefaultToolApprovalMode   string   `toml:"default_tool_approval_mode"`   // ask|auto|yolo; defaults to auto for newly-created desktop sessions
+	// Autopilot defaults for newly-created desktop sessions. Autopilot runs a
+	// session unattended: the goal machine bounds it by wall clock, and the reviewer
+	// answers approval prompts nobody is there to answer.
+	Autopilot              bool   `toml:"autopilot"`
+	AutopilotMaxRuntime    string `toml:"autopilot_max_runtime"`     // Go duration; required when autopilot is on
+	AutopilotApprovalGrace string `toml:"autopilot_approval_grace"` // wait for a human before the reviewer decides; empty = 15s
 	CheckUpdates              *bool    `toml:"check_updates"`                // startup update checks; nil keeps the default enabled
 	// UpdateChannel is a legacy compatibility field. It is accepted on read but
 	// ignored and omitted from future canonical writes.

@@ -860,6 +860,29 @@ func (a *App) createTabEntry(scope, workspaceRoot, topicID string) *WorkspaceTab
 	return a.createTabEntryWithID(scope, workspaceRoot, topicID, newTabID())
 }
 
+// desktopAutopilotDefaults returns the unattended-run settings a newly-created
+// desktop session starts with, read from the [desktop] preferences. Autopilot
+// without a wall-clock bound is the one combination the CLI refuses outright, so
+// it is refused here too rather than silently running a desktop session with no
+// limit: a missing or malformed bound leaves autopilot off.
+func desktopAutopilotDefaults() (bool, time.Duration, time.Duration) {
+	cfg := config.LoadForEdit(config.UserConfigPath())
+	if !cfg.Desktop.Autopilot {
+		return false, 0, 0
+	}
+	maxRuntime, err := time.ParseDuration(strings.TrimSpace(cfg.Desktop.AutopilotMaxRuntime))
+	if err != nil || maxRuntime <= 0 {
+		return false, 0, 0
+	}
+	var grace time.Duration
+	if raw := strings.TrimSpace(cfg.Desktop.AutopilotApprovalGrace); raw != "" {
+		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+			grace = d
+		}
+	}
+	return true, maxRuntime, grace
+}
+
 func desktopNewSessionDefaults(scope, workspaceRoot string) (string, string, string) {
 	userCfg := config.LoadForEdit(config.UserConfigPath())
 	modelCfg := userCfg
@@ -898,6 +921,7 @@ func resolveNewSessionModel(cfg *config.Config) string {
 
 func (a *App) createTabEntryWithID(scope, workspaceRoot, topicID, id string) *WorkspaceTab {
 	model, toolApprovalMode, subagentPolicy := desktopNewSessionDefaults(scope, workspaceRoot)
+	autopilot, maxRuntime, approvalGrace := desktopAutopilotDefaults()
 	return &WorkspaceTab{
 		ID:               id,
 		Scope:            scope,
@@ -910,6 +934,9 @@ func (a *App) createTabEntryWithID(scope, workspaceRoot, topicID, id string) *Wo
 		mode:             tabModeFromAxes(false, toolApprovalMode == control.ToolApprovalYolo),
 		toolApprovalMode: toolApprovalMode,
 		subagentPolicy:   subagentPolicy,
+		autopilot:              autopilot,
+		autopilotMaxRuntime:    maxRuntime,
+		autopilotApprovalGrace: approvalGrace,
 		disabledMCP:      map[string]ServerView{},
 	}
 }
