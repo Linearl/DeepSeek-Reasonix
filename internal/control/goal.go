@@ -364,6 +364,17 @@ func (g *goalMachine) setStrict(strict bool, todos []evidence.TodoItem) (string,
 // stop transitions a running goal to the given terminal status and clears the
 // transient runtime bookkeeping. stopCause is cleared: a host stop is not a
 // safe pause.
+// autopilotDeadline returns the instant an unattended run must stop, or the zero
+// time when the run is interactive. A non-positive runtime yields the zero time as
+// well: the CLI already refuses --autopilot without --max-runtime, and this is the
+// belt to that braces so a programmatic caller cannot slip an unbounded run past.
+func autopilotDeadline(autopilot bool, maxRuntime time.Duration) time.Time {
+	if !autopilot || maxRuntime <= 0 {
+		return time.Time{}
+	}
+	return time.Now().Add(maxRuntime)
+}
+
 // autopilotDeadlineReached reports whether an unattended run has used up its
 // wall clock. Interactive machines always answer false - they have a human who
 // can decide, and an accidental deadline must never cut a normal session short.

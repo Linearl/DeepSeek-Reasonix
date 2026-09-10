@@ -499,6 +499,11 @@ type Options struct {
 	TaskBudget agent.TaskBudget
 	// GoalTokenBudget bounds an unattended Goal loop by cumulative tokens.
 	GoalTokenBudget int
+	// Autopilot marks the run as unattended (task 49 A1): nobody can answer a
+	// prompt. AutopilotMaxRuntime is the wall-clock bound and must be positive
+	// whenever Autopilot is set - the CLI refuses that combination otherwise.
+	Autopilot           bool
+	AutopilotMaxRuntime time.Duration
 	// GoalEvaluator is the optional bounded Goal completion evaluator consulted
 	// when the working model submits no update_goal report. nil fails closed:
 	// the goal pauses instead of defaulting to continue.
@@ -711,7 +716,11 @@ func New(opts Options) *Controller {
 	c := &Controller{
 		taskBudget:                        opts.TaskBudget,
 		goalTokenBudget:                   opts.GoalTokenBudget,
-		goals:                             goalMachine{tokenBudget: opts.GoalTokenBudget},
+		goals: goalMachine{
+			tokenBudget: opts.GoalTokenBudget,
+			autopilot:   opts.Autopilot && opts.AutopilotMaxRuntime > 0,
+			deadline:    autopilotDeadline(opts.Autopilot, opts.AutopilotMaxRuntime),
+		},
 		runner:                            opts.Runner,
 		executor:                          opts.Executor,
 		guardianSess:                      opts.Guardian,
