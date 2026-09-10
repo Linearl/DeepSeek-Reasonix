@@ -40,10 +40,24 @@
 - Desktop：`.github/workflows/release-fork.yml` 手动触发，构建 unsigned 安装包/归档并发布到 fork 的 GitHub Release。
 - 注意：fork release 不做 MINISIGN/SignPath/Apple 签名，不生成 `latest.json`，不镜像 R2；因此 fork 版请走手动安装，不要依赖自动更新。
 
-## 验证状态
+## 验证状态（2026-09-10 更新）
 
-- [x] `go build ./cmd/reasonix` 通过。
-- [x] 添加 `scripts/fork-release.sh`（CLI release 构建脚本）。
-- [x] 添加 `.github/workflows/release-fork.yml`（最小 unsigned desktop release workflow）。
-- [ ] `go test ./...`、`make vet`、`scripts/cache-guard.sh`（用户正在执行，等待结果）。
-- [ ] 安装 fork release 后验证并行写效果、自动化任务、周报正常。
+- [x] `go build ./...` 主 module 与 `cd desktop && go build ./...` 均通过。
+- [x] `scripts/fork-release.sh`（CLI release 构建脚本）。
+- [x] `.github/workflows/release-fork.yml`（unsigned desktop release workflow，手动触发）。
+- [x] 本地安装包：`scripts/build-local-installer.sh`（rsrc 图标注入 + wails build + NSIS）。
+- [x] 测试：`internal/agent` 111s / `internal/control` 76s / `internal/recovery` / `evidence` / `tool/builtin` / `goaleval` / `boot` 全绿；desktop 定向（ServePool / Heartbeat / Settings）52s 通过。
+- [x] `tsc --noEmit` 0 错误；`node scripts/check-fork-integrity.mjs` **30/30**。
+- [x] v1.38.3 已发布（tag `desktop-v1.38.3` + 9 平台产物，run 34340502890 success）。
+
+## 发布前检查清单（fork desktop）
+
+1. **代码**：`git status` 干净 → `go build ./...` → `cd desktop && go build ./...` → `cd desktop/frontend && npx tsc --noEmit` → `node scripts/check-fork-integrity.mjs`（须 30/30）
+2. **文档**：`release-notes/FORK-vX.Y.Z.md` 含本版全部改动；`desktop/wails.json` 的 `productVersion` 与 tag 版本一致
+3. **本地包**（推荐先跑一遍）：`nohup bash scripts/build-local-installer.sh > /tmp/build.log 2>&1 & disown`（**加** `preserve_background_processes`；前台 115s 会被 SIGTERM，MSYS 无 `setsid`）→ 装后走关键路径
+4. **推送**：`git push origin main-v2-stable`
+5. **tag**：先 `gh release delete desktop-vX.Y.Z -R Linearl/DeepSeek-Reasonix`（**不带** `--cleanup-tag`）→ 删远端 tag → 再推 tag。顺序反了会把重推的同名 tag 一并删掉
+6. **dispatch**：`gh workflow run release-fork.yml -R Linearl/DeepSeek-Reasonix -f tag=desktop-vX.Y.Z`
+7. **验证**：`gh release view desktop-vX.Y.Z -R Linearl/DeepSeek-Reasonix`，确认 9 平台产物齐全
+
+**两个必背的坑**：① `gh` 默认解析到 upstream（esengine）→ 必须显式 `-R Linearl/DeepSeek-Reasonix`，否则 404；② fine-grained PAT 会 403 → 用 `env -u GITHUB_TOKEN gh ...` 切 keyring OAuth token。
