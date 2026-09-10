@@ -154,6 +154,11 @@ type WorkspaceTab struct {
 	mode             string // "normal" | "plan" | "yolo" | "plan-yolo"; yolo/full access is runtime-only
 	goal             string
 	toolApprovalMode string
+	// Autopilot runs this tab unattended (task 49): the goal machine bounds it by
+	// wall clock and the reviewer answers approval prompts nobody is there for.
+	autopilot              bool
+	autopilotMaxRuntime    time.Duration
+	autopilotApprovalGrace time.Duration
 	subagentPolicy   string // per-session sub-agent delegation tier (light|balanced|aggressive, fork)
 	disabledMCP      map[string]ServerView
 	mcpOrder         []string
@@ -7187,6 +7192,11 @@ type tabRuntimeSnapshot struct {
 	tokenMode, qualityFloor, mode string
 	goal, toolApprovalMode        string
 	subagentPolicy                string
+	// Autopilot settings for this tab (task 49): unattended run bounds and the
+	// grace period before the reviewer answers an approval prompt.
+	autopilot                     bool
+	autopilotMaxRuntime           time.Duration
+	autopilotApprovalGrace        time.Duration
 }
 
 // normalizedTabRuntime is the internal, orthogonal runtime profile restored
@@ -7224,6 +7234,9 @@ func snapshotTabRuntimeLocked(tab *WorkspaceTab) tabRuntimeSnapshot {
 		goal:             tab.goal,
 		toolApprovalMode: tab.toolApprovalMode,
 		subagentPolicy:   currentTabSubagentPolicy(tab),
+		autopilot:              tab.autopilot,
+		autopilotMaxRuntime:    tab.autopilotMaxRuntime,
+		autopilotApprovalGrace: tab.autopilotApprovalGrace,
 	}
 }
 
