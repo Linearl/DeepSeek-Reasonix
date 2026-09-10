@@ -4086,11 +4086,11 @@ export function Composer({
               className={`composer-access-menu__item composer-intent-menu__item${autopilotModeOn ? " composer-access-menu__item--active" : ""}`}
               onClick={() => chooseTaskMode(autopilotModeOn ? "normal" : "autopilot")}
               disabled={disabled || running}
+              title={t("composer.taskModeAutopilotHint")}
             >
               <Zap size={16} />
               <span className="composer-access-menu__copy">
                 <span className="composer-access-menu__title">{t("composer.taskModeAutopilot")}</span>
-                <span className="composer-access-menu__hint">{t("composer.taskModeAutopilotHint")}</span>
               </span>
               {autopilotModeOn && <Check className="composer-intent-menu__check" size={16} aria-hidden="true" />}
             </button>

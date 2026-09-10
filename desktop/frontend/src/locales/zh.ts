@@ -808,7 +808,7 @@ export const zh: Record<DictKey, string> = {
   "composer.taskModeGoal": "目标模式",
   "composer.taskModeGoalShort": "目标",
   "composer.taskModeAutopilot": "Autopilot",
-  "composer.taskModeAutopilotHint": "无人值守运行：由设置里的时限设上限，审批由「审批模型」代为判断无人应答的请求。",
+  "composer.taskModeAutopilotHint": "无人值守运行，时限与审批模型在设置里配置。",
   "composer.taskModeAutopilotShort": "Autopilot",
   "composer.taskModeGoalDesc": "输入目标后持续工作，直到完成或阻塞。",
   "composer.qualityFloor": "验收",

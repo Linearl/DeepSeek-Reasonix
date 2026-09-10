@@ -807,7 +807,7 @@ export const en = {
   "composer.taskModeGoal": "Goal · Keep progressing",
   "composer.taskModeGoalShort": "Goal",
   "composer.taskModeAutopilot": "Autopilot",
-  "composer.taskModeAutopilotHint": "Run unattended: the run is bounded by the time limit in Settings, and the approval model answers prompts nobody replies to.",
+  "composer.taskModeAutopilotHint": "Runs unattended: the time limit and the approval model come from Settings.",
   "composer.taskModeAutopilotShort": "Autopilot",
   "composer.taskModeGoalDesc": "Enter a goal, then keep working until done or blocked.",
   "composer.qualityFloor": "Verification",

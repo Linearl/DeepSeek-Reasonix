@@ -2888,7 +2888,7 @@ export const zhTW: Record<DictKey, string> = {
   "composer.taskModeGoal": "目標 · 持續推進",
   "composer.taskModeGoalShort": "目標",
   "composer.taskModeAutopilot": "Autopilot",
-  "composer.taskModeAutopilotHint": "無人值守執行：由設定裡的時限設上限，審批由「審批模型」代為判斷無人應答的請求。",
+  "composer.taskModeAutopilotHint": "無人值守執行，時限與審批模型在設定裡設定。",
   "composer.taskModeAutopilotShort": "Autopilot",
   "composer.taskModeGoalDesc": "輸入目標後持續工作，直到完成或阻塞。",
   "composer.qualityFloor": "驗收",
