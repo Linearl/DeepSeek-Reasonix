@@ -2114,6 +2114,7 @@ export const zh: Record<DictKey, string> = {
   "settings.quickCommandsTitlePlaceholder": "名称（菜单里显示）",
   "settings.quickCommandsTextPlaceholder": "插入的正文",
   "settings.quickCommandsAdd": "新增快捷指令",
+  "settings.quickCommandsNewTitle": "新快捷指令",
   "settings.soundHint": "背景音乐与通知音效",
   "settings.soundStatus.allOff": "全部关闭",
   "settings.soundStatus.enabled": "已启用",

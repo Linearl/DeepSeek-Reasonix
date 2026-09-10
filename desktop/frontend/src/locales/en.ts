@@ -2112,6 +2112,7 @@ export const en = {
   "settings.quickCommandsTitlePlaceholder": "Name (shown in the menu)",
   "settings.quickCommandsTextPlaceholder": "Text to insert",
   "settings.quickCommandsAdd": "Add quick command",
+  "settings.quickCommandsNewTitle": "New quick command",
   "settings.soundHint": "Background music and notification sounds",
   "settings.soundStatus.allOff": "All off",
   "settings.soundStatus.enabled": "Enabled",

@@ -2152,8 +2152,14 @@ export function ProjectTree({
                       key={option.key}
                       className={`project-tree__color-opt${on ? " project-tree__color-opt--on" : ""}`}
                       onClick={() => {
-                        setColorFilter(on ? [] : [option.key]);
-                        setColorFilterMenuOpen(false);
+                        // Toggle instead of replace, and keep the menu open: picking a
+                        // second colour used to drop the first and close the menu, which
+                        // made multi-select impossible in practice.
+                        setColorFilter((current) =>
+                          current.includes(option.key)
+                            ? current.filter((key) => key !== option.key)
+                            : [...current, option.key],
+                        );
                       }}
                       role="menuitem"
                     >

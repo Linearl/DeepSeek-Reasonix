@@ -146,7 +146,12 @@ export function TaskEditor({
     void app.Settings().then((settings) => {
       if (cancelled) return;
       const map: Record<string, string[]> = {};
-      for (const provider of settings.providers ?? []) map[provider.name] = provider.models ?? [];
+      for (const provider of settings.providers ?? []) {
+        // Only connections that actually declare models belong in a model-override
+        // picker; a provider with no models would offer a dead end.
+        const models = provider.models ?? [];
+        if (models.length > 0) map[provider.name] = models;
+      }
       setProviderModels(map);
     }).catch(() => { /* settings unavailable: keep the free-text fallback */ });
     return () => { cancelled = true; };

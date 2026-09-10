@@ -3184,6 +3184,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.quickCommandsTitlePlaceholder": "名稱（選單中顯示）",
   "settings.quickCommandsTextPlaceholder": "插入的內容",
   "settings.quickCommandsAdd": "新增快捷指令",
+  "settings.quickCommandsNewTitle": "新快捷指令",
   "settings.soundHint": "背景音樂與通知音效",
   "settings.soundStatus.allOff": "全部關閉",
   "settings.soundStatus.enabled": "已啟用",

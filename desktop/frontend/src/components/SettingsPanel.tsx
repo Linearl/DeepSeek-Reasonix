@@ -1813,7 +1813,7 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
             type="button"
             className="btn btn--small"
             disabled={busy}
-            onClick={() => void apply(() => app.SetQuickCommands([...(s.quickCommands ?? []), { title: "", text: "" }]))}
+            onClick={() => void apply(() => app.SetQuickCommands([...(s.quickCommands ?? []), { title: t("settings.quickCommandsNewTitle"), text: "" }]))}
           >
             {t("settings.quickCommandsAdd")}
           </button>
