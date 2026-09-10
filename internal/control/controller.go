@@ -119,6 +119,9 @@ type Controller struct {
 	taskBudget agent.TaskBudget
 	// goalTokenBudget bounds an unattended Goal loop; 0 leaves it unbounded.
 	goalTokenBudget int
+	// autopilot marks an unattended run: nobody can answer a prompt, so the run
+	// answers reversible questions itself and pauses on the dangerous ones (A3).
+	autopilot bool
 	// evaluator is the bounded Goal completion evaluator consulted when the
 	// working model submits no update_goal report. nil fails closed: the goal
 	// pauses instead of defaulting to continue.
@@ -716,6 +719,7 @@ func New(opts Options) *Controller {
 	c := &Controller{
 		taskBudget:                        opts.TaskBudget,
 		goalTokenBudget:                   opts.GoalTokenBudget,
+		autopilot:                         opts.Autopilot && opts.AutopilotMaxRuntime > 0,
 		goals: goalMachine{
 			tokenBudget: opts.GoalTokenBudget,
 			autopilot:   opts.Autopilot && opts.AutopilotMaxRuntime > 0,
@@ -2592,6 +2596,15 @@ func (c *Controller) lockPromptFor(ctx context.Context, kind string) bool {
 func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]event.AskAnswer, error) {
 	// Registering after the lock left a queued question invisible everywhere:
 	// no event, absent from the snapshot, unreachable by ReplayPendingPrompts.
+	// Autopilot (task 49 A3): nobody is available to answer. Questions the run may
+	// decide alone are handed straight back with an explicit "decide for yourself"
+	// answer, which lands in the transcript as the audit record. Anything
+	// destructive, outward-facing, or credential-touching falls through to the
+	// normal prompt path and waits for a human.
+	if c.autopilot && askRiskOfQuestions(askQuestionTexts(questions)) == askRiskReversible {
+		return autopilotAnswers(questions), nil
+	}
+
 	id, reply := c.approval.registerAsk(questions)
 	c.registerOwnedPrompt(id, PromptAsk)
 

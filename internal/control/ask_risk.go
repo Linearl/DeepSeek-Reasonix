@@ -1,6 +1,10 @@
 package control
 
-import "strings"
+import (
+	"strings"
+
+	"reasonix/internal/event"
+)
 
 // Question risk classification for unattended runs (task 49 A3).
 //
@@ -75,4 +79,35 @@ func askRiskOfQuestions(questions []askQuestionText) askRiskClass {
 		}
 	}
 	return askRiskReversible
+}
+
+// autopilotNoHumanAnswer is what an unattended run receives in place of a user's
+// reply, for questions the run is allowed to decide alone. It is deliberately
+// explicit - the model is being told to decide for itself, not to stop - and it
+// travels in Selected so the turn is not mistaken for the "no selection means skip
+// and end the turn" path (#6869). Because the answer lands in the transcript, it
+// doubles as the audit record of what was decided unattended.
+const autopilotNoHumanAnswer = "autopilot: no human is available - decide for yourself, record the decision, and continue"
+
+// askQuestionTexts narrows event questions to what the classifier reads.
+func askQuestionTexts(questions []event.AskQuestion) []askQuestionText {
+	out := make([]askQuestionText, 0, len(questions))
+	for _, q := range questions {
+		options := make([]string, 0, len(q.Options))
+		for _, opt := range q.Options {
+			options = append(options, opt.Label)
+		}
+		out = append(out, askQuestionText{Text: q.Prompt, Options: options})
+	}
+	return out
+}
+
+// autopilotAnswers builds the unattended reply: one answer per question, each
+// carrying the explicit "decide for yourself" marker.
+func autopilotAnswers(questions []event.AskQuestion) []event.AskAnswer {
+	out := make([]event.AskAnswer, 0, len(questions))
+	for _, q := range questions {
+		out = append(out, event.AskAnswer{QuestionID: q.ID, Selected: []string{autopilotNoHumanAnswer}})
+	}
+	return out
 }
