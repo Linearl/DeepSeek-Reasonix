@@ -12,20 +12,11 @@ import (
 func (a *App) sessionCatalogTargets() []sessioncatalog.DirectoryTarget {
 	f := loadProjectsFile()
 	out := []sessioncatalog.DirectoryTarget{}
-	seen := map[string]bool{}
+	// Dedup is left to sessioncatalog.UniqueDirectoryTargets at the end of this
+	// function: it folds case only where the filesystem reports itself
+	// case-insensitive (#9511), so a blanket ToLower here would wrongly merge
+	// genuinely distinct directories on case-sensitive volumes.
 	add := func(target sessioncatalog.DirectoryTarget) {
-		target.Path = filepath.Clean(strings.TrimSpace(target.Path))
-		if target.Path == "." || target.Path == "" {
-			return
-		}
-		// Dedup by a case-folded key so the same physical directory reached
-		// through a differently-cased spelling (common on Windows) is not
-		// scanned twice as two targets.
-		key := strings.ToLower(target.Path)
-		if seen[key] {
-			return
-		}
-		seen[key] = true
 		out = append(out, target)
 	}
 	add(sessioncatalog.DirectoryTarget{Path: config.SessionDir(), Scope: "global"})
