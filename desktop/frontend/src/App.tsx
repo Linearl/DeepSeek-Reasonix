@@ -115,6 +115,7 @@ import {
   type WorkspaceConflictView,
 } from "./lib/types";
 import { useComposerProfileStore } from "./app-runtime/composerProfileStore";
+import { useTabOrderSync } from "./app-runtime/tabOrderSync";
 import { useVisibleTabs } from "./app-runtime/visibleTabs";
 import { useTabNavigationOwner } from "./app-runtime/tabNavigation";
 import { useDialogSurfaceOwner } from "./app-runtime/dialogSurfaces";
@@ -1632,16 +1633,7 @@ export default function App() {
     visibleTabId,
   });
 
-  useEffect(() => {
-    const ids = tabMetas.map((tab) => tab.id);
-    setTabOrderIds((current) => {
-      const next = current.filter((id) => ids.includes(id));
-      for (const id of ids) {
-        if (!next.includes(id)) next.push(id);
-      }
-      return next.join("\u0000") === current.join("\u0000") ? current : next;
-    });
-  }, [tabMetas]);
+  useTabOrderSync(tabMetas, setTabOrderIds);
 
   useEffect(() => {
     const ids = new Set(tabMetas.map((tab) => tab.id));
