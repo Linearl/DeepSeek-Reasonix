@@ -115,10 +115,10 @@ import {
   type WorkspaceConflictView,
 } from "./lib/types";
 import { useComposerProfileStore } from "./app-runtime/composerProfileStore";
-import { useTabNavigationOwner } from "./app-runtime/tabNavigationOwner";
-import { useDialogSurfaceOwner } from "./app-runtime/dialogSurfaceOwner";
-import { useTranscriptRevealOwner } from "./app-runtime/transcriptRevealOwner";
-import { useViewportMetricsOwner } from "./app-runtime/viewportMetricsOwner";
+import { useTabNavigationOwner } from "./app-runtime/tabNavigation";
+import { useDialogSurfaceOwner } from "./app-runtime/dialogSurfaces";
+import { useTranscriptRevealOwner } from "./app-runtime/transcriptReveal";
+import { useViewportMetricsOwner } from "./app-runtime/viewportMetrics";
 import { useSidebarImOwner, sidebarImAccessModeLabel, sidebarImAccessStatusClass, sidebarImAccessStatusLabel, sidebarImConnectionsFromBot, sidebarImScopeLabel, sidebarImSessionLabel, sidebarImSessionTarget, sidebarImTopicSourcesFromBot, type SidebarImConnection } from "./app-runtime/sidebarIm";
 import { loadCachedLayoutStyle, saveCachedLayoutStyle } from "./lib/layoutPreferences";
 import { runWorktreeMergeLifecycle } from "./lib/worktreeMergeLifecycle";
