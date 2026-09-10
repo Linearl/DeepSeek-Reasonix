@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, lazy, Suspense, type DragEvent, type HTMLAttributes, type ReactNode } from "react";
-import { Archive, FolderMinus, Pencil } from "lucide-react";
+import { Archive, FolderMinus, Pencil, Trash2 } from "lucide-react";
 import { app } from "../lib/bridge";
 import { asArray } from "../lib/array";
 import type { Translator } from "../lib/i18n";
@@ -428,6 +428,34 @@ export function ProjectTreeGroupRows({
             { key: "rename", icon: <Pencil size={13} />, label: t("projectTree.renameGroup"), onSelect: () => { setEditingGroup(group.id); setGroupDraft(group.title); setMenuGroup(null); } },
             { key: "clear", icon: <Archive size={13} />, label: t("projectTree.clearGroup"), onSelect: () => { organization.clearGroup(key, group.id); setMenuGroup(null); } },
             { key: "dissolve", icon: <Archive size={13} />, label: t("projectTree.dissolveGroup"), onSelect: () => { organization.dissolveGroup(key, group.id); setMenuGroup(null); } },
+            { key: "delete-sessions", icon: <Trash2 size={13} />, label: t("projectTree.deleteGroupSessions"), danger: true, onSelect: () => {
+              setMenuGroup(null);
+              // Destructive variant of dissolve (task 17 S3): every session goes
+              // to the recycle path first - never a hard delete - and one
+              // failure must not strand the remaining sessions.
+              void (async () => {
+                const members = (group.topicIds ?? []).slice();
+                if (members.length > 0) {
+                  const confirmed = await app.ConfirmAction({
+                    title: t("projectTree.deleteGroupSessions"),
+                    message: t("projectTree.deleteGroupSessionsConfirm", { count: String(members.length) }),
+                    detail: t("projectTree.deleteGroupSessionsDetail"),
+                    confirmLabel: t("projectTree.deleteGroupSessions"),
+                    cancelLabel: t("common.cancel"),
+                    destructive: true,
+                  });
+                  if (!confirmed) return;
+                  for (const topicID of members) {
+                    try {
+                      await app.TrashTopic(topicID);
+                    } catch (error) {
+                      console.warn("trash topic failed", topicID, error);
+                    }
+                  }
+                }
+                organization.dissolveGroup(key, group.id);
+              })();
+            } },
           ]}
           minWidth={178}
           ariaLabel={t("projectTree.renameGroup")}
