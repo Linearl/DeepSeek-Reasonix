@@ -2045,6 +2045,7 @@ export const en = {
   "settings.defaultModel": "Default model",
   "settings.defaultModelHint": "Used for new sessions; existing sessions keep their saved model.",
   "settings.plannerModel": "Dedicated planner model",
+  "settings.guardianModel": "Approval model",
   "settings.imageUnderstandingModel": "Image understanding model",
   "settings.webSearchModel": "Web search",
   "settings.webSearchModelHint": "Automatic prefers the conversation account, then an enabled search account. An assignment sends queries to that connection and incurs usage there.",

@@ -327,6 +327,7 @@ type SettingsView struct {
 	ModelSettingsFingerprint     string                     `json:"modelSettingsFingerprint"`
 	DefaultModel                 string                     `json:"defaultModel"`
 	PlannerModel                 string                     `json:"plannerModel"`
+	GuardianModel                string                     `json:"guardianModel"`
 	VisionModel                  string                     `json:"visionModel"`
 	WebSearchModel               string                     `json:"webSearchModel"`
 	WebSearchModels              []string                   `json:"webSearchModels"`
@@ -1096,6 +1097,7 @@ func (a *App) Settings() SettingsView {
 		ModelSettingsFingerprint: modelSettingsEditFingerprint(cfg),
 		DefaultModel:             cfg.DefaultModel,
 		PlannerModel:             cfg.Agent.PlannerModel,
+		GuardianModel:            cfg.Agent.GuardianModel,
 		VisionModel:              cfg.Agent.VisionModel,
 		WebSearchModel:           cfg.Agent.WebSearchModel,
 		WebSearchModels:          []string{},

@@ -4202,6 +4202,7 @@ export function ModelsSection({ s, busy, apply, backgroundApply, subtab, onboard
   const refs = useMemo(() => allRefs(s), [s.providers]);
   const defaultRef = toRef(s.defaultModel, s);
   const plannerRef = toRef(s.plannerModel, s);
+  const guardianRef = toRef(s.guardianModel, s);
   const subagentRef = toRef(s.subagentModel, s);
   const subagentOption = modelOptionFromRef(subagentRef, s);
   const subagentOverride = subagentOption?.providerView?.modelOverrides?.find(item => item.model === subagentOption.model);
@@ -4209,6 +4210,7 @@ export function ModelsSection({ s, busy, apply, backgroundApply, subtab, onboard
 
   const visionRef = s.visionModel === "auto" ? "auto" : toRef(s.visionModel, s);
   const plannerSelectRef = plannerRef === defaultRef ? "" : plannerRef;
+  const guardianSelectRef = guardianRef === defaultRef ? "" : guardianRef;
   const [defaultProvider] = defaultRef.split("/");
   const defaultProviderView = s.providers.find((p) => p.name === defaultProvider);
   const modelIssue = !defaultProviderView
@@ -4414,6 +4416,19 @@ export function ModelsSection({ s, busy, apply, backgroundApply, subtab, onboard
                 onPick={(ref) => void apply(() => saveModelSettings(s, {kind: "preference", field: "planner", ref: ref}))}
               />
             <span className="model-assignment-connection">{plannerSelectRef && plannerSelectRef !== "auto" ? modelOptionMeta(modelOptionFromRef(plannerSelectRef, s)!, t) : t("settings.connectionFollowSession")}</span>
+            </SettingsField>
+
+            <SettingsField className="model-assignment-row" label={<ModelSettingHelp label={t("settings.guardianModel")} text={t("providerUI.guardianModelHelp")} />}>
+              <ModelPicker
+                s={s}
+                refs={refs}
+                value={guardianSelectRef}
+                disabled={busy}
+                ariaLabel={t("settings.guardianModel")}
+                includeSameDefault
+                onPick={(ref) => void apply(() => saveModelSettings(s, {kind: "preference", field: "guardian", ref: ref}))}
+              />
+            <span className="model-assignment-connection">{guardianSelectRef && guardianSelectRef !== "auto" ? modelOptionMeta(modelOptionFromRef(guardianSelectRef, s)!, t) : t("settings.connectionFollowSession")}</span>
             </SettingsField>
 
             <SettingsField className="model-assignment-row" label={<ModelSettingHelp label={t("settings.imageUnderstandingModel")} text={t("providerUI.visionModelHelp")} />}>

@@ -2047,6 +2047,7 @@ export const zh: Record<DictKey, string> = {
   "settings.defaultModel": "默认模型",
   "settings.defaultModelHint": "用于新建会话；已有会话会继续使用各自保存的模型。",
   "settings.plannerModel": "独立规划模型",
+  "settings.guardianModel": "审批模型",
   "settings.imageUnderstandingModel": "图片理解",
   "settings.webSearchModel": "网页搜索",
   "settings.webSearchModelHint": "自动优先使用会话账号，否则选择已启用搜索的可用账号。指定后使用该连接执行搜索，查询会发送至该服务并产生相应用量。",

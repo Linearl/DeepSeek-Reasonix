@@ -5,6 +5,7 @@ export interface SettingsView {
   modelSettingsFingerprint?: string;
   defaultModel: string;
   plannerModel: string;
+  guardianModel: string;
   visionModel: string;
   webSearchModel?: string;
   webSearchModels?: string[];

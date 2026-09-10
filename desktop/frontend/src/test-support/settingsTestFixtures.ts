@@ -35,6 +35,7 @@ export function baseSettings(displayMode: "standard" | "compact" = "standard"): 
     modelSettingsFingerprint: "test-model-settings-revision",
     defaultModel: "",
     plannerModel: "",
+    guardianModel: "",
     visionModel: "",
     subagentModel: "",
     subagentEffort: "",

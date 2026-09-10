@@ -287,6 +287,8 @@ func applyModelPreference(c *config.Config, change ModelSettingsChange) error {
 		return setDefaultModelConfig(c, change.Ref)
 	case "planner":
 		return setPlannerModelConfig(c, change.Ref)
+	case "guardian":
+		return setGuardianModelConfig(c, change.Ref)
 	case "vision":
 		return setVisionModelConfig(c, change.Ref)
 	case "subagent":

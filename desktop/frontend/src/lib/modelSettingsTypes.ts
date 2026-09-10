@@ -1,7 +1,7 @@
 import type { ProviderView, ProviderModelCatalogUpdate } from "./types";
 
 export type ModelSettingsChange = { requestId: string; expectedFingerprint: string } & (
-  | { kind: "preference"; field: "default" | "planner" | "vision" | "search" | "subagent" | "subagent_effort"; ref: string }
+  | { kind: "preference"; field: "default" | "planner" | "guardian" | "vision" | "search" | "subagent" | "subagent_effort"; ref: string }
   | { kind: "preference"; field: "depth" | "concurrency" | "writers"; number: number }
   | { kind: "preference"; field: "profile_model" | "profile_effort"; name: string; ref: string }
   | { kind: "provider_save"; provider: ProviderView; key?: string }

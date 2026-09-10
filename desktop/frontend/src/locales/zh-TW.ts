@@ -1597,6 +1597,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.defaultModel": "預設模型",
   "settings.defaultModelHint": "用於新建會話；已有會話會繼續使用各自儲存的模型。",
   "settings.plannerModel": "獨立規劃模型",
+  "settings.guardianModel": "審批模型",
   "settings.imageUnderstandingModel": "圖片理解",
   "settings.webSearchModel": "網頁搜尋",
   "settings.webSearchModelHint": "自動優先使用對話帳號，否則選擇已啟用搜尋的可用帳號。指定後使用該連線執行搜尋，查詢會傳送至該服務並產生相應用量。",

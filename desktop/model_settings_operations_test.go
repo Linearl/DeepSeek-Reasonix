@@ -9,7 +9,7 @@ import (
 )
 
 func TestModelSettingsEveryOperationWithoutSessionRejectsForeignFields(t *testing.T) {
-	kinds := []string{"default", "planner", "vision", "search", "subagent", "subagent_effort", "profile_model", "profile_effort", "depth", "concurrency", "writers", "provider_save", "credential", "web_search_capability", "connection_add", "official_add", "preset_add", "preset_reset", "protocol_upgrade", "catalogs", "provider_remove", "access_remove", "rename"}
+	kinds := []string{"default", "planner", "guardian", "vision", "search", "subagent", "subagent_effort", "profile_model", "profile_effort", "depth", "concurrency", "writers", "provider_save", "credential", "web_search_capability", "connection_add", "official_add", "preset_add", "preset_reset", "protocol_upgrade", "catalogs", "provider_remove", "access_remove", "rename"}
 	for _, kind := range kinds {
 		t.Run(kind, func(t *testing.T) {
 			isolateDesktopUserDirs(t)
@@ -56,7 +56,7 @@ func sessionlessModelSettingsOperation(t *testing.T, app *App, kind, ref string)
 	key, enabled := "new-operation-key", false
 	change := ModelSettingsChange{Kind: kind}
 	switch kind {
-	case "default", "planner", "subagent", "profile_model":
+	case "default", "planner", "guardian", "subagent", "profile_model":
 		change.Kind, change.Field, change.Ref = "preference", kind, ref
 		if kind == "profile_model" {
 			change.Name = "reviewer"

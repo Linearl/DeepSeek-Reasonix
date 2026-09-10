@@ -1771,6 +1771,7 @@ function makeMockApp(): AppBindings {
     modelSettingsFingerprint: "mock-model-settings-0",
     defaultModel: "deepseek",
     plannerModel: "",
+    guardianModel: "",
     visionModel: "",
     webSearchModel: "auto",
     webSearchModels: ["deepseek/deepseek-v4-flash", "deepseek/deepseek-v4-pro"],
