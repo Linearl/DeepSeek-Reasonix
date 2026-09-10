@@ -4,7 +4,7 @@ import { pendingFollowups, confirmFollowup, followupNotSubmitted, followupSessio
 import { useAppNavigationStore } from "../store/appNavigation";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
-import { ArrowRight, ArrowUp, Brain, Check, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, Search, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, X } from "lucide-react";
+import { ArrowRight, ArrowUp, Brain, Check, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, Search, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, Users, X } from "lucide-react";
 import { asArray } from "../lib/array";
 import { filterAtMatches } from "../lib/atMatches";
 import { DedupIndex, sha256 } from "../lib/attachDedup";
@@ -59,6 +59,7 @@ import { ANCHORED_POPOVER_CLOSE_MS, AnchoredPopover } from "./AnchoredPopover";
 import { ComposerChoice } from "./ComposerChoice";
 const ModelSwitcher = lazy(() => import("./ModelSwitcher").then((module) => ({ default: module.ModelSwitcher })));
 import { SubagentPolicySwitcher } from "./SubagentPolicySwitcher";
+import { normalizeSubagentPolicy } from "../lib/types";
 import { Tooltip } from "./Tooltip";
 const RecoveryWaitBanner = lazy(() => import("./RecoveryWaitBanner").then((module) => ({ default: module.RecoveryWaitBanner })));
 import { ComposerContextCard } from "./ComposerContextCard";
@@ -4117,6 +4118,22 @@ export function Composer({
               {qualityFloor === "delivery" && <Check size={14} aria-hidden="true" />}
             </button>
         </div>
+        {onSetSubagentPolicy && (
+          <div className="composer-access-menu__section" role="menu" aria-label={t("composer.subagentPolicyTrigger")}>
+            <div className="composer-access-menu__label">{t("composer.subagentPolicyTrigger")}</div>
+            {(["light", "balanced", "aggressive"] as const).map((level) => (
+              <button key={level} type="button" role="menuitemradio"
+                aria-checked={normalizeSubagentPolicy(subagentPolicy) === level}
+                className={`composer-access-menu__item${normalizeSubagentPolicy(subagentPolicy) === level ? " composer-access-menu__item--active" : ""}`}
+                disabled={disabled || running}
+                onClick={() => { onSetSubagentPolicy(level); setContentMenuOpen(false); closeIntentMenu(); }}>
+                <Users size={18} aria-hidden="true" />
+                <span className="composer-access-menu__copy"><span className="composer-access-menu__title">{t(`composer.subagentPolicy_${level}`)}</span></span>
+                {normalizeSubagentPolicy(subagentPolicy) === level && <Check size={14} aria-hidden="true" />}
+              </button>
+            ))}
+          </div>
+        )}
       </AnchoredPopover>}
       {menuMode === "slash" && (
         <SlashMenu

@@ -102,6 +102,7 @@ import {
   type ActiveWorkView,
   type BackgroundRuntimeView,
   type CollaborationMode,
+  type SubagentPolicy,
   type ComposerInsertRequest,
   type DesktopStartupSettingsView,
   type Mode,
@@ -1944,6 +1945,13 @@ export default function App() {
     },
     [activeTabId, patchActiveComposerProfile, setControllerToolApprovalMode, toolApprovalMode],
   );
+  // Fork: sub-agent delegation tier is a per-tab setting; the + menu is the
+  // only entry point now (it needs no frequent switching).
+  const applySubagentPolicy = useCallback((policy: SubagentPolicy) => {
+    if (!activeTabId) return;
+    void app.SetSubagentPolicyForTab(activeTabId, policy);
+  }, [activeTabId]);
+
   const applyQualityFloor = useCallback(
     (floor: QualityFloor) => {
       if (!activeTabId) return;
@@ -5128,6 +5136,8 @@ export default function App() {
               qualityFloor={composerProfile.qualityFloor}
               floorInferred={(activeTab?.floorInferred ?? false) && !composerProfile.pending.qualityFloor}
               onSetQualityFloor={applyQualityFloor}
+              subagentPolicy={state.meta?.subagentPolicy}
+              onSetSubagentPolicy={applySubagentPolicy}
               turnPhase={state.turnPhase}
               goal={goal}
               goalStatus={state.meta?.goalStatus}
