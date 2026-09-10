@@ -23,6 +23,13 @@ func (a *App) SetStatusBarItems(items []string) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetDesktopStatusBarItems(items) })
 }
 
+// SetQuickCommands replaces the composer's quick-command snippets (task 18).
+// UI-only: the composer reads them from the settings snapshot, so no rebuild is
+// required the way provider or effort changes need one.
+func (a *App) SetQuickCommands(entries []config.QuickCommandEntry) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetQuickCommands(entries) })
+}
+
 // SetDesktopLanguage updates the desktop UI language and the user-level response
 // language preference used by model-facing desktop sessions.
 func (a *App) SetDesktopLanguage(lang string) error {

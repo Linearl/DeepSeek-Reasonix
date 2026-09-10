@@ -1,6 +1,9 @@
 package config
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // DesktopConfig controls desktop-only UI preferences. It is intentionally
 // separate from top-level language and [ui] so desktop choices do not affect CLI
@@ -30,7 +33,26 @@ type DesktopConfig struct {
 	ExpandThinking       bool     `toml:"expand_thinking"`    // deprecated compatibility alias: true maps to auto
 	ReasoningDisplayMode string   `toml:"reasoning_display_mode"`
 	ConversationWidth    string   `toml:"conversation_width"` // standard|full; max transcript width; empty = standard
+	// QuickCommands are user-defined snippets offered by the desktop composer's
+	// + menu (task 18). Array order is the display order; entries with an empty
+	// Title or Text are dropped on save.
+	QuickCommands []QuickCommandEntry `toml:"quick_commands"`
 }
+
+// QuickCommandEntry is one quick-command snippet. Title is the menu label, Text
+// is inserted into the composer verbatim (the user still presses send).
+type QuickCommandEntry struct {
+	Title string `toml:"title" json:"title"`
+	Text  string `toml:"text" json:"text"`
+}
+
+// QuickCommandLimits bounds what the settings UI may store, so a runaway paste
+// cannot bloat the user config or the menu.
+const (
+	QuickCommandMaxEntries  = 50
+	QuickCommandMaxTitle    = 60
+	QuickCommandMaxTextSize = 8 * 1024
+)
 
 // DesktopExternalOpener returns the selected opener id; unavailable ids fall
 // back to the platform file manager in the desktop shell.
@@ -39,4 +61,53 @@ func (c *Config) DesktopExternalOpener() string {
 		return ""
 	}
 	return strings.ToLower(strings.TrimSpace(c.Desktop.ExternalOpener))
+}
+
+// SetQuickCommands replaces the snippet list after validation. Blank entries are
+// dropped; oversized entries are rejected so the failure is visible in the UI
+// rather than silently truncated.
+func (c *Config) SetQuickCommands(entries []QuickCommandEntry) error {
+	if c == nil {
+		return nil
+	}
+	if len(entries) > QuickCommandMaxEntries {
+		return fmt.Errorf("too many quick commands: %d (max %d)", len(entries), QuickCommandMaxEntries)
+	}
+	out := make([]QuickCommandEntry, 0, len(entries))
+	for _, entry := range entries {
+		title := strings.TrimSpace(entry.Title)
+		text := entry.Text
+		if title == "" && strings.TrimSpace(text) == "" {
+			continue
+		}
+		if title == "" {
+			return fmt.Errorf("quick command text %q needs a title", firstLine(text))
+		}
+		if len([]rune(title)) > QuickCommandMaxTitle {
+			return fmt.Errorf("quick command title %q is too long (max %d characters)", title, QuickCommandMaxTitle)
+		}
+		if len(text) > QuickCommandMaxTextSize {
+			return fmt.Errorf("quick command %q is too large (%d bytes, max %d)", title, len(text), QuickCommandMaxTextSize)
+		}
+		out = append(out, QuickCommandEntry{Title: title, Text: text})
+	}
+	c.Desktop.QuickCommands = out
+	return nil
+}
+
+// QuickCommands returns a copy so callers cannot mutate config state in place.
+func (c *Config) DesktopQuickCommands() []QuickCommandEntry {
+	if c == nil || len(c.Desktop.QuickCommands) == 0 {
+		return nil
+	}
+	out := make([]QuickCommandEntry, len(c.Desktop.QuickCommands))
+	copy(out, c.Desktop.QuickCommands)
+	return out
+}
+
+func firstLine(s string) string {
+	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
+		return s[:i]
+	}
+	return s
 }

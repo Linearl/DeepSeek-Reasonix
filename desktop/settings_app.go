@@ -79,7 +79,7 @@ type ProviderView struct {
 	ModelOverrides              []ProviderModelOverrideView   `json:"modelOverrides"`
 	ModelCapabilities           []ProviderModelCapabilityView `json:"modelCapabilities"`
 	RecommendedUpgradeAvailable bool                          `json:"recommendedUpgradeAvailable,omitempty"`
-	HighSpeedModels             []string                    `json:"highSpeedModels"`
+	HighSpeedModels             []string                      `json:"highSpeedModels"`
 	// ModelCatalogFingerprint is an opaque digest of the provider identity and
 	// current model selection. Background discovery must compare it while holding
 	// the config edit lock before applying a narrow catalog-only update.
@@ -324,42 +324,43 @@ type BotSettingsView struct {
 
 // SettingsView is the whole Settings panel payload.
 type SettingsView struct {
-	ModelSettingsFingerprint     string               `json:"modelSettingsFingerprint"`
-	DefaultModel                 string               `json:"defaultModel"`
-	PlannerModel                 string               `json:"plannerModel"`
-	VisionModel                  string               `json:"visionModel"`
-	WebSearchModel               string               `json:"webSearchModel"`
-	WebSearchModels              []string             `json:"webSearchModels"`
-	WebSearchModelStatus         string               `json:"webSearchModelStatus"`
-	WebSearchModelReason         string               `json:"webSearchModelReason"`
-	EffectiveWebSearchModel      string               `json:"effectiveWebSearchModel"`
-	WebSearchModelOverridden     bool                 `json:"webSearchModelOverridden"`
-	SubagentModel                string               `json:"subagentModel"`
-	SubagentEffort               string               `json:"subagentEffort"`
-	AutoPlan                     string               `json:"autoPlan"`
-	Providers                    []ProviderView       `json:"providers"`
-	OfficialProviders            []ProviderView       `json:"officialProviders"`
-	ProviderPresets              []ProviderPresetView `json:"providerPresets"`
-	Permissions                  PermissionsView      `json:"permissions"`
-	Sandbox                      SandboxView          `json:"sandbox"`
-	Network                      NetworkView          `json:"network"`
-	Agent                        AgentView            `json:"agent"`
-	Bot                          BotSettingsView      `json:"bot"`
-	DesktopLanguage              string               `json:"desktopLanguage"`
-	DesktopCurrency              string               `json:"desktopCurrency"`
-	DesktopLayoutStyle           string               `json:"desktopLayoutStyle"`
-	DesktopTheme                 string               `json:"desktopTheme"`
-	DesktopThemeStyle            string               `json:"desktopThemeStyle"`
-	DesktopTerminalTheme         string               `json:"desktopTerminalTheme,omitempty"`
-	CloseBehavior                string               `json:"closeBehavior"`
-	SessionExperience            string               `json:"sessionExperience"`
-	DisplayMode                  string               `json:"displayMode"`
-	ReasoningDisplayMode         string               `json:"reasoningDisplayMode"`
-	ReasoningDisplayModeExplicit bool                 `json:"reasoningDisplayModeExplicit"`
-	StatusBarStyle               string               `json:"statusBarStyle"`
-	StatusBarItems               []string             `json:"statusBarItems"`
-	DefaultToolApprovalMode      string               `json:"defaultToolApprovalMode"`
-	DefaultSubagentPolicy        string               `json:"defaultSubagentPolicy"`
+	ModelSettingsFingerprint     string                     `json:"modelSettingsFingerprint"`
+	DefaultModel                 string                     `json:"defaultModel"`
+	PlannerModel                 string                     `json:"plannerModel"`
+	VisionModel                  string                     `json:"visionModel"`
+	WebSearchModel               string                     `json:"webSearchModel"`
+	WebSearchModels              []string                   `json:"webSearchModels"`
+	WebSearchModelStatus         string                     `json:"webSearchModelStatus"`
+	WebSearchModelReason         string                     `json:"webSearchModelReason"`
+	EffectiveWebSearchModel      string                     `json:"effectiveWebSearchModel"`
+	WebSearchModelOverridden     bool                       `json:"webSearchModelOverridden"`
+	SubagentModel                string                     `json:"subagentModel"`
+	SubagentEffort               string                     `json:"subagentEffort"`
+	AutoPlan                     string                     `json:"autoPlan"`
+	Providers                    []ProviderView             `json:"providers"`
+	OfficialProviders            []ProviderView             `json:"officialProviders"`
+	ProviderPresets              []ProviderPresetView       `json:"providerPresets"`
+	Permissions                  PermissionsView            `json:"permissions"`
+	Sandbox                      SandboxView                `json:"sandbox"`
+	Network                      NetworkView                `json:"network"`
+	Agent                        AgentView                  `json:"agent"`
+	Bot                          BotSettingsView            `json:"bot"`
+	DesktopLanguage              string                     `json:"desktopLanguage"`
+	DesktopCurrency              string                     `json:"desktopCurrency"`
+	DesktopLayoutStyle           string                     `json:"desktopLayoutStyle"`
+	DesktopTheme                 string                     `json:"desktopTheme"`
+	DesktopThemeStyle            string                     `json:"desktopThemeStyle"`
+	DesktopTerminalTheme         string                     `json:"desktopTerminalTheme,omitempty"`
+	CloseBehavior                string                     `json:"closeBehavior"`
+	SessionExperience            string                     `json:"sessionExperience"`
+	DisplayMode                  string                     `json:"displayMode"`
+	ReasoningDisplayMode         string                     `json:"reasoningDisplayMode"`
+	ReasoningDisplayModeExplicit bool                       `json:"reasoningDisplayModeExplicit"`
+	StatusBarStyle               string                     `json:"statusBarStyle"`
+	StatusBarItems               []string                   `json:"statusBarItems"`
+	QuickCommands                []config.QuickCommandEntry `json:"quickCommands"`
+	DefaultToolApprovalMode      string                     `json:"defaultToolApprovalMode"`
+	DefaultSubagentPolicy        string                     `json:"defaultSubagentPolicy"`
 
 	CheckUpdates      bool   `json:"checkUpdates"`
 	UpdateChannel     string `json:"updateChannel"`
@@ -705,7 +706,7 @@ func providerViewFromEntryForRootWithResolverAndCredentials(p config.ProviderEnt
 	return ProviderView{
 		DisplayName: &p.DisplayName, Name: p.Name, PresetID: presetID, Catalog: catalogView, BuiltIn: builtIn, Added: added, Kind: p.Kind, BaseURL: p.BaseURL, ChatURL: p.ChatURL, RequestURL: p.RequestURL,
 		Models: nonNil(models), VisionModels: nonNil(providerVisionModels(models, visionModels)), VisionModelsSet: visionModelsSet, VisionCapability: visionCapability, ModelsURL: p.ModelsURL, Default: p.DefaultModel(),
-		HighSpeedModels:           nonNil(p.HighSpeedModels),
+		HighSpeedModels:             nonNil(p.HighSpeedModels),
 		APIKeyEnv:                   p.APIKeyEnv,
 		Headers:                     nonNilStringMap(p.Headers),
 		ExtraBody:                   nonNilAnyMap(p.ExtraBody),
@@ -1137,6 +1138,7 @@ func (a *App) Settings() SettingsView {
 		},
 		Bot:                          botSettingsView(cfg.Bot),
 		DesktopLanguage:              cfg.DesktopLanguage(),
+		QuickCommands:                cfg.DesktopQuickCommands(),
 		DesktopCurrency:              cfg.DesktopCurrency(),
 		DesktopLayoutStyle:           cfg.DesktopLayoutStyle(),
 		DesktopTheme:                 cfg.DesktopTheme(),
