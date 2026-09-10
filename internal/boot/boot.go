@@ -107,6 +107,9 @@ type Options struct {
 	// MaxRuntime is the hard wall-clock bound. A non-positive MaxRuntime with
 	// Autopilot set is refused rather than silently running unbounded.
 	Autopilot     bool
+	// AutopilotApprovalGrace is how long an unattended run waits for a human on an
+	// approval prompt before the reviewer decides. Zero uses the control default.
+	AutopilotApprovalGrace time.Duration
 	MaxRuntime    time.Duration
 	RequireKey    bool
 	Sink          event.Sink
@@ -1833,6 +1836,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		GoalTokenBudget:                cfg.Agent.GoalTokenBudget,
 		Autopilot:                      opts.Autopilot,
 		AutopilotMaxRuntime:            opts.MaxRuntime,
+		AutopilotApprovalGrace:         opts.AutopilotApprovalGrace,
 		Runner:                         runner,
 		Executor:                       executor,
 		Sink:                           sink,
@@ -1924,18 +1928,34 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// Guardian: when guardian_model is configured, spawn an LLM safety reviewer
 	// that can auto-allow safe Ask decisions and annotate risky ones before
 	// escalating to the human approval prompt.
-	if guardianModel := cfg.Agent.GuardianModel; guardianModel != "" {
-		ge, ok := resolveOptionalEntry(effectiveResolver, cfg, guardianModel)
-		if !ok {
-			return nil, fmt.Errorf("guardian_model %q is not a configured provider", guardianModel)
-		}
-		pProv, err := resolveProvider(effectiveResolver, cfg, proxySpec, provider.Selection{Ref: modelRefFromEntry(ge)})
-		if err != nil {
-			return nil, fmt.Errorf("guardian_model %q: %w", guardianModel, err)
+	//
+	// An autopilot run needs a reviewer even with no guardian_model set (task 49
+	// A5): it is the only thing that can answer an approval prompt nobody is there
+	// to answer. Falling back to the conversation model keeps an unattended run
+	// working out of the box, at the price of the reviewer sharing the requesting
+	// model's blind spots - so a separate guardian model stays the recommendation,
+	// and the fallback announces itself.
+	if guardianModel := strings.TrimSpace(cfg.Agent.GuardianModel); guardianModel != "" || opts.Autopilot {
+		gProv, gRef, gTemp := execProv, modelRef, cfg.Agent.GuardianTemperature
+		var gPrice *provider.Pricing
+		notice := ""
+		if guardianModel != "" {
+			ge, ok := resolveOptionalEntry(effectiveResolver, cfg, guardianModel)
+			if !ok {
+				return nil, fmt.Errorf("guardian_model %q is not a configured provider", guardianModel)
+			}
+			p, err := resolveProvider(effectiveResolver, cfg, proxySpec, provider.Selection{Ref: modelRefFromEntry(ge)})
+			if err != nil {
+				return nil, fmt.Errorf("guardian_model %q: %w", guardianModel, err)
+			}
+			gProv, gRef, gPrice = p, modelRefFromEntry(ge), ge.Price
+			notice = fmt.Sprintf("guardian enabled · model=%s", ge.Model)
+		} else {
+			notice = fmt.Sprintf("guardian enabled · model=%s (autopilot fallback: guardian_model not set)", modelRef)
 		}
 		guardianReg := agent.FilterReadOnlyRegistry(reg, agent.SubagentMetaTools()...)
-		ctrlOpts.Guardian = guardian.NewSession(pProv, guardianReg, guardian.PolicyPrompt(), modelRefFromEntry(ge), cfg.Agent.GuardianTemperature, ge.Price, sink)
-		sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Text: fmt.Sprintf("guardian enabled · model=%s", ge.Model)})
+		ctrlOpts.Guardian = guardian.NewSession(gProv, guardianReg, guardian.PolicyPrompt(), gRef, gTemp, gPrice, sink)
+		sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Text: notice})
 	}
 	// Recovery reviewer is explicit: empty recovery_model leaves rule-only
 	// recovery. A configured but unusable model is a configuration error.
