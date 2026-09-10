@@ -115,6 +115,7 @@ import {
   type WireCompletionSummary,
   type WorkspaceConflictView,
 } from "./lib/types";
+import { useTranscriptRevealOwner } from "./app-runtime/transcriptRevealOwner";
 import { useViewportMetricsOwner } from "./app-runtime/viewportMetricsOwner";
 import { useSidebarImOwner, sidebarImAccessModeLabel, sidebarImAccessStatusClass, sidebarImAccessStatusLabel, sidebarImConnectionsFromBot, sidebarImScopeLabel, sidebarImSessionLabel, sidebarImSessionTarget, sidebarImTopicSourcesFromBot, type SidebarImConnection } from "./app-runtime/sidebarIm";
 import { loadCachedLayoutStyle, saveCachedLayoutStyle } from "./lib/layoutPreferences";
@@ -816,8 +817,6 @@ export default function App() {
       return next;
     });
   }, []);
-  const [tabRevealSignal, setTabRevealSignal] = useState(0);
-  const [transcriptRevealSignal, setTranscriptRevealSignal] = useState(0);
   const mainView = useOverlayStore((s) => s.mainView);
   const startupSplashVisible = useOverlayStore((s) => s.startupSplashVisible);
   const setStartupSplashVisible = useOverlayStore((s) => s.setStartupSplashVisible);
@@ -873,17 +872,6 @@ export default function App() {
   const setPaletteSessions = useOverlayStore((s) => s.setPaletteSessions);
   const sidebarCollapsed = useLayoutStore((s) => s.sidebarCollapsed);
   const setSidebarCollapsed = useLayoutStore((s) => s.setSidebarCollapsed);
-  type TimeFilter = "all" | "10" | "20" | "1h" | "3h" | "5h" | "1d";
-  const [topicTimeFilter, setTopicTimeFilter] = useState<TimeFilter>(() => {
-    try {
-      const saved = localStorage.getItem("projectTree:timeFilter");
-      if (saved === "all" || saved === "10" || saved === "20" || saved === "1h" || saved === "3h" || saved === "5h" || saved === "1d") return saved;
-    } catch { /* localStorage unavailable */ }
-    return "all";
-  });
-  useEffect(() => {
-    try { localStorage.setItem("projectTree:timeFilter", topicTimeFilter); } catch { /* ignore */ }
-  }, [topicTimeFilter]);
   const sidebarWidth = useLayoutStore((s) => s.sidebarWidth);
   const setSidebarWidth = useLayoutStore((s) => s.setSidebarWidth);
   const [tasksOpen, setTasksOpen] = useState<false | "session" | "all">(false);
@@ -962,6 +950,16 @@ export default function App() {
       tabCount: tabMetas.length,
     });
   }, [activeTabId, tabMetas.length]);
+
+  // Task 38 B3: reveal signals and the project-tree time filter.
+  const {
+    tabRevealSignal,
+    setTabRevealSignal,
+    transcriptRevealSignal,
+    setTranscriptRevealSignal,
+    topicTimeFilter,
+    setTopicTimeFilter,
+  } = useTranscriptRevealOwner();
 
   // Task 38 B2: viewport and live-resize geometry now lives in app-runtime.
   // The destructuring keeps the same names so no call site changes.
