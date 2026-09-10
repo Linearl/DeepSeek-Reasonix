@@ -623,6 +623,7 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   SetMaxParallelWriters(n: number): Promise<void>;
   SetAutoPlan(mode: string): Promise<void>;
   SetDefaultToolApprovalMode(mode: string): Promise<void>;
+  SetDesktopAutopilot(enabled: boolean, maxRuntime: string, approvalGrace: string): Promise<void>;
   SetDefaultAutoRecoveryCheckpoint(enabled: boolean): Promise<void>;
 
   RenameProviderConnections: typeof GeneratedApp.RenameProviderConnections;
@@ -1772,6 +1773,9 @@ function makeMockApp(): AppBindings {
     defaultModel: "deepseek",
     plannerModel: "",
     guardianModel: "",
+    autopilot: false,
+    autopilotMaxRuntime: "",
+    autopilotApprovalGrace: "",
     visionModel: "",
     webSearchModel: "auto",
     webSearchModels: ["deepseek/deepseek-v4-flash", "deepseek/deepseek-v4-pro"],
@@ -4757,6 +4761,11 @@ function makeMockApp(): AppBindings {
     },
     async SetDefaultToolApprovalMode(mode: string) {
       settings.defaultToolApprovalMode = normalizeToolApprovalMode(mode);
+    },
+    async SetDesktopAutopilot(enabled: boolean, maxRuntime: string, approvalGrace: string) {
+      settings.autopilot = enabled;
+      settings.autopilotMaxRuntime = maxRuntime;
+      settings.autopilotApprovalGrace = approvalGrace;
     },
     async SetDefaultAutoRecoveryCheckpoint(_enabled: boolean) {
       // Legacy no-op; Auto Guard is always built into Auto.

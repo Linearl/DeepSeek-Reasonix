@@ -1746,6 +1746,42 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
           ))}
         </SettingsOptions>
       </SettingsField>
+      <SettingsField label={t("settings.autopilot")} hint={t("settings.autopilotHint")} icon={<ShieldCheck size={18} />}>
+        <SettingsOptions layout="field" className="set-seg">
+          {[false, true].map((on) => (
+            <button
+              key={String(on)}
+              className={`set-seg__btn${Boolean(s.autopilot) === on ? " set-seg__btn--on" : ""}`}
+              disabled={busy}
+              onClick={() => void apply(() => app.SetDesktopAutopilot(on, String(s.autopilotMaxRuntime ?? ""), String(s.autopilotApprovalGrace ?? "")))}
+            >
+              {t(on ? "settings.autopilot.on" : "settings.autopilot.off")}
+            </button>
+          ))}
+        </SettingsOptions>
+      </SettingsField>
+      <SettingsField label={t("settings.autopilotMaxRuntime")} hint={t("settings.autopilotMaxRuntimeHint")} icon={<ShieldCheck size={18} />}>
+        <input
+          className="set-input"
+          type="text"
+          defaultValue={String(s.autopilotMaxRuntime ?? "")}
+          disabled={busy}
+          placeholder="8h"
+          aria-label={t("settings.autopilotMaxRuntime")}
+          onBlur={(e) => void apply(() => app.SetDesktopAutopilot(Boolean(s.autopilot), e.target.value, String(s.autopilotApprovalGrace ?? "")))}
+        />
+      </SettingsField>
+      <SettingsField label={t("settings.autopilotApprovalGrace")} hint={t("settings.autopilotApprovalGraceHint")} icon={<ShieldCheck size={18} />}>
+        <input
+          className="set-input"
+          type="text"
+          defaultValue={String(s.autopilotApprovalGrace ?? "")}
+          disabled={busy}
+          placeholder="15s"
+          aria-label={t("settings.autopilotApprovalGrace")}
+          onBlur={(e) => void apply(() => app.SetDesktopAutopilot(Boolean(s.autopilot), String(s.autopilotMaxRuntime ?? ""), e.target.value))}
+        />
+      </SettingsField>
       <SettingsField label={t("settings.defaultToolApprovalMode")} hint={t("settings.defaultToolApprovalModeHint")} icon={<ShieldCheck size={18} />}>
         <SettingsOptions layout="field" className="set-seg">
           {TOOL_APPROVAL_MODES.map((mode) => (

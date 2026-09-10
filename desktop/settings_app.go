@@ -328,6 +328,9 @@ type SettingsView struct {
 	DefaultModel                 string                     `json:"defaultModel"`
 	PlannerModel                 string                     `json:"plannerModel"`
 	GuardianModel                string                     `json:"guardianModel"`
+	Autopilot                    bool                       `json:"autopilot"`
+	AutopilotMaxRuntime          string                     `json:"autopilotMaxRuntime"`
+	AutopilotApprovalGrace       string                     `json:"autopilotApprovalGrace"`
 	VisionModel                  string                     `json:"visionModel"`
 	WebSearchModel               string                     `json:"webSearchModel"`
 	WebSearchModels              []string                   `json:"webSearchModels"`
@@ -1098,6 +1101,9 @@ func (a *App) Settings() SettingsView {
 		DefaultModel:             cfg.DefaultModel,
 		PlannerModel:             cfg.Agent.PlannerModel,
 		GuardianModel:            cfg.Agent.GuardianModel,
+		Autopilot:                cfg.Desktop.Autopilot,
+		AutopilotMaxRuntime:      cfg.Desktop.AutopilotMaxRuntime,
+		AutopilotApprovalGrace:   cfg.Desktop.AutopilotApprovalGrace,
 		VisionModel:              cfg.Agent.VisionModel,
 		WebSearchModel:           cfg.Agent.WebSearchModel,
 		WebSearchModels:          []string{},
@@ -2306,6 +2312,19 @@ func (a *App) SetAutoPlan(mode string) error {
 func (a *App) SetDefaultToolApprovalMode(mode string) error {
 	return a.applyConfigOnly(func(c *config.Config) error {
 		return c.SetDesktopDefaultToolApprovalMode(mode)
+	})
+}
+
+// SetDesktopAutopilot updates the unattended-run defaults for newly-created
+// desktop sessions. An empty maxRuntime disables autopilot: a run with no
+// wall-clock bound is what the CLI refuses outright, and the same refusal belongs
+// here rather than letting a session start with nobody watching and no limit.
+func (a *App) SetDesktopAutopilot(enabled bool, maxRuntime, approvalGrace string) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		c.Desktop.Autopilot = enabled
+		c.Desktop.AutopilotMaxRuntime = strings.TrimSpace(maxRuntime)
+		c.Desktop.AutopilotApprovalGrace = strings.TrimSpace(approvalGrace)
+		return nil
 	})
 }
 

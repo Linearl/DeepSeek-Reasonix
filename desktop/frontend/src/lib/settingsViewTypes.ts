@@ -6,6 +6,9 @@ export interface SettingsView {
   defaultModel: string;
   plannerModel: string;
   guardianModel: string;
+  autopilot: boolean;
+  autopilotMaxRuntime: string;
+  autopilotApprovalGrace: string;
   visionModel: string;
   webSearchModel?: string;
   webSearchModels?: string[];
