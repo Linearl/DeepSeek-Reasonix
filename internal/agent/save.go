@@ -319,16 +319,20 @@ func (s *Session) saveLocked(path string, mode sessionSaveMode) error {
 	// stalest capture written last would then read the newer transcript it
 	// lost the race to as a bogus stale-prefix conflict.
 	msgs, version, rewriteVersion := s.snapshotWithVersion()
-	digest, contentBytes, err := digestAndSizeSessionMessages(msgs)
-	if err != nil {
-		return err
-	}
 	probe, err := probeLogForSave(path)
 	if err != nil {
 		return err
 	}
 	if route := s.dagSaveRoute(path, probe); route != dagRouteSchemaOne {
+		digest, err := s.snapshotDigest(path, msgs, version)
+		if err != nil {
+			return err
+		}
 		return s.saveDAGLocked(path, mode, route, msgs, version, rewriteVersion, digest)
+	}
+	digest, contentBytes, err := digestAndSizeSessionMessages(msgs)
+	if err != nil {
+		return err
 	}
 	repairLog := false
 	deferProjection := mode.defersProjection()
@@ -1051,6 +1055,25 @@ func messageForSessionIdentity(m provider.Message) provider.Message {
 	m.CreatedAt = 0
 	m.ID = ""
 	return m
+}
+
+// snapshotDigest returns the transcript digest a schema-2 save needs. When the
+// persistence baseline already describes exactly this version — the same proof
+// the snapshot no-op relies on — the stored digest is that value by
+// construction, because it was written for this version and only a version or
+// rewrite bump invalidates it. A schema-2 save only records this digest and
+// publishes it into derived files; it never uses it to decide what to append
+// (planDAGWrite diffs the transcript itself). Recomputing it instead costs a
+// json.Marshal + sha256 pass over every message, which on a large session
+// dominates a defensive switch/close snapshot.
+func (s *Session) snapshotDigest(path string, msgs []provider.Message, version uint64) ([sha256.Size]byte, error) {
+	if s.snapshotUpToDate(path) {
+		if state := s.persistState(path); state.ok && state.version == version {
+			return state.digest, nil
+		}
+	}
+	digest, _, err := digestAndSizeSessionMessages(msgs)
+	return digest, err
 }
 
 // digestAndSizeSessionMessages also reports the encoded transcript size, which
