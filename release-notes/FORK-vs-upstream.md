@@ -75,7 +75,7 @@
 | 经典（classic）布局选项消失 | 上游 1.38 删除选项，fork 类型/渲染仍在 | 恢复 options 数组 |
 | styles.css 丢 topicbar__more / recovery-copies 样式 | merge 取上游 | 恢复 6 块 |
 | **恢复副本异常增生 + 对话分叉**（10 分钟 8 副本、单会话 110 副本文件、desktop.log 17 次 diverged） | resume 时多条 leading system（fresh prompt+memory 段）不落盘，`messagesWithoutLeadingSystem` 只剥 1 条 → `CloneWithMessagesIfCompatible` 判不兼容 → fallback `NewSession` **丢持久化基线** → 每轮 checkpoint 判 diverged → fork recovery branch | `messagesWithoutLeadingSystem` 剥全部连续头部 system（对齐投影层语义），resume 继承基线走正常 CAS |
-| TestWritableHooksReserveWholeParentWorkspace 失败（预存） | fork 提前实装的 #9592 排除段与上游 v1.38.1 最终设计冲突 | 回退排除段；**#9592 fork 提前实装作废，以上游为准** |
+| TestWritableHooksReserveWholeParentWorkspace 失败（预存） | fork 提前实装的 #9592 排除段与上游 v1.38.1 最终设计冲突 | 回退**排除段**；#9592 的 **P2 声明仍保留**（`mutatesWorkspace:false` 的只读 hook 不触发工作区覆盖保护，见上方补记表） |
 | TestMalformedToolArgsReturnHostValidationContract 失败（预存） | fork `repairTruncatedToolCallArgs` 把完整但非法的 args 一律修成 `{}`，吞掉上游验证纠错契约 | 只修真截断（闭合未终止 string/括号+去尾逗号），完整非法原样放行 |
 | 11 个孤儿测试破坏 agent 包构建 | 引用未移植实现（#9521/#9522 等） | `git rm`（内容存 *.go.hold，移植实现后恢复） |
 
