@@ -34,6 +34,7 @@ import {
   moveProjectToGroup,
   type ProjectGroup,
 } from "../lib/projectGroups";
+import { MoveToGroupPanel } from "./MoveToGroupPanel";
 import { NewGroupPanel } from "./NewGroupPanel";
 import { ProjectTreeHeaderAddControl, ProjectTreeRemoteAction, projectTreeHeaderAddItems } from "./ProjectTreeAddControls";
 import { activeRemoteProjectAncestorKeys, buildRemoteProjectMenuItems, useRemoteRuntimeTree, openRemoteSessionNode, remoteProjectKey, remoteServeBadgeState, renameRemoteProjectTitle, RemoteProjectEmptyState, useRemoteProjectGroups, useRemoteSessionActions } from "./ProjectTreeRemoteGroups";
@@ -665,6 +666,13 @@ export function ProjectTree({
   const [groups, setGroups] = useState<ProjectGroup[]>(loadProjectGroups);
   const [assign, setAssign] = useState<Record<string, string>>(loadProjectGroupAssign);
   const [newGroupOpen, setNewGroupOpen] = useState(false);
+  // Which project the "move to group" panel is acting on.
+  const [groupTarget, setGroupTarget] = useState<ProjectNode | null>(null);
+
+  const handleMoveToGroup = useCallback((root: string, groupId: string | null) => {
+    setAssign((current) => moveProjectToGroup(current, root, groupId));
+    setGroupTarget(null);
+  }, []);
 
   const groupForProjectRoot = useCallback(
     (root?: string): ProjectGroup | null => {
@@ -1580,6 +1588,15 @@ export function ProjectTree({
       },
       ...(scope === "project"
         ? [
+            {
+              key: "move-to-project-group",
+              icon: <FolderInput size={13} />,
+              label: t("projectGroup.moveInto"),
+              onSelect: () => {
+                setGroupTarget({ ...node, root: projectPath ?? node.root });
+                closeMenu();
+              },
+            },
             { type: "separator" as const, key: "remove-separator" },
             {
               key: "remove",
@@ -1640,6 +1657,15 @@ export function ProjectTree({
       },
       ...(scope === "project"
         ? [
+            {
+              key: "move-to-project-group",
+              icon: <FolderInput size={13} />,
+              label: t("projectGroup.moveInto"),
+              onSelect: () => {
+                setGroupTarget({ ...node, root: projectPath ?? node.root });
+                closeMenu();
+              },
+            },
             { type: "separator" as const, key: "remove-separator" },
             {
               key: "remove",
@@ -2405,6 +2431,17 @@ export function ProjectTree({
       {blankProjectFlow}
       {remoteConnectFlow}
       <NewGroupPanel open={newGroupOpen} onClose={() => setNewGroupOpen(false)} onConfirm={handleAddGroup} />
+      <MoveToGroupPanel
+        open={groupTarget !== null}
+        onClose={() => setGroupTarget(null)}
+        projectLabel={groupTarget?.label ?? ""}
+        groups={groups}
+        currentGroupId={groupForProjectRoot(groupTarget?.root)?.id ?? null}
+        onMove={(groupId) => {
+          if (groupTarget?.root) handleMoveToGroup(groupTarget.root, groupId);
+        }}
+        onCreateGroup={handleAddGroup}
+      />
     </div>
   );
 }
