@@ -4,6 +4,10 @@ import { SettingsOptions } from "./SettingsOptions";
 import { SettingsSelect } from "./SettingsSelect";
 import { providerProtocolLabel, providerProtocolChoices } from "../lib/providerProtocol";
 import { providerSupportsServerWebSearch } from "../lib/providerSearch";
+
+// Autopilot runs unattended, so it needs a wall-clock bound; this is the value the
+// settings switch falls back to when the user turns it on without typing one.
+const DEFAULT_AUTOPILOT_MAX_RUNTIME = "8h";
 export { providerSupportsServerWebSearch } from "../lib/providerSearch";
 import { ManagementPageShell } from "./ManagementPageShell";
 import { useProviderT as useT } from "../lib/providerSettingsLocale";
@@ -1763,7 +1767,18 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
               key={String(on)}
               className={`set-seg__btn${Boolean(s.autopilot) === on ? " set-seg__btn--on" : ""}`}
               disabled={busy}
-              onClick={() => void apply(() => app.SetDesktopAutopilot(on, String(s.autopilotMaxRuntime ?? ""), String(s.autopilotApprovalGrace ?? "")))}
+              onClick={() => void apply(() => {
+                // A bound is required: an unattended run without one is refused when
+                // the session starts (the same refusal the CLI makes), so enabling the
+                // switch supplies a default the user can then edit instead of leaving
+                // the mode looking enabled but silently inactive.
+                const runtime = String(s.autopilotMaxRuntime ?? "").trim();
+                return app.SetDesktopAutopilot(
+                  on,
+                  on && runtime === "" ? DEFAULT_AUTOPILOT_MAX_RUNTIME : runtime,
+                  String(s.autopilotApprovalGrace ?? ""),
+                );
+              })}
             >
               {t(on ? "settings.autopilot.on" : "settings.autopilot.off")}
             </button>
