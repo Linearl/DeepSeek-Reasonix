@@ -2067,6 +2067,7 @@ export function Composer({
   const planModeOn = collaborationMode === "plan";
   const activeGoal = (goal ?? "").trim();
   const goalModeOn = collaborationMode === "goal";
+  const autopilotModeOn = collaborationMode === "autopilot";
   const warnImageInputFallback = useCallback((message?: string) => {
     const text = message ?? t("composer.imageInputUnsupported");
     showToast(text, "warn");
@@ -4054,6 +4055,21 @@ export function Composer({
               <span className="composer-access-menu__title">{t("composer.taskModeGoal")}</span>
             </span>
             {goalModeOn && <Check className="composer-intent-menu__check" size={16} aria-hidden="true" />}
+          </button>
+          <button
+            type="button"
+            role="menuitemradio"
+            aria-checked={autopilotModeOn}
+            className={`composer-access-menu__item composer-intent-menu__item${autopilotModeOn ? " composer-access-menu__item--active" : ""}`}
+            onClick={() => chooseTaskMode(autopilotModeOn ? "normal" : "autopilot")}
+            disabled={disabled || running}
+          >
+            <Zap size={16} />
+            <span className="composer-access-menu__copy">
+              <span className="composer-access-menu__title">{t("composer.taskModeAutopilot")}</span>
+              <span className="composer-access-menu__hint">{t("composer.taskModeAutopilotHint")}</span>
+            </span>
+            {autopilotModeOn && <Check className="composer-intent-menu__check" size={16} aria-hidden="true" />}
           </button>
             {goalModeOn && activeGoal && (
             <div className="composer-intent-menu__goal-actions">

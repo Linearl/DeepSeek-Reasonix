@@ -1931,6 +1931,8 @@ func normalizeCollaborationMode(mode string) string {
 		return "plan"
 	case "goal":
 		return "goal"
+	case "autopilot":
+		return "autopilot"
 	default:
 		return "normal"
 	}
@@ -2009,16 +2011,32 @@ func (a *App) SetCollaborationModeForTab(tabID, mode string) {
 		a.mu.Unlock()
 		return
 	}
+	// Leaving autopilot must clear it: a tab that kept the flag would silently stay
+	// unattended after the user switched back to a normal mode.
+	autopilotOn, autopilotRuntime, autopilotGrace := false, time.Duration(0), time.Duration(0)
 	switch mode {
 	case "plan":
 		tab.mode = tabModeFromAxes(true, approvalMode == control.ToolApprovalYolo)
 		tab.goal = ""
 	case "goal":
 		tab.mode = tabModeFromAxes(false, approvalMode == control.ToolApprovalYolo)
+	case "autopilot":
+		// The bound comes from the [desktop] preferences; without one autopilot
+		// stays off - the same refusal the CLI makes - and the mode falls back to
+		// normal rather than starting an unbounded unattended run.
+		autopilotOn, autopilotRuntime, autopilotGrace = desktopAutopilotDefaults()
+		tab.mode = tabModeFromAxes(false, approvalMode == control.ToolApprovalYolo)
+		tab.goal = ""
+		if !autopilotOn {
+			mode = "normal"
+		}
 	default:
 		tab.mode = tabModeFromAxes(false, approvalMode == control.ToolApprovalYolo)
 		tab.goal = ""
 	}
+	tab.autopilot = autopilotOn
+	tab.autopilotMaxRuntime = autopilotRuntime
+	tab.autopilotApprovalGrace = autopilotGrace
 	ctrl := tab.Ctrl
 	goal := tab.goal
 	plan := tabModeHasPlan(tab.mode)
