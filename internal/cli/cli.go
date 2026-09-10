@@ -205,7 +205,7 @@ func isDoctorRepairCommand(args []string) bool {
 
 func isDefaultInteractiveFlag(arg string) bool {
 	switch arg {
-	case "--model", "--max-steps", "--continue", "-c", "--resume", "-r", "--copy", "--dangerously-skip-permissions", "--yolo", "--permission-mode", "--effort", "--dir", "--add-dir", "--allowed-tools", "--allowedTools", "--profile", "--preset":
+	case "--model", "--max-steps", "--autopilot", "--max-runtime", "--continue", "-c", "--resume", "-r", "--copy", "--dangerously-skip-permissions", "--yolo", "--permission-mode", "--effort", "--dir", "--add-dir", "--allowed-tools", "--allowedTools", "--profile", "--preset":
 		return true
 	}
 	if name, _, ok := strings.Cut(arg, "="); ok && isDefaultInteractiveFlag(name) {
@@ -277,6 +277,11 @@ type cliBuildOverrides struct {
 	Stderr               io.Writer
 	OnSessionRecovered   func(control.SessionRecoveryInfo) error
 	Ablation             ablation.Set
+	// Autopilot runs the entry unattended: prompts are never surfaced to a human,
+	// and MaxRuntime bounds the whole run. MaxRuntime must be > 0 - an unbounded
+	// autopilot run is refused at startup rather than accepted and forgotten.
+	Autopilot bool
+	MaxRuntime time.Duration
 	// InteractiveHost marks human-in-the-loop entries (chat TUI); print mode
 	// and bots stay on core-v1.
 	InteractiveHost bool
@@ -305,6 +310,8 @@ func cliProfileBuildOptions(modelName string, maxStepsOverride int, requireKey b
 	opts := boot.Options{
 		Model:                modelName,
 		MaxSteps:             maxStepsOverride,
+		Autopilot:            overrides.Autopilot,
+		MaxRuntime:           overrides.MaxRuntime,
 		MaxStepsKey:          "--max-steps",
 		RequireKey:           requireKey,
 		Sink:                 sink,
@@ -496,6 +503,8 @@ func runAgent(args []string, version string) int {
 	fs.SetInterspersed(true)
 	model := fs.String("model", "", "provider name (default: config default_model)")
 	maxSteps := fs.Int("max-steps", 0, "one-off max tool-call rounds (0 = automatic)")
+	autopilot := fs.Bool("autopilot", false, "unattended long-run mode: never prompt, bounded by --max-runtime")
+	maxRuntime := fs.Duration("max-runtime", 0, "wall-clock budget for --autopilot (required; there is no unlimited mode)")
 	showThinking := fs.Bool("show-thinking", false, "show thinking text instead of the collapsed thinking marker")
 	metricsPath := fs.String("metrics", "", "write a JSON token/cache/cost summary of the run to this path")
 	trajectoryPath := fs.String("trajectory", "", "append a timestamped JSONL trajectory of the run's full event stream (tool calls, reasoning, decisions) to this path")
@@ -716,6 +725,14 @@ func runAgent(args []string, version string) int {
 		HeadlessApprovalMode: permissions.approval,
 		OnSessionRecovered:   cliSessionRecoveredHandler(leases),
 		Ablation:             ablated,
+		Autopilot:            *autopilot,
+		MaxRuntime:           *maxRuntime,
+	}
+	// An unattended run with no wall-clock bound would keep going until somebody
+	// notices. Refuse it here rather than discovering it hours later.
+	if *autopilot && *maxRuntime <= 0 {
+		fmt.Fprintln(os.Stderr, "run: --autopilot requires --max-runtime (there is no unlimited unattended mode)")
+		return 2
 	}
 	ctrl, err := setupProfileWithOverrides(ctx, *model, *maxSteps, true, sink, overrides)
 	if err != nil {

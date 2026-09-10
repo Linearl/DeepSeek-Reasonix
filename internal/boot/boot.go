@@ -103,6 +103,11 @@ type Options struct {
 	Model         string
 	MaxSteps      int
 	MaxStepsKey   string
+	// Autopilot runs unattended: no human is available to answer prompts, and
+	// MaxRuntime is the hard wall-clock bound. A non-positive MaxRuntime with
+	// Autopilot set is refused rather than silently running unbounded.
+	Autopilot     bool
+	MaxRuntime    time.Duration
 	RequireKey    bool
 	Sink          event.Sink
 	// EffortOverride is a session-local reasoning effort override. Nil means use
