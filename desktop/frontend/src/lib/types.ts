@@ -1110,7 +1110,7 @@ export interface Meta extends RemoteSessionMetaFields {
   goalRuntime?: GoalRuntime;
   canonicalTodos?: Todo[]; dismissedTodoBatches?: string[]; pinnedFiles?: PinnedFileInfo[];
 }
-export type CollaborationMode = "normal" | "plan" | "goal";
+export type CollaborationMode = "normal" | "plan" | "goal" | "autopilot";
 export type ToolApprovalMode = "ask" | "auto" | "yolo";
 // SubagentPolicy is the per-session sub-agent delegation tier (fork, #9004
 // desktop integration). light (conservative) is the default.
