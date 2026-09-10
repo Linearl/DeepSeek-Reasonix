@@ -160,6 +160,12 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 		s.startedAt[i] = start.UnixMilli()
 		s.outcomes[i] = a.executeOne(ctx, turn, s.calls[i])
 		recordWorkspaceMutation(a.svc.sink, s.outcomes[i].workspaceMutation)
+		// A mutation that landed retires the read-evidence debt for its paths:
+		// the model just wrote them, so re-blocking later writes would deadlock
+		// the turn (task 42 P1-1).
+		if m := s.outcomes[i].workspaceMutation; m != nil && len(m.Paths) > 0 {
+			a.retireReadEvidence(m.Paths)
+		}
 		if s.outcomes[i].executed {
 			s.surfaceWriters[i] = s.outcomes[i].workspaceMutation != nil
 		}

@@ -220,3 +220,30 @@ func (a *Agent) outstandingReadEvidence(ctx context.Context, boundary uint64) []
 	}
 	return paths
 }
+
+// retireReadEvidence drops outstanding read-evidence debts for the paths a write
+// just landed. The write itself proves the model observed the file it replaced,
+// so keeping the debt would block the next write for a file that was only just
+// written - the shape that locked whole turns before task 42.
+func (a *Agent) retireReadEvidence(paths []string) {
+	s := &a.turn.evidenceBlocked
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, raw := range paths {
+		p := strings.TrimSpace(raw)
+		if p == "" {
+			continue
+		}
+		delete(s.paths, p)
+		delete(s.calls, p)
+		// Mutations can report an absolute path while the gate recorded the
+		// tool's own relative declaration; fall back to suffix matching so the
+		// two spellings of one file cannot both stay outstanding.
+		for key := range s.paths {
+			if strings.HasSuffix(key, p) || strings.HasSuffix(p, key) {
+				delete(s.paths, key)
+				delete(s.calls, key)
+			}
+		}
+	}
+}
