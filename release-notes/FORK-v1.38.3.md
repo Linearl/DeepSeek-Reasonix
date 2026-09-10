@@ -62,6 +62,9 @@ fork 侧：**魔改全部保留**，并按上游重构同步了配置与能力�
 - **子代理 claim 死锁 fail-fast**（上游 #9688）：父 turn 持有重叠写 claim 时，`AcquireWithID` 直接失败而非排队等自己，避免 depth-0 子代理永久挂起
 - **JSON 提取统一**：连续块解析的 `lastJSONObject` 抽到 `internal/jsonutil`，goal 评估器与 recovery 评审器共用（删除两份重复实现）
 - **文件面板隐藏规则修正**：仓库生成物（`tmp`/`bin`/`stage`）全局隐藏，`@` 引用搜索额外跳过这些目录，二者不再耦合
+- **GLM 思考档位修复**：输入栏的强度档位此前只剩「自动 / enabled / disabled」——根因是桌面渲染的是协议层 `Options`（仍带智谱二元 thinking vocabulary），而正确的 effort 表（`auto/disabled/low/medium/high/max`）从未到达 UI。现在 effort 表比 provider options 更丰富时以它为准，GLM 的 `low/medium/high/max` 恢复可选；非智谱的 OpenAI 端点不受影响
+- **子代理委派档位收进「+」菜单**：它是很少中途切换的 per-tab 设置，改为与「执行方式」「验收」并列的菜单区（轻量 / 均衡 / 激进）。1.38.3 merge 曾丢掉 `App.tsx` 的接线，导致该控件完全不渲染，本次一并恢复
+- **快捷指令**：「+」菜单新增快捷指令区，列出用户自定义的文本片段，选中后插入到光标处（仍由用户按发送）；设置 → 通用 → 系统行为 → 快捷指令可增删改，两处读同一份配置（`desktop.quick_commands`），上限 50 条 / 标题 60 字 / 正文 8 KB
 
 ## 升级提醒
 
