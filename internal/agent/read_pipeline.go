@@ -192,7 +192,16 @@ func (a *Agent) outstandingReadEvidence(ctx context.Context, boundary uint64) []
 	s.mu.Unlock()
 	for path, call := range calls {
 		target, _, _ := a.svc.tools.ResolveCall(call.Name)
-		if a.checkOperationEvidence(ctx, call, target, boundary).Satisfied {
+		check := a.checkOperationEvidence(ctx, call, target, boundary)
+		// Satisfied: the read requirement is met, retire the debt.
+		//
+		// target_invalid: the blocked call's own target no longer exists. That is
+		// exactly what the gate asked for - the model rewrote the file wholesale
+		// instead of patching it - so the debt can never be replayed to
+		// satisfaction and must be retired here. Keeping it turned "read before
+		// writing" into a turn-long lock on every write that cannot declare a
+		// target: bash python/sed, and writes outside the workspace (task 42).
+		if check.Satisfied || check.Reason == "target_invalid" {
 			s.mu.Lock()
 			if latest := s.calls[path]; latest.ID == call.ID && latest.Arguments == call.Arguments {
 				delete(s.paths, path)
