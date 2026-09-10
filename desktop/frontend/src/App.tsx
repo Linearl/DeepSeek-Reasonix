@@ -115,6 +115,7 @@ import {
   type WorkspaceConflictView,
 } from "./lib/types";
 import { useComposerProfileStore } from "./app-runtime/composerProfileStore";
+import { useVisibleTabs } from "./app-runtime/visibleTabs";
 import { useTabNavigationOwner } from "./app-runtime/tabNavigation";
 import { useDialogSurfaceOwner } from "./app-runtime/dialogSurfaces";
 import { useTranscriptRevealOwner } from "./app-runtime/transcriptReveal";
@@ -1623,23 +1624,13 @@ export default function App() {
   );
   const topicbarEditing = Boolean(activeTab?.topicId && activeTab.topicId === renamingTopicId);
   const visibleTabId = activeTabId;
-  const visibleTabs = useMemo(() => {
-    const byId = new Map(tabMetas.map((tab) => [tab.id, tab]));
-    const ordered = tabOrderIds.map((id) => byId.get(id)).filter((tab): tab is TabMeta => Boolean(tab));
-    const missing = tabMetas.filter((tab) => !tabOrderIds.includes(tab.id));
-    return [...ordered, ...missing].map((tab) => {
-      const profile = composerProfilesByTab[tab.id] ?? composerProfileFromTab(tab);
-      return {
-        ...tab,
-        running: tab.id === visibleTabId ? tab.running || state.running : tab.running,
-        mode: composerProfileMode(profile),
-        collaborationMode: displayedComposerProfileCollaborationMode(profile),
-        toolApprovalMode: profile.toolApprovalMode,
-        goal: profile.goal,
-        active: tab.id === visibleTabId,
-      };
-    });
-  }, [composerProfilesByTab, state.running, tabMetas, tabOrderIds, visibleTabId]);
+  const visibleTabs = useVisibleTabs({
+    tabMetas,
+    tabOrderIds,
+    composerProfilesByTab,
+    running: state.running,
+    visibleTabId,
+  });
 
   useEffect(() => {
     const ids = tabMetas.map((tab) => tab.id);
