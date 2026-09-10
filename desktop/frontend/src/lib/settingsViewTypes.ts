@@ -33,6 +33,7 @@ export interface SettingsView {
   displayMode: string; sessionExperience?: "standard" | "deep"; reasoningDisplayMode: string; reasoningDisplayModeExplicit?: boolean;
   statusBarStyle: string; // "icon" | "text"
   statusBarItems: string[]; // ordered visible status bar item ids
+  quickCommands?: QuickCommandEntry[]; // user-defined composer snippets (#18)
   defaultToolApprovalMode: ToolApprovalMode | string; // default for newly-created sessions
   defaultSubagentPolicy: SubagentPolicy; // fork: default sub-agent delegation tier for new sessions
   checkUpdates: boolean; // check for new versions on startup
@@ -45,4 +46,11 @@ export interface SettingsView {
   autoApproveTools: boolean;
   bypass: boolean; // legacy JSON key for live YOLO/full-access tool auto-approval
   conversationWidth?: string; // "standard" | "full"; absent from older Wails payloads
+}
+
+// QuickCommandEntry is one user-defined composer snippet: Title is the menu
+// label, Text is inserted into the composer verbatim.
+export interface QuickCommandEntry {
+  title: string;
+  text: string;
 }

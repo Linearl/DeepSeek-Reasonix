@@ -14,7 +14,7 @@ import { catalogForPreset } from "../lib/providerCatalog";
 import { ProviderCatalogPicker, type CatalogChoice } from "./ProviderCatalogPicker";
 import { Eye, EyeOff, Files } from "lucide-react";
 import { lazy, memo, Suspense, startTransition, useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { ArrowRight, Check, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, ShieldCheck, SlidersHorizontal, Trash2, Volume2 } from "lucide-react";
+import { ArrowRight, Check, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, ShieldCheck, SlidersHorizontal, Trash2, Volume2, Zap } from "lucide-react";
 import { asArray } from "../lib/array";
 import { ShellInterpreterFields } from "./SettingsShellSupport";
 import { CHANNEL_ICONS } from "./channelIcons";
@@ -1772,6 +1772,51 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
               {t(`settings.defaultSubagentPolicy.${policy}`)}
             </button>
           ))}
+        </div>
+      </SettingsField>
+      <SettingsField label={t("settings.quickCommands")} hint={t("settings.quickCommandsHint")} icon={<Zap size={18} />} stacked>
+        <div className="settings-quick-commands">
+          {(s.quickCommands ?? []).map((entry, index) => (
+            <div className="settings-quick-commands__row" key={`qc-${index}`}>
+              <input
+                className="mem-input"
+                value={entry.title}
+                placeholder={t("settings.quickCommandsTitlePlaceholder")}
+                disabled={busy}
+                onChange={(e) => {
+                  const next = (s.quickCommands ?? []).map((item, i) => (i === index ? { ...item, title: e.target.value } : item));
+                  void apply(() => app.SetQuickCommands(next));
+                }}
+              />
+              <textarea
+                className="mem-input"
+                value={entry.text}
+                rows={2}
+                placeholder={t("settings.quickCommandsTextPlaceholder")}
+                disabled={busy}
+                onChange={(e) => {
+                  const next = (s.quickCommands ?? []).map((item, i) => (i === index ? { ...item, text: e.target.value } : item));
+                  void apply(() => app.SetQuickCommands(next));
+                }}
+              />
+              <button
+                type="button"
+                className="btn btn--small"
+                disabled={busy}
+                onClick={() => void apply(() => app.SetQuickCommands((s.quickCommands ?? []).filter((_, i) => i !== index)))}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="btn btn--small"
+            disabled={busy}
+            onClick={() => void apply(() => app.SetQuickCommands([...(s.quickCommands ?? []), { title: "", text: "" }]))}
+          >
+            {t("settings.quickCommandsAdd")}
+          </button>
         </div>
       </SettingsField>
       <SettingsField label={t("settings.sound")} hint={t("settings.soundHint")} icon={<Volume2 size={18} />} stacked>

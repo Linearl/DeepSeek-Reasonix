@@ -1,4 +1,5 @@
 import type { SettingsView } from "./types";
+import type { QuickCommandEntry } from "./settingsViewTypes";
 import { normalizeStatusBarItems } from "./statusBarItems";
 import { applyMockLegacyReasoningMode, applyMockSessionExperience } from "./sessionExperienceMock";
 
@@ -14,6 +15,11 @@ export function createDesktopPreferencesMock(settings: SettingsView) {
     },
     async SetStatusBarItems(items: string[]) {
       settings.statusBarItems = normalizeStatusBarItems(items);
+    },
+    async SetQuickCommands(entries: QuickCommandEntry[]) {
+      settings.quickCommands = entries
+        .map((entry) => ({ title: entry.title.trim(), text: entry.text }))
+        .filter((entry) => entry.title !== "" || entry.text.trim() !== "");
     },
     async SetDesktopLanguage(lang: string) {
       settings.desktopLanguage = lang === "en" || lang === "zh" ? lang : "";

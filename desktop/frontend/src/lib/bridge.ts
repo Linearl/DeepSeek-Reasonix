@@ -5,6 +5,7 @@ import { mockProviderTemplate, mockPreset, mockBundlePreset, mockKimiAPIModels, 
 import type * as GeneratedApp from "../../wailsjs/go/main/App";
 import type { InvocationRequest } from "./invocationDisplay";
 import type { FollowupBindings } from "./pendingFollowup";
+import type { QuickCommandEntry } from "./settingsViewTypes";
 import { addBreadcrumb } from "./breadcrumbs";
 import { maybeShare } from "./queryCoalesce";
 import { makeMockSessionCatalogBindings } from "./sessionCatalogBridge";
@@ -673,7 +674,7 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   SetSessionExperience(mode: "standard" | "deep"): Promise<void>;
   SetDisplayMode(mode: string): Promise<void>;
   SetStatusBarStyle(style: string): Promise<void>;
-  SetStatusBarItems(items: string[]): Promise<void>; SetReasoningDisplayMode(mode: "hidden" | "summary" | "auto" | "expanded"): Promise<void>;
+  SetStatusBarItems(items: string[]): Promise<void>; SetQuickCommands(entries: QuickCommandEntry[]): Promise<void>; SetReasoningDisplayMode(mode: "hidden" | "summary" | "auto" | "expanded"): Promise<void>;
   SetDesktopLanguage(lang: string): Promise<void>;
   SetDesktopCurrency(currency: string): Promise<void>;
   SetDesktopAppearance(theme: string, style: string): Promise<void>;
@@ -1956,6 +1957,7 @@ function makeMockApp(): AppBindings {
     displayMode: "standard", sessionExperience: "standard", reasoningDisplayMode: "auto", reasoningDisplayModeExplicit: false,
     statusBarStyle: "icon",
     statusBarItems: [...DEFAULT_STATUS_BAR_ITEMS],
+    quickCommands: [],
     defaultToolApprovalMode: "auto",
     checkUpdates: true,
     updateChannel: "stable",

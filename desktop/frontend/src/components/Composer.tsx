@@ -4,7 +4,7 @@ import { pendingFollowups, confirmFollowup, followupNotSubmitted, followupSessio
 import { useAppNavigationStore } from "../store/appNavigation";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
-import { ArrowRight, ArrowUp, Brain, Check, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, Search, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, Users, X } from "lucide-react";
+import { ArrowRight, ArrowUp, Brain, Check, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, Search, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, Users, X, Zap } from "lucide-react";
 import { asArray } from "../lib/array";
 import { filterAtMatches } from "../lib/atMatches";
 import { DedupIndex, sha256 } from "../lib/attachDedup";
@@ -60,6 +60,7 @@ import { ComposerChoice } from "./ComposerChoice";
 const ModelSwitcher = lazy(() => import("./ModelSwitcher").then((module) => ({ default: module.ModelSwitcher })));
 import { SubagentPolicySwitcher } from "./SubagentPolicySwitcher";
 import { normalizeSubagentPolicy } from "../lib/types";
+import type { QuickCommandEntry } from "../lib/settingsViewTypes";
 import { Tooltip } from "./Tooltip";
 const RecoveryWaitBanner = lazy(() => import("./RecoveryWaitBanner").then((module) => ({ default: module.RecoveryWaitBanner })));
 import { ComposerContextCard } from "./ComposerContextCard";
@@ -582,6 +583,8 @@ export function Composer({
   onSetEffort,
   subagentPolicy,
   onSetSubagentPolicy,
+  quickCommands,
+  onInsertQuickCommand,
   insertRequest,
   selectedTextRequest,
   disabled,
@@ -673,6 +676,8 @@ export function Composer({
   onSetEffort: (level: string) => void;
   subagentPolicy?: SubagentPolicy;
   onSetSubagentPolicy?: (policy: SubagentPolicy) => void;
+  quickCommands?: QuickCommandEntry[]; // user-defined snippets (#18)
+  onInsertQuickCommand?: (text: string) => void;
   insertRequest?: ComposerInsertRequest | null;
   selectedTextRequest?: SelectedTextInsertRequest | null;
   disabled?: boolean;
@@ -4130,6 +4135,20 @@ export function Composer({
                 <Users size={18} aria-hidden="true" />
                 <span className="composer-access-menu__copy"><span className="composer-access-menu__title">{t(`composer.subagentPolicy_${level}`)}</span></span>
                 {normalizeSubagentPolicy(subagentPolicy) === level && <Check size={14} aria-hidden="true" />}
+              </button>
+            ))}
+          </div>
+        )}
+        {onInsertQuickCommand && quickCommands && quickCommands.length > 0 && (
+          <div className="composer-access-menu__section" role="menu" aria-label={t("composer.quickCommandsTitle")}>
+            <div className="composer-access-menu__label">{t("composer.quickCommandsTitle")}</div>
+            {quickCommands.map((entry) => (
+              <button key={entry.title} type="button" role="menuitem"
+                className="composer-access-menu__item"
+                disabled={disabled || readOnly}
+                onClick={() => { onInsertQuickCommand(entry.text); setContentMenuOpen(false); closeIntentMenu(); requestActiveDraftFrame(focusComposerInput); }}>
+                <Zap size={18} aria-hidden="true" />
+                <span className="composer-access-menu__copy"><span className="composer-access-menu__title">{entry.title}</span></span>
               </button>
             ))}
           </div>

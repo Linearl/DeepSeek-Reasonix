@@ -103,6 +103,7 @@ import {
   type BackgroundRuntimeView,
   type CollaborationMode,
   type SubagentPolicy,
+  type QuickCommandEntry,
   type ComposerInsertRequest,
   type DesktopStartupSettingsView,
   type Mode,
@@ -1269,6 +1270,7 @@ export default function App() {
   const [mainWindowMaximised, syncMainWindowMaximised] = useWindowsMaximised(windowsFramelessChrome);
   useWailsResizeFix(windowsFramelessChrome, mainWindowMaximised);
   const [statusBarStyle, setStatusBarStyle] = useState<"icon" | "text">("text");
+  const [quickCommands, setQuickCommands] = useState<QuickCommandEntry[]>([]);
   const [statusBarItems, setStatusBarItems] = useState<StatusBarItemId[]>(() => [...DEFAULT_STATUS_BAR_ITEMS]);
   const [renamingTopicId, setRenamingTopicId] = useState<string | null>(null);
   const [topicTitleDraft, setTopicTitleDraft] = useState("");
@@ -1435,7 +1437,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth"> & { reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1447,6 +1449,7 @@ export default function App() {
       setLocalePref(normalizeLangPref(settings.desktopLanguage));
       setStartupUpdateChecksEnabled(settings.checkUpdates !== false);
       setStatusBarStyle(settings.statusBarStyle === "text" ? "text" : "icon");
+      setQuickCommands(settings.quickCommands ?? []);
       setStatusBarItems(normalizeStatusBarItems(settings.statusBarItems));
       hydrateReasoningDisplayMode(settings.reasoningDisplayMode, settings.reasoningDisplayModeExplicit === true);
     },
@@ -1640,6 +1643,14 @@ export default function App() {
     setComposerInsertRequestsByTab((current) => ({
       ...current,
       [activeTabId]: { id: Date.now(), text: command, mode: "prefix" },
+    }));
+  }, [activeTabId]);
+  // Quick-command snippets (#18) insert at the caret; the user still sends.
+  const insertQuickCommand = useCallback((text: string) => {
+    if (!activeTabId || !text) return;
+    setComposerInsertRequestsByTab((current) => ({
+      ...current,
+      [activeTabId]: { id: Date.now(), text, mode: "insert" },
     }));
   }, [activeTabId]);
   const composerSessionKey = useMemo(() => {
@@ -5138,6 +5149,8 @@ export default function App() {
               onSetQualityFloor={applyQualityFloor}
               subagentPolicy={state.meta?.subagentPolicy}
               onSetSubagentPolicy={applySubagentPolicy}
+              quickCommands={quickCommands}
+              onInsertQuickCommand={insertQuickCommand}
               turnPhase={state.turnPhase}
               goal={goal}
               goalStatus={state.meta?.goalStatus}

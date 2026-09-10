@@ -1074,6 +1074,11 @@ export interface ContextInfo {
   contextBudget?: ContextBudgetInfo;
 }
 
+export interface QuickCommandEntry {
+  title: string;
+  text: string;
+}
+
 export interface Meta extends RemoteSessionMetaFields {
   label: string;
   ready: boolean;
@@ -2317,6 +2322,7 @@ export interface DesktopStartupSettingsView {
   displayMode: string; sessionExperience?: "standard" | "deep"; reasoningDisplayMode: string; reasoningDisplayModeExplicit?: boolean;
   statusBarStyle: string; // "icon" | "text"
   statusBarItems: string[]; // ordered visible status bar item ids
+  quickCommands?: QuickCommandEntry[]; // user-defined composer snippets (#18)
   checkUpdates: boolean; // check for new versions on startup
   updateChannel: string; // compatibility field; always "stable"
   conversationWidth?: string; // "standard" | "full"; absent from older Wails payloads
