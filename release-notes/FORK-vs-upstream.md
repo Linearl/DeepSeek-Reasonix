@@ -23,6 +23,37 @@
 | App.tsx 组合边界（`check-app-entry-contract`） | 🔄 fork 显式豁免 `FORK_MONOLITH_APP` | ⏳ 上游要求 <200 行 + 组合 AppRuntime |
 | 构建预算（deferred CSS / locale chunk） | ✅ 按实测重定（122.0 / 66.0 / 66.5 KiB） | N/A（上游自身上调到 120.4） |
 
+## v1.38.3 之后（2026-09-10，尚未随发布出去）
+
+以下为 9-10 当天的提交：代码已完成、本地包已构建，**尚未进 release**。
+
+| 改动 | commit | 说明 |
+|---|---|---|
+| **项目分组 UI 恢复 + 折叠**（#9222） | `f90030abc` / `997a3d1ad` / `64914655e` | 追齐 1.38.3 时上游的**会话级分组**占用了同一渲染位置，fork 的**项目级分组**接线被顶掉（头部按钮消失、`lib/projectGroups.ts` 成孤儿）。恢复：头部「新建分组」+ 右键「移动到分组」+ 组标题**可折叠**（状态持久化）+ 标题样式与会话组对齐 |
+| **路径去重收敛上游**（#9511） | `d971fc063` | 我们自己的 `3382bcf01` 在 merge 时被保留、叠在上游 `8466f2089` 之上；那层 `strings.ToLower` 无条件折叠会在**大小写敏感卷**上误合并。删除，统一交给上游 `UniqueDirectoryTargets` |
+| **压缩分片并行化**（#9885） | `d560dfcdb` | 此前**只在 PR 分支**、`main-v2-stable` 根本没有（一直在跑串行压缩）。有界 worker pool + 索引写槽保证合并顺序 |
+| **远程准入栅栏**（#8749 跟进） | `7ef173b7e` | 上游 `5b371e4dd` 依赖 **7 个提交的链**，整串移植。远程 turn 准入绑定「探测实际跑过的连接」，重连中途替换 Serve 不再用陈旧模型设置跑一轮 |
+| **上下文焦虑措辞**（任务 11 / #9624） | `8c304899c` | 静态策略段 + 临近态动态行补上「把关键决策写进项目文档」这半句可操作建议 |
+| **检查脚本守卫项目组接线** | `08812ba83` | `check-fork-integrity.mjs` 新增 UI 接线项（此前只覆盖 CSS 与存储层，正是被静默删掉的那部分） |
+| **FORK.md 重写** | `b7f902738` | 入口文档此前停留在 v1.31.3（「只含 3 个提交」），与实际 314 文件差异严重不符 |
+
+### 补记：此前只在代码里、台账未列的能力
+
+| 能力 | 代码位置 | 说明 |
+|---|---|---|
+| `#9518` 分组计数后端权威 | `ProjectTreeOrganization.tsx` | 计数徽标恒为后端完整成员数，不随 classic 预览 / 分页缩水 |
+| `#9580` 草稿持久化 | `lib/composerDraftPersistence.ts` | 草稿 / 粘贴块 / 附件路径跨重启不丢（150ms 防抖 + `pagehide` 落盘） |
+| `#9520` 上下文预算行 | `internal/agent/context_budget_block.go` | 每轮注入 `<context-budget>`，临近阈值追加收敛引导 |
+| `#9521` 子代理 TPS | `ToolCard.tsx` / `useController.ts` | 工具与子代理卡片显示 `~N tok/s` |
+| `#9522` 任务完成摘要 | `internal/jobs/result_digest.go` | 完成通知带 400 字符结果摘要（CJK 安全、单行化） |
+| `#9572` 摘要安全前缀 | `compact_projection.go` | 自动压缩把摘要输入截到平衡安全前缀，防请求 + 响应超窗 |
+| `#9592` hook 只读声明 | `internal/hook/hook.go` / `runner.go` | `mutatesWorkspace:false` 的只读 hook 不再触发工作区覆盖保护 |
+| 会话分组折叠持久化 | `ProjectTreeOrganization.tsx` / `lib/projectGroups.ts` | 折叠此前只存组件内存（每次重开全部展开），现在精确还原 |
+| `internal/rules` 路径作用域规则 | `internal/rules/rules.go`（261 行 + 测试） | `.reasonix/rules/**/*.md` + `paths:` frontmatter；**此前台账无记录** |
+| 桌面日志轮转 | `desktop/desktop_log.go` | 4MB 轮转 / 25 份上限 |
+| servepool 池 + 网关 | `internal/servepool/*` / `desktop/servepool_host.go` | 按项目懒启动 serve、`/p/<id>/*` 反代、bearer token、空闲回收 |
+| 会话恢复副本合并 | `internal/agent/recovery_consolidate.go` / `desktop/recovery_consolidate.go` | 会话右键把多份 `*-recovery-*` 择最全者转正、其余进 `.trash` |
+
 ## v1.38.1（2026-09-08 整体追齐）
 
 | 改进点 | fork 状态 | 上游吸收状态 |
