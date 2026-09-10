@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"unicode/utf8"
 )
@@ -298,13 +300,78 @@ func (a *App) GetProjectGroups(scope, workspaceRoot string) (ProjectGroupsSnapsh
 	}
 	f := loadProjectsFile()
 	if scope == "global" {
-		return ProjectGroupsSnapshot{Groups: a.filterKnownGroupMembers(nonNilGroups(f.GlobalGroups)), Revision: f.GlobalGroupsRevision, Applied: true}, nil
+		groups := a.fileHeartbeatTopics(a.filterKnownGroupMembers(nonNilGroups(f.GlobalGroups)))
+		return ProjectGroupsSnapshot{Groups: groups, Revision: f.GlobalGroupsRevision, Applied: true}, nil
 	}
 	i := projectIndexByRoot(f.Projects, workspaceRoot)
 	if i < 0 {
 		return ProjectGroupsSnapshot{Groups: []desktopGroup{}, Applied: true}, nil
 	}
 	return ProjectGroupsSnapshot{Groups: a.filterKnownGroupMembers(nonNilGroups(f.Projects[i].Groups)), Revision: f.Projects[i].GroupsRevision, Applied: true}, nil
+}
+
+// The managed group that automatic filing targets. The id is fixed so the group
+// survives restarts and upgrades; the title is only its first-created label and
+// the user may rename it without breaking the association.
+const (
+	heartbeatGroupID    = "group-heartbeat"
+	heartbeatGroupTitle = "定时任务"
+)
+
+// fileHeartbeatTopics files automation sessions under the managed group without
+// touching groups the user maintains (task 17 S2). A session already filed
+// anywhere is left alone, so a manual move is never undone, and the group is
+// created on demand only when there is something to put in it.
+func (a *App) fileHeartbeatTopics(groups []desktopGroup) []desktopGroup {
+	if a == nil || a.topicState == nil {
+		return groups
+	}
+	snapshot, err := a.topicState.snapshot("")
+	if err != nil || len(snapshot.Records) == 0 {
+		return groups
+	}
+	member := map[string]struct{}{}
+	for _, group := range groups {
+		for _, id := range group.TopicIDs {
+			member[id] = struct{}{}
+		}
+	}
+	var add []string
+	for id, record := range snapshot.Records {
+		if _, filed := member[id]; filed {
+			continue
+		}
+		if topicOriginIsHeartbeat(record.AutoMeta) {
+			add = append(add, id)
+		}
+	}
+	if len(add) == 0 {
+		return groups
+	}
+	sort.Strings(add)
+	out := append([]desktopGroup(nil), groups...)
+	for i := range out {
+		if out[i].ID == heartbeatGroupID {
+			out[i].TopicIDs = append(append([]string(nil), out[i].TopicIDs...), add...)
+			return out
+		}
+	}
+	return append(out, desktopGroup{ID: heartbeatGroupID, Title: heartbeatGroupTitle, TopicIDs: add})
+}
+
+// topicOriginIsHeartbeat reports whether a topic was created by the automation
+// scheduler. Titles are user-editable, so grouping keys off this stamp instead.
+func topicOriginIsHeartbeat(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	var meta struct {
+		Origin string `json:"origin"`
+	}
+	if err := json.Unmarshal(raw, &meta); err != nil {
+		return false
+	}
+	return meta.Origin == heartbeatTopicOrigin
 }
 
 func (a *App) SaveSessionGroups(scope, workspaceRoot string, groups []desktopGroup) error {
