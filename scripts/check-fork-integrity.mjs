@@ -29,6 +29,9 @@ const CHECKS = [
   { feature: "#9222 分组 TSX + 持久化（上游等价实现）", file: "desktop/frontend/src/components/ProjectTreeOrganization.tsx", patterns: ["ProjectTreeGroupRows", "useProjectTreeOrganization", "persistSessionGroupCollapsed"] },
   { feature: "#9518 分组计数后端权威", file: "desktop/frontend/src/components/ProjectTreeOrganization.tsx", patterns: ["memberCount", "group.topicIds?.length ?? 0"] },
   { feature: "projectGroups 存储层", file: "desktop/frontend/src/lib/projectGroups.ts", patterns: ["loadProjectGroupCollapsed", "persistProjectGroupCollapsed", "dropProjectGroupCollapsed"] },
+  // #9222 的项目级分组 UI 接线（2026-09-10 恢复）：上游的会话级分组占用了同一渲染位置，
+  // 每次 merge 都要确认这四处调用点还在，而不是被上游实现悄悄顶掉。
+  { feature: "#9222 项目分组 UI 接线", file: "desktop/frontend/src/components/ProjectTree.tsx", patterns: ["addProjectGroup", "groupForProjectRoot", "NewGroupPanel", "MoveToGroupPanel", "projectGroup.createNew"] },
   { feature: "#9580 草稿持久化存储层", file: "desktop/frontend/src/lib/composerDraftPersistence.ts", patterns: ["composer:drafts:v1", "pagehide", "MAX_PERSISTED_BYTES"] },
   // parked: fork 分支不含该实现（1f8c3fe50 对齐时移除 / 上游另有设计）
   // { feature: "#9565 live footer 上游语义（#9579 尾部预算已有意还原）", file: "desktop/frontend/src/lib/transcriptLiveTurn.ts", patterns: ["slice(userIndex + 1)", "liveRows"] },
