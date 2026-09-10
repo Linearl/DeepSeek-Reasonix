@@ -63,10 +63,12 @@ fork 侧：**魔改全部保留**，并按上游重构同步了配置与能力�
 - **JSON 提取统一**：连续块解析的 `lastJSONObject` 抽到 `internal/jsonutil`，goal 评估器与 recovery 评审器共用（删除两份重复实现）
 - **文件面板隐藏规则修正**：仓库生成物（`tmp`/`bin`/`stage`）全局隐藏，`@` 引用搜索额外跳过这些目录，二者不再耦合
 - **GLM 思考档位修复**：输入栏的强度档位此前只剩「自动 / enabled / disabled」——根因是桌面渲染的是协议层 `Options`（仍带智谱二元 thinking vocabulary），而正确的 effort 表（`auto/disabled/low/medium/high/max`）从未到达 UI。现在 effort 表比 provider options 更丰富时以它为准，GLM 的 `low/medium/high/max` 恢复可选；非智谱的 OpenAI 端点不受影响
+- **启动即失败修复（`INVALID_MODEL_REASONING`）**：上一轮的 GLM 档位修复把输入栏专用的 `auto` 别名一并镜像进了协议层 `Options`，而 `provider.Validate` 明确拒绝 `auto` —— 结果是**官方 DeepSeek 各模型（含 beta 别名）在构建 provider 时直接报 `has invalid or repeated effort ID "auto"`，无法发消息**。现在镜像前剔除 `auto`（输入栏自行补 `auto` 项，UI 行为不变），并在 provider 默认值不属于新词表时清空以保留 vendor 默认行为；新增回归测试覆盖官方 DeepSeek 与 GLM 两条路径
 - **子代理委派档位收进「+」菜单**：它是很少中途切换的 per-tab 设置，改为与「执行方式」「验收」并列的菜单区（轻量 / 均衡 / 激进）。1.38.3 merge 曾丢掉 `App.tsx` 的接线，导致该控件完全不渲染，本次一并恢复
 - **快捷指令**：「+」菜单新增快捷指令区，列出用户自定义的文本片段，选中后插入到光标处（仍由用户按发送）；设置 → 通用 → 系统行为 → 快捷指令可增删改，两处读同一份配置（`desktop.quick_commands`），上限 50 条 / 标题 60 字 / 正文 8 KB
 
 ## 升级提醒
 
 - 覆盖安装即可；会话 / 记忆 / 配置目录与官方版完全兼容。
+- **不要回退到 1.34 / 1.38.1 以下的旧版本**：会话事件日志会**就地升级到 schema 2**（`upgraded_from_schema: 1`），而旧构建只支持到 1，加载时会以 `uses schema 2; this build supports up to 1` 拒绝打开（**文件不会被改动**，是保护性设计，不是损坏）。需要降级前请先在 1.38.3 里导出会话内容。
 - **已知问题（本机环境）**：`go test ./internal/boot/` 整包在本机挂起（环境探测单飞机制 `beginProbe`，每个测试单跑均通过）；与本次追齐无关——`internal/environment/` 在 merge 中零改动。

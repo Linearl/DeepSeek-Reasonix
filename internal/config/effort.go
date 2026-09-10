@@ -652,10 +652,35 @@ func ReasoningCapabilityForEntry(e *ProviderEntry) provider.ReasoningCapability 
 	// accepts, so when the two disagree the richer table wins — otherwise the
 	// composer only offers enabled/disabled and GLM strength levels are
 	// unreachable, which regressed repeatedly (#glm-effort).
-	if levels := EffortCapabilityForEntry(e).Levels; len(levels) > len(rc.Options) {
+	//
+	// Only the wire levels take part: "auto" is a composer-level alias for
+	// "inherit the provider default", not a value any adapter can send, and
+	// provider.ReasoningCapability.Validate rejects it outright. Mirroring the
+	// table verbatim smuggled it into the provider contract, which failed every
+	// official DeepSeek model at boot with INVALID_MODEL_REASONING (effort "auto").
+	if levels := wireEffortLevels(EffortCapabilityForEntry(e).Levels); len(levels) > len(rc.Options) {
 		rc.Options = reasoningOptionsFromLevels(levels)
+		if rc.Default != "" && !slices.Contains(levels, rc.Default) {
+			// The provider default belongs to the vocabulary being replaced
+			// (Zhipu's binary "enabled"). Empty keeps provider-default behavior
+			// instead of inventing a depth the vendor never declared.
+			rc.Default = ""
+		}
 	}
 	return rc
+}
+
+// wireEffortLevels drops the composer-level "auto" alias so the remaining
+// entries describe values that can actually reach the wire.
+func wireEffortLevels(levels []string) []string {
+	out := make([]string, 0, len(levels))
+	for _, level := range levels {
+		if normalizeEffortLevel(level) == "auto" {
+			continue
+		}
+		out = append(out, level)
+	}
+	return out
 }
 
 // reasoningOptionsFromLevels mirrors an effort level table into the option
