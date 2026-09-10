@@ -3786,8 +3786,16 @@ export function Composer({
     ? "composer.taskModePlanShort"
     : collaborationMode === "goal"
       ? "composer.taskModeGoalShort"
-      : "composer.taskModeDirectShort";
-  const TaskModeIcon = collaborationMode === "plan" ? Lightbulb : collaborationMode === "goal" ? Target : ArrowRight;
+      : collaborationMode === "autopilot"
+        ? "composer.taskModeAutopilotShort"
+        : "composer.taskModeDirectShort";
+  const TaskModeIcon = collaborationMode === "plan"
+    ? Lightbulb
+    : collaborationMode === "goal"
+      ? Target
+      : collaborationMode === "autopilot"
+        ? Zap
+        : ArrowRight;
   const taskModeTriggerLabel = `${t("common.close")} ${t(taskModeShortKey)}`;
   const taskModeTooltipLabel = taskModeTriggerLabel;
   const effortOptions = asArray(effort?.options);
@@ -4018,6 +4026,13 @@ export function Composer({
           textPresent={text.trim().length > 0}
           onChooseAttachment={chooseAttachmentFiles}
           onInsertTrigger={insertContentTrigger}
+          quickCommands={quickCommands}
+          onChooseQuickCommand={onInsertQuickCommand ? (text) => {
+            onInsertQuickCommand(text);
+            setContentMenuOpen(false);
+            closeIntentMenu();
+            requestActiveDraftFrame(focusComposerInput);
+          } : undefined}
         />
         <div
           className="composer-access-menu__section"
@@ -4150,20 +4165,6 @@ export function Composer({
                 <Users size={18} aria-hidden="true" />
                 <span className="composer-access-menu__copy"><span className="composer-access-menu__title">{t(`composer.subagentPolicy_${level}`)}</span></span>
                 {normalizeSubagentPolicy(subagentPolicy) === level && <Check size={14} aria-hidden="true" />}
-              </button>
-            ))}
-          </div>
-        )}
-        {onInsertQuickCommand && quickCommands && quickCommands.length > 0 && (
-          <div className="composer-access-menu__section" role="menu" aria-label={t("composer.quickCommandsTitle")}>
-            <div className="composer-access-menu__label">{t("composer.quickCommandsTitle")}</div>
-            {quickCommands.map((entry) => (
-              <button key={entry.title} type="button" role="menuitem"
-                className="composer-access-menu__item"
-                disabled={disabled || readOnly}
-                onClick={() => { onInsertQuickCommand(entry.text); setContentMenuOpen(false); closeIntentMenu(); requestActiveDraftFrame(focusComposerInput); }}>
-                <Zap size={18} aria-hidden="true" />
-                <span className="composer-access-menu__copy"><span className="composer-access-menu__title">{entry.title}</span></span>
               </button>
             ))}
           </div>
