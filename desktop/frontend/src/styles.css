@@ -39959,3 +39959,65 @@ body > .mermaid-diagram--fullscreen {
 }
 :root .composer-choice--permission-ask { color: var(--composer-permission-ask); }
 :root .composer-choice--permission-yolo { color: var(--err); }
+
+/* Quick-command manager (Settings > General > Quick commands) and the picker the
+   composer's + menu opens. The manager had no styles at all before this: its rows
+   relied on .mem-input defaults, which is part of why it read as unusable. */
+.settings-quick-commands {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-quick-commands--panel {
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.settings-quick-commands__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.settings-quick-commands__row > input.mem-input:first-of-type {
+  flex: 1 1 28%;
+  min-width: 120px;
+}
+
+.settings-quick-commands__row > textarea.mem-input {
+  flex: 2 1 52%;
+  resize: vertical;
+}
+
+.settings-quick-commands__empty {
+  padding: 10px 2px;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.composer-content-menu__back {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.22);
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.composer-content-menu__back:hover {
+  background: rgba(127, 127, 127, 0.1);
+}
+
+.composer-content-menu__search {
+  width: calc(100% - 20px);
+  margin: 8px 10px;
+}

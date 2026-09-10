@@ -1077,6 +1077,7 @@ export interface ContextInfo {
 export interface QuickCommandEntry {
   title: string;
   text: string;
+  enabled?: boolean; // absent means enabled (older configs)
 }
 
 export interface Meta extends RemoteSessionMetaFields {
@@ -2323,6 +2324,7 @@ export interface DesktopStartupSettingsView {
   statusBarStyle: string; // "icon" | "text"
   statusBarItems: string[]; // ordered visible status bar item ids
   quickCommands?: QuickCommandEntry[]; // user-defined composer snippets (#18)
+  autopilot?: boolean; // offers the autopilot mode in the composer when on
   checkUpdates: boolean; // check for new versions on startup
   updateChannel: string; // compatibility field; always "stable"
   conversationWidth?: string; // "standard" | "full"; absent from older Wails payloads

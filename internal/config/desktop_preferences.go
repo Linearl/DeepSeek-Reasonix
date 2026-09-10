@@ -50,6 +50,9 @@ type DesktopConfig struct {
 type QuickCommandEntry struct {
 	Title string `toml:"title" json:"title"`
 	Text  string `toml:"text" json:"text"`
+	// Enabled is a pointer so configs written before the switch existed keep
+	// working: absent means enabled, and only an explicit false hides a snippet.
+	Enabled *bool `toml:"enabled" json:"enabled,omitempty"`
 }
 
 // QuickCommandLimits bounds what the settings UI may store, so a runaway paste
@@ -95,7 +98,7 @@ func (c *Config) SetQuickCommands(entries []QuickCommandEntry) error {
 		if len(text) > QuickCommandMaxTextSize {
 			return fmt.Errorf("quick command %q is too large (%d bytes, max %d)", title, len(text), QuickCommandMaxTextSize)
 		}
-		out = append(out, QuickCommandEntry{Title: title, Text: text})
+		out = append(out, QuickCommandEntry{Title: title, Text: text, Enabled: entry.Enabled})
 	}
 	c.Desktop.QuickCommands = out
 	return nil

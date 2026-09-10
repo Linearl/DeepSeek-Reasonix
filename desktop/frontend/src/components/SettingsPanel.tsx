@@ -9,6 +9,7 @@ import { ManagementPageShell } from "./ManagementPageShell";
 import { useProviderT as useT } from "../lib/providerSettingsLocale";
 import type { ModelDetailsDraft } from "./ProviderModelDialog";
 import { ConnectionTitle } from "./ConnectionTitle";
+import { ProviderDialog } from "./ProviderDialog";
 import { ProviderConnections } from "./ProviderConnections";
 import { catalogForPreset } from "../lib/providerCatalog";
 import { ProviderCatalogPicker, type CatalogChoice } from "./ProviderCatalogPicker";
@@ -1659,6 +1660,15 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
   const [attentionPref, setAttentionPref] = useState<SoundWavPref>(getAttentionPreference());
   const [notificationVolume, setNotificationVolume] = useState(getNotificationVolume);
   const [soundExpanded, setSoundExpanded] = useState(false);
+  // Quick-command manager (task 18 follow-up): the settings row is a single entry
+  // point, and the panel behind it carries search plus the enable switch.
+  const [quickCommandsOpen, setQuickCommandsOpen] = useState(false);
+  const [quickCommandsQuery, setQuickCommandsQuery] = useState("");
+  const quickCommandEntries = s.quickCommands ?? [];
+  const quickCommandTerms = quickCommandsQuery.trim().toLowerCase();
+  const quickCommandRows = quickCommandEntries
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => !quickCommandTerms || `${entry.title} ${entry.text}`.toLowerCase().includes(quickCommandTerms));
   const statusBarStyle = normalizeStatusBarStyle(s.statusBarStyle);
   const statusBarItems = normalizeStatusBarItems(s.statusBarItems);
   const soundStatus = summarizeSoundStatus(genMusicPreset, soundPref, attentionPref, notificationVolume);
@@ -1812,49 +1822,87 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
       </SettingsField>
       <SettingsField label={t("settings.quickCommands")} hint={t("settings.quickCommandsHint")} icon={<Zap size={18} />} stacked>
         <div className="settings-quick-commands">
-          {(s.quickCommands ?? []).map((entry, index) => (
-            <div className="settings-quick-commands__row" key={`qc-${index}`}>
-              <input
-                className="mem-input"
-                value={entry.title}
-                placeholder={t("settings.quickCommandsTitlePlaceholder")}
-                disabled={busy}
-                onChange={(e) => {
-                  const next = (s.quickCommands ?? []).map((item, i) => (i === index ? { ...item, title: e.target.value } : item));
-                  void apply(() => app.SetQuickCommands(next));
-                }}
-              />
-              <textarea
-                className="mem-input"
-                value={entry.text}
-                rows={2}
-                placeholder={t("settings.quickCommandsTextPlaceholder")}
-                disabled={busy}
-                onChange={(e) => {
-                  const next = (s.quickCommands ?? []).map((item, i) => (i === index ? { ...item, text: e.target.value } : item));
-                  void apply(() => app.SetQuickCommands(next));
-                }}
-              />
-              <button
-                type="button"
-                className="btn btn--small"
-                disabled={busy}
-                onClick={() => void apply(() => app.SetQuickCommands((s.quickCommands ?? []).filter((_, i) => i !== index)))}
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))}
           <button
             type="button"
             className="btn btn--small"
             disabled={busy}
-            onClick={() => void apply(() => app.SetQuickCommands([...(s.quickCommands ?? []), { title: t("settings.quickCommandsNewTitle"), text: "" }]))}
+            onClick={() => { setQuickCommandsQuery(""); setQuickCommandsOpen(true); }}
           >
-            {t("settings.quickCommandsAdd")}
+            {t("settings.quickCommandsManage")}{quickCommandEntries.length > 0 ? ` (${quickCommandEntries.length})` : ""}
           </button>
         </div>
       </SettingsField>
+      {quickCommandsOpen && (
+        <ProviderDialog title={t("settings.quickCommandsManage")} onClose={() => setQuickCommandsOpen(false)}>
+          <div className="settings-quick-commands settings-quick-commands--panel">
+            <input
+              className="mem-input"
+              value={quickCommandsQuery}
+              placeholder={t("settings.quickCommandsSearch")}
+              disabled={busy}
+              onChange={(e) => setQuickCommandsQuery(e.target.value)}
+            />
+            {quickCommandRows.length === 0 ? (
+              <div className="settings-quick-commands__empty">
+                {quickCommandEntries.length === 0 ? t("settings.quickCommandsEmpty") : t("settings.quickCommandsNoMatch")}
+              </div>
+            ) : (
+              quickCommandRows.map(({ entry, index }) => (
+                <div className="settings-quick-commands__row" key={`qc-${index}`}>
+                  <button
+                    type="button"
+                    className={`btn btn--small${entry.enabled === false ? "" : " btn--primary"}`}
+                    disabled={busy}
+                    title={t(entry.enabled === false ? "settings.quickCommandsEnable" : "settings.quickCommandsDisable")}
+                    onClick={() => void apply(() => app.SetQuickCommands(
+                      quickCommandEntries.map((item, i) => (i === index ? { ...item, enabled: item.enabled === false } : item)),
+                    ))}
+                  >
+                    {entry.enabled === false ? t("settings.quickCommandsOff") : t("settings.quickCommandsOn")}
+                  </button>
+                  <input
+                    className="mem-input"
+                    value={entry.title}
+                    placeholder={t("settings.quickCommandsTitlePlaceholder")}
+                    disabled={busy}
+                    onChange={(e) => {
+                      const next = quickCommandEntries.map((item, i) => (i === index ? { ...item, title: e.target.value } : item));
+                      void apply(() => app.SetQuickCommands(next));
+                    }}
+                  />
+                  <textarea
+                    className="mem-input"
+                    value={entry.text}
+                    rows={2}
+                    placeholder={t("settings.quickCommandsTextPlaceholder")}
+                    disabled={busy}
+                    onChange={(e) => {
+                      const next = quickCommandEntries.map((item, i) => (i === index ? { ...item, text: e.target.value } : item));
+                      void apply(() => app.SetQuickCommands(next));
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn--small"
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetQuickCommands(quickCommandEntries.filter((_, i) => i !== index)))}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))
+            )}
+            <button
+              type="button"
+              className="btn btn--small"
+              disabled={busy}
+              onClick={() => void apply(() => app.SetQuickCommands([...quickCommandEntries, { title: t("settings.quickCommandsNewTitle"), text: "", enabled: true }]))}
+            >
+              {t("settings.quickCommandsAdd")}
+            </button>
+          </div>
+        </ProviderDialog>
+      )}
       <SettingsField label={t("settings.sound")} hint={t("settings.soundHint")} icon={<Volume2 size={18} />} stacked>
         <div className={`settings-sound-editor${soundExpanded ? " settings-sound-editor--expanded" : ""}`}>
           <div className="settings-sound-editor__summary">

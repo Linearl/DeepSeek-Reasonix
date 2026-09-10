@@ -57,4 +57,5 @@ export interface SettingsView {
 export interface QuickCommandEntry {
   title: string;
   text: string;
+  enabled?: boolean; // absent means enabled (older configs)
 }

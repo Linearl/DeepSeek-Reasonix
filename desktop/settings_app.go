@@ -408,6 +408,9 @@ type DesktopStartupSettingsView struct {
 	CheckUpdates                 bool            `json:"checkUpdates"`
 	UpdateChannel                string          `json:"updateChannel"`
 	ConversationWidth            string          `json:"conversationWidth,omitempty"`
+	// Autopilot mirrors the [desktop] preference so the composer knows whether
+	// to offer the mode at all - it is opt-in, never a surprise.
+	Autopilot bool `json:"autopilot"`
 	// ConfigWarnings report in-memory recovery without rewriting user/project files.
 	ConfigWarnings         []string `json:"configWarnings,omitempty"`
 	ConfigWarningsRevision uint64   `json:"configWarningsRevision"`

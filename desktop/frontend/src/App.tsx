@@ -885,6 +885,10 @@ export default function App() {
     setQuickCommands,
   } = useTabNavigationOwner();
 
+  // Autopilot is opt-in: its mode only appears in the composer once the
+  // preference is on, so nobody lands in an unattended run by accident.
+  const [autopilotEnabled, setAutopilotEnabled] = useState(false);
+
   // Task 38 B6: composer profiles keyed by tab.
   const { composerProfilesByTab, setComposerProfilesByTab } = useComposerProfileStore();
 
@@ -1128,7 +1132,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1142,6 +1146,7 @@ export default function App() {
       setStartupUpdateChecksEnabled(settings.checkUpdates !== false);
       setStatusBarStyle(settings.statusBarStyle === "text" ? "text" : "icon");
       setQuickCommands(settings.quickCommands ?? []);
+      setAutopilotEnabled(settings.autopilot === true);
       setStatusBarItems(normalizeStatusBarItems(settings.statusBarItems));
       hydrateReasoningDisplayMode(settings.reasoningDisplayMode, settings.reasoningDisplayModeExplicit === true);
     },
@@ -4825,6 +4830,7 @@ export default function App() {
               subagentPolicy={state.meta?.subagentPolicy}
               onSetSubagentPolicy={applySubagentPolicy}
               quickCommands={quickCommands}
+              autopilotEnabled={autopilotEnabled}
               onInsertQuickCommand={insertQuickCommand}
               turnPhase={state.turnPhase}
               goal={goal}

@@ -584,6 +584,7 @@ export function Composer({
   onSetSubagentPolicy,
   quickCommands,
   onInsertQuickCommand,
+  autopilotEnabled = false,
   insertRequest,
   selectedTextRequest,
   disabled,
@@ -676,6 +677,7 @@ export function Composer({
   subagentPolicy?: SubagentPolicy;
   onSetSubagentPolicy?: (policy: SubagentPolicy) => void;
   quickCommands?: QuickCommandEntry[]; // user-defined snippets (#18)
+  autopilotEnabled?: boolean; // offered only once the preference is on
   onInsertQuickCommand?: (text: string) => void;
   insertRequest?: ComposerInsertRequest | null;
   selectedTextRequest?: SelectedTextInsertRequest | null;
@@ -3782,6 +3784,11 @@ export function Composer({
       requestActiveDraftFrame(focusComposerInput);
     });
   };
+  // Disabled snippets stay in Settings but never reach the composer menu.
+  const enabledQuickCommands = useMemo(
+    () => (quickCommands ?? []).filter((entry) => entry.enabled !== false),
+    [quickCommands],
+  );
   const taskModeShortKey = collaborationMode === "plan"
     ? "composer.taskModePlanShort"
     : collaborationMode === "goal"
@@ -4026,7 +4033,7 @@ export function Composer({
           textPresent={text.trim().length > 0}
           onChooseAttachment={chooseAttachmentFiles}
           onInsertTrigger={insertContentTrigger}
-          quickCommands={quickCommands}
+          quickCommands={enabledQuickCommands}
           onChooseQuickCommand={onInsertQuickCommand ? (text) => {
             onInsertQuickCommand(text);
             setContentMenuOpen(false);
@@ -4071,21 +4078,23 @@ export function Composer({
             </span>
             {goalModeOn && <Check className="composer-intent-menu__check" size={16} aria-hidden="true" />}
           </button>
-          <button
-            type="button"
-            role="menuitemradio"
-            aria-checked={autopilotModeOn}
-            className={`composer-access-menu__item composer-intent-menu__item${autopilotModeOn ? " composer-access-menu__item--active" : ""}`}
-            onClick={() => chooseTaskMode(autopilotModeOn ? "normal" : "autopilot")}
-            disabled={disabled || running}
-          >
-            <Zap size={16} />
-            <span className="composer-access-menu__copy">
-              <span className="composer-access-menu__title">{t("composer.taskModeAutopilot")}</span>
-              <span className="composer-access-menu__hint">{t("composer.taskModeAutopilotHint")}</span>
-            </span>
-            {autopilotModeOn && <Check className="composer-intent-menu__check" size={16} aria-hidden="true" />}
-          </button>
+          {autopilotEnabled ? (
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={autopilotModeOn}
+              className={`composer-access-menu__item composer-intent-menu__item${autopilotModeOn ? " composer-access-menu__item--active" : ""}`}
+              onClick={() => chooseTaskMode(autopilotModeOn ? "normal" : "autopilot")}
+              disabled={disabled || running}
+            >
+              <Zap size={16} />
+              <span className="composer-access-menu__copy">
+                <span className="composer-access-menu__title">{t("composer.taskModeAutopilot")}</span>
+                <span className="composer-access-menu__hint">{t("composer.taskModeAutopilotHint")}</span>
+              </span>
+              {autopilotModeOn && <Check className="composer-intent-menu__check" size={16} aria-hidden="true" />}
+            </button>
+          ) : null}
             {goalModeOn && activeGoal && (
             <div className="composer-intent-menu__goal-actions">
               <div className="composer-intent-menu__goal-runtime">

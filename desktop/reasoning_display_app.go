@@ -27,6 +27,7 @@ func desktopStartupSettingsFromConfig(cfg *config.Config) DesktopStartupSettings
 		ReasoningDisplayModeExplicit: cfg.DesktopReasoningDisplayModeExplicit(), StatusBarStyle: cfg.DesktopStatusBarStyle(),
 		StatusBarItems: cfg.DesktopStatusBarItems(), CheckUpdates: cfg.DesktopCheckUpdates(),
 		UpdateChannel: cfg.DesktopUpdateChannel(), ConversationWidth: cfg.DesktopConversationWidth(),
+		Autopilot: cfg.Desktop.Autopilot,
 		ConfigWarnings: cfg.LoadWarnings(), ConfigPath: config.UserConfigPath(),
 	}
 }
