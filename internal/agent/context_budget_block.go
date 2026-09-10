@@ -26,7 +26,7 @@ func ContextBudgetBlock(used, trigger, window int) string {
 	line := fmt.Sprintf("<%s>context: %dk/%dk tokens (%d%%); auto-compaction at %d%%</%s>",
 		contextBudgetTag, used/1000, window/1000, used*100/window, trigger*100/window, contextBudgetTag)
 	if trigger > 0 && float64(used) >= float64(trigger)*contextBudgetWarnRatio {
-		line += "\napproaching auto-compaction; older context will be summarized, not lost — plan remaining work in waves."
+		line += "\napproaching auto-compaction; older context will be summarized, not lost — plan remaining work in waves, and record key progress and decisions in a project document now so they stay cheap to recover after the summary."
 	}
 	return line
 }

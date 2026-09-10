@@ -1879,7 +1879,10 @@ const ContextManagementPolicy = `This host maintains context automatically. When
 	`its compaction threshold, older turns are summarized into a compact projection ` +
 	`while the recent tail is kept verbatim; work is not lost and the task does not ` +
 	`need to be rushed or abandoned. Plan large tasks in waves and delegate long ` +
-	`operations to background tasks.`
+	`operations to background tasks. When the per-turn context budget warns that ` +
+	`compaction is approaching, write key decisions and progress into a project ` +
+	`document first — a short note survives the summary far cheaper than re-reading ` +
+	`the transcript.`
 
 // AutonomyPolicy tells the model to finish the work instead of stopping at a
 // partial state (task 6 P0-a). Codex's prompt carries the same intent; without
