@@ -2236,6 +2236,9 @@ func (a *App) clearActiveSessionRuntime(tab *WorkspaceTab, oldCtrl control.Sessi
 	sharedHost := a.lookupSharedHost(snap.sharedHostKey)
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
 		Model:                    snap.model,
+		Autopilot:                snap.autopilot,
+		MaxRuntime:               snap.autopilotMaxRuntime,
+		AutopilotApprovalGrace:   snap.autopilotApprovalGrace,
 		RequireKey:               false,
 		StatsSource:              "desktop",
 		TaskStore:                a.taskStore(),
@@ -4219,6 +4222,9 @@ func (a *App) buildSessionRebindCandidate(
 	}
 	ctrl, err := boot.Build(a.bootContext(), boot.Options{
 		Model:                    model,
+		Autopilot:                source.autopilot,
+		MaxRuntime:               source.autopilotMaxRuntime,
+		AutopilotApprovalGrace:   source.autopilotApprovalGrace,
 		RequireKey:               false,
 		StatsSource:              "desktop",
 		TaskStore:                a.taskStore(),
@@ -9811,6 +9817,9 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 	stageStarted = time.Now()
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
 		Model:                    name,
+		Autopilot:                tab.autopilot,
+		MaxRuntime:               tab.autopilotMaxRuntime,
+		AutopilotApprovalGrace:   tab.autopilotApprovalGrace,
 		RequireKey:               false,
 		StatsSource:              "desktop",
 		TaskStore:                a.taskStore(),
@@ -10002,6 +10011,9 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 	sharedHost := a.lookupSharedHost(snap.sharedHostKey)
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
 		Model:                    modelRef,
+		Autopilot:                tab.autopilot,
+		MaxRuntime:               tab.autopilotMaxRuntime,
+		AutopilotApprovalGrace:   tab.autopilotApprovalGrace,
 		RequireKey:               false,
 		StatsSource:              "desktop",
 		TaskStore:                a.taskStore(),
