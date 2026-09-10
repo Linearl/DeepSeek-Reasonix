@@ -486,6 +486,20 @@ export type TranscriptRowWithLayout = TranscriptRowContent & { layoutVariant: Tr
 // mutable bridge objects themselves.
 const itemMeasurementVersionOverrides = new WeakMap<object, string>();
 
+// Item projections are replaced, never mutated in place (see
+// assistantReasoningOnly below, which spreads the source item), so an item's
+// semantic version stays valid for as long as the object does. Streaming
+// rebuilds the row blocks on every chunk while only a few items actually
+// change, and recomputing the version for the untouched ones re-serializes and
+// re-hashes their whole bodies — tens of KB per tool result — several times a
+// second. Equal projections hash equal, so the cache cannot change a version,
+// only how often it is recomputed.
+const itemMeasurementVersionCache = new WeakMap<object, string>();
+
+// Row projections are rebuilt per content change but re-rendered far more
+// often than that, and every render asked for each row's version again.
+const rowMeasurementVersionCache = new WeakMap<object, string>();
+
 function hashGeometryParts(parts: readonly string[]): string {
   let hash = 2166136261;
   for (const part of parts) {
@@ -504,6 +518,15 @@ function hashGeometryParts(parts: readonly string[]): string {
 function itemMeasurementVersion(item: Item): string {
   const override = itemMeasurementVersionOverrides.get(item);
   if (override) return override;
+  const cached = itemMeasurementVersionCache.get(item);
+  if (cached !== undefined) return cached;
+  const version = computeItemMeasurementVersion(item);
+  itemMeasurementVersionCache.set(item, version);
+  return version;
+}
+
+// The uncached computation behind itemMeasurementVersion.
+function computeItemMeasurementVersion(item: Item): string {
   const parts: string[] = [String(item.kind ?? ""), String(item.id ?? "")];
   // Focused callers and older bridge payloads may provide a minimal item
   // without the discriminant. Preserve its text in the semantic version so a
@@ -543,6 +566,15 @@ function measurementVersionForItems(items: readonly Item[]): string {
 }
 
 export function transcriptRowMeasurementVersion(row: TranscriptRow): string {
+  const cached = rowMeasurementVersionCache.get(row);
+  if (cached !== undefined) return cached;
+  const version = computeRowMeasurementVersion(row);
+  rowMeasurementVersionCache.set(row, version);
+  return version;
+}
+
+// The uncached computation behind transcriptRowMeasurementVersion.
+function computeRowMeasurementVersion(row: TranscriptRow): string {
   switch (row.kind) {
     case "older-history":
     case "turn-actions":
