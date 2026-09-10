@@ -59,6 +59,43 @@ func (m *topicStateManager) applyAutoTitle(workspaceRoot, topicID, title string,
 	return applied, err
 }
 
+// markTopicOrigin stamps where a topic came from. Automatic grouping (task 17)
+// reads this rather than inferring from the title, which the user may rename at
+// any time. Unknown keys in an existing blob are preserved.
+func (m *topicStateManager) markTopicOrigin(workspaceRoot, topicID, origin, taskID string) error {
+	topicID, origin, taskID = strings.TrimSpace(topicID), strings.TrimSpace(origin), strings.TrimSpace(taskID)
+	if topicID == "" || origin == "" {
+		return nil
+	}
+	return m.mutate(workspaceRoot, func(ctx context.Context, store *topicstate.Store) (topicstate.State, error) {
+		return store.Update(ctx, topicID, func(record *topicstate.Record) {
+			record.AutoMeta = mergeTopicOrigin(record.AutoMeta, origin, taskID)
+		})
+	}, nil)
+}
+
+func mergeTopicOrigin(raw json.RawMessage, origin, taskID string) json.RawMessage {
+	meta := map[string]json.RawMessage{}
+	if len(raw) > 0 {
+		_ = json.Unmarshal(raw, &meta)
+	}
+	encodedOrigin, err := json.Marshal(origin)
+	if err != nil {
+		return raw
+	}
+	meta["origin"] = encodedOrigin
+	if taskID != "" {
+		if encodedTask, err := json.Marshal(taskID); err == nil {
+			meta["taskId"] = encodedTask
+		}
+	}
+	merged, err := json.Marshal(meta)
+	if err != nil {
+		return raw
+	}
+	return merged
+}
+
 func applyTopicTitle(record *topicstate.Record, title, source string) {
 	record.Title = title
 	if title == "" || source == "" {

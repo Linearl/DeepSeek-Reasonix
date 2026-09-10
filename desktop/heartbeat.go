@@ -419,8 +419,20 @@ func (e *HeartbeatEngine) resolveHeartbeatTopic(t HeartbeatTask, scope, workspac
 			t.TopicID = topicID
 		}
 	}
+	// Stamp the origin so automatic grouping can find heartbeat sessions without
+	// guessing from a renameable title (task 17). Idempotent by design: running
+	// an existing task refreshes the stamp rather than duplicating it.
+	if topicID != "" {
+		if err := e.app.topicState.markTopicOrigin(workspaceRoot, topicID, heartbeatTopicOrigin, t.ID); err != nil {
+			log.Printf("[heartbeat] markTopicOrigin(%q): %v", topicID, err)
+		}
+	}
 	return t, topicID, pendingSubmitted, true
 }
+
+// heartbeatTopicOrigin marks topics created by the automation scheduler; the
+// desktop reads it to file them under the heartbeat group automatically.
+const heartbeatTopicOrigin = "heartbeat"
 
 func heartbeatTaskByID(tasks []HeartbeatTask, id string) *HeartbeatTask {
 	for i := range tasks {
