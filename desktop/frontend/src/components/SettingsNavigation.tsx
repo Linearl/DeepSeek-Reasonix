@@ -28,17 +28,19 @@ import { useT, type DictKey } from "../lib/i18n";
 import type { SettingsTab } from "../lib/types";
 
 export const SETTINGS_NAV_TABS: SettingsTab[] = [
-  "general", "models", "bots", "mcp", "remote", "localserver", "skills", "subagents", "plugins", "memory",
-  "general", "bots", "models", "providers", "model-stats", "mcp", "remote", "skills", "subagents", "plugins", "memory",
+  "general", "bots", "models", "providers", "model-stats", "mcp", "remote", "localserver",
+  "skills", "subagents", "plugins", "memory",
   "hooks", "diagnostics", "shortcuts", "permissions", "sandbox", "network", "appearance", "storage", "updates",
 ];
 
 const SETTINGS_TAB_GROUPS: { labelKey: DictKey; tabs: SettingsTab[] }[] = [
-  { labelKey: "settings.navGroup.preferences", tabs: ["general", "models", "bots"] },
-  { labelKey: "settings.navGroup.connections", tabs: ["mcp", "remote", "localserver"] },
+  // The fork's own grouping pass left a duplicate of the preferences and
+  // connections groups in front of upstream's, so the panel rendered 通用 /
+  // 模型偏好 twice. Upstream's grouping wins; the fork-only localserver tab is
+  // folded into the connections group instead of getting a group of its own.
   { labelKey: "settings.navGroup.preferences", tabs: ["general"] },
   { labelKey: "settings.tab.models", tabs: ["models", "providers", "model-stats"] },
-  { labelKey: "settings.navGroup.connections", tabs: ["bots", "mcp", "remote"] },
+  { labelKey: "settings.navGroup.connections", tabs: ["bots", "mcp", "remote", "localserver"] },
   { labelKey: "settings.navGroup.capabilities", tabs: ["skills", "subagents", "plugins"] },
   { labelKey: "settings.navGroup.context", tabs: ["memory"] },
   { labelKey: "settings.navGroup.automation", tabs: ["hooks", "diagnostics"] },
