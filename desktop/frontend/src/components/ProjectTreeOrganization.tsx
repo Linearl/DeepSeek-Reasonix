@@ -91,7 +91,11 @@ export interface ProjectTreeOrganizationController {
   groupCollapsed(key: string, id: string): boolean;
   toggleGroup(key: string, id: string): void;
   renameGroup(key: string, id: string, title: string): void;
-  deleteGroup(key: string, id: string): void;
+  /** clearGroup keeps the group shell and drops its sessions (task 17). */
+  clearGroup(key: string, id: string): void;
+  /** dissolveGroup removes the shell; its sessions return to ungrouped. This is
+   * what the old deleteGroup always did - the label was simply wrong. */
+  dissolveGroup(key: string, id: string): void;
   canDropTopicInto(key: string): boolean;
   dropTopicInto(key: string, groupID: string): void;
 }
@@ -315,7 +319,8 @@ export function useProjectTreeOrganization({
       const trimmed = title.trim();
       mutateGroups(key, (groups) => trimmed ? groups.map((group) => group.id === id ? { ...group, title: trimmed } : group) : groups.filter((group) => group.id !== id));
     },
-    deleteGroup(key, id) { mutateGroups(key, (groups) => groups.filter((group) => group.id !== id)); },
+    clearGroup(key, id) { mutateGroups(key, (groups) => groups.map((group) => group.id === id ? { ...group, topicIds: [] } : group)); },
+    dissolveGroup(key, id) { mutateGroups(key, (groups) => groups.filter((group) => group.id !== id)); },
     canDropTopicInto(key) {
       const context = dragContextRef.current;
       return Boolean(dragTopicID && context && key === (context.scope === "global" ? "global|" : `project|${context.root}`));
@@ -421,7 +426,8 @@ export function ProjectTreeGroupRows({
           point={menuPoint}
           items={[
             { key: "rename", icon: <Pencil size={13} />, label: t("projectTree.renameGroup"), onSelect: () => { setEditingGroup(group.id); setGroupDraft(group.title); setMenuGroup(null); } },
-            { key: "delete", icon: <Archive size={13} />, label: t("projectTree.deleteGroup"), danger: true, onSelect: () => { organization.deleteGroup(key, group.id); setMenuGroup(null); } },
+            { key: "clear", icon: <Archive size={13} />, label: t("projectTree.clearGroup"), onSelect: () => { organization.clearGroup(key, group.id); setMenuGroup(null); } },
+            { key: "dissolve", icon: <Archive size={13} />, label: t("projectTree.dissolveGroup"), onSelect: () => { organization.dissolveGroup(key, group.id); setMenuGroup(null); } },
           ]}
           minWidth={178}
           ariaLabel={t("projectTree.renameGroup")}

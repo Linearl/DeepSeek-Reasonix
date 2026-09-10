@@ -1491,6 +1491,8 @@ export const zh: Record<DictKey, string> = {
   "projectTree.newGroup": "新建分组",
   "projectTree.renameGroup": "重命名分组",
   "projectTree.deleteGroup": "删除分组",
+  "projectTree.clearGroup": "清空分组",
+  "projectTree.dissolveGroup": "解散分组",
   "projectTree.removeFromGroup": "移出分组",
   "projectTree.pinTopic": "置顶对话",
   "projectTree.unpinTopic": "取消置顶",

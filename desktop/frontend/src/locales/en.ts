@@ -1490,6 +1490,8 @@ export const en = {
   "projectTree.newGroup": "New group",
   "projectTree.renameGroup": "Rename group",
   "projectTree.deleteGroup": "Delete group",
+  "projectTree.clearGroup": "Clear group",
+  "projectTree.dissolveGroup": "Dissolve group",
   "projectTree.removeFromGroup": "Remove from group",
   "projectTree.pinTopic": "Pin conversation",
   "projectTree.unpinTopic": "Unpin conversation",
