@@ -122,6 +122,9 @@ type Controller struct {
 	// autopilot marks an unattended run: nobody can answer a prompt, so the run
 	// answers reversible questions itself and pauses on the dangerous ones (A3).
 	autopilot bool
+	// autopilotApprovalGrace is how long an unattended run waits for a human on an
+	// approval prompt before the reviewer decides instead (A5).
+	autopilotApprovalGrace time.Duration
 	// evaluator is the bounded Goal completion evaluator consulted when the
 	// working model submits no update_goal report. nil fails closed: the goal
 	// pauses instead of defaulting to continue.
@@ -507,6 +510,10 @@ type Options struct {
 	// whenever Autopilot is set - the CLI refuses that combination otherwise.
 	Autopilot           bool
 	AutopilotMaxRuntime time.Duration
+	// AutopilotApprovalGrace is how long an unattended run waits for a human on an
+	// approval prompt before the reviewer decides instead. Zero uses
+	// DefaultAutopilotApprovalGrace; a negative value disables the fallback.
+	AutopilotApprovalGrace time.Duration
 	// GoalEvaluator is the optional bounded Goal completion evaluator consulted
 	// when the working model submits no update_goal report. nil fails closed:
 	// the goal pauses instead of defaulting to continue.
@@ -720,6 +727,7 @@ func New(opts Options) *Controller {
 		taskBudget:                        opts.TaskBudget,
 		goalTokenBudget:                   opts.GoalTokenBudget,
 		autopilot:                         opts.Autopilot && opts.AutopilotMaxRuntime > 0,
+		autopilotApprovalGrace:            autopilotApprovalGrace(opts),
 		goals: goalMachine{
 			tokenBudget: opts.GoalTokenBudget,
 			autopilot:   opts.Autopilot && opts.AutopilotMaxRuntime > 0,
@@ -5922,9 +5930,34 @@ func (c *Controller) requestApprovalDecisionWithOptions(ctx context.Context, too
 	waitCtx, cancelWait := c.approval.waitContext(ctx)
 	defer cancelWait()
 
+	// Autopilot (task 49 A5): nobody is at the keyboard. Give a human the grace
+	// period to answer, then let the reviewer decide rather than blocking the run
+	// forever. A dangerous request is REFUSED, not approved, so an unattended run
+	// cannot delete, push, or spend on its own - the model is told why and can try
+	// another way.
+	var graceCh <-chan time.Time
+	if c.autopilot && c.autopilotApprovalGrace > 0 {
+		graceTimer := time.NewTimer(c.autopilotApprovalGrace)
+		defer graceTimer.Stop()
+		graceCh = graceTimer.C
+	}
+
 	select {
 	case r := <-reply:
 		return r, nil
+	case <-graceCh:
+		if decision, decided := c.reviewUnattendedApproval(ctx, tool, subject, reason, args); decided {
+			c.cancelOwnedPrompt(id)
+			return decision, nil
+		}
+		// No reviewer available: keep waiting for the human instead of guessing.
+		select {
+		case r := <-reply:
+			return r, nil
+		case <-waitCtx.Done():
+			c.cancelOwnedPrompt(id)
+			return approvalReply{}, waitCtx.Err()
+		}
 	case <-waitCtx.Done():
 		c.cancelOwnedPrompt(id)
 		return approvalReply{}, waitCtx.Err()
