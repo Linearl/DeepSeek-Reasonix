@@ -58,7 +58,6 @@ import { ArgMenu } from "./ArgMenu";
 import { ANCHORED_POPOVER_CLOSE_MS, AnchoredPopover } from "./AnchoredPopover";
 import { ComposerChoice } from "./ComposerChoice";
 const ModelSwitcher = lazy(() => import("./ModelSwitcher").then((module) => ({ default: module.ModelSwitcher })));
-import { SubagentPolicySwitcher } from "./SubagentPolicySwitcher";
 import { normalizeSubagentPolicy } from "../lib/types";
 import type { QuickCommandEntry } from "../lib/settingsViewTypes";
 import { Tooltip } from "./Tooltip";
@@ -4670,11 +4669,6 @@ export function Composer({
                     <span className="composer-task-mode-trigger__value">{t(taskModeShortKey)}</span>
                   </button>
                 </Tooltip>
-              </div>
-            )}
-            {!heroMode && onSetSubagentPolicy && (
-              <div className="composer-meta__control composer-meta__control--subagent">
-                <SubagentPolicySwitcher policy={subagentPolicy} disabled={running} onPick={onSetSubagentPolicy} />
               </div>
             )}
             {!heroMode && (
