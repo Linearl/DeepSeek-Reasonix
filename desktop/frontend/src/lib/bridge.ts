@@ -614,6 +614,7 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   TrustProjectHooksForRoot(projectRoot: string): Promise<void>;
   SetDefaultModel(ref: string): Promise<void>;
   SetPlannerModel(ref: string): Promise<void>;
+  SetGuardianModel(ref: string): Promise<void>;
   SetVisionModel(ref: string): Promise<void>;
   SetWebSearchModel(ref: string): Promise<void>;
   SetSubagentModel(ref: string): Promise<void>;
@@ -1186,7 +1187,7 @@ function bridgeBreadcrumb(method: string): string {
   if (method === "ReportCrash" || method === "RecordUIPerf") return "";
   if (/^(Submit|SubmitDisplay|RunShell|Steer|Cancel|Approve|AnswerQuestion|ReplayPendingPrompts)/.test(method))
     return `turn ${method}`;
-  if (/^(SetModel|SetEffort|SetDefaultModel|SetPlannerModel|SetVisionModel|SetWebSearchModel|SetSubagentModel|SetSubagentEffort|SetMaxSubagentDepth|SetMaxSubagentConcurrency|SetMaxParallelWriters)/.test(method))
+  if (/^(SetModel|SetEffort|SetDefaultModel|SetPlannerModel|SetGuardianModel|SetVisionModel|SetWebSearchModel|SetSubagentModel|SetSubagentEffort|SetMaxSubagentDepth|SetMaxSubagentConcurrency|SetMaxParallelWriters)/.test(method))
     return `model ${method}`;
   if (/^(SetDesktop|SetCloseBehavior|SetDisplayMode|SetStatusBar|SetReasoningDisplayMode|SetExpandThinking|SetAutoPlan|SetDefaultToolApprovalMode|SetCompactRatio|SetReasoningLanguage)/.test(method))
     return `settings ${method}`;
@@ -4725,6 +4726,9 @@ function makeMockApp(): AppBindings {
     },
     async SetPlannerModel(ref: string) {
       settings.plannerModel = ref;
+    },
+    async SetGuardianModel(ref: string) {
+      settings.guardianModel = ref;
     },
     async SetWebSearchModel(ref: string) {
       if (ref && ref !== "auto" && !(settings.webSearchModels ?? []).includes(ref)) throw new Error("Search model unavailable");
