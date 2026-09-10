@@ -84,6 +84,12 @@ type goalMachine struct {
 
 	tokenBudget int // configured ceiling for an unattended loop; 0 = unbounded
 
+	// Autopilot (task 49 A1): nobody is watching, so the run carries its own
+	// wall-clock bound. deadline is zero unless autopilot is on; a machine that
+	// says autopilot without one is refused at install time rather than trusted.
+	autopilot bool
+	deadline  time.Time
+
 	// Runtime statistics and optional user-selected spend state, persisted
 	// across turns and restarts. turnsUsed and noProgressTurns are observational;
 	// tokensLimit is non-zero only when the user configured a Goal token budget.
@@ -358,6 +364,15 @@ func (g *goalMachine) setStrict(strict bool, todos []evidence.TodoItem) (string,
 // stop transitions a running goal to the given terminal status and clears the
 // transient runtime bookkeeping. stopCause is cleared: a host stop is not a
 // safe pause.
+// autopilotDeadlineReached reports whether an unattended run has used up its
+// wall clock. Interactive machines always answer false - they have a human who
+// can decide, and an accidental deadline must never cut a normal session short.
+func (g *goalMachine) autopilotDeadlineReached(now time.Time) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.autopilot && !g.deadline.IsZero() && !now.Before(g.deadline)
+}
+
 func (g *goalMachine) stop(status string, todos []evidence.TodoItem) (string, []byte, bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
