@@ -378,6 +378,12 @@ func autopilotDeadline(autopilot bool, maxRuntime time.Duration) time.Time {
 // autopilotDeadlineReached reports whether an unattended run has used up its
 // wall clock. Interactive machines always answer false - they have a human who
 // can decide, and an accidental deadline must never cut a normal session short.
+// autopilotDeadlineReachedLocked is the lock-held form for advance, which already
+// owns g.mu; taking it again would deadlock.
+func (g *goalMachine) autopilotDeadlineReachedLocked() bool {
+	return g.autopilot && !g.deadline.IsZero() && !time.Now().Before(g.deadline)
+}
+
 func (g *goalMachine) autopilotDeadlineReached(now time.Time) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -531,6 +537,14 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 	complete := g.completeDecision(in, reportComplete, evaluatorComplete)
 	g.observeGoalProgress(in, complete.accept || reportBlocked || evaluatorBlocked)
 	switch {
+	case g.autopilotDeadlineReachedLocked():
+		// An unattended run that has used its wall clock stops before any other
+		// disposition: the model may still believe it is making progress, but nobody
+		// is there to extend the budget - that decision was made in advance.
+		g.status = GoalStatusTimeLimitReached
+		g.stopCause = ""
+		g.lastContinuationReason = "autopilot time limit reached"
+		notice = "goal stopped: autopilot time limit reached"
 	case reportBlocked:
 		// A single blocked report ends the goal immediately; the host no longer
 		// repeats a three-turn confirmation ritual.
@@ -736,7 +750,9 @@ func (g *goalMachine) terminalTodosFromState(sessionPath string) ([]evidence.Tod
 		return nil, false
 	}
 	switch state.Status {
-	case GoalStatusComplete, GoalStatusBlocked, GoalStatusStopped:
+	case GoalStatusComplete, GoalStatusBlocked, GoalStatusStopped,
+		GoalStatusBudgetExhausted, GoalStatusTimeLimitReached,
+		GoalStatusFailed, GoalStatusCancelled:
 	default:
 		return nil, false
 	}
