@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -65,6 +66,37 @@ func imageAttachmentNote(path string, vision bool) string {
 		return "[The image at @" + path + " is attached as visual input. Look at the image directly; do not OCR or read the file unless the user asks.]"
 	}
 	return "[image attachment available at @" + path + "; sent as direct model image input only when the selected model supports vision. Text-only models can still use an available OCR/image/vision tool with this local path; image bytes are not inlined into prompt text.]"
+}
+
+// imageAttachmentFailedNote is the honest counterpart of imageAttachmentNote.
+// Announcing "attached as visual input" for a reference whose bytes never made
+// it into the turn sends the model looking for an image that is not there; the
+// note has to say the attachment did not come through instead.
+func imageAttachmentFailedNote(path string, err error) string {
+	return "[image attachment at @" + path + " could not be attached as visual input: " + err.Error() + ". The image bytes are not in this turn. Tell the user the attachment did not come through; do not guess at the image content.]"
+}
+
+// visionRefAvailable reports whether a reference can actually be delivered this
+// turn, without materialising the payload - the caller only needs to know
+// whether the note may claim attachment. Building the data URL here would
+// encode (and for large images possibly upload) the same bytes a second time.
+func (c *Controller) visionRefAvailable(r ref, baseDir string) error {
+	switch r.kind {
+	case refImage:
+		if isAttachmentRef(filepath.ToSlash(r.path)) {
+			_, err := cleanAttachmentPath(r.path)
+			return err
+		}
+		absPath, _, ok := resolveAbsRef(r.path, baseDir)
+		if !ok {
+			return os.ErrNotExist
+		}
+		_, err := os.Stat(absPath)
+		return err
+	default:
+		// Remote handles (file ids, remote images) are resolved by the provider.
+		return nil
+	}
 }
 
 func imageFileRefNote(displayPath, mime string, size int64, attached, vision bool) string {

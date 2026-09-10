@@ -886,6 +886,21 @@ func (c *Controller) resolveRefs(ctx context.Context, line string, scopedOnly bo
 			}
 			appendRefBlock(&b, tag, `path="`+displayPath+`"`, text)
 		case refImage, refRemoteImage, refFileID:
+			// The note has to describe what actually happened. A reference whose
+			// bytes never reach the model must not be announced as "attached as
+			// visual input" - that leaves the model hunting for an image that is
+			// not in the turn, and hides the failure from the user as well.
+			// baseDir mirrors the fallback the file branch applies: a reference
+			// carries its own base when it came with one.
+			refBaseDir := c.workspaceRoot
+			if r.baseDir != "" {
+				refBaseDir = r.baseDir
+			}
+			if err := c.visionRefAvailable(r, refBaseDir); err != nil {
+				errs = append(errs, "@"+r.raw+" — "+err.Error())
+				appendRefBlock(&b, "image", `path="`+r.path+`"`, imageAttachmentFailedNote(r.path, err))
+				continue
+			}
 			appendRefBlock(&b, "image", `path="`+r.path+`"`, imageAttachmentNote(r.path, c.imageInputEnabled()))
 		}
 	}
