@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -57,6 +58,7 @@ import (
 	"reasonix/internal/productdocs"
 	"reasonix/internal/provider"
 	"reasonix/internal/recovery"
+	"reasonix/internal/rules"
 	"reasonix/internal/sandbox"
 	"reasonix/internal/secrets"
 	"reasonix/internal/sessioncontext"
@@ -611,6 +613,19 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		sysPrompt = outputstyle.Apply(sysPrompt, st)
 	}
 	sysPrompt = appendCorePolicies(sysPrompt)
+	// Path-scoped rules (#9886): the project .reasonix/rules plus the user's
+	// shared rules, filtered by what the workspace actually contains. Folded into
+	// the cache-stable prefix, so a change takes effect from the next session.
+	if section, warnings := loadRulesSection(root); section != "" {
+		sysPrompt += "\n\n" + section
+		for _, warning := range warnings {
+			slog.Warn("boot: rules", "warning", warning)
+		}
+	} else if len(warnings) > 0 {
+		for _, warning := range warnings {
+			slog.Warn("boot: rules", "warning", warning)
+		}
+	}
 	sysPrompt += "\n\n" + sessioncontext.PolicyBlock()
 	sessionContextStatic := sessioncontext.Sections{Workspace: currentWorkspacePromptLine(root)}
 	// Execution modes no longer exist. Host obligations are fact-driven and
@@ -2855,4 +2870,51 @@ func providerNames(cfg *config.Config) string {
 		names[i] = p.Name
 	}
 	return strings.Join(names, "/")
+}
+
+// loadRulesSection assembles the path-scoped rules section for a workspace.
+func loadRulesSection(root string) (string, []string) {
+	loaded, warnings, err := rules.Load(rules.Options{
+		ProjectRoot: root,
+		UserRoot:    filepath.Join(filepath.Dir(config.UserConfigPath()), "rules"),
+	})
+	if err != nil || len(loaded) == 0 {
+		return "", warnings
+	}
+	section, _, truncated := rules.Assemble(loaded, workspaceFileInventory(root))
+	if truncated {
+		warnings = append(warnings, fmt.Sprintf("rules: section truncated at %d bytes", rules.MaxSectionBytes))
+	}
+	return section, warnings
+}
+
+// workspaceFileInventory lists workspace-relative paths for rule matching. The
+// walk is bounded: rules care which extensions and directories a project uses,
+// not about every file inside it.
+func workspaceFileInventory(root string) []string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return nil
+	}
+	var out []string
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if len(out) >= 4000 {
+			return fs.SkipAll
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", "node_modules", "vendor", "dist", "build", ".next", "target":
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if rel, relErr := filepath.Rel(root, path); relErr == nil {
+			out = append(out, filepath.ToSlash(rel))
+		}
+		return nil
+	})
+	return out
 }
