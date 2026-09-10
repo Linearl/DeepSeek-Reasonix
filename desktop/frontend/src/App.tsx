@@ -103,7 +103,6 @@ import {
   type SubagentPolicy,
   type QuickCommandEntry,
   type ComposerInsertRequest,
-  type DesktopStartupSettingsView,
   type Mode,
   modeHasPlan,
   type RewindResultView,
@@ -116,7 +115,7 @@ import {
   type WireCompletionSummary,
   type WorkspaceConflictView,
 } from "./lib/types";
-import { sidebarImAccessModeLabel, sidebarImAccessStatusClass, sidebarImAccessStatusLabel, sidebarImConnectionsFromBot, sidebarImScopeLabel, sidebarImSessionLabel, sidebarImSessionTarget, sidebarImTopicSourcesFromBot, type SidebarImConnection, type SidebarImTopicSource } from "./app-runtime/sidebarIm";
+import { useSidebarImOwner, sidebarImAccessModeLabel, sidebarImAccessStatusClass, sidebarImAccessStatusLabel, sidebarImConnectionsFromBot, sidebarImScopeLabel, sidebarImSessionLabel, sidebarImSessionTarget, sidebarImTopicSourcesFromBot, type SidebarImConnection } from "./app-runtime/sidebarIm";
 import { loadCachedLayoutStyle, saveCachedLayoutStyle } from "./lib/layoutPreferences";
 import { runWorktreeMergeLifecycle } from "./lib/worktreeMergeLifecycle";
 import { showWorktreeCleanupNotice } from "./lib/worktreeCleanupNotice";
@@ -871,9 +870,6 @@ export default function App() {
   const setShortcutsOpen = useOverlayStore((s) => s.setShortcutsOpen);
   const paletteSessions = useOverlayStore((s) => s.paletteSessions);
   const setPaletteSessions = useOverlayStore((s) => s.setPaletteSessions);
-  const [sidebarImConnections, setSidebarImConnections] = useState<SidebarImConnection[]>([]);
-  const [imTopicSources, setImTopicSources] = useState<Record<string, SidebarImTopicSource>>({});
-  const [sidebarImDetailConnectionId, setSidebarImDetailConnectionId] = useState("");
   const sidebarCollapsed = useLayoutStore((s) => s.sidebarCollapsed);
   const setSidebarCollapsed = useLayoutStore((s) => s.setSidebarCollapsed);
   type TimeFilter = "all" | "10" | "20" | "1h" | "3h" | "5h" | "1d";
@@ -1089,20 +1085,20 @@ export default function App() {
     setTransientOverlayDismissSignal((signal) => signal + 1);
   }, []);
 
-  const reloadSidebarImConnections = useCallback(async () => {
-    const [settings, runtimeStatus] = await Promise.all([
-      app.DesktopStartupSettings(),
-      loadBotRuntimeStatus(),
-    ]);
-    setSidebarImConnections(sidebarImConnectionsFromBot(settings.bot, t, runtimeStatus));
-    setImTopicSources(sidebarImTopicSourcesFromBot(settings.bot, t));
-  }, [t]);
 
-  const refreshSidebarImConnectionsFromSettings = useCallback(async (settings: Pick<SettingsView | DesktopStartupSettingsView, "bot">) => {
-    const runtimeStatus = await loadBotRuntimeStatus();
-    setSidebarImConnections(sidebarImConnectionsFromBot(settings.bot, t, runtimeStatus));
-    setImTopicSources(sidebarImTopicSourcesFromBot(settings.bot, t));
-  }, [t]);
+
+  // Task 38 B1b: the sidebar IM state moved into app-runtime/sidebarIm.ts. The
+  // aliases keep every consumer below untouched.
+  const {
+    connections: sidebarImConnections,
+    topicSources: imTopicSources,
+    setConnections: setSidebarImConnections,
+    setTopicSources: setImTopicSources,
+    detailConnectionId: sidebarImDetailConnectionId,
+    setDetailConnectionId: setSidebarImDetailConnectionId,
+    reload: reloadSidebarImConnections,
+    refreshFromSettings: refreshSidebarImConnectionsFromSettings,
+  } = useSidebarImOwner(t);
 
   const openBotSettings = useCallback(() => {
     closeTransientOverlays();

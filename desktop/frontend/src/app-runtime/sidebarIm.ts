@@ -3,8 +3,11 @@
 // These are pure: a BotSettingsView plus runtime status become the rows the
 // sidebar renders. They lived in the App.tsx monolith only for historical
 // reasons; the state that feeds them follows in B1b.
-import type { BotConnectionView, BotRuntimeStatusView, BotSettingsView } from "../lib/types";
+import type { BotConnectionView, BotRuntimeStatusView, BotSettingsView, DesktopStartupSettingsView, SettingsView } from "../lib/types";
+import { useCallback, useState } from "react";
 import { asArray } from "../lib/array";
+import { app } from "../lib/bridge";
+import { loadBotRuntimeStatus } from "./botRuntimeAdapter";
 import type { Translator } from "../lib/i18n";
 
 function uniqueTrimmedValues(values: string[]): string[] {
@@ -301,4 +304,35 @@ export function sidebarImAccessStatusClass(connection: SidebarImConnection): str
   if (connection.allowAll || connection.allowlistMatched) return "ok";
   if (!connection.remoteId) return "muted";
   return "warn";
+}
+
+/**
+ * useSidebarImOwner owns the sidebar IM projection state (task 38 batch B1b).
+ * The two loaders differ only in where the bot settings come from - a fresh
+ * startup read versus a settings object the caller already has.
+ */
+export function useSidebarImOwner(t: Translator) {
+  const [connections, setConnections] = useState<SidebarImConnection[]>([]);
+  const [topicSources, setTopicSources] = useState<Record<string, SidebarImTopicSource>>({});
+  const [detailConnectionId, setDetailConnectionId] = useState("");
+
+  const reload = useCallback(async () => {
+    const [settings, runtimeStatus] = await Promise.all([
+      app.DesktopStartupSettings(),
+      loadBotRuntimeStatus(),
+    ]);
+    setConnections(sidebarImConnectionsFromBot(settings.bot, t, runtimeStatus));
+    setTopicSources(sidebarImTopicSourcesFromBot(settings.bot, t));
+  }, [t]);
+
+  const refreshFromSettings = useCallback(
+    async (settings: Pick<SettingsView | DesktopStartupSettingsView, "bot">) => {
+      const runtimeStatus = await loadBotRuntimeStatus();
+      setConnections(sidebarImConnectionsFromBot(settings.bot, t, runtimeStatus));
+      setTopicSources(sidebarImTopicSourcesFromBot(settings.bot, t));
+    },
+    [t],
+  );
+
+  return { connections, setConnections, topicSources, setTopicSources, detailConnectionId, setDetailConnectionId, reload, refreshFromSettings };
 }
