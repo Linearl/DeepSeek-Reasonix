@@ -20,6 +20,7 @@ import (
 	"reasonix/internal/event"
 	"reasonix/internal/evidence"
 	"reasonix/internal/extension/dispatch"
+	"reasonix/internal/hook"
 	"reasonix/internal/i18n"
 	"reasonix/internal/imageinput"
 	"reasonix/internal/instruction"
@@ -224,6 +225,10 @@ func WithSubagentDepth(ctx context.Context, depth int) context.Context {
 	if depth < 0 {
 		depth = 0
 	}
+	// Mirror the depth into the hook package so `applies_to: main` hooks skip
+	// delegated runs. A broad hook that blocks every tool must not be able to
+	// freeze a sub-agent's entire tool surface (whole-domain declaration defect).
+	ctx = hook.WithSubagentContext(ctx, depth > 0)
 	return context.WithValue(ctx, subagentDepthContextKey{}, depth)
 }
 

@@ -129,6 +129,12 @@ type HookConfig struct {
 	// PermissionRequest only); "" or "*" = every tool. Anchored: "file" won't
 	// match "read_file" — use ".*file".
 	Match string `json:"match,omitempty"`
+	// AppliesTo limits the hook to one agent context: "" / "all" runs everywhere
+	// (the historical behaviour), "main" skips delegated sub-agents, and
+	// "subagent" runs only inside them. Without it a broad `match: "*"` hook
+	// could block every tool a sub-agent calls and stall the entire turn — the
+	// whole-domain declaration defect.
+	AppliesTo string `json:"applies_to,omitempty"`
 	// Command is the executable, shell script, or legacy shell command to run,
 	// according to ExecutionMode.
 	Command string `json:"command"`
@@ -1122,7 +1128,7 @@ func Run(ctx context.Context, payload Payload, hooks []ResolvedHook, spawner Spa
 	event := payload.Event
 	report := Report{Event: event}
 	for _, h := range hooks {
-		if h.Event != event || !MatchesTool(h, payload.ToolName) {
+		if h.Event != event || !MatchesTool(h, payload.ToolName) || !h.appliesHere(ctx) {
 			continue
 		}
 		cwd := h.Cwd
@@ -1596,4 +1602,39 @@ func sameCleanPath(a, b string) bool {
 		b = bb
 	}
 	return filepath.Clean(a) == filepath.Clean(b)
+}
+
+// AppliesTo values. Empty means "all", matching the behaviour hooks had before
+// the field existed.
+const (
+	AppliesToAll      = ""
+	AppliesToMain     = "main"
+	AppliesToSubagent = "subagent"
+)
+
+type subagentCtxKey struct{}
+
+// WithSubagentContext marks ctx as belonging to a delegated sub-agent run.
+// Callers that spawn a sub-agent must set it, or applies_to: main hooks will
+// still fire there.
+func WithSubagentContext(ctx context.Context, isSubagent bool) context.Context {
+	return context.WithValue(ctx, subagentCtxKey{}, isSubagent)
+}
+
+// InSubagentContext reports whether ctx belongs to a delegated sub-agent run.
+func InSubagentContext(ctx context.Context) bool {
+	in, _ := ctx.Value(subagentCtxKey{}).(bool)
+	return in
+}
+
+// appliesHere reports whether the hook should run in this context.
+func (h ResolvedHook) appliesHere(ctx context.Context) bool {
+	switch strings.ToLower(strings.TrimSpace(h.AppliesTo)) {
+	case AppliesToMain:
+		return !InSubagentContext(ctx)
+	case AppliesToSubagent:
+		return InSubagentContext(ctx)
+	default:
+		return true
+	}
 }
