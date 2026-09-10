@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
-import { Archive, ArrowDown, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, Cloud, SwatchBook } from "lucide-react";
+import { Archive, ArrowDown, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput } from "lucide-react";
 import { asArray } from "../lib/array";
 import { useToast } from "../lib/toast";
 import { app } from "../lib/bridge";
@@ -26,6 +26,15 @@ import { useProjectTreeFrontendDiagnostics, type ProjectTreeDiagnosticSnapshot }
 import { summarizeProjectTreeSessions } from "../lib/projectTreeDiagnostics";
 import { GLOBAL_PROJECT_ORDER_KEY, ProjectTreeFolderActivity, ProjectTreeGroupRows, applyProjectOrder, projectTreeProjectRoots, reorderedProjectRoots, useProjectTreeOrganization, type ProjectDropPosition } from "./ProjectTreeOrganization";
 import { ProjectTreeSessionArchiveMenu } from "./ProjectTreeSessionArchiveMenu";
+import {
+  addProjectGroup,
+  groupForProject,
+  loadProjectGroupAssign,
+  loadProjectGroups,
+  moveProjectToGroup,
+  type ProjectGroup,
+} from "../lib/projectGroups";
+import { NewGroupPanel } from "./NewGroupPanel";
 import { ProjectTreeHeaderAddControl, ProjectTreeRemoteAction, projectTreeHeaderAddItems } from "./ProjectTreeAddControls";
 import { activeRemoteProjectAncestorKeys, buildRemoteProjectMenuItems, useRemoteRuntimeTree, openRemoteSessionNode, remoteProjectKey, remoteServeBadgeState, renameRemoteProjectTitle, RemoteProjectEmptyState, useRemoteProjectGroups, useRemoteSessionActions } from "./ProjectTreeRemoteGroups";
 import type { ProjectTreeProps } from "./ProjectTreeProps";
@@ -650,6 +659,36 @@ export function ProjectTree({
   const hasExpandedFolders = !searchActive && folderKeys.some((key) => expanded.has(key));
   const canRestoreCollapsedView = collapseSnapshot !== null;
   const canToggleCollapsedView = !searchActive && folderKeys.length > 0 && (hasExpandedFolders || canRestoreCollapsedView);
+  // Project groups (#9222, fork feature): projects are grouped by type and a
+  // project belongs to at most one group. Assignments are local-only, so the
+  // loaders read straight from localStorage exactly as they always have.
+  const [groups, setGroups] = useState<ProjectGroup[]>(loadProjectGroups);
+  const [assign, setAssign] = useState<Record<string, string>>(loadProjectGroupAssign);
+  const [newGroupOpen, setNewGroupOpen] = useState(false);
+
+  const groupForProjectRoot = useCallback(
+    (root?: string): ProjectGroup | null => {
+      const id = groupForProject(assign, root);
+      return id ? groups.find((group) => group.id === id) ?? null : null;
+    },
+    [assign, groups],
+  );
+
+  // A1: create the group, then put the current project in it. Without the second
+  // step a new group would be an empty row with no obvious way to fill it.
+  const handleAddGroup = useCallback(
+    (title: string) => {
+      const trimmed = title.trim();
+      if (!trimmed) return;
+      const res = addProjectGroup(trimmed, groups);
+      setGroups(res.groups);
+      setNewGroupOpen(false);
+      const root = activeWorkspaceRoot;
+      if (root) setAssign((current) => moveProjectToGroup(current, root, res.group.id));
+    },
+    [groups, activeWorkspaceRoot],
+  );
+
   const collapseToggleLabel = t(canRestoreCollapsedView ? "projectTree.restoreCollapsedTooltip" : "projectTree.collapseAllTooltip");
   const workbenchCollapseToggleLabel = t(canRestoreCollapsedView ? "projectTree.restoreCollapsedWorkbench" : "projectTree.collapseAllWorkbench");
 
@@ -2180,6 +2219,16 @@ export function ProjectTree({
                 {canRestoreCollapsedView ? <ListRestart size={14} /> : <ListCollapse size={14} />}
               </button>
             </Tooltip>
+            <Tooltip label={t("projectGroup.createNew")} className="project-tree__action-slot project-tree__header-action-slot project-tree__action-slot--group">
+              <button
+                type="button"
+                className="project-tree__add-project"
+                aria-label={t("projectGroup.createNew")}
+                onClick={() => setNewGroupOpen(true)}
+              >
+                <FolderInput size={14} />
+              </button>
+            </Tooltip>
             <ProjectTreeHeaderAddControl
               open={workbenchHeaderMenu === "add"} point={menuPoint} items={classicHeaderAddItems}
               label={t("projectTree.addProjectTooltip")} disabled={addingProject}
@@ -2188,6 +2237,26 @@ export function ProjectTree({
           </>
         )}
       </span>
+    </div>
+  );
+
+  // Project rows render under their group heading; ungrouped projects follow at
+  // the bottom. A group with no members still renders so a freshly created one
+  // stays visible while the user fills it.
+  const renderProjectSection = (depth: number) => (
+    <div className="project-tree__section project-tree__section--projects">
+      {groups.map((group) => {
+        const members = pinnedTreeSections.projects.filter((node) => groupForProjectRoot(node.root)?.id === group.id);
+        return (
+          <div key={group.id} className="project-tree__group">
+            <div className="project-tree__group-title">{group.title}</div>
+            {members.map((node) => renderNode(node, depth, "projects"))}
+          </div>
+        );
+      })}
+      {pinnedTreeSections.projects
+        .filter((node) => !groupForProjectRoot(node.root))
+        .map((node) => renderNode(node, depth, "projects"))}
     </div>
   );
 
@@ -2286,9 +2355,7 @@ export function ProjectTree({
                     {pinnedTreeSections.pinned.map((node) => renderNode(node, 0, "pinned"))}
                   </div>
                 )}
-                <div className="project-tree__section project-tree__section--projects">
-                  {pinnedTreeSections.projects.map((node) => renderNode(node, 0, "projects"))}
-                </div>
+                {renderProjectSection(0)}
               </>
             )}
           </div>
@@ -2307,9 +2374,7 @@ export function ProjectTree({
                     {pinnedTreeSections.pinned.map((node) => renderNode(node, 1, "pinned"))}
                   </div>
                 )}
-                <div className="project-tree__section project-tree__section--projects">
-                  {pinnedTreeSections.projects.map((node) => renderNode(node, 0, "projects"))}
-                </div>
+                {renderProjectSection(0)}
               </>
             )}
           </div>
@@ -2339,6 +2404,7 @@ export function ProjectTree({
       )}
       {blankProjectFlow}
       {remoteConnectFlow}
+      <NewGroupPanel open={newGroupOpen} onClose={() => setNewGroupOpen(false)} onConfirm={handleAddGroup} />
     </div>
   );
 }
