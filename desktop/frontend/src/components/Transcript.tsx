@@ -65,6 +65,7 @@ const EMPTY_CHECKPOINTS: CheckpointMeta[] = [];
 const EMPTY_INVOCATION_METADATA: InvocationMetadataMap = {};
 const QUESTION_NAV_MIN_COUNT = 2;
 const TranscriptQuestionNavigator = lazy(() => import("./TranscriptQuestionNavigator"));
+const QuestionSearchPanel = lazy(() => import("./QuestionSearchPanel"));
 const SHOW_FRONTEND_DIAGNOSTICS = typeof __BUILD_CHANNEL__ === "undefined"
   || __BUILD_CHANNEL__ === "test"
   || __BUILD_CHANNEL__ === "preview"
@@ -94,6 +95,8 @@ export type TranscriptProps = {
   rewindDisabled?: boolean;
   running?: boolean;
   questionNavigator?: boolean;
+  questionSearchOpen?: boolean;
+  onCloseQuestionSearch?: () => void;
   welcomeVariant?: "default" | "creation";
   creationMode?: boolean;
   actionHoverMenus?: boolean;
@@ -120,6 +123,7 @@ export function Transcript(props: TranscriptProps) {
     onPrompt, onDeliveryContinue, onAcceptDelivery, onOpenChanges, onOpenVerification, onConsolidateRecovery,
     onEditPrompt, onRewind, checkpoints = EMPTY_CHECKPOINTS, actionPending = false,
     rewindDisabled = false, running = false, questionNavigator = true,
+    questionSearchOpen = false, onCloseQuestionSearch,
     welcomeVariant = "default", creationMode = false, actionHoverMenus = false,
     rewindSignal = 0, revealSignal = 0, hydrating = false, hasOlderHistory = false,
     historyStartTurn = 0, historyTotalTurns = 0, loadingOlderHistory = false,
@@ -432,6 +436,17 @@ export function Transcript(props: TranscriptProps) {
         {!empty && showQuestionNav && <Suspense fallback={null}><TranscriptQuestionNavigator ref={questionNavigatorRef} kernel={transcriptKernel}
           requestOlder={requestOlder} loadingOlderHistory={loadingOlderHistory} running={running} loadedByTurn={loadedByTurn}
           jump={jumpToLoadedQuestion} questions={questions} totalQuestions={totalQuestions} activeTurn={activeQuestion} /></Suspense>}
+      {showQuestionNav && (
+        <Suspense fallback={null}>
+          <QuestionSearchPanel
+            open={Boolean(questionSearchOpen)}
+            onClose={() => onCloseQuestionSearch?.()}
+            questions={questions}
+            totalQuestions={totalQuestions}
+            onJump={jumpToLoadedQuestion}
+          />
+        </Suspense>
+      )}
         {!empty && <button type="button" className="transcript__jump-bottom" hidden={!jumpBottomVisible} onClick={() => { endStaleGesture(); scrollToBottom(); }} aria-label={t("transcript.jumpToBottom")} title={t("transcript.jumpToBottom")}><ArrowDown size={18} strokeWidth={2.2} aria-hidden="true" /></button>}
         {FrontendDiagnosticsPanel && <Suspense fallback={null}><FrontendDiagnosticsPanel scrollElement={scrollElement} totalRows={allRows.length} /></Suspense>}
       </div>
