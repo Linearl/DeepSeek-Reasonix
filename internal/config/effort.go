@@ -646,5 +646,24 @@ func ReasoningCapabilityForEntry(e *ProviderEntry) provider.ReasoningCapability 
 		"thinking": e.Thinking, "reasoning_protocol": ReasoningProtocolForEntry(e),
 		"supported_efforts": normalizedSupportedEfforts(e), "default_effort": normalizeEffortLevel(e.DefaultEffort),
 	}}
-	return provider.ReasoningForConfig(e.Kind, cfg)
+	rc := provider.ReasoningForConfig(e.Kind, cfg)
+	// The provider layer carries the wire vocabulary (binary thinking for Zhipu
+	// and LongCat). The effort layer knows the depth scale the vendor actually
+	// accepts, so when the two disagree the richer table wins — otherwise the
+	// composer only offers enabled/disabled and GLM strength levels are
+	// unreachable, which regressed repeatedly (#glm-effort).
+	if levels := EffortCapabilityForEntry(e).Levels; len(levels) > len(rc.Options) {
+		rc.Options = reasoningOptionsFromLevels(levels)
+	}
+	return rc
+}
+
+// reasoningOptionsFromLevels mirrors an effort level table into the option
+// shape the desktop composer renders.
+func reasoningOptionsFromLevels(levels []string) []provider.ReasoningOption {
+	out := make([]provider.ReasoningOption, 0, len(levels))
+	for _, level := range levels {
+		out = append(out, provider.ReasoningOption{ID: level, Name: level})
+	}
+	return out
 }
