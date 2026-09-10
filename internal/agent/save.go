@@ -302,7 +302,16 @@ func (s *Session) saveLocked(path string, mode sessionSaveMode) error {
 		// runs under the save locks, not before them, so a saver that waited
 		// on a concurrent writer still re-evaluates against the state it must
 		// persist when it finally enters the critical section.
-		return nil
+		//
+		// An up-to-date transcript does not imply up-to-date derived files: a
+		// tool checkpoint commits the transcript but defers the listing and
+		// display indexes. Republish them here instead of paying for the full
+		// save above just to rebuild a derived index. A log whose derived files
+		// need more than that (schema 2 also derives its head index and meta
+		// mirror) declines and falls through unchanged.
+		if s.flushDeferredDerivedFiles(path) {
+			return nil
+		}
 	}
 	// Capture the snapshot only while holding the save locks. Concurrent
 	// in-process savers (turn-end snapshot, periodic autosave, shutdown
@@ -823,13 +832,22 @@ func (s *Session) ownsPersistedState(path string, existingDigest [sha256.Size]by
 // damage is waiting to be persisted. Every one of these flags fails open —
 // when any is unset or stale the caller falls through to the full save path,
 // which re-derives the truth from disk.
+//
+// persisted.projectionPending is deliberately not part of this decision. It
+// reports derived files (listing sidecar, display cache) that a tool
+// checkpoint or an unlocked shutdown append left to a later save; the
+// transcript bytes themselves are already committed, and this baseline
+// describes exactly those bytes. Letting it veto the no-op would push a
+// defensive switch/close snapshot on a large session through the serialize +
+// digest + probe path this fast path exists to avoid (#6607) merely to
+// republish a derived index. The caller republishes those derived files
+// directly instead — see flushDeferredDerivedFiles.
 func (s *Session) snapshotUpToDate(path string) bool {
 	key := canonicalSessionSavePath(path)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.persisted.ok &&
 		s.persisted.saveVerified &&
-		!s.persisted.projectionPending &&
 		s.persisted.path == key &&
 		s.persisted.version == s.version &&
 		s.persisted.revisionKnown &&
