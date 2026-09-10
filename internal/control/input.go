@@ -45,6 +45,15 @@ const (
 	GoalStatusComplete = "complete"
 	GoalStatusBlocked  = "blocked"
 	GoalStatusStopped  = "stopped"
+
+	// Terminal states an unattended (autopilot) run can reach with nobody present
+	// (task 49 A1). The four above stay the interactive vocabulary; these name why
+	// a run ended when no human was watching, so the morning-after report can say
+	// more than "stopped".
+	GoalStatusBudgetExhausted  = "budget_exhausted"
+	GoalStatusTimeLimitReached = "time_limit_reached"
+	GoalStatusFailed           = "failed"
+	GoalStatusCancelled        = "cancelled"
 )
 
 type GoalResearchMode int
