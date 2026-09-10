@@ -115,6 +115,7 @@ import {
   type WireCompletionSummary,
   type WorkspaceConflictView,
 } from "./lib/types";
+import { useDialogSurfaceOwner } from "./app-runtime/dialogSurfaceOwner";
 import { useTranscriptRevealOwner } from "./app-runtime/transcriptRevealOwner";
 import { useViewportMetricsOwner } from "./app-runtime/viewportMetricsOwner";
 import { useSidebarImOwner, sidebarImAccessModeLabel, sidebarImAccessStatusClass, sidebarImAccessStatusLabel, sidebarImConnectionsFromBot, sidebarImScopeLabel, sidebarImSessionLabel, sidebarImSessionTarget, sidebarImTopicSourcesFromBot, type SidebarImConnection } from "./app-runtime/sidebarIm";
@@ -874,10 +875,6 @@ export default function App() {
   const setSidebarCollapsed = useLayoutStore((s) => s.setSidebarCollapsed);
   const sidebarWidth = useLayoutStore((s) => s.sidebarWidth);
   const setSidebarWidth = useLayoutStore((s) => s.setSidebarWidth);
-  const [tasksOpen, setTasksOpen] = useState<false | "session" | "all">(false);
-  const [takeoverDialogTab, setTakeoverDialogTab] = useState<string | null>(null);
-  const [questionSearchOpen, setQuestionSearchOpen] = useState(false);
-  const [reclaimBusyTab, setReclaimBusyTab] = useState<string | null>(null);
   const workspacePanelOpen = useLayoutStore((s) => s.workspacePanelOpen);
   const setWorkspacePanelOpen = useLayoutStore((s) => s.setWorkspacePanelOpen);
   const rightDockTreeWidth = useLayoutStore((s) => s.rightDockTreeWidth);
@@ -950,6 +947,18 @@ export default function App() {
       tabCount: tabMetas.length,
     });
   }, [activeTabId, tabMetas.length]);
+
+  // Task 38 B4: which dialog surface is open.
+  const {
+    tasksOpen,
+    setTasksOpen,
+    takeoverDialogTab,
+    setTakeoverDialogTab,
+    questionSearchOpen,
+    setQuestionSearchOpen,
+    reclaimBusyTab,
+    setReclaimBusyTab,
+  } = useDialogSurfaceOwner();
 
   // Task 38 B3: reveal signals and the project-tree time filter.
   const {
