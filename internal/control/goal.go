@@ -577,10 +577,18 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 		notice = goalCompleteNotice
 	case g.tokensLimit > 0 && g.tokensUsed >= g.tokensLimit:
 		reason := fmt.Sprintf("token budget reached (%d/%d tokens used)", g.tokensUsed, g.tokensLimit)
-		g.status = GoalStatusBlocked
 		g.stopCause = stopCauseBudgetSpend
 		g.block = clipGoalReason(reason)
-		notice = "goal paused: " + reason
+		if g.autopilot {
+			// Nobody is around to top the budget up, so this is terminal rather than a
+			// pause awaiting a human. Naming it separately is what lets the
+			// morning-after report say "budget" instead of a generic "blocked".
+			g.status = GoalStatusBudgetExhausted
+			notice = "goal stopped: " + reason
+		} else {
+			g.status = GoalStatusBlocked
+			notice = "goal paused: " + reason
+		}
 	case in.evaluatorFailed != "" || (in.evaluator != nil && in.evaluator.outcome == goaleval.OutcomeUncertain):
 		// Fail closed: an unavailable, erroring, or uncertain evaluator pauses
 		// the goal instead of defaulting to continue.
