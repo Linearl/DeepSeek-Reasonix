@@ -30,8 +30,10 @@ import {
   addProjectGroup,
   groupForProject,
   loadProjectGroupAssign,
+  loadProjectGroupCollapsed,
   loadProjectGroups,
   moveProjectToGroup,
+  persistProjectGroupCollapsed,
   type ProjectGroup,
 } from "../lib/projectGroups";
 import { MoveToGroupPanel } from "./MoveToGroupPanel";
@@ -666,8 +668,19 @@ export function ProjectTree({
   const [groups, setGroups] = useState<ProjectGroup[]>(loadProjectGroups);
   const [assign, setAssign] = useState<Record<string, string>>(loadProjectGroupAssign);
   const [newGroupOpen, setNewGroupOpen] = useState(false);
+  const [collapsedProjectGroups, setCollapsedProjectGroups] = useState<ReadonlySet<string>>(loadProjectGroupCollapsed);
   // Which project the "move to group" panel is acting on.
   const [groupTarget, setGroupTarget] = useState<ProjectNode | null>(null);
+
+  const toggleProjectGroup = useCallback((id: string) => {
+    setCollapsedProjectGroups((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      persistProjectGroupCollapsed(next);
+      return next;
+    });
+  }, []);
 
   const handleMoveToGroup = useCallback((root: string, groupId: string | null) => {
     setAssign((current) => moveProjectToGroup(current, root, groupId));
@@ -2273,10 +2286,29 @@ export function ProjectTree({
     <div className="project-tree__section project-tree__section--projects">
       {groups.map((group) => {
         const members = pinnedTreeSections.projects.filter((node) => groupForProjectRoot(node.root)?.id === group.id);
+        const collapsed = collapsedProjectGroups.has(group.id);
         return (
           <div key={group.id} className="project-tree__group">
-            <div className="project-tree__group-title">{group.title}</div>
-            {members.map((node) => renderNode(node, depth, "projects"))}
+            <div
+              className="project-tree__group-main"
+              role="button"
+              tabIndex={0}
+              aria-expanded={!collapsed}
+              title={group.title}
+              onClick={() => toggleProjectGroup(group.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  toggleProjectGroup(group.id);
+                }
+              }}
+            >
+              <span className="project-tree__group-chevron" aria-hidden="true">{collapsed ? "▸" : "▾"}</span>
+              <FolderInput className="project-tree__group-icon" size={12} aria-hidden="true" />
+              <span className="project-tree__group-name">{group.title}</span>
+              <span className="project-tree__group-count">{members.length}</span>
+            </div>
+            {!collapsed && members.map((node) => renderNode(node, depth, "projects"))}
           </div>
         );
       })}
