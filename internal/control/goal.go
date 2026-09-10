@@ -625,6 +625,10 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 	default:
 		intercept, interceptNotice = g.applyContinue(in, reportComplete, evaluatorComplete, complete)
 	}
+	// An unattended run leaves nobody to ask what happened, so every terminal notice
+	// carries the run's spend. Appending it once here, rather than in each branch,
+	// keeps a newly added terminal state from shipping without a report.
+	notice = appendGoalStopReport(notice, g)
 	res := goalAdvanceResult{
 		notice:            notice,
 		intercept:         intercept,
@@ -634,6 +638,46 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 	}
 	res.path, res.data, res.ok = g.buildStateLocked(in.todos)
 	return res
+}
+
+// goalStatusIsTerminal reports whether a status ends the run: no further turns follow.
+func goalStatusIsTerminal(status string) bool {
+	switch status {
+	case GoalStatusComplete, GoalStatusBlocked, GoalStatusStopped,
+		GoalStatusBudgetExhausted, GoalStatusTimeLimitReached,
+		GoalStatusFailed, GoalStatusCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
+// appendGoalStopReport adds the run's spend to a terminal notice. The notice says
+// what happened; this says how far the run got, which is the part of an
+// unattended run nobody can ask about afterwards - the user was, by definition,
+// not watching when it stopped.
+func appendGoalStopReport(notice string, g *goalMachine) string {
+	if notice == "" || g == nil || !goalStatusIsTerminal(g.status) {
+		return notice
+	}
+	parts := []string{fmt.Sprintf("turns %d", g.turnsUsed)}
+	if g.tokensUsed > 0 {
+		parts = append(parts, fmt.Sprintf("tokens %d", g.tokensUsed))
+	}
+	if g.workDurationMs > 0 {
+		parts = append(parts, fmt.Sprintf("work %s", formatGoalSpendDuration(g.workDurationMs)))
+	}
+	return notice + " — " + strings.Join(parts, ", ")
+}
+
+// formatGoalSpendDuration keeps the report readable at both ends of the scale:
+// seconds for a short run, minutes for one that ate an afternoon or a night.
+func formatGoalSpendDuration(ms int64) string {
+	d := time.Duration(ms) * time.Millisecond
+	if d < time.Minute {
+		return d.Round(time.Second).String()
+	}
+	return d.Round(time.Minute).String()
 }
 
 // foldUsage attributes a turn's billable tokens to the goal, but only while the
