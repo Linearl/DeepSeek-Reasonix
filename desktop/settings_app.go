@@ -2177,6 +2177,13 @@ func (a *App) SetPlannerModel(ref string) error {
 	return a.applyModelConfigChange(func(c *config.Config) error { return setPlannerModelConfig(c, ref) })
 }
 
+// SetGuardianModel sets (or clears) the reviewer model used to guard an autopilot
+// run: it answers approval prompts nobody is there for, and screens risky actions
+// before they reach a human. Empty falls back to the conversation model.
+func (a *App) SetGuardianModel(ref string) error {
+	return a.applyModelConfigChange(func(c *config.Config) error { return setGuardianModelConfig(c, ref) })
+}
+
 // SetVisionModel sets (or clears) the optional image-understanding fallback.
 func (a *App) SetVisionModel(ref string) error {
 	return a.applyModelConfigChange(func(c *config.Config) error { return setVisionModelConfig(c, ref) })

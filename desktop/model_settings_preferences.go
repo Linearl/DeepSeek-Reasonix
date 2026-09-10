@@ -30,6 +30,23 @@ func setPlannerModelConfig(c *config.Config, ref string) error {
 	return nil
 }
 
+// setGuardianModelConfig sets the reviewer model that guards autopilot runs: it
+// judges approval prompts nobody answers, and screens risky actions before they
+// reach a human. Empty clears it, which falls back to the conversation model.
+func setGuardianModelConfig(c *config.Config, ref string) error {
+	ref = strings.TrimSpace(ref)
+	if ref == "" || strings.EqualFold(ref, "auto") {
+		c.Agent.GuardianModel = ""
+		return nil
+	}
+	resolved, err := selectableDesktopModelRef(c, ref)
+	if err != nil {
+		return err
+	}
+	c.Agent.GuardianModel = resolved
+	return nil
+}
+
 func setVisionModelConfig(c *config.Config, ref string) error {
 
 	ref = strings.TrimSpace(ref)
