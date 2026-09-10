@@ -115,6 +115,7 @@ import {
   type WireCompletionSummary,
   type WorkspaceConflictView,
 } from "./lib/types";
+import { useComposerProfileStore } from "./app-runtime/composerProfileStore";
 import { useDialogSurfaceOwner } from "./app-runtime/dialogSurfaceOwner";
 import { useTranscriptRevealOwner } from "./app-runtime/transcriptRevealOwner";
 import { useViewportMetricsOwner } from "./app-runtime/viewportMetricsOwner";
@@ -785,7 +786,7 @@ export default function App() {
   } = useController();
   const { locale, setPref: setLocalePref } = useI18n();
   const t = useT();
-  const [composerProfilesByTab, setComposerProfilesByTab] = useState<Record<string, ComposerProfile>>({});
+
   const yoloRestoreToolApprovalModesRef = useRef<Record<string, RestorableToolApprovalMode>>({});
   const userPlanModeByTabRef = useRef<UserPlanModeIntents>({});
   const [tabMetas, setTabMetas] = useState<TabMeta[]>([]);
@@ -947,6 +948,9 @@ export default function App() {
       tabCount: tabMetas.length,
     });
   }, [activeTabId, tabMetas.length]);
+
+  // Task 38 B6: composer profiles keyed by tab.
+  const { composerProfilesByTab, setComposerProfilesByTab } = useComposerProfileStore();
 
   // Task 38 B4: which dialog surface is open.
   const {
