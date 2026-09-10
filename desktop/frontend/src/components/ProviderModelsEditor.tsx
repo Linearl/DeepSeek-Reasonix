@@ -104,7 +104,9 @@ export function ProviderModelsEditor({ provider, disabled, canFetch, onChange, o
             onChange={(mode) => onChange(provider.models, mergeImageInputModes(overrides, provider.models, { ...imageInputModes(overrides), [model]: mode }), capabilities)} />
           {result && <div role="status" className={`provider-fetch-status provider-fetch-status--${result.error ? "warn" : "ok"}`}>{result.busy ? t("providerUI.testing") : result.error || (result.probe?.ttftMs
               ? (result.probe.tps
-                ? t("providerUI.testTiming", { ttft: result.probe.ttftMs, tps: result.probe.tps.toFixed(1) })
+                ? (result.probe.outputTokens
+                  ? t("providerUI.testTimingFull", { ttft: result.probe.ttftMs, tps: result.probe.tps.toFixed(1), tokens: result.probe.outputTokens, gen: result.probe.generationMs ?? 0 })
+                  : t("providerUI.testTiming", { ttft: result.probe.ttftMs, tps: result.probe.tps.toFixed(1) }))
                 : t("providerUI.testTimingTTFT", { ttft: result.probe.ttftMs }))
               : t("providerUI.testSuccess"))}</div>}
         </div>;
