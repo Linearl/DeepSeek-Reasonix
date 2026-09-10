@@ -115,6 +115,7 @@ import {
   type WireCompletionSummary,
   type WorkspaceConflictView,
 } from "./lib/types";
+import { useViewportMetricsOwner } from "./app-runtime/viewportMetricsOwner";
 import { useSidebarImOwner, sidebarImAccessModeLabel, sidebarImAccessStatusClass, sidebarImAccessStatusLabel, sidebarImConnectionsFromBot, sidebarImScopeLabel, sidebarImSessionLabel, sidebarImSessionTarget, sidebarImTopicSourcesFromBot, type SidebarImConnection } from "./app-runtime/sidebarIm";
 import { loadCachedLayoutStyle, saveCachedLayoutStyle } from "./lib/layoutPreferences";
 import { runWorktreeMergeLifecycle } from "./lib/worktreeMergeLifecycle";
@@ -885,14 +886,10 @@ export default function App() {
   }, [topicTimeFilter]);
   const sidebarWidth = useLayoutStore((s) => s.sidebarWidth);
   const setSidebarWidth = useLayoutStore((s) => s.setSidebarWidth);
-  const [sidebarResizing, setSidebarResizing] = useState(false);
   const [tasksOpen, setTasksOpen] = useState<false | "session" | "all">(false);
   const [takeoverDialogTab, setTakeoverDialogTab] = useState<string | null>(null);
   const [questionSearchOpen, setQuestionSearchOpen] = useState(false);
   const [reclaimBusyTab, setReclaimBusyTab] = useState<string | null>(null);
-  const [liveSidebarWidth, setLiveSidebarWidth] = useState<number | null>(null);
-  const [viewportWidth, setViewportWidth] = useState(() => (typeof window === "undefined" ? 1440 : window.innerWidth));
-  const [viewportHeight, setViewportHeight] = useState(() => (typeof window === "undefined" ? 720 : window.innerHeight));
   const workspacePanelOpen = useLayoutStore((s) => s.workspacePanelOpen);
   const setWorkspacePanelOpen = useLayoutStore((s) => s.setWorkspacePanelOpen);
   const rightDockTreeWidth = useLayoutStore((s) => s.rightDockTreeWidth);
@@ -966,9 +963,25 @@ export default function App() {
     });
   }, [activeTabId, tabMetas.length]);
 
-  const [workspacePanelResizing, setWorkspacePanelResizing] = useState(false);
-  const [liveWorkspacePanelRenderWidth, setLiveWorkspacePanelRenderWidth] = useState<number | null>(null);
-  const [liveTerminalHeight, setLiveTerminalHeight] = useState<number | null>(null);
+  // Task 38 B2: viewport and live-resize geometry now lives in app-runtime.
+  // The destructuring keeps the same names so no call site changes.
+  const {
+    sidebarResizing,
+    setSidebarResizing,
+    liveSidebarWidth,
+    setLiveSidebarWidth,
+    viewportWidth,
+    setViewportWidth,
+    viewportHeight,
+    setViewportHeight,
+    workspacePanelResizing,
+    setWorkspacePanelResizing,
+    liveWorkspacePanelRenderWidth,
+    setLiveWorkspacePanelRenderWidth,
+    liveTerminalHeight,
+    setLiveTerminalHeight,
+  } = useViewportMetricsOwner();
+
   const terminalResizing = liveTerminalHeight !== null;
   const workspacePanelMaximized = useLayoutStore((s) => s.workspacePanelMaximized);
   const setWorkspacePanelMaximized = useLayoutStore((s) => s.setWorkspacePanelMaximized);
@@ -1084,6 +1097,7 @@ export default function App() {
   const closeTransientOverlays = useCallback(() => {
     setTransientOverlayDismissSignal((signal) => signal + 1);
   }, []);
+
 
 
 
