@@ -86,7 +86,7 @@ func TestBuildRequestSkipsImagesWithoutVision(t *testing.T) {
 	}
 }
 
-func TestOfficialDeepSeekProviderWideVisionInputMatchesTextOnlyRequest(t *testing.T) {
+func TestOfficialDeepSeekProviderWideVisionInputIsHonored(t *testing.T) {
 	p, err := New(provider.Config{
 		Name:    "deepseek",
 		BaseURL: "https://api.deepseek.com",
@@ -97,10 +97,11 @@ func TestOfficialDeepSeekProviderWideVisionInputMatchesTextOnlyRequest(t *testin
 		t.Fatalf("New: %v", err)
 	}
 	c := p.(*client)
-	// deepseek-v4-pro is a known text-only SKU: a stale provider-wide
-	// vision=true is correctly ignored even under fork allowlist semantics.
-	if c.vision {
-		t.Fatal("official DeepSeek endpoint must ignore stale vision=true config")
+	// A provider-wide vision=true is the operator's decision and is honored: the
+	// endpoint's own SKU list cannot be trusted to stay current (v4.1 traffic was
+	// routed onto deepseek-v4-pro), so the gate must not override the user.
+	if !c.vision {
+		t.Fatal("official DeepSeek endpoint must honor an explicit vision=true config")
 	}
 
 	textOnly := provider.Request{Messages: []provider.Message{{
@@ -118,8 +119,8 @@ func TestOfficialDeepSeekProviderWideVisionInputMatchesTextOnlyRequest(t *testin
 	if err != nil {
 		t.Fatalf("marshal image request: %v", err)
 	}
-	if !bytes.Equal(imageBody, textBody) {
-		t.Fatalf("official DeepSeek image request changed provider-visible bytes:\ntext:  %s\nimage: %s", textBody, imageBody)
+	if bytes.Equal(imageBody, textBody) {
+		t.Fatalf("an enabled image never reached the request:\ntext:  %s\nimage: %s", textBody, imageBody)
 	}
 }
 
@@ -161,15 +162,14 @@ func TestOfficialDeepSeekUnknownModelExplicitVisionSerializesImages(t *testing.T
 	}
 }
 
-func TestOfficialDeepSeekDoesNotInjectToolResultImages(t *testing.T) {
+// Tool-result images still must not be injected without an explicit enable: the
+// gate is gone, so this is now the default-conservative path rather than a
+// model-name rule.
+func TestOfficialDeepSeekDoesNotInjectToolResultImagesWithoutVision(t *testing.T) {
 	p, err := New(provider.Config{
 		Name:    "deepseek",
 		BaseURL: "https://api.deepseek.com/v1",
 		Model:   "deepseek-v4-pro",
-		Extra: map[string]any{
-			"vision":                true,
-			"vision_model_explicit": true,
-		},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -239,14 +239,17 @@ func TestOfficialDeepSeekVisionSKUEmbedsUserImages(t *testing.T) {
 	}
 }
 
-func TestOfficialRequestURLImageHardLimit(t *testing.T) {
+func TestOfficialRequestURLHonorsExplicitVisionEnable(t *testing.T) {
 	p, err := New(provider.Config{BaseURL: "https://relay.test", Model: "deepseek-v4-flash", Extra: map[string]any{"request_url": "https://api.deepseek.com/v1/chat/completions", "vision": true}, ModelInfo: &provider.ModelInfo{InputModalities: []provider.ModelModality{provider.ModalityText, provider.ModalityImage}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	body, err := json.Marshal(p.(*client).buildRequest(provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "describe", Images: []string{"data:image/png;base64,AAAA"}}}}))
-	if err != nil || strings.Contains(string(body), "AAAA") {
-		t.Fatalf("official request URL leaked image: %s %v", body, err)
+	// The user enabled images and the provider metadata declares them, so the image
+	// must reach the endpoint. The old hard limit refused it on the model name alone,
+	// which is what broke once traffic moved onto a SKU the list called text-only.
+	if err != nil || !strings.Contains(string(body), "AAAA") {
+		t.Fatalf("explicit enable + metadata must send the image: %s %v", body, err)
 	}
 }
 

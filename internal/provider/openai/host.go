@@ -58,26 +58,16 @@ func IsOfficialDeepSeekVisionModel(model string) bool {
 	return strings.EqualFold(m, OfficialDeepSeekVisionModel)
 }
 
-// IsOfficialDeepSeekTextModel identifies known text-only models, not future SKUs.
-func IsOfficialDeepSeekTextModel(model string) bool {
-	switch strings.ToLower(strings.TrimSpace(model)) {
-	case "deepseek-v4-flash", "deepseek-v4-pro":
-		return true
-	}
-	return false
-}
-
-// DeepSeekImageInputAllowed applies the fork-trusted capability gate: known
-// text-only SKUs (flash/pro) stay hard-banned on official endpoints, the
-// pinned vision SKU keeps its no-metadata fallback, and every other model —
-// including future official SKUs the desktop build may not know yet — trusts
-// the resolved capability metadata and the user's per-model override.
+// DeepSeekImageInputAllowed applies the fork-trusted capability gate. There is no
+// model-name blocklist: the provider renames and re-routes SKUs under the same
+// endpoint (v4.1 traffic moved onto deepseek-v4-pro), and a name list cannot follow
+// that - it kept those models refused even for a user who had enabled images. The
+// user's switch and the resolved capability metadata decide instead; the default
+// stays conservative, trusting only the pinned vision SKU when nothing declares
+// image support.
 func DeepSeekImageInputAllowed(officialBase bool, requestURL, model string, metadataProvided, enabled bool) bool {
 	if !officialBase && !IsDeepSeek(requestURL) {
 		return enabled
-	}
-	if IsOfficialDeepSeekTextModel(model) {
-		return false
 	}
 	return enabled || (!metadataProvided && IsOfficialDeepSeekVisionModel(model))
 }
