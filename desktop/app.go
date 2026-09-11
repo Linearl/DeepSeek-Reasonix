@@ -810,6 +810,16 @@ func (a *App) restoreOrBuildTabs() {
 			// from re-seeding the cleared goal into the rotated session. A
 			// session without a sidecar keeps the persisted goal (legacy).
 			tab.goal = runningTabSessionGoal(strings.TrimSpace(entry.SessionPath), strings.TrimSpace(entry.Goal))
+			// Task 49 A2: an unattended run continues across a restart. The sidecar
+			// decides whether this run was unattended; the current preferences only
+			// supply the bound, because the previous deadline died with the process.
+			// Without a usable bound the run stays interactive - the same refusal the
+			// CLI makes - rather than resuming with no limit at all.
+			if tabSessionAutopilot(tab.SessionPath) {
+				if on, maxRuntime, grace := desktopAutopilotDefaults(); on {
+					tab.autopilot, tab.autopilotMaxRuntime, tab.autopilotApprovalGrace = on, maxRuntime, grace
+				}
+			}
 			tab.toolApprovalMode = normalizeToolApprovalMode(entry.ToolApprovalMode)
 			if tab.toolApprovalMode == control.ToolApprovalAsk && tabModeHasAutoApproveTools(entry.Mode) {
 				tab.toolApprovalMode = control.ToolApprovalYolo
@@ -923,21 +933,21 @@ func (a *App) createTabEntryWithID(scope, workspaceRoot, topicID, id string) *Wo
 	model, toolApprovalMode, subagentPolicy := desktopNewSessionDefaults(scope, workspaceRoot)
 	autopilot, maxRuntime, approvalGrace := desktopAutopilotDefaults()
 	return &WorkspaceTab{
-		ID:               id,
-		Scope:            scope,
-		WorkspaceRoot:    workspaceRoot,
-		TopicID:          topicID,
-		TopicTitle:       topicTitleForTab(scope, workspaceRoot, topicID),
-		topicTitleSource: loadTopicTitleSource(topicTitleRoot(scope, workspaceRoot), topicID),
-		model:            model,
-		qualityFloor:     "",
-		mode:             tabModeFromAxes(false, toolApprovalMode == control.ToolApprovalYolo),
-		toolApprovalMode: toolApprovalMode,
-		subagentPolicy:   subagentPolicy,
+		ID:                     id,
+		Scope:                  scope,
+		WorkspaceRoot:          workspaceRoot,
+		TopicID:                topicID,
+		TopicTitle:             topicTitleForTab(scope, workspaceRoot, topicID),
+		topicTitleSource:       loadTopicTitleSource(topicTitleRoot(scope, workspaceRoot), topicID),
+		model:                  model,
+		qualityFloor:           "",
+		mode:                   tabModeFromAxes(false, toolApprovalMode == control.ToolApprovalYolo),
+		toolApprovalMode:       toolApprovalMode,
+		subagentPolicy:         subagentPolicy,
 		autopilot:              autopilot,
 		autopilotMaxRuntime:    maxRuntime,
 		autopilotApprovalGrace: approvalGrace,
-		disabledMCP:      map[string]ServerView{},
+		disabledMCP:            map[string]ServerView{},
 	}
 }
 

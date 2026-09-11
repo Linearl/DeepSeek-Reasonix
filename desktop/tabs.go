@@ -159,10 +159,10 @@ type WorkspaceTab struct {
 	autopilot              bool
 	autopilotMaxRuntime    time.Duration
 	autopilotApprovalGrace time.Duration
-	subagentPolicy   string // per-session sub-agent delegation tier (light|balanced|aggressive, fork)
-	disabledMCP      map[string]ServerView
-	mcpOrder         []string
-	lastBuildResult  *boot.BuildResult // incremental extension reload
+	subagentPolicy         string // per-session sub-agent delegation tier (light|balanced|aggressive, fork)
+	disabledMCP            map[string]ServerView
+	mcpOrder               []string
+	lastBuildResult        *boot.BuildResult // incremental extension reload
 
 	PinnedFiles              []string
 	pendingLegacyPinnedFiles []string // round-tripped until the session sidecar publishes
@@ -7194,9 +7194,9 @@ type tabRuntimeSnapshot struct {
 	subagentPolicy                string
 	// Autopilot settings for this tab (task 49): unattended run bounds and the
 	// grace period before the reviewer answers an approval prompt.
-	autopilot                     bool
-	autopilotMaxRuntime           time.Duration
-	autopilotApprovalGrace        time.Duration
+	autopilot              bool
+	autopilotMaxRuntime    time.Duration
+	autopilotApprovalGrace time.Duration
 }
 
 // normalizedTabRuntime is the internal, orthogonal runtime profile restored
@@ -7214,26 +7214,26 @@ func snapshotTabRuntimeLocked(tab *WorkspaceTab) tabRuntimeSnapshot {
 		return tabRuntimeSnapshot{}
 	}
 	return tabRuntimeSnapshot{
-		ctrl:             tab.Ctrl,
-		sink:             tab.sink,
-		label:            tab.Label,
-		ready:            tab.Ready,
-		readOnly:         tab.ReadOnly,
-		startupErr:       tab.StartupErr,
-		scope:            tab.Scope,
-		workspaceRoot:    tab.WorkspaceRoot,
-		sessionPath:      tab.SessionPath,
-		topicID:          tab.TopicID,
-		topicTitle:       tab.TopicTitle,
-		sharedHostKey:    tab.SharedHostKey,
-		model:            tab.model,
-		effort:           cloneStringPtr(tab.effort),
-		tokenMode:        currentTabTokenMode(tab),
-		qualityFloor:     tab.qualityFloor,
-		mode:             tab.mode,
-		goal:             tab.goal,
-		toolApprovalMode: tab.toolApprovalMode,
-		subagentPolicy:   currentTabSubagentPolicy(tab),
+		ctrl:                   tab.Ctrl,
+		sink:                   tab.sink,
+		label:                  tab.Label,
+		ready:                  tab.Ready,
+		readOnly:               tab.ReadOnly,
+		startupErr:             tab.StartupErr,
+		scope:                  tab.Scope,
+		workspaceRoot:          tab.WorkspaceRoot,
+		sessionPath:            tab.SessionPath,
+		topicID:                tab.TopicID,
+		topicTitle:             tab.TopicTitle,
+		sharedHostKey:          tab.SharedHostKey,
+		model:                  tab.model,
+		effort:                 cloneStringPtr(tab.effort),
+		tokenMode:              currentTabTokenMode(tab),
+		qualityFloor:           tab.qualityFloor,
+		mode:                   tab.mode,
+		goal:                   tab.goal,
+		toolApprovalMode:       tab.toolApprovalMode,
+		subagentPolicy:         currentTabSubagentPolicy(tab),
 		autopilot:              tab.autopilot,
 		autopilotMaxRuntime:    tab.autopilotMaxRuntime,
 		autopilotApprovalGrace: tab.autopilotApprovalGrace,
@@ -7798,6 +7798,29 @@ func persistedTabGoal(tab *WorkspaceTab) string {
 type tabSessionGoalState struct {
 	Goal   string `json:"goal,omitempty"`
 	Status string `json:"status,omitempty"`
+	// Autopilot is the flag the run itself was started with (task 49 A2). Resuming
+	// reads it instead of the current preferences so a restart continues the run
+	// that existed, not one the settings would choose today.
+	Autopilot bool `json:"autopilot,omitempty"`
+}
+
+// tabSessionAutopilot reports whether the persisted goal state says this run was
+// unattended (task 49 A2). A missing or unreadable sidecar is not evidence of an
+// unattended run, so it returns false and the tab keeps whatever the preferences
+// decided at build time.
+func tabSessionAutopilot(sessionPath string) bool {
+	if strings.TrimSpace(sessionPath) == "" {
+		return false
+	}
+	data, err := readFileUTF8(store.SessionGoalState(sessionPath))
+	if err != nil {
+		return false
+	}
+	var state tabSessionGoalState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return false
+	}
+	return state.Autopilot && state.Status == control.GoalStatusRunning
 }
 
 func runningTabSessionGoal(sessionPath, fallback string) string {
