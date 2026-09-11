@@ -187,6 +187,10 @@ type terminalProtocolState struct {
 	// emptyFinalBlocks counts consecutive reasoning-only stops retried for a
 	// visible final answer.
 	emptyFinalBlocks int
+	// readinessAdvisories counts turns that ended with an unmet readiness contract
+	// carried forward instead of pausing. Unattended (autopilot) runs advise and
+	// continue, and this bounds that so a gap the model cannot close does not spin.
+	readinessAdvisories int
 	// handoffNudges counts executor-handoff repairs sent this run.
 	handoffNudges int
 	// intentNudges counts stalled-intent repairs sent this run.

@@ -447,6 +447,15 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 				Text:   readinessAdvisoryNotice(),
 				Detail: readinessAdvisoryDetail(readiness.missingIDs()),
 			})
+			// Advising is not enough on its own: reporting the gap and then ending
+			// the turn still stops the run, which is what the user sees. Open
+			// another turn with the gaps named, bounded so a real gap cannot spin.
+			if state.terminal.readinessAdvisories < maxReadinessAdvisories {
+				state.terminal.readinessAdvisories++
+				a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(readinessAdvisoryRetryMessage(readiness.missingIDs()))))
+				a.contextManager().ObserveUsage(usage)
+				return true, nil
+			}
 		default:
 			event.RecordReadinessAudit(a.svc.sink, readiness.audit(evidence.ReadinessAllowed, a.turn.readinessRecovered))
 		}

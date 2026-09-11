@@ -48,6 +48,12 @@ var deprecatedContextRetentionWarning sync.Once
 
 const maxEmptyFinalBlocks = 3
 
+// maxReadinessAdvisories bounds how many times an unattended run is restarted
+// with the same unmet readiness contract. Two attempts let the model actually
+// close a gap it merely forgot to cite; beyond that the gap is real and the run
+// should stop rather than loop.
+const maxReadinessAdvisories = 2
+
 // maxStreamRecoveries is the number of body-phase stream retries after the
 // initial sampling attempt (Pi-style default: 1 + 3 = 4 attempts total).
 const maxStreamRecoveries = 3
@@ -1783,6 +1789,19 @@ func hasVisibleFinalAnswer(text string) bool {
 
 func emptyFinalRetryMessage() string {
 	return "The previous assistant response finished without any visible answer text. Continue the same task now and provide a concise visible answer to the user. Do not send reasoning only."
+}
+
+// readinessAdvisoryRetryMessage opens another unattended turn naming the gaps the
+// host could not settle. Naming them matters: the previous attempt reported the
+// gap and ended the turn anyway, which reads to the user exactly like the pause it
+// was meant to replace.
+func readinessAdvisoryRetryMessage(missing []string) string {
+	gaps := "the turn's verification evidence"
+	if len(missing) > 0 {
+		gaps = strings.Join(missing, ", ")
+	}
+	return "Continue this task. The host could not settle " + gaps +
+		" before the last answer, so the work is not finished yet. Produce the missing evidence - run the check, cite the receipt, or state plainly why it does not apply - then carry on with the next step rather than restating what is already done."
 }
 
 func emptyFinalNotice() string {
