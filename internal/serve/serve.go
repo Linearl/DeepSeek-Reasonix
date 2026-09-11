@@ -575,6 +575,7 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /assets/logo-wordmark.svg", s.logoWordmark)
 	mux.HandleFunc("GET /provider-setup", s.providerSetupStatus)
 	mux.HandleFunc("POST /provider-setup", s.providerSetupSave)
+	mux.HandleFunc("GET /capabilities", s.capabilities)
 	mux.HandleFunc("GET /events", s.events)
 	mux.HandleFunc("GET /runtime-states", s.runtimeStates)
 	mux.HandleFunc("GET /history", s.history)
