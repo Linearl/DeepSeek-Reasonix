@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { app, onSessionRecoveryFailed } from "../lib/bridge";
 import { useT } from "../lib/i18n";
 import type { ProjectTopicKey } from "../lib/sessionCatalogTypes";
-import { bindSessionVersionInspector } from "../lib/sessionRecoveryVersionHostBridge";
+import { bindSessionVersionInspector, bindTopicVersionInspector } from "../lib/sessionRecoveryVersionHostBridge";
 import { normalizeRecoveryLineageView, userVisibleRecoveryVersions } from "../lib/sessionRecoveryVersions";
 import { useToast } from "../lib/toast";
 import type { RecoveryLineageMember, RecoveryLineageView, SessionMeta } from "../lib/types";
@@ -79,6 +79,9 @@ export function SessionRecoveryVersionsHost({ sessions, onResumeSession, onRecov
     }, view);
   }, [showVersions]);
   useEffect(() => bindSessionVersionInspector(inspectVersions), [inspectVersions]);
+  // The fixed entry point: a project-tree or settings row can open version
+  // management for a topic without already holding the representative session.
+  useEffect(() => bindTopicVersionInspector((topic, view) => { void showVersions(topic, view); }), [showVersions]);
 
   const openVersion = useCallback(async (member: RecoveryLineageMember) => {
     const topic = state?.topic;

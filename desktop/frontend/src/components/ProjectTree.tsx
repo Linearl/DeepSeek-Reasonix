@@ -14,6 +14,7 @@ export * from "../lib/projectTreePresentation";
 import type { ProjectNode, SessionCatalogStatus } from "../lib/types";
 import { topicActivityTime } from "../lib/session";
 import { useT, type Translator } from "../lib/i18n";
+import { requestTopicVersions } from "../lib/sessionRecoveryVersionHostBridge";
 import { PROJECT_COLOR_OPTIONS, projectColorValue, type ProjectColorKey, type ProjectColorOption } from "../lib/projectColors";
 import { projectTreeSessionArchiveTargetKey, projectTreeTopicArchiveTargetKey, projectTreeWithoutTopics, reloadProjectTreeTopics, useProjectTreeArchiveController, type ProjectTreeRefresh, type ProjectTreeRefreshOptions } from "../lib/projectTreeArchive";
 import { topicShortcutLabel, type TopicShortcutEntry } from "../lib/topicShortcuts";
@@ -1636,6 +1637,23 @@ export function ProjectTree({
                 closeMenu();
               },
             },
+            {
+              key: "topic-versions",
+              icon: <GitBranch size={13} />,
+              label: t("projectTree.manageVersions"),
+              onSelect: () => {
+                // Fixed entry point for version management. A transient notification
+                // used to be the only way in, so missing it left no route back to the
+                // dialog that holds the recovery branches and the merge action.
+                requestTopicVersions({
+                  scope,
+                  workspaceRoot: projectPath ?? node.root,
+                  topicId: node.topicId ?? "",
+                  path: node.sessionPath,
+                });
+                closeMenu();
+              },
+            },
             { type: "separator" as const, key: "remove-separator" },
             {
               key: "remove",
@@ -1711,6 +1729,23 @@ export function ProjectTree({
               label: t("projectTree.relocateProject"),
               onSelect: () => {
                 void relocateProject(projectPath ?? node.root);
+                closeMenu();
+              },
+            },
+            {
+              key: "topic-versions",
+              icon: <GitBranch size={13} />,
+              label: t("projectTree.manageVersions"),
+              onSelect: () => {
+                // Fixed entry point for version management. A transient notification
+                // used to be the only way in, so missing it left no route back to the
+                // dialog that holds the recovery branches and the merge action.
+                requestTopicVersions({
+                  scope,
+                  workspaceRoot: projectPath ?? node.root,
+                  topicId: node.topicId ?? "",
+                  path: node.sessionPath,
+                });
                 closeMenu();
               },
             },
