@@ -1992,6 +1992,61 @@ func reparentSessionBranches(dir string, renamed map[string]string) error {
 	return errors.Join(errs...)
 }
 
+// sessionOrderMetaCache memoizes the parsed branch meta for one session sidecar.
+//
+// Directory reconciliation runs on tab switches and conversation-head queries, and
+// it reads a branch-meta sidecar for every file the directory lists. Once recovery
+// copies accumulate that directory is not small - a profile of this machine counted
+// 510 files, 246 of them recovery copies - so unchanged files paid a full
+// read-and-parse on every sweep.
+//
+// Two properties keep this safe rather than merely fast:
+//
+//   - The key is the *sidecar's* size and mtime, not the transcript's. LoadBranchMeta
+//     reads BranchMetaPath(sessionPath), so keying on the transcript would miss a
+//     sidecar rewrite that left the transcript untouched.
+//   - Visibility does not go through it. IsCleanupPending only stats its own
+//     sidecar, and hiding or clearing a session must take effect on the very next
+//     listing - caching that decision is what made an earlier attempt at this fail
+//     TestListSessionsSkipsCleanupPending.
+var sessionOrderMetaCache sync.Map // metaPath -> sessionOrderMetaEntry
+
+type sessionOrderMetaEntry struct {
+	size  int64
+	mtime time.Time
+	meta  BranchMeta
+	ok    bool
+	err   error
+}
+
+// loadBranchMetaCached is LoadBranchMeta with the parse reused while the sidecar's
+// size and mtime are unchanged. A missing sidecar is not cached: LoadBranchMeta
+// already reports it cheaply as absent.
+func loadBranchMetaCached(sessionPath string) (BranchMeta, bool, error) {
+	metaPath := BranchMetaPath(sessionPath)
+	if metaPath == "" {
+		return BranchMeta{}, false, nil
+	}
+	info, statErr := os.Stat(metaPath)
+	if statErr != nil {
+		return LoadBranchMeta(sessionPath)
+	}
+	if raw, ok := sessionOrderMetaCache.Load(metaPath); ok {
+		if entry, ok := raw.(sessionOrderMetaEntry); ok && entry.size == info.Size() && entry.mtime.Equal(info.ModTime()) {
+			return entry.meta, entry.ok, entry.err
+		}
+	}
+	meta, ok, err := LoadBranchMeta(sessionPath)
+	sessionOrderMetaCache.Store(metaPath, sessionOrderMetaEntry{
+		size:  info.Size(),
+		mtime: info.ModTime(),
+		meta:  meta,
+		ok:    ok,
+		err:   err,
+	})
+	return meta, ok, err
+}
+
 // ListSessionOrder returns every *.jsonl session under dir in the same
 // most-recently-active order used by ListSessions, using only file metadata and
 // branch sidecars. A missing directory is not an error.
@@ -2054,7 +2109,7 @@ func ListSessionOrderWithRecoveryPreferenceResolver(dir string, resolve Recovery
 		contentDigest := ""
 		listingRevision := int64(0)
 		listingContentDigest := ""
-		if meta, ok, err := LoadBranchMeta(full); err == nil && ok {
+		if meta, ok, err := loadBranchMetaCached(full); err == nil && ok {
 			if !meta.CreatedAt.IsZero() {
 				createdAt = meta.CreatedAt
 			}
