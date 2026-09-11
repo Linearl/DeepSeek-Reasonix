@@ -422,7 +422,8 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 		// Standard ends with its answer/quality summary. Delivery and Goal hand
 		// the structured gap to the controller, which exposes an explicit recovery
 		// action or lets the Goal FSM decide whether to continue.
-		if a.readinessPauseActive(readiness) {
+		switch {
+		case a.readinessPauseActive(readiness):
 			event.RecordReadinessAudit(a.svc.sink, readiness.audit(evidence.ReadinessErrored, false))
 			a.pending.finalReadinessRecovery = true
 			a.persistFinalReadinessRecovery(readiness.missingIDs())
@@ -433,8 +434,22 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 				ContinuationClass: readiness.continuationClass(),
 				ProgressKey:       readiness.progressSignature(),
 			}
+		case a.unattendedReadinessAdvisory(readiness):
+			// Nobody is watching, so the run keeps going - but the gap is reported,
+			// persisted and handed to the next turn rather than silently allowed.
+			event.RecordReadinessAudit(a.svc.sink, readiness.audit(evidence.ReadinessAdvised, a.turn.readinessRecovered))
+			a.pending.finalReadinessRecovery = true
+			a.persistFinalReadinessRecovery(readiness.missingIDs())
+			a.svc.sink.Emit(event.Event{
+				Kind:   event.Notice,
+				Level:  event.LevelInfo,
+				Code:   event.NoticeCodeReadinessAdvisory,
+				Text:   readinessAdvisoryNotice(),
+				Detail: readinessAdvisoryDetail(readiness.missingIDs()),
+			})
+		default:
+			event.RecordReadinessAudit(a.svc.sink, readiness.audit(evidence.ReadinessAllowed, a.turn.readinessRecovered))
 		}
-		event.RecordReadinessAudit(a.svc.sink, readiness.audit(evidence.ReadinessAllowed, a.turn.readinessRecovered))
 	}
 	if !hasVisibleFinalAnswer(text) {
 		// Harness-style termination accepts a reasoning-only clean stop. Only

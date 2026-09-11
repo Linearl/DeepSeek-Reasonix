@@ -1,6 +1,11 @@
 package agent
 
-import "reasonix/internal/taskcontract"
+import (
+	"fmt"
+	"strings"
+
+	"reasonix/internal/taskcontract"
+)
 
 // readinessPauseActive reports whether an unmet final-readiness requirement may
 // pause the turn and hand the user a recovery card.
@@ -11,13 +16,50 @@ func (a *Agent) readinessPauseActive(check finalReadinessCheck) bool {
 	if a == nil {
 		return false
 	}
-	// Task 56: an unattended run has nobody to answer the recovery card, so pausing
-	// would strand it - staying alive is the whole point of autopilot (goal plus
-	// self-approval). The gap is still audited and the Goal FSM sees the missing
-	// evidence on the next turn instead of waiting for a human.
+	// An unattended run has nobody to answer the recovery card, so it advises and
+	// continues instead - see unattendedReadinessAdvisory.
 	if a.autopilot {
+		return false
+	}
+	return a.readinessContractApplies(check)
+}
+
+// readinessContractApplies reports whether the turn carries a readiness contract
+// at all. Delivery and closed-loop Goal/Plan turns do; Standard does not - its
+// gaps are quality notes in the completion summary, not requirements.
+func (a *Agent) readinessContractApplies(check finalReadinessCheck) bool {
+	if a == nil {
 		return false
 	}
 	return a.turn.constraints.PolicyFloor == taskcontract.PolicyFloorDelivery ||
 		a.closedLoopActive() || a.planContractSnapshot() != nil
+}
+
+// unattendedReadinessAdvisory reports whether an unmet requirement should be
+// announced and the run continued rather than paused for a human.
+//
+// Autopilot is unattended: nobody can answer a recovery card, so pausing would
+// strand the run. But dropping the gap silently - the first task-56 attempt,
+// which returned false for every autopilot turn - also waived the evidence bar
+// the contract exists to enforce, so a gap and a satisfied contract looked the
+// same afterwards. The gap is therefore kept, not waived: it is audited,
+// persisted for the next turn, and announced in the transcript, which matches
+// how upstream's evidence flow reports "Recorded as unverified: ..." instead of
+// rejecting the sign-off outright.
+func (a *Agent) unattendedReadinessAdvisory(check finalReadinessCheck) bool {
+	return a != nil && a.autopilot && a.readinessContractApplies(check)
+}
+
+// readinessAdvisoryNotice is the transcript line for an advised gap.
+func readinessAdvisoryNotice() string {
+	return "Autopilot recorded this turn as unfinished and kept going. Missing evidence was carried into the next turn instead of stopping the run."
+}
+
+// readinessAdvisoryDetail names the concrete gaps so the record is actionable
+// rather than a bare category.
+func readinessAdvisoryDetail(missing []string) string {
+	if len(missing) == 0 {
+		return "unfinished: readiness gap reported without named evidence ids"
+	}
+	return fmt.Sprintf("unfinished: %s", strings.Join(missing, ", "))
 }

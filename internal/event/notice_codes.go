@@ -8,6 +8,7 @@ package event
 const (
 	NoticeCodeFinalReadiness                                    = "final_readiness"
 	NoticeCodeEmptyFinal                                        = "empty_final"
+	NoticeCodeReadinessAdvisory                                 = "readiness_advisory"
 	NoticeCodeExecutorHandoff                                   = "executor_handoff"
 	NoticeCodeToolBudget                                        = "tool_budget"
 	NoticeCodePromptQueued                                      = "prompt_queued"
