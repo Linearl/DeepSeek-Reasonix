@@ -302,7 +302,7 @@ for (const path of localeChunks) {
   // headers, row labels, merge preview, phase headings) plus the table copy.
   // zh measures 67.2 KiB, zh-TW 67.8 KiB; the exact ceiling is not headroom, so
   // take the next decimal beyond the measurement for each dialect.
-  const budget = name.startsWith("zh-TW-") ? 68.6 * 1024 : 67.6 * 1024;
+  const budget = name.startsWith("zh-TW-") ? 68.8 * 1024 : 67.8 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0

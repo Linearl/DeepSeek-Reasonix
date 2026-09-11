@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { app, type RecoveryCopyGroupView } from "../lib/bridge";
+import { app, type ConsolidationReport, type RecoveryCopyGroupView } from "../lib/bridge";
 import { useT } from "../lib/i18n";
 import { useConfirmDialog } from "./ConfirmDialog";
 
@@ -31,46 +31,59 @@ type Phase = "pending" | "unmerged" | "merged";
 /** copiesNeedingMeasurement is what stands between "not measured" and "mergeable".
  *
  *  An orphan copy has no canonical transcript to be compared against, so it can
- *  never be measured and must not hold a merge back - counting it here is what
- *  previously left the merge button greyed out with nothing to explain why.
+ *  never be measured and must not hold a merge back.
  */
 function copiesNeedingMeasurement(group: RecoveryCopyGroupView) {
   return group.copies.filter((copy) => !copy.orphan && !copy.scanned);
 }
 
-/** phaseOf sorts a conversation by what a user would do about it.
- *
- *  Pending means not measured yet, so nothing is known and nothing should be
- *  merged. Unmerged means a copy holds events the canonical transcript does not,
- *  which is the case worth acting on. Merged means everything the copies hold is
- *  already in the canonical transcript, so there is nothing left to bring over.
- */
+/** uniqueIn is the count that decides whether merging is worth anything: events a
+ *  copy holds that the canonical transcript does not. */
+function uniqueIn(group: RecoveryCopyGroupView): number {
+  return group.copies.reduce((n, c) => n + (c.orphan ? 0 : c.unique), 0);
+}
+
+/** fullestCopyTurns is the largest copy, which is the one a merge would promote. */
+function fullestCopyTurns(group: RecoveryCopyGroupView): number {
+  return group.copies.reduce((n, c) => Math.max(n, c.messages), 0);
+}
+
+/** phaseOf sorts a conversation by what a user would do about it. */
 function phaseOf(group: RecoveryCopyGroupView): Phase {
   if (copiesNeedingMeasurement(group).length > 0) return "pending";
-  if (group.copies.some((copy) => !copy.orphan && copy.unique > 0)) return "unmerged";
+  if (uniqueIn(group) > 0) return "unmerged";
   return "merged";
 }
 
+/** Outcome is one conversation's result. Kept per conversation because a count
+ *  cannot say which conversation was refused, nor why. */
+type Outcome = {
+  label: string;
+  kind: "merged" | "forced" | "blocked" | "failed";
+  before?: number;
+  after?: number;
+  trashed?: number;
+  notCovered?: number;
+  detail?: string;
+};
+
 /** RecoveryCopiesSection puts session versions and copies behind a button.
  *
- *  Three steps on purpose, because they cost very different amounts and the last
- *  one can lose work.
+ *  Opening the panel is one directory read per session folder, so it appears at
+ *  once and shows the shape of the problem without opening any transcript.
+ *  Conversations start collapsed and are grouped by what they need.
  *
- *  Opening the panel is one directory read per session folder, so it appears at once
- *  and shows the shape of the problem - which conversations have copies, how big
- *  those copies are, how recently they were written - without opening any
- *  transcript. Conversations start collapsed and are grouped by what they need:
- *  unmerged first, then not-yet-measured, then already merged.
+ *  Measuring a copy means reading and comparing whole transcripts, and one copy on
+ *  a busy machine reaches a hundred megabytes. The panel offers it on demand - but
+ *  the merge performs it itself when needed, because measuring is a step the button
+ *  can take and the user should not have to take first.
  *
- *  Measuring a copy means reading and comparing whole transcripts, and one copy on a
- *  busy machine reaches a hundred megabytes. So it happens when asked, for one
- *  conversation or for all of them, and the numbers land in the rows afterwards.
- *
- *  Merging never leaves a click unanswered. It is enabled as soon as something is
- *  selected, and if a row has not been measured the click explains that instead of
- *  doing nothing - a control that silently ignores a click cannot be told apart
- *  from a broken one. Once it runs it reports per conversation what happened, with
- *  failures shown verbatim.
+ *  Merging asks twice because the backend has two modes. A plain merge refuses when
+ *  the fullest copy and the main transcript each hold turns the other lacks
+ *  (typical after a main-side compaction). That refusal is reported, and the user is
+ *  then asked whether the copy should win - which archives the current main whole
+ *  under the recoverable trash. Neither mode runs without its own confirmation, and
+ *  both report per conversation afterwards.
  */
 export function RecoveryCopiesSection() {
   const t = useT();
@@ -81,7 +94,8 @@ export function RecoveryCopiesSection() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [scanning, setScanning] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState("");
+  const [status, setStatus] = useState("");
+  const [outcomes, setOutcomes] = useState<Outcome[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [failed, setFailed] = useState(false);
 
@@ -133,16 +147,19 @@ export function RecoveryCopiesSection() {
       return next;
     });
 
-  const scanOne = async (mainPath: string) => {
+  /** scanOne measures a conversation and returns the fresh row, so callers that
+   *  need the numbers immediately do not have to wait for a re-render. */
+  const scanOne = async (mainPath: string): Promise<RecoveryCopyGroupView | null> => {
     setScanning((current) => new Set(current).add(mainPath));
-    setErrors([]);
     try {
       const fresh = await app.ScanRecoveryCopyGroup(mainPath);
       setGroups((current) => (current ?? []).map((g) => (g.mainPath === mainPath ? fresh : g)));
       // Scanning is the moment the detail becomes worth reading, so open the row.
       setExpanded((current) => new Set(current).add(mainPath));
+      return fresh;
     } catch (err) {
-      setErrors([err instanceof Error ? err.message : String(err)]);
+      setErrors((current) => [...current, err instanceof Error ? err.message : String(err)]);
+      return null;
     } finally {
       setScanning((current) => {
         const next = new Set(current);
@@ -153,6 +170,7 @@ export function RecoveryCopiesSection() {
   };
 
   const scanAll = async () => {
+    setErrors([]);
     for (const group of groups ?? []) {
       await scanOne(group.mainPath);
     }
@@ -162,107 +180,155 @@ export function RecoveryCopiesSection() {
     const chosen = (groups ?? []).filter((g) => selected.has(g.mainPath));
     if (!chosen.length) return;
 
-    // Say why nothing can happen yet rather than ignoring the click.
-    const waiting = chosen.filter((g) => copiesNeedingMeasurement(g).length > 0);
-    if (waiting.length > 0) {
-      await confirm({
-        title: t("settings.recoveryCopiesScanFirst"),
-        message: (
-          <div>
-            <p>{t("settings.recoveryCopiesScanFirstBody")}</p>
-            <ul className="rc-preview">
-              {waiting.map((g) => (
-                <li key={g.mainPath}>
-                  {g.mainLabel} ×{copiesNeedingMeasurement(g).length}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ),
-        confirmLabel: t("settings.recoveryCopiesScan"),
-        cancelLabel: t("common.cancel"),
-      });
-      return;
-    }
-
-    // Show what is about to happen before it happens: which conversations, how many
-    // copies each, and how much unique work is at stake. Merging writes to session
-    // files, so the user gets to read this first.
-    const totalCopies = chosen.reduce((n, g) => n + g.copies.length, 0);
-    const totalUnique = chosen.reduce(
-      (n, g) => n + g.copies.reduce((m, c) => m + (c.orphan ? 0 : c.unique), 0),
-      0,
-    );
-    const ok = await confirm({
-      title: t("settings.recoveryCopiesMerge"),
-      message: (
-        <div>
-          <p>
-            {t("settings.recoveryCopiesPreviewLead")}：{chosen.length} ·{" "}
-            {t("settings.recoveryCopiesPreviewCopies")} {totalCopies} ·{" "}
-            {t("settings.recoveryCopiesUnique")} {totalUnique}
-          </p>
-          <ul className="rc-preview">
-            {chosen.map((g) => (
-              <li key={g.mainPath}>
-                {g.mainLabel} ×{g.copies.length}
-              </li>
-            ))}
-          </ul>
-          <p className="rc-preview__warn">{t("settings.recoveryCopiesPreviewWarn")}</p>
-        </div>
-      ),
-      confirmLabel: t("settings.recoveryCopiesMerge"),
-      cancelLabel: t("common.cancel"),
-      tone: "danger",
-    });
-    if (!ok) return;
-
     setBusy(true);
-    setNote("");
     setErrors([]);
-    const mergedLabels: string[] = [];
-    const blockedLabels: string[] = [];
-    const failureMessages: string[] = [];
+    setOutcomes([]);
     try {
+      // Measure anything unmeasured here rather than sending the user back to press
+      // Scan. The preview is built out of these counts, so it cannot be shown first.
+      const measured: RecoveryCopyGroupView[] = [];
       for (const group of chosen) {
-        try {
-          const report = await app.ConsolidateSessionRecoveryCopies(group.mainPath);
-          if (report?.blockedByDivergence) {
-            blockedLabels.push(group.mainLabel);
-            continue;
-          }
-          mergedLabels.push(group.mainLabel);
-        } catch (err) {
-          // Naming the conversation and carrying the message through is the point:
-          // a bare counter cannot tell "nothing needed merging" from "the call
-          // failed", and those call for opposite reactions.
-          const detail = err instanceof Error ? err.message : String(err);
-          failureMessages.push(`${group.mainLabel}: ${detail}`);
+        if (copiesNeedingMeasurement(group).length > 0) {
+          setStatus(`${t("settings.recoveryCopiesMeasuring")} ${group.mainLabel}`);
+          const fresh = await scanOne(group.mainPath);
+          measured.push(fresh ?? group);
+        } else {
+          measured.push(group);
         }
       }
-      setNote(
-        `${t("settings.recoveryCopiesMerged")} ${mergedLabels.length}` +
-          (blockedLabels.length ? ` · ${t("settings.recoveryCopiesBlocked")} ${blockedLabels.length}` : ""),
-      );
-      setErrors(failureMessages);
+      setStatus("");
+
+      // The preview states the change, not just the inputs: the main transcript's
+      // turn count before, the fullest copy's turns, and how much unique work is at
+      // stake in each conversation.
+      const totalUnique = measured.reduce((n, g) => n + uniqueIn(g), 0);
+      const totalCopies = measured.reduce((n, g) => n + g.copies.length, 0);
+      const ok = await confirm({
+        title: t("settings.recoveryCopiesMerge"),
+        message: (
+          <div>
+            <p>
+              {t("settings.recoveryCopiesPreviewLead")}：{measured.length} ·{" "}
+              {t("settings.recoveryCopiesPreviewCopies")} {totalCopies} ·{" "}
+              {t("settings.recoveryCopiesUnique")} {totalUnique}
+            </p>
+            <table className="rc-preview-table">
+              <thead>
+                <tr>
+                  <th>{t("settings.recoveryCopiesColLine")}</th>
+                  <th>{t("settings.recoveryCopiesColTurns")}</th>
+                  <th>{t("settings.recoveryCopiesColCopies")}</th>
+                  <th>{t("settings.recoveryCopiesColUnique")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {measured.map((g) => (
+                  <tr key={g.mainPath}>
+                    <td>{g.mainLabel}</td>
+                    <td>{g.mainMessages || "—"}</td>
+                    <td>×{g.copies.length}</td>
+                    <td>{uniqueIn(g)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="rc-preview__warn">{t("settings.recoveryCopiesPreviewWarn")}</p>
+          </div>
+        ),
+        confirmLabel: t("settings.recoveryCopiesMerge"),
+        cancelLabel: t("common.cancel"),
+        tone: "danger",
+      });
+      if (!ok) return;
+
+      const collected: Outcome[] = [];
+      for (const group of measured) {
+        let report: ConsolidationReport;
+        try {
+          report = await app.ConsolidateSessionRecoveryCopies(group.mainPath);
+        } catch (err) {
+          collected.push({
+            label: group.mainLabel,
+            kind: "failed",
+            detail: err instanceof Error ? err.message : String(err),
+          });
+          continue;
+        }
+
+        if (report.blockedByDivergence) {
+          // The backend refuses when the main and the fullest copy each hold turns
+          // the other lacks. Ask before letting the copy win, and say what that
+          // costs: the current main is archived whole and stays recoverable.
+          setBusy(false);
+          const forceOk = await confirm({
+            title: t("settings.recoveryCopiesForceTitle"),
+            message: (
+              <div>
+                <p>
+                  {t("settings.recoveryCopiesForceLead")}：{group.mainLabel}
+                </p>
+                <p>
+                  {t("settings.recoveryCopiesForceTurns")} {group.mainMessages || "—"} →{" "}
+                  {fullestCopyTurns(group) || "—"}
+                </p>
+                <p className="rc-preview__warn">{t("settings.recoveryCopiesForceWarn")}</p>
+              </div>
+            ),
+            confirmLabel: t("settings.recoveryCopiesForceConfirm"),
+            cancelLabel: t("common.cancel"),
+            tone: "danger",
+          });
+          setBusy(true);
+          if (!forceOk) {
+            collected.push({ label: group.mainLabel, kind: "blocked", notCovered: uniqueIn(group) });
+            continue;
+          }
+          try {
+            const forced = await app.ForceConsolidateSessionRecoveryCopies(group.mainPath);
+            collected.push({
+              label: group.mainLabel,
+              kind: "forced",
+              before: forced.mainMessageCount,
+              after: forced.winnerMessageCount,
+              trashed: forced.trashed?.length ?? 0,
+            });
+          } catch (err) {
+            collected.push({
+              label: group.mainLabel,
+              kind: "failed",
+              detail: err instanceof Error ? err.message : String(err),
+            });
+          }
+          continue;
+        }
+
+        collected.push({
+          label: group.mainLabel,
+          kind: "merged",
+          before: report.mainMessageCount,
+          after: report.winnerMessageCount,
+          trashed: report.trashed?.length ?? 0,
+          notCovered: report.notCoveredDetail?.filter((d) => d.unique > 0).length ?? 0,
+        });
+      }
+
+      setOutcomes(collected);
       setSelected(new Set());
       await load();
     } finally {
+      setStatus("");
       setBusy(false);
     }
   };
 
   const scanningAll = scanning.size > 0;
-  const chosen = (groups ?? []).filter((g) => selected.has(g.mainPath));
-  const waitingCount = chosen.reduce((n, g) => n + copiesNeedingMeasurement(g).length, 0);
+  const selectedGroups = (groups ?? []).filter((g) => selected.has(g.mainPath));
+  const needingCount = selectedGroups.reduce((n, g) => n + copiesNeedingMeasurement(g).length, 0);
 
   const renderGroup = (group: RecoveryCopyGroupView) => {
     const isOpen = expanded.has(group.mainPath);
     const isScanning = scanning.has(group.mainPath);
-    const groupUnique = group.copies.every((c) => c.scanned)
-      ? group.copies.reduce((n, c) => n + (c.orphan ? 0 : c.unique), 0)
-      : null;
+    const groupUnique = copiesNeedingMeasurement(group).length === 0 ? uniqueIn(group) : null;
     return (
       <div className="rc-group" key={group.mainPath}>
         <div className="rc-row rc-row--group">
@@ -348,6 +414,19 @@ export function RecoveryCopiesSection() {
       </div>
     ) : null;
 
+  const outcomeText = (outcome: Outcome) => {
+    switch (outcome.kind) {
+      case "merged":
+        return `${t("settings.recoveryCopiesOutcomeMerged")} ${outcome.before} → ${outcome.after}`;
+      case "forced":
+        return `${t("settings.recoveryCopiesOutcomeForced")} ${outcome.before} → ${outcome.after}`;
+      case "blocked":
+        return t("settings.recoveryCopiesOutcomeBlocked");
+      default:
+        return outcome.detail ?? "";
+    }
+  };
+
   return (
     <>
       <section className="settings-section">
@@ -403,7 +482,37 @@ export function RecoveryCopiesSection() {
                         </ul>
                       </div>
                     )}
-                    {note ? <div className="rc-result">{note}</div> : null}
+                    {outcomes.length > 0 && (
+                      <div className="rc-result">
+                        <ul className="rc-outcomes">
+                          {outcomes.map((outcome) => (
+                            <li
+                              key={outcome.label}
+                              className={
+                                outcome.kind === "failed"
+                                  ? "rc-outcome--failed"
+                                  : outcome.kind === "blocked"
+                                    ? "rc-outcome--blocked"
+                                    : "rc-outcome--ok"
+                              }
+                            >
+                              <span className="rc-outcome__label">{outcome.label}</span>
+                              <span>{outcomeText(outcome)}</span>
+                              {outcome.trashed ? (
+                                <span className="rc-muted">
+                                  {t("settings.recoveryCopiesArchived")} {outcome.trashed}
+                                </span>
+                              ) : null}
+                              {outcome.notCovered ? (
+                                <span className="rc-muted">
+                                  {t("settings.recoveryCopiesLeftBehind")} {outcome.notCovered}
+                                </span>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                     <div className="rc-table">
                       <div className="rc-row rc-row--head">
                         <span />
@@ -460,12 +569,12 @@ export function RecoveryCopiesSection() {
                 >
                   {t("settings.recoveryCopiesRefresh")}
                 </button>
-                {selected.size === 0 ? (
+                {busy ? (
+                  <span className="rc-note">{status || t("settings.loading")}</span>
+                ) : selectedGroups.length === 0 ? (
                   <span className="rc-note">{t("settings.recoveryCopiesPickFirst")}</span>
-                ) : waitingCount > 0 ? (
-                  <span className="rc-note">{t("settings.recoveryCopiesScanFirst")}</span>
-                ) : note ? (
-                  <span className="rc-note">{note}</span>
+                ) : needingCount > 0 ? (
+                  <span className="rc-note">{t("settings.recoveryCopiesWillMeasure")}</span>
                 ) : null}
               </div>
             </div>

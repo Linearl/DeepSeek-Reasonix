@@ -40211,3 +40211,25 @@ body > .mermaid-diagram--fullscreen {
 /* The panel's own backdrop sits below the shared confirm dialog, so the merge
    preview is never buried under the table it was opened from. */
 .rc-backdrop { z-index: var(--z-local-backdrop); }
+
+.rc-preview-table {
+  width: 100%;
+  margin: 10px 0;
+  border-collapse: collapse;
+  font-size: 0.94em;
+}
+.rc-preview-table th,
+.rc-preview-table td {
+  padding: 5px 8px;
+  text-align: left;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+}
+.rc-preview-table th { font-weight: 600; opacity: 0.72; }
+.rc-preview-table td:first-child { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.rc-outcomes { margin: 0; padding: 0; list-style: none; }
+.rc-outcomes li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 3px 0; }
+.rc-outcome__label { font-weight: 600; }
+.rc-outcome--ok { color: var(--ok, inherit); }
+.rc-outcome--blocked { opacity: 0.75; }
+.rc-outcome--failed { color: var(--danger, inherit); }
