@@ -28,6 +28,16 @@ function formatWhen(iso: string): string {
 
 type Phase = "pending" | "unmerged" | "merged";
 
+/** copiesNeedingMeasurement is what stands between "not measured" and "mergeable".
+ *
+ *  An orphan copy has no canonical transcript to be compared against, so it can
+ *  never be measured and must not hold a merge back - counting it here is what
+ *  previously left the merge button greyed out with nothing to explain why.
+ */
+function copiesNeedingMeasurement(group: RecoveryCopyGroupView) {
+  return group.copies.filter((copy) => !copy.orphan && !copy.scanned);
+}
+
 /** phaseOf sorts a conversation by what a user would do about it.
  *
  *  Pending means not measured yet, so nothing is known and nothing should be
@@ -36,7 +46,7 @@ type Phase = "pending" | "unmerged" | "merged";
  *  already in the canonical transcript, so there is nothing left to bring over.
  */
 function phaseOf(group: RecoveryCopyGroupView): Phase {
-  if (group.copies.some((copy) => !copy.scanned)) return "pending";
+  if (copiesNeedingMeasurement(group).length > 0) return "pending";
   if (group.copies.some((copy) => !copy.orphan && copy.unique > 0)) return "unmerged";
   return "merged";
 }
@@ -56,9 +66,11 @@ function phaseOf(group: RecoveryCopyGroupView): Phase {
  *  busy machine reaches a hundred megabytes. So it happens when asked, for one
  *  conversation or for all of them, and the numbers land in the rows afterwards.
  *
- *  Merging is gated on measuring, and reports per conversation what happened with
- *  failures shown verbatim. A merge that silently did nothing is indistinguishable
- *  from one that worked, which is the worst outcome for this button.
+ *  Merging never leaves a click unanswered. It is enabled as soon as something is
+ *  selected, and if a row has not been measured the click explains that instead of
+ *  doing nothing - a control that silently ignores a click cannot be told apart
+ *  from a broken one. Once it runs it reports per conversation what happened, with
+ *  failures shown verbatim.
  */
 export function RecoveryCopiesSection() {
   const t = useT();
@@ -150,6 +162,29 @@ export function RecoveryCopiesSection() {
     const chosen = (groups ?? []).filter((g) => selected.has(g.mainPath));
     if (!chosen.length) return;
 
+    // Say why nothing can happen yet rather than ignoring the click.
+    const waiting = chosen.filter((g) => copiesNeedingMeasurement(g).length > 0);
+    if (waiting.length > 0) {
+      await confirm({
+        title: t("settings.recoveryCopiesScanFirst"),
+        message: (
+          <div>
+            <p>{t("settings.recoveryCopiesScanFirstBody")}</p>
+            <ul className="rc-preview">
+              {waiting.map((g) => (
+                <li key={g.mainPath}>
+                  {g.mainLabel} ×{copiesNeedingMeasurement(g).length}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ),
+        confirmLabel: t("settings.recoveryCopiesScan"),
+        cancelLabel: t("common.cancel"),
+      });
+      return;
+    }
+
     // Show what is about to happen before it happens: which conversations, how many
     // copies each, and how much unique work is at stake. Merging writes to session
     // files, so the user gets to read this first.
@@ -220,7 +255,7 @@ export function RecoveryCopiesSection() {
 
   const scanningAll = scanning.size > 0;
   const chosen = (groups ?? []).filter((g) => selected.has(g.mainPath));
-  const chosenUnscanned = chosen.some((g) => g.copies.some((c) => !c.scanned));
+  const waitingCount = chosen.reduce((n, g) => n + copiesNeedingMeasurement(g).length, 0);
 
   const renderGroup = (group: RecoveryCopyGroupView) => {
     const isOpen = expanded.has(group.mainPath);
@@ -331,7 +366,7 @@ export function RecoveryCopiesSection() {
 
       {open &&
         createPortal(
-          <div className="modal-backdrop" onClick={() => setOpen(false)}>
+          <div className="modal-backdrop rc-backdrop" onClick={() => setOpen(false)}>
             <div
               className="modal rc-modal"
               role="dialog"
@@ -404,7 +439,7 @@ export function RecoveryCopiesSection() {
                 <button
                   className="btn btn--small btn--primary"
                   type="button"
-                  disabled={busy || selected.size === 0 || chosenUnscanned}
+                  disabled={busy || selected.size === 0}
                   onClick={() => void mergeSelected()}
                 >
                   {t("settings.recoveryCopiesMerge")} ({selected.size})
@@ -425,8 +460,13 @@ export function RecoveryCopiesSection() {
                 >
                   {t("settings.recoveryCopiesRefresh")}
                 </button>
-                {chosenUnscanned ? <span className="rc-note">{t("settings.recoveryCopiesScanFirst")}</span> : null}
-                {!chosenUnscanned && note ? <span className="rc-note">{note}</span> : null}
+                {selected.size === 0 ? (
+                  <span className="rc-note">{t("settings.recoveryCopiesPickFirst")}</span>
+                ) : waitingCount > 0 ? (
+                  <span className="rc-note">{t("settings.recoveryCopiesScanFirst")}</span>
+                ) : note ? (
+                  <span className="rc-note">{note}</span>
+                ) : null}
               </div>
             </div>
           </div>,

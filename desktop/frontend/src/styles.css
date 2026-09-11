@@ -40207,3 +40207,7 @@ body > .mermaid-diagram--fullscreen {
   border-radius: 6px;
   background: color-mix(in srgb, currentColor 8%, transparent);
 }
+
+/* The panel's own backdrop sits below the shared confirm dialog, so the merge
+   preview is never buried under the table it was opened from. */
+.rc-backdrop { z-index: var(--z-local-backdrop); }

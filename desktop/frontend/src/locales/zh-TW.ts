@@ -2283,6 +2283,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesOrphan": "孤立（主線已缺失）",
   "settings.recoveryCopiesMerge": "合併所選",
   "settings.recoveryCopiesRefresh": "重新整理",
+  "settings.recoveryCopiesScanFirstBody": "以下工作階段還沒測量過。合併需要先知道每個副本有多少內容、多少是主線沒有的——否則合併等於在不知道動什麼的情況下寫入工作階段檔案。請先掃描：",
+  "settings.recoveryCopiesPickFirst": "先勾選要處理的工作階段（左欄核取方塊）",
   "settings.recoveryCopiesColTurns": "互動輪次",
   "settings.recoveryCopiesColCopies": "副本數",
   "settings.recoveryCopiesPhaseUnmerged": "待合併",

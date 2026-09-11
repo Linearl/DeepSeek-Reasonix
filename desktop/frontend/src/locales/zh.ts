@@ -3240,6 +3240,8 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesOrphan": "孤立（主线已缺失）",
   "settings.recoveryCopiesMerge": "合并所选",
   "settings.recoveryCopiesRefresh": "刷新",
+  "settings.recoveryCopiesScanFirstBody": "以下会话还没测量过。合并需要先知道每个副本有多少内容、多少是主线没有的——否则合并等于在不知道动什么的情况下写会话文件。请先扫描：",
+  "settings.recoveryCopiesPickFirst": "先勾选要处理的会话（左列复选框）",
   "settings.recoveryCopiesColTurns": "交互轮次",
   "settings.recoveryCopiesColCopies": "副本数",
   "settings.recoveryCopiesPhaseUnmerged": "待合入",

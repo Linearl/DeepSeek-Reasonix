@@ -3237,6 +3237,8 @@ export const en = {
   "settings.recoveryCopiesOrphan": "orphan (canonical transcript missing)",
   "settings.recoveryCopiesMerge": "Merge selected",
   "settings.recoveryCopiesRefresh": "Refresh",
+  "settings.recoveryCopiesScanFirstBody": "These conversations have not been measured yet. Merging needs to know how much each copy holds and how much of it the main transcript is missing - otherwise it writes to session files without knowing what it is acting on. Scan first:",
+  "settings.recoveryCopiesPickFirst": "tick a conversation first (checkbox in the left column)",
   "settings.recoveryCopiesColTurns": "turns",
   "settings.recoveryCopiesColCopies": "copies",
   "settings.recoveryCopiesPhaseUnmerged": "To merge",
