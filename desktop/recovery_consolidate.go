@@ -70,7 +70,7 @@ func (a *App) consolidateSessionRecoveryCopies(path string, force bool) (agent.C
 		defer a.lockRuntimeMutation("consolidate-recovery-copies")()
 		a.sessionRemovalMu.Lock()
 		defer a.sessionRemovalMu.Unlock()
-		report, err := agent.ConsolidateSessionRecoveryBranchesWithOptions(sessionPath, agent.ConsolidateOptions{Force: force})
+		report, err := agent.ConsolidateSessionRecoveryBranchesWithOptions(sessionPath, agent.ConsolidateOptions{Force: force, ArchiveLeftovers: force})
 		if err != nil {
 			switch {
 			case errors.Is(err, agent.ErrNoRecoveryBranches):

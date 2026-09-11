@@ -212,6 +212,33 @@ export interface RecoveryCopyGroupView {
   copies: RecoveryCopyView[];
 }
 
+/** RecoveryChainView is one candidate chain a merge could promote: a transcript as
+ *  seen from one of its heads. A session log is a DAG, each head is the tip of one
+ *  chain back to the root, and a copy is a whole file that forked off - so a chain
+ *  is complete on its own and "longest" is a number, not a guess. */
+export interface RecoveryChainView {
+  path: string;
+  headId: string;
+  label: string;
+  isMain: boolean;
+  selected: boolean;
+  covered: boolean;
+  messageCount: number;
+  turns: number;
+  lastActivity: string;
+  bytes: number;
+  preview: string;
+}
+
+export interface RecoveryChainSet {
+  mainPath: string;
+  mainLabel: string;
+  chains: RecoveryChainView[];
+  /** The chain with the most messages, recommended as the merge target. */
+  longestPath: string;
+  longestHead: string;
+}
+
 export interface DesktopShellStatusView {
   trayState: "probing" | "ready" | "unavailable";
   backgroundCloseAvailable: boolean;
@@ -276,6 +303,7 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   ForceConsolidateTopicRecoveryCopies(scope: string, workspaceRoot: string, topicID: string): Promise<ConsolidationReport>;
   ListRecoveryCopyGroups(): Promise<RecoveryCopyGroupView[]>;
   ScanRecoveryCopyGroup(mainPath: string): Promise<RecoveryCopyGroupView>;
+  ListRecoveryChains(mainPath: string): Promise<RecoveryChainSet>;
   PickGlobalWriteDir(): Promise<string>;
   // Authorized write-directory management (#9167).
   QueryAuthorizedWriteDirs(): Promise<{ project: string[]; global: string[]; session: string[] }>;
@@ -2735,6 +2763,9 @@ function makeMockApp(): AppBindings {
     },
     async ListRecoveryCopyGroups(): Promise<RecoveryCopyGroupView[]> {
       return [];
+    },
+    async ListRecoveryChains(mainPath: string): Promise<RecoveryChainSet> {
+      return { mainPath, mainLabel: mainPath, chains: [], longestPath: "", longestHead: "" };
     },
     async ScanRecoveryCopyGroup(_mainPath: string): Promise<RecoveryCopyGroupView> {
       return { mainPath: "", mainLabel: "", directory: "", mainExists: false, mainMessages: 0, mainBytes: 0, mainModified: "", copies: [] };

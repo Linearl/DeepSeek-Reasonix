@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { app, type ConsolidationReport, type RecoveryCopyGroupView } from "../lib/bridge";
+import { app, type ConsolidationReport, type RecoveryCopyGroupView, type RecoveryChainSet } from "../lib/bridge";
 import { useT } from "../lib/i18n";
 import { useConfirmDialog } from "./ConfirmDialog";
 
@@ -117,6 +117,10 @@ export function RecoveryCopiesSection() {
   const [outcomes, setOutcomes] = useState<Outcome[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [failed, setFailed] = useState(false);
+  // chains holds each expanded conversation's candidate chains, keyed by main path.
+  // Loading them replays every log for that conversation, so it happens when a row
+  // is opened rather than for the whole list at once.
+  const [chains, setChains] = useState<Map<string, RecoveryChainSet>>(new Map());
 
   const load = useCallback(async () => {
     setFailed(false);
@@ -158,13 +162,30 @@ export function RecoveryCopiesSection() {
       return next;
     });
 
-  const toggleExpanded = (path: string) =>
+  /** loadChains replays one conversation's logs to list its candidate chains. A
+   *  merge promotes the chain with the most messages, so the list is what tells the
+   *  user which transcript they are about to be left with. */
+  const loadChains = useCallback(async (mainPath: string) => {
+    try {
+      const set = await app.ListRecoveryChains(mainPath);
+      setChains((current) => new Map(current).set(mainPath, set));
+    } catch (err) {
+      setErrors((current) => [...current, err instanceof Error ? err.message : String(err)]);
+    }
+  }, []);
+
+  const toggleExpanded = (path: string) => {
     setExpanded((current) => {
       const next = new Set(current);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+        if (!chains.has(path)) void loadChains(path);
+      }
       return next;
     });
+  };
 
   /** scanOne measures a conversation and returns the fresh row, so callers that
    *  need the numbers immediately do not have to wait for a re-render. */
@@ -435,6 +456,39 @@ export function RecoveryCopiesSection() {
                 </div>
               );
             })}
+            {(() => {
+              const set = chains.get(group.mainPath);
+              if (!set || set.chains.length === 0) return null;
+              return (
+                <div className="rc-chains">
+                  <div className="rc-chains__head">{t("settings.recoveryCopiesChains")}</div>
+                  {set.chains.map((chain, index) => {
+                    const recommended =
+                      chain.path === set.longestPath && chain.headId === set.longestHead;
+                    return (
+                      <div
+                        className={`rc-chain${recommended ? " rc-chain--recommended" : ""}`}
+                        key={`${chain.path}#${chain.headId}`}
+                      >
+                        <span className="rc-chain__name">
+                          {chain.selected
+                            ? t("settings.recoveryCopiesChainCurrent")
+                            : `${t("settings.recoveryCopiesChainCandidate")} ${index}`}
+                        </span>
+                        <span>
+                          {chain.messageCount} · {chain.turns} {t("settings.recoveryCopiesColTurns")}
+                        </span>
+                        <span>{formatWhen(chain.lastActivity)}</span>
+                        <span>{formatBytes(chain.bytes)}</span>
+                        {recommended ? (
+                          <span className="rc-chain__badge">{t("settings.recoveryCopiesRecommended")}</span>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </>
         )}
       </div>

@@ -209,6 +209,10 @@ type ConsolidateOptions struct {
 	// hard-deleted. Meant for an explicit user confirmation after the
 	// engine reported BlockedByDivergence.
 	Force bool
+	// ArchiveLeftovers also archives the copies the winner does not cover, which
+	// a forced swap routinely leaves behind. Their unique turns are what the user
+	// chose against by picking a winner, and the archive is recoverable.
+	ArchiveLeftovers bool
 }
 
 // ConsolidateSessionRecoveryBranches merges the recovery copies of mainPath
@@ -317,7 +321,14 @@ func ConsolidateSessionRecoveryBranchesWithOptions(mainPath string, opts Consoli
 		if cand.IsMain || cand.Path == winner.Path {
 			continue
 		}
-		if err := TrashRecoveryBranchCoveredBy(cand.Path, mainPath, dir); err != nil {
+		trashErr := TrashRecoveryBranchCoveredBy(cand.Path, mainPath, dir)
+		if trashErr != nil && opts.ArchiveLeftovers {
+			// CoveredBy refuses a copy the winner does not contain. The user has
+			// already chosen the winner, so the refusal is overridden here and the
+			// copy is archived anyway - recoverably.
+			trashErr = TrashRecoveryBranchForced(cand.Path, dir)
+		}
+		if err := trashErr; err != nil {
 			report.SkippedNotCovered = append(report.SkippedNotCovered, cand.Path)
 			if overlap, ok := SessionContentOverlap(mainPath, cand.Path); ok {
 				report.NotCoveredDetail = append(report.NotCoveredDetail, CopyOverlapDetail{

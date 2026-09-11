@@ -330,7 +330,7 @@ func ReclaimableRecoveryBranches(dir string, now time.Time, grace time.Duration)
 // path, so it does not require the background GC idle grace period. Parent
 // coverage is rechecked while both parent and branch removal guards are held.
 func TrashCoveredRecoveryBranch(path, parentDir string) error {
-	return trashCoveredRecoveryBranch(path, parentDir, false)
+	return trashCoveredRecoveryBranch(path, parentDir, false, false)
 }
 
 // TrashRecoveryBranchCoveredBy moves path to recoverable trash when canonical
@@ -428,14 +428,26 @@ func ReparentRecoveryCanonical(canonicalPath, rootID, parentDir string) error {
 	})
 }
 
+// TrashRecoveryBranchForced archives a recovery branch the user has discarded by
+// choosing another chain to keep, without requiring the winner to cover it.
+//
+// A merge after a main-side compaction routinely leaves copies that the winner does
+// not contain: they hold turns from the branch that lost. Those turns are what the
+// user decided against, and leaving the files behind keeps the session directory
+// cluttered with branches nothing will ever read again. They go to the same
+// recoverable .trash layout, so the decision is reversible.
+func TrashRecoveryBranchForced(path, parentDir string) error {
+	return trashCoveredRecoveryBranch(path, parentDir, false, true)
+}
+
 // TrashReclaimableRecoveryBranch is the background-GC variant. In addition to
 // the same atomic coverage proof, it requires the branch to remain idle for the
 // full grace period.
 func TrashReclaimableRecoveryBranch(path, parentDir string) error {
-	return trashCoveredRecoveryBranch(path, parentDir, true)
+	return trashCoveredRecoveryBranch(path, parentDir, true, false)
 }
 
-func trashCoveredRecoveryBranch(path, parentDir string, requireIdle bool) error {
+func trashCoveredRecoveryBranch(path, parentDir string, requireIdle, force bool) error {
 	path = filepath.Clean(strings.TrimSpace(path))
 	parentDir = filepath.Clean(strings.TrimSpace(parentDir))
 	if path == "." || parentDir == "." || filepath.Dir(path) != parentDir {
@@ -463,7 +475,12 @@ func trashCoveredRecoveryBranch(path, parentDir string, requireIdle bool) error 
 			return ErrRecoveryBranchNotIdle
 		}
 	}
-	if !RecoveryBranchCoveredByParent(path, parentDir) {
+	// force marks a branch the user has explicitly discarded by choosing another
+	// chain. The coverage proof exists so background cleanup can never hide work
+	// on its own; a merge has just made that judgement explicitly, with the chain
+	// that wins visible to the user beforehand. The branch still lands in the same
+	// recoverable .trash layout, so the choice can be undone.
+	if !force && !RecoveryBranchCoveredByParent(path, parentDir) {
 		return ErrRecoveryBranchNotCovered
 	}
 

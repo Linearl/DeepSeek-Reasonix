@@ -40241,3 +40241,29 @@ body > .mermaid-diagram--fullscreen {
 }
 .rc-row--winner .rc-label { font-weight: 700; }
 .rc-result__hint { margin: 8px 0 0; opacity: 0.85; }
+
+/* Candidate chains an expanded conversation could be merged to. Each row is one
+   head's chain back to the root, so their lengths are directly comparable - which
+   is what makes "the merge keeps the longest" checkable rather than a claim. */
+.rc-chains { margin: 8px 0 4px; padding: 8px 10px 4px; border-top: 1px dashed color-mix(in srgb, currentColor 16%, transparent); }
+.rc-chains__head { margin-bottom: 6px; font-size: 0.9em; font-weight: 600; opacity: 0.72; }
+.rc-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 14px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.94em;
+}
+.rc-chain--recommended {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  box-shadow: inset 3px 0 0 0 var(--accent, currentColor);
+}
+.rc-chain__name { min-width: 90px; font-weight: 600; }
+.rc-chain__badge {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+  font-size: 0.86em;
+}
