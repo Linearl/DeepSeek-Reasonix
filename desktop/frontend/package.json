@@ -6,7 +6,8 @@
   "packageManager": "pnpm@10.34.5",
   "scripts": {
     "dev": "vite",
-    "build": "pnpm lint:hooks && pnpm check:waapi && pnpm check:scroll-writer && pnpm check:app-layers && node scripts/check-css-syntax.mjs src/styles.css src/components/RemoteConnectWizard.css src/components/TranscriptSelectionMenu.css src/components/MCPInteractionCard.css src/components/SubagentDetails.css && node scripts/check-z-index-tokens.mjs src/styles.css src/components/RemoteConnectWizard.css && node scripts/check-theme-token-contract.mjs && tsc --noEmit && vite build && node scripts/check-bundle-budget.mjs",
+    "build": "pnpm lint:hooks && pnpm check:waapi && pnpm check:scroll-writer && pnpm check:app-layers && node scripts/check-css-syntax.mjs src/styles.css src/components/RemoteConnectWizard.css src/components/TranscriptSelectionMenu.css src/components/MCPInteractionCard.css src/components/SubagentDetails.css && node scripts/check-z-index-tokens.mjs src/styles.css src/components/RemoteConnectWizard.css && node scripts/check-theme-token-contract.mjs && node ../../scripts/check-bridge-json-tags.mjs ../.. && tsc --noEmit && vite build && node scripts/check-bundle-budget.mjs",
+    "check:bridge-tags": "node ../../scripts/check-bridge-json-tags.mjs ../..",
     "check:bundle": "node scripts/check-bundle-budget.mjs",
     "check:scroll-writer": "node scripts/check-single-scroll-writer.mjs",
     "preview": "vite preview",
