@@ -1507,6 +1507,7 @@ export const en = {
   "projectTree.archiveTopic": "Archive to trash",
   "projectTree.archiveConversation": "Archive conversation",
   "projectTree.renameProject": "Rename display name",
+  "projectTree.relocateProject": "Change project folder…",
   "projectTree.renameProjectWorkbench": "Rename project",
   "projectTree.justNow": "just now",
   "projectTree.previously": "previously",

@@ -1508,6 +1508,7 @@ export const zh: Record<DictKey, string> = {
   "projectTree.archiveTopic": "归档到回收站",
   "projectTree.archiveConversation": "归档对话",
   "projectTree.renameProject": "修改显示名称",
+  "projectTree.relocateProject": "更改项目文件夹的位置…",
   "projectTree.renameProjectWorkbench": "重命名项目",
   "projectTree.justNow": "刚刚",
   "projectTree.previously": "之前",

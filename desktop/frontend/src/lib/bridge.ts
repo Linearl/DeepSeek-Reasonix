@@ -772,6 +772,10 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   ListProjectTree(): Promise<ProjectNode[]>;
   RenameProject(workspaceRoot: string, title: string): Promise<void>;
   SetProjectColor(workspaceRoot: string, color: string): Promise<void>;
+  /** PickProjectFolder opens the folder picker for a project move (task 47). */
+  PickProjectFolder(currentRoot: string): Promise<string>;
+  /** RelocateProject repoints a project at a folder it was moved to (task 47). */
+  RelocateProject(oldRoot: string, newRoot: string): Promise<void>;
   SetProjectPinned(workspaceRoot: string, pinned: boolean): Promise<void>;
   ReorderProjects(workspaceRoots: string[]): Promise<void>;
   RequestOwnershipFromRemote(workspaceRoot: string, topicID: string): Promise<void>;
@@ -2578,6 +2582,15 @@ function makeMockApp(): AppBindings {
   return {
     ...makeMockSessionCatalogBindings(cloneProjectTree),
     ...makeMockBlankProjectBindings(),
+    // Task 47 stubs: the desktop mock has no folder picker, so the picker reports a
+    // cancel and the move applies straight to the in-memory tree.
+    async PickProjectFolder(_currentRoot: string) {
+      return "";
+    },
+    async RelocateProject(oldRoot: string, newRoot: string) {
+      const node = mockProjectTree.find((item) => item.root === oldRoot);
+      if (node) node.root = newRoot;
+    },
     async ServePoolStatus() {
       return { enabled: false, running: false, bind: "", addr: "", port: 18789, token: "mock-gateway-token", listen: "0.0.0.0:18789" };
     },

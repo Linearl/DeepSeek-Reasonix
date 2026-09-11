@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/wailsapp/wails/v2/pkg/runtime"
+
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
 )
@@ -117,6 +119,23 @@ func (a *App) relocateSessionWorkspaceRoots(from, to string) (moved, total int, 
 		moved++
 	}
 	return moved, total, nil
+}
+
+// PickProjectFolder asks for the folder a project should point at (task 47). It
+// starts where the project lives today so a sibling rename is one click away, and
+// returns "" when the user cancels.
+func (a *App) PickProjectFolder(currentRoot string) (string, error) {
+	if a.ctx == nil {
+		return "", nil
+	}
+	cur := strings.TrimSpace(currentRoot)
+	if cur == "" {
+		cur, _ = os.Getwd()
+	}
+	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title:            "Choose the project's new folder",
+		DefaultDirectory: dialogDefaultDirectory(cur),
+	})
 }
 
 // replacePathInList rewrites one root inside a path list, preserving order and every

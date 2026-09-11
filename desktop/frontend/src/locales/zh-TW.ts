@@ -1250,6 +1250,7 @@ export const zhTW: Record<DictKey, string> = {
   "projectTree.archiveTopic": "歸檔到回收站",
   "projectTree.archiveConversation": "歸檔對話",
   "projectTree.renameProject": "修改顯示名稱",
+  "projectTree.relocateProject": "變更專案資料夾位置…",
   "projectTree.renameProjectWorkbench": "重新命名專案",
   "projectTree.removeProject": "移出側邊欄",
   "projectTree.confirmRemoveProject": "確認移出側邊欄",

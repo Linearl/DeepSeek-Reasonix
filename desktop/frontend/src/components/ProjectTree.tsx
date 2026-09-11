@@ -945,6 +945,23 @@ export function ProjectTree({
     }
   };
 
+  // Task 47: the folder move is registry-wide (project key plus every session's
+  // recorded workspace), so the picker only supplies the new path and the backend
+  // owns the rewrite order. A cancelled picker returns "" and changes nothing.
+  const relocateProject = async (path: string) => {
+    try {
+      const picked = await app.PickProjectFolder(path);
+      if (!picked) return;
+      await app.RelocateProject(path, picked);
+      setMenuProject(null);
+      setMenuPoint(null);
+      await refresh();
+      await onTopicsChanged?.();
+    } catch (err) {
+      console.error("relocate project failed", err);
+    }
+  };
+
   const visibleTree = useMemo(() => {
     const q = query.trim().toLowerCase();
     // Time filter: compute cutoff timestamp.
@@ -1610,6 +1627,15 @@ export function ProjectTree({
                 closeMenu();
               },
             },
+            {
+              key: "relocate-project",
+              icon: <FolderOpen size={13} />,
+              label: t("projectTree.relocateProject"),
+              onSelect: () => {
+                void relocateProject(projectPath ?? node.root);
+                closeMenu();
+              },
+            },
             { type: "separator" as const, key: "remove-separator" },
             {
               key: "remove",
@@ -1676,6 +1702,15 @@ export function ProjectTree({
               label: t("projectGroup.moveInto"),
               onSelect: () => {
                 setGroupTarget({ ...node, root: projectPath ?? node.root });
+                closeMenu();
+              },
+            },
+            {
+              key: "relocate-project",
+              icon: <FolderOpen size={13} />,
+              label: t("projectTree.relocateProject"),
+              onSelect: () => {
+                void relocateProject(projectPath ?? node.root);
                 closeMenu();
               },
             },
