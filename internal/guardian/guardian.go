@@ -357,6 +357,16 @@ func cursorPathForGuardianPath(path string) string {
 func (gs *Session) Save(path string) error {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
+	// The guardian transcript is a session-shaped file and goes through the same
+	// save path as any other, which expects a held lease. Writing without one made
+	// every review trip the unleased-write probe - a probe meant to flag a second
+	// writer on a transcript, not a sidecar the guardian owns and writes alone.
+	// Holding the lease here also serialises two instances against this sidecar.
+	lease, err := agent.TryAcquireSessionLease(path)
+	if err != nil {
+		return err
+	}
+	defer lease.Release()
 	if err := gs.sess.Save(path); err != nil {
 		return err
 	}
