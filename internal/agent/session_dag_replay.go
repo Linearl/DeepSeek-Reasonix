@@ -99,6 +99,7 @@ func newSessionDAGState(path string) *sessionDAGState {
 // that fails to parse (damaged=true, lastGoodEnd set); an unsupported schema
 // or entry type is a hard error because a newer writer owns the log.
 func replaySessionDAG(ctx context.Context, path string, limits sessionReplayLimits) (*sessionDAGState, error) {
+	limits = limitsForSessionLog(path, limits)
 	st := newSessionDAGState(path)
 	if err := st.replayFrom(ctx, 0, limits); err != nil {
 		return st, err

@@ -116,5 +116,15 @@ func writeRecoveryEventLog(path string, msgs []provider.Message, digest [sha256.
 	if isolated {
 		return compactSessionEventLog(path, msgs, digest, baseRevision, "recovery")
 	}
+	// The append branch was bounded only by the fold check on the save paths, and
+	// a recovery copy is exactly the session that stops taking them once its
+	// writer lane is abandoned. Apply the same check here so such a copy cannot
+	// grow its log without bound: an oversize log costs the whole session, because
+	// the loader must not fall back to an older checkpoint and hide the newer
+	// turns the log holds.
+	if _, contentBytes, err := digestAndSizeSessionMessages(msgs); err == nil &&
+		sessionEventLogOversized(sessionEventLogSize(path), contentBytes) {
+		return compactSessionEventLog(path, msgs, digest, baseRevision, "recovery")
+	}
 	return appendSessionReplaceEvent(path, msgs, digest, baseRevision, "recovery")
 }

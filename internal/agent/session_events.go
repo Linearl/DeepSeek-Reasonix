@@ -118,6 +118,38 @@ var defaultSessionReplayLimits = sessionReplayLimits{
 	maxCollectionItems: sessionEventReplayMaxCollectionItems,
 }
 
+// sessionReplayMaxBytesHard is the ceiling the adaptive allowance below will not
+// exceed, so a corrupt or absurdly large file still cannot exhaust memory.
+const sessionReplayMaxBytesHard = int64(1024 << 20)
+
+// limitsForSessionLog raises the byte limit to fit the log actually on disk.
+//
+// The limit exists so a damaged log cannot exhaust memory by decoding into a much
+// larger graph. Its default is sized for ordinary histories, but a session that
+// grows past it loses everything: the loader must not fall back to an older
+// checkpoint, because the log may hold newer turns, so exceeding the limit means
+// the session cannot be opened at all and its newest content is invisible.
+//
+// The file size is known before decoding, so the limit can be sized to the file
+// rather than refusing it - an allowance of the file plus a quarter, never above
+// the hard ceiling. The record and message caps still apply, so a small file that
+// expands into a huge graph is still refused.
+func limitsForSessionLog(path string, limits sessionReplayLimits) sessionReplayLimits {
+	size := sessionEventLogSize(path)
+	if size <= 0 {
+		return limits
+	}
+	want := size + size/4
+	if want <= limits.maxBytes {
+		return limits
+	}
+	if want > sessionReplayMaxBytesHard {
+		want = sessionReplayMaxBytesHard
+	}
+	limits.maxBytes = want
+	return limits
+}
+
 func sessionReplayLimitError(path, resource string, value, limit int64) error {
 	err := &SessionReplayLimitError{Path: path, Resource: resource, Value: value, Limit: limit}
 	slog.Warn("session: refusing unsafe event-log replay",
