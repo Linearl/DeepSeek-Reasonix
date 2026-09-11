@@ -40284,3 +40284,15 @@ body > .mermaid-diagram--fullscreen {
   height: 7px;
   border-radius: 50%;
 }
+
+/* Each candidate chain's own preview text - the last thing that branch said. Numbers
+   tell you which chain is longest; the preview tells you which one you want. */
+.rc-chain__preview {
+  flex: 1 1 240px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.72;
+  font-size: 0.94em;
+}

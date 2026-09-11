@@ -290,7 +290,13 @@ export function RecoveryCopiesSection() {
       if (!ok) return;
 
       const collected: Outcome[] = [];
-      for (const group of measured) {
+      // Report per conversation as it finishes. A merge over a dozen copies takes long
+      // enough that a silent run reads as "nothing happened", and the per-conversation
+      // result is what tells the user whether it worked.
+      for (const [index, group] of measured.entries()) {
+        setStatus(
+          `${t("settings.recoveryCopiesMerging")} ${index + 1}/${measured.length} · ${group.mainLabel}`,
+        );
         let report: ConsolidationReport;
         try {
           report = await app.ConsolidateSessionRecoveryCopies(group.mainPath);
@@ -300,6 +306,7 @@ export function RecoveryCopiesSection() {
             kind: "failed",
             detail: err instanceof Error ? err.message : String(err),
           });
+          setOutcomes([...collected]);
           continue;
         }
 
@@ -330,6 +337,7 @@ export function RecoveryCopiesSection() {
           setBusy(true);
           if (!forceOk) {
             collected.push({ label: group.mainLabel, kind: "blocked", notCovered: uniqueIn(group) });
+            setOutcomes([...collected]);
             continue;
           }
           try {
@@ -348,6 +356,7 @@ export function RecoveryCopiesSection() {
               detail: err instanceof Error ? err.message : String(err),
             });
           }
+          setOutcomes([...collected]);
           continue;
         }
 
@@ -359,6 +368,7 @@ export function RecoveryCopiesSection() {
           trashed: report.trashed?.length ?? 0,
           notCovered: report.notCoveredDetail?.filter((d) => d.unique > 0).length ?? 0,
         });
+        setOutcomes([...collected]);
       }
 
       setOutcomes(collected);
@@ -483,6 +493,12 @@ export function RecoveryCopiesSection() {
                         {recommended ? (
                           <span className="rc-chain__badge">{t("settings.recoveryCopiesRecommended")}</span>
                         ) : null}
+                        {/* The head's own preview text: what this chain would leave the
+                            conversation looking like, which is the thing a user needs in
+                            order to choose. Without it the list showed numbers only. */}
+                        <span className="rc-chain__preview" title={chain.preview}>
+                          {chain.preview?.trim() || t("settings.recoveryCopiesPreviewEmpty")}
+                        </span>
                       </div>
                     );
                   })}

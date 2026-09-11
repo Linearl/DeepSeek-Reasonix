@@ -203,6 +203,26 @@ func SessionContentOverlap(canonicalPath, copyPath string) (CopyOverlap, bool) {
 // If the parent is open or being rewritten, acquisition fails without waiting
 // so bulk cleanup preserves the branch and can be retried later.
 func TryAcquireRecoveryParentGuard(path, parentDir string) (*SessionRemovalGuard, error) {
+	return acquireRecoveryParentGuard(path, parentDir, false)
+}
+
+// TryAcquireRecoveryParentGuardUnchecked takes the same locks but does not require
+// the parent transcript to contain the branch.
+//
+// The coverage proof keeps background cleanup from hiding work on its own. A merge
+// has already made that judgement explicitly - the user saw which chain wins and
+// confirmed it - so the leftover branches are the work they decided against. Without
+// this path those branches stayed in the session directory forever: the merge
+// reported them as "not merged" and nothing was ever able to remove them, which is
+// what left seven copies behind after a fourteen-copy merge.
+//
+// The locks still apply, and the branch still lands in the recoverable .trash
+// layout, so the decision remains reversible.
+func TryAcquireRecoveryParentGuardUnchecked(path, parentDir string) (*SessionRemovalGuard, error) {
+	return acquireRecoveryParentGuard(path, parentDir, true)
+}
+
+func acquireRecoveryParentGuard(path, parentDir string, skipCoverage bool) (*SessionRemovalGuard, error) {
 	meta, ok, err := LoadBranchMeta(path)
 	if err != nil || !ok || !meta.Recovered || strings.TrimSpace(meta.RecoveryDigest) == "" {
 		return nil, ErrRecoveryBranchNotCovered
@@ -223,7 +243,7 @@ func TryAcquireRecoveryParentGuard(path, parentDir string) (*SessionRemovalGuard
 	if err != nil {
 		return nil, err
 	}
-	if !recoveryBranchCoveredByParent(path, parentDir, meta) {
+	if !skipCoverage && !recoveryBranchCoveredByParent(path, parentDir, meta) {
 		guard.Release()
 		return nil, ErrRecoveryBranchNotCovered
 	}
@@ -458,7 +478,10 @@ func trashCoveredRecoveryBranch(path, parentDir string, requireIdle, force bool)
 		return fmt.Errorf("invalid recovery session path")
 	}
 
-	parentGuard, err := TryAcquireRecoveryParentGuard(path, parentDir)
+	// force skips the coverage proof at the guard too: the caller is a merge whose
+	// user already chose the winner, and leaving the branch behind is what made
+	// "merge" report copies it could never clean up. The locks still apply.
+	parentGuard, err := acquireRecoveryParentGuard(path, parentDir, force)
 	if err != nil {
 		return err
 	}

@@ -3240,6 +3240,8 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesOrphan": "孤立（主线已缺失）",
   "settings.recoveryCopiesMerge": "合并所选",
   "settings.recoveryCopiesRefresh": "刷新",
+  "settings.recoveryCopiesPreviewEmpty": "（该分支无预览文本）",
+  "settings.recoveryCopiesMerging": "正在合并",
   "settings.recoveryCopiesChains": "候选链（合并后由最长的一条成为主线）",
   "settings.recoveryCopiesChainCurrent": "当前主线",
   "settings.recoveryCopiesChainCandidate": "候选链",

@@ -164,8 +164,17 @@ interface SessionTranscript {
 }
 
 const DEFAULT_MAX_RESIDENT_SESSIONS = 8;
+// The markdown cache is the one that must be generous. It holds parse results, and a
+// parse costs CPU: when the budget is exceeded the LRU evicts entries the view is
+// about to ask for again, and the transcript re-parses on every switch. It is also the
+// more expensive of the two per entry - text*2 + selectionText*2 + the HAST walk
+// (48 bytes per node) runs several times the source text.
+//
+// The body budget stays where it was: dropped history is re-fetched from a paged
+// store rather than recomputed, so running out of it costs I/O, not CPU. Each budget
+// is a global ceiling shared by all resident sessions, not a per-session allowance.
 const DEFAULT_HISTORY_BODY_BUDGET = 64 << 20;
-const DEFAULT_MARKDOWN_BUDGET = 32 << 20;
+const DEFAULT_MARKDOWN_BUDGET = 128 << 20;
 
 function sessionKeyFor(tabId: string, sessionPath: string): string {
   return `${tabId}\n${sessionPath}`;

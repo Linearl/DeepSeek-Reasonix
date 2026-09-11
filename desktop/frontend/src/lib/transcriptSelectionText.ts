@@ -57,7 +57,11 @@ function markdownRow(rowKey: string, sourceText: string, entryId?: string): Tran
     sourceText,
     contentRevision: revision,
     resolveText: () => markdownSelectionText(sourceText, entryId),
-    pin: entryId ? () => getTranscriptStore().pinMarkdown(entryId, revision) : undefined,
+    // Pin unconditionally, matching the cache's content-addressed key: pinning by
+    // revision protects the entry this row actually reads, whereas gating on entryId
+    // left live and hydrated rows unpinned - so the on-screen markdown was free to be
+    // evicted while it was still being looked at.
+    pin: () => getTranscriptStore().pinMarkdown(entryId, revision),
   };
 }
 

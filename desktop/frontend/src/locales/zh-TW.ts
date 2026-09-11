@@ -2283,6 +2283,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesOrphan": "孤立（主線已缺失）",
   "settings.recoveryCopiesMerge": "合併所選",
   "settings.recoveryCopiesRefresh": "重新整理",
+  "settings.recoveryCopiesPreviewEmpty": "（該分支無預覽文字）",
+  "settings.recoveryCopiesMerging": "正在合併",
   "settings.recoveryCopiesChains": "候選鏈（合併後由最長的一條成為主線）",
   "settings.recoveryCopiesChainCurrent": "目前主線",
   "settings.recoveryCopiesChainCandidate": "候選鏈",

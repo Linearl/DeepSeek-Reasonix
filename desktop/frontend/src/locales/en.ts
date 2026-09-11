@@ -3237,6 +3237,8 @@ export const en = {
   "settings.recoveryCopiesOrphan": "orphan (canonical transcript missing)",
   "settings.recoveryCopiesMerge": "Merge selected",
   "settings.recoveryCopiesRefresh": "Refresh",
+  "settings.recoveryCopiesPreviewEmpty": "(no preview text for this branch)",
+  "settings.recoveryCopiesMerging": "merging",
   "settings.recoveryCopiesChains": "candidate chains (the longest one becomes the main transcript)",
   "settings.recoveryCopiesChainCurrent": "current main",
   "settings.recoveryCopiesChainCandidate": "chain",
