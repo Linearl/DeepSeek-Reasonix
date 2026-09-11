@@ -108,7 +108,9 @@ export function ProviderModelsEditor({ provider, disabled, canFetch, onChange, o
                   ? t("providerUI.testTimingFull", { ttft: result.probe.ttftMs, tps: result.probe.tps.toFixed(1), tokens: result.probe.outputTokens, gen: result.probe.generationMs ?? 0 })
                   : t("providerUI.testTiming", { ttft: result.probe.ttftMs, tps: result.probe.tps.toFixed(1) }))
                 : t("providerUI.testTimingTTFT", { ttft: result.probe.ttftMs }))
-              : t("providerUI.testSuccess"))}</div>}
+              : result.probe
+                ? t("providerUI.testNoTiming")
+                : t("providerUI.testSuccess"))}</div>}
         </div>;
       })}
     </div>
