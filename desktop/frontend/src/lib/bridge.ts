@@ -170,6 +170,10 @@ export interface ConsolidationReport {
   winnerMessageCount: number;
   trashed: string[];
   skippedNotCovered: string[];
+  // notCoveredDetail explains each skippedNotCovered entry: how many events the
+  // canonical transcript already holds and how many belong to that copy alone. A
+  // copy with a large unique count is work a plain "merged" toast would hide.
+  notCoveredDetail?: { path: string; shared: number; unique: number }[];
   skippedUnloadable: string[];
 }
 

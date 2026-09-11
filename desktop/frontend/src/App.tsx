@@ -4608,7 +4608,20 @@ export default function App() {
                         const path = (activeTab?.sessionPath ?? state.meta?.sessionPath ?? "").trim();
                         if (!path) return;
                         void app.ConsolidateSessionRecoveryCopies(path).then((report) => {
-                          showToast(report?.blockedByDivergence ? t("recovery.consolidateBlocked") : t("recovery.consolidated"), report?.blockedByDivergence ? "warn" : "info");
+                          if (report?.blockedByDivergence) {
+                            showToast(t("recovery.consolidateBlocked"), "warn");
+                            return;
+                          }
+                          // Copies the merge did not cover keep their own events, and a bare
+                          // "merged" toast would imply nothing was left behind. Say how much,
+                          // because for a diverged copy that count is work the user still has.
+                          const held = (report?.notCoveredDetail ?? []).filter((entry) => entry.unique > 0);
+                          if (held.length > 0) {
+                            const events = held.reduce((sum, entry) => sum + entry.unique, 0);
+                            showToast(`${t("recovery.consolidatedWithLeftovers")} (${held.length} / ${events})`, "warn");
+                            return;
+                          }
+                          showToast(t("recovery.consolidated"), "info");
                         }).catch((error) => {
                           showToast(error instanceof Error ? error.message : String(error), "error");
                         });

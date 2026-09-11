@@ -1385,6 +1385,7 @@ export const zh: Record<DictKey, string> = {
   // 会话恢复
   "recovery.noticeSavedCopy": "检测到会话在磁盘上发生变化，未保存的本地记录已保留为其他保存版本。",
   "recovery.consolidated": "已把恢复副本合并回会话。",
+  "recovery.consolidatedWithLeftovers": "已合并，但部分副本未被覆盖，其独有事件未并入（副本数 / 独有事件数）",
   "recovery.consolidateBlocked": "未合并：恢复副本未覆盖当前对话记录。",
   "recovery.noticeKeptCurrent": "检测到重复保存冲突，当前版本已单独保存。",
   "recovery.noticeAdopted": "检测到会话在磁盘上发生变化，已采用较新的记录。",
