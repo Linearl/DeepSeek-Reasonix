@@ -152,6 +152,51 @@ func (s SessionContentSnapshot) Covers(covered SessionContentSnapshot) bool {
 		messagesHavePrefixWithCompatibleSystem(s.messages, covered.messages)
 }
 
+// CopyOverlap counts how much of a second transcript this one already contains and
+// how much of it is unique to the other side.
+//
+// Covers answers a binary question, and a binary answer is not enough to choose a
+// branch: a copy carrying a few hundred events of its own is work that was lost,
+// not a duplicate, and the user has to be able to tell those apart before merging.
+//
+// The comparison deliberately mirrors Covers - the same leading-system strip and the
+// same storage equality - so a report can never call a branch "unique" that Covers
+// would have accepted, or the reverse.
+type CopyOverlap struct {
+	Shared int
+	Unique int
+}
+
+func (s SessionContentSnapshot) Overlap(covered SessionContentSnapshot) CopyOverlap {
+	full := messagesWithoutLeadingSystem(s.messages)
+	other := messagesWithoutLeadingSystem(covered.messages)
+	limit := len(other)
+	if len(full) < limit {
+		limit = len(full)
+	}
+	for i := 0; i < limit; i++ {
+		if !messagesEqualForStorage(full[i], other[i]) {
+			return CopyOverlap{Shared: i, Unique: len(other) - i}
+		}
+	}
+	return CopyOverlap{Shared: limit, Unique: len(other) - limit}
+}
+
+// SessionContentOverlap reports the split between a canonical transcript and a copy.
+// ok is false when either side cannot be loaded safely - the same fail-closed rule
+// SessionContentCovers applies, since a damaged log must not produce a merge hint.
+func SessionContentOverlap(canonicalPath, copyPath string) (CopyOverlap, bool) {
+	canonical, ok := LoadSessionContentSnapshot(canonicalPath)
+	if !ok {
+		return CopyOverlap{}, false
+	}
+	copySnapshot, ok := LoadSessionContentSnapshot(copyPath)
+	if !ok {
+		return CopyOverlap{}, false
+	}
+	return canonical.Overlap(copySnapshot), true
+}
+
 // TryAcquireRecoveryParentGuard verifies that a recovery branch is covered by
 // its parent while holding the parent's save and lease locks. The caller must
 // keep the returned guard until permanent deletion finishes, then Release it.

@@ -61,7 +61,20 @@ type ConsolidationReport struct {
 	WinnerMessageCount  int
 	Trashed             []string
 	SkippedNotCovered   []string
+	// NotCoveredDetail explains each entry of SkippedNotCovered: the copy`s own
+	// event count and how much of it the canonical transcript already holds. A copy
+	// whose Unique is small is duplication; one with a large Unique is work the user
+	// would lose by ignoring it, and the UI has to say which is which.
+	NotCoveredDetail []CopyOverlapDetail
 	SkippedUnloadable   []string
+}
+
+// CopyOverlapDetail is one skipped copy, described by how much of it is already
+// present and how much is its own.
+type CopyOverlapDetail struct {
+	Path   string
+	Shared int
+	Unique int
 }
 
 // validateConsolidationTarget rejects paths that cannot be a consolidation
@@ -306,6 +319,11 @@ func ConsolidateSessionRecoveryBranchesWithOptions(mainPath string, opts Consoli
 		}
 		if err := TrashRecoveryBranchCoveredBy(cand.Path, mainPath, dir); err != nil {
 			report.SkippedNotCovered = append(report.SkippedNotCovered, cand.Path)
+			if overlap, ok := SessionContentOverlap(mainPath, cand.Path); ok {
+				report.NotCoveredDetail = append(report.NotCoveredDetail, CopyOverlapDetail{
+					Path: cand.Path, Shared: overlap.Shared, Unique: overlap.Unique,
+				})
+			}
 			continue
 		}
 		report.Trashed = append(report.Trashed, cand.Path)
