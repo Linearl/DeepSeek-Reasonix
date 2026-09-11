@@ -29,7 +29,7 @@ import type { SettingsTab } from "../lib/types";
 
 export const SETTINGS_NAV_TABS: SettingsTab[] = [
   "general", "bots", "models", "providers", "model-stats", "mcp", "remote", "localserver",
-  "skills", "subagents", "plugins", "memory",
+  "skills", "subagents", "plugins", "experimental", "memory",
   "hooks", "diagnostics", "shortcuts", "permissions", "sandbox", "network", "appearance", "storage", "updates",
 ];
 
@@ -41,7 +41,7 @@ const SETTINGS_TAB_GROUPS: { labelKey: DictKey; tabs: SettingsTab[] }[] = [
   { labelKey: "settings.navGroup.preferences", tabs: ["general"] },
   { labelKey: "settings.tab.models", tabs: ["models", "providers", "model-stats"] },
   { labelKey: "settings.navGroup.connections", tabs: ["bots", "mcp", "remote", "localserver"] },
-  { labelKey: "settings.navGroup.capabilities", tabs: ["skills", "subagents", "plugins"] },
+  { labelKey: "settings.navGroup.capabilities", tabs: ["skills", "subagents", "plugins", "experimental"] },
   { labelKey: "settings.navGroup.context", tabs: ["memory"] },
   { labelKey: "settings.navGroup.automation", tabs: ["hooks", "diagnostics"] },
   { labelKey: "settings.navGroup.security", tabs: ["permissions", "sandbox", "network"] },

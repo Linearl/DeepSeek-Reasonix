@@ -19,7 +19,7 @@ import { catalogForPreset } from "../lib/providerCatalog";
 import { ProviderCatalogPicker, type CatalogChoice } from "./ProviderCatalogPicker";
 import { Eye, EyeOff, Files } from "lucide-react";
 import { lazy, memo, Suspense, startTransition, useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { ArrowRight, Check, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, ShieldCheck, SlidersHorizontal, Trash2, Volume2, Zap } from "lucide-react";
+import { ArrowRight, Check, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, Volume2, Zap } from "lucide-react";
 import { asArray } from "../lib/array";
 import { ShellInterpreterFields } from "./SettingsShellSupport";
 import { CHANNEL_ICONS } from "./channelIcons";
@@ -424,6 +424,7 @@ export function SettingsPanel({
             ) : (
               <>
                 {tab === "general" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={busy} apply={apply}><GeneralSection s={s} busy={busy} apply={apply} agentRunning={agentRunning} /></SettingsPageShell>}
+                {tab === "experimental" && s && <ExperimentalSection key={tab} s={s} busy={busy} apply={apply} />}
                 {(tab === "models" || tab === "providers" || tab === "model-stats") && s && <SettingsPageShell key="model-pages" s={s} tab={tab} busy={busy} apply={apply}><ModelsSection onOpenProviders={() => selectTab("providers")} s={s} busy={busy} apply={apply} backgroundApply={backgroundApply} onboarding={initialFocus?.target === "model-access" && initialFocus.onboarding} onOnboardingComplete={onClose} subtab={tab === "providers" ? "access" : tab === "model-stats" ? "stats" : "usage"} /></SettingsPageShell>}
                 {tab === "bots" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={busy} apply={apply}><BotsSection s={s} busy={busy} apply={apply} initialFocus={initialFocus} /></SettingsPageShell>}
                 {tab === "mcp" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={apply}><Suspense fallback={lazySettingsPageFallback}><MCPServersSettingsPage /></Suspense></SettingsPageShell>}
@@ -607,6 +608,8 @@ function settingsTabLabel(id: SettingsTab, t: ReturnType<typeof useT>): string {
       return t("settings.tab.subagents");
     case "plugins":
       return t("settings.tab.plugins");
+    case "experimental":
+      return t("settings.tab.experimental");
     case "memory":
       return t("settings.tab.memory");
     case "hooks":
@@ -631,6 +634,7 @@ function settingsTabLabel(id: SettingsTab, t: ReturnType<typeof useT>): string {
 function settingsTabMeta(id: SettingsTab, s: SettingsView, t: ReturnType<typeof useT>): string {
   switch (id) {
     case "model-stats": return "";
+    case "experimental": return t("settings.tab.experimental");
     case "models":
       return settingsModelMeta(s, t);
     case "general":
@@ -1649,6 +1653,70 @@ function thinkingModeLabel(mode: string, t: ReturnType<typeof useT>): string {
       return t("settings.thinkingMode.auto");
   }
 }
+/** ExperimentalSection hosts opt-in capabilities behind one switch each.
+ *
+ *  Keeping them here rather than inside the feature area they affect is the point:
+ *  with the switch off the original behaviour is untouched, so a capability can be
+ *  compared rather than merely turned on. Task 60's features land here too.
+ */
+function ExperimentalSection({ s, busy, apply }: SectionProps) {
+  const t = useT();
+  return (
+    <SettingsPageShell s={s} tab="experimental" busy={busy} apply={apply}>
+      <SettingsField label={t("settings.experimentalIntro")} hint={t("settings.experimentalIntroHint")} icon={<Sparkles size={18} />}>
+        <span />
+      </SettingsField>
+      <SettingsField label={t("settings.autopilot")} hint={t("settings.autopilotHint")} icon={<ShieldCheck size={18} />}>
+        <SettingsOptions layout="field" className="set-seg">
+          {[false, true].map((on) => (
+            <button
+              key={String(on)}
+              className={`set-seg__btn${Boolean(s.autopilot) === on ? " set-seg__btn--on" : ""}`}
+              disabled={busy}
+              onClick={() => void apply(() => {
+                // A bound is required: an unattended run without one is refused when
+                // the session starts (the same refusal the CLI makes), so enabling the
+                // switch supplies a default the user can then edit instead of leaving
+                // the mode looking enabled but silently inactive.
+                const runtime = String(s.autopilotMaxRuntime ?? "").trim();
+                return app.SetDesktopAutopilot(
+                  on,
+                  on && runtime === "" ? DEFAULT_AUTOPILOT_MAX_RUNTIME : runtime,
+                  String(s.autopilotApprovalGrace ?? ""),
+                );
+              })}
+            >
+              {t(on ? "settings.autopilot.on" : "settings.autopilot.off")}
+            </button>
+          ))}
+        </SettingsOptions>
+      </SettingsField>
+      <SettingsField label={t("settings.autopilotMaxRuntime")} hint={t("settings.autopilotMaxRuntimeHint")} icon={<ShieldCheck size={18} />}>
+        <input
+          className="set-input"
+          type="text"
+          defaultValue={String(s.autopilotMaxRuntime ?? "")}
+          disabled={busy}
+          placeholder="8h"
+          aria-label={t("settings.autopilotMaxRuntime")}
+          onBlur={(e) => void apply(() => app.SetDesktopAutopilot(Boolean(s.autopilot), e.target.value, String(s.autopilotApprovalGrace ?? "")))}
+        />
+      </SettingsField>
+      <SettingsField label={t("settings.autopilotApprovalGrace")} hint={t("settings.autopilotApprovalGraceHint")} icon={<ShieldCheck size={18} />}>
+        <input
+          className="set-input"
+          type="text"
+          defaultValue={String(s.autopilotApprovalGrace ?? "")}
+          disabled={busy}
+          placeholder="15s"
+          aria-label={t("settings.autopilotApprovalGrace")}
+          onBlur={(e) => void apply(() => app.SetDesktopAutopilot(Boolean(s.autopilot), String(s.autopilotMaxRuntime ?? ""), e.target.value))}
+        />
+      </SettingsField>
+    </SettingsPageShell>
+  );
+}
+
 function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agentRunning: boolean }) {
   const { setPref } = useI18n();
   const t = useT();
@@ -1764,53 +1832,6 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
             </button>
           ))}
         </SettingsOptions>
-      </SettingsField>
-      <SettingsField label={t("settings.autopilot")} hint={t("settings.autopilotHint")} icon={<ShieldCheck size={18} />}>
-        <SettingsOptions layout="field" className="set-seg">
-          {[false, true].map((on) => (
-            <button
-              key={String(on)}
-              className={`set-seg__btn${Boolean(s.autopilot) === on ? " set-seg__btn--on" : ""}`}
-              disabled={busy}
-              onClick={() => void apply(() => {
-                // A bound is required: an unattended run without one is refused when
-                // the session starts (the same refusal the CLI makes), so enabling the
-                // switch supplies a default the user can then edit instead of leaving
-                // the mode looking enabled but silently inactive.
-                const runtime = String(s.autopilotMaxRuntime ?? "").trim();
-                return app.SetDesktopAutopilot(
-                  on,
-                  on && runtime === "" ? DEFAULT_AUTOPILOT_MAX_RUNTIME : runtime,
-                  String(s.autopilotApprovalGrace ?? ""),
-                );
-              })}
-            >
-              {t(on ? "settings.autopilot.on" : "settings.autopilot.off")}
-            </button>
-          ))}
-        </SettingsOptions>
-      </SettingsField>
-      <SettingsField label={t("settings.autopilotMaxRuntime")} hint={t("settings.autopilotMaxRuntimeHint")} icon={<ShieldCheck size={18} />}>
-        <input
-          className="set-input"
-          type="text"
-          defaultValue={String(s.autopilotMaxRuntime ?? "")}
-          disabled={busy}
-          placeholder="8h"
-          aria-label={t("settings.autopilotMaxRuntime")}
-          onBlur={(e) => void apply(() => app.SetDesktopAutopilot(Boolean(s.autopilot), e.target.value, String(s.autopilotApprovalGrace ?? "")))}
-        />
-      </SettingsField>
-      <SettingsField label={t("settings.autopilotApprovalGrace")} hint={t("settings.autopilotApprovalGraceHint")} icon={<ShieldCheck size={18} />}>
-        <input
-          className="set-input"
-          type="text"
-          defaultValue={String(s.autopilotApprovalGrace ?? "")}
-          disabled={busy}
-          placeholder="15s"
-          aria-label={t("settings.autopilotApprovalGrace")}
-          onBlur={(e) => void apply(() => app.SetDesktopAutopilot(Boolean(s.autopilot), String(s.autopilotMaxRuntime ?? ""), e.target.value))}
-        />
       </SettingsField>
       <SettingsField label={t("settings.defaultToolApprovalMode")} hint={t("settings.defaultToolApprovalModeHint")} icon={<ShieldCheck size={18} />}>
         <SettingsOptions layout="field" className="set-seg">
