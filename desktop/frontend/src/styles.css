@@ -40267,3 +40267,20 @@ body > .mermaid-diagram--fullscreen {
   background: color-mix(in srgb, currentColor 16%, transparent);
   font-size: 0.86em;
 }
+
+/* The colour-filter button keeps its icon and shows the active colours as dots.
+   The filter is keyed by storage identifiers, and rendering one of those turned the
+   icon into an English word; dots also scale to a multi-select set that no single
+   label could name. */
+.project-tree__color-filter-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 3px;
+}
+.project-tree__color-filter-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}

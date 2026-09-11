@@ -2176,14 +2176,27 @@ export function ProjectTree({
     );
   };
 
-  const colorFilterBadge = colorFilter.length === 1 ? colorFilter[0] : colorFilter.length > 1 ? String(colorFilter.length) : "";
   const colorFilterActive = colorFilter.length > 0;
+  // The button shows swatches rather than the filter's keys: the keys are storage
+  // identifiers ("red", "amber"), and rendering one turned the icon into an English
+  // word the user never chose. Swatches also survive multi-select, where one label
+  // cannot name the set - the count is carried by the tooltip instead.
+  const colorFilterSwatches = colorFilter
+    .map((key) => PROJECT_COLOR_OPTIONS.find((option) => option.key === key))
+    .filter((option): option is (typeof PROJECT_COLOR_OPTIONS)[number] => Boolean(option));
   const renderColorFilterControl = (mode: "classic" | "workbench") => {
     const buttonClassName = colorFilterActive
       ? "project-tree__action-btn project-tree__action-btn--active"
       : "project-tree__action-btn";
     return (
-      <Tooltip label={t("projectTree.filterByColor")} className="project-tree__action-slot project-tree__action-slot--color-filter">
+      <Tooltip
+        label={
+          colorFilterActive
+            ? `${t("projectTree.filterByColor")} · ${colorFilterSwatches.length}`
+            : t("projectTree.filterByColor")
+        }
+        className="project-tree__action-slot project-tree__action-slot--color-filter"
+      >
         <div ref={colorFilterRef} className="project-tree__color-filter">
           <button
             ref={colorFilterTriggerRef}
@@ -2200,7 +2213,17 @@ export function ProjectTree({
             }}
           >
             <SwatchBook size={mode === "workbench" ? 15 : 14} aria-hidden="true" />
-            {colorFilterBadge && <span className="project-tree__time-filter-label">{colorFilterBadge}</span>}
+            {colorFilterActive && (
+              <span className="project-tree__color-filter-dots" aria-hidden="true">
+                {colorFilterSwatches.slice(0, 3).map((option) => (
+                  <span
+                    key={option.key}
+                    className="project-tree__color-swatch project-tree__color-filter-dot"
+                    style={{ background: option.value }}
+                  />
+                ))}
+              </span>
+            )}
           </button>
           {colorFilterMenuOpen && (
             <div className="project-tree__time-filter-menu" role="menu" aria-label={t("projectTree.filterByColor")} onKeyDown={moveMenuFocus}>

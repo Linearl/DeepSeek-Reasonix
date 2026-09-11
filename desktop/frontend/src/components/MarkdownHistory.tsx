@@ -59,22 +59,14 @@ type PendingScrollAnchor = {
 };
 
 /**
- * Cache key for one markdown body. `he:<entryId>` history rows carry a
- * durable transcript entry id; remote/serve hydration produces `h<seq>` rows
- * whose id is a per-load sequence number, so those rows historically missed
- * the cache on every mount (#9573). Such rows derive the key from the content
- * revision instead — the revision is already an FNV-1a fingerprint of the
- * source, and the cache's stored-source comparison is the fidelity backstop.
- * Identical texts share one entry, which is correct: identical markdown
- * renders identically.
+ * Read paths name the item they are asking about; they do not name the cache key.
+ * The key is the content revision alone (see TranscriptMarkdownCache.key): the
+ * parsed value is a pure function of the text, so the same markdown shares one
+ * entry whether it arrives as a live `item.id` row, a history `he:<entryId>` row,
+ * or a remote/serve `h<seq>` row whose id changes on every load (#9573).
  */
-function markdownCacheKey(entryId: string | undefined, revision: number): string {
-  return entryId ?? `h:${revision}`;
-}
-
 function cachedBlocks(entryId: string | undefined, revision: number, text: string): MarkdownBlock[] | undefined {
-  const key = markdownCacheKey(entryId, revision);
-  const cached = getTranscriptStore().getMarkdown(key, revision);
+  const cached = getTranscriptStore().getMarkdown(entryId, revision);
   // The revision is a content hash; the stored source comparison is the
   // fidelity backstop against collisions and stale writes.
   return cached && cached.source === text ? cached.blocks : undefined;
@@ -211,7 +203,7 @@ export const MarkdownHistory = memo(function MarkdownHistory({
 
   useEffect(() => {
     if (initial) {
-      if (stableCacheKey && initial.result) {
+      if (initial.result) {
         const result = initial.result;
         getTranscriptStore().setMarkdown(stableCacheKey, revision, {
           source: text, blocks: result.blocks, selectionText: result.selectionText,
@@ -228,11 +220,11 @@ export const MarkdownHistory = memo(function MarkdownHistory({
     handle.promise
       .then((result) => {
         if (cancelled || !result) return;
-        // Cache under the stable cache key when present, else the durable
-        // entry id, else the content-derived key — live/history hosts then
-        // share one parse (#9565), and remote/serve `h<seq>` rows survive
-        // session switches instead of re-parsing every mount (#9573).
-        getTranscriptStore().setMarkdown(markdownCacheKey(stableCacheKey, revision), revision, {
+        // Cache unconditionally: the key is the content revision, so it is always
+        // available - live/history hosts share one parse (#9565), and remote/serve
+        // `h<seq>` rows no longer re-parse on every mount (#9573). An identity-keyed
+        // cache had to skip this write whenever no stable id was at hand.
+        getTranscriptStore().setMarkdown(stableCacheKey, revision, {
           source: text,
           blocks: result.blocks,
           selectionText: result.selectionText,

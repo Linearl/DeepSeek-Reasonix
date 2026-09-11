@@ -986,16 +986,22 @@ export class TranscriptStore {
   }
 
   // ── markdown cache (populated by the rendering/worker phase) ──────────────
+  //
+  // entryId is accepted for callers' convenience but is not part of the key: the
+  // cached value is a pure function of the source text, and the revision already
+  // fingerprints that text (see TranscriptMarkdownCache.key). Callers whose rows
+  // carry no stable id - remote/serve `h<seq>` rows, or any row read after a
+  // recovery copy was promoted - now still hit the cache.
 
-  getMarkdown(entryId: string, revision: number): ParsedMarkdownValue | undefined {
+  getMarkdown(entryId: string | undefined, revision: number): ParsedMarkdownValue | undefined {
     return this.markdown.get(entryId, revision);
   }
 
-  setMarkdown(entryId: string, revision: number, value: ParsedMarkdownValue): void {
+  setMarkdown(entryId: string | undefined, revision: number, value: ParsedMarkdownValue): void {
     this.markdown.set(entryId, revision, value);
   }
 
-  pinMarkdown(entryId: string, revision: number): () => void {
+  pinMarkdown(entryId: string | undefined, revision: number): () => void {
     return this.markdown.pin(entryId, revision);
   }
 
