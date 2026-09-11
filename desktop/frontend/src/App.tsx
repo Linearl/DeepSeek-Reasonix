@@ -761,6 +761,11 @@ export default function App() {
   const mainView = useOverlayStore((s) => s.mainView);
   const startupSplashVisible = useOverlayStore((s) => s.startupSplashVisible);
   const setStartupSplashVisible = useOverlayStore((s) => s.setStartupSplashVisible);
+  // Task 55: the startup splash must also cover the appearance settling. The base
+  // accent is applied synchronously from the first-paint cache, but an active theme
+  // pack lands later (its tokens arrive over IPC and its stylesheet is injected), so
+  // without this gate the user watches the accent flip once the splash is gone.
+  const [appearanceReady, setAppearanceReady] = useState(false);
   // null until the mount probe resolves; true shows the first-run guide.
   const needsOnboarding = useOverlayStore((s) => s.needsOnboarding);
   const setNeedsOnboarding = useOverlayStore((s) => s.setNeedsOnboarding);
@@ -1207,6 +1212,9 @@ export default function App() {
             clearThemePack();
           }
         }
+        // Task 55: release the splash gate. Reached on both paths - a failed pack
+        // load must not hold the splash beyond the component's own 6s ceiling.
+        if (!cancelled) setAppearanceReady(true);
       }
     };
     void syncDesktopPreferences().catch((e) => {
@@ -1433,7 +1441,7 @@ export default function App() {
     const currentTabTurns = Math.max(state.checkpoints.length, visibleUserTurns);
     return currentTabTurns > 0 ? currentTabTurns : activeTopicTurns ?? 0;
   }, [activeTopicTurns, state.checkpoints.length, state.items]);
-  const startupSplashHold = !activeTabId && state.meta?.ready !== true && !state.meta?.startupErr;
+  const startupSplashHold = (!activeTabId && state.meta?.ready !== true && !state.meta?.startupErr) || !appearanceReady;
   const activeComposerProfile = activeTabId ? composerProfilesByTab[activeTabId] : undefined;
   const backendActiveComposerProfile = useMemo(() => {
     if (state.meta) {
