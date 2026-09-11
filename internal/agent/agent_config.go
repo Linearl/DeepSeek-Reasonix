@@ -27,6 +27,8 @@ type agentConfig struct {
 	// agent/skill tools are excluded.
 	subagentDepth    int
 	maxSubagentDepth int
+	// autopilot marks an unattended run; see Options.Autopilot (task 56).
+	autopilot bool
 	// contextWindow and compactRatio decide when at most one provider-visible
 	// checkpoint is installed; recentKeep and archiveDir shape what it keeps.
 	contextWindow          int

@@ -1082,6 +1082,11 @@ type Options struct {
 	SubagentDepth    int
 	MaxSubagentDepth int
 
+	// Autopilot marks an unattended run: nobody is present to answer a recovery
+	// card or an approval prompt, so gates that would pause for a human keep going
+	// instead (task 56). Interactive runs leave this false and keep every pause.
+	Autopilot bool
+
 	// Extensions is the frozen extension dispatcher for this agent's controller
 	// generation (Extension Protocol v2). Nil means no runtime packages are
 	// installed; the run loop then passes every intercept point through
@@ -1171,6 +1176,7 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 			writeWorkspaceRoot:      strings.TrimSpace(opts.WriteWorkspaceRoot),
 			subagentDepth:           subagentDepth,
 			maxSubagentDepth:        maxSubagentDepth,
+			autopilot:               opts.Autopilot,
 			contextWindow:           opts.ContextWindow,
 			compactRatio:            opts.CompactRatio,
 			recentKeep:              opts.RecentKeep,

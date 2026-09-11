@@ -11,6 +11,13 @@ func (a *Agent) readinessPauseActive(check finalReadinessCheck) bool {
 	if a == nil {
 		return false
 	}
+	// Task 56: an unattended run has nobody to answer the recovery card, so pausing
+	// would strand it - staying alive is the whole point of autopilot (goal plus
+	// self-approval). The gap is still audited and the Goal FSM sees the missing
+	// evidence on the next turn instead of waiting for a human.
+	if a.autopilot {
+		return false
+	}
 	return a.turn.constraints.PolicyFloor == taskcontract.PolicyFloorDelivery ||
 		a.closedLoopActive() || a.planContractSnapshot() != nil
 }

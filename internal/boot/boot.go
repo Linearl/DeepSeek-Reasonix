@@ -106,13 +106,13 @@ type Options struct {
 	// Autopilot runs unattended: no human is available to answer prompts, and
 	// MaxRuntime is the hard wall-clock bound. A non-positive MaxRuntime with
 	// Autopilot set is refused rather than silently running unbounded.
-	Autopilot     bool
+	Autopilot bool
 	// AutopilotApprovalGrace is how long an unattended run waits for a human on an
 	// approval prompt before the reviewer decides. Zero uses the control default.
 	AutopilotApprovalGrace time.Duration
-	MaxRuntime    time.Duration
-	RequireKey    bool
-	Sink          event.Sink
+	MaxRuntime             time.Duration
+	RequireKey             bool
+	Sink                   event.Sink
 	// EffortOverride is a session-local reasoning effort override. Nil means use
 	// the resolved provider config; a non-nil empty string means provider default.
 	EffortOverride *string
@@ -1757,6 +1757,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		LegacyAnchorSafetyGate:       cfg.Agent.LegacyAnchorSafetyGate,
 		SubagentDepth:                0,
 		MaxSubagentDepth:             maxSubagentDepth,
+		Autopilot:                    opts.Autopilot,
 		MissingReasoningWarnStateDir: config.MissingReasoningWarnStateDir(),
 	}, sink)
 	reg.Add(sessiontool.NewSetSessionTitleTool(sessionDir, executor.SessionPath, opts.OnSessionTitleChanged))
