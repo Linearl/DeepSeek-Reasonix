@@ -15602,6 +15602,12 @@ body > .mermaid-diagram--fullscreen {
   align-items: center;
   gap: 7px;
 }
+/* The stub hint sits where the branch summary is read, so it is seen before any
+   branch row is compared. */
+.recovery-lineage-dialog__stub-hint {
+  margin-top: 4px;
+  color: var(--accent);
+}
 .recovery-lineage-dialog__body {
   min-height: 120px;
   overflow: auto;

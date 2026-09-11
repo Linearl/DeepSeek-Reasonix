@@ -50,6 +50,21 @@ export function RecoveryLineageDialog({ topic, initial, onClose, onChanged, onOp
   const [editingPath, setEditingPath] = useState("");
   const [noteDraft, setNoteDraft] = useState("");
   const members = useMemo(() => userVisibleRecoveryVersions(view), [view]);
+
+  // A plain open lands on the canonical head, and on some sessions that head is
+  // nearly empty while the real content sits in a longer branch (one measured 633
+  // turns against 7810). The user then reads a stub and only later discovers the
+  // rest. This only says so and points at the branch; it deliberately does not
+  // change the default landing head, because that would move the open target of
+  // every session, not just the broken ones.
+  const stubHint = useMemo(() => {
+    if (members.length < 2) return null;
+    const canonical = members.find((member) => member.canonical || member.headKind === "main");
+    if (!canonical) return null;
+    const longest = members.reduce((best, member) => (member.turns > best.turns ? member : best), members[0]);
+    if (longest.path === canonical.path || longest.turns < canonical.turns * 3) return null;
+    return { main: canonical.turns, longest: longest.turns };
+  }, [members]);
   const heads = view.state === "heads";
 
   useEffect(() => setView(normalizeRecoveryLineageView(initial)), [initial]);
@@ -135,6 +150,11 @@ export function RecoveryLineageDialog({ topic, initial, onClose, onChanged, onOp
             <div className="management-modal__summary">
               {heads ? t("recovery.headsSummary", { branches: members.length }) : t("recovery.lineageSummary", { branches: members.length, unresolved: view.unresolved })}
             </div>
+            {stubHint && (
+              <div className="management-modal__summary recovery-lineage-dialog__stub-hint">
+                {t("recovery.mainLooksLikeStub", { main: stubHint.main, longest: stubHint.longest })}
+              </div>
+            )}
           </div>
           <button type="button" className="icon-btn" onClick={onClose} aria-label={t("common.close")}><X size={16} /></button>
         </header>

@@ -1135,6 +1135,7 @@ export const zhTW: Record<DictKey, string> = {
   "recovery.inspectLineage": "查看版本",
   "recovery.lineageTitle": "會話版本",
   "recovery.lineageSummary": "{branches} 個版本 · {unresolved} 個含獨有內容",
+  "recovery.mainLooksLikeStub": "目前開啟的主線只有 {main} 輪，而最長分支有 {longest} 輪 —— 主要內容可能在分支裡。建議在下面選擇最長的分支。",
   "recovery.lineageEmpty": "沒有其他會話版本。",
   "recovery.divergedToast": "偵測到另一個尚未合併的會話版本，所有內容均已保留。",
   "recovery.failed": "會話復原失敗，請重試或重新開啟會話。",

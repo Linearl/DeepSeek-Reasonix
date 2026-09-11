@@ -1392,6 +1392,7 @@ export const en = {
   "recovery.inspectLineage": "View versions",
   "recovery.lineageTitle": "Session versions",
   "recovery.lineageSummary": "{branches} versions · {unresolved} with unique content",
+  "recovery.mainLooksLikeStub": "The canonical branch open now holds {main} turns while the longest branch holds {longest} — the real content may be in the branch. Pick the longest branch below.",
   "recovery.lineageEmpty": "No additional session versions.",
   "recovery.divergedToast": "Another unmerged session version was detected. All content has been preserved.",
   "recovery.failed": "Session recovery failed. Retry or reopen the session.",
