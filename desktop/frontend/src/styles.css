@@ -39995,6 +39995,13 @@ body > .mermaid-diagram--fullscreen {
   gap: 8px;
 }
 
+/* A freshly added row is scrolled into view and tinted once, so "Add" visibly did
+   something even when the list is long. */
+.settings-quick-commands__row--fresh {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
 .settings-quick-commands__row > input.mem-input:first-of-type {
   flex: 1 1 28%;
   min-width: 120px;

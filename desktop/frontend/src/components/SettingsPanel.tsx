@@ -1668,6 +1668,7 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
   // point, and the panel behind it carries search plus the enable switch.
   const [quickCommandsOpen, setQuickCommandsOpen] = useState(false);
   const [quickCommandsQuery, setQuickCommandsQuery] = useState("");
+  const [quickCommandsFresh, setQuickCommandsFresh] = useState(-1);
   const quickCommandEntries = s.quickCommands ?? [];
   const quickCommandTerms = quickCommandsQuery.trim().toLowerCase();
   const quickCommandRows = quickCommandEntries
@@ -1855,7 +1856,7 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
               value={quickCommandsQuery}
               placeholder={t("settings.quickCommandsSearch")}
               disabled={busy}
-              onChange={(e) => setQuickCommandsQuery(e.target.value)}
+              onChange={(e) => { setQuickCommandsQuery(e.target.value); setQuickCommandsFresh(-1); }}
             />
             {quickCommandRows.length === 0 ? (
               <div className="settings-quick-commands__empty">
@@ -1863,7 +1864,7 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
               </div>
             ) : (
               quickCommandRows.map(({ entry, index }) => (
-                <div className="settings-quick-commands__row" key={`qc-${index}`}>
+                <div className={`settings-quick-commands__row${index === quickCommandsFresh ? " settings-quick-commands__row--fresh" : ""}`} key={`qc-${index}`}>
                   <button
                     type="button"
                     className={`btn btn--small${entry.enabled === false ? "" : " btn--primary"}`}
@@ -1911,7 +1912,14 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
               type="button"
               className="btn btn--small"
               disabled={busy}
-              onClick={() => void apply(() => app.SetQuickCommands([...quickCommandEntries, { title: t("settings.quickCommandsNewTitle"), text: "", enabled: true }]))}
+              onClick={() => {
+                // Clearing the query is the fix, not a nicety: the panel renders the
+                // filtered rows, so a new entry that does not match an active search
+                // was added to storage and never drawn - the button looked dead.
+                setQuickCommandsQuery("");
+                setQuickCommandsFresh(quickCommandEntries.length);
+                void apply(() => app.SetQuickCommands([...quickCommandEntries, { title: t("settings.quickCommandsNewTitle"), text: "", enabled: true }]));
+              }}
             >
               {t("settings.quickCommandsAdd")}
             </button>
