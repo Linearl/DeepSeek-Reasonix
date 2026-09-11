@@ -2137,6 +2137,7 @@ export const en = {
   "settings.quickCommandsOn": "On",
   "settings.quickCommandsOff": "Off",
   "settings.quickCommandsNewTitle": "New quick command",
+  "settings.quickCommandsSave": "Save",
   "settings.soundHint": "Background music and notification sounds",
   "settings.soundStatus.allOff": "All off",
   "settings.soundStatus.enabled": "Enabled",

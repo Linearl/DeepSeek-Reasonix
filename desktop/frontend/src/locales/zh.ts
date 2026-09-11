@@ -2139,6 +2139,7 @@ export const zh: Record<DictKey, string> = {
   "settings.quickCommandsOn": "已启用",
   "settings.quickCommandsOff": "已停用",
   "settings.quickCommandsNewTitle": "新快捷指令",
+  "settings.quickCommandsSave": "保存",
   "settings.soundHint": "背景音乐与通知音效",
   "settings.soundStatus.allOff": "全部关闭",
   "settings.soundStatus.enabled": "已启用",

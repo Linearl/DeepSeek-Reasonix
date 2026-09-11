@@ -39997,6 +39997,20 @@ body > .mermaid-diagram--fullscreen {
 
 /* A freshly added row is scrolled into view and tinted once, so "Add" visibly did
    something even when the list is long. */
+/* The add draft is a real form rather than a blank row, so the input step is
+   visible before anything is stored. */
+.settings-quick-commands__draft {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+}
+.settings-quick-commands__draft-actions {
+  display: flex;
+  gap: 6px;
+}
 .settings-quick-commands__row--fresh {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);

@@ -1669,6 +1669,10 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
   const [quickCommandsOpen, setQuickCommandsOpen] = useState(false);
   const [quickCommandsQuery, setQuickCommandsQuery] = useState("");
   const [quickCommandsFresh, setQuickCommandsFresh] = useState(-1);
+	// Task: adding used to append a blank row straight into the list, so the entry
+	// only became editable after it existed and a new row read as "nothing happened".
+	// A draft keeps the input step explicit: fill title and text, then confirm.
+	const [quickCommandDraft, setQuickCommandDraft] = useState<{ title: string; text: string } | null>(null);
   const quickCommandEntries = s.quickCommands ?? [];
   const quickCommandTerms = quickCommandsQuery.trim().toLowerCase();
   const quickCommandRows = quickCommandEntries
@@ -1908,18 +1912,58 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
                 </div>
               ))
             )}
+            {quickCommandDraft && (
+              <div className="settings-quick-commands__draft">
+                <input
+                  className="mem-input"
+                  autoFocus
+                  value={quickCommandDraft.title}
+                  placeholder={t("settings.quickCommandsTitlePlaceholder")}
+                  disabled={busy}
+                  onChange={(e) => setQuickCommandDraft({ ...quickCommandDraft, title: e.target.value })}
+                />
+                <textarea
+                  className="mem-input"
+                  rows={3}
+                  value={quickCommandDraft.text}
+                  placeholder={t("settings.quickCommandsTextPlaceholder")}
+                  disabled={busy}
+                  onChange={(e) => setQuickCommandDraft({ ...quickCommandDraft, text: e.target.value })}
+                />
+                <div className="settings-quick-commands__draft-actions">
+                  <button
+                    type="button"
+                    className="btn btn--small btn--primary"
+                    disabled={busy || !quickCommandDraft.title.trim()}
+                    onClick={() => {
+                      const entry = { title: quickCommandDraft.title.trim(), text: quickCommandDraft.text, enabled: true };
+                      setQuickCommandDraft(null);
+                      // Clear the query so the new row is actually drawn: the list shows
+                      // the filtered rows, and an entry that misses the search stays
+                      // invisible even though it was stored.
+                      setQuickCommandsQuery("");
+                      setQuickCommandsFresh(quickCommandEntries.length);
+                      void apply(() => app.SetQuickCommands([...quickCommandEntries, entry]));
+                    }}
+                  >
+                    {t("settings.quickCommandsSave")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--small"
+                    disabled={busy}
+                    onClick={() => setQuickCommandDraft(null)}
+                  >
+                    {t("common.cancel")}
+                  </button>
+                </div>
+              </div>
+            )}
             <button
               type="button"
               className="btn btn--small"
-              disabled={busy}
-              onClick={() => {
-                // Clearing the query is the fix, not a nicety: the panel renders the
-                // filtered rows, so a new entry that does not match an active search
-                // was added to storage and never drawn - the button looked dead.
-                setQuickCommandsQuery("");
-                setQuickCommandsFresh(quickCommandEntries.length);
-                void apply(() => app.SetQuickCommands([...quickCommandEntries, { title: t("settings.quickCommandsNewTitle"), text: "", enabled: true }]));
-              }}
+              disabled={busy || quickCommandDraft !== null}
+              onClick={() => setQuickCommandDraft({ title: "", text: "" })}
             >
               {t("settings.quickCommandsAdd")}
             </button>
