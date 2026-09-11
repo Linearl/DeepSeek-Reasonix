@@ -376,10 +376,65 @@ export function ProjectTreeGroupRows({
   const [menuGroup, setMenuGroup] = useState<string | null>(null);
   const [menuPoint, setMenuPoint] = useState<ContextMenuPoint | null>(null);
   const [editingGroup, setEditingGroup] = useState<string | null>(null);
+  // Task 50: long-press a group header to drag it within its project. The reorder is
+  // committed once on release rather than per hover, so a drag writes the roster a
+  // single time, and a press that never became a drag stays a plain click.
+  const [draggingGroup, setDraggingGroup] = useState<string | null>(null);
+  const [groupDropTarget, setGroupDropTarget] = useState<string | null>(null);
+  const groupDragRef = useRef<{ from: string | null; to: string | null; moved: boolean }>({ from: null, to: null, moved: false });
+  const groupPressTimerRef = useRef<number | null>(null);
+  const groupSuppressClickRef = useRef(false);
   const [groupDraft, setGroupDraft] = useState("");
   const key = projectTreeOrganizationKey(folder);
   const groups = organization.groupsFor(folder);
   const groupedIDs = new Set(groups.flatMap((group) => group.topicIds ?? []));
+  useEffect(() => {
+    if (!draggingGroup) return;
+    const finish = () => {
+      if (groupPressTimerRef.current !== null) {
+        window.clearTimeout(groupPressTimerRef.current);
+        groupPressTimerRef.current = null;
+      }
+      const { from, to, moved } = groupDragRef.current;
+      if (moved && from && to && from !== to) organization.moveGroup(key, from, to);
+      // Swallow the click the release would otherwise produce: a drag must not also
+      // toggle the group it started on.
+      groupSuppressClickRef.current = moved;
+      groupDragRef.current = { from: null, to: null, moved: false };
+      setDraggingGroup(null);
+      setGroupDropTarget(null);
+    };
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+    return () => {
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+    };
+  }, [draggingGroup, key, organization]);
+
+  const beginGroupPress = (id: string) => {
+    groupDragRef.current = { from: id, to: id, moved: false };
+    groupPressTimerRef.current = window.setTimeout(() => {
+      groupPressTimerRef.current = null;
+      setDraggingGroup(id);
+    }, 350);
+  };
+  const cancelGroupPress = () => {
+    if (groupPressTimerRef.current !== null) {
+      window.clearTimeout(groupPressTimerRef.current);
+      groupPressTimerRef.current = null;
+    }
+    // A press released before the long-press fired is an ordinary click.
+    if (!draggingGroup) groupDragRef.current = { from: null, to: null, moved: false };
+  };
+  const hoverGroup = (id: string) => {
+    if (!draggingGroup) return;
+    if (id !== groupDragRef.current.to) {
+      groupDragRef.current = { ...groupDragRef.current, to: id, moved: true };
+    }
+    setGroupDropTarget(id);
+  };
+
   const commitRename = (id: string) => {
     organization.renameGroup(key, id, groupDraft);
     setEditingGroup(null);
@@ -399,10 +454,24 @@ export function ProjectTreeGroupRows({
         <div
           role="button"
           tabIndex={0}
-          className={`project-tree__group-main${canDrop ? " project-tree__group-main--drop-target" : ""}`}
+          className={`project-tree__group-main${canDrop ? " project-tree__group-main--drop-target" : ""}${groupDropTarget === group.id && groupDropTarget !== draggingGroup ? " project-tree__group-main--reorder-target" : ""}${draggingGroup === group.id ? " project-tree__group-main--dragging" : ""}`}
           style={{ paddingLeft: 14 + depth * 16 }}
           title={group.title}
-          onClick={() => organization.toggleGroup(key, group.id)}
+          onClick={() => {
+            // A press that became a drag already did its work on release; the click it
+            // would also emit must not toggle the group.
+            if (groupSuppressClickRef.current) {
+              groupSuppressClickRef.current = false;
+              return;
+            }
+            organization.toggleGroup(key, group.id);
+          }}
+          onPointerDown={(event) => {
+            if (event.button === 0) beginGroupPress(group.id);
+          }}
+          onPointerUp={cancelGroupPress}
+          onPointerLeave={cancelGroupPress}
+          onPointerEnter={() => hoverGroup(group.id)}
           onKeyDown={(event) => {
             if (editingGroup === group.id) return;
             if (event.key === "Enter" || event.key === " ") organization.toggleGroup(key, group.id);
