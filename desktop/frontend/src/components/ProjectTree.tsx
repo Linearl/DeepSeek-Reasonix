@@ -2200,6 +2200,7 @@ export function ProjectTree({
                     >
                       <span className="project-tree__color-swatch" style={{ background: option.value }} aria-hidden="true" />
                       {t(`projectTree.color.${option.key}`)}
+                      {on && <Check className="project-tree__color-check" size={13} aria-hidden="true" />}
                     </button>
                   );
                 })}

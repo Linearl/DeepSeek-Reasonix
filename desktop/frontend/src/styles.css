@@ -24577,7 +24577,21 @@ body > .mermaid-diagram--fullscreen {
   background: var(--sidebar-hover);
   color: var(--fg);
 }
+/* A selected colour has to read as selected at a glance: the accent text alone was
+   too quiet to tell apart from hover, so the row also gets a tinted plate, a
+   heavier label, and a check mark on the trailing edge. */
 .project-tree__color-opt--on {
+  color: var(--accent);
+  background: var(--sidebar-hover);
+  font-weight: 600;
+}
+.project-tree__color-opt--on .project-tree__color-swatch {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.project-tree__color-check {
+  margin-left: auto;
+  flex: none;
   color: var(--accent);
 }
 .project-tree__color-swatch {
