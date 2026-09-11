@@ -232,7 +232,7 @@ if (initialCSS.length > 0) {
 // shared title-safe shell, and the shared harness decision surface measure
 // 116.9 KiB gzip while reusing existing layout primitives. Retain a bounded
 // 0.1 KiB headroom ratchet.
-assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 122.0 * 1024); // fork: upstream 1.38.3 raised its own budget to 120.4 KiB; the fork's LocalServerPage delta plus the merge measures 121.3 KiB, so keep a bounded 0.7 KiB headroom.
+assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 123.0 * 1024); // fork: upstream 1.38.3 raised its own budget to 120.4 KiB; the fork's LocalServerPage delta plus the merge measured 121.3 KiB. The session-version panel adds its table and phase styles, measuring 122.0 KiB, so keep 1.0 KiB of bounded headroom.
 if (localeChunks.length !== 2) {
   throw new Error(`expected 2 on-demand Chinese locale chunks, found ${localeChunks.length}`);
 }
@@ -298,10 +298,11 @@ for (const path of localeChunks) {
   // Task 49 A5: the autopilot switch and the approval-model setting add eight
   // keys plus help copy per dialect; zh-TW measures 66.7 KiB. Take the next
   // decimal ceiling for each with the same bounded headroom as before.
-  // Session-version panel adds eleven keys per dialect (panel opener, column
-  // headers, row labels, merge preview). zh measures 67.1 KiB, zh-TW 67.7 KiB;
-  // take the next decimal ceiling for each, keeping the same bounded headroom.
-  const budget = name.startsWith("zh-TW-") ? 68.2 * 1024 : 67.2 * 1024;
+  // Session-version panel adds twenty-one keys per dialect (panel opener, column
+  // headers, row labels, merge preview, phase headings) plus the table copy.
+  // zh measures 67.2 KiB, zh-TW 67.8 KiB; the exact ceiling is not headroom, so
+  // take the next decimal beyond the measurement for each dialect.
+  const budget = name.startsWith("zh-TW-") ? 68.4 * 1024 : 67.4 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0

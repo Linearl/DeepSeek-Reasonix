@@ -40104,7 +40104,7 @@ body > .mermaid-diagram--fullscreen {
 .rc-modal {
   display: flex;
   flex-direction: column;
-  width: min(1120px, 94vw);
+  width: min(1400px, 96vw);
   max-height: 86vh;
   overflow: hidden;
 }
@@ -40129,7 +40129,7 @@ body > .mermaid-diagram--fullscreen {
 .rc-table { display: flex; flex-direction: column; }
 .rc-row {
   display: grid;
-  grid-template-columns: 26px minmax(200px, 2fr) 138px 92px 76px 76px 96px;
+  grid-template-columns: 26px minmax(200px, 2fr) 138px 92px 84px 68px 84px 92px;
   align-items: center;
   gap: 14px;
   min-width: 0;
@@ -40176,3 +40176,29 @@ body > .mermaid-diagram--fullscreen {
 
 .rc-preview { margin: 8px 0; padding-left: 20px; }
 .rc-preview__warn { margin: 8px 0 0; opacity: 0.8; }
+
+.rc-phase { margin-top: 14px; }
+.rc-phase:first-child { margin-top: 0; }
+.rc-phase__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 10px 6px;
+  font-size: 0.9em;
+}
+.rc-phase__title { font-weight: 700; }
+.rc-phase__count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  text-align: center;
+}
+.rc-phase__hint { opacity: 0.6; }
+.rc-errors { margin: 0; padding-left: 20px; }
+.rc-result {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}

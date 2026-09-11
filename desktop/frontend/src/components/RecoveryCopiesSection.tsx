@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { app, type RecoveryCopyGroupView } from "../lib/bridge";
@@ -26,6 +26,21 @@ function formatWhen(iso: string): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+type Phase = "pending" | "unmerged" | "merged";
+
+/** phaseOf sorts a conversation by what a user would do about it.
+ *
+ *  Pending means not measured yet, so nothing is known and nothing should be
+ *  merged. Unmerged means a copy holds events the canonical transcript does not,
+ *  which is the case worth acting on. Merged means everything the copies hold is
+ *  already in the canonical transcript, so there is nothing left to bring over.
+ */
+function phaseOf(group: RecoveryCopyGroupView): Phase {
+  if (group.copies.some((copy) => !copy.scanned)) return "pending";
+  if (group.copies.some((copy) => !copy.orphan && copy.unique > 0)) return "unmerged";
+  return "merged";
+}
+
 /** RecoveryCopiesSection puts session versions and copies behind a button.
  *
  *  Three steps on purpose, because they cost very different amounts and the last
@@ -34,17 +49,16 @@ function formatWhen(iso: string): string {
  *  Opening the panel is one directory read per session folder, so it appears at once
  *  and shows the shape of the problem - which conversations have copies, how big
  *  those copies are, how recently they were written - without opening any
- *  transcript. Conversations start collapsed: the usual question is "which
- *  conversation has copies worth merging", and one line each keeps that scannable.
- *  Expanding one shows its lines as rows - the canonical transcript first, then each
- *  copy beneath it.
+ *  transcript. Conversations start collapsed and are grouped by what they need:
+ *  unmerged first, then not-yet-measured, then already merged.
  *
  *  Measuring a copy means reading and comparing whole transcripts, and one copy on a
  *  busy machine reaches a hundred megabytes. So it happens when asked, for one
  *  conversation or for all of them, and the numbers land in the rows afterwards.
  *
- *  Merging asks first and shows what it is about to do, because it writes to the
- *  session files.
+ *  Merging is gated on measuring, and reports per conversation what happened with
+ *  failures shown verbatim. A merge that silently did nothing is indistinguishable
+ *  from one that worked, which is the worst outcome for this button.
  */
 export function RecoveryCopiesSection() {
   const t = useT();
@@ -56,6 +70,7 @@ export function RecoveryCopiesSection() {
   const [scanning, setScanning] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  const [errors, setErrors] = useState<string[]>([]);
   const [failed, setFailed] = useState(false);
 
   const load = useCallback(async () => {
@@ -77,6 +92,19 @@ export function RecoveryCopiesSection() {
     if (open) void load();
   }, [open, load]);
 
+  const phased = useMemo(() => {
+    const pending: RecoveryCopyGroupView[] = [];
+    const unmerged: RecoveryCopyGroupView[] = [];
+    const merged: RecoveryCopyGroupView[] = [];
+    for (const group of groups ?? []) {
+      const phase = phaseOf(group);
+      if (phase === "pending") pending.push(group);
+      else if (phase === "unmerged") unmerged.push(group);
+      else merged.push(group);
+    }
+    return { pending, unmerged, merged };
+  }, [groups]);
+
   const toggle = (path: string) =>
     setSelected((current) => {
       const next = new Set(current);
@@ -95,13 +123,14 @@ export function RecoveryCopiesSection() {
 
   const scanOne = async (mainPath: string) => {
     setScanning((current) => new Set(current).add(mainPath));
+    setErrors([]);
     try {
       const fresh = await app.ScanRecoveryCopyGroup(mainPath);
       setGroups((current) => (current ?? []).map((g) => (g.mainPath === mainPath ? fresh : g)));
       // Scanning is the moment the detail becomes worth reading, so open the row.
       setExpanded((current) => new Set(current).add(mainPath));
-    } catch {
-      setNote(t("settings.loadFailed"));
+    } catch (err) {
+      setErrors([err instanceof Error ? err.message : String(err)]);
     } finally {
       setScanning((current) => {
         const next = new Set(current);
@@ -156,25 +185,32 @@ export function RecoveryCopiesSection() {
 
     setBusy(true);
     setNote("");
-    let merged = 0;
-    let leftBehind = 0;
+    setErrors([]);
+    const mergedLabels: string[] = [];
+    const blockedLabels: string[] = [];
+    const failureMessages: string[] = [];
     try {
       for (const group of chosen) {
         try {
           const report = await app.ConsolidateSessionRecoveryCopies(group.mainPath);
           if (report?.blockedByDivergence) {
-            leftBehind += 1;
+            blockedLabels.push(group.mainLabel);
             continue;
           }
-          merged += 1;
-          for (const detail of report?.notCoveredDetail ?? []) {
-            if (detail.unique > 0) leftBehind += 1;
-          }
-        } catch {
-          leftBehind += 1;
+          mergedLabels.push(group.mainLabel);
+        } catch (err) {
+          // Naming the conversation and carrying the message through is the point:
+          // a bare counter cannot tell "nothing needed merging" from "the call
+          // failed", and those call for opposite reactions.
+          const detail = err instanceof Error ? err.message : String(err);
+          failureMessages.push(`${group.mainLabel}: ${detail}`);
         }
       }
-      setNote(`${t("settings.recoveryCopiesMerged")} ${merged} / ${leftBehind}`);
+      setNote(
+        `${t("settings.recoveryCopiesMerged")} ${mergedLabels.length}` +
+          (blockedLabels.length ? ` · ${t("settings.recoveryCopiesBlocked")} ${blockedLabels.length}` : ""),
+      );
+      setErrors(failureMessages);
       setSelected(new Set());
       await load();
     } finally {
@@ -183,6 +219,99 @@ export function RecoveryCopiesSection() {
   };
 
   const scanningAll = scanning.size > 0;
+  const chosen = (groups ?? []).filter((g) => selected.has(g.mainPath));
+  const chosenUnscanned = chosen.some((g) => g.copies.some((c) => !c.scanned));
+
+  const renderGroup = (group: RecoveryCopyGroupView) => {
+    const isOpen = expanded.has(group.mainPath);
+    const isScanning = scanning.has(group.mainPath);
+    const groupUnique = group.copies.every((c) => c.scanned)
+      ? group.copies.reduce((n, c) => n + (c.orphan ? 0 : c.unique), 0)
+      : null;
+    return (
+      <div className="rc-group" key={group.mainPath}>
+        <div className="rc-row rc-row--group">
+          <input
+            type="checkbox"
+            checked={selected.has(group.mainPath)}
+            disabled={busy}
+            onChange={() => toggle(group.mainPath)}
+            aria-label={group.mainLabel}
+          />
+          <button
+            className="rc-toggle"
+            type="button"
+            aria-expanded={isOpen}
+            onClick={() => toggleExpanded(group.mainPath)}
+          >
+            <span className="rc-caret">{isOpen ? "▾" : "▸"}</span>
+            <span className="rc-label">{group.mainLabel}</span>
+          </button>
+          <span>{formatWhen(group.mainModified)}</span>
+          <span>{formatBytes(group.mainBytes)}</span>
+          <span>{group.mainMessages || "—"}</span>
+          <span>×{group.copies.length}</span>
+          <span className={groupUnique ? "rc-unique" : "rc-muted"}>{groupUnique ?? "—"}</span>
+          <span className="rc-action">
+            <button
+              className="btn btn--small"
+              type="button"
+              disabled={isScanning || scanningAll}
+              onClick={() => void scanOne(group.mainPath)}
+            >
+              {isScanning ? "…" : t("settings.recoveryCopiesScan")}
+            </button>
+          </span>
+        </div>
+
+        {isOpen && (
+          <>
+            <div className="rc-row rc-row--main">
+              <span />
+              <span className="rc-label">
+                {t("settings.recoveryCopiesMain")}
+                {group.mainExists ? "" : ` · ${t("settings.recoveryCopiesOrphan")}`}
+              </span>
+              <span>{formatWhen(group.mainModified)}</span>
+              <span>{formatBytes(group.mainBytes)}</span>
+              <span>{group.mainMessages || "—"}</span>
+              <span className="rc-muted">—</span>
+              <span className="rc-muted">—</span>
+              <span />
+            </div>
+            {group.copies.map((copy, index) => (
+              <div className="rc-row rc-row--copy" key={copy.path}>
+                <span />
+                <span className="rc-label">
+                  {t("settings.recoveryCopiesCopy")} {index + 1}
+                </span>
+                <span>{formatWhen(copy.modified)}</span>
+                <span>{formatBytes(copy.bytes)}</span>
+                <span>{copy.scanned ? copy.messages : "—"}</span>
+                <span className="rc-muted">—</span>
+                <span className={copy.unique > 0 ? "rc-unique" : "rc-muted"}>
+                  {copy.scanned ? copy.unique : "—"}
+                </span>
+                <span />
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const renderPhase = (title: string, rows: RecoveryCopyGroupView[], hint: string) =>
+    rows.length ? (
+      <div className="rc-phase" key={title}>
+        <div className="rc-phase__head">
+          <span className="rc-phase__title">{title}</span>
+          <span className="rc-phase__count">{rows.length}</span>
+          <span className="rc-phase__hint">{hint}</span>
+        </div>
+        {rows.map(renderGroup)}
+      </div>
+    ) : null;
 
   return (
     <>
@@ -229,90 +358,45 @@ export function RecoveryCopiesSection() {
                 ) : groups.length === 0 ? (
                   <div className="empty">{t("settings.recoveryCopiesEmpty")}</div>
                 ) : (
-                  <div className="rc-table">
-                    <div className="rc-row rc-row--head">
-                      <span />
-                      <span>{t("settings.recoveryCopiesColLine")}</span>
-                      <span>{t("settings.recoveryCopiesColModified")}</span>
-                      <span>{t("settings.recoveryCopiesColSize")}</span>
-                      <span>{t("settings.recoveryCopiesColTotal")}</span>
-                      <span>{t("settings.recoveryCopiesColShared")}</span>
-                      <span>{t("settings.recoveryCopiesColUnique")}</span>
+                  <>
+                    {errors.length > 0 && (
+                      <div className="banner banner--error" role="alert">
+                        <ul className="rc-errors">
+                          {errors.map((message) => (
+                            <li key={message}>{message}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {note ? <div className="rc-result">{note}</div> : null}
+                    <div className="rc-table">
+                      <div className="rc-row rc-row--head">
+                        <span />
+                        <span>{t("settings.recoveryCopiesColLine")}</span>
+                        <span>{t("settings.recoveryCopiesColModified")}</span>
+                        <span>{t("settings.recoveryCopiesColSize")}</span>
+                        <span>{t("settings.recoveryCopiesColTurns")}</span>
+                        <span>{t("settings.recoveryCopiesColCopies")}</span>
+                        <span>{t("settings.recoveryCopiesColUnique")}</span>
+                        <span />
+                      </div>
+                      {renderPhase(
+                        t("settings.recoveryCopiesPhaseUnmerged"),
+                        phased.unmerged,
+                        t("settings.recoveryCopiesPhaseUnmergedHint"),
+                      )}
+                      {renderPhase(
+                        t("settings.recoveryCopiesPhasePending"),
+                        phased.pending,
+                        t("settings.recoveryCopiesPhasePendingHint"),
+                      )}
+                      {renderPhase(
+                        t("settings.recoveryCopiesPhaseMerged"),
+                        phased.merged,
+                        t("settings.recoveryCopiesPhaseMergedHint"),
+                      )}
                     </div>
-
-                    {groups.map((group) => {
-                      const isOpen = expanded.has(group.mainPath);
-                      const isScanning = scanning.has(group.mainPath);
-                      return (
-                        <div className="rc-group" key={group.mainPath}>
-                          <div className="rc-row rc-row--group">
-                            <input
-                              type="checkbox"
-                              checked={selected.has(group.mainPath)}
-                              disabled={busy}
-                              onChange={() => toggle(group.mainPath)}
-                              aria-label={group.mainLabel}
-                            />
-                            <button
-                              className="rc-toggle"
-                              type="button"
-                              aria-expanded={isOpen}
-                              onClick={() => toggleExpanded(group.mainPath)}
-                            >
-                              <span className="rc-caret">{isOpen ? "▾" : "▸"}</span>
-                              <span className="rc-label">{group.mainLabel}</span>
-                            </button>
-                            <span />
-                            <span />
-                            <span className="rc-muted">×{group.copies.length}</span>
-                            <span />
-                            <span className="rc-action">
-                              <button
-                                className="btn btn--small"
-                                type="button"
-                                disabled={isScanning || scanningAll}
-                                onClick={() => void scanOne(group.mainPath)}
-                              >
-                                {isScanning ? "…" : t("settings.recoveryCopiesScan")}
-                              </button>
-                            </span>
-                          </div>
-
-                          {isOpen && (
-                            <>
-                              <div className="rc-row rc-row--main">
-                                <span />
-                                <span className="rc-label">
-                                  {t("settings.recoveryCopiesMain")}
-                                  {group.mainExists ? "" : ` · ${t("settings.recoveryCopiesOrphan")}`}
-                                </span>
-                                <span>{formatWhen(group.mainModified)}</span>
-                                <span>{formatBytes(group.mainBytes)}</span>
-                                <span>{group.mainMessages || "—"}</span>
-                                <span className="rc-muted">—</span>
-                                <span className="rc-muted">—</span>
-                              </div>
-                              {group.copies.map((copy, index) => (
-                                <div className="rc-row rc-row--copy" key={copy.path}>
-                                  <span />
-                                  <span className="rc-label">
-                                    {t("settings.recoveryCopiesCopy")} {index + 1}
-                                  </span>
-                                  <span>{formatWhen(copy.modified)}</span>
-                                  <span>{formatBytes(copy.bytes)}</span>
-                                  <span>{copy.scanned ? copy.messages : "—"}</span>
-                                  <span className="rc-muted">{copy.scanned ? copy.shared : "—"}</span>
-                                  <span className={copy.unique > 0 ? "rc-unique" : "rc-muted"}>
-                                    {copy.scanned ? copy.unique : "—"}
-                                  </span>
-                                </div>
-                              ))}
-                            </>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                  </>
                 )}
               </div>
 
@@ -320,7 +404,7 @@ export function RecoveryCopiesSection() {
                 <button
                   className="btn btn--small btn--primary"
                   type="button"
-                  disabled={busy || selected.size === 0}
+                  disabled={busy || selected.size === 0 || chosenUnscanned}
                   onClick={() => void mergeSelected()}
                 >
                   {t("settings.recoveryCopiesMerge")} ({selected.size})
@@ -341,7 +425,8 @@ export function RecoveryCopiesSection() {
                 >
                   {t("settings.recoveryCopiesRefresh")}
                 </button>
-                {note ? <span className="rc-note">{note}</span> : null}
+                {chosenUnscanned ? <span className="rc-note">{t("settings.recoveryCopiesScanFirst")}</span> : null}
+                {!chosenUnscanned && note ? <span className="rc-note">{note}</span> : null}
               </div>
             </div>
           </div>,
