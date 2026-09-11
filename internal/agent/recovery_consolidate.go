@@ -48,33 +48,41 @@ type RecoveryBranchCandidate struct {
 }
 
 // ConsolidationReport summarizes one consolidation run for the UI.
+//
+// The json tags are not decoration: this struct crosses the Wails bridge, and the
+// frontend reads it by lowerCamelCase name (`report.blockedByDivergence`,
+// `report.mainMessageCount`). Without tags Go emits the Go field names
+// ("BlockedByDivergence"), every frontend read yields undefined, and the two
+// consequences are severe rather than cosmetic - a divergence-blocked merge looks
+// like a successful one, and the confirmation that would let the user choose a
+// winner never appears.
 type ConsolidationReport struct {
-	MainPath       string
-	WinnerPath     string // "" when the main transcript already was the winner
-	Promoted       bool
-	NormalizedMain bool // an older-format main was rewritten in place first
+	MainPath       string `json:"mainPath"`
+	WinnerPath     string `json:"winnerPath"` // "" when the main transcript already was the winner
+	Promoted       bool   `json:"promoted"`
+	NormalizedMain bool   `json:"normalizedMain"` // an older-format main was rewritten in place first
 	// BlockedByDivergence reports that the fullest copy and the main
 	// transcript each hold turns the other lacks (typical after a main-side
 	// compaction). Nothing was merged; the caller may retry with Force.
-	BlockedByDivergence bool
-	MainMessageCount    int
-	WinnerMessageCount  int
-	Trashed             []string
-	SkippedNotCovered   []string
+	BlockedByDivergence bool     `json:"blockedByDivergence"`
+	MainMessageCount    int      `json:"mainMessageCount"`
+	WinnerMessageCount  int      `json:"winnerMessageCount"`
+	Trashed             []string `json:"trashed"`
+	SkippedNotCovered   []string `json:"skippedNotCovered"`
 	// NotCoveredDetail explains each entry of SkippedNotCovered: the copy`s own
 	// event count and how much of it the canonical transcript already holds. A copy
 	// whose Unique is small is duplication; one with a large Unique is work the user
 	// would lose by ignoring it, and the UI has to say which is which.
-	NotCoveredDetail []CopyOverlapDetail
-	SkippedUnloadable   []string
+	NotCoveredDetail  []CopyOverlapDetail `json:"notCoveredDetail"`
+	SkippedUnloadable []string            `json:"skippedUnloadable"`
 }
 
 // CopyOverlapDetail is one skipped copy, described by how much of it is already
 // present and how much is its own.
 type CopyOverlapDetail struct {
-	Path   string
-	Shared int
-	Unique int
+	Path   string `json:"path"`
+	Shared int    `json:"shared"`
+	Unique int    `json:"unique"`
 }
 
 // validateConsolidationTarget rejects paths that cannot be a consolidation
