@@ -154,6 +154,12 @@ type goalState struct {
 	StopCause              string   `json:"stopCause,omitempty"`
 	BudgetExtensions       int      `json:"budgetExtensions,omitempty"`
 	ProgressEvidence       []string `json:"progressEvidence,omitempty"`
+
+	// Autopilot records that this goal ran unattended (task 49 A2). It is persisted
+	// rather than re-read from config so a restart resumes the run under the flag it
+	// was started with: turning the setting off later must not adopt an old goal,
+	// and turning it on must not resurrect an interactive one.
+	Autopilot bool `json:"autopilot,omitempty"`
 }
 
 // goalAdvanceInput carries everything the FSM needs for one continuation step,
@@ -742,6 +748,7 @@ func (g *goalMachine) buildStateLocked(todos []evidence.TodoItem) (path string, 
 		StopCause:              g.stopCause,
 		BudgetExtensions:       g.budgetExtensions,
 		ProgressEvidence:       append([]string(nil), g.progressEvidence...),
+		Autopilot:              g.autopilot,
 	}
 	// GoalResearchOff is a downgrade fence for ordinary Goal sidecars. A
 	// fail-closed legacy migration keeps its task identity and compatibility mode
@@ -785,6 +792,34 @@ func (g *goalMachine) persistWithTodos(todos []evidence.TodoItem) {
 // todo snapshot only after the goal has reached a terminal state. Running goal
 // state is not refreshed on every todo_write, so its todos may be older than the
 // transcript rebuilt by Agent.SetSession.
+// resumableAutopilotGoal returns the goal a freshly started controller should pick
+// back up: an unattended run that was still going when the process stopped (task 49
+// A2). Only a persisted Autopilot flag with a live Running status qualifies - a
+// completed or terminal goal is history, and a goal that stopped for a human is
+// waiting for one, not for a restart.
+func resumableAutopilotGoal(sessionPath string) (string, bool) {
+	if strings.TrimSpace(sessionPath) == "" {
+		return "", false
+	}
+	data, err := fileencoding.ReadFileUTF8(goalStatePath(sessionPath))
+	if err != nil {
+		return "", false
+	}
+	var state goalState
+	if err := json.Unmarshal(data, &state); err != nil {
+		slog.Warn("controller: parse goal state for autopilot resume", "err", err)
+		return "", false
+	}
+	if !state.Autopilot || state.Status != GoalStatusRunning {
+		return "", false
+	}
+	goal := strings.TrimSpace(state.Goal)
+	if goal == "" {
+		return "", false
+	}
+	return goal, true
+}
+
 func (g *goalMachine) terminalTodosFromState(sessionPath string) ([]evidence.TodoItem, bool) {
 	if strings.TrimSpace(sessionPath) == "" {
 		return nil, false
