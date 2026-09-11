@@ -40096,3 +40096,83 @@ body > .mermaid-diagram--fullscreen {
   opacity: 0.75;
   word-break: break-word;
 }
+
+/* ── Session versions and copies panel ───────────────────────────────────────
+   A table rather than a stack of divs: grid with an explicit gap keeps the
+   timestamp and the size from running together, and one column per number makes
+   the copies comparable down a column instead of readable only as prose. */
+.rc-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(1120px, 94vw);
+  max-height: 86vh;
+  overflow: hidden;
+}
+.rc-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+}
+.rc-modal__title { font-weight: 600; }
+.rc-modal__body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 12px 18px; }
+.rc-modal__foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.rc-table { display: flex; flex-direction: column; }
+.rc-row {
+  display: grid;
+  grid-template-columns: 26px minmax(200px, 2fr) 138px 92px 76px 76px 96px;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 6px;
+}
+.rc-row--head {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-inline-sticky);
+  font-size: 0.86em;
+  font-weight: 600;
+  opacity: 0.72;
+  background: inherit;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+}
+.rc-row--group { font-weight: 600; }
+.rc-row--group:hover { background: color-mix(in srgb, currentColor 6%, transparent); }
+.rc-row--main {
+  margin-top: 2px;
+  background: color-mix(in srgb, currentColor 9%, transparent);
+}
+.rc-row--copy { opacity: 0.94; }
+
+.rc-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.rc-caret { flex: 0 0 auto; opacity: 0.7; }
+.rc-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-muted { opacity: 0.5; }
+.rc-unique { font-weight: 700; }
+.rc-action { display: flex; justify-content: flex-end; }
+.rc-note { margin-left: auto; opacity: 0.8; }
+
+.rc-preview { margin: 8px 0; padding-left: 20px; }
+.rc-preview__warn { margin: 8px 0 0; opacity: 0.8; }

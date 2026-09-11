@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"sort"
@@ -21,6 +22,10 @@ import (
 // counts arrive when the user asks for them.
 type RecoveryCopyView struct {
 	Path string `json:"path"`
+	// Label is what the user calls this conversation. The filename is an internal
+	// id they never see, so the topic title from the meta sidecar is preferred and
+	// the filename is only the fallback.
+	Label string `json:"label"`
 	// Bytes and Modified come from the directory entry, so they cost nothing.
 	Bytes    int64  `json:"bytes"`
 	Modified string `json:"modified"`
@@ -40,11 +45,19 @@ type RecoveryCopyView struct {
 
 // RecoveryCopyGroupView is one conversation with recovery copies beside it.
 type RecoveryCopyGroupView struct {
-	MainPath   string             `json:"mainPath"`
-	MainLabel  string             `json:"mainLabel"`
-	Directory  string             `json:"directory"`
-	MainExists bool               `json:"mainExists"`
-	Copies     []RecoveryCopyView `json:"copies"`
+	MainPath  string `json:"mainPath"`
+	MainLabel string `json:"mainLabel"`
+	Directory string `json:"directory"`
+	// MainExists reports whether the canonical transcript is on disk. A group whose
+	// main is gone can only be described, not merged.
+	MainExists bool `json:"mainExists"`
+	// MainMessages is the canonical transcript's length, filled by scanning.
+	MainMessages int `json:"mainMessages"`
+	// The main's own size and mtime, so the table can show it on the same row the
+	// copies are read against rather than leaving that line blank.
+	MainBytes    int64              `json:"mainBytes"`
+	MainModified string             `json:"mainModified"`
+	Copies       []RecoveryCopyView `json:"copies"`
 }
 
 // ListRecoveryCopyGroups lists conversations that have recovery copies beside them.
@@ -54,7 +67,8 @@ type RecoveryCopyGroupView struct {
 // copies the catalog never indexed and copies whose canonical transcript is gone,
 // which is precisely the state a cleanup has to be able to describe.
 //
-// This stays cheap: it reads names and sizes only, never transcripts.
+// This stays cheap: it reads names, sizes and the small meta sidecars only, never
+// transcripts.
 func (a *App) ListRecoveryCopyGroups() ([]RecoveryCopyGroupView, error) {
 	groups := []RecoveryCopyGroupView{}
 	for _, dir := range recoveryScanDirectories() {
@@ -87,7 +101,12 @@ func (a *App) ScanRecoveryCopyGroup(mainPath string) (RecoveryCopyGroupView, err
 	}
 	// The copy may live beside a transcript under a different name than first
 	// assumed; fall back to reporting the group as it currently reads.
-	return RecoveryCopyGroupView{MainPath: mainPath, Directory: dir, Copies: []RecoveryCopyView{}}, nil
+	return RecoveryCopyGroupView{
+		MainPath:  mainPath,
+		MainLabel: recoveryDisplayName(mainPath),
+		Directory: dir,
+		Copies:    []RecoveryCopyView{},
+	}, nil
 }
 
 // recoveryScanDirectories lists the session directories that can hold copies: the
@@ -121,7 +140,7 @@ func recoveryScanDirectories() []string {
 }
 
 // recoveryCopiesByMain groups one directory's recovery copies under their
-// canonical transcripts, keeping only names and sizes.
+// canonical transcripts, keeping only names, sizes and labels.
 func recoveryCopiesByMain(dir string) (map[string][]RecoveryCopyView, []string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -145,7 +164,7 @@ func recoveryCopiesByMain(dir string) (map[string][]RecoveryCopyView, []string, 
 		if _, seen := byMain[mainPath]; !seen {
 			order = append(order, mainPath)
 		}
-		view := RecoveryCopyView{Path: full}
+		view := RecoveryCopyView{Path: full, Label: recoveryDisplayName(full)}
 		if info, err := entry.Info(); err == nil {
 			view.Bytes = info.Size()
 			view.Modified = info.ModTime().Format(time.RFC3339)
@@ -165,12 +184,14 @@ func recoveryCopyGroupsIn(dir string) ([]RecoveryCopyGroupView, error) {
 	for _, mainPath := range order {
 		group := RecoveryCopyGroupView{
 			MainPath:  mainPath,
+			MainLabel: recoveryDisplayName(mainPath),
 			Directory: dir,
 			Copies:    byMain[mainPath],
 		}
-		group.MainLabel = recoveryLabel(mainPath)
-		if _, err := os.Stat(mainPath); err == nil {
+		if info, err := os.Stat(mainPath); err == nil {
 			group.MainExists = true
+			group.MainBytes = info.Size()
+			group.MainModified = info.ModTime().Format(time.RFC3339)
 		}
 		out = append(out, group)
 	}
@@ -190,12 +211,19 @@ func recoveryCopyGroupFor(dir, mainPath string) (RecoveryCopyGroupView, bool) {
 	}
 	group := RecoveryCopyGroupView{
 		MainPath:  mainPath,
-		MainLabel: recoveryLabel(mainPath),
+		MainLabel: recoveryDisplayName(mainPath),
 		Directory: dir,
 		Copies:    make([]RecoveryCopyView, 0, len(copies)),
 	}
-	if _, err := os.Stat(mainPath); err == nil {
+	if info, err := os.Stat(mainPath); err == nil {
 		group.MainExists = true
+		group.MainBytes = info.Size()
+		group.MainModified = info.ModTime().Format(time.RFC3339)
+	}
+	// The canonical transcript is measured too: without its length there is no
+	// baseline to read the copies against, which is the whole point of scanning.
+	if snapshot, ok := agent.LoadSessionContentSnapshot(mainPath); ok {
+		group.MainMessages = snapshot.Len()
 	}
 	for _, copyView := range copies {
 		copyView.Scanned = true
@@ -215,8 +243,27 @@ func recoveryCopyGroupFor(dir, mainPath string) (RecoveryCopyGroupView, bool) {
 	return group, true
 }
 
-// recoveryLabel renders a transcript path as the session id a user recognizes,
-// dropping the directory and the extension.
+// recoveryDisplayName prefers the topic title from the meta sidecar, because that
+// is the name the user gave this conversation and sees in the session list. The
+// transcript filename is an internal id they never see, so it is only a fallback.
+func recoveryDisplayName(transcriptPath string) string {
+	if metaPath := store.SessionMeta(transcriptPath); metaPath != "" {
+		if b, err := os.ReadFile(metaPath); err == nil {
+			var meta struct {
+				TopicTitle string `json:"topic_title"`
+			}
+			if json.Unmarshal(b, &meta) == nil {
+				if title := strings.TrimSpace(meta.TopicTitle); title != "" {
+					return title
+				}
+			}
+		}
+	}
+	return recoveryLabel(transcriptPath)
+}
+
+// recoveryLabel renders a transcript path as the session id, dropping the
+// directory and the extension. Used when no topic title is available.
 func recoveryLabel(path string) string {
 	name := filepath.Base(path)
 	return strings.TrimSuffix(name, ".jsonl")

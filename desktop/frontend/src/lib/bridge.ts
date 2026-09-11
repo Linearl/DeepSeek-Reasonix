@@ -181,6 +181,9 @@ export interface ConsolidationReport {
  *  that decides whether merging it is housekeeping or a rescue. */
 export interface RecoveryCopyView {
   path: string;
+  /** label is the topic title the user gave this conversation; the filename is an
+   *  internal id they never see, so it is only the fallback. */
+  label: string;
   /** bytes and modified come straight from the directory entry, so the list can
    *  show them without opening anything. */
   bytes: number;
@@ -201,6 +204,11 @@ export interface RecoveryCopyGroupView {
   mainLabel: string;
   directory: string;
   mainExists: boolean;
+  mainMessages: number;
+  /** The canonical transcript's own size and mtime, so the table can show it on
+   *  the same row the copies are read against. */
+  mainBytes: number;
+  mainModified: string;
   copies: RecoveryCopyView[];
 }
 
@@ -2729,7 +2737,7 @@ function makeMockApp(): AppBindings {
       return [];
     },
     async ScanRecoveryCopyGroup(_mainPath: string): Promise<RecoveryCopyGroupView> {
-      return { mainPath: "", mainLabel: "", directory: "", mainExists: false, copies: [] };
+      return { mainPath: "", mainLabel: "", directory: "", mainExists: false, mainMessages: 0, mainBytes: 0, mainModified: "", copies: [] };
     },
     async ForceConsolidateTopicRecoveryCopies(_scope: string, _workspaceRoot: string, topicID: string): Promise<ConsolidationReport> {
       return this.ForceConsolidateSessionRecoveryCopies(`mock://topics/${topicID}`);
