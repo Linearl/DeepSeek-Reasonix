@@ -13,6 +13,30 @@ type ServePoolStatus = {
   listen: string;
 };
 
+/** ServeFailureKind splits a failed gateway operation into the four causes a user
+ *  can act on, instead of echoing the raw error. The panel used to render whatever
+ *  the backend said, which in practice was one timeout string for every cause -
+ *  a wrong token, an unreachable host, an older remote, and a protocol mismatch
+ *  all read the same. 清单 任务 7 第 3 项. */
+type ServeFailureKind = "unreachable" | "auth" | "version" | "protocol" | "unknown";
+
+function classifyServeFailure(raw: string): ServeFailureKind {
+  const s = raw.toLowerCase();
+  if (s.includes("401") || s.includes("403") || s.includes("unauthor") || s.includes("forbidden") || s.includes("token")) {
+    return "auth";
+  }
+  if (s.includes("404") || s.includes("not found") || s.includes("unknown route")) {
+    return "version";
+  }
+  if (s.includes("protocol") || s.includes("malformed") || s.includes("unexpected") || s.includes("invalid")) {
+    return "protocol";
+  }
+  if (s.includes("refused") || s.includes("timeout") || s.includes("deadline") || s.includes("unreachable") || s.includes("connect")) {
+    return "unreachable";
+  }
+  return "unknown";
+}
+
 /** LocalServerPage is the Settings → 集成与连接 → 本地服务器服务 panel.
  *  It exposes the serve pool remote gateway toggle, its listen address, and a
  *  "copy gateway-token to clipboard" action for GrandCouncil / Tailscale setup. */
@@ -21,18 +45,31 @@ export function LocalServerPage() {
   const [status, setStatus] = useState<ServePoolStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [ko, setKo] = useState("");
+  const [koRaw, setKoRaw] = useState("");
   const [copied, setCopied] = useState(false);
   const [showToken, setShowToken] = useState(false);
+
+  // failWith renders the classified cause and keeps the raw text beside it: the
+  // category is what the user acts on, the detail is what they paste in a report.
+  const failWith = useCallback(
+    (e: unknown) => {
+      const raw = String(e);
+      setKo(t(`localserver.failure.${classifyServeFailure(raw)}`));
+      setKoRaw(raw);
+    },
+    [t],
+  );
 
   const refresh = useCallback(async () => {
     try {
       const s = await app.ServePoolStatus();
       setStatus(s);
       setKo("");
+      setKoRaw("");
     } catch (e) {
-      setKo(String(e));
+      failWith(e);
     }
-  }, []);
+  }, [failWith]);
 
   useEffect(() => {
     void refresh();
@@ -45,7 +82,7 @@ export function LocalServerPage() {
       await app.SetServePoolEnabled(!status.enabled);
       await refresh();
     } catch (e) {
-      setKo(String(e));
+      failWith(e);
     } finally {
       setBusy(false);
     }
@@ -91,7 +128,12 @@ export function LocalServerPage() {
           <p>{t("localserver.desc")}</p>
         </div>
 
-        {ko && <div className="settings-error">{ko}</div>}
+        {ko && (
+          <div className="settings-error">
+            {ko}
+            {koRaw && <div className="settings-error__detail">{koRaw}</div>}
+          </div>
+        )}
 
         <div className="settings-field">
           <label className="settings-toggle">
