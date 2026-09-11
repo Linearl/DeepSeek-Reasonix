@@ -55,6 +55,12 @@ func readinessAdvisoryNotice() string {
 	return "Autopilot recorded this turn as unfinished and kept going. Missing evidence was carried into the next turn instead of stopping the run."
 }
 
+// autopilotGraceContinuationNotice explains why a budget pause did not stop an
+// unattended run.
+func autopilotGraceContinuationNotice() string {
+	return "Autopilot continued past a budget boundary. Nobody is here to answer the continue prompt, so the run kept working; a repeated landing will still stop it."
+}
+
 // readinessAdvisoryDetail names the concrete gaps so the record is actionable
 // rather than a bare category.
 func readinessAdvisoryDetail(missing []string) string {

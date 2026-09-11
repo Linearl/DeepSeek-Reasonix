@@ -54,6 +54,12 @@ const maxEmptyFinalBlocks = 3
 // should stop rather than loop.
 const maxReadinessAdvisories = 2
 
+// maxAutopilotGraceTurns bounds how many grace-round pauses an unattended run
+// converts into another round. A grace pause exists to ask a human whether to
+// keep going; autopilot has no human, so it answers "yes" - but only a few times,
+// because a run that lands here repeatedly is not making progress.
+const maxAutopilotGraceTurns = 3
+
 // maxStreamRecoveries is the number of body-phase stream retries after the
 // initial sampling attempt (Pi-style default: 1 + 3 = 4 attempts total).
 const maxStreamRecoveries = 3

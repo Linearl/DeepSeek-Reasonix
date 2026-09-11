@@ -415,6 +415,23 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 		// Explicit max_steps and spend budgets are user-selected boundaries.
 		// Preserve the summary, then return a resumable pause so Goal does not
 		// immediately open another Run and silently bypass the chosen limit.
+		//
+		// An unattended run has nobody to answer that pause, so it answers for
+		// itself: keep working under the run's own runtime budget instead of
+		// stopping with the work half done. Bounded, because landing here every
+		// round means the run is not progressing and should stop for real.
+		if a.autopilot && state.terminal.autopilotGraceTurns < maxAutopilotGraceTurns {
+			state.terminal.autopilotGraceTurns++
+			a.svc.sink.Emit(event.Event{
+				Kind:   event.Notice,
+				Level:  event.LevelInfo,
+				Code:   event.NoticeCodeReadinessAdvisory,
+				Text:   autopilotGraceContinuationNotice(),
+				Detail: fmt.Sprintf("continue %d/%d", state.terminal.autopilotGraceTurns, maxAutopilotGraceTurns),
+			})
+			a.contextManager().ObserveUsage(usage)
+			return true, nil
+		}
 		a.contextManager().ObserveUsage(usage)
 		return false, a.gracePause(state)
 	}

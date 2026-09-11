@@ -191,6 +191,10 @@ type terminalProtocolState struct {
 	// carried forward instead of pausing. Unattended (autopilot) runs advise and
 	// continue, and this bounds that so a gap the model cannot close does not spin.
 	readinessAdvisories int
+	// autopilotGraceTurns counts grace-round continuations taken because an
+	// unattended run has nobody to answer the "continue?" pause. Bounded so a run
+	// that genuinely cannot make progress still stops.
+	autopilotGraceTurns int
 	// handoffNudges counts executor-handoff repairs sent this run.
 	handoffNudges int
 	// intentNudges counts stalled-intent repairs sent this run.
