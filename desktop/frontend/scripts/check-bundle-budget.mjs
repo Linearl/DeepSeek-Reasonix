@@ -298,7 +298,10 @@ for (const path of localeChunks) {
   // Task 49 A5: the autopilot switch and the approval-model setting add eight
   // keys plus help copy per dialect; zh-TW measures 66.7 KiB. Take the next
   // decimal ceiling for each with the same bounded headroom as before.
-  const budget = name.startsWith("zh-TW-") ? 68.0 * 1024 : 67.0 * 1024;
+  // Session-version panel adds eleven keys per dialect (panel opener, column
+  // headers, row labels, merge preview). zh measures 67.1 KiB, zh-TW 67.7 KiB;
+  // take the next decimal ceiling for each, keeping the same bounded headroom.
+  const budget = name.startsWith("zh-TW-") ? 68.2 * 1024 : 67.2 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
