@@ -40104,25 +40104,30 @@ body > .mermaid-diagram--fullscreen {
 .rc-modal {
   display: flex;
   flex-direction: column;
-  width: min(1400px, 96vw);
-  max-height: 86vh;
+  /* The shared .modal caps itself at 440px for dialogs, which is far too narrow
+     for a table; overriding max-width is what actually widens this panel - setting
+     width alone left it at 440px. */
+  width: 96vw;
+  max-width: 1720px;
+  max-height: 88vh;
   overflow: hidden;
+  padding: 0;
 }
 .rc-modal__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 18px;
+  padding: 14px 22px;
   border-bottom: 1px solid color-mix(in srgb, currentColor 14%, transparent);
 }
 .rc-modal__title { font-weight: 600; }
-.rc-modal__body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 12px 18px; }
+.rc-modal__body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 12px 22px; }
 .rc-modal__foot {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 18px;
+  padding: 12px 22px;
   border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent);
 }
 
