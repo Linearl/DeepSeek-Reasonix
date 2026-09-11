@@ -313,6 +313,13 @@ func (ag *authGate) checkToken(w http.ResponseWriter, r *http.Request, next http
 	// 2. Check query parameter.
 	if q := r.URL.Query().Get("token"); q != "" {
 		if subtle.ConstantTimeCompare([]byte(q), []byte(ag.token)) == 1 {
+			// The query parameter is the legacy path: it leaves the token in the URL,
+			// in browser history, and in any referrer that leaks it. It keeps working
+			// so older links still open, but it has to be observable in the field -
+			// otherwise there is no way to tell whether the cookie path has actually
+			// replaced it before it can be retired. The token itself is never logged.
+			slog.Warn("serve: authenticated through the legacy query token; the cookie path supersedes it",
+				"path", r.URL.Path, "client", r.RemoteAddr)
 			// Set a persistent cookie so future requests (including SSE) are
 			// authenticated without the token in the URL.
 			ag.setAuthCookie(w, r, &http.Cookie{
