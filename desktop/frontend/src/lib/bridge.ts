@@ -177,6 +177,25 @@ export interface ConsolidationReport {
   skippedUnloadable: string[];
 }
 
+/** RecoveryCopyView is one recovery copy beside a conversation, with the split
+ *  that decides whether merging it is housekeeping or a rescue. */
+export interface RecoveryCopyView {
+  path: string;
+  messages: number;
+  shared: number;
+  unique: number;
+  /** orphan marks a copy whose canonical transcript is gone: another line rather
+   *  than a fork, so it cannot be merged. */
+  orphan?: boolean;
+}
+
+export interface RecoveryCopyGroupView {
+  mainPath: string;
+  directory: string;
+  mainMessages: number;
+  copies: RecoveryCopyView[];
+}
+
 export interface DesktopShellStatusView {
   trayState: "probing" | "ready" | "unavailable";
   backgroundCloseAvailable: boolean;
@@ -239,6 +258,7 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   ConsolidateTopicRecoveryCopies(scope: string, workspaceRoot: string, topicID: string): Promise<ConsolidationReport>;
   ForceConsolidateSessionRecoveryCopies(path: string): Promise<ConsolidationReport>;
   ForceConsolidateTopicRecoveryCopies(scope: string, workspaceRoot: string, topicID: string): Promise<ConsolidationReport>;
+  ListRecoveryCopyGroups(): Promise<RecoveryCopyGroupView[]>;
   PickGlobalWriteDir(): Promise<string>;
   // Authorized write-directory management (#9167).
   QueryAuthorizedWriteDirs(): Promise<{ project: string[]; global: string[]; session: string[] }>;
@@ -2695,6 +2715,9 @@ function makeMockApp(): AppBindings {
     },
     async ForceConsolidateSessionRecoveryCopies(path: string): Promise<ConsolidationReport> {
       return this.ConsolidateSessionRecoveryCopies(path);
+    },
+    async ListRecoveryCopyGroups(): Promise<RecoveryCopyGroupView[]> {
+      return [];
     },
     async ForceConsolidateTopicRecoveryCopies(_scope: string, _workspaceRoot: string, topicID: string): Promise<ConsolidationReport> {
       return this.ForceConsolidateSessionRecoveryCopies(`mock://topics/${topicID}`);

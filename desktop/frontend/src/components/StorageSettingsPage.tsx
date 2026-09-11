@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Copy, Check } from "lucide-react";
 import { app } from "../lib/bridge";
 import { useT } from "../lib/i18n";
+import { RecoveryCopiesSection } from "./RecoveryCopiesSection";
 
 type StorageSettingsView = Awaited<ReturnType<typeof app.StorageSettings>>;
 
@@ -52,7 +53,8 @@ export function StorageSettingsPage() {
         <StoragePathField label={t("settings.storageCache")} value={view.cachePath} />
         <StoragePathField label={t("settings.storageExtensions")} value={view.extensionsPath} />
       </div>
-    </section>
+          <RecoveryCopiesSection />
+</section>
   );
 }
 
