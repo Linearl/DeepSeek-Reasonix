@@ -4019,6 +4019,41 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 	keepBuildContext = true
 	a.mu.Unlock()
 	a.finishStartupPublication(tab, ctrl, wailsCtx)
+	// Task 49 A2: an unattended run picks up where the process left it. It is the
+	// last step so the tab is fully live first; SubmitToTab then takes the normal
+	// admission path, which refuses while a turn is already running. The goal
+	// sidecar is the real gate: once the run stops reporting Running, no later
+	// restart resumes it, so this stays idempotent across repeated launches.
+	a.maybeResumeAutopilotTab(tab)
+}
+
+// autopilotResumePrompt is what a restored unattended run is told. It states the
+// fact (the process restarted) and the expectation (carry on) without inventing
+// work - the goal itself is already restored on the tab.
+const autopilotResumePrompt = "The process restarted while this autopilot goal was running. Continue it from where it stopped; do not restate the plan or wait for input."
+
+// maybeResumeAutopilotTab asks a restored unattended run to continue (task 49 A2).
+// It only fires for a ready, non-removed tab that still carries an autopilot goal,
+// and it submits through the normal path rather than driving the controller, so an
+// already-running turn simply refuses the resume instead of queueing a second one.
+func (a *App) maybeResumeAutopilotTab(tab *WorkspaceTab) {
+	if a == nil || tab == nil {
+		return
+	}
+	a.mu.RLock()
+	eligible := tab.autopilot && strings.TrimSpace(tab.goal) != "" && tab.Ready && !tab.removed
+	id := tab.ID
+	a.mu.RUnlock()
+	if !eligible {
+		return
+	}
+	go func() {
+		if err := a.SubmitToTab(id, autopilotResumePrompt); err != nil {
+			slog.Debug("desktop: autopilot resume skipped", "tab", id, "err", err)
+			return
+		}
+		slog.Info("desktop: autopilot run resumed", "tab", id)
+	}()
 }
 
 type sessionBinding struct {
