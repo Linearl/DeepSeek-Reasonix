@@ -43,9 +43,24 @@ function uniqueIn(group: RecoveryCopyGroupView): number {
   return group.copies.reduce((n, c) => n + (c.orphan ? 0 : c.unique), 0);
 }
 
-/** fullestCopyTurns is the largest copy, which is the one a merge would promote. */
-function fullestCopyTurns(group: RecoveryCopyGroupView): number {
-  return group.copies.reduce((n, c) => Math.max(n, c.messages), 0);
+/** Winner describes which transcript a merge would end up with.
+ *
+ *  The backend promotes the fullest loadable candidate, whether that is the main
+ *  transcript or one of the copies, so the panel can say in advance which one wins
+ *  instead of surprising the user afterwards. The turns of a copy are only known
+ *  once it has been measured, so a group that has not been measured has no winner
+ *  to name yet.
+ */
+type Winner = { isMain: boolean; turns: number; copyIndex: number };
+
+function predictedWinner(group: RecoveryCopyGroupView): Winner | null {
+  if (copiesNeedingMeasurement(group).length > 0) return null;
+  let best: Winner = { isMain: true, turns: group.mainMessages, copyIndex: -1 };
+  group.copies.forEach((copy, index) => {
+    if (copy.orphan) return;
+    if (copy.messages > best.turns) best = { isMain: false, turns: copy.messages, copyIndex: index };
+  });
+  return best;
 }
 
 /** phaseOf sorts a conversation by what a user would do about it. */
@@ -73,17 +88,21 @@ type Outcome = {
  *  once and shows the shape of the problem without opening any transcript.
  *  Conversations start collapsed and are grouped by what they need.
  *
- *  Measuring a copy means reading and comparing whole transcripts, and one copy on
- *  a busy machine reaches a hundred megabytes. The panel offers it on demand - but
- *  the merge performs it itself when needed, because measuring is a step the button
- *  can take and the user should not have to take first.
+ *  Measuring a copy means reading and comparing whole transcripts. The panel offers
+ *  it on demand, and the merge performs it itself when needed - the preview is built
+ *  from those counts, so the button can produce them rather than sending the user
+ *  back to press Scan first.
+ *
+ *  This is a promotion, not a splice: the fullest candidate becomes the canonical
+ *  transcript and the rest are folded into the recoverable trash. So the preview
+ *  names the winner in advance - including when that winner is a copy - because
+ *  "which transcript will I be left with" is the question the merge decides.
  *
  *  Merging asks twice because the backend has two modes. A plain merge refuses when
  *  the fullest copy and the main transcript each hold turns the other lacks
  *  (typical after a main-side compaction). That refusal is reported, and the user is
- *  then asked whether the copy should win - which archives the current main whole
- *  under the recoverable trash. Neither mode runs without its own confirmation, and
- *  both report per conversation afterwards.
+ *  then asked whether the copy should win. Neither mode runs without its own
+ *  confirmation.
  */
 export function RecoveryCopiesSection() {
   const t = useT();
@@ -176,6 +195,14 @@ export function RecoveryCopiesSection() {
     }
   };
 
+  const winnerText = (group: RecoveryCopyGroupView) => {
+    const winner = predictedWinner(group);
+    if (!winner) return "—";
+    return winner.isMain
+      ? `${t("settings.recoveryCopiesWinnerMain")} ${winner.turns}`
+      : `${t("settings.recoveryCopiesCopy")} ${winner.copyIndex + 1} ${winner.turns}`;
+  };
+
   const mergeSelected = async () => {
     const chosen = (groups ?? []).filter((g) => selected.has(g.mainPath));
     if (!chosen.length) return;
@@ -198,9 +225,9 @@ export function RecoveryCopiesSection() {
       }
       setStatus("");
 
-      // The preview states the change, not just the inputs: the main transcript's
-      // turn count before, the fullest copy's turns, and how much unique work is at
-      // stake in each conversation.
+      // The preview states the change, not just the inputs: which transcript is
+      // left after the merge, its turn count against the current main's, and how
+      // much unique work would be folded away.
       const totalUnique = measured.reduce((n, g) => n + uniqueIn(g), 0);
       const totalCopies = measured.reduce((n, g) => n + g.copies.length, 0);
       const ok = await confirm({
@@ -217,7 +244,7 @@ export function RecoveryCopiesSection() {
                 <tr>
                   <th>{t("settings.recoveryCopiesColLine")}</th>
                   <th>{t("settings.recoveryCopiesColTurns")}</th>
-                  <th>{t("settings.recoveryCopiesColCopies")}</th>
+                  <th>{t("settings.recoveryCopiesColWinner")}</th>
                   <th>{t("settings.recoveryCopiesColUnique")}</th>
                 </tr>
               </thead>
@@ -226,7 +253,7 @@ export function RecoveryCopiesSection() {
                   <tr key={g.mainPath}>
                     <td>{g.mainLabel}</td>
                     <td>{g.mainMessages || "—"}</td>
-                    <td>×{g.copies.length}</td>
+                    <td>{winnerText(g)}</td>
                     <td>{uniqueIn(g)}</td>
                   </tr>
                 ))}
@@ -260,6 +287,7 @@ export function RecoveryCopiesSection() {
           // the other lacks. Ask before letting the copy win, and say what that
           // costs: the current main is archived whole and stays recoverable.
           setBusy(false);
+          const winner = predictedWinner(group);
           const forceOk = await confirm({
             title: t("settings.recoveryCopiesForceTitle"),
             message: (
@@ -269,7 +297,7 @@ export function RecoveryCopiesSection() {
                 </p>
                 <p>
                   {t("settings.recoveryCopiesForceTurns")} {group.mainMessages || "—"} →{" "}
-                  {fullestCopyTurns(group) || "—"}
+                  {winner?.turns || "—"}
                 </p>
                 <p className="rc-preview__warn">{t("settings.recoveryCopiesForceWarn")}</p>
               </div>
@@ -324,11 +352,14 @@ export function RecoveryCopiesSection() {
   const scanningAll = scanning.size > 0;
   const selectedGroups = (groups ?? []).filter((g) => selected.has(g.mainPath));
   const needingCount = selectedGroups.reduce((n, g) => n + copiesNeedingMeasurement(g).length, 0);
+  const anyMerged = outcomes.some((o) => o.kind === "merged" || o.kind === "forced");
 
   const renderGroup = (group: RecoveryCopyGroupView) => {
     const isOpen = expanded.has(group.mainPath);
     const isScanning = scanning.has(group.mainPath);
-    const groupUnique = copiesNeedingMeasurement(group).length === 0 ? uniqueIn(group) : null;
+    const measured = copiesNeedingMeasurement(group).length === 0;
+    const groupUnique = measured ? uniqueIn(group) : null;
+    const winner = measured ? predictedWinner(group) : null;
     return (
       <div className="rc-group" key={group.mainPath}>
         <div className="rc-row rc-row--group">
@@ -367,10 +398,11 @@ export function RecoveryCopiesSection() {
 
         {isOpen && (
           <>
-            <div className="rc-row rc-row--main">
+            <div className={`rc-row rc-row--main${winner?.isMain ? " rc-row--winner" : ""}`}>
               <span />
               <span className="rc-label">
                 {t("settings.recoveryCopiesMain")}
+                {winner?.isMain ? ` · ${t("settings.recoveryCopiesWins")}` : ""}
                 {group.mainExists ? "" : ` · ${t("settings.recoveryCopiesOrphan")}`}
               </span>
               <span>{formatWhen(group.mainModified)}</span>
@@ -380,22 +412,29 @@ export function RecoveryCopiesSection() {
               <span className="rc-muted">—</span>
               <span />
             </div>
-            {group.copies.map((copy, index) => (
-              <div className="rc-row rc-row--copy" key={copy.path}>
-                <span />
-                <span className="rc-label">
-                  {t("settings.recoveryCopiesCopy")} {index + 1}
-                </span>
-                <span>{formatWhen(copy.modified)}</span>
-                <span>{formatBytes(copy.bytes)}</span>
-                <span>{copy.scanned ? copy.messages : "—"}</span>
-                <span className="rc-muted">—</span>
-                <span className={copy.unique > 0 ? "rc-unique" : "rc-muted"}>
-                  {copy.scanned ? copy.unique : "—"}
-                </span>
-                <span />
-              </div>
-            ))}
+            {group.copies.map((copy, index) => {
+              const wins = winner ? !winner.isMain && winner.copyIndex === index : false;
+              return (
+                <div
+                  className={`rc-row rc-row--copy${wins ? " rc-row--winner" : ""}`}
+                  key={copy.path}
+                >
+                  <span />
+                  <span className="rc-label">
+                    {t("settings.recoveryCopiesCopy")} {index + 1}
+                    {wins ? ` · ${t("settings.recoveryCopiesWins")}` : ""}
+                  </span>
+                  <span>{formatWhen(copy.modified)}</span>
+                  <span>{formatBytes(copy.bytes)}</span>
+                  <span>{copy.scanned ? copy.messages : "—"}</span>
+                  <span className="rc-muted">—</span>
+                  <span className={copy.unique > 0 ? "rc-unique" : "rc-muted"}>
+                    {copy.scanned ? copy.unique : "—"}
+                  </span>
+                  <span />
+                </div>
+              );
+            })}
           </>
         )}
       </div>
@@ -511,6 +550,9 @@ export function RecoveryCopiesSection() {
                             </li>
                           ))}
                         </ul>
+                        {anyMerged ? (
+                          <p className="rc-result__hint">{t("settings.recoveryCopiesReopen")}</p>
+                        ) : null}
                       </div>
                     )}
                     <div className="rc-table">

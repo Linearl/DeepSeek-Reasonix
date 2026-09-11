@@ -40233,3 +40233,11 @@ body > .mermaid-diagram--fullscreen {
 .rc-outcome--ok { color: var(--ok, inherit); }
 .rc-outcome--blocked { opacity: 0.75; }
 .rc-outcome--failed { color: var(--danger, inherit); }
+
+/* The row a merge would leave as the canonical transcript. Named in advance so
+   "which transcript do I end up with" is answered before the merge, not after. */
+.rc-row--winner {
+  box-shadow: inset 3px 0 0 0 var(--accent, currentColor);
+}
+.rc-row--winner .rc-label { font-weight: 700; }
+.rc-result__hint { margin: 8px 0 0; opacity: 0.85; }
