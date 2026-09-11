@@ -17,6 +17,8 @@ import (
 	fileencoding "reasonix/internal/fileutil/encoding"
 	"reasonix/internal/provider"
 	"reasonix/internal/store"
+	"strconv"
+	"strings"
 )
 
 const (
@@ -26,7 +28,6 @@ const (
 	// sessionEventReplayMaxBytes caps decoder input before encoding/json can
 	// allocate an arbitrarily large record. The ceiling still accommodates
 	// image-bearing histories while keeping corrupt logs from exhausting RAM.
-	sessionEventReplayMaxBytes = int64(128 << 20)
 	// A byte limit alone is insufficient: a compact JSON array can expand into
 	// a much larger graph of messages and event records after decoding.
 	sessionEventReplayMaxRecords         = 100_000
@@ -42,6 +43,40 @@ const (
 	// file without bound.
 	sessionEventLogCompactFactor = int64(4)
 )
+
+// defaultSessionEventReplayMaxBytes is the ordinary ceiling for decoder input.
+const defaultSessionEventReplayMaxBytes = int64(128 << 20)
+
+// sessionEventReplayMaxBytes is a var, not a const: the repair override below
+// adjusts it at startup.
+var sessionEventReplayMaxBytes = defaultSessionEventReplayMaxBytes
+
+// sessionEventReplayMaxMBEnv raises that ceiling for one run, in mebibytes.
+//
+// A recovery copy that no longer takes the full save path never runs the fold
+// check (it lives on the save path), so its event log can grow past the ceiling
+// without ever being folded. The loader then refuses the session on purpose - it
+// must not fall back to an older checkpoint, because the log may hold newer turns -
+// which leaves a session that cannot be opened by any normal action and whose
+// newest content is invisible.
+//
+// This override is the way out of that deadlock without touching any session file:
+// open the session once with a raised ceiling, save it, and the fold on the save
+// path rewrites the log to a normal size. It is deliberately an environment
+// variable rather than a setting, because it is a repair tool, not a preference.
+const sessionEventReplayMaxMBEnv = "REASONIX_SESSION_REPLAY_MAX_MB"
+
+func init() {
+	raw := strings.TrimSpace(os.Getenv(sessionEventReplayMaxMBEnv))
+	if raw == "" {
+		return
+	}
+	mb, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || mb <= 0 {
+		return
+	}
+	sessionEventReplayMaxBytes = mb << 20
+}
 
 // ErrSessionReplayLimitExceeded identifies a session that was left untouched
 // because replaying it would exceed the process safety budget. Callers must not
