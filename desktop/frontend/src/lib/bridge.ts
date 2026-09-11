@@ -181,9 +181,16 @@ export interface ConsolidationReport {
  *  that decides whether merging it is housekeeping or a rescue. */
 export interface RecoveryCopyView {
   path: string;
+  /** bytes and modified come straight from the directory entry, so the list can
+   *  show them without opening anything. */
+  bytes: number;
+  modified: string;
+  /** messages/shared/unique are only meaningful once scanned is true: measuring
+   *  them means reading whole transcripts, which is why the list does not. */
   messages: number;
   shared: number;
   unique: number;
+  scanned: boolean;
   /** orphan marks a copy whose canonical transcript is gone: another line rather
    *  than a fork, so it cannot be merged. */
   orphan?: boolean;
@@ -191,8 +198,9 @@ export interface RecoveryCopyView {
 
 export interface RecoveryCopyGroupView {
   mainPath: string;
+  mainLabel: string;
   directory: string;
-  mainMessages: number;
+  mainExists: boolean;
   copies: RecoveryCopyView[];
 }
 
@@ -259,6 +267,7 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   ForceConsolidateSessionRecoveryCopies(path: string): Promise<ConsolidationReport>;
   ForceConsolidateTopicRecoveryCopies(scope: string, workspaceRoot: string, topicID: string): Promise<ConsolidationReport>;
   ListRecoveryCopyGroups(): Promise<RecoveryCopyGroupView[]>;
+  ScanRecoveryCopyGroup(mainPath: string): Promise<RecoveryCopyGroupView>;
   PickGlobalWriteDir(): Promise<string>;
   // Authorized write-directory management (#9167).
   QueryAuthorizedWriteDirs(): Promise<{ project: string[]; global: string[]; session: string[] }>;
@@ -2718,6 +2727,9 @@ function makeMockApp(): AppBindings {
     },
     async ListRecoveryCopyGroups(): Promise<RecoveryCopyGroupView[]> {
       return [];
+    },
+    async ScanRecoveryCopyGroup(_mainPath: string): Promise<RecoveryCopyGroupView> {
+      return { mainPath: "", mainLabel: "", directory: "", mainExists: false, copies: [] };
     },
     async ForceConsolidateTopicRecoveryCopies(_scope: string, _workspaceRoot: string, topicID: string): Promise<ConsolidationReport> {
       return this.ForceConsolidateSessionRecoveryCopies(`mock://topics/${topicID}`);
