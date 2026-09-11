@@ -123,7 +123,7 @@ import { useDialogSurfaceOwner } from "./app-runtime/dialogSurfaces";
 import { useTranscriptRevealOwner } from "./app-runtime/transcriptReveal";
 import { useViewportMetricsOwner } from "./app-runtime/viewportMetrics";
 import { useSidebarImOwner, sidebarImAccessModeLabel, sidebarImAccessStatusClass, sidebarImAccessStatusLabel, sidebarImConnectionsFromBot, sidebarImScopeLabel, sidebarImSessionLabel, sidebarImSessionTarget, sidebarImTopicSourcesFromBot, type SidebarImConnection } from "./app-runtime/sidebarIm";
-import { loadCachedLayoutStyle, saveCachedLayoutStyle } from "./lib/layoutPreferences";
+import { loadCachedAppearance, loadCachedLayoutStyle, saveCachedAppearance, saveCachedLayoutStyle } from "./lib/layoutPreferences";
 import { runWorktreeMergeLifecycle } from "./lib/worktreeMergeLifecycle";
 import { showWorktreeCleanupNotice } from "./lib/worktreeCleanupNotice";
 import { requestSessionVersions } from "./lib/sessionRecoveryVersionHostBridge";
@@ -269,6 +269,20 @@ function normalizeDesktopLayoutStyle(style: string | undefined): DesktopLayoutSt
   return "workbench";
 }
 const SHOW_CONTEXT_DOCK = true;
+
+// First paint: apply the cached accent before React renders. The authoritative
+// theme and accent arrive asynchronously from the desktop config, so without a
+// synchronous copy a user who chose the amber accent watches it start on the
+// default blue and turn orange once the config lands (same reason the layout
+// style is cached above).
+const cachedAppearance = loadCachedAppearance();
+if (cachedAppearance) {
+  const cachedTheme = normalizeThemePreference(cachedAppearance.theme);
+  applyConfiguredBaseAppearance(
+    cachedTheme,
+    normalizeThemeStyleForTheme(cachedAppearance.themeStyle, cachedTheme),
+  );
+}
 const DISMISSED_TODO_STORAGE_KEY = "todoPanel:dismissedKeys";
 const MAX_DISMISSED_TODO_KEYS = 160;
 type HistoryScopeFilter = { scope: "global" | "project"; workspaceRoot: string };
@@ -1141,6 +1155,7 @@ export default function App() {
       const nextLayoutStyle = normalizeDesktopLayoutStyle(settings.desktopLayoutStyle);
       setDesktopLayoutStyle(nextLayoutStyle);
       saveCachedLayoutStyle(nextLayoutStyle);
+      saveCachedAppearance(nextTheme, nextStyle);
       applyLayoutStyleDefaults(nextLayoutStyle);
       setLocalePref(normalizeLangPref(settings.desktopLanguage));
       setStartupUpdateChecksEnabled(settings.checkUpdates !== false);

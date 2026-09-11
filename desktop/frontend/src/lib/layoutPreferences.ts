@@ -17,6 +17,11 @@ type LayoutPreferences = {
   // synchronous copy a classic-layout user sees workbench for a few frames
   // (task 40 / #9796 fallout).
   layoutStyle?: string;
+  // theme and themeStyle are cached for the same reason. Without it a user who
+  // picked the amber accent starts every launch on the default blue and watches
+  // it turn orange once the config lands.
+  theme?: string;
+  themeStyle?: string;
 };
 
 const STORAGE_KEY = "reasonix.layoutPreferences.v1";
@@ -53,6 +58,8 @@ function writePrefs(prefs: LayoutPreferences): void {
   try {
     const payload: LayoutPreferences = { sizes: prefs.sizes ?? {} };
     if (prefs.layoutStyle) payload.layoutStyle = prefs.layoutStyle;
+    if (prefs.theme) payload.theme = prefs.theme;
+    if (prefs.themeStyle) payload.themeStyle = prefs.themeStyle;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch {
     /* ignore storage failures */
@@ -76,6 +83,29 @@ export function saveCachedLayoutStyle(style: string): void {
   if (trimmed === "") return;
   const prefs = readPrefs();
   writePrefs({ ...prefs, layoutStyle: trimmed });
+}
+
+/** loadCachedAppearance returns the synchronously readable desktop appearance,
+ * or null when nothing usable is cached. Callers fall back to the built-in
+ * defaults, which the async config load then corrects. */
+export function loadCachedAppearance(): { theme: string; themeStyle: string } | null {
+  const prefs = readPrefs();
+  const theme = typeof prefs.theme === "string" ? prefs.theme.trim() : "";
+  if (theme === "") return null;
+  return { theme, themeStyle: typeof prefs.themeStyle === "string" ? prefs.themeStyle.trim() : "" };
+}
+
+/** saveCachedAppearance mirrors the authoritative appearance into the first-paint
+ * cache. An empty theme is ignored so a cleared config cannot pin a stale look. */
+export function saveCachedAppearance(theme: string, themeStyle: string): void {
+  const trimmedTheme = typeof theme === "string" ? theme.trim() : "";
+  if (trimmedTheme === "") return;
+  const prefs = readPrefs();
+  writePrefs({
+    ...prefs,
+    theme: trimmedTheme,
+    themeStyle: typeof themeStyle === "string" ? themeStyle.trim() : "",
+  });
 }
 
 function readLegacySize(key: LayoutSizeKey): number | null {
