@@ -91,6 +91,9 @@ export interface ProjectTreeOrganizationController {
   groupCollapsed(key: string, id: string): boolean;
   toggleGroup(key: string, id: string): void;
   renameGroup(key: string, id: string, title: string): void;
+  /** moveGroup reorders a group inside its project (task 50): the caller passes the
+   * dragged group id and the id it was dropped on, matching the topic drag helpers. */
+  moveGroup(key: string, fromID: string, toID: string): void;
   /** clearGroup keeps the group shell and drops its sessions (task 17). */
   clearGroup(key: string, id: string): void;
   /** dissolveGroup removes the shell; its sessions return to ungrouped. This is
@@ -318,6 +321,20 @@ export function useProjectTreeOrganization({
     renameGroup(key, id, title) {
       const trimmed = title.trim();
       mutateGroups(key, (groups) => trimmed ? groups.map((group) => group.id === id ? { ...group, title: trimmed } : group) : groups.filter((group) => group.id !== id));
+    },
+    moveGroup(key, fromID, toID) {
+      if (fromID === toID) return;
+      mutateGroups(key, (groups) => {
+        const from = groups.findIndex((group) => group.id === fromID);
+        const to = groups.findIndex((group) => group.id === toID);
+        // Either id may be gone (another window dissolved the group first); in that
+        // case the roster is left alone rather than reordered around a ghost.
+        if (from < 0 || to < 0) return groups;
+        const next = groups.slice();
+        const [moved] = next.splice(from, 1);
+        next.splice(to, 0, moved);
+        return next;
+      });
     },
     clearGroup(key, id) { mutateGroups(key, (groups) => groups.map((group) => group.id === id ? { ...group, topicIds: [] } : group)); },
     dissolveGroup(key, id) { mutateGroups(key, (groups) => groups.filter((group) => group.id !== id)); },
