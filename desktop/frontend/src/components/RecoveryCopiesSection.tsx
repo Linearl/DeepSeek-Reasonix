@@ -127,7 +127,11 @@ export function RecoveryCopiesSection() {
   const [pickedChain, setPickedChain] = useState<Record<string, string>>({});
   const pickedChainCount = Object.values(pickedChain).filter(Boolean).length;
   // Full conversation-style feed for the open preview dialog; empty while loading.
+  // Rendering is lazy like the session window: a head slice and a tail slice with
+  // an expandable gap, so a 9k-message branch never mounts at once.
   const [feed, setFeed] = useState<RecoveryChainPreviewMessage[]>([]);
+  const [feedHead, setFeedHead] = useState(60);
+  const [feedTail, setFeedTail] = useState(120);
   // Clicking a chain previews it in a wide dialog - sizes, how it starts and
   // ends, and what picking it keeps or drops against the main - and only a
   // confirm inside that dialog names it as the winner. Clicking the picked
@@ -145,6 +149,8 @@ export function RecoveryCopiesSection() {
     let preview: RecoveryChainPreview;
     setBusy(true);
     setFeed([]);
+    setFeedHead(60);
+    setFeedTail(120);
     try {
       preview = await app.PreviewRecoveryChain(mainPath, chain.path);
       // The feed loads after the summary so the dialog opens instantly even on a
@@ -195,12 +201,32 @@ export function RecoveryCopiesSection() {
             {feed.length === 0 ? (
               <div className="rc-preview__feed-empty">{t("settings.recoveryCopiesPreviewFeedLoading")}</div>
             ) : (
-              feed.map((m, i) => (
-                <div className={`rc-preview__msg rc-preview__msg--${m.role}`} key={i}>
-                  <span className="rc-preview__msg-role">{m.role}</span>
-                  <div className="rc-preview__msg-text">{m.text}</div>
-                </div>
-              ))
+              <>
+                {feed.slice(0, feedHead).map((m, i) => (
+                  <div className={`rc-preview__msg rc-preview__msg--${m.role}`} key={`h${i}`}>
+                    <span className="rc-preview__msg-role">{m.role}</span>
+                    <div className="rc-preview__msg-text">{m.text}</div>
+                  </div>
+                ))}
+                {feed.length > feedHead + feedTail ? (
+                  <button
+                    className="rc-preview__feed-gap"
+                    type="button"
+                    onClick={() => {
+                      setFeedHead((n) => n + 200);
+                      setFeedTail((n) => n + 200);
+                    }}
+                  >
+                    {t("settings.recoveryCopiesPreviewFeedGap").replace("{n}", String(feed.length - feedHead - feedTail))}
+                  </button>
+                ) : null}
+                {feed.slice(Math.max(feedHead, feed.length - feedTail)).map((m, i) => (
+                  <div className={`rc-preview__msg rc-preview__msg--${m.role}`} key={`t${i}`}>
+                    <span className="rc-preview__msg-role">{m.role}</span>
+                    <div className="rc-preview__msg-text">{m.text}</div>
+                  </div>
+                ))}
+              </>
             )}
           </div>
           {dropping ? (

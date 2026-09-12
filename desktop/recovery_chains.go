@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"reasonix/internal/agent"
 )
@@ -183,6 +184,44 @@ func (a *App) PreviewRecoveryChain(mainPath string, chainPath string) (agent.Rec
 // PreviewRecoveryChainMessages returns the trailing slice of one chain's
 // messages for the conversation-style preview dialog. Read-only, tolerant
 // loader: unnormalized copies preview the same way the summary showed them.
+// previewFeedCache remembers the fully-flattened feed of a chain between dialog
+// opens. Building the feed replays the whole event log - on a 37 MB copy that is
+// the slow part, and re-paying it on every preview click is what made the dialog
+// feel stuck. The key carries size and mtime so an edited file re-parses.
+var previewFeedCache = struct {
+	sync.Mutex
+	entries map[string][]agent.RecoveryChainPreviewMessage
+	order   []string
+}{entries: map[string][]agent.RecoveryChainPreviewMessage{}}
+
+func previewFeedCacheKey(path string) string {
+	info, err := os.Stat(path)
+	if err != nil {
+		return path + "|?"
+	}
+	return fmt.Sprintf("%s|%d|%d", path, info.Size(), info.ModTime().UnixNano())
+}
+
+func previewFeedCached(key string) []agent.RecoveryChainPreviewMessage {
+	previewFeedCache.Lock()
+	defer previewFeedCache.Unlock()
+	return previewFeedCache.entries[key]
+}
+
+func previewFeedStore(key string, feed []agent.RecoveryChainPreviewMessage) {
+	previewFeedCache.Lock()
+	defer previewFeedCache.Unlock()
+	if _, ok := previewFeedCache.entries[key]; !ok {
+		previewFeedCache.order = append(previewFeedCache.order, key)
+		for len(previewFeedCache.order) > 4 {
+			oldest := previewFeedCache.order[0]
+			previewFeedCache.order = previewFeedCache.order[1:]
+			delete(previewFeedCache.entries, oldest)
+		}
+	}
+	previewFeedCache.entries[key] = feed
+}
+
 func (a *App) PreviewRecoveryChainMessages(mainPath string, chainPath string, limit int) ([]agent.RecoveryChainPreviewMessage, error) {
 	dir := a.activeSessionDir()
 	sessionPath, _, err := validateSessionPath(dir, mainPath)
@@ -192,5 +231,14 @@ func (a *App) PreviewRecoveryChainMessages(mainPath string, chainPath string, li
 			return nil, friendlySessionFileError(err)
 		}
 	}
-	return agent.RecoveryChainPreviewMessagesFor(sessionPath, chainPath, limit)
+	cacheKey := previewFeedCacheKey(chainPath)
+	if cached := previewFeedCached(cacheKey); cached != nil {
+		return cached, nil
+	}
+	feed, err := agent.RecoveryChainPreviewMessagesFor(sessionPath, chainPath, limit)
+	if err != nil {
+		return nil, err
+	}
+	previewFeedStore(cacheKey, feed)
+	return feed, nil
 }

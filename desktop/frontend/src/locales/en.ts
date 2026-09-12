@@ -3239,6 +3239,7 @@ export const en = {
   "settings.recoveryCopiesRefresh": "Refresh",
   "settings.recoveryCopiesPreviewTitle": "Preview branch",
   "settings.recoveryCopiesPreviewFeedLoading": "Loading the full message feed…",
+  "settings.recoveryCopiesPreviewFeedGap": "{n} more messages in between - click to load",
   "settings.recoveryCopiesPreviewBtn": "Preview",
   "settings.recoveryCopiesUnpick": "Unpick",
   "settings.recoveryCopiesPickedBadge": "Picked as main",

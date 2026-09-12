@@ -2285,6 +2285,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesRefresh": "重新整理",
   "settings.recoveryCopiesPreviewTitle": "預覽分支",
   "settings.recoveryCopiesPreviewFeedLoading": "正在載入完整訊息流…",
+  "settings.recoveryCopiesPreviewFeedGap": "中間還有 {n} 條訊息，點擊載入",
   "settings.recoveryCopiesPreviewBtn": "預覽",
   "settings.recoveryCopiesUnpick": "取消選中",
   "settings.recoveryCopiesPickedBadge": "已選為主線",

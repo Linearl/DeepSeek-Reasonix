@@ -40409,3 +40409,16 @@ body > .mermaid-diagram--fullscreen {
   font-size: 0.95em;
   line-height: 1.5;
 }
+
+/* The expandable middle of a long branch feed: same semantics as the session
+   window's load-older, one click widens both windows. */
+.rc-preview__feed-gap {
+  align-self: center;
+  border: 1px dashed var(--border, rgba(255, 255, 255, 0.18));
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 0.9em;
+  padding: 6px 14px;
+  cursor: pointer;
+}
