@@ -24,7 +24,7 @@ func (a *App) ConsolidateTopicRecoveryCopies(scope, workspaceRoot, topicID strin
 	if strings.TrimSpace(path) == "" {
 		return agent.ConsolidationReport{}, friendlySessionFileError(errors.New("could not resolve the main transcript of this topic"))
 	}
-	return a.consolidateSessionRecoveryCopies(path, false)
+	return a.consolidateSessionRecoveryCopies(path, "", false)
 }
 
 // ForceConsolidateTopicRecoveryCopies mirrors ForceConsolidateSessionRecoveryCopies
@@ -34,7 +34,7 @@ func (a *App) ForceConsolidateTopicRecoveryCopies(scope, workspaceRoot, topicID 
 	if strings.TrimSpace(path) == "" {
 		return agent.ConsolidationReport{}, friendlySessionFileError(errors.New("could not resolve the main transcript of this topic"))
 	}
-	return a.consolidateSessionRecoveryCopies(path, true)
+	return a.consolidateSessionRecoveryCopies(path, "", true)
 }
 
 // ConsolidateSessionRecoveryCopies is the desktop entry point behind the
@@ -45,19 +45,19 @@ func (a *App) ForceConsolidateTopicRecoveryCopies(scope, workspaceRoot, topicID 
 // tab notices the identity change through the load-older-history reload
 // path (#9468/#9469). A running runtime keeps its lease and blocks the
 // merge until it is stopped.
-func (a *App) ConsolidateSessionRecoveryCopies(path string) (agent.ConsolidationReport, error) {
-	return a.consolidateSessionRecoveryCopies(path, false)
+func (a *App) ConsolidateSessionRecoveryCopies(path string, winnerPath string) (agent.ConsolidationReport, error) {
+	return a.consolidateSessionRecoveryCopies(path, winnerPath, false)
 }
 
 // ForceConsolidateSessionRecoveryCopies runs the merge after an explicit user
 // confirmation that the winner may replace a main transcript it does not
 // fully cover (typical after a main-side compaction). The previous main is
 // still archived whole under the recoverable trash.
-func (a *App) ForceConsolidateSessionRecoveryCopies(path string) (agent.ConsolidationReport, error) {
-	return a.consolidateSessionRecoveryCopies(path, true)
+func (a *App) ForceConsolidateSessionRecoveryCopies(path string, winnerPath string) (agent.ConsolidationReport, error) {
+	return a.consolidateSessionRecoveryCopies(path, winnerPath, true)
 }
 
-func (a *App) consolidateSessionRecoveryCopies(path string, force bool) (agent.ConsolidationReport, error) {
+func (a *App) consolidateSessionRecoveryCopies(path string, winnerPath string, force bool) (agent.ConsolidationReport, error) {
 	dir := a.activeSessionDir()
 	sessionPath, _, err := validateSessionPath(dir, path)
 	if err != nil {
@@ -66,11 +66,15 @@ func (a *App) consolidateSessionRecoveryCopies(path string, force bool) (agent.C
 			return agent.ConsolidationReport{}, friendlySessionFileError(err)
 		}
 	}
+	// Naming the winner is the user's own judgement, so the leftovers follow
+	// the same rule as a forced merge: they are archived, recoverably, instead
+	// of being left behind as "not merged" copies.
+	archiveLeftovers := force || strings.TrimSpace(winnerPath) != ""
 	report, err := func() (agent.ConsolidationReport, error) {
 		defer a.lockRuntimeMutation("consolidate-recovery-copies")()
 		a.sessionRemovalMu.Lock()
 		defer a.sessionRemovalMu.Unlock()
-		report, err := agent.ConsolidateSessionRecoveryBranchesWithOptions(sessionPath, agent.ConsolidateOptions{Force: force, ArchiveLeftovers: force})
+		report, err := agent.ConsolidateSessionRecoveryBranchesWithOptions(sessionPath, agent.ConsolidateOptions{Force: force, ArchiveLeftovers: archiveLeftovers, WinnerPath: winnerPath})
 		if err != nil {
 			switch {
 			case errors.Is(err, agent.ErrNoRecoveryBranches):

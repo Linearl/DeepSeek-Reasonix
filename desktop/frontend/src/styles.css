@@ -40296,3 +40296,60 @@ body > .mermaid-diagram--fullscreen {
   opacity: 0.72;
   font-size: 0.94em;
 }
+
+/* A chain the user has picked to win. Clickable rows need affordance, and the
+   pick must survive alongside the recommendation badge without reading as one. */
+.rc-chain--picked {
+  outline: 1px solid var(--accent, #4c8dff);
+  background: color-mix(in srgb, var(--accent, #4c8dff) 12%, transparent);
+  cursor: pointer;
+}
+.rc-chain:not(.rc-chain--picked) {
+  cursor: pointer;
+}
+
+/* Wide confirm dialog - chain previews and other content-heavy asks. Both the
+   width and the max-width are set because the generic .modal max-width wins
+   over width alone. */
+.reasonix-confirm-dialog--wide {
+  width: min(860px, 92vw);
+  max-width: min(860px, 92vw);
+}
+.reasonix-confirm-dialog--wide .reasonix-confirm-dialog__message {
+  max-height: min(60vh, 560px);
+  overflow-y: auto;
+}
+/* Chain preview content inside the wide dialog. */
+.rc-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+.rc-preview__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 0.95em;
+  opacity: 0.85;
+}
+.rc-preview__section {
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(127, 127, 127, 0.06);
+}
+.rc-preview__label {
+  font-size: 0.86em;
+  opacity: 0.7;
+  margin-bottom: 4px;
+}
+.rc-preview__line {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.94em;
+}
+.rc-preview__warn {
+  color: var(--warning, #d9a441);
+  font-size: 0.92em;
+}

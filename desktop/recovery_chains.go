@@ -150,3 +150,25 @@ func resolveTranscriptSibling(path string) (string, bool) {
 	}
 	return "", false
 }
+
+// PreviewRecoveryChain returns an in-memory preview of one candidate chain for
+// the merge picker's dialog: sizes, how the branch starts and ends, and what
+// picking it would keep or drop relative to the current main. Nothing is
+// written - a preview can be repeated freely and cancels cleanly.
+func (a *App) PreviewRecoveryChain(mainPath string, chainPath string) (agent.RecoveryChainPreview, error) {
+	dir := a.activeSessionDir()
+	sessionPath, _, err := validateSessionPath(dir, mainPath)
+	if err != nil {
+		if dir2, sessionPath2, foundErr := a.sessionDirForPath(mainPath); foundErr == nil {
+			sessionPath = sessionPath2
+			dir = dir2
+		} else {
+			return agent.RecoveryChainPreview{}, friendlySessionFileError(err)
+		}
+	}
+	// chainPath comes straight from the chain enumeration, so it already has the
+	// same form the backend compares against; RecoveryChainPreviewFor re-verifies
+	// that it belongs to this session before reading anything.
+	_ = dir
+	return agent.RecoveryChainPreviewFor(sessionPath, chainPath)
+}

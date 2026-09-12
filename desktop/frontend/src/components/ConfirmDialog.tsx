@@ -7,6 +7,10 @@ export type ConfirmDialogRequest = {
   confirmLabel: string;
   cancelLabel: string;
   tone?: "default" | "danger";
+  // wide lets a content-heavy dialog (chain previews, tables) use a much larger
+  // max-width than the default modal. The dialog reads the class, the CSS owns
+  // the actual size.
+  wide?: boolean;
 };
 
 type PendingConfirmation = ConfirmDialogRequest & {
@@ -61,7 +65,7 @@ function ConfirmDialog({ request, onResolve }: { request: ConfirmDialogRequest; 
       }}
     >
       <div
-        className="modal reasonix-confirm-dialog"
+        className={`modal reasonix-confirm-dialog${request.wide ? " reasonix-confirm-dialog--wide" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

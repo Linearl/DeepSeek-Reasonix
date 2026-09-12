@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { app, type ConsolidationReport, type RecoveryCopyGroupView, type RecoveryChainSet } from "../lib/bridge";
+import { app, type ConsolidationReport, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainSet, type RecoveryChainView } from "../lib/bridge";
 import { useT } from "../lib/i18n";
 import { useConfirmDialog } from "./ConfirmDialog";
 
@@ -121,6 +121,91 @@ export function RecoveryCopiesSection() {
   // Loading them replays every log for that conversation, so it happens when a row
   // is opened rather than for the whole list at once.
   const [chains, setChains] = useState<Map<string, RecoveryChainSet>>(new Map());
+  // pickedChain names the branch the user chose to win, keyed by main path. Empty
+  // means "let the engine take the fullest one". Keyed per conversation so a pick
+  // in one group never leaks into another.
+  const [pickedChain, setPickedChain] = useState<Record<string, string>>({});
+  const pickedChainCount = Object.values(pickedChain).filter(Boolean).length;
+  // Clicking a chain previews it in a wide dialog - sizes, how it starts and
+  // ends, and what picking it keeps or drops against the main - and only a
+  // confirm inside that dialog names it as the winner. Clicking the picked
+  // chain again un-picks it. The main chain is pickable too: it means keep the
+  // current main and archive the rest. Nothing is written on preview.
+  const togglePick = async (mainPath: string, chain: RecoveryChainView) => {
+    if (pickedChain[mainPath] === chain.path) {
+      setPickedChain((current) => {
+        const next = { ...current };
+        delete next[mainPath];
+        return next;
+      });
+      return;
+    }
+    let preview: RecoveryChainPreview;
+    setBusy(true);
+    try {
+      preview = await app.PreviewRecoveryChain(mainPath, chain.path);
+    } catch (err) {
+      setBusy(false);
+      setErrors((current) => [...current, err instanceof Error ? err.message : String(err)]);
+      return;
+    }
+    setBusy(false);
+    const dropping = preview.sharedWithMain < preview.messageCount && !preview.isMain;
+    const ok = await confirm({
+      title: t("settings.recoveryCopiesPreviewTitle"),
+      wide: true,
+      message: (
+        <div className="rc-preview">
+          <div className="rc-preview__stats">
+            <span>
+              {t("settings.recoveryCopiesColMessages")} {preview.messageCount}
+            </span>
+            <span>
+              {preview.turns} {t("settings.recoveryCopiesColTurns")}
+            </span>
+            {!preview.isMain ? (
+              <>
+                <span>
+                  {t("settings.recoveryCopiesPreviewShared")} {preview.sharedWithMain}
+                </span>
+                <span>
+                  {t("settings.recoveryCopiesPreviewUnique")} {preview.uniqueToChain}
+                </span>
+              </>
+            ) : null}
+          </div>
+          {preview.firstUserText ? (
+            <div className="rc-preview__section">
+              <div className="rc-preview__label">{t("settings.recoveryCopiesPreviewStart")}</div>
+              <div className="rc-preview__line">{preview.firstUserText}</div>
+            </div>
+          ) : null}
+          {preview.tailLines?.length ? (
+            <div className="rc-preview__section">
+              <div className="rc-preview__label">{t("settings.recoveryCopiesPreviewEnd")}</div>
+              {preview.tailLines.map((line, i) => (
+                <div className="rc-preview__line" key={i}>
+                  {line}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {dropping ? (
+            <div className="rc-preview__warn">
+              {t("settings.recoveryCopiesPreviewDropWarn").replace("{n}", String(preview.uniqueToChain))}
+            </div>
+          ) : null}
+        </div>
+      ),
+      confirmLabel: preview.isMain
+        ? t("settings.recoveryCopiesPickKeepMain")
+        : t("settings.recoveryCopiesPickConfirm"),
+      cancelLabel: t("common.cancel"),
+    });
+    if (ok) {
+      setPickedChain((current) => ({ ...current, [mainPath]: chain.path }));
+    }
+  };
 
   const load = useCallback(async () => {
     setFailed(false);
@@ -299,7 +384,7 @@ export function RecoveryCopiesSection() {
         );
         let report: ConsolidationReport;
         try {
-          report = await app.ConsolidateSessionRecoveryCopies(group.mainPath);
+          report = await app.ConsolidateSessionRecoveryCopies(group.mainPath, pickedChain[group.mainPath] ?? "");
         } catch (err) {
           collected.push({
             label: group.mainLabel,
@@ -341,7 +426,7 @@ export function RecoveryCopiesSection() {
             continue;
           }
           try {
-            const forced = await app.ForceConsolidateSessionRecoveryCopies(group.mainPath);
+            const forced = await app.ForceConsolidateSessionRecoveryCopies(group.mainPath, pickedChain[group.mainPath] ?? "");
             collected.push({
               label: group.mainLabel,
               kind: "forced",
@@ -373,6 +458,9 @@ export function RecoveryCopiesSection() {
 
       setOutcomes(collected);
       setSelected(new Set());
+      // Named winners were consumed by the merge just run; the picked branches
+      // no longer exist as copies, so the next run starts neutral.
+      setPickedChain({});
       await load();
     } finally {
       setStatus("");
@@ -477,8 +565,20 @@ export function RecoveryCopiesSection() {
                       chain.path === set.longestPath && chain.headId === set.longestHead;
                     return (
                       <div
-                        className={`rc-chain${recommended ? " rc-chain--recommended" : ""}`}
+                        className={`rc-chain${recommended ? " rc-chain--recommended" : ""}${
+                          pickedChain[group.mainPath] === chain.path ? " rc-chain--picked" : ""
+                        }`}
                         key={`${chain.path}#${chain.headId}`}
+                        role="button"
+                        tabIndex={0}
+                        title={t("settings.recoveryCopiesPickHint")}
+                        onClick={() => { void togglePick(group.mainPath, chain); }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            void togglePick(group.mainPath, chain);
+                          }
+                        }}
                       >
                         <span className="rc-chain__name">
                           {chain.selected
@@ -663,7 +763,9 @@ export function RecoveryCopiesSection() {
                   disabled={busy || selected.size === 0}
                   onClick={() => void mergeSelected()}
                 >
-                  {t("settings.recoveryCopiesMerge")} ({selected.size})
+                  {pickedChainCount > 0
+                    ? `${t("settings.recoveryCopiesMergePicked")} (${pickedChainCount})`
+                    : `${t("settings.recoveryCopiesMerge")} (${selected.size})`}
                 </button>
                 <button
                   className="btn btn--small"

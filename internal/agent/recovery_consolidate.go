@@ -221,6 +221,14 @@ type ConsolidateOptions struct {
 	// a forced swap routinely leaves behind. Their unique turns are what the user
 	// chose against by picking a winner, and the archive is recoverable.
 	ArchiveLeftovers bool
+	// WinnerPath lets the user pick which chain wins instead of letting the
+	// engine take the fullest one. The path must be one of this session's
+	// loadable candidates (the main itself or a recovery copy). Naming a winner
+	// is an explicit user judgement made against the chain list - message counts
+	// and previews were visible - so it also carries the Force semantics: a
+	// picked winner that does not cover the current main is still promoted, with
+	// the previous main archived whole under the recoverable .trash.
+	WinnerPath string
 }
 
 // ConsolidateSessionRecoveryBranches merges the recovery copies of mainPath
@@ -290,9 +298,28 @@ func ConsolidateSessionRecoveryBranchesWithOptions(mainPath string, opts Consoli
 	}
 
 	winner := mainCand
-	for _, cand := range cands {
-		if !cand.IsMain && consolidationCandidateBeats(cand, winner) {
-			winner = cand
+	if requested := strings.TrimSpace(opts.WinnerPath); requested != "" {
+		// The user picked a branch. Only a loadable candidate of this session
+		// may win - anything else means the picker and the backend disagreed,
+		// which must fail loudly rather than silently merge into a chain the
+		// user did not choose.
+		requested = filepath.Clean(requested)
+		found := false
+		for _, cand := range cands {
+			if cand.Path == requested {
+				winner = cand
+				found = true
+				break
+			}
+		}
+		if !found {
+			return report, fmt.Errorf("requested winner is not a loadable candidate of this session: %s", requested)
+		}
+	} else {
+		for _, cand := range cands {
+			if !cand.IsMain && consolidationCandidateBeats(cand, winner) {
+				winner = cand
+			}
 		}
 	}
 	report.WinnerMessageCount = winner.MessageCount
@@ -308,8 +335,11 @@ func ConsolidateSessionRecoveryBranchesWithOptions(mainPath string, opts Consoli
 		// A main that went through compaction holds a summarized transcript
 		// whose prefix no longer matches the pre-compaction recovery fork, so
 		// neither side covers the other. Refuse with a structured report the
-		// UI can turn into an explicit confirmation instead of failing.
-		if !SessionContentCovers(winner.Path, mainPath) && !opts.Force {
+		// UI can turn into an explicit confirmation instead of failing. A
+		// user-named winner skips this refusal: the choice was made against the
+		// visible chain list, which is the same judgement the Force
+		// confirmation exists to obtain.
+		if !SessionContentCovers(winner.Path, mainPath) && !opts.Force && strings.TrimSpace(opts.WinnerPath) == "" {
 			report.BlockedByDivergence = true
 			report.WinnerPath = winner.Path
 			report.WinnerMessageCount = winner.MessageCount

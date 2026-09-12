@@ -230,6 +230,20 @@ export interface RecoveryChainView {
   preview: string;
 }
 
+/** In-memory preview of one candidate chain for the merge picker dialog.
+ *  Mirrors agent.RecoveryChainPreview field for field. */
+export interface RecoveryChainPreview {
+  path: string;
+  isMain: boolean;
+  messageCount: number;
+  turns: number;
+  firstUserText: string;
+  tailLines: string[];
+  sharedWithMain: number;
+  uniqueToChain: number;
+  lastActivity: string;
+}
+
 export interface RecoveryChainSet {
   mainPath: string;
   mainLabel: string;
@@ -297,9 +311,12 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   // User-global common directories (Settings → Permissions): honored for every
   // project/session without approval, including subdirectories.
   AddGlobalWriteDir(dir: string): Promise<void>;
-  ConsolidateSessionRecoveryCopies(path: string): Promise<ConsolidationReport>;
+  // winnerPath: empty lets the backend take the fullest loadable copy; a path picked
+  // from the chain list names that branch as the winner explicitly.
+  ConsolidateSessionRecoveryCopies(path: string, winnerPath?: string): Promise<ConsolidationReport>;
   ConsolidateTopicRecoveryCopies(scope: string, workspaceRoot: string, topicID: string): Promise<ConsolidationReport>;
-  ForceConsolidateSessionRecoveryCopies(path: string): Promise<ConsolidationReport>;
+  ForceConsolidateSessionRecoveryCopies(path: string, winnerPath?: string): Promise<ConsolidationReport>;
+  PreviewRecoveryChain(mainPath: string, chainPath: string): Promise<RecoveryChainPreview>;
   ForceConsolidateTopicRecoveryCopies(scope: string, workspaceRoot: string, topicID: string): Promise<ConsolidationReport>;
   ListRecoveryCopyGroups(): Promise<RecoveryCopyGroupView[]>;
   ScanRecoveryCopyGroup(mainPath: string): Promise<RecoveryCopyGroupView>;
@@ -2747,7 +2764,7 @@ function makeMockApp(): AppBindings {
     async SetSubagentPolicyForTab(_tabID: string, _policy: string) {
       // mock: subagent policy is not persisted in browser-dev mode
     },
-    async ConsolidateSessionRecoveryCopies(path: string): Promise<ConsolidationReport> {
+    async ConsolidateSessionRecoveryCopies(path: string, _winnerPath?: string): Promise<ConsolidationReport> {
       return {
         mainPath: path, winnerPath: path, promoted: false,
         blockedByDivergence: false, normalizedMain: false,
@@ -2758,9 +2775,16 @@ function makeMockApp(): AppBindings {
     async ConsolidateTopicRecoveryCopies(_scope: string, _workspaceRoot: string, topicID: string): Promise<ConsolidationReport> {
       return this.ConsolidateSessionRecoveryCopies(`mock://topics/${topicID}`);
     },
-    async ForceConsolidateSessionRecoveryCopies(path: string): Promise<ConsolidationReport> {
-      return this.ConsolidateSessionRecoveryCopies(path);
+    async PreviewRecoveryChain(mainPath: string, chainPath: string): Promise<RecoveryChainPreview> {
+      return {
+        path: chainPath, isMain: chainPath === mainPath, messageCount: 0, turns: 0,
+        firstUserText: "", tailLines: [], sharedWithMain: 0, uniqueToChain: 0, lastActivity: "",
+      };
     },
+    async ForceConsolidateSessionRecoveryCopies(path: string, winnerPath?: string): Promise<ConsolidationReport> {
+      return this.ConsolidateSessionRecoveryCopies(path, winnerPath);
+    },
+    /* replaced-force */
     async ListRecoveryCopyGroups(): Promise<RecoveryCopyGroupView[]> {
       return [];
     },
