@@ -16,6 +16,7 @@ const messages = {
   deleted: ["已永久删除", "已永久刪除", "Permanently deleted"],
   clearFilters: ["清除筛选", "清除篩選", "Clear filters"],
   trashDescription: ["查看和恢复已删除的会话。", "查看與還原已刪除的會話。", "Review and restore deleted conversations."],
+  restoreAll: ["恢复全部", "還原全部", "Restore all"],
   purgeTitle: ["永久删除会话", "永久刪除會話", "Permanently delete conversation"],
   purgeDescription: ["删除“{name}”后无法恢复。", "刪除「{name}」後無法還原。", "Deleting “{name}” cannot be undone."],
   clearTitle: ["清空回收站", "清空回收站", "Empty trash"],

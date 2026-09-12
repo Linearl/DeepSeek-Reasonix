@@ -153,14 +153,14 @@ export function RecoveryCopiesSection() {
     setFeedTail(120);
     try {
       preview = await app.PreviewRecoveryChain(mainPath, chain.path);
-      // The feed loads after the summary so the dialog opens instantly even on a
-      // 37 MB copy; a failure here only empties the feed, it does not kill the
-      // dialog.
-      try {
-        setFeed(await app.PreviewRecoveryChainMessages(mainPath, chain.path, 400));
-      } catch {
-        setFeed([]);
-      }
+      // The feed replays the whole event log - seconds to minutes on a 37 MB
+      // copy. Fire it off WITHOUT awaiting: the backend caches the result, so
+      // the user can keep working and reopen this preview seconds later for an
+      // instant full feed. Awaiting here froze the dialog for minutes.
+      void app
+        .PreviewRecoveryChainMessages(mainPath, chain.path, 400)
+        .then((messages) => setFeed(messages))
+        .catch(() => setFeed([]));
     } catch (err) {
       setBusy(false);
       setErrors((current) => [...current, err instanceof Error ? err.message : String(err)]);
@@ -199,7 +199,11 @@ export function RecoveryCopiesSection() {
               so the dialog opens instantly even on a 37 MB copy. */}
           <div className="rc-preview__feed">
             {feed.length === 0 ? (
-              <div className="rc-preview__feed-empty">{t("settings.recoveryCopiesPreviewFeedLoading")}</div>
+              <div className="rc-preview__feed-empty">
+                {t("settings.recoveryCopiesPreviewFeedLoading")}
+                <br />
+                {t("settings.recoveryCopiesPreviewFeedWarm")}
+              </div>
             ) : (
               <>
                 {feed.slice(0, feedHead).map((m, i) => (

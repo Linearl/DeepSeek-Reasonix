@@ -2285,6 +2285,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesRefresh": "重新整理",
   "settings.recoveryCopiesPreviewTitle": "預覽分支",
   "settings.recoveryCopiesPreviewFeedLoading": "正在載入完整訊息流…",
+  "settings.recoveryCopiesPreviewFeedWarm": "大分支需在後台重放完整事件日誌（幾十秒到幾分鐘）。已轉入後台：現在可先取消去做別的，稍後重新點「預覽」即可秒出完整訊息流。",
   "settings.recoveryCopiesPreviewFeedGap": "中間還有 {n} 條訊息，點擊載入",
   "settings.recoveryCopiesPreviewBtn": "預覽",
   "settings.recoveryCopiesUnpick": "取消選中",

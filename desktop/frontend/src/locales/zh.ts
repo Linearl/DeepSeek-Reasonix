@@ -3242,6 +3242,7 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesRefresh": "刷新",
   "settings.recoveryCopiesPreviewTitle": "预览分支",
   "settings.recoveryCopiesPreviewFeedLoading": "正在加载完整消息流…",
+  "settings.recoveryCopiesPreviewFeedWarm": "大分支需在后台重放完整事件日志（几十秒到几分钟）。已转入后台：现在可先取消去做别的，稍后重新点「预览」即可秒出完整消息流。",
   "settings.recoveryCopiesPreviewFeedGap": "中间还有 {n} 条消息，点击加载",
   "settings.recoveryCopiesPreviewBtn": "预览",
   "settings.recoveryCopiesUnpick": "取消选中",
