@@ -84,6 +84,9 @@ type CopyOverlapDetail struct {
 	Path   string `json:"path"`
 	Shared int    `json:"shared"`
 	Unique int    `json:"unique"`
+	// Reason is why this copy could not be archived (lease held, parent guard
+	// refused, ...). Empty means the copy simply was not covered by the winner.
+	Reason string `json:"reason,omitempty"`
 }
 
 // validateConsolidationTarget rejects paths that cannot be a consolidation
@@ -442,11 +445,12 @@ func ConsolidateSessionRecoveryBranchesWithOptions(mainPath string, opts Consoli
 		}
 		if err := trashErr; err != nil {
 			report.SkippedNotCovered = append(report.SkippedNotCovered, cand.Path)
+			detail := CopyOverlapDetail{Path: cand.Path, Reason: err.Error()}
 			if overlap, ok := SessionContentOverlap(mainPath, cand.Path); ok {
-				report.NotCoveredDetail = append(report.NotCoveredDetail, CopyOverlapDetail{
-					Path: cand.Path, Shared: overlap.Shared, Unique: overlap.Unique,
-				})
+				detail.Shared = overlap.Shared
+				detail.Unique = overlap.Unique
 			}
+			report.NotCoveredDetail = append(report.NotCoveredDetail, detail)
 			continue
 		}
 		report.Trashed = append(report.Trashed, cand.Path)

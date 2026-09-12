@@ -79,6 +79,7 @@ type Outcome = {
   after?: number;
   trashed?: number;
   notCovered?: number;
+  reasons?: string[];
   detail?: string;
 };
 
@@ -507,6 +508,7 @@ export function RecoveryCopiesSection() {
           after: report.winnerMessageCount,
           trashed: report.trashed?.length ?? 0,
           notCovered: report.notCoveredDetail?.filter((d) => d.unique > 0).length ?? 0,
+          reasons: report.notCoveredDetail?.map((d) => d.reason).filter((r): r is string => Boolean(r)),
         });
         setOutcomes([...collected]);
       }
@@ -774,6 +776,13 @@ export function RecoveryCopiesSection() {
                                 <span className="rc-muted">
                                   {t("settings.recoveryCopiesLeftBehind")} {outcome.notCovered}
                                 </span>
+                              ) : null}
+                              {outcome.reasons?.length ? (
+                                <div className="rc-outcome__reasons">
+                                  {outcome.reasons.map((r, i) => (
+                                    <div key={i}>{r}</div>
+                                  ))}
+                                </div>
                               ) : null}
                             </li>
                           ))}
