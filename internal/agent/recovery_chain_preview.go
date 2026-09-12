@@ -207,9 +207,20 @@ func RecoveryChainPreviewMessagesFor(mainPath, chainPath string, limit int) ([]R
 	if !allowed {
 		return nil, fmt.Errorf("the requested chain is not part of this session: %s", chainPath)
 	}
-	msgs, _, _, err := loadSessionMessages(chainPath)
-	if err != nil {
-		return nil, fmt.Errorf("the branch could not be loaded for preview: %s", chainPath)
+	// Fast path first - the same LoadSession the session window uses. Snapshot
+	// and event-index caches make this seconds even on a 37 MB log; the
+	// tolerant replay below is the 30-minute path and is reserved for copies
+	// the strict load refuses (damaged event logs).
+	var msgs []provider.Message
+	session, sessionErr := LoadSession(chainPath)
+	if sessionErr == nil && session != nil {
+		msgs = session.Snapshot()
+	} else {
+		var tolerantErr error
+		msgs, _, _, tolerantErr = loadSessionMessages(chainPath)
+		if tolerantErr != nil {
+			return nil, fmt.Errorf("the branch could not be loaded for preview: %s", chainPath)
+		}
 	}
 	if limit > 0 && len(msgs) > limit {
 		msgs = msgs[len(msgs)-limit:]
