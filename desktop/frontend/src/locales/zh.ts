@@ -3245,6 +3245,8 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesPreviewTailShow": "查看尾部消息（确认现场）",
   "settings.recoveryCopiesPreviewTailHide": "收起尾部消息",
   "settings.recoveryCopiesPreviewTailMore": "加载更多",
+  "settings.recoveryCopiesPreviewFailedTitle": "预览失败",
+  "settings.recoveryCopiesPreviewFailedLead": "该分支无法加载预览，原因：",
   "settings.recoveryCopiesPreviewFeedWarm": "大分支需在后台重放完整事件日志（几十秒到几分钟）。已转入后台：现在可先取消去做别的，稍后重新点「预览」即可秒出完整消息流。",
   "settings.recoveryCopiesPreviewFeedGap": "中间还有 {n} 条消息，点击加载",
   "settings.recoveryCopiesPreviewBtn": "预览",

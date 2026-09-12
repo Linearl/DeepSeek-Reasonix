@@ -3241,6 +3241,8 @@ export const en = {
   "settings.recoveryCopiesPreviewTailShow": "Show tail messages (recognize the scene)",
   "settings.recoveryCopiesPreviewTailHide": "Hide tail messages",
   "settings.recoveryCopiesPreviewTailMore": "Load more",
+  "settings.recoveryCopiesPreviewFailedTitle": "Preview failed",
+  "settings.recoveryCopiesPreviewFailedLead": "This branch could not be loaded for preview. Reason:",
   "settings.recoveryCopiesPreviewFeedLoading": "Loading the full message feed…",
   "settings.recoveryCopiesPreviewFeedWarm": "Large branches replay the full event log in the background (tens of seconds to minutes). This now runs in the background: cancel and do something else, then reopen this preview in a moment for the instant full feed.",
   "settings.recoveryCopiesPreviewFeedGap": "{n} more messages in between - click to load",

@@ -154,7 +154,22 @@ export function RecoveryCopiesSection() {
       preview = await app.PreviewRecoveryChain(mainPath, chain.path);
     } catch (err) {
       setBusy(false);
-      setErrors((current) => [...current, err instanceof Error ? err.message : String(err)]);
+      // Surface preview failures where the click happened - burying them in the
+      // page-level error list is why "some branches do nothing on click" read as
+      // a dead button instead of a diagnosable failure.
+      const message = err instanceof Error ? err.message : String(err);
+      await confirm({
+        title: t("settings.recoveryCopiesPreviewFailedTitle"),
+        message: (
+          <div>
+            <p>{t("settings.recoveryCopiesPreviewFailedLead")}</p>
+            <p className="rc-outcome__reasons">{message}</p>
+          </div>
+        ),
+        confirmLabel: t("common.close"),
+        cancelLabel: t("common.cancel"),
+        tone: "danger",
+      });
       return;
     }
     setBusy(false);
