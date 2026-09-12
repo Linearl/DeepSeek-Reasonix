@@ -66,10 +66,14 @@ func (a *App) consolidateSessionRecoveryCopies(path string, winnerPath string, f
 			return agent.ConsolidationReport{}, friendlySessionFileError(err)
 		}
 	}
-	// Naming the winner is the user's own judgement, so the leftovers follow
-	// the same rule as a forced merge: they are archived, recoverably, instead
-	// of being left behind as "not merged" copies.
-	archiveLeftovers := force || strings.TrimSpace(winnerPath) != ""
+	// The panel's merge button IS the explicit cleanup: the user picked the
+	// conversations, saw the per-copy split, and pressed merge. Whatever wins -
+	// named explicitly or the engine's choice - the losing branches are archived
+	// recoverably instead of coming back as "not merged" copies. Forked sessions
+	// (ABC/ABD/ABE) never satisfy the coverage proof against each other, so the
+	// old conditional left exactly those copies behind forever. The context-menu
+	// entry keeps the conservative behaviour.
+	archiveLeftovers := true
 	report, err := func() (agent.ConsolidationReport, error) {
 		defer a.lockRuntimeMutation("consolidate-recovery-copies")()
 		a.sessionRemovalMu.Lock()
