@@ -162,6 +162,17 @@ func tolerantReplay(chainPath string) []provider.Message {
 	return msgs
 }
 
+// TolerantMessageCount counts a transcript with the tolerant loader, for UI
+// rows that must show real numbers even when the strict snapshot refuses the
+// file. 0 means the tolerant loader could not read it either.
+func TolerantMessageCount(path string) int {
+	msgs := tolerantReplay(path)
+	if msgs == nil {
+		return 0
+	}
+	return len(msgs)
+}
+
 // tailByBudget walks backwards from the last message until the character
 // budget is spent, returning the trailing lines a user judges a branch by.
 func tailByBudget(msgs []provider.Message, budget int) []string {

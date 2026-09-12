@@ -224,11 +224,17 @@ func recoveryCopyGroupFor(dir, mainPath string) (RecoveryCopyGroupView, bool) {
 	// baseline to read the copies against, which is the whole point of scanning.
 	if snapshot, ok := agent.LoadSessionContentSnapshot(mainPath); ok {
 		group.MainMessages = snapshot.Len()
+	} else {
+		// Strict load refused (damaged/unnormalized): the tolerant loader still
+		// counts, so the row shows real numbers instead of a misleading 0.
+		group.MainMessages = agent.TolerantMessageCount(mainPath)
 	}
 	for _, copyView := range copies {
 		copyView.Scanned = true
 		if snapshot, ok := agent.LoadSessionContentSnapshot(copyView.Path); ok {
 			copyView.Messages = snapshot.Len()
+		} else {
+			copyView.Messages = agent.TolerantMessageCount(copyView.Path)
 		}
 		if overlap, ok := agent.SessionContentOverlap(mainPath, copyView.Path); ok {
 			copyView.Shared = overlap.Shared
