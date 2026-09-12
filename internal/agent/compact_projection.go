@@ -457,7 +457,6 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 			a.emitCompactionAborted(trigger)
 			return CompactionNoop, nil
 		}
-		}
 		// mustFree (est at or above the hard ceiling) with no balanced prefix
 		// keeps the uncapped fold (#9572 follow-up): the fold must be attempted
 		// anyway, and on small configured windows the fixed instruction+output
