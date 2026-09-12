@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"reasonix/internal/provider"
 )
@@ -144,14 +145,43 @@ func MessageTextForPreview(msg provider.Message) string {
 	return strings.TrimSpace(msg.Content)
 }
 
+// tolerantReplayCache remembers the tolerant replay of a damaged copy so the
+// degraded summary and the full feed share one replay instead of paying it
+// twice - on a large copy that replay is minutes, and paying it twice is what
+// made the preview look permanently stuck.
+var tolerantReplayCache = struct {
+	sync.Mutex
+	entries map[string][]provider.Message
+}{entries: map[string][]provider.Message{}}
+
+func tolerantReplay(chainPath string) []provider.Message {
+	tolerantReplayCache.Lock()
+	cached, ok := tolerantReplayCache.entries[chainPath]
+	tolerantReplayCache.Unlock()
+	if ok {
+		return cached
+	}
+	msgs, _, _, err := loadSessionMessages(chainPath)
+	if err != nil {
+		return nil
+	}
+	tolerantReplayCache.Lock()
+	if len(tolerantReplayCache.entries) > 4 {
+		tolerantReplayCache.entries = map[string][]provider.Message{}
+	}
+	tolerantReplayCache.entries[chainPath] = msgs
+	tolerantReplayCache.Unlock()
+	return msgs
+}
+
 // degradedChainPreview builds a preview with the tolerant listing loader for
 // copies the strict snapshot refuses. It derives the same fields as the strict
 // path - first user text, user-turn count, and the tail lines a user actually
 // judges a branch by - without writing anything.
 func degradedChainPreview(mainPath, chainPath string) RecoveryChainPreview {
 	preview := RecoveryChainPreview{Path: chainPath, IsMain: chainPath == mainPath, Degraded: true}
-	msgs, _, _, err := loadSessionMessages(chainPath)
-	if err != nil {
+	msgs := tolerantReplay(chainPath)
+	if msgs == nil {
 		return preview
 	}
 	preview.MessageCount = len(msgs)
@@ -216,9 +246,10 @@ func RecoveryChainPreviewMessagesFor(mainPath, chainPath string, limit int) ([]R
 	if sessionErr == nil && session != nil {
 		msgs = session.Snapshot()
 	} else {
-		var tolerantErr error
-		msgs, _, _, tolerantErr = loadSessionMessages(chainPath)
-		if tolerantErr != nil {
+		// The degraded summary already replayed this log (tolerantReplay caches
+		// it); reuse instead of replaying a second time.
+		msgs = tolerantReplay(chainPath)
+		if msgs == nil {
 			return nil, fmt.Errorf("the branch could not be loaded for preview: %s", chainPath)
 		}
 	}
