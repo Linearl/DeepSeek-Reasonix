@@ -474,7 +474,13 @@ func trashCoveredRecoveryBranch(path, parentDir string, requireIdle, force bool)
 		return fmt.Errorf("recovery branch must be a direct child of its session directory")
 	}
 	key := filepath.Base(path)
-	if !strings.HasSuffix(key, ".jsonl") || strings.HasSuffix(key, ".events.jsonl") {
+	// The conflicts sidecar shares the copy's stem; without this check a forced
+	// sweep would happily archive it as if it were a transcript, and the copy
+	// list would offer it as a merge candidate.
+	if !strings.HasSuffix(key, ".jsonl") ||
+		strings.HasSuffix(key, ".events.jsonl") ||
+		strings.HasSuffix(key, ".turns.jsonl") ||
+		strings.HasSuffix(key, ".conflicts.jsonl") {
 		return fmt.Errorf("invalid recovery session path")
 	}
 

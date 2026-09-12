@@ -93,7 +93,9 @@ type CopyOverlapDetail struct {
 // target: non-transcripts, event logs, and recovery copies themselves.
 func validateConsolidationTarget(mainPath string) error {
 	mainPath = filepath.Clean(strings.TrimSpace(mainPath))
-	if !strings.HasSuffix(mainPath, ".jsonl") || strings.HasSuffix(mainPath, ".events.jsonl") {
+	if !strings.HasSuffix(mainPath, ".jsonl") ||
+		strings.HasSuffix(mainPath, ".events.jsonl") ||
+		strings.HasSuffix(mainPath, ".conflicts.jsonl") {
 		return fmt.Errorf("consolidation targets a session transcript, got %s", mainPath)
 	}
 	if strings.Contains(filepath.Base(mainPath), "-recovery-") {
@@ -141,7 +143,9 @@ func recoveryCopiesForMain(mainPath string) ([]string, error) {
 		// promotes that die on "meta is missing". Only the transcript itself is
 		// a copy.
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") ||
-			strings.HasSuffix(e.Name(), ".events.jsonl") || strings.HasSuffix(e.Name(), ".turns.jsonl") {
+			strings.HasSuffix(e.Name(), ".events.jsonl") ||
+			strings.HasSuffix(e.Name(), ".turns.jsonl") ||
+			strings.HasSuffix(e.Name(), ".conflicts.jsonl") {
 			continue
 		}
 		if !strings.HasPrefix(e.Name(), prefix) {
