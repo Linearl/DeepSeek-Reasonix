@@ -481,11 +481,23 @@ func trashCoveredRecoveryBranch(path, parentDir string, requireIdle, force bool)
 	// force skips the coverage proof at the guard too: the caller is a merge whose
 	// user already chose the winner, and leaving the branch behind is what made
 	// "merge" report copies it could never clean up. The locks still apply.
-	parentGuard, err := acquireRecoveryParentGuard(path, parentDir, force)
-	if err != nil {
-		return err
+	//
+	// A forced sweep skips the parent guard entirely, not just its coverage proof:
+	// the guard's preconditions (recovered flag, digest, a resolvable parent id)
+	// describe what background cleanup may assume, and damaged or exotic copies
+	// fail them while the preview has already shown their content. The merge runs
+	// under its own runtime mutation lock and takes the branch's removal guard
+	// below, so moving the files into the recoverable .trash is safe without the
+	// parent's locks.
+	var parentGuard *SessionRemovalGuard
+	if !force {
+		guard, err := acquireRecoveryParentGuard(path, parentDir, false)
+		if err != nil {
+			return err
+		}
+		parentGuard = guard
+		defer parentGuard.Release()
 	}
-	defer parentGuard.Release()
 
 	branchGuard, err := TryAcquireSessionRemovalGuard(path)
 	if err != nil {
