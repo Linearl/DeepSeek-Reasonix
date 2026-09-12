@@ -174,6 +174,9 @@ export function RecoveryCopiesSection() {
               </>
             ) : null}
           </div>
+          {preview.degraded ? (
+            <div className="rc-preview__warn">{t("settings.recoveryCopiesPreviewDegraded")}</div>
+          ) : null}
           {preview.firstUserText ? (
             <div className="rc-preview__section">
               <div className="rc-preview__label">{t("settings.recoveryCopiesPreviewStart")}</div>
@@ -581,19 +584,9 @@ export function RecoveryCopiesSection() {
                           pickedChain[group.mainPath] === chain.path ? " rc-chain--picked" : ""
                         }`}
                         key={`${chain.path}#${chain.headId}`}
-                        role="button"
-                        tabIndex={0}
-                        title={t("settings.recoveryCopiesPickHint")}
-                        onClick={() => { void togglePick(group.mainPath, chain); }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            void togglePick(group.mainPath, chain);
-                          }
-                        }}
                       >
                         <span className="rc-chain__name">
-                          {chain.selected
+                          {chain.path === set.mainPath
                             ? t("settings.recoveryCopiesChainCurrent")
                             : `${t("settings.recoveryCopiesChainCandidate")} ${index}`}
                         </span>
@@ -611,6 +604,19 @@ export function RecoveryCopiesSection() {
                         <span className="rc-chain__preview" title={chain.preview}>
                           {chain.preview?.trim() || t("settings.recoveryCopiesPreviewEmpty")}
                         </span>
+                        {pickedChain[group.mainPath] === chain.path ? (
+                          <span className="rc-chain__picked-badge">{t("settings.recoveryCopiesPickedBadge")}</span>
+                        ) : null}
+                        <button
+                          className="btn btn--small rc-chain__preview-btn"
+                          type="button"
+                          disabled={busy || scanning.size > 0}
+                          onClick={() => { void togglePick(group.mainPath, chain); }}
+                        >
+                          {pickedChain[group.mainPath] === chain.path
+                            ? t("settings.recoveryCopiesUnpick")
+                            : t("settings.recoveryCopiesPreviewBtn")}
+                        </button>
                       </div>
                     );
                   })}

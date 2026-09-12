@@ -242,6 +242,8 @@ export interface RecoveryChainPreview {
   sharedWithMain: number;
   uniqueToChain: number;
   lastActivity: string;
+  /** True when built by the tolerant loader (unnormalized/damaged copy): counts come from the summary pass. */
+  degraded: boolean;
 }
 
 export interface RecoveryChainSet {
@@ -2778,7 +2780,7 @@ function makeMockApp(): AppBindings {
     async PreviewRecoveryChain(mainPath: string, chainPath: string): Promise<RecoveryChainPreview> {
       return {
         path: chainPath, isMain: chainPath === mainPath, messageCount: 0, turns: 0,
-        firstUserText: "", tailLines: [], sharedWithMain: 0, uniqueToChain: 0, lastActivity: "",
+        firstUserText: "", tailLines: [], sharedWithMain: 0, uniqueToChain: 0, lastActivity: "", degraded: false,
       };
     },
     async ForceConsolidateSessionRecoveryCopies(path: string, winnerPath?: string): Promise<ConsolidationReport> {

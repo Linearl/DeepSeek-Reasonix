@@ -23,6 +23,11 @@ type RecoveryChainPreview struct {
 	SharedWithMain int      `json:"sharedWithMain"`
 	UniqueToChain  int      `json:"uniqueToChain"`
 	LastActivity   string   `json:"lastActivity"`
+	// Degraded marks a preview built by the tolerant listing loader because the
+	// strict snapshot refused the file (an unnormalized or damaged copy). The
+	// merge normalizes in place anyway, so the branch is still usable; the
+	// dialog just says the numbers come from the summary pass.
+	Degraded bool `json:"degraded"`
 }
 
 // previewLine caps one preview line so a pathological single message cannot
@@ -69,7 +74,22 @@ func RecoveryChainPreviewFor(mainPath, chainPath string) (RecoveryChainPreview, 
 
 	snap, ok := LoadSessionContentSnapshot(chainPath)
 	if !ok {
-		return RecoveryChainPreview{}, fmt.Errorf("the branch could not be loaded for preview: %s", chainPath)
+		// Unnormalized and damaged copies are exactly the ones a user needs to
+		// inspect before deciding, and the listing loader reads them fine. The
+		// merge normalizes in place regardless, so previewing from the summary
+		// pass costs nothing and lies about nothing - the overlay numbers are
+		// simply unavailable.
+		first, turns, perr := previewSessionWithError(chainPath)
+		if perr != nil {
+			return RecoveryChainPreview{}, fmt.Errorf("the branch could not be loaded for preview: %s", chainPath)
+		}
+		return RecoveryChainPreview{
+			Path:          chainPath,
+			IsMain:        chainPath == mainPath,
+			FirstUserText: previewLine(first, 160),
+			Turns:         turns,
+			Degraded:      true,
+		}, nil
 	}
 
 	preview := RecoveryChainPreview{

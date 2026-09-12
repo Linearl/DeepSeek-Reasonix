@@ -41,6 +41,7 @@ var (
 type RecoveryBranchCandidate struct {
 	Path         string
 	MessageCount int
+	Turns        int
 	Revision     int64
 	UpdatedAt    time.Time
 	Loadable     bool
@@ -165,9 +166,16 @@ func recoveryConsolidationCandidate(path string, isMain bool) (RecoveryBranchCan
 	if err != nil {
 		meta = BranchMeta{}
 	}
+	turns := 0
+	for _, msg := range snap.messages {
+		if IsUserAuthoredTurnMessage(msg) {
+			turns++
+		}
+	}
 	return RecoveryBranchCandidate{
 		Path:         path,
 		MessageCount: snap.Len(),
+		Turns:        turns,
 		Revision:     meta.Revision,
 		UpdatedAt:    meta.UpdatedAt,
 		Loadable:     true,
@@ -178,6 +186,9 @@ func recoveryConsolidationCandidate(path string, isMain bool) (RecoveryBranchCan
 // consolidationCandidateBeats reports whether a is a better canonical than b:
 // most messages first, then the highest revision, then the newest update.
 func consolidationCandidateBeats(a, b RecoveryBranchCandidate) bool {
+	if a.Turns != b.Turns {
+		return a.Turns > b.Turns
+	}
 	if a.MessageCount != b.MessageCount {
 		return a.MessageCount > b.MessageCount
 	}

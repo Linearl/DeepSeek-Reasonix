@@ -123,6 +123,13 @@ func (a *App) ListRecoveryChains(mainPath string) (RecoveryChainSet, error) {
 	}
 
 	sort.SliceStable(set.Chains, func(i, j int) bool {
+		// User turns outrank raw message count: a tool-only transcript can pile
+		// up thousands of assistant rows without a single user turn, and by raw
+		// count it would top the list (and be "recommended") over the real
+		// conversation - exactly what the merge would then promote.
+		if set.Chains[i].Turns != set.Chains[j].Turns {
+			return set.Chains[i].Turns > set.Chains[j].Turns
+		}
 		if set.Chains[i].MessageCount != set.Chains[j].MessageCount {
 			return set.Chains[i].MessageCount > set.Chains[j].MessageCount
 		}
