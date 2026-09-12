@@ -3245,7 +3245,7 @@ export const en = {
   "settings.recoveryCopiesColMessages": "messages",
   "settings.recoveryCopiesPreviewShared": "shared with main",
   "settings.recoveryCopiesPreviewUnique": "unique to branch",
-  "settings.recoveryCopiesPreviewStart": "Start",
+  "settings.recoveryCopiesPreviewStart": "Start (first user message)",
   "settings.recoveryCopiesPreviewEnd": "End",
   "settings.recoveryCopiesPreviewDropWarn": "This branch holds {n} message(s) the current main lacks; picking it archives what only the main has (recoverable from trash)",
   "settings.recoveryCopiesPickConfirm": "Make this the merged main",

@@ -79,17 +79,14 @@ func RecoveryChainPreviewFor(mainPath, chainPath string) (RecoveryChainPreview, 
 		// merge normalizes in place regardless, so previewing from the summary
 		// pass costs nothing and lies about nothing - the overlay numbers are
 		// simply unavailable.
-		first, turns, perr := previewSessionWithError(chainPath)
-		if perr != nil {
+		preview := degradedChainPreview(mainPath, chainPath)
+		if preview.Turns == 0 && preview.MessageCount == 0 && len(preview.TailLines) == 0 && !preview.IsMain {
+			// The tolerant loader could not read it either; say so instead of
+			// showing an empty dialog.
 			return RecoveryChainPreview{}, fmt.Errorf("the branch could not be loaded for preview: %s", chainPath)
 		}
-		return RecoveryChainPreview{
-			Path:          chainPath,
-			IsMain:        chainPath == mainPath,
-			FirstUserText: previewLine(first, 160),
-			Turns:         turns,
-			Degraded:      true,
-		}, nil
+		return preview, nil
+		return degradedChainPreview(mainPath, chainPath), nil
 	}
 
 	preview := RecoveryChainPreview{
@@ -145,4 +142,35 @@ func MessageTextForPreview(msg provider.Message) string {
 		return s
 	}
 	return strings.TrimSpace(msg.Content)
+}
+
+// degradedChainPreview builds a preview with the tolerant listing loader for
+// copies the strict snapshot refuses. It derives the same fields as the strict
+// path - first user text, user-turn count, and the tail lines a user actually
+// judges a branch by - without writing anything.
+func degradedChainPreview(mainPath, chainPath string) RecoveryChainPreview {
+	preview := RecoveryChainPreview{Path: chainPath, IsMain: chainPath == mainPath, Degraded: true}
+	msgs, _, _, err := loadSessionMessages(chainPath)
+	if err != nil {
+		return preview
+	}
+	preview.MessageCount = len(msgs)
+	tailKeep := 3
+	for i, msg := range msgs {
+		if IsUserAuthoredTurnMessage(msg) {
+			preview.Turns++
+			if preview.FirstUserText == "" {
+				preview.FirstUserText = previewLine(UserMessageText(msg), 160)
+			}
+		}
+		if i >= len(msgs)-tailKeep {
+			if text := previewLine(MessageTextForPreview(msg), 160); text != "" {
+				preview.TailLines = append(preview.TailLines, text)
+			}
+		}
+	}
+	if preview.IsMain {
+		preview.SharedWithMain = preview.MessageCount
+	}
+	return preview
 }

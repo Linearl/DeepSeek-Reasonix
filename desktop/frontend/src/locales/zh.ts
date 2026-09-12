@@ -3248,7 +3248,7 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesColMessages": "消息数",
   "settings.recoveryCopiesPreviewShared": "与主线共享",
   "settings.recoveryCopiesPreviewUnique": "该分支独有",
-  "settings.recoveryCopiesPreviewStart": "开头",
+  "settings.recoveryCopiesPreviewStart": "开头（首条用户消息）",
   "settings.recoveryCopiesPreviewEnd": "结尾",
   "settings.recoveryCopiesPreviewDropWarn": "注意：该分支有 {n} 条消息不在当前主线中，选择它将归档主线独有的内容（可在回收站恢复）",
   "settings.recoveryCopiesPickConfirm": "选它作为合并后的主线",

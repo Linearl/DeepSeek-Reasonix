@@ -40312,11 +40312,11 @@ body > .mermaid-diagram--fullscreen {
    width and the max-width are set because the generic .modal max-width wins
    over width alone. */
 .reasonix-confirm-dialog--wide {
-  width: min(860px, 92vw);
-  max-width: min(860px, 92vw);
+  width: min(1100px, 94vw);
+  max-width: min(1100px, 94vw);
 }
 .reasonix-confirm-dialog--wide .reasonix-confirm-dialog__message {
-  max-height: min(60vh, 560px);
+  max-height: 78vh;
   overflow-y: auto;
 }
 /* Chain preview content inside the wide dialog. */
@@ -40364,4 +40364,13 @@ body > .mermaid-diagram--fullscreen {
   flex: 0 0 auto;
   font-size: 0.86em;
   color: var(--accent, #4c8dff);
+}
+
+/* The tail is the part a user judges a branch by - it leads the dialog and its
+   lines render longer than the opening's single-line summary. */
+.rc-preview__section--tail .rc-preview__line {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 1em;
+  margin: 2px 0;
 }

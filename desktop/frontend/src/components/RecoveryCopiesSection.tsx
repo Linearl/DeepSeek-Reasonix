@@ -163,7 +163,7 @@ export function RecoveryCopiesSection() {
             <span>
               {preview.turns} {t("settings.recoveryCopiesColTurns")}
             </span>
-            {!preview.isMain ? (
+            {!preview.isMain && !preview.degraded ? (
               <>
                 <span>
                   {t("settings.recoveryCopiesPreviewShared")} {preview.sharedWithMain}
@@ -177,20 +177,20 @@ export function RecoveryCopiesSection() {
           {preview.degraded ? (
             <div className="rc-preview__warn">{t("settings.recoveryCopiesPreviewDegraded")}</div>
           ) : null}
-          {preview.firstUserText ? (
-            <div className="rc-preview__section">
-              <div className="rc-preview__label">{t("settings.recoveryCopiesPreviewStart")}</div>
-              <div className="rc-preview__line">{preview.firstUserText}</div>
-            </div>
-          ) : null}
           {preview.tailLines?.length ? (
-            <div className="rc-preview__section">
+            <div className="rc-preview__section rc-preview__section--tail">
               <div className="rc-preview__label">{t("settings.recoveryCopiesPreviewEnd")}</div>
               {preview.tailLines.map((line, i) => (
                 <div className="rc-preview__line" key={i}>
                   {line}
                 </div>
               ))}
+            </div>
+          ) : null}
+          {preview.firstUserText ? (
+            <div className="rc-preview__section">
+              <div className="rc-preview__label">{t("settings.recoveryCopiesPreviewStart")}</div>
+              <div className="rc-preview__line">{preview.firstUserText}</div>
             </div>
           ) : null}
           {dropping ? (

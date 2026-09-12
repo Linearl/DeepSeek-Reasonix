@@ -2291,7 +2291,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesColMessages": "訊息數",
   "settings.recoveryCopiesPreviewShared": "與主線共享",
   "settings.recoveryCopiesPreviewUnique": "該分支獨有",
-  "settings.recoveryCopiesPreviewStart": "開頭",
+  "settings.recoveryCopiesPreviewStart": "開頭（首條用戶訊息）",
   "settings.recoveryCopiesPreviewEnd": "結尾",
   "settings.recoveryCopiesPreviewDropWarn": "注意：該分支有 {n} 條訊息不在當前主線中，選擇它將歸檔主線獨有的內容（可在回收站恢復）",
   "settings.recoveryCopiesPickConfirm": "選它作為合併後的主線",
