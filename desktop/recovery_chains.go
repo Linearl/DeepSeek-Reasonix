@@ -179,3 +179,18 @@ func (a *App) PreviewRecoveryChain(mainPath string, chainPath string) (agent.Rec
 	_ = dir
 	return agent.RecoveryChainPreviewFor(sessionPath, chainPath)
 }
+
+// PreviewRecoveryChainMessages returns the trailing slice of one chain's
+// messages for the conversation-style preview dialog. Read-only, tolerant
+// loader: unnormalized copies preview the same way the summary showed them.
+func (a *App) PreviewRecoveryChainMessages(mainPath string, chainPath string, limit int) ([]agent.RecoveryChainPreviewMessage, error) {
+	dir := a.activeSessionDir()
+	sessionPath, _, err := validateSessionPath(dir, mainPath)
+	if err != nil {
+		var foundErr error
+		if _, sessionPath, foundErr = a.sessionDirForPath(mainPath); foundErr != nil {
+			return nil, friendlySessionFileError(err)
+		}
+	}
+	return agent.RecoveryChainPreviewMessagesFor(sessionPath, chainPath, limit)
+}

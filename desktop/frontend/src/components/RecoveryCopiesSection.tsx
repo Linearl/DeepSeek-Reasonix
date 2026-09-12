@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { app, type ConsolidationReport, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainSet, type RecoveryChainView } from "../lib/bridge";
+import { app, type ConsolidationReport, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainPreviewMessage, type RecoveryChainSet, type RecoveryChainView } from "../lib/bridge";
 import { useT } from "../lib/i18n";
 import { useConfirmDialog } from "./ConfirmDialog";
 
@@ -126,6 +126,8 @@ export function RecoveryCopiesSection() {
   // in one group never leaks into another.
   const [pickedChain, setPickedChain] = useState<Record<string, string>>({});
   const pickedChainCount = Object.values(pickedChain).filter(Boolean).length;
+  // Full conversation-style feed for the open preview dialog; empty while loading.
+  const [feed, setFeed] = useState<RecoveryChainPreviewMessage[]>([]);
   // Clicking a chain previews it in a wide dialog - sizes, how it starts and
   // ends, and what picking it keeps or drops against the main - and only a
   // confirm inside that dialog names it as the winner. Clicking the picked
@@ -142,8 +144,17 @@ export function RecoveryCopiesSection() {
     }
     let preview: RecoveryChainPreview;
     setBusy(true);
+    setFeed([]);
     try {
       preview = await app.PreviewRecoveryChain(mainPath, chain.path);
+      // The feed loads after the summary so the dialog opens instantly even on a
+      // 37 MB copy; a failure here only empties the feed, it does not kill the
+      // dialog.
+      try {
+        setFeed(await app.PreviewRecoveryChainMessages(mainPath, chain.path, 400));
+      } catch {
+        setFeed([]);
+      }
     } catch (err) {
       setBusy(false);
       setErrors((current) => [...current, err instanceof Error ? err.message : String(err)]);
@@ -177,22 +188,21 @@ export function RecoveryCopiesSection() {
           {preview.degraded ? (
             <div className="rc-preview__warn">{t("settings.recoveryCopiesPreviewDegraded")}</div>
           ) : null}
-          {preview.tailLines?.length ? (
-            <div className="rc-preview__section rc-preview__section--tail">
-              <div className="rc-preview__label">{t("settings.recoveryCopiesPreviewEnd")}</div>
-              {preview.tailLines.map((line, i) => (
-                <div className="rc-preview__line" key={i}>
-                  {line}
+          {/* Conversation-style feed: the whole trailing slice of the branch, the
+              way the session window renders it. Loaded read-only after the summary
+              so the dialog opens instantly even on a 37 MB copy. */}
+          <div className="rc-preview__feed">
+            {feed.length === 0 ? (
+              <div className="rc-preview__feed-empty">{t("settings.recoveryCopiesPreviewFeedLoading")}</div>
+            ) : (
+              feed.map((m, i) => (
+                <div className={`rc-preview__msg rc-preview__msg--${m.role}`} key={i}>
+                  <span className="rc-preview__msg-role">{m.role}</span>
+                  <div className="rc-preview__msg-text">{m.text}</div>
                 </div>
-              ))}
-            </div>
-          ) : null}
-          {preview.firstUserText ? (
-            <div className="rc-preview__section">
-              <div className="rc-preview__label">{t("settings.recoveryCopiesPreviewStart")}</div>
-              <div className="rc-preview__line">{preview.firstUserText}</div>
-            </div>
-          ) : null}
+              ))
+            )}
+          </div>
           {dropping ? (
             <div className="rc-preview__warn">
               {t("settings.recoveryCopiesPreviewDropWarn").replace("{n}", String(preview.uniqueToChain))}

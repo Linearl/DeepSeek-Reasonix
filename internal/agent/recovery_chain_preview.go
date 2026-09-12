@@ -174,3 +174,53 @@ func degradedChainPreview(mainPath, chainPath string) RecoveryChainPreview {
 	}
 	return preview
 }
+
+// RecoveryChainPreviewMessage is one flattened message of the full preview feed.
+type RecoveryChainPreviewMessage struct {
+	Role string `json:"role"`
+	Text string `json:"text"`
+}
+
+// RecoveryChainPreviewMessagesFor returns the trailing slice of a chain's
+// messages for the full conversation-style preview. It is read-only and uses
+// the tolerant loader, so unnormalized copies preview exactly as the summary
+// preview showed them. limit <= 0 means "everything".
+func RecoveryChainPreviewMessagesFor(mainPath, chainPath string, limit int) ([]RecoveryChainPreviewMessage, error) {
+	mainPath = filepath.Clean(strings.TrimSpace(mainPath))
+	chainPath = filepath.Clean(strings.TrimSpace(chainPath))
+	if mainPath == "" || chainPath == "" {
+		return nil, fmt.Errorf("a transcript path is required for a chain preview")
+	}
+	allowed := chainPath == mainPath
+	if !allowed {
+		copies, err := recoveryCopiesForMain(mainPath)
+		if err != nil {
+			return nil, err
+		}
+		for _, copy := range copies {
+			if copy == chainPath {
+				allowed = true
+				break
+			}
+		}
+	}
+	if !allowed {
+		return nil, fmt.Errorf("the requested chain is not part of this session: %s", chainPath)
+	}
+	msgs, _, _, err := loadSessionMessages(chainPath)
+	if err != nil {
+		return nil, fmt.Errorf("the branch could not be loaded for preview: %s", chainPath)
+	}
+	if limit > 0 && len(msgs) > limit {
+		msgs = msgs[len(msgs)-limit:]
+	}
+	out := make([]RecoveryChainPreviewMessage, 0, len(msgs))
+	for _, msg := range msgs {
+		text := strings.TrimSpace(MessageTextForPreview(msg))
+		if text == "" {
+			continue
+		}
+		out = append(out, RecoveryChainPreviewMessage{Role: string(msg.Role), Text: text})
+	}
+	return out, nil
+}

@@ -3238,6 +3238,7 @@ export const en = {
   "settings.recoveryCopiesMerge": "Merge selected",
   "settings.recoveryCopiesRefresh": "Refresh",
   "settings.recoveryCopiesPreviewTitle": "Preview branch",
+  "settings.recoveryCopiesPreviewFeedLoading": "Loading the full message feed…",
   "settings.recoveryCopiesPreviewBtn": "Preview",
   "settings.recoveryCopiesUnpick": "Unpick",
   "settings.recoveryCopiesPickedBadge": "Picked as main",

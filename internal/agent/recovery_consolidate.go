@@ -350,7 +350,20 @@ func ConsolidateSessionRecoveryBranchesWithOptions(mainPath string, opts Consoli
 			}
 		}
 		if !found {
-			return report, fmt.Errorf("requested winner is not a loadable candidate of this session: %s", requested)
+			// The user picked a branch the strict loader refuses (typically an
+			// unnormalized copy that the preview showed through the tolerant
+			// loader). The merge normalizes in place anyway, so do that here and
+			// give the branch one more chance before refusing; refusing while the
+			// preview had happily shown it reads as the panel being broken.
+			if normalized, normErr := normalizeTranscriptInPlaceIfDirty(requested); normErr == nil && normalized {
+				if cand, ok := recoveryConsolidationCandidate(requested, requested == mainPath); ok {
+					winner = cand
+					found = true
+				}
+			}
+		}
+		if !found {
+			return report, fmt.Errorf("the picked branch still cannot be loaded for merging (it failed normalization): %s", requested)
 		}
 	} else {
 		for _, cand := range cands {

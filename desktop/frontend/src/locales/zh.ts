@@ -3241,6 +3241,7 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesMerge": "合并所选",
   "settings.recoveryCopiesRefresh": "刷新",
   "settings.recoveryCopiesPreviewTitle": "预览分支",
+  "settings.recoveryCopiesPreviewFeedLoading": "正在加载完整消息流…",
   "settings.recoveryCopiesPreviewBtn": "预览",
   "settings.recoveryCopiesUnpick": "取消选中",
   "settings.recoveryCopiesPickedBadge": "已选为主线",

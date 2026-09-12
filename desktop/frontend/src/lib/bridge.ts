@@ -246,6 +246,12 @@ export interface RecoveryChainPreview {
   degraded: boolean;
 }
 
+/** One flattened message of the full conversation-style preview feed. */
+export interface RecoveryChainPreviewMessage {
+  role: string;
+  text: string;
+}
+
 export interface RecoveryChainSet {
   mainPath: string;
   mainLabel: string;
@@ -319,6 +325,7 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   ConsolidateTopicRecoveryCopies(scope: string, workspaceRoot: string, topicID: string): Promise<ConsolidationReport>;
   ForceConsolidateSessionRecoveryCopies(path: string, winnerPath?: string): Promise<ConsolidationReport>;
   PreviewRecoveryChain(mainPath: string, chainPath: string): Promise<RecoveryChainPreview>;
+  PreviewRecoveryChainMessages(mainPath: string, chainPath: string, limit?: number): Promise<RecoveryChainPreviewMessage[]>;
   ForceConsolidateTopicRecoveryCopies(scope: string, workspaceRoot: string, topicID: string): Promise<ConsolidationReport>;
   ListRecoveryCopyGroups(): Promise<RecoveryCopyGroupView[]>;
   ScanRecoveryCopyGroup(mainPath: string): Promise<RecoveryCopyGroupView>;
@@ -2776,6 +2783,9 @@ function makeMockApp(): AppBindings {
     },
     async ConsolidateTopicRecoveryCopies(_scope: string, _workspaceRoot: string, topicID: string): Promise<ConsolidationReport> {
       return this.ConsolidateSessionRecoveryCopies(`mock://topics/${topicID}`);
+    },
+    async PreviewRecoveryChainMessages(_mainPath: string, _chainPath: string, _limit?: number): Promise<RecoveryChainPreviewMessage[]> {
+      return [];
     },
     async PreviewRecoveryChain(mainPath: string, chainPath: string): Promise<RecoveryChainPreview> {
       return {
