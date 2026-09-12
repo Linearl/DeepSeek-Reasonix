@@ -2341,6 +2341,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesPreviewWarn": "合併會寫入工作階段檔案。建議先備份 sessions 目錄。",
   "settings.recoveryCopiesScan": "掃描",
   "settings.recoveryCopiesScanAll": "全量掃描",
+  "settings.recoveryCopiesScanSelected": "掃描所選",
   "settings.recoveryCopiesUnscanned": "未掃描（點「掃描」查看）",
   "settings.recoveryCopiesMerged": "已合併 / 未併入",
   "settings.storageMeta": "工作區 · 資料 · 路徑",

@@ -301,6 +301,18 @@ export function RecoveryCopiesSection() {
     }
   };
 
+  // Scan only the rows the user has checked. On a project with dozens of
+  // conversation groups the full sweep replays every log of every session; the
+  // checked subset is the one the user is actually deciding about.
+  const scanSelected = async () => {
+    const chosen = (groups ?? []).filter((g) => selected.has(g.mainPath));
+    if (!chosen.length) return;
+    setErrors([]);
+    for (const group of chosen) {
+      await scanOne(group.mainPath);
+    }
+  };
+
   const winnerText = (group: RecoveryCopyGroupView) => {
     const winner = predictedWinner(group);
     if (!winner) return "—";
@@ -775,6 +787,16 @@ export function RecoveryCopiesSection() {
                 >
                   {t("settings.recoveryCopiesScanAll")}
                 </button>
+                {selected.size > 0 ? (
+                  <button
+                    className="btn btn--small"
+                    type="button"
+                    disabled={busy || scanningAll}
+                    onClick={() => void scanSelected()}
+                  >
+                    {`${t("settings.recoveryCopiesScanSelected")} (${selected.size})`}
+                  </button>
+                ) : null}
                 <button
                   className="btn btn--small"
                   type="button"

@@ -3295,6 +3295,7 @@ export const en = {
   "settings.recoveryCopiesPreviewWarn": "Merging writes to the session files. Back up the sessions directory first.",
   "settings.recoveryCopiesScan": "Scan",
   "settings.recoveryCopiesScanAll": "Scan all",
+  "settings.recoveryCopiesScanSelected": "Scan selected",
   "settings.recoveryCopiesUnscanned": "not scanned yet",
   "settings.recoveryCopiesMerged": "merged / left behind",
   "settings.storageMeta": "Workspace · data · paths",

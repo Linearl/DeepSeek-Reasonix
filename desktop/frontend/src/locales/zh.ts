@@ -3298,6 +3298,7 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesPreviewWarn": "合并会写入会话文件。建议先备份 sessions 目录。",
   "settings.recoveryCopiesScan": "扫描",
   "settings.recoveryCopiesScanAll": "全量扫描",
+  "settings.recoveryCopiesScanSelected": "扫描所选",
   "settings.recoveryCopiesUnscanned": "未扫描（点「扫描」查看）",
   "settings.recoveryCopiesMerged": "已合并 / 未并入",
   "settings.storageMeta": "工作区 · 数据 · 路径",

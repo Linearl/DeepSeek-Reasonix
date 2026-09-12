@@ -131,7 +131,13 @@ func recoveryCopiesForMain(mainPath string) ([]string, error) {
 	prefix := stem + "-recovery-"
 	var out []string
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") || strings.HasSuffix(e.Name(), ".events.jsonl") {
+		// Sidecars share the transcript stem, so a copy's turns/events files
+		// carry the same -recovery- prefix and would otherwise be enumerated as
+		// copies of the copy: fake chain rows, previews that fail to load, and
+		// promotes that die on "meta is missing". Only the transcript itself is
+		// a copy.
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") ||
+			strings.HasSuffix(e.Name(), ".events.jsonl") || strings.HasSuffix(e.Name(), ".turns.jsonl") {
 			continue
 		}
 		if !strings.HasPrefix(e.Name(), prefix) {
