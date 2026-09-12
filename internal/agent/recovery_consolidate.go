@@ -185,6 +185,26 @@ func recoveryConsolidationCandidate(path string, isMain bool) (RecoveryBranchCan
 
 // consolidationCandidateBeats reports whether a is a better canonical than b:
 // most messages first, then the highest revision, then the newest update.
+// stillUnloadable keeps only the unloadable copies the sweep did not archive,
+// so the report lists what genuinely needs attention instead of entries the
+// user already sent to the recoverable trash.
+func stillUnloadable(unloadable, trashed []string) []string {
+	if len(unloadable) == 0 {
+		return unloadable
+	}
+	set := make(map[string]struct{}, len(trashed))
+	for _, path := range trashed {
+		set[path] = struct{}{}
+	}
+	out := unloadable[:0]
+	for _, path := range unloadable {
+		if _, ok := set[path]; !ok {
+			out = append(out, path)
+		}
+	}
+	return out
+}
+
 func consolidationCandidateBeats(a, b RecoveryBranchCandidate) bool {
 	if a.Turns != b.Turns {
 		return a.Turns > b.Turns
@@ -394,6 +414,21 @@ func ConsolidateSessionRecoveryBranchesWithOptions(mainPath string, opts Consoli
 		}
 		report.Trashed = append(report.Trashed, cand.Path)
 	}
+	// Unloadable copies never made it into cands, so the sweep above never
+	// touched them - which is how a merge could finish with damaged copies
+	// still squatting in the session directory. With ArchiveLeftovers the user
+	// has named a winner and asked for the sweep, so the damaged files join the
+	// recoverable trash; a merge run without it keeps reporting them instead of
+	// destroying anything it could not read.
+	for _, unloadable := range report.SkippedUnloadable {
+		if !opts.ArchiveLeftovers {
+			break
+		}
+		if err := TrashRecoveryBranchForced(unloadable, dir); err == nil {
+			report.Trashed = append(report.Trashed, unloadable)
+		}
+	}
+	report.SkippedUnloadable = stillUnloadable(report.SkippedUnloadable, report.Trashed)
 	sort.Strings(report.Trashed)
 	sort.Strings(report.SkippedNotCovered)
 	sort.Strings(report.SkippedUnloadable)
