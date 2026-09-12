@@ -105,22 +105,10 @@ func RecoveryChainPreviewFor(mainPath, chainPath string) (RecoveryChainPreview, 
 		}
 	}
 	// The tail is taken from the end: what the branch would add at the bottom
-	// of the merged conversation is what the user judges it by.
-	tailKeep := 3
-	msgs := snap.messages
-	if n := len(msgs); n > 0 {
-		start := n - tailKeep
-		if start < 0 {
-			start = 0
-		}
-		for _, msg := range msgs[start:] {
-			text := previewLine(MessageTextForPreview(msg), 160)
-			if text == "" {
-				continue
-			}
-			preview.TailLines = append(preview.TailLines, text)
-		}
-	}
+	// of the merged conversation is what the user judges it by. The budget is
+	// characters, not lines, so the dialog shows enough of the ending to judge
+	// the branch regardless of how long the last few messages are.
+	preview.TailLines = tailByBudget(snap.messages, 12000)
 	preview.Turns = turns
 
 	if chainPath == mainPath {
@@ -174,6 +162,25 @@ func tolerantReplay(chainPath string) []provider.Message {
 	return msgs
 }
 
+// tailByBudget walks backwards from the last message until the character
+// budget is spent, returning the trailing lines a user judges a branch by.
+func tailByBudget(msgs []provider.Message, budget int) []string {
+	var lines []string
+	spent := 0
+	for i := len(msgs) - 1; i >= 0 && spent < budget; i-- {
+		text := strings.TrimSpace(MessageTextForPreview(msgs[i]))
+		if text == "" {
+			continue
+		}
+		if strings.HasPrefix(text, "data:image/") {
+			text = "[inline image]"
+		}
+		lines = append([]string{text}, lines...)
+		spent += len(text)
+	}
+	return lines
+}
+
 // degradedChainPreview builds a preview with the tolerant listing loader for
 // copies the strict snapshot refuses. It derives the same fields as the strict
 // path - first user text, user-turn count, and the tail lines a user actually
@@ -185,20 +192,15 @@ func degradedChainPreview(mainPath, chainPath string) RecoveryChainPreview {
 		return preview
 	}
 	preview.MessageCount = len(msgs)
-	tailKeep := 3
-	for i, msg := range msgs {
+	for _, msg := range msgs {
 		if IsUserAuthoredTurnMessage(msg) {
 			preview.Turns++
 			if preview.FirstUserText == "" {
 				preview.FirstUserText = previewLine(UserMessageText(msg), 160)
 			}
 		}
-		if i >= len(msgs)-tailKeep {
-			if text := previewLine(MessageTextForPreview(msg), 160); text != "" {
-				preview.TailLines = append(preview.TailLines, text)
-			}
-		}
 	}
+	preview.TailLines = tailByBudget(msgs, 12000)
 	if preview.IsMain {
 		preview.SharedWithMain = preview.MessageCount
 	}
@@ -256,11 +258,22 @@ func RecoveryChainPreviewMessagesFor(mainPath, chainPath string, limit int) ([]R
 	if limit > 0 && len(msgs) > limit {
 		msgs = msgs[len(msgs)-limit:]
 	}
+	// The bridge is the real bottleneck: one message's raw content can carry
+	// base64 images or huge tool output, and a few hundred of those serialized
+	// to JSON stall the UI longer than the replay itself. Preview text is
+	// capped per message and inline images become placeholders - enough to read
+	// the conversation, far below what would choke the bridge.
+	const maxPerMessage = 2000
 	out := make([]RecoveryChainPreviewMessage, 0, len(msgs))
 	for _, msg := range msgs {
 		text := strings.TrimSpace(MessageTextForPreview(msg))
 		if text == "" {
 			continue
+		}
+		if strings.HasPrefix(text, "data:image/") {
+			text = "[inline image]"
+		} else if len(text) > maxPerMessage {
+			text = text[:maxPerMessage] + "…"
 		}
 		out = append(out, RecoveryChainPreviewMessage{Role: string(msg.Role), Text: text})
 	}

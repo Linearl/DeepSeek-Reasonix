@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { app, type ConsolidationReport, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainPreviewMessage, type RecoveryChainSet, type RecoveryChainView } from "../lib/bridge";
+import { app, type ConsolidationReport, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainSet, type RecoveryChainView } from "../lib/bridge";
 import { useT } from "../lib/i18n";
 import { useConfirmDialog } from "./ConfirmDialog";
 
@@ -127,12 +127,11 @@ export function RecoveryCopiesSection() {
   // in one group never leaks into another.
   const [pickedChain, setPickedChain] = useState<Record<string, string>>({});
   const pickedChainCount = Object.values(pickedChain).filter(Boolean).length;
-  // Full conversation-style feed for the open preview dialog; empty while loading.
-  // Rendering is lazy like the session window: a head slice and a tail slice with
-  // an expandable gap, so a 9k-message branch never mounts at once.
-  const [feed, setFeed] = useState<RecoveryChainPreviewMessage[]>([]);
-  const [feedHead, setFeedHead] = useState(60);
-  const [feedTail, setFeedTail] = useState(120);
+  // Tail reveal: the summary carries ~12k chars of trailing messages; the first
+  // click shows the last 3k (recognize the scene), each further click widens by
+  // another 3k until the budget is spent.
+  const [showTail, setShowTail] = useState(false);
+  const [tailChars, setTailChars] = useState(3000);
   // Clicking a chain previews it in a wide dialog - sizes, how it starts and
   // ends, and what picking it keeps or drops against the main - and only a
   // confirm inside that dialog names it as the winner. Clicking the picked
@@ -149,19 +148,10 @@ export function RecoveryCopiesSection() {
     }
     let preview: RecoveryChainPreview;
     setBusy(true);
-    setFeed([]);
-    setFeedHead(60);
-    setFeedTail(120);
+    setShowTail(false);
+    setTailChars(3000);
     try {
       preview = await app.PreviewRecoveryChain(mainPath, chain.path);
-      // The feed replays the whole event log - seconds to minutes on a 37 MB
-      // copy. Fire it off WITHOUT awaiting: the backend caches the result, so
-      // the user can keep working and reopen this preview seconds later for an
-      // instant full feed. Awaiting here froze the dialog for minutes.
-      void app
-        .PreviewRecoveryChainMessages(mainPath, chain.path, 400)
-        .then((messages) => setFeed(messages))
-        .catch(() => setFeed([]));
     } catch (err) {
       setBusy(false);
       setErrors((current) => [...current, err instanceof Error ? err.message : String(err)]);
@@ -195,45 +185,47 @@ export function RecoveryCopiesSection() {
           {preview.degraded ? (
             <div className="rc-preview__warn">{t("settings.recoveryCopiesPreviewDegraded")}</div>
           ) : null}
-          {/* Conversation-style feed: the whole trailing slice of the branch, the
-              way the session window renders it. Loaded read-only after the summary
-              so the dialog opens instantly even on a 37 MB copy. */}
-          <div className="rc-preview__feed">
-            {feed.length === 0 ? (
-              <div className="rc-preview__feed-empty">
-                {t("settings.recoveryCopiesPreviewFeedLoading")}
-                <br />
-                {t("settings.recoveryCopiesPreviewFeedWarm")}
-              </div>
-            ) : (
+          {/* The trailing messages, revealed on demand: zero-latency because they
+              arrive with the summary, and enough of the ending to recognize the
+              scene without replaying the whole log. */}
+          {(() => {
+            const all = preview.tailLines ?? [];
+            const total = all.reduce((n, line) => n + line.length, 0);
+            if (total === 0) return null;
+            const shown = showTail ? Math.min(total, tailChars) : Math.min(total, 3000);
+            const lines: string[] = [];
+            let spent = 0;
+            for (let i = all.length - 1; i >= 0 && spent < shown; i--) {
+              lines.unshift(all[i]);
+              spent += all[i].length;
+            }
+            const remaining = total - spent;
+            return (
               <>
-                {feed.slice(0, feedHead).map((m, i) => (
-                  <div className={`rc-preview__msg rc-preview__msg--${m.role}`} key={`h${i}`}>
-                    <span className="rc-preview__msg-role">{m.role}</span>
-                    <div className="rc-preview__msg-text">{m.text}</div>
+                <button
+                  className="btn btn--small"
+                  type="button"
+                  onClick={() => (showTail ? setTailChars((n) => n + 3000) : setShowTail(true))}
+                >
+                  {!showTail
+                    ? t("settings.recoveryCopiesPreviewTailShow")
+                    : remaining > 0
+                      ? `${t("settings.recoveryCopiesPreviewTailMore")} (${remaining})`
+                      : t("settings.recoveryCopiesPreviewTailHide")}
+                </button>
+                {showTail ? (
+                  <div className="rc-preview__section rc-preview__section--tail">
+                    <div className="rc-preview__label">{t("settings.recoveryCopiesPreviewEnd")}</div>
+                    {lines.map((line, i) => (
+                      <div className="rc-preview__line" key={i}>
+                        {line}
+                      </div>
+                    ))}
                   </div>
-                ))}
-                {feed.length > feedHead + feedTail ? (
-                  <button
-                    className="rc-preview__feed-gap"
-                    type="button"
-                    onClick={() => {
-                      setFeedHead((n) => n + 200);
-                      setFeedTail((n) => n + 200);
-                    }}
-                  >
-                    {t("settings.recoveryCopiesPreviewFeedGap").replace("{n}", String(feed.length - feedHead - feedTail))}
-                  </button>
                 ) : null}
-                {feed.slice(Math.max(feedHead, feed.length - feedTail)).map((m, i) => (
-                  <div className={`rc-preview__msg rc-preview__msg--${m.role}`} key={`t${i}`}>
-                    <span className="rc-preview__msg-role">{m.role}</span>
-                    <div className="rc-preview__msg-text">{m.text}</div>
-                  </div>
-                ))}
               </>
-            )}
-          </div>
+            );
+          })()}
           {dropping ? (
             <div className="rc-preview__warn">
               {t("settings.recoveryCopiesPreviewDropWarn").replace("{n}", String(preview.uniqueToChain))}
