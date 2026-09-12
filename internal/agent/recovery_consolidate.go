@@ -363,6 +363,30 @@ func ConsolidateSessionRecoveryBranchesWithOptions(mainPath string, opts Consoli
 			}
 		}
 		if !found {
+			// A damaged event log is the remaining case: the strict snapshot
+			// refuses it, normalization does not apply (the file is not merely
+			// old-format), but the tolerant loader still reads the messages - the
+			// preview proved that. Promotion is a file-level rename and needs no
+			// strict load, and the user has seen this branch's content and named
+			// it on purpose, so the tolerant count stands in for the strict one.
+			if msgs, _, _, loadErr := loadSessionMessages(requested); loadErr == nil && len(msgs) > 0 {
+				turns := 0
+				for _, msg := range msgs {
+					if IsUserAuthoredTurnMessage(msg) {
+						turns++
+					}
+				}
+				winner = RecoveryBranchCandidate{
+					Path:         requested,
+					MessageCount: len(msgs),
+					Turns:        turns,
+					Loadable:     true,
+					IsMain:       requested == mainPath,
+				}
+				found = true
+			}
+		}
+		if !found {
 			return report, fmt.Errorf("the picked branch still cannot be loaded for merging (it failed normalization): %s", requested)
 		}
 	} else {
