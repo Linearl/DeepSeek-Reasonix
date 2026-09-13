@@ -2289,6 +2289,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesPreviewTailMore": "載入更多",
   "settings.recoveryCopiesPreviewFailedTitle": "預覽失敗",
   "settings.recoveryCopiesPreviewFailedLead": "該分支無法載入預覽，原因：",
+  "settings.recoveryCopiesPreviewBuilding": "正在為該分支建立預覽——大副本首次需重放全量日誌，之後走快取。",
   "settings.recoveryCopiesPreviewFeedLoading": "正在載入完整訊息流…",
   "settings.recoveryCopiesPreviewFeedWarm": "大分支需在後台重放完整事件日誌（幾十秒到幾分鐘）。已轉入後台：現在可先取消去做別的，稍後重新點「預覽」即可秒出完整訊息流。",
   "settings.recoveryCopiesPreviewFeedGap": "中間還有 {n} 條訊息，點擊載入",

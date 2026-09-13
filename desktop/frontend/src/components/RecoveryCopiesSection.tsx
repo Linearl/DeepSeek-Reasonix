@@ -105,6 +105,92 @@ type Outcome = {
  *  then asked whether the copy should win. Neither mode runs without its own
  *  confirmation.
  */
+
+/** ChainPreviewBody is the whole preview dialog body as its own component, so
+ *  the tail-reveal state lives inside the rendered dialog. The body used to be
+ *  JSX built in the outer component; ConfirmDialog keeps the element it was
+ *  handed, so "load more" updated outer state the frozen tree never saw and the
+ *  tail never grew. As a real child component its own state re-renders it. */
+function ChainPreviewBody({ preview }: { preview: RecoveryChainPreview }) {
+  const t = useT();
+  const [showTail, setShowTail] = useState(false);
+  const [tailChars, setTailChars] = useState(3000);
+  // degraded previews carry no overlap numbers at all (shared/unique stay 0 as
+  // placeholders), so the "you would drop N unique messages" warning must not
+  // fire for them - it read as a factual "0 unique" which is neither true nor
+  // computable until the merge normalizes the copy.
+  const dropping =
+    !preview.degraded && preview.sharedWithMain < preview.messageCount && !preview.isMain;
+  const all = preview.tailLines ?? [];
+  const total = all.reduce((n, line) => n + line.length, 0);
+  const shown = showTail ? Math.min(total, tailChars) : Math.min(total, 3000);
+  const lines: string[] = [];
+  let spent = 0;
+  for (let i = all.length - 1; i >= 0 && spent < shown; i--) {
+    lines.unshift(all[i]);
+    spent += all[i].length;
+  }
+  const remaining = total - spent;
+  return (
+    <div className="rc-preview">
+      <div className="rc-preview__stats">
+        <span>
+          {t("settings.recoveryCopiesColMessages")} {preview.messageCount}
+        </span>
+        <span>
+          {preview.turns} {t("settings.recoveryCopiesColTurns")}
+        </span>
+        {!preview.isMain && !preview.degraded ? (
+          <>
+            <span>
+              {t("settings.recoveryCopiesPreviewShared")} {preview.sharedWithMain}
+            </span>
+            <span>
+              {t("settings.recoveryCopiesPreviewUnique")} {preview.uniqueToChain}
+            </span>
+          </>
+        ) : null}
+      </div>
+      {preview.degraded ? (
+        <div className="rc-preview__warn">{t("settings.recoveryCopiesPreviewDegraded")}</div>
+      ) : null}
+      {/* The trailing messages, revealed on demand: zero-latency because they
+          arrive with the summary, and enough of the ending to recognize the
+          scene without replaying the whole log. */}
+      {total > 0 ? (
+        <>
+          <button
+            className="btn btn--small"
+            type="button"
+            onClick={() => (showTail ? setTailChars((n) => n + 3000) : setShowTail(true))}
+          >
+            {!showTail
+              ? t("settings.recoveryCopiesPreviewTailShow")
+              : remaining > 0
+                ? `${t("settings.recoveryCopiesPreviewTailMore")} (${remaining})`
+                : t("settings.recoveryCopiesPreviewTailHide")}
+          </button>
+          {showTail ? (
+            <div className="rc-preview__section rc-preview__section--tail">
+              <div className="rc-preview__label">{t("settings.recoveryCopiesPreviewEnd")}</div>
+              {lines.map((line, i) => (
+                <div className="rc-preview__line" key={i}>
+                  {line}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </>
+      ) : null}
+      {dropping ? (
+        <div className="rc-preview__warn">
+          {t("settings.recoveryCopiesPreviewDropWarn").replace("{n}", String(preview.uniqueToChain))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function RecoveryCopiesSection() {
   const t = useT();
   const { confirm, dialog } = useConfirmDialog();
@@ -128,15 +214,14 @@ export function RecoveryCopiesSection() {
   const [pickedChain, setPickedChain] = useState<Record<string, string>>({});
   const pickedChainCount = Object.values(pickedChain).filter(Boolean).length;
   // Tail reveal: the summary carries ~12k chars of trailing messages; the first
-  // click shows the last 3k (recognize the scene), each further click widens by
-  // another 3k until the budget is spent.
-  const [showTail, setShowTail] = useState(false);
-  const [tailChars, setTailChars] = useState(3000);
   // Clicking a chain previews it in a wide dialog - sizes, how it starts and
   // ends, and what picking it keeps or drops against the main - and only a
   // confirm inside that dialog names it as the winner. Clicking the picked
   // chain again un-picks it. The main chain is pickable too: it means keep the
   // current main and archive the rest. Nothing is written on preview.
+  // The tail-reveal state lives inside ChainPreviewBody: ConfirmDialog keeps
+  // the message element it was handed, so state owned out here was invisible
+  // to the rendered dialog.
   const togglePick = async (mainPath: string, chain: RecoveryChainView) => {
     if (pickedChain[mainPath] === chain.path) {
       setPickedChain((current) => {
@@ -148,12 +233,12 @@ export function RecoveryCopiesSection() {
     }
     let preview: RecoveryChainPreview;
     setBusy(true);
-    setShowTail(false);
-    setTailChars(3000);
+    setStatus(t("settings.recoveryCopiesPreviewBuilding"));
     try {
       preview = await app.PreviewRecoveryChain(mainPath, chain.path);
     } catch (err) {
       setBusy(false);
+      setStatus("");
       // Surface preview failures where the click happened - burying them in the
       // page-level error list is why "some branches do nothing on click" read as
       // a dead button instead of a diagnosable failure.
@@ -173,81 +258,11 @@ export function RecoveryCopiesSection() {
       return;
     }
     setBusy(false);
-    const dropping = preview.sharedWithMain < preview.messageCount && !preview.isMain;
+    setStatus("");
     const ok = await confirm({
       title: t("settings.recoveryCopiesPreviewTitle"),
       wide: true,
-      message: (
-        <div className="rc-preview">
-          <div className="rc-preview__stats">
-            <span>
-              {t("settings.recoveryCopiesColMessages")} {preview.messageCount}
-            </span>
-            <span>
-              {preview.turns} {t("settings.recoveryCopiesColTurns")}
-            </span>
-            {!preview.isMain && !preview.degraded ? (
-              <>
-                <span>
-                  {t("settings.recoveryCopiesPreviewShared")} {preview.sharedWithMain}
-                </span>
-                <span>
-                  {t("settings.recoveryCopiesPreviewUnique")} {preview.uniqueToChain}
-                </span>
-              </>
-            ) : null}
-          </div>
-          {preview.degraded ? (
-            <div className="rc-preview__warn">{t("settings.recoveryCopiesPreviewDegraded")}</div>
-          ) : null}
-          {/* The trailing messages, revealed on demand: zero-latency because they
-              arrive with the summary, and enough of the ending to recognize the
-              scene without replaying the whole log. */}
-          {(() => {
-            const all = preview.tailLines ?? [];
-            const total = all.reduce((n, line) => n + line.length, 0);
-            if (total === 0) return null;
-            const shown = showTail ? Math.min(total, tailChars) : Math.min(total, 3000);
-            const lines: string[] = [];
-            let spent = 0;
-            for (let i = all.length - 1; i >= 0 && spent < shown; i--) {
-              lines.unshift(all[i]);
-              spent += all[i].length;
-            }
-            const remaining = total - spent;
-            return (
-              <>
-                <button
-                  className="btn btn--small"
-                  type="button"
-                  onClick={() => (showTail ? setTailChars((n) => n + 3000) : setShowTail(true))}
-                >
-                  {!showTail
-                    ? t("settings.recoveryCopiesPreviewTailShow")
-                    : remaining > 0
-                      ? `${t("settings.recoveryCopiesPreviewTailMore")} (${remaining})`
-                      : t("settings.recoveryCopiesPreviewTailHide")}
-                </button>
-                {showTail ? (
-                  <div className="rc-preview__section rc-preview__section--tail">
-                    <div className="rc-preview__label">{t("settings.recoveryCopiesPreviewEnd")}</div>
-                    {lines.map((line, i) => (
-                      <div className="rc-preview__line" key={i}>
-                        {line}
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </>
-            );
-          })()}
-          {dropping ? (
-            <div className="rc-preview__warn">
-              {t("settings.recoveryCopiesPreviewDropWarn").replace("{n}", String(preview.uniqueToChain))}
-            </div>
-          ) : null}
-        </div>
-      ),
+      message: <ChainPreviewBody preview={preview} />,
       confirmLabel: preview.isMain
         ? t("settings.recoveryCopiesPickKeepMain")
         : t("settings.recoveryCopiesPickConfirm"),
