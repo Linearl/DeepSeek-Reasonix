@@ -5054,6 +5054,10 @@ export function useController() {
   const projectedState = useMemo(() => runtimeState.known ? { ...activeState, running: runtimeState.running ?? activeState.running } : activeState, [activeState, runtimeState.known, runtimeState.running]);
   return {
     state: projectedState,
+    // Read another tab's transcript without switching to it: the split view mounts
+    // two transcripts at once, so the secondary pane cannot go through the active
+    // tab's state (task 70).
+    itemsForTab: (tabId: string) => statesRef.current.get(tabId)?.items,
     liveStore,
     activeTabId,
     send, sendToTab, recoverDeliveryToTab, runShell, runShellForTab, steer, steerForTab, notice,

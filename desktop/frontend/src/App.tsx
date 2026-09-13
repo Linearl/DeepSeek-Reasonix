@@ -1,5 +1,6 @@
 import { ManagementSurface } from "./components/ManagementSurface";
 import { useManagementWorkspace } from "./lib/useManagementWorkspace";
+import { loadSplitState, persistSplitState, type SplitState } from "./lib/splitView";
 import { useAppNavigationStore } from "./store/appNavigation";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { flushSync } from "react-dom";
@@ -724,6 +725,7 @@ export default function App() {
     syncActiveTab,
     ensureBlankTab,
     ensureBlankSurface,
+    itemsForTab,
   } = useController();
   const { locale, setPref: setLocalePref } = useI18n();
   const t = useT();
@@ -3175,6 +3177,21 @@ export default function App() {
   const visibleTranscriptSurface = runtimeTransitioning && preservedTranscriptSurface
     ? preservedTranscriptSurface
     : null;
+  // Split view (task 70). Closed by default: while secondaryTabId is null the layout
+  // renders exactly one transcript, byte-for-byte as before.
+  const [splitState, setSplitState] = useState<SplitState>(loadSplitState);
+  const splitTabId = splitState.secondaryTabId;
+  // The secondary pane holds one other tab; toggling the tab already in it closes the
+  // split. Focus is deliberately left alone — the two concerns are separate.
+  const toggleSplitForTab = useCallback((tabId: string) => {
+    setSplitState((current) => {
+      const next: SplitState = current.secondaryTabId === tabId
+        ? { ...current, secondaryTabId: null }
+        : { ...current, secondaryTabId: tabId };
+      persistSplitState(next);
+      return next;
+    });
+  }, []);
   const visibleTranscriptItems = visibleTranscriptSurface?.items ?? displayItems;
   const visibleTranscriptTabId = visibleTranscriptSurface?.tabId ?? activeTabId;
   const visibleTranscriptGeometryKey = visibleTranscriptSurface?.geometrySessionKey ?? transcriptGeometrySessionKey;
@@ -4089,6 +4106,8 @@ export default function App() {
             onTabsReorder={(ids) => void handleTabsReorder(ids)}
             onNewTab={() => void handleNewTab()}
             onOpenPalette={() => void openPalette()}
+            splitTabId={splitTabId}
+            onToggleSplit={toggleSplitForTab}
           />
         )}
         <a className="skip-to-composer" href="#composer-input">
@@ -4591,6 +4610,8 @@ export default function App() {
                       (node as HTMLElement & { inert?: boolean }).inert = runtimeTransitioning;
                     }}
                   >
+                    <div className={splitTabId ? "transcript-split" : "transcript-split transcript-split--closed"}>
+                      <div className="transcript-split__pane">
                                         <Transcript
                       items={visibleTranscriptItems}
                       live={runtimeTransitioning ? undefined : state.live}
@@ -4649,6 +4670,23 @@ export default function App() {
                       onLoadOlderHistory={handleLoadOlderHistory}
                       invocationMetadata={visibleTranscriptTabId ? invocationMetadataByTab[visibleTranscriptTabId] : undefined}
                     />
+                      </div>
+                      {/* Secondary pane (task 70). Only the per-pane props are passed:
+                          everything else on TranscriptProps has a default, and the
+                          remaining call sites' values are the primary tab's own state. */}
+                      {splitTabId && (
+                        <div className="transcript-split__pane">
+                          <Transcript
+                            items={itemsForTab(splitTabId) ?? []}
+                            liveStore={liveStore}
+                            tabId={splitTabId}
+                            geometrySessionKey={`tab:${splitTabId}`}
+                            onPrompt={handleTranscriptPrompt}
+                            questionNavigator={false}
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
                   {runtimeTransitioning ? (
                     <div className="transcript-navigation-overlay" role="status" aria-live="polite">

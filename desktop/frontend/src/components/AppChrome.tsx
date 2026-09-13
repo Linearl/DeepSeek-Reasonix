@@ -28,6 +28,9 @@ export interface AppChromeProps {
   onTabsReorder: (tabIds: string[]) => void;
   onNewTab: () => void;
   onOpenPalette: () => void;
+  /** Split view (task 70): the tab in the secondary pane, and its toggle. */
+  splitTabId?: string | null;
+  onToggleSplit?: (tabId: string) => void;
 }
 
 export function AppChrome({
@@ -53,6 +56,8 @@ export function AppChrome({
   onTabsReorder,
   onNewTab,
   onOpenPalette,
+  splitTabId = null,
+  onToggleSplit,
 }: AppChromeProps) {
   const t = useT();
   const darwinChrome = platform === "darwin";
@@ -77,6 +82,8 @@ export function AppChrome({
       onNewTab={onNewTab}
       onOpenPalette={undefined}
       commandCompact={commandCompact}
+      splitTabId={splitTabId}
+      onToggleSplit={onToggleSplit}
     />
   );
 

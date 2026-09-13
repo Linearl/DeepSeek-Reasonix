@@ -3473,6 +3473,30 @@ a[href] {
   display: flex;
   flex-direction: column;
 }
+/* Split view (task 70): two transcripts side by side in the classic layout. The
+   panes split the content area that is left after the sidebars, so collapsing a
+   sidebar re-flows both panes instead of squeezing one of them. While no split is
+   open the wrapper is `display: contents`, which keeps the single-transcript
+   layout byte-for-byte identical to before this feature existed. */
+.transcript-split {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.transcript-split--closed {
+  display: contents;
+}
+
+.transcript-split__pane {
+  display: flex;
+  flex: 1 1 50%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .transcript-navigation-content {
   position: relative;
   flex: 1 1 auto;
