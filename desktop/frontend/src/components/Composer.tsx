@@ -880,6 +880,20 @@ export function Composer({
   const draftsBySessionRef = useRef<Record<string, ComposerDraft>>({});
   const activeDraftKeyRef = useRef(draftKey);
   const draftActivationEpochRef = useRef(0);
+  // Split view (task 70, B): one composer, one text per target. The store is read at
+  // switch time, so a prompt typed for the right pane does not follow the user back to
+  // the left. It is deliberately not persisted — a draft is live input, not session
+  // state, and the split target itself resets on restart.
+  const splitDraftsRef = useRef<Record<string, string>>({});
+  const splitTargetRef = useRef(splitTarget);
+  useEffect(() => {
+    const previous = splitTargetRef.current;
+    if (previous === splitTarget) return;
+    splitDraftsRef.current[previous] = textRef.current;
+    splitTargetRef.current = splitTarget;
+    const restored = splitDraftsRef.current[splitTarget] ?? "";
+    if (restored !== textRef.current) setText(restored);
+  }, [splitTarget]);
   const textRef = useRef(text);
   const invocationsRef = useRef(invocations);
   const attachmentsRef = useRef(attachments);
