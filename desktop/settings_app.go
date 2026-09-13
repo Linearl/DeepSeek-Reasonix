@@ -405,6 +405,8 @@ type DesktopStartupSettingsView struct {
 	ReasoningDisplayModeExplicit bool            `json:"reasoningDisplayModeExplicit"`
 	StatusBarStyle               string          `json:"statusBarStyle"`
 	StatusBarItems               []string        `json:"statusBarItems"`
+	// ExperimentalRestartUpdate exposes the "restart and update" button (task 81).
+	ExperimentalRestartUpdate bool `json:"experimentalRestartUpdate"`
 	CheckUpdates                 bool            `json:"checkUpdates"`
 	UpdateChannel                string          `json:"updateChannel"`
 	ConversationWidth            string          `json:"conversationWidth,omitempty"`
@@ -1050,6 +1052,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		}
 		view.ConfigWarnings = cfg.LoadWarnings()
 		view.ConfigPath = config.UserConfigPath()
+		view.ExperimentalRestartUpdate = cfg.Desktop.ExperimentalRestartUpdate
 		return view
 	}
 	cfg, path, err := a.loadDesktopUserConfigForView()

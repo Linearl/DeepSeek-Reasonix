@@ -34,9 +34,6 @@ func (a *App) RestartAndUpdate(sourceDir, version string) error {
 		return fmt.Errorf("restart: version is required")
 	}
 	sourceDir = strings.TrimSpace(sourceDir)
-	if sourceDir == "" {
-		return fmt.Errorf("restart: source directory is required")
-	}
 
 	// Opt-in only (task 81): the action swaps the active install version, so neither a
 	// stale UI nor a tool call may reach it while the experiment is off.
@@ -66,6 +63,12 @@ func (a *App) RestartAndUpdate(sourceDir, version string) error {
 	installRoot, err := installlayout.ResolveInstallRoot(executable)
 	if err != nil || installRoot == "" {
 		return fmt.Errorf("restart: this build is not a versioned install, so there is no pointer to move: %w", err)
+	}
+
+	// Default staging location: a local build dropped into InstallRoot/staging/. Kept
+	// as a convention rather than a setting so the button needs no configuration.
+	if sourceDir == "" {
+		sourceDir = filepath.Join(installRoot, "staging")
 	}
 
 	members := []installlayout.Member{

@@ -2314,6 +2314,8 @@ export interface BotConnectionDiagnostic {
 export type { ModelSettingsChange, ModelSettingsResult } from "./modelSettingsTypes";
 
 export interface DesktopStartupSettingsView {
+  /** Restart-and-update experiment switch (task 81); off unless the user opts in. */
+  experimentalRestartUpdate?: boolean;
   bot: BotSettingsView;
   desktopLanguage: string; // "" | "en" | "zh"; empty = auto
   desktopLayoutStyle: string; // "classic" | "workbench"
