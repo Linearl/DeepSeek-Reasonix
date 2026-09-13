@@ -1012,7 +1012,10 @@ export default function App() {
   // from there (task 38).
   const sidebarTogglePressed = useLayoutStore((s) => s.sidebarTogglePressed);
   const setSidebarTogglePressed = useLayoutStore((s) => s.setSidebarTogglePressed);
-  const [clearContextPending, setClearContextPending] = useState(false);
+  // The clear-context flag is shared: useSessionClearCommands raises it from the
+  // command surface, this component renders the decision footer (task 38).
+  const clearContextPending = useOverlayStore((s) => s.clearContextPending);
+  const setClearContextPending = useOverlayStore((s) => s.setClearContextPending);
   const [backgroundRuntimes, setBackgroundRuntimes] = useState<BackgroundRuntimeView[]>([]);
   const [workspaceConflict, setWorkspaceConflict] = useState<WorkspaceConflictView | null>(null);
   const [pendingClose, setPendingClose] = useState<{ tabId: string; work: ActiveWorkView; stopping: boolean } | null>(null);

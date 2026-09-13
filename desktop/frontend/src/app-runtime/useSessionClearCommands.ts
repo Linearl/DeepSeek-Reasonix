@@ -1,7 +1,7 @@
-import { useState } from "react";
 import type { Translator } from "../lib/i18n";
 import { useCommittedCommand } from "../lib/useCommittedCommand";
 import type { useSessionOperations } from "./useSessionOperations";
+import { useOverlayStore } from "../store/overlays";
 
 export type SessionClearCommandsInput = {
   activeTabId: string | undefined;
@@ -28,7 +28,9 @@ export type SessionClearCommandsInput = {
  */
 export function useSessionClearCommands(input: SessionClearCommandsInput) {
   const { activeTabId, activeSessionIdentity, t, notice, operations, ports } = input;
-  const [clearContextPending, setClearContextPending] = useState(false);
+  // Shared with App.tsx, which renders the footer this flag drives (task 38).
+  const clearContextPending = useOverlayStore((s) => s.clearContextPending);
+  const setClearContextPending = useOverlayStore((s) => s.setClearContextPending);
 
   const cancelClearContext = useCommittedCommand(() => {
     setClearContextPending(false);
