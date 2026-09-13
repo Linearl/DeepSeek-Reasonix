@@ -1,3 +1,4 @@
+import type { QuickCommandEntry } from "./settingsViewTypes";
 import type { ProviderCatalog } from "./providerCatalogTypes";
 export type { SettingsView } from "./settingsViewTypes";
 export type { ProviderProtocolEndpoint, ProviderCatalog, ProviderPresetView } from "./providerCatalogTypes";
@@ -684,25 +685,6 @@ export interface RecoveryCleanupResult {
   items: RecoveryCleanupItem[];
 }
 
-// ConsolidationReport summarizes one "merge recovery copies" run: the
-// fullest copy is promoted onto the main session identity, the previous main
-// is archived under the recoverable trash, and fully covered copies fold
-// into the same trash. Copies holding unique turns are preserved.
-export interface ConsolidationReport {
-  mainPath: string;
-  winnerPath: string;
-  promoted: boolean;
-  // True when the fullest copy and the main each hold turns the other lacks
-  // (typical after a main-side compaction): nothing was merged and the UI
-  // should ask the user whether to force the merge.
-  blockedByDivergence: boolean;
-  normalizedMain: boolean;
-  mainMessageCount: number;
-  winnerMessageCount: number;
-  trashed: string[];
-  skippedNotCovered: string[];
-  skippedUnloadable: string[];
-}
 
 export interface DeliveryWorktreeAvailability {
   available: boolean;
@@ -1072,12 +1054,6 @@ export interface ContextInfo {
   sources?: Record<string, UsageSourceStats>;
   maintenance?: ContextMaintenanceInfo;
   contextBudget?: ContextBudgetInfo;
-}
-
-export interface QuickCommandEntry {
-  title: string;
-  text: string;
-  enabled?: boolean; // absent means enabled (older configs)
 }
 
 export interface Meta extends RemoteSessionMetaFields {

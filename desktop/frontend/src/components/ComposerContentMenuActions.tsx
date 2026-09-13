@@ -1,7 +1,7 @@
 import { AtSign, FilePlus2, Hash, Zap } from "lucide-react";
 import { useState } from "react";
 import { useT } from "../lib/i18n";
-import type { QuickCommandEntry } from "../lib/types";
+import type { QuickCommandEntry } from "../lib/settingsViewTypes";
 
 export function ComposerContentMenuActions({
   attachmentInputEnabled,
