@@ -6,6 +6,27 @@
 
 ---
 
+## v1.38.3 之后新增的 fork 魔改（2026-09-13 补登，含实验开关与承载文件）
+
+> 本表是任务 97 要求的形式：**除"fork 状态 / 上游吸收状态"外，增加「开关」「默认」「承载文件」三列**，
+> 以便判断哪些魔改适合实验化（任务 98）。**「开关」列为「常开」表示无开关、行为直接生效**。
+
+| 魔改 | 开关 | 默认 | 承载文件 | 上游吸收状态 |
+|---|---|---|---|---|
+| **任务 60** Trace-as-State 压缩改造（摘要含推理痕迹 / 卡点路由重读 / 两个折叠护栏） | `[agent] trace_as_state`（`experimental` 语义） | **关** | `internal/agent/compact.go`、`compact_projection.go`、`storm_breaker.go`、`goal_run_boundary.go` | N/A（fork 独有，理论依据 arXiv 2609.02702） |
+| **任务 70** 分栏（标签组，最多两组） | 无（关闭时 `display: contents` 零回归） | **常开** | `desktop/frontend/src/lib/splitView.ts`、`App.tsx`、`Composer.tsx`、`TabBar.tsx`、`styles.css` | N/A（fork 独有） |
+| **任务 81** 重启并更新（关闭 → 发布本地构建 → launcher 重启） | `[desktop] experimental_restart_update` | **关** | `desktop/restart_update.go`、`internal/tool/restart_update.go`、`internal/tool/builtin/restart_update.go`、`StatusBar.tsx` | N/A（fork 独有；上游走 Electron 自更新，见 #10222） |
+| **任务 69** 强制归档入口 | 无 | **常开** | `desktop/`（归档路径）+ 前端菜单 | N/A（fork 独有；上游曾删该入口） |
+| **任务 23** `todo_write` 串行校验（拒绝无 in_progress / in_progress 越位） | 无 | **常开** | `internal/tool/builtin/todo_write.go` 系 | ⏳ 上游未吸收 |
+| **任务 21** v1.38.1 上游 bug 回归修复（代码侧） | 无 | **常开** | 见 v1.38.1 各表 | 部分已合入上游 |
+| **状态栏默认 `text`**（上游默认 `icon`） | 无 | **`text`** | `App.tsx`、`app-runtime/useDesktopPreferences.ts`、`lib/statusBarItems.ts` | ⏳ 上游为 `icon` + 一次性升级；**fork 无测试守卫（2026-09-13 修）** |
+| **平台与最大化共享 chrome store**（任务 38 第一批） | 无 | **常开** | `App.tsx`、`store/windowChrome.ts` | N/A（结构收敛） |
+| **刷新信号 store**（任务 38 第三批） | 无 | **常开** | `store/refreshSignals.ts`、`App.tsx` | N/A（结构收敛） |
+
+**注**：任务 38 的两行不是功能魔改，而是**为降低 merge 冲突面做的结构收敛**——登记在此是为了让"fork 与上游的差异清单"完整，便于任务 98 评估时区分「功能魔改」与「结构收敛」。
+
+**⚠️ 测试守卫缺口（任务 97 待办）**：上表中**只有任务 60 / 81 有开关默认关闭的语义**，其余多为「常开」且**多数没有断言 fork 语义的测试**。任务 97 的剩余工作就是逐项检查测试是断言 fork 语义还是上游语义，把后者改过来。
+
 ## v1.38.3（2026-09-09 追齐 1.38.2~1.38.3，283 commits）
 
 | 改进点 | fork 状态 | 上游吸收状态 |
