@@ -300,15 +300,47 @@ export function RecoveryCopiesSection() {
 
   /** loadChains replays one conversation's logs to list its candidate chains. A
    *  merge promotes the chain with the most messages, so the list is what tells the
-   *  user which transcript they are about to be left with. */
+   *  user which transcript they are about to be left with. Failure is recorded as
+   *  a loaded-but-empty inventory so the effect below does not retry in a loop;
+   *  the error banner carries the reason. */
   const loadChains = useCallback(async (mainPath: string) => {
     try {
       const set = await app.ListRecoveryChains(mainPath);
       setChains((current) => new Map(current).set(mainPath, set));
     } catch (err) {
+      setChains((current) =>
+        new Map(current).set(mainPath, {
+          mainPath,
+          mainLabel: "",
+          chains: [],
+          longestPath: "",
+          longestHead: "",
+        }),
+      );
       setErrors((current) => [...current, err instanceof Error ? err.message : String(err)]);
     }
   }, []);
+
+  // Chain inventory is lazy: it replays every log for the conversation, so it
+  // loads when a row becomes expanded - however that happened. Scanning
+  // expands rows programmatically (scanOne), and before this effect only the
+  // manual toggle loaded the inventory, which is why scanned rows showed no
+  // candidate chains at all. One effect keeps "expanded" and "chains loaded"
+  // in step for both paths; chainLoads guards against concurrent repeats.
+  const [chainLoads, setChainLoads] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    for (const path of expanded) {
+      if (chains.has(path) || chainLoads.has(path)) continue;
+      setChainLoads((current) => new Set(current).add(path));
+      void loadChains(path).finally(() => {
+        setChainLoads((current) => {
+          const next = new Set(current);
+          next.delete(path);
+          return next;
+        });
+      });
+    }
+  }, [expanded, chains, chainLoads, loadChains]);
 
   const toggleExpanded = (path: string) => {
     setExpanded((current) => {
@@ -317,7 +349,6 @@ export function RecoveryCopiesSection() {
         next.delete(path);
       } else {
         next.add(path);
-        if (!chains.has(path)) void loadChains(path);
       }
       return next;
     });
