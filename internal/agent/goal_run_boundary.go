@@ -85,7 +85,14 @@ func (a *Agent) trackTodoProgress(ctx context.Context, state *turnRuntime, recei
 		return
 	}
 	if state.todoStallRounds == todoProgressNudgeRounds {
-		a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(todoProgressNudgeMessage(state.todoStallRounds))))
+		// Route the checkpoint by how full the context is (task 60, point 3): a long
+	// history is worth folding, a short one is worth re-reading with the earlier trace
+	// in hand, since the files it was about are still on disk.
+	checkpoint := todoProgressNudgeMessage(state.todoStallRounds)
+	if a.contextIsShort() {
+		checkpoint = reReadGuidanceMessage(state.todoStallRounds, a.recentReadPaths(5))
+	}
+	a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(checkpoint)))
 		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeLoopGuard,
 			Text: loopGuardNoticeText(), Detail: fmt.Sprintf("the current todo has no new completion, unique read, command, or mutation for %d consecutive tool-call rounds; asking the assistant to reassess", state.todoStallRounds)})
 	}
