@@ -135,15 +135,27 @@ func MessageTextForPreview(msg provider.Message) string {
 // tolerantReplayCache remembers the tolerant replay of a damaged copy so the
 // degraded summary and the full feed share one replay instead of paying it
 // twice - on a large copy that replay is minutes, and paying it twice is what
-// made the preview look permanently stuck.
+// made the preview look permanently stuck. Eviction is a true LRU (16 entries):
+// the earlier wholesale clear above 4 entries is what let flipping between two
+// damaged branches evict both and recompute every time (user report 2026-09-13).
 var tolerantReplayCache = struct {
 	sync.Mutex
+	order   []string
 	entries map[string][]provider.Message
 }{entries: map[string][]provider.Message{}}
 
 func tolerantReplay(chainPath string) []provider.Message {
 	tolerantReplayCache.Lock()
 	cached, ok := tolerantReplayCache.entries[chainPath]
+	if ok {
+		for i, k := range tolerantReplayCache.order {
+			if k == chainPath {
+				tolerantReplayCache.order = append(tolerantReplayCache.order[:i], tolerantReplayCache.order[i+1:]...)
+				tolerantReplayCache.order = append(tolerantReplayCache.order, chainPath)
+				break
+			}
+		}
+	}
 	tolerantReplayCache.Unlock()
 	if ok {
 		return cached
@@ -153,8 +165,13 @@ func tolerantReplay(chainPath string) []provider.Message {
 		return nil
 	}
 	tolerantReplayCache.Lock()
-	if len(tolerantReplayCache.entries) > 4 {
-		tolerantReplayCache.entries = map[string][]provider.Message{}
+	if _, seen := tolerantReplayCache.entries[chainPath]; !seen {
+		tolerantReplayCache.order = append(tolerantReplayCache.order, chainPath)
+		for len(tolerantReplayCache.order) > 16 {
+			oldest := tolerantReplayCache.order[0]
+			tolerantReplayCache.order = tolerantReplayCache.order[1:]
+			delete(tolerantReplayCache.entries, oldest)
+		}
 	}
 	tolerantReplayCache.entries[chainPath] = msgs
 	tolerantReplayCache.Unlock()

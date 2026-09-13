@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"reasonix/internal/fileutil"
@@ -121,10 +122,70 @@ type SessionContentSnapshot struct {
 	digest   string
 }
 
+// contentSnapshotCache memoizes LoadSessionContentSnapshot per file version.
+// Preview clicks, scans, and merge checks all ask for the same snapshot within
+// seconds - rebuilding the message copy and re-digesting a 9k-message
+// transcript on every click (and twice per click once Overlap re-reads both
+// sides) is what made switching between branches feel like everything was
+// recomputed from scratch (user report 2026-09-13). The key carries size and
+// mtime so a rewritten file re-parses, and the eviction is a true LRU rather
+// than a wholesale clear: flipping between two branches must keep both warm.
+var contentSnapshotCache = struct {
+	sync.Mutex
+	order   []string
+	entries map[string]SessionContentSnapshot
+}{entries: map[string]SessionContentSnapshot{}}
+
+const contentSnapshotCacheLimit = 12
+
+func contentSnapshotCacheKey(path string) string {
+	info, err := os.Stat(path)
+	if err != nil {
+		return path + "|?"
+	}
+	return fmt.Sprintf("%s|%d|%d", path, info.Size(), info.ModTime().UnixNano())
+}
+
+func cachedContentSnapshot(key string) (SessionContentSnapshot, bool) {
+	contentSnapshotCache.Lock()
+	defer contentSnapshotCache.Unlock()
+	snap, ok := contentSnapshotCache.entries[key]
+	if ok {
+		for i, k := range contentSnapshotCache.order {
+			if k == key {
+				contentSnapshotCache.order = append(contentSnapshotCache.order[:i], contentSnapshotCache.order[i+1:]...)
+				contentSnapshotCache.order = append(contentSnapshotCache.order, key)
+				break
+			}
+		}
+	}
+	return snap, ok
+}
+
+func storeContentSnapshot(key string, snap SessionContentSnapshot) {
+	contentSnapshotCache.Lock()
+	defer contentSnapshotCache.Unlock()
+	if _, ok := contentSnapshotCache.entries[key]; !ok {
+		contentSnapshotCache.order = append(contentSnapshotCache.order, key)
+		for len(contentSnapshotCache.order) > contentSnapshotCacheLimit {
+			oldest := contentSnapshotCache.order[0]
+			contentSnapshotCache.order = contentSnapshotCache.order[1:]
+			delete(contentSnapshotCache.entries, oldest)
+		}
+	}
+	contentSnapshotCache.entries[key] = snap
+}
+
 // LoadSessionContentSnapshot loads one transcript once for lineage analysis.
 // Dirty normalization and damaged event logs fail closed: neither may prove a
-// canonical branch or authorize cleanup.
+// canonical branch or authorize cleanup. Successful loads are memoized per
+// file version; failures stay uncached because a file being written can
+// change under us.
 func LoadSessionContentSnapshot(path string) (SessionContentSnapshot, bool) {
+	key := contentSnapshotCacheKey(path)
+	if snap, ok := cachedContentSnapshot(key); ok {
+		return snap, true
+	}
 	session, err := LoadSession(path)
 	if err != nil || session == nil || session.normalizedDirty || session.eventLogDamaged {
 		return SessionContentSnapshot{}, false
@@ -134,7 +195,9 @@ func LoadSessionContentSnapshot(path string) (SessionContentSnapshot, bool) {
 	if err != nil {
 		return SessionContentSnapshot{}, false
 	}
-	return SessionContentSnapshot{messages: messages, digest: digestString(digest)}, true
+	snap := SessionContentSnapshot{messages: messages, digest: digestString(digest)}
+	storeContentSnapshot(key, snap)
+	return snap, true
 }
 
 // Len is used only to discard candidates that cannot cover the longest member.
@@ -182,10 +245,36 @@ func (s SessionContentSnapshot) Overlap(covered SessionContentSnapshot) CopyOver
 	return CopyOverlap{Shared: limit, Unique: len(other) - limit}
 }
 
+// contentOverlapCache memoizes the pairwise comparison per file-version pair.
+// The split itself is O(min(len)) over message equality, and the summary
+// preview asks for it on every click of the same branch.
+var contentOverlapCache = struct {
+	sync.Mutex
+	order   []string
+	entries map[string]CopyOverlap
+}{entries: map[string]CopyOverlap{}}
+
 // SessionContentOverlap reports the split between a canonical transcript and a copy.
 // ok is false when either side cannot be loaded safely - the same fail-closed rule
 // SessionContentCovers applies, since a damaged log must not produce a merge hint.
+// Successful splits are memoized per file-version pair; failures stay uncached.
 func SessionContentOverlap(canonicalPath, copyPath string) (CopyOverlap, bool) {
+	key := contentSnapshotCacheKey(canonicalPath) + "||" + contentSnapshotCacheKey(copyPath)
+	contentOverlapCache.Lock()
+	overlap, ok := contentOverlapCache.entries[key]
+	if ok {
+		for i, k := range contentOverlapCache.order {
+			if k == key {
+				contentOverlapCache.order = append(contentOverlapCache.order[:i], contentOverlapCache.order[i+1:]...)
+				contentOverlapCache.order = append(contentOverlapCache.order, key)
+				break
+			}
+		}
+	}
+	contentOverlapCache.Unlock()
+	if ok {
+		return overlap, true
+	}
 	canonical, ok := LoadSessionContentSnapshot(canonicalPath)
 	if !ok {
 		return CopyOverlap{}, false
@@ -194,7 +283,19 @@ func SessionContentOverlap(canonicalPath, copyPath string) (CopyOverlap, bool) {
 	if !ok {
 		return CopyOverlap{}, false
 	}
-	return canonical.Overlap(copySnapshot), true
+	overlap = canonical.Overlap(copySnapshot)
+	contentOverlapCache.Lock()
+	if _, seen := contentOverlapCache.entries[key]; !seen {
+		contentOverlapCache.order = append(contentOverlapCache.order, key)
+		for len(contentOverlapCache.order) > 32 {
+			oldest := contentOverlapCache.order[0]
+			contentOverlapCache.order = contentOverlapCache.order[1:]
+			delete(contentOverlapCache.entries, oldest)
+		}
+	}
+	contentOverlapCache.entries[key] = overlap
+	contentOverlapCache.Unlock()
+	return overlap, true
 }
 
 // TryAcquireRecoveryParentGuard verifies that a recovery branch is covered by
