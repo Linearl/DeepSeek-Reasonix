@@ -46,7 +46,9 @@ func ValidateSerialTodos(todos []TodoItem) error {
 		case "completed", "pending":
 		case "in_progress":
 			if ipSeen {
-				return fmt.Errorf("todo %d %q is a second in_progress item; serial task lists allow exactly one current item", i+1, todo.Content)
+				// Task 23 P0-a: a rejection has to say how to fix it — a bare rule statement
+			// is what left the model retrying the same list.
+			return fmt.Errorf("todo %d %q is a second in_progress item; a serial task list allows exactly one current item — demote this one back to pending, or mark the current item completed first", i+1, todo.Content)
 			}
 			ipSeen = true
 		default:
@@ -89,7 +91,7 @@ func ValidateSerialTodos(todos []TodoItem) error {
 		}
 	}
 	if len(todos) > 0 && seenPending && !seenCurrent {
-		return fmt.Errorf("serial task list has pending work but no in_progress item")
+		return fmt.Errorf("serial task list has pending work but no in_progress item — mark the first unfinished item in_progress so the list has a current step")
 	}
 	return nil
 }
