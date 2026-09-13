@@ -1002,7 +1002,10 @@ export default function App() {
 
   const sidebarSearchFocusSignal = useOverlayStore((s) => s.sidebarSearchFocusSignal);
   const setSidebarSearchFocusSignal = useOverlayStore((s) => s.setSidebarSearchFocusSignal);
-  const [sidebarTogglePressed, setSidebarTogglePressed] = useState(false);
+  // Same value the layout store already owns; the sidebar toggle animation reads it
+  // from there (task 38).
+  const sidebarTogglePressed = useLayoutStore((s) => s.sidebarTogglePressed);
+  const setSidebarTogglePressed = useLayoutStore((s) => s.setSidebarTogglePressed);
   const [clearContextPending, setClearContextPending] = useState(false);
   const [backgroundRuntimes, setBackgroundRuntimes] = useState<BackgroundRuntimeView[]>([]);
   const [workspaceConflict, setWorkspaceConflict] = useState<WorkspaceConflictView | null>(null);
