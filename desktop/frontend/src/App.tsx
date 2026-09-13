@@ -773,7 +773,11 @@ export default function App() {
   // null until the mount probe resolves; true shows the first-run guide.
   const needsOnboarding = useOverlayStore((s) => s.needsOnboarding);
   const setNeedsOnboarding = useOverlayStore((s) => s.setNeedsOnboarding);
-  const [providerSetupNeeded, setProviderSetupNeeded] = useState(false);
+  // One source for one probe: StartupGateLifecycle asks the same question and writes
+  // the overlay store, so a second local copy here could only disagree with it
+  // (task 38).
+  const providerSetupNeeded = useOverlayStore((s) => s.providerSetupNeeded);
+  const setProviderSetupNeeded = useOverlayStore((s) => s.setProviderSetupNeeded);
   const page = useAppNavigationStore((s) => s.page);
   const managementActive = page.kind !== "workspace";
   const settingsTarget = page.kind === "settings" ? page.tab : null;
