@@ -116,7 +116,8 @@ import {
 } from "./lib/types";
 import { useComposerProfileStore } from "./app-runtime/composerProfileStore";
 import { useTabOrderSync } from "./app-runtime/tabOrderSync";
-import { NoticePreviewPanel, browserMockScenarioParam, noticePreviewMockEnabled } from "./app-runtime/noticePreview";
+import { NoticePreviewPanel, noticePreviewMockEnabled } from "./app-shell/NoticePreviewPanel";
+import { browserMockScenarioParam } from "./lib/mockScenarios";
 import { useVisibleTabs } from "./app-runtime/visibleTabs";
 import { useTabNavigationOwner } from "./app-runtime/tabNavigation";
 import { useDialogSurfaceOwner } from "./app-runtime/dialogSurfaces";

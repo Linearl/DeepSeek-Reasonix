@@ -1,3 +1,8 @@
+// Notice-preview mock surface: what the ?mock=notice URL renders.
+//
+// Development-only scaffolding, and very nearly data rather than code - the
+// fixtures below are sample notices. Keeping them in App.tsx made every reader
+// scroll past sixty lines of mock text to reach the real wiring.
 import { NoticeCard } from "../components/Transcript";
 import { t } from "../lib/i18n";
 import { localizedNoticeText, type Item } from "../lib/useController";
