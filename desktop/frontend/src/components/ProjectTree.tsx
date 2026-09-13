@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
-import { Archive, ArrowDown, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput } from "lucide-react";
+import { Archive, ArchiveX, ArrowDown, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput } from "lucide-react";
 import { asArray } from "../lib/array";
 import { useToast } from "../lib/toast";
 import { app } from "../lib/bridge";
@@ -268,6 +268,9 @@ export function ProjectTree({
   const [isolatingProject, setIsolatingProject] = useState<string | null>(null);
   const [worktreeAvailability, setWorktreeAvailability] = useState<Record<string, { available: boolean; reason?: string }>>({});
   const [confirmArchiveTarget, setConfirmArchiveTarget] = useState<string | null>(null);
+  // Force-archive arms in the same two-step way as the ordinary archive (first click
+  // arms, second performs). Kept as its own target so arming one never runs the other.
+  const [confirmForceArchiveTarget, setConfirmForceArchiveTarget] = useState<string | null>(null);
   const [confirmRemoveProject, setConfirmRemoveProject] = useState<string | null>(null);
   const [dragProjectRoot, setDragProjectRoot] = useState<string | null>(null);
   const [dropProject, setDropProject] = useState<{ root: string; position: ProjectDropPosition } | null>(null);
@@ -825,11 +828,15 @@ export function ProjectTree({
     }
   };
   const trashTopicAny = (topicId: string) => remoteSessionActions.remove(topicId, () => trashTopic(topicId));
+  // Deliberately skips the active-work red flag — that is TrashTopicForce's contract —
+  // while the file move itself still goes through the removal guard (recycle semantics).
+  const trashTopicForceAny = (topicId: string) => remoteSessionActions.remove(topicId, () => app.TrashTopicForce(topicId));
   const startRenameTopic = (node: ProjectNode, label: string) => {
     setMenuNodeKey(null);
     setMenuProject(null);
     setMenuPoint(null);
     setConfirmArchiveTarget(null);
+    setConfirmForceArchiveTarget(null);
     setEditingTopic(node.topicId ?? null);
     setTopicDraft(label);
   };
@@ -1274,6 +1281,17 @@ export function ProjectTree({
           onSelect: () => {
             if (confirmArchiveTarget === archiveTargetKey) void trashTopicAny(topicId);
             else setConfirmArchiveTarget(archiveTargetKey);
+          },
+        },
+        {
+          key: "forceArchive",
+          icon: <ArchiveX size={13} />,
+          label: confirmForceArchiveTarget === archiveTargetKey ? t("history.confirmForceArchive") : t("projectTree.forceArchiveTopic"),
+          disabled: topicTrashing,
+          danger: true,
+          onSelect: () => {
+            if (confirmForceArchiveTarget === archiveTargetKey) void trashTopicForceAny(topicId);
+            else setConfirmForceArchiveTarget(archiveTargetKey);
           },
         },
       ];
