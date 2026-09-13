@@ -3662,9 +3662,12 @@ export default function App() {
   }, [enqueueNavigation]);
 
   const onResumeSession = useCallback((session: SessionMeta): Promise<void> => {
-    if (state.running && !singleSurfaceLayout) return Promise.resolve();
+    // Split view (task 70, D): with a split open, a turn running in one pane must not
+    // freeze navigation in the other — the write that turn reserved is scoped to its
+    // own tab, so moving the other pane elsewhere is safe.
+    if (state.running && !singleSurfaceLayout && !splitTabId) return Promise.resolve();
     return enqueueNavigation({ kind: "resume-session", session });
-  }, [enqueueNavigation, singleSurfaceLayout, state.running]);
+  }, [enqueueNavigation, singleSurfaceLayout, state.running, splitTabId]);
 
   const onRecoveryCreated = useCallback(() => {
     setProjectRevision((value) => value + 1);
@@ -3676,7 +3679,7 @@ export default function App() {
   }, [refreshHistoryView]);
 
   const openTaskMonitorSession = useCallback(async (tabID: string, taskID: string): Promise<boolean> => {
-    if (state.running && !singleSurfaceLayout) {
+    if (state.running && !singleSurfaceLayout && !splitTabId) {
       throw new Error(t("history.failedOpenSession"));
     }
     // Claim the navigation epoch before the first Wails await. If the user
@@ -3705,7 +3708,7 @@ export default function App() {
     }
     await enqueueNavigationWithIntent({ kind: "resume-session", session }, navigationIntentSeq);
     return isNavigationIntentCurrent(navigationIntentSeq);
-  }, [beginNavigationSurface, enqueueNavigationWithIntent, isNavigationIntentCurrent, noteNavigationIntent, settleNavigationSurface, singleSurfaceLayout, state.running, t]);
+  }, [beginNavigationSurface, enqueueNavigationWithIntent, isNavigationIntentCurrent, noteNavigationIntent, settleNavigationSurface, singleSurfaceLayout, state.running, t, splitTabId]);
 
   // Command palette: ⌘K / Ctrl+K opens a fuzzy navigator over commands and
   // recent sessions. Sessions are snapshotted on open so the list is stable
