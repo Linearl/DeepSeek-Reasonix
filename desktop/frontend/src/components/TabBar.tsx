@@ -21,6 +21,10 @@ interface TabBarProps {
   onOpenPalette?: () => void;
   commandCompact?: boolean;
   revealActiveSignal?: number;
+  /** Tab currently shown in the secondary pane, when a split is open (task 70). */
+  splitTabId?: string | null;
+  /** Toggle the split for this tab; the secondary pane holds one other tab. */
+  onToggleSplit?: (tabId: string) => void;
 }
 
 type DropSide = "before" | "after";
@@ -53,7 +57,7 @@ function projectAccentStyle(color?: string): CSSProperties | undefined {
   return { "--project-accent": value } as CSSProperties;
 }
 
-export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose, onTabsReorder, onNewTab, onOpenPalette, commandCompact = false, revealActiveSignal = 0 }: TabBarProps) {
+export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose, onTabsReorder, onNewTab, onOpenPalette, commandCompact = false, revealActiveSignal = 0, splitTabId = null, onToggleSplit }: TabBarProps) {
   const t = useT();
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; side: DropSide } | null>(null);
@@ -166,6 +170,12 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
   const menuTabIndex = menuTabId ? tabs.findIndex((tab) => tab.id === menuTabId) : -1;
   const tabMenuItems: ContextMenuItem[] = menuTabId && menuTabIndex >= 0
     ? [
+        {
+          key: "split-view",
+          label: splitTabId && splitTabId === menuTabId ? t("tabBar.closeSplitView") : t("tabBar.splitView"),
+          disabled: tabs.length <= 1,
+          onSelect: () => onToggleSplit?.(menuTabId),
+        },
         {
           key: "close-current",
           label: t("tabBar.closeTab"),

@@ -2838,6 +2838,8 @@ export const zhTW: Record<DictKey, string> = {
   "tabBar.closeTab": "關閉標籤頁",
   "tabBar.closeOtherTabs": "關閉其他標籤頁",
   "tabBar.closeTabsToRight": "關閉右側標籤頁",
+  "tabBar.splitView": "分欄顯示",
+  "tabBar.closeSplitView": "關閉分欄",
   "tabBar.newSession": "新建會話",
   "tabBar.tabActions": "標籤頁操作",
   "tabBar.commandSearch": "搜尋 · 命令 · 開啟檔案",

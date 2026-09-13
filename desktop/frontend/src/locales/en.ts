@@ -56,6 +56,8 @@ export const en = {
   "tabBar.closeTab": "Close tab",
   "tabBar.closeOtherTabs": "Close other tabs",
   "tabBar.closeTabsToRight": "Close tabs to right",
+  "tabBar.splitView": "Split view",
+  "tabBar.closeSplitView": "Close split view",
   "tabBar.newSession": "New session",
   "tabBar.tabActions": "Tab actions",
   "tabBar.commandSearch": "Search · Command · Open file",

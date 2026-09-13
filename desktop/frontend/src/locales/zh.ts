@@ -57,6 +57,8 @@ export const zh: Record<DictKey, string> = {
   "tabBar.closeTab": "关闭标签页",
   "tabBar.closeOtherTabs": "关闭其他标签页",
   "tabBar.closeTabsToRight": "关闭右侧标签页",
+  "tabBar.splitView": "分栏显示",
+  "tabBar.closeSplitView": "关闭分栏",
   "tabBar.newSession": "新建会话",
   "tabBar.tabActions": "标签页操作",
   "tabBar.commandSearch": "搜索 · 命令 · 打开文件",
