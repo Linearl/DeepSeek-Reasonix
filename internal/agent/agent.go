@@ -1104,6 +1104,12 @@ type Options struct {
 	// instead (task 56). Interactive runs leave this false and keep every pause.
 	Autopilot bool
 
+	// TraceAsState enables the Trace-as-State compaction experiment (task 60):
+	// the summary sees the assistant's reasoning, a stall on a short context routes
+	// to re-reading instead of a fold, and self-directed folds carry guards. Off by
+	// default — every path it touches behaves exactly as before when it is off.
+	TraceAsState bool
+
 	// Extensions is the frozen extension dispatcher for this agent's controller
 	// generation (Extension Protocol v2). Nil means no runtime packages are
 	// installed; the run loop then passes every intercept point through
@@ -1194,6 +1200,7 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 			subagentDepth:           subagentDepth,
 			maxSubagentDepth:        maxSubagentDepth,
 			autopilot:               opts.Autopilot,
+			traceAsState:            opts.TraceAsState,
 			contextWindow:           opts.ContextWindow,
 			compactRatio:            opts.CompactRatio,
 			recentKeep:              opts.RecentKeep,

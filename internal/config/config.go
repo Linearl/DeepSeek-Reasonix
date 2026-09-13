@@ -1286,6 +1286,11 @@ type AgentConfig struct {
 	MaxSteps        int     `toml:"max_steps"`
 	PlannerMaxSteps int     `toml:"planner_max_steps"`
 	Temperature     float64 `toml:"temperature"`
+	// TraceAsState opts into the Trace-as-State compaction experiment (task 60):
+	// compaction summaries see the assistant's reasoning, a stalled run on a short
+	// context is routed to re-reading, and model-driven folds carry guards. Off by
+	// default — with it off every path behaves exactly as before.
+	TraceAsState bool `toml:"trace_as_state"`
 	PlannerModel    string  `toml:"planner_model"`
 	WebSearchModel  string  `toml:"web_search_model"` // empty or auto preserves automatic search selection
 	// VisionModel is empty (off), "auto", or a canonical provider/model ref

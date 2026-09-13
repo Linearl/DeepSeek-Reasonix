@@ -1720,6 +1720,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		MaxSteps:        maxSteps,
 		MaxStepsKey:     opts.MaxStepsKey,
 		Temperature:     cfg.Agent.Temperature,
+		TraceAsState:    cfg.Agent.TraceAsState,
 		TaskBudget:      taskBudgetFromConfig(cfg),
 		Pricing:         entry.Price,
 		QuoteContext:    quoteCtx,
