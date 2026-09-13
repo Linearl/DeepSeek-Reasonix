@@ -224,6 +224,12 @@ import { composerDraftKeyForTab } from "./lib/composerDraftKey";
 import { continueDelivery } from "./lib/deliveryContinue";
 import { activateGoalAndSubmitOnTab } from "./lib/goalSubmit";
 import logoWordmark from "./assets/logo-wordmark.svg";
+import { isChannelSession, taskSessionIDFromPath } from "./app-runtime/sidebarImProjection";
+import { WorkspaceInsertTarget } from "./app-runtime/useComposerInsertCommands";
+import { DesktopPlatform, isMacOSWorkbenchSidebarTitlebar, normalizeDesktopPlatform } from "./lib/desktopPlatform";
+import { isGuidanceMockScenario } from "./lib/mockScenarios";
+import { safeFilename, tabWorkspaceTitle, topicDisplayTitle, topicTitle } from "./lib/sessionTitles";
+import { loadDismissedTodoKeys, saveDismissedTodoKeys } from "./lib/todoDismissalStorage";
 // Hold reasoning UI until the authoritative desktop startup settings arrive;
 // this prevents a hidden preference from flashing content during first paint.
 setReasoningDisplayPending();
@@ -287,19 +293,6 @@ if (cachedAppearance) {
     cachedTheme,
     normalizeThemeStyleForTheme(cachedAppearance.themeStyle, cachedTheme),
   );
-}
-const DISMISSED_TODO_STORAGE_KEY = "todoPanel:dismissedKeys";
-const MAX_DISMISSED_TODO_KEYS = 160;
-type WorkspaceInsertTarget = "composer" | "planRevision";
-type DesktopPlatform = "darwin" | "windows" | "linux";
-const MACOS_WORKBENCH_TITLEBAR_HEIGHT = 46;
-
-function isMacOSWorkbenchSidebarTitlebar(target: HTMLElement | null, clientY: number, platform: DesktopPlatform): boolean {
-  if (platform !== "darwin") return false;
-  const sidebar = target?.closest(".sidebar--workbench");
-  if (!(sidebar instanceof HTMLElement)) return false;
-  const offsetY = clientY - sidebar.getBoundingClientRect().top;
-  return offsetY >= 0 && offsetY < MACOS_WORKBENCH_TITLEBAR_HEIGHT;
 }
 
 function useWindowsMaximised(enabled: boolean): readonly [boolean, () => void] {
@@ -400,42 +393,6 @@ type SidebarImConnectionDetailProps = {
   onManageAllowlist: () => void;
 };
 
-function loadDismissedTodoKeys(): Set<string> {
-  try {
-    const saved = window.localStorage.getItem(DISMISSED_TODO_STORAGE_KEY);
-    if (!saved) return new Set();
-    const parsed = JSON.parse(saved) as unknown;
-    if (!Array.isArray(parsed)) return new Set();
-    return new Set(parsed.filter((value): value is string => typeof value === "string" && value.length > 0));
-  } catch {
-    return new Set();
-  }
-}
-
-function saveDismissedTodoKeys(keys: ReadonlySet<string>): void {
-  try {
-    window.localStorage.setItem(
-      DISMISSED_TODO_STORAGE_KEY,
-      JSON.stringify(Array.from(keys).slice(-MAX_DISMISSED_TODO_KEYS)),
-    );
-  } catch {
-    /* ignore quota errors */
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 async function loadBotRuntimeStatus(): Promise<BotRuntimeStatusView | null> {
   if (typeof window !== "undefined" && !window.runtime) return null;
   try {
@@ -445,23 +402,6 @@ async function loadBotRuntimeStatus(): Promise<BotRuntimeStatusView | null> {
     return null;
   }
 }
-
-
-
-
-function taskSessionIDFromPath(path: string): string {
-  const base = path.replace(/\\/g, "/").split("/").pop() || "";
-  const extension = base.lastIndexOf(".");
-  return extension > 0 ? base.slice(0, extension) : base;
-}
-
-
-function isChannelSession(session: SessionMeta): boolean {
-  return session.kind === "channel" || session.sessionSource === "auto";
-}
-
-
-
 
 
 
@@ -571,11 +511,6 @@ function SidebarImConnectionDetail({ connection, onClose, onOpenSession, onOpenS
   );
 }
 
-function normalizeDesktopPlatform(value: string): DesktopPlatform {
-  if (value === "darwin" || value === "windows") return value;
-  return "linux";
-}
-
 function browserPlatformOverride(): DesktopPlatform | null {
   if (typeof window === "undefined" || window.runtime) return null;
   const value = new URLSearchParams(window.location.search).get("platform");
@@ -590,29 +525,6 @@ const GUIDANCE_QUEUE_MOCK_ITEMS = [
 ] as const;
 
 
-function isGuidanceMockScenario(value: string): boolean {
-  return value === "guidance" || value === "guide" || value === "steer";
-}
-
-function tabWorkspaceTitle(tab?: TabMeta): string {
-  if (!tab) return "Global";
-  if (tab.scope === "project") return tab.workspaceName || tab.workspaceRoot || "Project";
-  if (tab.scope === "global") return tab.workspaceName || "Global";
-  return tab.workspaceName || tab.workspaceRoot || "Global";
-}
-
-function topicTitle(tab?: TabMeta): string {
-  if (!tab) return "Global";
-  const workspaceTitle = tabWorkspaceTitle(tab);
-  const topic = tab.topicTitle || (tab.scope === "global" ? workspaceTitle : "Untitled");
-  return topic === workspaceTitle ? workspaceTitle : `${workspaceTitle} / ${topic}`;
-}
-
-function topicDisplayTitle(tab?: TabMeta): string {
-  if (!tab) return "Global";
-  return tab.topicTitle || (tab.scope === "global" ? tabWorkspaceTitle(tab) : "Untitled");
-}
-
 function isMissingSessionError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err ?? "");
   return /no such file|cannot find the file|file does not exist|session is pending cleanup|session .*not found/i.test(message);
@@ -622,11 +534,6 @@ function workspaceDisplayName(path?: string): string {
   if (!path) return "";
   const parts = path.split(/[/\\]/).filter(Boolean);
   return parts.length > 0 ? parts[parts.length - 1] : path;
-}
-
-function safeFilename(name: string): string {
-  const cleaned = name.trim().replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").slice(0, 80);
-  return cleaned || "reasonix-session";
 }
 
 /** Global hotkey handler for shell-expand toggle (Ctrl/Cmd+B). */
