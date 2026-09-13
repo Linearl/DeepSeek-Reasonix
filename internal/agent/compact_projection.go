@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"reasonix/internal/event"
 	"reasonix/internal/provider"
@@ -22,6 +23,32 @@ var errCompressStaleContext = errors.New("compress: conversation changed while c
 // CompressContext implements the context-bound compress tool. It resolves the
 // anchor against the current model-visible view and installs a projection only;
 // the canonical transcript and checkpoint lineage remain untouched.
+// explicitCompressFloorRatio is how full the context must be before a
+// model-driven fold is allowed (task 60, point 2). A fold only pays for itself
+// once re-reading the history costs more than the detail it discards, so the
+// floor tracks the hard threshold instead of being a fixed size: at the default
+// ratio this is half the compaction threshold.
+const explicitCompressFloorRatio = 0.5
+
+// minExplicitFoldInterval is the minimum gap between two model-driven folds.
+// The hard-threshold path is deliberately not rate-limited: it exists to keep a
+// session inside its window, so it must always be able to fire.
+// var, not const: tests that exercise consecutive folds collapse the window.
+var minExplicitFoldInterval = 10 * time.Minute
+
+// visibleContextTokens estimates what the visible transcript costs in prompt
+// tokens, using the same calibration the compaction path uses.
+func (a *Agent) visibleContextTokens(snap explicitCompressionSnapshot) int {
+	chars := charsOfMessages(snap.visible)
+	if chars <= 0 {
+		return 0
+	}
+	if perChar := a.tokPerChar(); perChar > 0 {
+		return int(float64(chars) / perChar)
+	}
+	return chars
+}
+
 func (a *Agent) CompressContext(ctx context.Context, req tool.CompressRequest) (tool.CompressResult, error) {
 	direction := strings.TrimSpace(req.Direction)
 	anchor := strings.TrimSpace(req.Anchor)
@@ -39,7 +66,32 @@ func (a *Agent) CompressContext(ctx context.Context, req tool.CompressRequest) (
 		return tool.CompressResult{}, fmt.Errorf("compress: focus exceeds %d bytes", maxCompressFocusBytes)
 	}
 
+	// A fold rewrites the prompt prefix, so it costs the cache for every later
+	// turn: hold model-driven folds to one per interval (task 60, point 2).
+	if last := a.lastExplicitFoldAt.Load(); last != 0 {
+		if elapsed := time.Since(time.Unix(0, last)); elapsed < minExplicitFoldInterval {
+			wait := (minExplicitFoldInterval - elapsed).Round(time.Second)
+			return tool.CompressResult{
+				Status: "rejected",
+				Reason: fmt.Sprintf("a fold already ran %s ago; folding again within %s would keep invalidating the prompt cache, try again in about %s", elapsed.Round(time.Second), minExplicitFoldInterval, wait),
+			}, nil
+		}
+	}
+
 	snap := a.snapshotExplicitCompression()
+
+	// Guard: refuse a fold on a short context. Re-reading a short history is
+	// cheaper than losing its detail, and this is the failure mode a model
+	// reaching for the tool on its own will hit (task 60, point 2).
+	if threshold := a.compactTrigger(); threshold > 0 {
+		if used := a.visibleContextTokens(snap); used > 0 && used < int(float64(threshold)*explicitCompressFloorRatio) {
+			return tool.CompressResult{
+				Status: "rejected",
+				Reason: fmt.Sprintf("context is about %d tokens, below the %d-token floor for folding; read the material directly instead of compressing", used, int(float64(threshold)*explicitCompressFloorRatio)),
+			}, nil
+		}
+	}
+
 	matches := make([]int, 0, 2)
 	for i, msg := range snap.visible {
 		if !compressAnchorCandidate(msg) {
@@ -56,7 +108,11 @@ func (a *Agent) CompressContext(ctx context.Context, req tool.CompressRequest) (
 		return tool.CompressResult{}, fmt.Errorf("compress: anchor matched %d user messages; retry with a longer unique excerpt", len(matches))
 	}
 
-	return a.compressVisibleRange(ctx, snap, CompactionTriggerTool, direction, matches[0], anchorPreview(UserMessageText(snap.visible[matches[0]])), focus)
+	result, err := a.compressVisibleRange(ctx, snap, CompactionTriggerTool, direction, matches[0], anchorPreview(UserMessageText(snap.visible[matches[0]])), focus)
+	if err == nil && result.Status != "rejected" {
+		a.lastExplicitFoldAt.Store(time.Now().UnixNano())
+	}
+	return result, err
 }
 
 type explicitCompressionSnapshot struct {

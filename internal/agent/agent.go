@@ -363,6 +363,11 @@ type Agent struct {
 	// unwrittenResolve is the resolve watermark a failed state write still owes.
 	// It outlives the conversation, which is why it is not in sessionRuntime.
 	unwrittenResolve unwrittenResolve
+	// lastExplicitFoldAt is when the model last folded the context on its own. A
+	// fold rewrites the prompt prefix, so it invalidates the cache for every later
+	// turn; the interval keeps a model from folding its way through a session
+	// (task 60, point 2). Zero means it has not folded yet.
+	lastExplicitFoldAt atomic.Int64
 
 	// planMode enables planning workflow instructions and explicit phase opt-outs.
 	// It does not replace the permission or sandbox boundary. The system prompt and

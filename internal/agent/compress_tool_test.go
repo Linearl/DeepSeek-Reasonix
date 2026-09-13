@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"reasonix/internal/event"
 	"reasonix/internal/provider"
@@ -149,6 +150,10 @@ func TestCompressContextAnchorErrorsDoNotChangeState(t *testing.T) {
 }
 
 func TestCompressContextConsecutiveCallsMergeSummary(t *testing.T) {
+	// A model-driven fold is rate-limited by wall clock; this test exercises
+	// consecutive folds, so it collapses the window.
+	defer func(prev time.Duration) { minExplicitFoldInterval = prev }(minExplicitFoldInterval)
+	minExplicitFoldInterval = 0
 	sess := &Session{Messages: []provider.Message{
 		{Role: provider.RoleSystem, Content: "sys"},
 		{Role: provider.RoleUser, Content: "turn alpha"},

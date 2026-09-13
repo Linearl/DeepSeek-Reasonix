@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"reasonix/internal/event"
 	"reasonix/internal/extension"
@@ -323,6 +324,10 @@ func TestProjectionV4RejectsPinnedRevisionProvenanceTampering(t *testing.T) {
 }
 
 func TestPinnedContextExplicitCompactionCheckpointsWithoutSummarizingBodies(t *testing.T) {
+	// A model-driven fold is rate-limited by wall clock; this test exercises
+	// consecutive folds, so it collapses the window.
+	defer func(prev time.Duration) { minExplicitFoldInterval = prev }(minExplicitFoldInterval)
+	minExplicitFoldInterval = 0
 	empty := emptyPinnedContextState()
 	stateA := pinnedTestState(t, PinnedContextSnapshot{Files: []PinnedContextFile{{Path: "a.md", Content: "PINNED_SECRET_A"}}})
 	stateB := pinnedTestState(t, PinnedContextSnapshot{Files: []PinnedContextFile{{Path: "a.md", Content: "PINNED_SECRET_B"}}})
