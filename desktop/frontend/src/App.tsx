@@ -190,6 +190,7 @@ import {
 } from "./store/layout";
 import { useOverlayStore } from "./store/overlays";
 import { setDesktopPlatform, setMainWindowMaximised, useWindowChromeStore } from "./store/windowChrome";
+import { bumpDockRefresh, bumpFileRefRefresh, bumpProjectRevision, useRefreshSignalsStore } from "./store/refreshSignals";
 import { hydrateDisplayMode } from "./lib/displayMode";
 import { recordFrontendDiagnostic } from "./lib/frontendDiagnosticBridge";
 import { DEFAULT_STATUS_BAR_ITEMS, normalizeStatusBarItems, type StatusBarItemId } from "./lib/statusBarItems";
@@ -843,7 +844,7 @@ export default function App() {
         status: e.err ? "error" : "ok",
       });
       if (e.kind === "turn_done" || e.kind === "compaction_done") {
-        setDockRefreshKey((v) => v + 1);
+        bumpDockRefresh();
       }
       if (shouldPlayAttentionChimeForEvent(e, attentionChimeEvents.current)) {
         playAttentionChime();
@@ -965,11 +966,13 @@ export default function App() {
   const { mounted: terminalContentVisible, fitEnabled: terminalFitEnabled, prefetch: prefetchTerminalPanel } = useWarmTerminalPanel(terminalPanelOpen, terminalResizing, !managementActive);
   const terminalHeight = useLayoutStore((s) => s.terminalHeight);
   const setTerminalHeight = useLayoutStore((s) => s.setTerminalHeight);
-  const [dockRefreshKey, setDockRefreshKey] = useState(0);
-  const [fileRefRefreshKey, setFileRefRefreshKey] = useState(0);
-  const refreshComposerFileRefs = useCallback(() => setFileRefRefreshKey((value) => value + 1), []);
+  // Invalidation counters live in a store so any region can bump them without a
+  // callback chain through the tree (task 38).
+  const dockRefreshKey = useRefreshSignalsStore((s) => s.dockRefreshKey);
+  const fileRefRefreshKey = useRefreshSignalsStore((s) => s.fileRefRefreshKey);
+  const refreshComposerFileRefs = useCallback(() => bumpFileRefRefresh(), []);
   const composerFileRefRefreshKey = `${dockRefreshKey}:${fileRefRefreshKey}`;
-  const [projectRevision, setProjectRevision] = useState(0);
+  const projectRevision = useRefreshSignalsStore((s) => s.projectRevision);
   const [activeTopicTurns, setActiveTopicTurns] = useState<number | undefined>(undefined);
   const [composerInsertRequestsByTab, setComposerInsertRequestsByTab] = useState<Record<string, ComposerInsertRequest>>({});
   const [selectedTextRequestsByTab, setSelectedTextRequestsByTab] = useState<Record<string, SelectedTextInsertRequest>>({});
@@ -1942,7 +1945,7 @@ export default function App() {
     setClearContextPending(false);
     try {
       await clearSession();
-      setDockRefreshKey((v) => v + 1);
+      bumpDockRefresh();
       notice(t("clearContext.done"));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -2202,7 +2205,7 @@ export default function App() {
       if (e.kind !== "turn_done") return;
       const turnTabId = resolvePlanRestoreTabId(e.tabId, activeTabIdRef.current);
       window.setTimeout(() => {
-        setProjectRevision((value) => value + 1);
+        bumpProjectRevision();
         refreshTabMetas(undefined, { afterMutation: true }).then((tabs) => {
           if (!turnTabId) return;
           const tab = tabs.find((item) => item.id === turnTabId);
@@ -3146,8 +3149,8 @@ export default function App() {
       filesRestored: outcome.written ?? [],
       filesRemoved: outcome.deleted ?? [],
     });
-    setDockRefreshKey((value) => value + 1);
-    setProjectRevision((value) => value + 1);
+    bumpDockRefresh();
+    bumpProjectRevision();
   }, [setRewindStateForTab]);
 
   const hydratePlaceholderActive = Boolean(
@@ -3301,7 +3304,7 @@ export default function App() {
       rewindForTab(sourceTabId, turn, scope).then((ok) => {
         if (!ok) return;
         void refreshTabMetas(undefined, { afterMutation: true });
-        setProjectRevision((v) => v + 1);
+        bumpProjectRevision();
       });
       return;
     }
@@ -3320,8 +3323,8 @@ export default function App() {
           filesRestored: outcome.written ?? [],
           filesRemoved: outcome.deleted ?? [],
         });
-        setDockRefreshKey((v) => v + 1);
-        setProjectRevision((v) => v + 1);
+        bumpDockRefresh();
+        bumpProjectRevision();
       });
       return;
     }
@@ -3331,8 +3334,8 @@ export default function App() {
     if (scope === "summ-from" || scope === "summ-upto") {
       rewindForTab(sourceTabId, turn, scope).then((ok) => {
         if (!ok) return;
-        setDockRefreshKey((v) => v + 1);
-        setProjectRevision((v) => v + 1);
+        bumpDockRefresh();
+        bumpProjectRevision();
       });
       return;
     }
@@ -3358,8 +3361,8 @@ export default function App() {
       rewindForTab(sourceTabId, turn, scope).then((ok) => {
         if (!ok) return;
         if (scope === "both") {
-          setDockRefreshKey((v) => v + 1);
-          setProjectRevision((v) => v + 1);
+          bumpDockRefresh();
+          bumpProjectRevision();
         }
       });
       return;
@@ -3394,8 +3397,8 @@ export default function App() {
       }));
       setRewindSignal((v) => v + 1);
       if (scope === "both" || scope === "code") {
-        setDockRefreshKey((v) => v + 1);
-        setProjectRevision((v) => v + 1);
+        bumpDockRefresh();
+        bumpProjectRevision();
       }
     });
   }, [activeTab?.readOnly, activeTabId, hydratePlaceholderActive, state.items, rewindForTab, rewindForTabDetailed, refreshTabMetas, setRewindStateForTab, setRewindCommittingForTab]);
@@ -3502,7 +3505,7 @@ export default function App() {
         const openedTab = await openBlankTarget(request.scope, request.workspaceRoot);
         if (!latest()) return;
         seedActiveTabMeta(openedTab);
-        setProjectRevision((value) => value + 1);
+        bumpProjectRevision();
         await refreshLatestTabMetas();
         if (!latest()) return;
         setTabRevealSignal((signal) => signal + 1);
@@ -3514,7 +3517,7 @@ export default function App() {
         const result = await createIsolatedWorktree(request.workspaceRoot, request.navigationIntentSeq);
         if (!latest()) return;
         seedActiveTabMeta(result.tab);
-        setProjectRevision((value) => value + 1);
+        bumpProjectRevision();
         await refreshLatestTabMetas();
         if (!latest()) return;
         showToast(
@@ -3554,7 +3557,7 @@ export default function App() {
         if (!latest()) return;
         setTabRevealSignal((value) => value + 1);
         setTranscriptRevealSignal((value) => value + 1);
-        setProjectRevision((value) => value + 1);
+        bumpProjectRevision();
         return;
       }
 
@@ -3678,11 +3681,11 @@ export default function App() {
   }, [enqueueNavigation, singleSurfaceLayout, state.running, splitTabId]);
 
   const onRecoveryCreated = useCallback(() => {
-    setProjectRevision((value) => value + 1);
+    bumpProjectRevision();
     void refreshTabMetas(undefined, { afterMutation: true });
   }, [refreshTabMetas]);
   const onRecoveryLineageChanged = useCallback(() => {
-    setProjectRevision((value) => value + 1);
+    bumpProjectRevision();
     void refreshHistoryView();
   }, [refreshHistoryView]);
 
@@ -3933,7 +3936,7 @@ export default function App() {
         : await switchWorkspace(path, navigationIntentSeq);
       if (!isNavigationIntentCurrent(navigationIntentSeq)) return picked;
       if (picked) {
-        setProjectRevision((value) => value + 1);
+        bumpProjectRevision();
         await refreshTabMetas(
           () => isNavigationIntentCurrent(navigationIntentSeq),
           { afterMutation: true },
@@ -3946,7 +3949,7 @@ export default function App() {
   }, [enterConversation, beginNavigationSurface, isNavigationIntentCurrent, noteNavigationIntent, pickWorkspace, refreshTabMetas, settleNavigationSurface, switchWorkspace]);
 
   const refreshProjectsAndTabs = useCallback(async () => {
-    setProjectRevision((value) => value + 1);
+    bumpProjectRevision();
     const tabs = await refreshTabMetas(undefined, { afterMutation: true });
     if (activeTabId && !tabs.some((tab) => tab.id === activeTabId)) {
       await syncActiveTab(false);
@@ -4773,8 +4776,8 @@ export default function App() {
                         [tabId]: { id: Date.now(), text: "", mode: "replace" },
                       }));
                       setRewindSignal((v) => v + 1);
-                      setDockRefreshKey((v) => v + 1);
-                      setProjectRevision((v) => v + 1);
+                      bumpDockRefresh();
+                      bumpProjectRevision();
                     });
                   },
                 }}
