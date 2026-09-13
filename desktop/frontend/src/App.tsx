@@ -733,6 +733,13 @@ export default function App() {
   const yoloRestoreToolApprovalModesRef = useRef<Record<string, RestorableToolApprovalMode>>({});
   const userPlanModeByTabRef = useRef<UserPlanModeIntents>({});
   const [tabMetas, setTabMetas] = useState<TabMeta[]>([]);
+  // Split view (task 70). Closed by default: while secondaryTabId is null the layout
+  // renders exactly one transcript, byte-for-byte as before.
+  const [splitState, setSplitState] = useState<SplitState>(loadSplitState);
+  const splitTabId = splitState.secondaryTabId;
+  // Which pane the composer targets while a split is open (task 70, B). It defaults
+  // to the primary pane, matching focusedPane's default.
+  const [splitTarget, setSplitTarget] = useState<"primary" | "secondary" | "both">("primary");
   type PreservedTranscriptSurface = {
     tabId?: string;
     items: Item[];
@@ -1044,14 +1051,23 @@ export default function App() {
   }, [refreshBackgroundRuntimes]);
 
   useEffect(() => {
-    if (!activeTabId || !state.running) {
+    // Split view (task 70, D): a running pane now means either pane. Inspecting only
+    // the active tab would leave a write conflict opened by the secondary pane
+    // unwatched, which is precisely the case the split exists to create.
+    const activeRunning = activeTabId && state.running ? activeTabId : undefined;
+    const secondaryTabId = splitState.secondaryTabId;
+    const secondaryRunning = secondaryTabId && tabMetas.some((tab) => tab.id === secondaryTabId && tab.running)
+      ? secondaryTabId
+      : undefined;
+    const inspectedTabId = activeRunning ?? secondaryRunning;
+    if (!inspectedTabId) {
       setWorkspaceConflict(null);
       return;
     }
     let disposed = false;
     const inspect = async () => {
       try {
-        const conflict = await app.WorkspaceConflictForTab(activeTabId);
+        const conflict = await app.WorkspaceConflictForTab(inspectedTabId);
         if (!disposed) setWorkspaceConflict(conflict.state === "none" ? null : conflict);
       } catch {
         if (!disposed) setWorkspaceConflict(null);
@@ -1063,7 +1079,7 @@ export default function App() {
       disposed = true;
       window.clearInterval(timer);
     };
-  }, [activeTabId, state.running]);
+  }, [activeTabId, state.running, splitState.secondaryTabId, tabMetas]);
 
   const closeTransientOverlays = useCallback(() => {
     setTransientOverlayDismissSignal((signal) => signal + 1);
@@ -3177,13 +3193,6 @@ export default function App() {
   const visibleTranscriptSurface = runtimeTransitioning && preservedTranscriptSurface
     ? preservedTranscriptSurface
     : null;
-  // Split view (task 70). Closed by default: while secondaryTabId is null the layout
-  // renders exactly one transcript, byte-for-byte as before.
-  const [splitState, setSplitState] = useState<SplitState>(loadSplitState);
-  const splitTabId = splitState.secondaryTabId;
-  // Which pane the composer targets while a split is open (task 70, B). It defaults
-  // to the primary pane, matching focusedPane's default.
-  const [splitTarget, setSplitTarget] = useState<"primary" | "secondary" | "both">("primary");
   // The secondary pane holds one other tab; toggling the tab already in it closes the
   // split. Focus is deliberately left alone — the two concerns are separate.
   const toggleSplitForTab = useCallback((tabId: string) => {
