@@ -120,22 +120,25 @@ console.log("\nlogical transcript selection store");
 {
   const cache = new TranscriptMarkdownCache(16);
   const store = new TranscriptSelectionStore();
-  const rows = ["a", "b", "c", "d"].map((rowKey) => row(
+  // Distinct revisions per row: the cache keys on the content fingerprint alone
+  // (a row id moves between live, history and hydration), so four rows sharing a
+  // single revision legitimately share one entry.
+  const rows = ["a", "b", "c", "d"].map((rowKey, index) => row(
     rowKey,
     rowKey,
-    1,
-    () => cache.pin(rowKey, 1),
+    index + 1,
+    () => cache.pin(rowKey, index + 1),
   ));
-  const value = (source: string): ParsedMarkdownValue => ({
+  const value = (source: string, revision = 1): ParsedMarkdownValue => ({
     source,
     blocks: [],
     selectionText: source,
-    selectionRevision: 1,
+    selectionRevision: revision,
     bytes: 8,
   });
   store.beginNative("tab-budget");
   store.promoteToLogical("tab-budget", point("b", 0), point("c", 1), rows);
-  for (const entry of rows) cache.set(entry.rowKey, 1, value(entry.sourceText));
+  for (const [index, entry] of rows.entries()) cache.set(entry.rowKey, index + 1, value(entry.sourceText, index + 1));
   eq(cache.bytes, 32, "dragging may temporarily pin every prospective selection row");
   store.settleLogical();
   eq(cache.bytes, 16, "settling releases unselected projections back to the cache budget");
