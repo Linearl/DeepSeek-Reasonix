@@ -103,6 +103,7 @@ Use `go test ./path/to/target/` to detect cycles **before** pushing. A `[setup f
 - **Keep the PR diff minimal.** Only the files relevant to the PR's purpose — no stray changes from other branches.
 - **Amend, don't add commits, for review feedback** — keeps the commit history clean.
 - **Add files by explicit path.** `git add <file1> <file2>` (or `git add -u` for tracked files only). Never `git add -A` / `git add .` — those stage other branches' or sessions' uncommitted work. Always run `git status --short` before committing and confirm the staged set matches what this PR is about.
+- **Fork-only feature lands → register its anchor the same session.** Every feature/perf change that diverges from upstream gets a row in `scripts/check-fork-integrity.mjs` `CHECKS` in the same commit that lands it (see `docs/upstream-merge-checklist.md` §1.1). Anchors are semantic strings (assignment/call shape like `skipHistory: hasLocalItems`), not comments or bare symbol names — `33b6c32ec` was silently reverted by the 1.38.3 merge for a month because its function survived while its logic did not.
 
 ## Git discipline for parallel agents
 
