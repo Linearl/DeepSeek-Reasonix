@@ -1,6 +1,6 @@
 import { asArray } from "../lib/array";
 import type { Translator } from "../lib/i18n";
-import type { BotConnectionView, BotRuntimeStatusView, BotSettingsView, SessionMeta } from "../lib/types";
+import type { BotConnectionView, BotRuntimeStatusView, BotSettingsView, DesktopStartupSettingsView, SessionMeta, SettingsView } from "../lib/types";
 
 export type SidebarImPlatform = "qq" | "feishu" | "lark" | "weixin";
 type SidebarImStatus = "connected" | "disabled" | "pending" | "error" | "disconnected";
@@ -277,4 +277,70 @@ export function sidebarImTopicSourcesFromBot(bot: BotSettingsView | null | undef
 export function sidebarImScopeLabel(connection: SidebarImConnection, translate: Translator): string {
   if (connection.scope === "project") return translate("botDetail.scopeProject", { name: connection.workspaceRoot || "Project" });
   return translate("botDetail.scopeGlobal");
+}
+import { app } from "../lib/bridge";
+import { loadBotRuntimeStatus } from "./botRuntimeAdapter";
+import { useCallback, useState } from "react";
+
+// --- fork additions (moved out of App.tsx by task 38 batches B1a/B1b) ---
+
+
+export function sidebarImSessionLabel(connection: SidebarImConnection, translate: Translator): string {
+  const target = sidebarImSessionTarget(connection);
+  if (!target) {
+    return connection.remoteId ? translate("botDetail.readOnlyChannel") : translate("botDetail.noSession");
+  }
+  if (connection.sessionSource === "auto") return translate("botDetail.readOnlyChannel");
+  if (target.kind === "path") return target.value.split(/[\\/]/).pop() || target.value;
+  return target.value;
+}
+
+export function sidebarImAccessModeLabel(connection: SidebarImConnection, translate: Translator): string {
+  if (connection.allowAll) return translate("botDetail.accessAllowAll");
+  if (connection.allowlistEnabled) return translate("botDetail.accessWhitelist");
+  return translate("botDetail.accessDisabled");
+}
+
+export function sidebarImAccessStatusLabel(connection: SidebarImConnection, translate: Translator): string {
+  if (connection.allowAll) return translate("botDetail.accessOpen");
+  if (!connection.remoteId) return translate("botDetail.accessUnknown");
+  return connection.allowlistMatched ? translate("botDetail.accessMatched") : translate("botDetail.accessMissing");
+}
+
+export function sidebarImAccessStatusClass(connection: SidebarImConnection): string {
+  if (connection.allowAll || connection.allowlistMatched) return "ok";
+  if (!connection.remoteId) return "muted";
+  return "warn";
+}
+
+/**
+ * useSidebarImOwner owns the sidebar IM projection state (task 38 batch B1b).
+ * The two loaders differ only in where the bot settings come from - a fresh
+ * startup read versus a settings object the caller already has.
+ */
+export function useSidebarImOwner(t: Translator) {
+  const nativeRuntime = typeof window === "undefined" || Boolean(window.runtime);
+  const [connections, setConnections] = useState<SidebarImConnection[]>([]);
+  const [topicSources, setTopicSources] = useState<Record<string, SidebarImTopicSource>>({});
+  const [detailConnectionId, setDetailConnectionId] = useState("");
+
+  const reload = useCallback(async () => {
+    const [settings, runtimeStatus] = await Promise.all([
+      app.DesktopStartupSettings(),
+      loadBotRuntimeStatus(),
+    ]);
+    setConnections(sidebarImConnectionsFromBot(settings.bot, t, runtimeStatus, nativeRuntime));
+    setTopicSources(sidebarImTopicSourcesFromBot(settings.bot, t));
+  }, [t]);
+
+  const refreshFromSettings = useCallback(
+    async (settings: Pick<SettingsView | DesktopStartupSettingsView, "bot">) => {
+      const runtimeStatus = await loadBotRuntimeStatus();
+      setConnections(sidebarImConnectionsFromBot(settings.bot, t, runtimeStatus, nativeRuntime));
+      setTopicSources(sidebarImTopicSourcesFromBot(settings.bot, t));
+    },
+    [t],
+  );
+
+  return { connections, setConnections, topicSources, setTopicSources, detailConnectionId, setDetailConnectionId, reload, refreshFromSettings };
 }

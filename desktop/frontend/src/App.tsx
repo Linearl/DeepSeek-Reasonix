@@ -122,7 +122,7 @@ import { useTabNavigationOwner } from "./app-runtime/tabNavigation";
 import { useDialogSurfaceOwner } from "./app-runtime/dialogSurfaces";
 import { useTranscriptRevealOwner } from "./app-runtime/transcriptReveal";
 import { useViewportMetricsOwner } from "./app-runtime/viewportMetrics";
-import { useSidebarImOwner, sidebarImAccessModeLabel, sidebarImAccessStatusClass, sidebarImAccessStatusLabel, sidebarImConnectionsFromBot, sidebarImScopeLabel, sidebarImSessionLabel, sidebarImSessionTarget, sidebarImTopicSourcesFromBot, type SidebarImConnection } from "./app-runtime/sidebarIm";
+import { useSidebarImOwner, sidebarImAccessModeLabel, sidebarImAccessStatusClass, sidebarImAccessStatusLabel, sidebarImConnectionsFromBot, sidebarImScopeLabel, sidebarImSessionLabel, sidebarImSessionTarget, sidebarImTopicSourcesFromBot, type SidebarImConnection } from "./app-runtime/sidebarImProjection";
 import { loadCachedAppearance, loadCachedLayoutStyle, saveCachedAppearance, saveCachedLayoutStyle } from "./lib/layoutPreferences";
 import { runWorktreeMergeLifecycle } from "./lib/worktreeMergeLifecycle";
 import { showWorktreeCleanupNotice } from "./lib/worktreeCleanupNotice";
@@ -1118,7 +1118,7 @@ export default function App() {
       applyDesktopPreferences(settings);
       applyConfigWarningSnapshot(settings.configWarnings, settings.configWarningsRevision);
       hydrateDisplayMode(settings.displayMode);
-      setSidebarImConnections(sidebarImConnectionsFromBot(settings.bot, t, runtimeStatus));
+      setSidebarImConnections(sidebarImConnectionsFromBot(settings.bot, t, runtimeStatus, typeof window === "undefined" || Boolean(window.runtime)));
       setImTopicSources(sidebarImTopicSourcesFromBot(settings.bot, t));
       // Load unified theme experience after base appearance so pack tokens win.
       {
