@@ -191,6 +191,7 @@ import {
 import { useOverlayStore } from "./store/overlays";
 import { setDesktopPlatform, setMainWindowMaximised, useWindowChromeStore } from "./store/windowChrome";
 import { bumpDockRefresh, bumpFileRefRefresh, bumpProjectRevision, bumpWorkspaceControllerEpoch, useRefreshSignalsStore } from "./store/refreshSignals";
+import { useHistoryViewStore } from "./store/historyView";
 import { hydrateDisplayMode } from "./lib/displayMode";
 import { recordFrontendDiagnostic } from "./lib/frontendDiagnosticBridge";
 import { DEFAULT_STATUS_BAR_ITEMS, normalizeStatusBarItems, type StatusBarItemId } from "./lib/statusBarItems";
@@ -383,9 +384,6 @@ function WindowsWindowControls({
     </div>
   );
 }
-type HistoryViewState =
-  | { kind: "history"; source: "scope"; filter: HistoryScopeFilter; sessions: SessionMeta[] }
-  | { kind: "history"; source: "all"; sessions: SessionMeta[] };
 type DesktopNavigationIntent =
   | { kind: "topic"; scope: string; workspaceRoot: string; topicId: string; sessionPath?: string }
   | { kind: "blank"; scope: string; workspaceRoot: string }
@@ -799,7 +797,10 @@ export default function App() {
   );
   const singleSurfaceLayout = desktopLayoutStyle === "workbench" || desktopLayoutStyle === "creation";
   const { configLoadWarnings, applySnapshot: applyConfigWarningSnapshot, reload: reloadConfigWarnings, dismiss: dismissConfigWarnings } = useConfigLoadWarnings();
-  const [histView, setHistView] = useState<HistoryViewState | null>(null);
+  // History/trash overlay: one value for the entry point and the compositions that
+  // refresh it (task 38).
+  const histView = useHistoryViewStore((s) => s.histView);
+  const setHistView = useHistoryViewStore((s) => s.setHistView);
   const paletteOpen = useOverlayStore((s) => s.paletteOpen);
   const setPaletteOpen = useOverlayStore((s) => s.setPaletteOpen);
   const paletteExtensionActions = useOverlayStore((s) => s.paletteExtensionActions);
