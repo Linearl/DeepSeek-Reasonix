@@ -1,12 +1,16 @@
 import { createRequire } from "node:module";
 import { defineConfig, searchForWorkspaceRoot, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import reactSwc from "@vitejs/plugin-react-swc";
 import { execSync } from "node:child_process";
 import { mkdir, readdir, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const devPort = Number(process.env.REASONIX_DESKTOP_VITE_PORT || "5173");
+// Test-only opt-in (see transcript-dom-harness): the harness preloads the whole
+// markdown graph, and Babel transforming it can exceed vite's transport timeout.
+const useSwcTransform = process.env.REASONIX_TEST_TRANSFORM === "swc";
 const configDir = dirname(fileURLToPath(import.meta.url));
 
 // Stamps the build commit into the bundle so a minified crash stack can be mapped
@@ -105,7 +109,11 @@ export default defineConfig({
   css: {
     lightningcss: { errorRecovery: true },
   },
-  plugins: [react(), stripCrossorigin(), archiveHiddenSourcemaps(commit), keepDistPlaceholder()],
+  // The DOM harness SSR-transforms the transcript + the preloaded markdown graph;
+  // SWC renders that graph fast enough to stay inside vite's transport timeout
+  // (module-runner: `transport.timeout ?? 6e4`). Production builds keep Babel
+  // so the shipped bundle is byte-for-byte what it was.
+  plugins: [useSwcTransform ? reactSwc() : react(), stripCrossorigin(), archiveHiddenSourcemaps(commit), keepDistPlaceholder()],
   base: "./",
   define: { __BUILD_COMMIT__: JSON.stringify(commit), __BUILD_CHANNEL__: JSON.stringify(channel) },
   resolve: {

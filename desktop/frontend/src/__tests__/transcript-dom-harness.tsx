@@ -238,10 +238,29 @@ export async function createTranscriptHarness(options: TranscriptHarnessOptions 
     }
   };
 
+  // Stylesheets are irrelevant to these DOM assertions, and vite's dev path stalls
+  // on them here: importing a 639-byte CSS file took 81s (probe, 2026-09-13) and
+  // tripped the module runner's 60s transport timeout, failing the whole harness.
+  // Resolve them to an inert module so the harness exercises markup only.
+  const stubStylesheets = {
+    name: "reasonix-test-stub-stylesheets",
+    enforce: "pre" as const,
+    resolveId(source: string) {
+      return source.endsWith(".css") ? " reasonix-test-stub-css" : null;
+    },
+    load(id: string) {
+      return id === " reasonix-test-stub-css" ? "export default {};" : null;
+    },
+  };
+  // Opt the SSR transform into SWC before the Vite config is evaluated: this harness
+  // loads Transcript plus the preloaded markdown graph in one ssrLoadModule, and
+  // Babel's transform of that graph can exceed vite's 60s transport timeout.
+  process.env.REASONIX_TEST_TRANSFORM = "swc";
   const server = await createServer({
     appType: "custom",
     logLevel: "silent",
     server: { middlewareMode: true },
+    plugins: [stubStylesheets],
   });
   if (options.reasoningDisplayMode) {
     const preference = await server.ssrLoadModule("/src/lib/reasoningDisplayPreference.ts") as {
