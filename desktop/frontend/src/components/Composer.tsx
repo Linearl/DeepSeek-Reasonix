@@ -91,6 +91,7 @@ import {
 } from "../lib/selectedTextContext";
 import { formatGoalWorkTime } from "../lib/goalRuntime";
 import { ComposerContentMenuActions } from "./ComposerContentMenuActions";
+import { useTick } from "../lib/workStatus";
 
 interface Attachment {
   path: string;
@@ -452,15 +453,6 @@ function pastChatTitle(session: SessionMeta): string {
   return session.title || session.topicTitle || session.preview || "Untitled";
 }
 
-function useTick(on: boolean): number {
-  const [, setN] = useState(0);
-  useEffect(() => {
-    if (!on) return;
-    const id = window.setInterval(() => setN((n) => n + 1), 1000);
-    return () => window.clearInterval(id);
-  }, [on]);
-  return Date.now();
-}
 
 // --- past:chats session reference → prompt context (PR-B) ---
 // Send-side helpers for "@past:chats" session references. PR-A wired the menu and
