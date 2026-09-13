@@ -1,5 +1,7 @@
 package agent
 
+import "reasonix/internal/tool"
+
 // agentConfig is everything New fixes for an Agent's lifetime; nothing writes
 // it afterwards, which agent_config_test.go enforces. Embedded rather than
 // nested so access stays flat, as perTurnState already does. Separating it lets
@@ -11,6 +13,10 @@ type agentConfig struct {
 	// short contexts, and self-directed folds carry guards. Off by default -- every
 	// path it touches must behave exactly as before when it is off.
 	traceAsState bool
+	// restartUpdater publishes a staged build and relaunches the app (task 81).
+	// Bound by the host; nil in a host that cannot swap its own install, which
+	// is what makes the tool report itself unavailable rather than half-fail.
+	restartUpdater tool.RestartUpdater
 	maxSteps           int
 	maxStepsKey        string
 	reasoningByteLimit int

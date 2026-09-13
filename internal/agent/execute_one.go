@@ -532,6 +532,7 @@ func (a *Agent) prepareToolExecution(ctx context.Context, plan *toolCallPlan) (t
 		}
 	}
 	cctx := tool.WithContextCompressor(withCallContext(ctx, plan.call.ID, a.svc.sink, a.svc.asker, a.planMode.Load()), a)
+	cctx = tool.WithRestartUpdater(cctx, a.restartUpdater)
 	if a.svc.interactionBroker != nil {
 		cctx = mcpinteraction.WithBroker(cctx, a.svc.interactionBroker)
 	}

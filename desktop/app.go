@@ -2290,6 +2290,7 @@ func (a *App) clearActiveSessionRuntime(tab *WorkspaceTab, oldCtrl control.Sessi
 	newSink := &tabEventSink{tabID: tab.ID, app: a, ctx: a.ctx}
 	sharedHost := a.lookupSharedHost(snap.sharedHostKey)
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
+		RestartUpdater: restartUpdaterAdapter{a},
 		Model:                    snap.model,
 		Autopilot:                snap.autopilot,
 		MaxRuntime:               snap.autopilotMaxRuntime,
@@ -4276,6 +4277,7 @@ func (a *App) buildSessionRebindCandidate(
 		return nil, err
 	}
 	ctrl, err := boot.Build(a.bootContext(), boot.Options{
+		RestartUpdater: restartUpdaterAdapter{a},
 		Model:                    model,
 		Autopilot:                source.autopilot,
 		MaxRuntime:               source.autopilotMaxRuntime,
@@ -9871,6 +9873,7 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 
 	stageStarted = time.Now()
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
+		RestartUpdater: restartUpdaterAdapter{a},
 		Model:                    name,
 		Autopilot:                tab.autopilot,
 		MaxRuntime:               tab.autopilotMaxRuntime,
@@ -10065,6 +10068,7 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 	}
 	sharedHost := a.lookupSharedHost(snap.sharedHostKey)
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
+		RestartUpdater: restartUpdaterAdapter{a},
 		Model:                    modelRef,
 		Autopilot:                tab.autopilot,
 		MaxRuntime:               tab.autopilotMaxRuntime,

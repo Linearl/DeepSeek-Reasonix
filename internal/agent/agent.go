@@ -1110,6 +1110,10 @@ type Options struct {
 	// default — every path it touches behaves exactly as before when it is off.
 	TraceAsState bool
 
+	// RestartUpdater lets the model restart the desktop onto a staged build
+	// (task 81); nil in a host that cannot do that.
+	RestartUpdater tool.RestartUpdater
+
 	// Extensions is the frozen extension dispatcher for this agent's controller
 	// generation (Extension Protocol v2). Nil means no runtime packages are
 	// installed; the run loop then passes every intercept point through
@@ -1201,6 +1205,7 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 			maxSubagentDepth:        maxSubagentDepth,
 			autopilot:               opts.Autopilot,
 			traceAsState:            opts.TraceAsState,
+			restartUpdater:         opts.RestartUpdater,
 			contextWindow:           opts.ContextWindow,
 			compactRatio:            opts.CompactRatio,
 			recentKeep:              opts.RecentKeep,
