@@ -1149,6 +1149,8 @@ export const en = {
   "heartbeat.newConversationEachRunOff": "Reuse same conversation",
 
   "status.jobs": "{n} running",
+  "status.restartUpdate": "Restart & update",
+  "status.restartUpdateTitle": "Restart and update: close, publish the new build, relaunch",
   "status.jobsTitle": "Background jobs",
   "status.extensionTitle": "Extension status",
   "status.jobStop": "Stop",

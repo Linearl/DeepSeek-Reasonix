@@ -3222,6 +3222,7 @@ export default function App() {
     }
     await handleSend(displayText, submitText);
   }, [splitState.secondaryTabId, splitTarget, handleSend, activeTabId]);
+
   const visibleTranscriptItems = visibleTranscriptSurface?.items ?? displayItems;
   const visibleTranscriptTabId = visibleTranscriptSurface?.tabId ?? activeTabId;
   const visibleTranscriptGeometryKey = visibleTranscriptSurface?.geometrySessionKey ?? transcriptGeometrySessionKey;

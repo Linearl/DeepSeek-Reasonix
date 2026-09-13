@@ -898,6 +898,8 @@ export const zhTW: Record<DictKey, string> = {
   "heartbeat.newConversationEachRunOff": "複用同一對話",
 
   "status.jobs": "{n} 個執行中",
+  "status.restartUpdate": "重啟並更新",
+  "status.restartUpdateTitle": "重啟並更新：關閉、發佈新版本、重啟應用",
   "status.jobsTitle": "背景作業",
   "status.extensionTitle": "擴充功能狀態",
   "status.jobStop": "停止",

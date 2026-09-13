@@ -1150,6 +1150,8 @@ export const zh: Record<DictKey, string> = {
   "heartbeat.newConversationEachRunOff": "复用同一对话",
 
   "status.jobs": "{n} 个运行中",
+  "status.restartUpdate": "重启并更新",
+  "status.restartUpdateTitle": "重启并更新：关闭、发布新版本、重启应用",
   "status.jobsTitle": "后台作业",
   "status.extensionTitle": "扩展状态",
   "status.jobStop": "停止",
