@@ -192,6 +192,7 @@ import { useOverlayStore } from "./store/overlays";
 import { setDesktopPlatform, setMainWindowMaximised, useWindowChromeStore } from "./store/windowChrome";
 import { bumpDockRefresh, bumpFileRefRefresh, bumpProjectRevision, bumpWorkspaceControllerEpoch, useRefreshSignalsStore } from "./store/refreshSignals";
 import { useHistoryViewStore } from "./store/historyView";
+import { refreshHistoryProjection } from "./app-runtime/historyViewProjection";
 import { hydrateDisplayMode } from "./lib/displayMode";
 import { recordFrontendDiagnostic } from "./lib/frontendDiagnosticBridge";
 import { DEFAULT_STATUS_BAR_ITEMS, normalizeStatusBarItems, type StatusBarItemId } from "./lib/statusBarItems";
@@ -289,7 +290,6 @@ if (cachedAppearance) {
 }
 const DISMISSED_TODO_STORAGE_KEY = "todoPanel:dismissedKeys";
 const MAX_DISMISSED_TODO_KEYS = 160;
-type HistoryScopeFilter = { scope: "global" | "project"; workspaceRoot: string };
 type WorkspaceInsertTarget = "composer" | "planRevision";
 type DesktopPlatform = "darwin" | "windows" | "linux";
 const MACOS_WORKBENCH_TITLEBAR_HEIGHT = 46;
@@ -611,13 +611,6 @@ function topicTitle(tab?: TabMeta): string {
 function topicDisplayTitle(tab?: TabMeta): string {
   if (!tab) return "Global";
   return tab.topicTitle || (tab.scope === "global" ? tabWorkspaceTitle(tab) : "Untitled");
-}
-
-function sessionsForScope(sessions: SessionMeta[], filter: HistoryScopeFilter): SessionMeta[] {
-  if (filter.scope === "project") {
-    return sessions.filter((session) => session.scope === "project" && session.workspaceRoot === filter.workspaceRoot);
-  }
-  return sessions.filter((session) => (session.scope || "global") === "global");
 }
 
 function isMissingSessionError(err: unknown): boolean {
@@ -3458,13 +3451,7 @@ export default function App() {
   const refreshHistoryView = useCallback(async () => {
     const sessions = await listSessions().catch(() => null);
     if (!sessions) return;
-    setHistView((cur) =>
-      cur === null || cur.kind !== "history"
-        ? cur
-        : cur.source === "scope"
-          ? { ...cur, sessions: sessionsForScope(sessions, cur.filter) }
-          : { ...cur, sessions },
-    );
+    setHistView((cur) => refreshHistoryProjection(cur, sessions));
   }, [listSessions]);
 
   const automationLinkRef = useRef<{ intent: number; generation: number } | null>(null);
@@ -3927,13 +3914,7 @@ export default function App() {
       if (session.topicId) await app.RenameTopic(session.topicId, title);
       else await renameSession(session.path, title);
       const sessions = await listSessions();
-      setHistView((cur) =>
-        cur === null
-          ? null
-          : cur.kind === "history"
-            ? { ...cur, sessions: cur.source === "scope" ? sessionsForScope(sessions, cur.filter) : sessions }
-            : cur,
-      );
+      setHistView((cur) => refreshHistoryProjection(cur, sessions));
     },
     [state.running, renameSession, listSessions],
   );
