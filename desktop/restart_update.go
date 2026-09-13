@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"reasonix/internal/config"
 	"reasonix/internal/installlayout"
 )
 
@@ -35,6 +36,12 @@ func (a *App) RestartAndUpdate(sourceDir, version string) error {
 	sourceDir = strings.TrimSpace(sourceDir)
 	if sourceDir == "" {
 		return fmt.Errorf("restart: source directory is required")
+	}
+
+	// Opt-in only (task 81): the action swaps the active install version, so neither a
+	// stale UI nor a tool call may reach it while the experiment is off.
+	if cfg, cfgErr := config.Load(); cfgErr != nil || !cfg.Desktop.ExperimentalRestartUpdate {
+		return fmt.Errorf("restart: the restart-and-update experiment is off; enable experimental_restart_update in the desktop settings")
 	}
 
 	// A running turn owns a session write and may have an approval or ask card

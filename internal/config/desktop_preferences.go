@@ -26,6 +26,10 @@ type DesktopConfig struct {
 	// session unattended: the goal machine bounds it by wall clock, and the reviewer
 	// answers approval prompts nobody is there to answer.
 	Autopilot              bool   `toml:"autopilot"`
+	// ExperimentalRestartUpdate exposes the "restart and update" action (task 81).
+	// It ships off: the action swaps the active install version, so it stays behind an
+	// explicit opt-in until it has been exercised in the field.
+	ExperimentalRestartUpdate bool `toml:"experimental_restart_update"`
 	AutopilotMaxRuntime    string `toml:"autopilot_max_runtime"`     // Go duration; required when autopilot is on
 	AutopilotApprovalGrace string `toml:"autopilot_approval_grace"` // wait for a human before the reviewer decides; empty = 15s
 	CheckUpdates              *bool    `toml:"check_updates"`                // startup update checks; nil keeps the default enabled

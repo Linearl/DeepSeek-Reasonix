@@ -871,6 +871,8 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   PickProjectFolder(currentRoot: string): Promise<string>;
   /** RelocateProject repoints a project at a folder it was moved to (task 47). */
   RelocateProject(oldRoot: string, newRoot: string): Promise<void>;
+  /** RestartAndUpdate publishes a local build as a new version and relaunches (task 81). */
+  RestartAndUpdate(sourceDir: string, version: string): Promise<void>;
   SetProjectPinned(workspaceRoot: string, pinned: boolean): Promise<void>;
   ReorderProjects(workspaceRoots: string[]): Promise<void>;
   RequestOwnershipFromRemote(workspaceRoot: string, topicID: string): Promise<void>;
@@ -2685,6 +2687,9 @@ function makeMockApp(): AppBindings {
     async RelocateProject(oldRoot: string, newRoot: string) {
       const node = mockProjectTree.find((item) => item.root === oldRoot);
       if (node) node.root = newRoot;
+    },
+    async RestartAndUpdate(_sourceDir: string, _version: string) {
+      throw new Error("RestartAndUpdate is unavailable in the preview build");
     },
     async ServePoolStatus() {
       return { enabled: false, running: false, bind: "", addr: "", port: 18789, token: "mock-gateway-token", listen: "0.0.0.0:18789" };
