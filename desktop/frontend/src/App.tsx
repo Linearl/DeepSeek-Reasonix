@@ -52,7 +52,7 @@ import { ApprovalModal } from "./components/ApprovalModal";
 import { AskCard } from "./components/AskCard";
 import { ClearContextCard } from "./components/ClearContextCard";
 import { RuntimeDecisionCard } from "./components/RuntimeDecisionCard";
-import { decisionSurfaceMockFromInput, type DecisionSurfaceKind as MockDecisionSurfaceKind } from "./lib/decisionSurfaceMock";
+import { decisionSurfaceMockFromInput } from "./lib/decisionSurfaceMock";
 const UndoRewindBanner = lazy(() => import("./components/UndoRewindBanner").then((module) => ({ default: module.UndoRewindBanner })));
 const SessionTakeoverDialog = lazy(() => import("./components/SessionTakeoverDialog").then((module) => ({ default: module.SessionTakeoverDialog })));
 const ProjectTree = lazy(() => import("./components/ProjectTree").then((module) => ({ default: module.ProjectTree })));
@@ -60,7 +60,6 @@ const ExtensionFormDialog = lazy(() => import("./components/ExtensionFormDialog"
 const MCPInteractionCard = lazy(() => import("./components/MCPInteractionCard").then((module) => ({ default: module.MCPInteractionCard })));
 const WorktreeMergeModal = lazy(() => import("./components/WorktreeMergeModal").then((module) => ({ default: module.WorktreeMergeModal })));
 /** Footer decision surface kinds. Runtime blockers are explicit recovery choices. */
-type DecisionSurfaceKind = MockDecisionSurfaceKind | "extension_form";
 import { StatusBar } from "./components/StatusBar";
 import { RemoteHostKeyDialog } from "./components/RemoteHostKeyDialog";
 import { RemoteSecretDialog } from "./components/RemoteSecretDialog";
@@ -226,10 +225,12 @@ import { activateGoalAndSubmitOnTab } from "./lib/goalSubmit";
 import logoWordmark from "./assets/logo-wordmark.svg";
 import { isChannelSession, taskSessionIDFromPath } from "./app-runtime/sidebarImProjection";
 import { WorkspaceInsertTarget } from "./app-runtime/useComposerInsertCommands";
-import { DesktopPlatform, isMacOSWorkbenchSidebarTitlebar, normalizeDesktopPlatform } from "./lib/desktopPlatform";
+import { isMacOSWorkbenchSidebarTitlebar, normalizeDesktopPlatform } from "./lib/desktopPlatform";
 import { isGuidanceMockScenario } from "./lib/mockScenarios";
 import { safeFilename, tabWorkspaceTitle, topicDisplayTitle, topicTitle } from "./lib/sessionTitles";
 import { loadDismissedTodoKeys, saveDismissedTodoKeys } from "./lib/todoDismissalStorage";
+import type { AppDecisionSurfaceKind } from "./app-runtime/decisionSurfaceProjection";
+import { browserPlatformOverride } from "./lib/desktopPlatform";
 // Hold reasoning UI until the authoritative desktop startup settings arrive;
 // this prevents a hidden preference from flashing content during first paint.
 setReasoningDisplayPending();
@@ -511,12 +512,6 @@ function SidebarImConnectionDetail({ connection, onClose, onOpenSession, onOpenS
   );
 }
 
-function browserPlatformOverride(): DesktopPlatform | null {
-  if (typeof window === "undefined" || window.runtime) return null;
-  const value = new URLSearchParams(window.location.search).get("platform");
-  if (value === "darwin" || value === "windows" || value === "linux") return value;
-  return null;
-}
 
 const GUIDANCE_QUEUE_MOCK_ITEMS = [
   "先确认发送后输入框为什么残留刚发的消息，再决定修哪里。",
@@ -922,8 +917,8 @@ export default function App() {
   const [pendingClose, setPendingClose] = useState<{ tabId: string; work: ActiveWorkView; stopping: boolean } | null>(null);
   const [worktreeMergeTabId, setWorktreeMergeTabId] = useState<string | null>(null);
   const topicRenameSkipCommitRef = useRef(false);
-  const prevDecisionSurfaceRef = useRef<DecisionSurfaceKind | null>(null);
-  const decisionSurfaceRef = useRef<DecisionSurfaceKind | null>(null);
+  const prevDecisionSurfaceRef = useRef<AppDecisionSurfaceKind | null>(null);
+  const decisionSurfaceRef = useRef<AppDecisionSurfaceKind | null>(null);
   const topicRenameCommitHandledRef = useRef(false);
   const appRef = useRef<HTMLDivElement>(null);
   const layoutRef = useRef<HTMLDivElement>(null);
@@ -1409,7 +1404,7 @@ export default function App() {
   }, [controllerReady, runtimeTransitioning, state.hydrating, state.historyLayoutRevision, state.running]);
   // Single footer decision surface. Composer stays mounted underneath and is
   // only visually/a11y-hidden so per-session draft caches survive.
-  const decisionSurface = useMemo((): DecisionSurfaceKind | null => {
+  const decisionSurface = useMemo((): AppDecisionSurfaceKind | null => {
     if (state.approval) {
       return state.approval.tool === "exit_plan_mode" ? "plan_approval" : "tool_approval";
     }
