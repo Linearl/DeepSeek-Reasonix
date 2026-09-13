@@ -189,6 +189,7 @@ import {
   useLayoutStore,
 } from "./store/layout";
 import { useOverlayStore } from "./store/overlays";
+import { setDesktopPlatform, setMainWindowMaximised, useWindowChromeStore } from "./store/windowChrome";
 import { hydrateDisplayMode } from "./lib/displayMode";
 import { recordFrontendDiagnostic } from "./lib/frontendDiagnosticBridge";
 import { DEFAULT_STATUS_BAR_ITEMS, normalizeStatusBarItems, type StatusBarItemId } from "./lib/statusBarItems";
@@ -300,7 +301,8 @@ function isMacOSWorkbenchSidebarTitlebar(target: HTMLElement | null, clientY: nu
 }
 
 function useWindowsMaximised(enabled: boolean): readonly [boolean, () => void] {
-  const [maximised, setMaximised] = useState(false);
+  // The maximised flag lives in the chrome store so both surfaces read one value (task 38).
+  const maximised = useWindowChromeStore((s) => s.mainWindowMaximised);
   const syncGenerationRef = useRef(0);
 
   const syncMaximised = useCallback(() => {
@@ -308,17 +310,17 @@ function useWindowsMaximised(enabled: boolean): readonly [boolean, () => void] {
     const generation = ++syncGenerationRef.current;
     void app.IsMainWindowMaximised()
       .then((value) => {
-        if (generation === syncGenerationRef.current) setMaximised(value);
+        if (generation === syncGenerationRef.current) setMainWindowMaximised(value);
       })
       .catch(() => {
-        if (generation === syncGenerationRef.current) setMaximised(false);
+        if (generation === syncGenerationRef.current) setMainWindowMaximised(false);
       });
   }, [enabled]);
 
   useEffect(() => {
     if (!enabled) {
       syncGenerationRef.current += 1;
-      setMaximised(false);
+      setMainWindowMaximised(false);
       return;
     }
     syncMaximised();
@@ -591,16 +593,6 @@ const GUIDANCE_QUEUE_MOCK_ITEMS = [
 
 function isGuidanceMockScenario(value: string): boolean {
   return value === "guidance" || value === "guide" || value === "steer";
-}
-
-function detectBrowserPlatform(): DesktopPlatform {
-  const override = browserPlatformOverride();
-  if (override) return override;
-  if (typeof navigator === "undefined") return "linux";
-  const marker = `${navigator.platform} ${navigator.userAgent}`;
-  if (/Win/i.test(marker)) return "windows";
-  if (/Mac/i.test(marker)) return "darwin";
-  return "linux";
 }
 
 function tabWorkspaceTitle(tab?: TabMeta): string {
@@ -990,7 +982,9 @@ export default function App() {
   const [workspaceInsertTarget, setWorkspaceInsertTarget] = useState<WorkspaceInsertTarget>("composer");
   const transientOverlayDismissSignal = useOverlayStore((s) => s.transientOverlayDismissSignal);
   const setTransientOverlayDismissSignal = useOverlayStore((s) => s.setTransientOverlayDismissSignal);
-  const [desktopPlatform, setDesktopPlatform] = useState<DesktopPlatform>(detectBrowserPlatform);
+  // Platform comes from the shared chrome store, which owns the same value AppRuntime
+  // reads: one source, so the two surfaces cannot disagree (task 38).
+  const desktopPlatform = useWindowChromeStore((s) => s.platform);
   const windowsFramelessChrome = desktopPlatform === "windows";
   const [mainWindowMaximised, syncMainWindowMaximised] = useWindowsMaximised(windowsFramelessChrome);
   useWailsResizeFix(windowsFramelessChrome, mainWindowMaximised);
