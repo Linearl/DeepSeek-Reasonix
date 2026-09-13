@@ -87,7 +87,6 @@ func RecoveryChainPreviewFor(mainPath, chainPath string) (RecoveryChainPreview, 
 			return RecoveryChainPreview{}, fmt.Errorf("the branch could not be loaded for preview: %s", chainPath)
 		}
 		return preview, nil
-		return degradedChainPreview(mainPath, chainPath), nil
 	}
 
 	preview := RecoveryChainPreview{

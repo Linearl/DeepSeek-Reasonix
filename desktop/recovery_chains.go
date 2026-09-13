@@ -163,22 +163,21 @@ func resolveTranscriptSibling(path string) (string, bool) {
 // the merge picker's dialog: sizes, how the branch starts and ends, and what
 // picking it would keep or drop relative to the current main. Nothing is
 // written - a preview can be repeated freely and cancels cleanly.
+//
+// mainPath reaches us straight from the chain enumeration (ListRecoveryChains),
+// which scans every project's session directory - not just the one the active
+// tab lives in. Anchoring the preview on activeSessionDir used to fail the
+// whole dialog whenever the panel was opened from any other tab: the path was
+// "outside" that tab's directory and the registered-project fallback did not
+// know auto-discovered session dirs either. RecoveryChainPreviewFor itself
+// re-verifies that chainPath belongs to mainPath before reading anything, so
+// the security boundary lives there, not in this resolution dance.
 func (a *App) PreviewRecoveryChain(mainPath string, chainPath string) (agent.RecoveryChainPreview, error) {
-	dir := a.activeSessionDir()
-	sessionPath, _, err := validateSessionPath(dir, mainPath)
-	if err != nil {
-		if dir2, sessionPath2, foundErr := a.sessionDirForPath(mainPath); foundErr == nil {
-			sessionPath = sessionPath2
-			dir = dir2
-		} else {
-			return agent.RecoveryChainPreview{}, friendlySessionFileError(err)
-		}
+	mainPath = strings.TrimSpace(mainPath)
+	if mainPath == "" {
+		return agent.RecoveryChainPreview{}, fmt.Errorf("no session path given")
 	}
-	// chainPath comes straight from the chain enumeration, so it already has the
-	// same form the backend compares against; RecoveryChainPreviewFor re-verifies
-	// that it belongs to this session before reading anything.
-	_ = dir
-	return agent.RecoveryChainPreviewFor(sessionPath, chainPath)
+	return agent.RecoveryChainPreviewFor(mainPath, chainPath)
 }
 
 // PreviewRecoveryChainMessages returns the trailing slice of one chain's
@@ -222,20 +221,24 @@ func previewFeedStore(key string, feed []agent.RecoveryChainPreviewMessage) {
 	previewFeedCache.entries[key] = feed
 }
 
+// PreviewRecoveryChainMessages returns the trailing slice of one chain's
+// messages for the conversation-style preview dialog. Read-only, tolerant
+// loader: unnormalized copies preview the same way the summary showed them.
+//
+// mainPath is passed through to the agent layer unchanged - the summary preview
+// above documents why anchoring on the active tab's directory broke previews
+// from any other tab. RecoveryChainPreviewMessagesFor re-verifies chain
+// membership before reading.
 func (a *App) PreviewRecoveryChainMessages(mainPath string, chainPath string, limit int) ([]agent.RecoveryChainPreviewMessage, error) {
-	dir := a.activeSessionDir()
-	sessionPath, _, err := validateSessionPath(dir, mainPath)
-	if err != nil {
-		var foundErr error
-		if _, sessionPath, foundErr = a.sessionDirForPath(mainPath); foundErr != nil {
-			return nil, friendlySessionFileError(err)
-		}
+	mainPath = strings.TrimSpace(mainPath)
+	if mainPath == "" {
+		return nil, fmt.Errorf("no session path given")
 	}
 	cacheKey := previewFeedCacheKey(chainPath)
 	if cached := previewFeedCached(cacheKey); cached != nil {
 		return cached, nil
 	}
-	feed, err := agent.RecoveryChainPreviewMessagesFor(sessionPath, chainPath, limit)
+	feed, err := agent.RecoveryChainPreviewMessagesFor(mainPath, chainPath, limit)
 	if err != nil {
 		return nil, err
 	}
