@@ -17,9 +17,8 @@ import type { InvocationMetadataMap } from "../lib/invocationDisplay";
 import { useT } from "../lib/i18n";
 import { acquireMarkdownWorkerClient, releaseMarkdownWorkerClient } from "../lib/markdownWorkerClient";
 import { onSessionExperienceWillChange, useSessionExperience } from "../lib/sessionExperience";
+import { cachedSubcallsByParent, cachedTranscriptRowBlocks, cachedTurnModels } from "../lib/transcriptDerivedCache";
 import {
-  buildTranscriptRowBlocks,
-  buildTurnModels,
   EMPTY_FOLDS,
   foldMapWithReasoningOpen,
   foldMapWithToggle,
@@ -27,7 +26,6 @@ import {
   NO_LIVE,
   reconcileFoldEntries,
   type FoldMap,
-  type ToolItem,
   type TranscriptLiveFlags,
 } from "../lib/transcriptRows";
 import { projectTranscriptTimeline, transcriptRenderMode } from "../lib/transcriptTimeline";
@@ -147,7 +145,9 @@ export function Transcript(props: TranscriptProps) {
     hasReasoning: Boolean(live.reasoning),
     reasoningComplete: live.reasoningComplete,
   } : NO_LIVE, [live?.id, live?.reasoning, live?.reasoningComplete, live?.text]);
-  const turnModels = useMemo(() => buildTurnModels(items, liveFlags, running, false), [items, liveFlags, running]);
+  // Derived structures are reused across tab switches (see transcriptDerivedCache):
+  // switching back hands over the same items array, so the rebuild short-circuits.
+  const turnModels = cachedTurnModels(items, liveFlags, running, false);
   // Capture stable commands, never the per-render hook result: a memoized
   // callback holding that result can chain older render/selection contexts.
   const { kernel: transcriptKernel, setScroller: setKernelScroller, snapshot,
@@ -183,18 +183,9 @@ export function Transcript(props: TranscriptProps) {
     });
   }, [experience, resolvedSessionKey, segmentStates]);
 
-  const subcallsByParent = useMemo(() => {
-    const grouped = new Map<string, ToolItem[]>();
-    for (const item of items) {
-      if (item.kind !== "tool" || !item.parentId) continue;
-      const children = grouped.get(item.parentId) ?? [];
-      children.push(item);
-      grouped.set(item.parentId, children);
-    }
-    return grouped;
-  }, [items]);
+  const subcallsByParent = cachedSubcallsByParent(items);
   const checkpointsByTurn = useMemo(() => new Map(checkpoints.map((checkpoint) => [checkpoint.turn, checkpoint])), [checkpoints]);
-  const blocks = useMemo(() => buildTranscriptRowBlocks(turnModels, {
+  const blocks = cachedTranscriptRowBlocks(turnModels, {
     folds,
     sessionExperience: experience,
     hasOlderHistory: false,
@@ -202,7 +193,7 @@ export function Transcript(props: TranscriptProps) {
     turnForUser,
     hasCheckpointForTurn: (turn) => checkpointsByTurn.has(turn),
     subcallsByParent,
-  }), [checkpointsByTurn, creationMode, experience, folds, subcallsByParent, turnForUser, turnModels]);
+  }, [checkpointsByTurn, creationMode, experience, folds, subcallsByParent, turnForUser]);
   const projection = useMemo(() => projectTranscriptTimeline(blocks, hasOlderHistory), [blocks, hasOlderHistory]);
   const renderMode = transcriptRenderMode(projection.completedBlocks.length, safeMode);
   const allRows = useMemo(() => blocks.flatMap((block) => block.rows), [blocks]);
