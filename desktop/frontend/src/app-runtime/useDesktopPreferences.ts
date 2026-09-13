@@ -49,7 +49,10 @@ export function useDesktopPreferences() {
   return {
     desktopLayoutStyle: layoutStyleFromSnapshot(snapshot?.desktopLayoutStyle),
     startupUpdateChecksEnabled: snapshot ? snapshot.checkUpdates !== false : startupFailed ? true : null,
-    statusBarStyle: snapshot?.statusBarStyle === "text" ? "text" as const : "icon" as const,
+    // Fork default is "text" while upstream defaults to "icon". Without a snapshot the
+    // first paint must match the fork default, or this surface and App.tsx disagree
+    // during startup — two sources for one fact is the drift task 38 is about.
+    statusBarStyle: !snapshot || snapshot.statusBarStyle === "text" ? "text" as const : "icon" as const,
     statusBarItems: snapshot ? normalizeStatusBarItems(snapshot.statusBarItems) : DEFAULT_STATUS_BAR_ITEMS,
     sidebarImConnections, imTopicSources,
     configLoadWarnings: warnings.configLoadWarnings, reloadConfigWarnings: warnings.reload, dismissConfigWarnings: warnings.dismiss,
