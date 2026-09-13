@@ -446,7 +446,7 @@ func TestRenderTranscriptRedactsToolCallArgs(t *testing.T) {
 		{Role: provider.RoleTool, Name: "research", Content: "Found 5 projects."},
 	}
 
-	out := renderTranscript(msgs)
+	out := (&Agent{}).renderTranscript(msgs)
 
 	if strings.Contains(out, "Search for recently popular") {
 		t.Fatalf("renderTranscript leaked tool-call arguments into transcript:\n%s", out)
@@ -476,7 +476,7 @@ func TestInterruptedDisplayStaysOutOfCompactionPromptAndProjection(t *testing.T)
 	if retention.Kept != 0 || retention.Dropped != 0 {
 		t.Fatalf("retention = %+v, want display-only output counted as neither kept nor dropped", retention)
 	}
-	if transcript := renderTranscript([]provider.Message{local}); transcript != "" {
+	if transcript := a.renderTranscript([]provider.Message{local}); transcript != "" {
 		t.Fatalf("local interrupted output leaked into compaction prompt: %q", transcript)
 	}
 }

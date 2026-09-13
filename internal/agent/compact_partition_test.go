@@ -57,7 +57,7 @@ func TestPartitionFoldsSmallUserTurns(t *testing.T) {
 	if len(kept) != 0 || len(fold) != 4 {
 		t.Fatalf("kept=%d fold=%d, want 0/4", len(kept), len(fold))
 	}
-	if got := renderTranscript(fold); !strings.Contains(got, "small turn") {
+	if got := a.renderTranscript(fold); !strings.Contains(got, "small turn") {
 		t.Fatalf("old user turns must reach the summarizer: %s", got)
 	}
 }
@@ -76,7 +76,7 @@ func TestPartitionFoldsLargeUserTurns(t *testing.T) {
 	if len(kept) != 0 || len(fold) != 2 {
 		t.Fatalf("kept=%d fold=%d, want both turns folded", len(kept), len(fold))
 	}
-	if !strings.Contains(renderTranscript(fold), "small and kept") {
+	if !strings.Contains(a.renderTranscript(fold), "small and kept") {
 		t.Fatal("the small turn should be summarized with the oversize one")
 	}
 }
@@ -89,10 +89,10 @@ func TestPartitionMergesUserTurnsAcrossPriorDigest(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "work"},
 	}
 	kept, fold := partitionCoversRegion(t, a, region)
-	if len(kept) != 0 || !strings.Contains(renderTranscript(fold), "constraint from before") {
-		t.Fatalf("pre-digest user turn must enter the merged summary; fold=%v", renderTranscript(fold))
+	if len(kept) != 0 || !strings.Contains(a.renderTranscript(fold), "constraint from before") {
+		t.Fatalf("pre-digest user turn must enter the merged summary; fold=%v", a.renderTranscript(fold))
 	}
-	if !strings.Contains(renderTranscript(fold), "prior digest") {
+	if !strings.Contains(a.renderTranscript(fold), "prior digest") {
 		t.Fatal("the digest itself must still fold into the next one")
 	}
 }
@@ -123,7 +123,7 @@ func TestPartitionIgnoresDeprecatedKeepPolicy(t *testing.T) {
 	if len(kept) != 0 || len(fold) != 3 {
 		t.Fatalf("kept=%d fold=%d, want every old message folded", len(kept), len(fold))
 	}
-	if got := renderTranscript(fold); !strings.Contains(got, "error: boom") || !strings.Contains(got, "call") {
+	if got := a.renderTranscript(fold); !strings.Contains(got, "error: boom") || !strings.Contains(got, "call") {
 		t.Fatalf("the failing call and its result must enter the summary together: %s", got)
 	}
 }

@@ -6,6 +6,11 @@ package agent
 // the struct-state ratchet count reachable states instead of size: an immutable
 // field combines with nothing. Anything that changes after New goes on Agent.
 type agentConfig struct {
+	// traceAsState enables the Trace-as-State compaction work (task 60): the
+	// summary sees the assistant's reasoning, a stall is routed to re-reading on
+	// short contexts, and self-directed folds carry guards. Off by default -- every
+	// path it touches must behave exactly as before when it is off.
+	traceAsState bool
 	maxSteps           int
 	maxStepsKey        string
 	reasoningByteLimit int

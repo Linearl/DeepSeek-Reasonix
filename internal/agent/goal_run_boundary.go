@@ -89,7 +89,7 @@ func (a *Agent) trackTodoProgress(ctx context.Context, state *turnRuntime, recei
 	// history is worth folding, a short one is worth re-reading with the earlier trace
 	// in hand, since the files it was about are still on disk.
 	checkpoint := todoProgressNudgeMessage(state.todoStallRounds)
-	if a.contextIsShort() {
+	if a.traceAsState && a.contextIsShort() {
 		checkpoint = reReadGuidanceMessage(state.todoStallRounds, a.recentReadPaths(5))
 	}
 	a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(checkpoint)))

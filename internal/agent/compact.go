@@ -539,9 +539,15 @@ func reasoningTraceAllowance(msgs []provider.Message) []int {
 	return allowance
 }
 
-func renderTranscript(msgs []provider.Message) string {
+// renderTranscript renders the messages a summarizer reads. With traceAsState on it
+// also carries the assistant's own reasoning (see reasoningTraceAllowance); off, the
+// render is exactly what it always was.
+func (a *Agent) renderTranscript(msgs []provider.Message) string {
 	var b strings.Builder
-	allowance := reasoningTraceAllowance(msgs)
+	var allowance []int
+	if a != nil && a.traceAsState {
+		allowance = reasoningTraceAllowance(msgs)
+	}
 	for i, m := range msgs {
 		if m.LocalOnly {
 			continue
@@ -552,7 +558,11 @@ func renderTranscript(msgs []provider.Message) string {
 		case provider.RoleAssistant:
 			// A trace is a draft, not a verified finding: label it so a summary never
 			// promotes a guess into a fact.
-			if kept := allowance[i]; kept > 0 {
+			kept := 0
+			if len(allowance) > i {
+				kept = allowance[i]
+			}
+			if kept > 0 {
 				trace := m.ReasoningContent
 				if len(trace) > kept {
 					trace = trace[len(trace)-kept:]

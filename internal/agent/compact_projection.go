@@ -68,7 +68,7 @@ func (a *Agent) CompressContext(ctx context.Context, req tool.CompressRequest) (
 
 	// A fold rewrites the prompt prefix, so it costs the cache for every later
 	// turn: hold model-driven folds to one per interval (task 60, point 2).
-	if last := a.lastExplicitFoldAt.Load(); last != 0 {
+	if last := a.lastExplicitFoldAt.Load(); a.traceAsState && last != 0 {
 		if elapsed := time.Since(time.Unix(0, last)); elapsed < minExplicitFoldInterval {
 			wait := (minExplicitFoldInterval - elapsed).Round(time.Second)
 			return tool.CompressResult{
@@ -83,7 +83,7 @@ func (a *Agent) CompressContext(ctx context.Context, req tool.CompressRequest) (
 	// Guard: refuse a fold on a short context. Re-reading a short history is
 	// cheaper than losing its detail, and this is the failure mode a model
 	// reaching for the tool on its own will hit (task 60, point 2).
-	if threshold := a.compactTrigger(); threshold > 0 {
+	if threshold := a.compactTrigger(); a.traceAsState && threshold > 0 {
 		if used := a.visibleContextTokens(snap); used > 0 && used < int(float64(threshold)*explicitCompressFloorRatio) {
 			return tool.CompressResult{
 				Status: "rejected",
