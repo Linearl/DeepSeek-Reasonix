@@ -73,6 +73,19 @@ const CHECKS = [
   { feature: "写协调体系 #9111", file: "internal/agent/tool_write_coordination.go", patterns: ["parentWriteGuardTarget", "reserveCoordinatedParentWrite"] },
   { feature: "乐观写 #9213", file: "internal/agent/tool_write_coordination.go", patterns: ["optimisticWrite"] },
 
+  // ── 副本预览与切换链路（2026-09-12/13，任务 92/93）──────────────
+  // 教训（33b6c32ec 被 1.38.3 merge 冲掉、2026-09-13 才发现）：行为语义级
+  // 魔改（函数内逻辑）也必须登记锚点——存在性检查（文件/符号还在）抓不住
+  // 「函数还在但逻辑被上游版顶掉」。新特性落地时同步在此登记，锚点选
+  // 语义性字符串（赋值/调用形态），不选注释。
+  { feature: "#10056 快照 fast path（projectionPending 不否决）", file: "internal/agent/save.go", patterns: ["deliberately not part of this decision"] },
+  { feature: "任务92① 预览 bridge 透传（不锚定 activeSessionDir）", file: "desktop/recovery_chains.go", patterns: ["RecoveryChainPreviewFor(mainPath, chainPath)"] },
+  { feature: "任务92③ 内容快照/overlap LRU 缓存", file: "internal/agent/recovery_gc.go", patterns: ["contentSnapshotCache", "contentOverlapCache", "contentSnapshotCacheLimit"] },
+  { feature: "任务92③ 宽松重放 LRU（非全清）", file: "internal/agent/recovery_chain_preview.go", patterns: ["tolerantReplayCache.order"] },
+  { feature: "任务92④ 预览弹窗自持状态（ChainPreviewBody）", file: "desktop/frontend/src/components/RecoveryCopiesSection.tsx", patterns: ["function ChainPreviewBody", "recoveryCopiesPreviewBuilding"] },
+  { feature: "任务92② 扫描展开自动加载候选链", file: "desktop/frontend/src/components/RecoveryCopiesSection.tsx", patterns: ["chainLoads"] },
+  { feature: "任务93 本地快照切 tab（33b6c32ec 重实施）", file: "desktop/frontend/src/lib/useController.ts", patterns: ["hasLocalItems", "skipHistory: hasLocalItems"] },
+
   // ── 构建配置 ────────────────────────────────────────────────────
   { feature: "release notes 存在", file: "release-notes/FORK-v1.33.0.md", patterns: ["Fork 修复"] },
   { feature: "wails 版本号", file: "desktop/wails.json", patterns: ["1.38.3"] },
