@@ -4,7 +4,7 @@ import { pendingFollowups, confirmFollowup, followupNotSubmitted, followupSessio
 import { useAppNavigationStore } from "../store/appNavigation";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
-import { ArrowRight, ArrowUp, Brain, Check, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, Search, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, Users, X, Zap } from "lucide-react";
+import { ArrowRight, ArrowUp, Columns2, Brain, Check, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, Search, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, Users, X, Zap } from "lucide-react";
 import { asArray } from "../lib/array";
 import { filterAtMatches } from "../lib/atMatches";
 import { DedupIndex, sha256 } from "../lib/attachDedup";
@@ -566,6 +566,9 @@ export function Composer({
   tabId, turnId,
   effort,
   onSend,
+  splitTarget = "primary",
+  onSplitTargetChange,
+  splitActive = false,
   onSteer,
   localDurableGuidance = true,
   onCancel,
@@ -656,6 +659,11 @@ export function Composer({
   tabId?: string; turnId?: string;
   effort?: EffortInfo;
   onSend: (displayText: string, submitText?: string, tabId?: string, structured?: StructuredInvocationSubmit) => void | Promise<void>;
+  /** Split view (task 70, B): where the composer sends while a split is open. */
+  splitTarget?: "primary" | "secondary" | "both";
+  onSplitTargetChange?: (target: "primary" | "secondary" | "both") => void;
+  /** The target selector only exists while a split is open. */
+  splitActive?: boolean;
   onInvocationMetadataChange?: (metadata: Record<string, { kind: "skill" | "subagent"; color?: string }>) => void;
   onSteer?: (submitText: string, tabId?: string) => void | Promise<void>;
   /** False when the owning surface provides its own durable remote inbox. */
@@ -4741,6 +4749,46 @@ export function Composer({
                   >
                     <ShieldAlert size={14} />
                     <span>{t("composer.modeYolo")}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+            {!heroMode && splitActive && (
+              <div className="composer-meta__control composer-meta__control--target">
+                {/* One composer, three targets (task 70, B) -- the same three-state
+                    capsule the approval bar uses, so styling and keyboard behaviour are
+                    the ones already in the app. */}
+                <div className="composer-modebar composer-modebar--split-target" data-target={splitTarget}>
+                  <span className="composer-modebar__thumb" aria-hidden="true" />
+                  <button
+                    type="button"
+                    className={`composer-modebar__item${splitTarget === "primary" ? " composer-modebar__item--active" : ""}`}
+                    onClick={() => onSplitTargetChange?.("primary")}
+                    aria-pressed={splitTarget === "primary"}
+                    title={t("composer.splitTargetPrimary")}
+                  >
+                    <Columns2 size={14} />
+                    <span>{t("composer.splitTargetPrimary")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`composer-modebar__item${splitTarget === "secondary" ? " composer-modebar__item--active" : ""}`}
+                    onClick={() => onSplitTargetChange?.("secondary")}
+                    aria-pressed={splitTarget === "secondary"}
+                    title={t("composer.splitTargetSecondary")}
+                  >
+                    <Columns2 size={14} />
+                    <span>{t("composer.splitTargetSecondary")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`composer-modebar__item${splitTarget === "both" ? " composer-modebar__item--active" : ""}`}
+                    onClick={() => onSplitTargetChange?.("both")}
+                    aria-pressed={splitTarget === "both"}
+                    title={t("composer.splitTargetBoth")}
+                  >
+                    <Columns2 size={14} />
+                    <span>{t("composer.splitTargetBoth")}</span>
                   </button>
                 </div>
               </div>

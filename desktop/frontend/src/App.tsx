@@ -3181,6 +3181,9 @@ export default function App() {
   // renders exactly one transcript, byte-for-byte as before.
   const [splitState, setSplitState] = useState<SplitState>(loadSplitState);
   const splitTabId = splitState.secondaryTabId;
+  // Which pane the composer targets while a split is open (task 70, B). It defaults
+  // to the primary pane, matching focusedPane's default.
+  const [splitTarget, setSplitTarget] = useState<"primary" | "secondary" | "both">("primary");
   // The secondary pane holds one other tab; toggling the tab already in it closes the
   // split. Focus is deliberately left alone — the two concerns are separate.
   const toggleSplitForTab = useCallback((tabId: string) => {
@@ -3192,6 +3195,24 @@ export default function App() {
       return next;
     });
   }, []);
+  // One composer, three targets (task 70, B). "both" starts the two sends in the
+  // same tick on purpose: an A/B comparison whose runs are staggered by an await is
+  // not comparing the same thing.
+  const handleComposerSend = useCallback(async (displayText: string, submitText = displayText) => {
+    const secondary = splitState.secondaryTabId;
+    if (secondary && splitTarget === "secondary") {
+      await handleSend(displayText, submitText, secondary);
+      return;
+    }
+    if (secondary && splitTarget === "both") {
+      await Promise.all([
+        handleSend(displayText, submitText, activeTabIdRef.current ?? activeTabId),
+        handleSend(displayText, submitText, secondary),
+      ]);
+      return;
+    }
+    await handleSend(displayText, submitText);
+  }, [splitState.secondaryTabId, splitTarget, handleSend, activeTabId]);
   const visibleTranscriptItems = visibleTranscriptSurface?.items ?? displayItems;
   const visibleTranscriptTabId = visibleTranscriptSurface?.tabId ?? activeTabId;
   const visibleTranscriptGeometryKey = visibleTranscriptSurface?.geometrySessionKey ?? transcriptGeometrySessionKey;
@@ -4917,7 +4938,10 @@ export default function App() {
               attachmentInputEnabled={!remoteSurfaceActive} pinnedFiles={state.meta?.pinnedFiles}
               tabId={activeTabId} turnId={remoteSurfaceActive ? undefined : state.activeTurnId}
               effort={remoteSurfaceActive ? remoteSession.effort : state.effort}
-              onSend={remoteSurfaceActive ? remoteComposerSend : handleSend}
+              onSend={remoteSurfaceActive ? remoteComposerSend : handleComposerSend}
+              splitTarget={splitTarget}
+              onSplitTargetChange={setSplitTarget}
+              splitActive={splitTabId !== null}
               onInvocationMetadataChange={handleInvocationMetadataChange}
               onSteer={handleSteer}
               onCancel={cancel}
