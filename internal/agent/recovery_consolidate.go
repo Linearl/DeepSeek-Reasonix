@@ -1,8 +1,10 @@
 package agent
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -573,6 +575,16 @@ func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) err
 	dropSidecar := map[string]bool{
 		filepath.Base(store.SessionEventIndex(winnerPath)):   true,
 		filepath.Base(store.SessionDisplayIndex(winnerPath)): true,
+		// Damaged-log markers describe the winner's *pre-promote* log. After the
+		// rename the winner's transcript is the main, and a stale marker would
+		// put the promoted main into fail-closed (eventLogDamaged) on its very
+		// next load — which is exactly "merged, now the session cannot send".
+		// The next load re-validates the log for real and re-raises the marker
+		// if damage is genuinely still there. The turn-log marker is the same
+		// story. (2026-09-13 incident: the fork-development session went
+		// read-only after a merge because the winner's stale marker moved in.)
+		filepath.Base(store.SessionEventLogDamaged(winnerPath)):     true,
+		filepath.Base(store.SessionTurnEventLogDamaged(winnerPath)): true,
 	}
 	artifacts := append([]string{}, store.SessionSidecarFiles(winnerPath)...)
 	artifacts = append(artifacts,
@@ -592,6 +604,17 @@ func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) err
 		dst := filepath.Join(dir, strings.Replace(base, winnerStem, mainStem, 1))
 		if err := moveRecoveryTrashPath(src, dst); err != nil {
 			return err
+		}
+		// The pinned-context sidecar embeds the session identity it was created
+		// under. After the rename that identity is the winner copy's, which
+		// fails the SessionID check on the promoted main and silently kills the
+		// pinned-files feature (2026-09-13 incident). Rewrite it in place; if
+		// it cannot be parsed, drop it — pinning rebuilds from an empty list.
+		if base == filepath.Base(store.SessionPinnedContext(winnerPath)) {
+			if err := rewritePinnedContextSessionID(dst, mainStem); err != nil {
+				slog.Warn("promote: pinned-context rewrite failed; dropping", "file", dst, "err", err)
+				os.Remove(dst)
+			}
 		}
 	}
 
@@ -635,4 +658,30 @@ func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) err
 		}
 		return nil
 	})
+}
+
+// rewritePinnedContextSessionID re-points a migrated pinned-context sidecar at
+// the promoted main. The desktop package owns the schema (schemaVersion /
+// sessionId / files); agent re-encodes it generically so the files list and
+// any future fields survive byte-for-byte apart from the identity.
+func rewritePinnedContextSessionID(path, mainStem string) error {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return err
+	}
+	id, err := json.Marshal(mainStem)
+	if err != nil {
+		return err
+	}
+	doc["sessionId"] = id
+	out, err := json.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	out = append(out, '\n')
+	return os.WriteFile(path, out, 0o600)
 }
