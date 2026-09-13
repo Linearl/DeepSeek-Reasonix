@@ -43,7 +43,7 @@ import { applyReadStatusEvent, type ReadStatusHost } from "./readStatus";
 import { upsertReadPause } from "./readPause";
 import { applyHydrateErrorState, hydratePlaceholderItems as resolveHydratePlaceholders } from "./hydrateErrorState";
 import { isHostRecoveryGuidance } from "./hostRecoverySteer";
-import { activeTabHydrationPlan, canAdoptUnboundLiveSurface, duplicateLiveItemIds, hasCachedLiveTurn, hasReusableCachedTranscript, hydratedHistoryApplyMode, sameSessionHydrateIdentity, sameSessionPlaceholderItems, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
+import { activeTabHydrationPlan, canAdoptUnboundLiveSurface, duplicateLiveItemIds, hasReusableCachedTranscript, hydratedHistoryApplyMode, sameSessionHydrateIdentity, sameSessionPlaceholderItems, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
 import { hydrateIdentityCurrent } from "./sessionIdentity";
 import { historyPageRequestBudget } from "./historyPaging";
 import { createUniqueItemIDAllocator } from "./historyItemIds";
@@ -2962,7 +2962,7 @@ export function useController() {
           );
         }
       } else if (skipHistory) {
-        const skipReason = options.skipHistory ? "cached-live-turn" : "cached-transcript";
+        const skipReason = options.skipHistory ? "local-snapshot" : "cached-transcript";
         addBreadcrumb("tab.hydrate", `history skipped ${tabId} reason=${skipReason}`);
         if (reason === "switch-tab") {
           addBreadcrumb("tab.switch", `history-done ${tabId} skipped ms=${Date.now() - historyStartedAt}`);
@@ -4648,9 +4648,17 @@ export function useController() {
     const sameSession = sameSessionHydrateIdentity(targetIdentity, currentTargetIdentity);
     const optimisticStatus = optimisticTab ? backendStatusFromRuntimeMeta(optimisticTab) : undefined;
     const adoptUnboundLiveSurface = canAdoptUnboundLiveSurface(targetIdentity, currentTargetIdentity, targetState, Boolean(optimisticStatus?.running), optimisticTab?.runtime?.epoch, runtimeEpochByTabRef.current.get(tabId));
-    const preserveTargetSurface = sameSession || adoptUnboundLiveSurface;
-    const placeholderItems = sameSession ? targetState?.items : undefined;
-    const preserveCachedHistory = sameSession && hasReusableCachedTranscript(targetState, targetSessionPath, targetSessionRevision, targetSessionDigest);
+    // A tab that already has transcript items is a local snapshot. Keep it
+    // visible on switch-back even when metadata identity/fingerprint differs,
+    // so returning to a previously opened conversation is instant. The 1.38.3
+    // merge reverted this once (33b6c32ec); re-applied after the user reported
+    // long conversations reloading on every back-and-forth tab switch
+    // (2026-09-13). Background tabs keep receiving live events, so a local
+    // snapshot can only miss messages that live delivery has already applied.
+    const hasLocalItems = Boolean(targetState?.items?.length);
+    const preserveTargetSurface = hasLocalItems || sameSession || adoptUnboundLiveSurface;
+    const placeholderItems = hasLocalItems ? targetState?.items : undefined;
+    const preserveCachedHistory = hasLocalItems;
     addBreadcrumb("tab.switch", `click ${tabId}`);
     setActiveTabId(tabId);
     activeTabIdRef.current = tabId;
@@ -4737,7 +4745,7 @@ export function useController() {
         const tabs = await reconcileTabRuntime(tabId, { hydrateSessionData: false, refreshAncillary: false });
         if (!isNavigationIntentCurrent(navigationSeq)) return tabs;
         const hydration = loadSessionDataForTab(tabId, false, "switch-tab", {
-          skipHistory: sameSession && hasCachedLiveTurn(statesRef.current.get(tabId)),
+          skipHistory: hasLocalItems,
           placeholderItems,
           surfacePolicy: preserveTargetSurface ? "preserve-current" : "replace-surface",
           preserveCachedHistory,
