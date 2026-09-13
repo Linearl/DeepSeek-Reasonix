@@ -87,6 +87,26 @@ go test ./internal/tool/builtin/ ./internal/boot/  # catches tool/boot test brea
 shows up in `go vet`, and the CI round trip that catches it instead costs ten
 minutes.
 
+## Pre-existing failures
+
+A failure that predates your change still has to be diagnosed and driven to zero.
+"Pre-existing, not mine" records where it came from; it does not close it. Decide
+**which side is wrong** and act on that verdict — never leave a known red test in
+the suite, because on a fork branch the suite is the only guard against a later
+merge quietly overwriting our behavior (see `docs/upstream-merge-checklist.md`),
+and a permanently red test swallows the next real regression.
+
+* **The test is stale** — the behavior it pins was deliberately changed and the
+  new behavior is right → update the fixture or expectation, and say in the commit
+  why the new behavior is correct. Never weaken an assertion just to pass.
+* **The code is wrong** — the behavior regressed, or a helper went missing →
+  fix the code, not the test.
+* **The test is orphaned** — its subject was deleted and no script runs it →
+  delete it, referencing the commit that removed the feature.
+
+Confirm the failure is genuinely pre-existing first (`git stash` your change and
+re-run); that check decides the framing, not whether the failure gets fixed.
+
 ## Import cycle rule
 
 Before importing a new internal package from a non-test file, verify the target package's **test files** aren't already importing back to you:
