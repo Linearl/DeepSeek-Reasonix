@@ -3,6 +3,7 @@
 > **维护规则**：每个 fork 版本一张表，列出相较上游的全部改进点；若某改进**已被上游吸收**，在"上游吸收状态"列注明（吸收版本/PR），避免重复维护或误判仍为 fork 独有。
 > 新版本发布时：在台账**追加新表**，并在该版 release note 中引用本文件（`release-fork.yml` 模板已内置此要求）。
 > 数据源：各版 `FORK-vX.Y.Z.md` release notes、上游 release 页（esengine/DeepSeek-Reasonix）、PR/issue 台账。
+> **实验化评估**：哪些魔改适合做成实验特性、哪些不适合、开关怎么命名，见 `../handoff/fork魔改特性实验化评估-20260913.md`（任务 98，2026-09-13）。
 
 ---
 
