@@ -18,6 +18,7 @@ import type {
   RuntimeReadyListener,
   RuntimeRebuiltListener,
 } from "./AppRuntimeEffects";
+import { bumpWorkspaceControllerEpoch } from "../store/refreshSignals";
 
 export type RuntimeEventHandlersInput = {
   activeTabId: string | undefined;
@@ -112,7 +113,7 @@ export function useRuntimeEventHandlers(input: RuntimeEventHandlersInput) {
     clearAttentionChimeKeys(attentionChimeEvents.current, readyTabId);
     void refreshTabMetas();
     if (!readyTabId || readyTabId === input.workspaceScopeActiveTabRef.current) {
-      input.setWorkspaceControllerEpoch((value) => value + 1);
+      bumpWorkspaceControllerEpoch();
     }
   });
 
@@ -120,7 +121,7 @@ export function useRuntimeEventHandlers(input: RuntimeEventHandlersInput) {
     recordFrontendDiagnostic("runtime", "runtime.rebuilt", { ready: true, hasActiveTab: Boolean(rebuiltTabId) });
     clearAttentionChimeKeys(attentionChimeEvents.current, rebuiltTabId);
     if (!rebuiltTabId || rebuiltTabId === input.workspaceScopeActiveTabRef.current) {
-      input.setWorkspaceControllerEpoch((value) => value + 1);
+      bumpWorkspaceControllerEpoch();
     }
   });
 

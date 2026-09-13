@@ -190,7 +190,7 @@ import {
 } from "./store/layout";
 import { useOverlayStore } from "./store/overlays";
 import { setDesktopPlatform, setMainWindowMaximised, useWindowChromeStore } from "./store/windowChrome";
-import { bumpDockRefresh, bumpFileRefRefresh, bumpProjectRevision, useRefreshSignalsStore } from "./store/refreshSignals";
+import { bumpDockRefresh, bumpFileRefRefresh, bumpProjectRevision, bumpWorkspaceControllerEpoch, useRefreshSignalsStore } from "./store/refreshSignals";
 import { hydrateDisplayMode } from "./lib/displayMode";
 import { recordFrontendDiagnostic } from "./lib/frontendDiagnosticBridge";
 import { DEFAULT_STATUS_BAR_ITEMS, normalizeStatusBarItems, type StatusBarItemId } from "./lib/statusBarItems";
@@ -836,7 +836,9 @@ export default function App() {
   const setWorkspacePreviewActive = useLayoutStore((s) => s.setWorkspacePreviewActive);
   const attentionChimeEvents = useRef(new Set<string>());
   const workspaceScopeActiveTabRef = useRef(activeTabId);
-  const [workspaceControllerEpoch, setWorkspaceControllerEpoch] = useState(0);
+  // Runtime-ready bumps live in the signals store so the event handlers can raise them
+  // without a setter threaded down from here (task 38).
+  const workspaceControllerEpoch = useRefreshSignalsStore((s) => s.workspaceControllerEpoch);
   workspaceScopeActiveTabRef.current = activeTabId;
   // ContextPanel still uses this turn sequence for usage/session metadata;
   // WorkspacePanel listens to resource-level workspace revisions instead.
@@ -870,7 +872,7 @@ export default function App() {
       // on every ready signal — the coordinator bounds the fetch rate.
       void refreshTabMetas();
       if (!readyTabId || readyTabId === workspaceScopeActiveTabRef.current) {
-        setWorkspaceControllerEpoch((value) => value + 1);
+        bumpWorkspaceControllerEpoch();
       }
     });
     // Model/effort/token-mode switches and clear-while-running replace the
@@ -880,7 +882,7 @@ export default function App() {
       recordFrontendDiagnostic("runtime", "runtime.rebuilt", { ready: true, hasActiveTab: Boolean(rebuiltTabId) });
       clearAttentionChimeKeys(attentionChimeEvents.current, rebuiltTabId);
       if (!rebuiltTabId || rebuiltTabId === workspaceScopeActiveTabRef.current) {
-        setWorkspaceControllerEpoch((value) => value + 1);
+        bumpWorkspaceControllerEpoch();
       }
     });
     // The backend pushes authoritative per-tab meta after state changes that

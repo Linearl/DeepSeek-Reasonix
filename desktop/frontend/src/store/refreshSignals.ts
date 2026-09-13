@@ -11,12 +11,14 @@ type RefreshSignalsState = {
   dockRefreshKey: number;
   fileRefRefreshKey: number;
   projectRevision: number;
+  workspaceControllerEpoch: number;
 };
 
 export const useRefreshSignalsStore = create<RefreshSignalsState>(() => ({
   dockRefreshKey: 0,
   fileRefRefreshKey: 0,
   projectRevision: 0,
+  workspaceControllerEpoch: 0,
 }));
 
 export const bumpDockRefresh = (): void => {
@@ -29,4 +31,8 @@ export const bumpFileRefRefresh = (): void => {
 
 export const bumpProjectRevision = (): void => {
   useRefreshSignalsStore.setState((current) => ({ projectRevision: current.projectRevision + 1 }));
+};
+
+export const bumpWorkspaceControllerEpoch = (): void => {
+  useRefreshSignalsStore.setState((current) => ({ workspaceControllerEpoch: current.workspaceControllerEpoch + 1 }));
 };
