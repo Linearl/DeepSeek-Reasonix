@@ -113,7 +113,12 @@ type Outcome = {
  *  tail never grew. As a real child component its own state re-renders it. */
 function ChainPreviewBody({ preview }: { preview: RecoveryChainPreview }) {
   const t = useT();
-  const [showTail, setShowTail] = useState(false);
+  // The tail opens revealed. The dialog exists to judge a branch by how it ends,
+  // and a body that renders nothing until a click reads as "nothing to preview" -
+  // worst on branches whose tail is only a page long, where the click revealed
+  // everything at once anyway. One page shows up front, further clicks append a
+  // page each, and the counter states how much of the tail is on screen.
+  const [showTail, setShowTail] = useState(true);
   const [tailChars, setTailChars] = useState(3000);
   // degraded previews carry no overlap numbers at all (shared/unique stay 0 as
   // placeholders), so the "you would drop N unique messages" warning must not
@@ -162,7 +167,13 @@ function ChainPreviewBody({ preview }: { preview: RecoveryChainPreview }) {
           <button
             className="btn btn--small"
             type="button"
-            onClick={() => (showTail ? setTailChars((n) => n + 3000) : setShowTail(true))}
+            onClick={() => {
+              // Load more appends a page; once nothing is left the same button
+              // collapses instead, so it never looks like a dead "load more".
+              if (!showTail) setShowTail(true);
+              else if (remaining > 0) setTailChars((n) => n + 3000);
+              else setShowTail(false);
+            }}
           >
             {!showTail
               ? t("settings.recoveryCopiesPreviewTailShow")
@@ -170,6 +181,13 @@ function ChainPreviewBody({ preview }: { preview: RecoveryChainPreview }) {
                 ? `${t("settings.recoveryCopiesPreviewTailMore")} (${remaining})`
                 : t("settings.recoveryCopiesPreviewTailHide")}
           </button>
+          {showTail ? (
+            <span className="rc-preview__tail-count">
+              {t("settings.recoveryCopiesPreviewTailCount")
+                .replace("{shown}", String(spent))
+                .replace("{total}", String(total))}
+            </span>
+          ) : null}
           {showTail ? (
             <div className="rc-preview__section rc-preview__section--tail">
               <div className="rc-preview__label">{t("settings.recoveryCopiesPreviewEnd")}</div>
@@ -200,6 +218,10 @@ export function RecoveryCopiesSection() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [scanning, setScanning] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  // previewingPath names the chain whose preview is being built. Without it the
+  // only feedback was every button greying out, which reads as a dead click
+  // until the dialog finally appears.
+  const [previewingPath, setPreviewingPath] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [outcomes, setOutcomes] = useState<Outcome[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
@@ -233,11 +255,13 @@ export function RecoveryCopiesSection() {
     }
     let preview: RecoveryChainPreview;
     setBusy(true);
+    setPreviewingPath(chain.path);
     setStatus(t("settings.recoveryCopiesPreviewBuilding"));
     try {
       preview = await app.PreviewRecoveryChain(mainPath, chain.path);
     } catch (err) {
       setBusy(false);
+      setPreviewingPath(null);
       setStatus("");
       // Surface preview failures where the click happened - burying them in the
       // page-level error list is why "some branches do nothing on click" read as
@@ -258,6 +282,7 @@ export function RecoveryCopiesSection() {
       return;
     }
     setBusy(false);
+    setPreviewingPath(null);
     setStatus("");
     const ok = await confirm({
       title: t("settings.recoveryCopiesPreviewTitle"),
@@ -708,9 +733,11 @@ export function RecoveryCopiesSection() {
                           disabled={busy || scanning.size > 0}
                           onClick={() => { void togglePick(group.mainPath, chain); }}
                         >
-                          {pickedChain[group.mainPath] === chain.path
-                            ? t("settings.recoveryCopiesUnpick")
-                            : t("settings.recoveryCopiesPreviewBtn")}
+                          {previewingPath === chain.path
+                            ? t("settings.recoveryCopiesPreviewBuildingShort")
+                            : pickedChain[group.mainPath] === chain.path
+                              ? t("settings.recoveryCopiesUnpick")
+                              : t("settings.recoveryCopiesPreviewBtn")}
                         </button>
                       </div>
                     );

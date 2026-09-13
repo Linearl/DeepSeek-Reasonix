@@ -2287,6 +2287,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesPreviewTailShow": "查看尾部訊息（確認現場）",
   "settings.recoveryCopiesPreviewTailHide": "收起尾部訊息",
   "settings.recoveryCopiesPreviewTailMore": "載入更多",
+  "settings.recoveryCopiesPreviewTailCount": "已顯示 {shown}/{total} 字元",
+  "settings.recoveryCopiesPreviewBuildingShort": "預覽建立中…",
   "settings.recoveryCopiesPreviewFailedTitle": "預覽失敗",
   "settings.recoveryCopiesPreviewFailedLead": "該分支無法載入預覽，原因：",
   "settings.recoveryCopiesPreviewBuilding": "正在為該分支建立預覽——大副本首次需重放全量日誌，之後走快取。",

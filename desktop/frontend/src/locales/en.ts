@@ -3241,6 +3241,8 @@ export const en = {
   "settings.recoveryCopiesPreviewTailShow": "Show tail messages (recognize the scene)",
   "settings.recoveryCopiesPreviewTailHide": "Hide tail messages",
   "settings.recoveryCopiesPreviewTailMore": "Load more",
+  "settings.recoveryCopiesPreviewTailCount": "{shown}/{total} chars shown",
+  "settings.recoveryCopiesPreviewBuildingShort": "Building preview…",
   "settings.recoveryCopiesPreviewFailedTitle": "Preview failed",
   "settings.recoveryCopiesPreviewFailedLead": "This branch could not be loaded for preview. Reason:",
   "settings.recoveryCopiesPreviewBuilding": "Building this branch's preview - a large copy replays the full log once, then it stays cached.",

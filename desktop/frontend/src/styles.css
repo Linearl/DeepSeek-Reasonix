@@ -40344,6 +40344,11 @@ body > .mermaid-diagram--fullscreen {
   opacity: 0.7;
   margin-bottom: 4px;
 }
+.rc-preview__tail-count {
+  font-size: 0.86em;
+  opacity: 0.7;
+  margin-left: 8px;
+}
 .rc-preview__line {
   white-space: pre-wrap;
   word-break: break-word;

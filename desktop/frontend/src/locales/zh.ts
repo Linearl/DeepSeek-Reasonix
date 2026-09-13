@@ -3245,6 +3245,8 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesPreviewTailShow": "查看尾部消息（确认现场）",
   "settings.recoveryCopiesPreviewTailHide": "收起尾部消息",
   "settings.recoveryCopiesPreviewTailMore": "加载更多",
+  "settings.recoveryCopiesPreviewTailCount": "已显示 {shown}/{total} 字符",
+  "settings.recoveryCopiesPreviewBuildingShort": "预览构建中…",
   "settings.recoveryCopiesPreviewFailedTitle": "预览失败",
   "settings.recoveryCopiesPreviewFailedLead": "该分支无法加载预览，原因：",
   "settings.recoveryCopiesPreviewBuilding": "正在为该分支建立预览——大副本首次需重放全量日志，之后走缓存。",
