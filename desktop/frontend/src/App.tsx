@@ -740,6 +740,8 @@ export default function App() {
   // Which pane the composer targets while a split is open (task 70, B). It defaults
   // to the primary pane, matching focusedPane's default.
   const [splitTarget, setSplitTarget] = useState<"primary" | "secondary" | "both">("primary");
+  // Restart-and-update experiment (task 81): off unless the user opted in.
+  const [restartUpdateEnabled, setRestartUpdateEnabled] = useState(false);
   type PreservedTranscriptSurface = {
     tabId?: string;
     items: Item[];
@@ -1169,7 +1171,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1181,6 +1183,7 @@ export default function App() {
       saveCachedAppearance(nextTheme, nextStyle);
       applyLayoutStyleDefaults(nextLayoutStyle);
       setLocalePref(normalizeLangPref(settings.desktopLanguage));
+      setRestartUpdateEnabled(Boolean(settings.experimentalRestartUpdate));
       setStartupUpdateChecksEnabled(settings.checkUpdates !== false);
       setStatusBarStyle(settings.statusBarStyle === "text" ? "text" : "icon");
       setQuickCommands(settings.quickCommands ?? []);
@@ -3223,6 +3226,16 @@ export default function App() {
     await handleSend(displayText, submitText);
   }, [splitState.secondaryTabId, splitTarget, handleSend, activeTabId]);
 
+  // Restart-and-update (task 81). An empty source directory lets the backend use its
+  // InstallRoot/staging convention, so a local build only has to be dropped there.
+  const handleRestartUpdate = useCallback(async () => {
+    try {
+      await app.RestartAndUpdate("", "");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), "error");
+    }
+  }, [showToast]);
+
   const visibleTranscriptItems = visibleTranscriptSurface?.items ?? displayItems;
   const visibleTranscriptTabId = visibleTranscriptSurface?.tabId ?? activeTabId;
   const visibleTranscriptGeometryKey = visibleTranscriptSurface?.geometrySessionKey ?? transcriptGeometrySessionKey;
@@ -5196,6 +5209,8 @@ export default function App() {
             balance={state.balance}
             running={state.running || rewindCommitting}
             jobs={state.jobs}
+            restartUpdateAvailable={restartUpdateEnabled}
+            onRestartUpdate={() => void handleRestartUpdate()}
             onCancelJob={cancelJob}
             backgroundRuntimes={backgroundRuntimes}
             onCancelRuntimeJob={cancelRuntimeJob}

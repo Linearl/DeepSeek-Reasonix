@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Activity, CircleDollarSign, CircleGauge, Database, FileOutput, Folder, Gauge, GitBranch, HardDrive, Layers, Percent, Puzzle, RefreshCw, Server, Settings, Square, Unplug, Wallet, Zap } from "lucide-react";
+import { Activity, CircleDollarSign, CircleGauge, Database, FileOutput, Folder, Gauge, GitBranch, HardDrive, Layers, Percent, Puzzle, RefreshCw, RotateCw, Server, Settings, Square, Unplug, Wallet, Zap } from "lucide-react";
 import { AnchoredPopover } from "./AnchoredPopover";
 import { RemoteConnectionErrorDialog } from "./RemoteConnectionErrorDialog";
 import { Tooltip } from "./Tooltip";
@@ -165,6 +165,8 @@ export function StatusBar({
   usage,
   balance,
   sessionTurns,
+  restartUpdateAvailable = false,
+  onRestartUpdate,
   sessionTokens,
   turnTokens,
   lastTurnOutputTokens,
@@ -219,6 +221,9 @@ export function StatusBar({
   onConnectRemote?: (host: RemoteHostView) => void;
   onDisconnectRemote?: (hostId: string) => void;
   onManageRemote?: () => void;
+  /** Restart-and-update (task 81): the button shows only while the experiment is on. */
+  restartUpdateAvailable?: boolean;
+  onRestartUpdate?: () => void;
   onOpenRemote?: (hostId: string) => void;
   onOpenRemoteWorkspace?: (host: RemoteHostView) => void;
   remoteHosts?: RemoteHostView[];
@@ -452,6 +457,18 @@ export function StatusBar({
           onDisconnect={onDisconnectRemote}
           onManage={onManageRemote}
         />
+        {restartUpdateAvailable && (
+          <button
+            type="button"
+            className="statusbar__jobs-trigger"
+            title={t("status.restartUpdateTitle")}
+            aria-label={t("status.restartUpdateTitle")}
+            onClick={() => onRestartUpdate?.()}
+          >
+            <RotateCw size={12} aria-hidden="true" />
+            <span>{t("status.restartUpdate")}</span>
+          </button>
+        )}
         <JobsStatusBarChip
           jobs={jobs}
           activeJobsRemote={false}
