@@ -71,7 +71,7 @@ Problems hit and how they were resolved (or not), so the same dead ends are not 
 ## Pending & next step
 What is still in progress or unstarted, and the single most concrete next action to take.
 
-Rules: be terse — bullet points and fragments, not prose. Preserve identifiers, paths, and numbers exactly. Merge valid facts from any existing <compaction-summary> and remove facts superseded by later messages. Do NOT invent anything not present in the messages; if something is unknown, leave it out rather than guessing. Output only the structured Markdown briefing. Do not call tools. Do not output reasoning.`
+Rules: be terse — bullet points and fragments, not prose. Preserve identifiers, paths, and numbers exactly. Merge valid facts from any existing <compaction-summary> and remove facts superseded by later messages. Do NOT invent anything not present in the messages; if something is unknown, leave it out rather than guessing. Output only the structured Markdown briefing. Do not call tools. Do not output reasoning. The transcript may carry the assistant's own thinking, labelled as a draft hint. Where it shows why a direction was chosen, a dead end that was abandoned, or a correction the user made, keep that substance in one short line so the summary stays actionable — but never promote a hint into a fact.`
 
 // compactTrigger is the sole automatic context-maintenance boundary. Output
 // budgets are intentionally absent: they are clipped against the final request
@@ -498,9 +498,51 @@ func (a *Agent) summarizeOnce(ctx context.Context, fold []provider.Message, inst
 // renderTranscript flattens messages into a bounded transcript for the
 // transcript-form summary request. Tool bodies are the provider-visible
 // Content cut to slimToolResultRunes; RawContent never enters a summary.
+// The compaction summary is the one place a later turn can still see why the model
+// chose a direction, and Trace-as-State (arXiv 2609.02702) puts that trace in front of
+// the question because it is the highest-signal part of the history. Two knobs stop it
+// from eating the budget the summary itself needs: reasoningTraceBudget is the total the
+// summarizer will see, allocated newest-first (a reader needs the current direction, not
+// the opening moves), and reasoningTraceChars is the tail window per assistant message,
+// since a decision lands at the end of a reasoning block.
+const (
+	// 2 KiB keeps the trace inside the slim transcript contract (see
+	// TestSlimSummaryRequestIsBoundedAndToolFree): the trace is a bounded part of the
+	// summary input, not an addition on top of it.
+	reasoningTraceBudget = 2 * 1024
+	reasoningTraceChars  = 700
+)
+
+// reasoningTraceAllowance decides how many characters of reasoning ride into the
+// summarizer for each message.
+func reasoningTraceAllowance(msgs []provider.Message) []int {
+	allowance := make([]int, len(msgs))
+	left := reasoningTraceBudget
+	for i := len(msgs) - 1; i >= 0; i-- {
+		m := msgs[i]
+		if m.Role != provider.RoleAssistant || m.LocalOnly || m.ReasoningContent == "" {
+			continue
+		}
+		kept := len(m.ReasoningContent)
+		if kept > reasoningTraceChars {
+			kept = reasoningTraceChars
+		}
+		if kept > left {
+			kept = left
+		}
+		if kept <= 0 {
+			continue
+		}
+		allowance[i] = kept
+		left -= kept
+	}
+	return allowance
+}
+
 func renderTranscript(msgs []provider.Message) string {
 	var b strings.Builder
-	for _, m := range msgs {
+	allowance := reasoningTraceAllowance(msgs)
+	for i, m := range msgs {
 		if m.LocalOnly {
 			continue
 		}
@@ -508,6 +550,15 @@ func renderTranscript(msgs []provider.Message) string {
 		case provider.RoleUser:
 			fmt.Fprintf(&b, "[user]\n%s\n\n", m.Content)
 		case provider.RoleAssistant:
+			// A trace is a draft, not a verified finding: label it so a summary never
+			// promotes a guess into a fact.
+			if kept := allowance[i]; kept > 0 {
+				trace := m.ReasoningContent
+				if len(trace) > kept {
+					trace = trace[len(trace)-kept:]
+				}
+				fmt.Fprintf(&b, "[assistant thinking — may be wrong, treat as a draft hint only]\n…%s\n", trace)
+			}
 			if m.Content != "" {
 				fmt.Fprintf(&b, "[assistant]\n%s\n", m.Content)
 			}

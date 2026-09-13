@@ -266,7 +266,9 @@ func TestSlimSummaryRequestIsBoundedAndToolFree(t *testing.T) {
 	if !strings.Contains(text, "tool result truncated for summarization") || strings.Contains(text, "base64") {
 		t.Fatal("slim transcript must cut the tool body and drop images")
 	}
-	if len(text) > slimToolResultRunes+2000 {
+	// The bound covers the tool body, the message scaffolding, and the bounded
+	// reasoning trace the transcript now carries (task 60).
+	if len(text) > slimToolResultRunes+2000+reasoningTraceBudget {
 		t.Fatalf("slim transcript is %d bytes; the tool body should be bounded by %d runes", len(text), slimToolResultRunes)
 	}
 	if got, want := a.estimatedRequestTokens(slim), a.estimatedRequestTokens(replay); got >= want {
