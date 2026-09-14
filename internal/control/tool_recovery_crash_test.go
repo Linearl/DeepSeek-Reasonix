@@ -84,8 +84,7 @@ func TestToolRecoveryCrashAfterEffect(t *testing.T) {
 	var wg sync.WaitGroup
 	errs := make(chan error, 2)
 	for range 2 {
-		wg.Add(1)
-		go func() { defer wg.Done(); _, e := c.ResolveToolRecovery(context.Background(), req); errs <- e }()
+		wg.Go(func() { _, e := c.ResolveToolRecovery(context.Background(), req); errs <- e })
 	}
 	wg.Wait()
 	close(errs)

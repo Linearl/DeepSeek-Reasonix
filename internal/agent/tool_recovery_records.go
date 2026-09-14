@@ -38,7 +38,7 @@ func (s *Session) toolRecoveryRecord(callID string) *provider.ToolCallRecord {
 func (s *Session) setToolRecoveryRecord(id string, r provider.ToolCallRecord) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for i := len(s.Messages) - 1; i >= 0; i-- {
+	for i := range slices.Backward(s.Messages) {
 		for j, call := range s.Messages[i].ToolCalls {
 			if call.ID != id {
 				continue

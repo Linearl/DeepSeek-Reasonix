@@ -73,6 +73,13 @@ func ToolResultRunState(m Message) ToolRunState {
 	return ToolRunCompleted
 }
 
+// IsInterruptedPlaceholder identifies the synthetic result inserted while a
+// session is loaded. It is not execution evidence and must not override the
+// ledger's durable start barrier.
+func IsInterruptedPlaceholder(m Message) bool {
+	return m.Role == RoleTool && m.ToolRunState == "" && strings.TrimSpace(m.Content) == interruptedToolResult
+}
+
 // RecordToolRecovery retains legacy interrupted names for older readers while
 // new readers distinguish calls proven not to have run from uncertain effects.
 func RecordToolRecovery(r *InterruptedTurnRecovery, call InterruptedToolSummary, state ToolRunState) {

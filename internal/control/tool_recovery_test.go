@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -42,7 +43,7 @@ func TestToolRecoveryRejectsStaleSnapshot(t *testing.T) {
 	c := New(Options{Sink: event.Discard})
 	v := c.ToolRecoverySnapshot()
 	v.Revision = "stale"
-	_, err := c.ResolveToolRecovery(nil, ToolRecoveryRequest{SessionPath: v.SessionPath, RuntimeEpoch: v.RuntimeEpoch, Revision: v.Revision, Action: "confirm"})
+	_, err := c.ResolveToolRecovery(context.TODO(), ToolRecoveryRequest{SessionPath: v.SessionPath, RuntimeEpoch: v.RuntimeEpoch, Revision: v.Revision, Action: "confirm"})
 	if err == nil || !strings.Contains(err.Error(), "snapshot changed") {
 		t.Fatalf("err=%v", err)
 	}

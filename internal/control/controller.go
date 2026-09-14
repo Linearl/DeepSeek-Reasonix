@@ -4109,7 +4109,7 @@ func (c *Controller) stripCancelledVisibleTurnMessagesAfterWithFallbackAt(idx in
 			continue
 		}
 		if m.Role == provider.RoleAssistant {
-			recordInterruptedAssistantRecovery(recovery, msgs, i)
+			recordInterruptedAssistantRecovery(recovery, msgs, i, c.ledgerTailEvidence())
 		}
 		if end, ok := completeToolTurnEnd(msgs, i); ok && c.executor.CanReplayAssistantMessage(m) {
 			next = append(next, msgs[i:end]...)
@@ -4145,6 +4145,13 @@ func (c *Controller) stripCancelledVisibleTurnMessagesAfterWithFallbackAt(idx in
 			Name: provider.LocalOnlyToolName, LocalOnly: true,
 		})
 		localIndexes = append(localIndexes, len(next)-1)
+	}
+	if evidence := c.ledgerTailEvidence(); evidence != nil {
+		recovery.Cause = "runtime_restart"
+		recovery.TurnID = evidence.turnID
+		if len(recovery.ToolCalls) == 0 && len(recovery.CompletedTools) == 0 && !recovery.DroppedPartialText && !recovery.DroppedPartialReasoning {
+			recovery.SilentInterruption = true
+		}
 	}
 	next[localIndexes[len(localIndexes)-1]].InterruptedTurn = recovery
 	recovery.SilentInterruption = len(recovery.CompletedTools) == 0 && len(recovery.InterruptedTools) == 0 && !recovery.DroppedPartialText && !recovery.DroppedPartialReasoning

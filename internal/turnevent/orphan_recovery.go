@@ -8,6 +8,36 @@ import (
 	"reasonix/internal/provider"
 )
 
+type OrphanTool struct {
+	ID, Name string
+	Started  bool
+}
+type OrphanRecovery struct {
+	TurnID string
+	Tools  []OrphanTool
+}
+
+func (l *Ledger) OrphanRecovery() *OrphanRecovery {
+	if l == nil {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.active == "" {
+		return nil
+	}
+	o := &OrphanRecovery{TurnID: l.active}
+	for _, r := range l.records {
+		if r.TurnID == l.active && r.Source == "ledger_reopen" && r.Kind == "tool_result" && r.Event.Tool != nil {
+			o.Tools = append(o.Tools, OrphanTool{ID: r.Event.Tool.ID, Name: r.Event.Tool.Name, Started: r.Event.Tool.RunState == provider.ToolRunUnknown})
+		}
+	}
+	if len(o.Tools) == 0 {
+		return nil
+	}
+	return o
+}
+
 func (l *Ledger) recoverToolEffects(pendingTools map[string]eventwire.Tool, pendingToolOrder []string) error {
 	if l.active != "" && !l.terminal {
 		requiresRecovery := false
@@ -23,7 +53,7 @@ func (l *Ledger) recoverToolEffects(pendingTools map[string]eventwire.Tool, pend
 			if state == provider.ToolRunUnknown && !tool.ReadOnly {
 				requiresRecovery = true
 			}
-			result := event.Event{Kind: event.ToolResult, TurnID: l.active, Tool: event.Tool{
+			result := event.Event{Kind: event.ToolResult, TurnID: l.active, Source: "ledger_reopen", Tool: event.Tool{
 				RunState: state, AttemptID: tool.AttemptID,
 				ID: tool.ID, Name: tool.Name, ResolvedName: tool.ResolvedName,
 				CapabilityID: tool.CapabilityID, ReadOnly: tool.ReadOnly, ParentID: tool.ParentID,
@@ -34,7 +64,7 @@ func (l *Ledger) recoverToolEffects(pendingTools map[string]eventwire.Tool, pend
 			}
 		}
 		status := event.TurnInterrupted
-		e := event.Event{Kind: event.TurnDone, TurnID: l.active, Err: errors.New("runtime restarted before the turn reached a terminal event")}
+		e := event.Event{Kind: event.TurnDone, TurnID: l.active, Source: "ledger_reopen", Err: errors.New("runtime restarted before the turn reached a terminal event")}
 		if requiresRecovery {
 			status = event.TurnRecoveryRequired
 			e.Recovery = &event.RecoveryStatus{State: "recovery_required", Reason: "runtime_restart", RequiresUserDecision: true}
