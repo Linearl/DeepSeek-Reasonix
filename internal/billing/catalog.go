@@ -148,6 +148,13 @@ func DeepSeekRateBand(at time.Time) string {
 // ResolveScheduledRate resolves an official occurrence-time rate. The schedule
 // id must come from resolved official-provider config; a model name is not enough.
 
+// DeepSeekScheduleIDs lists the price generations the vendor has published, newest first.
+// Callers that need to place a price card in a schedule should walk this rather than name a
+// generation: naming one meant every repricing broke the caller that hardcoded it.
+func DeepSeekScheduleIDs() []string {
+	return []string{ScheduleDeepSeekV4Flash2026September, ScheduleDeepSeekV4August2026}
+}
+
 // deepSeekScheduleEffectiveAt reports when a DeepSeek price schedule took effect.
 // Adding a generation here is what makes its rows resolvable; both generations share
 // the same peak/off-peak clock, so this is the only place a new schedule needs naming.

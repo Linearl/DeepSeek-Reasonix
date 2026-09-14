@@ -8,8 +8,11 @@ import (
 	"reasonix/internal/provider/openai"
 )
 
+// The display price for Flash, kept in step with internal/billing's V4.1 schedule
+// (deepseek-v4-2026-09-10). When the vendor reprices, both move together: a settings page
+// showing one number while the ledger charges another is worse than either being stale.
 func deepSeekV4FlashPriceCNY() *provider.Pricing {
-	return &provider.Pricing{CacheHit: 0.10, Input: 3, Output: 9, Currency: "¥"}
+	return &provider.Pricing{CacheHit: 0.04, Input: 2, Output: 8, Currency: "¥"}
 }
 
 func deepSeekV4ProPriceCNY() *provider.Pricing {
@@ -25,7 +28,7 @@ func deepSeekV4PricesCNY() map[string]*provider.Pricing {
 }
 
 func deepSeekV4FlashPriceUSD() *provider.Pricing {
-	return &provider.Pricing{CacheHit: 0.014, Input: 0.44, Output: 1.32, Currency: "$"}
+	return &provider.Pricing{CacheHit: 0.006, Input: 0.3, Output: 1.2, Currency: "$"}
 }
 
 func deepSeekV4ProPriceUSD() *provider.Pricing {

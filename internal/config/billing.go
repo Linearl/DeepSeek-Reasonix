@@ -157,10 +157,17 @@ func (e *ProviderEntry) PricingContextForModel(model string) billing.PricingCont
 	if entry, ok := billing.MatchesCatalog(kind, model, card); ok {
 		ctx.CatalogSource = entry.DocURL
 	}
-	if kind == "deepseek" && scheduledProtocol && isOfficialDeepSeekBillingEndpoint(e) && ctx.BillingMode == billing.BillingModePAYG &&
-		billing.MatchesScheduleAnchor(kind, model, billing.ScheduleDeepSeekV4August2026, card) {
-		ctx.ScheduleID = billing.ScheduleDeepSeekV4August2026
-		ctx.CatalogSource = billing.DocDeepSeekPricing
+	if kind == "deepseek" && scheduledProtocol && isOfficialDeepSeekBillingEndpoint(e) && ctx.BillingMode == billing.BillingModePAYG {
+		// The display card may name any generation the vendor has priced; whichever schedule its
+		// numbers match is the one the ledger will use, so the caller does not pick a generation.
+		for _, scheduleID := range billing.DeepSeekScheduleIDs() {
+			if !billing.MatchesScheduleAnchor(kind, model, scheduleID, card) {
+				continue
+			}
+			ctx.ScheduleID = scheduleID
+			ctx.CatalogSource = billing.DocDeepSeekPricing
+			break
+		}
 	}
 	return ctx
 }
