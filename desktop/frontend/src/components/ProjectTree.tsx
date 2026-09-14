@@ -43,6 +43,7 @@ import { ProjectTreeHeaderAddControl, ProjectTreeRemoteAction, projectTreeHeader
 import { activeRemoteProjectAncestorKeys, buildRemoteProjectMenuItems, useRemoteRuntimeTree, openRemoteSessionNode, remoteProjectKey, remoteServeBadgeState, renameRemoteProjectTitle, RemoteProjectEmptyState, useRemoteProjectGroups, useRemoteSessionActions } from "./ProjectTreeRemoteGroups";
 import type { ProjectTreeProps } from "./ProjectTreeProps";
 import { reportFrontendLog } from "../lib/frontendLog";
+	import { loadFoldExcessSessions, onFoldExcessSessionsChanged } from "../lib/foldExcessSessions";
 
 function projectNodeKey(node: ProjectNode, depth: number): string {
   return node.key || `${node.kind}-${node.root ?? ""}-${node.topicId ?? ""}-${node.sessionPath ?? ""}-${depth}`;
@@ -1051,7 +1052,11 @@ export function ProjectTree({
   }, [compactTopics, creationTopics, visibleTree, workbenchSortMode]);
 
   const classicTopics = !compactTopics && !creationTopics;
-  const classicTruncationActive = classicTopics && query.trim() === "" && timeFilter === "all";
+	const [foldExcessSessions, setFoldExcessSessions] = useState(() => loadFoldExcessSessions());
+	useEffect(() => onFoldExcessSessionsChanged(() => setFoldExcessSessions(loadFoldExcessSessions())), []);
+	// Task 102: with the preference off, expanded projects list all sessions at startup - no
+	// truncation control appears because nothing is truncated.
+  const classicTruncationActive = foldExcessSessions && classicTopics && query.trim() === "" && timeFilter === "all";
 
   const projectLabelByRoot = useMemo(() => {
     const map = new Map<string, string>();

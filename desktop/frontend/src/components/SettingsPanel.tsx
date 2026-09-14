@@ -100,6 +100,7 @@ import { StatusBarItemsEditor } from "./StatusBarItemsEditor";
 import { DesktopCloseBehaviorHint } from "./DesktopCloseBehaviorHint";
 import { ProviderModelsEditor } from "./ProviderModelsEditor";
 import type { DesktopPlatform } from "../lib/desktopPlatform";
+import { loadFoldExcessSessions, saveFoldExcessSessions } from "../lib/foldExcessSessions";
 export type SettingsInitialFocus =
   | { target: "bot-allowlist"; connectionId?: string; requestId?: number }
   | { target: "model-access"; requestId?: number; onboarding?: boolean }
@@ -1734,6 +1735,7 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
 }
 
 function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agentRunning: boolean }) {
+	const [foldExcess, setFoldExcess] = useState(loadFoldExcessSessions);
   const { setPref } = useI18n();
   const t = useT();
   const closeBehavior = normalizeCloseBehavior(s.closeBehavior);
@@ -1801,6 +1803,26 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
             </button>
           ))}
         </SettingsOptions>
+      </SettingsField>
+      <SettingsField label={t("settings.foldExcessSessions")} hint={t("settings.foldExcessSessionsHint")} icon={<Files size={18} />}>
+      	<SettingsOptions layout="field" className="set-seg">
+      		<button
+      			key="on"
+      			className={`set-seg__btn${foldExcess ? " set-seg__btn--on" : ""}`}
+      			disabled={busy}
+      			onClick={() => { setFoldExcess(true); saveFoldExcessSessions(true); }}
+      		>
+      			{t("settings.foldExcessSessionsOn")}
+      		</button>
+      		<button
+      			key="off"
+      			className={`set-seg__btn${!foldExcess ? " set-seg__btn--on" : ""}`}
+      			disabled={busy}
+      			onClick={() => { setFoldExcess(false); saveFoldExcessSessions(false); }}
+      		>
+      			{t("settings.foldExcessSessionsOff")}
+      		</button>
+      	</SettingsOptions>
       </SettingsField>
       <SettingsField label={t("settings.language")} hint={t("settings.languageHint")} icon={<Languages size={18} />}>
         <SettingsOptions layout="field" className="set-seg">
