@@ -120,6 +120,14 @@ and the user's switch instead** (see `release-notes/FORK-vs-upstream.md`, "图�
 | `TestOfficialDeepSeekImageMetadataMatchesTextOnlyWireBytes` | `provider/anthropic` | **stale** — same |
 | `TestOfficialDeepSeekResponsesIgnoresVisionMetadata` | `provider/responses` | **stale** — same |
 | `TestOfficialDeepSeekResponsesImageMetadataMatchesTextOnlyWireBytes` | `provider/responses` | **stale** — same |
+| `TestMergeTreeRechecksBudgetBeforeNewRound` | `agent` | **stale** — see below |
+
+**Sixth entry, different cause (2026-09-13).** `TestMergeTreeRechecksBudgetBeforeNewRound` expects the
+merge tree to fail with `call budget exhausted`, but it now fails earlier with `summary output budget
+too small (190 tokens)` — a lower bound on the summary output budget now rejects the request before the
+call budget is consulted. Confirmed pre-existing by stashing the change under test. The verdict is not
+yet decided: either that lower bound is too aggressive for a 2000-token context window, or the test's
+expectation predates it. Deciding needs the bound's intent read from the commit that added it.
 
 **Not yet driven to zero.** Updating them means asserting the fork's behaviour instead
 (the official endpoint honours metadata and the user's switch), which is a per-test
