@@ -211,6 +211,18 @@ try {
   await harness.render(turns(100), { geometrySessionKey: "threshold-101" });
   ok(harness.container.querySelector('[data-transcript-render-mode="full"]') != null, "100 completed turns render in full-DOM mode");
   ok(harness.container.querySelectorAll("[data-transcript-block-key]").length === 100, "full-DOM mode mounts every complete turn block");
+  // The reader-takeover check belongs here, in full-DOM mode. In windowed mode the spacer's
+  // extent comes from measured element sizes, which jsdom cannot supply, so scrollHeight
+  // collapses to roughly the resident rows and the "scrollable range" precondition that gates
+  // the button is never satisfiable. Full-DOM measures the rows themselves and does satisfy it.
+  const readerTailAction = harness.container.querySelector<HTMLButtonElement>(".transcript__jump-bottom");
+  const readerTranscript = harness.scrollElement();
+  await act(async () => {
+    readerTranscript.dispatchEvent(new harness.dom.window.WheelEvent("wheel", { deltaY: -1000, bubbles: true }));
+    readerTranscript.scrollTop = 0;
+    readerTranscript.dispatchEvent(new Event("scroll"));
+  });
+  await harness.waitFor(() => readerTailAction?.hidden === false, "jump-to-bottom visibility after reader takeover");
 
   await harness.render(turns(101), { geometrySessionKey: "threshold-101" });
   await harness.waitFor(() => Boolean(harness.container.querySelector('[data-transcript-render-mode="windowed"]')), "window adapter loaded");
@@ -234,13 +246,6 @@ try {
 
   const tailAction = harness.container.querySelector<HTMLButtonElement>(".transcript__jump-bottom");
   ok(Boolean(tailAction), "the jump-to-bottom action keeps a stable DOM host while hidden at the tail");
-  const transcript = harness.scrollElement();
-  await act(async () => {
-    transcript.dispatchEvent(new harness.dom.window.WheelEvent("wheel", { deltaY: -1000, bubbles: true }));
-    transcript.scrollTop = 0;
-    transcript.dispatchEvent(new Event("scroll"));
-  });
-  await harness.waitFor(() => tailAction?.hidden === false, "jump-to-bottom visibility after reader takeover");
   ok(
     harness.container.querySelector(".transcript__jump-bottom") === tailAction,
     "reader takeover changes jump-to-bottom visibility without replacing its DOM identity",

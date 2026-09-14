@@ -149,6 +149,31 @@ the call before the *call* budget the test means to exercise — the message nam
 does not test. A roomier window fixes it; the call budget is then set to leave exactly one round
 of two, so the failure lands on the round boundary the name promises.
 
+### Frontend suite (2026-09-14) — six, all closed or toolchain
+
+Found by running the three suites the 14:29 handoff named. The two failures that mattered were
+real bugs in shipped code, which is the point of not waiving them:
+
+| Test | File | Verdict | Fixed in |
+|---|---|---|---|
+| `a mid-stream session still fetches and installs its history` | `running-tab-history-hydration` | **the code was wrong** — `switchTab` passed `skipHistory: hasLocalItems`, so a tab whose only rows were the streaming turn's own skipped the history fetch entirely and floated over an empty transcript | `1785b4d45` |
+| `the persisted page lands in front of the streaming turn` | `running-tab-history-hydration` | **the code was wrong** — same | `1785b4d45` |
+| `changed same-path fingerprint bypasses the resident projection` | `transcript-store` | **the code was wrong** — `loadLatest`'s `preferResident` shortcut never compared `expectedRevision`/`expectedDigest`, so a session rewritten while the tab was away kept answering with the stale page and its stale paging cursor | `1785b4d45` |
+| `fresh projection adopts the advanced canonical digest` | `transcript-store` | **the code was wrong** — same | `1785b4d45` |
+| `markdown cache returns stored value` / `markdown LRU evicts...` | `transcript-store` | **the test was stale** — all four entries passed revision 1, which only worked when the key was entryId+revision; the key is the content revision alone (see `TranscriptMarkdownCache.key`) | `1785b4d45` |
+| `jump-to-bottom visibility after reader takeover` | `transcript-viewport` | **the test was wrong** — it asserted in windowed mode, where the spacer's extent comes from measured element sizes that jsdom cannot supply, so the scrollable-range precondition was unsatisfiable | `1785b4d45` (moved to full-DOM) |
+
+Combined with the two fixes above, `transcript-store` and `running-tab-history-hydration` are green
+(71 and 9 assertions). `transcript-viewport` also needed a static `readFile` import: its dynamic
+`import("node:fs/promises")` routed through the vite RPC and timed out at 60s.
+
+**Still open, and named as such:** `transcript-viewport` intermittently dies with
+`transport invoke timed out after 60000ms (vite:invoke fetchModule)` — a vitest/vite transport
+timeout on a lazily imported module, not an assertion failure. It reproduced on the untouched
+tree before any of this session's edits, and it is timing, not logic: the same run passes or dies
+without a code change. Chasing it means fixing the harness's module loading, which is a separate
+piece of work from the history failures above.
+
 ## Import cycle rule
 
 Before importing a new internal package from a non-test file, verify the target package's **test files** aren't already importing back to you:
