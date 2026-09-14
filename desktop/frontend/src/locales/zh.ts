@@ -3294,6 +3294,7 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesOutcomeForced": "强制合并",
   "settings.recoveryCopiesOutcomeBlocked": "已跳过（未确认强制合并）",
   "settings.recoveryCopiesArchived": "归档",
+  "settings.recoveryCopiesPrefixed": "已拼接落败链前缀",
   "settings.recoveryCopiesUnloadable": "未载入",
   "settings.recoveryCopiesLeftBehind": "未并入",
   "settings.recoveryCopiesScanFirstBody": "以下会话还没测量过。合并需要先知道每个副本有多少内容、多少是主线没有的——否则合并等于在不知道动什么的情况下写会话文件。请先扫描：",

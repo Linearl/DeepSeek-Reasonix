@@ -2332,6 +2332,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesOutcomeForced": "強制合併",
   "settings.recoveryCopiesOutcomeBlocked": "已跳過（未確認強制合併）",
   "settings.recoveryCopiesArchived": "歸檔",
+  "settings.recoveryCopiesPrefixed": "已拼接落敗鏈前綴",
   "settings.recoveryCopiesUnloadable": "未載入",
   "settings.recoveryCopiesLeftBehind": "未併入",
   "settings.recoveryCopiesScanFirstBody": "以下工作階段還沒測量過。合併需要先知道每個副本有多少內容、多少是主線沒有的——否則合併等於在不知道動什麼的情況下寫入工作階段檔案。請先掃描：",

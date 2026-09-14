@@ -175,6 +175,10 @@ export interface ConsolidationReport {
   // copy with a large unique count is work a plain "merged" toast would hide.
   notCoveredDetail?: { path: string; shared: number; unique: number; reason?: string }[];
   skippedUnloadable: string[];
+  /** Turns of the losing chain grafted onto the new main (task 90). */
+  prefixed?: number;
+  /** Where the losing chain rejoined, for the UI to explain which part was kept. */
+  forkIndex?: number;
 }
 
 /** RecoveryCopyView is one recovery copy beside a conversation, with the split

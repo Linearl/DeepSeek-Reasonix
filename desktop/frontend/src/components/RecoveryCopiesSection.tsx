@@ -81,6 +81,8 @@ type Outcome = {
   notCovered?: number;
   /** Copies the backend refused to load, so their events were never considered. */
   unloadable?: number;
+  /** Losing-chain turns grafted onto the new main instead of being archived. */
+  prefixed?: number;
   reasons?: string[];
   detail?: string;
 };
@@ -570,6 +572,7 @@ export function RecoveryCopiesSection() {
               after: forced.winnerMessageCount,
               trashed: forced.trashed?.length ?? 0,
               unloadable: forced.skippedUnloadable?.length ?? 0,
+              prefixed: forced.prefixed ?? 0,
             });
           } catch (err) {
             collected.push({
@@ -590,6 +593,7 @@ export function RecoveryCopiesSection() {
           trashed: report.trashed?.length ?? 0,
           notCovered: report.notCoveredDetail?.filter((d) => d.unique > 0).length ?? 0,
           unloadable: report.skippedUnloadable?.length ?? 0,
+          prefixed: report.prefixed ?? 0,
           reasons: report.notCoveredDetail?.map((d) => d.reason).filter((r): r is string => Boolean(r)),
         });
         setOutcomes([...collected]);
@@ -864,6 +868,11 @@ export function RecoveryCopiesSection() {
                               {outcome.unloadable ? (
                                 <span className="rc-muted">
                                   {t("settings.recoveryCopiesUnloadable")} {outcome.unloadable}
+                                </span>
+                              ) : null}
+                              {outcome.prefixed ? (
+                                <span className="rc-muted">
+                                  {t("settings.recoveryCopiesPrefixed")} {outcome.prefixed}
                                 </span>
                               ) : null}
                               {outcome.reasons?.length ? (

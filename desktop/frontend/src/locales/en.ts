@@ -3291,6 +3291,7 @@ export const en = {
   "settings.recoveryCopiesOutcomeForced": "merged (forced)",
   "settings.recoveryCopiesOutcomeBlocked": "skipped (forced merge not confirmed)",
   "settings.recoveryCopiesArchived": "archived",
+  "settings.recoveryCopiesPrefixed": "losing-chain prefix grafted",
   "settings.recoveryCopiesUnloadable": "not loadable",
   "settings.recoveryCopiesLeftBehind": "left behind",
   "settings.recoveryCopiesScanFirstBody": "These conversations have not been measured yet. Merging needs to know how much each copy holds and how much of it the main transcript is missing - otherwise it writes to session files without knowing what it is acting on. Scan first:",
