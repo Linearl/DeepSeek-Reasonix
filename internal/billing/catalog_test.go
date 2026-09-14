@@ -175,3 +175,52 @@ func TestScheduledPricingBeforeCutoverUsesHistoricalFingerprint(t *testing.T) {
 		t.Fatalf("fingerprint = %q, want historical rate fingerprint", q.PricingFingerprint)
 	}
 }
+
+// A model can appear in several price schedules once the vendor reprices it, and each
+// schedule must resolve to its own numbers. This is the test that would have caught the
+// V4.1 near-miss: for four attempts, `lookupCatalogIn` accepted a scheduleID and ignored
+// it, so asking for the August row could return the September one — silent, because both
+// rows are well-formed and the only symptom was a wrong quote.
+func TestSchedulesResolveIndependentlyForTheSameModel(t *testing.T) {
+	model := "deepseek-v4-flash"
+	augustAt := time.Date(2026, 8, 18, 6, 0, 0, 0, time.UTC)
+	septemberAt := time.Date(2026, 9, 15, 6, 0, 0, 0, time.UTC) // a weekday: weekends price off-peak
+
+	cases := []struct {
+		name       string
+		scheduleID string
+		at         time.Time
+		currency   string
+		want       RateCard
+	}{
+		{"august/cny", ScheduleDeepSeekV4August2026, augustAt, "CNY", RateCard{0.10, 3, 9, "CNY"}},
+		{"august/usd", ScheduleDeepSeekV4August2026, augustAt, "USD", RateCard{0.014, 0.44, 1.32, "USD"}},
+		{"september/cny", ScheduleDeepSeekV4Flash2026September, septemberAt, "CNY", RateCard{0.04, 2, 8, "CNY"}},
+		{"september/usd", ScheduleDeepSeekV4Flash2026September, septemberAt, "USD", RateCard{0.006, 0.3, 1.2, "USD"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resolved, ok := ResolveScheduledRate("deepseek", model, tc.currency, BillingModePAYG, tc.scheduleID, tc.at)
+			if !ok {
+				t.Fatalf("%s did not resolve", tc.scheduleID)
+			}
+			if resolved.RateBand != RateBandPeak {
+				t.Fatalf("band = %q, want peak", resolved.RateBand)
+			}
+			if resolved.Card.Currency != tc.want.Currency || resolved.Card.CacheHit != tc.want.CacheHit ||
+				resolved.Card.Input != tc.want.Input || resolved.Card.Output != tc.want.Output {
+				t.Fatalf("card = %+v, want %+v", resolved.Card, tc.want)
+			}
+			// The schedule-blind lookup must agree with the named one here: with two rows
+			// for the same model and currency, a lookup that ignores the schedule would
+			// return whichever sits first.
+			entry, ok := lookupCatalogIn(tc.scheduleID, "deepseek", model, tc.currency, BillingModePAYG)
+			if !ok || entry.ScheduleID != tc.scheduleID {
+				t.Fatalf("lookupIn(%s) = %q (ok=%v), want that schedule", tc.scheduleID, entry.ScheduleID, ok)
+			}
+			if entry.CacheHit != tc.want.CacheHit || entry.Input != tc.want.Input || entry.Output != tc.want.Output {
+				t.Fatalf("lookupIn(%s) card = %+v, want %+v", tc.scheduleID, entry, tc.want)
+			}
+		})
+	}
+}
