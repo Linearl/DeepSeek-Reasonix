@@ -24,7 +24,13 @@ func (a *App) GetToolRecoveryForTab(tabID string) (control.ToolRecoverySnapshot,
 	if target, ok := ctrl.(toolRecoveryController); ok {
 		return target.ToolRecoverySnapshot(), nil
 	}
-	return control.ToolRecoverySnapshot{}, fmt.Errorf("tool recovery unavailable")
+	// No controller (or one that does not carry the capability) is "cannot answer yet", not
+	// "recovery failed": the snapshot query is read-only and has no state to report. Returning
+	// an error here made every tab switch, controller rebuild and not-yet-ready surface flash an
+	// error panel the user could do nothing with (task 103). An empty snapshot renders nothing.
+	// ResolveToolRecoveryForTab below still reports an error - there the user asked for an
+	// action and silence would be worse than a failure.
+	return control.ToolRecoverySnapshot{}, nil
 }
 
 func (a *App) ResolveToolRecoveryForTab(tabID string, req control.ToolRecoveryRequest) (control.ToolRecoverySnapshot, error) {

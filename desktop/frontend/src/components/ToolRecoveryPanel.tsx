@@ -20,7 +20,11 @@ export function ToolRecoveryPanel({ tabId, sessionKey, running, refreshKey, onRe
     if (!running && bindings.GetToolRecoveryForTab) {
       void bindings.GetToolRecoveryForTab(tabId).then(next => {
         if (generation.current === own) setSnapshot(next);
-      }).catch(err => { if (generation.current === own) setError(String(err)); });
+      }).catch(() => {
+        // A failed probe is not a failed recovery (task 103): the tab may be mid-switch, or its
+        // controller mid-rebuild. Rendering an error for it produced a panel the user could only
+        // dismiss. Action failures below still surface.
+      });
     }
     return () => { generation.current++; };
   }, [bindings, tabId, sessionKey, running, refreshKey]);
@@ -49,7 +53,9 @@ export function ToolRecoveryPanel({ tabId, sessionKey, running, refreshKey, onRe
       }
     } finally { if (generation.current === own) setBusy(false); }
   };
-  if (!snapshot?.calls.length && !snapshot?.silent && !error && !resolved) return null;
+  // `error` deliberately does not appear here: it can now only come from an action the user
+  // started, and the panel is already open in that case. Probing failures stay silent.
+  if (!snapshot?.calls.length && !snapshot?.silent && !resolved) return null;
   return <section className="notice-line notice-line--warn tool-recovery-panel" aria-label={t("toolRecovery.title")} aria-busy={busy}>
     <details open>
     <summary className="notice-line__title">{t("toolRecovery.title")}</summary>

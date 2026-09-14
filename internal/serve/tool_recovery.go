@@ -27,7 +27,11 @@ func (s *Server) toolRecovery(w http.ResponseWriter, r *http.Request) {
 	}
 	ctrl, ok := s.ctl().(toolRecoveryController)
 	if !ok {
-		http.Error(w, "tool recovery unavailable", http.StatusNotImplemented)
+		// Same semantics as the desktop surface (task 103): a runtime that does not carry the
+		// capability answers "nothing to report" rather than failing. The query is read-only, and
+		// a 501 here made a capable client render an error for a surface that simply has no
+		// interrupted tools. resolveToolRecovery below still reports - there the caller acted.
+		writeJSON(w, control.ToolRecoverySnapshot{})
 		return
 	}
 	writeJSON(w, ctrl.ToolRecoverySnapshot())
