@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"log/slog"
 	"reasonix/internal/provider"
 )
 
@@ -285,6 +286,15 @@ func (a *Agent) summarizeExtractChunks(ctx context.Context, chunks [][]provider.
 	if err := run.requireCalls(minimumChunkedSummaryCalls(len(chunks))); err != nil {
 		return "", err
 	}
+	// The run shape is what explains a slow compaction, or a budget-exhausted one, after the
+	// fact - and it is fork-only (upstream summarizes serially). One line per run, never per
+	// fragment: the pool is the whole point of the divergence, so its shape is the thing worth
+	// recording.
+	slog.Info("compaction: chunked summary run",
+		"feature", "compaction-parallel", "chunks", len(chunks),
+		"concurrency", extractFragmentConcurrency,
+		"minCalls", minimumChunkedSummaryCalls(len(chunks)),
+		"budget", maxChunkedSummaryCalls)
 	report := orNoopProgress(progress)
 	// Fragments may split in half on summarizer failure (see
 	// extractFragmentResilient), so the progress total grows as splits happen.
