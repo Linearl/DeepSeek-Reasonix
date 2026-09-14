@@ -163,18 +163,25 @@ interface SessionTranscript {
   pendingContent: Map<string, { generation: number; promise: Promise<string | undefined> }>;
 }
 
-const DEFAULT_MAX_RESIDENT_SESSIONS = 8;
+// All three ceilings were raised together (8/64MiB/128MiB -> 24/192MiB/256MiB) after a
+// long session reported several seconds on every tab switch. Each one costs something
+// different to miss, and all three were being missed: with eight resident sessions, a
+// long session evicted its neighbour, and switching back re-fetched and re-parsed.
+//
 // The markdown cache is the one that must be generous. It holds parse results, and a
 // parse costs CPU: when the budget is exceeded the LRU evicts entries the view is
 // about to ask for again, and the transcript re-parses on every switch. It is also the
 // more expensive of the two per entry - text*2 + selectionText*2 + the HAST walk
 // (48 bytes per node) runs several times the source text.
 //
-// The body budget stays where it was: dropped history is re-fetched from a paged
-// store rather than recomputed, so running out of it costs I/O, not CPU. Each budget
-// is a global ceiling shared by all resident sessions, not a per-session allowance.
-const DEFAULT_HISTORY_BODY_BUDGET = 64 << 20;
-const DEFAULT_MARKDOWN_BUDGET = 128 << 20;
+// The body budget is cheaper to miss - dropped history is re-fetched from a paged
+// store rather than recomputed, so running out of it costs I/O, not CPU - but that I/O
+// is exactly the "takes a few seconds to load" the switch is judged on, and it is the
+// ceiling a single large session hits on its own. Each budget is a global ceiling
+// shared by all resident sessions, not a per-session allowance.
+const DEFAULT_MAX_RESIDENT_SESSIONS = 24;
+const DEFAULT_HISTORY_BODY_BUDGET = 192 << 20;
+const DEFAULT_MARKDOWN_BUDGET = 256 << 20;
 
 function sessionKeyFor(tabId: string, sessionPath: string): string {
   return `${tabId}\n${sessionPath}`;
