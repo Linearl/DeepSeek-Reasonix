@@ -38,7 +38,7 @@ export function ToolRecoveryPanel({ tabId, sessionKey, running, refreshKey, onRe
         sessionPath: snapshot.sessionPath, runtimeEpoch: snapshot.runtimeEpoch, revision: snapshot.revision,
         attemptId: call.identity.attempt_id ?? "", inspectionId: call.inspection_id ?? "", action,
       });
-      if (generation.current === own) { setSnapshot(next); setResolved(next.calls.length === 0); }
+      if (generation.current === own) { setSnapshot(next); setResolved((next.calls ?? []).length === 0); }
     } catch (err) {
       if (generation.current === own) {
         setError(String(err));
@@ -47,7 +47,7 @@ export function ToolRecoveryPanel({ tabId, sessionKey, running, refreshKey, onRe
         try {
           const fresh = await bindings.GetToolRecoveryForTab?.(tabId);
           if (fresh && fresh.sessionPath === snapshot.sessionPath && generation.current === own) {
-            setSnapshot(fresh); setResolved(fresh.calls.length === 0);
+            setSnapshot(fresh); setResolved((fresh.calls ?? []).length === 0);
           }
         } catch { /* Keep the original error and its action identity visible. */ }
       }
@@ -55,7 +55,10 @@ export function ToolRecoveryPanel({ tabId, sessionKey, running, refreshKey, onRe
   };
   // `error` deliberately does not appear here: it can now only come from an action the user
   // started, and the panel is already open in that case. Probing failures stay silent.
-  if (!snapshot?.calls.length && !snapshot?.silent && !resolved) return null;
+  // Optional-chained on calls as well: a snapshot whose calls arrived as JSON null (a Go
+  // nil slice) used to throw here and take the whole transcript down. Defensive on the
+  // client because the payload is remote data.
+  if (!snapshot?.calls?.length && !snapshot?.silent && !resolved) return null;
   return <section className="notice-line notice-line--warn tool-recovery-panel" aria-label={t("toolRecovery.title")} aria-busy={busy}>
     <details open>
     <summary className="notice-line__title">{t("toolRecovery.title")}</summary>

@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"reasonix/internal/control"
+	"reasonix/internal/provider"
 )
 
 func (s *Server) registerRuntimeRecoveryRoutes(mux *http.ServeMux) {
@@ -31,7 +32,7 @@ func (s *Server) toolRecovery(w http.ResponseWriter, r *http.Request) {
 		// capability answers "nothing to report" rather than failing. The query is read-only, and
 		// a 501 here made a capable client render an error for a surface that simply has no
 		// interrupted tools. resolveToolRecovery below still reports - there the caller acted.
-		writeJSON(w, control.ToolRecoverySnapshot{})
+		writeJSON(w, control.ToolRecoverySnapshot{Calls: []provider.ToolCallRecord{}})
 		return
 	}
 	writeJSON(w, ctrl.ToolRecoverySnapshot())

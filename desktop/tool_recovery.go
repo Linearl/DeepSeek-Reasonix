@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"reasonix/internal/control"
+	"reasonix/internal/provider"
 )
 
 type toolRecoveryController interface {
@@ -30,7 +31,10 @@ func (a *App) GetToolRecoveryForTab(tabID string) (control.ToolRecoverySnapshot,
 	// error panel the user could do nothing with (task 103). An empty snapshot renders nothing.
 	// ResolveToolRecoveryForTab below still reports an error - there the user asked for an
 	// action and silence would be worse than a failure.
-	return control.ToolRecoverySnapshot{}, nil
+	// Calls is initialised even when empty: a nil slice marshals to JSON null, and the
+	// panel reads .length straight off it. The query failing to answer must look like "no
+	// interrupted tools", not like a value the client has to null-check.
+	return control.ToolRecoverySnapshot{Calls: []provider.ToolCallRecord{}}, nil
 }
 
 func (a *App) ResolveToolRecoveryForTab(tabID string, req control.ToolRecoveryRequest) (control.ToolRecoverySnapshot, error) {
