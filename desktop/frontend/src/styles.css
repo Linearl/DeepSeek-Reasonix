@@ -4063,8 +4063,16 @@ a[href] {
 .jump-scroll[data-density="packed"] .jump-dot {
   height: 1px;
 }
+/* The rail has to answer "did this part of the session load yet?" at a glance, and
+   at the packed density the dots are only 1px tall, so colour is the only channel
+   left. A loaded marker is solid and reads as a real stop on the rail; an unloaded
+   one is a ghost. The 55% mix this replaces was close enough to --border to look
+   identical next to a loaded dot. */
+.jump-item[data-loaded="true"] .jump-dot {
+  background: var(--fg-faint);
+}
 .jump-item[data-loaded="false"] .jump-dot {
-  background: color-mix(in srgb, var(--border) 55%, transparent);
+  background: color-mix(in srgb, var(--border) 30%, transparent);
 }
 .jump-dot[data-d="0"] {
   background: var(--accent);
