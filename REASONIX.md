@@ -107,34 +107,26 @@ and a permanently red test swallows the next real regression.
 Confirm the failure is genuinely pre-existing first (`git stash` your change and
 re-run); that check decides the framing, not whether the failure gets fixed.
 
-### Current list (2026-09-13)
+### Current list (2026-09-14) — empty
 
-Five red tests in the provider packages, **all of one kind: the test pins upstream's
-hard-image-block semantics, while the fork deliberately trusts resolved capability metadata
-and the user's switch instead** (see `release-notes/FORK-vs-upstream.md`, "图片能力判定").
+Empty, and kept empty. Six tests were red on this branch; all six are green as of 2026-09-14,
+each diagnosed to a verdict rather than carried:
 
-| Test | Package | Verdict |
-|---|---|---|
-| `TestOfficialDeepSeekIgnoresVisionMetadata` | `provider/anthropic` | **stale** — pins the hard block the fork removed |
-| `TestOfficialRequestURLImageHardLimit` | `provider/anthropic` | **stale** — same |
-| `TestOfficialDeepSeekImageMetadataMatchesTextOnlyWireBytes` | `provider/anthropic` | **stale** — same |
-| `TestOfficialDeepSeekResponsesIgnoresVisionMetadata` | `provider/responses` | **stale** — same |
-| `TestOfficialDeepSeekResponsesImageMetadataMatchesTextOnlyWireBytes` | `provider/responses` | **stale** — same |
-| `TestMergeTreeRechecksBudgetBeforeNewRound` | `agent` | **stale** — see below |
+| Test | Package | Verdict | Fixed in |
+|---|---|---|---|
+| `TestOfficialDeepSeekIgnoresVisionMetadata` | `provider/anthropic` | **stale** — pinned the hard block the fork removed | task 63 capability work |
+| `TestOfficialRequestURLImageHardLimit` | `provider/anthropic` | **stale** — same | task 63 capability work |
+| `TestOfficialDeepSeekImageMetadataMatchesTextOnlyWireBytes` | `provider/anthropic` | **stale** — same | task 63 capability work |
+| `TestOfficialDeepSeekResponsesIgnoresVisionMetadata` | `provider/responses` | **stale** — same | task 63 capability work |
+| `TestOfficialDeepSeekResponsesImageMetadataMatchesTextOnlyWireBytes` | `provider/responses` | **stale** — same | task 63 capability work |
+| `TestMergeTreeRechecksBudgetBeforeNewRound` | `agent` | **stale** — window too small, wrong guard fired | `a560c78b8` |
 
-**Sixth entry, different cause (2026-09-13).** `TestMergeTreeRechecksBudgetBeforeNewRound` expects the
-merge tree to fail with `call budget exhausted`, but it now fails earlier with `summary output budget
-too small (190 tokens)` — a lower bound on the summary output budget now rejects the request before the
-call budget is consulted. Confirmed pre-existing by stashing the change under test. The verdict is not
-yet decided: either that lower bound is too aggressive for a 2000-token context window, or the test's
-expectation predates it. Deciding needs the bound's intent read from the commit that added it.
-
-**Not yet driven to zero.** Updating them means asserting the fork's behaviour instead
-(the official endpoint honours metadata and the user's switch), which is a per-test
-judgement — each has to be read to see what it was protecting. Doing that in the same
-sitting as the task-63 provider port mixed two decisions and was reverted; it belongs in
-its own batch. **Do not treat this table as permission to leave them red** — it records
-the verdict so the next batch can act on it.
+**The sixth one, resolved.** The open question was whether the 256-token summary output floor was
+too aggressive for a 2000-token window, or whether the test predated the floor. **The test's
+window was the problem**: 2000 tokens leaves 190 of summary output, so the output floor rejected
+the call before the *call* budget the test means to exercise — the message named a guard the test
+does not test. A roomier window fixes it; the call budget is then set to leave exactly one round
+of two, so the failure lands on the round boundary the name promises.
 
 ## Import cycle rule
 
