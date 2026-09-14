@@ -55,9 +55,15 @@ func citedReceiptError(ledger *evidence.Ledger, id, why string) error {
 	return &tool.OperationError{Diagnostic: d, Cause: fmt.Errorf("receipt %q %s", id, why)}
 }
 
+// allowedReceiptRecovery bounds the offered actions at its own boundary rather
+// than trusting the caller's slice length: this list is for the model to choose
+// from, so a long one is useless even when it is cheap.
 func allowedReceiptRecovery(available []string) []string {
-	out := make([]string, 0, len(available)+2)
+	out := make([]string, 0, maxAvailableReceiptIDs+2)
 	for _, id := range available {
+		if len(out) == maxAvailableReceiptIDs {
+			break
+		}
 		out = append(out, tool.RecoveryUseReceipt+id)
 	}
 	return append(out, tool.RecoveryRunVerifier, tool.RecoveryMarkManual)

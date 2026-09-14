@@ -131,3 +131,19 @@ func TestCompleteStepMissingVerificationListsReceiptIDs(t *testing.T) {
 		t.Fatalf("rejection should carry a bounded retry budget, got %v", err)
 	}
 }
+
+func TestAllowedReceiptRecoveryStaysBoundedForTheModel(t *testing.T) {
+	oversized := make([]string, maxAvailableReceiptIDs*4)
+	for i := range oversized {
+		oversized[i] = "r_" + strings.Repeat("a", 4)
+	}
+
+	got := allowedReceiptRecovery(oversized)
+
+	if len(got) != maxAvailableReceiptIDs+2 {
+		t.Fatalf("recovery actions = %d, want the list bounded at %d plus the two fixed actions", len(got), maxAvailableReceiptIDs)
+	}
+	if got[len(got)-2] != tool.RecoveryRunVerifier || got[len(got)-1] != tool.RecoveryMarkManual {
+		t.Fatalf("bounding dropped the fixed actions: %v", got[len(got)-2:])
+	}
+}
