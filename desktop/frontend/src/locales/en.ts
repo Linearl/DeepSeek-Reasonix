@@ -3922,6 +3922,7 @@ export const en = {
   "heartbeat.fieldModelOverride": "Model override",
   "heartbeat.modelOverrideHint": "Optional. Accepts provider/model, a provider name, or a bare model name. Empty keeps the topic's current model.",
   "heartbeat.modelPlaceholder": "model (e.g. deepseek-chat)",
+  "heartbeat.providerOption": "{name} (provider)",
   "heartbeat.providerPlaceholder": "provider (e.g. deepseek)",
   "history.confirmForceArchive": "Force archive this session (cannot be undone)?",
   "history.clearRecoveryCopies": "Clear copies",

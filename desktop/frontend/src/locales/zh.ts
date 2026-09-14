@@ -3925,6 +3925,7 @@ export const zh: Record<DictKey, string> = {
   "heartbeat.fieldModelOverride": "模型覆盖",
   "heartbeat.modelOverrideHint": "可选。支持 provider/model、纯 provider 名或纯模型名；留空沿用话题当前模型。",
   "heartbeat.modelPlaceholder": "model（如 deepseek-chat）",
+  "heartbeat.providerOption": "{name}（供应商）",
   "heartbeat.providerPlaceholder": "provider（如 deepseek）",
   "history.confirmForceArchive": "强制归档该会话（不可恢复）？",
   "history.clearRecoveryCopies": "清理副本",

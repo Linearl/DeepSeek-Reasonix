@@ -390,7 +390,12 @@ export function TaskEditor({
               onChange={(e) => { set("provider", e.target.value); set("model", ""); }}
             >
               <option value="">{t("heartbeat.providerPlaceholder")}</option>
-              {providerNames.map((name) => <option key={name} value={name}>{name}</option>)}
+              {/* Labelled because a provider name can look exactly like a model name - this
+                  install has a provider called "minimax-M3" next to a model of the same name, so
+                  an unlabelled list reads as "the model picker is showing models". */}
+              {providerNames.map((name) => (
+                <option key={name} value={name}>{t("heartbeat.providerOption", { name })}</option>
+              ))}
             </select>
           ) : (
             <input
@@ -428,7 +433,7 @@ export function TaskEditor({
         <label>
           {t("heartbeat.fieldGoalMode")} <span className="heartbeat-editor__optional">{t("heartbeat.optional")}</span>
         </label>
-        <label className="heartbeat-editor__toggle">
+        <label className="heartbeat-editor__toggle-field">
           <input
             type="checkbox"
             checked={Boolean(draft.goalMode)}

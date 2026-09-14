@@ -1552,7 +1552,9 @@ type DesktopLayoutStyle = "classic" | "workbench" | "creation";
 
 function normalizeDesktopLayoutStyle(style: string | undefined): DesktopLayoutStyle {
   if (style === "classic") return "classic";
-  if (style === "creation") return "creation";
+  // "creation" is no longer offered. A config that still carries it (or a client that sends it)
+  // normalizes to workbench rather than being rejected, so an existing install keeps working
+  // instead of falling back to a style the user did not choose.
   return "workbench";
 }
 
@@ -1788,7 +1790,7 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
       <SettingsSection title={t("settings.general.sectionAppearance")} description={t("settings.general.sectionAppearanceHint")}>
       <SettingsField label={t("settings.desktopLayoutStyle")} hint={t("settings.desktopLayoutStyleHint")} icon={<Monitor size={18} />}>
         <SettingsOptions layout="field" className="set-seg">
-          {(["workbench", "classic", "creation"] as const).map((style) => (
+          {(["workbench", "classic"] as const).map((style) => (
             <button
               key={style}
               className={`set-seg__btn${desktopLayoutStyle === style ? " set-seg__btn--on" : ""}`}
