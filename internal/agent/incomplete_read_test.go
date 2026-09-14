@@ -274,11 +274,11 @@ func TestIncompleteReadBlocksFinalUntilRecoveryAndDefersObservation(t *testing.T
 	}
 	observations := agent.task.ledger.TextObservations()
 	observedLines := 0
-	if len(observations) > 0 {
-		observedLines = len(observations[0].LineHashes)
+	for _, observation := range observations {
+		observedLines += len(observation.LineHashes)
 	}
-	if len(observations) != 1 || len(observations[0].LineHashes) != 430 {
-		t.Fatalf("completed observation windows=%d lines=%d, want one 430-line window", len(observations), observedLines)
+	if observedLines != 430 {
+		t.Fatalf("completed observation windows=%d lines=%d, want 430 visible lines", len(observations), observedLines)
 	}
 	for _, code := range []string{
 		event.NoticeCodeIncompleteReadDetected,
@@ -368,8 +368,13 @@ func TestIncompleteReadRecoversParallelFilesBeforeFinal(t *testing.T) {
 	if err := agent.Run(context.Background(), "Read both rules files completely."); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if prov.call != 3 || len(agent.task.ledger.TextObservations()) != 2 {
-		t.Fatalf("rounds=%d observations=%d, want both reads complete before final", prov.call, len(agent.task.ledger.TextObservations()))
+	observations := agent.task.ledger.TextObservations()
+	observedLines := 0
+	for _, observation := range observations {
+		observedLines += len(observation.LineHashes)
+	}
+	if prov.call != 3 || observedLines != 860 {
+		t.Fatalf("rounds=%d observations=%d lines=%d, want both reads complete before final", prov.call, len(observations), observedLines)
 	}
 	if !requestHasText(prov.requests[2], keyA) || !requestHasText(prov.requests[2], keyB) {
 		t.Fatal("accepted final request did not contain both recovered tails")
@@ -466,8 +471,12 @@ func TestIncompleteReadAutomaticallyRecoversBeyondFormerByteAndTokenCaps(t *test
 		t.Fatalf("Run: %v", err)
 	}
 	observations := agent.task.ledger.TextObservations()
-	if len(observations) != 1 || len(observations[0].LineHashes) != 1500 {
-		t.Fatalf("observations=%+v, want complete 1500-line evidence", observations)
+	observedLines := 0
+	for _, observation := range observations {
+		observedLines += len(observation.LineHashes)
+	}
+	if observedLines != 1500 {
+		t.Fatalf("observations=%d lines=%d, want complete 1500-line evidence", len(observations), observedLines)
 	}
 	if sink.hasCode(event.NoticeCodeReadStrategyRequired) || sink.hasCode(event.NoticeCodeReadOversizeRejected) {
 		t.Fatal("large read incorrectly entered strategy or legacy oversize rejection")

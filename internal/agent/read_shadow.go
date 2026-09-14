@@ -2,6 +2,7 @@ package agent
 
 import (
 	"log/slog"
+	"sync"
 
 	"reasonix/internal/event"
 	"reasonix/internal/readcoord"
@@ -19,12 +20,14 @@ type readShadowState struct {
 	// pivots holds the reads whose strategy-change advice is still owed. A
 	// single slot would let one stalled read overwrite another's, and the
 	// coordinator only offers each read one pivot.
-	pivots map[string]struct{}
-	hinted map[string]uint64
+	pivots     map[string]struct{}
+	hinted     map[string]uint64
+	strategies map[string]bool
+	strategyMu *sync.Mutex
 }
 
 func newReadShadowState(enabled bool) readShadowState {
-	s := readShadowState{enabled: enabled}
+	s := readShadowState{enabled: enabled, strategyMu: &sync.Mutex{}}
 	if enabled {
 		s.coord = readcoord.New()
 		s.byState = map[readcoord.State]int{}
@@ -80,6 +83,66 @@ func (a *Agent) observeReadShadow(env tool.ReadResultEnvelope, elapsed ...int64)
 			"read_id", env.ReadID, "path", env.Source.CanonicalPath,
 			"coordinator", tr.To.String(), "legacy_pending", legacy)
 	}
+}
+
+// The coordinator owns the full-read obligation; the legacy strategy state
+// owns only the validated targeted-search receipt. Keeping this bridge here
+// makes the budget fallback available to the default pipeline too.
+func (a *Agent) armDefaultReadStrategy(key string, env tool.ReadResultEnvelope) {
+	if a == nil || key == "" {
+		return
+	}
+	a.turn.readShadow.markStrategy(key, false)
+	s := &a.turn.incompleteReads
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureEntriesLocked()
+	if _, ok := s.entries[key]; ok {
+		return
+	}
+	entry := &incompleteRead{key: key, readID: key, path: env.Source.CanonicalPath, requestPath: env.Source.CanonicalPath, phase: incompleteReadStrategy, fullRead: true, explicitFull: true, searches: map[string]incompleteReadSearch{}, reads: map[string]incompleteReadWindow{}, strategyVersion: snapshotIncompleteReadFile(env.Source.CanonicalPath)}
+	if reader, ok := a.svc.tools.Get("read_file"); ok {
+		entry.readTool = reader
+	}
+	s.addEntryLocked(entry)
+}
+
+func (s *readShadowState) strategyPending(key string) bool {
+	if s.strategyMu == nil {
+		s.strategyMu = &sync.Mutex{}
+	}
+	s.strategyMu.Lock()
+	defer s.strategyMu.Unlock()
+	if s == nil || s.strategies == nil {
+		return false
+	}
+	pending, ok := s.strategies[key]
+	return ok && !pending
+}
+
+func (s *readShadowState) markStrategy(key string, resolved bool) {
+	if s.strategyMu == nil {
+		s.strategyMu = &sync.Mutex{}
+	}
+	s.strategyMu.Lock()
+	defer s.strategyMu.Unlock()
+	if s.strategies == nil {
+		s.strategies = map[string]bool{}
+	}
+	s.strategies[key] = resolved
+}
+
+func (s *readShadowState) strategyKeys() []string {
+	if s.strategyMu == nil {
+		s.strategyMu = &sync.Mutex{}
+	}
+	s.strategyMu.Lock()
+	defer s.strategyMu.Unlock()
+	keys := make([]string, 0, len(s.strategies))
+	for key := range s.strategies {
+		keys = append(keys, key)
+	}
+	return keys
 }
 
 // readBudgetStop reports why automatic continuation must stop, using the same
