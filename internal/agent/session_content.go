@@ -75,6 +75,13 @@ func LoadSessionUserMessages(path string) ([]SessionUserMessage, error) {
 }
 
 func loadSessionUserMessagesWithLimits(path string, limits sessionReplayLimits) ([]SessionUserMessage, error) {
+	// Size the byte budget to the file before deciding anything about it. The budget exists so a
+	// damaged log cannot exhaust memory while decoding, and the size is known here - refusing an
+	// oversize log instead of sizing to it left sessions that were fractions of a percent over
+	// the default permanently unopenable (task 104). Applied at every entry that has a path, so
+	// no caller has to remember; the record, message and collection caps are untouched and the
+	// adaptive allowance keeps its own 1 GiB ceiling.
+	limits = limitsForSessionLog(path, limits)
 	res, err := loadSessionTranscript(context.Background(), path, limits, nil)
 	if err != nil {
 		return nil, err
