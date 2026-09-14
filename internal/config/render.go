@@ -150,6 +150,18 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		if width := c.DesktopConversationWidth(); width == "full" {
 			fmt.Fprintf(&b, "conversation_width = %q   # desktop: standard|full transcript width; empty = standard\n", width)
 		}
+		// This renderer writes a fixed set of keys, and an unlisted key is dropped on every save.
+		// quick_commands was unlisted, so a snippet the user added lived in memory until the next
+		// write and was then gone: the settings list read back empty, search found nothing, and
+		// the composer's + menu (which renders its quick-command section only when the list is
+		// non-empty) never showed it. Same failure the autopilot keys above are commented about.
+		//
+		// Written inline rather than as [[desktop.quick_commands]]: an array table switches the
+		// TOML current table, so every key rendered after it would join the last entry.
+		if len(c.Desktop.QuickCommands) > 0 {
+			fmt.Fprintf(&b, "quick_commands = %s   # desktop: composer + menu snippets; title is the label, text is inserted verbatim\n",
+				renderQuickCommandArray(c.Desktop.QuickCommands))
+		}
 		b.WriteString("\n")
 		b.WriteString("[billing]\n")
 		if pref := c.DisplayCurrencyPref(); pref != "" {
@@ -1445,6 +1457,23 @@ func isBareTOMLKey(key string) bool {
 }
 
 // renderStringArray renders a []string as a TOML inline array.
+// renderQuickCommandArray writes quick commands as a TOML inline array of inline tables.
+// Inline because the keys are few and short, and because an array table would change which
+// table the keys that follow it belong to.
+func renderQuickCommandArray(entries []QuickCommandEntry) string {
+	parts := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		fields := []string{fmt.Sprintf("title = %q", entry.Title), fmt.Sprintf("text = %q", entry.Text)}
+		// Enabled is a pointer: absent means enabled. Only the false case is written, so a
+		// config that never touched the switch keeps its original shape on save.
+		if entry.Enabled != nil && !*entry.Enabled {
+			fields = append(fields, "enabled = false")
+		}
+		parts = append(parts, "{"+strings.Join(fields, ", ")+"}")
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
 func renderStringArray(ss []string) string {
 	var b strings.Builder
 	b.WriteByte('[')
