@@ -196,3 +196,19 @@ func (a *Agent) applyOperationBreaker(receiptMark int) intervention {
 		notice:   noticeFor(event.NoticeCodeOperationNeedsUser, event.LevelWarn, i18n.M.OperationNeedsUser, "operation breaker: "+strings.Join(lines, "; ")),
 	}
 }
+
+// appendReceiptCitation hands the model the host's ID for what just happened.
+// Without it a later completion has to retype the command it ran and the host
+// has to match that text — the exact matching that rejected real work whenever
+// a shell prefix, quote style, or working directory differed.
+func appendReceiptCitation(result string, rec evidence.Receipt) string {
+	if rec.ID == "" || !rec.Success {
+		return result
+	}
+	switch rec.Kind() {
+	case evidence.ReceiptKindMutation, evidence.ReceiptKindVerification, evidence.ReceiptKindCommand, evidence.ReceiptKindReview:
+	default:
+		return result
+	}
+	return strings.TrimRight(result, "\n") + "\n[receipt " + rec.ID + "]"
+}

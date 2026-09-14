@@ -134,3 +134,12 @@ func TestOperationSourceChangeOpensANewRecoveryEpoch(t *testing.T) {
 		t.Fatal("a changed source must reopen automatic recovery for the operation")
 	}
 }
+
+// stripReceiptCitation removes the host receipt trailer so a test can assert on
+// the tool's own output.
+func stripReceiptCitation(result string) string {
+	if i := strings.LastIndex(result, "\n[receipt "); i >= 0 && strings.HasSuffix(result, "]") {
+		return result[:i]
+	}
+	return result
+}

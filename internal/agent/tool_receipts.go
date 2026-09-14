@@ -13,10 +13,10 @@ import (
 // recordToolReceipts files the turn-scoped evidence for one executed call:
 // always the model-visible call for audit, plus the real target's attributes
 // for mutation/read classification when a proxy resolved elsewhere.
-func (a *Agent) finalizeObservedToolReceipts(plan *toolCallPlan, result string, execution *tool.ShellExecution, err error) {
+func (a *Agent) finalizeObservedToolReceipts(plan *toolCallPlan, result string, execution *tool.ShellExecution, err error) evidence.Receipt {
 	a.observeAfterMutation(plan)
 	plan.mutationAfterDone = true
-	a.recordToolReceipts(plan, result, execution, err)
+	return a.recordToolReceipts(plan, result, execution, err)
 }
 
 // emitTodoResultPreview flips the todo_write card to done the moment the call
@@ -33,9 +33,9 @@ func (a *Agent) emitTodoResultPreview(call provider.ToolCall, output string) {
 	})
 }
 
-func (a *Agent) recordToolReceipts(plan *toolCallPlan, result string, execution *tool.ShellExecution, err error) {
+func (a *Agent) recordToolReceipts(plan *toolCallPlan, result string, execution *tool.ShellExecution, err error) evidence.Receipt {
 	if a.task.ledger == nil {
-		return
+		return evidence.Receipt{}
 	}
 	call := plan.call
 	args := json.RawMessage(call.Arguments)
@@ -61,6 +61,7 @@ func (a *Agent) recordToolReceipts(plan *toolCallPlan, result string, execution 
 		if err == nil {
 			a.advanceCanonicalTodo(rec.Step)
 		}
+		return rec
 	case plan.evidenceName != call.Name:
 		proxy := evidence.ReceiptFromToolCall(call.Name, args, err == nil, true)
 		proxy.ToolCallID = call.ID
@@ -75,6 +76,7 @@ func (a *Agent) recordToolReceipts(plan *toolCallPlan, result string, execution 
 		rec = a.task.ledger.Record(rec)
 		a.commitToolReceipt(rec)
 		a.recordOperationOutcome(plan, rec, err)
+		return rec
 	default:
 		rec := evidence.ReceiptFromToolCall(call.Name, args, err == nil, plan.tool.ReadOnly())
 		rec.ToolCallID = call.ID
@@ -93,5 +95,6 @@ func (a *Agent) recordToolReceipts(plan *toolCallPlan, result string, execution 
 			}
 			a.emitTodoResultPreview(call, result)
 		}
+		return rec
 	}
 }

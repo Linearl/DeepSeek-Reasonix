@@ -48,7 +48,7 @@ var validEvidenceKinds = map[string]bool{
 func (completeStep) Name() string { return "complete_step" }
 
 func (completeStep) Description() string {
-	return "Record the evidence-backed completion of ONE step of an approved plan. Call it as you finish each step instead of silently moving on: it signs the step off with PROOF it is done — the verification you ran (command + result), a completed built-in review that is fresh for any later changes, the diff/files you changed, or a manual check. A completion with no evidence is REJECTED, so don't claim a step is done until you can show why. The host advances the task list for you when you sign off — it marks this step completed and moves the next to in_progress, so you don't need a separate todo_write to mark completions. Fields: `step` (which step — its title or number, matching the task list), `result` (what is now true/changed), `evidence` (≥1 item, each with `kind` = verification|review|diff|files|manual and a `summary`, plus optional `command`/`paths`, and `criterion_id` naming the acceptance criterion the proof satisfies), and optional `notes`."
+	return "Record the evidence-backed completion of ONE step of an approved plan. Call it as you finish each step instead of silently moving on: it signs the step off with PROOF it is done — the verification you ran, a completed built-in review that is fresh for any later changes, the diff/files you changed, or a manual check. A completion with no evidence is REJECTED, so don't claim a step is done until you can show why. The host advances the task list for you when you sign off — it marks this step completed and moves the next to in_progress, so you don't need a separate todo_write to mark completions. Cite proof by RECEIPT ID: every tool result ends with the host's own id (`[receipt r_1a2b3c4d]`), and listing those ids in `receipt_ids` is exact — retyping a command instead makes the host match your text, which fails over a `cd` prefix, quoting, or argument order. Fields: `step` (which step — its title or number, matching the task list), `result` (what is now true/changed), `receipt_ids` (preferred proof), `evidence` (≥1 item, each with `kind` = verification|review|diff|files|manual and a `summary`, plus optional `command`/`paths`, and `criterion_id` naming the acceptance criterion the proof satisfies), and optional `notes`."
 }
 
 func (completeStep) Schema() json.RawMessage {
@@ -75,6 +75,7 @@ func (completeStep) Schema() json.RawMessage {
       "required":["kind","summary"]
     }
   },
+  "receipt_ids":{"type":"array","items":{"type":"string"},"description":"PREFERRED proof: the host receipt ids printed after the tool calls that did the work (e.g. \"r_1a2b3c4d\"). Citing an id is exact — the host issued it — so shell prefixes, quoting, argument order, and working directory never matter. Use these instead of retyping a command."},
   "notes":{"type":"string","description":"Optional caveats, follow-ups, or anything deferred."}
 },
 "required":["result","evidence"]
@@ -99,15 +100,20 @@ func (completeStep) PlanModeSafe() bool { return false }
 
 func (completeStep) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var p struct {
-		StepID    string         `json:"step_id"`
-		Step      string         `json:"step"`
-		StepIndex int            `json:"step_index"`
-		Result    string         `json:"result"`
-		Evidence  []stepEvidence `json:"evidence"`
-		Notes     string         `json:"notes"`
+		StepID     string         `json:"step_id"`
+		Step       string         `json:"step"`
+		StepIndex  int            `json:"step_index"`
+		Result     string         `json:"result"`
+		Evidence   []stepEvidence `json:"evidence"`
+		ReceiptIDs []string       `json:"receipt_ids"`
+		Notes      string         `json:"notes"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
+	}
+	cited, err := resolveCitedReceipts(ctx, p.ReceiptIDs)
+	if err != nil {
+		return "", err
 	}
 	step := completeStepIdentity(p.StepID, p.Step, p.StepIndex)
 	if step == "" {
@@ -140,7 +146,7 @@ func (completeStep) Execute(ctx context.Context, args json.RawMessage) (string, 
 	if err != nil {
 		return "", err
 	}
-	hostVerified, manualUnverified, err := verifyStepEvidence(ctx, p.Evidence)
+	hostVerified, manualUnverified, err := verifyStepEvidence(ctx, p.Evidence, cited)
 	if err != nil {
 		if hasTodo && todoMatch.Status == "in_progress" {
 			return "", fmt.Errorf("%w; todo %d %q remains in_progress — repair the evidence and retry this step before moving on", err, todoMatch.Index, todoMatch.Content)
@@ -218,7 +224,7 @@ func completeStepIdentity(stepID, step string, stepIndex int) string {
 	return strings.TrimSpace(step)
 }
 
-func verifyStepEvidence(ctx context.Context, items []stepEvidence) (hostVerified int, manualUnverified int, err error) {
+func verifyStepEvidence(ctx context.Context, items []stepEvidence, cited []evidence.ReceiptRef) (hostVerified int, manualUnverified int, err error) {
 	ledger, ok := evidence.FromContext(ctx)
 	if !ok {
 		return 0, 0, nil
@@ -226,16 +232,22 @@ func verifyStepEvidence(ctx context.Context, items []stepEvidence) (hostVerified
 	for i, e := range items {
 		switch e.Kind {
 		case "verification":
+			// A host-issued receipt is exact proof. Only a citation that names
+			// no receipt falls back to matching the command text, which is what
+			// rejected real verifications over a prefix or a quote style.
+			if citedAnyKind(cited, evidence.ReceiptKindVerification, evidence.ReceiptKindCommand, evidence.ReceiptKindReview) {
+				hostVerified++
+				continue
+			}
 			command := strings.TrimSpace(e.Command)
 			if command == "" {
-				return 0, 0, fmt.Errorf("evidence %d: verification command is required for host verification — cite the command you ran in this session, or use kind \"files\", \"diff\", or \"manual\"", i+1)
+				return 0, 0, fmt.Errorf("evidence %d: verification command is required for host verification — cite the command you ran in this session, cite its receipt id in receipt_ids%s, or use kind \"files\", \"diff\", or \"manual\"", i+1, availableReceiptHint(ledger))
 			}
 			if !ledger.HasSuccessfulCommand(command) && !verifyCommandFromSession(ctx, command) {
 				if ledger.HasFailedCommand(command) {
 					return 0, 0, fmt.Errorf("evidence %d: verification command %q ran but exited non-zero, so it can't prove the step; if the non-zero exit is itself the expected proof (e.g. a file is gone), re-run it so it succeeds (append \"|| true\") and sign off again", i+1, command)
 				}
-				hint := allCommandHints(ctx, ledger)
-				return 0, 0, fmt.Errorf("evidence %d: verification command %q has no matching successful receipt — cite the command exactly as it ran in the session%s", i+1, command, hint)
+				return 0, 0, missingVerificationReceipt(ctx, ledger, i+1, command)
 			}
 			_, closedLoopHasMutation := ledger.LatestSuccessfulMutationIndex()
 			if evidence.ClosedLoopExecutionFromContext(ctx) && closedLoopHasMutation && !evidence.IsVerificationCommand(command) {
@@ -243,7 +255,7 @@ func verifyStepEvidence(ctx context.Context, items []stepEvidence) (hostVerified
 			}
 			hostVerified++
 		case "review":
-			if !ledger.HasCompletedReview() {
+			if !citedAnyKind(cited, evidence.ReceiptKindReview) && !ledger.HasCompletedReview() {
 				return 0, 0, fmt.Errorf("evidence %d: review evidence requires a completed review run in this turn; after a mutation, the review must be newer and cover the changed result", i+1)
 			}
 			hostVerified++
@@ -251,7 +263,7 @@ func verifyStepEvidence(ctx context.Context, items []stepEvidence) (hostVerified
 			if len(e.Paths) == 0 {
 				return 0, 0, fmt.Errorf("evidence %d: diff evidence requires paths for host verification — cite the files you changed", i+1)
 			}
-			if !ledger.HasSuccessfulWrite(e.Paths) && !verifyPathsFromSession(ctx, e.Paths, true) {
+			if !citedCoversPaths(cited, evidence.ReceiptKindMutation, e.Paths) && !ledger.HasSuccessfulWrite(e.Paths) && !verifyPathsFromSession(ctx, e.Paths, true) {
 				return 0, 0, fmt.Errorf("evidence %d: diff paths have no matching successful writer receipt in this turn%s", i+1, receiptHint("files written this turn", ledger.TouchedPaths(8, true)))
 			}
 			hostVerified++
@@ -259,7 +271,7 @@ func verifyStepEvidence(ctx context.Context, items []stepEvidence) (hostVerified
 			if len(e.Paths) == 0 {
 				return 0, 0, fmt.Errorf("evidence %d: files evidence requires paths for host verification — cite the files you touched", i+1)
 			}
-			if !ledger.HasSuccessfulReadOrWrite(e.Paths) && !ledger.HasSuccessfulBashMentioningPaths(e.Paths) && !verifyPathsFromSession(ctx, e.Paths, false) {
+			if !citedCoversPaths(cited, "", e.Paths) && !ledger.HasSuccessfulReadOrWrite(e.Paths) && !ledger.HasSuccessfulBashMentioningPaths(e.Paths) && !verifyPathsFromSession(ctx, e.Paths, false) {
 				return 0, 0, fmt.Errorf("evidence %d: file paths have no matching successful read/write receipt in this turn%s", i+1, receiptHint("files touched this turn", ledger.TouchedPaths(8, false)))
 			}
 			hostVerified++
