@@ -107,24 +107,31 @@ and a permanently red test swallows the next real regression.
 Confirm the failure is genuinely pre-existing first (`git stash` your change and
 re-run); that check decides the framing, not whether the failure gets fixed.
 
-### Current list (2026-09-14)
+### Current list (2026-09-14) — empty
 
-Five failures found by `go test ./internal/...` after the task-64 port, all confirmed
-pre-existing by stashing the port and re-running. They are not caused by the port, and they are
-still not allowed to stay red.
+Empty, and kept empty.
 
-| Test | Package | Diagnosis |
+Eleven tests have been red on this branch at one point or another. All are green as of
+2026-09-14, and none were carried.
+
+**The first six** — five provider tests pinning upstream's hard image block, plus
+`TestMergeTreeRechecksBudgetBeforeNewRound`, whose 2000-token window left 190 tokens of summary
+output so the output floor fired before the call budget it means to exercise. Already diagnosed
+and closed earlier.
+
+**The next five** were found by `go test ./internal/...` after the task-64 port; all five
+predate it (confirmed by stashing the port and re-running). Verdicts, not waivers:
+
+| Test | Package | Verdict |
 |---|---|---|
-| `TestBuiltinToolContractDocumentation` | `internal/tool` | **fork-only tool never registered** — `restart_and_update` (task 81) and `view_image` have no table row or read-only flag in the contract docs |
-| `TestEveryBuiltinDeclaresSnipStance` | `internal/tool` | **same two tools** — neither implements `tool.SnipHinter` nor is listed in `acceptsDefaultSnip`, so they silently take a generic default (the test exists to catch exactly that) |
-| `TestGoalCompletionAndRealBlockedStillTerminate` | `internal/control` | see below |
-| `TestRepeatedCompleteWithOnlyProjectCheckFinishes` | `internal/control` | see below |
-| `TestResolveRefsAttachmentKinds` | `internal/control` | see below |
+| `TestBuiltinToolContractDocumentation` | `internal/tool` | **the code was wrong** — `restart_and_update` (task 81) and `view_image` shipped with no row or read-only flag in `docs/TOOL_CONTRACT.md` |
+| `TestEveryBuiltinDeclaresSnipStance` | `internal/tool` | **the code was wrong** — same two tools were in neither `SnipHinter` nor `acceptsDefaultSnip`, so they silently took a generic snip geometry; the test exists to catch exactly that |
+| `TestGoalCompletionAndRealBlockedStillTerminate` | `internal/control` | **the test was stale** — `appendGoalStopReport` appends " — turns N" to a terminal notice, so equality against `goalCompleteNotice` compared against a string the machine no longer produces |
+| `TestRepeatedCompleteWithOnlyProjectCheckFinishes` | `internal/control` | **the test was stale** — same |
+| `TestResolveRefsAttachmentKinds` | `internal/control` | **the test was wrong** — it built a zero-value `Controller{}`, whose `imageInputEnabled()` reads the machine's config and resolves its default model, so which branch ran depended on this checkout's default model; the capability is now pinned explicitly |
 
-The previous six were diagnosed to verdicts and closed (all green as of 2026-09-14); their
-table is kept below for the record.
- Six tests were red on this branch; all six are green as of 2026-09-14,
-each diagnosed to a verdict rather than carried:
+Closed by `332b9d645`.
+
 
 | Test | Package | Verdict | Fixed in |
 |---|---|---|---|
