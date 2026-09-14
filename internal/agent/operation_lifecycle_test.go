@@ -138,8 +138,10 @@ func TestOperationSourceChangeOpensANewRecoveryEpoch(t *testing.T) {
 // stripReceiptCitation removes the host receipt trailer so a test can assert on
 // the tool's own output.
 func stripReceiptCitation(result string) string {
-	if i := strings.LastIndex(result, "\n[receipt "); i >= 0 && strings.HasSuffix(result, "]") {
-		return result[:i]
+	for _, marker := range []string{"\n[receipt ", "\n[source_token "} {
+		if i := strings.LastIndex(result, marker); i >= 0 && strings.HasSuffix(result, "]") {
+			return result[:i]
+		}
 	}
 	return result
 }

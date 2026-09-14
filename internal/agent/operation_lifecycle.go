@@ -207,6 +207,14 @@ func appendReceiptCitation(result string, rec evidence.Receipt) string {
 	}
 	switch rec.Kind() {
 	case evidence.ReceiptKindMutation, evidence.ReceiptKindVerification, evidence.ReceiptKindCommand, evidence.ReceiptKindReview:
+	case evidence.ReceiptKindRead:
+		// Only a file read produces a versioned window, so only that read has a
+		// source token to cite. Other read-shaped tools get nothing: an id no
+		// writer can use is pure prompt weight.
+		if rec.ToolName != "read_file" {
+			return result
+		}
+		return strings.TrimRight(result, "\n") + "\n[source_token " + rec.ID + "]"
 	default:
 		return result
 	}

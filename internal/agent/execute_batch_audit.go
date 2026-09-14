@@ -130,7 +130,7 @@ func (a *Agent) storeBatchToolResult(ctx context.Context, call provider.ToolCall
 						observed.LineHashes = observed.LineHashes[:min(count, len(observed.LineHashes))]
 					}
 					observed.Snapshot = env.Source.Snapshot
-					a.recordModelTextObservationValue(observed)
+					a.recordModelTextObservation(observed, call.ID)
 				}
 			}
 		}

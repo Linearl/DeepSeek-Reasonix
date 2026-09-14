@@ -268,6 +268,10 @@
         "path": {
           "description": "File path",
           "type": "string"
+        },
+        "source_token": {
+          "description": "Optional: the source_token printed by the read_file that showed you this file. Citing it names the exact version you are editing, so a change made outside this session is caught instead of silently overwritten.",
+          "type": "string"
         }
       },
       "required": [
@@ -557,6 +561,10 @@
         },
         "path": {
           "description": "File path",
+          "type": "string"
+        },
+        "source_token": {
+          "description": "Optional: the source_token printed by the read_file that showed you this file. Citing it names the exact version you are editing, so a change made outside this session is caught instead of silently overwritten.",
           "type": "string"
         }
       },
