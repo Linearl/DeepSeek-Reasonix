@@ -31,6 +31,11 @@ func rstAfter(t *testing.T, w http.ResponseWriter, prelude string) {
 	_, _ = buf.WriteString("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n")
 	_, _ = buf.WriteString(prelude)
 	_ = buf.Flush()
+	// Flushing hands the bytes to the kernel, not to the peer. Closing straight away with
+	// linger 0 sends RST, which discards whatever is still in flight, so a test that asserts
+	// on the prelude ("the one delta that streamed") is racing the network rather than
+	// testing the client. Give the read a moment to land.
+	time.Sleep(50 * time.Millisecond)
 	if tcp, ok := conn.(*net.TCPConn); ok {
 		_ = tcp.SetLinger(0)
 	}
