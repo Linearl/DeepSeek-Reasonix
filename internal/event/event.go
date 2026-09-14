@@ -662,6 +662,24 @@ func RecordTurnCompletion(s Sink) {
 	}
 }
 
+// OperationAuditSink is an optional sink capability for operation-lifecycle
+// counters. Implementations must keep it content-free: the audit carries host
+// identifiers only, never paths, arguments, or tool output.
+type OperationAuditSink interface {
+	RecordOperationAudit(evidence.OperationAudit)
+}
+
+// RecordOperationAudit reports one operation transition to a sink that wants
+// the counters; every other sink ignores it.
+func RecordOperationAudit(s Sink, a evidence.OperationAudit) {
+	if nilutil.IsNil(s) || a.Metric == "" {
+		return
+	}
+	if os, ok := s.(OperationAuditSink); ok {
+		os.RecordOperationAudit(a)
+	}
+}
+
 // RecordReadinessAudit forwards a readiness audit receipt to sinks that opt in.
 func RecordReadinessAudit(s Sink, a evidence.ReadinessAudit) {
 	if nilutil.IsNil(s) {

@@ -40,6 +40,19 @@ func (p *toolCallPlan) operationID() string {
 	return evidence.OperationID(p.call.Name, json.RawMessage(p.call.Arguments))
 }
 
+// auditOperation reports one lifecycle counter. It carries host identifiers
+// only — the sink must never learn a path, an argument, or a command.
+func (a *Agent) auditOperation(metric string, op evidence.Operation) {
+	event.RecordOperationAudit(a.svc.sink, evidence.OperationAudit{
+		Metric:          metric,
+		OperationID:     op.ID,
+		Tool:            op.Tool,
+		State:           op.State,
+		FailureCode:     op.FailureCode,
+		RecoveryAttempt: op.RecoveryCount,
+	})
+}
+
 // applyOperationGate refuses to run an operation the host already stopped
 // automating. Without it the model can reissue the same rejected call under a
 // new call ID forever; the guards downstream only notice after the repetition
@@ -64,6 +77,7 @@ func (a *Agent) applyOperationGate(plan *toolCallPlan) (toolOutcome, bool) {
 	if len(op.TargetPaths) > 0 {
 		d.Path = op.TargetPaths[0]
 	}
+	a.auditOperation(evidence.MetricOperationDuplicateBlock, op)
 	msg := fmt.Sprintf("blocked: [operation paused] %s already failed the same way twice (%s); the host will not resubmit it. Continue with other work or report it to the user.",
 		id, op.FailureCode)
 	if recovery := d.ModelFacing(); recovery != "" {
@@ -81,6 +95,12 @@ func (a *Agent) noteOperationFailure(operationID, code string, d *tool.Operation
 		return evidence.RecoveryDecision{Retryable: true}
 	}
 	decision := ops.Fail(operationID, code)
+	op, _ := ops.Get(operationID)
+	metric := evidence.MetricOperationRecoveryAttempt
+	if decision.State == evidence.OperationNeedsUser {
+		metric = evidence.MetricOperationNeedsUser
+	}
+	a.auditOperation(metric, op)
 	if d == nil {
 		return decision
 	}
@@ -154,15 +174,25 @@ func (a *Agent) recordOperationOutcome(plan *toolCallPlan, rec evidence.Receipt,
 		// holds a change open for verification and review, so a routine edit
 		// never becomes a bookkeeping task the model has to clear.
 		if a.turn.constraints.PolicyFloor != taskcontract.PolicyFloorDelivery {
-			ops.Settle(rec.OperationID)
+			a.auditOperation(evidence.MetricOperationSettled, ops.Settle(rec.OperationID))
 		}
 		a.advanceTodoForOperation(rec)
 	case ref.Kind == evidence.ReceiptKindVerification || ref.Kind == evidence.ReceiptKindReview:
-		if _, attached := ops.AttachLatestVerification(ref); !attached {
-			ops.Settle(rec.OperationID)
+		if covered, attached := ops.AttachLatestVerification(ref); attached {
+			a.auditOperation(evidence.MetricVerificationAutoAttached, covered)
+		} else {
+			a.auditOperation(evidence.MetricOperationSettled, ops.Settle(rec.OperationID))
 		}
+	case ref.Kind == evidence.ReceiptKindCommand:
+		// A successful command the host does not recognize as a verifier. It
+		// settles like any other real result; the counter is how often the
+		// classifier is simply not the one deciding.
+		a.auditOperation(evidence.MetricVerificationUnclassified, ops.Settle(rec.OperationID))
 	default:
-		ops.Settle(rec.OperationID)
+		a.auditOperation(evidence.MetricOperationSettled, ops.Settle(rec.OperationID))
+	}
+	if rec.ToolName == "complete_step" && !rec.StepProof {
+		a.auditOperation(evidence.MetricCompleteStepOptionalCall, evidence.Operation{ID: rec.OperationID, Tool: rec.ToolName})
 	}
 }
 

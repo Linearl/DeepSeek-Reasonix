@@ -56,6 +56,16 @@
 覆盖回执仅用于诊断，不能授权恢复后的写入；模型与压缩投影剥离这些字段。工具
 schema 和稳定系统前缀不变，完整短文件字节不变；部分结果及追加续读提示会变化。
 
+## 可观测性
+
+状态转移会向愿意接收的 sink 发布无正文计数器：`operation_settled_total`、
+`operation_needs_user_total`、`operation_recovery_attempt_total`、
+`operation_duplicate_block_total`、`verification_auto_attached_total`、
+`verification_unclassified_total`、`read_source_changed_total` 与
+`complete_step_optional_call_total`。它们只携带宿主标识，不含路径、参数、命令或
+工具输出。真正回答“这次改动是否奏效”的是：同一操作的平均恢复次数、`needs_user`
+占比，以及未分类命令占比。
+
 ## 验证
 
 回归涵盖三次连续编辑/重读/重试、旧锚点变化、确认删除、源版本/存在性竞态、

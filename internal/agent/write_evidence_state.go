@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sync"
 
+	"reasonix/internal/event"
 	"reasonix/internal/evidence"
 	"reasonix/internal/provider"
 	"reasonix/internal/tool"
@@ -216,6 +217,7 @@ func (a *Agent) outstandingReadEvidence(_ context.Context, boundary uint64) []st
 func (a *Agent) retireEvidenceRequirement(s *evidenceBlockState, r writeEvidenceRequirement) {
 	s.retire(r)
 	a.operations().NewEpoch(r.OperationID)
+	event.RecordOperationAudit(a.svc.sink, evidence.OperationAudit{Metric: evidence.MetricReadSourceChanged, OperationID: r.OperationID})
 }
 
 // Large bounded reads need not scan the whole source to establish a version.
