@@ -892,6 +892,12 @@ export function historyMessagesToItems(messages: HistoryMessage[], idPrefix: str
       continue;
     }
     if (m.role === "notice") {
+      if (m.code === "read_completion") {
+        const next = appendNoticeItem(items, seq, `${idPrefix}${seq}`, "info", m.content, m.detail, m.code);
+        items = next.items;
+        seq = next.seq;
+        continue;
+      }
       if (m.code === "incomplete_read") {
         items = upsertReadPause(items, m.readPause, `${idPrefix}${seq++}`);
         continue;

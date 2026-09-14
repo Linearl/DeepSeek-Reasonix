@@ -92,6 +92,20 @@ func TestReadHardStopCannotBeHiddenBehindAnotherContinuation(t *testing.T) {
 	}
 }
 
+func TestDefaultBudgetStopOffersValidatedStrategy(t *testing.T) {
+	a := newIncompleteReadTestAgent(&scriptedProvider{}, incompleteReadBuiltin(t), NewSession("sys"), event.Discard)
+	a.turn.readShadow = newReadShadowState(true)
+	a.reads.tasks = newReadTasks("test", 1)
+	env := tool.ReadResultEnvelope{ReadID: "r", Source: tool.ReadResultSource{CanonicalPath: "/w/a", Identity: "id", Snapshot: "s"}, Intent: tool.ReadIntentFull, HasMore: true}
+	a.turn.readShadow.coord.Begin("r", readcoord.Scope{CanonicalPath: "/w/a"}, readcoord.Requirement{Intent: tool.ReadIntentFull, WholeFile: true})
+	a.armDefaultReadStrategy("r", env)
+	a.turn.readShadow.coord.Narrow("r", readcoord.Block{Code: "no_headroom", Detail: "budget", Recovery: "read a narrower window"})
+	instruction, err := a.readContinuation(false)
+	if err != nil || !strings.Contains(instruction, "READ STRATEGY") || !strings.Contains(instruction, "grep") {
+		t.Fatalf("instruction=%q err=%v", instruction, err)
+	}
+}
+
 func TestReadReferenceAfterWriteRedeliversCurrentEvidence(t *testing.T) {
 	a, env, body := deliveryFixture(t)
 	a.task.ledger = evidence.NewLedger()

@@ -135,7 +135,7 @@ func (a *Agent) readContinuation(final bool) (string, error) {
 	reads := a.turn.readShadow.coord.Snapshot()
 	// Hard stops have priority over a continuation on another file.
 	for _, ob := range reads {
-		if !ob.State.Terminal() && ob.Stop != nil {
+		if !ob.State.Terminal() && ob.Stop != nil && !a.turn.readShadow.strategyPending(ob.Key) {
 			paused = append(paused, fmt.Sprintf("%s: %s; %s", ob.Scope.CanonicalPath, ob.Stop.Detail, ob.Stop.Recovery))
 		}
 	}

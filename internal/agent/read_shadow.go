@@ -32,6 +32,7 @@ func newReadShadowState(enabled bool) readShadowState {
 		s.coord = readcoord.New()
 		s.byState = map[readcoord.State]int{}
 		s.pivots = map[string]struct{}{}
+		s.strategies = map[string]bool{}
 	}
 	return s
 }
@@ -69,6 +70,9 @@ func (a *Agent) observeReadShadow(env tool.ReadResultEnvelope, elapsed ...int64)
 	}
 	if tr.Advice == readcoord.AdvicePivot {
 		s.pivots[tr.Key] = struct{}{}
+	}
+	if tr.Stop != nil && tr.To == readcoord.StateNeedsScope && (tr.Stop.Code == "unknown_window" || tr.Stop.Code == "no_headroom") {
+		a.armDefaultReadStrategy(tr.Key, env)
 	}
 	if a.readPipelineActive() && tr.To == readcoord.StateNeedsMore {
 		a.issueReadContinuation(tr, env)
