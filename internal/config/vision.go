@@ -146,7 +146,7 @@ func officialDeepSeekEffectiveVision(e *ProviderEntry) bool {
 	// still drive the wire gate (DeepSeekImageInputAllowed) and the capability
 	// resolver, so users can open image input for new SKUs there; this answer
 	// only feeds provider-level UI/validation.
-	if e == nil || !openai.IsOfficialDeepSeekVisionModel(e.Model) {
+	if e == nil || !openai.IsOfficialDeepSeekImageModel(e.Model) {
 		return false
 	}
 	if enabled, explicit := explicitModelVision(e); explicit {
@@ -155,7 +155,13 @@ func officialDeepSeekEffectiveVision(e *ProviderEntry) bool {
 	if e.Vision {
 		return true
 	}
-	return e.VisionModels == nil
+	// An explicitly emptied list means the user turned image input off for the
+	// provider. A list curated before the V4.1 SKUs still omits them, so a
+	// non-empty list must not veto a model the vendor reports as capable.
+	if e.VisionModels != nil && len(e.VisionModels) == 0 {
+		return false
+	}
+	return true
 }
 
 func explicitModelVision(e *ProviderEntry) (enabled, explicit bool) {

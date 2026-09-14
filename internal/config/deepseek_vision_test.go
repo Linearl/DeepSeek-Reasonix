@@ -45,8 +45,10 @@ func TestEffectiveVisionHonorsOfficialDeepSeekVisionModels(t *testing.T) {
 		Model:        "deepseek-v4-flash",
 		VisionModels: []string{"deepseek-v4-flash", openai.OfficialDeepSeekVisionModel},
 	}
-	if EffectiveVision(flash) || ExplicitModelVision(flash) {
-		t.Fatal("checking image input on Flash must not enable official DeepSeek image payloads")
+	// Flash is on the vendor's multimodal list now, so ticking it must take effect.
+	// The pinned-SKU era, where only vision-exp could answer yes, is over.
+	if !EffectiveVision(flash) {
+		t.Fatal("checking image input on a multimodal SKU must enable image payloads")
 	}
 }
 
@@ -173,8 +175,8 @@ func TestDeepSeekOfficialPresetsRouteVisionToPinnedSKU(t *testing.T) {
 		if flash == nil || pro == nil || !ok {
 			t.Fatalf("%s models did not resolve", id)
 		}
-		if EffectiveVision(flash) || EffectiveVision(pro) || !EffectiveVision(vision) {
-			t.Fatalf("%s vision routing = flash:%t pro:%t vision:%t", id, EffectiveVision(flash), EffectiveVision(pro), EffectiveVision(vision))
+		if !EffectiveVision(flash) || EffectiveVision(pro) || !EffectiveVision(vision) {
+			t.Fatalf("%s vision routing = flash:%t pro:%t vision:%t (flash is multimodal now; pro is text-only)", id, EffectiveVision(flash), EffectiveVision(pro), EffectiveVision(vision))
 		}
 	}
 }

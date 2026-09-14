@@ -17,6 +17,7 @@ import (
 
 	"reasonix/internal/fileutil"
 	"reasonix/internal/provider"
+	"reasonix/internal/provider/openai"
 )
 
 type CapabilityState string
@@ -176,7 +177,11 @@ func (r *ModelCapabilityResolver) resolveAutomatic(entry *ProviderEntry, credent
 		resolved.ModelInfo = facts
 		return resolved
 	}
-	if entry.HasVisionModel(model) {
+	// The curated templates predate the V4.1 multimodal SKUs, so the vendor
+	// authority also decides here; otherwise a matching preset would lock a model
+	// that the builtin catalog already reports as image-capable.
+	if entry.HasVisionModel(model) ||
+		(openai.IsDeepSeek(entry.BaseURL) && provider.IsOfficialDeepSeekImageModel(model)) {
 		resolved := capabilityFromBool(model, true, CapabilitySourceLegacy)
 		resolved.ModelInfo = facts
 		return resolved
