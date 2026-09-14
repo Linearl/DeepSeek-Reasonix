@@ -19,6 +19,7 @@
 | **任务 81** 重启并更新（关闭 → 发布本地构建 → launcher 重启） | `[desktop] experimental_restart_update` | **关** | `desktop/restart_update.go`、`internal/tool/restart_update.go`、`internal/tool/builtin/restart_update.go`、`StatusBar.tsx` | N/A（fork 独有；上游走 Electron 自更新，见 #10222） |
 | **任务 69** 强制归档入口 | 无 | **常开** | `desktop/`（归档路径）+ 前端菜单 | N/A（fork 独有；上游曾删该入口） |
 | **任务 23** `todo_write` 串行校验（拒绝无 in_progress / in_progress 越位） | 无 | **常开** | `internal/tool/builtin/todo_write.go` 系 | ⏳ 上游未吸收 |
+| **任务 90** 链拼接增强（选主线后把落败链中主线缺失的前缀段 graft 到新主线头部） | 无（行为增强，随时可用） | **常开** | `internal/agent/recovery_prefix_gap.go`、`recovery_prefix_graft.go`、`recovery_consolidate.go` | N/A（fork 独有） |
 | **任务 21** v1.38.1 上游 bug 回归修复（代码侧） | 无 | **常开** | 见 v1.38.1 各表 | 部分已合入上游 |
 | **状态栏默认 `text`**（上游默认 `icon`） | 无 | **`text`** | `App.tsx`、`app-runtime/useDesktopPreferences.ts`、`lib/statusBarItems.ts` | ⏳ 上游为 `icon` + 一次性升级；**fork 无测试守卫（2026-09-13 修）** |
 | **平台与最大化共享 chrome store**（任务 38 第一批） | 无 | **常开** | `App.tsx`、`store/windowChrome.ts` | N/A（结构收敛） |
