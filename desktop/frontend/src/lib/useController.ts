@@ -94,6 +94,7 @@ import type {
   WireUsage,
   WireShellExecution,
 } from "./types";
+import { reportFrontendLog } from "./frontendLog";
 
 export { foregroundRunningFromRuntimeMeta } from "./runtimeMeta";
 export {
@@ -2983,6 +2984,9 @@ export function useController() {
       } else if (skipHistory) {
         const skipReason = options.skipHistory ? "local-snapshot" : "cached-transcript";
         addBreadcrumb("tab.hydrate", `history skipped ${tabId} reason=${skipReason}`);
+        // The fast path is the thing users notice as "fast", and the thing they notice as
+        // "slow" when it stops applying. Recording which reason won makes both diagnosable.
+        reportFrontendLog("history-paging", "history fetch skipped", `tab=${tabId} reason=${skipReason} scope=${reason}`);
         if (reason === "switch-tab") {
           addBreadcrumb("tab.switch", `history-done ${tabId} skipped ms=${Date.now() - historyStartedAt}`);
         }
@@ -3221,11 +3225,13 @@ export function useController() {
         // scheduling collision. A different transcript is never retried.
         if (sameTranscript && !isRetry) return await loadOlder(targetTabId, targetTurn, trigger, true);
         dispatchTo(targetTabId, { type: "history_older_error", error: "history identity changed" });
+        reportFrontendLog("history-paging", "older page rejected", `tab=${targetTabId} reason=identity-changed`, "warn");
         return false;
       }
       if (!result) {
         // Superseded (generation moved) or nothing older left.
         dispatchTo(targetTabId, { type: "history_older_error", error: "history page unavailable" });
+        reportFrontendLog("history-paging", "older page unavailable", `tab=${targetTabId} trigger=${trigger}`, "warn");
         return false;
       }
       if (result.kind === "reload") {
@@ -3274,6 +3280,7 @@ export function useController() {
         if (settled?.historyOlderLoading) {
           dispatchTo(targetTabId, { type: "history_older_error" });
           addBreadcrumb("tab.hydrate", `history older abandoned ${targetTabId} trigger=${trigger}`);
+          reportFrontendLog("history-paging", "older page abandoned", `tab=${targetTabId} trigger=${trigger}`, "warn");
         }
       }
     }

@@ -11,6 +11,8 @@
 // Guidance queues / submit flags stay runtime-only. Every storage error
 // degrades to the previous in-memory behavior.
 
+import { reportFrontendLog } from "./frontendLog";
+
 const STORAGE_KEY = "composer:drafts:v1";
 const MAX_PERSISTED_BYTES = 256 * 1024; // per-draft JSON budget
 const DEBOUNCE_MS = 150;
@@ -56,6 +58,9 @@ function readAll(): PersistedDrafts {
     const parsed = JSON.parse(raw) as PersistedDrafts;
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
+    // A corrupt or unreadable store silently empties every draft. Worth a line: the drafts
+    // vanish on restart and nothing else explains why.
+    reportFrontendLog("draft", "persisted drafts unreadable", "falling back to empty", "warn");
     return {};
   }
 }
@@ -65,7 +70,10 @@ function writeAll(drafts: PersistedDrafts): boolean {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(drafts));
     return true;
   } catch {
-    // Quota exceeded or storage unavailable — degrade to memory-only drafts.
+    // Quota exceeded or storage unavailable — degrade to memory-only drafts. The degradation
+    // is invisible until the text is gone, so record the failure rather than letting the user
+    // discover it as lost work.
+    reportFrontendLog("draft", "draft write failed, drafts are memory-only", "quota or storage unavailable", "warn");
     return false;
   }
 }
@@ -112,7 +120,11 @@ export function persistComposerDraft(draftKey: string, draft: PersistedComposerD
     clean.text === "" && clean.pastedBlocks.length === 0 && clean.attachments.length === 0
       && clean.workspaceRefs.length === 0;
   if (empty || JSON.stringify(clean).length > MAX_PERSISTED_BYTES) {
-    // Sent/emptied drafts and oversize drafts are not persisted.
+    // Sent/emptied drafts and oversize drafts are not persisted. The oversize case is the one
+    // worth recording: the text was typed, no error was shown, and it will not come back.
+    if (!empty) {
+      reportFrontendLog("draft", "oversize draft not persisted", `key=${draftKey} limit=${MAX_PERSISTED_BYTES}`, "warn");
+    }
     delete drafts[draftKey];
   } else {
     drafts[draftKey] = clean;
