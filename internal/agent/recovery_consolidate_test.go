@@ -329,3 +329,86 @@ func TestConsolidateNormalizesDirtyMainFirst(t *testing.T) {
 		t.Fatalf("promoted main meta: ok=%v recovered=%v err=%v", ok, meta.Recovered, err)
 	}
 }
+
+// Task 90, end to end, in the shape the feature was asked for: the losing chain
+// (the current main) holds turns the chosen winner does not, and a forced
+// promote must recover them onto the new main's head instead of leaving them
+// only in the archive.
+//
+//   main (losing) = [A, B, C, H]     winner = [C, D, E, F, G]
+//   result        = [A, B, C, D, E, F, G]   with H archived
+func TestPromoteGraftsTheLosingChainsPrefix(t *testing.T) {
+	dir := t.TempDir()
+	mainPath := filepath.Join(dir, "model.jsonl")
+
+	losing := NewSession("sys")
+	losing.Replace([]provider.Message{
+		{Role: provider.RoleUser, Content: "A"},
+		{Role: provider.RoleAssistant, Content: "B"},
+		{Role: provider.RoleUser, Content: "C"},
+		{Role: provider.RoleAssistant, Content: "H"},
+	})
+	if err := losing.Save(mainPath); err != nil {
+		t.Fatalf("save losing chain: %v", err)
+	}
+
+	winner := NewSession("sys")
+	winner.Replace([]provider.Message{
+		{Role: provider.RoleUser, Content: "C"},
+		{Role: provider.RoleAssistant, Content: "D"},
+		{Role: provider.RoleUser, Content: "E"},
+		{Role: provider.RoleAssistant, Content: "F"},
+		{Role: provider.RoleUser, Content: "G"},
+	})
+	if _, err := winner.SaveRecoveryBranch(RecoveryBranchOptions{OriginalPath: mainPath}); err != nil {
+		t.Fatalf("save winner copy: %v", err)
+	}
+
+	// Neither covers the other, so only the forced path proceeds — which is
+	// exactly where the graft matters, because force used to mean "accept the
+	// loss".
+	report, err := ConsolidateSessionRecoveryBranchesWithOptions(mainPath, ConsolidateOptions{Force: true})
+	if err != nil {
+		t.Fatalf("forced consolidation: %v", err)
+	}
+	if !report.Promoted {
+		t.Fatalf("report = %+v, want Promoted", report)
+	}
+	if report.Prefixed != 2 {
+		t.Fatalf("Prefixed = %d, want 2 (A and B)", report.Prefixed)
+	}
+	if report.ForkIndex != 2 {
+		t.Fatalf("ForkIndex = %d, want 2 (C is where the chains meet)", report.ForkIndex)
+	}
+
+	// The new main reads A B C D E F G once loaded — and the load path goes
+	// through the event log, which is what made the ordering matter: the winner's
+	// log arrives as a sidecar after the rename and would otherwise overwrite the
+	// folded record.
+	got := loadSnapshot(t, mainPath)
+	want := []string{"A", "B", "C", "D", "E", "F", "G"}
+	if contents := messageContents(got); len(contents) != len(want) {
+		t.Fatalf("main has %v, want %v", contents, want)
+	}
+	for i, expect := range want {
+		if got[i].Content != expect {
+			t.Fatalf("main[%d] = %q, want %q (full: %v)", i, got[i].Content, expect, messageContents(got))
+		}
+	}
+
+	// H is the part that stays archived: the losing chain's post-fork tail is not
+	// grafted, by design.
+	for _, m := range got {
+		if m.Content == "H" {
+			t.Fatal("the losing chain's post-fork tail must stay archived, not be grafted")
+		}
+	}
+}
+
+func messageContents(msgs []provider.Message) []string {
+	out := make([]string, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, m.Content)
+	}
+	return out
+}

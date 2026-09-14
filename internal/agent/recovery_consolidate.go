@@ -79,6 +79,11 @@ type ConsolidationReport struct {
 	// would lose by ignoring it, and the UI has to say which is which.
 	NotCoveredDetail  []CopyOverlapDetail `json:"notCoveredDetail"`
 	SkippedUnloadable []string            `json:"skippedUnloadable"`
+	// Prefixed counts the losing chain's turns grafted onto the new main because
+	// the winner did not cover them (task 90). ForkIndex is where the losing
+	// chain rejoined, so the UI can say which part was kept.
+	Prefixed  int `json:"prefixed,omitempty"`
+	ForkIndex int `json:"forkIndex,omitempty"`
 }
 
 // CopyOverlapDetail is one skipped copy, described by how much of it is already
@@ -429,9 +434,12 @@ func ConsolidateSessionRecoveryBranchesWithOptions(mainPath string, opts Consoli
 			report.WinnerMessageCount = winner.MessageCount
 			return report, nil
 		}
-		if err := promoteRecoveryCopyToMain(mainPath, winner.Path, dir, opts.Force); err != nil {
+		grafted, forkIndex, err := promoteRecoveryCopyToMain(mainPath, winner.Path, dir, opts.Force)
+		if err != nil {
 			return report, err
 		}
+		report.Prefixed = grafted
+		report.ForkIndex = forkIndex
 		report.Promoted = true
 		report.MainMessageCount = winner.MessageCount
 	}
@@ -488,7 +496,9 @@ func ConsolidateSessionRecoveryBranchesWithOptions(mainPath string, opts Consoli
 // operation; the previous main is archived as one recoverable .trash entry
 // (transcript plus every sidecar) before the winner takes over, so a crash
 // between the two renames still leaves a complete rollback artifact.
-func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) error {
+// Returns the number of messages grafted onto the new main and the losing
+// chain's fork index, so the caller can report what was recovered.
+func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) (grafted int, forkIndex int, err error) {
 	paths := []string{mainPath, winnerPath}
 	sort.Strings(paths)
 	guards := make([]*SessionRemovalGuard, 0, len(paths))
@@ -498,7 +508,7 @@ func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) err
 			for _, held := range guards {
 				held.Release()
 			}
-			return err
+			return 0, 0, err
 		}
 		guards = append(guards, guard)
 	}
@@ -515,19 +525,15 @@ func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) err
 	// swapped-out content stays recoverable.
 	if !SessionContentCovers(winnerPath, mainPath) {
 		if !force {
-			return ErrMainNotCoveredByWinner
+			return 0, 0, ErrMainNotCoveredByWinner
 		}
 	}
 
 	// The losing chain is the current main: it holds the turns the winner does
-	// not. When the winner does not cover it, those turns would survive only in
-	// the trash archive, so the segment worth keeping is grafted onto the
-	// winner's head during the promote below. Computed here because both files
-	// must still be on disk — after the rename the old main is already staged.
+	// not. Computed here because both files must still be on disk — after the
+	// rename the old main is already staged in the trash.
 	gap, gapKnown := SessionContentPrefixGap(winnerPath, mainPath)
 	if !gapKnown {
-		// Same fail-closed rule as every other read in this file: a transcript
-		// that cannot be read safely must not produce a merge decision.
 		slog.Warn("promote: prefix gap unavailable; proceeding without grafting",
 			"main", mainPath, "winner", winnerPath)
 		gap = PrefixGap{}
@@ -535,92 +541,56 @@ func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) err
 
 	legacyMeta, legacyOK, err := LoadBranchMeta(mainPath)
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 	winnerMeta, winnerOK, err := LoadBranchMeta(winnerPath)
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 	if !winnerOK {
-		return fmt.Errorf("recovery copy meta is missing for %s", winnerPath)
+		return 0, 0, fmt.Errorf("recovery copy meta is missing for %s", winnerPath)
 	}
 
 	// 1) Archive the previous main (transcript + sidecars) as one recoverable
 	// trash entry, staged atomically like every other recovery trash move.
 	key := filepath.Base(mainPath)
 	if !validRecoveryTrashKey(key) {
-		return fmt.Errorf("invalid main session path for trash staging: %s", mainPath)
+		return 0, 0, fmt.Errorf("invalid main session path for trash staging: %s", mainPath)
 	}
 	stageDir, err := reserveRecoveryTrashStage(dir)
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 	if err := writeRecoveryTrashPending(stageDir, key); err != nil {
-		return err
+		return 0, 0, err
 	}
 	if err := moveRecoveryTrashPath(mainPath, filepath.Join(stageDir, key)); err != nil {
-		return err
+		return 0, 0, err
 	}
 	for _, src := range recoveryTrashSidecars(mainPath) {
 		if err := moveRecoveryTrashPath(src, filepath.Join(stageDir, filepath.Base(src))); err != nil {
-			return err
+			return 0, 0, err
 		}
 	}
 	itemDir, err := publishRecoveryTrashStage(dir, key, stageDir)
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 	if err := writeRecoveryTrashMetaExisting(itemDir, key); err != nil {
 		if !os.IsNotExist(err) {
-			return err
+			return 0, 0, err
 		}
 		// Published entries may already have been restored or purged.
 	}
 	if err := clearRecoveryTrashPending(itemDir); err != nil {
-		return err
+		return 0, 0, err
 	}
 
 	// 2) The winner copy takes over the main identity. Derived indexes are
 	// dropped rather than renamed: the next load rebuilds them from content.
 	if err := os.Rename(winnerPath, mainPath); err != nil {
-		return err
+		return 0, 0, err
 	}
-	// The winner is the main now, so the gap can be written onto it. Done after the
-	// rename because the file that must receive it did not exist until now, and
-	// before the meta rewrite below so the content identity it stores describes
-	// the grafted transcript rather than the pre-graft one.
-	graftedMessages := 0
-	if len(gap.Messages) > 0 {
-		lines, err := os.ReadFile(mainPath)
-		if err != nil {
-			return err
-		}
-		mergedLines, err := graftPrefixOntoLines(splitTranscriptLines(lines), gap.Messages)
-		if err != nil {
-			return err
-		}
-		if err := atomicWriteFileContext(context.Background(), mainPath, "promote-graft", "transcript.promote-graft", joinTranscriptLines(mergedLines), 0o600, true); err != nil {
-			return err
-		}
-		// The event log keys its records by message index, so every index it holds
-		// is now wrong. Folding it to a single replace record is both the correct
-		// fix and the existing mechanism for it.
-		mergedMsgs, err := decodeTranscriptMessages(mergedLines)
-		if err != nil {
-			return err
-		}
-		digest, _, err := digestAndSizeSessionMessages(mergedMsgs)
-		if err != nil {
-			return err
-		}
-		if err := compactSessionEventLog(mainPath, mergedMsgs, digest, legacyMeta.Revision, "promote-prefix-graft"); err != nil {
-			return err
-		}
-		graftedMessages = len(gap.Messages)
-		slog.Info("promote: grafted the losing chain's prefix",
-			"main", mainPath, "messages", graftedMessages, "forkIndex", gap.ForkIndex)
-	}
-
 	winnerStem := strings.TrimSuffix(filepath.Base(winnerPath), ".jsonl")
 	mainStem := strings.TrimSuffix(filepath.Base(mainPath), ".jsonl")
 	dropSidecar := map[string]bool{
@@ -648,13 +618,13 @@ func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) err
 		base := filepath.Base(src)
 		if dropSidecar[base] {
 			if err := os.RemoveAll(src); err != nil {
-				return err
+				return 0, 0, err
 			}
 			continue
 		}
 		dst := filepath.Join(dir, strings.Replace(base, winnerStem, mainStem, 1))
 		if err := moveRecoveryTrashPath(src, dst); err != nil {
-			return err
+			return 0, 0, err
 		}
 		// The pinned-context sidecar embeds the session identity it was created
 		// under. After the rename that identity is the winner copy's, which
@@ -669,11 +639,51 @@ func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) err
 		}
 	}
 
+	// 3) Recover the losing chain's head onto the new main.
+	//
+	// This has to run AFTER the sidecar move above: the winner's event log is one
+	// of the sidecars, so it arrives after the rename and would overwrite a
+	// replace record written before it — leaving the file grafted but every load
+	// (which reads through the event log) showing the pre-graft content.
+	graftedMessages := 0
+	graftedForkIndex := 0
+	if len(gap.Messages) > 0 {
+		current, err := os.ReadFile(mainPath)
+		if err != nil {
+			return 0, 0, err
+		}
+		mergedLines, err := graftPrefixOntoLines(splitTranscriptLines(current), gap.Messages)
+		if err != nil {
+			return 0, 0, err
+		}
+		if err := atomicWriteFileContext(context.Background(), mainPath, "promote-graft", "transcript.promote-graft", joinTranscriptLines(mergedLines), 0o600, true); err != nil {
+			return 0, 0, err
+		}
+		mergedMsgs, err := decodeTranscriptMessages(mergedLines)
+		if err != nil {
+			return 0, 0, err
+		}
+		digest, _, err := digestAndSizeSessionMessages(mergedMsgs)
+		if err != nil {
+			return 0, 0, err
+		}
+		// The event log keys records by message index, so every index it holds is
+		// now wrong; folding it to one replace record is both the correct fix and
+		// the existing mechanism for it.
+		if err := compactSessionEventLog(mainPath, mergedMsgs, digest, legacyMeta.Revision, "promote-prefix-graft"); err != nil {
+			return 0, 0, err
+		}
+		graftedMessages = len(gap.Messages)
+		graftedForkIndex = gap.ForkIndex
+		slog.Info("promote: grafted the losing chain's prefix",
+			"main", mainPath, "messages", graftedMessages, "forkIndex", gap.ForkIndex)
+	}
+
 	// 3) Rewrite the main meta: keep the session's display/ownership identity,
 	// take the winner's content identity, and clear every recovery marker so
 	// the lineage reads as resolved. The touched UpdatedAt is what open tabs
 	// notice (the #9468 reload path) when they refresh.
-	return UpdateBranchMeta(mainPath, true, func(meta *BranchMeta) error {
+	return graftedMessages, graftedForkIndex, UpdateBranchMeta(mainPath, true, func(meta *BranchMeta) error {
 		meta.ID = BranchID(mainPath)
 		meta.Recovered = false
 		meta.RecoveryReason = ""
