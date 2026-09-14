@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -852,9 +853,15 @@ func TestRepairSessionEventLogAdaptsToOversizeLog(t *testing.T) {
 		t.Fatal("expected a non-empty event log")
 	}
 
+	// Lower the default itself, not just its struct copy - see the sibling test for why.
+	savedDefaultBytes := defaultSessionEventReplayMaxBytes
 	original := defaultSessionReplayLimits
-	defaultSessionReplayLimits.maxBytes = int64(len(intact)) / 2
-	t.Cleanup(func() { defaultSessionReplayLimits = original })
+	defaultSessionEventReplayMaxBytes = int64(len(intact)) / 2
+	defaultSessionReplayLimits.maxBytes = defaultSessionEventReplayMaxBytes
+	t.Cleanup(func() {
+		defaultSessionEventReplayMaxBytes = savedDefaultBytes
+		defaultSessionReplayLimits = original
+	})
 
 	// Over budget now. Before the fix this returned ErrSessionReplayLimitExceeded.
 	loaded, err := LoadSession(path)
@@ -878,5 +885,60 @@ func TestRepairPathKeepsRecordBudgetUnderAdaptiveBytes(t *testing.T) {
 
 	if _, err := LoadSession(path); err == nil {
 		t.Fatal("expected the record budget to still refuse this log")
+	}
+}
+// TestSessionEventLogSizeAcceptsResolvedLogPath pins the fix for the reason task 104
+// needed four attempts. store.SessionEventLog appends ".events.jsonl" unconditionally, so
+// passing it a path that is already the log yields "x.events.jsonl.events.jsonl", which
+// stats as missing. sessionEventLogSize used to return 0 for that, and a non-positive size
+// makes limitsForSessionLog keep the default budget - so every caller holding a resolved
+// path (notably sessionDAGState.path, which is exactly that) silently went unsized.
+func TestSessionEventLogSizeAcceptsResolvedLogPath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "20260911-065117.149415700-minimax-MiniMax-M3.jsonl")
+	sessionWithTurns(t, path, 3)
+
+	logPath := store.SessionEventLog(path)
+	sizeFromSessionPath := sessionEventLogSize(path)
+	sizeFromLogPath := sessionEventLogSize(logPath)
+
+	if sizeFromSessionPath <= 0 {
+		t.Fatalf("session path: got %d, want the log size; the log exists at %s", sizeFromSessionPath, logPath)
+	}
+	// The regression: this returned 0, which read as "no file to size against".
+	if sizeFromLogPath != sizeFromSessionPath {
+		t.Fatalf("resolved log path: got %d, want %d (the same file, reached both ways)",
+			sizeFromLogPath, sizeFromSessionPath)
+	}
+}
+
+// TestReplayFromResolvedPathSizesBudget drives the actual failing path: a DAG state holds
+// the resolved log path, and replayFrom must still size the budget to the file rather than
+// refusing it with the default.
+func TestReplayFromResolvedPathSizesBudget(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "20260911-065117.149415700-minimax-MiniMax-M3.jsonl")
+	sessionWithTurns(t, path, 3)
+
+	logPath := store.SessionEventLog(path)
+	info, err := os.Stat(logPath)
+	if err != nil {
+		t.Fatalf("stat log: %v", err)
+	}
+	// Budget below the file: only the adaptive sizing can let this through.
+	// Shrink the default itself, not just the struct copy: the adaptive allowance applies only
+	// while the budget still is the default, deliberately, so a caller that sets its own value
+	// keeps it. Shrinking only the struct would test the other path and refuse the log.
+	savedDefaultBytes := defaultSessionEventReplayMaxBytes
+	original := defaultSessionReplayLimits
+	defaultSessionEventReplayMaxBytes = info.Size() / 2
+	defaultSessionReplayLimits.maxBytes = defaultSessionEventReplayMaxBytes
+	t.Cleanup(func() {
+		defaultSessionEventReplayMaxBytes = savedDefaultBytes
+		defaultSessionReplayLimits = original
+	})
+
+	st := newSessionDAGState(logPath)
+	if err := st.replayFrom(context.Background(), 0, defaultSessionReplayLimits); err != nil {
+		t.Fatalf("replayFrom on a resolved log path refused a %d-byte log (budget %d): %v",
+			info.Size(), defaultSessionReplayLimits.maxBytes, err)
 	}
 }

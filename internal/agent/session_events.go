@@ -45,7 +45,10 @@ const (
 )
 
 // defaultSessionEventReplayMaxBytes is the ordinary ceiling for decoder input.
-const defaultSessionEventReplayMaxBytes = int64(128 << 20)
+// A var rather than a const so tests can lower it and exercise the adaptive path with a
+// small file. The adaptive allowance only applies while this is the effective budget, so
+// without this the real situation - a log larger than the default - needs a 128 MiB fixture.
+var defaultSessionEventReplayMaxBytes = int64(128 << 20)
 
 // sessionEventReplayMaxBytes is a var, not a const: the repair override below
 // adjusts it at startup.
@@ -135,6 +138,13 @@ const sessionReplayMaxBytesHard = int64(1024 << 20)
 // the hard ceiling. The record and message caps still apply, so a small file that
 // expands into a huge graph is still refused.
 func limitsForSessionLog(path string, limits sessionReplayLimits) sessionReplayLimits {
+	// Only the default budget adapts. A caller that set maxBytes itself did so deliberately -
+	// a test pinning that the budget is enforced, or a deliberately tight allowance - and
+	// enlarging it would quietly make that setting a no-op. A caller using the default has
+	// expressed no size, which is exactly what this exists to supply.
+	if limits.maxBytes != defaultSessionEventReplayMaxBytes {
+		return limits
+	}
 	size := sessionEventLogSize(path)
 	if size <= 0 {
 		return limits
@@ -204,8 +214,28 @@ func SessionEventIndexPath(sessionPath string) string {
 	return store.SessionEventIndex(sessionPath)
 }
 
+// sessionEventLogSize reports the size of the event log for a session. Callers pass either
+// shape of path: the session path, or the already-resolved log path that sessionDAGState
+// carries as st.path. The suffix decides which - store.SessionEventLog appends
+// ".events.jsonl" unconditionally, so applying it to "x.events.jsonl" yields
+// "x.events.events.jsonl", which stats as missing and reported zero.
+//
+// That zero was not harmless. limitsForSessionLog reads a non-positive size as "nothing to
+// size against", so it kept the default budget and the adaptive allowance silently became a
+// no-op for every caller holding a resolved path - which is why the oversize session needed
+// four attempts (task 104).
+//
+// Deliberately not a fallback chain over both candidates: while a legacy session is being
+// migrated the log does not exist yet but the legacy .jsonl does, and counting the legacy
+// file as the log would size a budget for the wrong file.
 func sessionEventLogSize(sessionPath string) int64 {
-	path := store.SessionEventLog(sessionPath)
+	if sessionPath == "" {
+		return 0
+	}
+	path := sessionPath
+	if !strings.HasSuffix(path, ".events.jsonl") {
+		path = store.SessionEventLog(path)
+	}
 	if path == "" {
 		return 0
 	}
