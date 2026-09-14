@@ -7,7 +7,10 @@ import (
 // contextBudgetTag is the per-turn transient block carrying the context
 // budget line (#9520). It rides the user turn head like the other transient
 // blocks and is stripped from previews/titles via TransientUserBlockTags.
-const contextBudgetTag = "context-budget"
+// contextBudgetTag names the per-turn block. It says "state", not "budget": the
+// number is how full the window is, not how much allowance is left, and that
+// difference is what made a filling window read like a running-out quota.
+const contextBudgetTag = "context-state"
 
 // contextBudgetWarnRatio: at or above this fraction of the compaction trigger
 // the budget line upgrades to the "approaching" wording. Deliberately plain
@@ -23,10 +26,11 @@ func ContextBudgetBlock(used, trigger, window int) string {
 	if window <= 0 || used <= 0 || window <= used {
 		return ""
 	}
-	line := fmt.Sprintf("<%s>context: %dk/%dk tokens (%d%%); auto-compaction at %d%%</%s>",
+	line := fmt.Sprintf("<%s>window occupancy %dk/%dk (%d%%); compaction cycles at %d%% — "+
+		"compaction is routine maintenance, not a quota; this session has no fixed total limit</%s>",
 		contextBudgetTag, used/1000, window/1000, used*100/window, trigger*100/window, contextBudgetTag)
 	if trigger > 0 && float64(used) >= float64(trigger)*contextBudgetWarnRatio {
-		line += "\napproaching auto-compaction; older context will be summarized, not lost — plan remaining work in waves, and record key progress and decisions in a project document now so they stay cheap to recover after the summary."
+		line += "\ncompaction is approaching — that is the mechanism working, not a problem to manage. Older context gets summarized and the work continues with the same tools and workspace; nothing needs to be rushed or cut short. Keeping key decisions in a project document is useful because a short note is easier to pick up again than the transcript."
 	}
 	return line
 }

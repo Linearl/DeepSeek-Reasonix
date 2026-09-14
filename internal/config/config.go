@@ -1880,13 +1880,17 @@ const LanguagePolicy = `Reply in the same language the user is using in their mo
 // <context-budget> transient block instead. Knowing the mechanism exists is
 // what lets the model plan large tasks in waves instead of rushing or
 // abandoning them as the window fills.
+// The point is the second sentence: compaction is described as maintenance with no
+// fixed total, because a window that reads like a depleting quota is what makes a
+// model shrink scope or wrap up early as the window fills (task 99).
 const ContextManagementPolicy = `This host maintains context automatically. When the conversation approaches ` +
 	`its compaction threshold, older turns are summarized into a compact projection ` +
-	`while the recent tail is kept verbatim; work is not lost and the task does not ` +
-	`need to be rushed or abandoned. Plan large tasks in waves and delegate long ` +
-	`operations to background tasks. When the per-turn context budget warns that ` +
-	`compaction is approaching, write key decisions and progress into a project ` +
-	`document first — a short note survives the summary far cheaper than re-reading ` +
+	`while the recent tail is kept verbatim. Compaction is routine maintenance, not a ` +
+	`resource limit: this session has no fixed total budget. After a summary you continue ` +
+	`with the same tools, workspace, and notes — do not shrink scope, skip verification, ` +
+	`or end early because the window is filling. Plan large tasks in waves and delegate ` +
+	`long operations to background tasks. Keeping key decisions and progress in a ` +
+	`project document is useful because a short note is easier to pick up again than ` +
 	`the transcript.`
 
 // AutonomyPolicy tells the model to finish the work instead of stopping at a

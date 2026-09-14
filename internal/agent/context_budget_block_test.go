@@ -7,7 +7,7 @@ import (
 
 func TestContextBudgetBlockShapes(t *testing.T) {
 	regular := ContextBudgetBlock(41_000, 102_400, 128_000)
-	if !strings.Contains(regular, "<context-budget>context: 41k/128k tokens (32%); auto-compaction at 80%</context-budget>") {
+	if !strings.Contains(regular, "<context-state>window occupancy 41k/128k (32%); compaction cycles at 80%") {
 		t.Fatalf("regular block = %q", regular)
 	}
 	if strings.Contains(regular, "approaching") {
@@ -15,10 +15,10 @@ func TestContextBudgetBlockShapes(t *testing.T) {
 	}
 
 	near := ContextBudgetBlock(95_000, 102_400, 128_000)
-	if !strings.Contains(near, "approaching auto-compaction; older context will be summarized, not lost") {
+	if !strings.Contains(near, "compaction is approaching — that is the mechanism working, not a problem ") {
 		t.Fatalf("near-trigger block missing guidance: %q", near)
 	}
-	if !strings.HasPrefix(near, "<context-budget>") {
+	if !strings.HasPrefix(near, "<context-state>") {
 		t.Fatalf("guidance must trail the tag line: %q", near)
 	}
 
@@ -35,7 +35,7 @@ func TestWithContextBudgetPrefixesAndSkips(t *testing.T) {
 	prov := &overflowSummaryProvider{}
 	a := agentOverForceWindow(t, prov, sess, 60_000)
 	out := a.WithContextBudget("user text")
-	if !strings.HasPrefix(out, "<context-budget>") || !strings.Contains(out, "user text") {
+	if !strings.HasPrefix(out, "<context-state>") || !strings.Contains(out, "user text") {
 		t.Fatalf("budget block missing from turn: %q", out)
 	}
 	again := a.WithContextBudget(out)
