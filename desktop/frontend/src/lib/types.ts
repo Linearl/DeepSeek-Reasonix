@@ -822,11 +822,31 @@ export interface ChangedFileInfo {
   latestTime?: number;
 }
 
+// ReadCompletion and CompletedRead live here rather than in the generated desktop
+// contract: that contract is produced for the Electron shell, and the fork is still on
+// Wails, so ../generated/desktopContract.generated does not exist here. Shapes copied
+// from upstream's generated file so the wire payload stays the same.
+export interface CompletedRead {
+  read_id: string;
+  path: string;
+  snapshot?: string;
+  intent: string;
+  verdict: string;
+  covered: number[][];
+  source_end?: number | null;
+}
+
+export interface ReadCompletion {
+  id: string;
+  reads: CompletedRead[];
+  omitted?: number;
+}
+
 // Bound-method payloads (desktop/app.go).
 export interface HistoryMessage {
 	completionReceipt?: WireCompletionReceipt;
 	completionSummary?: WireCompletionSummary;
-	readCompletion?: import("../generated/desktopContract.generated").ReadCompletion;
+	readCompletion?: ReadCompletion;
 	turnId?: string;
 	readPause?: import("./readPause").WireReadPause;
   role: string;
