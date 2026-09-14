@@ -587,6 +587,9 @@ func (a *Agent) prepareToolExecution(ctx context.Context, plan *toolCallPlan) (t
 // finishToolExecution performs the concrete Execute, records evidence, runspost hooksandrecoveryobservation,
 // and truncates the model-facing result.
 func (a *Agent) finishToolExecution(ctx context.Context, plan *toolCallPlan) toolOutcome {
+	if blocked, early := a.checkToolRecoveryStart(ctx, plan); early {
+		return blocked
+	}
 	plan.executed = true
 	cctx := a.withWriteRecovery(plan.cctx, plan.call)
 	if plan.expectedWriteSource.Path != "" {
@@ -661,9 +664,12 @@ func (a *Agent) finishToolExecution(ctx context.Context, plan *toolCallPlan) too
 		rawErr := fmt.Sprintf("error: %v\n%s", err, detail)
 		body, truncMsg, original := a.boundProviderVisibleResult(rawErr, call.Name, call.ID)
 		out := toolOutcome{
-			runState: outcomeRunState(toolOutcome{executed: true, output: rawErr}),
+			runState: provider.ToolRunFailed,
 			output:   body, errMsg: firstLine(err.Error()), truncated: truncMsg != "" || original != "", truncMsg: truncMsg,
 			execution: execution, mcpApp: toProviderMCPApp(plan.mcpApp), recoveryGeneration: recoveryGen, subagentOutcome: subagentOutcomeFromError(err),
+		}
+		if uncertainToolError(err) {
+			out.runState = provider.ToolRunUnknown
 		}
 		if original != "" {
 			out.rawOutput = original

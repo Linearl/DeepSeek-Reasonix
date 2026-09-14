@@ -29,6 +29,7 @@ import { createMockModelScopePreset, type MockProviderPresetTemplate } from "./m
 import { createMockRemoteProjects } from "./mockRemoteProjects";
 import { mockRemoteHostView } from "./mockRemoteHosts";
 import type { RemoteProjectBindings } from "./remoteProjectBridge";
+import type { ToolRecoveryBindings } from "./toolRecovery";
 import type { ScrollDiagnosticBindings } from "./scrollDiagnosticBridge";
 import { makeMockMCPAppBindings, type MCPAppBindings } from "./mcpAppBridge";
 import { makeMockPinnedContextBindings, type PinnedContextBindings } from "./pinnedContextBridge";
@@ -348,6 +349,7 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   SetSubagentPolicyForTab(tabID: string, policy: string): Promise<void>;
   TrashTopicForce(topicID: string): Promise<void>;
   AnswerQuestionForTab(tabID: string, id: string, answers: QuestionAnswer[]): Promise<void>;
+export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings, SessionCatalogBindings, ProjectTreeOrganizationBindings, HistoryCatalogBindings, TaskCatalogBindings, BlankProjectBindings, QualityFloorBindings, SessionTitleBindings, ScrollDiagnosticBindings, RemoteProjectBindings, MCPAppBindings, PinnedContextBindings, FollowupBindings {
   Platform(): Promise<string>;
   AnswerPromptForTab?(tabID: string, turnID: string, id: string, answers: QuestionAnswer[]): Promise<void>;
   SteerInboxItemForTurn?(tabID: string, turnID: string, itemID: string): Promise<{ itemId: string; disposition: string; error?: string; paused?: boolean }>;
@@ -453,7 +455,6 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   RecoveryCheckpointEnabled(): Promise<boolean>;
   RecoveryCheckpointEnabledTab(tabID: string): Promise<boolean>;
   AnswerQuestion(id: string, answers: QuestionAnswer[]): Promise<void>;
-  AnswerQuestionForTab(tabID: string, id: string, answers: QuestionAnswer[]): Promise<void>;
   AnswerMCPInteractionForTab(
     tabID: string,
     id: string,

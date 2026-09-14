@@ -20,6 +20,9 @@ func ProjectionMessages(msgs []Message) []Message { return projectMessages(msgs,
 
 func messagesNeedProjection(msgs []Message, keepExecution, keepOrigin bool) bool {
 	for _, m := range msgs {
+		if m.InterruptedTurn != nil || slices.ContainsFunc(m.ToolCalls, func(c ToolCall) bool { return c.Recovery != nil }) {
+			return true
+		}
 		if m.ReadPause != nil {
 			return true
 		}
@@ -49,6 +52,7 @@ func projectMessages(msgs []Message, keepExecution, keepOrigin bool) []Message {
 		// provider bytes.
 		candidate.ReadResult = nil
 		candidate.ReadPause = nil
+		candidate.InterruptedTurn = nil
 		if !keepExecution && slices.ContainsFunc(candidate.ServerSearch, func(s ServerSearchCall) bool { return s.SourcesStatus != "" }) {
 			candidate.ServerSearch = append([]ServerSearchCall(nil), candidate.ServerSearch...)
 			for i := range candidate.ServerSearch {
@@ -67,10 +71,11 @@ func projectMessages(msgs []Message, keepExecution, keepOrigin bool) []Message {
 			// Local shell metadata must never enter provider request bytes.
 			candidate.ToolExecution = nil
 			candidate.ToolRunState = ""
-			if slices.ContainsFunc(candidate.ToolCalls, func(c ToolCall) bool { return len(c.WriteIntents) > 0 }) {
+			if slices.ContainsFunc(candidate.ToolCalls, func(c ToolCall) bool { return len(c.WriteIntents) > 0 || c.Recovery != nil }) {
 				candidate.ToolCalls = append([]ToolCall(nil), candidate.ToolCalls...)
 				for i := range candidate.ToolCalls {
 					candidate.ToolCalls[i].WriteIntents = nil
+					candidate.ToolCalls[i].Recovery = nil
 				}
 			}
 		}

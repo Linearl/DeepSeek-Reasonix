@@ -1,5 +1,5 @@
 import type { TabMeta } from "./types";
-import type { RemoteAskAnswer, RemoteProjectView, RemoteSessionView, RemoteTabOpenOptions, RemoteTabSnapshot } from "./remoteTypes";
+import type { RemoteAskAnswer, RemoteProjectView, RemoteSessionView, RemoteTabOpenOptions, RemoteTabSnapshot, RemoteToolRecovery } from "./remoteTypes";
 
 export interface RemoteProjectBindings {
   AddRemoteProject(hostId: string, workspace: string): Promise<RemoteProjectView>;
@@ -27,6 +27,11 @@ export interface RemoteProjectBindings {
   SetRemoteTabToolApprovalMode(tabId: string, mode: string): Promise<void>;
   SetRemoteTabGoal(tabId: string, goal: string): Promise<void>;
   RemoteTabSnapshot(tabId: string): Promise<RemoteTabSnapshot>;
+  GetRemoteTabRecovery?(tabId: string): Promise<RemoteToolRecovery[]>;
+  InspectRemoteTabRecovery?(tabId: string, callId: string): Promise<RemoteToolRecovery>;
+  ConfirmRemoteTabEffect?(tabId: string, callId: string, inspectionId: string): Promise<RemoteToolRecovery>;
+  RejectRemoteTabRecovery?(tabId: string, callId: string, reason: string): Promise<RemoteToolRecovery>;
+  RetryRemoteTabTool?(tabId: string, callId: string): Promise<RemoteToolRecovery>;
   RemoteTabStatus(tabId: string): Promise<unknown>;
   SetRemoteTabEffort(tabId: string, level: string): Promise<void>;
   SetRemoteTabQualityFloor(tabId: string, floor: string): Promise<void>;
