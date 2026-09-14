@@ -129,7 +129,11 @@ func (s *evidenceBlockState) record(check evidenceCheck, call provider.ToolCall,
 	if s.requirements == nil {
 		s.requirements = map[string]writeEvidenceRequirement{}
 	}
-	s.requirements[key] = writeEvidenceRequirement{key, call.ID, boundary, target}
+	// The stable operation identity, not the provider's per-round call ID: a
+	// requirement retired by a changed source must reopen recovery for the same
+	// operation the model will resubmit under a new call ID.
+	operationID := evidence.OperationID(call.Name, json.RawMessage(call.Arguments))
+	s.requirements[key] = writeEvidenceRequirement{key, operationID, boundary, target}
 }
 
 func (s *evidenceBlockState) pending() []writeEvidenceRequirement {
@@ -184,25 +188,34 @@ func (a *Agent) outstandingReadEvidence(_ context.Context, boundary uint64) []st
 				continue
 			}
 			if o.Absent {
-				s.retire(r)
+				a.retireEvidenceRequirement(s, r)
 				break
 			}
 			// A fresh, versioned observation makes an operation on a superseded
 			// source obsolete. A future edit still checks its own current target.
 			if r.Target.Snapshot != "" && o.Snapshot != "" && o.Snapshot != r.Target.Snapshot {
-				s.retire(r)
+				a.retireEvidenceRequirement(s, r)
 				break
 			}
 			if observedTargetChanged(o, r.Target) {
-				s.retire(r)
+				a.retireEvidenceRequirement(s, r)
 				break
 			}
 		}
 		if ok, _ := evidenceCoversTarget(observations, r.Target); ok {
-			s.retire(r)
+			a.retireEvidenceRequirement(s, r)
 		}
 	}
 	return s.snapshot()
+}
+
+// retireEvidenceRequirement drops a frozen rejection and opens a new recovery
+// epoch for its operation. Fresh evidence or a changed source version is real
+// new information, so the next attempt is a first attempt — not the second
+// identical failure that would hand the operation to the user.
+func (a *Agent) retireEvidenceRequirement(s *evidenceBlockState, r writeEvidenceRequirement) {
+	s.retire(r)
+	a.operations().NewEpoch(r.OperationID)
 }
 
 // Large bounded reads need not scan the whole source to establish a version.
@@ -227,7 +240,8 @@ func observedTargetChanged(o evidence.TextObservation, target tool.EvidenceTarge
 // A successful checked mutation supersedes requirements on its original
 // source. An unobserved no-op cannot be used to clear a rejected edit and then
 // route around it with bash. This runs only in the ordered result finalizer.
-func (s *evidenceBlockState) retireWrittenSource(source tool.EvidenceTargetInfo) {
+func (a *Agent) retireWrittenSource(source tool.EvidenceTargetInfo) {
+	s := &a.turn.evidenceBlocked
 	if source.Path == "" || (!source.WholeFile && !source.Absent && !source.PreservesContent && len(source.Ranges) == 0) {
 		return
 	}
@@ -236,7 +250,7 @@ func (s *evidenceBlockState) retireWrittenSource(source tool.EvidenceTargetInfo)
 			continue
 		}
 		if (source.Snapshot != "" && r.Target.Snapshot == source.Snapshot) || (source.SourceTextDigest != "" && r.Target.SourceTextDigest == source.SourceTextDigest) {
-			s.retire(r)
+			a.retireEvidenceRequirement(s, r)
 		}
 	}
 }

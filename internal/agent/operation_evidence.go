@@ -334,7 +334,7 @@ func (a *Agent) applyEvidenceGates(ctx context.Context, plan *toolCallPlan) (too
 	switch {
 	case check.NativeError != nil:
 		a.recordRepeatFailure(call, resolved, check.NativeError)
-		return blockedEvidenceOutcome(check, call), true
+		return a.blockedEvidenceOutcome(check, call), true
 	case check.Satisfied:
 		plan.expectedWriteSource = check.Target
 		return toolOutcome{}, false
@@ -371,7 +371,7 @@ func (a *Agent) applyEvidenceGates(ctx context.Context, plan *toolCallPlan) (too
 		return toolOutcome{output: msg, blocked: true, errMsg: firstLine(msg)}, true
 	}
 	a.turn.evidenceBlocked.record(check, call, boundary)
-	return blockedEvidenceOutcome(check, call), true
+	return a.blockedEvidenceOutcome(check, call), true
 }
 
 func evidencePathsOverlap(left, right string) bool {
@@ -434,25 +434,35 @@ func (a *Agent) preflightEvidenceBatch(ctx context.Context, calls []provider.Too
 			continue
 		}
 		a.turn.evidenceBlocked.record(check, call, boundary)
-		blocked[i] = blockedEvidenceOutcome(check, call)
+		blocked[i] = a.blockedEvidenceOutcome(check, call)
 	}
 	return blocked
 }
 
-func blockedEvidenceOutcome(check evidenceCheck, call provider.ToolCall) toolOutcome {
+// blockedEvidenceOutcome renders one rejection. The operation ID is derived
+// from what the call targets, not from the provider's per-round call ID, so
+// the same rejected edit is recognizable when the model sends it again.
+func (a *Agent) blockedEvidenceOutcome(check evidenceCheck, call provider.ToolCall) toolOutcome {
 	code := tool.WriteEvidenceMissing
 	if check.Reason == "stale_or_partial_evidence" {
 		code = tool.WriteEvidenceStale
 	}
-	d := &tool.OperationDiagnostic{Code: code, Path: check.Path, OperationID: call.ID, ActualSnapshot: check.Target.Snapshot, RequiredRanges: slices.Clone(check.Missing), Recovery: check.Recovery}
+	operationID := evidence.OperationID(call.Name, json.RawMessage(call.Arguments))
+	d := &tool.OperationDiagnostic{Code: code, Path: check.Path, ActualSnapshot: check.Target.Snapshot, RequiredRanges: slices.Clone(check.Missing), Recovery: check.Recovery}
 	if check.Diagnostic != nil {
 		copy := *check.Diagnostic
-		copy.OperationID = call.ID
 		d = &copy
 	}
+	if ops := a.operations(); ops != nil {
+		ops.Open(operationID, call.Name, []string{check.Path})
+	}
+	a.noteOperationFailure(operationID, d.Code, d)
 	msg := describeEvidence(check, call.Name)
 	if check.NativeError != nil {
 		msg = "error: " + check.NativeError.Error()
+	}
+	if recovery := d.ModelFacing(); recovery != "" {
+		msg += "\n" + recovery
 	}
 	return toolOutcome{output: msg, blocked: true, errMsg: firstLine(msg), diagnostic: d}
 }
