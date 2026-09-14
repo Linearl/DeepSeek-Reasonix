@@ -16,6 +16,20 @@ func TestOperationIDIgnoresCosmeticArgumentDifferences(t *testing.T) {
 	}
 }
 
+func TestOperationIDIgnoresAttemptOnlyArguments(t *testing.T) {
+	base := OperationID("edit_file", json.RawMessage(`{"path":"a.go","old":"x","new":"y"}`))
+	for _, args := range []string{
+		`{"path":"a.go","old":"x","new":"y","source_token":"r1"}`,
+		`{"path":"a.go","old":"x","new":"y","expected_digest":"d1"}`,
+		`{"path":"a.go","old":"x","new":"y","cursor":"next"}`,
+		`{"path":"a.go","old":"x","new":"y","operationId":"attempt-1","documentToken":"doc-1"}`,
+	} {
+		if got := OperationID("edit_file", json.RawMessage(args)); got != base {
+			t.Fatalf("attempt-only argument changed operation identity: %q != %q for %s", got, base, args)
+		}
+	}
+}
+
 func TestOperationLifecycleSettlesOnSuccessfulVerification(t *testing.T) {
 	ops := NewOperationLedger()
 	op := ops.Open("op_1", "edit_file", []string{"a.go"})
@@ -147,6 +161,70 @@ func TestLedgerReceiptCoversOperationByTargetPath(t *testing.T) {
 	id := l.Receipts()[0].ID
 	if !l.ReceiptCoversOperation(id, "op_1") {
 		t.Fatal("a receipt covering the operation's target path was rejected")
+	}
+}
+
+func TestLedgerAttachedVerificationCoversOperationAfterMutation(t *testing.T) {
+	l := NewLedger()
+	ops := l.Operations()
+	ops.Open("op_write", "write_file", []string{"a.go"})
+	mutation := l.Record(Receipt{ToolName: "write_file", Success: true, Write: true, Paths: []string{"a.go"}, OperationID: "op_write"})
+	ops.Apply("op_write", mutation.Ref())
+	verification := l.Record(Receipt{ToolName: "bash", Command: "go test ./...", Success: true, OperationID: "op_verify"})
+	ops.AttachVerification("op_write", verification.Ref())
+
+	if !l.ReceiptCoversOperation(verification.ID, "op_write") {
+		t.Fatal("the verification attached after the mutation was rejected")
+	}
+}
+
+func TestLedgerVerificationBeforeMutationDoesNotCoverOperation(t *testing.T) {
+	l := NewLedger()
+	ops := l.Operations()
+	ops.Open("op_write", "write_file", []string{"a.go"})
+	verification := l.Record(Receipt{ToolName: "bash", Command: "go test ./...", Success: true, OperationID: "op_verify"})
+	mutation := l.Record(Receipt{ToolName: "write_file", Success: true, Write: true, Paths: []string{"a.go"}, OperationID: "op_write"})
+	ops.Apply("op_write", mutation.Ref())
+	ops.AttachVerification("op_write", verification.Ref())
+
+	if l.ReceiptCoversOperation(verification.ID, "op_write") {
+		t.Fatal("a verification older than the mutation was accepted")
+	}
+}
+
+func TestLedgerPathScopedVerificationMustCoverEveryOperationTarget(t *testing.T) {
+	l := NewLedger()
+	ops := l.Operations()
+	ops.Open("op_write", "multi_edit", []string{"a.go", "b.go"})
+	mutation := l.Record(Receipt{ToolName: "multi_edit", Success: true, Write: true, Paths: []string{"a.go", "b.go"}, OperationID: "op_write"})
+	ops.Apply("op_write", mutation.Ref())
+	verification := l.Record(Receipt{ToolName: "review", Success: true, Paths: []string{"a.go"}, OperationID: "op_review"})
+	ops.AttachVerification("op_write", verification.Ref())
+
+	if l.ReceiptCoversOperation(verification.ID, "op_write") {
+		t.Fatal("a path-scoped verification covering only one target was accepted")
+	}
+}
+
+func TestOperationLedgerDoesNotSettleOnPartialPathVerification(t *testing.T) {
+	ops := NewOperationLedger()
+	ops.Open("op_write", "multi_edit", []string{"a.go", "b.go"})
+	ops.Apply("op_write", ReceiptRef{ID: "r_mutation", Kind: ReceiptKindMutation, Success: true, Paths: []string{"a.go", "b.go"}})
+
+	if op, attached := ops.AttachLatestVerification(ReceiptRef{
+		ID: "r_partial", Kind: ReceiptKindReview, Success: true, Paths: []string{"a.go"},
+	}); attached || op.ID != "" {
+		t.Fatalf("partial verifier attached to a multi-target operation: attached=%v op=%+v", attached, op)
+	}
+	op, _ := ops.Get("op_write")
+	if op.State != OperationApplied || op.Verification != nil {
+		t.Fatalf("partial verification changed operation state: %+v", op)
+	}
+
+	if op, attached := ops.AttachLatestVerification(ReceiptRef{
+		ID: "r_all", Kind: ReceiptKindReview, Success: true, Paths: []string{"a.go", "b.go"},
+	}); !attached || op.State != OperationSettled {
+		t.Fatalf("full path verification was not attached: attached=%v op=%+v", attached, op)
 	}
 }
 

@@ -75,6 +75,7 @@ func (completeStep) Schema() json.RawMessage {
     }
   },
   "receipt_ids":{"type":"array","items":{"type":"string"},"description":"PREFERRED proof: the host receipt ids printed after the tool calls that did the work (e.g. \"r_1a2b3c4d\"). Citing an id is exact — the host issued it — so shell prefixes, quoting, argument order, and working directory never matter. Use these instead of retyping a command."},
+  "operation_id":{"type":"string","description":"The host operation whose receipts are being cited. Required when citing runtime-issued receipts so evidence from another change cannot satisfy this step."},
   "notes":{"type":"string","description":"Optional caveats, follow-ups, or anything deferred."}
 },
 "required":["result"]
@@ -99,19 +100,23 @@ func (completeStep) PlanModeSafe() bool { return false }
 
 func (completeStep) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var p struct {
-		StepID     string         `json:"step_id"`
-		Step       string         `json:"step"`
-		StepIndex  int            `json:"step_index"`
-		Result     string         `json:"result"`
-		Evidence   []stepEvidence `json:"evidence"`
-		ReceiptIDs []string       `json:"receipt_ids"`
-		Notes      string         `json:"notes"`
+		StepID      string         `json:"step_id"`
+		Step        string         `json:"step"`
+		StepIndex   int            `json:"step_index"`
+		Result      string         `json:"result"`
+		Evidence    []stepEvidence `json:"evidence"`
+		ReceiptIDs  []string       `json:"receipt_ids"`
+		OperationID string         `json:"operation_id"`
+		Notes       string         `json:"notes"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
 	}
 	cited, err := resolveCitedReceipts(ctx, p.ReceiptIDs)
 	if err != nil {
+		return "", err
+	}
+	if err := validateCitedReceiptsForOperation(ctx, cited, p.OperationID); err != nil {
 		return "", err
 	}
 	step := completeStepIdentity(p.StepID, p.Step, p.StepIndex)
@@ -153,7 +158,7 @@ func (completeStep) Execute(ctx context.Context, args json.RawMessage) (string, 
 		}
 		gaps, hasTodo = append(gaps, err.Error()), false
 	}
-	tally, err := verifyStepEvidence(ctx, p.Evidence, cited)
+	tally, err := verifyStepEvidence(ctx, p.Evidence, cited, p.OperationID)
 	if err != nil {
 		if strict {
 			if hasTodo && todoMatch.Status == "in_progress" {
@@ -269,7 +274,7 @@ type stepEvidenceTally struct {
 	unclassified     []string
 }
 
-func verifyStepEvidence(ctx context.Context, items []stepEvidence, cited []evidence.ReceiptRef) (tally stepEvidenceTally, err error) {
+func verifyStepEvidence(ctx context.Context, items []stepEvidence, cited []evidence.ReceiptRef, operationID string) (tally stepEvidenceTally, err error) {
 	ledger, ok := evidence.FromContext(ctx)
 	if !ok {
 		return tally, nil
@@ -280,7 +285,7 @@ func verifyStepEvidence(ctx context.Context, items []stepEvidence, cited []evide
 			// A host-issued receipt is exact proof. Only a citation that names
 			// no receipt falls back to matching the command text, which is what
 			// rejected real verifications over a prefix or a quote style.
-			if citedAnyKind(cited, evidence.ReceiptKindVerification, evidence.ReceiptKindCommand, evidence.ReceiptKindReview) {
+			if citedReceiptForOperation(ledger, cited, operationID, evidence.ReceiptKindVerification, evidence.ReceiptKindCommand, evidence.ReceiptKindReview) {
 				tally.hostVerified++
 				continue
 			}
@@ -303,7 +308,7 @@ func verifyStepEvidence(ctx context.Context, items []stepEvidence, cited []evide
 			}
 			tally.hostVerified++
 		case "review":
-			if !citedAnyKind(cited, evidence.ReceiptKindReview) && !ledger.HasCompletedReview() {
+			if !citedReceiptForOperation(ledger, cited, operationID, evidence.ReceiptKindReview) && !ledger.HasCompletedReview() {
 				return tally, fmt.Errorf("evidence %d: review evidence requires a completed review run in this turn; after a mutation, the review must be newer and cover the changed result", i+1)
 			}
 			tally.hostVerified++

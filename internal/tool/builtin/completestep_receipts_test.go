@@ -42,6 +42,38 @@ func TestCompleteStepAcceptsReceiptIDInsteadOfCommandText(t *testing.T) {
 	}
 }
 
+func TestCompleteStepAcceptsVerificationAttachedToMutationOperation(t *testing.T) {
+	ledger := evidence.NewLedger()
+	ops := ledger.Operations()
+	ops.Open("op_write", "write_file", []string{"internal/auth/login.go"})
+	mutation := ledger.Record(evidence.Receipt{
+		ToolName: "write_file", Success: true, Write: true,
+		Paths: []string{"internal/auth/login.go"}, OperationID: "op_write",
+	})
+	ops.Apply("op_write", mutation.Ref())
+	verification := ledger.Record(evidence.Receipt{
+		ToolName: "bash", Success: true, Command: "go test ./...",
+		OperationID: "op_verify",
+	})
+	ops.AttachVerification("op_write", verification.Ref())
+	ctx := evidence.WithLedger(context.Background(), ledger)
+	ctx = evidence.WithClosedLoopExecution(ctx)
+
+	out, err := completeStep{}.Execute(ctx, json.RawMessage(`{
+		"step":"Add auth","result":"auth done","operation_id":"op_write",
+		"receipt_ids":["`+mutation.ID+`","`+verification.ID+`"],
+		"evidence":[
+			{"kind":"diff","summary":"login rewritten","paths":["internal/auth/login.go"]},
+			{"kind":"verification","summary":"auth tests pass"}
+		]}`))
+	if err != nil {
+		t.Fatalf("attached mutation and verification receipts were rejected: %v", err)
+	}
+	if !strings.Contains(out, "host-verified 2") {
+		t.Fatalf("ack should count both host-backed evidence items, got %q", out)
+	}
+}
+
 func TestCompleteStepAcceptsUnclassifiedCommandReceipt(t *testing.T) {
 	ledger := evidence.NewLedger()
 	id := recordReceiptID(t, ledger, evidence.Receipt{ToolName: "bash", Success: true, Command: "./company-ci.sh"})
@@ -108,6 +140,55 @@ func TestCompleteStepReceiptIDCoversDiffPaths(t *testing.T) {
 		"receipt_ids":["`+id+`"],
 		"evidence":[{"kind":"diff","summary":"login rewritten","paths":["internal/auth/login.go"]}]}`)); err != nil {
 		t.Fatalf("a cited mutation receipt should cover its own paths: %v", err)
+	}
+}
+
+func TestCompleteStepRejectsReceiptFromAnotherOperation(t *testing.T) {
+	ledger := evidence.NewLedger()
+	id := recordReceiptID(t, ledger, evidence.Receipt{ToolName: "bash", Success: true, Command: "go test ./other", OperationID: "op_other"})
+	ctx := evidence.WithLedger(context.Background(), ledger)
+	ctx = evidence.WithClosedLoopExecution(ctx)
+	_, err := completeStep{}.Execute(ctx, json.RawMessage(`{
+		"step":"x","result":"y","operation_id":"op_target",
+		"receipt_ids":["`+id+`"],
+		"evidence":[{"kind":"verification","summary":"claimed"}]}`))
+	if err == nil {
+		t.Fatalf("cross-operation receipt should not satisfy verification, got %v", err)
+	}
+	var operationErr *tool.OperationError
+	if !errors.As(err, &operationErr) || operationErr.Diagnostic.Code != tool.VerificationReceiptMismatch {
+		t.Fatalf("cross-operation receipt should return VERIFICATION_RECEIPT_MISMATCH, got %v", err)
+	}
+}
+
+func TestCompleteStepRejectsUnrelatedReceiptEvenWhenAnotherCitationCoversOperation(t *testing.T) {
+	ledger := evidence.NewLedger()
+	valid := recordReceiptID(t, ledger, evidence.Receipt{ToolName: "bash", Success: true, Command: "go test ./...", OperationID: "op_target"})
+	unrelated := recordReceiptID(t, ledger, evidence.Receipt{ToolName: "bash", Success: true, Command: "go test ./other", OperationID: "op_other"})
+	ctx := evidence.WithLedger(context.Background(), ledger)
+
+	_, err := completeStep{}.Execute(ctx, json.RawMessage(`{
+		"step":"x","result":"y","operation_id":"op_target",
+		"receipt_ids":["`+valid+`","`+unrelated+`"],
+		"evidence":[{"kind":"verification","summary":"claimed"}]}`))
+	var operationErr *tool.OperationError
+	if !errors.As(err, &operationErr) || operationErr.Diagnostic.Code != tool.VerificationReceiptMismatch {
+		t.Fatalf("every cited receipt must cover the operation, got %v", err)
+	}
+}
+
+func TestCompleteStepRequiresOperationIDForRuntimeReceipt(t *testing.T) {
+	ledger := evidence.NewLedger()
+	id := recordReceiptID(t, ledger, evidence.Receipt{ToolName: "bash", Success: true, Command: "go test ./...", OperationID: "op_verify"})
+	ctx := evidence.WithLedger(context.Background(), ledger)
+
+	_, err := completeStep{}.Execute(ctx, json.RawMessage(`{
+		"step":"x","result":"y",
+		"receipt_ids":["`+id+`"],
+		"evidence":[{"kind":"verification","summary":"claimed"}]}`))
+	var operationErr *tool.OperationError
+	if !errors.As(err, &operationErr) || operationErr.Diagnostic.Code != tool.VerificationReceiptMismatch {
+		t.Fatalf("runtime receipt without operation_id should be rejected structurally, got %v", err)
 	}
 }
 

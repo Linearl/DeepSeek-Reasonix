@@ -55,6 +55,46 @@ func citedReceiptError(ledger *evidence.Ledger, id, why string) error {
 	return &tool.OperationError{Diagnostic: d, Cause: fmt.Errorf("receipt %q %s", id, why)}
 }
 
+// validateCitedReceiptsForOperation checks every runtime-issued citation, not
+// just the first receipt whose kind happens to satisfy one evidence item. A
+// valid receipt cannot hide an unrelated one in the same citation list.
+func validateCitedReceiptsForOperation(ctx context.Context, cited []evidence.ReceiptRef, operationID string) error {
+	ledger, ok := evidence.FromContext(ctx)
+	if !ok || len(cited) == 0 {
+		return nil
+	}
+	operationID = strings.TrimSpace(operationID)
+	for _, ref := range cited {
+		if ref.OperationID == "" && operationID == "" {
+			continue // compatibility for hand-built/legacy receipts
+		}
+		if operationID == "" {
+			return citedReceiptMismatchError(ledger, ref.ID, operationID, "requires operation_id")
+		}
+		if !ledger.ReceiptCoversOperation(ref.ID, operationID) {
+			return citedReceiptMismatchError(ledger, ref.ID, operationID, "does not cover the cited operation")
+		}
+	}
+	return nil
+}
+
+func citedReceiptMismatchError(ledger *evidence.Ledger, receiptID, operationID, why string) error {
+	available := availableReceiptIDsForOperation(ledger, operationID)
+	d := tool.OperationDiagnostic{
+		Code:              tool.VerificationReceiptMismatch,
+		OperationID:       strings.TrimSpace(operationID),
+		Recovery:          "cite receipts attached to this operation, run a verifier for it, or record the check as manual",
+		AvailableReceipts: available,
+		AllowedRecovery:   allowedReceiptRecovery(available),
+		Retryable:         true,
+		RetryBudget:       1,
+	}
+	return &tool.OperationError{
+		Diagnostic: d,
+		Cause:      fmt.Errorf("receipt %q %s", receiptID, why),
+	}
+}
+
 // allowedReceiptRecovery bounds the offered actions at its own boundary rather
 // than trusting the caller's slice length: this list is for the model to choose
 // from, so a long one is useless even when it is cheap.
@@ -74,6 +114,20 @@ func availableReceiptIDs(ledger *evidence.Ledger) []string {
 	out := make([]string, 0, len(refs))
 	for _, ref := range refs {
 		out = append(out, ref.ID)
+	}
+	return out
+}
+
+func availableReceiptIDsForOperation(ledger *evidence.Ledger, operationID string) []string {
+	if ledger == nil || strings.TrimSpace(operationID) == "" {
+		return nil
+	}
+	refs := ledger.CitableReceipts(maxAvailableReceiptIDs)
+	out := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		if ledger.ReceiptCoversOperation(ref.ID, operationID) {
+			out = append(out, ref.ID)
+		}
 	}
 	return out
 }
@@ -108,11 +162,19 @@ func missingVerificationReceipt(ctx context.Context, ledger *evidence.Ledger, in
 	return &tool.OperationError{Diagnostic: d, Cause: cause}
 }
 
-// citedAnyKind reports whether the completion cited a successful receipt of one
-// of the given kinds.
-func citedAnyKind(cited []evidence.ReceiptRef, kinds ...string) bool {
+// citedReceiptForOperation accepts legacy in-memory receipts without an
+// operation ID, but every runtime-issued receipt must be tied to the explicit
+// operation being signed off. This prevents a successful check for another
+// change from satisfying the current completion.
+func citedReceiptForOperation(ledger *evidence.Ledger, cited []evidence.ReceiptRef, operationID string, kinds ...string) bool {
 	for _, ref := range cited {
-		if ref.Success && slices.Contains(kinds, ref.Kind) {
+		if !ref.Success || !slices.Contains(kinds, ref.Kind) {
+			continue
+		}
+		if ref.OperationID == "" && strings.TrimSpace(operationID) == "" {
+			return true // compatibility for hand-built/legacy receipts
+		}
+		if ledger != nil && ledger.ReceiptCoversOperation(ref.ID, operationID) {
 			return true
 		}
 	}

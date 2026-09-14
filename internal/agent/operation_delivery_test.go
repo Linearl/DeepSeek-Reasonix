@@ -79,6 +79,8 @@ func TestDeliveryGapReportNamesTheOperationAndAction(t *testing.T) {
 	plan, rec := mutationPlanAndReceipt("internal/auth/login.go")
 	a.recordOperationOutcome(plan, rec, nil)
 
+	// Slash-canonical display keeps the report (and this test) identical on
+	// every OS, like every other host message that names a path.
 	report := describeReadinessGaps(a.readinessOperationGaps())
 	for _, want := range []string{rec.OperationID, "internal/auth/login.go", readinessActionContinueVerification} {
 		if !strings.Contains(report, want) {

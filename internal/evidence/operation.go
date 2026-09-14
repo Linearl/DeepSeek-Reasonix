@@ -133,6 +133,24 @@ func canonicalArguments(args json.RawMessage) []byte {
 	if err := decoder.Decode(&value); err != nil {
 		return slices.Clone(args)
 	}
+	// Attempt/recovery handles identify one execution, not the intended
+	// operation. Strip them so a fresh source token starts a new recovery epoch
+	// for the same operation instead of bypassing its budget.
+	if object, ok := value.(map[string]any); ok {
+		for _, key := range []string{
+			"source_token", "sourceToken",
+			"expected_digest", "expectedDigest",
+			"expected_snapshot", "expectedSnapshot",
+			"receipt_id", "receipt_ids",
+			"operation_id", "operationId",
+			"call_id", "callId",
+			"documentToken",
+			"cursor",
+		} {
+			delete(object, key)
+		}
+		value = object
+	}
 	canonical, err := json.Marshal(value)
 	if err != nil {
 		return slices.Clone(args)
@@ -234,7 +252,7 @@ func (l *OperationLedger) AttachVerification(id string, ref ReceiptRef) Operatio
 	}
 	stored := ref.clone()
 	op.Verification = &stored
-	if ref.Success {
+	if ref.Success && operationCoveredByVerificationPaths(op, normalizePaths(ref.Paths)) {
 		op.State = OperationSettled
 		op.FailureCode = ""
 	} else if op.State == OperationApplied {
@@ -245,8 +263,8 @@ func (l *OperationLedger) AttachVerification(id string, ref ReceiptRef) Operatio
 
 // AttachLatestVerification binds a successful check to the most recent
 // unsettled change it covers. Coverage is by target path, never by command
-// text: the host knows which files the operation touched, so a verifier that
-// names one of them is proof regardless of how the command was written.
+// text: a path-scoped verifier must name every target, while a pathless
+// whole-suite verifier covers the latest unsettled operation.
 func (l *OperationLedger) AttachLatestVerification(ref ReceiptRef) (Operation, bool) {
 	if l == nil || !ref.Success {
 		return Operation{}, false
@@ -260,7 +278,7 @@ func (l *OperationLedger) AttachLatestVerification(ref ReceiptRef) (Operation, b
 		if !ok || op.Terminal() || op.Mutation == nil {
 			continue
 		}
-		if len(paths) > 0 && operationCoversAny(op, paths) {
+		if len(paths) > 0 && operationCoveredByVerificationPaths(op, paths) {
 			return l.attachLocked(op, ref), true
 		}
 		if fallback == nil {
@@ -284,13 +302,19 @@ func (l *OperationLedger) attachLocked(op *Operation, ref ReceiptRef) Operation 
 	return op.clone()
 }
 
-func operationCoversAny(op *Operation, paths []string) bool {
-	for _, path := range paths {
-		if slices.Contains(op.TargetPaths, path) {
-			return true
+func operationCoveredByVerificationPaths(op *Operation, paths []string) bool {
+	if len(paths) == 0 {
+		return true
+	}
+	if op == nil || len(op.TargetPaths) == 0 {
+		return false
+	}
+	for _, target := range op.TargetPaths {
+		if !slices.Contains(paths, target) {
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 // Settle finishes an operation the host has nothing left to check. Repeat

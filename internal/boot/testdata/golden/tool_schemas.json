@@ -180,6 +180,10 @@
           "description": "Optional caveats, follow-ups, or anything deferred.",
           "type": "string"
         },
+        "operation_id": {
+          "description": "The host operation whose receipts are being cited. Required when citing runtime-issued receipts so evidence from another change cannot satisfy this step.",
+          "type": "string"
+        },
         "receipt_ids": {
           "description": "PREFERRED proof: the host receipt ids printed after the tool calls that did the work (e.g. \"r_1a2b3c4d\"). Citing an id is exact — the host issued it — so shell prefixes, quoting, argument order, and working directory never matter. Use these instead of retyping a command.",
           "items": {

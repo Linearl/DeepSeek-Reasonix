@@ -44,6 +44,9 @@ const (
 	// VerificationReceiptMissing rejects a completion citing verification the
 	// host has no successful receipt for.
 	VerificationReceiptMissing = "VERIFICATION_RECEIPT_MISSING"
+	// VerificationReceiptMismatch rejects a real receipt that does not cover
+	// the operation being signed off.
+	VerificationReceiptMismatch = "VERIFICATION_RECEIPT_MISMATCH"
 )
 
 // Recovery actions the host offers. They are identifiers, not prose, so the

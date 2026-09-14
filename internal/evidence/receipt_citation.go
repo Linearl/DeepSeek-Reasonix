@@ -42,19 +42,64 @@ func (l *Ledger) ReceiptCoversOperation(receiptID, operationID string) bool {
 		return false
 	}
 	operationID = strings.TrimSpace(operationID)
-	if operationID == "" || r.OperationID == operationID {
-		return true
-	}
-	op, ok := l.Operations().Get(operationID)
-	if !ok || len(op.TargetPaths) == 0 || len(r.Paths) == 0 {
+	if operationID == "" {
 		return false
 	}
-	for _, path := range r.Paths {
-		if slices.Contains(op.TargetPaths, path) {
+	op, ok := l.Operations().Get(operationID)
+	if !ok {
+		return r.OperationID == operationID
+	}
+
+	if op.Mutation != nil && op.Mutation.ID == r.ID {
+		return true
+	}
+	if op.Verification != nil && op.Verification.ID == r.ID {
+		return l.verificationReceiptCoversOperation(r, op)
+	}
+	if r.OperationID == operationID {
+		switch r.Kind() {
+		case ReceiptKindVerification, ReceiptKindReview:
+			return l.verificationReceiptCoversOperation(r, op)
+		default:
 			return true
 		}
 	}
-	return false
+
+	// Compatibility for hand-built receipts created before operation IDs were
+	// stamped at runtime. A legacy receipt may cover an operation only when it
+	// explicitly names every target path; a pathless receipt has no safe link.
+	return r.OperationID == "" &&
+		len(r.Paths) > 0 &&
+		receiptPathsCoverOperation(r.Paths, op.TargetPaths) &&
+		l.verificationReceiptFollowsMutation(r, op)
+}
+
+func (l *Ledger) verificationReceiptCoversOperation(r Receipt, op Operation) bool {
+	return receiptPathsCoverOperation(r.Paths, op.TargetPaths) &&
+		l.verificationReceiptFollowsMutation(r, op)
+}
+
+func (l *Ledger) verificationReceiptFollowsMutation(r Receipt, op Operation) bool {
+	if op.Mutation == nil {
+		return true
+	}
+	mutation, ok := l.LookupReceipt(op.Mutation.ID)
+	return ok && r.Sequence > mutation.Sequence
+}
+
+// receiptPathsCoverOperation treats a pathless verifier as a whole-operation
+// check. A path-scoped verifier must cover every target, not merely overlap one
+// of them, otherwise a test for file A could be cited for a change to A and B.
+func receiptPathsCoverOperation(receiptPaths, targetPaths []string) bool {
+	if len(receiptPaths) == 0 || len(targetPaths) == 0 {
+		return true
+	}
+	for _, target := range targetPaths {
+		if !slices.Contains(receiptPaths, target) {
+			return false
+		}
+	}
+	return true
 }
 
 // CitableReceipts returns up to limit successful receipts from this turn, most
