@@ -3117,6 +3117,17 @@ export function useController() {
       current.historyDigest &&
       projection.digest !== current.historyDigest
     ) return false;
+    // A replay whose projection is byte-identical to what the tab already holds has
+    // nothing to apply, and rebasing anyway is not free: history_rebase clears
+    // historyOlderLoading, which drops whatever older-history page is in flight and
+    // surfaces it as "earlier conversation could not be loaded". Skipping the no-op
+    // rebase keeps that page alive.
+    if (
+      projection.revisionKnown &&
+      current.historyRevision === projection.revision &&
+      current.historyDigest &&
+      projection.digest === current.historyDigest
+    ) return true;
     dispatchTo(tabId, {
       type: "history_rebase",
       items: projection.items,
@@ -3145,7 +3156,7 @@ export function useController() {
     return getTranscriptStore().requestFullContent(tabId, entryId, field);
   }, [ensureTranscriptSubscription]);
 
-  const loadOlderHistory = useCallback(async (tabId?: string, targetTurn?: number, trigger: HistoryLoadTrigger = "retry"): Promise<boolean> => {
+  const loadOlderHistory = useCallback(async function loadOlder(tabId?: string, targetTurn?: number, trigger: HistoryLoadTrigger = "retry", isRetry = false): Promise<boolean> {
     const targetTabId = tabId || activeTabIdRef.current;
     if (!targetTabId) return false;
     const state = statesRef.current.get(targetTabId);
@@ -3176,10 +3187,18 @@ export function useController() {
       // A replace-level hydrate while the page was in flight clears
       // historyOlderLoading; a metadata or canonical-identity change also
       // makes the page belong to a different transcript generation.
-      if (!current.historyOlderLoading || (current.meta?.sessionPath ?? "") !== sessionPath ||
+      const sameTranscript = (current.meta?.sessionPath ?? "") === sessionPath;
+      const pageMatchesGeneration = result === undefined ||
+        (fingerprintMatches(sessionRevision, result.revisionKnown ? result.revision : undefined) &&
+          digestMatches(sessionDigest, result.digest));
+      if (!current.historyOlderLoading || !sameTranscript ||
         !fingerprintMatches(sessionRevision, currentRevision) || !digestMatches(sessionDigest, currentDigest) ||
-        (result !== undefined && (!fingerprintMatches(sessionRevision, result.revisionKnown ? result.revision : undefined) ||
-          !digestMatches(sessionDigest, result.digest)))) {
+        !pageMatchesGeneration) {
+        // A turn-event replay that rebased the transcript while this page was in flight
+        // discards it by design; the same transcript then simply asks again, once, rather
+        // than showing "earlier conversation could not be loaded" for a recoverable
+        // scheduling collision. A different transcript is never retried.
+        if (sameTranscript && !isRetry) return await loadOlder(targetTabId, targetTurn, trigger, true);
         dispatchTo(targetTabId, { type: "history_older_error", error: "history identity changed" });
         return false;
       }
