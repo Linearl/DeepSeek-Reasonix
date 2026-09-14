@@ -10,6 +10,7 @@ import (
 	"reasonix/internal/event"
 	"reasonix/internal/i18n"
 	"reasonix/internal/tool"
+	"log/slog"
 )
 
 const (
@@ -173,6 +174,10 @@ func (a *Agent) ExtendResearchBudget(reason string) (tool.ResearchBudgetExtensio
 	if a.capabilityAudit != nil {
 		a.capabilityAudit.RecordLoopGuard("soft_budget_extended")
 	}
+	// Fork-only, and otherwise invisible: the extension changes how long the turn may run, and
+	// nothing else records that it happened or how much budget is left.
+	slog.Info("read-only research budget extended",
+		"feature", "research-budget", "rounds", rounds, "extensions", extensions, "remaining", remaining)
 	return tool.ResearchBudgetExtension{Rounds: rounds, Remaining: remaining},
 		fmt.Sprintf("Read-only research budget doubled to %d rounds (%d extension(s) left this turn).", rounds, remaining), nil
 }
