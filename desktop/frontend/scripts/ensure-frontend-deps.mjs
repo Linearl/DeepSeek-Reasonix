@@ -53,9 +53,14 @@ if (reason === null) {
 
 process.stdout.write(`installing frontend dependencies (${reason})\n`);
 try {
-  execFileSync("pnpm", ["install", "--config.confirmModulesPurge=false"], {
+  // Passed as one line with shell:true. Two constraints meet here: pnpm is a .cmd on Windows,
+  // so execFile without a shell looks for an executable and fails with ENOENT; and passing an
+  // args array alongside shell:true is deprecated because the arguments get concatenated
+  // unescaped. A single literal command line satisfies both.
+  execFileSync("pnpm install --config.confirmModulesPurge=false", {
     cwd: frontendRoot,
     stdio: "inherit",
+    shell: true,
   });
 } catch (err) {
   process.stderr.write(`pnpm install failed: ${err.message}\n`);
