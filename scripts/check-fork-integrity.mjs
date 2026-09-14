@@ -33,6 +33,25 @@ const CHECKS = [
   // 每次 merge 都要确认这四处调用点还在，而不是被上游实现悄悄顶掉。
   { feature: "#9222 项目分组 UI 接线", file: "desktop/frontend/src/components/ProjectTree.tsx", patterns: ["addProjectGroup", "groupForProjectRoot", "NewGroupPanel", "MoveToGroupPanel", "projectGroup.createNew"] },
   { feature: "#9580 草稿持久化存储层", file: "desktop/frontend/src/lib/composerDraftPersistence.ts", patterns: ["composer:drafts:v1", "pagehide", "MAX_PERSISTED_BYTES"] },
+  // 任务 90 链拼接：promote 时把落败链（当前 main）中 winner 缺失的头部 graft 到新主线。
+  // 三个锚点按「顺序」登记——gap 在 rename 前算、graft 在侧车搬移后写、事件日志随即折叠；
+  // 顺序错位造成的失败是静默的（文件对而读回旧），所以这里锁的是调用形状，不只是符号名。
+  { feature: "任务 90 链拼接接线（顺序敏感）", file: "internal/agent/recovery_consolidate.go", patterns: [
+    "SessionContentPrefixGap(winnerPath, mainPath)",
+    "graftPrefixOntoLines(splitTranscriptLines(current), gap.Messages)",
+    "compactSessionEventLog(mainPath, mergedMsgs, digest, legacyMeta.Revision, \"promote-prefix-graft\")",
+    "report.Prefixed = grafted",
+  ] },
+  { feature: "任务 90 前缀缺口算法 + turn 对齐", file: "internal/agent/recovery_prefix_gap.go", patterns: [
+    "func prefixGapForMessages(",
+    "func SessionContentPrefixGap(",
+    "return m.Role == provider.RoleUser && m.Origin != provider.MessageOriginHost",
+  ] },
+  { feature: "任务 90 graft 只增不改（既有行逐字保留）", file: "internal/agent/recovery_prefix_graft.go", patterns: [
+    "func graftPrefixOntoLines(",
+    "func leadingSystemLineCount(",
+    "transcript head is not readable",
+  ] },
   // parked: fork 分支不含该实现（1f8c3fe50 对齐时移除 / 上游另有设计）
   // { feature: "#9565 live footer 上游语义（#9579 尾部预算已有意还原）", file: "desktop/frontend/src/lib/transcriptLiveTurn.ts", patterns: ["slice(userIndex + 1)", "liveRows"] },
   { feature: "#9082 会话要点提取", file: "internal/agent/session_extract.go", patterns: ["chunkedFoldSummary", "splitExtractChunks", "extractChunkOverlapBytes"] },
