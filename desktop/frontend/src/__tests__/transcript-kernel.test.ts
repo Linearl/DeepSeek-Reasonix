@@ -99,6 +99,20 @@ clock.flushFrames();
 ok(writes.length === countBeforeGesture, "reader gesture accepts zero tail writes");
 kernel.endUserGesture();
 
+// task 100: this pair is the whole reason the automatic question-follow path must not call
+// scrollToTail. While the reader owns the viewport, scheduleTailSync declines (above);
+// scrollToTail overrides the intent outright and writes — correct for the down-arrow button,
+// which is a deliberate user action, and wrong for anything the host does on its own. The
+// automatic path used to call scrollToBottom (endGesture + scrollToTail) whenever the question
+// count grew, and prepending history grows it while the user is reading.
+const beforeForcedTail = writes.length;
+kernel.beginUserGesture(snapshot);
+ok(kernel.intent === "reader", "the gesture owns reader intent before the forced call");
+kernel.scrollToTail();
+ok(kernel.intent === "tail",
+  "scrollToTail takes the intent back from the reader, which is why it is button-only");
+kernel.endUserGesture();
+
 // Deferred DOM growth is reconciled after native release, preserving the
 // original logical anchor while allowing the following block to move.
 const measured = new TranscriptMeasurementLedger();

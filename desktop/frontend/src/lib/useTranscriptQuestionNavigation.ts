@@ -15,7 +15,7 @@ export function useTranscriptQuestions(
   historyStartTurn: number,
   historyTotalTurns: number,
   scrollElement: HTMLElement | null,
-  scrollToBottom: () => void,
+  scheduleTailSync: () => void,
 ) {
   const [questions, loadedByTurn, totalQuestions] = useMemo(() => {
     const loaded = new Map<number, QuestionAnchor>();
@@ -58,8 +58,14 @@ export function useTranscriptQuestions(
     const lastId = questions[questions.length - 1]?.id ?? "";
     const previous = tailRef.current;
     tailRef.current = { total: totalQuestions, lastId };
-    if (previous.total > 0 && totalQuestions > previous.total && lastId !== previous.lastId) scrollToBottom();
-  }, [questions, scrollToBottom, totalQuestions]);
+    if (previous.total > 0 && totalQuestions > previous.total && lastId !== previous.lastId) {
+      // Following a new question is automatic, so it goes through the guarded path:
+      // scheduleTailSync returns immediately unless the kernel still owns the tail.
+      // scrollToBottom would end the reader's gesture and pull the viewport back — which is
+      // what a growing question count used to do while the user was reading (task 100).
+      scheduleTailSync();
+    }
+  }, [questions, scheduleTailSync, totalQuestions]);
 
   const userTurns = useMemo(() => questionTurnsById(questions), [questions]);
   const turnForUser = useCallback((item: Extract<Item, { kind: "user" }>) => userTurns.get(item.id), [userTurns]);

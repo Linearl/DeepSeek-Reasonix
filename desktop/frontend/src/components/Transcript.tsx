@@ -152,7 +152,7 @@ export function Transcript(props: TranscriptProps) {
   // Capture stable commands, never the per-render hook result: a memoized
   // callback holding that result can chain older render/selection contexts.
   const { kernel: transcriptKernel, setScroller: setKernelScroller, snapshot,
-    beginGesture, beginStructural, scrollElement, scrollToBottom, safeMode, scrollRef, setScrollMode, writeOffset, jumpToBlock, onScroll, endGesture, commitViewportGeometry, onWheelCapture, isAtBottom, intent, onTouchStartCapture, onTouchEndCapture, onKeyDownCapture, onPointerDownCapture, beginAnchorRestore,
+    beginGesture, beginStructural, scrollElement, scrollToBottom, scheduleTailSync, safeMode, scrollRef, setScrollMode, writeOffset, jumpToBlock, onScroll, endGesture, commitViewportGeometry, onWheelCapture, isAtBottom, intent, onTouchStartCapture, onTouchEndCapture, onKeyDownCapture, onPointerDownCapture, beginAnchorRestore,
   } = useTranscriptKernel({
     sessionKey: surfaceKey,
     geometryRevision: `${contentRevision}:${footerHeight}:${experience}:${historyMutation?.seq ?? 0}`,
@@ -160,7 +160,7 @@ export function Transcript(props: TranscriptProps) {
   const [
     questions, loadedByTurn, totalQuestions, activeQuestion, setActiveQuestion,
     scheduleActiveQuestionSync, turnForUser, lastTurn,
-  ] = useTranscriptQuestions(items, historyStartTurn, historyTotalTurns, scrollElement, scrollToBottom);
+  ] = useTranscriptQuestions(items, historyStartTurn, historyTotalTurns, scrollElement, scheduleTailSync);
 
   const segmentStates = useMemo(() => foldSegmentStates(turnModels, experience === "deep"), [experience, turnModels]);
   const [folds, setFolds] = useState<FoldMap>(EMPTY_FOLDS);

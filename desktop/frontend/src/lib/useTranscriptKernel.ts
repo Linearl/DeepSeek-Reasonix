@@ -299,6 +299,15 @@ export function useTranscriptKernel({
     refresh();
   }, [endGesture, kernel, refresh]);
 
+  // scheduleTailSync is the guarded counterpart of scrollToBottom: the kernel declines
+  // it while the reader owns the viewport (intentValue !== "tail") or a finger is down.
+  // scrollToBottom ends the user's gesture first, which is right for the down-arrow
+  // button and wrong for anything automatic.
+  const scheduleTailSync = useCallback(() => {
+    kernel.scheduleTailSync();
+    refresh();
+  }, [kernel, refresh]);
+
   const jumpToBlock = useCallback((key: string) => {
     const element = scrollRef.current;
     if (!element) return false;
@@ -352,6 +361,7 @@ export function useTranscriptKernel({
     endGesture,
     settleGeometry,
     scrollToBottom,
+    scheduleTailSync,
     jumpToBlock,
     setScrollMode,
     writeOffset,
