@@ -988,23 +988,26 @@ func TestOfficialDeepSeekResponsesIgnoresVisionMetadata(t *testing.T) {
 		Name: "deepseek", BaseURL: "https://api.deepseek.com", Model: "deepseek-v4-flash",
 		Extra: map[string]any{"vision": true},
 	}).(*client)
-	if c.vision {
-		t.Fatal("official DeepSeek Responses endpoint must ignore vision metadata")
+	// Fork semantics: the endpoint honours resolved capability metadata and the
+	// user's switch rather than pinning a SKU list. deepseek-v4-flash is on the
+	// vendor's multimodal list, so images are expected to be serialized below.
+	if !c.vision {
+		t.Fatal("official DeepSeek Responses endpoint must honour vision metadata")
 	}
 	body, _, _ := c.buildRequestBody(provider.Request{Messages: []provider.Message{{
 		Role: provider.RoleUser, Content: "what is this",
 		Images: []string{"data:image/png;base64,AAAA"},
 	}}})
 	items := body["input"].([]map[string]any)
-	if got, ok := items[0]["content"].(string); !ok || got != "what is this" {
-		t.Fatalf("official DeepSeek content = %#v, want plain text", items[0]["content"])
+	if _, ok := items[0]["content"].([]map[string]string); !ok {
+		t.Fatalf("official DeepSeek content = %#v, want structured parts once images are sent", items[0]["content"])
 	}
 	encoded, err := json.Marshal(body)
 	if err != nil {
 		t.Fatalf("marshal request body: %v", err)
 	}
-	if bytes.Contains(encoded, []byte("input_image")) || bytes.Contains(encoded, []byte("base64,AAAA")) {
-		t.Fatalf("official DeepSeek Responses request leaked image payload: %s", encoded)
+	if !bytes.Contains(encoded, []byte("input_image")) || !bytes.Contains(encoded, []byte("base64,AAAA")) {
+		t.Fatalf("official DeepSeek Responses request must serialize the image payload: %s", encoded)
 	}
 }
 

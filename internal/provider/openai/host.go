@@ -39,7 +39,9 @@ func IsDeepSeek(baseURL string) bool {
 
 // OfficialDeepSeekVisionModel has built-in image support. Unknown models need
 // capability metadata or an explicit declaration, not a name-based guess.
-const OfficialDeepSeekVisionModel = "deepseek-v4-flash-vision-exp"
+// The official DeepSeek model lists live in the provider package so the local
+// model catalog can consult them without an openai import cycle.
+const OfficialDeepSeekVisionModel = provider.OfficialDeepSeekVisionModel
 
 // IsOfficialDeepSeekVisionModel reports whether model is the pinned official
 // DeepSeek vision SKU. Matching is case-insensitive, trims surrounding space,
@@ -58,6 +60,22 @@ func IsOfficialDeepSeekVisionModel(model string) bool {
 	return strings.EqualFold(m, OfficialDeepSeekVisionModel)
 }
 
+// IsOfficialDeepSeekImageModel reports whether the model accepts image input on the
+// official endpoint, consulting the provider package's single authority. The fork's
+// provider-ref stripping is kept here: the ref a user grants is commonly
+// "deepseek/<sku>" while the authority only knows bare SKUs.
+func IsOfficialDeepSeekImageModel(model string) bool {
+	return provider.IsOfficialDeepSeekImageModel(stripDeepSeekProviderPrefix(model))
+}
+
+func stripDeepSeekProviderPrefix(model string) string {
+	m := strings.TrimSpace(model)
+	if slash := strings.LastIndexByte(m, '/'); slash >= 0 && strings.EqualFold(strings.TrimSpace(m[:slash]), "deepseek") {
+		return strings.TrimSpace(m[slash+1:])
+	}
+	return m
+}
+
 // DeepSeekImageInputAllowed applies the fork-trusted capability gate. There is no
 // model-name blocklist: the provider renames and re-routes SKUs under the same
 // endpoint (v4.1 traffic moved onto deepseek-v4-pro), and a name list cannot follow
@@ -69,13 +87,19 @@ func DeepSeekImageInputAllowed(officialBase bool, requestURL, model string, meta
 	if !officialBase && !IsDeepSeek(requestURL) {
 		return enabled
 	}
-	return enabled || (!metadataProvided && IsOfficialDeepSeekVisionModel(model))
+	// No name-based block: the vendor renames and re-routes SKUs under one endpoint,
+	// and a name list cannot follow that — it kept refusing models that had become
+	// multimodal, even for a user who had enabled images (the 1.38.1 lesson, and
+	// what the v4.1-through-v4-pro routing broke). The user's switch and resolved
+	// capability metadata decide; the default stays conservative, trusting only the
+	// SKUs named in the provider package's single authority.
+	return enabled || (!metadataProvided && IsOfficialDeepSeekImageModel(model))
 }
 
 // OfficialDeepSeekAllowsVision reports whether this official DeepSeek endpoint
 // may serialize image parts for the selected model. Custom gateways never match.
 func OfficialDeepSeekAllowsVision(baseURL, model string) bool {
-	return IsDeepSeek(baseURL) && IsOfficialDeepSeekVisionModel(model)
+	return IsDeepSeek(baseURL) && IsOfficialDeepSeekImageModel(model)
 }
 
 // IsOpenAI reports whether baseURL points at OpenAI's official API host. Keep

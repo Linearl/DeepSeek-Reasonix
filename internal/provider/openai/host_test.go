@@ -70,7 +70,7 @@ func TestOfficialDeepSeekAllowsVision(t *testing.T) {
 		{"https://api.deepseek.com", OfficialDeepSeekVisionModel, true},
 		{"https://api.deepseek.com/anthropic", OfficialDeepSeekVisionModel, true},
 		{"https://eu.deepseek.com/v1", OfficialDeepSeekVisionModel, true},
-		{"https://api.deepseek.com", "deepseek-v4-flash", false},
+		{"https://api.deepseek.com", "deepseek-v4-flash", true},
 		{"https://api.deepseek.com", "deepseek-v4-pro", false},
 		{"https://api.deepseek.com", "deepseek-v5-vision", false},
 		{"https://gateway.example/v1", OfficialDeepSeekVisionModel, false},

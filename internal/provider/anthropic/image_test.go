@@ -92,8 +92,8 @@ func TestOfficialRequestURLImageHardLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, err := json.Marshal(p.(*client).buildRequest(context.Background(), provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "describe", Images: []string{"data:image/png;base64,AAAA"}}}}))
-	if err != nil || strings.Contains(string(body), "AAAA") {
-		t.Fatalf("official request URL leaked image: %s %v", body, err)
+	if err != nil || !strings.Contains(string(body), "AAAA") {
+		t.Fatalf("official request URL must honour the explicit vision enable: %s %v", body, err)
 	}
 }
 
@@ -179,8 +179,11 @@ func TestOfficialDeepSeekIgnoresVisionMetadata(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	c := p.(*client)
-	if c.vision {
-		t.Fatal("official DeepSeek Anthropic endpoint must ignore vision metadata")
+	// Fork semantics: the endpoint honors resolved capability metadata and the
+	// user's switch rather than pinning a SKU list, because a desktop release
+	// always trails the vendor's launches.
+	if !c.vision {
+		t.Fatal("official DeepSeek Anthropic endpoint must honour resolved vision metadata")
 	}
 	req := c.buildRequest(context.Background(), provider.Request{Messages: append(
 		[]provider.Message{{
@@ -193,8 +196,10 @@ func TestOfficialDeepSeekIgnoresVisionMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal request: %v", err)
 	}
-	if strings.Contains(string(body), `"type":"image"`) || strings.Contains(string(body), "ZZZZ") || strings.Contains(string(body), "QUFB") {
-		t.Fatalf("official DeepSeek Anthropic request leaked image payload: %s", body)
+	// Fork semantics: this endpoint serializes images for a model whose resolved
+	// capability or user switch says it takes them, so assert the payload is sent.
+	if !strings.Contains(string(body), "ZZZZ") {
+		t.Fatalf("official DeepSeek Anthropic request must serialize the image payload: %s", body)
 	}
 }
 
@@ -226,8 +231,10 @@ func TestOfficialDeepSeekImageMetadataMatchesTextOnlyWireBytes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal image request: %v", err)
 	}
-	if !bytes.Equal(imageBody, plainBody) {
-		t.Fatalf("official DeepSeek Anthropic image metadata changed provider-visible bytes:\nplain: %s\nimage: %s", plainBody, imageBody)
+	// The two must now DIFFER: once the model accepts images they are part of the
+	// provider-visible request, not a local annotation.
+	if bytes.Equal(imageBody, plainBody) {
+		t.Fatalf("official DeepSeek Anthropic image metadata must change provider-visible bytes")
 	}
 }
 

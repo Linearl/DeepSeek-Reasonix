@@ -37,8 +37,10 @@ func TestOfficialRequestURLImageHardLimit(t *testing.T) {
 	c := New(Config{BaseURL: "https://relay.test", RequestURL: "https://api.deepseek.com/responses", Model: "deepseek-v4-flash", Extra: map[string]any{"vision": true}, ModelInfo: &provider.ModelInfo{InputModalities: []provider.ModelModality{provider.ModalityText, provider.ModalityImage}}}).(*client)
 	req, _, _ := c.buildRequestBody(provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "describe", Images: []string{"data:image/png;base64,AAAA"}}}})
 	body, err := json.Marshal(req)
-	if err != nil || strings.Contains(string(body), "AAAA") {
-		t.Fatalf("official request URL leaked image: %s %v", body, err)
+	// Fork semantics: deepseek-v4-flash is on the vendor's multimodal list now, so the
+	// official endpoint must serialize the image rather than refuse it.
+	if err != nil || !strings.Contains(string(body), "AAAA") {
+		t.Fatalf("official request URL must serialize the image: %s %v", body, err)
 	}
 }
 
@@ -191,7 +193,8 @@ func TestOfficialDeepSeekResponsesImageMetadataMatchesTextOnlyWireBytes(t *testi
 	if err != nil {
 		t.Fatalf("marshal image request: %v", err)
 	}
-	if !bytes.Equal(imageBody, plainBody) {
+	// Must now DIFFER: images are provider-visible once the model accepts them.
+	if bytes.Equal(imageBody, plainBody) {
 		t.Fatalf("official DeepSeek Responses image metadata changed provider-visible bytes:\nplain: %s\nimage: %s", plainBody, imageBody)
 	}
 }
