@@ -2,7 +2,7 @@
   "$schema": "https://wails.io/schemas/config.v2.json",
   "name": "reasonix-desktop",
   "outputfilename": "reasonix-desktop",
-  "frontend:install": "node frontend/scripts/ensure-frontend-deps.mjs",
+  "frontend:install": "node scripts/ensure-frontend-deps.mjs",
   "frontend:build": "pnpm build",
   "frontend:dev:watcher": "pnpm dev",
   "frontend:dev:serverUrl": "auto",
