@@ -234,7 +234,7 @@ func (a *Agent) finalizeDefaultReadStrategy(ctx context.Context, deferred *incom
 	switch plan.incompleteReadAction {
 	case incompleteReadActionStrategySearch:
 		transition = a.turn.incompleteReads.observeStrategySearch(plan, deferred.rawOutput, deferred.visibleFull)
-	case incompleteReadActionStrategySource:
+	case incompleteReadActionStrategyRead, incompleteReadActionStrategySource:
 		observed, ok := modelTextObservationFor(plan, out.output)
 		transition = a.turn.incompleteReads.observeReadFile(plan, deferred.rawOutput, out.output, observed, ok, a.estimatedReadResultTokens(deferred.rawOutput), a.readAutoRecoveryBudgetFor())
 	case incompleteReadActionStrategyReceipt:

@@ -4142,15 +4142,8 @@ func (c *Controller) stripCancelledVisibleTurnMessagesAfterWithFallbackAt(idx in
 		})
 		localIndexes = append(localIndexes, len(next)-1)
 	}
-	if evidence := c.ledgerTailEvidence(); evidence != nil {
-		recovery.Cause = "runtime_restart"
-		recovery.TurnID = evidence.turnID
-		if len(recovery.ToolCalls) == 0 && len(recovery.CompletedTools) == 0 && !recovery.DroppedPartialText && !recovery.DroppedPartialReasoning {
-			recovery.SilentInterruption = true
-		}
-	}
+	c.applyLedgerRecoveryFacts(recovery)
 	next[localIndexes[len(localIndexes)-1]].InterruptedTurn = recovery
-	recovery.SilentInterruption = len(recovery.CompletedTools) == 0 && len(recovery.InterruptedTools) == 0 && !recovery.DroppedPartialText && !recovery.DroppedPartialReasoning
 	c.replaceSessionAfterCancel(next)
 }
 

@@ -39,6 +39,12 @@ func (a *Agent) checkToolRecoveryStart(ctx context.Context, p *toolCallPlan) (to
 func uncertainToolError(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
+func recoveryFailureState(err error) provider.ToolRunState {
+	if uncertainToolError(err) {
+		return provider.ToolRunUnknown
+	}
+	return provider.ToolRunFailed
+}
 func assignRecoveryCallIDs(calls []provider.ToolCall) error {
 	seen := map[string]bool{}
 	for i := range calls {

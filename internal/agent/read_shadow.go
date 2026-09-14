@@ -112,12 +112,15 @@ func (a *Agent) armDefaultReadStrategy(key string, env tool.ReadResultEnvelope) 
 }
 
 func (s *readShadowState) strategyPending(key string) bool {
+	if s == nil {
+		return false
+	}
 	if s.strategyMu == nil {
 		s.strategyMu = &sync.Mutex{}
 	}
 	s.strategyMu.Lock()
 	defer s.strategyMu.Unlock()
-	if s == nil || s.strategies == nil {
+	if s.strategies == nil {
 		return false
 	}
 	pending, ok := s.strategies[key]
