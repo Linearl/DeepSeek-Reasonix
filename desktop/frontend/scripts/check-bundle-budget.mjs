@@ -310,7 +310,10 @@ for (const path of localeChunks) {
   // Task 56/64 evidence-chain port: the receipt, operation-lifecycle and recovery
   // copy adds keys per dialect; zh measures 69.0 KiB and zh-TW 69.7 KiB, so take the
   // next decimal past each measurement by the same convention.
-  const budget = name.startsWith("zh-TW-") ? 70.0 * 1024 : 69.0 * 1024;
+  // Task 81's Settings switch adds four keys per dialect (label, hint, on, off); the hint is
+  // a full sentence because it has to say what the experiment does. zh measures just past the
+  // 69.0 ceiling, so take the next decimal by the same convention as every prior landing.
+  const budget = name.startsWith("zh-TW-") ? 70.0 * 1024 : 69.5 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
