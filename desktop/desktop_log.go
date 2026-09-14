@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"reasonix/internal/config"
@@ -126,5 +127,27 @@ func installDesktopLogging() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	// slog defaults to stderr too, and the serve/servepool layers log via
 	// slog — rebind the default logger so those lines land in the file.
-	slog.SetDefault(slog.New(slog.NewTextHandler(w, nil)))
+	//
+	// The level is configurable because the fork's own features (serve pool, remote
+	// tabs, session handoff, authorized write roots) are the ones that fail in ways
+	// nothing else observes, and their detail lives at Debug. The default stays Info
+	// so an ordinary log is not buried; REASONIX_DESKTOP_LOG=debug is what a bug
+	// report should be reproduced under.
+	slog.SetDefault(slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{Level: desktopLogLevel()})))
+}
+
+// desktopLogLevel reads REASONIX_DESKTOP_LOG (info|debug|trace; default info).
+// An environment variable rather than a setting because the interesting failures
+// happen before or without the settings UI — a remote tab that will not connect, a
+// serve pool that will not start — and the user is already editing the environment
+// to reproduce them. Unknown values fall back to info rather than silencing logs.
+func desktopLogLevel() slog.Level {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("REASONIX_DESKTOP_LOG"))) {
+	case "debug":
+		return slog.LevelDebug
+	case "trace":
+		return slog.LevelDebug - 4
+	default:
+		return slog.LevelInfo
+	}
 }

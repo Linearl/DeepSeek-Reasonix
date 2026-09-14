@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"os"
 	"os/exec"
@@ -417,6 +418,10 @@ func (m *Manager) markFailed(p *project, err error) {
 	if p.failures >= 3 {
 		p.state = "degraded"
 		p.degradedUntil = time.Now().Add(5 * time.Minute)
+		// The 5-minute backoff is invisible otherwise: the UI shows "not running" and
+		// nothing says the pool has decided to stop retrying. feature=servepool.
+		slog.Warn("serve pool: project degraded after repeated failures",
+			"feature", "servepool", "project", p.id, "failures", p.failures, "err", p.err)
 	} else {
 		p.state = "stopped"
 	}
@@ -450,6 +455,11 @@ func (m *Manager) sweep() {
 	now := time.Now()
 	for _, p := range m.projects {
 		if p.state == "running" && now.Sub(p.lastUse) > m.cfg.IdleTimeout {
+			// Idle reclamation is the fork's own lifecycle (upstream has no pool), and a
+			// project that quietly stops is the first thing to rule out when the phone or a
+			// remote tab reports a dead endpoint. feature= keeps pool lines greppable.
+			slog.Info("serve pool: reclaiming idle project",
+				"feature", "servepool", "project", p.id, "idle", now.Sub(p.lastUse).Round(time.Second).String())
 			m.stopLocked(p)
 		}
 	}
