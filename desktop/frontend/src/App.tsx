@@ -232,6 +232,7 @@ import { safeFilename, tabWorkspaceTitle, topicDisplayTitle, topicTitle } from "
 import { loadDismissedTodoKeys, saveDismissedTodoKeys } from "./lib/todoDismissalStorage";
 import type { AppDecisionSurfaceKind } from "./app-runtime/decisionSurfaceProjection";
 import { browserPlatformOverride } from "./lib/desktopPlatform";
+import { markAppearanceReady, setAutopilotEnabled, useAppLifecycleStore } from "./store/appLifecycle";
 // Hold reasoning UI until the authoritative desktop startup settings arrive;
 // this prevents a hidden preference from flashing content during first paint.
 setReasoningDisplayPending();
@@ -663,7 +664,7 @@ export default function App() {
   // accent is applied synchronously from the first-paint cache, but an active theme
   // pack lands later (its tokens arrive over IPC and its stylesheet is injected), so
   // without this gate the user watches the accent flip once the splash is gone.
-  const [appearanceReady, setAppearanceReady] = useState(false);
+  const appearanceReady = useAppLifecycleStore((s) => s.appearanceReady);
   // null until the mount probe resolves; true shows the first-run guide.
   const needsOnboarding = useOverlayStore((s) => s.needsOnboarding);
   const setNeedsOnboarding = useOverlayStore((s) => s.setNeedsOnboarding);
@@ -813,7 +814,7 @@ export default function App() {
 
   // Autopilot is opt-in: its mode only appears in the composer once the
   // preference is on, so nobody lands in an unattended run by accident.
-  const [autopilotEnabled, setAutopilotEnabled] = useState(false);
+  const autopilotEnabled = useAppLifecycleStore((s) => s.autopilotEnabled);
 
   // Task 38 B6: composer profiles keyed by tab.
   const { composerProfilesByTab, setComposerProfilesByTab } = useComposerProfileStore();
@@ -1141,7 +1142,7 @@ export default function App() {
         }
         // Task 55: release the splash gate. Reached on both paths - a failed pack
         // load must not hold the splash beyond the component's own 6s ceiling.
-        if (!cancelled) setAppearanceReady(true);
+        if (!cancelled) markAppearanceReady();
       }
     };
     void syncDesktopPreferences().catch((e) => {
