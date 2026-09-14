@@ -3175,7 +3175,13 @@ export function useController() {
     const startedAt = Date.now();
     try {
       const result = await getTranscriptStore().loadOlder(targetTabId, sessionPath, pageBudget);
-      if (historyOlderSeq.current.get(targetTabId) !== requestSeq) return false;
+      if (historyOlderSeq.current.get(targetTabId) !== requestSeq) {
+        // A newer request owns the spinner now. It set historyOlderLoading itself, so
+        // leaving it alone is correct - but if it already finished and cleared the flag,
+        // this page must not revive it. Nothing to do either way; the finally block is
+        // what guarantees the flag cannot be left set by this call.
+        return false;
+      }
       const current = statesRef.current.get(targetTabId);
       if (!current) return false;
       const currentRevision = current?.meta?.sessionRevision ?? current?.historyRevision;
@@ -3242,6 +3248,19 @@ export function useController() {
       dispatchTo(targetTabId, { type: "history_older_error", error: errorMessage(err) });
       addBreadcrumb("tab.hydrate", `history older failed ${targetTabId}: ${errorMessage(err)}`);
       return false;
+    } finally {
+      // historyOlderLoading doubles as the gate for the next request, so any path that
+      // returns without clearing it locks the transcript out of older history for the rest
+      // of the session - the spinner stays up and every later attempt is rejected at the
+      // guard. The successful paths already clear it via history_prepend/history_replace;
+      // this is the backstop for the ones that return early.
+      if (historyOlderSeq.current.get(targetTabId) === requestSeq) {
+        const settled = statesRef.current.get(targetTabId);
+        if (settled?.historyOlderLoading) {
+          dispatchTo(targetTabId, { type: "history_older_error" });
+          addBreadcrumb("tab.hydrate", `history older abandoned ${targetTabId} trigger=${trigger}`);
+        }
+      }
     }
   }, [dispatchTo, ensureTranscriptSubscription]);
 
