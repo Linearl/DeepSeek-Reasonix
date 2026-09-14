@@ -129,7 +129,7 @@ import { runWorktreeMergeLifecycle } from "./lib/worktreeMergeLifecycle";
 import { showWorktreeCleanupNotice } from "./lib/worktreeCleanupNotice";
 import { requestSessionVersions } from "./lib/sessionRecoveryVersionHostBridge";
 import type { WorkspaceVerificationRevealRequest } from "./components/WorkspacePanel";
-import type { InvocationMetadataMap, StructuredInvocationSubmit } from "./lib/invocationDisplay";
+import type { StructuredInvocationSubmit } from "./lib/invocationDisplay";
 import type { RewindUndoState } from "./lib/rewindTypes";
 import { formatSelectionReference, type SelectedTextInsertRequest } from "./lib/selectedTextContext";
 import { resolveTaskMonitorSession } from "./lib/taskMonitorNavigation";
@@ -233,6 +233,7 @@ import type { AppDecisionSurfaceKind } from "./app-runtime/decisionSurfaceProjec
 import { browserPlatformOverride } from "./lib/desktopPlatform";
 import { markAppearanceReady, setAutopilotEnabled, useAppLifecycleStore } from "./store/appLifecycle";
 import { setStatusBarItems, setStatusBarStyle, useShellPrefsStore } from "./store/shellPrefs";
+import { useInvocationMetadata } from "./app-runtime/useInvocationMetadata";
 // Hold reasoning UI until the authoritative desktop startup settings arrive;
 // this prevents a hidden preference from flashing content during first paint.
 setReasoningDisplayPending();
@@ -1181,7 +1182,10 @@ export default function App() {
   }, []);
 
   const [pendingPlanRevisionsByTab, setPendingPlanRevisionsByTab] = useState<Record<string, string>>({});
-  const [invocationMetadataByTab, setInvocationMetadataByTab] = useState<Record<string, InvocationMetadataMap>>({});
+  // The hook owns both halves; App.tsx previously kept a local copy of the state and
+  // a near-identical change handler, so inbound metadata landed in a map nothing
+  // read (task 38).
+  const { invocationMetadataByTab, handleInvocationMetadataChange } = useInvocationMetadata();
   const pendingPlanRevisionSendingTabsRef = useRef(new Set<string>());
   const footerHeight = useLayoutStore((s) => s.footerHeight);
   const setFooterHeight = useLayoutStore((s) => s.setFooterHeight);
@@ -1198,18 +1202,6 @@ export default function App() {
       toolApprovalMode: ToolApprovalMode;
     },
   ) => Promise<void>>(async () => {});
-  const handleInvocationMetadataChange = useCallback((metadata: InvocationMetadataMap) => {
-    const sourceTabId = activeTabIdRef.current;
-    if (!sourceTabId) return;
-    setInvocationMetadataByTab((current) => {
-      const previous = current[sourceTabId] ?? {};
-      const names = Object.keys(metadata);
-      if (names.length === Object.keys(previous).length && names.every((name) => (
-        previous[name]?.kind === metadata[name]?.kind && previous[name]?.color === metadata[name]?.color
-      ))) return current;
-      return { ...current, [sourceTabId]: metadata };
-    });
-  }, []);
   const rightDockDetailActive = rightDockMode !== "context" && workspacePreviewActive;
   // The dock keeps one width across tab switches (context/files/changed):
   // the tree width is the single source so toggling tabs never resizes the
