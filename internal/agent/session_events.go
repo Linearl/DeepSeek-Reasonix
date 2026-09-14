@@ -272,6 +272,11 @@ func replaySessionEventLogWithLimits(path string, limits sessionReplayLimits, ha
 }
 
 func replaySessionEventLogWithContext(ctx context.Context, path string, limits sessionReplayLimits, hasher *sessionTranscriptHasher) (sessionEventReplay, error) {
+	// This is the implementation every caller funnels into, so the sizing lives here as well
+	// as on the wrappers above: a caller that reaches past them (session_load.go does, to pass a
+	// context) would otherwise decide the budget from the default instead of the file. Idempotent
+	// where the levels nest - limitsForSessionLog returns the input unchanged when the file fits.
+	limits = limitsForSessionLog(path, limits)
 	if err := ctx.Err(); err != nil {
 		return sessionEventReplay{}, err
 	}
