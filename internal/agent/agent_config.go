@@ -40,6 +40,10 @@ type agentConfig struct {
 	maxSubagentDepth int
 	// autopilot marks an unattended run; see Options.Autopilot (task 56).
 	autopilot bool
+	// skipToolRecoveryFence lets writes proceed while an unresolved external
+	// effect is pending. Unattended hosts (yolo/auto/autopilot) set this so the
+	// run is not stranded on a recovery panel nobody can answer (task 107).
+	skipToolRecoveryFence bool
 	// contextWindow and compactRatio decide when at most one provider-visible
 	// checkpoint is installed; recentKeep and archiveDir shape what it keeps.
 	contextWindow          int

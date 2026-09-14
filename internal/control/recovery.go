@@ -115,6 +115,12 @@ func (c *Controller) initRecoveryGate(reviewer recovery.Reviewer, headless bool)
 	gate := recovery.NewGate(recovery.Options{
 		Headless: headless,
 		Mode: func() string {
+			// Autopilot has nobody to answer an Auto Guard card (task 109 B2).
+			// Report yolo so the gate treats the run as inactive — same posture as
+			// interactive yolo — instead of arming a prompt that never drains.
+			if c.autopilot {
+				return ToolApprovalYolo
+			}
 			return c.ToolApprovalMode()
 		},
 		EmitPrompt:     c.emitRecoveryPrompt,

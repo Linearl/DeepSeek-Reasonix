@@ -1763,6 +1763,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		SubagentDepth:                0,
 		MaxSubagentDepth:             maxSubagentDepth,
 		Autopilot:                    opts.Autopilot,
+		// Unattended runs skip the recovery_required write fence: nobody is there
+		// to resolve the panel (task 107). Interactive ask mode keeps the fence.
+		SkipToolRecoveryFence:         opts.Autopilot,
 		MissingReasoningWarnStateDir: config.MissingReasoningWarnStateDir(),
 	}, sink)
 	reg.Add(sessiontool.NewSetSessionTitleTool(sessionDir, executor.SessionPath, opts.OnSessionTitleChanged))

@@ -555,6 +555,23 @@ func (a *Agent) SetRecoveryGate(g RecoveryGate) {
 	a.svc.recoveryGate = g
 }
 
+// SetSkipToolRecoveryFence toggles the recovery_required write fence. Hosts
+// call this when the approval posture changes so a mid-session switch to
+// yolo/auto (or starting autopilot) does not strand the run on a panel nobody
+// can answer (task 107).
+func (a *Agent) SetSkipToolRecoveryFence(skip bool) {
+	if a == nil {
+		return
+	}
+	a.skipToolRecoveryFence = skip
+}
+
+// toolRecoveryFenceOff reports whether unresolved external effects must not
+// block writes. Autopilot is fixed for the run; yolo/auto can flip mid-session.
+func (a *Agent) toolRecoveryFenceOff() bool {
+	return a.autopilot || a.skipToolRecoveryFence
+}
+
 // SetRecoveryIdentity sets the agent/task labels used on recovery cards.
 func (a *Agent) SetRecoveryIdentity(agentID, taskID string) {
 	if a == nil {
@@ -1104,6 +1121,11 @@ type Options struct {
 	// instead (task 56). Interactive runs leave this false and keep every pause.
 	Autopilot bool
 
+	// SkipToolRecoveryFence disables the recovery_required write fence when the
+	// host runs unattended (yolo/auto/autopilot). Interactive ask mode keeps the
+	// fence so an uncertain external effect still requires a human (task 107).
+	SkipToolRecoveryFence bool
+
 	// TraceAsState enables the Trace-as-State compaction experiment (task 60):
 	// the summary sees the assistant's reasoning, a stall on a short context routes
 	// to re-reading instead of a fold, and self-directed folds carry guards. Off by
@@ -1204,6 +1226,7 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 			subagentDepth:           subagentDepth,
 			maxSubagentDepth:        maxSubagentDepth,
 			autopilot:               opts.Autopilot,
+			skipToolRecoveryFence:   opts.SkipToolRecoveryFence,
 			traceAsState:            opts.TraceAsState,
 			restartUpdater:         opts.RestartUpdater,
 			contextWindow:           opts.ContextWindow,

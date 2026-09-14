@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"reasonix/internal/event"
@@ -64,11 +65,15 @@ func (a *Agent) beginToolRecovery(ctx context.Context, p *toolCallPlan) error {
 	}
 	// An unresolved external effect survives subsequent user turns. Read-only
 	// diagnosis remains available; new call IDs cannot bypass this barrier.
+	// Unattended hosts (yolo/auto/autopilot) skip it: nobody is there to resolve
+	// the recovery panel, so the fence would strand the run (task 107).
 	prior, _ := ctx.Value(recoveryRetryKey{}).(*provider.ToolCallRecord)
-	if !p.readOnly && slices.ContainsFunc(a.PendingToolRecovery(), func(r provider.ToolCallRecord) bool {
+	if !p.readOnly && !a.toolRecoveryFenceOff() && slices.ContainsFunc(a.PendingToolRecovery(), func(r provider.ToolCallRecord) bool {
 		return !r.ReadOnly && (prior == nil || prior.Identity.AttemptID != r.Identity.AttemptID)
 	}) {
-		return fmt.Errorf("recovery_required: inspect and resolve the previous uncertain tool effect before another write")
+		// Name the panel and the pending tool so the model has an executable next
+		// step instead of a bare category (task 107 P0-①).
+		return fmt.Errorf("recovery_required: an earlier %s left an unconfirmed external effect; open the desktop panel 「中断的工具需要核实」 (tool recovery) and choose 检查当前状态 / 我已核实操作生效, or resolve it via ResolveToolRecovery before another write", pendingToolLabel(a.PendingToolRecovery()))
 	}
 	var params any
 	decoder := json.NewDecoder(bytes.NewReader(p.permArgs))
@@ -220,4 +225,14 @@ func (a *Agent) PendingToolRecovery() []provider.ToolCallRecord {
 		}
 	}
 	return result
+}
+
+// pendingToolLabel names the most recent unresolved write tool for error copy.
+func pendingToolLabel(records []provider.ToolCallRecord) string {
+	for _, r := range records {
+		if name := strings.TrimSpace(r.Identity.CanonicalTool); name != "" {
+			return name
+		}
+	}
+	return "tool"
 }

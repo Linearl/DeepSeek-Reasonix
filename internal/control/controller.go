@@ -2608,8 +2608,9 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// Autopilot (task 49 A3): nobody is available to answer. Questions the run may
 	// decide alone are handed straight back with an explicit "decide for yourself"
 	// answer, which lands in the transcript as the audit record. Anything
-	// destructive, outward-facing, or credential-touching falls through to the
-	// normal prompt path and waits for a human.
+	// destructive, outward-facing, or credential-touching still waits for a human,
+	// but not forever — after DefaultAutopilotAskWait the run ends with a terminal
+	// error so the safety valve is a real stop, not an invisible hang (task 109 B4).
 	if c.autopilot && askRiskOfQuestions(askQuestionTexts(questions)) == askRiskReversible {
 		return autopilotAnswers(questions), nil
 	}
@@ -2640,9 +2641,26 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	waitCtx, cancelWait := c.approval.waitContext(ctx)
 	defer cancelWait()
 
+	// High-risk ask under autopilot: still wait for a human, then fail closed.
+	var askTimeout <-chan time.Time
+	if c.autopilot {
+		t := time.NewTimer(DefaultAutopilotAskWait)
+		defer t.Stop()
+		askTimeout = t.C
+	}
+
 	select {
 	case ans := <-reply:
 		return ans, nil
+	case <-askTimeout:
+		c.cancelOwnedPrompt(id)
+		c.sink.Emit(event.Event{
+			Kind:   event.Notice,
+			Level:  event.LevelWarn,
+			Text:   "autopilot · ask — refused: high-risk question unanswered after " + DefaultAutopilotAskWait.String(),
+			Detail: "the unattended run stopped instead of deciding destructive/outward-facing/credential actions for the user",
+		})
+		return nil, ErrAutopilotAskUnanswered
 	case <-waitCtx.Done():
 		c.cancelOwnedPrompt(id)
 		return nil, waitCtx.Err()
@@ -5314,6 +5332,12 @@ func (c *Controller) ApplyToolApprovalMode(mode string) []string {
 		c.subagentGate.Update(mode)
 	}
 	c.refreshInteractiveGate()
+	// Unattended postures skip the recovery_required write fence (task 107):
+	// yolo/auto already auto-approve tools, and autopilot has nobody to resolve
+	// the recovery panel. Ask keeps the fence.
+	if c.executor != nil {
+		c.executor.SetSkipToolRecoveryFence(c.autopilot || mode == ToolApprovalAuto || mode == ToolApprovalYolo)
+	}
 	// Clear recovery cards dismissed by the mode switch outside the gate lock.
 	for _, id := range recoveryDismissed {
 		p := c.approval.resolve(id)

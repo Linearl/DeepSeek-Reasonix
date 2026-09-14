@@ -117,6 +117,11 @@ func InspectRunPause(err error) (RunPauseInfo, bool) {
 	if errors.As(err, &incompleteRead) {
 		return RunPauseInfo{Kind: "incomplete_read", HostOwned: true, Reason: incompleteRead.Reason}, true
 	}
+	var recovery *RecoveryPauseError
+	if errors.As(err, &recovery) {
+		reason := recovery.Error()
+		return RunPauseInfo{Kind: "recovery_paused", HostOwned: true, Reason: reason}, true
+	}
 	return RunPauseInfo{}, false
 }
 
