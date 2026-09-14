@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { createTranscriptHarness } from "./transcript-dom-harness";
 import type { Item } from "../lib/useController";
 import { commitTranscriptWindowRange, extractTranscriptWindowIndexes } from "../lib/transcriptWindowRange";
@@ -102,7 +103,7 @@ const released = commitTranscriptWindowRange({
 });
 ok(released.items !== previousRange.items, "gesture release commits the latest covering measurements");
 ok(released.totalSize === 20_120, "gesture release commits range and extent atomically");
-const windowSource = await import("node:fs/promises").then((fs) => fs.readFile(new URL("../components/TranscriptWindow.tsx", import.meta.url), "utf8"));
+const windowSource = await readFile(new URL("../components/TranscriptWindow.tsx", import.meta.url), "utf8");
 ok(windowSource.includes("useCachedMeasurements: true"), "TanStack cannot publish ResizeObserver sizes outside the viewport commit protocol");
 ok(windowSource.includes("measurementLedger.stage(changes)"), "DOM measurements enter the block-keyed staging ledger before publication");
 ok(windowSource.includes("findTranscriptMeasurementPublicationBoundary({")
@@ -120,7 +121,7 @@ ok(forwardIndexes.length === 36 && forwardIndexes[0] === 96 && forwardIndexes.at
 const backwardIndexes = extractTranscriptWindowIndexes({ startIndex: 100, endIndex: 104, count: 1_000 }, new Set(), 36, "backward");
 ok(backwardIndexes.length === 36 && backwardIndexes[0] === 73 && backwardIndexes.at(-1) === 108,
   "backward scrolling mirrors the bounded compositor runway");
-const nativeViewportSource = await import("node:fs/promises").then((fs) => fs.readFile(new URL("../lib/useTranscriptNativeViewport.ts", import.meta.url), "utf8"));
+const nativeViewportSource = await readFile(new URL("../lib/useTranscriptNativeViewport.ts", import.meta.url), "utf8");
 ok(
   nativeViewportSource.includes("useSyncExternalStore(subscribe, getSnapshot, getSnapshot)")
     && windowSource.includes("scrollTop: nativeViewport.scrollTop")

@@ -4770,7 +4770,12 @@ export function useController() {
         const tabs = await reconcileTabRuntime(tabId, { hydrateSessionData: false, refreshAncillary: false });
         if (!isNavigationIntentCurrent(navigationSeq)) return tabs;
         const hydration = loadSessionDataForTab(tabId, false, "switch-tab", {
-          skipHistory: hasLocalItems,
+          // Local rows are not the same thing as a history page. A tab that is mid-stream has
+          // items - the streaming turn's own rows - but nothing behind them, so treating any
+          // local item as "history is already here" skips the fetch outright and leaves the live
+          // turn floating over an empty transcript. Only rows that sit on top of a hydrated page
+          // (historyTotalTurns > 0) justify the skip.
+          skipHistory: hasLocalItems && hasReusableCachedTranscript(targetState, targetSessionPath, targetSessionRevision, targetSessionDigest),
           placeholderItems,
           surfacePolicy: preserveTargetSurface ? "preserve-current" : "replace-surface",
           preserveCachedHistory,

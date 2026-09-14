@@ -797,8 +797,20 @@ export class TranscriptStore {
     const key = sessionKeyFor(tabId, sessionPath);
     const existing = this.sessions.get(key);
     if (options.preferResident && existing && existing.records.length > 0) {
-      this.touch(existing);
-      return this.projectionOf(existing);
+      // The resident shortcut must still honour the caller's fingerprint. Serving the page
+      // without checking it means a session rewritten while the tab was away - a new turn, a
+      // recap, another window's compaction - keeps answering with the stale projection and the
+      // stale paging cursor that travels with it, which is how "load earlier" starts failing
+      // instead of fetching what changed. An absent expectation still means "no opinion".
+      const revisionMatches =
+        options.expectedRevision === undefined || existing.revision === options.expectedRevision;
+      const digestMatches =
+        options.expectedDigest === undefined || existing.digest === options.expectedDigest;
+      if (revisionMatches && digestMatches) {
+        this.touch(existing);
+        return this.projectionOf(existing);
+      }
+      // Fingerprint advanced: fall through and refetch against the settled revision.
     }
     const session = existing ?? this.newSession(key, tabId, sessionPath);
     session.tabId = tabId;

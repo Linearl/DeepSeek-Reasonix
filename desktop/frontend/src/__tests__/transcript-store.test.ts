@@ -415,14 +415,21 @@ console.log("\ntranscript store");
     selectionRevision: 1,
     bytes: text.length * 2,
   });
+  // The cache keys on the content revision alone, not on entryId: the same text must hit
+  // whether the row carries a live item id, a history `he:<entryId>` id, or a per-load
+  // `h<seq>` id (see TranscriptMarkdownCache.key). Distinct revisions here are therefore
+  // what makes these four entries distinct - passing revision 1 four times would collapse
+  // them into one, which is the behaviour the cache documents.
   store.setMarkdown("e1", 1, parsed("a".repeat(20))); // 40 bytes
-  store.setMarkdown("e2", 1, parsed("b".repeat(20)));
-  store.setMarkdown("e3", 1, parsed("c".repeat(20)));
+  store.setMarkdown("e2", 2, parsed("b".repeat(20)));
+  store.setMarkdown("e3", 3, parsed("c".repeat(20)));
   eq(store.getMarkdown("e1", 1)?.source, "a".repeat(20), "markdown cache returns stored value");
-  store.setMarkdown("e4", 1, parsed("d".repeat(20))); // 160 > 120 → evict oldest (e2: e1 was touched)
-  eq(store.getMarkdown("e2", 1), undefined, "markdown LRU evicts the least-recently-used entry");
+  store.setMarkdown("e4", 4, parsed("d".repeat(20))); // 160 > 120 → evict oldest (e2: e1 was touched)
+  eq(store.getMarkdown("e2", 2), undefined, "markdown LRU evicts the least-recently-used entry");
   ok(store.getMarkdown("e1", 1) !== undefined, "recently read markdown entry survives");
-  eq(store.getMarkdown("e1", 2), undefined, "markdown entries key on entryId + revision");
+  eq(store.getMarkdown("e1", 2), undefined, "markdown entries key on the content revision");
+  // Nothing is stored under revision 9, and the id cannot conjure an entry: the key ignores it.
+  eq(store.getMarkdown("e1", 9), undefined, "entryId alone never resolves to a cached value");
 
   const release = store.pinMarkdown("e1", 1);
   store.setMarkdown("e5", 1, parsed("e".repeat(50)));
