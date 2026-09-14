@@ -106,3 +106,19 @@ func flattenTurns(turns [][]provider.Message) []provider.Message {
 	}
 	return out
 }
+
+// SessionContentPrefixGap reports the losing copy's leading turns that the
+// canonical transcript does not contain. ok is false when either side cannot be
+// loaded safely — the same fail-closed rule SessionContentOverlap follows, since
+// a damaged log must not produce a merge decision.
+func SessionContentPrefixGap(canonicalPath, copyPath string) (PrefixGap, bool) {
+	canonical, ok := LoadSessionContentSnapshot(canonicalPath)
+	if !ok {
+		return PrefixGap{}, false
+	}
+	copied, ok := LoadSessionContentSnapshot(copyPath)
+	if !ok {
+		return PrefixGap{}, false
+	}
+	return prefixGapForMessages(canonical.messages, copied.messages), true
+}

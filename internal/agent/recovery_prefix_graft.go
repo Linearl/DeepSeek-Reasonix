@@ -91,3 +91,22 @@ func joinTranscriptLines(lines []string) []byte {
 	}
 	return []byte(strings.Join(lines, "\n") + "\n")
 }
+
+// decodeTranscriptMessages turns transcript lines back into messages. Used only
+// where the decoded form is needed (digesting the grafted content); the graft
+// itself never round-trips existing lines.
+func decodeTranscriptMessages(lines []string) ([]provider.Message, error) {
+	out := make([]provider.Message, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		var m provider.Message
+		if err := json.Unmarshal([]byte(trimmed), &m); err != nil {
+			return nil, fmt.Errorf("graft: decode transcript line: %w", err)
+		}
+		out = append(out, m)
+	}
+	return out, nil
+}

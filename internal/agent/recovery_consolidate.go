@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -518,6 +519,20 @@ func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) err
 		}
 	}
 
+	// The losing chain is the current main: it holds the turns the winner does
+	// not. When the winner does not cover it, those turns would survive only in
+	// the trash archive, so the segment worth keeping is grafted onto the
+	// winner's head during the promote below. Computed here because both files
+	// must still be on disk — after the rename the old main is already staged.
+	gap, gapKnown := SessionContentPrefixGap(winnerPath, mainPath)
+	if !gapKnown {
+		// Same fail-closed rule as every other read in this file: a transcript
+		// that cannot be read safely must not produce a merge decision.
+		slog.Warn("promote: prefix gap unavailable; proceeding without grafting",
+			"main", mainPath, "winner", winnerPath)
+		gap = PrefixGap{}
+	}
+
 	legacyMeta, legacyOK, err := LoadBranchMeta(mainPath)
 	if err != nil {
 		return err
@@ -570,6 +585,42 @@ func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) err
 	if err := os.Rename(winnerPath, mainPath); err != nil {
 		return err
 	}
+	// The winner is the main now, so the gap can be written onto it. Done after the
+	// rename because the file that must receive it did not exist until now, and
+	// before the meta rewrite below so the content identity it stores describes
+	// the grafted transcript rather than the pre-graft one.
+	graftedMessages := 0
+	if len(gap.Messages) > 0 {
+		lines, err := os.ReadFile(mainPath)
+		if err != nil {
+			return err
+		}
+		mergedLines, err := graftPrefixOntoLines(splitTranscriptLines(lines), gap.Messages)
+		if err != nil {
+			return err
+		}
+		if err := atomicWriteFileContext(context.Background(), mainPath, "promote-graft", "transcript.promote-graft", joinTranscriptLines(mergedLines), 0o600, true); err != nil {
+			return err
+		}
+		// The event log keys its records by message index, so every index it holds
+		// is now wrong. Folding it to a single replace record is both the correct
+		// fix and the existing mechanism for it.
+		mergedMsgs, err := decodeTranscriptMessages(mergedLines)
+		if err != nil {
+			return err
+		}
+		digest, _, err := digestAndSizeSessionMessages(mergedMsgs)
+		if err != nil {
+			return err
+		}
+		if err := compactSessionEventLog(mainPath, mergedMsgs, digest, legacyMeta.Revision, "promote-prefix-graft"); err != nil {
+			return err
+		}
+		graftedMessages = len(gap.Messages)
+		slog.Info("promote: grafted the losing chain's prefix",
+			"main", mainPath, "messages", graftedMessages, "forkIndex", gap.ForkIndex)
+	}
+
 	winnerStem := strings.TrimSuffix(filepath.Base(winnerPath), ".jsonl")
 	mainStem := strings.TrimSuffix(filepath.Base(mainPath), ".jsonl")
 	dropSidecar := map[string]bool{
