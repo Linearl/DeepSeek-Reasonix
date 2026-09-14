@@ -115,6 +115,7 @@ func TestCompleteStepMissingVerificationListsReceiptIDs(t *testing.T) {
 	ledger := evidence.NewLedger()
 	known := recordReceiptID(t, ledger, evidence.Receipt{ToolName: "bash", Success: true, Command: "make check"})
 	ctx := evidence.WithLedger(context.Background(), ledger)
+	ctx = evidence.WithClosedLoopExecution(ctx)
 
 	_, err := completeStep{}.Execute(ctx, json.RawMessage(`{
 		"step":"x","result":"y",

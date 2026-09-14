@@ -444,12 +444,18 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 			event.RecordReadinessAudit(a.svc.sink, readiness.audit(evidence.ReadinessErrored, false))
 			a.pending.finalReadinessRecovery = true
 			a.persistFinalReadinessRecovery(readiness.missingIDs())
+			gaps := a.readinessOperationGaps()
+			reason := readiness.reason
+			if named := describeReadinessGaps(gaps); named != "" {
+				reason += "; " + named
+			}
 			return false, &FinalReadinessError{
 				Attempts:          1,
-				Reason:            readiness.reason,
+				Reason:            reason,
 				Missing:           readiness.missingIDs(),
 				ContinuationClass: readiness.continuationClass(),
 				ProgressKey:       readiness.progressSignature(),
+				Operations:        gaps,
 			}
 		case a.unattendedReadinessAdvisory(readiness):
 			// Nobody is watching, so the run keeps going - but the gap is reported,

@@ -220,3 +220,45 @@ func appendReceiptCitation(result string, rec evidence.Receipt) string {
 	}
 	return strings.TrimRight(result, "\n") + "\n[receipt " + rec.ID + "]"
 }
+
+// Readiness gap actions. They are identifiers the frontend maps to a control,
+// not sentences for the model to interpret.
+const (
+	readinessActionContinueVerification = "continue_verification"
+	readinessActionResolveWithUser      = "resolve_with_user"
+)
+
+// readinessOperationGaps reports the changes the host observed but could not
+// settle. It is the delivery gap list: one entry per real change, produced
+// once for the user to decide on rather than fed back to the model.
+func (a *Agent) readinessOperationGaps() []ReadinessOperationGap {
+	ops := a.operations()
+	if ops == nil {
+		return nil
+	}
+	var out []ReadinessOperationGap
+	for _, op := range append(ops.Unsettled(), ops.NeedsUser()...) {
+		action := readinessActionContinueVerification
+		if op.State == evidence.OperationNeedsUser {
+			action = readinessActionResolveWithUser
+		}
+		out = append(out, ReadinessOperationGap{OperationID: op.ID, Paths: op.TargetPaths, State: string(op.State), Action: action})
+	}
+	return out
+}
+
+// describeReadinessGaps renders the gap list for the one report the user sees.
+func describeReadinessGaps(gaps []ReadinessOperationGap) string {
+	if len(gaps) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(gaps))
+	for _, gap := range gaps {
+		part := gap.OperationID + " (" + gap.State + " → " + gap.Action + ")"
+		if len(gap.Paths) > 0 {
+			part += " " + strings.Join(gap.Paths, ", ")
+		}
+		parts = append(parts, part)
+	}
+	return "unsettled operations: " + strings.Join(parts, "; ")
+}
