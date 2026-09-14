@@ -256,6 +256,8 @@ export type LayoutState = {
   workspacePanelResizing: boolean;
   liveWorkspacePanelRenderWidth: number | null;
   liveTerminalHeight: number | null;
+  /** Height of the composer footer, reported by its ResizeObserver. */
+  footerHeight: number;
   setSidebarCollapsed: (collapsed: boolean) => void;
   setSidebarWidth: (width: number) => void;
   setRightDockTreeWidth: (width: number) => void;
@@ -272,6 +274,7 @@ export type LayoutState = {
   setWorkspacePanelResizing: (resizing: boolean) => void;
   setLiveWorkspacePanelRenderWidth: (width: number | null) => void;
   setLiveTerminalHeight: (height: number | null) => void;
+  setFooterHeight: (height: number) => void;
 };
 
 export const useLayoutStore = create<LayoutState>((set) => ({
@@ -291,6 +294,7 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   workspacePanelResizing: false,
   liveWorkspacePanelRenderWidth: null,
   liveTerminalHeight: null,
+  footerHeight: 0,
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   setSidebarWidth: (width) => set({ sidebarWidth: width }),
   setRightDockTreeWidth: (width) => set({ rightDockTreeWidth: width }),
@@ -307,6 +311,7 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   setWorkspacePanelResizing: (resizing) => set({ workspacePanelResizing: resizing }),
   setLiveWorkspacePanelRenderWidth: (width) => set({ liveWorkspacePanelRenderWidth: width }),
   setLiveTerminalHeight: (height) => set({ liveTerminalHeight: height }),
+  setFooterHeight: (height) => set((s) => (s.footerHeight === height ? s : { footerHeight: height })),
 }));
 
 export function applyLayoutStyleDefaults(style: "classic" | "workbench" | "creation"): void {

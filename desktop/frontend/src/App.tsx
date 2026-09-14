@@ -1183,8 +1183,8 @@ export default function App() {
   const [pendingPlanRevisionsByTab, setPendingPlanRevisionsByTab] = useState<Record<string, string>>({});
   const [invocationMetadataByTab, setInvocationMetadataByTab] = useState<Record<string, InvocationMetadataMap>>({});
   const pendingPlanRevisionSendingTabsRef = useRef(new Set<string>());
-  const [footerHeight, setFooterHeight] = useState(0);
-  const footerHeightRef = useRef(0);
+  const footerHeight = useLayoutStore((s) => s.footerHeight);
+  const setFooterHeight = useLayoutStore((s) => s.setFooterHeight);
   const footerRef = useRef<HTMLElement>(null);
   const activeTabIdRef = useRef(activeTabId);
   const commitThenSendRef = useRef<(
@@ -2217,8 +2217,8 @@ export default function App() {
       frame = window.requestAnimationFrame(() => {
         frame = 0;
         const next = Math.round(el.getBoundingClientRect().height);
-        if (Math.abs(footerHeightRef.current - next) < 2) return;
-        footerHeightRef.current = next;
+        // Read the committed value rather than a ref: the store is the one holder.
+        if (Math.abs(useLayoutStore.getState().footerHeight - next) < 2) return;
         setFooterHeight(next);
       });
     };
