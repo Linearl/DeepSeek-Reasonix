@@ -110,6 +110,49 @@ git ls-tree -r --name-only upstream/main-v2 -- <目标路径>/ | grep -i <关键
 
 `internal/rules`、`internal/safego`、`internal/jsonutil`、`internal/servepool`
 
+### 特性 × 设置入口 × 日志覆盖（2026-09-14 盘点）
+
+设置的 22 个 tab 定义在 `desktop/frontend/src/components/SettingsNavigation.tsx` 的
+`SETTINGS_NAV_TABS`。盘点结论：**28 项特性里只有 2 项有专属设置页、4 项有设置项，其余 22 项没有任何
+UI 入口** —— 所以对大部分 fork 特性，**日志是唯一的可观测手段**，这也是本轮加强日志的原因。
+
+| 特性 | 设置入口 | 日志覆盖（2026-09-14 后） |
+|---|---|---|
+| 本地服务器 / 远程网关 | ✅ 设置 → 连接 → **本地服务**（fork-only tab） | ✅ gateway access log + `feature=servepool` 生命周期 |
+| serve pool + 单入口网关 | ✅ 同上 | ✅ spawn / 空闲回收 / degraded 退避 |
+| 独立 CLI 网关（`serve-pool` 子命令） | ❌ CLI | ⚠️ 同上（无 GUI） |
+| 已授权写目录面板 | ✅ 设置 → 权限 → 本会话已授权写目录 | ⚠️ 待补（`allow_global` 命中） |
+| 用户全局公共写目录（`allow_global`） | ⚠️ 设置 → sandbox | ⚠️ 待补 |
+| 会话所有权移交 / `heldBy` | ❌ serve 命令 + HTTP | ✅ 已有 10 处（`session_ownership.go`） |
+| 多项目会话浏览（`GET /projects`） | ❌ HTTP | ❌ |
+| 图片上传端点（`POST /attachments`） | ❌ HTTP | ❌ |
+| 合并恢复副本 | ❌ 会话右键菜单 | ✅ 已有 |
+| 项目分组（#9222） | ❌ 项目树头部 | ❌ |
+| 颜色筛选与排序（#9221） | ❌ 项目树头部 | ❌ |
+| 搜索历史提问 | ❌ 长会话内 | ❌ |
+| 输入框草稿持久化 | ❌ 自动 | ❌ |
+| Topicbar 更多菜单 | ❌ | ❌ |
+| 子代理委派档位 | ⚠️ 设置 → 子代理 + 输入框「+」 | ❌ |
+| 子代理进度 TPS | ❌ | ❌ |
+| 计划任务 / 心跳 | ❌ 侧边栏「自动化」 | ⚠️ 部分 |
+| 桌面日志轮转 | ❌ | ✅ 本机制（4MB × 25） |
+| 只读轮次预算加倍 | ❌ 工具 | ⚠️ 部分 |
+| 每轮上下文预算行 | ❌ | ❌ |
+| 路径作用域规则 | ❌ | ❌ |
+| 乐观并发写入（`expected`） | ❌ 工具参数 | ⚠️ 部分 |
+| 高速模型执行模式 | ⚠️ 设置 → `settings.highSpeedModel` | ❌ |
+| 分片压缩并行化 | ❌ | ⚠️ 部分 |
+| 任务完成摘要 | ❌ | ❌ |
+| hook 作用域（`AppliesTo`） | ⚠️ 设置 → hooks | ⚠️ 部分 |
+| 推理档位协议扩展 | ⚠️ 设置 → 模型 | ⚠️ 部分 |
+| 历史分页 / 上翻加载 | ❌ | ✅ `tab switch timing` 落盘（`458cf74b6`），`feature=` 待补 |
+
+**日志约定（新增，2026-09-14）**
+
+1. **级别**：`REASONIX_DESKTOP_LOG=info|debug|trace`（默认 `info`）。设在环境变量而非设置项，因为要排查的失败往往发生在设置 UI 可用之前，且复现时用户本来就在改环境。
+2. **前缀**：fork 特性相关的日志带 `"feature", "<name>"` 字段（`servepool` / `history-paging` / `sandbox-allow-global` …），便于 grep，也便于与上游行为区分。
+3. **计时**：跨进程/跨 IPC 的阶段用 `desktop/tab_timing.go` 的 `ReportTabSwitchTiming` 落盘（前端 → 后端单向、fire-and-forget、低于阈值丢弃）。**加计时通道优先于读代码猜**——2026-09-14 切 tab 慢的定位就是靠它一次定死的。
+
 ## 数据兼容红线
 
 - 不修改 `*.jsonl`、`*.events.jsonl`（WAL）、`*.meta`、`*.context.json` schema。
