@@ -309,6 +309,10 @@ interface DesktopWindowState {
 export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindings, ProjectTreeOrganizationBindings, HistoryCatalogBindings, TaskCatalogBindings, BlankProjectBindings, QualityFloorBindings, SessionTitleBindings, ScrollDiagnosticBindings, RemoteProjectBindings, MCPAppBindings, PinnedContextBindings, FollowupBindings {
 // AppBindings is the hand-written React-to-Go contract. _CheckGeneratedBindings
 // catches generated methods missing here; update this interface and typecheck.
+  // Fire-and-forget diagnostic from the transcript controller: how long a switch-tab
+  // stage actually took. Breadcrumbs already measure these but never leave memory, so a
+  // slow switch could not be diagnosed from desktop.log (see desktop/tab_timing.go).
+  ReportTabSwitchTiming(tabID: string, stage: string, ms: number): Promise<void>;
   // Serve pool remote gateway (Settings → 集成与连接 → 本地服务器服务).
   ServePoolStatus(): Promise<{ enabled: boolean; running: boolean; bind: string; addr: string; port: number; token: string; listen: string }>;
   SetServePoolEnabled(enabled: boolean): Promise<void>;
@@ -2686,6 +2690,8 @@ function makeMockApp(): AppBindings {
   return {
     ...makeMockSessionCatalogBindings(cloneProjectTree),
     ...makeMockBlankProjectBindings(),
+    // Diagnostic only - the mock has no backend log to write to.
+    async ReportTabSwitchTiming() {},
     // Task 47 stubs: the desktop mock has no folder picker, so the picker reports a
     // cancel and the move applies straight to the in-memory tree.
     async PickProjectFolder(_currentRoot: string) {

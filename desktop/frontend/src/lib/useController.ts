@@ -2509,6 +2509,17 @@ function appendNoticeToState(s: State, level: "info" | "warn", text: string, det
 
 export { replayPendingPromptsForActiveTab } from "./promptReplay";
 
+// Breadcrumbs already measure the hydrate stages, but they only reach the in-memory crash
+// context - so a switch the user experiences as slow left nothing in desktop.log to
+// diagnose from. This publishes the same numbers to the backend log. Fire-and-forget on
+// purpose: a diagnostic that can fail a tab switch is worse than no diagnostic. The
+// backend drops anything under its threshold, so fast switches stay silent.
+function reportStageTiming(tabId: string, stage: string, ms: number): void {
+  // Optional call: test doubles and any backend predating this method simply do not have
+  // it, and a missing diagnostic must never be able to break a tab switch.
+  void app.ReportTabSwitchTiming?.(tabId, stage, ms)?.catch(() => {});
+}
+
 export function useController() {
   const statesRef = useRef<TabStates>(new Map());
   const liveListenersByTabRef = useRef(new Map<string, Set<() => void>>());
@@ -2911,7 +2922,9 @@ export function useController() {
         addBreadcrumb("tab.hydrate", `${label} start ${reason} ${tabId}`);
         try {
           const value = await load();
-          addBreadcrumb("tab.hydrate", `${label} done ${reason} ${tabId} ms=${Date.now() - startedAt}`);
+          const elapsed = Date.now() - startedAt;
+          addBreadcrumb("tab.hydrate", `${label} done ${reason} ${tabId} ms=${elapsed}`);
+          reportStageTiming(tabId, `${reason}:${label}`, elapsed);
           return value;
         } catch (err) {
           noteFailure(label, err);
@@ -2977,7 +2990,9 @@ export function useController() {
 
       if (!stillCurrent()) return;
       dispatchTo(tabId, { type: "hydrate_done" });
-      addBreadcrumb("tab.hydrate", `done ${reason} ${tabId} ms=${Date.now() - hydrateStartedAt}`);
+      const hydrateElapsed = Date.now() - hydrateStartedAt;
+      addBreadcrumb("tab.hydrate", `done ${reason} ${tabId} ms=${hydrateElapsed}`);
+      reportStageTiming(tabId, `${reason}:total`, hydrateElapsed);
 
       // Phase 2: local ancillary data. It stays inside the same in-flight
       // promise so duplicate ready/startup hydrations coalesce, but it runs
