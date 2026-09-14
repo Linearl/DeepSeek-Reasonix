@@ -157,8 +157,12 @@ func TestRecursiveRecoveryPreservesOuterCallBudget(t *testing.T) {
 }
 
 func TestMergeTreeRechecksBudgetBeforeNewRound(t *testing.T) {
+	// Room enough that the summary output budget is not the guard under test here; a
+	// 2000-token window tripped that one first, which is a different guard with its own
+	// test. Leaves exactly enough for one round of two, so the failure lands on the round
+	// boundary rather than before the first call.
 	prov := &extractStubProvider{reply: strings.Repeat("digest ", 320)}
-	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{ContextWindow: 2000}, event.Discard)
+	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{ContextWindow: 8000}, event.Discard)
 	run := newChunkedSummaryRun(a)
 	run.calls = maxChunkedSummaryCalls - 3
 	parts := []string{
