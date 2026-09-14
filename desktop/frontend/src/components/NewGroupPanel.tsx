@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 import { FolderInput, X } from "lucide-react";
 
 import { useT } from "../lib/i18n";
+import { reportFrontendLog } from "../lib/frontendLog";
 
 export function NewGroupPanel({
   open,
@@ -44,6 +45,9 @@ export function NewGroupPanel({
   const confirm = () => {
     const title = inputRef.current?.value.trim();
     if (!title) return;
+    // Groups are fork-only and their membership survives restarts, so recording creation is
+    // what makes "where did this group come from" answerable later.
+    reportFrontendLog("project-groups", "group created", `name=${title}`);
     onConfirm(title);
     onClose();
   };

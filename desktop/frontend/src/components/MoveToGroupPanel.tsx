@@ -8,6 +8,7 @@ import { FolderInput, FolderPlus, X } from "lucide-react";
 
 import { useT } from "../lib/i18n";
 import type { ProjectGroup } from "../lib/projectGroups";
+import { reportFrontendLog } from "../lib/frontendLog";
 
 export function MoveToGroupPanel({
   open,
@@ -59,6 +60,9 @@ export function MoveToGroupPanel({
   if (!open) return null;
 
   const pick = (groupId: string | null) => {
+    // The destination is what makes a mis-sorted tree explainable after the fact; the move
+    // itself is fork-only organisation with no other trace.
+    reportFrontendLog("project-groups", "project moved to group", `group=${groupId ?? "none"}`);
     onMove(groupId);
     onClose();
   };
