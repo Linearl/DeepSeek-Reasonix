@@ -1185,11 +1185,7 @@ func (c *Controller) finishGuardedTurn(err error, completion *guardedTurnComplet
 	}
 	done.Receipt = bindCompletionLogSources(done.Receipt, c.History())
 	done = c.applyTurnDoneProtocol(done, cancelRequested)
-	if pending := c.executor.PendingToolRecovery(); len(pending) > 0 {
-		done.Recovery = &event.RecoveryStatus{State: "recovery_required", Reason: "tool_effect_unconfirmed", RequiresUserDecision: true}
-	} else if c.executor.SilentToolRecovery() {
-		done.Recovery = &event.RecoveryStatus{State: "recovery_required", Reason: "silent_interruption"}
-	}
+	c.applyToolRecoveryTurnStatus(&done, completion)
 	var readErr *agent.IncompleteReadError
 	if errors.As(err, &readErr) {
 		done.ReadPause = readErr.Pause
