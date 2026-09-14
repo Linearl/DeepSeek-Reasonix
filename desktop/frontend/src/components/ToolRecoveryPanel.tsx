@@ -73,6 +73,7 @@ export function ToolRecoveryPanel({ tabId, sessionKey, running, refreshKey, onRe
         </details>
         {call.inspection_state && <p>{t(call.inspection_state === "present" || call.inspection_state === "postcondition_satisfied" ? "toolRecovery.present" : call.inspection_state === "absent_fenced" ? "toolRecovery.absent" : "toolRecovery.unproven")}</p>}
         {call.resolution === "reject" && <p>{t("toolRecovery.rejected")}</p>}
+        {!call.inspection_id && <p>{t("toolRecovery.inspectFirst")}</p>}
         <div className="notice-line__actions">
           <button type="button" className="btn btn--small" disabled={busy || running} onClick={() => void act(call, "inspect")}>{t("toolRecovery.inspect")}</button>
           <button type="button" className="btn btn--small" disabled={busy || running || !call.inspection_id} onClick={() => void act(call, "confirm")}>{t("toolRecovery.confirm")}</button>

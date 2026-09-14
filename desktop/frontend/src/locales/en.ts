@@ -7,6 +7,7 @@ export const en = {
   "toolRecovery.title": "Interrupted tool needs review",
   "toolRecovery.unknown": "Outcome not confirmed",
   "toolRecovery.details": "View action details",
+  "toolRecovery.inspectFirst": "Inspect the current state first: confirm and do-not-retry become available once it succeeds.",
   "toolRecovery.inspect": "Inspect current state",
   "toolRecovery.confirm": "I verified the effect happened",
   "toolRecovery.reject": "Do not retry",

@@ -8,6 +8,7 @@ export const zh: Record<DictKey, string> = {
   "toolRecovery.title": "中断的工具需要核实",
   "toolRecovery.unknown": "结果尚未确认",
   "toolRecovery.details": "查看操作详情",
+  "toolRecovery.inspectFirst": "请先点「检查当前状态」——核实成功后，「我已核实操作生效」与「不重试」才会可用。",
   "toolRecovery.inspect": "检查当前状态",
   "toolRecovery.confirm": "我已核实操作生效",
   "toolRecovery.reject": "不重试",

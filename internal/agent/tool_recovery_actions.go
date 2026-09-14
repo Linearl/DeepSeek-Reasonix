@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"reasonix/internal/event"
@@ -62,9 +63,14 @@ func (a *Agent) InspectToolRecovery(ctx context.Context, attempt string) (provid
 	if !a.Session().setToolRecoveryRecord(call.ID, r) {
 		return r, fmt.Errorf("recovery attempt changed")
 	}
+	// Best effort. The inspection itself has already succeeded and its id must stay usable:
+	// the panel disables confirm/reject without it, so rolling the record back here left a
+	// session that cannot write its log (an oversize one under replay protection) with no way
+	// to clear the gate at all - the buttons stayed grey and writes stayed blocked forever.
+	// A missing checkpoint costs bookkeeping, not correctness.
 	if err := event.EmitChecked(a.svc.sink, event.Event{Kind: event.Notice, RecoveryCheckpoint: true}); err != nil {
-		a.Session().setToolRecoveryRecord(call.ID, *call.Recovery)
-		return r, err
+		slog.Warn("agent: recovery inspection checkpoint not persisted; keeping the inspection valid",
+			"call", call.ID, "err", err)
 	}
 	return r, nil
 }
@@ -94,6 +100,14 @@ func (a *Agent) ResolveToolRecovery(attempt, inspection, action string) error {
 	if !a.Session().setToolRecoveryRecord(call.ID, r) {
 		return fmt.Errorf("recovery attempt changed")
 	}
+	// Unlike the inspection checkpoint, this one must not be best-effort: it is the record that
+	// the barrier was lifted. An unpersisted confirmation must not remove an effect barrier, so
+	// the in-memory state is rolled back and the error surfaced - pinned by
+	// TestToolRecoveryConfirmationRollsBackOnStorageFailure.
+	//
+	// The stranding that motivated the best-effort change is handled on the inspection side
+	// instead: it was the empty inspection_id, not a failed confirmation, that kept the panel's
+	// confirm/reject buttons disabled.
 	if err := event.EmitChecked(a.svc.sink, event.Event{Kind: event.Notice, RecoveryCheckpoint: true}); err != nil {
 		a.Session().setToolRecoveryRecord(call.ID, *call.Recovery)
 		return err

@@ -8,6 +8,7 @@ export const zhTW: Record<DictKey, string> = {
   "toolRecovery.title": "中斷的工具需要核實",
   "toolRecovery.unknown": "結果尚未確認",
   "toolRecovery.details": "查看操作詳情",
+  "toolRecovery.inspectFirst": "請先點「檢查目前狀態」——核實成功後，「我已核實操作生效」與「不重試」才會可用。",
   "toolRecovery.inspect": "檢查目前狀態",
   "toolRecovery.confirm": "我已核實操作生效",
   "toolRecovery.reject": "不重試",
