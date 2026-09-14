@@ -4807,9 +4807,16 @@ export function useController() {
           // Local rows are not the same thing as a history page. A tab that is mid-stream has
           // items - the streaming turn's own rows - but nothing behind them, so treating any
           // local item as "history is already here" skips the fetch outright and leaves the live
-          // turn floating over an empty transcript. Only rows that sit on top of a hydrated page
-          // (historyTotalTurns > 0) justify the skip.
-          skipHistory: hasLocalItems && hasReusableCachedTranscript(targetState, targetSessionPath, targetSessionRevision, targetSessionDigest),
+          // turn floating over an empty transcript.
+          //
+          // The test is whether a row came from a page, not historyTotalTurns: a tab hydrated
+          // under the old always-skip behaviour never had a page fetched, so its counter is
+          // still 0 while its rows are real history. Requiring the counter made the skip
+          // unreachable for exactly the tabs it exists for - every switch back refetched, which
+          // measured 2.0s in desktop.log (switch-tab:history 2025ms of a 2026ms total).
+          // History rows are the ones carrying historyTurn; live rows never do.
+          skipHistory: hasLocalItems && (hasReusableCachedTranscript(targetState, targetSessionPath, targetSessionRevision, targetSessionDigest) ||
+            Boolean(targetState?.items?.some((item) => item.kind === "user" && item.historyTurn != null && item.historyTurn > 0))),
           placeholderItems,
           surfacePolicy: preserveTargetSurface ? "preserve-current" : "replace-surface",
           preserveCachedHistory,
