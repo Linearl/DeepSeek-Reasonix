@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -445,11 +446,21 @@ func visionImageDataURL(path string) (string, error) {
 func readAttachmentImage(path string) (raw []byte, mime string, err error) {
 	clean, err := cleanAttachmentPath(path)
 	if err != nil {
+		slog.Warn("control: attachment path rejected", "path", path, "err", err)
 		return nil, "", err
 	}
 	info, err := os.Lstat(clean)
 	if err != nil {
 		return nil, "", err
+		// The path is relative, so it resolves against the process working directory - but the
+		// image was written relative to the *tab's* workspace. When those differ (a session open
+		// in another workspace while the agent runs in this one) the file is simply not there,
+		// and nothing used to say so: the stat failed and the error was returned unlogged, which
+		// is why this looked like "the image never arrived". Record both ends of the mismatch.
+		cwd, _ := os.Getwd()
+		resolved, _ := filepath.Abs(clean)
+		slog.Warn("control: attachment image not found",
+			"path", path, "cwd", cwd, "resolved", resolved, "err", err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
 		return nil, "", fmt.Errorf("attachment path must not be a symlink")
