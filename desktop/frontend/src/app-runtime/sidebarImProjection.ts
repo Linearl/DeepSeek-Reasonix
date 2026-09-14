@@ -1,6 +1,6 @@
 import { asArray } from "../lib/array";
 import type { Translator } from "../lib/i18n";
-import type { BotConnectionView, BotRuntimeStatusView, BotSettingsView, DesktopStartupSettingsView, SessionMeta, SettingsView } from "../lib/types";
+import type { BotConnectionView, BotRuntimeStatusView, BotSettingsView, SessionMeta } from "../lib/types";
 
 export type SidebarImPlatform = "qq" | "feishu" | "lark" | "weixin";
 type SidebarImStatus = "connected" | "disabled" | "pending" | "error" | "disconnected";
@@ -112,11 +112,11 @@ function sidebarImQQAdded(qq: BotSettingsView["qq"]): boolean {
   return Boolean(qq.enabled || qq.secretSet || qq.appId.trim());
 }
 
-function sidebarImQQStatus(bot: BotSettingsView, runtimeStatus: BotRuntimeStatusView | null | undefined, _nativeRuntime: boolean): SidebarImStatus {
+function sidebarImQQStatus(bot: BotSettingsView, runtimeStatus: BotRuntimeStatusView | null | undefined, nativeRuntime: boolean): SidebarImStatus {
   const appId = bot.qq.appId.trim();
   if (!bot.enabled || !bot.qq.enabled) return "disabled";
   if (!appId || !bot.qq.secretSet) return "disconnected";
-  if (!NATIVE_RUNTIME) return "pending";
+  if (!nativeRuntime) return "pending";
   if (!runtimeStatus) return "pending";
   const status = runtimeStatus.status.trim().toLowerCase();
   if (runtimeStatus.running && runtimeStatus.connections > 0 && status === "running") {
@@ -127,10 +127,10 @@ function sidebarImQQStatus(bot: BotSettingsView, runtimeStatus: BotRuntimeStatus
   return "pending";
 }
 
-function sidebarImQQConnection(bot: BotSettingsView, translate: Translator, runtimeStatus: BotRuntimeStatusView | null | undefined, _nativeRuntime: boolean): SidebarImConnection | null {
+function sidebarImQQConnection(bot: BotSettingsView, translate: Translator, runtimeStatus: BotRuntimeStatusView | null | undefined, nativeRuntime: boolean): SidebarImConnection | null {
   if (!sidebarImQQAdded(bot.qq)) return null;
   const remoteId = bot.qq.appId.trim();
-  const status = sidebarImQQStatus(bot, runtimeStatus, NATIVE_RUNTIME);
+  const status = sidebarImQQStatus(bot, runtimeStatus, nativeRuntime);
   const statusLabel = sidebarImStatusLabel(status, translate);
   const allowlistUsers = sidebarImAllowlistUsers(bot, "qq");
   const subtitleParts = [
@@ -162,10 +162,10 @@ export function sidebarImConnectionsFromBot(
   bot: BotSettingsView | null | undefined,
   translate: Translator,
   runtimeStatus: BotRuntimeStatusView | null | undefined,
-  _nativeRuntime: boolean,
+  nativeRuntime: boolean,
 ): SidebarImConnection[] {
   if (!bot) return [];
-  const qqConnection = sidebarImQQConnection(bot, translate, runtimeStatus, NATIVE_RUNTIME);
+  const qqConnection = sidebarImQQConnection(bot, translate, runtimeStatus, nativeRuntime);
   const connectionItems: SidebarImConnection[] = [];
   for (const connection of asArray(bot.connections)) {
     if (!isSidebarImConnection(connection)) continue;
@@ -278,12 +278,6 @@ export function sidebarImScopeLabel(connection: SidebarImConnection, translate: 
   if (connection.scope === "project") return translate("botDetail.scopeProject", { name: connection.workspaceRoot || "Project" });
   return translate("botDetail.scopeGlobal");
 }
-import { app } from "../lib/bridge";
-import { loadBotRuntimeStatus } from "./botRuntimeAdapter";
-import { useCallback, useState } from "react";
-
-// --- fork additions (moved out of App.tsx by task 38 batches B1a/B1b) ---
-
 
 export function sidebarImSessionLabel(connection: SidebarImConnection, translate: Translator): string {
   const target = sidebarImSessionTarget(connection);
@@ -311,41 +305,4 @@ export function sidebarImAccessStatusClass(connection: SidebarImConnection): str
   if (connection.allowAll || connection.allowlistMatched) return "ok";
   if (!connection.remoteId) return "muted";
   return "warn";
-}
-
-/**
- * useSidebarImOwner owns the sidebar IM projection state (task 38 batch B1b).
- * The two loaders differ only in where the bot settings come from - a fresh
- * startup read versus a settings object the caller already has.
- */
-// The desktop bridge is installed before React mounts and never changes, so this is a
-// module-level fact rather than per-render state. That is what lets the callbacks below
-// read it without listing it as a dependency — as a hook-local value it would churn on
-// every render, and eslint was right to flag the missing entry.
-const NATIVE_RUNTIME = typeof window === "undefined" || Boolean(window.runtime);
-
-export function useSidebarImOwner(t: Translator) {
-  const [connections, setConnections] = useState<SidebarImConnection[]>([]);
-  const [topicSources, setTopicSources] = useState<Record<string, SidebarImTopicSource>>({});
-  const [detailConnectionId, setDetailConnectionId] = useState("");
-
-  const reload = useCallback(async () => {
-    const [settings, runtimeStatus] = await Promise.all([
-      app.DesktopStartupSettings(),
-      loadBotRuntimeStatus(),
-    ]);
-    setConnections(sidebarImConnectionsFromBot(settings.bot, t, runtimeStatus, NATIVE_RUNTIME));
-    setTopicSources(sidebarImTopicSourcesFromBot(settings.bot, t));
-  }, [t]);
-
-  const refreshFromSettings = useCallback(
-    async (settings: Pick<SettingsView | DesktopStartupSettingsView, "bot">) => {
-      const runtimeStatus = await loadBotRuntimeStatus();
-      setConnections(sidebarImConnectionsFromBot(settings.bot, t, runtimeStatus, NATIVE_RUNTIME));
-      setTopicSources(sidebarImTopicSourcesFromBot(settings.bot, t));
-    },
-    [t],
-  );
-
-  return { connections, setConnections, topicSources, setTopicSources, detailConnectionId, setDetailConnectionId, reload, refreshFromSettings };
 }
