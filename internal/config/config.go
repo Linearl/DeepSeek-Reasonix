@@ -21,6 +21,7 @@ import (
 	fileencoding "reasonix/internal/fileutil/encoding"
 	"reasonix/internal/netclient"
 	"reasonix/internal/provider"
+	"log/slog"
 )
 
 var validSkillName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$`)
@@ -1212,6 +1213,13 @@ func (c *Config) GlobalAllowRoots() []string {
 		if d = c.expandVars(d); d != "" {
 			roots = append(roots, d)
 		}
+	}
+	// Debug and only when non-empty: this runs while building every sandbox spec, and the
+	// interesting case is rare. It is the one place that answers "why did this write skip the
+	// approval prompt" - roots here are honored for every project without asking.
+	if len(roots) > 0 {
+		slog.Debug("global allow roots honored without approval",
+			"feature", "sandbox-allow-global", "roots", len(roots), "dirs", strings.Join(roots, ","))
 	}
 	return roots
 }

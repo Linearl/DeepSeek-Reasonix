@@ -12,6 +12,7 @@ import (
 	"reasonix/internal/memory"
 	"reasonix/internal/planmode"
 	"reasonix/internal/skill"
+	"log/slog"
 )
 
 // InvocationRequest is an explicit user-selected Skill or Subagent entity.
@@ -187,9 +188,15 @@ func (c *Controller) composeWithGoal(
 	if plan {
 		text = PlanModeMarker + "\n\n" + text
 	}
-	if guidance := agent.SubagentPolicyGuidance(subagentPolicy); guidance != "" {
+	guidance := agent.SubagentPolicyGuidance(subagentPolicy)
+	if guidance != "" {
 		text = guidance + "\n\n" + text
 	}
+	// Debug: the policy is per-turn, and "light" injects nothing at all - so the only way to
+	// tell "deliberately light" from "the setting did not reach here" is to record the resolved
+	// tier regardless of whether guidance was produced. Fork-only.
+	slog.Debug("subagent policy resolved",
+		"feature", "subagent-policy", "policy", string(subagentPolicy), "guidance", guidance != "")
 	text = agent.WithResponseLanguage(text, responseLanguage)
 	text = agent.WithReasoningLanguageForSource(text, reasoningLanguage, source)
 
