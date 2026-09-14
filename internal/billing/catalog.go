@@ -7,12 +7,17 @@ import (
 
 const (
 	ScheduleDeepSeekV4August2026 = "deepseek-v4-2026-08-17"
+	// ScheduleDeepSeekV4Flash2026September is the 2026-09-10 Flash price cut.
+	ScheduleDeepSeekV4Flash2026September = "deepseek-v4-2026-09-10"
 	RateBandPeak                 = "peak"
 	RateBandOffPeak              = "off_peak"
 	RateBandMixed                = "mixed"
 )
 
 var deepSeekV4August2026EffectiveAt = time.Date(2026, time.August, 16, 16, 0, 0, 0, time.UTC)
+
+// deepSeekV4Flash2026SeptemberEffectiveAt is 2026-09-10 12:00 Beijing time.
+var deepSeekV4Flash2026SeptemberEffectiveAt = time.Date(2026, time.September, 10, 4, 0, 0, 0, time.UTC)
 
 // CatalogEntry is one official list price for a model in a billing currency.
 type CatalogEntry struct {
@@ -61,6 +66,20 @@ func OfficialCatalog() []CatalogEntry {
 		{Provider: "deepseek", Model: "deepseek-v4-flash-vision-exp", Currency: "CNY", CacheHit: 0.05, Input: 1.5, Output: 4.5, ScheduleID: ScheduleDeepSeekV4August2026, RateBand: RateBandOffPeak, EffectiveFrom: cutover, DocURL: DocDeepSeekPricing, BillingMode: BillingModePAYG},
 		{Provider: "deepseek", Model: "deepseek-v4-pro", Currency: "CNY", CacheHit: 0.30, Input: 9, Output: 27, ScheduleID: ScheduleDeepSeekV4August2026, RateBand: RateBandPeak, EffectiveFrom: cutover, DocURL: DocDeepSeekPricing, BillingMode: BillingModePAYG},
 		{Provider: "deepseek", Model: "deepseek-v4-pro", Currency: "CNY", CacheHit: 0.15, Input: 4.5, Output: 13.5, ScheduleID: ScheduleDeepSeekV4August2026, RateBand: RateBandOffPeak, EffectiveFrom: cutover, DocURL: DocDeepSeekPricing, BillingMode: BillingModePAYG},
+		// V4.1 Flash (2026-09-10): the price cut covers the new id and the ids the
+		// vendor still routes there. deepseek-v4-pro keeps its August rows.
+		{Provider: "deepseek", Model: "deepseek-flash", Currency: "CNY", CacheHit: 0.04, Input: 2, Output: 8, ScheduleID: ScheduleDeepSeekV4Flash2026September, RateBand: RateBandPeak, EffectiveFrom: deepSeekV4Flash2026SeptemberEffectiveAt, DocURL: DocDeepSeekPricing, BillingMode: BillingModePAYG},
+		{Provider: "deepseek", Model: "deepseek-flash", Currency: "CNY", CacheHit: 0.02, Input: 1, Output: 4, ScheduleID: ScheduleDeepSeekV4Flash2026September, RateBand: RateBandOffPeak, EffectiveFrom: deepSeekV4Flash2026SeptemberEffectiveAt, DocURL: DocDeepSeekPricing, BillingMode: BillingModePAYG},
+		{Provider: "deepseek", Model: "deepseek-flash", Currency: "USD", CacheHit: 0.006, Input: 0.3, Output: 1.2, ScheduleID: ScheduleDeepSeekV4Flash2026September, RateBand: RateBandPeak, EffectiveFrom: deepSeekV4Flash2026SeptemberEffectiveAt, DocURL: DocDeepSeekPricing, BillingMode: BillingModePAYG},
+		{Provider: "deepseek", Model: "deepseek-flash", Currency: "USD", CacheHit: 0.003, Input: 0.15, Output: 0.6, ScheduleID: ScheduleDeepSeekV4Flash2026September, RateBand: RateBandOffPeak, EffectiveFrom: deepSeekV4Flash2026SeptemberEffectiveAt, DocURL: DocDeepSeekPricing, BillingMode: BillingModePAYG},
+		{Provider: "deepseek", Model: "deepseek-v4-flash", Currency: "CNY", CacheHit: 0.04, Input: 2, Output: 8, ScheduleID: ScheduleDeepSeekV4Flash2026September, RateBand: RateBandPeak, EffectiveFrom: deepSeekV4Flash2026SeptemberEffectiveAt, DocURL: DocDeepSeekPricing, BillingMode: BillingModePAYG},
+		{Provider: "deepseek", Model: "deepseek-v4-flash", Currency: "CNY", CacheHit: 0.02, Input: 1, Output: 4, ScheduleID: ScheduleDeepSeekV4Flash2026September, RateBand: RateBandOffPeak, EffectiveFrom: deepSeekV4Flash2026SeptemberEffectiveAt, DocURL: DocDeepSeekPricing, BillingMode: BillingModePAYG},
+		{Provider: "deepseek", Model: "deepseek-v4-flash", Currency: "USD", CacheHit: 0.006, Input: 0.3, Output: 1.2, ScheduleID: ScheduleDeepSeekV4Flash2026September, RateBand: RateBandPeak, EffectiveFrom: deepSeekV4Flash2026SeptemberEffectiveAt, DocURL: DocDeepSeekPricing, BillingMode: BillingModePAYG},
+		{Provider: "deepseek", Model: "deepseek-v4-flash", Currency: "USD", CacheHit: 0.003, Input: 0.15, Output: 0.6, ScheduleID: ScheduleDeepSeekV4Flash2026September, RateBand: RateBandOffPeak, EffectiveFrom: deepSeekV4Flash2026SeptemberEffectiveAt, DocURL: DocDeepSeekPricing, BillingMode: BillingModePAYG},
+		{Provider: "deepseek", Model: "deepseek-v4-flash-vision-exp", Currency: "CNY", CacheHit: 0.04, Input: 2, Output: 8, ScheduleID: ScheduleDeepSeekV4Flash2026September, RateBand: RateBandPeak, EffectiveFrom: deepSeekV4Flash2026SeptemberEffectiveAt, DocURL: DocDeepSeekPricing, BillingMode: BillingModePAYG},
+		{Provider: "deepseek", Model: "deepseek-v4-flash-vision-exp", Currency: "CNY", CacheHit: 0.02, Input: 1, Output: 4, ScheduleID: ScheduleDeepSeekV4Flash2026September, RateBand: RateBandOffPeak, EffectiveFrom: deepSeekV4Flash2026SeptemberEffectiveAt, DocURL: DocDeepSeekPricing, BillingMode: BillingModePAYG},
+		{Provider: "deepseek", Model: "deepseek-v4-flash-vision-exp", Currency: "USD", CacheHit: 0.006, Input: 0.3, Output: 1.2, ScheduleID: ScheduleDeepSeekV4Flash2026September, RateBand: RateBandPeak, EffectiveFrom: deepSeekV4Flash2026SeptemberEffectiveAt, DocURL: DocDeepSeekPricing, BillingMode: BillingModePAYG},
+		{Provider: "deepseek", Model: "deepseek-v4-flash-vision-exp", Currency: "USD", CacheHit: 0.003, Input: 0.15, Output: 0.6, ScheduleID: ScheduleDeepSeekV4Flash2026September, RateBand: RateBandOffPeak, EffectiveFrom: deepSeekV4Flash2026SeptemberEffectiveAt, DocURL: DocDeepSeekPricing, BillingMode: BillingModePAYG},
 		{Provider: "deepseek", Model: "deepseek-v4-flash", Currency: "USD", CacheHit: 0.014, Input: 0.44, Output: 1.32, ScheduleID: ScheduleDeepSeekV4August2026, RateBand: RateBandPeak, EffectiveFrom: cutover, DocURL: DocDeepSeekPricing, BillingMode: BillingModePAYG},
 		{Provider: "deepseek", Model: "deepseek-v4-flash", Currency: "USD", CacheHit: 0.007, Input: 0.22, Output: 0.66, ScheduleID: ScheduleDeepSeekV4August2026, RateBand: RateBandOffPeak, EffectiveFrom: cutover, DocURL: DocDeepSeekPricing, BillingMode: BillingModePAYG},
 		{Provider: "deepseek", Model: "deepseek-v4-flash-vision-exp", Currency: "USD", CacheHit: 0.014, Input: 0.44, Output: 1.32, ScheduleID: ScheduleDeepSeekV4August2026, RateBand: RateBandPeak, EffectiveFrom: cutover, DocURL: DocDeepSeekPricing, BillingMode: BillingModePAYG},
@@ -128,6 +147,20 @@ func DeepSeekRateBand(at time.Time) string {
 
 // ResolveScheduledRate resolves an official occurrence-time rate. The schedule
 // id must come from resolved official-provider config; a model name is not enough.
+
+// deepSeekScheduleEffectiveAt reports when a DeepSeek price schedule took effect.
+// Adding a generation here is what makes its rows resolvable; both generations share
+// the same peak/off-peak clock, so this is the only place a new schedule needs naming.
+func deepSeekScheduleEffectiveAt(scheduleID string) (time.Time, bool) {
+	switch scheduleID {
+	case ScheduleDeepSeekV4August2026:
+		return deepSeekV4August2026EffectiveAt, true
+	case ScheduleDeepSeekV4Flash2026September:
+		return deepSeekV4Flash2026SeptemberEffectiveAt, true
+	}
+	return time.Time{}, false
+}
+
 func ResolveScheduledRate(provider, model, currency, billingMode, scheduleID string, at time.Time) (ResolvedRate, bool) {
 	if strings.TrimSpace(scheduleID) == "" {
 		return ResolvedRate{}, false
@@ -137,8 +170,12 @@ func ResolveScheduledRate(provider, model, currency, billingMode, scheduleID str
 	} else {
 		at = at.UTC()
 	}
+	effectiveAt, knownSchedule := deepSeekScheduleEffectiveAt(scheduleID)
+	if !knownSchedule {
+		return ResolvedRate{}, false
+	}
 	band := ""
-	if scheduleID == ScheduleDeepSeekV4August2026 && !at.Before(deepSeekV4August2026EffectiveAt) {
+	if !at.Before(effectiveAt) {
 		band = DeepSeekRateBand(at)
 	}
 	for _, e := range OfficialCatalog() {
@@ -155,8 +192,19 @@ func ResolveScheduledRate(provider, model, currency, billingMode, scheduleID str
 // LookupCatalog finds the preferred current official entry. Scheduled models
 // expose their peak row as the stable config anchor.
 func LookupCatalog(provider, model, currency, billingMode string) (CatalogEntry, bool) {
+	return lookupCatalogIn("", provider, model, currency, billingMode)
+}
+
+// lookupCatalogIn is the schedule-aware search. A non-empty scheduleID restricts the
+// match to that price table, which is what anchor verification needs: once prices
+// change, one model appears in several schedules, and matching by value alone would
+// return whichever row happens to sit first in the catalog.
+func lookupCatalogIn(scheduleID, provider, model, currency, billingMode string) (CatalogEntry, bool) {
 	var fallback CatalogEntry
 	for _, e := range OfficialCatalog() {
+		if scheduleID != "" && e.ScheduleID != scheduleID {
+			continue
+		}
 		if !catalogIdentityMatches(e, provider, model, currency, billingMode) {
 			continue
 		}
@@ -175,6 +223,9 @@ func LookupCatalog(provider, model, currency, billingMode string) (CatalogEntry,
 func LookupCatalogAt(provider, model, currency, billingMode, scheduleID, rateBand string, at time.Time) (CatalogEntry, bool) {
 	for _, e := range OfficialCatalog() {
 		if e.ScheduleID != scheduleID || e.RateBand != rateBand || !catalogEntryEffective(e, at) {
+			continue
+		}
+		if scheduleID != "" && e.ScheduleID != scheduleID {
 			continue
 		}
 		if catalogIdentityMatches(e, provider, model, currency, billingMode) {
@@ -209,7 +260,7 @@ func MatchesCatalog(provider, model string, rates RateCard) (CatalogEntry, bool)
 // MatchesScheduleAnchor verifies that configured rates are the current peak
 // anchor. Custom and off-peak-looking static prices stay static.
 func MatchesScheduleAnchor(provider, model, scheduleID string, rates RateCard) bool {
-	entry, ok := LookupCatalog(provider, model, rates.Currency, BillingModePAYG)
+	entry, ok := lookupCatalogIn(scheduleID, provider, model, rates.Currency, BillingModePAYG)
 	return ok && entry.ScheduleID == scheduleID && entry.RateBand == RateBandPeak &&
 		entry.CacheHit == rates.CacheHit && entry.Input == rates.Input && entry.Output == rates.Output
 }
