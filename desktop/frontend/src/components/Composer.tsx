@@ -3073,7 +3073,16 @@ export function Composer({
   };
 
   useEffect(() => {
-    const onResize = () => setComposerHeight((height) => (height === null ? null : clampComposerHeight(height)));
+	// A hidden or minimised window reports a collapsed innerHeight, so the clamp's ceiling
+	// collapses with it: a remembered height gets flattened to the minimum and the save effect
+	// then persists that. Keep the height while the ceiling cannot hold it, and let a later
+	// real resize clamp it normally - a genuinely small window still reaches that path once its
+	// viewport is large enough to express a ceiling above the minimum.
+	const onResize = () => setComposerHeight((height) => {
+		if (height === null) return null;
+		if (composerMaxHeight() <= COMPOSER_MIN_HEIGHT && height > COMPOSER_MIN_HEIGHT) return height;
+		return clampComposerHeight(height);
+	});
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
