@@ -831,3 +831,52 @@ func TestSessionContentModTimeTracksEventLog(t *testing.T) {
 		t.Fatalf("SessionContentModTime = %v, want newer than stale anchor %v", got, anchorInfo.ModTime())
 	}
 }
+
+// The repair routine runs before the loader that adapts its byte limit, so it used to be the
+// one that refused an oversize log - and because the repair is what folds a log back to a
+// normal size, refusing it meant the session could never be opened again. A log 0.08% over the
+// default budget was permanently unopenable.#
+//
+// The budget is shrunk here rather than a 128 MiB log written: the behaviour under test is the
+// repair path's limit, not the constant that happens to ship.
+func TestRepairSessionEventLogAdaptsToOversizeLog(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	sessionWithTurns(t, path, 2)
+
+	logPath := store.SessionEventLog(path)
+	intact, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read log: %v", err)
+	}
+	if len(intact) == 0 {
+		t.Fatal("expected a non-empty event log")
+	}
+
+	original := defaultSessionReplayLimits
+	defaultSessionReplayLimits.maxBytes = int64(len(intact)) / 2
+	t.Cleanup(func() { defaultSessionReplayLimits = original })
+
+	// Over budget now. Before the fix this returned ErrSessionReplayLimitExceeded.
+	loaded, err := LoadSession(path)
+	if err != nil {
+		t.Fatalf("LoadSession with an over-budget event log: %v", err)
+	}
+	if len(loaded.Messages) == 0 {
+		t.Fatal("session loaded with no messages")
+	}
+}
+
+// The other half of the same contract: adapting the byte limit must not disable the record and
+// message budgets, which exist so a small file that expands into a huge graph is still refused.
+func TestRepairPathKeepsRecordBudgetUnderAdaptiveBytes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	sessionWithTurns(t, path, 2)
+
+	original := defaultSessionReplayLimits
+	defaultSessionReplayLimits.maxRecords = 1
+	t.Cleanup(func() { defaultSessionReplayLimits = original })
+
+	if _, err := LoadSession(path); err == nil {
+		t.Fatal("expected the record budget to still refuse this log")
+	}
+}

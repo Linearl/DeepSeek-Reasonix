@@ -425,7 +425,14 @@ func repairSessionEventLogTail(sessionPath string) error {
 	if idx, err := readSessionEventIndex(sessionPath); err == nil && idx != nil && idx.LogSize == info.Size() {
 		return nil
 	}
-	replay, err := replaySessionEventLog(path)
+	// Adaptive limits here too. This path runs *before* the loader that already adapts
+	// (limitsForSessionLog), so it was the one that refused an oversize log first - the
+	// session could not be opened at all, and the repair that rewrites the log to a normal
+	// size never got the chance to run. A log just over the default byte budget was
+	// therefore permanently unopenable even though the loader had a fix for exactly that
+	// (task 104). The record, message and collection caps still apply, and the adaptive
+	// allowance keeps its own 1 GiB ceiling, so a damaged log still cannot exhaust memory.
+	replay, err := replaySessionEventLogWithLimits(path, limitsForSessionLog(path, defaultSessionReplayLimits), nil)
 	if err != nil {
 		return err
 	}

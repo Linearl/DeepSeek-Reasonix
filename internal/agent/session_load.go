@@ -55,6 +55,13 @@ func loadSessionTranscript(ctx context.Context, sessionPath string, limits sessi
 	if err := ctx.Err(); err != nil {
 		return sessionLoadResult{}, err
 	}
+	// Adapt the byte budget here rather than at each caller. The budget exists so a damaged
+	// log cannot exhaust memory while decoding into a larger graph, and the file size is known
+	// before decoding - so it can be sized to the file instead of refusing it. The DAG replay
+	// already adapted internally, but this entry point did not, so a log just over the default
+	// budget was still refused on the non-DAG path (task 104). The record, message and
+	// collection caps are untouched, and the adaptive allowance keeps its own 1 GiB ceiling.
+	limits = limitsForSessionLog(sessionPath, limits)
 	probe, err := probeSessionEventLogWithLimits(sessionPath, limits)
 	if err != nil {
 		return sessionLoadResult{}, err
