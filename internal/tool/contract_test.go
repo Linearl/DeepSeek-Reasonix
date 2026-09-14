@@ -69,7 +69,9 @@ var acceptsDefaultSnip = map[string]bool{
 	"move_file":              true,
 	"multi_edit":             true,
 	"notebook_edit":          true,
+	"restart_and_update":     true, // one-line outcome; the restart happens after the call returns
 	"todo_write":             true,
+	"view_image":             true, // visual summary, not a text body a head/tail split would help
 	"update_goal":            true,
 	"wait":                   true,
 	"write_file":             true,

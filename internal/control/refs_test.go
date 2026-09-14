@@ -232,7 +232,11 @@ func TestResolveRefsAttachmentKinds(t *testing.T) {
 	})
 
 	line := "check @" + ymlRef + " @" + zipRef + " @" + pngRef
-	block, errs := (&Controller{}).ResolveRefs(context.Background(), line)
+	// Pin the vision switch instead of letting a zero-value Controller resolve it from the
+	// machine's own config: the note text below asserts the text-only wording, and which
+	// branch runs must not depend on whichever model this checkout happens to default to.
+	visionOff := false
+	block, errs := (&Controller{frozenImageInput: &visionOff}).ResolveRefs(context.Background(), line)
 	if len(errs) != 0 {
 		t.Fatalf("ResolveRefs errors = %v", errs)
 	}

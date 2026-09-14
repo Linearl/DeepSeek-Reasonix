@@ -173,7 +173,7 @@ func TestGoalNumericPauseMigrationWriteFailureRollsBackMemory(t *testing.T) {
 func TestGoalCompletionAndRealBlockedStillTerminate(t *testing.T) {
 	complete := &goalMachine{goal: "ship", status: GoalStatusRunning, turnsLimit: unlimitedGoalTurns}
 	res := complete.advance(goalAdvanceInput{report: &goalTurnReport{status: GoalStatusComplete}, readiness: agent.ReadinessResult{Ready: true}})
-	if res.notice != goalCompleteNotice || complete.status != GoalStatusComplete {
+	if !strings.HasPrefix(res.notice, goalCompleteNotice) || complete.status != GoalStatusComplete {
 		t.Fatalf("complete result=%+v runtime=%+v", res, complete.runtimeView())
 	}
 

@@ -25,7 +25,9 @@ func TestRepeatedCompleteWithOnlyProjectCheckFinishes(t *testing.T) {
 		t.Fatalf("first intercept = %q, want the unverified escape hatch", first.intercept)
 	}
 	second := g.advance(in)
-	if second.cont || g.status != GoalStatusComplete || second.notice != goalCompleteNotice {
+	// goalCompleteNotice is the prefix: appendGoalStopReport (goal.go:665) appends the run's
+	// spend (" — turns N") once the status is terminal.
+	if second.cont || g.status != GoalStatusComplete || !strings.HasPrefix(second.notice, goalCompleteNotice) {
 		t.Fatalf("second identical check-only complete should finish: result=%+v status=%s", second, g.status)
 	}
 }

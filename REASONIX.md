@@ -107,9 +107,23 @@ and a permanently red test swallows the next real regression.
 Confirm the failure is genuinely pre-existing first (`git stash` your change and
 re-run); that check decides the framing, not whether the failure gets fixed.
 
-### Current list (2026-09-14) — empty
+### Current list (2026-09-14)
 
-Empty, and kept empty. Six tests were red on this branch; all six are green as of 2026-09-14,
+Five failures found by `go test ./internal/...` after the task-64 port, all confirmed
+pre-existing by stashing the port and re-running. They are not caused by the port, and they are
+still not allowed to stay red.
+
+| Test | Package | Diagnosis |
+|---|---|---|
+| `TestBuiltinToolContractDocumentation` | `internal/tool` | **fork-only tool never registered** — `restart_and_update` (task 81) and `view_image` have no table row or read-only flag in the contract docs |
+| `TestEveryBuiltinDeclaresSnipStance` | `internal/tool` | **same two tools** — neither implements `tool.SnipHinter` nor is listed in `acceptsDefaultSnip`, so they silently take a generic default (the test exists to catch exactly that) |
+| `TestGoalCompletionAndRealBlockedStillTerminate` | `internal/control` | see below |
+| `TestRepeatedCompleteWithOnlyProjectCheckFinishes` | `internal/control` | see below |
+| `TestResolveRefsAttachmentKinds` | `internal/control` | see below |
+
+The previous six were diagnosed to verdicts and closed (all green as of 2026-09-14); their
+table is kept below for the record.
+ Six tests were red on this branch; all six are green as of 2026-09-14,
 each diagnosed to a verdict rather than carried:
 
 | Test | Package | Verdict | Fixed in |
