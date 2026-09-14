@@ -123,29 +123,29 @@ UI 入口** —— 所以对大部分 fork 特性，**日志是唯一的可观�
 | 独立 CLI 网关（`serve-pool` 子命令） | ❌ CLI | ⚠️ 同上（无 GUI） |
 | 已授权写目录面板 | ✅ 设置 → 权限 → 本会话已授权写目录 | ⚠️ 待补（`allow_global` 命中） |
 | 用户全局公共写目录（`allow_global`） | ⚠️ 设置 → sandbox | ⚠️ 待补 |
-| 会话所有权移交 / `heldBy` | ❌ serve 命令 + HTTP | ✅ 已有 10 处（`session_ownership.go`） |
+| 会话所有权移交 / `heldBy` | ❌ serve 命令 + HTTP | ✅ `session_ownership.go` 原有 10 处 + `/sessions` 每响应一条汇总（`feature=session-ownership`） |
 | 多项目会话浏览（`GET /projects`） | ❌ HTTP | ❌ |
 | 图片上传端点（`POST /attachments`） | ❌ HTTP | ❌ |
 | 合并恢复副本 | ❌ 会话右键菜单 | ✅ 已有 |
-| 项目分组（#9222） | ❌ 项目树头部 | ❌ |
-| 颜色筛选与排序（#9221） | ❌ 项目树头部 | ❌ |
+| 项目分组（#9222） | ❌ 项目树头部 | ✅ 创建 / 移动 / 折叠展开（`feature=project-groups`；折叠状态跨重启持久化，故必须留痕） |
+| 颜色筛选与排序（#9221） | ❌ 项目树头部 | ✅ 筛选应用/清空 + 结果可见数（`feature=project-colour-filter`） |
 | 搜索历史提问 | ❌ 长会话内 | ❌ |
-| 输入框草稿持久化 | ❌ 自动 | ❌ |
+| 输入框草稿持久化 | ❌ 自动 | ✅ 三处静默失败：读不出 / 写失败（降级内存）/ 超 256KiB 未持久化（`feature=draft`） |
 | Topicbar 更多菜单 | ❌ | ❌ |
 | 子代理委派档位 | ⚠️ 设置 → 子代理 + 输入框「+」 | ❌ |
 | 子代理进度 TPS | ❌ | ❌ |
 | 计划任务 / 心跳 | ❌ 侧边栏「自动化」 | ⚠️ 部分 |
 | 桌面日志轮转 | ❌ | ✅ 本机制（4MB × 25） |
-| 只读轮次预算加倍 | ❌ 工具 | ⚠️ 部分 |
-| 每轮上下文预算行 | ❌ | ❌ |
+| 只读轮次预算加倍 | ❌ 工具 | ✅ 每次扩展记 rounds/remaining（`feature=research-budget`） |
+| 每轮上下文预算行 | ❌ | ✅ Debug 级，含 advisory 标志（`feature=context-budget`） |
 | 路径作用域规则 | ❌ | ❌ |
 | 乐观并发写入（`expected`） | ❌ 工具参数 | ⚠️ 部分 |
 | 高速模型执行模式 | ⚠️ 设置 → `settings.highSpeedModel` | ❌ |
-| 分片压缩并行化 | ❌ | ⚠️ 部分 |
+| 分片压缩并行化 | ❌ | ✅ 每次运行的形状：chunks / concurrency / minCalls / budget（`feature=compaction-parallel`） |
 | 任务完成摘要 | ❌ | ❌ |
 | hook 作用域（`AppliesTo`） | ⚠️ 设置 → hooks | ⚠️ 部分 |
 | 推理档位协议扩展 | ⚠️ 设置 → 模型 | ⚠️ 部分 |
-| 历史分页 / 上翻加载 | ❌ | ✅ `tab switch timing` 落盘（`458cf74b6`），`feature=` 待补 |
+| 历史分页 / 上翻加载 | ❌ | ✅ 计时落盘（`458cf74b6`）+ 三种失败原因与快切命中（`feature=history-paging`，`3accbc984`） |
 
 **日志约定（新增，2026-09-14）**
 
