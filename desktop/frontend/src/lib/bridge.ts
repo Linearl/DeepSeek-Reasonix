@@ -313,6 +313,9 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   // stage actually took. Breadcrumbs already measure these but never leave memory, so a
   // slow switch could not be diagnosed from desktop.log (see desktop/tab_timing.go).
   ReportTabSwitchTiming(tabID: string, stage: string, ms: number): Promise<void>;
+  // General form of the same channel: one line per fork-feature event the frontend wants in
+  // desktop.log. The fork's features are mostly frontend-side and had no way to reach the log.
+  ReportFrontendLog(feature: string, level: string, message: string, detail: string): Promise<void>;
   // Serve pool remote gateway (Settings → 集成与连接 → 本地服务器服务).
   ServePoolStatus(): Promise<{ enabled: boolean; running: boolean; bind: string; addr: string; port: number; token: string; listen: string }>;
   SetServePoolEnabled(enabled: boolean): Promise<void>;
@@ -2692,6 +2695,7 @@ function makeMockApp(): AppBindings {
     ...makeMockBlankProjectBindings(),
     // Diagnostic only - the mock has no backend log to write to.
     async ReportTabSwitchTiming() {},
+    async ReportFrontendLog() {},
     // Task 47 stubs: the desktop mock has no folder picker, so the picker reports a
     // cancel and the move applies straight to the in-memory tree.
     async PickProjectFolder(_currentRoot: string) {

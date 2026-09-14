@@ -16,6 +16,35 @@ const slowTabSwitchLogMs = 150
 //
 // Deliberately one-way and fire-and-forget: a diagnostic that can fail a tab switch is
 // worse than no diagnostic. The threshold keeps a fast switch silent.
+// ReportFrontendLog is the general form of the timing channel below: one line per
+// fork-feature event the frontend wants visible in desktop.log.
+//
+// The fork's features are mostly frontend-side (project grouping, colour filtering, question
+// search, draft persistence, paging) and had no way to reach the log at all - a frontend bug
+// left nothing behind. This is that channel. feature= keeps the lines greppable and
+// separable from upstream behaviour, matching the Go-side convention.
+//
+// Level is clamped: "warn" and "error" map through, everything else is info, so a frontend
+// call cannot fabricate an error-level line. Detail is a free-form string; callers pass a
+// compact key=value tail rather than a formatted sentence.
+func (a *App) ReportFrontendLog(feature string, level string, message string, detail string) {
+	if feature == "" || message == "" {
+		return
+	}
+	attrs := []any{"feature", feature}
+	if detail != "" {
+		attrs = append(attrs, "detail", detail)
+	}
+	switch level {
+	case "warn":
+		slog.Warn("desktop: frontend "+message, attrs...)
+	case "error":
+		slog.Error("desktop: frontend "+message, attrs...)
+	default:
+		slog.Info("desktop: frontend "+message, attrs...)
+	}
+}
+
 func (a *App) ReportTabSwitchTiming(tabID string, stage string, ms int) {
 	if ms < slowTabSwitchLogMs {
 		return
