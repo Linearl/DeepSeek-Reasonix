@@ -450,6 +450,14 @@ func (c *Config) SetDesktopTelemetry(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalRestartUpdate toggles the restart-and-update action (task 81). It is
+// opt-in because it swaps the running install for a staged one - a path that has no
+// verification step, by design, since the update itself comes from a trusted release.
+func (c *Config) SetExperimentalRestartUpdate(enabled bool) error {
+	c.Desktop.ExperimentalRestartUpdate = enabled
+	return nil
+}
+
 // SetDesktopMetrics sets whether the desktop sends aggregate desktop metrics.
 func (c *Config) SetDesktopMetrics(enabled bool) error {
 	c.Desktop.Metrics = &enabled

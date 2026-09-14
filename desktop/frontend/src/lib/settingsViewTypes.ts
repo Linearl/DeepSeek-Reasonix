@@ -9,6 +9,8 @@ export interface SettingsView {
   autopilot: boolean;
   autopilotMaxRuntime: string;
   autopilotApprovalGrace: string;
+  // Task 81: exposes the restart-and-update action. Same preference restart_and_update reads.
+  experimentalRestartUpdate?: boolean;
   visionModel: string;
   webSearchModel?: string;
   webSearchModels?: string[];

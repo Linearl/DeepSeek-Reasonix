@@ -1666,6 +1666,20 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
       <SettingsField label={t("settings.experimentalIntro")} hint={t("settings.experimentalIntroHint")} icon={<Sparkles size={18} />}>
         <span />
       </SettingsField>
+      <SettingsField label={t("settings.restartUpdate")} hint={t("settings.restartUpdateHint")} icon={<RefreshCw size={18} />}>
+        <SettingsOptions layout="field" className="set-seg">
+          {[false, true].map((on) => (
+            <button
+              key={String(on)}
+              className={`set-seg__btn${Boolean(s.experimentalRestartUpdate) === on ? " set-seg__btn--on" : ""}`}
+              disabled={busy}
+              onClick={() => void apply(() => app.SetExperimentalRestartUpdate(on))}
+            >
+              {t(on ? "settings.restartUpdate.on" : "settings.restartUpdate.off")}
+            </button>
+          ))}
+        </SettingsOptions>
+      </SettingsField>
       <SettingsField label={t("settings.autopilot")} hint={t("settings.autopilotHint")} icon={<ShieldCheck size={18} />}>
         <SettingsOptions layout="field" className="set-seg">
           {[false, true].map((on) => (

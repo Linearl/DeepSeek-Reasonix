@@ -734,6 +734,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetAutoPlan(mode: string): Promise<void>;
   SetDefaultToolApprovalMode(mode: string): Promise<void>;
   SetDesktopAutopilot(enabled: boolean, maxRuntime: string, approvalGrace: string): Promise<void>;
+  // Task 81: the Settings switch for the restart-and-update action. Same preference the
+  // restart_and_update tool reads, so one enables both.
+  SetExperimentalRestartUpdate(enabled: boolean): Promise<void>;
   SetDefaultAutoRecoveryCheckpoint(enabled: boolean): Promise<void>;
 
   RenameProviderConnections: typeof GeneratedApp.RenameProviderConnections;
@@ -4915,6 +4918,7 @@ function makeMockApp(): AppBindings {
     async SetDefaultToolApprovalMode(mode: string) {
       settings.defaultToolApprovalMode = normalizeToolApprovalMode(mode);
     },
+    async SetExperimentalRestartUpdate() {},
     async SetDesktopAutopilot(enabled: boolean, maxRuntime: string, approvalGrace: string) {
       settings.autopilot = enabled;
       settings.autopilotMaxRuntime = maxRuntime;
