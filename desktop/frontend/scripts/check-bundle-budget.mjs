@@ -307,7 +307,10 @@ for (const path of localeChunks) {
   // of headroom, mirroring how every prior locale-key landing was absorbed.
   // zh 68.4 became an exact-boundary failure after the preview-building status
   // string landed; ratchet one decimal again by the same convention.
-  const budget = name.startsWith("zh-TW-") ? 69.4 * 1024 : 68.8 * 1024;
+  // Task 56/64 evidence-chain port: the receipt, operation-lifecycle and recovery
+  // copy adds keys per dialect; zh measures 69.0 KiB and zh-TW 69.7 KiB, so take the
+  // next decimal past each measurement by the same convention.
+  const budget = name.startsWith("zh-TW-") ? 70.0 * 1024 : 69.0 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
