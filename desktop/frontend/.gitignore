@@ -22,3 +22,8 @@ package-lock.json
 bench/results.json
 bench/app-memory-results.json
 bench/app-memory-artifacts/
+
+# Build caches: eslint --cache and tsc --incremental both write one file next to the
+# project. They exist to make a repeat build fast and must never be committed.
+.eslintcache
+*.tsbuildinfo
