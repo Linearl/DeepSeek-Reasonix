@@ -107,6 +107,27 @@ and a permanently red test swallows the next real regression.
 Confirm the failure is genuinely pre-existing first (`git stash` your change and
 re-run); that check decides the framing, not whether the failure gets fixed.
 
+### Current list (2026-09-13)
+
+Five red tests in the provider packages, **all of one kind: the test pins upstream's
+hard-image-block semantics, while the fork deliberately trusts resolved capability metadata
+and the user's switch instead** (see `release-notes/FORK-vs-upstream.md`, "图片能力判定").
+
+| Test | Package | Verdict |
+|---|---|---|
+| `TestOfficialDeepSeekIgnoresVisionMetadata` | `provider/anthropic` | **stale** — pins the hard block the fork removed |
+| `TestOfficialRequestURLImageHardLimit` | `provider/anthropic` | **stale** — same |
+| `TestOfficialDeepSeekImageMetadataMatchesTextOnlyWireBytes` | `provider/anthropic` | **stale** — same |
+| `TestOfficialDeepSeekResponsesIgnoresVisionMetadata` | `provider/responses` | **stale** — same |
+| `TestOfficialDeepSeekResponsesImageMetadataMatchesTextOnlyWireBytes` | `provider/responses` | **stale** — same |
+
+**Not yet driven to zero.** Updating them means asserting the fork's behaviour instead
+(the official endpoint honours metadata and the user's switch), which is a per-test
+judgement — each has to be read to see what it was protecting. Doing that in the same
+sitting as the task-63 provider port mixed two decisions and was reverted; it belongs in
+its own batch. **Do not treat this table as permission to leave them red** — it records
+the verdict so the next batch can act on it.
+
 ## Import cycle rule
 
 Before importing a new internal package from a non-test file, verify the target package's **test files** aren't already importing back to you:
