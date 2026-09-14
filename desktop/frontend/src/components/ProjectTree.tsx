@@ -42,6 +42,7 @@ import { NewGroupPanel } from "./NewGroupPanel";
 import { ProjectTreeHeaderAddControl, ProjectTreeRemoteAction, projectTreeHeaderAddItems } from "./ProjectTreeAddControls";
 import { activeRemoteProjectAncestorKeys, buildRemoteProjectMenuItems, useRemoteRuntimeTree, openRemoteSessionNode, remoteProjectKey, remoteServeBadgeState, renameRemoteProjectTitle, RemoteProjectEmptyState, useRemoteProjectGroups, useRemoteSessionActions } from "./ProjectTreeRemoteGroups";
 import type { ProjectTreeProps } from "./ProjectTreeProps";
+import { reportFrontendLog } from "../lib/frontendLog";
 
 function projectNodeKey(node: ProjectNode, depth: number): string {
   return node.key || `${node.kind}-${node.root ?? ""}-${node.topicId ?? ""}-${node.sessionPath ?? ""}-${depth}`;
@@ -1031,6 +1032,18 @@ export function ProjectTree({
     if (creationTopics) return arrangeWorkbenchTree(filtered, "project", "updated");
     return arrangeClassicProjectTree(filtered, workbenchSortMode);
   }, [compactTopics, creationTopics, query, colorFilter, timeFilter, treeWithRemoteSessions, workbenchOrganizeMode, workbenchSortMode]);
+
+  const lastColorFilterLog = useRef("");
+  useEffect(() => {
+    // The filter is fork-only and silently hides projects, so the visible count is the part
+    // worth recording: it distinguishes "filter matched nothing" from "filter matched wrong".
+    const signature = colorFilter.length === 0 ? "" : colorFilter.join(",");
+    if (signature === lastColorFilterLog.current) return;
+    lastColorFilterLog.current = signature;
+    reportFrontendLog("project-colour-filter",
+      signature === "" ? "colour filter cleared" : "colour filter applied",
+      `colours=${signature || "none"} visible=${visibleTree.length}`);
+  }, [colorFilter, visibleTree]);
 
   const pinnedTreeSections = useMemo<PinnedTreeSections>(() => {
     if (creationTopics) return { pinned: [], projects: visibleTree };

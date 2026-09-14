@@ -2,6 +2,8 @@ package agent
 
 import (
 	"fmt"
+	"strings"
+	"log/slog"
 )
 
 // contextBudgetTag is the per-turn transient block carrying the context
@@ -47,9 +49,17 @@ func (a *Agent) WithContextBudget(content string) string {
 	if window <= 0 {
 		return content
 	}
-	block := ContextBudgetBlock(a.ContextUsedTokens(), a.compactTrigger(), window)
+	used := a.ContextUsedTokens()
+	trigger := a.compactTrigger()
+	block := ContextBudgetBlock(used, trigger, window)
 	if block == "" || hasLeadingInjectedBlock(content, contextBudgetTag) {
 		return content
 	}
+	// Debug, not Info: this runs once per user turn and would otherwise dominate the log. It is
+	// what answers "why was the model told to write things down" after the fact - the advisory
+	// rides on the same block, and only this line says whether it was included.
+	slog.Debug("context budget block injected",
+		"feature", "context-budget", "used", used, "window", window, "trigger", trigger,
+		"advisory", strings.Contains(block, "compaction is approaching"))
 	return block + "\n\n" + content
 }

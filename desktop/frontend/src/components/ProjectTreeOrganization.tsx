@@ -8,6 +8,7 @@ import { loadSessionGroupCollapsed, persistSessionGroupCollapsed } from "../lib/
 import type { ProjectTreeRefresh } from "../lib/projectTreeArchive";
 import type { ProjectNode, ProjectTreeOrganizationBindings, SessionGroup } from "../lib/types";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
+import { reportFrontendLog } from "../lib/frontendLog";
 
 export type ProjectDropPosition = "before" | "after";
 
@@ -311,6 +312,10 @@ export function useProjectTreeOrganization({
       setCollapsedGroups((current) => {
         const next = new Set(current), collapseKey = `${key}|${id}`;
         if (next.has(collapseKey)) next.delete(collapseKey); else next.add(collapseKey);
+        // Recorded because the state is persisted: "why did this group open collapsed" is
+        // otherwise unanswerable from a restart, and the state outlives the session.
+        reportFrontendLog("project-groups", next.has(collapseKey) ? "group collapsed" : "group expanded",
+          `group=${id}`);
         // Persist so the collapse state survives app restarts and project-tree
         // remounts — it used to live only in component memory, so every reopen
         // auto-expanded every session group.

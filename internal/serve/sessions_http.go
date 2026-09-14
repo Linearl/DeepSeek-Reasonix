@@ -9,6 +9,7 @@ import (
 
 	"reasonix/internal/agent"
 	"reasonix/internal/store"
+	"log/slog"
 )
 
 type sessionListEntry struct {
@@ -88,6 +89,23 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 		}
 		rows = append(rows, row)
 		jobs = append(jobs, workItem{name: entry.Name(), path: path, modNs: mtime.UnixNano()})
+	}
+	// One summary line, not one per row: this list can hold every session in the project, and
+	// lease ownership is fork-only (upstream has no handoff). When a client sees a session it
+	// cannot open, this is the line that says whether another runtime is holding it.
+	if len(rows) > 0 {
+		heldByMe, heldByOther := 0, 0
+		for _, row := range rows {
+			switch row.HeldBy {
+			case "me":
+				heldByMe++
+			case "other":
+				heldByOther++
+			}
+		}
+		slog.Info("serve: session list ownership",
+			"feature", "session-ownership", "sessions", len(rows),
+			"heldByMe", heldByMe, "heldByOther", heldByOther)
 	}
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 8)
