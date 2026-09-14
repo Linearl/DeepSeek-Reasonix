@@ -195,7 +195,6 @@ import { useHistoryViewStore } from "./store/historyView";
 import { refreshHistoryProjection } from "./app-runtime/historyViewProjection";
 import { hydrateDisplayMode } from "./lib/displayMode";
 import { recordFrontendDiagnostic } from "./lib/frontendDiagnosticBridge";
-import { DEFAULT_STATUS_BAR_ITEMS, normalizeStatusBarItems, type StatusBarItemId } from "./lib/statusBarItems";
 import { paletteSessionDisplayTitle, paletteSessionHint, paletteSessionKeywords, sessionActivityTime } from "./lib/session";
 import { enqueueNavigationRequest, type PendingNavigationRequest } from "./lib/openTopicCoalescing";
 import { guardBackendNavigationResult, settleNavigationSurfaceIntent } from "./lib/navigationSurfaceTransition";
@@ -233,6 +232,7 @@ import { loadDismissedTodoKeys, saveDismissedTodoKeys } from "./lib/todoDismissa
 import type { AppDecisionSurfaceKind } from "./app-runtime/decisionSurfaceProjection";
 import { browserPlatformOverride } from "./lib/desktopPlatform";
 import { markAppearanceReady, setAutopilotEnabled, useAppLifecycleStore } from "./store/appLifecycle";
+import { setStatusBarItems, setStatusBarStyle, useShellPrefsStore } from "./store/shellPrefs";
 // Hold reasoning UI until the authoritative desktop startup settings arrive;
 // this prevents a hidden preference from flashing content during first paint.
 setReasoningDisplayPending();
@@ -895,8 +895,8 @@ export default function App() {
   const windowsFramelessChrome = desktopPlatform === "windows";
   const [mainWindowMaximised, syncMainWindowMaximised] = useWindowsMaximised(windowsFramelessChrome);
   useWailsResizeFix(windowsFramelessChrome, mainWindowMaximised);
-  const [statusBarStyle, setStatusBarStyle] = useState<"icon" | "text">("text");
-  const [statusBarItems, setStatusBarItems] = useState<StatusBarItemId[]>(() => [...DEFAULT_STATUS_BAR_ITEMS]);
+  const statusBarStyle = useShellPrefsStore((s) => s.statusBarStyle);
+  const statusBarItems = useShellPrefsStore((s) => s.statusBarItems);
   const [renamingTopicId, setRenamingTopicId] = useState<string | null>(null);
   const [topicTitleDraft, setTopicTitleDraft] = useState("");
   const topicExportOpen = useOverlayStore((s) => s.topicExportOpen);
@@ -1095,7 +1095,7 @@ export default function App() {
       setStatusBarStyle(settings.statusBarStyle === "text" ? "text" : "icon");
       setQuickCommands(settings.quickCommands ?? []);
       setAutopilotEnabled(settings.autopilot === true);
-      setStatusBarItems(normalizeStatusBarItems(settings.statusBarItems));
+      setStatusBarItems(settings.statusBarItems);
       hydrateReasoningDisplayMode(settings.reasoningDisplayMode, settings.reasoningDisplayModeExplicit === true);
     },
     [setLocalePref],
