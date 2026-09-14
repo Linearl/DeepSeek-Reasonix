@@ -16,6 +16,7 @@ import (
 // mutationBarrierCause is an immutable, argument-free description of the
 // first durable-state write that failed or was blocked in a tool batch.
 type mutationBarrierCause struct {
+	evidenceOnly          bool
 	callID                string
 	toolName              string
 	stateMutation         bool
@@ -76,6 +77,8 @@ type toolOutcome struct {
 	recoveryStopReason string
 	readTaskID         string
 	readEnvelope       *tool.ReadResultEnvelope
+	diagnostic         *tool.OperationDiagnostic
+	evidenceSource     tool.EvidenceTargetInfo
 	finalReadEnvelope  *tool.ReadResultEnvelope
 	readReference      *readDelivery
 	readActiveMillis   int64
@@ -100,6 +103,8 @@ type batchExecution struct {
 // ordering stays provider-ordered. Each completed serial call (or read-only
 // group) is checkpointed before the next group starts.
 func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []provider.ToolCall) batchExecution {
+	turn.evidenceBlocked.clearChecks()
+	defer turn.evidenceBlocked.clearChecks()
 	// The assistant message already stored this slice in Session. Keep execution
 	// state separate so refreshing a dependent preview never mutates shared
 	// session memory outside Session's lock.
@@ -160,12 +165,6 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 		s.startedAt[i] = start.UnixMilli()
 		s.outcomes[i] = a.executeOne(ctx, turn, s.calls[i])
 		recordWorkspaceMutation(a.svc.sink, s.outcomes[i].workspaceMutation)
-		// A mutation that landed retires the read-evidence debt for its paths:
-		// the model just wrote them, so re-blocking later writes would deadlock
-		// the turn (task 42 P1-1).
-		if m := s.outcomes[i].workspaceMutation; m != nil && len(m.Paths) > 0 {
-			a.retireReadEvidence(m.Paths)
-		}
 		if s.outcomes[i].executed {
 			s.surfaceWriters[i] = s.outcomes[i].workspaceMutation != nil
 		}
@@ -426,6 +425,7 @@ func batchCallMutationFailureCause(a *Agent, call provider.ToolCall, o toolOutco
 		phase = "blocked"
 	}
 	return &mutationBarrierCause{
+		evidenceOnly:        o.blocked && !o.executed && o.diagnostic != nil && o.diagnostic.Code == tool.WriteEvidenceMissing,
 		callID:              call.ID,
 		toolName:            toolName,
 		stateMutation:       effects.StateMutation,

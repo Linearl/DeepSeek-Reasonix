@@ -1,12 +1,14 @@
 package eventwire
 
 import (
+	"encoding/json"
 	"reasonix/internal/event"
 	"reasonix/internal/provider"
 )
 
 // Tool is the JSON form of an event.Tool.
 type Tool struct {
+	Diagnostic        json.RawMessage `json:"diagnostic,omitempty"`
 	RunState          provider.ToolRunState `json:"runState,omitempty"`
 	Verifying         bool                  `json:"verifying,omitempty"`
 	ID                string                `json:"id,omitempty"`
@@ -39,8 +41,9 @@ type Tool struct {
 
 func toWireTool(in event.Tool) *Tool {
 	wt := &Tool{
-		RunState: in.RunState,
-		ID:       in.ID, Name: in.Name, Args: in.Args,
+		RunState:   in.RunState,
+		Diagnostic: append(json.RawMessage(nil), in.Diagnostic...),
+		ID:         in.ID, Name: in.Name, Args: in.Args,
 		ResolvedName: in.ResolvedName, CapabilityID: in.CapabilityID,
 		Output: in.Output, Err: in.Err,
 		ReadOnly: in.ReadOnly, Truncated: in.Truncated,

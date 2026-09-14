@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"path/filepath"
 	"strings"
 	"time"
@@ -101,12 +100,29 @@ func (a *Agent) gateReadOperation(_ context.Context, plan *toolCallPlan) (string
 // projection of this state; the legacy machine is used solely in rollback mode.
 func (a *Agent) readContinuation(final bool) (string, error) {
 	var paused []string
-	for _, ob := range a.turn.readShadow.coord.Snapshot() {
+	reads := a.turn.readShadow.coord.Snapshot()
+	// Hard stops have priority over a continuation on another file.
+	for _, ob := range reads {
+		if !ob.State.Terminal() && ob.Stop != nil {
+			paused = append(paused, fmt.Sprintf("%s: %s; %s", ob.Scope.CanonicalPath, ob.Stop.Detail, ob.Stop.Recovery))
+		}
+	}
+	if final && len(paused) > 0 {
+		return "", &IncompleteReadError{Reason: strings.Join(paused, "; ")}
+	}
+	for _, ob := range reads {
 		if ob.State.Terminal() {
 			continue
 		}
 		if ob.Stop != nil {
-			paused = append(paused, fmt.Sprintf("%s: %s; %s", ob.Scope.CanonicalPath, ob.Stop.Detail, ob.Stop.Recovery))
+			continue
+		}
+		// A model-requested full intent is the existing explicit completeness
+		// contract. Do not infer new obligations from user prose or previews.
+		if final && !ob.Requirement.WholeFile {
+			continue
+		}
+		if !final && a.turn.readShadow.hinted[ob.Key] == ob.Sequence {
 			continue
 		}
 		if final {
@@ -137,7 +153,12 @@ func (a *Agent) readContinuation(final bool) (string, error) {
 			prefix = "The last two pages added no content. Change strategy: use the host's exact next window instead of repeating the previous page. Call read_file "
 			delete(a.turn.readShadow.pivots, ob.Key)
 		}
-		return prefix + string(args) + ". Independent work may continue. Do not claim a complete review until this requirement is satisfied.", nil
+		if a.turn.readShadow.hinted == nil {
+			a.turn.readShadow.hinted = map[string]uint64{}
+		}
+		a.turn.readShadow.hinted[ob.Key] = ob.Sequence
+		suffix := ". Independent work may continue. A partial window may be sufficient for local work; do not claim a complete review until full coverage is verified."
+		return fmt.Sprintf("Read coverage path=%s snapshot=%s intent=%s. %s%s%s", ob.Scope.CanonicalPath, ob.Version, ob.Requirement.Intent, prefix, string(args), suffix), nil
 	}
 	if final && len(paused) > 0 {
 		return "", &IncompleteReadError{Reason: strings.Join(paused, "; ")}
@@ -171,79 +192,13 @@ func (a *Agent) observeFailedRead(call provider.ToolCall, out toolOutcome) {
 		if ob.State.Terminal() || ob.Stop != nil || (ob.Key != out.readTaskID && ob.Scope.CanonicalPath != path) {
 			continue
 		}
-		if strings.Contains(out.errMsg, "source changed") || strings.Contains(out.errMsg, "deadline exceeded") {
-			tr, _ := a.turn.readShadow.coord.Fail(ob.Key, readcoord.Block{Code: "read_failed", Detail: out.errMsg, Recovery: "inspect a fresh explicit range; the previous full read is incomplete"})
+		if out.diagnostic != nil {
+			tr, _ := a.turn.readShadow.coord.Fail(ob.Key, readcoord.Block{Code: out.diagnostic.Code, Detail: out.errMsg, Recovery: out.diagnostic.Recovery})
 			a.emitReadStatus(tr, tool.ReadResultEnvelope{Intent: ob.Requirement.Intent})
 		} else {
 			// Rejected/repeated calls deliver no source lines. They still count
 			// toward the same no-progress ladder instead of bypassing its bounds.
 			a.observeReadShadow(tool.ReadResultEnvelope{ReadID: ob.Key, Source: tool.ReadResultSource{CanonicalPath: ob.Scope.CanonicalPath, Snapshot: ob.Version}, Intent: ob.Requirement.Intent}, out.readActiveMillis)
-		}
-	}
-}
-
-// Re-evaluate requirements against the batch's frozen evidence boundary. A
-// historical failure is not itself a live obligation, and a same-batch read
-// cannot clear one before the provider receives that read.
-func (a *Agent) outstandingReadEvidence(ctx context.Context, boundary uint64) []string {
-	s := &a.turn.evidenceBlocked
-	s.mu.Lock()
-	calls := maps.Clone(s.calls)
-	s.mu.Unlock()
-	for path, call := range calls {
-		target, _, _ := a.svc.tools.ResolveCall(call.Name)
-		check := a.checkOperationEvidence(ctx, call, target, boundary)
-		// Satisfied: the read requirement is met, retire the debt.
-		//
-		// target_invalid: the blocked call's own target no longer exists. That is
-		// exactly what the gate asked for - the model rewrote the file wholesale
-		// instead of patching it - so the debt can never be replayed to
-		// satisfaction and must be retired here. Keeping it turned "read before
-		// writing" into a turn-long lock on every write that cannot declare a
-		// target: bash python/sed, and writes outside the workspace (task 42).
-		if check.Satisfied || check.Reason == "target_invalid" {
-			s.mu.Lock()
-			if latest := s.calls[path]; latest.ID == call.ID && latest.Arguments == call.Arguments {
-				delete(s.paths, path)
-				delete(s.calls, path)
-			}
-			s.mu.Unlock()
-		}
-	}
-	paths := s.snapshot()
-	if a.readPipelineActive() {
-		for _, ob := range a.turn.readShadow.coord.Snapshot() {
-			if !ob.State.Terminal() {
-				paths = append(paths, ob.Scope.CanonicalPath)
-			}
-		}
-	}
-	return paths
-}
-
-// retireReadEvidence drops outstanding read-evidence debts for the paths a write
-// just landed. The write itself proves the model observed the file it replaced,
-// so keeping the debt would block the next write for a file that was only just
-// written - the shape that locked whole turns before task 42.
-func (a *Agent) retireReadEvidence(paths []string) {
-	s := &a.turn.evidenceBlocked
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, raw := range paths {
-		p := strings.TrimSpace(raw)
-		if p == "" {
-			continue
-		}
-		delete(s.paths, p)
-		delete(s.calls, p)
-		// Mutations can report an absolute path while the gate recorded the
-		// tool's own relative declaration; fall back to suffix matching so the
-		// two spellings of one file cannot both stay outstanding.
-		for key := range s.paths {
-			if strings.HasSuffix(key, p) || strings.HasSuffix(p, key) {
-				delete(s.paths, key)
-				delete(s.calls, key)
-			}
 		}
 	}
 }

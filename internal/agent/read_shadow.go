@@ -20,6 +20,7 @@ type readShadowState struct {
 	// single slot would let one stalled read overwrite another's, and the
 	// coordinator only offers each read one pivot.
 	pivots map[string]struct{}
+	hinted map[string]uint64
 }
 
 func newReadShadowState(enabled bool) readShadowState {
@@ -125,6 +126,11 @@ func (a *Agent) emitReadStatus(tr readcoord.Transition, env tool.ReadResultEnvel
 	if tr.Stop != nil {
 		payload.Reason = tr.Stop.Code
 		payload.Recovery = tr.Stop.Recovery
+		payload.Verdict = "read_hard_stop"
+	} else if env.Intent == tool.ReadIntentFull && !tr.To.Terminal() {
+		payload.Verdict = "full_read_pending"
+	} else if env.HasMore && env.Intent != tool.ReadIntentFull {
+		payload.Verdict = "partial_read_sufficient"
 	}
 	a.svc.sink.Emit(event.Event{Kind: event.ReadStatus, ReadStatus: payload})
 }
