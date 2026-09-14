@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -225,6 +226,30 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 			a.observeRunBudget(state, usage, quote)
 			if msg, ok := finishReasonMessage(usage); ok {
 				a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: msg})
+			}
+			// Task 110: first text-loop interrupt becomes a one-shot host
+			// reminder so the model can pick a new path; a second hit pauses.
+			if errors.Is(err, ErrModelTextRepeat) {
+				if state.terminal.textRepeatNudges < 1 {
+					state.terminal.textRepeatNudges++
+					a.svc.sink.Emit(event.Event{
+						Kind:   event.Notice,
+						Level:  event.LevelInfo,
+						Code:   event.NoticeCodeExecutorHandoff,
+						Text:   "Your last answer repeated the same text in a loop. Continue with a different approach; do not restate what you already wrote.",
+						Detail: "text repeat 1/1",
+					})
+					a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(
+						"Your previous reply was interrupted because it repeated the same text. Continue the task with a new approach and do not repeat prior wording.",
+					)))
+					a.contextManager().ObserveUsage(usage)
+					continue
+				}
+				a.recordInterruptedDisplay(text, reasoning, partialCalls, true, err, state.workDurationMs())
+				return &RecoveryPauseError{
+					Message:    "Stopped: the assistant repeated the same output. Completed work is kept; send \"continue\" to try a different approach.",
+					StopReason: "text_repeat",
+				}
 			}
 			// Exhausted stream retries (or a non-retryable error): persist one
 			// bounded LocalOnly recovery record for the next real user message.

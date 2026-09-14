@@ -137,6 +137,9 @@ type terminalProtocolState struct {
 	handoffNudges int
 	// intentNudges counts stalled-intent repairs sent this run.
 	intentNudges int
+	// textRepeatNudges counts host reminders after a streamed text loop
+	// (task 110). A second hit pauses the run instead of spinning.
+	textRepeatNudges int
 	// contextToolRepairs counts contextual-tool repair rounds; a second
 	// violation after a repair ends the run in a recoverable pause.
 	contextToolRepairs int
