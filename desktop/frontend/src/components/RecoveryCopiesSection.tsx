@@ -79,6 +79,8 @@ type Outcome = {
   after?: number;
   trashed?: number;
   notCovered?: number;
+  /** Copies the backend refused to load, so their events were never considered. */
+  unloadable?: number;
   reasons?: string[];
   detail?: string;
 };
@@ -567,6 +569,7 @@ export function RecoveryCopiesSection() {
               before: forced.mainMessageCount,
               after: forced.winnerMessageCount,
               trashed: forced.trashed?.length ?? 0,
+              unloadable: forced.skippedUnloadable?.length ?? 0,
             });
           } catch (err) {
             collected.push({
@@ -586,6 +589,7 @@ export function RecoveryCopiesSection() {
           after: report.winnerMessageCount,
           trashed: report.trashed?.length ?? 0,
           notCovered: report.notCoveredDetail?.filter((d) => d.unique > 0).length ?? 0,
+          unloadable: report.skippedUnloadable?.length ?? 0,
           reasons: report.notCoveredDetail?.map((d) => d.reason).filter((r): r is string => Boolean(r)),
         });
         setOutcomes([...collected]);
@@ -855,6 +859,11 @@ export function RecoveryCopiesSection() {
                               {outcome.notCovered ? (
                                 <span className="rc-muted">
                                   {t("settings.recoveryCopiesLeftBehind")} {outcome.notCovered}
+                                </span>
+                              ) : null}
+                              {outcome.unloadable ? (
+                                <span className="rc-muted">
+                                  {t("settings.recoveryCopiesUnloadable")} {outcome.unloadable}
                                 </span>
                               ) : null}
                               {outcome.reasons?.length ? (
