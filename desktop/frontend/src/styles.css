@@ -3489,6 +3489,15 @@ a[href] {
   display: contents;
 }
 
+/* Closed split: the pane must not generate a box either. It carries `overflow:
+   hidden` for the open state, and a box here re-parents the transcript away from
+   its flex parent — which crops the adaptive scrollbar and the question rail that
+   hang off the transcript's edges. `display: contents` on the pane keeps the
+   closed layout byte-for-byte what it was before the feature existed. */
+.transcript-split--closed > .transcript-split__pane {
+  display: contents;
+}
+
 .transcript-split__pane {
   display: flex;
   flex: 1 1 50%;
