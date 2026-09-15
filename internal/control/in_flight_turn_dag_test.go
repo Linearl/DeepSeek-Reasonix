@@ -160,11 +160,14 @@ func TestConcurrentWriterEmitsNoticeOnBothSides(t *testing.T) {
 	if err := ctrlB.RunTurn(context.Background(), "second from B"); err != nil {
 		t.Fatal(err)
 	}
+	// Side that discovered the fork: concurrent-writer notice on save.
 	notice, ok := sinkB.lastNotice()
 	if !ok || notice.Code != event.NoticeCodeSessionConcurrentWriter {
 		t.Fatalf("B notice = %+v ok=%v, want concurrent writer notice", notice, ok)
 	}
-	// A reopen after both wrote lands on the newest head and reports the other.
+	// Side that reopens after the dual write: head-switched notice on load.
+	// Together these cover "both sides see a prompt" without re-notifying a
+	// writer that merely continues on its own head.
 	reopened, err := agent.LoadSession(path)
 	if err != nil {
 		t.Fatal(err)
@@ -176,5 +179,59 @@ func TestConcurrentWriterEmitsNoticeOnBothSides(t *testing.T) {
 	notice, ok = sinkC.lastNotice()
 	if !ok || notice.Code != event.NoticeCodeSessionHeadSwitched {
 		t.Fatalf("C notice = %+v ok=%v, want head switched notice", notice, ok)
+	}
+}
+
+func TestResumeEmitsAlsoOpenWhenForeignLeaseHeld(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "shared.jsonl")
+	const systemPrompt = "SYS"
+	reply := [][]provider.Chunk{{{Type: provider.ChunkText, Text: "ok"}, {Type: provider.ChunkDone}}}
+	sinkA := &noticeSink{}
+	execA := agent.New(&recordingProvider{streams: reply}, tool.NewRegistry(), agent.NewSession(systemPrompt), agent.Options{}, event.Discard)
+	ctrlA := New(Options{Runner: execA, Executor: execA, SystemPrompt: systemPrompt, SessionDir: dir, SessionPath: path, Label: "a", Sink: sinkA})
+	if err := ctrlA.RunTurn(context.Background(), "seed"); err != nil {
+		t.Fatal(err)
+	}
+	// Single instance: resume of the session this process just wrote must stay
+	// silent — no also-open false positive.
+	loaded, err := agent.LoadSession(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sinkQuiet := &noticeSink{}
+	execQuiet := agent.New(&recordingProvider{streams: reply}, tool.NewRegistry(), agent.NewSession(systemPrompt), agent.Options{}, event.Discard)
+	ctrlQuiet := New(Options{Runner: execQuiet, Executor: execQuiet, SystemPrompt: systemPrompt, SessionDir: dir, SessionPath: path, Label: "quiet", Sink: sinkQuiet})
+	ctrlQuiet.Resume(loaded, path)
+	if notice, ok := sinkQuiet.lastNotice(); ok && notice.Code == event.NoticeCodeSessionAlsoOpen {
+		t.Fatalf("single-instance resume emitted also-open notice: %+v", notice)
+	}
+	// A foreign runtime holds the lease: the next resume must surface it with
+	// the stable code so desktop can localize.
+	release, err := agent.HoldForeignSessionLeaseForTest(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	sinkB := &noticeSink{}
+	execB := agent.New(&recordingProvider{streams: reply}, tool.NewRegistry(), agent.NewSession(systemPrompt), agent.Options{}, event.Discard)
+	ctrlB := New(Options{Runner: execB, Executor: execB, SystemPrompt: systemPrompt, SessionDir: dir, SessionPath: path, Label: "b", Sink: sinkB})
+	loadedAgain, err := agent.LoadSession(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctrlB.Resume(loadedAgain, path)
+	var alsoOpen *event.Event
+	for i := range sinkB.events {
+		if sinkB.events[i].Kind == event.Notice && sinkB.events[i].Code == event.NoticeCodeSessionAlsoOpen {
+			alsoOpen = &sinkB.events[i]
+			break
+		}
+	}
+	if alsoOpen == nil {
+		t.Fatalf("resume under foreign lease emitted no session_also_open; events=%+v", sinkB.events)
+	}
+	if alsoOpen.Level != event.LevelWarn || alsoOpen.Audience != event.NoticeAudienceOperator {
+		t.Fatalf("also-open notice scope = %+v, want operator warn", *alsoOpen)
 	}
 }

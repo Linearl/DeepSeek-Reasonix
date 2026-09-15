@@ -34,6 +34,7 @@ const (
 	NoticeCodeSessionConcurrentWriter                           = "session_concurrent_writer"
 	NoticeCodeSessionHeadSwitched                               = "session_head_switched"
 	NoticeCodeSessionHeadSelected                               = "session_head_selected"
+	NoticeCodeSessionAlsoOpen                                   = "session_also_open"
 	NoticeCodeCompletionUncertain                               = "completion_uncertain"
 	NoticeCodeIncompleteReadDetected                            = "incomplete_read_detected"
 	NoticeCodeReadContinuationRequired                          = "continuation_required"

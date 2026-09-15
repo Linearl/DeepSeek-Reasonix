@@ -1180,6 +1180,7 @@ export const zhTW: Record<DictKey, string> = {
   "recovery.cleanupResult": "已移動 {moved} 個；佔用 {busy} 個；保留 {kept} 個。",
   "recovery.previewCleanup": "檢查可安全清理項",
   "recovery.noticeConcurrentWriter": "另一個 Reasonix 視窗或程序也在寫入這個會話，其內容已保留為單獨版本；可在「查看版本」中切換。",
+  "recovery.noticeAlsoOpen": "這個會話也在另一個 Reasonix 實例中開啟。雙方都可能儲存；發生衝突時會分出還原副本。",
   "recovery.noticeHeadSwitched": "已開啟該會話的最新版本，其他儲存版本可在「查看版本」中查看。",
   "recovery.noticeHeadSelected": "已將此版本設為目前版本。",
   "recovery.headsSummary": "該會話共 {branches} 個版本",

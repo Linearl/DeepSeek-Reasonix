@@ -10,6 +10,7 @@ const cases: Array<[string, string, string]> = [
   ["session_concurrent_writer", "another writer appended to this session log", "Another Reasonix window or process added to this conversation. Its content is kept as a separate version; use View versions to switch."],
   ["session_head_switched", "opened head 01HEAD (newest activity)", "Opened the newest version of this conversation. Other saved versions are available in View versions."],
   ["session_head_selected", "selected head 01HEAD", "This version is now the current version of the conversation."],
+  ["session_also_open", "This session is also open in another Reasonix instance. Both may save; conflicts will fork a recovery copy.", "This session is also open in another Reasonix instance. Both may save; conflicts will fork a recovery copy."],
 ];
 for (const [code, raw, want] of cases) {
   assert.equal(localizedNoticeText(raw, code), want, `${code} localizes by code`);
