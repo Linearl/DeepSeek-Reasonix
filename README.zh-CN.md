@@ -52,6 +52,29 @@
 > [!IMPORTANT]
 > **加入社区 · Community** — 双语 Discord，提供安装答疑（`#help` / `#求助`）、工作流展示与功能想法。→ **<https://discord.gg/XF78rEME2D>**
 
+## 关于本仓库（fork 说明）
+
+本仓库是 [esengine/DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix) 的**长期维护
+fork**（`main-v2-stable`）：在追齐上游的同时，保留我们确实需要的改动。具体含义如下：
+
+- **数据与上游兼容。** 会话数据按上游格式写入、按上游的宽松程度读取；在此之上还有一条**修复路径**：
+  上游读不动的会话（写入中断 / 文件受损）在本仓库仍能正常打开。**随时可以切回官方版**：用官方安装包
+  覆盖安装即可，走内置自动更新也可以。
+- **只测 Windows 桌面版** —— `win-amd64-desktop` + **经典布局（经典模式）**，这是我们日常使用的组合。
+  其他目标（其他平台、CLI/TUI、VS Code 扩展、workbench 布局）在本仓库**未经验证**，不保证易用性，
+  也不保证功能一致。
+- **上游不稳定时不追更新。** 上游处于大重构中、或发版节奏混乱的阶段，本分支停留在当前基线，不跟。
+- **每一项魔改都有版本对照清单**，见
+  [`release-notes/FORK-vs-upstream.md`](release-notes/FORK-vs-upstream.md)：逐版本列出开关、默认值、
+  承载文件，以及上游是否已吸收。完整入口文档是 [`FORK.md`](FORK.md)，逐版 release notes 见
+  [`release-notes/`](release-notes/)。
+- **稳定版本：`1.31.4` – `1.34`，以及 `1.38.3`。** `1.38.1` 已知不稳定，请勿使用。
+- **使用问题、Bug、建议**：欢迎提
+  [issue](https://github.com/Linearl/DeepSeek-Reasonix/issues)（另见
+  [CONTRIBUTING.md](CONTRIBUTING.md)）。
+
+<br/>
+
 ## 特性
 
 - **配置驱动**：provider、agent、启用的工具、插件全部在 `reasonix.toml` 中声明，

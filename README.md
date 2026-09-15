@@ -54,6 +54,33 @@
 
 <br/>
 
+## About this fork
+
+This repository is a **long-lived fork** of
+[esengine/DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix) (`main-v2-stable`):
+it tracks upstream and keeps the changes we actually need on top. What that means in practice:
+
+- **Your data stays upstream-compatible.** Session data is written in upstream's format and read
+  as liberally; on top of that there is a repair path — sessions that upstream stops loading
+  (interrupted or damaged writes) still open here. **Switching back to the official build is
+  always safe**: install the official package over this one, or let the built-in updater do it.
+- **Only the Windows desktop build is tested** — `win-amd64-desktop`, with the **classic layout**.
+  That is the configuration we use daily. Other targets (other platforms, CLI/TUI, the VS Code
+  extension, the workbench layout) are not verified here and promise neither usability nor
+  feature parity.
+- **We do not chase an unstable upstream.** While upstream is mid-refactor or its releases are
+  churning, this branch stays on its current baseline instead of following.
+- **Every fork modification is listed per version** in
+  [`release-notes/FORK-vs-upstream.md`](release-notes/FORK-vs-upstream.md) — with its switch, its
+  default, the files that carry it, and whether upstream has absorbed it. [`FORK.md`](FORK.md) is
+  the full entry document, and [`release-notes/`](release-notes/) carries the per-version notes.
+- **Stable versions: `1.31.4` – `1.34`, and `1.38.3`.** `1.38.1` is known unstable — do not run it.
+- **Questions, bugs, ideas:** please open an
+  [issue](https://github.com/Linearl/DeepSeek-Reasonix/issues) — see also
+  [CONTRIBUTING.md](CONTRIBUTING.md).
+
+<br/>
+
 ## Features
 
 - **Config-driven.** Providers, the agent, enabled tools, and plugins are all
