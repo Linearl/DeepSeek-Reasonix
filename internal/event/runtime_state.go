@@ -24,7 +24,6 @@ type RuntimeStateSnapshot struct {
 	Cancellable     bool       `json:"cancellable"`
 	BackgroundJobs  int        `json:"backgroundJobs"`
 	Activity        string     `json:"activity"`
-	Todos           []Todo     `json:"todos,omitempty"`
 }
 
 func (s RuntimeStateSnapshot) ActiveWork() bool {

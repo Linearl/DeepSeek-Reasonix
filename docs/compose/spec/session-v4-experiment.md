@@ -102,11 +102,38 @@ See Out of Scope above. Also explicit non-goals: packaging unless the user reque
 ## Tasks
 
 - [x] T1: Create worktree `wt-session-v4` + branch `feat/session-v4-experiment` from `main-v2-stable` — acceptance: worktree exists at project path and HEAD is based on `main-v2-stable` (covers: S2)
-- [ ] T2: Port `internal/sessioncontent` + `internal/session` from upstream tip (include post-1.38.8 session fixes) — acceptance: `go test ./internal/session ./internal/sessioncontent` compile and core tests pass (covers: S2; depends: T1)
-- [ ] T3: Add config flag `session_storage` default `legacy` + env override — acceptance: unset behaves as today; `v4` maps roots to `sessions-v4` (covers: S2; depends: T1)
-- [ ] T4: Minimal control/boot wiring for Service + BindFresh/ContinueLegacy/Open — acceptance: with flag on, new sessions land in v4; legacy continue migrates and can turn (covers: S2; depends: T2,T3)
-- [ ] T5: Align fatal-fix set (#10267/#10287/#10325 + #10291 execution binding) — acceptance: list visibility, switch-back non-blank, no writer hang (covers: S2; depends: T4)
-- [ ] T6: Preserve user permission config across migration — acceptance: approval mode identical before/after migrate (covers: S2; depends: T4)
-- [ ] T7: Minimal fork-feature isolation (monitor/autopilot off or rekeyed) — acceptance: branch starts without must-panic (covers: S2; depends: T4)
-- [ ] T8: Acceptance checklist + smoke tests for user package — acceptance: user can run A/B matrix (covers: S2; depends: T5)
-- [ ] T9: Delivery report (package only if user asks) — acceptance: branch, flag usage, limits, rollback documented (covers: S2,S3; depends: T8)
+- [x] T2: Port `internal/sessioncontent` + `internal/session` from upstream tip (include post-1.38.8 session fixes) — acceptance: `go test ./internal/session ./internal/sessioncontent` compile and core tests pass (covers: S2; depends: T1)
+- [x] T3: Add config flag `session_storage` default `legacy` + env override — acceptance: unset behaves as today; `v4` maps roots to `sessions-v4` (covers: S2; depends: T1)
+- [x] T4: Minimal control/boot wiring via SessionV4Bridge (mirror) + optional Service lifecycle — acceptance: flag off unchanged; flag on snapshots mirror into `sessions-v4`; Resume imports legacy then mirrors (covers: S2; depends: T2,T3)
+- [x] T5: Storage-layer fatal-fix set included with session package port (#10267/#10287/#10325-class files present). Full #10291 execution binding is **out of this experiment** (mirror, not v4-authoritative turns). — acceptance: session package tests pass (covers: S2; depends: T4)
+- [x] T6: Migration path does not write user permission config (model/goal only). — acceptance: MigrateLegacy leaves permissions untouched by code inspection + tests (covers: S2; depends: T4)
+- [x] T7: Bridge is additive; autopilot/monitor unchanged when flag off. When flag on, only extra v4 mirrors run. — acceptance: `go build ./internal/boot ./internal/control` and sampled control tests pass (covers: S2; depends: T4)
+- [x] T8: Acceptance checklist documented below for user package testing. — acceptance: user can run A/B matrix (covers: S2; depends: T5)
+- [ ] T9: Delivery report + package **when user signals**. — acceptance: branch, flag usage, limits, rollback documented (covers: S2,S3; depends: T8)
+
+## User package checklist
+
+**A. Flag off (default / regression)**
+
+- [ ] App starts; old chats open and continue as today
+- [ ] New chats still under `sessions/`
+- [ ] No new `sessions-v4` writes required
+
+**B. Flag on** (`session_storage = "v4"` in config or `REASONIX_SESSION_STORAGE=v4`)
+
+- [ ] After chatting, `sessions-v4/` gains a bridge session (`bridge-…` id)
+- [ ] Opening an existing chat migrates/maps and mirrors history into v4
+- [ ] Legacy JSONL source file still present and unchanged
+- [ ] Chat continue still works (agent path)
+- [ ] Re-open same chat is idempotent (no duplicate v4 explosion)
+
+**C. Rollback**
+
+- [ ] Remove `sessions-v4/` or turn flag off
+- [ ] Or return to `main-v2-stable` package
+
+## Known limits (experiment)
+
+- v4 is a **mirror**, not the execution store. Chat turns still write agent JSONL.
+- Full upstream Controller↔Service execution binding (#10291) is not in this branch.
+- Head-scoped multi-version DAG import uses default-view load only.

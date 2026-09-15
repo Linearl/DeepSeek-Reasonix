@@ -583,6 +583,15 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if sessionDir == "" {
 		sessionDir = config.SessionDir()
 	}
+	var sessionV4 *control.SessionV4Bridge
+	if config.SessionStorageMode(cfg) == "v4" {
+		bridge, bridgeErr := control.NewSessionV4Bridge(config.SessionStoreDir())
+		if bridgeErr != nil {
+			sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "session v4 bridge disabled: " + bridgeErr.Error()})
+		} else {
+			sessionV4 = bridge
+		}
+	}
 	reconcileCleanupPending := opts.CleanupPendingReconciler
 	if reconcileCleanupPending == nil {
 		reconcileCleanupPending = control.ReconcileCleanupPending
@@ -1866,6 +1875,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		MemorySystemReload:             memoryReload,
 		PinnedContextLoader:            opts.PinnedContextLoader,
 		SessionDir:                     sessionDir,
+		SessionV4:                      sessionV4,
 		Host:                           pluginHost,
 		Commands:                       cmds,
 		Skills:                         skills,
@@ -2003,6 +2013,17 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// Goal evaluator is not implied by the main model, guardian, or recovery
 	// reviewer. Controllers that want one inject it explicitly; otherwise Goal
 	// uses the deterministic host policy.
+	if sessionV4 != nil {
+		prevCleanup := cleanup
+		cleanup = func() {
+			if err := sessionV4.CloseAll(context.Background()); err != nil {
+				slog.Warn("session v4 bridge close", "err", err)
+			}
+			prevCleanup()
+		}
+		ctrlOpts.SessionV4 = sessionV4
+		ctrlOpts.Cleanup = func() { cleanup() }
+	}
 	ctrl := control.New(ctrlOpts)
 	// The role inputs set the session quality floor: delivery/deliver/quality
 	// raise it, light and its aliases fold to standard, unknown stays default.

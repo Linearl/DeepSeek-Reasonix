@@ -155,6 +155,8 @@ type Controller struct {
 	pinnedContextLoader     PinnedContextLoader
 	sessionContextStatic    sessioncontext.Sections
 	sessionDir              string
+	// sessionV4 mirrors transcripts into the experimental v4 store when set.
+	sessionV4               *SessionV4Bridge
 	commands                atomic.Pointer[[]command.Command]
 	// skills owns the session's discovered skills (enabled subset, full set, and
 	// the reloadable stores) — the skills slice of the Capabilities concern. See
@@ -567,6 +569,9 @@ type Options struct {
 	PinnedContextLoader PinnedContextLoader
 	SessionDir          string
 	SessionPath         string
+	// SessionV4 optionally mirrors transcripts into sessions-v4 for the
+	// session_storage=v4 experiment. Nil disables mirroring.
+	SessionV4           *SessionV4Bridge
 	Host                *plugin.Host
 	// MCPHostProfile is the surface lazily created hosts declare; injected
 	// hosts keep their own profile.
@@ -764,6 +769,7 @@ func New(opts Options) *Controller {
 		pinnedContextLoader:               opts.PinnedContextLoader,
 		sessionContextStatic:              opts.SessionContextStatic,
 		sessionDir:                        opts.SessionDir,
+		sessionV4:                         opts.SessionV4,
 		sessionPath:                       opts.SessionPath,
 		commands:                          atomic.Pointer[[]command.Command]{},
 		skills:                            newSkillSet(opts.Skills, opts.AllSkills, opts.SkillStore, opts.AllSkillStore),
@@ -3515,6 +3521,14 @@ func (c *Controller) Resume(s *agent.Session, path string) {
 		c.rotateSessionTemp()
 	}
 	c.snapshotMu.Unlock()
+	if c.sessionV4 != nil && path != "" && s != nil {
+		if _, importErr := c.sessionV4.ImportLegacy(context.Background(), path); importErr != nil {
+			logSessionV4Bridge(importErr, "resume-import", path)
+		}
+		if syncErr := c.sessionV4.SyncAgentTranscript(context.Background(), path, s.Snapshot()); syncErr != nil {
+			logSessionV4Bridge(syncErr, "resume-sync", path)
+		}
+	}
 	c.rebindInbox()
 	c.recoverCheckpointTransactions()
 	c.recoverInterruptedTurn(path)
@@ -3769,6 +3783,11 @@ func (c *Controller) snapshotWithDurability(markActivity, forceRewrite, shutdown
 	preview, turns := agent.SessionPreviewFromMessages(s.Snapshot())
 	if err := updateSessionListingProjection(s, path, modelRef, preview, turns, markActivity); err != nil && !listingDeferredAfterUnlockedAppend(s, path, err) {
 		return transcriptDurable, err
+	}
+	if c.sessionV4 != nil {
+		if syncErr := c.sessionV4.SyncAgentTranscript(context.Background(), path, s.Snapshot()); syncErr != nil {
+			logSessionV4Bridge(syncErr, "snapshot-sync", path)
+		}
 	}
 	c.extensionSessionPayloadEvent(extension.PointSessionSave, savePayload)
 	return transcriptDurable, nil
