@@ -97,6 +97,7 @@ func activateVersionedWindowsFromStaging(claimed *repair.UpdateTransaction, stag
 	// Best-effort retention GC of older version trees.
 	_ = installlayout.RetainPreviousVersions(installRoot, 0)
 	_ = installlayout.CleanupStaleStaging(installRoot, 0)
+	_ = installlayout.CleanupStaleReplacedVersions(installRoot, 0)
 	return nil
 }
 

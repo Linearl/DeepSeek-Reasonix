@@ -84,7 +84,7 @@ func (c *Controller) visionRefAvailable(r ref, baseDir string) error {
 	switch r.kind {
 	case refImage:
 		if isAttachmentRef(filepath.ToSlash(r.path)) {
-			_, err := cleanAttachmentPath(r.path)
+			_, err := cleanAttachmentPath(baseDir, r.path)
 			return err
 		}
 		absPath, _, ok := resolveAbsRef(r.path, baseDir)
@@ -115,7 +115,7 @@ func (c *Controller) visionLocalImageValue(pathName, baseDir string) (string, er
 		err     error
 	)
 	if isAttachmentRef(filepath.ToSlash(pathName)) {
-		dataURL, err = visionImageDataURL(pathName)
+		dataURL, err = visionImageDataURL(baseDir, pathName)
 	} else {
 		dataURL, err = visionFileImageDataURL(pathName, baseDir)
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -91,6 +92,9 @@ func (a *App) RestartAndUpdate(sourceDir, version string) error {
 	if validateErr := installlayout.ValidateVersionName(version); validateErr != nil {
 		return fmt.Errorf("restart: %w", validateErr)
 	}
+	// A silent restart reads as a dead button: the click closes the app and the
+	// only trace of what happened lives here. Log every milestone.
+	slog.Info("restart: publishing staged build", "version", version, "sourceDir", sourceDir, "installRoot", installRoot)
 
 	members := []installlayout.Member{
 		{Name: installlayout.DesktopBinaryName(), Path: filepath.Join(sourceDir, installlayout.DesktopBinaryName())},
@@ -120,7 +124,9 @@ func (a *App) RestartAndUpdate(sourceDir, version string) error {
 		return fmt.Errorf("restart: publish version: %w", err)
 	}
 
+	slog.Info("restart: publish committed; relaunching", "version", version)
 	if err := startDetachedLauncher(filepath.Join(installRoot, launcherName)); err != nil {
+		slog.Error("restart: launcher start failed after commit", "version", version, "err", err)
 		return fmt.Errorf("restart: start launcher: %w", err)
 	}
 

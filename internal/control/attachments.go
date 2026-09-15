@@ -102,6 +102,13 @@ func SaveAttachmentBytesInRoot(root, origName string, raw []byte) (string, error
 }
 
 func SaveImageDataURL(dataURL string) (string, error) {
+	return SaveImageDataURLIn(".", dataURL)
+}
+
+// SaveImageDataURLIn stores the pasted image under base/.reasonix/attachments.
+// base is the owning workspace root; "" or "." keeps the historical
+// process-working-directory behaviour, which the CLI relies on.
+func SaveImageDataURLIn(base, dataURL string) (string, error) {
 	const prefix = "data:"
 	const marker = ";base64,"
 	if !strings.HasPrefix(dataURL, prefix) {
@@ -116,7 +123,7 @@ func SaveImageDataURL(dataURL string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("decode pasted image: %w", err)
 	}
-	return SaveImageBytes(mime, raw)
+	return SaveImageBytesInRoot(base, mime, raw)
 }
 
 func SaveImageBytes(declaredMime string, raw []byte) (string, error) {
@@ -170,6 +177,11 @@ func saveAttachmentBytesInRoot(root, ext string, raw []byte) (string, error) {
 }
 
 func SaveImageFile(path string) (string, error) {
+	return SaveImageFileIn(".", path)
+}
+
+// SaveImageFileIn stores the image file under base/.reasonix/attachments.
+func SaveImageFileIn(base, path string) (string, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return "", err
@@ -204,10 +216,15 @@ func SaveImageFile(path string) (string, error) {
 	} else if !os.SameFile(opened, after) || after.Size() != opened.Size() {
 		return "", fmt.Errorf("pasted image changed while reading")
 	}
-	return SaveImageBytes("", raw)
+	return SaveImageBytesInRoot(base, "", raw)
 }
 
 func SaveAttachmentFile(path string) (string, error) {
+	return SaveAttachmentFileIn(".", path)
+}
+
+// SaveAttachmentFileIn stores the file under base/.reasonix/attachments.
+func SaveAttachmentFileIn(base, path string) (string, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return "", err
@@ -246,10 +263,14 @@ func SaveAttachmentFile(path string) (string, error) {
 	if !safeAttachmentExt.MatchString(ext) {
 		ext = ".bin"
 	}
-	if err := ensureAttachmentRoot(); err != nil {
+	absBase, absErr := filepath.Abs(attachmentBase(base))
+	if absErr != nil {
+		return "", absErr
+	}
+	if err := ensureAttachmentRootIn(absBase); err != nil {
 		return "", err
 	}
-	rel, dst, err := createAttachmentFile(ext)
+	rel, dst, err := createAttachmentFileIn(absBase, ext)
 	if err != nil {
 		return "", err
 	}
@@ -266,19 +287,24 @@ func SaveAttachmentFile(path string) (string, error) {
 }
 
 func SaveClipboardImage() (string, error) {
+	return SaveClipboardImageIn(".")
+}
+
+// SaveClipboardImageIn stores the OS clipboard image under base/.reasonix/attachments.
+func SaveClipboardImageIn(base string) (string, error) {
 	switch runtime.GOOS {
 	case "darwin":
-		return saveDarwinClipboardImage()
+		return saveDarwinClipboardImage(base)
 	case "windows":
-		return saveWindowsClipboardImage()
+		return saveWindowsClipboardImage(base)
 	case "linux":
-		return saveLinuxClipboardImage()
+		return saveLinuxClipboardImage(base)
 	default:
 		return "", fmt.Errorf("clipboard image paste is not supported on %s yet", runtime.GOOS)
 	}
 }
 
-func saveWindowsClipboardImage() (string, error) {
+func saveWindowsClipboardImage(base string) (string, error) {
 	// Windows PowerShell 5.1 (preinstalled) reaches the GUI clipboard; pwsh (Core)
 	// lacks Get-Clipboard -Format Image, so invoke powershell.exe. The PNG is
 	// returned as base64 on stdout so no temp file is involved.
@@ -303,7 +329,7 @@ $img.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
 	if err != nil {
 		return "", fmt.Errorf("decode clipboard image: %w", err)
 	}
-	return SaveImageBytes("", raw)
+	return SaveImageBytesInRoot(base, "", raw)
 }
 
 // clipboardImageTypes lists the image mimes we can save, most preferred
@@ -317,7 +343,7 @@ func clipboardImageReadArgs(tool, mime string) []string {
 	return []string{"-selection", "clipboard", "-t", mime, "-o"}
 }
 
-func saveLinuxClipboardImage() (string, error) {
+func saveLinuxClipboardImage(base string) (string, error) {
 	type clipboardTool struct {
 		name      string
 		typesArgs []string
@@ -368,7 +394,7 @@ func saveLinuxClipboardImage() (string, error) {
 			readFailures = append(readFailures, fmt.Errorf("read clipboard image with %s: empty image data", tool.name))
 			continue
 		}
-		rel, err := SaveImageBytes("", out)
+		rel, err := SaveImageBytesInRoot(base, "", out)
 		if err != nil {
 			readFailures = append(readFailures, fmt.Errorf("save clipboard image from %s: %w", tool.name, err))
 			continue
@@ -423,7 +449,14 @@ func clipboardProbeMeansNoImage(tool string, stderr []byte) bool {
 }
 
 func ImageDataURL(path string) (string, error) {
-	raw, mime, err := readAttachmentImage(path)
+	return ImageDataURLIn(".", path)
+}
+
+// ImageDataURLIn reads the attachment relative to base, the owning workspace
+// root -- not the process working directory, which a relaunch into the
+// install root changes out from under relative references.
+func ImageDataURLIn(base, path string) (string, error) {
+	raw, mime, err := readAttachmentImage(base, path)
 	if err != nil {
 		return "", err
 	}
@@ -434,8 +467,8 @@ func ImageDataURL(path string) (string, error) {
 // the desktop preview at full resolution), downscales/recompresses it before
 // base64 so an oversized photo doesn't balloon the request bytes and image
 // tokens. Best-effort: an undecodable format passes through at original size.
-func visionImageDataURL(path string) (string, error) {
-	raw, mime, err := readAttachmentImage(path)
+func visionImageDataURL(base, path string) (string, error) {
+	raw, mime, err := readAttachmentImage(base, path)
 	if err != nil {
 		return "", err
 	}
@@ -443,24 +476,24 @@ func visionImageDataURL(path string) (string, error) {
 	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(raw), nil
 }
 
-func readAttachmentImage(path string) (raw []byte, mime string, err error) {
-	clean, err := cleanAttachmentPath(path)
+func readAttachmentImage(base, path string) (raw []byte, mime string, err error) {
+	clean, err := cleanAttachmentPath(base, path)
 	if err != nil {
 		slog.Warn("control: attachment path rejected", "path", path, "err", err)
 		return nil, "", err
 	}
 	info, err := os.Lstat(clean)
 	if err != nil {
-		return nil, "", err
-		// The path is relative, so it resolves against the process working directory - but the
-		// image was written relative to the *tab's* workspace. When those differ (a session open
-		// in another workspace while the agent runs in this one) the file is simply not there,
-		// and nothing used to say so: the stat failed and the error was returned unlogged, which
-		// is why this looked like "the image never arrived". Record both ends of the mismatch.
+		// The reference is relative to base (the owning workspace root), not to
+		// the process working directory. When those differ -- a relaunch whose
+		// working directory is the install root, or a session open in another
+		// workspace -- the file is simply not there, and a bare stat error reads
+		// as "the image never arrived". Record every end of the mismatch.
 		cwd, _ := os.Getwd()
 		resolved, _ := filepath.Abs(clean)
 		slog.Warn("control: attachment image not found",
-			"path", path, "cwd", cwd, "resolved", resolved, "err", err)
+			"path", path, "base", base, "cwd", cwd, "resolved", resolved, "err", err)
+		return nil, "", err
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
 		return nil, "", fmt.Errorf("attachment path must not be a symlink")
@@ -499,22 +532,27 @@ func readAttachmentImage(path string) (raw []byte, mime string, err error) {
 	return raw, mime, nil
 }
 
-func cleanAttachmentPath(path string) (string, error) {
+func cleanAttachmentPath(base, path string) (string, error) {
 	if filepath.IsAbs(path) {
 		return "", fmt.Errorf("attachment path must be relative")
 	}
+	base = attachmentBase(base)
 	clean := filepath.Clean(filepath.FromSlash(path))
-	root := filepath.Join(".reasonix", "attachments")
-	if clean == "." || clean == root || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || !strings.HasPrefix(clean, root+string(filepath.Separator)) {
+	// Containment is a property of the reference shape -- relative and under
+	// .reasonix/attachments -- and must hold regardless of base. The base only
+	// decides where the reference resolves, so both sides of the symlink walk
+	// are joined into the same (base-qualified) namespace here.
+	relRoot := filepath.Join(".reasonix", "attachments")
+	if clean == "." || clean == relRoot || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || !strings.HasPrefix(clean, relRoot+string(filepath.Separator)) {
 		return "", fmt.Errorf("attachment path is outside .reasonix/attachments")
 	}
-	if err := ensureAttachmentRoot(); err != nil {
+	if err := ensureAttachmentRootIn(base); err != nil {
 		return "", err
 	}
-	if err := rejectSymlinkComponents(clean, root); err != nil {
+	if err := rejectSymlinkComponents(filepath.Join(base, clean), filepath.Join(base, relRoot)); err != nil {
 		return "", err
 	}
-	return clean, nil
+	return filepath.Join(base, clean), nil
 }
 
 func rejectSymlinkComponents(path, root string) error {
@@ -540,6 +578,15 @@ func rejectSymlinkComponents(path, root string) error {
 		}
 	}
 	return nil
+}
+
+// attachmentBase normalises an empty base to the process working directory,
+// matching the historical behaviour that the CLI still relies on.
+func attachmentBase(base string) string {
+	if strings.TrimSpace(base) == "" {
+		return "."
+	}
+	return base
 }
 
 func ensureAttachmentRoot() error {
@@ -572,13 +619,13 @@ func ensureAttachmentRootIn(base string) error {
 	return nil
 }
 
-func saveDarwinClipboardImage() (string, error) {
-	return saveDarwinClipboardImageWith(saveDarwinClipboardClass)
+func saveDarwinClipboardImage(base string) (string, error) {
+	return saveDarwinClipboardImageWith(base, saveDarwinClipboardClass)
 }
 
-func saveDarwinClipboardImageWith(readClass func(string) (string, error)) (string, error) {
+func saveDarwinClipboardImageWith(base string, readClass func(string, string) (string, error)) (string, error) {
 	for _, class := range []string{"PNGf", "JPEG"} {
-		rel, err := readClass(class)
+		rel, err := readClass(base, class)
 		if err == nil {
 			return rel, nil
 		}
@@ -589,11 +636,11 @@ func saveDarwinClipboardImageWith(readClass func(string) (string, error)) (strin
 	return "", ErrNoClipboardImage
 }
 
-func saveDarwinClipboardClass(class string) (string, error) {
-	if err := ensureAttachmentRoot(); err != nil {
+func saveDarwinClipboardClass(base, class string) (string, error) {
+	if err := ensureAttachmentRootIn(attachmentBase(base)); err != nil {
 		return "", err
 	}
-	rel, f, err := createAttachmentFile(".bin")
+	rel, f, err := createAttachmentFileIn(attachmentBase(base), ".bin")
 	if err != nil {
 		return "", err
 	}
@@ -642,7 +689,7 @@ end try
 	if err != nil {
 		return "", err
 	}
-	return SaveImageBytes("", raw)
+	return SaveImageBytesInRoot(base, "", raw)
 }
 
 func classifyDarwinClipboardResult(out []byte, runErr error, noImageMarker string) error {

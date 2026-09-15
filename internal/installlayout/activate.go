@@ -458,6 +458,49 @@ func CleanupStaleStaging(installRoot string, maxAge time.Duration) error {
 	return nil
 }
 
+// CleanupStaleReplacedVersions removes versions/<version>.replaced-<nonce>
+// backup directories left behind when a publish did not reach its final
+// cleanup step (crash, forced exit between the pointer swap and the backup
+// removal). Safe to call anytime; never touches published version
+// directories or current.json.
+func CleanupStaleReplacedVersions(installRoot string, maxAge time.Duration) error {
+	installRoot, err := cleanInstallRoot(installRoot)
+	if err != nil {
+		return err
+	}
+	if maxAge <= 0 {
+		maxAge = 24 * time.Hour
+	}
+	versionsRoot := filepath.Join(installRoot, VersionsDirName)
+	entries, err := os.ReadDir(versionsRoot)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	cutoff := time.Now().Add(-maxAge)
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, ".") || !strings.Contains(name, ".replaced-") {
+			continue
+		}
+		if validateErr := ValidateVersionName(strings.SplitN(name, ".replaced-", 2)[0]); validateErr != nil {
+			continue
+		}
+		path := filepath.Join(versionsRoot, name)
+		info, err := os.Lstat(path)
+		if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			continue
+		}
+		if info.ModTime().After(cutoff) {
+			continue
+		}
+		_ = os.RemoveAll(path)
+	}
+	return nil
+}
+
 // RetainPreviousVersions keeps the active version plus at most one previous
 // version directory for signed recovery installers. Older trees are removed.
 // The launcher never auto-selects a previous version; retention is for manual

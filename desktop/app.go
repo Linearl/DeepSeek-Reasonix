@@ -10790,7 +10790,7 @@ func (a *App) withActiveWorkspaceDo(fn func() error) error {
 // tab's workspace .reasonix/attachments and returns the relative @-reference path.
 func (a *App) SavePastedImage(dataURL string) (string, error) {
 	return a.withActiveWorkspace(func() (string, error) {
-		return control.SaveImageDataURL(dataURL)
+		return control.SaveImageDataURLIn(a.activeWorkspaceRoot(), dataURL)
 	})
 }
 
@@ -11105,7 +11105,7 @@ func exportFileFilters(mimeType, ext string) []runtime.FileFilter {
 // AttachmentDataURL returns a safe data URL for a stored image attachment.
 func (a *App) AttachmentDataURL(path string) (string, error) {
 	return a.withActiveWorkspace(func() (string, error) {
-		return control.ImageDataURL(path)
+		return control.ImageDataURLIn(a.activeWorkspaceRoot(), path)
 	})
 }
 
@@ -11134,8 +11134,8 @@ func (a *App) AttachDropped(path string) (DroppedItem, error) {
 			return err
 		}
 		if isImageExt(path) {
-			if rel, err := control.SaveImageFile(path); err == nil {
-				preview, _ := control.ImageDataURL(rel)
+			if rel, err := control.SaveImageFileIn(a.activeWorkspaceRoot(), path); err == nil {
+				preview, _ := control.ImageDataURLIn(a.activeWorkspaceRoot(), rel)
 				item = DroppedItem{Kind: "attachment", Path: rel, PreviewURL: preview}
 				return nil
 			}
@@ -11162,7 +11162,7 @@ func (a *App) AttachDropped(path string) (DroppedItem, error) {
 			item = DroppedItem{Kind: "workspace", Path: token, IsDir: true, DisplayPath: displayPath}
 			return nil
 		}
-		rel, err := control.SaveAttachmentFile(path)
+		rel, err := control.SaveAttachmentFileIn(a.activeWorkspaceRoot(), path)
 		if err != nil {
 			return err
 		}

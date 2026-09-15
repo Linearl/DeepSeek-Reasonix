@@ -273,7 +273,7 @@ func TestSaveLinuxClipboardImageSeparatesNoImageFromMissingTools(t *testing.T) {
 			return nil, nil, nil
 		},
 	)
-	_, err := saveLinuxClipboardImage()
+	_, err := saveLinuxClipboardImage("")
 	if err == nil || errors.Is(err, ErrNoClipboardImage) {
 		t.Fatalf("missing tools reported as an empty clipboard: %v", err)
 	}
@@ -295,7 +295,7 @@ func TestSaveLinuxClipboardImageSeparatesNoImageFromMissingTools(t *testing.T) {
 			return []byte("text/plain\nUTF8_STRING\n"), nil, nil
 		},
 	)
-	if _, err := saveLinuxClipboardImage(); !errors.Is(err, ErrNoClipboardImage) {
+	if _, err := saveLinuxClipboardImage(""); !errors.Is(err, ErrNoClipboardImage) {
 		t.Fatalf("text-only clipboard reported as a broken setup: %v", err)
 	}
 }
@@ -313,7 +313,7 @@ func TestSaveLinuxClipboardImagePreservesProbeFailure(t *testing.T) {
 		},
 	)
 
-	_, err := saveLinuxClipboardImage()
+	_, err := saveLinuxClipboardImage("")
 	if err == nil || errors.Is(err, ErrNoClipboardImage) {
 		t.Fatalf("clipboard probe failure reported as no image: %v", err)
 	}
@@ -338,7 +338,7 @@ func TestSaveLinuxClipboardImagePreservesImageReadFailure(t *testing.T) {
 		},
 	)
 
-	_, err := saveLinuxClipboardImage()
+	_, err := saveLinuxClipboardImage("")
 	if err == nil || errors.Is(err, ErrNoClipboardImage) {
 		t.Fatalf("clipboard image read failure reported as no image: %v", err)
 	}
@@ -360,14 +360,14 @@ func TestSaveLinuxClipboardImageTreatsEmptySelectionAsNoImage(t *testing.T) {
 		},
 	)
 
-	if _, err := saveLinuxClipboardImage(); !errors.Is(err, ErrNoClipboardImage) {
+	if _, err := saveLinuxClipboardImage(""); !errors.Is(err, ErrNoClipboardImage) {
 		t.Fatalf("empty clipboard = %v, want ErrNoClipboardImage", err)
 	}
 }
 
 func TestSaveDarwinClipboardImagePreservesOperationalFailure(t *testing.T) {
 	want := errors.New("attachment directory unavailable")
-	_, err := saveDarwinClipboardImageWith(func(string) (string, error) {
+	_, err := saveDarwinClipboardImageWith("", func(string, string) (string, error) {
 		return "", want
 	})
 	if !errors.Is(err, want) {
@@ -377,7 +377,7 @@ func TestSaveDarwinClipboardImagePreservesOperationalFailure(t *testing.T) {
 
 func TestSaveDarwinClipboardImageReturnsNoImageOnlyAfterBothTypesMiss(t *testing.T) {
 	var classes []string
-	_, err := saveDarwinClipboardImageWith(func(class string) (string, error) {
+	_, err := saveDarwinClipboardImageWith("", func(_ string, class string) (string, error) {
 		classes = append(classes, class)
 		return "", ErrNoClipboardImage
 	})
@@ -424,7 +424,7 @@ func TestSaveLinuxClipboardImageNegotiatesSupportedImageType(t *testing.T) {
 			return png, nil, nil
 		},
 	)
-	if _, err := saveLinuxClipboardImage(); err != nil {
+	if _, err := saveLinuxClipboardImage(""); err != nil {
 		t.Fatal(err)
 	}
 	if got, want := strings.Join(readArgs, " "), "--type image/jpeg --no-newline"; got != want {
@@ -448,7 +448,7 @@ func TestSaveLinuxClipboardImageNamesUnsupportedImageTypes(t *testing.T) {
 			return nil, nil, nil
 		},
 	)
-	_, err := saveLinuxClipboardImage()
+	_, err := saveLinuxClipboardImage("")
 	if !errors.Is(err, ErrNoClipboardImage) {
 		t.Fatalf("unsupported image error = %v, want ErrNoClipboardImage fallback", err)
 	}
