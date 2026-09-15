@@ -14,11 +14,13 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	c := &Config{}
 	c.Desktop.ExperimentalRestartUpdate = true
 	c.Desktop.ExperimentalSessionMonitor = true
+	c.Desktop.ExperimentalSplitView = true
 
 	out := RenderTOMLForScope(c, RenderScopeUser)
 	for _, want := range []string{
 		"experimental_restart_update = true",
 		"experimental_session_monitor = true",
+		"experimental_split_view = true",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("rendered user config is missing %q\n---\n%s", want, out)
@@ -35,6 +37,7 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 	for _, want := range []string{
 		"experimental_restart_update = false",
 		"experimental_session_monitor = false",
+		"experimental_split_view = false",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("a disabled switch should still render %q\n---\n%s", want, out)

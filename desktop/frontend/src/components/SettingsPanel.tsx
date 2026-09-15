@@ -1697,6 +1697,20 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
           ))}
         </SettingsOptions>
       </SettingsField>
+      <SettingsField label={t("settings.splitView")} hint={t("settings.splitViewHint")} icon={<Sparkles size={18} />}>
+        <SettingsOptions layout="field" className="set-seg">
+          {[false, true].map((on) => (
+            <button
+              key={String(on)}
+              className={`set-seg__btn${Boolean(s.experimentalSplitView) === on ? " set-seg__btn--on" : ""}`}
+              disabled={busy}
+              onClick={() => void apply(() => app.SetExperimentalSplitView(on))}
+            >
+              {t(on ? "settings.splitView.on" : "settings.splitView.off")}
+            </button>
+          ))}
+        </SettingsOptions>
+      </SettingsField>
       <SettingsField label={t("settings.autopilot")} hint={t("settings.autopilotHint")} icon={<ShieldCheck size={18} />}>
         <SettingsOptions layout="field" className="set-seg">
           {[false, true].map((on) => (

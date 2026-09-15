@@ -1,5 +1,6 @@
 // TabBar renders the browser-like workspace tab strip. Each tab represents one
 // open project/global topic, so switching tabs switches the active conversation.
+import { isSplitViewEnabled, onSplitViewEnabledChange } from "../lib/splitView";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, DragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { FileText, Plus, Search, X } from "lucide-react";
@@ -58,6 +59,10 @@ function projectAccentStyle(color?: string): CSSProperties | undefined {
 }
 
 export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose, onTabsReorder, onNewTab, onOpenPalette, commandCompact = false, revealActiveSignal = 0, splitTabId = null, onToggleSplit }: TabBarProps) {
+  // Task 70-1: the split is an experiment - with the switch off the menu below is
+  // exactly the pre-split list.
+  const [splitViewEnabled, setSplitViewEnabled] = useState(isSplitViewEnabled());
+  useEffect(() => onSplitViewEnabledChange(setSplitViewEnabled), []);
   const t = useT();
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; side: DropSide } | null>(null);
@@ -170,12 +175,14 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
   const menuTabIndex = menuTabId ? tabs.findIndex((tab) => tab.id === menuTabId) : -1;
   const tabMenuItems: ContextMenuItem[] = menuTabId && menuTabIndex >= 0
     ? [
-        {
-          key: "split-view",
-          label: splitTabId && splitTabId === menuTabId ? t("tabBar.closeSplitView") : t("tabBar.splitView"),
-          disabled: tabs.length <= 1,
-          onSelect: () => onToggleSplit?.(menuTabId),
-        },
+        ...(splitViewEnabled
+          ? [{
+              key: "split-view",
+              label: splitTabId && splitTabId === menuTabId ? t("tabBar.closeSplitView") : t("tabBar.splitView"),
+              disabled: tabs.length <= 1,
+              onSelect: () => onToggleSplit?.(menuTabId),
+            }]
+          : []),
         {
           key: "close-current",
           label: t("tabBar.closeTab"),

@@ -172,6 +172,12 @@ func (a *App) SetExperimentalSessionMonitor(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSessionMonitor(enabled) })
 }
 
+// SetExperimentalSplitView toggles the tab-bar split view (task 70-1): with it off the
+// right-click menu keeps exactly the pre-split item list.
+func (a *App) SetExperimentalSplitView(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSplitView(enabled) })
+}
+
 // SetDesktopMetrics sets whether the desktop sends aggregate desktop metrics,
 // starting or stopping the live aggregator so the toggle takes effect immediately.
 func (a *App) SetDesktopMetrics(enabled bool) error {

@@ -79,3 +79,24 @@ export function reconcileSplitState(state: SplitState, liveTabIds: readonly stri
   if (liveTabIds.includes(state.secondaryTabId)) return state;
   return { secondaryTabId: null, focusedPane: state.focusedPane };
 }
+
+// ── experiment gate (task 70-1) ───────────────────────────────────────────────
+// The split is an experiment: with the switch off the tab context menu keeps
+// exactly the pre-split item list, so nothing about the classic tab bar changes.
+let splitViewEnabled = false;
+const splitViewEnabledListeners = new Set<(enabled: boolean) => void>();
+
+export function isSplitViewEnabled(): boolean {
+  return splitViewEnabled;
+}
+
+export function setSplitViewEnabled(next: boolean): void {
+  if (splitViewEnabled === next) return;
+  splitViewEnabled = next;
+  for (const listener of splitViewEnabledListeners) listener(next);
+}
+
+export function onSplitViewEnabledChange(cb: (enabled: boolean) => void): () => void {
+  splitViewEnabledListeners.add(cb);
+  return () => splitViewEnabledListeners.delete(cb);
+}

@@ -336,6 +336,7 @@ type SettingsView struct {
 	// permanently reading "off" and impossible to turn on (fixed 2026-09-15).
 	ExperimentalRestartUpdate    bool                       `json:"experimentalRestartUpdate"`
 	ExperimentalSessionMonitor   bool                       `json:"experimentalSessionMonitor"`
+	ExperimentalSplitView        bool                       `json:"experimentalSplitView"`
 	VisionModel                  string                     `json:"visionModel"`
 	WebSearchModel               string                     `json:"webSearchModel"`
 	WebSearchModels              []string                   `json:"webSearchModels"`
@@ -414,6 +415,7 @@ type DesktopStartupSettingsView struct {
 	ExperimentalRestartUpdate bool `json:"experimentalRestartUpdate"`
 	// ExperimentalSessionMonitor exposes the left-rail "session monitor" board (task 123).
 	ExperimentalSessionMonitor bool   `json:"experimentalSessionMonitor"`
+	ExperimentalSplitView      bool   `json:"experimentalSplitView"`
 	CheckUpdates               bool   `json:"checkUpdates"`
 	UpdateChannel              string `json:"updateChannel"`
 	ConversationWidth          string `json:"conversationWidth,omitempty"`
@@ -1061,6 +1063,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ConfigPath = config.UserConfigPath()
 		view.ExperimentalRestartUpdate = cfg.Desktop.ExperimentalRestartUpdate
 		view.ExperimentalSessionMonitor = cfg.Desktop.ExperimentalSessionMonitor
+		view.ExperimentalSplitView = cfg.Desktop.ExperimentalSplitView
 		return view
 	}
 	cfg, path, err := a.loadDesktopUserConfigForView()
@@ -1121,6 +1124,7 @@ func (a *App) Settings() SettingsView {
 		// The Settings panel reads these switches from this view (see the struct note).
 		ExperimentalRestartUpdate:  cfg.Desktop.ExperimentalRestartUpdate,
 		ExperimentalSessionMonitor: cfg.Desktop.ExperimentalSessionMonitor,
+		ExperimentalSplitView:      cfg.Desktop.ExperimentalSplitView,
 		VisionModel:                cfg.Agent.VisionModel,
 		WebSearchModel:             cfg.Agent.WebSearchModel,
 		WebSearchModels:            []string{},

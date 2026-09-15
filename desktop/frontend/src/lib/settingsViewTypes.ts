@@ -13,6 +13,8 @@ export interface SettingsView {
   experimentalRestartUpdate?: boolean;
   // Task 123: exposes the left-rail session monitor board (experimental).
   experimentalSessionMonitor?: boolean;
+  // Task 70-1: exposes the tab-bar split view (experimental).
+  experimentalSplitView?: boolean;
   visionModel: string;
   webSearchModel?: string;
   webSearchModels?: string[];

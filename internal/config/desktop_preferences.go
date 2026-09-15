@@ -25,7 +25,7 @@ type DesktopConfig struct {
 	// Autopilot defaults for newly-created desktop sessions. Autopilot runs a
 	// session unattended: the goal machine bounds it by wall clock, and the reviewer
 	// answers approval prompts nobody is there to answer.
-	Autopilot              bool   `toml:"autopilot"`
+	Autopilot bool `toml:"autopilot"`
 	// ExperimentalRestartUpdate exposes the "restart and update" action (task 81).
 	// It ships off: the action swaps the active install version, so it stays behind an
 	// explicit opt-in until it has been exercised in the field.
@@ -34,9 +34,13 @@ type DesktopConfig struct {
 	// (task 123). It ships off: the board is a diagnostics surface for cache
 	// residency and switch cost, so it stays behind an explicit opt-in.
 	ExperimentalSessionMonitor bool `toml:"experimental_session_monitor"`
-	AutopilotMaxRuntime    string `toml:"autopilot_max_runtime"`     // Go duration; required when autopilot is on
+	// ExperimentalSplitView exposes the tab-bar "split view" action (task 70-1). It
+	// ships off: with it off the tab context menu looks exactly as it did before the
+	// split existed (zero regression), and the split stays an opt-in experiment.
+	ExperimentalSplitView  bool   `toml:"experimental_split_view"`
+	AutopilotMaxRuntime    string `toml:"autopilot_max_runtime"`    // Go duration; required when autopilot is on
 	AutopilotApprovalGrace string `toml:"autopilot_approval_grace"` // wait for a human before the reviewer decides; empty = 15s
-	CheckUpdates              *bool    `toml:"check_updates"`                // startup update checks; nil keeps the default enabled
+	CheckUpdates           *bool  `toml:"check_updates"`            // startup update checks; nil keeps the default enabled
 	// UpdateChannel is a legacy compatibility field. It is accepted on read but
 	// ignored and omitted from future canonical writes.
 	UpdateChannel        string   `toml:"update_channel"`

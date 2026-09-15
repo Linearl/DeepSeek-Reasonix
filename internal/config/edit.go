@@ -466,6 +466,14 @@ func (c *Config) SetExperimentalSessionMonitor(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalSplitView toggles the tab-bar split view (task 70-1). It is opt-in
+// because the split is an experiment: two live panes change how the transcript, the
+// composer and the status bar behave, so it stays behind an explicit switch.
+func (c *Config) SetExperimentalSplitView(enabled bool) error {
+	c.Desktop.ExperimentalSplitView = enabled
+	return nil
+}
+
 // SetDesktopMetrics sets whether the desktop sends aggregate desktop metrics.
 func (c *Config) SetDesktopMetrics(enabled bool) error {
 	c.Desktop.Metrics = &enabled
@@ -2508,4 +2516,3 @@ func (c *Config) SetDefaultSubagentPolicy(v string) error {
 	}
 	return nil
 }
-

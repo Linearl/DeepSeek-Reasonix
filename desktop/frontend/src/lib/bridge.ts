@@ -739,6 +739,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalRestartUpdate(enabled: boolean): Promise<void>;
   // Task 123: left-rail session monitor board (experimental).
   SetExperimentalSessionMonitor(enabled: boolean): Promise<void>;
+  // Task 70-1: tab-bar split view (experimental).
+  SetExperimentalSplitView(enabled: boolean): Promise<void>;
   SetDefaultAutoRecoveryCheckpoint(enabled: boolean): Promise<void>;
 
   RenameProviderConnections: typeof GeneratedApp.RenameProviderConnections;
@@ -4922,6 +4924,7 @@ function makeMockApp(): AppBindings {
     },
     async SetExperimentalRestartUpdate() {},
     async SetExperimentalSessionMonitor() {},
+    async SetExperimentalSplitView() {},
     async SetDesktopAutopilot(enabled: boolean, maxRuntime: string, approvalGrace: string) {
       settings.autopilot = enabled;
       settings.autopilotMaxRuntime = maxRuntime;
