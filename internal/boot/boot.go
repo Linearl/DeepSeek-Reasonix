@@ -1771,6 +1771,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		MissingReasoningWarnStateDir: config.MissingReasoningWarnStateDir(),
 	}, sink)
 	reg.Add(sessiontool.NewSetSessionTitleTool(sessionDir, executor.SessionPath, opts.OnSessionTitleChanged))
+	// Task 107 P0-②: the model's read-only view of the recovery fence. It reads
+	// the executing agent through the call context that executeOne stamps.
+	reg.Add(agent.NewToolRecoveryTool())
 
 	var runner agent.Runner = executor
 	label := entry.Model

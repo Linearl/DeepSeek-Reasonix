@@ -36,6 +36,7 @@ const (
 	HostSlashCommand               = "slash_command"
 	HostSubmitPlan                 = "submit_plan"
 	HostTask                       = "task"
+	HostToolRecovery               = "tool_recovery"
 	HostUseCapability              = "use_capability"
 	HostWebSearch                  = "web_search"
 )
@@ -77,6 +78,7 @@ func KnownToolNames() []string {
 		HostSlashCommand,
 		HostSubmitPlan,
 		HostTask,
+		HostToolRecovery,
 		HostUseCapability,
 		HostWebSearch,
 	}

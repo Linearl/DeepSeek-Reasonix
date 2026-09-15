@@ -34,6 +34,7 @@ export const TranscriptViewport = forwardRef<TranscriptViewportHandle, {
   renderRow: (row: TranscriptRow) => ReactNode;
   loadingOlderHistory: boolean;
   olderHistoryError?: string;
+  olderHistoryExhausted?: boolean;
   onRetryOlderHistory: () => void;
   onGeometryWillChange: (anchor?: LogicalAnchor) => unknown;
   onGeometryChange: (covered?: boolean, beforePaint?: boolean) => void;
@@ -42,7 +43,7 @@ export const TranscriptViewport = forwardRef<TranscriptViewportHandle, {
   running: boolean;
   turnStartAt?: number;
 }>(function TranscriptViewport({ projection, mode, tabId, scrollElement, renderRow,
-  loadingOlderHistory, olderHistoryError, onRetryOlderHistory, onGeometryWillChange,
+  loadingOlderHistory, olderHistoryError, olderHistoryExhausted, onRetryOlderHistory, onGeometryWillChange,
   onGeometryChange, kernel, protectedBlockKeys = new Set(),
   running, turnStartAt,
 }, ref) {
@@ -52,11 +53,14 @@ export const TranscriptViewport = forwardRef<TranscriptViewportHandle, {
   const [windowLoaded, setWindowLoaded] = useState(mode === "windowed");
   useLayoutEffect(() => { if (mode === "windowed") setWindowLoaded(true); }, [mode]);
   useImperativeHandle(ref, () => ({ mountBlock: setPinnedJumpBlockKey }), []);
-  const prefix = projection.hasOlderHistory && (loadingOlderHistory || olderHistoryError) && (
+  const showOlderStatus = loadingOlderHistory || Boolean(olderHistoryError) || Boolean(olderHistoryExhausted);
+  const prefix = showOlderStatus && (projection.hasOlderHistory || olderHistoryExhausted) && (
     <div className="transcript__header"><div className="transcript__older-status" role={olderHistoryError ? "alert" : "status"}>
       {loadingOlderHistory
         ? <><Loader2 className="transcript__older-spinner" size={14} aria-hidden="true" /><span>{t("common.loading")}</span></>
-        : <><span>{t("transcript.loadEarlierFailed")}{olderHistoryError ? ` (${olderHistoryError})` : ""}</span><button type="button" className="btn btn--small" onClick={onRetryOlderHistory}><RotateCcw size={14} /><span>{t("common.retry")}</span></button></>}
+        : olderHistoryExhausted
+          ? <span>{t("transcript.noMoreEarlier")}</span>
+          : <><span>{t("transcript.loadEarlierFailed")}{olderHistoryError ? ` (${olderHistoryError})` : ""}</span><button type="button" className="btn btn--small" onClick={onRetryOlderHistory}><RotateCcw size={14} /><span>{t("common.retry")}</span></button></>}
     </div></div>
   );
   const activeStatus = running && projection.activeBlock && projection.activeBlock.rows.length <= 1

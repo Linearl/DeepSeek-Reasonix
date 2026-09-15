@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -115,9 +116,19 @@ func (a *Agent) beginToolRecovery(ctx context.Context, p *toolCallPlan) error {
 	// hard stop here strands it with no way out. The effect record is still kept
 	// (PendingToolRecovery still lists it) for after-the-fact review; only the
 	// hard stop is lifted, and ask keeps it.
-	if !p.readOnly && !toolRecoveryExempt(ctx) && slices.ContainsFunc(a.PendingToolRecovery(), func(r provider.ToolCallRecord) bool {
-		return !r.ReadOnly && (prior == nil || prior.Identity.AttemptID != r.Identity.AttemptID)
-	}) {
+	blocked := func() bool {
+		return !p.readOnly && !toolRecoveryExempt(ctx) && slices.ContainsFunc(a.PendingToolRecovery(), func(r provider.ToolCallRecord) bool {
+			return !r.ReadOnly && (prior == nil || prior.Identity.AttemptID != r.Identity.AttemptID)
+		})
+	}
+	if blocked() {
+		// Task 107 P1-③: before asking a human, let the host resolve what it can
+		// resolve by itself. A tool that can re-read its sink and fence the absent
+		// effect proves the effect never landed - stronger evidence than anyone's
+		// recollection - so that barrier is released on the spot.
+		a.resolveHostVerifiableEffects(ctx)
+	}
+	if blocked() {
 		// Task 107 P0-1: name the pending tool, the panel, and the actions, so the
 		// model has an executable next step instead of a bare category.
 		return fmt.Errorf("recovery_required: an earlier %s left an unconfirmed external effect, so this write is blocked. "+
@@ -275,6 +286,55 @@ func (a *Agent) PendingToolRecovery() []provider.ToolCallRecord {
 		}
 	}
 	return result
+}
+
+// resolveHostVerifiableEffects releases the barriers the host can disprove by
+// itself (task 107 P1-③). A pending effect is cleared only when its tool can
+// re-read the sink, the sink identity still matches, and the inspection fences
+// the effect as absent: that is hard evidence the write never landed, so no
+// human has to be asked. Everything else - unknown, present, a changed sink, a
+// tool without an EffectVerifier - keeps the barrier exactly as before.
+func (a *Agent) resolveHostVerifiableEffects(ctx context.Context) {
+	for _, r := range a.PendingToolRecovery() {
+		if r.ReadOnly {
+			continue
+		}
+		record := r
+		call := provider.ToolCall{
+			ID:        record.Identity.CallID,
+			Name:      record.Identity.CanonicalTool,
+			Arguments: string(record.Arguments),
+			Recovery:  &record,
+		}
+		t := a.recoveryInspectionTarget(ctx, call)
+		if t == nil {
+			continue
+		}
+		verifier, ok := t.(tool.EffectVerifier)
+		if !ok || verifier.RecoveryScope() == "" || verifier.RecoveryScope() != record.Identity.ResourceScope {
+			continue
+		}
+		inspection, err := verifier.InspectEffect(ctx, record.IdempotencyKey, record.Arguments)
+		if err != nil || inspection.State != "absent" || !inspection.Fenced {
+			continue
+		}
+		resolved := record
+		// "Never started" is the truthful state: the host just proved the effect
+		// absent and fenced, which is exactly what the record could not say.
+		resolved.State = provider.ToolRunNotStarted
+		resolved.Resolution = "host_verified_absent"
+		resolved.ResolutionSource = "host"
+		resolved.ResolvedAt = time.Now().UnixMilli()
+		if !a.sess.conversation.setToolRecoveryRecord(record.Identity.CallID, resolved) {
+			continue
+		}
+		// Best effort, like the inspection checkpoint: the in-memory record is
+		// the evidence, and rolling it back would resurrect a barrier the host
+		// already disproved.
+		if err := event.EmitChecked(a.svc.sink, event.Event{Kind: event.Notice, RecoveryCheckpoint: true}); err != nil {
+			slog.Warn("agent: host-verified absent effect not persisted", "call", record.Identity.CallID, "err", err)
+		}
+	}
 }
 
 // pendingToolLabel names the most recent unresolved write tool for error copy.

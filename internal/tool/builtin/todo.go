@@ -25,6 +25,10 @@ type todoItem struct {
 	ActiveForm string `json:"activeForm,omitempty"`
 	Level      int    `json:"level,omitempty"`
 	StepID     string `json:"step_id,omitempty"`
+	// Owner and Running are the task-68 option-B parallel markers. They never
+	// change a status and no validator reads them.
+	Owner   string `json:"owner,omitempty"`
+	Running bool   `json:"running,omitempty"`
 }
 
 func (todoWrite) Name() string { return "todo_write" }
@@ -47,7 +51,9 @@ func (todoWrite) Schema() json.RawMessage {
         "status":{"type":"string","enum":["pending","in_progress","completed"],"description":"Task state. Keep at most one in_progress."},
         "activeForm":{"type":"string","description":"Present-continuous form shown while the task is in progress (e.g. \"Running tests\")."},
         "level":{"type":"integer","enum":[0,1],"description":"Nesting level: 0 = phase/milestone, 1 = a sub-step of the phase above it. Omit for a flat list."},
-        "step_id":{"type":"string","description":"Stable identity for this item, e.g. \"plan_step_02\". Copy it verbatim from the item's previous entry so completions stay attached across retitles, insertions, and reordering; use a fresh unique id for a genuinely new item."}
+        "step_id":{"type":"string","description":"Stable identity for this item, e.g. \"plan_step_02\". Copy it verbatim from the item's previous entry so completions stay attached across retitles, insertions, and reordering; use a fresh unique id for a genuinely new item."},
+        "owner":{"type":"string","description":"Optional executor label for this item (\"main\", \"subagent:api\", ...). Coordination metadata only: it never changes status and no validator reads it."},
+        "running":{"type":"boolean","description":"Optional marker that a parallel executor is currently on this item. Metadata only."}
       },
       "required":["content","status"]
     }
@@ -63,7 +69,8 @@ func (todoWrite) Schema() json.RawMessage {
         "after_step_id":{"type":"string","description":"Insert/move: place after this step_id; empty = end of list."},
         "item":{"type":"object","description":"replace/insert payload (content,status,activeForm,level,step_id).","properties":{
           "content":{"type":"string"},"status":{"type":"string","enum":["pending","in_progress","completed"]},
-          "activeForm":{"type":"string"},"level":{"type":"integer","enum":[0,1]},"step_id":{"type":"string"}
+          "activeForm":{"type":"string"},"level":{"type":"integer","enum":[0,1]},"step_id":{"type":"string"},
+          "owner":{"type":"string"},"running":{"type":"boolean"}
         }}
       },
       "required":["op"]
@@ -299,5 +306,7 @@ func toEvidenceTodo(todo todoItem) evidence.TodoItem {
 		ActiveForm: todo.ActiveForm,
 		Level:      todo.Level,
 		StepID:     strings.TrimSpace(todo.StepID),
+		Owner:      strings.TrimSpace(todo.Owner),
+		Running:    todo.Running,
 	}
 }

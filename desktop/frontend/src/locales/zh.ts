@@ -3433,6 +3433,7 @@ export const zh: Record<DictKey, string> = {
   "markdown.tableExpandAll": "展开全部 {n} 行",
   "markdown.tableCollapse": "收起表格",
   "transcript.loadEarlierFailed": "较早的对话加载失败",
+  "transcript.noMoreEarlier": "已到最早，没有更多历史",
   "transcript.toolCount": "{n} 个工具",
   "transcript.thoughtCount": "{n} 段思考",
   "transcript.steer": "中途引导",

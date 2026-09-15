@@ -4602,6 +4602,7 @@ export default function App() {
                       historyTotalTurns={state.historyTotalTurns}
                       loadingOlderHistory={state.historyOlderLoading}
                       olderHistoryError={state.historyOlderError}
+                      olderHistoryExhausted={state.historyOlderExhausted}
                       onLoadOlderHistory={handleLoadOlderHistory}
                       invocationMetadata={visibleTranscriptTabId ? invocationMetadataByTab[visibleTranscriptTabId] : undefined}
                     />

@@ -29,6 +29,8 @@ func applyTodoOps(baseline []evidence.TodoItem, ops []todoOp) ([]todoItem, error
 			ActiveForm: t.ActiveForm,
 			Level:      t.Level,
 			StepID:     t.StepID,
+			Owner:      t.Owner,
+			Running:    t.Running,
 		})
 	}
 	if len(ops) == 0 {

@@ -2459,6 +2459,7 @@ export const zhTW: Record<DictKey, string> = {
   "markdown.tableExpandAll": "展開全部 {n} 行",
   "markdown.tableCollapse": "收起表格",
   "transcript.loadEarlierFailed": "較早的對話載入失敗",
+  "transcript.noMoreEarlier": "已到最早，沒有更多歷史",
   "transcript.toolCount": "{n} 個工具",
   "transcript.thoughtCount": "{n} 段思考",
   "transcript.steer": "中途引導",

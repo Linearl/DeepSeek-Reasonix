@@ -40,6 +40,8 @@ func (todoRead) Execute(ctx context.Context, _ json.RawMessage) (string, error) 
 			ActiveForm: t.ActiveForm,
 			Level:      t.Level,
 			StepID:     t.StepID,
+			Owner:      t.Owner,
+			Running:    t.Running,
 		})
 	}
 	payload, err := json.Marshal(map[string]any{"todos": out})

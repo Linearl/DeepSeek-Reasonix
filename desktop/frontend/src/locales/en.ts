@@ -3430,6 +3430,7 @@ export const en = {
   "markdown.tableExpandAll": "Expand all {n} rows",
   "markdown.tableCollapse": "Collapse table",
   "transcript.loadEarlierFailed": "Earlier conversation could not be loaded",
+  "transcript.noMoreEarlier": "No more history to load",
   "transcript.toolCount": "{n} tools",
   "transcript.thoughtCount": "{n} thoughts",
   "transcript.steer": "Mid-turn steer",

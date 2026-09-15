@@ -107,6 +107,7 @@ export type TranscriptProps = {
   historyTotalTurns?: number;
   loadingOlderHistory?: boolean;
   olderHistoryError?: string;
+  olderHistoryExhausted?: boolean;
   onLoadOlderHistory?: (targetTurn?: number, trigger?: HistoryLoadTrigger) => boolean | Promise<boolean>;
   turnStartAt?: number;
   contentRevision?: number;
@@ -126,7 +127,7 @@ export function Transcript(props: TranscriptProps) {
     welcomeVariant = "default", creationMode = false, actionHoverMenus = false,
     rewindSignal = 0, revealSignal = 0, hydrating = false, hasOlderHistory = false,
     historyStartTurn = 0, historyTotalTurns = 0, loadingOlderHistory = false,
-    olderHistoryError, onLoadOlderHistory, turnStartAt, contentRevision = 0,
+    olderHistoryError, olderHistoryExhausted, onLoadOlderHistory, turnStartAt, contentRevision = 0,
     invocationMetadata = EMPTY_INVOCATION_METADATA, historyMutation,
     surfaceCommitToken, onSurfacePaintReady,
   } = props;
@@ -412,6 +413,7 @@ export function Transcript(props: TranscriptProps) {
                 renderRow={renderRow}
                 loadingOlderHistory={loadingOlderHistory}
                 olderHistoryError={olderHistoryError}
+                olderHistoryExhausted={olderHistoryExhausted}
                 onRetryOlderHistory={retry}
                 onGeometryWillChange={beginAnchorRestore}
                 onGeometryChange={commitViewportGeometry}

@@ -51,7 +51,7 @@ func autopilotApprovalGrace(opts Options) time.Duration {
 // model is told why and can try another way. Waiting for a human is not an
 // option once the grace period has already elapsed (task 109 B6).
 func (c *Controller) reviewUnattendedApproval(ctx context.Context, tool, subject, reason string, args json.RawMessage) (approvalReply, bool) {
-	if askRiskOfQuestion(askQuestionText{Text: strings.Join([]string{tool, subject, reason, string(args)}, "\n")}) == askRiskNeedsHuman {
+	if askRiskOfApproval(tool, subject, reason, args) == askRiskNeedsHuman {
 		c.emitAutopilotApprovalNotice(tool, subject, "refused: destructive, outward-facing, or credential-touching")
 		return approvalReply{allow: false}, true
 	}

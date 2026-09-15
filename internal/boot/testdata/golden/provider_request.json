@@ -392,6 +392,12 @@
                       ],
                       "type": "integer"
                     },
+                    "owner": {
+                      "type": "string"
+                    },
+                    "running": {
+                      "type": "boolean"
+                    },
                     "status": {
                       "enum": [
                         "pending",
@@ -447,6 +453,14 @@
                   ],
                   "type": "integer"
                 },
+                "owner": {
+                  "description": "Optional executor label for this item (\"main\", \"subagent:api\", ...). Coordination metadata only: it never changes status and no validator reads it.",
+                  "type": "string"
+                },
+                "running": {
+                  "description": "Optional marker that a parallel executor is currently on this item. Metadata only.",
+                  "type": "boolean"
+                },
                 "status": {
                   "description": "Task state. Keep at most one in_progress.",
                   "enum": [
@@ -470,6 +484,30 @@
             "type": "array"
           }
         },
+        "type": "object"
+      }
+    },
+    {
+      "name": "tool_recovery",
+      "description": "Read the recovery fence: which earlier tool calls left an unconfirmed external effect, and what state one of them is in. Use it after a `recovery_required` block so you can state exactly what is pending instead of guessing, then hand the decision to the user. Read-only: it never confirms, rejects, or retries an effect.",
+      "parameters": {
+        "properties": {
+          "action": {
+            "description": "list = every unresolved effect (attempt id, tool, state); inspect = record an inspection of one attempt and report what it found.",
+            "enum": [
+              "list",
+              "inspect"
+            ],
+            "type": "string"
+          },
+          "attempt": {
+            "description": "Attempt id reported by list. Required for inspect.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
         "type": "object"
       }
     },

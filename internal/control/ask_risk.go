@@ -42,22 +42,66 @@ const DefaultAutopilotAskWait = 10 * time.Minute
 // so the safety valve shows up as a real stop, not an invisible hang.
 var ErrAutopilotAskUnanswered = errors.New("autopilot: a high-risk question was left unanswered; the unattended run stopped instead of deciding for the user")
 
-// askNeedsHumanMarkers are matched case-insensitively against the question text
-// and its option labels. The list is deliberately conservative: a false positive
-// only costs a pause, a false negative lets an unattended run act destructively.
-var askNeedsHumanMarkers = []string{
+// askHardNeedsHumanMarkers pause an unattended run on their own: destructive
+// actions, actions that unambiguously leave the machine (publishing, deploying,
+// mailing), and anything touching credentials or money. A false positive here
+// costs a pause, a false negative lets an unattended run act destructively, so
+// these stay unconditional.
+var askHardNeedsHumanMarkers = []string{
 	// destructive
 	"delete", "remove", "erase", "wipe", "drop ", "truncate", "overwrite",
 	"force push", "reset --hard", "clean -", "rm -",
-	// outward-facing
-	"push", "publish", "release", "deploy", "upload", "email", "send", "post ",
-	"merge", "tag",
+	// outward-facing, unambiguously
+	"publish", "release", "deploy", "upload", "email",
 	// credentials and money
 	"credential", "token", "secret", "password", "api key", "apikey", "ssh key",
 	"payment", "purchase", "billing",
 	// Chinese equivalents (the fork ships zh/zh-TW; these arrive untranslated)
 	"删除", "移除", "清空", "覆盖", "强制", "推送", "发布", "部署", "上传",
-	"发送", "合并", "凭据", "令牌", "密钥", "密码", "支付", "购买",
+	"发送", "凭据", "令牌", "密钥", "密码", "支付", "购买",
+}
+
+// askSoftNeedsHumanMarkers are words that are only risky when they aim at
+// something outside the workspace: "merge the findings into the report" is local
+// work, "merge the PR into main-v2" is not. They pause only when the same text
+// also names an outward target (task 109 B8).
+var askSoftNeedsHumanMarkers = []string{
+	"push", "merge", "tag", "send", "post ", "合并", "标签",
+}
+
+// askOutwardContextMarkers name a target outside the workspace - a remote, a
+// registry, a deployed environment, or a person. They are what turns a soft
+// marker into a real outward-facing action.
+var askOutwardContextMarkers = []string{
+	"remote", "origin", "github", "gitlab", "pull request", " pr #", " pr ", "upstream",
+	"main-v2", "http://", "https://", "npm", "pypi", "registry", "docker",
+	"生产", "线上", "服务器", "服务端", "邮件", "客户", "远端", "远程", "线上环境",
+}
+
+// askRiskOfText classifies one haystack: hard markers decide alone, soft ones
+// need an outward target in the same text.
+func askRiskOfText(haystack string) askRiskClass {
+	for _, marker := range askHardNeedsHumanMarkers {
+		if strings.Contains(haystack, marker) {
+			return askRiskNeedsHuman
+		}
+	}
+	soft := false
+	for _, marker := range askSoftNeedsHumanMarkers {
+		if strings.Contains(haystack, marker) {
+			soft = true
+			break
+		}
+	}
+	if !soft {
+		return askRiskReversible
+	}
+	for _, marker := range askOutwardContextMarkers {
+		if strings.Contains(haystack, marker) {
+			return askRiskNeedsHuman
+		}
+	}
+	return askRiskReversible
 }
 
 // askRiskOfQuestion classifies one question. Text and option labels are both
@@ -68,12 +112,14 @@ func askRiskOfQuestion(q askQuestionText) askRiskClass {
 	for _, option := range q.Options {
 		haystack += "\n" + strings.ToLower(option)
 	}
-	for _, marker := range askNeedsHumanMarkers {
-		if strings.Contains(haystack, marker) {
-			return askRiskNeedsHuman
-		}
-	}
-	return askRiskReversible
+	return askRiskOfText(haystack)
+}
+
+// askRiskOfApproval classifies an approval request, where the tool name and its
+// arguments count as evidence too: a soft verb is far more likely to be
+// outward-facing when the tool is bash and the args name a remote (task 109 B8).
+func askRiskOfApproval(tool, subject, reason string, args []byte) askRiskClass {
+	return askRiskOfText(strings.ToLower(strings.Join([]string{tool, subject, reason, string(args)}, "\n")))
 }
 
 // askQuestionText is the slice of a question the classifier needs. Keeping it

@@ -31,6 +31,13 @@ type TodoItem struct {
 	ActiveForm string `json:"activeForm,omitempty"`
 	Level      int    `json:"level,omitempty"`
 	StepID     string `json:"step_id,omitempty"`
+	// Owner names the executor this item belongs to (task 68 option B). Empty
+	// means the main agent. It is display/coordination metadata only: status
+	// keeps its exact serial semantics and no validator reads these two fields.
+	Owner string `json:"owner,omitempty"`
+	// Running marks an item a parallel executor is currently working on, so a
+	// second executor can see who else is live without inventing a status.
+	Running bool `json:"running,omitempty"`
 }
 
 // ValidateSerialTodos enforces the task-list state machine promised by

@@ -417,6 +417,9 @@ export interface State extends ReadStatusHost {
   historyHasOlder: boolean;
   historyOlderLoading: boolean;
   historyOlderError?: string;
+  /** True once the transcript proved nothing older is left, so the UI can say
+   *  "no more history" instead of showing a failure (task 101 P2). */
+  historyOlderExhausted: boolean;
   historyRevision?: number;
   historyDigest?: string;
   /** Number of leading items owned by the persisted transcript projection. */
@@ -563,6 +566,7 @@ export const initialState: State = {
   historyTotalTurns: 0,
   historyHasOlder: false,
   historyOlderLoading: false,
+  historyOlderExhausted: false,
   historyLayoutRevision: 0,
   historyPrefixCount: 0,
   historyMutation: { seq: 0, kind: "replace" },
@@ -837,6 +841,7 @@ type Action =
   | { type: "history_items_patch"; patches: Record<string, Item> }
   | { type: "history_older_start" }
   | { type: "history_older_error"; error?: string }
+  | { type: "history_older_exhausted" }
   | { type: "local_notice"; level: "info" | "warn"; text: string; preserveRuntime?: boolean }
   | { type: "clearApproval" }
   | { type: "clearAsk" }
@@ -2302,8 +2307,9 @@ export function reducer(s: State, a: Action): State {
         historyMutation: { seq: s.historyMutation.seq + 1, kind: a.mode },
       };
     }
-    case "history_older_start": return s.historyOlderLoading && !s.historyOlderError ? s : { ...s, historyOlderLoading: true, historyOlderError: undefined };
+    case "history_older_start": return s.historyOlderLoading && !s.historyOlderError ? s : { ...s, historyOlderLoading: true, historyOlderError: undefined, historyOlderExhausted: false };
     case "history_older_error": return { ...s, historyOlderLoading: false, historyOlderError: a.error };
+    case "history_older_exhausted": return { ...s, historyOlderLoading: false, historyOlderError: undefined, historyOlderExhausted: true, historyHasOlder: false };
     case "history_replace":
       if (historyRevisionIsOlder(s.historyRevision, a.revision)) return s;
       return {
@@ -3261,7 +3267,14 @@ export function useController() {
         return false;
       }
       if (!result) {
-        // Superseded (generation moved) or nothing older left.
+        // Two different endings used to share one error string, so a transcript
+        // that simply has nothing older showed up as a failure (task 101 P2).
+        // A superseded page stays an error; an exhausted history is not one.
+        if (!current.historyHasOlder) {
+          dispatchTo(targetTabId, { type: "history_older_exhausted" });
+          reportFrontendLog("history-paging", "no older history left", `tab=${targetTabId} trigger=${trigger}`, "info");
+          return false;
+        }
         dispatchTo(targetTabId, { type: "history_older_error", error: "history page unavailable" });
         reportFrontendLog("history-paging", "older page unavailable", `tab=${targetTabId} trigger=${trigger}`, "warn");
         return false;

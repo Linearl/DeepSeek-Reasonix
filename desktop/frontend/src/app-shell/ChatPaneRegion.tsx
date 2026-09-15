@@ -142,6 +142,7 @@ export function ChatPaneRegion(props: ChatPaneRegionProps) {
                 historyTotalTurns={state.historyTotalTurns}
                 loadingOlderHistory={state.historyOlderLoading}
                 olderHistoryError={state.historyOlderError}
+                olderHistoryExhausted={state.historyOlderExhausted}
                 onLoadOlderHistory={commands.onLoadOlderHistory}
                 invocationMetadata={transcript.invocationMetadata}
                 surfaceCommitToken={transcript.surfaceCommitToken}
