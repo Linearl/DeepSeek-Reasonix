@@ -1,5 +1,7 @@
-import { lazy, Suspense, type ComponentProps, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
-import { AlarmClock, Brain, Command, MessageSquare, PanelLeft, PanelRight, Search, Settings, SquarePen, Trash2 } from "lucide-react";
+import { lazy, Suspense, useEffect, useState, type ComponentProps, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
+import { Activity, AlarmClock, Brain, Command, MessageSquare, PanelLeft, PanelRight, Search, Settings, SquarePen, Trash2 } from "lucide-react";
+import { isSessionMonitorEnabled, isSessionMonitorOpen, onSessionMonitorEnabledChange, onSessionMonitorOpenChange, setSessionMonitorOpen } from "../lib/sessionMonitor";
+import { SessionMonitorPanel } from "../components/SessionMonitorPanel";
 import { Tooltip } from "../components/Tooltip";
 import type { Translator } from "../lib/i18n";
 import type { SettingsTab } from "../lib/types";
@@ -38,6 +40,11 @@ export type SidebarRegionProps = {
 /** Sidebar presentation shared by classic, workbench and creation layouts. */
 export function SidebarRegion(props: SidebarRegionProps) {
   const { t } = props;
+  // Task 123: the session monitor sits directly above the trash row.
+  const [monitorEnabled, setMonitorEnabled] = useState(isSessionMonitorEnabled());
+  const [monitorOpen, setMonitorOpen] = useState(isSessionMonitorOpen());
+  useEffect(() => onSessionMonitorEnabledChange(setMonitorEnabled), []);
+  useEffect(() => onSessionMonitorOpenChange(setMonitorOpen), []);
   return (
     <>
       <aside className={props.className} aria-label={t("sidebar.navigation")}>
@@ -81,6 +88,9 @@ export function SidebarRegion(props: SidebarRegionProps) {
         {props.workbench ? (
           <nav className="sidebar__nav sidebar__nav--footer">
             <div className="sidebar__utility-row" aria-label={t("sidebar.utilityActions")}>
+              {monitorEnabled && (
+                <UtilityButton label={t("sessionMonitor.open")} icon={<Activity size={16} />} onClick={() => setSessionMonitorOpen(!monitorOpen)} />
+              )}
               <UtilityButton label={t("sidebar.trash")} icon={<Trash2 size={16} />} onClick={props.onOpenTrash} />
               <UtilityButton label={t("heartbeat.scheduler")} icon={<AlarmClock size={16} />} onClick={props.onOpenAutomation} />
               <UtilityButton label={t("topbar.settings")} icon={<Settings size={16} />} onClick={() => props.onOpenSettings("general")} />
@@ -96,11 +106,15 @@ export function SidebarRegion(props: SidebarRegionProps) {
                 </button>
               </Tooltip>
             )}
+            {monitorEnabled && (
+              <NavButton label={t("sessionMonitor.open")} icon={<Activity size={15} />} active={monitorOpen} disabledTooltip={props.navTooltipDisabled} onClick={() => setSessionMonitorOpen(!monitorOpen)} />
+            )}
             <NavButton label={t("sidebar.trash")} icon={<Trash2 size={15} />} disabledTooltip={props.navTooltipDisabled} onClick={props.onOpenTrash} />
             {!props.creation && <NavButton active={props.automation} label={t("heartbeat.scheduler")} icon={<AlarmClock size={15} />} disabledTooltip={props.navTooltipDisabled} onClick={props.onOpenAutomation} />}
             <NavButton label={t("topbar.settings")} icon={<Settings size={15} />} disabledTooltip={props.navTooltipDisabled} onClick={() => props.onOpenSettings("general")} />
           </nav>
         )}
+      <SessionMonitorPanel />
       </aside>
       <button className="sidebar-resizer" type="button" role="separator" aria-orientation="vertical" aria-label={t("sidebar.resize")}
         aria-valuemin={props.resize.min} aria-valuemax={props.resize.max} aria-valuenow={props.resize.value}

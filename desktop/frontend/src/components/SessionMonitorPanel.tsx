@@ -8,6 +8,7 @@
 // write-directory picker uses, so the board never invents a session that is not open.
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { app } from "../lib/bridge";
 import { useT } from "../lib/i18n";
 import {
@@ -72,7 +73,10 @@ export function SessionMonitorPanel() {
   const stats = store.stats();
   const allEvictions = recentEvictions(6);
 
-  return (
+  // Rendered through a portal: inside the project tree the panel inherited its
+  // ancestors' stacking and clipping contexts, which is why it came out half-styled.
+  // On body it is a plain fixed overlay anchored above the trash row.
+  return createPortal(
     <div className="session-monitor" role="dialog" aria-label={t("sessionMonitor.title")}>
       <div className="session-monitor__head">
         <span className="session-monitor__title">{t("sessionMonitor.title")}</span>
@@ -162,6 +166,7 @@ export function SessionMonitorPanel() {
           ))}
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }

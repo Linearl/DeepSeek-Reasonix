@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
-import { Archive, ArchiveX, ArrowDown, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput, Activity } from "lucide-react";
+import { Archive, ArchiveX, ArrowDown, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput } from "lucide-react";
 import { asArray } from "../lib/array";
-import { isSessionMonitorEnabled, isSessionMonitorOpen, onSessionMonitorEnabledChange, onSessionMonitorOpenChange, setSessionMonitorOpen } from "../lib/sessionMonitor";
-import { SessionMonitorPanel } from "./SessionMonitorPanel";
 import { useToast } from "../lib/toast";
 import { app } from "../lib/bridge";
 import { onProjectTreeChangedV2 } from "../lib/sessionCatalogBridge";
@@ -238,11 +236,6 @@ export function ProjectTree({
   const { showToast } = useToast();
   const compactTopics = variant === "workbench";
   const creationTopics = variant === "creation";
-  // Task 123: the experimental session-monitor board renders from this header.
-  const [monitorEnabled, setMonitorEnabled] = useState(isSessionMonitorEnabled());
-  const [monitorOpen, setMonitorOpen] = useState(isSessionMonitorOpen());
-  useEffect(() => onSessionMonitorEnabledChange(setMonitorEnabled), []);
-  useEffect(() => onSessionMonitorOpenChange(setMonitorOpen), []);
   const [tree, setTree] = useState<ProjectNode[]>([]);
   const treeRef = useRef<ProjectNode[]>([]);
   const latestRevisionRef = useRef(0);
@@ -2320,18 +2313,6 @@ export function ProjectTree({
         {t("projectTree.workspaceTitle")}
       </span>
       <span className="project-tree__header-actions">
-        {monitorEnabled && (
-          <Tooltip label={t("sessionMonitor.open")} className="project-tree__header-action-slot">
-            <button
-              type="button"
-              className={`project-tree__header-icon-btn${monitorOpen ? " project-tree__header-icon-btn--active" : ""}`}
-              aria-label={t("sessionMonitor.open")}
-              onClick={() => setSessionMonitorOpen(!monitorOpen)}
-            >
-              <Activity size={15} aria-hidden="true" />
-            </button>
-          </Tooltip>
-        )}
         {mode === "workbench" ? (
           <>
             {renderTimeFilterControl("workbench")}
@@ -2431,7 +2412,6 @@ export function ProjectTree({
           </>
         )}
       </span>
-      <SessionMonitorPanel />
     </div>
   );
 

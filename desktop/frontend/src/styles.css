@@ -3483,6 +3483,12 @@ a[href] {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
+  /* Task 70-3: this wrapper's parent is .transcript-navigation-content, a plain
+     block, so `flex: 1 1 auto` alone buys nothing - the panes sized to their
+     content and the transcripts grew past the viewport instead of scrolling
+     inside it (no scrollbar, the wheel did nothing). The shell below does the
+     same with height: 100%; the wrapper needs it too. */
+  height: 100%;
 }
 
 .transcript-split--closed {
@@ -3504,6 +3510,16 @@ a[href] {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+/* Task 70-2: at half width the transcript's boxes have to be allowed to shrink.
+   Otherwise unbroken code lines and wide tables keep their single-pane intrinsic
+   width and get clipped by the pane's overflow instead of wrapping inside it. */
+.transcript-split__pane > .transcript-shell,
+.transcript-split__pane .transcript,
+.transcript-split__pane .transcript-navigation-content {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .transcript-navigation-content {
@@ -40518,7 +40534,8 @@ body > .mermaid-diagram--fullscreen {
 .session-monitor {
   position: fixed;
   z-index: var(--z-workspace-float);
-  top: 48px;
+  /* Anchored just above the trash row it is opened from. */
+  bottom: 56px;
   left: 12px;
   width: min(560px, calc(100vw - 24px));
   max-height: min(70vh, 640px);
