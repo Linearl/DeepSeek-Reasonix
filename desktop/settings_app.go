@@ -324,13 +324,18 @@ type BotSettingsView struct {
 
 // SettingsView is the whole Settings panel payload.
 type SettingsView struct {
-	ModelSettingsFingerprint     string                     `json:"modelSettingsFingerprint"`
-	DefaultModel                 string                     `json:"defaultModel"`
-	PlannerModel                 string                     `json:"plannerModel"`
-	GuardianModel                string                     `json:"guardianModel"`
-	Autopilot                    bool                       `json:"autopilot"`
-	AutopilotMaxRuntime          string                     `json:"autopilotMaxRuntime"`
-	AutopilotApprovalGrace       string                     `json:"autopilotApprovalGrace"`
+	ModelSettingsFingerprint string `json:"modelSettingsFingerprint"`
+	DefaultModel             string `json:"defaultModel"`
+	PlannerModel             string `json:"plannerModel"`
+	GuardianModel            string `json:"guardianModel"`
+	Autopilot                bool   `json:"autopilot"`
+	AutopilotMaxRuntime      string `json:"autopilotMaxRuntime"`
+	AutopilotApprovalGrace   string `json:"autopilotApprovalGrace"`
+	// Task 81 / 123: the Settings panel renders these two experiment switches from
+	// this view; carrying them only on DesktopStartupSettingsView left both switches
+	// permanently reading "off" and impossible to turn on (fixed 2026-09-15).
+	ExperimentalRestartUpdate    bool                       `json:"experimentalRestartUpdate"`
+	ExperimentalSessionMonitor   bool                       `json:"experimentalSessionMonitor"`
 	VisionModel                  string                     `json:"visionModel"`
 	WebSearchModel               string                     `json:"webSearchModel"`
 	WebSearchModels              []string                   `json:"webSearchModels"`
@@ -408,10 +413,10 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalRestartUpdate exposes the "restart and update" button (task 81).
 	ExperimentalRestartUpdate bool `json:"experimentalRestartUpdate"`
 	// ExperimentalSessionMonitor exposes the left-rail "session monitor" board (task 123).
-	ExperimentalSessionMonitor bool `json:"experimentalSessionMonitor"`
-	CheckUpdates                 bool            `json:"checkUpdates"`
-	UpdateChannel                string          `json:"updateChannel"`
-	ConversationWidth            string          `json:"conversationWidth,omitempty"`
+	ExperimentalSessionMonitor bool   `json:"experimentalSessionMonitor"`
+	CheckUpdates               bool   `json:"checkUpdates"`
+	UpdateChannel              string `json:"updateChannel"`
+	ConversationWidth          string `json:"conversationWidth,omitempty"`
 	// Autopilot mirrors the [desktop] preference so the composer knows whether
 	// to offer the mode at all - it is opt-in, never a surprise.
 	Autopilot bool `json:"autopilot"`
@@ -1113,15 +1118,18 @@ func (a *App) Settings() SettingsView {
 		Autopilot:                cfg.Desktop.Autopilot,
 		AutopilotMaxRuntime:      cfg.Desktop.AutopilotMaxRuntime,
 		AutopilotApprovalGrace:   cfg.Desktop.AutopilotApprovalGrace,
-		VisionModel:              cfg.Agent.VisionModel,
-		WebSearchModel:           cfg.Agent.WebSearchModel,
-		WebSearchModels:          []string{},
-		SubagentModel:            cfg.Agent.SubagentModel,
-		SubagentEffort:           cfg.Agent.SubagentEffort,
-		AutoPlan:                 "off", // deprecated JSON compatibility for older frontends
-		Providers:                []ProviderView{},
-		OfficialProviders:        []ProviderView{},
-		ProviderPresets:          []ProviderPresetView{},
+		// The Settings panel reads these switches from this view (see the struct note).
+		ExperimentalRestartUpdate:  cfg.Desktop.ExperimentalRestartUpdate,
+		ExperimentalSessionMonitor: cfg.Desktop.ExperimentalSessionMonitor,
+		VisionModel:                cfg.Agent.VisionModel,
+		WebSearchModel:             cfg.Agent.WebSearchModel,
+		WebSearchModels:            []string{},
+		SubagentModel:              cfg.Agent.SubagentModel,
+		SubagentEffort:             cfg.Agent.SubagentEffort,
+		AutoPlan:                   "off", // deprecated JSON compatibility for older frontends
+		Providers:                  []ProviderView{},
+		OfficialProviders:          []ProviderView{},
+		ProviderPresets:            []ProviderPresetView{},
 		Permissions: PermissionsView{
 			Mode:  orDefault(cfg.Permissions.Mode, "ask"),
 			Allow: nonNil(cfg.Permissions.Allow),
