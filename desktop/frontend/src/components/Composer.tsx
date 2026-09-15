@@ -1265,6 +1265,25 @@ export function Composer({
     draftActivationEpochRef.current += 1;
     activeDraftKeyRef.current = draftKey;
     setGuidanceDraftKey(draftKey);
+    // Startup window: the active tab (and therefore the key) is not known yet, so its
+    // key is "". Anything typed then would stay under "" while the same session later
+    // keeps a second draft - a restart then showed the early text first and the real
+    // one a moment later. When the real key arrives empty, carry the draft across.
+    const incomingMemory = draftsBySessionRef.current[draftKey];
+    const incomingPersisted = incomingMemory ?? loadPersistedComposerDraft(draftKey);
+    const draftIsEmpty = !incomingPersisted
+      || (!String(incomingPersisted.text ?? "").trim()
+        && (incomingPersisted.pastedBlocks?.length ?? 0) === 0
+        && (incomingPersisted.attachments?.length ?? 0) === 0);
+    const carriedIsNotEmpty = Boolean(String(previousSnapshot.text ?? "").trim())
+      || previousSnapshot.pastedBlocks.length > 0
+      || previousSnapshot.attachments.length > 0;
+    if (previousKey === "" && draftKey !== "" && draftIsEmpty && carriedIsNotEmpty) {
+      draftsBySessionRef.current[draftKey] = previousSnapshot;
+      persistComposerDraft(draftKey, previousSnapshot, true);
+      restoreComposerDraft(previousSnapshot);
+      return;
+    }
     const inMemory = draftsBySessionRef.current[draftKey];
     if (inMemory) {
       restoreComposerDraft(inMemory);

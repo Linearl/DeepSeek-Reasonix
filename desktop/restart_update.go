@@ -81,6 +81,16 @@ func (a *App) RestartAndUpdate(sourceDir, version string) error {
 	if version == "" {
 		return fmt.Errorf("restart: no version to publish: %s/version.txt is missing (rebuild to re-stage) and the caller sent none", sourceDir)
 	}
+	// version.txt carries the product version (1.38.3); the install layout names its
+	// directories with a "v" prefix (v1.38.3 - see installlayout.ValidateVersionName),
+	// and the directory name IS the activeVersion string. Normalise here so the two
+	// cannot drift, and report a bad label before anything is copied.
+	if !strings.HasPrefix(version, "v") {
+		version = "v" + version
+	}
+	if validateErr := installlayout.ValidateVersionName(version); validateErr != nil {
+		return fmt.Errorf("restart: %w", validateErr)
+	}
 
 	members := []installlayout.Member{
 		{Name: installlayout.DesktopBinaryName(), Path: filepath.Join(sourceDir, installlayout.DesktopBinaryName())},
