@@ -236,6 +236,7 @@ func recoveryHeadlessMode(opts Options) bool {
 // assembled. The returned controller owns plugin subprocesses; call Close
 // (via Controller.Close) to release them.
 func build(ctx context.Context, opts Options) (*BuildResult, error) {
+	bootTime := newBootTiming()
 	ctx, opts, owner, fileWriteReceipt := bindRuntimeOwner(ctx, opts)
 	stderr := opts.Stderr
 	if stderr == nil {
@@ -262,6 +263,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if err := opts.ModelSettings.Apply(cfg, root); err != nil {
 		return nil, err
 	}
+	bootTime.mark("config")
 	deepSeekProtocolMigErr = deepSeekProtocolMigrationNoticeError(handleConfigLoadWarnings(opts, cfg), deepSeekProtocolMigErr)
 	// Arm the credential-protection layers from the user-global [secrets]
 	// section before any tool, hook, or plugin subprocess can spawn. Package
@@ -382,6 +384,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("boot: %w", err)
 	}
+	bootTime.mark("extensions")
 	// Until the RuntimeSet takes ownership at snapshot assembly, every error
 	// path between here and there must retire the preflighted sidecars — no
 	// process may outlive a failed build.
@@ -599,6 +602,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if err := reconcileCleanupPending(sessionDir); err != nil {
 		sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "cleanup-pending reconciliation failed: " + err.Error()})
 	}
+	bootTime.mark("session")
 
 	// proxySpec was computed during extension preflight (the merged resolver's
 	// local base needs it); validate it before any provider construction.
@@ -613,6 +617,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	bootTime.mark("provider")
 	shell := sandbox.ResolveShell(cfg.Tools.Shell.Prefer, cfg.Tools.Shell.Path, stderr)
 
 	sysPrompt, err := cfg.ResolveSystemPromptForRoot(root)
@@ -715,6 +720,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		}
 	}
 	sysPrompt = config.ApplyOfficialDeepSeekV4ProPersona(sysPrompt, entry)
+	bootTime.mark("prompt")
 
 	// memoryReload regenerates only the memory (# Memory) region of the system
 	// prompt from the latest on-disk memory, keeping the assembled prefix
@@ -967,6 +973,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		configSpecs = filtered
 	}
 	registerEnabledMCP(configSpecs)
+	bootTime.mark("mcp")
 
 	for _, msg := range demoteMessages {
 		sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Text: msg})
@@ -1845,6 +1852,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		runner = agent.NewCoordinatorWithPlannerPolicy(plannerProv, plannerSess, pe.Price, plannerTools, plannerOpts, executor, cfg.Agent.Temperature, sink, control.NewPlannerPolicy())
 		label = entry.Model + " + planner " + pe.Model
 	}
+	bootTime.mark("agent")
 	imageEnabled := modelCapabilities.Resolve(entry).State == config.CapabilitySupported
 	if infoProvider, ok := execProv.(provider.ModelInfoProvider); ok {
 		imageEnabled = infoProvider.ModelInfo().SupportsInput(provider.ModalityImage)
@@ -2025,6 +2033,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		ctrlOpts.Cleanup = func() { cleanup() }
 	}
 	ctrl := control.New(ctrlOpts)
+	bootTime.mark("controller")
 	// The role inputs set the session quality floor: delivery/deliver/quality
 	// raise it, light and its aliases fold to standard, unknown stays default.
 	if p, err := agentpreset.Normalize(firstNonEmpty(opts.AgentPreset, opts.TokenMode)); err == nil && p == agentpreset.Delivery {
@@ -2161,6 +2170,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		Registry:                reg,
 		ImplicitSkillInvocation: implicitSkillInvocation,
 	}
+	// Task 125: one greppable line answers "startup ~9s, where did it go?"
+	// after the fact. Observation only — never fails a build.
+	bootTime.mark("finalize")
+	slog.Info("boot: stage timings", "summary", bootTime.summary(), "root", root, "model", modelRef)
 	return finalizeBuildResult(&BuildResult{Controller: ctrl, Snapshot: snap, Runtime: runtimeSet, Owner: owner, Extensions: extensionMgr, Dispatcher: extensionDispatcher, ExtensionUI: extUIHub, ProviderResolver: providerResolver, BaseProviderResolver: baseResolver, Assembly: assembly}, !opts.deferPublish), nil
 }
 
