@@ -27,7 +27,7 @@ import { replayPendingPromptsForActiveTab } from "./promptReplay";
 import { createRafBatch } from "./rafBatch";
 import { foregroundRunningFromRuntimeMeta, type RuntimeMetaSnapshot } from "./runtimeMeta";
 import { aliasActivationRequest, noteActivationRequested, noteActivationSettled, noteActivationStarted } from "./sessionDiagnostics";
-import { noteHydrateDecision, noteStageTiming } from "./sessionMonitor";
+import { noteHydrateDecision, noteStageTiming, reportStageSummary } from "./sessionMonitor";
 import { applyLiveSegments, coalesceStreamDeltas, completeLiveReasoning, type StreamDeltaEntry, type StreamSegment } from "./streamDeltaBatch";
 import { assistantHasContent, ensureActiveAssistant, ensureAssistant, removeEmptyAssistantItems } from "./assistantItems";
 import { getTranscriptStore } from "./transcriptStore";
@@ -3027,6 +3027,7 @@ export function useController() {
       const hydrateElapsed = Date.now() - hydrateStartedAt;
       addBreadcrumb("tab.hydrate", `done ${reason} ${tabId} ms=${hydrateElapsed}`);
       reportStageTiming(tabId, `${reason}:total`, hydrateElapsed);
+      reportStageSummary(tabId, reason);
 
       // Phase 2: local ancillary data. It stays inside the same in-flight
       // promise so duplicate ready/startup hydrations coalesce, but it runs

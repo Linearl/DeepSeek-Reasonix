@@ -40637,6 +40637,17 @@ body > .mermaid-diagram--fullscreen {
 .session-monitor__empty {
   color: var(--fg-faint);
 }
+.session-monitor__stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+.session-monitor__stage {
+  font-variant-numeric: tabular-nums;
+}
+
 .session-monitor__log {
   display: flex;
   flex-direction: column;

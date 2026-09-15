@@ -165,7 +165,11 @@ export function Transcript(props: TranscriptProps) {
 
   const segmentStates = useMemo(() => foldSegmentStates(turnModels, experience === "deep"), [experience, turnModels]);
   const [folds, setFolds] = useState<FoldMap>(EMPTY_FOLDS);
-  const experienceRef = useRef(experience);
+  // Null until the first reconcile: a fresh run has not observed a tier change yet, so
+  // the first pass must be treated as one. Otherwise a restarted app reconciles with
+  // preferenceChanged === false and the concise tier's "collapse the work process"
+  // branch never runs for sessions whose folds were restored (task 124).
+  const experienceRef = useRef<typeof experience | null>(null);
   const foldSurfaceRef = useRef("");
   useLayoutEffect(() => {
     if (foldSurfaceRef.current === resolvedSessionKey) return;

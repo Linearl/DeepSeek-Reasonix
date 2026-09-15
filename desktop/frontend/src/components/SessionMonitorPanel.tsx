@@ -137,11 +137,18 @@ export function SessionMonitorPanel() {
                   <span>{t("sessionMonitor.skipUnknown")}</span>
                 )}
                 {worst && (
-                  <span title={stages.map((entry) => `${entry.stage}=${Math.round(entry.ms)}ms`).join("  ")}>
-                    {t("sessionMonitor.lastSwitch", { stage: worst.stage, ms: Math.round(worst.ms) })}
-                  </span>
+                  <span>{t("sessionMonitor.lastSwitch", { stage: worst.stage, ms: Math.round(worst.ms) })}</span>
                 )}
               </div>
+              {stages.length > 1 && (
+                <div className="session-monitor__stages">
+                  {stages.map((entry) => (
+                    <span key={entry.stage} className="session-monitor__stage">
+                      {t("sessionMonitor.stageRow", { stage: entry.stage, ms: Math.round(entry.ms) })}
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className="session-monitor__metrics">
                 {last ? (
                   <span className="session-monitor__evicted">

@@ -4042,4 +4042,5 @@ export const zhTW: Record<DictKey, string> = {
 "sessionMonitor.evictedRow": "被驅逐 {n} 次（{reason}，釋放 {bytes}）",
 "sessionMonitor.neverEvicted": "未發生驅逐",
 "sessionMonitor.recentEvictions": "最近驅逐",
+"sessionMonitor.stageRow": "{stage} · {ms} ms",
 };

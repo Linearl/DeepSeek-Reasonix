@@ -4043,6 +4043,7 @@ export const en = {
 "sessionMonitor.evictedRow": "Evicted {n}x ({reason}, freed {bytes})",
 "sessionMonitor.neverEvicted": "never evicted",
 "sessionMonitor.recentEvictions": "Recent evictions",
+"sessionMonitor.stageRow": "{stage} · {ms} ms",
 };
 
 export type DictKey = keyof typeof en;

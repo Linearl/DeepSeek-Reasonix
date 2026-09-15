@@ -364,6 +364,14 @@ const keys = (rows: TranscriptRow[]) => rows.map((row) => row.key).join(",");
 
   const settledStates = foldSegmentStates(buildTurnModels(fixture.slice(0, 7), undefined, false));
   ok((reconcileFoldEntries(switched ?? EMPTY_FOLDS, settledStates, "concise", false)?.get(foldKey)?.open ?? true) === false, "concise stays collapsed after completion");
+
+  // Task 124: a fresh run must treat its first reconcile as a tier change, otherwise a
+  // session whose fold was left open keeps that state even in the concise tier.
+  const restoredOpen = new Map(EMPTY_FOLDS);
+  restoredOpen.set(foldKey, { open: true, userOverridden: true, running: false, keepReasoningExpanded: false });
+  const afterRestart = reconcileFoldEntries(restoredOpen, settledStates, "concise", true);
+  ok(afterRestart?.get(foldKey)?.open === false, "the first reconcile of a run collapses a restored open fold in concise");
+  ok(afterRestart?.get(foldKey)?.userOverridden === false, "and it clears the carried-over override");
   ok((reconcileFoldEntries(fromStandard, settledStates, "deep", true)?.get(foldKey)?.open ?? false) === true, "deep still pins completed folds open");
 }
 

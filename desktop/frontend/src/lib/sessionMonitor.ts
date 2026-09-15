@@ -109,6 +109,23 @@ export function recentEvictions(limit = 10): SessionEviction[] {
   return evictions.slice(-limit);
 }
 
+/**
+ * One structured line per hydrate (task 125): the slowest stage alone does not say
+ * where the time went, and the stages are otherwise only visible while the board is
+ * open. Format keeps every segment on one greppable line so a slow switch can be
+ * reconstructed from desktop.log.
+ */
+export function reportStageSummary(tabId: string, reason: string): void {
+  const prefix = `${reason}:`;
+  const stages = stageTimingsFor(tabId, 24).filter((entry) => entry.stage.startsWith(prefix));
+  if (stages.length === 0) return;
+  const total = stages.find((entry) => entry.stage.endsWith(":total"))?.ms ?? 0;
+  const parts = stages
+    .map((entry) => `${entry.stage.slice(prefix.length)}=${Math.round(entry.ms)}ms`)
+    .join(" ");
+  reportFrontendLog("tab-switch", `${reason} summary`, `tab=${tabId} total=${Math.round(total)}ms ${parts}`);
+}
+
 // ── stores ─────────────────────────────────────────────────────────────────────
 
 export function isSessionMonitorEnabled(): boolean {
