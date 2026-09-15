@@ -69,7 +69,8 @@ if [ -d build/bin ] && [ -n "$(ls -A build/bin 2>/dev/null)" ]; then
 	echo "    previous artifacts -> $ARCHIVE"
 fi
 # Inject the version: without it the About box and update checks see "dev".
-wails build -clean -platform windows/amd64 -nsis -webview2 embed -ldflags "-X main.version=$VER"
+BUILD_TS="$(date +%Y-%m-%dT%H:%M:%S%z)"
+wails build -clean -platform windows/amd64 -nsis -webview2 embed -ldflags "-X main.version=$VER -X main.buildTime=$BUILD_TS"
 
 echo "==> [3/3] artifacts"
 ls -la build/bin/ | grep -Ei "installer|reasonix-desktop"

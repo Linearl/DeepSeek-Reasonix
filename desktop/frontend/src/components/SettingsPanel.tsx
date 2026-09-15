@@ -7648,8 +7648,12 @@ function UpdatesSection({
   const t = useT();
   const { status, check, apply: applyUpdate, openDownload, abandonPending } = useUpdater();
   const [version, setVersion] = useState("");
+  const [buildTime, setBuildTime] = useState("");
   useEffect(() => {
     app.Version().then(setVersion).catch(() => {});
+    // Build stamp: the point of showing it is confirming that an update landed, so a
+    // failure to read it must not render a misleading line.
+    app.BuildTime?.().then(setBuildTime).catch(() => {});
   }, []);
 
   const updaterBusy =
@@ -7709,6 +7713,9 @@ function UpdatesSection({
             <div className="updates-control__version">
               {t("updater.currentVersion", { v: version || "…" })}
             </div>
+            {buildTime && (
+              <div className="updates-control__built">{t("updater.builtAt", { at: buildTime })}</div>
+            )}
             <div className={`updates-control__status updates-control__status--${updateStatusTone}`} role="status" aria-live="polite">
               {updateStatus && (
                 <>

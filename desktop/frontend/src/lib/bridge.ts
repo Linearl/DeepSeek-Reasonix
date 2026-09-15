@@ -833,6 +833,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Runtime-only.
   SetBypass(on: boolean): Promise<void>;
   Version(): Promise<string>;
+  /** Build timestamp stamped by the build script; shown under the version (task: update confirmation). */
+  BuildTime(): Promise<string>;
   CheckUpdate(channel: string): Promise<UpdateInfo | null>;
   /** v1.20+ single-action update: download, verify, install, relaunch. */
   ApplyUpdateRequest(channel: string, expectedVersion: string, requestId: string): Promise<void>;
@@ -5490,6 +5492,9 @@ function makeMockApp(): AppBindings {
     },
     async SetBypass(on: boolean) {
       await this.SetAutoApproveTools(on);
+    },
+    async BuildTime() {
+      return "unknown";
     },
     async Version() {
       return "v1.0.0 (browser dev)";

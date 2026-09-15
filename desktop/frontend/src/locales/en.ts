@@ -3714,6 +3714,7 @@ export const en = {
   "settings.metricsLabel": "Share aggregate quality metrics",
   "settings.metricsHint": "On by default. Sends anonymous turn-end counts, updater error categories, lifecycle/window health buckets, and settings preference snapshots. Includes the random install id used to de-duplicate DAU. Buckets may include normalized custom provider and model names — never conversations, prompts, keys, paths, base URLs, memory text, tool outputs, or file contents.",
   "updater.currentVersion": "Current version: {v}",
+"updater.builtAt": "Built {at}",
   "updater.checkButton": "Check for updates",
   "updater.checking": "Checking for updates…",
   "updater.upToDate": "You're on the latest version.",

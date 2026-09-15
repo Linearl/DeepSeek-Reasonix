@@ -16381,6 +16381,13 @@ body > .mermaid-diagram--fullscreen {
   min-width: 0;
 }
 
+.updates-control__built {
+  margin-top: 2px;
+  color: var(--fg-faint);
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+}
+
 .updates-control__version {
   color: var(--fg);
   font-size: var(--font-control);

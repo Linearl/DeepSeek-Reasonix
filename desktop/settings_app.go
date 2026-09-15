@@ -1100,6 +1100,14 @@ func (a *App) ReloadUserConfig() (DesktopStartupSettingsView, error) {
 	return a.DesktopStartupSettings(), nil
 }
 
+// BuildTime reports when this binary was built (build-script injected).
+func (a *App) BuildTime() string {
+	if buildTime == "" {
+		return "unknown"
+	}
+	return buildTime
+}
+
 // Settings returns the current configuration for the Settings panel.
 func (a *App) Settings() SettingsView {
 	cfg, cfgPath, err := a.loadDesktopUserConfigForView()

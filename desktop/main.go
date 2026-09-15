@@ -41,6 +41,11 @@ var assets embed.FS
 // prompts to update.
 var version = "dev"
 
+// buildTime is stamped by the build script (-X main.buildTime=...). The Settings >
+// Updates page shows it under the version so a restart-and-update can be confirmed
+// at a glance instead of inferred from behaviour (2026-09-15).
+var buildTime = "unknown"
+
 // channel records the build's release line, injected via
 // `-X main.channel=preview`. Default "stable" tracks the public release;
 // "preview" tracks the opt-in test line. Legacy "canary" builds are treated as

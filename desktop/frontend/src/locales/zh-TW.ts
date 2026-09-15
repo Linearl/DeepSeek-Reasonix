@@ -2727,6 +2727,7 @@ export const zhTW: Record<DictKey, string> = {
   "config.reloadConfig": "重新載入",
   "config.doctorHint": "或執行：reasonix doctor repair",
   "updater.currentVersion": "當前版本：{v}",
+"updater.builtAt": "建置於 {at}",
   "updater.checkButton": "檢查更新",
   "updater.checking": "正在檢查更新…",
   "updater.upToDate": "已是最新版本。",
