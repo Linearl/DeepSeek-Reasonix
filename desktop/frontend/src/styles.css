@@ -3509,6 +3509,9 @@ a[href] {
 .transcript-navigation-content {
   position: relative;
   flex: 1 1 auto;
+  /* Content may contain unbroken code lines. Its intrinsic width must not
+     become the minimum width of this horizontal flex item. */
+  min-width: 0;
   min-height: 0;
   height: 100%;
 }
@@ -5061,6 +5064,35 @@ button.reasoning-summary:focus-visible {
   font-size: var(--text-sm);
   line-height: 1.4;
 }
+
+.tool__command {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+.tool__command-label,
+.tool__data-status {
+  color: var(--fg-faint);
+  font-size: var(--text-sm);
+}
+.tool__data-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Commands opt into wrapping; output and ordinary code preserve their lines.
+   This also covers CodeViewer's plain loading fallback. */
+.tool__command .code,
+.tool__command .code code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.tool__command .code {
+  max-height: 240px;
+}
 .tool__search-query {
   color: var(--fg);
   overflow-wrap: anywhere;
@@ -5327,6 +5359,7 @@ button.reasoning-summary:focus-visible {
 }
 .reasoning__body,
 .turn-collapse__inline-reasoning {
+  overflow-wrap: anywhere;
   max-height: min(40vh, 480px);
   overflow-x: hidden;
   overflow-y: auto;
@@ -5379,6 +5412,16 @@ button.reasoning-summary:focus-visible {
 .md {
   font-family: var(--font-content-family);
   font-weight: var(--font-weight-regular);
+  overflow-wrap: anywhere;
+}
+/* Prose wraps long tokens; preformatted code, tables and mathematical layout
+   keep their own line/scroll contracts instead of inheriting prose wrapping. */
+.md pre,
+.md pre code,
+.md table,
+.md .katex {
+  overflow-wrap: normal;
+  word-break: normal;
 }
 /* KaTeX \boxed draws its frame as an empty .fbox span that relies on
    width:100% resolving against an inline-table + table-layout:fixed row.
