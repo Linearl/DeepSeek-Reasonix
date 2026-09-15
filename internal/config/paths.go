@@ -434,6 +434,41 @@ func SessionDir() string {
 	return filepath.Join(dir, "sessions")
 }
 
+// SessionStoreDir is the experimental v4 session root. Keeping it physically
+// separate prevents older binaries from treating v4 commits as legacy JSONL
+// transcripts.
+func SessionStoreDir() string {
+	dir := userSupportDir()
+	if dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, "sessions-v4")
+}
+
+// SessionStorageMode returns "legacy" or "v4". REASONIX_SESSION_STORAGE wins
+// over the config value when set.
+func SessionStorageMode(cfg *Config) string {
+	if env := strings.TrimSpace(os.Getenv("REASONIX_SESSION_STORAGE")); env != "" {
+		if strings.EqualFold(env, "v4") {
+			return "v4"
+		}
+		return "legacy"
+	}
+	if cfg != nil && strings.EqualFold(strings.TrimSpace(cfg.SessionStorage), "v4") {
+		return "v4"
+	}
+	return "legacy"
+}
+
+// ActiveSessionDir returns the write root for new sessions under the active
+// storage mode. Continue/migration still reads the legacy SessionDir when needed.
+func ActiveSessionDir(cfg *Config) string {
+	if SessionStorageMode(cfg) == "v4" {
+		return SessionStoreDir()
+	}
+	return SessionDir()
+}
+
 // StatsDir is where usage statistics are persisted (one .jsonl per day, e.g.
 // stats/2026-08-02.jsonl). It lives under the user state root — not the install
 // directory, which is typically read-only and replaced on upgrade — so usage
@@ -460,6 +495,19 @@ func ProjectSessionDir(workspaceRoot string) string {
 		root = abs
 	}
 	return filepath.Join(base, "projects", WorkspaceSlug(root), "sessions")
+}
+
+// ProjectSessionStoreDir is the per-workspace experimental v4 session root.
+func ProjectSessionStoreDir(workspaceRoot string) string {
+	base := MemoryUserDir()
+	root := strings.TrimSpace(workspaceRoot)
+	if base == "" || root == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(root); err == nil {
+		root = abs
+	}
+	return filepath.Join(base, "projects", WorkspaceSlug(root), "sessions-v4")
 }
 
 // DesktopTopicStatePath returns the authoritative SQLite path for Desktop

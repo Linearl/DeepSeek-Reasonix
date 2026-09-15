@@ -3,12 +3,16 @@ feature: session-v4-experiment
 status: in-progress
 updated: 2026-09-15
 branch: feat/session-v4-experiment
-commits: 477b99679..  # filled at delivery
+commits: 477b99679..a9716dcb6+  # filled at delivery
 ---
 
 # Session v3→v4 Experiment (Conversation Files Only)
 
 ## Report
+
+Progress 2026-09-15 evening: storage packages are on the branch and unit-tested.
+Control/chat continue wiring (T4/T5) is **not finished**; default flag remains legacy.
+Manual helpers: `go run ./tools/sessionv4exp migrate <jsonl> <sessions-v4-root>`.
 
 ## [S1] Problem
 

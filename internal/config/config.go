@@ -47,6 +47,10 @@ type Config struct {
 	DefaultModel     string              `toml:"default_model"`
 	Language         string              `toml:"language"` // ui/model language tag (e.g. "zh"); empty = auto-detect from $LANG / $REASONIX_LANG
 	CredentialsStore string              `toml:"credentials_store"`
+	// SessionStorage selects the conversation store: "legacy" (default, v3
+	// JSONL under sessions/) or "v4" (experimental sessions-v4/).
+	// REASONIX_SESSION_STORAGE overrides this when set.
+	SessionStorage   string              `toml:"session_storage"`
 	UI               UIConfig            `toml:"ui"`
 	CLI              CLIConfig           `toml:"cli"`
 	Desktop          DesktopConfig       `toml:"desktop"`
