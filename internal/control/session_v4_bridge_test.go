@@ -35,12 +35,19 @@ func TestSessionV4BridgeImportAndSync(t *testing.T) {
 		t.Fatal("empty target")
 	}
 
-	msgs := sess.Snapshot()
-	if err := bridge.SyncAgentTranscript(context.Background(), legacyPath, msgs); err != nil {
+	msg := sess.Snapshot()
+	if err := bridge.SyncAgentTranscript(context.Background(), legacyPath, msg); err != nil {
 		t.Fatalf("SyncAgentTranscript: %v", err)
 	}
+	if _, ok := bridge.RefForAgentPath(legacyPath); !ok {
+		t.Fatal("expected agent path mapping after sync")
+	}
+	got, ok := bridge.HistoryMessages(context.Background(), legacyPath)
+	if !ok || len(got) == 0 {
+		t.Fatalf("HistoryMessages miss: ok=%v n=%d", ok, len(got))
+	}
 	// Second identical sync is a no-op.
-	if err := bridge.SyncAgentTranscript(context.Background(), legacyPath, msgs); err != nil {
+	if err := bridge.SyncAgentTranscript(context.Background(), legacyPath, msg); err != nil {
 		t.Fatalf("second sync: %v", err)
 	}
 }

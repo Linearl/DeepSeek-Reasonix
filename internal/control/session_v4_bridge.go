@@ -16,13 +16,13 @@ import (
 	"reasonix/internal/session"
 )
 
-// SessionV4Bridge mirrors the agent transcript into an experimental v4 store
-// when session_storage=v4. Chat execution remains on the agent JSONL path so
-// the experiment does not regress continue; v4 is the durable mirror users can
-// inspect, and legacy continue imports the source before the first sync.
+// SessionV4Bridge maintains an experimental v4 store when session_storage=v4.
+// Writes still originate from the agent transcript (execution remains on JSONL
+// until full Controller↔Service binding). Idle history reads prefer v4 via
+// Query so UI paging can exercise the v4 index; Resume imports the legacy
+// source before the first sync.
 //
-// This is intentionally not the upstream Controller↔Service execution binding
-// (#10291). Full v4-authoritative turns are a follow-up after storage QA.
+// Full v4-authoritative turns (#10291 execution binding) remain a follow-up.
 type SessionV4Bridge struct {
 	mu       sync.Mutex
 	service  *session.Service
@@ -174,6 +174,43 @@ func (b *SessionV4Bridge) openOrCreate(ctx context.Context, agentPath, sessionID
 		return nil, fmt.Errorf("open created v4 session %s: %w", runtime.Ref().SessionID, err)
 	}
 	return binding, nil
+}
+
+// RefForAgentPath returns the mapped v4 session ref for an agent transcript path.
+func (b *SessionV4Bridge) RefForAgentPath(agentPath string) (session.SessionRef, bool) {
+	if b == nil {
+		return session.SessionRef{}, false
+	}
+	agentPath = filepath.Clean(agentPath)
+	b.mu.Lock()
+	id := b.byAgent[agentPath]
+	b.mu.Unlock()
+	if id == "" {
+		return session.SessionRef{}, false
+	}
+	return session.SessionRef{HostID: "desktop-v4-bridge", SessionID: id}, true
+}
+
+// HistoryMessages reads the durable v4 transcript via Query. It returns
+// ok=false when the path is not mapped or the store has no readable history so
+// callers can fall back to the agent JSONL path.
+func (b *SessionV4Bridge) HistoryMessages(ctx context.Context, agentPath string) ([]provider.Message, bool) {
+	if b == nil || b.service == nil {
+		return nil, false
+	}
+	ref, ok := b.RefForAgentPath(agentPath)
+	if !ok {
+		return nil, false
+	}
+	q := b.service.Query()
+	if q == nil {
+		return nil, false
+	}
+	msgs, err := q.History(ctx, ref)
+	if err != nil || len(msgs) == 0 {
+		return nil, false
+	}
+	return msgs, true
 }
 
 func deterministicSessionID(agentPath string) string {

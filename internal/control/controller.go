@@ -4457,6 +4457,14 @@ func (c *Controller) setActiveJobSession(sessionPath string) {
 	}
 }
 
+// SessionV4 returns the experimental v4 bridge, or nil when disabled.
+func (c *Controller) SessionV4() *SessionV4Bridge {
+	if c == nil {
+		return nil
+	}
+	return c.sessionV4
+}
+
 // SessionDir reports the directory new session files land in ("" disables
 // persistence), so the caller can decide whether to mint a path.
 func (c *Controller) SessionDir() string { return c.sessionDir }

@@ -11,7 +11,9 @@ commits: 477b99679..a9716dcb6+  # filled at delivery
 ## Report
 
 Progress 2026-09-15 evening: storage packages are on the branch and unit-tested.
-Control/chat continue wiring (T4/T5) is **not finished**; default flag remains legacy.
+Idle Desktop history now prefers v4 Query via SessionV4Bridge.HistoryMessages;
+writes still originate from agent Snapshot (mirror). Full #10291 execution
+binding remains out of scope for this experiment package.
 Manual helpers: `go run ./tools/sessionv4exp migrate <jsonl> <sessions-v4-root>`.
 
 ## [S1] Problem

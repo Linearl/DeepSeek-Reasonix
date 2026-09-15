@@ -5389,11 +5389,22 @@ func (a *App) HistoryPageForTab(tabID string, beforeTurn, limit int) HistoryPage
 	path := ctrl.SessionPath()
 	msgs := ctrl.History()
 	status := ctrl.RuntimeStatus()
-	if !status.Running && !status.PendingPrompt && !ctrl.SessionHasUnsavedChanges() && strings.TrimSpace(path) != "" {
-		// Once the foreground turn is idle, the durable event log is the source
-		// of truth. Re-reading it prevents a stale controller snapshot from
-		// hiding an assistant/tool suffix after restart or cross-runtime recovery.
-		if loaded, err := agent.LoadSession(path); err == nil && loaded != nil {
+	idle := !status.Running && !status.PendingPrompt && !ctrl.SessionHasUnsavedChanges()
+	// Session-v4 experiment: when idle, prefer the durable v4 projection via
+	// Query so history browsing exercises the v4 store. Live turns keep the
+	// agent in-memory history until the next Snapshot mirrors into v4.
+	if idle && strings.TrimSpace(path) != "" {
+		if c, ok := ctrl.(*control.Controller); ok {
+			if v4 := c.SessionV4(); v4 != nil {
+				if v4Msgs, hit := v4.HistoryMessages(context.Background(), path); hit {
+					msgs = v4Msgs
+				} else if loaded, err := agent.LoadSession(path); err == nil && loaded != nil {
+					msgs = loaded.Snapshot()
+				}
+			} else if loaded, err := agent.LoadSession(path); err == nil && loaded != nil {
+				msgs = loaded.Snapshot()
+			}
+		} else if loaded, err := agent.LoadSession(path); err == nil && loaded != nil {
 			msgs = loaded.Snapshot()
 		}
 	}
