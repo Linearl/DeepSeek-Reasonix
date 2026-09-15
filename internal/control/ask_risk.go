@@ -1,7 +1,9 @@
 package control
 
 import (
+	"errors"
 	"strings"
+	"time"
 
 	"reasonix/internal/event"
 )
@@ -18,6 +20,8 @@ import (
 // that leaves the machine (pushing, publishing, messaging), and anything that
 // touches credentials. Those pause for a human, because "the agent decided for
 // you" is exactly the wrong outcome there, and no prompt wording can make it right.
+// After DefaultAutopilotAskWait with no human, the run ends as a terminal
+// failure instead of hanging forever (task 109 B4).
 type askRiskClass int
 
 const (
@@ -26,6 +30,17 @@ const (
 	// askRiskNeedsHuman: stop and wait; the run must not decide this.
 	askRiskNeedsHuman
 )
+
+// DefaultAutopilotAskWait is how long an unattended run waits for a human on a
+// high-risk ask before ending the run. Long enough for a nearby human to notice
+// a phone notification; short enough that a long overnight run fails closed
+// rather than looking hung (task 109 B4).
+const DefaultAutopilotAskWait = 10 * time.Minute
+
+// ErrAutopilotAskUnanswered is returned when a high-risk ask sat unanswered
+// past the unattended wait. The Goal FSM maps it to a terminal Blocked/Failed
+// so the safety valve shows up as a real stop, not an invisible hang.
+var ErrAutopilotAskUnanswered = errors.New("autopilot: a high-risk question was left unanswered; the unattended run stopped instead of deciding for the user")
 
 // askNeedsHumanMarkers are matched case-insensitively against the question text
 // and its option labels. The list is deliberately conservative: a false positive

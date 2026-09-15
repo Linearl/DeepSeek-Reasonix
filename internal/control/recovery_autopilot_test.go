@@ -32,8 +32,8 @@ func newRecoveryGateController(t *testing.T, autopilot bool) *Controller {
 	return c
 }
 
-// unattendedController builds an autopilot session whose grace period is short
-// enough to test the unattended decisions without sleeping for the default 15s.
+// unattendedController builds an autopilot session whose waits are short enough
+// to exercise the unattended decisions without sleeping for the defaults.
 func unattendedController(t *testing.T) *Controller {
 	t.Helper()
 	ag := agent.New(nil, tool.NewRegistry(), agent.NewSession("sys"), agent.Options{}, event.Discard)
@@ -44,6 +44,7 @@ func unattendedController(t *testing.T) *Controller {
 		Autopilot:              true,
 		AutopilotMaxRuntime:    time.Minute,
 		AutopilotApprovalGrace: 20 * time.Millisecond,
+		AutopilotAskWait:       20 * time.Millisecond,
 	})
 }
 
@@ -78,8 +79,9 @@ func TestAutoGuardBypassedForUnattendedRun(t *testing.T) {
 }
 
 // Task 109 B4: a question only a human may answer cannot be answered by an
-// unattended run, so it stops when the grace runs out instead of waiting for a
-// user who is not there.
+// unattended run, so it stops when its wait runs out - long enough for a nearby
+// human to notice, never unbounded - instead of hanging on a user who is not
+// there.
 func TestUnattendedQuestionStopsInsteadOfWaiting(t *testing.T) {
 	c := unattendedController(t)
 	started := time.Now()
@@ -90,14 +92,14 @@ func TestUnattendedQuestionStopsInsteadOfWaiting(t *testing.T) {
 	if err == nil {
 		t.Fatal("unattended run waited for a human instead of stopping")
 	}
-	if !errors.Is(err, errUnattendedQuestionNeedsHuman) {
+	if !errors.Is(err, ErrAutopilotAskUnanswered) {
 		t.Fatalf("ask err = %v, want the unattended stop", err)
 	}
 	if len(answers) != 0 {
 		t.Fatalf("answers = %+v, want none: the run must not answer this itself", answers)
 	}
 	if elapsed := time.Since(started); elapsed > 5*time.Second {
-		t.Fatalf("ask took %s; the point of the grace is to stop promptly", elapsed)
+		t.Fatalf("ask took %s; the point of the wait is to stop promptly", elapsed)
 	}
 }
 
@@ -106,8 +108,8 @@ func TestUnattendedQuestionStopsInsteadOfWaiting(t *testing.T) {
 func TestInteractiveQuestionStillWaits(t *testing.T) {
 	ag := agent.New(nil, tool.NewRegistry(), agent.NewSession("sys"), agent.Options{}, event.Discard)
 	c := New(Options{Runner: ag, Executor: ag, Sink: event.Discard})
-	if c.autopilotApprovalGrace != 0 {
-		t.Fatalf("interactive grace = %v, want none", c.autopilotApprovalGrace)
+	if c.autopilot || c.unattendedRun() {
+		t.Fatal("interactive controller reported itself as unattended")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
 	defer cancel()
@@ -136,17 +138,17 @@ func TestUnattendedApprovalRefusesWhenNothingCanDecide(t *testing.T) {
 	}
 }
 
-// The unattended stop reaches the Goal FSM as a terminal state, while the same
-// error in an interactive session stays outside it.
+// The unattended stop reaches the Goal FSM as a terminal state, while an
+// interactive Goal keeps waiting for the human instead of absorbing it.
 func TestUnattendedAskPauseIsTerminalForTheGoal(t *testing.T) {
-	cause, reason, ok := goalPauseFromRunError(errUnattendedQuestionNeedsHuman, true)
-	if !ok || cause != stopCauseAskNeedsHuman {
-		t.Fatalf("unattended pause = (%q, %q, %v), want cause %q", cause, reason, ok, stopCauseAskNeedsHuman)
+	cause, reason, ok := goalPauseFromRunError(ErrAutopilotAskUnanswered)
+	if !ok || cause != stopCauseAskUnanswered {
+		t.Fatalf("pause = (%q, %q, %v), want cause %q", cause, reason, ok, stopCauseAskUnanswered)
 	}
 	if reason == "" {
 		t.Fatal("unattended stop carried no reason to report")
 	}
-	if _, _, ok := goalPauseFromRunError(errUnattendedQuestionNeedsHuman, false); ok {
-		t.Fatal("an interactive Goal would absorb a question it must wait for")
+	if _, _, ok := goalPauseFromRunError(context.DeadlineExceeded); ok {
+		t.Fatal("an unrelated error must not become a Goal pause")
 	}
 }

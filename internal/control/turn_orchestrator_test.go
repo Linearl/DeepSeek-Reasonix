@@ -447,12 +447,12 @@ func TestRecoveryPauseBlocksUnattendedGoal(t *testing.T) {
 	if err := newTurnOrchestrator(c).runGoalLoopWithRawDisplay(context.Background(), "start", "start", ""); err != nil {
 		t.Fatalf("run err = %v, want the pause absorbed into a terminal Goal", err)
 	}
-	if got := c.GoalStatus(); got != GoalStatusBlocked {
-		t.Fatalf("GoalStatus = %q, want %q", got, GoalStatusBlocked)
+	if got := c.GoalStatus(); got != GoalStatusFailed {
+		t.Fatalf("GoalStatus = %q, want %q", got, GoalStatusFailed)
 	}
 	rt := c.GoalRuntime()
-	if rt.StopCause != stopCauseRecoveryPause {
-		t.Fatalf("StopCause = %q, want %q", rt.StopCause, stopCauseRecoveryPause)
+	if rt.StopCause != stopCauseRecoveryPaused {
+		t.Fatalf("StopCause = %q, want %q", rt.StopCause, stopCauseRecoveryPaused)
 	}
 	c.goals.mu.Lock()
 	blockReason := c.goals.block

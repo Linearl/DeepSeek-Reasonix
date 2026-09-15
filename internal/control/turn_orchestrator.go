@@ -107,7 +107,7 @@ func (o *turnOrchestrator) runSubagentSkillTurnsGoalLoop(ctx context.Context, sk
 			o.c.goalUsageTee.setActiveRecorder(nil)
 			o.c.stopGoal(GoalStatusStopped)
 		}
-		if !goalTurnErrorAbsorbable(err, o.c.unattendedRun()) || !o.c.goals.active() {
+		if !o.goalTurnErrorAbsorbableFor(err) || !o.c.goals.active() {
 			o.c.goalUsageTee.setActiveRecorder(nil)
 			return err
 		}
@@ -432,7 +432,7 @@ func (o *turnOrchestrator) runGoalLoopWithPreparedTurn(ctx context.Context, turn
 			o.c.stopGoal(GoalStatusStopped)
 			return err
 		}
-		if !goalTurnErrorAbsorbable(err, o.c.unattendedRun()) {
+		if !o.goalTurnErrorAbsorbableFor(err) {
 			// Terminal provider/host error: stop auto-continue. An interactive
 			// Goal stays running so the next ordinary user message keeps the
 			// scope; an unattended one only absorbs pauses nobody can lift.
@@ -469,7 +469,7 @@ func (o *turnOrchestrator) runEditedGoalLoopWithImageRefsRawDisplay(ctx context.
 			o.c.stopGoal(GoalStatusStopped)
 			return err
 		}
-		if !goalTurnErrorAbsorbable(err, o.c.unattendedRun()) {
+		if !o.goalTurnErrorAbsorbableFor(err) {
 			o.c.goalUsageTee.setActiveRecorder(nil)
 			return err
 		}
@@ -514,7 +514,7 @@ func (o *turnOrchestrator) continueGoal(ctx context.Context, expectedContinuatio
 				c.stopGoal(GoalStatusStopped)
 				return err
 			}
-			if !goalTurnErrorAbsorbable(err, c.unattendedRun()) {
+			if !o.goalTurnErrorAbsorbableFor(err) {
 				// Terminal provider/host error: stop auto-continue; an
 				// interactive Goal stays running for the next user turn.
 				c.goalUsageTee.setActiveRecorder(nil)
@@ -537,43 +537,40 @@ func (o *turnOrchestrator) continueGoal(ctx context.Context, expectedContinuatio
 func (c *Controller) unattendedRun() bool { return c != nil && c.autopilot }
 
 // goalTurnErrorAbsorbable reports whether the Goal FSM owns this turn error.
-// unattended adds the pauses an interactive run deliberately keeps outside the
-// FSM: with no next user turn to resume them, absorbing them is what turns a
-// silent stall into a reported terminal state.
-func goalTurnErrorAbsorbable(err error, unattended bool) bool {
+func goalTurnErrorAbsorbable(err error) bool {
 	var readinessErr *agent.FinalReadinessError
 	if errors.As(err, &readinessErr) {
 		return true
 	}
-	_, _, ok := goalPauseFromRunError(err, unattended)
+	_, _, ok := goalPauseFromRunError(err)
 	return ok
 }
 
-func goalPauseFromRunError(err error, unattended bool) (cause, reason string, ok bool) {
-	// Task 109 B5: automatic recovery paused and is waiting for a human. In an
-	// unattended run nobody will send "continue", so the Goal would sit at
-	// Running while doing nothing - a false-alive state that is harder to
-	// notice than an explicit Blocked. Interactive runs are untouched: they
-	// still receive the pause error and resume on the next user message.
-	if unattended {
-		if errors.As(err, new(*agent.RecoveryPauseError)) {
-			// The interactive product copy tells the reader to send "continue";
-			// nobody can do that here, so the unattended notice states what
-			// happened instead of repeating advice that cannot be followed.
-			return stopCauseRecoveryPause, "automatic recovery paused and an unattended run has no user turn to resume it", true
-		}
-		// Task 109 B4: a question only a human may answer ran out of grace. The
-		// run refused to answer it - the safe valve did its job - and this turns
-		// the refusal into a reported terminal state instead of a silent wait.
-		if errors.Is(err, errUnattendedQuestionNeedsHuman) {
-			return stopCauseAskNeedsHuman, "a question needed a human decision and nobody answered within the unattended grace period", true
-		}
+// goalTurnErrorAbsorbableFor is the orchestrator-aware absorb check. A recovery
+// pause is absorbed only for an unattended run (task 109 B5): an interactive
+// Goal must still return RecoveryPauseError so the next user "continue" resumes
+// the same scope (TestRecoveryPauseKeepsGoalRunningAndDeliveryScope).
+func (o *turnOrchestrator) goalTurnErrorAbsorbableFor(err error) bool {
+	if goalTurnErrorAbsorbable(err) {
+		return true
+	}
+	var pause *agent.RecoveryPauseError
+	return o != nil && o.c != nil && o.c.unattendedRun() && errors.As(err, &pause)
+}
+
+func goalPauseFromRunError(err error) (cause, reason string, ok bool) {
+	if errors.Is(err, ErrAutopilotAskUnanswered) {
+		return stopCauseAskUnanswered, ErrAutopilotAskUnanswered.Error(), true
 	}
 	info, ok := agent.InspectRunPause(err)
 	if !ok {
 		return "", "", false
 	}
-	if info.Kind == "task_budget" && info.HostOwned {
+	switch info.Kind {
+	case "task_budget":
+		if !info.HostOwned {
+			return "", "", false
+		}
 		reason := strings.TrimSpace(info.Reason)
 		if reason == "" {
 			reason = "the Goal reached its spend budget"
@@ -602,7 +599,16 @@ func (o *turnOrchestrator) advanceGoalAfterTurn(ctx context.Context, expectedCon
 
 	var readiness agent.ReadinessResult
 	var readinessErr *agent.FinalReadinessError
-	pauseCause, pauseReason, runPaused := goalPauseFromRunError(turnErr, c.unattendedRun())
+	pauseCause, pauseReason, runPaused := goalPauseFromRunError(turnErr)
+	// Unattended RecoveryPause (task 109 B5): absorb into the FSM so autopilot
+	// ends as Failed instead of a fake-Running goal. Interactive keeps the old
+	// contract of returning the pause to the caller.
+	var recoveryPause *agent.RecoveryPauseError
+	if c.unattendedRun() && errors.As(turnErr, &recoveryPause) {
+		pauseCause = stopCauseRecoveryPaused
+		pauseReason = recoveryPause.Error()
+		runPaused = true
+	}
 	if errors.As(turnErr, &readinessErr) {
 		progressKey := readinessErr.ProgressKey
 		if progressKey == "" {

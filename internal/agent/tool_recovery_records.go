@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"reasonix/internal/event"
@@ -38,6 +39,27 @@ func WithToolApprovalMode(ctx context.Context, mode string) context.Context {
 
 func toolApprovalModeAutoApproved(mode string) bool {
 	return mode == toolApprovalModeAuto || mode == toolApprovalModeYolo
+}
+
+type unattendedRunContextKey struct{}
+
+// WithUnattendedRun marks the turn as one nobody can answer a prompt for (task
+// 49 A1 autopilot). It complements the approval mode rather than replacing it:
+// --autopilot is independent of the tool-approval mode, so an unattended run in
+// ask mode would otherwise keep the fence and strand itself (task 107 P0-0).
+func WithUnattendedRun(ctx context.Context) context.Context {
+	return context.WithValue(ctx, unattendedRunContextKey{}, true)
+}
+
+// toolRecoveryExempt reports whether this turn may write while an earlier
+// external effect is still unresolved. Both halves are per-turn context, so no
+// shared mutable switch has to be kept in sync with the approval posture.
+func toolRecoveryExempt(ctx context.Context) bool {
+	if mode, _ := ctx.Value(toolApprovalModeContextKey{}).(string); toolApprovalModeAutoApproved(mode) {
+		return true
+	}
+	unattended, _ := ctx.Value(unattendedRunContextKey{}).(bool)
+	return unattended
 }
 
 func recoveryDigest(b []byte) string { sum := sha256.Sum256(b); return hex.EncodeToString(sum[:]) }
@@ -85,20 +107,23 @@ func (a *Agent) beginToolRecovery(ctx context.Context, p *toolCallPlan) error {
 	}
 	// An unresolved external effect survives subsequent user turns. Read-only
 	// diagnosis remains available; new call IDs cannot bypass this barrier.
+	// Unattended hosts (yolo/auto/autopilot) skip it: nobody is there to resolve
+	// the recovery panel, so the fence would strand the run (task 107).
 	prior, _ := ctx.Value(recoveryRetryKey{}).(*provider.ToolCallRecord)
-	mode, _ := ctx.Value(toolApprovalModeContextKey{}).(string)
-	// Task 107 P0-0: in auto/yolo sessions write authority is already granted by the approval
-	// mode and there is no user to press the panel buttons, so blocking here strands unattended
-	// runs. The effect record is still kept (PendingToolRecovery still lists it) for after-the-
-	// fact review; only the hard stop is lifted.
-	if !p.readOnly && !toolApprovalModeAutoApproved(mode) && slices.ContainsFunc(a.PendingToolRecovery(), func(r provider.ToolCallRecord) bool {
+	// Task 107 P0-0: an auto/yolo session already delegates write decisions to
+	// policy, and an unattended run has nobody to press the panel buttons, so a
+	// hard stop here strands it with no way out. The effect record is still kept
+	// (PendingToolRecovery still lists it) for after-the-fact review; only the
+	// hard stop is lifted, and ask keeps it.
+	if !p.readOnly && !toolRecoveryExempt(ctx) && slices.ContainsFunc(a.PendingToolRecovery(), func(r provider.ToolCallRecord) bool {
 		return !r.ReadOnly && (prior == nil || prior.Identity.AttemptID != r.Identity.AttemptID)
 	}) {
-		// Task 107 P0-1: name where the barrier is cleared and how to inspect the pending effect,
-		// so an agent can act instead of guessing.
-		return fmt.Errorf("recovery_required: an earlier tool call's external effect is unconfirmed and blocks this write. " +
-			"Resolve it in the 'Interrupted tool needs review' panel of the desktop UI (actions: Inspect current state / I verified the effect happened / Do not retry). " +
-			"Pending effect: inspect via tool_recovery action=inspect.")
+		// Task 107 P0-1: name the pending tool, the panel, and the actions, so the
+		// model has an executable next step instead of a bare category.
+		return fmt.Errorf("recovery_required: an earlier %s left an unconfirmed external effect, so this write is blocked. "+
+			"Resolve it in the desktop panel 「中断的工具需要核实」 (Interrupted tool needs review) by choosing "+
+			"Inspect current state / I verified the effect happened / Do not retry, then retry the write.",
+			pendingToolLabel(a.PendingToolRecovery()))
 	}
 	var params any
 	decoder := json.NewDecoder(bytes.NewReader(p.permArgs))
@@ -250,4 +275,14 @@ func (a *Agent) PendingToolRecovery() []provider.ToolCallRecord {
 		}
 	}
 	return result
+}
+
+// pendingToolLabel names the most recent unresolved write tool for error copy.
+func pendingToolLabel(records []provider.ToolCallRecord) string {
+	for _, r := range records {
+		if name := strings.TrimSpace(r.Identity.CanonicalTool); name != "" {
+			return name
+		}
+	}
+	return "tool"
 }

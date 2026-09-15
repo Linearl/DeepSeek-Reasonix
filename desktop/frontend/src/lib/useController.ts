@@ -2758,6 +2758,11 @@ export function useController() {
   const metaRefreshSeq = useRef(new Map<string, number>());
   const sessionLoadSeq = useRef(new Map<string, number>());
   const historyOlderSeq = useRef(new Map<string, number>());
+  // Track when historyOlderLoading was armed and whether a store call is live.
+  // A stuck loading flag with no in-flight promise is how the transcript
+  // lock-out in task 101 happens; the guard self-heals from these.
+  const historyOlderStartedAtByTab = useRef(new Map<string, number>());
+  const historyOlderInFlightByTab = useRef(new Map<string, Promise<boolean>>());
   const cancelHydrateSeq = useRef(new Map<string, number>());
   const turnEventProjector = useRef(new TurnEventProjector()).current;
   const sessionLoadInFlight = useRef(new Map<string, { sessionPath: string; revision?: number; digest?: string; promise: Promise<void> }>());
@@ -3178,8 +3183,33 @@ export function useController() {
   const loadOlderHistory = useCallback(async function loadOlder(tabId?: string, targetTurn?: number, trigger: HistoryLoadTrigger = "retry", isRetry = false): Promise<boolean> {
     const targetTabId = tabId || activeTabIdRef.current;
     if (!targetTabId) return false;
-    const state = statesRef.current.get(targetTabId);
-    if (!state?.historyHasOlder || state.historyOlderLoading || state.running) return false;
+    // Reuse an in-flight page instead of failing closed (task 101 P1): a
+    // second scroll / retry while the store is busy joins the same promise.
+    // The identity-retry below must not join itself, so isRetry skips the map.
+    if (!isRetry) {
+      const inFlight = historyOlderInFlightByTab.current.get(targetTabId);
+      if (inFlight) return inFlight;
+    }
+
+    let state = statesRef.current.get(targetTabId);
+    if (!state?.historyHasOlder || state.running) return false;
+    if (state.historyOlderLoading) {
+      // Self-heal a stuck loading gate (task 101 P0): loading true with no
+      // live store call is the lock-out that used to require closing the tab.
+      const startedAt = historyOlderStartedAtByTab.current.get(targetTabId) ?? 0;
+      const staleMs = Date.now() - startedAt;
+      const thresholdMs = 15_000;
+      if (startedAt <= 0 || staleMs >= thresholdMs) {
+        dispatchTo(targetTabId, {
+          type: "history_older_error",
+          error: staleMs >= thresholdMs ? "stale loading gate reset" : "loading gate reset",
+        });
+        reportFrontendLog("history-paging", "older loading self-healed", `tab=${targetTabId} ageMs=${staleMs}`, "warn");
+        state = statesRef.current.get(targetTabId);
+      }
+      if (state?.historyOlderLoading) return false;
+    }
+    if (!state?.historyHasOlder || state.running) return false;
     const sessionPath = state.meta?.sessionPath ?? "";
     const sessionRevision = state.meta?.sessionRevision ?? state.historyRevision;
     const sessionDigest = state.meta?.sessionDigest ?? state.historyDigest;
@@ -3191,7 +3221,9 @@ export function useController() {
     });
     ensureTranscriptSubscription(targetTabId);
     dispatchTo(targetTabId, { type: "history_older_start" });
+    historyOlderStartedAtByTab.current.set(targetTabId, Date.now());
     const startedAt = Date.now();
+    const run = (async (): Promise<boolean> => {
     try {
       const result = await getTranscriptStore().loadOlder(targetTabId, sessionPath, pageBudget);
       if (historyOlderSeq.current.get(targetTabId) !== requestSeq) {
@@ -3275,7 +3307,9 @@ export function useController() {
       // of the session - the spinner stays up and every later attempt is rejected at the
       // guard. The successful paths already clear it via history_prepend/history_replace;
       // this is the backstop for the ones that return early.
+      historyOlderInFlightByTab.current.delete(targetTabId);
       if (historyOlderSeq.current.get(targetTabId) === requestSeq) {
+        historyOlderStartedAtByTab.current.delete(targetTabId);
         const settled = statesRef.current.get(targetTabId);
         if (settled?.historyOlderLoading) {
           dispatchTo(targetTabId, { type: "history_older_error" });
@@ -3284,6 +3318,9 @@ export function useController() {
         }
       }
     }
+    })();
+    historyOlderInFlightByTab.current.set(targetTabId, run);
+    return run;
   }, [dispatchTo, ensureTranscriptSubscription]);
 
   const activeTabFromBackend = useCallback(async (): Promise<TabMeta | undefined> => {

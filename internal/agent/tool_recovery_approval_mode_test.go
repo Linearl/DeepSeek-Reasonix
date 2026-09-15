@@ -120,15 +120,49 @@ func TestToolRecoveryBarrierMessageNamesPanelAndInspectAction(t *testing.T) {
 	}
 	msg := err.Error()
 	for _, want := range []string{
+		"中断的工具需要核实",
 		"Interrupted tool needs review",
 		"Inspect current state",
 		"I verified the effect happened",
 		"Do not retry",
-		"tool_recovery action=inspect",
 	} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("block message is missing %q: %s", want, msg)
 		}
+	}
+}
+
+// The fence reads its exemption from the turn context: an auto/yolo session and
+// an unattended run both pass, everything else keeps the barrier.
+func TestToolRecoveryExemptFromContext(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		ctx  context.Context
+		want bool
+	}{
+		{name: "plain", ctx: context.Background()},
+		{name: "ask", ctx: WithToolApprovalMode(context.Background(), "ask")},
+		{name: "auto", ctx: WithToolApprovalMode(context.Background(), "auto"), want: true},
+		{name: "yolo", ctx: WithToolApprovalMode(context.Background(), "yolo"), want: true},
+		{name: "unattended", ctx: WithUnattendedRun(context.Background()), want: true},
+		{name: "unattended+ask", ctx: WithUnattendedRun(WithToolApprovalMode(context.Background(), "ask")), want: true},
+	} {
+		if got := toolRecoveryExempt(tc.ctx); got != tc.want {
+			t.Fatalf("%s: exempt = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// Task 107's hard constraint: an unattended run that has only inspected a
+// pending effect must still not lose the record - the exemption lifts the stop,
+// not the evidence.
+func TestUnattendedRunKeepsThePendingEffectVisible(t *testing.T) {
+	a, probe, _ := recoveryActionFixture(t)
+	if err := a.beginToolRecovery(WithUnattendedRun(context.Background()), writePlan(probe, "exempt-write")); err != nil {
+		t.Fatalf("unattended write was stranded: %v", err)
+	}
+	if len(a.PendingToolRecovery()) != 1 {
+		t.Fatalf("pending effects = %d, want the earlier effect still listed", len(a.PendingToolRecovery()))
 	}
 }
 

@@ -125,6 +125,9 @@ type Controller struct {
 	// autopilotApprovalGrace is how long an unattended run waits for a human on an
 	// approval prompt before the reviewer decides instead (A5).
 	autopilotApprovalGrace time.Duration
+	// autopilotAskWait is how long an unattended run waits for a human on a
+	// high-risk question before stopping (task 109 B4). 0 uses the default.
+	autopilotAskWait time.Duration
 	// evaluator is the bounded Goal completion evaluator consulted when the
 	// working model submits no update_goal report. nil fails closed: the goal
 	// pauses instead of defaulting to continue.
@@ -514,6 +517,10 @@ type Options struct {
 	// approval prompt before the reviewer decides instead. Zero uses
 	// DefaultAutopilotApprovalGrace; a negative value disables the fallback.
 	AutopilotApprovalGrace time.Duration
+	// AutopilotAskWait is how long an unattended run waits for a human on a
+	// high-risk question before it stops with a terminal failure. Zero uses
+	// DefaultAutopilotAskWait; tests set it short to exercise that path.
+	AutopilotAskWait time.Duration
 	// GoalEvaluator is the optional bounded Goal completion evaluator consulted
 	// when the working model submits no update_goal report. nil fails closed:
 	// the goal pauses instead of defaulting to continue.
@@ -728,6 +735,7 @@ func New(opts Options) *Controller {
 		goalTokenBudget:                   opts.GoalTokenBudget,
 		autopilot:                         opts.Autopilot && opts.AutopilotMaxRuntime > 0,
 		autopilotApprovalGrace:            autopilotApprovalGrace(opts),
+		autopilotAskWait:                  opts.AutopilotAskWait,
 		goals: goalMachine{
 			tokenBudget: opts.GoalTokenBudget,
 			autopilot:   opts.Autopilot && opts.AutopilotMaxRuntime > 0,
@@ -1294,10 +1302,14 @@ func (c *Controller) runGoalLoopWithRawDisplay(ctx context.Context, input, raw, 
 	// Structured-output format is bound to the submitted turn (passed via
 	// submitHTTPWithFormat → submitCommandOrTurn → runGoalLoop closure);
 	// no global one-shot slot to race across concurrent requests.
-	// Task 107 P0-0: the agent's recovery fence exempts auto/yolo sessions; agent reads the
-	// mode from the turn context because it must not import control. Every turn path funnels
-	// through here, so one binding covers interactive, ACP and goal-orchestrated runs.
+	// Task 107 P0-0: the agent's recovery fence exempts auto/yolo sessions and
+	// unattended runs (nobody can press the panel); agent reads both from the
+	// turn context because it must not import control. Every turn path funnels
+	// through here, so one binding covers interactive, ACP and goal runs.
 	ctx = agent.WithToolApprovalMode(ctx, c.ToolApprovalMode())
+	if c.autopilot {
+		ctx = agent.WithUnattendedRun(ctx)
+	}
 	return newTurnOrchestrator(c).runGoalLoopWithRawDisplay(ctx, input, raw, display)
 }
 
@@ -2612,8 +2624,9 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// Autopilot (task 49 A3): nobody is available to answer. Questions the run may
 	// decide alone are handed straight back with an explicit "decide for yourself"
 	// answer, which lands in the transcript as the audit record. Anything
-	// destructive, outward-facing, or credential-touching falls through to the
-	// normal prompt path and waits for a human.
+	// destructive, outward-facing, or credential-touching still waits for a human,
+	// but not forever — after DefaultAutopilotAskWait the run ends with a terminal
+	// error so the safety valve is a real stop, not an invisible hang (task 109 B4).
 	if c.autopilot && askRiskOfQuestions(askQuestionTexts(questions)) == askRiskReversible {
 		return autopilotAnswers(questions), nil
 	}
@@ -2644,25 +2657,34 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	waitCtx, cancelWait := c.approval.waitContext(ctx)
 	defer cancelWait()
 
-	// Autopilot (task 109 B4): the grace a human gets before an unattended
-	// decision takes over applies to questions too. A question only a human may
-	// answer has no unattended substitute, so waiting for one forever is exactly
-	// the stall this run cannot afford: stop with an explicit failure instead,
-	// which the Goal turns into a reported terminal state.
-	var graceCh <-chan time.Time
-	if c.autopilot && c.autopilotApprovalGrace > 0 {
-		graceTimer := time.NewTimer(c.autopilotApprovalGrace)
-		defer graceTimer.Stop()
-		graceCh = graceTimer.C
+	// High-risk ask under autopilot: still wait for a human, then fail closed.
+	// A question only a human may answer has no unattended substitute, so
+	// waiting for one forever is exactly the stall this run cannot afford: stop
+	// with an explicit failure, which the Goal turns into a reported terminal
+	// state (task 109 B4).
+	var askTimeout <-chan time.Time
+	if c.autopilot {
+		wait := c.autopilotAskWait
+		if wait <= 0 {
+			wait = DefaultAutopilotAskWait
+		}
+		t := time.NewTimer(wait)
+		defer t.Stop()
+		askTimeout = t.C
 	}
 
 	select {
 	case ans := <-reply:
 		return ans, nil
-	case <-graceCh:
+	case <-askTimeout:
 		c.cancelOwnedPrompt(id)
-		c.emitAutopilotApprovalNotice("ask", "", "stopped: the question needs a human decision")
-		return nil, errUnattendedQuestionNeedsHuman
+		c.sink.Emit(event.Event{
+			Kind:   event.Notice,
+			Level:  event.LevelWarn,
+			Text:   "autopilot · ask — refused: high-risk question unanswered after " + DefaultAutopilotAskWait.String(),
+			Detail: "the unattended run stopped instead of deciding destructive/outward-facing/credential actions for the user",
+		})
+		return nil, ErrAutopilotAskUnanswered
 	case <-waitCtx.Done():
 		c.cancelOwnedPrompt(id)
 		return nil, waitCtx.Err()
@@ -5334,6 +5356,9 @@ func (c *Controller) ApplyToolApprovalMode(mode string) []string {
 		c.subagentGate.Update(mode)
 	}
 	c.refreshInteractiveGate()
+	// The recovery fence reads the approval posture from the turn context (task
+	// 107): ApplyToolApprovalMode only needs to let the gate know, so no shared
+	// switch on the executor has to be kept in sync here.
 	// Clear recovery cards dismissed by the mode switch outside the gate lock.
 	for _, id := range recoveryDismissed {
 		p := c.approval.resolve(id)
