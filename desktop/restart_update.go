@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -125,7 +126,7 @@ func (a *App) RestartAndUpdate(sourceDir, version string) error {
 	}
 
 	slog.Info("restart: publish committed; relaunching", "version", version)
-	if err := startDetachedLauncher(filepath.Join(installRoot, launcherName)); err != nil {
+	if err := startDetachedLauncher(filepath.Join(installRoot, launcherName), os.Getpid()); err != nil {
 		slog.Error("restart: launcher start failed after commit", "version", version, "err", err)
 		return fmt.Errorf("restart: start launcher: %w", err)
 	}
@@ -140,13 +141,30 @@ func (a *App) RestartAndUpdate(sourceDir, version string) error {
 	return nil
 }
 
-// startDetachedLauncher starts the launcher so that it outlives this process.
-func startDetachedLauncher(launcherPath string) error {
-	cmd := exec.Command(launcherPath)
+// startDetachedLauncher starts the launcher so that it outlives this process,
+// handing it this pid via --wait-for: the launcher then starts the new desktop
+// only after this process has fully exited and released the gateway port and
+// session locks, mirroring the update helper's instance handoff.
+func startDetachedLauncher(launcherPath string, exitingPID int) error {
+	args := []string{}
+	if exitingPID > 0 {
+		args = append(args, "--wait-for", strconv.Itoa(exitingPID))
+	}
+	cmd := exec.Command(launcherPath, args...)
 	cmd.Dir = filepath.Dir(launcherPath)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
+	configureDetachedRelaunch(cmd, relaunchCreationFlags)
 	if err := cmd.Start(); err != nil {
-		return err
+		// Jobs that forbid breakaway fail the whole Start; retry attached to
+		// the current job rather than losing the relaunch entirely.
+		cmd = exec.Command(launcherPath, args...)
+		cmd.Dir = filepath.Dir(launcherPath)
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
+		configureDetachedRelaunch(cmd, detachedRelaunchFallbackFlags)
+		if retryErr := cmd.Start(); retryErr != nil {
+			return err
+		}
+		return cmd.Process.Release()
 	}
 	return cmd.Process.Release()
 }

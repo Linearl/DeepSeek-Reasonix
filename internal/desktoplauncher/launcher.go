@@ -28,6 +28,12 @@ func Run(args []string, buildVersion string) int {
 			return 0
 		}
 	}
+	// Restart-and-update handoff (task 81): the exiting desktop passes its pid
+	// via --wait-for. Starting the new desktop while the old one still holds
+	// the servepool gateway port and session locks made the relaunch die
+	// silently, which is why every automatic restart lost the race before.
+	waitFor, args := extractWaitFor(args)
+	waitForHandoff(waitFor)
 	if err := appidentity.ApplyToCurrentProcess(); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: apply Windows app identity:", err)
 	}
