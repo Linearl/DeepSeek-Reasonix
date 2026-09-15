@@ -528,9 +528,17 @@ export class TranscriptStore {
           now - (this.lastActiveAt.get(s.tabId) ?? 0) >= this.evictCooldownMs,
       );
     let candidates = evictable();
+    // Task 123 phase 2: weighted LRU. Keep pure recency order as the primary
+    // key, but among the oldest half prefer the smallest body so an expensive
+    // large transcript stays resident a bit longer when a cheap victim exists.
     let resident = candidates.length;
     while (resident > this.maxResidentSessions && candidates.length > 0) {
-      const victim = candidates.shift();
+      const searchWindow = Math.max(1, Math.ceil(candidates.length / 2));
+      let victimIdx = 0;
+      for (let i = 1; i < searchWindow; i += 1) {
+        if (candidates[i].bodyBytes < candidates[victimIdx].bodyBytes) victimIdx = i;
+      }
+      const victim = candidates.splice(victimIdx, 1)[0];
       if (!victim) break;
       this.evictSession(victim, "lru");
       resident -= 1;

@@ -22,6 +22,10 @@ type LayoutPreferences = {
   // it turn orange once the config lands.
   theme?: string;
   themeStyle?: string;
+  // Frontend mirror of the last active tab id (task 126). Backend already
+  // persists activeTab in desktop-tabs.json; this is the race-safe fallback when
+  // ListTabs runs before restoreOrBuildTabs has published activeTabID.
+  activeTabId?: string;
 };
 
 const STORAGE_KEY = "reasonix.layoutPreferences.v1";
@@ -60,10 +64,30 @@ function writePrefs(prefs: LayoutPreferences): void {
     if (prefs.layoutStyle) payload.layoutStyle = prefs.layoutStyle;
     if (prefs.theme) payload.theme = prefs.theme;
     if (prefs.themeStyle) payload.themeStyle = prefs.themeStyle;
+    if (prefs.activeTabId) payload.activeTabId = prefs.activeTabId;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch {
     /* ignore storage failures */
   }
+}
+
+/** loadLastActiveTabId returns the frontend-mirrored last active tab id, or
+ * null when nothing is cached. Used only when the backend snapshot has no
+ * tab marked active (startup race, empty activeTab). */
+export function loadLastActiveTabId(): string | null {
+  const prefs = readPrefs();
+  const id = prefs.activeTabId;
+  return typeof id === "string" && id.trim() !== "" ? id : null;
+}
+
+/** saveLastActiveTabId mirrors the current active tab into first-paint storage.
+ * Blank input is ignored so a cleared tab cannot pin a stale id. */
+export function saveLastActiveTabId(id: string): void {
+  const trimmed = typeof id === "string" ? id.trim() : "";
+  if (trimmed === "") return;
+  const prefs = readPrefs();
+  if (prefs.activeTabId === trimmed) return;
+  writePrefs({ ...prefs, activeTabId: trimmed });
 }
 
 /** loadCachedLayoutStyle returns the synchronously readable layout style, or

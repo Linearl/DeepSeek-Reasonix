@@ -191,6 +191,8 @@ import {
   terminalMaxHeight,
   saveWorkspacePanelOpen,
   loadWorkspacePanelOpen,
+  loadRightDockMode,
+  saveRightDockMode,
   useLayoutStore,
 } from "./store/layout";
 import { useOverlayStore } from "./store/overlays";
@@ -2304,11 +2306,13 @@ export default function App() {
 
   // Creation no longer exposes the overview tab. If a previous session left
   // rightDockMode on "context", coerce it to files so 文件 stays selected.
+  const creationCoerceWorkspaceRoot = activeTab?.workspaceRoot ?? "";
   useEffect(() => {
     if (desktopLayoutStyle !== "creation") return;
     if (rightDockMode !== "context") return;
     setRightDockMode("files");
-  }, [desktopLayoutStyle, rightDockMode, setRightDockMode]);
+    saveRightDockMode("files", creationCoerceWorkspaceRoot);
+  }, [creationCoerceWorkspaceRoot, desktopLayoutStyle, rightDockMode, setRightDockMode]);
 
   const setExpandedSidebarWidth = useCallback((width: number) => {
     closeTransientOverlays();
@@ -2543,6 +2547,7 @@ export default function App() {
         setWorkspacePreviewActive(false);
       }
       setRightDockMode(mode);
+      saveRightDockMode(mode, activeWorkspaceRoot);
       let nextMaximized = workspacePanelMaximized;
       if (mode === "context") {
         nextMaximized = false;
@@ -2576,8 +2581,10 @@ export default function App() {
   // Restore the right dock's open/closed state per project: switching to a
   // different workspace root (or a global session) restores that scope's own
   // preference instead of carrying the previous project's state over.
+  // Task 120: the selected tab (文件/改动/概览) is restored the same way.
   useEffect(() => {
     setWorkspacePanelOpen(loadWorkspacePanelOpen(activeWorkspaceRoot));
+    setRightDockMode(loadRightDockMode(activeWorkspaceRoot));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkspaceRoot]);
 
@@ -2657,7 +2664,8 @@ export default function App() {
   useEffect(() => {
     if (remoteHosts.length > 0 || rightDockMode !== "remote") return;
     setRightDockMode("files");
-  }, [remoteHosts.length, rightDockMode, setRightDockMode]);
+    saveRightDockMode("files", activeWorkspaceRoot);
+  }, [activeWorkspaceRoot, remoteHosts.length, rightDockMode, setRightDockMode]);
 
   const openRemoteDock = useCallback(() => {
     const fallback = remoteHosts.find((host) => {
@@ -5054,6 +5062,16 @@ export default function App() {
                     onToggleMaximized={() => {
                       closeTransientOverlays();
                       setWorkspacePanelMaximized((value) => !value);
+                    }}
+                    onWidthPreset={(percent) => {
+                      closeTransientOverlays();
+                      const next = rightDockTreeWidthClamp(
+                        Math.round(workspacePanelAvailableWidth * (percent / 100)),
+                        workspacePanelAvailableWidth,
+                      );
+                      setRightDockTreeWidth(next);
+                      saveRightDockTreeWidth(next);
+                      if (workspacePanelMaximized) setWorkspacePanelMaximized(false);
                     }}
                     onPreviewModeChange={handleWorkspacePreviewModeChange}
                     onAddToChat={addWorkspaceTextToComposer}

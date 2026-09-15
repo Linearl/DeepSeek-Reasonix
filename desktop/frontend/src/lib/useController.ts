@@ -45,6 +45,7 @@ import { upsertReadPause } from "./readPause";
 import { applyHydrateErrorState, hydratePlaceholderItems as resolveHydratePlaceholders } from "./hydrateErrorState";
 import { isHostRecoveryGuidance } from "./hostRecoverySteer";
 import { activeTabHydrationPlan, canAdoptUnboundLiveSurface, duplicateLiveItemIds, hasReusableCachedTranscript, hydratedHistoryApplyMode, sameSessionHydrateIdentity, sameSessionPlaceholderItems, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
+import { loadLastActiveTabId, saveLastActiveTabId } from "./layoutPreferences";
 import { hydrateIdentityCurrent } from "./sessionIdentity";
 import { historyPageRequestBudget } from "./historyPaging";
 import { createUniqueItemIDAllocator } from "./historyItemIds";
@@ -2554,6 +2555,11 @@ export function useController() {
   const [activeTabId, setActiveTabId] = useState<string | undefined>();
   const runtimeState = useRuntimeSession(activeTabId);
   const activeTabIdRef = useRef<string | undefined>(undefined);
+  // Task 126: mirror the visible tab so a later frontend remount can recover it
+  // even when the backend ListTabs snapshot still has no active flag.
+  useEffect(() => {
+    if (activeTabId) saveLastActiveTabId(activeTabId);
+  }, [activeTabId]);
   // Invalidates async navigation completions even for ABA switches where the
   // visible tab ID eventually returns to the original value.
   const activeNavigationSeqRef = useRef(0);
@@ -3046,41 +3052,42 @@ export function useController() {
         return;
       }
       if (meta !== undefined) dispatchTo(tabId, { type: "meta", meta });
+      // Task 123 phase 2: a fingerprint mismatch no longer blocks ancillary
+      // loads. The first exact page is already painted; reconcile re-reads the
+      // pair in the background and replaces history only when fingerprints agree.
+      let backgroundReconcile: Promise<void> = Promise.resolve();
       if (meta !== undefined && projection !== undefined && !skipHistory &&
         !foregroundTurnActive() && !historyFingerprintMatchesMeta(projection, meta)) {
-        // The transcript and metadata are persisted in separate files. A save
-        // can advance between those reads, so an exact-content page may be
-        // older than the metadata sampled just afterwards. Re-read both as a
-        // bounded pair; only replace the visible history when their canonical
-        // fingerprints agree. A continuously changing session keeps the first
-        // exact page and remains non-reusable because its digest differs.
-        for (let attempt = 0; attempt < 2; attempt += 1) {
-          const reconciledProjection = await loadTimed("history reconcile", () => getTranscriptStore().loadLatest(tabId, sessionPath, {
-            turns: HISTORY_PAGE_TURNS,
-            preferResident: false,
-            expectedRevision: meta?.sessionRevision,
-            expectedDigest: meta?.sessionDigest,
-          }));
-          if (!stillCurrent() || !stillVisible() || reconciledProjection === undefined) return;
-          const reconciledMeta = await loadTimed("meta reconcile", () => loadMetaForTab(tabId));
-          if (!stillCurrent() || !stillVisible() || reconciledMeta === undefined) return;
-          meta = reconciledMeta;
-          dispatchTo(tabId, { type: "meta", meta });
-          if (!foregroundTurnActive() && historyFingerprintMatchesMeta(reconciledProjection, meta)) {
-            projection = reconciledProjection;
-            dispatchTo(tabId, {
-              type: "history_replace",
-              items: projection.items,
-              startTurn: projection.startTurn,
-              totalTurns: projection.totalTurns,
-              hasOlder: projection.hasOlder,
-              revision: projection.revisionKnown ? projection.revision : undefined,
-              digest: projection.digest || undefined,
-            });
-            break;
+        const seedMeta = meta;
+        backgroundReconcile = (async () => {
+          let currentMeta = seedMeta;
+          for (let attempt = 0; attempt < 2; attempt += 1) {
+            const reconciledProjection = await loadTimed("history reconcile", () => getTranscriptStore().loadLatest(tabId, sessionPath, {
+              turns: HISTORY_PAGE_TURNS,
+              preferResident: false,
+              expectedRevision: currentMeta?.sessionRevision,
+              expectedDigest: currentMeta?.sessionDigest,
+            }));
+            if (!stillCurrent() || !stillVisible() || reconciledProjection === undefined) return;
+            const reconciledMeta = await loadTimed("meta reconcile", () => loadMetaForTab(tabId));
+            if (!stillCurrent() || !stillVisible() || reconciledMeta === undefined) return;
+            currentMeta = reconciledMeta;
+            dispatchTo(tabId, { type: "meta", meta: reconciledMeta });
+            if (!foregroundTurnActive() && historyFingerprintMatchesMeta(reconciledProjection, reconciledMeta)) {
+              dispatchTo(tabId, {
+                type: "history_replace",
+                items: reconciledProjection.items,
+                startTurn: reconciledProjection.startTurn,
+                totalTurns: reconciledProjection.totalTurns,
+                hasOlder: reconciledProjection.hasOlder,
+                revision: reconciledProjection.revisionKnown ? reconciledProjection.revision : undefined,
+                digest: reconciledProjection.digest || undefined,
+              });
+              break;
+            }
+            if (foregroundTurnActive()) break;
           }
-          if (foregroundTurnActive()) break;
-        }
+        })();
       }
       const ancillaryStartedAt = Date.now();
       const loadAncillary = async <T,>(label: string, load: () => Promise<T>): Promise<T | undefined> => {
@@ -3117,6 +3124,9 @@ export function useController() {
       void refreshBalanceForTab(tabId, {
         apply: () => sessionLoadCurrent(tabId, seq) && stillVisible(),
       });
+      // Join the background fingerprint reconcile so the in-flight marker covers
+      // it, without having delayed ancillary or checkpoints.
+      await backgroundReconcile;
     })();
     if (shouldTrackInFlight) {
       sessionLoadInFlight.current.set(tabId, { sessionPath, revision: sessionRevision, digest: sessionDigest, promise });
@@ -3359,7 +3369,23 @@ export function useController() {
   const activeTabFromBackend = useCallback(async (): Promise<TabMeta | undefined> => {
     const tabs = asArray(await app.ListTabs().catch(() => [] as TabMeta[]));
     for (const tab of tabs) listedSessionIdentityByTabRef.current.set(tab.id, tab);
-    return tabs.find((tab) => tab.active) ?? tabs[0];
+    const backendActive = tabs.find((tab) => tab.active);
+    if (backendActive) {
+      saveLastActiveTabId(backendActive.id);
+      return backendActive;
+    }
+    // Startup race: ListTabs can run before restoreOrBuildTabs publishes
+    // activeTabID, leaving every tab.active false. Prefer the frontend-mirrored
+    // last-active id over falling back to tabs[0] (task 126).
+    const remembered = loadLastActiveTabId();
+    if (remembered) {
+      const match = tabs.find((tab) => tab.id === remembered);
+      if (match) {
+        void app.SetActiveTab(match.id).catch(() => undefined);
+        return { ...match, active: true };
+      }
+    }
+    return tabs[0];
   }, []);
 
   // snapshotAt is the promptEventClock() reading taken after the backend call

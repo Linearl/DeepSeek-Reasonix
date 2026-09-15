@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect } from "react";
 import { useCommittedCommand } from "../lib/useCommittedCommand";
-import { loadWorkspacePanelOpen, saveWorkspacePanelOpen, useLayoutStore, type RightDockMode } from "../store/layout";
+import { loadWorkspacePanelOpen, saveWorkspacePanelOpen, loadRightDockMode, saveRightDockMode, useLayoutStore, type RightDockMode } from "../store/layout";
 import { useRemoteStore } from "../store/remote";
 
 type Input = {
@@ -25,6 +25,7 @@ export function useWorkspacePanelCommands(input: Input) {
     const next = requestedMode ?? layout.rightDockMode;
     if (next === "context" || next !== layout.rightDockMode) layout.setWorkspacePreviewActive(false);
     layout.setRightDockMode(next);
+    saveRightDockMode(next, input.workspaceRoot);
     layout.setWorkspacePanelMaximized(false);
     if (layout.workspacePanelOpen && !layout.workspacePanelMaximized) return;
     layout.setWorkspacePanelOpen(true);
@@ -78,17 +79,24 @@ export function useWorkspacePanelCommands(input: Input) {
   });
   useLayoutEffect(() => {
     useLayoutStore.getState().setWorkspacePanelOpen(loadWorkspacePanelOpen(input.workspaceRoot));
+    useLayoutStore.getState().setRightDockMode(loadRightDockMode(input.workspaceRoot));
   }, [input.workspaceRoot]);
   useLayoutEffect(() => {
-    if (input.creation && mode === "context") useLayoutStore.getState().setRightDockMode("files");
-  }, [input.creation, mode]);
+    if (input.creation && mode === "context") {
+      useLayoutStore.getState().setRightDockMode("files");
+      saveRightDockMode("files", input.workspaceRoot);
+    }
+  }, [input.creation, input.workspaceRoot, mode]);
   useEffect(() => {
     if (!explorerOpen) return;
     openRightDockMode("remote");
     useRemoteStore.getState().closeExplorer();
   }, [explorerOpen, openRightDockMode]);
   useEffect(() => {
-    if (hostCount === 0 && mode === "remote") useLayoutStore.getState().setRightDockMode("files");
-  }, [hostCount, mode]);
+    if (hostCount === 0 && mode === "remote") {
+      useLayoutStore.getState().setRightDockMode("files");
+      saveRightDockMode("files", input.workspaceRoot);
+    }
+  }, [hostCount, input.workspaceRoot, mode]);
   return { openRightDockMode, closeWorkspacePanel, prepareBlankWorkspace, toggleWorkspacePanel, toggleWorkspaceMaximized, handleWorkspacePreviewModeChange, openRemoteDock, restoreWorkspaceDockWidths };
 }
