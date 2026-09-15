@@ -122,20 +122,27 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		b.WriteString("status_bar_style_initialized = true   # icon default upgrade applied; preserve later user choices\n")
 		fmt.Fprintf(&b, "status_bar_items = %s   # desktop: ordered visible bottom status bar items\n", renderStringArray(c.DesktopStatusBarItems()))
 		fmt.Fprintf(&b, "default_tool_approval_mode = %q   # desktop: Ask/Auto/YOLO default for newly-created sessions\n", c.DesktopDefaultToolApprovalMode())
-			// Autopilot is opt-in and only meaningful with a bound, so its keys are rendered
-			// together. Writing the flag without the limit used to lose both: this renderer
-			// writes a fixed set of keys, so an unlisted one was dropped and the settings
-			// switch flipped straight back to off.
-			if c.Desktop.Autopilot || strings.TrimSpace(c.Desktop.AutopilotMaxRuntime) != "" || strings.TrimSpace(c.Desktop.AutopilotApprovalGrace) != "" {
-				fmt.Fprintf(&b, "autopilot = %v   # desktop: start new sessions unattended (requires autopilot_max_runtime)\n", c.Desktop.Autopilot)
-				if runtime := strings.TrimSpace(c.Desktop.AutopilotMaxRuntime); runtime != "" {
-					fmt.Fprintf(&b, "autopilot_max_runtime = %q   # desktop: wall-clock bound for an unattended run, e.g. 8h\n", runtime)
-				}
-				if grace := strings.TrimSpace(c.Desktop.AutopilotApprovalGrace); grace != "" {
-					fmt.Fprintf(&b, "autopilot_approval_grace = %q   # desktop: wait for a human this long before the reviewer decides\n", grace)
-				}
+		// Autopilot is opt-in and only meaningful with a bound, so its keys are rendered
+		// together. Writing the flag without the limit used to lose both: this renderer
+		// writes a fixed set of keys, so an unlisted one was dropped and the settings
+		// switch flipped straight back to off.
+		if c.Desktop.Autopilot || strings.TrimSpace(c.Desktop.AutopilotMaxRuntime) != "" || strings.TrimSpace(c.Desktop.AutopilotApprovalGrace) != "" {
+			fmt.Fprintf(&b, "autopilot = %v   # desktop: start new sessions unattended (requires autopilot_max_runtime)\n", c.Desktop.Autopilot)
+			if runtime := strings.TrimSpace(c.Desktop.AutopilotMaxRuntime); runtime != "" {
+				fmt.Fprintf(&b, "autopilot_max_runtime = %q   # desktop: wall-clock bound for an unattended run, e.g. 8h\n", runtime)
 			}
+			if grace := strings.TrimSpace(c.Desktop.AutopilotApprovalGrace); grace != "" {
+				fmt.Fprintf(&b, "autopilot_approval_grace = %q   # desktop: wait for a human this long before the reviewer decides\n", grace)
+			}
+		}
 		fmt.Fprintf(&b, "check_updates = %v   # desktop: check for new versions on startup\n", c.DesktopCheckUpdates())
+		// Experimental switches are rendered unconditionally, for the same reason the
+		// autopilot block above is explicit: this renderer writes a fixed key set, so a
+		// key it does not list is dropped on save and the settings switch flips straight
+		// back to off. Both experiment switches shipped broken until 2026-09-15 (task
+		// 81's restart-and-update and task 123's session monitor could never be enabled).
+		fmt.Fprintf(&b, "experimental_restart_update = %v   # desktop: show the restart-and-update action (task 81)\n", c.Desktop.ExperimentalRestartUpdate)
+		fmt.Fprintf(&b, "experimental_session_monitor = %v   # desktop: left-rail session monitor board (task 123)\n", c.Desktop.ExperimentalSessionMonitor)
 		fmt.Fprintf(&b, "telemetry = %v   # desktop: anonymous launch ping + scrubbed next-launch native crash diagnostics; never content\n", c.DesktopTelemetry())
 		fmt.Fprintf(&b, "metrics = %v   # desktop: aggregate quality/lifecycle metrics (anonymous signal/bucket counts); never content\n", c.DesktopMetrics())
 		// A non-nil empty slice is intentional: provider_access = [] means the
