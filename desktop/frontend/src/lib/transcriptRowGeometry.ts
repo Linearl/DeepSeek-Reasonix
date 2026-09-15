@@ -1,5 +1,6 @@
 import type { ResolvedReasoningDisplayMode } from "./reasoningDisplayPreference";
 import type { SessionExperience, WorkProcessPresentation } from "./sessionExperience";
+import { isGeometryFrameOpen, noteGeometrySample } from "./sessionMonitor";
 import { estimateTranscriptTextHeight } from "./transcriptRowEstimates";
 import type { TranscriptRow, ToolItem } from "./transcriptRows";
 
@@ -158,6 +159,21 @@ function toolText(item: ToolItem): string {
 
 /** State-aware initial geometry seed. It never reads hidden collapsed bodies. */
 export function estimateTranscriptRowGeometry(
+  row: TranscriptRow | undefined,
+  environment: TranscriptGeometryEnvironment,
+): number {
+  // Task 125: the estimator is the main CPU cost of building a transcript
+  // surface. When a first-frame window is open, each sample feeds the
+  // cumulative geometry-measure metric; outside a window the flag check is
+  // the entire overhead.
+  const measuring = isGeometryFrameOpen();
+  const measureStart = measuring ? performance.now() : 0;
+  const height = estimateTranscriptRowGeometryImpl(row, environment);
+  if (measuring) noteGeometrySample(performance.now() - measureStart);
+  return height;
+}
+
+function estimateTranscriptRowGeometryImpl(
   row: TranscriptRow | undefined,
   environment: TranscriptGeometryEnvironment,
 ): number {

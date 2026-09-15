@@ -40654,6 +40654,10 @@ body > .mermaid-diagram--fullscreen {
 .session-monitor__stage {
   font-variant-numeric: tabular-nums;
 }
+.session-monitor__render-metrics {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
 
 .session-monitor__log {
   display: flex;

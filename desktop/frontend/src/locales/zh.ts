@@ -4045,6 +4045,8 @@ export const zh: Record<DictKey, string> = {
 "sessionMonitor.skipNo": "重新加载",
 "sessionMonitor.skipUnknown": "历史：未知（尚未切换过）",
 "sessionMonitor.lastSwitch": "最慢阶段 {stage} · {ms} ms",
+"sessionMonitor.firstFrame": "首帧 {ms} ms",
+"sessionMonitor.geometryMeasure": "几何测量 {ms} ms",
 "sessionMonitor.evictedRow": "被驱逐 {n} 次（{reason}，释放 {bytes}）",
 "sessionMonitor.neverEvicted": "未发生驱逐",
 "sessionMonitor.recentEvictions": "最近驱逐",

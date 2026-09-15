@@ -3,15 +3,22 @@
 // slowest-stage pick, latest-decision-wins, and the opt-in gating.
 import assert from "node:assert/strict";
 import {
+  beginGeometryFrame,
+  beginSurfaceFrame,
+  completeSurfaceFrame,
+  consumeGeometryFrame,
   evictionsFor,
   hydrateDecisionFor,
+  isGeometryFrameOpen,
   isSessionMonitorEnabled,
   isSessionMonitorOpen,
   noteEviction,
+  noteGeometrySample,
   noteHydrateDecision,
   noteStageTiming,
   onSessionMonitorOpenChange,
   recentEvictions,
+  renderMetricsFor,
   resetSessionMonitor,
   setSessionMonitorEnabled,
   setSessionMonitorOpen,
@@ -99,6 +106,38 @@ resetSessionMonitor();
 check(stageTimingsFor("tab-a").length === 0, "reset clears the recorded stages");
 check(recentEvictions().length === 0, "reset clears the eviction log");
 check(hydrateDecisionFor("tab-a") === undefined, "reset clears the decisions");
+
+// ── task 125: geometry accumulator + first frame ─────────────────────────────
+check(isGeometryFrameOpen() === false, "geometry frame starts closed");
+noteGeometrySample(5);
+beginGeometryFrame();
+check(isGeometryFrameOpen() === true, "beginGeometryFrame opens the window");
+noteGeometrySample(12);
+noteGeometrySample(8);
+check(consumeGeometryFrame() === 20, "geometry samples accumulate inside the window");
+check(isGeometryFrameOpen() === false, "consumeGeometryFrame closes the window");
+noteGeometrySample(99);
+beginGeometryFrame();
+check(consumeGeometryFrame() === 0, "samples outside a window are discarded");
+
+check(completeSurfaceFrame("tab-a", "surface-x") === null, "completing without a matching begin is a no-op");
+beginSurfaceFrame("surface-x");
+check(completeSurfaceFrame("tab-a", "surface-y") === null, "a mismatched surface key does not complete");
+beginSurfaceFrame("surface-x");
+noteGeometrySample(3);
+const frame = completeSurfaceFrame("tab-a", "surface-x");
+check(frame !== null && frame.geometryMs === 3, "completeSurfaceFrame reports geometry ms");
+check(frame !== null && frame.firstFrameMs >= 0, "completeSurfaceFrame reports first-frame ms");
+const metrics = renderMetricsFor("tab-a");
+check(metrics.firstFrameMs !== undefined, "renderMetricsFor exposes first-frame");
+check(metrics.geometryMs === 3, "renderMetricsFor exposes geometry measure");
+check(renderMetricsFor("tab-missing").firstFrameMs === undefined, "an unknown tab has no render metrics");
+check(stageTimingsFor("tab-a").some((entry) => entry.stage === "transcript:first-frame"), "first-frame is staged for the board");
+check(stageTimingsFor("tab-a").some((entry) => entry.stage === "transcript:geometry-measure"), "geometry-measure is staged for the board");
+
+resetSessionMonitor();
+check(isGeometryFrameOpen() === false, "reset closes any open geometry frame");
+check(renderMetricsFor("tab-a").firstFrameMs === undefined, "reset clears render metrics");
 
 console.log(`\n${passed} passed${process.exitCode ? ", with failures" : ""}`);
 if (process.exitCode) process.exit(1);

@@ -4042,6 +4042,8 @@ export const en = {
 "sessionMonitor.skipNo": "reloaded",
 "sessionMonitor.skipUnknown": "History: unknown (no switch yet)",
 "sessionMonitor.lastSwitch": "Slowest stage {stage} · {ms} ms",
+"sessionMonitor.firstFrame": "First frame {ms} ms",
+"sessionMonitor.geometryMeasure": "Geometry measure {ms} ms",
 "sessionMonitor.evictedRow": "Evicted {n}x ({reason}, freed {bytes})",
 "sessionMonitor.neverEvicted": "never evicted",
 "sessionMonitor.recentEvictions": "Recent evictions",

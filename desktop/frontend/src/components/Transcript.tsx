@@ -50,6 +50,7 @@ import { useTranscriptEntranceAnimation } from "../lib/useEntranceAnimation";
 import type { QuestionAnchor } from "../lib/transcriptGrouping";
 import { transcriptSelectionStore } from "../lib/transcriptSelectionStore";
 import { recordFrontendDiagnostic } from "../lib/frontendDiagnosticBridge";
+import { beginSurfaceFrame, completeSurfaceFrame } from "../lib/sessionMonitor";
 import { InvocationMetadataContext } from "./Message";
 import { LiveStreamContext } from "./LiveStreamContext";
 import { MarkdownImageTabContext } from "./MarkdownImageContext";
@@ -323,6 +324,25 @@ export function Transcript(props: TranscriptProps) {
       renderMode,
     });
   }, [projection.completedBlocks.length, renderMode, surfaceKey, transcriptKernel.generation]);
+  // Task 125: first-frame + geometry-measure. The clock starts when a surface
+  // with content appears (covers startup and tab switch) and stops on the
+  // kernel's post-paint callback, which is the same gate the paint-ready
+  // receipt uses. Overhead outside the window is one key compare per render.
+  const frameSurfaceRef = useRef("");
+  useEffect(() => {
+    if (empty || hydrating) {
+      frameSurfaceRef.current = "";
+      return;
+    }
+    if (frameSurfaceRef.current === surfaceKey) return;
+    frameSurfaceRef.current = surfaceKey;
+    beginSurfaceFrame(surfaceKey);
+    return transcriptKernel.afterCurrentGenerationPaint(() => {
+      if (frameSurfaceRef.current !== surfaceKey) return;
+      frameSurfaceRef.current = "";
+      if (tabId) completeSurfaceFrame(tabId, surfaceKey);
+    });
+  }, [empty, hydrating, surfaceKey, tabId, transcriptKernel]);
   useEffect(() => {
     if (!surfaceCommitToken || !onSurfacePaintReady || hydrating) return;
     const commitKey = `${transcriptKernel.generation}:${surfaceCommitToken}`;

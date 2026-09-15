@@ -17,6 +17,7 @@ import {
   isSessionMonitorOpen,
   onSessionMonitorOpenChange,
   recentEvictions,
+  renderMetricsFor,
   setSessionMonitorOpen,
   slowestStageFor,
   stageTimingsFor,
@@ -140,6 +141,20 @@ export function SessionMonitorPanel() {
                   <span>{t("sessionMonitor.lastSwitch", { stage: worst.stage, ms: Math.round(worst.ms) })}</span>
                 )}
               </div>
+              {(() => {
+                const render = renderMetricsFor(tab.tabId);
+                if (render.firstFrameMs === undefined && render.geometryMs === undefined) return null;
+                return (
+                  <div className="session-monitor__metrics session-monitor__render-metrics">
+                    {render.firstFrameMs !== undefined && (
+                      <span>{t("sessionMonitor.firstFrame", { ms: Math.round(render.firstFrameMs) })}</span>
+                    )}
+                    {render.geometryMs !== undefined && (
+                      <span>{t("sessionMonitor.geometryMeasure", { ms: Math.round(render.geometryMs) })}</span>
+                    )}
+                  </div>
+                );
+              })()}
               {stages.length > 1 && (
                 <div className="session-monitor__stages">
                   {stages.map((entry) => (
