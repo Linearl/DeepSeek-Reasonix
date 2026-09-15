@@ -321,7 +321,10 @@ for (const path of localeChunks) {
   // 68.4 cases above, so the same one-decimal ratchet applies to it. zh stays at 69.5.
   // Task 123's session-monitor board adds 23 keys per dialect; zh measures 69.7 KiB, so the
   // same one-decimal convention takes zh to 70.5 (zh-TW keeps its 71.0 ceiling).
-  const budget = name.startsWith("zh-TW-") ? 71.0 * 1024 : 70.5 * 1024;
+  // Parallel line C (feedback inbox + boot/transcript timing labels) adds locale keys;
+  // zh-TW measures exactly 71.0 KiB (exact-boundary failure). Ratchet zh-TW to 71.5 by the
+  // same one-decimal convention; zh remains within 70.5.
+  const budget = name.startsWith("zh-TW-") ? 71.5 * 1024 : 70.5 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
