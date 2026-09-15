@@ -77,6 +77,108 @@ func (b *SessionV4Bridge) CloseAll(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
+// BindFresh creates a new v4 session, optionally seeds initial messages, and
+// maps agentPath (may be empty until the caller knows the transcript path).
+// It returns the published SessionRef.
+func (b *SessionV4Bridge) BindFresh(ctx context.Context, sessionID string, seed []provider.Message, agentPath string) (session.SessionRef, error) {
+	if b == nil || b.service == nil {
+		return session.SessionRef{}, fmt.Errorf("session v4 bridge is closed")
+	}
+	runtime, err := b.service.Create(ctx, session.CreateOptions{SessionID: sessionID})
+	if err != nil {
+		return session.SessionRef{}, err
+	}
+	if len(seed) > 0 {
+		payload, err := json.Marshal(map[string]any{"messages": seed})
+		if err != nil {
+			_ = b.service.Close(ctx, runtime.Ref())
+			return session.SessionRef{}, err
+		}
+		if _, err := runtime.Session().Append(ctx, session.Batch{
+			OperationID: "bind-fresh-seed:" + runtime.Ref().SessionID,
+			Events:      []session.Event{{Kind: "legacy/import", Payload: payload}},
+		}); err != nil {
+			_ = b.service.Close(ctx, runtime.Ref())
+			return session.SessionRef{}, err
+		}
+		if _, err := runtime.Session().Flush(ctx); err != nil {
+			_ = b.service.Close(ctx, runtime.Ref())
+			return session.SessionRef{}, err
+		}
+	}
+	// Map the agent path; later Sync/openOrCreate attaches a client binding.
+	if strings.TrimSpace(agentPath) != "" {
+		key := filepath.Clean(agentPath)
+		b.mu.Lock()
+		b.byAgent[key] = runtime.Ref().SessionID
+		b.digests[key] = ""
+		b.mu.Unlock()
+	}
+	// Release the create owner so Windows TempDir cleanup is not blocked;
+	// Sync will reopen through Open when needed.
+	if err := b.service.Close(ctx, runtime.Ref()); err != nil {
+		logSessionV4Bridge(err, "bind-fresh-close-owner", agentPath)
+	}
+	return runtime.Ref(), nil
+}
+
+// ContinueLegacy freezes a legacy transcript into v4 via ContinueImported
+// (migration + open) and records the agent-path mapping.
+func (b *SessionV4Bridge) ContinueLegacy(ctx context.Context, sourcePath, headID string) (session.SessionRef, error) {
+	if b == nil || b.service == nil {
+		return session.SessionRef{}, fmt.Errorf("session v4 bridge is closed")
+	}
+	sourcePath = filepath.Clean(sourcePath)
+	runtime, result, err := b.service.ContinueImported(ctx, sourcePath, headID)
+	if err != nil {
+		return session.SessionRef{}, err
+	}
+	b.mu.Lock()
+	b.byAgent[sourcePath] = result.TargetID
+	b.digests[sourcePath] = ""
+	b.mu.Unlock()
+	// Drop the import owner immediately; Sync reopens on demand.
+	if err := b.service.Close(ctx, runtime.Ref()); err != nil {
+		logSessionV4Bridge(err, "continue-legacy-close-owner", sourcePath)
+	}
+	return runtime.Ref(), nil
+}
+
+// OpenExisting attaches to an existing v4 session id and optionally maps it to
+// agentPath. It never creates a missing session.
+func (b *SessionV4Bridge) OpenExisting(ctx context.Context, sessionID, agentPath string) (session.SessionRef, error) {
+	if b == nil || b.service == nil {
+		return session.SessionRef{}, fmt.Errorf("session v4 bridge is closed")
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return session.SessionRef{}, fmt.Errorf("session v4 bridge: empty session id")
+	}
+	ref := session.SessionRef{HostID: "desktop-v4-bridge", SessionID: sessionID}
+	binding, err := b.service.Open(ctx, ref)
+	if err != nil {
+		return session.SessionRef{}, err
+	}
+	if strings.TrimSpace(agentPath) != "" {
+		key := filepath.Clean(agentPath)
+		b.mu.Lock()
+		b.byAgent[key] = sessionID
+		b.bindings[key] = binding
+		b.mu.Unlock()
+	} else if releaseErr := binding.Release(ctx); releaseErr != nil {
+		logSessionV4Bridge(releaseErr, "open-existing-release", sessionID)
+	}
+	return ref, nil
+}
+
+// Service exposes the underlying service for advanced callers/tests.
+func (b *SessionV4Bridge) Service() *session.Service {
+	if b == nil {
+		return nil
+	}
+	return b.service
+}
+
 // ImportLegacy migrates sourcePath into v4 when needed and records the mapping.
 func (b *SessionV4Bridge) ImportLegacy(ctx context.Context, sourcePath string) (session.MigrationResult, error) {
 	if b == nil || b.service == nil {

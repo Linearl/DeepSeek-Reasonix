@@ -54,6 +54,7 @@ import (
 	"reasonix/internal/provider"
 	"reasonix/internal/recovery"
 	"reasonix/internal/sandbox"
+	"reasonix/internal/session"
 	"reasonix/internal/sessioncontext"
 	"reasonix/internal/sessioninbox"
 	"reasonix/internal/sessiontemp"
@@ -3229,6 +3230,13 @@ func (c *Controller) NewSession() error {
 	c.enqueueHookContexts(c.hooks.SessionStart(context.Background(), "clear"))
 	c.extensionSessionEvent(extension.PointSessionStart, dispatch.PhaseStart, c.SessionPath())
 	c.clearSessionWriteAccess()
+	if c.sessionV4 != nil {
+		if ref, bindErr := c.BindFreshSessionV4(context.Background(), ""); bindErr != nil {
+			logSessionV4Bridge(bindErr, "new-session-bind", c.SessionPath())
+		} else {
+			slog.Info("session v4 experiment: fresh session bound", "sessionID", ref.SessionID, "path", c.SessionPath())
+		}
+	}
 	return nil
 }
 
@@ -3318,6 +3326,11 @@ func (c *Controller) ClearSession() error {
 	c.enqueueHookContexts(c.hooks.SessionStart(context.Background(), "clear"))
 	c.extensionSessionEvent(extension.PointSessionStart, dispatch.PhaseStart, c.SessionPath())
 	c.clearSessionWriteAccess()
+	if c.sessionV4 != nil {
+		if _, bindErr := c.BindFreshSessionV4(context.Background(), ""); bindErr != nil {
+			logSessionV4Bridge(bindErr, "clear-session-bind", c.SessionPath())
+		}
+	}
 	if destroy.Async {
 		go func() {
 			result := destroy.Wait()
@@ -4463,6 +4476,37 @@ func (c *Controller) SessionV4() *SessionV4Bridge {
 		return nil
 	}
 	return c.sessionV4
+}
+
+// BindFreshSessionV4 creates a new v4 session for the controller's current
+// transcript path (or an empty seed-only identity) when the experiment is on.
+func (c *Controller) BindFreshSessionV4(ctx context.Context, sessionID string) (session.SessionRef, error) {
+	if c == nil || c.sessionV4 == nil {
+		return session.SessionRef{}, errors.New("session v4 experiment is disabled")
+	}
+	var seed []provider.Message
+	if c.executor != nil && c.executor.Session() != nil {
+		seed = c.executor.Session().Snapshot()
+	}
+	path := c.SessionPath()
+	return c.sessionV4.BindFresh(ctx, sessionID, seed, path)
+}
+
+// ContinueLegacySessionV4 migrates a legacy transcript into v4 and records the
+// mapping for later Snapshot mirrors and idle Query reads.
+func (c *Controller) ContinueLegacySessionV4(ctx context.Context, sourcePath, headID string) (session.SessionRef, error) {
+	if c == nil || c.sessionV4 == nil {
+		return session.SessionRef{}, errors.New("session v4 experiment is disabled")
+	}
+	return c.sessionV4.ContinueLegacy(ctx, sourcePath, headID)
+}
+
+// OpenSessionV4 attaches to an existing v4 session id.
+func (c *Controller) OpenSessionV4(ctx context.Context, sessionID string) (session.SessionRef, error) {
+	if c == nil || c.sessionV4 == nil {
+		return session.SessionRef{}, errors.New("session v4 experiment is disabled")
+	}
+	return c.sessionV4.OpenExisting(ctx, sessionID, c.SessionPath())
 }
 
 // SessionDir reports the directory new session files land in ("" disables
