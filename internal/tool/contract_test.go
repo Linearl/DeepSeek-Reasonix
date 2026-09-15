@@ -70,6 +70,7 @@ var acceptsDefaultSnip = map[string]bool{
 	"multi_edit":             true,
 	"notebook_edit":          true,
 	"restart_and_update":     true, // one-line outcome; the restart happens after the call returns
+	"todo_read":              true, // small JSON list; generic head/tail split is fine
 	"todo_write":             true,
 	"view_image":             true, // visual summary, not a text body a head/tail split would help
 	"update_goal":            true,

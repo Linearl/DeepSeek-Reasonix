@@ -1930,6 +1930,8 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 	var partialToolStarted bool
 	var maxArgChars int
 	var lastArgProgress time.Time
+	// Task 110: watch streamed text for loops the tool-level guards cannot see.
+	textRepeat := NewTextRepeatMonitor()
 	// collect packages the stream state accumulated so far; stored is the
 	// finishReasoning output that becomes the round-tripped reasoning.
 	collect := func(stored string, err error) streamedTurn {
@@ -2027,6 +2029,20 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 		case provider.ChunkText:
 			text.WriteString(chunk.Text)
 			sink.Emit(event.Event{Kind: event.Text, Text: chunk.Text})
+			if textRepeat.Append(chunk.Text) {
+				// Interrupt the stream: cancel() on return aborts the provider
+				// reader. The run loop turns this into a one-shot host reminder
+				// (first hit) or a pause (second hit).
+				stored, _ := finishReasoning()
+				usage = bestEffortStreamUsage(usage, text.Len(), reasoning.Len(), "text_repeat")
+				usage = provider.UsageWithRequestAttemptCount(ctx, usage)
+				sink.Emit(event.Event{
+					Kind:  event.Notice,
+					Level: event.LevelWarn,
+					Text:  "Detected looping assistant text and stopped this stream. Work so far is kept.",
+				})
+				return collect(stored, ErrModelTextRepeat)
+			}
 		case provider.ChunkToolCallStart:
 			partialToolStarted = true
 			// Surface the tool card as soon as the call begins — before its
