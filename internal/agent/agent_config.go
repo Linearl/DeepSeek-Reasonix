@@ -47,6 +47,11 @@ type agentConfig struct {
 	recentKeep             int
 	archiveDir             string
 	legacyAnchorSafetyGate bool
+	// textRepeatN and textRepeatThreshold tune the streamed-text repetition
+	// guard (task 110); zero keeps the defaults, a negative threshold disables
+	// it for the run.
+	textRepeatN         int
+	textRepeatThreshold int
 	// readCoordinatorShadow fixes the internal read-coordinator rollout switch
 	// for the whole run; see Options.ReadPipeline.
 	readCoordinatorShadow bool

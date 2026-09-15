@@ -107,7 +107,7 @@ func (o *turnOrchestrator) runSubagentSkillTurnsGoalLoop(ctx context.Context, sk
 			o.c.goalUsageTee.setActiveRecorder(nil)
 			o.c.stopGoal(GoalStatusStopped)
 		}
-		if !goalTurnErrorAbsorbable(err) || !o.c.goals.active() {
+		if !o.goalTurnErrorAbsorbableFor(err) || !o.c.goals.active() {
 			o.c.goalUsageTee.setActiveRecorder(nil)
 			return err
 		}
@@ -432,9 +432,10 @@ func (o *turnOrchestrator) runGoalLoopWithPreparedTurn(ctx context.Context, turn
 			o.c.stopGoal(GoalStatusStopped)
 			return err
 		}
-		if !goalTurnErrorAbsorbable(err) {
-			// Terminal provider/host error: stop auto-continue. With a Goal it
-			// stays running so the next ordinary user message keeps the scope.
+		if !o.goalTurnErrorAbsorbableFor(err) {
+			// Terminal provider/host error: stop auto-continue. An interactive
+			// Goal stays running so the next ordinary user message keeps the
+			// scope; an unattended one only absorbs pauses nobody can lift.
 			o.c.goalUsageTee.setActiveRecorder(nil)
 			return err
 		}
@@ -468,7 +469,7 @@ func (o *turnOrchestrator) runEditedGoalLoopWithImageRefsRawDisplay(ctx context.
 			o.c.stopGoal(GoalStatusStopped)
 			return err
 		}
-		if !goalTurnErrorAbsorbable(err) {
+		if !o.goalTurnErrorAbsorbableFor(err) {
 			o.c.goalUsageTee.setActiveRecorder(nil)
 			return err
 		}
@@ -513,9 +514,9 @@ func (o *turnOrchestrator) continueGoal(ctx context.Context, expectedContinuatio
 				c.stopGoal(GoalStatusStopped)
 				return err
 			}
-			if !goalTurnErrorAbsorbable(err) {
-				// Terminal provider/host error: stop auto-continue; the Goal
-				// stays running for the next user turn.
+			if !o.goalTurnErrorAbsorbableFor(err) {
+				// Terminal provider/host error: stop auto-continue; an
+				// interactive Goal stays running for the next user turn.
 				c.goalUsageTee.setActiveRecorder(nil)
 				return err
 			}
@@ -530,6 +531,12 @@ func (o *turnOrchestrator) continueGoal(ctx context.Context, expectedContinuatio
 	}
 }
 
+// unattendedRun reports whether nobody can answer a prompt for this run (task
+// 49 A1 autopilot). An unattended run has no next user turn, so a pause only a
+// human could lift is a stop, not a wait (task 109 B5).
+func (c *Controller) unattendedRun() bool { return c != nil && c.autopilot }
+
+// goalTurnErrorAbsorbable reports whether the Goal FSM owns this turn error.
 func goalTurnErrorAbsorbable(err error) bool {
 	var readinessErr *agent.FinalReadinessError
 	if errors.As(err, &readinessErr) {
@@ -539,12 +546,31 @@ func goalTurnErrorAbsorbable(err error) bool {
 	return ok
 }
 
+// goalTurnErrorAbsorbableFor is the orchestrator-aware absorb check. A recovery
+// pause is absorbed only for an unattended run (task 109 B5): an interactive
+// Goal must still return RecoveryPauseError so the next user "continue" resumes
+// the same scope (TestRecoveryPauseKeepsGoalRunningAndDeliveryScope).
+func (o *turnOrchestrator) goalTurnErrorAbsorbableFor(err error) bool {
+	if goalTurnErrorAbsorbable(err) {
+		return true
+	}
+	var pause *agent.RecoveryPauseError
+	return o != nil && o.c != nil && o.c.unattendedRun() && errors.As(err, &pause)
+}
+
 func goalPauseFromRunError(err error) (cause, reason string, ok bool) {
+	if errors.Is(err, ErrAutopilotAskUnanswered) {
+		return stopCauseAskUnanswered, ErrAutopilotAskUnanswered.Error(), true
+	}
 	info, ok := agent.InspectRunPause(err)
 	if !ok {
 		return "", "", false
 	}
-	if info.Kind == "task_budget" && info.HostOwned {
+	switch info.Kind {
+	case "task_budget":
+		if !info.HostOwned {
+			return "", "", false
+		}
 		reason := strings.TrimSpace(info.Reason)
 		if reason == "" {
 			reason = "the Goal reached its spend budget"
@@ -574,6 +600,15 @@ func (o *turnOrchestrator) advanceGoalAfterTurn(ctx context.Context, expectedCon
 	var readiness agent.ReadinessResult
 	var readinessErr *agent.FinalReadinessError
 	pauseCause, pauseReason, runPaused := goalPauseFromRunError(turnErr)
+	// Unattended RecoveryPause (task 109 B5): absorb into the FSM so autopilot
+	// ends as Failed instead of a fake-Running goal. Interactive keeps the old
+	// contract of returning the pause to the caller.
+	var recoveryPause *agent.RecoveryPauseError
+	if c.unattendedRun() && errors.As(turnErr, &recoveryPause) {
+		pauseCause = stopCauseRecoveryPaused
+		pauseReason = recoveryPause.Error()
+		runPaused = true
+	}
 	if errors.As(turnErr, &readinessErr) {
 		progressKey := readinessErr.ProgressKey
 		if progressKey == "" {

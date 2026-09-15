@@ -365,11 +365,70 @@
     },
     {
       "name": "todo_write",
-      "description": "Record and update a structured task list for the current work. Send the COMPLETE list every call — it replaces the previous one. Use it to plan multi-step work and show progress: keep exactly one item in_progress at a time, and flip an item to completed the moment it's done (don't batch completions). Skip it for trivial single-step tasks. The list is two-level: a `level` 0 item is a PHASE (a milestone) and the `level` 1 items after it are its concrete sub-steps; omit `level` (0) for a flat list. Each item has `content` (imperative, e.g. \"Add the parser\"), `status` (pending|in_progress|completed), `activeForm` (present-continuous shown while in progress, e.g. \"Adding the parser\"), optional `level` (0 phase | 1 sub-step), and `step_id` — an item's stable identity. COPY `step_id` VERBATIM for every item that already has one: it is how a completion stays attached to its step when you retitle it, insert a step above it, or reorder the list. Give a new item a fresh unique id (e.g. \"plan_step_07\"); never reuse or renumber an existing one.",
+      "description": "Record and update a structured task list for the current work. Prefer `ops` for small edits (replace/insert/delete/move by step_id) after calling todo_read; send the COMPLETE `todos` list only for a wholesale rewrite. Use it to plan multi-step work and show progress: keep exactly one item in_progress at a time, and flip an item to completed the moment it's done (don't batch completions). Skip it for trivial single-step tasks. The list is two-level: a `level` 0 item is a PHASE (a milestone) and the `level` 1 items after it are its concrete sub-steps; omit `level` (0) for a flat list. Each item has `content` (imperative, e.g. \"Add the parser\"), `status` (pending|in_progress|completed), `activeForm` (present-continuous shown while in progress, e.g. \"Adding the parser\"), optional `level` (0 phase | 1 sub-step), and `step_id` — an item's stable identity. COPY `step_id` VERBATIM for every item that already has one: it is how a completion stays attached to its step when you retitle it, insert a step above it, or reorder the list. Give a new item a fresh unique id (e.g. \"plan_step_07\"); never reuse or renumber an existing one.",
       "parameters": {
         "properties": {
+          "ops": {
+            "description": "Optional incremental edits applied to the current host list, then validated as a full list. Use after todo_read. Omit when sending todos.",
+            "items": {
+              "properties": {
+                "after_step_id": {
+                  "description": "Insert/move: place after this step_id; empty = end of list.",
+                  "type": "string"
+                },
+                "item": {
+                  "description": "replace/insert payload (content,status,activeForm,level,step_id).",
+                  "properties": {
+                    "activeForm": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "level": {
+                      "enum": [
+                        0,
+                        1
+                      ],
+                      "type": "integer"
+                    },
+                    "status": {
+                      "enum": [
+                        "pending",
+                        "in_progress",
+                        "completed"
+                      ],
+                      "type": "string"
+                    },
+                    "step_id": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "op": {
+                  "enum": [
+                    "replace",
+                    "insert",
+                    "delete",
+                    "move"
+                  ],
+                  "type": "string"
+                },
+                "step_id": {
+                  "description": "Target item identity (replace/delete/move; ignored for insert).",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "op"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "todos": {
-            "description": "The complete task list, in order. Replaces any previous list.",
+            "description": "The complete task list, in order. Replaces any previous list. Prefer ops for small edits.",
             "items": {
               "properties": {
                 "activeForm": {
@@ -411,9 +470,6 @@
             "type": "array"
           }
         },
-        "required": [
-          "todos"
-        ],
         "type": "object"
       }
     },

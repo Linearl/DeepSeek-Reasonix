@@ -69,6 +69,10 @@ default_model = "test-model"
 system_prompt = "BASE"
 compact_ratio = 0.5
 recent_keep = 2
+# The fixture drives compaction with long repeated filler, which is exactly the
+# payload the task-110 text-repeat guard stops on. The guard is not this test's
+# subject, so it is switched off here rather than weakening its thresholds.
+text_repeat_threshold = -1
 
 [[providers]]
 name = "test-model"

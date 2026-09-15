@@ -4,8 +4,9 @@
 // ask the reviewer about everything else.
 //
 // Refusing is the safe direction: the model is told why and can look for another
-// way, so a request only proceeds when something affirmatively said yes. Reaching
-// no verdict falls back to waiting for the human, never to an approval.
+// way, so a request only proceeds when something affirmatively said yes. Once the
+// grace elapses there is no human left to wait for — an unavailable reviewer
+// refuses rather than parking the run forever (task 109 B6).
 package control
 
 import (
@@ -46,7 +47,9 @@ func autopilotApprovalGrace(opts Options) time.Duration {
 //  2. Everything else goes to the reviewer, which judges the action alone, with
 //     no transcript the requesting model could shape.
 //
-// A nil reviewer returns false so the caller keeps waiting for the human.
+// A nil reviewer or a failed review REFUSES rather than waiting forever: the
+// model is told why and can try another way. Waiting for a human is not an
+// option once the grace period has already elapsed (task 109 B6).
 func (c *Controller) reviewUnattendedApproval(ctx context.Context, tool, subject, reason string, args json.RawMessage) (approvalReply, bool) {
 	if askRiskOfQuestion(askQuestionText{Text: strings.Join([]string{tool, subject, reason, string(args)}, "\n")}) == askRiskNeedsHuman {
 		c.emitAutopilotApprovalNotice(tool, subject, "refused: destructive, outward-facing, or credential-touching")
@@ -54,14 +57,15 @@ func (c *Controller) reviewUnattendedApproval(ctx context.Context, tool, subject
 	}
 	reviewer := c.guardianSess
 	if reviewer == nil {
-		return approvalReply{}, false
+		c.emitAutopilotApprovalNotice(tool, subject, "refused: no reviewer available to judge an unattended approval")
+		return approvalReply{allow: false}, true
 	}
 	allow, why, err := reviewer.ReviewAction(ctx, tool, args, reason)
 	if err != nil {
-		// The reviewer could not be reached. An unattended run must not act on a
-		// guess, so wait for the human instead of deciding either way.
-		c.emitAutopilotApprovalNotice(tool, subject, "reviewer unavailable: "+err.Error())
-		return approvalReply{}, false
+		// Fail closed: never guess. Refuse so the model can take another path
+		// instead of parking the run on a prompt nobody will answer.
+		c.emitAutopilotApprovalNotice(tool, subject, "refused: reviewer unavailable: "+err.Error())
+		return approvalReply{allow: false}, true
 	}
 	if allow {
 		c.emitAutopilotApprovalNotice(tool, subject, "approved by the reviewer")

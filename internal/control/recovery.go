@@ -106,6 +106,19 @@ func clipUTF8(s string, n int) string {
 	return s[:n]
 }
 
+// recoveryGateMode is the approval mode Auto Guard sees. An unattended run has
+// nobody to answer its card, and the card never drains on a mode switch, so the
+// gate would hang such a run forever (task 109 B2). Auto Guard is retired
+// upstream and the unattended approval path is the A5 guardian with its grace
+// period, so an autopilot session reports a non-auto mode here and the gate
+// bypasses itself. Interactive Ask and Auto keep their exact semantics.
+func (c *Controller) recoveryGateMode() string {
+	if c.unattendedRun() {
+		return ToolApprovalYolo
+	}
+	return c.ToolApprovalMode()
+}
+
 // initRecoveryGate constructs the shared recovery gate and attaches it to the
 // executor. Called from New when recovery is available.
 func (c *Controller) initRecoveryGate(reviewer recovery.Reviewer, headless bool) {
@@ -113,10 +126,8 @@ func (c *Controller) initRecoveryGate(reviewer recovery.Reviewer, headless bool)
 		return
 	}
 	gate := recovery.NewGate(recovery.Options{
-		Headless: headless,
-		Mode: func() string {
-			return c.ToolApprovalMode()
-		},
+		Headless:       headless,
+		Mode:           c.recoveryGateMode,
 		EmitPrompt:     c.emitRecoveryPrompt,
 		Reviewer:       reviewer,
 		PersistenceKey: c.SessionPath,

@@ -92,7 +92,11 @@ func compactionsPerTurn(t *testing.T, windowTok int, blob, finalText string, tur
 	reg := tool.NewRegistry()
 	reg.Add(fatTool{blob: blob})
 
-	a, _ := newAgent(t, srv.URL, reg, windowTok, 4)
+	// This helper's whole job is to grow the session with long repeated filler,
+	// which is exactly the payload the task-110 text-repeat guard stops on. The
+	// guard is not this test's subject, so it is off here; the guard's own tests
+	// cover it.
+	a, _ := newAgentWith(t, srv.URL, reg, windowTok, 4, Options{TextRepeatThreshold: -1})
 	started := 0
 	a.svc.sink = event.FuncSink(func(e event.Event) {
 		switch e.Kind {

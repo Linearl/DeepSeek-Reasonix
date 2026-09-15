@@ -961,6 +961,14 @@ func RenderTOMLProjectDelta(c *Config) string {
 		fmt.Fprintf(&agentBuf, "plan_mode_read_only_commands = %s\n", renderStringArray(c.Agent.PlanModeReadOnlyCommands))
 		anyAgent = true
 	}
+	if c.Agent.TextRepeatN != 0 && c.Agent.TextRepeatN != d.Agent.TextRepeatN {
+		fmt.Fprintf(&agentBuf, "text_repeat_n = %d\n", c.Agent.TextRepeatN)
+		anyAgent = true
+	}
+	if c.Agent.TextRepeatThreshold != 0 && c.Agent.TextRepeatThreshold != d.Agent.TextRepeatThreshold {
+		fmt.Fprintf(&agentBuf, "text_repeat_threshold = %d\n", c.Agent.TextRepeatThreshold)
+		anyAgent = true
+	}
 	renderAgentModelAssignmentDelta(&agentBuf, c, d, &anyAgent)
 	if c.Agent.SubagentEffort != "" && c.Agent.SubagentEffort != d.Agent.SubagentEffort {
 		fmt.Fprintf(&agentBuf, "subagent_effort = %q\n", c.Agent.SubagentEffort)

@@ -30,7 +30,7 @@ type todoItem struct {
 func (todoWrite) Name() string { return "todo_write" }
 
 func (todoWrite) Description() string {
-	return "Record and update a structured task list for the current work. Send the COMPLETE list every call — it replaces the previous one. Use it to plan multi-step work and show progress: keep exactly one item in_progress at a time, and flip an item to completed the moment it's done (don't batch completions). Skip it for trivial single-step tasks. The list is two-level: a `level` 0 item is a PHASE (a milestone) and the `level` 1 items after it are its concrete sub-steps; omit `level` (0) for a flat list. Each item has `content` (imperative, e.g. \"Add the parser\"), `status` (pending|in_progress|completed), `activeForm` (present-continuous shown while in progress, e.g. \"Adding the parser\"), optional `level` (0 phase | 1 sub-step), and `step_id` — an item's stable identity. COPY `step_id` VERBATIM for every item that already has one: it is how a completion stays attached to its step when you retitle it, insert a step above it, or reorder the list. Give a new item a fresh unique id (e.g. \"plan_step_07\"); never reuse or renumber an existing one."
+	return "Record and update a structured task list for the current work. Prefer `ops` for small edits (replace/insert/delete/move by step_id) after calling todo_read; send the COMPLETE `todos` list only for a wholesale rewrite. Use it to plan multi-step work and show progress: keep exactly one item in_progress at a time, and flip an item to completed the moment it's done (don't batch completions). Skip it for trivial single-step tasks. The list is two-level: a `level` 0 item is a PHASE (a milestone) and the `level` 1 items after it are its concrete sub-steps; omit `level` (0) for a flat list. Each item has `content` (imperative, e.g. \"Add the parser\"), `status` (pending|in_progress|completed), `activeForm` (present-continuous shown while in progress, e.g. \"Adding the parser\"), optional `level` (0 phase | 1 sub-step), and `step_id` — an item's stable identity. COPY `step_id` VERBATIM for every item that already has one: it is how a completion stays attached to its step when you retitle it, insert a step above it, or reorder the list. Give a new item a fresh unique id (e.g. \"plan_step_07\"); never reuse or renumber an existing one."
 }
 
 func (todoWrite) Schema() json.RawMessage {
@@ -39,7 +39,7 @@ func (todoWrite) Schema() json.RawMessage {
 "properties":{
   "todos":{
     "type":"array",
-    "description":"The complete task list, in order. Replaces any previous list.",
+    "description":"The complete task list, in order. Replaces any previous list. Prefer ops for small edits.",
     "items":{
       "type":"object",
       "properties":{
@@ -51,9 +51,25 @@ func (todoWrite) Schema() json.RawMessage {
       },
       "required":["content","status"]
     }
+  },
+  "ops":{
+    "type":"array",
+    "description":"Optional incremental edits applied to the current host list, then validated as a full list. Use after todo_read. Omit when sending todos.",
+    "items":{
+      "type":"object",
+      "properties":{
+        "op":{"type":"string","enum":["replace","insert","delete","move"]},
+        "step_id":{"type":"string","description":"Target item identity (replace/delete/move; ignored for insert)."},
+        "after_step_id":{"type":"string","description":"Insert/move: place after this step_id; empty = end of list."},
+        "item":{"type":"object","description":"replace/insert payload (content,status,activeForm,level,step_id).","properties":{
+          "content":{"type":"string"},"status":{"type":"string","enum":["pending","in_progress","completed"]},
+          "activeForm":{"type":"string"},"level":{"type":"integer","enum":[0,1]},"step_id":{"type":"string"}
+        }}
+      },
+      "required":["op"]
+    }
   }
-},
-"required":["todos"]
+}
 }`)
 }
 
@@ -65,9 +81,28 @@ func (todoWrite) ReadOnly() bool { return true }
 func (todoWrite) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var p struct {
 		Todos []todoItem `json:"todos"`
+		Ops   []todoOp   `json:"ops"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
+	}
+	// Ops path (task 68): apply to the host baseline, then validate the
+	// resulting full list with the same five checks as a wholesale rewrite.
+	if len(p.Ops) > 0 {
+		if p.Todos != nil {
+			return "", fmt.Errorf("send either todos (full list) or ops (incremental), not both")
+		}
+		applied, err := applyTodoOps(todoBaseline(ctx), p.Ops)
+		if err != nil {
+			return "", err
+		}
+		p.Todos = applied
+	}
+	// An explicit empty todos array is still a legal wholesale rewrite (the
+	// continuity validators decide whether clearing is allowed). A call with
+	// neither field is a protocol error.
+	if p.Todos == nil {
+		return "", fmt.Errorf("todos is required (or ops that produce a list)")
 	}
 	var done, active, pending int
 	for i, t := range p.Todos {

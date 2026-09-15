@@ -47,8 +47,21 @@ const (
 	stopCauseGoalRunBudget = "goal_run_budget" // legacy; the per-Run round ceiling is gone
 	stopCauseGoalStuck     = "goal_stuck"
 	stopCauseEvaluator     = "evaluator_unavailable"
+	// stopCauseRecoveryPaused ends an unattended run that hit a pause only a
+	// human could lift (task 109 B5). Interactive runs keep the same pause
+	// without a terminal transition, because their next user turn resumes it.
+	stopCauseRecoveryPaused = "recovery_paused"
+	// stopCauseAskUnanswered ends an unattended run whose high-risk question ran
+	// out of its wait with nobody there to answer it (task 109 B4). The safe
+	// valve is intact - the run did not answer - and it now reports the failure
+	// instead of hanging on it.
+	stopCauseAskUnanswered = "ask_unanswered"
 	stopCauseLegacyArchive = "legacy_archive"
 	stopCauseManual        = "manual"
+	// maxAutopilotEvaluatorFails bounds how many uncertain/failed evaluator
+	// verdicts an unattended run continues through before treating the goal as
+	// failed (task 109 B7). Interactive runs keep the fail-closed Blocked pause.
+	maxAutopilotEvaluatorFails = 2
 )
 
 // budgetClassForLegacyMode translates old sidecars and deprecated CLI flags at
@@ -108,6 +121,10 @@ type goalMachine struct {
 	stopCause              string
 	budgetExtensions       int // deprecated historical sidecar field
 	progressEvidence       []string
+	// evaluatorFailTurns counts consecutive uncertain/failed evaluator verdicts
+	// under autopilot so a flaky evaluator does not kill the run on the first
+	// blip and cannot spin forever (task 109 B7).
+	evaluatorFailTurns int
 	// stateExtra preserves fields written by a newer peer during read/modify/
 	// write cycles. Known current fields always win on serialization.
 	stateExtra map[string]json.RawMessage
@@ -542,6 +559,9 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 	reportComplete := in.report != nil && in.report.status == GoalStatusComplete
 	complete := g.completeDecision(in, reportComplete, evaluatorComplete)
 	g.observeGoalProgress(in, complete.accept || reportBlocked || evaluatorBlocked)
+	if in.evaluatorFailed == "" && (in.evaluator == nil || in.evaluator.outcome != goaleval.OutcomeUncertain) {
+		g.evaluatorFailTurns = 0
+	}
 	switch {
 	case g.autopilotDeadlineReachedLocked():
 		// An unattended run that has used its wall clock stops before any other
@@ -602,6 +622,33 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 		if in.evaluatorFailed != "" {
 			reason = "the completion evaluator failed: " + in.evaluatorFailed
 		}
+		if g.autopilot {
+			// Unattended: a single uncertain verdict must not kill a long run
+			// (API blips), and must not spin forever either (task 109 B7).
+			g.evaluatorFailTurns++
+			if g.evaluatorFailTurns <= maxAutopilotEvaluatorFails {
+				g.lastEvaluatorReason = clipGoalReason(reason)
+				notice = ""
+				// Fall through to continue below via applyContinue.
+				intercept, interceptNotice = g.applyContinue(in, reportComplete, evaluatorComplete, complete)
+				notice = appendGoalStopReport(notice, g)
+				res := goalAdvanceResult{
+					notice:            notice,
+					intercept:         intercept,
+					interceptNotice:   interceptNotice,
+					cont:              notice == "",
+					continuationEpoch: g.continuationEpoch,
+				}
+				res.path, res.data, res.ok = g.buildStateLocked(in.todos)
+				return res
+			}
+			g.status = GoalStatusFailed
+			g.stopCause = stopCauseEvaluator
+			g.block = clipGoalReason(reason)
+			g.lastEvaluatorReason = clipGoalReason(reason)
+			notice = "goal stopped: " + reason
+			break
+		}
 		g.status = GoalStatusBlocked
 		g.stopCause = stopCauseEvaluator
 		g.block = clipGoalReason(reason)
@@ -612,9 +659,19 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 		if reason == "" {
 			reason = "the current Goal run reached a recoverable execution boundary"
 		}
-		g.status = GoalStatusBlocked
 		g.stopCause = in.pauseCause
 		g.block = clipGoalReason(reason)
+		if g.autopilot && (in.pauseCause == stopCauseRecoveryPaused || in.pauseCause == stopCauseAskUnanswered) {
+			// Nobody is here to send "continue" after Auto recovery paused the
+			// turn, and a high-risk ask left unanswered must not hang (tasks
+			// 109 B5/B4). Leave a terminal Failed instead of a fake-Running goal.
+			g.status = GoalStatusFailed
+			g.lastContinuationReason = clipGoalReason(reason)
+			notice = "goal stopped: " + reason
+			break
+		}
+		g.status = GoalStatusBlocked
+		g.lastContinuationReason = clipGoalReason(reason)
 		notice = "goal paused: " + reason
 	case len(in.readiness.Missing) > 0 && g.noProgressTurns >= 2 && len(g.progressEvidence) > 0 &&
 		g.lastContinuationReason == clipGoalReason("readiness missing: "+in.readiness.Reason) &&

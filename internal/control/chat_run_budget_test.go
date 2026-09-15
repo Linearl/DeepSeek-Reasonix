@@ -139,7 +139,10 @@ func waitForChatBudgetProgress(t *testing.T, done <-chan event.Event, progress <
 	t.Helper()
 	idle := time.NewTimer(5 * time.Second)
 	defer idle.Stop()
-	total := time.NewTimer(30 * time.Second)
+	// idle is the real assertion: a turn that makes no progress for five
+	// seconds is stuck. total only bounds a runaway loop, so it stays generous
+	// enough that a slow machine's real session I/O cannot red the suite.
+	total := time.NewTimer(120 * time.Second)
 	defer total.Stop()
 	for {
 		select {

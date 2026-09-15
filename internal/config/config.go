@@ -1378,6 +1378,11 @@ type AgentConfig struct {
 	LegacyAnchorSafetyGate   bool     `toml:"legacy_anchor_safety_gate"`  // user-global rollback to the full-read guard
 	CompletionValidation     string   `toml:"completion_validation"`      // retired; retained for old config reads
 	CompletionEvaluatorModel string   `toml:"completion_evaluator_model"` // retired; ignored
+	// TextRepeatN and TextRepeatThreshold tune the streamed-text repetition
+	// guard (task 110). Zero keeps DefaultTextRepeatN/Threshold; a negative
+	// threshold disables the guard for this config.
+	TextRepeatN         int `toml:"text_repeat_n"`
+	TextRepeatThreshold int `toml:"text_repeat_threshold"`
 }
 
 // ProviderEntry declares a model provider instance. ContextWindow is the model's

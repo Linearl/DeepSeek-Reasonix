@@ -606,6 +606,15 @@ func envInt(name string, fallback int) int {
 // newAgent wires a real openai.Provider at url into a real Agent.
 func newAgent(t *testing.T, url string, reg *tool.Registry, contextWindow, recentKeep int) (*Agent, *collectSink) {
 	t.Helper()
+	return newAgentWith(t, url, reg, contextWindow, recentKeep, Options{})
+}
+
+// newAgentWith is newAgent plus extra options, for tests whose subject is not
+// the option they set: the compaction loops need long repeated filler text, and
+// the task-110 text-repeat guard would (correctly) stop on exactly that, so they
+// disable it explicitly instead of weakening the guard.
+func newAgentWith(t *testing.T, url string, reg *tool.Registry, contextWindow, recentKeep int, extra Options) (*Agent, *collectSink) {
+	t.Helper()
 	prov, err := openai.New(provider.Config{
 		Name:    "deepseek",
 		BaseURL: url,
@@ -617,11 +626,11 @@ func newAgent(t *testing.T, url string, reg *tool.Registry, contextWindow, recen
 		t.Fatalf("provider New: %v", err)
 	}
 	sink := &collectSink{}
-	a := New(prov, reg, NewSession(systemPrompt), Options{
-		Temperature:   0,
-		ContextWindow: contextWindow,
-		RecentKeep:    recentKeep,
-	}, sink)
+	opts := extra
+	opts.Temperature = 0
+	opts.ContextWindow = contextWindow
+	opts.RecentKeep = recentKeep
+	a := New(prov, reg, NewSession(systemPrompt), opts, sink)
 	return a, sink
 }
 
