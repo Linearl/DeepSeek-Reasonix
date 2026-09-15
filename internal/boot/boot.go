@@ -113,6 +113,10 @@ type Options struct {
 	// AutopilotApprovalGrace is how long an unattended run waits for a human on an
 	// approval prompt before the reviewer decides. Zero uses the control default.
 	AutopilotApprovalGrace time.Duration
+	// ApprovalTier selects who decides reversible unattended approvals
+	// (task 52): guardian | parent | human. Empty uses cfg.Agent.approval_tier,
+	// which itself defaults to guardian.
+	ApprovalTier           string
 	MaxRuntime             time.Duration
 	RequireKey             bool
 	Sink                   event.Sink
@@ -1868,6 +1872,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		Autopilot:                      opts.Autopilot,
 		AutopilotMaxRuntime:            opts.MaxRuntime,
 		AutopilotApprovalGrace:         opts.AutopilotApprovalGrace,
+		ApprovalTier:                   approvalTierForBuild(cfg, opts),
 		Runner:                         runner,
 		Executor:                       executor,
 		Sink:                           sink,
