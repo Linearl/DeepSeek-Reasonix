@@ -458,6 +458,14 @@ func (c *Config) SetExperimentalRestartUpdate(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalSessionMonitor toggles the left-rail session monitor board
+// (task 123). It is opt-in because the board is an experimental diagnostics
+// surface, not part of the daily transcript UI.
+func (c *Config) SetExperimentalSessionMonitor(enabled bool) error {
+	c.Desktop.ExperimentalSessionMonitor = enabled
+	return nil
+}
+
 // SetDesktopMetrics sets whether the desktop sends aggregate desktop metrics.
 func (c *Config) SetDesktopMetrics(enabled bool) error {
 	c.Desktop.Metrics = &enabled

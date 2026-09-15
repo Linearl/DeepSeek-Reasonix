@@ -166,6 +166,12 @@ func (a *App) SetExperimentalRestartUpdate(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalRestartUpdate(enabled) })
 }
 
+// SetExperimentalSessionMonitor toggles the left-rail session monitor board (task
+// 123): the diagnostics surface for transcript-cache residency and switch cost.
+func (a *App) SetExperimentalSessionMonitor(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSessionMonitor(enabled) })
+}
+
 // SetDesktopMetrics sets whether the desktop sends aggregate desktop metrics,
 // starting or stopping the live aggregator so the toggle takes effect immediately.
 func (a *App) SetDesktopMetrics(enabled bool) error {

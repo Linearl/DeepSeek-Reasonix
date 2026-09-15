@@ -32,7 +32,7 @@
     "test:transcript-browser": "node bench/transcript-selection.mjs && node bench/transcript-scroll-stability.mjs && node bench/composer-transcript-stability.mjs && node bench/transcript-layout.mjs",
     "test:transcript-reader-browser": "node bench/transcript-reader-transaction.mjs",
     "test:transcript-electron": "node bench/transcript-layout.mjs --electron",
-    "pretest": "pnpm test:terminal && pnpm test:task-monitor && pnpm test:composer && tsx src/__tests__/context-center-contract.test.ts && tsx src/__tests__/provider-model-cache.test.ts && tsx src/__tests__/format-tokens.test.ts && pnpm test:usage-stats && pnpm test:settings-responsive && pnpm test:composer-menu-viewport && pnpm test:diagnostics && pnpm test:transcript",
+    "pretest": "pnpm test:terminal && pnpm test:task-monitor && tsx src/__tests__/session-monitor.test.ts && pnpm test:composer && tsx src/__tests__/context-center-contract.test.ts && tsx src/__tests__/provider-model-cache.test.ts && tsx src/__tests__/format-tokens.test.ts && pnpm test:usage-stats && pnpm test:settings-responsive && pnpm test:composer-menu-viewport && pnpm test:diagnostics && pnpm test:transcript",
     "test:composer-menu-viewport": "tsx src/__tests__/composer-menu-viewport.test.ts && tsx src/__tests__/virtual-menu-identity.test.tsx",
     "test:composer": "tsx src/__tests__/rich-composer-selection.test.tsx && tsx src/__tests__/composer-resized-input-css.test.ts && tsx src/__tests__/composer-ime.test.tsx && tsx src/__tests__/composer-autosize-scrollbar-css.test.ts",
     "test:composer-browser": "node bench/composer-transcript-stability.mjs",

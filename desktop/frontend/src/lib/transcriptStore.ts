@@ -33,6 +33,7 @@ import { asArray } from "./array";
 import { historicalResultNotice } from "./completionResultState";
 import { app } from "./bridge";
 import { noteHistoryPage, registerTranscriptCacheDiagnostics } from "./sessionDiagnostics";
+import { noteEviction } from "./sessionMonitor";
 import { TranscriptMarkdownCache, type ParsedMarkdownValue } from "./transcriptMarkdownCache";
 export type { ParsedMarkdownValue } from "./transcriptMarkdownCache";
 import { historySearchAndAnswer } from "./searchTranscript";
@@ -499,10 +500,19 @@ export class TranscriptStore {
     this.lastActiveAt.delete(tabId);
   }
 
-  private evictSession(session: SessionTranscript): void {
+  private evictSession(session: SessionTranscript, reason: "lru" | "budget"): void {
     session.generation += 1; // in-flight responses discard against a missing/stale session
     this.sessions.delete(session.key);
     this.historyEvictions += 1;
+    // Task 123: evictions were counted but never named, so desktop.log could not
+    // say which tab lost its transcript or why. Record it for the monitor board.
+    noteEviction({
+      tabId: session.tabId,
+      sessionPath: session.sessionPath,
+      reason,
+      records: session.records.length,
+      bodyBytes: session.bodyBytes,
+    });
   }
 
   private enforceBudgets(): void {
@@ -522,7 +532,7 @@ export class TranscriptStore {
     while (resident > this.maxResidentSessions && candidates.length > 0) {
       const victim = candidates.shift();
       if (!victim) break;
-      this.evictSession(victim);
+      this.evictSession(victim, "lru");
       resident -= 1;
     }
     let total = 0;
@@ -532,7 +542,7 @@ export class TranscriptStore {
       const victim = candidates.shift();
       if (!victim) break;
       total -= victim.bodyBytes;
-      this.evictSession(victim);
+      this.evictSession(victim, "budget");
     }
   }
 
@@ -573,6 +583,44 @@ export class TranscriptStore {
   isResident(tabId: string, sessionPath: string): boolean {
     const session = this.sessions.get(sessionKeyFor(tabId, sessionPath));
     return Boolean(session && session.records.length > 0);
+  }
+
+  /**
+   * Per-session cache snapshot for the monitor board (task 123): what this tab
+   * holds right now, so "the switch is slow" can be read as "this tab is
+   * resident with N records" or "this tab was evicted and must re-fetch".
+   */
+  sessionStats(tabId: string, sessionPath: string) {
+    const session = this.sessions.get(sessionKeyFor(tabId, sessionPath));
+    if (!session || session.records.length === 0) return undefined;
+    return {
+      resident: true,
+      records: session.records.length,
+      bodyBytes: session.bodyBytes,
+      items: session.itemsCache?.length ?? 0,
+      startTurn: session.startTurn,
+      endTurn: session.endTurn,
+      totalTurns: session.totalTurns,
+      generation: session.generation,
+      pinned: this.isPinned(session),
+    };
+  }
+
+  /** Every resident session of one tab (a tab can hold more than one path). */
+  sessionsForTab(tabId: string) {
+    const out = [];
+    for (const session of this.sessions.values()) {
+      if (session.tabId !== tabId || session.records.length === 0) continue;
+      out.push({
+        sessionPath: session.sessionPath,
+        records: session.records.length,
+        bodyBytes: session.bodyBytes,
+        items: session.itemsCache?.length ?? 0,
+        totalTurns: session.totalTurns,
+        pinned: this.isPinned(session),
+      });
+    }
+    return out;
   }
 
   residentSessionCount(): number {

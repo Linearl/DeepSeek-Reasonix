@@ -2315,6 +2315,8 @@ export type { ModelSettingsChange, ModelSettingsResult } from "./modelSettingsTy
 export interface DesktopStartupSettingsView {
   /** Restart-and-update experiment switch (task 81); off unless the user opts in. */
   experimentalRestartUpdate?: boolean;
+  /** Session-monitor board experiment switch (task 123); off unless the user opts in. */
+  experimentalSessionMonitor?: boolean;
   bot: BotSettingsView;
   desktopLanguage: string; // "" | "en" | "zh"; empty = auto
   desktopLayoutStyle: string; // "classic" | "workbench"

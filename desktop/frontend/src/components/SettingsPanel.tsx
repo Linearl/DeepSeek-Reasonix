@@ -1683,6 +1683,20 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
           ))}
         </SettingsOptions>
       </SettingsField>
+      <SettingsField label={t("settings.sessionMonitor")} hint={t("settings.sessionMonitorHint")} icon={<Sparkles size={18} />}>
+        <SettingsOptions layout="field" className="set-seg">
+          {[false, true].map((on) => (
+            <button
+              key={String(on)}
+              className={`set-seg__btn${Boolean(s.experimentalSessionMonitor) === on ? " set-seg__btn--on" : ""}`}
+              disabled={busy}
+              onClick={() => void apply(() => app.SetExperimentalSessionMonitor(on))}
+            >
+              {t(on ? "settings.sessionMonitor.on" : "settings.sessionMonitor.off")}
+            </button>
+          ))}
+        </SettingsOptions>
+      </SettingsField>
       <SettingsField label={t("settings.autopilot")} hint={t("settings.autopilotHint")} icon={<ShieldCheck size={18} />}>
         <SettingsOptions layout="field" className="set-seg">
           {[false, true].map((on) => (

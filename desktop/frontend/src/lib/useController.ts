@@ -27,6 +27,7 @@ import { replayPendingPromptsForActiveTab } from "./promptReplay";
 import { createRafBatch } from "./rafBatch";
 import { foregroundRunningFromRuntimeMeta, type RuntimeMetaSnapshot } from "./runtimeMeta";
 import { aliasActivationRequest, noteActivationRequested, noteActivationSettled, noteActivationStarted } from "./sessionDiagnostics";
+import { noteHydrateDecision, noteStageTiming } from "./sessionMonitor";
 import { applyLiveSegments, coalesceStreamDeltas, completeLiveReasoning, type StreamDeltaEntry, type StreamSegment } from "./streamDeltaBatch";
 import { assistantHasContent, ensureActiveAssistant, ensureAssistant, removeEmptyAssistantItems } from "./assistantItems";
 import { getTranscriptStore } from "./transcriptStore";
@@ -2525,6 +2526,10 @@ function reportStageTiming(tabId: string, stage: string, ms: number): void {
   // Optional call: test doubles and any backend predating this method simply do not have
   // it, and a missing diagnostic must never be able to break a tab switch.
   void app.ReportTabSwitchTiming?.(tabId, stage, ms)?.catch(() => {});
+  // Task 123: keep the same numbers in memory too. The backend log drops fast
+  // stages, while the monitor board has to show the slowest recent stage per tab
+  // (and which branch produced a 3s switch) without a round trip.
+  noteStageTiming(tabId, stage, ms);
 }
 
 export function useController() {
@@ -2905,6 +2910,20 @@ export function useController() {
         options.skipHistory ||
         (options.preserveCachedHistory && !resetSurface && hasReusableCachedTranscript(statesRef.current.get(tabId), sessionPath, sessionRevision, sessionDigest)),
       );
+      // Task 123: record which branch decided, so the monitor board can answer
+      // "did this switch reuse the cache" without guessing from timings.
+      noteHydrateDecision({
+        tabId,
+        sessionPath,
+        skipHistory,
+        reason: options.skipHistory
+          ? "caller"
+          : skipHistory
+            ? "preserveCachedHistory"
+            : resetSurface
+              ? "reset"
+              : "no-reusable-cache",
+      });
       const deferResetUntilHistory = Boolean(surfacePolicy === "preserve-current" && (options.deferResetUntilHistory ?? true) && resetSurface && !skipHistory);
       // Request seq alone cannot stop clear→mode-switch races: a load started
       // after clear with stale meta.sessionPath must also be rejected.

@@ -235,7 +235,7 @@ if (initialCSS.length > 0) {
 // shared title-safe shell, and the shared harness decision surface measure
 // 116.9 KiB gzip while reusing existing layout primitives. Retain a bounded
 // 0.1 KiB headroom ratchet.
-assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 123.0 * 1024); // fork: upstream 1.38.3 raised its own budget to 120.4 KiB; the fork's LocalServerPage delta plus the merge measured 121.3 KiB. The session-version panel adds its table and phase styles, measuring 122.0 KiB, so keep 1.0 KiB of bounded headroom.
+assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 124.0 * 1024); // fork: upstream 1.38.3 raised its own budget to 120.4 KiB; the fork's LocalServerPage delta plus the merge measured 121.3 KiB. The session-version panel adds its table and phase styles, measuring 122.0 KiB. Task 123's session-monitor board adds its own ~0.4 KiB of panel styles (measured 123.1 KiB), so keep 0.9 KiB of bounded headroom.
 if (localeChunks.length !== 2) {
   throw new Error(`expected 2 on-demand Chinese locale chunks, found ${localeChunks.length}`);
 }
@@ -319,7 +319,9 @@ for (const path of localeChunks) {
   // The concise session-experience tier (task 111) and the transcript "no more history" line
   // land together: zh-TW reaches exactly 70.0 KiB, an exact-boundary failure like the 68.0 and
   // 68.4 cases above, so the same one-decimal ratchet applies to it. zh stays at 69.5.
-  const budget = name.startsWith("zh-TW-") ? 71.0 * 1024 : 69.5 * 1024;
+  // Task 123's session-monitor board adds 23 keys per dialect; zh measures 69.7 KiB, so the
+  // same one-decimal convention takes zh to 70.5 (zh-TW keeps its 71.0 ceiling).
+  const budget = name.startsWith("zh-TW-") ? 71.0 * 1024 : 70.5 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0

@@ -40511,3 +40511,98 @@ body > .mermaid-diagram--fullscreen {
   padding: 6px 14px;
   cursor: pointer;
 }
+
+/* ── Session monitor board (task 123, experimental) ───────────────────────────
+   A floating diagnostics panel anchored to the project-tree header. It only
+   mounts while the experiment switch is on and the user opened it. */
+.session-monitor {
+  position: fixed;
+  z-index: var(--z-workspace-float);
+  top: 48px;
+  left: 12px;
+  width: min(560px, calc(100vw - 24px));
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.session-monitor__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.session-monitor__title {
+  font-weight: 600;
+}
+.session-monitor__global {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--fg-faint);
+}
+.session-monitor__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.session-monitor__row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.session-monitor__row--active {
+  border-color: var(--accent);
+}
+.session-monitor__row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.session-monitor__tab {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-monitor__path,
+.session-monitor__log-row {
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+.session-monitor__metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.session-monitor__miss {
+  color: var(--warn);
+}
+.session-monitor__evicted {
+  color: var(--danger);
+}
+.session-monitor__empty {
+  color: var(--fg-faint);
+}
+.session-monitor__log {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.session-monitor__log-title {
+  font-weight: 600;
+}

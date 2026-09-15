@@ -11,6 +11,8 @@ export interface SettingsView {
   autopilotApprovalGrace: string;
   // Task 81: exposes the restart-and-update action. Same preference restart_and_update reads.
   experimentalRestartUpdate?: boolean;
+  // Task 123: exposes the left-rail session monitor board (experimental).
+  experimentalSessionMonitor?: boolean;
   visionModel: string;
   webSearchModel?: string;
   webSearchModels?: string[];

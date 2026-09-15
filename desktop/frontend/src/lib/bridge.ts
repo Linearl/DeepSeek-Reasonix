@@ -737,6 +737,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 81: the Settings switch for the restart-and-update action. Same preference the
   // restart_and_update tool reads, so one enables both.
   SetExperimentalRestartUpdate(enabled: boolean): Promise<void>;
+  // Task 123: left-rail session monitor board (experimental).
+  SetExperimentalSessionMonitor(enabled: boolean): Promise<void>;
   SetDefaultAutoRecoveryCheckpoint(enabled: boolean): Promise<void>;
 
   RenameProviderConnections: typeof GeneratedApp.RenameProviderConnections;
@@ -4919,6 +4921,7 @@ function makeMockApp(): AppBindings {
       settings.defaultToolApprovalMode = normalizeToolApprovalMode(mode);
     },
     async SetExperimentalRestartUpdate() {},
+    async SetExperimentalSessionMonitor() {},
     async SetDesktopAutopilot(enabled: boolean, maxRuntime: string, approvalGrace: string) {
       settings.autopilot = enabled;
       settings.autopilotMaxRuntime = maxRuntime;
