@@ -149,6 +149,14 @@ if INSTALL_ROOT=$(detect_install_root); then
       echo "    WARN missing $src (skip $name)" >&2
     fi
   done
+  # The button sends no version: a local build carries it in the payload instead
+  # (desktop/restart_update.go reads this file when the caller passes none).
+  if [ -n "$VER" ]; then
+    printf "%s" "$VER" > "$STAGING_DIR/version.txt"
+    echo "    staged version.txt ($VER)"
+  else
+    echo "    WARN no product version resolved; version.txt not written" >&2
+  fi
   echo "    RestartAndUpdate can now publish from: $STAGING_DIR"
 else
   echo "==> no versioned InstallRoot found (no current.json)."

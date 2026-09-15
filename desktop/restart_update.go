@@ -31,9 +31,6 @@ func (a *App) RestartAndUpdate(sourceDir, version string) error {
 		return fmt.Errorf("restart: no app")
 	}
 	version = strings.TrimSpace(version)
-	if version == "" {
-		return fmt.Errorf("restart: version is required")
-	}
 	sourceDir = strings.TrimSpace(sourceDir)
 
 	// Opt-in only (task 81): the action swaps the active install version, so neither a
@@ -70,6 +67,19 @@ func (a *App) RestartAndUpdate(sourceDir, version string) error {
 	// as a convention rather than a setting so the button needs no configuration.
 	if sourceDir == "" {
 		sourceDir = filepath.Join(installRoot, "staging")
+	}
+
+	// The status-bar button sends an empty version on purpose: a local build has no
+	// signed manifest to read one from, so the version travels with the payload the
+	// build script staged (staging/version.txt). Demanding it from the UI left the
+	// button failing every time it was pressed.
+	if version == "" {
+		if raw, readErr := os.ReadFile(filepath.Join(sourceDir, "version.txt")); readErr == nil {
+			version = strings.TrimSpace(string(raw))
+		}
+	}
+	if version == "" {
+		return fmt.Errorf("restart: no version to publish: %s/version.txt is missing (rebuild to re-stage) and the caller sent none", sourceDir)
 	}
 
 	members := []installlayout.Member{
