@@ -3519,6 +3519,17 @@ func (c *Controller) Resume(s *agent.Session, path string) {
 	c.recoverCheckpointTransactions()
 	c.recoverInterruptedTurn(path)
 	c.maybeColdResumePrune(path)
+	// Task 67: another Reasonix instance holds this session's write lease.
+	// Saving still uses last-writer-wins + recovery fork by design; surfacing
+	// the fact up front prevents the later "unmerged session version" surprise.
+	if path != "" && agent.SessionLeaseHeldByOtherRuntime(path) {
+		c.sink.Emit(event.Event{
+			Kind:  event.Notice,
+			Level: event.LevelWarn,
+			Text:  "This session is also open in another Reasonix instance. Both may save; conflicts will fork a recovery copy.",
+			Detail: path,
+		})
+	}
 	// session.load: Resume has no failure channel, so the session_policy
 	// strategy is advisory this stage — a required-class failure is surfaced
 	// as a warning and the load stands. The event still carries the final

@@ -1917,6 +1917,22 @@ const AutonomyPolicy = `Persist until the task is fully handled end-to-end withi
 	`provide, or when the user asks you to stop. When a verification step fails, ` +
 	`fix the cause instead of describing it.`
 
+// CompletionReportPolicy is the structured hand-off surface for a finished turn
+// (task 112). It sits on top of delivery readiness: readiness asks whether the
+// work is done; this policy asks how to report it so a human (or the next
+// session) can pick up without re-reading the whole transcript.
+const CompletionReportPolicy = `When you finish substantial work (a branch of ` +
+	`code, a fix, a document, or any multi-step task), end with a short ` +
+	`structured completion report using these fields, in this order. Write ` +
+	`each field on its own line; if a field does not apply, write "无" ` +
+	`instead of omitting it:\n` +
+	`- 交付物: paths of files, branches, or packages you produced\n` +
+	`- 变更: what changed in one or two lines\n` +
+	`- 验证: the exact commands you ran and whether they passed\n` +
+	`- 未做 / 风险: anything left undone, rejected, or risky\n` +
+	`Keep the report after the last tool result and before you stop. Do not ` +
+	`pad it with restating the user request.`
+
 // Default returns the built-in default configuration.
 func Default() *Config {
 	return &Config{
