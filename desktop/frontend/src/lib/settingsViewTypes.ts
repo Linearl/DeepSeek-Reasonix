@@ -15,6 +15,8 @@ export interface SettingsView {
   experimentalSessionMonitor?: boolean;
   // Task 70-1: exposes the tab-bar split view (experimental).
   experimentalSplitView?: boolean;
+  // Task 121: exposes the agent submit_feedback tool and feedback inbox panel.
+  experimentalFeedback?: boolean;
   visionModel: string;
   webSearchModel?: string;
   webSearchModels?: string[];

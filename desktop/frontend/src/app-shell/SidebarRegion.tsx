@@ -1,7 +1,8 @@
 import { lazy, Suspense, useEffect, useState, type ComponentProps, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
-import { Activity, AlarmClock, Brain, Command, MessageSquare, PanelLeft, PanelRight, Search, Settings, SquarePen, Trash2 } from "lucide-react";
+import { Activity, AlarmClock, Brain, Command, MessageSquare, MessageSquareHeart, PanelLeft, PanelRight, Search, Settings, SquarePen, Trash2 } from "lucide-react";
 import { isSessionMonitorEnabled, isSessionMonitorOpen, onSessionMonitorEnabledChange, onSessionMonitorOpenChange, setSessionMonitorOpen } from "../lib/sessionMonitor";
 import { SessionMonitorPanel } from "../components/SessionMonitorPanel";
+import { FeedbackPanel, isFeedbackEnabled, isFeedbackOpen, onFeedbackEnabledChange, onFeedbackOpenChange, setFeedbackOpen } from "../components/FeedbackPanel";
 import { Tooltip } from "../components/Tooltip";
 import type { Translator } from "../lib/i18n";
 import type { SettingsTab } from "../lib/types";
@@ -45,6 +46,11 @@ export function SidebarRegion(props: SidebarRegionProps) {
   const [monitorOpen, setMonitorOpen] = useState(isSessionMonitorOpen());
   useEffect(() => onSessionMonitorEnabledChange(setMonitorEnabled), []);
   useEffect(() => onSessionMonitorOpenChange(setMonitorOpen), []);
+  // Task 121: the feedback inbox sits next to the session monitor when enabled.
+  const [feedbackOn, setFeedbackOn] = useState(isFeedbackEnabled());
+  const [feedbackPanelOpen, setFeedbackPanelOpen] = useState(isFeedbackOpen());
+  useEffect(() => onFeedbackEnabledChange(setFeedbackOn), []);
+  useEffect(() => onFeedbackOpenChange(setFeedbackPanelOpen), []);
   return (
     <>
       <aside className={props.className} aria-label={t("sidebar.navigation")}>
@@ -91,6 +97,9 @@ export function SidebarRegion(props: SidebarRegionProps) {
               {monitorEnabled && (
                 <UtilityButton label={t("sessionMonitor.open")} icon={<Activity size={16} />} onClick={() => setSessionMonitorOpen(!monitorOpen)} />
               )}
+              {feedbackOn && (
+                <UtilityButton label={t("feedbackInbox.open")} icon={<MessageSquareHeart size={16} />} onClick={() => setFeedbackOpen(!feedbackPanelOpen)} />
+              )}
               <UtilityButton label={t("sidebar.trash")} icon={<Trash2 size={16} />} onClick={props.onOpenTrash} />
               <UtilityButton label={t("heartbeat.scheduler")} icon={<AlarmClock size={16} />} onClick={props.onOpenAutomation} />
               <UtilityButton label={t("topbar.settings")} icon={<Settings size={16} />} onClick={() => props.onOpenSettings("general")} />
@@ -109,12 +118,16 @@ export function SidebarRegion(props: SidebarRegionProps) {
             {monitorEnabled && (
               <NavButton label={t("sessionMonitor.open")} icon={<Activity size={15} />} active={monitorOpen} disabledTooltip={props.navTooltipDisabled} onClick={() => setSessionMonitorOpen(!monitorOpen)} />
             )}
+            {feedbackOn && (
+              <NavButton label={t("feedbackInbox.open")} icon={<MessageSquareHeart size={15} />} active={feedbackPanelOpen} disabledTooltip={props.navTooltipDisabled} onClick={() => setFeedbackOpen(!feedbackPanelOpen)} />
+            )}
             <NavButton label={t("sidebar.trash")} icon={<Trash2 size={15} />} disabledTooltip={props.navTooltipDisabled} onClick={props.onOpenTrash} />
             {!props.creation && <NavButton active={props.automation} label={t("heartbeat.scheduler")} icon={<AlarmClock size={15} />} disabledTooltip={props.navTooltipDisabled} onClick={props.onOpenAutomation} />}
             <NavButton label={t("topbar.settings")} icon={<Settings size={15} />} disabledTooltip={props.navTooltipDisabled} onClick={() => props.onOpenSettings("general")} />
           </nav>
         )}
       <SessionMonitorPanel />
+      <FeedbackPanel />
       </aside>
       <button className="sidebar-resizer" type="button" role="separator" aria-orientation="vertical" aria-label={t("sidebar.resize")}
         aria-valuemin={props.resize.min} aria-valuemax={props.resize.max} aria-valuenow={props.resize.value}

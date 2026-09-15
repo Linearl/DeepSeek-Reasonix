@@ -474,6 +474,14 @@ func (c *Config) SetExperimentalSplitView(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalFeedback toggles the agent submit_feedback tool and the desktop
+// feedback inbox panel (task 121). Opt-in: feedback is a local product-inbox
+// experiment, not part of the default tool surface or settings chrome.
+func (c *Config) SetExperimentalFeedback(enabled bool) error {
+	c.Desktop.ExperimentalFeedback = enabled
+	return nil
+}
+
 // SetDesktopMetrics sets whether the desktop sends aggregate desktop metrics.
 func (c *Config) SetDesktopMetrics(enabled bool) error {
 	c.Desktop.Metrics = &enabled

@@ -37,6 +37,14 @@ const stageTimings: StageTiming[] = [];
 const hydrateDecisions = new Map<string, HydrateDecision>();
 const evictions: SessionEviction[] = [];
 
+// Task 125 render-side: geometry estimation is called once per row and does not
+// know its tab, so it accumulates into a short-lived frame window. The window
+// opens when a surface starts painting and closes on first frame, which keeps
+// the hot path to a boolean check when no measurement is active.
+let geometryFrameActive = false;
+let geometryFrameMs = 0;
+let surfaceFrameStart: { key: string; at: number; geometryAtMs: number } | null = null;
+
 let monitorEnabled = false;
 let monitorOpen = false;
 const enabledListeners = new Set<(enabled: boolean) => void>();
@@ -62,6 +70,77 @@ export function noteHydrateDecision(decision: Omit<HydrateDecision, "at">): void
     const oldest = hydrateDecisions.keys().next().value;
     if (oldest !== undefined) hydrateDecisions.delete(oldest);
   }
+}
+
+/**
+ * Opens a geometry-measurement window for one surface paint (task 125).
+ * Subsequent estimateTranscriptRowGeometry calls accumulate into it until
+ * consumeGeometryFrame. A no-op when no frame is being measured keeps the
+ * estimator hot path free of Date/Number work.
+ */
+export function beginGeometryFrame(): void {
+  geometryFrameActive = true;
+  geometryFrameMs = 0;
+}
+
+/** True while a geometry-measurement window is open. */
+export function isGeometryFrameOpen(): boolean {
+  return geometryFrameActive;
+}
+
+/** Adds one estimator sample. Cheap no-op outside an open geometry frame. */
+export function noteGeometrySample(ms: number): void {
+  if (geometryFrameActive) geometryFrameMs += ms;
+}
+
+/** Closes the geometry window and returns the accumulated milliseconds. */
+export function consumeGeometryFrame(): number {
+  geometryFrameActive = false;
+  const ms = geometryFrameMs;
+  geometryFrameMs = 0;
+  return ms;
+}
+
+/**
+ * Starts the transcript first-frame clock (task 125). The key is the surface
+ * identity (geometry session key), so a remount of the same surface restarts
+ * the clock rather than leaking a stale start into the next paint.
+ */
+export function beginSurfaceFrame(surfaceKey: string): void {
+  surfaceFrameStart = { key: surfaceKey, at: performance.now(), geometryAtMs: 0 };
+  beginGeometryFrame();
+}
+
+/**
+ * Records first-frame and geometry-measure stage timings for a tab, then
+ * writes one greppable log line. Returns null when no matching frame was open
+ * (startup without a prior begin, or a superseded surface).
+ */
+export function completeSurfaceFrame(tabId: string, surfaceKey: string): { firstFrameMs: number; geometryMs: number } | null {
+  if (!surfaceFrameStart || surfaceFrameStart.key !== surfaceKey) return null;
+  const firstFrameMs = performance.now() - surfaceFrameStart.at;
+  const geometryMs = consumeGeometryFrame();
+  surfaceFrameStart = null;
+  noteStageTiming(tabId, "transcript:first-frame", firstFrameMs);
+  noteStageTiming(tabId, "transcript:geometry-measure", geometryMs);
+  reportFrontendLog(
+    "session-monitor",
+    "transcript first frame",
+    `tab=${tabId} firstFrame=${Math.round(firstFrameMs)}ms geometry=${Math.round(geometryMs)}ms`,
+  );
+  return { firstFrameMs, geometryMs };
+}
+
+/** Latest first-frame / geometry-measure pair for one tab. */
+export function renderMetricsFor(tabId: string): { firstFrameMs?: number; geometryMs?: number } {
+  let firstFrameMs: number | undefined;
+  let geometryMs: number | undefined;
+  for (const entry of stageTimings) {
+    if (entry.tabId !== tabId) continue;
+    if (entry.stage === "transcript:first-frame") firstFrameMs = entry.ms;
+    if (entry.stage === "transcript:geometry-measure") geometryMs = entry.ms;
+  }
+  return { firstFrameMs, geometryMs };
 }
 
 /** Records a transcript-cache eviction (task 123 section F). */
@@ -164,4 +243,7 @@ export function resetSessionMonitor(): void {
   stageTimings.length = 0;
   hydrateDecisions.clear();
   evictions.length = 0;
+  geometryFrameActive = false;
+  geometryFrameMs = 0;
+  surfaceFrameStart = null;
 }
