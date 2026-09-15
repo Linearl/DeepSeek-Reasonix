@@ -741,6 +741,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalSessionMonitor(enabled: boolean): Promise<void>;
   // Task 70-1: tab-bar split view (experimental).
   SetExperimentalSplitView(enabled: boolean): Promise<void>;
+  // Task 121: agent submit_feedback tool + feedback inbox panel (experimental).
+  SetExperimentalFeedback(enabled: boolean): Promise<void>;
+  ListFeedbackEntries(limit: number): Promise<{ at: string; kind: string; text: string; tags?: string[]; session?: string; model?: string }[]>;
+  ClearFeedbackEntries(): Promise<void>;
   SetDefaultAutoRecoveryCheckpoint(enabled: boolean): Promise<void>;
 
   RenameProviderConnections: typeof GeneratedApp.RenameProviderConnections;
@@ -4927,6 +4931,9 @@ function makeMockApp(): AppBindings {
     async SetExperimentalRestartUpdate() {},
     async SetExperimentalSessionMonitor() {},
     async SetExperimentalSplitView() {},
+    async SetExperimentalFeedback() {},
+    async ListFeedbackEntries() { return []; },
+    async ClearFeedbackEntries() {},
     async SetDesktopAutopilot(enabled: boolean, maxRuntime: string, approvalGrace: string) {
       settings.autopilot = enabled;
       settings.autopilotMaxRuntime = maxRuntime;

@@ -37,7 +37,11 @@ type DesktopConfig struct {
 	// ExperimentalSplitView exposes the tab-bar "split view" action (task 70-1). It
 	// ships off: with it off the tab context menu looks exactly as it did before the
 	// split existed (zero regression), and the split stays an opt-in experiment.
-	ExperimentalSplitView  bool   `toml:"experimental_split_view"`
+	ExperimentalSplitView bool `toml:"experimental_split_view"`
+	// ExperimentalFeedback exposes the agent submit_feedback tool and the desktop
+	// "意见箱" panel (task 121). It ships off: feedback is a local inbox, not a
+	// product surface, so both the tool and the viewer stay behind an opt-in.
+	ExperimentalFeedback   bool   `toml:"experimental_feedback"`
 	AutopilotMaxRuntime    string `toml:"autopilot_max_runtime"`    // Go duration; required when autopilot is on
 	AutopilotApprovalGrace string `toml:"autopilot_approval_grace"` // wait for a human before the reviewer decides; empty = 15s
 	CheckUpdates           *bool  `toml:"check_updates"`            // startup update checks; nil keeps the default enabled

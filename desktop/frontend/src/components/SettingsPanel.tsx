@@ -26,6 +26,7 @@ import { CHANNEL_ICONS } from "./channelIcons";
 import { botAccessEntryCount, botAccessReady, botConnectionCredentialSummary, botConnectionLabel, botConnectionScopeLabel, botConnectionSecretEnv, botConnectionSecretPatch, botInstallTargetForConnection, botInstallTargetMatchesConnection, botTargetHint, botTargetLabel, diagnosticMessage, diagnosticReportDetail, firstConnectionRemote, formatInstallTimeLeft, formatInstallUserCode, qqBotAdded, type BotInstallTarget, type BotOfficialInstallTarget } from "./botConnectionSettings";
 import { app, COMPACT_RATIO_MAX_PERCENT, COMPACT_RATIO_MIN_PERCENT, onRuntimeRebuilt, openExternal } from "../lib/bridge";
 import { setSessionMonitorEnabled } from "../lib/sessionMonitor";
+import { setFeedbackEnabled } from "./FeedbackPanel";
 import { setSplitViewEnabled } from "../lib/splitView";
 import { normalizeLangPref, useI18n, type DictKey, type LangPref } from "../lib/i18n";
 import { createLatestRequestGate, mergedFetchedProviderModels, mergeProviderModelContextWindows, providerApiKeyEnvForSave, providerDefaultModel, providerIsConfigured, providerModelCandidates, providerModelContextWindowDrafts, providerRequiresKey, reconcileManualModels } from "../lib/providerModels";
@@ -1717,6 +1718,23 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
               })}
             >
               {t(on ? "settings.splitView.on" : "settings.splitView.off")}
+            </button>
+          ))}
+        </SettingsOptions>
+      </SettingsField>
+      <SettingsField label={t("settings.feedback")} hint={t("settings.feedbackHint")} icon={<Sparkles size={18} />}>
+        <SettingsOptions layout="field" className="set-seg">
+          {[false, true].map((on) => (
+            <button
+              key={String(on)}
+              className={`set-seg__btn${Boolean(s.experimentalFeedback) === on ? " set-seg__btn--on" : ""}`}
+              disabled={busy}
+              onClick={() => void apply(async () => {
+                await app.SetExperimentalFeedback(on);
+                setFeedbackEnabled(on);
+              })}
+            >
+              {t(on ? "settings.feedback.on" : "settings.feedback.off")}
             </button>
           ))}
         </SettingsOptions>
