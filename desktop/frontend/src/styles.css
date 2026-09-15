@@ -3515,6 +3515,17 @@ a[href] {
 /* Task 70-2: at half width the transcript's boxes have to be allowed to shrink.
    Otherwise unbroken code lines and wide tables keep their single-pane intrinsic
    width and get clipped by the pane's overflow instead of wrapping inside it. */
+/* Task 70-4: the divider that separates the primary pane's tabs from the one the
+   secondary pane shows. Purely visual: it carries no tab identity and is ignored by
+   drag/drop. */
+.tabbar__split-divider {
+  align-self: center;
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  background: var(--border);
+}
+
 .transcript-split__pane > .transcript-shell,
 .transcript-split__pane .transcript,
 .transcript-split__pane .transcript-navigation-content {

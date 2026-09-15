@@ -1,7 +1,7 @@
 // TabBar renders the browser-like workspace tab strip. Each tab represents one
 // open project/global topic, so switching tabs switches the active conversation.
 import { isSplitViewEnabled, onSplitViewEnabledChange } from "../lib/splitView";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, DragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { FileText, Plus, Search, X } from "lucide-react";
 import { normalizeCollaborationMode, normalizeMode, normalizeToolApprovalMode, type Mode, type TabMeta } from "../lib/types";
@@ -208,10 +208,19 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
       ]
     : [];
 
+  // Task 70-4: with a split open the strip reads as two groups - the primary pane's
+  // tabs first, then a divider, then the tab shown in the secondary pane.
+  const orderedTabs = useMemo(() => {
+    if (!splitTabId) return tabs;
+    const secondary = tabs.find((tab) => tab.id === splitTabId);
+    if (!secondary) return tabs;
+    return [...tabs.filter((tab) => tab.id !== splitTabId), secondary];
+  }, [tabs, splitTabId]);
+
   return (
     <div className="tabbar">
       <div className="tabbar__tabs">
-        {tabs.map((tab) => {
+        {orderedTabs.map((tab) => {
           const displayTitle = tabDisplayTitle(tab);
           const fullTitle = tabFullTitle(tab);
           const mode = tabMode(tab);
@@ -228,8 +237,9 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
           ].filter(Boolean).join(" · ");
           const annotatedTitle = stateTitle ? `${stateTitle} · ${fullTitle}` : fullTitle;
           return (
+            <Fragment key={tab.id}>
+              {splitTabId === tab.id && <span className="tabbar__split-divider" aria-hidden="true" />}
             <button
-              key={tab.id}
               ref={(node) => {
                 if (node) {
                   tabRefs.current.set(tab.id, node);
@@ -292,6 +302,7 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
                 <X size={10} />
               </span>
             </button>
+            </Fragment>
           );
         })}
       </div>
