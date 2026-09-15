@@ -109,8 +109,39 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+// Task 51 UI-3: the DAG replay fence is a host fail-safe, not an inbox bug.
+// Surface an actionable root cause instead of the generic "cannot operate".
+const REPLAY_LIMIT_PATTERNS = [
+  "session history exceeds safe replay limits",
+  "encoded_bytes=",
+] as const;
+
+function looksLikeReplayLimit(raw: string): boolean {
+  const lower = raw.toLowerCase();
+  return REPLAY_LIMIT_PATTERNS.some((p) => lower.includes(p));
+}
+
+export function formatReplayLimitHint(raw: string, locale: Locale): string {
+  const base = locale === "en"
+    ? "Session history exceeds the safe replay limit"
+    : locale === "zh-TW"
+      ? "工作階段歷史超出安全重放上限"
+      : "会话历史超出安全回放上限";
+  const action = locale === "en"
+    ? ". Compact or split the conversation, then retry."
+    : locale === "zh-TW"
+      ? "。請先壓縮或拆分對話後再試。"
+      : "。请先压缩或拆分会话后再试。";
+  // Keep the host diagnostic (encoded_bytes=…) when present.
+  const detail = raw.match(/encoded_bytes=\d+[^\s,;]*/i)?.[0] ?? "";
+  return detail ? `${base} (${detail})${action}` : `${base}${action}`;
+}
+
 export function formatInboxError(error: unknown, locale: Locale): string {
   const raw = errorText(error);
+  if (looksLikeReplayLimit(raw)) {
+    return formatReplayLimitHint(raw, locale);
+  }
   const encodedCode = raw.startsWith(CODE_PREFIX) ? raw.slice(CODE_PREFIX.length) : "";
   const legacyCode = LEGACY_CODES[raw]
     ?? (raw.startsWith("workspace failed to start:") ? "workspace_start_failed" : undefined);

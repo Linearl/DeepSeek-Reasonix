@@ -35,6 +35,10 @@ type snapshotConflictDiagnostic struct {
 	// one raced the disk, so field reports could only prove "same process"
 	// (task 34 P0-1). This is what makes the next occurrence attributable.
 	Caller string `json:"caller,omitempty"`
+	// ForeignLease is true when another runtime currently holds this session's
+	// write lease (task 67). Combined with Caller it answers whether a conflict
+	// came from a multi-instance write rather than an in-process race.
+	ForeignLease bool `json:"foreign_lease,omitempty"`
 }
 
 // conflictDiagDedup bounds repeated conflict event log lines for the same
@@ -83,11 +87,12 @@ func appendSnapshotConflictDiagnostic(path, mode, outcome string, saveErr error,
 		diskRev = conflict.DiskRevision
 	}
 	rec := snapshotConflictDiagnostic{
-		At:       time.Now(),
-		BranchID: agent.BranchID(path),
-		Mode:     mode,
-		Outcome:  outcome,
-		Caller:   snapshotConflictCaller(),
+		At:           time.Now(),
+		BranchID:     agent.BranchID(path),
+		Mode:         mode,
+		Outcome:      outcome,
+		Caller:       snapshotConflictCaller(),
+		ForeignLease: agent.SessionLeaseHeldByOtherRuntime(path),
 	}
 	createsPhysicalRecovery := diagnosticCreatesPhysicalRecovery(outcome)
 	if createsPhysicalRecovery {
