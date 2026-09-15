@@ -55,6 +55,7 @@ export const en = {
   "common.busyHint": "Finish or stop the current turn first",
   "common.loading": "Loading…",
   "composer.readOnlyChannel": "Channel conversation is read-only",
+"composer.blockedDisabled": "Sending is unavailable in the current state",
   "composer.workspaceStarting": "Workspace is still starting",
   "app.splashSubtitle": "Agent Workspace",
 

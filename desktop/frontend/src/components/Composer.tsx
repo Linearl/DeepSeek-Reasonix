@@ -2139,7 +2139,17 @@ export function Composer({
       }
       return;
     }
-    if (disabled || (!running && submitDisabled) || readOnly) return;
+    if (disabled || (!running && submitDisabled) || readOnly) {
+      // Never swallow a deliberate send: the button is already disabled for these
+      // states, so reaching here means Enter was pressed - say why instead.
+      const blockedReason = readOnly
+        ? t("composer.readOnlyChannel")
+        : disabled
+          ? t("composer.blockedDisabled")
+          : submitDisabledReason;
+      if (blockedReason) showToast(blockedReason, "warn");
+      return;
+    }
     const currentText = textRef.current;
     const rawDraft = trimInvocationDraft(currentText, invocationsRef.current);
     const typedGoalDraft = goalModeOn && !activeGoal && rawDraft.invocations.length === 0
@@ -3953,7 +3963,15 @@ export function Composer({
   const submitEmpty = !text.trim() && attachments.length === 0 && workspaceRefs.length === 0 &&
     !invocations.some((invocation) => invocation.command.kind === "skill");
   const submitBlocked = submitting || (!pendingFollowup && (pendingPaste > 0 || (submitEmpty && !(goalModeOn && !activeGoal)) || disabled || (!running && submitDisabled) || readOnly));
-  const submitUnavailableHint = !running && submitDisabled ? submitDisabledReason : undefined;
+  // The hint must cover every refusal, not just the idle one: a read-only channel tab
+  // is refused while a turn runs too, and staying silent there reads as "sending is not
+  // supported" (reported 2026-09-15). Read-only wins because it explains the tab, not
+  // the moment.
+  const submitUnavailableHint = readOnly
+    ? t("composer.readOnlyChannel")
+    : !running && submitDisabled
+      ? submitDisabledReason
+      : undefined;
   const submitTooltip = pendingFollowup ? t("runtime.checkReceipt") : running
     ? t("composer.queueGuidance", { combo: sendComboLabel })
     : t("composer.send", { combo: sendComboLabel });

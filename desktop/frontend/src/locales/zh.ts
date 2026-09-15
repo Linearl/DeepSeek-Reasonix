@@ -56,6 +56,7 @@ export const zh: Record<DictKey, string> = {
   "common.busyHint": "请先完成或停止当前回合",
   "common.loading": "加载中…",
   "composer.readOnlyChannel": "渠道会话只读",
+"composer.blockedDisabled": "当前状态下无法发送",
   "composer.workspaceStarting": "工作区还在启动",
   "app.splashSubtitle": "Agent 工作区",
 
