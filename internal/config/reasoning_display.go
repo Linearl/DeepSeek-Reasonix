@@ -71,6 +71,6 @@ func renderDesktopReasoningDisplayMode(b *strings.Builder, c *Config) {
 
 func renderDesktopSessionExperience(b *strings.Builder, c *Config) {
 	if strings.TrimSpace(c.Desktop.SessionExperience) != "" {
-		fmt.Fprintf(b, "session_experience = %q   # desktop: standard|deep transcript experience\n", c.DesktopSessionExperience())
+		fmt.Fprintf(b, "session_experience = %q   # desktop: standard|deep|concise transcript experience\n", c.DesktopSessionExperience())
 	}
 }
