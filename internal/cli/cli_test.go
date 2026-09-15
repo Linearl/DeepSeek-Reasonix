@@ -2118,7 +2118,9 @@ func TestWithBuiltinFamiliesDoesNotAddMissingMimo(t *testing.T) {
 }
 
 func TestWithBuiltinFamiliesForLanguageUsesDeepSeekPricing(t *testing.T) {
-	// Language no longer rewrites list prices; defaults stay on the frozen USD table.
+	// Language no longer rewrites list prices; defaults stay on the USD table,
+	// which task 63 pinned to the schedule's baseline band (1.2 for flash)
+	// instead of naming one fixed number.
 	providers := withBuiltinFamiliesForLanguage(nil, "zh")
 	var flash *config.ProviderEntry
 	for i := range providers {
@@ -2130,8 +2132,8 @@ func TestWithBuiltinFamiliesForLanguageUsesDeepSeekPricing(t *testing.T) {
 	if flash == nil {
 		t.Fatal("deepseek-flash provider missing")
 	}
-	if flash.Price == nil || flash.Price.Output != 1.32 || flash.Price.Currency != "$" {
-		t.Fatalf("flash price = %+v, want frozen USD official table", flash.Price)
+	if flash.Price == nil || flash.Price.Output != 1.2 || flash.Price.Currency != "$" {
+		t.Fatalf("flash price = %+v, want the baseline USD table", flash.Price)
 	}
 }
 

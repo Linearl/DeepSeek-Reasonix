@@ -49,6 +49,10 @@ const (
 	stopCauseEvaluator     = "evaluator_unavailable"
 	stopCauseLegacyArchive = "legacy_archive"
 	stopCauseManual        = "manual"
+	// stopCauseRecoveryPause ends an unattended run that hit a pause only a
+	// human could lift (task 109 B5). Interactive runs keep the same pause
+	// without a terminal transition, because their next user turn resumes it.
+	stopCauseRecoveryPause = "recovery_pause"
 )
 
 // budgetClassForLegacyMode translates old sidecars and deprecated CLI flags at

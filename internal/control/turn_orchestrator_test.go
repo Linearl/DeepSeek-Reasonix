@@ -436,6 +436,36 @@ func TestRecoveryPauseKeepsGoalRunningAndDeliveryScope(t *testing.T) {
 	}
 }
 
+// Task 109 B5: an unattended run has no next user turn, so a recovery pause it
+// cannot be rescued from must become an explicit terminal state (with the spend
+// report) instead of leaving the Goal at Running while nothing runs.
+func TestRecoveryPauseBlocksUnattendedGoal(t *testing.T) {
+	runner := &recoveryPauseRunner{}
+	c := New(Options{Runner: runner, Autopilot: true, AutopilotMaxRuntime: time.Minute})
+	c.SetGoal("ship the integration")
+
+	if err := newTurnOrchestrator(c).runGoalLoopWithRawDisplay(context.Background(), "start", "start", ""); err != nil {
+		t.Fatalf("run err = %v, want the pause absorbed into a terminal Goal", err)
+	}
+	if got := c.GoalStatus(); got != GoalStatusBlocked {
+		t.Fatalf("GoalStatus = %q, want %q", got, GoalStatusBlocked)
+	}
+	rt := c.GoalRuntime()
+	if rt.StopCause != stopCauseRecoveryPause {
+		t.Fatalf("StopCause = %q, want %q", rt.StopCause, stopCauseRecoveryPause)
+	}
+	c.goals.mu.Lock()
+	blockReason := c.goals.block
+	c.goals.mu.Unlock()
+	if strings.TrimSpace(blockReason) == "" {
+		t.Fatal("unattended pause carried no reason to report")
+	}
+	// The pause stops the run, it does not retry it: one turn, one call.
+	if runner.calls != 1 {
+		t.Fatalf("runner calls = %d, want the pause to stop auto-continue", runner.calls)
+	}
+}
+
 func (r *recordingSessionRunner) Run(ctx context.Context, input string) error {
 	r.inputs = append(r.inputs, input)
 	r.raw = append(r.raw, agent.RawUserInput(ctx, input))

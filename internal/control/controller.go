@@ -1294,6 +1294,10 @@ func (c *Controller) runGoalLoopWithRawDisplay(ctx context.Context, input, raw, 
 	// Structured-output format is bound to the submitted turn (passed via
 	// submitHTTPWithFormat → submitCommandOrTurn → runGoalLoop closure);
 	// no global one-shot slot to race across concurrent requests.
+	// Task 107 P0-0: the agent's recovery fence exempts auto/yolo sessions; agent reads the
+	// mode from the turn context because it must not import control. Every turn path funnels
+	// through here, so one binding covers interactive, ACP and goal-orchestrated runs.
+	ctx = agent.WithToolApprovalMode(ctx, c.ToolApprovalMode())
 	return newTurnOrchestrator(c).runGoalLoopWithRawDisplay(ctx, input, raw, display)
 }
 

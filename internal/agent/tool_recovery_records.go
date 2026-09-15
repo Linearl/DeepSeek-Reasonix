@@ -19,6 +19,27 @@ import (
 
 var ErrToolRecoveryRequired = errors.New("recovery_required: an external tool effect has not been confirmed")
 
+// Approval modes under which an unresolved tool effect no longer blocks writes. Values mirror
+// control.ToolApprovalAuto / ToolApprovalYolo; spelled here because agent must not import control.
+// Anything else (notably the default "ask") keeps the barrier.
+const (
+	toolApprovalModeAuto = "auto"
+	toolApprovalModeYolo = "yolo"
+)
+
+type toolApprovalModeContextKey struct{}
+
+// WithToolApprovalMode carries the session's tool-approval mode into agent turns so the
+// recovery fence can exempt auto/yolo sessions: those modes already delegate write decisions
+// to policy, and stranding them behind a button nobody will press is the task-107 blind spot.
+func WithToolApprovalMode(ctx context.Context, mode string) context.Context {
+	return context.WithValue(ctx, toolApprovalModeContextKey{}, mode)
+}
+
+func toolApprovalModeAutoApproved(mode string) bool {
+	return mode == toolApprovalModeAuto || mode == toolApprovalModeYolo
+}
+
 func recoveryDigest(b []byte) string { sum := sha256.Sum256(b); return hex.EncodeToString(sum[:]) }
 
 func (s *Session) toolRecoveryRecord(callID string) *provider.ToolCallRecord {
@@ -65,10 +86,19 @@ func (a *Agent) beginToolRecovery(ctx context.Context, p *toolCallPlan) error {
 	// An unresolved external effect survives subsequent user turns. Read-only
 	// diagnosis remains available; new call IDs cannot bypass this barrier.
 	prior, _ := ctx.Value(recoveryRetryKey{}).(*provider.ToolCallRecord)
-	if !p.readOnly && slices.ContainsFunc(a.PendingToolRecovery(), func(r provider.ToolCallRecord) bool {
+	mode, _ := ctx.Value(toolApprovalModeContextKey{}).(string)
+	// Task 107 P0-0: in auto/yolo sessions write authority is already granted by the approval
+	// mode and there is no user to press the panel buttons, so blocking here strands unattended
+	// runs. The effect record is still kept (PendingToolRecovery still lists it) for after-the-
+	// fact review; only the hard stop is lifted.
+	if !p.readOnly && !toolApprovalModeAutoApproved(mode) && slices.ContainsFunc(a.PendingToolRecovery(), func(r provider.ToolCallRecord) bool {
 		return !r.ReadOnly && (prior == nil || prior.Identity.AttemptID != r.Identity.AttemptID)
 	}) {
-		return fmt.Errorf("recovery_required: inspect and resolve the previous uncertain tool effect before another write")
+		// Task 107 P0-1: name where the barrier is cleared and how to inspect the pending effect,
+		// so an agent can act instead of guessing.
+		return fmt.Errorf("recovery_required: an earlier tool call's external effect is unconfirmed and blocks this write. " +
+			"Resolve it in the 'Interrupted tool needs review' panel of the desktop UI (actions: Inspect current state / I verified the effect happened / Do not retry). " +
+			"Pending effect: inspect via tool_recovery action=inspect.")
 	}
 	var params any
 	decoder := json.NewDecoder(bytes.NewReader(p.permArgs))

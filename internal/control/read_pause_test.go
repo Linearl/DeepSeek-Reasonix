@@ -13,7 +13,10 @@ func TestReadPauseIsTerminalForAutomaticGoalContinuation(t *testing.T) {
 	if turnOutcome(err) != event.TurnOutcomeIncompleteRead {
 		t.Fatal("read pause lost its outcome")
 	}
-	if goalTurnErrorAbsorbable(err) {
+	if goalTurnErrorAbsorbable(err, false) {
 		t.Fatal("Goal would absorb a read pause and retry automatically")
+	}
+	if goalTurnErrorAbsorbable(err, true) {
+		t.Fatal("an unattended Goal would absorb a read pause and retry automatically")
 	}
 }
