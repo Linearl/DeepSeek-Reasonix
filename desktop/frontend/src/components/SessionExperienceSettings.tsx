@@ -9,7 +9,8 @@ import { hydrateReasoningDisplayMode } from "../lib/reasoningDisplayPreference";
 import type { SettingsView } from "../lib/types";
 import { SettingsField, SettingsSection } from "./SettingsForm";
 
-const MODES = ["standard", "deep", "concise"] as const satisfies readonly SessionExperience[];
+// Cards read left to right as "less shown → more shown": 简洁, 标准, 深入.
+const MODES = ["concise", "standard", "deep"] as const satisfies readonly SessionExperience[];
 
 type Props = {
   snapshot: SettingsView;
