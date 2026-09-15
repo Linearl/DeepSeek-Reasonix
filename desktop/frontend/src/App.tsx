@@ -635,8 +635,12 @@ export default function App() {
   useEffect(() => {
     const secondaryId = splitState.secondaryTabId;
     const meta = secondaryId ? tabMetas.find((tab) => tab.id === secondaryId) : undefined;
-    const text = (meta?.topicTitle ?? "").trim();
-    setSplitPaneTitle(text ? { text, hover: text } : null);
+    // The tab's metadata may not have loaded yet (its meta arrives with the first
+    // sync). Fall back to the workspace name and then to the id, so the secondary
+    // pane is always labelled instead of silently showing a single title (task 70-5).
+    const fallback = (meta?.workspaceName ?? "").trim() || secondaryId || "";
+    const text = (meta?.topicTitle ?? "").trim() || fallback;
+    setSplitPaneTitle(text ? { text, hover: (meta?.topicTitle ?? "").trim() || text } : null);
   }, [splitState.secondaryTabId, tabMetas]);
   const splitTabId = splitState.secondaryTabId;
   // Which pane the composer targets while a split is open (task 70, B). It defaults
