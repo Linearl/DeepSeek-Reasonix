@@ -11,11 +11,18 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
 	"reasonix/internal/event"
 )
+
+// errUnattendedQuestionNeedsHuman reports that a question reached the end of an
+// unattended run's grace with nobody there to answer it. Only a human may answer
+// such a question, so the run stops instead of waiting forever: the Goal turns
+// this into a reported terminal state (task 109 B4).
+var errUnattendedQuestionNeedsHuman = errors.New("autopilot: a question needs a human decision and nobody answered")
 
 // DefaultAutopilotApprovalGrace is how long an unattended run waits for a human
 // to answer an approval prompt before handing the decision to the reviewer. Long

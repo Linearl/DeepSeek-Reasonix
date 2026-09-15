@@ -562,6 +562,12 @@ func goalPauseFromRunError(err error, unattended bool) (cause, reason string, ok
 			// happened instead of repeating advice that cannot be followed.
 			return stopCauseRecoveryPause, "automatic recovery paused and an unattended run has no user turn to resume it", true
 		}
+		// Task 109 B4: a question only a human may answer ran out of grace. The
+		// run refused to answer it - the safe valve did its job - and this turns
+		// the refusal into a reported terminal state instead of a silent wait.
+		if errors.Is(err, errUnattendedQuestionNeedsHuman) {
+			return stopCauseAskNeedsHuman, "a question needed a human decision and nobody answered within the unattended grace period", true
+		}
 	}
 	info, ok := agent.InspectRunPause(err)
 	if !ok {

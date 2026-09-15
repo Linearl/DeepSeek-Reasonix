@@ -2644,9 +2644,25 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	waitCtx, cancelWait := c.approval.waitContext(ctx)
 	defer cancelWait()
 
+	// Autopilot (task 109 B4): the grace a human gets before an unattended
+	// decision takes over applies to questions too. A question only a human may
+	// answer has no unattended substitute, so waiting for one forever is exactly
+	// the stall this run cannot afford: stop with an explicit failure instead,
+	// which the Goal turns into a reported terminal state.
+	var graceCh <-chan time.Time
+	if c.autopilot && c.autopilotApprovalGrace > 0 {
+		graceTimer := time.NewTimer(c.autopilotApprovalGrace)
+		defer graceTimer.Stop()
+		graceCh = graceTimer.C
+	}
+
 	select {
 	case ans := <-reply:
 		return ans, nil
+	case <-graceCh:
+		c.cancelOwnedPrompt(id)
+		c.emitAutopilotApprovalNotice("ask", "", "stopped: the question needs a human decision")
+		return nil, errUnattendedQuestionNeedsHuman
 	case <-waitCtx.Done():
 		c.cancelOwnedPrompt(id)
 		return nil, waitCtx.Err()
@@ -5956,14 +5972,15 @@ func (c *Controller) requestApprovalDecisionWithOptions(ctx context.Context, too
 			c.cancelOwnedPrompt(id)
 			return decision, nil
 		}
-		// No reviewer available: keep waiting for the human instead of guessing.
-		select {
-		case r := <-reply:
-			return r, nil
-		case <-waitCtx.Done():
-			c.cancelOwnedPrompt(id)
-			return approvalReply{}, waitCtx.Err()
-		}
+		// Task 109 B6: nothing could decide on the absent user's behalf. Waiting
+		// for a human is the safe direction in a session someone is watching,
+		// but an unattended run has nobody to wait for - that inner select would
+		// simply outlive the run. Refuse instead: the model learns why and can
+		// look for another way, the same direction as every other unattended
+		// refusal. Interactive runs keep the plain wait, having no grace at all.
+		c.emitAutopilotApprovalNotice(tool, subject, "refused: no unattended reviewer could decide")
+		c.cancelOwnedPrompt(id)
+		return approvalReply{allow: false}, nil
 	case <-waitCtx.Done():
 		c.cancelOwnedPrompt(id)
 		return approvalReply{}, waitCtx.Err()

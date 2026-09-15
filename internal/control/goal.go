@@ -53,6 +53,11 @@ const (
 	// human could lift (task 109 B5). Interactive runs keep the same pause
 	// without a terminal transition, because their next user turn resumes it.
 	stopCauseRecoveryPause = "recovery_pause"
+	// stopCauseAskNeedsHuman ends an unattended run whose question ran out of
+	// grace with nobody there to answer it (task 109 B4). The safe valve is
+	// intact - the run did not answer - it now reports the failure instead of
+	// hanging on it.
+	stopCauseAskNeedsHuman = "ask_needs_human"
 )
 
 // budgetClassForLegacyMode translates old sidecars and deprecated CLI flags at
