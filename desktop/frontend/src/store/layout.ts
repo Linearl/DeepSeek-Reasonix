@@ -239,6 +239,46 @@ export function saveWorkspacePanelOpen(open: boolean, workspaceRoot = ""): void 
   }
 }
 
+// rightDockMode is remembered per workspace root (task 120): reopening a
+// project restores 文件/改动/概览 instead of always landing on 概览.
+const RIGHT_DOCK_MODE_KEY = "reasonix.rightDockMode";
+
+function rightDockModeStorageKey(workspaceRoot: string): string {
+  return workspaceRoot ? `${RIGHT_DOCK_MODE_KEY}.${workspaceRoot}` : RIGHT_DOCK_MODE_KEY;
+}
+
+const RIGHT_DOCK_MODES: readonly RightDockMode[] = ["context", "files", "changed", "remote"];
+
+function normalizeRightDockMode(raw: string | null): RightDockMode | null {
+  if (!raw) return null;
+  return (RIGHT_DOCK_MODES as readonly string[]).includes(raw) ? (raw as RightDockMode) : null;
+}
+
+export function loadRightDockMode(workspaceRoot: string): RightDockMode {
+  if (typeof window === "undefined") return "context";
+  try {
+    const stored = normalizeRightDockMode(window.localStorage.getItem(rightDockModeStorageKey(workspaceRoot)));
+    if (stored) return stored;
+    // Seed a project from the legacy global key the same way panel-open does.
+    if (workspaceRoot) {
+      const legacy = normalizeRightDockMode(window.localStorage.getItem(RIGHT_DOCK_MODE_KEY));
+      if (legacy) return legacy;
+    }
+    return "context";
+  } catch {
+    return "context";
+  }
+}
+
+export function saveRightDockMode(mode: RightDockMode, workspaceRoot = ""): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(rightDockModeStorageKey(workspaceRoot), mode);
+  } catch {
+    /* ignore storage failures */
+  }
+}
+
 export type LayoutState = {
   sidebarCollapsed: boolean;
   sidebarWidth: number;
@@ -285,7 +325,7 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   workspacePanelOpen: loadWorkspacePanelOpen(""),
   workspacePanelMaximized: false,
   workspacePreviewActive: false,
-  rightDockMode: "context",
+  rightDockMode: loadRightDockMode(""),
   terminalPanelOpen: loadTerminalPanelOpen(),
   terminalHeight: loadTerminalHeight(),
   sidebarTogglePressed: false,
