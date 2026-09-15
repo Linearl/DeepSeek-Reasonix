@@ -338,6 +338,36 @@ const keys = (rows: TranscriptRow[]) => rows.map((row) => row.key).join(",");
 }
 
 {
+  // Task 111: concise is its own tier - the work process stays hidden while the
+  // turn runs (standard keeps live-expanding), a deliberate open survives, and
+  // switching tiers collapses folds the user has not pinned by hand.
+  const running = buildTurnModels(fixture.slice(0, 7), { id: "a2", hasAnswerText: true, hasReasoning: false, reasoningComplete: true }, true);
+  const states = foldSegmentStates(running);
+  const foldKey = states[0].key;
+  eq(defaultFoldOpen(states[0], "concise"), false, "concise keeps a running fold closed");
+  eq(defaultFoldOpen(states[0], "auto"), true, "standard still live-expands while running");
+  eq(defaultFoldOpen({ hasOutsideContent: false, hasRunningWork: true }, "concise"), true, "a fold with nothing outside stays open in concise");
+
+  const seeded = reconcileFoldEntries(EMPTY_FOLDS, states, "concise", false);
+  ok(seeded?.get(foldKey)?.open === false, "concise seeds a running fold closed");
+  eq(reconcileFoldEntries(seeded ?? EMPTY_FOLDS, states, "concise", false), null, "concise steady state reconciles to no change");
+
+  const opened = new Map(seeded ?? EMPTY_FOLDS);
+  opened.set(foldKey, { open: true, userOverridden: true, running: true, keepReasoningExpanded: false });
+  const kept = reconcileFoldEntries(opened, states, "concise", false) ?? opened;
+  ok(kept.get(foldKey)?.open === true && kept.get(foldKey)?.userOverridden === true, "concise respects a deliberate open");
+
+  const fromStandard = reconcileFoldEntries(EMPTY_FOLDS, states, "standard", false) ?? EMPTY_FOLDS;
+  ok(fromStandard.get(foldKey)?.open === true, "standard seeds the same fold open");
+  const switched = reconcileFoldEntries(fromStandard, states, "concise", true);
+  ok(switched?.get(foldKey)?.open === false, "switching to concise collapses the fold");
+
+  const settledStates = foldSegmentStates(buildTurnModels(fixture.slice(0, 7), undefined, false));
+  ok((reconcileFoldEntries(switched ?? EMPTY_FOLDS, settledStates, "concise", false)?.get(foldKey)?.open ?? true) === false, "concise stays collapsed after completion");
+  ok((reconcileFoldEntries(fromStandard, settledStates, "deep", true)?.get(foldKey)?.open ?? false) === true, "deep still pins completed folds open");
+}
+
+{
   // The first answer token completes the reasoning phase but not the active
   // turn. Its row must keep the expanded geometry until turn_done, otherwise
   // the live footer loses the full reasoning height in one commit.

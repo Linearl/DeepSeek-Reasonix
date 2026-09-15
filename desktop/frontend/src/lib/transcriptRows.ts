@@ -317,7 +317,11 @@ export const EMPTY_FOLDS: FoldMap = new Map();
 type ExperienceInput = SessionExperience | ProcessFoldPreference | ResolvedReasoningDisplayMode;
 
 function normalizeExperience(value: ExperienceInput): SessionExperience {
-  return value === "deep" || value === "expanded" ? "deep" : "standard";
+  if (value === "deep" || value === "expanded") return "deep";
+  // Task 111: concise is its own tier and must not fall back to "standard",
+  // whose semantics are "live-expand while the turn runs".
+  if (value === "concise") return "concise";
+  return "standard";
 }
 
 export function defaultFoldOpen(
@@ -325,7 +329,14 @@ export function defaultFoldOpen(
   experience: ExperienceInput,
 ): boolean {
   const normalized = normalizeExperience(experience);
-  return normalized === "deep" || segment.keepReasoningExpanded === true || !segment.hasOutsideContent || segment.foldActive === true || segment.hasRunningWork;
+  if (normalized === "deep" || segment.keepReasoningExpanded === true) return true;
+  // A fold with nothing outside it is the whole turn: keep it open so the turn
+  // never renders as an empty header.
+  if (!segment.hasOutsideContent) return true;
+  // Concise keeps the work process collapsed while the turn runs; the user can
+  // still open it deliberately.
+  if (normalized === "concise") return false;
+  return segment.foldActive === true || segment.hasRunningWork;
 }
 
 export interface FoldSegmentState {
@@ -388,9 +399,13 @@ export function reconcileFoldEntries(
     if (preferenceChanged || reasoningPinChanged) {
       const open = normalizedExperience === "deep" || segment.keepReasoningExpanded
         ? true
-        : !segment.hasRunningWork && segment.hasOutsideContent
-          ? false
-          : entry.open;
+        : normalizedExperience === "concise"
+          // Task 111: switching to concise collapses every fold that has content
+          // outside it, so the whole transcript lands collapsed.
+          ? !segment.hasOutsideContent
+          : !segment.hasRunningWork && segment.hasOutsideContent
+            ? false
+            : entry.open;
       if (open !== entry.open || entry.userOverridden || entry.running !== segment.hasRunningWork || reasoningPinChanged) {
         write(segment.key, {
           open,
@@ -403,9 +418,11 @@ export function reconcileFoldEntries(
     }
     if (segment.hasRunningWork) {
       // A fresh run clears the previous manual toggle; while running the fold
-      // stays open unless the user closed it during THIS run.
+      // stays open unless the user closed it during THIS run. The concise tier
+      // (task 111) inverts the default: the work process stays hidden until the
+      // user opens it on purpose.
       const userOverridden = entry.running ? entry.userOverridden : false;
-      const open = userOverridden ? entry.open : true;
+      const open = userOverridden ? entry.open : normalizedExperience !== "concise";
       if (open !== entry.open || userOverridden !== entry.userOverridden || !entry.running) {
         write(segment.key, { open, userOverridden, running: true, keepReasoningExpanded: segment.keepReasoningExpanded });
       }

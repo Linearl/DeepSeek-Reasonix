@@ -9,7 +9,8 @@ export function getProcessFoldPreference(): ProcessFoldPreference {
   if (typeof localStorage !== "undefined") {
     const experience = localStorage.getItem("reasonix-session-experience");
     if (experience === "deep") return "expanded";
-    if (experience === "standard") return "auto";
+    // Concise behaves like standard here: the work process starts collapsed.
+    if (experience === "standard" || experience === "concise") return "auto";
   }
   if (typeof localStorage === "undefined") return "auto";
   const stored = localStorage.getItem(PROCESS_FOLD_KEY);
