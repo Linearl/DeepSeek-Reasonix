@@ -310,6 +310,11 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	} else {
 		b.WriteString("# max_parallel_writers = 3   # concurrent writers with non-overlapping write_paths\n")
 	}
+	if tier := strings.TrimSpace(c.Agent.ApprovalTier); tier != "" {
+		fmt.Fprintf(&b, "approval_tier = %q   # unattended approval decision-maker: guardian|parent|human\n", tier)
+	} else {
+		b.WriteString("# approval_tier = \"guardian\"   # unattended approval decision-maker: guardian|parent|human\n")
+	}
 	if c.Agent.OutputStyle != "" {
 		fmt.Fprintf(&b, "output_style = %q   # persona/tone folded into the prompt\n", c.Agent.OutputStyle)
 	} else {
