@@ -26,7 +26,8 @@
 | `multi_edit` | false | 对单个文件原子应用多个编辑。 |
 | `notebook_edit` | false | 编辑 Jupyter notebook 的单个 cell。 |
 | `read_file` | true | 按可分页的行号格式读取文本文件。`intent` 声明意图：`inspect`（无范围时的默认，有界预览）、`range`（有 offset/limit 时的默认，指定窗口）、`full`（扫描全文并分页到结尾）。续页时把结果里的 `cursor` 原样传回，由宿主定位到确切的下一位，无需自行计算 offset。无依赖的读取应同轮下发。 |
-| `todo_write` | true | 记录并替换当前工作的结构化任务列表。 |
+| `todo_read` | true | 以 JSON 读取当前结构化任务清单（content、status、step_id、level）。在调用 todo_write 的 `ops` 之前、或此前的 todo_write 已被上下文压缩掉时使用，确保编辑的是真实清单而不是凭记忆猜测。 |
+| `todo_write` | true | 记录并更新当前工作的结构化任务清单。小改动优先用 `ops`（按 step_id 做 replace/insert/delete/move，先调用 todo_read）；只有整体重写才发送完整的 `todos`。用于规划多步工作并展示进度：同一时刻只保留一个 in_progress，并在每项完成的当下就置为 completed（不要攒着一起改）。单步的琐碎任务可跳过。 |
 | `view_image` | true | 按路径读取本地 PNG、JPEG、GIF 或 WebP，通过结构化图片通道交给视觉模型。最大 3 MiB、4000 万像素，沿用读取权限。 |
 | `wait` | true | 等待后台 job 完成并返回最终输出。 |
 | `web_fetch` | true | 通过 HTTP/HTTPS 获取 URL 文本内容。 |

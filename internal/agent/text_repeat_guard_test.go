@@ -90,3 +90,32 @@ func TestTextRepeatMonitorNormalProse(t *testing.T) {
 		}
 	}
 }
+
+// Task 110 follow-up: the thresholds are configurable, so the guard can be
+// raised for prose-heavy work or turned off without patching the binary.
+func TestTextRepeatMonitorOverrides(t *testing.T) {
+	loop := strings.Repeat("same sentence over and over again and again ", 40)
+
+	// A higher threshold keeps a payload the defaults would flag.
+	raised := NewTextRepeatMonitorWith(4, 5000)
+	for i := 0; i < len(loop); i += 16 {
+		end := min(i+16, len(loop))
+		if raised.Append(loop[i:end]) {
+			t.Fatal("a raised threshold must not fire on the default payload")
+		}
+	}
+	// A negative threshold disables detection entirely, including the periodic
+	// (consecutive-block) detector.
+	off := NewTextRepeatMonitorWith(0, -1)
+	for i := 0; i < len(loop); i += 16 {
+		end := min(i+16, len(loop))
+		if off.Append(loop[i:end]) {
+			t.Fatal("a negative threshold must disable the guard")
+		}
+	}
+	// A zero n keeps the default n-gram size instead of disabling detection.
+	zero := NewTextRepeatMonitorWith(0, DefaultTextRepeatThreshold)
+	if zero.n != DefaultTextRepeatN {
+		t.Fatalf("n = %d, want the default %d", zero.n, DefaultTextRepeatN)
+	}
+}

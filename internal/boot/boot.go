@@ -709,16 +709,19 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 
 	// memoryReload regenerates only the memory (# Memory) region of the system
 	// prompt from the latest on-disk memory, keeping the assembled prefix
-	// (base + policies + workspace + environment), the skills index, and the
-	// model persona identical to boot time. The controller invokes it after a
-	// compaction — a low-frequency cache-reset point — so a long-running
+	// (base + policies + workspace + environment), the skills policy block, and
+	// the model persona identical to boot time. The controller invokes it after
+	// a compaction — a low-frequency cache-reset point — so a long-running
 	// session does not keep serving stale memory in its system prefix.
 	var memoryReload = func() string {
 		rebuilt := memory.Compose(sysPromptBase, memory.Load(memory.Options{CWD: root, UserDir: config.MemoryUserDir()}))
-		// Re-apply the skills index and persona onto the freshly composed
-		// memory region, mirroring the boot-time assembly exactly.
+		// Mirror the boot-time assembly exactly: base + memory + skills policy
+		// block + persona. This used to append the skills index instead, which
+		// boot never puts in the system prompt (the catalog travels in the
+		// session-context snapshot), so the first compaction of every session
+		// shifted the provider-visible prefix and dropped the policy block.
 		if implicitSkillInvocation {
-			rebuilt = skill.ApplyIndex(rebuilt, skills)
+			rebuilt += "\n\n" + skill.InvocationPolicyBlock()
 		}
 		return config.ApplyOfficialDeepSeekV4ProPersona(rebuilt, entry)
 	}
@@ -1760,6 +1763,8 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		ReasoningLanguage:            config.ReasoningLanguageForEntry(entry, cfg.ReasoningLanguage()),
 		PlanModeReadOnlyCommands:     cfg.Agent.PlanModeReadOnlyCommands,
 		LegacyAnchorSafetyGate:       cfg.Agent.LegacyAnchorSafetyGate,
+		TextRepeatN:                  cfg.Agent.TextRepeatN,
+		TextRepeatThreshold:          cfg.Agent.TextRepeatThreshold,
 		SubagentDepth:                0,
 		MaxSubagentDepth:             maxSubagentDepth,
 		Autopilot:                    opts.Autopilot,

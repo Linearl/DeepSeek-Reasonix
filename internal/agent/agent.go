@@ -1129,6 +1129,11 @@ type Options struct {
 	// delete_range to the pre-fingerprint full-file fresh-read requirement.
 	// It never enters provider-visible prompts or tool schemas.
 	LegacyAnchorSafetyGate bool
+	// TextRepeatN and TextRepeatThreshold tune the streamed-text repetition
+	// guard (task 110). Zero keeps the defaults; a negative threshold disables
+	// the guard. Like the other internal switches it never enters prompts.
+	TextRepeatN         int
+	TextRepeatThreshold int
 	// ReadPipeline carries the internal read-pipeline rollout switches; both are
 	// off by default, fixed per run, and never enter provider bytes.
 	ReadPipeline ReadPipelineOptions
@@ -1211,6 +1216,8 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 			recentKeep:              opts.RecentKeep,
 			archiveDir:              opts.ArchiveDir,
 			legacyAnchorSafetyGate:  opts.LegacyAnchorSafetyGate,
+			textRepeatN:             opts.TextRepeatN,
+			textRepeatThreshold:     opts.TextRepeatThreshold,
 			readCoordinatorShadow:   !opts.ReadPipeline.LegacyCoordinator,
 			legacyImplicitFullReads: opts.ReadPipeline.LegacyImplicitFullReads,
 		},
@@ -1908,7 +1915,9 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 	var maxArgChars int
 	var lastArgProgress time.Time
 	// Task 110: watch streamed text for loops the tool-level guards cannot see.
-	textRepeat := NewTextRepeatMonitor()
+	// The thresholds come from the config so prose-heavy work can raise them (or
+	// disable the guard) without patching the binary.
+	textRepeat := NewTextRepeatMonitorWith(a.textRepeatN, a.textRepeatThreshold)
 	// collect packages the stream state accumulated so far; stored is the
 	// finishReasoning output that becomes the round-tripped reasoning.
 	collect := func(stored string, err error) streamedTurn {

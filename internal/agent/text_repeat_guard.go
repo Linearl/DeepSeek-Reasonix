@@ -123,11 +123,38 @@ type TextRepeatMonitor struct {
 
 // NewTextRepeatMonitor builds a monitor with the fork defaults.
 func NewTextRepeatMonitor() *TextRepeatMonitor {
+	return NewTextRepeatMonitorWith(DefaultTextRepeatN, DefaultTextRepeatThreshold)
+}
+
+// NewTextRepeatMonitorWith builds a monitor with per-run overrides (task 110).
+// A non-positive n keeps the default; a negative threshold disables detection
+// entirely so a config can turn the guard off for prose-heavy work.
+func NewTextRepeatMonitorWith(n, threshold int) *TextRepeatMonitor {
+	if n <= 0 {
+		n = DefaultTextRepeatN
+	}
+	if threshold == 0 {
+		threshold = DefaultTextRepeatThreshold
+	}
+	minBlock, consecThresh := DefaultTextConsecutiveMinBlock, DefaultTextConsecutiveThreshold
+	if threshold < 0 {
+		minBlock, consecThresh = 0, 0
+	} else {
+		// Raise the periodic detector in step with the n-gram threshold: a
+		// caller who raises the limit for prose-heavy work means "fewer false
+		// positives", and leaving the periodic limit fixed would keep firing on
+		// exactly the repeated-block shapes they raised it for.
+		scale := threshold / DefaultTextRepeatThreshold
+		if scale < 1 {
+			scale = 1
+		}
+		consecThresh = DefaultTextConsecutiveThreshold * scale
+	}
 	return &TextRepeatMonitor{
-		n:            DefaultTextRepeatN,
-		threshold:    DefaultTextRepeatThreshold,
-		minBlock:     DefaultTextConsecutiveMinBlock,
-		consecThresh: DefaultTextConsecutiveThreshold,
+		n:            n,
+		threshold:    threshold,
+		minBlock:     minBlock,
+		consecThresh: consecThresh,
 		minDistinct:  textRepeatMinDistinct,
 	}
 }
