@@ -2,6 +2,12 @@ package event
 
 import "reasonix/internal/nilutil"
 
+// Todo is the flat current-turn todo item used by session projections.
+type Todo struct {
+	Content string `json:"content"`
+	Status  string `json:"status"`
+}
+
 // RuntimeStateSnapshot is a host-only, replaceable observation. It is never a
 // transcript or durable turn record. Running retains the legacy admission gate.
 type RuntimeStateSnapshot struct {
@@ -18,6 +24,7 @@ type RuntimeStateSnapshot struct {
 	Cancellable     bool       `json:"cancellable"`
 	BackgroundJobs  int        `json:"backgroundJobs"`
 	Activity        string     `json:"activity"`
+	Todos           []Todo     `json:"todos,omitempty"`
 }
 
 func (s RuntimeStateSnapshot) ActiveWork() bool {

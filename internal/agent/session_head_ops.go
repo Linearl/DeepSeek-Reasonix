@@ -168,6 +168,28 @@ func replayDAGForHeadOp(path string) (*sessionDAGState, error) {
 	return st, nil
 }
 
+// LoadSessionHeadForMigration materializes one frozen legacy head for v4 import
+// without applying interactive history budgets.
+func LoadSessionHeadForMigration(ctx context.Context, path, headID string) (*Session, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	st, err := replaySessionDAG(ctx, store.SessionEventLog(path), defaultSessionReplayLimits)
+	if err != nil {
+		return nil, err
+	}
+	if st.damaged {
+		return nil, fmt.Errorf("legacy session has an incomplete tail and is read-only")
+	}
+	head := st.heads[headID]
+	if head == nil || head.retired {
+		return nil, fmt.Errorf("load head %s: %w", headID, ErrSessionHeadUnknown)
+	}
+	s := NewSession("")
+	s.adoptHead(st, headID, path)
+	return s, nil
+}
+
 // appendHeadEntries lands marker entries, folds them into st, and refreshes
 // the head index and meta mirror so listings see the change at once.
 func appendHeadEntries(path string, st *sessionDAGState, entries []sessionDAGEntry) error {

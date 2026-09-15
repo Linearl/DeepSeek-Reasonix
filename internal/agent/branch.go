@@ -37,6 +37,7 @@ type BranchMeta struct {
 	TopicTitle       string    `json:"topic_title,omitempty"`
 	CustomTitle      string    `json:"custom_title,omitempty"`
 	Model            string    `json:"model,omitempty"`
+	ModelIdentity    string    `json:"model_identity,omitempty"`
 	// TokenMode and AgentPreset are deprecated dual-write fields derived from
 	// QualityFloor; delivery writes "delivery", standard writes "full"/"".
 	TokenMode   string `json:"token_mode,omitempty"`
@@ -691,6 +692,30 @@ func SetBranchModelPreserveUpdated(sessionPath, model string) error {
 		return err
 	}
 	meta.Model = strings.TrimSpace(model)
+	return saveBranchMeta(sessionPath, meta, false)
+}
+
+// SetBranchModelSelectionPreserveUpdated stores model and identity without
+// changing the session activity timestamp.
+func SetBranchModelSelectionPreserveUpdated(sessionPath, model, identity string) error {
+	if sessionPath == "" {
+		return fmt.Errorf("empty session path")
+	}
+	unlock, err := LockSessionMetaPath(sessionPath)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	meta, err := ensureBranchMetaUnlocked(sessionPath)
+	if err != nil {
+		return err
+	}
+	model = strings.TrimSpace(model)
+	if meta.Model != model {
+		meta.ModelIdentity = ""
+	}
+	meta.Model = model
+	meta.ModelIdentity = strings.TrimSpace(identity)
 	return saveBranchMeta(sessionPath, meta, false)
 }
 

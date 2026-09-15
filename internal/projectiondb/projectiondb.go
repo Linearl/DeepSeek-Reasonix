@@ -72,6 +72,8 @@ type OpenOptions struct {
 	// RetainBackup keeps the previous database at its generated .replaced-
 	// timestamp path so disposable projections can offer a rollback point.
 	RetainBackup bool
+	// QuickCheck uses SQLite's bounded quick_check for disposable projections.
+	QuickCheck bool
 }
 
 type Handle struct {
@@ -249,7 +251,11 @@ func open(ctx context.Context, opts OpenOptions, mode Mode) (*sql.DB, error) {
 		_, _ = db.ExecContext(ctx, `PRAGMA auto_vacuum=INCREMENTAL`)
 	}
 	var integrity string
-	if err := db.QueryRowContext(ctx, `PRAGMA integrity_check`).Scan(&integrity); err != nil {
+	integritySQL := `PRAGMA integrity_check`
+	if opts.QuickCheck {
+		integritySQL = `PRAGMA quick_check`
+	}
+	if err := db.QueryRowContext(ctx, integritySQL).Scan(&integrity); err != nil {
 		return fail(err)
 	}
 	if integrity != "ok" {
