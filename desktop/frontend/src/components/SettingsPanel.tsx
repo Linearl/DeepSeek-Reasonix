@@ -25,6 +25,8 @@ import { ShellInterpreterFields } from "./SettingsShellSupport";
 import { CHANNEL_ICONS } from "./channelIcons";
 import { botAccessEntryCount, botAccessReady, botConnectionCredentialSummary, botConnectionLabel, botConnectionScopeLabel, botConnectionSecretEnv, botConnectionSecretPatch, botInstallTargetForConnection, botInstallTargetMatchesConnection, botTargetHint, botTargetLabel, diagnosticMessage, diagnosticReportDetail, firstConnectionRemote, formatInstallTimeLeft, formatInstallUserCode, qqBotAdded, type BotInstallTarget, type BotOfficialInstallTarget } from "./botConnectionSettings";
 import { app, COMPACT_RATIO_MAX_PERCENT, COMPACT_RATIO_MIN_PERCENT, onRuntimeRebuilt, openExternal } from "../lib/bridge";
+import { setSessionMonitorEnabled } from "../lib/sessionMonitor";
+import { setSplitViewEnabled } from "../lib/splitView";
 import { normalizeLangPref, useI18n, type DictKey, type LangPref } from "../lib/i18n";
 import { createLatestRequestGate, mergedFetchedProviderModels, mergeProviderModelContextWindows, providerApiKeyEnvForSave, providerDefaultModel, providerIsConfigured, providerModelCandidates, providerModelContextWindowDrafts, providerRequiresKey, reconcileManualModels } from "../lib/providerModels";
 import { cachedFetchProviderModelCatalog, cachedFetchProviderModels, invalidateProviderCacheByAPIKeyEnv, providerDiscoveryIdentity, shouldSkipAutoRefresh } from "../lib/providerModelCache";
@@ -1690,7 +1692,12 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
               key={String(on)}
               className={`set-seg__btn${Boolean(s.experimentalSessionMonitor) === on ? " set-seg__btn--on" : ""}`}
               disabled={busy}
-              onClick={() => void apply(() => app.SetExperimentalSessionMonitor(on))}
+              onClick={() => void apply(async () => {
+                await app.SetExperimentalSessionMonitor(on);
+                // Apply locally too: the rail entry must appear without waiting for the
+                // next startup sync (the write and the read are separate round trips).
+                setSessionMonitorEnabled(on);
+              })}
             >
               {t(on ? "settings.sessionMonitor.on" : "settings.sessionMonitor.off")}
             </button>
@@ -1704,7 +1711,10 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
               key={String(on)}
               className={`set-seg__btn${Boolean(s.experimentalSplitView) === on ? " set-seg__btn--on" : ""}`}
               disabled={busy}
-              onClick={() => void apply(() => app.SetExperimentalSplitView(on))}
+              onClick={() => void apply(async () => {
+                await app.SetExperimentalSplitView(on);
+                setSplitViewEnabled(on);
+              })}
             >
               {t(on ? "settings.splitView.on" : "settings.splitView.off")}
             </button>

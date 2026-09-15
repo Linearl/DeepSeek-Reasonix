@@ -100,3 +100,29 @@ export function onSplitViewEnabledChange(cb: (enabled: boolean) => void): () => 
   splitViewEnabledListeners.add(cb);
   return () => splitViewEnabledListeners.delete(cb);
 }
+
+// ── secondary pane title (task 70-5) ─────────────────────────────────────────
+// The topicbar lives deep under the shell and does not receive the split state, so
+// the pane title travels through this store instead of through props: App publishes
+// the secondary tab's title, the topicbar renders it next to the primary one.
+export type SplitPaneTitle = { text: string; hover: string };
+
+let splitPaneTitle: SplitPaneTitle | null = null;
+const splitPaneTitleListeners = new Set<(title: SplitPaneTitle | null) => void>();
+
+export function getSplitPaneTitle(): SplitPaneTitle | null {
+  return splitPaneTitle;
+}
+
+export function setSplitPaneTitle(next: SplitPaneTitle | null): void {
+  const same = splitPaneTitle === next
+    || (splitPaneTitle != null && next != null && splitPaneTitle.text === next.text && splitPaneTitle.hover === next.hover);
+  if (same) return;
+  splitPaneTitle = next;
+  for (const listener of splitPaneTitleListeners) listener(next);
+}
+
+export function onSplitPaneTitleChange(cb: (title: SplitPaneTitle | null) => void): () => void {
+  splitPaneTitleListeners.add(cb);
+  return () => splitPaneTitleListeners.delete(cb);
+}

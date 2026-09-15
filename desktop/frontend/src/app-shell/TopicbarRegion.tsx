@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { getSplitPaneTitle, onSplitPaneTitleChange } from "../lib/splitView";
 import type { ReactNode } from "react";
 import { PanelLeft } from "lucide-react";
 import { Tooltip } from "../components/Tooltip";
@@ -31,6 +33,10 @@ export function TopicbarRegion({ view, commands, children }: {
   view: TopicbarView; commands: Commands; children: ReactNode;
 }) {
   const { sidebar, title, subtitle } = view;
+  // Task 70-5: with a split open the secondary pane gets its own title beside the
+  // primary one (published by App through the split store).
+  const [splitTitle, setSplitTitleState] = useState(getSplitPaneTitle());
+  useEffect(() => onSplitPaneTitleChange(setSplitTitleState), []);
   return <header className="topicbar">
     {view.automationReturn && <button className="btn btn--small" type="button" onClick={event => {
       event.currentTarget.focus({ preventScroll: true });
@@ -63,6 +69,11 @@ export function TopicbarRegion({ view, commands, children }: {
           </button>
         </h1> : <h1 title={title.hover}>{title.text}</h1>}
         {title.workspaceLabel && <span className="topicbar__workspace-label" title={title.workspaceLabel}>{title.workspaceLabel}</span>}
+        {splitTitle && (
+          <span className="topicbar__split-title" title={splitTitle.hover} aria-label={splitTitle.hover}>
+            {splitTitle.text}
+          </span>
+        )}
       </div>
       {subtitle.visible && <div className="topicbar__subtitle" title={subtitle.title}>
         {subtitle.worktreeTabId && <WorktreeBadge size={11} />}

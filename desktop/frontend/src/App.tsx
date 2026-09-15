@@ -42,7 +42,8 @@ import { useActiveRemoteSession } from "./lib/useRemoteSession";
 import { publishNavigationIntent } from "./lib/useNavigationIntentFence";
 import { useController, type Item } from "./lib/useController";
 import { setSessionMonitorEnabled } from "./lib/sessionMonitor";
-import { setSplitViewEnabled } from "./lib/splitView";
+import { setSplitPaneTitle, setSplitViewEnabled } from "./lib/splitView";
+import { reportFrontendLog } from "./lib/frontendLog";
 import { app, onEvent, onReady, onRemoteForwards, onRemoteServer, onRemoteStatus, onRuntimeRebuilt, openExternal } from "./lib/bridge";
 import { useConfigLoadWarnings } from "./lib/useConfigLoadWarnings";
 import { generativeMusic, isGenerativeMusicEnabled } from "./lib/generative-music";
@@ -628,6 +629,15 @@ export default function App() {
   // Split view (task 70). Closed by default: while secondaryTabId is null the layout
   // renders exactly one transcript, byte-for-byte as before.
   const [splitState, setSplitState] = useState<SplitState>(loadSplitState);
+  // Task 70-5: the topicbar shows one title per pane. The secondary pane's title
+  // travels through the split store (the topicbar sits under the shell and does not
+  // receive the split state).
+  useEffect(() => {
+    const secondaryId = splitState.secondaryTabId;
+    const meta = secondaryId ? tabMetas.find((tab) => tab.id === secondaryId) : undefined;
+    const text = (meta?.topicTitle ?? "").trim();
+    setSplitPaneTitle(text ? { text, hover: text } : null);
+  }, [splitState.secondaryTabId, tabMetas]);
   const splitTabId = splitState.secondaryTabId;
   // Which pane the composer targets while a split is open (task 70, B). It defaults
   // to the primary pane, matching focusedPane's default.
@@ -1099,6 +1109,9 @@ export default function App() {
       setSessionMonitorEnabled(Boolean(settings.experimentalSessionMonitor));
       // Task 70-1: the split stays hidden unless this experiment switch is on.
       setSplitViewEnabled(Boolean(settings.experimentalSplitView));
+      // One line per startup so a missing rail entry can be traced from desktop.log
+      // instead of guessed at (the switches read back correctly in config.toml).
+      reportFrontendLog("desktop-prefs", "experiment flags", `restartUpdate=${Boolean(settings.experimentalRestartUpdate)} sessionMonitor=${Boolean(settings.experimentalSessionMonitor)} splitView=${Boolean(settings.experimentalSplitView)}`);
       setStartupUpdateChecksEnabled(settings.checkUpdates !== false);
       setStatusBarStyle(settings.statusBarStyle === "text" ? "text" : "icon");
       setQuickCommands(settings.quickCommands ?? []);
