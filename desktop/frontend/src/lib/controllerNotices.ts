@@ -36,6 +36,7 @@ const noticeCodeKeys: Record<string, DictKey> = {
   session_concurrent_writer: "recovery.noticeConcurrentWriter",
   session_head_switched: "recovery.noticeHeadSwitched",
   session_head_selected: "recovery.noticeHeadSelected",
+  session_also_open: "recovery.noticeAlsoOpen",
   decision_receipt: "notice.decisionReceiptTitle",
   context_editing_fallback: "notice.contextEditingFallback",
   turn_stalled: "notice.turnStalled",

@@ -3549,13 +3549,13 @@ func (c *Controller) Resume(s *agent.Session, path string) {
 	// Task 67: another Reasonix instance holds this session's write lease.
 	// Saving still uses last-writer-wins + recovery fork by design; surfacing
 	// the fact up front prevents the later "unmerged session version" surprise.
+	// Both sides of a dual-open see this: the resuming instance here, and the
+	// original holder on its next save via HeadEventForkedConcurrent.
 	if path != "" && agent.SessionLeaseHeldByOtherRuntime(path) {
-		c.sink.Emit(event.Event{
-			Kind:  event.Notice,
-			Level: event.LevelWarn,
-			Text:  "This session is also open in another Reasonix instance. Both may save; conflicts will fork a recovery copy.",
-			Detail: path,
-		})
+		notice := sessionRecoveryNotice(event.NoticeCodeSessionAlsoOpen,
+			"This session is also open in another Reasonix instance. Both may save; conflicts will fork a recovery copy.")
+		notice.Detail = path
+		c.sink.Emit(notice)
 	}
 	// session.load: Resume has no failure channel, so the session_policy
 	// strategy is advisory this stage — a required-class failure is surfaced

@@ -1442,6 +1442,7 @@ export const en = {
   "recovery.cleanupResult": "Moved {moved}; busy {busy}; kept {kept}.",
   "recovery.previewCleanup": "Review safe cleanup",
   "recovery.noticeConcurrentWriter": "Another Reasonix window or process added to this conversation. Its content is kept as a separate version; use View versions to switch.",
+  "recovery.noticeAlsoOpen": "This session is also open in another Reasonix instance. Both may save; conflicts will fork a recovery copy.",
   "recovery.noticeHeadSwitched": "Opened the newest version of this conversation. Other saved versions are available in View versions.",
   "recovery.noticeHeadSelected": "This version is now the current version of the conversation.",
   "recovery.headsSummary": "{branches} versions of this conversation",

@@ -2230,6 +2230,7 @@ func TestSessionRecoveryNoticesAreOperatorScoped(t *testing.T) {
 		event.NoticeCodeSessionRecoveryAdoptedCovered,
 		event.NoticeCodeSessionRecoveryDepthCap,
 		event.NoticeCodeSessionShutdownRecoveryForked,
+		event.NoticeCodeSessionAlsoOpen,
 	} {
 		notice := sessionRecoveryNotice(code, "maintenance")
 		if notice.Kind != event.Notice || notice.Level != event.LevelWarn ||
