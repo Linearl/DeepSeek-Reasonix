@@ -74,4 +74,90 @@ wails build -clean -platform windows/amd64 -nsis -webview2 embed -ldflags "-X ma
 echo "==> [3/3] artifacts"
 ls -la build/bin/ | grep -Ei "installer|reasonix-desktop"
 echo "    (previous builds archived under desktop/build/bin-old/)"
+
+# --- stage for RestartAndUpdate (task 81) ---
+# The experimental "restart and update" button reads InstallRoot/staging/
+# (4 binaries). A local build only produces build/bin + installer helpers,
+# so copy them into the staging directory when an InstallRoot can be found.
+#
+# InstallRoot detection order:
+#   1. REASONIX_INSTALL_ROOT env var (explicit override)
+#   2. Walk up from the running desktop exe (if any) looking for current.json
+#   3. Common install locations that contain current.json
+#
+# If no versioned InstallRoot is found, the desktop cannot use RestartAndUpdate
+# anyway (it requires a versioned layout with current.json), so we only print
+# the path and do not fail the build.
+BIN="$ROOT/desktop/build/bin"
+STAGE_MEMBERS=(
+  "reasonix-desktop.exe:$BIN/reasonix-desktop.exe"
+  "reasonix-cli.exe:$INS/reasonix-cli.exe"
+  "reasonix-update-helper.exe:$INS/reasonix-update-helper.exe"
+  "reasonix-launcher.exe:$INS/reasonix-launcher.exe"
+)
+
+detect_install_root() {
+  # 1) explicit override
+  if [ -n "${REASONIX_INSTALL_ROOT:-}" ]; then
+    echo "$REASONIX_INSTALL_ROOT"
+    return 0
+  fi
+  # 2) walk up from running desktop process
+  local exe=""
+  if command -v powershell >/dev/null 2>&1; then
+    exe=$(powershell -NoProfile -Command "(Get-Process reasonix-desktop -ErrorAction SilentlyContinue | Select-Object -First 1).Path" 2>/dev/null | tr -d '\r' | head -1)
+  fi
+  if [ -n "$exe" ] && [ -f "$exe" ]; then
+    local d
+    d=$(dirname "$exe")
+    while [ "$d" != "/" ] && [ "$d" != "." ]; do
+      if [ -f "$d/current.json" ]; then
+        echo "$d"
+        return 0
+      fi
+      d=$(dirname "$d")
+    done
+  fi
+  # 3) common locations
+  local cand
+  for cand in \
+    "${LOCALAPPDATA:-$HOME/AppData/Local}/Reasonix" \
+    "${PROGRAMFILES:-C:/Program Files}/Reasonix" \
+    "${PROGRAMFILES:-C:/Program Files}/Reasonix Studio" \
+    "${PROGRAMFILES_X86:-C:/Program Files (x86)}/Reasonix"
+  do
+    if [ -f "$cand/current.json" ]; then
+      echo "$cand"
+      return 0
+    fi
+  done
+  return 1
+}
+
+STAGING_DIR=""
+if INSTALL_ROOT=$(detect_install_root); then
+  STAGING_DIR="$INSTALL_ROOT/staging"
+  mkdir -p "$STAGING_DIR"
+  echo "==> staging for RestartAndUpdate -> $STAGING_DIR"
+  for entry in "${STAGE_MEMBERS[@]}"; do
+    name="${entry%%:*}"
+    src="${entry#*:}"
+    if [ -f "$src" ]; then
+      cp -f "$src" "$STAGING_DIR/$name"
+      echo "    staged $name"
+    else
+      echo "    WARN missing $src (skip $name)" >&2
+    fi
+  done
+  echo "    RestartAndUpdate can now publish from: $STAGING_DIR"
+else
+  echo "==> no versioned InstallRoot found (no current.json)."
+  echo "    RestartAndUpdate requires a versioned install. To enable it:"
+  echo "    1. Install the NSIS installer (or set REASONIX_INSTALL_ROOT)"
+  echo "    2. Re-run this script so binaries are copied to <InstallRoot>/staging/"
+fi
+
 echo "DONE: desktop/build/bin/reasonix-desktop-amd64-installer.exe (v$VER)"
+if [ -n "$STAGING_DIR" ]; then
+  echo "STAGED: $STAGING_DIR (v$VER) — open Settings → Experimental → enable restart-and-update"
+fi
