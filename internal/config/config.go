@@ -509,6 +509,23 @@ func (c *Config) DefaultSubagentPolicy() string {
 	}
 }
 
+// DefaultApprovalTier returns the normalised unattended-approval decision
+// tier. Empty or invalid values keep guardian so a typo never becomes
+// parent self-approval.
+func (c *Config) DefaultApprovalTier() string {
+	if c == nil {
+		return "guardian"
+	}
+	switch strings.ToLower(strings.TrimSpace(c.Agent.ApprovalTier)) {
+	case "parent":
+		return "parent"
+	case "human":
+		return "human"
+	default:
+		return "guardian"
+	}
+}
+
 // DesktopStatusBarStyle normalizes the desktop status bar metric label style.
 // Unmigrated configurations adopt icon labels once; later choices are preserved.
 func (c *Config) DesktopStatusBarStyle() string {
@@ -1337,6 +1354,10 @@ type AgentConfig struct {
 	// Empty/"light" keeps the conservative default. Backward compatible — old
 	// builds ignore the key.
 	SubagentPolicy string `toml:"subagent_policy"`
+	// ApprovalTier selects who decides reversible unattended approvals
+	// (task 52): guardian (default) | parent | human. High-risk approvals
+	// always refuse. Empty keeps guardian.
+	ApprovalTier string `toml:"approval_tier"`
 	// MaxParallelWriters bounds concurrent writer-capable sub-agents that
 	// declare non-overlapping write_paths. 0 means the default (3). Must not
 	// exceed MaxSubagentConcurrency after normalization.

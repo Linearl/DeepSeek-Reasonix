@@ -58,6 +58,7 @@ func (*FleetTool) Schema() json.RawMessage {
         "description":{"type":"string","description":"Optional short label shown in the job list."},
         "profile":{"type":"string","description":"Optional runAs=subagent profile name."},
         "write_paths":{"type":"array","items":{"type":"string"},"description":"Write targets for this item. Writers that can run at the same time must declare non-overlapping paths; writers ordered by depends_on may share them. When the concrete targets are known, prefer individual file paths over whole directories so unrelated files under the same directory do not collide. Omitting write_paths claims the whole workspace; two concurrent whole-workspace claims (or any overlap between concurrent writers) fail preflight and start nothing."},
+        "worktree_root":{"type":"string","description":"Optional absolute or workspace-relative path of the Git worktree this task edits. Concurrent tasks that declare worktree roots in the same repository are preflight-checked for overlapping changed files (merge conflicts) before anything starts."},
         "read_only":{"type":"boolean","description":"Force the read-only registry even if the profile is writable."},
         "tools":{"type":"array","items":{"type":"string"},"description":"Optional tool whitelist (intersected with profile allowed-tools)."},
         "max_steps":{"type":"integer","description":"Optional max tool-call rounds.","minimum":1},
@@ -83,11 +84,16 @@ type fleetTaskItem struct {
 	Description string   `json:"description"`
 	Profile     string   `json:"profile"`
 	WritePaths  []string `json:"write_paths"`
-	ReadOnly    bool     `json:"read_only"`
-	Tools       []string `json:"tools"`
-	MaxSteps    int      `json:"max_steps"`
-	Model       string   `json:"model"`
-	Effort      string   `json:"effort"`
+	// WorktreeRoot optionally names a Git worktree this task will edit. When
+	// two concurrent tasks declare worktree roots in the same repository,
+	// preflight intersects their changed files against the merge base and
+	// refuses the pair if both touch the same paths (task 52).
+	WorktreeRoot string   `json:"worktree_root"`
+	ReadOnly     bool     `json:"read_only"`
+	Tools        []string `json:"tools"`
+	MaxSteps     int      `json:"max_steps"`
+	Model        string   `json:"model"`
+	Effort       string   `json:"effort"`
 }
 
 type fleetItemStatus string
@@ -212,6 +218,9 @@ func (f *FleetTool) Execute(ctx context.Context, args json.RawMessage) (result s
 		return "", fmt.Errorf("fleet preflight: %w", err)
 	}
 	if err := plan.validateConcurrentWriteClaims(claims); err != nil {
+		return "", fmt.Errorf("fleet preflight: %w", err)
+	}
+	if err := plan.validateConcurrentWorktreeConflicts(ctx, params.Tasks); err != nil {
 		return "", fmt.Errorf("fleet preflight: %w", err)
 	}
 

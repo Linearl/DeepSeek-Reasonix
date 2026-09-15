@@ -126,6 +126,9 @@ type Controller struct {
 	// autopilotApprovalGrace is how long an unattended run waits for a human on an
 	// approval prompt before the reviewer decides instead (A5).
 	autopilotApprovalGrace time.Duration
+	// approvalTier is the normalized decision-maker for reversible unattended
+	// approvals (task 52): guardian | parent | human.
+	approvalTier string
 	// autopilotAskWait is how long an unattended run waits for a human on a
 	// high-risk question before stopping (task 109 B4). 0 uses the default.
 	autopilotAskWait time.Duration
@@ -524,6 +527,11 @@ type Options struct {
 	// high-risk question before it stops with a terminal failure. Zero uses
 	// DefaultAutopilotAskWait; tests set it short to exercise that path.
 	AutopilotAskWait time.Duration
+	// ApprovalTier selects who decides reversible unattended approvals
+	// (task 52): "guardian" (default, A5), "parent" (parent session
+	// self-approves low-risk with an audit notice), or "human" (never
+	// auto-decide). High-risk approvals always refuse on every tier.
+	ApprovalTier string
 	// GoalEvaluator is the optional bounded Goal completion evaluator consulted
 	// when the working model submits no update_goal report. nil fails closed:
 	// the goal pauses instead of defaulting to continue.
@@ -741,6 +749,7 @@ func New(opts Options) *Controller {
 		goalTokenBudget:                   opts.GoalTokenBudget,
 		autopilot:                         opts.Autopilot && opts.AutopilotMaxRuntime > 0,
 		autopilotApprovalGrace:            autopilotApprovalGrace(opts),
+		approvalTier:                      NormalizeApprovalTier(opts.ApprovalTier),
 		autopilotAskWait:                  opts.AutopilotAskWait,
 		goals: goalMachine{
 			tokenBudget: opts.GoalTokenBudget,
