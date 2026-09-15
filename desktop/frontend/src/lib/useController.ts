@@ -45,6 +45,7 @@ import { upsertReadPause } from "./readPause";
 import { applyHydrateErrorState, hydratePlaceholderItems as resolveHydratePlaceholders } from "./hydrateErrorState";
 import { isHostRecoveryGuidance } from "./hostRecoverySteer";
 import { activeTabHydrationPlan, canAdoptUnboundLiveSurface, duplicateLiveItemIds, hasReusableCachedTranscript, hydratedHistoryApplyMode, sameSessionHydrateIdentity, sameSessionPlaceholderItems, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
+import { loadLastActiveTabId, saveLastActiveTabId } from "./layoutPreferences";
 import { hydrateIdentityCurrent } from "./sessionIdentity";
 import { historyPageRequestBudget } from "./historyPaging";
 import { createUniqueItemIDAllocator } from "./historyItemIds";
@@ -2554,6 +2555,11 @@ export function useController() {
   const [activeTabId, setActiveTabId] = useState<string | undefined>();
   const runtimeState = useRuntimeSession(activeTabId);
   const activeTabIdRef = useRef<string | undefined>(undefined);
+  // Task 126: mirror the visible tab so a later frontend remount can recover it
+  // even when the backend ListTabs snapshot still has no active flag.
+  useEffect(() => {
+    if (activeTabId) saveLastActiveTabId(activeTabId);
+  }, [activeTabId]);
   // Invalidates async navigation completions even for ABA switches where the
   // visible tab ID eventually returns to the original value.
   const activeNavigationSeqRef = useRef(0);
@@ -3359,7 +3365,23 @@ export function useController() {
   const activeTabFromBackend = useCallback(async (): Promise<TabMeta | undefined> => {
     const tabs = asArray(await app.ListTabs().catch(() => [] as TabMeta[]));
     for (const tab of tabs) listedSessionIdentityByTabRef.current.set(tab.id, tab);
-    return tabs.find((tab) => tab.active) ?? tabs[0];
+    const backendActive = tabs.find((tab) => tab.active);
+    if (backendActive) {
+      saveLastActiveTabId(backendActive.id);
+      return backendActive;
+    }
+    // Startup race: ListTabs can run before restoreOrBuildTabs publishes
+    // activeTabID, leaving every tab.active false. Prefer the frontend-mirrored
+    // last-active id over falling back to tabs[0] (task 126).
+    const remembered = loadLastActiveTabId();
+    if (remembered) {
+      const match = tabs.find((tab) => tab.id === remembered);
+      if (match) {
+        void app.SetActiveTab(match.id).catch(() => undefined);
+        return { ...match, active: true };
+      }
+    }
+    return tabs[0];
   }, []);
 
   // snapshotAt is the promptEventClock() reading taken after the backend call
