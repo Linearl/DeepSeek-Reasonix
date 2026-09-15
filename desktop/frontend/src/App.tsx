@@ -5060,6 +5060,16 @@ export default function App() {
                       closeTransientOverlays();
                       setWorkspacePanelMaximized((value) => !value);
                     }}
+                    onWidthPreset={(percent) => {
+                      closeTransientOverlays();
+                      const next = rightDockTreeWidthClamp(
+                        Math.round(workspacePanelAvailableWidth * (percent / 100)),
+                        workspacePanelAvailableWidth,
+                      );
+                      setRightDockTreeWidth(next);
+                      saveRightDockTreeWidth(next);
+                      if (workspacePanelMaximized) setWorkspacePanelMaximized(false);
+                    }}
                     onPreviewModeChange={handleWorkspacePreviewModeChange}
                     onAddToChat={addWorkspaceTextToComposer}
                     onAddCodeToChat={addWorkspaceCodeToComposer}

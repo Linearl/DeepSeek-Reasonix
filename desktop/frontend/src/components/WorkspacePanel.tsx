@@ -127,6 +127,7 @@ export function WorkspacePanel({
   panelWidth,
   onClose,
   onToggleMaximized,
+  onWidthPreset,
   onPreviewModeChange,
   onAddToChat,
   onAddCodeToChat,
@@ -161,6 +162,8 @@ export function WorkspacePanel({
   panelWidth?: number;
   onClose: () => void;
   onToggleMaximized: () => void;
+  /** Task 119: right-click on maximize offers 40/50/60% width presets. */
+  onWidthPreset?: (percent: 40 | 50 | 60) => void;
   onPreviewModeChange?: (active: boolean) => void;
   onAddToChat?: (text: string) => void;
   onAddCodeToChat?: (path: string, code: string) => void;
@@ -189,6 +192,7 @@ export function WorkspacePanel({
   qualityFloor?: "standard" | "delivery";
 }) {
   const t = useT();
+  const [widthMenuPoint, setWidthMenuPoint] = useState<ContextMenuPoint | null>(null);
   const workspaceTabId = tabId ?? "";
   const activeVerificationRevealRequest = verificationRevealRequest?.tabId === workspaceTabId
     && verificationRevealRequest.turnStartAt === turnStartAt
@@ -1571,7 +1575,15 @@ export function WorkspacePanel({
               </Tooltip>
             )}
             <Tooltip label={maximized ? t("workspace.restore") : t("workspace.maximize")}>
-              <button className="workspace-iconbtn" onClick={onToggleMaximized}>
+              <button
+                className="workspace-iconbtn"
+                onClick={onToggleMaximized}
+                onContextMenu={(event) => {
+                  if (!onWidthPreset) return;
+                  event.preventDefault();
+                  setWidthMenuPoint(contextMenuPointFromEvent(event));
+                }}
+              >
                 {maximized ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
               </button>
             </Tooltip>
@@ -1626,6 +1638,24 @@ export function WorkspacePanel({
               ))}
             </div>
           </AnchoredPopover>
+          <ContextMenu
+            open={Boolean(widthMenuPoint) && Boolean(onWidthPreset)}
+            point={widthMenuPoint}
+            onClose={() => setWidthMenuPoint(null)}
+            ariaLabel={t("workspace.widthPresets")}
+            minWidth={160}
+            items={((): ContextMenuItem[] => {
+              if (!onWidthPreset) return [];
+              return ([40, 50, 60] as const).map((percent) => ({
+                key: `width-${percent}`,
+                label: t(`workspace.widthPreset${percent}` as "workspace.widthPreset40"),
+                onSelect: () => {
+                  onWidthPreset(percent);
+                  setWidthMenuPoint(null);
+                },
+              }));
+            })()}
+          />
         </header>
 
         <div
