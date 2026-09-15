@@ -79,7 +79,9 @@ func parseCustomAgentMarkdown(raw, path string) (CustomAgentDefinition, bool) {
 		name = strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	}
 	mode := strings.ToLower(strings.TrimSpace(fm["mode"]))
-	if mode == "" {
+	// Only the two dispatch modes are meaningful; a typo falls back to primary
+	// instead of becoming a third, unroutable mode.
+	if mode != "subagent" {
 		mode = "primary"
 	}
 	return CustomAgentDefinition{

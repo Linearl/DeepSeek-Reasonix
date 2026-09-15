@@ -44,3 +44,19 @@ func TestLoadCustomAgentsMissingDir(t *testing.T) {
 		t.Fatalf("missing dir should be empty, defs=%v err=%v", defs, err)
 	}
 }
+
+// A typo in mode must not become a third, unroutable dispatch mode.
+func TestLoadCustomAgentsFallsBackToPrimaryMode(t *testing.T) {
+	dir := t.TempDir()
+	md := "---\nname: typo\nmode: Sub-Agent\n---\nbody\n"
+	if err := os.WriteFile(filepath.Join(dir, "typo.md"), []byte(md), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	defs, err := LoadCustomAgents(dir)
+	if err != nil || len(defs) != 1 {
+		t.Fatalf("defs=%v err=%v", defs, err)
+	}
+	if defs[0].Mode != "primary" {
+		t.Fatalf("mode = %q, want primary for an unrecognized value", defs[0].Mode)
+	}
+}
