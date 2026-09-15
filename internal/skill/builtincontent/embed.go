@@ -14,6 +14,9 @@ import (
 )
 
 //go:embed reasonix-guide/SKILL.md
+//go:embed deep-research/SKILL.md
+//go:embed data-analytics/SKILL.md
+//go:embed memory-search/SKILL.md
 var files embed.FS
 
 // SkillMarkdown is one embedded skill file after frontmatter split.
@@ -33,7 +36,9 @@ func LoadReasonixGuide() (SkillMarkdown, error) {
 	return loadSkill("reasonix-guide/SKILL.md")
 }
 
-// All loads every embedded SKILL.md under this package (currently one).
+// All loads every embedded SKILL.md under this package: the reasonix guide plus
+// the playbooks that ship with the binary (deep-research, data-analytics,
+// memory-search). A user installs nothing for these to be available.
 func All() ([]SkillMarkdown, error) {
 	var out []SkillMarkdown
 	err := fs.WalkDir(files, ".", func(p string, d fs.DirEntry, err error) error {
