@@ -476,8 +476,8 @@ func TestChildMaxStepsSharedDefault(t *testing.T) {
 		want      int
 	}{
 		{"explicit request wins", 30, 7, 7},
-		{"finite parent halves", 30, 0, 15},
-		{"half is floored at 5", 8, 0, 5},
+		{"finite parent two-thirds", 30, 0, 20},
+		{"two-thirds floored at 12", 8, 0, 12},
 		{"unbounded parent stays unbounded", 0, 0, 0},
 	}
 	for _, tc := range cases {
@@ -487,6 +487,18 @@ func TestChildMaxStepsSharedDefault(t *testing.T) {
 				t.Fatalf("childMaxSteps(parent=%d, requested=%d) = %d, want %d", tc.parent, tc.requested, got, tc.want)
 			}
 		})
+	}
+}
+
+// Task 118: SubagentDefaultSteps override wins over the formula.
+func TestChildMaxStepsConfigOverride(t *testing.T) {
+	task := &TaskTool{maxSteps: 30, defaultSteps: 25}
+	if got := task.childMaxSteps(0); got != 25 {
+		t.Fatalf("override childMaxSteps = %d, want 25", got)
+	}
+	// Explicit request still wins over override.
+	if got := task.childMaxSteps(7); got != 7 {
+		t.Fatalf("explicit request childMaxSteps = %d, want 7", got)
 	}
 }
 

@@ -60,6 +60,7 @@ func SubagentPolicyGuidance(p SubagentPolicy) string {
 			"- Prefer delegation: any independent sub-task (research, codegen, review, parallel exploration) goes to a sub-agent instead of being inlined serially in the main chain.\n" +
 			"- Decompose up front: split the task into sub-tasks before executing, and dispatch early — delegation is the default strategy, not a fallback.\n" +
 			"- Explicitly trade token cost for wall-clock time: sub-agent context is isolated, keeping the main chain short and cache-friendly.\n" +
+			"- For sub-tasks that will take more than ~30 seconds, set run_in_background=true so the main chain stays unblocked; collect the result with wait when you need it.\n" +
 			"- Delegate when a sub-task meets ANY of these thresholds:\n" +
 			"  * it will plausibly take more than ~30 seconds of work (multiple tool rounds, large file reads/writes, long-running commands) — keeps the main turn from blocking;\n" +
 			"  * it needs more than ~50k tokens of input beyond the system prompt (deep research over many files, large docs) — keeps the main context clean;\n" +

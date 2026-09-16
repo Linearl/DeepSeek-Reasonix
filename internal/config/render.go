@@ -328,6 +328,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	if c.Agent.StalledIntentNudgeLimit > 0 {
 		fmt.Fprintf(&b, "stalled_intent_nudge_limit = %d   # max stalled-intent nudges per run (1-3; default 1)\n", c.Agent.StalledIntentNudgeLimit)
 	}
+	if c.Agent.SubagentDefaultSteps > 0 {
+		fmt.Fprintf(&b, "subagent_default_steps = %d   # task 118: override default non-review sub-agent step budget (0 = formula)\n", c.Agent.SubagentDefaultSteps)
+	}
 	if c.Agent.OutputStyle != "" {
 		fmt.Fprintf(&b, "output_style = %q   # persona/tone folded into the prompt\n", c.Agent.OutputStyle)
 	} else {

@@ -1198,6 +1198,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			ParentRegistry:      reg,
 			MaxSteps:            maxSteps,
 			ReviewMaxSteps:      cfg.Agent.ReviewMaxSteps,
+			SubagentDefaultSteps: cfg.Agent.SubagentDefaultSteps,
 			ContextWindow:       entry.ContextWindow,
 			RecentKeep:          cfg.Agent.RecentKeep,
 			SoftCompactRatio:    cfg.Agent.SoftCompactRatio,

@@ -1367,6 +1367,10 @@ type AgentConfig struct {
 	// is 8 rounds). 0 keeps the built-in default; an explicit task max_steps
 	// argument still wins over this value.
 	ReviewMaxSteps int `toml:"review_max_steps"`
+	// SubagentDefaultSteps overrides the default step budget for non-review
+	// sub-agents (task 118). 0 keeps the formula max(parent*2/3, 12); an
+	// explicit task max_steps argument still wins.
+	SubagentDefaultSteps int `toml:"subagent_default_steps"`
 	// ExperimentalDream enables the dream/distill memory-curation tools
 	// (task 115). Off by default: both tools rewrite project memory or
 	// nominate skills from session traces, so they stay behind an opt-in.
