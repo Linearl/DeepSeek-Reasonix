@@ -14,10 +14,13 @@ import (
 )
 
 //go:embed reasonix-guide/SKILL.md
+//go:embed reasonix-fork-guide/SKILL.md
 //go:embed deep-research/SKILL.md
 //go:embed data-analytics/SKILL.md
 //go:embed memory-search/SKILL.md
 //go:embed feedback_analysis/SKILL.md
+//go:embed gh-issue-submit/SKILL.md
+//go:embed github-issue-triage/SKILL.md
 var files embed.FS
 
 // SkillMarkdown is one embedded skill file after frontmatter split.
