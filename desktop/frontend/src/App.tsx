@@ -43,7 +43,8 @@ import { useActiveRemoteSession } from "./lib/useRemoteSession";
 import { publishNavigationIntent } from "./lib/useNavigationIntentFence";
 import { useController, type Item } from "./lib/useController";
 import { setSessionMonitorEnabled } from "./lib/sessionMonitor";
-import { setFeedbackEnabled } from "./components/FeedbackPanel";
+import { FeedbackPanel, setFeedbackEnabled } from "./components/FeedbackPanel";
+import { SessionMonitorPanel } from "./components/SessionMonitorPanel";
 import { setSplitPaneTitle, setSplitViewEnabled } from "./lib/splitView";
 import { reportFrontendLog } from "./lib/frontendLog";
 import { app, onEvent, onReady, onRemoteForwards, onRemoteServer, onRemoteStatus, onRuntimeRebuilt, openExternal } from "./lib/bridge";
@@ -5329,6 +5330,14 @@ export default function App() {
         />
       )}
       {restartUpdateDialog}
+      {/* Task 121/123: the panels must live at the App root. Settings is a
+          ManagementSurface overlay that replaces the shell, so the old mount
+          point inside SidebarRegion was never in the render tree while the
+          settings pane was open — that is why opening them from there did
+          nothing. Both panels portal to document.body, so their position is
+          unchanged. */}
+      <SessionMonitorPanel />
+      <FeedbackPanel />
     </div>
     </UpdaterProvider>
     </ShellExpandProvider>

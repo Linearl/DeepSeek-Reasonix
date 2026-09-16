@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { app } from "../lib/bridge";
+import { reportFrontendLog } from "../lib/frontendLog";
 import { useT } from "../lib/i18n";
 
 export type FeedbackEntry = {
@@ -43,8 +44,14 @@ export function isFeedbackOpen(): boolean {
 }
 
 export function setFeedbackOpen(next: boolean): void {
-  if (feedbackOpen === next) return;
+  // DIAG (task 121): see the matching note in lib/sessionMonitor.ts — listeners=
+  // distinguishes a silent no-op click from a store change nobody renders.
+  if (feedbackOpen === next) {
+    reportFrontendLog("session-monitor", "feedback open request ignored", `requested=${next} current=${feedbackOpen} listeners=${openListeners.size}`);
+    return;
+  }
   feedbackOpen = next;
+  reportFrontendLog("session-monitor", "feedback open changed", `open=${next} listeners=${openListeners.size}`);
   for (const listener of openListeners) listener(next);
 }
 
