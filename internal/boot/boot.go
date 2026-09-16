@@ -1810,6 +1810,8 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		LegacyAnchorSafetyGate:       cfg.Agent.LegacyAnchorSafetyGate,
 		TextRepeatN:                  cfg.Agent.TextRepeatN,
 		TextRepeatThreshold:          cfg.Agent.TextRepeatThreshold,
+		StalledIntentNudge:           cfg.Agent.StalledIntentNudge,
+		StalledIntentNudgeLimit:      cfg.Agent.StalledIntentNudgeLimit,
 		SubagentDepth:                0,
 		MaxSubagentDepth:             maxSubagentDepth,
 		Autopilot:                    opts.Autopilot,

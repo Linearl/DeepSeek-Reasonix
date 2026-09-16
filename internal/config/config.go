@@ -1371,6 +1371,13 @@ type AgentConfig struct {
 	// (task 115). Off by default: both tools rewrite project memory or
 	// nominate skills from session traces, so they stay behind an opt-in.
 	ExperimentalDream bool `toml:"experimental_dream"`
+	// StalledIntentNudge enables the "you announced the next step instead of
+	// taking it" repair for ordinary sessions (task 117). Off by default:
+	// upstream only fires this under ContinuationExplicitFlow (Goal/review).
+	StalledIntentNudge bool `toml:"stalled_intent_nudge"`
+	// StalledIntentNudgeLimit caps the stalled-intent repair per run.
+	// 0 keeps the built-in default (1). Values above 3 are clamped.
+	StalledIntentNudgeLimit int `toml:"stalled_intent_nudge_limit"`
 	// OutputStyle selects a persona/tone block folded into the system prompt at
 	// startup (a built-in like "explanatory"/"learning"/"concise", or a custom
 	// .reasonix/output-styles/<name>.md). Empty = the unmodified prompt.

@@ -45,6 +45,7 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 		"experimental_feedback = false",
 		"experimental_parallel_full_access = false",
 		"experimental_dream = false",
+		"stalled_intent_nudge = false",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("a disabled switch should still render %q\n---\n%s", want, out)
@@ -58,5 +59,18 @@ func TestExperimentalDreamRoundTripThroughRender(t *testing.T) {
 	out := RenderTOMLForScope(c, RenderScopeUser)
 	if !strings.Contains(out, "experimental_dream = true") {
 		t.Fatalf("rendered user config is missing experimental_dream = true\n---\n%s", out)
+	}
+}
+
+func TestStalledIntentNudgeRoundTripThroughRender(t *testing.T) {
+	c := &Config{}
+	c.Agent.StalledIntentNudge = true
+	c.Agent.StalledIntentNudgeLimit = 2
+	out := RenderTOMLForScope(c, RenderScopeUser)
+	if !strings.Contains(out, "stalled_intent_nudge = true") {
+		t.Fatalf("rendered user config is missing stalled_intent_nudge = true\n---\n%s", out)
+	}
+	if !strings.Contains(out, "stalled_intent_nudge_limit = 2") {
+		t.Fatalf("rendered user config is missing stalled_intent_nudge_limit = 2\n---\n%s", out)
 	}
 }

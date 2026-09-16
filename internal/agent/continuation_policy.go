@@ -42,3 +42,24 @@ func (a *Agent) hostContinuationEnabled(ctx context.Context) bool {
 	}
 	return a.continuationPolicy == ContinuationExplicitFlow
 }
+
+// stalledIntentNudgeEnabled reports whether the stalled-intent repair may fire
+// this run. It is true when ContinuationExplicitFlow is active (upstream path)
+// or when the user opted in via config (task 117).
+func (a *Agent) stalledIntentNudgeEnabled(ctx context.Context) bool {
+	if a == nil {
+		return false
+	}
+	if a.hostContinuationEnabled(ctx) {
+		return true
+	}
+	return a.stalledIntentNudge
+}
+
+// stalledIntentNudgeCap returns the effective per-run nudge limit.
+func (a *Agent) stalledIntentNudgeCap() int {
+	if a == nil || a.stalledIntentNudgeLimit <= 0 {
+		return maxStalledIntentNudges
+	}
+	return a.stalledIntentNudgeLimit
+}
