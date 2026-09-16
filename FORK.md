@@ -162,6 +162,33 @@ UI 入口** —— 所以对大部分 fork 特性，**日志是唯一的可观�
 - 不改默认数据路径：`~/.reasonix` / `%APPDATA%\reasonix`。
 - 不修改 `desktop/updater*.go`、`desktop/internal/update/`、`internal/repair/update.go`。
 
+## 新特性开发规范（2026-09-16，依据上游 discussion #10269 教训）
+
+上游 Electron 迁移（#9988）后的负反馈链（#10222 升级断裂、#10106 黑窗、#10171「先把基础做好」）说明：**架构野心若大于执行质量与用户退路，会直接反噬稳定用户**。fork 开发新特性时遵守：
+
+1. **破坏性变更必须留退路**
+   - 动存储布局 / 安装布局 / 会话格式前先问：旧版能否回退？回不来则**双写 + 验证再切**，禁止一刀切。
+   - fork 无自动更新：文档写清手动安装/回退路径，不让用户自己撞墙。
+2. **新能力默认实验开关**
+   - 凡改变默认行为 → `experimental_*` 开关，**默认关**；关闭时零回归、可 A/B 对比。
+   - 开关全链路：config → setter → **渲染表** → UI（任务 81/123 踩过漏渲染表的坑）。
+   - 开关若**只在启动时读取**（如会话存储 v4 在 boot 建 bridge、boot 期注册的工具），保存后必须**主动提示 + 提供一键重启**，不能只写一行「需重启生效」让用户自己关掉再打开（2026-09-16 落地：设置页 banner + `App.RestartDesktop`，且**不**依赖 `experimental_restart_update` 门控）。
+3. **先收敛再扩功能**
+   - 一个 worktree 一条线；合并前跑完整验证（build + tsc + fork-integrity + 关键路径手测）。
+   - 连续大改后留「稳住」窗口，不立刻叠下一批（对齐 #10171 社区诉求）。
+4. **启动/打包链路先搜现成防护**
+   - 黑窗根因是 launcher 未用仓库里已有的 `proc.Command()`。动启动链 / staging / 重启（任务 81/129）时禁止裸 `exec.Command` / 裸路径拼接，先 `git grep` 现成工具。
+   - 出包验证覆盖：安装、升级、回滚、首启、无黑窗。
+5. **权限与并发：默认可放开，不叠更严的锁**
+   - 上游工作区整锁是效率痛点；fork 已有乐观并发写（#9213）与 `allow_global`。新特性涉及写权限时优先并行/目录级授权。
+6. **保住 fork 独有「好用的旧东西」**
+   - 经典布局、项目分组、颜色筛选等不轻易退役；合并上游必跑 `check-fork-integrity.mjs`，防静默丢样式/能力。
+7. **双通道意识**
+   - 版本号对齐上游但**不自动追最新**；上游不稳时停在稳定基线（1.38.3 策略）。
+   - 架构级实验（Electron 线、session-v4 等）先本地包验证，不进默认 fork release。
+
+**参考**：discussion #10269 主贴（xiaokay2099）+ 本 fork 作者评论（Linearl：双通道 / 实验开关 / 双写 / 并行写与路径审批痛点）。
+
 ## Release 与安装
 
 - fork 仓库自行出 release 包，走正常安装流程覆盖官方安装。
@@ -190,7 +217,12 @@ UI 入口** —— 所以对大部分 fork 特性，**日志是唯一的可观�
 
 1. **代码**：`git status` 干净 → `go build ./...` → `cd desktop && go build ./...` → `cd desktop/frontend && npx tsc --noEmit` → `node scripts/check-fork-integrity.mjs`（须全绿）
 2. **文档**：`release-notes/FORK-vX.Y.Z.md` 含本版全部改动；`release-notes/FORK-vs-upstream.md` 台账同步；`desktop/wails.json` 的 `productVersion` 与 tag 版本一致
-3. **本地包**（推荐先跑一遍）：`nohup bash scripts/build-local-installer.sh > /tmp/build.log 2>&1 & disown`（**加** `preserve_background_processes`；前台 115s 会被 SIGTERM，MSYS 无 `setsid`）→ 装后走关键路径
+3. **本地包**（推荐先跑一遍）：`nohup bash scripts/build-local-installer.sh > /tmp/build.log 2>&1 & disown`（**加** `preserve_background_processes`；前台 115s 会被 SIGTERM，MSYS 无 `setsid`）→ 装后**逐项验证**（对应规则 4 的出包验证要求）：
+   - **安装**：覆盖安装成功，快捷方式/图标正常
+   - **升级**：从上一包升级后数据完好（会话、配置、项目）
+   - **回滚**：能退回上一版本继续用（对应规则 1「留退路」）
+   - **首次启动**：冷启动直达主界面，不卡启动页
+   - **无黑窗**：Windows 启动瞬间不闪 console 窗口（#10106 同类问题的验收项）
 4. **推送**：`git push origin main-v2-stable`
 5. **tag**：先 `gh release delete desktop-vX.Y.Z -R Linearl/DeepSeek-Reasonix`（**不带** `--cleanup-tag`）→ 删远端 tag → 再推 tag。顺序反了会把重推的同名 tag 一并删掉
 6. **dispatch**：`gh workflow run release-fork.yml -R Linearl/DeepSeek-Reasonix -f tag=desktop-vX.Y.Z`
