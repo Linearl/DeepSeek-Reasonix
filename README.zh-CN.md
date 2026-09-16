@@ -75,6 +75,21 @@ fork**（`main-v2-stable`）：在追齐上游的同时，保留我们确实需�
 
 <br/>
 
+## 本 fork 增加了什么
+
+这是精简视图。**完整清单** —— 每项能力及其在界面里的入口 —— 见
+[`FORK.md`](FORK.md#这个-fork-提供了什么)；按版本对照的差异台账见
+[`release-notes/FORK-vs-upstream.md`](release-notes/FORK-vs-upstream.md)；面向用户的
+13 条日常可感知改动见
+[`release-notes/FORK-features-intro.md`](release-notes/FORK-features-intro.md)。
+
+| 领域 | 重点能力 |
+|---|---|
+| **桌面 UI** | 项目分组；颜色筛选与排序（多选）；本地服务器 / 远程网关（手机端与 Tailscale 接入）；已授权写目录面板；合并恢复副本；搜索历史提问；输入框草稿持久化；计划任务 / 心跳 |
+| **Agent 与上下文** | 只读轮次预算加倍（10→80）；每轮上下文预算行；路径作用域规则；乐观并发写入；分片压缩并行化；子代理委派档位 |
+| **服务端与远程** | serve pool + 单入口网关；独立 CLI 网关（NAS / systemd）；多项目会话浏览；图片上传端点；会话所有权移交 |
+| **近期新增** | 会话存储 v4（实验开关，双写镜像）；需重启设置的一键重启 |
+
 ## 特性
 
 - **配置驱动**：provider、agent、启用的工具、插件全部在 `reasonix.toml` 中声明，

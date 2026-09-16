@@ -7,6 +7,37 @@
 
 ---
 
+## v1.38.3-20260916-1205（2026-09-16）
+
+> 本版在 `1.38.3` 基线上追加，**不含上游追齐**。包版本起采用构建时间戳（见下第 3 条）。
+
+### 功能魔改
+
+| 魔改 | 开关 | 默认 | 承载文件 | 上游吸收状态 |
+|---|---|---|---|---|
+| **会话存储 v4（实验）** | `session_storage` = `legacy`\|`v4`（另有环境变量 `REASONIX_SESSION_STORAGE` 优先） | **`legacy`** | `internal/config/config.go`、`paths.go`、`edit.go`、`render.go`；`internal/control/session_v4_bridge.go`；`internal/boot/boot.go`；`SettingsPanel.tsx` | N/A（fork 独有；规格见 `docs/compose/spec/session-v4-experiment.md`） |
+| **需重启设置的一键重启** | 无（通用机制） | **常开** | `desktop/restart_update.go`（`App.RestartDesktop`）、`SettingsPanel.tsx`（banner）、`lib/bridge.ts` | N/A（fork 独有）。**刻意不挂在 `experimental_restart_update` 门控上**——那个实验守的是「发布并切换版本」的危险半边 |
+
+**会话存储的写入语义（易误读，特此写明）**：v4 是**双写** —— `sessions/` 仍是 agent 持续写入的主转录，`sessions-v4/` 是每次落盘的全量替换镜像；空闲浏览历史优先读 v4、未命中回退 v3。因此**切回 `legacy` 不丢内容**。依据：`internal/boot/boot.go:592-604`（两种模式都保留 `config.SessionDir()`，仅 v4 时另建 bridge），`config.ActiveSessionDir()` 目前**零调用点**（预留 API）。
+
+### 发布链与仓库治理
+
+| 变更 | 说明 | 承载文件 |
+|---|---|---|
+| **包版本带构建时间戳** | 本分支长期停在 `1.38.3`，多个包共用版本号无法区分 ⇒ 版本改为 `1.38.3-YYYYMMDD-HHMM`（**到分钟**）。受 `installlayout.versionDirRE` 约束：**只接受 `-` 后缀，不接受 `+`**；`versions/<name>/` 因此唯一、可回退到指定构建 | `scripts/build-local-installer.sh`、`FORK.md`（Release 与安装节）、`README.md` |
+| **release notes 按包同名分发** | `FORK-v1.38.3-20260916-1205.md` 与包版本同名，workflow 精确名查找直接命中 | `release-notes/`、`.github/workflows/release-fork.yml` |
+| **仓库默认分支改为 `main-v2-stable`** | 原先默认分支是 `main-v2`，导致 GitHub 首页显示的是**另一个分支**的 README（改在 stable 上的文档首页看不到） | GitHub 仓库设置 |
+| **`README.md` 补「About this fork」入口** | 指向用户向特性清单 `release-notes/FORK-features-intro.md`（13 条）+ 说明构建时间戳 | `README.md` |
+| **issue 模板按 fork 定位裁剪** | 去掉上游的 v2/v3 版本线下拉（本 fork 只有一条线）、加 `needs-triage`、加「仅 Windows amd64 桌面」说明；同时**保留**上游的 `render: shell` 等改进 | `.github/ISSUE_TEMPLATE/{bug_report,feature_request,config}.yml` |
+
+### 本轮修复（fork 语义）
+
+| 修复 | 根因 | 承载文件 |
+|---|---|---|
+| **`session_storage` 之前根本存不进配置** | 该键在**顶层 `Config`**（不在 `[desktop]`），而渲染器从不写它 ⇒ 手改 `config.toml` 的那行会被**下一次设置保存静默丢弃**，实验开不起来。渲染覆盖守卫只遍历 `c.Desktop`，故从未报错 | `internal/config/render.go`（两处顶层调用点）、`render_coverage_test.go` |
+| **设置侧栏「实验特性」无图标、与邻居不对齐** | `settingsTabIcon` 的 switch **没有 `experimental` 分支** ⇒ 返回 `undefined`。返回类型是 `ReactNode`（容许 `undefined`），**TypeScript 从不报错**。补分支同时加 `default` 兜底 | `desktop/frontend/src/components/SettingsNavigation.tsx` |
+| **release notes 查找会静默降级** | workflow 找不到对应 notes 时**静默 fallback 到 `FORK-v1.31.3.md`** ⇒ 把 1.31.3 的说明发到 1.38.3 的发布页。现改为认识时间戳形式，再找不到就 `exit 1` | `.github/workflows/release-fork.yml` |
+
 ## v1.38.3 之后新增的 fork 魔改（2026-09-13 补登，含实验开关与承载文件）
 
 > 本表是任务 97 要求的形式：**除"fork 状态 / 上游吸收状态"外，增加「开关」「默认」「承载文件」三列**，

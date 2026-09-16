@@ -90,6 +90,21 @@ it tracks upstream and keeps the changes we actually need on top. What that mean
 
 <br/>
 
+## What this fork adds
+
+A condensed view. The **complete list** — every capability with where to find it in the UI —
+lives in [`FORK.md`](FORK.md#这个-fork-提供了什么); the per-version diff ledger is
+[`release-notes/FORK-vs-upstream.md`](release-notes/FORK-vs-upstream.md); a user-facing tour of
+the 13 most daily-visible changes is
+[`release-notes/FORK-features-intro.md`](release-notes/FORK-features-intro.md).
+
+| Area | Highlights |
+|---|---|
+| **Desktop UI** | Project groups; colour filter and sort (multi-select); local server / remote gateway for phone and Tailscale access; authorised write-directory panel; merge-recovery copies; search past prompts; input-draft persistence; scheduled tasks / heartbeat |
+| **Agent & context** | Read-only turn budget doubling (10→80); per-turn context-budget line; path-scoped rules; optimistic concurrent writes; parallel chunked compaction; subagent delegation levels |
+| **Server & remote** | serve pool with a single-entry gateway; standalone CLI gateway for NAS / systemd; multi-project session browsing; image upload endpoint; session ownership handoff |
+| **Recent additions** | Conversation store v4 (experimental switch, dual-write mirror); one-click relaunch for settings that only apply at boot |
+
 ## Features
 
 - **Config-driven.** Providers, the agent, enabled tools, and plugins are all
