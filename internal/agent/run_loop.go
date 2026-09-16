@@ -537,8 +537,8 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 	}
 	// The model announced the next step and stopped. Neither the executor-handoff
 	// path (marker-scoped) nor the todo path (no todos here) catches it, so nudge
-	// once before accepting this as a final answer (#6 P0-c).
-	if a.hostContinuationEnabled(ctx) && state.terminal.intentNudges < maxStalledIntentNudges && shouldNudgeStalledIntent(text) {
+	// once before accepting this as a final answer (#6 P0-c, task 117).
+	if a.stalledIntentNudgeEnabled(ctx) && state.terminal.intentNudges < a.stalledIntentNudgeCap() && shouldNudgeStalledIntent(text) {
 		state.terminal.intentNudges++
 		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeExecutorHandoff,
 			Text: executorHandoffNoticeText(), Detail: "model announced the next step without taking it; nudged once"})

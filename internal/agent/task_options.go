@@ -68,7 +68,10 @@ type TaskToolOptions struct {
 	MaxSteps       int
 	// ReviewMaxSteps overrides the built-in step cap for review-family
 	// sub-agent runs (fork #9677).
-	ReviewMaxSteps                        int
+	ReviewMaxSteps int
+	// SubagentDefaultSteps overrides the default step budget for non-review
+	// sub-agents (task 118). 0 keeps the formula max(parent*2/3, 12).
+	SubagentDefaultSteps                  int
 	ContextWindow                         int
 	RecentKeep                            int
 	SoftCompactRatio                      float64

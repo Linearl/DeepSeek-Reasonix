@@ -252,6 +252,7 @@ type TaskTool struct {
 	parentReg                     *tool.Registry
 	maxSteps                      int
 	reviewMaxSteps                int
+	defaultSteps                  int
 	contextWindow                 int
 	compactRatio                  float64
 	recentKeep                    int
@@ -312,6 +313,7 @@ func NewTaskToolWithOptions(opts TaskToolOptions) *TaskTool {
 		parentReg:        opts.ParentRegistry,
 		maxSteps:         opts.MaxSteps,
 		reviewMaxSteps:   opts.ReviewMaxSteps,
+		defaultSteps:     opts.SubagentDefaultSteps,
 		contextWindow:    opts.ContextWindow,
 		recentKeep:       opts.RecentKeep,
 		compactRatio:     opts.CompactRatio,

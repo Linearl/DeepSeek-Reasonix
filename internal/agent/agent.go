@@ -70,6 +70,11 @@ const maxExecutorHandoffNudges = 1
 // taking it" repair to one nudge per run.
 const maxStalledIntentNudges = 1
 
+// maxStalledIntentNudgeHardCap is the absolute ceiling for the configurable
+// stalled-intent nudge limit (task 117). Prevents a runaway loop when the
+// user sets an unreasonably high value.
+const maxStalledIntentNudgeHardCap = 3
+
 // stalledIntentPhrases catch the shape where the model narrates the next step
 // and stops. Only the answer tail is inspected: a final answer may legitimately
 // quote such phrasing earlier in its text.
@@ -359,6 +364,10 @@ type Agent struct {
 
 	requireVisibleFinal bool // internal callers require final Content
 	continuationPolicy  ContinuationPolicy
+	// stalledIntentNudge enables the stalled-intent repair outside
+	// ContinuationExplicitFlow (task 117). stalledIntentNudgeLimit bounds it.
+	stalledIntentNudge       bool
+	stalledIntentNudgeLimit  int
 
 	// unwrittenResolve is the resolve watermark a failed state write still owes.
 	// It outlives the conversation, which is why it is not in sessionRuntime.
@@ -1134,6 +1143,13 @@ type Options struct {
 	// the guard. Like the other internal switches it never enters prompts.
 	TextRepeatN         int
 	TextRepeatThreshold int
+	// StalledIntentNudge enables the "you announced the next step instead of
+	// taking it" repair for ordinary sessions (task 117). When true the nudge
+	// fires even without ContinuationExplicitFlow.
+	StalledIntentNudge bool
+	// StalledIntentNudgeLimit overrides maxStalledIntentNudges (default 1).
+	// Values above maxStalledIntentNudgeHardCap are clamped.
+	StalledIntentNudgeLimit int
 	// ReadPipeline carries the internal read-pipeline rollout switches; both are
 	// off by default, fixed per run, and never enter provider bytes.
 	ReadPipeline ReadPipelineOptions
@@ -1232,6 +1248,8 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 		},
 		requireVisibleFinal: opts.RequireVisibleFinal,
 		continuationPolicy:  opts.ContinuationPolicy,
+		stalledIntentNudge:      opts.StalledIntentNudge,
+		stalledIntentNudgeLimit: normalizeStalledIntentNudgeLimit(opts.StalledIntentNudgeLimit),
 		recovery: recoveryIdentity{
 			agentID: strings.TrimSpace(opts.RecoveryAgentID),
 			taskID:  strings.TrimSpace(opts.RecoveryTaskID),
@@ -1263,6 +1281,19 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 		})
 	}
 	return a
+}
+
+// normalizeStalledIntentNudgeLimit returns the effective per-run stalled-intent
+// nudge cap. Zero or negative keeps the built-in default; values above the
+// hard cap are clamped to prevent runaway loops.
+func normalizeStalledIntentNudgeLimit(limit int) int {
+	if limit <= 0 {
+		return maxStalledIntentNudges
+	}
+	if limit > maxStalledIntentNudgeHardCap {
+		return maxStalledIntentNudgeHardCap
+	}
+	return limit
 }
 
 func deprecatedContextRetentionConfigured(opts Options) bool {

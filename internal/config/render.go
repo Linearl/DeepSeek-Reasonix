@@ -325,6 +325,14 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// Always render so turning the experiment off is recorded (same lesson as
 	// the desktop experimental_* switches: omit-on-off springs back to true).
 	fmt.Fprintf(&b, "experimental_dream = %v   # task 115: enable dream/distill memory-curation tools\n", c.Agent.ExperimentalDream)
+	fmt.Fprintf(&b, "trace_as_state = %v   # task 60: Trace-as-State compaction (reasoning in summaries, re-read routing, guarded folds)\n", c.Agent.TraceAsState)
+	fmt.Fprintf(&b, "stalled_intent_nudge = %v   # task 117: nudge when model announces next step instead of taking it\n", c.Agent.StalledIntentNudge)
+	if c.Agent.StalledIntentNudgeLimit > 0 {
+		fmt.Fprintf(&b, "stalled_intent_nudge_limit = %d   # max stalled-intent nudges per run (1-3; default 1)\n", c.Agent.StalledIntentNudgeLimit)
+	}
+	if c.Agent.SubagentDefaultSteps > 0 {
+		fmt.Fprintf(&b, "subagent_default_steps = %d   # task 118: override default non-review sub-agent step budget (0 = formula)\n", c.Agent.SubagentDefaultSteps)
+	}
 	if c.Agent.OutputStyle != "" {
 		fmt.Fprintf(&b, "output_style = %q   # persona/tone folded into the prompt\n", c.Agent.OutputStyle)
 	} else {

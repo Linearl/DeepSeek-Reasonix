@@ -106,7 +106,7 @@ func TestUnboundedGoalParentLeavesChildUnbounded(t *testing.T) {
 		t.Fatalf("explicit child steps = %d, want 3", got)
 	}
 	task.maxSteps = 16
-	if got := task.childMaxStepsForContext(context.Background(), 0); got != 8 {
-		t.Fatalf("explicit parent child steps = %d, want 8", got)
+	if got := task.childMaxStepsForContext(context.Background(), 0); got != 12 {
+		t.Fatalf("explicit parent child steps = %d, want 12", got)
 	}
 }
