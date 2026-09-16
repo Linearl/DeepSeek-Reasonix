@@ -134,7 +134,7 @@
 | `internal/rules` 路径作用域规则 | `internal/rules/rules.go`（261 行 + 测试） | `.reasonix/rules/**/*.md` + `paths:` frontmatter；**此前台账无记录** |
 | 桌面日志轮转 | `desktop/desktop_log.go` | 4MB 轮转 / 25 份上限 |
 | servepool 池 + 网关 | `internal/servepool/*` / `desktop/servepool_host.go` | 按项目懒启动 serve、`/p/<id>/*` 反代、bearer token、空闲回收 |
-| 会话恢复副本合并 | `internal/agent/recovery_consolidate.go` / `desktop/recovery_consolidate.go` | 会话右键 → 合并恢复副本：**用户从版本链中选定 winner**（`ConsolidateSessionRecoveryCopies(path, winnerPath)`），落选链中主链缺失的前缀段被 graft 进新主线，**被完全覆盖的副本**归档进可恢复的回收区；副本未覆盖当前记录时拒绝合并 |
+| 会话恢复副本合并 | `internal/agent/recovery_consolidate.go` / `desktop/recovery_consolidate.go` | **设置 → 存储与路径 → 工作阶段版本与副本**：列出带 recovery 副本的工作阶段（主线 / 总计 / 共有 / 独有 / 孤立 计数），可预览分支 + 查看尾部消息，再勾选「合并所选」；落选链中主链缺失的前缀段被 graft 进新主线；**被完全覆盖的副本**归档进可恢复的回收区；副本未覆盖当前记录时拒绝合并 |
 
 ## v1.38.1（2026-09-08 整体追齐）
 
