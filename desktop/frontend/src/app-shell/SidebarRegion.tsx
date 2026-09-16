@@ -1,9 +1,9 @@
 import { lazy, Suspense, useEffect, useState, type ComponentProps, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { Activity, AlarmClock, Brain, Command, MessageSquare, MessageSquareHeart, PanelLeft, PanelRight, Search, Settings, SquarePen, Trash2 } from "lucide-react";
-import { app } from "../lib/bridge";
-import { isSessionMonitorEnabled, isSessionMonitorOpen, onSessionMonitorEnabledChange, onSessionMonitorOpenChange, setSessionMonitorEnabled, setSessionMonitorOpen } from "../lib/sessionMonitor";
+import { isSessionMonitorEnabled, isSessionMonitorOpen, onSessionMonitorEnabledChange, onSessionMonitorOpenChange, setSessionMonitorOpen } from "../lib/sessionMonitor";
 import { SessionMonitorPanel } from "../components/SessionMonitorPanel";
-import { FeedbackPanel, isFeedbackEnabled, isFeedbackOpen, onFeedbackEnabledChange, onFeedbackOpenChange, setFeedbackEnabled, setFeedbackOpen } from "../components/FeedbackPanel";
+import { FeedbackPanel, isFeedbackEnabled, isFeedbackOpen, onFeedbackEnabledChange, onFeedbackOpenChange, setFeedbackOpen } from "../components/FeedbackPanel";
+import { useHydrateSessionExperimentFlags } from "../app-runtime/useHydrateSessionExperimentFlags";
 import { Tooltip } from "../components/Tooltip";
 import type { Translator } from "../lib/i18n";
 import type { SettingsTab } from "../lib/types";
@@ -53,21 +53,8 @@ export function SidebarRegion(props: SidebarRegionProps) {
   useEffect(() => onFeedbackEnabledChange(setFeedbackOn), []);
   useEffect(() => onFeedbackOpenChange(setFeedbackPanelOpen), []);
   // Task 140: hydrate experiment flags from the host on mount so the buttons
-  // appear after restart without waiting for the preferences hook.
-  useEffect(() => {
-    let cancelled = false;
-    void app
-      .DesktopStartupSettings()
-      .then((settings) => {
-        if (cancelled || !settings) return;
-        setSessionMonitorEnabled(Boolean(settings.experimentalSessionMonitor));
-        setFeedbackEnabled(Boolean(settings.experimentalFeedback));
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // appear after restart without a Settings round-trip.
+  useHydrateSessionExperimentFlags();
   return (
     <>
       <aside className={props.className} aria-label={t("sidebar.navigation")}>
