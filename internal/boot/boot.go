@@ -267,6 +267,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if err := opts.ModelSettings.Apply(cfg, root); err != nil {
 		return nil, err
 	}
+	// Task 127: resolve the parallel full-access experiment once so confine,
+	// write-claims, and write-access share one decision for this process.
+	config.ApplyParallelFullAccess(cfg.ParallelFullAccessEnabled())
 	bootTime.mark("config")
 	deepSeekProtocolMigErr = deepSeekProtocolMigrationNoticeError(handleConfigLoadWarnings(opts, cfg), deepSeekProtocolMigErr)
 	// Arm the credential-protection layers from the user-global [secrets]

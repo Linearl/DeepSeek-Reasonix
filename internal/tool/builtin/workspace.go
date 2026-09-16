@@ -93,6 +93,7 @@ func (w Workspace) Tools(enabled ...string) []tool.Tool {
 		"inspect_worktree_merge":  inspectWorktreeMerge{workDir: w.Dir},
 		"prepare_worktree_merge":  prepareWorktreeMerge{workDir: w.Dir},
 		"merge_worktree_back":     mergeWorktreeBack{workDir: w.Dir},
+		"open_isolated_worktree_project": openIsolatedWorktreeProject{workDir: w.Dir},
 	}
 	all := tool.Builtins()
 	if len(enabled) == 0 {

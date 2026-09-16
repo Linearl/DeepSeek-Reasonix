@@ -58,6 +58,16 @@ func (c *Controller) CheckWriteAccess(ctx context.Context, req agent.WriteAccess
 	if len(missing) == 0 {
 		return agent.WriteAccessDecision{Allow: true}, nil
 	}
+	// Task 127: trusted managed worktree roots skip the write-access ask while
+	// the parallel full-access experiment is on. Other missing roots still ask.
+	if filtered := filterParallelTrustedMissing(missing); len(filtered) == 0 {
+		return agent.WriteAccessDecision{
+			Allow:        true,
+			PerCallRoots: missing,
+		}, nil
+	} else {
+		missing = filtered
+	}
 	missingDisplay := displayForAbs(abs, display, missing)
 	decision := c.ordinaryWriteDecision(req.Tool, req.Args, req.ReadOnly)
 	if decision == permission.Deny {
@@ -97,6 +107,34 @@ func agentHeadlessWriteHint(display []string) string {
 		return "this directory is outside the writable roots. Restart with --add-dir /abs/path, add it to [sandbox].allow_write in reasonix.toml, or use an interactive session to approve the directory."
 	}
 	return "this directory is outside the writable roots (" + needed + "). Restart with --add-dir " + needed + ", add it to [sandbox].allow_write in reasonix.toml, or use an interactive session to approve the directory."
+}
+
+// filterParallelTrustedMissing drops missing roots that sit under a trusted
+// managed worktree aggregation root while the task-127 experiment is on.
+// Anything else still needs an approval.
+func filterParallelTrustedMissing(missing []string) []string {
+	if !config.ParallelFullAccessActive() || len(missing) == 0 {
+		return missing
+	}
+	roots := config.ParallelWorktreeRoots("")
+	if len(roots) == 0 {
+		return missing
+	}
+	out := missing[:0:0]
+	for _, dir := range missing {
+		trusted := false
+		for _, root := range roots {
+			if rel, err := filepath.Rel(root, dir); err == nil &&
+				(rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))) {
+				trusted = true
+				break
+			}
+		}
+		if !trusted {
+			out = append(out, dir)
+		}
+	}
+	return out
 }
 
 func displayForAbs(abs, display, missing []string) []string {

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"reasonix/internal/config"
 	"reasonix/internal/netclient"
 	"reasonix/internal/sandbox"
 	"reasonix/internal/secrets"
@@ -193,6 +194,10 @@ func realRoots(roots []string) []string {
 // roots slice is unconfined (returns nil) — the safe default for the built-in
 // templates before a run configures the workspace. The error text is written
 // for the model: it names the boundary and how the user can widen it.
+//
+// Task 127 experiment: when parallel full-access is active, product-managed
+// worktree roots are also legal write surfaces. Escape outside those roots is
+// still refused — this never disables confinement globally.
 func confine(roots []string, target string) error {
 	if len(roots) == 0 {
 		return nil
@@ -206,9 +211,26 @@ func confine(roots []string, target string) error {
 			return nil
 		}
 	}
+	if parallelRootAllows(abs) {
+		return nil
+	}
 	return fmt.Errorf("path %q is outside the writable roots (writes are confined to %s); "+
 		"write inside the workspace or a configured allow_write root, or widen [sandbox] workspace_root / allow_write in reasonix.toml",
 		target, strings.Join(roots, ", "))
+}
+
+// parallelRootAllows reports whether abs sits under a trusted managed
+// worktree root while the task-127 experiment is active.
+func parallelRootAllows(abs string) bool {
+	if !config.ParallelFullAccessActive() {
+		return false
+	}
+	for _, root := range config.ParallelWorktreeRoots("") {
+		if within(root, abs) {
+			return true
+		}
+	}
+	return false
 }
 
 // confineWrite is the write-tool boundary check: workspace confinement first,

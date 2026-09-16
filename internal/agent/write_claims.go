@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"reasonix/internal/config"
 )
 
 // DefaultMaxSubagentConcurrency is the session-wide sub-agent concurrency
@@ -101,7 +103,7 @@ func NormalizeWritePaths(workspaceRoot string, raw []string) (WritePathSet, erro
 		if err != nil {
 			return WritePathSet{}, fmt.Errorf("write_paths[%d]: %w", i, err)
 		}
-		if !pathWithinFold(root, abs) {
+		if !pathWithinFold(root, abs) && !parallelClaimAllowed(abs) {
 			return WritePathSet{}, fmt.Errorf("write_paths[%d]: path %q is outside the workspace", i, entry)
 		}
 		key := foldPathKey(abs)
@@ -113,6 +115,22 @@ func NormalizeWritePaths(workspaceRoot string, raw []string) (WritePathSet, erro
 		out.Kinds = append(out.Kinds, classifyWritePath(abs, trailingSep))
 	}
 	return out, nil
+}
+
+// parallelClaimAllowed is the task-127 escape for write_paths: when the
+// parallel full-access experiment is on, a claim may name a path under a
+// trusted managed worktree root even if that root sits outside the parent
+// workspace. Escape outside those roots is still refused.
+func parallelClaimAllowed(abs string) bool {
+	if !config.ParallelFullAccessActive() {
+		return false
+	}
+	for _, root := range config.ParallelWorktreeRoots("") {
+		if pathWithinFold(root, abs) {
+			return true
+		}
+	}
+	return false
 }
 
 type subagentWriteClaimKey struct{}

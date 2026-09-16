@@ -28,7 +28,7 @@ type createWorktree struct {
 func (createWorktree) Name() string { return "create_worktree" }
 
 func (createWorktree) Description() string {
-	return "Create a durable Git worktree for isolated parallel work. Creates a new branch (reasonix/delivery-*) from the source repository HEAD without modifying the source checkout. Returns the worktree root, branch, and source identity. Use inspect_worktree_merge / merge_worktree_back to merge results back."
+	return "Create a durable Git worktree for isolated parallel work (task 52 allocation primitive). Creates a new branch (reasonix/delivery-*) from the source repository HEAD without modifying the source checkout. Returns the worktree root, branch, and source identity. Does not request write-access setup and does not open a host project tab — prefer open_isolated_worktree_project when the session itself will work inside the new project. Use inspect_worktree_merge / merge_worktree_back to merge results back."
 }
 
 func (createWorktree) Schema() json.RawMessage {
