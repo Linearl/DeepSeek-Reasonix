@@ -754,6 +754,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalLocalServer(enabled: boolean): Promise<void>;
   // Task 134: structured path-scope evaluation (experimental).
   SetExperimentalPathRules(enabled: boolean): Promise<void>;
+  // Task 60: Trace-as-State compaction (experimental).
+  SetExperimentalTraceAsState(enabled: boolean): Promise<void>;
   /** Persist the serve-pool gateway port and restart the gateway when enabled (task 130). */
   SetServePoolPort(port: number): Promise<void>;
   ListFeedbackEntries(limit: number): Promise<{ at: string; kind: string; text: string; tags?: string[]; session?: string; model?: string }[]>;
@@ -4949,6 +4951,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalFeedback() {},
     async SetExperimentalLocalServer() {},
     async SetExperimentalPathRules() {},
+    async SetExperimentalTraceAsState() {},
     async SetServePoolPort() {},
     async ListFeedbackEntries() { return []; },
     async ClearFeedbackEntries() {},

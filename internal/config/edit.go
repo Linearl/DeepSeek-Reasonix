@@ -520,6 +520,14 @@ func (c *Config) SetExperimentalPathRules(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalTraceAsState toggles Trace-as-State compaction (task 60).
+// Desktop keeps a settings-view mirror; Agent.TraceAsState is the runtime flag.
+func (c *Config) SetExperimentalTraceAsState(enabled bool) error {
+	c.Desktop.ExperimentalTraceAsState = enabled
+	c.Agent.TraceAsState = enabled
+	return nil
+}
+
 // SetDesktopMetrics sets whether the desktop sends aggregate desktop metrics.
 func (c *Config) SetDesktopMetrics(enabled bool) error {
 	c.Desktop.Metrics = &enabled

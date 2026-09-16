@@ -23,6 +23,8 @@ export interface SettingsView {
   experimentalLocalServer?: boolean;
   // Task 134: structured path-scope evaluation (docs/PATH_SCOPE_RULES.md).
   experimentalPathRules?: boolean;
+  // Task 60: Trace-as-State compaction experiment.
+  experimentalTraceAsState?: boolean;
   visionModel: string;
   webSearchModel?: string;
   webSearchModels?: string[];
