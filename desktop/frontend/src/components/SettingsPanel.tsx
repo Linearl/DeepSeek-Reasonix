@@ -431,7 +431,7 @@ export function SettingsPanel({
             ) : (
               <>
                 {tab === "general" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={busy} apply={apply}><GeneralSection s={s} busy={busy} apply={apply} agentRunning={agentRunning} /></SettingsPageShell>}
-                {tab === "experimental" && s && <ExperimentalSection key={tab} s={s} busy={busy} apply={apply} />}
+                {tab === "experimental" && s && <ExperimentalSection key={tab} s={s} busy={busy} apply={apply} onClose={requestClose} />}
                 {(tab === "models" || tab === "providers" || tab === "model-stats") && s && <SettingsPageShell key="model-pages" s={s} tab={tab} busy={busy} apply={apply}><ModelsSection onOpenProviders={() => selectTab("providers")} s={s} busy={busy} apply={apply} backgroundApply={backgroundApply} onboarding={initialFocus?.target === "model-access" && initialFocus.onboarding} onOnboardingComplete={onClose} subtab={tab === "providers" ? "access" : tab === "model-stats" ? "stats" : "usage"} /></SettingsPageShell>}
                 {tab === "bots" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={busy} apply={apply}><BotsSection s={s} busy={busy} apply={apply} initialFocus={initialFocus} /></SettingsPageShell>}
                 {tab === "mcp" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={apply}><Suspense fallback={lazySettingsPageFallback}><MCPServersSettingsPage /></Suspense></SettingsPageShell>}
@@ -1677,12 +1677,14 @@ type ExperimentFeatureId =
   | "localServer"
   | "pathRules"
   | "traceAsState"
+  | "dream"
   | "autopilot";
 
-function ExperimentalSection({ s, busy, apply }: SectionProps) {
+function ExperimentalSection({ s, busy, apply, onClose }: SectionProps & { onClose: () => void }) {
   // Set when a boot-time setting is saved: apply() reloads the view, so the fact that a
   // restart is pending has to live outside the data being reloaded.
   const [restartNeeded, setRestartNeeded] = useState(false);
+  const [dreamTaskCreated, setDreamTaskCreated] = useState(false);
   const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
   const t = useT();
   // Task 140: the rail shows backend snapshot state; the sidebar buttons read
@@ -1702,6 +1704,7 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
     { id: "localServer", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
     { id: "pathRules", label: t("settings.pathRules"), on: Boolean(s.experimentalPathRules) },
     { id: "traceAsState", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
+    { id: "dream", label: t("settings.dream"), on: Boolean(s.experimentalDream) },
     { id: "autopilot", label: t("settings.autopilot"), on: Boolean(s.autopilot) },
   ];
 
@@ -1776,7 +1779,11 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
                   type="button"
                   className="btn btn--small"
                   disabled={busy || !Boolean(s.experimentalSessionMonitor)}
-                  onClick={() => setSessionMonitorOpen(true)}
+                  onClick={() => {
+                    setSessionMonitorOpen(true);
+                    // Settings is a full-window overlay above the floating panel.
+                    onClose();
+                  }}
                 >
                   {t("settings.sessionMonitorOpenAction")}
                 </button>
@@ -1845,7 +1852,11 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
                   type="button"
                   className="btn btn--small"
                   disabled={busy || !Boolean(s.experimentalFeedback)}
-                  onClick={() => setFeedbackOpen(true)}
+                  onClick={() => {
+                    setFeedbackOpen(true);
+                    // Settings is a full-window overlay above the floating panel.
+                    onClose();
+                  }}
                 >
                   {t("settings.feedbackOpenAction")}
                 </button>
@@ -1899,6 +1910,42 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
                 ))}
               </SettingsOptions>
             </SettingsField>
+          )}
+          {selected === "dream" && (
+            <>
+              <SettingsField label={t("settings.dream")} hint={t("settings.dreamHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalDream) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalDream(on))}
+                    >
+                      {t(on ? "settings.dream.on" : "settings.dream.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.dreamCreateTask")} hint={t("settings.dreamCreateTaskHint")} icon={<Sparkles size={18} />}>
+                <button
+                  type="button"
+                  className="btn btn--small"
+                  disabled={busy || !Boolean(s.experimentalDream)}
+                  onClick={() => void apply(async () => {
+                    const created = await app.CreateDreamHeartbeatTask();
+                    if (created) setDreamTaskCreated(true);
+                  })}
+                >
+                  {t("settings.dreamCreateTaskAction")}
+                </button>
+              </SettingsField>
+              {dreamTaskCreated ? (
+                <div className="banner settings-restart-banner" role="status">
+                  <span>{t("settings.dreamCreateTaskDone")}</span>
+                </div>
+              ) : null}
+            </>
           )}
           {selected === "autopilot" && (
             <>

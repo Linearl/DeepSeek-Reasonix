@@ -19,6 +19,7 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	c.Desktop.ExperimentalParallelFullAccess = true
 	c.Desktop.ExperimentalPathRules = true
 	c.Desktop.ExperimentalTraceAsState = true
+	c.Desktop.ExperimentalDream = true
 
 	out := RenderTOMLForScope(c, RenderScopeUser)
 	for _, want := range []string{
@@ -29,6 +30,7 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 		"experimental_parallel_full_access = true",
 		"experimental_path_rules = true",
 		"experimental_trace_as_state = true",
+		"experimental_dream = true",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("rendered user config is missing %q\n---\n%s", want, out)
@@ -50,7 +52,7 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 		"experimental_parallel_full_access = false",
 		"experimental_path_rules = false",
 		"experimental_trace_as_state = false",
-		"experimental_dream = false",
+		"experimental_dream = false", // [agent] and desktop mirror both render this key
 		"trace_as_state = false",
 		"stalled_intent_nudge = false",
 	} {

@@ -528,6 +528,14 @@ func (c *Config) SetExperimentalTraceAsState(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalDream toggles the dream/distill memory-curation tools (task 115).
+// Desktop keeps a settings-view mirror; Agent.ExperimentalDream is the runtime flag.
+func (c *Config) SetExperimentalDream(enabled bool) error {
+	c.Desktop.ExperimentalDream = enabled
+	c.Agent.ExperimentalDream = enabled
+	return nil
+}
+
 // SetDesktopMetrics sets whether the desktop sends aggregate desktop metrics.
 func (c *Config) SetDesktopMetrics(enabled bool) error {
 	c.Desktop.Metrics = &enabled

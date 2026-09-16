@@ -58,10 +58,14 @@ type DesktopConfig struct {
 	// ExperimentalTraceAsState is the settings-view mirror for Agent.TraceAsState
 	// (task 60). The runtime flag lives on [agent]; this field keeps the
 	// experimental features tab reading the same saved value.
-	ExperimentalTraceAsState bool   `toml:"experimental_trace_as_state"`
-	AutopilotMaxRuntime      string `toml:"autopilot_max_runtime"`    // Go duration; required when autopilot is on
-	AutopilotApprovalGrace   string `toml:"autopilot_approval_grace"` // wait for a human before the reviewer decides; empty = 15s
-	CheckUpdates             *bool  `toml:"check_updates"`            // startup update checks; nil keeps the default enabled
+	ExperimentalTraceAsState bool `toml:"experimental_trace_as_state"`
+	// ExperimentalDream is the settings-view mirror for Agent.ExperimentalDream
+	// (task 115). The runtime flag lives on [agent]; this field keeps the
+	// experimental features tab reading the same saved value.
+	ExperimentalDream      bool   `toml:"experimental_dream"`
+	AutopilotMaxRuntime    string `toml:"autopilot_max_runtime"`    // Go duration; required when autopilot is on
+	AutopilotApprovalGrace string `toml:"autopilot_approval_grace"` // wait for a human before the reviewer decides; empty = 15s
+	CheckUpdates           *bool  `toml:"check_updates"`            // startup update checks; nil keeps the default enabled
 	// UpdateChannel is a legacy compatibility field. It is accepted on read but
 	// ignored and omitted from future canonical writes.
 	UpdateChannel        string   `toml:"update_channel"`

@@ -2327,6 +2327,8 @@ export interface DesktopStartupSettingsView {
   experimentalPathRules?: boolean;
   /** Trace-as-State compaction experiment (task 60); off unless the user opts in. */
   experimentalTraceAsState?: boolean;
+  /** dream/distill memory-curation experiment (task 115); off unless the user opts in. */
+  experimentalDream?: boolean;
   bot: BotSettingsView;
   desktopLanguage: string; // "" | "en" | "zh"; empty = auto
   desktopLayoutStyle: string; // "classic" | "workbench"

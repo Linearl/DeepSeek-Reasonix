@@ -342,6 +342,7 @@ type SettingsView struct {
 	ExperimentalLocalServer      bool                       `json:"experimentalLocalServer"`
 	ExperimentalPathRules        bool                       `json:"experimentalPathRules"`
 	ExperimentalTraceAsState     bool                       `json:"experimentalTraceAsState"`
+	ExperimentalDream            bool                       `json:"experimentalDream"`
 	VisionModel                  string                     `json:"visionModel"`
 	WebSearchModel               string                     `json:"webSearchModel"`
 	WebSearchModels              []string                   `json:"webSearchModels"`
@@ -427,6 +428,8 @@ type DesktopStartupSettingsView struct {
 	ExperimentalFeedback bool `json:"experimentalFeedback"`
 	// ExperimentalTraceAsState exposes Trace-as-State compaction (task 60).
 	ExperimentalTraceAsState bool `json:"experimentalTraceAsState"`
+	// ExperimentalDream exposes dream/distill memory-curation tools (task 115).
+	ExperimentalDream bool `json:"experimentalDream"`
 	// ExperimentalLocalServer exposes the Settings → 本地服务 page (task 130).
 	ExperimentalLocalServer bool `json:"experimentalLocalServer"`
 	// ExperimentalPathRules enables structured path-scope evaluation (task 134).
@@ -1082,6 +1085,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.SessionStorage = config.SessionStorageMode(cfg)
 		view.ExperimentalFeedback = cfg.Desktop.ExperimentalFeedback
 		view.ExperimentalTraceAsState = cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState
+		view.ExperimentalDream = cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream
 		view.ExperimentalLocalServer = cfg.Desktop.ExperimentalLocalServer
 		view.ExperimentalPathRules = cfg.Desktop.ExperimentalPathRules
 		return view
@@ -1156,6 +1160,7 @@ func (a *App) Settings() SettingsView {
 		SessionStorage:             config.SessionStorageMode(cfg),
 		ExperimentalFeedback:       cfg.Desktop.ExperimentalFeedback,
 		ExperimentalTraceAsState:   cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState,
+		ExperimentalDream:          cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream,
 		ExperimentalLocalServer:    cfg.Desktop.ExperimentalLocalServer,
 		ExperimentalPathRules:      cfg.Desktop.ExperimentalPathRules,
 		VisionModel:                cfg.Agent.VisionModel,

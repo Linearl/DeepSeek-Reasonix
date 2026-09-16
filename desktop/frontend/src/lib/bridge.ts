@@ -756,6 +756,11 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalPathRules(enabled: boolean): Promise<void>;
   // Task 60: Trace-as-State compaction (experimental).
   SetExperimentalTraceAsState(enabled: boolean): Promise<void>;
+  // Task 115: dream/distill memory-curation tools (experimental).
+  SetExperimentalDream(enabled: boolean): Promise<void>;
+  // Task 115: ensure a scheduled dream pass exists in the automation panel.
+  // Returns true when a new task was appended.
+  CreateDreamHeartbeatTask(): Promise<boolean>;
   /** Persist the serve-pool gateway port and restart the gateway when enabled (task 130). */
   SetServePoolPort(port: number): Promise<void>;
   ListFeedbackEntries(limit: number): Promise<{ at: string; kind: string; text: string; tags?: string[]; session?: string; model?: string }[]>;
@@ -4952,6 +4957,8 @@ function makeMockApp(): AppBindings {
     async SetExperimentalLocalServer() {},
     async SetExperimentalPathRules() {},
     async SetExperimentalTraceAsState() {},
+    async SetExperimentalDream() {},
+    async CreateDreamHeartbeatTask() { return false; },
     async SetServePoolPort() {},
     async ListFeedbackEntries() { return []; },
     async ClearFeedbackEntries() {},

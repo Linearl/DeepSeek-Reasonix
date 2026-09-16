@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"reasonix/internal/config"
 	"strings"
+	"time"
 )
 
 // SetCloseBehavior updates desktop-only window close behavior without rebuilding
@@ -204,6 +206,71 @@ func (a *App) SetExperimentalPathRules(enabled bool) error {
 // SetExperimentalTraceAsState toggles Trace-as-State compaction (task 60).
 func (a *App) SetExperimentalTraceAsState(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalTraceAsState(enabled) })
+}
+
+// SetExperimentalDream toggles dream/distill memory-curation tools (task 115).
+func (a *App) SetExperimentalDream(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalDream(enabled) })
+}
+
+// CreateDreamHeartbeatTask ensures a scheduled dream pass exists so the
+// experiment can be exercised without hand-editing heartbeat-tasks.json.
+// Returns created=true when a new task was appended; an existing Dream task
+// is re-enabled instead of duplicated.
+func (a *App) CreateDreamHeartbeatTask() (created bool, err error) {
+	cfg, _, lerr := a.loadDesktopUserConfigForView()
+	if lerr != nil {
+		return false, lerr
+	}
+	if cfg != nil && !(cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream) {
+		return false, errors.New("enable the Dream experiment in Settings → Experimental first")
+	}
+	if a.heartbeat == nil {
+		return false, errors.New("heartbeat engine is not running")
+	}
+	view := a.heartbeat.ReloadConfig()
+	const title = "Dream 记忆整理"
+	const prompt = "调用 dream 工具跑一轮记忆整理：扫描最近项目会话中的用户偏好，校验后写入项目 memory。若工具不可用或实验未开启，说明原因后结束。完成后用简短要点汇报本轮 dream 结果（新写入几条、跳过几条）。"
+	for i, task := range view.Tasks {
+		if task.Title == title || strings.Contains(strings.ToLower(task.ID), "dream-curation") {
+			if !task.Enabled {
+				view.Tasks[i].Enabled = true
+				if _, serr := a.heartbeat.ReplaceConfig(HeartbeatConfigUpdate{
+					Revision: view.Revision,
+					ETag:     view.ETag,
+					Tasks:    view.Tasks,
+				}); serr != nil {
+					return false, serr
+				}
+			}
+			return false, nil
+		}
+	}
+	root := a.activeWorkspaceRoot()
+	scope, workspaceRoot := "global", ""
+	if root != "" {
+		scope, workspaceRoot = "project", root
+	}
+	view.Tasks = append(view.Tasks, HeartbeatTask{
+		ID:                     a.HeartbeatGenerateID(),
+		Title:                  title,
+		Prompt:                 prompt,
+		Interval:               "24h",
+		Enabled:                true,
+		Scope:                  scope,
+		WorkspaceRoot:          workspaceRoot,
+		NewConversationEachRun: true,
+		ApprovalMode:           "auto",
+		CreatedAt:              time.Now().UnixMilli(),
+	})
+	if _, serr := a.heartbeat.ReplaceConfig(HeartbeatConfigUpdate{
+		Revision: view.Revision,
+		ETag:     view.ETag,
+		Tasks:    view.Tasks,
+	}); serr != nil {
+		return false, serr
+	}
+	return true, nil
 }
 
 // SetDesktopMetrics sets whether the desktop sends aggregate desktop metrics,

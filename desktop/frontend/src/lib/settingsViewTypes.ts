@@ -25,6 +25,8 @@ export interface SettingsView {
   experimentalPathRules?: boolean;
   // Task 60: Trace-as-State compaction experiment.
   experimentalTraceAsState?: boolean;
+  // Task 115: dream/distill memory-curation experiment.
+  experimentalDream?: boolean;
   visionModel: string;
   webSearchModel?: string;
   webSearchModels?: string[];
