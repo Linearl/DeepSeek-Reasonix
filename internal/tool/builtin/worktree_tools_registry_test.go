@@ -15,6 +15,7 @@ func TestWorktreeToolsAreRegisteredBuiltins(t *testing.T) {
 		"inspect_worktree_merge",
 		"prepare_worktree_merge",
 		"merge_worktree_back",
+		"open_isolated_worktree_project",
 	} {
 		if _, ok := tool.LookupBuiltin(name); !ok {
 			// Fall back to scanning the registry snapshot.
@@ -43,6 +44,7 @@ func TestWorktreeToolsAppearInWorkspaceBinding(t *testing.T) {
 		"inspect_worktree_merge",
 		"prepare_worktree_merge",
 		"merge_worktree_back",
+		"open_isolated_worktree_project",
 	} {
 		if !names[name] {
 			t.Fatalf("workspace-bound tools are missing %q", name)
