@@ -45,6 +45,7 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 		"experimental_feedback = false",
 		"experimental_parallel_full_access = false",
 		"experimental_dream = false",
+		"trace_as_state = false",
 		"stalled_intent_nudge = false",
 	} {
 		if !strings.Contains(out, want) {
@@ -72,5 +73,14 @@ func TestStalledIntentNudgeRoundTripThroughRender(t *testing.T) {
 	}
 	if !strings.Contains(out, "stalled_intent_nudge_limit = 2") {
 		t.Fatalf("rendered user config is missing stalled_intent_nudge_limit = 2\n---\n%s", out)
+	}
+}
+
+func TestTraceAsStateRoundTripThroughRender(t *testing.T) {
+	c := &Config{}
+	c.Agent.TraceAsState = true
+	out := RenderTOMLForScope(c, RenderScopeUser)
+	if !strings.Contains(out, "trace_as_state = true") {
+		t.Fatalf("rendered user config is missing trace_as_state = true\n---\n%s", out)
 	}
 }
