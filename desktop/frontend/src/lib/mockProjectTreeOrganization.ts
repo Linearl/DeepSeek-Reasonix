@@ -43,5 +43,22 @@ export function makeMockProjectTreeOrganizationBindings(tree: ProjectNode[]): Or
       groupRevisionsByKey[key] = revision + 1;
       return { groups: structuredClone(groups), revision: revision + 1, applied: true };
     },
+    // Task 19 / 144: same CAS semantics as the real binding, so a mocked group
+    // join behaves like one that could conflict.
+    async AddTopicToGroup(scope, workspaceRoot, topicID, groupID, groupTitle) {
+      const key = organizationKey(scope, workspaceRoot);
+      const groups = groupsByKey[key] ?? [];
+      const id = groupID || `collab-${(groupTitle || "").toLowerCase()}`;
+      if (!id) return;
+      const existing = groups.find((group) => group.id === id);
+      if (existing) {
+        const members = existing.topicIds ?? [];
+        if (!members.includes(topicID)) existing.topicIds = [...members, topicID];
+      } else {
+        groups.push({ id, title: groupTitle || id, topicIds: [topicID] });
+      }
+      groupsByKey[key] = groups;
+      groupRevisionsByKey[key] = (groupRevisionsByKey[key] ?? 0) + 1;
+    },
   };
 }

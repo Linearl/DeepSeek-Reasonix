@@ -108,6 +108,16 @@ export interface ProjectTreeOrganizationBindings {
     expectedRevision: number,
     groups: SessionGroup[],
   ): Promise<ProjectGroupsSnapshot>;
+  /** Task 19 / 144: file a session into a collaboration group, creating it when
+   * the id is unknown. groupID is authoritative when given; groupTitle is only
+   * used to create a new group, so a renamed group stays reachable by id. */
+  AddTopicToGroup?(
+    scope: string,
+    workspaceRoot: string,
+    topicID: string,
+    groupID: string,
+    groupTitle: string,
+  ): Promise<void>;
 }
 
 // SessionReference is a session selected via @ past:chats for context injection.
