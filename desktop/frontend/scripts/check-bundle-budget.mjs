@@ -332,7 +332,9 @@ for (const path of localeChunks) {
   // Task 113/114 turn-edit + artifacts/references measured zh-TW 71.7; wave3 UI settings
   // (129/136/130/131/132) pushed zh to exact 71.0 and zh-TW to 71.8. Merge then measured
   // zh 71.3 / zh-TW 72.1; ratchet both one decimal: zh 71.5, zh-TW 72.5.
-  const budget = name.startsWith("zh-TW-") ? 72.5 * 1024 : 71.5 * 1024;
+  // Task 60 UI + experiment openers add locale keys; zh measures 71.6 KiB
+  // (past 71.5). Same one-decimal ratchet: zh 72.0; zh-TW keeps 72.5.
+  const budget = name.startsWith("zh-TW-") ? 72.5 * 1024 : 72.0 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
