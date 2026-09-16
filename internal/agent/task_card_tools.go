@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"reasonix/internal/sessioncollab"
 	"reasonix/internal/tool"
@@ -71,10 +72,10 @@ type updateTaskCardTool struct{ cfg TaskCardConfig }
 func (updateTaskCardTool) Name() string   { return "update_task_card" }
 func (updateTaskCardTool) ReadOnly() bool { return false }
 func (updateTaskCardTool) Description() string {
-	return "Update a collaboration task card: status pending|running|blocked|done|failed, result, error, note, assignee. Failures must be explicit. Show the returned JSON in a ```taskcard fence so the user sees the updated card."
+	return "Update a collaboration task card: status pending|running|blocked|done|failed, result, error, note, assignee, role. Terminal statuses are final — reopen with status=pending if the work resumes. Failures must be explicit. Show the returned JSON in a ```taskcard fence so the user sees the updated card."
 }
 func (updateTaskCardTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"},"status":{"type":"string"},"result":{"type":"string"},"error":{"type":"string"},"note":{"type":"string"},"assignee":{"type":"string"}},"required":["id"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"},"status":{"type":"string","enum":["pending","running","blocked","done","failed"]},"result":{"type":"string"},"error":{"type":"string"},"note":{"type":"string"},"assignee":{"type":"string"},"role":{"type":"string","description":"Chain role for the appended node, e.g. secretariat|expert."}},"required":["id"]}`)
 }
 func (t updateTaskCardTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
 	var p struct {
@@ -84,6 +85,7 @@ func (t updateTaskCardTool) Execute(_ context.Context, args json.RawMessage) (st
 		Error    string `json:"error"`
 		Note     string `json:"note"`
 		Assignee string `json:"assignee"`
+		Role     string `json:"role"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", err
@@ -94,12 +96,16 @@ func (t updateTaskCardTool) Execute(_ context.Context, args json.RawMessage) (st
 	store := sessioncollab.NewCardStore(t.cfg.WorkspaceRoot)
 	c, err := store.Update(p.ID, func(card *sessioncollab.Card) error {
 		if p.Status != "" {
-			switch sessioncollab.CardStatus(p.Status) {
-			case sessioncollab.StatusPending, sessioncollab.StatusRunning, sessioncollab.StatusBlocked, sessioncollab.StatusDone, sessioncollab.StatusFailed:
-				card.Status = sessioncollab.CardStatus(p.Status)
-			default:
+			next := sessioncollab.CardStatus(p.Status)
+			if !sessioncollab.StatusAllowed(next) {
 				return fmt.Errorf("invalid status %q", p.Status)
 			}
+			// A terminal card must not silently restart: reopening hides that the
+			// earlier run was abandoned.
+			if !sessioncollab.StatusTransitionAllowed(card.Status, next) {
+				return fmt.Errorf("cannot move a %s card to %s; reopen it explicitly with status=pending", card.Status, next)
+			}
+			card.Status = next
 		}
 		if p.Result != "" {
 			card.Result = p.Result
@@ -117,8 +123,9 @@ func (t updateTaskCardTool) Execute(_ context.Context, args json.RawMessage) (st
 			card.Nodes = append(card.Nodes, sessioncollab.CardNode{
 				ContactID: firstNonEmpty(p.Assignee, t.cfg.CurrentContactID),
 				Session:   t.cfg.CurrentSessionPath,
-				Role:      "expert",
+				Role:      firstNonEmpty(p.Role, "expert"),
 				Note:      p.Note,
+				At:        time.Now().UnixMilli(),
 			})
 		}
 		return nil

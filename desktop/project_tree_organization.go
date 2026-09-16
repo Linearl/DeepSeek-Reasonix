@@ -378,13 +378,18 @@ func topicOriginIsHeartbeat(raw json.RawMessage) bool {
 // when it does not exist yet (task 144). Grouping is organisational only: it
 // uses the topic id, so renaming a session never moves it out of its group, and
 // addressing still goes through the session's contact_id.
-func (a *App) AddTopicToGroup(scope, workspaceRoot, topicID, groupTitle string) error {
+//
+// groupID, when given, is authoritative: an existing group is matched by id, not
+// by title. Matching on the title alone made two teams with the same name merge,
+// and made a group renamed by the user unreachable.
+func (a *App) AddTopicToGroup(scope, workspaceRoot, topicID, groupID, groupTitle string) error {
 	topicID = strings.TrimSpace(topicID)
+	groupID = strings.TrimSpace(groupID)
 	groupTitle = strings.TrimSpace(groupTitle)
 	if topicID == "" {
 		return fmt.Errorf("topicId is required")
 	}
-	if groupTitle == "" {
+	if groupID == "" && groupTitle == "" {
 		return nil
 	}
 	// CAS retry: another writer (sidebar drag, heartbeat filing) may hold the
@@ -398,13 +403,28 @@ func (a *App) AddTopicToGroup(scope, workspaceRoot, topicID, groupTitle string) 
 		groups := append([]desktopGroup(nil), snapshot.Groups...)
 		target := -1
 		for i, g := range groups {
+			if groupID != "" {
+				if strings.EqualFold(strings.TrimSpace(g.ID), groupID) {
+					target = i
+					break
+				}
+				continue
+			}
 			if strings.EqualFold(strings.TrimSpace(g.Title), groupTitle) {
 				target = i
 				break
 			}
 		}
 		if target < 0 {
-			groups = append(groups, desktopGroup{ID: "collab-" + strings.ToLower(groupTitle), Title: groupTitle, TopicIDs: []string{topicID}})
+			if groupID == "" {
+				groupID = "collab-" + strings.ToLower(groupTitle)
+			}
+			if groupTitle == "" {
+				// An id with no title is not a usable group label; fall back to
+				// the id so the row is still readable in the sidebar.
+				groupTitle = groupID
+			}
+			groups = append(groups, desktopGroup{ID: groupID, Title: groupTitle, TopicIDs: []string{topicID}})
 		} else {
 			for _, member := range groups[target].TopicIDs {
 				if member == topicID {
@@ -421,7 +441,7 @@ func (a *App) AddTopicToGroup(scope, workspaceRoot, topicID, groupTitle string) 
 			return nil
 		}
 	}
-	return fmt.Errorf("session group %q: config changed concurrently, retry", groupTitle)
+	return fmt.Errorf("session group %q: config changed concurrently, retry", firstNonEmptyString(groupID, groupTitle))
 }
 
 func (a *App) SaveSessionGroups(scope, workspaceRoot string, groups []desktopGroup) error {

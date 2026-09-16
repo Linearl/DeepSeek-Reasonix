@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -493,6 +494,33 @@ func StatsDir() string {
 		return ""
 	}
 	return filepath.Join(dir, "stats")
+}
+
+// AllProjectSessionDirs lists every per-workspace session directory on this
+// machine. Discovery must not depend on which projects happen to be open: a
+// collaborating session that is closed is still addressable, and "list all
+// addressable sessions" has to mean all of them.
+func AllProjectSessionDirs() []string {
+	base := MemoryUserDir()
+	if base == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(filepath.Join(base, "projects"))
+	if err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		dir := filepath.Join(base, "projects", e.Name(), "sessions")
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			out = append(out, dir)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // ProjectSessionDir is the per-workspace session directory the desktop sidebar

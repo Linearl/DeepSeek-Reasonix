@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
-	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -92,11 +92,50 @@ func (t listAddressableSessionsTool) Execute(_ context.Context, _ json.RawMessag
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Addressable sessions (%d)\n\n", len(ids))
-	b.WriteString("| contact_id | purpose | title | path |\n|---|---|---|---|\n")
+	b.WriteString("| contact_id | purpose | title | archived | path |\n|---|---|---|---|---|\n")
 	for _, id := range ids {
-		fmt.Fprintf(&b, "| `%s` | %s | %s | `%s`\n", id.ContactID, id.Purpose, id.Title, filepath.Base(id.SessionPath))
+		archived := ""
+		if id.Archived {
+			archived = "yes"
+		}
+		fmt.Fprintf(&b, "| `%s` | %s | %s | %s | `%s`\n", id.ContactID, id.Purpose, id.Title, archived, filepath.Base(id.SessionPath))
+	}
+	if dups := duplicateContactIDs(t.cfg.SessionDir, t.cfg.WorkspaceRoot); len(dups) > 0 {
+		// A shared address silently routes one session's mail to another, so it
+		// is reported instead of being resolved by picking a winner.
+		fmt.Fprintf(&b, "\n⚠️ 重复的 contact_id（同名会话文件副本）——这些地址不再唯一，未列入上表：%s\n", strings.Join(dups, ", "))
 	}
 	return b.String(), nil
+}
+
+// duplicateContactIDs reports contact ids shared by more than one session file.
+func duplicateContactIDs(sessionDir, workspaceRoot string) []string {
+	load := func(sessionPath string) (string, string, string, string, bool) {
+		m, found, err := LoadBranchMeta(sessionPath)
+		if err != nil || !found || m.ContactID == "" {
+			return "", "", "", "", false
+		}
+		return m.ContactID, "", "", "", true
+	}
+	count := map[string]int{}
+	dirs := []string{sessionDir, config.ProjectSessionDir(workspaceRoot), config.ArchiveDir()}
+	dirs = append(dirs, config.AllProjectSessionDirs()...)
+	for _, dir := range dirs {
+		if strings.TrimSpace(dir) == "" {
+			continue
+		}
+		for _, id := range sessioncollab.ScanDir(dir, "", load) {
+			count[id.ContactID]++
+		}
+	}
+	var out []string
+	for id, n := range count {
+		if n > 1 {
+			out = append(out, id)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func NewTalkToSessionTool(cfg SessionCollabConfig) tool.Tool {
@@ -143,6 +182,11 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 	target, ok := sessioncollab.ResolveContact(ids, p.To)
 	if !ok {
 		return "", fmt.Errorf("%w: contact_id %q is not registered (use list_addressable_sessions)", sessioncollab.ErrNotFound, p.To)
+	}
+	if target.Archived {
+		// Archived is a different situation from unknown: the address is real,
+		// the session is just no longer an active participant.
+		return "", fmt.Errorf("contact_id %q is archived and no longer accepts messages (restore the session first)", p.To)
 	}
 	fromContact := t.cfg.CurrentContactID
 	if fromContact == "" && t.cfg.CurrentSessionPath != "" {
@@ -274,10 +318,15 @@ func workspaceRootForMail(cfg SessionCollabConfig, target sessioncollab.Identity
 	return filepath.Dir(cfg.SessionDir)
 }
 
-// scanAddressable collects registered sessions from the global session dir and
-// the current project's session dir. Global sessions carry workspaceRoot "" so
-// delivery resolves the shared global mailbox; project sessions carry their
-// project root so delivery lands in that project's mailbox.
+// scanAddressable collects registered sessions from every session directory on
+// this machine: the global dir, every project dir, and the archive. Scanning all
+// projects (not just the open ones) is what makes "list all addressable
+// sessions" true; archived sessions are marked so callers can report "archived"
+// distinctly from "never registered".
+//
+// Duplicate contact_ids are dropped after the first and reported through
+// DuplicateContacts: two sessions sharing an address would silently route one
+// session's mail to the other.
 func scanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity {
 	load := func(sessionPath string) (contact, purpose, topic, title string, ok bool) {
 		m, found, err := LoadBranchMeta(sessionPath)
@@ -287,35 +336,41 @@ func scanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity 
 		return m.ContactID, m.Purpose, m.TopicID, m.CustomTitle, m.ContactID != ""
 	}
 	var out []sessioncollab.Identity
-	seen := map[string]bool{}
-	add := func(ids []sessioncollab.Identity) {
+	seenPath := map[string]bool{}
+	seenContact := map[string]string{}
+	add := func(ids []sessioncollab.Identity, archived bool) {
 		for _, id := range ids {
 			key := strings.ToLower(id.SessionPath)
-			if seen[key] {
+			if seenPath[key] {
 				continue
 			}
-			seen[key] = true
+			seenPath[key] = true
+			if prev, dup := seenContact[id.ContactID]; dup {
+				// Keep the first and let the caller surface the collision rather
+				// than silently choosing a recipient.
+				_ = prev
+				continue
+			}
+			seenContact[id.ContactID] = id.SessionPath
+			id.Archived = archived
 			out = append(out, id)
 		}
 	}
-	add(sessioncollab.ScanDir(sessionDir, "", load))
-	if workspaceRoot != "" {
-		projSessions := config.ProjectSessionDir(workspaceRoot)
-		if !samePath(projSessions, sessionDir) {
-			add(sessioncollab.ScanDir(projSessions, workspaceRoot, load))
-		}
-	}
-	return out
-}
 
-func samePath(a, b string) bool {
-	absA, errA := filepath.Abs(a)
-	absB, errB := filepath.Abs(b)
-	if errA != nil || errB != nil {
-		return a == b
+	dirs := []string{sessionDir}
+	if workspaceRoot != "" {
+		dirs = append(dirs, config.ProjectSessionDir(workspaceRoot))
 	}
-	if runtime.GOOS == "windows" {
-		return strings.EqualFold(absA, absB)
+	dirs = append(dirs, config.AllProjectSessionDirs()...)
+	for _, dir := range dirs {
+		if strings.TrimSpace(dir) == "" {
+			continue
+		}
+		add(sessioncollab.ScanDir(dir, "", load), false)
 	}
-	return absA == absB
+	// Archived sessions are still addressable history: report them as archived
+	// rather than pretending they never existed.
+	add(sessioncollab.ScanDir(config.ArchiveDir(), "", load), true)
+	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt > out[j].UpdatedAt })
+	return out
 }

@@ -314,7 +314,9 @@ straight to the matching expert and the secretariat never touches it.
   - ` + "`delivery=\"steer\"`" + ` asks to inject mid-turn. If the target cannot take it,
     it degrades to a follow-up and you receive a notice saying so. Never assume
     a steer landed; the notice is the truth.
-  - ` + "`hop`" + `: 0 when you start a chain, sender's hop + 1 when you relay.
+  - ` + "`hop`" + `: 0 when you start a chain. When you relay or answer, you do not need
+    to compute it — the system derives the depth from the thread you name and
+    ignores the number you pass. What it does require is the thread id.
 - ` + "`talk_to_session_sync`" + ` when you genuinely need the answer before you can
   continue a short step. It waits up to ` + "`timeout_ms`" + ` (default 30s, max 120s).
   A ` + "`status=\"timeout\"`" + ` result is NOT a failure: the request is queued and the
@@ -351,8 +353,13 @@ straight to the matching expert and the secretariat never touches it.
 ## Boundaries
 
 - One-off chores still belong to the ` + "`actor`" + ` subagent, not to a new session.
-- Grouping (` + "`create_collab_session`" + `) is for standing teams; grouping only affects
-  sidebar organisation and discovery, never addressing.
+- Grouping (` + "`create_collab_session`" + `) is for standing teams; pass ` + "`group_id`" + ` when
+  you already know the team (title matching is only for creating a new one), and
+  grouping only affects sidebar organisation and discovery, never addressing.
+- Delivery failures are retried automatically and you are told once. Never assume
+  silence means success — a status note in your inbox is the truth.
+- Terminal card states are final: reopening goes through ` + "`pending`" + ` so an
+  abandoned run cannot look like a fresh one.
 `
 
 	readCodeTools := []string{"read_file", "ls", "glob", "grep", "code_index"}

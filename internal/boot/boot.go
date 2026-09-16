@@ -202,7 +202,7 @@ type Options struct {
 	// agent's behalf and file it into a group (task 19 / 144). The engine cannot
 	// create sessions itself — that is a host capability — so nil omits the
 	// create_collab_session tool entirely rather than exposing a broken one.
-	OnCreateCollabSession func(workspaceRoot, title, purpose, group string) (topicID string, err error)
+	OnCreateCollabSession func(workspaceRoot, title, purpose, group, groupID string) (topicID string, err error)
 	// SubagentParentLive reports whether this process currently owns or is
 	// building the parent session. Desktop uses it to avoid probing a live tab's
 	// lease during stale-subagent cleanup. Nil preserves lease-only cleanup.
@@ -721,7 +721,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		skillStore = skill.New(skill.Options{
 			ProjectRoot: root, CustomPaths: cfg.SkillCustomPaths(), PluginPaths: cfg.PluginPackageSkillOwners(),
 			PluginAgentPaths: cfg.PluginPackageAgentOwners(), ExcludedPaths: cfg.SkillExcludedPaths(),
-			DisabledNames: cfg.DisabledSkillNames(), MaxDepth: cfg.SkillMaxDepth(), Stderr: opts.Stderr,
+			DisabledNames: collabDisabledSkillNames(cfg), MaxDepth: cfg.SkillMaxDepth(), Stderr: opts.Stderr,
 		})
 		skillStore.ConfigureInvocationPolicy("", nil)
 		skills = skillStore.List()
@@ -3070,4 +3070,17 @@ func workspaceFileInventory(root string) []string {
 		return nil
 	})
 	return out
+}
+
+// collabDisabledSkillNames hides the collaboration secretary protocol while the
+// experiment is off. The skill's own text tells the model to call
+// talk_to_session / create_task_card / create_collab_session; with those tools
+// unregistered, offering the skill would guarantee a "tool not found" failure,
+// which is exactly what "failures are never silent" is meant to prevent.
+func collabDisabledSkillNames(cfg *config.Config) []string {
+	names := cfg.DisabledSkillNames()
+	if cfg.Agent.ExperimentalSessionCollab {
+		return names
+	}
+	return append(append([]string(nil), names...), "collab-secretary")
 }

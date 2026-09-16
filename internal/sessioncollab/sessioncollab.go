@@ -3,9 +3,15 @@
 // durable cross-session mailbox for talk_to_session (142).
 //
 // Addressing is additive: topicID and file paths keep working; contact_id
-// never replaces them. Cards use atomic temp+rename writes. Mailbox delivery
-// is durable on disk; the live wake path is optional and never required for
-// correctness.
+// never replaces them. Cards use atomic temp+rename writes.
+//
+// Delivery is split in two halves. This package owns the durable half: the
+// mailbox, its per-contact cursor, and thread-based hop derivation. The live
+// half — waking a target session — is host-side (the desktop pump in
+// desktop/session_collab.go). A host without that pump can still send, and the
+// mail waits durably, but nothing executes it until a host with a pump runs and
+// has the target open. "Delivered" therefore means "in the target's inbox", not
+// "the target has run it".
 package sessioncollab
 
 import (
@@ -36,7 +42,11 @@ type Identity struct {
 	Title       string `json:"title,omitempty"`
 	Workspace   string `json:"workspaceRoot,omitempty"`
 	Scope       string `json:"scope,omitempty"`
-	UpdatedAt   int64  `json:"updatedAt,omitempty"`
+	// Archived marks a session found in the archive: it still has an address,
+	// but it is no longer an active participant, and callers must say so rather
+	// than reporting it as never registered.
+	Archived  bool  `json:"archived,omitempty"`
+	UpdatedAt int64 `json:"updatedAt,omitempty"`
 }
 
 // CardStatus is the task-card state machine (task 145).
@@ -225,6 +235,43 @@ func ResolveContact(ids []Identity, contactID string) (Identity, bool) {
 }
 
 // ── task cards (145) ─────────────────────────────────────────────────────────
+
+// StatusAllowed reports whether a status string is part of the card machine.
+func StatusAllowed(s CardStatus) bool {
+	switch s {
+	case StatusPending, StatusRunning, StatusBlocked, StatusDone, StatusFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+// StatusTransitionAllowed encodes the card state machine. Without it a card
+// could go done → running and quietly hide that the earlier run finished (or
+// that someone reopened abandoned work), so terminal states are terminal: a
+// deliberate reopen goes through pending.
+func StatusTransitionAllowed(from, to CardStatus) bool {
+	if from == "" {
+		from = StatusPending
+	}
+	if from == to {
+		return true
+	}
+	switch from {
+	case StatusPending:
+		return to == StatusRunning || to == StatusBlocked || to == StatusDone || to == StatusFailed
+	case StatusRunning:
+		return to == StatusBlocked || to == StatusDone || to == StatusFailed
+	case StatusBlocked:
+		return to == StatusRunning || to == StatusDone || to == StatusFailed
+	case StatusDone:
+		return to == StatusPending // explicit reopen only
+	case StatusFailed:
+		return to == StatusPending // explicit reopen only
+	default:
+		return false
+	}
+}
 
 // CardStore persists cards under <root>/.reasonix/taskcards/.
 //
@@ -447,6 +494,13 @@ func (s *MailStore) lock() (func(), error) {
 	return filelock.Acquire(context.Background(), filepath.Join(s.root, ".mail.lock"))
 }
 
+// Dir is the mailbox root. Exposed so callers and tests can locate a contact's
+// files without re-deriving the layout.
+func (s *MailStore) Dir() string { return s.root }
+
+// InboxPath is the append-only inbox file for one contact.
+func (s *MailStore) InboxPath(contactID string) string { return s.inboxPath(contactID) }
+
 func (s *MailStore) inboxPath(contactID string) string {
 	contactID = strings.TrimSpace(contactID)
 	if contactID == "" {
@@ -494,12 +548,21 @@ func (s *MailStore) Deliver(msg MailMessage) (MailMessage, error) {
 	return msg, nil
 }
 
-// Claim returns messages the contact has not seen yet and advances its cursor,
-// so a resumed polling loop never re-delivers the same message. It also
-// enforces the hop ceiling at delivery time: a message that already exhausted
-// the chain is refused here rather than being handed to the target, because a
-// caller-reported hop cannot be trusted.
-func (s *MailStore) Claim(contactID string) (delivered []MailMessage, refused []MailMessage, err error) {
+// Claim returns messages the contact has not seen yet WITHOUT advancing the
+// cursor. The caller must Ack what it actually delivered.
+//
+// This is deliberately two-phase. Advancing the cursor here would make delivery
+// at-most-once: any failure after the claim (target controller not ready, disk
+// error, process death) would drop the message forever, because the next claim
+// no longer sees it. At-least-once is the correct guarantee for cross-session
+// work, and the inbox's own idempotency key ("collab:<id>") keeps a redelivery
+// from duplicating a turn.
+//
+// The hop ceiling is enforced here as well as on write: a caller-reported hop
+// is not trustworthy, so an over-limit message is refused rather than handed to
+// the target. Refused messages are reported to the caller, which Acks them so
+// they do not reappear on every pass.
+func (s *MailStore) Claim(contactID string) (pending []MailMessage, refused []MailMessage, err error) {
 	unlock, err := s.lock()
 	if err != nil {
 		return nil, nil, err
@@ -518,30 +581,37 @@ func (s *MailStore) Claim(contactID string) (delivered []MailMessage, refused []
 			refused = append(refused, m)
 			continue
 		}
-		delivered = append(delivered, m)
+		pending = append(pending, m)
 	}
-	if len(delivered) == 0 && len(refused) == 0 {
-		return nil, nil, nil
-	}
-	for _, m := range delivered {
-		seen[m.ID] = true
-	}
-	for _, m := range refused {
-		seen[m.ID] = true
-	}
-	if err := s.writeCursor(contactID, seen); err != nil {
-		return nil, nil, err
-	}
-	return delivered, refused, nil
+	return pending, refused, nil
 }
 
-// AwaitReply waits for a message on threadID addressed to contactID, without
-// consuming anything else in the inbox. It is the second half of a synchronous
-// talk_to_session: the caller already delivered the request, and now needs the
-// answer that carries the same thread id.
+// Ack advances the cursor for IDs whose delivery is settled — delivered
+// successfully, or refused for good. Not acking leaves them for the next pass.
+func (s *MailStore) Ack(contactID string, ids ...string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	unlock, err := s.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	seen := s.readCursor(contactID)
+	for _, id := range ids {
+		if strings.TrimSpace(id) != "" {
+			seen[id] = true
+		}
+	}
+	return s.writeCursor(contactID, seen)
+}
+
+// AwaitReply waits for a message on threadID addressed to contactID and
+// consumes it, so the delivery pass does not hand the same answer to the
+// requester a second time: the synchronous caller already received it as its
+// tool result, and a second copy would make the requester act on it twice.
 //
-// Deliberately non-destructive: delivery stays the pump's job, so a timeout
-// leaves the reply queued for the normal path rather than losing it.
+// Only the matching message is consumed; everything else stays queued.
 func (s *MailStore) AwaitReply(contactID, threadID string, timeout time.Duration) (MailMessage, bool) {
 	if strings.TrimSpace(threadID) == "" {
 		return MailMessage{}, false
@@ -552,6 +622,8 @@ func (s *MailStore) AwaitReply(contactID, threadID string, timeout time.Duration
 		if err == nil {
 			for _, m := range all {
 				if m.ThreadID == threadID {
+					// Best-effort: a failed ack costs a duplicate, not a loss.
+					_ = s.Ack(contactID, m.ID)
 					return m, true
 				}
 			}
@@ -567,6 +639,64 @@ func (s *MailStore) AwaitReply(contactID, threadID string, timeout time.Duration
 			time.Sleep(sleep)
 		}
 	}
+}
+
+// ParentThread finds the message a reply answers, by id, in the mailbox that
+// sent it. Chain depth is derived from this record rather than from the
+// sender's claim, which is the only way a hop ceiling can be enforced.
+func (s *MailStore) ParentThread(contactID, threadID string) (MailMessage, bool) {
+	if strings.TrimSpace(contactID) == "" || strings.TrimSpace(threadID) == "" {
+		return MailMessage{}, false
+	}
+	all, err := s.readAll(contactID)
+	if err != nil {
+		return MailMessage{}, false
+	}
+	for _, m := range all {
+		if m.ID == threadID {
+			return m, true
+		}
+	}
+	return MailMessage{}, false
+}
+
+// MarkNotified records that a status note was sent for key, returning true only
+// the first time. It lets a caller notify once without giving up the retry, so
+// a target that stays unavailable is never silent but also never a flood.
+func (s *MailStore) MarkNotified(contactID, key string) bool {
+	if strings.TrimSpace(contactID) == "" || strings.TrimSpace(key) == "" {
+		return false
+	}
+	unlock, err := s.lock()
+	if err != nil {
+		return false
+	}
+	defer unlock()
+	notified := s.readNotified(contactID)
+	if notified[key] {
+		return false
+	}
+	notified[key] = true
+	if err := atomicWriteJSON(s.notifiedPath(contactID), notified); err != nil {
+		return false
+	}
+	return true
+}
+
+func (s *MailStore) notifiedPath(contactID string) string {
+	return filepath.Join(s.root, strings.TrimSpace(contactID)+".notified.json")
+}
+
+func (s *MailStore) readNotified(contactID string) map[string]bool {
+	out := map[string]bool{}
+	b, err := os.ReadFile(s.notifiedPath(contactID))
+	if err != nil {
+		return out
+	}
+	if err := json.Unmarshal(b, &out); err != nil {
+		return map[string]bool{}
+	}
+	return out
 }
 
 // Peek returns unread messages without advancing the cursor.
