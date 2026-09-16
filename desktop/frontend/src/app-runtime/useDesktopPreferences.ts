@@ -6,6 +6,8 @@ import { useI18n, useT } from "../lib/i18n";
 import { DEFAULT_STATUS_BAR_ITEMS, normalizeStatusBarItems } from "../lib/statusBarItems";
 import { hydrateReasoningDisplayMode, setReasoningDisplayPending } from "../lib/reasoningDisplayPreference";
 import { hydrateSessionExperience } from "../lib/sessionExperience";
+import { setSessionMonitorEnabled } from "../lib/sessionMonitor";
+import { setFeedbackEnabled } from "../components/FeedbackPanel";
 import type { BotRuntimeStatusView } from "../lib/types";
 import { app } from "../lib/bridge";
 import { applyPreferencesAppearance, layoutStyleFromSnapshot, synchronizeDesktopPreferences, type DesktopPreferencesSnapshot } from "./desktopPreferencesAdapter";
@@ -21,6 +23,10 @@ export function useDesktopPreferences() {
   const publish = useCommittedCommand((settings: DesktopPreferencesSnapshot, runtime: BotRuntimeStatusView | null) => {
     setPref(applyPreferencesAppearance(settings));
     if ("configWarnings" in settings) warnings.applySnapshot(settings.configWarnings, settings.configWarningsRevision);
+    // Task 140: hydrate experiment flags so sidebar feedback/monitor buttons
+    // appear without requiring a Settings toggle in the same session.
+    setSessionMonitorEnabled(Boolean((settings as { experimentalSessionMonitor?: boolean }).experimentalSessionMonitor));
+    setFeedbackEnabled(Boolean((settings as { experimentalFeedback?: boolean }).experimentalFeedback));
     setSnapshot(settings);
     setBotRuntime(runtime);
     setStartupFailed(false);

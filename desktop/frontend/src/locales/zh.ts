@@ -2132,7 +2132,7 @@ export const zh: Record<DictKey, string> = {
 "settings.restartUpdate": "快速切换版本",
 "settings.restartUpdateHint": "状态栏显示「快速切换版本」按钮：把 InstallRoot/staging 里的调试构建换入当前安装目录并重启。调试辅助，非官方更新；默认关闭。",
 "settings.sessionMonitor": "会话监控",
-"settings.sessionMonitorHint": "在项目树标题栏加一个「会话监控」按钮：逐 tab 查看转录缓存驻留、上次切换耗时、历史复用原因与缓存驱逐。实验特性，默认关闭。",
+"settings.sessionMonitorHint": "在左侧栏回收站上方加入「会话监控」按钮：逐 tab 查看转录缓存驻留、上次切换耗时、历史复用原因与缓存驱逐。实验特性，默认关闭。",
 "settings.sessionMonitor.on": "开",
 "settings.sessionMonitor.off": "关",
 "settings.feedback": "意见箱",
