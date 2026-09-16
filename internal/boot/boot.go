@@ -116,10 +116,10 @@ type Options struct {
 	// ApprovalTier selects who decides reversible unattended approvals
 	// (task 52): guardian | parent | human. Empty uses cfg.Agent.approval_tier,
 	// which itself defaults to guardian.
-	ApprovalTier           string
-	MaxRuntime             time.Duration
-	RequireKey             bool
-	Sink                   event.Sink
+	ApprovalTier string
+	MaxRuntime   time.Duration
+	RequireKey   bool
+	Sink         event.Sink
 	// EffortOverride is a session-local reasoning effort override. Nil means use
 	// the resolved provider config; a non-nil empty string means provider default.
 	EffortOverride *string
@@ -1191,29 +1191,29 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	imageConfig := &imageinput.Config{Model: cfg.Agent.VisionModel, Resolve: visionProviderResolver, Select: visionModelSelector}
 	newTaskTool := func() *agent.TaskTool {
 		return agent.NewTaskToolWithOptions(agent.TaskToolOptions{
-			ImageInput:          imageConfig,
-			Provider:            execProv,
-			Pricing:             entry.Price,
-			QuoteContext:        quoteCtx,
-			ParentRegistry:      reg,
-			MaxSteps:            maxSteps,
-			ReviewMaxSteps:      cfg.Agent.ReviewMaxSteps,
+			ImageInput:           imageConfig,
+			Provider:             execProv,
+			Pricing:              entry.Price,
+			QuoteContext:         quoteCtx,
+			ParentRegistry:       reg,
+			MaxSteps:             maxSteps,
+			ReviewMaxSteps:       cfg.Agent.ReviewMaxSteps,
 			SubagentDefaultSteps: cfg.Agent.SubagentDefaultSteps,
-			ContextWindow:       entry.ContextWindow,
-			RecentKeep:          cfg.Agent.RecentKeep,
-			SoftCompactRatio:    cfg.Agent.SoftCompactRatio,
-			ToolResultSnipRatio: cfg.Agent.ToolResultSnipRatio,
-			CompactRatio:        cfg.Agent.CompactRatio,
-			CompactForceRatio:   cfg.Agent.CompactForceRatio,
-			ContextEditing:      cfg.Agent.ContextEditing,
-			Temperature:         cfg.Agent.Temperature,
-			ArchiveDir:          config.ArchiveDir(),
-			SysPrompt:           "",
-			Gate:                headlessGate,
-			KeepPolicy:          keepPolicy,
-			SubagentModel:       taskModel,
-			SubagentEffort:      taskEffort,
-			ResolveProvider:     resolveSubagentProvider,
+			ContextWindow:        entry.ContextWindow,
+			RecentKeep:           cfg.Agent.RecentKeep,
+			SoftCompactRatio:     cfg.Agent.SoftCompactRatio,
+			ToolResultSnipRatio:  cfg.Agent.ToolResultSnipRatio,
+			CompactRatio:         cfg.Agent.CompactRatio,
+			CompactForceRatio:    cfg.Agent.CompactForceRatio,
+			ContextEditing:       cfg.Agent.ContextEditing,
+			Temperature:          cfg.Agent.Temperature,
+			ArchiveDir:           config.ArchiveDir(),
+			SysPrompt:            "",
+			Gate:                 headlessGate,
+			KeepPolicy:           keepPolicy,
+			SubagentModel:        taskModel,
+			SubagentEffort:       taskEffort,
+			ResolveProvider:      resolveSubagentProvider,
 		}).
 			WithTranscripts(subagentStore, root, modelName, entry.Effort).
 			WithTranscriptIdentityResolver(subagentIdentity).
@@ -1819,6 +1819,31 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		MissingReasoningWarnStateDir: config.MissingReasoningWarnStateDir(),
 	}, sink)
 	reg.Add(sessiontool.NewSetSessionTitleTool(sessionDir, executor.SessionPath, opts.OnSessionTitleChanged))
+	// Task 19 / 141–145: multi-session collaboration (contact addressing,
+	// talk_to_session, task cards). Off by default via experimental_session_collab.
+	if cfg.Agent.ExperimentalSessionCollab {
+		collabSessionDir := sessionDir
+		if strings.TrimSpace(collabSessionDir) == "" {
+			collabSessionDir = config.SessionDir()
+		}
+		sessionPath := executor.SessionPath()
+		collab := agent.SessionCollabConfig{
+			Enabled:            true,
+			SessionDir:         collabSessionDir,
+			WorkspaceRoot:      root,
+			CurrentSessionPath: sessionPath,
+		}
+		reg.Add(agent.NewSetSessionPurposeTool(collab))
+		reg.Add(agent.NewListAddressableSessionsTool(collab))
+		reg.Add(agent.NewTalkToSessionTool(collab))
+		for _, t := range agent.NewTaskCardTools(agent.TaskCardConfig{
+			Enabled:            true,
+			WorkspaceRoot:      root,
+			CurrentSessionPath: sessionPath,
+		}) {
+			reg.Add(t)
+		}
+	}
 	// Task 107 P0-②: the model's read-only view of the recovery fence. It reads
 	// the executing agent through the call context that executeOne stamps.
 	reg.Add(agent.NewToolRecoveryTool())
