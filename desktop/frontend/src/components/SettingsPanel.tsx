@@ -19,7 +19,7 @@ import { catalogForPreset } from "../lib/providerCatalog";
 import { ProviderCatalogPicker, type CatalogChoice } from "./ProviderCatalogPicker";
 import { Eye, EyeOff, Files } from "lucide-react";
 import { lazy, memo, Suspense, startTransition, useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { ArrowRight, Check, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, Server, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, Volume2, Zap } from "lucide-react";
+import { ArrowRight, Check, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, FolderLock, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, Server, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, Volume2, Zap } from "lucide-react";
 import { asArray } from "../lib/array";
 import { ShellInterpreterFields } from "./SettingsShellSupport";
 import { CHANNEL_ICONS } from "./channelIcons";
@@ -1675,6 +1675,7 @@ type ExperimentFeatureId =
   | "splitView"
   | "feedback"
   | "localServer"
+  | "pathRules"
   | "autopilot";
 
 function ExperimentalSection({ s, busy, apply }: SectionProps) {
@@ -1691,6 +1692,7 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
     { id: "splitView", label: t("settings.splitView"), on: Boolean(s.experimentalSplitView) },
     { id: "feedback", label: t("settings.feedback"), on: Boolean(s.experimentalFeedback) },
     { id: "localServer", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
+    { id: "pathRules", label: t("settings.pathRules"), on: Boolean(s.experimentalPathRules) },
     { id: "autopilot", label: t("settings.autopilot"), on: Boolean(s.autopilot) },
   ];
 
@@ -1828,6 +1830,22 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
                     onClick={() => void apply(() => app.SetExperimentalLocalServer(on))}
                   >
                     {t(on ? "settings.localServer.on" : "settings.localServer.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "pathRules" && (
+            <SettingsField label={t("settings.pathRules")} hint={t("settings.pathRulesHint")} icon={<FolderLock size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalPathRules) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetExperimentalPathRules(on))}
+                  >
+                    {t(on ? "settings.pathRules.on" : "settings.pathRules.off")}
                   </button>
                 ))}
               </SettingsOptions>

@@ -21,6 +21,8 @@ export interface SettingsView {
   experimentalFeedback?: boolean;
   // Task 130: exposes the Settings → 本地服务 page and serve-pool controls.
   experimentalLocalServer?: boolean;
+  // Task 134: structured path-scope evaluation (docs/PATH_SCOPE_RULES.md).
+  experimentalPathRules?: boolean;
   visionModel: string;
   webSearchModel?: string;
   webSearchModels?: string[];
