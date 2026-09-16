@@ -228,8 +228,16 @@ export function isSessionMonitorOpen(): boolean {
 }
 
 export function setSessionMonitorOpen(next: boolean): void {
-  if (monitorOpen === next) return;
+  // DIAG (task 123): separates "click never reached the store" from "store
+  // changed but nothing was listening/rendering". listeners= is the number of
+  // mounted subscribers, so 0 explains a silent no-op. Remove once the panel
+  // is confirmed working.
+  if (monitorOpen === next) {
+    reportFrontendLog("session-monitor", "open request ignored", `requested=${next} current=${monitorOpen} listeners=${openListeners.size}`);
+    return;
+  }
   monitorOpen = next;
+  reportFrontendLog("session-monitor", "open changed", `open=${next} listeners=${openListeners.size}`);
   for (const listener of openListeners) listener(next);
 }
 
