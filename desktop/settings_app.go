@@ -340,6 +340,7 @@ type SettingsView struct {
 	SessionStorage               string                     `json:"sessionStorage"`
 	ExperimentalFeedback         bool                       `json:"experimentalFeedback"`
 	ExperimentalLocalServer      bool                       `json:"experimentalLocalServer"`
+	ExperimentalPathRules        bool                       `json:"experimentalPathRules"`
 	VisionModel                  string                     `json:"visionModel"`
 	WebSearchModel               string                     `json:"webSearchModel"`
 	WebSearchModels              []string                   `json:"webSearchModels"`
@@ -424,8 +425,10 @@ type DesktopStartupSettingsView struct {
 	// inbox panel (task 121).
 	ExperimentalFeedback bool `json:"experimentalFeedback"`
 	// ExperimentalLocalServer exposes the Settings → 本地服务 page (task 130).
-	ExperimentalLocalServer bool   `json:"experimentalLocalServer"`
-	CheckUpdates            bool   `json:"checkUpdates"`
+	ExperimentalLocalServer bool `json:"experimentalLocalServer"`
+	// ExperimentalPathRules enables structured path-scope evaluation (task 134).
+	ExperimentalPathRules bool   `json:"experimentalPathRules"`
+	CheckUpdates          bool   `json:"checkUpdates"`
 	UpdateChannel           string `json:"updateChannel"`
 	ConversationWidth    string `json:"conversationWidth,omitempty"`
 	// Autopilot mirrors the [desktop] preference so the composer knows whether
@@ -1076,6 +1079,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.SessionStorage = config.SessionStorageMode(cfg)
 		view.ExperimentalFeedback = cfg.Desktop.ExperimentalFeedback
 		view.ExperimentalLocalServer = cfg.Desktop.ExperimentalLocalServer
+		view.ExperimentalPathRules = cfg.Desktop.ExperimentalPathRules
 		return view
 	}
 	cfg, path, err := a.loadDesktopUserConfigForView()
@@ -1148,6 +1152,7 @@ func (a *App) Settings() SettingsView {
 		SessionStorage:             config.SessionStorageMode(cfg),
 		ExperimentalFeedback:       cfg.Desktop.ExperimentalFeedback,
 		ExperimentalLocalServer:    cfg.Desktop.ExperimentalLocalServer,
+		ExperimentalPathRules:      cfg.Desktop.ExperimentalPathRules,
 		VisionModel:                cfg.Agent.VisionModel,
 		WebSearchModel:             cfg.Agent.WebSearchModel,
 		WebSearchModels:            []string{},

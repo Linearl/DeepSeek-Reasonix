@@ -512,6 +512,14 @@ func (c *Config) SetExperimentalParallelFullAccess(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalPathRules toggles the structured path-scope evaluation order
+// (task 134, docs/PATH_SCOPE_RULES.md). Off by default so production keeps
+// the existing confine + allow_write + write-access model.
+func (c *Config) SetExperimentalPathRules(enabled bool) error {
+	c.Desktop.ExperimentalPathRules = enabled
+	return nil
+}
+
 // SetDesktopMetrics sets whether the desktop sends aggregate desktop metrics.
 func (c *Config) SetDesktopMetrics(enabled bool) error {
 	c.Desktop.Metrics = &enabled

@@ -17,6 +17,7 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	c.Desktop.ExperimentalSplitView = true
 	c.Desktop.ExperimentalFeedback = true
 	c.Desktop.ExperimentalParallelFullAccess = true
+	c.Desktop.ExperimentalPathRules = true
 
 	out := RenderTOMLForScope(c, RenderScopeUser)
 	for _, want := range []string{
@@ -25,6 +26,7 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 		"experimental_split_view = true",
 		"experimental_feedback = true",
 		"experimental_parallel_full_access = true",
+		"experimental_path_rules = true",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("rendered user config is missing %q\n---\n%s", want, out)
@@ -44,6 +46,7 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 		"experimental_split_view = false",
 		"experimental_feedback = false",
 		"experimental_parallel_full_access = false",
+		"experimental_path_rules = false",
 		"experimental_dream = false",
 	} {
 		if !strings.Contains(out, want) {

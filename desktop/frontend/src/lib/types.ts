@@ -2323,6 +2323,8 @@ export interface DesktopStartupSettingsView {
   experimentalFeedback?: boolean;
   /** Local-server page experiment switch (task 130); off unless the user opts in. */
   experimentalLocalServer?: boolean;
+  /** Path-scope rules experiment switch (task 134); off unless the user opts in. */
+  experimentalPathRules?: boolean;
   bot: BotSettingsView;
   desktopLanguage: string; // "" | "en" | "zh"; empty = auto
   desktopLayoutStyle: string; // "classic" | "workbench"

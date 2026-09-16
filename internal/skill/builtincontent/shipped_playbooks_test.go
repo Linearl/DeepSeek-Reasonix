@@ -18,7 +18,15 @@ func TestShippedPlaybooksAreEmbedded(t *testing.T) {
 	for _, item := range items {
 		byName[item.Name] = item
 	}
-	for _, want := range []string{"reasonix-guide", "deep-research", "data-analytics", "memory-search"} {
+	for _, want := range []string{
+		"reasonix-guide",
+		"reasonix-fork-guide",
+		"deep-research",
+		"data-analytics",
+		"memory-search",
+		"gh-issue-submit",
+		"github-issue-triage",
+	} {
 		sk, ok := byName[want]
 		if !ok {
 			t.Fatalf("embedded skill %q is missing; have %v", want, byName)
