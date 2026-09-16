@@ -81,31 +81,42 @@ func (a *Agent) trackTodoProgress(ctx context.Context, state *turnRuntime, recei
 		state.todoStallRounds++
 	}
 	state.todoProgress, state.trackingTodoProgress = nextProgress, nextTracking
+	// Task 23 P0-b: a stuck serial todo list is itself the lock — every later
+	// todo_write is rejected against a plan the model cannot advance. Clear the
+	// canonical list so the next write starts fresh instead of deadlocking.
+	// This runs even when host continuation is off: the lock exists either way,
+	// and only the in-turn nudge message is continuation-gated.
+	if state.todoStallRounds >= maxTodoStallRounds {
+		rounds := state.todoStallRounds
+		state.todoStallRounds = 0
+		a.ReplaceTodoState(nil)
+		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Code: event.NoticeCodeLoopGuard,
+			Text: loopGuardNoticeText(),
+			Detail: fmt.Sprintf("the current todo list made no host-observed progress for %d tool-call rounds; the list was cleared so a fresh todo_write can start", rounds)})
+		if a.hostContinuationEnabled(ctx) {
+			message := fmt.Sprintf(
+				"Host progress reset: the current todo list produced no new completion or unique host-observed work for %d tool-call rounds, so it has been cleared. Write a fresh todo_write with a smaller, clearer plan, or continue without a list. Do not repeat the same calls.", rounds)
+			if _, goalScoped := DeliveryExecutionScopeFromContext(ctx); goalScoped {
+				message = fmt.Sprintf(
+					"Host progress redirect: the current todo still has no new completion or unique host-observed work after %d tool-call rounds, so the list has been cleared. Re-plan with a smaller set of steps via todo_write, shrink the active step, switch tools or approach, delegate a focused sub-task, or use update_goal(blocked) only if a user or external condition is the sole blocker. Do not repeat the same calls.", rounds)
+			}
+			a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(message)))
+		}
+		return
+	}
 	if !a.hostContinuationEnabled(ctx) {
 		return
 	}
 	if state.todoStallRounds == todoProgressNudgeRounds {
 		// Route the checkpoint by how full the context is (task 60, point 3): a long
-	// history is worth folding, a short one is worth re-reading with the earlier trace
-	// in hand, since the files it was about are still on disk.
-	checkpoint := todoProgressNudgeMessage(state.todoStallRounds)
-	if a.traceAsState && a.contextIsShort() {
-		checkpoint = reReadGuidanceMessage(state.todoStallRounds, a.recentReadPaths(5))
-	}
-	a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(checkpoint)))
+		// history is worth folding, a short one is worth re-reading with the earlier trace
+		// in hand, since the files it was about are still on disk.
+		checkpoint := todoProgressNudgeMessage(state.todoStallRounds)
+		if a.traceAsState && a.contextIsShort() {
+			checkpoint = reReadGuidanceMessage(state.todoStallRounds, a.recentReadPaths(5))
+		}
+		a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(checkpoint)))
 		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeLoopGuard,
 			Text: loopGuardNoticeText(), Detail: fmt.Sprintf("the current todo has no new completion, unique read, command, or mutation for %d consecutive tool-call rounds; asking the assistant to reassess", state.todoStallRounds)})
-	}
-	if state.todoStallRounds < maxTodoStallRounds {
-		return
-	}
-	if _, goalScoped := DeliveryExecutionScopeFromContext(ctx); goalScoped {
-		rounds := state.todoStallRounds
-		state.todoStallRounds = 0
-		nudge := fmt.Sprintf("Host progress redirect: the current todo still has no new completion or unique host-observed work after %d tool-call rounds. Re-plan and continue: shrink the active step, switch tools or approach, delegate a focused sub-task, or use update_goal(blocked) only if a user or external condition is the sole blocker. Do not repeat the same calls.", rounds)
-		a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(nudge)))
-		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeLoopGuard,
-			Text: loopGuardNoticeText(), Detail: fmt.Sprintf("the current Goal todo made no host-observed progress for %d rounds; resetting the intervention epoch and requiring a new plan", rounds)})
-		return
 	}
 }
