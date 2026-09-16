@@ -1111,13 +1111,20 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		cfg.Agent.MaxSubagentConcurrency, cfg.Agent.MaxParallelWriters,
 	)
 	subagentScheduler := agent.NewSubagentScheduler(maxSubagentConcurrency, maxParallelWriters)
-	profileLookup := func(name string) (agent.ProfileDefinition, bool) {
+	// Task 115 dispatch wiring: .reasonix/agent/*.md definitions become
+	// additional task profile= candidates. Skills win on a name collision so a
+	// workspace md file cannot shadow an installed runAs=subagent playbook.
+	customAgents, customAgentsErr := agent.LoadCustomAgents(filepath.Join(root, ".reasonix", "agent"))
+	if customAgentsErr != nil {
+		slog.Warn("boot: custom agents", "err", customAgentsErr)
+	}
+	profileLookup := agent.CustomAgentProfileLookup(func(name string) (agent.ProfileDefinition, bool) {
 		sk, ok := skillStore.Read(name)
 		if !ok || sk.RunAs != skill.RunSubagent {
 			return agent.ProfileDefinition{}, false
 		}
 		return agent.ProfileFromSkill(skillStore.Prepare(sk)), true
-	}
+	}, customAgents)
 	profileConfigModel := func(profile string) string {
 		for _, key := range SubagentModelKeys(profile) {
 			if m := strings.TrimSpace(cfg.Agent.SubagentModels[key]); m != "" {
@@ -1303,6 +1310,21 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	addDocsTool()
 	addSessionTools()
 	addMemoryTools()
+
+	// Task 115 dream/distill: experimental memory curation, off by default.
+	// Both tools only read project sessions and write project memory / a
+	// nomination draft — no global memory, no skill auto-install.
+	if cfg.Agent.ExperimentalDream {
+		projectSessions := config.ProjectSessionDir(root)
+		dreamCfg := agent.DreamDistillConfig{
+			Enabled:       true,
+			WorkspaceRoot: root,
+			SessionDir:    projectSessions,
+			Memory:        memory.StoreFor(config.MemoryUserDir(), root),
+		}
+		reg.Add(agent.NewDreamTool(dreamCfg))
+		reg.Add(agent.NewDistillTool(dreamCfg))
+	}
 
 	// The `ask` tool puts structured multiple-choice questions to the user. It
 	// reaches them through the Asker on the call context, which interactive

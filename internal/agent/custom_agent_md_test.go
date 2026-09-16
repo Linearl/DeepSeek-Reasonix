@@ -60,3 +60,56 @@ func TestLoadCustomAgentsFallsBackToPrimaryMode(t *testing.T) {
 		t.Fatalf("mode = %q, want primary for an unrecognized value", defs[0].Mode)
 	}
 }
+
+func TestProfileFromCustomAgentOnlyAcceptsSubagent(t *testing.T) {
+	sub := CustomAgentDefinition{Name: "researcher", Mode: "subagent", Body: "Research carefully.", Tools: " grep , read_file ", Model: "deepseek-flash"}
+	def, ok := ProfileFromCustomAgent(sub)
+	if !ok {
+		t.Fatal("subagent definition must convert")
+	}
+	if def.Name != "researcher" || def.Body != "Research carefully." || def.Model != "deepseek-flash" {
+		t.Fatalf("def = %+v", def)
+	}
+	if len(def.AllowedTools) != 2 || def.AllowedTools[0] != "grep" || def.AllowedTools[1] != "read_file" {
+		t.Fatalf("AllowedTools = %v", def.AllowedTools)
+	}
+	if def.Invocation != "manual" {
+		t.Fatalf("Invocation = %q, want manual", def.Invocation)
+	}
+
+	if _, ok := ProfileFromCustomAgent(CustomAgentDefinition{Name: "primary", Mode: "primary", Body: "x"}); ok {
+		t.Fatal("primary-mode agents must not become spawnable profiles")
+	}
+	if _, ok := ProfileFromCustomAgent(CustomAgentDefinition{Name: "", Mode: "subagent", Body: "x"}); ok {
+		t.Fatal("nameless agents must not convert")
+	}
+	if _, ok := ProfileFromCustomAgent(CustomAgentDefinition{Name: "n", Mode: "subagent", Body: "  "}); ok {
+		t.Fatal("empty body must not convert")
+	}
+}
+
+func TestCustomAgentProfileLookupSkillsWinOnCollision(t *testing.T) {
+	base := func(name string) (ProfileDefinition, bool) {
+		if name == "shared" {
+			return ProfileDefinition{Name: "shared", Body: "from-skill"}, true
+		}
+		return ProfileDefinition{}, false
+	}
+	lookup := CustomAgentProfileLookup(base, []CustomAgentDefinition{
+		{Name: "shared", Mode: "subagent", Body: "from-md"},
+		{Name: "only-md", Mode: "subagent", Body: "md-only"},
+		{Name: "primary-role", Mode: "primary", Body: "not-spawnable"},
+	})
+	if def, ok := lookup("shared"); !ok || def.Body != "from-skill" {
+		t.Fatalf("skill must win on collision: %+v ok=%v", def, ok)
+	}
+	if def, ok := lookup("only-md"); !ok || def.Body != "md-only" {
+		t.Fatalf("custom agent must resolve when no skill claims the name: %+v ok=%v", def, ok)
+	}
+	if _, ok := lookup("primary-role"); ok {
+		t.Fatal("primary-mode custom agents must not appear in profile lookup")
+	}
+	if _, ok := lookup("missing"); ok {
+		t.Fatal("unknown name must miss")
+	}
+}

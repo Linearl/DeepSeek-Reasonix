@@ -94,3 +94,50 @@ func parseCustomAgentMarkdown(raw, path string) (CustomAgentDefinition, bool) {
 		Path:        path,
 	}, true
 }
+
+// ProfileFromCustomAgent narrows a loaded custom agent to the delegation
+// profile surface (task 115 dispatch wiring). Only mode=subagent definitions
+// are routable through task profile=; primary-mode agents are identity
+// documents for the host, not spawnable workers.
+func ProfileFromCustomAgent(def CustomAgentDefinition) (ProfileDefinition, bool) {
+	if def.Mode != "subagent" || strings.TrimSpace(def.Name) == "" || strings.TrimSpace(def.Body) == "" {
+		return ProfileDefinition{}, false
+	}
+	var tools []string
+	for _, part := range strings.Split(def.Tools, ",") {
+		if t := strings.TrimSpace(part); t != "" {
+			tools = append(tools, t)
+		}
+	}
+	return ProfileDefinition{
+		Name:         def.Name,
+		Body:         def.Body,
+		AllowedTools: tools,
+		Model:        def.Model,
+		Invocation:   "manual",
+	}, true
+}
+
+// CustomAgentProfileLookup wraps a skill-based lookup with workspace custom
+// agents. Skill profiles win on a name collision: a .reasonix/agent/*.md file
+// must not silently replace an installed runAs=subagent skill of the same name.
+func CustomAgentProfileLookup(base ProfileLookup, defs []CustomAgentDefinition) ProfileLookup {
+	byName := map[string]CustomAgentDefinition{}
+	for _, def := range defs {
+		if _, ok := ProfileFromCustomAgent(def); ok {
+			byName[def.Name] = def
+		}
+	}
+	return func(name string) (ProfileDefinition, bool) {
+		if base != nil {
+			if def, ok := base(name); ok {
+				return def, true
+			}
+		}
+		def, found := byName[name]
+		if !found {
+			return ProfileDefinition{}, false
+		}
+		return ProfileFromCustomAgent(def)
+	}
+}

@@ -316,6 +316,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	} else {
 		b.WriteString("# approval_tier = \"guardian\"   # unattended approval decision-maker: guardian|parent|human\n")
 	}
+	// Always render so turning the experiment off is recorded (same lesson as
+	// the desktop experimental_* switches: omit-on-off springs back to true).
+	fmt.Fprintf(&b, "experimental_dream = %v   # task 115: enable dream/distill memory-curation tools\n", c.Agent.ExperimentalDream)
 	if c.Agent.OutputStyle != "" {
 		fmt.Fprintf(&b, "output_style = %q   # persona/tone folded into the prompt\n", c.Agent.OutputStyle)
 	} else {
