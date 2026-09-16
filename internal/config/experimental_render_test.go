@@ -44,9 +44,19 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 		"experimental_split_view = false",
 		"experimental_feedback = false",
 		"experimental_parallel_full_access = false",
+		"experimental_dream = false",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("a disabled switch should still render %q\n---\n%s", want, out)
 		}
+	}
+}
+
+func TestExperimentalDreamRoundTripThroughRender(t *testing.T) {
+	c := &Config{}
+	c.Agent.ExperimentalDream = true
+	out := RenderTOMLForScope(c, RenderScopeUser)
+	if !strings.Contains(out, "experimental_dream = true") {
+		t.Fatalf("rendered user config is missing experimental_dream = true\n---\n%s", out)
 	}
 }

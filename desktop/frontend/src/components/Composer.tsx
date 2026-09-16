@@ -2255,14 +2255,19 @@ export function Composer({
                 : await enqueueInboxGuidance(app, submitTabId || "", guidanceText, guidanceSubmitText, structured, { idempotency: request.key })
               : await enqueueInboxGuidanceForActiveTurn(app, submitTabId || "", guidanceText, guidanceSubmitText, structured, turnId);
             if (receipt?.error) throw new Error(receipt.error);
-            if (!receipt?.itemId) throw new Error("Follow-up receipt unconfirmed");
-            const consumedBeforeReceipt = receiptTracker?.takeConsumed(submitDraftKey, receipt.itemId) ?? false;
-            if (!consumedBeforeReceipt && !finishing) {
+            // Task 51 UI-2: a short-window duplicate already has a durable item
+            // (or the first attempt is still in flight). Treat it as success
+            // without appending a second pending-guidance row.
+            const duplicate = Boolean((receipt as { duplicate?: boolean } | undefined)?.duplicate);
+            if (!duplicate && !receipt?.itemId) throw new Error("Follow-up receipt unconfirmed");
+            const itemId = receipt?.itemId;
+            const consumedBeforeReceipt = itemId ? (receiptTracker?.takeConsumed(submitDraftKey, itemId) ?? false) : true;
+            if (!consumedBeforeReceipt && !finishing && itemId) {
               updatePendingGuidanceForDraft(submitDraftKey, (items) => {
                 const next = items.map((item) => receipt.paused ? { ...item, paused: true } : item);
-                if (next.some((item) => item.id === receipt.itemId)) return next;
+                if (next.some((item) => item.id === itemId)) return next;
                 return [...next, {
-                  id: receipt.itemId,
+                  id: itemId,
                   text: guidanceText.slice(0, 120),
                   submitText: "",
                   intent: "followup",

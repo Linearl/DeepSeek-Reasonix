@@ -1367,6 +1367,10 @@ type AgentConfig struct {
 	// is 8 rounds). 0 keeps the built-in default; an explicit task max_steps
 	// argument still wins over this value.
 	ReviewMaxSteps int `toml:"review_max_steps"`
+	// ExperimentalDream enables the dream/distill memory-curation tools
+	// (task 115). Off by default: both tools rewrite project memory or
+	// nominate skills from session traces, so they stay behind an opt-in.
+	ExperimentalDream bool `toml:"experimental_dream"`
 	// OutputStyle selects a persona/tone block folded into the system prompt at
 	// startup (a built-in like "explanatory"/"learning"/"concise", or a custom
 	// .reasonix/output-styles/<name>.md). Empty = the unmodified prompt.

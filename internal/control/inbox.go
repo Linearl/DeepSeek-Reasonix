@@ -348,6 +348,19 @@ func (c *Controller) EnqueueInbox(req InboxRequest) (sessioninbox.InboxReceipt, 
 		rec.Paused = true
 	}
 	sessioninbox.NoteEnqueue(int64(len(env.SubmitText)))
+	// Task 51 backend: warn when the session event log is inside the replay
+	// fence band so the user can compact before inbox delivery starts failing.
+	// Observation only — never blocks a successful enqueue.
+	if sp := st.SessionPath(); sp != "" {
+		if budget := agent.SessionReplayBudgetFor(sp); budget.ApproachingFence(0.90) {
+			c.sink.Emit(event.Event{
+				Kind:  event.Notice,
+				Level: event.LevelWarn,
+				Text:  "Session history is approaching the safe replay limit; compact or split the conversation soon.",
+				Detail: fmt.Sprintf("encoded_bytes=%d limit=%d ratio=%.0f%%", budget.Size, budget.Limit, budget.Ratio*100),
+			})
+		}
+	}
 	return rec, nil
 }
 
