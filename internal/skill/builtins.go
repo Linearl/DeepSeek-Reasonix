@@ -287,12 +287,12 @@ requester, an expert, or the optional secretariat. Decide which from the task in
 front of you. The secretariat is NOT a mandatory hub: a single-domain task goes
 straight to the matching expert and the secretariat never touches it.
 
-## Addressing
+## Addressing (通讯录 / contact directory)
 
-- ` + "`list_addressable_sessions`" + ` is the contact directory: **every session** on this
-  machine (global + every project + archive), with title, optional purpose,
-  topic_id, and contact_id. Purpose registration is optional — the title
-  identifies the conversation; a duty line just makes task assignment easier.
+- ` + "`list_addressable_sessions`" + ` is the 通讯录: **every session** on this machine
+  (global + every project + archive), with title, optional purpose, topic_id,
+  and contact_id. Purpose registration is optional — the title identifies the
+  conversation; a duty line just makes task assignment easier.
 - ` + "`to`" + ` accepts a contact_id, a topic_id, or the **exact title**. Prefer the
   contact_id when you already have it (titles are renameable); the exact title
   is the right way to pick someone you have not met yet, and the target gains a
@@ -300,8 +300,21 @@ straight to the matching expert and the secretariat never touches it.
 - The target does **not** need a visible tab. A session whose runtime is alive
   takes the message directly; a session that is fully closed is opened so the
   work can land. You do not need to open it yourself.
-- Register your own duty with ` + "`set_session_purpose`" + ` when you become a standing
-  expert, so others can find you faster.
+
+### Registering duties (set_session_purpose)
+
+- **Your own duty**: omit ` + "`target`" + `. Re-call it any time to change your duty —
+  later calls overwrite.
+- **Someone else's duty**: pass ` + "`target`" + `. Only do this when you have evidence:
+  - ` + "`read_session_tail(target)`" + ` reads the last 10 KiB (default) of their
+    transcript — use it before writing a duty line so the registration is
+    grounded in what that session actually did, not just its title.
+  - Or ask them first with ` + "`talk_to_session`" + ` (ask them to call
+    ` + "`set_session_purpose`" + ` themselves) — then either trust their self-report
+    or register what they told you.
+- **Sessions you create**: ` + "`create_collab_session`" + ` **requires** a purpose. Do not
+  invent a vague one ("helper"); write the duty you actually intend them to
+  perform.
 
 ## Routing
 
@@ -414,7 +427,7 @@ straight to the matching expert and the secretariat never touches it.
 			Scope:       ScopeBuiltin,
 			Path:        "(builtin)",
 			RunAs:       RunInline,
-			Triggers:    []string{"multi-session", "collaborate", "dispatch to", "ask the expert", "cross-session", "多会话协作", "派给专家", "跨会话", "找专家", "协作团队", "秘书"},
+			Triggers:    []string{"multi-session", "collaborate", "dispatch to", "ask the expert", "cross-session", "多会话协作", "派给专家", "跨会话", "找专家", "协作团队", "秘书", "通讯录", "联系人", "登记职责", "看它在干嘛", "看一下那个会话"},
 			AutoUse:     "suggest",
 		},
 		{

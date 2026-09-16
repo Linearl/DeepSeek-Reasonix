@@ -731,6 +731,14 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			sysPrompt += "\n\n" + skill.InvocationPolicyBlock()
 		}
 	}
+	if sessionCollabEnabled(cfg) {
+		// Name the directory in the prompt itself, in the words the user is
+		// likely to say. Tool schemas alone do not teach the model that
+		// 「通讯录」 maps to list_addressable_sessions / talk_to_session, and the
+		// first package shipped without this line — the model answered "no such
+		// tool" even with the tools registered.
+		sysPrompt += "\n\n" + sessionCollabIndexBlock()
+	}
 	sysPrompt = config.ApplyOfficialDeepSeekV4ProPersona(sysPrompt, entry)
 	bootTime.mark("prompt")
 
@@ -1825,8 +1833,11 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	}, sink)
 	reg.Add(sessiontool.NewSetSessionTitleTool(sessionDir, executor.SessionPath, opts.OnSessionTitleChanged))
 	// Task 19 / 141–145: multi-session collaboration (contact addressing,
-	// talk_to_session, task cards). Off by default via experimental_session_collab.
-	if cfg.Agent.ExperimentalSessionCollab {
+	// talk_to_session, task cards). Off by default. The Desktop mirror is OR'd in
+	// the same way Trace-as-State is: the settings toggle writes both keys, and a
+	// session whose boot only saw one of them would silently lose the whole
+	// toolset — which is exactly how the first package shipped dead.
+	if sessionCollabEnabled(cfg) {
 		collabSessionDir := sessionDir
 		if strings.TrimSpace(collabSessionDir) == "" {
 			collabSessionDir = config.SessionDir()
@@ -1849,6 +1860,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		}
 		reg.Add(agent.NewSetSessionPurposeTool(collab))
 		reg.Add(agent.NewListAddressableSessionsTool(collab))
+		reg.Add(agent.NewReadSessionTailTool(collab))
 		reg.Add(agent.NewTalkToSessionTool(collab))
 		reg.Add(agent.NewTalkToSessionSyncTool(collab))
 		for _, t := range agent.NewTaskCardTools(agent.TaskCardConfig{
@@ -3079,8 +3091,45 @@ func workspaceFileInventory(root string) []string {
 // which is exactly what "failures are never silent" is meant to prevent.
 func collabDisabledSkillNames(cfg *config.Config) []string {
 	names := cfg.DisabledSkillNames()
-	if cfg.Agent.ExperimentalSessionCollab {
+	if sessionCollabEnabled(cfg) {
 		return names
 	}
 	return append(append([]string(nil), names...), "collab-secretary")
+}
+
+// sessionCollabEnabled reports whether multi-session collaboration is on. Either
+// the agent runtime flag or the desktop settings mirror is enough: the toggle
+// writes both, and a boot that only read one of them would fail to register the
+// toolset while Settings still showed the experiment as enabled.
+func sessionCollabEnabled(cfg *config.Config) bool {
+	return cfg != nil && (cfg.Agent.ExperimentalSessionCollab || cfg.Desktop.ExperimentalSessionCollab)
+}
+
+// sessionCollabIndexBlock is the system-prompt section that teaches the model
+// the directory exists and what it is called in Chinese. Without it, a user
+// saying 「通讯录」 gets "no such tool" even when every tool is registered.
+func sessionCollabIndexBlock() string {
+	return `# 通讯录 / contact directory
+
+Multi-session collaboration is enabled. The contact directory (通讯录) is a
+machine-wide list of every conversation session — global, each project, and
+archive. Purpose is optional metadata; the title identifies the row.
+
+Tools:
+- list_addressable_sessions — list the directory (title, purpose, contact_id, topic_id).
+- talk_to_session(to, message, ...) — message another session. ` + "`to`" + ` accepts
+  contact_id, topic_id, or the exact title. First contact mints a contact_id.
+- talk_to_session_sync(...) — same, with a bounded wait for the reply.
+- set_session_purpose(purpose, target?) — register a duty (own by default;
+  pass target to register another session's). Later calls overwrite.
+- read_session_tail(target, max_bytes?) — read another session's last 10 KiB
+  so you can judge its duty from what it actually did.
+- create_task_card / update_task_card / get_task_card / list_task_cards —
+  collaboration task cards, rendered in-chat via a ` + "```taskcard" + ` fence.
+- create_collab_session(title, purpose, group?, group_id?) — create a session
+  filed into a group (purpose required).
+
+The user saying 「通讯录」, 「联系人」, 「找另一个会话」, or 「派给专家」 means these
+tools. Prefer contact_id when you have one; the title is fine when you have not
+met the conversation yet.`
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -36,11 +37,11 @@ type setSessionPurposeTool struct{ cfg SessionCollabConfig }
 func (setSessionPurposeTool) Name() string { return "set_session_purpose" }
 
 func (setSessionPurposeTool) Description() string {
-	return "Register this session's stable contact_id purpose (one-line duty) for multi-session collaboration. Experimental. Renaming the topic does not change the contact id."
+	return "Register a session's duty (one-line purpose) in the contact directory (通讯录). By default it is THIS session; pass `target` to register another session's duty when you know what it does (after reading its tail with read_session_tail, or after it told you). A session can also change its own duty this way — later calls overwrite. Experimental. Renaming the topic does not change the contact id."
 }
 
 func (setSessionPurposeTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"purpose":{"type":"string","description":"One-line duty, e.g. 'React frontend expert'."}},"required":["purpose"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"purpose":{"type":"string","description":"One-line duty, e.g. 'React frontend expert'."},"target":{"type":"string","description":"Optional: contact_id, topic_id, or exact title of ANOTHER session to register. Omit to register this session."}},"required":["purpose"]}`)
 }
 
 func (setSessionPurposeTool) ReadOnly() bool { return false }
@@ -48,6 +49,7 @@ func (setSessionPurposeTool) ReadOnly() bool { return false }
 func (t setSessionPurposeTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
 	var p struct {
 		Purpose string `json:"purpose"`
+		Target  string `json:"target"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
@@ -56,14 +58,27 @@ func (t setSessionPurposeTool) Execute(_ context.Context, args json.RawMessage) 
 		return "", fmt.Errorf("purpose is required")
 	}
 	session := t.cfg.CurrentSessionPath
+	appliedTo := "self"
+	if strings.TrimSpace(p.Target) != "" {
+		ids := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
+		id, rerr := ResolveTarget(ids, p.Target)
+		if rerr != nil {
+			return "", rerr
+		}
+		if id.Archived {
+			return "", fmt.Errorf("session %q is archived; cannot register a duty on it", p.Target)
+		}
+		session = id.SessionPath
+		appliedTo = "other"
+	}
 	if session == "" {
-		return "", fmt.Errorf("set_session_purpose: current session path is unknown")
+		return "", fmt.Errorf("set_session_purpose: no session path (pass target, or run inside a session)")
 	}
 	contact, err := SetSessionPurpose(session, p.Purpose)
 	if err != nil {
 		return "", err
 	}
-	out, _ := json.Marshal(map[string]string{"contactId": contact, "purpose": strings.TrimSpace(p.Purpose)})
+	out, _ := json.Marshal(map[string]string{"contactId": contact, "purpose": strings.TrimSpace(p.Purpose), "appliedTo": appliedTo})
 	return string(out), nil
 }
 
@@ -76,7 +91,7 @@ type listAddressableSessionsTool struct{ cfg SessionCollabConfig }
 func (listAddressableSessionsTool) Name() string { return "list_addressable_sessions" }
 
 func (listAddressableSessionsTool) Description() string {
-	return "List the contact directory: every session on this machine (global + every project + archive). Purpose is optional metadata; the title carries the meaning when purpose is empty. Use the contact_id, topic_id, or the exact title as `to` in talk_to_session. Experimental."
+	return "List the contact directory (通讯录): every session on this machine (global + every project + archive). Purpose is optional metadata; the title carries the meaning when purpose is empty. Use the contact_id, topic_id, or the exact title as `to` in talk_to_session. Experimental."
 }
 
 func (listAddressableSessionsTool) Schema() json.RawMessage {
@@ -118,6 +133,79 @@ func (t listAddressableSessionsTool) Execute(_ context.Context, _ json.RawMessag
 	return b.String(), nil
 }
 
+// NewReadSessionTailTool lets a session peek at another conversation's recent
+// turns before assigning it work, so a duty line is never guessed from a title
+// alone. Read-only, size-bounded, and resolved through the contact directory so
+// it cannot open an arbitrary path.
+func NewReadSessionTailTool(cfg SessionCollabConfig) tool.Tool {
+	return readSessionTailTool{cfg: cfg}
+}
+
+type readSessionTailTool struct{ cfg SessionCollabConfig }
+
+func (readSessionTailTool) Name() string { return "read_session_tail" }
+
+func (readSessionTailTool) Description() string {
+	return "Read the last N bytes (default 10 KiB) of another session's transcript from the contact directory (通讯录). Use it before assigning work or registering a duty on someone else, so the duty line is grounded in what that session actually did rather than its title. Read-only. Experimental."
+}
+
+func (readSessionTailTool) Schema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"target":{"type":"string","description":"contact_id, topic_id, or exact title of the session to read."},"max_bytes":{"type":"integer","description":"How many trailing bytes to return (default 10240, max 65536)."}},"required":["target"]}`)
+}
+
+func (readSessionTailTool) ReadOnly() bool { return true }
+
+func (t readSessionTailTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
+	var p struct {
+		Target   string `json:"target"`
+		MaxBytes int    `json:"max_bytes"`
+	}
+	if err := json.Unmarshal(args, &p); err != nil {
+		return "", fmt.Errorf("invalid args: %w", err)
+	}
+	if strings.TrimSpace(p.Target) == "" {
+		return "", fmt.Errorf("target is required")
+	}
+	n := p.MaxBytes
+	if n <= 0 {
+		n = 10 * 1024
+	}
+	if n > 64*1024 {
+		n = 64 * 1024
+	}
+	ids := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
+	id, err := ResolveTarget(ids, p.Target)
+	if err != nil {
+		return "", err
+	}
+	b, err := os.ReadFile(id.SessionPath)
+	if err != nil {
+		return "", fmt.Errorf("cannot read session %q: %w", p.Target, err)
+	}
+	if len(b) > n {
+		// Cut at a line boundary when we can, so the reader is not handed a
+		// half-written JSON record.
+		cut := n
+		for i := n - 1; i > 0; i-- {
+			if b[i] == '\n' {
+				cut = i + 1
+				break
+			}
+		}
+		b = b[len(b)-cut:]
+	}
+	out, _ := json.Marshal(map[string]any{
+		"title":     id.Title,
+		"purpose":   id.Purpose,
+		"contactId": id.ContactID,
+		"topicId":   id.TopicID,
+		"bytes":     len(b),
+		"truncated": len(b) == n,
+		"tail":      string(b),
+	})
+	return string(out), nil
+}
+
 // duplicateContactIDs reports contact ids shared by more than one session file.
 func duplicateContactIDs(sessionDir, workspaceRoot string) []string {
 	load := func(sessionPath string) (string, string, string, string, bool) {
@@ -157,7 +245,7 @@ type talkToSessionTool struct{ cfg SessionCollabConfig }
 func (talkToSessionTool) Name() string { return "talk_to_session" }
 
 func (talkToSessionTool) Description() string {
-	return "Send a message to another session in the contact directory (task 19 / 142-143). `to` accepts a contact_id, a topic_id, or the exact title shown by list_addressable_sessions — the title is the human way to pick someone when you have not met them yet, and the target gains a contact_id on first contact. delivery=followup queues for the target's next turn; delivery=steer asks for mid-turn injection and degrades to a queued follow-up when the target has no injectable turn (the sender is told). Experimental."
+	return "Send a message to another session in the contact directory (通讯录, task 19 / 142-143). `to` accepts a contact_id, a topic_id, or the exact title shown by list_addressable_sessions — the title is the human way to pick someone when you have not met them yet, and the target gains a contact_id on first contact. delivery=followup queues for the target's next turn; delivery=steer asks for mid-turn injection and degrades to a queued follow-up when the target has no injectable turn (the sender is told). Experimental."
 }
 
 func (talkToSessionTool) Schema() json.RawMessage {
