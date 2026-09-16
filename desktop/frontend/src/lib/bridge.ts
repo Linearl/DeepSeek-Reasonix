@@ -758,6 +758,12 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalTraceAsState(enabled: boolean): Promise<void>;
   // Task 115: dream/distill memory-curation tools (experimental).
   SetExperimentalDream(enabled: boolean): Promise<void>;
+  // Task 19: multi-session collaboration tools (experimental).
+  SetExperimentalSessionCollab(enabled: boolean): Promise<void>;
+  // Task 19: sessions that can be addressed by contact_id.
+  ListAddressableSessions(): Promise<{ contactId: string; purpose?: string; title?: string; topicId?: string; sessionPath: string; scope?: string; workspaceRoot?: string; open: boolean }[]>;
+  // Task 19: run one collaboration delivery pass.
+  DrainSessionCollabMail(): Promise<{ delivered: number; refused: number; targets: { tabId: string; contactId: string; delivered: number; refused: number; error?: string }[] }>;
   // Task 115: ensure a scheduled dream pass exists in the automation panel.
   // Returns true when a new task was appended.
   CreateDreamHeartbeatTask(): Promise<boolean>;
@@ -4958,6 +4964,9 @@ function makeMockApp(): AppBindings {
     async SetExperimentalPathRules() {},
     async SetExperimentalTraceAsState() {},
     async SetExperimentalDream() {},
+    async SetExperimentalSessionCollab() {},
+    async ListAddressableSessions() { return []; },
+    async DrainSessionCollabMail() { return { delivered: 0, refused: 0, targets: [] }; },
     async CreateDreamHeartbeatTask() { return false; },
     async SetServePoolPort() {},
     async ListFeedbackEntries() { return []; },

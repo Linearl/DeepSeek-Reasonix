@@ -213,6 +213,11 @@ func (a *App) SetExperimentalDream(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalDream(enabled) })
 }
 
+// SetExperimentalSessionCollab toggles multi-session collaboration (task 19).
+func (a *App) SetExperimentalSessionCollab(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSessionCollab(enabled) })
+}
+
 // CreateDreamHeartbeatTask ensures a scheduled dream pass exists so the
 // experiment can be exercised without hand-editing heartbeat-tasks.json.
 // Returns created=true when a new task was appended; an existing Dream task

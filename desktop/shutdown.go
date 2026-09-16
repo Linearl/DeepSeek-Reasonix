@@ -56,6 +56,11 @@ func (a *App) shutdownBody() {
 	if a.heartbeat != nil {
 		a.heartbeat.Stop()
 	}
+	if a.sessionCollab != nil {
+		// Stop the delivery ticker with the process; an unstopped goroutine would
+		// keep claiming mail while the controllers it delivers into are gone.
+		a.sessionCollab.Stop()
+	}
 	a.stopBotRuntime()
 	a.stopRemoteRuntime()
 	a.stopTray()

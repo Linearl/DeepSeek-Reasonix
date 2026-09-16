@@ -1678,6 +1678,7 @@ type ExperimentFeatureId =
   | "pathRules"
   | "traceAsState"
   | "dream"
+  | "sessionCollab"
   | "autopilot";
 
 function ExperimentalSection({ s, busy, apply }: SectionProps) {
@@ -1685,6 +1686,9 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // restart is pending has to live outside the data being reloaded.
   const [restartNeeded, setRestartNeeded] = useState(false);
   const [dreamTaskCreated, setDreamTaskCreated] = useState(false);
+  // Task 19: the addressable roster is read on demand, not on every settings
+  // load — a session only appears once it has registered a purpose.
+  const [sessionCollabRoster, setSessionCollabRoster] = useState<Awaited<ReturnType<typeof app.ListAddressableSessions>>>([]);
   const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
   const t = useT();
   // Task 140: the rail shows backend snapshot state; the sidebar buttons read
@@ -1694,6 +1698,15 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
     setSessionMonitorEnabled(Boolean(s.experimentalSessionMonitor));
     setFeedbackEnabled(Boolean(s.experimentalFeedback));
   }, [s.experimentalSessionMonitor, s.experimentalFeedback]);
+
+  const reloadSessionCollabRoster = useCallback(async () => {
+    try {
+      const rows = await app.ListAddressableSessions();
+      setSessionCollabRoster(Array.isArray(rows) ? rows : []);
+    } catch {
+      setSessionCollabRoster([]);
+    }
+  }, []);
 
   const features: Array<{ id: ExperimentFeatureId; label: string; on: boolean }> = [
     { id: "restartUpdate", label: t("settings.restartUpdate"), on: Boolean(s.experimentalRestartUpdate) },
@@ -1705,6 +1718,7 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
     { id: "pathRules", label: t("settings.pathRules"), on: Boolean(s.experimentalPathRules) },
     { id: "traceAsState", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
     { id: "dream", label: t("settings.dream"), on: Boolean(s.experimentalDream) },
+    { id: "sessionCollab", label: t("settings.sessionCollab"), on: Boolean(s.experimentalSessionCollab) },
     { id: "autopilot", label: t("settings.autopilot"), on: Boolean(s.autopilot) },
   ];
 
@@ -1936,6 +1950,48 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
                 <div className="banner settings-restart-banner" role="status">
                   <span>{t("settings.dreamCreateTaskDone")}</span>
                 </div>
+              ) : null}
+            </>
+          )}
+          {selected === "sessionCollab" && (
+            <>
+              <SettingsField label={t("settings.sessionCollab")} hint={t("settings.sessionCollabHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalSessionCollab) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalSessionCollab(on))}
+                    >
+                      {t(on ? "settings.sessionCollab.on" : "settings.sessionCollab.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.sessionCollabRoster")} hint={t("settings.sessionCollabRosterHint")} icon={<Sparkles size={18} />}>
+                <button
+                  type="button"
+                  className="btn btn--small"
+                  disabled={busy || !Boolean(s.experimentalSessionCollab)}
+                  onClick={() => void reloadSessionCollabRoster()}
+                >
+                  {t("settings.sessionCollabRosterRefresh")}
+                </button>
+              </SettingsField>
+              {sessionCollabRoster.length > 0 ? (
+                <SettingsField label={t("settings.sessionCollabRosterRows")} hint={t("settings.sessionCollabRosterRowsHint")} icon={<Sparkles size={18} />} stacked>
+                  <ul className="set-rules">
+                    {sessionCollabRoster.map((row) => (
+                      <li key={row.contactId}>
+                        <code>{row.contactId}</code>
+                        {row.purpose ? ` — ${row.purpose}` : ""}
+                        {row.title ? ` (${row.title})` : ""}
+                        {row.open ? ` · ${t("settings.sessionCollabOpen")}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </SettingsField>
               ) : null}
             </>
           )}

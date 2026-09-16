@@ -20,6 +20,8 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	c.Desktop.ExperimentalPathRules = true
 	c.Desktop.ExperimentalTraceAsState = true
 	c.Desktop.ExperimentalDream = true
+	c.Agent.ExperimentalSessionCollab = true
+	c.Desktop.ExperimentalSessionCollab = true
 
 	out := RenderTOMLForScope(c, RenderScopeUser)
 	for _, want := range []string{
@@ -31,6 +33,7 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 		"experimental_path_rules = true",
 		"experimental_trace_as_state = true",
 		"experimental_dream = true",
+		"experimental_session_collab = true",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("rendered user config is missing %q\n---\n%s", want, out)
@@ -53,6 +56,7 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 		"experimental_path_rules = false",
 		"experimental_trace_as_state = false",
 		"experimental_dream = false", // [agent] and desktop mirror both render this key
+		"experimental_session_collab = false",
 		"trace_as_state = false",
 		"stalled_intent_nudge = false",
 	} {
@@ -68,6 +72,15 @@ func TestExperimentalDreamRoundTripThroughRender(t *testing.T) {
 	out := RenderTOMLForScope(c, RenderScopeUser)
 	if !strings.Contains(out, "experimental_dream = true") {
 		t.Fatalf("rendered user config is missing experimental_dream = true\n---\n%s", out)
+	}
+}
+
+func TestExperimentalSessionCollabRoundTripThroughRender(t *testing.T) {
+	c := &Config{}
+	c.Agent.ExperimentalSessionCollab = true
+	out := RenderTOMLForScope(c, RenderScopeUser)
+	if !strings.Contains(out, "experimental_session_collab = true") {
+		t.Fatalf("rendered user config is missing experimental_session_collab = true\n---\n%s", out)
 	}
 }
 

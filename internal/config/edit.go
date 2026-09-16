@@ -536,6 +536,15 @@ func (c *Config) SetExperimentalDream(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalSessionCollab toggles multi-session collaboration (task 19).
+// Desktop keeps a settings-view mirror; Agent.ExperimentalSessionCollab is the
+// runtime flag that gates the collaboration tools.
+func (c *Config) SetExperimentalSessionCollab(enabled bool) error {
+	c.Desktop.ExperimentalSessionCollab = enabled
+	c.Agent.ExperimentalSessionCollab = enabled
+	return nil
+}
+
 // SetDesktopMetrics sets whether the desktop sends aggregate desktop metrics.
 func (c *Config) SetDesktopMetrics(enabled bool) error {
 	c.Desktop.Metrics = &enabled

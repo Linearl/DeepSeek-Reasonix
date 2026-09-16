@@ -2329,6 +2329,8 @@ export interface DesktopStartupSettingsView {
   experimentalTraceAsState?: boolean;
   /** dream/distill memory-curation experiment (task 115); off unless the user opts in. */
   experimentalDream?: boolean;
+  /** multi-session collaboration experiment (task 19); off unless the user opts in. */
+  experimentalSessionCollab?: boolean;
   bot: BotSettingsView;
   desktopLanguage: string; // "" | "en" | "zh"; empty = auto
   desktopLayoutStyle: string; // "classic" | "workbench"

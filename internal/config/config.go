@@ -18,10 +18,10 @@ import (
 	"slices"
 	"strings"
 
+	"log/slog"
 	fileencoding "reasonix/internal/fileutil/encoding"
 	"reasonix/internal/netclient"
 	"reasonix/internal/provider"
-	"log/slog"
 )
 
 var validSkillName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$`)
@@ -43,35 +43,35 @@ func SkillNameKey(name string) string {
 
 // Config is Reasonix's runtime configuration.
 type Config struct {
-	ConfigVersion    int                 `toml:"config_version"`
-	DefaultModel     string              `toml:"default_model"`
-	Language         string              `toml:"language"` // ui/model language tag (e.g. "zh"); empty = auto-detect from $LANG / $REASONIX_LANG
-	CredentialsStore string              `toml:"credentials_store"`
+	ConfigVersion    int    `toml:"config_version"`
+	DefaultModel     string `toml:"default_model"`
+	Language         string `toml:"language"` // ui/model language tag (e.g. "zh"); empty = auto-detect from $LANG / $REASONIX_LANG
+	CredentialsStore string `toml:"credentials_store"`
 	// SessionStorage selects the conversation store: "legacy" (default, v3
 	// JSONL under sessions/) or "v4" (experimental sessions-v4/).
 	// REASONIX_SESSION_STORAGE overrides this when set.
-	SessionStorage   string              `toml:"session_storage"`
-	UI               UIConfig            `toml:"ui"`
-	CLI              CLIConfig           `toml:"cli"`
-	Desktop          DesktopConfig       `toml:"desktop"`
-	Billing          BillingConfig       `toml:"billing"`
-	Telemetry        TelemetryConfig     `toml:"telemetry"`
-	Notifications    NotificationsConfig `toml:"notifications"`
-	Agent            AgentConfig         `toml:"agent"`
-	Providers        []ProviderEntry     `toml:"providers"`
-	Tools            ToolsConfig         `toml:"tools"`
-	Permissions      PermissionsConfig   `toml:"permissions"`
-	Sandbox          SandboxConfig       `toml:"sandbox"`
-	Network          NetworkConfig       `toml:"network"`
-	Environment      EnvironmentConfig   `toml:"environment"`
-	Plugins          []PluginEntry       `toml:"plugins"`
-	Skills           SkillsConfig        `toml:"skills"`
-	Statusline       StatuslineConfig    `toml:"statusline"`
-	LSP              LSPConfig           `toml:"lsp"`
-	Bot              BotConfig           `toml:"bot"`
-	Serve            ServeConfig         `toml:"serve"`
-	Secrets          SecretsConfig       `toml:"secrets"`
-	Remote           RemoteConfig        `toml:"remote"`
+	SessionStorage string              `toml:"session_storage"`
+	UI             UIConfig            `toml:"ui"`
+	CLI            CLIConfig           `toml:"cli"`
+	Desktop        DesktopConfig       `toml:"desktop"`
+	Billing        BillingConfig       `toml:"billing"`
+	Telemetry      TelemetryConfig     `toml:"telemetry"`
+	Notifications  NotificationsConfig `toml:"notifications"`
+	Agent          AgentConfig         `toml:"agent"`
+	Providers      []ProviderEntry     `toml:"providers"`
+	Tools          ToolsConfig         `toml:"tools"`
+	Permissions    PermissionsConfig   `toml:"permissions"`
+	Sandbox        SandboxConfig       `toml:"sandbox"`
+	Network        NetworkConfig       `toml:"network"`
+	Environment    EnvironmentConfig   `toml:"environment"`
+	Plugins        []PluginEntry       `toml:"plugins"`
+	Skills         SkillsConfig        `toml:"skills"`
+	Statusline     StatuslineConfig    `toml:"statusline"`
+	LSP            LSPConfig           `toml:"lsp"`
+	Bot            BotConfig           `toml:"bot"`
+	Serve          ServeConfig         `toml:"serve"`
+	Secrets        SecretsConfig       `toml:"secrets"`
+	Remote         RemoteConfig        `toml:"remote"`
 
 	systemPromptFileSource     promptFileSource
 	providerSources            map[string]providerSourceScope
@@ -1319,9 +1319,9 @@ type AgentConfig struct {
 	// compaction summaries see the assistant's reasoning, a stalled run on a short
 	// context is routed to re-reading, and model-driven folds carry guards. Off by
 	// default — with it off every path behaves exactly as before.
-	TraceAsState bool `toml:"trace_as_state"`
-	PlannerModel    string  `toml:"planner_model"`
-	WebSearchModel  string  `toml:"web_search_model"` // empty or auto preserves automatic search selection
+	TraceAsState   bool   `toml:"trace_as_state"`
+	PlannerModel   string `toml:"planner_model"`
+	WebSearchModel string `toml:"web_search_model"` // empty or auto preserves automatic search selection
 	// VisionModel is empty (off), "auto", or a canonical provider/model ref
 	// used to summarize images before a text-only executor turn.
 	VisionModel         string  `toml:"vision_model"`
@@ -1375,6 +1375,10 @@ type AgentConfig struct {
 	// (task 115). Off by default: both tools rewrite project memory or
 	// nominate skills from session traces, so they stay behind an opt-in.
 	ExperimentalDream bool `toml:"experimental_dream"`
+	// ExperimentalSessionCollab enables multi-session collaboration tools
+	// (task 19 / 141–145): contact addressing, talk_to_session, task cards.
+	// Off by default.
+	ExperimentalSessionCollab bool `toml:"experimental_session_collab"`
 	// StalledIntentNudge enables the "you announced the next step instead of
 	// taking it" repair for ordinary sessions (task 117). Off by default:
 	// upstream only fires this under ContinuationExplicitFlow (Goal/review).

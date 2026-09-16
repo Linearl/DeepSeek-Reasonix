@@ -3807,6 +3807,7 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 		OnSessionTransition:      a.handleTabSessionTransition(tab),
 		BeforeInboxDispatch:      a.beforeInboxDispatch,
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
+		OnCreateCollabSession:    a.createCollabSession,
 	})
 	if a.handleTabControllerBootError(tab, registration, rootKey, buildGeneration, wailsCtx, err) {
 		return

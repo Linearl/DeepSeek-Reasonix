@@ -116,10 +116,10 @@ type Options struct {
 	// ApprovalTier selects who decides reversible unattended approvals
 	// (task 52): guardian | parent | human. Empty uses cfg.Agent.approval_tier,
 	// which itself defaults to guardian.
-	ApprovalTier           string
-	MaxRuntime             time.Duration
-	RequireKey             bool
-	Sink                   event.Sink
+	ApprovalTier string
+	MaxRuntime   time.Duration
+	RequireKey   bool
+	Sink         event.Sink
 	// EffortOverride is a session-local reasoning effort override. Nil means use
 	// the resolved provider config; a non-nil empty string means provider default.
 	EffortOverride *string
@@ -198,6 +198,11 @@ type Options struct {
 	// into compatibility indexes and refresh notifications after the current
 	// conversation renames itself through set_session_title.
 	OnSessionTitleChanged sessiontool.TitleChangedFunc
+	// OnCreateCollabSession lets a host create a collaborating session on the
+	// agent's behalf and file it into a group (task 19 / 144). The engine cannot
+	// create sessions itself — that is a host capability — so nil omits the
+	// create_collab_session tool entirely rather than exposing a broken one.
+	OnCreateCollabSession func(workspaceRoot, title, purpose, group, groupID string) (topicID string, err error)
 	// SubagentParentLive reports whether this process currently owns or is
 	// building the parent session. Desktop uses it to avoid probing a live tab's
 	// lease during stale-subagent cleanup. Nil preserves lease-only cleanup.
@@ -716,7 +721,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		skillStore = skill.New(skill.Options{
 			ProjectRoot: root, CustomPaths: cfg.SkillCustomPaths(), PluginPaths: cfg.PluginPackageSkillOwners(),
 			PluginAgentPaths: cfg.PluginPackageAgentOwners(), ExcludedPaths: cfg.SkillExcludedPaths(),
-			DisabledNames: cfg.DisabledSkillNames(), MaxDepth: cfg.SkillMaxDepth(), Stderr: opts.Stderr,
+			DisabledNames: collabDisabledSkillNames(cfg), MaxDepth: cfg.SkillMaxDepth(), Stderr: opts.Stderr,
 		})
 		skillStore.ConfigureInvocationPolicy("", nil)
 		skills = skillStore.List()
@@ -1191,29 +1196,29 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	imageConfig := &imageinput.Config{Model: cfg.Agent.VisionModel, Resolve: visionProviderResolver, Select: visionModelSelector}
 	newTaskTool := func() *agent.TaskTool {
 		return agent.NewTaskToolWithOptions(agent.TaskToolOptions{
-			ImageInput:          imageConfig,
-			Provider:            execProv,
-			Pricing:             entry.Price,
-			QuoteContext:        quoteCtx,
-			ParentRegistry:      reg,
-			MaxSteps:            maxSteps,
-			ReviewMaxSteps:      cfg.Agent.ReviewMaxSteps,
+			ImageInput:           imageConfig,
+			Provider:             execProv,
+			Pricing:              entry.Price,
+			QuoteContext:         quoteCtx,
+			ParentRegistry:       reg,
+			MaxSteps:             maxSteps,
+			ReviewMaxSteps:       cfg.Agent.ReviewMaxSteps,
 			SubagentDefaultSteps: cfg.Agent.SubagentDefaultSteps,
-			ContextWindow:       entry.ContextWindow,
-			RecentKeep:          cfg.Agent.RecentKeep,
-			SoftCompactRatio:    cfg.Agent.SoftCompactRatio,
-			ToolResultSnipRatio: cfg.Agent.ToolResultSnipRatio,
-			CompactRatio:        cfg.Agent.CompactRatio,
-			CompactForceRatio:   cfg.Agent.CompactForceRatio,
-			ContextEditing:      cfg.Agent.ContextEditing,
-			Temperature:         cfg.Agent.Temperature,
-			ArchiveDir:          config.ArchiveDir(),
-			SysPrompt:           "",
-			Gate:                headlessGate,
-			KeepPolicy:          keepPolicy,
-			SubagentModel:       taskModel,
-			SubagentEffort:      taskEffort,
-			ResolveProvider:     resolveSubagentProvider,
+			ContextWindow:        entry.ContextWindow,
+			RecentKeep:           cfg.Agent.RecentKeep,
+			SoftCompactRatio:     cfg.Agent.SoftCompactRatio,
+			ToolResultSnipRatio:  cfg.Agent.ToolResultSnipRatio,
+			CompactRatio:         cfg.Agent.CompactRatio,
+			CompactForceRatio:    cfg.Agent.CompactForceRatio,
+			ContextEditing:       cfg.Agent.ContextEditing,
+			Temperature:          cfg.Agent.Temperature,
+			ArchiveDir:           config.ArchiveDir(),
+			SysPrompt:            "",
+			Gate:                 headlessGate,
+			KeepPolicy:           keepPolicy,
+			SubagentModel:        taskModel,
+			SubagentEffort:       taskEffort,
+			ResolveProvider:      resolveSubagentProvider,
 		}).
 			WithTranscripts(subagentStore, root, modelName, entry.Effort).
 			WithTranscriptIdentityResolver(subagentIdentity).
@@ -1819,6 +1824,46 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		MissingReasoningWarnStateDir: config.MissingReasoningWarnStateDir(),
 	}, sink)
 	reg.Add(sessiontool.NewSetSessionTitleTool(sessionDir, executor.SessionPath, opts.OnSessionTitleChanged))
+	// Task 19 / 141–145: multi-session collaboration (contact addressing,
+	// talk_to_session, task cards). Off by default via experimental_session_collab.
+	if cfg.Agent.ExperimentalSessionCollab {
+		collabSessionDir := sessionDir
+		if strings.TrimSpace(collabSessionDir) == "" {
+			collabSessionDir = config.SessionDir()
+		}
+		sessionPath := executor.SessionPath()
+		// Mint/lookup this session's contact id so replies and cards stamp a
+		// stable initiator without requiring set_session_purpose first.
+		currentContact := ""
+		if sessionPath != "" {
+			if id, err := agent.EnsureContactID(sessionPath); err == nil {
+				currentContact = id
+			}
+		}
+		collab := agent.SessionCollabConfig{
+			Enabled:            true,
+			SessionDir:         collabSessionDir,
+			WorkspaceRoot:      root,
+			CurrentSessionPath: sessionPath,
+			CurrentContactID:   currentContact,
+		}
+		reg.Add(agent.NewSetSessionPurposeTool(collab))
+		reg.Add(agent.NewListAddressableSessionsTool(collab))
+		reg.Add(agent.NewTalkToSessionTool(collab))
+		reg.Add(agent.NewTalkToSessionSyncTool(collab))
+		for _, t := range agent.NewTaskCardTools(agent.TaskCardConfig{
+			Enabled:            true,
+			WorkspaceRoot:      root,
+			CurrentSessionPath: sessionPath,
+			CurrentContactID:   currentContact,
+		}) {
+			reg.Add(t)
+		}
+		// 144: only a host that can create sessions gets the creator tool.
+		if opts.OnCreateCollabSession != nil {
+			reg.Add(agent.NewCreateCollabSessionTool(root, opts.OnCreateCollabSession))
+		}
+	}
 	// Task 107 P0-②: the model's read-only view of the recovery fence. It reads
 	// the executing agent through the call context that executeOne stamps.
 	reg.Add(agent.NewToolRecoveryTool())
@@ -3025,4 +3070,17 @@ func workspaceFileInventory(root string) []string {
 		return nil
 	})
 	return out
+}
+
+// collabDisabledSkillNames hides the collaboration secretary protocol while the
+// experiment is off. The skill's own text tells the model to call
+// talk_to_session / create_task_card / create_collab_session; with those tools
+// unregistered, offering the skill would guarantee a "tool not found" failure,
+// which is exactly what "failures are never silent" is meant to prevent.
+func collabDisabledSkillNames(cfg *config.Config) []string {
+	names := cfg.DisabledSkillNames()
+	if cfg.Agent.ExperimentalSessionCollab {
+		return names
+	}
+	return append(append([]string(nil), names...), "collab-secretary")
 }

@@ -23,8 +23,14 @@ function ok(condition: boolean, label: string) {
 
 console.log("\nsettings navigation contract");
 
-ok(panel.includes('["workbench", "creation"] as const'), "desktop settings expose only workbench and creation");
-ok(!panel.includes('["workbench", "classic", "creation"] as const'), "desktop settings no longer offer classic");
+// Fork contract, not upstream's: upstream #9796 retired the Classic layout
+// selection and reduced this selector to workbench + creation. The fork keeps
+// Classic (commit b28cf270f "restore classic in DesktopLayoutStyle options"), and
+// that decision is recorded in docs/tasklist/08-已完成-UI与交互.md:61 as
+// "保留魔改（#9796 classic 桌面风格下架不采纳）". Asserting the upstream shape here
+// reported a deliberate fork difference as a regression.
+ok(panel.includes('["workbench", "classic", "creation"] as const'), "desktop settings offer workbench, classic and creation");
+ok(panel.includes('desktopLayoutStyleLabel'), "every layout option has a localized label");
 ok(/useEffect\(\(\) => \{[\s\S]*?content\.scrollTop = 0;[\s\S]*?content\.scrollLeft = 0;[\s\S]*?\}, \[tab\]\);/.test(panel), "switching settings pages resets both content scroll axes");
 ok(navigation.includes('aria-current={activeTab === id ? "page" : undefined}'), "the active settings page is exposed semantically");
 ok(navigation.includes('item.meta && query.trim()'), "navigation metadata appears only in search results");

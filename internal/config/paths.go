@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -434,6 +435,19 @@ func SessionDir() string {
 	return filepath.Join(dir, "sessions")
 }
 
+// SessionCollabMailDir is the single shared delivery root for multi-session
+// collaboration (task 19 / 142). One directory for every workspace on purpose:
+// contact_id is globally unique, so a shared mailbox removes an entire class of
+// "which workspace owns this message" routing bugs, and a session that moved
+// projects keeps receiving its own mail.
+func SessionCollabMailDir() string {
+	dir := userSupportDir()
+	if dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, "session-chat")
+}
+
 // SessionStoreDir is the experimental v4 session root. Keeping it physically
 // separate prevents older binaries from treating v4 commits as legacy JSONL
 // transcripts.
@@ -480,6 +494,33 @@ func StatsDir() string {
 		return ""
 	}
 	return filepath.Join(dir, "stats")
+}
+
+// AllProjectSessionDirs lists every per-workspace session directory on this
+// machine. Discovery must not depend on which projects happen to be open: a
+// collaborating session that is closed is still addressable, and "list all
+// addressable sessions" has to mean all of them.
+func AllProjectSessionDirs() []string {
+	base := MemoryUserDir()
+	if base == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(filepath.Join(base, "projects"))
+	if err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		dir := filepath.Join(base, "projects", e.Name(), "sessions")
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			out = append(out, dir)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // ProjectSessionDir is the per-workspace session directory the desktop sidebar

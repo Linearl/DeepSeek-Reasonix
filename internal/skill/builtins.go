@@ -282,6 +282,86 @@ func appendUniqueToolNames(base []string, extra ...string) []string {
 // builtinSkills returns the shipped skills. A fresh slice each call so callers
 // can't mutate the shared set.
 func builtinSkills() []Skill {
+	builtinCollabSecretaryBody := `This skill is INLINED — you run in the parent loop, and you may be either the
+requester, an expert, or the optional secretariat. Decide which from the task in
+front of you. The secretariat is NOT a mandatory hub: a single-domain task goes
+straight to the matching expert and the secretariat never touches it.
+
+## Addressing
+
+- ` + "`list_addressable_sessions`" + ` is the roster: it returns contact_id + purpose for
+  every registered session. A session only appears after it has run once and
+  registered a purpose.
+- Address by ` + "`contact_id`" + `, never by title. Titles are renameable; the contact id is
+  not, so a reference taken before a rename still resolves.
+- Register your own duty with ` + "`set_session_purpose`" + ` when you become a standing
+  expert, so others can find you.
+
+## Routing
+
+1. **Direct** — one domain, one clear owner: send it to that expert with
+   ` + "`talk_to_session`" + ` and stop. Do not route through the secretariat.
+2. **Secretariat** — only when the task is multi-step, spans domains, or needs a
+   single consolidated answer. Then: split it, dispatch each part, collect, and
+   summarize once.
+3. **Explicit hand-off** — experts may hand work sideways to another expert.
+   Every hand-off increments ` + "`hop`" + `; the chain cap is 5.
+
+## Dispatching
+
+- ` + "`talk_to_session(to, message, hop, delivery, card_id)`" + `.
+  - ` + "`delivery=\"followup\"`" + ` (default) queues for the target's next turn — use this.
+  - ` + "`delivery=\"steer\"`" + ` asks to inject mid-turn. If the target cannot take it,
+    it degrades to a follow-up and you receive a notice saying so. Never assume
+    a steer landed; the notice is the truth.
+  - ` + "`hop`" + `: 0 when you start a chain. When you relay or answer, you do not need
+    to compute it — the system derives the depth from the thread you name and
+    ignores the number you pass. What it does require is the thread id.
+- ` + "`talk_to_session_sync`" + ` when you genuinely need the answer before you can
+  continue a short step. It waits up to ` + "`timeout_ms`" + ` (default 30s, max 120s).
+  A ` + "`status=\"timeout\"`" + ` result is NOT a failure: the request is queued and the
+  answer still arrives. Do not retry on timeout — continue or wait for the reply.
+  Prefer the async form for anything long.
+- Create the card **before** dispatching, and stamp its id on the message:
+  ` + "`create_task_card(title, body, assignee)`" + ` then
+  ` + "`talk_to_session(..., card_id=<id>)`" + `.
+- Show the card in the conversation inside a ` + "```taskcard" + ` fence so the user can
+  see who is doing what.
+
+## Status and failure
+
+- ` + "`update_task_card`" + ` on every state change: pending → running → done, or
+  → blocked, or → failed. A card left on running is a lie.
+- **Failures are never silent.** Record ` + "`error`" + ` on the card, set the status to
+  failed, and tell the requester what failed and what you tried.
+- Retry once on a transient failure. Two failures on the same hop means stop and
+  report; do not keep re-dispatching.
+- No session matches the domain: do the work yourself if it is small, otherwise
+  fall back to the ` + "`actor`" + ` subagent for that one task and say that you did.
+  Do not create a permanent expert for a one-off job.
+
+## Replying
+
+- A delivered message ends with a reply line naming the requester's contact_id
+  and a ` + "`threadId`" + `. When you finish, ` + "`talk_to_session`" + ` back to that contact with
+  ` + "`hop`" + ` set to the hop you received plus one and ` + "`thread_id`" + ` set to that threadId —
+  the requester may be blocked waiting on it.
+- If the message was a one-way notice, do not reply.
+- When the work is done, return one consolidated answer to the original
+  requester rather than N partial answers.
+
+## Boundaries
+
+- One-off chores still belong to the ` + "`actor`" + ` subagent, not to a new session.
+- Grouping (` + "`create_collab_session`" + `) is for standing teams; pass ` + "`group_id`" + ` when
+  you already know the team (title matching is only for creating a new one), and
+  grouping only affects sidebar organisation and discovery, never addressing.
+- Delivery failures are retried automatically and you are told once. Never assume
+  silence means success — a status note in your inbox is the truth.
+- Terminal card states are final: reopening goes through ` + "`pending`" + ` so an
+  abandoned run cannot look like a fresh one.
+`
+
 	readCodeTools := []string{"read_file", "ls", "glob", "grep", "code_index"}
 	// use_capability is the stable MCP proxy for strict review children: they
 	// never inherit direct mcp__* schemas, so the proxy must be allowlisted or
@@ -320,6 +400,16 @@ func builtinSkills() []Skill {
 			Triggers:       []string{"canonical", "documentation", "specification", "compare against", "is supported", "official docs", "官方文档", "规范", "是否支持", "对比实现", "外部资料", "最新文档"},
 			AutoUse:        "suggest",
 			NeedsFreshData: true,
+		},
+		{
+			Name:        "collab-secretary",
+			Description: "Route work across collaborating sessions: dispatch to domain experts by contact_id, keep task cards current, summarise multi-step results back to the requester, and fall back to a one-off subagent when no expert matches. The secretariat is optional — single-domain tasks go straight to their expert. Inlined — runs in the main loop.",
+			Body:        builtinCollabSecretaryBody,
+			Scope:       ScopeBuiltin,
+			Path:        "(builtin)",
+			RunAs:       RunInline,
+			Triggers:    []string{"multi-session", "collaborate", "dispatch to", "ask the expert", "cross-session", "多会话协作", "派给专家", "跨会话", "找专家", "协作团队", "秘书"},
+			AutoUse:     "suggest",
 		},
 		{
 			Name:        "install-capability",

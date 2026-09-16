@@ -21,6 +21,16 @@ Object.assign(window, { go: { main: { App: {
     tasks = value.tasks; return { revision: 2, etag: "b", tasks };
   },
   async ListWorkspaces() { return []; }, async HeartbeatGenerateID() { return "draft-new"; },
+  // #30: the task editor reads Settings() to offer configured provider models as
+  // a per-task override. Leaving it out made the editor's effect throw on mount.
+  async Settings() {
+    return {
+      providers: [
+        { name: "primary", models: ["deepseek-chat", "deepseek-reasoner"] },
+        { name: "empty-provider", models: [] },
+      ],
+    };
+  },
 } } } });
 const root = createRoot(document.getElementById("root")!);
 const render = (active = true) => <LocaleProvider><HeartbeatView active={active} /></LocaleProvider>;

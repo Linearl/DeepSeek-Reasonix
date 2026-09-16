@@ -36,8 +36,14 @@ type BranchMeta struct {
 	TopicID          string    `json:"topic_id,omitempty"`
 	TopicTitle       string    `json:"topic_title,omitempty"`
 	CustomTitle      string    `json:"custom_title,omitempty"`
-	Model            string    `json:"model,omitempty"`
-	ModelIdentity    string    `json:"model_identity,omitempty"`
+	// ContactID is the stable multi-session address for task 19 / 141. It is
+	// generated once, never derived from titles or file names, and survives
+	// topic renames. Empty means the session has not been registered yet.
+	ContactID string `json:"contact_id,omitempty"`
+	// Purpose is a one-line duty description registered for discovery (141).
+	Purpose       string `json:"purpose,omitempty"`
+	Model         string `json:"model,omitempty"`
+	ModelIdentity string `json:"model_identity,omitempty"`
 	// TokenMode and AgentPreset are deprecated dual-write fields derived from
 	// QualityFloor; delivery writes "delivery", standard writes "full"/"".
 	TokenMode   string `json:"token_mode,omitempty"`
@@ -754,4 +760,56 @@ func SaveBranchMetaSubagentPolicy(sessionPath, policy string) error {
 		current.SubagentPolicy = policy
 		return nil
 	})
+}
+
+// EnsureContactID returns the session's stable contact id, minting and
+// persisting one on first use (task 141). Titles and topic renames never
+// change it.
+func EnsureContactID(sessionPath string) (string, error) {
+	var out string
+	err := UpdateBranchMeta(sessionPath, true, func(current *BranchMeta) error {
+		if current.ContactID == "" {
+			base := current.ID
+			if base == "" {
+				base = BranchID(sessionPath)
+			}
+			current.ContactID = contactIDFromStable(base, sessionPath)
+		}
+		out = current.ContactID
+		return nil
+	})
+	return out, err
+}
+
+// SessionContactID returns the existing contact id without minting one.
+func SessionContactID(sessionPath string) string {
+	m, ok, err := LoadBranchMeta(sessionPath)
+	if err != nil || !ok {
+		return ""
+	}
+	return m.ContactID
+}
+
+// SetSessionPurpose updates purpose and ensures a contact id exists (task 141).
+func SetSessionPurpose(sessionPath, purpose string) (contactID string, err error) {
+	err = UpdateBranchMeta(sessionPath, true, func(current *BranchMeta) error {
+		if current.ContactID == "" {
+			base := current.ID
+			if base == "" {
+				base = BranchID(sessionPath)
+			}
+			current.ContactID = contactIDFromStable(base, sessionPath)
+		}
+		current.Purpose = strings.TrimSpace(purpose)
+		contactID = current.ContactID
+		return nil
+	})
+	return contactID, err
+}
+
+func contactIDFromStable(branchID, sessionPath string) string {
+	if strings.TrimSpace(branchID) != "" {
+		return fmt.Sprintf("sc_%s", branchID)
+	}
+	return fmt.Sprintf("sc_%s", BranchID(sessionPath))
 }

@@ -27,6 +27,8 @@ export interface SettingsView {
   experimentalTraceAsState?: boolean;
   // Task 115: dream/distill memory-curation experiment.
   experimentalDream?: boolean;
+  // Task 19: multi-session collaboration experiment.
+  experimentalSessionCollab?: boolean;
   visionModel: string;
   webSearchModel?: string;
   webSearchModels?: string[];
