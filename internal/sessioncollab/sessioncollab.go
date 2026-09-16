@@ -199,9 +199,13 @@ func ScanDir(dir, workspaceRoot string, loadMeta func(sessionPath string) (conta
 		}
 		path := filepath.Join(dir, e.Name())
 		contact, purpose, topic, title, ok := loadMeta(path)
-		if !ok || contact == "" {
+		if !ok {
 			continue
 		}
+		// A session with no contact_id yet still belongs in the directory: it is
+		// a conversation that can be named by title, and first contact mints the
+		// address. Filtering on contact here would make the directory list only
+		// people who already spoke, which is the opposite of the point.
 		var updated int64
 		if info, err := os.Stat(path); err == nil {
 			updated = info.ModTime().UnixMilli()
@@ -696,6 +700,43 @@ func (s *MailStore) readNotified(contactID string) map[string]bool {
 	if err := json.Unmarshal(b, &out); err != nil {
 		return map[string]bool{}
 	}
+	return out
+}
+
+// PendingContacts lists contacts that have at least one un-acked message.
+// It is what lets a host discover *which* sessions need waking, including ones
+// with no open tab — delivery must not depend on the target already being on
+// screen.
+func (s *MailStore) PendingContacts() []string {
+	unlock, err := s.lock()
+	if err != nil {
+		return nil
+	}
+	defer unlock()
+	entries, err := os.ReadDir(s.root)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasSuffix(name, ".inbox.jsonl") {
+			continue
+		}
+		contact := strings.TrimSuffix(name, ".inbox.jsonl")
+		all, err := s.readAll(contact)
+		if err != nil {
+			continue
+		}
+		seen := s.readCursor(contact)
+		for _, m := range all {
+			if !seen[m.ID] {
+				out = append(out, contact)
+				break
+			}
+		}
+	}
+	sort.Strings(out)
 	return out
 }
 

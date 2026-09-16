@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -12,7 +13,9 @@ import (
 
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
+	"reasonix/internal/control"
 	"reasonix/internal/sessioncollab"
+	"reasonix/internal/sessioninbox"
 )
 
 // Session collaboration pump (task 19 / 142).
@@ -201,9 +204,23 @@ func (p *sessionCollabPump) applyPendingPurposes() {
 
 func (p *sessionCollabPump) drain() SessionCollabDrainResult {
 	p.applyPendingPurposes()
+	mailDir := config.SessionCollabMailDir()
+	if mailDir == "" {
+		return SessionCollabDrainResult{}
+	}
+	mail := sessioncollab.NewMailStore(mailDir)
+	pendingContacts := mail.PendingContacts()
+
+	// Deliverability is not "is there a visible tab": a session whose runtime is
+	// alive with no tab (detached) can take work exactly like an open one, and a
+	// session with neither is opened so the work can land. Only if the open fails
+	// does the message wait — never the other way round.
+	covered := map[string]bool{}
 	var result SessionCollabDrainResult
-	for _, target := range p.app.sessionCollabTargets() {
-		delivered, refused, err := p.deliverToTab(target)
+
+	for _, target := range p.app.sessionCollabLiveTargets(pendingContacts) {
+		covered[target.contactID] = true
+		delivered, refused, err := p.deliverToTarget(target)
 		result.Delivered += delivered
 		result.Refused += refused
 		if delivered == 0 && refused == 0 && err == nil {
@@ -215,18 +232,47 @@ func (p *sessionCollabPump) drain() SessionCollabDrainResult {
 			Delivered: delivered,
 			Refused:   refused,
 		}
+		if target.detached {
+			entry.TabID = target.tabID + " (detached)"
+		}
 		if err != nil {
 			entry.Error = err.Error()
-			log.Printf("[session-collab] tab %s contact %s: %v", target.tabID, target.contactID, err)
+			log.Printf("[session-collab] target %s contact %s: %v", entry.TabID, target.contactID, err)
 		}
 		result.Targets = append(result.Targets, entry)
+	}
+
+	// Nothing running for this contact: stand the session up so the next pass
+	// can deliver. An open failure is logged, not acked, so the message stays.
+	roster := p.app.collabRosterIndex()
+	for _, contact := range pendingContacts {
+		if covered[contact] {
+			continue
+		}
+		id, ok := roster[contact]
+		if !ok || id.Archived || strings.TrimSpace(id.SessionPath) == "" {
+			continue
+		}
+		if _, err := p.app.OpenTopicSession(id.Scope, id.Workspace, id.TopicID, id.SessionPath); err != nil {
+			log.Printf("[session-collab] cannot open session for contact %s (%s): %v", contact, id.Title, err)
+			continue
+		}
+		log.Printf("[session-collab] opened session %q to accept a message for contact %s", id.Title, contact)
 	}
 	return result
 }
 
+// sessionCollabTarget is one place mail can land: a visible tab, or a detached
+// runtime that outlived its tab. Reasonix's model is that closing a tab does not
+// necessarily stop the work — detachedSessions holds exactly those runtimes, so
+// collaboration must be able to reach them without opening a tab.
 type sessionCollabTarget struct {
 	tabID     string
 	contactID string
+	// detached marks a target with no visible tab: the controller is reached
+	// through the runtime, not through inboxCtrl(tabID).
+	detached bool
+	ctrl     control.SessionAPI
 }
 
 // collabDelivery is the injectable seam for one tab's delivery pass, so the
@@ -244,12 +290,12 @@ type collabDelivery struct {
 	render func(msg sessioncollab.MailMessage, effectiveHop int) string
 }
 
-// deliverToTab hands every pending message to the target and acks only what is
-// settled. A delivery failure is NOT acked, so the next pass retries it, and the
-// sender is told once. Acking a message before it is in the target's inbox would
-// make delivery at-most-once — the failure mode where a user's task disappears
-// with nothing but a local log line.
-func (p *sessionCollabPump) deliverToTab(target sessionCollabTarget) (delivered, refused int, err error) {
+// deliverToTarget hands every pending message to the target and acks only what
+// is settled. A delivery failure is NOT acked, so the next pass retries it, and
+// the sender is told once. Acking a message before it is in the target's inbox
+// would make delivery at-most-once — the failure mode where a user's task
+// disappears with nothing but a local log line.
+func (p *sessionCollabPump) deliverToTarget(target sessionCollabTarget) (delivered, refused int, err error) {
 	mailDir := config.SessionCollabMailDir()
 	if mailDir == "" {
 		return 0, 0, nil
@@ -257,7 +303,7 @@ func (p *sessionCollabPump) deliverToTab(target sessionCollabTarget) (delivered,
 	mail := sessioncollab.NewMailStore(mailDir)
 	return runCollabDelivery(mail, target.contactID, collabDelivery{
 		enqueue: func(msg sessioncollab.MailMessage, body string) (bool, error) {
-			return p.deliverOne(target.tabID, msg, body)
+			return p.deliverOne(target, msg, body)
 		},
 		notify:    p.notifySenderOnce,
 		deriveHop: p.verifyHop,
@@ -400,13 +446,34 @@ func sessionCollabDeliveryFailedText(msg sessioncollab.MailMessage, cause error)
 }
 
 // deliverOne hands one message to the target. It reports whether a steer
-// actually injected, so the caller can tell the sender when it degraded.
-func (p *sessionCollabPump) deliverOne(tabID string, msg sessioncollab.MailMessage, body string) (bool, error) {
+// actually injected, so the caller can tell the sender when it degraded. A
+// detached target is reached through its controller — there is no visible tab
+// to address by id.
+func (p *sessionCollabPump) deliverOne(target sessionCollabTarget, msg sessioncollab.MailMessage, body string) (bool, error) {
+	idem := "collab:" + msg.ID
+	if target.detached {
+		if target.ctrl == nil {
+			return false, fmt.Errorf("detached runtime has no controller")
+		}
+		if msg.Delivery != string(sessioncollab.DeliverySteer) {
+			_, err := p.app.enqueueInboxWithController(target.tabID, target.ctrl, sessioninbox.IntentFollowup, body, body, nil, idem, false, "", "")
+			return false, err
+		}
+		receipt, err := p.app.enqueueInboxWithController(target.tabID, target.ctrl, sessioninbox.IntentSteer, body, body, nil, idem, true, "", "")
+		if err != nil {
+			return false, err
+		}
+		steered := sessionCollabReceiptSteered(receipt.Disposition)
+		if !steered {
+			log.Printf("[session-collab] steer degraded to follow-up for %s (disposition=%s)", msg.To, receipt.Disposition)
+		}
+		return steered, nil
+	}
 	if msg.Delivery != string(sessioncollab.DeliverySteer) {
-		_, err := p.app.EnqueueInboxFollowup(tabID, body, body, "collab:"+msg.ID)
+		_, err := p.app.EnqueueInboxFollowup(target.tabID, body, body, idem)
 		return false, err
 	}
-	receipt, err := p.app.EnqueueInboxSteer(tabID, body, body, "collab:"+msg.ID)
+	receipt, err := p.app.EnqueueInboxSteer(target.tabID, body, body, idem)
 	if err != nil {
 		return false, err
 	}
@@ -496,9 +563,10 @@ func sessionCollabDeliveryText(msg sessioncollab.MailMessage, effectiveHop int) 
 	return b.String()
 }
 
-// AddressableSessionView is one registered session for the desktop surface
-// (task 141). ContactID is the stable address; TopicID and the path are shown
-// only so a human can recognise the row.
+// AddressableSessionView is one session in the contact directory (task 141).
+// ContactID is the stable address (empty until first contact); TopicID and the
+// path are shown so a human can recognise the row, and Purpose is optional —
+// the title carries the meaning when no duty has been registered.
 type AddressableSessionView struct {
 	ContactID   string `json:"contactId"`
 	Purpose     string `json:"purpose,omitempty"`
@@ -508,50 +576,88 @@ type AddressableSessionView struct {
 	Scope       string `json:"scope,omitempty"`
 	Workspace   string `json:"workspaceRoot,omitempty"`
 	Open        bool   `json:"open"`
+	Archived    bool   `json:"archived"`
 }
 
-// ListAddressableSessions enumerates sessions that can be addressed by
-// contact_id. Renaming a topic never changes the row's ContactID, so a
-// reference taken before the rename still resolves.
+// collabRoster enumerates every session on this machine — global, every project
+// dir, and the archive. Purpose is optional metadata; every conversation belongs
+// in the directory, the same way MiMo's session-chat lists every conversation.
+func (a *App) collabRoster() []sessioncollab.Identity {
+	load := func(sessionPath string) (contact, purpose, topic, title string, ok bool) {
+		m, found, err := agent.LoadBranchMeta(sessionPath)
+		if err != nil {
+			return "", "", "", "", false
+		}
+		title = strings.TrimSuffix(filepath.Base(sessionPath), filepath.Ext(sessionPath))
+		if found {
+			contact = m.ContactID
+			purpose = m.Purpose
+			topic = m.TopicID
+			if m.CustomTitle != "" {
+				title = m.CustomTitle
+			} else if m.TopicTitle != "" {
+				title = m.TopicTitle
+			}
+		}
+		// Include sessions with no sidecar yet: they are conversations too.
+		return contact, purpose, topic, title, true
+	}
+	var out []sessioncollab.Identity
+	seen := map[string]bool{}
+	add := func(dir, workspace, scope string, archived bool) {
+		for _, id := range sessioncollab.ScanDir(dir, workspace, load) {
+			key := strings.ToLower(id.SessionPath)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			id.Scope = scope
+			id.Archived = archived
+			out = append(out, id)
+		}
+	}
+	add(config.SessionDir(), "", "global", false)
+	for _, dir := range config.AllProjectSessionDirs() {
+		add(dir, projectRootForSessionDir(dir), "project", false)
+	}
+	add(config.ArchiveDir(), "", "global", true)
+	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt > out[j].UpdatedAt })
+	return out
+}
+
+// projectRootForSessionDir recovers the project root from a
+// <state>/projects/<slug>/sessions layout so a scanned session can name the
+// workspace it belongs to. Empty when the layout is unexpected.
+func projectRootForSessionDir(sessionsDir string) string {
+	// sessions dir sits two levels under the project slug directory; the slug is
+	// not the original root, but OpenTopicSession only needs a consistent scope +
+	// root pair, and the identity already carries the exact session path.
+	return filepath.Dir(filepath.Dir(sessionsDir))
+}
+
+// ListAddressableSessions enumerates the contact directory for the desktop
+// surface. Renaming a topic never changes ContactID, so a reference taken before
+// the rename still resolves; sessions without a contact_id yet are still listed
+// and can be addressed by topic_id or title.
 func (a *App) ListAddressableSessions() []AddressableSessionView {
 	open := map[string]bool{}
 	for _, target := range a.sessionCollabTargets() {
 		open[target.contactID] = true
 	}
-	var out []AddressableSessionView
-	seen := map[string]bool{}
-	add := func(ids []sessioncollab.Identity, scope string) {
-		for _, id := range ids {
-			if seen[id.ContactID] {
-				continue
-			}
-			seen[id.ContactID] = true
-			out = append(out, AddressableSessionView{
-				ContactID:   id.ContactID,
-				Purpose:     id.Purpose,
-				Title:       id.Title,
-				TopicID:     id.TopicID,
-				SessionPath: id.SessionPath,
-				Scope:       scope,
-				Workspace:   id.Workspace,
-				Open:        open[id.ContactID],
-			})
-		}
+	out := make([]AddressableSessionView, 0)
+	for _, id := range a.collabRoster() {
+		out = append(out, AddressableSessionView{
+			ContactID:   id.ContactID,
+			Purpose:     id.Purpose,
+			Title:       id.Title,
+			TopicID:     id.TopicID,
+			SessionPath: id.SessionPath,
+			Scope:       id.Scope,
+			Workspace:   id.Workspace,
+			Open:        id.ContactID != "" && open[id.ContactID],
+			Archived:    id.Archived,
+		})
 	}
-	load := func(sessionPath string) (contact, purpose, topic, title string, ok bool) {
-		m, found, err := agent.LoadBranchMeta(sessionPath)
-		if err != nil || !found || m.ContactID == "" {
-			return "", "", "", "", false
-		}
-		return m.ContactID, m.Purpose, m.TopicID, m.CustomTitle, true
-	}
-	// Global sessions first, then every known project, so the list is complete
-	// even when the session is not currently open in a tab.
-	add(sessioncollab.ScanDir(config.SessionDir(), "", load), "global")
-	for _, root := range a.knownProjectRoots() {
-		add(sessioncollab.ScanDir(config.ProjectSessionDir(root), root, load), "project")
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ContactID < out[j].ContactID })
 	return out
 }
 
@@ -573,6 +679,68 @@ func (a *App) knownProjectRoots() []string {
 		roots = append(roots, root)
 	}
 	return roots
+}
+
+// sessionCollabLiveTargets is every place a message can land without first
+// standing anything up: visible tabs bound to a session, plus detached runtimes
+// whose tab was closed but whose work is still alive. Only the contacts in
+// pendingContacts are considered, so an idle pass costs nothing.
+func (a *App) sessionCollabLiveTargets(pendingContacts []string) []sessionCollabTarget {
+	want := map[string]bool{}
+	for _, c := range pendingContacts {
+		want[c] = true
+	}
+	out := append([]sessionCollabTarget(nil), a.sessionCollabTargets()...)
+	seen := map[string]bool{}
+	for _, t := range out {
+		seen[t.contactID] = true
+	}
+
+	a.mu.Lock()
+	detached := make([]*WorkspaceTab, 0, len(a.detachedSessions))
+	for _, tab := range a.detachedSessions {
+		if tab != nil {
+			detached = append(detached, tab)
+		}
+	}
+	a.mu.Unlock()
+
+	for _, tab := range detached {
+		if tab.Ctrl == nil || tab.ReadOnly || tab.Takeover.Spectator {
+			continue
+		}
+		path := strings.TrimSpace(tab.Ctrl.SessionPath())
+		if path == "" {
+			continue
+		}
+		contact := agent.SessionContactID(path)
+		if contact == "" || seen[contact] {
+			continue
+		}
+		if len(want) > 0 && !want[contact] {
+			continue
+		}
+		seen[contact] = true
+		out = append(out, sessionCollabTarget{
+			tabID:     tab.ID,
+			contactID: contact,
+			detached:  true,
+			ctrl:      tab.Ctrl,
+		})
+	}
+	return out
+}
+
+// collabRosterIndex maps contact_id to the newest identity that owns it.
+func (a *App) collabRosterIndex() map[string]sessioncollab.Identity {
+	out := map[string]sessioncollab.Identity{}
+	for _, id := range a.collabRoster() {
+		if strings.TrimSpace(id.ContactID) == "" {
+			continue
+		}
+		out[id.ContactID] = id
+	}
+	return out
 }
 
 // sessionCollabTargets snapshots open tabs that own a registered contact_id.

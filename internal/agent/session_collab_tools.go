@@ -76,7 +76,7 @@ type listAddressableSessionsTool struct{ cfg SessionCollabConfig }
 func (listAddressableSessionsTool) Name() string { return "list_addressable_sessions" }
 
 func (listAddressableSessionsTool) Description() string {
-	return "List sessions registered for multi-session collaboration: contact_id, purpose, title, and path. Experimental. Use contact_id with talk_to_session."
+	return "List the contact directory: every session on this machine (global + every project + archive). Purpose is optional metadata; the title carries the meaning when purpose is empty. Use the contact_id, topic_id, or the exact title as `to` in talk_to_session. Experimental."
 }
 
 func (listAddressableSessionsTool) Schema() json.RawMessage {
@@ -88,23 +88,33 @@ func (listAddressableSessionsTool) ReadOnly() bool { return true }
 func (t listAddressableSessionsTool) Execute(_ context.Context, _ json.RawMessage) (string, error) {
 	ids := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
 	if len(ids) == 0 {
-		return "No addressable sessions yet. Call set_session_purpose from a session to register it.\n", nil
+		return "No sessions found.\n", nil
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Addressable sessions (%d)\n\n", len(ids))
-	b.WriteString("| contact_id | purpose | title | archived | path |\n|---|---|---|---|---|\n")
+	fmt.Fprintf(&b, "# Contact directory (%d sessions)\n\n", len(ids))
+	b.WriteString("| title | purpose | contact_id | topic_id | path | archived |\n|---|---|---|---|---|---|\n")
 	for _, id := range ids {
 		archived := ""
 		if id.Archived {
 			archived = "yes"
 		}
-		fmt.Fprintf(&b, "| `%s` | %s | %s | %s | `%s`\n", id.ContactID, id.Purpose, id.Title, archived, filepath.Base(id.SessionPath))
+		purpose := id.Purpose
+		if purpose == "" {
+			purpose = "—"
+		}
+		contact := id.ContactID
+		if contact == "" {
+			contact = "(未登记)"
+		}
+		fmt.Fprintf(&b, "| %s | %s | `%s` | `%s` | `%s` | %s |\n",
+			id.Title, purpose, contact, id.TopicID, filepath.Base(id.SessionPath), archived)
 	}
 	if dups := duplicateContactIDs(t.cfg.SessionDir, t.cfg.WorkspaceRoot); len(dups) > 0 {
 		// A shared address silently routes one session's mail to another, so it
 		// is reported instead of being resolved by picking a winner.
-		fmt.Fprintf(&b, "\n⚠️ 重复的 contact_id（同名会话文件副本）——这些地址不再唯一，未列入上表：%s\n", strings.Join(dups, ", "))
+		fmt.Fprintf(&b, "\n⚠️ 重复的 contact_id（同名会话文件副本）——这些地址不再唯一：%s\n", strings.Join(dups, ", "))
 	}
+	b.WriteString("\n寻址：优先用 contact_id；没有登记过的会话可用 topic_id 或**唯一**的标题名（重命名后标题名会变，contact_id 不会）。给对方发消息时它会自动获得 contact_id。\n")
 	return b.String(), nil
 }
 
@@ -147,11 +157,11 @@ type talkToSessionTool struct{ cfg SessionCollabConfig }
 func (talkToSessionTool) Name() string { return "talk_to_session" }
 
 func (talkToSessionTool) Description() string {
-	return "Send a message to another registered session by contact_id (task 19 / 142-143). delivery=followup queues for the target's next turn; delivery=steer asks for mid-turn injection and degrades to a queued follow-up when the target has no injectable turn (the sender is told). hop must be 0 for a new chain; pass hop+1 when relaying. Experimental."
+	return "Send a message to another session in the contact directory (task 19 / 142-143). `to` accepts a contact_id, a topic_id, or the exact title shown by list_addressable_sessions — the title is the human way to pick someone when you have not met them yet, and the target gains a contact_id on first contact. delivery=followup queues for the target's next turn; delivery=steer asks for mid-turn injection and degrades to a queued follow-up when the target has no injectable turn (the sender is told). Experimental."
 }
 
 func (talkToSessionTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target contact_id from list_addressable_sessions."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain; 1-5 when relaying."},"delivery":{"type":"string","enum":["followup","steer"],"description":"followup (default) queues; steer injects mid-turn, degrading to followup when it cannot."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."},"thread_id":{"type":"string","description":"When answering a message, pass the threadId it carried so the requester can match your reply."}},"required":["to","message"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target: contact_id, topic_id, or the exact title from list_addressable_sessions."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain. The system derives the real depth from the thread."},"delivery":{"type":"string","enum":["followup","steer"],"description":"followup (default) queues; steer injects mid-turn, degrading to followup when it cannot."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."},"thread_id":{"type":"string","description":"When answering a message, pass the threadId it carried so the requester can match your reply."}},"required":["to","message"]}`)
 }
 
 func (talkToSessionTool) ReadOnly() bool { return false }
@@ -179,14 +189,23 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 		return "", err
 	}
 	ids := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
-	target, ok := sessioncollab.ResolveContact(ids, p.To)
-	if !ok {
-		return "", fmt.Errorf("%w: contact_id %q is not registered (use list_addressable_sessions)", sessioncollab.ErrNotFound, p.To)
+	target, err := ResolveTarget(ids, p.To)
+	if err != nil {
+		return "", err
 	}
 	if target.Archived {
 		// Archived is a different situation from unknown: the address is real,
 		// the session is just no longer an active participant.
-		return "", fmt.Errorf("contact_id %q is archived and no longer accepts messages (restore the session first)", p.To)
+		return "", fmt.Errorf("session %q is archived and no longer accepts messages (restore it first)", p.To)
+	}
+	// First contact mints the address, so naming a conversation by its title is
+	// enough to make it permanently addressable.
+	if target.ContactID == "" {
+		minted, merr := EnsureContactID(target.SessionPath)
+		if merr != nil {
+			return "", fmt.Errorf("cannot mint a contact_id for %q: %w", p.To, merr)
+		}
+		target.ContactID = minted
 	}
 	fromContact := t.cfg.CurrentContactID
 	if fromContact == "" && t.cfg.CurrentSessionPath != "" {
@@ -330,47 +349,112 @@ func workspaceRootForMail(cfg SessionCollabConfig, target sessioncollab.Identity
 func scanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity {
 	load := func(sessionPath string) (contact, purpose, topic, title string, ok bool) {
 		m, found, err := LoadBranchMeta(sessionPath)
-		if err != nil || !found {
+		if err != nil {
 			return "", "", "", "", false
 		}
-		return m.ContactID, m.Purpose, m.TopicID, m.CustomTitle, m.ContactID != ""
+		title = strings.TrimSuffix(filepath.Base(sessionPath), filepath.Ext(sessionPath))
+		if found {
+			contact = m.ContactID
+			purpose = m.Purpose
+			topic = m.TopicID
+			if m.CustomTitle != "" {
+				title = m.CustomTitle
+			} else if m.TopicTitle != "" {
+				title = m.TopicTitle
+			}
+		}
+		// Every conversation belongs in the directory; contact_id is minted on
+		// first contact rather than being a precondition for existence.
+		return contact, purpose, topic, title, true
 	}
 	var out []sessioncollab.Identity
 	seenPath := map[string]bool{}
 	seenContact := map[string]string{}
-	add := func(ids []sessioncollab.Identity, archived bool) {
+	add := func(ids []sessioncollab.Identity, workspace, scope string, archived bool) {
 		for _, id := range ids {
 			key := strings.ToLower(id.SessionPath)
 			if seenPath[key] {
 				continue
 			}
 			seenPath[key] = true
-			if prev, dup := seenContact[id.ContactID]; dup {
-				// Keep the first and let the caller surface the collision rather
-				// than silently choosing a recipient.
-				_ = prev
-				continue
+			if id.ContactID != "" {
+				if _, dup := seenContact[id.ContactID]; dup {
+					// Keep the first and let the caller surface the collision
+					// rather than silently choosing a recipient.
+					continue
+				}
+				seenContact[id.ContactID] = id.SessionPath
 			}
-			seenContact[id.ContactID] = id.SessionPath
+			id.Workspace = workspace
+			id.Scope = scope
 			id.Archived = archived
 			out = append(out, id)
 		}
 	}
 
-	dirs := []string{sessionDir}
-	if workspaceRoot != "" {
-		dirs = append(dirs, config.ProjectSessionDir(workspaceRoot))
+	dirs := []struct {
+		dir       string
+		workspace string
+		scope     string
+		archived  bool
+	}{
+		{sessionDir, "", "global", false},
+		{config.ProjectSessionDir(workspaceRoot), workspaceRoot, "project", false},
+		{config.ArchiveDir(), "", "global", true},
 	}
-	dirs = append(dirs, config.AllProjectSessionDirs()...)
 	for _, dir := range dirs {
-		if strings.TrimSpace(dir) == "" {
+		if strings.TrimSpace(dir.dir) == "" {
 			continue
 		}
-		add(sessioncollab.ScanDir(dir, "", load), false)
+		add(sessioncollab.ScanDir(dir.dir, dir.workspace, load), dir.workspace, dir.scope, dir.archived)
 	}
-	// Archived sessions are still addressable history: report them as archived
-	// rather than pretending they never existed.
-	add(sessioncollab.ScanDir(config.ArchiveDir(), "", load), true)
+	for _, projectSessions := range config.AllProjectSessionDirs() {
+		root := ""
+		// sessions dir is <state>/projects/<slug>/sessions; the slug is enough
+		// for OpenTopicSession, which only needs a consistent scope+root pair.
+		root = filepath.Dir(filepath.Dir(projectSessions))
+		add(sessioncollab.ScanDir(projectSessions, root, load), root, "project", false)
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt > out[j].UpdatedAt })
 	return out
+}
+
+// ResolveTarget maps a directory reference — contact_id, topic_id, or an
+// exact title — to a session. A session that has not minted a contact_id yet
+// gets one now, so the first message to a named conversation is enough to make
+// it permanently addressable.
+func ResolveTarget(ids []sessioncollab.Identity, ref string) (sessioncollab.Identity, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return sessioncollab.Identity{}, fmt.Errorf("target is required")
+	}
+	var byContact, byTopic, byTitle []sessioncollab.Identity
+	for _, id := range ids {
+		switch {
+		case id.ContactID != "" && strings.EqualFold(id.ContactID, ref):
+			byContact = append(byContact, id)
+		case id.TopicID != "" && strings.EqualFold(id.TopicID, ref):
+			byTopic = append(byTopic, id)
+		case id.Title != "" && strings.EqualFold(id.Title, ref):
+			byTitle = append(byTitle, id)
+		}
+	}
+	if len(byContact) == 1 {
+		return byContact[0], nil
+	}
+	if len(byTopic) == 1 {
+		return byTopic[0], nil
+	}
+	if len(byTitle) > 1 {
+		names := make([]string, 0, len(byTitle))
+		for _, id := range byTitle {
+			names = append(names, id.Title+" ("+id.TopicID+")")
+		}
+		return sessioncollab.Identity{}, fmt.Errorf("title %q matches %d sessions — use topic_id instead: %s",
+			ref, len(byTitle), strings.Join(names, ", "))
+	}
+	if len(byTitle) == 1 {
+		return byTitle[0], nil
+	}
+	return sessioncollab.Identity{}, fmt.Errorf("%w: %q is not in the contact directory (use list_addressable_sessions)", sessioncollab.ErrNotFound, ref)
 }

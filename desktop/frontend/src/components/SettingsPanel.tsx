@@ -1962,7 +1962,13 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
                       key={String(on)}
                       className={`set-seg__btn${Boolean(s.experimentalSessionCollab) === on ? " set-seg__btn--on" : ""}`}
                       disabled={busy}
-                      onClick={() => void apply(() => app.SetExperimentalSessionCollab(on))}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalSessionCollab(on);
+                        // The collaboration tools register when a session's
+                        // controller is built, so an already-open session does
+                        // not see them until it is rebuilt — surface that.
+                        setRestartNeeded(true);
+                      })}
                     >
                       {t(on ? "settings.sessionCollab.on" : "settings.sessionCollab.off")}
                     </button>

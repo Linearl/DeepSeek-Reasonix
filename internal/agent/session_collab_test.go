@@ -45,8 +45,8 @@ func TestTalkToSessionUnknownContactFails(t *testing.T) {
 		CurrentSessionPath: session,
 	})
 	_, err := tool.Execute(nil, []byte(`{"to":"sc_missing","message":"hi"}`))
-	if err == nil || !strings.Contains(err.Error(), "not registered") {
-		t.Fatalf("expected not registered, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "not in the contact directory") {
+		t.Fatalf("expected not-found, got %v", err)
 	}
 }
 

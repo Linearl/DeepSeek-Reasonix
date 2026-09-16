@@ -289,13 +289,19 @@ straight to the matching expert and the secretariat never touches it.
 
 ## Addressing
 
-- ` + "`list_addressable_sessions`" + ` is the roster: it returns contact_id + purpose for
-  every registered session. A session only appears after it has run once and
-  registered a purpose.
-- Address by ` + "`contact_id`" + `, never by title. Titles are renameable; the contact id is
-  not, so a reference taken before a rename still resolves.
+- ` + "`list_addressable_sessions`" + ` is the contact directory: **every session** on this
+  machine (global + every project + archive), with title, optional purpose,
+  topic_id, and contact_id. Purpose registration is optional — the title
+  identifies the conversation; a duty line just makes task assignment easier.
+- ` + "`to`" + ` accepts a contact_id, a topic_id, or the **exact title**. Prefer the
+  contact_id when you already have it (titles are renameable); the exact title
+  is the right way to pick someone you have not met yet, and the target gains a
+  contact_id the first time you address it.
+- The target does **not** need a visible tab. A session whose runtime is alive
+  takes the message directly; a session that is fully closed is opened so the
+  work can land. You do not need to open it yourself.
 - Register your own duty with ` + "`set_session_purpose`" + ` when you become a standing
-  expert, so others can find you.
+  expert, so others can find you faster.
 
 ## Routing
 
