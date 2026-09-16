@@ -431,7 +431,7 @@ export function SettingsPanel({
             ) : (
               <>
                 {tab === "general" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={busy} apply={apply}><GeneralSection s={s} busy={busy} apply={apply} agentRunning={agentRunning} /></SettingsPageShell>}
-                {tab === "experimental" && s && <ExperimentalSection key={tab} s={s} busy={busy} apply={apply} onClose={requestClose} />}
+                {tab === "experimental" && s && <ExperimentalSection key={tab} s={s} busy={busy} apply={apply} />}
                 {(tab === "models" || tab === "providers" || tab === "model-stats") && s && <SettingsPageShell key="model-pages" s={s} tab={tab} busy={busy} apply={apply}><ModelsSection onOpenProviders={() => selectTab("providers")} s={s} busy={busy} apply={apply} backgroundApply={backgroundApply} onboarding={initialFocus?.target === "model-access" && initialFocus.onboarding} onOnboardingComplete={onClose} subtab={tab === "providers" ? "access" : tab === "model-stats" ? "stats" : "usage"} /></SettingsPageShell>}
                 {tab === "bots" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={busy} apply={apply}><BotsSection s={s} busy={busy} apply={apply} initialFocus={initialFocus} /></SettingsPageShell>}
                 {tab === "mcp" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={apply}><Suspense fallback={lazySettingsPageFallback}><MCPServersSettingsPage /></Suspense></SettingsPageShell>}
@@ -1680,7 +1680,7 @@ type ExperimentFeatureId =
   | "dream"
   | "autopilot";
 
-function ExperimentalSection({ s, busy, apply, onClose }: SectionProps & { onClose: () => void }) {
+function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Set when a boot-time setting is saved: apply() reloads the view, so the fact that a
   // restart is pending has to live outside the data being reloaded.
   const [restartNeeded, setRestartNeeded] = useState(false);
@@ -1779,11 +1779,7 @@ function ExperimentalSection({ s, busy, apply, onClose }: SectionProps & { onClo
                   type="button"
                   className="btn btn--small"
                   disabled={busy || !Boolean(s.experimentalSessionMonitor)}
-                  onClick={() => {
-                    setSessionMonitorOpen(true);
-                    // Settings is a full-window overlay above the floating panel.
-                    onClose();
-                  }}
+                  onClick={() => setSessionMonitorOpen(true)}
                 >
                   {t("settings.sessionMonitorOpenAction")}
                 </button>
@@ -1852,11 +1848,7 @@ function ExperimentalSection({ s, busy, apply, onClose }: SectionProps & { onClo
                   type="button"
                   className="btn btn--small"
                   disabled={busy || !Boolean(s.experimentalFeedback)}
-                  onClick={() => {
-                    setFeedbackOpen(true);
-                    // Settings is a full-window overlay above the floating panel.
-                    onClose();
-                  }}
+                  onClick={() => setFeedbackOpen(true)}
                 >
                   {t("settings.feedbackOpenAction")}
                 </button>

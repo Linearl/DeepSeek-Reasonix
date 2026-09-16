@@ -40759,7 +40759,8 @@ body > .mermaid-diagram--fullscreen {
    mounts while the experiment switch is on and the user opened it. */
 .session-monitor {
   position: fixed;
-  z-index: var(--z-workspace-float);
+  /* Above Settings ManagementSurface (z-modal). Opens over the experimental pane. */
+  z-index: calc(var(--z-modal) + 1);
   /* Anchored just above the trash row it is opened from. */
   bottom: 56px;
   left: 12px;
@@ -40858,7 +40859,8 @@ body > .mermaid-diagram--fullscreen {
   position: fixed;
   left: 12px;
   bottom: 56px;
-  z-index: var(--z-workspace-float);
+  /* Above Settings ManagementSurface (z-modal). Opens over the experimental pane. */
+  z-index: calc(var(--z-modal) + 1);
   width: min(420px, calc(100vw - 24px));
   max-height: min(480px, calc(100vh - 120px));
   display: flex;
