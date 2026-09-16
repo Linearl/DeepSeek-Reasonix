@@ -21,6 +21,7 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	c.Desktop.ExperimentalTraceAsState = true
 	c.Desktop.ExperimentalDream = true
 	c.Agent.ExperimentalSessionCollab = true
+	c.Desktop.ExperimentalSessionCollab = true
 
 	out := RenderTOMLForScope(c, RenderScopeUser)
 	for _, want := range []string{

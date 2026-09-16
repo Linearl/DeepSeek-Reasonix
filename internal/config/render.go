@@ -154,6 +154,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "experimental_local_server = %v   # desktop: expose Settings → Local server (task 130)\n", c.Desktop.ExperimentalLocalServer)
 		fmt.Fprintf(&b, "experimental_trace_as_state = %v   # desktop: settings-view mirror of [agent] trace_as_state (task 60)\n", c.Desktop.ExperimentalTraceAsState)
 		fmt.Fprintf(&b, "experimental_dream = %v   # desktop: settings-view mirror of [agent] experimental_dream (task 115)\n", c.Desktop.ExperimentalDream)
+		fmt.Fprintf(&b, "experimental_session_collab = %v   # desktop: settings-view mirror of [agent] experimental_session_collab (task 19)\n", c.Desktop.ExperimentalSessionCollab)
 		fmt.Fprintf(&b, "telemetry = %v   # desktop: anonymous launch ping + scrubbed next-launch native crash diagnostics; never content\n", c.DesktopTelemetry())
 		fmt.Fprintf(&b, "metrics = %v   # desktop: aggregate quality/lifecycle metrics (anonymous signal/bucket counts); never content\n", c.DesktopMetrics())
 		// A non-nil empty slice is intentional: provider_access = [] means the
