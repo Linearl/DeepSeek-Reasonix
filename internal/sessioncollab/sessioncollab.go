@@ -89,6 +89,10 @@ type MailMessage struct {
 	Hop         int    `json:"hop,omitempty"`
 	CardID      string `json:"cardId,omitempty"`
 	ReplyTo     string `json:"replyToContactId,omitempty"`
+	// ThreadID correlates a reply with the message it answers: it is the
+	// original message's ID, so a synchronous waiter can match the answer
+	// instead of guessing from the sender.
+	ThreadID    string `json:"threadId,omitempty"`
 	At          int64  `json:"at"`
 	Idempotency string `json:"idempotency,omitempty"`
 }
@@ -476,6 +480,11 @@ func (s *MailStore) Deliver(msg MailMessage) (MailMessage, error) {
 	if msg.ID == "" {
 		msg.ID = newID("msg_")
 	}
+	// A message that does not continue an existing thread starts one, so a
+	// synchronous waiter always has an id to match its answer against.
+	if strings.TrimSpace(msg.ThreadID) == "" {
+		msg.ThreadID = msg.ID
+	}
 	if msg.At == 0 {
 		msg.At = time.Now().UnixMilli()
 	}
@@ -524,6 +533,40 @@ func (s *MailStore) Claim(contactID string) (delivered []MailMessage, refused []
 		return nil, nil, err
 	}
 	return delivered, refused, nil
+}
+
+// AwaitReply waits for a message on threadID addressed to contactID, without
+// consuming anything else in the inbox. It is the second half of a synchronous
+// talk_to_session: the caller already delivered the request, and now needs the
+// answer that carries the same thread id.
+//
+// Deliberately non-destructive: delivery stays the pump's job, so a timeout
+// leaves the reply queued for the normal path rather than losing it.
+func (s *MailStore) AwaitReply(contactID, threadID string, timeout time.Duration) (MailMessage, bool) {
+	if strings.TrimSpace(threadID) == "" {
+		return MailMessage{}, false
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		all, err := s.readAll(contactID)
+		if err == nil {
+			for _, m := range all {
+				if m.ThreadID == threadID {
+					return m, true
+				}
+			}
+		}
+		if time.Now().After(deadline) {
+			return MailMessage{}, false
+		}
+		sleep := 200 * time.Millisecond
+		if remaining := time.Until(deadline); remaining < sleep {
+			sleep = remaining
+		}
+		if sleep > 0 {
+			time.Sleep(sleep)
+		}
+	}
 }
 
 // Peek returns unread messages without advancing the cursor.

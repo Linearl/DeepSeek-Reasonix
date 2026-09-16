@@ -322,9 +322,18 @@ func sessionCollabDeliveryText(msg sessioncollab.MailMessage) string {
 	if msg.CardID != "" {
 		b.WriteString("关联任务卡片：" + msg.CardID + "\n")
 	}
+	if msg.Hop > 0 || msg.From != "" {
+		if msg.ID != "" {
+			b.WriteString("会话线程：threadId=" + msg.ID + "\n")
+		}
+	}
 	if msg.ReplyTo != "" {
 		b.WriteString("回复方式：完成后用 talk_to_session 回信到 contact_id=" + msg.ReplyTo +
-			"，hop 传 " + strconv.Itoa(msg.Hop+1) + "。")
+			"，hop 传 " + strconv.Itoa(msg.Hop+1))
+		if msg.ID != "" {
+			b.WriteString("，并把 thread_id 设为 " + msg.ID + "（发起方可能正在同步等待）")
+		}
+		b.WriteString("。")
 	} else {
 		b.WriteString("这是单向通知，无需回复。")
 	}

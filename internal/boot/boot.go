@@ -1850,6 +1850,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		reg.Add(agent.NewSetSessionPurposeTool(collab))
 		reg.Add(agent.NewListAddressableSessionsTool(collab))
 		reg.Add(agent.NewTalkToSessionTool(collab))
+		reg.Add(agent.NewTalkToSessionSyncTool(collab))
 		for _, t := range agent.NewTaskCardTools(agent.TaskCardConfig{
 			Enabled:            true,
 			WorkspaceRoot:      root,

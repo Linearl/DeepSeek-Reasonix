@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"reasonix/internal/config"
 	"reasonix/internal/sessioncollab"
@@ -111,7 +112,7 @@ func (talkToSessionTool) Description() string {
 }
 
 func (talkToSessionTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target contact_id from list_addressable_sessions."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain; 1-5 when relaying."},"delivery":{"type":"string","enum":["followup","steer"],"description":"followup (default) queues; steer injects mid-turn, degrading to followup when it cannot."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."}},"required":["to","message"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target contact_id from list_addressable_sessions."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain; 1-5 when relaying."},"delivery":{"type":"string","enum":["followup","steer"],"description":"followup (default) queues; steer injects mid-turn, degrading to followup when it cannot."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."},"thread_id":{"type":"string","description":"When answering a message, pass the threadId it carried so the requester can match your reply."}},"required":["to","message"]}`)
 }
 
 func (talkToSessionTool) ReadOnly() bool { return false }
@@ -123,6 +124,7 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 		Hop      int    `json:"hop"`
 		Delivery string `json:"delivery"`
 		CardID   string `json:"card_id"`
+		ThreadID string `json:"thread_id"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
@@ -160,6 +162,7 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 		Hop:         p.Hop,
 		CardID:      p.CardID,
 		ReplyTo:     fromContact,
+		ThreadID:    strings.TrimSpace(p.ThreadID),
 	})
 	if err != nil {
 		return "", err
@@ -167,11 +170,96 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 	out, _ := json.Marshal(map[string]any{
 		"status":    "queued",
 		"messageId": msg.ID,
+		"threadId":  msg.ID,
 		"to":        target.ContactID,
 		"toPurpose": target.Purpose,
 		"delivery":  msg.Delivery,
 		"hop":       msg.Hop,
 		"queued":    true,
+	})
+	return string(out), nil
+}
+
+// NewTalkToSessionSyncTool is the synchronous variant. It delivers the same
+// durable message and then waits — bounded — for an answer carrying the thread
+// id. A timeout is reported as a status, not an error: the request is already
+// queued, so failing the call would misreport what happened.
+func NewTalkToSessionSyncTool(cfg SessionCollabConfig) tool.Tool {
+	return talkToSessionSyncTool{cfg: cfg}
+}
+
+type talkToSessionSyncTool struct{ cfg SessionCollabConfig }
+
+func (talkToSessionSyncTool) Name() string { return "talk_to_session_sync" }
+
+func (talkToSessionSyncTool) Description() string {
+	return "Send a message to another registered session and wait for its reply (task 19 / 142). The request is delivered durably first; if no reply arrives within the timeout this returns status=timeout with the message id, and the answer still lands in your inbox later. Prefer talk_to_session (async) for long tasks. Experimental."
+}
+
+func (talkToSessionSyncTool) Schema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target contact_id."},"message":{"type":"string"},"hop":{"type":"integer"},"card_id":{"type":"string"},"timeout_ms":{"type":"integer","description":"How long to wait for the reply (default 30000, max 120000)."}},"required":["to","message"]}`)
+}
+
+func (talkToSessionSyncTool) ReadOnly() bool { return false }
+
+func (t talkToSessionSyncTool) Execute(ctx context.Context, args json.RawMessage) (string, error) {
+	var p struct {
+		To        string `json:"to"`
+		Message   string `json:"message"`
+		Hop       int    `json:"hop"`
+		CardID    string `json:"card_id"`
+		TimeoutMS int    `json:"timeout_ms"`
+	}
+	if err := json.Unmarshal(args, &p); err != nil {
+		return "", fmt.Errorf("invalid args: %w", err)
+	}
+	timeout := time.Duration(p.TimeoutMS) * time.Millisecond
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	if timeout > 120*time.Second {
+		timeout = 120 * time.Second
+	}
+	// Reuse the async path verbatim so delivery semantics cannot drift.
+	queued, err := talkToSessionTool{cfg: t.cfg}.Execute(ctx, args)
+	if err != nil {
+		return "", err
+	}
+	var sent struct {
+		MessageID string `json:"messageId"`
+	}
+	_ = json.Unmarshal([]byte(queued), &sent)
+	if sent.MessageID == "" {
+		return queued, nil
+	}
+	me := t.cfg.CurrentContactID
+	if me == "" && t.cfg.CurrentSessionPath != "" {
+		me = SessionContactID(t.cfg.CurrentSessionPath)
+	}
+	if me == "" {
+		return queued, nil // nothing to receive an answer on
+	}
+	mailDir := t.cfg.MailDir
+	if mailDir == "" {
+		mailDir = config.SessionCollabMailDir()
+	}
+	reply, ok := sessioncollab.NewMailStore(mailDir).AwaitReply(me, sent.MessageID, timeout)
+	if !ok {
+		out, _ := json.Marshal(map[string]any{
+			"status":    "timeout",
+			"messageId": sent.MessageID,
+			"threadId":  sent.MessageID,
+			"waitedMs":  int(timeout / time.Millisecond),
+			"note":      "request was delivered; the reply will arrive in your inbox later",
+		})
+		return string(out), nil
+	}
+	out, _ := json.Marshal(map[string]any{
+		"status":    "replied",
+		"messageId": sent.MessageID,
+		"threadId":  sent.MessageID,
+		"from":      reply.From,
+		"body":      reply.Body,
 	})
 	return string(out), nil
 }

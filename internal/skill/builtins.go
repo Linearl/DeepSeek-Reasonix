@@ -315,6 +315,11 @@ straight to the matching expert and the secretariat never touches it.
     it degrades to a follow-up and you receive a notice saying so. Never assume
     a steer landed; the notice is the truth.
   - ` + "`hop`" + `: 0 when you start a chain, sender's hop + 1 when you relay.
+- ` + "`talk_to_session_sync`" + ` when you genuinely need the answer before you can
+  continue a short step. It waits up to ` + "`timeout_ms`" + ` (default 30s, max 120s).
+  A ` + "`status=\"timeout\"`" + ` result is NOT a failure: the request is queued and the
+  answer still arrives. Do not retry on timeout — continue or wait for the reply.
+  Prefer the async form for anything long.
 - Create the card **before** dispatching, and stamp its id on the message:
   ` + "`create_task_card(title, body, assignee)`" + ` then
   ` + "`talk_to_session(..., card_id=<id>)`" + `.
@@ -335,9 +340,10 @@ straight to the matching expert and the secretariat never touches it.
 
 ## Replying
 
-- A delivered message ends with a reply line naming the requester's contact_id.
-  When you finish, ` + "`talk_to_session`" + ` back to that contact with ` + "`hop`" + ` set to the
-  hop you received plus one.
+- A delivered message ends with a reply line naming the requester's contact_id
+  and a ` + "`threadId`" + `. When you finish, ` + "`talk_to_session`" + ` back to that contact with
+  ` + "`hop`" + ` set to the hop you received plus one and ` + "`thread_id`" + ` set to that threadId —
+  the requester may be blocked waiting on it.
 - If the message was a one-way notice, do not reply.
 - When the work is done, return one consolidated answer to the original
   requester rather than N partial answers.
