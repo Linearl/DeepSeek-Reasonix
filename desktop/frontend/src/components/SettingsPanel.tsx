@@ -1683,6 +1683,13 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
   const [restartNeeded, setRestartNeeded] = useState(false);
   const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
   const t = useT();
+  // Task 140: the rail shows backend snapshot state; the sidebar buttons read
+  // module state. Sync them whenever the settings view reloads so 「开」 without
+  // a re-toggle still reveals the rail buttons.
+  useEffect(() => {
+    setSessionMonitorEnabled(Boolean(s.experimentalSessionMonitor));
+    setFeedbackEnabled(Boolean(s.experimentalFeedback));
+  }, [s.experimentalSessionMonitor, s.experimentalFeedback]);
 
   const features: Array<{ id: ExperimentFeatureId; label: string; on: boolean }> = [
     { id: "restartUpdate", label: t("settings.restartUpdate"), on: Boolean(s.experimentalRestartUpdate) },
