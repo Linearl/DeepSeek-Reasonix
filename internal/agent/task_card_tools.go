@@ -36,7 +36,7 @@ type createTaskCardTool struct{ cfg TaskCardConfig }
 func (createTaskCardTool) Name() string   { return "create_task_card" }
 func (createTaskCardTool) ReadOnly() bool { return false }
 func (createTaskCardTool) Description() string {
-	return "Create a collaboration task card (task 145). Process-visible record of who is working on what. Use update_task_card as status changes and talk_to_session to notify the assignee."
+	return "Create a collaboration task card (task 145). Process-visible record of who is working on what. Use update_task_card as status changes and talk_to_session to notify the assignee. After creating, show the returned JSON to the user inside a ```taskcard fence so it renders as a card in the conversation."
 }
 func (createTaskCardTool) Schema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"},"assignee":{"type":"string","description":"Optional assignee contact_id."}},"required":["title"]}`)
@@ -71,7 +71,7 @@ type updateTaskCardTool struct{ cfg TaskCardConfig }
 func (updateTaskCardTool) Name() string   { return "update_task_card" }
 func (updateTaskCardTool) ReadOnly() bool { return false }
 func (updateTaskCardTool) Description() string {
-	return "Update a collaboration task card: status pending|running|blocked|done|failed, result, error, note, assignee. Failures must be explicit."
+	return "Update a collaboration task card: status pending|running|blocked|done|failed, result, error, note, assignee. Failures must be explicit. Show the returned JSON in a ```taskcard fence so the user sees the updated card."
 }
 func (updateTaskCardTool) Schema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"},"status":{"type":"string"},"result":{"type":"string"},"error":{"type":"string"},"note":{"type":"string"},"assignee":{"type":"string"}},"required":["id"]}`)

@@ -14,6 +14,8 @@ import { CodeViewer } from "./CodeViewer";
 import { RichMarkdownLink } from "./githubLink";
 import { MarkdownTable } from "./MarkdownTable";
 import { MarkdownImage } from "./MarkdownImage";
+import { CollabTaskCard } from "./CollabTaskCard";
+import { parseCollabTaskCard } from "../lib/collabTaskCard";
 
 const MermaidDiagram = lazy(() => import("./MermaidDiagram"));
 
@@ -107,6 +109,13 @@ export function createComponents(plainStatusBlocks: boolean): Components {
               <MermaidDiagram definition={value} />
             </Suspense>
           );
+        }
+        // A task-card fence becomes the collaboration card. An unparseable or
+        // incomplete block deliberately falls through to the code viewer so a
+        // malformed card is visible as text, never as a blank-but-plausible card.
+        if (lang === "taskcard") {
+          const card = parseCollabTaskCard(value);
+          if (card) return <CollabTaskCard card={card} />;
         }
         if (!match && plainStatusBlocks) return <PlainMarkdownBlock text={text.replace(/\n$/, "")} />;
         return <CodeViewer value={value} language={lang} scrollMode="bounded" maxHeight="min(60vh, 28rem)" />;
