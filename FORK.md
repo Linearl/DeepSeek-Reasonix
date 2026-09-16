@@ -222,6 +222,10 @@ UI 入口** —— 所以对大部分 fork 特性，**日志是唯一的可观�
 
 1. **代码**：`git status` 干净 → `go build ./...` → `cd desktop && go build ./...` → `cd desktop/frontend && npx tsc --noEmit` → `node scripts/check-fork-integrity.mjs`（须全绿）
 2. **文档**：`release-notes/FORK-vX.Y.Z.md` 含本版全部改动；`release-notes/FORK-vs-upstream.md` 台账同步；`desktop/wails.json` 的 `productVersion` 与 tag 版本一致
+   - **在 `1.38.3` 上出带时间戳的包时**：notes 文件名与包版本同名（`FORK-v1.38.3-YYYYMMDD-HHMM.md`），
+     **只写「本版新增」**（该包相对上一版包的差异）+ 升级提醒，**基线内容一律引用
+     [`FORK-v1.38.3.md`](release-notes/FORK-v1.38.3.md)**。**不要整份拷贝**——拷贝会把
+     v1.38.2 ~ v1.38.3 的追齐内容重复到发布页，把本版真正改了什么埋掉（2026-09-16 修）。
 3. **本地包**（推荐先跑一遍）：`nohup bash scripts/build-local-installer.sh > /tmp/build.log 2>&1 & disown`（**加** `preserve_background_processes`；前台 115s 会被 SIGTERM，MSYS 无 `setsid`）→ 装后**逐项验证**（对应规则 4 的出包验证要求）：
    - **安装**：覆盖安装成功，快捷方式/图标正常
    - **升级**：从上一包升级后数据完好（会话、配置、项目）
