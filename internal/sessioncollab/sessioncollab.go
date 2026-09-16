@@ -93,6 +93,29 @@ type MailMessage struct {
 	Idempotency string `json:"idempotency,omitempty"`
 }
 
+// Delivery semantics for talk_to_session (task 143). Followup is the default
+// and the conservative choice: the target processes it after its current turn.
+// Steer asks for mid-turn injection and degrades to followup when the target
+// has no injectable turn.
+type Delivery string
+
+const (
+	DeliveryFollowup Delivery = "followup"
+	DeliverySteer    Delivery = "steer"
+)
+
+// ValidateDelivery normalizes an empty value to followup and rejects others.
+func ValidateDelivery(value string) (Delivery, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", string(DeliveryFollowup):
+		return DeliveryFollowup, nil
+	case string(DeliverySteer):
+		return DeliverySteer, nil
+	default:
+		return "", fmt.Errorf("talk_to_session: unknown delivery %q (want followup|steer)", value)
+	}
+}
+
 // ErrHopLimit is returned when a chain exceeds MaxHop.
 var ErrHopLimit = errors.New("talk_to_session: hop limit exceeded (max 5)")
 
@@ -365,11 +388,13 @@ func (s *MailStore) Deliver(msg MailMessage) (MailMessage, error) {
 	if msg.Hop > MaxHop {
 		return MailMessage{}, fmt.Errorf("%w: hop=%d", ErrHopLimit, msg.Hop)
 	}
+	delivery, err := ValidateDelivery(msg.Delivery)
+	if err != nil {
+		return MailMessage{}, err
+	}
+	msg.Delivery = string(delivery)
 	if msg.ID == "" {
 		msg.ID = newID("msg_")
-	}
-	if msg.Delivery == "" {
-		msg.Delivery = "followup"
 	}
 	if msg.At == 0 {
 		msg.At = time.Now().UnixMilli()

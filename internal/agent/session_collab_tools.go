@@ -107,11 +107,11 @@ type talkToSessionTool struct{ cfg SessionCollabConfig }
 func (talkToSessionTool) Name() string { return "talk_to_session" }
 
 func (talkToSessionTool) Description() string {
-	return "Send a message to another registered session by contact_id (task 19 / 142). Delivery is followup (queued for the next turn). hop must be 0 for a new chain; pass hop+1 when relaying. Async semantics: the message lands in the target's durable inbox. Experimental."
+	return "Send a message to another registered session by contact_id (task 19 / 142-143). delivery=followup queues for the target's next turn; delivery=steer asks for mid-turn injection and degrades to a queued follow-up when the target has no injectable turn (the sender is told). hop must be 0 for a new chain; pass hop+1 when relaying. Experimental."
 }
 
 func (talkToSessionTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target contact_id from list_addressable_sessions."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain; 1-5 when relaying."},"delivery":{"type":"string","description":"followup (default)."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."}},"required":["to","message"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target contact_id from list_addressable_sessions."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain; 1-5 when relaying."},"delivery":{"type":"string","enum":["followup","steer"],"description":"followup (default) queues; steer injects mid-turn, degrading to followup when it cannot."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."}},"required":["to","message"]}`)
 }
 
 func (talkToSessionTool) ReadOnly() bool { return false }
@@ -133,6 +133,10 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 	if p.Hop < 0 || p.Hop > sessioncollab.MaxHop+1 {
 		return "", fmt.Errorf("invalid hop %d", p.Hop)
 	}
+	delivery, err := sessioncollab.ValidateDelivery(p.Delivery)
+	if err != nil {
+		return "", err
+	}
 	ids := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
 	target, ok := sessioncollab.ResolveContact(ids, p.To)
 	if !ok {
@@ -152,7 +156,7 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 		FromSession: t.cfg.CurrentSessionPath,
 		To:          target.ContactID,
 		Body:        strings.TrimSpace(p.Message),
-		Delivery:    p.Delivery,
+		Delivery:    string(delivery),
 		Hop:         p.Hop,
 		CardID:      p.CardID,
 		ReplyTo:     fromContact,

@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -163,12 +164,67 @@ func (p *sessionCollabPump) deliverToTab(target sessionCollabTarget) (delivered,
 	}
 	for _, msg := range messages {
 		body := sessionCollabDeliveryText(msg)
-		if _, err := p.app.EnqueueInboxFollowup(target.tabID, body, body, "collab:"+msg.ID); err != nil {
+		if err := p.deliverOne(target.tabID, msg, body); err != nil {
 			return delivered, len(rejected), err
 		}
 		delivered++
 	}
 	return delivered, len(rejected), nil
+}
+
+// deliverOne hands one message to the target. A steer that cannot reach the
+// target's live turn degrades to a queued follow-up, and the sender is told so
+// the degradation is never silent (task 143).
+func (p *sessionCollabPump) deliverOne(tabID string, msg sessioncollab.MailMessage, body string) error {
+	if msg.Delivery != string(sessioncollab.DeliverySteer) {
+		_, err := p.app.EnqueueInboxFollowup(tabID, body, body, "collab:"+msg.ID)
+		return err
+	}
+	receipt, err := p.app.EnqueueInboxSteer(tabID, body, body, "collab:"+msg.ID)
+	if err != nil {
+		return err
+	}
+	if sessionCollabReceiptSteered(receipt.Disposition) {
+		return nil
+	}
+	log.Printf("[session-collab] steer degraded to follow-up for %s (disposition=%s)", msg.To, receipt.Disposition)
+	p.notifyDegradedSteer(msg, receipt.Disposition)
+	return nil
+}
+
+// sessionCollabReceiptSteered reports whether the admission actually injected
+// mid-turn guidance rather than queueing it for later.
+func sessionCollabReceiptSteered(disposition string) bool {
+	switch disposition {
+	case "started", "steer_accepted":
+		return true
+	default:
+		return false
+	}
+}
+
+// notifyDegradedSteer writes a status note back to the sender's mailbox. It
+// keeps the original hop so a status note never inflates the collaboration
+// chain, and it is best-effort: a failure here must not drop the message that
+// was already delivered.
+func (p *sessionCollabPump) notifyDegradedSteer(msg sessioncollab.MailMessage, disposition string) {
+	if strings.TrimSpace(msg.From) == "" {
+		return
+	}
+	mailDir := config.SessionCollabMailDir()
+	if mailDir == "" {
+		return
+	}
+	note := "你发送的 steer 未能注入目标会话当轮（目标不可注入，disposition=" + disposition +
+		"），已自动降级为排队 follow-up，目标会在下一轮处理。"
+	if _, err := sessioncollab.NewMailStore(mailDir).Deliver(sessioncollab.MailMessage{
+		To:      msg.From,
+		Body:    note,
+		Hop:     msg.Hop,
+		ReplyTo: "",
+	}); err != nil {
+		log.Printf("[session-collab] degraded-steer notice to %s failed: %v", msg.From, err)
+	}
 }
 
 // sessionCollabDeliveryText is what the target session actually reads. It has
@@ -198,6 +254,85 @@ func sessionCollabDeliveryText(msg sessioncollab.MailMessage) string {
 		b.WriteString("这是单向通知，无需回复。")
 	}
 	return b.String()
+}
+
+// AddressableSessionView is one registered session for the desktop surface
+// (task 141). ContactID is the stable address; TopicID and the path are shown
+// only so a human can recognise the row.
+type AddressableSessionView struct {
+	ContactID   string `json:"contactId"`
+	Purpose     string `json:"purpose,omitempty"`
+	Title       string `json:"title,omitempty"`
+	TopicID     string `json:"topicId,omitempty"`
+	SessionPath string `json:"sessionPath"`
+	Scope       string `json:"scope,omitempty"`
+	Workspace   string `json:"workspaceRoot,omitempty"`
+	Open        bool   `json:"open"`
+}
+
+// ListAddressableSessions enumerates sessions that can be addressed by
+// contact_id. Renaming a topic never changes the row's ContactID, so a
+// reference taken before the rename still resolves.
+func (a *App) ListAddressableSessions() []AddressableSessionView {
+	open := map[string]bool{}
+	for _, target := range a.sessionCollabTargets() {
+		open[target.contactID] = true
+	}
+	var out []AddressableSessionView
+	seen := map[string]bool{}
+	add := func(ids []sessioncollab.Identity, scope string) {
+		for _, id := range ids {
+			if seen[id.ContactID] {
+				continue
+			}
+			seen[id.ContactID] = true
+			out = append(out, AddressableSessionView{
+				ContactID:   id.ContactID,
+				Purpose:     id.Purpose,
+				Title:       id.Title,
+				TopicID:     id.TopicID,
+				SessionPath: id.SessionPath,
+				Scope:       scope,
+				Workspace:   id.Workspace,
+				Open:        open[id.ContactID],
+			})
+		}
+	}
+	load := func(sessionPath string) (contact, purpose, topic, title string, ok bool) {
+		m, found, err := agent.LoadBranchMeta(sessionPath)
+		if err != nil || !found || m.ContactID == "" {
+			return "", "", "", "", false
+		}
+		return m.ContactID, m.Purpose, m.TopicID, m.CustomTitle, true
+	}
+	// Global sessions first, then every known project, so the list is complete
+	// even when the session is not currently open in a tab.
+	add(sessioncollab.ScanDir(config.SessionDir(), "", load), "global")
+	for _, root := range a.knownProjectRoots() {
+		add(sessioncollab.ScanDir(config.ProjectSessionDir(root), root, load), "project")
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ContactID < out[j].ContactID })
+	return out
+}
+
+// knownProjectRoots lists configured project roots, newest-agnostic order.
+func (a *App) knownProjectRoots() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	seen := map[string]bool{}
+	var roots []string
+	for _, tab := range a.tabs {
+		if tab == nil || tab.Scope != "project" {
+			continue
+		}
+		root := strings.TrimSpace(tab.WorkspaceRoot)
+		if root == "" || seen[root] {
+			continue
+		}
+		seen[root] = true
+		roots = append(roots, root)
+	}
+	return roots
 }
 
 // sessionCollabTargets snapshots open tabs that own a registered contact_id.
