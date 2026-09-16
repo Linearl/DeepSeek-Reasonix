@@ -38,6 +38,34 @@
 | **设置侧栏「实验特性」无图标、与邻居不对齐** | `settingsTabIcon` 的 switch **没有 `experimental` 分支** ⇒ 返回 `undefined`。返回类型是 `ReactNode`（容许 `undefined`），**TypeScript 从不报错**。补分支同时加 `default` 兜底 | `desktop/frontend/src/components/SettingsNavigation.tsx` |
 | **release notes 查找会静默降级** | workflow 找不到对应 notes 时**静默 fallback 到 `FORK-v1.31.3.md`** ⇒ 把 1.31.3 的说明发到 1.38.3 的发布页。现改为认识时间戳形式，再找不到就 `exit 1` | `.github/workflows/release-fork.yml` |
 
+## v1.38.3 之后（2026-09-16，并行三线第二波）
+
+以下为 9-16 合入 `main-v2-stable` 的并行第一波「三线」（每线一个 worktree，主控合并）。
+
+| 改动 | commit | 说明 |
+|---|---|---|
+| **任务 127 并行全权写根** | `4a605d842` | `experimental_parallel_full_access`（默认关）+ `REASONIX_PARALLEL_FULL_ACCESS=1`：信任受管 worktree 根为写面，免逐次审批 |
+| **任务 128 `open_isolated_worktree_project`** | `39e198820` | agent 可调用的隔离 worktree 建项目工具（一次性写授权）；默认不建桌面 tab |
+| **任务 115 dream / distill** | `8bbdb2c3d` | `[agent] experimental_dream`（默认 false）驱动记忆整理工具；**distill 只写 nomination，不自动装 skill** |
+| **任务 51 收件箱** | `067cfefce` | 短窗去重 + 回放栅栏（≥90%）提示 |
+| **任务 116 skills 随包安装** | `bfedff0d8` | 启动时把随包 playbook 装到 `<reasonix-home>/skills/`（**已有不覆盖**） |
+| **任务 112 完成汇报卡片** | `a18a807b3` | 消息尾四字段解析为结构化卡片渲染 |
+
+## v1.38.3 之后（2026-09-15，并行三线第一波）
+
+以下为 9-15 合入的并行第一波。三线各自一个 worktree，主控合并后统一出包。
+
+| 改动 | commit | 说明 |
+|---|---|---|
+| **会话 v4 实验入口点** | `665b99ebf` | `BindFresh` / `Continue` / `Open` 三条入口接通（`internal/session` 包 + content 层）；`session_storage` 默认 `legacy` |
+| **任务 67 双写提示** | `da7435be9` | 双实例写入提示在控制层与桌面层双侧收口关闭 |
+| **任务 52 冲突可见 / worktree 工具 / 审批档位** | `97110c379` / `e21510bc9` / `933bfbac5` / `5a7af9b81` | fleet preflight 暴露 worktree 合并冲突；把 create/inspect/prepare/merge worktree 做成 agent 工具；可配置的无人值守审批决策档 + 接线与「轻路径」钉住 |
+| **任务 125 启动与首帧计时** | `57c2c1152` / `2026d4135` | 前端 transcript 首帧与几何测量耗时；Go 侧 `Build` 内分阶段计时 |
+| **任务 121 意见箱** | `aad78b55c` | agent `submit_feedback` 工具 + 侧栏意见箱面板（实验，默认关） |
+| **任务 123 第二阶段** | `a9cd4c328` | 后台 fingerprint 重算 + 加权 LRU（切 tab 卡顿的后续优化） |
+| **任务 126 / 120 / 119 桌面细节** | `1e5458b1e` / `2385c127a` / `c60e50771` | 跨重启恢复上次活动 tab；按 `workspaceRoot` 记住右坞 tab；右键最大化 40/50/60 宽度预设 |
+| **zh-TW 预算 ratchet** | `90eccd69a` | C 线文案后 zh-TW locale 预算上调至 71.5 KiB（按实测值，注释写明依据） |
+
 ## v1.38.3 之后新增的 fork 魔改（2026-09-13 补登，含实验开关与承载文件）
 
 > 本表是任务 97 要求的形式：**除"fork 状态 / 上游吸收状态"外，增加「开关」「默认」「承载文件」三列**，
