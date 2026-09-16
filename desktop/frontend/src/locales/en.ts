@@ -2130,7 +2130,7 @@ export const en = {
 "settings.restartUpdate": "Quick version switch",
 "settings.restartUpdateHint": "Shows a quick-version-switch button in the status bar: swaps the staged debug build into the current install directory and restarts. Debug aid, not official update; off by default.",
 "settings.sessionMonitor": "Session monitor",
-"settings.sessionMonitorHint": "Adds a session-monitor button to the project-tree header: per-tab transcript residency, last switch cost, history-reuse reason and cache evictions. Experimental, off by default.",
+"settings.sessionMonitorHint": "Adds a session-monitor button above Trash in the left sidebar: per-tab transcript residency, last switch cost, history-reuse reason and cache evictions. Experimental, off by default.",
 "settings.sessionMonitor.on": "On",
 "settings.sessionMonitor.off": "Off",
 "settings.feedback": "Feedback inbox",

@@ -1669,7 +1669,7 @@ export const zhTW: Record<DictKey, string> = {
 "settings.restartUpdate": "快速切換版本",
 "settings.restartUpdateHint": "狀態列顯示「快速切換版本」按鈕：把 InstallRoot/staging 裡的除錯建置換入目前安裝目錄並重新啟動。除錯輔助，非官方更新；預設關閉。",
 "settings.sessionMonitor": "工作階段監控",
-"settings.sessionMonitorHint": "在專案樹標題列加一個「工作階段監控」按鈕：逐一 tab 檢視轉錄快取駐留、上次切換耗時、歷史重用原因與快取驅逐。實驗特性，預設關閉。",
+"settings.sessionMonitorHint": "在左側欄回收站上方加入「工作階段監控」按鈕：逐一 tab 檢視轉錄快取駐留、上次切換耗時、歷史重用原因與快取驅逐。實驗特性，預設關閉。",
 "settings.sessionMonitor.on": "開",
 "settings.sessionMonitor.off": "關",
 "settings.feedback": "意見箱",

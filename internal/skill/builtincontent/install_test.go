@@ -15,10 +15,10 @@ func TestInstallToUserDirWritesShippedPlaybooks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InstallToUserDir: %v", err)
 	}
-	if len(res.Installed) != 3 {
-		t.Fatalf("installed = %v, want the three playbooks", res.Installed)
+	if len(res.Installed) != 4 {
+		t.Fatalf("installed = %v, want four playbooks", res.Installed)
 	}
-	for _, name := range []string{"deep-research", "data-analytics", "memory-search"} {
+	for _, name := range []string{"deep-research", "data-analytics", "memory-search", "feedback_analysis"} {
 		path := filepath.Join(dir, name, "SKILL.md")
 		raw, err := os.ReadFile(path)
 		if err != nil {
@@ -48,8 +48,8 @@ func TestInstallToUserDirWritesShippedPlaybooks(t *testing.T) {
 	if len(res2.Installed) != 0 {
 		t.Fatalf("second pass should install nothing, got %v", res2.Installed)
 	}
-	if len(res2.Skipped) != 3 {
-		t.Fatalf("second pass skipped = %v, want all three", res2.Skipped)
+	if len(res2.Skipped) != 4 {
+		t.Fatalf("second pass skipped = %v, want all four", res2.Skipped)
 	}
 	raw, _ := os.ReadFile(filepath.Join(dir, "deep-research", "SKILL.md"))
 	if !strings.Contains(string(raw), "Customized.") {

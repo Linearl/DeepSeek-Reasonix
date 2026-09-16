@@ -17,6 +17,7 @@ import (
 //go:embed deep-research/SKILL.md
 //go:embed data-analytics/SKILL.md
 //go:embed memory-search/SKILL.md
+//go:embed feedback_analysis/SKILL.md
 var files embed.FS
 
 // SkillMarkdown is one embedded skill file after frontmatter split.
