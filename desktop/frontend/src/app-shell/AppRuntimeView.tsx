@@ -428,6 +428,7 @@ export function AppRuntimeView(props: AppRuntimeViewProps) {
           tabId: activeTabId,
           completionSummary: state.completionSummary,
           turnStartAt: state.turnStartAt,
+          sessionItems: state.items,
           layout: { treeWidth: shell.rightDockTreeWidth, previewWidth: shell.rightDockPreviewWidth, maximized: shell.workspacePanelMaximized },
           geometry: shellGeometry,
           panels: session.workspacePanelCommands,

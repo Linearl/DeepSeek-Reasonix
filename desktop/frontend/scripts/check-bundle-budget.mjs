@@ -327,7 +327,9 @@ for (const path of localeChunks) {
   // 2026-09-16: the v4 storage switch copy had to say which directory stops receiving
   // writes; that pushed zh to 70.6 KiB, so the same one-decimal ratchet applies (zh-TW
   // keeps its 71.5 ceiling).
-  const budget = name.startsWith("zh-TW-") ? 71.5 * 1024 : 71.0 * 1024;
+  // Task 113/114 turn-edit + artifacts/references locale keys measure zh-TW at 71.7 KiB;
+  // take the next one-decimal ceiling (72.0). zh stays within 71.0.
+  const budget = name.startsWith("zh-TW-") ? 72.0 * 1024 : 71.0 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0

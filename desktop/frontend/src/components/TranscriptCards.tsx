@@ -7,6 +7,7 @@ import { useT } from "../lib/i18n";
 import type { CompactionItem, NoticeItem } from "../lib/transcriptRows";
 import type { WireCompletionSummary } from "../lib/types";
 import { TurnResultSummary } from "./TurnResultSummary";
+import { TurnEditList } from "./TurnEditList";
 import { STEER_NOTICE_PREFIX } from "../lib/useController";
 import { ProcessCompactIcon, ProcessPhaseIcon } from "./ProcessCard";
 import { useTranscriptUserResizeIntent } from "./TranscriptLayoutIntentContext";
@@ -66,13 +67,14 @@ function DecisionReceiptLine({ receipt }: { receipt: NonNullable<NoticeItem["dec
   );
 }
 
-export function NoticeCard({ item, onAction, onAccept, onOpenVerification, actionDisabled = false }: { item: NoticeItem; onAction?: () => void; onAccept?: () => void; onOpenVerification?: (summary: WireCompletionSummary) => void; actionDisabled?: boolean }) {
+export function NoticeCard({ item, onAction, onAccept, onOpenVerification, onUndoCode, actionDisabled = false }: { item: NoticeItem; onAction?: () => void; onAccept?: () => void; onOpenVerification?: (summary: WireCompletionSummary) => void; onUndoCode?: (turn: number) => void; actionDisabled?: boolean }) {
   const t = useT();
   const StatusIcon = item.level === "warn" ? TriangleAlert : Info;
   const ActionIcon = item.action === "open_changes" ? FileSearch : CirclePlay;
   const showVerification = item.variant === "completion" && Boolean(item.completionSummary && onOpenVerification);
   const result = item.variant === "completion" ? item.completionSummary : undefined;
   const showActions = Boolean((item.action && onAction) || onAccept || showVerification);
+  const turn = result?.checkpointTurn;
   return (
     <div className={`notice-line notice-line--${item.level}${item.variant ? ` notice-line--${item.variant}` : ""}`} data-entrance={item.id} role={item.code === "incomplete_read" ? "status" : undefined}>
       {!result && <StatusIcon className="notice-line__icon" size={14} aria-hidden="true" />}
@@ -84,6 +86,15 @@ export function NoticeCard({ item, onAction, onAccept, onOpenVerification, actio
             {item.title ? <div className="notice-line__title">{item.title}</div> : null}
             <div className="notice-line__body">{item.text}</div>
           </>
+        )}
+        {result?.receipt?.diff && result.receipt.diff.files.length > 0 && (
+          <TurnEditList
+            diff={result.receipt.diff}
+            turn={turn}
+            onReview={onAction || (showVerification ? () => result && onOpenVerification?.(result) : undefined)}
+            onUndoCode={onUndoCode}
+            undoDisabled={actionDisabled}
+          />
         )}
         {showActions ? (
           <div className="notice-line__actions">
