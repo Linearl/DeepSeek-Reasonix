@@ -2145,7 +2145,7 @@ export const en = {
 "feedbackInbox.kind.other": "Other",
 "settings.splitView": "Split view",
 "settings.sessionStorage": "Conversation store",
-"settings.sessionStorageHint": "legacy (default) keeps sessions under sessions/ exactly as before; v4 writes an experimental mirror under sessions-v4/ and reads history from it when idle. The v3 files are never modified, so switching back is safe. Takes effect after a restart.",
+"settings.sessionStorageHint": "legacy (default): sessions are read and written in sessions/ exactly as before. v4 is a DUAL write - sessions/ stays the primary transcript the agent keeps writing, and every save is additionally mirrored into sessions-v4/ (a full replace each time); idle history browsing prefers the v4 copy and falls back to sessions/ when it misses. Because both sides are written, switching back to legacy loses nothing and no v3 file is deleted or rewritten in place. Takes effect after a restart.",
 "settings.sessionStorage.legacy": "legacy",
 "settings.sessionStorage.v4": "v4 (experimental)",
 "settings.splitViewHint": "Adds a split-view action to the tab context menu: two tabs side by side in one window, each keeping its own transcript, composer and running turn. Experimental, off by default - with it off the menu looks exactly as before.",

@@ -2147,7 +2147,7 @@ export const zh: Record<DictKey, string> = {
 "feedbackInbox.kind.other": "其他",
 "settings.splitView": "分栏显示",
 "settings.sessionStorage": "会话存储",
-"settings.sessionStorageHint": "legacy（默认）沿用 sessions/ 目录，行为与之前完全一致；v4 会在 sessions-v4/ 下写一份实验镜像，并在空闲时从它读取历史。v3 文件永不被改写，切回安全。需重启生效。",
+"settings.sessionStorageHint": "legacy（默认）：会话照旧读写 sessions/，行为与之前完全一致。v4 是双写 —— sessions/ 仍是 agent 持续写入的主转录，同时在 sessions-v4/ 另存一份镜像（每次落盘做一次全量替换）；空闲浏览历史时优先读 v4 那份，未命中回退 sessions/。因为两边都在写，切回 legacy 不会丢内容，v3 文件也不会被删除或就地改写。需重启生效。",
 "settings.sessionStorage.legacy": "legacy",
 "settings.sessionStorage.v4": "v4（实验）",
 "settings.splitViewHint": "在标签页右键菜单里加一项「分栏显示」：同一个窗口左右并排两个标签，各自保留自己的转录、输入框与运行状态。实验特性，默认关闭——关闭时右键菜单与现在完全一致。",

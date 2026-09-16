@@ -1684,7 +1684,7 @@ export const zhTW: Record<DictKey, string> = {
 "feedbackInbox.kind.other": "其他",
 "settings.splitView": "分割檢視",
 "settings.sessionStorage": "工作階段儲存",
-"settings.sessionStorageHint": "legacy（預設）沿用 sessions/ 目錄，行為與先前完全一致；v4 會在 sessions-v4/ 下寫一份實驗鏡像，並在閒置時從它讀取歷史。v3 檔案永不被改寫，切回安全。需重啟生效。",
+"settings.sessionStorageHint": "legacy（預設）：工作階段照舊讀寫 sessions/，行為與先前完全一致。v4 是雙寫 —— sessions/ 仍是 agent 持續寫入的主轉錄，同時在 sessions-v4/ 另存一份鏡像（每次落盤做一次全量替換）；閒置瀏覽歷史時優先讀 v4 那份，未命中回退 sessions/。因為兩邊都在寫，切回 legacy 不會遺失內容，v3 檔案也不會被刪除或就地改寫。需重啟生效。",
 "settings.sessionStorage.legacy": "legacy",
 "settings.sessionStorage.v4": "v4（實驗）",
 "settings.splitViewHint": "在分頁右鍵選單加入「分割檢視」：同一視窗左右並排兩個分頁，各自保留自己的轉錄、輸入框與執行狀態。實驗特性，預設關閉——關閉時右鍵選單與現況完全一致。",
