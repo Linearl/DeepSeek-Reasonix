@@ -77,7 +77,7 @@ func TestScanDirSkipsNonJsonl(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Sessions without contact_id are skipped by the loader contract.
-	got := ScanDir(dir, func(string) (string, string, string, string, bool) {
+	got := ScanDir(dir, "", func(string) (string, string, string, string, bool) {
 		return "", "", "", "", false
 	})
 	if len(got) != 0 {

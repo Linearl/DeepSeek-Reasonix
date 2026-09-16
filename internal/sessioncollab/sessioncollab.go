@@ -9,6 +9,7 @@
 package sessioncollab
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -18,8 +19,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"time"
+
+	"reasonix/internal/filelock"
 )
 
 // MaxHop is the collaboration chain limit (task 142). The 6th hop is refused.
@@ -41,11 +43,11 @@ type Identity struct {
 type CardStatus string
 
 const (
-	StatusPending  CardStatus = "pending"
-	StatusRunning  CardStatus = "running"
-	StatusBlocked  CardStatus = "blocked"
-	StatusDone     CardStatus = "done"
-	StatusFailed   CardStatus = "failed"
+	StatusPending CardStatus = "pending"
+	StatusRunning CardStatus = "running"
+	StatusBlocked CardStatus = "blocked"
+	StatusDone    CardStatus = "done"
+	StatusFailed  CardStatus = "failed"
 )
 
 // CardNode is one hop on a collaboration chain.
@@ -78,17 +80,17 @@ type Card struct {
 
 // MailMessage is one cross-session delivery (task 142).
 type MailMessage struct {
-	ID           string `json:"id"`
-	From         string `json:"fromContactId,omitempty"`
-	FromSession  string `json:"fromSession,omitempty"`
-	To           string `json:"toContactId"`
-	Body         string `json:"body"`
-	Delivery     string `json:"delivery,omitempty"` // followup (default) | steer
-	Hop          int    `json:"hop,omitempty"`
-	CardID       string `json:"cardId,omitempty"`
-	ReplyTo      string `json:"replyToContactId,omitempty"`
-	At           int64  `json:"at"`
-	Idempotency  string `json:"idempotency,omitempty"`
+	ID          string `json:"id"`
+	From        string `json:"fromContactId,omitempty"`
+	FromSession string `json:"fromSession,omitempty"`
+	To          string `json:"toContactId"`
+	Body        string `json:"body"`
+	Delivery    string `json:"delivery,omitempty"` // followup (default) | steer
+	Hop         int    `json:"hop,omitempty"`
+	CardID      string `json:"cardId,omitempty"`
+	ReplyTo     string `json:"replyToContactId,omitempty"`
+	At          int64  `json:"at"`
+	Idempotency string `json:"idempotency,omitempty"`
 }
 
 // ErrHopLimit is returned when a chain exceeds MaxHop.
@@ -101,22 +103,6 @@ func newID(prefix string) string {
 	var b [8]byte
 	_, _ = rand.Read(b[:])
 	return prefix + hex.EncodeToString(b[:])
-}
-
-// ContactIDFromBranchID mints a stable contact id from a branch meta id.
-// Contact IDs are opaque and never derived from titles or file names.
-func ContactIDFromBranchID(branchID string) string {
-	sum := fnv32(branchID)
-	return fmt.Sprintf("sc_%08x", sum)
-}
-
-func fnv32(s string) uint32 {
-	h := uint32(2166136261)
-	for i := 0; i < len(s); i++ {
-		h ^= uint32(s[i])
-		h *= 16777619
-	}
-	return h
 }
 
 func atomicWriteJSON(path string, v any) error {
@@ -157,8 +143,11 @@ func appendJSONL(path string, v any) error {
 }
 
 // ScanDir walks one sessions directory for BranchMeta contact fields.
-// Meta loader is injected so this package stays free of the agent import cycle.
-func ScanDir(dir string, loadMeta func(sessionPath string) (contactID, purpose, topicID, title string, ok bool)) []Identity {
+// workspaceRoot is the root those sessions belong to; it is published on every
+// identity so delivery can route to the target's own mailbox rather than the
+// sender's. Meta loader is injected so this package stays free of the agent
+// import cycle.
+func ScanDir(dir, workspaceRoot string, loadMeta func(sessionPath string) (contactID, purpose, topicID, title string, ok bool)) []Identity {
 	if strings.TrimSpace(dir) == "" {
 		return nil
 	}
@@ -186,6 +175,7 @@ func ScanDir(dir string, loadMeta func(sessionPath string) (contactID, purpose, 
 			SessionPath: path,
 			TopicID:     topic,
 			Title:       title,
+			Workspace:   workspaceRoot,
 			UpdatedAt:   updated,
 		})
 	}
@@ -210,13 +200,24 @@ func ResolveContact(ids []Identity, contactID string) (Identity, bool) {
 // ── task cards (145) ─────────────────────────────────────────────────────────
 
 // CardStore persists cards under <root>/.reasonix/taskcards/.
+//
+// Serialization is a cross-process file lock, not a struct field: every tool
+// call builds its own store, so a per-instance mutex would let two concurrent
+// read-modify-write cycles interleave and silently drop a node.
 type CardStore struct {
 	root string
-	mu   sync.Mutex
 }
 
 func NewCardStore(workspaceRoot string) *CardStore {
 	return &CardStore{root: filepath.Join(workspaceRoot, ".reasonix", "taskcards")}
+}
+
+// lock serializes one read-modify-write cycle across goroutines and processes.
+func (s *CardStore) lock() (func(), error) {
+	if err := os.MkdirAll(s.root, 0o755); err != nil {
+		return nil, err
+	}
+	return filelock.Acquire(context.Background(), filepath.Join(s.root, ".cards.lock"))
 }
 
 func (s *CardStore) path(id string) string {
@@ -228,8 +229,11 @@ func (s *CardStore) path(id string) string {
 }
 
 func (s *CardStore) Create(c Card) (Card, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock, err := s.lock()
+	if err != nil {
+		return Card{}, err
+	}
+	defer unlock()
 	if strings.TrimSpace(c.Title) == "" {
 		return Card{}, errors.New("task card title is required")
 	}
@@ -251,8 +255,11 @@ func (s *CardStore) Create(c Card) (Card, error) {
 }
 
 func (s *CardStore) Update(id string, mutate func(*Card) error) (Card, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock, err := s.lock()
+	if err != nil {
+		return Card{}, err
+	}
+	defer unlock()
 	c, err := s.loadLocked(id)
 	if err != nil {
 		return Card{}, err
@@ -268,14 +275,10 @@ func (s *CardStore) Update(id string, mutate func(*Card) error) (Card, error) {
 }
 
 func (s *CardStore) Get(id string) (Card, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	return s.loadLocked(id)
 }
 
 func (s *CardStore) List() ([]Card, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	entries, err := os.ReadDir(s.root)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -317,14 +320,22 @@ func (s *CardStore) loadLocked(id string) (Card, error) {
 // ── mailbox (142) ────────────────────────────────────────────────────────────
 
 // MailStore is a durable cross-session mailbox under
-// <root>/.reasonix/session-chat/<contactId>.inbox.jsonl
+// <root>/.reasonix/session-chat/<contactId>.inbox.jsonl.
+// Appends are serialized by a cross-process file lock so two senders cannot
+// interleave a partial line or drop one another's message.
 type MailStore struct {
 	root string
-	mu   sync.Mutex
 }
 
 func NewMailStore(workspaceRoot string) *MailStore {
 	return &MailStore{root: filepath.Join(workspaceRoot, ".reasonix", "session-chat")}
+}
+
+func (s *MailStore) lock() (func(), error) {
+	if err := os.MkdirAll(s.root, 0o755); err != nil {
+		return nil, err
+	}
+	return filelock.Acquire(context.Background(), filepath.Join(s.root, ".mail.lock"))
 }
 
 func (s *MailStore) inboxPath(contactID string) string {
@@ -338,8 +349,11 @@ func (s *MailStore) inboxPath(contactID string) string {
 // Deliver appends a message for the target contact. hop is the sender's chain
 // depth; MaxHop+1 is refused.
 func (s *MailStore) Deliver(msg MailMessage) (MailMessage, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock, err := s.lock()
+	if err != nil {
+		return MailMessage{}, err
+	}
+	defer unlock()
 	if strings.TrimSpace(msg.To) == "" {
 		return MailMessage{}, errors.New("talk_to_session: target contact_id is required")
 	}
@@ -366,8 +380,6 @@ func (s *MailStore) Deliver(msg MailMessage) (MailMessage, error) {
 
 // Inbox returns pending messages for a contact (newest last).
 func (s *MailStore) Inbox(contactID string) ([]MailMessage, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	b, err := os.ReadFile(s.inboxPath(contactID))
 	if err != nil {
 		if os.IsNotExist(err) {

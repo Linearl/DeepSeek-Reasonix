@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strings"
 
+	"reasonix/internal/config"
 	"reasonix/internal/sessioncollab"
 	"reasonix/internal/tool"
 )
@@ -174,6 +176,10 @@ func workspaceRootForMail(cfg SessionCollabConfig, target sessioncollab.Identity
 	return filepath.Dir(cfg.SessionDir)
 }
 
+// scanAddressable collects registered sessions from the global session dir and
+// the current project's session dir. Global sessions carry workspaceRoot "" so
+// delivery resolves the shared global mailbox; project sessions carry their
+// project root so delivery lands in that project's mailbox.
 func scanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity {
 	load := func(sessionPath string) (contact, purpose, topic, title string, ok bool) {
 		m, found, err := LoadBranchMeta(sessionPath)
@@ -183,22 +189,35 @@ func scanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity 
 		return m.ContactID, m.Purpose, m.TopicID, m.CustomTitle, m.ContactID != ""
 	}
 	var out []sessioncollab.Identity
-	out = append(out, sessioncollab.ScanDir(sessionDir, load)...)
-	if workspaceRoot != "" && workspaceRoot != sessionDir {
-		// Project sessions live under the project; when sessionDir is already
-		// the project sessions dir this is a no-op path-wise. Scan both for
-		// completeness when they differ.
-		projSessions := filepath.Join(workspaceRoot, "sessions")
-		if abs, _ := filepath.Abs(projSessions); abs != mustAbs(sessionDir) {
-			out = append(out, sessioncollab.ScanDir(projSessions, load)...)
+	seen := map[string]bool{}
+	add := func(ids []sessioncollab.Identity) {
+		for _, id := range ids {
+			key := strings.ToLower(id.SessionPath)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out = append(out, id)
+		}
+	}
+	add(sessioncollab.ScanDir(sessionDir, "", load))
+	if workspaceRoot != "" {
+		projSessions := config.ProjectSessionDir(workspaceRoot)
+		if !samePath(projSessions, sessionDir) {
+			add(sessioncollab.ScanDir(projSessions, workspaceRoot, load))
 		}
 	}
 	return out
 }
 
-func mustAbs(p string) string {
-	if abs, err := filepath.Abs(p); err == nil {
-		return abs
+func samePath(a, b string) bool {
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	if errA != nil || errB != nil {
+		return a == b
 	}
-	return p
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(absA, absB)
+	}
+	return absA == absB
 }
