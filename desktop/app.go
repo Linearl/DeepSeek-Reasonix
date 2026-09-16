@@ -2322,6 +2322,7 @@ func (a *App) clearActiveSessionRuntime(tab *WorkspaceTab, oldCtrl control.Sessi
 		OnSessionTransition:      a.handleTabSessionTransition(tab),
 		BeforeInboxDispatch:      a.beforeInboxDispatch,
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
+		OnCreateCollabSession:    a.createCollabSession,
 	})
 	if err != nil {
 		if teardownTimedOut {
@@ -4309,6 +4310,7 @@ func (a *App) buildSessionRebindCandidate(
 		OnSessionTransition:      a.handleTabSessionTransition(tab),
 		BeforeInboxDispatch:      a.beforeInboxDispatch,
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
+		OnCreateCollabSession:    a.createCollabSession,
 	})
 	if err != nil {
 		sink.clearContext()
@@ -9917,6 +9919,7 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 		OnSessionTransition:      a.handleTabSessionTransition(tab),
 		BeforeInboxDispatch:      a.beforeInboxDispatch,
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
+		OnCreateCollabSession:    a.createCollabSession,
 		// Keep the private temporary directory across model switches (#7575).
 		SessionTemp: sessionTempFromController(oldCtrl),
 	})
@@ -10112,6 +10115,7 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 		OnSessionTransition:      a.handleTabSessionTransition(tab),
 		BeforeInboxDispatch:      a.beforeInboxDispatch,
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
+		OnCreateCollabSession:    a.createCollabSession,
 		// Keep the private temporary directory across effort switches (#7575).
 		SessionTemp: sessionTempFromController(oldCtrl),
 	})

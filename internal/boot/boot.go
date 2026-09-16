@@ -198,6 +198,11 @@ type Options struct {
 	// into compatibility indexes and refresh notifications after the current
 	// conversation renames itself through set_session_title.
 	OnSessionTitleChanged sessiontool.TitleChangedFunc
+	// OnCreateCollabSession lets a host create a collaborating session on the
+	// agent's behalf and file it into a group (task 19 / 144). The engine cannot
+	// create sessions itself — that is a host capability — so nil omits the
+	// create_collab_session tool entirely rather than exposing a broken one.
+	OnCreateCollabSession func(workspaceRoot, title, purpose, group string) (topicID string, err error)
 	// SubagentParentLive reports whether this process currently owns or is
 	// building the parent session. Desktop uses it to avoid probing a live tab's
 	// lease during stale-subagent cleanup. Nil preserves lease-only cleanup.
@@ -1852,6 +1857,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			CurrentContactID:   currentContact,
 		}) {
 			reg.Add(t)
+		}
+		// 144: only a host that can create sessions gets the creator tool.
+		if opts.OnCreateCollabSession != nil {
+			reg.Add(agent.NewCreateCollabSessionTool(root, opts.OnCreateCollabSession))
 		}
 	}
 	// Task 107 P0-②: the model's read-only view of the recovery fence. It reads

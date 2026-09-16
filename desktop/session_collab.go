@@ -119,7 +119,82 @@ func (p *sessionCollabPump) drainOnce() {
 	log.Printf("[session-collab] delivered=%d refused=%d across %d tab(s)", result.Delivered, result.Refused, len(result.Targets))
 }
 
+// createCollabSession is the host capability behind create_collab_session
+// (task 144): it creates the topic, files it into the requested group, and
+// records the purpose for later stamping, because the transcript that carries
+// the contact_id does not exist until the session first runs.
+func (a *App) createCollabSession(workspaceRoot, title, purpose, group string) (string, error) {
+	scope, root := "global", ""
+	if strings.TrimSpace(workspaceRoot) != "" {
+		scope, root = "project", workspaceRoot
+	}
+	meta, err := a.CreateTopic(scope, root, title)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(group) != "" {
+		if err := a.AddTopicToGroup(scope, root, meta.ID, group); err != nil {
+			return meta.ID, err
+		}
+	}
+	if dir := config.SessionCollabMailDir(); dir != "" {
+		if err := sessioncollab.NewPendingPurposeStore(dir).Set(meta.ID, purpose); err != nil {
+			return meta.ID, err
+		}
+	}
+	return meta.ID, nil
+}
+
+// applyPendingPurposes stamps purpose + contact_id onto sessions whose topic
+// was created with a purpose but had no transcript yet. This is the second half
+// of "create a session in a group": the first half cannot know the file path.
+func (p *sessionCollabPump) applyPendingPurposes() {
+	mailDir := config.SessionCollabMailDir()
+	if mailDir == "" {
+		return
+	}
+	store := sessioncollab.NewPendingPurposeStore(mailDir)
+	pending := store.List()
+	if len(pending) == 0 {
+		return
+	}
+	a := p.app
+	a.mu.Lock()
+	type topicTab struct {
+		topicID string
+		path    string
+	}
+	var candidates []topicTab
+	for _, tab := range a.tabs {
+		if tab == nil || tab.removed || tab.Ctrl == nil {
+			continue
+		}
+		topicID := strings.TrimSpace(tab.TopicID)
+		path := strings.TrimSpace(tab.Ctrl.SessionPath())
+		if topicID == "" || path == "" {
+			continue
+		}
+		candidates = append(candidates, topicTab{topicID: topicID, path: path})
+	}
+	a.mu.Unlock()
+
+	for _, c := range candidates {
+		purpose, ok := pending[c.topicID]
+		if !ok {
+			continue
+		}
+		if _, err := agent.SetSessionPurpose(c.path, purpose); err != nil {
+			log.Printf("[session-collab] stamp purpose on %s: %v", c.path, err)
+			continue
+		}
+		if err := store.Clear(c.topicID); err != nil {
+			log.Printf("[session-collab] clear pending purpose %s: %v", c.topicID, err)
+		}
+	}
+}
+
 func (p *sessionCollabPump) drain() SessionCollabDrainResult {
+	p.applyPendingPurposes()
 	var result SessionCollabDrainResult
 	for _, target := range p.app.sessionCollabTargets() {
 		delivered, refused, err := p.deliverToTab(target)

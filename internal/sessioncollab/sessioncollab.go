@@ -340,6 +340,86 @@ func (s *CardStore) loadLocked(id string) (Card, error) {
 	return c, nil
 }
 
+// ── pending purposes (144) ───────────────────────────────────────────────────
+
+// PendingPurposeStore records "this topic should register this purpose" for a
+// session that does not exist yet. Topic creation and the session transcript
+// are separate moments in the desktop, so a self-organising secretary cannot
+// stamp purpose at creation time; the delivery pump applies these once the
+// session path appears.
+type PendingPurposeStore struct {
+	path string
+}
+
+func NewPendingPurposeStore(mailboxDir string) *PendingPurposeStore {
+	return &PendingPurposeStore{path: filepath.Join(mailboxDir, "pending-purpose.json")}
+}
+
+func (s *PendingPurposeStore) lock() (func(), error) {
+	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
+		return nil, err
+	}
+	return filelock.Acquire(context.Background(), s.path+".lock")
+}
+
+func (s *PendingPurposeStore) load() map[string]string {
+	b, err := os.ReadFile(s.path)
+	if err != nil {
+		return map[string]string{}
+	}
+	out := map[string]string{}
+	if err := json.Unmarshal(b, &out); err != nil {
+		return map[string]string{}
+	}
+	return out
+}
+
+// Set records a purpose for a topic id.
+func (s *PendingPurposeStore) Set(topicID, purpose string) error {
+	topicID, purpose = strings.TrimSpace(topicID), strings.TrimSpace(purpose)
+	if topicID == "" || purpose == "" {
+		return errors.New("pending purpose: topic id and purpose are required")
+	}
+	unlock, err := s.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	m := s.load()
+	m[topicID] = purpose
+	return atomicWriteJSON(s.path, m)
+}
+
+// List returns a copy of the pending map.
+func (s *PendingPurposeStore) List() map[string]string {
+	unlock, err := s.lock()
+	if err != nil {
+		return nil
+	}
+	defer unlock()
+	src := s.load()
+	out := make(map[string]string, len(src))
+	for k, v := range src {
+		out[k] = v
+	}
+	return out
+}
+
+// Clear removes one topic's pending purpose after it was applied.
+func (s *PendingPurposeStore) Clear(topicID string) error {
+	unlock, err := s.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	m := s.load()
+	if _, ok := m[topicID]; !ok {
+		return nil
+	}
+	delete(m, topicID)
+	return atomicWriteJSON(s.path, m)
+}
+
 // ── mailbox (142) ────────────────────────────────────────────────────────────
 
 // MailStore is a durable cross-session mailbox: one directory holding

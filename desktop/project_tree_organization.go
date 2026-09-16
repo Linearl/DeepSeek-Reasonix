@@ -374,6 +374,56 @@ func topicOriginIsHeartbeat(raw json.RawMessage) bool {
 	return meta.Origin == heartbeatTopicOrigin
 }
 
+// AddTopicToGroup files a topic into a collaboration group, creating the group
+// when it does not exist yet (task 144). Grouping is organisational only: it
+// uses the topic id, so renaming a session never moves it out of its group, and
+// addressing still goes through the session's contact_id.
+func (a *App) AddTopicToGroup(scope, workspaceRoot, topicID, groupTitle string) error {
+	topicID = strings.TrimSpace(topicID)
+	groupTitle = strings.TrimSpace(groupTitle)
+	if topicID == "" {
+		return fmt.Errorf("topicId is required")
+	}
+	if groupTitle == "" {
+		return nil
+	}
+	// CAS retry: another writer (sidebar drag, heartbeat filing) may hold the
+	// snapshot we just read, and a lost update would silently drop the new
+	// session out of its team.
+	for attempt := 0; attempt < 5; attempt++ {
+		snapshot, err := a.GetProjectGroups(scope, workspaceRoot)
+		if err != nil {
+			return err
+		}
+		groups := append([]desktopGroup(nil), snapshot.Groups...)
+		target := -1
+		for i, g := range groups {
+			if strings.EqualFold(strings.TrimSpace(g.Title), groupTitle) {
+				target = i
+				break
+			}
+		}
+		if target < 0 {
+			groups = append(groups, desktopGroup{ID: "collab-" + strings.ToLower(groupTitle), Title: groupTitle, TopicIDs: []string{topicID}})
+		} else {
+			for _, member := range groups[target].TopicIDs {
+				if member == topicID {
+					return nil
+				}
+			}
+			groups[target].TopicIDs = append(groups[target].TopicIDs, topicID)
+		}
+		result, err := a.SaveSessionGroupsVersioned(scope, workspaceRoot, snapshot.Revision, groups)
+		if err != nil {
+			return err
+		}
+		if result.Applied {
+			return nil
+		}
+	}
+	return fmt.Errorf("session group %q: config changed concurrently, retry", groupTitle)
+}
+
 func (a *App) SaveSessionGroups(scope, workspaceRoot string, groups []desktopGroup) error {
 	scope, workspaceRoot, err := normalizeOrganizationTarget(scope, workspaceRoot)
 	if err != nil {
