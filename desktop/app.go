@@ -756,6 +756,9 @@ func (a *App) restoreOrBuildTabs() {
 	_, _ = recoverLegacyProjectSidebarRoots(f)
 	_, _ = config.ApplyUserConfigUpgradesOnStartup(config.UserConfigPath())
 	_, _ = config.MigrateMCPToUserConfigOnUpgrade(desktopMCPMigrationRoots(f))
+	// Task 116: materialize the three shipped playbooks under the user skills
+	// dir so they are editable. Existing files are never overwritten.
+	installShippedPlaybooksToUserDir()
 
 	// Load i18n from the first available config.
 	// Prefer DesktopLanguage (desktop UI setting) over Language (CLI setting),
