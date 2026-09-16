@@ -40760,7 +40760,7 @@ body > .mermaid-diagram--fullscreen {
 .session-monitor {
   position: fixed;
   /* Above Settings ManagementSurface (z-modal). Opens over the experimental pane. */
-  z-index: calc(var(--z-modal) + 1);
+  z-index: var(--z-popover);
   /* Anchored just above the trash row it is opened from. */
   bottom: 56px;
   left: 12px;
@@ -40860,7 +40860,7 @@ body > .mermaid-diagram--fullscreen {
   left: 12px;
   bottom: 56px;
   /* Above Settings ManagementSurface (z-modal). Opens over the experimental pane. */
-  z-index: calc(var(--z-modal) + 1);
+  z-index: var(--z-popover);
   width: min(420px, calc(100vw - 24px));
   max-height: min(480px, calc(100vh - 120px));
   display: flex;
