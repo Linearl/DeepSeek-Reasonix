@@ -1827,11 +1827,20 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			collabSessionDir = config.SessionDir()
 		}
 		sessionPath := executor.SessionPath()
+		// Mint/lookup this session's contact id so replies and cards stamp a
+		// stable initiator without requiring set_session_purpose first.
+		currentContact := ""
+		if sessionPath != "" {
+			if id, err := agent.EnsureContactID(sessionPath); err == nil {
+				currentContact = id
+			}
+		}
 		collab := agent.SessionCollabConfig{
 			Enabled:            true,
 			SessionDir:         collabSessionDir,
 			WorkspaceRoot:      root,
 			CurrentSessionPath: sessionPath,
+			CurrentContactID:   currentContact,
 		}
 		reg.Add(agent.NewSetSessionPurposeTool(collab))
 		reg.Add(agent.NewListAddressableSessionsTool(collab))
@@ -1840,6 +1849,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			Enabled:            true,
 			WorkspaceRoot:      root,
 			CurrentSessionPath: sessionPath,
+			CurrentContactID:   currentContact,
 		}) {
 			reg.Add(t)
 		}
