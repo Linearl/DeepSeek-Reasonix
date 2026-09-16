@@ -87,6 +87,7 @@ import { WorkspaceTreeRow, type WorkspaceTreeRowData } from "./WorkspaceTreeRow"
 import { WorkspaceTreeMenu } from "./WorkspaceTreeMenu";
 import { WORKSPACE_TURN_VERIFICATION_ID } from "./WorkspaceTurnVerification";
 import { WorkspaceTurnResult } from "./WorkspaceTurnResult";
+import { SessionSideFilesPanel } from "./SessionSideFilesPanel";
 import { useWorkspaceChangesResource } from "../lib/useWorkspaceChangesResource";
 import {
   workspaceBasename as basename, workspaceEntryPath as entryPath,
@@ -154,6 +155,7 @@ export function WorkspacePanel({
   completionSummary,
   turnStartAt = 0,
   qualityFloor,
+  sessionItems,
 }: {
   open: boolean;
   tabId?: string;
@@ -190,6 +192,8 @@ export function WorkspacePanel({
   completionSummary?: WireCompletionSummary;
   turnStartAt?: number;
   qualityFloor?: "standard" | "delivery";
+  /** Task 114: transcript tool items for artifacts/references grouping. */
+  sessionItems?: readonly import("../lib/sessionSideFiles").SessionSideItem[];
 }) {
   const t = useT();
   const [widthMenuPoint, setWidthMenuPoint] = useState<ContextMenuPoint | null>(null);
@@ -236,7 +240,7 @@ export function WorkspacePanel({
     (initialWorkspaceMemory?.recentPaths ?? []).slice(0, WORKSPACE_MAX_PREVIEW_TABS),
   );
   const [previewResource, setPreviewResource] = useState(() => emptyKeyedResource<FilePreview>());
-  const [viewMode, setViewMode] = useState<"files" | "changed">(initialViewMode);
+  const [viewMode, setViewMode] = useState<"files" | "changed" | "session">(initialViewMode);
   const selectedPath = viewMode === "changed" ? selectedChangePath : selectedFilePath;
   // Both creation and regular workspaces use the same three-layer change view;
   // keep the prop in the seam for older callers while making history collapsed
@@ -492,7 +496,7 @@ export function WorkspacePanel({
   }, [expandedCommit, selectedPath, open, workspaceScopeKey, workspaceTabId]);
 
   const selectFile = useCallback(
-    (path: string, targetMode: "files" | "changed" = viewMode) => {
+    (path: string, targetMode: "files" | "changed" | "session" = viewMode) => {
       const initializeSplit = shouldInitializeWorkspaceSplitOnFileSelect({
         previewVisible: openTabs.length > 0 || selectedPath !== null,
         treeVisible,
@@ -1664,7 +1668,12 @@ export function WorkspacePanel({
           onContextMenu={openSelectionMenu}
           onMouseUp={showSelectionToolbar}
         >
-          {viewMode === "changed" && activeVerificationRevealRequest && visibleCompletionSummary ? (
+          {viewMode === "session" ? (
+            <SessionSideFilesPanel
+              items={sessionItems ?? []}
+              onInjectReferences={onAddToChat}
+            />
+          ) : viewMode === "changed" && activeVerificationRevealRequest && visibleCompletionSummary ? (
             <WorkspaceTurnResult key={activeVerificationRevealRequest.id} ref={verificationSummaryRef} summary={visibleCompletionSummary} qualityFloor={qualityFloor} tabId={workspaceTabId} sessionPath={sessionPath ?? ""} initialView={activeVerificationRevealRequest.view} onAllChanges={() => { onDismissTurnResult?.(); }} />
           ) : viewMode === "changed" && scopedChangeRows ? (
             <div className="workspace-change-scope">
@@ -2057,6 +2066,12 @@ export function WorkspacePanel({
                 >
                   <GitBranch size={13} />
                   {t("workspace.changedTab")}
+                </button>
+                <button
+                  className={viewMode === "session" ? "workspace-files__tab workspace-files__tab--active" : "workspace-files__tab"}
+                  onClick={() => setViewMode("session")}
+                >
+                  {t("workspace.sessionTab")}
                 </button>
               </div>
             )}

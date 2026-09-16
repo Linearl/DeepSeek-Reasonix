@@ -1,6 +1,7 @@
 import { workspacePanelAriaMinWidth } from "../lib/workspaceLayout";
 import type { Translator } from "../lib/i18n";
 import type { Meta, RemoteHostView, RemoteConnectionStatus, WireCompletionSummary } from "../lib/types";
+import type { SessionSideItem } from "../lib/sessionSideFiles";
 import type { projectConversation } from "../app-runtime/conversationProjection";
 import type { useShellGeometry } from "../app-runtime/useShellGeometry";
 import type { useWorkspacePanelCommands } from "../app-runtime/useWorkspacePanelCommands";
@@ -38,6 +39,7 @@ export function buildWorkspaceDockProps(input: {
   tabId: string | undefined;
   completionSummary: WireCompletionSummary | undefined;
   turnStartAt: number;
+  sessionItems?: readonly SessionSideItem[];
   layout: { treeWidth: number; previewWidth: number; maximized: boolean };
   geometry: ShellGeometry;
   panels: WorkspacePanelApi;
@@ -82,6 +84,7 @@ export function buildWorkspaceDockProps(input: {
       onOpenInTerminal: input.onOpenInTerminal,
       initialViewMode: input.mode === "changed" ? "changed" : "files",
       completionSummary: input.completionSummary, turnStartAt: input.turnStartAt,
+      sessionItems: input.sessionItems,
       sessionPath: input.meta?.sessionPath, onDismissTurnResult: input.verification.closeTurnResult,
       verificationRevealRequest: input.verification.verificationRevealRequest, qualityFloor: input.qualityFloor,
       showViewTabs: false, creationMode: input.creation,
