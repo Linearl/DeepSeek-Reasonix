@@ -6,6 +6,7 @@ import {
   Box,
   Cable,
   Database,
+  FlaskConical,
   HardDrive,
   Keyboard,
   LockKeyhole,
@@ -146,6 +147,7 @@ function settingsTabIcon(id: SettingsTab): ReactNode {
     case "skills": return <Sparkles {...props} />;
     case "subagents": return <Users {...props} />;
     case "plugins": return <Package {...props} />;
+    case "experimental": return <FlaskConical {...props} />;
     case "memory": return <Database {...props} />;
     case "hooks": return <Webhook {...props} />;
     case "diagnostics": return <Activity {...props} />;
@@ -156,5 +158,8 @@ function settingsTabIcon(id: SettingsTab): ReactNode {
     case "appearance": return <Palette {...props} />;
     case "storage": return <HardDrive {...props} />;
     case "updates": return <RefreshCw {...props} />;
+    // Every tab needs a glyph: a missing case renders nothing, which leaves that
+    // nav item visibly misaligned against its neighbours (how "experimental" looked).
+    default: return <Settings2 {...props} />;
   }
 }

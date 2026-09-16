@@ -72,8 +72,17 @@ it tracks upstream and keeps the changes we actually need on top. What that mean
   churning, this branch stays on its current baseline instead of following.
 - **Every fork modification is listed per version** in
   [`release-notes/FORK-vs-upstream.md`](release-notes/FORK-vs-upstream.md) — with its switch, its
-  default, the files that carry it, and whether upstream has absorbed it. [`FORK.md`](FORK.md) is
-  the full entry document, and [`release-notes/`](release-notes/) carries the per-version notes.
+  default, the files that carry it, and whether upstream has absorbed it. For a shorter,
+  user-facing tour of what actually changed in daily use, see
+  [`release-notes/FORK-features-intro.md`](release-notes/FORK-features-intro.md) (13 highlights).
+  [`FORK.md`](FORK.md) is the full entry document, and [`release-notes/`](release-notes/) carries
+  the per-version notes.
+- **Builds carry a timestamp.** This branch stays on `1.38.3` while upstream moves on, so more
+  than one build legitimately shares that version number. Packages therefore append their build
+  time — `1.38.3-20260916-1152` — which is what the installer records in
+  `versions/<name>/`, letting you tell two builds apart and roll back to a specific one. Release
+  notes are still looked up by the bare version, so a stamped build documents itself with its
+  base version's notes.
 - **Stable versions: `1.31.4` – `1.34`, and `1.38.3`.** `1.38.1` is known unstable — do not run it.
 - **Questions, bugs, ideas:** please open an
   [issue](https://github.com/Linearl/DeepSeek-Reasonix/issues) — see also

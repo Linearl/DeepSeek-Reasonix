@@ -142,7 +142,22 @@ jobs:
           # an older release's notes). strip 'v' and any '+...' before lookup.
           notes_ver="${VERSION#v}"; notes_ver="${notes_ver%%+*}"
           RELEASE_NOTES="release-notes/FORK-v${notes_ver}.md"
-          [ -f "$RELEASE_NOTES" ] || RELEASE_NOTES="release-notes/FORK-v1.31.3.md"
+          if [ ! -f "$RELEASE_NOTES" ]; then
+            # Timestamp-stamped builds (desktop-v1.38.3-20260916-1152) keep the
+            # base version's notes. Try the stripped form only after the exact
+            # name misses, so a genuine prerelease notes file still wins.
+            base_ver="$(printf '%s' "$notes_ver" | sed -E 's/-[0-9]{8}(-[0-9]{4})?$//')"
+            if [ "$base_ver" != "$notes_ver" ]; then
+              RELEASE_NOTES="release-notes/FORK-v${base_ver}.md"
+            fi
+          fi
+          # A miss used to fall back to FORK-v1.31.3.md, which shipped that
+          # release's notes on any version without its own file - silently and
+          # only visible to whoever read the published release. Fail loudly.
+          if [ ! -f "$RELEASE_NOTES" ]; then
+            echo "::error::no release notes for $VERSION (looked for release-notes/FORK-v${notes_ver}.md)"
+            exit 1
+          fi
           echo "Using release notes: $RELEASE_NOTES"
           # Template rule: every FORK-vX.Y.Z.md MUST reference the running
           # fork-vs-upstream diff ledger (release-notes/FORK-vs-upstream.md)
