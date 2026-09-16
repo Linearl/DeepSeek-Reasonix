@@ -339,6 +339,7 @@ type SettingsView struct {
 	ExperimentalSplitView        bool                       `json:"experimentalSplitView"`
 	SessionStorage               string                     `json:"sessionStorage"`
 	ExperimentalFeedback         bool                       `json:"experimentalFeedback"`
+	ExperimentalLocalServer      bool                       `json:"experimentalLocalServer"`
 	VisionModel                  string                     `json:"visionModel"`
 	WebSearchModel               string                     `json:"webSearchModel"`
 	WebSearchModels              []string                   `json:"webSearchModels"`
@@ -421,9 +422,11 @@ type DesktopStartupSettingsView struct {
 	SessionStorage             string `json:"sessionStorage"`
 	// ExperimentalFeedback exposes the agent submit_feedback tool and feedback
 	// inbox panel (task 121).
-	ExperimentalFeedback bool   `json:"experimentalFeedback"`
-	CheckUpdates         bool   `json:"checkUpdates"`
-	UpdateChannel        string `json:"updateChannel"`
+	ExperimentalFeedback bool `json:"experimentalFeedback"`
+	// ExperimentalLocalServer exposes the Settings → 本地服务 page (task 130).
+	ExperimentalLocalServer bool   `json:"experimentalLocalServer"`
+	CheckUpdates            bool   `json:"checkUpdates"`
+	UpdateChannel           string `json:"updateChannel"`
 	ConversationWidth    string `json:"conversationWidth,omitempty"`
 	// Autopilot mirrors the [desktop] preference so the composer knows whether
 	// to offer the mode at all - it is opt-in, never a surprise.
@@ -1072,6 +1075,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalSplitView = cfg.Desktop.ExperimentalSplitView
 		view.SessionStorage = config.SessionStorageMode(cfg)
 		view.ExperimentalFeedback = cfg.Desktop.ExperimentalFeedback
+		view.ExperimentalLocalServer = cfg.Desktop.ExperimentalLocalServer
 		return view
 	}
 	cfg, path, err := a.loadDesktopUserConfigForView()
@@ -1143,6 +1147,7 @@ func (a *App) Settings() SettingsView {
 		ExperimentalSplitView:      cfg.Desktop.ExperimentalSplitView,
 		SessionStorage:             config.SessionStorageMode(cfg),
 		ExperimentalFeedback:       cfg.Desktop.ExperimentalFeedback,
+		ExperimentalLocalServer:    cfg.Desktop.ExperimentalLocalServer,
 		VisionModel:                cfg.Agent.VisionModel,
 		WebSearchModel:             cfg.Agent.WebSearchModel,
 		WebSearchModels:            []string{},

@@ -191,6 +191,11 @@ func (a *App) SetExperimentalFeedback(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalFeedback(enabled) })
 }
 
+// SetExperimentalLocalServer toggles the Settings → 本地服务 page (task 130).
+func (a *App) SetExperimentalLocalServer(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalLocalServer(enabled) })
+}
+
 // SetDesktopMetrics sets whether the desktop sends aggregate desktop metrics,
 // starting or stopping the live aggregator so the toggle takes effect immediately.
 func (a *App) SetDesktopMetrics(enabled bool) error {

@@ -750,6 +750,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   RestartDesktop(): Promise<void>;
   // Task 121: agent submit_feedback tool + feedback inbox panel (experimental).
   SetExperimentalFeedback(enabled: boolean): Promise<void>;
+  // Task 130: Settings → 本地服务 page (experimental).
+  SetExperimentalLocalServer(enabled: boolean): Promise<void>;
+  /** Persist the serve-pool gateway port and restart the gateway when enabled (task 130). */
+  SetServePoolPort(port: number): Promise<void>;
   ListFeedbackEntries(limit: number): Promise<{ at: string; kind: string; text: string; tags?: string[]; session?: string; model?: string }[]>;
   ClearFeedbackEntries(): Promise<void>;
   SetDefaultAutoRecoveryCheckpoint(enabled: boolean): Promise<void>;
@@ -4941,6 +4945,8 @@ function makeMockApp(): AppBindings {
     async SetSessionStorage() {},
     async RestartDesktop() {},
     async SetExperimentalFeedback() {},
+    async SetExperimentalLocalServer() {},
+    async SetServePoolPort() {},
     async ListFeedbackEntries() { return []; },
     async ClearFeedbackEntries() {},
     async SetDesktopAutopilot(enabled: boolean, maxRuntime: string, approvalGrace: string) {

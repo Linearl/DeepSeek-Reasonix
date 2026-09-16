@@ -481,6 +481,13 @@ func (c *Config) SetExperimentalSessionMonitor(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalLocalServer toggles the Settings → 本地服务 page (task 130).
+// It is opt-in because the serve-pool gateway binds 0.0.0.0 on the LAN.
+func (c *Config) SetExperimentalLocalServer(enabled bool) error {
+	c.Desktop.ExperimentalLocalServer = enabled
+	return nil
+}
+
 // SetExperimentalSplitView toggles the tab-bar split view (task 70-1). It is opt-in
 // because the split is an experiment: two live panes change how the transcript, the
 // composer and the status bar behave, so it stays behind an explicit switch.

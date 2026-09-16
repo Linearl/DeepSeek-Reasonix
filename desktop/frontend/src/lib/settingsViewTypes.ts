@@ -19,6 +19,8 @@ export interface SettingsView {
   sessionStorage?: string;
   // Task 121: exposes the agent submit_feedback tool and feedback inbox panel.
   experimentalFeedback?: boolean;
+  // Task 130: exposes the Settings → 本地服务 page and serve-pool controls.
+  experimentalLocalServer?: boolean;
   visionModel: string;
   webSearchModel?: string;
   webSearchModels?: string[];

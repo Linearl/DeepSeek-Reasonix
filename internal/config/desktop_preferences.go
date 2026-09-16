@@ -42,6 +42,10 @@ type DesktopConfig struct {
 	// "意见箱" panel (task 121). It ships off: feedback is a local inbox, not a
 	// product surface, so both the tool and the viewer stay behind an opt-in.
 	ExperimentalFeedback bool `toml:"experimental_feedback"`
+	// ExperimentalLocalServer exposes the Settings → 本地服务 page and its
+	// serve-pool gateway controls (task 130). It ships off: the gateway binds
+	// 0.0.0.0, so it stays behind an explicit opt-in.
+	ExperimentalLocalServer bool `toml:"experimental_local_server"`
 	// ExperimentalParallelFullAccess trusts product-managed worktree roots as
 	// write surfaces for the parent session and sub-agent write_paths (task 127).
 	// It ships off so production confinement is unchanged. Env
