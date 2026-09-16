@@ -110,6 +110,48 @@ func TestGoalTodoProgressGuardReplansWithoutPausing(t *testing.T) {
 	if !sessionContains(a, "Host progress redirect") {
 		t.Fatal("Goal todo stall did not inject a re-plan redirect")
 	}
+	// Task 23 P0-b: the stuck list itself is the lock — it must be cleared so a
+	// fresh todo_write can start instead of being rejected forever.
+	if state := a.CanonicalTodoState(); len(state) != 0 {
+		t.Fatalf("todo state after Goal stall clear = %+v, want empty", state)
+	}
+}
+
+// Task 23 P0-b: ordinary chat (not Goal-scoped) also clears a stalled list.
+// Without the clear the serial validator keeps rejecting every later write
+// against a plan the model cannot advance.
+func TestTodoStallClearsCanonicalListInOrdinaryChat(t *testing.T) {
+	turns := []testutil.Turn{{ToolCalls: []provider.ToolCall{{
+		ID: "todo", Name: "todo_write",
+		Arguments: `{"todos":[{"content":"stuck step","status":"in_progress"},{"content":"later","status":"pending"}]}`,
+	}}}}
+	for i := range maxTodoStallRounds + 2 {
+		turns = append(turns, testutil.Turn{ToolCalls: []provider.ToolCall{{
+			ID: fmt.Sprintf("read-%d", i), Name: "inspect", Arguments: `{"path":"same"}`,
+		}}})
+	}
+	// After the clear, a fresh list must be accepted.
+	turns = append(turns,
+		testutil.Turn{ToolCalls: []provider.ToolCall{{
+			ID: "fresh", Name: "todo_write",
+			Arguments: `{"todos":[{"content":"smaller step","status":"in_progress"}]}`,
+		}}},
+		testutil.Turn{Text: "Working on the smaller step."},
+	)
+
+	reg := tool.NewRegistry()
+	reg.Add(fakeTool{name: "inspect", readOnly: true})
+	reg.Add(mustBuiltinTool(t, "todo_write"))
+	a := New(testutil.NewMock("m", turns...), reg, NewSession(""), Options{}, event.Discard)
+	if err := a.Run(context.Background(), "work on the plan"); err != nil && !isToolLoopPause(err) {
+		t.Fatalf("Run: %v", err)
+	}
+	// Ordinary chat has no host continuation, so the clear is silent — what
+	// matters is that the lock is gone and the fresh write landed.
+	state := a.CanonicalTodoState()
+	if len(state) != 1 || state[0].Content != "smaller step" {
+		t.Fatalf("todo state after clear+rewrite = %+v, want the fresh single step", state)
+	}
 }
 
 func TestTodoProgressGuardRenewsOnUniqueHostWork(t *testing.T) {

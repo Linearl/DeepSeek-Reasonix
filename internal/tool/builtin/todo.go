@@ -131,6 +131,12 @@ func (todoWrite) Execute(ctx context.Context, args json.RawMessage) (string, err
 		}
 	}
 	if err := evidence.ValidateSerialTodos(toEvidenceTodos(p.Todos)); err != nil {
+		// Task 23 P0-a: attach the host's current plan so a rejected write can be
+		// repaired without guessing (upstream #10023). The rule text alone left
+		// the model retrying the same invalid list.
+		if snapshot := todoPlanSnapshot(todoBaseline(ctx)); snapshot != "" {
+			return "", fmt.Errorf("%w.%s", err, snapshot)
+		}
 		return "", err
 	}
 	if err := verifyUniqueStepIDs(p.Todos); err != nil {
