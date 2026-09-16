@@ -319,16 +319,18 @@ func (s *CardStore) loadLocked(id string) (Card, error) {
 
 // ── mailbox (142) ────────────────────────────────────────────────────────────
 
-// MailStore is a durable cross-session mailbox under
-// <root>/.reasonix/session-chat/<contactId>.inbox.jsonl.
+// MailStore is a durable cross-session mailbox: one directory holding
+// <contactId>.inbox.jsonl plus a per-contact seen-cursor. The directory is the
+// single shared collab root (config.SessionCollabMailDir), not a workspace, so
+// both sides of an exchange always agree on where a contact's mail lives.
 // Appends are serialized by a cross-process file lock so two senders cannot
 // interleave a partial line or drop one another's message.
 type MailStore struct {
 	root string
 }
 
-func NewMailStore(workspaceRoot string) *MailStore {
-	return &MailStore{root: filepath.Join(workspaceRoot, ".reasonix", "session-chat")}
+func NewMailStore(mailboxDir string) *MailStore {
+	return &MailStore{root: mailboxDir}
 }
 
 func (s *MailStore) lock() (func(), error) {
@@ -378,7 +380,120 @@ func (s *MailStore) Deliver(msg MailMessage) (MailMessage, error) {
 	return msg, nil
 }
 
-// Inbox returns pending messages for a contact (newest last).
+// Claim returns messages the contact has not seen yet and advances its cursor,
+// so a resumed polling loop never re-delivers the same message. It also
+// enforces the hop ceiling at delivery time: a message that already exhausted
+// the chain is refused here rather than being handed to the target, because a
+// caller-reported hop cannot be trusted.
+func (s *MailStore) Claim(contactID string) (delivered []MailMessage, refused []MailMessage, err error) {
+	unlock, err := s.lock()
+	if err != nil {
+		return nil, nil, err
+	}
+	defer unlock()
+	all, err := s.readAll(contactID)
+	if err != nil {
+		return nil, nil, err
+	}
+	seen := s.readCursor(contactID)
+	for _, m := range all {
+		if seen[m.ID] {
+			continue
+		}
+		if m.Hop > MaxHop {
+			refused = append(refused, m)
+			continue
+		}
+		delivered = append(delivered, m)
+	}
+	if len(delivered) == 0 && len(refused) == 0 {
+		return nil, nil, nil
+	}
+	for _, m := range delivered {
+		seen[m.ID] = true
+	}
+	for _, m := range refused {
+		seen[m.ID] = true
+	}
+	if err := s.writeCursor(contactID, seen); err != nil {
+		return nil, nil, err
+	}
+	return delivered, refused, nil
+}
+
+// Peek returns unread messages without advancing the cursor.
+func (s *MailStore) Peek(contactID string) ([]MailMessage, error) {
+	all, err := s.readAll(contactID)
+	if err != nil {
+		return nil, err
+	}
+	seen := s.readCursor(contactID)
+	var out []MailMessage
+	for _, m := range all {
+		if !seen[m.ID] {
+			out = append(out, m)
+		}
+	}
+	return out, nil
+}
+
+func (s *MailStore) cursorPath(contactID string) string {
+	contactID = strings.TrimSpace(contactID)
+	if contactID == "" {
+		contactID = "unknown"
+	}
+	return filepath.Join(s.root, contactID+".seen.json")
+}
+
+func (s *MailStore) readCursor(contactID string) map[string]bool {
+	seen := map[string]bool{}
+	b, err := os.ReadFile(s.cursorPath(contactID))
+	if err != nil {
+		return seen
+	}
+	var ids []string
+	if err := json.Unmarshal(b, &ids); err != nil {
+		return seen
+	}
+	for _, id := range ids {
+		seen[id] = true
+	}
+	return seen
+}
+
+func (s *MailStore) writeCursor(contactID string, seen map[string]bool) error {
+	ids := make([]string, 0, len(seen))
+	for id := range seen {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return atomicWriteJSON(s.cursorPath(contactID), ids)
+}
+
+func (s *MailStore) readAll(contactID string) ([]MailMessage, error) {
+	b, err := os.ReadFile(s.inboxPath(contactID))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var out []MailMessage
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var m MailMessage
+		if err := json.Unmarshal([]byte(line), &m); err != nil {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out, nil
+}
+
+// Inbox returns all messages for a contact (newest last), read or not.
 func (s *MailStore) Inbox(contactID string) ([]MailMessage, error) {
 	b, err := os.ReadFile(s.inboxPath(contactID))
 	if err != nil {

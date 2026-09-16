@@ -20,6 +20,8 @@ type SessionCollabConfig struct {
 	WorkspaceRoot string
 	// CurrentSessionPath is the calling session's transcript path (for reply routing).
 	CurrentSessionPath string
+	// MailDir overrides the shared collab mailbox root; empty uses config's.
+	MailDir string
 	// CurrentContactID is filled on first ensure for the calling session.
 	CurrentContactID string
 }
@@ -140,7 +142,11 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 	if fromContact == "" && t.cfg.CurrentSessionPath != "" {
 		fromContact = SessionContactID(t.cfg.CurrentSessionPath)
 	}
-	mail := sessioncollab.NewMailStore(workspaceRootForMail(t.cfg, target))
+	mailDir := t.cfg.MailDir
+	if mailDir == "" {
+		mailDir = config.SessionCollabMailDir()
+	}
+	mail := sessioncollab.NewMailStore(mailDir)
 	msg, err := mail.Deliver(sessioncollab.MailMessage{
 		From:        fromContact,
 		FromSession: t.cfg.CurrentSessionPath,
@@ -161,7 +167,7 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 		"toPurpose": target.Purpose,
 		"delivery":  msg.Delivery,
 		"hop":       msg.Hop,
-		"inbox":     filepath.Join(workspaceRootForMail(t.cfg, target), ".reasonix", "session-chat", target.ContactID+".inbox.jsonl"),
+		"queued":    true,
 	})
 	return string(out), nil
 }

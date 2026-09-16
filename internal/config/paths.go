@@ -434,6 +434,19 @@ func SessionDir() string {
 	return filepath.Join(dir, "sessions")
 }
 
+// SessionCollabMailDir is the single shared delivery root for multi-session
+// collaboration (task 19 / 142). One directory for every workspace on purpose:
+// contact_id is globally unique, so a shared mailbox removes an entire class of
+// "which workspace owns this message" routing bugs, and a session that moved
+// projects keeps receiving its own mail.
+func SessionCollabMailDir() string {
+	dir := userSupportDir()
+	if dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, "session-chat")
+}
+
 // SessionStoreDir is the experimental v4 session root. Keeping it physically
 // separate prevents older binaries from treating v4 commits as legacy JSONL
 // transcripts.

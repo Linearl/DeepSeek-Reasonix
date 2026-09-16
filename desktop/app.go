@@ -413,7 +413,10 @@ type App struct {
 	skillRootsCache skillRootsCache
 
 	heartbeat *HeartbeatEngine // scheduled heartbeat tasks; nil until startup
-	lifecycle desktopLifecycleRuntime
+	// sessionCollab is the task 19 delivery pump: it moves talk_to_session
+	// mailbox messages into the target tab's inbox. Nil until startup.
+	sessionCollab *sessionCollabPump
+	lifecycle     desktopLifecycleRuntime
 	// diagnosticsOwner is acquired before Wails starts so Linux's OnStartup
 	// ordering cannot let a second-instance handoff create lifecycle evidence.
 	diagnosticsOwner        bool
@@ -552,6 +555,9 @@ func (a *App) startup(ctx context.Context) {
 
 	a.heartbeat = newHeartbeatEngine(a)
 	a.heartbeat.Start()
+
+	a.sessionCollab = newSessionCollabPump(a)
+	a.sessionCollab.Start()
 
 	a.mu.Lock()
 	a.tabsRestored = make(chan struct{})
@@ -2293,7 +2299,7 @@ func (a *App) clearActiveSessionRuntime(tab *WorkspaceTab, oldCtrl control.Sessi
 	newSink := &tabEventSink{tabID: tab.ID, app: a, ctx: a.ctx}
 	sharedHost := a.lookupSharedHost(snap.sharedHostKey)
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
-		RestartUpdater: restartUpdaterAdapter{a},
+		RestartUpdater:           restartUpdaterAdapter{a},
 		Model:                    snap.model,
 		Autopilot:                snap.autopilot,
 		MaxRuntime:               snap.autopilotMaxRuntime,
@@ -4280,7 +4286,7 @@ func (a *App) buildSessionRebindCandidate(
 		return nil, err
 	}
 	ctrl, err := boot.Build(a.bootContext(), boot.Options{
-		RestartUpdater: restartUpdaterAdapter{a},
+		RestartUpdater:           restartUpdaterAdapter{a},
 		Model:                    model,
 		Autopilot:                source.autopilot,
 		MaxRuntime:               source.autopilotMaxRuntime,
@@ -9888,7 +9894,7 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 
 	stageStarted = time.Now()
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
-		RestartUpdater: restartUpdaterAdapter{a},
+		RestartUpdater:           restartUpdaterAdapter{a},
 		Model:                    name,
 		Autopilot:                tab.autopilot,
 		MaxRuntime:               tab.autopilotMaxRuntime,
@@ -10083,7 +10089,7 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 	}
 	sharedHost := a.lookupSharedHost(snap.sharedHostKey)
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
-		RestartUpdater: restartUpdaterAdapter{a},
+		RestartUpdater:           restartUpdaterAdapter{a},
 		Model:                    modelRef,
 		Autopilot:                tab.autopilot,
 		MaxRuntime:               tab.autopilotMaxRuntime,
