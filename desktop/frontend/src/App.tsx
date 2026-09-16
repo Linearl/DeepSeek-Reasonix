@@ -3161,10 +3161,8 @@ export default function App() {
     await handleSend(displayText, submitText);
   }, [splitState.secondaryTabId, splitTarget, handleSend, activeTabId]);
 
-  // Restart-and-update (task 81 / 129). An empty source directory lets the
-  // backend use its InstallRoot/staging convention. Task 129: rename the action
-  // to 快速切换版本 and require a 3s-delayed confirm so a status-bar mis-click
-  // cannot swap the installed build.
+  // Restart-and-update (task 81 / 129). Empty source dir uses InstallRoot/staging.
+  // Confirm restarts immediately; otherwise auto-restart after 3s. Cancel aborts.
   const { confirm: confirmRestartUpdate, dialog: restartUpdateDialog } = useConfirmDialog();
   const handleRestartUpdate = useCallback(async () => {
     const ok = await confirmRestartUpdate({
@@ -3172,7 +3170,7 @@ export default function App() {
       message: t("status.restartUpdateConfirmBody"),
       confirmLabel: t("status.restartUpdateConfirm"),
       cancelLabel: t("common.cancel"),
-      confirmDelayMs: 3000,
+      autoConfirmAfterMs: 3000,
     });
     if (!ok) return;
     try {

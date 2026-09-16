@@ -54,10 +54,14 @@ type DesktopConfig struct {
 	// ExperimentalPathRules enables the structured path-scope evaluation order
 	// documented in docs/PATH_SCOPE_RULES.md (task 134). Ships off: production
 	// keeps the existing confine + allow_write + write-access approval model.
-	ExperimentalPathRules bool   `toml:"experimental_path_rules"`
-	AutopilotMaxRuntime   string `toml:"autopilot_max_runtime"` // Go duration; required when autopilot is on
-	AutopilotApprovalGrace string `toml:"autopilot_approval_grace"` // wait for a human before the reviewer decides; empty = 15s
-	CheckUpdates           *bool  `toml:"check_updates"`            // startup update checks; nil keeps the default enabled
+	ExperimentalPathRules bool `toml:"experimental_path_rules"`
+	// ExperimentalTraceAsState is the settings-view mirror for Agent.TraceAsState
+	// (task 60). The runtime flag lives on [agent]; this field keeps the
+	// experimental features tab reading the same saved value.
+	ExperimentalTraceAsState bool   `toml:"experimental_trace_as_state"`
+	AutopilotMaxRuntime      string `toml:"autopilot_max_runtime"`    // Go duration; required when autopilot is on
+	AutopilotApprovalGrace   string `toml:"autopilot_approval_grace"` // wait for a human before the reviewer decides; empty = 15s
+	CheckUpdates             *bool  `toml:"check_updates"`            // startup update checks; nil keeps the default enabled
 	// UpdateChannel is a legacy compatibility field. It is accepted on read but
 	// ignored and omitted from future canonical writes.
 	UpdateChannel        string   `toml:"update_channel"`

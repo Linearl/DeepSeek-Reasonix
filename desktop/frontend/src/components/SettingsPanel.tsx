@@ -25,8 +25,8 @@ import { ShellInterpreterFields } from "./SettingsShellSupport";
 import { CHANNEL_ICONS } from "./channelIcons";
 import { botAccessEntryCount, botAccessReady, botConnectionCredentialSummary, botConnectionLabel, botConnectionScopeLabel, botConnectionSecretEnv, botConnectionSecretPatch, botInstallTargetForConnection, botInstallTargetMatchesConnection, botTargetHint, botTargetLabel, diagnosticMessage, diagnosticReportDetail, firstConnectionRemote, formatInstallTimeLeft, formatInstallUserCode, qqBotAdded, type BotInstallTarget, type BotOfficialInstallTarget } from "./botConnectionSettings";
 import { app, COMPACT_RATIO_MAX_PERCENT, COMPACT_RATIO_MIN_PERCENT, onRuntimeRebuilt, openExternal } from "../lib/bridge";
-import { setSessionMonitorEnabled } from "../lib/sessionMonitor";
-import { setFeedbackEnabled } from "./FeedbackPanel";
+import { setSessionMonitorEnabled, setSessionMonitorOpen } from "../lib/sessionMonitor";
+import { setFeedbackEnabled, setFeedbackOpen } from "./FeedbackPanel";
 import { setSplitViewEnabled } from "../lib/splitView";
 import { normalizeLangPref, useI18n, type DictKey, type LangPref } from "../lib/i18n";
 import { createLatestRequestGate, mergedFetchedProviderModels, mergeProviderModelContextWindows, providerApiKeyEnvForSave, providerDefaultModel, providerIsConfigured, providerModelCandidates, providerModelContextWindowDrafts, providerRequiresKey, reconcileManualModels } from "../lib/providerModels";
@@ -1676,6 +1676,7 @@ type ExperimentFeatureId =
   | "feedback"
   | "localServer"
   | "pathRules"
+  | "traceAsState"
   | "autopilot";
 
 function ExperimentalSection({ s, busy, apply }: SectionProps) {
@@ -1700,6 +1701,7 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
     { id: "feedback", label: t("settings.feedback"), on: Boolean(s.experimentalFeedback) },
     { id: "localServer", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
     { id: "pathRules", label: t("settings.pathRules"), on: Boolean(s.experimentalPathRules) },
+    { id: "traceAsState", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
     { id: "autopilot", label: t("settings.autopilot"), on: Boolean(s.autopilot) },
   ];
 
@@ -1751,23 +1753,35 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
             </SettingsField>
           )}
           {selected === "sessionMonitor" && (
-            <SettingsField label={t("settings.sessionMonitor")} hint={t("settings.sessionMonitorHint")} icon={<Sparkles size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalSessionMonitor) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(async () => {
-                      await app.SetExperimentalSessionMonitor(on);
-                      setSessionMonitorEnabled(on);
-                    })}
-                  >
-                    {t(on ? "settings.sessionMonitor.on" : "settings.sessionMonitor.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
+            <>
+              <SettingsField label={t("settings.sessionMonitor")} hint={t("settings.sessionMonitorHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalSessionMonitor) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalSessionMonitor(on);
+                        setSessionMonitorEnabled(on);
+                      })}
+                    >
+                      {t(on ? "settings.sessionMonitor.on" : "settings.sessionMonitor.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.sessionMonitorOpen")} hint={t("settings.sessionMonitorOpenHint")} icon={<Sparkles size={18} />}>
+                <button
+                  type="button"
+                  className="btn btn--small"
+                  disabled={busy || !Boolean(s.experimentalSessionMonitor)}
+                  onClick={() => setSessionMonitorOpen(true)}
+                >
+                  {t("settings.sessionMonitorOpenAction")}
+                </button>
+              </SettingsField>
+            </>
           )}
           {selected === "sessionStorage" && (
             <SettingsField label={t("settings.sessionStorage")} hint={t("settings.sessionStorageHint")} icon={<Sparkles size={18} />}>
@@ -1808,23 +1822,35 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
             </SettingsField>
           )}
           {selected === "feedback" && (
-            <SettingsField label={t("settings.feedback")} hint={t("settings.feedbackHint")} icon={<Sparkles size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalFeedback) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(async () => {
-                      await app.SetExperimentalFeedback(on);
-                      setFeedbackEnabled(on);
-                    })}
-                  >
-                    {t(on ? "settings.feedback.on" : "settings.feedback.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
+            <>
+              <SettingsField label={t("settings.feedback")} hint={t("settings.feedbackHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalFeedback) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalFeedback(on);
+                        setFeedbackEnabled(on);
+                      })}
+                    >
+                      {t(on ? "settings.feedback.on" : "settings.feedback.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.feedbackOpen")} hint={t("settings.feedbackOpenHint")} icon={<Sparkles size={18} />}>
+                <button
+                  type="button"
+                  className="btn btn--small"
+                  disabled={busy || !Boolean(s.experimentalFeedback)}
+                  onClick={() => setFeedbackOpen(true)}
+                >
+                  {t("settings.feedbackOpenAction")}
+                </button>
+              </SettingsField>
+            </>
           )}
           {selected === "localServer" && (
             <SettingsField label={t("settings.localServer")} hint={t("settings.localServerHint")} icon={<Server size={18} />}>
@@ -1853,6 +1879,22 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
                     onClick={() => void apply(() => app.SetExperimentalPathRules(on))}
                   >
                     {t(on ? "settings.pathRules.on" : "settings.pathRules.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "traceAsState" && (
+            <SettingsField label={t("settings.traceAsState")} hint={t("settings.traceAsStateHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalTraceAsState) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetExperimentalTraceAsState(on))}
+                  >
+                    {t(on ? "settings.traceAsState.on" : "settings.traceAsState.off")}
                   </button>
                 ))}
               </SettingsOptions>

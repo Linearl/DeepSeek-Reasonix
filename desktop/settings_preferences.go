@@ -201,6 +201,11 @@ func (a *App) SetExperimentalPathRules(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalPathRules(enabled) })
 }
 
+// SetExperimentalTraceAsState toggles Trace-as-State compaction (task 60).
+func (a *App) SetExperimentalTraceAsState(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalTraceAsState(enabled) })
+}
+
 // SetDesktopMetrics sets whether the desktop sends aggregate desktop metrics,
 // starting or stopping the live aggregator so the toggle takes effect immediately.
 func (a *App) SetDesktopMetrics(enabled bool) error {

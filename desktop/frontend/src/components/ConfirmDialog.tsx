@@ -11,8 +11,12 @@ export type ConfirmDialogRequest = {
   // max-width than the default modal. The dialog reads the class, the CSS owns
   // the actual size.
   wide?: boolean;
-  /** Task 129: keep confirm disabled for this many ms to prevent mis-clicks. */
-  confirmDelayMs?: number;
+  /**
+   * Task 129 revision: countdown then auto-confirm. Confirm is always
+   * clickable; Cancel always aborts. When the countdown hits zero the dialog
+   * resolves true (auto-continue). Set to 0/omit for a pure manual dialog.
+   */
+  autoConfirmAfterMs?: number;
 };
 
 type PendingConfirmation = ConfirmDialogRequest & {
@@ -25,8 +29,10 @@ function ConfirmDialog({ request, onResolve }: { request: ConfirmDialogRequest; 
   const cancelRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
-  const delayMs = Math.max(0, request.confirmDelayMs ?? 0);
-  const [remainingMs, setRemainingMs] = useState(delayMs);
+  const autoMs = Math.max(0, request.autoConfirmAfterMs ?? 0);
+  const [remainingMs, setRemainingMs] = useState(autoMs);
+  const resolveRef = useRef(onResolve);
+  resolveRef.current = onResolve;
 
   useLayoutEffect(() => {
     restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -37,20 +43,22 @@ function ConfirmDialog({ request, onResolve }: { request: ConfirmDialogRequest; 
   }, []);
 
   useEffect(() => {
-    if (delayMs <= 0) return;
-    setRemainingMs(delayMs);
+    if (autoMs <= 0) return;
+    setRemainingMs(autoMs);
     const started = Date.now();
     const timer = window.setInterval(() => {
-      const left = delayMs - (Date.now() - started);
+      const left = autoMs - (Date.now() - started);
       if (left <= 0) {
         setRemainingMs(0);
         window.clearInterval(timer);
+        // Auto-confirm on timeout: user did not cancel in time.
+        resolveRef.current(true);
         return;
       }
       setRemainingMs(left);
     }, 200);
     return () => window.clearInterval(timer);
-  }, [delayMs]);
+  }, [autoMs]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -76,9 +84,8 @@ function ConfirmDialog({ request, onResolve }: { request: ConfirmDialogRequest; 
     return () => document.removeEventListener("keydown", onKeyDown, { capture: true });
   }, [onResolve]);
 
-  const confirmDisabled = remainingMs > 0;
   const secondsLeft = Math.ceil(remainingMs / 1000);
-  const confirmText = confirmDisabled
+  const confirmText = remainingMs > 0
     ? `${request.confirmLabel} (${secondsLeft}s)`
     : request.confirmLabel;
 
@@ -107,11 +114,7 @@ function ConfirmDialog({ request, onResolve }: { request: ConfirmDialogRequest; 
             ref={confirmRef}
             className={`btn btn--small ${request.tone === "danger" ? "btn--danger" : "btn--primary"}`}
             type="button"
-            disabled={confirmDisabled}
-            onClick={() => {
-              if (confirmDisabled) return;
-              onResolve(true);
-            }}
+            onClick={() => onResolve(true)}
           >
             {confirmText}
           </button>

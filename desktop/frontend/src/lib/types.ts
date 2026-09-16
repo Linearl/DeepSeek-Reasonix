@@ -2325,6 +2325,8 @@ export interface DesktopStartupSettingsView {
   experimentalLocalServer?: boolean;
   /** Path-scope rules experiment switch (task 134); off unless the user opts in. */
   experimentalPathRules?: boolean;
+  /** Trace-as-State compaction experiment (task 60); off unless the user opts in. */
+  experimentalTraceAsState?: boolean;
   bot: BotSettingsView;
   desktopLanguage: string; // "" | "en" | "zh"; empty = auto
   desktopLayoutStyle: string; // "classic" | "workbench"
