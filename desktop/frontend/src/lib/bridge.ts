@@ -743,6 +743,11 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalSplitView(enabled: boolean): Promise<void>;
   /** Conversation store: "legacy" (default) or "v4" (experimental; needs a restart). */
   SetSessionStorage(mode: string): Promise<void>;
+  /**
+   * Relaunch the desktop so boot-time settings take effect. Not the same as
+   * RestartAndUpdate: this publishes nothing, it only reopens what is on disk.
+   */
+  RestartDesktop(): Promise<void>;
   // Task 121: agent submit_feedback tool + feedback inbox panel (experimental).
   SetExperimentalFeedback(enabled: boolean): Promise<void>;
   ListFeedbackEntries(limit: number): Promise<{ at: string; kind: string; text: string; tags?: string[]; session?: string; model?: string }[]>;
@@ -4934,6 +4939,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSessionMonitor() {},
     async SetExperimentalSplitView() {},
     async SetSessionStorage() {},
+    async RestartDesktop() {},
     async SetExperimentalFeedback() {},
     async ListFeedbackEntries() { return []; },
     async ClearFeedbackEntries() {},

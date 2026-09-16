@@ -1684,6 +1684,8 @@ export const zhTW: Record<DictKey, string> = {
 "feedbackInbox.kind.other": "其他",
 "settings.splitView": "分割檢視",
 "settings.sessionStorage": "工作階段儲存",
+"settings.restartRequired": "已儲存。該設定在啟動時生效 —— 重啟後才會套用。",
+"settings.restartNow": "立即重啟",
 "settings.sessionStorageHint": "legacy（預設）：工作階段照舊讀寫 sessions/，行為與先前完全一致。v4 是雙寫 —— sessions/ 仍是 agent 持續寫入的主轉錄，同時在 sessions-v4/ 另存一份鏡像（每次落盤做一次全量替換）；閒置瀏覽歷史時優先讀 v4 那份，未命中回退 sessions/。因為兩邊都在寫，切回 legacy 不會遺失內容，v3 檔案也不會被刪除或就地改寫。需重啟生效。",
 "settings.sessionStorage.legacy": "legacy",
 "settings.sessionStorage.v4": "v4（實驗）",

@@ -181,3 +181,63 @@ func (r restartUpdaterAdapter) RestartAndUpdate(_ context.Context, sourceDir, ve
 	}
 	return "restart scheduled: the staged build was published and the app will relaunch shortly", nil
 }
+
+// RestartDesktop relaunches the desktop without publishing a staged build, for settings
+// that only take effect at boot: the session store is chosen when the v4 bridge is built
+// and boot-time tools are registered once, so both stay stale until the process restarts.
+// The alternative is telling the user to close and reopen the app, which loses unsaved
+// window state for no benefit.
+//
+// Deliberately NOT gated on experimental_restart_update. That experiment guards swapping
+// the active version - copying binaries in and moving the current.json pointer - which is
+// the destructive half. Relaunching the binary already on disk changes nothing about the
+// installation, and the settings that need it are ordinary switches rather than
+// experiments, so requiring an unrelated experiment to be enabled would be backwards.
+func (a *App) RestartDesktop() error {
+	if a == nil {
+		return fmt.Errorf("restart: no app")
+	}
+	// Same reasoning as RestartAndUpdate: a running turn owns a session write and may
+	// have an approval or ask card outstanding, so restarting through it would strand
+	// both. Refuse and let the user stop the work first.
+	a.mu.Lock()
+	busy := false
+	for _, tab := range a.tabs {
+		if tab.hasActiveRuntimeWork() {
+			busy = true
+			break
+		}
+	}
+	a.mu.Unlock()
+	if busy {
+		return fmt.Errorf("restart: a turn is running or background jobs are active; stop them first")
+	}
+
+	executable, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("restart: locate executable: %w", err)
+	}
+	installRoot, err := installlayout.ResolveInstallRoot(executable)
+	if err != nil || installRoot == "" {
+		return fmt.Errorf("restart: this build is not a versioned install, so there is no launcher to hand off to: %w", err)
+	}
+	launcherPath := filepath.Join(installRoot, installlayout.LauncherBinaryName())
+	if info, statErr := os.Lstat(launcherPath); statErr != nil || !info.Mode().IsRegular() {
+		return fmt.Errorf("restart: the launcher %s is missing from %s", installlayout.LauncherBinaryName(), installRoot)
+	}
+
+	// A silent restart reads as a dead button, so log the milestone the way the
+	// restart-and-update path does.
+	slog.Info("restart: relaunching the active version", "installRoot", installRoot)
+	if err := startDetachedLauncher(launcherPath, os.Getpid()); err != nil {
+		slog.Error("restart: launcher start failed", "err", err)
+		return fmt.Errorf("restart: start launcher: %w", err)
+	}
+
+	// Answer first, exit after: the caller is a UI action that has to get a result.
+	go func() {
+		time.Sleep(750 * time.Millisecond)
+		a.quitApp()
+	}()
+	return nil
+}

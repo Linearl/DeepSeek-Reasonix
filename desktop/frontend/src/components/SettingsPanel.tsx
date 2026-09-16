@@ -1666,6 +1666,9 @@ function thinkingModeLabel(mode: string, t: ReturnType<typeof useT>): string {
  *  compared rather than merely turned on. Task 60's features land here too.
  */
 function ExperimentalSection({ s, busy, apply }: SectionProps) {
+  // Set when a boot-time setting is saved: apply() reloads the view, so the fact that a
+  // restart is pending has to live outside the data being reloaded.
+  const [restartNeeded, setRestartNeeded] = useState(false);
   const t = useT();
   return (
     <SettingsPageShell s={s} tab="experimental" busy={busy} apply={apply}>
@@ -1705,6 +1708,19 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
           ))}
         </SettingsOptions>
       </SettingsField>
+      {restartNeeded ? (
+        <div className="banner settings-restart-banner" role="status">
+          <span>{t("settings.restartRequired")}</span>
+          <button
+            type="button"
+            className="btn btn--sm settings-restart-banner__action"
+            disabled={busy}
+            onClick={() => void apply(() => app.RestartDesktop())}
+          >
+            {t("settings.restartNow")}
+          </button>
+        </div>
+      ) : null}
       <SettingsField label={t("settings.sessionStorage")} hint={t("settings.sessionStorageHint")} icon={<Sparkles size={18} />}>
         <SettingsOptions layout="field" className="set-seg">
           {(["legacy", "v4"] as const).map((mode) => (
@@ -1712,7 +1728,10 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
               key={mode}
               className={`set-seg__btn${(s.sessionStorage === "v4" ? "v4" : "legacy") === mode ? " set-seg__btn--on" : ""}`}
               disabled={busy}
-              onClick={() => void apply(() => app.SetSessionStorage(mode))}
+              onClick={() => void apply(async () => {
+                await app.SetSessionStorage(mode);
+                setRestartNeeded(true);
+              })}
             >
               {t(mode === "v4" ? "settings.sessionStorage.v4" : "settings.sessionStorage.legacy")}
             </button>

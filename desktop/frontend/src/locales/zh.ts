@@ -2147,6 +2147,8 @@ export const zh: Record<DictKey, string> = {
 "feedbackInbox.kind.other": "其他",
 "settings.splitView": "分栏显示",
 "settings.sessionStorage": "会话存储",
+"settings.restartRequired": "已保存。该设置在启动时生效 —— 重启后才会应用。",
+"settings.restartNow": "立即重启",
 "settings.sessionStorageHint": "legacy（默认）：会话照旧读写 sessions/，行为与之前完全一致。v4 是双写 —— sessions/ 仍是 agent 持续写入的主转录，同时在 sessions-v4/ 另存一份镜像（每次落盘做一次全量替换）；空闲浏览历史时优先读 v4 那份，未命中回退 sessions/。因为两边都在写，切回 legacy 不会丢内容，v3 文件也不会被删除或就地改写。需重启生效。",
 "settings.sessionStorage.legacy": "legacy",
 "settings.sessionStorage.v4": "v4（实验）",

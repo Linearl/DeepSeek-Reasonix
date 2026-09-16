@@ -2145,6 +2145,8 @@ export const en = {
 "feedbackInbox.kind.other": "Other",
 "settings.splitView": "Split view",
 "settings.sessionStorage": "Conversation store",
+"settings.restartRequired": "Saved. This setting is applied at startup - restart to take effect.",
+"settings.restartNow": "Restart now",
 "settings.sessionStorageHint": "legacy (default): sessions are read and written in sessions/ exactly as before. v4 is a DUAL write - sessions/ stays the primary transcript the agent keeps writing, and every save is additionally mirrored into sessions-v4/ (a full replace each time); idle history browsing prefers the v4 copy and falls back to sessions/ when it misses. Because both sides are written, switching back to legacy loses nothing and no v3 file is deleted or rewritten in place. Takes effect after a restart.",
 "settings.sessionStorage.legacy": "legacy",
 "settings.sessionStorage.v4": "v4 (experimental)",
