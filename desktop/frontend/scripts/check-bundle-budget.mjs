@@ -334,7 +334,8 @@ for (const path of localeChunks) {
   // zh 71.3 / zh-TW 72.1; ratchet both one decimal: zh 71.5, zh-TW 72.5.
   // Task 60 UI + experiment openers add locale keys; zh measures 71.6 KiB
   // (past 71.5). Same one-decimal ratchet: zh 72.0; zh-TW keeps 72.5.
-  const budget = name.startsWith("zh-TW-") ? 72.5 * 1024 : 72.0 * 1024;
+  // Task 115 dream UI keys push zh-TW to 72.7 (past 72.5). Ratchet zh-TW to 73.0.
+  const budget = name.startsWith("zh-TW-") ? 73.0 * 1024 : 72.0 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
