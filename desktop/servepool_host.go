@@ -177,15 +177,50 @@ func loadOrCreateGatewayToken() string {
 	return tok
 }
 
-// gatewayPort picks the gateway port: REASONIX_GATEWAY_PORT env override or
-// the default 18789 (the desktop's internal serve keeps 8787).
+// gatewayPort picks the gateway port: a persisted settings port (task 130),
+// then REASONIX_GATEWAY_PORT env override, then the default 18789.
 func gatewayPort() int {
+	if p := servepoolSettingsPort(); p > 0 {
+		return p
+	}
 	if v := os.Getenv("REASONIX_GATEWAY_PORT"); v != "" {
 		if p, err := strconv.Atoi(v); err == nil && p > 0 && p < 65536 {
 			return p
 		}
 	}
 	return 18789
+}
+
+type servepoolSettings struct {
+	Enabled bool `json:"enabled"`
+	Port    int  `json:"port,omitempty"`
+}
+
+func loadServePoolSettings() servepoolSettings {
+	var s servepoolSettings
+	b, err := os.ReadFile(servepoolSettingsPath())
+	if err != nil {
+		return s
+	}
+	_ = json.Unmarshal(b, &s)
+	return s
+}
+
+func servepoolSettingsPort() int {
+	p := loadServePoolSettings().Port
+	if p > 0 && p < 65536 {
+		return p
+	}
+	return 0
+}
+
+func saveServePoolSettings(s servepoolSettings) error {
+	path := servepoolSettingsPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	b, _ := json.Marshal(s)
+	return os.WriteFile(path, b, 0o600)
 }
 
 // servepoolSettingsPath returns the path of the servepool enablement file that
@@ -196,26 +231,13 @@ func servepoolSettingsPath() string {
 
 // servepoolEnabled reports whether the remote gateway should run (default off).
 func servepoolEnabled() bool {
-	b, err := os.ReadFile(servepoolSettingsPath())
-	if err != nil {
-		return false
-	}
-	var s struct {
-		Enabled bool `json:"enabled"`
-	}
-	if json.Unmarshal(b, &s) != nil {
-		return false
-	}
-	return s.Enabled
+	return loadServePoolSettings().Enabled
 }
 
 func saveServePoolEnabled(enabled bool) error {
-	path := servepoolSettingsPath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	b, _ := json.Marshal(map[string]bool{"enabled": enabled})
-	return os.WriteFile(path, b, 0o600)
+	s := loadServePoolSettings()
+	s.Enabled = enabled
+	return saveServePoolSettings(s)
 }
 
 // SetServePoolEnabled enables or disables the remote gateway from the settings
@@ -228,6 +250,28 @@ func (a *App) SetServePoolEnabled(enabled bool) error {
 	if enabled {
 		a.startServePool(context.Background())
 	}
+	return nil
+}
+
+// SetServePoolPort persists the gateway listen port (task 130) and restarts
+// the gateway when it is enabled so the new port takes effect immediately.
+func (a *App) SetServePoolPort(port int) error {
+	if port < 1 || port > 65535 {
+		return fmt.Errorf("port must be between 1 and 65535")
+	}
+	s := loadServePoolSettings()
+	if s.Port == port {
+		return nil
+	}
+	s.Port = port
+	if err := saveServePoolSettings(s); err != nil {
+		return err
+	}
+	if !s.Enabled {
+		return nil
+	}
+	a.closeServePool()
+	a.startServePool(context.Background())
 	return nil
 }
 

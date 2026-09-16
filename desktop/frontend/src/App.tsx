@@ -1,4 +1,5 @@
 import { ManagementSurface } from "./components/ManagementSurface";
+import { useConfirmDialog } from "./components/ConfirmDialog";
 import { useManagementWorkspace } from "./lib/useManagementWorkspace";
 import { loadSplitState, persistSplitState, type SplitState } from "./lib/splitView";
 import { useAppNavigationStore } from "./store/appNavigation";
@@ -3160,15 +3161,26 @@ export default function App() {
     await handleSend(displayText, submitText);
   }, [splitState.secondaryTabId, splitTarget, handleSend, activeTabId]);
 
-  // Restart-and-update (task 81). An empty source directory lets the backend use its
-  // InstallRoot/staging convention, so a local build only has to be dropped there.
+  // Restart-and-update (task 81 / 129). An empty source directory lets the
+  // backend use its InstallRoot/staging convention. Task 129: rename the action
+  // to 快速切换版本 and require a 3s-delayed confirm so a status-bar mis-click
+  // cannot swap the installed build.
+  const { confirm: confirmRestartUpdate, dialog: restartUpdateDialog } = useConfirmDialog();
   const handleRestartUpdate = useCallback(async () => {
+    const ok = await confirmRestartUpdate({
+      title: t("status.restartUpdateTitle"),
+      message: t("status.restartUpdateConfirmBody"),
+      confirmLabel: t("status.restartUpdateConfirm"),
+      cancelLabel: t("common.cancel"),
+      confirmDelayMs: 3000,
+    });
+    if (!ok) return;
     try {
       await app.RestartAndUpdate("", "");
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), "error");
     }
-  }, [showToast]);
+  }, [confirmRestartUpdate, showToast, t]);
 
   const visibleTranscriptItems = visibleTranscriptSurface?.items ?? displayItems;
   const visibleTranscriptTabId = visibleTranscriptSurface?.tabId ?? activeTabId;
@@ -5318,6 +5330,7 @@ export default function App() {
           syncMaximised={syncMainWindowMaximised}
         />
       )}
+      {restartUpdateDialog}
     </div>
     </UpdaterProvider>
     </ShellExpandProvider>

@@ -3823,6 +3823,123 @@ a[href] {
   background: color-mix(in srgb, var(--bg-soft) 76%, var(--bg-elev));
   border: 1px solid var(--border-soft);
 }
+/* Task 131: sandbox write-directory tiers (project / session / global). */
+.sandbox-write-roots {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-soft) 70%, var(--bg-elev));
+}
+.sandbox-write-roots__title {
+  color: var(--fg);
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.sandbox-write-roots__hint {
+  margin: 0 0 12px;
+  color: var(--fg-faint);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.sandbox-write-roots__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+}
+.sandbox-write-roots__col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sandbox-write-roots__col-hint {
+  margin: 0;
+  color: var(--fg-faint);
+  font-size: 12px;
+  line-height: 1.4;
+}
+@media (max-width: 900px) {
+  .sandbox-write-roots__grid {
+    grid-template-columns: 1fr;
+  }
+}
+/* Task 132: experimental features left rail + detail pane. */
+.experimental-layout {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.experimental-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: sticky;
+  top: 0;
+}
+.experimental-rail__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.experimental-rail__item:hover {
+  background: color-mix(in srgb, var(--bg-elev) 80%, transparent);
+  color: var(--fg);
+}
+.experimental-rail__item--active {
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-elev));
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--fg);
+}
+.experimental-rail__item--off .experimental-rail__label {
+  opacity: 0.72;
+}
+.experimental-rail__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--fg-faint);
+  opacity: 0.45;
+}
+.experimental-rail__dot--on {
+  background: var(--accent);
+  opacity: 1;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.experimental-rail__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.experimental-pane {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+@media (max-width: 800px) {
+  .experimental-layout {
+    grid-template-columns: 1fr;
+  }
+  .experimental-rail {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
 /* Task 112: structured completion hand-off card at the answer tail. */
 .completion-report {
   margin-top: 10px;

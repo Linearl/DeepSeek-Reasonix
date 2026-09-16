@@ -2321,6 +2321,8 @@ export interface DesktopStartupSettingsView {
   experimentalSplitView?: boolean;
   /** Feedback inbox experiment switch (task 121); off unless the user opts in. */
   experimentalFeedback?: boolean;
+  /** Local-server page experiment switch (task 130); off unless the user opts in. */
+  experimentalLocalServer?: boolean;
   bot: BotSettingsView;
   desktopLanguage: string; // "" | "en" | "zh"; empty = auto
   desktopLayoutStyle: string; // "classic" | "workbench"

@@ -11,6 +11,8 @@ export type ConfirmDialogRequest = {
   // max-width than the default modal. The dialog reads the class, the CSS owns
   // the actual size.
   wide?: boolean;
+  /** Task 129: keep confirm disabled for this many ms to prevent mis-clicks. */
+  confirmDelayMs?: number;
 };
 
 type PendingConfirmation = ConfirmDialogRequest & {
@@ -23,6 +25,8 @@ function ConfirmDialog({ request, onResolve }: { request: ConfirmDialogRequest; 
   const cancelRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const delayMs = Math.max(0, request.confirmDelayMs ?? 0);
+  const [remainingMs, setRemainingMs] = useState(delayMs);
 
   useLayoutEffect(() => {
     restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -31,6 +35,22 @@ function ConfirmDialog({ request, onResolve }: { request: ConfirmDialogRequest; 
       if (restoreFocusRef.current?.isConnected) restoreFocusRef.current.focus();
     };
   }, []);
+
+  useEffect(() => {
+    if (delayMs <= 0) return;
+    setRemainingMs(delayMs);
+    const started = Date.now();
+    const timer = window.setInterval(() => {
+      const left = delayMs - (Date.now() - started);
+      if (left <= 0) {
+        setRemainingMs(0);
+        window.clearInterval(timer);
+        return;
+      }
+      setRemainingMs(left);
+    }, 200);
+    return () => window.clearInterval(timer);
+  }, [delayMs]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -55,6 +75,12 @@ function ConfirmDialog({ request, onResolve }: { request: ConfirmDialogRequest; 
     document.addEventListener("keydown", onKeyDown, { capture: true });
     return () => document.removeEventListener("keydown", onKeyDown, { capture: true });
   }, [onResolve]);
+
+  const confirmDisabled = remainingMs > 0;
+  const secondsLeft = Math.ceil(remainingMs / 1000);
+  const confirmText = confirmDisabled
+    ? `${request.confirmLabel} (${secondsLeft}s)`
+    : request.confirmLabel;
 
   return createPortal(
     <div
@@ -81,9 +107,13 @@ function ConfirmDialog({ request, onResolve }: { request: ConfirmDialogRequest; 
             ref={confirmRef}
             className={`btn btn--small ${request.tone === "danger" ? "btn--danger" : "btn--primary"}`}
             type="button"
-            onClick={() => onResolve(true)}
+            disabled={confirmDisabled}
+            onClick={() => {
+              if (confirmDisabled) return;
+              onResolve(true);
+            }}
           >
-            {request.confirmLabel}
+            {confirmText}
           </button>
         </div>
       </div>

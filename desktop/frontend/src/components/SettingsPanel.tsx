@@ -19,7 +19,7 @@ import { catalogForPreset } from "../lib/providerCatalog";
 import { ProviderCatalogPicker, type CatalogChoice } from "./ProviderCatalogPicker";
 import { Eye, EyeOff, Files } from "lucide-react";
 import { lazy, memo, Suspense, startTransition, useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { ArrowRight, Check, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, Volume2, Zap } from "lucide-react";
+import { ArrowRight, Check, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, Server, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, Volume2, Zap } from "lucide-react";
 import { asArray } from "../lib/array";
 import { ShellInterpreterFields } from "./SettingsShellSupport";
 import { CHANNEL_ICONS } from "./channelIcons";
@@ -391,7 +391,10 @@ export function SettingsPanel({
   // These pages need SettingsView; capability pages load their own data.
   const needsSettings = tab === "general" || tab === "models" || tab === "providers" || tab === "model-stats" || tab === "bots" || tab === "subagents" || tab === "network" || tab === "permissions" || tab === "sandbox" || tab === "appearance" || tab === "updates";
   const lazySettingsPageFallback = <div className="empty">{t("settings.loading")}</div>;
-  const settingsNavigationItems = useMemo(() => SETTINGS_NAV_TABS.map((id) => ({
+  const settingsNavigationItems = useMemo(() => SETTINGS_NAV_TABS
+    // Task 130: the local-server page stays hidden until the experiment is on.
+    .filter((id) => id !== "localserver" || Boolean(s?.experimentalLocalServer))
+    .map((id) => ({
     id,
     label: settingsTabLabel(id, t),
     meta: s ? settingsTabMeta(id, s, t) : "",
@@ -1659,166 +1662,226 @@ function thinkingModeLabel(mode: string, t: ReturnType<typeof useT>): string {
       return t("settings.thinkingMode.auto");
   }
 }
-/** ExperimentalSection hosts opt-in capabilities behind one switch each.
+/** ExperimentalSection hosts opt-in capabilities behind one switch each (task 132).
  *
- *  Keeping them here rather than inside the feature area they affect is the point:
- *  with the switch off the original behaviour is untouched, so a capability can be
- *  compared rather than merely turned on. Task 60's features land here too.
+ *  Left rail lists one feature per row with an on/off dot; the right pane holds
+ *  that feature's controls. With a switch off the original behaviour is untouched,
+ *  so a capability can be compared rather than merely turned on.
  */
+type ExperimentFeatureId =
+  | "restartUpdate"
+  | "sessionMonitor"
+  | "sessionStorage"
+  | "splitView"
+  | "feedback"
+  | "localServer"
+  | "autopilot";
+
 function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Set when a boot-time setting is saved: apply() reloads the view, so the fact that a
   // restart is pending has to live outside the data being reloaded.
   const [restartNeeded, setRestartNeeded] = useState(false);
+  const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
   const t = useT();
+
+  const features: Array<{ id: ExperimentFeatureId; label: string; on: boolean }> = [
+    { id: "restartUpdate", label: t("settings.restartUpdate"), on: Boolean(s.experimentalRestartUpdate) },
+    { id: "sessionMonitor", label: t("settings.sessionMonitor"), on: Boolean(s.experimentalSessionMonitor) },
+    { id: "sessionStorage", label: t("settings.sessionStorage"), on: s.sessionStorage === "v4" },
+    { id: "splitView", label: t("settings.splitView"), on: Boolean(s.experimentalSplitView) },
+    { id: "feedback", label: t("settings.feedback"), on: Boolean(s.experimentalFeedback) },
+    { id: "localServer", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
+    { id: "autopilot", label: t("settings.autopilot"), on: Boolean(s.autopilot) },
+  ];
+
   return (
     <SettingsPageShell s={s} tab="experimental" busy={busy} apply={apply}>
-      <SettingsField label={t("settings.experimentalIntro")} hint={t("settings.experimentalIntroHint")} icon={<Sparkles size={18} />}>
-        <span />
-      </SettingsField>
-      <SettingsField label={t("settings.restartUpdate")} hint={t("settings.restartUpdateHint")} icon={<RefreshCw size={18} />}>
-        <SettingsOptions layout="field" className="set-seg">
-          {[false, true].map((on) => (
+      <div className="experimental-layout">
+        <nav className="experimental-rail" aria-label={t("settings.experimentalIntro")}>
+          {features.map((feature) => (
             <button
-              key={String(on)}
-              className={`set-seg__btn${Boolean(s.experimentalRestartUpdate) === on ? " set-seg__btn--on" : ""}`}
-              disabled={busy}
-              onClick={() => void apply(() => app.SetExperimentalRestartUpdate(on))}
+              key={feature.id}
+              type="button"
+              className={`experimental-rail__item${selected === feature.id ? " experimental-rail__item--active" : ""}${feature.on ? "" : " experimental-rail__item--off"}`}
+              aria-current={selected === feature.id ? "true" : undefined}
+              onClick={() => setSelected(feature.id)}
             >
-              {t(on ? "settings.restartUpdate.on" : "settings.restartUpdate.off")}
+              <span className={`experimental-rail__dot${feature.on ? " experimental-rail__dot--on" : ""}`} aria-hidden="true" />
+              <span className="experimental-rail__label">{feature.label}</span>
             </button>
           ))}
-        </SettingsOptions>
-      </SettingsField>
-      <SettingsField label={t("settings.sessionMonitor")} hint={t("settings.sessionMonitorHint")} icon={<Sparkles size={18} />}>
-        <SettingsOptions layout="field" className="set-seg">
-          {[false, true].map((on) => (
-            <button
-              key={String(on)}
-              className={`set-seg__btn${Boolean(s.experimentalSessionMonitor) === on ? " set-seg__btn--on" : ""}`}
-              disabled={busy}
-              onClick={() => void apply(async () => {
-                await app.SetExperimentalSessionMonitor(on);
-                // Apply locally too: the rail entry must appear without waiting for the
-                // next startup sync (the write and the read are separate round trips).
-                setSessionMonitorEnabled(on);
-              })}
-            >
-              {t(on ? "settings.sessionMonitor.on" : "settings.sessionMonitor.off")}
-            </button>
-          ))}
-        </SettingsOptions>
-      </SettingsField>
-      {restartNeeded ? (
-        <div className="banner settings-restart-banner" role="status">
-          <span>{t("settings.restartRequired")}</span>
-          <button
-            type="button"
-            className="btn btn--sm settings-restart-banner__action"
-            disabled={busy}
-            onClick={() => void apply(() => app.RestartDesktop())}
-          >
-            {t("settings.restartNow")}
-          </button>
+        </nav>
+        <div className="experimental-pane">
+          {restartNeeded ? (
+            <div className="banner settings-restart-banner" role="status">
+              <span>{t("settings.restartRequired")}</span>
+              <button
+                type="button"
+                className="btn btn--sm settings-restart-banner__action"
+                disabled={busy}
+                onClick={() => void apply(() => app.RestartDesktop())}
+              >
+                {t("settings.restartNow")}
+              </button>
+            </div>
+          ) : null}
+          {selected === "restartUpdate" && (
+            <SettingsField label={t("settings.restartUpdate")} hint={t("settings.restartUpdateHint")} icon={<RefreshCw size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalRestartUpdate) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetExperimentalRestartUpdate(on))}
+                  >
+                    {t(on ? "settings.restartUpdate.on" : "settings.restartUpdate.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "sessionMonitor" && (
+            <SettingsField label={t("settings.sessionMonitor")} hint={t("settings.sessionMonitorHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalSessionMonitor) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalSessionMonitor(on);
+                      setSessionMonitorEnabled(on);
+                    })}
+                  >
+                    {t(on ? "settings.sessionMonitor.on" : "settings.sessionMonitor.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "sessionStorage" && (
+            <SettingsField label={t("settings.sessionStorage")} hint={t("settings.sessionStorageHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {(["legacy", "v4"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    className={`set-seg__btn${(s.sessionStorage === "v4" ? "v4" : "legacy") === mode ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetSessionStorage(mode);
+                      setRestartNeeded(true);
+                    })}
+                  >
+                    {t(mode === "v4" ? "settings.sessionStorage.v4" : "settings.sessionStorage.legacy")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "splitView" && (
+            <SettingsField label={t("settings.splitView")} hint={t("settings.splitViewHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalSplitView) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalSplitView(on);
+                      setSplitViewEnabled(on);
+                    })}
+                  >
+                    {t(on ? "settings.splitView.on" : "settings.splitView.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "feedback" && (
+            <SettingsField label={t("settings.feedback")} hint={t("settings.feedbackHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalFeedback) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalFeedback(on);
+                      setFeedbackEnabled(on);
+                    })}
+                  >
+                    {t(on ? "settings.feedback.on" : "settings.feedback.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "localServer" && (
+            <SettingsField label={t("settings.localServer")} hint={t("settings.localServerHint")} icon={<Server size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalLocalServer) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetExperimentalLocalServer(on))}
+                  >
+                    {t(on ? "settings.localServer.on" : "settings.localServer.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "autopilot" && (
+            <>
+              <SettingsField label={t("settings.autopilot")} hint={t("settings.autopilotHint")} icon={<ShieldCheck size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.autopilot) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => {
+                        const runtime = String(s.autopilotMaxRuntime ?? "").trim();
+                        return app.SetDesktopAutopilot(
+                          on,
+                          on && runtime === "" ? DEFAULT_AUTOPILOT_MAX_RUNTIME : runtime,
+                          String(s.autopilotApprovalGrace ?? ""),
+                        );
+                      })}
+                    >
+                      {t(on ? "settings.autopilot.on" : "settings.autopilot.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.autopilotMaxRuntime")} hint={t("settings.autopilotMaxRuntimeHint")} icon={<ShieldCheck size={18} />}>
+                <input
+                  className="set-input"
+                  type="text"
+                  defaultValue={String(s.autopilotMaxRuntime ?? "")}
+                  disabled={busy}
+                  placeholder="8h"
+                  aria-label={t("settings.autopilotMaxRuntime")}
+                  onBlur={(e) => void apply(() => app.SetDesktopAutopilot(Boolean(s.autopilot), e.target.value, String(s.autopilotApprovalGrace ?? "")))}
+                />
+              </SettingsField>
+              <SettingsField label={t("settings.autopilotApprovalGrace")} hint={t("settings.autopilotApprovalGraceHint")} icon={<ShieldCheck size={18} />}>
+                <input
+                  className="set-input"
+                  type="text"
+                  defaultValue={String(s.autopilotApprovalGrace ?? "")}
+                  disabled={busy}
+                  placeholder="15s"
+                  aria-label={t("settings.autopilotApprovalGrace")}
+                  onBlur={(e) => void apply(() => app.SetDesktopAutopilot(Boolean(s.autopilot), String(s.autopilotMaxRuntime ?? ""), e.target.value))}
+                />
+              </SettingsField>
+            </>
+          )}
         </div>
-      ) : null}
-      <SettingsField label={t("settings.sessionStorage")} hint={t("settings.sessionStorageHint")} icon={<Sparkles size={18} />}>
-        <SettingsOptions layout="field" className="set-seg">
-          {(["legacy", "v4"] as const).map((mode) => (
-            <button
-              key={mode}
-              className={`set-seg__btn${(s.sessionStorage === "v4" ? "v4" : "legacy") === mode ? " set-seg__btn--on" : ""}`}
-              disabled={busy}
-              onClick={() => void apply(async () => {
-                await app.SetSessionStorage(mode);
-                setRestartNeeded(true);
-              })}
-            >
-              {t(mode === "v4" ? "settings.sessionStorage.v4" : "settings.sessionStorage.legacy")}
-            </button>
-          ))}
-        </SettingsOptions>
-      </SettingsField>
-      <SettingsField label={t("settings.splitView")} hint={t("settings.splitViewHint")} icon={<Sparkles size={18} />}>
-        <SettingsOptions layout="field" className="set-seg">
-          {[false, true].map((on) => (
-            <button
-              key={String(on)}
-              className={`set-seg__btn${Boolean(s.experimentalSplitView) === on ? " set-seg__btn--on" : ""}`}
-              disabled={busy}
-              onClick={() => void apply(async () => {
-                await app.SetExperimentalSplitView(on);
-                setSplitViewEnabled(on);
-              })}
-            >
-              {t(on ? "settings.splitView.on" : "settings.splitView.off")}
-            </button>
-          ))}
-        </SettingsOptions>
-      </SettingsField>
-      <SettingsField label={t("settings.feedback")} hint={t("settings.feedbackHint")} icon={<Sparkles size={18} />}>
-        <SettingsOptions layout="field" className="set-seg">
-          {[false, true].map((on) => (
-            <button
-              key={String(on)}
-              className={`set-seg__btn${Boolean(s.experimentalFeedback) === on ? " set-seg__btn--on" : ""}`}
-              disabled={busy}
-              onClick={() => void apply(async () => {
-                await app.SetExperimentalFeedback(on);
-                setFeedbackEnabled(on);
-              })}
-            >
-              {t(on ? "settings.feedback.on" : "settings.feedback.off")}
-            </button>
-          ))}
-        </SettingsOptions>
-      </SettingsField>
-      <SettingsField label={t("settings.autopilot")} hint={t("settings.autopilotHint")} icon={<ShieldCheck size={18} />}>
-        <SettingsOptions layout="field" className="set-seg">
-          {[false, true].map((on) => (
-            <button
-              key={String(on)}
-              className={`set-seg__btn${Boolean(s.autopilot) === on ? " set-seg__btn--on" : ""}`}
-              disabled={busy}
-              onClick={() => void apply(() => {
-                // A bound is required: an unattended run without one is refused when
-                // the session starts (the same refusal the CLI makes), so enabling the
-                // switch supplies a default the user can then edit instead of leaving
-                // the mode looking enabled but silently inactive.
-                const runtime = String(s.autopilotMaxRuntime ?? "").trim();
-                return app.SetDesktopAutopilot(
-                  on,
-                  on && runtime === "" ? DEFAULT_AUTOPILOT_MAX_RUNTIME : runtime,
-                  String(s.autopilotApprovalGrace ?? ""),
-                );
-              })}
-            >
-              {t(on ? "settings.autopilot.on" : "settings.autopilot.off")}
-            </button>
-          ))}
-        </SettingsOptions>
-      </SettingsField>
-      <SettingsField label={t("settings.autopilotMaxRuntime")} hint={t("settings.autopilotMaxRuntimeHint")} icon={<ShieldCheck size={18} />}>
-        <input
-          className="set-input"
-          type="text"
-          defaultValue={String(s.autopilotMaxRuntime ?? "")}
-          disabled={busy}
-          placeholder="8h"
-          aria-label={t("settings.autopilotMaxRuntime")}
-          onBlur={(e) => void apply(() => app.SetDesktopAutopilot(Boolean(s.autopilot), e.target.value, String(s.autopilotApprovalGrace ?? "")))}
-        />
-      </SettingsField>
-      <SettingsField label={t("settings.autopilotApprovalGrace")} hint={t("settings.autopilotApprovalGraceHint")} icon={<ShieldCheck size={18} />}>
-        <input
-          className="set-input"
-          type="text"
-          defaultValue={String(s.autopilotApprovalGrace ?? "")}
-          disabled={busy}
-          placeholder="15s"
-          aria-label={t("settings.autopilotApprovalGrace")}
-          onBlur={(e) => void apply(() => app.SetDesktopAutopilot(Boolean(s.autopilot), String(s.autopilotMaxRuntime ?? ""), e.target.value))}
-        />
-      </SettingsField>
+      </div>
     </SettingsPageShell>
   );
 }
@@ -7122,7 +7185,7 @@ function ruleListLabel(list: string, t: ReturnType<typeof useT>): string {
     case "allow":
       return t("settings.ruleAllow");
     case "allow_write":
-      return t("settings.ruleAllowWrite");
+      return t("settings.projectWriteRoots");
     default:
       return list;
   }
@@ -7482,15 +7545,32 @@ function SandboxSection({ s, busy, apply, windows }: SectionProps & { windows: b
           </div>
         </div>
       </SettingsField>
-      <RuleList
-        list="allow_write"
-        rules={sb.allowWrite}
-        busy={busy}
-        onAdd={async (d) => { await set({ allowWrite: [...sb.allowWrite, d] }); }}
-        onRemove={async (d) => { await set({ allowWrite: sb.allowWrite.filter((x) => x !== d) }); }}
-      />
-      <SessionWriteRootsSection t={t} busy={busy} />
-      <GlobalWriteRootsSection t={t} busy={busy} />
+      {/* Task 131: the three write-directory tiers share one explanation and a
+          two-column layout so their scope (project / session / global) is obvious. */}
+      <div className="sandbox-write-roots" role="group" aria-label={t("settings.writeRootsGroup")}>
+        <div className="sandbox-write-roots__intro">
+          <div className="sandbox-write-roots__title">{t("settings.writeRootsGroup")}</div>
+          <p className="sandbox-write-roots__hint">{t("settings.writeRootsGroupHint")}</p>
+        </div>
+        <div className="sandbox-write-roots__grid">
+          <div className="sandbox-write-roots__col">
+            <RuleList
+              list="allow_write"
+              rules={sb.allowWrite}
+              busy={busy}
+              onAdd={async (d) => { await set({ allowWrite: [...sb.allowWrite, d] }); }}
+              onRemove={async (d) => { await set({ allowWrite: sb.allowWrite.filter((x) => x !== d) }); }}
+            />
+            <p className="sandbox-write-roots__col-hint">{t("settings.projectWriteRootsHint")}</p>
+          </div>
+          <div className="sandbox-write-roots__col">
+            <SessionWriteRootsSection t={t} busy={busy} />
+          </div>
+          <div className="sandbox-write-roots__col">
+            <GlobalWriteRootsSection t={t} busy={busy} />
+          </div>
+        </div>
+      </div>
     </SettingsSection>
   );
 }

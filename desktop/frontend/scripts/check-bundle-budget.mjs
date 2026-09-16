@@ -327,7 +327,10 @@ for (const path of localeChunks) {
   // 2026-09-16: the v4 storage switch copy had to say which directory stops receiving
   // writes; that pushed zh to 70.6 KiB, so the same one-decimal ratchet applies (zh-TW
   // keeps its 71.5 ceiling).
-  const budget = name.startsWith("zh-TW-") ? 71.5 * 1024 : 71.0 * 1024;
+  // Wave3 UI settings batch (129/136 rename copy, 130 local-server, 131 write-root
+  // tiers, 132 experiment rail labels) pushed zh-TW to 71.8 KiB and zh to an exact
+  // 71.0 boundary; ratchet both one decimal (zh 71.5, zh-TW 72.0).
+  const budget = name.startsWith("zh-TW-") ? 72.0 * 1024 : 71.5 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0

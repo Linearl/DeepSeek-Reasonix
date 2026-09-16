@@ -48,6 +48,7 @@ export function LocalServerPage() {
   const [koRaw, setKoRaw] = useState("");
   const [copied, setCopied] = useState(false);
   const [showToken, setShowToken] = useState(false);
+  const [portDraft, setPortDraft] = useState("");
 
   // failWith renders the classified cause and keeps the raw text beside it: the
   // category is what the user acts on, the detail is what they paste in a report.
@@ -64,6 +65,7 @@ export function LocalServerPage() {
     try {
       const s = await app.ServePoolStatus();
       setStatus(s);
+      setPortDraft(String(s.port || ""));
       setKo("");
       setKoRaw("");
     } catch (e) {
@@ -96,6 +98,26 @@ export function LocalServerPage() {
       setTimeout(() => setCopied(false), 1500);
     } catch {
       setKo(t("localserver.copyFailed"));
+    }
+  };
+
+  // Task 130: persist the port and restart the gateway when it is enabled.
+  const savePort = async () => {
+    if (!status || busy) return;
+    const next = Number.parseInt(String(portDraft).trim(), 10);
+    if (!Number.isFinite(next) || next < 1 || next > 65535) {
+      setKo(t("localserver.portInvalid"));
+      return;
+    }
+    if (next === status.port) return;
+    setBusy(true);
+    try {
+      await app.SetServePoolPort(next);
+      await refresh();
+    } catch (e) {
+      failWith(e);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -146,6 +168,28 @@ export function LocalServerPage() {
         <div className="settings-field">
           <div className="settings-field__label">{t("localserver.status")}</div>
           <div className="settings-field__value">{running ? t("localserver.running") : t("localserver.off")}</div>
+        </div>
+
+        <div className="settings-field">
+          <div className="settings-field__label">{t("localserver.port")}</div>
+          <div className="settings-field__value" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              className="mem-input"
+              type="number"
+              min={1}
+              max={65535}
+              value={portDraft}
+              disabled={busy}
+              onChange={(e) => setPortDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void savePort(); }}
+              style={{ width: 120 }}
+              aria-label={t("localserver.port")}
+            />
+            <button className="btn btn--small" type="button" disabled={busy || !portDraft} onClick={() => void savePort()}>
+              {t("localserver.savePort")}
+            </button>
+          </div>
+          <small>{t("localserver.portHint")}</small>
         </div>
 
         <div className="settings-field">
