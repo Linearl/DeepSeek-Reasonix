@@ -65,6 +65,14 @@ export interface TranscriptRecoveryDiagnostic {
   lastReason?: string;
 }
 
+// Task 137: bounded-preview / DOM-budget counters. Content-free — only
+// aggregate counts and the budget numbers themselves.
+export interface ResourceBudgetDiagnostic {
+  toolPreviewTruncations: number;
+  markdownDomRejections: number;
+  markdownTableCellClamps: number;
+}
+
 // activationFailureClass maps an activation error onto a closed label set so
 // reports never carry the error text itself (which can echo session state).
 export function activationFailureClass(error: string | undefined): string {
@@ -93,6 +101,13 @@ let mountedRows: MountedRowsDiagnostic = { mounted: 0, total: 0 };
 
 const transcriptRecovery: TranscriptRecoveryDiagnostic = { done: 0, cancelled: 0, expired: 0 };
 let transcriptRecoverySeen = false;
+
+const resourceBudget: ResourceBudgetDiagnostic = {
+  toolPreviewTruncations: 0,
+  markdownDomRejections: 0,
+  markdownTableCellClamps: 0,
+};
+let resourceBudgetSeen = false;
 
 type MarkdownWorkerProvider = () => MarkdownWorkerDiagnostic;
 type TranscriptCacheProvider = () => TranscriptCacheDiagnostic;
@@ -174,6 +189,24 @@ export function noteTranscriptRecoveryTerminal(state: { outcome: "done" | "cance
   transcriptRecoverySeen = true;
 }
 
+/** Task 137: a tool payload preview was truncated to its byte/block budget. */
+export function noteToolPreviewTruncation(): void {
+  resourceBudget.toolPreviewTruncations += 1;
+  resourceBudgetSeen = true;
+}
+
+/** Task 137: a markdown block was replaced by a placeholder (DOM budget). */
+export function noteMarkdownDomRejection(): void {
+  resourceBudget.markdownDomRejections += 1;
+  resourceBudgetSeen = true;
+}
+
+/** Task 137: a virtual table dropped trailing rows to stay inside the cell budget. */
+export function noteMarkdownTableCellClamp(): void {
+  resourceBudget.markdownTableCellClamps += 1;
+  resourceBudgetSeen = true;
+}
+
 /** Registered by the lazy markdown-worker chunk at module load. */
 export function registerMarkdownWorkerDiagnostics(provider: MarkdownWorkerProvider): void {
   markdownWorkerProvider = provider;
@@ -200,6 +233,7 @@ export interface SessionPipelineDiagnostics {
   transcriptRecovery?: TranscriptRecoveryDiagnostic;
   markdownWorker?: MarkdownWorkerDiagnostic;
   transcriptCache?: TranscriptCacheDiagnostic;
+  resourceBudget?: ResourceBudgetDiagnostic;
 }
 
 function deriveActivation(entry: ActivationDiagnostic): SessionPipelineDiagnostics["activation"] {
@@ -230,6 +264,7 @@ export function sessionPipelineDiagnostics(): SessionPipelineDiagnostics {
   }
   if (mountedRows.mounted > 0 || mountedRows.total > 0) out.mountedRows = { ...mountedRows };
   if (transcriptRecoverySeen) out.transcriptRecovery = { ...transcriptRecovery };
+  if (resourceBudgetSeen) out.resourceBudget = { ...resourceBudget };
   if (markdownWorkerProvider) {
     try {
       out.markdownWorker = markdownWorkerProvider();
@@ -274,4 +309,8 @@ export function resetSessionDiagnostics(): void {
   transcriptRecovery.lastOutcome = undefined;
   transcriptRecovery.lastReason = undefined;
   transcriptRecoverySeen = false;
+  resourceBudget.toolPreviewTruncations = 0;
+  resourceBudget.markdownDomRejections = 0;
+  resourceBudget.markdownTableCellClamps = 0;
+  resourceBudgetSeen = false;
 }
