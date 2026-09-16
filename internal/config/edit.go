@@ -482,6 +482,14 @@ func (c *Config) SetExperimentalFeedback(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalParallelFullAccess toggles trusted write access to managed
+// worktree roots (task 127). Off by default so production confinement is
+// unchanged; on only widens confine to those roots, never globally.
+func (c *Config) SetExperimentalParallelFullAccess(enabled bool) error {
+	c.Desktop.ExperimentalParallelFullAccess = enabled
+	return nil
+}
+
 // SetDesktopMetrics sets whether the desktop sends aggregate desktop metrics.
 func (c *Config) SetDesktopMetrics(enabled bool) error {
 	c.Desktop.Metrics = &enabled

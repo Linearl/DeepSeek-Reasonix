@@ -41,8 +41,13 @@ type DesktopConfig struct {
 	// ExperimentalFeedback exposes the agent submit_feedback tool and the desktop
 	// "意见箱" panel (task 121). It ships off: feedback is a local inbox, not a
 	// product surface, so both the tool and the viewer stay behind an opt-in.
-	ExperimentalFeedback   bool   `toml:"experimental_feedback"`
-	AutopilotMaxRuntime    string `toml:"autopilot_max_runtime"`    // Go duration; required when autopilot is on
+	ExperimentalFeedback bool `toml:"experimental_feedback"`
+	// ExperimentalParallelFullAccess trusts product-managed worktree roots as
+	// write surfaces for the parent session and sub-agent write_paths (task 127).
+	// It ships off so production confinement is unchanged. Env
+	// REASONIX_PARALLEL_FULL_ACCESS=1 is a process-local override.
+	ExperimentalParallelFullAccess bool   `toml:"experimental_parallel_full_access"`
+	AutopilotMaxRuntime            string `toml:"autopilot_max_runtime"`    // Go duration; required when autopilot is on
 	AutopilotApprovalGrace string `toml:"autopilot_approval_grace"` // wait for a human before the reviewer decides; empty = 15s
 	CheckUpdates           *bool  `toml:"check_updates"`            // startup update checks; nil keeps the default enabled
 	// UpdateChannel is a legacy compatibility field. It is accepted on read but

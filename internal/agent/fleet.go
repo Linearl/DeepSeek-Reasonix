@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"reasonix/internal/config"
 	"reasonix/internal/event"
 	"reasonix/internal/evidence"
 	"reasonix/internal/jobs"
@@ -189,10 +190,17 @@ func (f *FleetTool) Execute(ctx context.Context, args json.RawMessage) (result s
 		if strings.TrimSpace(item.Prompt) == "" {
 			return "", fmt.Errorf("task %d: prompt is required", i+1)
 		}
+		// Task 127: a declared worktree_root under the parallel full-access
+		// experiment becomes an explicit write claim so the child can edit it
+		// without a second write-access approval.
+		writePaths := item.WritePaths
+		if root := strings.TrimSpace(item.WorktreeRoot); root != "" && config.ParallelFullAccessActive() {
+			writePaths = append(append([]string{}, writePaths...), root)
+		}
 		// Fleet writers without write_paths claim the whole workspace so the
 		// preflight can detect multi-writer collisions before anything starts.
 		forceBackgroundClaim := !item.ReadOnly
-		spec, err := f.taskTool.buildTaskSpec(ctx, item.Prompt, item.Description, item.Profile, item.WritePaths, item.Tools, item.MaxSteps, item.Model, item.Effort, "", "", false, item.ReadOnly)
+		spec, err := f.taskTool.buildTaskSpec(ctx, item.Prompt, item.Description, item.Profile, writePaths, item.Tools, item.MaxSteps, item.Model, item.Effort, "", "", false, item.ReadOnly)
 		if err != nil {
 			return "", fmt.Errorf("task %d: %w", i+1, err)
 		}

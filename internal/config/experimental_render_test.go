@@ -16,6 +16,7 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	c.Desktop.ExperimentalSessionMonitor = true
 	c.Desktop.ExperimentalSplitView = true
 	c.Desktop.ExperimentalFeedback = true
+	c.Desktop.ExperimentalParallelFullAccess = true
 
 	out := RenderTOMLForScope(c, RenderScopeUser)
 	for _, want := range []string{
@@ -23,6 +24,7 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 		"experimental_session_monitor = true",
 		"experimental_split_view = true",
 		"experimental_feedback = true",
+		"experimental_parallel_full_access = true",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("rendered user config is missing %q\n---\n%s", want, out)
@@ -41,6 +43,7 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 		"experimental_session_monitor = false",
 		"experimental_split_view = false",
 		"experimental_feedback = false",
+		"experimental_parallel_full_access = false",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("a disabled switch should still render %q\n---\n%s", want, out)
