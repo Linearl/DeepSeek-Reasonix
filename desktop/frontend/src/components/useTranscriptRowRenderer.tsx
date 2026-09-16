@@ -111,6 +111,7 @@ export function useTranscriptRowRenderer({
           item={row.item} actionDisabled={running && row.item.action !== "open_changes"} onAction={action}
           onOpenVerification={row.item.variant === "completion" ? onOpenVerification : undefined}
           onAccept={row.item.action === "continue_delivery" ? onAcceptDelivery : undefined}
+          onUndoCode={row.item.variant === "completion" && onRewind ? (turn) => onRewind(turn, "code") : undefined}
         />;
       }
       case "extension": return <ExtensionCard item={row.item} tabId={tabId} />;
