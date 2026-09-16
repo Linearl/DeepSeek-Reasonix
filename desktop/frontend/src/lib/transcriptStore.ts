@@ -44,6 +44,11 @@ import {
   type Item,
 } from "./useController";
 import { historyNoticeItems } from "./controllerNotices";
+import {
+  HISTORY_BODY_BUDGET_BYTES,
+  MARKDOWN_BUDGET_BYTES,
+  MAX_RESIDENT_SESSIONS,
+} from "./resourceBudgets";
 import type {
   HistoryContentChunk,
   HistoryContentRef,
@@ -180,9 +185,12 @@ interface SessionTranscript {
 // is exactly the "takes a few seconds to load" the switch is judged on, and it is the
 // ceiling a single large session hits on its own. Each budget is a global ceiling
 // shared by all resident sessions, not a per-session allowance.
-const DEFAULT_MAX_RESIDENT_SESSIONS = 24;
-const DEFAULT_HISTORY_BODY_BUDGET = 192 << 20;
-const DEFAULT_MARKDOWN_BUDGET = 256 << 20;
+//
+// Task 137: the numeric ceilings live in resourceBudgets so preview/DOM/diagnostics
+// read the same source. Values are unchanged.
+const DEFAULT_MAX_RESIDENT_SESSIONS = MAX_RESIDENT_SESSIONS;
+const DEFAULT_HISTORY_BODY_BUDGET = HISTORY_BODY_BUDGET_BYTES;
+const DEFAULT_MARKDOWN_BUDGET = MARKDOWN_BUDGET_BYTES;
 
 function sessionKeyFor(tabId: string, sessionPath: string): string {
   return `${tabId}\n${sessionPath}`;
