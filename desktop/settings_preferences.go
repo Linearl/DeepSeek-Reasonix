@@ -159,6 +159,13 @@ func (a *App) SetDesktopTelemetry(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetDesktopTelemetry(enabled) })
 }
 
+// SetSessionStorage selects the conversation store. It takes effect on the next start:
+// the mode decides which directory a session is read from, so switching it under a live
+// controller would strand the open session.
+func (a *App) SetSessionStorage(mode string) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetSessionStorage(mode) })
+}
+
 // SetExperimentalRestartUpdate toggles the restart-and-update action (task 81). The
 // Settings switch and the restart_and_update tool read the same preference, so the
 // error the tool returns stays true: what enables one enables the other.

@@ -337,6 +337,7 @@ type SettingsView struct {
 	ExperimentalRestartUpdate    bool                       `json:"experimentalRestartUpdate"`
 	ExperimentalSessionMonitor   bool                       `json:"experimentalSessionMonitor"`
 	ExperimentalSplitView        bool                       `json:"experimentalSplitView"`
+	SessionStorage               string                     `json:"sessionStorage"`
 	ExperimentalFeedback         bool                       `json:"experimentalFeedback"`
 	VisionModel                  string                     `json:"visionModel"`
 	WebSearchModel               string                     `json:"webSearchModel"`
@@ -415,14 +416,15 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalRestartUpdate exposes the "restart and update" button (task 81).
 	ExperimentalRestartUpdate bool `json:"experimentalRestartUpdate"`
 	// ExperimentalSessionMonitor exposes the left-rail "session monitor" board (task 123).
-	ExperimentalSessionMonitor bool `json:"experimentalSessionMonitor"`
-	ExperimentalSplitView      bool `json:"experimentalSplitView"`
+	ExperimentalSessionMonitor bool   `json:"experimentalSessionMonitor"`
+	ExperimentalSplitView      bool   `json:"experimentalSplitView"`
+	SessionStorage             string `json:"sessionStorage"`
 	// ExperimentalFeedback exposes the agent submit_feedback tool and feedback
 	// inbox panel (task 121).
 	ExperimentalFeedback bool   `json:"experimentalFeedback"`
 	CheckUpdates         bool   `json:"checkUpdates"`
-	UpdateChannel              string `json:"updateChannel"`
-	ConversationWidth          string `json:"conversationWidth,omitempty"`
+	UpdateChannel        string `json:"updateChannel"`
+	ConversationWidth    string `json:"conversationWidth,omitempty"`
 	// Autopilot mirrors the [desktop] preference so the composer knows whether
 	// to offer the mode at all - it is opt-in, never a surprise.
 	Autopilot bool `json:"autopilot"`
@@ -1068,6 +1070,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalRestartUpdate = cfg.Desktop.ExperimentalRestartUpdate
 		view.ExperimentalSessionMonitor = cfg.Desktop.ExperimentalSessionMonitor
 		view.ExperimentalSplitView = cfg.Desktop.ExperimentalSplitView
+		view.SessionStorage = config.SessionStorageMode(cfg)
 		view.ExperimentalFeedback = cfg.Desktop.ExperimentalFeedback
 		return view
 	}
@@ -1138,6 +1141,7 @@ func (a *App) Settings() SettingsView {
 		ExperimentalRestartUpdate:  cfg.Desktop.ExperimentalRestartUpdate,
 		ExperimentalSessionMonitor: cfg.Desktop.ExperimentalSessionMonitor,
 		ExperimentalSplitView:      cfg.Desktop.ExperimentalSplitView,
+		SessionStorage:             config.SessionStorageMode(cfg),
 		ExperimentalFeedback:       cfg.Desktop.ExperimentalFeedback,
 		VisionModel:                cfg.Agent.VisionModel,
 		WebSearchModel:             cfg.Agent.WebSearchModel,

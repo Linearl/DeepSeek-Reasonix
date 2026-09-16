@@ -52,6 +52,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 
 	fmt.Fprintf(&b, "config_version = %d   # schema marker for diagnostics; old versions may ignore it\n", configVersion(c))
 	fmt.Fprintf(&b, "default_model = %q\n", c.DefaultModel)
+	// Experiment switch in Settings > Experimental. Rendered unconditionally: it
+	// lives on the top-level Config rather than [desktop], and a hand-added line used
+	// to be dropped by the next settings save.
+	fmt.Fprintf(&b, "session_storage = %q   # legacy (default) | v4 (experimental; needs a restart)\n", SessionStorageMode(c))
 	if c.Language != "" {
 		fmt.Fprintf(&b, "language      = %q   # ui/model language; empty = auto-detect from $LANG / $REASONIX_LANG\n", c.Language)
 	} else {
@@ -867,6 +871,10 @@ func RenderTOMLProjectDelta(c *Config) string {
 	}
 	if c.DefaultModel != d.DefaultModel {
 		fmt.Fprintf(&b, "default_model = %q\n", c.DefaultModel)
+		// Experiment switch in Settings > Experimental. Rendered unconditionally: it
+		// lives on the top-level Config rather than [desktop], and a hand-added line used
+		// to be dropped by the next settings save.
+		fmt.Fprintf(&b, "session_storage = %q   # legacy (default) | v4 (experimental; needs a restart)\n", SessionStorageMode(c))
 	}
 	if c.Language != "" && c.Language != d.Language {
 		fmt.Fprintf(&b, "language = %q\n", c.Language)

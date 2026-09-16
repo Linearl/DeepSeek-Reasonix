@@ -1705,6 +1705,20 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
           ))}
         </SettingsOptions>
       </SettingsField>
+      <SettingsField label={t("settings.sessionStorage")} hint={t("settings.sessionStorageHint")} icon={<Sparkles size={18} />}>
+        <SettingsOptions layout="field" className="set-seg">
+          {(["legacy", "v4"] as const).map((mode) => (
+            <button
+              key={mode}
+              className={`set-seg__btn${(s.sessionStorage === "v4" ? "v4" : "legacy") === mode ? " set-seg__btn--on" : ""}`}
+              disabled={busy}
+              onClick={() => void apply(() => app.SetSessionStorage(mode))}
+            >
+              {t(mode === "v4" ? "settings.sessionStorage.v4" : "settings.sessionStorage.legacy")}
+            </button>
+          ))}
+        </SettingsOptions>
+      </SettingsField>
       <SettingsField label={t("settings.splitView")} hint={t("settings.splitViewHint")} icon={<Sparkles size={18} />}>
         <SettingsOptions layout="field" className="set-seg">
           {[false, true].map((on) => (

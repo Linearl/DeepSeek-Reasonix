@@ -450,6 +450,21 @@ func (c *Config) SetDesktopTelemetry(enabled bool) error {
 	return nil
 }
 
+// SetSessionStorage selects the conversation store ("legacy" or "v4"). Unknown
+// values are refused rather than written: the mode drives which directory a session
+// is read from, so a typo must not silently look like a successful switch.
+func (c *Config) SetSessionStorage(mode string) error {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "", "legacy":
+		c.SessionStorage = "legacy"
+	case "v4":
+		c.SessionStorage = "v4"
+	default:
+		return fmt.Errorf("session storage: %q is not a mode (use legacy or v4)", mode)
+	}
+	return nil
+}
+
 // SetExperimentalRestartUpdate toggles the restart-and-update action (task 81). It is
 // opt-in because it swaps the running install for a staged one - a path that has no
 // verification step, by design, since the update itself comes from a trusted release.
