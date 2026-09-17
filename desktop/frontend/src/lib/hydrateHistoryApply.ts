@@ -177,11 +177,46 @@ export function hasReusableCachedTranscript(
   if (!state || state.items.length === 0) return false;
   const expectedSessionPath = (sessionPath ?? "").trim();
   if (!expectedSessionPath) return true;
-  if ((state.meta?.sessionPath ?? "").trim() !== expectedSessionPath) return false;
-  // Allow switching back to a resident transcript even when the metadata
-  // fingerprint differs slightly. The LRU/byte budgets still bound memory;
-  // a background refresh can reconcile the fingerprint after the fast switch.
-  return true;
+  // Task 151 (B-level, 2026-09-17 log evidence): strict string equality vetoed
+  // resident tabs whenever the two stored spellings of the SAME session file
+  // drifted (desktop-tabs meta vs the controller's session path — observed on
+  // 1655 as fork开发 flipping between no-reusable-cache 6.8 s reloads and fast
+  // cached switches). Session file names are globally unique
+  // (timestamp.nanos-model), so comparing by basename keeps the identity check
+  // while tolerating spelling drift. Recovery copies keep their
+  // -recovery-<hash> suffix and still never match.
+  const metaPath = (state.meta?.sessionPath ?? "").trim();
+  if (!metaPath) return true;
+  return pathBasename(metaPath) === pathBasename(expectedSessionPath);
+}
+
+/** Case-insensitive file-name tail of a session path (Windows-folded). */
+function pathBasename(p: string): string {
+  const norm = p.replace(/[\\/]+/g, "\\").toLowerCase();
+  const idx = norm.lastIndexOf("\\");
+  return idx >= 0 ? norm.slice(idx + 1) : norm;
+}
+
+/**
+ * Task 151: why hasReusableCachedTranscript said no (empty string = reusable).
+ * Logged on the no-reusable-cache branch so one desktop.log line is enough to
+ * tell a genuine eviction from a spelling drift — the 2026-09-17 investigation
+ * stalled exactly because only the reason label was recorded.
+ */
+export function explainReusableCache(
+  state: (HydrateLiveState & { meta?: SessionHydrateIdentity }) | undefined,
+  sessionPath?: string,
+): string {
+  if (!state) return "no resident state";
+  if (state.items.length === 0) return "resident items empty";
+  const expected = (sessionPath ?? "").trim();
+  if (!expected) return "";
+  const metaPath = (state.meta?.sessionPath ?? "").trim();
+  if (!metaPath) return "";
+  if (pathBasename(metaPath) !== pathBasename(expected)) {
+    return `sessionPath mismatch meta=${metaPath} expected=${expected}`;
+  }
+  return "";
 }
 
 // An empty surface has to apply history or switch-back shows Welcome. A turn

@@ -175,11 +175,30 @@ export function stageTimingsFor(tabId: string, limit = 12): StageTiming[] {
   return out.slice(-limit);
 }
 
-/** The slowest recent stage for a tab - the headline number of the board. */
+/**
+ * Task 151: the stage window of the MOST RECENT switch for a tab — from the
+ * newest entry back to (and including) its `:total` marker. Without this
+ * window the board's headline mixed every past switch of the tab, so a
+ * stale 5-6 s reload kept masking today's fast cached switches
+ * (2026-09-17 screenshot evidence: 辣椒识别2 showed total 5156 ms while every
+ * live segment was under 300 ms).
+ */
+export function latestSwitchStages(tabId: string, cap = 24): StageTiming[] {
+  const all: StageTiming[] = [];
+  for (const entry of stageTimings) if (entry.tabId === tabId) all.push(entry);
+  const recent = all.slice(-cap);
+  let start = recent.length;
+  for (let i = recent.length - 1; i >= 0; i--) {
+    start = i;
+    if (recent[i].stage.endsWith(":total")) break;
+  }
+  return start < recent.length ? recent.slice(start) : [];
+}
+
+/** The slowest stage of the MOST RECENT switch for a tab. */
 export function slowestStageFor(tabId: string): StageTiming | undefined {
   let worst: StageTiming | undefined;
-  for (const entry of stageTimings) {
-    if (entry.tabId !== tabId) continue;
+  for (const entry of latestSwitchStages(tabId)) {
     if (!worst || entry.ms > worst.ms) worst = entry;
   }
   return worst;
@@ -209,7 +228,12 @@ export function recentEvictions(limit = 10): SessionEviction[] {
  */
 export function reportStageSummary(tabId: string, reason: string): void {
   const prefix = `${reason}:`;
-  const stages = stageTimingsFor(tabId, 24).filter((entry) => entry.stage.startsWith(prefix));
+  // Task 151: only the latest switch's stages — stageTimingsFor pulled up to
+  // 24 records spanning SEVERAL switches, which concatenated multiple
+  // meta/ancillary segments into one summary line and made desktop.log
+  // summaries unreadable (2026-09-17 evidence: one line carried three
+  // meta/ancillary sequences).
+  const stages = latestSwitchStages(tabId, 24).filter((entry) => entry.stage.startsWith(prefix));
   if (stages.length === 0) return;
   const total = stages.find((entry) => entry.stage.endsWith(":total"))?.ms ?? 0;
   const parts = stages

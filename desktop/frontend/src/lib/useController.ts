@@ -44,7 +44,7 @@ import { applyReadStatusEvent, type ReadStatusHost } from "./readStatus";
 import { upsertReadPause } from "./readPause";
 import { applyHydrateErrorState, hydratePlaceholderItems as resolveHydratePlaceholders } from "./hydrateErrorState";
 import { isHostRecoveryGuidance } from "./hostRecoverySteer";
-import { activeTabHydrationPlan, canAdoptUnboundLiveSurface, duplicateLiveItemIds, hasReusableCachedTranscript, hydratedHistoryApplyMode, sameSessionHydrateIdentity, sameSessionPlaceholderItems, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
+import { activeTabHydrationPlan, canAdoptUnboundLiveSurface, duplicateLiveItemIds, explainReusableCache, hasReusableCachedTranscript, hydratedHistoryApplyMode, sameSessionHydrateIdentity, sameSessionPlaceholderItems, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
 import { loadLastActiveTabId, saveLastActiveTabId } from "./layoutPreferences";
 import { hydrateIdentityCurrent } from "./sessionIdentity";
 import { historyPageRequestBudget } from "./historyPaging";
@@ -2918,18 +2918,29 @@ export function useController() {
       );
       // Task 123: record which branch decided, so the monitor board can answer
       // "did this switch reuse the cache" without guessing from timings.
+      // Task 151 (B-level): when the resident cache was vetoed, log WHY —
+      // empty items vs sessionPath spelling drift — with both paths, so the
+      // 2026-09-17 "why is fork开发 reloading 6.8 s" investigation no longer
+      // stalls at a bare reason label.
+      const hydrateDecisionReason = options.skipHistory
+        ? "caller"
+        : skipHistory
+          ? "preserveCachedHistory"
+          : resetSurface
+            ? "reset"
+            : "no-reusable-cache";
       noteHydrateDecision({
         tabId,
         sessionPath,
         skipHistory,
-        reason: options.skipHistory
-          ? "caller"
-          : skipHistory
-            ? "preserveCachedHistory"
-            : resetSurface
-              ? "reset"
-              : "no-reusable-cache",
+        reason: hydrateDecisionReason,
       });
+      if (!options.skipHistory && !skipHistory && hydrateDecisionReason === "no-reusable-cache") {
+        const veto = explainReusableCache(statesRef.current.get(tabId), sessionPath);
+        if (veto) {
+          reportFrontendLog("session-monitor", "hydrate cache veto", `tab=${tabId} ${veto}`, "info");
+        }
+      }
       const deferResetUntilHistory = Boolean(surfacePolicy === "preserve-current" && (options.deferResetUntilHistory ?? true) && resetSurface && !skipHistory);
       // Request seq alone cannot stop clear→mode-switch races: a load started
       // after clear with stale meta.sessionPath must also be rejected.
