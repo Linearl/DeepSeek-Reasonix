@@ -1860,6 +1860,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		}
 		reg.Add(agent.NewSetSessionPurposeTool(collab))
 		reg.Add(agent.NewListAddressableSessionsTool(collab))
+		reg.Add(agent.NewSearchSessionsTool(collab))
 		reg.Add(agent.NewReadSessionTailTool(collab))
 		reg.Add(agent.NewTalkToSessionTool(collab))
 		reg.Add(agent.NewTalkToSessionSyncTool(collab))
@@ -3117,6 +3118,9 @@ archive. Purpose is optional metadata; the title identifies the row.
 
 Tools:
 - list_addressable_sessions — list the directory (title, purpose, contact_id, topic_id).
+  Newest first, limit (default 200). Live conversations only; pass archived=true for retired history.
+- search_sessions(query) — keyword search over title/purpose. Use this instead of
+  paging when you know part of the name but it may not be on the first 200.
 - talk_to_session(to, message, ...) — message another session. ` + "`to`" + ` accepts
   contact_id, topic_id, or the exact title. First contact mints a contact_id.
 - talk_to_session_sync(...) — same, with a bounded wait for the reply.

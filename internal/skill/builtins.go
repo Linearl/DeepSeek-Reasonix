@@ -289,10 +289,15 @@ straight to the matching expert and the secretariat never touches it.
 
 ## Addressing (通讯录 / contact directory)
 
-- ` + "`list_addressable_sessions`" + ` is the 通讯录: **every session** on this machine
-  (global + every project + archive), with title, optional purpose, topic_id,
-  and contact_id. Purpose registration is optional — the title identifies the
-  conversation; a duty line just makes task assignment easier.
+- ` + "`list_addressable_sessions`" + ` is the 通讯录: live sessions (global + every
+  project), with title, optional purpose, topic_id, and contact_id. Purpose
+  registration is optional — the title identifies the conversation; a duty line
+  just makes task assignment easier. Newest first, page with ` + "`limit`" + `.
+- ` + "`search_sessions(query)`" + ` keyword-searches the 通讯录 (title/purpose). Use it
+  when you know part of the name but it may not be on the first 200 rows.
+- Deleted sessions (.trash) never appear. Retired archive is opt-in via
+  ` + "`archived=true`" + `; do not assume an archived conversation is still a live
+  collaborator.
 - ` + "`to`" + ` accepts a contact_id, a topic_id, or the **exact title**. Prefer the
   contact_id when you already have it (titles are renameable); the exact title
   is the right way to pick someone you have not met yet, and the target gains a

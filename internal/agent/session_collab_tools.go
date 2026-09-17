@@ -91,11 +91,11 @@ type listAddressableSessionsTool struct{ cfg SessionCollabConfig }
 func (listAddressableSessionsTool) Name() string { return "list_addressable_sessions" }
 
 func (listAddressableSessionsTool) Description() string {
-	return "List the contact directory (通讯录): metadata only — title, purpose, contact_id, topic_id. No transcript content (use read_session_tail for that). Newest first; pass limit to page. Use contact_id, topic_id, or the exact title as `to` in talk_to_session. Experimental."
+	return "List the contact directory (通讯录): metadata only — title, purpose, contact_id, topic_id. No transcript content (use read_session_tail for that). Newest first; pass limit to page. Live conversations only by default (deleted .trash sessions never appear; pass archived=true to include retired history). Use contact_id, topic_id, or the exact title as `to` in talk_to_session, or search_sessions(query) when you do not know the name. Experimental."
 }
 
 func (listAddressableSessionsTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Max sessions to return, newest first (default 200, max 1000). Omit for the first page."},"archived":{"type":"boolean","description":"Include archived sessions (default false)."}},"required":[]}`)
+	return json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Max sessions to return, newest first (default 200, max 1000). Omit for the first page."},"archived":{"type":"boolean","description":"Include retired archive sessions (default false)."}},"required":[]}`)
 }
 
 func (listAddressableSessionsTool) ReadOnly() bool { return true }
@@ -108,16 +108,64 @@ func (t listAddressableSessionsTool) Execute(_ context.Context, args json.RawMes
 	if len(args) > 0 {
 		_ = json.Unmarshal(args, &p)
 	}
-	limit := p.Limit
+	return directoryPage(t.cfg, p.Limit, p.Archived, "")
+}
+
+// NewSearchSessionsTool finds sessions by keyword in title/purpose, so a large
+// directory does not hide the one you need behind the 200-row first page.
+func NewSearchSessionsTool(cfg SessionCollabConfig) tool.Tool {
+	return searchSessionsTool{cfg: cfg}
+}
+
+type searchSessionsTool struct{ cfg SessionCollabConfig }
+
+func (searchSessionsTool) Name() string { return "search_sessions" }
+
+func (searchSessionsTool) Description() string {
+	return "Search the contact directory (通讯录) by keyword — case-insensitive substring match on title and purpose (also contact_id / topic_id). Use this instead of paging list_addressable_sessions when you know part of the name. Metadata only; no transcript content. Experimental."
+}
+
+func (searchSessionsTool) Schema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"query":{"type":"string","description":"Keyword or fragment of the session title / purpose."},"limit":{"type":"integer","description":"Max matches (default 50, max 500)."},"archived":{"type":"boolean","description":"Include retired archive sessions (default false)."}},"required":["query"]}`)
+}
+
+func (searchSessionsTool) ReadOnly() bool { return true }
+
+func (t searchSessionsTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
+	var p struct {
+		Query    string `json:"query"`
+		Limit    int    `json:"limit"`
+		Archived *bool  `json:"archived"`
+	}
+	if err := json.Unmarshal(args, &p); err != nil {
+		return "", fmt.Errorf("invalid args: %w", err)
+	}
+	if strings.TrimSpace(p.Query) == "" {
+		return "", fmt.Errorf("query is required")
+	}
+	if p.Limit <= 0 {
+		p.Limit = 50
+	}
+	if p.Limit > 500 {
+		p.Limit = 500
+	}
+	return directoryPage(t.cfg, p.Limit, p.Archived, p.Query)
+}
+
+// directoryPage is the shared projection for list and search: live-only by
+// default, metadata-only rows, and a total that respects the same filter the
+// caller is paging over (so total never counts archive when archive is hidden).
+func directoryPage(cfg SessionCollabConfig, limit int, archived *bool, query string) (string, error) {
 	if limit <= 0 {
 		limit = 200
 	}
 	if limit > 1000 {
 		limit = 1000
 	}
-	includeArchived := p.Archived != nil && *p.Archived
+	includeArchived := archived != nil && *archived
+	q := strings.ToLower(strings.TrimSpace(query))
 
-	all := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
+	all := scanAddressable(cfg.SessionDir, cfg.WorkspaceRoot)
 	type row struct {
 		Title     string `json:"title"`
 		Purpose   string `json:"purpose,omitempty"`
@@ -126,29 +174,36 @@ func (t listAddressableSessionsTool) Execute(_ context.Context, args json.RawMes
 		Archived  bool   `json:"archived,omitempty"`
 	}
 	rows := make([]row, 0, limit)
-	shown := 0
+	eligible := 0
 	for _, id := range all {
 		if id.Archived && !includeArchived {
 			continue
 		}
-		if shown >= limit {
-			break
+		if q != "" {
+			hay := strings.ToLower(id.Title + "\x00" + id.Purpose + "\x00" + id.ContactID + "\x00" + id.TopicID)
+			if !strings.Contains(hay, q) {
+				continue
+			}
 		}
-		rows = append(rows, row{
-			Title:     id.Title,
-			Purpose:   id.Purpose,
-			ContactID: id.ContactID,
-			TopicID:   id.TopicID,
-			Archived:  id.Archived,
-		})
-		shown++
+		eligible++
+		if len(rows) < limit {
+			rows = append(rows, row{
+				Title:     id.Title,
+				Purpose:   id.Purpose,
+				ContactID: id.ContactID,
+				TopicID:   id.TopicID,
+				Archived:  id.Archived,
+			})
+		}
 	}
 	out, _ := json.Marshal(map[string]any{
-		"returned": shown,
-		"total":    len(all),
+		"returned": len(rows),
+		"total":    eligible,
 		"limit":    limit,
+		"query":    q,
 		// Explicit so a caller never expects content here: that is read_session_tail.
 		"content":  "none — use read_session_tail(target) for transcript bytes",
+		"note":     "live conversations only; pass archived=true to include retired history. Deleted (.trash) sessions are never listed.",
 		"sessions": rows,
 	})
 	return string(out), nil
@@ -447,10 +502,17 @@ func workspaceRootForMail(cfg SessionCollabConfig, target sessioncollab.Identity
 }
 
 // scanAddressable collects registered sessions from every session directory on
-// this machine: the global dir, every project dir, and the archive. Scanning all
-// projects (not just the open ones) is what makes "list all addressable
-// sessions" true; archived sessions are marked so callers can report "archived"
-// distinctly from "never registered".
+// this machine: the global dir, every project dir, and the archive.
+//
+// Only the LEGACY `sessions/` trees are scanned — never `sessions-v4/`. With
+// session_storage=v4 dual-write the same conversation lives in both; listing
+// both would count every session twice. sessions/ remains the authority, so one
+// conversation appears once. A stem-level dedup is a second line of defence in
+// case a v4 path ever slipped into the scan set.
+//
+// Archived sessions are marked so callers can report "archived" distinctly from
+// "never registered". Deleted sessions live under .trash/ subdirectories, which
+// ScanDir does not recurse into — they never appear.
 //
 // Duplicate contact_ids are dropped after the first and reported through
 // DuplicateContacts: two sessions sharing an address would silently route one
@@ -478,6 +540,7 @@ func scanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity 
 	}
 	var out []sessioncollab.Identity
 	seenPath := map[string]bool{}
+	seenStem := map[string]bool{}
 	seenContact := map[string]string{}
 	add := func(ids []sessioncollab.Identity, workspace, scope string, archived bool) {
 		for _, id := range ids {
@@ -486,6 +549,13 @@ func scanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity 
 				continue
 			}
 			seenPath[key] = true
+			// Stem dedup: the same conversation dual-written to v4 shares its
+			// basename stem. Count it once.
+			stem := strings.ToLower(strings.TrimSuffix(filepath.Base(id.SessionPath), filepath.Ext(id.SessionPath)))
+			if stem != "" && seenStem[stem] {
+				continue
+			}
+			seenStem[stem] = true
 			if id.ContactID != "" {
 				if _, dup := seenContact[id.ContactID]; dup {
 					// Keep the first and let the caller surface the collision
