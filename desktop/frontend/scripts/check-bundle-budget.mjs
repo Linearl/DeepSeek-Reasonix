@@ -345,7 +345,12 @@ for (const path of localeChunks) {
   // keys to both dialects. zh still measures 72.9 KiB under its 73.0 ceiling, but
   // zh-TW measures 73.8 KiB past 73.5, so the same one-decimal ratchet applies:
   // zh-TW 74.0; zh keeps 73.0.
-  const budget = name.startsWith("zh-TW-") ? 74.0 * 1024 : 73.0 * 1024;
+  // Task 155 (fork): the four-mode conversation store adds 13 keys per dialect
+  // (mode labels, per-stage notes, per-stage risks, the restart-pending line) and
+  // rewrites the hint. Measured gzip: zh 73.5 KiB, zh-TW 74.3 KiB, so the same
+  // one-decimal ratchet applies with the usual 0.1 KiB headroom: zh 73.6;
+  // zh-TW 74.4.
+  const budget = name.startsWith("zh-TW-") ? 74.4 * 1024 : 73.6 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0

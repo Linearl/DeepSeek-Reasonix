@@ -161,11 +161,21 @@ func (a *App) SetDesktopTelemetry(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetDesktopTelemetry(enabled) })
 }
 
-// SetSessionStorage selects the conversation store. It takes effect on the next start:
-// the mode decides which directory a session is read from, so switching it under a live
-// controller would strand the open session.
+// SetSessionStorage selects the conversation store mode (task 155: v3_only,
+// dual_write_read_v3, dual_write_read_v4, v4_only). The write side is fixed when
+// the process boots - modes 2/3/4 are created at boot and v3_only runs without a
+// mirror - so enabling or retiring the mirror takes a restart and the settings
+// view flags that. Moving between the two dual-write modes only changes which
+// copy history prefers, so it is applied to the live controllers immediately.
 func (a *App) SetSessionStorage(mode string) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetSessionStorage(mode) })
+	previous, effective, err := a.setSessionStorageMode(mode)
+	if err != nil {
+		return err
+	}
+	if previous != effective && !config.SessionStorageNeedsRestart(previous, effective) {
+		a.applySessionStorageReadSide(effective)
+	}
+	return nil
 }
 
 // SetExperimentalRestartUpdate toggles the restart-and-update action (task 81). The

@@ -15,8 +15,13 @@ export interface SettingsView {
   experimentalSessionMonitor?: boolean;
   // Task 70-1: exposes the tab-bar split view (experimental).
   experimentalSplitView?: boolean;
-  // Conversation store in use ("legacy" | "v4"); switched from Settings > Experimental.
+  // Conversation store mode in use (task 155): "v3_only" | "dual_write_read_v3" |
+  // "dual_write_read_v4" | "v4_only"; switched from Settings > Experimental.
   sessionStorage?: string;
+  // Mode this process actually started with, and whether the configured mode is
+  // still waiting for a restart to take effect.
+  sessionStorageEffective?: string;
+  sessionStorageRestartPending?: boolean;
   // Task 121: exposes the agent submit_feedback tool and feedback inbox panel.
   experimentalFeedback?: boolean;
   // Task 130: exposes the Settings → 本地服务 page and serve-pool controls.
