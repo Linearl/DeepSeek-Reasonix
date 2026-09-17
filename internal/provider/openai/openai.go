@@ -261,7 +261,22 @@ func New(cfg provider.Config) (provider.Provider, error) {
 		effort:          effort,
 		http:            httpClient,
 		idleTimeout:     defaultStreamIdleTimeout,
+		// The official OpenCode Go chat gateway 400s any message-level `name`
+		// key on a tool result, so the MiMo #4711 backfill is suppressed
+		// there. The helper matches the exact host+path whitelist (as
+		// ApplyOpenCodeGoHeaders does), so look-alike hosts, plaintext URLs
+		// and custom proxies keep the MiMo behaviour.
+		dropToolMessageName: dropsToolMessageName(cfg.BaseURL),
 	}, nil
+}
+
+// dropsToolMessageName reports whether baseURL is the official OpenCode Go chat
+// route. That gateway rejects any message-level `name` key on a role=tool
+// message ("name" is not supported by this endpoint) — the exact inverse of
+// MiMo's #4711 requirement — so the key is suppressed on this route alone.
+func dropsToolMessageName(baseURL string) bool {
+	route, ok := provider.OfficialOpenCodeGoRoute("chat", baseURL)
+	return ok && route == provider.OpenCodeGoRouteChat
 }
 
 func newHTTPClient(cfg provider.Config) (*http.Client, error) {
@@ -306,6 +321,11 @@ type client struct {
 	effort          string        // reasoning_effort for OpenAI; thinking.type for MiniMax; "" = auto/provider default
 	idleTimeout     time.Duration // SSE stall watchdog window; defaultStreamIdleTimeout unless a test overrides
 	authed          atomic.Bool   // a request has succeeded — gate transient-401 retry
+	// dropToolMessageName suppresses the message-level `name` key on role=tool
+	// messages. Set only for the official OpenCode Go chat route, whose gateway
+	// 400s that key ("name" is not supported by this endpoint) — the inverse of
+	// the MiMo #4711 requirement, which must keep the key.
+	dropToolMessageName bool
 }
 
 func (c *client) Name() string { return c.name }
@@ -726,9 +746,13 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
 			Role:       string(m.Role),
 			ToolCallID: m.ToolCallID,
 		}
-		if m.Role == provider.RoleTool {
+		if m.Role == provider.RoleTool && !c.dropToolMessageName {
 			// Always send the tool message's name, even when empty: strict
 			// backends (MiMo) 400 a tool result without the key (#4711).
+			// The official OpenCode Go chat gateway is the opposite: any
+			// message-level `name` key 400s with `"name" is not supported by
+			// this endpoint`, so that route omits the key entirely.
+			// tool_calls[].function.name below is unaffected — it is required.
 			name := m.Name
 			cm.Name = &name
 		}

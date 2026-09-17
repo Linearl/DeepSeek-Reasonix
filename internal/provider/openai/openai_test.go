@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"reasonix/internal/provider"
@@ -842,6 +843,200 @@ func TestToolResultEmptyNameStillSerialized(t *testing.T) {
 		if _, ok := m["name"]; ok {
 			t.Fatalf("non-tool message %d leaked name key: %s", i, b)
 		}
+	}
+}
+
+// toolTurnRequest is the minimal shape that produces a message-level `name` key
+// on the wire: a user turn, an assistant tool_calls turn, and its tool result.
+func toolTurnRequest(emptyToolName bool) provider.Request {
+	name := "bash"
+	if emptyToolName {
+		name = ""
+	}
+	return provider.Request{Messages: []provider.Message{
+		{Role: provider.RoleUser, Content: "list the files"},
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "call_1", Name: name, Arguments: `{"cmd":"ls"}`}}},
+		{Role: provider.RoleTool, ToolCallID: "call_1", Name: name, Content: "a.txt"},
+	}}
+}
+
+// wireMessages serializes a built request and returns every message as a raw
+// key→value map, so *key presence* (not just its value) can be asserted.
+func wireMessages(t *testing.T, req chatRequest) []map[string]json.RawMessage {
+	t.Helper()
+	b, err := json.Marshal(req.Messages)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var msgs []map[string]json.RawMessage
+	if err := json.Unmarshal(b, &msgs); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	return msgs
+}
+
+func wireRoleMessage(t *testing.T, msgs []map[string]json.RawMessage, role string) map[string]json.RawMessage {
+	t.Helper()
+	for _, m := range msgs {
+		var got string
+		_ = json.Unmarshal(m["role"], &got)
+		if got == role {
+			return m
+		}
+	}
+	t.Fatalf("no role=%s message on the wire: %v", role, msgs)
+	return nil
+}
+
+func newClientForBaseURL(t *testing.T, baseURL string) *client {
+	t.Helper()
+	p, err := New(provider.Config{Name: "case", BaseURL: baseURL, Model: "glm-5.3", APIKey: "k"})
+	if err != nil {
+		t.Fatalf("New(%s): %v", baseURL, err)
+	}
+	c, ok := p.(*client)
+	if !ok {
+		t.Fatalf("provider type = %T, want *client", p)
+	}
+	return c
+}
+
+// TestOpenCodeGoChatDropsToolMessageName guards the OpenCode Go chat gateway's
+// requirement that is the exact inverse of MiMo's #4711: the gateway 400s a
+// role=tool message carrying a message-level `name` key ("name" is not supported
+// by this endpoint), even though OpenAI's spec allows the field. The official
+// route must omit the key while keeping tool_calls[].function.name.
+func TestOpenCodeGoChatDropsToolMessageName(t *testing.T) {
+	c := newClientForBaseURL(t, "https://opencode.ai/zen/go/v1")
+	if !c.dropToolMessageName {
+		t.Fatal("official OpenCode Go chat route must set dropToolMessageName")
+	}
+
+	msgs := wireMessages(t, c.buildRequest(toolTurnRequest(false)))
+	tool := wireRoleMessage(t, msgs, "tool")
+	if _, ok := tool["name"]; ok {
+		t.Fatalf("OpenCode Go tool message kept the name key (the gateway 400s it): %v", msgs)
+	}
+	// Dropping the name key must not disturb tool-call pairing or content.
+	if got := string(tool["tool_call_id"]); got != `"call_1"` {
+		t.Fatalf("tool_call_id = %s, want \"call_1\": %v", got, msgs)
+	}
+	if _, ok := tool["content"]; !ok {
+		t.Fatalf("tool message lost its content key: %v", msgs)
+	}
+	// tool_calls[].function.name is a different, required field — always kept.
+	var calls []struct {
+		Function struct {
+			Name string `json:"name"`
+		} `json:"function"`
+	}
+	assistant := wireRoleMessage(t, msgs, "assistant")
+	if err := json.Unmarshal(assistant["tool_calls"], &calls); err != nil {
+		t.Fatalf("unmarshal tool_calls: %v", err)
+	}
+	if len(calls) != 1 || calls[0].Function.Name != "bash" {
+		t.Fatalf("tool_calls[].function.name lost: %v", msgs)
+	}
+}
+
+// TestToolMessageNameDropIsRouteScoped proves the exemption covers exactly the
+// official OpenCode Go chat route: look-alike hosts, plaintext URLs, custom
+// proxies/ports and query strings all keep the MiMo #4711 name key, so no other
+// backend silently loses it.
+func TestToolMessageNameDropIsRouteScoped(t *testing.T) {
+	cases := []struct {
+		name          string
+		baseURL       string
+		drop          bool
+		emptyToolName bool
+	}{
+		{name: "official OpenCode Go chat", baseURL: "https://opencode.ai/zen/go/v1", drop: true},
+		{name: "official OpenCode Go chat trailing slash", baseURL: "https://opencode.ai/zen/go/v1/", drop: true},
+		{name: "official route, legacy empty tool name", baseURL: "https://opencode.ai/zen/go/v1", drop: true, emptyToolName: true},
+		{name: "look-alike host", baseURL: "https://opencode.ai.evil.example/zen/go/v1", drop: false},
+		{name: "plaintext http", baseURL: "http://opencode.ai/zen/go/v1", drop: false},
+		{name: "custom port", baseURL: "https://opencode.ai:8443/zen/go/v1", drop: false},
+		{name: "custom proxy path", baseURL: "https://proxy.example.com/zen/go/v1", drop: false},
+		{name: "query string", baseURL: "https://opencode.ai/zen/go/v1?x=1", drop: false},
+		{name: "DeepSeek direct", baseURL: "https://api.deepseek.com/v1", drop: false},
+		{name: "DeepSeek direct, legacy empty tool name", baseURL: "https://api.deepseek.com/v1", drop: false, emptyToolName: true},
+		{name: "MiMo direct", baseURL: "https://api.xiaomimimo.com/v1", drop: false},
+		{name: "local gateway", baseURL: "http://127.0.0.1:8080/v1", drop: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newClientForBaseURL(t, tc.baseURL)
+			if c.dropToolMessageName != tc.drop {
+				t.Fatalf("dropToolMessageName = %v, want %v for %s", c.dropToolMessageName, tc.drop, tc.baseURL)
+			}
+			msgs := wireMessages(t, c.buildRequest(toolTurnRequest(tc.emptyToolName)))
+			_, hasName := wireRoleMessage(t, msgs, "tool")["name"]
+			if tc.drop && hasName {
+				t.Fatalf("OpenCode Go chat route must not send a message-level name key: %v", msgs)
+			}
+			if !tc.drop && !hasName {
+				t.Fatalf("non-OpenCode-Go route lost the MiMo #4711 name key: %v", msgs)
+			}
+		})
+	}
+}
+
+// TestToolMessageNameSentToStrictBackend is the end-to-end half of the #4711 red
+// line: a backend that rejects a role=tool message without the `name` key
+// (MiMo's behaviour) must still receive it through the real Stream path, proving
+// the OpenCode Go exemption does not leak into other routes.
+func TestToolMessageNameSentToStrictBackend(t *testing.T) {
+	var sawTool, rejected atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req struct {
+			Messages []struct {
+				Role string  `json:"role"`
+				Name *string `json:"name"`
+			} `json:"messages"`
+		}
+		_ = json.Unmarshal(body, &req)
+		for _, m := range req.Messages {
+			if m.Role != "tool" {
+				continue
+			}
+			sawTool.Store(true)
+			if m.Name == nil {
+				rejected.Store(true)
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error":{"message":"Param Incorrect, name is not set","type":"invalid_request_error"}}`))
+				return
+			}
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"done\"}}]}\n\n")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	p, err := New(provider.Config{Name: "strict-gateway", BaseURL: srv.URL, Model: "mimo-v2.5", APIKey: "k"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ch, err := p.Stream(context.Background(), toolTurnRequest(false))
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	var streamErr error
+	for chunk := range ch {
+		if chunk.Type == provider.ChunkError {
+			streamErr = chunk.Err
+		}
+	}
+	if streamErr != nil {
+		t.Fatalf("strict backend rejected the tool message: %v", streamErr)
+	}
+	if !sawTool.Load() {
+		t.Fatal("the request carried no tool message — the assertion would be vacuous")
+	}
+	if rejected.Load() {
+		t.Fatal("tool message reached the strict backend without its name key")
 	}
 }
 
