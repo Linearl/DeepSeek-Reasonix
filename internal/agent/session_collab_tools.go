@@ -321,7 +321,7 @@ type talkToSessionTool struct{ cfg SessionCollabConfig }
 func (talkToSessionTool) Name() string { return "talk_to_session" }
 
 func (talkToSessionTool) Description() string {
-	return "Send a message to another session in the contact directory (通讯录, task 19 / 142-143). `to` accepts a contact_id, a topic_id, or the exact title shown by list_addressable_sessions — the title is the human way to pick someone when you have not met them yet, and the target gains a contact_id on first contact. delivery=followup queues for the target's next turn; delivery=steer asks for mid-turn injection and degrades to a queued follow-up when the target has no injectable turn (the sender is told). Experimental."
+	return "Send a message to another session in the contact directory (通讯录, task 19 / 142-143). `to` accepts a contact_id, a topic_id, or the exact title shown by list_addressable_sessions — the title is the human way to pick someone when you have not met them yet, and the target gains a contact_id on first contact. delivery=followup queues for the target's next turn; delivery=steer asks for mid-turn injection and degrades to a queued follow-up when the target has no injectable turn (the sender is told). Your own contact_id is minted automatically on first send, so the target can always reply. When answering a message that was delivered to you, ALWAYS reply through this tool with to = the From contact_id carried in the delivery text — never answer inside your own transcript, the sender cannot see it. Experimental."
 }
 
 func (talkToSessionTool) Schema() json.RawMessage {
@@ -371,9 +371,17 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 		}
 		target.ContactID = minted
 	}
+	// Task 156.A: the sender must be addressable on first send. A session
+	// that only ever sends (never gets messaged first) would otherwise stay
+	// "(未登记)" forever and its messages degrade to one-way notices.
 	fromContact := t.cfg.CurrentContactID
 	if fromContact == "" && t.cfg.CurrentSessionPath != "" {
 		fromContact = SessionContactID(t.cfg.CurrentSessionPath)
+		if fromContact == "" {
+			if minted, merr := EnsureContactID(t.cfg.CurrentSessionPath); merr == nil {
+				fromContact = minted
+			}
+		}
 	}
 	mailDir := t.cfg.MailDir
 	if mailDir == "" {
@@ -421,7 +429,7 @@ type talkToSessionSyncTool struct{ cfg SessionCollabConfig }
 func (talkToSessionSyncTool) Name() string { return "talk_to_session_sync" }
 
 func (talkToSessionSyncTool) Description() string {
-	return "Send a message to another registered session and wait for its reply (task 19 / 142). The request is delivered durably first; if no reply arrives within the timeout this returns status=timeout with the message id, and the answer still lands in your inbox later. Prefer talk_to_session (async) for long tasks. Experimental."
+	return "Send a message to another registered session and wait for its reply (task 19 / 142). The request is delivered durably first; if no reply arrives within the timeout this returns status=timeout with the message id, and the answer still lands in your inbox later. Prefer talk_to_session (async) for long tasks. Your own contact_id is minted automatically on first send. When answering a message that was delivered to you, ALWAYS reply through this tool (async form) with to = the From contact_id — never answer inside your own transcript. Experimental."
 }
 
 func (talkToSessionSyncTool) Schema() json.RawMessage {
@@ -460,9 +468,15 @@ func (t talkToSessionSyncTool) Execute(ctx context.Context, args json.RawMessage
 	if sent.MessageID == "" {
 		return queued, nil
 	}
+	// Task 156.A: mint the sender address on first send (same as async).
 	me := t.cfg.CurrentContactID
 	if me == "" && t.cfg.CurrentSessionPath != "" {
 		me = SessionContactID(t.cfg.CurrentSessionPath)
+		if me == "" {
+			if minted, merr := EnsureContactID(t.cfg.CurrentSessionPath); merr == nil {
+				me = minted
+			}
+		}
 	}
 	if me == "" {
 		return queued, nil // nothing to receive an answer on

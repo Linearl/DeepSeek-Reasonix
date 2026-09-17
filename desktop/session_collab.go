@@ -136,9 +136,16 @@ func (p *sessionCollabPump) drainOnce() {
 // first-run stamp — which meant talk_to_session(to=new_topic) returned not-found
 // until the user manually opened the session (incident 2026-09-17).
 func (a *App) createCollabSession(workspaceRoot, title, purpose, group, groupID string) (agent.CreateCollabSessionResult, error) {
+	// Task 156.B (audit F154-6): the global tab carries a non-empty
+	// WorkspaceRoot (globalWorkspaceRoot(), app.go), so the old
+	// "workspaceRoot != \"\"" probe misfiled every global-tab collab session
+	// as a project topic — which re-created the "global-workspace" project
+	// after the user deleted it (ghost-project loop, incident 2026-09-17).
+	// Compare against the real global workspace root instead; only a genuinely
+	// different project root counts as project scope.
 	scope, root := "global", ""
-	if strings.TrimSpace(workspaceRoot) != "" {
-		scope, root = "project", workspaceRoot
+	if wr := strings.TrimSpace(workspaceRoot); wr != "" && !sameDesktopPath(wr, globalWorkspaceRoot()) {
+		scope, root = "project", wr
 	}
 	meta, err := a.CreateTopic(scope, root, title)
 	if err != nil {
@@ -164,11 +171,18 @@ func (a *App) createCollabSession(workspaceRoot, title, purpose, group, groupID 
 	if _, perr := agent.SetSessionPurpose(sessionPath, purpose); perr != nil {
 		return agent.CreateCollabSessionResult{TopicID: meta.ID, SessionPath: sessionPath}, fmt.Errorf("register purpose for %q: %w", title, perr)
 	}
+	// Task 156.C: inherit the desktop default tool approval mode (Ask/Auto/
+	// YOLO from settings) so a collab session that auto-starts a turn from a
+	// cross-session message can actually run tools. A hardcoded "ask" here
+	// made every remotely-triggered tool call abort with "approval aborted"
+	// — nobody is present to approve a turn the user never opened.
+	_, defaultApproval, _ := desktopNewSessionDefaults(scope, root)
 	if uerr := agent.UpdateBranchMeta(sessionPath, false, func(m *agent.BranchMeta) error {
 		m.TopicID = meta.ID
 		m.TopicTitle = meta.Title
 		m.Scope = scope
 		m.WorkspaceRoot = root
+		m.ToolApprovalMode = defaultApproval
 		return nil
 	}); uerr != nil {
 		return agent.CreateCollabSessionResult{TopicID: meta.ID, SessionPath: sessionPath}, fmt.Errorf("bind topic %q to session: %w", meta.ID, uerr)
@@ -738,7 +752,10 @@ func sessionCollabDeliveryText(msg sessioncollab.MailMessage, effectiveHop int) 
 		}
 		b.WriteString("。")
 	} else {
-		b.WriteString("这是一条单向通知：发送方未登记 contact_id，无法自动回复。若确需回信，请先让发送方登记。")
+		// Task 156.D: the old wording ("请先让发送方登记") told the *recipient*
+		// to fix something only the sender can do. State the fact and what the
+		// recipient can actually do.
+		b.WriteString("这是一条单向通知：发送方未登记 contact_id，本消息无法回信。如需联系发送方，请在发送方所在会话中让它先调用一次 talk_to_session（首次发信会自动登记身份）。")
 	}
 	return b.String()
 }

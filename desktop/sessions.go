@@ -55,11 +55,14 @@ func sessionTrashPath(dir string) string   { return filepath.Join(dir, sessionTr
 func desktopSessionDir(root string) string {
 	root = strings.TrimSpace(root)
 	if root == "" {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return config.SessionDir()
-		}
-		root = cwd
+		// Task 156.B (audit §R6): an empty root means "global scope". Global
+		// sessions live under the global-workspace project dir — the same
+		// directory every other desktop component uses for global scope
+		// (session_catalog_targets.go, topic_archive.go, tabs.go). Resolving
+		// via os.Getwd() made the target depend on the process launch dir,
+		// which silently scattered global sessions (or errored) depending on
+		// how the app was started.
+		return desktopSessionDir(globalWorkspaceRoot())
 	}
 	if dir := config.ProjectSessionDir(root); dir != "" {
 		return dir
