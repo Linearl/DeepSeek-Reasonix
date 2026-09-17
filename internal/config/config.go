@@ -47,9 +47,11 @@ type Config struct {
 	DefaultModel     string `toml:"default_model"`
 	Language         string `toml:"language"` // ui/model language tag (e.g. "zh"); empty = auto-detect from $LANG / $REASONIX_LANG
 	CredentialsStore string `toml:"credentials_store"`
-	// SessionStorage selects the conversation store: "legacy" (default, v3
-	// JSONL under sessions/) or "v4" (experimental sessions-v4/).
-	// REASONIX_SESSION_STORAGE overrides this when set.
+	// SessionStorage selects the conversation store mode (task 155): "v3_only"
+	// (default), "dual_write_read_v3", "dual_write_read_v4" or "v4_only". The
+	// pre-task-155 spellings "legacy" and "v4" are still read and normalize onto
+	// v3_only / dual_write_read_v4 respectively. REASONIX_SESSION_STORAGE
+	// overrides this when set. See internal/config/session_storage.go.
 	SessionStorage string              `toml:"session_storage"`
 	UI             UIConfig            `toml:"ui"`
 	CLI            CLIConfig           `toml:"cli"`

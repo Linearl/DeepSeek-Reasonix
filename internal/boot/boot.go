@@ -601,12 +601,26 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if sessionDir == "" {
 		sessionDir = config.SessionDir()
 	}
+	// Task 155: the conversation store is a four-stage path (v3_only ->
+	// dual_write_read_v3 -> dual_write_read_v4 -> v4_only). A hand-edited
+	// settings.toml that jumps straight to v4_only is clamped to the staged
+	// mode first: the read side must not trust v4 before a dual-write stage
+	// actually ran. Write side is fixed for the process lifetime (the bridge is
+	// created here); the read side is live-switchable through SetReadsV4.
+	storageMode, storageClamped := config.ResolveSafeSessionStorageMode(
+		config.SessionStorageMode(cfg), config.SessionStorageHistoryModes())
+	if storageClamped {
+		sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn,
+			Text: "session storage mode clamped to " + storageMode + ": v4_only needs a completed dual-write stage first"})
+	}
 	var sessionV4 *control.SessionV4Bridge
-	if config.SessionStorageMode(cfg) == "v4" {
+	if config.SessionV4WritesEnabledForMode(storageMode) {
 		bridge, bridgeErr := control.NewSessionV4Bridge(config.SessionStoreDir())
 		if bridgeErr != nil {
 			sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "session v4 bridge disabled: " + bridgeErr.Error()})
 		} else {
+			bridge.SetReadsV4(config.SessionV4ReadsEnabledForMode(storageMode))
+			bridge.SetV3Frozen(config.SessionV3FrozenForMode(storageMode))
 			sessionV4 = bridge
 		}
 	}

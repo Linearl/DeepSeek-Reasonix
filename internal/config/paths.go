@@ -459,25 +459,29 @@ func SessionStoreDir() string {
 	return filepath.Join(dir, "sessions-v4")
 }
 
-// SessionStorageMode returns "legacy" or "v4". REASONIX_SESSION_STORAGE wins
-// over the config value when set.
+// SessionStorageMode returns the normalized conversation store mode (one of
+// SessionStorageModes, task 155). REASONIX_SESSION_STORAGE wins over the config
+// value when set; legacy spellings ("legacy"/"v4") normalize onto the four
+// modes so an old settings.toml keeps working unchanged.
 func SessionStorageMode(cfg *Config) string {
 	if env := strings.TrimSpace(os.Getenv("REASONIX_SESSION_STORAGE")); env != "" {
-		if strings.EqualFold(env, "v4") {
-			return "v4"
+		if mode, ok := NormalizeSessionStorageMode(env); ok {
+			return mode
 		}
-		return "legacy"
+		return SessionStorageV3Only
 	}
-	if cfg != nil && strings.EqualFold(strings.TrimSpace(cfg.SessionStorage), "v4") {
-		return "v4"
+	if cfg != nil {
+		if mode, ok := NormalizeSessionStorageMode(cfg.SessionStorage); ok {
+			return mode
+		}
 	}
-	return "legacy"
+	return SessionStorageV3Only
 }
 
 // ActiveSessionDir returns the write root for new sessions under the active
 // storage mode. Continue/migration still reads the legacy SessionDir when needed.
 func ActiveSessionDir(cfg *Config) string {
-	if SessionStorageMode(cfg) == "v4" {
+	if SessionV4WritesEnabled(cfg) {
 		return SessionStoreDir()
 	}
 	return SessionDir()
