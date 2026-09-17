@@ -168,7 +168,13 @@ export function hasReusableCachedTranscript(
   _revision?: number,
   _digest?: string,
 ): boolean {
-  if (!state || state.items.length === 0 || state.historyTotalTurns === 0) return false;
+  // Task 151 (A-level): drop the `historyTotalTurns === 0` veto. That counter
+  // is unreliable for tabs hydrated under the old always-skip behaviour —
+  // useController's own comment says so — and it rejected *resident* tabs,
+  // forcing switch-tab into a full history reload (3.9-5.2 s on large
+  // sessions). Reuse now requires items on the surface; the LRU/byte budgets
+  // still bound memory and a background refresh reconciles the fingerprint.
+  if (!state || state.items.length === 0) return false;
   const expectedSessionPath = (sessionPath ?? "").trim();
   if (!expectedSessionPath) return true;
   if ((state.meta?.sessionPath ?? "").trim() !== expectedSessionPath) return false;

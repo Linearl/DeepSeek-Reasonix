@@ -70,6 +70,19 @@ export function noteHydrateDecision(decision: Omit<HydrateDecision, "at">): void
     const oldest = hydrateDecisions.keys().next().value;
     if (oldest !== undefined) hydrateDecisions.delete(oldest);
   }
+  // Task 151 (A-level prerequisite): the decision used to live only in this
+  // in-memory map, which made "why did this switch re-load history"
+  // undiagnosable after the fact (the 2026-09-16 switch-tab investigation
+  // stalled exactly here). Log the non-reuse branch — the diagnostic signal —
+  // while cache hits stay monitor-only to keep desktop.log quiet.
+  if (!decision.skipHistory) {
+    reportFrontendLog(
+      "session-monitor",
+      "hydrate reloaded history",
+      `tab=${decision.tabId} reason=${decision.reason} path=${decision.sessionPath}`,
+      "info",
+    );
+  }
 }
 
 /**
