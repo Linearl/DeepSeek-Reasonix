@@ -18,8 +18,16 @@ type DeleteSessionImpact struct {
 	Archived    bool   `json:"archived"`
 	// OpenTab is true when a visible desktop tab is bound to this session.
 	OpenTab bool `json:"openTab"`
-	// HasTurn is true when a live controller is mid-turn on this session.
+	// HasTurn is true when deleting this session would interrupt or discard
+	// work: a controller is mid-turn on it, OR its transcript already holds
+	// turns. The transcript half is read from the file, the way read_session_tail
+	// reads it, so "no open tab" can never be reported as "nothing here"
+	// (task 158.D: a session with 45s of work came back hasTurn=false).
 	HasTurn bool `json:"hasTurn"`
+	// TurnInFlight is the narrower fact behind HasTurn — a live controller is
+	// mid-turn right now — kept separate so a caller can tell "busy" from
+	// "has history".
+	TurnInFlight bool `json:"turnInFlight,omitempty"`
 }
 
 // DeleteSessionResult reports the outcome of a move-to-trash.
@@ -87,7 +95,7 @@ func (t deleteSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 	// destructive path the desktop exposes through a different UI; a secretary
 	// accidentally trashing its own transcript mid-turn would be unrecoverable
 	// from the collaboration surface.
-	if t.cfg.CurrentSessionPath != "" && strings.EqualFold(id.SessionPath, t.cfg.CurrentSessionPath) {
+	if own := t.cfg.currentSessionPath(); own != "" && strings.EqualFold(id.SessionPath, own) {
 		return "", fmt.Errorf("refusing to delete the calling session (%q) — close it from the desktop instead", p.Target)
 	}
 	if t.del == nil {
@@ -102,6 +110,12 @@ func (t deleteSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 		if err != nil {
 			return "", err
 		}
+		// The impact must name the conversation the caller is about to trash,
+		// and it must be the SAME name the contact directory shows: fall back to
+		// the resolved identity's title when the host did not fill it in.
+		if strings.TrimSpace(impact.Title) == "" {
+			impact.Title = id.Title
+		}
 		out, _ := json.Marshal(map[string]any{
 			"status": "dry_run",
 			"impact": impact,
@@ -112,6 +126,9 @@ func (t deleteSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 	impact, result, err := t.del(id.ContactID, id.SessionPath, false)
 	if err != nil {
 		return "", err
+	}
+	if strings.TrimSpace(impact.Title) == "" {
+		impact.Title = id.Title
 	}
 	out, _ := json.Marshal(map[string]any{
 		"status": "trashed",
