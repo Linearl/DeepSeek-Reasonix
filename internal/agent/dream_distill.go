@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"reasonix/internal/memory"
 	"reasonix/internal/tool"
@@ -64,6 +66,37 @@ type sessionToolCall struct {
 	At      time.Time
 }
 
+// sessionToolCallRecord is one entry of an assistant message's tool_calls
+// array. Transcripts written by this host keep the tool name at the top level
+// ({"name":"bash","arguments":{…}}), while OpenAI-shaped payloads nest it under
+// function.name ({"function":{"name":"bash","arguments":"…"}}). Both shapes are
+// read: task 150 found the scanner looking for a top-level name on the wrong
+// role, so live transcripts scanned to zero tool calls and distill nominated
+// nothing at all.
+type sessionToolCallRecord struct {
+	Name         string `json:"name"`
+	CapabilityID string `json:"capability_id"`
+	Function     struct {
+		Name string `json:"name"`
+	} `json:"function"`
+}
+
+// toolName returns the tool the model invoked, accepting either wire shape. A
+// use_capability dispatch is reported under the capability it resolved to
+// (mcp-tool:exa/web_search_exa, memory:remember, skill:review) rather than under
+// the proxy, because "bash → use_capability" says nothing about the workflow while
+// "bash → mcp-tool:exa/web_search_exa" names the step (#task 150).
+func (r sessionToolCallRecord) toolName() string {
+	name := strings.TrimSpace(r.Name)
+	if name == "" {
+		return strings.TrimSpace(r.Function.Name)
+	}
+	if id := strings.TrimSpace(r.CapabilityID); id != "" {
+		return id
+	}
+	return name
+}
+
 // listRecentSessionFiles returns *.jsonl under dir whose mtime is inside window.
 func listRecentSessionFiles(dir string, window time.Duration) []string {
 	if strings.TrimSpace(dir) == "" {
@@ -101,18 +134,20 @@ func scanSessionJSONL(path string, cutoff time.Time) (users []sessionUserLine, t
 	base := filepath.Base(path)
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	var dispatched, results []sessionToolCall
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
 		if line == "" {
 			continue
 		}
 		var rec struct {
-			Role    string          `json:"role"`
-			Content json.RawMessage `json:"content"`
-			Kind    string          `json:"kind"`
-			Name    string          `json:"name"`
-			TS      string          `json:"ts"`
-			Time    string          `json:"time"`
+			Role      string                  `json:"role"`
+			Content   json.RawMessage         `json:"content"`
+			Kind      string                  `json:"kind"`
+			Name      string                  `json:"name"`
+			ToolCalls []sessionToolCallRecord `json:"tool_calls"`
+			TS        string                  `json:"ts"`
+			Time      string                  `json:"time"`
 		}
 		if err := json.Unmarshal([]byte(line), &rec); err != nil {
 			continue
@@ -126,14 +161,38 @@ func scanSessionJSONL(path string, cutoff time.Time) (users []sessionUserLine, t
 			if text := rawContentText(rec.Content); text != "" {
 				users = append(users, sessionUserLine{Session: base, Text: text, At: at})
 			}
+		case "tool":
+			// One row per tool result, named at the top level. This is the
+			// fallback channel resolved after the scan.
+			if name := strings.TrimSpace(rec.Name); name != "" {
+				results = append(results, sessionToolCall{Session: base, Name: name, At: at})
+			}
 		case "assistant", "":
+			if len(rec.ToolCalls) > 0 {
+				for _, call := range rec.ToolCalls {
+					if name := call.toolName(); name != "" {
+						dispatched = append(dispatched, sessionToolCall{Session: base, Name: name, At: at})
+					}
+				}
+				continue
+			}
+			// Older transcripts name the tool on the record itself.
 			if rec.Kind == "tool" || rec.Name != "" {
-				name := strings.TrimSpace(rec.Name)
-				if name != "" {
-					tools = append(tools, sessionToolCall{Session: base, Name: name, At: at})
+				if name := strings.TrimSpace(rec.Name); name != "" {
+					dispatched = append(dispatched, sessionToolCall{Session: base, Name: name, At: at})
 				}
 			}
 		}
+	}
+	// Both channels describe the same invocations — a transcript persists the
+	// assistant dispatch and the tool result for every call — so exactly one is
+	// returned. The dispatch array wins because it keeps the model's call order
+	// inside a batch; the result rows are the fallback for transcripts that
+	// never persisted it. Returning both would double every call and destroy
+	// the sequence statistics distill is built on.
+	tools = dispatched
+	if len(dispatched) == 0 {
+		tools = results
 	}
 	return users, tools
 }
@@ -184,8 +243,15 @@ func rawContentText(raw json.RawMessage) string {
 // that both matches a marker and appears in a real user turn.
 var preferenceMarkers = []string{
 	"prefer", "always ", "never ", "don't ", "do not ", "instead of",
-	"from now on", "next time", "remember that", "use ", "stop ",
+	"from now on", "next time", "remember that", "make sure", "avoid ",
+	"must ", "no need to", "use ", "stop ",
 	"以后", "不要", "记住", "改成", "换成", "一直", "每次",
+	// Constraint markers. The 2026-09-17 dream pass matched 1 line out of 58
+	// sessions because the list only held pronouns of instruction -- real
+	// preferences read "必须…", "统一…", "避免…" and were all missed
+	// (#task 150). Only constraint-shaped words are added: plain statements
+	// ("我想…") would turn every request into a "preference".
+	"必须", "禁止", "避免", "统一", "一律", "优先", "别用", "下次",
 }
 
 func looksLikePreference(text string) bool {
@@ -198,12 +264,24 @@ func looksLikePreference(text string) bool {
 	return false
 }
 
+// slugTrimCutset is stripped from the edges of a slug word.
+const slugTrimCutset = ".,!?;:()[]{}\"'`、，。；：！？（）【】《》…—"
+
+// maxSlugRunes caps a slug by runes, not bytes: a Chinese preference would
+// otherwise be cut mid-character by a byte split.
+const maxSlugRunes = 40
+
+// slugifyDreamFact builds a short, stable, human-readable name fragment for a
+// fact. It used to keep only [a-z0-9-], which stripped every CJK rune: a
+// Chinese preference became "dream-fact", so unrelated facts collided on one
+// name and every later one was silently skipped as a duplicate (#task 150).
+// Letters and digits of any script are kept now, and runs of punctuation
+// collapse to a single dash.
 func slugifyDreamFact(text string) string {
-	// Keep a short stable slug: first 6 words, kebab-ish.
 	words := strings.Fields(strings.ToLower(text))
 	clean := make([]string, 0, 6)
 	for _, w := range words {
-		w = strings.Trim(w, ".,!?;:()[]{}\"'`")
+		w = strings.Trim(w, slugTrimCutset)
 		if w == "" {
 			continue
 		}
@@ -212,20 +290,107 @@ func slugifyDreamFact(text string) string {
 			break
 		}
 	}
-	s := strings.Join(clean, "-")
-	s = strings.Map(func(r rune) rune {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
-			return r
+	var b strings.Builder
+	pendingDash := false
+	for _, r := range strings.Join(clean, " ") {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			if pendingDash && b.Len() > 0 {
+				b.WriteRune('-')
+			}
+			pendingDash = false
+			b.WriteRune(r)
+			continue
 		}
-		return -1
-	}, s)
-	if s == "" {
-		return "dream-fact"
+		pendingDash = true
 	}
-	if len(s) > 48 {
-		s = s[:48]
+	slug := strings.Trim(b.String(), "-")
+	if slug == "" {
+		return "fact"
 	}
-	return strings.Trim(s, "-")
+	if runes := []rune(slug); len(runes) > maxSlugRunes {
+		slug = strings.Trim(string(runes[:maxSlugRunes]), "-")
+	}
+	return slug
+}
+
+// dreamFactName is the memory name a dream pass writes for one preference
+// line. The slug stays readable (Chinese included); the content hash makes two
+// facts that slugify alike land on different names instead of the second being
+// skipped as a duplicate.
+func dreamFactName(text string) string {
+	return "dream-" + slugifyDreamFact(text) + "-" + shortContentHash(text)
+}
+
+// shortContentHash is a stable 6-hex-digit digest of a fact's text. Two
+// different preferences can still agree on a capped, human-readable slug, and
+// the hash keeps them on distinct names instead of one being dropped as a
+// duplicate (#task 150). Whitespace is normalised so a re-run of the same
+// sentence always hashes the same.
+func shortContentHash(text string) string {
+	sum := fnv.New32a()
+	_, _ = sum.Write([]byte(strings.Join(strings.Fields(text), " ")))
+	return fmt.Sprintf("%06x", sum.Sum32()&0xffffff)
+}
+
+// genericToolNames are the everyday host verbs: reading, running commands,
+// editing files, and the task-list bookkeeping around them. A repeated
+// sequence made only of these is not a workflow worth packaging. Task 150
+// measured the unfiltered nomination list on 30 days of live transcripts:
+// 1877 entries passed the hit threshold and the top of the list was
+// "bash→bash" (11211 hits) followed by "bash→write_file→bash".
+var genericToolNames = map[string]bool{
+	"bash": true, "bash_output": true, "kill_shell": true,
+	"read_file": true, "write_file": true, "edit_file": true, "multi_edit": true,
+	"grep": true, "ls": true, "glob": true, "view_image": true, "wait": true,
+	"todo_write": true, "complete_step": true, "update_goal": true, "ask": true,
+	"__reasonix_local_only__": true,
+	// The capability proxy itself: what it did is carried by the capability id
+	// the scanner reports in its place.
+	"use_capability": true,
+}
+
+// genericCapabilityPrefixes are capability ids that only proxy a tool the host
+// already counts as generic (tool:bash, tool:read_file). Everything else -- a
+// skill, a memory operation, an MCP tool -- names a step worth distilling.
+var genericCapabilityPrefixes = []string{"tool:"}
+
+// isGenericTool reports whether a reported tool or capability is an everyday
+// host verb rather than a workflow step.
+func isGenericTool(name string) bool {
+	if genericToolNames[name] {
+		return true
+	}
+	for _, prefix := range genericCapabilityPrefixes {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// minDistinctToolsPerSequence rejects a workflow proposal built from one tool
+// repeated: a loop is a defect, not a skill.
+const minDistinctToolsPerSequence = 2
+
+// workflowLikeSequence reports whether a tool-name sequence is specific enough
+// to nominate. It must use at least two distinct tools and at least one tool
+// that is not a generic host verb -- a capability proxy, a subagent, a skill
+// call or an MCP tool -- because those are what a distilled workflow is made
+// of (#task 150).
+func workflowLikeSequence(names []string) bool {
+	distinct := map[string]bool{}
+	specific := false
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		distinct[name] = true
+		if !isGenericTool(name) {
+			specific = true
+		}
+	}
+	return len(distinct) >= minDistinctToolsPerSequence && specific
 }
 
 // DreamReport is what one dream pass produces.
@@ -275,7 +440,7 @@ func RunDream(cfg DreamDistillConfig) (DreamReport, error) {
 			if len(report.SampleLines) < 8 {
 				report.SampleLines = append(report.SampleLines, text)
 			}
-			name := "dream-" + slugifyDreamFact(text)
+			name := dreamFactName(text)
 			if seen[name] || existing[name] {
 				report.SkippedDupe++
 				continue
@@ -319,11 +484,17 @@ type DistillNomination struct {
 
 // DistillReport is what one distill pass produces.
 type DistillReport struct {
-	WindowDays  int                  `json:"windowDays"`
-	Sessions    int                  `json:"sessions"`
-	MinHits     int                  `json:"minHits"`
-	Nominations []DistillNomination  `json:"nominations,omitempty"`
-	OutputPath  string               `json:"outputPath,omitempty"`
+	WindowDays int `json:"windowDays"`
+	Sessions   int `json:"sessions"`
+	MinHits    int `json:"minHits"`
+	// CandidateSequences counts repeated sequences that passed the workflow
+	// filter, GenericFiltered counts the repeated-but-generic ones dropped by
+	// it. A pass that nominates nothing still reports whether the window held
+	// no tools at all or only generic combinations.
+	CandidateSequences int                 `json:"candidateSequences,omitempty"`
+	GenericFiltered    int                 `json:"genericFiltered,omitempty"`
+	Nominations        []DistillNomination `json:"nominations,omitempty"`
+	OutputPath         string              `json:"outputPath,omitempty"`
 }
 
 // RunDistill scans recent project sessions for repeated tool-name sequences
@@ -346,6 +517,9 @@ func RunDistill(cfg DreamDistillConfig) (DistillReport, error) {
 	}
 	counts := map[string]int{}
 	sessions := map[string]map[string]bool{}
+	// all keeps the pre-filter histogram so one pass can report how much of the
+	// repeated material the workflow filter rejected (#task 150).
+	all := map[string]int{}
 	for _, path := range files {
 		_, tools := scanSessionJSONL(path, time.Now().Add(-window))
 		report.Sessions++
@@ -358,7 +532,12 @@ func RunDistill(cfg DreamDistillConfig) (DistillReport, error) {
 		}
 		for _, n := range []int{2, 3, 4, 5} {
 			for i := 0; i+n <= len(names); i++ {
-				key := strings.Join(names[i:i+n], "→")
+				window := names[i : i+n]
+				key := strings.Join(window, "→")
+				all[key]++
+				if !workflowLikeSequence(window) {
+					continue
+				}
 				counts[key]++
 				if sessions[key] == nil {
 					sessions[key] = map[string]bool{}
@@ -366,6 +545,16 @@ func RunDistill(cfg DreamDistillConfig) (DistillReport, error) {
 				sessions[key][filepath.Base(path)] = true
 			}
 		}
+	}
+	for key, hits := range all {
+		if hits < minHits {
+			continue
+		}
+		if counts[key] > 0 {
+			report.CandidateSequences++
+			continue
+		}
+		report.GenericFiltered++
 	}
 	type scored struct {
 		seq  string
@@ -486,7 +675,7 @@ func dreamDryRun(cfg DreamDistillConfig) (string, error) {
 				continue
 			}
 			report.Candidates++
-			name := "dream-" + slugifyDreamFact(text)
+			name := dreamFactName(text)
 			if existing[name] {
 				report.SkippedDupe++
 			}

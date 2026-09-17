@@ -2445,16 +2445,65 @@ func (a *Agent) recoveryPlanTransition(toolName string, args json.RawMessage) (b
 	return true, planReviewText(before), planReviewText(after), planTransitionDiff(before, after)
 }
 
+// samePlanStructure reports whether two task lists still describe the same
+// plan. Step identity -- hierarchy and wording -- must match as a multiset, and
+// the unfinished steps must keep their relative order. What may change is where
+// a finished step sits and whether a step has since finished, because both are
+// progress rather than a new plan: task 23 P1-a legalised out-of-order
+// completion (parallel subagents land whenever they land), so a rewrite that
+// only gathers the finished steps somewhere else used to be escalated to the
+// independent reviewer as if the plan itself had changed (#23 P1-d).
 func samePlanStructure(a, b []evidence.TodoItem) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	for i := range a {
-		if a[i].Level != b[i].Level || normalizePlanStep(a[i].Content) != normalizePlanStep(b[i].Content) {
+	remaining := make(map[string]int, len(b))
+	for _, todo := range b {
+		remaining[planStepKey(todo)]++
+	}
+	for _, todo := range a {
+		key := planStepKey(todo)
+		if remaining[key] == 0 {
 			return false
 		}
+		remaining[key]--
+	}
+	spineA := unfinishedPlanKeys(a)
+	spineB := unfinishedPlanKeys(b)
+	if len(spineB) > len(spineA) {
+		return false
+	}
+	next := 0
+	for _, key := range spineB {
+		for next < len(spineA) && spineA[next] != key {
+			next++
+		}
+		if next == len(spineA) {
+			return false
+		}
+		next++
 	}
 	return true
+}
+
+// planStepKey identifies a plan step by its hierarchy and wording. Completion
+// status is deliberately excluded: how far a step has got is progress, not
+// identity.
+func planStepKey(todo evidence.TodoItem) string {
+	return fmt.Sprintf("%d|%s", todo.Level, normalizePlanStep(todo.Content))
+}
+
+// unfinishedPlanKeys returns the keys of the steps that are not completed, in
+// list order -- the spine a plan is judged on.
+func unfinishedPlanKeys(todos []evidence.TodoItem) []string {
+	keys := make([]string, 0, len(todos))
+	for _, todo := range todos {
+		if canonicalTodoStatus(todo.Status) == "completed" {
+			continue
+		}
+		keys = append(keys, planStepKey(todo))
+	}
+	return keys
 }
 
 func normalizePlanStep(s string) string {
