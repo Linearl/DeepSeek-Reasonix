@@ -939,6 +939,7 @@ export const en = {
   "composer.guidanceSend": "Send this guidance to the transcript",
   "composer.guidanceWaiting": "Waiting for earlier queued guidance",
   "composer.guidanceInFlight": "Guidance is already being applied",
+  "composer.guidanceDelivering": "Guidance is being delivered to the model",
   "composer.guidanceRetryMode": "Retry",
   "composer.guidanceRetry": "Retry this guidance",
   "composer.guidanceDismiss": "Dismiss queued guidance",

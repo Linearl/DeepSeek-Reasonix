@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Check, ChevronDown, ChevronUp, CornerDownRight, Pencil, Trash2, X } from "lucide-react";
-import { guidanceHasKnownPendingState, guidanceIsEditable, guidanceIsInFlight, guidanceNeedsRetry } from "../lib/composerGuidance";
+import { guidanceHasKnownPendingState, guidanceIsDelivering, guidanceIsEditable, guidanceIsInFlight, guidanceNeedsRetry } from "../lib/composerGuidance";
 import { useI18n } from "../lib/i18n";
 import type { StructuredInvocationSubmit } from "../lib/invocationDisplay";
 import { InboxRecoveryBanner } from "./InboxRecoveryBanner";
@@ -114,6 +114,10 @@ export function ComposerGuidanceShelf({
           <div className="composer-guidance-list">
             {visible.map((item, index) => {
               const inFlight = guidanceIsInFlight(item.state);
+              // Task 159: `running` / `steer_consumed` have left the cancellable queue, so
+              // the row keeps its actions disabled — through this explicit branch with a
+              // stated reason, not the "unknown state" fallback that never explains itself.
+              const delivering = guidanceIsDelivering(item.state);
               const unknownState = !guidanceHasKnownPendingState(item.state);
               const needsRetry = guidanceNeedsRetry(item.state);
               const waitingForEarlier = !running && !inFlight && index > 0;
@@ -121,11 +125,13 @@ export function ComposerGuidanceShelf({
               const editing = editingId === item.id;
               const actionLabel = inFlight
                 ? t("composer.guidanceInFlight")
-                : waitingForEarlier
-                  ? t("composer.guidanceWaiting")
-                  : needsRetry
-                    ? t("composer.guidanceRetry")
-                    : t("composer.guidanceSend");
+                : delivering
+                  ? t("composer.guidanceDelivering")
+                  : waitingForEarlier
+                    ? t("composer.guidanceWaiting")
+                    : needsRetry
+                      ? t("composer.guidanceRetry")
+                      : t("composer.guidanceSend");
               return (
                 <div className={`composer-guidance-item${editing ? " composer-guidance-item--editing" : ""}`} key={item.id}>
                   <CornerDownRight size={14} className="composer-guidance-item__icon" />
@@ -194,19 +200,19 @@ export function ComposerGuidanceShelf({
                           className="composer-guidance-item__guide"
                           type="button"
                           aria-label={actionLabel}
-                          disabled={inFlight || unknownState || waitingForEarlier || disabled || readOnly || sendingId !== null || (running && !needsRetry && Boolean(item.structured)) || Boolean(item.paused)}
+                          disabled={inFlight || delivering || unknownState || waitingForEarlier || disabled || readOnly || sendingId !== null || (running && !needsRetry && Boolean(item.structured)) || Boolean(item.paused)}
                           onClick={() => onSend(item)}
                         >
                           <CornerDownRight size={13} />
                           <span>{t(needsRetry ? "composer.guidanceRetryMode" : running ? "composer.guidanceMode" : "composer.guidanceSendMode")}</span>
                         </button>
                       </Tooltip>
-                      <Tooltip label={inFlight ? actionLabel : t("composer.guidanceDismiss")}>
+                      <Tooltip label={inFlight || delivering ? actionLabel : t("composer.guidanceDismiss")}>
                         <button
                           className="composer-guidance-item__action"
                           type="button"
-                          aria-label={inFlight ? actionLabel : t("composer.guidanceDismiss")}
-                          disabled={disabled || readOnly || inFlight || unknownState || sendingId === item.id}
+                          aria-label={inFlight || delivering ? actionLabel : t("composer.guidanceDismiss")}
+                          disabled={disabled || readOnly || inFlight || delivering || unknownState || sendingId === item.id}
                           onClick={() => onDismiss(item)}
                         >
                           <Trash2 size={14} />

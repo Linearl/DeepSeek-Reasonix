@@ -725,6 +725,7 @@ export const zhTW: Record<DictKey, string> = {
   "composer.guidanceSend": "將這條引導加入資訊流",
   "composer.guidanceWaiting": "等待前面的引導處理完成",
   "composer.guidanceInFlight": "引導正在處理中，暫時無法操作",
+  "composer.guidanceDelivering": "引導正在交付中，暫時無法操作",
   "composer.guidanceRetryMode": "重試",
   "composer.guidanceRetry": "重試這條引導",
   "composer.guidanceDismiss": "移除這條引導提示",

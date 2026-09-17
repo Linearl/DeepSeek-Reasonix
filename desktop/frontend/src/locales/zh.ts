@@ -940,6 +940,7 @@ export const zh: Record<DictKey, string> = {
   "composer.guidanceSend": "将这条引导加入信息流",
   "composer.guidanceWaiting": "等待前面的引导处理完成",
   "composer.guidanceInFlight": "引导正在处理中，暂不可操作",
+  "composer.guidanceDelivering": "引导正在交付中，暂不可操作",
   "composer.guidanceRetryMode": "重试",
   "composer.guidanceRetry": "重试这条引导",
   "composer.guidanceDismiss": "移除这条引导提示",
