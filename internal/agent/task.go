@@ -461,7 +461,7 @@ func (t *TaskTool) Schema() json.RawMessage {
   "profile":{"type":"string","description":"Optional runAs=subagent profile name. Resolved at runtime from the Skill store; explicit names may invoke invocation=manual profiles. The profile body becomes the full system prompt."},
   "write_paths":{"type":"array","items":{"type":"string"},"description":"Optional workspace-relative or absolute file/directory paths this writer may modify. Globs and workspace escapes are rejected. Writers without write_paths claim the whole workspace (serializing against every other writer claim). Non-overlapping paths allow parallel writers up to max_parallel_writers. In fleet, multiple whole-workspace claims fail preflight before any task starts."},
   "tools":{"type":"array","items":{"type":"string"},"description":"Optional tool whitelist. When profile sets allowed-tools, this list is intersected (call args cannot expand profile permissions). ` + subagentToolBoundarySummary + `"},
-  "max_steps":{"type":"integer","description":"Optional cap on tool-call rounds. Defaults to half the parent's cap (min 5).","minimum":1},
+  "max_steps":{"type":"integer","description":"Optional cap on tool-call rounds. Defaults to two-thirds of the parent's cap (min 12); a configured subagent_default_steps override wins.","minimum":1},
   "run_in_background":{"type":"boolean","description":"Run the sub-agent asynchronously: returns a job id immediately and keeps working across turns. Collect its final answer with wait, and you'll be notified when it finishes. Use for long, independent sub-tasks you don't need to block on right now."},
   "model":{"type":"string","description":"Optional model override for the sub-agent (a configured provider/model name). Precedence: persistent profile config, this argument, profile frontmatter, global subagent default, parent model."},
   "effort":{"type":"string","description":"Optional reasoning effort for the sub-agent (e.g. high, max). Same precedence as model."},
@@ -514,14 +514,33 @@ func (t *TaskTool) ResolveProfile(args json.RawMessage) *event.Profile {
 }
 
 // ReadOnlyTaskTool runs an isolated sub-agent with a strictly read-only tool
-// registry. It intentionally omits background execution and transcript
-// continuation/fork controls so the call has no durable host side effects.
+// registry. It intentionally omits transcript continuation/fork controls so the
+// call has no durable host side effects.
+//
+// Task 118 (opt-in): with the read-only-background experiment on, the schema
+// also offers run_in_background. Read-only dispatch was the last path that could
+// only block the main chain: across the local session corpus 12/12 read-only
+// dispatches ran in the foreground while 34/38 writer tasks already ran in the
+// background, so research - the most delegable work - was the part that
+// serialized. Off by default, because a background run is a durable host side
+// effect and the tool's contract is that it has none.
 type ReadOnlyTaskTool struct {
 	task *TaskTool
+	// allowBackground is written once during boot and read-only afterwards.
+	allowBackground bool
 }
 
 func NewReadOnlyTaskTool(task *TaskTool) *ReadOnlyTaskTool {
 	return &ReadOnlyTaskTool{task: task}
+}
+
+// WithBackgroundExecution exposes the optional run_in_background argument on the
+// read-only path (task 118). Returns the tool so boot can chain it.
+func (r *ReadOnlyTaskTool) WithBackgroundExecution(allow bool) *ReadOnlyTaskTool {
+	if r != nil {
+		r.allowBackground = allow
+	}
+	return r
 }
 
 func (*ReadOnlyTaskTool) Name() string { return tool.HostReadOnlyTask }
@@ -530,16 +549,21 @@ func (*ReadOnlyTaskTool) Description() string {
 	return "Spawn a read-only research sub-agent for a focused investigation. The sub-agent runs in an isolated, ephemeral session with read-only tools only; bash is wrapped to allow only permission-classified foreground read-only commands. It cannot write files, install capabilities, mutate memory, run background jobs, continue/fork transcripts, or delegate to writer-capable agents. Read-only nested delegation may be available until max_subagent_depth is reached. Only its final answer is returned."
 }
 
-func (*ReadOnlyTaskTool) Schema() json.RawMessage {
+func (r *ReadOnlyTaskTool) Schema() json.RawMessage {
+	background := ""
+	if r != nil && r.allowBackground {
+		background = `,
+  "run_in_background":{"type":"boolean","description":"Run the read-only sub-agent asynchronously: returns a job id immediately and keeps researching across turns. Collect its final answer with wait, and you'll be notified when it finishes. Use for long investigations you don't need to block on right now — read-only research is the safest thing to run in the background."}`
+	}
 	return json.RawMessage(`{
 "type":"object",
 "properties":{
   "prompt":{"type":"string","description":"What the read-only sub-agent should investigate. Be specific about the evidence or summary to return — the sub-agent does not see this conversation."},
   "description":{"type":"string","description":"Short label for the read-only sub-task (3-7 words). Surfaced in the dispatch line so the user sees what's running."},
   "tools":{"type":"array","items":{"type":"string"},"description":"Optional read-only tool whitelist. Writer, installer, memory mutation, background job, and delegation tools are never exposed."},
-  "max_steps":{"type":"integer","description":"Optional cap on tool-call rounds. Defaults to half the parent's cap (min 5).","minimum":1},
+  "max_steps":{"type":"integer","description":"Optional cap on tool-call rounds. Defaults to two-thirds of the parent's cap (min 12); a configured subagent_default_steps override wins.","minimum":1},
   "model":{"type":"string","description":"Optional model override for the sub-agent (a configured provider/model name)."},
-  "effort":{"type":"string","description":"Optional reasoning effort for the sub-agent (e.g. high, max)."}
+  "effort":{"type":"string","description":"Optional reasoning effort for the sub-agent (e.g. high, max)."}` + background + `
 },
 "required":["prompt"]
 }`)
@@ -564,12 +588,13 @@ func (r *ReadOnlyTaskTool) Execute(ctx context.Context, args json.RawMessage) (s
 		return "", fmt.Errorf("read_only_task is not configured")
 	}
 	var p struct {
-		Prompt      string   `json:"prompt"`
-		Description string   `json:"description"`
-		Tools       []string `json:"tools"`
-		MaxSteps    int      `json:"max_steps"`
-		Model       string   `json:"model"`
-		Effort      string   `json:"effort"`
+		Prompt          string   `json:"prompt"`
+		Description     string   `json:"description"`
+		Tools           []string `json:"tools"`
+		MaxSteps        int      `json:"max_steps"`
+		Model           string   `json:"model"`
+		Effort          string   `json:"effort"`
+		RunInBackground bool     `json:"run_in_background"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
@@ -577,7 +602,10 @@ func (r *ReadOnlyTaskTool) Execute(ctx context.Context, args json.RawMessage) (s
 	// Every entry point compiles to a spec and runs through RunProfileSpec, so a
 	// boundary added there cannot be missed by one caller. read_only_task keeps
 	// its own promise of no durable side effects through Ephemeral.
-	spec, err := r.task.buildTaskSpec(ctx, p.Prompt, p.Description, "", nil, p.Tools, p.MaxSteps, p.Model, p.Effort, "", "", false, true)
+	// Task 118: run_in_background is honored only while the experiment is on, so
+	// the default schema and behaviour stay exactly as they were.
+	background := p.RunInBackground && r.allowBackground
+	spec, err := r.task.buildTaskSpec(ctx, p.Prompt, p.Description, "", nil, p.Tools, p.MaxSteps, p.Model, p.Effort, "", "", background, true)
 	if err != nil {
 		return "", err
 	}

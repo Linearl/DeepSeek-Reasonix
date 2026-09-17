@@ -75,6 +75,17 @@ const maxStalledIntentNudges = 1
 // user sets an unreasonably high value.
 const maxStalledIntentNudgeHardCap = 3
 
+// maxReadinessCatchUps is the default number of visible catch-up rounds an
+// ordinary turn may spend on an unmet delivery contract before the host pauses
+// it with the recovery card (task 117 P1). One round is enough to cite a gap
+// the model forgot; the pause stays the fallback, not the exception.
+const maxReadinessCatchUps = 1
+
+// maxReadinessCatchUpHardCap is the absolute ceiling for the configurable
+// catch-up limit (task 117 P1), matching maxReadinessAdvisories: past two
+// attempts a still-unsatisfied contract is a real gap, not a citation miss.
+const maxReadinessCatchUpHardCap = 2
+
 // stalledIntentPhrases catch the shape where the model narrates the next step
 // and stops. Only the answer tail is inspected: a final answer may legitimately
 // quote such phrasing earlier in its text.
@@ -366,8 +377,19 @@ type Agent struct {
 	continuationPolicy  ContinuationPolicy
 	// stalledIntentNudge enables the stalled-intent repair outside
 	// ContinuationExplicitFlow (task 117). stalledIntentNudgeLimit bounds it.
-	stalledIntentNudge       bool
-	stalledIntentNudgeLimit  int
+	stalledIntentNudge      bool
+	stalledIntentNudgeLimit int
+	// readinessCatchUp lets an ordinary (non-autopilot) turn cite missing
+	// delivery evidence in a visible round before the host pauses it with the
+	// recovery card (task 117 P1). Off by default; readinessCatchUpLimit bounds
+	// the rounds per run.
+	readinessCatchUp      bool
+	readinessCatchUpLimit int
+	// planResearchGate requires a read-only investigation before a plan-mode
+	// turn presents a plan (task 118). Off by default; planResearchGateLimit
+	// bounds the asks per run.
+	planResearchGate      bool
+	planResearchGateLimit int
 
 	// unwrittenResolve is the resolve watermark a failed state write still owes.
 	// It outlives the conversation, which is why it is not in sessionRuntime.
@@ -1150,6 +1172,20 @@ type Options struct {
 	// StalledIntentNudgeLimit overrides maxStalledIntentNudges (default 1).
 	// Values above maxStalledIntentNudgeHardCap are clamped.
 	StalledIntentNudgeLimit int
+	// ReadinessCatchUp lets an ordinary turn spend a bounded, transcript-visible
+	// catch-up round on an unmet delivery readiness contract before the host
+	// pauses it (task 117 P1). Off by default: upstream ends the run on the
+	// first unsatisfied delivery answer, and that stays the default.
+	ReadinessCatchUp bool
+	// ReadinessCatchUpLimit overrides maxReadinessCatchUps (default 1).
+	// Values above maxReadinessCatchUpHardCap are clamped.
+	ReadinessCatchUpLimit int
+	// PlanResearchGate requires a read-only investigation (or a stated reason)
+	// before a plan-mode turn presents a plan (task 118). Off by default.
+	PlanResearchGate bool
+	// PlanResearchGateLimit overrides maxPlanResearchNudges (default 1).
+	// Values above maxPlanResearchNudgeHardCap are clamped.
+	PlanResearchGateLimit int
 	// ReadPipeline carries the internal read-pipeline rollout switches; both are
 	// off by default, fixed per run, and never enter provider bytes.
 	ReadPipeline ReadPipelineOptions
@@ -1226,7 +1262,7 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 			maxSubagentDepth:        maxSubagentDepth,
 			autopilot:               opts.Autopilot,
 			traceAsState:            opts.TraceAsState,
-			restartUpdater:         opts.RestartUpdater,
+			restartUpdater:          opts.RestartUpdater,
 			contextWindow:           opts.ContextWindow,
 			compactRatio:            opts.CompactRatio,
 			recentKeep:              opts.RecentKeep,
@@ -1246,10 +1282,14 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 			ledger: evidence.NewLedger(),
 			budget: runBudget{limit: normalizeTaskBudget(opts.TaskBudget)},
 		},
-		requireVisibleFinal: opts.RequireVisibleFinal,
-		continuationPolicy:  opts.ContinuationPolicy,
+		requireVisibleFinal:     opts.RequireVisibleFinal,
+		continuationPolicy:      opts.ContinuationPolicy,
 		stalledIntentNudge:      opts.StalledIntentNudge,
 		stalledIntentNudgeLimit: normalizeStalledIntentNudgeLimit(opts.StalledIntentNudgeLimit),
+		readinessCatchUp:        opts.ReadinessCatchUp,
+		readinessCatchUpLimit:   normalizeReadinessCatchUpLimit(opts.ReadinessCatchUpLimit),
+		planResearchGate:        opts.PlanResearchGate,
+		planResearchGateLimit:   normalizePlanResearchNudgeLimit(opts.PlanResearchGateLimit),
 		recovery: recoveryIdentity{
 			agentID: strings.TrimSpace(opts.RecoveryAgentID),
 			taskID:  strings.TrimSpace(opts.RecoveryTaskID),
@@ -1292,6 +1332,19 @@ func normalizeStalledIntentNudgeLimit(limit int) int {
 	}
 	if limit > maxStalledIntentNudgeHardCap {
 		return maxStalledIntentNudgeHardCap
+	}
+	return limit
+}
+
+// normalizeReadinessCatchUpLimit returns the effective per-run delivery
+// catch-up cap (task 117 P1). Zero or negative keeps the built-in default;
+// values above the hard cap are clamped so a genuine gap cannot spin.
+func normalizeReadinessCatchUpLimit(limit int) int {
+	if limit <= 0 {
+		return maxReadinessCatchUps
+	}
+	if limit > maxReadinessCatchUpHardCap {
+		return maxReadinessCatchUpHardCap
 	}
 	return limit
 }

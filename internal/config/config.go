@@ -1393,6 +1393,35 @@ type AgentConfig struct {
 	// StalledIntentNudgeLimit caps the stalled-intent repair per run.
 	// 0 keeps the built-in default (1). Values above 3 are clamped.
 	StalledIntentNudgeLimit int `toml:"stalled_intent_nudge_limit"`
+	// ReadinessCatchUp lets an ordinary (non-autopilot) turn spend a bounded
+	// number of visible catch-up rounds on an unmet delivery readiness contract
+	// before the host pauses with the recovery card (task 117 P1). Off by
+	// default: upstream ends the run on the FIRST unsatisfied delivery answer
+	// and lets the host decide what happens next, and that stays the default.
+	// The fork's variant reuses the machinery autopilot already runs for
+	// unattended turns - a transcript-visible host message naming the missing
+	// evidence, never a hidden retry.
+	ReadinessCatchUp bool `toml:"readiness_catch_up"`
+	// ReadinessCatchUpLimit caps catch-up rounds per run. 0 keeps the built-in
+	// default (1). Values above 2 are clamped: two rounds let the model cite a
+	// gap it merely forgot, and beyond that the gap is real.
+	ReadinessCatchUpLimit int `toml:"readiness_catch_up_limit"`
+	// PlanResearchGate makes a plan-mode turn delegate a read-only investigation
+	// before the host accepts a plan written from the visible prefix alone
+	// (task 118). Off by default: it is a process step, not a repair, so it is
+	// opt-in and bounded to one ask per run - and the ask always offers the exit
+	// of naming what was deliberately not read.
+	PlanResearchGate bool `toml:"plan_research_gate"`
+	// PlanResearchGateLimit caps gate rounds per run. 0 keeps the built-in
+	// default (1). Values above 2 are clamped.
+	PlanResearchGateLimit int `toml:"plan_research_gate_limit"`
+	// ReadOnlyTaskBackground exposes the optional run_in_background argument on
+	// read_only_task (task 118). Off by default: the tool's contract is that a
+	// read-only dispatch has no durable host side effects, and a background run
+	// is one. Measured need: across the local session corpus every read-only
+	// dispatch (12/12) ran in the foreground while 34/38 writer tasks already
+	// ran in the background, so research was the part that serialized.
+	ReadOnlyTaskBackground bool `toml:"read_only_task_background"`
 	// OutputStyle selects a persona/tone block folded into the system prompt at
 	// startup (a built-in like "explanatory"/"learning"/"concise", or a custom
 	// .reasonix/output-styles/<name>.md). Empty = the unmodified prompt.

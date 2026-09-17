@@ -129,6 +129,15 @@ type terminalProtocolState struct {
 	// carried forward instead of pausing. Unattended (autopilot) runs advise and
 	// continue, and this bounds that so a gap the model cannot close does not spin.
 	readinessAdvisories int
+	// readinessCatchUps counts opt-in delivery catch-up rounds (task 117 P1):
+	// visible rounds an ordinary turn spent citing missing evidence instead of
+	// pausing on the first unsatisfied answer. Bounded by the run's catch-up
+	// limit so a real gap still stops.
+	readinessCatchUps int
+	// planResearchNudges counts plan-mode research-gate rounds sent this run
+	// (task 118, opt-in): visible host rounds asking for a read-only
+	// investigation before a plan lands. Bounded so the gate cannot loop.
+	planResearchNudges int
 	// autopilotGraceTurns counts grace-round continuations taken because an
 	// unattended run has nobody to answer the "continue?" pause. Bounded so a run
 	// that genuinely cannot make progress still stops.

@@ -466,6 +466,28 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 		// action or lets the Goal FSM decide whether to continue.
 		switch {
 		case a.readinessPauseActive(readiness):
+			// Task 117 P1 (opt-in): spend a bounded, transcript-visible catch-up
+			// round naming the missing evidence before handing the user a
+			// recovery card. Off by default - upstream ends the run on the first
+			// unsatisfied delivery answer, and that remains the default contract.
+			// The round is a host-generated user message, never a hidden model
+			// message, so the transcript shows exactly what was asked for.
+			if a.readinessCatchUp && state.terminal.readinessCatchUps < a.readinessCatchUpLimit {
+				state.terminal.readinessCatchUps++
+				event.RecordReadinessAudit(a.svc.sink, readiness.audit(evidence.ReadinessAdvised, a.turn.readinessRecovered))
+				a.pending.finalReadinessRecovery = true
+				a.persistFinalReadinessRecovery(readiness.missingIDs())
+				a.svc.sink.Emit(event.Event{
+					Kind:   event.Notice,
+					Level:  event.LevelInfo,
+					Code:   event.NoticeCodeReadinessAdvisory,
+					Text:   readinessCatchUpNotice(),
+					Detail: fmt.Sprintf("catch-up %d/%d: %s", state.terminal.readinessCatchUps, a.readinessCatchUpLimit, readinessAdvisoryDetail(readiness.missingIDs())),
+				})
+				a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(readinessAdvisoryRetryMessage(readiness.missingIDs()))))
+				a.contextManager().ObserveUsage(usage)
+				return true, nil
+			}
 			event.RecordReadinessAudit(a.svc.sink, readiness.audit(evidence.ReadinessErrored, false))
 			a.pending.finalReadinessRecovery = true
 			a.persistFinalReadinessRecovery(readiness.missingIDs())
@@ -507,6 +529,34 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 		default:
 			event.RecordReadinessAudit(a.svc.sink, readiness.audit(evidence.ReadinessAllowed, a.turn.readinessRecovered))
 		}
+	} else if state.terminal.readinessCatchUps > 0 && a.pending.finalReadinessRecovery {
+		// Task 117 P1: the catch-up round closed the contract it was opened for,
+		// so this turn is not unfinished after all. Clearing the pending bit - and
+		// its durable marker - matters: without it a recovered turn looks exactly
+		// like the paused turn the catch-up exists to avoid, and the recovery card
+		// would offer to rescue work that already landed.
+		a.pending.finalReadinessRecovery = false
+		if a.sess.conversation != nil {
+			a.sess.conversation.ConsumeFinalReadinessRecovery()
+		}
+	}
+	// Task 118 (opt-in): a plan written without delegating any read-only
+	// investigation can only restate the visible prefix. Ask once for the
+	// investigation - or for the list of areas deliberately left unread - then
+	// let the plan land. The gate adds a step, never a wall.
+	if a.planResearchGateActive() && !a.dispatchedReadOnlyResearch() &&
+		state.terminal.planResearchNudges < a.planResearchGateLimit {
+		state.terminal.planResearchNudges++
+		a.svc.sink.Emit(event.Event{
+			Kind:   event.Notice,
+			Level:  event.LevelInfo,
+			Code:   event.NoticeCodeReadinessAdvisory,
+			Text:   planResearchNudgeNotice(),
+			Detail: fmt.Sprintf("plan research gate %d/%d", state.terminal.planResearchNudges, a.planResearchGateLimit),
+		})
+		a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(planResearchNudgeMessage())))
+		a.contextManager().ObserveUsage(usage)
+		return true, nil
 	}
 	if !hasVisibleFinalAnswer(text) {
 		// Harness-style termination accepts a reasoning-only clean stop. Only

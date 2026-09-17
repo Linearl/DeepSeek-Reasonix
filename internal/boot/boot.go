@@ -1288,7 +1288,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		if taskTool == nil {
 			taskTool = newTaskTool()
 		}
-		reg.Add(agent.NewReadOnlyTaskTool(taskTool))
+		reg.Add(agent.NewReadOnlyTaskTool(taskTool).WithBackgroundExecution(cfg.Agent.ReadOnlyTaskBackground))
 		return "enabled read_only_task."
 	}
 	addTaskTool()
@@ -1843,6 +1843,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		TextRepeatThreshold:          cfg.Agent.TextRepeatThreshold,
 		StalledIntentNudge:           cfg.Agent.StalledIntentNudge,
 		StalledIntentNudgeLimit:      cfg.Agent.StalledIntentNudgeLimit,
+		ReadinessCatchUp:             cfg.Agent.ReadinessCatchUp,
+		ReadinessCatchUpLimit:        cfg.Agent.ReadinessCatchUpLimit,
+		PlanResearchGate:             cfg.Agent.PlanResearchGate,
+		PlanResearchGateLimit:        cfg.Agent.PlanResearchGateLimit,
 		SubagentDepth:                0,
 		MaxSubagentDepth:             maxSubagentDepth,
 		Autopilot:                    opts.Autopilot,
