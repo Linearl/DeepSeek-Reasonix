@@ -18,6 +18,11 @@ func TestIsMainTranscript(t *testing.T) {
 		{"20260907-041615.000-deepseek.jsonl.meta", false},
 		{"20260907-041615.000-deepseek.ckpt", false},
 		{"20260907-041615.000-deepseek.inbox.jsonl", false},
+		// Audit F154-4: the first cut of this predicate matched ".guardian" but
+		// the real sidecar is "<stem>.guardian.jsonl", so it leaked into the
+		// directory as a phantom session. Now delegated to store.
+		{"20260907-041615.000-deepseek.guardian.jsonl", false},
+		{"x.guardian.jsonl", false},
 		{"sc_abc.inbox.jsonl", false},
 		{"session.jsonl", true},
 		{"notes.txt", false},

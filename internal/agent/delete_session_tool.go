@@ -24,15 +24,21 @@ type DeleteSessionImpact struct {
 
 // DeleteSessionResult reports the outcome of a move-to-trash.
 type DeleteSessionResult struct {
-	ContactID     string `json:"contactId"`
-	SessionPath   string `json:"sessionPath"`
-	Trashed       bool   `json:"trashed"`
-	RestoreWithin string `json:"restoreWithin"`
+	ContactID   string `json:"contactId"`
+	SessionPath string `json:"sessionPath"`
+	Trashed     bool   `json:"trashed"`
+	// RestoreUntil is a human-readable recovery note. The desktop trash has no
+	// automatic 30-day purge, so this is "manual" — the user restores it from
+	// the Trash page. The previous "30d" was a claim no code enforced.
+	RestoreUntil string `json:"restoreUntil"`
 }
 
 // DeleteSessionFunc is the host capability that moves a session to trash
-// (30-day recovery, matching the desktop's Delete). Nil = not supported.
-type DeleteSessionFunc func(contactID, sessionPath string) (DeleteSessionResult, error)
+// (matching the desktop's Delete, which is a manual-restore trash). Nil =
+// not supported. The host also fills the impact report so the caller's dry run
+// reflects real state (open tab / in-flight turn) instead of an always-false
+// default (audit F154-2).
+type DeleteSessionFunc func(contactID, sessionPath string) (DeleteSessionImpact, DeleteSessionResult, error)
 
 // NewDeleteSessionTool lets a secretary retire a session from the contact
 // directory without opening the desktop (task 154 sub-item A). It refuses to
@@ -50,7 +56,7 @@ type deleteSessionTool struct {
 func (deleteSessionTool) Name() string { return "delete_session" }
 
 func (deleteSessionTool) Description() string {
-	return "Move a session to trash (30-day recovery, same as the desktop Delete action) so it leaves the contact directory. Takes a contact_id / topic_id / title. The caller's own session is refused. The pre-delete impact report is returned so you can tell the user what was open. Experimental."
+	return "Move a session to the desktop trash (manual restore, same as the desktop Delete action) so it leaves the contact directory. Takes a contact_id / topic_id / title. The caller's own session is refused. Dry-run first: the impact report shows whether the session has an open tab or an in-flight turn, so you can tell the user before confirming. Experimental."
 }
 
 func (deleteSessionTool) Schema() json.RawMessage {
@@ -82,11 +88,15 @@ func (t deleteSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 	if t.cfg.CurrentSessionPath != "" && strings.EqualFold(id.SessionPath, t.cfg.CurrentSessionPath) {
 		return "", fmt.Errorf("refusing to delete the calling session (%q) — close it from the desktop instead", p.Target)
 	}
-	impact := DeleteSessionImpact{
-		Title:       id.Title,
-		ContactID:   id.ContactID,
-		SessionPath: id.SessionPath,
-		Archived:    id.Archived,
+	if t.del == nil {
+		return "", fmt.Errorf("delete_session: this host cannot delete sessions")
+	}
+	// The host fills OpenTab / HasTurn from its live tab map and controller
+	// state, so the report cannot contradict the removal guard (audit F154-2).
+	// Dry run asks for the same report without trashing anything.
+	impact, result, err := t.del(id.ContactID, id.SessionPath)
+	if err != nil {
+		return "", err
 	}
 	if !p.Confirm {
 		out, _ := json.Marshal(map[string]any{
@@ -95,13 +105,6 @@ func (t deleteSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 			"note":   "re-run with confirm=true to move it to trash",
 		})
 		return string(out), nil
-	}
-	if t.del == nil {
-		return "", fmt.Errorf("delete_session: this host cannot delete sessions")
-	}
-	result, err := t.del(id.ContactID, id.SessionPath)
-	if err != nil {
-		return "", err
 	}
 	out, _ := json.Marshal(map[string]any{
 		"status": "trashed",

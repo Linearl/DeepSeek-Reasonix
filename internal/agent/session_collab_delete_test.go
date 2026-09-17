@@ -55,9 +55,9 @@ func TestDeleteSessionRefusesSelf(t *testing.T) {
 		SessionDir:         dir,
 		WorkspaceRoot:      dir,
 		CurrentSessionPath: self,
-	}, func(contactID, sessionPath string) (DeleteSessionResult, error) {
+	}, func(contactID, sessionPath string) (DeleteSessionImpact, DeleteSessionResult, error) {
 		t.Fatal("delete callback must not run for self-delete")
-		return DeleteSessionResult{}, nil
+		return DeleteSessionImpact{}, DeleteSessionResult{}, nil
 	})
 	if _, err := tool.Execute(nil, []byte(`{"target":"`+selfID+`","confirm":true}`)); err == nil || !strings.Contains(err.Error(), "refusing to delete the calling session") {
 		t.Fatalf("self-delete must be refused, got %v", err)
@@ -78,21 +78,24 @@ func TestDeleteSessionDryRunDoesNotDelete(t *testing.T) {
 		Enabled:       true,
 		SessionDir:    dir,
 		WorkspaceRoot: dir,
-	}, func(contactID, sessionPath string) (DeleteSessionResult, error) {
+	}, func(contactID, sessionPath string) (DeleteSessionImpact, DeleteSessionResult, error) {
 		called = true
-		return DeleteSessionResult{ContactID: contactID, SessionPath: sessionPath, Trashed: true, RestoreWithin: "30d"}, nil
+		return DeleteSessionImpact{ContactID: contactID, SessionPath: sessionPath, OpenTab: true, HasTurn: false},
+			DeleteSessionResult{ContactID: contactID, SessionPath: sessionPath, Trashed: true, RestoreUntil: "manual"}, nil
 	})
 	out, err := tool.Execute(nil, []byte(`{"target":"`+targetID+`"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if called {
-		t.Fatal("dry run must not invoke the host delete")
+	if !called {
+		t.Fatal("dry run must call the host for a real impact report")
 	}
 	var payload struct {
 		Status string `json:"status"`
 		Impact struct {
-			Title string `json:"title"`
+			Title   string `json:"title"`
+			OpenTab bool   `json:"openTab"`
+			HasTurn bool   `json:"hasTurn"`
 		} `json:"impact"`
 	}
 	if err := json.Unmarshal([]byte(out), &payload); err != nil {
@@ -100,5 +103,8 @@ func TestDeleteSessionDryRunDoesNotDelete(t *testing.T) {
 	}
 	if payload.Status != "dry_run" {
 		t.Fatalf("dry run status: %s", payload.Status)
+	}
+	if !payload.Impact.OpenTab {
+		t.Fatal("dry run must surface the host's openTab so it cannot contradict the removal guard")
 	}
 }

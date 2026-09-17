@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"reasonix/internal/filelock"
+	"reasonix/internal/store"
 )
 
 // MaxHop is the collaboration chain limit (task 142). The 6th hop is refused.
@@ -180,44 +181,20 @@ func appendJSONL(path string, v any) error {
 }
 
 // IsMainTranscript reports whether a filename is the primary transcript of a
-// session, as opposed to a sidecar. Sidecars live next to the transcript with
-// the same stem — `.turns.jsonl`, `.events.jsonl`, `.conflicts.jsonl`, `.meta`,
-// `.ckpt`, `.inbox/`, `.jobs` — and were being counted as separate sessions by
-// the directory, which tripled the roster and produced phantom "duplicate
-// contact_id" warnings (incident 2026-09-17). One predicate, one truth.
+// session, as opposed to a sidecar. It delegates to store.IsSessionTranscriptName
+// — the repo's single authority, already consumed by historycatalog, doctor,
+// recovery, and sessiontool. A second predicate here would silently diverge
+// (the first cut of this package did exactly that, and `.guardian.jsonl` leaked
+// into the directory as a phantom session — incident 2026-09-17, audit F154-4).
+// The only extra filter is the collab mailbox's own `.inbox.jsonl` delivery
+// files, which live beside sessions but are not sessions.
 func IsMainTranscript(name string) bool {
 	base := strings.ToLower(filepath.Base(name))
-	// Known sidecar suffixes. Order does not matter; longest match wins via the
-	// explicit list rather than a suffix trick, so adding a new sidecar later is
-	// a one-line change and cannot silently widen the filter.
-	sidecars := []string{
-		".turns.jsonl",
-		".events.jsonl",
-		".conflicts.jsonl",
-		".context.json",
-		".telemetry.json",
-		".display-index.json",
-		".event-index.json",
-		".pinned-context.json",
-		".goal-state.json",
-		".meta",
-		".ckpt",
-		".lease.lock",
-		".lease.json",
-		".cleanup-pending.json",
-		".recovery",
-		".guardian",
-	}
-	for _, s := range sidecars {
-		if strings.HasSuffix(base, s) {
-			return false
-		}
-	}
-	// A `.inbox.jsonl` in the collab mailbox is a delivery file, not a session.
-	if strings.HasSuffix(base, ".inbox.jsonl") {
+	if !store.IsSessionTranscriptName(base) {
 		return false
 	}
-	return strings.HasSuffix(base, ".jsonl")
+	// A `.inbox.jsonl` in the collab mailbox is a delivery file, not a session.
+	return !strings.HasSuffix(base, ".inbox.jsonl")
 }
 
 // ScanDir walks one sessions directory for BranchMeta contact fields.

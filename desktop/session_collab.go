@@ -192,26 +192,55 @@ func (a *App) createCollabSession(workspaceRoot, title, purpose, group, groupID 
 // It moves the transcript to the local trash (same 30-day recovery the desktop
 // Delete uses) and re-emits a tree change so the directory and sidebar drop it
 // immediately — no restart, no re-enumeration.
-func (a *App) deleteCollabSession(contactID, sessionPath string) (agent.DeleteSessionResult, error) {
+// deleteCollabSession is the host capability behind delete_session (154-A).
+// It fills a real impact report (open tab / in-flight turn) from the live tab
+// map, then moves the transcript to the local trash — same 30-day-free,
+// manual-restore trash the desktop Delete uses. The previous version hard-coded
+// OpenTab/HasTurn to false and claimed a 30-day restore window no code enforced
+// (audit F154-2, F154-5).
+func (a *App) deleteCollabSession(contactID, sessionPath string) (agent.DeleteSessionImpact, agent.DeleteSessionResult, error) {
 	sessionPath = strings.TrimSpace(sessionPath)
 	if sessionPath == "" {
-		return agent.DeleteSessionResult{}, fmt.Errorf("session path is required")
+		return agent.DeleteSessionImpact{}, agent.DeleteSessionResult{}, fmt.Errorf("session path is required")
 	}
+	// Fill the impact report from live state BEFORE trashing, so a dry run and
+	// a real delete report the same truth.
+	impact := agent.DeleteSessionImpact{
+		ContactID:   contactID,
+		SessionPath: sessionPath,
+	}
+	a.mu.Lock()
+	for _, tab := range a.tabs {
+		if tab == nil || tab.Ctrl == nil {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(tab.Ctrl.SessionPath()), sessionPath) {
+			continue
+		}
+		impact.OpenTab = true
+		if status := tab.Ctrl.RuntimeStatus(); status.Running {
+			impact.HasTurn = true
+		}
+		break
+	}
+	a.mu.Unlock()
+
 	dir := sessionDirectoryForPath(sessionPath)
 	if dir == "" {
-		return agent.DeleteSessionResult{}, fmt.Errorf("cannot determine the session directory for %q", sessionPath)
+		return impact, agent.DeleteSessionResult{}, fmt.Errorf("cannot determine the session directory for %q", sessionPath)
 	}
 	// Only trash sessions this desktop actually owns: the trash helper validates
-	// the path lives under the given directory.
+	// the path lives under the given directory, and the removal guard refuses a
+	// live lease (errSessionBusyElsewhere).
 	if err := deleteSessionFile(dir, sessionPath); err != nil {
-		return agent.DeleteSessionResult{}, err
+		return impact, agent.DeleteSessionResult{}, err
 	}
 	a.emitProjectTreeChanged()
-	return agent.DeleteSessionResult{
-		ContactID:     contactID,
-		SessionPath:   sessionPath,
-		Trashed:       true,
-		RestoreWithin: "30d",
+	return impact, agent.DeleteSessionResult{
+		ContactID:    contactID,
+		SessionPath:  sessionPath,
+		Trashed:      true,
+		RestoreUntil: "manual — restore from the Trash page",
 	}, nil
 }
 

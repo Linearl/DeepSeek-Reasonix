@@ -47,7 +47,7 @@ func (createCollabSessionTool) Description() string {
 }
 
 func (createCollabSessionTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"title":{"type":"string","description":"Session title."},"purpose":{"type":"string","description":"One-line duty, e.g. 'React frontend expert'."},"group":{"type":"string","description":"Group title. Created when absent; matched by id when group_id is also given."},"group_id":{"type":"string","description":"Existing group id to join. Takes precedence over the title match, so renaming a group cannot detach the team."}},"required":["title","purpose"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"title":{"type":"string","description":"Session title."},"purpose":{"type":"string","description":"One-line duty, e.g. 'React frontend expert'."},"group":{"type":"string","description":"Group title. Created when absent; matched by id when group_id is also given."},"group_id":{"type":"string","description":"Existing group id to join. Takes precedence over the title match, so renaming a group cannot detach the team."}},"required":["title","purpose","group"]}`)
 }
 
 func (createCollabSessionTool) ReadOnly() bool { return false }
