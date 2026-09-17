@@ -338,7 +338,9 @@ for (const path of localeChunks) {
   // Task 19 session-collaboration copy (collabCard.* + sessionCollab*) adds keys
   // per dialect; zh measures 72.2 KiB (past 72.0) and zh-TW 73.1 (past 73.0).
   // Same one-decimal ratchet: zh 72.5, zh-TW 73.5.
-  const budget = name.startsWith("zh-TW-") ? 73.5 * 1024 : 72.5 * 1024;
+  // Task 161 cache-tuning settings copy adds 12 keys per dialect; zh measures
+  // 72.7 KiB (past 72.5). Same one-decimal ratchet: zh 73.0; zh-TW keeps 73.5.
+  const budget = name.startsWith("zh-TW-") ? 73.5 * 1024 : 73.0 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
