@@ -111,6 +111,11 @@ const CHECKS = [
   { feature: "任务93 本地快照切 tab（33b6c32ec 重实施）", file: "desktop/frontend/src/lib/useController.ts", patterns: ["hasLocalItems", "skipHistory: hasLocalItems"] },
   { feature: "任务95 promote sidecar 迁移（damaged 清理 + pinned 身份重写）", file: "internal/agent/recovery_consolidate.go", patterns: ["rewritePinnedContextSessionID", "SessionEventLogDamaged(winnerPath)"] },
 
+  // ── 任务 155：会话存储四档 + bridge 健康债（2026-09-17）──────────
+  { feature: "任务155 四档枚举与渐进校验", file: "internal/config/session_storage.go", patterns: ["SessionStorageDualWriteReadV3", "ValidateSessionStorageTransition", "ResolveSafeSessionStorageMode"] },
+  { feature: "任务155 bridge 健康债修复（登记即用 + 同 root 接管 + 批 id 幂等）", file: "internal/control/session_v4_bridge.go", patterns: ["reclaimSession", "v4BridgePeers", "ErrLegacyReadOnly"] },
+  { feature: "任务155 四档设置 UI 与重启提示", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["SESSION_STORAGE_MODES", "sessionStorageRestartPending"] },
+
   // ── 构建配置 ────────────────────────────────────────────────────
   { feature: "release notes 存在", file: "release-notes/FORK-v1.33.0.md", patterns: ["Fork 修复"] },
   { feature: "wails 版本号", file: "desktop/wails.json", patterns: ["1.38.3"] },

@@ -338,10 +338,16 @@ type SettingsView struct {
 	ExperimentalSessionMonitor bool   `json:"experimentalSessionMonitor"`
 	ExperimentalSplitView      bool   `json:"experimentalSplitView"`
 	SessionStorage             string `json:"sessionStorage"`
-	ExperimentalFeedback       bool   `json:"experimentalFeedback"`
-	ExperimentalLocalServer    bool   `json:"experimentalLocalServer"`
-	ExperimentalPathRules      bool   `json:"experimentalPathRules"`
-	ExperimentalTraceAsState   bool   `json:"experimentalTraceAsState"`
+	// Task 155: the four-mode conversation store switch. sessionStorage is the
+	// configured mode, sessionStorageEffective the mode this process started
+	// with, and sessionStorageRestartPending flags a change that still needs a
+	// restart (only the read side moves under a live runtime).
+	SessionStorageEffective      string `json:"sessionStorageEffective"`
+	SessionStorageRestartPending bool   `json:"sessionStorageRestartPending"`
+	ExperimentalFeedback         bool   `json:"experimentalFeedback"`
+	ExperimentalLocalServer      bool   `json:"experimentalLocalServer"`
+	ExperimentalPathRules        bool   `json:"experimentalPathRules"`
+	ExperimentalTraceAsState     bool   `json:"experimentalTraceAsState"`
 	// Task 161: cache tuning mirrors (Settings panel reads these from this view).
 	MaxCachedTabs             int  `json:"maxCachedTabs"`
 	HistoryBodyBudgetMb       int  `json:"historyBodyBudgetMb"`
@@ -431,6 +437,12 @@ type DesktopStartupSettingsView struct {
 	ExperimentalSessionMonitor bool   `json:"experimentalSessionMonitor"`
 	ExperimentalSplitView      bool   `json:"experimentalSplitView"`
 	SessionStorage             string `json:"sessionStorage"`
+	// Task 155: the four-mode conversation store switch. sessionStorage is the
+	// configured mode, sessionStorageEffective the mode this process started
+	// with, and sessionStorageRestartPending flags a change that still needs a
+	// restart (only the read side moves under a live runtime).
+	SessionStorageEffective      string `json:"sessionStorageEffective"`
+	SessionStorageRestartPending bool   `json:"sessionStorageRestartPending"`
 	// ExperimentalFeedback exposes the agent submit_feedback tool and feedback
 	// inbox panel (task 121).
 	ExperimentalFeedback bool `json:"experimentalFeedback"`
@@ -1103,6 +1115,8 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalSessionMonitor = cfg.Desktop.ExperimentalSessionMonitor
 		view.ExperimentalSplitView = cfg.Desktop.ExperimentalSplitView
 		view.SessionStorage = config.SessionStorageMode(cfg)
+		view.SessionStorageEffective = a.sessionStorageBootMode(view.SessionStorage)
+		view.SessionStorageRestartPending = view.SessionStorageEffective != view.SessionStorage
 		view.ExperimentalFeedback = cfg.Desktop.ExperimentalFeedback
 		view.ExperimentalTraceAsState = cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState
 		view.ExperimentalDream = cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream
@@ -1167,6 +1181,8 @@ func (a *App) Settings() SettingsView {
 		effectiveWorkspaceRoot = writeRoots[0]
 	}
 	ctrl := a.activeCtrl()
+	storageMode := config.SessionStorageMode(cfg)
+	storageEffective := a.sessionStorageBootMode(storageMode)
 	v := SettingsView{
 		ModelSettingsFingerprint: modelSettingsEditFingerprint(cfg),
 		DefaultModel:             cfg.DefaultModel,
@@ -1176,30 +1192,32 @@ func (a *App) Settings() SettingsView {
 		AutopilotMaxRuntime:      cfg.Desktop.AutopilotMaxRuntime,
 		AutopilotApprovalGrace:   cfg.Desktop.AutopilotApprovalGrace,
 		// The Settings panel reads these switches from this view (see the struct note).
-		ExperimentalRestartUpdate:  cfg.Desktop.ExperimentalRestartUpdate,
-		ExperimentalSessionMonitor: cfg.Desktop.ExperimentalSessionMonitor,
-		ExperimentalSplitView:      cfg.Desktop.ExperimentalSplitView,
-		SessionStorage:             config.SessionStorageMode(cfg),
-		ExperimentalFeedback:       cfg.Desktop.ExperimentalFeedback,
-		ExperimentalTraceAsState:   cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState,
-		ExperimentalDream:          cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream,
-		ExperimentalSessionCollab:  cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
-		ExperimentalAutoLoadOlder:  cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
-		ExperimentalLocalServer:    cfg.Desktop.ExperimentalLocalServer,
-		ExperimentalPathRules:      cfg.Desktop.ExperimentalPathRules,
-		MaxCachedTabs:              cfg.Desktop.MaxCachedTabs,
-		HistoryBodyBudgetMb:        cfg.Desktop.HistoryBodyBudgetMb,
-		MarkdownBudgetMb:           cfg.Desktop.MarkdownBudgetMb,
-		ExperimentalCacheTuning:    cfg.Desktop.ExperimentalCacheTuning,
-		VisionModel:                cfg.Agent.VisionModel,
-		WebSearchModel:             cfg.Agent.WebSearchModel,
-		WebSearchModels:            []string{},
-		SubagentModel:              cfg.Agent.SubagentModel,
-		SubagentEffort:             cfg.Agent.SubagentEffort,
-		AutoPlan:                   "off", // deprecated JSON compatibility for older frontends
-		Providers:                  []ProviderView{},
-		OfficialProviders:          []ProviderView{},
-		ProviderPresets:            []ProviderPresetView{},
+		ExperimentalRestartUpdate:    cfg.Desktop.ExperimentalRestartUpdate,
+		ExperimentalSessionMonitor:   cfg.Desktop.ExperimentalSessionMonitor,
+		ExperimentalSplitView:        cfg.Desktop.ExperimentalSplitView,
+		SessionStorage:               storageMode,
+		SessionStorageEffective:      storageEffective,
+		SessionStorageRestartPending: storageEffective != storageMode,
+		ExperimentalFeedback:         cfg.Desktop.ExperimentalFeedback,
+		ExperimentalTraceAsState:     cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState,
+		ExperimentalDream:            cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream,
+		ExperimentalSessionCollab:    cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
+		ExperimentalAutoLoadOlder:    cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
+		ExperimentalLocalServer:      cfg.Desktop.ExperimentalLocalServer,
+		ExperimentalPathRules:        cfg.Desktop.ExperimentalPathRules,
+		MaxCachedTabs:                cfg.Desktop.MaxCachedTabs,
+		HistoryBodyBudgetMb:          cfg.Desktop.HistoryBodyBudgetMb,
+		MarkdownBudgetMb:             cfg.Desktop.MarkdownBudgetMb,
+		ExperimentalCacheTuning:      cfg.Desktop.ExperimentalCacheTuning,
+		VisionModel:                  cfg.Agent.VisionModel,
+		WebSearchModel:               cfg.Agent.WebSearchModel,
+		WebSearchModels:              []string{},
+		SubagentModel:                cfg.Agent.SubagentModel,
+		SubagentEffort:               cfg.Agent.SubagentEffort,
+		AutoPlan:                     "off", // deprecated JSON compatibility for older frontends
+		Providers:                    []ProviderView{},
+		OfficialProviders:            []ProviderView{},
+		ProviderPresets:              []ProviderPresetView{},
 		Permissions: PermissionsView{
 			Mode:  orDefault(cfg.Permissions.Mode, "ask"),
 			Allow: nonNil(cfg.Permissions.Allow),

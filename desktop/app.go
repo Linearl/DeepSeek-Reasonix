@@ -116,6 +116,14 @@ type App struct {
 	// renames. It is never held by generic topic-state reads or other metadata.
 	topicTitleMutationMu sync.Mutex
 
+	// sessionStorageMode remembers the conversation-store mode (task 155) this
+	// process started with: the settings view compares it against the configured
+	// mode to flag a restart that is still pending, and the setter stamps the
+	// audit log with it.
+	sessionStorageModeMu    sync.Mutex
+	sessionStorageBootValue string
+	sessionStorageBootSet   bool
+
 	// sessionCatalog is a disposable, asynchronously opened projection of
 	// authoritative session sidecars. Project-shell APIs must tolerate nil here:
 	// opening, migration, repair, and corruption recovery never gate the UI.

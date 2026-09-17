@@ -1720,6 +1720,16 @@ function thinkingModeLabel(mode: string, t: ReturnType<typeof useT>): string {
  *  that feature's controls. With a switch off the original behaviour is untouched,
  *  so a capability can be compared rather than merely turned on.
  */
+/** Conversation store modes (task 155), in upgrade order: read and write side of
+ *  the v3/v4 pair move one stage at a time, never straight from v3 to v4. */
+const SESSION_STORAGE_MODES = ["v3_only", "dual_write_read_v3", "dual_write_read_v4", "v4_only"] as const;
+type SessionStorageMode = (typeof SESSION_STORAGE_MODES)[number];
+
+/** Narrow a wire value onto the typed mode list (unknown values read as v3). */
+function asSessionStorageMode(value: string | undefined): SessionStorageMode {
+  return SESSION_STORAGE_MODES.find((mode) => mode === value) ?? "v3_only";
+}
+
 type ExperimentFeatureId =
   | "restartUpdate"
   | "sessionMonitor"
@@ -1745,6 +1755,9 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
   const [sessionCollabRoster, setSessionCollabRoster] = useState<Awaited<ReturnType<typeof app.ListAddressableSessions>>>([]);
   const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
   const t = useT();
+  // Task 155: the configured store mode, normalized so every stage key stays a
+  // literal (the dictionaries are typed by DictKey).
+  const storageMode = asSessionStorageMode(s.sessionStorage);
   // Task 140: the rail shows backend snapshot state; the sidebar buttons read
   // module state. Sync them whenever the settings view reloads so 「开」 without
   // a re-toggle still reveals the rail buttons.
@@ -1752,6 +1765,12 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
     setSessionMonitorEnabled(Boolean(s.experimentalSessionMonitor));
     setFeedbackEnabled(Boolean(s.experimentalFeedback));
   }, [s.experimentalSessionMonitor, s.experimentalFeedback]);
+
+  // A saved mode change only takes full effect after a restart, and the backend
+  // knows that: the view carries the mode this process actually started with.
+  useEffect(() => {
+    if (s.sessionStorageRestartPending) setRestartNeeded(true);
+  }, [s.sessionStorageRestartPending]);
 
   const reloadSessionCollabRoster = useCallback(async () => {
     try {
@@ -1765,7 +1784,7 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
   const features: Array<{ id: ExperimentFeatureId; label: string; on: boolean }> = [
     { id: "restartUpdate", label: t("settings.restartUpdate"), on: Boolean(s.experimentalRestartUpdate) },
     { id: "sessionMonitor", label: t("settings.sessionMonitor"), on: Boolean(s.experimentalSessionMonitor) },
-    { id: "sessionStorage", label: t("settings.sessionStorage"), on: s.sessionStorage === "v4" },
+    { id: "sessionStorage", label: t("settings.sessionStorage"), on: (s.sessionStorage ?? "v3_only") !== "v3_only" },
     { id: "splitView", label: t("settings.splitView"), on: Boolean(s.experimentalSplitView) },
     { id: "feedback", label: t("settings.feedback"), on: Boolean(s.experimentalFeedback) },
     { id: "localServer", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
@@ -1859,20 +1878,30 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
           {selected === "sessionStorage" && (
             <SettingsField label={t("settings.sessionStorage")} hint={t("settings.sessionStorageHint")} icon={<Sparkles size={18} />}>
               <SettingsOptions layout="field" className="set-seg">
-                {(["legacy", "v4"] as const).map((mode) => (
+                {SESSION_STORAGE_MODES.map((mode) => (
                   <button
                     key={mode}
-                    className={`set-seg__btn${(s.sessionStorage === "v4" ? "v4" : "legacy") === mode ? " set-seg__btn--on" : ""}`}
+                    className={`set-seg__btn${storageMode === mode ? " set-seg__btn--on" : ""}`}
                     disabled={busy}
                     onClick={() => void apply(async () => {
+                      // Stage skipping is refused by the backend, so the stage
+                      // banner below always describes the mode that is stored.
                       await app.SetSessionStorage(mode);
-                      setRestartNeeded(true);
                     })}
                   >
-                    {t(mode === "v4" ? "settings.sessionStorage.v4" : "settings.sessionStorage.legacy")}
+                    {t(`settings.sessionStorage.mode.${mode}`)}
                   </button>
                 ))}
               </SettingsOptions>
+              <p className="settings-field__hint-line">{t(`settings.sessionStorage.stage.${storageMode}`)}</p>
+              <p className="settings-field__hint-line">{t(`settings.sessionStorage.risk.${storageMode}`)}</p>
+              {s.sessionStorageRestartPending ? (
+                <p className="settings-field__hint-line">
+                  {t("settings.sessionStorage.restartPending", {
+                    mode: t(`settings.sessionStorage.mode.${asSessionStorageMode(s.sessionStorageEffective)}`),
+                  })}
+                </p>
+              ) : null}
             </SettingsField>
           )}
           {selected === "splitView" && (

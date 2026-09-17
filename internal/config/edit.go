@@ -450,18 +450,19 @@ func (c *Config) SetDesktopTelemetry(enabled bool) error {
 	return nil
 }
 
-// SetSessionStorage selects the conversation store ("legacy" or "v4"). Unknown
-// values are refused rather than written: the mode drives which directory a session
-// is read from, so a typo must not silently look like a successful switch.
+// SetSessionStorage selects the conversation store mode (task 155): v3_only,
+// dual_write_read_v3, dual_write_read_v4 or v4_only. The legacy spellings
+// "legacy" and "v4" are accepted and normalized, so an old settings.toml
+// migrates onto the four-mode scale the first time it is written. Unknown values
+// are refused rather than written: the mode drives which directory a session is
+// read from, so a typo must not silently look like a successful switch.
 func (c *Config) SetSessionStorage(mode string) error {
-	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "", "legacy":
-		c.SessionStorage = "legacy"
-	case "v4":
-		c.SessionStorage = "v4"
-	default:
-		return fmt.Errorf("session storage: %q is not a mode (use legacy or v4)", mode)
+	normalized, ok := NormalizeSessionStorageMode(mode)
+	if !ok {
+		return fmt.Errorf("session storage: %q is not a mode (use %s)",
+			mode, strings.Join(SessionStorageModes, ", "))
 	}
+	c.SessionStorage = normalized
 	return nil
 }
 
