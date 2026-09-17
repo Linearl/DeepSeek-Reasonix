@@ -417,7 +417,11 @@ type sessionCollabTarget struct {
 	// detached marks a target with no visible tab: the controller is reached
 	// through the runtime, not through inboxCtrl(tabID).
 	detached bool
-	ctrl     control.SessionAPI
+	// activeTab marks the currently focused tab. A followup queued into it is
+	// invisible in the transcript until the turn finishes, so delivery prefers
+	// a mid-turn steer.
+	activeTab bool
+	ctrl      control.SessionAPI
 }
 
 // collabDelivery is the injectable seam for one tab's delivery pass, so the
@@ -614,12 +618,26 @@ func (p *sessionCollabPump) deliverOne(target sessionCollabTarget, msg sessionco
 		}
 		return steered, nil
 	}
-	if msg.Delivery != string(sessioncollab.DeliverySteer) {
+	// A followup queued into a tab that is already running a turn is invisible
+	// in the transcript until that turn finishes — and the user sees nothing.
+	// When the target is the currently active tab, steer it mid-turn so the
+	// message is rendered immediately. The existing steer path already falls
+	// back to a queued follow-up when the target cannot take a steer, so this
+	// degrades safely.
+	if msg.Delivery != string(sessioncollab.DeliverySteer) && !target.activeTab {
 		_, err := p.app.EnqueueInboxFollowup(target.tabID, body, body, idem)
 		return false, err
 	}
 	receipt, err := p.app.EnqueueInboxSteer(target.tabID, body, body, idem)
 	if err != nil {
+		// Steer rejected: fall back to a queued follow-up so the message is not lost.
+		if msg.Delivery != string(sessioncollab.DeliverySteer) {
+			_, ferr := p.app.EnqueueInboxFollowup(target.tabID, body, body, idem)
+			if ferr != nil {
+				return false, ferr
+			}
+			return false, nil
+		}
 		return false, err
 	}
 	steered := sessionCollabReceiptSteered(receipt.Disposition)
@@ -672,12 +690,21 @@ func (p *sessionCollabPump) notifyDegradedSteer(msg sessioncollab.MailMessage, d
 // to carry the reply address and the thread id, or an async exchange cannot
 // close its loop and a synchronous sender cannot match its answer.
 // effectiveHop is the depth derived from the thread, not the sender's claim.
+//
+// Session titles change automatically (auto-title), so the recipient must be
+// able to verify the message landed correctly by ID, not by title. Both sides
+// are always included so the receiving session can confirm it is the intended
+// target and the sender's identity is unambiguous.
 func sessionCollabDeliveryText(msg sessioncollab.MailMessage, effectiveHop int) string {
 	var b strings.Builder
 	b.WriteString("[跨会话消息]")
 	if msg.From != "" {
 		b.WriteString(" 来自 contact_id=")
 		b.WriteString(msg.From)
+	}
+	if msg.To != "" {
+		b.WriteString(" → 发至 contact_id=")
+		b.WriteString(msg.To)
 	}
 	if effectiveHop > 0 {
 		b.WriteString(" (hop=")
@@ -871,6 +898,7 @@ func (a *App) sessionCollabLiveTargets(pendingContacts []string) []sessionCollab
 			contactID: contact,
 			detached:  true,
 			ctrl:      tab.Ctrl,
+			activeTab: tab.ID == a.activeTabID,
 		})
 	}
 	return out

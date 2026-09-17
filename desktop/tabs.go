@@ -5159,6 +5159,9 @@ func prependTopicsInProjectsFileOpts(workspaceRoot string, topicIDs []string, en
 		if !ensureProject {
 			return changed, nil
 		}
+		if projectRootExists(f, workspaceRoot) {
+			return changed, nil
+		}
 		f.Projects = append(f.Projects, desktopProject{Root: workspaceRoot, Topics: live})
 		return true, nil
 	})
@@ -5219,7 +5222,18 @@ func normalizeProjectRoot(root string) string {
 }
 
 func sameProjectRoot(a, b string) bool {
+	// Strict identity: two project roots must resolve to the same normalized
+	// path. Case-folded on Windows (sameDesktopPath), trailing slashes cleaned.
+	// Two projects with the same path are one project — never two.
 	return sameDesktopPath(normalizeProjectRoot(a), normalizeProjectRoot(b))
+}
+
+// projectRootExists reports whether any project in the file already uses this
+// root. Callers that are about to append a new project MUST check this first —
+// appending a duplicate root silently creates two entries that the sidebar
+// renders as separate projects with identical paths.
+func projectRootExists(f *desktopProjectFile, root string) bool {
+	return projectIndexByRoot(f.Projects, root) >= 0
 }
 
 func projectIndexByRoot(projects []desktopProject, root string) int {
