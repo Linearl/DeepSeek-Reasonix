@@ -19,6 +19,7 @@ import (
 //go:embed data-analytics/SKILL.md
 //go:embed memory-search/SKILL.md
 //go:embed feedback_analysis/SKILL.md
+//go:embed collect_issues/SKILL.md
 //go:embed gh-issue-submit/SKILL.md
 //go:embed github-issue-triage/SKILL.md
 var files embed.FS

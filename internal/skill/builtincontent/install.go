@@ -12,7 +12,7 @@ import (
 // binary (task 116). They remain available from the embed even when no user
 // copy exists; InstallToUserDir materializes editable copies under
 // <reasonix-home>/skills/ so a user can customize them.
-var ShippedPlaybookNames = []string{"deep-research", "data-analytics", "memory-search", "feedback_analysis"}
+var ShippedPlaybookNames = []string{"deep-research", "data-analytics", "memory-search", "feedback_analysis", "collect_issues"}
 
 // InstallResult reports one InstallToUserDir pass.
 type InstallResult struct {
