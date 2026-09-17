@@ -159,6 +159,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "experimental_trace_as_state = %v   # desktop: settings-view mirror of [agent] trace_as_state (task 60)\n", c.Desktop.ExperimentalTraceAsState)
 		fmt.Fprintf(&b, "experimental_dream = %v   # desktop: settings-view mirror of [agent] experimental_dream (task 115)\n", c.Desktop.ExperimentalDream)
 		fmt.Fprintf(&b, "experimental_session_collab = %v   # desktop: settings-view mirror of [agent] experimental_session_collab (task 19)\n", c.Desktop.ExperimentalSessionCollab)
+		fmt.Fprintf(&b, "experimental_auto_load_older = %v   # desktop: settings-view mirror of [agent] experimental_auto_load_older (fork task 160)\n", c.Desktop.ExperimentalAutoLoadOlder)
 		fmt.Fprintf(&b, "telemetry = %v   # desktop: anonymous launch ping + scrubbed next-launch native crash diagnostics; never content\n", c.DesktopTelemetry())
 		fmt.Fprintf(&b, "metrics = %v   # desktop: aggregate quality/lifecycle metrics (anonymous signal/bucket counts); never content\n", c.DesktopMetrics())
 		// A non-nil empty slice is intentional: provider_access = [] means the
@@ -334,6 +335,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// the desktop experimental_* switches: omit-on-off springs back to true).
 	fmt.Fprintf(&b, "experimental_dream = %v   # task 115: enable dream/distill memory-curation tools\n", c.Agent.ExperimentalDream)
 	fmt.Fprintf(&b, "experimental_session_collab = %v   # task 19: multi-session collaboration tools (141-145)\n", c.Agent.ExperimentalSessionCollab)
+	fmt.Fprintf(&b, "experimental_auto_load_older = %v   # fork task 160: load older history by scrolling up at the transcript top\n", c.Agent.ExperimentalAutoLoadOlder)
 	fmt.Fprintf(&b, "trace_as_state = %v   # task 60: Trace-as-State compaction (reasoning in summaries, re-read routing, guarded folds)\n", c.Agent.TraceAsState)
 	fmt.Fprintf(&b, "stalled_intent_nudge = %v   # task 117: nudge when model announces next step instead of taking it\n", c.Agent.StalledIntentNudge)
 	if c.Agent.StalledIntentNudgeLimit > 0 {

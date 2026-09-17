@@ -36,6 +36,8 @@ export const TranscriptViewport = forwardRef<TranscriptViewportHandle, {
   olderHistoryError?: string;
   olderHistoryExhausted?: boolean;
   onRetryOlderHistory: () => void;
+  /** Fork (task 160): explicit "load older" entry point, same gate as the scroll path. */
+  onLoadOlder?: () => void;
   onGeometryWillChange: (anchor?: LogicalAnchor) => unknown;
   onGeometryChange: (covered?: boolean, beforePaint?: boolean) => void;
   kernel: TranscriptKernel;
@@ -43,7 +45,7 @@ export const TranscriptViewport = forwardRef<TranscriptViewportHandle, {
   running: boolean;
   turnStartAt?: number;
 }>(function TranscriptViewport({ projection, mode, tabId, scrollElement, renderRow,
-  loadingOlderHistory, olderHistoryError, olderHistoryExhausted, onRetryOlderHistory, onGeometryWillChange,
+  loadingOlderHistory, olderHistoryError, olderHistoryExhausted, onRetryOlderHistory, onLoadOlder, onGeometryWillChange,
   onGeometryChange, kernel, protectedBlockKeys = new Set(),
   running, turnStartAt,
 }, ref) {
@@ -54,14 +56,30 @@ export const TranscriptViewport = forwardRef<TranscriptViewportHandle, {
   useLayoutEffect(() => { if (mode === "windowed") setWindowLoaded(true); }, [mode]);
   useImperativeHandle(ref, () => ({ mountBlock: setPinnedJumpBlockKey }), []);
   const showOlderStatus = loadingOlderHistory || Boolean(olderHistoryError) || Boolean(olderHistoryExhausted);
-  const prefix = showOlderStatus && (projection.hasOlderHistory || olderHistoryExhausted) && (
-    <div className="transcript__header"><div className="transcript__older-status" role={olderHistoryError ? "alert" : "status"}>
-      {loadingOlderHistory
-        ? <><Loader2 className="transcript__older-spinner" size={14} aria-hidden="true" /><span>{t("common.loading")}</span></>
-        : olderHistoryExhausted
-          ? <span>{t("transcript.noMoreEarlier")}</span>
-          : <><span>{t("transcript.loadEarlierFailed")}{olderHistoryError ? ` (${olderHistoryError})` : ""}</span><button type="button" className="btn btn--small" onClick={onRetryOlderHistory}><RotateCcw size={14} /><span>{t("common.retry")}</span></button></>}
-    </div></div>
+  const showOlderRow = showOlderStatus && (projection.hasOlderHistory || olderHistoryExhausted);
+  // Fork (task 160): the scroll-driven trigger only fires from scroll events, and a
+  // viewport already parked at the top never emits another one — that is why the
+  // user could only reach older history through the question rail. The button is
+  // the reliable entry point; it calls the same `requestOlder` gate as the scroll
+  // path, so no gate (hasOlderHistory / loadingOlderHistory / running) is relaxed.
+  const showLoadOlder = Boolean(onLoadOlder) && projection.hasOlderHistory && !loadingOlderHistory && !olderHistoryError && !running;
+  const prefix = (showOlderRow || showLoadOlder) && (
+    <div className="transcript__header">
+      {showLoadOlder && (
+        <button type="button" className="btn btn--small chat-older" onClick={onLoadOlder}>
+          <span>{t("chat.loadOlder")}</span>
+        </button>
+      )}
+      {showOlderRow && (
+        <div className="transcript__older-status" role={olderHistoryError ? "alert" : "status"}>
+          {loadingOlderHistory
+            ? <><Loader2 className="transcript__older-spinner" size={14} aria-hidden="true" /><span>{t("common.loading")}</span></>
+            : olderHistoryExhausted
+              ? <span>{t("transcript.noMoreEarlier")}</span>
+              : <><span>{t("transcript.loadEarlierFailed")}{olderHistoryError ? ` (${olderHistoryError})` : ""}</span><button type="button" className="btn btn--small" onClick={onRetryOlderHistory}><RotateCcw size={14} /><span>{t("common.retry")}</span></button></>}
+        </div>
+      )}
+    </div>
   );
   const activeStatus = running && projection.activeBlock && projection.activeBlock.rows.length <= 1
     ? <ActiveTurnStatus turnStartAt={turnStartAt} /> : undefined;

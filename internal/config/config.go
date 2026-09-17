@@ -1379,6 +1379,11 @@ type AgentConfig struct {
 	// (task 19 / 141–145): contact addressing, talk_to_session, task cards.
 	// Off by default.
 	ExperimentalSessionCollab bool `toml:"experimental_session_collab"`
+	// ExperimentalAutoLoadOlder enables loading older history by scrolling up
+	// while the transcript is already parked at the top (fork task 160). Off by
+	// default: the "load older" button is the reliable path, and this scroll
+	// trigger is the fork's enhancement layered on top of it.
+	ExperimentalAutoLoadOlder bool `toml:"experimental_auto_load_older"`
 	// StalledIntentNudge enables the "you announced the next step instead of
 	// taking it" repair for ordinary sessions (task 117). Off by default:
 	// upstream only fires this under ContinuationExplicitFlow (Goal/review).

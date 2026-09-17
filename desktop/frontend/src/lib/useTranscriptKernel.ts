@@ -70,12 +70,26 @@ function readSnapshot(element: HTMLElement): TranscriptViewportSnapshot {
   return snapshot;
 }
 
+// Fork (task 160): the transcript's scroll path already treats "within 64px of the
+// top" as its older-history preload radius; the input-driven trigger reuses that
+// same guard so both entries agree on when the reader is at the top.
+const HISTORY_TOP_GUARD_PX = 64;
+// Keys that mean "read further back" once the viewport is already at the top.
+const HISTORY_UP_KEYS = new Set(["ArrowUp", "PageUp", "Home"]);
+
 export function useTranscriptKernel({
   sessionKey,
   geometryRevision,
+  autoLoadOlderAtTop,
 }: {
   sessionKey: string;
   geometryRevision: string | number;
+  /**
+   * Fork (task 160): called when an upward wheel/key gesture arrives while the
+   * viewport is already parked at the top — the one case the scrollTop delta
+   * cannot carry. Absent (the default) keeps this trigger disabled.
+   */
+  autoLoadOlderAtTop?: () => void;
 }) {
   const clock = useContext(TranscriptKernelClockContext);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -252,6 +266,36 @@ export function useTranscriptKernel({
     return towardHistory && kernel.userGestureActive;
   }, [kernel, refresh, renewGestureLease, snapshot]);
 
+  // Fork (task 160): while the viewport is parked at the top it stops emitting
+  // scroll events, so `current.scrollTop < observedTopRef.current` can never be
+  // true again and the older-history trigger loses its signal. The direction is
+  // read straight from the input instead. Only real user input produces it — a
+  // programmatic scroll (anchor restore, auto-fill, jump) emits neither wheel nor
+  // key events — which is what keeps the widened trigger off our own writes.
+  // The wheel half is a native listener: the kernel already owns native scroll
+  // input, and the xterm/WebView channel is the same one the gesture lease uses.
+  // With no callback from the caller (the `experimental_auto_load_older` switch is
+  // off) `requestOlderAtTop` is inert, so the trigger cannot fire at all.
+  const autoLoadOlderAtTopRef = useRef(autoLoadOlderAtTop);
+  autoLoadOlderAtTopRef.current = autoLoadOlderAtTop;
+  const requestOlderAtTop = useCallback(() => {
+    const request = autoLoadOlderAtTopRef.current;
+    if (!request) return;
+    const element = scrollRef.current;
+    if (!element || element.scrollTop > HISTORY_TOP_GUARD_PX) return;
+    request();
+  }, []);
+  useLayoutEffect(() => {
+    const element = scrollElement;
+    if (!element) return;
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY >= 0) return;
+      requestOlderAtTop();
+    };
+    element.addEventListener("wheel", onWheel, { passive: true });
+    return () => element.removeEventListener("wheel", onWheel);
+  }, [requestOlderAtTop, scrollElement]);
+
   const onPointerDownCapture = useCallback((event: { clientX: number; pointerType?: string }) => {
     // Touch has its own start/end stream. Its compatibility pointerup must
     // not schedule a mouse release that later cancels touch momentum.
@@ -288,8 +332,10 @@ export function useTranscriptKernel({
   }, [beginGesture, endGesture, kernel, onScroll, releaseNativeInput, snapshot, writer]);
 
   const onKeyDownCapture = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (SCROLL_KEYS.has(event.key)) claimNativeInput();
-  }, [claimNativeInput]);
+    if (!SCROLL_KEYS.has(event.key)) return;
+    claimNativeInput();
+    if (HISTORY_UP_KEYS.has(event.key)) requestOlderAtTop();
+  }, [claimNativeInput, requestOlderAtTop]);
 
 
   const scrollToBottom = useCallback(() => {

@@ -334,21 +334,23 @@ type SettingsView struct {
 	// Task 81 / 123: the Settings panel renders these two experiment switches from
 	// this view; carrying them only on DesktopStartupSettingsView left both switches
 	// permanently reading "off" and impossible to turn on (fixed 2026-09-15).
-	ExperimentalRestartUpdate    bool                       `json:"experimentalRestartUpdate"`
-	ExperimentalSessionMonitor   bool                       `json:"experimentalSessionMonitor"`
-	ExperimentalSplitView        bool                       `json:"experimentalSplitView"`
-	SessionStorage               string                     `json:"sessionStorage"`
-	ExperimentalFeedback         bool                       `json:"experimentalFeedback"`
-	ExperimentalLocalServer      bool                       `json:"experimentalLocalServer"`
-	ExperimentalPathRules        bool                       `json:"experimentalPathRules"`
-	ExperimentalTraceAsState     bool                       `json:"experimentalTraceAsState"`
+	ExperimentalRestartUpdate  bool   `json:"experimentalRestartUpdate"`
+	ExperimentalSessionMonitor bool   `json:"experimentalSessionMonitor"`
+	ExperimentalSplitView      bool   `json:"experimentalSplitView"`
+	SessionStorage             string `json:"sessionStorage"`
+	ExperimentalFeedback       bool   `json:"experimentalFeedback"`
+	ExperimentalLocalServer    bool   `json:"experimentalLocalServer"`
+	ExperimentalPathRules      bool   `json:"experimentalPathRules"`
+	ExperimentalTraceAsState   bool   `json:"experimentalTraceAsState"`
 	// Task 161: cache tuning mirrors (Settings panel reads these from this view).
-	MaxCachedTabs            int                        `json:"maxCachedTabs"`
-	HistoryBodyBudgetMb      int                        `json:"historyBodyBudgetMb"`
-	MarkdownBudgetMb         int                        `json:"markdownBudgetMb"`
-	ExperimentalCacheTuning  bool                       `json:"experimentalCacheTuning"`
-	ExperimentalDream            bool                       `json:"experimentalDream"`
-	ExperimentalSessionCollab    bool                       `json:"experimentalSessionCollab"`
+	MaxCachedTabs             int  `json:"maxCachedTabs"`
+	HistoryBodyBudgetMb       int  `json:"historyBodyBudgetMb"`
+	MarkdownBudgetMb          int  `json:"markdownBudgetMb"`
+	ExperimentalCacheTuning   bool `json:"experimentalCacheTuning"`
+	ExperimentalDream         bool `json:"experimentalDream"`
+	ExperimentalSessionCollab bool `json:"experimentalSessionCollab"`
+	ExperimentalAutoLoadOlder bool `json:"experimentalAutoLoadOlder"`
+
 	VisionModel                  string                     `json:"visionModel"`
 	WebSearchModel               string                     `json:"webSearchModel"`
 	WebSearchModels              []string                   `json:"webSearchModels"`
@@ -438,6 +440,9 @@ type DesktopStartupSettingsView struct {
 	ExperimentalDream bool `json:"experimentalDream"`
 	// ExperimentalSessionCollab exposes multi-session collaboration (task 19).
 	ExperimentalSessionCollab bool `json:"experimentalSessionCollab"`
+	// ExperimentalAutoLoadOlder exposes the scroll-driven history trigger (fork
+	// task 160). The runtime flag lives on [agent]; this view mirrors it.
+	ExperimentalAutoLoadOlder bool `json:"experimentalAutoLoadOlder"`
 	// ExperimentalLocalServer exposes the Settings → 本地服务 page (task 130).
 	ExperimentalLocalServer bool `json:"experimentalLocalServer"`
 	// ExperimentalPathRules enables structured path-scope evaluation (task 134).
@@ -450,8 +455,8 @@ type DesktopStartupSettingsView struct {
 	MarkdownBudgetMb        int    `json:"markdownBudgetMb"`
 	ExperimentalCacheTuning bool   `json:"experimentalCacheTuning"`
 	CheckUpdates            bool   `json:"checkUpdates"`
-	UpdateChannel         string `json:"updateChannel"`
-	ConversationWidth     string `json:"conversationWidth,omitempty"`
+	UpdateChannel           string `json:"updateChannel"`
+	ConversationWidth       string `json:"conversationWidth,omitempty"`
 	// Autopilot mirrors the [desktop] preference so the composer knows whether
 	// to offer the mode at all - it is opt-in, never a surprise.
 	Autopilot bool `json:"autopilot"`
@@ -1102,6 +1107,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalTraceAsState = cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState
 		view.ExperimentalDream = cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream
 		view.ExperimentalSessionCollab = cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab
+		view.ExperimentalAutoLoadOlder = cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder
 		view.ExperimentalLocalServer = cfg.Desktop.ExperimentalLocalServer
 		view.ExperimentalPathRules = cfg.Desktop.ExperimentalPathRules
 		return view
@@ -1178,6 +1184,7 @@ func (a *App) Settings() SettingsView {
 		ExperimentalTraceAsState:   cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState,
 		ExperimentalDream:          cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream,
 		ExperimentalSessionCollab:  cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
+		ExperimentalAutoLoadOlder:  cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
 		ExperimentalLocalServer:    cfg.Desktop.ExperimentalLocalServer,
 		ExperimentalPathRules:      cfg.Desktop.ExperimentalPathRules,
 		MaxCachedTabs:              cfg.Desktop.MaxCachedTabs,
