@@ -341,6 +341,15 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	if c.Agent.StalledIntentNudgeLimit > 0 {
 		fmt.Fprintf(&b, "stalled_intent_nudge_limit = %d   # max stalled-intent nudges per run (1-3; default 1)\n", c.Agent.StalledIntentNudgeLimit)
 	}
+	fmt.Fprintf(&b, "readiness_catch_up = %v   # task 117: let ordinary turns cite missing delivery evidence before pausing\n", c.Agent.ReadinessCatchUp)
+	if c.Agent.ReadinessCatchUpLimit > 0 {
+		fmt.Fprintf(&b, "readiness_catch_up_limit = %d   # max delivery catch-up rounds per run (1-2; default 1)\n", c.Agent.ReadinessCatchUpLimit)
+	}
+	fmt.Fprintf(&b, "plan_research_gate = %v   # task 118: require a read-only investigation (or a stated reason) before a plan lands\n", c.Agent.PlanResearchGate)
+	if c.Agent.PlanResearchGateLimit > 0 {
+		fmt.Fprintf(&b, "plan_research_gate_limit = %d   # max plan research-gate rounds per run (1-2; default 1)\n", c.Agent.PlanResearchGateLimit)
+	}
+	fmt.Fprintf(&b, "read_only_task_background = %v   # task 118: offer run_in_background on read_only_task\n", c.Agent.ReadOnlyTaskBackground)
 	if c.Agent.SubagentDefaultSteps > 0 {
 		fmt.Fprintf(&b, "subagent_default_steps = %d   # task 118: override default non-review sub-agent step budget (0 = formula)\n", c.Agent.SubagentDefaultSteps)
 	}

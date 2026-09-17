@@ -55,6 +55,13 @@ func readinessAdvisoryNotice() string {
 	return "Autopilot recorded this turn as unfinished and kept going. Missing evidence was carried into the next turn instead of stopping the run."
 }
 
+// readinessCatchUpNotice is the transcript line for an opt-in delivery catch-up
+// round (task 117 P1). An ordinary turn does not advise-and-continue by default,
+// so the line names the bounded round instead of claiming unattended work.
+func readinessCatchUpNotice() string {
+	return "The delivery contract is still unsatisfied, so Reasonix spent a catch-up round on the missing evidence instead of pausing. A gap that survives the catch-up limit still stops the run."
+}
+
 // autopilotGraceContinuationNotice explains why a budget pause did not stop an
 // unattended run.
 func autopilotGraceContinuationNotice() string {

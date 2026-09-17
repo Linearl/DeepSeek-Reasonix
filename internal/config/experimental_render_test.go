@@ -59,6 +59,9 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 		"experimental_session_collab = false",
 		"trace_as_state = false",
 		"stalled_intent_nudge = false",
+		"readiness_catch_up = false",
+		"plan_research_gate = false",
+		"read_only_task_background = false",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("a disabled switch should still render %q\n---\n%s", want, out)
@@ -97,11 +100,41 @@ func TestStalledIntentNudgeRoundTripThroughRender(t *testing.T) {
 	}
 }
 
+func TestReadinessCatchUpRoundTripThroughRender(t *testing.T) {
+	c := &Config{}
+	c.Agent.ReadinessCatchUp = true
+	c.Agent.ReadinessCatchUpLimit = 2
+	out := RenderTOMLForScope(c, RenderScopeUser)
+	if !strings.Contains(out, "readiness_catch_up = true") {
+		t.Fatalf("rendered user config is missing readiness_catch_up = true\n---\n%s", out)
+	}
+	if !strings.Contains(out, "readiness_catch_up_limit = 2") {
+		t.Fatalf("rendered user config is missing readiness_catch_up_limit = 2\n---\n%s", out)
+	}
+}
+
 func TestTraceAsStateRoundTripThroughRender(t *testing.T) {
 	c := &Config{}
 	c.Agent.TraceAsState = true
 	out := RenderTOMLForScope(c, RenderScopeUser)
 	if !strings.Contains(out, "trace_as_state = true") {
 		t.Fatalf("rendered user config is missing trace_as_state = true\n---\n%s", out)
+	}
+}
+
+func TestPlanResearchGateRoundTripThroughRender(t *testing.T) {
+	c := &Config{}
+	c.Agent.PlanResearchGate = true
+	c.Agent.PlanResearchGateLimit = 2
+	c.Agent.ReadOnlyTaskBackground = true
+	out := RenderTOMLForScope(c, RenderScopeUser)
+	for _, want := range []string{
+		"plan_research_gate = true",
+		"plan_research_gate_limit = 2",
+		"read_only_task_background = true",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("rendered user config is missing %q\n---\n%s", want, out)
+		}
 	}
 }
