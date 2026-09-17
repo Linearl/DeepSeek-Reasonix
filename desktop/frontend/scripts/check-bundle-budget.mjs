@@ -340,7 +340,12 @@ for (const path of localeChunks) {
   // Same one-decimal ratchet: zh 72.5, zh-TW 73.5.
   // Task 161 cache-tuning settings copy adds 12 keys per dialect; zh measures
   // 72.7 KiB (past 72.5). Same one-decimal ratchet: zh 73.0; zh-TW keeps 73.5.
-  const budget = name.startsWith("zh-TW-") ? 73.5 * 1024 : 73.0 * 1024;
+  // Task 159/160 (fork): the guidance delivery state, the settings save-rejection
+  // copy, the "load older" button and the scroll-trigger experiment add the same
+  // keys to both dialects. zh still measures 72.9 KiB under its 73.0 ceiling, but
+  // zh-TW measures 73.8 KiB past 73.5, so the same one-decimal ratchet applies:
+  // zh-TW 74.0; zh keeps 73.0.
+  const budget = name.startsWith("zh-TW-") ? 74.0 * 1024 : 73.0 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0

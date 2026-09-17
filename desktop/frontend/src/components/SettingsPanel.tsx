@@ -26,6 +26,7 @@ import { CHANNEL_ICONS } from "./channelIcons";
 import { botAccessEntryCount, botAccessReady, botConnectionCredentialSummary, botConnectionLabel, botConnectionScopeLabel, botConnectionSecretEnv, botConnectionSecretPatch, botInstallTargetForConnection, botInstallTargetMatchesConnection, botTargetHint, botTargetLabel, diagnosticMessage, diagnosticReportDetail, firstConnectionRemote, formatInstallTimeLeft, formatInstallUserCode, qqBotAdded, type BotInstallTarget, type BotOfficialInstallTarget } from "./botConnectionSettings";
 import { app, COMPACT_RATIO_MAX_PERCENT, COMPACT_RATIO_MIN_PERCENT, onRuntimeRebuilt, openExternal } from "../lib/bridge";
 import { setSessionMonitorEnabled, setSessionMonitorOpen } from "../lib/sessionMonitor";
+import { setAutoLoadOlderEnabled } from "../lib/autoLoadOlderPreference";
 import { setFeedbackEnabled, setFeedbackOpen } from "./FeedbackPanel";
 import { setSplitViewEnabled } from "../lib/splitView";
 import { normalizeLangPref, useI18n, type DictKey, type LangPref } from "../lib/i18n";
@@ -147,8 +148,13 @@ export function SettingsPanel({
   const t = useT();
   const [s, setS] = useState<SettingsView | null>(null);
   const [loadingSettings, setLoadingSettings] = useState(true);
+  // Task 147: this was one panel-wide flag, so a single in-flight save disabled
+  // every control on every settings page and left a stuck apply with no way out.
+  // Busy is now tracked per page scope (see `pageBusy` below) and saves run
+  // through one queue, so narrowing the flag cannot let two saves race and
+  // swallow each other's reload.
   const [settingsLoadFailed, setSettingsLoadFailed] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [pendingScopes, setPendingScopes] = useState<Record<string, number>>({});
   const [err, setErr] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [modelApplication, setModelApplication] = useState<import("../lib/types").ModelSettingsResult | null>(null);
@@ -273,12 +279,24 @@ export function SettingsPanel({
     };
   }, [desktopPlatform]);
 
-  // apply runs a mutation, re-reads settings, and refreshes the topbar/model.
-  const pendingSettingsApplies = useRef(0);
-  const apply = useCallback(async (fn: () => Promise<unknown>) => {
+  const trackScope = useCallback((scope: string, delta: number) => {
+    setPendingScopes((prev) => {
+      const value = (prev[scope] ?? 0) + delta;
+      const next = { ...prev };
+      if (value > 0) next[scope] = value;
+      else delete next[scope];
+      return next;
+    });
+  }, []);
+  // Saves run one at a time: the backend rebuilds the runtime under a single lock,
+  // and every save is followed by a full settings re-read, so two overlapping
+  // saves only risked one of them discarding the other's reload. The panel-wide
+  // busy flag used to prevent that by freezing everything; with page-scoped busy
+  // the queue carries that guarantee instead (task 147).
+  const applyQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
+  const runApply = useCallback(async (fn: () => Promise<unknown>, scope: string): Promise<boolean> => {
     const seq = ++settingsApplySeq.current;
-    pendingSettingsApplies.current += 1;
-    setBusy(true);
+    trackScope(scope, 1);
     setErr(null);
     setWarning(null);
     try {
@@ -317,11 +335,18 @@ export function SettingsPanel({
       setErr(formatSettingsError(e, t));
       return false;
     } finally {
-      pendingSettingsApplies.current -= 1;
-      setBusy(pendingSettingsApplies.current > 0);
+      trackScope(scope, -1);
     }
-  }, [reload, onChanged, t]);
-  const backgroundApply = useCallback(async (fn: () => Promise<void>) => {
+  }, [reload, onChanged, t, trackScope]);
+  // apply runs a mutation, re-reads settings, and refreshes the topbar/model.
+  // Page sections receive the page-bound `pageApply`; a call with no scope is
+  // panel-wide and still disables every page.
+  const apply = useCallback((fn: () => Promise<unknown>, scope: string = SETTINGS_PANEL_SCOPE): Promise<boolean> => {
+    const queued = applyQueueRef.current.then(() => runApply(fn, scope), () => runApply(fn, scope));
+    applyQueueRef.current = queued.then(() => true, () => false);
+    return queued;
+  }, [runApply]);
+  const runBackgroundApply = useCallback(async (fn: () => Promise<void>) => {
     const seq = ++settingsApplySeq.current;
     setErr(null);
     setWarning(null);
@@ -341,6 +366,13 @@ export function SettingsPanel({
       } catch { /* Keep the original save issue if readback is unavailable. */ }
     }
   }, [reload, onChanged, t]);
+  // Never gated by busy, but still queued: it must not interleave with a save that
+  // is mid-rebuild, and its own reload has to observe that save's write.
+  const backgroundApply = useCallback((fn: () => Promise<void>): Promise<void> => {
+    const queued = applyQueueRef.current.then(() => runBackgroundApply(fn), () => runBackgroundApply(fn));
+    applyQueueRef.current = queued.then(() => true, () => false);
+    return queued.then(() => undefined);
+  }, [runBackgroundApply]);
   const setTerminalThemePreference = useCallback((next: TerminalThemePreference) => {
     const seq = ++terminalThemeSaveSeq.current;
     const previous = getTerminalThemePreference();
@@ -388,6 +420,12 @@ export function SettingsPanel({
 
   const selectTab = (next: SettingsTab) => { setTab(next); onNavigate?.(next); };
 
+  // Task 147: scope busy to this page and hand its sections a page-bound apply, so
+  // a save in flight here no longer freezes the other settings pages.
+  const pageScope = settingsApplyScope(tab);
+  const pageBusy = (pendingScopes[pageScope] ?? 0) > 0 || (pendingScopes[SETTINGS_PANEL_SCOPE] ?? 0) > 0;
+  const pageApply = useCallback((fn: () => Promise<unknown>) => apply(fn, pageScope), [apply, pageScope]);
+
   // These pages need SettingsView; capability pages load their own data.
   const needsSettings = tab === "general" || tab === "models" || tab === "providers" || tab === "model-stats" || tab === "bots" || tab === "subagents" || tab === "network" || tab === "permissions" || tab === "sandbox" || tab === "appearance" || tab === "updates";
   const lazySettingsPageFallback = <div className="empty">{t("settings.loading")}</div>;
@@ -422,7 +460,7 @@ export function SettingsPanel({
                 <span>{t(modelApplication.application === "pending" ? "settings.models.savedPending" : "settings.models.savedApplyFailed")}</span>
                 {modelApplication.issues.map((issue, index) => <span key={`${issue.code}:${index}`}>{issue.message}</span>)}
                 {modelApplication.targets.filter(target => target.application === "failed").map(target => (
-                  <button className="btn btn--small" key={target.tabId} type="button" disabled={busy} onClick={() => void apply(() => app.RetryModelSettingsApplication(target.tabId))}>{t("settings.models.applyRetry")}{target.title ? ` · ${target.title}` : ""}</button>
+                  <button className="btn btn--small" key={target.tabId} type="button" onClick={() => void pageApply(() => app.RetryModelSettingsApplication(target.tabId))}>{t("settings.models.applyRetry")}{target.title ? ` · ${target.title}` : ""}</button>
                 ))}
               </div>
             )}
@@ -430,28 +468,28 @@ export function SettingsPanel({
               loadingSettings ? <div className="empty">{t("settings.loading")}</div> : null
             ) : (
               <>
-                {tab === "general" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={busy} apply={apply}><GeneralSection s={s} busy={busy} apply={apply} agentRunning={agentRunning} /></SettingsPageShell>}
-                {tab === "experimental" && s && <ExperimentalSection key={tab} s={s} busy={busy} apply={apply} />}
-                {(tab === "models" || tab === "providers" || tab === "model-stats") && s && <SettingsPageShell key="model-pages" s={s} tab={tab} busy={busy} apply={apply}><ModelsSection onOpenProviders={() => selectTab("providers")} s={s} busy={busy} apply={apply} backgroundApply={backgroundApply} onboarding={initialFocus?.target === "model-access" && initialFocus.onboarding} onOnboardingComplete={onClose} subtab={tab === "providers" ? "access" : tab === "model-stats" ? "stats" : "usage"} /></SettingsPageShell>}
-                {tab === "bots" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={busy} apply={apply}><BotsSection s={s} busy={busy} apply={apply} initialFocus={initialFocus} /></SettingsPageShell>}
-                {tab === "mcp" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={apply}><Suspense fallback={lazySettingsPageFallback}><MCPServersSettingsPage /></Suspense></SettingsPageShell>}
-                {tab === "remote" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={apply}><Suspense fallback={lazySettingsPageFallback}><RemoteHostsPage /></Suspense></SettingsPageShell>}
-                {tab === "localserver" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={apply}><Suspense fallback={lazySettingsPageFallback}><LocalServerPage /></Suspense></SettingsPageShell>}
-                {tab === "skills" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={apply}><Suspense fallback={lazySettingsPageFallback}><SkillsSettingsPage activeWorkspaceKey={activeWorkspaceKey} /></Suspense></SettingsPageShell>}
-                {tab === "subagents" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={busy} apply={apply}><Suspense fallback={lazySettingsPageFallback}><SubagentsSettingsPage s={s} onUseInChat={(command) => {
+                {tab === "general" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={pageBusy} apply={pageApply}><GeneralSection s={s} busy={pageBusy} apply={pageApply} agentRunning={agentRunning} /></SettingsPageShell>}
+                {tab === "experimental" && s && <ExperimentalSection key={tab} s={s} busy={pageBusy} apply={pageApply} />}
+                {(tab === "models" || tab === "providers" || tab === "model-stats") && s && <SettingsPageShell key="model-pages" s={s} tab={tab} busy={pageBusy} apply={pageApply}><ModelsSection onOpenProviders={() => selectTab("providers")} s={s} busy={pageBusy} apply={pageApply} backgroundApply={backgroundApply} onboarding={initialFocus?.target === "model-access" && initialFocus.onboarding} onOnboardingComplete={onClose} subtab={tab === "providers" ? "access" : tab === "model-stats" ? "stats" : "usage"} /></SettingsPageShell>}
+                {tab === "bots" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={pageBusy} apply={pageApply}><BotsSection s={s} busy={pageBusy} apply={pageApply} initialFocus={initialFocus} /></SettingsPageShell>}
+                {tab === "mcp" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={pageApply}><Suspense fallback={lazySettingsPageFallback}><MCPServersSettingsPage /></Suspense></SettingsPageShell>}
+                {tab === "remote" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={pageApply}><Suspense fallback={lazySettingsPageFallback}><RemoteHostsPage /></Suspense></SettingsPageShell>}
+                {tab === "localserver" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={pageApply}><Suspense fallback={lazySettingsPageFallback}><LocalServerPage /></Suspense></SettingsPageShell>}
+                {tab === "skills" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={pageApply}><Suspense fallback={lazySettingsPageFallback}><SkillsSettingsPage activeWorkspaceKey={activeWorkspaceKey} /></Suspense></SettingsPageShell>}
+                {tab === "subagents" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={pageBusy} apply={pageApply}><Suspense fallback={lazySettingsPageFallback}><SubagentsSettingsPage s={s} onUseInChat={(command) => {
                   pendingSubagentCommandRef.current = command;
                   requestClose();
                 }} /></Suspense></SettingsPageShell>}
-                {tab === "plugins" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={apply}><Suspense fallback={lazySettingsPageFallback}><PluginsSettingsPage /></Suspense></SettingsPageShell>}
-                {tab === "memory" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={apply}><Suspense fallback={lazySettingsPageFallback}><MemorySettingsPage /></Suspense></SettingsPageShell>}
-                {tab === "hooks" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={apply}><HooksSection onChanged={onChanged} /></SettingsPageShell>}
-                {tab === "diagnostics" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={apply}><Suspense fallback={lazySettingsPageFallback}><DiagnosticsSettingsPage onNavigate={selectTab} /></Suspense></SettingsPageShell>}
-                {tab === "shortcuts" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={apply}><ShortcutsSection /></SettingsPageShell>}
-                {tab === "permissions" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={busy} apply={apply}><PermissionsSection s={s} busy={busy} apply={apply} /></SettingsPageShell>}
-                {tab === "sandbox" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={busy} apply={apply}><SandboxSection s={s} busy={busy} apply={apply} windows={desktopPlatform === "windows"} /></SettingsPageShell>}
-                {tab === "network" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={busy} apply={apply}><NetworkSection s={s} busy={busy} apply={apply} /></SettingsPageShell>}
+                {tab === "plugins" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={pageApply}><Suspense fallback={lazySettingsPageFallback}><PluginsSettingsPage /></Suspense></SettingsPageShell>}
+                {tab === "memory" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={pageApply}><Suspense fallback={lazySettingsPageFallback}><MemorySettingsPage /></Suspense></SettingsPageShell>}
+                {tab === "hooks" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={pageApply}><HooksSection onChanged={onChanged} /></SettingsPageShell>}
+                {tab === "diagnostics" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={pageApply}><Suspense fallback={lazySettingsPageFallback}><DiagnosticsSettingsPage onNavigate={selectTab} /></Suspense></SettingsPageShell>}
+                {tab === "shortcuts" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={pageApply}><ShortcutsSection /></SettingsPageShell>}
+                {tab === "permissions" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={pageBusy} apply={pageApply}><PermissionsSection s={s} busy={pageBusy} apply={pageApply} /></SettingsPageShell>}
+                {tab === "sandbox" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={pageBusy} apply={pageApply}><SandboxSection s={s} busy={pageBusy} apply={pageApply} windows={desktopPlatform === "windows"} /></SettingsPageShell>}
+                {tab === "network" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={pageBusy} apply={pageApply}><NetworkSection s={s} busy={pageBusy} apply={pageApply} /></SettingsPageShell>}
                 {tab === "appearance" && s && (
-                  <SettingsPageShell key={tab} s={s} tab={tab} busy={busy} apply={apply}>
+                  <SettingsPageShell key={tab} s={s} tab={tab} busy={pageBusy} apply={pageApply}>
                     <AppearanceOverview
                       theme={theme}
                       themeStyle={themeStyle}
@@ -508,16 +546,16 @@ export function SettingsPanel({
                     />
                   </SettingsPageShell>
                 )}
-                {tab === "storage" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={apply}><Suspense fallback={lazySettingsPageFallback}><StorageSettingsPage /></Suspense></SettingsPageShell>}
+                {tab === "storage" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={pageApply}><Suspense fallback={lazySettingsPageFallback}><StorageSettingsPage /></Suspense></SettingsPageShell>}
                 {tab === "updates" && s && (
-                  <SettingsPageShell key={tab} s={s} tab={tab} busy={busy} apply={apply}>
+                  <SettingsPageShell key={tab} s={s} tab={tab} busy={pageBusy} apply={pageApply}>
                     <UpdatesSection
                       configPath={s.configPath}
                       shadowedByPath={s.shadowedByPath}
                       checkUpdates={s.checkUpdates}
                       telemetry={s.telemetry !== false}
                       metrics={s.metrics !== false}
-                      settingsBusy={busy}
+                      settingsBusy={pageBusy}
                       applySettings={apply}
                     />
                   </SettingsPageShell>
@@ -998,7 +1036,21 @@ function formatSettingsError(error: unknown, t: ReturnType<typeof useT>): string
   if (saveBeforeDeleteProvider) return t("settings.errorSaveBeforeDeleteProvider", { err: saveBeforeDeleteProvider[1] });
   const removeProviderUsed = /^remove provider: (.+) is used by open tabs and no other configured provider exists$/i.exec(msg);
   if (removeProviderUsed) return t("settings.errorRemoveProviderNoFallback", { provider: removeProviderUsed[1] });
+  // Task 147: the rebuild guard refuses a write while the controller still has
+  // active work (desktop/app.go rebuildBusyError). Say why, and name the next step
+  // through entry points that already exist: the composer's stop control, answering
+  // a pending prompt, and the task panel's per-job stop.
+  if (/^active work is still running;/i.test(msg)) return t("settings.errorRebuildBusy");
   return msg || t("settings.errorUnknown");
+}
+
+// Task 147: one settings page is one busy scope, so a pending save only disables
+// the page whose controls started it. The model pages render the same mounted
+// section, so they deliberately share one scope.
+const SETTINGS_PANEL_SCOPE = "panel";
+function settingsApplyScope(tab: SettingsTab): string {
+  if (tab === "models" || tab === "providers" || tab === "model-stats") return "page:models";
+  return "page:" + tab;
 }
 
 function validateProviderExtraBodyValue(value: unknown, path = "extra_body", t?: ReturnType<typeof useT>): void {
@@ -1679,6 +1731,7 @@ type ExperimentFeatureId =
   | "cacheTuning"
   | "traceAsState"
   | "dream"
+  | "autoLoadOlder"
   | "sessionCollab"
   | "autopilot";
 
@@ -1720,6 +1773,7 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
     { id: "cacheTuning", label: t("settings.cacheTuning"), on: Boolean(s.experimentalCacheTuning) },
     { id: "traceAsState", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
     { id: "dream", label: t("settings.dream"), on: Boolean(s.experimentalDream) },
+    { id: "autoLoadOlder", label: t("settings.autoLoadOlder"), on: Boolean(s.experimentalAutoLoadOlder) },
     { id: "sessionCollab", label: t("settings.sessionCollab"), on: Boolean(s.experimentalSessionCollab) },
     { id: "autopilot", label: t("settings.autopilot"), on: Boolean(s.autopilot) },
   ];
@@ -2055,6 +2109,28 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
                 </div>
               ) : null}
             </>
+          )}
+          {selected === "autoLoadOlder" && (
+            <SettingsField label={t("settings.autoLoadOlder")} hint={t("settings.autoLoadOlderHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalAutoLoadOlder) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalAutoLoadOlder(on);
+                      // The transcript reads this flag from a live store, so the switch
+                      // reaches already-open tabs without a restart; mirror it here for
+                      // the same reason the settings reload alone cannot.
+                      setAutoLoadOlderEnabled(on);
+                    })}
+                  >
+                    {t(on ? "settings.autoLoadOlder.on" : "settings.autoLoadOlder.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
           )}
           {selected === "sessionCollab" && (
             <>
