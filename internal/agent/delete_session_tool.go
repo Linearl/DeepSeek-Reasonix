@@ -35,10 +35,12 @@ type DeleteSessionResult struct {
 
 // DeleteSessionFunc is the host capability that moves a session to trash
 // (matching the desktop's Delete, which is a manual-restore trash). Nil =
-// not supported. The host also fills the impact report so the caller's dry run
-// reflects real state (open tab / in-flight turn) instead of an always-false
-// default (audit F154-2).
-type DeleteSessionFunc func(contactID, sessionPath string) (DeleteSessionImpact, DeleteSessionResult, error)
+// not supported.
+//
+// dryRun=true MUST NOT delete: it only fills the impact report so the caller
+// can see open tab / in-flight turn before confirming. dryRun=false performs the
+// real trash after releasing this process's own runtime bindings.
+type DeleteSessionFunc func(contactID, sessionPath string, dryRun bool) (DeleteSessionImpact, DeleteSessionResult, error)
 
 // NewDeleteSessionTool lets a secretary retire a session from the contact
 // directory without opening the desktop (task 154 sub-item A). It refuses to
@@ -91,20 +93,25 @@ func (t deleteSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 	if t.del == nil {
 		return "", fmt.Errorf("delete_session: this host cannot delete sessions")
 	}
-	// The host fills OpenTab / HasTurn from its live tab map and controller
-	// state, so the report cannot contradict the removal guard (audit F154-2).
-	// Dry run asks for the same report without trashing anything.
-	impact, result, err := t.del(id.ContactID, id.SessionPath)
-	if err != nil {
-		return "", err
-	}
+	// Dry run and real delete are separate calls with an explicit dryRun flag,
+	// so a "just look at the impact" request can never move the session (audit
+	// F154-2: a prior version called the host unconditionally and the host
+	// always trashed).
 	if !p.Confirm {
+		impact, _, err := t.del(id.ContactID, id.SessionPath, true)
+		if err != nil {
+			return "", err
+		}
 		out, _ := json.Marshal(map[string]any{
 			"status": "dry_run",
 			"impact": impact,
 			"note":   "re-run with confirm=true to move it to trash",
 		})
 		return string(out), nil
+	}
+	impact, result, err := t.del(id.ContactID, id.SessionPath, false)
+	if err != nil {
+		return "", err
 	}
 	out, _ := json.Marshal(map[string]any{
 		"status": "trashed",

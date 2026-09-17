@@ -205,7 +205,7 @@ type Options struct {
 	OnCreateCollabSession func(workspaceRoot, title, purpose, group, groupID string) (agent.CreateCollabSessionResult, error)
 	// OnDeleteSession lets a host move a collaborating session to trash on the
 	// agent's behalf (task 154 sub-item A). Nil omits the delete_session tool.
-	OnDeleteSession func(contactID, sessionPath string) (agent.DeleteSessionImpact, agent.DeleteSessionResult, error)
+	OnDeleteSession func(contactID, sessionPath string, dryRun bool) (agent.DeleteSessionImpact, agent.DeleteSessionResult, error)
 	// SubagentParentLive reports whether this process currently owns or is
 	// building the parent session. Desktop uses it to avoid probing a live tab's
 	// lease during stale-subagent cleanup. Nil preserves lease-only cleanup.

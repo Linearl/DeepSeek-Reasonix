@@ -55,7 +55,7 @@ func TestDeleteSessionRefusesSelf(t *testing.T) {
 		SessionDir:         dir,
 		WorkspaceRoot:      dir,
 		CurrentSessionPath: self,
-	}, func(contactID, sessionPath string) (DeleteSessionImpact, DeleteSessionResult, error) {
+	}, func(contactID, sessionPath string, dryRun bool) (DeleteSessionImpact, DeleteSessionResult, error) {
 		t.Fatal("delete callback must not run for self-delete")
 		return DeleteSessionImpact{}, DeleteSessionResult{}, nil
 	})
@@ -78,8 +78,13 @@ func TestDeleteSessionDryRunDoesNotDelete(t *testing.T) {
 		Enabled:       true,
 		SessionDir:    dir,
 		WorkspaceRoot: dir,
-	}, func(contactID, sessionPath string) (DeleteSessionImpact, DeleteSessionResult, error) {
+	}, func(contactID, sessionPath string, dryRun bool) (DeleteSessionImpact, DeleteSessionResult, error) {
 		called = true
+		// The host must honour dryRun: a dry run never trashes.
+		if dryRun {
+			return DeleteSessionImpact{ContactID: contactID, SessionPath: sessionPath, OpenTab: true, HasTurn: false},
+				DeleteSessionResult{}, nil
+		}
 		return DeleteSessionImpact{ContactID: contactID, SessionPath: sessionPath, OpenTab: true, HasTurn: false},
 			DeleteSessionResult{ContactID: contactID, SessionPath: sessionPath, Trashed: true, RestoreUntil: "manual"}, nil
 	})

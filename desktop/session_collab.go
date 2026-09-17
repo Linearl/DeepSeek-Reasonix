@@ -189,22 +189,30 @@ func (a *App) createCollabSession(workspaceRoot, title, purpose, group, groupID 
 }
 
 // deleteCollabSession is the host capability behind delete_session (154-A).
-// It moves the transcript to the local trash (same 30-day recovery the desktop
-// Delete uses) and re-emits a tree change so the directory and sidebar drop it
-// immediately — no restart, no re-enumeration.
-// deleteCollabSession is the host capability behind delete_session (154-A).
-// It fills a real impact report (open tab / in-flight turn) from the live tab
-// map, then moves the transcript to the local trash — same 30-day-free,
-// manual-restore trash the desktop Delete uses. The previous version hard-coded
-// OpenTab/HasTurn to false and claimed a 30-day restore window no code enforced
-// (audit F154-2, F154-5).
-func (a *App) deleteCollabSession(contactID, sessionPath string) (agent.DeleteSessionImpact, agent.DeleteSessionResult, error) {
+//
+// dryRun=true: inspect only — fill the impact report from the live tab map and
+// return without touching the file. A dry run MUST NOT delete (audit F154-2: a
+// prior version called the trashing path unconditionally, so "just looking"
+// would move the session to trash and then claim dry_run).
+//
+// dryRun=false: release this process's own runtime bindings first — the same
+// sequence the desktop Delete uses — so the removal guard does not refuse a
+// lease we ourselves hold. Then trash, and re-emit a tree change so the
+// directory and sidebar drop it immediately.
+//
+// The trash is manual-restore: the desktop has no automatic 30-day purge.
+func (a *App) deleteCollabSession(contactID, sessionPath string, dryRun bool) (agent.DeleteSessionImpact, agent.DeleteSessionResult, error) {
 	sessionPath = strings.TrimSpace(sessionPath)
 	if sessionPath == "" {
 		return agent.DeleteSessionImpact{}, agent.DeleteSessionResult{}, fmt.Errorf("session path is required")
 	}
-	// Fill the impact report from live state BEFORE trashing, so a dry run and
-	// a real delete report the same truth.
+	dir := sessionDirectoryForPath(sessionPath)
+	if dir == "" {
+		return agent.DeleteSessionImpact{}, agent.DeleteSessionResult{}, fmt.Errorf("cannot determine the session directory for %q", sessionPath)
+	}
+
+	// Impact is computed from live state, independent of dryRun, so the dry run
+	// and the real delete report the same truth.
 	impact := agent.DeleteSessionImpact{
 		ContactID:   contactID,
 		SessionPath: sessionPath,
@@ -225,16 +233,22 @@ func (a *App) deleteCollabSession(contactID, sessionPath string) (agent.DeleteSe
 	}
 	a.mu.Unlock()
 
-	dir := sessionDirectoryForPath(sessionPath)
-	if dir == "" {
-		return impact, agent.DeleteSessionResult{}, fmt.Errorf("cannot determine the session directory for %q", sessionPath)
+	if dryRun {
+		return impact, agent.DeleteSessionResult{}, nil
 	}
-	// Only trash sessions this desktop actually owns: the trash helper validates
-	// the path lives under the given directory, and the removal guard refuses a
-	// live lease (errSessionBusyElsewhere).
+
+	// Real delete: release this process's own bindings first, mirroring the
+	// desktop Delete (app.go:deleteSession). Without this the removal guard
+	// sees a lease we hold and refuses with "in use by another Reasonix window"
+	// — and the impact report never comes back.
+	if err := a.releaseSessionRuntimeForDelete(dir, sessionPath); err != nil {
+		return impact, agent.DeleteSessionResult{}, err
+	}
+
 	if err := deleteSessionFile(dir, sessionPath); err != nil {
 		return impact, agent.DeleteSessionResult{}, err
 	}
+	a.removeSessionCatalogPath(sessionPath, "session_deleted")
 	a.emitProjectTreeChanged()
 	return impact, agent.DeleteSessionResult{
 		ContactID:    contactID,
@@ -242,6 +256,27 @@ func (a *App) deleteCollabSession(contactID, sessionPath string) (agent.DeleteSe
 		Trashed:      true,
 		RestoreUntil: "manual — restore from the Trash page",
 	}, nil
+}
+
+// releaseSessionRuntimeForDelete tears down this process's own controller and
+// handles for a session, so the trash removal guard no longer sees our lease.
+// It mirrors the subset of app.deleteSession that the collab path needs; the
+// full sequence also handles fallback targets and bot mappings, which a
+// secretary-initiated trash does not need to manage.
+func (a *App) releaseSessionRuntimeForDelete(dir, sessionPath string) error {
+	release := a.lockRuntimeMutation("delete-collab-session")
+	defer release()
+	a.sessionRemovalMu.Lock()
+	defer a.sessionRemovalMu.Unlock()
+	removed, _ := a.removeSessionRuntimeBindings(dir, sessionPath)
+	if err := a.prepareRemovedSessionRuntimes(removed); err != nil {
+		a.closeRemainingRemovedSessionRuntimesAdmissionHeld(removed, map[control.SessionAPI]bool{})
+		return err
+	}
+	destroys := a.destroyHandlesForSession(dir, sessionPath, removed)
+	_ = waitDestroyHandles(destroys)
+	a.closeRemainingRemovedSessionRuntimesAfterDestroyAdmissionHeld(removed, map[control.SessionAPI]bool{})
+	return nil
 }
 
 // applyPendingPurposes stamps purpose + contact_id onto sessions whose topic
