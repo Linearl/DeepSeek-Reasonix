@@ -698,14 +698,22 @@ func (p *sessionCollabPump) notifyDegradedSteer(msg sessioncollab.MailMessage, d
 func sessionCollabDeliveryText(msg sessioncollab.MailMessage, effectiveHop int) string {
 	var b strings.Builder
 	b.WriteString("[跨会话消息]")
-	if msg.From != "" {
-		b.WriteString(" 来自 contact_id=")
-		b.WriteString(msg.From)
+	// Both sides are always printed, even when empty: a silent omission of From
+	// loses the sender identity and, with it, the reply address (the ReplyTo is
+	// the same value). The recipient must be able to see the shape of the
+	// conversation, not infer it from absence.
+	fromLabel := msg.From
+	if fromLabel == "" {
+		fromLabel = "(未登记)"
 	}
-	if msg.To != "" {
-		b.WriteString(" → 发至 contact_id=")
-		b.WriteString(msg.To)
+	toLabel := msg.To
+	if toLabel == "" {
+		toLabel = "(未知)"
 	}
+	b.WriteString(" 来自 contact_id=")
+	b.WriteString(fromLabel)
+	b.WriteString(" → 发至 contact_id=")
+	b.WriteString(toLabel)
 	if effectiveHop > 0 {
 		b.WriteString(" (hop=")
 		b.WriteString(strconv.Itoa(effectiveHop))
@@ -730,7 +738,7 @@ func sessionCollabDeliveryText(msg sessioncollab.MailMessage, effectiveHop int) 
 		}
 		b.WriteString("。")
 	} else {
-		b.WriteString("这是单向通知，无需回复。")
+		b.WriteString("这是一条单向通知：发送方未登记 contact_id，无法自动回复。若确需回信，请先让发送方登记。")
 	}
 	return b.String()
 }

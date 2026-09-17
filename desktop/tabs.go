@@ -5159,6 +5159,9 @@ func prependTopicsInProjectsFileOpts(workspaceRoot string, topicIDs []string, en
 		if !ensureProject {
 			return changed, nil
 		}
+		// Defensive: the loop above already checked every project with
+		// sameProjectRoot, so this is normally unreachable. It stays as a second
+		// guard because the append is the only place a new root enters the file.
 		if projectRootExists(f, workspaceRoot) {
 			return changed, nil
 		}

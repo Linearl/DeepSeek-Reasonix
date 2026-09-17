@@ -5157,16 +5157,17 @@ func migrateLegacyWorkspacesIntoProjects() {
 	_ = updateProjectsFile(func(f *desktopProjectFile) (bool, error) {
 		seen := make(map[string]bool, len(f.Projects)+len(legacy))
 		for _, p := range f.Projects {
-			seen[p.Root] = true
+			seen[projectRootKey(p.Root)] = true
 		}
 		changed := false
 		for _, path := range legacy {
 			root := normalizeProjectRoot(path)
-			if root == "" || seen[root] {
+			key := projectRootKey(root)
+			if root == "" || seen[key] {
 				continue
 			}
 			f.Projects = append(f.Projects, desktopProject{Root: root})
-			seen[root] = true
+			seen[key] = true
 			changed = true
 		}
 		return changed, nil
