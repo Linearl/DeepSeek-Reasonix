@@ -7,6 +7,26 @@
 
 ---
 
+## 实验特性可用状态：`dream` / `distill`（2026-09-17，任务 150）
+
+> 分支 `wt-A`（基线 `main-v2-stable@47df65743`）。开关 `[agent] experimental_dream`（默认 false）。
+
+| 工具 | 状态 | 实测（修复前 → 修复后） |
+|---|---|---|
+| `distill` | **可用**（此前完全失效） | 修复前恒 **0 提名**：scanner 与真实转录格式不匹配，工具序列恒空。修复后 30 天窗（global-workspace 项目）：候选序列 **425** 条、被通用过滤 **1439** 条、提名 **12** 条（榜首 `memory:remember→bash`、`bash→memory:remember`、`mcp-tool:exa/web_search_exa→bash`） |
+| `dream` | **可用**（此前半可用） | 修复前 7 天 58 会话仅命中 1 条（marker 太窄 + 中文 slug 被剥离 ⇒ 多条偏好撞同一文件名被判重复）。修复后 7 天窗命中 2 条，文件名保留可辨识中文（`dream-落盘调研报告-提上游-issue-pr-…-5684f0`），内容 hash 防同名碰撞 |
+
+**修复要点**（`internal/agent/dream_distill.go`）：
+
+1. `scanSessionJSONL` 读真实转录形态：`role="tool"` 结果行（顶层 `name`）与 `assistant.tool_calls[]`（顶层 `name`，兼容 OpenAI `function.name`）；两路只取一路，避免同一次调用被计两次。
+2. `use_capability` 调用按解析出的 `capability_id` 记录（`mcp-tool:exa/web_search_exa`、`memory:remember`），否则提名永远只是 `bash→use_capability`。
+3. 提名过滤：序列须含 **≥2 种工具**且**至少一个非通用工具**（bash/read_file/write_file/edit_file/grep/ls/todo_write/ask/wait/update_goal 及 `tool:*` 能力视为通用）。
+4. `slugifyDreamFact` 保留各语言文字并按 rune 截断；`dreamFactName` 追加 6 位内容 hash，中文偏好不再塌成 `dream-fact` 而被误判重复。
+
+**已知边界**：提名归纳仍基于工具序列，不涉及用户请求语义；`distill` 的提名是草稿（人工确认后落 skill），不自动安装。
+
+---
+
 ## v1.38.3-20260916-1205（2026-09-16）
 
 > 本版在 `1.38.3` 基线上追加，**不含上游追齐**。包版本起采用构建时间戳（见下第 3 条）。
