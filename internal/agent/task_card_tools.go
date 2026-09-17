@@ -13,10 +13,43 @@ import (
 
 // TaskCardConfig carries host knobs for task 145 card tools.
 type TaskCardConfig struct {
-	Enabled            bool
-	WorkspaceRoot      string
+	Enabled       bool
+	WorkspaceRoot string
+	// CurrentSessionPath / CurrentContactID are the boot-time snapshots;
+	// ResolveSessionPath (optional) answers at call time and wins. The
+	// transcript path is bound by the control layer after boot, so a snapshot
+	// is empty for desktop sessions (task 158.B).
 	CurrentSessionPath string
 	CurrentContactID   string
+	ResolveSessionPath func() string
+}
+
+// currentSessionPath resolves the caller's transcript path at call time.
+func (c TaskCardConfig) currentSessionPath() string {
+	if c.ResolveSessionPath != nil {
+		if p := strings.TrimSpace(c.ResolveSessionPath()); p != "" {
+			return p
+		}
+	}
+	return strings.TrimSpace(c.CurrentSessionPath)
+}
+
+// currentContactID resolves the caller's own address, minting it on first use.
+func (c TaskCardConfig) currentContactID() string {
+	if id := strings.TrimSpace(c.CurrentContactID); id != "" {
+		return id
+	}
+	path := c.currentSessionPath()
+	if path == "" {
+		return ""
+	}
+	if id := SessionContactID(path); id != "" {
+		return id
+	}
+	if minted, err := EnsureContactID(path); err == nil {
+		return minted
+	}
+	return ""
 }
 
 // NewTaskCardTools returns the four card tools when the experiment is on.
@@ -56,8 +89,8 @@ func (t createTaskCardTool) Execute(_ context.Context, args json.RawMessage) (st
 		Title:       strings.TrimSpace(p.Title),
 		Body:        p.Body,
 		Assignee:    strings.TrimSpace(p.Assignee),
-		Initiator:   t.cfg.CurrentContactID,
-		SessionFrom: t.cfg.CurrentSessionPath,
+		Initiator:   t.cfg.currentContactID(),
+		SessionFrom: t.cfg.currentSessionPath(),
 		Workspace:   t.cfg.WorkspaceRoot,
 	})
 	if err != nil {
@@ -121,8 +154,8 @@ func (t updateTaskCardTool) Execute(_ context.Context, args json.RawMessage) (st
 		}
 		if p.Note != "" || p.Assignee != "" {
 			card.Nodes = append(card.Nodes, sessioncollab.CardNode{
-				ContactID: firstNonEmpty(p.Assignee, t.cfg.CurrentContactID),
-				Session:   t.cfg.CurrentSessionPath,
+				ContactID: firstNonEmpty(p.Assignee, t.cfg.currentContactID()),
+				Session:   t.cfg.currentSessionPath(),
 				Role:      firstNonEmpty(p.Role, "expert"),
 				Note:      p.Note,
 				At:        time.Now().UnixMilli(),

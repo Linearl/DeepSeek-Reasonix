@@ -20,12 +20,57 @@ type SessionCollabConfig struct {
 	Enabled       bool
 	SessionDir    string
 	WorkspaceRoot string
-	// CurrentSessionPath is the calling session's transcript path (for reply routing).
+	// CurrentSessionPath is the calling session's transcript path (for reply
+	// routing) as it was known when the tools were built.
 	CurrentSessionPath string
+	// ResolveSessionPath, when set, answers with the calling session's
+	// transcript path AT CALL TIME and takes precedence over the snapshot above.
+	//
+	// Required for a self-directed call (`set_session_purpose` without `target`,
+	// or any tool that stamps the caller's own identity): the transcript path is
+	// bound by the control layer AFTER boot (desktop/session_prompt.go,
+	// control/sessionpath.go), so the boot-time snapshot is empty for every
+	// desktop session — the tool then reported "no session path" and the only
+	// way out was to pass an explicit target. Resolving late also survives a
+	// path that changes under a live session (rewind/recovery copies), which a
+	// snapshot can never do.
+	ResolveSessionPath func() string
 	// MailDir overrides the shared collab mailbox root; empty uses config's.
 	MailDir string
 	// CurrentContactID is filled on first ensure for the calling session.
 	CurrentContactID string
+}
+
+// currentSessionPath resolves the calling session's transcript path, preferring
+// the live value over the boot snapshot.
+func (c SessionCollabConfig) currentSessionPath() string {
+	if c.ResolveSessionPath != nil {
+		if p := strings.TrimSpace(c.ResolveSessionPath()); p != "" {
+			return p
+		}
+	}
+	return strings.TrimSpace(c.CurrentSessionPath)
+}
+
+// currentContactID resolves the calling session's own address — the one a
+// reply must be sent to. It falls back to minting the id on first use, exactly
+// like the async send path, so "the sender is always addressable" holds for a
+// session that only ever sends.
+func (c SessionCollabConfig) currentContactID() string {
+	if id := strings.TrimSpace(c.CurrentContactID); id != "" {
+		return id
+	}
+	path := c.currentSessionPath()
+	if path == "" {
+		return ""
+	}
+	if id := SessionContactID(path); id != "" {
+		return id
+	}
+	if minted, err := EnsureContactID(path); err == nil {
+		return minted
+	}
+	return ""
 }
 
 func NewSetSessionPurposeTool(cfg SessionCollabConfig) tool.Tool {
@@ -57,7 +102,7 @@ func (t setSessionPurposeTool) Execute(_ context.Context, args json.RawMessage) 
 	if strings.TrimSpace(p.Purpose) == "" {
 		return "", fmt.Errorf("purpose is required")
 	}
-	session := t.cfg.CurrentSessionPath
+	session := t.cfg.currentSessionPath()
 	appliedTo := "self"
 	if strings.TrimSpace(p.Target) != "" {
 		ids := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
@@ -374,15 +419,11 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 	// Task 156.A: the sender must be addressable on first send. A session
 	// that only ever sends (never gets messaged first) would otherwise stay
 	// "(未登记)" forever and its messages degrade to one-way notices.
-	fromContact := t.cfg.CurrentContactID
-	if fromContact == "" && t.cfg.CurrentSessionPath != "" {
-		fromContact = SessionContactID(t.cfg.CurrentSessionPath)
-		if fromContact == "" {
-			if minted, merr := EnsureContactID(t.cfg.CurrentSessionPath); merr == nil {
-				fromContact = minted
-			}
-		}
-	}
+	// Task 158.B: resolve the sender's own address at call time — the boot-time
+	// snapshot is empty for desktop sessions, which is what made a self-directed
+	// set_session_purpose fail and every unregistered sender read as "(未登记)".
+	fromContact := t.cfg.currentContactID()
+	fromSession := t.cfg.currentSessionPath()
 	mailDir := t.cfg.MailDir
 	if mailDir == "" {
 		mailDir = config.SessionCollabMailDir()
@@ -390,7 +431,7 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 	mail := sessioncollab.NewMailStore(mailDir)
 	msg, err := mail.Deliver(sessioncollab.MailMessage{
 		From:        fromContact,
-		FromSession: t.cfg.CurrentSessionPath,
+		FromSession: fromSession,
 		To:          target.ContactID,
 		Body:        strings.TrimSpace(p.Message),
 		Delivery:    string(delivery),
@@ -468,16 +509,9 @@ func (t talkToSessionSyncTool) Execute(ctx context.Context, args json.RawMessage
 	if sent.MessageID == "" {
 		return queued, nil
 	}
-	// Task 156.A: mint the sender address on first send (same as async).
-	me := t.cfg.CurrentContactID
-	if me == "" && t.cfg.CurrentSessionPath != "" {
-		me = SessionContactID(t.cfg.CurrentSessionPath)
-		if me == "" {
-			if minted, merr := EnsureContactID(t.cfg.CurrentSessionPath); merr == nil {
-				me = minted
-			}
-		}
-	}
+	// Task 156.A: mint the sender address on first send (same as async). Task
+	// 158.B: resolved at call time, not from the boot snapshot.
+	me := t.cfg.currentContactID()
 	if me == "" {
 		return queued, nil // nothing to receive an answer on
 	}
@@ -485,14 +519,29 @@ func (t talkToSessionSyncTool) Execute(ctx context.Context, args json.RawMessage
 	if mailDir == "" {
 		mailDir = config.SessionCollabMailDir()
 	}
-	reply, ok := sessioncollab.NewMailStore(mailDir).AwaitReply(me, sent.MessageID, timeout)
+	// Task 158.A: this is a REAL wait, not a fire-and-forget send — it polls
+	// the requester's own inbox for a message whose threadId is the id we just
+	// delivered, bounded by `timeout` (max 120s) and by the caller's context.
+	started := time.Now()
+	reply, ok := sessioncollab.NewMailStore(mailDir).AwaitReplyContext(ctx, me, sent.MessageID, timeout)
+	waited := int(time.Since(started) / time.Millisecond)
 	if !ok {
+		note := "request was delivered; the reply will arrive in your inbox later"
+		if ctx != nil && ctx.Err() != nil {
+			// The turn was cancelled while waiting. The result is the same
+			// "no reply yet" a timeout reports — the request is already
+			// queued — but the reason must not read as an unexplained
+			// timeout, or the caller re-sends a message that is in flight.
+			note = "wait ended early (" + ctx.Err().Error() +
+				"); the request was delivered and the reply will still arrive in your inbox"
+		}
 		out, _ := json.Marshal(map[string]any{
 			"status":    "timeout",
 			"messageId": sent.MessageID,
 			"threadId":  sent.MessageID,
-			"waitedMs":  int(timeout / time.Millisecond),
-			"note":      "request was delivered; the reply will arrive in your inbox later",
+			"waitedMs":  waited,
+			"timeoutMs": int(timeout / time.Millisecond),
+			"note":      note,
 		})
 		return string(out), nil
 	}
@@ -500,6 +549,7 @@ func (t talkToSessionSyncTool) Execute(ctx context.Context, args json.RawMessage
 		"status":    "replied",
 		"messageId": sent.MessageID,
 		"threadId":  sent.MessageID,
+		"waitedMs":  waited,
 		"from":      reply.From,
 		"body":      reply.Body,
 	})
@@ -538,16 +588,11 @@ func scanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity 
 		if err != nil {
 			return "", "", "", "", false
 		}
-		title = strings.TrimSuffix(filepath.Base(sessionPath), filepath.Ext(sessionPath))
+		title = SessionDirectoryTitle(sessionPath)
 		if found {
 			contact = m.ContactID
 			purpose = m.Purpose
 			topic = m.TopicID
-			if m.CustomTitle != "" {
-				title = m.CustomTitle
-			} else if m.TopicTitle != "" {
-				title = m.TopicTitle
-			}
 		}
 		// Every conversation belongs in the directory; contact_id is minted on
 		// first contact rather than being a precondition for existence.
@@ -651,4 +696,41 @@ func ResolveTarget(ids []sessioncollab.Identity, ref string) (sessioncollab.Iden
 		return byTitle[0], nil
 	}
 	return sessioncollab.Identity{}, fmt.Errorf("%w: %q is not in the contact directory (use list_addressable_sessions)", sessioncollab.ErrNotFound, ref)
+}
+
+// SessionDirectoryTitle returns the display title of a session exactly as the
+// contact directory computes it: the branch-meta custom title, else the topic
+// title, else the file stem.
+//
+// Exported so every collaboration surface (the agent-side directory, the
+// desktop roster, the delete dry-run impact) names a conversation the same way.
+// Two sources for one title is how a dry run ends up reporting "" for a session
+// the user can see in the sidebar (task 158.D).
+func SessionDirectoryTitle(sessionPath string) string {
+	title := strings.TrimSuffix(filepath.Base(sessionPath), filepath.Ext(sessionPath))
+	if m, found, err := LoadBranchMeta(sessionPath); err == nil && found {
+		if m.CustomTitle != "" {
+			title = m.CustomTitle
+		} else if m.TopicTitle != "" {
+			title = m.TopicTitle
+		}
+	}
+	return title
+}
+
+// SessionTranscriptHasContent reports whether a transcript holds anything
+// beyond the empty placeholder a session is created with (an empty file plus
+// its sidecar). It answers "would deleting this discard work?" from the FILE —
+// the same source read_session_tail reads — so a session that already ran a
+// turn is never reported as empty merely because no tab or runtime is bound to
+// it at this instant.
+func SessionTranscriptHasContent(sessionPath string) bool {
+	if strings.TrimSpace(sessionPath) == "" {
+		return false
+	}
+	info, err := os.Stat(sessionPath)
+	if err != nil {
+		return false
+	}
+	return info.Size() > 0
 }

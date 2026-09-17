@@ -202,7 +202,7 @@ type Options struct {
 	// agent's behalf and file it into a group (task 19 / 144). The engine cannot
 	// create sessions itself — that is a host capability — so nil omits the
 	// create_collab_session tool entirely rather than exposing a broken one.
-	OnCreateCollabSession func(workspaceRoot, title, purpose, group, groupID string) (agent.CreateCollabSessionResult, error)
+	OnCreateCollabSession agent.CreateCollabSessionFunc
 	// OnDeleteSession lets a host move a collaborating session to trash on the
 	// agent's behalf (task 154 sub-item A). Nil omits the delete_session tool.
 	OnDeleteSession func(contactID, sessionPath string, dryRun bool) (agent.DeleteSessionImpact, agent.DeleteSessionResult, error)
@@ -1860,6 +1860,12 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			WorkspaceRoot:      root,
 			CurrentSessionPath: sessionPath,
 			CurrentContactID:   currentContact,
+			// Task 158.B: the transcript path is bound by the control layer
+			// AFTER boot, so `sessionPath` above is empty for a fresh desktop
+			// session. Resolving at call time keeps a self-directed call
+			// (set_session_purpose without target, the sender's own address)
+			// working instead of failing with "no session path".
+			ResolveSessionPath: executor.SessionPath,
 		}
 		reg.Add(agent.NewSetSessionPurposeTool(collab))
 		reg.Add(agent.NewListAddressableSessionsTool(collab))
@@ -1872,6 +1878,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			WorkspaceRoot:      root,
 			CurrentSessionPath: sessionPath,
 			CurrentContactID:   currentContact,
+			// Same reason as collab above (task 158.B): a card filed by a
+			// desktop session must carry its real initiator/session, not "".
+			ResolveSessionPath: executor.SessionPath,
 		}) {
 			reg.Add(t)
 		}

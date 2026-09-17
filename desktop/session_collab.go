@@ -135,7 +135,7 @@ func (p *sessionCollabPump) drainOnce() {
 // previous version only minted a topic_id and left a pending purpose for a
 // first-run stamp — which meant talk_to_session(to=new_topic) returned not-found
 // until the user manually opened the session (incident 2026-09-17).
-func (a *App) createCollabSession(workspaceRoot, title, purpose, group, groupID string) (agent.CreateCollabSessionResult, error) {
+func (a *App) createCollabSession(req agent.CreateCollabSessionRequest) (agent.CreateCollabSessionResult, error) {
 	// Task 156.B (audit F154-6): the global tab carries a non-empty
 	// WorkspaceRoot (globalWorkspaceRoot(), app.go), so the old
 	// "workspaceRoot != \"\"" probe misfiled every global-tab collab session
@@ -143,10 +143,18 @@ func (a *App) createCollabSession(workspaceRoot, title, purpose, group, groupID 
 	// after the user deleted it (ghost-project loop, incident 2026-09-17).
 	// Compare against the real global workspace root instead; only a genuinely
 	// different project root counts as project scope.
-	scope, root := "global", ""
-	if wr := strings.TrimSpace(workspaceRoot); wr != "" && !sameDesktopPath(wr, globalWorkspaceRoot()) {
-		scope, root = "project", wr
+	//
+	// Task 158.C: an explicit `project` overrides the caller's own scope, so a
+	// secretary can file a session into ANOTHER project — but only one the
+	// desktop already knows. An unregistered root is refused with the list of
+	// known projects; creating one would leave a project nobody opened, which is
+	// how the ghost project above appeared in the first place.
+	scope, root, serr := resolveCollabTargetScope(req.WorkspaceRoot, req.ProjectRoot, a.registeredCollabProjectRoots())
+	if serr != nil {
+		return agent.CreateCollabSessionResult{}, serr
 	}
+	title, purpose := strings.TrimSpace(req.Title), strings.TrimSpace(req.Purpose)
+	group, groupID := strings.TrimSpace(req.Group), strings.TrimSpace(req.GroupID)
 	meta, err := a.CreateTopic(scope, root, title)
 	if err != nil {
 		return agent.CreateCollabSessionResult{}, err
@@ -199,7 +207,82 @@ func (a *App) createCollabSession(workspaceRoot, title, purpose, group, groupID 
 		Purpose:     purpose,
 		Group:       group,
 		GroupID:     groupID,
+		Scope:       scope,
+		ProjectRoot: root,
 	}, nil
+}
+
+// registeredCollabProjectRoots is the set of project roots the desktop already
+// knows: the saved project list (what the sidebar shows) plus every project a
+// live tab is open on. A root outside this set is not a project yet — creating
+// a session "in" it would invent a project nobody opened.
+//
+// The union matters in both directions: a project the user opened but has not
+// re-saved is still real, and a project persisted without an open tab is real
+// too.
+func (a *App) registeredCollabProjectRoots() []string {
+	var roots []string
+	seen := func(root string) bool {
+		for _, r := range roots {
+			if sameDesktopPath(r, root) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, p := range loadProjectsFile().Projects {
+		if root := strings.TrimSpace(p.Root); root != "" && !seen(root) {
+			roots = append(roots, root)
+		}
+	}
+	for _, root := range a.knownProjectRoots() {
+		if root != "" && !seen(root) {
+			roots = append(roots, root)
+		}
+	}
+	return roots
+}
+
+// resolveCollabTargetScope decides WHERE a newly created collaborating session
+// lands, and refuses the request when it cannot be honoured.
+//
+// No requested project: the caller's own scope wins, except that the global
+// workspace root is not a project (task 156.B — treating it as one re-created a
+// deleted "global-workspace" project).
+//
+// Requested project: it must be a root the desktop already knows. A typo that
+// silently created a project would leave a stray project in the sidebar and a
+// session in the wrong place, so the error lists what is available instead.
+func resolveCollabTargetScope(callerRoot, requestedRoot string, registered []string) (string, string, error) {
+	requested := strings.TrimSpace(requestedRoot)
+	if requested == "" {
+		if wr := strings.TrimSpace(callerRoot); wr != "" && !sameDesktopPath(wr, globalWorkspaceRoot()) {
+			return "project", wr, nil
+		}
+		return "global", "", nil
+	}
+	if sameDesktopPath(requested, globalWorkspaceRoot()) {
+		return "", "", fmt.Errorf("project %q is the global workspace, not a project — omit `project` to create the session in Global", requested)
+	}
+	for _, root := range registered {
+		if sameDesktopPath(root, requested) {
+			return "project", root, nil
+		}
+	}
+	if len(registered) == 0 {
+		return "", "", fmt.Errorf("project %q is not a registered project and this desktop has no projects yet — add the project first, or omit `project` to create the session in the calling session's scope", requested)
+	}
+	// The next step has to exist: these are the roots the caller may pass.
+	// Bounded so a large list cannot flood the tool result.
+	const maxListed = 10
+	listed := registered
+	suffix := ""
+	if len(listed) > maxListed {
+		listed = listed[:maxListed]
+		suffix = fmt.Sprintf(" (and %d more)", len(registered)-maxListed)
+	}
+	return "", "", fmt.Errorf("project %q is not a registered project — pass one of: %s%s, or omit `project` to create the session in the calling session's scope",
+		requested, strings.Join(listed, ", "), suffix)
 }
 
 // deleteCollabSession is the host capability behind delete_session (154-A).
@@ -227,9 +310,15 @@ func (a *App) deleteCollabSession(contactID, sessionPath string, dryRun bool) (a
 
 	// Impact is computed from live state, independent of dryRun, so the dry run
 	// and the real delete report the same truth.
+	//
+	// Task 158.D: Title comes from the SAME source the contact directory uses
+	// (branch meta custom/topic title, else the file stem). The dry run used to
+	// leave it empty, so the caller could not tell which conversation it was
+	// about to trash — and it matched nothing a user would recognise.
 	impact := agent.DeleteSessionImpact{
 		ContactID:   contactID,
 		SessionPath: sessionPath,
+		Title:       agent.SessionDirectoryTitle(sessionPath),
 	}
 	a.mu.Lock()
 	for _, tab := range a.tabs {
@@ -242,10 +331,18 @@ func (a *App) deleteCollabSession(contactID, sessionPath string, dryRun bool) (a
 		impact.OpenTab = true
 		if status := tab.Ctrl.RuntimeStatus(); status.Running {
 			impact.HasTurn = true
+			impact.TurnInFlight = true
 		}
 		break
 	}
 	a.mu.Unlock()
+	// Task 158.D: no live tab does NOT mean "nothing here". The transcript is
+	// read the same way read_session_tail reads it — from the file — so a
+	// session that already ran a turn (the reported case: 45s of work) is never
+	// reported as empty just because nothing is bound to it right now.
+	if !impact.HasTurn && agent.SessionTranscriptHasContent(sessionPath) {
+		impact.HasTurn = true
+	}
 
 	if dryRun {
 		return impact, agent.DeleteSessionResult{}, nil
@@ -785,16 +882,13 @@ func (a *App) collabRoster() []sessioncollab.Identity {
 		if err != nil {
 			return "", "", "", "", false
 		}
-		title = strings.TrimSuffix(filepath.Base(sessionPath), filepath.Ext(sessionPath))
+		// One title source for the whole collaboration surface (task 158.D):
+		// the same helper the agent-side directory and the delete dry run use.
+		title = agent.SessionDirectoryTitle(sessionPath)
 		if found {
 			contact = m.ContactID
 			purpose = m.Purpose
 			topic = m.TopicID
-			if m.CustomTitle != "" {
-				title = m.CustomTitle
-			} else if m.TopicTitle != "" {
-				title = m.TopicTitle
-			}
 		}
 		// Include sessions with no sidecar yet: they are conversations too.
 		return contact, purpose, topic, title, true

@@ -635,8 +635,22 @@ func (s *MailStore) Ack(contactID string, ids ...string) error {
 //
 // Only the matching message is consumed; everything else stays queued.
 func (s *MailStore) AwaitReply(contactID, threadID string, timeout time.Duration) (MailMessage, bool) {
+	return s.AwaitReplyContext(context.Background(), contactID, threadID, timeout)
+}
+
+// AwaitReplyContext is AwaitReply bound to the caller's context.
+//
+// The wait must end when the caller's turn does: a cancelled turn (user stop,
+// superseded request) that keeps this goroutine asleep for the full timeout
+// holds a tool call open past the work it belongs to. Cancellation reports the
+// same "no reply yet" result as a timeout — the request is already delivered,
+// so there is nothing to undo — and the answer still arrives in the inbox.
+func (s *MailStore) AwaitReplyContext(ctx context.Context, contactID, threadID string, timeout time.Duration) (MailMessage, bool) {
 	if strings.TrimSpace(threadID) == "" {
 		return MailMessage{}, false
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	deadline := time.Now().Add(timeout)
 	for {
@@ -650,6 +664,9 @@ func (s *MailStore) AwaitReply(contactID, threadID string, timeout time.Duration
 				}
 			}
 		}
+		if err := ctx.Err(); err != nil {
+			return MailMessage{}, false
+		}
 		if time.Now().After(deadline) {
 			return MailMessage{}, false
 		}
@@ -658,7 +675,13 @@ func (s *MailStore) AwaitReply(contactID, threadID string, timeout time.Duration
 			sleep = remaining
 		}
 		if sleep > 0 {
-			time.Sleep(sleep)
+			// Poll in context-sized slices so a cancel is noticed promptly
+			// instead of after the whole sleep.
+			select {
+			case <-ctx.Done():
+				return MailMessage{}, false
+			case <-time.After(sleep):
+			}
 		}
 	}
 }
