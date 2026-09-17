@@ -898,7 +898,6 @@ func (a *App) sessionCollabLiveTargets(pendingContacts []string) []sessionCollab
 			contactID: contact,
 			detached:  true,
 			ctrl:      tab.Ctrl,
-			activeTab: tab.ID == a.activeTabID,
 		})
 	}
 	return out
@@ -926,6 +925,10 @@ func (a *App) sessionCollabTargets() []sessionCollabTarget {
 			tabs = append(tabs, tab)
 		}
 	}
+	// Snapshot under the same lock as the tabs: a concurrent close could flip
+	// activeTabID between the read and the loop, and an unlocked read would be a
+	// data race.
+	activeTabID := a.activeTabID
 	a.mu.Unlock()
 
 	var out []sessionCollabTarget
@@ -947,7 +950,11 @@ func (a *App) sessionCollabTargets() []sessionCollabTarget {
 			continue
 		}
 		seen[key] = true
-		out = append(out, sessionCollabTarget{tabID: tab.ID, contactID: contact})
+		out = append(out, sessionCollabTarget{
+			tabID:     tab.ID,
+			contactID: contact,
+			activeTab: tab.ID == activeTabID,
+		})
 	}
 	return out
 }

@@ -398,6 +398,7 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 		"status":    "queued",
 		"messageId": msg.ID,
 		"threadId":  msg.ID,
+		"from":      fromContact,
 		"to":        target.ContactID,
 		"toPurpose": target.Purpose,
 		"delivery":  msg.Delivery,
