@@ -202,7 +202,10 @@ type Options struct {
 	// agent's behalf and file it into a group (task 19 / 144). The engine cannot
 	// create sessions itself — that is a host capability — so nil omits the
 	// create_collab_session tool entirely rather than exposing a broken one.
-	OnCreateCollabSession func(workspaceRoot, title, purpose, group, groupID string) (topicID string, err error)
+	OnCreateCollabSession func(workspaceRoot, title, purpose, group, groupID string) (agent.CreateCollabSessionResult, error)
+	// OnDeleteSession lets a host move a collaborating session to trash on the
+	// agent's behalf (task 154 sub-item A). Nil omits the delete_session tool.
+	OnDeleteSession func(contactID, sessionPath string) (agent.DeleteSessionResult, error)
 	// SubagentParentLive reports whether this process currently owns or is
 	// building the parent session. Desktop uses it to avoid probing a live tab's
 	// lease during stale-subagent cleanup. Nil preserves lease-only cleanup.
@@ -1875,6 +1878,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// 144: only a host that can create sessions gets the creator tool.
 		if opts.OnCreateCollabSession != nil {
 			reg.Add(agent.NewCreateCollabSessionTool(root, opts.OnCreateCollabSession))
+		}
+		// 154 sub-item A: only a host that can delete sessions gets the tool.
+		if opts.OnDeleteSession != nil {
+			reg.Add(agent.NewDeleteSessionTool(collab, opts.OnDeleteSession))
 		}
 	}
 	// Task 107 P0-②: the model's read-only view of the recovery fence. It reads

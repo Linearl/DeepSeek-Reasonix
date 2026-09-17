@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -769,11 +770,7 @@ func EnsureContactID(sessionPath string) (string, error) {
 	var out string
 	err := UpdateBranchMeta(sessionPath, true, func(current *BranchMeta) error {
 		if current.ContactID == "" {
-			base := current.ID
-			if base == "" {
-				base = BranchID(sessionPath)
-			}
-			current.ContactID = contactIDFromStable(base, sessionPath)
+			current.ContactID = newContactID()
 		}
 		out = current.ContactID
 		return nil
@@ -794,11 +791,7 @@ func SessionContactID(sessionPath string) string {
 func SetSessionPurpose(sessionPath, purpose string) (contactID string, err error) {
 	err = UpdateBranchMeta(sessionPath, true, func(current *BranchMeta) error {
 		if current.ContactID == "" {
-			base := current.ID
-			if base == "" {
-				base = BranchID(sessionPath)
-			}
-			current.ContactID = contactIDFromStable(base, sessionPath)
+			current.ContactID = newContactID()
 		}
 		current.Purpose = strings.TrimSpace(purpose)
 		contactID = current.ContactID
@@ -807,9 +800,17 @@ func SetSessionPurpose(sessionPath, purpose string) (contactID string, err error
 	return contactID, err
 }
 
-func contactIDFromStable(branchID, sessionPath string) string {
-	if strings.TrimSpace(branchID) != "" {
-		return fmt.Sprintf("sc_%s", branchID)
+// newContactID mints a random, collision-resistant address. It is deliberately
+// NOT derived from the file name: the previous sc_<basename> scheme made a
+// rename silently orphan every reference to that session (incident 2026-09-17).
+// Existing ids are kept as-is — every reader treats "sc_<basename>" as a valid
+// legacy value and never re-mints.
+func newContactID() string {
+	var b [12]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// crypto/rand failing is unrecoverable; fall back to a timestamp so the
+		// session is still addressable rather than erroring the whole call.
+		return fmt.Sprintf("sc_%x", time.Now().UnixNano())
 	}
-	return fmt.Sprintf("sc_%s", BranchID(sessionPath))
+	return fmt.Sprintf("sc_%x", b[:])
 }

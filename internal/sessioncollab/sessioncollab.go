@@ -179,6 +179,47 @@ func appendJSONL(path string, v any) error {
 	return err
 }
 
+// IsMainTranscript reports whether a filename is the primary transcript of a
+// session, as opposed to a sidecar. Sidecars live next to the transcript with
+// the same stem — `.turns.jsonl`, `.events.jsonl`, `.conflicts.jsonl`, `.meta`,
+// `.ckpt`, `.inbox/`, `.jobs` — and were being counted as separate sessions by
+// the directory, which tripled the roster and produced phantom "duplicate
+// contact_id" warnings (incident 2026-09-17). One predicate, one truth.
+func IsMainTranscript(name string) bool {
+	base := strings.ToLower(filepath.Base(name))
+	// Known sidecar suffixes. Order does not matter; longest match wins via the
+	// explicit list rather than a suffix trick, so adding a new sidecar later is
+	// a one-line change and cannot silently widen the filter.
+	sidecars := []string{
+		".turns.jsonl",
+		".events.jsonl",
+		".conflicts.jsonl",
+		".context.json",
+		".telemetry.json",
+		".display-index.json",
+		".event-index.json",
+		".pinned-context.json",
+		".goal-state.json",
+		".meta",
+		".ckpt",
+		".lease.lock",
+		".lease.json",
+		".cleanup-pending.json",
+		".recovery",
+		".guardian",
+	}
+	for _, s := range sidecars {
+		if strings.HasSuffix(base, s) {
+			return false
+		}
+	}
+	// A `.inbox.jsonl` in the collab mailbox is a delivery file, not a session.
+	if strings.HasSuffix(base, ".inbox.jsonl") {
+		return false
+	}
+	return strings.HasSuffix(base, ".jsonl")
+}
+
 // ScanDir walks one sessions directory for BranchMeta contact fields.
 // workspaceRoot is the root those sessions belong to; it is published on every
 // identity so delivery can route to the target's own mailbox rather than the
@@ -194,7 +235,7 @@ func ScanDir(dir, workspaceRoot string, loadMeta func(sessionPath string) (conta
 	}
 	var out []Identity
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".jsonl") {
+		if e.IsDir() || !IsMainTranscript(e.Name()) {
 			continue
 		}
 		path := filepath.Join(dir, e.Name())

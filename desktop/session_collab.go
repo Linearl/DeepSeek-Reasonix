@@ -129,29 +129,90 @@ func (p *sessionCollabPump) drainOnce() {
 }
 
 // createCollabSession is the host capability behind create_collab_session
-// (task 144): it creates the topic, files it into the requested group, and
-// records the purpose for later stamping, because the transcript that carries
-// the contact_id does not exist until the session first runs.
-func (a *App) createCollabSession(workspaceRoot, title, purpose, group, groupID string) (string, error) {
+// (task 144, hardened by 154): it creates the topic, files it into the requested
+// group, AND writes the transcript + contact_id + purpose immediately, so the
+// session is addressable in the contact directory before anyone opens it. The
+// previous version only minted a topic_id and left a pending purpose for a
+// first-run stamp — which meant talk_to_session(to=new_topic) returned not-found
+// until the user manually opened the session (incident 2026-09-17).
+func (a *App) createCollabSession(workspaceRoot, title, purpose, group, groupID string) (agent.CreateCollabSessionResult, error) {
 	scope, root := "global", ""
 	if strings.TrimSpace(workspaceRoot) != "" {
 		scope, root = "project", workspaceRoot
 	}
 	meta, err := a.CreateTopic(scope, root, title)
 	if err != nil {
-		return "", err
+		return agent.CreateCollabSessionResult{}, err
 	}
 	if strings.TrimSpace(group) != "" || strings.TrimSpace(groupID) != "" {
 		if err := a.AddTopicToGroup(scope, root, meta.ID, groupID, group); err != nil {
-			return meta.ID, err
+			return agent.CreateCollabSessionResult{TopicID: meta.ID}, err
 		}
 	}
-	if dir := config.SessionCollabMailDir(); dir != "" {
-		if err := sessioncollab.NewPendingPurposeStore(dir).Set(meta.ID, purpose); err != nil {
-			return meta.ID, err
-		}
+
+	// Create the transcript now, not on first open. The directory enumerates
+	// .jsonl files, so without a file the session is invisible to
+	// list_addressable_sessions and talk_to_session.
+	dir := desktopSessionDir(root)
+	sessionPath, ferr := createEmptySessionFile(dir, "collab")
+	if ferr != nil {
+		return agent.CreateCollabSessionResult{TopicID: meta.ID}, fmt.Errorf("session file for %q: %w", title, ferr)
 	}
-	return meta.ID, nil
+	// Stamp contact_id + purpose + topic + scope onto the branch meta so the
+	// directory sees a complete record immediately. This is the "创建即注册"
+	// step: no pending-purpose round-trip through the pump.
+	if _, perr := agent.SetSessionPurpose(sessionPath, purpose); perr != nil {
+		return agent.CreateCollabSessionResult{TopicID: meta.ID, SessionPath: sessionPath}, fmt.Errorf("register purpose for %q: %w", title, perr)
+	}
+	if uerr := agent.UpdateBranchMeta(sessionPath, false, func(m *agent.BranchMeta) error {
+		m.TopicID = meta.ID
+		m.TopicTitle = meta.Title
+		m.Scope = scope
+		m.WorkspaceRoot = root
+		return nil
+	}); uerr != nil {
+		return agent.CreateCollabSessionResult{TopicID: meta.ID, SessionPath: sessionPath}, fmt.Errorf("bind topic %q to session: %w", meta.ID, uerr)
+	}
+
+	contactID := agent.SessionContactID(sessionPath)
+	// A brand-new topic is a tree change; re-emit so the sidebar and session
+	// catalog pick up the file we just wrote (sub-item B: no manual refresh).
+	a.emitProjectTreeChanged()
+	return agent.CreateCollabSessionResult{
+		TopicID:     meta.ID,
+		ContactID:   contactID,
+		SessionPath: sessionPath,
+		Purpose:     purpose,
+		Group:       group,
+		GroupID:     groupID,
+	}, nil
+}
+
+// deleteCollabSession is the host capability behind delete_session (154-A).
+// It moves the transcript to the local trash (same 30-day recovery the desktop
+// Delete uses) and re-emits a tree change so the directory and sidebar drop it
+// immediately — no restart, no re-enumeration.
+func (a *App) deleteCollabSession(contactID, sessionPath string) (agent.DeleteSessionResult, error) {
+	sessionPath = strings.TrimSpace(sessionPath)
+	if sessionPath == "" {
+		return agent.DeleteSessionResult{}, fmt.Errorf("session path is required")
+	}
+	dir := sessionDirectoryForPath(sessionPath)
+	if dir == "" {
+		return agent.DeleteSessionResult{}, fmt.Errorf("cannot determine the session directory for %q", sessionPath)
+	}
+	// Only trash sessions this desktop actually owns: the trash helper validates
+	// the path lives under the given directory.
+	if err := deleteSessionFile(dir, sessionPath); err != nil {
+		return agent.DeleteSessionResult{}, err
+	}
+	a.emitProjectTreeChanged()
+	return agent.DeleteSessionResult{
+		ContactID:     contactID,
+		SessionPath:   sessionPath,
+		Trashed:       true,
+		RestoreWithin: "30d",
+	}, nil
 }
 
 // applyPendingPurposes stamps purpose + contact_id onto sessions whose topic
