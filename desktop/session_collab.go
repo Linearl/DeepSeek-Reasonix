@@ -240,14 +240,12 @@ func (a *App) deleteCollabSession(contactID, sessionPath string, dryRun bool) (a
 	// Real delete: release this process's own bindings first, mirroring the
 	// desktop Delete (app.go:deleteSession). Without this the removal guard
 	// sees a lease we hold and refuses with "in use by another Reasonix window"
-	// — and the impact report never comes back.
+	// — and the impact report never comes back. The helper also handles the
+	// teardown timeout and finishDestroyHandles (audit §T2-a).
 	if err := a.releaseSessionRuntimeForDelete(dir, sessionPath); err != nil {
 		return impact, agent.DeleteSessionResult{}, err
 	}
 
-	if err := deleteSessionFile(dir, sessionPath); err != nil {
-		return impact, agent.DeleteSessionResult{}, err
-	}
 	a.removeSessionCatalogPath(sessionPath, "session_deleted")
 	a.emitProjectTreeChanged()
 	return impact, agent.DeleteSessionResult{
@@ -259,10 +257,13 @@ func (a *App) deleteCollabSession(contactID, sessionPath string, dryRun bool) (a
 }
 
 // releaseSessionRuntimeForDelete tears down this process's own controller and
-// handles for a session, so the trash removal guard no longer sees our lease.
-// It mirrors the subset of app.deleteSession that the collab path needs; the
-// full sequence also handles fallback targets and bot mappings, which a
-// secretary-initiated trash does not need to manage.
+// handles for a session, then trashes it. It mirrors the subset of
+// app.deleteSession that the collab path needs — the desktop sequence holds
+// both locks across the whole teardown + trash, and it MUST call
+// finishDestroyHandles: Finish() clears the jobs manager's destroying[stem]
+// marker, and that marker is what suppresses background-job notifications for
+// the session. Leaving it set means a session restored from trash has its
+// future progress events permanently swallowed (audit §T2-a).
 func (a *App) releaseSessionRuntimeForDelete(dir, sessionPath string) error {
 	release := a.lockRuntimeMutation("delete-collab-session")
 	defer release()
@@ -274,7 +275,26 @@ func (a *App) releaseSessionRuntimeForDelete(dir, sessionPath string) error {
 		return err
 	}
 	destroys := a.destroyHandlesForSession(dir, sessionPath, removed)
-	_ = waitDestroyHandles(destroys)
+	timedOut := waitDestroyHandles(destroys)
+	a.closeRemainingRemovedSessionRuntimesAfterDestroyAdmissionHeld(removed, map[control.SessionAPI]bool{})
+	if timedOut {
+		// A slow teardown must not block the caller forever, but the file must
+		// not be trashed out from under a still-live job either. Mark cleanup
+		// pending and let the same delayed trash the desktop uses finish it.
+		if err := agent.MarkCleanupPending(sessionPath, "delete"); err != nil {
+			a.closeRemainingRemovedSessionRuntimesAfterDestroyAdmissionHeld(removed, map[control.SessionAPI]bool{})
+			return err
+		}
+		key := filepath.Base(sessionPath)
+		go delayedDesktopSessionTrash(dir, sessionPath, key, destroys)
+		return nil
+	}
+	err := trashSessionArtifacts(dir, sessionPath, filepath.Base(sessionPath))
+	finishDestroyHandles(destroys)
+	if err != nil {
+		a.closeRemainingRemovedSessionRuntimesAfterDestroyAdmissionHeld(removed, map[control.SessionAPI]bool{})
+		return err
+	}
 	a.closeRemainingRemovedSessionRuntimesAfterDestroyAdmissionHeld(removed, map[control.SessionAPI]bool{})
 	return nil
 }
