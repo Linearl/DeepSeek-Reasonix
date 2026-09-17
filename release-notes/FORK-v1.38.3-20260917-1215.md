@@ -1,10 +1,21 @@
-# Reasonix Fork 桌面版 v1.38.3-20260917-1010 — Release Notes
+# Reasonix Fork 桌面版 v1.38.3-20260917-1215 — Release Notes
 
-> **构建**：2026-09-17 10:1x ｜ **安装目录**：`versions/v1.38.3-20260917-1010/`
+> **构建**：2026-09-17 12:1x ｜ **安装目录**：`versions/v1.38.3-20260917-1215/`
 > **基线**：官方 `v1.38.3`。本仓库长期停在该版本，包版本带时间戳只为区分**同一版本号下的多次构建**。
 >
 > 本文件**只列本版相对上一版包的新增内容**。基线版本的完整说明见 `FORK-v1.38.3.md`；
 > 逐项差异台账见 `FORK-vs-upstream.md`。
+
+## 本版新增：任务 154 创建即注册 + 独立审计三轮复核通过
+
+**141 + 154 一锅端**（C 路线）。经独立审计三轮复核（报告 `issues/reports/任务154-创建即注册与删除会话-代码审计报告-20260917.md`），结论「可以出包」。
+
+- **创建即注册**：`create_collab_session` 创建后立即写 transcript + contact_id + purpose，**无需先打开会话**即可被 `list_addressable_sessions` / `talk_to_session` 找到
+- **141 三项隐藏验收**：contact_id 随机化（不再从文件名派生）、侧车过滤 `IsMainTranscript` 统一（委托 `store`）、purpose 创建即写
+- **`delete_session` 工具**：dry-run 无副作用返回影响面（openTab/HasTurn 从 live tab map 填）；confirm 移回收区（manual restore）；拒绝删除调用方自身
+- **审计修掉的 5 个必修缺陷**：dry-run 误删、影响面恒 false、`.guardian.jsonl` 漏进通讯录、`30d` 假承诺、`finishDestroyHandles` 缺失
+
+已知残留见审计报告六节（fallback 未透出、desktop 侧单测未补等，均判定不阻塞）。
 
 ## 本版新增：通讯录搜索 + 归档语义澄清 + v4 双写去重
 
