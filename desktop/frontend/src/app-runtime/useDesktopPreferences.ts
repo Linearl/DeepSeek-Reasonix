@@ -12,6 +12,7 @@ import type { BotRuntimeStatusView } from "../lib/types";
 import { app } from "../lib/bridge";
 import { applyPreferencesAppearance, layoutStyleFromSnapshot, synchronizeDesktopPreferences, type DesktopPreferencesSnapshot } from "./desktopPreferencesAdapter";
 import { sidebarImConnectionsFromBot, sidebarImTopicSourcesFromBot } from "./sidebarImProjection";
+import { applyDesktopCacheTuning } from "../lib/resourceBudgets";
 
 export function useDesktopPreferences() {
   const { locale, setPref } = useI18n();
@@ -27,6 +28,18 @@ export function useDesktopPreferences() {
     // appear without requiring a Settings toggle in the same session.
     setSessionMonitorEnabled(Boolean((settings as { experimentalSessionMonitor?: boolean }).experimentalSessionMonitor));
     setFeedbackEnabled(Boolean((settings as { experimentalFeedback?: boolean }).experimentalFeedback));
+    // Task 161: apply the transcript cache tuning (max resident tab states +
+    // the two budgets) during boot, BEFORE the first transcriptStore
+    // construction reads the effective ceilings. When the experiment is OFF
+    // the user values are ignored entirely — the shipped defaults apply and
+    // the settings controls stay disabled.
+    if (Boolean((settings as { experimentalCacheTuning?: boolean }).experimentalCacheTuning)) {
+      applyDesktopCacheTuning({
+        maxCachedTabs: (settings as { maxCachedTabs?: number }).maxCachedTabs,
+        historyBodyBudgetMb: (settings as { historyBodyBudgetMb?: number }).historyBodyBudgetMb,
+        markdownBudgetMb: (settings as { markdownBudgetMb?: number }).markdownBudgetMb,
+      });
+    }
     setSnapshot(settings);
     setBotRuntime(runtime);
     setStartupFailed(false);

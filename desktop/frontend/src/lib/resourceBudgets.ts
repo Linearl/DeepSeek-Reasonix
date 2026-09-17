@@ -46,3 +46,41 @@ export function resourceBudgetSnapshot(): ResourceBudgetSnapshot {
     markdownDomMaxTableCells: MARKDOWN_DOM_MAX_TABLE_CELLS,
   };
 }
+
+// ── Task 161: user-tunable overrides (Settings → 缓存大小调整) ────────────────
+// The transcript store copies these constants at module init, so overrides must
+// be applied BEFORE the first store import executes — the desktop preferences
+// sync (useDesktopPreferences → applyDesktopCacheTuning) runs during App boot,
+// which is early enough. Restart-after-change is the documented contract.
+
+let overrideMaxResidentSessions = 0;
+let overrideHistoryBodyBudgetBytes = 0;
+let overrideMarkdownBudgetBytes = 0;
+
+/** Live (override-aware) ceilings; fall back to the shipped defaults. */
+export function effectiveMaxResidentSessions(): number {
+  return overrideMaxResidentSessions > 0 ? overrideMaxResidentSessions : MAX_RESIDENT_SESSIONS;
+}
+export function effectiveHistoryBodyBudgetBytes(): number {
+  return overrideHistoryBodyBudgetBytes > 0 ? overrideHistoryBodyBudgetBytes : HISTORY_BODY_BUDGET_BYTES;
+}
+export function effectiveMarkdownBudgetBytes(): number {
+  return overrideMarkdownBudgetBytes > 0 ? overrideMarkdownBudgetBytes : MARKDOWN_BUDGET_BYTES;
+}
+
+/**
+ * Applies user preferences (MB units from [desktop] in config.toml; 0 keeps
+ * the default). Bounds clamp mis-tuning into safe ranges: tab states ≤64,
+ * body 32–512 MiB, markdown 64–2048 MiB.
+ */
+export function applyDesktopCacheTuning(prefs: { maxCachedTabs?: number; historyBodyBudgetMb?: number; markdownBudgetMb?: number }): void {
+  if (prefs.maxCachedTabs !== undefined) {
+    overrideMaxResidentSessions = Math.max(0, Math.min(64, Math.floor(prefs.maxCachedTabs)));
+  }
+  if (prefs.historyBodyBudgetMb !== undefined && prefs.historyBodyBudgetMb > 0) {
+    overrideHistoryBodyBudgetBytes = Math.max(32, Math.min(512, Math.floor(prefs.historyBodyBudgetMb))) << 20;
+  }
+  if (prefs.markdownBudgetMb !== undefined && prefs.markdownBudgetMb > 0) {
+    overrideMarkdownBudgetBytes = Math.max(64, Math.min(2048, Math.floor(prefs.markdownBudgetMb))) << 20;
+  }
+}

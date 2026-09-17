@@ -45,6 +45,7 @@ import { upsertReadPause } from "./readPause";
 import { applyHydrateErrorState, hydratePlaceholderItems as resolveHydratePlaceholders } from "./hydrateErrorState";
 import { isHostRecoveryGuidance } from "./hostRecoverySteer";
 import { activeTabHydrationPlan, canAdoptUnboundLiveSurface, duplicateLiveItemIds, explainReusableCache, hasReusableCachedTranscript, hydratedHistoryApplyMode, sameSessionHydrateIdentity, sameSessionPlaceholderItems, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
+import { effectiveMaxResidentSessions } from "./resourceBudgets";
 import { loadLastActiveTabId, saveLastActiveTabId } from "./layoutPreferences";
 import { hydrateIdentityCurrent } from "./sessionIdentity";
 import { historyPageRequestBudget } from "./historyPaging";
@@ -2549,6 +2550,10 @@ export function useController() {
   const composerProfileLifecycleByTabRef = useRef(new Map<string, number>());
   const cancelReconcileTimers = useRef(new Map<string, number>());
   const stalePromptReconcileTimers = useRef(new Map<string, number>());
+  // Task 161: activation recency for the LRU tab-state prune. Bumped on every
+  // tab switch/activation so commitSingleSurfaceNavigation keeps the newest
+  // maxCachedTabs states and releases only the oldest beyond the limit.
+  const tabLastActiveAt = useRef(new Map<string, number>());
   // Indirection so dispatchRuntimeStatusForTab (defined above reconcileTabRuntime)
   // can schedule an authoritative refetch after it rejects a stale snapshot.
   const scheduleStalePromptReconcileRef = useRef<(tabId: string) => void>(() => {});
@@ -4839,6 +4844,7 @@ export function useController() {
     addBreadcrumb("tab.switch", `click ${tabId}`);
     setActiveTabId(tabId);
     activeTabIdRef.current = tabId;
+    tabLastActiveAt.current.set(tabId, Date.now());
     dispatchTo(tabId, { type: "backend_activation_start", backendPendingPrompt: Boolean(optimisticTab?.pendingPrompt) });
     noteActivationStarted(switchRequestId, tabId);
     if (optimisticTab) {
@@ -5110,6 +5116,7 @@ export function useController() {
     setActiveTabId(meta.id);
     activeTabIdRef.current = meta.id;
     confirmBackendActiveTab(meta.id);
+    tabLastActiveAt.current.set(meta.id, Date.now());
     noteActivationStarted(pending.requestId, meta.id);
     dispatchTo(meta.id, { type: "optimistic_meta", meta: metaFromTab(meta, statesRef.current.get(meta.id)?.meta) });
     if (!sameSession) dispatchTo(meta.id, { type: "reset" });
@@ -5202,13 +5209,25 @@ export function useController() {
 
   const commitSingleSurfaceNavigation = useCallback((tabId: string) => {
     if (!tabId || activeTabIdRef.current !== tabId) return false;
+    // Task 161: the blanket "delete every other tab's cached state" made each
+    // switch back a full 6.8 s transcript re-parse (desktop.log 2026-09-17:
+    // `resident items empty` veto right before the reload). Pruning is now an
+    // LRU over tab **activation** recency: the newest `maxCachedTabs` states
+    // survive (default 12; 0 = unlimited, [desktop].max_cached_tabs), only the
+    // oldest beyond that get the full release. The active tab always survives.
+    const others: { id: string; lastActive: number }[] = [];
     for (const id of Array.from(statesRef.current.keys())) {
       if (id === tabId) continue;
-      invalidateProviderStateForTab(id);
-      disposeComposerProfileState(id);
-      statesRef.current.delete(id);
-      releaseTranscriptState(id);
-      notifyLiveListeners(id);
+      others.push({ id, lastActive: tabLastActiveAt.current.get(id) ?? 0 });
+    }
+    const limit = effectiveMaxResidentSessions();
+    others.sort((a, b) => b.lastActive - a.lastActive);
+    for (const entry of limit > 0 ? others.slice(limit - 1) : []) {
+      invalidateProviderStateForTab(entry.id);
+      disposeComposerProfileState(entry.id);
+      statesRef.current.delete(entry.id);
+      releaseTranscriptState(entry.id);
+      notifyLiveListeners(entry.id);
     }
     return true;
   }, [disposeComposerProfileState, invalidateProviderStateForTab, notifyLiveListeners, releaseTranscriptState]);

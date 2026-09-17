@@ -342,6 +342,11 @@ type SettingsView struct {
 	ExperimentalLocalServer      bool                       `json:"experimentalLocalServer"`
 	ExperimentalPathRules        bool                       `json:"experimentalPathRules"`
 	ExperimentalTraceAsState     bool                       `json:"experimentalTraceAsState"`
+	// Task 161: cache tuning mirrors (Settings panel reads these from this view).
+	MaxCachedTabs            int                        `json:"maxCachedTabs"`
+	HistoryBodyBudgetMb      int                        `json:"historyBodyBudgetMb"`
+	MarkdownBudgetMb         int                        `json:"markdownBudgetMb"`
+	ExperimentalCacheTuning  bool                       `json:"experimentalCacheTuning"`
 	ExperimentalDream            bool                       `json:"experimentalDream"`
 	ExperimentalSessionCollab    bool                       `json:"experimentalSessionCollab"`
 	VisionModel                  string                     `json:"visionModel"`
@@ -436,8 +441,15 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalLocalServer exposes the Settings → 本地服务 page (task 130).
 	ExperimentalLocalServer bool `json:"experimentalLocalServer"`
 	// ExperimentalPathRules enables structured path-scope evaluation (task 134).
-	ExperimentalPathRules bool   `json:"experimentalPathRules"`
-	CheckUpdates          bool   `json:"checkUpdates"`
+	ExperimentalPathRules bool `json:"experimentalPathRules"`
+	// Task 161: transcript cache tuning (max resident tab states + the two
+	// transcript budgets). Applied by the frontend on startup; changes take
+	// effect after a restart.
+	MaxCachedTabs           int    `json:"maxCachedTabs"`
+	HistoryBodyBudgetMb     int    `json:"historyBodyBudgetMb"`
+	MarkdownBudgetMb        int    `json:"markdownBudgetMb"`
+	ExperimentalCacheTuning bool   `json:"experimentalCacheTuning"`
+	CheckUpdates            bool   `json:"checkUpdates"`
 	UpdateChannel         string `json:"updateChannel"`
 	ConversationWidth     string `json:"conversationWidth,omitempty"`
 	// Autopilot mirrors the [desktop] preference so the composer knows whether
@@ -1168,6 +1180,10 @@ func (a *App) Settings() SettingsView {
 		ExperimentalSessionCollab:  cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
 		ExperimentalLocalServer:    cfg.Desktop.ExperimentalLocalServer,
 		ExperimentalPathRules:      cfg.Desktop.ExperimentalPathRules,
+		MaxCachedTabs:              cfg.Desktop.MaxCachedTabs,
+		HistoryBodyBudgetMb:        cfg.Desktop.HistoryBodyBudgetMb,
+		MarkdownBudgetMb:           cfg.Desktop.MarkdownBudgetMb,
+		ExperimentalCacheTuning:    cfg.Desktop.ExperimentalCacheTuning,
 		VisionModel:                cfg.Agent.VisionModel,
 		WebSearchModel:             cfg.Agent.WebSearchModel,
 		WebSearchModels:            []string{},

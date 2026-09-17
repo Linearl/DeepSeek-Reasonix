@@ -1676,6 +1676,7 @@ type ExperimentFeatureId =
   | "feedback"
   | "localServer"
   | "pathRules"
+  | "cacheTuning"
   | "traceAsState"
   | "dream"
   | "sessionCollab"
@@ -1716,6 +1717,7 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
     { id: "feedback", label: t("settings.feedback"), on: Boolean(s.experimentalFeedback) },
     { id: "localServer", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
     { id: "pathRules", label: t("settings.pathRules"), on: Boolean(s.experimentalPathRules) },
+    { id: "cacheTuning", label: t("settings.cacheTuning"), on: Boolean(s.experimentalCacheTuning) },
     { id: "traceAsState", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
     { id: "dream", label: t("settings.dream"), on: Boolean(s.experimentalDream) },
     { id: "sessionCollab", label: t("settings.sessionCollab"), on: Boolean(s.experimentalSessionCollab) },
@@ -1900,6 +1902,107 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
                 ))}
               </SettingsOptions>
             </SettingsField>
+          )}
+          {selected === "cacheTuning" && (
+            <>
+              <SettingsField label={t("settings.cacheTuning")} hint={t("settings.cacheTuningHint")} icon={<FolderLock size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalCacheTuning) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalCacheTuning(on))}
+                    >
+                      {t(on ? "settings.cacheTuning.on" : "settings.cacheTuning.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              {Boolean(s.experimentalCacheTuning) && (
+                <>
+                  <SettingsField label={t("settings.cacheTuning.tabs")} hint={t("settings.cacheTuning.tabsHint")}>
+                    <input
+                      type="number"
+                      min={0}
+                      max={64}
+                      defaultValue={s.maxCachedTabs || 0}
+                      disabled={busy}
+                      onBlur={(e) => {
+                        const v = Math.max(0, Math.min(64, Math.floor(Number(e.target.value) || 0)));
+                        e.target.value = String(v);
+                        void apply(() => app.SetTranscriptCacheTuning(v, s.historyBodyBudgetMb || 192, s.markdownBudgetMb || 256));
+                      }}
+                    />
+                  </SettingsField>
+                  <SettingsField label={t("settings.cacheTuning.body")} hint={t("settings.cacheTuning.bodyHint")}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <input
+                        type="range"
+                        min={32}
+                        max={512}
+                        step={16}
+                        defaultValue={s.historyBodyBudgetMb || 192}
+                        disabled={busy}
+                        style={{ flex: 1 }}
+                        onChange={(e) => { const n = e.target.parentElement!.querySelector("input[type=number]") as HTMLInputElement | null; if (n) n.value = e.target.value; }}
+                        onMouseUp={(e) => {
+                          const v = Math.max(32, Math.min(512, Math.floor(Number((e.target as HTMLInputElement).value))));
+                          void apply(() => app.SetTranscriptCacheTuning(s.maxCachedTabs || 0, v, s.markdownBudgetMb || 256));
+                        }}
+                      />
+                      <input
+                        type="number"
+                        min={32}
+                        max={512}
+                        defaultValue={s.historyBodyBudgetMb || 192}
+                        disabled={busy}
+                        style={{ width: 90 }}
+                        onBlur={(e) => {
+                          const v = Math.max(32, Math.min(512, Math.floor(Number(e.target.value) || 192)));
+                          e.target.value = String(v);
+                          void apply(() => app.SetTranscriptCacheTuning(s.maxCachedTabs || 0, v, s.markdownBudgetMb || 256));
+                        }}
+                      />
+                      <span>MB</span>
+                    </div>
+                  </SettingsField>
+                  <SettingsField label={t("settings.cacheTuning.markdown")} hint={t("settings.cacheTuning.markdownHint")}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <input
+                        type="range"
+                        min={64}
+                        max={2048}
+                        step={64}
+                        defaultValue={s.markdownBudgetMb || 256}
+                        disabled={busy}
+                        style={{ flex: 1 }}
+                        onChange={(e) => { const n = e.target.parentElement!.querySelector("input[type=number]") as HTMLInputElement | null; if (n) n.value = e.target.value; }}
+                        onMouseUp={(e) => {
+                          const v = Math.max(64, Math.min(2048, Math.floor(Number((e.target as HTMLInputElement).value))));
+                          void apply(() => app.SetTranscriptCacheTuning(s.maxCachedTabs || 0, s.historyBodyBudgetMb || 192, v));
+                        }}
+                      />
+                      <input
+                        type="number"
+                        min={64}
+                        max={2048}
+                        defaultValue={s.markdownBudgetMb || 256}
+                        disabled={busy}
+                        style={{ width: 90 }}
+                        onBlur={(e) => {
+                          const v = Math.max(64, Math.min(2048, Math.floor(Number(e.target.value) || 256)));
+                          e.target.value = String(v);
+                          void apply(() => app.SetTranscriptCacheTuning(s.maxCachedTabs || 0, s.historyBodyBudgetMb || 192, v));
+                        }}
+                      />
+                      <span>MB</span>
+                    </div>
+                  </SettingsField>
+                  <p style={{ opacity: 0.7, fontSize: 12 }}>{t("settings.cacheTuning.restartHint")}</p>
+                </>
+              )}
+            </>
           )}
           {selected === "traceAsState" && (
             <SettingsField label={t("settings.traceAsState")} hint={t("settings.traceAsStateHint")} icon={<Sparkles size={18} />}>

@@ -68,6 +68,20 @@ type DesktopConfig struct {
 	ExperimentalSessionCollab bool   `toml:"experimental_session_collab"`
 	AutopilotMaxRuntime       string `toml:"autopilot_max_runtime"`    // Go duration; required when autopilot is on
 	AutopilotApprovalGrace    string `toml:"autopilot_approval_grace"` // wait for a human before the reviewer decides; empty = 15s
+	// MaxCachedTabs bounds how many tab states the frontend keeps resident
+	// (task 161). Under the workbench single-surface layout a switch used to
+	// prune every other tab's cached state, so each switch back re-parsed the
+	// full transcript (measured 6.8 s on a 243-turn session). 0 = unlimited.
+	MaxCachedTabs int `toml:"max_cached_tabs"`
+	// HistoryBodyBudgetMb / MarkdownBudgetMb override the transcript resource
+	// budgets (task 161, user 2026-09-17). Defaults 192/256 MiB match
+	// resourceBudgets.ts; 0 keeps the default. Applied on startup only.
+	HistoryBodyBudgetMb int `toml:"history_body_budget_mb"`
+	MarkdownBudgetMb    int `toml:"markdown_budget_mb"`
+	// ExperimentalCacheTuning exposes the Settings → 缓存大小调整 controls
+	// (task 161). Ships off: budget mis-tuning degrades switch latency and
+	// memory in ways that are hard to diagnose remotely.
+	ExperimentalCacheTuning bool `toml:"experimental_cache_tuning"`
 	CheckUpdates              *bool  `toml:"check_updates"`            // startup update checks; nil keeps the default enabled
 	// UpdateChannel is a legacy compatibility field. It is accepted on read but
 	// ignored and omitted from future canonical writes.

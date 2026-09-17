@@ -45,9 +45,9 @@ import {
 } from "./useController";
 import { historyNoticeItems } from "./controllerNotices";
 import {
-  HISTORY_BODY_BUDGET_BYTES,
-  MARKDOWN_BUDGET_BYTES,
-  MAX_RESIDENT_SESSIONS,
+  effectiveHistoryBodyBudgetBytes,
+  effectiveMarkdownBudgetBytes,
+  effectiveMaxResidentSessions,
 } from "./resourceBudgets";
 import type {
   HistoryContentChunk,
@@ -188,9 +188,11 @@ interface SessionTranscript {
 //
 // Task 137: the numeric ceilings live in resourceBudgets so preview/DOM/diagnostics
 // read the same source. Values are unchanged.
-const DEFAULT_MAX_RESIDENT_SESSIONS = MAX_RESIDENT_SESSIONS;
-const DEFAULT_HISTORY_BODY_BUDGET = HISTORY_BODY_BUDGET_BYTES;
-const DEFAULT_MARKDOWN_BUDGET = MARKDOWN_BUDGET_BYTES;
+// Task 161: effective accessors honor user overrides (Settings → 缓存大小调整)
+// applied during App boot, before the first store construction.
+const DEFAULT_MAX_RESIDENT_SESSIONS = effectiveMaxResidentSessions();
+const DEFAULT_HISTORY_BODY_BUDGET = effectiveHistoryBodyBudgetBytes();
+const DEFAULT_MARKDOWN_BUDGET = effectiveMarkdownBudgetBytes();
 
 function sessionKeyFor(tabId: string, sessionPath: string): string {
   return `${tabId}\n${sessionPath}`;

@@ -520,6 +520,23 @@ func (c *Config) SetExperimentalPathRules(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalCacheTuning toggles the transcript cache-size controls
+// (task 161). Off by default: user values in MaxCachedTabs /
+// HistoryBodyBudgetMb / MarkdownBudgetMb are ignored until this is on.
+func (c *Config) SetExperimentalCacheTuning(enabled bool) error {
+	c.Desktop.ExperimentalCacheTuning = enabled
+	return nil
+}
+
+// SetTranscriptCacheTuning persists the three cache-tuning values (task 161).
+// Go is storage-only: the frontend applies them to resourceBudgets on boot.
+func (c *Config) SetTranscriptCacheTuning(maxCachedTabs, historyBodyBudgetMb, markdownBudgetMb int) error {
+	c.Desktop.MaxCachedTabs = maxCachedTabs
+	c.Desktop.HistoryBodyBudgetMb = historyBodyBudgetMb
+	c.Desktop.MarkdownBudgetMb = markdownBudgetMb
+	return nil
+}
+
 // SetExperimentalTraceAsState toggles Trace-as-State compaction (task 60).
 // Desktop keeps a settings-view mirror; Agent.TraceAsState is the runtime flag.
 func (c *Config) SetExperimentalTraceAsState(enabled bool) error {

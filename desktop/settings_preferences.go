@@ -203,6 +203,18 @@ func (a *App) SetExperimentalPathRules(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalPathRules(enabled) })
 }
 
+// SetExperimentalCacheTuning toggles the transcript cache-size controls (task 161).
+func (a *App) SetExperimentalCacheTuning(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCacheTuning(enabled) })
+}
+
+// SetTranscriptCacheTuning persists the three cache-tuning values (task 161).
+func (a *App) SetTranscriptCacheTuning(maxCachedTabs, historyBodyBudgetMb, markdownBudgetMb int) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetTranscriptCacheTuning(maxCachedTabs, historyBodyBudgetMb, markdownBudgetMb)
+	})
+}
+
 // SetExperimentalTraceAsState toggles Trace-as-State compaction (task 60).
 func (a *App) SetExperimentalTraceAsState(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalTraceAsState(enabled) })
