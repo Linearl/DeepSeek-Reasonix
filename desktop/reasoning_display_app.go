@@ -28,6 +28,7 @@ func desktopStartupSettingsFromConfig(cfg *config.Config) DesktopStartupSettings
 		StatusBarItems: cfg.DesktopStatusBarItems(), CheckUpdates: cfg.DesktopCheckUpdates(),
 		UpdateChannel: cfg.DesktopUpdateChannel(), ConversationWidth: cfg.DesktopConversationWidth(),
 		Autopilot: cfg.Desktop.Autopilot,
+		ExperimentalAutoLoadOlder: cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
 		ConfigWarnings: cfg.LoadWarnings(), ConfigPath: config.UserConfigPath(),
 	}
 }

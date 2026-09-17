@@ -2331,6 +2331,8 @@ export interface DesktopStartupSettingsView {
   experimentalDream?: boolean;
   /** multi-session collaboration experiment (task 19); off unless the user opts in. */
   experimentalSessionCollab?: boolean;
+  /** Fork task 160: scroll-driven "load older" trigger at the transcript top. */
+  experimentalAutoLoadOlder?: boolean;
   bot: BotSettingsView;
   desktopLanguage: string; // "" | "en" | "zh"; empty = auto
   desktopLayoutStyle: string; // "classic" | "workbench"

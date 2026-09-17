@@ -7,6 +7,7 @@ import { DEFAULT_STATUS_BAR_ITEMS, normalizeStatusBarItems } from "../lib/status
 import { hydrateReasoningDisplayMode, setReasoningDisplayPending } from "../lib/reasoningDisplayPreference";
 import { hydrateSessionExperience } from "../lib/sessionExperience";
 import { setSessionMonitorEnabled } from "../lib/sessionMonitor";
+import { setAutoLoadOlderEnabled } from "../lib/autoLoadOlderPreference";
 import { setFeedbackEnabled } from "../components/FeedbackPanel";
 import type { BotRuntimeStatusView } from "../lib/types";
 import { app } from "../lib/bridge";
@@ -28,6 +29,9 @@ export function useDesktopPreferences() {
     // appear without requiring a Settings toggle in the same session.
     setSessionMonitorEnabled(Boolean((settings as { experimentalSessionMonitor?: boolean }).experimentalSessionMonitor));
     setFeedbackEnabled(Boolean((settings as { experimentalFeedback?: boolean }).experimentalFeedback));
+    // Fork task 160: hydrate the transcript's scroll-driven history trigger from the
+    // same snapshot, so flipping the switch applies without a restart.
+    setAutoLoadOlderEnabled(Boolean((settings as { experimentalAutoLoadOlder?: boolean }).experimentalAutoLoadOlder));
     // Task 161: apply the transcript cache tuning (max resident tab states +
     // the two budgets) during boot, BEFORE the first transcriptStore
     // construction reads the effective ceilings. When the experiment is OFF

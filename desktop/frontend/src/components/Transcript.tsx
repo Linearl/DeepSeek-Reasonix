@@ -38,6 +38,7 @@ import {
 import { useTranscriptCommand } from "../lib/useTranscriptCommand";
 import { composeDomRef } from "../lib/composeDomRef";
 import { useTranscriptKernel } from "../lib/useTranscriptKernel";
+import { useAutoLoadOlderEnabled } from "../lib/autoLoadOlderPreference";
 import { TranscriptHistoryRequest } from "../lib/transcriptHistoryRequest";
 import type { TranscriptQuestionNavigatorHandle } from "./TranscriptQuestionNavigator";
 import { useTranscriptQuestions } from "../lib/useTranscriptQuestionNavigation";
@@ -153,11 +154,18 @@ export function Transcript(props: TranscriptProps) {
   const turnModels = cachedTurnModels(items, liveFlags, running, false);
   // Capture stable commands, never the per-render hook result: a memoized
   // callback holding that result can chain older render/selection contexts.
+  // Fork (task 160): the scroll-driven "load older" trigger is an experiment; the
+  // "load older" button in the viewport is the default path and ignores this flag.
+  const autoLoadOlder = useAutoLoadOlderEnabled();
+  const requestOlderAtTopRef = useRef<(() => void) | null>(null);
   const { kernel: transcriptKernel, setScroller: setKernelScroller, snapshot,
     beginGesture, beginStructural, scrollElement, scrollToBottom, scheduleTailSync, safeMode, scrollRef, setScrollMode, writeOffset, jumpToBlock, onScroll, endGesture, commitViewportGeometry, onWheelCapture, isAtBottom, intent, onTouchStartCapture, onTouchEndCapture, onKeyDownCapture, onPointerDownCapture, beginAnchorRestore,
   } = useTranscriptKernel({
     sessionKey: surfaceKey,
     geometryRevision: `${contentRevision}:${footerHeight}:${experience}:${historyMutation?.seq ?? 0}`,
+    // Fork (task 160): switch-gated scroll trigger. Reading through a ref keeps the
+    // callback stable across renders while `requestOlder` is declared below.
+    autoLoadOlderAtTop: autoLoadOlder ? () => requestOlderAtTopRef.current?.() : undefined,
   });
   const [
     questions, loadedByTurn, totalQuestions, activeQuestion, setActiveQuestion,
@@ -263,6 +271,10 @@ export function Transcript(props: TranscriptProps) {
     if (trigger !== "question-jump" && trigger !== "retry") beginStructural("prepend");
     return history.load(() => onLoadOlderHistory(turn, trigger));
   });
+  // Assigned during render so the kernel's wheel/key handlers always call the gate
+  // the button above uses: the switch widens where the trigger comes from, never
+  // which loads are allowed.
+  requestOlderAtTopRef.current = () => void requestOlder(undefined, "viewport-user");
   const retry = useTranscriptCommand(() => {
     if (questionNavigatorRef.current) questionNavigatorRef.current.retry();
     else void requestOlder(undefined, "retry");
@@ -439,6 +451,7 @@ export function Transcript(props: TranscriptProps) {
                 olderHistoryError={olderHistoryError}
                 olderHistoryExhausted={olderHistoryExhausted}
                 onRetryOlderHistory={retry}
+                onLoadOlder={onLoadOlderHistory ? () => void requestOlder(undefined, "viewport-user") : undefined}
                 onGeometryWillChange={beginAnchorRestore}
                 onGeometryChange={commitViewportGeometry}
                 kernel={transcriptKernel}

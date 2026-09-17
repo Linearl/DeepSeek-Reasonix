@@ -553,6 +553,14 @@ func (c *Config) SetExperimentalDream(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalAutoLoadOlder toggles the scroll-driven history trigger (fork
+// task 160). Desktop keeps a settings-view mirror; Agent is the runtime flag.
+func (c *Config) SetExperimentalAutoLoadOlder(enabled bool) error {
+	c.Desktop.ExperimentalAutoLoadOlder = enabled
+	c.Agent.ExperimentalAutoLoadOlder = enabled
+	return nil
+}
+
 // SetExperimentalSessionCollab toggles multi-session collaboration (task 19).
 // Desktop keeps a settings-view mirror; Agent.ExperimentalSessionCollab is the
 // runtime flag that gates the collaboration tools.

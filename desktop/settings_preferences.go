@@ -225,6 +225,12 @@ func (a *App) SetExperimentalDream(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalDream(enabled) })
 }
 
+// SetExperimentalAutoLoadOlder toggles the scroll-driven history trigger (fork
+// task 160). The explicit "load older" button stays available either way.
+func (a *App) SetExperimentalAutoLoadOlder(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalAutoLoadOlder(enabled) })
+}
+
 // SetExperimentalSessionCollab toggles multi-session collaboration (task 19).
 func (a *App) SetExperimentalSessionCollab(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSessionCollab(enabled) })

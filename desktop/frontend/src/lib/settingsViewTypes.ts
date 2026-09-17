@@ -32,6 +32,8 @@ export interface SettingsView {
   experimentalTraceAsState?: boolean;
   // Task 115: dream/distill memory-curation experiment.
   experimentalDream?: boolean;
+  // Fork task 160: scroll-driven "load older" trigger at the transcript top.
+  experimentalAutoLoadOlder?: boolean;
   // Task 19: multi-session collaboration experiment.
   experimentalSessionCollab?: boolean;
   visionModel: string;

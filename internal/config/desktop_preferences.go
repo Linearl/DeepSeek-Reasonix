@@ -65,7 +65,10 @@ type DesktopConfig struct {
 	ExperimentalDream bool `toml:"experimental_dream"`
 	// ExperimentalSessionCollab is the settings-view mirror for
 	// Agent.ExperimentalSessionCollab (task 19).
-	ExperimentalSessionCollab bool   `toml:"experimental_session_collab"`
+	ExperimentalSessionCollab bool `toml:"experimental_session_collab"`
+	// ExperimentalAutoLoadOlder is the settings-view mirror for
+	// Agent.ExperimentalAutoLoadOlder (fork task 160).
+	ExperimentalAutoLoadOlder bool   `toml:"experimental_auto_load_older"`
 	AutopilotMaxRuntime       string `toml:"autopilot_max_runtime"`    // Go duration; required when autopilot is on
 	AutopilotApprovalGrace    string `toml:"autopilot_approval_grace"` // wait for a human before the reviewer decides; empty = 15s
 	// MaxCachedTabs bounds how many tab states the frontend keeps resident
@@ -81,8 +84,8 @@ type DesktopConfig struct {
 	// ExperimentalCacheTuning exposes the Settings → 缓存大小调整 controls
 	// (task 161). Ships off: budget mis-tuning degrades switch latency and
 	// memory in ways that are hard to diagnose remotely.
-	ExperimentalCacheTuning bool `toml:"experimental_cache_tuning"`
-	CheckUpdates              *bool  `toml:"check_updates"`            // startup update checks; nil keeps the default enabled
+	ExperimentalCacheTuning bool  `toml:"experimental_cache_tuning"`
+	CheckUpdates            *bool `toml:"check_updates"` // startup update checks; nil keeps the default enabled
 	// UpdateChannel is a legacy compatibility field. It is accepted on read but
 	// ignored and omitted from future canonical writes.
 	UpdateChannel        string   `toml:"update_channel"`

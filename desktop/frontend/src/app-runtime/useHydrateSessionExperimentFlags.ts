@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { app } from "../lib/bridge";
 import { setSessionMonitorEnabled } from "../lib/sessionMonitor";
+import { setAutoLoadOlderEnabled } from "../lib/autoLoadOlderPreference";
 import { setFeedbackEnabled } from "../components/FeedbackPanel";
 
 /**
@@ -18,6 +19,7 @@ export function useHydrateSessionExperimentFlags(): void {
         if (cancelled || !settings) return;
         setSessionMonitorEnabled(Boolean(settings.experimentalSessionMonitor));
         setFeedbackEnabled(Boolean(settings.experimentalFeedback));
+        setAutoLoadOlderEnabled(Boolean(settings.experimentalAutoLoadOlder));
       })
       .catch(() => {});
     return () => {
