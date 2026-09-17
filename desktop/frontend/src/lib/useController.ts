@@ -3093,10 +3093,17 @@ export function useController() {
       const loadAncillary = async <T,>(label: string, load: () => Promise<T>): Promise<T | undefined> => {
         return loadTimed(`ancillary ${label}`, load);
       };
-      const [effort, jobs, context] = await Promise.all([
+      // Task 151 (B-level follow-up): checkpoints joined the same parallel
+      // batch as effort/jobs/context. It used to run strictly after them,
+      // which serialized the slowest backend call behind three already-parallel
+      // ones on every switch. Visibility is still enforced before dispatching
+      // results (below), not before fetching, so a background tab only skips
+      // the dispatch, not the fetch it already paid for.
+      const [effort, jobs, context, checkpoints] = await Promise.all([
         loadAncillary("effort", () => app.EffortForTab(tabId)),
         loadAncillary("jobs", () => app.JobsForTab(tabId)),
         loadAncillary("context", () => app.ContextUsageForTab(tabId)),
+        loadAncillary("checkpoints", () => app.CheckpointsForTab(tabId)),
       ]);
       if (!stillCurrent()) return;
       if (effort !== undefined) dispatchTo(tabId, { type: "effort", effort });
@@ -3113,12 +3120,9 @@ export function useController() {
         addBreadcrumb("tab.hydrate", `checkpoints skipped inactive ${reason} ${tabId}`);
         return;
       }
-      const checkpoints = await loadAncillary("checkpoints", () => app.CheckpointsForTab(tabId));
-      if (!stillCurrent()) return;
-      if (!stillVisible()) {
-        addBreadcrumb("tab.hydrate", `checkpoints ignored inactive ${reason} ${tabId}`);
-        return;
-      }
+      // Task 151: checkpoints already fetched in the parallel batch above; the
+      // old strictly-serial fetch here was removed. Only the (cheap) dispatch
+      // waits for visibility.
       if (checkpoints !== undefined) dispatchTo(tabId, { type: "checkpoints", checkpoints: asArray(checkpoints) });
       addBreadcrumb("tab.hydrate", `ancillary ${reason} ${tabId} ms=${Date.now() - ancillaryStartedAt}`);
       void refreshBalanceForTab(tabId, {
