@@ -91,46 +91,67 @@ type listAddressableSessionsTool struct{ cfg SessionCollabConfig }
 func (listAddressableSessionsTool) Name() string { return "list_addressable_sessions" }
 
 func (listAddressableSessionsTool) Description() string {
-	return "List the contact directory (通讯录): every session on this machine (global + every project + archive). Purpose is optional metadata; the title carries the meaning when purpose is empty. Use the contact_id, topic_id, or the exact title as `to` in talk_to_session. Experimental."
+	return "List the contact directory (通讯录): metadata only — title, purpose, contact_id, topic_id. No transcript content (use read_session_tail for that). Newest first; pass limit to page. Use contact_id, topic_id, or the exact title as `to` in talk_to_session. Experimental."
 }
 
 func (listAddressableSessionsTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{},"required":[]}`)
+	return json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Max sessions to return, newest first (default 200, max 1000). Omit for the first page."},"archived":{"type":"boolean","description":"Include archived sessions (default false)."}},"required":[]}`)
 }
 
 func (listAddressableSessionsTool) ReadOnly() bool { return true }
 
-func (t listAddressableSessionsTool) Execute(_ context.Context, _ json.RawMessage) (string, error) {
-	ids := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
-	if len(ids) == 0 {
-		return "No sessions found.\n", nil
+func (t listAddressableSessionsTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
+	var p struct {
+		Limit    int   `json:"limit"`
+		Archived *bool `json:"archived"`
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "# Contact directory (%d sessions)\n\n", len(ids))
-	b.WriteString("| title | purpose | contact_id | topic_id | path | archived |\n|---|---|---|---|---|---|\n")
-	for _, id := range ids {
-		archived := ""
-		if id.Archived {
-			archived = "yes"
-		}
-		purpose := id.Purpose
-		if purpose == "" {
-			purpose = "—"
-		}
-		contact := id.ContactID
-		if contact == "" {
-			contact = "(未登记)"
-		}
-		fmt.Fprintf(&b, "| %s | %s | `%s` | `%s` | `%s` | %s |\n",
-			id.Title, purpose, contact, id.TopicID, filepath.Base(id.SessionPath), archived)
+	if len(args) > 0 {
+		_ = json.Unmarshal(args, &p)
 	}
-	if dups := duplicateContactIDs(t.cfg.SessionDir, t.cfg.WorkspaceRoot); len(dups) > 0 {
-		// A shared address silently routes one session's mail to another, so it
-		// is reported instead of being resolved by picking a winner.
-		fmt.Fprintf(&b, "\n⚠️ 重复的 contact_id（同名会话文件副本）——这些地址不再唯一：%s\n", strings.Join(dups, ", "))
+	limit := p.Limit
+	if limit <= 0 {
+		limit = 200
 	}
-	b.WriteString("\n寻址：优先用 contact_id；没有登记过的会话可用 topic_id 或**唯一**的标题名（重命名后标题名会变，contact_id 不会）。给对方发消息时它会自动获得 contact_id。\n")
-	return b.String(), nil
+	if limit > 1000 {
+		limit = 1000
+	}
+	includeArchived := p.Archived != nil && *p.Archived
+
+	all := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
+	type row struct {
+		Title     string `json:"title"`
+		Purpose   string `json:"purpose,omitempty"`
+		ContactID string `json:"contactId,omitempty"`
+		TopicID   string `json:"topicId,omitempty"`
+		Archived  bool   `json:"archived,omitempty"`
+	}
+	rows := make([]row, 0, limit)
+	shown := 0
+	for _, id := range all {
+		if id.Archived && !includeArchived {
+			continue
+		}
+		if shown >= limit {
+			break
+		}
+		rows = append(rows, row{
+			Title:     id.Title,
+			Purpose:   id.Purpose,
+			ContactID: id.ContactID,
+			TopicID:   id.TopicID,
+			Archived:  id.Archived,
+		})
+		shown++
+	}
+	out, _ := json.Marshal(map[string]any{
+		"returned": shown,
+		"total":    len(all),
+		"limit":    limit,
+		// Explicit so a caller never expects content here: that is read_session_tail.
+		"content":  "none — use read_session_tail(target) for transcript bytes",
+		"sessions": rows,
+	})
+	return string(out), nil
 }
 
 // NewReadSessionTailTool lets a session peek at another conversation's recent

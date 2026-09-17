@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -87,6 +88,47 @@ func TestTalkToSessionRejectsAmbiguousTitle(t *testing.T) {
 	})
 	if _, err := tool.Execute(nil, []byte(`{"to":"same title","message":"hi"}`)); err == nil || !strings.Contains(err.Error(), "matches 2 sessions") {
 		t.Fatalf("ambiguous title must be refused, got %v", err)
+	}
+}
+
+// The directory is metadata-only and pageable: a fat return (content, full
+// paths) is what made the first package emit 70 KB for a list call.
+func TestListAddressableSessionsIsMetadataOnlyAndPaged(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"a.jsonl", "b.jsonl", "c.jsonl"} {
+		path := filepath.Join(dir, name)
+		writeEmpty(t, path)
+		if err := UpdateBranchMeta(path, true, func(m *BranchMeta) error {
+			m.CustomTitle = strings.TrimSuffix(name, ".jsonl")
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tool := NewListAddressableSessionsTool(SessionCollabConfig{
+		Enabled:     true,
+		SessionDir:  dir,
+		WorkspaceRoot: dir,
+	})
+	out, err := tool.Execute(nil, []byte(`{"limit":2}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "path") || strings.Contains(out, ".jsonl") {
+		t.Fatalf("directory must not carry session paths/content: %s", out)
+	}
+	var payload struct {
+		Returned int `json:"returned"`
+		Total    int `json:"total"`
+		Sessions []struct {
+			Title string `json:"title"`
+		} `json:"sessions"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("directory must return JSON metadata: %v\n%s", err, out)
+	}
+	if payload.Total < 3 || payload.Returned != 2 || len(payload.Sessions) != 2 {
+		t.Fatalf("limit=2 must page: returned=%d total=%d sessions=%d", payload.Returned, payload.Total, len(payload.Sessions))
 	}
 }
 
