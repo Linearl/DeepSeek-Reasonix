@@ -14,7 +14,10 @@ process.env.PLAYWRIGHT_BROWSERS_PATH = !process.env.PLAYWRIGHT_BROWSERS_PATH || 
 const { chromium } = await import("playwright");
 const port = Number(process.env.REASONIX_APP_BROWSER_PORT ?? 4657);
 const preview = await startPreviewServer(frontendDir, port);
-const browser = await chromium.launch({ headless: true });
+// A workstation keeps playwright's browsers in the default location, which may be
+// older than this playwright build expects; an explicit executable keeps the run
+// possible without downloading a second browser set.
+const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH } : {}) });
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);

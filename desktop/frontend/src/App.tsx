@@ -43,9 +43,6 @@ import { useActiveRemoteSession } from "./lib/useRemoteSession";
 import { publishNavigationIntent } from "./lib/useNavigationIntentFence";
 import { useController, type Item } from "./lib/useController";
 import { noteStageTiming, setSessionMonitorEnabled } from "./lib/sessionMonitor";
-import { transcriptGeometryKeyFor } from "./lib/transcriptGeometryKey";
-import { transcriptResidencyLimit, useResidentTranscriptTabs } from "./lib/transcriptResidency";
-import { TranscriptPaneResidency } from "./app-shell/TranscriptPaneResidency";
 import { FeedbackPanel, setFeedbackEnabled } from "./components/FeedbackPanel";
 import { SessionMonitorPanel } from "./components/SessionMonitorPanel";
 import { setSplitPaneTitle, setSplitViewEnabled } from "./lib/splitView";
@@ -1330,23 +1327,6 @@ export default function App() {
   const composerSessionKey = useMemo(() => {
     return composerDraftKeyForTab(activeTab, activeTabId);
   }, [activeTab, activeTabId]);
-  // Task 151 (round 3): the same surface identity, made derivable for a tab that is
-  // not active. A resident pane keys off this, so becoming visible does not change its
-  // surface key — and therefore does not pay for a surface replace, which is the cost
-  // residency exists to avoid. The active tab keeps the state.meta fallbacks: a tab
-  // whose meta has not been refreshed yet still keys off the live iteration identity.
-  const geometryKeyInputForTab = useCallback((tabId: string | undefined) => {
-    const meta = tabId ? tabMetas.find((tab) => tab.id === tabId) : undefined;
-    const isActive = tabId !== undefined && tabId === activeTabId;
-    return {
-      sessionPath: meta?.sessionPath ?? (isActive ? state.meta?.sessionPath : undefined),
-      sessionGeneration: meta?.sessionGeneration ?? (isActive ? state.meta?.sessionGeneration ?? state.sessionGen : undefined),
-      scope: meta?.scope ?? (isActive ? activeTab?.scope : undefined),
-      workspaceRoot: meta?.workspaceRoot ?? (isActive ? state.meta?.cwd : undefined),
-      topicId: meta?.topicId ?? (isActive ? activeTab?.topicId : undefined),
-      tabId,
-    };
-  }, [activeTab, activeTabId, state.meta?.cwd, state.meta?.sessionGeneration, state.meta?.sessionPath, state.sessionGen, tabMetas]);
   const transcriptGeometrySessionKey = useMemo(() => {
     const sessionPath = (activeTab?.sessionPath ?? state.meta?.sessionPath ?? "").trim();
     const sessionGeneration = activeTab?.sessionGeneration ?? state.meta?.sessionGeneration ?? state.sessionGen;
@@ -3204,41 +3184,13 @@ export default function App() {
   const visibleTranscriptItems = visibleTranscriptSurface?.items ?? displayItems;
   const visibleTranscriptTabId = visibleTranscriptSurface?.tabId ?? activeTabId;
   const visibleTranscriptGeometryKey = visibleTranscriptSurface?.geometrySessionKey ?? transcriptGeometrySessionKey;
-  const latestGuidanceConsumed = useMemo(() => {
-    for (let i = state.items.length - 1; i >= 0; i--) {
-      const item = state.items[i];
-      if (item.kind === "notice" && item.text.startsWith("↪ ")) {
-        return { key: item.id, itemId: item.inboxItemId, text: item.text.slice(2) };
-      }
-    }
-    return null;
-  }, [state.items]);
-
-  // Task 151 (round 3): panes whose DOM survives a switch. Only local tabs that hold
-  // a transcript are eligible — an empty tab has nothing worth keeping alive. The
-  // limit defaults to 2 (the visible tab plus the one it was switched from) and drops
-  // to 1, i.e. the pre-residency behaviour, when residency is turned off.
-  const transcriptResidency = transcriptResidencyLimit();
-  const residentEligibleTabIds = tabMetas
-    .filter((tab) => !tab.remote)
-    .map((tab) => tab.id)
-    .filter((tabId) => (itemsForTab(tabId)?.length ?? 0) > 0);
-  const residentTranscriptTabIds = useResidentTranscriptTabs(visibleTranscriptTabId, residentEligibleTabIds, transcriptResidency);
-  // The pane being looked at always exists, even before its transcript arrives: during
-  // a navigation transition the outgoing tab's pane is the one on screen.
-  const transcriptPaneTabIds = useMemo(() => {
-    const panes = residentTranscriptTabIds.slice();
-    if (visibleTranscriptTabId && !panes.includes(visibleTranscriptTabId)) panes.unshift(visibleTranscriptTabId);
-    return panes;
-  }, [residentTranscriptTabIds, visibleTranscriptTabId]);
-
   // Task 151 (round 3): the render-side half of a tab switch, for desktop.log. The data
-  // layer already reports total=0ms plus a local-snapshot skip, so what remains to
-  // explain is how long React needs to put the incoming tab on screen. The clock starts
-  // in the render that first sees the new visible tab — before React commits anything —
-  // and stops in the layout effect that has finished mutating the DOM: the span the user
-  // actually waits out, and the span residency collapses. resident= counts the panes
-  // that came along without being rebuilt (1 means the incoming tab had no pane yet).
+  // layer already reports total=0ms plus a local-snapshot skip, so what remains to explain
+  // is how long React needs to put the incoming tab on screen. The clock starts in the
+  // render that first sees the new visible tab — before React commits anything — and stops
+  // in the layout effect that has finished mutating the DOM: the span the user waits out.
+  // This is the part of round 3 that kept its value; the per-tab pane residency was
+  // reverted because it broke the app-level runtime contract (see the commit message).
   const paneSwitchSeenRef = useRef<string | undefined>(visibleTranscriptTabId);
   const paneSwitchAtRef = useRef<{ tabId: string; at: number }>({ tabId: "", at: 0 });
   if (paneSwitchSeenRef.current !== visibleTranscriptTabId) {
@@ -3251,12 +3203,17 @@ export default function App() {
     paneSwitchAtRef.current = { tabId: "", at: 0 };
     const ms = performance.now() - started.at;
     noteStageTiming(started.tabId, "render:switch", ms);
-    reportFrontendLog(
-      "session-monitor",
-      "tab switch render",
-      `tab=${started.tabId} render=${Math.round(ms)}ms panes=${transcriptPaneTabIds.length} resident=${transcriptPaneTabIds.filter((tabId) => tabId !== started.tabId).length}`,
-    );
-  }, [transcriptPaneTabIds, visibleTranscriptTabId]);
+    reportFrontendLog("session-monitor", "tab switch render", `tab=${started.tabId} render=${Math.round(ms)}ms`);
+  }, [visibleTranscriptTabId]);
+  const latestGuidanceConsumed = useMemo(() => {
+    for (let i = state.items.length - 1; i >= 0; i--) {
+      const item = state.items[i];
+      if (item.kind === "notice" && item.text.startsWith("↪ ")) {
+        return { key: item.id, itemId: item.inboxItemId, text: item.text.slice(2) };
+      }
+    }
+    return null;
+  }, [state.items]);
 
   // send wrapper: clear local undo banner state before sending a new turn
   // (new mutation invalidates undo). Rewind itself already committed immediately.
@@ -4656,24 +4613,6 @@ export default function App() {
                   >
                     <div className={splitTabId ? "transcript-split" : "transcript-split transcript-split--closed"}>
                       <div className="transcript-split__pane">
-                        <TranscriptPaneResidency
-                          panes={transcriptPaneTabIds}
-                          visibleTabId={visibleTranscriptTabId}
-                          renderPane={(paneTabId, paneResident) => (paneResident ? (
-                            /* A resident tab keeps its own pane, keyed by its own id, so
-                               switching back shows DOM React never had to rebuild. Only
-                               the props a hidden transcript can act on are passed — every
-                               other TranscriptProps value belongs to the visible tab. */
-                            <Transcript
-                              items={itemsForTab(paneTabId) ?? []}
-                              liveStore={liveStore}
-                              tabId={paneTabId}
-                              geometrySessionKey={transcriptGeometryKeyFor(geometryKeyInputForTab(paneTabId))}
-                              footerHeight={footerHeight}
-                              onPrompt={handleTranscriptPrompt}
-                              questionNavigator={false}
-                            />
-                          ) : (
                                         <Transcript
                       items={visibleTranscriptItems}
                       live={runtimeTransitioning ? undefined : state.live}
@@ -4733,8 +4672,6 @@ export default function App() {
                       onLoadOlderHistory={handleLoadOlderHistory}
                       invocationMetadata={visibleTranscriptTabId ? invocationMetadataByTab[visibleTranscriptTabId] : undefined}
                     />
-                        ))}
-                      />
                       </div>
                       {/* Secondary pane (task 70). Only the per-pane props are passed:
                           everything else on TranscriptProps has a default, and the

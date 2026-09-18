@@ -181,6 +181,22 @@ function Fixture() {
     };
   }, [revision, switchTo]);
 
+  // The residency mechanism ships with its own stylesheet, and that stylesheet is
+  // reverted together with the mechanism. The fixture therefore keeps the hidden-pane
+  // geometry itself — otherwise the "resident" mode would lay two visible transcripts
+  // out next to each other and the comparison would be meaningless.
+  useLayoutEffect(() => {
+    const styleId = "tab-render-resident-style";
+    if (document.getElementById(styleId)) return;
+    const style = document.createElement("style");
+    style.id = styleId;
+    style.textContent = [
+      ".transcript-split__pane{position:relative}",
+      ".transcript-pane--resident{position:absolute;inset:0;overflow:hidden;visibility:hidden;pointer-events:none}",
+    ].join("");
+    document.head.appendChild(style);
+  }, []);
+
   const renderTranscript = (tabId: string) => (
     <Transcript
       items={itemsByTab.get(tabId) ?? []}
