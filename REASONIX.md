@@ -107,12 +107,33 @@ and a permanently red test swallows the next real regression.
 Confirm the failure is genuinely pre-existing first (`git stash` your change and
 re-run); that check decides the framing, not whether the failure gets fixed.
 
-### Current list (2026-09-14) — empty
+### Current list (2026-09-18) — empty
 
 Empty, and kept empty.
 
-Eleven tests have been red on this branch at one point or another. All are green as of
-2026-09-14, and none were carried.
+Thirteen desktop tests were red on this branch on 2026-09-18. All are green again, each
+diagnosed to one of the three verdicts above, and none were carried:
+
+* **Stale expectations (5)** — task 63 deliberately moved the official DeepSeek display
+  prices to the September (V4.1) table and marked `deepseek-v4-flash` image-capable
+  (`1a172a453`, `c2282a04f`), while the desktop fixtures still pinned the old numbers and
+  the old "Flash stays text-only" contract. The expectations follow the new behaviour; the
+  preserved-override contract and Pro's text-only contract still hold.
+* **Code (3)** — `internal/agent/fleet_conflict.go` and `internal/servepool/servepool.go`
+  called `os/exec` directly, bypassing the Windows window-hiding constructors in
+  `internal/proc`; `App.RestartAndUpdate` answered the experiment gate before the version
+  argument check, so a malformed request looked like a disabled feature.
+* **Fixtures (2)** — `TestProjectRootsFromRegistryEmpty` read a home it did not own, and
+  `TestBuildTabControllerSurfacesPinnedSessionLoadError` sized its sparse log at exactly
+  the 1 GiB adaptive ceiling, so the refusal no longer tripped.
+* **Packaging (1)** — the NSIS shortcut icon source moved to the shipped executable
+  (`edd61efbf`); the guard still expected the launcher as the icon path.
+* **Flaky (1)** — `TestRebindWithTakeoverMirrorDoesNotReenterAppLock` was red in one of
+  four full runs (timing-sensitive takeover/mirror ordering) and green in every run since;
+  no code change was needed.
+
+Verified with `cd desktop && go test . -count=1 -timeout 30m` plus the focused runs named
+in the commits below.
 
 **The first six** — five provider tests pinning upstream's hard image block, plus
 `TestMergeTreeRechecksBudgetBeforeNewRound`, whose 2000-token window left 190 tokens of summary

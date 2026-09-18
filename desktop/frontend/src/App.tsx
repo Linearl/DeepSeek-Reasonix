@@ -2944,17 +2944,32 @@ export default function App() {
     return true;
   }, [activeTabId, closeTab, closeTransientOverlays, refreshBackgroundRuntimes, refreshTabMetas, showToast, t]);
 
+  // Task 162: closing a tab never blocks. Active work is detached to the
+  // background runtime instead of forcing a decision; "stop and close" is an
+  // explicit choice from the tab context menu.
   const handleTabClose = useCallback(async (id: string) => {
+    let work: ActiveWorkView | null = null;
     try {
-      const work = await app.ActiveWorkForTab(id);
-      if (work.running || work.pendingPrompt || work.jobs.length > 0) {
-        setPendingClose({ tabId: id, work, stopping: false });
-        return;
-      }
+      work = await app.ActiveWorkForTab(id);
     } catch {
       // CloseTabWithPolicy re-checks the controller state atomically.
     }
-    await finishTabClose(id, "stop_and_close");
+    const closed = await finishTabClose(id, "keep_running");
+    if (closed && work && (work.running || work.pendingPrompt || work.jobs.length > 0)) {
+      showToast(t("runtime.closedIntoBackground"), "info");
+    }
+  }, [finishTabClose, showToast, t]);
+
+  const stopAndCloseTab = useCallback(async (id: string) => {
+    let work: ActiveWorkView | null = null;
+    try {
+      work = await app.ActiveWorkForTab(id);
+    } catch { /* the close path stays authoritative */ }
+    if (!work || !(work.running || work.pendingPrompt || work.jobs.length > 0)) {
+      await finishTabClose(id, "stop_and_close");
+      return;
+    }
+    setPendingClose({ tabId: id, work, stopping: false });
   }, [finishTabClose]);
 
   const resolvePendingClose = useCallback(async (policy: "keep_running" | "stop_and_close") => {
@@ -4104,6 +4119,7 @@ export default function App() {
             onTabChange={(id) => void handleTabChange(id)}
             onTabClose={(id) => void handleTabClose(id)}
             onTabsClose={(ids, nextActiveTabId) => void handleTabsClose(ids, nextActiveTabId)}
+            onTabStopAndClose={(id) => void stopAndCloseTab(id)}
             onTabsReorder={(ids) => void handleTabsReorder(ids)}
             onNewTab={() => void handleNewTab()}
             onOpenPalette={() => void openPalette()}

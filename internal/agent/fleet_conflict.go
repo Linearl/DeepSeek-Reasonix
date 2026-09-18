@@ -3,11 +3,12 @@ package agent
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"reasonix/internal/proc"
 )
 
 // WorktreeMergeConflict names two fleet items whose worktree branches both
@@ -144,7 +145,7 @@ func gitOutput(ctx context.Context, dir string, args ...string) (string, error) 
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, fleetGitProbeTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(probeCtx, "git", args...)
+	cmd := proc.CommandContext(probeCtx, "git", args...)
 	cmd.Dir = dir
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout

@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"reasonix/internal/proc"
 	"reasonix/internal/safego"
 )
 
@@ -350,7 +351,7 @@ func (m *Manager) spawn(p *project) error {
 		m.markFailed(p, fmt.Errorf("write token file: %w", err))
 		return err
 	}
-	cmd := exec.Command(m.bin,
+	cmd := proc.Command(m.bin,
 		"serve",
 		"--addr", "127.0.0.1:0",
 		"--port-file", portFile,

@@ -10,12 +10,16 @@ import type { Translator } from "../lib/i18n";
 
 export type TabClosePolicy = "keep_running" | "stop_and_close";
 
+function workIsActive(work: ActiveWorkView): boolean {
+  return work.running || work.pendingPrompt || work.jobs.length > 0;
+}
+
 export type TabBarCommandsInput = {
   activeTabId: string | undefined;
   tabMetas: readonly TabMeta[];
   deliveryWorktreeRoot: string | undefined;
   t: Translator;
-  showToast(message: string, level: "error", options?: { durationMs?: number }): void;
+  showToast(message: string, level?: "info" | "warn" | "error", options?: { durationMs?: number }): void;
   setTabMetas: Dispatch<SetStateAction<TabMeta[]>>;
   setTabOrderIds: Dispatch<SetStateAction<string[]>>;
   setComposerProfilesByTab: Dispatch<SetStateAction<Record<string, ComposerProfile>>>;
@@ -159,17 +163,33 @@ export function useTabBarCommands(input: TabBarCommandsInput) {
     return true;
   });
 
+  // Task 162: closing a tab never blocks. Active work is detached to the
+  // background runtime (keep_running) instead of forcing a decision, and the
+  // toast says where the task went. "Stop tasks and close" stays available as an
+  // explicit choice in the tab context menu.
   const handleTabClose = useCommittedCommand(async (id: string) => {
+    let work: ActiveWorkView | null = null;
     try {
-      const work = await app.ActiveWorkForTab(id);
-      if (work.running || work.pendingPrompt || work.jobs.length > 0) {
-        setPendingClose({ tabId: id, work, stopping: false });
-        return;
-      }
+      work = await app.ActiveWorkForTab(id);
     } catch {
       // CloseTabWithPolicy re-checks the controller state atomically.
     }
-    await finishTabClose(id, "stop_and_close");
+    const closed = await finishTabClose(id, "keep_running");
+    if (closed && work && workIsActive(work)) showToast(t("runtime.closedIntoBackground"), "info");
+  });
+
+  // The explicit second option (tab context menu): stop the task, then close.
+  // The decision surface only appears for this deliberate choice.
+  const stopAndCloseTab = useCommittedCommand(async (id: string) => {
+    let work: ActiveWorkView | null = null;
+    try {
+      work = await app.ActiveWorkForTab(id);
+    } catch { /* the close path stays authoritative */ }
+    if (!work || !workIsActive(work)) {
+      await finishTabClose(id, "stop_and_close");
+      return;
+    }
+    setPendingClose({ tabId: id, work, stopping: false });
   });
 
   const resolvePendingClose = useCommittedCommand(async (policy: TabClosePolicy) => {
@@ -271,6 +291,7 @@ export function useTabBarCommands(input: TabBarCommandsInput) {
     handleTabChange,
     finishTabClose,
     handleTabClose,
+    stopAndCloseTab,
     resolvePendingClose,
     revealWorkspaceWriter,
     continueInDeliveryWorktree,

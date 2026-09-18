@@ -67,8 +67,11 @@ func TestSaveProviderPersistsOfficialDeepSeekVisionModels(t *testing.T) {
 	}
 	flash := *got
 	flash.Model = "deepseek-v4-flash"
-	if config.EffectiveVision(&flash) {
-		t.Fatal("saved Flash must stay text-only on the official DeepSeek endpoint")
+	// Task 63: the vendor capability table marks official Flash image-capable,
+	// so the endpoint no longer keeps it text-only; Pro remains text-only and
+	// the pinned vision SKU keeps its own contract.
+	if !config.EffectiveVision(&flash) {
+		t.Fatal("official DeepSeek Flash must accept images through the vendor capability table")
 	}
 	sku := *got
 	sku.Model = openai.OfficialDeepSeekVisionModel

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"reasonix/internal/control"
 	"reasonix/internal/jobs"
@@ -18,6 +19,7 @@ type backgroundRuntimeController struct {
 	leaseKeys  []string
 	cancelled  []string
 	turnCancel int
+	closed     bool
 }
 
 func (c *backgroundRuntimeController) SubagentPolicy() string { return "" }
@@ -43,6 +45,18 @@ func (c *backgroundRuntimeController) WorkspaceLeaseState() workspacelease.State
 func (c *backgroundRuntimeController) WorkspaceLeaseHeldKeys() []string {
 	return append([]string(nil), c.leaseKeys...)
 }
+func (c *backgroundRuntimeController) Snapshot() error          { return nil }
+func (c *backgroundRuntimeController) SetSessionPath(string)    {}
+func (c *backgroundRuntimeController) SessionPath() string      { return "" }
+func (c *backgroundRuntimeController) SessionDir() string       { return "" }
+func (c *backgroundRuntimeController) PlanMode() bool           { return false }
+func (c *backgroundRuntimeController) AutoApproveTools() bool   { return false }
+func (c *backgroundRuntimeController) Goal() string             { return "" }
+func (c *backgroundRuntimeController) ToolApprovalMode() string { return control.ToolApprovalAsk }
+func (c *backgroundRuntimeController) Close()                   { c.closed = true }
+func (c *backgroundRuntimeController) Label() string            { return "" }
+func (c *backgroundRuntimeController) ModelRef() string         { return "" }
+func (c *backgroundRuntimeController) WorkspaceRoot() string    { return "" }
 
 func TestBackgroundRuntimeAPIsKeepDetachedJobsActionable(t *testing.T) {
 	targetCtrl := &backgroundRuntimeController{
@@ -221,5 +235,56 @@ func TestWorkspaceConflictAllowsAcquiredOwnerToWaitForAnotherFile(t *testing.T) 
 	conflict := app.WorkspaceConflictForTab("waiter")
 	if conflict.State != "local" || conflict.OwnerTabID != "owner" {
 		t.Fatalf("WorkspaceConflictForTab = %+v, want local owner", conflict)
+	}
+}
+
+// TestStopAndCloseTimeoutStillClosesTheTab guards task 162: a backend that never
+// reports idle must not leave an unclosable tab behind. stop_and_close waits out
+// the grace period, then closes the tab and detaches the work to the background
+// runtime, where the task panel can still observe and reclaim it.
+func TestStopAndCloseTimeoutStillClosesTheTab(t *testing.T) {
+	previousGrace := stopAndCloseGrace
+	stopAndCloseGrace = 20 * time.Millisecond
+	defer func() { stopAndCloseGrace = previousGrace }()
+
+	// This controller keeps reporting Running: Cancel() only counts the call, so
+	// the wait can never observe idle — the wedged-backend shape.
+	wedgePath := filepath.Join(t.TempDir(), "wedged.jsonl")
+	wedged := &backgroundRuntimeController{
+		status: control.RuntimeStatus{Running: true, Cancellable: true},
+	}
+	other := &backgroundRuntimeController{}
+	app := &App{
+		tabs: map[string]*WorkspaceTab{
+			"keep": {ID: "keep", TopicTitle: "Keep", Ctrl: other},
+			// ReadOnly keeps the close path off the persistence calls; the
+			// active-work decision under test is identical either way.
+			"wedged": {ID: "wedged", TopicTitle: "Wedged task", Ctrl: wedged, ReadOnly: true, SessionPath: wedgePath},
+		},
+		tabOrder:    []string{"keep", "wedged"},
+		activeTabID: "keep",
+	}
+
+	err := app.CloseTabWithPolicy("wedged", "stop_and_close")
+	if err != nil {
+		t.Fatalf("stop_and_close failed instead of closing the tab: %v", err)
+	}
+	if wedged.turnCancel == 0 {
+		t.Fatal("stop_and_close never asked the wedged controller to cancel")
+	}
+	if _, still := app.tabs["wedged"]; still {
+		t.Fatal("the tab stayed open after the grace period (task 162: no unclosable tab)")
+	}
+	if wedged.closed {
+		t.Fatal("the detached controller was shut down; the task must keep running in the background")
+	}
+	var observed bool
+	for _, runtime := range app.BackgroundRuntimes() {
+		if runtime.TabID == "wedged" {
+			observed = runtime.Detached && runtime.Running
+		}
+	}
+	if !observed {
+		t.Fatalf("the detached task is missing from the background runtimes: %+v", app.BackgroundRuntimes())
 	}
 }

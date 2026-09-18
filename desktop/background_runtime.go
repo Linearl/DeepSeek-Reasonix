@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -354,10 +355,16 @@ func (a *App) RevealWorkspaceWriterForTab(tabID string) (TabMeta, error) {
 	return a.RevealBackgroundRuntime(conflict.OwnerTabID)
 }
 
-const stopAndCloseGrace = 15 * time.Second
+// stopAndCloseGrace bounds how long stop_and_close waits for owned work to exit
+// before it closes the tab and detaches the work instead (task 162). A variable
+// so tests can shrink the wait.
+var stopAndCloseGrace = 15 * time.Second
 
 // CloseTabWithPolicy makes the old implicit detach behavior an explicit user
-// choice. stop_and_close never removes the tab until all owned work is idle.
+// choice. stop_and_close cancels owned work and waits briefly for it to exit;
+// when that wait times out the tab is closed anyway and the work is detached to
+// the background runtime, so a wedged backend can never leave an unclosable tab
+// behind (task 162).
 func (a *App) CloseTabWithPolicy(tabID, policy string) error {
 	a.remoteTabMu.Lock()
 	_, isRemote := a.remoteTabs[tabID]
@@ -400,7 +407,9 @@ func (a *App) CloseTabWithPolicy(tabID, policy string) error {
 				}
 				select {
 				case <-deadline.C:
-					return fmt.Errorf("remote work did not stop within %s; the task was kept open", stopAndCloseGrace)
+					slog.Warn("desktop: remote stop-and-close timed out; closing the tab with the work detached",
+						"tab", tabID, "grace", stopAndCloseGrace)
+					return a.CloseRemoteTab(tabID)
 				case <-ticker.C:
 				}
 			}
@@ -435,7 +444,9 @@ func (a *App) CloseTabWithPolicy(tabID, policy string) error {
 			}
 			select {
 			case <-deadline.C:
-				return fmt.Errorf("background work did not stop within %s; the task was kept open", stopAndCloseGrace)
+				slog.Warn("desktop: stop-and-close timed out; closing the tab with the work detached to the background",
+					"tab", tabID, "grace", stopAndCloseGrace)
+				return a.closeTab(tabID, true)
 			case <-ticker.C:
 			}
 		}
