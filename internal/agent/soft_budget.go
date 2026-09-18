@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"log/slog"
 	"reasonix/internal/event"
 	"reasonix/internal/i18n"
 	"reasonix/internal/tool"
-	"log/slog"
 )
 
 const (
@@ -87,6 +87,13 @@ func (a *Agent) readonlySoftBudgetApplies(outcomes []toolOutcome) bool {
 			a.turn.softBudgetMutation = true
 			return false
 		}
+		// A write the host refused leaves no receipt, so counting the round as
+		// read-only let the read-only budget keep tightening while every write
+		// was blocked — the loop that ended in the storm breaker (task 171).
+		if refusedWriteIntent(outcome) {
+			a.turn.softBudgetMutation = true
+			return false
+		}
 	}
 	if a.task.ledger == nil {
 		return true
@@ -98,6 +105,19 @@ func (a *Agent) readonlySoftBudgetApplies(outcomes []toolOutcome) bool {
 		}
 	}
 	return true
+}
+
+// refusedWriteIntent reports a call the host blocked that was asking to write.
+// The evidence gate's WRITE_* codes and a resolved non-read-only call are both
+// proof of write intent, regardless of whether any bytes reached the disk.
+func refusedWriteIntent(outcome toolOutcome) bool {
+	if !outcome.blocked {
+		return false
+	}
+	if d := outcome.diagnostic; d != nil && strings.HasPrefix(d.Code, "WRITE_") {
+		return true
+	}
+	return outcome.resolved && !outcome.resolvedReadOnly
 }
 
 func (a *Agent) softBudgetHistoryKey() string {
