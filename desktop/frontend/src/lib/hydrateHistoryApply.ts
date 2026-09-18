@@ -179,10 +179,16 @@ export function hasReusableCachedTranscript(
   if (!state || state.items.length === 0) return false;
   // #8727: a live surface with no history prefix behind it was opened
   // mid-stream - its live text makes it look cached, and reusing it streams the
-  // new turn over a blank transcript. Resident tabs carry a prefix
-  // (historyPrefixCount > 0), so task 151's fast reuse stays intact; the
-  // unreliable historyTotalTurns counter is deliberately not consulted here.
-  if ((state.running || state.turnActive) && (state.historyPrefixCount ?? 0) === 0) return false;
+  // new turn over a blank transcript.
+  // 2026-09-18 (idle-resume): the prefix requirement must not be conditional on a turn
+  // being live. A session resumed after a long idle — or a tab opened over a stale
+  // surface — also holds rows with no history behind them, passed this check on
+  // `items.length > 0` alone, and skipped the shared fetch: the transcript rendered
+  // without its history, and closing/reopening the tab "fixed" it because that clears
+  // the surface. Resident tabs carry a prefix in every case, so task 151's fast reuse
+  // stays intact; the unreliable historyTotalTurns counter is still deliberately not
+  // consulted here.
+  if ((state.historyPrefixCount ?? 0) === 0) return false;
   const expectedSessionPath = (sessionPath ?? "").trim();
   if (!expectedSessionPath) return true;
   // Task 151 (B-level, 2026-09-17 log evidence): strict string equality vetoed
