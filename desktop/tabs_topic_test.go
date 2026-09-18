@@ -1782,7 +1782,10 @@ api_key_env = "REASONIX_TEST_KEY"
 	if err := os.WriteFile(logPath, []byte(events), 0o600); err != nil {
 		t.Fatalf("write native event log: %v", err)
 	}
-	const oversizedSparseLog = int64(1 << 30)
+	// The loader's byte allowance adapts to the log on disk but never exceeds
+	// the 1 GiB hard ceiling, so the fixture has to clear that ceiling to trip
+	// the refusal. A sparse file costs no real space either way.
+	const oversizedSparseLog = int64(2) << 30
 	if err := os.Truncate(logPath, oversizedSparseLog); err != nil {
 		t.Fatalf("make sparse oversized event log: %v", err)
 	}
