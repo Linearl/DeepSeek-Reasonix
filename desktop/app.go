@@ -5715,6 +5715,11 @@ func (state *historyMessageConvertState) convertHistoryMessage(
 	}
 	if state.suppressCanonicalTurn {
 		if !agent.IsUserAuthoredTurnMessage(m) {
+			// Host guidance keeps its notice row even inside a suppressed canonical
+			// turn; every other non-authored message stays hidden here.
+			if rows, handled := hostGuidanceRows(m); handled {
+				return append(out, rows...)
+			}
 			return out
 		}
 		state.suppressCanonicalTurn = false
@@ -5729,6 +5734,11 @@ func (state *historyMessageConvertState) convertHistoryMessage(
 		// Check against the raw m.Content: resolveUserContent applies
 		// StripComposePrefixes which trims trailing whitespace.
 		if rows, handled := historySteerRows(m.Content, false); handled {
+			return append(out, rows...)
+		}
+		// Host guidance reaches the transcript as a notice row (task 172); internal
+		// protocol messages keep falling through to the filter below.
+		if rows, handled := hostGuidanceRows(m); handled {
 			return append(out, rows...)
 		}
 		content = historyUserDisplayContent(m, resolveUserContent)

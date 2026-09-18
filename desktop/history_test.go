@@ -378,8 +378,14 @@ func TestHistoryPageFromProviderMessagesWindowsVisibleUsers(t *testing.T) {
 	if older.StartTurn != 0 || older.EndTurn != 1 || older.TotalTurns != 3 || older.HasOlder {
 		t.Fatalf("older page metadata = %+v, want turns 0-1/3 no older", older)
 	}
-	if len(older.Messages) != 4 || older.Messages[0].Role != "system" || older.Messages[1].Content != "first" || older.Messages[3].Content != "hidden continuation" {
-		t.Fatalf("older page messages = %+v, want prelude and first visible turn", older.Messages)
+	// Task 172: the goal-continuation user message is host guidance, and host guidance now
+	// reaches the transcript as a steer-style notice row instead of being dropped silently
+	// (the old expectation here pinned that dropping). Turn accounting is untouched either
+	// way — a notice is not a user turn — so the page window itself does not move.
+	if len(older.Messages) != 5 || older.Messages[0].Role != "system" || older.Messages[1].Content != "first" ||
+		older.Messages[3].Role != "notice" || !strings.Contains(older.Messages[3].Content, "Continue pursuing the active goal") ||
+		older.Messages[4].Content != "hidden continuation" {
+		t.Fatalf("older page messages = %+v, want prelude, first visible turn and the host guidance notice", older.Messages)
 	}
 }
 
@@ -1889,6 +1895,49 @@ func TestLoadTabSessionProfileMissingApprovalDefaultsAsk(t *testing.T) {
 	}
 	if profile := loadTabSessionProfile(sessionPath); profile.toolApprovalMode != control.ToolApprovalAsk {
 		t.Fatalf("legacy missing tool approval mode = %q, want ask", profile.toolApprovalMode)
+	}
+}
+
+// Task 172: host guidance has to be visible in the transcript after a turn ends —
+// otherwise the host appears to interject for no reason. It renders as a steer-style
+// notice row, never as a user bubble, so turn attribution stays intact.
+func TestHistoryMessagesSurfaceHostGuidanceAsNotice(t *testing.T) {
+	guidance := agent.HostGeneratedUserMessage("Host progress redirect: the current todo still has no new completion after 6 tool-call rounds.")
+	msgs := []provider.Message{
+		{Role: provider.RoleUser, Content: "do the work", CreatedAt: 1},
+		guidance,
+		{Role: provider.RoleAssistant, Content: "working on it", CreatedAt: 2},
+	}
+
+	got := historyMessages(msgs, func(content string) string { return content })
+
+	rows := make([]HistoryMessage, 0, 1)
+	for _, row := range got {
+		if strings.Contains(row.Content, "Host progress redirect") {
+			rows = append(rows, row)
+		}
+	}
+	if len(rows) != 1 {
+		t.Fatalf("host guidance rows = %d, want exactly 1 (%+v)", len(rows), got)
+	}
+	if rows[0].Role != "notice" {
+		t.Fatalf("host guidance role = %q, want notice", rows[0].Role)
+	}
+	if !strings.HasPrefix(rows[0].Content, "↪ ") {
+		t.Fatalf("host guidance must read as a steer-style notice, got %q", rows[0].Content)
+	}
+	for _, row := range got {
+		if row.Role == "user" && strings.Contains(row.Content, "Host progress redirect") {
+			t.Fatal("host guidance must never be attributed to the user")
+		}
+	}
+}
+
+// A host message with nothing displayable adds no row at all.
+func TestHistoryMessagesSkipEmptyHostGuidance(t *testing.T) {
+	msgs := []provider.Message{agent.HostGeneratedUserMessage("   ")}
+	if got := historyMessages(msgs, func(content string) string { return content }); len(got) != 0 {
+		t.Fatalf("empty host guidance produced %d rows, want 0", len(got))
 	}
 }
 

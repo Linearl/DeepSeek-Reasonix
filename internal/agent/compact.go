@@ -382,6 +382,22 @@ func compactionInstructionWithFocus(instructions string) string {
 	return instruction
 }
 
+// compactionBriefingLead is the stable first line of compactionInstruction: the
+// recognition key that keeps the briefing out of transcripts even though it shares the
+// host origin with user-visible guidance (see IsHostProtocolMessage).
+var compactionBriefingLead = func() string {
+	if idx := strings.IndexByte(compactionInstruction, '\n'); idx >= 0 {
+		return compactionInstruction[:idx]
+	}
+	return compactionInstruction
+}()
+
+// IsCompactionBriefingInstruction reports whether text is a compaction briefing, with or
+// without the focus section compactionInstructionWithFocus appends.
+func IsCompactionBriefingInstruction(text string) bool {
+	return strings.HasPrefix(strings.TrimSpace(text), compactionBriefingLead)
+}
+
 // summaryRequest builds the exact cache-aligned request shape used by
 // summarize. Keeping planning and execution on this shared builder prevents a
 // supposedly safe overflow fold from being rejected only after it is selected.

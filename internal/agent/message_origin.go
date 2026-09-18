@@ -32,3 +32,18 @@ func inputMessageOrigin(ctx context.Context) provider.MessageOrigin {
 func HostGeneratedUserMessage(content string) provider.Message {
 	return provider.Message{Role: provider.RoleUser, Origin: provider.MessageOriginHost, Content: content}
 }
+
+// IsHostProtocolMessage reports whether a host-generated user message is internal
+// protocol rather than user-explainable guidance. Compaction briefings are a machine
+// contract and must never reach a transcript.
+//
+// Everything else the host injects is guidance the user is entitled to see —
+// readiness catch-up, the plan research gate, finalization nudges, goal redirects,
+// incomplete-read continuations and loop corrections — because otherwise the host
+// appears to interject into the conversation for no visible reason.
+func IsHostProtocolMessage(msg provider.Message) bool {
+	if !IsHostGeneratedUserMessage(msg) {
+		return false
+	}
+	return IsCompactionBriefingInstruction(UserMessageText(msg))
+}
