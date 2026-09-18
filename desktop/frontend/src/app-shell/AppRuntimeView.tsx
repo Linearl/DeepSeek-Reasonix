@@ -231,6 +231,7 @@ export function AppRuntimeView(props: AppRuntimeViewProps) {
             onTabChange={(id) => void session.tabBarCommands.handleTabChange(id)}
             onTabClose={(id) => void session.tabBarCommands.handleTabClose(id)}
             onTabsClose={(ids, nextActiveTabId) => void session.tabBarCommands.handleTabsClose(ids, nextActiveTabId)}
+            onTabStopAndClose={(id) => void session.tabBarCommands.stopAndCloseTab(id)}
             onTabsReorder={(ids) => void session.tabBarCommands.handleTabsReorder(ids)}
             onNewTab={() => void navigationCommands.handleNewTab()}
             onOpenPalette={() => void navigation.paletteCommands.openPalette()}

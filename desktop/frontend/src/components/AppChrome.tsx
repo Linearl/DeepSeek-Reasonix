@@ -25,6 +25,7 @@ export interface AppChromeProps {
   onTabChange: (tabId: string) => void;
   onTabClose: (tabId: string) => void;
   onTabsClose: (tabIds: string[], nextActiveTabId?: string) => void;
+  onTabStopAndClose?: (tabId: string) => void;
   onTabsReorder: (tabIds: string[]) => void;
   onNewTab: () => void;
   onOpenPalette: () => void;
@@ -53,6 +54,7 @@ export function AppChrome({
   onTabChange,
   onTabClose,
   onTabsClose,
+  onTabStopAndClose,
   onTabsReorder,
   onNewTab,
   onOpenPalette,
@@ -78,6 +80,7 @@ export function AppChrome({
       onTabChange={onTabChange}
       onTabClose={onTabClose}
       onTabsClose={onTabsClose}
+      onTabStopAndClose={onTabStopAndClose}
       onTabsReorder={onTabsReorder}
       onNewTab={onNewTab}
       onOpenPalette={undefined}

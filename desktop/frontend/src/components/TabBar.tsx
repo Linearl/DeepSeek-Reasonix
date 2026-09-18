@@ -17,6 +17,7 @@ interface TabBarProps {
   onTabChange: (tabId: string) => void;
   onTabClose: (tabId: string) => void;
   onTabsClose: (tabIds: string[], nextActiveTabId?: string) => void;
+  onTabStopAndClose?: (tabId: string) => void;
   onTabsReorder: (tabIds: string[]) => void;
   onNewTab: () => void;
   onOpenPalette?: () => void;
@@ -58,7 +59,7 @@ function projectAccentStyle(color?: string): CSSProperties | undefined {
   return { "--project-accent": value } as CSSProperties;
 }
 
-export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose, onTabsReorder, onNewTab, onOpenPalette, commandCompact = false, revealActiveSignal = 0, splitTabId = null, onToggleSplit }: TabBarProps) {
+export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose, onTabStopAndClose, onTabsReorder, onNewTab, onOpenPalette, commandCompact = false, revealActiveSignal = 0, splitTabId = null, onToggleSplit }: TabBarProps) {
   // Task 70-1: the split is an experiment - with the switch off the menu below is
   // exactly the pre-split list.
   const [splitViewEnabled, setSplitViewEnabled] = useState(isSplitViewEnabled());
@@ -189,6 +190,18 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
           disabled: tabs.length <= 1,
           onSelect: () => closeTabsFromMenu([menuTabId]),
         },
+        ...(onTabStopAndClose
+          ? [{
+              key: "stop-and-close",
+              label: t("tabBar.stopAndCloseTab"),
+              disabled: tabs.length <= 1,
+              onSelect: () => {
+                const target = menuTabId;
+                closeTabMenu();
+                if (target) onTabStopAndClose(target);
+              },
+            }]
+          : []),
         {
           key: "close-other",
           label: t("tabBar.closeOtherTabs"),
