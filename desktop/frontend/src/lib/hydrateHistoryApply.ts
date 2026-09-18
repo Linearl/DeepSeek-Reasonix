@@ -6,6 +6,8 @@ export type HydrateLiveState = {
   currentAssistant?: unknown;
   pendingUser?: unknown;
   historyTotalTurns?: number;
+  /** Rows on the surface that came from a history page (0 = none yet). */
+  historyPrefixCount?: number;
   items: ReadonlyArray<{ kind: string; streaming?: boolean; status?: string }>;
   historyRevision?: number;
   historyDigest?: string;
@@ -175,6 +177,12 @@ export function hasReusableCachedTranscript(
   // sessions). Reuse now requires items on the surface; the LRU/byte budgets
   // still bound memory and a background refresh reconciles the fingerprint.
   if (!state || state.items.length === 0) return false;
+  // #8727: a live surface with no history prefix behind it was opened
+  // mid-stream - its live text makes it look cached, and reusing it streams the
+  // new turn over a blank transcript. Resident tabs carry a prefix
+  // (historyPrefixCount > 0), so task 151's fast reuse stays intact; the
+  // unreliable historyTotalTurns counter is deliberately not consulted here.
+  if ((state.running || state.turnActive) && (state.historyPrefixCount ?? 0) === 0) return false;
   const expectedSessionPath = (sessionPath ?? "").trim();
   if (!expectedSessionPath) return true;
   // Task 151 (B-level, 2026-09-17 log evidence): strict string equality vetoed
