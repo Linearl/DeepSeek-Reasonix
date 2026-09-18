@@ -25,7 +25,11 @@ CHANNEL="${REASONIX_CHANNEL:-stable}"
 if [ -n "${1:-}" ]; then
 	VER="$1"
 else
-	VER=$(grep -o '"productVersion": *"[^"]*"' "$ROOT/desktop/wails.json" | head -1 | cut -d '"' -f4)
+	# Task 171 batch lesson: a bare productVersion ("1.38.3") makes every build
+	# overwrite the same staging/version.txt, so RestartAndUpdate has no unique
+	# version to publish and the quick-switch list never grows. Auto-timestamp
+	# instead — pass an explicit VERSION to override.
+	VER="1.38.3-$(date +%Y%m%d-%H%M)"
 fi
 if [ -z "${VER:-}" ]; then
 	echo "ERROR: could not resolve version (pass one: $0 1.34.0)" >&2
