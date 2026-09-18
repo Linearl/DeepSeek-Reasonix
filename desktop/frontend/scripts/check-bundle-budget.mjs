@@ -349,8 +349,10 @@ for (const path of localeChunks) {
   // (mode labels, per-stage notes, per-stage risks, the restart-pending line) and
   // rewrites the hint. Measured gzip: zh 73.5 KiB, zh-TW 74.3 KiB, so the same
   // one-decimal ratchet applies with the usual 0.1 KiB headroom: zh 73.6;
-  // zh-TW 74.4.
-  const budget = name.startsWith("zh-TW-") ? 74.4 * 1024 : 73.6 * 1024;
+  // zh-TW 74.4. Tasks 162/170 (2026-09-18) added close-flow copy and session
+  // manage tool strings: measured zh-TW 74.4 KiB again at the ceiling, so the
+  // ratchet moves to 74.5 (zh 73.6 unchanged).
+  const budget = name.startsWith("zh-TW-") ? 74.5 * 1024 : 73.6 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
