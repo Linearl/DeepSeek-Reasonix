@@ -48,7 +48,7 @@ func (p *ParallelTasksTool) Schema() json.RawMessage {
         "prompt":{"type":"string","description":"The task prompt for the sub-agent."},
         "description":{"type":"string","description":"Optional short label shown in the job list."},
         "tools":{"type":"array","items":{"type":"string"},"description":"Optional tool whitelist for the sub-agent."},
-        "max_steps":{"type":"integer","description":"Optional max tool-call rounds. Defaults to half the parent agent's step budget (minimum 5), same as task.","minimum":1},
+        "max_steps":{"type":"integer","description":"Optional max tool-call rounds. Defaults to two-thirds of the parent agent's step budget (minimum 12), same as task.","minimum":1},
         "model":{"type":"string","description":"Optional model override."},
         "effort":{"type":"string","description":"Optional reasoning effort override."}
       },
