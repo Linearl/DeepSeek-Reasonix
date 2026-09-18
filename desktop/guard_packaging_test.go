@@ -183,8 +183,10 @@ func TestDesktopPackagesPreserveNativePlatformLaunchers(t *testing.T) {
 		`nsExec::ExecToLog /OEM`,
 		`Reasonix layout activator output:`,
 		`--activate-staging "$R9" --no-relaunch`,
-		`CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${REASONIX_LAUNCHER}" "" "$INSTDIR\${REASONIX_LAUNCHER}" 0`,
-		`CreateShortCut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${REASONIX_LAUNCHER}" "" "$INSTDIR\${REASONIX_LAUNCHER}" 0`,
+		// edd61efbf "fix shortcut icons": the shortcut target stays the launcher,
+		// but the icon is read from the shipped executable (the launcher has none).
+		`CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${REASONIX_LAUNCHER}" "" "$INSTDIR\${PRODUCT_EXECUTABLE}" 0`,
+		`CreateShortCut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${REASONIX_LAUNCHER}" "" "$INSTDIR\${PRODUCT_EXECUTABLE}" 0`,
 		`StrCmp $ReasonixStageMode "1" reasonix_stage_payload`,
 		`File "/oname=${REASONIX_GUARD}" "${REASONIX_GUARD}"`,
 	} {
