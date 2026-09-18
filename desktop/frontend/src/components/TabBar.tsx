@@ -6,6 +6,7 @@ import type { CSSProperties, DragEvent, KeyboardEvent as ReactKeyboardEvent, Mou
 import { FileText, Plus, Search, X } from "lucide-react";
 import { normalizeCollaborationMode, normalizeMode, normalizeToolApprovalMode, type Mode, type TabMeta } from "../lib/types";
 import { projectColorValue } from "../lib/projectColors";
+import { prefetchTabTranscript } from "../lib/transcriptPrefetch";
 import { useT } from "../lib/i18n";
 import { Tooltip } from "./Tooltip";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
@@ -30,6 +31,11 @@ interface TabBarProps {
 }
 
 type DropSide = "before" | "after";
+
+/** Task 123 (S5): hover intent is a 150 ms debounce — long enough that dragging
+ * the pointer across the strip does not start speculative reads, short enough
+ * that a real click still lands on a warm tab. */
+const HOVER_PREFETCH_DEBOUNCE_MS = 150;
 
 function tabDisplayTitle(tab: TabMeta): string {
   if (tab.tabType === "file" || tab.scope === "file") return tab.topicTitle?.trim() || tab.filePath?.split("/").filter(Boolean).pop() || "File";
@@ -71,6 +77,7 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
   const [menuPoint, setMenuPoint] = useState<ContextMenuPoint | null>(null);
   const suppressClickRef = useRef(false);
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
+  const hoverPrefetchTimer = useRef<number | null>(null);
   const backendActiveTabId = tabs.find((tab) => tab.active)?.id;
   const activeTabIdExists = Boolean(activeTabId && tabs.some((tab) => tab.id === activeTabId));
   const resolvedActiveTabId = activeTabIdExists ? activeTabId : backendActiveTabId;
@@ -86,6 +93,8 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
     });
     return () => window.cancelAnimationFrame(frame);
   }, [backendActiveTabId, resolvedActiveTabId, revealActiveSignal, tabOrderKey]);
+
+  useEffect(() => () => cancelHoverPrefetch(), []);
 
   const handleClose = (tabId: string) => {
     onTabClose(tabId);
@@ -138,6 +147,28 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
       suppressClickRef.current = true;
       onTabsReorder(next);
     }
+  };
+
+  const cancelHoverPrefetch = () => {
+    if (hoverPrefetchTimer.current === null) return;
+    window.clearTimeout(hoverPrefetchTimer.current);
+    hoverPrefetchTimer.current = null;
+  };
+
+  const scheduleHoverPrefetch = (tab: TabMeta) => {
+    cancelHoverPrefetch();
+    if (tab.id === resolvedActiveTabId) return;
+    const sessionPath = (tab.sessionPath ?? "").trim();
+    if (!sessionPath) return;
+    hoverPrefetchTimer.current = window.setTimeout(() => {
+      hoverPrefetchTimer.current = null;
+      prefetchTabTranscript({
+        tabId: tab.id,
+        sessionPath,
+        revision: tab.sessionRevision,
+        digest: tab.sessionDigest,
+      });
+    }, HOVER_PREFETCH_DEBOUNCE_MS);
   };
 
   const handleTabClick = (tabId: string) => {
@@ -274,6 +305,8 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
               style={projectAccentStyle(tab.projectColor)}
               onClick={() => handleTabClick(tab.id)}
               onAuxClick={(event) => handleTabAuxClick(event, tab.id)}
+              onMouseEnter={() => scheduleHoverPrefetch(tab)}
+              onMouseLeave={cancelHoverPrefetch}
               onMouseDown={(event) => {
                 // Prevent the browser/webview middle-click auto-scroll before auxclick fires.
                 if (event.button === 1) event.preventDefault();

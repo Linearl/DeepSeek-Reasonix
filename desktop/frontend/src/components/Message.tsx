@@ -146,8 +146,12 @@ export function parseSelectedTextBlocks(text: string, submitText?: string): Sele
   });
 }
 
-function messageDate(value?: number): Date {
-  return new Date(typeof value === "number" && Number.isFinite(value) && value > 0 ? value : Date.now());
+/** Persisted send time as a Date, or null when the record carries no usable
+ * timestamp. Task 123: the newest history page can omit times it could not read
+ * from the bounded tail overlay, and falling back to "now" printed today's clock
+ * next to year-old messages — unknown must stay unknown. */
+function messageDate(value?: number): Date | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? new Date(value) : null;
 }
 
 function formatMessageTime(date: Date): string {
