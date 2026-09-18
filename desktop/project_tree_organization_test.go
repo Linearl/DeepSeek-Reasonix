@@ -281,3 +281,118 @@ func TestGetProjectGroupsFiltersStaleMemberIDs(t *testing.T) {
 		t.Fatalf("listed live group members = %v, want %v", listed[0].TopicIDs, want)
 	}
 }
+
+// Task 170: moving a session between groups must leave it in exactly one group.
+// AddTopicToGroup only appends, and a topic may belong to a single group, so an
+// append-only move is refused by validation and the session never moves - which
+// is why the agent tool goes through MoveTopicToGroup.
+func TestMoveTopicToGroupLeavesThePreviousGroup(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	root := t.TempDir()
+	if err := addProject(root, "Project"); err != nil {
+		t.Fatal(err)
+	}
+	if err := updateProjectsFile(func(f *desktopProjectFile) (bool, error) {
+		f.Projects[projectIndexByRoot(f.Projects, root)].Topics = []string{"a", "b"}
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	app := NewApp()
+	if err := app.SaveSessionGroups("project", root, []desktopGroup{
+		{ID: "grp-old", Title: "Old", TopicIDs: []string{"a"}},
+		{ID: "grp-two", Title: "Two", TopicIDs: []string{"b"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The append-only path cannot move an already-grouped topic.
+	if err := app.AddTopicToGroup("project", root, "a", "", "Two"); err == nil {
+		t.Fatal("append-only filing of a grouped topic must be refused")
+	}
+
+	group, removed, alreadyFiled, err := app.MoveTopicToGroup("project", root, "a", "", "Two")
+	if err != nil {
+		t.Fatalf("MoveTopicToGroup: %v", err)
+	}
+	if !reflect.DeepEqual(removed, []string{"Old"}) {
+		t.Fatalf("removed = %v, want [Old]", removed)
+	}
+	if group.ID != "grp-two" || group.Title != "Two" || alreadyFiled {
+		t.Fatalf("target group = %#v alreadyFiled=%v", group, alreadyFiled)
+	}
+	groups, err := app.ListProjectGroups("project", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	membership := map[string][]string{}
+	for _, g := range groups {
+		for _, topicID := range g.TopicIDs {
+			membership[topicID] = append(membership[topicID], g.Title)
+		}
+	}
+	if !reflect.DeepEqual(membership["a"], []string{"Two"}) {
+		t.Fatalf("topic a belongs to %v, want [Two]", membership["a"])
+	}
+	if !reflect.DeepEqual(membership["b"], []string{"Two"}) {
+		t.Fatalf("topic b belongs to %v, want [Two]", membership["b"])
+	}
+
+	// Moving again into the same group is a no-op, not a duplicate membership.
+	_, removedAgain, alreadyFiledAgain, err := app.MoveTopicToGroup("project", root, "a", "", "Two")
+	if err != nil {
+		t.Fatalf("second MoveTopicToGroup: %v", err)
+	}
+	if !alreadyFiledAgain || len(removedAgain) != 0 {
+		t.Fatalf("second move = alreadyFiled %v removed %v, want true/[]", alreadyFiledAgain, removedAgain)
+	}
+	groups, err = app.ListProjectGroups("project", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range groups {
+		count := 0
+		for _, topicID := range g.TopicIDs {
+			if topicID == "a" {
+				count++
+			}
+		}
+		if count > 1 {
+			t.Fatalf("group %q lists the topic %d times", g.Title, count)
+		}
+	}
+}
+
+// A move into a group that does not exist yet creates it, matching the
+// "drag into a new group" behaviour the sidebar offers.
+func TestMoveTopicToGroupCreatesMissingGroup(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	root := t.TempDir()
+	if err := addProject(root, "Project"); err != nil {
+		t.Fatal(err)
+	}
+	if err := updateProjectsFile(func(f *desktopProjectFile) (bool, error) {
+		f.Projects[projectIndexByRoot(f.Projects, root)].Topics = []string{"a"}
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	app := NewApp()
+	group, removed, alreadyFiled, err := app.MoveTopicToGroup("project", root, "a", "", "Fresh team")
+	if err != nil {
+		t.Fatalf("MoveTopicToGroup: %v", err)
+	}
+	if group.Title != "Fresh team" || group.ID == "" {
+		t.Fatalf("created group = %#v", group)
+	}
+	if len(removed) != 0 || alreadyFiled {
+		t.Fatalf("fresh move = removed %v alreadyFiled %v", removed, alreadyFiled)
+	}
+	groups, err := app.ListProjectGroups("project", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 1 || !reflect.DeepEqual(groups[0].TopicIDs, []string{"a"}) {
+		t.Fatalf("groups = %#v", groups)
+	}
+}

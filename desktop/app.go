@@ -2332,6 +2332,8 @@ func (a *App) clearActiveSessionRuntime(tab *WorkspaceTab, oldCtrl control.Sessi
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
 		OnCreateCollabSession:    a.createCollabSession,
 		OnDeleteSession:          a.deleteCollabSession,
+		OnRenameSession:          a.renameCollabSession,
+		OnMoveTopicToGroup:       a.moveCollabTopicToGroup,
 	})
 	if err != nil {
 		if teardownTimedOut {
@@ -4321,6 +4323,8 @@ func (a *App) buildSessionRebindCandidate(
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
 		OnCreateCollabSession:    a.createCollabSession,
 		OnDeleteSession:          a.deleteCollabSession,
+		OnRenameSession:          a.renameCollabSession,
+		OnMoveTopicToGroup:       a.moveCollabTopicToGroup,
 	})
 	if err != nil {
 		sink.clearContext()
@@ -9932,6 +9936,8 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
 		OnCreateCollabSession:    a.createCollabSession,
 		OnDeleteSession:          a.deleteCollabSession,
+		OnRenameSession:          a.renameCollabSession,
+		OnMoveTopicToGroup:       a.moveCollabTopicToGroup,
 		// Keep the private temporary directory across model switches (#7575).
 		SessionTemp: sessionTempFromController(oldCtrl),
 	})
@@ -10129,6 +10135,8 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
 		OnCreateCollabSession:    a.createCollabSession,
 		OnDeleteSession:          a.deleteCollabSession,
+		OnRenameSession:          a.renameCollabSession,
+		OnMoveTopicToGroup:       a.moveCollabTopicToGroup,
 		// Keep the private temporary directory across effort switches (#7575).
 		SessionTemp: sessionTempFromController(oldCtrl),
 	})

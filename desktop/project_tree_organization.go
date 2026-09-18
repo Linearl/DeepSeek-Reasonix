@@ -444,6 +444,103 @@ func (a *App) AddTopicToGroup(scope, workspaceRoot, topicID, groupID, groupTitle
 	return fmt.Errorf("session group %q: config changed concurrently, retry", firstNonEmptyString(groupID, groupTitle))
 }
 
+// MoveTopicToGroup files a topic into a group AND removes it from every other
+// group, so the session ends up in exactly one place (task 170).
+//
+// AddTopicToGroup only appends, and normalizeGroups keeps a topic in the FIRST
+// group that lists it, so an append-only "move" leaves the session behind in its
+// old group whenever that group is written first - the visible symptom is a
+// session that appears in both groups, or that never leaves the old one.
+//
+// It returns the target group, the titles the session was removed from, and
+// whether it was already filed there (in which case nothing is written).
+func (a *App) MoveTopicToGroup(scope, workspaceRoot, topicID, groupID, groupTitle string) (desktopGroup, []string, bool, error) {
+	topicID = strings.TrimSpace(topicID)
+	groupID = strings.TrimSpace(groupID)
+	groupTitle = strings.TrimSpace(groupTitle)
+	if topicID == "" {
+		return desktopGroup{}, nil, false, fmt.Errorf("topicId is required")
+	}
+	if groupID == "" && groupTitle == "" {
+		return desktopGroup{}, nil, false, fmt.Errorf("group or groupId is required")
+	}
+	// CAS retry, same contract as AddTopicToGroup: the sidebar may hold the
+	// snapshot we just read, and a lost update would silently drop the move.
+	for attempt := 0; attempt < 5; attempt++ {
+		snapshot, err := a.GetProjectGroups(scope, workspaceRoot)
+		if err != nil {
+			return desktopGroup{}, nil, false, err
+		}
+		groups := append([]desktopGroup(nil), snapshot.Groups...)
+		target := -1
+		for i, g := range groups {
+			if groupID != "" {
+				if strings.EqualFold(strings.TrimSpace(g.ID), groupID) {
+					target = i
+					break
+				}
+				continue
+			}
+			if strings.EqualFold(strings.TrimSpace(g.Title), groupTitle) {
+				target = i
+				break
+			}
+		}
+		alreadyFiled := target >= 0 && groupContainsTopic(groups[target], topicID)
+		removed := make([]string, 0, 1)
+		for i := range groups {
+			if i == target || !groupContainsTopic(groups[i], topicID) {
+				continue
+			}
+			kept := make([]string, 0, len(groups[i].TopicIDs))
+			for _, member := range groups[i].TopicIDs {
+				if member != topicID {
+					kept = append(kept, member)
+				}
+			}
+			groups[i].TopicIDs = kept
+			removed = append(removed, strings.TrimSpace(groups[i].Title))
+		}
+		if target < 0 {
+			if groupID == "" {
+				groupID = "collab-" + strings.ToLower(groupTitle)
+			}
+			if groupTitle == "" {
+				// An id with no title is not a usable label; the sidebar shows
+				// the id rather than an empty row.
+				groupTitle = groupID
+			}
+			groups = append(groups, desktopGroup{ID: groupID, Title: groupTitle, TopicIDs: []string{topicID}})
+			target = len(groups) - 1
+		} else if !alreadyFiled {
+			groups[target].TopicIDs = append(append([]string(nil), groups[target].TopicIDs...), topicID)
+		}
+		moved := groups[target]
+		if alreadyFiled && len(removed) == 0 {
+			// Nothing to write: the session is already only in the target group.
+			return moved, nil, true, nil
+		}
+		result, err := a.SaveSessionGroupsVersioned(scope, workspaceRoot, snapshot.Revision, groups)
+		if err != nil {
+			return desktopGroup{}, removed, alreadyFiled, err
+		}
+		if result.Applied {
+			return moved, removed, alreadyFiled, nil
+		}
+	}
+	return desktopGroup{}, nil, false, fmt.Errorf("session group %q: config changed concurrently, retry", firstNonEmptyString(groupID, groupTitle))
+}
+
+// groupContainsTopic reports whether a group lists the topic.
+func groupContainsTopic(group desktopGroup, topicID string) bool {
+	for _, member := range group.TopicIDs {
+		if member == topicID {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *App) SaveSessionGroups(scope, workspaceRoot string, groups []desktopGroup) error {
 	scope, workspaceRoot, err := normalizeOrganizationTarget(scope, workspaceRoot)
 	if err != nil {

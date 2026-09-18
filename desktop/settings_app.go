@@ -2175,6 +2175,8 @@ func (a *App) buildSettingReplacementController(tab *WorkspaceTab, snap tabRunti
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
 		OnCreateCollabSession:    a.createCollabSession,
 		OnDeleteSession:          a.deleteCollabSession,
+		OnRenameSession:          a.renameCollabSession,
+		OnMoveTopicToGroup:       a.moveCollabTopicToGroup,
 	}
 	if reload && oldCtrl != nil {
 		old, ok := oldCtrl.(*control.Controller)
