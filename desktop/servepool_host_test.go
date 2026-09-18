@@ -24,7 +24,11 @@ func TestGatewayPortDefaultAndOverride(t *testing.T) {
 }
 
 func TestProjectRootsFromRegistryEmpty(t *testing.T) {
-	// No desktop-projects.json in the test home -> empty roots, no panic.
+	// The assertion is about an unregistered project list, so this test owns its
+	// state: without an isolated desktop home it inherited the project roots an
+	// earlier test in the package registered, which is why it only failed in a
+	// full-package run.
+	isolateDesktopUserDirs(t)
 	roots := projectRootsFromRegistry()
 	if roots == nil {
 		t.Fatal("roots = nil, want empty slice")
