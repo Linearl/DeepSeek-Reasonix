@@ -118,6 +118,17 @@ export interface ProjectTreeOrganizationBindings {
     groupID: string,
     groupTitle: string,
   ): Promise<void>;
+  /** Task 170: move a session between groups (remove from every other group,
+   * then file into the target). Optional like AddTopicToGroup; the drift check
+   * in bridge.ts requires the key because wails generates the binding for
+   * App.MoveTopicToGroup. */
+  MoveTopicToGroup?(
+    scope: string,
+    workspaceRoot: string,
+    topicID: string,
+    groupID: string,
+    groupTitle: string,
+  ): Promise<void>;
 }
 
 // SessionReference is a session selected via @ past:chats for context injection.
