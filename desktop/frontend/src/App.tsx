@@ -3185,12 +3185,22 @@ export default function App() {
   const visibleTranscriptTabId = visibleTranscriptSurface?.tabId ?? activeTabId;
   const visibleTranscriptGeometryKey = visibleTranscriptSurface?.geometrySessionKey ?? transcriptGeometrySessionKey;
   // Task 151 (round 3): the render-side half of a tab switch, for desktop.log. The data
-  // layer already reports total=0ms plus a local-snapshot skip, so what remains to explain
-  // is how long React needs to put the incoming tab on screen. The clock starts in the
-  // render that first sees the new visible tab — before React commits anything — and stops
-  // in the layout effect that has finished mutating the DOM: the span the user waits out.
-  // This is the part of round 3 that kept its value; the per-tab pane residency was
-  // reverted because it broke the app-level runtime contract (see the commit message).
+  // layer already reports its own stages (switch-tab `total=0ms` plus a
+  // `history fetch skipped reason=local-snapshot` line), so the open question is only how
+  // long React takes to put the incoming tab on screen. `render=` is that span: from the
+  // render that first observes the new visible tab (before React commits anything) to the
+  // layout effect that has finished mutating the DOM. It excludes the browser's
+  // layout/paint pass on purpose, which is why it is only comparable between builds when
+  // read next to the data-layer lines above (local-snapshot => cached switch, otherwise a
+  // rebuild).
+  //
+  // Scope: this probe describes the SINGLE-surface path. Round 3's per-tab pane residency
+  // was reverted (93fe33bc1) — a second mounted Transcript breaks five app-level
+  // singletons — so there is deliberately no `panes=`/`resident=` field here: a count of
+  // "panes other than the incoming tab" is a constant 1 while switching between two
+  // resident tabs and cannot tell a reused pane from a rebuilt one. If residency is ever
+  // reintroduced, the field has to come back with a meaning that survives a switch-back
+  // (e.g. "the incoming tab already owned a pane"), not this one.
   const paneSwitchSeenRef = useRef<string | undefined>(visibleTranscriptTabId);
   const paneSwitchAtRef = useRef<{ tabId: string; at: number }>({ tabId: "", at: 0 });
   if (paneSwitchSeenRef.current !== visibleTranscriptTabId) {
