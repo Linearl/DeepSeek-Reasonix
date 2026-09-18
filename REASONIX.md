@@ -128,6 +128,11 @@ diagnosed to one of the three verdicts above, and none were carried:
   the 1 GiB adaptive ceiling, so the refusal no longer tripped.
 * **Packaging (1)** — the NSIS shortcut icon source moved to the shipped executable
   (`edd61efbf`); the guard still expected the launcher as the icon path.
+* **Code (frontend, 2)** — task 151 removed the `historyTotalTurns` veto from
+  `hasReusableCachedTranscript`, which also let a mid-stream tab pass the reuse check on its
+  live text alone and stream over a blank transcript (#8727). Reuse now requires a history
+  prefix while a live turn is streaming, so task 151's fast path survives.
+  Verified with `npx tsx src/__tests__/running-tab-history-hydration.test.tsx` (7/2 -> 9/0).
 * **Flaky (1)** — `TestRebindWithTakeoverMirrorDoesNotReenterAppLock` was red in one of
   four full runs (timing-sensitive takeover/mirror ordering) and green in every run since;
   no code change was needed.
