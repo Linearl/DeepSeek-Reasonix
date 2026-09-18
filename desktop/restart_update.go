@@ -35,6 +35,13 @@ func (a *App) RestartAndUpdate(sourceDir, version string) error {
 	version = strings.TrimSpace(version)
 	sourceDir = strings.TrimSpace(sourceDir)
 
+	// Argument validation answers first: a caller must be able to tell a
+	// malformed request from a disabled feature, so the version check stays
+	// ahead of the experiment gate below (task 81 guard order).
+	if version == "" {
+		return fmt.Errorf("restart: version is required")
+	}
+
 	// Opt-in only (task 81): the action swaps the active install version, so neither a
 	// stale UI nor a tool call may reach it while the experiment is off.
 	if cfg, cfgErr := config.Load(); cfgErr != nil || !cfg.Desktop.ExperimentalRestartUpdate {
