@@ -3512,43 +3512,6 @@ a[href] {
   overflow: hidden;
 }
 
-/* Task 151 (round 3): per-tab transcript panes. Every resident tab keeps its own
-   pane, so a switch toggles which pane is visible instead of making React rebuild
-   the incoming tab's window (measured on two 100-turn tabs: 174ms -> 7ms from click
-   to DOM-complete, bench/tab-render.mjs). */
-/* The visible pane must stay layout-transparent in the closed split layout: the
-   transcript's edge furniture (adaptive scrollbar, question rail) hangs off its flex
-   parent, and a box in between re-parents it and crops that furniture — the same
-   reason .transcript-split--closed > .transcript-split__pane is `display: contents`. */
-.transcript-split--closed > .transcript-split__pane > .transcript-pane:not(.transcript-pane--resident) {
-  display: contents;
-}
-
-/* Open split: the pane owns the box (it carries the overflow clip), so the wrapper
-   inside it takes over that role and the resident panes can position against it. */
-.transcript-split:not(.transcript-split--closed) > .transcript-split__pane {
-  position: relative;
-}
-
-.transcript-split:not(.transcript-split--closed) > .transcript-split__pane > .transcript-pane:not(.transcript-pane--resident) {
-  display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-}
-
-/* A resident pane keeps its layout on purpose. display:none would collapse the scroll
-   container to zero height, which loses the scroll offset and forces a full re-measure
-   on the way back in — exactly the cost this feature exists to avoid. It is hidden,
-   unclickable and inert (TranscriptPaneResidency), so all it costs is memory. */
-.transcript-pane--resident {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  visibility: hidden;
-  pointer-events: none;
-}
-
 /* Task 70-2: at half width the transcript's boxes have to be allowed to shrink.
    Otherwise unbroken code lines and wide tables keep their single-pane intrinsic
    width and get clipped by the pane's overflow instead of wrapping inside it. */
