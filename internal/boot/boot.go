@@ -206,6 +206,14 @@ type Options struct {
 	// OnDeleteSession lets a host move a collaborating session to trash on the
 	// agent's behalf (task 154 sub-item A). Nil omits the delete_session tool.
 	OnDeleteSession func(contactID, sessionPath string, dryRun bool) (agent.DeleteSessionImpact, agent.DeleteSessionResult, error)
+	// OnRenameSession lets a host retitle a collaborating session on the agent's
+	// behalf (task 170). Metadata only, so a running session is safe to rename.
+	// Nil omits the rename_session tool.
+	OnRenameSession agent.RenameSessionFunc
+	// OnMoveTopicToGroup lets a host file a collaborating session into a sidebar
+	// group (task 170), removing it from the group it was in. Nil omits the
+	// move_topic_to_group tool.
+	OnMoveTopicToGroup agent.MoveTopicToGroupFunc
 	// SubagentParentLive reports whether this process currently owns or is
 	// building the parent session. Desktop uses it to avoid probing a live tab's
 	// lease during stale-subagent cleanup. Nil preserves lease-only cleanup.
@@ -1909,6 +1917,14 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// 154 sub-item A: only a host that can delete sessions gets the tool.
 		if opts.OnDeleteSession != nil {
 			reg.Add(agent.NewDeleteSessionTool(collab, opts.OnDeleteSession))
+		}
+		// 170: the "改" half of the CRUD. Both are host capabilities like the
+		// two above: a CLI host without a sidebar has nothing to move or retitle.
+		if opts.OnRenameSession != nil {
+			reg.Add(agent.NewRenameSessionTool(collab, opts.OnRenameSession))
+		}
+		if opts.OnMoveTopicToGroup != nil {
+			reg.Add(agent.NewMoveTopicToGroupTool(collab, opts.OnMoveTopicToGroup))
 		}
 	}
 	// Task 107 P0-②: the model's read-only view of the recovery fence. It reads
