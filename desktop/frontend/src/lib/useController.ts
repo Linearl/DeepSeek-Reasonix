@@ -46,6 +46,7 @@ import { applyHydrateErrorState, hydratePlaceholderItems as resolveHydratePlaceh
 import { isHostRecoveryGuidance } from "./hostRecoverySteer";
 import { activeTabHydrationPlan, canAdoptUnboundLiveSurface, duplicateLiveItemIds, explainReusableCache, hasReusableCachedTranscript, hydratedHistoryApplyMode, sameSessionHydrateIdentity, sameSessionPlaceholderItems, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
 import { effectiveMaxResidentSessions } from "./resourceBudgets";
+import { prefetchMruTabs, type PrefetchCandidate } from "./transcriptPrefetch";
 import { loadLastActiveTabId, saveLastActiveTabId } from "./layoutPreferences";
 import { hydrateIdentityCurrent } from "./sessionIdentity";
 import { historyPageRequestBudget } from "./historyPaging";
@@ -4840,11 +4841,38 @@ export function useController() {
     const hasLocalItems = Boolean(targetState?.items?.length);
     const preserveTargetSurface = hasLocalItems || sameSession || adoptUnboundLiveSurface;
     const placeholderItems = hasLocalItems ? targetState?.items : undefined;
-    const preserveCachedHistory = hasLocalItems;
+    // Task 123 (S5): a prefetched page lives in the transcript store, not in the
+    // tab's surface state, so `preserveCachedHistory` must consult the store too
+    // — otherwise the resident page is ignored (preferResident stays false) and
+    // the switch pays the backend read the prefetch just saved. `skipHistory`
+    // remains keyed on surface items: without them the page still has to be
+    // applied to the tab.
+    const targetResidentInStore = Boolean(
+      targetState?.meta?.sessionPath && getTranscriptStore().isResident(tabId, targetState.meta.sessionPath),
+    );
+    const preserveCachedHistory = hasLocalItems || targetResidentInStore;
     addBreadcrumb("tab.switch", `click ${tabId}`);
     setActiveTabId(tabId);
     activeTabIdRef.current = tabId;
     tabLastActiveAt.current.set(tabId, Date.now());
+    // Task 123 (S5): warm the most-recently-used other tabs so returning to one
+    // of them is served from the store. Fire-and-forget on purpose: a warm-up
+    // must never delay the switch it rides on, and the budget guard inside
+    // prefetchMruTabs drops the work when the store has no headroom.
+    const prefetchCandidates: PrefetchCandidate[] = [];
+    for (const [candidateTabId, candidateState] of statesRef.current) {
+      if (candidateTabId === tabId) continue;
+      const candidatePath = candidateState.meta?.sessionPath?.trim();
+      if (!candidatePath) continue;
+      prefetchCandidates.push({
+        tabId: candidateTabId,
+        sessionPath: candidatePath,
+        revision: candidateState.meta?.sessionRevision,
+        digest: candidateState.meta?.sessionDigest,
+      });
+    }
+    prefetchCandidates.sort((a, b) => (tabLastActiveAt.current.get(b.tabId) ?? 0) - (tabLastActiveAt.current.get(a.tabId) ?? 0));
+    prefetchMruTabs(prefetchCandidates);
     dispatchTo(tabId, { type: "backend_activation_start", backendPendingPrompt: Boolean(optimisticTab?.pendingPrompt) });
     noteActivationStarted(switchRequestId, tabId);
     if (optimisticTab) {

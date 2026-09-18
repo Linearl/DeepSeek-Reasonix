@@ -1195,10 +1195,15 @@ func (e HistoryEntry) inlineBytes() int {
 	return n
 }
 
-// historyWindowWithPersistedTimes is the window-scoped form of
-// historyProviderMessagesWithPersistedTimes: userOffset is the number of
-// user-role messages before the window, keeping the ordinal alignment with
-// the persisted user-message records.
+// historyWindowWithPersistedTimes overlays the persisted wall-clock time of the
+// window's user messages onto a copy, so the transcript can show when a message
+// was sent. Times come from the bounded tail read (task 123): the window is the
+// newest page, so its messages are the newest records of an append-only event
+// log and are matched by id inside a few megabytes. A message whose id is not
+// in that span keeps CreatedAt == 0 and the display omits its timestamp — that
+// is deliberate, because the alternative (replaying the whole session DAG for
+// the full user list) cost the measured 4.0 s of a 5.0 s startup on a 146 MiB
+// log. historyTimeOverlayFullLookup restores that behaviour for comparison.
 func historyWindowWithPersistedTimes(msgs []provider.Message, sessionPath string, userOffset int) []provider.Message {
 	if len(msgs) == 0 || strings.TrimSpace(sessionPath) == "" {
 		return msgs
@@ -1213,6 +1218,41 @@ func historyWindowWithPersistedTimes(msgs []provider.Message, sessionPath string
 	if !needsPersistedTime {
 		return msgs
 	}
+	if historyTimeOverlayFullLookup {
+		return historyWindowWithPersistedTimesFullLookup(msgs, sessionPath, userOffset)
+	}
+	times := persistedUserTimesForWindow(sessionPath)
+	if len(times) == 0 {
+		return msgs
+	}
+	var out []provider.Message
+	for i := range msgs {
+		msg := msgs[i]
+		if msg.CreatedAt > 0 || msg.Role != provider.RoleUser || agent.IsPinnedContextRevision(msg) {
+			continue
+		}
+		id := strings.TrimSpace(msg.ID)
+		at, found := times[id]
+		if id == "" || !found || at <= 0 {
+			continue
+		}
+		if out == nil {
+			out = append([]provider.Message(nil), msgs...)
+		}
+		out[i].CreatedAt = at
+	}
+	if out == nil {
+		return msgs
+	}
+	return out
+}
+
+// historyWindowWithPersistedTimesFullLookup is the pre-task-123 form: it reads
+// the session's whole user-message list (full DAG replay) and aligns it with the
+// window by ordinal. Kept behind historyTimeOverlayFullLookup as a retreat; the
+// ordinal alignment is also what makes it fragile for windows that are not the
+// newest page, which the id-keyed tail read avoids entirely.
+func historyWindowWithPersistedTimesFullLookup(msgs []provider.Message, sessionPath string, userOffset int) []provider.Message {
 	users, err := agent.LoadSessionUserMessages(sessionPath)
 	if err != nil || len(users) <= userOffset {
 		return msgs
