@@ -116,6 +116,12 @@ const CHECKS = [
   { feature: "任务155 bridge 健康债修复（登记即用 + 同 root 接管 + 批 id 幂等）", file: "internal/control/session_v4_bridge.go", patterns: ["reclaimSession", "v4BridgePeers", "ErrLegacyReadOnly"] },
   { feature: "任务155 四档设置 UI 与重启提示", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["SESSION_STORAGE_MODES", "sessionStorageRestartPending"] },
 
+  // ── 任务 170：会话管理工具集「改」（2026-09-18）──────────────────
+  { feature: "任务170 rename_session / move_topic_to_group 工具", file: "internal/agent/session_manage_tools.go", patterns: ["func NewRenameSessionTool", "func NewMoveTopicToGroupTool", "\"move_topic_to_group\""] },
+  { feature: "任务170 host 接线（改名三处同步 + 移动发 metadata 信号）", file: "desktop/session_manage_collab.go", patterns: ["func (a *App) renameCollabSession", "func (a *App) moveCollabTopicToGroup", "emitProjectTreeMetadataChanged"] },
+  { feature: "任务170 移动语义（先摘旧组再加入）", file: "desktop/project_tree_organization.go", patterns: ["func (a *App) MoveTopicToGroup", "func groupContainsTopic"] },
+  { feature: "任务170 工具注册", file: "internal/boot/boot.go", patterns: ["agent.NewRenameSessionTool(collab", "agent.NewMoveTopicToGroupTool(collab"] },
+
   // ── 构建配置 ────────────────────────────────────────────────────
   { feature: "release notes 存在", file: "release-notes/FORK-v1.33.0.md", patterns: ["Fork 修复"] },
   { feature: "wails 版本号", file: "desktop/wails.json", patterns: ["1.38.3"] },
