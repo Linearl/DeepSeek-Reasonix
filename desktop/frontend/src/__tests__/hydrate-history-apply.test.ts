@@ -5,6 +5,7 @@ import {
   canAdoptUnboundLiveSurface,
   duplicateLiveItemIds,
   hasCachedLiveTurn,
+  hasReusableCachedTranscript,
   hydratedHistoryApplyMode,
   sameSessionHydrateIdentity,
   sameSessionPlaceholderItems,
@@ -185,6 +186,41 @@ ok(
     digest: "rev-10",
   }) === "replace",
   "empty idle surface still applies history",
+);
+
+// 2026-09-18 idle-resume regression: a surface that still holds rows but no history
+// prefix (session resumed after a long idle, or a tab opened over a stale surface)
+// used to pass the reuse check on `items.length > 0` alone while nothing was
+// streaming, so the shared fetch was skipped and the user saw a transcript without
+// its history — closing and reopening the tab appeared to fix it, because that clears
+// the surface. Reuse now requires a history prefix in every case.
+const sessionFile = "C:\\sessions\\20260917-012626.485579400-minimax-MiniMax-M3.jsonl";
+const resumedSurface = {
+  items: [{ kind: "assistant", streaming: false }],
+  running: false,
+  turnActive: false,
+  historyPrefixCount: 0,
+  meta: { sessionPath: sessionFile },
+};
+ok(
+  hasReusableCachedTranscript(resumedSurface, sessionFile) === false,
+  "an idle surface without a history prefix is not reusable (idle-resume regression)",
+);
+ok(
+  hasReusableCachedTranscript({ ...resumedSurface, historyPrefixCount: 12 }, sessionFile) === true,
+  "a resident surface with a history prefix is still reusable (task 151 fast path)",
+);
+ok(
+  hasReusableCachedTranscript({ ...resumedSurface, running: true, historyPrefixCount: 3 }, sessionFile) === true,
+  "a streaming surface behind a history prefix is still reusable (#8727)",
+);
+ok(
+  hasReusableCachedTranscript({ items: [], historyPrefixCount: 0, meta: { sessionPath: sessionFile } }, sessionFile) === false,
+  "an empty surface is never reusable",
+);
+ok(
+  hasReusableCachedTranscript({ ...resumedSurface, historyPrefixCount: 5, meta: { sessionPath: "C:\\sessions\\other.jsonl" } }, sessionFile) === false,
+  "a history prefix does not excuse a different session",
 );
 
 console.log(`\n${passed} passed, ${failed} failed`);

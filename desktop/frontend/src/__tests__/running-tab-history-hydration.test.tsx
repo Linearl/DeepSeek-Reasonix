@@ -146,6 +146,7 @@ function currentTabs(): TabMeta[] {
 function historyFor(tabID: string): HistoryMessage[] {
   if (tabID === "tab-r") return [userMessage("history R 1"), userMessage("history R 2")];
   if (tabID === "tab-s") return [userMessage("history S")];
+  if (tabID === "tab-i") return [userMessage("history I")];
   return [userMessage("cached A")];
 }
 
@@ -256,6 +257,35 @@ ok(
 ok(controller?.state.live !== undefined, "installing history leaves the live stream alone");
 eq(controller?.state.items[0]?.kind, "user", "the persisted page lands in front of the streaming turn");
 eq(controller?.state.items[controller.state.items.length - 1]?.kind, "assistant", "the streaming turn stays at the tail");
+
+// Third door, 2026-09-18 (idle-resume): a session resumed after a long idle — or a
+// tab opened over a stale surface — holds replayed rows with no history prefix behind
+// them and nothing streaming, so the live-turn branch of the reuse check never ran.
+// The shared fetch was skipped and the transcript rendered without its history, while
+// closing and reopening the tab appeared to fix it. Reuse now requires a history
+// prefix in every case.
+tabsById.set("tab-i", tabMeta("tab-i"));
+await act(async () => {
+  for (const handler of eventHandlers) {
+    handler({ kind: "message", tabId: "tab-i", text: "resumed row without history" } as WireEvent);
+  }
+  await flushPromises();
+});
+await act(async () => {
+  void controller?.switchTab("tab-i", { ...tabsById.get("tab-i")! });
+  await flushPromises();
+});
+await settle();
+
+eq(controller?.activeTabId, "tab-i", "switching to a resumed session activates its tab");
+ok(
+  controller?.state.items.some((item) => item.kind === "user" && item.text === "history I") ?? false,
+  "a resumed session without a history prefix still fetches its history (idle-resume regression)",
+);
+ok(
+  !(controller?.state.items.some((item) => item.kind === "assistant" && item.text === "resumed row without history") ?? false),
+  "the stale row is replaced by the fetched page instead of standing in for history",
+);
 
 await act(async () => {
   root.unmount();
