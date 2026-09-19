@@ -37,6 +37,10 @@ export interface SettingsView {
   experimentalTraceAsState?: boolean;
   // Task 115: dream/distill memory-curation experiment.
   experimentalDream?: boolean;
+  // Task 184: host performance monitor — 5s samples of memory/IO/key files plus
+  // periodic heap profiles. Off by default.
+  experimentalPerfMonitor?: boolean;
+  perfMonitorIntervalSeconds?: number;
   // Fork task 160: scroll-driven "load older" trigger at the transcript top.
   experimentalAutoLoadOlder?: boolean;
   // Task 19: multi-session collaboration experiment.

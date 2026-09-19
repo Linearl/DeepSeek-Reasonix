@@ -761,6 +761,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalTraceAsState(enabled: boolean): Promise<void>;
   // Task 115: dream/distill memory-curation tools (experimental).
   SetExperimentalDream(enabled: boolean): Promise<void>;
+  SetExperimentalPerfMonitor(enabled: boolean): Promise<void>;
+  SetPerfMonitorIntervalSeconds(seconds: number): Promise<void>;
+  SaveHeapProfile(): Promise<string>;
   // Task 19: multi-session collaboration tools (experimental).
   SetExperimentalSessionCollab(enabled: boolean): Promise<void>;
   // Fork task 160: load older history by scrolling up at the transcript top (experimental).
@@ -4971,6 +4974,9 @@ function makeMockApp(): AppBindings {
     async SetTranscriptCacheTuning() {},
     async SetExperimentalTraceAsState() {},
     async SetExperimentalDream() {},
+    async SetExperimentalPerfMonitor() {},
+    async SetPerfMonitorIntervalSeconds() {},
+    async SaveHeapProfile() { return ""; },
     async SetExperimentalSessionCollab() {},
     async SetExperimentalAutoLoadOlder() {},
     async ListAddressableSessions() { return []; },

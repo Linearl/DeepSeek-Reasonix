@@ -135,6 +135,9 @@ type App struct {
 	catalogRebuild     *sessionCatalogRebuildFlight
 	catalogRebuilding  atomic.Bool
 	shuttingDown       atomic.Bool
+	// perfMonitor is the opt-in host performance sampler (task 184). Nil unless
+	// the experiment is on: "off" means no ticker, goroutine or file handle.
+	perfMonitor *perfMonitor
 	// catalogReconcileJobs coalesces both the legacy pre-scan and catalog scan.
 	// Catalog deduplicates its worker; this also prevents callers from
 	// stampeding the otherwise-unbounded pre-scan goroutines.
@@ -544,6 +547,18 @@ func (a *App) startup(ctx context.Context) {
 	a.startTray()
 	a.enableDeferredRebuildRetry()
 	a.startHistoryIndexMigration()
+	// Task 184: the performance monitor is opt-in and restart-scoped (its interval
+	// and file table come from the config read here). When the switch is off this
+	// block does nothing at all.
+	if cfg, err := config.Load(); err == nil &&
+		(cfg.Agent.ExperimentalPerfMonitor || cfg.Desktop.ExperimentalPerfMonitor) {
+		interval, retention, paths := perfMonitorSettings(cfg)
+		monitor := newPerfMonitor(a, perfMonitorDir(), interval, retention, paths)
+		a.perfMonitor = monitor
+		monitor.Start()
+		slog.Info("desktop: perf monitor started",
+			"intervalSeconds", interval.Seconds(), "retentionHours", retention.Hours(), "patterns", len(paths))
+	}
 	a.goSafe("repairDesktopIconIntegration", func() {
 		if err := repairDesktopIconIntegration(); err != nil {
 			slog.Debug("desktop: repair native icon integration", "err", err)

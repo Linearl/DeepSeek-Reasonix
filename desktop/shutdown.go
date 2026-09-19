@@ -22,6 +22,10 @@ func completeDesktopShutdown(tracker *desktopLifecycleTracker, body func()) {
 }
 
 func (a *App) shutdownBody() {
+	if a.perfMonitor != nil {
+		a.perfMonitor.Stop()
+		a.perfMonitor = nil
+	}
 	if a.topicState != nil {
 		defer a.topicState.close()
 	}
