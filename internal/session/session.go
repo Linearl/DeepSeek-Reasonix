@@ -385,13 +385,15 @@ func (s *Session) snapshot(includeHistory, includeModel bool) Snapshot {
 		history = s.coldHandle
 	}
 	s.mu.Unlock()
+	truncatedHistory := false
 	if includeHistory && externalHistory {
 		// Snapshot is the explicit full-history compatibility boundary. Service
 		// progress and Goal paths use StateSnapshot; paged clients use Query.
 		// Reconstructing here preserves existing callers without keeping a second
 		// durable UI transcript resident in every runtime.
-		if messages, err := materializeSnapshotMessages(history, accepted, sequence); err == nil {
+		if messages, truncated, err := materializeSnapshotMessages(history, accepted, sequence, snapshotHistoryByteBudget); err == nil {
 			projection.Messages = messages
+			truncatedHistory = truncated
 		}
 	}
 	if !includeHistory {
@@ -400,7 +402,7 @@ func (s *Session) snapshot(includeHistory, includeModel bool) Snapshot {
 	if !includeModel {
 		projection.ModelMessages, projection.Turns = nil, nil
 	}
-	snapshot := Snapshot{EventSequence: sequence, Projection: cloneProjection(projection)}
+	snapshot := Snapshot{EventSequence: sequence, Projection: cloneProjection(projection), HistoryTruncated: truncatedHistory}
 	if s.binding != nil {
 		durable, status, detail := s.binding.progress()
 		snapshot.DurableSequence, snapshot.PersistenceStatus, snapshot.PersistenceError = durable, status, detail
@@ -495,22 +497,83 @@ func (s *Session) RecentSnapshot() RecentSnapshot {
 	return snapshot
 }
 
-func materializeSnapshotMessages(history eventPageReader, accepted []Commit, acceptedSequence uint64) ([]provider.Message, error) {
+// snapshotHistoryByteBudget bounds what a compatibility full-history snapshot may
+// keep resident.
+//
+// Durable history is unbounded by design (append-only log plus paged Query), so a
+// reconstruction handed to a caller must be bounded too: the 2026-09-19 heap
+// profile attributed 9.4 GB to resolveContentPayload because every Snapshot()
+// rebuilt the whole transcript and the caller then held it. Rebuilding stays, the
+// unbounded part goes away.
+const snapshotHistoryByteBudget = 96 << 20
+
+// messageBytes is the shallow byte cost of a message list, the same accounting
+// cacheWeight applies to the model projection.
+func messageBytes(messages []provider.Message) int64 {
+	var total int64
+	for _, message := range messages {
+		total += int64(len(message.ID) + len(message.Content) + len(message.RawContent) + len(message.ProviderContent) + len(message.ReasoningContent) + len(message.ReasoningSignature) + len(message.Original))
+		for _, image := range message.Images {
+			total += int64(len(image))
+		}
+		for _, call := range message.ToolCalls {
+			total += int64(len(call.ID) + len(call.Name) + len(call.Arguments) + len(call.Diff))
+		}
+		for _, item := range message.ResponsesItems {
+			total += int64(len(item))
+		}
+		for _, block := range message.ThinkingBlocks {
+			encoded, _ := json.Marshal(block)
+			total += int64(len(encoded))
+		}
+	}
+	return total
+}
+
+// trimMessagesToBudget drops the oldest messages until the list fits the budget,
+// keeping the newest ones: a caller that pages through Query can always ask for
+// older history again, but it cannot un-allocate what it was handed.
+func trimMessagesToBudget(messages []provider.Message, budget int64) ([]provider.Message, bool) {
+	if budget <= 0 {
+		return messages, false
+	}
+	truncated := false
+	for len(messages) > 1 && messageBytes(messages) > budget {
+		drop := len(messages) / 8
+		if drop < 1 {
+			drop = 1
+		}
+		messages = messages[drop:]
+		truncated = true
+	}
+	return messages, truncated
+}
+
+func materializeSnapshotMessages(history eventPageReader, accepted []Commit, acceptedSequence uint64, budget int64) ([]provider.Message, bool, error) {
 	projection, _ := Project(nil)
 	var cursor uint64
+	truncated := false
+	// trim keeps the reconstruction bounded while it grows: waiting until the end
+	// would re-create the peak the bound exists to remove. Both loops below need
+	// it, so it lives in the function scope.
+	trim := func() {
+		var dropped bool
+		projection.Messages, dropped = trimMessagesToBudget(projection.Messages, budget)
+		truncated = truncated || dropped
+	}
 	if history != nil {
 		for {
 			startCursor := cursor
 			page, err := history.Read(context.Background(), cursor, 1000)
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 			for _, commit := range page.Commits {
 				if commit.LastSequence() > acceptedSequence {
 					break
 				}
 				if err := applyProjectionCommit(&projection, commit); err != nil {
-					return nil, err
+					return nil, false, err
 				}
 				// Only UI messages are requested at this compatibility boundary.
 				// Clearing the provider projection after each commit prevents a
@@ -518,11 +581,12 @@ func materializeSnapshotMessages(history eventPageReader, accepted []Commit, acc
 				projection.ModelMessages = nil
 				cursor = commit.LastSequence()
 			}
+			trim()
 			if !page.Truncated || cursor >= acceptedSequence {
 				break
 			}
 			if cursor <= startCursor {
-				return nil, fmt.Errorf("%w: full snapshot cursor did not advance", ErrDamagedStore)
+				return nil, false, fmt.Errorf("%w: full snapshot cursor did not advance", ErrDamagedStore)
 			}
 		}
 	}
@@ -531,12 +595,13 @@ func materializeSnapshotMessages(history eventPageReader, accepted []Commit, acc
 			continue
 		}
 		if err := applyProjectionCommit(&projection, commit); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		projection.ModelMessages = nil
 		cursor = commit.LastSequence()
 	}
-	return projection.Messages, nil
+	trim()
+	return projection.Messages, truncated, nil
 }
 
 // externalizeDurableHistory switches a Service-owned runtime to the bounded

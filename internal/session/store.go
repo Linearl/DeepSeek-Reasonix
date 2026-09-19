@@ -137,6 +137,11 @@ type Snapshot struct {
 	PersistenceStatus PersistenceStatus
 	PersistenceError  string
 	Projection        Projection
+	// HistoryTruncated reports that Projection.Messages is bounded rather than
+	// the complete transcript: the reconstruction hit snapshotHistoryByteBudget
+	// and kept the newest messages. Callers that need older history page through
+	// Query instead of assuming this snapshot is complete.
+	HistoryTruncated bool
 }
 
 type timerHandle interface{ Stop() bool }
