@@ -15,8 +15,7 @@
 // the common case slower. Every entry point checks the live store stats first.
 
 import { reportFrontendLog } from "./frontendLog";
-import { effectiveMaxResidentSessions } from "./resourceBudgets";
-import { getTranscriptStore } from "./transcriptStore";
+import { getTranscriptStore, type TranscriptStore } from "./transcriptStore";
 
 /** The newest-page turn budget. Must stay equal to HISTORY_PAGE_TURNS in
  * lib/historyPaging.ts (and useController's copy of it): a warmed page is only
@@ -44,6 +43,13 @@ const PREFETCH_COOLDOWN_MS = 30_000;
  * read. */
 const PREFETCH_MIN_HEADROOM_BYTES = 8 << 20;
 
+type PrefetchOptions = {
+  /** Bypass the cooldown (tests and explicit user gestures only). */
+  force?: boolean;
+  /** Test seam: use this store instead of the app singleton. */
+  store?: TranscriptStore;
+};
+
 const prefetchedAt = new Map<string, number>();
 const inFlight = new Set<string>();
 
@@ -51,32 +57,47 @@ function prefetchKey(candidate: PrefetchCandidate): string {
   return `${candidate.tabId}\u0000${candidate.sessionPath}`;
 }
 
-function prefetchBudgetAllows(residentSessions: number): boolean {
-  const stats = getTranscriptStore().stats();
+function prefetchBudgetAllows(store: TranscriptStore): boolean {
+  const stats = store.stats();
   const budget = stats.bodyBudgetBytes || 0;
   if (budget <= 0) return false;
   if (budget - stats.bodyBytes < PREFETCH_MIN_HEADROOM_BYTES) return false;
-  const residentLimit = effectiveMaxResidentSessions();
-  return !(residentLimit > 0 && residentSessions >= residentLimit);
+  // Use the store's own resident ceiling. The module-level
+  // effectiveMaxResidentSessions() is the *tab state* LRU limit (24 by default)
+  // and is not what the store enforces — comparing against it let prefetch run
+  // while the store was already at capacity, so the speculative page evicted a
+  // session the user actually needed.
+  const residentLimit = stats.maxResidentSessions;
+  return !(residentLimit > 0 && stats.residentSessions >= residentLimit);
 }
 
 /**
  * Warms one tab's newest transcript page. Safe to call repeatedly: it coalesces
- * in-flight work, honours a cooldown, and silently gives up when the store is
- * under budget pressure or the page cannot be read.
+ * in-flight work, honours a cooldown, and gives up when the page is already
+ * resident or the store is under budget pressure.
  */
-export function prefetchTabTranscript(candidate: PrefetchCandidate, options: { force?: boolean } = {}): void {
+export function prefetchTabTranscript(candidate: PrefetchCandidate, options: PrefetchOptions = {}): void {
   const sessionPath = (candidate.sessionPath ?? "").trim();
   if (!candidate.tabId || !sessionPath) return;
   const key = prefetchKey(candidate);
   if (inFlight.has(key)) return;
+  const store = options.store ?? getTranscriptStore();
+  // 2026-09-19 regression fix: warming a tab that already holds its page is pure
+  // waste, and production logs showed it was the common case — 100 of the first
+  // 114 prefetches ran with the page already resident, each paying a redundant
+  // backend page read plus a full record/projection rebuild (85-675 ms) while
+  // the user was switching tabs. The switch path validates the resident page's
+  // fingerprint itself and refetches when it went stale, so skipping here cannot
+  // serve stale history.
+  if (store.isResident(candidate.tabId, sessionPath)) {
+    reportFrontendLog("history-paging", "history prefetch skipped", `tab=${candidate.tabId} reason=resident`, "info");
+    return;
+  }
   if (!options.force) {
     const last = prefetchedAt.get(key);
     if (last !== undefined && Date.now() - last < PREFETCH_COOLDOWN_MS) return;
   }
-  const store = getTranscriptStore();
-  const alreadyResident = store.isResident(candidate.tabId, sessionPath);
-  if (!prefetchBudgetAllows(store.stats().residentSessions)) {
+  if (!prefetchBudgetAllows(store)) {
     reportFrontendLog("history-paging", "history prefetch skipped", `tab=${candidate.tabId} reason=budget`, "info");
     return;
   }
@@ -96,7 +117,7 @@ export function prefetchTabTranscript(candidate: PrefetchCandidate, options: { f
       reportFrontendLog(
         "history-paging",
         "history prefetched",
-        `tab=${candidate.tabId} entries=${projection?.items.length ?? 0} residentBefore=${alreadyResident} ms=${Date.now() - startedAt}`,
+        `tab=${candidate.tabId} entries=${projection?.items.length ?? 0} ms=${Date.now() - startedAt}`,
         "info",
       );
     })
@@ -113,7 +134,11 @@ export function prefetchTabTranscript(candidate: PrefetchCandidate, options: { f
  * Warms the first `limit` candidates (already ordered most-recently-used first).
  * Each candidate is independent; one giving up does not stop the others.
  */
-export function prefetchMruTabs(candidates: PrefetchCandidate[], limit = PREFETCH_MAX_PER_TRIGGER): void {
+export function prefetchMruTabs(
+  candidates: PrefetchCandidate[],
+  limit = PREFETCH_MAX_PER_TRIGGER,
+  options: PrefetchOptions = {},
+): void {
   let started = 0;
   for (const candidate of candidates) {
     if (started >= limit) return;
@@ -123,7 +148,7 @@ export function prefetchMruTabs(candidates: PrefetchCandidate[], limit = PREFETC
     const last = prefetchedAt.get(key);
     if (last !== undefined && Date.now() - last < PREFETCH_COOLDOWN_MS) continue;
     started += 1;
-    prefetchTabTranscript(candidate);
+    prefetchTabTranscript(candidate, options);
   }
 }
 
