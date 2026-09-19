@@ -1386,6 +1386,22 @@ type AgentConfig struct {
 	// default: the "load older" button is the reliable path, and this scroll
 	// trigger is the fork's enhancement layered on top of it.
 	ExperimentalAutoLoadOlder bool `toml:"experimental_auto_load_older"`
+	// ExperimentalPerfMonitor enables the host performance monitor (task 184):
+	// one JSON line per interval carrying process memory/IO/handle counters plus
+	// the sizes of the session store's key files, so an intermittent problem can
+	// be read off a time series instead of a single snapshot. Off by default: it
+	// is pure observation, but it does write a file while it runs.
+	ExperimentalPerfMonitor bool `toml:"experimental_perf_monitor"`
+	// PerfMonitorIntervalSeconds is the sampler interval; 0 keeps the built-in
+	// default (5s) and values outside 1..300 are clamped.
+	PerfMonitorIntervalSeconds int `toml:"perf_monitor_interval_seconds"`
+	// PerfMonitorRetentionHours bounds how long samples are kept; 0 keeps the
+	// built-in default (48h).
+	PerfMonitorRetentionHours int `toml:"perf_monitor_retention_hours"`
+	// PerfMonitorPaths overrides the monitor's file-size table: glob patterns,
+	// resolved on every sample (empty keeps the built-in table of v4 recovery
+	// caches, the desktop log and the live transcripts).
+	PerfMonitorPaths []string `toml:"perf_monitor_paths"`
 	// StalledIntentNudge enables the "you announced the next step instead of
 	// taking it" repair for ordinary sessions (task 117). Off by default:
 	// upstream only fires this under ContinuationExplicitFlow (Goal/review).

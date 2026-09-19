@@ -466,6 +466,30 @@ func (c *Config) SetSessionStorage(mode string) error {
 	return nil
 }
 
+// SetExperimentalPerfMonitor toggles the host performance monitor (task 184). It is
+// opt-in because, although it only observes, it appends to a file for as long as
+// it runs; the Desktop copy is the settings-view mirror.
+func (c *Config) SetExperimentalPerfMonitor(enabled bool) error {
+	c.Desktop.ExperimentalPerfMonitor = enabled
+	c.Agent.ExperimentalPerfMonitor = enabled
+	return nil
+}
+
+// SetPerfMonitorIntervalSeconds sets the sampler interval (task 184). A typo must
+// not turn the sampler into a busy loop, so the value is clamped rather than
+// accepted as-is.
+func (c *Config) SetPerfMonitorIntervalSeconds(seconds int) error {
+	if seconds < 1 {
+		seconds = 1
+	}
+	if seconds > 300 {
+		seconds = 300
+	}
+	c.Desktop.PerfMonitorIntervalSeconds = seconds
+	c.Agent.PerfMonitorIntervalSeconds = seconds
+	return nil
+}
+
 // SetExperimentalRestartUpdate toggles the restart-and-update action (task 81). It is
 // opt-in because it swaps the running install for a staged one - a path that has no
 // verification step, by design, since the update itself comes from a trusted release.

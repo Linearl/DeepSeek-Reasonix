@@ -38,6 +38,12 @@ type DesktopConfig struct {
 	// ships off: with it off the tab context menu looks exactly as it did before the
 	// split existed (zero regression), and the split stays an opt-in experiment.
 	ExperimentalSplitView bool `toml:"experimental_split_view"`
+	// ExperimentalPerfMonitor is the settings-view mirror for
+	// Agent.ExperimentalPerfMonitor (task 184).
+	ExperimentalPerfMonitor bool `toml:"experimental_perf_monitor"`
+	// PerfMonitorIntervalSeconds is the settings-view mirror for the sampler
+	// interval (task 184). 0 = default 5s.
+	PerfMonitorIntervalSeconds int `toml:"perf_monitor_interval_seconds"`
 	// ExperimentalFeedback exposes the agent submit_feedback tool and the desktop
 	// "意见箱" panel (task 121). It ships off: feedback is a local inbox, not a
 	// product surface, so both the tool and the viewer stay behind an opt-in.
