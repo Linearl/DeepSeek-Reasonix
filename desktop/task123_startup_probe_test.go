@@ -115,9 +115,22 @@ func task123ProbeStartupHistory(t *testing.T, sessionDir, sessionPath string) {
 		stamped, userRows := task123CountStamped(cold)
 		t.Logf("    => cold page entries=%d turns=%d-%d/%d inlineBytes~%d ms=%d",
 			len(cold.Entries), cold.StartTurn, cold.EndTurn, cold.TotalTurns, task123InlineBytes(cold), coldElapsed.Milliseconds())
+		// 2026-09-19 regression follow-up: the newest page returns its truncated
+		// fields as refs, and transcriptStore.autoFetchRefs pulls every one of them
+		// back in full when the page loads — including a prefetch load. So the real
+		// memory cost of warming a tab is the ref total, not the inline budget that
+		// bounds what comes back inline. Measure it rather than assume it.
+		refCount, refBytes := 0, 0
+		for _, entry := range cold.Entries {
+			for _, ref := range entry.Refs {
+				refCount++
+				refBytes += ref.Size
+			}
+		}
+		t.Logf("    => page refs=%d refBytes=%.1f MiB (fetched in full on load)", refCount, float64(refBytes)/(1<<20))
 		t.Logf("    => persisted-time overlay stamped %d/%d user rows", stamped, userRows)
-		hits, misses := historyTimeOverlayStats()
-		t.Logf("    => overlay tail cache hits=%d misses=%d", hits, misses)
+		hits, misses, extends := historyTimeOverlayStats()
+		t.Logf("    => overlay tail cache hits=%d misses=%d extends=%d", hits, misses, extends)
 
 		var warm HistorySlice
 		warmElapsed := task123ProbeStep(t, "pageHistorySliceSource(index) [warm]", func() {
