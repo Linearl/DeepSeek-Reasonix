@@ -7,7 +7,7 @@ import (
 
 // SchemaVersion is the on-disk format version. Unknown higher versions load
 // read-only and force pause; they never auto-execute.
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 // Default capacity limits.
 const (
@@ -125,9 +125,11 @@ type StructuredInvocation struct {
 
 // PromptEnvelope is the full durable body stored only in blobs/<id>.json.
 type PromptEnvelope struct {
-	DisplayText string `json:"displayText"`
-	RawText     string `json:"rawText"`
-	SubmitText  string `json:"submitText"`
+	FingerprintVersion int    `json:"fingerprintVersion,omitempty"`
+	RequestFingerprint string `json:"requestFingerprint,omitempty"`
+	DisplayText        string `json:"displayText"`
+	RawText            string `json:"rawText"`
+	SubmitText         string `json:"submitText"`
 	// Invocation is retained for schema-v1 compatibility. New writers use
 	// Invocations so multiple rich-composer entities preserve visual order.
 	Invocation  *StructuredInvocation  `json:"invocation,omitempty"`
