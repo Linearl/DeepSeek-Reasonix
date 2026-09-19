@@ -3845,8 +3845,8 @@ a[href] {
 }
 .sandbox-write-roots__grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 16px;
+  grid-template-columns: 1fr;
+  gap: 14px;
 }
 .sandbox-write-roots__col {
   min-width: 0;
@@ -3860,11 +3860,7 @@ a[href] {
   font-size: 12px;
   line-height: 1.4;
 }
-@media (max-width: 900px) {
-  .sandbox-write-roots__grid {
-    grid-template-columns: 1fr;
-  }
-}
+
 /* Task 132: experimental features left rail + detail pane. */
 .experimental-layout {
   display: grid;
@@ -16788,6 +16784,18 @@ body > .mermaid-diagram--fullscreen {
 
 .settings-field__hint-tooltip {
   max-width: 100%;
+}
+
+.settings-field--wrapped {
+  grid-template-columns: 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.settings-field--wrapped .settings-field__hint-line {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .settings-field__hint-line {

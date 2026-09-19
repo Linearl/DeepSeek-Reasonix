@@ -1881,7 +1881,7 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
             </>
           )}
           {selected === "sessionStorage" && (
-            <SettingsField label={t("settings.sessionStorage")} hint={t("settings.sessionStorageHint")} icon={<Sparkles size={18} />}>
+            <SettingsField label={t("settings.sessionStorage")} hint={t("settings.sessionStorageHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
               <SettingsOptions layout="field" className="set-seg">
                 {SESSION_STORAGE_MODES.map((mode) => (
                   <button
