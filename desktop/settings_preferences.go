@@ -235,6 +235,18 @@ func (a *App) SetExperimentalDream(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalDream(enabled) })
 }
 
+// SetExperimentalPerfMonitor toggles the host performance monitor (task 184).
+// Restart-scoped: interval and file table are read while the app starts.
+func (a *App) SetExperimentalPerfMonitor(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalPerfMonitor(enabled) })
+}
+
+// SetPerfMonitorIntervalSeconds sets the sampler interval (task 184); the config
+// layer clamps it to 1..300 and 0 restores the 5s default.
+func (a *App) SetPerfMonitorIntervalSeconds(seconds int) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetPerfMonitorIntervalSeconds(seconds) })
+}
+
 // SetExperimentalAutoLoadOlder toggles the scroll-driven history trigger (fork
 // task 160). The explicit "load older" button stays available either way.
 func (a *App) SetExperimentalAutoLoadOlder(enabled bool) error {

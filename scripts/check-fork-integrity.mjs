@@ -122,6 +122,13 @@ const CHECKS = [
   { feature: "任务170 移动语义（先摘旧组再加入）", file: "desktop/project_tree_organization.go", patterns: ["func (a *App) MoveTopicToGroup", "func groupContainsTopic"] },
   { feature: "任务170 工具注册", file: "internal/boot/boot.go", patterns: ["agent.NewRenameSessionTool(collab", "agent.NewMoveTopicToGroupTool(collab"] },
 
+  // ── 任务 184：host 性能监控 + heap profile（2026-09-19）───────────
+  { feature: "任务184 监控开关与配置字段", file: "internal/config/config.go", patterns: ["experimental_perf_monitor", "perf_monitor_interval_seconds", "perf_monitor_retention_hours"] },
+  { feature: "任务184 监控采样器与 heap profile", file: "desktop/perf_monitor.go", patterns: ["func (a *App) SaveHeapProfile", "func (m *perfMonitor) writeHeapProfile", "perf-sample-", "perfMonitorHeapKept"] },
+  { feature: "任务184 窗口指标（Win32 计数器）", file: "desktop/perf_monitor_windows.go", patterns: ["GetProcessMemoryInfo", "GetProcessIoCounters"] },
+  { feature: "任务184 session 常驻统计", file: "internal/session/stats.go", patterns: ["func (s *Service) OperationResidency", "func (s *Session) OperationResidency"] },
+  { feature: "任务184 设置页入口", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["perfMonitor", "settings.perfMonitor.heapAction"] },
+
   // ── 构建配置 ────────────────────────────────────────────────────
   { feature: "release notes 存在", file: "release-notes/FORK-v1.33.0.md", patterns: ["Fork 修复"] },
   { feature: "wails 版本号", file: "desktop/wails.json", patterns: ["1.38.3"] },

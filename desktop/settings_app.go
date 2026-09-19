@@ -349,13 +349,15 @@ type SettingsView struct {
 	ExperimentalPathRules        bool   `json:"experimentalPathRules"`
 	ExperimentalTraceAsState     bool   `json:"experimentalTraceAsState"`
 	// Task 161: cache tuning mirrors (Settings panel reads these from this view).
-	MaxCachedTabs             int  `json:"maxCachedTabs"`
-	HistoryBodyBudgetMb       int  `json:"historyBodyBudgetMb"`
-	MarkdownBudgetMb          int  `json:"markdownBudgetMb"`
-	ExperimentalCacheTuning   bool `json:"experimentalCacheTuning"`
-	ExperimentalDream         bool `json:"experimentalDream"`
-	ExperimentalSessionCollab bool `json:"experimentalSessionCollab"`
-	ExperimentalAutoLoadOlder bool `json:"experimentalAutoLoadOlder"`
+	MaxCachedTabs              int  `json:"maxCachedTabs"`
+	HistoryBodyBudgetMb        int  `json:"historyBodyBudgetMb"`
+	MarkdownBudgetMb           int  `json:"markdownBudgetMb"`
+	ExperimentalCacheTuning    bool `json:"experimentalCacheTuning"`
+	ExperimentalDream          bool `json:"experimentalDream"`
+	ExperimentalPerfMonitor    bool `json:"experimentalPerfMonitor"`
+	PerfMonitorIntervalSeconds int  `json:"perfMonitorIntervalSeconds"`
+	ExperimentalSessionCollab  bool `json:"experimentalSessionCollab"`
+	ExperimentalAutoLoadOlder  bool `json:"experimentalAutoLoadOlder"`
 
 	VisionModel                  string                     `json:"visionModel"`
 	WebSearchModel               string                     `json:"webSearchModel"`
@@ -449,7 +451,9 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalTraceAsState exposes Trace-as-State compaction (task 60).
 	ExperimentalTraceAsState bool `json:"experimentalTraceAsState"`
 	// ExperimentalDream exposes dream/distill memory-curation tools (task 115).
-	ExperimentalDream bool `json:"experimentalDream"`
+	ExperimentalDream          bool `json:"experimentalDream"`
+	ExperimentalPerfMonitor    bool `json:"experimentalPerfMonitor"`
+	PerfMonitorIntervalSeconds int  `json:"perfMonitorIntervalSeconds"`
 	// ExperimentalSessionCollab exposes multi-session collaboration (task 19).
 	ExperimentalSessionCollab bool `json:"experimentalSessionCollab"`
 	// ExperimentalAutoLoadOlder exposes the scroll-driven history trigger (fork
@@ -1120,6 +1124,8 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalFeedback = cfg.Desktop.ExperimentalFeedback
 		view.ExperimentalTraceAsState = cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState
 		view.ExperimentalDream = cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream
+		view.ExperimentalPerfMonitor = cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor
+		view.PerfMonitorIntervalSeconds = cfg.Desktop.PerfMonitorIntervalSeconds
 		view.ExperimentalSessionCollab = cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab
 		view.ExperimentalAutoLoadOlder = cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder
 		view.ExperimentalLocalServer = cfg.Desktop.ExperimentalLocalServer
@@ -1201,6 +1207,8 @@ func (a *App) Settings() SettingsView {
 		ExperimentalFeedback:         cfg.Desktop.ExperimentalFeedback,
 		ExperimentalTraceAsState:     cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState,
 		ExperimentalDream:            cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream,
+		ExperimentalPerfMonitor:      cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,
+		PerfMonitorIntervalSeconds:   cfg.Desktop.PerfMonitorIntervalSeconds,
 		ExperimentalSessionCollab:    cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
 		ExperimentalAutoLoadOlder:    cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
 		ExperimentalLocalServer:      cfg.Desktop.ExperimentalLocalServer,

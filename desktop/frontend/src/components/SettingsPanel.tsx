@@ -1741,6 +1741,7 @@ type ExperimentFeatureId =
   | "cacheTuning"
   | "traceAsState"
   | "dream"
+  | "perfMonitor"
   | "autoLoadOlder"
   | "sessionCollab"
   | "autopilot";
@@ -1750,6 +1751,9 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // restart is pending has to live outside the data being reloaded.
   const [restartNeeded, setRestartNeeded] = useState(false);
   const [dreamTaskCreated, setDreamTaskCreated] = useState(false);
+  // Task 184: the sampler interval is a number the user can edit; the config layer
+  // clamps it, so the box can hold an intermediate value while typing.
+  const [perfInterval, setPerfInterval] = useState<number>(s.perfMonitorIntervalSeconds ?? 5);
   // Task 19: the addressable roster is read on demand, not on every settings
   // load — a session only appears once it has registered a purpose.
   const [sessionCollabRoster, setSessionCollabRoster] = useState<Awaited<ReturnType<typeof app.ListAddressableSessions>>>([]);
@@ -1792,6 +1796,7 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
     { id: "cacheTuning", label: t("settings.cacheTuning"), on: Boolean(s.experimentalCacheTuning) },
     { id: "traceAsState", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
     { id: "dream", label: t("settings.dream"), on: Boolean(s.experimentalDream) },
+    { id: "perfMonitor", label: t("settings.perfMonitor"), on: Boolean(s.experimentalPerfMonitor) },
     { id: "autoLoadOlder", label: t("settings.autoLoadOlder"), on: Boolean(s.experimentalAutoLoadOlder) },
     { id: "sessionCollab", label: t("settings.sessionCollab"), on: Boolean(s.experimentalSessionCollab) },
     { id: "autopilot", label: t("settings.autopilot"), on: Boolean(s.autopilot) },
@@ -2102,6 +2107,51 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
                 ))}
               </SettingsOptions>
             </SettingsField>
+          )}
+          {selected === "perfMonitor" && (
+            <>
+              <SettingsField label={t("settings.perfMonitor")} hint={t("settings.perfMonitorHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalPerfMonitor) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalPerfMonitor(on);
+                      })}
+                    >
+                      {t(on ? "settings.perfMonitorMode.on" : "settings.perfMonitorMode.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.perfMonitor.interval")} hint={t("settings.perfMonitor.intervalHint")} icon={<Sparkles size={18} />}>
+                <input
+                  type="number"
+                  min={1}
+                  max={300}
+                  value={perfInterval}
+                  disabled={busy}
+                  onChange={(event) => setPerfInterval(Number(event.target.value))}
+                  onBlur={() => void apply(async () => {
+                    await app.SetPerfMonitorIntervalSeconds(perfInterval);
+                  })}
+                />
+              </SettingsField>
+              <SettingsField label={t("settings.perfMonitor.heap")} hint={t("settings.perfMonitor.heapHint")} icon={<Sparkles size={18} />}>
+                <button
+                  type="button"
+                  className="btn btn--sm"
+                  disabled={busy}
+                  onClick={() => void apply(async () => {
+                    await app.SaveHeapProfile();
+                  })}
+                >
+                  {t("settings.perfMonitor.heapAction")}
+                </button>
+              </SettingsField>
+            </>
           )}
           {selected === "dream" && (
             <>
