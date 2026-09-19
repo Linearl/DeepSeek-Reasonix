@@ -9,7 +9,6 @@ import type { DisplayAttachment } from "../lib/attachmentDisplay";
 import { app } from "../lib/bridge";
 import { replaySubmitTextPreservingSelectedContext } from "../lib/editReplay";
 import { useT } from "../lib/i18n";
-import { ImageViewer } from "./ImageViewer";
 import { Tooltip } from "./Tooltip";
 import { useWorkProcessPresentation } from "../lib/sessionExperience";
 import { stripMemoryCompilerExecution } from "../lib/memoryCompilerDisplay";
@@ -269,7 +268,7 @@ export function UserMessage({
   const hasMemoryCompiler = Boolean(submitText?.includes("<memory-compiler-execution>"));
   const selectedTextEntries = useMemo(() => parseSelectedTextContext(submitText), [submitText]);
   const editableActionText = stripSelectionLabels(actionText, selectedTextEntries);
-  const { text: editableDisplayText, attachments } = parseAttachmentRefsForDisplay(editableActionText);
+  const { text: editableDisplayText, attachments: parsedAttachments } = parseAttachmentRefsForDisplay(editableActionText);
   const selectionLabels = formatSelectionLabels(selectedTextEntries);
   const displayText = [editableDisplayText, selectionLabels].filter(Boolean).join(editableDisplayText && selectionLabels ? " " : "");
   // Task 258: fold a drain-merged injection into "合并消息 ×N" + expandable
@@ -277,7 +276,6 @@ export function UserMessage({
   const mergedMessage = useMemo(() => (imSource ? null : parseMergedMessage(displayText)), [imSource, displayText]);
   const invocationSegments = imSource ? [] : invocationSegmentsFromMessage(displayText, submitText, invocationMetadata);
   const hasInvocationSegments = invocationSegments.some((segment) => segment.type === "invocation");
-  const orderedAttachments = sortDisplayAttachments(attachments);
   const sourceLabel = imSource ? imSourceLabel(imSource, t) : "";
   const sentAt = createdAt === undefined ? null : messageDate(createdAt);
   const canEdit = turn !== undefined && onEdit !== undefined && !editDisabled;
@@ -584,50 +582,7 @@ export function UserMessage({
           </>
         )}
         {failed && <div className="msg__send-failed" data-transcript-selection-ignore>{t("msg.sendFailed")}</div>}
-        {orderedAttachments.length > 0 && (
-          <div className="msg-attachments" aria-label={t("msg.attachments")} data-transcript-selection-ignore>
-            {orderedAttachments.map((attachment, index) => {
-              const isImage = attachment.kind === "image";
-              const el = (
-                <div
-                  className={`msg-attachment msg-attachment--${attachment.kind}`}
-                  key={isImage ? undefined : `${attachment.path}:${index}`}
-                  title={isImage ? undefined : attachment.path}
-                  onClick={isImage ? () => openImageViewer(attachment.path, attachment.name) : undefined}
-                  role={isImage ? "button" : undefined}
-                  tabIndex={isImage ? 0 : undefined}
-                  onKeyDown={isImage ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openImageViewer(attachment.path, attachment.name); } } : undefined}
-                >
-                  <span className={`msg-attachment__icon msg-attachment__icon--${attachment.kind}`} aria-hidden="true">
-                    {isImage && imagePreviews[attachment.path] ? <img src={imagePreviews[attachment.path]} alt="" draggable={false} /> : attachmentIcon(attachment.kind)}
-                  </span>
-                  <span className="msg-attachment__main">
-                    <span className="msg-attachment__name">{attachment.name}</span>
-                    <span className="msg-attachment__meta">
-                      {attachment.kind === "folder"
-                        ? t("msg.folderReference")
-                        : `${attachment.ext || t("msg.fileAttachment")} · ${attachment.source === "workspace" ? t("msg.workspaceReference") : attachment.kind === "image" ? t("msg.imageAttachment") : t("msg.fileAttachment")}`}
-                    </span>
-                  </span>
-                </div>
-              );
-              if (isImage) {
-                return (
-                  <Tooltip key={`${attachment.path}:${index}`} label={t("imageViewer.clickToPreview")} block>
-                    {el}
-                  </Tooltip>
-                );
-              }
-              return el;
-            })}
-            <ImageViewer
-              open={imageViewer.open}
-              imageUrl={imageViewer.url}
-              imageName={imageViewer.name}
-              onClose={closeImageViewer}
-            />
-          </div>
-        )}
+        {parsedAttachments.length > 0 && <Suspense fallback={null}><MessageAttachments attachments={parsedAttachments} /></Suspense>}
       </div>
       {!editing && (
         <div className="msg-meta" role="group" aria-label={t("rewind.label")}>
