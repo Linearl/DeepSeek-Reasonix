@@ -67,17 +67,6 @@ type turnRuntime struct {
 	// between blocked shapes, which is zero progress all the same.
 	blockedTurnStreak int
 
-	// blockedConstraintSig identifies the refusal reason shared by consecutive
-	// fully-blocked rounds; blockedConstraintStreak counts how long that reason
-	// has held. A run blocked by ONE constraint is a constraint surface, not a
-	// loop: no tool change clears it, so the guard must say so instead of
-	// asking the model to change approach (task 171).
-	blockedConstraintSig    string
-	blockedConstraintStreak int
-
-	// handoffWritten guards the once-per-turn pending-handoff write.
-	handoffWritten bool
-
 	// loopGuardArmed stands final readiness down after a loop guard fired:
 	// demanding receipts the blocker prevents would restart the loop. The mark
 	// is the pre-batch ledger count, so later progress revokes the pass.

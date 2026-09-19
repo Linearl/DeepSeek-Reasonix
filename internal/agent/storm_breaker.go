@@ -2,8 +2,8 @@ package agent
 
 import (
 	"fmt"
-	"sort"
 	"strings"
+	"sort"
 
 	"reasonix/internal/event"
 	"reasonix/internal/i18n"
@@ -121,23 +121,8 @@ func (a *Agent) applyStormBreaker(calls []provider.ToolCall, outcomes []toolOutc
 	}
 	if allBlocked {
 		a.turn.blockedTurnStreak++
-		// Track whether one refusal reason keeps coming back. Rotating tools
-		// while the same constraint denies every call is not the model retrying
-		// a fixed call — it cannot change approach its way out (task 171). The
-		// signature is only computed for fully-blocked rounds, so the mixed and
-		// successful paths stay allocation-free.
-		refusal := blockedRefusalSignature(outcomes)
-		switch {
-		case refusal == "":
-			a.turn.blockedConstraintSig, a.turn.blockedConstraintStreak = "", 0
-		case refusal == a.turn.blockedConstraintSig:
-			a.turn.blockedConstraintStreak++
-		default:
-			a.turn.blockedConstraintSig, a.turn.blockedConstraintStreak = refusal, 1
-		}
 	} else {
 		a.turn.blockedTurnStreak = 0
-		a.turn.blockedConstraintSig, a.turn.blockedConstraintStreak = "", 0
 	}
 	for _, outcome := range outcomes {
 		if outcome.blocked && outcome.errMsg == loopGuardBlockErrMsg {
@@ -161,18 +146,12 @@ func (a *Agent) applyStormBreaker(calls []provider.ToolCall, outcomes []toolOutc
 		a.turn.stormCount = max(a.turn.stormCount, 2)
 	}
 	streakHit := allBlocked && a.turn.blockedTurnStreak >= stormBreakThreshold
-	// A streak whose rounds were all refused for the SAME reason is a
-	// constraint surface: the host denies every legitimate call, the state is
-	// per-turn, and the next user message clears it. Telling the model to
-	// "change approach" there burns rounds and ends in a deadlock (task 171).
-	constraintSurface := streakHit && a.turn.blockedConstraintStreak >= stormBreakThreshold
 	if !stormHit && !streakHit {
 		return intervention{}
 	}
 
 	const blockedAdvice = "Change approach: do not keep retrying a blocked tool by changing the tool, command, or arguments. Respect the permission, plan-mode, hook, or loop-guard blocker; use an already-allowed tool, ask the user for the specific approval or choice if appropriate, or explain the blocker in your final answer."
 	var guard, detail string
-	guardVerdict := verdictRedirect
 	if stormHit {
 		subject := fmt.Sprintf("%q", calls[0].Name)
 		short := calls[0].Name
@@ -212,14 +191,6 @@ func (a *Agent) applyStormBreaker(calls []provider.ToolCall, outcomes []toolOutc
 		detail = fmt.Sprintf(
 			"loop guard: %s hit the same host response %d× — nudging the model to change approach",
 			short, a.turn.stormCount)
-	} else if constraintSurface {
-		guard = fmt.Sprintf(
-			"[loop guard] every tool call in the last %d rounds was blocked by the same host constraint (%s). This is a constraint surface, not a repeated call: retrying, reordering, or switching tools cannot clear it, and waiting for the user's next message does — the constraint and budget state is per user turn. Report what is blocked, what is already established, and what remains unfinished, then stop.",
-			a.turn.blockedTurnStreak, a.turn.blockedConstraintSig)
-		detail = fmt.Sprintf(
-			"loop guard: %d rounds refused by one constraint surface (%s) — asking the model to report and stop",
-			a.turn.blockedTurnStreak, a.turn.blockedConstraintSig)
-		guardVerdict = verdictLand
 	} else {
 		guard = fmt.Sprintf(
 			"[loop guard] every tool call in the last %d turns has been blocked by the host (permission, plan mode, hook, or loop guard). Switching tools, reordering calls, or rewording arguments will not help while the blockers stand. %s",
@@ -228,59 +199,12 @@ func (a *Agent) applyStormBreaker(calls []provider.ToolCall, outcomes []toolOutc
 			"loop guard: every tool call blocked %d turns in a row — nudging the model to change approach",
 			a.turn.blockedTurnStreak)
 	}
-	// Before a guard stops the turn, persist the model's latest text: the
-	// transcript may be mid-turn, and a crash would otherwise lose the handoff
-	// the user is waiting for (task 171).
-	a.writePendingHandoff(constraintSurface, a.turn.blockedConstraintSig)
 	a.armLoopGuardPass(receiptMark)
 	return intervention{
-		verdict:  guardVerdict,
+		verdict:  verdictRedirect,
 		guidance: guard,
 		notice:   noticeFor(event.NoticeCodeLoopGuard, event.LevelInfo, loopGuardNoticeText(), detail),
 	}
-}
-
-// blockedRefusalSignature reduces a fully-blocked batch to the reason the host
-// refused it, normalised so the SAME constraint read through different tools
-// compares equal. Empty means "not a uniform refusal" — mixed outcomes, or a
-// refusal this host does not classify.
-func blockedRefusalSignature(outcomes []toolOutcome) string {
-	if len(outcomes) == 0 {
-		return ""
-	}
-	reasons := make([]string, 0, len(outcomes))
-	for _, outcome := range outcomes {
-		if !outcome.blocked {
-			return ""
-		}
-		reasons = append(reasons, refusalReason(outcome.errMsg))
-	}
-	sort.Strings(reasons)
-	return strings.Join(reasons, "|")
-}
-
-// refusalReason names the constraint behind a host refusal. Tool names are
-// dropped on purpose: the constraint, not the tool, is what stays in the way
-// across a blocked run.
-func refusalReason(errMsg string) string {
-	msg := strings.ToLower(firstLine(strings.TrimSpace(errMsg)))
-	switch {
-	case strings.Contains(msg, "establish a concrete todo"):
-		return "first_writer_contract"
-	case strings.Contains(msg, "evidence required"), strings.Contains(msg, "has not seen its current content"):
-		return "write_evidence"
-	case strings.Contains(msg, "plan mode"), strings.Contains(msg, "plan-mode"):
-		return "plan_mode"
-	case strings.Contains(msg, "permission"):
-		return "permission"
-	case strings.Contains(msg, "hook"):
-		return "hook"
-	case strings.Contains(msg, "loop guard"):
-		return "loop_guard"
-	case strings.Contains(msg, "forbid"), strings.Contains(msg, "not allowed"), strings.Contains(msg, "forbidden"):
-		return "forbidden"
-	}
-	return msg
 }
 
 func loopGuardNoticeText() string {
