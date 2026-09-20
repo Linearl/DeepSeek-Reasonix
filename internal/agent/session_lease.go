@@ -467,6 +467,10 @@ func handoffReservationMatches(info *SessionLeaseInfo, sourceWriterID, targetWri
 }
 
 func (l *SessionLease) Release() {
+	// Task 196: time this wait. The loop spins on a channel and never logs, so a
+	// long wait is indistinguishable from a hang in desktop.log.
+	releaseWaitStart := time.Now()
+	lastActiveSaves := 0
 	if l == nil {
 		return
 	}
@@ -478,6 +482,9 @@ func (l *SessionLease) Release() {
 		if l.released {
 			l.mu.Unlock()
 			return
+		}
+		if l.activeSaves > 0 {
+			lastActiveSaves = l.activeSaves
 		}
 		if l.activeSaves == 0 {
 			break
@@ -498,6 +505,10 @@ func (l *SessionLease) Release() {
 	l.leaseLock = nil
 	beforeReleaseLock := l.beforeReleaseLock
 	l.mu.Unlock()
+	if waited := time.Since(releaseWaitStart); waited >= sessionSaveLockWarnWait {
+		slog.Warn("session: lease release waited for in-flight saves",
+			"path", l.path, "wait_ms", waited.Milliseconds(), "active_saves", lastActiveSaves)
+	}
 
 	// Revoke ownership-sensitive repair before the OS lock becomes available
 	// to a successor. CompareAndDelete keeps a stale generation from
