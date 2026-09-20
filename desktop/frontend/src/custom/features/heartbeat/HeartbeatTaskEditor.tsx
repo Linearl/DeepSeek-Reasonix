@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { Check, ChevronsUpDown, CirclePause, Play, Trash2, X } from "lucide-react";
 import { Tooltip } from "../../../components/Tooltip";
 import { app } from "../../../lib/bridge";
+import { providerDisplayLabel } from "../../../lib/providerLabel";
 import type { WorkspaceView } from "../../../lib/types";
 import { CycleEditor } from "./HeartbeatCycleEditor";
 import { CirclePlaySolid, mergeEngineRunState } from "./HeartbeatShared";
@@ -140,24 +141,27 @@ export function TaskEditor({
 
   // #30: pick the model override from the providers the user already configured
   // instead of retyping names. Empty selection keeps the tab's current model.
-  const [providerModels, setProviderModels] = useState<Record<string, string[]>>({});
+  //
+  // #198: the picker lists the connection *label* (display_name, falling back to
+  // name) while the option value stays `name` — that is the identity persisted in
+  // `<provider>/<model>` refs, so choosing a label never rewrites a saved task.
+  const [providerOptions, setProviderOptions] = useState<{ name: string; label: string; models: string[] }[]>([]);
   useEffect(() => {
     let cancelled = false;
     void app.Settings().then((settings) => {
       if (cancelled) return;
-      const map: Record<string, string[]> = {};
+      const options: { name: string; label: string; models: string[] }[] = [];
       for (const provider of settings.providers ?? []) {
         // Only connections that actually declare models belong in a model-override
         // picker; a provider with no models would offer a dead end.
         const models = provider.models ?? [];
-        if (models.length > 0) map[provider.name] = models;
+        if (models.length > 0) options.push({ name: provider.name, label: providerDisplayLabel(provider), models });
       }
-      setProviderModels(map);
+      setProviderOptions(options);
     }).catch(() => { /* settings unavailable: keep the free-text fallback */ });
     return () => { cancelled = true; };
   }, []);
-  const providerNames = Object.keys(providerModels);
-  const modelOptions = draft.provider ? (providerModels[draft.provider] ?? []) : [];
+  const modelOptions = draft.provider ? (providerOptions.find((option) => option.name === draft.provider)?.models ?? []) : [];
 
   // 启用/暂停切换（状态文字入口 + 右侧按钮共用）：
   // 只持久化 enabled 变更，基于最近保存基线（initialTaskRef）翻转，
@@ -383,7 +387,7 @@ export function TaskEditor({
           {t("heartbeat.fieldModelOverride")} <span className="heartbeat-editor__optional">{t("heartbeat.optional")}</span>
         </label>
         <div className="heartbeat-editor__model-override">
-          {providerNames.length > 0 ? (
+          {providerOptions.length > 0 ? (
             <select
               className="heartbeat-editor__input"
               value={draft.provider ?? ""}
@@ -393,8 +397,8 @@ export function TaskEditor({
               {/* Labelled because a provider name can look exactly like a model name - this
                   install has a provider called "minimax-M3" next to a model of the same name, so
                   an unlabelled list reads as "the model picker is showing models". */}
-              {providerNames.map((name) => (
-                <option key={name} value={name}>{t("heartbeat.providerOption", { name })}</option>
+              {providerOptions.map((option) => (
+                <option key={option.name} value={option.name}>{t("heartbeat.providerOption", { name: option.label })}</option>
               ))}
             </select>
           ) : (

@@ -1,0 +1,150 @@
+// Run: node --import ./scripts/css-stub-register.mjs --import tsx src/__tests__/heartbeat-provider-label.test.tsx
+//
+// Task 198: the heartbeat "model override" picker must list the connection *label*
+// (provider display_name, falling back to name) while the option value keeps the
+// internal `name` identity — that is what `<provider>/<model>` refs persist, so the
+// picker must stay byte-identical to the old behaviour when no display name is set.
+
+import { JSDOM } from "jsdom";
+import React, { act } from "react";
+import { createRoot } from "react-dom/client";
+import { TaskEditor } from "../custom/features/heartbeat/HeartbeatPanel";
+import type { HeartbeatTask } from "../custom/features/heartbeat/heartbeat.types";
+import { providerDisplayLabel } from "../lib/providerLabel";
+import { LocaleProvider } from "../lib/i18n";
+
+let passed = 0;
+let failed = 0;
+
+function ok(value: unknown, label: string) {
+  if (value) {
+    process.stdout.write(`  PASS  ${label}\n`);
+    passed += 1;
+  } else {
+    process.stdout.write(`  FAIL  ${label}\n`);
+    failed += 1;
+  }
+}
+
+function flush(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+class NoopResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+const dom = new JSDOM("<!doctype html><html><body><div id=\"root\"></div></body></html>", {
+  pretendToBeVisual: true,
+  url: "http://localhost/",
+});
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+globalThis.window = dom.window as unknown as Window & typeof globalThis;
+globalThis.document = dom.window.document;
+Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
+globalThis.Node = dom.window.Node;
+globalThis.Element = dom.window.Element;
+globalThis.HTMLElement = dom.window.HTMLElement;
+globalThis.HTMLButtonElement = dom.window.HTMLButtonElement;
+globalThis.HTMLInputElement = dom.window.HTMLInputElement;
+globalThis.HTMLTextAreaElement = dom.window.HTMLTextAreaElement;
+globalThis.HTMLSelectElement = dom.window.HTMLSelectElement;
+globalThis.Event = dom.window.Event;
+globalThis.MouseEvent = dom.window.MouseEvent;
+globalThis.ResizeObserver = NoopResizeObserver as unknown as typeof ResizeObserver;
+globalThis.requestAnimationFrame = dom.window.requestAnimationFrame.bind(dom.window);
+globalThis.cancelAnimationFrame = dom.window.cancelAnimationFrame.bind(dom.window);
+
+// Mirrors this install's real config: one connection with a display name, one whose
+// name IS the only identity it has (the "minimax-M3" case from the bug report), and
+// one connection without models that must stay out of the picker.
+const providerFixture = [
+  { name: "mimo-pro", displayName: "MiMo Pro", models: ["mimo-v2.5-pro"] },
+  { name: "minimax-M3", models: ["MiniMax-M3"] },
+  { name: "opencode-go-3d668098626d385cb9e2084d75c5db36", displayName: "OpenCode Go (Recommended) · 3", models: ["opencode-go-default"] },
+  { name: "models-less", displayName: "No Models", models: [] as string[] },
+];
+
+Object.assign(window, {
+  go: {
+    main: {
+      App: {
+        async Settings() {
+          return { providers: providerFixture };
+        },
+        async ListWorkspaces() { return []; },
+        async HeartbeatGenerateID() { return "draft-1"; },
+      },
+    },
+  },
+});
+
+const rootElement = document.getElementById("root");
+if (!rootElement) throw new Error("missing root");
+const root = createRoot(rootElement);
+
+const task: HeartbeatTask = {
+  id: "task-198",
+  title: "Provider naming",
+  prompt: "prompt",
+  interval: "30m",
+  enabled: true,
+  createdAt: 1,
+};
+
+console.log("\nprovider display label (pure)");
+ok(providerDisplayLabel({ name: "mimo-pro", displayName: "MiMo Pro" }) === "MiMo Pro", "display name wins when configured");
+ok(providerDisplayLabel({ name: "minimax-M3" }) === "minimax-M3", "missing display name falls back to the identity");
+ok(providerDisplayLabel({ name: "mimo-pro", displayName: "   " }) === "mimo-pro", "blank display name falls back to the identity");
+ok(providerDisplayLabel({ name: "mimo-pro", displayName: "  MiMo Pro  " }) === "MiMo Pro", "display name is trimmed");
+
+console.log("\nheartbeat model override picker");
+await act(async () => {
+  root.render(
+    <LocaleProvider>
+      <TaskEditor task={task} onSave={async () => true} onDelete={async () => true} onCloseDetail={() => {}} />
+    </LocaleProvider>,
+  );
+  await flush();
+  await flush();
+});
+
+const override = document.querySelector(".heartbeat-editor__model-override");
+const providerSelect = override?.querySelector<HTMLSelectElement>("select") ?? null;
+ok(providerSelect != null, "provider picker renders when settings expose modelled connections");
+const options = Array.from(providerSelect?.querySelectorAll<HTMLOptionElement>("option") ?? []);
+const optionFor = (value: string) => options.find((option) => option.value === value);
+const labelled = optionFor("mimo-pro");
+const unlabelled = optionFor("minimax-M3");
+const autoGenerated = optionFor("opencode-go-3d668098626d385cb9e2084d75c5db36");
+
+ok(labelled?.textContent?.includes("MiMo Pro") === true, "option shows the display name");
+ok(labelled?.textContent?.includes("mimo-pro") === false, "option hides the routing identity when a display name exists");
+ok(labelled?.value === "mimo-pro", "option value stays the internal provider name (refs unchanged)");
+ok(unlabelled?.textContent?.includes("minimax-M3") === true, "no display name: label is byte-identical to the old name rendering");
+ok(unlabelled?.value === "minimax-M3", "no display name: option value stays the internal provider name");
+ok(autoGenerated?.textContent?.includes("OpenCode Go (Recommended) · 3") === true, "auto-generated uuid connection shows its readable label");
+ok(options.every((option) => option.value !== "models-less"), "connections without models stay out of the picker");
+ok(options.length === 4, `placeholder plus three connections are listed (got ${options.length})`);
+
+// Selecting by label must still resolve the model list through the internal name.
+await act(async () => {
+  if (providerSelect) {
+    providerSelect.value = "mimo-pro";
+    providerSelect.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  }
+  await flush();
+});
+const selects = Array.from(override?.querySelectorAll<HTMLSelectElement>("select") ?? []);
+const modelSelect = selects[1];
+const modelValues = Array.from(modelSelect?.querySelectorAll<HTMLOptionElement>("option") ?? []).map((option) => option.value);
+ok(modelValues.includes("mimo-v2.5-pro") === true, "picking a labelled connection resolves its models through the internal name");
+ok(providerSelect?.value === "mimo-pro", "the persisted provider value remains the internal name");
+
+await act(async () => root.unmount());
+dom.window.close();
+
+console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
+if (failed > 0) process.exit(1);
