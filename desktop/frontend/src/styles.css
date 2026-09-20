@@ -3910,11 +3910,11 @@ a[href] {
 }
 
 .experimental-lab__group-title {
-  color: var(--fg-faint);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  padding: 10px 12px 2px;
+  color: var(--fg-dim);
+  font-size: 14.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 12px 12px 2px;
 }
 
 /* Task 132: experimental features left rail + detail pane. */

@@ -35,6 +35,17 @@ if [ -z "${VER:-}" ]; then
 	echo "ERROR: could not resolve version (pass one: $0 1.34.0)" >&2
 	exit 1
 fi
+# Task 180 hard gate: a bare productVersion (no timestamp suffix) would make every
+# build overwrite the same staging/version.txt and break RestartAndUpdate + the
+# quick-switch list. Refuse anything that does not carry a -YYYYMMDD-HHMM suffix.
+case "$VER" in
+	*[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]) ;;
+	*)
+		echo "ERROR: version '$VER' has no -YYYYMMDD-HHMM timestamp suffix (task 180)." >&2
+		echo "       pass an explicit one: $0 1.38.3-$(date +%Y%m%d-%H%M)" >&2
+		exit 1
+		;;
+esac
 
 export HTTP_PROXY="${HTTP_PROXY:-http://127.0.0.1:10808}"
 export HTTPS_PROXY="${HTTPS_PROXY:-http://127.0.0.1:10808}"
