@@ -3880,7 +3880,7 @@ a[href] {
 .experimental-lab__chip {
   border: 1px solid var(--border);
   background: var(--card, #fff);
-  color: var(--fg-mid);
+  color: var(--fg-dim);
   font-size: 12px;
   line-height: 1.4;
   padding: 3px 11px;
