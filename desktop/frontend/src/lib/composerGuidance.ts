@@ -30,6 +30,24 @@ export function guidanceIsEditable(item: { id?: string; state?: string; source?:
   return item.state === "queued" || item.state === undefined || item.state === "";
 }
 
+// Task 181: the main-composer editor accepts a wider set than the old inline
+// one-liner did. A multi-line guidance body needs a textarea, so the pencil now
+// loads the entry into the composer instead of editing it in the shelf, and that
+// path must also cover the two cases the inline editor refused:
+//   - local-* optimistic entries, whose body is already in item.text (there is no
+//     durable inbox row to read back),
+//   - blocked/uncertain entries, which are edited here and then re-queued through
+//     the existing RetryInboxItem path.
+// In-flight (steer_accepted) and delivering (running/steer_consumed) entries stay
+// closed: they are already on their way to the model, and the commit step asks
+// what to do if an entry crosses that line while it is being edited.
+export function guidanceEditableInComposer(item: { id?: string; state?: string; paused?: boolean }): boolean {
+  if (!item.id) return false;
+  if (item.paused) return false;
+  if (guidanceIsInFlight(item.state) || guidanceIsDelivering(item.state)) return false;
+  return guidanceHasKnownPendingState(item.state);
+}
+
 export function markGuidanceQueued<T extends { id: string; state?: string; paused?: boolean }>(items: T[], id: string): T[] {
   return items.map((item) => item.id === id ? { ...item, state: "queued", paused: false } : item);
 }
