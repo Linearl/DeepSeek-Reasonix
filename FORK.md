@@ -250,3 +250,11 @@ UI 入口** —— 所以对大部分 fork 特性，**日志是唯一的可观�
 7. **验证**：`gh release view desktop-vX.Y.Z -R Linearl/DeepSeek-Reasonix`，确认 9 平台产物齐全
 
 **两个必背的坑**：① `gh` 默认解析到 upstream（esengine）→ 必须显式 `-R Linearl/DeepSeek-Reasonix`，否则 404；② fine-grained PAT 会 403 → 用 `env -u GITHUB_TOKEN gh ...` 切 keyring OAuth token。
+
+## Bundle 预算棘轮规则（2026-09-20 用户定，改自 +0.1 旧规）
+
+改 locale/CSS 等前端产物导致 `check-bundle-budget.mjs` 超限时，**一次放宽到位，步长加大**：
+- gzip 类（zh / zh-TW / deferred app-shell CSS）：**+0.5 KiB**（实测值 + 0.5 headroom，取一位小数）
+- raw 类（initial raw JS+CSS）：**+10 KiB**
+- 每次上调在预算行旁注释：哪个任务加的、实测值多少、新步长依据
+- 禁止按 +0.1 挤牙膏式上调——反复撞墙浪费时间（2026-09-20 合并批连撞 CSS/locale/raw 三道）

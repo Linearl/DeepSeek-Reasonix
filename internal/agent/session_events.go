@@ -165,6 +165,85 @@ func limitsForSessionLog(path string, limits sessionReplayLimits) sessionReplayL
 	return limits
 }
 
+// replayFromTrailingReplace salvages an oversized log by replaying only its
+// trailing replace event (a full-transcript snapshot). It scans the tail of the
+// file backwards for the last replace record, decodes that single record under
+// the same limits, and - on success - returns it as the replay result. Any
+// failure (no replace found, oversized snapshot, decode error) reports ok=false
+// so the caller falls back to the original refusal; this path never weakens the
+// memory gate for logs without a snapshot to stand on.
+func replayFromTrailingReplace(ctx context.Context, path string, limits sessionReplayLimits) (sessionEventReplay, bool) {
+	const tailChunk = 16 << 20
+	f, err := os.Open(path)
+	if err != nil {
+		return sessionEventReplay{}, false
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || info.Size() <= 0 {
+		return sessionEventReplay{}, false
+	}
+	read := int64(tailChunk)
+	if read > info.Size() {
+		read = info.Size()
+	}
+	buf := make([]byte, read)
+	if _, err := f.ReadAt(buf, info.Size()-read); err != nil {
+		return sessionEventReplay{}, false
+	}
+	// Drop the partial trailing line (the file is append-only jsonl).
+	if end := len(buf) - 1; end >= 0 && buf[end] == '\n' {
+		buf = buf[:end]
+	}
+	lines := strings.Split(string(buf), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" || !strings.Contains(line, `"type":"`+sessionEventTypeReplace+`"`) {
+			continue
+		}
+		var rec struct {
+			sessionEventRecord
+			MessagesRaw json.RawMessage `json:"messages"`
+		}
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			return sessionEventReplay{}, false
+		}
+		if rec.SchemaVersion != sessionEventSchemaVersion || rec.Type != sessionEventTypeReplace {
+			return sessionEventReplay{}, false
+		}
+		// Replay the snapshot together with every append that followed it -
+		// replaying the snapshot alone would silently drop those appends. The
+		// tail (snapshot + appends) is re-replayed through the same limits via
+		// a temp file; if the tail alone still exceeds the caps, give up.
+		tail := strings.Join(lines[i:], "\n")
+		if strings.Count(tail, "type") > limits.maxRecords {
+			return sessionEventReplay{}, false
+		}
+		tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".selfheal-*")
+		if err != nil {
+			return sessionEventReplay{}, false
+		}
+		tmpName := tmp.Name()
+		defer os.Remove(tmpName)
+		if _, err := tmp.WriteString(tail); err != nil {
+			tmp.Close()
+			return sessionEventReplay{}, false
+		}
+		if err := tmp.Close(); err != nil {
+			return sessionEventReplay{}, false
+		}
+		recovered, err := replaySessionEventLogWithLimits(tmpName, limits, nil)
+		if err != nil {
+			return sessionEventReplay{}, false
+		}
+		slog.Warn("session: recovered oversized log by replaying from its trailing replace snapshot",
+			"path", path, "recoveredMessages", len(recovered.msgs), "snapshotRevision", rec.Revision)
+		recovered.recoveredFromReplace = true
+		return recovered, true
+	}
+	return sessionEventReplay{}, false
+}
+
 func sessionReplayLimitError(path, resource string, value, limit int64) error {
 	err := &SessionReplayLimitError{Path: path, Resource: resource, Value: value, Limit: limit}
 	slog.Warn("session: refusing unsafe event-log replay",
@@ -264,6 +343,9 @@ func sessionEventLogOversized(logSize, contentBytes int64) bool {
 // for writers to self-heal a torn tail.
 type sessionEventReplay struct {
 	msgs []provider.Message
+	// recoveredFromReplace marks a replay salvaged from the log's trailing
+	// replace snapshot after the live record count exceeded the replay caps.
+	recoveredFromReplace bool
 	// collectionItems counts the elements in every JSON array nested below a
 	// live message. Keeping this alongside msgs bounds slices such as tool calls,
 	// images, memory citations, and interrupted-turn recovery metadata without
@@ -354,6 +436,14 @@ func replaySessionEventLogWithContext(ctx context.Context, path string, limits s
 			return replay, fmt.Errorf("decode session event log %s: unsupported schema version %d", path, rec.SchemaVersion)
 		}
 		if replay.records >= limits.maxRecords {
+			// Task 193: refusing outright freezes the session - every later open
+			// re-replays the same 400k+ records and dies at the same line, so the
+			// transcript stays unreachable no matter how many times the user
+			// retries. A trailing replace event is a full-snapshot replay on its
+			// own, so try to salvage the session from it before giving up.
+			if recovered, ok := replayFromTrailingReplace(ctx, path, limits); ok {
+				return recovered, nil
+			}
 			return replay, sessionReplayLimitError(path, "event_records", int64(replay.records+1), int64(limits.maxRecords))
 		}
 		switch rec.Type {

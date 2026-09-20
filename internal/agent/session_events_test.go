@@ -3,8 +3,10 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -887,6 +889,7 @@ func TestRepairPathKeepsRecordBudgetUnderAdaptiveBytes(t *testing.T) {
 		t.Fatal("expected the record budget to still refuse this log")
 	}
 }
+
 // TestSessionEventLogSizeAcceptsResolvedLogPath pins the fix for the reason task 104
 // needed four attempts. store.SessionEventLog appends ".events.jsonl" unconditionally, so
 // passing it a path that is already the log yields "x.events.jsonl.events.jsonl", which
@@ -940,5 +943,39 @@ func TestReplayFromResolvedPathSizesBudget(t *testing.T) {
 	if err := st.replayFrom(context.Background(), 0, defaultSessionReplayLimits); err != nil {
 		t.Fatalf("replayFrom on a resolved log path refused a %d-byte log (budget %d): %v",
 			info.Size(), defaultSessionReplayLimits.maxBytes, err)
+	}
+}
+
+// Task 193: a log whose live record count exceeds the replay caps is salvaged
+// from its trailing replace snapshot instead of being refused on every open.
+func TestReplaySelfHealsFromTrailingReplaceWhenRecordCapHit(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "selfheal.events.jsonl")
+	var b strings.Builder
+	for i := 0; i < 6; i++ {
+		b.WriteString(`{"schema_version":1,"type":"append","revision":` + strconv.Itoa(i+1) + `,"base_revision":` + strconv.Itoa(i) + `,"message_index":` + strconv.Itoa(i) + `,"messages":[{"role":"user","content":"m"}]}` + "\n")
+	}
+	b.WriteString(`{"schema_version":1,"type":"replace","revision":7,"base_revision":6,"message_index":0,"messages":[{"role":"user","content":"snapshot-full"}]}` + "\n")
+	for i := 0; i < 6; i++ {
+		b.WriteString(`{"schema_version":1,"type":"append","revision":` + strconv.Itoa(8+i) + `,"base_revision":` + strconv.Itoa(7+i) + `,"message_index":` + strconv.Itoa(1+i) + `,"messages":[{"role":"assistant","content":"tail"}]}` + "\n")
+	}
+	if err := os.WriteFile(logPath, []byte(b.String()), 0o600); err != nil {
+		t.Fatalf("write event log: %v", err)
+	}
+	limits := sessionReplayLimits{maxBytes: defaultSessionEventReplayMaxBytes, maxRecords: 8, maxMessages: 400_000, maxCollectionItems: 400_000}
+	replay, err := replaySessionEventLogWithLimits(logPath, limits, nil)
+	if err != nil {
+		t.Fatalf("self-heal failed: %v", err)
+	}
+	if !replay.recoveredFromReplace {
+		t.Fatal("expected recoveredFromReplace marker")
+	}
+	// The salvage replays the snapshot AND every append that followed it, so the
+	// transcript keeps all 7 messages (1 snapshot + 6 tail appends).
+	if len(replay.msgs) != 7 {
+		t.Fatalf("recovered msgs len = %d, want snapshot plus tail appends (7)", len(replay.msgs))
+	}
+	if !strings.Contains(strings.ToLower(fmt.Sprintf("%v", replay.msgs[0].Content)), "snapshot-full") {
+		t.Fatalf("recovered message content = %v, want the replace snapshot content", replay.msgs[0].Content)
 	}
 }
