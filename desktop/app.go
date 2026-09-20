@@ -2321,6 +2321,7 @@ func (a *App) clearActiveSessionRuntime(tab *WorkspaceTab, oldCtrl control.Sessi
 
 	newSink := &tabEventSink{tabID: tab.ID, app: a, ctx: a.ctx}
 	sharedHost := a.lookupSharedHost(snap.sharedHostKey)
+	slog.Info("desktop: runtime build begin", "tab", tab.ID, "trigger", "clear-session", "model", snap.model) // task 196: name who is building a runtime, so a startup burst can be attributed instead of inferred.
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
 		RestartUpdater:           restartUpdaterAdapter{a},
 		Model:                    snap.model,
@@ -4330,6 +4331,7 @@ func (a *App) buildSessionRebindCandidate(
 	if _, err := loadPinnedContextState(sessionPath); err != nil {
 		return nil, err
 	}
+	slog.Info("desktop: runtime build begin", "trigger", "rebind", "model", model, "session", sessionPath) // task 196: name who is building a runtime, so a startup burst can be attributed instead of inferred.
 	ctrl, err := boot.Build(a.bootContext(), boot.Options{
 		RestartUpdater:           restartUpdaterAdapter{a},
 		Model:                    model,
@@ -9957,6 +9959,7 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 	sharedHost := a.lookupSharedHost(snap.sharedHostKey)
 
 	stageStarted = time.Now()
+	slog.Info("desktop: runtime build begin", "tab", tabID, "trigger", "set-model", "model", name) // task 196: name who is building a runtime, so a startup burst can be attributed instead of inferred.
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
 		RestartUpdater:           restartUpdaterAdapter{a},
 		Model:                    name,
@@ -10156,6 +10159,7 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 		carried = oldCtrl.History()
 	}
 	sharedHost := a.lookupSharedHost(snap.sharedHostKey)
+	slog.Info("desktop: runtime build begin", "tab", tabID, "trigger", "set-effort", "model", modelRef, "effort", level) // task 196: name who is building a runtime, so a startup burst can be attributed instead of inferred.
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
 		RestartUpdater:           restartUpdaterAdapter{a},
 		Model:                    modelRef,
