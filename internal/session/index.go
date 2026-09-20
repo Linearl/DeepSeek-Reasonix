@@ -10,8 +10,19 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
+	"sync/atomic"
 
 	"reasonix/internal/fileutil"
+)
+
+// Read-amplification counters (task 187). They only observe: the paths below
+// already existed, and these make the difference between "rebuilt the index
+// again" and "extended it by the appended tail" visible to tests and callers.
+var (
+	sparseIndexRebuilds   atomic.Uint64
+	sparseIndexExtensions atomic.Uint64
+	sparseIndexMemoryHits atomic.Uint64
 )
 
 const (
@@ -28,7 +39,12 @@ type sparseIndex struct {
 	LastSequence uint64             `json:"lastSequence"`
 	CommitCount  uint64             `json:"commitCount"`
 	Entries      []sparseIndexEntry `json:"entries"`
-	partial      bool
+	// HeadSignature covers only the leading bytes of the log. The full identity
+	// also folds in size, mtime and the tail, so on an append-only log it changes
+	// with every write and can never serve as a cache key; the head does not
+	// change, which is what makes an incremental extension possible.
+	HeadSignature string `json:"headSignature,omitempty"`
+	partial       bool
 }
 
 type sparseIndexEntry struct {
@@ -38,6 +54,93 @@ type sparseIndexEntry struct {
 
 func sparseIndexPath(cacheDir string) string {
 	return filepath.Join(cacheDir, "events.offset-index.json")
+}
+
+// sparseIndexCacheLimit bounds the in-process index cache. A snapshot reads the
+// log page by page, so the same index is asked for repeatedly within one
+// operation; the cache turns those repeats into a map lookup instead of a file
+// open, a stat, two 4 KiB reads and a JSON decode.
+const sparseIndexCacheLimit = 64
+
+type sparseIndexCacheEntry struct {
+	index     sparseIndex
+	logSize   int64
+	modTimeNS int64
+	identity  string
+}
+
+var (
+	sparseIndexCacheMu    sync.Mutex
+	sparseIndexCacheOrder []string
+	sparseIndexCache      = map[string]sparseIndexCacheEntry{}
+)
+
+func sparseIndexCacheKey(dir, cacheDir string) string { return dir + "|" + cacheDir }
+
+func loadCachedSparseIndex(dir, cacheDir string, info os.FileInfo, identity string) (sparseIndex, bool) {
+	sparseIndexCacheMu.Lock()
+	defer sparseIndexCacheMu.Unlock()
+	entry, ok := sparseIndexCache[sparseIndexCacheKey(dir, cacheDir)]
+	if !ok || entry.logSize != info.Size() || entry.modTimeNS != info.ModTime().UnixNano() || entry.identity != identity {
+		return sparseIndex{}, false
+	}
+	return entry.index, true
+}
+
+func storeCachedSparseIndex(dir, cacheDir string, index sparseIndex, info os.FileInfo, identity string) {
+	sparseIndexCacheMu.Lock()
+	defer sparseIndexCacheMu.Unlock()
+	key := sparseIndexCacheKey(dir, cacheDir)
+	if _, seen := sparseIndexCache[key]; !seen {
+		sparseIndexCacheOrder = append(sparseIndexCacheOrder, key)
+		for len(sparseIndexCacheOrder) > sparseIndexCacheLimit {
+			evicted := sparseIndexCacheOrder[0]
+			sparseIndexCacheOrder = sparseIndexCacheOrder[1:]
+			delete(sparseIndexCache, evicted)
+		}
+	}
+	sparseIndexCache[key] = sparseIndexCacheEntry{
+		index: index, logSize: info.Size(), modTimeNS: info.ModTime().UnixNano(), identity: identity,
+	}
+}
+
+// extendSparseIndex continues the scan from the end of the cached index instead
+// of restarting at offset zero. The previous scan stopped at a commit boundary at
+// the then end of the log, so the cached size is a legal restart offset; the
+// rebuilt index validates itself before it is trusted, and anything unexpected
+// falls back to a full rebuild.
+func extendSparseIndex(ctx context.Context, file *os.File, info os.FileInfo, identity, head, codec, dir string, cached sparseIndex) (sparseIndex, bool) {
+	extended := cached
+	commitIndex := int(cached.CommitCount)
+	visit := func(offset int64, commit Commit) bool {
+		if ctx.Err() != nil {
+			return false
+		}
+		if commitIndex%sparseIndexInterval == 0 {
+			extended.Entries = append(extended.Entries, sparseIndexEntry{FirstSequence: commit.FirstSequence, Offset: offset})
+		}
+		commitIndex++
+		extended.CommitCount++
+		extended.LastSequence = commit.LastSequence()
+		return true
+	}
+	var err error
+	if codec == Codec {
+		err = scanV4CommitFileRefs(ctx, file, cached.LogSize, cached.LastSequence+1, contentStoreForSessionDir(dir), nil, visit)
+	} else {
+		err = scanCommitFileCodec(file, cached.LogSize, cached.LastSequence+1, codec, nil, visit)
+	}
+	if err != nil || ctx.Err() != nil {
+		return sparseIndex{}, false
+	}
+	extended.LogSize = info.Size()
+	extended.LogModTimeNS = info.ModTime().UnixNano()
+	extended.LogIdentity = identity
+	extended.HeadSignature = head
+	if !extended.validFor(info, identity) {
+		return sparseIndex{}, false
+	}
+	return extended, true
 }
 
 // loadOrBuildSparseIndex treats the index as an expendable cache. A missing or
@@ -68,19 +171,45 @@ func loadOrBuildSparseIndex(ctx context.Context, dir, cacheDir string) (sparseIn
 	if err != nil {
 		return sparseIndex{}, err
 	}
+	head, err := headLogSignature(file, info)
+	if err != nil {
+		return sparseIndex{}, err
+	}
+	if cached, ok := loadCachedSparseIndex(dir, cacheDir, info, identity); ok {
+		sparseIndexMemoryHits.Add(1)
+		return cached, nil
+	}
 	if data, readErr := os.ReadFile(sparseIndexPath(cacheDir)); readErr == nil {
 		var cached sparseIndex
-		if json.Unmarshal(data, &cached) == nil && cached.validFor(info, identity) {
-			return cached, nil
+		if json.Unmarshal(data, &cached) == nil {
+			if cached.validFor(info, identity) {
+				if cached.HeadSignature == "" {
+					cached.HeadSignature = head
+					writeSparseIndex(cacheDir, cached)
+				}
+				storeCachedSparseIndex(dir, cacheDir, cached, info, identity)
+				return cached, nil
+			}
+			// Append-only log: the cached index still describes a prefix, so only
+			// the appended tail needs scanning.
+			if cached.extends(info, identity, head) {
+				if extended, ok := extendSparseIndex(ctx, file, info, identity, head, manifest.Codec, dir, cached); ok {
+					sparseIndexExtensions.Add(1)
+					storeCachedSparseIndex(dir, cacheDir, extended, info, identity)
+					writeSparseIndex(cacheDir, extended)
+					return extended, nil
+				}
+			}
 		}
 	}
 
 	rebuilt := sparseIndex{
-		Codec:        sparseIndexCodec,
-		LogSize:      info.Size(),
-		LogModTimeNS: info.ModTime().UnixNano(),
-		LogIdentity:  identity,
-		Entries:      []sparseIndexEntry{},
+		Codec:         sparseIndexCodec,
+		LogSize:       info.Size(),
+		LogModTimeNS:  info.ModTime().UnixNano(),
+		LogIdentity:   identity,
+		HeadSignature: head,
+		Entries:       []sparseIndexEntry{},
 	}
 	commitIndex := 0
 	visit := func(offset int64, commit Commit) bool {
@@ -106,8 +235,28 @@ func loadOrBuildSparseIndex(ctx context.Context, dir, cacheDir string) (sparseIn
 	if err := ctx.Err(); err != nil {
 		return sparseIndex{}, err
 	}
+	sparseIndexRebuilds.Add(1)
+	storeCachedSparseIndex(dir, cacheDir, rebuilt, info, identity)
 	writeSparseIndex(cacheDir, rebuilt)
 	return rebuilt, nil
+}
+
+// extends reports whether the index describes a prefix of the current log, which
+// is the normal case for an append-only file: same head, and the log has only
+// grown since the scan. The index can then be extended from its own end instead
+// of being rebuilt from the start.
+func (idx sparseIndex) extends(info os.FileInfo, identity, head string) bool {
+	if idx.Codec != sparseIndexCodec || idx.HeadSignature == "" || idx.HeadSignature != head {
+		return false
+	}
+	if idx.LogSize <= 0 || idx.LogSize > info.Size() {
+		return false
+	}
+	// A truncated-then-regrown file shares a head but is not an extension.
+	if idx.LogSize < info.Size() && idx.LogIdentity == identity {
+		return false
+	}
+	return true
 }
 
 func (idx sparseIndex) validFor(info os.FileInfo, identity string) bool {
@@ -155,12 +304,17 @@ func (s *Store) recordPersistedIndex(file *os.File, start int64, commits []Commi
 	if err != nil {
 		return
 	}
+	head, err := headLogSignature(file, info)
+	if err != nil {
+		return
+	}
 	s.indexMu.Lock()
 	index := s.index
 	if index.partial {
 		index.LogSize = info.Size()
 		index.LogModTimeNS = info.ModTime().UnixNano()
 		index.LogIdentity = identity
+		index.HeadSignature = head
 		index.LastSequence = commits[len(commits)-1].LastSequence()
 		s.index = index
 		s.indexMu.Unlock()
@@ -183,6 +337,7 @@ func (s *Store) recordPersistedIndex(file *os.File, start int64, commits []Commi
 	index.LogSize = info.Size()
 	index.LogModTimeNS = info.ModTime().UnixNano()
 	index.LogIdentity = identity
+	index.HeadSignature = head
 	s.index = index
 	s.indexMu.Unlock()
 	writeSparseIndex(s.dir, index)
@@ -206,6 +361,22 @@ func (idx sparseIndex) checkpoint(offset uint64) sparseIndexEntry {
 	target := offset + 1
 	position := max(sort.Search(len(idx.Entries), func(i int) bool { return idx.Entries[i].FirstSequence > target })-1, 0)
 	return idx.Entries[position]
+}
+
+// headLogSignature hashes the leading bytes only, so it survives appends. It is
+// the cache key the offset index can actually use.
+func headLogSignature(file *os.File, info os.FileInfo) (string, error) {
+	first := min(info.Size(), sparseIdentityBytes)
+	if first <= 0 {
+		return "", nil
+	}
+	buf := make([]byte, first)
+	n, err := file.ReadAt(buf, 0)
+	if err != nil && err != io.EOF {
+		return "", err
+	}
+	hash := sha256.Sum256(buf[:n])
+	return hex.EncodeToString(hash[:]), nil
 }
 
 func sparseLogIdentity(file *os.File, info os.FileInfo) (string, error) {
