@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"time"
 
@@ -155,6 +156,7 @@ func loadSessionTranscriptTail(ctx context.Context, sessionPath string, limits s
 	if err != nil || !probe.dag || probe.size <= sessionTranscriptTailThresholdBytes {
 		return loadSessionTranscript(ctx, sessionPath, limits, hasher)
 	}
+	startedAt := time.Now()
 	st, err := replaySessionDAGTail(ctx, store.SessionEventLog(sessionPath), sessionTranscriptTailWindowBytes, limits)
 	if err != nil {
 		// An unaligned or empty window is not an error the user should see: the
@@ -164,6 +166,18 @@ func loadSessionTranscriptTail(ctx context.Context, sessionPath string, limits s
 	headID := st.selectedHead()
 	msgs, times := st.materialize(headID)
 	hasher.addAll(msgs)
+	// Task 196: the first paint's own payload deserves a line. The window is capped in
+	// bytes, not in messages, so a 20 MiB window can still carry an enormous page - and if
+	// what the user waits on is the transfer rather than the decode, this is the line that
+	// says so instead of leaving it to inference.
+	slog.Info("session: first-paint tail transcript",
+		"path", sessionPath,
+		"log_bytes", probe.size,
+		"window_bytes", sessionTranscriptTailWindowBytes,
+		"window_from", st.windowStart,
+		"messages", len(msgs),
+		"tail_truncated", true,
+		"replay_ms", time.Since(startedAt).Milliseconds())
 	return sessionLoadResult{
 		msgs: msgs, times: times, fromEvents: true, damaged: st.damaged, dag: true,
 		tailTruncated: true,
