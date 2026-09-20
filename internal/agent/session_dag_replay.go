@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -79,6 +80,13 @@ type sessionDAGState struct {
 	lastGoodEnd     int64
 	damaged         bool
 	holes           int // unreadable lines skipped between good entries
+	// tailTruncated marks a state replayed from a trailing window of a large log
+	// instead of from the beginning: the chain is complete only from windowStart
+	// onwards, and the reader must page the earlier history in. It is never set
+	// by a full replay, so callers can treat it as the honest "this is not the
+	// whole transcript" signal.
+	tailTruncated bool
+	windowStart   int64
 }
 
 func newSessionDAGState(path string) *sessionDAGState {
@@ -116,6 +124,79 @@ func replaySessionDAG(ctx context.Context, path string, limits sessionReplayLimi
 		}
 	}
 	return st, nil
+}
+
+// errSessionDAGTailUnavailable reports that a trailing-window replay could not be
+// produced, so the caller falls back to a full replay rather than showing a
+// partial transcript as if it were complete.
+var errSessionDAGTailUnavailable = errors.New("session: trailing-window replay unavailable")
+
+// replaySessionDAGTail replays only the last windowBytes of a schema-2 log.
+//
+// Opening a large session replayed every entry ever written, which is what turned
+// a 467 MiB log (100k+ entries, 3880 messages) into a ~19s stall before the first
+// paint; the materialize step that follows costs milliseconds, so the decode is
+// the whole cost. History is append-only and the reader pages older history in
+// separately, so the first paint only needs the tail. Entries whose parent lies
+// outside the window are recorded as orphans by applyMessage, which is exactly the
+// partial-chain state a window produces.
+//
+// Any doubt - an unaligned window, a window with no messages, a decode error -
+// returns errSessionDAGTailUnavailable so the caller can fall back to the full
+// replay instead of presenting a truncated transcript as the whole one.
+func replaySessionDAGTail(ctx context.Context, path string, windowBytes int64, limits sessionReplayLimits) (*sessionDAGState, error) {
+	limits = limitsForSessionLog(path, limits)
+	start, ok := sessionDAGTailWindowStart(path, windowBytes)
+	if !ok {
+		return nil, errSessionDAGTailUnavailable
+	}
+	st := newSessionDAGState(path)
+	st.tailTruncated = true
+	st.windowStart = start
+	if err := st.replayFrom(ctx, start, limits); err != nil {
+		return nil, errSessionDAGTailUnavailable
+	}
+	if len(st.nodes) == 0 || st.damaged {
+		return nil, errSessionDAGTailUnavailable
+	}
+	return st, nil
+}
+
+// sessionDAGTailWindowStart returns a restart offset that leaves about
+// windowBytes at the end of the log, snapped forward to a line boundary: schema-2
+// entries are one JSON object per line, so the byte after a newline is a legal
+// restart point. ok=false means the file is not large enough to be worth a window
+// (or could not be inspected), and the caller replays it whole.
+func sessionDAGTailWindowStart(path string, windowBytes int64) (int64, bool) {
+	if windowBytes <= 0 {
+		return 0, false
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, false
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || info.Size() <= windowBytes {
+		return 0, false
+	}
+	cut := info.Size() - windowBytes
+	// Snap forward to the next entry: read from the cut and take the first
+	// newline after it, so the window covers about windowBytes rather than the
+	// whole log (searching backwards would land on the file's first line).
+	probe := min(int64(64<<10), info.Size()-cut)
+	if probe <= 0 {
+		return 0, false
+	}
+	buf := make([]byte, probe)
+	if _, err := f.ReadAt(buf, cut); err != nil {
+		return 0, false
+	}
+	idx := bytes.IndexByte(buf, '\n')
+	if idx < 0 {
+		return 0, false
+	}
+	return cut + int64(idx) + 1, true
 }
 
 // replayFrom applies every entry from byte offset from to the end of the log.

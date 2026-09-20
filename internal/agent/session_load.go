@@ -27,7 +27,24 @@ type sessionLoadResult struct {
 	state      *sessionDAGState
 	openTurn   *sessionDAGTurn
 	events     []HeadEvent
+	// tailTruncated reports that msgs holds only the tail of the transcript
+	// because the log was too large to replay in full for a first paint. Readers
+	// that need the whole history (every write path) must not use this result;
+	// readers that page older history in may show it immediately.
+	tailTruncated bool
 }
+
+// sessionTranscriptTailThresholdBytes is the schema-2 log size past which a first
+// paint replays only the trailing window. A 467 MiB log cost ~19s of pure decoding
+// while materializing its 3880 messages took 5ms (task 187 follow-up, measured
+// 2026-09-20), so the stall the user sees is the decode. Below the threshold the
+// full replay stays, so small sessions cannot change behaviour.
+const sessionTranscriptTailThresholdBytes = int64(32 << 20)
+
+// sessionTranscriptTailWindowBytes is how much of a large log a first paint
+// replays: roughly 1/25 of the 467 MiB case, which is the difference between a
+// multi-second stall and a paint.
+const sessionTranscriptTailWindowBytes = int64(20 << 20)
 
 // loadSessionMessages returns the session transcript, preferring the event log
 // when the native layer owns it and it holds at least one decodable record.
@@ -108,6 +125,45 @@ func loadSessionTranscript(ctx context.Context, sessionPath string, limits sessi
 	}
 	msgs, err := loadSessionMessagesFromJSONLContext(ctx, sessionPath, hasher)
 	return sessionLoadResult{msgs: msgs}, err
+}
+
+// loadSessionTranscriptTail is the first-paint entry point for a session whose log
+// may be too large to replay whole. For a schema-2 log above
+// sessionTranscriptTailThresholdBytes it replays only the trailing window and
+// reports tailTruncated so the reader can page earlier history in; for anything
+// else - including every write path, which needs the complete transcript - it
+// delegates to loadSessionTranscript unchanged.
+//
+// It is deliberately a separate entry point rather than a switch inside
+// loadSessionTranscript: that function backs save, recovery and export, and a
+// truncated transcript there would silently drop history on the next write.
+func loadSessionTranscriptTail(ctx context.Context, sessionPath string, limits sessionReplayLimits, hasher *sessionTranscriptHasher) (sessionLoadResult, error) {
+	if err := ctx.Err(); err != nil {
+		return sessionLoadResult{}, err
+	}
+	limits = limitsForSessionLog(sessionPath, limits)
+	probe, err := probeSessionEventLogWithLimits(sessionPath, limits)
+	if err != nil || !probe.dag || probe.size <= sessionTranscriptTailThresholdBytes {
+		return loadSessionTranscript(ctx, sessionPath, limits, hasher)
+	}
+	st, err := replaySessionDAGTail(ctx, store.SessionEventLog(sessionPath), sessionTranscriptTailWindowBytes, limits)
+	if err != nil {
+		// An unaligned or empty window is not an error the user should see: the
+		// full replay is slow but correct, so fall back to it.
+		return loadSessionTranscript(ctx, sessionPath, limits, hasher)
+	}
+	headID := st.selectedHead()
+	msgs, times := st.materialize(headID)
+	hasher.addAll(msgs)
+	return sessionLoadResult{
+		msgs: msgs, times: times, fromEvents: true, damaged: st.damaged, dag: true,
+		tailTruncated: true,
+		head:          HeadRef{HeadID: headID, LeafID: st.heads[headID].leaf, LogGeneration: st.generation, LogOffset: st.lastGoodEnd},
+		headCount:     len(st.heads),
+		state:         st,
+		openTurn:      st.heads[headID].openTurn,
+		events:        loadHeadEvents(st, headID),
+	}, nil
 }
 
 func loadSessionMessagesFromJSONL(path string, hasher *sessionTranscriptHasher) ([]provider.Message, error) {
