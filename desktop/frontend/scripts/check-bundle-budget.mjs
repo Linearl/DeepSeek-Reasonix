@@ -237,7 +237,8 @@ if (initialCSS.length > 0) {
 // 0.1 KiB headroom ratchet.
 // Wave3 UI settings (experiment rail, write-root tiers, local-server page)
 // push deferred shell CSS to 124.1 KiB; take the next one-decimal ceiling.
-assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 124.5 * 1024); // fork: upstream 1.38.3 raised its own budget to 120.4 KiB; the fork's LocalServerPage delta plus the merge measured 121.3 KiB. The session-version panel adds its table and phase styles, measuring 122.0 KiB. Task 123's session-monitor board adds its own ~0.4 KiB of panel styles (measured 123.1 KiB), so keep 0.9 KiB of bounded headroom.
+  // 125.2: task 181 guidance edit banner styles (+0.1 over 124.6 measured at merge, 2026-09-20).
+assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 124.7 * 1024); // fork: upstream 1.38.3 raised its own budget to 120.4 KiB; the fork's LocalServerPage delta plus the merge measured 121.3 KiB. The session-version panel adds its table and phase styles, measuring 122.0 KiB. Task 123's session-monitor board adds its own ~0.4 KiB of panel styles (measured 123.1 KiB), so keep 0.9 KiB of bounded headroom.
 if (localeChunks.length !== 2) {
   throw new Error(`expected 2 on-demand Chinese locale chunks, found ${localeChunks.length}`);
 }
@@ -352,7 +353,9 @@ for (const path of localeChunks) {
   // zh-TW 74.4. Tasks 162/170 (2026-09-18) added close-flow copy and session
   // manage tool strings: measured zh-TW 74.4 KiB again at the ceiling, so the
   // ratchet moves to 74.5; tasks 184 monitor strings pushed both again: zh-TW 74.9, zh 74.0.
-  const budget = name.startsWith("zh-TW-") ? 74.9 * 1024 : 74.0 * 1024;
+  // 74.7: ratchet step +0.5 (user 2026-09-20). Merge batch measured zh 74.2 (tasks 185+181+collab keys).
+  // 75.4: ratchet step +0.5 (user 2026-09-20). Merge batch adds lab/collab keys on top of 74.9.
+  const budget = name.startsWith("zh-TW-") ? 75.4 * 1024 : 74.7 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
@@ -459,9 +462,10 @@ const rawInitialBytes = [...initialJS, ...initialCSS, ...appShellCSS]
 // measure 2496.4 KiB locally; retain the smallest bounded ceiling.
 // The context truncation-rescue notice and its three locale strings measure
 // 2496.6 KiB; retain the smallest bounded ceiling.
-const rawInitialBudgetKiB = 2_510.0; // fork: +13.3 KiB vs upstream 2496.7 (LocalServerPage + consolidate + subagent keys)
+const rawInitialBudgetKiB = 2_520.0; // fork: ratchet step ~+10 KiB (user 2026-09-20, was +0.1 and kept blocking); merge batch 2026-09-20 measured 2511.8 (tasks 185/181/collab frontend)
 // [fork note] the smallest one-decimal ratchet. Bumped to 2_461.0 for the serve pool
 assertBudget("initial raw JavaScript and CSS", rawInitialBytes, rawInitialBudgetKiB * 1024);
 // [fork note] 2026-09-15: measured 1102.2 KiB raw - same pre-existing growth as the
 // gzip budget above; re-set from the measured value with headroom.
+  // 2520: raw ratchet step widened to ~+10 KiB (user 2026-09-20). Merge batch measured 2511.8 (tasks 185/181/collab frontend).
 assertBudget("largest initial JavaScript chunk raw", largestInitialJSRaw, 1_160 * 1024);
