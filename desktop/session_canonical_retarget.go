@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
+	"time"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/sessioncatalog"
@@ -116,17 +118,39 @@ func (a *App) resumeSessionPageForTab(tabID, path string, limit int) (HistoryPag
 	if err != nil {
 		return HistoryPage{}, err
 	}
+	// Task 196 second round: the stall sits between "takeover watcher started"
+	// and "resume cache state", and neither end is itself slow (one starts a
+	// 3s poller, the other reads a sidecar). The cost is this chain, which had no
+	// timing at all. Split it into load (agent.LoadSessionTail: lock + tail
+	// replay), rebind (controller swap + projection bind + cold/warm prune) and
+	// page (history assembly), so the next capture names the culprit directly.
+	resumeStart := time.Now()
 	loaded, err := loadResumableSession(sessionPath)
+	loadMs := time.Since(resumeStart).Milliseconds()
 	if err != nil {
+		slog.Info("desktop: resume session page stages", "tab", tabID, "path", sessionPath,
+			"load_ms", loadMs, "rebind_ms", int64(0), "page_ms", int64(0),
+			"total_ms", time.Since(resumeStart).Milliseconds(), "error", err.Error())
 		return HistoryPage{}, err
 	}
+	rebindMs := int64(0)
 	if sessionRuntimeKey(tab.currentSessionPath()) != sessionRuntimeKey(sessionPath) {
+		rebindStart := time.Now()
 		if err := a.rebindTabToLoadedSessionPath(tab, sessionPath, loaded); err != nil {
+			slog.Info("desktop: resume session page stages", "tab", tabID, "path", sessionPath,
+				"load_ms", loadMs, "rebind_ms", time.Since(rebindStart).Milliseconds(), "page_ms", int64(0),
+				"total_ms", time.Since(resumeStart).Milliseconds(), "error", err.Error())
 			return HistoryPage{}, err
 		}
+		rebindMs = time.Since(rebindStart).Milliseconds()
 	}
 	a.setTabReadOnly(tab.ID, false)
-	return a.HistoryPageForTab(tab.ID, 0, limit), nil
+	pageStart := time.Now()
+	page := a.HistoryPageForTab(tab.ID, 0, limit)
+	slog.Info("desktop: resume session page stages", "tab", tabID, "path", sessionPath,
+		"load_ms", loadMs, "rebind_ms", rebindMs, "page_ms", time.Since(pageStart).Milliseconds(),
+		"total_ms", time.Since(resumeStart).Milliseconds())
+	return page, nil
 }
 
 func (a *App) retargetOpenTabsToContinuations() {

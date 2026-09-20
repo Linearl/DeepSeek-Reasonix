@@ -3774,18 +3774,36 @@ func (a *App) ResumeSessionForTab(tabID, path string) ([]HistoryMessage, error) 
 		go a.adoptSessionFromLocalServe(tab.ID, sessionPath)
 		return a.HistoryForTab(tabID), nil
 	}
+	// Task 196 second round: switching tabs also resumes through here, and the
+	// user reports slow switching *out of* a long session - so both directions
+	// need the same decomposition as resumeSessionPageForTab.
+	resumeStart := time.Now()
 	loaded, err := loadResumableSession(sessionPath)
+	loadMs := time.Since(resumeStart).Milliseconds()
 	if err != nil {
+		slog.Info("desktop: resume session stages", "tab", tabID, "path", sessionPath,
+			"load_ms", loadMs, "rebind_ms", int64(0), "history_ms", int64(0),
+			"total_ms", time.Since(resumeStart).Milliseconds(), "error", err.Error())
 		return nil, err
 	}
 
+	rebindStart := time.Now()
 	if err := a.rebindTabToLoadedSessionPath(tab, sessionPath, loaded); err != nil {
+		slog.Info("desktop: resume session stages", "tab", tabID, "path", sessionPath,
+			"load_ms", loadMs, "rebind_ms", time.Since(rebindStart).Milliseconds(), "history_ms", int64(0),
+			"total_ms", time.Since(resumeStart).Milliseconds(), "error", err.Error())
 		return nil, err
 	}
+	rebindMs := time.Since(rebindStart).Milliseconds()
 	a.setTabReadOnly(tab.ID, false)
 	a.attachTakeoverMirror(tab.ID, sessionPath)
 	go a.adoptSessionFromLocalServe(tab.ID, sessionPath)
-	return a.HistoryForTab(tabID), nil
+	historyStart := time.Now()
+	messages := a.HistoryForTab(tabID)
+	slog.Info("desktop: resume session stages", "tab", tabID, "path", sessionPath,
+		"load_ms", loadMs, "rebind_ms", rebindMs, "history_ms", time.Since(historyStart).Milliseconds(),
+		"total_ms", time.Since(resumeStart).Milliseconds())
+	return messages, nil
 }
 
 // validateChannelSessionPath 校验 bot/channel 会话路径：channel 会话可能位于
