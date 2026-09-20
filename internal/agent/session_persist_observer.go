@@ -73,6 +73,13 @@ func (s *Session) SaveIfAbsent(path string) error {
 }
 
 func (s *Session) saveObserved(path string, mode sessionSaveMode) error {
+	// A first-paint Session carries only the tail of its transcript. Saves are
+	// full rewrites, so the complete history has to be read back before any of
+	// this can reach disk (task 187). This runs outside the save locks, so the
+	// extra replay never happens inside the critical section.
+	if err := s.upgradeTruncatedTranscriptForWrite(path); err != nil {
+		return err
+	}
 	appendFrom := -1
 	if mode == sessionSaveSnapshot {
 		if index, err := LoadSessionDisplayIndex(store.SessionDisplayIndex(path)); err == nil {

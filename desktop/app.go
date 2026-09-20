@@ -4413,7 +4413,11 @@ func loadResumableSession(sessionPath string) (*agent.Session, error) {
 	if agent.IsCleanupPending(sessionPath) {
 		return nil, fmt.Errorf("session is pending cleanup")
 	}
-	return agent.LoadSession(sessionPath)
+	// First paint: a very large log is opened from its trailing window and the
+	// reader pages the rest in, instead of blocking the tab on a full replay
+	// (task 187). Every other LoadSession caller - recovery, GC, migration,
+	// export - still gets the complete transcript.
+	return agent.LoadSessionTail(sessionPath)
 }
 
 // PreviewSession reads a saved session for display only. It does not snapshot or

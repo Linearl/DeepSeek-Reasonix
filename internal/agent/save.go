@@ -1423,14 +1423,40 @@ func LoadSession(path string) (*Session, error) {
 	return loadSessionUnlocked(path)
 }
 
+// LoadSessionTail is the first-paint form of LoadSession: for a very large
+// schema-2 log it returns a Session whose transcript is the trailing window and
+// reports that fact through TailTruncated. It exists for the hydrate path, where
+// the reader pages older history in anyway; every other caller (save, recovery,
+// migration, export) keeps using LoadSession, whose transcript is complete.
+func LoadSessionTail(path string) (*Session, error) {
+	unlock := lockSessionSavePath(path)
+	defer unlock()
+	return loadSessionTailUnlocked(path)
+}
+
 func loadSessionUnlocked(path string) (*Session, error) {
+	return loadSessionWithReader(path, func(hasher *sessionTranscriptHasher) (sessionLoadResult, error) {
+		return loadSessionTranscript(context.Background(), path, defaultSessionReplayLimits, hasher)
+	})
+}
+
+func loadSessionTailUnlocked(path string) (*Session, error) {
+	return loadSessionWithReader(path, func(hasher *sessionTranscriptHasher) (sessionLoadResult, error) {
+		return loadSessionTranscriptTail(context.Background(), path, defaultSessionReplayLimits, hasher)
+	})
+}
+
+// loadSessionWithReader is the shared body of both loaders: they differ only in
+// which transcript they ask for, so the normalization, digest and persistence
+// baseline below stay identical for the tail and the full form.
+func loadSessionWithReader(path string, read func(*sessionTranscriptHasher) (sessionLoadResult, error)) (*Session, error) {
 	hasher := newSessionTranscriptHasher()
-	res, err := loadSessionTranscript(context.Background(), path, defaultSessionReplayLimits, hasher)
+	res, err := read(hasher)
 	if err != nil {
 		return nil, err
 	}
 	msgs := res.msgs
-	s := &Session{Messages: msgs, eventLogDamaged: res.damaged, head: sessionHeadState{ref: res.head, dag: res.dag, headCount: res.headCount, state: res.state, openTurn: res.openTurn, events: res.events}}
+	s := &Session{Messages: msgs, eventLogDamaged: res.damaged, tailTruncated: res.tailTruncated, head: sessionHeadState{ref: res.head, dag: res.dag, headCount: res.headCount, state: res.state, openTurn: res.openTurn, events: res.events}}
 	// Repair persisted-history-safe issues before anything reads the session.
 	// Old sessions (pre adde2d3e) and interrupted turns can carry empty tool-call
 	// names, dangling tool_calls, or half-streamed argument JSON that DeepSeek
@@ -1486,6 +1512,41 @@ func loadSessionUnlocked(path string) (*Session, error) {
 		}
 	}
 	return s, nil
+}
+
+// upgradeTruncatedTranscriptForWrite replaces a first-paint transcript with the
+// complete one before it can reach disk.
+//
+// A tail Session is safe to show and must never be saved: saves are full
+// rewrites, so persisting the window would drop everything the window left out.
+// This is the second of two guards (the first being that only the hydrate path
+// asks for a tail at all), and it runs before any save lock is taken, so the
+// extra full replay happens on the rare transition from "opened for display" to
+// "written" and never inside the save critical section.
+func (s *Session) upgradeTruncatedTranscriptForWrite(path string) error {
+	if s == nil || path == "" {
+		return nil
+	}
+	s.mu.RLock()
+	truncated := s.tailTruncated
+	s.mu.RUnlock()
+	if !truncated {
+		return nil
+	}
+	res, err := loadSessionTranscript(context.Background(), path, defaultSessionReplayLimits, newSessionTranscriptHasher())
+	if err != nil {
+		return fmt.Errorf("session: complete transcript required before saving a first-paint session: %w", err)
+	}
+	s.mu.Lock()
+	s.Messages = res.msgs
+	s.tailTruncated = false
+	if res.dag {
+		s.head = sessionHeadState{ref: res.head, dag: res.dag, headCount: res.headCount, state: res.state, openTurn: res.openTurn, events: res.events}
+	}
+	s.mu.Unlock()
+	slog.Info("session: upgraded a first-paint transcript to the full one before saving",
+		"path", path, "messages", len(res.msgs))
+	return nil
 }
 
 // SessionInfo summarises a saved session for the --resume picker: where it is on

@@ -86,6 +86,13 @@ func loadSessionTranscript(ctx context.Context, sessionPath string, limits sessi
 	// budget was still refused on the non-DAG path (task 104). The record, message and
 	// collection caps are untouched, and the adaptive allowance keeps its own 1 GiB ceiling.
 	limits = limitsForSessionLog(sessionPath, limits)
+	logPath := store.SessionEventLog(sessionPath)
+	// A log that was refused before is refused again from memory: the refusal is a
+	// property of the bytes on disk, and the LRU and the sidebar can ask for the
+	// same session repeatedly, each time paying a full replay before giving up.
+	if cached, ok := cachedSessionReplayRefusal(logPath); ok {
+		return sessionLoadResult{fromEvents: true}, cached
+	}
 	probe, err := probeSessionEventLogWithLimits(sessionPath, limits)
 	if err != nil {
 		return sessionLoadResult{}, err
@@ -94,8 +101,9 @@ func loadSessionTranscript(ctx context.Context, sessionPath string, limits sessi
 		return sessionLoadResult{fromEvents: true}, fmt.Errorf("session event log for %s uses schema %d; this build supports up to %d", sessionPath, probe.schemaVersion, sessionDAGSchemaVersion)
 	}
 	if probe.dag {
-		st, err := replaySessionDAG(ctx, store.SessionEventLog(sessionPath), limits)
+		st, err := replaySessionDAG(ctx, logPath, limits)
 		if err != nil {
+			rememberSessionReplayRefusal(logPath, err)
 			return sessionLoadResult{fromEvents: true, dag: true}, err
 		}
 		headID := st.selectedHead()
@@ -111,8 +119,9 @@ func loadSessionTranscript(ctx context.Context, sessionPath string, limits sessi
 		}, nil
 	}
 	if probe.native && probe.size > 0 {
-		replay, replayErr := replaySessionEventLogWithContext(ctx, store.SessionEventLog(sessionPath), limits, hasher)
+		replay, replayErr := replaySessionEventLogWithContext(ctx, logPath, limits, hasher)
 		if replayErr != nil {
+			rememberSessionReplayRefusal(logPath, replayErr)
 			return sessionLoadResult{fromEvents: true}, replayErr
 		}
 		if replay.records > 0 {

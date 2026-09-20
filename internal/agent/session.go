@@ -41,6 +41,11 @@ type Session struct {
 	// eventLogDamaged is set when LoadSession found the on-disk event log torn
 	// or corrupt and returned the replayable prefix (or the .jsonl checkpoint).
 	// The next save heals the log with a rewrite-and-compact.
+	// tailTruncated marks a Session loaded for first paint whose Messages hold
+	// only the trailing window of a very large log (LoadSessionTail). Such a
+	// Session is safe to display and must never be written: every save is a full
+	// rewrite, so saveObserved upgrades it to the complete transcript first.
+	tailTruncated   bool
 	eventLogDamaged bool
 	// rawMessages preserves the pre-normalization transcript when the load-time
 	// repairs changed it (normalizedDirty). It is only meaningful on a freshly
@@ -90,6 +95,18 @@ func NewSession(system string) *Session {
 }
 
 // Add appends a message.
+// TailTruncated reports whether Messages holds only the tail of the transcript
+// because this Session was opened for first paint from a very large log. Readers
+// may display it and page the rest in; writers must treat it as incomplete.
+func (s *Session) TailTruncated() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.tailTruncated
+}
+
 func (s *Session) Add(m provider.Message) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -433,6 +450,7 @@ func (s *Session) CloneWithMessages(msgs []provider.Message) *Session {
 		persisted:               s.persisted,
 		normalizedDirty:         s.normalizedDirty,
 		eventLogDamaged:         s.eventLogDamaged,
+		tailTruncated:           s.tailTruncated,
 		rawMessages:             append([]provider.Message(nil), s.rawMessages...),
 		pendingContentReasons:   append([]string(nil), s.pendingContentReasons...),
 	}
@@ -464,6 +482,7 @@ func (s *Session) CloneWithMessagesIfCompatible(msgs []provider.Message) (*Sessi
 		persisted:               s.persisted,
 		normalizedDirty:         s.normalizedDirty,
 		eventLogDamaged:         s.eventLogDamaged,
+		tailTruncated:           s.tailTruncated,
 		rawMessages:             append([]provider.Message(nil), s.rawMessages...),
 		pendingContentReasons:   append([]string(nil), s.pendingContentReasons...),
 	}, true
