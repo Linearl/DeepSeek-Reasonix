@@ -469,10 +469,13 @@ console.log("\ncomposer inbox recovery");
   await waitFor("editable guidance rendered", () => document.querySelector("[aria-label=\"Edit this queued guidance\"]") !== null);
   const edit = document.querySelector("[aria-label=\"Edit this queued guidance\"]") as HTMLButtonElement;
   await act(async () => { edit.click(); await flushTimers(); });
-  const editor = document.querySelector(".composer-guidance-item__editor") as HTMLInputElement;
-  ok(editor?.value === "Original queued text", "edit mode loads the queued text");
-  const save = document.querySelector("[aria-label=\"Save guidance edits\"]") as HTMLButtonElement;
-  await act(async () => { save.click(); await flushTimers(); });
+  // Task 181: the pencil loads the full body into the main composer's textarea —
+  // the shelf no longer edits in a one-line input — and the send button saves it
+  // in place through UpdateInboxItem.
+  const composerInput = document.querySelector("textarea.composer__input:not([aria-hidden=true])") as HTMLTextAreaElement;
+  ok(composerInput?.value === "Original queued text", "edit mode loads the queued text into the composer");
+  const send = document.querySelector(".composer__btn--send") as HTMLButtonElement;
+  await act(async () => { send.click(); await flushTimers(); });
   ok(updated === "Original queued text", "edit saves through UpdateInboxItem");
   await act(async () => { root.unmount(); });
   dom.window.close();

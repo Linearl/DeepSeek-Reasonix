@@ -1,6 +1,12 @@
 import { useState } from "react";
-import { Check, ChevronDown, ChevronUp, CornerDownRight, Pencil, Trash2, X } from "lucide-react";
-import { guidanceHasKnownPendingState, guidanceIsDelivering, guidanceIsEditable, guidanceIsInFlight, guidanceNeedsRetry } from "../lib/composerGuidance";
+import { ChevronDown, ChevronUp, CornerDownRight, Pencil, Trash2 } from "lucide-react";
+import {
+  guidanceEditableInComposer,
+  guidanceHasKnownPendingState,
+  guidanceIsDelivering,
+  guidanceIsInFlight,
+  guidanceNeedsRetry,
+} from "../lib/composerGuidance";
 import { useI18n } from "../lib/i18n";
 import type { StructuredInvocationSubmit } from "../lib/invocationDisplay";
 import { InboxRecoveryBanner } from "./InboxRecoveryBanner";
@@ -34,6 +40,7 @@ export function ComposerGuidanceShelf({
   disabled,
   readOnly,
   sendingId,
+  editingId,
   onReview,
   onRecoveryResumed,
   onRecoveryError,
@@ -41,6 +48,7 @@ export function ComposerGuidanceShelf({
   onSend,
   onDismiss,
   onEdit,
+  onPreviewText,
 }: {
   recovery: InboxRecoveryNotice | null;
   recoveryDisabled: boolean;
@@ -50,42 +58,58 @@ export function ComposerGuidanceShelf({
   disabled: boolean;
   readOnly: boolean;
   sendingId: string | null;
+  /** Task 181: the entry currently loaded into the main composer, if any. */
+  editingId?: string | null;
   onReview: () => void;
   onRecoveryResumed: () => void;
   onRecoveryError: (error: unknown) => void;
   onToggleExpanded: () => void;
   onSend: (item: PendingGuidance) => void;
   onDismiss: (item: PendingGuidance) => void;
-  onEdit?: (item: PendingGuidance, text: string) => void | Promise<void>;
+  /**
+   * Task 181: the pencil no longer edits in place — a queued guidance body is
+   * multi-line (cross-session replies carry a header plus prose), and a one-line
+   * input can only ever show a truncated preview of it. The callback hands the
+   * entry to the composer, which owns a textarea and the stash for the draft that
+   * was already typed there.
+   */
+  onEdit?: (item: PendingGuidance) => void;
+  /** Full body for the read-only preview; falls back to the row's own text. */
+  onPreviewText?: (item: PendingGuidance) => Promise<string>;
 }) {
   const { t } = useI18n();
   const visible = expanded ? items : items.slice(0, 2);
   const hiddenCount = Math.max(0, items.length - 2);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editDraft, setEditDraft] = useState("");
-  const [editBusy, setEditBusy] = useState(false);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [previewText, setPreviewText] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(false);
 
-  const startEdit = (item: PendingGuidance) => {
-    setEditingId(item.id);
-    setEditDraft(item.submitText.trim() || item.text);
+  const closePreview = () => {
+    setPreviewId(null);
+    setPreviewText("");
+    setPreviewLoading(false);
   };
 
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditDraft("");
-    setEditBusy(false);
-  };
-
-  const saveEdit = async (item: PendingGuidance) => {
-    if (!onEdit || editBusy) return;
-    const next = editDraft.trim();
-    if (!next) return;
-    setEditBusy(true);
+  const togglePreview = async (item: PendingGuidance) => {
+    if (previewId === item.id) {
+      closePreview();
+      return;
+    }
+    setPreviewId(item.id);
+    setPreviewLoading(true);
+    const fallback = item.submitText.trim() || item.text.trim();
+    setPreviewText(fallback);
+    if (!onPreviewText) {
+      setPreviewLoading(false);
+      return;
+    }
     try {
-      await onEdit(item, next);
-      cancelEdit();
+      const full = await onPreviewText(item);
+      setPreviewText(full.trim() || fallback);
     } catch {
-      setEditBusy(false);
+      // The preview is a convenience; the row's own text already stands in.
+    } finally {
+      setPreviewLoading(false);
     }
   };
 
@@ -121,8 +145,9 @@ export function ComposerGuidanceShelf({
               const unknownState = !guidanceHasKnownPendingState(item.state);
               const needsRetry = guidanceNeedsRetry(item.state);
               const waitingForEarlier = !running && !inFlight && index > 0;
-              const canEdit = Boolean(onEdit) && !readOnly && !disabled && guidanceIsEditable(item) && !waitingForEarlier && sendingId === null;
               const editing = editingId === item.id;
+              const canEdit = Boolean(onEdit) && !readOnly && !disabled && guidanceEditableInComposer(item) && !waitingForEarlier && sendingId === null && !editing;
+              const previewing = previewId === item.id;
               const actionLabel = inFlight
                 ? t("composer.guidanceInFlight")
                 : delivering
@@ -135,90 +160,57 @@ export function ComposerGuidanceShelf({
               return (
                 <div className={`composer-guidance-item${editing ? " composer-guidance-item--editing" : ""}`} key={item.id}>
                   <CornerDownRight size={14} className="composer-guidance-item__icon" />
-                  {editing ? (
-                    <input
-                      className="composer-guidance-item__editor"
-                      value={editDraft}
-                      onChange={(event) => setEditDraft(event.target.value)}
-                      aria-label={t("composer.guidanceEdit")}
-                      disabled={editBusy}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          void saveEdit(item);
-                        }
-                        if (event.key === "Escape") {
-                          event.preventDefault();
-                          cancelEdit();
-                        }
-                      }}
-                    />
-                  ) : (
-                    <span className="composer-guidance-item__text">{item.text.trim() || t("composer.guidanceEmptyPreview")}</span>
+                  <button
+                    className="composer-guidance-item__text composer-guidance-item__text--button"
+                    type="button"
+                    aria-expanded={previewing}
+                    aria-label={previewing ? t("composer.guidancePreviewClose") : t("composer.guidancePreviewOpen")}
+                    onClick={() => void togglePreview(item)}
+                  >
+                    {item.text.trim() || t("composer.guidanceEmptyPreview")}
+                  </button>
+                  {canEdit && (
+                    <Tooltip label={t("composer.guidanceEdit")}>
+                      <button
+                        className="composer-guidance-item__action"
+                        type="button"
+                        aria-label={t("composer.guidanceEdit")}
+                        onClick={() => onEdit?.(item)}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    </Tooltip>
                   )}
-                  {editing ? (
-                    <>
-                      <Tooltip label={t("composer.guidanceSaveEdit")}>
-                        <button
-                          className="composer-guidance-item__action"
-                          type="button"
-                          aria-label={t("composer.guidanceSaveEdit")}
-                          disabled={editBusy || !editDraft.trim()}
-                          onClick={() => void saveEdit(item)}
-                        >
-                          <Check size={14} />
-                        </button>
-                      </Tooltip>
-                      <Tooltip label={t("composer.guidanceCancelEdit")}>
-                        <button
-                          className="composer-guidance-item__action"
-                          type="button"
-                          aria-label={t("composer.guidanceCancelEdit")}
-                          disabled={editBusy}
-                          onClick={cancelEdit}
-                        >
-                          <X size={14} />
-                        </button>
-                      </Tooltip>
-                    </>
-                  ) : (
-                    <>
-                      {canEdit && (
-                        <Tooltip label={t("composer.guidanceEdit")}>
-                          <button
-                            className="composer-guidance-item__action"
-                            type="button"
-                            aria-label={t("composer.guidanceEdit")}
-                            onClick={() => startEdit(item)}
-                          >
-                            <Pencil size={14} />
-                          </button>
-                        </Tooltip>
-                      )}
-                      <Tooltip label={actionLabel}>
-                        <button
-                          className="composer-guidance-item__guide"
-                          type="button"
-                          aria-label={actionLabel}
-                          disabled={inFlight || delivering || unknownState || waitingForEarlier || disabled || readOnly || sendingId !== null || (running && !needsRetry && Boolean(item.structured)) || Boolean(item.paused)}
-                          onClick={() => onSend(item)}
-                        >
-                          <CornerDownRight size={13} />
-                          <span>{t(needsRetry ? "composer.guidanceRetryMode" : running ? "composer.guidanceMode" : "composer.guidanceSendMode")}</span>
-                        </button>
-                      </Tooltip>
-                      <Tooltip label={inFlight || delivering ? actionLabel : t("composer.guidanceDismiss")}>
-                        <button
-                          className="composer-guidance-item__action"
-                          type="button"
-                          aria-label={inFlight || delivering ? actionLabel : t("composer.guidanceDismiss")}
-                          disabled={disabled || readOnly || inFlight || delivering || unknownState || sendingId === item.id}
-                          onClick={() => onDismiss(item)}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </Tooltip>
-                    </>
+                  {editing && (
+                    <span className="composer-guidance-item__badge">{t("composer.guidanceEditingBadge")}</span>
+                  )}
+                  <Tooltip label={actionLabel}>
+                    <button
+                      className="composer-guidance-item__guide"
+                      type="button"
+                      aria-label={actionLabel}
+                      disabled={inFlight || delivering || unknownState || waitingForEarlier || disabled || readOnly || sendingId !== null || (running && !needsRetry && Boolean(item.structured)) || Boolean(item.paused)}
+                      onClick={() => onSend(item)}
+                    >
+                      <CornerDownRight size={13} />
+                      <span>{t(needsRetry ? "composer.guidanceRetryMode" : running ? "composer.guidanceMode" : "composer.guidanceSendMode")}</span>
+                    </button>
+                  </Tooltip>
+                  <Tooltip label={inFlight || delivering ? actionLabel : t("composer.guidanceDismiss")}>
+                    <button
+                      className="composer-guidance-item__action"
+                      type="button"
+                      aria-label={inFlight || delivering ? actionLabel : t("composer.guidanceDismiss")}
+                      disabled={disabled || readOnly || inFlight || delivering || unknownState || sendingId === item.id || editing}
+                      onClick={() => onDismiss(item)}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </Tooltip>
+                  {previewing && (
+                    <div className="composer-guidance-item__preview" role="note" aria-busy={previewLoading}>
+                      {previewText}
+                    </div>
                   )}
                 </div>
               );

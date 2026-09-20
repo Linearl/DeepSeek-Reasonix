@@ -18,7 +18,7 @@ import { inboxScopeKey } from "../lib/composerInboxQueue";
 import { useComposerInboxRefresh } from "../lib/useComposerInboxRefresh";
 import { useComposerImeGuard } from "../lib/useComposerImeGuard";
 import { useComposerCommandCatalog } from "../lib/useComposerCommandCatalog";
-import { guidanceIsInFlight, guidanceNeedsRetry, guidanceTextMatches, kickIdleGuidance, markGuidanceQueued } from "../lib/composerGuidance";
+import { guidanceIsDelivering, guidanceIsInFlight, guidanceNeedsRetry, guidanceTextMatches, kickIdleGuidance, markGuidanceQueued } from "../lib/composerGuidance";
 import { canUsePromptHistory, composerEnterAction, composerEscapeAction, composerMenuKeyAction, insertComposerNewline, isFnKeyEvent, isImeKeyEvent, promptHistoryDirectionFromEvent } from "../lib/composerKeyboard";
 import { cacheGeneration, loadOlder } from "../lib/composerHistory";
 import { sessionTurnsLabel } from "../lib/sessionTurnsPresentation";
@@ -2119,6 +2119,13 @@ export function Composer({
   };
 
   const submit = async () => {
+    // Task 181: while a queued guidance entry is loaded in the composer, the send
+    // key saves that edit (in place, or as a new tail entry when it is already
+    // delivering) instead of submitting a fresh message — one composer, two modes.
+    if (guidanceCompose) {
+      await saveGuidanceCompose();
+      return;
+    }
     const submitDraftKey = activeDraftKeyRef.current;
     const submitPendingKey = pendingKey;
     const submitTabId = tabId;
@@ -2400,20 +2407,85 @@ export function Composer({
     }
   };
 
-  const editQueuedGuidance = async (item: PendingGuidance, nextText: string) => {
-    const text = nextText.trim();
-    if (!text || item.id.startsWith("local-")) return;
-    const targetDraftKey = activeDraftKeyRef.current;
-    const targetTabId = tabId || "";
+  // Task 181: a queued guidance body is multi-line (cross-session replies carry a
+  // header plus prose), and the shelf's one-line input could only ever show a
+  // truncated preview of it. The pencil now loads the entry into the main
+  // composer — a textarea built for multi-line editing — while the draft that was
+  // already there is stashed, so the two bodies never overwrite each other.
+  const [guidanceCompose, setGuidanceCompose] = useState<{ id: string; tabId: string } | null>(null);
+  const guidanceComposeStashRef = useRef<ComposerDraft | null>(null);
+
+  const readGuidanceBody = async (item: PendingGuidance): Promise<string> => {
+    const preview = item.submitText.trim() || item.text.trim();
+    if (item.id.startsWith("local-")) return preview;
     try {
-      await app.UpdateInboxItem(targetTabId, item.id, text, text);
-      updatePendingGuidanceForDraft(targetDraftKey, (items) =>
-        items.map((queued) => queued.id === item.id ? { ...queued, text, submitText: text } : queued),
-      );
-    } catch (error) {
-      showToast(formatInboxError(error, locale), "warn");
-      throw error;
+      const env = await app.ReadInboxItem(tabId || "", item.id);
+      return (env.submitText || env.displayText || preview).trim() || preview;
+    } catch {
+      // Preview-only text still beats refusing to open the editor at all.
+      return preview;
     }
+  };
+
+  const beginGuidanceCompose = async (item: PendingGuidance) => {
+    if (guidanceCompose) return;
+    const body = await readGuidanceBody(item);
+    const stash = snapshotComposerDraft();
+    guidanceComposeStashRef.current = stash;
+    restoreComposerDraft({ ...stash, text: body });
+    setGuidanceCompose({ id: item.id, tabId: tabId || "" });
+  };
+
+  const cancelGuidanceCompose = () => {
+    const stash = guidanceComposeStashRef.current;
+    guidanceComposeStashRef.current = null;
+    setGuidanceCompose(null);
+    if (stash) restoreComposerDraft(stash);
+  };
+
+  const saveGuidanceCompose = async () => {
+    const target = guidanceCompose;
+    if (!target) return;
+    const body = textRef.current.trim();
+    if (!body) {
+      showToast(t("composer.guidanceEditEmptyBody"), "warn");
+      return;
+    }
+    const targetDraftKey = activeDraftKeyRef.current;
+    const item = pendingGuidanceRef.current.find((queued) => queued.id === target.id);
+    const localItem = target.id.startsWith("local-");
+    if (!localItem && (guidanceIsInFlight(item?.state) || guidanceIsDelivering(item?.state))) {
+      // The entry left the queue while it was being edited. Appending to the tail
+      // leaves the delivery already in motion alone and still lands the edit.
+      const requeue = window.confirm(`${t("composer.guidanceRequeueTitle")}\n\n${t("composer.guidanceRequeueMessage")}`);
+      if (!requeue) return;
+      try {
+        await app.EnqueueInboxFollowup(target.tabId, body, body, `guidance-requeue-${target.id}-${Date.now()}`);
+        setGuidanceRetryNonce((value) => value + 1);
+      } catch (error) {
+        showToast(formatInboxError(error, locale), "warn");
+        return;
+      }
+      cancelGuidanceCompose();
+      return;
+    }
+    if (!localItem) {
+      try {
+        await app.UpdateInboxItem(target.tabId, target.id, body, body);
+        updatePendingGuidanceForDraft(targetDraftKey, (items) =>
+          items.map((queued) => queued.id === target.id ? { ...queued, text: body, submitText: body } : queued),
+        );
+        if (item && guidanceNeedsRetry(item.state)) {
+          await app.RetryInboxItem(target.tabId, target.id);
+          updatePendingGuidanceForDraft(targetDraftKey, (items) => markGuidanceQueued(items, target.id));
+          setGuidanceRetryNonce((value) => value + 1);
+        }
+      } catch (error) {
+        showToast(formatInboxError(error, locale), "warn");
+        return;
+      }
+    }
+    cancelGuidanceCompose();
   };
 
   const readFileAsDataURL = (file: File) =>
@@ -3510,6 +3582,14 @@ export function Composer({
     });
 
     if (e.key === "Enter" && composing) return;
+    // Task 181: Esc leaves guidance-edit mode and restores the stashed draft. It
+    // must not also reach the composer's stop shortcut, so it returns here.
+    if (e.key === "Escape" && guidanceCompose && !composing) {
+      e.preventDefault();
+      e.stopPropagation();
+      cancelGuidanceCompose();
+      return;
+    }
     if (fnKey) return;
 
     if (attachmentInputEnabled && isPasteShortcut(e) && !composing) {
@@ -4409,6 +4489,20 @@ export function Composer({
           />
         ) : null
       )}
+      {guidanceCompose && (
+        <div className="composer-guidance-edit-banner" role="status" aria-live="polite">
+          <span className="composer-guidance-edit-banner__label">
+            {t("composer.guidanceEditingBanner", { n: Math.max(1, pendingGuidance.findIndex((queued) => queued.id === guidanceCompose.id) + 1) })}
+          </span>
+          <button
+            className="composer-guidance-edit-banner__cancel"
+            type="button"
+            onClick={cancelGuidanceCompose}
+          >
+            {t("composer.guidanceCancelEdit")}
+          </button>
+        </div>
+      )}
       {pendingGuidance.length > 0 && (
         <Suspense fallback={null}>
           <ComposerGuidanceShelf
@@ -4425,13 +4519,15 @@ export function Composer({
             disabled={Boolean(disabled)}
             readOnly={readOnly}
             sendingId={guidanceSendingId}
+            editingId={guidanceCompose?.id ?? null}
             onReview={() => setGuidanceExpanded(true)}
             onRecoveryResumed={() => setGuidanceRetryNonce((value) => value + 1)}
             onRecoveryError={(error) => showToast(formatInboxError(error, locale), "warn")}
             onToggleExpanded={() => setGuidanceExpanded((value) => !value)}
             onSend={(item) => void sendQueuedGuidance(item)}
             onDismiss={(item) => void dismissQueuedGuidance(item)}
-            onEdit={(item, text) => editQueuedGuidance(item, text)}
+            onEdit={(item) => void beginGuidanceCompose(item)}
+            onPreviewText={(item) => readGuidanceBody(item)}
           />
         </Suspense>
       )}
