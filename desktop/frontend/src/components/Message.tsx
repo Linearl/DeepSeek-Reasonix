@@ -61,9 +61,27 @@ function parseImSourceMessage(text: string): ImSourceMessage | null {
   };
 }
 
+// Task 167: a cross-session message lands in the transcript as a plain user
+// message, so it has to carry its own provenance — otherwise the recipient
+// cannot tell it from something the user typed. Fold it into the IM-source card
+// the transcript already renders for external senders, which keeps one
+// provenance surface instead of two.
+function collabAsImSource(text: string): ImSourceMessage | null {
+  const prefix = "[跨会话消息]";
+  if (!text.startsWith(prefix)) return null;
+  const rest = text.slice(prefix.length);
+  const newline = rest.indexOf("\n");
+  const header = (newline < 0 ? rest : rest.slice(0, newline)).trim();
+  const body = newline < 0 ? "" : rest.slice(newline + 1).replace(/^\r?\n/, "");
+  const match = /来自 contact_id=(\S+)\s*→\s*发至 contact_id=(\S+)/.exec(header);
+  if (!match) return null;
+  return { provider: "collab", label: "", sender: match[1], chat: match[2], text: body };
+}
+
 function imSourceLabel(source: ImSourceMessage, t: ReturnType<typeof useT>): string {
   if (source.label.trim()) return source.label.trim();
   const provider = source.provider.trim().toLowerCase();
+  if (provider === "collab") return t("msg.fromCollab");
   if (provider === "lark") return "Lark";
   if (provider === "weixin" || provider === "wechat") return t("settings.botWeixin");
   return t("settings.botFeishu");
@@ -183,7 +201,7 @@ export function UserMessage({
 }) {
   const t = useT();
   const invocationMetadata = useContext(InvocationMetadataContext);
-  const imSource = parseImSourceMessage(text);
+  const imSource = parseImSourceMessage(text) ?? collabAsImSource(text);
   const actionText = stripMemoryCompilerExecution(imSource?.text ?? text);
   const hasMemoryCompiler = Boolean(submitText?.includes("<memory-compiler-execution>"));
   const selectedTextEntries = useMemo(() => parseSelectedTextContext(submitText), [submitText]);

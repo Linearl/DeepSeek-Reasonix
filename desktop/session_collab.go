@@ -138,30 +138,99 @@ func (p *sessionCollabPump) drainOnce() {
 func (a *App) createCollabSession(req agent.CreateCollabSessionRequest) (agent.CreateCollabSessionResult, error) {
 	// Task 156.B (audit F154-6): the global tab carries a non-empty
 	// WorkspaceRoot (globalWorkspaceRoot(), app.go), so the old
-	// "workspaceRoot != \"\"" probe misfiled every global-tab collab session
+	// "workspaceRoot != ''" probe misfiled every global-tab collab session
 	// as a project topic — which re-created the "global-workspace" project
 	// after the user deleted it (ghost-project loop, incident 2026-09-17).
 	// Compare against the real global workspace root instead; only a genuinely
 	// different project root counts as project scope.
 	//
-	// Task 158.C: an explicit `project` overrides the caller's own scope, so a
-	// secretary can file a session into ANOTHER project — but only one the
-	// desktop already knows. An unregistered root is refused with the list of
-	// known projects; creating one would leave a project nobody opened, which is
+	// A requested project must be one the desktop already knows: creating a
+	// session in an unknown root would leave a project nobody opened, which is
 	// how the ghost project above appeared in the first place.
 	scope, root, serr := resolveCollabTargetScope(req.WorkspaceRoot, req.ProjectRoot, a.registeredCollabProjectRoots())
 	if serr != nil {
 		return agent.CreateCollabSessionResult{}, serr
 	}
-	title, purpose := strings.TrimSpace(req.Title), strings.TrimSpace(req.Purpose)
-	group, groupID := strings.TrimSpace(req.Group), strings.TrimSpace(req.GroupID)
+	_, defaultApproval, _ := desktopNewSessionDefaults(scope, root)
+
+	items := req.ItemList()
+	result := agent.CreateCollabSessionResult{}
+	var firstErr error
+	for _, item := range items {
+		one, err := a.createOneCollabSession(scope, root, item, defaultApproval)
+		if err != nil {
+			// Partial success is the contract (task 166): an item is created the
+			// moment its file and contact_id land, so a later failure never rolls
+			// back what already exists — the caller retries only the failures.
+			result.Failed = append(result.Failed, agent.CreateCollabSessionFailure{
+				Title:  strings.TrimSpace(item.Title),
+				Reason: err.Error(),
+			})
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		result.Created = append(result.Created, one)
+	}
+	if len(result.Created) == 0 {
+		if firstErr == nil {
+			firstErr = fmt.Errorf("no session was created")
+		}
+		return result, firstErr
+	}
+	// The single form keeps its historical flat fields so existing callers and
+	// tests read the same shape they always did.
+	if len(items) == 1 {
+		first := result.Created[0]
+		result.TopicID = first.TopicID
+		result.ContactID = first.ContactID
+		result.SessionPath = first.SessionPath
+		result.Purpose = first.Purpose
+		result.Group = first.Group
+		result.GroupID = first.GroupID
+		result.Model = first.Model
+		result.Scope = first.Scope
+		result.ProjectRoot = first.ProjectRoot
+	}
+	// Task 167: a first message rides the existing mailbox path — the same
+	// MailStore.Deliver the talk_to_session tool uses, drained by the same pump,
+	// so there is no second delivery channel to keep in step.
+	if body := strings.TrimSpace(req.Message); body != "" {
+		a.queueCollabFirstMessage(&result, body, req.Delivery)
+	}
+	// A brand-new topic is a tree change; re-emit so the sidebar and session
+	// catalog pick up the file we just wrote (sub-item B: no manual refresh).
+	a.emitProjectTreeChanged()
+	return result, nil
+}
+
+// createOneCollabSession creates a single collaborating session: topic, group,
+// transcript, contact_id, purpose, approval mode and (when requested) the model
+// pin. It is the loop body of the batch form and the whole of the single form.
+func (a *App) createOneCollabSession(scope, root string, item agent.CreateCollabSessionItem, defaultApproval string) (agent.CreateCollabSessionItemResult, error) {
+	title, purpose := strings.TrimSpace(item.Title), strings.TrimSpace(item.Purpose)
+	if title == "" || purpose == "" {
+		return agent.CreateCollabSessionItemResult{}, fmt.Errorf("title and purpose are required for every session")
+	}
+	group, groupID := strings.TrimSpace(item.Group), strings.TrimSpace(item.GroupID)
+	if group == "" && groupID == "" {
+		return agent.CreateCollabSessionItemResult{}, fmt.Errorf("group or group_id is required: an ungrouped expert session is invisible to the team view")
+	}
+	// Task 162: an explicit model pin is validated with the same provider/model
+	// resolution the settings UI uses. A bare id is refused rather than guessed,
+	// because two endpoints may expose the same model name.
+	modelRef, merr := resolveRequestedCollabModel(scope, root, item.Model)
+	if merr != nil {
+		return agent.CreateCollabSessionItemResult{}, merr
+	}
 	meta, err := a.CreateTopic(scope, root, title)
 	if err != nil {
-		return agent.CreateCollabSessionResult{}, err
+		return agent.CreateCollabSessionItemResult{}, err
 	}
-	if strings.TrimSpace(group) != "" || strings.TrimSpace(groupID) != "" {
+	if group != "" || groupID != "" {
 		if err := a.AddTopicToGroup(scope, root, meta.ID, groupID, group); err != nil {
-			return agent.CreateCollabSessionResult{TopicID: meta.ID}, err
+			return agent.CreateCollabSessionItemResult{TopicID: meta.ID, Title: title, Purpose: purpose}, err
 		}
 	}
 
@@ -171,45 +240,151 @@ func (a *App) createCollabSession(req agent.CreateCollabSessionRequest) (agent.C
 	dir := desktopSessionDir(root)
 	sessionPath, ferr := createEmptySessionFile(dir, "collab")
 	if ferr != nil {
-		return agent.CreateCollabSessionResult{TopicID: meta.ID}, fmt.Errorf("session file for %q: %w", title, ferr)
+		return agent.CreateCollabSessionItemResult{TopicID: meta.ID, Title: title}, fmt.Errorf("session file for %q: %w", title, ferr)
 	}
 	// Stamp contact_id + purpose + topic + scope onto the branch meta so the
 	// directory sees a complete record immediately. This is the "创建即注册"
 	// step: no pending-purpose round-trip through the pump.
 	if _, perr := agent.SetSessionPurpose(sessionPath, purpose); perr != nil {
-		return agent.CreateCollabSessionResult{TopicID: meta.ID, SessionPath: sessionPath}, fmt.Errorf("register purpose for %q: %w", title, perr)
+		return agent.CreateCollabSessionItemResult{TopicID: meta.ID, Title: title, SessionPath: sessionPath}, fmt.Errorf("register purpose for %q: %w", title, perr)
 	}
 	// Task 156.C: inherit the desktop default tool approval mode (Ask/Auto/
 	// YOLO from settings) so a collab session that auto-starts a turn from a
 	// cross-session message can actually run tools. A hardcoded "ask" here
 	// made every remotely-triggered tool call abort with "approval aborted"
 	// — nobody is present to approve a turn the user never opened.
-	_, defaultApproval, _ := desktopNewSessionDefaults(scope, root)
+	// Task 162 follows the same pattern for the model pin: an explicit ref is
+	// written here so the session starts on it instead of on the default.
 	if uerr := agent.UpdateBranchMeta(sessionPath, false, func(m *agent.BranchMeta) error {
 		m.TopicID = meta.ID
 		m.TopicTitle = meta.Title
 		m.Scope = scope
 		m.WorkspaceRoot = root
 		m.ToolApprovalMode = defaultApproval
+		if modelRef != "" {
+			m.Model = modelRef
+		}
 		return nil
 	}); uerr != nil {
-		return agent.CreateCollabSessionResult{TopicID: meta.ID, SessionPath: sessionPath}, fmt.Errorf("bind topic %q to session: %w", meta.ID, uerr)
+		return agent.CreateCollabSessionItemResult{TopicID: meta.ID, Title: title, SessionPath: sessionPath}, fmt.Errorf("bind topic %q to session: %w", meta.ID, uerr)
 	}
 
-	contactID := agent.SessionContactID(sessionPath)
-	// A brand-new topic is a tree change; re-emit so the sidebar and session
-	// catalog pick up the file we just wrote (sub-item B: no manual refresh).
-	a.emitProjectTreeChanged()
-	return agent.CreateCollabSessionResult{
-		TopicID:     meta.ID,
-		ContactID:   contactID,
-		SessionPath: sessionPath,
+	return agent.CreateCollabSessionItemResult{
+		Title:       title,
 		Purpose:     purpose,
+		TopicID:     meta.ID,
+		ContactID:   agent.SessionContactID(sessionPath),
+		SessionPath: sessionPath,
 		Group:       group,
 		GroupID:     groupID,
+		Model:       modelRef,
 		Scope:       scope,
 		ProjectRoot: root,
 	}, nil
+}
+
+// resolveRequestedCollabModel validates an optional `provider/model` ref against
+// the configuration that governs the new session (project config for a project
+// scope, user config otherwise — the same source desktopNewSessionDefaults
+// uses). The empty ref means "no pin": the session keeps resolving its default
+// at first open, exactly as before (task 162 acceptance 4).
+func resolveRequestedCollabModel(scope, root, requested string) (string, error) {
+	requested = strings.TrimSpace(requested)
+	if requested == "" {
+		return "", nil
+	}
+	prov, model, ok := strings.Cut(requested, "/")
+	prov, model = strings.TrimSpace(prov), strings.TrimSpace(model)
+	if !ok || prov == "" || model == "" {
+		return "", fmt.Errorf("model %q must be a `provider/model` ref: a bare model id is ambiguous when two endpoints expose the same name, so the host will not pick one for you", requested)
+	}
+	cfg := config.LoadForEdit(config.UserConfigPath())
+	if strings.TrimSpace(scope) == "project" && strings.TrimSpace(root) != "" {
+		if projectCfg, cerr := config.LoadForRootReadOnly(root); cerr == nil {
+			cfg = projectCfg
+		}
+	}
+	if _, exists := cfg.Provider(prov); !exists {
+		return "", fmt.Errorf("model %q names provider %q, which is not configured in this workspace", requested, prov)
+	}
+	if _, resolved := cfg.ResolveModel(requested); !resolved {
+		return "", fmt.Errorf("provider %q does not expose model %q — check the model id in the provider settings", prov, model)
+	}
+	return requested, nil
+}
+
+// queueCollabFirstMessage hands the caller's first instruction to every created
+// session through the collaboration mailbox (task 167). Failures are reported on
+// the item, never swallowed: the session exists, so the caller can retry just the
+// message with talk_to_session.
+func (a *App) queueCollabFirstMessage(result *agent.CreateCollabSessionResult, body, delivery string) {
+	mode := strings.TrimSpace(delivery)
+	if mode == "" {
+		// Creating a session WITH an instruction means "start working": a
+		// followup would wait for a turn that never comes. steer keeps the
+		// explicit followup available for callers who want it queued instead.
+		mode = string(sessioncollab.DeliverySteer)
+	}
+	mailDir := config.SessionCollabMailDir()
+	if strings.TrimSpace(mailDir) == "" {
+		result.Failed = append(result.Failed, agent.CreateCollabSessionFailure{Title: "(first message)", Reason: "the collaboration mailbox directory is unavailable"})
+		return
+	}
+	store := sessioncollab.NewMailStore(mailDir)
+	from := a.collabCallerContactID()
+	result.Delivery = mode
+	for i := range result.Created {
+		item := &result.Created[i]
+		if strings.TrimSpace(item.ContactID) == "" {
+			result.Failed = append(result.Failed, agent.CreateCollabSessionFailure{Title: item.Title, Reason: "the session has no contact_id, so it cannot receive the first message"})
+			continue
+		}
+		msg, derr := store.Deliver(sessioncollab.MailMessage{
+			From:     from,
+			To:       item.ContactID,
+			Body:     body,
+			Delivery: mode,
+			Hop:      0,
+			ReplyTo:  from,
+		})
+		if derr != nil {
+			result.Failed = append(result.Failed, agent.CreateCollabSessionFailure{Title: item.Title, Reason: "first message could not be queued: " + derr.Error()})
+			continue
+		}
+		item.MessageID = msg.ID
+		if result.MessageID == "" {
+			result.MessageID = msg.ID
+		}
+	}
+	// Deliver now instead of waiting for the next pump tick, so a steer reaches
+	// the new session while the caller is still in its turn.
+	if a.sessionCollab != nil {
+		a.sessionCollab.drainOnce()
+	}
+}
+
+// collabCallerContactID resolves the CALLING session's collaboration address at
+// call time. Task 158.B / S4: the boot-time snapshot is empty for desktop
+// sessions, so the address must come from the live tab, never from startup
+// state, or every message would read as coming from "(未登记)".
+func (a *App) collabCallerContactID() string {
+	a.mu.RLock()
+	tab := a.tabs[a.activeTabID]
+	a.mu.RUnlock()
+	if tab == nil {
+		return ""
+	}
+	path := strings.TrimSpace(a.currentSessionPathFor(tab))
+	if path == "" {
+		return ""
+	}
+	if id := agent.SessionContactID(path); id != "" {
+		return id
+	}
+	if minted, err := agent.EnsureContactID(path); err == nil {
+		return minted
+	}
+	return ""
 }
 
 // registeredCollabProjectRoots is the set of project roots the desktop already

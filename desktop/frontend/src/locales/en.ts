@@ -3539,6 +3539,7 @@ export const en = {
   "msg.editSend": "Send",
   "msg.attachments": "Attachments",
   "msg.fromIm": "From {source}",
+  "msg.fromCollab": "Cross-session message",
   "msg.imSender": "Sender {id}",
   "msg.sendFailed": "Send failed — message was not delivered",
   "msg.fileAttachment": "File",
