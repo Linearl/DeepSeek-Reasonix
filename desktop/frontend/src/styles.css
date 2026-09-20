@@ -3861,6 +3861,62 @@ a[href] {
   line-height: 1.4;
 }
 
+/* Task 185: lab (renamed from experimental features) — filter chips + grouped rail. */
+.experimental-lab {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+}
+
+.experimental-lab__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 0 8px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.experimental-lab__chip {
+  border: 1px solid var(--border);
+  background: var(--card, #fff);
+  color: var(--fg-mid);
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 3px 11px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.experimental-lab__chip:hover {
+  border-color: var(--accent-ring, #b8dcd9);
+}
+
+.experimental-lab__chip--active {
+  background: var(--accent-soft, #e6f2f1);
+  border-color: var(--accent-ring, #b8dcd9);
+  color: var(--accent, #0f766e);
+  font-weight: 600;
+}
+
+.experimental-lab__chip-n {
+  color: var(--fg-faint);
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+.experimental-lab__chip--active .experimental-lab__chip-n {
+  color: var(--accent, #0f766e);
+}
+
+.experimental-lab__group-title {
+  color: var(--fg-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  padding: 10px 12px 2px;
+}
+
 /* Task 132: experimental features left rail + detail pane. */
 .experimental-layout {
   display: grid;

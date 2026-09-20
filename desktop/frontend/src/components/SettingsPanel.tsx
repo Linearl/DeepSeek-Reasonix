@@ -1757,7 +1757,10 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Task 19: the addressable roster is read on demand, not on every settings
   // load — a session only appears once it has registered a purpose.
   const [sessionCollabRoster, setSessionCollabRoster] = useState<Awaited<ReturnType<typeof app.ListAddressableSessions>>>([]);
-  const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
+  type LabGroupKey = "session" | "ui" | "auto" | "file" | "obs" | "fb";
+
+const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
+  const [labFilter, setLabFilter] = useState<LabGroupKey | "all">("all");
   const t = useT();
   // Task 155: the configured store mode, normalized so every stage key stays a
   // literal (the dictionaries are typed by DictKey).
@@ -1785,40 +1788,84 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
     }
   }, []);
 
-  const features: Array<{ id: ExperimentFeatureId; label: string; on: boolean }> = [
-    { id: "restartUpdate", label: t("settings.restartUpdate"), on: Boolean(s.experimentalRestartUpdate) },
-    { id: "sessionMonitor", label: t("settings.sessionMonitor"), on: Boolean(s.experimentalSessionMonitor) },
-    { id: "sessionStorage", label: t("settings.sessionStorage"), on: (s.sessionStorage ?? "v3_only") !== "v3_only" },
-    { id: "splitView", label: t("settings.splitView"), on: Boolean(s.experimentalSplitView) },
-    { id: "feedback", label: t("settings.feedback"), on: Boolean(s.experimentalFeedback) },
-    { id: "localServer", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
-    { id: "pathRules", label: t("settings.pathRules"), on: Boolean(s.experimentalPathRules) },
-    { id: "cacheTuning", label: t("settings.cacheTuning"), on: Boolean(s.experimentalCacheTuning) },
-    { id: "traceAsState", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
-    { id: "dream", label: t("settings.dream"), on: Boolean(s.experimentalDream) },
-    { id: "perfMonitor", label: t("settings.perfMonitor"), on: Boolean(s.experimentalPerfMonitor) },
-    { id: "autoLoadOlder", label: t("settings.autoLoadOlder"), on: Boolean(s.experimentalAutoLoadOlder) },
-    { id: "sessionCollab", label: t("settings.sessionCollab"), on: Boolean(s.experimentalSessionCollab) },
-    { id: "autopilot", label: t("settings.autopilot"), on: Boolean(s.autopilot) },
+  // 任务 185：实验室分组（方案 A+C）——组顺序即 rail 渲染顺序。
+  const labGroups = [
+    { key: "session", labelKey: "settings.labGroup.session" },
+    { key: "ui", labelKey: "settings.labGroup.ui" },
+    { key: "auto", labelKey: "settings.labGroup.auto" },
+    { key: "file", labelKey: "settings.labGroup.file" },
+    { key: "obs", labelKey: "settings.labGroup.obs" },
+    { key: "fb", labelKey: "settings.labGroup.fb" },
+  ] as const;
+  const features: Array<{ id: ExperimentFeatureId; label: string; on: boolean; group: LabGroupKey }> = [
+    { id: "restartUpdate", group: "obs", label: t("settings.restartUpdate"), on: Boolean(s.experimentalRestartUpdate) },
+    { id: "sessionMonitor", group: "session", label: t("settings.sessionMonitor"), on: Boolean(s.experimentalSessionMonitor) },
+    { id: "sessionStorage", group: "session", label: t("settings.sessionStorage"), on: (s.sessionStorage ?? "v3_only") !== "v3_only" },
+    { id: "splitView", group: "ui", label: t("settings.splitView"), on: Boolean(s.experimentalSplitView) },
+    { id: "feedback", group: "fb", label: t("settings.feedback"), on: Boolean(s.experimentalFeedback) },
+    { id: "localServer", group: "auto", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
+    { id: "pathRules", group: "file", label: t("settings.pathRules"), on: Boolean(s.experimentalPathRules) },
+    { id: "cacheTuning", group: "file", label: t("settings.cacheTuning"), on: Boolean(s.experimentalCacheTuning) },
+    { id: "traceAsState", group: "session", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
+    { id: "dream", group: "auto", label: t("settings.dream"), on: Boolean(s.experimentalDream) },
+    { id: "perfMonitor", group: "obs", label: t("settings.perfMonitor"), on: Boolean(s.experimentalPerfMonitor) },
+    { id: "autoLoadOlder", group: "session", label: t("settings.autoLoadOlder"), on: Boolean(s.experimentalAutoLoadOlder) },
+    { id: "sessionCollab", group: "fb", label: t("settings.sessionCollab"), on: Boolean(s.experimentalSessionCollab) },
+    { id: "autopilot", group: "auto", label: t("settings.autopilot"), on: Boolean(s.autopilot) },
   ];
 
   return (
     <SettingsPageShell s={s} tab="experimental" busy={busy} apply={apply}>
       <div className="experimental-layout">
-        <nav className="experimental-rail" aria-label={t("settings.experimentalIntro")}>
-          {features.map((feature) => (
+        <div className="experimental-lab">
+          <div className="experimental-lab__chips" role="tablist" aria-label={t("settings.experimentalIntro")}>
             <button
-              key={feature.id}
+              key="all"
               type="button"
-              className={`experimental-rail__item${selected === feature.id ? " experimental-rail__item--active" : ""}${feature.on ? "" : " experimental-rail__item--off"}`}
-              aria-current={selected === feature.id ? "true" : undefined}
-              onClick={() => setSelected(feature.id)}
+              className={`experimental-lab__chip${labFilter === "all" ? " experimental-lab__chip--active" : ""}`}
+              onClick={() => setLabFilter("all")}
             >
-              <span className={`experimental-rail__dot${feature.on ? " experimental-rail__dot--on" : ""}`} aria-hidden="true" />
-              <span className="experimental-rail__label">{feature.label}</span>
+              {t("settings.labGroup.all")}<span className="experimental-lab__chip-n">{features.length}</span>
             </button>
-          ))}
-        </nav>
+            {labGroups.map((g) => {
+              const n = features.filter((f) => f.group === g.key).length;
+              if (n === 0) return null;
+              return (
+                <button
+                  key={g.key}
+                  type="button"
+                  className={`experimental-lab__chip${labFilter === g.key ? " experimental-lab__chip--active" : ""}`}
+                  onClick={() => setLabFilter(g.key)}
+                >
+                  {t(g.labelKey)}<span className="experimental-lab__chip-n">{n}</span>
+                </button>
+              );
+            })}
+          </div>
+          <nav className="experimental-rail" aria-label={t("settings.experimentalIntro")}>
+            {labGroups.map((g) => {
+              const items = features.filter((f) => f.group === g.key && (labFilter === "all" || labFilter === g.key));
+              if (items.length === 0) return null;
+              return (
+                <div key={g.key} className="experimental-lab__group">
+                  <div className="experimental-lab__group-title">{t(g.labelKey)}</div>
+                  {items.map((feature) => (
+                    <button
+                      key={feature.id}
+                      type="button"
+                      className={`experimental-rail__item${selected === feature.id ? " experimental-rail__item--active" : ""}${feature.on ? "" : " experimental-rail__item--off"}`}
+                      aria-current={selected === feature.id ? "true" : undefined}
+                      onClick={() => setSelected(feature.id)}
+                    >
+                      <span className={`experimental-rail__dot${feature.on ? " experimental-rail__dot--on" : ""}`} aria-hidden="true" />
+                      <span className="experimental-rail__label">{feature.label}</span>
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
+          </nav>
+        </div>
         <div className="experimental-pane">
           {restartNeeded ? (
             <div className="banner settings-restart-banner" role="status">
