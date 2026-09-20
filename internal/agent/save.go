@@ -393,7 +393,13 @@ func (s *Session) saveLocked(path string, mode sessionSaveMode) error {
 				return err
 			}
 			displayModelCurrent, err = appendSessionDisplayReadModel(path, msgs, decision.appendFrom, decision.revision)
-		case sessionEventLogOversized(logSize, contentBytes):
+		case sessionEventIndexNearCap(path):
+			// Task 193 long fix: the event index shows the replay record caps are
+			// close; fold history now (msgs are already in memory) so a live turn
+			// never pushes the log past the replay gate and freezes the session.
+			if err := compactSessionEventLog(path, msgs, digest, decision.revision, "compact-records"); err != nil {
+				return err
+			}
 			// Fold history into one replace event and refresh the random-read
 			// model atomically. Normal appends keep it current below too.
 			if err := compactSessionEventLog(path, msgs, digest, decision.revision, "compact"); err != nil {

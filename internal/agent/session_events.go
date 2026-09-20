@@ -39,6 +39,10 @@ const (
 	sessionEventReplayMaxMessages        = 400_000
 	sessionEventReplayMaxCollectionItems = 400_000
 	sessionEventProbeMaxBytes            = int64(4 << 10)
+	// sessionEventReplayCompactHeadroom keeps the records-aware compaction
+	// trigger (task 193) ahead of the replay caps: Save compacts at 90% so a
+	// live turn's remaining appends never push the log past the replay gate.
+	sessionEventReplayCompactHeadroom    = 40_000
 	// sessionEventLogCompactFloor is the smallest log size that can trigger
 	// event-log maintenance, so short sessions never pay a checkpoint rewrite.
 	sessionEventLogCompactFloor = int64(256 << 10)
@@ -328,6 +332,22 @@ func sessionEventLogSize(sessionPath string) int64 {
 		return 0
 	}
 	return info.Size()
+}
+
+// sessionEventIndexNearCap reports whether the persisted event index shows a
+// message count approaching the replay record caps (task 193 long fix). The
+// replay caps count every event line; messages are their dominant component in
+// schema-2 streams (patches/rewinds/meta are a few percent), so the index's
+// MessageCount scaled by a small safety factor is a cheap stand-in for a count
+// that would otherwise require re-reading the whole log. A missing or damaged
+// index is conservative: it reports false and lets the byte-size gate decide.
+func sessionEventIndexNearCap(sessionPath string) bool {
+	idx, err := readSessionEventIndex(sessionPath)
+	if err != nil || idx == nil || idx.MessageCount <= 0 {
+		return false
+	}
+	estimated := int(float64(idx.MessageCount) * 1.05)
+	return estimated > sessionEventReplayMaxRecords-sessionEventReplayCompactHeadroom
 }
 
 func sessionEventLogOversized(logSize, contentBytes int64) bool {
