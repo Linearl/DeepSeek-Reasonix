@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"log"
+	"log/slog"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -278,6 +279,61 @@ func heartbeatControllerBusy(ctrl heartbeatRuntimeStatus) bool {
 	return status.Running || status.PendingPrompt
 }
 
+// heartbeatControllerWaitTimeout bounds how long one heartbeat run waits for a
+// tab's controller build before giving up. It is a safety net, not a schedule:
+// the wait ends as soon as the build signals completion. 60s is ~6x the slowest
+// cold boot measured on this machine (10.23s for a heartbeat session), so a
+// healthy-but-slow boot no longer loses the race the way the previous fixed
+// 40×250ms window did (task 197). A var so tests can compress the clock.
+var heartbeatControllerWaitTimeout = 60 * time.Second
+
+// heartbeatControllerPollInterval is the fallback poll used only while the tab
+// has no in-flight build to wait on: a tab that is between builds, or one whose
+// build finished and cleared the channel before the first read.
+const heartbeatControllerPollInterval = 50 * time.Millisecond
+
+// awaitTabController returns the tab's controller once its build has finished,
+// or nil if heartbeatControllerWaitTimeout elapses first.
+//
+// It waits on tab.buildDone — closed exactly once by the build's terminal defer
+// on every exit path — instead of sleeping a fixed number of rounds. The
+// controller is published before that close, so the signal is both faster than
+// a poll and immune to boot-time drift. The channel is re-read on every round
+// because a superseded build replaces it; the deadline timer and the fallback
+// ticker are stopped on every return path so nothing leaks into the next run.
+func (e *HeartbeatEngine) awaitTabController(tabID string) heartbeatRuntimeStatus {
+	deadline := time.NewTimer(heartbeatControllerWaitTimeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(heartbeatControllerPollInterval)
+	defer ticker.Stop()
+	for {
+		if candidate := e.app.ctrlByTabID(tabID); candidate != nil {
+			return candidate
+		}
+		buildDone := e.app.tabBuildDone(tabID)
+		if buildDone == nil {
+			// No build in flight: either the controller is already published
+			// (checked above) or the build failed. Keep polling so a build that
+			// starts a moment later — openTopicTab still wiring the tab up — is
+			// not missed, but never past the deadline.
+			select {
+			case <-deadline.C:
+				return nil
+			case <-ticker.C:
+			}
+			continue
+		}
+		select {
+		case <-deadline.C:
+			return nil
+		case <-buildDone:
+			// Re-check on the next round: the build may have failed, leaving the
+			// controller nil.
+		case <-ticker.C:
+		}
+	}
+}
+
 // executeTask runs one heartbeat: creates/opens topic, submits prompt.
 // Returns the updated task (topicId and LastRunAt may change).
 // On controller failure the task is returned WITHOUT updating LastRunAt,
@@ -464,13 +520,29 @@ func (a *App) ClearGoalForHeartbeatTopic(topicID string) {
 	}
 }
 
-func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
-	title := "Heartbeat: " + t.Title
-	scope := t.Scope
-	workspaceRoot := t.WorkspaceRoot
+// heartbeatRunScope normalizes the scope/root pair one run targets.
+//
+// A builtin root — the global workspace, the session dirs (task 186) — is
+// host-owned: the sidebar never renders a project node for it, and
+// stripBuiltinProjects drops any entry naming it on every save. A project-scope
+// run pointed at one therefore creates a topic that is indexed nowhere and a
+// conversation reachable only while its tab is open, which is how the task-197
+// heartbeat lost its session on close. Such runs are global-scope runs: the
+// built-in Global folder is the one node that legitimately carries that root,
+// and its sessions live in the very same session directory.
+func heartbeatRunScope(scope, workspaceRoot string) (string, string) {
 	if scope == "" {
 		scope = "global"
 	}
+	if scope == "project" && isBuiltinWorkspaceRoot(workspaceRoot) {
+		return "global", ""
+	}
+	return scope, workspaceRoot
+}
+
+func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
+	title := "Heartbeat: " + t.Title
+	scope, workspaceRoot := heartbeatRunScope(t.Scope, t.WorkspaceRoot)
 	t, topicID, pendingSubmitted, ok := e.resolveHeartbeatTopic(t, scope, workspaceRoot, title)
 	if !ok {
 		return t
@@ -491,18 +563,20 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 		return t
 	}
 
-	// Wait for the tab's controller to be built (it's started
-	// asynchronously in a goroutine by openTopicTab).
-	var ctrl heartbeatRuntimeStatus
-	for range 40 {
-		if candidate := e.app.ctrlByTabID(tabMeta.ID); candidate != nil {
-			ctrl = candidate
-			break
-		}
-		time.Sleep(250 * time.Millisecond)
-	}
+	// Wait for the tab's controller to be built (it's started asynchronously in
+	// a goroutine by openTopicTab) before touching the tab's mode or prompt.
+	ctrl := e.awaitTabController(tabMeta.ID)
 	if ctrl == nil {
-		log.Printf("[heartbeat] controller not ready for %q, skipping", t.Title)
+		// Diagnosable skip: LastRunAt deliberately stays untouched so the next
+		// tick retries, but the panel then keeps showing "never ran", so the
+		// reason has to be in the log (task 197).
+		slog.Warn("[heartbeat] controller not ready, skipping run",
+			"task", t.ID,
+			"title", t.Title,
+			"tab", tabMeta.ID,
+			"topic", topicID,
+			"waited", heartbeatControllerWaitTimeout.String(),
+			"reason", e.app.tabControllerWaitReason(tabMeta.ID))
 		return t // don't update LastRunAt — retry next tick
 	}
 	if heartbeatControllerBusy(ctrl) {

@@ -4062,3 +4062,71 @@ func TestFindTopicSessionPrefersContentOverNewerEmpty(t *testing.T) {
 		t.Fatalf("content topic session = %q, want %q", got, contentPath)
 	}
 }
+
+// projectTreeContainsTopic reports whether any node in the sidebar tree, at any
+// depth, belongs to topicID.
+func projectTreeContainsTopic(nodes []ProjectNode, topicID string) bool {
+	for _, node := range nodes {
+		if node.TopicID == topicID {
+			return true
+		}
+		if projectTreeContainsTopic(node.Children, topicID) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestCreateTopicLandsInBothSidebarSources is the task-197 acceptance check for
+// "the new session shows up in the left list, and can be reopened": a created
+// topic must reach the projects-file index the sidebar renders from AND the
+// organization sidecar that mirrors its order, and the rendered tree must carry
+// a node for it. A heartbeat topic that misses either source is reachable only
+// through its open tab — close the tab and the session is unfindable.
+func TestCreateTopicLandsInBothSidebarSources(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	app := NewApp()
+
+	for _, tc := range []struct {
+		name          string
+		scope         string
+		workspaceRoot string
+	}{
+		{name: "global", scope: "global"},
+		{name: "project", scope: "project", workspaceRoot: t.TempDir()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			meta, err := app.CreateTopic(tc.scope, tc.workspaceRoot, "Sidebar landing")
+			if err != nil {
+				t.Fatalf("CreateTopic(%s): %v", tc.scope, err)
+			}
+			if !topicIndexedInProjectsFile(tc.workspaceRoot, meta.ID) {
+				t.Fatalf("projects-file index for root %q is missing the new topic %q", tc.workspaceRoot, meta.ID)
+			}
+			organization, ok := loadProjectOrganizationFile()
+			if !ok {
+				t.Fatal("organization sidecar was not written alongside the projects file")
+			}
+			if tc.scope == "global" {
+				if !containsDesktopString(organization.Global.TopicOrder, meta.ID) {
+					t.Fatalf("organization global.topicOrder = %v, want the new topic %q",
+						organization.Global.TopicOrder, meta.ID)
+				}
+			} else {
+				found := false
+				for _, project := range organization.Projects {
+					if sameProjectRoot(project.Root, tc.workspaceRoot) {
+						found = containsDesktopString(project.TopicOrder, meta.ID)
+					}
+				}
+				if !found {
+					t.Fatalf("organization sidecar has no topicOrder entry for %q in root %q",
+						meta.ID, tc.workspaceRoot)
+				}
+			}
+			if !projectTreeContainsTopic(app.ListProjectTree(), meta.ID) {
+				t.Fatalf("sidebar tree has no node for topic %q", meta.ID)
+			}
+		})
+	}
+}

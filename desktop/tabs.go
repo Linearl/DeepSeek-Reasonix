@@ -4397,6 +4397,47 @@ func (a *App) ctrlByTabID(tabID string) control.SessionAPI {
 	return tab.Ctrl
 }
 
+// tabBuildDone returns the completion channel of the tab's in-flight controller
+// build, or nil when no build is running (the tab is already built, or the
+// build's terminal defer already closed and cleared the channel).
+//
+// Reading the channel under the lock keeps the close/supersede race out of the
+// caller: buildDone is replaced on every new build, so waiters must re-read it
+// after each wakeup instead of caching one channel. See closeTabBuildDone for
+// the exactly-once close contract.
+func (a *App) tabBuildDone(tabID string) chan struct{} {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	tab := a.tabByIDLocked(tabID)
+	if tab == nil {
+		return nil
+	}
+	return tab.buildDone
+}
+
+// tabControllerWaitReason explains why a caller that waited on tabBuildDone
+// still found no controller. Callers log it on the timeout path: a skipped run
+// leaves the task's LastRunAt untouched, so without a reason the panel keeps
+// showing "never ran" and there is nothing else to go on.
+func (a *App) tabControllerWaitReason(tabID string) string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	tab := a.tabByIDLocked(tabID)
+	if tab == nil {
+		return "tab is gone"
+	}
+	if err := strings.TrimSpace(tab.StartupErr); err != "" {
+		return "controller build failed: " + err
+	}
+	if tab.removed {
+		return "tab was removed while waiting"
+	}
+	if tab.buildDone != nil {
+		return "controller build still running"
+	}
+	return "no controller and no build in flight"
+}
+
 // autosave per tab
 
 const maxTabSnapshotFailureRetries = 2
@@ -5172,6 +5213,53 @@ func prependTopicsInProjectsFileOpts(workspaceRoot string, topicIDs []string, en
 		f.Projects = append(f.Projects, desktopProject{Root: workspaceRoot, Topics: live})
 		return true, nil
 	})
+}
+
+// indexNewTopicForSidebar prepends a freshly created topic to the projects-file
+// index the sidebar renders from, then reads that index back so topic creation
+// can tell "listed" apart from "silently not listed".
+//
+// One successful call lands the topic in both sidebar data sources: the write
+// goes through updateProjectsFile, and saveProjectsFile mirrors the resulting
+// order into the organization sidecar (global.topicOrder) on the way out.
+// Failures here are usually transient lock/IO errors, hence the single retry;
+// the read-back also catches a write that reports success but changes nothing.
+func indexNewTopicForSidebar(workspaceRoot, topicID string) error {
+	ensureProject := workspaceRoot != ""
+	err := prependTopicInProjectsFile(workspaceRoot, topicID, ensureProject)
+	if err == nil && topicIndexedInProjectsFile(workspaceRoot, topicID) {
+		return nil
+	}
+	retryErr := prependTopicInProjectsFile(workspaceRoot, topicID, ensureProject)
+	if retryErr == nil && topicIndexedInProjectsFile(workspaceRoot, topicID) {
+		return nil
+	}
+	if retryErr != nil {
+		err = retryErr
+	}
+	if err == nil {
+		err = fmt.Errorf("topic %q absent from the sidebar index after the write", topicID)
+	}
+	return err
+}
+
+// topicIndexedInProjectsFile reports whether topicID is listed in the sidebar
+// index for the given root ("" = Global).
+func topicIndexedInProjectsFile(workspaceRoot, topicID string) bool {
+	desktopProjectsFileMu.Lock()
+	defer desktopProjectsFileMu.Unlock()
+	f := loadProjectsFile()
+	if workspaceRoot == "" {
+		return containsDesktopString(f.GlobalTopics, topicID) ||
+			containsDesktopString(f.GlobalPinnedTopics, topicID)
+	}
+	for _, p := range f.Projects {
+		if sameProjectRoot(p.Root, workspaceRoot) {
+			return containsDesktopString(p.Topics, topicID) ||
+				containsDesktopString(p.PinnedTopics, topicID)
+		}
+	}
+	return false
 }
 
 func removeTopicFromProjectsFile(topicID string) error {
@@ -6462,7 +6550,15 @@ func (a *App) CreateTopic(scope, workspaceRoot, title string) (TopicMeta, error)
 	}
 	// New topics should appear first in their project/global group so the item
 	// just created is immediately visible and selected in the sidebar.
-	_ = prependTopicInProjectsFile(workspaceRoot, topicID, workspaceRoot != "")
+	//
+	// This index is what the sidebar lists from, so a dropped write leaves the
+	// new conversation reachable only through its already-open tab: close the
+	// tab and the session is gone from the UI (task 197). Verify the index and
+	// report a failure instead of discarding it silently as before.
+	if err := indexNewTopicForSidebar(workspaceRoot, topicID); err != nil {
+		slog.Warn("desktop: new topic is missing from the sidebar index",
+			"topic", topicID, "scope", scope, "root", workspaceRoot, "err", err)
+	}
 	// A brand-new topic is a tree-structure change, not a metadata-only one:
 	// remote clients list sessions through the session catalog, so the full
 	// refresh chain (metadata sync + directory reconcile) must run or the new
