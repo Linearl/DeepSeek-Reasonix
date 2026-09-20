@@ -4,6 +4,7 @@ import { Brain, Check, ChevronDown, Cpu, Search, Settings } from "lucide-react";
 import { asArray } from "../lib/array";
 import { app } from "../lib/bridge";
 import { useT } from "../lib/i18n";
+import { providerDefaultLabel } from "../lib/providerLabel";
 import type { ModelInfo } from "../lib/types";
 import { AnchoredPopover } from "./AnchoredPopover";
 import { Tooltip } from "./Tooltip";
@@ -109,14 +110,14 @@ export function ModelSwitcher({
     return [...map.entries()]
       .map(([provider, items]) => ({
         provider,
-        label: items[0]?.displayName?.trim() || providerLabel(provider, t),
+        label: items[0]?.displayName?.trim() || providerDefaultLabel(provider),
         items,
       }));
   }, [filtered, t]);
 
   const currentProvider = useMemo(() => {
     const cur = models.find((m) => m.current) ?? models.find((m) => m.model === label || m.ref === label);
-    return cur ? (cur.displayName?.trim() || providerLabel(cur.provider, t)) : null;
+    return cur ? (cur.displayName?.trim() || providerDefaultLabel(cur.provider)) : null;
   }, [label, models, t]);
   const triggerLabel = [label, currentProvider, detailLabel].filter(Boolean).join(" · ");
 
@@ -245,13 +246,3 @@ export function normalizeModelInfo(model: ModelInfo): ModelInfo {
   };
 }
 
-function providerLabel(provider: string, t: ReturnType<typeof useT>): string {
-  switch (provider) {
-    case "deepseek":
-    case "deepseek-flash":
-    case "deepseek-pro":
-      return t("settings.providerLabel.deepseek");
-    default:
-      return provider;
-  }
-}

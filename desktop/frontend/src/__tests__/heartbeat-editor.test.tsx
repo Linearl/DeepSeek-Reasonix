@@ -72,6 +72,9 @@ Object.assign(window, {
         async HeartbeatTriggerNow() {},
         async HeartbeatGenerateID() { nextID += 1; return `draft-${nextID}`; },
         async ListWorkspaces() { return [{ name: "Project One", path: "/project-one", current: true }]; },
+        // The model-override picker reads connections from Settings; an empty list keeps
+        // this harness on the free-text fallback it was written against.
+        async Settings() { return { providers: [] }; },
       },
     },
   },
