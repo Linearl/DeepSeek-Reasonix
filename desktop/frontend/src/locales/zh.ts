@@ -3533,6 +3533,7 @@ export const zh: Record<DictKey, string> = {
   "msg.editSend": "发送",
   "msg.attachments": "附件",
   "msg.fromIm": "来自 {source}",
+  "msg.fromCollab": "跨会话消息",
   "msg.imSender": "发送者 {id}",
   "msg.sendFailed": "发送失败 — 消息未送达",
   "msg.fileAttachment": "文件",
