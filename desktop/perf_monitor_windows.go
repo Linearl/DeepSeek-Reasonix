@@ -18,7 +18,12 @@ type procCounters struct {
 	ReadBytes       uint64
 	WriteBytes      uint64
 	CPUSeconds      float64
-	Available       bool
+	// KernelSeconds and UserSeconds split the same total (task 196): CPU saturation
+	// caused by parsing looks different from saturation caused by syscalls and file
+	// IO, and the first thing to rule in or out is which half is burning the cores.
+	KernelSeconds float64
+	UserSeconds   float64
+	Available     bool
 }
 
 // The psapi/kernel32 entry points the monitor needs are not exported by
@@ -89,7 +94,9 @@ func readProcCounters() procCounters {
 	if ok, _, _ := procGetProcessTimes.Call(handle,
 		uintptr(unsafe.Pointer(&creation)), uintptr(unsafe.Pointer(&exit)),
 		uintptr(unsafe.Pointer(&kernel)), uintptr(unsafe.Pointer(&user))); ok != 0 {
-		out.CPUSeconds = float64(kernel.Nanoseconds()+user.Nanoseconds()) / 1e9
+		out.KernelSeconds = float64(kernel.Nanoseconds()) / 1e9
+		out.UserSeconds = float64(user.Nanoseconds()) / 1e9
+		out.CPUSeconds = out.KernelSeconds + out.UserSeconds
 	}
 	return out
 }
