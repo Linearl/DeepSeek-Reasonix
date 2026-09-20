@@ -5048,14 +5048,14 @@ func loadProjectsFile() desktopProjectFile {
 	_ = json.Unmarshal(b, &f)
 	f = normalizeProjectsFile(f)
 	if organization, ok := loadProjectOrganizationFile(); ok {
-		return applyProjectOrganization(f, organization)
+		return stripBuiltinProjects(applyProjectOrganization(f, organization))
 	}
 	// Upgrade existing inline organization state immediately. The sidecar is
 	// what makes a later old-version save non-destructive.
 	if projectsFileHasOrganization(f) {
 		_ = saveProjectOrganizationFile(f)
 	}
-	return f
+	return stripBuiltinProjects(f)
 }
 
 func saveProjectsFile(f desktopProjectFile) error {
@@ -5091,7 +5091,9 @@ func updateProjectsFile(mutator func(*desktopProjectFile) (bool, error)) error {
 	if !changed {
 		return nil
 	}
-	return saveProjectsFile(f)
+	// Task 186: a mutator can add a builtin root — or re-add the entry the user just
+	// deleted. Strip it before the write so the node cannot come back on the next boot.
+	return saveProjectsFile(stripBuiltinProjects(f))
 }
 
 func prependTopicInProjectsFile(workspaceRoot, topicID string, ensureProject bool) error {
