@@ -27,7 +27,7 @@ import { replayPendingPromptsForActiveTab } from "./promptReplay";
 import { createRafBatch } from "./rafBatch";
 import { foregroundRunningFromRuntimeMeta, type RuntimeMetaSnapshot } from "./runtimeMeta";
 import { aliasActivationRequest, noteActivationRequested, noteActivationSettled, noteActivationStarted } from "./sessionDiagnostics";
-import { noteHydrateDecision, noteStageTiming, reportStageSummary } from "./sessionMonitor";
+import { noteEviction, noteHydrateDecision, noteStageTiming, reportStageSummary } from "./sessionMonitor";
 import { applyLiveSegments, coalesceStreamDeltas, completeLiveReasoning, type StreamDeltaEntry, type StreamSegment } from "./streamDeltaBatch";
 import { assistantHasContent, ensureActiveAssistant, ensureAssistant, removeEmptyAssistantItems } from "./assistantItems";
 import { getTranscriptStore } from "./transcriptStore";
@@ -4540,19 +4540,28 @@ export function useController() {
       if (!navigationCompletionCurrent(navigationSeq, "session.resume", targetTabId)) return terminal("superseded");
       const seq = bumpSessionLoadSeq(targetTabId);
       dispatchTo(targetTabId, { type: "hydrate_start", reason: "resume-session", placeholderItems });
+      // Task 196: the 13.7 s stall lived between "hydrate reloaded history" and
+      // the next switch-tab timing, with nothing in between to say what it did.
+      // Split it: read = bridge round trip (backend read + serialize + transfer),
+      // apply = the dispatches that parse the page into store state.
+      const hydrateReadStart = performance.now();
       let page: HistoryPage;
       try {
         page = tabId
           ? await app.ResumeSessionPageForTab(tabId, path, HISTORY_PAGE_TURNS)
           : await app.ResumeSessionPage(path, HISTORY_PAGE_TURNS);
       } catch {
+        noteStageTiming(targetTabId, "hydrate:read", performance.now() - hydrateReadStart);
         if (!isNavigationIntentCurrent(navigationSeq) || !sessionLoadCurrent(targetTabId, seq)) return terminal("superseded");
         return failSessionNavigation(navigationSeq, targetTabId);
       }
+      noteStageTiming(targetTabId, "hydrate:read", performance.now() - hydrateReadStart);
       if (!navigationCompletionCurrent(navigationSeq, "session.resume", targetTabId) || !sessionLoadCurrent(targetTabId, seq)) return terminal("superseded");
+      const hydrateApplyStart = performance.now();
       dispatchTo(targetTabId, { type: "reset" });
       dispatchTo(targetTabId, { type: "history_page", page, mode: "replace" });
       dispatchTo(targetTabId, { type: "hydrate_done" });
+      noteStageTiming(targetTabId, "hydrate:apply", performance.now() - hydrateApplyStart);
       if (!(await reconcileSessionNavigationForTab(targetTabId, navigationSeq, seq))) return terminal("superseded");
       app.ContextUsageForTab(targetTabId).then((context) => dispatchTo(targetTabId, { type: "context", context })).catch(() => {});
       void refreshCheckpoints(targetTabId);
@@ -5251,6 +5260,18 @@ export function useController() {
     const limit = effectiveMaxResidentSessions();
     others.sort((a, b) => b.lastActive - a.lastActive);
     for (const entry of limit > 0 ? others.slice(limit - 1) : []) {
+      // Task 196: name this eviction. Until now a tab losing its state here only
+      // surfaced later as `resident items empty` on the next switch, which said
+      // the cache was cold but never what made it cold. residentSessions here
+      // counts tab states, not transcripts - the reason field says which.
+      noteEviction({
+        tabId: entry.id,
+        sessionPath: statesRef.current.get(entry.id)?.meta?.sessionPath ?? "",
+        reason: "tab-state-lru",
+        records: 0,
+        bodyBytes: 0,
+        residentSessions: statesRef.current.size,
+      });
       invalidateProviderStateForTab(entry.id);
       disposeComposerProfileState(entry.id);
       statesRef.current.delete(entry.id);
