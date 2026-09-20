@@ -4,6 +4,7 @@ import { SettingsOptions } from "./SettingsOptions";
 import { SettingsSelect } from "./SettingsSelect";
 import { providerProtocolLabel, providerProtocolChoices } from "../lib/providerProtocol";
 import { providerSupportsServerWebSearch } from "../lib/providerSearch";
+import { providerDefaultLabel, providerDisplayLabel } from "../lib/providerLabel";
 
 // Autopilot runs unattended, so it needs a wall-clock bound; this is the value the
 // settings switch falls back to when the user turns it on without typing one.
@@ -5290,7 +5291,7 @@ export function ModelsSection({ s, busy, apply, backgroundApply, subtab, onboard
                 {s.webSearchModelOverridden && <p className="web-search-assignment-hint">{t("settings.webSearchModelOverride", { model: s.effectiveWebSearchModel || t("common.auto") })}</p>}
                 {(s.webSearchModels ?? []).length === 0 && <p className="web-search-assignment-hint">{t("settings.webSearchModelEmpty")} {onOpenProviders && <button type="button" className="btn btn--small" onClick={onOpenProviders}>{t("settings.webSearchModelConnections")}</button>}</p>}
               </div>
-              <span className="model-assignment-connection">{!s.webSearchModel || s.webSearchModel === "auto" ? t("settings.webSearchModelAutomatic") : (s.providers.find(p => p.name === s.webSearchModel?.split("/")[0])?.displayName || s.webSearchModel.split("/")[0])}</span>
+              <span className="model-assignment-connection">{!s.webSearchModel || s.webSearchModel === "auto" ? t("settings.webSearchModelAutomatic") : providerViewLabel(s.providers.find(p => p.name === s.webSearchModel?.split("/")[0]), s.webSearchModel.split("/")[0])}</span>
             </SettingsField>
 
             <SettingsField className="model-assignment-row" label={<ModelSettingHelp label={t("settings.subagentModel")} text={t("providerUI.subagentModelHelp")} />}>
@@ -5590,7 +5591,7 @@ export function ModelPicker({
         const firstProvider = providerViews[0];
         return {
           groupID,
-          label: firstProvider ? (firstProvider.displayName || firstProvider.name) : groupID,
+          label: firstProvider ? providerDisplayLabel(firstProvider) : providerDefaultLabel(groupID),
           keySet: providerViews.some((p) => p.keySet),
           requiresKey: providerViews.every((p) => providerRequiresKey(p)),
           options: uniqueModelOptions(options.filter((opt) => modelOptionGroupID(opt) === groupID)),
@@ -5640,7 +5641,7 @@ function modelOptionFromRef(ref: string, s: SettingsView): ModelPickerOption | n
 
 function modelOptionMeta(option: ModelPickerOption, t: ReturnType<typeof useT>): string {
   const key = option.providerView ? providerKeyStatusLabel(option.providerView, t) : t("settings.noKey");
-  return `${option.providerView?.displayName || option.provider}${option.providerView && providerRequiresKey(option.providerView) && !option.providerView.keySet ? ` · ${key}` : ""}`;
+  return `${providerViewLabel(option.providerView, option.provider)}${option.providerView && providerRequiresKey(option.providerView) && !option.providerView.keySet ? ` · ${key}` : ""}`;
 }
 
 function providerKeyStatusLabel(provider: { keySet: boolean; requiresKey?: boolean; apiKeyEnv?: string }, t: ReturnType<typeof useT>): string {
@@ -5648,8 +5649,8 @@ function providerKeyStatusLabel(provider: { keySet: boolean; requiresKey?: boole
   return provider.keySet ? t("settings.keySet") : t("settings.noKey");
 }
 
-function modelProviderLabel(provider: string, providerView: ProviderView | undefined, t: ReturnType<typeof useT>): string {
-  return providerView?.displayName || (providerView ? providerGroupLabel(providerView, t) : provider);
+function modelProviderLabel(provider: string, providerView: ProviderView | undefined, _t: ReturnType<typeof useT>): string {
+  return providerViewLabel(providerView, provider);
 }
 
 function modelOptionGroupID(option: ModelPickerOption): string {
@@ -5711,7 +5712,7 @@ export function ProvidersSection({ s, busy, apply, onboarding, onOnboardingCompl
   const [fetchResults, setFetchResults] = useState<Record<string, ProviderFetchResult>>({});
   const [modelDrafts, setModelDrafts] = useState<Record<string, ProviderModelDraft>>({});
   const visibleProviders = useMemo(() => s.providers.filter((p) => p.added || p.name === revealedProvider), [s.providers, revealedProvider]);
-  const groups = useMemo(() => visibleProviders.map(p => ({...providerAccessGroups([p], t)[0], id: `connection:${p.name}`, label: p.displayName || p.name})), [visibleProviders, t]);
+  const groups = useMemo(() => visibleProviders.map(p => ({...providerAccessGroups([p], t)[0], id: `connection:${p.name}`, label: providerDisplayLabel(p)})), [visibleProviders, t]);
 
   useEffect(() => {
     if (revealedProvider && !s.providers.some((p) => p.name === revealedProvider)) {
@@ -6818,13 +6819,21 @@ function providerGroupID(p: ProviderView): string {
   return `custom:${p.name}`;
 }
 
+// Task 198: connection-level labels resolve through this helper so a single connection
+// reads the same in the settings panel, the task editor and the model pickers
+// (explicit display_name > built-in default > name). Group-level labels keep using
+// providerGroupLabel, which also knows the built-in vendor families.
+function providerViewLabel(providerView: ProviderView | undefined, provider: string): string {
+  return providerView ? providerDisplayLabel(providerView) : providerDefaultLabel(provider);
+}
+
 function providerGroupLabel(p: ProviderView, t?: ReturnType<typeof useT>): string {
   if (p.displayName?.trim()) return p.displayName.trim();
   const id = providerGroupID(p);
   if (id === "builtin:deepseek") return t ? t("settings.providerLabel.deepseek") : "DeepSeek";
   if (id === "custom:opencode-go") return t ? t("settings.providerLabel.opencodeGo") : "OpenCode Go";
   if (id === "custom:opencode-zen") return t ? t("settings.providerLabel.opencodeZen") : "OpenCode Zen";
-  return p.name;
+  return providerDefaultLabel(p.name);
 }
 
 function providerGroupDescription(p: ProviderView, t: ReturnType<typeof useT>): string {

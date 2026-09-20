@@ -1,11 +1,11 @@
 // Run: node --import tsx src/__tests__/provider-label.test.ts
 //
 // Task 198: `providerDisplayLabel` is the single place that decides which provider
-// name a user-facing surface shows. It must prefer the configured display name and
-// fall back to the routing identity byte-for-byte, so installs that never set a
-// display name keep rendering exactly what they rendered before.
+// name a user-facing surface shows. Resolution order is explicit `display_name` >
+// built-in default label > `name`, and it never touches the routing identity: an
+// install that renamed nothing keeps the same `<provider>/<model>` refs.
 
-import { providerDisplayLabel } from "../lib/providerLabel";
+import { providerDefaultLabel, providerDisplayLabel } from "../lib/providerLabel";
 
 let passed = 0;
 let failed = 0;
@@ -20,14 +20,46 @@ function ok(value: unknown, label: string) {
   }
 }
 
-console.log("\nprovider display label");
+console.log("\nresolution order: display name > built-in default > identity");
 
-ok(providerDisplayLabel({ name: "mimo-pro", displayName: "MiMo Pro" }) === "MiMo Pro", "display name wins when configured");
-ok(providerDisplayLabel({ name: "minimax-M3" }) === "minimax-M3", "missing display name falls back to the identity");
-ok(providerDisplayLabel({ name: "minimax-M3", displayName: "" }) === "minimax-M3", "empty display name falls back to the identity");
-ok(providerDisplayLabel({ name: "minimax-M3", displayName: "   " }) === "minimax-M3", "blank display name falls back to the identity");
+ok(providerDisplayLabel({ name: "mimo-pro", displayName: "MiMo Pro" }) === "MiMo Pro", "explicit display name wins");
 ok(providerDisplayLabel({ name: "mimo-pro", displayName: "  MiMo Pro  " }) === "MiMo Pro", "display name is trimmed");
-ok(providerDisplayLabel({ name: "opencode-go-3d668098626d385cb9e2084d75c5db36", displayName: "OpenCode Go (Recommended) · 3" }) === "OpenCode Go (Recommended) · 3", "auto-generated identity is replaced by its readable label");
+ok(providerDisplayLabel({ name: "mimo-pro", displayName: "" }) === "MiMo Pro", "empty display name falls through to the default label");
+ok(providerDisplayLabel({ name: "minimax-M3", displayName: "   " }) === "MiniMax M3", "blank display name falls through to the default label");
+ok(providerDisplayLabel({ name: "acme-relay" }) === "acme-relay", "unknown name falls back to the identity byte-for-byte");
+ok(providerDisplayLabel({ name: "acme-relay", displayName: "Acme Relay" }) === "Acme Relay", "unknown name still honours an explicit display name");
+
+console.log("\nbuilt-in default labels (the ids users complained about)");
+
+ok(providerDefaultLabel("deepseek-flash") === "DeepSeek Flash", "deepseek-flash reads as DeepSeek Flash");
+ok(providerDefaultLabel("deepseek-pro") === "DeepSeek Pro", "deepseek-pro reads as DeepSeek Pro");
+ok(providerDefaultLabel("mimo-pro") === "MiMo Pro", "mimo-pro reads as MiMo Pro");
+ok(providerDefaultLabel("mimo-flash") === "MiMo Flash", "mimo-flash reads as MiMo Flash");
+ok(providerDefaultLabel("minimax-M3") === "MiniMax M3", "minimax-M3 matches case-insensitively");
+ok(providerDefaultLabel("deepseek") === "DeepSeek", "official deepseek reads as DeepSeek");
+ok(providerDefaultLabel("glm-cn") === "GLM CN", "glm-cn reads as GLM CN");
+ok(providerDefaultLabel("  mimo-api  ") === "MiMo API", "default labels ignore surrounding whitespace");
+
+console.log("\nauto-generated connection ids keep a short code");
+
+ok(
+  providerDefaultLabel("opencode-go-3d668098626d385cb9e2084d75c5db36") === "OpenCode Go (3d66)",
+  "uuid connection shows its readable stem plus a 4-character code",
+);
+ok(
+  providerDefaultLabel("opencode-go-anthropic-3d668098626d385cb9e2084d75c5db36") === "opencode-go-anthropic (3d66)",
+  "unknown stem keeps its own text and only appends the code",
+);
+ok(
+  providerDisplayLabel({ name: "opencode-go-3d668098626d385cb9e2084d75c5db36", displayName: "OpenCode Go (Recommended) · 3" }) === "OpenCode Go (Recommended) · 3",
+  "an explicit display name still beats the generated code",
+);
+
+console.log("\nzero migration: the routing identity is never rewritten");
+
+const provider = { name: "minimax-M3", displayName: "" };
+ok(providerDisplayLabel(provider) === "MiniMax M3" && provider.name === "minimax-M3", "resolving a label leaves provider.name untouched");
+ok(`${provider.name}/MiniMax-M3` === "minimax-M3/MiniMax-M3", "model refs keep using the untouched provider name");
 
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
 if (failed > 0) process.exit(1);
