@@ -145,6 +145,21 @@ const modelValues = Array.from(modelSelect?.querySelectorAll<HTMLOptionElement>(
 ok(modelValues.includes("mimo-v2.5-pro") === true, "picking a labelled connection resolves its models through the internal name");
 ok(providerSelect?.value === "mimo-pro", "the persisted provider value remains the internal name");
 
+// Task 198 ④-4: a connection whose label comes from the built-in default table must
+// still carry the routing name in the control itself — the default only changes what
+// the user reads, never what gets persisted.
+await act(async () => {
+  if (providerSelect) {
+    providerSelect.value = "minimax-M3";
+    providerSelect.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  }
+  await flush();
+});
+const defaultedModelSelect = Array.from(override?.querySelectorAll<HTMLSelectElement>("select") ?? [])[1];
+const defaultedModelValues = Array.from(defaultedModelSelect?.querySelectorAll<HTMLOptionElement>("option") ?? []).map((option) => option.value);
+ok(providerSelect?.value === "minimax-M3", "built-in default label: the control carries the routing name, not the label");
+ok(defaultedModelValues.includes("MiniMax-M3") === true, "built-in default label: models resolve through the internal name");
+
 await act(async () => root.unmount());
 dom.window.close();
 
