@@ -2625,10 +2625,15 @@ export function useController() {
   const snapshotNavigationSourceTab = useCallback((navigationSeq: number) => {
     const source = navigationSourcesRef.current.get(navigationSeq);
     if (!source?.tabId || source.tab || source.tabPromise) return;
+    // Task 196: the switch-out half of a tab switch had no stage timing at all, so the
+    // source tab's snapshot never showed up in desktop.log even when leaving a long
+    // session was the slow part.
+    const startedAt = performance.now();
     source.tabPromise = app.ListTabs()
       .then((tabs) => asArray(tabs).find((tab) => tab.id === source.tabId))
       .catch(() => undefined);
     void source.tabPromise.then((tab) => { source.tab = tab; });
+    noteStageTiming(source.tabId, "switch-out:snapshot", performance.now() - startedAt);
   }, []);
   const isNavigationIntentCurrent = useCallback((seq: number): boolean => {
     return activeNavigationSeqRef.current === seq;
@@ -2829,10 +2834,15 @@ export function useController() {
     // a tombstone generation so a later tab reusing the same id cannot make
     // that completion current again.
     historyOlderSeq.current.set(tabId, (historyOlderSeq.current.get(tabId) ?? 0) + 1);
+    // Task 196: releasing a tab is synchronous work (subscriptions, projector, store
+    // eviction) and was invisible. Timed here so "switching out is slow" can be told
+    // apart from "switching in is slow".
+    const releaseStartedAt = performance.now();
     transcriptSubscriptions.current.get(tabId)?.();
     transcriptSubscriptions.current.delete(tabId);
     turnEventProjector.release(tabId);
     getTranscriptStore().evictTab(tabId);
+    noteStageTiming(tabId, "switch-out:release", performance.now() - releaseStartedAt);
   }, [turnEventProjector]);
   const sessionLoadCurrent = useCallback((tabId: string, seq: number): boolean => {
     return sessionLoadSeq.current.get(tabId) === seq;
