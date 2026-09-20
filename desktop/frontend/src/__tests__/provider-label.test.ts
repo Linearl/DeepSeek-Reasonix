@@ -61,5 +61,31 @@ const provider = { name: "minimax-M3", displayName: "" };
 ok(providerDisplayLabel(provider) === "MiniMax M3" && provider.name === "minimax-M3", "resolving a label leaves provider.name untouched");
 ok(`${provider.name}/MiniMax-M3` === "minimax-M3/MiniMax-M3", "model refs keep using the untouched provider name");
 
+// The ids this install actually runs (read out of the live config.toml while fixing
+// task 198). Every one of them must keep rendering a readable label — this is the
+// user-visible half of the bug, and it must not silently regress if someone trims the
+// table. Names the table does not know still fall back to the id (asserted above).
+console.log("\ncoverage: every provider id this install runs has a readable label");
+
+const installProviderIds = [
+  "deepseek-flash",
+  "deepseek-pro",
+  "mimo-pro",
+  "mimo-flash",
+  "minimax-M3",
+  "minimax",
+  "deepseek",
+  "mimo-token-plan",
+  "mimo-api",
+  "glm-cn",
+];
+for (const id of installProviderIds) {
+  ok(providerDefaultLabel(id) !== id, `${id} resolves to a readable default label`);
+}
+ok(
+  installProviderIds.every((id) => providerDisplayLabel({ name: id }) === providerDefaultLabel(id)),
+  "none of them needs a user-configured display name to read correctly",
+);
+
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
 if (failed > 0) process.exit(1);
