@@ -30,9 +30,14 @@ const (
 	// image-bearing histories while keeping corrupt logs from exhausting RAM.
 	// A byte limit alone is insufficient: a compact JSON array can expand into
 	// a much larger graph of messages and event records after decoding.
-	sessionEventReplayMaxRecords         = 100_000
-	sessionEventReplayMaxMessages        = 100_000
-	sessionEventReplayMaxCollectionItems = 100_000
+	// 400k: a real 467MB session (task 187 follow-up, 2026-09-20) carries 100,001
+	// records and hit the old 100k cap on every tab switch - the replay ran to
+	// record 100001, failed, and the switch stalled for seconds each time. The
+	// byte hard ceiling (1 GiB) remains the real memory gate; these caps only
+	// need to stay above what a sub-1GiB log can legitimately contain.
+	sessionEventReplayMaxRecords         = 400_000
+	sessionEventReplayMaxMessages        = 400_000
+	sessionEventReplayMaxCollectionItems = 400_000
 	sessionEventProbeMaxBytes            = int64(4 << 10)
 	// sessionEventLogCompactFloor is the smallest log size that can trigger
 	// event-log maintenance, so short sessions never pay a checkpoint rewrite.
