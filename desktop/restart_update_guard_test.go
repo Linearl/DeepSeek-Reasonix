@@ -29,8 +29,8 @@ func TestRestartAndUpdateRequiresAVersion(t *testing.T) {
 		if err == nil {
 			t.Fatalf("version %q was accepted", version)
 		}
-		if !strings.Contains(err.Error(), "version is required") {
-			t.Fatalf("version %q gave %q, want a version-required refusal", version, err)
+		if !strings.Contains(err.Error(), "no version to publish") {
+			t.Fatalf("version %q gave %q, want a no-version-to-publish refusal (empty version completes from staging, which is absent in tests)", version, err)
 		}
 	}
 }
@@ -47,7 +47,7 @@ func TestRestartAndUpdateReportsTheVersionBeforeTheExperimentGate(t *testing.T) 
 	if strings.Contains(err.Error(), "experiment is off") {
 		t.Fatalf("the experiment gate answered before the argument check: %q", err)
 	}
-	if !strings.Contains(err.Error(), "version is required") {
-		t.Fatalf("got %q, want a version-required refusal", err)
+	if !strings.Contains(err.Error(), "no version to publish") {
+		t.Fatalf("got %q, want a no-version-to-publish refusal", err)
 	}
 }

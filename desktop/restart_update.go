@@ -35,11 +35,26 @@ func (a *App) RestartAndUpdate(sourceDir, version string) error {
 	version = strings.TrimSpace(version)
 	sourceDir = strings.TrimSpace(sourceDir)
 
-	// Argument validation answers first: a caller must be able to tell a
-	// malformed request from a disabled feature, so the version check stays
-	// ahead of the experiment gate below (task 81 guard order).
+	// Argument completion answers first: the status-bar button sends an empty
+	// version on purpose (a local build has no signed manifest), so an empty
+	// version is completed from the staging payload before any guard runs.
+	// Only a version that is still missing after completion is a refusal, and
+	// that refusal names the staging path so the caller can tell a malformed
+	// request from a disabled feature (task 81 guard order preserved).
+	if sourceDir == "" {
+		if executable, execErr := os.Executable(); execErr == nil {
+			if installRoot, rootErr := installlayout.ResolveInstallRoot(executable); rootErr == nil && installRoot != "" {
+				sourceDir = filepath.Join(installRoot, "staging")
+			}
+		}
+	}
+	if version == "" && sourceDir != "" {
+		if raw, readErr := os.ReadFile(filepath.Join(sourceDir, "version.txt")); readErr == nil {
+			version = strings.TrimSpace(string(raw))
+		}
+	}
 	if version == "" {
-		return fmt.Errorf("restart: version is required")
+		return fmt.Errorf("restart: no version to publish: %s/version.txt is missing (rebuild to re-stage) and the caller sent none", sourceDir)
 	}
 
 	// Opt-in only (task 81): the action swaps the active install version, so neither a
