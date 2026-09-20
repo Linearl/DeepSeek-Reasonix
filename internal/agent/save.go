@@ -1271,9 +1271,20 @@ func lockSessionSavePath(path string) func() {
 	key := canonicalSessionSavePath(path)
 	v, _ := sessionSaveLocks.LoadOrStore(key, &sync.Mutex{})
 	mu := v.(*sync.Mutex)
+	// Task 196: the interesting half of this lock is the wait, not the hold. A reader
+	// queueing behind a full rewrite is otherwise invisible - and a 22.9s process-wide
+	// freeze with no log lines at all is exactly the shape of a mutex storm.
+	waitStart := time.Now()
 	mu.Lock()
+	if waited := time.Since(waitStart); waited >= sessionSaveLockWarnWait {
+		slog.Warn("session: save-path lock waited", "path", path, "wait_ms", waited.Milliseconds())
+	}
 	return mu.Unlock
 }
+
+// sessionSaveLockWarnWait is the queueing time above which the save-path lock is worth a
+// line in the log. Below it, a lock acquired immediately stays silent.
+const sessionSaveLockWarnWait = 250 * time.Millisecond
 
 // tryLockSessionSavePath lets low-priority maintenance yield immediately to a
 // foreground save. The returned unlock is non-nil only when acquired.

@@ -510,18 +510,26 @@ export class TranscriptStore {
     this.lastActiveAt.delete(tabId);
   }
 
-  private evictSession(session: SessionTranscript, reason: "lru" | "budget"): void {
+  private evictSession(
+    session: SessionTranscript,
+    reason: "lru" | "budget",
+    pressure?: { residentSessions: number; totalBodyBytes: number },
+  ): void {
     session.generation += 1; // in-flight responses discard against a missing/stale session
     this.sessions.delete(session.key);
     this.historyEvictions += 1;
     // Task 123: evictions were counted but never named, so desktop.log could not
     // say which tab lost its transcript or why. Record it for the monitor board.
+    // Task 196: also record the pressure that triggered it, so "why is the cache
+    // cold" is answerable from the log instead of only from the veto it causes.
     noteEviction({
       tabId: session.tabId,
       sessionPath: session.sessionPath,
       reason,
       records: session.records.length,
       bodyBytes: session.bodyBytes,
+      residentSessions: pressure?.residentSessions,
+      totalBodyBytes: pressure?.totalBodyBytes,
     });
   }
 
@@ -550,7 +558,10 @@ export class TranscriptStore {
       }
       const victim = candidates.splice(victimIdx, 1)[0];
       if (!victim) break;
-      this.evictSession(victim, "lru");
+      this.evictSession(victim, "lru", {
+        residentSessions: this.sessions.size,
+        totalBodyBytes: this.totalBodyBytes(),
+      });
       resident -= 1;
     }
     let total = 0;
@@ -560,7 +571,10 @@ export class TranscriptStore {
       const victim = candidates.shift();
       if (!victim) break;
       total -= victim.bodyBytes;
-      this.evictSession(victim, "budget");
+      this.evictSession(victim, "budget", {
+        residentSessions: this.sessions.size,
+        totalBodyBytes: total + victim.bodyBytes,
+      });
     }
   }
 

@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"log/slog"
 	"os"
+	"time"
 
 	"reasonix/internal/store"
 )
@@ -80,6 +82,16 @@ func (s *Session) saveObserved(path string, mode sessionSaveMode) error {
 	if err := s.upgradeTruncatedTranscriptForWrite(path); err != nil {
 		return err
 	}
+	// Task 196: successful saves were entirely silent, so "was a write running while the
+	// UI froze?" had no answer in the log at all. One begin/end pair per save fixes that.
+	saveStart := time.Now()
+	s.mu.RLock()
+	saveMessages := len(s.Messages)
+	s.mu.RUnlock()
+	slog.Info("session: save begin", "path", path, "messages", saveMessages, "mode", mode)
+	defer func() {
+		slog.Info("session: save end", "path", path, "ms", time.Since(saveStart).Milliseconds())
+	}()
 	appendFrom := -1
 	if mode == sessionSaveSnapshot {
 		if index, err := LoadSessionDisplayIndex(store.SessionDisplayIndex(path)); err == nil {

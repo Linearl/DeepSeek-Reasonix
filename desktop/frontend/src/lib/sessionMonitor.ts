@@ -12,10 +12,20 @@ export type SessionEviction = {
   at: number;
   tabId: string;
   sessionPath: string;
-  /** lru = over the resident-session cap, budget = over the history byte budget. */
-  reason: "lru" | "budget";
+  /**
+   * lru = over the resident-session cap, budget = over the history byte budget,
+   * tab-state-lru = over [desktop].max_cached_tabs (useController tab states).
+   */
+  reason: "lru" | "budget" | "tab-state-lru";
   records: number;
   bodyBytes: number;
+  /**
+   * Cache pressure at eviction time (task 196). Without these the only trace of
+   * a cause was the downstream `resident items empty` veto, which says a cache
+   * was cold but never what made it cold.
+   */
+  residentSessions?: number;
+  totalBodyBytes?: number;
 };
 
 export type StageTiming = { at: number; tabId: string; stage: string; ms: number };
@@ -32,6 +42,8 @@ export type HydrateDecision = {
 const STAGE_LIMIT = 120;
 const EVICTION_LIMIT = 40;
 const SLOW_STAGE_MS = 1000;
+/** Hydrate sub-stages are logged from here: see noteStageTiming. */
+const HYDRATE_STAGE_MS = 100;
 
 const stageTimings: StageTiming[] = [];
 const hydrateDecisions = new Map<string, HydrateDecision>();
@@ -58,8 +70,18 @@ const openListeners = new Set<(open: boolean) => void>();
 export function noteStageTiming(tabId: string, stage: string, ms: number): void {
   stageTimings.push({ at: Date.now(), tabId, stage, ms });
   if (stageTimings.length > STAGE_LIMIT) stageTimings.splice(0, stageTimings.length - STAGE_LIMIT);
-  if (ms >= SLOW_STAGE_MS) {
-    reportFrontendLog("session-monitor", "slow switch stage", `tab=${tabId} stage=${stage} ms=${Math.round(ms)}`, "warn");
+  // Task 196: the hydrate stages are logged from a much lower bar than a switch
+  // stage. A 13.7 s hydrate is only diagnosable if its parts are visible too, and
+  // at the 1 s switch threshold a 700 ms read plus a 600 ms apply would produce
+  // no line at all. Hydrates are rare, so the quieter threshold costs nothing.
+  const threshold = stage.startsWith("hydrate:") ? HYDRATE_STAGE_MS : SLOW_STAGE_MS;
+  if (ms >= threshold) {
+    reportFrontendLog(
+      "session-monitor",
+      stage.startsWith("hydrate:") ? "hydrate stage" : "slow switch stage",
+      `tab=${tabId} stage=${stage} ms=${Math.round(ms)}`,
+      "warn",
+    );
   }
 }
 
@@ -160,10 +182,14 @@ export function renderMetricsFor(tabId: string): { firstFrameMs?: number; geomet
 export function noteEviction(event: Omit<SessionEviction, "at">): void {
   evictions.push({ ...event, at: Date.now() });
   if (evictions.length > EVICTION_LIMIT) evictions.splice(0, evictions.length - EVICTION_LIMIT);
+  const pressure =
+    event.residentSessions === undefined && event.totalBodyBytes === undefined
+      ? ""
+      : ` resident=${event.residentSessions ?? "?"} totalBytes=${event.totalBodyBytes ?? "?"}`;
   reportFrontendLog(
     "session-monitor",
     "transcript evicted",
-    `tab=${event.tabId} reason=${event.reason} records=${event.records} bodyBytes=${event.bodyBytes} session=${event.sessionPath}`,
+    `tab=${event.tabId} reason=${event.reason} records=${event.records} bodyBytes=${event.bodyBytes}${pressure} session=${event.sessionPath}`,
     "warn",
   );
 }

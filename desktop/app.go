@@ -2321,6 +2321,7 @@ func (a *App) clearActiveSessionRuntime(tab *WorkspaceTab, oldCtrl control.Sessi
 
 	newSink := &tabEventSink{tabID: tab.ID, app: a, ctx: a.ctx}
 	sharedHost := a.lookupSharedHost(snap.sharedHostKey)
+	slog.Info("desktop: runtime build begin", "tab", tab.ID, "trigger", "clear-session", "model", snap.model) // task 196: name who is building a runtime, so a startup burst can be attributed instead of inferred.
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
 		RestartUpdater:           restartUpdaterAdapter{a},
 		Model:                    snap.model,
@@ -3774,18 +3775,36 @@ func (a *App) ResumeSessionForTab(tabID, path string) ([]HistoryMessage, error) 
 		go a.adoptSessionFromLocalServe(tab.ID, sessionPath)
 		return a.HistoryForTab(tabID), nil
 	}
+	// Task 196 second round: switching tabs also resumes through here, and the
+	// user reports slow switching *out of* a long session - so both directions
+	// need the same decomposition as resumeSessionPageForTab.
+	resumeStart := time.Now()
 	loaded, err := loadResumableSession(sessionPath)
+	loadMs := time.Since(resumeStart).Milliseconds()
 	if err != nil {
+		slog.Info("desktop: resume session stages", "tab", tabID, "path", sessionPath,
+			"load_ms", loadMs, "rebind_ms", int64(0), "history_ms", int64(0),
+			"total_ms", time.Since(resumeStart).Milliseconds(), "error", err.Error())
 		return nil, err
 	}
 
+	rebindStart := time.Now()
 	if err := a.rebindTabToLoadedSessionPath(tab, sessionPath, loaded); err != nil {
+		slog.Info("desktop: resume session stages", "tab", tabID, "path", sessionPath,
+			"load_ms", loadMs, "rebind_ms", time.Since(rebindStart).Milliseconds(), "history_ms", int64(0),
+			"total_ms", time.Since(resumeStart).Milliseconds(), "error", err.Error())
 		return nil, err
 	}
+	rebindMs := time.Since(rebindStart).Milliseconds()
 	a.setTabReadOnly(tab.ID, false)
 	a.attachTakeoverMirror(tab.ID, sessionPath)
 	go a.adoptSessionFromLocalServe(tab.ID, sessionPath)
-	return a.HistoryForTab(tabID), nil
+	historyStart := time.Now()
+	messages := a.HistoryForTab(tabID)
+	slog.Info("desktop: resume session stages", "tab", tabID, "path", sessionPath,
+		"load_ms", loadMs, "rebind_ms", rebindMs, "history_ms", time.Since(historyStart).Milliseconds(),
+		"total_ms", time.Since(resumeStart).Milliseconds())
+	return messages, nil
 }
 
 // validateChannelSessionPath 校验 bot/channel 会话路径：channel 会话可能位于
@@ -4312,6 +4331,7 @@ func (a *App) buildSessionRebindCandidate(
 	if _, err := loadPinnedContextState(sessionPath); err != nil {
 		return nil, err
 	}
+	slog.Info("desktop: runtime build begin", "trigger", "rebind", "model", model, "session", sessionPath) // task 196: name who is building a runtime, so a startup burst can be attributed instead of inferred.
 	ctrl, err := boot.Build(a.bootContext(), boot.Options{
 		RestartUpdater:           restartUpdaterAdapter{a},
 		Model:                    model,
@@ -9939,6 +9959,7 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 	sharedHost := a.lookupSharedHost(snap.sharedHostKey)
 
 	stageStarted = time.Now()
+	slog.Info("desktop: runtime build begin", "tab", tabID, "trigger", "set-model", "model", name) // task 196: name who is building a runtime, so a startup burst can be attributed instead of inferred.
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
 		RestartUpdater:           restartUpdaterAdapter{a},
 		Model:                    name,
@@ -10138,6 +10159,7 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 		carried = oldCtrl.History()
 	}
 	sharedHost := a.lookupSharedHost(snap.sharedHostKey)
+	slog.Info("desktop: runtime build begin", "tab", tabID, "trigger", "set-effort", "model", modelRef, "effort", level) // task 196: name who is building a runtime, so a startup burst can be attributed instead of inferred.
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
 		RestartUpdater:           restartUpdaterAdapter{a},
 		Model:                    modelRef,

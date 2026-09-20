@@ -27,7 +27,7 @@ import { replayPendingPromptsForActiveTab } from "./promptReplay";
 import { createRafBatch } from "./rafBatch";
 import { foregroundRunningFromRuntimeMeta, type RuntimeMetaSnapshot } from "./runtimeMeta";
 import { aliasActivationRequest, noteActivationRequested, noteActivationSettled, noteActivationStarted } from "./sessionDiagnostics";
-import { noteHydrateDecision, noteStageTiming, reportStageSummary } from "./sessionMonitor";
+import { noteEviction, noteHydrateDecision, noteStageTiming, reportStageSummary } from "./sessionMonitor";
 import { applyLiveSegments, coalesceStreamDeltas, completeLiveReasoning, type StreamDeltaEntry, type StreamSegment } from "./streamDeltaBatch";
 import { assistantHasContent, ensureActiveAssistant, ensureAssistant, removeEmptyAssistantItems } from "./assistantItems";
 import { getTranscriptStore } from "./transcriptStore";
@@ -2625,10 +2625,15 @@ export function useController() {
   const snapshotNavigationSourceTab = useCallback((navigationSeq: number) => {
     const source = navigationSourcesRef.current.get(navigationSeq);
     if (!source?.tabId || source.tab || source.tabPromise) return;
+    // Task 196: the switch-out half of a tab switch had no stage timing at all, so the
+    // source tab's snapshot never showed up in desktop.log even when leaving a long
+    // session was the slow part.
+    const startedAt = performance.now();
     source.tabPromise = app.ListTabs()
       .then((tabs) => asArray(tabs).find((tab) => tab.id === source.tabId))
       .catch(() => undefined);
     void source.tabPromise.then((tab) => { source.tab = tab; });
+    noteStageTiming(source.tabId, "switch-out:snapshot", performance.now() - startedAt);
   }, []);
   const isNavigationIntentCurrent = useCallback((seq: number): boolean => {
     return activeNavigationSeqRef.current === seq;
@@ -2829,10 +2834,15 @@ export function useController() {
     // a tombstone generation so a later tab reusing the same id cannot make
     // that completion current again.
     historyOlderSeq.current.set(tabId, (historyOlderSeq.current.get(tabId) ?? 0) + 1);
+    // Task 196: releasing a tab is synchronous work (subscriptions, projector, store
+    // eviction) and was invisible. Timed here so "switching out is slow" can be told
+    // apart from "switching in is slow".
+    const releaseStartedAt = performance.now();
     transcriptSubscriptions.current.get(tabId)?.();
     transcriptSubscriptions.current.delete(tabId);
     turnEventProjector.release(tabId);
     getTranscriptStore().evictTab(tabId);
+    noteStageTiming(tabId, "switch-out:release", performance.now() - releaseStartedAt);
   }, [turnEventProjector]);
   const sessionLoadCurrent = useCallback((tabId: string, seq: number): boolean => {
     return sessionLoadSeq.current.get(tabId) === seq;
@@ -4540,19 +4550,28 @@ export function useController() {
       if (!navigationCompletionCurrent(navigationSeq, "session.resume", targetTabId)) return terminal("superseded");
       const seq = bumpSessionLoadSeq(targetTabId);
       dispatchTo(targetTabId, { type: "hydrate_start", reason: "resume-session", placeholderItems });
+      // Task 196: the 13.7 s stall lived between "hydrate reloaded history" and
+      // the next switch-tab timing, with nothing in between to say what it did.
+      // Split it: read = bridge round trip (backend read + serialize + transfer),
+      // apply = the dispatches that parse the page into store state.
+      const hydrateReadStart = performance.now();
       let page: HistoryPage;
       try {
         page = tabId
           ? await app.ResumeSessionPageForTab(tabId, path, HISTORY_PAGE_TURNS)
           : await app.ResumeSessionPage(path, HISTORY_PAGE_TURNS);
       } catch {
+        noteStageTiming(targetTabId, "hydrate:read", performance.now() - hydrateReadStart);
         if (!isNavigationIntentCurrent(navigationSeq) || !sessionLoadCurrent(targetTabId, seq)) return terminal("superseded");
         return failSessionNavigation(navigationSeq, targetTabId);
       }
+      noteStageTiming(targetTabId, "hydrate:read", performance.now() - hydrateReadStart);
       if (!navigationCompletionCurrent(navigationSeq, "session.resume", targetTabId) || !sessionLoadCurrent(targetTabId, seq)) return terminal("superseded");
+      const hydrateApplyStart = performance.now();
       dispatchTo(targetTabId, { type: "reset" });
       dispatchTo(targetTabId, { type: "history_page", page, mode: "replace" });
       dispatchTo(targetTabId, { type: "hydrate_done" });
+      noteStageTiming(targetTabId, "hydrate:apply", performance.now() - hydrateApplyStart);
       if (!(await reconcileSessionNavigationForTab(targetTabId, navigationSeq, seq))) return terminal("superseded");
       app.ContextUsageForTab(targetTabId).then((context) => dispatchTo(targetTabId, { type: "context", context })).catch(() => {});
       void refreshCheckpoints(targetTabId);
@@ -5251,6 +5270,18 @@ export function useController() {
     const limit = effectiveMaxResidentSessions();
     others.sort((a, b) => b.lastActive - a.lastActive);
     for (const entry of limit > 0 ? others.slice(limit - 1) : []) {
+      // Task 196: name this eviction. Until now a tab losing its state here only
+      // surfaced later as `resident items empty` on the next switch, which said
+      // the cache was cold but never what made it cold. residentSessions here
+      // counts tab states, not transcripts - the reason field says which.
+      noteEviction({
+        tabId: entry.id,
+        sessionPath: statesRef.current.get(entry.id)?.meta?.sessionPath ?? "",
+        reason: "tab-state-lru",
+        records: 0,
+        bodyBytes: 0,
+        residentSessions: statesRef.current.size,
+      });
       invalidateProviderStateForTab(entry.id);
       disposeComposerProfileState(entry.id);
       statesRef.current.delete(entry.id);

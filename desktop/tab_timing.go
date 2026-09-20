@@ -1,11 +1,19 @@
 package main
 
-import "log/slog"
+import (
+	"log/slog"
+	"strings"
+)
 
 // slowTabSwitchLogMs is the threshold below which a stage is not worth a log line. Tab
 // switches happen constantly and most are fast; the ones worth seeing in desktop.log are
 // the ones the user experiences as slow.
 const slowTabSwitchLogMs = 150
+
+// switchOutStagePrefix marks the stages that measure leaving a tab, and switchOutLogMs is
+// their (lower) threshold - see ReportTabSwitchTiming.
+const switchOutStagePrefix = "switch-out:"
+const switchOutLogMs = 50
 
 // ReportTabSwitchTiming lets the frontend publish how long a switch-tab stage took.
 //
@@ -46,7 +54,15 @@ func (a *App) ReportFrontendLog(feature string, level string, message string, de
 }
 
 func (a *App) ReportTabSwitchTiming(tabID string, stage string, ms int) {
-	if ms < slowTabSwitchLogMs {
+	// Task 196: the switch-out stages get a lower bar. Switching out of a long session
+	// also resumes and releases the source tab - the user reports that direction as slow
+	// too - but at 150ms a 120ms teardown is dropped silently, and that is exactly the
+	// evidence needed to tell "the teardown is slow" from "nothing happened here".
+	threshold := slowTabSwitchLogMs
+	if strings.HasPrefix(stage, switchOutStagePrefix) {
+		threshold = switchOutLogMs
+	}
+	if ms < threshold {
 		return
 	}
 	slog.Info("desktop: tab switch timing", "tab", tabID, "stage", stage, "ms", ms)

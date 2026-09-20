@@ -60,6 +60,10 @@ type perfSample struct {
 	Goroutines   int     `json:"goroutines"`
 	Handles      uint32  `json:"handles,omitempty"`
 	CPUPercent   float64 `json:"cpuPercent,omitempty"`
+	// Task 196: the total alone cannot say whether the cores went to computation or to
+	// syscalls/IO, and that is the difference between "cache the prompt" and "read less".
+	KernelCPUPercent float64 `json:"kernelCpuPercent,omitempty"`
+	UserCPUPercent   float64 `json:"userCpuPercent,omitempty"`
 	// OSCounters is false when the platform reported nothing (see
 	// perf_monitor_other.go): a zero must never be mistaken for a measurement.
 	OSCounters bool `json:"osCounters"`
@@ -110,6 +114,8 @@ type perfMonitor struct {
 	lastIO     procCounters
 	lastSample time.Time
 	lastCPU    float64
+	lastKernel float64
+	lastUser   float64
 	// lastKey is the previous sample's key numbers: identical keys mean nothing
 	// moved, which is what turns a sample into a heartbeat instead of a full line.
 	lastKey string
@@ -255,6 +261,7 @@ func (m *perfMonitor) takeSample(now time.Time) perfSample {
 	m.mu.Lock()
 	previous, previousAt, previousCPU := m.lastIO, m.lastSample, m.lastCPU
 	m.lastIO, m.lastSample, m.lastCPU = counters, now, counters.CPUSeconds
+	m.lastKernel, m.lastUser = counters.KernelSeconds, counters.UserSeconds
 	m.mu.Unlock()
 
 	if counters.Available && !previousAt.IsZero() {
@@ -263,6 +270,14 @@ func (m *perfMonitor) takeSample(now time.Time) perfSample {
 		sample.IOReadDeltaMB = float64(counters.ReadBytes-previous.ReadBytes) / (1 << 20)
 		if elapsed > 0 {
 			sample.CPUPercent = (counters.CPUSeconds - previousCPU) / elapsed * 100
+			sample.KernelCPUPercent = (counters.KernelSeconds - m.lastKernel) / elapsed * 100
+			sample.UserCPUPercent = (counters.UserSeconds - m.lastUser) / elapsed * 100
+			if sample.KernelCPUPercent < 0 {
+				sample.KernelCPUPercent = 0
+			}
+			if sample.UserCPUPercent < 0 {
+				sample.UserCPUPercent = 0
+			}
 			if sample.CPUPercent < 0 {
 				sample.CPUPercent = 0
 			}
@@ -297,6 +312,8 @@ func (m *perfMonitor) takeSample(now time.Time) perfSample {
 			Goroutines:       sample.Goroutines,
 			Handles:          sample.Handles,
 			CPUPercent:       sample.CPUPercent,
+			KernelCPUPercent: sample.KernelCPUPercent,
+			UserCPUPercent:   sample.UserCPUPercent,
 			OSCounters:       sample.OSCounters,
 			StoreMB:          storeMB,
 			ProjectsMB:       projectsMB,
