@@ -1,5 +1,6 @@
 import { ManagementSurface } from "./components/ManagementSurface";
 import { useConfirmDialog } from "./components/ConfirmDialog";
+import { VersionSwitchDialog, type VersionEntry } from "./components/VersionSwitchDialog";
 import { useManagementWorkspace } from "./lib/useManagementWorkspace";
 import { loadSplitState, persistSplitState, type SplitState } from "./lib/splitView";
 import { useAppNavigationStore } from "./store/appNavigation";
@@ -3180,6 +3181,44 @@ export default function App() {
   // Restart-and-update (task 81 / 129). Empty source dir uses InstallRoot/staging.
   // Confirm restarts immediately; otherwise auto-restart after 3s. Cancel aborts.
   const { confirm: confirmRestartUpdate, dialog: restartUpdateDialog } = useConfirmDialog();
+
+  // Task 210: version picker behind the status-bar restart button. The list
+  // comes from the engine (versions/ directory); a failed read — e.g. a dev
+  // build that is not a versioned install, or the experiment being off —
+  // falls back to the original task-81 confirm flow so nothing is lost.
+  const [versionSwitch, setVersionSwitch] = useState<{
+    open: boolean;
+    versions: VersionEntry[];
+    switching: string | null;
+    error: string | null;
+  }>({ open: false, versions: [], switching: null, error: null });
+
+  const handleOpenVersionSwitch = useCallback(async () => {
+    let versions: VersionEntry[] = [];
+    try {
+      versions = await app.ListInstalledVersions();
+    } catch {
+      await handleRestartUpdate();
+      return;
+    }
+    setVersionSwitch({ open: true, versions, switching: null, error: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleSwitchToVersion = useCallback(async (version: string) => {
+    setVersionSwitch((prev) => ({ ...prev, switching: version, error: null }));
+    try {
+      await app.SwitchToVersion(version);
+      // The engine relaunches the process shortly after resolving; nothing to
+      // reset here — keep the busy row visible while the app tears down.
+    } catch (error) {
+      setVersionSwitch((prev) => ({
+        ...prev,
+        switching: null,
+        error: error instanceof Error ? error.message : String(error),
+      }));
+    }
+  }, []);
   const handleRestartUpdate = useCallback(async () => {
     const ok = await confirmRestartUpdate({
       title: t("status.restartUpdateTitle"),
@@ -5201,7 +5240,7 @@ export default function App() {
             running={state.running || rewindCommitting}
             jobs={state.jobs}
             restartUpdateAvailable={restartUpdateEnabled}
-            onRestartUpdate={() => void handleRestartUpdate()}
+            onRestartUpdate={() => void handleOpenVersionSwitch()}
             onCancelJob={cancelJob}
             backgroundRuntimes={backgroundRuntimes}
             onCancelRuntimeJob={cancelRuntimeJob}
@@ -5377,6 +5416,19 @@ export default function App() {
         />
       )}
       {restartUpdateDialog}
+      <VersionSwitchDialog
+        open={versionSwitch.open}
+        versions={versionSwitch.versions}
+        switching={versionSwitch.switching}
+        error={versionSwitch.error}
+        onSwitch={(version) => void handleSwitchToVersion(version)}
+        onClose={() => setVersionSwitch((prev) => ({ ...prev, open: false }))}
+        onPublishStaging={() => {
+          setVersionSwitch((prev) => ({ ...prev, open: false }));
+          void handleRestartUpdate();
+        }}
+        formatTime={(unix) => new Date(unix * 1000).toLocaleString()}
+      />
       {/* Task 121/123: the panels must live at the App root. Settings is a
           ManagementSurface overlay that replaces the shell, so the old mount
           point inside SidebarRegion was never in the render tree while the
