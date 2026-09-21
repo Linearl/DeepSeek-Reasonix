@@ -57,25 +57,34 @@ func boolString(v bool) string {
 // which is the guard against a context-maintenance strategy silently desyncing
 // from the tool surface.
 var acceptsDefaultSnip = map[string]bool{
-	"bash_output":            true, // streamed job output; tailing handled by the job, not the snip pass
-	"code_index":             true,
-	"complete_step":          true,
-	"compress":               true,
-	"delete_range":           true,
-	"delete_symbol":          true,
-	"edit_file":              true,
-	"extend_research_budget": true, // one-line confirmation; generic head/tail split is fine
-	"kill_shell":             true,
-	"move_file":              true,
-	"multi_edit":             true,
-	"notebook_edit":          true,
-	"restart_and_update":     true, // one-line outcome; the restart happens after the call returns
-	"todo_read":              true, // small JSON list; generic head/tail split is fine
-	"todo_write":             true,
-	"view_image":             true, // visual summary, not a text body a head/tail split would help
-	"update_goal":            true,
-	"wait":                   true,
-	"write_file":             true,
+	"create_worktree":                true, // short structured JSON; generic head/tail split is fine
+	"heartbeat_task_enable":          true, // short structured JSON; generic head/tail split is fine
+	"heartbeat_task_list":            true, // short structured JSON; generic head/tail split is fine
+	"heartbeat_task_upsert":          true, // short structured JSON; generic head/tail split is fine
+	"inspect_worktree_merge":         true, // short structured JSON; generic head/tail split is fine
+	"merge_worktree_back":            true, // short structured JSON; generic head/tail split is fine
+	"open_isolated_worktree_project": true, // short structured JSON; generic head/tail split is fine
+	"prepare_worktree_merge":         true, // short structured JSON; generic head/tail split is fine
+	"submit_feedback":                true, // short structured JSON; generic head/tail split is fine
+	"bash_output":                    true, // streamed job output; tailing handled by the job, not the snip pass
+	"code_index":                     true,
+	"complete_step":                  true,
+	"compress":                       true,
+	"delete_range":                   true,
+	"delete_symbol":                  true,
+	"edit_file":                      true,
+	"extend_research_budget":         true, // one-line confirmation; generic head/tail split is fine
+	"kill_shell":                     true,
+	"move_file":                      true,
+	"multi_edit":                     true,
+	"notebook_edit":                  true,
+	"restart_and_update":             true, // one-line outcome; the restart happens after the call returns
+	"todo_read":                      true, // small JSON list; generic head/tail split is fine
+	"todo_write":                     true,
+	"view_image":                     true, // visual summary, not a text body a head/tail split would help
+	"update_goal":                    true,
+	"wait":                           true,
+	"write_file":                     true,
 }
 
 func TestEveryBuiltinDeclaresSnipStance(t *testing.T) {

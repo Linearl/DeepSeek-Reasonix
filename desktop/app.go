@@ -60,6 +60,7 @@ import (
 	"reasonix/internal/taskcatalog"
 	"reasonix/internal/taskmonitor"
 	"reasonix/internal/tool"
+	"reasonix/internal/tool/builtin"
 )
 
 // sessionTempFromController returns the logical-session private temporary
@@ -581,6 +582,11 @@ func (a *App) startup(ctx context.Context) {
 
 	a.heartbeat = newHeartbeatEngine(a)
 	a.heartbeat.Start()
+	// Expose the scheduler's admin surface to agent tools (task 201). The
+	// adapter keeps the engine as the single source of truth for validation
+	// and CAS writes; CLI/serve sessions without a desktop engine keep the
+	// tools failing with a dedicated "no engine attached" error.
+	builtin.SetHeartbeatManager(newHeartbeatManagerAdapter(a.heartbeat))
 
 	a.sessionCollab = newSessionCollabPump(a)
 	a.sessionCollab.Start()
