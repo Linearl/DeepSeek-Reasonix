@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"reasonix/internal/agent/testutil"
@@ -212,5 +213,73 @@ func TestCollabStatusTailWindowDropsPartialHead(t *testing.T) {
 		if ev.Event == "" || ev.TS == "" {
 			t.Fatalf("malformed event survived the window cut: %+v", ev)
 		}
+	}
+}
+
+// M2 (task 202): sessions whose workspace roots point at their own worktrees
+// must still converge on one stream file, so a manager's single incremental
+// read sees every line of the batch.
+func TestResolveCollabStatusPath(t *testing.T) {
+	tests := []struct {
+		name, explicit, mailDir, workspaceRoot, want string
+	}{
+		{name: "explicit wins", explicit: `D:\cfg\stream.jsonl`, mailDir: `C:\mail`, workspaceRoot: `D:\root`, want: `D:\cfg\stream.jsonl`},
+		{name: "mail dir default", mailDir: `C:\mail`, workspaceRoot: `D:\root`, want: filepath.Join(`C:\mail`, "collab-status.jsonl")},
+		{name: "workspace fallback", workspaceRoot: `D:\root`, want: filepath.Join(`D:\root`, "tasks", "collab-status.jsonl")},
+		{name: "all empty", want: ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ResolveCollabStatusPath(tc.explicit, tc.mailDir, tc.workspaceRoot); got != tc.want {
+				t.Fatalf("ResolveCollabStatusPath = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCollabStatusCrossRootOneRead(t *testing.T) {
+	mailDir := t.TempDir()
+	// Two worktree sessions: different workspace roots, shared mail dir.
+	pathA := ResolveCollabStatusPath("", mailDir, filepath.Join(t.TempDir(), "wt-a"))
+	pathB := ResolveCollabStatusPath("", mailDir, filepath.Join(t.TempDir(), "wt-b"))
+	if pathA != pathB {
+		t.Fatalf("roots diverged: %q vs %q", pathA, pathB)
+	}
+	AppendCollabStatusEvent(pathA, "wt-a", "lineA", CollabStatusCommit, "commit 4b1eff6ff", false)
+	AppendCollabStatusEvent(pathB, "wt-b", "lineB", CollabStatusNeedsDecision, "merge order unclear", true)
+
+	// The manager reads one stream and sees both lines in a single call.
+	result, err := ReadCollabStatusIncremental(pathA, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Events) != 2 {
+		t.Fatalf("events = %d, want both worktrees' events in one read", len(result.Events))
+	}
+	sessions := map[string]bool{}
+	for _, ev := range result.Events {
+		sessions[ev.Session] = true
+	}
+	if !sessions["wt-a"] || !sessions["wt-b"] {
+		t.Fatalf("sessions = %v, want wt-a and wt-b", sessions)
+	}
+
+	// Concurrent appends from two "processes" (goroutines here) must not
+	// interleave lines: every parsed event stays well-formed.
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			AppendCollabStatusEvent(pathA, fmt.Sprintf("wt-%d", i), "", CollabStatusTurnEnd, fmt.Sprintf("concurrent append %d", i), false)
+		}(i)
+	}
+	wg.Wait()
+	all, err := ReadCollabStatusIncremental(pathA, 0, 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if all.SkippedLines != 0 {
+		t.Fatalf("skipped_lines = %d, want 0 (no interleaved lines)", all.SkippedLines)
 	}
 }

@@ -65,8 +65,30 @@ type CollabStatusEvent struct {
 	NeedsDecision bool   `json:"needs_decision"`
 }
 
+// ResolveCollabStatusPath picks where the batch status stream lives
+// (task 202 M2): an explicit configuration wins, then the shared collab
+// mail dir - which every session on the machine already shares, so sessions
+// whose workspace root points at their own worktree still converge on one
+// file and a manager's single incremental read sees every line. The
+// workspace root is the last-resort fallback (single-session use).
+func ResolveCollabStatusPath(explicit, mailDir, workspaceRoot string) string {
+	if p := strings.TrimSpace(explicit); p != "" {
+		return p
+	}
+	if mailDir = strings.TrimSpace(mailDir); mailDir != "" {
+		return filepath.Join(mailDir, "collab-status.jsonl")
+	}
+	if workspaceRoot = strings.TrimSpace(workspaceRoot); workspaceRoot != "" {
+		return filepath.Join(workspaceRoot, "tasks", "collab-status.jsonl")
+	}
+	return ""
+}
+
 // collabStatusMu serialises appends within the process; the O_APPEND write
-// keeps cross-process appends line-atomic for reasonably sized lines.
+// keeps cross-process appends line-atomic for reasonably sized lines (keep
+// one event well under 4 KiB - the append-only jsonl contract). A reader
+// that still hits an interleaved line skips and counts it instead of
+// failing, so the worst case is one lost summary, never a broken stream.
 var collabStatusMu sync.Mutex
 
 // AppendCollabStatusEvent appends one event to the stream file, creating it
