@@ -290,6 +290,14 @@ function stripLegacyGoalBudgetFlags(arg: string): string {
 // `pnpm typecheck` to verify the mock still satisfies the contract.
 //
 // Types for native-feel bindings, used only by AppBindings and the dev mock.
+
+/** InstalledVersion from desktop/version_switch.go: one pickable version tree (task 210). */
+export interface VersionEntry {
+  version: string;
+  active: boolean;
+  modTimeUnix: number;
+}
+
 interface NativeConfirmRequest {
   title: string;
   message: string;
@@ -935,6 +943,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   RelocateProject(oldRoot: string, newRoot: string): Promise<void>;
   /** RestartAndUpdate publishes a local build as a new version and relaunches (task 81). */
   RestartAndUpdate(sourceDir: string, version: string): Promise<void>;
+  /** ListInstalledVersions reports the version trees under versions/ (task 210). */
+  ListInstalledVersions(): Promise<VersionEntry[]>;
+  /** SwitchToVersion moves current.json onto an existing version and relaunches (task 210). */
+  SwitchToVersion(version: string): Promise<void>;
   SetProjectPinned(workspaceRoot: string, pinned: boolean): Promise<void>;
   ReorderProjects(workspaceRoots: string[]): Promise<void>;
   RequestOwnershipFromRemote(workspaceRoot: string, topicID: string): Promise<void>;
@@ -2755,6 +2767,18 @@ function makeMockApp(): AppBindings {
     },
     async RestartAndUpdate(_sourceDir: string, _version: string) {
       throw new Error("RestartAndUpdate is unavailable in the preview build");
+    },
+    async ListInstalledVersions() {
+      // Preview mock: a static spread so the picker renders in dev previews.
+      const now = Math.floor(Date.now() / 1000);
+      return [
+        { version: "v1.38.3-20260922-0100", active: false, modTimeUnix: now - 3600 },
+        { version: "v1.38.3", active: true, modTimeUnix: now - 86400 },
+        { version: "v1.37.0", active: false, modTimeUnix: now - 14 * 86400 },
+      ];
+    },
+    async SwitchToVersion(_version: string) {
+      throw new Error("SwitchToVersion is unavailable in the preview build");
     },
     async ServePoolStatus() {
       return { enabled: false, running: false, bind: "", addr: "", port: 18789, token: "mock-gateway-token", listen: "0.0.0.0:18789" };
