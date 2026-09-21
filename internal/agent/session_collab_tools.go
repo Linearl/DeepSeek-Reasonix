@@ -39,6 +39,18 @@ type SessionCollabConfig struct {
 	MailDir string
 	// CurrentContactID is filled on first ensure for the calling session.
 	CurrentContactID string
+	// HopLimit resolves the live collaboration chain ceiling AT CALL TIME (task 204),
+	// mirroring ResolveSessionPath: a boot snapshot would freeze the value for the
+	// life of a session. Nil keeps the package default.
+	HopLimit func() int
+}
+
+// hopLimit resolves the ceiling in force for this call (task 204).
+func (c SessionCollabConfig) hopLimit() int {
+	if c.HopLimit == nil {
+		return sessioncollab.MaxHop
+	}
+	return sessioncollab.ClampHopLimit(c.HopLimit())
 }
 
 // currentSessionPath resolves the calling session's transcript path, preferring
@@ -390,7 +402,7 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 	if strings.TrimSpace(p.To) == "" || strings.TrimSpace(p.Message) == "" {
 		return "", fmt.Errorf("to and message are required")
 	}
-	if p.Hop < 0 || p.Hop > sessioncollab.MaxHop+1 {
+	if limit := t.cfg.hopLimit(); p.Hop < 0 || p.Hop > limit+1 {
 		return "", fmt.Errorf("invalid hop %d", p.Hop)
 	}
 	delivery, err := sessioncollab.ValidateDelivery(p.Delivery)
@@ -428,7 +440,7 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 	if mailDir == "" {
 		mailDir = config.SessionCollabMailDir()
 	}
-	mail := sessioncollab.NewMailStore(mailDir)
+	mail := sessioncollab.NewMailStoreWithHopLimit(mailDir, t.cfg.hopLimit())
 	msg, err := mail.Deliver(sessioncollab.MailMessage{
 		From:        fromContact,
 		FromSession: fromSession,

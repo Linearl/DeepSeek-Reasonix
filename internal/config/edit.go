@@ -21,6 +21,7 @@ import (
 	"reasonix/internal/mcpdiag"
 	"reasonix/internal/netclient"
 	"reasonix/internal/permission"
+	"reasonix/internal/sessioncollab"
 )
 
 var validDesktopExternalOpenerID = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
@@ -488,6 +489,28 @@ func (c *Config) SetPerfMonitorIntervalSeconds(seconds int) error {
 	c.Desktop.PerfMonitorIntervalSeconds = seconds
 	c.Agent.PerfMonitorIntervalSeconds = seconds
 	return nil
+}
+
+// SetSessionCollabHopLimit sets the cross-session chain ceiling (task 204). The value is
+// clamped rather than trusted: a hand-edited config must not leave an out-of-range
+// ceiling on disk, and the settings view writes through here.
+func (c *Config) SetSessionCollabHopLimit(limit int) error {
+	clamped := sessioncollab.ClampHopLimit(limit)
+	c.Desktop.SessionCollabHopLimit = clamped
+	c.Agent.SessionCollabHopLimit = clamped
+	return nil
+}
+
+// SessionCollabHopLimitLive resolves the ceiling currently in force (task 204): the
+// configured value when set, the package default otherwise. Read per call so a settings
+// change applies to newly arriving messages without a restart; chains already in flight
+// are never migrated.
+func SessionCollabHopLimitLive() int {
+	cfg, err := Load()
+	if err != nil || cfg == nil {
+		return sessioncollab.MaxHop
+	}
+	return sessioncollab.ClampHopLimit(cfg.Agent.SessionCollabHopLimit)
 }
 
 // SetExperimentalRestartUpdate toggles the restart-and-update action (task 81). It is

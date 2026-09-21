@@ -247,6 +247,12 @@ func (a *App) SetPerfMonitorIntervalSeconds(seconds int) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetPerfMonitorIntervalSeconds(seconds) })
 }
 
+// SetSessionCollabHopLimit sets the cross-session chain ceiling (task 204); the config
+// layer clamps it, so an out-of-range entry never reaches the file.
+func (a *App) SetSessionCollabHopLimit(limit int) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetSessionCollabHopLimit(limit) })
+}
+
 // SetExperimentalAutoLoadOlder toggles the scroll-driven history trigger (fork
 // task 160). The explicit "load older" button stays available either way.
 func (a *App) SetExperimentalAutoLoadOlder(enabled bool) error {

@@ -41,6 +41,8 @@ export interface SettingsView {
   // periodic heap profiles. Off by default.
   experimentalPerfMonitor?: boolean;
   perfMonitorIntervalSeconds?: number;
+  // Task 204: cross-session chain ceiling (3..1000, default 5).
+  sessionCollabHopLimit?: number;
   // Fork task 160: scroll-driven "load older" trigger at the transcript top.
   experimentalAutoLoadOlder?: boolean;
   // Task 19: multi-session collaboration experiment.

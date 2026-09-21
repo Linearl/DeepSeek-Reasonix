@@ -1746,6 +1746,8 @@ export const zhTW: Record<DictKey, string> = {
 "settings.dreamCreateTaskAction": "建立 dream 自動任務",
 "settings.dreamCreateTaskDone": "已建立/啟用 dream 自動任務。請到自動化面板檢視並按需調整參數。",
 "settings.sessionCollab": "會話協作",
+  "settings.sessionCollab.hopLimit": "協作鏈 hop 上限",
+  "settings.sessionCollab.hopLimitHint": "跨會話訊息來回輪次的上限，範圍 3~1000，預設 5。調低只影響新到達的訊息，已在途的鏈不變；越界值按範圍鉗制。",
 "settings.sessionCollabHint": "任務 19：啟用多會話協作工具（通訊錄尋址 / talk_to_session 跨會話投遞 / 協作任務卡）。預設關閉；開啟後需重啟（或新開會話）才會向會話註冊工具。",
 "settings.sessionCollab.on": "開",
 "settings.sessionCollab.off": "關",

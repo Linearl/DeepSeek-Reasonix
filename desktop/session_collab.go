@@ -96,6 +96,13 @@ func sessionCollabEnabled() bool {
 	return cfg.Agent.ExperimentalSessionCollab
 }
 
+// sessionCollabHopLimit resolves the chain ceiling in force (task 204). The config
+// layer clamps the experimental value; an unreadable config keeps the package default,
+// so a broken file can never widen the ceiling.
+func sessionCollabHopLimit() int {
+	return config.SessionCollabHopLimitLive()
+}
+
 // SessionCollabDrainResult reports one delivery pass so failures stay visible.
 type SessionCollabDrainResult struct {
 	Delivered int                        `json:"delivered"`
@@ -330,7 +337,7 @@ func (a *App) queueCollabFirstMessage(result *agent.CreateCollabSessionResult, b
 		result.Failed = append(result.Failed, agent.CreateCollabSessionFailure{Title: "(first message)", Reason: "the collaboration mailbox directory is unavailable"})
 		return
 	}
-	store := sessioncollab.NewMailStore(mailDir)
+	store := sessioncollab.NewMailStoreWithHopLimit(mailDir, sessionCollabHopLimit())
 	from := a.collabCallerContactID()
 	result.Delivery = mode
 	for i := range result.Created {
@@ -639,7 +646,7 @@ func (p *sessionCollabPump) drain() SessionCollabDrainResult {
 	if mailDir == "" {
 		return SessionCollabDrainResult{}
 	}
-	mail := sessioncollab.NewMailStore(mailDir)
+	mail := sessioncollab.NewMailStoreWithHopLimit(mailDir, sessionCollabHopLimit())
 	pendingContacts := mail.PendingContacts()
 
 	// Deliverability is not "is there a visible tab": a session whose runtime is
@@ -735,7 +742,7 @@ func (p *sessionCollabPump) deliverToTarget(target sessionCollabTarget) (deliver
 	if mailDir == "" {
 		return 0, 0, nil
 	}
-	mail := sessioncollab.NewMailStore(mailDir)
+	mail := sessioncollab.NewMailStoreWithHopLimit(mailDir, sessionCollabHopLimit())
 	return runCollabDelivery(mail, target.contactID, collabDelivery{
 		enqueue: func(msg sessioncollab.MailMessage, body string) (bool, error) {
 			return p.deliverOne(target, msg, body)
@@ -827,7 +834,7 @@ func (p *sessionCollabPump) verifyHop(msg sessioncollab.MailMessage) (int, error
 		return 0, fmt.Errorf("thread %s is not in sender %s's mailbox", msg.ThreadID, msg.From)
 	}
 	derived := parent.Hop + 1
-	if derived > sessioncollab.MaxHop {
+	if derived > sessionCollabHopLimit() {
 		return derived, errSessionCollabHopExhausted
 	}
 	return derived, nil
@@ -846,7 +853,7 @@ func (p *sessionCollabPump) notifySenderOnce(msg sessioncollab.MailMessage, kind
 	if mailDir == "" {
 		return
 	}
-	store := sessioncollab.NewMailStore(mailDir)
+	store := sessioncollab.NewMailStoreWithHopLimit(mailDir, sessionCollabHopLimit())
 	if !store.MarkNotified(msg.From, msg.ID+":"+kind) {
 		log.Printf("[session-collab] %s notice for %s already sent", kind, msg.ID)
 		return
@@ -866,7 +873,7 @@ func (p *sessionCollabPump) notifySenderOnce(msg sessioncollab.MailMessage, kind
 }
 
 func sessionCollabRefusedHopText(msg sessioncollab.MailMessage) string {
-	return "跨会话消息被拒绝并丢弃：协作链已达 hop 上限（" + strconv.Itoa(sessioncollab.MaxHop) +
+	return "跨会话消息被拒绝并丢弃：协作链已达 hop 上限（" + strconv.Itoa(sessionCollabHopLimit()) +
 		"）。如需继续，请新起一条链，不要在上一条链上继续接力。（messageId=" + msg.ID + "）"
 }
 
@@ -962,7 +969,7 @@ func (p *sessionCollabPump) notifyDegradedSteer(msg sessioncollab.MailMessage, d
 	}
 	note := "你发送的 steer 未能注入目标会话当轮（目标不可注入，disposition=" + disposition +
 		"），已自动降级为排队 follow-up，目标会在下一轮处理。"
-	if _, err := sessioncollab.NewMailStore(mailDir).Deliver(sessioncollab.MailMessage{
+	if _, err := sessioncollab.NewMailStoreWithHopLimit(mailDir, sessionCollabHopLimit()).Deliver(sessioncollab.MailMessage{
 		To:      msg.From,
 		Body:    note,
 		Hop:     msg.Hop,

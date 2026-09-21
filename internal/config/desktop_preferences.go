@@ -72,6 +72,10 @@ type DesktopConfig struct {
 	// ExperimentalSessionCollab is the settings-view mirror for
 	// Agent.ExperimentalSessionCollab (task 19).
 	ExperimentalSessionCollab bool `toml:"experimental_session_collab"`
+	// SessionCollabHopLimit caps how many hops a cross-session chain may take
+	// (task 204). 0 keeps the package default (5); values are clamped into
+	// [MinHop, MaxHopCeiling] on write, so a stored value is always legal.
+	SessionCollabHopLimit int `toml:"session_collab_hop_limit"`
 	// ExperimentalAutoLoadOlder is the settings-view mirror for
 	// Agent.ExperimentalAutoLoadOlder (fork task 160).
 	ExperimentalAutoLoadOlder bool   `toml:"experimental_auto_load_older"`
