@@ -30,6 +30,11 @@ var TransientUserBlockTags = []string{
 	"subagent-policy",
 	"exec-speed-mode",
 	"context-state",
+	// The boot snapshot the host prepends to a session's first user turn
+	// (task 200): environment, workspace, memory index, skill catalog. It is
+	// machine context for the model, not conversation, and used to surface as
+	// a hundreds-of-lines notice row at the top of every session.
+	"session-context",
 }
 
 // reTrailingExecutionPolicy matches the host-appended execution-policy block at

@@ -79,3 +79,33 @@ func assertWorkspaceSessionContext(t *testing.T, messages []provider.Message, wa
 	}
 	t.Fatalf("history contains no valid host session-context: %+v", messages)
 }
+
+// Task 200: the boot snapshot and later context-state injections are machine
+// context. The transcript builders (cold first-open and hot re-open) both
+// funnel through hostGuidanceRows, which must render nothing once
+// StripTransientUserBlocks removes the injected blocks — while real guidance
+// (readiness catch-up, nudges) keeps its notice row.
+func TestHostGuidanceRowsHideSessionContextOnBothPaths(t *testing.T) {
+	boot := "<session-context version=\"1\">\n## Environment\n- OS: windows/amd64\n" +
+		"## Skills catalog\n- some-skill — does things\n</session-context>\n\n" +
+		"<reasoning-language>\n必须使用简体中文书写全部可见思考/推理文本\n</reasoning-language>\n\n"
+	laterTurn := "<context-state>window occupancy 12k/1000k (12%)</context-state>\n\n"
+
+	for _, tc := range []struct{ name, content string }{
+		{"cold first turn", boot},
+		{"hot later turn", laterTurn},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rows, handled := hostGuidanceRows(agent.HostGeneratedUserMessage(tc.content))
+			if handled {
+				t.Fatalf("rows = %+v, want the injected block to render nothing", rows)
+			}
+		})
+	}
+
+	// Real guidance must not be swallowed by the same rule.
+	rows, handled := hostGuidanceRows(agent.HostGeneratedUserMessage("readiness catch-up: resuming the pending plan step"))
+	if !handled || len(rows) != 1 || !strings.HasPrefix(rows[0].Content, "↪ readiness catch-up") {
+		t.Fatalf("rows = %+v handled = %v, want the guidance notice row", rows, handled)
+	}
+}
