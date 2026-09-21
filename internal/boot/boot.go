@@ -1908,19 +1908,21 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			AllowSteer:        cfg.Agent.SessionCollabAllowSteer,
 			DailySendLimit:    cfg.Agent.SessionCollabDailySendLimit,
 		}
+		// Task 174: the tool family is consolidated — search folded into the
+		// list tool's query, the sync twin folded into talk's wait, and the
+		// four card tools folded into one action-routed tool. Constructors for
+		// the old names stay in agent for tests and direct callers.
 		reg.Add(agent.NewSetSessionPurposeTool(collab))
 		reg.Add(agent.NewListAddressableSessionsTool(collab))
-		reg.Add(agent.NewSearchSessionsTool(collab))
 		reg.Add(agent.NewGetSessionStatusTool(collab))
 		reg.Add(agent.NewTalkToSessionTool(collab))
-		reg.Add(agent.NewTalkToSessionSyncTool(collab))
 		// Task 173 ⑤: read_session_tail reads another session's transcript, so
 		// the panel keeps it unregistered until allowed — the model must not
 		// even see a tool it is not permitted to call.
 		if cfg.Agent.SessionCollabAllowReadTail {
 			reg.Add(agent.NewReadSessionTailTool(collab))
 		}
-		for _, t := range agent.NewTaskCardTools(agent.TaskCardConfig{
+		if tc := agent.NewTaskCardTool(agent.TaskCardConfig{
 			Enabled:            true,
 			WorkspaceRoot:      root,
 			CurrentSessionPath: sessionPath,
@@ -1928,8 +1930,8 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			// Same reason as collab above (task 158.B): a card filed by a
 			// desktop session must carry its real initiator/session, not "".
 			ResolveSessionPath: executor.SessionPath,
-		}) {
-			reg.Add(t)
+		}); tc != nil {
+			reg.Add(tc)
 		}
 		// 144: only a host that can create sessions gets the creator tool.
 		// Task 173 ⑦ additionally lets the panel withhold it even then.

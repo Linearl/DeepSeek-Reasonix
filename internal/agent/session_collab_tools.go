@@ -164,24 +164,25 @@ type listAddressableSessionsTool struct{ cfg SessionCollabConfig }
 func (listAddressableSessionsTool) Name() string { return "list_addressable_sessions" }
 
 func (listAddressableSessionsTool) Description() string {
-	return "List the contact directory (通讯录): metadata only — title, purpose, contact_id, topic_id. No transcript content (use read_session_tail for that). Newest first; pass limit to page. Live conversations only by default (deleted .trash sessions never appear; pass archived=true to include retired history). Use contact_id, topic_id, or the exact title as `to` in talk_to_session, or search_sessions(query) when you do not know the name. Experimental."
+	return "List the contact directory (通讯录): metadata only — title, purpose, contact_id, topic_id. No transcript content (read_session_tail does that). Task 174 merged search in: omit query for the newest-first page; pass query for a keyword filter over title/purpose/contact_id/topic_id. Use contact_id, topic_id, or the exact title as `to` in talk_to_session. Entries frozen for over a week carry stale=true (task 175) — re-check before trusting the purpose. Experimental."
 }
 
 func (listAddressableSessionsTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Max sessions to return, newest first (default 200, max 1000). Omit for the first page."},"archived":{"type":"boolean","description":"Include retired archive sessions (default false)."}},"required":[]}`)
+	return json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Max sessions to return, newest first (default 200, max 1000). Omit for the first page."},"archived":{"type":"boolean","description":"Include retired archive sessions (default false)."},"query":{"type":"string","description":"Keyword filter over title/purpose/ids (the old search_sessions). Omit for the unfiltered newest-first page."}},"required":[]}`)
 }
 
 func (listAddressableSessionsTool) ReadOnly() bool { return true }
 
 func (t listAddressableSessionsTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
 	var p struct {
-		Limit    int   `json:"limit"`
-		Archived *bool `json:"archived"`
+		Limit    int    `json:"limit"`
+		Archived *bool  `json:"archived"`
+		Query    string `json:"query"`
 	}
 	if len(args) > 0 {
 		_ = json.Unmarshal(args, &p)
 	}
-	return directoryPage(t.cfg, p.Limit, p.Archived, "")
+	return directoryPage(t.cfg, p.Limit, p.Archived, p.Query)
 }
 
 // NewGetSessionStatusTool answers "is the peer busy?" (task 218) from cheap
@@ -538,7 +539,7 @@ func (talkToSessionTool) Description() string {
 }
 
 func (talkToSessionTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target: contact_id, topic_id, or the exact title from list_addressable_sessions."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain. The system derives the real depth from the thread."},"delivery":{"type":"string","enum":["followup","steer"],"description":"followup (default) queues; steer injects mid-turn, degrading to followup when it cannot."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."},"thread_id":{"type":"string","description":"When answering a message, pass the threadId it carried so the requester can match your reply."},"require_reply":{"type":"boolean","description":"Set true when the sender needs an answer on this thread (task 173). Requires the panel switch session_collab_allow_require_reply."}},"required":["to","message"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target: contact_id, topic_id, or the exact title from list_addressable_sessions."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain. The system derives the real depth from the thread."},"delivery":{"type":"string","enum":["followup","steer"],"description":"followup (default) queues; steer injects mid-turn, degrading to followup when it cannot."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."},"thread_id":{"type":"string","description":"When answering a message, pass the threadId it carried so the requester can match your reply."},"require_reply":{"type":"boolean","description":"Set true when the sender needs an answer on this thread (task 173). Requires the panel switch session_collab_allow_require_reply."},"wait":{"type":"boolean","description":"Set true to wait — bounded — for a reply on this thread instead of returning queued at once (the old talk_to_session_sync behavior)."},"timeout_ms":{"type":"integer","description":"wait: how long to wait for the reply (default 30000, max 120000)."}},"required":["to","message"]}`)
 }
 
 func (talkToSessionTool) ReadOnly() bool { return false }
@@ -550,7 +551,7 @@ func refuseGate(capability, switchName string) error {
 	return fmt.Errorf("%s在跨会话通信实验面板中未开启（%s）——请到 设置 → 实验特性 → 跨会话通信 面板开启后重试", capability, switchName)
 }
 
-func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
+func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var p struct {
 		To           string `json:"to"`
 		Message      string `json:"message"`
@@ -559,6 +560,8 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 		CardID       string `json:"card_id"`
 		ThreadID     string `json:"thread_id"`
 		RequireReply bool   `json:"require_reply"`
+		Wait         bool   `json:"wait"`
+		TimeoutMS    int    `json:"timeout_ms"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
@@ -669,6 +672,77 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 		"hop":          msg.Hop,
 		"queued":       true,
 	})
+	// Task 174: the sync twin collapsed into wait=true. Without it this is the
+	// exact async contract the tests pinned; with it, the bounded wait runs
+	// after the durable delivery has already been acknowledged.
+	if p.Wait {
+		return t.waitReply(ctx, msg.ID, p.TimeoutMS)
+	}
+	return string(out), nil
+}
+
+// waitReply polls the caller's own inbox for an answer on the delivered
+// message's thread (task 174; the old talk_to_session_sync behavior verbatim).
+func (t talkToSessionTool) waitReply(ctx context.Context, messageID string, timeoutMS int) (string, error) {
+	queued := fmt.Sprintf(`{"status":"queued","messageId":%q,"threadId":%q}`, messageID, messageID)
+	var sent struct {
+		MessageID string `json:"messageId"`
+	}
+	_ = json.Unmarshal([]byte(queued), &sent)
+	if sent.MessageID == "" {
+		return queued, nil
+	}
+	// Task 156.A: mint the sender address on first send (same as async). Task
+	// 158.B: resolved at call time, not from the boot snapshot.
+	me := t.cfg.currentContactID()
+	if me == "" {
+		return queued, nil // nothing to receive an answer on
+	}
+	mailDir := t.cfg.MailDir
+	if mailDir == "" {
+		mailDir = config.SessionCollabMailDir()
+	}
+	timeout := time.Duration(timeoutMS) * time.Millisecond
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	if timeout > 120*time.Second {
+		timeout = 120 * time.Second
+	}
+	// Task 158.A: this is a REAL wait, not a fire-and-forget send — it polls
+	// the requester's own inbox for a message whose threadId is the id we just
+	// delivered, bounded by `timeout` (max 120s) and by the caller's context.
+	started := time.Now()
+	reply, ok := sessioncollab.NewMailStore(mailDir).AwaitReplyContext(ctx, me, sent.MessageID, timeout)
+	waited := int(time.Since(started) / time.Millisecond)
+	if !ok {
+		note := "request was delivered; the reply will arrive in your inbox later"
+		if ctx != nil && ctx.Err() != nil {
+			// The turn was cancelled while waiting. The result is the same
+			// "no reply yet" a timeout reports — the request is already
+			// queued — but the reason must not read as an unexplained
+			// timeout, or the caller re-sends a message that is in flight.
+			note = "wait ended early (" + ctx.Err().Error() +
+				"); the request was delivered and the reply will still arrive in your inbox"
+		}
+		out, _ := json.Marshal(map[string]any{
+			"status":    "timeout",
+			"messageId": sent.MessageID,
+			"threadId":  sent.MessageID,
+			"waitedMs":  waited,
+			"timeoutMs": int(timeout / time.Millisecond),
+			"note":      note,
+		})
+		return string(out), nil
+	}
+	out, _ := json.Marshal(map[string]any{
+		"status":    "replied",
+		"messageId": sent.MessageID,
+		"threadId":  sent.MessageID,
+		"waitedMs":  waited,
+		"from":      reply.From,
+		"body":      reply.Body,
+	})
 	return string(out), nil
 }
 
@@ -676,6 +750,9 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 // durable message and then waits — bounded — for an answer carrying the thread
 // id. A timeout is reported as a status, not an error: the request is already
 // queued, so failing the call would misreport what happened.
+//
+// Task 174: boot no longer registers this tool — talk_to_session(wait=true) is
+// the same capability — but the constructor stays for direct callers and tests.
 func NewTalkToSessionSyncTool(cfg SessionCollabConfig) tool.Tool {
 	return talkToSessionSyncTool{cfg: cfg}
 }
