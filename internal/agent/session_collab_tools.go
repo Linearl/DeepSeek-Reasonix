@@ -441,7 +441,7 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 		mailDir = config.SessionCollabMailDir()
 	}
 	mail := sessioncollab.NewMailStoreWithHopLimit(mailDir, t.cfg.hopLimit())
-	msg, err := mail.Deliver(sessioncollab.MailMessage{
+	msg := sessioncollab.MailMessage{
 		From:        fromContact,
 		FromSession: fromSession,
 		To:          target.ContactID,
@@ -451,10 +451,18 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 		CardID:      p.CardID,
 		ReplyTo:     fromContact,
 		ThreadID:    strings.TrimSpace(p.ThreadID),
-	})
-	if err != nil {
-		return "", err
 	}
+	// Task 194-P0: an unresolvable thread_id used to be accepted here, written into
+	// the peer's inbox and only then dropped by the delivery pump, so the sender saw
+	// "queued" and learned nothing. Validate before writing: the call reports it.
+	if _, _, terr := mail.ResolveReplyParent(msg); terr != nil {
+		return "", terr
+	}
+	delivered, derr := mail.Deliver(msg)
+	if derr != nil {
+		return "", derr
+	}
+	msg = delivered
 	out, _ := json.Marshal(map[string]any{
 		"status":    "queued",
 		"messageId": msg.ID,

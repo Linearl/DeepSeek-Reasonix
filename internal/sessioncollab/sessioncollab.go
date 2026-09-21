@@ -752,6 +752,48 @@ func (s *MailStore) ParentThread(contactID, threadID string) (MailMessage, bool)
 	return MailMessage{}, false
 }
 
+// A reply names the message it answers in thread_id. Two ways of naming the wrong
+// one are refused here rather than silently dropping the message later:
+//
+//   - ErrReplyThreadUnknown: the id is not a message in the sender's OWN mailbox.
+//     The classic mistake is passing the id of the message you just sent (which
+//     lives in the peer's mailbox) — task 194.
+//   - ErrReplyThreadCrossWired: the thread was opened by someone other than the peer
+//     being answered, so continuing it would splice two conversations together —
+//     task 156.B.
+//
+// The predicates live here so the tool layer and the delivery pump cannot drift:
+// the tool calls it before writing anything (the sender learns from its own return
+// value) and the pump calls it again as the authoritative gate.
+var (
+	ErrReplyThreadUnknown    = errors.New("talk_to_session: thread_id is not a message in your own mailbox")
+	ErrReplyThreadCrossWired = errors.New("talk_to_session: thread_id belongs to a thread with another peer")
+)
+
+// ResolveReplyParent validates the thread a message answers and returns that parent.
+// isReply is false for a message that starts a new chain (no thread_id, or a
+// thread_id equal to its own id).
+func (s *MailStore) ResolveReplyParent(msg MailMessage) (parent MailMessage, isReply bool, err error) {
+	threadID := strings.TrimSpace(msg.ThreadID)
+	if threadID == "" || threadID == msg.ID {
+		return MailMessage{}, false, nil
+	}
+	from := strings.TrimSpace(msg.From)
+	if from == "" {
+		return MailMessage{}, true, fmt.Errorf("reply has no sender to resolve thread %s", threadID)
+	}
+	parent, ok := s.ParentThread(from, threadID)
+	if !ok {
+		return MailMessage{}, true, fmt.Errorf("%w: %s is not in %s's mailbox — pass the id of the inbound message you received (it sits in your own inbox), or omit thread_id to start a new chain",
+			ErrReplyThreadUnknown, threadID, from)
+	}
+	if to := strings.TrimSpace(msg.To); to != "" && strings.TrimSpace(parent.From) != to {
+		return MailMessage{}, true, fmt.Errorf("%w: thread %s was opened by %s, not %s",
+			ErrReplyThreadCrossWired, threadID, parent.From, to)
+	}
+	return parent, true, nil
+}
+
 // MarkNotified records that a status note was sent for key, returning true only
 // the first time. It lets a caller notify once without giving up the retry, so
 // a target that stays unavailable is never silent but also never a flood.

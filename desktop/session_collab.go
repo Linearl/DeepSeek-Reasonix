@@ -829,9 +829,12 @@ func (p *sessionCollabPump) verifyHop(msg sessioncollab.MailMessage) (int, error
 		return 0, fmt.Errorf("reply has no sender to resolve thread %s", msg.ThreadID)
 	}
 	mailDir := config.SessionCollabMailDir()
-	parent, ok := sessioncollab.NewMailStore(mailDir).ParentThread(msg.From, msg.ThreadID)
-	if !ok {
-		return 0, fmt.Errorf("thread %s is not in sender %s's mailbox", msg.ThreadID, msg.From)
+	// Task 194 + 156.B: the predicates (thread must live in the sender's own mailbox,
+	// and must have been opened by the peer being answered) live in sessioncollab so the
+	// tool layer and this pump cannot drift apart.
+	parent, _, perr := sessioncollab.NewMailStoreWithHopLimit(mailDir, sessionCollabHopLimit()).ResolveReplyParent(msg)
+	if perr != nil {
+		return 0, perr
 	}
 	derived := parent.Hop + 1
 	if derived > sessionCollabHopLimit() {
