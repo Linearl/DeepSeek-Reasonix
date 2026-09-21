@@ -902,6 +902,15 @@ func UnappliedSteerNotice(text string) string {
 	return fmt.Sprintf(i18n.M.UnappliedSteerFmt, text)
 }
 
+// readonlyTurnNotice is the visible head of a turn whose own input bound it to
+// read-only (task 220 P2). It exists so a silent ConstraintGuard freeze can
+// never read as a malfunction: the model knows why writes are refused and can
+// say so, instead of burning turns misdiagnosing — talk is blocked too, so the
+// freeze used to survive until the next unrelated user message.
+func readonlyTurnNotice() string {
+	return "[系统提示] 本轮输入包含只读约束（ForbidMutation 生效）：变更类工具（写入/编辑/投递等）会被拦截。这是用户本轮指令的约束而非故障；如需改动，请在回复中说明，并在用户下一轮不带只读字样的指令下执行。\n\n"
+}
+
 // RecordUnappliedSteer stores guidance that could not affect its intended
 // in-flight turn. The orphan-tool sentinel makes older readers drop the record
 // during wire normalization, while current readers use LocalOnly to exclude it

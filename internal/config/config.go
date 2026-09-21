@@ -1385,6 +1385,21 @@ type AgentConfig struct {
 	// (task 204). 0 keeps the package default (5); values are clamped into
 	// [MinHop, MaxHopCeiling] on write, so a stored value is always legal.
 	SessionCollabHopLimit int `toml:"session_collab_hop_limit"`
+	// Task 173: per-capability gates for the collaboration toolset. All ship
+	// off (the cautious reading of "the panel decides what is allowed"): a
+	// gate off means the capability is withheld — tool-level gates keep the
+	// tool unregistered, parameter-level gates return an actionable error
+	// that names the panel switch. The master switch
+	// ExperimentalSessionCollab stays the precondition for all of them.
+	SessionCollabAllowDelete       bool `toml:"session_collab_allow_delete"`
+	SessionCollabAllowRequireReply bool `toml:"session_collab_allow_require_reply"`
+	SessionCollabAllowReadTail     bool `toml:"session_collab_allow_read_tail"`
+	SessionCollabAllowCreate       bool `toml:"session_collab_allow_create"`
+	SessionCollabAllowSteer        bool `toml:"session_collab_allow_steer"`
+	// SessionCollabDailySendLimit caps how many cross-session messages one
+	// session may send per day (task 173 ⑥, anti-storm). 0 keeps the package
+	// default (no cap).
+	SessionCollabDailySendLimit int `toml:"session_collab_daily_send_limit"`
 	// ExperimentalAutoLoadOlder enables loading older history by scrolling up
 	// while the transcript is already parked at the top (fork task 160). Off by
 	// default: the "load older" button is the reliable path, and this scroll

@@ -1,6 +1,7 @@
 package runtimepolicy
 
 import (
+	"strings"
 	"testing"
 
 	"reasonix/internal/evidence"
@@ -41,6 +42,12 @@ func TestParseConstraintsScopesMutationBans(t *testing.T) {
 		{name: "bare Chinese mutation ban", instruction: "不要修改。", forbid: true},
 		{name: "global Chinese workspace", instruction: "不要修改当前工作区。", forbid: true},
 		{name: "global Chinese reproduce", instruction: "只复现崩溃。", forbid: true},
+		// Task 220 P1: a descriptive 「只读…」sentence about a third party no
+		// longer binds the turn; an analysis imperative still does.
+		{name: "descriptive read-only report", instruction: "只读审计，未重跑测试。"},
+		{name: "imperative read-only analyze", instruction: "只读分析这个 diff。", forbid: true},
+		{name: "bare Chinese read only mode", instruction: "只读模式", forbid: true},
+		{name: "turn-scoped Chinese read only", instruction: "只读，本次不要改文件。", forbid: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -59,6 +66,31 @@ func TestParseConstraintsScopesMutationBans(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestStripQuotedConstraintsDropsCollabEnvelope: the body of a [跨会话消息]
+// delivery block is data for the turn, never an instruction to it (task 220
+// P0). A report that says 「只读审计」 must not freeze the turn, while the
+// caller's own imperative still binds.
+func TestStripQuotedConstraintsDropsCollabEnvelope(t *testing.T) {
+	envelope := "[跨会话消息] 来自 contact_id=sc_worker\n 发至 contact_id=sc_main\n 审计报告：只读审计，未重跑测试。禁止 push。\n"
+	t.Run("envelope alone never binds", func(t *testing.T) {
+		got := ParseConstraints(StripQuotedConstraints("转发一条消息：\n\n" + envelope + "\n请知悉。"))
+		if got.ForbidMutation {
+			t.Fatalf("peer text must not bind the turn: %+v", got)
+		}
+	})
+	t.Run("caller imperative still binds beside an envelope", func(t *testing.T) {
+		got := ParseConstraints(StripQuotedConstraints("只读分析这个 diff\n\n" + envelope))
+		if !got.ForbidMutation {
+			t.Fatalf("the caller's own imperative must still bind: %+v", got)
+		}
+	})
+	t.Run("envelope text is fully removed", func(t *testing.T) {
+		if s := StripQuotedConstraints("前文\n\n" + envelope + "\n后文"); strings.Contains(s, "跨会话消息") || strings.Contains(s, "禁止 push") {
+			t.Fatalf("the envelope must be stripped whole: %q", s)
+		}
+	})
 }
 
 // TestParseConstraintsRecognizesAnExplicitRebuild keeps the rebuild waiver tied

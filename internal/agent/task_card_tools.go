@@ -53,6 +53,10 @@ func (c TaskCardConfig) currentContactID() string {
 }
 
 // NewTaskCardTools returns the four card tools when the experiment is on.
+//
+// Task 174 keeps this constructor for direct callers and tests, but boot now
+// registers the merged taskCardTool instead: one schema, four actions, and a
+// smaller selection space for the model.
 func NewTaskCardTools(cfg TaskCardConfig) []tool.Tool {
 	if !cfg.Enabled {
 		return nil
@@ -62,6 +66,55 @@ func NewTaskCardTools(cfg TaskCardConfig) []tool.Tool {
 		updateTaskCardTool{cfg},
 		getTaskCardTool{cfg},
 		listTaskCardsTool{cfg},
+	}
+}
+
+// NewTaskCardTool returns the single merged card tool (task 174): the four
+// old tools' fields overlapped heavily, so one action parameter replaces four
+// names in the model's selection space while every old capability stays
+// reachable.
+func NewTaskCardTool(cfg TaskCardConfig) tool.Tool {
+	if !cfg.Enabled {
+		return nil
+	}
+	return taskCardTool{cfg: cfg}
+}
+
+type taskCardTool struct{ cfg TaskCardConfig }
+
+func (taskCardTool) Name() string   { return "task_card" }
+func (taskCardTool) ReadOnly() bool { return false }
+func (taskCardTool) Description() string {
+	return "Collaboration task cards (task 145): a process-visible record of who is working on what, routed by `action`. create files a new card; update changes status/result on an existing card_id; get fetches one card; list shows recent cards (optionally filtered by status). After create or update, show the returned JSON to the user inside a ```taskcard fence so it renders as a card in the conversation, and use talk_to_session to notify the assignee."
+}
+func (taskCardTool) Schema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"action":{"type":"string","enum":["create","update","get","list"],"description":"Which card operation to run."},"title":{"type":"string","description":"create: the card title."},"body":{"type":"string","description":"create: the card body."},"assignee":{"type":"string","description":"create: optional assignee contact_id."},"id":{"type":"string","description":"update/get: which card."},"status":{"type":"string","description":"update: the new status; list: only cards with this status."},"result":{"type":"string","description":"update: the outcome text."},"limit":{"type":"integer","description":"list: how many cards to return (default 20)."}},"required":["action"]}`)
+}
+
+func (t taskCardTool) Execute(ctx context.Context, args json.RawMessage) (string, error) {
+	var p struct {
+		Action string `json:"action"`
+	}
+	if len(args) == 0 {
+		return "", fmt.Errorf("action is required (create|update|get|list)")
+	}
+	if err := json.Unmarshal(args, &p); err != nil {
+		return "", err
+	}
+	// The old four tools stay as the implementations: one code path per
+	// operation, so the merged schema can never drift from the behavior the
+	// tests pinned.
+	switch p.Action {
+	case "create":
+		return createTaskCardTool{cfg: t.cfg}.Execute(ctx, args)
+	case "update":
+		return updateTaskCardTool{cfg: t.cfg}.Execute(ctx, args)
+	case "get":
+		return getTaskCardTool{cfg: t.cfg}.Execute(ctx, args)
+	case "list":
+		return listTaskCardsTool{cfg: t.cfg}.Execute(ctx, args)
+	default:
+		return "", fmt.Errorf("unknown action %q (create|update|get|list)", p.Action)
 	}
 }
 

@@ -203,6 +203,11 @@ type Options struct {
 	// create sessions itself — that is a host capability — so nil omits the
 	// create_collab_session tool entirely rather than exposing a broken one.
 	OnCreateCollabSession agent.CreateCollabSessionFunc
+	// OnSessionStatus lets a host answer the in-process running/idle truth for
+	// a contact (task 218). pending counts the controller's own session-inbox
+	// backlog (degraded steers included). Nil leaves every reported state
+	// unknown — honest, never a guessed idle.
+	OnSessionStatus func(contactID string) (running bool, lastTurnAtMS int64, pending int, known bool)
 	// OnDeleteSession lets a host move a collaborating session to trash on the
 	// agent's behalf (task 154 sub-item A). Nil omits the delete_session tool.
 	OnDeleteSession func(contactID, sessionPath string, dryRun bool) (agent.DeleteSessionImpact, agent.DeleteSessionResult, error)
@@ -1895,14 +1900,30 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			// Task 204: resolve the chain ceiling per call, so a settings change
 			// applies to newly arriving messages without rebuilding the session.
 			HopLimit: config.SessionCollabHopLimitLive,
+			// Task 218: the host answers running/idle from its own controllers;
+			// nil (CLI, tests) keeps every state unknown instead of a guess.
+			SessionStatus: opts.OnSessionStatus,
+			// Task 173: parameter-level panel gates, checked at call time with
+			// actionable refusals that name the panel switch.
+			AllowRequireReply: cfg.Agent.SessionCollabAllowRequireReply,
+			AllowSteer:        cfg.Agent.SessionCollabAllowSteer,
+			DailySendLimit:    cfg.Agent.SessionCollabDailySendLimit,
 		}
+		// Task 174: the tool family is consolidated — search folded into the
+		// list tool's query, the sync twin folded into talk's wait, and the
+		// four card tools folded into one action-routed tool. Constructors for
+		// the old names stay in agent for tests and direct callers.
 		reg.Add(agent.NewSetSessionPurposeTool(collab))
 		reg.Add(agent.NewListAddressableSessionsTool(collab))
-		reg.Add(agent.NewSearchSessionsTool(collab))
-		reg.Add(agent.NewReadSessionTailTool(collab))
+		reg.Add(agent.NewGetSessionStatusTool(collab))
 		reg.Add(agent.NewTalkToSessionTool(collab))
-		reg.Add(agent.NewTalkToSessionSyncTool(collab))
-		for _, t := range agent.NewTaskCardTools(agent.TaskCardConfig{
+		// Task 173 ⑤: read_session_tail reads another session's transcript, so
+		// the panel keeps it unregistered until allowed — the model must not
+		// even see a tool it is not permitted to call.
+		if cfg.Agent.SessionCollabAllowReadTail {
+			reg.Add(agent.NewReadSessionTailTool(collab))
+		}
+		if tc := agent.NewTaskCardTool(agent.TaskCardConfig{
 			Enabled:            true,
 			WorkspaceRoot:      root,
 			CurrentSessionPath: sessionPath,
@@ -1910,15 +1931,18 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			// Same reason as collab above (task 158.B): a card filed by a
 			// desktop session must carry its real initiator/session, not "".
 			ResolveSessionPath: executor.SessionPath,
-		}) {
-			reg.Add(t)
+		}); tc != nil {
+			reg.Add(tc)
 		}
 		// 144: only a host that can create sessions gets the creator tool.
-		if opts.OnCreateCollabSession != nil {
+		// Task 173 ⑦ additionally lets the panel withhold it even then.
+		if opts.OnCreateCollabSession != nil && cfg.Agent.SessionCollabAllowCreate {
 			reg.Add(agent.NewCreateCollabSessionTool(root, opts.OnCreateCollabSession))
 		}
 		// 154 sub-item A: only a host that can delete sessions gets the tool.
-		if opts.OnDeleteSession != nil {
+		// Task 173 ②: the panel's 「允许删除其他会话」 gates it the same way —
+		// unregistered, not registered-but-refusing.
+		if opts.OnDeleteSession != nil && cfg.Agent.SessionCollabAllowDelete {
 			reg.Add(agent.NewDeleteSessionTool(collab, opts.OnDeleteSession))
 		}
 		// 170: the "改" half of the CRUD. Both are host capabilities like the

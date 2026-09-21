@@ -43,6 +43,24 @@ type SessionCollabConfig struct {
 	// mirroring ResolveSessionPath: a boot snapshot would freeze the value for the
 	// life of a session. Nil keeps the package default.
 	HopLimit func() int
+	// SessionStatus, when set, answers the in-process running/idle truth for a
+	// contact (task 218): the host knows which controllers own an active turn,
+	// a file-only view never can. pending counts session-inbox items queued in
+	// the controller (a steer degraded to followup lands there, invisible to
+	// the file counter). known=false means the probe cannot see that process
+	// (other process, runtime not stood up) — the tool must report unknown
+	// rather than guess an idle. Nil makes every state unknown.
+	SessionStatus func(contactID string) (running bool, lastTurnAtMS int64, pending int, known bool)
+	// Task 173: the collaboration panel gates. Tool-level gates (delete /
+	// read_tail / create) keep boot from registering the tool at all, so they
+	// are not consulted here. The parameter-level gates are checked at call
+	// time, and a refusal must name the panel switch and its real settings
+	// entry — never a generic "invalid argument".
+	AllowRequireReply bool
+	AllowSteer        bool
+	// DailySendLimit caps this session's outgoing cross-session messages per
+	// day (task 173 ⑥). 0 = no cap.
+	DailySendLimit int
 }
 
 // hopLimit resolves the ceiling in force for this call (task 204).
@@ -148,24 +166,166 @@ type listAddressableSessionsTool struct{ cfg SessionCollabConfig }
 func (listAddressableSessionsTool) Name() string { return "list_addressable_sessions" }
 
 func (listAddressableSessionsTool) Description() string {
-	return "List the contact directory (通讯录): metadata only — title, purpose, contact_id, topic_id. No transcript content (use read_session_tail for that). Newest first; pass limit to page. Live conversations only by default (deleted .trash sessions never appear; pass archived=true to include retired history). Use contact_id, topic_id, or the exact title as `to` in talk_to_session, or search_sessions(query) when you do not know the name. Experimental."
+	return "List the contact directory (通讯录): metadata only — title, purpose, contact_id, topic_id. No transcript content (read_session_tail does that). Task 174 merged search in: omit query for the newest-first page; pass query for a keyword filter over title/purpose/contact_id/topic_id. Use contact_id, topic_id, or the exact title as `to` in talk_to_session. Entries frozen for over a week carry stale=true (task 175) — re-check before trusting the purpose. Experimental."
 }
 
 func (listAddressableSessionsTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Max sessions to return, newest first (default 200, max 1000). Omit for the first page."},"archived":{"type":"boolean","description":"Include retired archive sessions (default false)."}},"required":[]}`)
+	return json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Max sessions to return, newest first (default 200, max 1000). Omit for the first page."},"archived":{"type":"boolean","description":"Include retired archive sessions (default false)."},"query":{"type":"string","description":"Keyword filter over title/purpose/ids (the old search_sessions). Omit for the unfiltered newest-first page."}},"required":[]}`)
 }
 
 func (listAddressableSessionsTool) ReadOnly() bool { return true }
 
 func (t listAddressableSessionsTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
 	var p struct {
-		Limit    int   `json:"limit"`
-		Archived *bool `json:"archived"`
+		Limit    int    `json:"limit"`
+		Archived *bool  `json:"archived"`
+		Query    string `json:"query"`
 	}
 	if len(args) > 0 {
 		_ = json.Unmarshal(args, &p)
 	}
-	return directoryPage(t.cfg, p.Limit, p.Archived, "")
+	return directoryPage(t.cfg, p.Limit, p.Archived, p.Query)
+}
+
+// NewGetSessionStatusTool answers "is the peer busy?" (task 218) from cheap
+// metadata alone: the in-process running state where the host can see it, the
+// mailbox counters everywhere else. No transcript bytes ever cross this
+// boundary, so a status sweep stays KB-light no matter how large the directory.
+func NewGetSessionStatusTool(cfg SessionCollabConfig) tool.Tool {
+	return getSessionStatusTool{cfg: cfg}
+}
+
+type getSessionStatusTool struct{ cfg SessionCollabConfig }
+
+func (getSessionStatusTool) Name() string { return "get_session_status" }
+
+func (getSessionStatusTool) Description() string {
+	return "Check whether collaboration peers are busy before assigning work (task 218). Without arguments returns every addressable live session; pass targets (mixed contact_id / topic_id / exact title) to query one or many in one call. Each record is lightweight structured metadata — running/idle/queued/unknown state, last activity, unread inbox count — never transcript content; unmatched targets are reported explicitly. Strictly read-only. Experimental."
+}
+
+func (getSessionStatusTool) Schema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"targets":{"type":"array","items":{"type":"string"},"description":"Sessions to query: contact_id, topic_id, or exact title, mixed freely. Omit for every addressable live session."}},"required":[]}`)
+}
+
+func (getSessionStatusTool) ReadOnly() bool { return true }
+
+func (t getSessionStatusTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
+	var p struct {
+		Targets []string `json:"targets"`
+	}
+	if len(args) > 0 {
+		_ = json.Unmarshal(args, &p)
+	}
+
+	all := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
+	live := make([]sessioncollab.Identity, 0, len(all))
+	for _, id := range all {
+		if !id.Archived {
+			live = append(live, id)
+		}
+	}
+
+	pick := func(target string) (sessioncollab.Identity, bool) {
+		key := strings.ToLower(strings.TrimSpace(target))
+		if key == "" {
+			return sessioncollab.Identity{}, false
+		}
+		for _, id := range live {
+			if strings.EqualFold(id.ContactID, key) {
+				return id, true
+			}
+		}
+		for _, id := range live {
+			if id.TopicID != "" && strings.EqualFold(id.TopicID, key) {
+				return id, true
+			}
+		}
+		for _, id := range live {
+			if id.Title != "" && strings.EqualFold(id.Title, key) {
+				return id, true
+			}
+		}
+		return sessioncollab.Identity{}, false
+	}
+
+	mailDir := t.cfg.MailDir
+	if mailDir == "" {
+		mailDir = config.SessionCollabMailDir()
+	}
+	mail := sessioncollab.NewMailStoreWithHopLimit(mailDir, t.cfg.hopLimit())
+
+	status := func(id sessioncollab.Identity) map[string]any {
+		unread, lastDelivery := 0, int64(0)
+		if id.ContactID != "" {
+			unread, lastDelivery = mail.InboxStatus(id.ContactID)
+		}
+		running, lastTurn, probePending, known := false, int64(0), 0, false
+		if t.cfg.SessionStatus != nil && id.ContactID != "" {
+			running, lastTurn, probePending, known = t.cfg.SessionStatus(id.ContactID)
+		}
+		// Task 218 (dispatch-round feedback): a steer degraded to followup is
+		// queued INSIDE the target's session inbox, past the collab mailbox
+		// cursor — so the pending the probe sees must join the file counter
+		// before any queued/idle decision. Without it an idle peer with a
+		// degraded steer parked in its inbox reads idle, and the dispatcher
+		// double-sends.
+		busy := unread + probePending
+		// State precedence (task 218): an active turn wins over pending mail; a
+		// runtime the probe cannot see is unknown — never a guessed idle.
+		state := "unknown"
+		switch {
+		case known && running:
+			state = "running"
+		case known && busy > 0:
+			state = "queued"
+		case known:
+			state = "idle"
+		}
+		activity := lastTurn
+		if activity == 0 {
+			activity = lastDelivery
+		}
+		return map[string]any{
+			"contactId":    id.ContactID,
+			"topicId":      id.TopicID,
+			"title":        id.Title,
+			"scope":        id.Scope,
+			"state":        state,
+			"lastActivity": activity,
+			// Everything waiting to be consumed: the collab mailbox queue plus
+			// the controller's session inbox (degraded steers live there).
+			"unreadInbox": busy,
+		}
+	}
+
+	records := make([]map[string]any, 0)
+	unmatched := make([]string, 0)
+	if len(p.Targets) == 0 {
+		for _, id := range live {
+			records = append(records, status(id))
+		}
+	} else {
+		for _, target := range p.Targets {
+			id, ok := pick(target)
+			if !ok {
+				// A target the directory cannot resolve is reported, never
+				// silently dropped — the caller may be one typo away from
+				// assigning work to nobody.
+				unmatched = append(unmatched, target)
+				continue
+			}
+			records = append(records, status(id))
+		}
+	}
+	out, _ := json.Marshal(map[string]any{
+		"returned":  len(records),
+		"total":     len(live),
+		"query":     "session status — state/lastActivity/unreadInbox only, no transcript content",
+		"states":    "running=active turn; idle=waiting for input; queued=inbox has unconsumed mail; unknown=process not visible (never a guessed idle)",
+		"unmatched": unmatched,
+		"sessions":  records,
+	})
+	return string(out), nil
 }
 
 // NewSearchSessionsTool finds sessions by keyword in title/purpose, so a large
@@ -229,7 +389,13 @@ func directoryPage(cfg SessionCollabConfig, limit int, archived *bool, query str
 		ContactID string `json:"contactId,omitempty"`
 		TopicID   string `json:"topicId,omitempty"`
 		Archived  bool   `json:"archived,omitempty"`
+		// Task 175 ③: a purpose frozen since long before the last activity is
+		// more misleading than no purpose at all — callers route work by it.
+		Stale bool `json:"stale,omitempty"`
 	}
+	// A duty older than a week, in a codebase where batches live for days, is
+	// presumed stale rather than presumed current.
+	const purposeStaleAfter = 7 * 24 * time.Hour
 	rows := make([]row, 0, limit)
 	eligible := 0
 	for _, id := range all {
@@ -244,12 +410,14 @@ func directoryPage(cfg SessionCollabConfig, limit int, archived *bool, query str
 		}
 		eligible++
 		if len(rows) < limit {
+			stale := id.UpdatedAt > 0 && time.Since(time.UnixMilli(id.UpdatedAt)) > purposeStaleAfter
 			rows = append(rows, row{
 				Title:     id.Title,
 				Purpose:   id.Purpose,
 				ContactID: id.ContactID,
 				TopicID:   id.TopicID,
 				Archived:  id.Archived,
+				Stale:     stale,
 			})
 		}
 	}
@@ -382,19 +550,29 @@ func (talkToSessionTool) Description() string {
 }
 
 func (talkToSessionTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target: contact_id, topic_id, or the exact title from list_addressable_sessions."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain. The system derives the real depth from the thread."},"delivery":{"type":"string","enum":["followup","steer"],"description":"followup (default) queues; steer injects mid-turn, degrading to followup when it cannot."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."},"thread_id":{"type":"string","description":"When answering a message, pass the threadId it carried so the requester can match your reply."}},"required":["to","message"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target: contact_id, topic_id, or the exact title from list_addressable_sessions."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain. The system derives the real depth from the thread."},"delivery":{"type":"string","enum":["followup","steer"],"description":"followup (default) queues; steer injects mid-turn, degrading to followup when it cannot."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."},"thread_id":{"type":"string","description":"When answering a message, pass the threadId it carried so the requester can match your reply."},"require_reply":{"type":"boolean","description":"Set true when the sender needs an answer on this thread (task 173). Requires the panel switch session_collab_allow_require_reply."},"wait":{"type":"boolean","description":"Set true to wait — bounded — for a reply on this thread instead of returning queued at once (the old talk_to_session_sync behavior)."},"timeout_ms":{"type":"integer","description":"wait: how long to wait for the reply (default 30000, max 120000)."}},"required":["to","message"]}`)
 }
 
 func (talkToSessionTool) ReadOnly() bool { return false }
 
-func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
+// refuseGate is the task-173 parameter-level refusal: it names the panel
+// switch that withheld the capability and the one settings entry that exists,
+// so the caller can act instead of guessing at an "invalid argument".
+func refuseGate(capability, switchName string) error {
+	return fmt.Errorf("%s在跨会话通信实验面板中未开启（%s）——请到 设置 → 实验特性 → 跨会话通信 面板开启后重试", capability, switchName)
+}
+
+func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var p struct {
-		To       string `json:"to"`
-		Message  string `json:"message"`
-		Hop      int    `json:"hop"`
-		Delivery string `json:"delivery"`
-		CardID   string `json:"card_id"`
-		ThreadID string `json:"thread_id"`
+		To           string `json:"to"`
+		Message      string `json:"message"`
+		Hop          int    `json:"hop"`
+		Delivery     string `json:"delivery"`
+		CardID       string `json:"card_id"`
+		ThreadID     string `json:"thread_id"`
+		RequireReply bool   `json:"require_reply"`
+		Wait         bool   `json:"wait"`
+		TimeoutMS    int    `json:"timeout_ms"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
@@ -408,6 +586,17 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 	delivery, err := sessioncollab.ValidateDelivery(p.Delivery)
 	if err != nil {
 		return "", err
+	}
+	if delivery == sessioncollab.DeliverySteer && !t.cfg.AllowSteer {
+		// Task 173 ④: with the panel switch off, steer degrades to followup —
+		// the message still lands, it just loses the mid-turn injection. A
+		// refusal here would break every existing steer caller for a setting
+		// they have never seen; the degraded flag in the result keeps the
+		// outcome honest.
+		delivery = sessioncollab.DeliveryFollowup
+	}
+	if p.RequireReply && !t.cfg.AllowRequireReply {
+		return "", refuseGate("require_reply（要求对方回信）", "允许配置回信要求")
 	}
 	ids := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
 	target, err := ResolveTarget(ids, p.To)
@@ -451,6 +640,14 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 		CardID:      p.CardID,
 		ReplyTo:     fromContact,
 		ThreadID:    strings.TrimSpace(p.ThreadID),
+		RequireReply: p.RequireReply,
+	}
+	// Task 173 ⑥: the daily cap counts only what actually left this session,
+	// so the check sits right before Deliver — a refused call writes nothing.
+	if t.cfg.DailySendLimit > 0 {
+		if sent := mail.CountSentFromToday(fromContact); sent >= t.cfg.DailySendLimit {
+			return "", fmt.Errorf("已达跨会话单日发信上限（%d 封/天，今日已发 %d 封）——这是防消息风暴的运行时限制，明天自动恢复；紧急请联系用户调整 设置 → 实验特性 → 跨会话通信 的单日发信上限", t.cfg.DailySendLimit, sent)
+		}
 	}
 	// Task 194-P0: an unresolvable thread_id used to be accepted here, written into
 	// the peer's inbox and only then dropped by the delivery pump, so the sender saw
@@ -463,16 +660,99 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 		return "", derr
 	}
 	msg = delivered
+	// Task 175: the sender keeps its own sent log — the inbox only shows what
+	// arrived, so a misdirected send used to be invisible on this side until a
+	// confused peer answered. Recorded after the real id/at are known.
+	mail.RecordSent(msg, target.Title)
+	// Task 175: put the recipient in the caller's face. The historical failure
+	// was a correct-looking "queued" for the WRONG peer; delivered_to carries
+	// the id plus its human-readable title so the mismatch reads at a glance.
+	deliveredTo := target.ContactID
+	if target.Title != "" {
+		deliveredTo = target.ContactID + "｜" + target.Title
+	}
 	out, _ := json.Marshal(map[string]any{
-		"status":    "queued",
-		"messageId": msg.ID,
-		"threadId":  msg.ID,
-		"from":      fromContact,
-		"to":        target.ContactID,
-		"toPurpose": target.Purpose,
-		"delivery":  msg.Delivery,
-		"hop":       msg.Hop,
-		"queued":    true,
+		"status":       "queued",
+		"messageId":    msg.ID,
+		"threadId":     msg.ID,
+		"from":         fromContact,
+		"to":           target.ContactID,
+		"delivered_to": deliveredTo,
+		"toPurpose":    target.Purpose,
+		"delivery":     msg.Delivery,
+		"hop":          msg.Hop,
+		"queued":       true,
+	})
+	// Task 174: the sync twin collapsed into wait=true. Without it this is the
+	// exact async contract the tests pinned; with it, the bounded wait runs
+	// after the durable delivery has already been acknowledged.
+	if p.Wait {
+		return t.waitReply(ctx, msg.ID, p.TimeoutMS)
+	}
+	return string(out), nil
+}
+
+// waitReply polls the caller's own inbox for an answer on the delivered
+// message's thread (task 174; the old talk_to_session_sync behavior verbatim).
+func (t talkToSessionTool) waitReply(ctx context.Context, messageID string, timeoutMS int) (string, error) {
+	queued := fmt.Sprintf(`{"status":"queued","messageId":%q,"threadId":%q}`, messageID, messageID)
+	var sent struct {
+		MessageID string `json:"messageId"`
+	}
+	_ = json.Unmarshal([]byte(queued), &sent)
+	if sent.MessageID == "" {
+		return queued, nil
+	}
+	// Task 156.A: mint the sender address on first send (same as async). Task
+	// 158.B: resolved at call time, not from the boot snapshot.
+	me := t.cfg.currentContactID()
+	if me == "" {
+		return queued, nil // nothing to receive an answer on
+	}
+	mailDir := t.cfg.MailDir
+	if mailDir == "" {
+		mailDir = config.SessionCollabMailDir()
+	}
+	timeout := time.Duration(timeoutMS) * time.Millisecond
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	if timeout > 120*time.Second {
+		timeout = 120 * time.Second
+	}
+	// Task 158.A: this is a REAL wait, not a fire-and-forget send — it polls
+	// the requester's own inbox for a message whose threadId is the id we just
+	// delivered, bounded by `timeout` (max 120s) and by the caller's context.
+	started := time.Now()
+	reply, ok := sessioncollab.NewMailStore(mailDir).AwaitReplyContext(ctx, me, sent.MessageID, timeout)
+	waited := int(time.Since(started) / time.Millisecond)
+	if !ok {
+		note := "request was delivered; the reply will arrive in your inbox later"
+		if ctx != nil && ctx.Err() != nil {
+			// The turn was cancelled while waiting. The result is the same
+			// "no reply yet" a timeout reports — the request is already
+			// queued — but the reason must not read as an unexplained
+			// timeout, or the caller re-sends a message that is in flight.
+			note = "wait ended early (" + ctx.Err().Error() +
+				"); the request was delivered and the reply will still arrive in your inbox"
+		}
+		out, _ := json.Marshal(map[string]any{
+			"status":    "timeout",
+			"messageId": sent.MessageID,
+			"threadId":  sent.MessageID,
+			"waitedMs":  waited,
+			"timeoutMs": int(timeout / time.Millisecond),
+			"note":      note,
+		})
+		return string(out), nil
+	}
+	out, _ := json.Marshal(map[string]any{
+		"status":    "replied",
+		"messageId": sent.MessageID,
+		"threadId":  sent.MessageID,
+		"waitedMs":  waited,
+		"from":      reply.From,
+		"body":      reply.Body,
 	})
 	return string(out), nil
 }
@@ -481,6 +761,9 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 // durable message and then waits — bounded — for an answer carrying the thread
 // id. A timeout is reported as a status, not an error: the request is already
 // queued, so failing the call would misreport what happened.
+//
+// Task 174: boot no longer registers this tool — talk_to_session(wait=true) is
+// the same capability — but the constructor stays for direct callers and tests.
 func NewTalkToSessionSyncTool(cfg SessionCollabConfig) tool.Tool {
 	return talkToSessionSyncTool{cfg: cfg}
 }
@@ -494,7 +777,7 @@ func (talkToSessionSyncTool) Description() string {
 }
 
 func (talkToSessionSyncTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target contact_id."},"message":{"type":"string"},"hop":{"type":"integer"},"card_id":{"type":"string"},"timeout_ms":{"type":"integer","description":"How long to wait for the reply (default 30000, max 120000)."}},"required":["to","message"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target contact_id."},"message":{"type":"string"},"hop":{"type":"integer"},"card_id":{"type":"string"},"timeout_ms":{"type":"integer","description":"How long to wait for the reply (default 30000, max 120000)."},"require_reply":{"type":"boolean","description":"Set true when the sender needs an answer on this thread (task 173). Requires the panel switch session_collab_allow_require_reply."}},"required":["to","message"]}`)
 }
 
 func (talkToSessionSyncTool) ReadOnly() bool { return false }

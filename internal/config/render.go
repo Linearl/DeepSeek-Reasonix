@@ -342,6 +342,14 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "experimental_perf_monitor = %v   # task 184: host performance monitor (5s samples of memory/IO/key files)\n", c.Agent.ExperimentalPerfMonitor)
 	fmt.Fprintf(&b, "perf_monitor_interval_seconds = %d   # task 184: sampler interval in seconds (default 5, clamped 1..300)\n", c.Agent.PerfMonitorIntervalSeconds)
 	fmt.Fprintf(&b, "session_collab_hop_limit = %d   # task 204: cross-session chain ceiling (default 5, clamped 3..1000; 0 = default)\n", c.Agent.SessionCollabHopLimit)
+	// Task 173: the collaboration panel gates. All default off, so the rendered
+	// block states them explicitly (omit-on-off would spring them back to off).
+	fmt.Fprintf(&b, "session_collab_allow_delete = %v   # task 173: expose delete_session (settings → 实验特性 → 跨会话通信)\n", c.Agent.SessionCollabAllowDelete)
+	fmt.Fprintf(&b, "session_collab_allow_require_reply = %v   # task 173: allow require_reply on talk_to_session\n", c.Agent.SessionCollabAllowRequireReply)
+	fmt.Fprintf(&b, "session_collab_allow_read_tail = %v   # task 173: expose read_session_tail\n", c.Agent.SessionCollabAllowReadTail)
+	fmt.Fprintf(&b, "session_collab_allow_create = %v   # task 173: expose create_collab_session\n", c.Agent.SessionCollabAllowCreate)
+	fmt.Fprintf(&b, "session_collab_allow_steer = %v   # task 173: allow delivery=steer on talk_to_session\n", c.Agent.SessionCollabAllowSteer)
+	fmt.Fprintf(&b, "session_collab_daily_send_limit = %d   # task 173: per-session daily outgoing cap (0 = no cap)\n", c.Agent.SessionCollabDailySendLimit)
 	fmt.Fprintf(&b, "perf_monitor_retention_hours = %d   # task 184: how long samples are kept (default 48h)\n", c.Agent.PerfMonitorRetentionHours)
 	if len(c.Agent.PerfMonitorPaths) > 0 {
 		quoted := make([]string, 0, len(c.Agent.PerfMonitorPaths))
