@@ -121,9 +121,33 @@ func hasExplicitReadOnlyClause(clause string) bool {
 		}
 	}
 	trimmed := strings.TrimSpace(clause)
-	return trimmed == "read-only" || strings.HasPrefix(trimmed, "read-only ") ||
-		trimmed == "read only" || strings.HasPrefix(trimmed, "read only ") ||
-		trimmed == "只读" || strings.HasPrefix(trimmed, "只读")
+	if trimmed == "read-only" || strings.HasPrefix(trimmed, "read-only ") ||
+		trimmed == "read only" || strings.HasPrefix(trimmed, "read only ") {
+		return true
+	}
+	// Task 220 (P1): a bare 「只读…」prefix can no longer bind by itself — a
+	// report describing a third party ("只读审计，未重跑测试") must not freeze
+	// the turn. Bind only the bare imperative (只读 / 只读模式), one scoped to
+	// this turn (本次/这轮), or one where an analysis verb follows directly.
+	if !strings.HasPrefix(trimmed, "只读") {
+		return false
+	}
+	if trimmed == "只读" || trimmed == "只读模式" {
+		return true
+	}
+	if strings.Contains(trimmed, "本次") || strings.Contains(trimmed, "这轮") {
+		return true
+	}
+	normalized := strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(trimmed, "只读模式"), "只读"))
+	for _, verb := range []string{
+		"分析", "看", "检查", "审阅", "跑", "读", "浏览", "研究", "评估", "查",
+		"analyze", "review", "read", "inspect", "check", "run", "verify",
+	} {
+		if strings.HasPrefix(normalized, verb) || strings.HasPrefix(normalized, " "+verb) {
+			return true
+		}
+	}
+	return false
 }
 
 func hasMutationContinuation(clause string) bool {
@@ -259,14 +283,41 @@ func startsWithAnyChinese(value string, prefixes []string) bool {
 }
 
 // StripQuotedConstraints removes fenced and quoted spans so cited phrases
-// cannot bind the host.
+// cannot bind the host, and [跨会话消息] delivery blocks (task 220): the body
+// of a peer's message is DATA for this turn, not an instruction to it — a
+// report that merely said 「只读审计」 once froze every write tool for a
+// whole turn, and letting peer text reach the parser widened the
+// prompt-injection surface for free.
 func StripQuotedConstraints(raw string) string {
-	s := stripFences(raw)
+	s := stripCollabEnvelope(raw)
+	s = stripFences(s)
 	s = stripInlineCode(s)
 	s = stripQuoted(s, '"', '"')
 	s = stripQuoted(s, '“', '”')
 	s = stripQuoted(s, '「', '」')
 	return strings.TrimSpace(s)
+}
+
+// stripCollabEnvelope removes cross-session delivery blocks. A block starts at
+// the [跨会话消息] marker and runs to the next blank line, the next block, or
+// the end of the input — whichever comes first. All occurrences go.
+func stripCollabEnvelope(s string) string {
+	const marker = "[跨会话消息]"
+	for {
+		i := strings.Index(s, marker)
+		if i < 0 {
+			return s
+		}
+		rest := s[i+len(marker):]
+		end := len(s)
+		if j := strings.Index(rest, "\n\n"); j >= 0 {
+			end = i + len(marker) + j
+		}
+		if j := strings.Index(rest, marker); j >= 0 && i+len(marker)+j < end {
+			end = i + len(marker) + j
+		}
+		s = s[:i] + s[end:]
+	}
 }
 
 // rebuildPathPattern extracts candidate file tokens from one instruction clause.

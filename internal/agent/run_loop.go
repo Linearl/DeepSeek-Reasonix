@@ -133,6 +133,13 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string, pinned pinnedRev
 		}
 	}
 	a.recordRebuildAuthorization()
+	// Task 220 (P2): when the user's own words bind this turn to read-only,
+	// say so in the provider input. A silent guard reads as a malfunction —
+	// the model cannot even tell the user through the blocked talk tool, and
+	// the freeze then survives until the next unrelated user message.
+	if a.turn.constraints.ForbidMutation && !a.turn.constraints.PlanModeReadOnly {
+		providerInput = readonlyTurnNotice() + providerInput
+	}
 	a.turn.engine = runtimepolicy.NewEngine(a.turn.constraints)
 	a.rebuildTurnContract()
 	// A cancelled/error turn leaves a provider-excluded recovery record at the
