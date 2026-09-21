@@ -29,12 +29,15 @@ If writes outside the project root are blocked, either:
 
 ## Session collaboration
 
+- **Enable it first**: Settings → 实验室 (Lab) → **跨会话通信** → turn the master switch on, then restart when prompted. Collaboration tools (`talk_to_session`, `create_collab_session`, inbox, …) register only when this is on; sessions opened before the switch stay without them until rebuilt.
+- **Collaboration hop limit** lives in the same panel (3~1000, default 5) — how many round-trips a cross-session message chain may take before delivery is refused.
 - Multiple desktop instances on one session surface a concurrent-writer notice; content is kept as a separate version (**View versions**).
 - Autopilot approval tier: `[agent] approval_tier = guardian | parent | human`.
+- The builtin skills `ll-iteration-parallel-dev` (and the feedback→plan→dev iteration loop) **require** this switch; `ll-iteration-intake` and `ll-iteration-plan` also work without it.
 
 ## Skills and commands
 
-- Builtin skills (this file, `reasonix-guide`, `deep-research`, …) need no install.
+- Builtin skills (this file, `reasonix-guide`, `deep-research`, `gh-issue-submit`, `gh-issue-triage`, `ll-iteration-intake`, `ll-iteration-plan`, `ll-iteration-parallel-dev`, …) need no install; the `ll-iteration-*` trio is also materialized into your user skills dir for customization.
 - Project skills: `<workspace>/.reasonix/skills/<name>/SKILL.md`.
 - Commands: `<workspace>/.reasonix/commands/` or user home; `/name` in the composer.
 
@@ -42,7 +45,12 @@ Run `reasonix doctor capabilities --json` (or Settings → Diagnostics) for a fu
 
 ## Experimental features
 
-Settings → Experimental. Each switch is **default off**. After changing a boot-time switch, restart when prompted.
+Settings → **实验室 (Lab)** — a grouped navigation of experimental switches (each **default off**; restart when prompted after changing a boot-time switch). Highlights:
+
+- **跨会话通信 (session collaboration)**: master switch + collaboration hop limit + per-feature gates (delete-session / require-reply / steer …).
+- **缓存大小调整 (cache tuning)**: resident tab count / transcript cache / render cache ceilings (restart to apply).
+- **dream / distill**: session-trajectory mining for skill suggestions.
+- **parallel full access**: trust managed worktree roots without per-path approvals.
 
 ## Where the docs live
 

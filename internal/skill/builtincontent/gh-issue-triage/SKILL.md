@@ -1,10 +1,10 @@
 ---
-name: github-issue-triage
+name: gh-issue-triage
 description: "Triage and close the loop on issues in your own GitHub repository: collect open issues, classify, fix, verify with tests/commits, and close only with evidence. Use when the user asks to manage, fix, or clean up issues on a repository they maintain."
 runAs: inline
 ---
 
-# github-issue-triage
+# gh-issue-triage
 
 Closed-loop issue management for maintainers. Collect → classify → fix → verify → close.
 **Closing requires evidence.** Never close silently.

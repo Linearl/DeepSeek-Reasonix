@@ -8,11 +8,11 @@ import (
 	"strings"
 )
 
-// ShippedPlaybookNames are the three MiMo-derived playbooks that ship in the
-// binary (task 116). They remain available from the embed even when no user
-// copy exists; InstallToUserDir materializes editable copies under
-// <reasonix-home>/skills/ so a user can customize them.
-var ShippedPlaybookNames = []string{"deep-research", "data-analytics", "memory-search", "feedback_analysis", "collect_issues"}
+// ShippedPlaybookNames are the playbooks that ship in the binary (task 116)
+// and get materialized as editable user-dir copies. The ll-iteration trio
+// (task 206-era release prep, 2026-09-21) joins them: intake/plan are local,
+// parallel-dev requires the cross-session collaboration switch to be on.
+var ShippedPlaybookNames = []string{"deep-research", "data-analytics", "memory-search", "collect_issues", "ll-iteration-intake", "ll-iteration-plan", "ll-iteration-parallel-dev"}
 
 // InstallResult reports one InstallToUserDir pass.
 type InstallResult struct {

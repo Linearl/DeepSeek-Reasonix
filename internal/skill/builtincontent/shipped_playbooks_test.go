@@ -25,7 +25,10 @@ func TestShippedPlaybooksAreEmbedded(t *testing.T) {
 		"data-analytics",
 		"memory-search",
 		"gh-issue-submit",
-		"github-issue-triage",
+		"gh-issue-triage",
+		"ll-iteration-intake",
+		"ll-iteration-plan",
+		"ll-iteration-parallel-dev",
 	} {
 		sk, ok := byName[want]
 		if !ok {
