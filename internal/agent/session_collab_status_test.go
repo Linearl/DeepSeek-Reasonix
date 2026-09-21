@@ -65,11 +65,11 @@ func TestGetSessionStatusFullSweepAndBatchTargets(t *testing.T) {
 		SessionDir:    dir,
 		WorkspaceRoot: dir,
 		MailDir:       filepath.Join(t.TempDir(), "mail"),
-		SessionStatus: func(contactID string) (bool, int64, bool) {
+		SessionStatus: func(contactID string) (bool, int64, int, bool) {
 			if contactID == "sc_a" {
-				return true, 1700000000000, true
+				return true, 1700000000000, 0, true
 			}
-			return false, 0, true
+			return false, 0, 0, true
 		},
 	}
 
@@ -121,7 +121,7 @@ func TestGetSessionStatusInvisibleProcessIsUnknown(t *testing.T) {
 		SessionDir:    dir,
 		WorkspaceRoot: dir,
 		MailDir:       filepath.Join(t.TempDir(), "mail"),
-		SessionStatus: func(string) (bool, int64, bool) { return false, 0, false },
+		SessionStatus: func(string) (bool, int64, int, bool) { return false, 0, 0, false },
 	}
 	payload := execStatus(t, cfg, `{"targets":["sc_ghost"]}`)
 	if payload.Sessions[0].State != "unknown" {
@@ -164,5 +164,25 @@ func TestGetSessionStatusDoesNotTouchTheMailbox(t *testing.T) {
 	}
 	if strings.Contains(payload.Sessions[0].Title, "pending") {
 		t.Fatal("status must carry metadata, not transcript bytes")
+	}
+}
+
+// Task 218 (dispatch-round feedback): a steer degraded to followup is queued
+// INSIDE the target's session inbox, past the collab mailbox cursor. The
+// probe's pending must join the counter — an idle peer with a degraded steer
+// parked in its inbox must read queued, never idle.
+func TestDegradedSteerBacklogCountsAsQueued(t *testing.T) {
+	dir := t.TempDir()
+	statusFixture(t, dir, "d", "Degraded", "sc_d", "")
+	cfg := SessionCollabConfig{
+		Enabled:       true,
+		SessionDir:    dir,
+		WorkspaceRoot: dir,
+		MailDir:       filepath.Join(t.TempDir(), "mail"),
+		SessionStatus: func(string) (bool, int64, int, bool) { return false, 0, 2, true },
+	}
+	payload := execStatus(t, cfg, `{"targets":["sc_d"]}`)
+	if payload.Sessions[0].State != "queued" || payload.Sessions[0].Unread != 2 {
+		t.Fatalf("a degraded steer parked in the session inbox must read queued with the probe's count: %+v", payload.Sessions[0])
 	}
 }

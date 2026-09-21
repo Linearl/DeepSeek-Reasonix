@@ -1198,18 +1198,28 @@ func (a *App) knownProjectRoots() []string {
 // because a guessed idle would invite double-dispatch onto a busy peer. No
 // turn-edge timestamp is tracked here yet, so lastTurnAtMS stays 0 and the
 // tool falls back to the mailbox's own last-delivery time.
-func (a *App) collabSessionStatus(contactID string) (running bool, lastTurnAtMS int64, known bool) {
+//
+// pending (task 218, dispatch-round feedback) counts the session-inbox items
+// queued inside the controller — a steer degraded to followup lands there,
+// past the collab mailbox cursor, so the file-only counter cannot see it.
+func (a *App) collabSessionStatus(contactID string) (running bool, lastTurnAtMS int64, pending int, known bool) {
 	contactID = strings.TrimSpace(contactID)
 	if contactID == "" {
-		return false, 0, false
+		return false, 0, 0, false
 	}
 	for _, target := range a.sessionCollabLiveTargets(nil) {
 		if target.contactID != contactID || target.ctrl == nil {
 			continue
 		}
-		return target.ctrl.RuntimeStatus().Running, 0, true
+		snap := target.ctrl.InboxSnapshot()
+		for _, item := range snap.Items {
+			if item.State == sessioninbox.StateQueued {
+				pending++
+			}
+		}
+		return target.ctrl.RuntimeStatus().Running, 0, pending, true
 	}
-	return false, 0, false
+	return false, 0, 0, false
 }
 
 // sessionCollabLiveTargets is every place a message can land without first

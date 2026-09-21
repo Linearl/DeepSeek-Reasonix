@@ -45,10 +45,12 @@ type SessionCollabConfig struct {
 	HopLimit func() int
 	// SessionStatus, when set, answers the in-process running/idle truth for a
 	// contact (task 218): the host knows which controllers own an active turn,
-	// a file-only view never can. known=false means the probe cannot see that
-	// process (other process, runtime not stood up) — the tool must report
-	// unknown rather than guess an idle. Nil makes every state unknown.
-	SessionStatus func(contactID string) (running bool, lastTurnAtMS int64, known bool)
+	// a file-only view never can. pending counts session-inbox items queued in
+	// the controller (a steer degraded to followup lands there, invisible to
+	// the file counter). known=false means the probe cannot see that process
+	// (other process, runtime not stood up) — the tool must report unknown
+	// rather than guess an idle. Nil makes every state unknown.
+	SessionStatus func(contactID string) (running bool, lastTurnAtMS int64, pending int, known bool)
 	// Task 173: the collaboration panel gates. Tool-level gates (delete /
 	// read_tail / create) keep boot from registering the tool at all, so they
 	// are not consulted here. The parameter-level gates are checked at call
@@ -257,17 +259,24 @@ func (t getSessionStatusTool) Execute(_ context.Context, args json.RawMessage) (
 		if id.ContactID != "" {
 			unread, lastDelivery = mail.InboxStatus(id.ContactID)
 		}
-		running, lastTurn, known := false, int64(0), false
+		running, lastTurn, probePending, known := false, int64(0), 0, false
 		if t.cfg.SessionStatus != nil && id.ContactID != "" {
-			running, lastTurn, known = t.cfg.SessionStatus(id.ContactID)
+			running, lastTurn, probePending, known = t.cfg.SessionStatus(id.ContactID)
 		}
+		// Task 218 (dispatch-round feedback): a steer degraded to followup is
+		// queued INSIDE the target's session inbox, past the collab mailbox
+		// cursor — so the pending the probe sees must join the file counter
+		// before any queued/idle decision. Without it an idle peer with a
+		// degraded steer parked in its inbox reads idle, and the dispatcher
+		// double-sends.
+		busy := unread + probePending
 		// State precedence (task 218): an active turn wins over pending mail; a
 		// runtime the probe cannot see is unknown — never a guessed idle.
 		state := "unknown"
 		switch {
 		case known && running:
 			state = "running"
-		case known && unread > 0:
+		case known && busy > 0:
 			state = "queued"
 		case known:
 			state = "idle"
@@ -283,7 +292,9 @@ func (t getSessionStatusTool) Execute(_ context.Context, args json.RawMessage) (
 			"scope":        id.Scope,
 			"state":        state,
 			"lastActivity": activity,
-			"unreadInbox":  unread,
+			// Everything waiting to be consumed: the collab mailbox queue plus
+			// the controller's session inbox (degraded steers live there).
+			"unreadInbox": busy,
 		}
 	}
 

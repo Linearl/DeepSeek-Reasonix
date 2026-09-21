@@ -204,9 +204,10 @@ type Options struct {
 	// create_collab_session tool entirely rather than exposing a broken one.
 	OnCreateCollabSession agent.CreateCollabSessionFunc
 	// OnSessionStatus lets a host answer the in-process running/idle truth for
-	// a contact (task 218). Nil leaves every reported state unknown — honest,
-	// never a guessed idle.
-	OnSessionStatus func(contactID string) (running bool, lastTurnAtMS int64, known bool)
+	// a contact (task 218). pending counts the controller's own session-inbox
+	// backlog (degraded steers included). Nil leaves every reported state
+	// unknown — honest, never a guessed idle.
+	OnSessionStatus func(contactID string) (running bool, lastTurnAtMS int64, pending int, known bool)
 	// OnDeleteSession lets a host move a collaborating session to trash on the
 	// agent's behalf (task 154 sub-item A). Nil omits the delete_session tool.
 	OnDeleteSession func(contactID, sessionPath string, dryRun bool) (agent.DeleteSessionImpact, agent.DeleteSessionResult, error)
