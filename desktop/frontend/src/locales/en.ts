@@ -2208,6 +2208,8 @@ export const en = {
 "settings.dreamCreateTaskAction": "Create dream scheduled task",
 "settings.dreamCreateTaskDone": "Dream scheduled task created/enabled. Open the automation panel to review and tune it.",
 "settings.sessionCollab": "Session collaboration",
+  "settings.sessionCollab.hopLimit": "Collaboration hop limit",
+  "settings.sessionCollab.hopLimitHint": "Maximum hops a cross-session chain may take: 3-1000, default 5. Lowering it only affects newly arriving messages; chains already in flight are untouched, and out-of-range entries are clamped.",
 "settings.sessionCollabHint": "Task 19: enables the multi-session collaboration tools (contact-directory addressing, talk_to_session delivery, collaboration task cards). Off by default; after turning it on, restart (or open a new session) so the tools register on existing sessions.",
 "settings.sessionCollab.on": "On",
 "settings.sessionCollab.off": "Off",

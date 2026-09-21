@@ -1892,6 +1892,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			// (set_session_purpose without target, the sender's own address)
 			// working instead of failing with "no session path".
 			ResolveSessionPath: executor.SessionPath,
+			// Task 204: resolve the chain ceiling per call, so a settings change
+			// applies to newly arriving messages without rebuilding the session.
+			HopLimit: config.SessionCollabHopLimitLive,
 		}
 		reg.Add(agent.NewSetSessionPurposeTool(collab))
 		reg.Add(agent.NewListAddressableSessionsTool(collab))

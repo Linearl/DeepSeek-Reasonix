@@ -357,6 +357,7 @@ type SettingsView struct {
 	ExperimentalDream          bool `json:"experimentalDream"`
 	ExperimentalPerfMonitor    bool `json:"experimentalPerfMonitor"`
 	PerfMonitorIntervalSeconds int  `json:"perfMonitorIntervalSeconds"`
+	SessionCollabHopLimit      int  `json:"sessionCollabHopLimit"`
 	ExperimentalSessionCollab  bool `json:"experimentalSessionCollab"`
 	ExperimentalAutoLoadOlder  bool `json:"experimentalAutoLoadOlder"`
 
@@ -455,6 +456,7 @@ type DesktopStartupSettingsView struct {
 	ExperimentalDream          bool `json:"experimentalDream"`
 	ExperimentalPerfMonitor    bool `json:"experimentalPerfMonitor"`
 	PerfMonitorIntervalSeconds int  `json:"perfMonitorIntervalSeconds"`
+	SessionCollabHopLimit      int  `json:"sessionCollabHopLimit"`
 	// ExperimentalSessionCollab exposes multi-session collaboration (task 19).
 	ExperimentalSessionCollab bool `json:"experimentalSessionCollab"`
 	// ExperimentalAutoLoadOlder exposes the scroll-driven history trigger (fork
@@ -1127,6 +1129,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalDream = cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream
 		view.ExperimentalPerfMonitor = cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor
 		view.PerfMonitorIntervalSeconds = cfg.Desktop.PerfMonitorIntervalSeconds
+		view.SessionCollabHopLimit = cfg.Desktop.SessionCollabHopLimit
 		view.ExperimentalSessionCollab = cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab
 		view.ExperimentalAutoLoadOlder = cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder
 		view.ExperimentalLocalServer = cfg.Desktop.ExperimentalLocalServer
@@ -1210,6 +1213,7 @@ func (a *App) Settings() SettingsView {
 		ExperimentalDream:            cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream,
 		ExperimentalPerfMonitor:      cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,
 		PerfMonitorIntervalSeconds:   cfg.Desktop.PerfMonitorIntervalSeconds,
+		SessionCollabHopLimit:        cfg.Desktop.SessionCollabHopLimit,
 		ExperimentalSessionCollab:    cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
 		ExperimentalAutoLoadOlder:    cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
 		ExperimentalLocalServer:      cfg.Desktop.ExperimentalLocalServer,

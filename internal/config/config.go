@@ -1381,6 +1381,10 @@ type AgentConfig struct {
 	// (task 19 / 141–145): contact addressing, talk_to_session, task cards.
 	// Off by default.
 	ExperimentalSessionCollab bool `toml:"experimental_session_collab"`
+	// SessionCollabHopLimit caps how many hops a cross-session chain may take
+	// (task 204). 0 keeps the package default (5); values are clamped into
+	// [MinHop, MaxHopCeiling] on write, so a stored value is always legal.
+	SessionCollabHopLimit int `toml:"session_collab_hop_limit"`
 	// ExperimentalAutoLoadOlder enables loading older history by scrolling up
 	// while the transcript is already parked at the top (fork task 160). Off by
 	// default: the "load older" button is the reliable path, and this scroll

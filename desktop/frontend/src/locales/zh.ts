@@ -2210,6 +2210,8 @@ export const zh: Record<DictKey, string> = {
 "settings.dreamCreateTaskAction": "创建 dream 自动任务",
 "settings.dreamCreateTaskDone": "已创建/启用 dream 自动任务。请到自动化面板查看并按需调整参数。",
 "settings.sessionCollab": "会话协作",
+  "settings.sessionCollab.hopLimit": "协作链 hop 上限",
+  "settings.sessionCollab.hopLimitHint": "跨会话消息来回轮次的上限，范围 3~1000，默认 5。调低只影响新到达的消息，已在途的链不变；越界值按范围钳制。",
 "settings.sessionCollabHint": "任务 19：启用多会话协作工具（通讯录寻址 / talk_to_session 跨会话投递 / 协作任务卡）。默认关闭；开启后需重启（或新开会话）才会向会话注册工具。",
 "settings.sessionCollab.on": "开",
 "settings.sessionCollab.off": "关",

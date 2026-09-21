@@ -31,8 +31,31 @@ import (
 	"reasonix/internal/store"
 )
 
-// MaxHop is the collaboration chain limit (task 142). The 6th hop is refused.
-const MaxHop = 5
+// Collaboration chain limits. MaxHop is the default ceiling (task 142: the 6th
+// hop is refused) and stays the value of every install that never touches the
+// experimental hop-limit field (task 204); MinHop and MaxHopCeiling bound that
+// field, so a stored ceiling is always inside [MinHop, MaxHopCeiling].
+const (
+	MinHop        = 3
+	MaxHop        = 5
+	MaxHopCeiling = 1000
+)
+
+// ClampHopLimit normalizes a configured ceiling. Unset (<= 0) keeps the default,
+// and out-of-range values are clamped instead of rejected so callers that read a
+// hand-edited config still get a usable chain limit.
+func ClampHopLimit(limit int) int {
+	if limit <= 0 {
+		return MaxHop
+	}
+	if limit < MinHop {
+		return MinHop
+	}
+	if limit > MaxHopCeiling {
+		return MaxHopCeiling
+	}
+	return limit
+}
 
 // Identity is one addressable session (task 141).
 type Identity struct {
@@ -132,7 +155,9 @@ func ValidateDelivery(value string) (Delivery, error) {
 }
 
 // ErrHopLimit is returned when a chain exceeds MaxHop.
-var ErrHopLimit = errors.New("talk_to_session: hop limit exceeded (max 5)")
+// ErrHopLimit reports a chain that reached its ceiling. The ceiling itself is
+// appended by the caller, so the message always names the value in force.
+var ErrHopLimit = errors.New("talk_to_session: hop limit exceeded")
 
 // ErrNotFound is returned when a contact_id or card is missing.
 var ErrNotFound = errors.New("sessioncollab: not found")
@@ -503,10 +528,31 @@ func (s *PendingPurposeStore) Clear(topicID string) error {
 // interleave a partial line or drop one another's message.
 type MailStore struct {
 	root string
+	// hopLimit is this store's chain ceiling (task 204). It lives on the instance
+	// rather than in package state so a sender using a different configured limit
+	// cannot race a reader, and 0 keeps the package default.
+	hopLimit int
 }
 
 func NewMailStore(mailboxDir string) *MailStore {
-	return &MailStore{root: mailboxDir}
+	return &MailStore{root: mailboxDir, hopLimit: MaxHop}
+}
+
+// NewMailStoreWithHopLimit builds a store whose Deliver/Claim enforce a configured
+// ceiling (task 204). The value is clamped, so an out-of-range setting never widens
+// or narrows a chain beyond MinHop..MaxHopCeiling.
+func NewMailStoreWithHopLimit(mailboxDir string, hopLimit int) *MailStore {
+	return &MailStore{root: mailboxDir, hopLimit: ClampHopLimit(hopLimit)}
+}
+
+// HopLimit reports the ceiling this store enforces.
+func (s *MailStore) HopLimit() int { return s.ceiling() }
+
+func (s *MailStore) ceiling() int {
+	if s == nil || s.hopLimit <= 0 {
+		return MaxHop
+	}
+	return s.hopLimit
 }
 
 func (s *MailStore) lock() (func(), error) {
@@ -532,7 +578,7 @@ func (s *MailStore) inboxPath(contactID string) string {
 }
 
 // Deliver appends a message for the target contact. hop is the sender's chain
-// depth; MaxHop+1 is refused.
+// depth; the store's ceiling + 1 is refused.
 func (s *MailStore) Deliver(msg MailMessage) (MailMessage, error) {
 	unlock, err := s.lock()
 	if err != nil {
@@ -545,8 +591,8 @@ func (s *MailStore) Deliver(msg MailMessage) (MailMessage, error) {
 	if strings.TrimSpace(msg.Body) == "" {
 		return MailMessage{}, errors.New("talk_to_session: message body is required")
 	}
-	if msg.Hop > MaxHop {
-		return MailMessage{}, fmt.Errorf("%w: hop=%d", ErrHopLimit, msg.Hop)
+	if limit := s.ceiling(); msg.Hop > limit {
+		return MailMessage{}, fmt.Errorf("%w (max %d): hop=%d", ErrHopLimit, limit, msg.Hop)
 	}
 	delivery, err := ValidateDelivery(msg.Delivery)
 	if err != nil {
@@ -595,11 +641,12 @@ func (s *MailStore) Claim(contactID string) (pending []MailMessage, refused []Ma
 		return nil, nil, err
 	}
 	seen := s.readCursor(contactID)
+	limit := s.ceiling()
 	for _, m := range all {
 		if seen[m.ID] {
 			continue
 		}
-		if m.Hop > MaxHop {
+		if m.Hop > limit {
 			refused = append(refused, m)
 			continue
 		}

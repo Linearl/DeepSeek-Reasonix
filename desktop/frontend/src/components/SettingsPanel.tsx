@@ -1755,6 +1755,9 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Task 184: the sampler interval is a number the user can edit; the config layer
   // clamps it, so the box can hold an intermediate value while typing.
   const [perfInterval, setPerfInterval] = useState<number>(s.perfMonitorIntervalSeconds ?? 5);
+  // Task 204: the cross-session chain ceiling is a number the user can edit; the
+  // config layer clamps it, so the box may hold an intermediate value while typing.
+  const [hopLimit, setHopLimit] = useState<number>(s.sessionCollabHopLimit ?? 5);
   // Task 19: the addressable roster is read on demand, not on every settings
   // load — a session only appears once it has registered a purpose.
   const [sessionCollabRoster, setSessionCollabRoster] = useState<Awaited<ReturnType<typeof app.ListAddressableSessions>>>([]);
@@ -2280,6 +2283,19 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                     </button>
                   ))}
                 </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.sessionCollab.hopLimit")} hint={t("settings.sessionCollab.hopLimitHint")} icon={<Sparkles size={18} />}>
+                <input
+                  type="number"
+                  min={3}
+                  max={1000}
+                  value={hopLimit}
+                  disabled={busy}
+                  onChange={(event) => setHopLimit(Number(event.target.value))}
+                  onBlur={() => void apply(async () => {
+                    await app.SetSessionCollabHopLimit(hopLimit);
+                  })}
+                />
               </SettingsField>
               <SettingsField label={t("settings.sessionCollabRoster")} hint={t("settings.sessionCollabRosterHint")} icon={<Sparkles size={18} />}>
                 <button
