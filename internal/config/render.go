@@ -396,6 +396,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 				fmt.Fprintf(&b, "models_url  = %q   # auto-fetch models from this URL on startup\n", p.ModelsURL)
 			}
 			renderProviderIdentity(&b, p.APIKeyEnv, p.DisplayName)
+			renderProviderHidden(&b, p.Hidden)
 			if p.PresetID != "" {
 				fmt.Fprintf(&b, "preset_id   = %q   # curated preset identity; settings UI uses it to avoid duplicate installs\n", p.PresetID)
 			}
@@ -1087,6 +1088,7 @@ func RenderTOMLProjectDelta(c *Config) string {
 				fmt.Fprintf(&b, "models_url  = %q\n", p.ModelsURL)
 			}
 			renderProviderIdentity(&b, p.APIKeyEnv, p.DisplayName)
+			renderProviderHidden(&b, p.Hidden)
 			if p.PresetID != "" {
 				fmt.Fprintf(&b, "preset_id   = %q\n", p.PresetID)
 			}

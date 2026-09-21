@@ -170,6 +170,9 @@ func modelRefs() []string {
 		if !p.Configured() {
 			continue
 		}
+		if p.Hidden {
+			continue
+		}
 		for _, model := range p.ChatModelList() {
 			out = append(out, p.Name+"/"+model)
 		}
@@ -216,6 +219,9 @@ func providerNames() []string {
 	for i := range cfg.Providers {
 		p := &cfg.Providers[i]
 		if !p.Configured() {
+			continue
+		}
+		if p.Hidden {
 			continue
 		}
 		out = append(out, p.Name)

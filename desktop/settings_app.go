@@ -43,6 +43,7 @@ import (
 
 type ProviderView struct {
 	DisplayName                 *string                       `json:"displayName,omitempty"`
+	Hidden                      *bool                         `json:"hidden,omitempty"`
 	Name                        string                        `json:"name"`
 	PresetID                    string                        `json:"presetId,omitempty"`
 	Catalog                     *config.ProviderCatalog       `json:"catalog,omitempty"`
@@ -776,7 +777,7 @@ func providerViewFromEntryForRootWithResolverAndCredentials(p config.ProviderEnt
 		catalogView = &catalog
 	}
 	return ProviderView{
-		DisplayName: &p.DisplayName, Name: p.Name, PresetID: presetID, Catalog: catalogView, BuiltIn: builtIn, Added: added, Kind: p.Kind, BaseURL: p.BaseURL, ChatURL: p.ChatURL, RequestURL: p.RequestURL,
+		DisplayName: &p.DisplayName, Hidden: &p.Hidden, Name: p.Name, PresetID: presetID, Catalog: catalogView, BuiltIn: builtIn, Added: added, Kind: p.Kind, BaseURL: p.BaseURL, ChatURL: p.ChatURL, RequestURL: p.RequestURL,
 		Models: nonNil(models), VisionModels: nonNil(providerVisionModels(models, visionModels)), VisionModelsSet: visionModelsSet, VisionCapability: visionCapability, ModelsURL: p.ModelsURL, Default: p.DefaultModel(),
 		HighSpeedModels:             nonNil(p.HighSpeedModels),
 		APIKeyEnv:                   p.APIKeyEnv,
@@ -2545,6 +2546,11 @@ func saveProviderConfig(c *config.Config, p ProviderView) error {
 	e.Name = p.Name
 	if p.DisplayName != nil {
 		e.DisplayName = strings.TrimSpace(*p.DisplayName)
+	}
+	// nil keeps the stored flag: an older frontend that sends no `hidden` field must
+	// not silently unhide a connection on save.
+	if p.Hidden != nil {
+		e.Hidden = *p.Hidden
 	}
 	e.Kind = p.Kind
 	e.BaseURL = p.BaseURL

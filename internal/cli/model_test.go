@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -163,5 +164,45 @@ func TestMergeExtensionModelRefs(t *testing.T) {
 	}
 	if out := mergeExtensionModelRefs(base, nil); strings.Join(out, ",") != strings.Join(base, ",") {
 		t.Fatalf("nil catalog changed the base list: %v", out)
+	}
+}
+
+// TestModelRefsSkipHiddenProviders: connections marked hidden stay out of the CLI
+// pickers too (/model completion, provider-name completion), while the underlying
+// <provider>/<model> ref keeps working — the same contract the desktop surfaces follow.
+func TestModelRefsSkipHiddenProviders(t *testing.T) {
+	isolateUserConfig(t)
+	cfg := config.Default()
+	cfg.Providers = append(cfg.Providers,
+		config.ProviderEntry{Name: "quiet-one", Kind: "openai", BaseURL: "http://127.0.0.1:11434/v1", Models: []string{"quiet-model"}, Hidden: true},
+		config.ProviderEntry{Name: "loud-one", Kind: "openai", BaseURL: "http://127.0.0.1:11434/v1", Models: []string{"loud-model"}},
+	)
+	cfg.DefaultModel = "loud-one/loud-model"
+	if err := cfg.SaveTo(config.UserConfigPath()); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	refs := modelRefs()
+	if !slices.Contains(refs, "loud-one/loud-model") {
+		t.Fatalf("visible provider missing from /model refs: %v", refs)
+	}
+	if slices.Contains(refs, "quiet-one/quiet-model") {
+		t.Fatalf("hidden provider leaked into /model refs: %v", refs)
+	}
+
+	names := providerNames()
+	if !slices.Contains(names, "loud-one") {
+		t.Fatalf("visible provider missing from completions: %v", names)
+	}
+	if slices.Contains(names, "quiet-one") {
+		t.Fatalf("hidden provider leaked into provider completions: %v", names)
+	}
+
+	loaded, err := config.Load()
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+	if _, ok := loaded.ResolveModel("quiet-one/quiet-model"); !ok {
+		t.Fatal("hidden provider ref must still resolve")
 	}
 }

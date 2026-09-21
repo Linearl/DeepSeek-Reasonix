@@ -512,6 +512,9 @@ func providerManagerItems(s *providerSetupSession) []menuItem {
 	cfg := s.cfg
 	items := make([]menuItem, 0, len(cfg.Providers)+4)
 	for _, p := range cfg.Providers {
+		if p.Hidden {
+			continue
+		}
 		models := p.ModelList()
 		keyStatus := i18n.M.SetupKeyMissing
 		if p.APIKeyEnv == "" || config.CredentialIsSet(p.APIKeyEnv) || s.pendingCredentials[p.APIKeyEnv] != "" {
