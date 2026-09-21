@@ -298,9 +298,16 @@ func StripQuotedConstraints(raw string) string {
 	return strings.TrimSpace(s)
 }
 
-// stripCollabEnvelope removes cross-session delivery blocks. A block starts at
-// the [跨会话消息] marker and runs to the next blank line, the next block, or
-// the end of the input — whichever comes first. All occurrences go.
+// stripCollabEnvelope removes cross-session delivery blocks (task 220 M1).
+// A block starts at the [跨会话消息] marker. The real renderer
+// (sessionCollabDeliveryText) puts the body AFTER a blank line and closes it
+// with a "\n\n---\n" separator followed by the identifying trailer lines
+// (会话线程 / 关联任务卡片 / 回复方式 / 单向通知) — so the block is stripped
+// structurally: to the end of the trailer line behind the separator. Stopping
+// at the first blank line used to leave the body in place, where a
+// 「不要修改X」 could still freeze the turn. A block that lost its separator
+// (truncation, manual paste) strips to the next marker or the end of input:
+// the body is data, and over-stripping costs less than a frozen turn.
 func stripCollabEnvelope(s string) string {
 	const marker = "[跨会话消息]"
 	for {
@@ -310,11 +317,29 @@ func stripCollabEnvelope(s string) string {
 		}
 		rest := s[i+len(marker):]
 		end := len(s)
-		if j := strings.Index(rest, "\n\n"); j >= 0 {
-			end = i + len(marker) + j
-		}
-		if j := strings.Index(rest, marker); j >= 0 && i+len(marker)+j < end {
-			end = i + len(marker) + j
+		if j := strings.Index(rest, "\n\n---\n"); j >= 0 {
+			// Real renderer shape: strip through the WHOLE trailer — the
+			// identifying lines stack (thread id, reply instructions, the
+			// require-reply banner), so the cut lands after the LAST one.
+			trailer := rest[j:]
+			cut := 0
+			for _, tail := range []string{"会话线程：threadId=", "关联任务卡片：", "回复方式：", "这是一条单向通知：", "⚠ 发件人要求回信"} {
+				if k := strings.Index(trailer, tail); k >= 0 {
+					endOfLine := k + len(tail)
+					if lineEnd := strings.Index(trailer[k:], "\n"); lineEnd >= 0 {
+						endOfLine = k + lineEnd + 1
+					}
+					if endOfLine > cut {
+						cut = endOfLine
+					}
+				}
+			}
+			if cut == 0 {
+				cut = len(trailer)
+			}
+			end = i + len(marker) + j + cut
+		} else if next := strings.Index(rest, marker); next >= 0 {
+			end = i + len(marker) + next
 		}
 		s = s[:i] + s[end:]
 	}
