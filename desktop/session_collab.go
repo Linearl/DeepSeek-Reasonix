@@ -781,7 +781,12 @@ func runCollabDelivery(mail *sessioncollab.MailStore, contactID string, d collab
 	for _, msg := range pending {
 		effectiveHop, verr := d.deriveHop(msg)
 		if verr != nil {
-			d.notify(msg, "refused_provenance", sessionCollabBadProvenanceText(msg, verr))
+			// Task 213: the refusal must name its real cause. An exhausted
+			// chain is not a provenance failure, and a cross-wired thread is
+			// not the same mistake as an unknown one — one catch-all text sent
+			// senders hunting for a threadId bug that does not exist.
+			kind, text := sessionCollabRefusalText(msg, verr)
+			d.notify(msg, kind, text)
 			acked = append(acked, msg.ID)
 			refused++
 			continue
@@ -878,6 +883,31 @@ func (p *sessionCollabPump) notifySenderOnce(msg sessioncollab.MailMessage, kind
 func sessionCollabRefusedHopText(msg sessioncollab.MailMessage) string {
 	return "跨会话消息被拒绝并丢弃：协作链已达 hop 上限（" + strconv.Itoa(sessionCollabHopLimit()) +
 		"）。如需继续，请新起一条链，不要在上一条链上继续接力。（messageId=" + msg.ID + "）"
+}
+
+// sessionCollabRefusalText classifies a deriveHop failure (task 213) so each
+// refusal names its real cause and points at a next step that exists. The
+// exhausted-chain sentinel — whether the pump's own or the store's — is a hop
+// refusal, a cross-wired thread is its own kind, and everything else (unknown
+// thread id, missing sender, a claimed depth with no parent) stays a
+// provenance failure.
+func sessionCollabRefusalText(msg sessioncollab.MailMessage, cause error) (string, string) {
+	switch {
+	case errors.Is(cause, errSessionCollabHopExhausted), errors.Is(cause, sessioncollab.ErrHopLimit):
+		return "refused_hop", sessionCollabRefusedHopText(msg)
+	case errors.Is(cause, sessioncollab.ErrReplyThreadCrossWired):
+		return "refused_cross_wire", sessionCollabCrossWiredText(msg, cause)
+	default:
+		return "refused_provenance", sessionCollabBadProvenanceText(msg, cause)
+	}
+}
+
+// sessionCollabCrossWiredText is distinct from the provenance text on purpose:
+// the sender did resolve a thread, but it belongs to another peer, so "pass
+// the id you received" alone would not tell them which of their ids is wrong.
+func sessionCollabCrossWiredText(msg sessioncollab.MailMessage, cause error) string {
+	return "跨会话消息被拒绝并丢弃：它的 threadId 串线到另一条链（" + cause.Error() +
+		"）。请改用本次收到的那条入向消息的 threadId 回信，或省略 threadId 另起新链，不要复用其他对端的链。（messageId=" + msg.ID + "）"
 }
 
 func sessionCollabBadProvenanceText(msg sessioncollab.MailMessage, cause error) string {
