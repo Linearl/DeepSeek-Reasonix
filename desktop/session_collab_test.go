@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -259,5 +260,103 @@ func TestSessionCollabDeliveryTextWithoutReplyAddress(t *testing.T) {
 	text := sessionCollabDeliveryText(msg, 0)
 	if strings.Contains(text, "无需回复") {
 		t.Fatalf("a message with a ReplyTo must not be labelled one-way: %s", text)
+	}
+}
+
+// Task 213: a deriveHop failure is classified by cause, so the sender hears
+// the real reason. An exhausted chain must never wear the provenance text —
+// the old catch-all sent senders hunting for a threadId bug that did not
+// exist — and a cross-wired thread is its own kind, distinct from an unknown
+// one.
+func TestDeriveHopRefusalsAreClassifiedByCause(t *testing.T) {
+	mail, target := newCollabTestMail(t)
+	cases := []struct {
+		name     string
+		cause    error
+		wantKind string
+		wantIn   string
+		notIn    string
+	}{
+		{
+			name:     "hop exhausted names the limit, not provenance",
+			cause:    errSessionCollabHopExhausted,
+			wantKind: "refused_hop",
+			wantIn:   "已达 hop 上限",
+			notIn:    "无法核实",
+		},
+		{
+			name:     "the store's hop ceiling is a hop refusal too",
+			cause:    fmt.Errorf("%w (max 5): hop=6", sessioncollab.ErrHopLimit),
+			wantKind: "refused_hop",
+			wantIn:   "已达 hop 上限",
+			notIn:    "无法核实",
+		},
+		{
+			name:     "cross-wired thread is its own kind",
+			cause:    fmt.Errorf("%w: thread msg_p was opened by sc_other, not sc_from", sessioncollab.ErrReplyThreadCrossWired),
+			wantKind: "refused_cross_wire",
+			wantIn:   "串线",
+			notIn:    "无法核实",
+		},
+		{
+			name:     "unknown thread stays a provenance refusal",
+			cause:    fmt.Errorf("%w: msg_ghost is not in sc_from's mailbox", sessioncollab.ErrReplyThreadUnknown),
+			wantKind: "refused_provenance",
+			wantIn:   "无法核实",
+			notIn:    "已达 hop 上限",
+		},
+	}
+	for i, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := mail.Deliver(sessioncollab.MailMessage{
+				From: "sc_from", To: target, Body: fmt.Sprintf("reply-%d", i), ThreadID: "msg_parent",
+			}); err != nil {
+				t.Fatal(err)
+			}
+			var kind, text string
+			d := collabDelivery{
+				enqueue: func(sessioncollab.MailMessage, string) (bool, error) {
+					t.Fatal("a refused message must not reach the target")
+					return false, nil
+				},
+				notify:    func(msg sessioncollab.MailMessage, k, note string) { kind, text = k, note },
+				deriveHop: func(sessioncollab.MailMessage) (int, error) { return 0, tc.cause },
+				render:    func(msg sessioncollab.MailMessage, hop int) string { return msg.Body },
+			}
+			delivered, refused, err := runCollabDelivery(mail, target, d)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if delivered != 0 || refused != 1 {
+				t.Fatalf("want 0 delivered + 1 refused, got %d/%d", delivered, refused)
+			}
+			if kind != tc.wantKind {
+				t.Fatalf("notice kind must be %s, got %s (%s)", tc.wantKind, kind, text)
+			}
+			if !strings.Contains(text, tc.wantIn) {
+				t.Fatalf("notice must say %q: %s", tc.wantIn, text)
+			}
+			if strings.Contains(text, tc.notIn) {
+				t.Fatalf("notice must not carry the wrong cause %q: %s", tc.notIn, text)
+			}
+			if !strings.Contains(text, "messageId=") {
+				t.Fatalf("notice must keep the message id: %s", text)
+			}
+		})
+	}
+}
+
+// The cross-wired text and the provenance text must stay distinguishable: the
+// sender resolved a thread but aimed it at the wrong peer, which is a
+// different mistake with a different fix.
+func TestCrossWiredTextIsDistinctFromProvenanceText(t *testing.T) {
+	msg := sessioncollab.MailMessage{ID: "msg_1", From: "sc_from", To: "sc_target", ThreadID: "msg_p"}
+	cross := sessionCollabCrossWiredText(msg, fmt.Errorf("%w: thread msg_p was opened by sc_other", sessioncollab.ErrReplyThreadCrossWired))
+	prov := sessionCollabBadProvenanceText(msg, fmt.Errorf("%w: msg_ghost", sessioncollab.ErrReplyThreadUnknown))
+	if cross == prov {
+		t.Fatal("cross-wired and provenance refusals must not share one text")
+	}
+	if !strings.Contains(cross, "另一条链") || strings.Contains(cross, "无法核实它的链路来源") {
+		t.Fatalf("cross-wired text must name the cross-wiring: %s", cross)
 	}
 }
