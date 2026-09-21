@@ -1902,14 +1902,24 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			// Task 218: the host answers running/idle from its own controllers;
 			// nil (CLI, tests) keeps every state unknown instead of a guess.
 			SessionStatus: opts.OnSessionStatus,
+			// Task 173: parameter-level panel gates, checked at call time with
+			// actionable refusals that name the panel switch.
+			AllowRequireReply: cfg.Agent.SessionCollabAllowRequireReply,
+			AllowSteer:        cfg.Agent.SessionCollabAllowSteer,
+			DailySendLimit:    cfg.Agent.SessionCollabDailySendLimit,
 		}
 		reg.Add(agent.NewSetSessionPurposeTool(collab))
 		reg.Add(agent.NewListAddressableSessionsTool(collab))
 		reg.Add(agent.NewSearchSessionsTool(collab))
-		reg.Add(agent.NewReadSessionTailTool(collab))
 		reg.Add(agent.NewGetSessionStatusTool(collab))
 		reg.Add(agent.NewTalkToSessionTool(collab))
 		reg.Add(agent.NewTalkToSessionSyncTool(collab))
+		// Task 173 ⑤: read_session_tail reads another session's transcript, so
+		// the panel keeps it unregistered until allowed — the model must not
+		// even see a tool it is not permitted to call.
+		if cfg.Agent.SessionCollabAllowReadTail {
+			reg.Add(agent.NewReadSessionTailTool(collab))
+		}
 		for _, t := range agent.NewTaskCardTools(agent.TaskCardConfig{
 			Enabled:            true,
 			WorkspaceRoot:      root,
@@ -1922,11 +1932,14 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			reg.Add(t)
 		}
 		// 144: only a host that can create sessions gets the creator tool.
-		if opts.OnCreateCollabSession != nil {
+		// Task 173 ⑦ additionally lets the panel withhold it even then.
+		if opts.OnCreateCollabSession != nil && cfg.Agent.SessionCollabAllowCreate {
 			reg.Add(agent.NewCreateCollabSessionTool(root, opts.OnCreateCollabSession))
 		}
 		// 154 sub-item A: only a host that can delete sessions gets the tool.
-		if opts.OnDeleteSession != nil {
+		// Task 173 ②: the panel's 「允许删除其他会话」 gates it the same way —
+		// unregistered, not registered-but-refusing.
+		if opts.OnDeleteSession != nil && cfg.Agent.SessionCollabAllowDelete {
 			reg.Add(agent.NewDeleteSessionTool(collab, opts.OnDeleteSession))
 		}
 		// 170: the "改" half of the CRUD. Both are host capabilities like the

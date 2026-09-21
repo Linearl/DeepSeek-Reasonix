@@ -360,3 +360,20 @@ func TestCrossWiredTextIsDistinctFromProvenanceText(t *testing.T) {
 		t.Fatalf("cross-wired text must name the cross-wiring: %s", cross)
 	}
 }
+
+// Task 173: a require_reply message must state the demand as a requirement in
+// the delivery text; an ordinary message keeps the 156.D guidance alone.
+func TestDeliveryTextMarksARequiredReply(t *testing.T) {
+	plain := sessionCollabDeliveryText(sessioncollab.MailMessage{
+		ID: "msg_1", From: "sc_from", To: "sc_target", ReplyTo: "sc_from", Body: "work",
+	}, 0)
+	if strings.Contains(plain, "要求回信") {
+		t.Fatalf("an ordinary message must not demand a reply: %s", plain)
+	}
+	demanded := sessionCollabDeliveryText(sessioncollab.MailMessage{
+		ID: "msg_2", From: "sc_from", To: "sc_target", ReplyTo: "sc_from", Body: "work", RequireReply: true,
+	}, 0)
+	if !strings.Contains(demanded, "要求回信") || !strings.Contains(demanded, "msg_2") {
+		t.Fatalf("a demanded reply must be stated and keep the thread id: %s", demanded)
+	}
+}

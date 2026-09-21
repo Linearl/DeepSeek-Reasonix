@@ -49,6 +49,16 @@ type SessionCollabConfig struct {
 	// process (other process, runtime not stood up) — the tool must report
 	// unknown rather than guess an idle. Nil makes every state unknown.
 	SessionStatus func(contactID string) (running bool, lastTurnAtMS int64, known bool)
+	// Task 173: the collaboration panel gates. Tool-level gates (delete /
+	// read_tail / create) keep boot from registering the tool at all, so they
+	// are not consulted here. The parameter-level gates are checked at call
+	// time, and a refusal must name the panel switch and its real settings
+	// entry — never a generic "invalid argument".
+	AllowRequireReply bool
+	AllowSteer        bool
+	// DailySendLimit caps this session's outgoing cross-session messages per
+	// day (task 173 ⑥). 0 = no cap.
+	DailySendLimit int
 }
 
 // hopLimit resolves the ceiling in force for this call (task 204).
@@ -520,19 +530,27 @@ func (talkToSessionTool) Description() string {
 }
 
 func (talkToSessionTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target: contact_id, topic_id, or the exact title from list_addressable_sessions."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain. The system derives the real depth from the thread."},"delivery":{"type":"string","enum":["followup","steer"],"description":"followup (default) queues; steer injects mid-turn, degrading to followup when it cannot."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."},"thread_id":{"type":"string","description":"When answering a message, pass the threadId it carried so the requester can match your reply."}},"required":["to","message"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target: contact_id, topic_id, or the exact title from list_addressable_sessions."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain. The system derives the real depth from the thread."},"delivery":{"type":"string","enum":["followup","steer"],"description":"followup (default) queues; steer injects mid-turn, degrading to followup when it cannot."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."},"thread_id":{"type":"string","description":"When answering a message, pass the threadId it carried so the requester can match your reply."},"require_reply":{"type":"boolean","description":"Set true when the sender needs an answer on this thread (task 173). Requires the panel switch session_collab_allow_require_reply."}},"required":["to","message"]}`)
 }
 
 func (talkToSessionTool) ReadOnly() bool { return false }
 
+// refuseGate is the task-173 parameter-level refusal: it names the panel
+// switch that withheld the capability and the one settings entry that exists,
+// so the caller can act instead of guessing at an "invalid argument".
+func refuseGate(capability, switchName string) error {
+	return fmt.Errorf("%s在跨会话通信实验面板中未开启（%s）——请到 设置 → 实验特性 → 跨会话通信 面板开启后重试", capability, switchName)
+}
+
 func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
 	var p struct {
-		To       string `json:"to"`
-		Message  string `json:"message"`
-		Hop      int    `json:"hop"`
-		Delivery string `json:"delivery"`
-		CardID   string `json:"card_id"`
-		ThreadID string `json:"thread_id"`
+		To           string `json:"to"`
+		Message      string `json:"message"`
+		Hop          int    `json:"hop"`
+		Delivery     string `json:"delivery"`
+		CardID       string `json:"card_id"`
+		ThreadID     string `json:"thread_id"`
+		RequireReply bool   `json:"require_reply"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
@@ -546,6 +564,17 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 	delivery, err := sessioncollab.ValidateDelivery(p.Delivery)
 	if err != nil {
 		return "", err
+	}
+	if delivery == sessioncollab.DeliverySteer && !t.cfg.AllowSteer {
+		// Task 173 ④: with the panel switch off, steer degrades to followup —
+		// the message still lands, it just loses the mid-turn injection. A
+		// refusal here would break every existing steer caller for a setting
+		// they have never seen; the degraded flag in the result keeps the
+		// outcome honest.
+		delivery = sessioncollab.DeliveryFollowup
+	}
+	if p.RequireReply && !t.cfg.AllowRequireReply {
+		return "", refuseGate("require_reply（要求对方回信）", "允许配置回信要求")
 	}
 	ids := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
 	target, err := ResolveTarget(ids, p.To)
@@ -589,6 +618,14 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 		CardID:      p.CardID,
 		ReplyTo:     fromContact,
 		ThreadID:    strings.TrimSpace(p.ThreadID),
+		RequireReply: p.RequireReply,
+	}
+	// Task 173 ⑥: the daily cap counts only what actually left this session,
+	// so the check sits right before Deliver — a refused call writes nothing.
+	if t.cfg.DailySendLimit > 0 {
+		if sent := mail.CountSentFromToday(fromContact); sent >= t.cfg.DailySendLimit {
+			return "", fmt.Errorf("已达跨会话单日发信上限（%d 封/天，今日已发 %d 封）——这是防消息风暴的运行时限制，明天自动恢复；紧急请联系用户调整 设置 → 实验特性 → 跨会话通信 的单日发信上限", t.cfg.DailySendLimit, sent)
+		}
 	}
 	// Task 194-P0: an unresolvable thread_id used to be accepted here, written into
 	// the peer's inbox and only then dropped by the delivery pump, so the sender saw
@@ -632,7 +669,7 @@ func (talkToSessionSyncTool) Description() string {
 }
 
 func (talkToSessionSyncTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target contact_id."},"message":{"type":"string"},"hop":{"type":"integer"},"card_id":{"type":"string"},"timeout_ms":{"type":"integer","description":"How long to wait for the reply (default 30000, max 120000)."}},"required":["to","message"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target contact_id."},"message":{"type":"string"},"hop":{"type":"integer"},"card_id":{"type":"string"},"timeout_ms":{"type":"integer","description":"How long to wait for the reply (default 30000, max 120000)."},"require_reply":{"type":"boolean","description":"Set true when the sender needs an answer on this thread (task 173). Requires the panel switch session_collab_allow_require_reply."}},"required":["to","message"]}`)
 }
 
 func (talkToSessionSyncTool) ReadOnly() bool { return false }

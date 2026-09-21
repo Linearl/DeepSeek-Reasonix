@@ -126,9 +126,13 @@ type MailMessage struct {
 	// ThreadID correlates a reply with the message it answers: it is the
 	// original message's ID, so a synchronous waiter can match the answer
 	// instead of guessing from the sender.
-	ThreadID    string `json:"threadId,omitempty"`
-	At          int64  `json:"at"`
-	Idempotency string `json:"idempotency,omitempty"`
+	ThreadID string `json:"threadId,omitempty"`
+	// RequireReply marks a message whose sender expects an answer on the same
+	// thread (task 173). It rides the record so the recipient — and any
+	// reminder pass — can tell a demanded reply from an optional one.
+	RequireReply bool `json:"requireReply,omitempty"`
+	At           int64 `json:"at"`
+	Idempotency  string `json:"idempotency,omitempty"`
 }
 
 // Delivery semantics for talk_to_session (task 143). Followup is the default
@@ -777,6 +781,37 @@ func (s *MailStore) InboxStatus(contactID string) (unread int, lastDeliveryAt in
 		}
 	}
 	return unread, last
+}
+
+// CountSentFromToday counts how many messages the given contact has sent
+// today, across every mailbox in the store (task 173 ⑥). The anti-storm cap
+// needs the sender's own daily volume, not one target's inbox. Calendar-day
+// boundaries follow the local clock — the same clock the daily-limit setting
+// is reasoned about in.
+func (s *MailStore) CountSentFromToday(fromContact string) int {
+	fromContact = strings.TrimSpace(fromContact)
+	if fromContact == "" {
+		return 0
+	}
+	start := time.Now().Truncate(24 * time.Hour)
+	matches, err := filepath.Glob(filepath.Join(s.root, "*.inbox.jsonl"))
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, path := range matches {
+		contact := strings.TrimSuffix(filepath.Base(path), ".inbox.jsonl")
+		all, err := s.readAll(contact)
+		if err != nil {
+			continue
+		}
+		for _, m := range all {
+			if m.From == fromContact && m.At >= start.UnixMilli() {
+				count++
+			}
+		}
+	}
+	return count
 }
 
 // A reply names the message it answers in thread_id. Two ways of naming the wrong

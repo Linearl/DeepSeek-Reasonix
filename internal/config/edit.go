@@ -618,6 +618,35 @@ func (c *Config) SetExperimentalSessionCollab(enabled bool) error {
 	return nil
 }
 
+// SetSessionCollabGates writes the task-173 collaboration panel gates in one
+// call so the settings view cannot half-apply a panel. Nil pointers keep the
+// current value; the master switch is written separately through
+// SetExperimentalSessionCollab.
+func (c *Config) SetSessionCollabGates(allowDelete, allowRequireReply, allowReadTail, allowCreate, allowSteer *bool, dailySendLimit *int) error {
+	if allowDelete != nil {
+		c.Agent.SessionCollabAllowDelete = *allowDelete
+	}
+	if allowRequireReply != nil {
+		c.Agent.SessionCollabAllowRequireReply = *allowRequireReply
+	}
+	if allowReadTail != nil {
+		c.Agent.SessionCollabAllowReadTail = *allowReadTail
+	}
+	if allowCreate != nil {
+		c.Agent.SessionCollabAllowCreate = *allowCreate
+	}
+	if allowSteer != nil {
+		c.Agent.SessionCollabAllowSteer = *allowSteer
+	}
+	if dailySendLimit != nil {
+		if *dailySendLimit < 0 {
+			return fmt.Errorf("session_collab_daily_send_limit: negative values are invalid (0 = no cap)")
+		}
+		c.Agent.SessionCollabDailySendLimit = *dailySendLimit
+	}
+	return nil
+}
+
 // SetDesktopMetrics sets whether the desktop sends aggregate desktop metrics.
 func (c *Config) SetDesktopMetrics(enabled bool) error {
 	c.Desktop.Metrics = &enabled

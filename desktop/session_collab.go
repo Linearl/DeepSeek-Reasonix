@@ -1063,6 +1063,11 @@ func sessionCollabDeliveryText(msg sessioncollab.MailMessage, effectiveHop int) 
 			b.WriteString("，并把 thread_id 设为 " + msg.ID + "（发起方可能正在同步等待；hop 由系统按 thread 派生核对，自报值无效）")
 		}
 		b.WriteString("。")
+		// Task 173: a demanded reply is stated as a requirement, not a hint —
+		// 156.D's text guidance stays for optional replies.
+		if msg.RequireReply {
+			b.WriteString("\n⚠ 发件人要求回信（require_reply）：完成本信的工作后，必须按上面的回复方式回信；无法完成也请回信说明，不要只在本会话里写下结论。")
+		}
 	} else {
 		// Task 156.D: the old wording ("请先让发送方登记") told the *recipient*
 		// to fix something only the sender can do. State the fact and what the
