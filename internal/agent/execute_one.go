@@ -668,6 +668,8 @@ func (a *Agent) finishToolExecution(ctx context.Context, plan *toolCallPlan) too
 			detail = strings.TrimRight(detail, "\n") + "\nThe arguments were not valid JSON. Re-emit them exactly per this schema:\n" + string(t.Schema())
 		}
 		a.recordRepeatFailure(call, t, err)
+		// Task 202: a failed tool call is batch status evidence.
+		a.collabStatusEvent(CollabStatusToolError, fmt.Sprintf("%s: %v", call.Name, err), false)
 		rawErr := fmt.Sprintf("error: %v\n%s", err, detail)
 		body, truncMsg, original := a.boundProviderVisibleResult(rawErr, call.Name, call.ID)
 		out := toolOutcome{
@@ -690,6 +692,11 @@ func (a *Agent) finishToolExecution(ctx context.Context, plan *toolCallPlan) too
 		a.clearRepeatFailuresAfterMutation(evidenceName, evidenceArgs, readOnly)
 	}
 	a.recordRepeatSuccess(call, t)
+	// Task 202: the engine recognises its own commits - the model never has
+	// to report them into the status stream by hand.
+	if call.Name == "bash" && CollabStatusCommitFromBash(call.Arguments) {
+		a.collabStatusEvent(CollabStatusCommit, "git commit executed", false)
+	}
 	// A foreground `task` sub-agent just finished — its result is the final answer.
 	// (A backgrounded one returns a "Started…" string and stops later in a job, soit doesn't fire here.)
 	// SubagentStop lets a hook react to delegated work.

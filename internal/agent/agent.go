@@ -385,6 +385,10 @@ type Agent struct {
 	// the rounds per run.
 	readinessCatchUp      bool
 	readinessCatchUpLimit int
+	// Task 202: when set, the engine appends batch collaboration status
+	// events (turn start/end, tool failures, commits) to the shared stream
+	// file. Empty keeps the engine fully silent.
+	collabStatusPath string
 	// planResearchGate requires a read-only investigation before a plan-mode
 	// turn presents a plan (task 118). Off by default; planResearchGateLimit
 	// bounds the asks per run.
@@ -1189,6 +1193,12 @@ type Options struct {
 	// ReadinessCatchUpLimit overrides maxReadinessCatchUps (default 1).
 	// Values above maxReadinessCatchUpHardCap are clamped.
 	ReadinessCatchUpLimit int
+	// Task 202: when set, the engine appends batch collaboration status
+	// events (turn start/end, tool failures, git commits, received
+	// cross-session messages) to the shared stream file this path names.
+	// Empty (the default) keeps the engine fully silent. Decoupled from the
+	// messaging channel: the stream is a plain workspace file.
+	CollabStatusPath string
 	// PlanResearchGate requires a read-only investigation (or a stated reason)
 	// before a plan-mode turn presents a plan (task 118). Off by default.
 	PlanResearchGate bool
@@ -1297,6 +1307,7 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 		stalledIntentNudgeLimit: normalizeStalledIntentNudgeLimit(opts.StalledIntentNudgeLimit),
 		readinessCatchUp:        opts.ReadinessCatchUp,
 		readinessCatchUpLimit:   normalizeReadinessCatchUpLimit(opts.ReadinessCatchUpLimit),
+		collabStatusPath:        strings.TrimSpace(opts.CollabStatusPath),
 		planResearchGate:        opts.PlanResearchGate,
 		planResearchGateLimit:   normalizePlanResearchNudgeLimit(opts.PlanResearchGateLimit),
 		recovery: recoveryIdentity{
@@ -1461,6 +1472,20 @@ func (a *Agent) Run(ctx context.Context, input string) (runErr error) {
 		}
 		return 1
 	}
+	// Task 202: engine-written status stream. The turn bookkeeping (start,
+	// end, received cross-session messages) costs the model nothing and keeps
+	// the batch's progress file honest even when no one writes it by hand.
+	a.collabStatusEvent(CollabStatusTurnStart, summarizeCollabStatusInput(input), false)
+	if strings.Contains(input, "[跨会话消息]") {
+		a.collabStatusEvent(CollabStatusReceived, "cross-session message injected into this turn", false)
+	}
+	defer func() {
+		outcome := "completed"
+		if runErr != nil {
+			outcome = "failed"
+		}
+		a.collabStatusEvent(CollabStatusTurnEnd, outcome, false)
+	}()
 	defer a.flushSteerQueue()
 	a.steerMu.Lock()
 	a.steerConsumed = false

@@ -1810,6 +1810,11 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	})
 
 	execSess := newObservedSession(sysPrompt)
+	// Task 202: the collaboration status stream lives in the shared
+	// workspace. Building it never depends on the messaging switch: with
+	// cross-session messaging off, the stream still lets a batch manager
+	// decide from file evidence alone (decoupling acceptance).
+	collabStatusPath := filepath.Join(root, "tasks", "collab-status.jsonl")
 	executor := agent.New(execProv, reg, execSess, agent.Options{
 		ImageInput:      imageConfig,
 		MaxSteps:        maxSteps,
@@ -1858,6 +1863,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		StalledIntentNudgeLimit:      cfg.Agent.StalledIntentNudgeLimit,
 		ReadinessCatchUp:             cfg.Agent.ReadinessCatchUp,
 		ReadinessCatchUpLimit:        cfg.Agent.ReadinessCatchUpLimit,
+		CollabStatusPath:             collabStatusPath,
 		PlanResearchGate:             cfg.Agent.PlanResearchGate,
 		PlanResearchGateLimit:        cfg.Agent.PlanResearchGateLimit,
 		SubagentDepth:                0,
@@ -1889,6 +1895,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			Enabled:            true,
 			SessionDir:         collabSessionDir,
 			WorkspaceRoot:      root,
+			CollabStatusPath:    collabStatusPath,
 			CurrentSessionPath: sessionPath,
 			CurrentContactID:   currentContact,
 			// Task 158.B: the transcript path is bound by the control layer
@@ -1916,6 +1923,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		reg.Add(agent.NewSetSessionPurposeTool(collab))
 		reg.Add(agent.NewListAddressableSessionsTool(collab))
 		reg.Add(agent.NewGetSessionStatusTool(collab))
+		// Task 202: batch progress events (not busy/idle metadata - that is
+		// what get_session_status answers). Read-only and messaging-independent.
+		reg.Add(agent.NewReadCollabStatusTool(collab))
 		reg.Add(agent.NewTalkToSessionTool(collab))
 		// Task 173 ⑤: read_session_tail reads another session's transcript, so
 		// the panel keeps it unregistered until allowed — the model must not

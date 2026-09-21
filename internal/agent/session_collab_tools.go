@@ -61,6 +61,18 @@ type SessionCollabConfig struct {
 	// DailySendLimit caps this session's outgoing cross-session messages per
 	// day (task 173 ⑥). 0 = no cap.
 	DailySendLimit int
+	// Task 202: the collaboration status stream. CollabStatusPath is the
+	// append-only jsonl the engine writes lifecycle events to; empty disables
+	// the stream entirely. It is deliberately independent of Enabled: with
+	// messaging off, the stream still lets a batch manager decide from file
+	// evidence alone. Event identity (contact id or session path basename) is
+	// resolved at call time, mirroring currentSessionPath.
+	CollabStatusPath string
+}
+
+// collabStatusEvent appends one event to the configured stream, if any.
+func (c SessionCollabConfig) collabStatusEvent(event, summary string, needsDecision bool) {
+	AppendCollabStatusEvent(c.CollabStatusPath, collabStatusSessionID(c.currentSessionPath(), c.currentContactID()), "", event, summary, needsDecision)
 }
 
 // hopLimit resolves the ceiling in force for this call (task 204).
@@ -671,6 +683,13 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 	if target.Title != "" {
 		deliveredTo = target.ContactID + "｜" + target.Title
 	}
+	// Task 202: engine-written status events. A delivery is progress evidence
+	// even with messaging disabled on the reader side; require_reply means the
+	// batch manager owes a decision, wait=true means this session now blocks.
+	t.cfg.collabStatusEvent(CollabStatusDelivered, fmt.Sprintf("to %s (%s): %.160s", deliveredTo, msg.Delivery, p.Message), false)
+	if p.RequireReply {
+		t.cfg.collabStatusEvent(CollabStatusNeedsDecision, fmt.Sprintf("awaiting reply from %s", deliveredTo), true)
+	}
 	out, _ := json.Marshal(map[string]any{
 		"status":       "queued",
 		"messageId":    msg.ID,
@@ -687,6 +706,7 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 	// exact async contract the tests pinned; with it, the bounded wait runs
 	// after the durable delivery has already been acknowledged.
 	if p.Wait {
+		t.cfg.collabStatusEvent(CollabStatusBlockingWait, fmt.Sprintf("waiting (bounded) for a reply on thread %s", msg.ID), true)
 		return t.waitReply(ctx, msg.ID, p.TimeoutMS)
 	}
 	return string(out), nil
