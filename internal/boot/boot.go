@@ -1810,11 +1810,14 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	})
 
 	execSess := newObservedSession(sysPrompt)
-	// Task 202: the collaboration status stream lives in the shared
-	// workspace. Building it never depends on the messaging switch: with
-	// cross-session messaging off, the stream still lets a batch manager
-	// decide from file evidence alone (decoupling acceptance).
-	collabStatusPath := filepath.Join(root, "tasks", "collab-status.jsonl")
+	// Task 202 + M2: the collaboration status stream must be shared across
+	// every session of a batch even when their workspace roots point at
+	// their own worktrees, so the default lands in the shared collab mail
+	// dir (an explicit config would win; the workspace root is the fallback).
+	// Building it never depends on the messaging switch: with cross-session
+	// messaging off, the stream still lets a batch manager decide from file
+	// evidence alone (decoupling acceptance).
+	collabStatusPath := agent.ResolveCollabStatusPath("", config.SessionCollabMailDir(), root)
 	executor := agent.New(execProv, reg, execSess, agent.Options{
 		ImageInput:      imageConfig,
 		MaxSteps:        maxSteps,
