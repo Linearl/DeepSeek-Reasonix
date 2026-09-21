@@ -2335,6 +2335,8 @@ export interface DesktopStartupSettingsView {
   sessionCollabHopLimit?: number; // task 204: cross-session chain ceiling (3..1000, default 5)
   /** Fork task 160: scroll-driven "load older" trigger at the transcript top. */
   experimentalAutoLoadOlder?: boolean;
+  /** Task 221: inbox drain merge tri-state (off | same_sender | all). */
+  collabInboxMerge?: string;
   bot: BotSettingsView;
   desktopLanguage: string; // "" | "en" | "zh"; empty = auto
   desktopLayoutStyle: string; // "classic" | "workbench"

@@ -2297,6 +2297,22 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   })}
                 />
               </SettingsField>
+              <SettingsField label={t("settings.collabInboxMerge")} hint={t("settings.collabInboxMergeHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {(["off", "same_sender", "all"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      className={`set-seg__btn${(s.collabInboxMerge || "off") === mode ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetCollabInboxMerge(mode);
+                      })}
+                    >
+                      {t(`settings.collabInboxMerge.${mode}`)}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
               <SettingsField label={t("settings.sessionCollabRoster")} hint={t("settings.sessionCollabRosterHint")} icon={<Sparkles size={18} />}>
                 <button
                   type="button"

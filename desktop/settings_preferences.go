@@ -264,6 +264,12 @@ func (a *App) SetExperimentalSessionCollab(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSessionCollab(enabled) })
 }
 
+// SetCollabInboxMerge sets the inbox drain merge tri-state (task 221):
+// off | same_sender | all. The config layer normalizes unknown values to off.
+func (a *App) SetCollabInboxMerge(mode string) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetCollabInboxMerge(mode) })
+}
+
 // CreateDreamHeartbeatTask ensures a scheduled dream pass exists so the
 // experiment can be exercised without hand-editing heartbeat-tasks.json.
 // Returns created=true when a new task was appended; an existing Dream task

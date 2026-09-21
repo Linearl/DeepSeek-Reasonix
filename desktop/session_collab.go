@@ -96,6 +96,16 @@ func sessionCollabEnabled() bool {
 	return cfg.Agent.ExperimentalSessionCollab
 }
 
+// syncCollabInboxMergeMode re-arms the controller-level drain merge from the
+// live config (task 221). Reading it per pump pass keeps a settings change
+// effective from the next drain without a restart; the dispatcher itself only
+// pays an atomic load per admission.
+func syncCollabInboxMergeMode() {
+	if cfg, err := config.Load(); err == nil && cfg != nil {
+		control.SetCollabInboxMergeMode(cfg.Agent.CollabInboxMerge)
+	}
+}
+
 // sessionCollabHopLimit resolves the chain ceiling in force (task 204). The config
 // layer clamps the experimental value; an unreadable config keeps the package default,
 // so a broken file can never widen the ceiling.
@@ -128,6 +138,9 @@ func (a *App) DrainSessionCollabMail() SessionCollabDrainResult {
 }
 
 func (p *sessionCollabPump) drainOnce() {
+	// Task 221: re-arm the drain merge before any delivery, so a settings
+	// change lands with the next pass and the queued merge sees it.
+	syncCollabInboxMergeMode()
 	result := p.drain()
 	if result.Delivered == 0 && result.Refused == 0 {
 		return
@@ -926,15 +939,19 @@ func sessionCollabDeliveryFailedText(msg sessioncollab.MailMessage, cause error)
 // to address by id.
 func (p *sessionCollabPump) deliverOne(target sessionCollabTarget, msg sessioncollab.MailMessage, body string) (bool, error) {
 	idem := "collab:" + msg.ID
+	// Task 221: stamp the sender into the envelope Source so the drain-time
+	// merge can group by sender structurally ("collab:<contactID>") instead of
+	// parsing the rendered header text.
+	source := "collab:" + msg.From
 	if target.detached {
 		if target.ctrl == nil {
 			return false, fmt.Errorf("detached runtime has no controller")
 		}
 		if msg.Delivery != string(sessioncollab.DeliverySteer) {
-			_, err := p.app.enqueueInboxWithController(target.tabID, target.ctrl, sessioninbox.IntentFollowup, body, body, nil, idem, false, "", "")
+			_, err := p.app.enqueueInboxWithControllerSource(target.tabID, target.ctrl, sessioninbox.IntentFollowup, body, body, nil, idem, false, "", "", source)
 			return false, err
 		}
-		receipt, err := p.app.enqueueInboxWithController(target.tabID, target.ctrl, sessioninbox.IntentSteer, body, body, nil, idem, true, "", "")
+		receipt, err := p.app.enqueueInboxWithControllerSource(target.tabID, target.ctrl, sessioninbox.IntentSteer, body, body, nil, idem, true, "", "", source)
 		if err != nil {
 			return false, err
 		}
@@ -950,15 +967,19 @@ func (p *sessionCollabPump) deliverOne(target sessionCollabTarget, msg sessionco
 	// message is rendered immediately. The existing steer path already falls
 	// back to a queued follow-up when the target cannot take a steer, so this
 	// degrades safely.
+	ctrl, ctrlErr := p.app.inboxCtrl(target.tabID)
+	if ctrlErr != nil {
+		return false, ctrlErr
+	}
 	if msg.Delivery != string(sessioncollab.DeliverySteer) && !target.activeTab {
-		_, err := p.app.EnqueueInboxFollowup(target.tabID, body, body, idem)
+		_, err := p.app.enqueueInboxWithControllerSource(target.tabID, ctrl, sessioninbox.IntentFollowup, body, body, nil, idem, false, "", "", source)
 		return false, err
 	}
-	receipt, err := p.app.EnqueueInboxSteer(target.tabID, body, body, idem)
+	receipt, err := p.app.enqueueInboxWithControllerSource(target.tabID, ctrl, sessioninbox.IntentSteer, body, body, nil, idem, true, "", "", source)
 	if err != nil {
 		// Steer rejected: fall back to a queued follow-up so the message is not lost.
 		if msg.Delivery != string(sessioncollab.DeliverySteer) {
-			_, ferr := p.app.EnqueueInboxFollowup(target.tabID, body, body, idem)
+			_, ferr := p.app.enqueueInboxWithControllerSource(target.tabID, ctrl, sessioninbox.IntentFollowup, body, body, nil, idem, false, "", "", source)
 			if ferr != nil {
 				return false, ferr
 			}

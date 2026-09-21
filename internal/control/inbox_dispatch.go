@@ -113,6 +113,11 @@ func (c *Controller) dispatchInboxOnce() inboxDispatchResult {
 		slog.Warn("controller: open inbox for dispatch", "err", err)
 		return inboxDispatchRetry
 	}
+	// Task 221: with a merge mode armed, the picked item may become the carrier
+	// of its whole drain group (off mode returns it untouched at near-zero cost).
+	if ok {
+		meta = c.maybeMergeInboxDispatchGroup(meta)
+	}
 	c.inbox.mu.Lock()
 	beforeSubmit := c.inbox.beforeDispatchSubmit
 	c.inbox.mu.Unlock()

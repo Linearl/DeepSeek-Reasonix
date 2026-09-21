@@ -618,6 +618,36 @@ func (c *Config) SetExperimentalSessionCollab(enabled bool) error {
 	return nil
 }
 
+// NormalizeCollabInboxMerge clamps a merge mode into the legal tri-state
+// (task 221). Anything unknown reads as "off", so a hand-edited config can
+// never arm a mode the dispatcher does not implement.
+func NormalizeCollabInboxMerge(mode string) string {
+	switch mode {
+	case "same_sender", "all":
+		return mode
+	default:
+		return "off"
+	}
+}
+
+// SetCollabInboxMerge sets the inbox drain merge mode (task 221): off |
+// same_sender | all. Desktop keeps a settings-view mirror; Agent is the value
+// the host reads at boot to arm the dispatcher.
+func (c *Config) SetCollabInboxMerge(mode string) error {
+	mode = NormalizeCollabInboxMerge(mode)
+	c.Desktop.CollabInboxMerge = mode
+	c.Agent.CollabInboxMerge = mode
+	return nil
+}
+
+// SetCollabGuidanceMerge toggles the guidance shelf's manual "merge next"
+// button (task 153). Off by default: the queue then behaves exactly as before.
+func (c *Config) SetCollabGuidanceMerge(enabled bool) error {
+	c.Desktop.CollabGuidanceMerge = enabled
+	c.Agent.CollabGuidanceMerge = enabled
+	return nil
+}
+
 // SetDesktopMetrics sets whether the desktop sends aggregate desktop metrics.
 func (c *Config) SetDesktopMetrics(enabled bool) error {
 	c.Desktop.Metrics = &enabled

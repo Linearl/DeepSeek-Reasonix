@@ -307,8 +307,19 @@ func (a *App) enqueueInbox(tabID string, intent sessioninbox.InboxIntent, displa
 }
 
 func (a *App) enqueueInboxWithController(tabID string, ctrl control.SessionAPI, intent sessioninbox.InboxIntent, display, submit string, invocations []InvocationRequest, idempotency string, trySteer bool, turnID, expectedPath string) (InboxReceiptView, error) {
+	return a.enqueueInboxWithControllerSource(tabID, ctrl, intent, display, submit, invocations, idempotency, trySteer, turnID, expectedPath, "desktop")
+}
+
+// enqueueInboxWithControllerSource is enqueueInboxWithController with an
+// explicit envelope Source. Task 221's drain merge groups by Source, so the
+// collaboration pump stamps "collab:<fromContactID>" to make the sender
+// structurally addressable instead of only inside the message text.
+func (a *App) enqueueInboxWithControllerSource(tabID string, ctrl control.SessionAPI, intent sessioninbox.InboxIntent, display, submit string, invocations []InvocationRequest, idempotency string, trySteer bool, turnID, expectedPath, source string) (InboxReceiptView, error) {
 	if ensurer, ok := ctrl.(interface{ EnsureSessionPath() }); ok {
 		ensurer.EnsureSessionPath()
+	}
+	if strings.TrimSpace(source) == "" {
+		source = "desktop"
 	}
 	submit = strings.TrimSpace(submit)
 	display = strings.TrimSpace(display)
@@ -324,7 +335,7 @@ func (a *App) enqueueInboxWithController(tabID string, ctrl control.SessionAPI, 
 		Display:             display,
 		Raw:                 submit,
 		Submit:              submit,
-		Source:              "desktop",
+		Source:              source,
 		Idempotency:         strings.TrimSpace(idempotency),
 		Invocations:         controlInvocationRequests(invocations),
 	}

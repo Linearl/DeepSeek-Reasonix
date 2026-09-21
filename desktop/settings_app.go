@@ -360,6 +360,7 @@ type SettingsView struct {
 	SessionCollabHopLimit      int  `json:"sessionCollabHopLimit"`
 	ExperimentalSessionCollab  bool `json:"experimentalSessionCollab"`
 	ExperimentalAutoLoadOlder  bool `json:"experimentalAutoLoadOlder"`
+	CollabInboxMerge           string `json:"collabInboxMerge"`
 
 	VisionModel                  string                     `json:"visionModel"`
 	WebSearchModel               string                     `json:"webSearchModel"`
@@ -462,6 +463,9 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalAutoLoadOlder exposes the scroll-driven history trigger (fork
 	// task 160). The runtime flag lives on [agent]; this view mirrors it.
 	ExperimentalAutoLoadOlder bool `json:"experimentalAutoLoadOlder"`
+	// CollabInboxMerge exposes the inbox drain merge tri-state (task 221):
+	// off | same_sender | all. The runtime value lives on [agent].
+	CollabInboxMerge string `json:"collabInboxMerge"`
 	// ExperimentalLocalServer exposes the Settings → 本地服务 page (task 130).
 	ExperimentalLocalServer bool `json:"experimentalLocalServer"`
 	// ExperimentalPathRules enables structured path-scope evaluation (task 134).
@@ -1132,6 +1136,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.SessionCollabHopLimit = cfg.Desktop.SessionCollabHopLimit
 		view.ExperimentalSessionCollab = cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab
 		view.ExperimentalAutoLoadOlder = cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder
+		view.CollabInboxMerge = config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge)
 		view.ExperimentalLocalServer = cfg.Desktop.ExperimentalLocalServer
 		view.ExperimentalPathRules = cfg.Desktop.ExperimentalPathRules
 		return view
@@ -1216,6 +1221,7 @@ func (a *App) Settings() SettingsView {
 		SessionCollabHopLimit:        cfg.Desktop.SessionCollabHopLimit,
 		ExperimentalSessionCollab:    cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
 		ExperimentalAutoLoadOlder:    cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
+		CollabInboxMerge:             config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge),
 		ExperimentalLocalServer:      cfg.Desktop.ExperimentalLocalServer,
 		ExperimentalPathRules:        cfg.Desktop.ExperimentalPathRules,
 		MaxCachedTabs:                cfg.Desktop.MaxCachedTabs,
