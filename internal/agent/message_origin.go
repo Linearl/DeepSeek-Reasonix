@@ -35,7 +35,10 @@ func HostGeneratedUserMessage(content string) provider.Message {
 
 // IsHostProtocolMessage reports whether a host-generated user message is internal
 // protocol rather than user-explainable guidance. Compaction briefings are a machine
-// contract and must never reach a transcript.
+// contract and must never reach a transcript. Pinned-context revisions are the same
+// class of machine contract: host-authored standing-context updates the model applies
+// silently — rendering one as a transcript row leaked raw XML into the history
+// (pinned-context pre-existing red, fixed alongside task 200).
 //
 // Everything else the host injects is guidance the user is entitled to see —
 // readiness catch-up, the plan research gate, finalization nudges, goal redirects,
@@ -44,6 +47,9 @@ func HostGeneratedUserMessage(content string) provider.Message {
 func IsHostProtocolMessage(msg provider.Message) bool {
 	if !IsHostGeneratedUserMessage(msg) {
 		return false
+	}
+	if IsPinnedContextRevision(msg) {
+		return true
 	}
 	return IsCompactionBriefingInstruction(UserMessageText(msg))
 }

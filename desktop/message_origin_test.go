@@ -26,10 +26,14 @@ func TestCurrentMessageOriginIsAuthoritativeAcrossDesktopHistory(t *testing.T) {
 	if len(turns) != 1 || turns[0] != 7 {
 		t.Fatalf("checkpoint turns = %v, want [7]", turns)
 	}
+	// Task 172 (a8088919b) made host guidance visible as a notice row; the
+	// host-authored continuation therefore renders as a notice, while it
+	// still never counts as a user turn (the two assertions above).
 	history := historyMessages(msgs, identityPromptDisplay)
-	if len(history) != 3 || history[0].Role != "user" || history[0].Content != quotedHostText ||
-		history[2].Role != "notice" || history[2].Content != "↪ use the smaller patch" {
-		t.Fatalf("history = %+v, want quoted host text plus one steer notice", history)
+	if len(history) != 4 || history[0].Role != "user" || history[0].Content != quotedHostText ||
+		history[2].Role != "notice" || history[2].Content != "↪ use the smaller patch" ||
+		history[3].Role != "notice" || history[3].Content != "↪ innocent looking continuation" {
+		t.Fatalf("history = %+v, want quoted host text plus steer and host-continuation notices", history)
 	}
 }
 
