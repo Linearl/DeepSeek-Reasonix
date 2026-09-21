@@ -615,7 +615,7 @@ func (t *UseCapabilityTool) CloneForAgent(ledger *capability.Ledger, audit *capa
 func (*UseCapabilityTool) Name() string { return tool.HostUseCapability }
 
 func (*UseCapabilityTool) Description() string {
-	return "Fixed-schema capability proxy. Prefer search(query, limit<=8), then inspect one exact capability, then call it. list is a compact diagnostic inventory only. Supports stable ids such as tool:grep, skill:review, mcp-tool:server/tool, task:subagent, workflow:name, and web:/lsp:/session:/memory: namespaces. memory:remember saves facts (description+body required; activation=\"relevant\" on create; omit activation on update; \"pinned\" only if user asks); memory:forget(name); tool:memory(operation=search|read|list). decline records a reason for a prefer capability. Independent list/search/inspect calls are read-only and may be issued together. Calls keep the provider-visible schema fixed; real writers still pass permission, plan mode, sandbox, write-path, and workspace-lease checks."
+	return "Fixed-schema capability proxy. Prefer search(query, limit<=8), then inspect one exact capability, then call it. list is a compact diagnostic inventory only. Supports stable ids such as tool:grep, skill:review, mcp-tool:server/tool, task:subagent, workflow:name, and web:/lsp:/session:/memory: namespaces. memory:remember saves facts (description+body required; activation=\"relevant\" on create; omit activation on update; \"pinned\" only if user asks); memory:forget(name); tool:memory(operation=search|read|list). decline records a reason for a prefer capability. Independent list/search/inspect calls are read-only and may be issued together. Calls keep the provider-visible schema fixed; real writers still pass permission, plan mode, sandbox, write-path, and workspace-lease checks. ARGUMENT PACKING (common mistake): action and capability_id are TOP-LEVEL parameters of this tool. For action=call, the `arguments` value must be the TARGET TOOL'S OWN argument object exactly (e.g. {\"description\":..., \"body\":...} for memory:remember) — never wrap another {arguments:..., capability_id:...} envelope inside it. Error self-diagnosis: \"capability_id is required\" means the top-level capability_id was missing; \"argument validation failed for <tool>: required ...\" means the arguments value is not the target tool's own parameter object (check for a double-wrapped envelope)."
 }
 
 // declineCapabilityIDs merges the single id and the batch list into a stable,
@@ -667,7 +667,7 @@ func (*UseCapabilityTool) Schema() json.RawMessage {
 			"capability_ids":{"type":"array","items":{"type":"string"},"description":"Fork: action=decline only. Decline several capabilities in one call instead of one call per id."},
 			"query":{"type":"string","description":"Local catalog query required for action=search. No process or network is started."},
 			"limit":{"type":"integer","minimum":1,"maximum":8,"default":5,"description":"Maximum search results; defaults to 5."},
-			"arguments":{"type":"object","description":"Raw MCP tool arguments for action=call"},
+			"arguments":{"type":"object","description":"For action=call: the TARGET TOOL'S OWN argument object, passed through unchanged (e.g. {\"description\":..., \"body\":...} for memory:remember). Do NOT wrap capability_id, action, or another arguments envelope inside it — those are top-level parameters of this tool, not part of the target arguments."},
 			"reason":{"type":"string","description":"Required non-empty reason when action=decline"}
 		},
 		"required":["action"],
