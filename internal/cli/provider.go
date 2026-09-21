@@ -38,6 +38,9 @@ func (m *chatTUI) openProviderPicker() {
 		if !p.Configured() {
 			continue
 		}
+		if p.Hidden {
+			continue
+		}
 		models := p.ChatModelList()
 		if len(models) == 0 {
 			models = p.ModelList()

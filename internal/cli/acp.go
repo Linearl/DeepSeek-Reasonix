@@ -405,6 +405,9 @@ func acpModelOptions(cfg *config.Config) ([]acp.SessionConfigSelectOption, []acp
 		if !p.Configured() {
 			continue
 		}
+		if p.Hidden {
+			continue
+		}
 		for _, model := range p.ChatModelList() {
 			ref := p.Name + "/" + model
 			options = append(options, acp.SessionConfigSelectOption{
