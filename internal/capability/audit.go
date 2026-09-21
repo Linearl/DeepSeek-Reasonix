@@ -50,8 +50,12 @@ type DiscoveryAudit struct {
 }
 
 // ArgumentAudit is host-side schema validation without argument values.
+// SelfHealed counts double-enveloped arguments values the host unwrapped
+// before dispatch (task 212 defense in depth); it never increments for
+// plainly valid calls.
 type ArgumentAudit struct {
 	Validations, Fail, Skip, RemoteDispatch int
+	SelfHealed                              int
 }
 
 // LoopGuardAudit retains the metrics wire layout. RepeatFailures and
@@ -123,6 +127,18 @@ func (a *Audit) RecordArgumentValidation(failed, skipped, remoteDispatched bool)
 	if remoteDispatched {
 		a.Arguments.RemoteDispatch++
 	}
+}
+
+// RecordArgumentSelfHeal counts a double-enveloped arguments value the host
+// unwrapped itself before dispatch (task 212). It is observable on purpose:
+// self-healing must stay visible in the audit, never silent.
+func (a *Audit) RecordArgumentSelfHeal() {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.Arguments.SelfHealed++
 }
 
 // RecordRemoteDispatch marks that a host-validated call reached tools/call.

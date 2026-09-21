@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -95,6 +96,14 @@ func argumentValidationMessage(plan *toolCallPlan, result tool.ArgumentValidatio
 		}
 		fmt.Fprintf(&b, "\n- %s: %s; expected %s", path, violation.Keyword, violation.Expected)
 	}
+	// Task 216: show the received shape next to a minimal valid shape so one
+	// round of feedback is enough to self-correct.
+	if actual := describeActualArguments(plan.execArgs); actual != "" {
+		fmt.Fprintf(&b, "\nActual arguments received: %s", actual)
+	}
+	if expected := minimalValidExample(plan.execTool); expected != "" {
+		fmt.Fprintf(&b, "\nMinimal valid arguments example: %s", expected)
+	}
 	if id := strings.TrimSpace(plan.resolved.CapabilityID); id != "" {
 		fmt.Fprintf(&b, "\nThe target was not executed. Correct the target parameters inside %s.arguments; keep the outer capability call envelope.", plan.call.Name)
 		if strings.HasPrefix(id, "skill:") && plan.permName == "run_skill" {
@@ -112,7 +121,116 @@ func argumentValidationMessage(plan *toolCallPlan, result tool.ArgumentValidatio
 	if hasRedundantArgumentWrapper(plan.execTool, plan.execArgs) {
 		b.WriteString("\nThe sole \"arguments\" wrapper does not match this tool's schema; its inner object matches the expected parameters. Remove that one wrapper from the target parameters when retrying; keep any outer capability call envelope.")
 	}
+	if _, enveloped := detectDoubleEnvelopedArguments(plan.execArgs); enveloped {
+		b.WriteString("\nDouble-enveloped call detected: the arguments value is itself a full use_capability call envelope. Take the INNER \"arguments\" value and pass it directly as use_capability.arguments; capability_id and action belong on the use_capability level, not inside arguments.")
+	}
 	return truncateValidationMessage(b.String())
+}
+
+// describeActualArguments renders what the host received at the top level of
+// the arguments value (task 216): a sorted key list for objects, a key list
+// for JSON-string-wrapped objects. Anything that cannot be parsed as a single
+// JSON value is described structurally only — echoing raw argument text here
+// would leak argument values into the provider-visible error.
+func describeActualArguments(raw json.RawMessage) string {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return "(absent)"
+	}
+	if strings.HasPrefix(trimmed, "{") {
+		if keys, ok := topLevelArgumentKeys(trimmed); ok {
+			return "an object with top-level keys [" + strings.Join(keys, ", ") + "]"
+		}
+		return "(not a single parseable JSON object)"
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		inner := strings.TrimSpace(s)
+		if strings.HasPrefix(inner, "{") {
+			if keys, ok := topLevelArgumentKeys(inner); ok {
+				return "a JSON string wrapping an object with top-level keys [" + strings.Join(keys, ", ") + "]"
+			}
+		}
+		return "a JSON string, not an object"
+	}
+	return "(not a JSON object)"
+}
+
+func topLevelArgumentKeys(objectJSON string) ([]string, bool) {
+	var object map[string]json.RawMessage
+	if json.Unmarshal([]byte(objectJSON), &object) != nil || object == nil {
+		return nil, false
+	}
+	keys := make([]string, 0, len(object))
+	for key := range object {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys, true
+}
+
+// minimalValidExample builds the smallest arguments object that would satisfy
+// the target schema: required properties only, with conservative placeholder
+// values. It returns "" when required members cannot be determined safely
+// (missing or combinational schema), leaving the guidance to the violation
+// lines instead of inventing a wrong example.
+func minimalValidExample(target tool.Tool) string {
+	if target == nil {
+		return ""
+	}
+	var schema map[string]json.RawMessage
+	if json.Unmarshal(target.Schema(), &schema) != nil || string(schema["type"]) != `"object"` {
+		return ""
+	}
+	for _, key := range []string{"$ref", "$dynamicRef", "$recursiveRef", "allOf", "anyOf", "oneOf", "not", "if", "then", "else", "patternProperties", "dependencies", "dependentSchemas"} {
+		if _, exists := schema[key]; exists {
+			return ""
+		}
+	}
+	var properties map[string]struct {
+		Type string `json:"type"`
+		Enum []any  `json:"enum"`
+	}
+	if json.Unmarshal(schema["properties"], &properties) != nil || properties == nil {
+		return ""
+	}
+	var required []string
+	if json.Unmarshal(schema["required"], &required) != nil || len(required) == 0 {
+		return ""
+	}
+	example := make(map[string]any, len(required))
+	for _, name := range required {
+		spec, exists := properties[name]
+		if !exists || spec.Type == "" {
+			example[name] = "…"
+			continue
+		}
+		switch spec.Type {
+		case "string":
+			if len(spec.Enum) > 0 {
+				if s, ok := spec.Enum[0].(string); ok {
+					example[name] = s
+					continue
+				}
+			}
+			example[name] = "…"
+		case "integer", "number":
+			example[name] = 0
+		case "boolean":
+			example[name] = false
+		case "array":
+			example[name] = []any{}
+		case "object":
+			example[name] = map[string]any{}
+		default:
+			example[name] = "…"
+		}
+	}
+	b, err := json.Marshal(example)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 // hasRedundantArgumentWrapper is a conservative, value-free hint, not a

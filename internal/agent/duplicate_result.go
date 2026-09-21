@@ -25,6 +25,13 @@ func (a *Agent) dedupeProviderVisibleResult(callID, raw, visible string) string 
 	if a == nil || strings.TrimSpace(raw) == "" {
 		return visible
 	}
+	// Task 216: error results are never deduplicated. A retried call that
+	// fails with the identical text must still surface that failure —
+	// swallowing the repeated error removes the "still wrong" signal and
+	// leaves the model unable to self-correct.
+	if strings.HasPrefix(raw, "error:") {
+		return visible
+	}
 	sum := sha256.Sum256([]byte(raw))
 	fp := hex.EncodeToString(sum[:12])
 	prev, seen := a.turn.loop.rememberFingerprint(fp, callID)

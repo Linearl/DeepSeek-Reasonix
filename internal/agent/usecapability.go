@@ -735,7 +735,30 @@ func (t *UseCapabilityTool) ResolveCall(ctx context.Context, args json.RawMessag
 		if id == sessionToolResultCapabilityID || id == sessionReadStrategyReceiptCapabilityID {
 			return t.resolveSessionCapability(id, p.Arguments, base)
 		}
-		return t.resolveCall(ctx, id, p.Arguments, base)
+		resolved, rerr := t.resolveCall(ctx, id, p.Arguments, base)
+		if rerr != nil {
+			return tool.ResolvedCall{}, rerr
+		}
+		// Task 212: object-shaped double envelopes resolve fine (the id is
+		// valid) but then fail the dispatch gate on the wrapped shape. When
+		// the received arguments cannot satisfy the target schema but the
+		// inner envelope arguments do, retry once with the unwrapped value.
+		// If the inner value also fails, keep the original resolution so the
+		// gate reports the arguments exactly as they were received.
+		if inner, ok := detectDoubleEnvelopedArguments(p.Arguments); ok &&
+			!targetAcceptsArguments(resolved.Target, resolved.Args) {
+			if healed, herr := t.resolveCall(ctx, id, inner, base); herr == nil &&
+				targetAcceptsArguments(healed.Target, inner) {
+				t.noteDoubleEnvelopeSelfHeal(id)
+				return healed, nil
+			}
+		}
+		if p.healedDoubleEnvelope {
+			// parseUseCapabilityArgs already unwrapped a stringified
+			// envelope for an MCP target; record it once it dispatched.
+			t.noteDoubleEnvelopeSelfHeal(id)
+		}
+		return resolved, nil
 	default:
 		return tool.ResolvedCall{}, capabilityInputErrorf("unknown action %q; use list, search, inspect, call, or decline", p.Action)
 	}
