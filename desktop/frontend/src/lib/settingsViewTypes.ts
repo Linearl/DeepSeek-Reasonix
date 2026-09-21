@@ -45,6 +45,10 @@ export interface SettingsView {
   sessionCollabHopLimit?: number;
   // Fork task 160: scroll-driven "load older" trigger at the transcript top.
   experimentalAutoLoadOlder?: boolean;
+  // Task 221: inbox drain merge tri-state (off | same_sender | all).
+  collabInboxMerge?: string;
+  // Task 153: guidance shelf manual "merge next" button.
+  collabGuidanceMerge?: boolean;
   // Task 19: multi-session collaboration experiment.
   experimentalSessionCollab?: boolean;
   visionModel: string;

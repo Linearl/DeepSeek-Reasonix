@@ -507,20 +507,51 @@ func (s *Store) NextQueued() (InboxItemMeta, bool) {
 	if s.man == nil || s.man.Paused || s.readonly {
 		return InboxItemMeta{}, false
 	}
-	for _, it := range s.man.Items {
-		if it.State == StateQueued && it.Intent == IntentFollowup {
-			return it, true
+	items := queuedDispatchItemsLocked(s.man)
+	if len(items) == 0 {
+		return InboxItemMeta{}, false
+	}
+	return items[0], true
+}
+
+// QueuedDispatchItems returns every dispatchable queued item in the same
+// order NextQueued would admit them: queued follow-ups first (manifest FIFO),
+// then any other queued intent (steers the user wants as turns). Task 221's
+// drain-time merge reads this list to pick a merge group; it never reorders
+// admission on its own.
+func (s *Store) QueuedDispatchItems() []InboxItemMeta {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if release, err := s.beginDiskTransactionLocked(); err == nil {
+		release()
+	}
+	if s.man == nil || s.man.Paused || s.readonly {
+		return nil
+	}
+	return queuedDispatchItemsLocked(s.man)
+}
+
+func queuedDispatchItemsLocked(man *manifest) []InboxItemMeta {
+	if man == nil {
+		return nil
+	}
+	var followups, others []InboxItemMeta
+	for _, it := range man.Items {
+		if it.State != StateQueued {
+			continue
 		}
 		// Rejected steers that remain intent=steer but queued are still follow-ups
 		// for the dispatcher after ConvertIntent; only followup intent is admitted.
-	}
-	// Also admit steer-intent items that are still queued (user wants them as turns).
-	for _, it := range s.man.Items {
-		if it.State == StateQueued {
-			return it, true
+		if it.Intent == IntentFollowup {
+			followups = append(followups, it)
+		} else {
+			others = append(others, it)
 		}
 	}
-	return InboxItemMeta{}, false
+	return append(followups, others...)
 }
 
 // Pause marks paused=true without requiring a mutation check beyond schema.

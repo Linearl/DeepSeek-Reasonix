@@ -163,6 +163,8 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "experimental_perf_monitor = %v   # desktop: settings-view mirror of [agent] experimental_perf_monitor (task 184)\n", c.Desktop.ExperimentalPerfMonitor)
 		fmt.Fprintf(&b, "perf_monitor_interval_seconds = %d   # desktop: settings-view mirror of [agent] perf_monitor_interval_seconds (task 184; 0 = 5s)\n", c.Desktop.PerfMonitorIntervalSeconds)
 		fmt.Fprintf(&b, "session_collab_hop_limit = %d   # desktop: settings-view mirror of [agent] session_collab_hop_limit (task 204)\n", c.Desktop.SessionCollabHopLimit)
+		fmt.Fprintf(&b, "collab_inbox_merge = %q   # desktop: settings-view mirror of [agent] collab_inbox_merge (task 221; off | same_sender | all)\n", NormalizeCollabInboxMerge(c.Desktop.CollabInboxMerge))
+		fmt.Fprintf(&b, "collab_guidance_merge = %v   # desktop: settings-view mirror of [agent] collab_guidance_merge (task 153)\n", c.Desktop.CollabGuidanceMerge)
 		fmt.Fprintf(&b, "telemetry = %v   # desktop: anonymous launch ping + scrubbed next-launch native crash diagnostics; never content\n", c.DesktopTelemetry())
 		fmt.Fprintf(&b, "metrics = %v   # desktop: aggregate quality/lifecycle metrics (anonymous signal/bucket counts); never content\n", c.DesktopMetrics())
 		// A non-nil empty slice is intentional: provider_access = [] means the
@@ -350,6 +352,8 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "session_collab_allow_create = %v   # task 173: expose create_collab_session\n", c.Agent.SessionCollabAllowCreate)
 	fmt.Fprintf(&b, "session_collab_allow_steer = %v   # task 173: allow delivery=steer on talk_to_session\n", c.Agent.SessionCollabAllowSteer)
 	fmt.Fprintf(&b, "session_collab_daily_send_limit = %d   # task 173: per-session daily outgoing cap (0 = no cap)\n", c.Agent.SessionCollabDailySendLimit)
+	fmt.Fprintf(&b, "collab_inbox_merge = %q   # task 221: inbox drain merge mode (off | same_sender | all; default off)\n", NormalizeCollabInboxMerge(c.Agent.CollabInboxMerge))
+	fmt.Fprintf(&b, "collab_guidance_merge = %v   # task 153: guidance shelf manual merge-next button\n", c.Agent.CollabGuidanceMerge)
 	fmt.Fprintf(&b, "perf_monitor_retention_hours = %d   # task 184: how long samples are kept (default 48h)\n", c.Agent.PerfMonitorRetentionHours)
 	if len(c.Agent.PerfMonitorPaths) > 0 {
 		quoted := make([]string, 0, len(c.Agent.PerfMonitorPaths))

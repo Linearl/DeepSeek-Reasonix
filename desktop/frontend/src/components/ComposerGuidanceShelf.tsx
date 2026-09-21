@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp, CornerDownRight, Pencil, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Combine, CornerDownRight, Pencil, Trash2 } from "lucide-react";
 import {
   guidanceEditableInComposer,
   guidanceHasKnownPendingState,
@@ -48,6 +48,7 @@ export function ComposerGuidanceShelf({
   onSend,
   onDismiss,
   onEdit,
+  onMergeNext,
   onPreviewText,
 }: {
   recovery: InboxRecoveryNotice | null;
@@ -66,6 +67,12 @@ export function ComposerGuidanceShelf({
   onToggleExpanded: () => void;
   onSend: (item: PendingGuidance) => void;
   onDismiss: (item: PendingGuidance) => void;
+  /**
+   * Task 153: merge this entry with the one right after it (manual, one pair
+   * per click). Undefined when the experimental switch is off — the button
+   * then never renders and the shelf behaves exactly as before.
+   */
+  onMergeNext?: (item: PendingGuidance) => void;
   /**
    * Task 181: the pencil no longer edits in place — a queued guidance body is
    * multi-line (cross-session replies carry a header plus prose), and a one-line
@@ -183,6 +190,26 @@ export function ComposerGuidanceShelf({
                   )}
                   {editing && (
                     <span className="composer-guidance-item__badge">{t("composer.guidanceEditingBadge")}</span>
+                  )}
+                  {/*
+                   * Task 153: manual "merge next". Only when the experimental switch
+                   * is on (onMergeNext provided), a following entry exists, and this
+                   * row itself is still an actionable queue member; an in-flight or
+                   * delivering row can never merge, and the editing row hides the
+                   * button entirely (edit/merge are exclusive).
+                   */}
+                  {onMergeNext && index < items.length - 1 && !editing && !inFlight && !delivering && !unknownState && !needsRetry && !item.paused && (
+                    <Tooltip label={t("composer.guidanceMergeNext")}>
+                      <button
+                        className="composer-guidance-item__action"
+                        type="button"
+                        aria-label={t("composer.guidanceMergeNext")}
+                        disabled={disabled || readOnly || sendingId !== null || waitingForEarlier}
+                        onClick={() => onMergeNext(item)}
+                      >
+                        <Combine size={14} />
+                      </button>
+                    </Tooltip>
                   )}
                   <Tooltip label={actionLabel}>
                     <button

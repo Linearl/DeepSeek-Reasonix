@@ -14,7 +14,8 @@ import {
 import { app, onFilesDropped } from "../lib/bridge";
 import { steerInboxItemForActiveTurn } from "../lib/inboxSubmit";
 import { formatInboxError, isInboxItemMissing } from "../lib/inboxError";
-import { inboxScopeKey } from "../lib/composerInboxQueue";
+import { inboxScopeKey, mergeGuidanceTexts, mergeGuidanceWithNext } from "../lib/composerInboxQueue";
+import { useCollabGuidanceMergeEnabled } from "../lib/collabGuidanceMergePreference";
 import { useComposerInboxRefresh } from "../lib/useComposerInboxRefresh";
 import { useComposerImeGuard } from "../lib/useComposerImeGuard";
 import { useComposerCommandCatalog } from "../lib/useComposerCommandCatalog";
@@ -816,6 +817,8 @@ export function Composer({
   const pendingGuidanceRef = useRef<PendingGuidance[]>([]);
   const guidanceExpandedRef = useRef(false);
   const guidanceSendingIdRef = useRef<string | null>(null);
+  // Task 153: the manual "merge next" affordance lives behind an experiment.
+  const collabGuidanceMergeEnabled = useCollabGuidanceMergeEnabled();
   const [loadingPastChats, setLoadingPastChats] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const cancelSettlingDraftsRef = useRef(new Set<string>());
@@ -2401,6 +2404,44 @@ export function Composer({
           targetDraftKey,
           (items) => items.filter((queued) => queued.id !== item.id),
         );
+        return;
+      }
+      showToast(formatInboxError(error, locale), "warn");
+    }
+  };
+
+  // Task 153: merge this entry with the one right after it. The merged body is
+  // written to the FIRST entry's durable row (it keeps its id and queue
+  // position); the second row is deleted — but its text survives verbatim in
+  // the merged body, so nothing is lost. Local (unsent) rows only change the
+  // shelf state. This never triggers a send: the merged row waits for the user.
+  const mergeQueuedGuidance = async (item: PendingGuidance) => {
+    const targetDraftKey = activeDraftKeyRef.current;
+    const targetTabId = tabId || "";
+    const queue = pendingGuidanceRef.current;
+    const index = queue.findIndex((queued) => queued.id === item.id);
+    const next = index >= 0 ? queue[index + 1] : undefined;
+    if (!next) return;
+    try {
+      const currentBody = item.id.startsWith("local-")
+        ? (item.submitText.trim() || item.text.trim())
+        : await readGuidanceBody(item);
+      const nextBody = next.id.startsWith("local-")
+        ? (next.submitText.trim() || next.text.trim())
+        : await readGuidanceBody(next);
+      const merged = mergeGuidanceTexts(currentBody, nextBody);
+      if (!item.id.startsWith("local-")) {
+        await app.UpdateInboxItem(targetTabId, item.id, merged, merged);
+      }
+      if (!next.id.startsWith("local-")) {
+        await app.DeleteInboxItem(targetTabId, next.id);
+      }
+      updatePendingGuidanceForDraft(targetDraftKey, (queued) => mergeGuidanceWithNext(queued, item.id));
+    } catch (error) {
+      if (isInboxItemMissing(error)) {
+        // A row vanished mid-merge (picked up by another surface): refresh the
+        // shelf from the backend on the next nonce bump and let the user retry.
+        setGuidanceRetryNonce((value) => value + 1);
         return;
       }
       showToast(formatInboxError(error, locale), "warn");
@@ -4526,6 +4567,7 @@ export function Composer({
             onToggleExpanded={() => setGuidanceExpanded((value) => !value)}
             onSend={(item) => void sendQueuedGuidance(item)}
             onDismiss={(item) => void dismissQueuedGuidance(item)}
+            onMergeNext={collabGuidanceMergeEnabled ? (item) => void mergeQueuedGuidance(item) : undefined}
             onEdit={(item) => void beginGuidanceCompose(item)}
             onPreviewText={(item) => readGuidanceBody(item)}
           />

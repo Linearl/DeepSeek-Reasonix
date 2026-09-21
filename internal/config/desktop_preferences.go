@@ -79,6 +79,13 @@ type DesktopConfig struct {
 	// ExperimentalAutoLoadOlder is the settings-view mirror for
 	// Agent.ExperimentalAutoLoadOlder (fork task 160).
 	ExperimentalAutoLoadOlder bool   `toml:"experimental_auto_load_older"`
+	// CollabInboxMerge is the settings-view mirror for Agent.CollabInboxMerge
+	// (task 221): off | same_sender | all.
+	CollabInboxMerge         string `toml:"collab_inbox_merge"`
+	// CollabGuidanceMerge is the settings-view mirror for
+	// Agent.CollabGuidanceMerge (task 153): the manual "merge next" button in
+	// the guidance shelf.
+	CollabGuidanceMerge      bool   `toml:"collab_guidance_merge"`
 	AutopilotMaxRuntime       string `toml:"autopilot_max_runtime"`    // Go duration; required when autopilot is on
 	AutopilotApprovalGrace    string `toml:"autopilot_approval_grace"` // wait for a human before the reviewer decides; empty = 15s
 	// MaxCachedTabs bounds how many tab states the frontend keeps resident

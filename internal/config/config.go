@@ -1411,6 +1411,18 @@ type AgentConfig struct {
 	// be read off a time series instead of a single snapshot. Off by default: it
 	// is pure observation, but it does write a file while it runs.
 	ExperimentalPerfMonitor bool `toml:"experimental_perf_monitor"`
+	// CollabInboxMerge controls how the durable inbox drains multiple queued
+	// items (task 221). "off" (default) keeps the current one-item-per-dispatch
+	// FIFO; "same_sender" merges queued items that share an envelope Source
+	// (e.g. one collaborating session) into a single mechanical concatenation;
+	// "all" merges every queued item in the drain group. Merging happens at
+	// dispatch time only — it never waits to batch, and each merged segment
+	// carries its source item id so the original blobs stay traceable.
+	CollabInboxMerge string `toml:"collab_inbox_merge"`
+	// CollabGuidanceMerge enables the guidance shelf's manual "merge next"
+	// button (task 153). Off by default: the queue then behaves exactly as
+	// before — one row per message, no merge affordance.
+	CollabGuidanceMerge bool `toml:"collab_guidance_merge"`
 	// PerfMonitorIntervalSeconds is the sampler interval; 0 keeps the built-in
 	// default (5s) and values outside 1..300 are clamped.
 	PerfMonitorIntervalSeconds int `toml:"perf_monitor_interval_seconds"`
