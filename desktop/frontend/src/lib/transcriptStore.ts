@@ -67,6 +67,19 @@ export interface TranscriptBackend {
 /** Grace window after a tab stops being active before its sessions become eviction candidates. */
 const DEFAULT_EVICT_COOLDOWN_MS = 5 * 60_000;
 
+/**
+ * Task 190-M1 (hydrate veto context): a tab that left the active slot within
+ * this window is exempt from eviction entirely. Task 196 traced "switch back
+ * to a large session, full reload" to the byte budget breaching on that
+ * session alone: once its cooldown lapsed, the budget loop evicted it no
+ * matter how recently it was active. The exemption keeps a recently-active
+ * large session resident across a switch-away/switch-back. It is deliberately
+ * hard — budgets may run over while it holds — because the window itself
+ * closes the loop: every tab ages out and then evicts as usual. Default 30
+ * minutes.
+ */
+const DEFAULT_RECENT_ACTIVE_EXEMPT_MS = 30 * 60_000;
+
 export interface TranscriptStoreOptions {
   /** Resident sessions with records (unpinned). Default 3. */
   maxResidentSessions?: number;
@@ -81,6 +94,13 @@ export interface TranscriptStoreOptions {
    * victim and its scroll anchor is lost mid-browse. Default 5 minutes.
    */
   evictCooldownMs?: number;
+  /**
+   * Task 190-M1: a tab that left the active slot within this window is exempt
+   * from both eviction loops (count and byte budget). The exemption is hard —
+   * budgets may run over while it holds — because the window itself closes
+   * the loop: every tab ages out and then evicts as usual. Default 30 minutes.
+   */
+  recentActiveExemptMs?: number;
 }
 
 export interface TranscriptProjection {
@@ -418,6 +438,7 @@ export class TranscriptStore {
   private readonly markdown: TranscriptMarkdownCache;
   private historyEvictions = 0;
   private readonly evictCooldownMs: number;
+  private readonly recentActiveExemptMs: number;
   private readonly lastActiveAt = new Map<string, number>();
 
   constructor(backend: TranscriptBackend, options: TranscriptStoreOptions = {}) {
@@ -426,6 +447,7 @@ export class TranscriptStore {
     this.historyBodyBudgetBytes = Math.max(0, options.historyBodyBudgetBytes ?? DEFAULT_HISTORY_BODY_BUDGET);
     this.markdown = new TranscriptMarkdownCache(Math.max(0, options.markdownBudgetBytes ?? DEFAULT_MARKDOWN_BUDGET));
     this.evictCooldownMs = Math.max(0, options.evictCooldownMs ?? DEFAULT_EVICT_COOLDOWN_MS);
+    this.recentActiveExemptMs = Math.max(0, options.recentActiveExemptMs ?? DEFAULT_RECENT_ACTIVE_EXEMPT_MS);
   }
 
   // ── session identity / LRU ────────────────────────────────────────────────
@@ -533,6 +555,13 @@ export class TranscriptStore {
     });
   }
 
+  /** True when the tab left the active slot inside the recent-active window. */
+  private recentlyActive(tabId: string, now: number): boolean {
+    if (this.recentActiveExemptMs <= 0) return false;
+    const at = this.lastActiveAt.get(tabId);
+    return at !== undefined && now - at < this.recentActiveExemptMs;
+  }
+
   private enforceBudgets(): void {
     const now = Date.now();
     const evictable = (): SessionTranscript[] =>
@@ -543,7 +572,16 @@ export class TranscriptStore {
           // Eviction cooldown: a tab that just stopped being active keeps its
           // scroll anchor live for a grace window — the user may switch right
           // back and scroll (see noteActiveTab's lastActiveAt stamp).
-          now - (this.lastActiveAt.get(s.tabId) ?? 0) >= this.evictCooldownMs,
+          now - (this.lastActiveAt.get(s.tabId) ?? 0) >= this.evictCooldownMs &&
+          // Task 190-M1: a tab that left the active slot inside the
+          // recentActiveExemptMs window is exempt outright. Task 196 traced
+          // "switch back to a large session, full reload" to the byte budget
+          // breaching on that session alone: once its cooldown lapsed the
+          // budget loop evicted it no matter how recently it was active. The
+          // exemption is deliberately hard — budgets may run over while it
+          // holds — because the window itself closes the loop: every tab
+          // ages out of it, and then evicts as usual, oldest first.
+          !this.recentlyActive(s.tabId, now),
       );
     let candidates = evictable();
     // Task 123 phase 2: weighted LRU. Keep pure recency order as the primary
@@ -635,6 +673,7 @@ export class TranscriptStore {
       totalTurns: session.totalTurns,
       generation: session.generation,
       pinned: this.isPinned(session),
+      recentlyActive: this.recentlyActive(session.tabId, Date.now()),
     };
   }
 
@@ -650,6 +689,7 @@ export class TranscriptStore {
         items: session.itemsCache?.length ?? 0,
         totalTurns: session.totalTurns,
         pinned: this.isPinned(session),
+        recentlyActive: this.recentlyActive(session.tabId, Date.now()),
       });
     }
     return out;
