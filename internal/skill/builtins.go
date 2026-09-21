@@ -293,8 +293,9 @@ straight to the matching expert and the secretariat never touches it.
   project), with title, optional purpose, topic_id, and contact_id. Purpose
   registration is optional — the title identifies the conversation; a duty line
   just makes task assignment easier. Newest first, page with ` + "`limit`" + `.
-- ` + "`search_sessions(query)`" + ` keyword-searches the 通讯录 (title/purpose). Use it
-  when you know part of the name but it may not be on the first 200 rows.
+- Keyword search lives on the same tool: ` + "`list_addressable_sessions(query)`" + `
+  filters the 通讯录 (title/purpose/ids). Use it when you know part of the name
+  but it may not be on the first 200 rows.
 - Deleted sessions (.trash) never appear. Retired archive is opt-in via
   ` + "`archived=true`" + `; do not assume an archived conversation is still a live
   collaborator.
@@ -341,20 +342,20 @@ straight to the matching expert and the secretariat never touches it.
   - ` + "`hop`" + `: 0 when you start a chain. When you relay or answer, you do not need
     to compute it — the system derives the depth from the thread you name and
     ignores the number you pass. What it does require is the thread id.
-- ` + "`talk_to_session_sync`" + ` when you genuinely need the answer before you can
+- ` + "`talk_to_session(..., wait=true)`" + ` when you genuinely need the answer before you can
   continue a short step. It waits up to ` + "`timeout_ms`" + ` (default 30s, max 120s).
   A ` + "`status=\"timeout\"`" + ` result is NOT a failure: the request is queued and the
   answer still arrives. Do not retry on timeout — continue or wait for the reply.
-  Prefer the async form for anything long.
+  Prefer the async form (no wait) for anything long.
 - Create the card **before** dispatching, and stamp its id on the message:
-  ` + "`create_task_card(title, body, assignee)`" + ` then
+  ` + "`task_card(action=\"create\", title, body, assignee)`" + ` then
   ` + "`talk_to_session(..., card_id=<id>)`" + `.
 - Show the card in the conversation inside a ` + "```taskcard" + ` fence so the user can
   see who is doing what.
 
 ## Status and failure
 
-- ` + "`update_task_card`" + ` on every state change: pending → running → done, or
+- ` + "`task_card(action=\"update\", id, status, result)`" + ` on every state change: pending → running → done, or
   → blocked, or → failed. A card left on running is a lie.
 - **Failures are never silent.** Record ` + "`error`" + ` on the card, set the status to
   failed, and tell the requester what failed and what you tried.
