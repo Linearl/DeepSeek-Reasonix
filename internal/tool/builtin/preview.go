@@ -52,9 +52,12 @@ func (w writeFile) Preview(ctx context.Context, args json.RawMessage) (diff.Chan
 // when it doesn't — so a preview never shows a change the call couldn't make.
 func (e editFile) Preview(ctx context.Context, args json.RawMessage) (diff.Change, error) {
 	var p struct {
-		Path      string `json:"path"`
-		OldString string `json:"old_string"`
-		NewString string `json:"new_string"`
+		Path       string `json:"path"`
+		OldString  string `json:"old_string"`
+		NewString  string `json:"new_string"`
+		LineRange  string `json:"line_range"`
+		AnchorHead string `json:"anchor_head"`
+		AnchorTail string `json:"anchor_tail"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return diff.Change{}, fmt.Errorf("invalid args: %w", err)
@@ -62,8 +65,11 @@ func (e editFile) Preview(ctx context.Context, args json.RawMessage) (diff.Chang
 	if p.Path == "" {
 		return diff.Change{}, fmt.Errorf("path is required")
 	}
-	if p.OldString == "" {
-		return diff.Change{}, fmt.Errorf("old_string is required")
+	if p.LineRange != "" && p.OldString != "" {
+		return diff.Change{}, fmt.Errorf("pass either old_string or line_range, not both")
+	}
+	if p.LineRange == "" && p.OldString == "" {
+		return diff.Change{}, fmt.Errorf("old_string is required (or use line_range with source_token for a whole-block replace/delete)")
 	}
 	p.Path = resolveIn(e.workDir, p.Path)
 	if err := confinePreview(effectiveWriteRoots(ctx, e.rootSet, e.roots), e.guard, e.managed, p.Path); err != nil {
@@ -75,6 +81,14 @@ func (e editFile) Preview(ctx context.Context, args json.RawMessage) (diff.Chang
 		return diff.Change{}, fmt.Errorf("read %s: %w", p.Path, err)
 	}
 	content := src.content
+
+	if p.LineRange != "" {
+		updated, _, lerr := applyLineRangeEdit(content, p.LineRange, p.AnchorHead, p.AnchorTail, p.NewString)
+		if lerr != nil {
+			return diff.Change{}, lerr
+		}
+		return diff.Build(p.Path, content, updated, diff.Modify), nil
+	}
 
 	applied := applyOldStringEdit(content, p.OldString, p.NewString, false)
 	switch {
