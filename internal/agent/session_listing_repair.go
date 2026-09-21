@@ -82,8 +82,15 @@ func RepairSessionListingProjection(ctx context.Context, path string) (result Se
 	if SessionPathInTrash(path) {
 		return SessionListingRepairResult{Status: SessionListingRepairUnsupported}, nil
 	}
+	unlock, err := lockSessionListingRepair(path)
+	if err != nil {
+		return SessionListingRepairResult{}, err
+	}
+	// Audit M1: load the branch meta under the repair locks so the RMW window
+	// matches the rest of the meta sidecars; the read is cheap.
 	meta, metaOK, err := LoadBranchMeta(path)
 	if err != nil {
+		unlock()
 		if isDamagedSessionRepairError(err) {
 			return SessionListingRepairResult{Status: SessionListingRepairDamaged}, nil
 		}
@@ -92,13 +99,13 @@ func RepairSessionListingProjection(ctx context.Context, path string) (result Se
 	if !metaOK {
 		meta = BranchMeta{ID: BranchID(path)}
 	}
-	unlock, err := lockSessionListingRepair(path)
-	if err != nil {
-		return SessionListingRepairResult{}, err
-	}
-	result, handled, err := repairSessionListingFromIndex(path, meta)
-	// The index branch is cheap; release the locks before anything slow.
-	unlock()
+	var handled bool
+	// Audit M2: the index branch is cheap, but release the locks via defer so a
+	// panic inside the index repair cannot strand the per-path locks.
+	func() {
+		defer unlock()
+		result, handled, err = repairSessionListingFromIndex(path, meta)
+	}()
 	if handled || err != nil {
 		defer func() {
 			result.ContentFingerprint = sessionListingCatalogContentFingerprint(path)
@@ -165,6 +172,12 @@ func repairSessionListingFromIndex(path string, meta BranchMeta) (SessionListing
 // half. result carries the caller's named returns so the fingerprint fill-in
 // keeps working on every early exit.
 func repairSessionListingFromReplay(ctx context.Context, path string, meta BranchMeta, result SessionListingRepairResult) (SessionListingRepairResult, error) {
+	// Audit M3: fill the fingerprints on every exit, including the early
+	// SourceChanged/damaged returns that previously left them empty.
+	defer func() {
+		result.ContentFingerprint = sessionListingCatalogContentFingerprint(path)
+		result.MetaFingerprint = sessionListingCatalogFileFingerprint(BranchMetaPath(path))
+	}()
 	before, err := sessionRepairContentFingerprint(path)
 	if err != nil {
 		return SessionListingRepairResult{}, err

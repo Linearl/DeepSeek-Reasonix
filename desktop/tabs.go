@@ -4239,6 +4239,7 @@ func (a *App) applySessionBindingToTab(tab *WorkspaceTab, binding sessionBinding
 func sessionBindingWorkspaceRootBlocked(root string) bool {
 	return sessionBindingWorkspaceRootBlockedFor(root, []string{
 		config.SessionDir(),
+		config.SessionStoreDir(),
 		desktopSessionDir(globalWorkspaceRoot()),
 	})
 }
@@ -4254,10 +4255,10 @@ func pruneShadowProjectRoots() {
 	if len(f.Projects) == 0 {
 		return
 	}
-	if b, err := json.MarshalIndent(f, "", "  "); err == nil {
-		_ = os.WriteFile(filepath.Join(desktopConfigDir(), desktopProjectsFile+".prune-bak"), b, 0o644)
-	}
-	storages := []string{config.SessionDir(), desktopSessionDir(globalWorkspaceRoot())}
+	// Audit M4: only refresh the rollback copy when a prune actually happens,
+	// so a later unrelated registry failure cannot destroy the only backup.
+	storages := []string{config.SessionDir(), config.SessionStoreDir(), desktopSessionDir(globalWorkspaceRoot())}
+	prunedAny := false
 	_ = updateProjectsFile(func(cur *desktopProjectFile) (bool, error) {
 		kept, pruned := pruneShadowProjectsFor(cur.Projects, storages)
 		if len(pruned) == 0 {
@@ -4267,8 +4268,16 @@ func pruneShadowProjectRoots() {
 			slog.Warn("desktop: pruned shadow project root from registry", "root", p.Root, "title", p.Title)
 		}
 		cur.Projects = kept
+		prunedAny = true
 		return true, nil
 	})
+	// Keep the untouched registry as the rollback copy only when we actually
+	// pruned something (audit M4).
+	if prunedAny {
+		if b, err := json.MarshalIndent(f, "", "  "); err == nil {
+			_ = os.WriteFile(filepath.Join(desktopConfigDir(), desktopProjectsFile+".prune-bak"), b, 0o644)
+		}
+	}
 }
 
 // pruneShadowProjectsFor splits registry entries into the ones that keep and the
