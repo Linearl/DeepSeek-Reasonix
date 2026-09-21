@@ -1,6 +1,6 @@
 ---
 name: reasonix-fork-guide
-description: "Explain how to use this Reasonix fork day-to-day: worktree parallel development, session collaboration modes, experimental features, skills/commands, and where to find docs. Use when the user asks how to use the fork, where a feature lives, or how to set up a parallel workflow. Distinct from reasonix-guide (capability self-diagnostics)."
+description: "Explain how to use this Reasonix fork day-to-day: worktree parallel development, session collaboration modes, experimental features, skills/commands, and where to find docs. Use when the user asks how to use the fork, where a feature lives, or how to set up a parallel workflow. Also use when the agent itself is stuck in repeated tool-call failures — argument validation errors, duplicate-result rejections, or read/write-evidence deadlocks — to check correct call shapes and recovery steps before retrying. Distinct from reasonix-guide (capability self-diagnostics)."
 runAs: inline
 ---
 
@@ -14,6 +14,24 @@ A **usage** guide for this fork. For capability loading / doctor diagnostics, us
 |---|---|
 | How do I run parallel work / worktrees / sessions? | **this guide** |
 | Why is my skill / command / MCP missing? | `reasonix-guide` |
+| My tool calls keep failing (shape / dedupe / evidence errors) | **this guide → Tool call troubleshooting** |
+
+## Tool call troubleshooting (agent self-service)
+
+When tool calls keep failing, check this table **before retrying** — most failures are call-shape mistakes, not host bugs. Retrying an unchanged wrong call wastes turns: the host returns the identical error text, which the duplicate-result filter then silently omits.
+
+| Signal | Usual cause | Correct action |
+|---|---|---|
+| `argument validation failed … expected required properties: to, message` (or similar) on a `use_capability` call | Target arguments were **double-wrapped**: `arguments` holds another `{arguments, capability_id}` envelope | **Flatten**: pass the target tool's parameters directly as the value of `arguments` — correct shape: `{"action":"call","capability_id":"tool:talk_to_session","arguments":{"to":"…","message":"…"}}` |
+| `duplicate tool result omitted (identical to call_id=…)` | The previous call produced byte-identical output — usually the same wrong call returning the same error | Do not resend; change the call. To view the omitted original, page it via `session:tool_result` (argument `tool_call_id`) |
+| edit rejected with `WRITE_EVIDENCE_STALE` (after a successful edit) | The file changed since your last read; a same-window re-read is deduped so no fresh evidence is produced | Re-read with a **different `offset`/`limit` window**, then retry the edit |
+| `Repeated read: original text is available in call_id=…` | Read-dedupe fired; a deduped read does **not** refresh write-evidence | Widen or shift the read window (different offset) to force a fresh read |
+| Cross-session reply never arrives / "thread not in sender's mailbox" | Reply used your own outbound message id as `thread_id` | `thread_id` must be the **incoming** message id you received, not one you sent |
+| `talk_to_session` queued but the other side never starts | Target session was never opened (runtime not ready), or its inbox gate is closed | Ask the user to open the target session once; delivery is level-triggered on next gate-open |
+
+**use_capability golden rule**: the outer envelope is `action` + `capability_id` + `arguments`. `arguments` must be the target tool's own parameter object — never nest `capability_id` or `arguments` keys inside it.
+
+**Delivery checks**: `queued` ≠ delivered. The authoritative delivery signal is the recipient's `inbox.jsonl` containing your `messageId` (and `seen.json` for read state); outbound "refused" receipts can be false alarms.
 
 ## Parallel development (worktrees)
 
@@ -34,6 +52,7 @@ If writes outside the project root are blocked, either:
 - Multiple desktop instances on one session surface a concurrent-writer notice; content is kept as a separate version (**View versions**).
 - Autopilot approval tier: `[agent] approval_tier = guardian | parent | human`.
 - The builtin skills `ll-iteration-parallel-dev` (and the feedback→plan→dev iteration loop) **require** this switch; `ll-iteration-intake` and `ll-iteration-plan` also work without it.
+- `create_collab_session` takes `sessions[]` for batch creation, or top-level `title` + `purpose` for a single one; `group` files it into a sidebar group.
 
 ## Skills and commands
 
@@ -69,4 +88,5 @@ Open the matching `.zh-CN.md` sibling for Chinese.
 1. Identify the surface: desktop UI / CLI / agent tool / config.
 2. For missing capabilities → `reasonix-guide`.
 3. For "how do I do X" → stay here and point at the concrete path or setting.
-4. Prefer pointing at shipped docs over rewriting them in chat.
+4. For repeated tool-call failures → **Tool call troubleshooting** above, fix the call shape, then retry once.
+5. Prefer pointing at shipped docs over rewriting them in chat.
