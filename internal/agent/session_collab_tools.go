@@ -377,7 +377,13 @@ func directoryPage(cfg SessionCollabConfig, limit int, archived *bool, query str
 		ContactID string `json:"contactId,omitempty"`
 		TopicID   string `json:"topicId,omitempty"`
 		Archived  bool   `json:"archived,omitempty"`
+		// Task 175 ③: a purpose frozen since long before the last activity is
+		// more misleading than no purpose at all — callers route work by it.
+		Stale bool `json:"stale,omitempty"`
 	}
+	// A duty older than a week, in a codebase where batches live for days, is
+	// presumed stale rather than presumed current.
+	const purposeStaleAfter = 7 * 24 * time.Hour
 	rows := make([]row, 0, limit)
 	eligible := 0
 	for _, id := range all {
@@ -392,12 +398,14 @@ func directoryPage(cfg SessionCollabConfig, limit int, archived *bool, query str
 		}
 		eligible++
 		if len(rows) < limit {
+			stale := id.UpdatedAt > 0 && time.Since(time.UnixMilli(id.UpdatedAt)) > purposeStaleAfter
 			rows = append(rows, row{
 				Title:     id.Title,
 				Purpose:   id.Purpose,
 				ContactID: id.ContactID,
 				TopicID:   id.TopicID,
 				Archived:  id.Archived,
+				Stale:     stale,
 			})
 		}
 	}
@@ -638,16 +646,28 @@ func (t talkToSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 		return "", derr
 	}
 	msg = delivered
+	// Task 175: the sender keeps its own sent log — the inbox only shows what
+	// arrived, so a misdirected send used to be invisible on this side until a
+	// confused peer answered. Recorded after the real id/at are known.
+	mail.RecordSent(msg, target.Title)
+	// Task 175: put the recipient in the caller's face. The historical failure
+	// was a correct-looking "queued" for the WRONG peer; delivered_to carries
+	// the id plus its human-readable title so the mismatch reads at a glance.
+	deliveredTo := target.ContactID
+	if target.Title != "" {
+		deliveredTo = target.ContactID + "｜" + target.Title
+	}
 	out, _ := json.Marshal(map[string]any{
-		"status":    "queued",
-		"messageId": msg.ID,
-		"threadId":  msg.ID,
-		"from":      fromContact,
-		"to":        target.ContactID,
-		"toPurpose": target.Purpose,
-		"delivery":  msg.Delivery,
-		"hop":       msg.Hop,
-		"queued":    true,
+		"status":       "queued",
+		"messageId":    msg.ID,
+		"threadId":     msg.ID,
+		"from":         fromContact,
+		"to":           target.ContactID,
+		"delivered_to": deliveredTo,
+		"toPurpose":    target.Purpose,
+		"delivery":     msg.Delivery,
+		"hop":          msg.Hop,
+		"queued":       true,
 	})
 	return string(out), nil
 }

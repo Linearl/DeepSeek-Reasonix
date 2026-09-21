@@ -131,8 +131,12 @@ type MailMessage struct {
 	// thread (task 173). It rides the record so the recipient — and any
 	// reminder pass — can tell a demanded reply from an optional one.
 	RequireReply bool `json:"requireReply,omitempty"`
-	At           int64 `json:"at"`
-	Idempotency  string `json:"idempotency,omitempty"`
+	// ToTitle is only set on sent-log entries (task 175): the human-readable
+	// name of the recipient at send time, so the sender can spot a misdirected
+	// message without reopening the directory.
+	ToTitle     string `json:"toTitle,omitempty"`
+	At          int64  `json:"at"`
+	Idempotency string `json:"idempotency,omitempty"`
 }
 
 // Delivery semantics for talk_to_session (task 143). Followup is the default
@@ -812,6 +816,64 @@ func (s *MailStore) CountSentFromToday(fromContact string) int {
 		}
 	}
 	return count
+}
+
+// RecordSent appends an outgoing message to the sender's own sent log (task
+// 175). The inbox only shows what a session received; without a sent record a
+// misdirected send was invisible on the sender's side, which is how a batch
+// reply once crossed wires for hours. Best-effort: a sent-log failure must
+// never fail a delivery that already landed.
+func (s *MailStore) RecordSent(msg MailMessage, toTitle string) {
+	if strings.TrimSpace(msg.From) == "" || strings.TrimSpace(msg.ID) == "" {
+		return
+	}
+	entry := msg
+	entry.ToTitle = strings.TrimSpace(toTitle)
+	unlock, err := s.lock()
+	if err != nil {
+		return
+	}
+	defer unlock()
+	_ = appendJSONL(filepath.Join(s.root, msg.From+".sent.jsonl"), entry)
+}
+
+// ListSent returns the sender's own outgoing log, newest first (task 175).
+// limit <= 0 returns everything. The query that surfaces this log ships as a
+// merged action under task 174's tool consolidation, not as tool #15.
+func (s *MailStore) ListSent(fromContact string, limit int) []MailMessage {
+	fromContact = strings.TrimSpace(fromContact)
+	if fromContact == "" {
+		return nil
+	}
+	unlock, err := s.lock()
+	if err != nil {
+		return nil
+	}
+	b, err := os.ReadFile(filepath.Join(s.root, fromContact+".sent.jsonl"))
+	unlock()
+	if err != nil {
+		return nil
+	}
+	var out []MailMessage
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var m MailMessage
+		if err := json.Unmarshal([]byte(line), &m); err != nil {
+			continue
+		}
+		out = append(out, m)
+	}
+	// Newest first: the last thing you sent is the first thing to check.
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out
 }
 
 // A reply names the message it answers in thread_id. Two ways of naming the wrong
