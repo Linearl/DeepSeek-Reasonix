@@ -100,6 +100,10 @@ func (a *App) desktopModelCatalog(curModel, workspaceRoot string, ctrl control.S
 		if !modelProviderAccessAllowed(cfg.Desktop.ProviderAccess, p.Name) || !p.Configured() {
 			continue
 		}
+		// Hidden connections stay out of every picker; refs to them still resolve.
+		if p.Hidden {
+			continue
+		}
 		for _, m := range p.ChatModelList() {
 			ref := p.Name + "/" + m
 			out = append(out, configuredModelInfo(cfg, p.Name, m, ref == curModel))

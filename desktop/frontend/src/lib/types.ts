@@ -1811,6 +1811,7 @@ export interface CapabilityIssue {
 // Settings panel payloads (desktop/settings_app.go).
 export interface ProviderView {
   displayName?: string;
+  hidden?: boolean; // kept out of every picker; refs still resolve
   name: string;
   presetId?: string; // stable curated identity; read-only in the connection editor
   catalog?: ProviderCatalog; // protocol routes for this installed connection, including hidden legacy presets

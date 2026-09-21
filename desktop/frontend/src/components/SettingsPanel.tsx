@@ -899,7 +899,7 @@ export function ShortcutsSection() {
 export function allRefs(s: SettingsView): string[] {
   const out: string[] = [];
   for (const p of s.providers) {
-    if (!p.added || !providerIsConfigured(p)) continue;
+    if (!p.added || p.hidden || !providerIsConfigured(p)) continue;
     for (const m of p.models) out.push(`${p.name}/${m}`);
   }
   return out;
@@ -5145,7 +5145,7 @@ export function ModelsSection({ s, busy, apply, backgroundApply, subtab, onboard
     let cancelled = false;
     const stale = () => cancelled || autoRefreshGenerationRef.current !== generation;
     if (subtab !== "usage") return;
-    const groups = providerAccessGroups(s.providers.filter((p) => p.added), t);
+    const groups = providerAccessGroups(s.providers.filter((p) => p.added && !p.hidden), t);
     const candidates = groups
       .map((group) => {
         const provider = group.providers.find((p) => providerIsConfigured(p) && p.baseUrl);
@@ -5567,6 +5567,7 @@ export function ModelPicker({
     const providerOrder: string[] = [];
     const providerSeen = new Set<string>();
     for (const p of s.providers) {
+      if (p.hidden) continue;
       const id = p.name;
       if (!providerSeen.has(id)) {
         providerOrder.push(id);
@@ -5710,7 +5711,7 @@ export function ProvidersSection({ s, busy, apply, onboarding, onOnboardingCompl
   const fetchGate = useMemo(createLatestRequestGate, []);
   const [fetchResults, setFetchResults] = useState<Record<string, ProviderFetchResult>>({});
   const [modelDrafts, setModelDrafts] = useState<Record<string, ProviderModelDraft>>({});
-  const visibleProviders = useMemo(() => s.providers.filter((p) => p.added || p.name === revealedProvider), [s.providers, revealedProvider]);
+  const visibleProviders = useMemo(() => s.providers.filter((p) => (p.added || p.name === revealedProvider) && !p.hidden), [s.providers, revealedProvider]);
   const groups = useMemo(() => visibleProviders.map(p => ({...providerAccessGroups([p], t)[0], id: `connection:${p.name}`, label: p.displayName || p.name})), [visibleProviders, t]);
 
   useEffect(() => {

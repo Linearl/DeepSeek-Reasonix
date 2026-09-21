@@ -147,6 +147,8 @@ export function TaskEditor({
       if (cancelled) return;
       const map: Record<string, string[]> = {};
       for (const provider of settings.providers ?? []) {
+        // Hidden connections stay out of every picker (provider hidden field).
+        if (provider.hidden) continue;
         // Only connections that actually declare models belong in a model-override
         // picker; a provider with no models would offer a dead end.
         const models = provider.models ?? [];
