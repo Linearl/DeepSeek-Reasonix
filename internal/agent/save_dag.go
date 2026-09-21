@@ -162,6 +162,12 @@ func (s *Session) dagStateForSave(ctx context.Context, path string, now time.Tim
 	s.mu.RLock()
 	cached := s.head.state
 	s.mu.RUnlock()
+	if cached == nil {
+		// Task 196: a fresh Session instance has no graph of its own; the
+		// process-wide cache supplies the one an earlier save replayed, so the
+		// log is not re-read under the save-path lock all over again.
+		cached = sessionGraphCacheGet(logPath)
+	}
 	header, ok, err := readSessionDAGHeader(path)
 	if err != nil {
 		return nil, err
@@ -224,6 +230,10 @@ func (s *Session) dagStateForSave(ctx context.Context, path string, now time.Tim
 			return nil, err
 		}
 	}
+	// Task 196: remember the fully replayed graph for the next save, whoever
+	// owns the Session instance then. Window states never reach here - they are
+	// refused at the cache gate and never admitted by the put itself.
+	sessionGraphCachePut(logPath, st)
 	return st, nil
 }
 
