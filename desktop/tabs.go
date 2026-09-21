@@ -76,6 +76,7 @@ type WorkspaceTab struct {
 	TopicTitle          string                   // display title
 	topicTitleSource    string                   // auto or manual; controls localization at API boundaries
 	SessionPath         string                   // exact .jsonl file this tab continues
+	bindingNoticeKey    string                   // task 211: last binding-switch notice key; suppresses repeats
 	SessionGeneration   uint64                   // bumps on session rotation (clear/new); frontend hydrate identity
 	ReadOnly            bool                     // true for external channel transcripts opened for browsing
 	Takeover            struct{ Spectator bool } // handoff state grouped by its cross-runtime lifetime
@@ -4181,6 +4182,16 @@ func (a *App) applySessionBindingToTab(tab *WorkspaceTab, binding sessionBinding
 		reopenTerminalGate = !tab.ReadOnly && !tab.removed
 	}
 	applyPinnedContextSessionBinding(tab, pinnedState, preservePendingLegacy)
+	bindingNoticeKey := ""
+	if workspaceChanged {
+		bindingNoticeKey = describeSessionBindingWorkspace(scope, workspaceRoot) + "|" + canonicalTabSessionPath(binding.path)
+	}
+	// Task 211: the same session moving to the same workspace warns once per
+	// process; reopening it must not re-warn the user about a settled binding.
+	warnBinding := workspaceChanged && tab.bindingNoticeKey != bindingNoticeKey
+	if warnBinding {
+		tab.bindingNoticeKey = bindingNoticeKey
+	}
 	tab.Scope = scope
 	tab.WorkspaceRoot = workspaceRoot
 	tab.SessionPath = canonicalTabSessionPath(binding.path)
@@ -4207,13 +4218,49 @@ func (a *App) applySessionBindingToTab(tab *WorkspaceTab, binding sessionBinding
 	if len(terminalSessions) > 0 {
 		a.terminals.closeSessions(terminalSessions)
 	}
-	if workspaceChanged && sink != nil {
+	if workspaceChanged && warnBinding && sink != nil {
+		slog.Warn("desktop: switched tab workspace to match saved session",
+			"from", describeSessionBindingWorkspace(oldScope, oldWorkspaceRoot),
+			"to", describeSessionBindingWorkspace(scope, workspaceRoot),
+			"session", binding.path)
 		sink.Emit(event.Event{
 			Kind:  event.Notice,
 			Level: event.LevelWarn,
 			Text:  sessionBindingWorkspaceNotice(oldScope, oldWorkspaceRoot, scope, workspaceRoot),
 		})
 	}
+}
+
+// sessionBindingWorkspaceRootBlocked reports whether root lands inside the app's own
+// session storage: the projects storage dir itself, anything beneath it, or the
+// global session dir. A real project root never lives there, so a binding that
+// claims otherwise is legacy corruption from pre-156.B writers — exactly what
+// resurrects the shadow-project tab (task 211).
+func sessionBindingWorkspaceRootBlocked(root string) bool {
+	return sessionBindingWorkspaceRootBlockedFor(root, []string{
+		config.SessionDir(),
+		desktopSessionDir(globalWorkspaceRoot()),
+	})
+}
+
+func sessionBindingWorkspaceRootBlockedFor(root string, storages []string) bool {
+	root = normalizeProjectRoot(root)
+	if root == "" {
+		return false
+	}
+	for _, storage := range storages {
+		storage = normalizeProjectRoot(storage)
+		if storage == "" {
+			continue
+		}
+		if sameDesktopPath(root, storage) {
+			return true
+		}
+		if strings.HasPrefix(strings.ToLower(root), strings.ToLower(storage)+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 func sessionBindingWorkspaceNotice(oldScope, oldWorkspaceRoot, scope, workspaceRoot string) string {
@@ -4307,6 +4354,13 @@ func sessionBindingInDir(dir, sessionPath string) (sessionBinding, bool) {
 	}
 	if binding.scope == "project" {
 		binding.workspaceRoot = normalizeProjectRoot(binding.workspaceRoot)
+		// Task 211: defensive mirror of the meta-side heal — a derived project
+		// binding must never point into the app's own session storage.
+		if sessionBindingWorkspaceRootBlocked(binding.workspaceRoot) {
+			slog.Warn("desktop: healed shadow workspace binding from directory derivation", "path", binding.path, "root", binding.workspaceRoot)
+			binding.scope = "global"
+			binding.workspaceRoot = globalTabWorkspaceRoot()
+		}
 	}
 	return binding, true
 }
@@ -4318,6 +4372,14 @@ func sessionBindingFromMeta(path string, meta agent.BranchMeta) (sessionBinding,
 		workspaceRoot = normalizeProjectRoot(meta.WorkspaceRoot)
 		if workspaceRoot == "" {
 			return sessionBinding{}, false
+		}
+		// Task 211: meta written before 156.B could name the app's own session
+		// storage as the workspace root. Open the session as global instead of
+		// resurrecting a shadow project tab, and leave a log trail.
+		if sessionBindingWorkspaceRootBlocked(workspaceRoot) {
+			slog.Warn("desktop: healed shadow workspace binding from session meta", "path", path, "metaRoot", workspaceRoot)
+			scope = "global"
+			workspaceRoot = globalTabWorkspaceRoot()
 		}
 	} else {
 		scope = "global"
