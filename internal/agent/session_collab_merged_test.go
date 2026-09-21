@@ -79,3 +79,42 @@ func TestMergedListAddressableSessionsKeepsQuerySemantics(t *testing.T) {
 		t.Fatalf("no query must keep the unfiltered page: %s", unfiltered)
 	}
 }
+
+// Task 175/174: the sent log is reachable as the directory tool's sent=true
+// action — the model-side check for a misdirected batch dispatch. Newest
+// first, one summary line per message, recipient title included.
+func TestMergedListAddressableSessionsExposesSentLog(t *testing.T) {
+	cfg, _ := gateFixture(t)
+	talk := NewTalkToSessionTool(cfg)
+	if _, err := talk.Execute(nil, []byte(`{"to":"gate target","message":"one"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := talk.Execute(nil, []byte(`{"to":"gate target","message":"two\nsecond line"}`)); err != nil {
+		t.Fatal(err)
+	}
+	out, err := NewListAddressableSessionsTool(cfg).Execute(nil, []byte(`{"sent":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		From  string `json:"from"`
+		Count int    `json:"count"`
+		Sent  []struct {
+			To      string `json:"to"`
+			ToTitle string `json:"toTitle"`
+			Summary string `json:"summary"`
+		} `json:"sent"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("sent page must be JSON: %v\n%s", err, out)
+	}
+	if payload.Count != 2 {
+		t.Fatalf("both sends must be listed: %s", out)
+	}
+	if payload.Sent[0].Summary != "two" || payload.Sent[0].ToTitle != "gate target" {
+		t.Fatalf("newest first with recipient title and a first-line summary: %s", out)
+	}
+	if !strings.Contains(out, "gate target") {
+		t.Fatalf("the recipient must be visible for the misdirected-send check: %s", out)
+	}
+}

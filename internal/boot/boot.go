@@ -3174,7 +3174,7 @@ func workspaceFileInventory(root string) []string {
 
 // collabDisabledSkillNames hides the collaboration secretary protocol while the
 // experiment is off. The skill's own text tells the model to call
-// talk_to_session / create_task_card / create_collab_session; with those tools
+// talk_to_session / task_card / create_collab_session; with those tools
 // unregistered, offering the skill would guarantee a "tool not found" failure,
 // which is exactly what "failures are never silent" is meant to prevent.
 func collabDisabledSkillNames(cfg *config.Config) []string {
@@ -3205,18 +3205,21 @@ archive. Purpose is optional metadata; the title identifies the row.
 
 Tools:
 - list_addressable_sessions — list the directory (title, purpose, contact_id, topic_id).
-  Newest first, limit (default 200). Live conversations only; pass archived=true for retired history.
-- search_sessions(query) — keyword search over title/purpose. Use this instead of
-  paging when you know part of the name but it may not be on the first 200.
+  Newest first, limit (default 200). Live conversations only; pass archived=true for retired
+  history. query filters by keyword (part of a name works). sent=true returns YOUR OWN
+  outgoing log — check it after a batch dispatch to catch a misdirected send.
+- get_session_status(targets?) — check whether peers are busy before assigning work
+  (running / queued / idle / unknown). No arguments sweeps every addressable session.
 - talk_to_session(to, message, ...) — message another session. ` + "`to`" + ` accepts
   contact_id, topic_id, or the exact title. First contact mints a contact_id.
-- talk_to_session_sync(...) — same, with a bounded wait for the reply.
+  wait=true (timeout_ms, default 30s max 120s) makes the same call wait for the
+  reply; a ` + "`status=\"timeout\"`" + ` result is NOT a failure — do not retry.
 - set_session_purpose(purpose, target?) — register a duty (own by default;
   pass target to register another session's). Later calls overwrite.
 - read_session_tail(target, max_bytes?) — read another session's last 10 KiB
   so you can judge its duty from what it actually did.
-- create_task_card / update_task_card / get_task_card / list_task_cards —
-  collaboration task cards, rendered in-chat via a ` + "```taskcard" + ` fence.
+- task_card(action: create|update|get|list, ...) — collaboration task cards,
+  rendered in-chat via a ` + "```taskcard" + ` fence.
 - create_collab_session(title, purpose, group?, group_id?) — create a session
   filed into a group (purpose required).
 

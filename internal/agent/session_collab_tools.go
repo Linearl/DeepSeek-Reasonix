@@ -178,11 +178,11 @@ type listAddressableSessionsTool struct{ cfg SessionCollabConfig }
 func (listAddressableSessionsTool) Name() string { return "list_addressable_sessions" }
 
 func (listAddressableSessionsTool) Description() string {
-	return "List the contact directory (通讯录): metadata only — title, purpose, contact_id, topic_id. No transcript content (read_session_tail does that). Task 174 merged search in: omit query for the newest-first page; pass query for a keyword filter over title/purpose/contact_id/topic_id. Use contact_id, topic_id, or the exact title as `to` in talk_to_session. Entries frozen for over a week carry stale=true (task 175) — re-check before trusting the purpose. Experimental."
+	return "List the contact directory (通讯录): metadata only — title, purpose, contact_id, topic_id. No transcript content (read_session_tail does that). Task 174 merged search in: omit query for the newest-first page; pass query for a keyword filter over title/purpose/contact_id/topic_id. Task 175: pass sent=true to read YOUR OWN outgoing log — the misdirected-send check after a batch dispatch. Use contact_id, topic_id, or the exact title as `to` in talk_to_session. Entries frozen for over a week carry stale=true (task 175) — re-check before trusting the purpose. Experimental."
 }
 
 func (listAddressableSessionsTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Max sessions to return, newest first (default 200, max 1000). Omit for the first page."},"archived":{"type":"boolean","description":"Include retired archive sessions (default false)."},"query":{"type":"string","description":"Keyword filter over title/purpose/ids (the old search_sessions). Omit for the unfiltered newest-first page."}},"required":[]}`)
+	return json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Max rows to return (directory: newest first, default 200, max 1000; sent: default 20)."},"archived":{"type":"boolean","description":"Include retired archive sessions (default false)."},"query":{"type":"string","description":"Keyword filter over title/purpose/ids (the old search_sessions). Omit for the unfiltered newest-first page."},"sent":{"type":"boolean","description":"Return your OWN outgoing log instead of the directory (task 175) — id, recipient, thread, first line of each message you sent. Use it to catch a misdirected send."}},"required":[]}`)
 }
 
 func (listAddressableSessionsTool) ReadOnly() bool { return true }
@@ -192,11 +192,60 @@ func (t listAddressableSessionsTool) Execute(_ context.Context, args json.RawMes
 		Limit    int    `json:"limit"`
 		Archived *bool  `json:"archived"`
 		Query    string `json:"query"`
+		Sent     bool   `json:"sent"`
 	}
 	if len(args) > 0 {
 		_ = json.Unmarshal(args, &p)
 	}
+	if p.Sent {
+		return sentLogPage(t.cfg, p.Limit)
+	}
 	return directoryPage(t.cfg, p.Limit, p.Archived, p.Query)
+}
+
+// sentLogPage renders the caller's own outgoing log (task 175), reachable as
+// the directory tool's action instead of a fifteenth tool name (task 174).
+// The body is a first-line summary: enough to spot the wrong recipient
+// without re-reading the whole dispatch.
+func sentLogPage(cfg SessionCollabConfig, limit int) (string, error) {
+	me := strings.TrimSpace(cfg.currentContactID())
+	if me == "" {
+		return "", fmt.Errorf("no session path — your own sent log needs the caller's contact_id (call from a registered session)")
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	mailDir := cfg.MailDir
+	if mailDir == "" {
+		mailDir = config.SessionCollabMailDir()
+	}
+	sent := sessioncollab.NewMailStoreWithHopLimit(mailDir, cfg.hopLimit()).ListSent(me, limit)
+	type row struct {
+		MessageID string `json:"messageId"`
+		To        string `json:"to"`
+		ToTitle   string `json:"toTitle,omitempty"`
+		ThreadID  string `json:"threadId,omitempty"`
+		Summary   string `json:"summary"`
+		At        int64  `json:"at"`
+	}
+	rows := make([]row, 0, len(sent))
+	for _, m := range sent {
+		summary := m.Body
+		if i := strings.IndexByte(summary, '\n'); i >= 0 {
+			summary = summary[:i]
+		}
+		rows = append(rows, row{
+			MessageID: m.ID, To: m.To, ToTitle: m.ToTitle,
+			ThreadID: m.ThreadID, Summary: summary, At: m.At,
+		})
+	}
+	out, _ := json.Marshal(map[string]any{
+		"from":  me,
+		"count": len(rows),
+		"note":  "your own sent log (task 175) — verify the recipient title before trusting a batch dispatch",
+		"sent":  rows,
+	})
+	return string(out), nil
 }
 
 // NewGetSessionStatusTool answers "is the peer busy?" (task 218) from cheap

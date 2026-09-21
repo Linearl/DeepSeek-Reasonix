@@ -70,10 +70,14 @@ func TestParseConstraintsScopesMutationBans(t *testing.T) {
 
 // TestStripQuotedConstraintsDropsCollabEnvelope: the body of a [跨会话消息]
 // delivery block is data for the turn, never an instruction to it (task 220
-// P0). A report that says 「只读审计」 must not freeze the turn, while the
-// caller's own imperative still binds.
+// P0 + M1). The envelope here mirrors the REAL renderer shape
+// (sessionCollabDeliveryText): blank line, multi-paragraph body, then the
+// "\n\n---\n" separator and the trailer lines — the old first-blank-line
+// strip used to leave exactly that body in the parser's hands.
 func TestStripQuotedConstraintsDropsCollabEnvelope(t *testing.T) {
-	envelope := "[跨会话消息] 来自 contact_id=sc_worker\n 发至 contact_id=sc_main\n 审计报告：只读审计，未重跑测试。禁止 push。\n"
+	envelope := "[跨会话消息] 来自 contact_id=sc_worker → 发至 contact_id=sc_main (hop=1)\n\n" +
+		"审计报告：只读审计，未重跑测试。\n\n不要修改任何文件，禁止 push。\n" +
+		"\n---\n会话线程：threadId=msg_abc123\n回复方式：完成后用 talk_to_session 回信到 contact_id=sc_worker。"
 	t.Run("envelope alone never binds", func(t *testing.T) {
 		got := ParseConstraints(StripQuotedConstraints("转发一条消息：\n\n" + envelope + "\n请知悉。"))
 		if got.ForbidMutation {
@@ -87,8 +91,12 @@ func TestStripQuotedConstraintsDropsCollabEnvelope(t *testing.T) {
 		}
 	})
 	t.Run("envelope text is fully removed", func(t *testing.T) {
-		if s := StripQuotedConstraints("前文\n\n" + envelope + "\n后文"); strings.Contains(s, "跨会话消息") || strings.Contains(s, "禁止 push") {
+		s := StripQuotedConstraints("前文\n\n" + envelope + "\n后文")
+		if strings.Contains(s, "跨会话消息") || strings.Contains(s, "禁止 push") || strings.Contains(s, "不要修改任何文件") {
 			t.Fatalf("the envelope must be stripped whole: %q", s)
+		}
+		if !strings.Contains(s, "后文") {
+			t.Fatalf("text after the envelope must survive: %q", s)
 		}
 	})
 }

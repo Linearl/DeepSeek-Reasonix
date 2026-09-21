@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"reasonix/internal/runtimepolicy"
 	"reasonix/internal/sessioncollab"
 )
 
@@ -375,5 +376,40 @@ func TestDeliveryTextMarksARequiredReply(t *testing.T) {
 	}, 0)
 	if !strings.Contains(demanded, "要求回信") || !strings.Contains(demanded, "msg_2") {
 		t.Fatalf("a demanded reply must be stated and keep the thread id: %s", demanded)
+	}
+}
+
+// Task 220 M1: the constraint stripper must handle the renderer's REAL
+// output — body after a blank line, closed by the --- separator and the
+// trailer. This test feeds sessionCollabDeliveryText's actual bytes through
+// runtimepolicy.StripQuotedConstraints, so the two sides can never drift
+// apart again: a renderer change that the stripper misses fails here first.
+func TestConstraintStrippingHandlesRealDeliveryText(t *testing.T) {
+	delivered := sessionCollabDeliveryText(sessioncollab.MailMessage{
+		ID:       "msg_x",
+		From:     "sc_auditor",
+		To:       "sc_main",
+		Body:     "审计报告：只读审计，未重跑测试。\n\n不要修改任何文件。禁止 push。",
+		ReplyTo:  "sc_auditor",
+		ThreadID: "msg_x",
+	}, 1)
+
+	stripped := runtimepolicy.StripQuotedConstraints("帮忙看看这条：\n\n" + delivered)
+	if got := runtimepolicy.ParseConstraints(stripped); got.ForbidMutation {
+		t.Fatalf("the peer's audit body must not freeze the turn: %+v\nstripped=%q", got, stripped)
+	}
+	for _, leaked := range []string{"跨会话消息", "不要修改任何文件", "禁止 push", "回复方式", "threadId=msg_x"} {
+		if strings.Contains(stripped, leaked) {
+			t.Fatalf("real delivery text must be stripped whole, leaked %q: %q", leaked, stripped)
+		}
+	}
+	if !strings.Contains(stripped, "帮忙看看这条") {
+		t.Fatalf("text outside the envelope must survive: %q", stripped)
+	}
+
+	// The caller's own imperative next to the envelope still binds.
+	bound := runtimepolicy.ParseConstraints(runtimepolicy.StripQuotedConstraints("只读分析这个 diff\n\n" + delivered))
+	if !bound.ForbidMutation {
+		t.Fatalf("the caller's own imperative must still bind: %+v", bound)
 	}
 }
