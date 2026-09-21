@@ -368,7 +368,10 @@ func walkBytesMB(root string) float64 {
 }
 
 // walkProjectsBytesMB sums the per-project session roots and, separately, the
-// append-only event logs inside them.
+// append-only event logs inside them. Directories named .trash are skipped at
+// any depth: they are storage the user chose to keep, not live growth, and
+// counting them made the events alert fire on dead weight (measured: two
+// deleted sessions under sessions/.trash pushed it past 2 GB).
 func walkProjectsBytesMB(memoryRoot string) (totalMB float64, eventsMB float64) {
 	if memoryRoot == "" {
 		return 0, 0
@@ -376,7 +379,13 @@ func walkProjectsBytesMB(memoryRoot string) (totalMB float64, eventsMB float64) 
 	root := filepath.Join(memoryRoot, "projects")
 	var total, events int64
 	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
-		if err != nil || entry == nil || entry.IsDir() {
+		if err != nil || entry == nil {
+			return nil
+		}
+		if entry.IsDir() {
+			if entry.Name() == ".trash" {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		info, statErr := entry.Info()
