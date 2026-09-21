@@ -86,6 +86,15 @@ func RepairSessionListingProjection(ctx context.Context, path string) (result Se
 	if err != nil {
 		return SessionListingRepairResult{}, err
 	}
+	// Audit M3 (rework, option B): the outer function has named results, so this
+	// single defer is the one authoritative fingerprint fill-in for every exit
+	// path — index hit, SourceChanged, damaged, and the replay commit alike.
+	// Inner helpers use anonymous returns, so defers there never reach the
+	// caller; keep the fill-in in exactly this one place.
+	defer func() {
+		result.ContentFingerprint = sessionListingCatalogContentFingerprint(path)
+		result.MetaFingerprint = sessionListingCatalogFileFingerprint(BranchMetaPath(path))
+	}()
 	// Audit M1: load the branch meta under the repair locks so the RMW window
 	// matches the rest of the meta sidecars; the read is cheap.
 	meta, metaOK, err := LoadBranchMeta(path)
@@ -107,10 +116,6 @@ func RepairSessionListingProjection(ctx context.Context, path string) (result Se
 		result, handled, err = repairSessionListingFromIndex(path, meta)
 	}()
 	if handled || err != nil {
-		defer func() {
-			result.ContentFingerprint = sessionListingCatalogContentFingerprint(path)
-			result.MetaFingerprint = sessionListingCatalogFileFingerprint(BranchMetaPath(path))
-		}()
 		return result, err
 	}
 	return repairSessionListingFromReplay(ctx, path, meta, result)
@@ -172,12 +177,8 @@ func repairSessionListingFromIndex(path string, meta BranchMeta) (SessionListing
 // half. result carries the caller's named returns so the fingerprint fill-in
 // keeps working on every early exit.
 func repairSessionListingFromReplay(ctx context.Context, path string, meta BranchMeta, result SessionListingRepairResult) (SessionListingRepairResult, error) {
-	// Audit M3: fill the fingerprints on every exit, including the early
-	// SourceChanged/damaged returns that previously left them empty.
-	defer func() {
-		result.ContentFingerprint = sessionListingCatalogContentFingerprint(path)
-		result.MetaFingerprint = sessionListingCatalogFileFingerprint(BranchMetaPath(path))
-	}()
+	// Fingerprint fill-in lives in the outer named-result function (audit M3
+	// rework): defers here cannot reach the caller through anonymous returns.
 	before, err := sessionRepairContentFingerprint(path)
 	if err != nil {
 		return SessionListingRepairResult{}, err
@@ -221,10 +222,9 @@ func commitSessionListingReplay(ctx context.Context, path string, meta BranchMet
 		return SessionListingRepairResult{}, err
 	}
 	defer unlock()
-	defer func() {
-		result.ContentFingerprint = sessionListingCatalogContentFingerprint(path)
-		result.MetaFingerprint = sessionListingCatalogFileFingerprint(BranchMetaPath(path))
-	}()
+	// The old fingerprint defer here was removed (audit M3 rework): this
+	// function returns anonymously, so it never reached the caller. The outer
+	// named-result defer is the single fill-in point.
 	// Second CAS fence: the source may have changed between the unlocked decode
 	// and this locked critical section.
 	after, err := sessionRepairContentFingerprint(path)

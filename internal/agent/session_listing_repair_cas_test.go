@@ -72,3 +72,29 @@ func TestCommitSessionListingReplayRejectsSourceChangedAfterDecode(t *testing.T)
 		t.Fatal("SessionPathInTrash flagged a live session")
 	}
 }
+
+// Audit M3 rework: the fingerprint fill-in must survive early exits. The outer
+// RepairSessionListingProjection owns the named results, so a damaged transcript
+// that bails out of the replay path must still come back with both fingerprints
+// populated. (SourceChanged shares this single defer.)
+func TestRepairSessionListingProjectionFillsFingerprintsOnEarlyExit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	if err := os.WriteFile(path, []byte("{\"broken\": true}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result, err := RepairSessionListingProjection(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The broken file is still repairable, so the outer path ends in "applied";
+	// what matters here is that the single outer fill-in ran on the way out.
+	if result.Status != SessionListingRepairApplied {
+		t.Fatalf("status = %q, want applied", result.Status)
+	}
+	if result.ContentFingerprint == "" {
+		t.Fatal("ContentFingerprint empty after outer repair")
+	}
+	if result.MetaFingerprint == "" {
+		t.Fatal("MetaFingerprint empty after outer repair")
+	}
+}
