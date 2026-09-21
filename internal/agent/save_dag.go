@@ -150,6 +150,10 @@ func (s *Session) saveDAGLocked(path string, mode sessionSaveMode, route dagRout
 	return nil
 }
 
+// sessionDAGReplayLogMin is the replay time above which the save-side replay is
+// worth a line in the log: it names whether the graph was extended or rebuilt.
+const sessionDAGReplayLogMin = 250 * time.Millisecond
+
 // dagStateForSave returns the replayed graph, extending the cached state by
 // the bytes appended since its last observed tail when the generation and
 // size still allow it, and settles a torn tail before any append.
@@ -162,20 +166,58 @@ func (s *Session) dagStateForSave(ctx context.Context, path string, now time.Tim
 	if err != nil {
 		return nil, err
 	}
+	// Task 196: "extended" means the in-memory graph was reused and only the
+	// appended bytes were scanned; false means the whole log was replayed while
+	// holding the save-path lock. That one boolean is what separates "the save
+	// is slow because it re-reads everything" from "the save is slow because a
+	// reader holds the lock", and no counter could tell them apart before.
+	replayStart := time.Now()
+	extended := false
+	reason := "extended"
 	var st *sessionDAGState
 	if cached != nil && ok && cached.path == logPath && header.generation == cached.generation && !cached.damaged {
 		if info, err := os.Stat(logPath); err == nil && info.Size() >= cached.lastGoodEnd {
 			st = cached
+			extended = true
 			if err := st.replayFrom(ctx, st.lastGoodEnd, defaultSessionReplayLimits); err != nil {
 				return nil, err
 			}
 		}
 	}
 	if st == nil {
+		// Task 196: name the guard that failed, because the guards need different
+		// fixes. A fresh Session has no graph to reuse (nil_cache); a truncated
+		// tail window must not be trusted for a write (tail_truncated - if this
+		// ever fires, the pre-save upgrade path was skipped, which is a bug, not
+		// a tuning problem); a generation change means the log rotated under us.
+		switch {
+		case cached == nil:
+			reason = "nil_cache"
+		case !ok:
+			reason = "no_header"
+		case cached.path != logPath:
+			reason = "path_mismatch"
+		case header.generation != cached.generation:
+			reason = "generation"
+		case cached.damaged:
+			reason = "damaged"
+		case cached.tailTruncated:
+			reason = "tail_truncated"
+		default:
+			reason = "size_regression"
+		}
 		st, err = replaySessionDAG(ctx, logPath, defaultSessionReplayLimits)
 		if err != nil {
 			return nil, err
 		}
+	}
+	if elapsed := time.Since(replayStart); elapsed >= sessionDAGReplayLogMin {
+		size := int64(-1)
+		if info, statErr := os.Stat(logPath); statErr == nil {
+			size = info.Size()
+		}
+		slog.Info("session: dag state for save", "path", path, "extended", extended,
+			"reason", reason, "ms", elapsed.Milliseconds(), "log_bytes", size)
 	}
 	if st.damaged {
 		if err := settleDAGTail(ctx, path, st, now); err != nil {
