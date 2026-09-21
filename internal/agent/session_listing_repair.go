@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"reasonix/internal/provider"
 	"reasonix/internal/store"
 )
 
@@ -61,6 +63,11 @@ func TryLockSessionListingGeneration(path string) (SessionListingGeneration, fun
 // RepairSessionListingProjection repairs one session generation while holding
 // only that session's save/file/meta locks. Foreground saves win immediately;
 // callers persist a retry instead of waiting behind active work.
+//
+// Task 206 (T2): the full-transcript decode of the replay branch runs outside
+// those locks - only the fingerprint re-check and the write-back are locked,
+// and the before/after fingerprints act as the CAS fence (checked once after
+// the decode, once right after the locks are taken).
 func RepairSessionListingProjection(ctx context.Context, path string) (result SessionListingRepairResult, resultErr error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -69,15 +76,12 @@ func RepairSessionListingProjection(ctx context.Context, path string) (result Se
 	if err := ctx.Err(); err != nil {
 		return SessionListingRepairResult{}, err
 	}
-	unlock, err := lockSessionListingRepair(path)
-	if err != nil {
-		return SessionListingRepairResult{}, err
+	// Task 206 (T4): trash entries are storage the user chose to keep. The
+	// repair worker must never spend its slot decoding them; users repair them
+	// lazily through preview/restore, which loads via the main path anyway.
+	if SessionPathInTrash(path) {
+		return SessionListingRepairResult{Status: SessionListingRepairUnsupported}, nil
 	}
-	defer unlock()
-	defer func() {
-		result.ContentFingerprint = sessionListingCatalogContentFingerprint(path)
-		result.MetaFingerprint = sessionListingCatalogFileFingerprint(BranchMetaPath(path))
-	}()
 	meta, metaOK, err := LoadBranchMeta(path)
 	if err != nil {
 		if isDamagedSessionRepairError(err) {
@@ -88,10 +92,21 @@ func RepairSessionListingProjection(ctx context.Context, path string) (result Se
 	if !metaOK {
 		meta = BranchMeta{ID: BranchID(path)}
 	}
-	if result, handled, err := repairSessionListingFromIndex(path, meta); handled || err != nil {
+	unlock, err := lockSessionListingRepair(path)
+	if err != nil {
+		return SessionListingRepairResult{}, err
+	}
+	result, handled, err := repairSessionListingFromIndex(path, meta)
+	// The index branch is cheap; release the locks before anything slow.
+	unlock()
+	if handled || err != nil {
+		defer func() {
+			result.ContentFingerprint = sessionListingCatalogContentFingerprint(path)
+			result.MetaFingerprint = sessionListingCatalogFileFingerprint(BranchMetaPath(path))
+		}()
 		return result, err
 	}
-	return repairSessionListingFromReplay(ctx, path, meta)
+	return repairSessionListingFromReplay(ctx, path, meta, result)
 }
 
 func lockSessionListingRepair(path string) (func(), error) {
@@ -145,7 +160,11 @@ func repairSessionListingFromIndex(path string, meta BranchMeta) (SessionListing
 	return SessionListingRepairResult{Status: SessionListingRepairApplied, Preview: preview, Turns: turns}, true, nil
 }
 
-func repairSessionListingFromReplay(ctx context.Context, path string, meta BranchMeta) (SessionListingRepairResult, error) {
+// repairSessionListingFromReplay decodes the transcript without holding the
+// save/file/meta locks (Task 206 T2) and hands the result to the locked commit
+// half. result carries the caller's named returns so the fingerprint fill-in
+// keeps working on every early exit.
+func repairSessionListingFromReplay(ctx context.Context, path string, meta BranchMeta, result SessionListingRepairResult) (SessionListingRepairResult, error) {
 	before, err := sessionRepairContentFingerprint(path)
 	if err != nil {
 		return SessionListingRepairResult{}, err
@@ -169,6 +188,32 @@ func repairSessionListingFromReplay(ctx context.Context, path string, meta Branc
 	if err := ctx.Err(); err != nil {
 		return SessionListingRepairResult{}, err
 	}
+	after, err := sessionRepairContentFingerprint(path)
+	if err != nil {
+		return SessionListingRepairResult{}, err
+	}
+	if before != after {
+		return SessionListingRepairResult{Status: SessionListingRepairSourceChanged}, nil
+	}
+	return commitSessionListingReplay(ctx, path, meta, before, msgs, state, result)
+}
+
+// commitSessionListingReplay is the locked half of the replay repair: it re-
+// checks the CAS fence now that the locks are held, then publishes the decoded
+// transcript. Extracted so the SourceChanged path stays unit-testable without
+// racing a real decoder.
+func commitSessionListingReplay(ctx context.Context, path string, meta BranchMeta, before string, msgs []provider.Message, state PersistedState, result SessionListingRepairResult) (SessionListingRepairResult, error) {
+	unlock, err := lockSessionListingRepair(path)
+	if err != nil {
+		return SessionListingRepairResult{}, err
+	}
+	defer unlock()
+	defer func() {
+		result.ContentFingerprint = sessionListingCatalogContentFingerprint(path)
+		result.MetaFingerprint = sessionListingCatalogFileFingerprint(BranchMetaPath(path))
+	}()
+	// Second CAS fence: the source may have changed between the unlocked decode
+	// and this locked critical section.
 	after, err := sessionRepairContentFingerprint(path)
 	if err != nil {
 		return SessionListingRepairResult{}, err
@@ -217,6 +262,26 @@ func repairSessionListingFromReplay(ctx context.Context, path string, meta Branc
 	return SessionListingRepairResult{
 		Status: SessionListingRepairApplied, Preview: preview, Turns: turns, LedgerRepaired: ledgerRepaired,
 	}, nil
+}
+
+// sessionTrashDirName matches the desktop trash layout (desktop/sessions.go
+// sessionTrashDir); this package cannot import package main.
+const sessionTrashDirName = ".trash"
+
+// SessionPathInTrash reports whether any segment of the cleaned path is the
+// session trash directory. Exported for the sessioncatalog, whose repair queue
+// must skip trash entries for the same reason (Task 206 T4).
+func SessionPathInTrash(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+	for _, seg := range strings.Split(filepath.ToSlash(filepath.Clean(path)), "/") {
+		if seg == sessionTrashDirName {
+			return true
+		}
+	}
+	return false
 }
 
 func indexedSessionListing(path string, meta BranchMeta) (preview string, turns int, ok, unsupported bool, err error) {
