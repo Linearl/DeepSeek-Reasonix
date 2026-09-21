@@ -264,7 +264,7 @@ darwin)
 		# while still writing the image, so gate on the file existing, not the exit code.
 		dmgsrc=$(mktemp -d)
 		cp -R "$app" "$dmgsrc/${APPNAME}.app"
-		dmg="$ROOT/dist/${APPNAME}-darwin-universal.dmg"
+		dmg="$ROOT/dist/${APPNAME}-darwin-${arch}.dmg"
 		create-dmg \
 			--volname "$APPNAME" \
 			--window-size 540 380 \
