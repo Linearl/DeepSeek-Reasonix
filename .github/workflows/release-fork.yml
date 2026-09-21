@@ -50,7 +50,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { runner: macos-14, platform: darwin/universal, name: darwin-universal }
+          - { runner: macos-15, platform: darwin/arm64, name: darwin-arm64 }
+          - { runner: macos-15-intel, platform: darwin/amd64, name: darwin-amd64 }
+          - { runner: macos-15, platform: darwin/universal, name: darwin-universal }
           - { runner: windows-latest, platform: windows/amd64, name: windows-amd64 }
           - { runner: windows-11-arm, platform: windows/arm64, name: windows-arm64 }
           - { runner: ubuntu-22.04, platform: linux/amd64, name: linux-amd64 }
