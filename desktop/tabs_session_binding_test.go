@@ -94,3 +94,29 @@ func TestSessionBindingFromMetaKeepsNormalProject(t *testing.T) {
 		t.Fatalf("workspaceRoot = %q, want %q", binding.workspaceRoot, normalizeProjectRoot(root))
 	}
 }
+
+// TestPruneShadowProjectsFor: the startup self-check keeps real projects and drops
+// only registry entries whose root is the app's own session storage (task 211 P2).
+func TestPruneShadowProjectsFor(t *testing.T) {
+	storage := normalizeProjectRoot(t.TempDir())
+	real := filepath.Join(t.TempDir(), "real-project")
+	projects := []desktopProject{
+		{Root: real, Title: "real"},
+		{Root: filepath.Join(storage, "shadow-slug"), Title: "shadow"},
+		{Root: storage, Title: "storage-itself"},
+	}
+	kept, pruned := pruneShadowProjectsFor(projects, []string{storage})
+	if len(kept) != 1 || kept[0].Root != real {
+		t.Fatalf("kept = %+v, want only the real project", kept)
+	}
+	if len(pruned) != 2 {
+		t.Fatalf("pruned = %+v, want the two storage-rooted entries", pruned)
+	}
+	if kept2, pruned2 := pruneShadowProjectsFor([]desktopProject{{Root: real, Title: "real"}}, []string{storage}); len(pruned2) != 0 || len(kept2) != 1 {
+		t.Fatalf("all-real registry must be untouched: kept=%+v pruned=%+v", kept2, pruned2)
+	}
+	kept3, pruned3 := pruneShadowProjectsFor(nil, []string{storage})
+	if len(kept3) != 0 || len(pruned3) != 0 {
+		t.Fatal("empty registry must produce empty results")
+	}
+}

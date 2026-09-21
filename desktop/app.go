@@ -539,6 +539,9 @@ func (a *App) startup(ctx context.Context) {
 		return
 	}
 	installSystemQuitHook()
+	// Task 211 P2: clear shadow project roots (registry entries pointing into the
+	// app's own session storage) before anything reads the project tree.
+	pruneShadowProjectRoots()
 	// Serve pool gateway is opt-in via the Settings → 集成与连接 panel; only
 	// start it on launch if the user previously enabled the toggle.
 	if servepoolEnabled() {

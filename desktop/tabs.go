@@ -4243,6 +4243,47 @@ func sessionBindingWorkspaceRootBlocked(root string) bool {
 	})
 }
 
+// pruneShadowProjectRoots is the task 211 P2 startup self-check: registry entries
+// whose root lives inside the app's own session storage are legacy corruption from
+// pre-156.B writers. The binding-side heal already refuses to use them, but leaving
+// them in desktop-projects.json resurrects the shadow project node on every boot.
+// The untouched registry is kept as <desktop-projects>.prune-bak before any write,
+// and every removal is logged, so a rollback is a file rename plus the log.
+func pruneShadowProjectRoots() {
+	f := loadProjectsFile()
+	if len(f.Projects) == 0 {
+		return
+	}
+	if b, err := json.MarshalIndent(f, "", "  "); err == nil {
+		_ = os.WriteFile(filepath.Join(desktopConfigDir(), desktopProjectsFile+".prune-bak"), b, 0o644)
+	}
+	storages := []string{config.SessionDir(), desktopSessionDir(globalWorkspaceRoot())}
+	_ = updateProjectsFile(func(cur *desktopProjectFile) (bool, error) {
+		kept, pruned := pruneShadowProjectsFor(cur.Projects, storages)
+		if len(pruned) == 0 {
+			return false, nil
+		}
+		for _, p := range pruned {
+			slog.Warn("desktop: pruned shadow project root from registry", "root", p.Root, "title", p.Title)
+		}
+		cur.Projects = kept
+		return true, nil
+	})
+}
+
+// pruneShadowProjectsFor splits registry entries into the ones that keep and the
+// ones whose root is the app's own session storage.
+func pruneShadowProjectsFor(projects []desktopProject, storages []string) (kept, pruned []desktopProject) {
+	for _, p := range projects {
+		if sessionBindingWorkspaceRootBlockedFor(p.Root, storages) {
+			pruned = append(pruned, p)
+			continue
+		}
+		kept = append(kept, p)
+	}
+	return kept, pruned
+}
+
 func sessionBindingWorkspaceRootBlockedFor(root string, storages []string) bool {
 	root = normalizeProjectRoot(root)
 	if root == "" {
