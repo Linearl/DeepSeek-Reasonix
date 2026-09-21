@@ -43,6 +43,12 @@ type SessionCollabConfig struct {
 	// mirroring ResolveSessionPath: a boot snapshot would freeze the value for the
 	// life of a session. Nil keeps the package default.
 	HopLimit func() int
+	// SessionStatus, when set, answers the in-process running/idle truth for a
+	// contact (task 218): the host knows which controllers own an active turn,
+	// a file-only view never can. known=false means the probe cannot see that
+	// process (other process, runtime not stood up) — the tool must report
+	// unknown rather than guess an idle. Nil makes every state unknown.
+	SessionStatus func(contactID string) (running bool, lastTurnAtMS int64, known bool)
 }
 
 // hopLimit resolves the ceiling in force for this call (task 204).
@@ -166,6 +172,138 @@ func (t listAddressableSessionsTool) Execute(_ context.Context, args json.RawMes
 		_ = json.Unmarshal(args, &p)
 	}
 	return directoryPage(t.cfg, p.Limit, p.Archived, "")
+}
+
+// NewGetSessionStatusTool answers "is the peer busy?" (task 218) from cheap
+// metadata alone: the in-process running state where the host can see it, the
+// mailbox counters everywhere else. No transcript bytes ever cross this
+// boundary, so a status sweep stays KB-light no matter how large the directory.
+func NewGetSessionStatusTool(cfg SessionCollabConfig) tool.Tool {
+	return getSessionStatusTool{cfg: cfg}
+}
+
+type getSessionStatusTool struct{ cfg SessionCollabConfig }
+
+func (getSessionStatusTool) Name() string { return "get_session_status" }
+
+func (getSessionStatusTool) Description() string {
+	return "Check whether collaboration peers are busy before assigning work (task 218). Without arguments returns every addressable live session; pass targets (mixed contact_id / topic_id / exact title) to query one or many in one call. Each record is lightweight structured metadata — running/idle/queued/unknown state, last activity, unread inbox count — never transcript content; unmatched targets are reported explicitly. Strictly read-only. Experimental."
+}
+
+func (getSessionStatusTool) Schema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"targets":{"type":"array","items":{"type":"string"},"description":"Sessions to query: contact_id, topic_id, or exact title, mixed freely. Omit for every addressable live session."}},"required":[]}`)
+}
+
+func (getSessionStatusTool) ReadOnly() bool { return true }
+
+func (t getSessionStatusTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
+	var p struct {
+		Targets []string `json:"targets"`
+	}
+	if len(args) > 0 {
+		_ = json.Unmarshal(args, &p)
+	}
+
+	all := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
+	live := make([]sessioncollab.Identity, 0, len(all))
+	for _, id := range all {
+		if !id.Archived {
+			live = append(live, id)
+		}
+	}
+
+	pick := func(target string) (sessioncollab.Identity, bool) {
+		key := strings.ToLower(strings.TrimSpace(target))
+		if key == "" {
+			return sessioncollab.Identity{}, false
+		}
+		for _, id := range live {
+			if strings.EqualFold(id.ContactID, key) {
+				return id, true
+			}
+		}
+		for _, id := range live {
+			if id.TopicID != "" && strings.EqualFold(id.TopicID, key) {
+				return id, true
+			}
+		}
+		for _, id := range live {
+			if id.Title != "" && strings.EqualFold(id.Title, key) {
+				return id, true
+			}
+		}
+		return sessioncollab.Identity{}, false
+	}
+
+	mailDir := t.cfg.MailDir
+	if mailDir == "" {
+		mailDir = config.SessionCollabMailDir()
+	}
+	mail := sessioncollab.NewMailStoreWithHopLimit(mailDir, t.cfg.hopLimit())
+
+	status := func(id sessioncollab.Identity) map[string]any {
+		unread, lastDelivery := 0, int64(0)
+		if id.ContactID != "" {
+			unread, lastDelivery = mail.InboxStatus(id.ContactID)
+		}
+		running, lastTurn, known := false, int64(0), false
+		if t.cfg.SessionStatus != nil && id.ContactID != "" {
+			running, lastTurn, known = t.cfg.SessionStatus(id.ContactID)
+		}
+		// State precedence (task 218): an active turn wins over pending mail; a
+		// runtime the probe cannot see is unknown — never a guessed idle.
+		state := "unknown"
+		switch {
+		case known && running:
+			state = "running"
+		case known && unread > 0:
+			state = "queued"
+		case known:
+			state = "idle"
+		}
+		activity := lastTurn
+		if activity == 0 {
+			activity = lastDelivery
+		}
+		return map[string]any{
+			"contactId":    id.ContactID,
+			"topicId":      id.TopicID,
+			"title":        id.Title,
+			"scope":        id.Scope,
+			"state":        state,
+			"lastActivity": activity,
+			"unreadInbox":  unread,
+		}
+	}
+
+	records := make([]map[string]any, 0)
+	unmatched := make([]string, 0)
+	if len(p.Targets) == 0 {
+		for _, id := range live {
+			records = append(records, status(id))
+		}
+	} else {
+		for _, target := range p.Targets {
+			id, ok := pick(target)
+			if !ok {
+				// A target the directory cannot resolve is reported, never
+				// silently dropped — the caller may be one typo away from
+				// assigning work to nobody.
+				unmatched = append(unmatched, target)
+				continue
+			}
+			records = append(records, status(id))
+		}
+	}
+	out, _ := json.Marshal(map[string]any{
+		"returned":  len(records),
+		"total":     len(live),
+		"query":     "session status — state/lastActivity/unreadInbox only, no transcript content",
+		"states":    "running=active turn; idle=waiting for input; queued=inbox has unconsumed mail; unknown=process not visible (never a guessed idle)",
+		"unmatched": unmatched,
+		"sessions":  records,
+	})
+	return string(out), nil
 }
 
 // NewSearchSessionsTool finds sessions by keyword in title/purpose, so a large

@@ -203,6 +203,10 @@ type Options struct {
 	// create sessions itself — that is a host capability — so nil omits the
 	// create_collab_session tool entirely rather than exposing a broken one.
 	OnCreateCollabSession agent.CreateCollabSessionFunc
+	// OnSessionStatus lets a host answer the in-process running/idle truth for
+	// a contact (task 218). Nil leaves every reported state unknown — honest,
+	// never a guessed idle.
+	OnSessionStatus func(contactID string) (running bool, lastTurnAtMS int64, known bool)
 	// OnDeleteSession lets a host move a collaborating session to trash on the
 	// agent's behalf (task 154 sub-item A). Nil omits the delete_session tool.
 	OnDeleteSession func(contactID, sessionPath string, dryRun bool) (agent.DeleteSessionImpact, agent.DeleteSessionResult, error)
@@ -1895,11 +1899,15 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			// Task 204: resolve the chain ceiling per call, so a settings change
 			// applies to newly arriving messages without rebuilding the session.
 			HopLimit: config.SessionCollabHopLimitLive,
+			// Task 218: the host answers running/idle from its own controllers;
+			// nil (CLI, tests) keeps every state unknown instead of a guess.
+			SessionStatus: opts.OnSessionStatus,
 		}
 		reg.Add(agent.NewSetSessionPurposeTool(collab))
 		reg.Add(agent.NewListAddressableSessionsTool(collab))
 		reg.Add(agent.NewSearchSessionsTool(collab))
 		reg.Add(agent.NewReadSessionTailTool(collab))
+		reg.Add(agent.NewGetSessionStatusTool(collab))
 		reg.Add(agent.NewTalkToSessionTool(collab))
 		reg.Add(agent.NewTalkToSessionSyncTool(collab))
 		for _, t := range agent.NewTaskCardTools(agent.TaskCardConfig{

@@ -1187,6 +1187,26 @@ func (a *App) knownProjectRoots() []string {
 	return roots
 }
 
+// collabSessionStatus answers the in-process running/idle truth for one
+// contact (task 218). Only controllers this App owns are visible; anything
+// else — another process, a runtime that was never stood up — is unknown,
+// because a guessed idle would invite double-dispatch onto a busy peer. No
+// turn-edge timestamp is tracked here yet, so lastTurnAtMS stays 0 and the
+// tool falls back to the mailbox's own last-delivery time.
+func (a *App) collabSessionStatus(contactID string) (running bool, lastTurnAtMS int64, known bool) {
+	contactID = strings.TrimSpace(contactID)
+	if contactID == "" {
+		return false, 0, false
+	}
+	for _, target := range a.sessionCollabLiveTargets(nil) {
+		if target.contactID != contactID || target.ctrl == nil {
+			continue
+		}
+		return target.ctrl.RuntimeStatus().Running, 0, true
+	}
+	return false, 0, false
+}
+
 // sessionCollabLiveTargets is every place a message can land without first
 // standing anything up: visible tabs bound to a session, plus detached runtimes
 // whose tab was closed but whose work is still alive. Only the contacts in

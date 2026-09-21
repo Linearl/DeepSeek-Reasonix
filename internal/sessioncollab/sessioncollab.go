@@ -752,6 +752,33 @@ func (s *MailStore) ParentThread(contactID, threadID string) (MailMessage, bool)
 	return MailMessage{}, false
 }
 
+// InboxStatus reports, read-only, how many messages a contact has not consumed
+// and when the inbox last heard a delivery (task 218). No cursor is advanced:
+// a status probe must never cost the target its own pending mail, and a caller
+// that cannot see the target's process still gets honest counters from here.
+func (s *MailStore) InboxStatus(contactID string) (unread int, lastDeliveryAt int64) {
+	unlock, err := s.lock()
+	if err != nil {
+		return 0, 0
+	}
+	defer unlock()
+	all, err := s.readAll(contactID)
+	if err != nil {
+		return 0, 0
+	}
+	seen := s.readCursor(contactID)
+	var last int64
+	for _, m := range all {
+		if !seen[m.ID] {
+			unread++
+		}
+		if m.At > last {
+			last = m.At
+		}
+	}
+	return unread, last
+}
+
 // A reply names the message it answers in thread_id. Two ways of naming the wrong
 // one are refused here rather than silently dropping the message later:
 //
