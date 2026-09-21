@@ -71,3 +71,27 @@ export async function hydrateEmptyGuidancePreviews(
 export function mergeGuidanceSnapshot(durable: PendingGuidance[], fallback: PendingGuidance[]): PendingGuidance[] {
   return durable.length > 0 ? durable : fallback;
 }
+
+// Task 153: the manual "merge next" affordance. Joining is a plain double
+// newline — no separator prose, no rephrasing — so both bodies stay verbatim
+// and the merged row keeps the first entry's id (its durable row is the one
+// that gets updated; the next entry's row is removed by the caller).
+export function mergeGuidanceTexts(current: string, next: string): string {
+  return `${current.trimEnd()}\n\n${next.trimStart()}`;
+}
+
+export function mergeGuidanceWithNext<T extends { id: string; text: string; submitText: string }>(
+  items: T[],
+  id: string,
+): T[] {
+  const index = items.findIndex((item) => item.id === id);
+  if (index < 0 || index + 1 >= items.length) return items;
+  const current = items[index];
+  const next = items[index + 1];
+  const merged: T = {
+    ...current,
+    text: mergeGuidanceTexts(current.text, next.text),
+    submitText: mergeGuidanceTexts(current.submitText || current.text, next.submitText || next.text),
+  };
+  return [...items.slice(0, index), merged, ...items.slice(index + 2)];
+}

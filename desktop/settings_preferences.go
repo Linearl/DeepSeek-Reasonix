@@ -270,6 +270,12 @@ func (a *App) SetCollabInboxMerge(mode string) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetCollabInboxMerge(mode) })
 }
 
+// SetCollabGuidanceMerge toggles the guidance shelf's manual merge-next button
+// (task 153). Off keeps the shelf exactly as before the feature existed.
+func (a *App) SetCollabGuidanceMerge(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetCollabGuidanceMerge(enabled) })
+}
+
 // CreateDreamHeartbeatTask ensures a scheduled dream pass exists so the
 // experiment can be exercised without hand-editing heartbeat-tasks.json.
 // Returns created=true when a new task was appended; an existing Dream task

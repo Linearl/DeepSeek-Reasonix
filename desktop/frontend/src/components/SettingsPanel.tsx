@@ -28,6 +28,7 @@ import { botAccessEntryCount, botAccessReady, botConnectionCredentialSummary, bo
 import { app, COMPACT_RATIO_MAX_PERCENT, COMPACT_RATIO_MIN_PERCENT, onRuntimeRebuilt, openExternal } from "../lib/bridge";
 import { setSessionMonitorEnabled, setSessionMonitorOpen } from "../lib/sessionMonitor";
 import { setAutoLoadOlderEnabled } from "../lib/autoLoadOlderPreference";
+import { setCollabGuidanceMergeEnabled } from "../lib/collabGuidanceMergePreference";
 import { setFeedbackEnabled, setFeedbackOpen } from "./FeedbackPanel";
 import { setSplitViewEnabled } from "../lib/splitView";
 import { normalizeLangPref, useI18n, type DictKey, type LangPref } from "../lib/i18n";
@@ -1745,6 +1746,8 @@ type ExperimentFeatureId =
   | "perfMonitor"
   | "autoLoadOlder"
   | "sessionCollab"
+  | "collabInboxMerge"
+  | "collabGuidanceMerge"
   | "autopilot";
 
 function ExperimentalSection({ s, busy, apply }: SectionProps) {
@@ -1815,6 +1818,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "perfMonitor", group: "obs", label: t("settings.perfMonitor"), on: Boolean(s.experimentalPerfMonitor) },
     { id: "autoLoadOlder", group: "session", label: t("settings.autoLoadOlder"), on: Boolean(s.experimentalAutoLoadOlder) },
     { id: "sessionCollab", group: "fb", label: t("settings.sessionCollab"), on: Boolean(s.experimentalSessionCollab) },
+    { id: "collabInboxMerge", group: "fb", label: t("settings.collabInboxMerge"), on: (s.collabInboxMerge || "off") !== "off" },
+    { id: "collabGuidanceMerge", group: "fb", label: t("settings.collabGuidanceMerge"), on: Boolean(s.collabGuidanceMerge) },
     { id: "autopilot", group: "auto", label: t("settings.autopilot"), on: Boolean(s.autopilot) },
   ];
 
@@ -2309,6 +2314,25 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                       })}
                     >
                       {t(`settings.collabInboxMerge.${mode}`)}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.collabGuidanceMerge")} hint={t("settings.collabGuidanceMergeHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.collabGuidanceMerge) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetCollabGuidanceMerge(on);
+                        // The composer reads this flag from a live preference store,
+                        // so flipping it reaches open composers without a restart.
+                        setCollabGuidanceMergeEnabled(on);
+                      })}
+                    >
+                      {t(on ? "settings.collabGuidanceMerge.on" : "settings.collabGuidanceMerge.off")}
                     </button>
                   ))}
                 </SettingsOptions>

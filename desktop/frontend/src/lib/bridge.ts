@@ -771,6 +771,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalAutoLoadOlder(enabled: boolean): Promise<void>;
   // Task 221: inbox drain merge tri-state (off | same_sender | all).
   SetCollabInboxMerge(mode: string): Promise<void>;
+  // Task 153: guidance shelf manual "merge next" button.
+  SetCollabGuidanceMerge(enabled: boolean): Promise<void>;
   // Task 19: sessions that can be addressed by contact_id.
   ListAddressableSessions(): Promise<{ contactId: string; purpose?: string; title?: string; topicId?: string; sessionPath: string; scope?: string; workspaceRoot?: string; open: boolean }[]>;
   // Task 19: run one collaboration delivery pass.
@@ -4984,6 +4986,7 @@ function makeMockApp(): AppBindings {
     async SetSessionCollabHopLimit() {},
     async SetExperimentalAutoLoadOlder() {},
     async SetCollabInboxMerge() {},
+    async SetCollabGuidanceMerge() {},
     async ListAddressableSessions() { return []; },
     async DrainSessionCollabMail() { return { delivered: 0, refused: 0, targets: [] }; },
     async CreateDreamHeartbeatTask() { return false; },

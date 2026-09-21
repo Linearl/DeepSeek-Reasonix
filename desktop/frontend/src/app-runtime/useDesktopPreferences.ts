@@ -8,6 +8,7 @@ import { hydrateReasoningDisplayMode, setReasoningDisplayPending } from "../lib/
 import { hydrateSessionExperience } from "../lib/sessionExperience";
 import { setSessionMonitorEnabled } from "../lib/sessionMonitor";
 import { setAutoLoadOlderEnabled } from "../lib/autoLoadOlderPreference";
+import { setCollabGuidanceMergeEnabled } from "../lib/collabGuidanceMergePreference";
 import { setFeedbackEnabled } from "../components/FeedbackPanel";
 import type { BotRuntimeStatusView } from "../lib/types";
 import { app } from "../lib/bridge";
@@ -32,6 +33,8 @@ export function useDesktopPreferences() {
     // Fork task 160: hydrate the transcript's scroll-driven history trigger from the
     // same snapshot, so flipping the switch applies without a restart.
     setAutoLoadOlderEnabled(Boolean((settings as { experimentalAutoLoadOlder?: boolean }).experimentalAutoLoadOlder));
+    // Task 153: hydrate the guidance shelf's merge-next affordance the same way.
+    setCollabGuidanceMergeEnabled(Boolean((settings as { collabGuidanceMerge?: boolean }).collabGuidanceMerge));
     // Task 161: apply the transcript cache tuning (max resident tab states +
     // the two budgets) during boot, BEFORE the first transcriptStore
     // construction reads the effective ceilings. When the experiment is OFF

@@ -2337,6 +2337,8 @@ export interface DesktopStartupSettingsView {
   experimentalAutoLoadOlder?: boolean;
   /** Task 221: inbox drain merge tri-state (off | same_sender | all). */
   collabInboxMerge?: string;
+  /** Task 153: guidance shelf manual "merge next" button. */
+  collabGuidanceMerge?: boolean;
   bot: BotSettingsView;
   desktopLanguage: string; // "" | "en" | "zh"; empty = auto
   desktopLayoutStyle: string; // "classic" | "workbench"
