@@ -1442,6 +1442,13 @@ type AgentConfig struct {
 	// button (task 153). Off by default: the queue then behaves exactly as
 	// before — one row per message, no merge affordance.
 	CollabGuidanceMerge bool `toml:"collab_guidance_merge"`
+	// ExperimentalCollabBackgroundDelivery (task 224) makes collab delivery
+	// open the target tab inactive instead of activating it — the woken
+	// conversation runs in the background without stealing focus. Off by
+	// default (iron rule 2): delivery keeps its historical auto-activate
+	// behavior so existing flows are unchanged. Host-only this round; the
+	// settings-panel switch lands with the 173 panel later.
+	ExperimentalCollabBackgroundDelivery bool `toml:"experimental_collab_background_delivery"`
 	// PerfMonitorIntervalSeconds is the sampler interval; 0 keeps the built-in
 	// default (5s) and values outside 1..300 are clamped.
 	PerfMonitorIntervalSeconds int `toml:"perf_monitor_interval_seconds"`

@@ -113,6 +113,18 @@ func sessionCollabHopLimit() int {
 	return config.SessionCollabHopLimitLive()
 }
 
+// collabBackgroundDelivery resolves the task-224 gate: when the experimental
+// background-delivery switch is on, collab delivery opens the target tab
+// inactive so the woken conversation runs without stealing focus. An
+// unreadable config keeps the safe default (off = historical auto-activate).
+func collabBackgroundDelivery() bool {
+	cfg, err := config.Load()
+	if err != nil || cfg == nil {
+		return false
+	}
+	return cfg.Agent.ExperimentalCollabBackgroundDelivery
+}
+
 // SessionCollabDrainResult reports one delivery pass so failures stay visible.
 type SessionCollabDrainResult struct {
 	Delivered int                        `json:"delivered"`
@@ -704,8 +716,18 @@ func (p *sessionCollabPump) drain() SessionCollabDrainResult {
 		if !ok || id.Archived || strings.TrimSpace(id.SessionPath) == "" {
 			continue
 		}
-		if _, err := p.app.OpenTopicSession(id.Scope, id.Workspace, id.TopicID, id.SessionPath); err != nil {
-			log.Printf("[session-collab] cannot open session for contact %s (%s): %v", contact, id.Title, err)
+		// Task 224: when experimental_collab_background_delivery is on, stand
+		// the session up without activating its tab — the woken conversation
+		// runs in the background without stealing focus (D2). Off (default)
+		// keeps the historical auto-activate path with zero regression.
+		var openErr error
+		if collabBackgroundDelivery() {
+			_, openErr = p.app.openTopicTabWithActivation(id.Scope, id.Workspace, id.TopicID, id.SessionPath, false)
+		} else {
+			_, openErr = p.app.OpenTopicSession(id.Scope, id.Workspace, id.TopicID, id.SessionPath)
+		}
+		if openErr != nil {
+			log.Printf("[session-collab] cannot open session for contact %s (%s): %v", contact, id.Title, openErr)
 			continue
 		}
 		log.Printf("[session-collab] opened session %q to accept a message for contact %s", id.Title, contact)
