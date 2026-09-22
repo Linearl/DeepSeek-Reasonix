@@ -9,6 +9,7 @@ import (
 
 	"reasonix/internal/config"
 	"reasonix/internal/sessioncollab"
+	"reasonix/internal/sessioninbox"
 	"reasonix/internal/tool"
 )
 
@@ -47,7 +48,7 @@ func (drainInboxTool) Description() string {
 }
 
 func (drainInboxTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"settle":{"type":"boolean","description":"true (default): claim and ack — messages are consumed. false: peek only, cursor does not advance."},"limit":{"type":"integer","description":"Max messages to return (default 20, clamped 1..100)."},"source":{"type":"string","description":"Only return messages whose fromContactId matches this value. Empty (default) returns all senders."}}}`)
+	return json.RawMessage(`{"type":"object","properties":{"settle":{"type":"boolean","description":"true (default): claim and ack — messages are consumed. false: peek only, cursor does not advance."},"limit":{"type":"integer","description":"Max messages to return (default 20, clamped 1..100)."},"source":{"type":"string","description":"Only return messages whose fromContactId matches this value. Empty (default) returns all senders."},"layer":{"type":"string","enum":["mailbox","inbox","all"],"description":"Which layer to pull from. mailbox = MailStore (cross-session handoff). inbox = sessioninbox (followups already delivered to the session queue). all (default) = both layers merged."}}}`)
 }
 
 // ReadOnly is false when settle can advance the cursor; the registry uses this
@@ -148,11 +149,59 @@ func drainInboxConvert(msg sessioncollab.MailMessage, hop int) drainInboxMessage
 	}
 }
 
+// drainInboxFromSessionInbox pulls items from the sessioninbox layer (H1).
+// These are followups already delivered to the session queue — the MailStore
+// copy has been acked by the host pump, so this is the only place they remain.
+// Settle uses ClaimItem+AckDequeue to consume; peek reads the snapshot only.
+func drainInboxFromSessionInbox(sessionPath, sourceFilter string, settle bool, limit int) (msgs []drainInboxMessage, settledIDs []string) {
+	if strings.TrimSpace(sessionPath) == "" {
+		return nil, nil
+	}
+	store, err := sessioninbox.Open(sessionPath, sessioninbox.Limits{})
+	if err != nil {
+		return nil, nil
+	}
+	defer store.Close()
+	snap := store.Snapshot()
+	for _, item := range snap.Items {
+		if item.State == sessioninbox.StateSteerConsumed || item.State == sessioninbox.StateRunning {
+			continue
+		}
+		if strings.TrimSpace(sourceFilter) != "" && item.Source != sourceFilter {
+			continue
+		}
+		if len(msgs) >= limit {
+			break
+		}
+		_, env, rerr := store.ReadItem(item.ID)
+		if rerr != nil {
+			continue
+		}
+		m := drainInboxMessage{
+			ID:   "inbox:" + item.ID,
+			From: item.Source,
+			Body: env.DisplayText,
+			At:   item.CreatedAt.UnixMilli(),
+			Text: "[sessioninbox] " + item.Preview,
+		}
+		msgs = append(msgs, m)
+		if settle {
+			if err := store.ClaimItem(item.ID); err == nil {
+				if err := store.AckDequeue(item.ID); err == nil {
+					settledIDs = append(settledIDs, item.ID)
+				}
+			}
+		}
+	}
+	return msgs, settledIDs
+}
+
 func (t drainInboxTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
 	var p struct {
 		Settle *bool  `json:"settle"`
 		Limit  int    `json:"limit"`
 		Source string `json:"source"`
+		Layer  string `json:"layer"`
 	}
 	if len(args) > 0 {
 		if err := json.Unmarshal(args, &p); err != nil {
@@ -187,7 +236,15 @@ func (t drainInboxTool) Execute(_ context.Context, args json.RawMessage) (string
 		Query:   "drain_inbox — mailbox pull for the calling session only",
 	}
 
-	if settle {
+	// H1: determine which layers to pull from.
+	layer := strings.ToLower(strings.TrimSpace(p.Layer))
+	if layer == "" {
+		layer = "all"
+	}
+	useMailbox := layer == "mailbox" || layer == "all"
+	useInbox := layer == "inbox" || layer == "all"
+
+	if useMailbox && settle {
 		var taken []sessioncollab.MailMessage
 		var refused []sessioncollab.MailMessage
 		err := mail.Drain(me, func(pending, refusedBatch []sessioncollab.MailMessage) []string {
@@ -225,7 +282,7 @@ func (t drainInboxTool) Execute(_ context.Context, args json.RawMessage) (string
 		for _, m := range refused {
 			payload.RefusedMsgs = append(payload.RefusedMsgs, drainInboxConvert(m, m.Hop))
 		}
-	} else {
+	} else if useMailbox {
 		peeked, err := mail.Peek(me)
 		if err != nil {
 			return "", fmt.Errorf("drain_inbox: %w", err)
@@ -246,6 +303,16 @@ func (t drainInboxTool) Execute(_ context.Context, args json.RawMessage) (string
 		payload.Took = len(peeked)
 		for _, m := range peeked {
 			payload.Messages = append(payload.Messages, drainInboxConvert(m, m.Hop))
+		}
+	}
+
+	// H1: pull from sessioninbox layer.
+	if useInbox {
+		remaining := limit - payload.Took
+		if remaining > 0 {
+			inboxMsgs, _ := drainInboxFromSessionInbox(me, p.Source, settle, remaining)
+			payload.Took += len(inboxMsgs)
+			payload.Messages = append(payload.Messages, inboxMsgs...)
 		}
 	}
 
