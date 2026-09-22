@@ -58,6 +58,8 @@ func boolString(v bool) string {
 // from the tool surface.
 var acceptsDefaultSnip = map[string]bool{
 	"claim_check":             true, // short structured verdict JSON; generic head/tail split is fine
+	"screenshot":              true, // PNG write confirmation path; generic head/tail split is fine
+	"ui_interact":             true, // action dispatch ack; generic head/tail split is fine
 	"create_worktree":                true, // short structured JSON; generic head/tail split is fine
 	"heartbeat_task_enable":          true, // short structured JSON; generic head/tail split is fine
 	"heartbeat_task_list":            true, // short structured JSON; generic head/tail split is fine

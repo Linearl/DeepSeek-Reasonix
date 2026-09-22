@@ -47,6 +47,8 @@ This document records the provider-visible contract for Reasonix compile-time bu
 | `wait` | true | Block until background jobs finish, then return each job's status and final output/answer. Use to collect the result of a task(run_in_background) or bash(run_in_background) before continuing. Omit job_ids to wait for every running job. |
 | `web_fetch` | true | Fetch a URL over HTTPS/HTTP and return its text content. HTML pages are reduced to readable text; JSON / plain text / markdown bodies come back verbatim. Use to read documentation pages, API responses, or source files hosted somewhere the local filesystem can't reach. |
 | `write_file` | false | Write content to a file at the given path (overwriting existing content). Creates parent directories as needed. |
+| `screenshot` | false | Capture a top-level window (or the Reasonix window by default) to a PNG file. Requires the write path in `output`; optional `window_title` matches a visible window by case-insensitive substring. Windows: PrintWindow; other platforms return a named platform error. Gated by nothing; honors write access like write_file. |
+| `ui_interact` | true | Controlled UI driving for agent-run verification: activate/click/type/key on a named window. Coordinates share the screenshot origin (window top-left incl. title bar). Gated by `experimental_ui_driver` (default off: the tool is not registered). Windows: SendInput; other platforms return a named platform error. |
 
 ## Schema Snapshot
 
