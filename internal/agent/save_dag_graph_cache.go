@@ -72,8 +72,8 @@ func sessionGraphCachePut(logPath string, st *sessionDAGState) {
 	defer sessionGraphCacheMu.Unlock()
 	sessionGraphCache[key] = &sessionGraphCacheEntry{state: st, lastUsed: time.Now()}
 	for len(sessionGraphCache) > sessionGraphCacheCapacity {
-	// Task 239 M1-1: deterministic tie-break — when timestamps are equal,
-	// compare keys so map iteration order cannot change the eviction victim.
+		// Task 239 M1-1: deterministic tie-break — when timestamps are equal,
+		// compare keys so map iteration order cannot change the eviction victim.
 		oldestKey := ""
 		var oldestUsed time.Time
 		for key, entry := range sessionGraphCache {

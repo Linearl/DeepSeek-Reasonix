@@ -1555,10 +1555,10 @@ func (s *Session) upgradeTruncatedTranscriptForWrite(path string) error {
 	s.Messages = res.msgs
 	s.tailTruncated = false
 	if res.dag {
-	// Task 239 B1-2: release DAG to shared cache; do not hold res.state on Session.
-	if res.state != nil {
-		sessionGraphCachePut(store.SessionEventLog(path), res.state)
-	}
+		// Task 239 B1-2: release DAG to shared cache; do not hold res.state on Session.
+		if res.state != nil {
+			sessionGraphCachePut(store.SessionEventLog(path), res.state)
+		}
 		s.head = sessionHeadState{ref: res.head, dag: res.dag, headCount: res.headCount, state: nil, openTurn: res.openTurn, events: res.events}
 	}
 	s.mu.Unlock()

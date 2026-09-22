@@ -107,7 +107,7 @@ and a permanently red test swallows the next real regression.
 Confirm the failure is genuinely pre-existing first (`git stash` your change and
 re-run); that check decides the framing, not whether the failure gets fixed.
 
-### Current list (2026-09-22) — 3 open (serve upload/projects)
+### Current list (2026-09-22) — 4 open (serve upload/projects; agent map race)
 
 * **`internal/serve`: `TestUploadAttachmentJSON`, `TestUploadAttachmentNoData`,
   `TestListProjectsEndpoint`** — red on the pristine `9aa573921` baseline
@@ -115,6 +115,16 @@ re-run); that check decides the framing, not whether the failure gets fixed.
   pending change. Management verdict: register and leave for a dedicated
   cleanup pass; they do not block merges. Next owner must classify each as
   stale/orphan/code-wrong per the rules above before closing.
+* **`internal/agent` full-suite `fatal error: concurrent map writes`** —
+  pre-existing data race, reproduced on the pristine `eb99da2a6` baseline
+  (2026-09-22, Block2 M-a baseline comparison: same fatal hit
+  `TestEventWaitAllIdleWakesOnTurnClose` there; timing-dependent which test
+  trips it). Verdict: **code-wrong** — the shared session/DAG structures are
+  mutated without their own guards (the audit H1-1/M5 family; Block2 m2 added
+  `sessionDAGState.mu` for the nodes map only, which is the named surface).
+  The remaining unguarded maps need the same treatment in a dedicated pass.
+  Subset runs (SaveDag|SessionDAG|DAG|AdoptHead|Turn|DrainInbox) are green;
+  the fatal only appears in the full-suite concurrency mix.
 
 Empty, and kept empty.
 

@@ -44,7 +44,7 @@ func NewDrainInboxTool(cfg SessionCollabConfig) tool.Tool {
 func (drainInboxTool) Name() string { return "drain_inbox" }
 
 func (drainInboxTool) Description() string {
-	return "Pull unread cross-session mail addressed to this session into the tool result and optionally settle it (task 235). settle=true (default) claims and acks the batch — after a successful call InboxStatus.unread drops to zero for those messages. settle=false peeks without advancing the cursor (safe to poll). Reply through talk_to_session using the fromContactId and threadId each message carries; never answer only inside your own transcript. This tool does not start a new turn — it is a pure pull. Experimental."
+	return "Pull unread cross-session mail addressed to this session into the tool result and optionally settle it (task 235). settle=true (default) claims and acks the batch — after a successful call InboxStatus.unread drops to zero for those messages. settle=false peeks without advancing the cursor (safe to poll). Reply through talk_to_session using the fromContactId and threadId each message carries; never answer only inside your own transcript. This tool does not start a new turn — it is a pure pull. Registered only when experimental_collab_background_delivery is on (the host pump then skips delivery and this tool is the mailbox's sole consumer — Block2 M-a mutual exclusion). Experimental."
 }
 
 func (drainInboxTool) Schema() json.RawMessage {

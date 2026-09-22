@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"slices"
+	"sync"
 	"time"
 
 	"reasonix/internal/provider"
@@ -63,6 +64,12 @@ type sessionDAGWriter struct {
 // sessionDAGState is the replayed graph: every node, every head, and the
 // overlays (patches, redactions) that materialize applies on read.
 type sessionDAGState struct {
+	// mu guards the graph against concurrent readers while replayFrom
+	// mutates it in place (task 239 B1-2 follow-up: the state now lives in the
+	// shared cache and can be reached by more than one goroutine — audit H1-1).
+	// Writers take Lock for the whole incremental replay; readers outside the
+	// replay path take RLock via snapshotNodes (or their own RLock).
+	mu              sync.RWMutex
 	path            string
 	generation      int64
 	upgradedFrom    int
@@ -202,6 +209,11 @@ func sessionDAGTailWindowStart(path string, windowBytes int64) (int64, bool) {
 // replayFrom applies every entry from byte offset from to the end of the log.
 // Callers use it for the initial pass and for incremental tail reads.
 func (st *sessionDAGState) replayFrom(ctx context.Context, from int64, limits sessionReplayLimits) error {
+	// H1-1: the whole incremental replay mutates the graph in place; hold the
+	// write lock so concurrent readers (snapshotNodes) never see a half-applied
+	// entry set.
+	st.mu.Lock()
+	defer st.mu.Unlock()
 	// Size the byte budget to the file before deciding anything about it. The budget exists so a
 	// damaged log cannot exhaust memory while decoding, and the size is known here - refusing an
 	// oversize log instead of sizing to it left sessions that were fractions of a percent over

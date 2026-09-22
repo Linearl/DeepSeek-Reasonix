@@ -94,7 +94,7 @@ func (s *Session) TurnContinuedOnOtherHead(leafID string) bool {
 		return false
 	}
 	mine := s.head.ref.HeadID
-	for _, n := range st.nodes {
+	for _, n := range st.snapshotNodes() {
 		if n.parent == leafID && n.head != mine && n.head != "" {
 			return true
 		}

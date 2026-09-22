@@ -1907,7 +1907,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			Enabled:            true,
 			SessionDir:         collabSessionDir,
 			WorkspaceRoot:      root,
-			CollabStatusPath:    collabStatusPath,
+			CollabStatusPath:   collabStatusPath,
 			CurrentSessionPath: sessionPath,
 			CurrentContactID:   currentContact,
 			// Task 158.B: the transcript path is bound by the control layer
@@ -1944,10 +1944,19 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		reg.Add(agent.NewReadCollabStatusTool(collab))
 		reg.Add(agent.NewTalkToSessionTool(collab))
 		// Task 235: the receive half of the collab mailbox. Pure pull into a
-		// tool result (D1) — settle=true claims+acks, settle=false peeks. It
-		// rides the same unconditional registration as talk_to_session: if a
-		// session can send, it must be able to read what arrives.
-		reg.Add(agent.NewDrainInboxTool(collab))
+		// tool result (D1) — settle=true claims+acks, settle=false peeks.
+		// Block2 M-a (mutual exclusion, per the M4 user ruling "consumed
+		// exclusively by the agent's drain_inbox tool"): MailStore has exactly
+		// one consumer at a time. With experimental_collab_background_delivery
+		// ON the host pump skips delivery entirely and drain_inbox pulls; with
+		// it OFF the host pump delivers (runCollabDelivery) and drain_inbox is
+		// NOT registered — the pump's two-phase Claim→Ack would otherwise
+		// double-consume the same batch against drain's same-lock Claim+Ack
+		// (audit M-a). Registration is boot-time: a switch flip applies on
+		// restart. Consumption rights follow the switch.
+		if collabDrainInboxEnabled(&cfg.Agent) {
+			reg.Add(agent.NewDrainInboxTool(collab))
+		}
 		// Task 173 ⑤: read_session_tail reads another session's transcript, so
 		// the panel keeps it unregistered until allowed — the model must not
 		// even see a tool it is not permitted to call.
