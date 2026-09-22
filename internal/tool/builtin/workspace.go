@@ -89,6 +89,7 @@ func (w Workspace) Tools(enabled ...string) []tool.Tool {
 		"glob":          globTool{workDir: w.Dir, paths: w.ReadPaths, forbidRoots: forbidRoots},
 		"grep":          grepTool{workDir: w.Dir, paths: w.ReadPaths, rg: w.Search.RgPath, forbidRoots: forbidRoots, sb: w.Bash, sessionTemp: w.SessionTemp, overlay: w.FileOverlay},
 		"web_fetch":     webFetch{proxySpec: w.ProxySpec},
+		"screenshot":    screenshotTool{workDir: w.Dir, roots: roots, guard: w.SessionGuard, managed: w.ManagedConfig},
 		"create_worktree":         createWorktree{workDir: w.Dir},
 		"inspect_worktree_merge":  inspectWorktreeMerge{workDir: w.Dir},
 		"prepare_worktree_merge":  prepareWorktreeMerge{workDir: w.Dir},
