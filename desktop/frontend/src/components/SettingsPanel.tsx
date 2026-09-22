@@ -125,6 +125,26 @@ const UsageStatsPanel = lazy(() => import("./UsageStatsPanel").then((module) => 
 const QRCodeSVG = lazy(() => import("qrcode.react").then((module) => ({ default: module.QRCodeSVG })));
 
 // SettingsPanel owns a full-window settings page while the workspace stays mounted.
+/** Task 173 UI fix: number input with local state so typing works before blur commits. */
+function DailySendLimitInput({ value, disabled, onCommit }: { value: number; disabled?: boolean; onCommit: (v: number) => void }) {
+  const [local, setLocal] = useState(String(value));
+  useEffect(() => { setLocal(String(value)); }, [value]);
+  return (
+    <input
+      type="number"
+      min={0}
+      value={local}
+      disabled={disabled}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={() => {
+        const n = Math.max(0, Number(local) || 0);
+        setLocal(String(n));
+        if (n !== value) onCommit(n);
+      }}
+    />
+  );
+}
+
 export function SettingsPanel({
   onClose,
   onChanged,
@@ -2267,6 +2287,47 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
               </SettingsOptions>
             </SettingsField>
           )}
+                    {selected === "collabInboxMerge" && (
+            <>
+              <SettingsField label={t("settings.collabInboxMerge")} hint={t("settings.collabInboxMergeHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {(["off", "same_sender", "all"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      className={`set-seg__btn${(s.collabInboxMerge || "off") === mode ? "set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetCollabInboxMerge(mode);
+                      })}
+                    >
+                      {t(`settings.collabInboxMerge.${mode}`)}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+            </>
+          )}
+          {selected === "collabGuidanceMerge" && (
+            <>
+              <SettingsField label={t("settings.collabGuidanceMerge")} hint={t("settings.collabGuidanceMergeHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.collabGuidanceMerge) === on ? "set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetCollabGuidanceMerge(on);
+                        setCollabGuidanceMergeEnabled(on);
+                      })}
+                    >
+                      {t(on ? "settings.collabGuidanceMerge.on" : "settings.collabGuidanceMerge.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+            </>
+          )}
           {selected === "sessionCollab" && (
             <>
               <SettingsField label={t("settings.sessionCollab")} hint={t("settings.sessionCollabHint")} icon={<Sparkles size={18} />}>
@@ -2336,20 +2397,17 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                 </div>
               </SettingsField>
               <SettingsField label={t("settings.sessionCollabDailySendLimit")} hint={t("settings.sessionCollabDailySendLimitHint")} icon={<Sparkles size={18} />}>
-                <input
-                  type="number"
-                  min={0}
+                <DailySendLimitInput
                   value={s.sessionCollabDailySendLimit ?? 0}
                   disabled={busy}
-                  onChange={() => { /* edited via SetSessionCollabGates apply below */ }}
-                  onBlur={(event) => void apply(async () => {
+                  onCommit={(val) => apply(async () => {
                     await app.SetSessionCollabGates(
                       Boolean(s.sessionCollabAllowDelete),
                       Boolean(s.sessionCollabAllowRequireReply),
                       Boolean(s.sessionCollabAllowReadTail),
                       Boolean(s.sessionCollabAllowCreate),
                       Boolean(s.sessionCollabAllowSteer),
-                      Math.max(0, Number(event.target.value) || 0),
+                      Math.max(0, val),
                     );
                   })}
                 />
@@ -2367,41 +2425,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                       })}
                     >
                       {t(on ? "settings.cascadeApproval.on" : "settings.cascadeApproval.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              <SettingsField label={t("settings.collabInboxMerge")} hint={t("settings.collabInboxMergeHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {(["off", "same_sender", "all"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      className={`set-seg__btn${(s.collabInboxMerge || "off") === mode ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetCollabInboxMerge(mode);
-                      })}
-                    >
-                      {t(`settings.collabInboxMerge.${mode}`)}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              <SettingsField label={t("settings.collabGuidanceMerge")} hint={t("settings.collabGuidanceMergeHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.collabGuidanceMerge) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetCollabGuidanceMerge(on);
-                        // The composer reads this flag from a live preference store,
-                        // so flipping it reaches open composers without a restart.
-                        setCollabGuidanceMergeEnabled(on);
-                      })}
-                    >
-                      {t(on ? "settings.collabGuidanceMerge.on" : "settings.collabGuidanceMerge.off")}
                     </button>
                   ))}
                 </SettingsOptions>
