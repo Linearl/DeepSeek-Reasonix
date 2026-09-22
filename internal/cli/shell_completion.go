@@ -130,6 +130,15 @@ func cliCompletionRootSpec() cliCompletionSpec {
 			completionSpec("telemetry", []cliCompletionFlag{help}),
 		),
 		completionSpec("init", []cliCompletionFlag{help}),
+		completionSpec("claim-check", []cliCompletionFlag{
+			// Task 222 L1: structured existence verdicts.
+			completionFlag("--claim", cliCompletionStaticValue),
+			completionFlag("--path", cliCompletionStaticValue),
+			completionFlag("--pattern", cliCompletionStaticValue),
+			completionFlag("--base", cliCompletionStaticValue),
+			help,
+		}),
+		completionSpec("tool-stats", []cliCompletionFlag{help}),
 		completionSpec("acp", []cliCompletionFlag{
 			model,
 			completionFlag("--planner", cliCompletionStaticValue, "auto", "off"),

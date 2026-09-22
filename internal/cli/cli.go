@@ -162,6 +162,14 @@ func RunWithBuildInfo(args []string, info BuildInfo) int {
 	case "report":
 		configureCLIThemeFromConfig()
 		return reportCommand(rest)
+	case "claim-check":
+		// Task 222 L1: structured existence verdicts, packaged with the CLI so
+		// delivery chains never need Python for a negative claim.
+		return runClaimCheck(rest)
+	case "tool-stats":
+		// Task 227 phase 1: aggregate per-tool call/error counters from the
+		// session sidecars (observe only, counters never carry arguments).
+		return runToolStats(rest)
 	case "session", "sessions", "catalogs":
 		return runSessionOrCatalogCommand(cmd, rest)
 	case "hook", "hooks":
@@ -280,7 +288,7 @@ type cliBuildOverrides struct {
 	// Autopilot runs the entry unattended: prompts are never surfaced to a human,
 	// and MaxRuntime bounds the whole run. MaxRuntime must be > 0 - an unbounded
 	// autopilot run is refused at startup rather than accepted and forgotten.
-	Autopilot bool
+	Autopilot  bool
 	MaxRuntime time.Duration
 	// InteractiveHost marks human-in-the-loop entries (chat TUI); print mode
 	// and bots stay on core-v1.

@@ -164,6 +164,9 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 		start := time.Now()
 		s.startedAt[i] = start.UnixMilli()
 		s.outcomes[i] = a.executeOne(ctx, turn, s.calls[i])
+		// Task 227 phase 1: fold the outcome into the per-tool error counters
+		// (observe only — no behavior change, no prompt injection).
+		a.recordToolErrorStats(s.calls[i].Name, s.outcomes[i])
 		recordWorkspaceMutation(a.svc.sink, s.outcomes[i].workspaceMutation)
 		if s.outcomes[i].executed {
 			s.surfaceWriters[i] = s.outcomes[i].workspaceMutation != nil

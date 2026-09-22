@@ -363,6 +363,9 @@ type Agent struct {
 	// replaced at each run start so cursors from an earlier run never continue.
 	reads      readState
 	stragglers runStragglers
+	// toolStats accumulates per-tool call/error counters for the session
+	// sidecar (task 227 phase 1: observe only; aggregate counts, no args).
+	toolStats *toolErrorStats
 	// svc are the collaborators this agent talks to; see services.go.
 	svc agentServices
 	// sess is the state one conversation owns; SetSession restarts it. See
@@ -1328,6 +1331,9 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 	if a.sess.path != "" {
 		a.LoadProjectionSidecar(a.sess.path)
 	}
+	// Task 227 phase 1: restore per-tool error counters from a previous run of
+	// this session so observation survives restarts.
+	a.loadToolErrorStats()
 	a.SetResponseLanguage(opts.ResponseLanguage)
 	a.SetReasoningLanguage(opts.ReasoningLanguage)
 	a.bindCapabilityObservers()
