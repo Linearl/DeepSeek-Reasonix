@@ -256,3 +256,35 @@ func TestEventWaitArgValidation(t *testing.T) {
 		t.Fatal("event_wait must be read-only: it polls status and sends nothing")
 	}
 }
+
+// Task 228 audit m2: under all_idle a target the directory cannot resolve was
+// never observed, so "every target idle" must not satisfy while one is
+// missing — even when every RESOLVED target reads idle. any_idle keeps its
+// "one observed hit is enough" semantics.
+func TestEventWaitAllIdleStaysUnsatisfiedWithUnmatchedTarget(t *testing.T) {
+	dir := t.TempDir()
+	statusFixture(t, dir, "a", "Alpha", "sc_a", "top_a")
+	cfg := SessionCollabConfig{
+		Enabled:       true,
+		SessionDir:    dir,
+		WorkspaceRoot: dir,
+		MailDir:       filepath.Join(t.TempDir(), "mail"),
+		SessionStatus: func(string) (bool, int64, int, bool) {
+			return false, 0, 0, true // every resolvable target is idle
+		},
+	}
+	payload := execEventWait(t, cfg, `{"targets":["sc_a","sc_typo"],"mode":"all_idle","interval_s":5,"timeout_s":10}`)
+	if payload["satisfied"] != false {
+		t.Fatalf("all_idle must stay unsatisfied while a target is unmatched: %v", payload)
+	}
+	unmatched, _ := payload["unmatched"].([]any)
+	if len(unmatched) != 1 || unmatched[0] != "sc_typo" {
+		t.Fatalf("the unmatched target must stay visible in the snapshot: %v", payload["unmatched"])
+	}
+	// any_idle over the same mixed set is honest the other way: the observed
+	// idle target satisfies "any".
+	payload = execEventWait(t, cfg, `{"targets":["sc_a","sc_typo"],"mode":"any_idle","interval_s":5,"timeout_s":10}`)
+	if payload["satisfied"] != true {
+		t.Fatalf("any_idle is satisfied by the one observed idle target: %v", payload)
+	}
+}

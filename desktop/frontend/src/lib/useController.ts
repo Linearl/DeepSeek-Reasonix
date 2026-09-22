@@ -2942,6 +2942,15 @@ export function useController() {
       // decision still reuses the cache, history comes from the local
       // transcript-store snapshot instead of a backend round trip.
       const surfaceEmptyAtHydrate = (statesRef.current.get(tabId)?.items.length ?? 0) === 0;
+      // Task 228 audit m4: the fallthrough label used to be one flat
+      // "no-reusable-cache" for two different decisions — a target that was
+      // never resident (LRU-miss, the normal cold-open path) and a target
+      // whose resident copy failed the reuse fingerprint (a veto). Name each
+      // decision what it is: backend-fetch for the cold open, cache-vetoed
+      // for the fingerprint rejection.
+      const residentVeto = !options.skipHistory && !skipHistory && !resetSurface
+        ? explainReusableCache(statesRef.current.get(tabId), sessionPath)
+        : "";
       const hydrateDecisionReason = options.skipHistory
         ? "caller"
         : skipHistory
@@ -2950,18 +2959,17 @@ export function useController() {
             : "preserveCachedHistory"
           : resetSurface
             ? "reset"
-            : "no-reusable-cache";
+            : residentVeto
+              ? "cache-vetoed"
+              : "backend-fetch";
       noteHydrateDecision({
         tabId,
         sessionPath,
         skipHistory,
         reason: hydrateDecisionReason,
       });
-      if (!options.skipHistory && !skipHistory && hydrateDecisionReason === "no-reusable-cache") {
-        const veto = explainReusableCache(statesRef.current.get(tabId), sessionPath);
-        if (veto) {
-          reportFrontendLog("session-monitor", "hydrate cache veto", `tab=${tabId} ${veto}`, "info");
-        }
+      if (residentVeto) {
+        reportFrontendLog("session-monitor", "hydrate cache veto", `tab=${tabId} ${residentVeto}`, "info");
       }
       const deferResetUntilHistory = Boolean(surfacePolicy === "preserve-current" && (options.deferResetUntilHistory ?? true) && resetSurface && !skipHistory);
       // Request seq alone cannot stop clear→mode-switch races: a load started
