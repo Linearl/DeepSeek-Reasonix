@@ -108,7 +108,10 @@ const CHECKS = [
   { feature: "任务92③ 宽松重放 LRU（非全清）", file: "internal/agent/recovery_chain_preview.go", patterns: ["tolerantReplayCache.order"] },
   { feature: "任务92④ 预览弹窗自持状态（ChainPreviewBody）", file: "desktop/frontend/src/components/RecoveryCopiesSection.tsx", patterns: ["function ChainPreviewBody", "recoveryCopiesPreviewBuilding"] },
   { feature: "任务92② 扫描展开自动加载候选链", file: "desktop/frontend/src/components/RecoveryCopiesSection.tsx", patterns: ["chainLoads"] },
-  { feature: "任务93 本地快照切 tab（33b6c32ec 重实施）", file: "desktop/frontend/src/lib/useController.ts", patterns: ["hasLocalItems", "skipHistory: hasLocalItems"] },
+  // 任务 232 重构：skipHistory 判定移入 hydrateHistoryApply（skip/replace 双分支），
+  // useController 侧保留 hasLocalItems/targetResidentInStore（LRU 驻留也可）。两条锚点都要在。
+  { feature: "任务93 本地快照切 tab（33b6c32ec 重实施；232 重构后双锚点）", file: "desktop/frontend/src/lib/useController.ts", patterns: ["hasLocalItems", "targetResidentInStore"] },
+  { feature: "任务93/232 hydrate skip-replace 分支", file: "desktop/frontend/src/lib/hydrateHistoryApply.ts", patterns: ["skipHistory"] },
   { feature: "任务95 promote sidecar 迁移（damaged 清理 + pinned 身份重写）", file: "internal/agent/recovery_consolidate.go", patterns: ["rewritePinnedContextSessionID", "SessionEventLogDamaged(winnerPath)"] },
 
   // ── 任务 155：会话存储四档 + bridge 健康债（2026-09-17）──────────
