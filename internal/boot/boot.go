@@ -1943,6 +1943,11 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// what get_session_status answers). Read-only and messaging-independent.
 		reg.Add(agent.NewReadCollabStatusTool(collab))
 		reg.Add(agent.NewTalkToSessionTool(collab))
+		// Task 235: the receive half of the collab mailbox. Pure pull into a
+		// tool result (D1) — settle=true claims+acks, settle=false peeks. It
+		// rides the same unconditional registration as talk_to_session: if a
+		// session can send, it must be able to read what arrives.
+		reg.Add(agent.NewDrainInboxTool(collab))
 		// Task 173 ⑤: read_session_tail reads another session's transcript, so
 		// the panel keeps it unregistered until allowed — the model must not
 		// even see a tool it is not permitted to call.

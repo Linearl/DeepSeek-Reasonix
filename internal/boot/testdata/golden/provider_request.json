@@ -276,19 +276,31 @@
     },
     {
       "name": "edit_file",
-      "description": "Replace an exact string in a file with another. old_string must occur exactly once; add surrounding context to disambiguate. Use for targeted edits instead of rewriting the whole file.",
+      "description": "Replace an exact string in a file with another. old_string must occur exactly once; add surrounding context to disambiguate. Use for targeted edits instead of rewriting the whole file. For replacing or deleting a whole line block you may instead pass line_range (e.g. \"278-292\") with the source_token from your latest read_file; anchor_head/anchor_tail prefixes are recommended so drifted line numbers are rejected instead of editing the wrong block.",
       "parameters": {
         "properties": {
+          "anchor_head": {
+            "description": "With line_range: expected content prefix of the first line in the range. A mismatch rejects the edit instead of touching the wrong block.",
+            "type": "string"
+          },
+          "anchor_tail": {
+            "description": "With line_range: expected content prefix of the last line in the range.",
+            "type": "string"
+          },
           "expected": {
             "description": "Optional baseline: the file's exact current content as the caller believes it is. When supplied, the write is refused with a stale-content error unless the on-disk content still matches, avoiding clobbering concurrent changes.",
             "type": "string"
           },
+          "line_range": {
+            "description": "Optional line-range variant: \"start-end\" (1-based, inclusive, e.g. \"278-292\"). Replaces those lines with new_string (empty = delete the range); avoids re-emitting the old block. Requires source_token; anchor_head/anchor_tail strongly recommended.",
+            "type": "string"
+          },
           "new_string": {
-            "description": "Replacement text (may be empty to delete)",
+            "description": "Replacement text (may be empty to delete). With line_range, empty deletes the range.",
             "type": "string"
           },
           "old_string": {
-            "description": "Exact text to replace (must be unique in the file)",
+            "description": "Exact text to replace (must be unique in the file). Required unless line_range is used.",
             "type": "string"
           },
           "path": {
@@ -296,13 +308,11 @@
             "type": "string"
           },
           "source_token": {
-            "description": "Optional: the source_token printed by the read_file that showed you this file. Citing it names the exact version you are editing, so a change made outside this session is caught instead of silently overwritten.",
+            "description": "The source_token printed by the read_file that showed you this file. Citing it names the exact version you are editing, so a change made outside this session is caught instead of silently overwritten. REQUIRED for line_range edits.",
             "type": "string"
           }
         },
         "required": [
-          "new_string",
-          "old_string",
           "path"
         ],
         "type": "object"
@@ -569,7 +579,7 @@
     },
     {
       "name": "use_capability",
-      "description": "Fixed-schema capability proxy. Prefer search(query, limit\u003c=8), then inspect one exact capability, then call it. list is a compact diagnostic inventory only. Supports stable ids such as tool:grep, skill:review, mcp-tool:server/tool, task:subagent, workflow:name, and web:/lsp:/session:/memory: namespaces. memory:remember saves facts (description+body required; activation=\"relevant\" on create; omit activation on update; \"pinned\" only if user asks); memory:forget(name); tool:memory(operation=search|read|list). decline records a reason for a prefer capability. Independent list/search/inspect calls are read-only and may be issued together. Calls keep the provider-visible schema fixed; real writers still pass permission, plan mode, sandbox, write-path, and workspace-lease checks.",
+      "description": "Fixed-schema capability proxy. Prefer search(query, limit\u003c=8), then inspect one exact capability, then call it. list is a compact diagnostic inventory only. Supports stable ids such as tool:grep, skill:review, mcp-tool:server/tool, task:subagent, workflow:name, and web:/lsp:/session:/memory: namespaces. memory:remember saves facts (description+body required; activation=\"relevant\" on create; omit activation on update; \"pinned\" only if user asks); memory:forget(name); tool:memory(operation=search|read|list). decline records a reason for a prefer capability. Independent list/search/inspect calls are read-only and may be issued together. Calls keep the provider-visible schema fixed; real writers still pass permission, plan mode, sandbox, write-path, and workspace-lease checks. ARGUMENT PACKING (common mistake): action and capability_id are TOP-LEVEL parameters of this tool. For action=call, the `arguments` value must be the TARGET TOOL'S OWN argument object exactly (e.g. {\"description\":..., \"body\":...} for memory:remember) — never wrap another {arguments:..., capability_id:...} envelope inside it. Error self-diagnosis: \"capability_id is required\" means the top-level capability_id was missing; \"argument validation failed for \u003ctool\u003e: required ...\" means the arguments value is not the target tool's own parameter object (check for a double-wrapped envelope).",
       "parameters": {
         "additionalProperties": false,
         "properties": {
@@ -585,7 +595,7 @@
             "type": "string"
           },
           "arguments": {
-            "description": "Raw MCP tool arguments for action=call",
+            "description": "For action=call: the TARGET TOOL'S OWN argument object, passed through unchanged (e.g. {\"description\":..., \"body\":...} for memory:remember). Do NOT wrap capability_id, action, or another arguments envelope inside it — those are top-level parameters of this tool, not part of the target arguments.",
             "type": "object"
           },
           "capability_id": {
