@@ -49,6 +49,9 @@ This document records the provider-visible contract for Reasonix compile-time bu
 | `write_file` | false | Write content to a file at the given path (overwriting existing content). Creates parent directories as needed. |
 | `screenshot` | false | Capture a top-level window (or the Reasonix window by default) to a PNG file. Requires the write path in `output`; optional `window_title` matches a visible window by case-insensitive substring. Windows: PrintWindow; other platforms return a named platform error. Gated by nothing; honors write access like write_file. |
 | `ui_interact` | true | Controlled UI driving for agent-run verification: activate/click/type/key on a named window. Coordinates share the screenshot origin (window top-left incl. title bar). Gated by `experimental_ui_driver` (default off: the tool is not registered). Windows: SendInput; other platforms return a named platform error. |
+| `event_wait` | true | Wait for cross-session events (all_idle/any_idle/any_message) with configurable interval and timeout. Polls the shared collab status stream; returns satisfied=false + snapshot on timeout without deadlocking. |
+| `get_session_status` | true | One-shot query of session states (running/idle/queued/unknown) for one or more targets. Unmatched targets are explicitly labeled; runtime-unavailable sessions are never guessed as idle. |
+| `read_collab_status` | true | Incrementally read the collaboration status stream (turn/tool_error/commit/delivered/received events). Returns `next_offset` for cursor-based incremental reads; `scans: 0` confirms no full-file rescans. |
 
 ## Schema Snapshot
 
