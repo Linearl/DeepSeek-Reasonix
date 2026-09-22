@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"log/slog"
 	"net"
@@ -21,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"reasonix/internal/installlayout"
 	"reasonix/internal/proc"
 	"reasonix/internal/safego"
 )
@@ -129,10 +129,7 @@ func NewManager(cfg Config) (*Manager, error) {
 		// "serve" subcommand, so spawning it would silently time out. Prefer
 		// the sibling CLI when present so per-project serves understand the
 		// CLI contract (--port-file etc).
-		cli := filepath.Join(filepath.Dir(self), "reasonix-cli.exe")
-		if st, statErr := os.Stat(cli); statErr == nil && !st.IsDir() {
-			bin = cli
-		}
+		bin = resolveServeBinary(self)
 	}
 	m := &Manager{
 		cfg:      cfg,
@@ -155,6 +152,31 @@ func NewManager(cfg Config) (*Manager, error) {
 	// kill the desktop (its goroutine is outside the App goSafe reach).
 	safego.Go("servepool.manager.loop", m.loop)
 	return m, nil
+}
+
+// resolveServeBinary picks the binary serve sub-processes are spawned with.
+//
+// 1. Sibling reasonix-cli.exe: launcher installs ship the real CLI beside the
+//    GUI exe, and only the CLI understands the serve contract (--port-file).
+// 2. Active CLI from current.json: after a version switch the running desktop
+//    may live in versions/<ver>.replaced-<nonce>/ — a backup of the previous
+//    layout that does not contain a CLI (task 248) — while versions/<new>/
+//    does. ResolveInstallRoot walks up from the running exe to the install
+//    root, so the active version's CLI is found from any layout directory.
+// 3. Fall back to the running executable itself; serve attempts on it fail
+//    fast into the spawn error path instead of misbehaving quietly.
+func resolveServeBinary(self string) string {
+	cli := filepath.Join(filepath.Dir(self), installlayout.CLIBinaryName())
+	if st, statErr := os.Stat(cli); statErr == nil && !st.IsDir() {
+		return cli
+	}
+	if installRoot, rootErr := installlayout.ResolveInstallRoot(self); rootErr == nil && installRoot != "" {
+		if cliPath, cliErr := installlayout.ActiveCLIPath(installRoot); cliErr == nil {
+			log.Printf("[servepool] sibling %s missing next to %q; using active CLI %q", installlayout.CLIBinaryName(), self, cliPath)
+			return cliPath
+		}
+	}
+	return self
 }
 
 // WorkspaceSlug mirrors config.WorkspaceSlug: the flat directory name used
@@ -359,8 +381,12 @@ func (m *Manager) spawn(p *project) error {
 		"--token", token,
 	)
 	cmd.Dir = p.root
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
+	// Capture serve output into a bounded tail buffer so a spawn that never
+	// becomes ready leaves the failure reason in the log (task 248: a silent
+	// 8s timeout used to hide "serve: unknown command" from a wrong binary).
+	out := &tailBuffer{max: 8 * 1024}
+	cmd.Stdout = out
+	cmd.Stderr = out
 	if err := cmd.Start(); err != nil {
 		m.markFailed(p, fmt.Errorf("spawn serve: %w", err))
 		log.Printf("[servepool] spawn serve failed project=%q bin=%q: %v", p.id, m.bin, err)
@@ -375,6 +401,15 @@ func (m *Manager) spawn(p *project) error {
 	_ = os.Remove(portFile)
 	deadline := time.Now().Add(m.cfg.SpawnTimeout)
 	log.Printf("[servepool] spawning serve project=%q bin=%q portFile=%q", p.id, m.bin, portFile)
+	ready := false
+	defer func() {
+		// Only read on the failure exits: the process has been waited for
+		// there, so the pipe copiers are done and the buffer is stable.
+		// Success leaves the serve running — reading would race its writers.
+		if !ready && out.Len() > 0 {
+			log.Printf("[servepool] serve output project=%q bin=%q: %s", p.id, m.bin, out.String())
+		}
+	}()
 	for time.Now().Before(deadline) {
 		if data, err := os.ReadFile(portFile); err == nil {
 			// The serve writes its actual bound listen address (host:port,
@@ -399,6 +434,7 @@ func (m *Manager) spawn(p *project) error {
 				p.failures = 0
 				p.err = ""
 				m.mu.Unlock()
+				ready = true
 				return nil
 			}
 		}
@@ -409,6 +445,34 @@ func (m *Manager) spawn(p *project) error {
 	p.cmd = nil
 	m.markFailed(p, fmt.Errorf("serve did not become ready within %s", m.cfg.SpawnTimeout))
 	return errors.New("servepool: " + p.err)
+}
+
+// tailBuffer is an io.Writer that keeps only the most recent max bytes. A
+// long-running serve would otherwise grow the capture without bound; the
+// interesting failure output ("unknown command", bind errors, panics) is
+// what lands last before the process gives up.
+type tailBuffer struct {
+	buf []byte
+	max int
+}
+
+func (t *tailBuffer) Write(p []byte) (int, error) {
+	if len(p) >= t.max {
+		t.buf = append(t.buf[:0], p[len(p)-t.max:]...)
+		return len(p), nil
+	}
+	t.buf = append(t.buf, p...)
+	if over := len(t.buf) - t.max; over > 0 {
+		copy(t.buf, t.buf[over:])
+		t.buf = t.buf[:t.max]
+	}
+	return len(p), nil
+}
+
+func (t *tailBuffer) Len() int { return len(t.buf) }
+
+func (t *tailBuffer) String() string {
+	return strings.TrimRight(string(t.buf), "\n")
 }
 
 func (m *Manager) markFailed(p *project, err error) {
