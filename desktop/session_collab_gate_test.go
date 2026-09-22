@@ -16,8 +16,8 @@ import (
 // registration (internal/boot, publish site) and the pump skip
 // (collabBackgroundDelivery, read site).
 //
-//   gate=true  → pump skips entirely, drain_inbox registered (sole consumer)
-//   gate=false → pump delivers, drain_inbox withheld
+//	gate=true  → pump skips entirely, drain_inbox registered (sole consumer)
+//	gate=false → pump delivers, drain_inbox withheld
 //
 // A live config flip without a restart must change nothing: the pump-side
 // gate no longer reads config.Load(), so the pump cannot resume under a
@@ -36,8 +36,10 @@ func TestCollabBackgroundDeliveryResolvesBootSnapshot(t *testing.T) {
 	if !collabBackgroundDelivery() {
 		t.Fatal("ON→OFF without restart resumed the pump under a registered drain_inbox (M-a race reopened)")
 	}
+	// audit-2 ⑥①: a second publish is a no-op (first write wins for the
+	// process lifetime) — a rebuild cannot flip the gate without a restart.
 	boot.PublishCollabDrainInboxGate(false)
-	if collabBackgroundDelivery() {
-		t.Fatal("gate false must let the pump deliver (drain_inbox withheld)")
+	if !collabBackgroundDelivery() {
+		t.Fatal("a later publish must NOT flip the gate (once-per-process)")
 	}
 }

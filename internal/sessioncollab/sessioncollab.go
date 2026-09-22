@@ -640,6 +640,14 @@ func (s *MailStore) Deliver(msg MailMessage) (MailMessage, error) {
 // is not trustworthy, so an over-limit message is refused rather than handed to
 // the target. Refused messages are reported to the caller, which Acks them so
 // they do not reappear on every pass.
+//
+// Explicit contract (audit-2 ⑥③): Claim is NOT exclusive. The cursor is
+// read-only here and advances only in Ack, so two Claim callers observe the
+// same batch until one of them acks. That shape is safe ONLY because the two
+// real consumers can never coexist: the pump's two-phase Claim→Ack and
+// drain_inbox's same-lock Drain are mutually exclusive by the once-per-process
+// boot gate (internal/boot/collab_drain_gate.go, M-a). Any new consumer of
+// this cursor must join that exclusion, not assume Claim admits it.
 func (s *MailStore) Claim(contactID string) (pending []MailMessage, refused []MailMessage, err error) {
 	unlock, err := s.lock()
 	if err != nil {

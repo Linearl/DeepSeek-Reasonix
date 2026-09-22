@@ -102,7 +102,13 @@ func rotateSessionDAG(sessionPath string, st *sessionDAGState, now time.Time) er
 	if hook := sessionDAGRotateBeforeReplace; hook != nil {
 		hook(sessionPath)
 	}
-	if err := appendLateLinesToStaged(path, st.size, staged); err != nil {
+	// audit-2 ⑥②: st.size is a plain int64 mutated under st.mu by replayFrom,
+	// so snapshot it under the read lock here — the rotate body itself must
+	// stay lock-free across the staged file IO below.
+	st.mu.RLock()
+	logSize := st.size
+	st.mu.RUnlock()
+	if err := appendLateLinesToStaged(path, logSize, staged); err != nil {
 		_ = os.Remove(staged)
 		return err
 	}

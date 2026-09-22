@@ -1,6 +1,7 @@
 package boot
 
 import (
+	"sync"
 	"sync/atomic"
 
 	"reasonix/internal/config"
@@ -34,9 +35,18 @@ func collabDrainInboxEnabled(agent *config.AgentConfig) bool {
 // on restart, on both sides, always together.
 var collabDrainInboxSnapshot atomic.Bool
 
-// PublishCollabDrainInboxGate records the boot-time gate decision. Called once
-// from boot, next to the registration it mirrors.
-func PublishCollabDrainInboxGate(enabled bool) { collabDrainInboxSnapshot.Store(enabled) }
+// collabDrainInboxPublish makes the capture truly once-per-process
+// (audit-2 ⑥①): agent registration runs per tab build, so a last-write-wins
+// publish would let a rebuild that re-reads a changed config file flip the
+// gate without the restart the switch contract promises. The FIRST publish
+// decides for the process lifetime; later calls are no-ops.
+var collabDrainInboxPublish sync.Once
+
+// PublishCollabDrainInboxGate records the boot-time gate decision. First call
+// wins; every later call in the same process is a no-op.
+func PublishCollabDrainInboxGate(enabled bool) {
+	collabDrainInboxPublish.Do(func() { collabDrainInboxSnapshot.Store(enabled) })
+}
 
 // CollabDrainInboxGate reports the boot-time drain_inbox registration decision
 // so the desktop pump's skip check resolves at the same instant as the
