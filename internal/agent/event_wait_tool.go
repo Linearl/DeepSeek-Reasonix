@@ -44,7 +44,7 @@ func NewEventWaitTool(cfg SessionCollabConfig) tool.Tool {
 func (eventWaitTool) Name() string { return "event_wait" }
 
 func (eventWaitTool) Description() string {
-	return "Block until collaboration peers reach a condition, then return immediately with their status snapshot (task 228). Modes: all_idle (every target idle — the 'dispatch to N peers, wake me when all turns close' pattern), any_idle (first target goes idle), any_message (any target has unread mail for you). Polls the same state judgement as get_session_status; each segment of the wait re-reads live state, so a target finishing early wakes the call well before the timeout. At timeout (default 1200s) returns satisfied:false plus the per-target snapshot instead of hanging — continue with other work or call again. Stop/interrupt is honored between polls and returns the snapshot collected so far. Read-only: it never sends anything. Experimental."
+	return "Block until collaboration peers reach a condition, then return immediately with their status snapshot (task 228). Modes: all_idle (every target idle — the 'dispatch to N peers, wake me when all turns close' pattern; a target the directory cannot resolve keeps the wait unsatisfied, audit m2), any_idle (first target goes idle), any_message (any target has unread mail for you). Polls the same state judgement as get_session_status; each segment of the wait re-reads live state, so a target finishing early wakes the call well before the timeout. At timeout (default 1200s) returns satisfied:false plus the per-target snapshot instead of hanging — continue with other work or call again. Stop/interrupt is honored between polls and returns the snapshot collected so far. Read-only: it never sends anything. Experimental."
 }
 
 func (eventWaitTool) Schema() json.RawMessage {
@@ -156,8 +156,16 @@ func (t eventWaitTool) Execute(ctx context.Context, args json.RawMessage) (strin
 	deadline := time.Now().Add(timeout)
 
 	poll := func() (satisfied bool, firedBy []string, records []map[string]any, unmatched []string) {
-		records, unmatched = collabStatusRecords(t.cfg, p.Targets)
+		records, unmatched, _ = collabStatusRecords(t.cfg, p.Targets)
 		satisfied, firedBy = eventWaitVerdict(mode, records)
+		// Task 228 audit m2: under all_idle an unmatched target was never
+		// observed, so "every target is idle" cannot honestly hold while one
+		// is missing from the records. Stay unsatisfied (the any_* modes are
+		// different: one observed hit genuinely satisfies "any") and keep the
+		// gap visible in the snapshot so the caller can fix the target name.
+		if mode == "all_idle" && len(unmatched) > 0 {
+			satisfied = false
+		}
 		return satisfied, firedBy, records, unmatched
 	}
 	snapshot := func(satisfied bool, firedBy []string, records []map[string]any, unmatched []string, elapsed time.Duration, interrupted bool) string {

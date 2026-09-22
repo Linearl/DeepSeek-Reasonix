@@ -274,8 +274,10 @@ func (getSessionStatusTool) ReadOnly() bool { return true }
 // (task 218): directory scan, target resolution and the state classification
 // (running > queued > idle; unknown never guessed). get_session_status answers
 // one call with it and event_wait polls it (task 228), so the two tools can
-// never disagree about the same peer.
-func collabStatusRecords(cfg SessionCollabConfig, targets []string) (records []map[string]any, unmatched []string) {
+// never disagree about the same peer. The third return is the live directory
+// size, so callers can state what a "total" means (task 228 audit m5: it is
+// the whole addressable directory, not the queried-target count).
+func collabStatusRecords(cfg SessionCollabConfig, targets []string) (records []map[string]any, unmatched []string, liveTotal int) {
 	all := scanAddressable(cfg.SessionDir, cfg.WorkspaceRoot)
 	live := make([]sessioncollab.Identity, 0, len(all))
 	for _, id := range all {
@@ -283,6 +285,7 @@ func collabStatusRecords(cfg SessionCollabConfig, targets []string) (records []m
 			live = append(live, id)
 		}
 	}
+	liveTotal = len(live)
 
 	pick := func(target string) (sessioncollab.Identity, bool) {
 		key := strings.ToLower(strings.TrimSpace(target))
@@ -376,7 +379,7 @@ func collabStatusRecords(cfg SessionCollabConfig, targets []string) (records []m
 			records = append(records, status(id))
 		}
 	}
-	return records, unmatched
+	return records, unmatched, liveTotal
 }
 
 func (t getSessionStatusTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
@@ -387,10 +390,15 @@ func (t getSessionStatusTool) Execute(_ context.Context, args json.RawMessage) (
 		_ = json.Unmarshal(args, &p)
 	}
 
-	records, unmatched := collabStatusRecords(t.cfg, p.Targets)
+	records, unmatched, liveTotal := collabStatusRecords(t.cfg, p.Targets)
 	out, _ := json.Marshal(map[string]any{
-		"returned":  len(records),
-		"total":     len(records) + len(unmatched),
+		"returned": len(records),
+		// Task 228 audit m5: "total" is the whole addressable live directory
+		// (what a no-argument sweep would answer), NOT the queried-target
+		// count — "returned" is that count. Stated here so the semantics
+		// never have to be inferred.
+		"total":     liveTotal,
+		"totalNote": "total = addressable live sessions in the directory; returned = records in this answer",
 		"query":     "session status — state/lastActivity/unreadInbox only, no transcript content",
 		"states":    "running=active turn; idle=waiting for input; queued=inbox has unconsumed mail; unknown=process not visible (never a guessed idle)",
 		"unmatched": unmatched,
