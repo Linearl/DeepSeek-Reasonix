@@ -61,6 +61,9 @@ func BindWriteRootSet(tl tool.Tool, set *sandbox.WritableRootSet) tool.Tool {
 	case editFile:
 		t.rootSet = set
 		return t
+	case screenshotTool:
+		t.rootSet = set
+		return t
 	case multiEdit:
 		t.rootSet = set
 		return t
