@@ -355,6 +355,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "experimental_cascade_approval = %v   # task 225: forward a dispatched session's approvals to its task source (off by default)\n", c.Agent.ExperimentalCascadeApproval)
 	fmt.Fprintf(&b, "collab_inbox_merge = %q   # task 221: inbox drain merge mode (off | same_sender | all; default off)\n", NormalizeCollabInboxMerge(c.Agent.CollabInboxMerge))
 	fmt.Fprintf(&b, "collab_guidance_merge = %v   # task 153: guidance shelf manual merge-next button\n", c.Agent.CollabGuidanceMerge)
+	fmt.Fprintf(&b, "experimental_collab_background_delivery = %v   # task 224: collab delivery opens tabs inactive (woken conversation runs in background)\n", c.Agent.ExperimentalCollabBackgroundDelivery)
 	fmt.Fprintf(&b, "perf_monitor_retention_hours = %d   # task 184: how long samples are kept (default 48h)\n", c.Agent.PerfMonitorRetentionHours)
 	if len(c.Agent.PerfMonitorPaths) > 0 {
 		quoted := make([]string, 0, len(c.Agent.PerfMonitorPaths))
