@@ -270,15 +270,13 @@ func (getSessionStatusTool) Schema() json.RawMessage {
 
 func (getSessionStatusTool) ReadOnly() bool { return true }
 
-func (t getSessionStatusTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
-	var p struct {
-		Targets []string `json:"targets"`
-	}
-	if len(args) > 0 {
-		_ = json.Unmarshal(args, &p)
-	}
-
-	all := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
+// collabStatusRecords is the single source of the "who is busy?" judgement
+// (task 218): directory scan, target resolution and the state classification
+// (running > queued > idle; unknown never guessed). get_session_status answers
+// one call with it and event_wait polls it (task 228), so the two tools can
+// never disagree about the same peer.
+func collabStatusRecords(cfg SessionCollabConfig, targets []string) (records []map[string]any, unmatched []string) {
+	all := scanAddressable(cfg.SessionDir, cfg.WorkspaceRoot)
 	live := make([]sessioncollab.Identity, 0, len(all))
 	for _, id := range all {
 		if !id.Archived {
@@ -309,11 +307,11 @@ func (t getSessionStatusTool) Execute(_ context.Context, args json.RawMessage) (
 		return sessioncollab.Identity{}, false
 	}
 
-	mailDir := t.cfg.MailDir
+	mailDir := cfg.MailDir
 	if mailDir == "" {
 		mailDir = config.SessionCollabMailDir()
 	}
-	mail := sessioncollab.NewMailStoreWithHopLimit(mailDir, t.cfg.hopLimit())
+	mail := sessioncollab.NewMailStoreWithHopLimit(mailDir, cfg.hopLimit())
 
 	status := func(id sessioncollab.Identity) map[string]any {
 		unread, lastDelivery := 0, int64(0)
@@ -321,8 +319,8 @@ func (t getSessionStatusTool) Execute(_ context.Context, args json.RawMessage) (
 			unread, lastDelivery = mail.InboxStatus(id.ContactID)
 		}
 		running, lastTurn, probePending, known := false, int64(0), 0, false
-		if t.cfg.SessionStatus != nil && id.ContactID != "" {
-			running, lastTurn, probePending, known = t.cfg.SessionStatus(id.ContactID)
+		if cfg.SessionStatus != nil && id.ContactID != "" {
+			running, lastTurn, probePending, known = cfg.SessionStatus(id.ContactID)
 		}
 		// Task 218 (dispatch-round feedback): a steer degraded to followup is
 		// queued INSIDE the target's session inbox, past the collab mailbox
@@ -359,14 +357,14 @@ func (t getSessionStatusTool) Execute(_ context.Context, args json.RawMessage) (
 		}
 	}
 
-	records := make([]map[string]any, 0)
-	unmatched := make([]string, 0)
-	if len(p.Targets) == 0 {
+	records = make([]map[string]any, 0)
+	unmatched = make([]string, 0)
+	if len(targets) == 0 {
 		for _, id := range live {
 			records = append(records, status(id))
 		}
 	} else {
-		for _, target := range p.Targets {
+		for _, target := range targets {
 			id, ok := pick(target)
 			if !ok {
 				// A target the directory cannot resolve is reported, never
@@ -378,9 +376,21 @@ func (t getSessionStatusTool) Execute(_ context.Context, args json.RawMessage) (
 			records = append(records, status(id))
 		}
 	}
+	return records, unmatched
+}
+
+func (t getSessionStatusTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
+	var p struct {
+		Targets []string `json:"targets"`
+	}
+	if len(args) > 0 {
+		_ = json.Unmarshal(args, &p)
+	}
+
+	records, unmatched := collabStatusRecords(t.cfg, p.Targets)
 	out, _ := json.Marshal(map[string]any{
 		"returned":  len(records),
-		"total":     len(live),
+		"total":     len(records) + len(unmatched),
 		"query":     "session status — state/lastActivity/unreadInbox only, no transcript content",
 		"states":    "running=active turn; idle=waiting for input; queued=inbox has unconsumed mail; unknown=process not visible (never a guessed idle)",
 		"unmatched": unmatched,
