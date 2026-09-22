@@ -372,6 +372,9 @@ func walkBytesMB(root string) float64 {
 // any depth: they are storage the user chose to keep, not live growth, and
 // counting them made the events alert fire on dead weight (measured: two
 // deleted sessions under sessions/.trash pushed it past 2 GB).
+// Task 239: recovery directories are skipped for the same reason — recovery
+// copies of .events.jsonl are safety snapshots, not live growth, and counting
+// them inflated eventsMb by hundreds of MB after every restart.
 func walkProjectsBytesMB(memoryRoot string) (totalMB float64, eventsMB float64) {
 	if memoryRoot == "" {
 		return 0, 0
@@ -383,7 +386,8 @@ func walkProjectsBytesMB(memoryRoot string) (totalMB float64, eventsMB float64) 
 			return nil
 		}
 		if entry.IsDir() {
-			if entry.Name() == ".trash" {
+			name := entry.Name()
+			if name == ".trash" || name == "recovery" {
 				return filepath.SkipDir
 			}
 			return nil

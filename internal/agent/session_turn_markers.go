@@ -1,6 +1,10 @@
 package agent
 
-import "time"
+import (
+	"time"
+
+	"reasonix/internal/store"
+)
 
 // SessionOpenTurn is a turn whose turn_begin marker has no matching turn_end
 // on the selected head: the runtime that ran it stopped before it finished.
@@ -78,9 +82,15 @@ func (s *Session) TurnContinuedOnOtherHead(leafID string) bool {
 		return false
 	}
 	s.mu.RLock()
-	defer s.mu.RUnlock()
 	st := s.head.state
-	if st == nil || !s.head.dag {
+	dag := s.head.dag
+	persistedPath := s.persisted.path
+	s.mu.RUnlock()
+	if st == nil && persistedPath != "" {
+		// Task 239: head.state is released to the shared cache; fall back.
+		st = sessionGraphCacheGet(store.SessionEventLog(persistedPath))
+	}
+	if st == nil || !dag {
 		return false
 	}
 	mine := s.head.ref.HeadID

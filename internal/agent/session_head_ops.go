@@ -225,6 +225,10 @@ func appendHeadEntries(path string, st *sessionDAGState, entries []sessionDAGEnt
 func (s *Session) adoptHead(st *sessionDAGState, headID, path string) {
 	msgs, _ := st.materialize(headID)
 	digest, err := digestSessionMessages(msgs)
+	// Task 239: same as adoptDAGPosition — the shared cache owns the graph,
+	// the Session must not hold an independent pointer that keeps a second
+	// full DAG alive across sessions.
+	sessionGraphCachePut(st.path, st)
 	s.mu.Lock()
 	s.Messages = msgs
 	s.version++
@@ -232,7 +236,7 @@ func (s *Session) adoptHead(st *sessionDAGState, headID, path string) {
 	version, rewriteVersion := s.version, s.rewriteVersion
 	s.head.ref = HeadRef{HeadID: headID, LeafID: st.heads[headID].leaf, LogGeneration: st.generation, LogOffset: st.lastGoodEnd}
 	s.head.dag = true
-	s.head.state = st
+	s.head.state = nil
 	s.head.headCount = len(st.heads)
 	s.head.openTurn = st.heads[headID].openTurn
 	s.mu.Unlock()

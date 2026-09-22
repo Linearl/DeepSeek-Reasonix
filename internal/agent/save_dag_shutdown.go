@@ -96,6 +96,10 @@ func (s *Session) dagStateWithoutLock(ctx context.Context, path string) (*sessio
 	s.mu.RLock()
 	cached := s.head.state
 	s.mu.RUnlock()
+	if cached == nil {
+		// Task 239: head.state is released to the shared cache; fall back.
+		cached = sessionGraphCacheGet(logPath)
+	}
 	header, ok, err := readSessionDAGHeader(path)
 	if err != nil {
 		return nil, err
