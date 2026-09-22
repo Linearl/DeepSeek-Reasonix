@@ -1783,7 +1783,7 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Task 19: the addressable roster is read on demand, not on every settings
   // load — a session only appears once it has registered a purpose.
   const [sessionCollabRoster, setSessionCollabRoster] = useState<Awaited<ReturnType<typeof app.ListAddressableSessions>>>([]);
-  type LabGroupKey = "session" | "ui" | "auto" | "file" | "obs" | "fb";
+  type LabGroupKey = "efficiency" | "debug" | "ui" | "storage" | "misc";
 
 const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
   const [labFilter, setLabFilter] = useState<LabGroupKey | "all">("all");
@@ -1814,31 +1814,30 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     }
   }, []);
 
-  // 任务 185：实验室分组（方案 A+C）——组顺序即 rail 渲染顺序。
+  // 任务 250（用户裁决 2026-09-22）：实验室分组重划为 5 组——组顺序即 rail 渲染顺序。
   const labGroups = [
-    { key: "session", labelKey: "settings.labGroup.session" },
+    { key: "efficiency", labelKey: "settings.labGroup.efficiency" },
+    { key: "debug", labelKey: "settings.labGroup.debug" },
     { key: "ui", labelKey: "settings.labGroup.ui" },
-    { key: "auto", labelKey: "settings.labGroup.auto" },
-    { key: "file", labelKey: "settings.labGroup.file" },
-    { key: "obs", labelKey: "settings.labGroup.obs" },
-    { key: "fb", labelKey: "settings.labGroup.fb" },
+    { key: "storage", labelKey: "settings.labGroup.storage" },
+    { key: "misc", labelKey: "settings.labGroup.misc" },
   ] as const;
   const features: Array<{ id: ExperimentFeatureId; label: string; on: boolean; group: LabGroupKey }> = [
-    { id: "restartUpdate", group: "obs", label: t("settings.restartUpdate"), on: Boolean(s.experimentalRestartUpdate) },
-    { id: "sessionMonitor", group: "session", label: t("settings.sessionMonitor"), on: Boolean(s.experimentalSessionMonitor) },
-    { id: "sessionStorage", group: "session", label: t("settings.sessionStorage"), on: (s.sessionStorage ?? "v3_only") !== "v3_only" },
+    { id: "autopilot", group: "efficiency", label: t("settings.autopilot"), on: Boolean(s.autopilot) },
+    { id: "dream", group: "efficiency", label: t("settings.dream"), on: Boolean(s.experimentalDream) },
+    { id: "sessionCollab", group: "efficiency", label: t("settings.sessionCollab"), on: Boolean(s.experimentalSessionCollab) },
+    { id: "messageMerge", group: "efficiency", label: t("settings.messageMerge"), on: (s.collabInboxMerge || "off") !== "off" || Boolean(s.collabGuidanceMerge) },
+    { id: "localServer", group: "efficiency", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
+    { id: "traceAsState", group: "efficiency", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
+    { id: "sessionMonitor", group: "debug", label: t("settings.sessionMonitor"), on: Boolean(s.experimentalSessionMonitor) },
+    { id: "perfMonitor", group: "debug", label: t("settings.perfMonitor"), on: Boolean(s.experimentalPerfMonitor) },
+    { id: "feedback", group: "debug", label: t("settings.feedback"), on: Boolean(s.experimentalFeedback) },
+    { id: "restartUpdate", group: "debug", label: t("settings.restartUpdate"), on: Boolean(s.experimentalRestartUpdate) },
     { id: "splitView", group: "ui", label: t("settings.splitView"), on: Boolean(s.experimentalSplitView) },
-    { id: "feedback", group: "fb", label: t("settings.feedback"), on: Boolean(s.experimentalFeedback) },
-    { id: "localServer", group: "auto", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
-    { id: "pathRules", group: "file", label: t("settings.pathRules"), on: Boolean(s.experimentalPathRules) },
-    { id: "cacheTuning", group: "file", label: t("settings.cacheTuning"), on: Boolean(s.experimentalCacheTuning) },
-    { id: "traceAsState", group: "session", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
-    { id: "dream", group: "auto", label: t("settings.dream"), on: Boolean(s.experimentalDream) },
-    { id: "perfMonitor", group: "obs", label: t("settings.perfMonitor"), on: Boolean(s.experimentalPerfMonitor) },
-    { id: "autoLoadOlder", group: "session", label: t("settings.autoLoadOlder"), on: Boolean(s.experimentalAutoLoadOlder) },
-    { id: "sessionCollab", group: "fb", label: t("settings.sessionCollab"), on: Boolean(s.experimentalSessionCollab) },
-    { id: "messageMerge", group: "fb", label: t("settings.messageMerge"), on: (s.collabInboxMerge || "off") !== "off" || Boolean(s.collabGuidanceMerge) },
-    { id: "autopilot", group: "auto", label: t("settings.autopilot"), on: Boolean(s.autopilot) },
+    { id: "autoLoadOlder", group: "ui", label: t("settings.autoLoadOlder"), on: Boolean(s.experimentalAutoLoadOlder) },
+    { id: "cacheTuning", group: "storage", label: t("settings.cacheTuning"), on: Boolean(s.experimentalCacheTuning) },
+    { id: "sessionStorage", group: "storage", label: t("settings.sessionStorage"), on: (s.sessionStorage ?? "v3_only") !== "v3_only" },
+    { id: "pathRules", group: "misc", label: t("settings.pathRules"), on: Boolean(s.experimentalPathRules) },
   ];
 
   return (
