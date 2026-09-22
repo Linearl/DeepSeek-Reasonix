@@ -403,9 +403,11 @@ func (m *Manager) spawn(p *project) error {
 	log.Printf("[servepool] spawning serve project=%q bin=%q portFile=%q", p.id, m.bin, portFile)
 	ready := false
 	defer func() {
-		// Only read on the failure exits: the process has been waited for
-		// there, so the pipe copiers are done and the buffer is stable.
-		// Success leaves the serve running — reading would race its writers.
+		// tailBuffer is mutex-guarded, so this read is race-free even while
+		// a straggler pipe copier is still writing (the timeout path uses
+		// Process.Wait, which does not wait for exec's copiers). Success
+		// skips the read deliberately: nothing went wrong, so dumping the
+		// serve's progress chatter into the log would be noise.
 		if !ready && out.Len() > 0 {
 			log.Printf("[servepool] serve output project=%q bin=%q: %s", p.id, m.bin, out.String())
 		}
@@ -447,16 +449,25 @@ func (m *Manager) spawn(p *project) error {
 	return errors.New("servepool: " + p.err)
 }
 
-// tailBuffer is an io.Writer that keeps only the most recent max bytes. A
-// long-running serve would otherwise grow the capture without bound; the
-// interesting failure output ("unknown command", bind errors, panics) is
-// what lands last before the process gives up.
+// tailBuffer is a concurrency-safe io.Writer that keeps only the most recent
+// max bytes. A long-running serve would otherwise grow the capture without
+// bound; the interesting failure output ("unknown command", bind errors,
+// panics) is what lands last before the process gives up.
+//
+// The mutex is what makes reading safe at all: exec's stdout/stderr pipe
+// copiers are only waited on by cmd.Wait(), and the timeout path tears the
+// process down with Process.Kill + Process.Wait(), which can leave a copier
+// goroutine writing while the failure defer reads. Locking inside the buffer
+// keeps that window race-free regardless of when the read happens.
 type tailBuffer struct {
+	mu  sync.Mutex
 	buf []byte
 	max int
 }
 
 func (t *tailBuffer) Write(p []byte) (int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	if len(p) >= t.max {
 		t.buf = append(t.buf[:0], p[len(p)-t.max:]...)
 		return len(p), nil
@@ -469,9 +480,15 @@ func (t *tailBuffer) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (t *tailBuffer) Len() int { return len(t.buf) }
+func (t *tailBuffer) Len() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return len(t.buf)
+}
 
 func (t *tailBuffer) String() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	return strings.TrimRight(string(t.buf), "\n")
 }
 

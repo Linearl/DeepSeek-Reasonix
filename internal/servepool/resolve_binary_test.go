@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"reasonix/internal/installlayout"
@@ -114,5 +115,45 @@ func TestTailBufferEmpty(t *testing.T) {
 	}
 	if strings.HasSuffix(tb.String(), "\n") {
 		t.Fatalf("String = %q, want trailing newline trimmed", tb.String())
+	}
+}
+
+// The spawn timeout path reads the buffer while a straggler exec pipe-copier
+// may still be writing (Process.Wait does not wait for copiers), so the
+// buffer must be safe for concurrent Write/Len/String. Run with -race to
+// make any regression visible.
+func TestTailBufferConcurrentReadWrite(t *testing.T) {
+	tb := &tailBuffer{max: 256}
+	const writers = 8
+	const perWriter = 200
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			for j := 0; j < perWriter; j++ {
+				if _, err := tb.Write([]byte("0123456789")); err != nil {
+					t.Errorf("Write: %v", err)
+					return
+				}
+			}
+		}()
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		<-start
+		for j := 0; j < writers*perWriter; j++ {
+			_ = tb.Len()
+			_ = tb.String()
+		}
+	}()
+	close(start)
+	wg.Wait()
+	<-done
+	if got := tb.Len(); got != 256 {
+		t.Fatalf("Len = %d, want capped at max 256", got)
 	}
 }
