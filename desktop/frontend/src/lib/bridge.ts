@@ -315,6 +315,8 @@ interface DesktopWindowState {
   maximised: boolean;
 }
 export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindings, ProjectTreeOrganizationBindings, HistoryCatalogBindings, TaskCatalogBindings, BlankProjectBindings, QualityFloorBindings, SessionTitleBindings, ScrollDiagnosticBindings, RemoteProjectBindings, MCPAppBindings, PinnedContextBindings, FollowupBindings {
+  /** Task 36 Phase 1: answer an app:takeover-request prompt; false when stale. */
+  ResolveTakeoverDecision(marker: string, accept: boolean): Promise<boolean>;
 // AppBindings is the hand-written React-to-Go contract. _CheckGeneratedBindings
 // catches generated methods missing here; update this interface and typecheck.
   // Fire-and-forget diagnostic from the transcript controller: how long a switch-tab
@@ -367,6 +369,8 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
 }
 
 export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings, SessionCatalogBindings, ProjectTreeOrganizationBindings, HistoryCatalogBindings, TaskCatalogBindings, BlankProjectBindings, QualityFloorBindings, SessionTitleBindings, ScrollDiagnosticBindings, RemoteProjectBindings, MCPAppBindings, PinnedContextBindings, FollowupBindings {
+  /** Task 36 Phase 1: answer an app:takeover-request prompt; false when stale. */
+  ResolveTakeoverDecision(marker: string, accept: boolean): Promise<boolean>;
   Platform(): Promise<string>;
   AnswerPromptForTab?(tabID: string, turnID: string, id: string, answers: QuestionAnswer[]): Promise<void>;
   SteerInboxItemForTurn?(tabID: string, turnID: string, itemID: string): Promise<{ itemId: string; disposition: string; error?: string; paused?: boolean }>;
@@ -4996,6 +5000,7 @@ function makeMockApp(): AppBindings {
       settings.defaultToolApprovalMode = normalizeToolApprovalMode(mode);
     },
     async SetExperimentalRestartUpdate() {},
+    async ResolveTakeoverDecision() { return false; },
     async SetExperimentalSessionMonitor() {},
     async SetExperimentalSplitView() {},
     async SetSessionStorage() {},

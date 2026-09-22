@@ -3182,6 +3182,40 @@ export default function App() {
   // Confirm restarts immediately; otherwise auto-restart after 3s. Cancel aborts.
   const { confirm: confirmRestartUpdate, dialog: restartUpdateDialog } = useConfirmDialog();
 
+  // Task 36 Phase 1: a remote (GrandCouncil) takeover request used to yield
+  // the lease silently. The Go watcher now prompts here; timeout inside the
+  // Go watcher (9s, matching serve's poll) resolves as a refusal, so the
+  // dialog itself stays purely manual with explicit allow/deny.
+  const { confirm: confirmTakeover, dialog: takeoverDialog } = useConfirmDialog();
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.runtime) return;
+    return window.runtime.EventsOn("app:takeover-request", async (data: unknown) => {
+      const d = (data ?? {}) as { marker?: string; path?: string; from?: string };
+      if (!d.marker) return;
+      const accept = await confirmTakeover({
+        title: "远程接管请求",
+        message: (
+          <span>
+            设备 <b>{d.from || "远程客户端"}</b> 请求接管会话控制权。
+            <br />
+            影响范围：接管后本机会话进入只读（重启不会残留），下一条本地消息可重新获取控制权；若当前正在生成，
+            <b>接受会先中断本轮回复</b>再交权。
+            <br />
+            9 秒内未作处理将自动拒绝该请求。
+          </span>
+        ),
+        confirmLabel: "允许接管",
+        cancelLabel: "拒绝",
+        tone: "danger",
+      });
+      try {
+        await app.ResolveTakeoverDecision(d.marker, accept);
+      } catch {
+        // stale dialog or tearing-down host: the Go side times out as refusal
+      }
+    });
+  }, [confirmTakeover]);
+
   // Task 210: version picker behind the status-bar restart button. The list
   // comes from the engine (versions/ directory); a failed read — e.g. a dev
   // build that is not a versioned install, or the experiment being off —
@@ -5416,6 +5450,7 @@ export default function App() {
         />
       )}
       {restartUpdateDialog}
+      {takeoverDialog}
       <VersionSwitchDialog
         open={versionSwitch.open}
         versions={versionSwitch.versions}

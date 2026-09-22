@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
+	"sync"
 	"time"
 
 	"reasonix/internal/agent"
@@ -203,22 +205,42 @@ func (t *WorkspaceTab) startTakeoverRequestWatcher(path string) {
 				if _, err := os.Stat(marker); err != nil {
 					continue
 				}
-				slog.Info("desktop: takeover request detected, yielding", "marker", marker)
-				// Yield: release the lease so the serve-side acquire succeeds.
-				t.sessionLeaseMu.Lock()
-				old := t.sessionLease
-				t.sessionLease = nil
-				t.sessionLeaseMu.Unlock()
-				if old != nil {
-					old.Release()
+				from := ""
+				if raw, rerr := os.ReadFile(marker); rerr == nil {
+					from = strings.TrimSpace(string(raw))
 				}
-				_ = os.Remove(marker)
-				// Do NOT flip the tab to read-only here: ReadOnly persists in
-				// desktop-tabs.json and would lock the tab out of writing
-				// across restarts. Releasing the lease is enough — the next
-				// local message reacquires it cleanly.
-				slog.Info("desktop: session yielded to remote takeover", "path", path)
-				return
+				takeoverBridgeMu.Lock()
+				sink := takeoverPromptSink
+				takeoverBridgeMu.Unlock()
+				if sink == nil {
+					// Headless: historical behavior — yield without a prompt.
+					slog.Info("desktop: takeover request detected, yielding (no prompt sink)", "marker", marker)
+					t.yieldSessionLeaseToTakeover(path, marker, false)
+					return
+				}
+				slog.Info("desktop: takeover request detected, prompting user", "marker", marker, "from", from)
+				reply := registerTakeoverPending(marker)
+				sink(takeoverDecisionReq{Marker: marker, Path: path, From: from, Reply: reply})
+				select {
+				case accept := <-reply:
+					unregisterTakeoverPending(marker)
+					if !accept {
+						slog.Info("desktop: takeover request rejected by user", "marker", marker)
+						_ = os.Remove(marker)
+						continue // tab keeps its lease; keep watching
+					}
+					t.yieldSessionLeaseToTakeover(path, marker, true)
+					return
+				case <-time.After(9 * time.Second):
+					// Serve's own takeover poll times out at 9s with 409, so
+					// an unanswered prompt must resolve as a refusal.
+					unregisterTakeoverPending(marker)
+					slog.Info("desktop: takeover prompt timed out, refusing", "marker", marker)
+					_ = os.Remove(marker)
+				case <-stop:
+					unregisterTakeoverPending(marker)
+					return
+				}
 			}
 		}
 	}()
@@ -234,4 +256,92 @@ func (t *WorkspaceTab) stopTakeoverRequestWatcher() {
 		close(t.takeoverWatchStop)
 	}
 	t.takeoverWatchStop = nil
+}
+
+// takeoverDecisionReq is one pending remote-takeover prompt handed to the
+// App-owned sink (task 36 Phase 1). Reply receives the user's verdict.
+type takeoverDecisionReq struct {
+	Marker string
+	Path   string
+	From   string
+	Reply  chan bool
+}
+
+var (
+	takeoverBridgeMu   sync.Mutex
+	takeoverPromptSink func(req takeoverDecisionReq)
+	takeoverPending    = map[string]chan bool{}
+)
+
+// RegisterTakeoverPromptSink installs the App-owned emitter. Call once at
+// startup; a nil sink keeps the historical immediate-yield fallback for
+// headless/test processes.
+func RegisterTakeoverPromptSink(fn func(req takeoverDecisionReq)) {
+	takeoverBridgeMu.Lock()
+	takeoverPromptSink = fn
+	takeoverBridgeMu.Unlock()
+}
+
+// SubmitTakeoverDecision answers a pending request from the frontend. It
+// returns false when no request is waiting (stale dialog, double click).
+func SubmitTakeoverDecision(marker string, accept bool) bool {
+	takeoverBridgeMu.Lock()
+	reply, ok := takeoverPending[marker]
+	delete(takeoverPending, marker)
+	takeoverBridgeMu.Unlock()
+	if !ok {
+		return false
+	}
+	select {
+	case reply <- accept:
+	default:
+	}
+	return true
+}
+
+func registerTakeoverPending(marker string) chan bool {
+	takeoverBridgeMu.Lock()
+	defer takeoverBridgeMu.Unlock()
+	reply := make(chan bool, 1)
+	takeoverPending[marker] = reply
+	return reply
+}
+
+func unregisterTakeoverPending(marker string) {
+	takeoverBridgeMu.Lock()
+	delete(takeoverPending, marker)
+	takeoverBridgeMu.Unlock()
+}
+
+// yieldSessionLeaseToTakeover performs an accepted handoff: interrupt a
+// running turn first (handoffMode=interrupt — never cut a mid-write), then
+// release the lease so the serve-side acquire succeeds. ReadOnly is
+// deliberately not flipped: it persists in desktop-tabs.json and would lock
+// the tab out of writing across restarts; releasing the lease is enough and
+// the next local message reacquires it cleanly.
+func (t *WorkspaceTab) yieldSessionLeaseToTakeover(path, marker string, interrupt bool) {
+	if interrupt && t.hasActiveRuntimeWork() && t.Ctrl != nil {
+		slog.Info("desktop: cancelling active turn before yield (handoffMode=interrupt)", "path", path)
+		t.Ctrl.Cancel()
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) && t.hasActiveRuntimeWork() {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	t.sessionLeaseMu.Lock()
+	old := t.sessionLease
+	t.sessionLease = nil
+	t.sessionLeaseMu.Unlock()
+	if old != nil {
+		old.Release()
+	}
+	_ = os.Remove(marker)
+	slog.Info("desktop: session yielded to remote takeover", "path", path)
+}
+
+// ResolveTakeoverDecision is the frontend's answer to an app:takeover-request
+// prompt (task 36 Phase 1). A stale or duplicate answer returns false and
+// changes nothing.
+func (a *App) ResolveTakeoverDecision(marker string, accept bool) bool {
+	return SubmitTakeoverDecision(strings.TrimSpace(marker), accept)
 }
