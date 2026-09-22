@@ -2339,6 +2339,16 @@ export interface DesktopStartupSettingsView {
   collabInboxMerge?: string;
   /** Task 153: guidance shelf manual "merge next" button. */
   collabGuidanceMerge?: boolean;
+
+  // Task 173: the collaboration panel gates (settings -> 实验特性 -> 跨会话通信).
+  sessionCollabAllowDelete?: boolean;
+  sessionCollabAllowRequireReply?: boolean;
+  sessionCollabAllowReadTail?: boolean;
+  sessionCollabAllowCreate?: boolean;
+  sessionCollabAllowSteer?: boolean;
+  sessionCollabDailySendLimit?: number;
+  // Task 225: cascade approval to the autopilot parent.
+  experimentalCascadeApproval?: boolean;
   bot: BotSettingsView;
   desktopLanguage: string; // "" | "en" | "zh"; empty = auto
   desktopLayoutStyle: string; // "classic" | "workbench"

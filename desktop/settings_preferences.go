@@ -191,6 +191,20 @@ func (a *App) SetExperimentalSessionMonitor(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSessionMonitor(enabled) })
 }
 
+// SetExperimentalCascadeApproval toggles task 225: a dispatched session
+// forwards its approval prompts to its autopilot parent's Ask channel.
+func (a *App) SetExperimentalCascadeApproval(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCascadeApproval(enabled) })
+}
+
+// SetSessionCollabGates writes the task-173 collaboration panel gates in one
+// call, so the panel cannot half-apply (settings → 实验特性 → 跨会话通信).
+func (a *App) SetSessionCollabGates(allowDelete, allowRequireReply, allowReadTail, allowCreate, allowSteer bool, dailySendLimit int) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetSessionCollabGates(&allowDelete, &allowRequireReply, &allowReadTail, &allowCreate, &allowSteer, &dailySendLimit)
+	})
+}
+
 // SetExperimentalSplitView toggles the tab-bar split view (task 70-1): with it off the
 // right-click menu keeps exactly the pre-split item list.
 func (a *App) SetExperimentalSplitView(enabled bool) error {

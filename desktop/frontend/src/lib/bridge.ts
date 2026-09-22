@@ -775,6 +775,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 19: multi-session collaboration tools (experimental).
   SetExperimentalSessionCollab(enabled: boolean): Promise<void>;
   SetSessionCollabHopLimit(limit: number): Promise<void>;
+  // Task 173: the collaboration panel gates (settings → 实验特性 → 跨会话通信).
+  SetSessionCollabGates(allowDelete: boolean, allowRequireReply: boolean, allowReadTail: boolean, allowCreate: boolean, allowSteer: boolean, dailySendLimit: number): Promise<void>;
+  // Task 225: cascade approval to the autopilot parent.
+  SetExperimentalCascadeApproval(enabled: boolean): Promise<void>;
   // Fork task 160: load older history by scrolling up at the transcript top (experimental).
   SetExperimentalAutoLoadOlder(enabled: boolean): Promise<void>;
   // Task 221: inbox drain merge tri-state (off | same_sender | all).
@@ -5008,6 +5012,8 @@ function makeMockApp(): AppBindings {
     async SaveHeapProfile() { return ""; },
     async SetExperimentalSessionCollab() {},
     async SetSessionCollabHopLimit() {},
+    async SetSessionCollabGates() {},
+    async SetExperimentalCascadeApproval() {},
     async SetExperimentalAutoLoadOlder() {},
     async SetCollabInboxMerge() {},
     async SetCollabGuidanceMerge() {},
