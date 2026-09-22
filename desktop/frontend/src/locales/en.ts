@@ -76,6 +76,7 @@ export const en = {
   "composer.splitTargetSecondary": "Send to right pane",
   "composer.splitTargetBoth": "Send to both panes",
   "tabBar.splitView": "Split view",
+  "splitView.resizeDivider": "Resize split",
   "tabBar.closeSplitView": "Close split view",
   "tabBar.newSession": "New session",
   "tabBar.tabActions": "Tab actions",

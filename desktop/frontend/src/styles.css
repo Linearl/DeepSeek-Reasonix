@@ -3512,6 +3512,34 @@ a[href] {
   overflow: hidden;
 }
 
+/* Task 70 二期: the primary pane carries the remembered ratio (inline
+   --split-primary-ratio from App), the secondary absorbs the remainder — so a
+   divider drag moves exactly one flex basis. With no inline var (defensive
+   default) the layout is the phase-one 50/50. */
+.transcript-split__pane--primary {
+  flex: 0 0 calc(var(--split-primary-ratio, 0.5) * 100%);
+}
+
+.transcript-split__pane--secondary {
+  flex: 1 1 auto;
+}
+
+/* Task 70 二期: the drag handle between the panes. Transparent at rest so the
+   6px strip reads as breathing room; hover/active reveal it. touch-action none
+   keeps a touch drag from scrolling the panes instead of resizing them. */
+.transcript-split__divider {
+  flex: 0 0 6px;
+  cursor: col-resize;
+  touch-action: none;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.transcript-split__divider:hover,
+.transcript-split__divider:active {
+  background: var(--border);
+}
+
 /* Task 70-2: at half width the transcript's boxes have to be allowed to shrink.
    Otherwise unbroken code lines and wide tables keep their single-pane intrinsic
    width and get clipped by the pane's overflow instead of wrapping inside it. */

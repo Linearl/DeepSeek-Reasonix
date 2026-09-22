@@ -355,7 +355,8 @@ for (const path of localeChunks) {
   // ratchet moves to 74.5; tasks 184 monitor strings pushed both again: zh-TW 74.9, zh 74.0.
   // 75.2: ratchet step +0.5 (user 2026-09-20, one-shot rule). Batch 3 adds 8 keys ×3 locales (210/153/221/173) + terser variance; measured zh 74.8.
   // 75.9: ratchet step +0.5 same batch. zh-TW tracks zh +0.7.
-  const budget = name.startsWith("zh-TW-") ? 75.9 * 1024 : 75.2 * 1024;
+  // 75.7 / 76.4: batch 4 line K adds splitView.resizeDivider ×3 locales; measured zh 75.3, so the one-shot +0.5 step lands both budgets at once.
+  const budget = name.startsWith("zh-TW-") ? 76.4 * 1024 : 75.7 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0

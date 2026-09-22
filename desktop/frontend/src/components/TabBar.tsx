@@ -1,6 +1,6 @@
 // TabBar renders the browser-like workspace tab strip. Each tab represents one
 // open project/global topic, so switching tabs switches the active conversation.
-import { isSplitViewEnabled, onSplitViewEnabledChange } from "../lib/splitView";
+import { crossGroupDropIntent, isSplitViewEnabled, onSplitViewEnabledChange } from "../lib/splitView";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, DragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { FileText, Plus, Search, X } from "lucide-react";
@@ -142,6 +142,16 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
     const side = dropTarget?.id === tabId ? dropTarget.side : dropSideForEvent(event);
     clearDragState();
     if (!draggedId || draggedId === tabId) return;
+    // Task 70 二期: with a split open a drop that lands on the OTHER group's
+    // tab moves the tab across instead of reordering inside one group. Both
+    // directions ride the same toggle the context menu uses: replacing the
+    // secondary, or clearing it (which closes the split).
+    const cross = crossGroupDropIntent(draggedId, tabId, splitTabId);
+    if (cross && onToggleSplit) {
+      suppressClickRef.current = true;
+      onToggleSplit(draggedId);
+      return;
+    }
     const next = reorderTabIds(draggedId, tabId, side);
     if (next.join("\u0000") !== tabs.map((tab) => tab.id).join("\u0000")) {
       suppressClickRef.current = true;
