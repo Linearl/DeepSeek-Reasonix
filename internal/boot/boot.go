@@ -1926,6 +1926,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		reg.Add(agent.NewSetSessionPurposeTool(collab))
 		reg.Add(agent.NewListAddressableSessionsTool(collab))
 		reg.Add(agent.NewGetSessionStatusTool(collab))
+		// Task 228: the orchestration wait — same state judgement as
+		// get_session_status (shared collabStatusRecords), blocking semantics.
+		// Read-only, so it rides the same unconditional registration.
+		reg.Add(agent.NewEventWaitTool(collab))
 		// Task 202: batch progress events (not busy/idle metadata - that is
 		// what get_session_status answers). Read-only and messaging-independent.
 		reg.Add(agent.NewReadCollabStatusTool(collab))
