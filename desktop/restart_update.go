@@ -29,6 +29,16 @@ import (
 // application can make that happen: the helper's instance handoff opens the target
 // with PROCESS_QUERY_LIMITED_INFORMATION|SYNCHRONIZE, never PROCESS_TERMINATE.
 func (a *App) RestartAndUpdate(sourceDir, version string) error {
+	return a.restartAndUpdateExempt(sourceDir, version, "")
+}
+
+// restartAndUpdateExempt is RestartAndUpdate with a busy-guard exemption for
+// callerSession (task 254). The restart_update tool executes inside a turn —
+// the very turn the restart is meant to end — so without the exemption the
+// tool would always refuse itself. UI callers pass "" and keep the old
+// never-through-a-running-turn behavior; every OTHER tab's active work still
+// refuses the swap.
+func (a *App) restartAndUpdateExempt(sourceDir, version, callerSession string) error {
 	if a == nil {
 		return fmt.Errorf("restart: no app")
 	}
@@ -64,18 +74,11 @@ func (a *App) RestartAndUpdate(sourceDir, version string) error {
 	}
 
 	// A running turn owns a session write and may have an approval or ask card
-	// outstanding; restarting through it would strand both. Refuse instead.
-	a.mu.Lock()
-	busy := false
-	for _, tab := range a.tabs {
-		if tab.hasActiveRuntimeWork() {
-			busy = true
-			break
-		}
-	}
-	a.mu.Unlock()
-	if busy {
-		return fmt.Errorf("restart: a turn is running or background jobs are active; stop them first")
+	// outstanding; restarting through it would strand both — except the caller's
+	// own turn when the request comes from the restart_update tool (task 254):
+	// that turn is the one being restarted away from. Refuse for the rest.
+	if busy := a.restartBusyReason(callerSession); busy != "" {
+		return fmt.Errorf("%s", busy)
 	}
 
 	executable, err := os.Executable()
@@ -155,12 +158,43 @@ func (a *App) RestartAndUpdate(sourceDir, version string) error {
 
 	// Answer first, exit after. The caller is a UI action or a tool call that has to
 	// get a result: a restart that never returns reads as a failure, and retrying a
-	// failure like this is another restart.
+	// failure like this is another restart. The tool path (task 254) grants a longer
+	// grace: the calling turn is still streaming and its transcript tail needs the
+	// seconds to reach disk before the process exits.
+	grace := 750 * time.Millisecond
+	if callerSession != "" {
+		grace = autonomousUpdateQuitGrace
+	}
 	go func() {
-		time.Sleep(750 * time.Millisecond)
+		time.Sleep(grace)
 		a.quitApp()
 	}()
 	return nil
+}
+
+// restartBusyReason reports why an install swap must wait right now, or "" when
+// the path is clear. callerSession (a session path) is exempt from the check:
+// the restart_update tool runs inside that session's own turn, which is the
+// turn the restart ends (task 254). Every other tab's active work refuses the
+// swap exactly as before.
+func (a *App) restartBusyReason(callerSession string) string {
+	exempt := ""
+	if callerSession != "" {
+		exempt = sessionRuntimeKey(callerSession)
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, tab := range a.tabs {
+		if exempt != "" && tab.Ctrl != nil {
+			if sp := tab.Ctrl.SessionPath(); sp != "" && sessionRuntimeKey(sp) == exempt {
+				continue
+			}
+		}
+		if tab.hasActiveRuntimeWork() {
+			return "restart: a turn is running or background jobs are active; stop them first"
+		}
+	}
+	return ""
 }
 
 // startDetachedLauncher starts the launcher so that it outlives this process,

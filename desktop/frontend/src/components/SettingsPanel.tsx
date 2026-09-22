@@ -941,10 +941,10 @@ export function toRef(model: string, s: SettingsView): string {
 
 const PROXY_MODES = ["auto", "custom", "off"] as const;
 
-// EFFORT_PRESETS is the canonical union of /effort levels the kernel recognises.
-// The settings UI uses it for subagent defaults; provider-specific levels are
-// inferred by the backend or edited in TOML for rare gateways.
-export const EFFORT_PRESETS: readonly string[] = ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
+// EFFORT_PRESETS and the alias folding live in lib/effortTiers.ts (task 254,
+// user ruling on task 251: four honest tiers, wire keeps the eight-level set).
+// Re-exported here because the subagent pickers import them from this module.
+export { EFFORT_PRESETS, normalizeEffortForMenu } from "../lib/effortTiers";
 const COMPACT_RATIO_PRESETS = [
   [0.7, "settings.compactRatioPreset.70", "settings.compactRatioPresetEffect.70"],
   [0.8, "settings.compactRatioPreset.80", "settings.compactRatioPresetEffect.80"],
@@ -1917,6 +1917,48 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                     onClick={() => void apply(() => app.SetExperimentalRestartUpdate(on))}
                   >
                     {t(on ? "settings.restartUpdate.on" : "settings.restartUpdate.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "restartUpdate" && (
+            // Task 254: the agent-facing half of the restart-and-update lab. The
+            // restart_update tool registers at boot only, so saving sets
+            // restartNeeded — the same signal that raises the restart banner.
+            <SettingsField label={t("settings.autonomousUpdate")} hint={t("settings.autonomousUpdateHint")} icon={<RefreshCw size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalAutonomousUpdate) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalAutonomousUpdate(on);
+                      setRestartNeeded(true);
+                    })}
+                  >
+                    {t(on ? "settings.autonomousUpdate.on" : "settings.autonomousUpdate.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "restartUpdate" && (
+            // Task 254 (user ruling): the auto-resume scope dial. Unlike the
+            // tool toggle this takes effect live — execute reads it when it
+            // fires and restore reads it when the new process boots — so no
+            // restartNeeded here.
+            <SettingsField label={t("settings.autonomousUpdateResume")} hint={t("settings.autonomousUpdateResumeHint")} icon={<RefreshCw size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {(["off", "goal_autopilot", "all"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    className={`set-seg__btn${(s.autonomousUpdateResume ?? "goal_autopilot") === mode ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetAutonomousUpdateResume(mode))}
+                  >
+                    {t(`settings.autonomousUpdateResume.${mode}`)}
                   </button>
                 ))}
               </SettingsOptions>

@@ -521,6 +521,38 @@ func (c *Config) SetExperimentalRestartUpdate(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalAutonomousUpdate toggles the agent-facing restart_update tool
+// (task 254). It is opt-in because it lets the model swap the running install
+// by itself; registration reads the boot snapshot, so a flip applies on restart.
+func (c *Config) SetExperimentalAutonomousUpdate(enabled bool) error {
+	c.Desktop.ExperimentalAutonomousUpdate = enabled
+	return nil
+}
+
+// SetAutonomousUpdateResume scopes the auto-resume family (task 254). Only the
+// three known values are accepted so a typo cannot silently disable resuming.
+func (c *Config) SetAutonomousUpdateResume(mode string) error {
+	switch mode {
+	case "off", "goal_autopilot", "all":
+		c.Desktop.AutonomousUpdateResume = mode
+		return nil
+	default:
+		return fmt.Errorf("autonomous_update_resume must be off, goal_autopilot, or all (got %q)", mode)
+	}
+}
+
+// AutonomousUpdateResumeMode returns the normalized resume scope. Empty and
+// unknown values read as "goal_autopilot": the pre-task-254 behavior plus the
+// autopilot marker chain, never a silent opt-out.
+func (c *Config) AutonomousUpdateResumeMode() string {
+	switch c.Desktop.AutonomousUpdateResume {
+	case "off", "all":
+		return c.Desktop.AutonomousUpdateResume
+	default:
+		return "goal_autopilot"
+	}
+}
+
 // SetExperimentalSessionMonitor toggles the left-rail session monitor board
 // (task 123). It is opt-in because the board is an experimental diagnostics
 // surface, not part of the daily transcript UI.

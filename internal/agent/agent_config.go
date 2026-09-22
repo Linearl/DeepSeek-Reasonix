@@ -17,14 +17,18 @@ type agentConfig struct {
 	// Bound by the host; nil in a host that cannot swap its own install, which
 	// is what makes the tool report itself unavailable rather than half-fail.
 	restartUpdater tool.RestartUpdater
-	maxSteps           int
-	maxStepsKey        string
-	reasoningByteLimit int
-	maxOutputTokens    int
-	temperature        float64
-	usageSource        string
-	modelRef           string
-	highSpeedModels    []string
+	// autonomousUpdateController backs the restart_update tool (task 254).
+	// Bound by the host; nil outside the desktop, which keeps the tool
+	// reporting itself unavailable rather than half-failing.
+	autonomousUpdateController tool.AutonomousUpdateController
+	maxSteps                   int
+	maxStepsKey                string
+	reasoningByteLimit         int
+	maxOutputTokens            int
+	temperature                float64
+	usageSource                string
+	modelRef                   string
+	highSpeedModels            []string
 	// workspaceID is a prompt-cache lineage component, so it must not move
 	// while an agent lives — a change would silently rekey the cache.
 	workspaceID string

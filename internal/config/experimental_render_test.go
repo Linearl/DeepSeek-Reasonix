@@ -13,6 +13,7 @@ import (
 func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	c := &Config{}
 	c.Desktop.ExperimentalRestartUpdate = true
+	c.Desktop.ExperimentalAutonomousUpdate = true
 	c.Desktop.ExperimentalSessionMonitor = true
 	c.Desktop.ExperimentalSplitView = true
 	c.Desktop.ExperimentalFeedback = true
@@ -26,6 +27,7 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	out := RenderTOMLForScope(c, RenderScopeUser)
 	for _, want := range []string{
 		"experimental_restart_update = true",
+		"experimental_autonomous_update = true",
 		"experimental_session_monitor = true",
 		"experimental_split_view = true",
 		"experimental_feedback = true",
@@ -49,6 +51,7 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 	out := RenderTOMLForScope(c, RenderScopeUser)
 	for _, want := range []string{
 		"experimental_restart_update = false",
+		"experimental_autonomous_update = false",
 		"experimental_session_monitor = false",
 		"experimental_split_view = false",
 		"experimental_feedback = false",

@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	mcpjsonrpc "github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"reasonix/internal/mcpdiag"
 	"reasonix/internal/mcpinteraction"
@@ -363,8 +365,57 @@ func (t *sdkSessionTransport) build(ctx context.Context, generation uint64) (*ma
 	}
 
 	t.setStateIfBuilding(generation, SessionStateListening)
-	session, err := client.Connect(sessionCtx, endpoint.transport, nil)
+	session, err := client.Connect(sessionCtx, endpoint.transport, connectOptions(t.spec.ProtocolVersion))
 	if err != nil {
+		// Task 256: a server that cannot speak the newest handshake (or chokes
+		// on the SDK's server/discover preamble) gets exactly one second
+		// attempt speaking the classic 2025-06-18 sequence. This also covers
+		// readiness races: the retry lands after the first attempt's startup
+		// latency, by which point a slow starter has usually finished booting.
+		// A server pinned below the fallback keeps its pin — retrying with a
+		// different version could only add a second incompatible handshake.
+		if (strings.TrimSpace(t.spec.ProtocolVersion) == "" || strings.TrimSpace(t.spec.ProtocolVersion) > legacyConnectFallback) && isProtocolRejection(err) {
+			stopBuildCancel()
+			endpoint.close()
+			if ctx.Err() == nil {
+				retryCtx, retryCancel := context.WithCancel(t.lifeCtx)
+				// Re-bind the build context the way sessionCtx was bound, so a
+				// build timeout still reaches the retry connection.
+				retryStop := context.AfterFunc(ctx, retryCancel)
+				if retryEndpoint, epErr := t.newEndpoint(retryCtx); epErr == nil {
+					closeRetry := retryEndpoint.close
+					retryEndpoint.close = func() {
+						closeRetry()
+						retryCancel()
+					}
+					retrySession, connErr := client.Connect(retryCtx, retryEndpoint.transport, connectOptions(legacyConnectFallback))
+					if connErr == nil {
+						if !retryStop() || ctx.Err() != nil {
+							_ = retrySession.Close()
+							retryEndpoint.close()
+							if err := ctx.Err(); err != nil {
+								return nil, err
+							}
+							return nil, mcpsdk.ErrConnectionClosed
+						}
+						protocol := ""
+						if result := retrySession.InitializeResult(); result != nil {
+							protocol = result.ProtocolVersion
+						}
+						slog.Warn("plugin: connected after falling back to the legacy MCP handshake",
+							"server", t.name, "protocol", protocol)
+						return &managedMCPSession{
+							generation: generation,
+							session:    retrySession,
+							endpoint:   retryEndpoint,
+							protocol:   protocol,
+						}, nil
+					}
+					_ = retryStop()
+				}
+				retryCancel()
+			}
+		}
 		stopBuildCancel()
 		endpoint.close()
 		stderr := ""
@@ -404,6 +455,67 @@ func (t *sdkSessionTransport) setStateIfBuilding(generation uint64, state Sessio
 		t.state = state
 	}
 	t.mu.Unlock()
+}
+
+// connectOptions maps a spec's protocol pin onto the SDK session options
+// (task 256). A pinned version short-circuits the SDK's SEP-2575
+// server/discover probe: strict older servers answer that probe with
+// "invalid request" before the classic initialize handshake ever runs.
+func connectOptions(pinned string) *mcpsdk.ClientSessionOptions {
+	pinned = strings.TrimSpace(pinned)
+	if pinned == "" {
+		return nil
+	}
+	return &mcpsdk.ClientSessionOptions{ProtocolVersion: pinned}
+}
+
+// legacyConnectFallback is the classic-handshake version used when a session
+// build fails before completing a handshake. Newer SDK releases start their
+// negotiation with a SEP-2575 server/discover probe and a 2025-11-25 fallback
+// initialize; servers written against the 2025-06-18 spec (computer-use
+// 0.9.0-preview among them) reject both, so the second attempt speaks the
+// oldest widely-deployed version instead. The retried handshake still runs
+// the SDK's full sequence — initialize request, notifications/initialized,
+// then tools/list — only the requested version and the discover preamble
+// differ.
+const legacyConnectFallback = "2025-06-18"
+
+// isProtocolRejection recognizes the failure shapes a strict older server
+// produces when it cannot speak the SDK's newest negotiation (task 256): an
+// unsupported-version error, an "invalid request" JSON-RPC rejection of the
+// server/discover probe, or a protocol-version mismatch. Endpoint-level
+// failures (a plain 404, auth, transport resets) are NOT protocol rejections
+// and must not burn a second handshake attempt on a dead-wrong endpoint.
+func isProtocolRejection(err error) bool {
+	if err == nil {
+		return false
+	}
+	if code := jsonrpcErrorCode(err); code == mcpsdk.CodeUnsupportedProtocolVersion || code == mcpjsonrpc.CodeInvalidRequest {
+		return true
+	}
+	if classifySessionError(err) == SessionErrorProtocol {
+		return true
+	}
+	rejected := false
+	visitMCPRPCErrors(err, func(rpcErr *mcpjsonrpc.Error) {
+		message := strings.ToLower(strings.TrimSpace(rpcErr.Message))
+		if strings.Contains(message, "invalid request") || strings.Contains(message, "protocol version") {
+			rejected = true
+		}
+	})
+	return rejected
+}
+
+// jsonrpcErrorCode returns the first JSON-RPC error code in the error tree, or
+// 0 when the failure carries no JSON-RPC envelope.
+func jsonrpcErrorCode(err error) int64 {
+	var code int64
+	visitMCPRPCErrors(err, func(rpcErr *mcpjsonrpc.Error) {
+		if code == 0 && rpcErr != nil && rpcErr.Code != 0 {
+			code = rpcErr.Code
+		}
+	})
+	return code
 }
 
 // handleElicitation answers server-initiated elicitation. MCP 2026 middleware

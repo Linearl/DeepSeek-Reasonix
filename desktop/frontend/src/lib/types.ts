@@ -2316,6 +2316,10 @@ export type { ModelSettingsChange, ModelSettingsResult } from "./modelSettingsTy
 export interface DesktopStartupSettingsView {
   /** Restart-and-update experiment switch (task 81); off unless the user opts in. */
   experimentalRestartUpdate?: boolean;
+  /** Agent-facing restart_update tool switch (task 254); off unless the user opts in; boot snapshot. */
+  experimentalAutonomousUpdate?: boolean;
+  /** Auto-resume scope after an update restart (task 254): off | goal_autopilot | all. */
+  autonomousUpdateResume?: string;
   /** Session-monitor board experiment switch (task 123); off unless the user opts in. */
   experimentalSessionMonitor?: boolean;
   /** Split-view experiment switch (task 70-1); off unless the user opts in. */

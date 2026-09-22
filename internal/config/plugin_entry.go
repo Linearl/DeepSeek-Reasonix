@@ -25,6 +25,12 @@ type PluginEntry struct {
 	// from this server. Keys are server-local tool names, not model-visible
 	// mcp__server__tool names.
 	ToolTimeoutSeconds map[string]int `toml:"tool_timeout_seconds"`
+	// ProtocolVersion pins the MCP protocol version requested during the
+	// handshake (task 256). Empty keeps the SDK default negotiation, which
+	// probes SEP-2575 first and may be rejected by strict older servers.
+	// "2025-06-18" restores the classic initialize + notifications/initialized
+	// sequence for such servers.
+	ProtocolVersion string `toml:"protocol_version"`
 	// Concurrency is "parallel" (default) or "serial"; see SPEC 3.16.
 	Concurrency string `toml:"concurrency"`
 	// AutoStart controls whether the server connects during session startup.

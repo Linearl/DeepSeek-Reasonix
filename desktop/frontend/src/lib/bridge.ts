@@ -752,6 +752,12 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 81: the Settings switch for the restart-and-update action. Same preference the
   // restart_and_update tool reads, so one enables both.
   SetExperimentalRestartUpdate(enabled: boolean): Promise<void>;
+  // Task 254: the Settings switch for the agent-facing restart_update tool. Registration
+  // reads the boot snapshot, so the flip applies on the next restart.
+  SetExperimentalAutonomousUpdate(enabled: boolean): Promise<void>;
+  // Task 254: the auto-resume scope dial ("off" | "goal_autopilot" | "all").
+  // Takes effect live; execute reads it when it fires.
+  SetAutonomousUpdateResume(mode: string): Promise<void>;
   // Task 123: left-rail session monitor board (experimental).
   SetExperimentalSessionMonitor(enabled: boolean): Promise<void>;
   // Task 70-1: tab-bar split view (experimental).
@@ -5004,6 +5010,8 @@ function makeMockApp(): AppBindings {
       settings.defaultToolApprovalMode = normalizeToolApprovalMode(mode);
     },
     async SetExperimentalRestartUpdate() {},
+    async SetExperimentalAutonomousUpdate() {},
+    async SetAutonomousUpdateResume() {},
     async ResolveTakeoverDecision() { return false; },
     async SetExperimentalSessionMonitor() {},
     async SetExperimentalSplitView() {},

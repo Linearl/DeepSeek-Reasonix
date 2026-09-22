@@ -107,6 +107,14 @@ func (a *App) ListInstalledVersions() ([]InstalledVersion, error) {
 // misdirected call can never become a version swap while the feature is off
 // or a turn is running (task 81 guard semantics preserved).
 func (a *App) SwitchToVersion(version string) error {
+	return a.switchToVersionExempt(version, "")
+}
+
+// switchToVersionExempt is SwitchToVersion with a busy-guard exemption for
+// callerSession (task 254): the restart_update tool's rollback runs inside the
+// turn it is about to end, so that one session cannot block itself. UI callers
+// pass "" and keep the old behavior.
+func (a *App) switchToVersionExempt(version, callerSession string) error {
 	if a == nil {
 		return fmt.Errorf("restart: no app")
 	}
@@ -119,19 +127,9 @@ func (a *App) SwitchToVersion(version string) error {
 	if cfg, cfgErr := config.Load(); cfgErr != nil || !cfg.Desktop.ExperimentalRestartUpdate {
 		return fmt.Errorf("restart: the restart-and-update experiment is off; enable experimental_restart_update in the desktop settings")
 	}
-	// Same busy guard as RestartDesktop: a running turn owns a session write
-	// and may hold an approval or ask card; restarting through it strands both.
-	a.mu.Lock()
-	busy := false
-	for _, tab := range a.tabs {
-		if tab.hasActiveRuntimeWork() {
-			busy = true
-			break
-		}
-	}
-	a.mu.Unlock()
-	if busy {
-		return fmt.Errorf("restart: a turn is running or background jobs are active; stop them first")
+	// Same busy guard as RestartDesktop, with the task-254 caller exemption.
+	if busy := a.restartBusyReason(callerSession); busy != "" {
+		return fmt.Errorf("%s", busy)
 	}
 
 	installRoot, err := versionSwitchInstallRoot()
@@ -171,9 +169,15 @@ func (a *App) SwitchToVersion(version string) error {
 		slog.Error("restart: launcher start failed after version switch", "version", version, "err", err)
 		return fmt.Errorf("restart: start launcher: %w", err)
 	}
-	// Answer first, exit after — same contract as the other restart paths.
+	// Answer first, exit after — same contract as the other restart paths. The
+	// tool path (task 254) grants a longer grace so the calling turn's
+	// transcript tail reaches disk before the process exits.
+	grace := 750 * time.Millisecond
+	if callerSession != "" {
+		grace = autonomousUpdateQuitGrace
+	}
 	go func() {
-		time.Sleep(750 * time.Millisecond)
+		time.Sleep(grace)
 		versionSwitchQuit(a)
 	}()
 	return nil

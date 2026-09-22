@@ -185,6 +185,22 @@ func (a *App) SetExperimentalRestartUpdate(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalRestartUpdate(enabled) })
 }
 
+// SetExperimentalAutonomousUpdate toggles the agent-facing restart_update tool
+// (task 254). Tool registration reads the boot snapshot, so the flip applies on
+// the next restart — the settings pane says so next to the switch.
+func (a *App) SetExperimentalAutonomousUpdate(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalAutonomousUpdate(enabled) })
+}
+
+// SetAutonomousUpdateResume sets the auto-resume scope dial (task 254): off
+// resumes nothing, goal_autopilot resumes goal runs and autopilot sessions
+// that asked for the update, all additionally resumes every mid-turn session.
+// Unlike the tool toggle this takes effect live — execute reads it when it
+// fires, restore reads it when the new process boots.
+func (a *App) SetAutonomousUpdateResume(mode string) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetAutonomousUpdateResume(mode) })
+}
+
 // SetExperimentalSessionMonitor toggles the left-rail session monitor board (task
 // 123): the diagnostics surface for transcript-cache residency and switch cost.
 func (a *App) SetExperimentalSessionMonitor(enabled bool) error {

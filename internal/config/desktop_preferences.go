@@ -30,6 +30,21 @@ type DesktopConfig struct {
 	// It ships off: the action swaps the active install version, so it stays behind an
 	// explicit opt-in until it has been exercised in the field.
 	ExperimentalRestartUpdate bool `toml:"experimental_restart_update"`
+	// ExperimentalAutonomousUpdate exposes the agent-facing "autonomous update"
+	// surface (task 254): with it on, the restart_update tool is registered so the
+	// model can list versions, set an update target, and execute the swap itself.
+	// It ships off (fork rule 2) and, like every tool registration, reads the boot
+	// snapshot — a flip applies on the next restart.
+	ExperimentalAutonomousUpdate bool `toml:"experimental_autonomous_update"`
+	// AutonomousUpdateResume scopes the auto-resume after an autonomous-update
+	// restart (task 254, user ruling): "off" resumes nothing, "goal_autopilot"
+	// (the default; empty or unknown values normalize to it) resumes sessions
+	// whose goal was running plus autopilot sessions that asked for the update,
+	// and "all" additionally resumes every session that was mid-turn at the
+	// restart. The task-49 goal resume rides the same dial: "off" turns the
+	// whole auto-resume family off, which is what a conservative user opting
+	// out is asking for.
+	AutonomousUpdateResume string `toml:"autonomous_update_resume"`
 	// ExperimentalSessionMonitor exposes the left-rail "session monitor" board
 	// (task 123). It ships off: the board is a diagnostics surface for cache
 	// residency and switch cost, so it stays behind an explicit opt-in.
@@ -78,16 +93,16 @@ type DesktopConfig struct {
 	SessionCollabHopLimit int `toml:"session_collab_hop_limit"`
 	// ExperimentalAutoLoadOlder is the settings-view mirror for
 	// Agent.ExperimentalAutoLoadOlder (fork task 160).
-	ExperimentalAutoLoadOlder bool   `toml:"experimental_auto_load_older"`
+	ExperimentalAutoLoadOlder bool `toml:"experimental_auto_load_older"`
 	// CollabInboxMerge is the settings-view mirror for Agent.CollabInboxMerge
 	// (task 221): off | same_sender | all.
-	CollabInboxMerge         string `toml:"collab_inbox_merge"`
+	CollabInboxMerge string `toml:"collab_inbox_merge"`
 	// CollabGuidanceMerge is the settings-view mirror for
 	// Agent.CollabGuidanceMerge (task 153): the manual "merge next" button in
 	// the guidance shelf.
-	CollabGuidanceMerge      bool   `toml:"collab_guidance_merge"`
-	AutopilotMaxRuntime       string `toml:"autopilot_max_runtime"`    // Go duration; required when autopilot is on
-	AutopilotApprovalGrace    string `toml:"autopilot_approval_grace"` // wait for a human before the reviewer decides; empty = 15s
+	CollabGuidanceMerge    bool   `toml:"collab_guidance_merge"`
+	AutopilotMaxRuntime    string `toml:"autopilot_max_runtime"`    // Go duration; required when autopilot is on
+	AutopilotApprovalGrace string `toml:"autopilot_approval_grace"` // wait for a human before the reviewer decides; empty = 15s
 	// MaxCachedTabs bounds how many tab states the frontend keeps resident
 	// (task 161). Under the workbench single-surface layout a switch used to
 	// prune every other tab's cached state, so each switch back re-parsed the

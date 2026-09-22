@@ -18,6 +18,14 @@ const (
 // are runtime-only adjustments; they do not make a server built-in or change
 // startup behavior.
 func ApplyKnownOverrides(s Spec, workspaceRoot string) Spec {
+	// Task 256: computer-use 0.9.0-preview rejects the SDK's SEP-2575
+	// server/discover preamble with "invalid request" before the classic
+	// initialize handshake ever runs. Pin it to 2025-06-18 so Connect starts
+	// with initialize + notifications/initialized directly. An explicit
+	// protocol_version in the config always wins.
+	if isComputerUseSpec(s) && strings.TrimSpace(s.ProtocolVersion) == "" {
+		s.ProtocolVersion = "2025-06-18"
+	}
 	if isCodeGraphSpecName(s.Name) {
 		if isStdioSpecType(s.Type) {
 			if s.Dir == "" {
@@ -46,6 +54,16 @@ func ApplyKnownOverrides(s Spec, workspaceRoot string) Spec {
 
 func isCodeGraphSpecName(name string) bool {
 	return strings.EqualFold(strings.TrimSpace(name), "codegraph")
+}
+
+// isComputerUseSpec matches the computer-use screen-interaction MCP server
+// (Plocr/Reasonix-computer-use), by server name or command fragment.
+func isComputerUseSpec(s Spec) bool {
+	if strings.EqualFold(strings.TrimSpace(s.Name), "computer-use") ||
+		strings.EqualFold(strings.TrimSpace(s.Name), "computer_use") {
+		return true
+	}
+	return strings.Contains(strings.ToLower(strings.TrimSpace(s.Command)), "computer-use")
 }
 
 func isCodebaseMemorySpec(s Spec) bool {

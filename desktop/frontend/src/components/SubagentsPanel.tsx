@@ -11,7 +11,7 @@ import type { MCPToolView, SettingsView, SkillView, SubagentProfileInput } from 
 
 import { InlineConfirmButton } from "./InlineConfirmButton";
 import { CopyButton } from "./CopyButton";
-import { allRefs, EFFORT_PRESETS, ModelPicker, toRef } from "./SettingsPanel";
+import { allRefs, EFFORT_PRESETS, ModelPicker, normalizeEffortForMenu, toRef } from "./SettingsPanel";
 import { Tooltip } from "./Tooltip";
 
 const NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/;
@@ -276,7 +276,7 @@ function EffortPicker({
 }) {
   const t = useT();
   return <div className="settings-model-picker subagents-effort-picker">
-    <SettingsSelect value={value} disabled={disabled} aria-label={ariaLabel}
+    <SettingsSelect value={normalizeEffortForMenu(value)} disabled={disabled} aria-label={ariaLabel}
       title={t("subagents.effectiveValue", { value: value || inheritedValue })}
       onValueChange={onPick}
       options={[
@@ -609,7 +609,7 @@ function SubagentProfileForm({
       />
 
       <label className="set-label">{t("settings.subagentEffort")}</label>
-      <SettingsSelect className="mem-select set-grow" value={effort} disabled={busy} onValueChange={(value) => setEffort(value)}>
+      <SettingsSelect className="mem-select set-grow" value={normalizeEffortForMenu(effort)} disabled={busy} onValueChange={(value) => setEffort(value)}>
         <option value="">{t("settings.subagentEffortDefault")}</option>
         {EFFORT_PRESETS.map((level) => (
           <option key={level} value={level}>

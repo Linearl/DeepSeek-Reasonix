@@ -1161,6 +1161,10 @@ type Options struct {
 	// (task 81); nil in a host that cannot do that.
 	RestartUpdater tool.RestartUpdater
 
+	// AutonomousUpdateController backs the restart_update tool (task 254);
+	// nil in a host that cannot list/switch its own install versions.
+	AutonomousUpdateController tool.AutonomousUpdateController
+
 	// Extensions is the frozen extension dispatcher for this agent's controller
 	// generation (Extension Protocol v2). Nil means no runtime packages are
 	// installed; the run loop then passes every intercept point through
@@ -1269,31 +1273,32 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 			sandboxEscapeApprover, configWriteApprover, hooks, opts),
 		reads: readState{gates: !opts.ReadPipeline.LegacyEvidenceGates},
 		agentConfig: agentConfig{
-			maxSteps:                opts.MaxSteps,
-			maxStepsKey:             maxStepsKey,
-			reasoningByteLimit:      reasoningByteLimit,
-			maxOutputTokens:         opts.MaxOutputTokens,
-			temperature:             opts.Temperature,
-			usageSource:             usageSourceOrDefault(opts.UsageSource, event.UsageSourceExecutor),
-			modelRef:                strings.TrimSpace(opts.ModelRef),
-			highSpeedModels:         opts.HighSpeedModels,
-			workspaceID:             strings.TrimSpace(opts.WorkspaceID),
-			classifierTaskText:      opts.ClassifierTaskText,
-			writeWorkspaceRoot:      strings.TrimSpace(opts.WriteWorkspaceRoot),
-			subagentDepth:           subagentDepth,
-			maxSubagentDepth:        maxSubagentDepth,
-			autopilot:               opts.Autopilot,
-			traceAsState:            opts.TraceAsState,
-			restartUpdater:          opts.RestartUpdater,
-			contextWindow:           opts.ContextWindow,
-			compactRatio:            opts.CompactRatio,
-			recentKeep:              opts.RecentKeep,
-			archiveDir:              opts.ArchiveDir,
-			legacyAnchorSafetyGate:  opts.LegacyAnchorSafetyGate,
-			textRepeatN:             opts.TextRepeatN,
-			textRepeatThreshold:     opts.TextRepeatThreshold,
-			readCoordinatorShadow:   !opts.ReadPipeline.LegacyCoordinator,
-			legacyImplicitFullReads: opts.ReadPipeline.LegacyImplicitFullReads,
+			maxSteps:                   opts.MaxSteps,
+			maxStepsKey:                maxStepsKey,
+			reasoningByteLimit:         reasoningByteLimit,
+			maxOutputTokens:            opts.MaxOutputTokens,
+			temperature:                opts.Temperature,
+			usageSource:                usageSourceOrDefault(opts.UsageSource, event.UsageSourceExecutor),
+			modelRef:                   strings.TrimSpace(opts.ModelRef),
+			highSpeedModels:            opts.HighSpeedModels,
+			workspaceID:                strings.TrimSpace(opts.WorkspaceID),
+			classifierTaskText:         opts.ClassifierTaskText,
+			writeWorkspaceRoot:         strings.TrimSpace(opts.WriteWorkspaceRoot),
+			subagentDepth:              subagentDepth,
+			maxSubagentDepth:           maxSubagentDepth,
+			autopilot:                  opts.Autopilot,
+			traceAsState:               opts.TraceAsState,
+			restartUpdater:             opts.RestartUpdater,
+			autonomousUpdateController: opts.AutonomousUpdateController,
+			contextWindow:              opts.ContextWindow,
+			compactRatio:               opts.CompactRatio,
+			recentKeep:                 opts.RecentKeep,
+			archiveDir:                 opts.ArchiveDir,
+			legacyAnchorSafetyGate:     opts.LegacyAnchorSafetyGate,
+			textRepeatN:                opts.TextRepeatN,
+			textRepeatThreshold:        opts.TextRepeatThreshold,
+			readCoordinatorShadow:      !opts.ReadPipeline.LegacyCoordinator,
+			legacyImplicitFullReads:    opts.ReadPipeline.LegacyImplicitFullReads,
 		},
 		sess: sessionRuntime{
 			conversation: session,

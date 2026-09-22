@@ -110,6 +110,10 @@ type Options struct {
 	// RestartUpdater carries the host's restart-and-update capability down to
 	// the agent (task 81); nil in a host that cannot swap its own install.
 	RestartUpdater tool.RestartUpdater
+	// AutonomousUpdateController carries the restart_update tool's host side
+	// (task 254); nil in a host without a versions/ install. Registration is
+	// gated by experimental_autonomous_update in the boot code.
+	AutonomousUpdateController tool.AutonomousUpdateController
 	// AutopilotApprovalGrace is how long an unattended run waits for a human on an
 	// approval prompt before the reviewer decides. Zero uses the control default.
 	AutopilotApprovalGrace time.Duration
@@ -856,6 +860,12 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// with the switch off the tool does not exist in the registry at all.
 	if cfg.Agent.ExperimentalUIDriver {
 		reg.Add(builtin.NewUIInteractTool(builtin.UIInteractConfig{WorkDir: root}))
+	}
+	// Task 254: the autonomous-update surface, same iron-rule-2 gate. With
+	// experimental_autonomous_update off the restart_update tool is not in the
+	// registry at all; the boot snapshot decides, so a flip applies on restart.
+	if cfg.Desktop.ExperimentalAutonomousUpdate {
+		reg.Add(builtin.NewRestartUpdate())
 	}
 	addWebSearch(reg, cfg, entry, proxySpec, sink)
 	// Use the caller-supplied shared host when set, so controllers for the same
@@ -1828,20 +1838,21 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// evidence alone (decoupling acceptance).
 	collabStatusPath := agent.ResolveCollabStatusPath("", config.SessionCollabMailDir(), root)
 	executor := agent.New(execProv, reg, execSess, agent.Options{
-		ImageInput:      imageConfig,
-		MaxSteps:        maxSteps,
-		MaxStepsKey:     opts.MaxStepsKey,
-		Temperature:     cfg.Agent.Temperature,
-		TraceAsState:    cfg.Agent.TraceAsState,
-		RestartUpdater:  opts.RestartUpdater,
-		TaskBudget:      taskBudgetFromConfig(cfg),
-		Pricing:         entry.Price,
-		QuoteContext:    quoteCtx,
-		ModelRef:        modelRef,
-		HighSpeedModels: entry.HighSpeedModels,
-		Gate:            headlessGate,
-		Hooks:           hookRunner,
-		Jobs:            jm,
+		ImageInput:                 imageConfig,
+		MaxSteps:                   maxSteps,
+		MaxStepsKey:                opts.MaxStepsKey,
+		Temperature:                cfg.Agent.Temperature,
+		TraceAsState:               cfg.Agent.TraceAsState,
+		RestartUpdater:             opts.RestartUpdater,
+		AutonomousUpdateController: opts.AutonomousUpdateController,
+		TaskBudget:                 taskBudgetFromConfig(cfg),
+		Pricing:                    entry.Price,
+		QuoteContext:               quoteCtx,
+		ModelRef:                   modelRef,
+		HighSpeedModels:            entry.HighSpeedModels,
+		Gate:                       headlessGate,
+		Hooks:                      hookRunner,
+		Jobs:                       jm,
 		// Parent write reservation at the executor entry covers all writers
 		// (including late Economy/MCP adds) without wrapping tool schemas.
 		WriteScheduler:               subagentScheduler,
@@ -2960,6 +2971,7 @@ func pluginSpecFromEntryWithOptions(e config.PluginEntry, workspaceRoot string, 
 		DefaultCallTimeout:    opts.DefaultCallTimeout,
 		CallTimeout:           secondsDuration(e.CallTimeoutSeconds),
 		ToolTimeouts:          toolTimeoutDurations(e.ToolTimeoutSeconds),
+		ProtocolVersion:       strings.TrimSpace(e.ProtocolVersion),
 		WorkspaceRoot:         strings.TrimSpace(workspaceRoot),
 		LaunchManager:         opts.LaunchManager,
 		ConfigSource:          configSource,

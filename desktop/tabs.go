@@ -4026,12 +4026,23 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 	keepBuildContext = true
 	a.mu.Unlock()
 	a.finishStartupPublication(tab, ctrl, wailsCtx)
-	// Task 49 A2: an unattended run picks up where the process left it. It is the
-	// last step so the tab is fully live first; SubmitToTab then takes the normal
-	// admission path, which refuses while a turn is already running. The goal
-	// sidecar is the real gate: once the run stops reporting Running, no later
-	// restart resumes it, so this stays idempotent across repeated launches.
-	a.maybeResumeAutopilotTab(tab)
+	// Task 49 A2 + task 254: auto-resume at the same restore point. The dial
+	// (autonomous_update_resume, task 254 user ruling) scopes the family:
+	// "off" resumes nothing — not even the goal path — because a user who
+	// opts out wants manual control of every session; the other two scopes
+	// keep the goal path live and vary the marker-based coverage. This is
+	// still the last step so the tab is fully live first; SubmitToTab then
+	// takes the normal admission path, which refuses while a turn is already
+	// running, and the goal sidecar keeps the goal path idempotent across
+	// repeated launches.
+	if resumeGate := a.autonomousUpdateResumeMode(); resumeGate != "off" {
+		a.maybeResumeAutopilotTab(tab)
+		// Task 254: the same restore point for a session this process's
+		// predecessor restarted away from via the restart_update tool. No goal
+		// sidecar is involved — the marker file names the session — and the
+		// entry is consumed on first sight, so ordinary restarts never resume it.
+		a.maybeResumeAutonomousUpdateTab(tab)
+	}
 }
 
 // autopilotResumePrompt is what a restored unattended run is told. It states the

@@ -45,9 +45,18 @@ func TestAutopilotDisabledStillRendersItsFlag(t *testing.T) {
 
 func TestAutopilotUnsetStaysOutOfTheConfig(t *testing.T) {
 	// A config nobody touched should not grow an unattended-run section.
+	// Key-level check, not a substring scan: the task-254 resume dial's value
+	// "goal_autopilot" legitimately contains the word without being an
+	// autopilot preference key.
 	c := &Config{}
 	out := RenderTOMLForScope(c, RenderScopeUser)
-	if strings.Contains(out, "autopilot") {
-		t.Fatalf("untouched config should not mention autopilot\n---\n%s", out)
+	for _, key := range []string{
+		"\nautopilot = ",
+		"autopilot_max_runtime",
+		"autopilot_approval_grace",
+	} {
+		if strings.Contains(out, key) {
+			t.Fatalf("untouched config should not write the autopilot key %q\n---\n%s", key, out)
+		}
 	}
 }

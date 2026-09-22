@@ -134,6 +134,13 @@ type Spec struct {
 	Sandbox         sandbox.Spec
 	StateDir        string
 	OAuthHTTPClient *http.Client
+	// ProtocolVersion pins the MCP protocol version requested during the
+	// handshake (task 256). Empty keeps the SDK default, which starts at the
+	// newest spec version and probes SEP-2575 server/discover first — a
+	// sequence strict older servers (for example computer-use 0.9.0-preview)
+	// answer with "invalid request". Pinning "2025-06-18" makes Connect use
+	// the classic initialize + notifications/initialized handshake directly.
+	ProtocolVersion string
 	// StripRawPrefix, when non-empty, removes this prefix from each MCP tool's
 	// raw name before namespacing. For example, StripRawPrefix="server_" turns
 	// "server_search" into "search", yielding "mcp__search__search" instead of

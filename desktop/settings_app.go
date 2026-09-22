@@ -335,10 +335,12 @@ type SettingsView struct {
 	// Task 81 / 123: the Settings panel renders these two experiment switches from
 	// this view; carrying them only on DesktopStartupSettingsView left both switches
 	// permanently reading "off" and impossible to turn on (fixed 2026-09-15).
-	ExperimentalRestartUpdate  bool   `json:"experimentalRestartUpdate"`
-	ExperimentalSessionMonitor bool   `json:"experimentalSessionMonitor"`
-	ExperimentalSplitView      bool   `json:"experimentalSplitView"`
-	SessionStorage             string `json:"sessionStorage"`
+	ExperimentalRestartUpdate    bool   `json:"experimentalRestartUpdate"`
+	ExperimentalAutonomousUpdate bool   `json:"experimentalAutonomousUpdate"`
+	AutonomousUpdateResume       string `json:"autonomousUpdateResume"`
+	ExperimentalSessionMonitor   bool   `json:"experimentalSessionMonitor"`
+	ExperimentalSplitView        bool   `json:"experimentalSplitView"`
+	SessionStorage               string `json:"sessionStorage"`
 	// Task 155: the four-mode conversation store switch. sessionStorage is the
 	// configured mode, sessionStorageEffective the mode this process started
 	// with, and sessionStorageRestartPending flags a change that still needs a
@@ -350,18 +352,18 @@ type SettingsView struct {
 	ExperimentalPathRules        bool   `json:"experimentalPathRules"`
 	ExperimentalTraceAsState     bool   `json:"experimentalTraceAsState"`
 	// Task 161: cache tuning mirrors (Settings panel reads these from this view).
-	MaxCachedTabs              int  `json:"maxCachedTabs"`
-	HistoryBodyBudgetMb        int  `json:"historyBodyBudgetMb"`
-	MarkdownBudgetMb           int  `json:"markdownBudgetMb"`
-	ExperimentalCacheTuning    bool `json:"experimentalCacheTuning"`
-	ExperimentalDream          bool `json:"experimentalDream"`
-	ExperimentalPerfMonitor    bool `json:"experimentalPerfMonitor"`
-	PerfMonitorIntervalSeconds int  `json:"perfMonitorIntervalSeconds"`
-	SessionCollabHopLimit      int  `json:"sessionCollabHopLimit"`
-	ExperimentalSessionCollab  bool `json:"experimentalSessionCollab"`
-	ExperimentalAutoLoadOlder  bool `json:"experimentalAutoLoadOlder"`
+	MaxCachedTabs              int    `json:"maxCachedTabs"`
+	HistoryBodyBudgetMb        int    `json:"historyBodyBudgetMb"`
+	MarkdownBudgetMb           int    `json:"markdownBudgetMb"`
+	ExperimentalCacheTuning    bool   `json:"experimentalCacheTuning"`
+	ExperimentalDream          bool   `json:"experimentalDream"`
+	ExperimentalPerfMonitor    bool   `json:"experimentalPerfMonitor"`
+	PerfMonitorIntervalSeconds int    `json:"perfMonitorIntervalSeconds"`
+	SessionCollabHopLimit      int    `json:"sessionCollabHopLimit"`
+	ExperimentalSessionCollab  bool   `json:"experimentalSessionCollab"`
+	ExperimentalAutoLoadOlder  bool   `json:"experimentalAutoLoadOlder"`
 	CollabInboxMerge           string `json:"collabInboxMerge"`
-	CollabGuidanceMerge        bool `json:"collabGuidanceMerge"`
+	CollabGuidanceMerge        bool   `json:"collabGuidanceMerge"`
 	// Task 173: the collaboration panel gates (settings → 实验特性 → 跨会话通信).
 	SessionCollabAllowDelete       bool `json:"sessionCollabAllowDelete"`
 	SessionCollabAllowRequireReply bool `json:"sessionCollabAllowRequireReply"`
@@ -449,6 +451,10 @@ type DesktopStartupSettingsView struct {
 	StatusBarItems               []string        `json:"statusBarItems"`
 	// ExperimentalRestartUpdate exposes the "restart and update" button (task 81).
 	ExperimentalRestartUpdate bool `json:"experimentalRestartUpdate"`
+	// ExperimentalAutonomousUpdate exposes the agent-facing restart_update tool toggle (task 254).
+	ExperimentalAutonomousUpdate bool `json:"experimentalAutonomousUpdate"`
+	// AutonomousUpdateResume is the auto-resume scope dial (task 254): off | goal_autopilot | all.
+	AutonomousUpdateResume string `json:"autonomousUpdateResume"`
 	// ExperimentalSessionMonitor exposes the left-rail "session monitor" board (task 123).
 	ExperimentalSessionMonitor bool   `json:"experimentalSessionMonitor"`
 	ExperimentalSplitView      bool   `json:"experimentalSplitView"`
@@ -1147,6 +1153,8 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ConfigWarnings = cfg.LoadWarnings()
 		view.ConfigPath = config.UserConfigPath()
 		view.ExperimentalRestartUpdate = cfg.Desktop.ExperimentalRestartUpdate
+		view.ExperimentalAutonomousUpdate = cfg.Desktop.ExperimentalAutonomousUpdate
+		view.AutonomousUpdateResume = cfg.AutonomousUpdateResumeMode()
 		view.ExperimentalSessionMonitor = cfg.Desktop.ExperimentalSessionMonitor
 		view.ExperimentalSplitView = cfg.Desktop.ExperimentalSplitView
 		view.SessionStorage = config.SessionStorageMode(cfg)
@@ -1233,6 +1241,8 @@ func (a *App) Settings() SettingsView {
 		AutopilotApprovalGrace:   cfg.Desktop.AutopilotApprovalGrace,
 		// The Settings panel reads these switches from this view (see the struct note).
 		ExperimentalRestartUpdate:    cfg.Desktop.ExperimentalRestartUpdate,
+		ExperimentalAutonomousUpdate: cfg.Desktop.ExperimentalAutonomousUpdate,
+		AutonomousUpdateResume:       cfg.AutonomousUpdateResumeMode(),
 		ExperimentalSessionMonitor:   cfg.Desktop.ExperimentalSessionMonitor,
 		ExperimentalSplitView:        cfg.Desktop.ExperimentalSplitView,
 		SessionStorage:               storageMode,
@@ -1258,20 +1268,20 @@ func (a *App) Settings() SettingsView {
 		// Task 225: cascade approval to the autopilot parent.
 		ExperimentalCascadeApproval: cfg.Agent.ExperimentalCascadeApproval,
 		ExperimentalLocalServer:     cfg.Desktop.ExperimentalLocalServer,
-		ExperimentalPathRules:        cfg.Desktop.ExperimentalPathRules,
-		MaxCachedTabs:                cfg.Desktop.MaxCachedTabs,
-		HistoryBodyBudgetMb:          cfg.Desktop.HistoryBodyBudgetMb,
-		MarkdownBudgetMb:             cfg.Desktop.MarkdownBudgetMb,
-		ExperimentalCacheTuning:      cfg.Desktop.ExperimentalCacheTuning,
-		VisionModel:                  cfg.Agent.VisionModel,
-		WebSearchModel:               cfg.Agent.WebSearchModel,
-		WebSearchModels:              []string{},
-		SubagentModel:                cfg.Agent.SubagentModel,
-		SubagentEffort:               cfg.Agent.SubagentEffort,
-		AutoPlan:                     "off", // deprecated JSON compatibility for older frontends
-		Providers:                    []ProviderView{},
-		OfficialProviders:            []ProviderView{},
-		ProviderPresets:              []ProviderPresetView{},
+		ExperimentalPathRules:       cfg.Desktop.ExperimentalPathRules,
+		MaxCachedTabs:               cfg.Desktop.MaxCachedTabs,
+		HistoryBodyBudgetMb:         cfg.Desktop.HistoryBodyBudgetMb,
+		MarkdownBudgetMb:            cfg.Desktop.MarkdownBudgetMb,
+		ExperimentalCacheTuning:     cfg.Desktop.ExperimentalCacheTuning,
+		VisionModel:                 cfg.Agent.VisionModel,
+		WebSearchModel:              cfg.Agent.WebSearchModel,
+		WebSearchModels:             []string{},
+		SubagentModel:               cfg.Agent.SubagentModel,
+		SubagentEffort:              cfg.Agent.SubagentEffort,
+		AutoPlan:                    "off", // deprecated JSON compatibility for older frontends
+		Providers:                   []ProviderView{},
+		OfficialProviders:           []ProviderView{},
+		ProviderPresets:             []ProviderPresetView{},
 		Permissions: PermissionsView{
 			Mode:  orDefault(cfg.Permissions.Mode, "ask"),
 			Allow: nonNil(cfg.Permissions.Allow),
