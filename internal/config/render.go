@@ -352,7 +352,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "session_collab_allow_create = %v   # task 173: expose create_collab_session\n", c.Agent.SessionCollabAllowCreate)
 	fmt.Fprintf(&b, "session_collab_allow_steer = %v   # task 173: allow delivery=steer on talk_to_session\n", c.Agent.SessionCollabAllowSteer)
 	fmt.Fprintf(&b, "session_collab_daily_send_limit = %d   # task 173: per-session daily outgoing cap (0 = no cap)\n", c.Agent.SessionCollabDailySendLimit)
-	fmt.Fprintf(&b, "experimental_cascade_approval = %v   # task 225: forward a dispatched session's approvals to its autopilot parent (off by default)\n", c.Agent.ExperimentalCascadeApproval)
+	fmt.Fprintf(&b, "experimental_cascade_approval = %v   # task 225: forward a dispatched session's approvals to its task source (off by default)\n", c.Agent.ExperimentalCascadeApproval)
 	fmt.Fprintf(&b, "collab_inbox_merge = %q   # task 221: inbox drain merge mode (off | same_sender | all; default off)\n", NormalizeCollabInboxMerge(c.Agent.CollabInboxMerge))
 	fmt.Fprintf(&b, "collab_guidance_merge = %v   # task 153: guidance shelf manual merge-next button\n", c.Agent.CollabGuidanceMerge)
 	fmt.Fprintf(&b, "perf_monitor_retention_hours = %d   # task 184: how long samples are kept (default 48h)\n", c.Agent.PerfMonitorRetentionHours)
