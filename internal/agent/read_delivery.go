@@ -67,7 +67,7 @@ func (a *Agent) finalizeReadDelivery(ctx context.Context, call provider.ToolCall
 	// A reference cannot create coverage. Only already covered windows can
 	// be omitted, and only when their original text was in this model request.
 	ob, known := a.turn.readShadow.coord.Get(env.ReadID)
-	if known && ob.Version == env.Source.Snapshot && len(env.DeliveredRanges) > 0 && readcoord.Covers(ob.Covered, env.DeliveredRanges) && a.readReferenceHasCurrentEvidence(env, o.output) {
+	if known && ob.Version == env.Source.Snapshot && len(env.DeliveredRanges) > 0 && readcoord.Covers(ob.Covered, env.DeliveredRanges) && a.readReferenceHasCurrentEvidence(ctx, env, o.output) {
 		ids := make([]string, 0, len(a.reads.visible))
 		for id := range a.reads.visible {
 			ids = append(ids, id)
@@ -104,13 +104,21 @@ func (a *Agent) finalizeReadDelivery(ctx context.Context, call provider.ToolCall
 // Read coverage survives writes, but edit evidence must follow the last write
 // and reach a provider boundary. Re-deliver when deduplication would otherwise
 // suppress the fresh observation needed to repair a rejected edit.
-func (a *Agent) readReferenceHasCurrentEvidence(env tool.ReadResultEnvelope, output string) bool {
+//
+// The boundary is the same frozen per-batch value the write gate uses
+// (operation_evidence.checkEvidence), not a live ledger read: a re-read whose
+// observation is still inside the current batch is invisible to the gate, so
+// deduplicating it would strand the write behind a "Repeated read" rejection
+// forever (task 214 deadlock). Only once the observation has crossed a
+// provider boundary can the deduper consider it current evidence.
+func (a *Agent) readReferenceHasCurrentEvidence(ctx context.Context, env tool.ReadResultEnvelope, output string) bool {
 	if a.task.ledger == nil {
 		return true
 	}
 	if _, written := a.task.ledger.LatestSuccessfulWriteIndex([]string{env.Source.CanonicalPath}); !written {
 		return true
 	}
+	boundary := observationBoundary(ctx, a.task.ledger.ObservationBoundary())
 	w, ok := tool.ParseReadWindow(output)
 	if !ok {
 		return false
@@ -119,7 +127,7 @@ func (a *Agent) readReferenceHasCurrentEvidence(env tool.ReadResultEnvelope, out
 	for _, line := range w.Lines {
 		target.Hashes = append(target.Hashes, hashLine(line))
 	}
-	observations := a.eligibleObservations(target.Path, a.task.ledger.ObservationBoundary())
+	observations := a.eligibleObservations(target.Path, boundary)
 	satisfied, _ := evidenceCoversTarget(observations, target)
 	return satisfied
 }

@@ -10,7 +10,7 @@ import (
 func (a *Agent) boundProviderVisibleResult(raw, toolName, callID string) (body, notice, original string) {
 	summarized := summarizeCIOutput(raw)
 	body, notice = truncateToolOutputFor(summarized, toolName, callID)
-	deduped := a.dedupeProviderVisibleResult(callID, raw, body)
+	deduped := a.dedupeProviderVisibleResult(toolName, callID, raw, body)
 	if deduped != body {
 		original = raw
 	}
@@ -21,7 +21,17 @@ func (a *Agent) boundProviderVisibleResult(raw, toolName, callID string) (body, 
 	return body, notice, original
 }
 
-func (a *Agent) dedupeProviderVisibleResult(callID, raw, visible string) string {
+// dedupeExemptTools lists time-sensitive status tools whose provider-visible
+// results never deduplicate (task 214). They poll mutable host state: two
+// identical readings a few minutes apart mean "nothing changed since last
+// poll", which is exactly the incremental signal the model is asking for —
+// not a wasted repeat. Their outputs are small status summaries, so exempting
+// them does not reopen the token-leak the deduper exists to prevent.
+var dedupeExemptTools = map[string]bool{
+	"read_collab_status": true,
+}
+
+func (a *Agent) dedupeProviderVisibleResult(toolName, callID, raw, visible string) string {
 	if a == nil || strings.TrimSpace(raw) == "" {
 		return visible
 	}
@@ -30,6 +40,10 @@ func (a *Agent) dedupeProviderVisibleResult(callID, raw, visible string) string 
 	// swallowing the repeated error removes the "still wrong" signal and
 	// leaves the model unable to self-correct.
 	if strings.HasPrefix(raw, "error:") {
+		return visible
+	}
+	// Task 214: time-sensitive status tools skip deduplication entirely.
+	if dedupeExemptTools[toolName] {
 		return visible
 	}
 	sum := sha256.Sum256([]byte(raw))
