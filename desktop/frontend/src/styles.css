@@ -18926,6 +18926,50 @@ body > .mermaid-diagram--fullscreen {
   font-weight: 650;
 }
 
+/* ─── Session-collab capability gates (task 253) ─────
+   Checkboxes, two per row. Locked (master switch off) items keep their
+   label fully readable — only the checkbox disables — and one hint names
+   the switch to flip, so the gate row is never silently grayed out. */
+.set-gates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+}
+.set-gates__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  cursor: pointer;
+}
+.set-gates__item input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  flex: none;
+  accent-color: var(--accent);
+}
+.set-gates__label {
+  font-size: var(--font-control-small);
+  color: var(--fg-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.set-gates__item--locked {
+  cursor: default;
+}
+/* Readability ruling: the locked label keeps the same color as an active
+   one; the disabled checkbox plus the hint below carry the locked state. */
+.set-gates__item--locked .set-gates__label {
+  color: var(--fg-dim);
+}
+.set-gates__hint {
+  grid-column: 1 / -1;
+  font-size: var(--font-control-small);
+  color: var(--fg-dim);
+}
+
 /* ─── Zoom slider ──────────────────────────────────── */
 .zoom-slider-wrap {
   display: flex;
@@ -22057,7 +22101,7 @@ body > .mermaid-diagram--fullscreen {
   padding: 0 6px;
   border-radius: 9px;
   background: color-mix(in srgb, var(--accent) 22%, transparent);
-  color: var(--fg-default);
+  color: var(--fg);
   font-size: 11px;
   font-weight: 650;
 }
@@ -22075,7 +22119,7 @@ body > .mermaid-diagram--fullscreen {
 
 .composer-guidance-head__select-toggle[aria-pressed="true"] {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--fg-default);
+  color: var(--fg);
 }
 
 /* Task 221#6: batch action bar (only while a selection exists). */

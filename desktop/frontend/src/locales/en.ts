@@ -2254,6 +2254,7 @@ export const en = {
   "settings.sessionCollabGates.allowReadTail": "Allow reading other sessions",
   "settings.sessionCollabGates.allowCreate": "Allow agent-created sessions",
   "settings.sessionCollabGates.allowSteer": "Allow steer injection",
+  "settings.sessionCollabGates.masterOffHint": "Turn on the \"Session Collaboration\" master switch first",
   "settings.sessionCollabDailySendLimit": "Daily send limit",
   "settings.sessionCollabDailySendLimitHint": "Task 173: caps this session's daily outgoing cross-session messages (anti-storm). 0 = no cap. A refused send explains the cap and resets the next day.",
   "settings.cascadeApproval": "Cascade approval (autopilot parent answers)",

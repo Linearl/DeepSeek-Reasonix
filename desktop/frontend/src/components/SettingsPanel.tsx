@@ -2368,26 +2368,36 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                     ["allowSteer", "sessionCollabAllowSteer", "settings.sessionCollabGates.allowSteer"],
                   ] as const).map(([key, field, labelKey]) => {
                     const on = Boolean(s[field as keyof SettingsView] ?? false);
+                    // Task 253: gates render as checkboxes, two per row. With
+                    // the master switch off they stay visible and readable —
+                    // only the checkbox is disabled — and one hint names the
+                    // switch to flip (the grayed-out segment buttons were
+                    // effectively invisible twice in a row).
+                    const locked = busy || !Boolean(s.experimentalSessionCollab);
                     return (
-                      <button
-                        key={key}
-                        className={`set-seg__btn${on ? " set-seg__btn--on" : ""}`}
-                        disabled={busy || !Boolean(s.experimentalSessionCollab)}
-                        onClick={() => void apply(async () => {
-                          await app.SetSessionCollabGates(
-                            key === "allowDelete" ? !on : Boolean(s.sessionCollabAllowDelete),
-                            key === "allowRequireReply" ? !on : Boolean(s.sessionCollabAllowRequireReply),
-                            key === "allowReadTail" ? !on : Boolean(s.sessionCollabAllowReadTail),
-                            key === "allowCreate" ? !on : Boolean(s.sessionCollabAllowCreate),
-                            key === "allowSteer" ? !on : Boolean(s.sessionCollabAllowSteer),
-                            s.sessionCollabDailySendLimit ?? 0,
-                          );
-                        })}
-                      >
-                        {t(labelKey)}
-                      </button>
+                      <label key={key} className={`set-gates__item${locked ? " set-gates__item--locked" : ""}`}>
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          disabled={locked}
+                          onChange={() => void apply(async () => {
+                            await app.SetSessionCollabGates(
+                              key === "allowDelete" ? !on : Boolean(s.sessionCollabAllowDelete),
+                              key === "allowRequireReply" ? !on : Boolean(s.sessionCollabAllowRequireReply),
+                              key === "allowReadTail" ? !on : Boolean(s.sessionCollabAllowReadTail),
+                              key === "allowCreate" ? !on : Boolean(s.sessionCollabAllowCreate),
+                              key === "allowSteer" ? !on : Boolean(s.sessionCollabAllowSteer),
+                              s.sessionCollabDailySendLimit ?? 0,
+                            );
+                          })}
+                        />
+                        <span className="set-gates__label">{t(labelKey)}</span>
+                      </label>
                     );
                   })}
+                  {!Boolean(s.experimentalSessionCollab) && (
+                    <div className="set-gates__hint">{t("settings.sessionCollabGates.masterOffHint")}</div>
+                  )}
                 </div>
               </SettingsField>
               <SettingsField label={t("settings.sessionCollabDailySendLimit")} hint={t("settings.sessionCollabDailySendLimitHint")} icon={<Sparkles size={18} />}>

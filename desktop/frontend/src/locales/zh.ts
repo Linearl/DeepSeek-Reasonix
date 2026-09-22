@@ -2256,6 +2256,7 @@ export const zh: Record<DictKey, string> = {
   "settings.sessionCollabGates.allowReadTail": "允许读他会话内容",
   "settings.sessionCollabGates.allowCreate": "允许 AI 自建会话",
   "settings.sessionCollabGates.allowSteer": "允许 steer 注入",
+  "settings.sessionCollabGates.masterOffHint": "需先打开「会话协作」总开关",
   "settings.sessionCollabDailySendLimit": "单日发信上限",
   "settings.sessionCollabDailySendLimitHint": "任务 173：本会话每日跨会话发信上限（防消息风暴）。0 = 不限。超限时发信被拒并提示，次日自动恢复。",
   "settings.cascadeApproval": "级联审批（ autopilot 父会话代答）",
