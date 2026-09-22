@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"reasonix/internal/sessioncollab"
 )
 
 // Task 174: the merged task_card routes all four actions, and every old
@@ -116,5 +118,53 @@ func TestMergedListAddressableSessionsExposesSentLog(t *testing.T) {
 	}
 	if !strings.Contains(out, "gate target") {
 		t.Fatalf("the recipient must be visible for the misdirected-send check: %s", out)
+	}
+}
+
+// Task 225 (user ruling): an explicit approver rides the record and becomes
+// the grant's answerer, overriding the sender-as-default. A typo'd approver
+// is refused instead of silently stranding the target's approvals.
+func TestTalkApproverOverridesGrantAndRefusesUnknown(t *testing.T) {
+	dir := t.TempDir()
+	mailDir := filepath.Join(dir, "mail")
+	from := filepath.Join(dir, "from.jsonl")
+	writeEmpty(t, from)
+	fromID, err := EnsureContactID(from)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateBranchMeta(filepath.Join(dir, "c.jsonl"), true, func(m *BranchMeta) error {
+		m.CustomTitle = "approver c"
+		m.ContactID = "sc_approver"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	writeEmpty(t, filepath.Join(dir, "c.jsonl"))
+	if err := UpdateBranchMeta(filepath.Join(dir, "g.jsonl"), true, func(m *BranchMeta) error {
+		m.CustomTitle = "gate target"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	writeEmpty(t, filepath.Join(dir, "g.jsonl"))
+
+	cfg := SessionCollabConfig{
+		Enabled: true, SessionDir: dir, WorkspaceRoot: dir, MailDir: mailDir,
+		CurrentSessionPath: from, CurrentContactID: fromID,
+	}
+	talk := NewTalkToSessionTool(cfg)
+
+	// A typo'd approver is refused before anything is written.
+	if _, err := talk.Execute(nil, []byte(`{"to":"gate target","message":"x","approver":"sc_nobody"}`)); err == nil {
+		t.Fatal("an unknown approver must be refused")
+	}
+
+	if _, err := talk.Execute(nil, []byte(`{"to":"gate target","message":"with approver","approver":"sc_approver"}`)); err != nil {
+		t.Fatal(err)
+	}
+	sent := sessioncollab.NewMailStore(mailDir).ListSent(fromID, 5)
+	if len(sent) != 1 || sent[0].Approver != "sc_approver" {
+		t.Fatalf("the explicit approver must ride the record: %+v", sent)
 	}
 }
