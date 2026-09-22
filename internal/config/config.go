@@ -1406,6 +1406,11 @@ type AgentConfig struct {
 	// default (iron rule 2); the settings-panel checkbox lands with the 173
 	// panel, so config.toml is the switch for now.
 	ExperimentalCascadeApproval bool `toml:"experimental_cascade_approval"`
+	// ExperimentalUIDriver enables the task 233 batch-2 ui_interact tool:
+	// controlled UI driving (activate / click / type / key) for agent-run
+	// verification. Off by default (iron rule 2) — injecting input into
+	// arbitrary windows is a powerful capability and must be opted in.
+	ExperimentalUIDriver bool `toml:"experimental_ui_driver"`
 	// ExperimentalAutoLoadOlder enables loading older history by scrolling up
 	// while the transcript is already parked at the top (fork task 160). Off by
 	// default: the "load older" button is the reliable path, and this scroll
