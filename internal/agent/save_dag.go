@@ -323,11 +323,18 @@ func (s *Session) adoptDAGPosition(st *sessionDAGState, plan *dagWritePlan) {
 	if h != nil {
 		leaf = h.leaf
 	}
+	// Task 239: keep the shared cache as the single owner of the replayed
+	// graph. Holding s.head.state here kept N full DAGs alive for N open
+	// sessions (each node carries a complete provider.Message); the cache is
+	// capacity=1 and dagStateForSave already falls back to it when
+	// s.head.state is nil. Releasing the per-Session pointer bounds DAG
+	// residency to one graph process-wide.
+	sessionGraphCachePut(st.path, st)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.head.ref = HeadRef{HeadID: plan.head, LeafID: leaf, LogGeneration: st.generation, LogOffset: st.lastGoodEnd}
 	s.head.dag = true
-	s.head.state = st
+	s.head.state = nil
 	s.head.headCount = len(st.heads)
 	if plan.forked {
 		s.head.events = append(s.head.events, HeadEvent{Kind: HeadEventForkedConcurrent, HeadID: plan.head, OtherWriter: plan.otherWriter})
