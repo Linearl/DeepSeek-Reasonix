@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -197,6 +198,9 @@ type Controller struct {
 	sessionRecoveryMeta               func(SessionRecoveryRequest) agent.BranchMeta
 	onSessionRecovered                func(SessionRecoveryInfo) error
 	onSessionTransition               func(SessionTransitionInfo) error
+	// onCascadeDelegate (task 225): resolves the task-source parent's Ask
+	// channel for approval forwarding. nil keeps every prompt local.
+	onCascadeDelegate func(selfPath string) (delegate agent.Asker, source string, ok bool)
 
 	// balanceURL/balanceKey target the active provider's optional wallet-balance
 	// endpoint (empty when the provider declares none). Captured at build so a
@@ -669,6 +673,13 @@ type Options struct {
 	// read-only when the user chooses "always allow" from the plan-mode trust
 	// prompt.
 	OnRememberPlanModeReadOnlyCommand func(prefix string) PlanModeReadOnlyCommandTrustResult
+	// OnCascadeDelegate (task 225) answers where — if anywhere — THIS
+	// session's approval prompts should be forwarded to: the host resolves the
+	// TASK SOURCE parent from selfPath (contact-bound grant, 24h) and hands
+	// back its Ask channel. The parent's own semantics then decide (autopilot
+	// answers; otherwise its user is asked). nil or ok=false keeps every
+	// prompt local.
+	OnCascadeDelegate func(selfPath string) (delegate agent.Asker, source string, ok bool)
 	// OnPersistWriteAccess writes sandbox.allow_write and an optional permission
 	// rule to the workspace reasonix.toml as one transaction.
 	OnPersistWriteAccess PersistWriteAccessFunc
@@ -797,6 +808,7 @@ func New(opts Options) *Controller {
 		shell:                             opts.Shell,
 		onRemember:                        opts.OnRemember,
 		onRememberPlanModeReadOnlyCommand: opts.OnRememberPlanModeReadOnlyCommand,
+		onCascadeDelegate:                 opts.OnCascadeDelegate,
 		writeAccess:                       newControllerWriteAccess(opts),
 		sessionRecoveryMeta:               opts.SessionRecoveryMeta,
 		onSessionRecovered:                opts.OnSessionRecovered,
@@ -2645,6 +2657,25 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// error so the safety valve is a real stop, not an invisible hang (task 109 B4).
 	if c.autopilot && askRiskOfQuestions(askQuestionTexts(questions)) == askRiskReversible {
 		return autopilotAnswers(questions), nil
+	}
+
+	// Task 225: a session working on a task dispatched by an autopilot parent
+	// forwards its prompts to that parent's Ask channel — the parent's own
+	// semantics decide (its autopilot answers, or its user is asked), which is
+	// exactly "delegate per the parent's policy". Every gate stays with the
+	// host resolver (contact-bound grant, 24h expiry); a miss falls through to
+	// the local prompt, and the delegation is logged for audit either way.
+	if c.onCascadeDelegate != nil && config.CascadeApprovalLive() {
+		if delegate, source, ok := c.onCascadeDelegate(c.SessionPath()); ok && delegate != nil {
+			log.Printf("[cascade-approval] forwarding %d prompt(s) to task source %s (task 225)", len(questions), source)
+			answers, err := delegate.Ask(ctx, questions)
+			if err != nil {
+				log.Printf("[cascade-approval] delegate %s failed (%v); falling back to the local prompt", source, err)
+			} else {
+				log.Printf("[cascade-approval] delegate %s answered %d prompt(s)", source, len(answers))
+				return answers, nil
+			}
+		}
 	}
 
 	id, reply := c.approval.registerAsk(questions)
