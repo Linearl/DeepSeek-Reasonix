@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Combine, CornerDownRight, Pencil, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Combine, CornerDownRight, Pencil, Send, Trash2 } from "lucide-react";
 import {
   guidanceEditableInComposer,
   guidanceHasKnownPendingState,
@@ -41,6 +41,14 @@ export function ComposerGuidanceShelf({
   readOnly,
   sendingId,
   editingId,
+  unreadMailCount,
+  selectMode,
+  selectedIds,
+  onToggleSelectMode,
+  onToggleSelect,
+  onBatchSend,
+  onBatchDismiss,
+  onMove,
   onReview,
   onRecoveryResumed,
   onRecoveryError,
@@ -61,6 +69,18 @@ export function ComposerGuidanceShelf({
   sendingId: string | null;
   /** Task 181: the entry currently loaded into the main composer, if any. */
   editingId?: string | null;
+  /** Task 221#6: cross-session mailbox unread count (badge semantics per the 批五
+   * survey decision — the mailbox layer, not the guidance queue). */
+  unreadMailCount?: number;
+  /** Task 221#6: multi-select batch mode (controlled by the composer). */
+  selectMode?: boolean;
+  selectedIds?: string[];
+  onToggleSelectMode?: () => void;
+  onToggleSelect?: (item: PendingGuidance) => void;
+  onBatchSend?: (items: PendingGuidance[]) => void;
+  onBatchDismiss?: (items: PendingGuidance[]) => void;
+  /** Task 181 reorder: move this durable entry to an absolute 0-based index. */
+  onMove?: (item: PendingGuidance, toIndex: number) => void;
   onReview: () => void;
   onRecoveryResumed: () => void;
   onRecoveryError: (error: unknown) => void;
@@ -90,6 +110,20 @@ export function ComposerGuidanceShelf({
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [previewText, setPreviewText] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
+  // Task 221#6 / 181: batch selection (ids managed by the composer) and the
+  // drag source for reorder. A row is batch-selectable when at least one batch
+  // action can still land on it — never an in-flight/delivering/unknown row,
+  // never the row being edited into the composer.
+  const selectedSet = new Set(selectedIds ?? []);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const batchSelected = (selectedIds ?? [])
+    .map((id) => items.find((item) => item.id === id))
+    .filter((item): item is PendingGuidance => Boolean(item));
+  // Same gate as the single-send button: a structured entry cannot ride an
+  // active turn, so the batch must skip it instead of counting a silent no-op.
+  const batchSendable = batchSelected.filter(
+    (item) => !(running && !guidanceNeedsRetry(item.state) && Boolean(item.structured)),
+  );
 
   const closePreview = () => {
     setPreviewId(null);
@@ -141,7 +175,53 @@ export function ComposerGuidanceShelf({
               <CornerDownRight size={14} />
               <span>{t("composer.guidanceCount", { n: items.length })}</span>
             </span>
+            {(unreadMailCount ?? 0) > 0 && (
+              <Tooltip label={t("composer.mailUnreadHint")}>
+                <span className="composer-guidance-head__unread" aria-label={t("composer.mailUnread", { n: unreadMailCount ?? 0 })}>
+                  {t("composer.mailUnread", { n: unreadMailCount ?? 0 })}
+                </span>
+              </Tooltip>
+            )}
+            {!readOnly && !disabled && items.length > 1 && onToggleSelectMode && (
+              <button
+                className="composer-guidance-head__select-toggle"
+                type="button"
+                aria-pressed={Boolean(selectMode)}
+                onClick={onToggleSelectMode}
+              >
+                {selectMode ? t("composer.guidanceSelectCancel") : t("composer.guidanceSelect")}
+              </button>
+            )}
           </div>
+          {selectMode && batchSelected.length > 0 && (
+            <div className="composer-guidance-batchbar" role="toolbar" aria-label={t("composer.guidanceBatchBar")}>
+              <span className="composer-guidance-batchbar__count">{t("composer.guidanceBatchSelected", { n: batchSelected.length })}</span>
+              {onBatchSend && (
+                <button
+                  className="composer-guidance-item__guide"
+                  type="button"
+                  aria-label={t("composer.guidanceBatchSend", { n: batchSendable.length })}
+                  disabled={batchSendable.length === 0 || sendingId !== null}
+                  onClick={() => onBatchSend(batchSendable)}
+                >
+                  <Send size={13} />
+                  <span>{t("composer.guidanceBatchSend", { n: batchSendable.length })}</span>
+                </button>
+              )}
+              {onBatchDismiss && (
+                <button
+                  className="composer-guidance-item__action"
+                  type="button"
+                  aria-label={t("composer.guidanceBatchDismiss", { n: batchSelected.length })}
+                  disabled={sendingId !== null}
+                  onClick={() => onBatchDismiss(batchSelected)}
+                >
+                  <Trash2 size={13} />
+                  <span>{t("composer.guidanceBatchDismiss", { n: batchSelected.length })}</span>
+                </button>
+              )}
+            </div>
+          )}
           <div className="composer-guidance-list">
             {visible.map((item, index) => {
               const inFlight = guidanceIsInFlight(item.state);
@@ -155,6 +235,12 @@ export function ComposerGuidanceShelf({
               const editing = editingId === item.id;
               const canEdit = Boolean(onEdit) && !readOnly && !disabled && guidanceEditableInComposer(item) && !waitingForEarlier && sendingId === null && !editing;
               const previewing = previewId === item.id;
+              // Task 221#6 / 181: one gate for both batch selection and reorder —
+              // an in-flight/delivering/unknown/paused row or the row being edited
+              // can be neither selected nor moved. Reorder additionally requires a
+              // durable row: a local (unsent) row has no queue position to persist.
+              const selectable = !editing && !inFlight && !delivering && !unknownState && !item.paused;
+              const movable = Boolean(onMove) && !item.id.startsWith("local-") && selectable;
               const actionLabel = inFlight
                 ? t("composer.guidanceInFlight")
                 : delivering
@@ -165,8 +251,32 @@ export function ComposerGuidanceShelf({
                       ? t("composer.guidanceRetry")
                       : t("composer.guidanceSend");
               return (
-                <div className={`composer-guidance-item${editing ? " composer-guidance-item--editing" : ""}`} key={item.id}>
+                <div
+                  className={`composer-guidance-item${editing ? " composer-guidance-item--editing" : ""}${dragId === item.id ? " composer-guidance-item--dragging" : ""}`}
+                  key={item.id}
+                  draggable={movable && !selectMode}
+                  onDragStart={movable && !selectMode ? () => setDragId(item.id) : undefined}
+                  onDragEnd={() => setDragId(null)}
+                  onDragOver={movable && dragId !== null && dragId !== item.id ? (event) => event.preventDefault() : undefined}
+                  onDrop={movable && dragId !== null && dragId !== item.id
+                    ? (event) => {
+                        event.preventDefault();
+                        const from = items.findIndex((queued) => queued.id === dragId);
+                        setDragId(null);
+                        if (from >= 0 && onMove) onMove(items[from], index);
+                      }
+                    : undefined}
+                >
                   <CornerDownRight size={14} className="composer-guidance-item__icon" />
+                  {selectMode && selectable && onToggleSelect && (
+                    <input
+                      className="composer-guidance-item__check"
+                      type="checkbox"
+                      aria-label={t("composer.guidanceSelectOne")}
+                      checked={selectedSet.has(item.id)}
+                      onChange={() => onToggleSelect(item)}
+                    />
+                  )}
                   <button
                     className="composer-guidance-item__text composer-guidance-item__text--button"
                     type="button"
@@ -238,6 +348,32 @@ export function ComposerGuidanceShelf({
                     <div className="composer-guidance-item__preview" role="note" aria-busy={previewLoading}>
                       {previewText}
                     </div>
+                  )}
+                  {movable && !selectMode && (
+                    <span className="composer-guidance-item__reorder">
+                      <Tooltip label={t("composer.guidanceMoveUp")}>
+                        <button
+                          className="composer-guidance-item__action"
+                          type="button"
+                          aria-label={t("composer.guidanceMoveUp")}
+                          disabled={index === 0 || disabled || readOnly || sendingId !== null}
+                          onClick={() => onMove?.(item, index - 1)}
+                        >
+                          <ArrowUp size={13} />
+                        </button>
+                      </Tooltip>
+                      <Tooltip label={t("composer.guidanceMoveDown")}>
+                        <button
+                          className="composer-guidance-item__action"
+                          type="button"
+                          aria-label={t("composer.guidanceMoveDown")}
+                          disabled={index >= items.length - 1 || disabled || readOnly || sendingId !== null}
+                          onClick={() => onMove?.(item, index + 1)}
+                        >
+                          <ArrowDown size={13} />
+                        </button>
+                      </Tooltip>
+                    </span>
                   )}
                 </div>
               );

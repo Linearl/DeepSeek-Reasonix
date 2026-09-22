@@ -22050,6 +22050,67 @@ body > .mermaid-diagram--fullscreen {
   color: var(--fg-faint);
 }
 
+/* Task 221#6: mailbox unread badge + batch select toggle (head row). */
+.composer-guidance-head__unread {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--fg-default);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.composer-guidance-head__select-toggle {
+  margin-left: auto;
+  padding: 0 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.composer-guidance-head__select-toggle[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--fg-default);
+}
+
+/* Task 221#6: batch action bar (only while a selection exists). */
+.composer-guidance-batchbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  margin: 4px 5px 0;
+  border: 1px dashed color-mix(in srgb, var(--accent) 35%, var(--border-soft));
+  border-radius: 8px;
+}
+
+.composer-guidance-batchbar__count {
+  color: var(--fg-dim);
+  font-size: 11px;
+  font-weight: 620;
+}
+
+/* Task 221#6 / 181: row checkbox, reorder arrows, and the drag affordance. */
+.composer-guidance-item__check {
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.composer-guidance-item__reorder {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.composer-guidance-item--dragging {
+  opacity: 0.55;
+}
+
 .composer-guidance-list {
   display: grid;
   gap: 4px;

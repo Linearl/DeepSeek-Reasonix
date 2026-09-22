@@ -2410,6 +2410,99 @@ export function Composer({
     }
   };
 
+  // Task 221#6: multi-select batch send/dismiss. Sends run one at a time through
+  // the same per-entry path as the single button (so needsRetry rows get retried
+  // and structured rows are skipped on an active turn), then the selection exits.
+  // Dismiss collects the durable deletions that landed before removing rows from
+  // the shelf — a failed delete keeps its row visible instead of vanishing from
+  // the UI while surviving on disk.
+  const [guidanceSelectMode, setGuidanceSelectMode] = useState(false);
+  const [guidanceSelectedIds, setGuidanceSelectedIds] = useState<string[]>([]);
+  const toggleGuidanceSelectMode = () => {
+    setGuidanceSelectMode((value) => !value);
+    setGuidanceSelectedIds([]);
+  };
+  const toggleGuidanceSelect = (item: PendingGuidance) => {
+    setGuidanceSelectedIds((ids) =>
+      ids.includes(item.id) ? ids.filter((id) => id !== item.id) : [...ids, item.id]);
+  };
+  const batchSendGuidance = async (batch: PendingGuidance[]) => {
+    for (const item of batch) {
+      await sendQueuedGuidance(item);
+    }
+    setGuidanceSelectedIds([]);
+    setGuidanceSelectMode(false);
+  };
+  const batchDismissGuidance = async (batch: PendingGuidance[]) => {
+    const targetDraftKey = activeDraftKeyRef.current;
+    const targetTabId = tabId || "";
+    const dismissed = new Set<string>();
+    for (const item of batch) {
+      try {
+        if (!item.id.startsWith("local-")) {
+          await app.DeleteInboxItem(targetTabId, item.id);
+        }
+        dismissed.add(item.id);
+      } catch (error) {
+        if (isInboxItemMissing(error)) {
+          dismissed.add(item.id);
+          continue;
+        }
+        showToast(formatInboxError(error, locale), "warn");
+      }
+    }
+    if (dismissed.size > 0) {
+      updatePendingGuidanceForDraft(
+        targetDraftKey,
+        (items) => items.filter((queued) => !dismissed.has(queued.id)),
+      );
+    }
+    setGuidanceSelectedIds((ids) => {
+      const kept = ids.filter((id) => !dismissed.has(id));
+      return kept;
+    });
+  };
+
+  // Task 181 reorder: MoveInboxItem persists the durable queue order (backend +
+  // bridge already existed; this is the UI half). The shelf mirrors optimistically
+  // only after the backend confirms, and a local (unsent) row never moves — it has
+  // no queue position to persist against.
+  const moveGuidance = async (item: PendingGuidance, toIndex: number) => {
+    const targetDraftKey = activeDraftKeyRef.current;
+    const targetTabId = tabId || "";
+    const queue = pendingGuidanceRef.current;
+    const from = queue.findIndex((queued) => queued.id === item.id);
+    if (from < 0 || toIndex < 0 || toIndex >= queue.length || toIndex === from) return;
+    if (item.id.startsWith("local-")) return;
+    try {
+      await app.MoveInboxItem(targetTabId, item.id, toIndex);
+      updatePendingGuidanceForDraft(targetDraftKey, (items) => {
+        const next = [...items];
+        const [moved] = next.splice(from, 1);
+        next.splice(toIndex, 0, moved);
+        return next;
+      });
+    } catch (error) {
+      showToast(formatInboxError(error, locale), "warn");
+    }
+  };
+
+  // Task 221#6: mailbox unread badge. Read-only probe refreshed alongside the
+  // guidance queue; the seen cursor is never advanced by asking.
+  const [guidanceUnread, setGuidanceUnread] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    const targetTabId = tabId || "";
+    if (!targetTabId) {
+      setGuidanceUnread(0);
+      return () => { cancelled = true; };
+    }
+    void app.UnreadMailCount(targetTabId)
+      .then((count) => { if (!cancelled) setGuidanceUnread(count); })
+      .catch(() => { if (!cancelled) setGuidanceUnread(0); });
+    return () => { cancelled = true; };
+  }, [tabId, guidanceRetryNonce]);
+
   // Task 153: merge this entry with the one right after it. The merged body is
   // written to the FIRST entry's durable row (it keeps its id and queue
   // position); the second row is deleted — but its text survives verbatim in
@@ -4561,6 +4654,14 @@ export function Composer({
             readOnly={readOnly}
             sendingId={guidanceSendingId}
             editingId={guidanceCompose?.id ?? null}
+            unreadMailCount={guidanceUnread}
+            selectMode={guidanceSelectMode}
+            selectedIds={guidanceSelectedIds}
+            onToggleSelectMode={toggleGuidanceSelectMode}
+            onToggleSelect={toggleGuidanceSelect}
+            onBatchSend={(batch) => void batchSendGuidance(batch)}
+            onBatchDismiss={(batch) => void batchDismissGuidance(batch)}
+            onMove={(item, toIndex) => void moveGuidance(item, toIndex)}
             onReview={() => setGuidanceExpanded(true)}
             onRecoveryResumed={() => setGuidanceRetryNonce((value) => value + 1)}
             onRecoveryError={(error) => showToast(formatInboxError(error, locale), "warn")}

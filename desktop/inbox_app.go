@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"strings"
 
+	"reasonix/internal/agent"
+	"reasonix/internal/config"
 	"reasonix/internal/control"
+	"reasonix/internal/sessioncollab"
 	"reasonix/internal/sessioninbox"
 )
 
@@ -427,6 +430,32 @@ func (a *App) MoveInboxItem(tabID, id string, toIndex int) error {
 	}
 	a.emitInboxChanged(tabID)
 	return nil
+}
+
+// UnreadMailCount reports how many cross-session mailbox messages the tab's
+// session has not consumed (task 221#6, mailbox badge semantics from the 批五
+// survey: unread lives at the mailbox layer). The probe is read-only — the
+// seen cursor is never advanced by asking, mirroring sessioncollab.InboxStatus.
+// A tab whose session has no mailbox identity simply reports zero.
+func (a *App) UnreadMailCount(tabID string) (int, error) {
+	if a.isRemoteTab(tabID) {
+		return 0, nil
+	}
+	ctrl, err := a.inboxCtrl(tabID)
+	if err != nil {
+		return 0, err
+	}
+	sessionPath := strings.TrimSpace(ctrl.InboxSnapshot().SessionPath)
+	if sessionPath == "" {
+		return 0, nil
+	}
+	contactID := agent.SessionContactID(sessionPath)
+	if contactID == "" {
+		return 0, nil
+	}
+	mail := sessioncollab.NewMailStore(config.SessionCollabMailDir())
+	unread, _ := mail.InboxStatus(contactID)
+	return unread, nil
 }
 
 // SetInboxPaused pauses or resumes dispatch.
