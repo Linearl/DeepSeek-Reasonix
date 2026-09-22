@@ -204,6 +204,26 @@ export function hasReusableCachedTranscript(
   return pathBasename(metaPath) === pathBasename(expectedSessionPath);
 }
 
+// Task 232 (M-audit): a reset-surface hydrate legitimately empties the
+// surface (items and prefix cleared), which then reads as "nothing cached"
+// on the next switch even though the transcript-store LRU still holds the
+// projection that very reload fetched. When the surface is empty and the
+// identity still matches, the caller may serve history from the local
+// snapshot (local-snapshot) instead of a full reload. Only the emptied
+// surface takes this path — a non-empty surface goes through the regular
+// reusable-transcript contract.
+export function hasResidentSnapshotForEmptySurface(
+  state: (HydrateLiveState & { meta?: SessionHydrateIdentity }) | undefined,
+  sessionPath?: string,
+): boolean {
+  if (!state || state.items.length > 0) return false;
+  const expected = (sessionPath ?? "").trim();
+  if (!expected) return false;
+  const metaPath = (state.meta?.sessionPath ?? "").trim();
+  if (!metaPath) return false;
+  return pathBasename(metaPath) === pathBasename(expected);
+}
+
 /** Case-insensitive file-name tail of a session path (Windows-folded). */
 function pathBasename(p: string): string {
   const norm = p.replace(/[\\/]+/g, "\\").toLowerCase();
@@ -246,7 +266,13 @@ export function hydratedHistoryApplyMode(
   state: HydrateLiveState | undefined,
   projection?: HydrateProjection,
 ): HydratedHistoryApplyMode {
-  if (skipHistory || !hasProjection) return "skip";
+  // Task 232: skipHistory normally means "surface already shows history".
+  // The reset-emptied-surface case is the exception: it holds nothing, so the
+  // local snapshot the caller peeked from the LRU must be applied (replace)
+  // or the switch-back renders an empty transcript.
+  if (skipHistory && (state?.items.length ?? 0) > 0) return "skip";
+  if (!hasProjection) return "skip";
+  if (skipHistory) return "replace";
   if (!foregroundTurnActive) return isStaleResidentProjection(state, projection) ? "skip" : "replace";
   if ((state?.items.length ?? 0) === 0 && !hasCachedLiveTurn(state)) return "replace";
   return (state?.historyTotalTurns ?? 0) === 0 ? "prepend" : "skip";

@@ -44,7 +44,7 @@ import { applyReadStatusEvent, type ReadStatusHost } from "./readStatus";
 import { upsertReadPause } from "./readPause";
 import { applyHydrateErrorState, hydratePlaceholderItems as resolveHydratePlaceholders } from "./hydrateErrorState";
 import { isHostRecoveryGuidance } from "./hostRecoverySteer";
-import { activeTabHydrationPlan, canAdoptUnboundLiveSurface, duplicateLiveItemIds, explainReusableCache, hasReusableCachedTranscript, hydratedHistoryApplyMode, sameSessionHydrateIdentity, sameSessionPlaceholderItems, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
+import { activeTabHydrationPlan, canAdoptUnboundLiveSurface, duplicateLiveItemIds, explainReusableCache, hasResidentSnapshotForEmptySurface, hasReusableCachedTranscript, hydratedHistoryApplyMode, sameSessionHydrateIdentity, sameSessionPlaceholderItems, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
 import { effectiveMaxResidentSessions } from "./resourceBudgets";
 import { prefetchMruTabs, type PrefetchCandidate } from "./transcriptPrefetch";
 import { loadLastActiveTabId, saveLastActiveTabId } from "./layoutPreferences";
@@ -2928,7 +2928,7 @@ export function useController() {
       if (cancelHydrateGeneration !== undefined && !cancelHydrateCurrent(tabId, cancelHydrateGeneration)) return;
       const seq = bumpSessionLoadSeq(tabId);
       const hydrateStartedAt = Date.now();
-      const skipHistory = Boolean(
+      let skipHistory = Boolean(
         options.skipHistory ||
         (options.preserveCachedHistory && !resetSurface && hasReusableCachedTranscript(statesRef.current.get(tabId), sessionPath, sessionRevision, sessionDigest)),
       );
@@ -2938,10 +2938,16 @@ export function useController() {
       // empty items vs sessionPath spelling drift — with both paths, so the
       // 2026-09-17 "why is fork开发 reloading 6.8 s" investigation no longer
       // stalls at a bare reason label.
+      // Task 232: a reset-surface reload empties the surface; when the
+      // decision still reuses the cache, history comes from the local
+      // transcript-store snapshot instead of a backend round trip.
+      const surfaceEmptyAtHydrate = (statesRef.current.get(tabId)?.items.length ?? 0) === 0;
       const hydrateDecisionReason = options.skipHistory
         ? "caller"
         : skipHistory
-          ? "preserveCachedHistory"
+          ? surfaceEmptyAtHydrate
+            ? "local-snapshot"
+            : "preserveCachedHistory"
           : resetSurface
             ? "reset"
             : "no-reusable-cache";
@@ -2997,17 +3003,23 @@ export function useController() {
       };
 
       const historyStartedAt = Date.now();
-      let projection = skipHistory
-        ? undefined
-        : await loadTimed("history", () =>
-            // Resident LRU only when the caller keeps cache; reset/no-cache re-fetch.
-            getTranscriptStore().loadLatest(tabId, sessionPath, {
-              turns: HISTORY_PAGE_TURNS,
-              preferResident: shouldPreferResidentHistory(resetSurface, options.preserveCachedHistory),
-              expectedRevision: sessionRevision,
-              expectedDigest: sessionDigest,
-            }),
-          );
+      let projection = skipHistory && surfaceEmptyAtHydrate
+        ? // Task 232: local snapshot onto the emptied surface; fall back to
+          // the real fetch when the LRU lost it (genuine eviction).
+          getTranscriptStore().peek(tabId, sessionPath)
+        : undefined;
+      if (skipHistory && surfaceEmptyAtHydrate && projection === undefined) skipHistory = false;
+      if (!skipHistory && projection === undefined) {
+        projection = await loadTimed("history", () =>
+          // Resident LRU only when the caller keeps cache; reset/no-cache re-fetch.
+          getTranscriptStore().loadLatest(tabId, sessionPath, {
+            turns: HISTORY_PAGE_TURNS,
+            preferResident: shouldPreferResidentHistory(resetSurface, options.preserveCachedHistory),
+            expectedRevision: sessionRevision,
+            expectedDigest: sessionDigest,
+          }),
+        );
+      }
 
       if (!stillCurrent()) return;
       if (!skipHistory && projection === undefined) {
@@ -4986,8 +4998,11 @@ export function useController() {
           // unreachable for exactly the tabs it exists for - every switch back refetched, which
           // measured 2.0s in desktop.log (switch-tab:history 2025ms of a 2026ms total).
           // History rows are the ones carrying historyTurn; live rows never do.
-          skipHistory: hasLocalItems && (hasReusableCachedTranscript(targetState, targetSessionPath, targetSessionRevision, targetSessionDigest) ||
-            Boolean(targetState?.items?.some((item) => item.kind === "user" && item.historyTurn != null && item.historyTurn > 0))),
+          skipHistory: (hasLocalItems && (hasReusableCachedTranscript(targetState, targetSessionPath, targetSessionRevision, targetSessionDigest) ||
+            Boolean(targetState?.items?.some((item) => item.kind === "user" && item.historyTurn != null && item.historyTurn > 0)))) ||
+            // Task 232: the previous reset emptied this surface while the LRU
+            // still holds its projection - serve the local snapshot.
+            hasResidentSnapshotForEmptySurface(targetState, targetSessionPath),
           placeholderItems,
           surfacePolicy: preserveTargetSurface ? "preserve-current" : "replace-surface",
           preserveCachedHistory,
@@ -5051,13 +5066,15 @@ export function useController() {
     const isNewTab = !prevState;
     const sameSession = sameSessionHydrateIdentity(meta, prevState?.meta);
     const preserveCachedHistory = sameSession && hasReusableCachedTranscript(prevState, meta.sessionPath, meta.sessionRevision, meta.sessionDigest);
+    // Task 232: reset-emptied surfaces reuse the LRU snapshot (local-snapshot).
+    const residentSnapshot = !preserveCachedHistory && hasResidentSnapshotForEmptySurface(prevState, meta.sessionPath);
     setActiveTabId(meta.id);
     activeTabIdRef.current = meta.id;
     confirmBackendActiveTab(meta.id);
     dispatchTo(meta.id, { type: "optimistic_meta", meta: metaFromTab(meta, statesRef.current.get(meta.id)?.meta) });
     dispatchRuntimeStatusForTab(meta.id, meta, snapshotAt);
     const load = loadSessionDataForTab(meta.id, !sameSession, "open-topic", {
-      placeholderItems: sameSessionPlaceholderItems(meta, prevState), surfacePolicy: sameSession ? "preserve-current" : "replace-surface", preserveCachedHistory,
+      placeholderItems: sameSessionPlaceholderItems(meta, prevState), surfacePolicy: sameSession ? "preserve-current" : "replace-surface", preserveCachedHistory, skipHistory: residentSnapshot,
       sessionPath: meta.sessionPath, sessionRevision: meta.sessionRevision, sessionDigest: meta.sessionDigest, sessionGeneration: meta.sessionGeneration,
     });
     monitorNavigationHydration(navigationSeq, meta.id, load, isNewTab ? () => reconcileTabRuntime(meta.id, RUNTIME_STATUS_ONLY) : undefined);
@@ -5078,13 +5095,15 @@ export function useController() {
     const isNewTab = !prevState;
     const sameSession = sameSessionHydrateIdentity(meta, prevState?.meta);
     const preserveCachedHistory = sameSession && hasReusableCachedTranscript(prevState, meta.sessionPath, meta.sessionRevision, meta.sessionDigest);
+    // Task 232: reset-emptied surfaces reuse the LRU snapshot (local-snapshot).
+    const residentSnapshot = !preserveCachedHistory && hasResidentSnapshotForEmptySurface(prevState, meta.sessionPath);
     setActiveTabId(meta.id);
     activeTabIdRef.current = meta.id;
     confirmBackendActiveTab(meta.id);
     dispatchTo(meta.id, { type: "optimistic_meta", meta: metaFromTab(meta, statesRef.current.get(meta.id)?.meta) });
     dispatchRuntimeStatusForTab(meta.id, meta, snapshotAt);
     const load = loadSessionDataForTab(meta.id, !sameSession, "open-topic", {
-      placeholderItems: sameSessionPlaceholderItems(meta, prevState), surfacePolicy: sameSession ? "preserve-current" : "replace-surface", preserveCachedHistory,
+      placeholderItems: sameSessionPlaceholderItems(meta, prevState), surfacePolicy: sameSession ? "preserve-current" : "replace-surface", preserveCachedHistory, skipHistory: residentSnapshot,
       sessionPath: meta.sessionPath, sessionRevision: meta.sessionRevision, sessionDigest: meta.sessionDigest, sessionGeneration: meta.sessionGeneration,
     });
     monitorNavigationHydration(navigationSeq, meta.id, load, isNewTab ? () => reconcileTabRuntime(meta.id, RUNTIME_STATUS_ONLY) : undefined);
@@ -5105,13 +5124,15 @@ export function useController() {
     const isNewTab = !prevState;
     const sameSession = sameSessionHydrateIdentity(meta, prevState?.meta);
     const preserveCachedHistory = sameSession && hasReusableCachedTranscript(prevState, meta.sessionPath, meta.sessionRevision, meta.sessionDigest);
+    // Task 232: reset-emptied surfaces reuse the LRU snapshot (local-snapshot).
+    const residentSnapshot = !preserveCachedHistory && hasResidentSnapshotForEmptySurface(prevState, meta.sessionPath);
     setActiveTabId(meta.id);
     activeTabIdRef.current = meta.id;
     confirmBackendActiveTab(meta.id);
     dispatchTo(meta.id, { type: "optimistic_meta", meta: metaFromTab(meta, statesRef.current.get(meta.id)?.meta) });
     dispatchRuntimeStatusForTab(meta.id, meta, snapshotAt);
     const load = loadSessionDataForTab(meta.id, !sameSession, "open-topic", {
-      placeholderItems: sameSessionPlaceholderItems(meta, prevState), surfacePolicy: sameSession ? "preserve-current" : "replace-surface", preserveCachedHistory,
+      placeholderItems: sameSessionPlaceholderItems(meta, prevState), surfacePolicy: sameSession ? "preserve-current" : "replace-surface", preserveCachedHistory, skipHistory: residentSnapshot,
       sessionPath: meta.sessionPath, sessionRevision: meta.sessionRevision, sessionDigest: meta.sessionDigest, sessionGeneration: meta.sessionGeneration,
     });
     monitorNavigationHydration(navigationSeq, meta.id, load, isNewTab ? () => reconcileTabRuntime(meta.id, RUNTIME_STATUS_ONLY) : undefined);
