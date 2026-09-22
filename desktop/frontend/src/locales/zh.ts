@@ -77,6 +77,7 @@ export const zh: Record<DictKey, string> = {
   "composer.splitTargetSecondary": "发送到右栏",
   "composer.splitTargetBoth": "同时发送到两栏",
   "tabBar.splitView": "分栏显示",
+  "splitView.resizeDivider": "调整分栏宽度",
   "tabBar.closeSplitView": "关闭分栏",
   "tabBar.newSession": "新建会话",
   "tabBar.tabActions": "标签页操作",

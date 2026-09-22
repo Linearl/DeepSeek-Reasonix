@@ -47,7 +47,7 @@ import { useController, type Item } from "./lib/useController";
 import { noteStageTiming, setSessionMonitorEnabled } from "./lib/sessionMonitor";
 import { FeedbackPanel, setFeedbackEnabled } from "./components/FeedbackPanel";
 import { SessionMonitorPanel } from "./components/SessionMonitorPanel";
-import { setSplitPaneTitle, setSplitViewEnabled } from "./lib/splitView";
+import { clampedSplitRatio, loadSplitRatio, persistSplitRatio, setSplitPaneTitle, setSplitViewEnabled } from "./lib/splitView";
 import { reportFrontendLog } from "./lib/frontendLog";
 import { app, onEvent, onReady, onRemoteForwards, onRemoteServer, onRemoteStatus, onRuntimeRebuilt, openExternal } from "./lib/bridge";
 import { useConfigLoadWarnings } from "./lib/useConfigLoadWarnings";
@@ -653,6 +653,39 @@ export default function App() {
   // Which pane the composer targets while a split is open (task 70, B). It defaults
   // to the primary pane, matching focusedPane's default.
   const [splitTarget, setSplitTarget] = useState<"primary" | "secondary" | "both">("primary");
+  // Task 70 二期: the divider ratio. Loaded from its own additive localStorage
+  // key (ratio memory), clamped through clampedSplitRatio on every move so
+  // neither pane can be dragged under its width floor, persisted once on
+  // release rather than per frame.
+  const [splitRatio, setSplitRatio] = useState(() => loadSplitRatio());
+  const splitContainerRef = useRef<HTMLDivElement | null>(null);
+  const splitRatioRef = useRef(splitRatio);
+  splitRatioRef.current = splitRatio;
+  const beginSplitDividerDrag = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const container = splitContainerRef.current;
+    if (!container) return;
+    event.preventDefault();
+    const apply = (clientX: number) => {
+      const rect = container.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const ratio = clampedSplitRatio((clientX - rect.left) / rect.width, rect.width);
+      splitRatioRef.current = ratio;
+      setSplitRatio(ratio);
+    };
+    const finish = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      persistSplitRatio(splitRatioRef.current);
+    };
+    const onMove = (ev: PointerEvent) => apply(ev.clientX);
+    // Window listeners rather than pointer capture: dragging past the
+    // divider's 6px hitbox must keep tracking, and pointercancel (touch/pen
+    // interruption) ends the same way a release does.
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", finish, { once: true });
+    window.addEventListener("pointercancel", finish, { once: true });
+  }, []);
   // Restart-and-update experiment (task 81): off unless the user opted in.
   const [restartUpdateEnabled, setRestartUpdateEnabled] = useState(false);
   type PreservedTranscriptSurface = {
@@ -4692,8 +4725,12 @@ export default function App() {
                       (node as HTMLElement & { inert?: boolean }).inert = runtimeTransitioning;
                     }}
                   >
-                    <div className={splitTabId ? "transcript-split" : "transcript-split transcript-split--closed"}>
-                      <div className="transcript-split__pane">
+                    <div
+                      className={splitTabId ? "transcript-split" : "transcript-split transcript-split--closed"}
+                      ref={splitContainerRef}
+                      style={splitTabId ? ({ "--split-primary-ratio": splitRatio } as CSSProperties) : undefined}
+                    >
+                      <div className="transcript-split__pane transcript-split__pane--primary">
                                         <Transcript
                       items={visibleTranscriptItems}
                       live={runtimeTransitioning ? undefined : state.live}
@@ -4758,16 +4795,32 @@ export default function App() {
                           everything else on TranscriptProps has a default, and the
                           remaining call sites' values are the primary tab's own state. */}
                       {splitTabId && (
-                        <div className="transcript-split__pane">
-                          <Transcript
-                            items={itemsForTab(splitTabId) ?? []}
-                            liveStore={liveStore}
-                            tabId={splitTabId}
-                            geometrySessionKey={`tab:${splitTabId}`}
-                            onPrompt={handleTranscriptPrompt}
-                            questionNavigator={false}
+                        <>
+                          {/* Task 70 二期: the resize handle between the panes.
+                              Only rendered while a split is open; ratio drag
+                              clamps in clampedSplitRatio, memory persists on
+                              release. */}
+                          <div
+                            className="transcript-split__divider"
+                            role="separator"
+                            aria-orientation="vertical"
+                            aria-label={t("splitView.resizeDivider")}
+                            aria-valuenow={Math.round(splitRatio * 100)}
+                            aria-valuemin={20}
+                            aria-valuemax={80}
+                            onPointerDown={beginSplitDividerDrag}
                           />
-                        </div>
+                          <div className="transcript-split__pane transcript-split__pane--secondary">
+                            <Transcript
+                              items={itemsForTab(splitTabId) ?? []}
+                              liveStore={liveStore}
+                              tabId={splitTabId}
+                              geometrySessionKey={`tab:${splitTabId}`}
+                              onPrompt={handleTranscriptPrompt}
+                              questionNavigator={false}
+                            />
+                          </div>
+                        </>
                       )}
                     </div>
                   </div>
