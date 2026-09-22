@@ -119,7 +119,16 @@ func sessionCollabHopLimit() int {
 // unreadable config keeps the safe default (off = historical auto-activate).
 func collabBackgroundDelivery() bool {
 	cfg, err := config.Load()
-	if err != nil || cfg == nil {
+	if err != nil {
+		return false
+	}
+	return collabBackgroundDeliveryFromConfig(cfg)
+}
+
+// collabBackgroundDeliveryFromConfig is the pure branch extracted for M3
+// testing. Returns true when experimental_collab_background_delivery is on.
+func collabBackgroundDeliveryFromConfig(cfg *config.Config) bool {
+	if cfg == nil {
 		return false
 	}
 	return cfg.Agent.ExperimentalCollabBackgroundDelivery
