@@ -102,9 +102,11 @@ type Server struct {
 	detached      map[string]*detachedSession
 	tagsMu        sync.Mutex
 	tags          map[*control.Controller]*sessionTagSink
-	// Remote-client (GrandCouncil) takeover liveness: session name → last
-	// heartbeat. A held session whose remote client stopped beating for
-	// heartbeatExpiry is auto-released so the desktop can reacquire.
+	// Remote-client (GrandCouncil) takeover liveness: heartbeatKey(deviceID,
+	// session name) → last heartbeat. A held session whose remote client
+	// stopped beating for heartbeatExpiry is auto-released so the desktop can
+	// reacquire. Keying by device (task 36) keeps multiple clients from
+	// renewing each other's lease: every device's silence is measured alone.
 	heartbeatMu sync.Mutex
 	heartbeats  map[string]time.Time
 	hostGate    hostGateState // hostGuard allowlist state; see hostguard.go
@@ -1626,7 +1628,8 @@ func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request) {
 // desktop can reacquire without waiting for the idle reclaim.
 func (s *Server) heartbeat(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name string `json:"name"`
+		Name     string `json:"name"`
+		DeviceID string `json:"device_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Name) == "" {
 		http.Error(w, "name required", http.StatusBadRequest)
@@ -1636,9 +1639,25 @@ func (s *Server) heartbeat(w http.ResponseWriter, r *http.Request) {
 	if s.heartbeats == nil {
 		s.heartbeats = map[string]time.Time{}
 	}
-	s.heartbeats[strings.TrimSpace(body.Name)] = time.Now().UTC()
+	s.heartbeats[heartbeatKey(body.DeviceID, body.Name)] = time.Now().UTC()
 	s.heartbeatMu.Unlock()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// heartbeatKey scopes a heartbeat to its owning device (task 36): two
+// devices holding the same-named session renew two independent entries, so
+// one client's silence expires its own lease without the other keeping it
+// alive. An empty device id (legacy clients) keeps a stable key shape.
+func heartbeatKey(deviceID, session string) string {
+	return strings.TrimSpace(deviceID) + "" + strings.TrimSpace(session)
+}
+
+func splitHeartbeatKey(key string) (deviceID, session string) {
+	parts := strings.SplitN(key, "", 2)
+	if len(parts) != 2 {
+		return "", key
+	}
+	return parts[0], parts[1]
 }
 
 // releaseExpiredHeartbeats drops serve-held leases whose remote client
@@ -1646,15 +1665,17 @@ func (s *Server) heartbeat(w http.ResponseWriter, r *http.Request) {
 // goroutine and lazily before takeover checks.
 func (s *Server) releaseExpiredHeartbeats() {
 	s.heartbeatMu.Lock()
-	names := make([]string, 0, len(s.heartbeats))
-	for name, last := range s.heartbeats {
+	type expiredHeartbeat struct{ deviceID, session string }
+	expired := make([]expiredHeartbeat, 0, len(s.heartbeats))
+	for key, last := range s.heartbeats {
 		if time.Since(last) > heartbeatExpiry {
-			names = append(names, name)
-			delete(s.heartbeats, name)
+			deviceID, session := splitHeartbeatKey(key)
+			expired = append(expired, expiredHeartbeat{deviceID: deviceID, session: session})
+			delete(s.heartbeats, key)
 		}
 	}
 	s.heartbeatMu.Unlock()
-	if len(names) == 0 {
+	if len(expired) == 0 {
 		return
 	}
 	s.bindMu.Lock()
@@ -1668,11 +1689,22 @@ func (s *Server) releaseExpiredHeartbeats() {
 		return
 	}
 	current := strings.TrimSuffix(filepath.Base(lease.Path()), ".jsonl")
-	for _, name := range names {
-		if name == current {
+	// A session's lease is released only when NO device still beats for it
+	// (task 36): one device going silent must not evict the hold another
+	// live device still maintains. The sweep has already deleted the
+	// expired entries, so any remaining key for this session is live.
+	liveForCurrent := false
+	for key := range s.heartbeats {
+		if _, session := splitHeartbeatKey(key); session == current {
+			liveForCurrent = true
+			break
+		}
+	}
+	for _, e := range expired {
+		if e.session == current && !liveForCurrent {
 			lease.Release()
 			_ = keeper.Rebind("")
-			slog.Info("serve: released lease for silent remote client", "session", name)
+			slog.Info("serve: released lease for silent remote client", "session", e.session, "device", e.deviceID)
 		}
 	}
 }
