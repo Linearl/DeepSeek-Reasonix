@@ -852,6 +852,11 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// Register the full built-in inventory for use_capability dispatch. The
 	// provider-visible surface is narrowed later via SetProviderVisibleTools.
 	addBuiltins(reg, enabledBuiltins, writeRoots, writeRootSet, bashSpec, bashTimeout, searchSpec, stderr, root, proxySpec, forbidReadRoots, readPathResolver, sessionGuard, managedConfig, opts.FileOverlay, opts.TerminalRunner, sessionTemp, fileWriteReceipt)
+	// Task 233 batch 2: controlled UI driving, gated by iron-rule-2 config —
+	// with the switch off the tool does not exist in the registry at all.
+	if cfg.Agent.ExperimentalUIDriver {
+		reg.Add(builtin.NewUIInteractTool(builtin.UIInteractConfig{WorkDir: root}))
+	}
 	addWebSearch(reg, cfg, entry, proxySpec, sink)
 	// Use the caller-supplied shared host when set, so controllers for the same
 	// workspace root reuse running MCP processes (e.g. one CodeGraph daemon
