@@ -4,12 +4,9 @@ import "fmt"
 
 func normalizeOpenAIReasoningEffort(e *ProviderEntry, level string) (string, error) {
 	if isMimoEntry(e) {
-		switch level {
-		case "none", "low", "medium", "high":
-			return level, nil
-		default:
-			return "", fmt.Errorf("usage: /effort auto|none|low|medium|high")
-		}
+		// Shared single normalization point for MiMo (8-level documented
+		// vocabulary); see normalizeMimoEffort in effort.go.
+		return normalizeMimoEffort(level)
 	}
 	switch level {
 	case "low", "medium", "high":

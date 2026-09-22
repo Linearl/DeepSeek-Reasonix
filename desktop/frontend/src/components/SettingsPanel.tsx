@@ -944,7 +944,7 @@ const PROXY_MODES = ["auto", "custom", "off"] as const;
 // EFFORT_PRESETS is the canonical union of /effort levels the kernel recognises.
 // The settings UI uses it for subagent defaults; provider-specific levels are
 // inferred by the backend or edited in TOML for rare gateways.
-export const EFFORT_PRESETS: readonly string[] = ["low", "medium", "high", "xhigh", "max"];
+export const EFFORT_PRESETS: readonly string[] = ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
 const COMPACT_RATIO_PRESETS = [
   [0.7, "settings.compactRatioPreset.70", "settings.compactRatioPresetEffect.70"],
   [0.8, "settings.compactRatioPreset.80", "settings.compactRatioPresetEffect.80"],

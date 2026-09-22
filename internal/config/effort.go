@@ -83,10 +83,10 @@ func EffortCapabilityForEntry(e *ProviderEntry) EffortCapability {
 		return glmEffortCapability()
 	case ReasoningProtocolOpenAI:
 		if isMimoEntry(e) {
-			// MiMo's Responses API documents a binary thinking knob: "none"
-			// disables reasoning; every other legal value enables it. The
-			// vendor accepts the OpenAI depth vocabulary but exposes no real
-			// low/medium/high difference, so mirror the documented contract.
+			// MiMo documents an 8-level reasoning.effort scale
+			// (none|minimal|low|medium|high|xhigh|max|ultra, default
+			// "enabled"). See mimoEffortCapability for the wire
+			// normalization onto low/medium/high/none.
 			return mimoEffortCapability()
 		}
 		return openAIEffortCapability()
@@ -96,8 +96,8 @@ func EffortCapabilityForEntry(e *ProviderEntry) EffortCapability {
 	}
 	// MiMo endpoints: auto-detect effort support even when reasoning_protocol
 	// is not explicitly set. All *.xiaomimimo.com hosts (public API and
-	// enterprise) are eligible — the vendor's Responses API exposes a binary
-	// thinking knob regardless of endpoint.
+	// enterprise) are eligible — the vendor documents the same 8-level
+	// reasoning.effort scale regardless of endpoint.
 	if isMimoEntry(e) {
 		return mimoEffortCapability()
 	}
@@ -255,18 +255,7 @@ func NormalizeEffort(e *ProviderEntry, raw string) (string, error) {
 			return "", fmt.Errorf("usage: /effort auto|none|low|medium|high|max")
 		}
 	case isMimoEntry(e):
-		// MiMo's Responses API documents a binary thinking knob: "none"
-		// disables reasoning; every other legal value enables it.
-		switch level {
-		case "none", "disabled", "off":
-			return "none", nil
-		case "low", "medium", "high":
-			return level, nil
-		case "xhigh", "max":
-			return "high", nil
-		default:
-			return "", fmt.Errorf("usage: /effort auto|none|low|medium|high")
-		}
+		return normalizeMimoEffort(level)
 	case e != nil && e.Kind == "anthropic":
 		switch level {
 		case "low", "medium", "high", "xhigh", "max":
@@ -461,11 +450,41 @@ func isMimoEntry(e *ProviderEntry) bool {
 	return host == "api.xiaomimimo.com" || strings.HasSuffix(host, ".xiaomimimo.com")
 }
 
-// mimoEffortCapability mirrors MiMo's documented binary thinking knob: "none"
-// disables reasoning, every other legal value enables it (no real depth
-// difference server-side). The vendor accepts the OpenAI depth vocabulary.
+// mimoEffortCapability mirrors MiMo's documented Chat Completions
+// reasoning.effort vocabulary (8 depth levels, field required, server default
+// "enabled"): none|minimal|low|medium|high|xhigh|max|ultra. The wire layer
+// collapses the vendor's real depth spread onto the documented normalization
+// (minimal→low, xhigh/max/ultra→high, none=off); "auto" means "don't send the
+// field" so the server default (enabled) applies.
 func mimoEffortCapability() EffortCapability {
-	return EffortCapability{Supported: true, Levels: []string{"auto", "none", "low", "medium", "high"}, Default: "auto"}
+	return EffortCapability{
+		Supported: true,
+		Levels:    []string{"auto", "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"},
+		Default:   "auto",
+	}
+}
+
+// normalizeMimoEffort is the single wire-normalization point for MiMo effort
+// levels, shared by every path that stores a /effort value for a MiMo entry
+// (the openai-protocol branch in effort_protocol.go and the isMimoEntry
+// fallback in NormalizeEffort). It collapses the vendor's 8-level
+// reasoning.effort scale onto the documented normalization: minimal→low,
+// xhigh/max/ultra→high, none/disabled/off→none, low/medium/high verbatim.
+// "auto" never reaches this function: NormalizeEffort resolves it to ""
+// (field not sent) before dispatching.
+func normalizeMimoEffort(level string) (string, error) {
+	switch level {
+	case "none", "disabled", "off":
+		return "none", nil
+	case "low", "medium", "high":
+		return level, nil
+	case "minimal":
+		return "low", nil
+	case "xhigh", "max", "ultra":
+		return "high", nil
+	default:
+		return "", fmt.Errorf("usage: /effort auto|none|minimal|low|medium|high|xhigh|max|ultra")
+	}
 }
 
 func resolvedModelReasoningCapability(e *ProviderEntry) (modelReasoningCapability, bool) {

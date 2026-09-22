@@ -199,7 +199,8 @@ func TestMimoEffortSupportsNone(t *testing.T) {
 	if !cap.Supported {
 		t.Fatal("MiMo effort must be supported")
 	}
-	for _, level := range []string{"auto", "none", "low", "medium", "high"} {
+	// Full documented 8-level vocabulary plus auto.
+	for _, level := range []string{"auto", "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"} {
 		if !containsString(cap.Levels, level) {
 			t.Errorf("MiMo capability missing %q: %v", level, cap.Levels)
 		}
@@ -213,13 +214,47 @@ func TestMimoEffortSupportsNone(t *testing.T) {
 			t.Fatalf("MiMo %s = %q/%v, want %s/nil", level, got, err, level)
 		}
 	}
-	if _, err := NormalizeEffort(e, "xhigh"); err == nil {
-		t.Fatal("MiMo xhigh must be rejected")
-	}
 	// A plain OpenAI endpoint keeps rejecting none.
 	plain := &ProviderEntry{Kind: "openai", BaseURL: "https://example.com/v1", ReasoningProtocol: ReasoningProtocolOpenAI}
 	if got, err := NormalizeEffort(plain, "none"); err == nil || got != "" {
 		t.Fatalf("plain OpenAI none = %q/%v, want error", got, err)
+	}
+}
+
+// TestMimoEffortEightLevelVocabulary verifies the documented wire
+// normalization: minimal→low, xhigh/max/ultra→high, none/disabled/off→none,
+// low/medium/high verbatim — and that "auto" resolves to empty (field not
+// sent, server default "enabled" applies) so the auto literal can never
+// reach the provider payload.
+func TestMimoEffortEightLevelVocabulary(t *testing.T) {
+	e := &ProviderEntry{
+		Kind:              "openai",
+		BaseURL:           "https://api.xiaomimimo.com/v1",
+		ReasoningProtocol: ReasoningProtocolOpenAI,
+	}
+	for _, tc := range []struct{ raw, want string }{
+		{"minimal", "low"},
+		{"xhigh", "high"},
+		{"max", "high"},
+		{"ultra", "high"},
+		{"none", "none"},
+		{"disabled", "none"},
+		{"off", "none"},
+		{"low", "low"},
+		{"medium", "medium"},
+		{"high", "high"},
+	} {
+		got, err := NormalizeEffort(e, tc.raw)
+		if err != nil || got != tc.want {
+			t.Errorf("NormalizeEffort(mimo, %q) = %q/%v, want %q/nil", tc.raw, got, err, tc.want)
+		}
+	}
+	if got, err := NormalizeEffort(e, "auto"); err != nil || got != "" {
+		t.Errorf("NormalizeEffort(mimo, auto) = %q/%v, want \"\"/nil (field not sent)", got, err)
+	}
+	cap := mimoEffortCapability()
+	if containsString(cap.Levels, "") {
+		t.Error("capability Levels must not contain the empty string")
 	}
 }
 
