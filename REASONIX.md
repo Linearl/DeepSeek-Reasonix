@@ -107,7 +107,14 @@ and a permanently red test swallows the next real regression.
 Confirm the failure is genuinely pre-existing first (`git stash` your change and
 re-run); that check decides the framing, not whether the failure gets fixed.
 
-### Current list (2026-09-18) — empty
+### Current list (2026-09-22) — 3 open (serve upload/projects)
+
+* **`internal/serve`: `TestUploadAttachmentJSON`, `TestUploadAttachmentNoData`,
+  `TestListProjectsEndpoint`** — red on the pristine `9aa573921` baseline
+  (stash-verified during task 36 batch 1, 2026-09-22); unrelated to any
+  pending change. Management verdict: register and leave for a dedicated
+  cleanup pass; they do not block merges. Next owner must classify each as
+  stale/orphan/code-wrong per the rules above before closing.
 
 Empty, and kept empty.
 

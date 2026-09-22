@@ -492,6 +492,17 @@ func NewApp() *App {
 			merge:   map[string]struct{}{},
 		},
 	}
+	// Task 36 Phase 1: remote takeover requests prompt the user instead of
+	// yielding silently. The sink owns the wails context at emit time.
+	// Task 36 Phase 2: observe serve's device lease for runtime read-only.
+	a.registerRemoteWriteAuthorityHook()
+	RegisterTakeoverPromptSink(func(req takeoverDecisionReq) {
+		runtimeEventsEmitFallback(a.ctx, "app:takeover-request", map[string]string{
+			"marker": req.Marker,
+			"path":   req.Path,
+			"from":   req.From,
+		})
+	})
 	a.desktopShell.trayState = "probing"
 	a.webView2Recovery = newWebView2RecoveryCoordinator(a)
 	a.desktopShell.linuxRecovery = newLinuxWebKitRecoveryCoordinator(a)

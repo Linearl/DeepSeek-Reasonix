@@ -13,10 +13,10 @@ import (
 	"reasonix/internal/control"
 )
 
-// Task 36 (acceptance: heartbeats are keyed per device). Two devices holding
-// the same-named session renew two independent entries: one device's silence
-// expires its own lease-hold without the other's liveness keeping it alive —
-// the pre-36 bug where every client renewed the shared session-name key.
+// Task 36 Phase 2: the heartbeat is a device lease — deviceID-grouped
+// entries with a session set, per-device expiry, explicit release, and the
+// desktop write-authority hook. These pin the batch-2 semantics on top of
+// batch 1's per-device keying.
 
 type heartbeatFixture struct {
 	server *Server
@@ -58,71 +58,95 @@ func (f *heartbeatFixture) postHeartbeat(t *testing.T, deviceID, session string)
 	}
 }
 
-// expireAllBut ages every entry except keepKeys into the past and runs the
-// expiry sweep — simulating "these devices went silent".
-func (f *heartbeatFixture) expireAllBut(t *testing.T, keepKeys ...string) {
-	t.Helper()
+func (f *heartbeatFixture) ageDevice(deviceID string) {
 	f.server.heartbeatMu.Lock()
-	for key := range f.server.heartbeats {
-		kept := false
-		for _, k := range keepKeys {
-			if key == k {
-				kept = true
-				break
-			}
-		}
-		if !kept {
-			f.server.heartbeats[key] = time.Now().Add(-2 * heartbeatExpiry)
-		}
+	if entry := f.server.heartbeats[deviceID]; entry != nil {
+		entry.lastBeat = time.Now().Add(-2 * heartbeatExpiry)
 	}
 	f.server.heartbeatMu.Unlock()
 	f.server.releaseExpiredHeartbeats()
 }
 
-func TestHeartbeatKeyedPerDevice(t *testing.T) {
+func TestDeviceLeaseGroupedAndIndependent(t *testing.T) {
 	f := newHeartbeatFixture(t)
 	f.postHeartbeat(t, "gc-a", f.name)
 	f.postHeartbeat(t, "gc-b", f.name)
 
-	if got := len(f.server.heartbeats); got != 2 {
-		t.Fatalf("entries = %d, want one per device (2)", got)
+	f.server.heartbeatMu.Lock()
+	entries := len(f.server.heartbeats)
+	sessionsA := len(f.server.heartbeats["gc-a"].sessions)
+	f.server.heartbeatMu.Unlock()
+	if entries != 2 || sessionsA != 1 {
+		t.Fatalf("entries=%d sessions[gc-a]=%d, want 2 devices / 1 session", entries, sessionsA)
 	}
 
-	// gc-a goes silent; gc-b keeps beating.
-	f.expireAllBut(t, heartbeatKey("gc-b", f.name))
-
-	if f.leases.Lease() == nil {
-		t.Fatal("lease was released while device gc-b is still beating — devices must not share a key")
+	// gc-a (which holds the current session) goes silent: its lease entry
+	// expires, the held lease frees, and the hook is notified. gc-b's entry
+	// must remain (devices expire independently).
+	f.ageDevice("gc-a")
+	f.server.heartbeatMu.Lock()
+	_, aAlive := f.server.heartbeats["gc-a"]
+	_, bAlive := f.server.heartbeats["gc-b"]
+	f.server.heartbeatMu.Unlock()
+	if aAlive || !bAlive {
+		t.Fatalf("after gc-a expiry: aAlive=%v bAlive=%v, want false/true", aAlive, bAlive)
 	}
-	if _, alive := f.server.heartbeats[heartbeatKey("gc-b", f.name)]; !alive {
-		t.Fatal("gc-b heartbeat was dropped by gc-a's expiry")
+	if f.leases.Lease() != nil {
+		t.Fatal("lease survived although the holding device expired")
 	}
 }
 
-func TestHeartbeatSilentDeviceReleasesLease(t *testing.T) {
+func TestDeviceLeaseExpiryLeavesUnrelatedSessionLease(t *testing.T) {
+	f := newHeartbeatFixture(t)
+	f.postHeartbeat(t, "gc-a", "some-other-session") // not the current one
+	f.ageDevice("gc-a")
+	if f.leases.Lease() == nil {
+		t.Fatal("expiry of a device that never held the current session must not free this lease")
+	}
+}
+
+func TestExplicitReleaseEndpointFreesImmediately(t *testing.T) {
 	f := newHeartbeatFixture(t)
 	f.postHeartbeat(t, "gc-a", f.name)
-	f.expireAllBut(t) // no keepers: the only device went silent
 
+	var notified []string
+	prev := remoteWriteAuthorityHook
+	remoteWriteAuthorityHook = func(deviceID string, held bool) {
+		notified = append(notified, deviceID+":"+strconv.FormatBool(held))
+	}
+	t.Cleanup(func() { remoteWriteAuthorityHook = prev })
+
+	req := httptest.NewRequest("POST", "/release-device", strings.NewReader(`{"device_id":"gc-a"}`))
+	rec := httptest.NewRecorder()
+	f.server.releaseDevice(rec, req)
+	if rec.Code != 204 {
+		t.Fatalf("status = %d, want 204", rec.Code)
+	}
 	if f.leases.Lease() != nil {
-		t.Fatal("lease survived after its only device stopped beating")
+		t.Fatal("explicit device release must free the held lease immediately")
+	}
+	if len(notified) != 1 || notified[0] != "gc-a:false" {
+		t.Fatalf("hook notifications = %v, want [gc-a:false]", notified)
 	}
 }
 
-func TestHeartbeatLegacyClientKeepsStableKey(t *testing.T) {
+func TestRemoteDeviceHoldsWriteBlocksSubmit(t *testing.T) {
 	f := newHeartbeatFixture(t)
-	f.postHeartbeat(t, "", f.name)
-
-	want := "\x1f" + f.name
-	if _, ok := f.server.heartbeats[want]; !ok {
-		keys := make([]string, 0, len(f.server.heartbeats))
-		for k := range f.server.heartbeats {
-			keys = append(keys, strconv.Quote(k))
-		}
-		t.Fatalf("legacy heartbeat missing key %q (keys: %s)", want, strings.Join(keys, ", "))
+	f.postHeartbeat(t, "gc-a", f.name)
+	if id, held := f.server.remoteDeviceHoldsWrite(); !held || id != "gc-a" {
+		t.Fatalf("remoteDeviceHoldsWrite = (%q,%v), want (gc-a,true)", id, held)
 	}
-	device, session := splitHeartbeatKey(want)
-	if device != "" || session != f.name {
-		t.Fatalf("splitHeartbeatKey(%q) = (%q,%q), want empty device + session", want, device, session)
+	// The submit handler must refuse before parsing anything.
+	req := httptest.NewRequest("POST", "/submit", strings.NewReader(`{"input":"hello"}`))
+	rec := httptest.NewRecorder()
+	f.server.submit(rec, req)
+	if rec.Code != 409 || !strings.Contains(rec.Body.String(), "device-level exclusion") {
+		t.Fatalf("submit = %d %q, want 409 device-level exclusion", rec.Code, rec.Body.String())
+	}
+	// After release the same submit is no longer blocked by device exclusion
+	// (it may still fail later checks — we only assert the exclusion gate).
+	f.server.releaseDeviceLease("gc-a")
+	if _, held := f.server.remoteDeviceHoldsWrite(); held {
+		t.Fatal("lease must be gone after release")
 	}
 }
