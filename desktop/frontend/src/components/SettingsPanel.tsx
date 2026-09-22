@@ -1766,8 +1766,7 @@ type ExperimentFeatureId =
   | "perfMonitor"
   | "autoLoadOlder"
   | "sessionCollab"
-  | "collabInboxMerge"
-  | "collabGuidanceMerge"
+  | "messageMerge"
   | "autopilot";
 
 function ExperimentalSection({ s, busy, apply }: SectionProps) {
@@ -1838,8 +1837,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "perfMonitor", group: "obs", label: t("settings.perfMonitor"), on: Boolean(s.experimentalPerfMonitor) },
     { id: "autoLoadOlder", group: "session", label: t("settings.autoLoadOlder"), on: Boolean(s.experimentalAutoLoadOlder) },
     { id: "sessionCollab", group: "fb", label: t("settings.sessionCollab"), on: Boolean(s.experimentalSessionCollab) },
-    { id: "collabInboxMerge", group: "fb", label: t("settings.collabInboxMerge"), on: (s.collabInboxMerge || "off") !== "off" },
-    { id: "collabGuidanceMerge", group: "fb", label: t("settings.collabGuidanceMerge"), on: Boolean(s.collabGuidanceMerge) },
+    { id: "messageMerge", group: "fb", label: t("settings.messageMerge"), on: (s.collabInboxMerge || "off") !== "off" || Boolean(s.collabGuidanceMerge) },
     { id: "autopilot", group: "auto", label: t("settings.autopilot"), on: Boolean(s.autopilot) },
   ];
 
@@ -2287,7 +2285,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
               </SettingsOptions>
             </SettingsField>
           )}
-                    {selected === "collabInboxMerge" && (
+                    {selected === "messageMerge" && (
             <>
               <SettingsField label={t("settings.collabInboxMerge")} hint={t("settings.collabInboxMergeHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
@@ -2305,10 +2303,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-            </>
-          )}
-          {selected === "collabGuidanceMerge" && (
-            <>
               <SettingsField label={t("settings.collabGuidanceMerge")} hint={t("settings.collabGuidanceMergeHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
