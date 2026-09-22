@@ -47,7 +47,7 @@ func (drainInboxTool) Description() string {
 }
 
 func (drainInboxTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"settle":{"type":"boolean","description":"true (default): claim and ack — messages are consumed. false: peek only, cursor does not advance."},"limit":{"type":"integer","description":"Max messages to return (default 20, clamped 1..100)."}}}`)
+	return json.RawMessage(`{"type":"object","properties":{"settle":{"type":"boolean","description":"true (default): claim and ack — messages are consumed. false: peek only, cursor does not advance."},"limit":{"type":"integer","description":"Max messages to return (default 20, clamped 1..100)."},"source":{"type":"string","description":"Only return messages whose fromContactId matches this value. Empty (default) returns all senders."}}}`)
 }
 
 // ReadOnly is false when settle can advance the cursor; the registry uses this
@@ -150,8 +150,9 @@ func drainInboxConvert(msg sessioncollab.MailMessage, hop int) drainInboxMessage
 
 func (t drainInboxTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
 	var p struct {
-		Settle *bool `json:"settle"`
-		Limit  int   `json:"limit"`
+		Settle *bool  `json:"settle"`
+		Limit  int    `json:"limit"`
+		Source string `json:"source"`
 	}
 	if len(args) > 0 {
 		if err := json.Unmarshal(args, &p); err != nil {
@@ -191,16 +192,22 @@ func (t drainInboxTool) Execute(_ context.Context, args json.RawMessage) (string
 		var refused []sessioncollab.MailMessage
 		err := mail.Drain(me, func(pending, refusedBatch []sessioncollab.MailMessage) []string {
 			refused = refusedBatch
-			if len(pending) > limit {
-				taken = pending[:limit]
-				// Only the taken slice is settled; the tail stays queued.
-				ids := make([]string, 0, len(taken))
-				for _, m := range taken {
-					ids = append(ids, m.ID)
+			// H2: filter by source if specified; only return (and thus only Ack)
+			// the IDs actually taken. Non-matching IDs stay queued (not acked).
+			filtered := pending
+			if strings.TrimSpace(p.Source) != "" {
+				filtered = nil
+				for _, m := range pending {
+					if m.From == p.Source {
+						filtered = append(filtered, m)
+					}
 				}
-				return ids
 			}
-			taken = pending
+			if len(filtered) > limit {
+				taken = filtered[:limit]
+			} else {
+				taken = filtered
+			}
 			ids := make([]string, 0, len(taken))
 			for _, m := range taken {
 				ids = append(ids, m.ID)
@@ -210,27 +217,35 @@ func (t drainInboxTool) Execute(_ context.Context, args json.RawMessage) (string
 		if err != nil {
 			return "", fmt.Errorf("drain_inbox: %w", err)
 		}
-		hop := t.cfg.hopLimit()
 		payload.Took = len(taken)
 		payload.Refused = len(refused)
 		for _, m := range taken {
-			payload.Messages = append(payload.Messages, drainInboxConvert(m, hop))
+			payload.Messages = append(payload.Messages, drainInboxConvert(m, m.Hop))
 		}
 		for _, m := range refused {
-			payload.RefusedMsgs = append(payload.RefusedMsgs, drainInboxConvert(m, hop))
+			payload.RefusedMsgs = append(payload.RefusedMsgs, drainInboxConvert(m, m.Hop))
 		}
 	} else {
 		peeked, err := mail.Peek(me)
 		if err != nil {
 			return "", fmt.Errorf("drain_inbox: %w", err)
 		}
+		// H2: filter by source if specified.
+		if strings.TrimSpace(p.Source) != "" {
+			filtered := peeked[:0:0]
+			for _, m := range peeked {
+				if m.From == p.Source {
+					filtered = append(filtered, m)
+				}
+			}
+			peeked = filtered
+		}
 		if len(peeked) > limit {
 			peeked = peeked[:limit]
 		}
-		hop := t.cfg.hopLimit()
 		payload.Took = len(peeked)
 		for _, m := range peeked {
-			payload.Messages = append(payload.Messages, drainInboxConvert(m, hop))
+			payload.Messages = append(payload.Messages, drainInboxConvert(m, m.Hop))
 		}
 	}
 

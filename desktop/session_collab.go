@@ -667,6 +667,15 @@ func (p *sessionCollabPump) applyPendingPurposes() {
 
 func (p *sessionCollabPump) drain() SessionCollabDrainResult {
 	p.applyPendingPurposes()
+	// Task 224 redo (user ruling): when experimental_collab_background_delivery
+	// is on, the host pump does NOT stand up sessions or deliver — no new tab
+	// ever appears in the tab bar. Messages stay in MailStore and are consumed
+	// exclusively by the agent's drain_inbox tool. Visibility: mailbox only
+	// (drain_inbox / get_session_status unreadInbox). Backpressure: none needed
+	// — the pump skips entirely, so there is no deliverOne retry loop.
+	if collabBackgroundDelivery() {
+		return SessionCollabDrainResult{}
+	}
 	mailDir := config.SessionCollabMailDir()
 	if mailDir == "" {
 		return SessionCollabDrainResult{}
@@ -716,18 +725,12 @@ func (p *sessionCollabPump) drain() SessionCollabDrainResult {
 		if !ok || id.Archived || strings.TrimSpace(id.SessionPath) == "" {
 			continue
 		}
-		// Task 224: when experimental_collab_background_delivery is on, stand
-		// the session up without activating its tab — the woken conversation
-		// runs in the background without stealing focus (D2). Off (default)
-		// keeps the historical auto-activate path with zero regression.
-		var openErr error
-		if collabBackgroundDelivery() {
-			_, openErr = p.app.openTopicTabWithActivation(id.Scope, id.Workspace, id.TopicID, id.SessionPath, false)
-		} else {
-			_, openErr = p.app.OpenTopicSession(id.Scope, id.Workspace, id.TopicID, id.SessionPath)
-		}
-		if openErr != nil {
-			log.Printf("[session-collab] cannot open session for contact %s (%s): %v", contact, id.Title, openErr)
+		// Open the session so the next pass can deliver. When
+		// experimental_collab_background_delivery is on, drain() already
+		// returned early above — this path only runs with the switch off
+		// (baseline: auto-activate, zero regression).
+		if _, err := p.app.OpenTopicSession(id.Scope, id.Workspace, id.TopicID, id.SessionPath); err != nil {
+			log.Printf("[session-collab] cannot open session for contact %s (%s): %v", contact, id.Title, err)
 			continue
 		}
 		log.Printf("[session-collab] opened session %q to accept a message for contact %s", id.Title, contact)

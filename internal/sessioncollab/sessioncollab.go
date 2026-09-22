@@ -646,6 +646,11 @@ func (s *MailStore) Claim(contactID string) (pending []MailMessage, refused []Ma
 		return nil, nil, err
 	}
 	defer unlock()
+	return s.claimLocked(contactID)
+}
+
+// claimLocked is Claim's body under the caller's lock (B1: same-lock Claim+Ack).
+func (s *MailStore) claimLocked(contactID string) (pending []MailMessage, refused []MailMessage, err error) {
 	all, err := s.readAll(contactID)
 	if err != nil {
 		return nil, nil, err
@@ -676,6 +681,11 @@ func (s *MailStore) Ack(contactID string, ids ...string) error {
 		return err
 	}
 	defer unlock()
+	return s.ackLocked(contactID, ids...)
+}
+
+// ackLocked is Ack's body under the caller's lock (B1: same-lock Claim+Ack).
+func (s *MailStore) ackLocked(contactID string, ids ...string) error {
 	seen := s.readCursor(contactID)
 	for _, id := range ids {
 		if strings.TrimSpace(id) != "" {

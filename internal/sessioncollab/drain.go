@@ -1,16 +1,23 @@
 package sessioncollab
 
 // Drain claims unread messages for contactID, hands the batch to fn, and acks
-// the IDs fn returns as settled. Refused (hop-ceiling) messages are always
-// acked so they do not reappear on every pass. Messages fn does not settle stay
-// queued for the next pass (at-least-once).
+// the IDs fn returns as settled — all under a single file lock (B1 fix:
+// same-lock Claim+Ack prevents two consumers from double-consuming). Refused
+// (hop-ceiling) messages are always acked so they do not reappear on every
+// pass. Messages fn does not settle stay queued for the next pass
+// (at-least-once).
 //
 // Task 235: this is the batch settle primitive the drain_inbox tool wraps. It
 // deliberately does not dispatch turns — D1 is pure pull into a tool result.
 // Host-side "pull then start a round" goes through the existing
 // maybeDispatchInbox / TryEnqueueAndSteer paths, never through here.
 func (s *MailStore) Drain(contactID string, fn func(pending, refused []MailMessage) []string) error {
-	pending, refused, err := s.Claim(contactID)
+	unlock, err := s.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	pending, refused, err := s.claimLocked(contactID)
 	if err != nil {
 		return err
 	}
@@ -23,5 +30,5 @@ func (s *MailStore) Drain(contactID string, fn func(pending, refused []MailMessa
 	for _, m := range refused {
 		settled = append(settled, m.ID)
 	}
-	return s.Ack(contactID, settled...)
+	return s.ackLocked(contactID, settled...)
 }
