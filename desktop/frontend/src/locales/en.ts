@@ -1193,7 +1193,7 @@ export const en = {
   "status.versionSwitchNewest": "newest",
   "status.versionSwitchBusy": "switching…",
   "status.versionSwitchFirewallNote": "Windows Firewall may prompt again after the relaunch (known behavior of the versions mechanism); your user-level skills and data are untouched.",
-  "status.versionSwitchPublishStaging": "Publish staging build as a new version…",
+  "status.versionSwitchPublishStaging": "Restart with update (latest staging build, auto-confirms in 3s)…",
   "status.jobsTitle": "Background jobs",
   "status.extensionTitle": "Extension status",
   "status.jobStop": "Stop",

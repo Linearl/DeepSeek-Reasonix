@@ -941,7 +941,7 @@ export const zhTW: Record<DictKey, string> = {
   "status.versionSwitchNewest": "最新",
   "status.versionSwitchBusy": "切換中…",
   "status.versionSwitchFirewallNote": "切換後重新啟動時 Windows 防火牆可能重新彈窗（多版本機制已知行為，允許即可）；你的使用者級技能與資料不受影響。",
-  "status.versionSwitchPublishStaging": "發佈 staging 建置為新版本…",
+  "status.versionSwitchPublishStaging": "重啟並更新（staging 最新建置，3 秒後自動執行）…",
   "status.jobsTitle": "背景作業",
   "status.extensionTitle": "擴充功能狀態",
   "status.jobStop": "停止",

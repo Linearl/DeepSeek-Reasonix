@@ -11,7 +11,7 @@ import (
 // builtins so a user installs nothing for them to appear in the catalog.
 func TestGitHubIssueSkillsRegistered(t *testing.T) {
 	store := skill.New(skill.Options{HomeDir: t.TempDir()})
-	for _, name := range []string{"gh-issue-submit", "github-issue-triage"} {
+	for _, name := range []string{"gh-issue-submit", "gh-issue-triage"} {
 		sk, ok := store.Read(name)
 		if !ok {
 			t.Fatalf("%s must be a builtin", name)
@@ -27,7 +27,7 @@ func TestGitHubIssueSkillsRegistered(t *testing.T) {
 		}
 	}
 	idx := skill.IndexBlock(store.List())
-	if !strings.Contains(idx, "gh-issue-submit") || !strings.Contains(idx, "github-issue-triage") {
+	if !strings.Contains(idx, "gh-issue-submit") || !strings.Contains(idx, "gh-issue-triage") {
 		t.Fatal("index missing GitHub issue skill lines")
 	}
 }
