@@ -238,7 +238,8 @@ if (initialCSS.length > 0) {
 // Wave3 UI settings (experiment rail, write-root tiers, local-server page)
 // push deferred shell CSS to 124.1 KiB; take the next one-decimal ceiling.
   // 125.2: task 181 guidance edit banner styles (+0.1 over 124.6 measured at merge, 2026-09-20).
-assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 124.7 * 1024); // fork: upstream 1.38.3 raised its own budget to 120.4 KiB; the fork's LocalServerPage delta plus the merge measured 121.3 KiB. The session-version panel adds its table and phase styles, measuring 122.0 KiB. Task 123's session-monitor board adds its own ~0.4 KiB of panel styles (measured 123.1 KiB), so keep 0.9 KiB of bounded headroom.
+  // 125.2: task 251 pre-existing-red fix — composer-guidance-head token --fg-default → --fg re-gzips +0.1 (measured 124.8).
+assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 125.2 * 1024); // fork: upstream 1.38.3 raised its own budget to 120.4 KiB; the fork's LocalServerPage delta plus the merge measured 121.3 KiB. The session-version panel adds its table and phase styles, measuring 122.0 KiB. Task 123's session-monitor board adds its own ~0.4 KiB of panel styles (measured 123.1 KiB), so keep 0.9 KiB of bounded headroom.
 if (localeChunks.length !== 2) {
   throw new Error(`expected 2 on-demand Chinese locale chunks, found ${localeChunks.length}`);
 }
@@ -356,7 +357,8 @@ for (const path of localeChunks) {
   // 75.2: ratchet step +0.5 (user 2026-09-20, one-shot rule). Batch 3 adds 8 keys ×3 locales (210/153/221/173) + terser variance; measured zh 74.8.
   // 75.9: ratchet step +0.5 same batch. zh-TW tracks zh +0.7.
   // 75.7 / 76.4: batch 4 line K adds splitView.resizeDivider ×3 locales; measured zh 75.3, so the one-shot +0.5 step lands both budgets at once.
-  const budget = name.startsWith("zh-TW-") ? 76.4 * 1024 : 75.7 * 1024;
+  // 76.2 / 76.9: task 251 ratchet +0.5 one-shot (user 2026-09-20 rule) — zh-TW hit its exact ceiling (76.4) on Node/zlib variance with no locale copy change.
+  const budget = name.startsWith("zh-TW-") ? 76.9 * 1024 : 76.2 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0

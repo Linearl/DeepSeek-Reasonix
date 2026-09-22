@@ -22057,7 +22057,7 @@ body > .mermaid-diagram--fullscreen {
   padding: 0 6px;
   border-radius: 9px;
   background: color-mix(in srgb, var(--accent) 22%, transparent);
-  color: var(--fg-default);
+  color: var(--fg);
   font-size: 11px;
   font-weight: 650;
 }
@@ -22075,7 +22075,7 @@ body > .mermaid-diagram--fullscreen {
 
 .composer-guidance-head__select-toggle[aria-pressed="true"] {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--fg-default);
+  color: var(--fg);
 }
 
 /* Task 221#6: batch action bar (only while a selection exists). */
