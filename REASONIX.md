@@ -121,7 +121,11 @@ re-run); that check decides the framing, not whether the failure gets fixed.
   `TestEventWaitAllIdleWakesOnTurnClose` there; timing-dependent which test
   trips it). Verdict: **code-wrong** — the shared session/DAG structures are
   mutated without their own guards (the audit H1-1/M5 family; Block2 m2 added
-  `sessionDAGState.mu` for the nodes map only, which is the named surface).
+  `sessionDAGState.mu`, and audit-2 major-1 extended its read side to the
+  whole rotate chain: `sessionDAGSingleWriterProof`, `sessionDAGLogOversized`,
+  and `buildRotatedSessionDAG` all run under one `st.mu.RLock`, and every
+  remaining `range st.nodes` reader goes through `snapshotNodes` — so the
+  "nodes map is protected" claim now matches the implementation).
   The remaining unguarded maps need the same treatment in a dedicated pass.
   Subset runs (SaveDag|SessionDAG|DAG|AdoptHead|Turn|DrainInbox) are green;
   the fatal only appears in the full-suite concurrency mix.

@@ -1954,7 +1954,11 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// double-consume the same batch against drain's same-lock Claim+Ack
 		// (audit M-a). Registration is boot-time: a switch flip applies on
 		// restart. Consumption rights follow the switch.
-		if collabDrainInboxEnabled(&cfg.Agent) {
+		drainInboxRegistered := collabDrainInboxEnabled(&cfg.Agent)
+		// minor-1 (audit-2): publish the same decision the desktop pump gate
+		// reads, so registration and pump-skip resolve from one boot snapshot.
+		PublishCollabDrainInboxGate(drainInboxRegistered)
+		if drainInboxRegistered {
 			reg.Add(agent.NewDrainInboxTool(collab))
 		}
 		// Task 173 ⑤: read_session_tail reads another session's transcript, so

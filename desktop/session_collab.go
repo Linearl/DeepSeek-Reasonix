@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"reasonix/internal/agent"
+	"reasonix/internal/boot"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
 	"reasonix/internal/sessioncollab"
@@ -115,14 +116,16 @@ func sessionCollabHopLimit() int {
 
 // collabBackgroundDelivery resolves the task-224 gate: when the experimental
 // background-delivery switch is on, collab delivery opens the target tab
-// inactive so the woken conversation runs without stealing focus. An
-// unreadable config keeps the safe default (off = historical auto-activate).
+// inactive so the woken conversation runs without stealing focus, and the
+// host pump skips MailStore entirely (drain_inbox becomes the sole consumer).
+// minor-1 (audit-2): this gate MUST be the same resolution the boot
+// registration used. A live config.Load() here let an ON→OFF flip without a
+// restart resume the pump under a still-registered drain_inbox, reopening the
+// M-a double-consume race on the read-only Claim cursor. It now reads the
+// boot-published snapshot; an unreadable config resolved to false at boot and
+// stays false for the process lifetime.
 func collabBackgroundDelivery() bool {
-	cfg, err := config.Load()
-	if err != nil {
-		return false
-	}
-	return collabBackgroundDeliveryFromConfig(cfg)
+	return boot.CollabDrainInboxGate()
 }
 
 // collabBackgroundDeliveryFromConfig is the pure branch extracted for M3

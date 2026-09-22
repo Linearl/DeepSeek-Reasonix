@@ -28,8 +28,12 @@ func (e *SessionRotationDeniedError) Error() string {
 
 // sessionDAGSingleWriterProof is the precondition for any rewrite of a schema-2
 // log: this runtime holds the lease, no handoff is reserved, and no other
-// writer has appended within the quiet period. The caller holds the file lock.
+// writer has appended within the quiet period. The caller holds the file lock;
+// st.mu is taken here (major-1, audit-2) because the writers map lives in the
+// shared cache and can be mutated in place by a concurrent replayFrom.
 func sessionDAGSingleWriterProof(sessionPath string, st *sessionDAGState, now time.Time) error {
+	st.mu.RLock()
+	defer st.mu.RUnlock()
 	if !SessionLeaseHeldByCurrentRuntime(sessionPath) {
 		return &SessionRotationDeniedError{Reason: "session lease is not held by this runtime"}
 	}
@@ -49,8 +53,11 @@ func sessionDAGSingleWriterProof(sessionPath string, st *sessionDAGState, now ti
 }
 
 // sessionDAGLogOversized bounds a schema-2 log at the schema-1 growth factor
-// over the encoded size of every live head's chain.
+// over the encoded size of every live head's chain. Reads the shared graph
+// (liveHeads/materialize), so it takes st.mu.RLock itself (major-1, audit-2).
 func sessionDAGLogOversized(st *sessionDAGState) bool {
+	st.mu.RLock()
+	defer st.mu.RUnlock()
 	live := int64(0)
 	for _, id := range st.liveHeads() {
 		msgs, _ := st.materialize(id)
@@ -102,7 +109,15 @@ func rotateSessionDAG(sessionPath string, st *sessionDAGState, now time.Time) er
 	return fileutil.PublishStagedWrite(staged, path)
 }
 
+// buildRotatedSessionDAG snapshots the graph into the next generation's
+// entries. major-1 (audit-2): the whole build — reachable/liveHeads/selected,
+// the nodes/redactions/writers ranges, headRecord, and materialize — runs
+// under one st.mu.RLock, because the shared cached graph can be mutated in
+// place by a concurrent replayFrom. No helper in the call tree takes st.mu
+// itself, so this single entry lock covers every read below.
 func buildRotatedSessionDAG(st *sessionDAGState, now time.Time) ([]sessionDAGEntry, error) {
+	st.mu.RLock()
+	defer st.mu.RUnlock()
 	keep := st.reachable()
 	live := st.liveHeads()
 	selected := st.selectedHead()
