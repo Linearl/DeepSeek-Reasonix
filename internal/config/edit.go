@@ -647,6 +647,25 @@ func (c *Config) SetSessionCollabGates(allowDelete, allowRequireReply, allowRead
 	return nil
 }
 
+// SetExperimentalCascadeApproval toggles task 225: a dispatched session
+// forwards its approval prompts to its autopilot parent's Ask channel. Off by
+// default; the settings-panel checkbox lands with the 173 panel.
+func (c *Config) SetExperimentalCascadeApproval(enabled bool) error {
+	c.Agent.ExperimentalCascadeApproval = enabled
+	return nil
+}
+
+// CascadeApprovalLive resolves whether task 225's cascade is currently
+// enabled. Read per call (mirroring SessionCollabHopLimitLive) so a settings
+// change applies to newly arriving prompts without a restart.
+func CascadeApprovalLive() bool {
+	cfg, err := Load()
+	if err != nil || cfg == nil {
+		return false
+	}
+	return cfg.Agent.ExperimentalCascadeApproval
+}
+
 // NormalizeCollabInboxMerge clamps a merge mode into the legal tri-state
 // (task 221). Anything unknown reads as "off", so a hand-edited config can
 // never arm a mode the dispatcher does not implement.

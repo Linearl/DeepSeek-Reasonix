@@ -524,6 +524,9 @@ func (a *App) Platform() string {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.shuttingDown.Store(false)
+	// Task 225: the cascade-approval resolver needs the live App to find the
+	// task source's controller. One desktop App per process.
+	cascadeApp = a
 	// Only the process that claimed the pre-Wails diagnostics lock consumes
 	// lifecycle evidence. This remains correct on Linux where Wails invokes
 	// OnStartup before its DBus single-instance handoff.
@@ -2357,6 +2360,7 @@ func (a *App) clearActiveSessionRuntime(tab *WorkspaceTab, oldCtrl control.Sessi
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
 		OnCreateCollabSession:    a.createCollabSession,
 		OnSessionStatus:          a.collabSessionStatus,
+		OnCascadeDelegate:        cascadeDelegateFor,
 		OnDeleteSession:          a.deleteCollabSession,
 		OnRenameSession:          a.renameCollabSession,
 		OnMoveTopicToGroup:       a.moveCollabTopicToGroup,
@@ -4368,6 +4372,7 @@ func (a *App) buildSessionRebindCandidate(
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
 		OnCreateCollabSession:    a.createCollabSession,
 		OnSessionStatus:          a.collabSessionStatus,
+		OnCascadeDelegate:        cascadeDelegateFor,
 		OnDeleteSession:          a.deleteCollabSession,
 		OnRenameSession:          a.renameCollabSession,
 		OnMoveTopicToGroup:       a.moveCollabTopicToGroup,
@@ -9997,6 +10002,7 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
 		OnCreateCollabSession:    a.createCollabSession,
 		OnSessionStatus:          a.collabSessionStatus,
+		OnCascadeDelegate:        cascadeDelegateFor,
 		OnDeleteSession:          a.deleteCollabSession,
 		OnRenameSession:          a.renameCollabSession,
 		OnMoveTopicToGroup:       a.moveCollabTopicToGroup,
@@ -10198,6 +10204,7 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
 		OnCreateCollabSession:    a.createCollabSession,
 		OnSessionStatus:          a.collabSessionStatus,
+		OnCascadeDelegate:        cascadeDelegateFor,
 		OnDeleteSession:          a.deleteCollabSession,
 		OnRenameSession:          a.renameCollabSession,
 		OnMoveTopicToGroup:       a.moveCollabTopicToGroup,

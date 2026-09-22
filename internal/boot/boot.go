@@ -208,6 +208,10 @@ type Options struct {
 	// backlog (degraded steers included). Nil leaves every reported state
 	// unknown — honest, never a guessed idle.
 	OnSessionStatus func(contactID string) (running bool, lastTurnAtMS int64, pending int, known bool)
+	// OnCascadeDelegate (task 225) resolves the task-source parent's Ask
+	// channel for THIS session's approval prompts — the host owns the
+	// contact-bound grant registry (24h). Nil keeps every prompt local.
+	OnCascadeDelegate func(selfPath string) (delegate agent.Asker, source string, ok bool)
 	// OnDeleteSession lets a host move a collaborating session to trash on the
 	// agent's behalf (task 154 sub-item A). Nil omits the delete_session tool.
 	OnDeleteSession func(contactID, sessionPath string, dryRun bool) (agent.DeleteSessionImpact, agent.DeleteSessionResult, error)
@@ -2127,6 +2131,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		OnRememberPlanModeReadOnlyCommand: func(prefix string) control.PlanModeReadOnlyCommandTrustResult {
 			return rememberPlanModeReadOnlyCommand(root, prefix)
 		},
+		// Task 225: the host resolves the task-source parent's Ask channel for
+		// a dispatched session's approval prompts (contact-bound grant, 24h).
+		OnCascadeDelegate:   opts.OnCascadeDelegate,
 		SessionRecoveryMeta: opts.SessionRecoveryMeta,
 		OnSessionRecovered:  opts.OnSessionRecovered,
 		OnSessionTransition: opts.OnSessionTransition,

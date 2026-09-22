@@ -741,6 +741,9 @@ type collabDelivery struct {
 	// deriveHop returns the chain depth derived from the thread, or an error
 	// when provenance cannot be verified.
 	deriveHop func(msg sessioncollab.MailMessage) (int, error)
+	// onDelivered (task 225) registers the task-source grant for a settled
+	// delivery: target ← sender, so the target's approvals can cascade back.
+	onDelivered func(msg sessioncollab.MailMessage)
 	// render builds the text the target reads.
 	render func(msg sessioncollab.MailMessage, effectiveHop int) string
 }
@@ -763,6 +766,10 @@ func (p *sessionCollabPump) deliverToTarget(target sessionCollabTarget) (deliver
 		notify:    p.notifySenderOnce,
 		deriveHop: p.verifyHop,
 		render:    sessionCollabDeliveryText,
+		// Task 225: a settled delivery binds the target's approval prompts to
+		// this sender for the grant window — the task-source registration the
+		// cascade delegate resolves later.
+		onDelivered: func(msg sessioncollab.MailMessage) { registerCascadeGrant(msg.To, msg.From) },
 	})
 }
 
@@ -816,6 +823,11 @@ func runCollabDelivery(mail *sessioncollab.MailStore, contactID string, d collab
 		}
 		acked = append(acked, msg.ID)
 		delivered++
+		// Task 225: a settled delivery binds the target's approvals to this
+		// sender for the grant window.
+		if d.onDelivered != nil {
+			d.onDelivered(msg)
+		}
 	}
 
 	if aerr := mail.Ack(contactID, acked...); aerr != nil {
