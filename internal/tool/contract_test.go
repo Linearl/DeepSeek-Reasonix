@@ -57,6 +57,7 @@ func boolString(v bool) string {
 // which is the guard against a context-maintenance strategy silently desyncing
 // from the tool surface.
 var acceptsDefaultSnip = map[string]bool{
+	"claim_check":             true, // short structured verdict JSON; generic head/tail split is fine
 	"create_worktree":                true, // short structured JSON; generic head/tail split is fine
 	"heartbeat_task_enable":          true, // short structured JSON; generic head/tail split is fine
 	"heartbeat_task_list":            true, // short structured JSON; generic head/tail split is fine
