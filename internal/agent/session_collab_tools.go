@@ -629,7 +629,7 @@ func (talkToSessionTool) Description() string {
 }
 
 func (talkToSessionTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target: contact_id, topic_id, or the exact title from list_addressable_sessions."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain. The system derives the real depth from the thread."},"delivery":{"type":"string","enum":["followup","steer"],"description":"followup (default) queues; steer injects mid-turn, degrading to followup when it cannot."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."},"thread_id":{"type":"string","description":"When answering a message, pass the threadId it carried so the requester can match your reply."},"require_reply":{"type":"boolean","description":"Set true when the sender needs an answer on this thread (task 173). Requires the panel switch session_collab_allow_require_reply."},"wait":{"type":"boolean","description":"Set true to wait — bounded — for a reply on this thread instead of returning queued at once (the old talk_to_session_sync behavior)."},"timeout_ms":{"type":"integer","description":"wait: how long to wait for the reply (default 30000, max 120000)."}},"required":["to","message"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target: contact_id, topic_id, or the exact title from list_addressable_sessions."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain. The system derives the real depth from the thread."},"delivery":{"type":"string","enum":["followup","steer"],"description":"followup (default) queues; steer injects mid-turn, degrading to followup when it cannot."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."},"thread_id":{"type":"string","description":"When answering a message, pass the threadId it carried so the requester can match your reply."},"require_reply":{"type":"boolean","description":"Set true when the sender needs an answer on this thread (task 173). Requires the panel switch session_collab_allow_require_reply."},"approver":{"type":"string","description":"contact_id (or resolvable title) of the session that answers THIS task's approval prompts (task 225). Default: the sender. Must be a registered session."},"wait":{"type":"boolean","description":"Set true to wait — bounded — for a reply on this thread instead of returning queued at once (the old talk_to_session_sync behavior)."},"timeout_ms":{"type":"integer","description":"wait: how long to wait for the reply (default 30000, max 120000)."}},"required":["to","message"]}`)
 }
 
 func (talkToSessionTool) ReadOnly() bool { return false }
@@ -650,6 +650,7 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 		CardID       string `json:"card_id"`
 		ThreadID     string `json:"thread_id"`
 		RequireReply bool   `json:"require_reply"`
+		Approver     string `json:"approver"`
 		Wait         bool   `json:"wait"`
 		TimeoutMS    int    `json:"timeout_ms"`
 	}
@@ -720,6 +721,26 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 		ReplyTo:     fromContact,
 		ThreadID:    strings.TrimSpace(p.ThreadID),
 		RequireReply: p.RequireReply,
+	}
+	// Task 225 (user ruling): an explicit approver overrides the task-source
+	// default for this task's approval prompts. It must resolve to a real
+	// directory entry — a typo'd approver would silently strand every
+	// approval the target raises.
+	var approver string
+	if strings.TrimSpace(p.Approver) != "" {
+		ids := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
+		resolved, aerr := ResolveTarget(ids, p.Approver)
+		if aerr != nil {
+			return "", fmt.Errorf("approver %q 无法解析为可寻址会话（task 225）：%w", p.Approver, aerr)
+		}
+		if resolved.Archived {
+			return "", fmt.Errorf("approver %q 已归档，不能作为审批者（task 225）", p.Approver)
+		}
+		approver = resolved.ContactID
+		if approver == "" {
+			approver = resolved.SessionPath
+		}
+		msg.Approver = approver
 	}
 	// Task 173 ⑥: the daily cap counts only what actually left this session,
 	// so the check sits right before Deliver — a refused call writes nothing.

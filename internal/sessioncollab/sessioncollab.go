@@ -131,9 +131,11 @@ type MailMessage struct {
 	// thread (task 173). It rides the record so the recipient — and any
 	// reminder pass — can tell a demanded reply from an optional one.
 	RequireReply bool `json:"requireReply,omitempty"`
-	// ToTitle is only set on sent-log entries (task 175): the human-readable
-	// name of the recipient at send time, so the sender can spot a misdirected
-	// message without reopening the directory.
+	// Approver overrides the task-source parent as the contact whose Ask
+	// channel answers this task's approval prompts (task 225, user ruling).
+	// Empty means the sender is the approver. The dispatcher sets it, so the
+	// approval route travels WITH the task instead of being guessed later.
+	Approver    string `json:"approver,omitempty"`
 	ToTitle     string `json:"toTitle,omitempty"`
 	At          int64  `json:"at"`
 	Idempotency string `json:"idempotency,omitempty"`
