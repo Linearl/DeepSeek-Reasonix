@@ -112,6 +112,9 @@ const CHECKS = [
   // useController 侧保留 hasLocalItems/targetResidentInStore（LRU 驻留也可）。两条锚点都要在。
   { feature: "任务93 本地快照切 tab（33b6c32ec 重实施；232 重构后双锚点）", file: "desktop/frontend/src/lib/useController.ts", patterns: ["hasLocalItems", "targetResidentInStore"] },
   { feature: "任务93/232 hydrate skip-replace 分支", file: "desktop/frontend/src/lib/hydrateHistoryApply.ts", patterns: ["skipHistory"] },
+  // 审计 m3（批四 B1）：232 新核心路径锚点——hasResidentSnapshotForEmptySurface 及调用点
+  { feature: "任务232 空surface LRU快照复用（审计m3补锚）", file: "desktop/frontend/src/lib/useController.ts", patterns: ["hasResidentSnapshotForEmptySurface"] },
+  { feature: "任务232 hasResidentSnapshotForEmptySurface 定义", file: "desktop/frontend/src/lib/hydrateHistoryApply.ts", patterns: ["hasResidentSnapshotForEmptySurface"] },
   { feature: "任务95 promote sidecar 迁移（damaged 清理 + pinned 身份重写）", file: "internal/agent/recovery_consolidate.go", patterns: ["rewritePinnedContextSessionID", "SessionEventLogDamaged(winnerPath)"] },
 
   // ── 任务 155：会话存储四档 + bridge 健康债（2026-09-17）──────────
