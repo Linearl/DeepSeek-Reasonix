@@ -2302,6 +2302,75 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   })}
                 />
               </SettingsField>
+              {/* Task 173: the collaboration panel gates (one apply, cannot half-apply). */}
+              <SettingsField label={t("settings.sessionCollabGates")} hint={t("settings.sessionCollabGatesHint")} icon={<Sparkles size={18} />}>
+                <div className="set-gates">
+                  {([
+                    ["allowDelete", "sessionCollabAllowDelete", "settings.sessionCollabGates.allowDelete"],
+                    ["allowRequireReply", "sessionCollabAllowRequireReply", "settings.sessionCollabGates.allowRequireReply"],
+                    ["allowReadTail", "sessionCollabAllowReadTail", "settings.sessionCollabGates.allowReadTail"],
+                    ["allowCreate", "sessionCollabAllowCreate", "settings.sessionCollabGates.allowCreate"],
+                    ["allowSteer", "sessionCollabAllowSteer", "settings.sessionCollabGates.allowSteer"],
+                  ] as const).map(([key, field, labelKey]) => {
+                    const on = Boolean(s[field as keyof SettingsView] ?? false);
+                    return (
+                      <button
+                        key={key}
+                        className={`set-seg__btn${on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy || !Boolean(s.experimentalSessionCollab)}
+                        onClick={() => void apply(async () => {
+                          await app.SetSessionCollabGates(
+                            key === "allowDelete" ? !on : Boolean(s.sessionCollabAllowDelete),
+                            key === "allowRequireReply" ? !on : Boolean(s.sessionCollabAllowRequireReply),
+                            key === "allowReadTail" ? !on : Boolean(s.sessionCollabAllowReadTail),
+                            key === "allowCreate" ? !on : Boolean(s.sessionCollabAllowCreate),
+                            key === "allowSteer" ? !on : Boolean(s.sessionCollabAllowSteer),
+                            s.sessionCollabDailySendLimit ?? 0,
+                          );
+                        })}
+                      >
+                        {t(labelKey)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </SettingsField>
+              <SettingsField label={t("settings.sessionCollabDailySendLimit")} hint={t("settings.sessionCollabDailySendLimitHint")} icon={<Sparkles size={18} />}>
+                <input
+                  type="number"
+                  min={0}
+                  value={s.sessionCollabDailySendLimit ?? 0}
+                  disabled={busy}
+                  onChange={() => { /* edited via SetSessionCollabGates apply below */ }}
+                  onBlur={(event) => void apply(async () => {
+                    await app.SetSessionCollabGates(
+                      Boolean(s.sessionCollabAllowDelete),
+                      Boolean(s.sessionCollabAllowRequireReply),
+                      Boolean(s.sessionCollabAllowReadTail),
+                      Boolean(s.sessionCollabAllowCreate),
+                      Boolean(s.sessionCollabAllowSteer),
+                      Math.max(0, Number(event.target.value) || 0),
+                    );
+                  })}
+                />
+              </SettingsField>
+              {/* Task 225: cascade approval to the autopilot parent. */}
+              <SettingsField label={t("settings.cascadeApproval")} hint={t("settings.cascadeApprovalHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalCascadeApproval) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalCascadeApproval(on);
+                      })}
+                    >
+                      {t(on ? "settings.cascadeApproval.on" : "settings.cascadeApproval.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
               <SettingsField label={t("settings.collabInboxMerge")} hint={t("settings.collabInboxMergeHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {(["off", "same_sender", "all"] as const).map((mode) => (

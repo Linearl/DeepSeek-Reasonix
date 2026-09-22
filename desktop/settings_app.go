@@ -362,6 +362,16 @@ type SettingsView struct {
 	ExperimentalAutoLoadOlder  bool `json:"experimentalAutoLoadOlder"`
 	CollabInboxMerge           string `json:"collabInboxMerge"`
 	CollabGuidanceMerge        bool `json:"collabGuidanceMerge"`
+	// Task 173: the collaboration panel gates (settings → 实验特性 → 跨会话通信).
+	SessionCollabAllowDelete       bool `json:"sessionCollabAllowDelete"`
+	SessionCollabAllowRequireReply bool `json:"sessionCollabAllowRequireReply"`
+	SessionCollabAllowReadTail     bool `json:"sessionCollabAllowReadTail"`
+	SessionCollabAllowCreate       bool `json:"sessionCollabAllowCreate"`
+	SessionCollabAllowSteer        bool `json:"sessionCollabAllowSteer"`
+	SessionCollabDailySendLimit    int  `json:"sessionCollabDailySendLimit"`
+	// Task 225: cascade approval to the autopilot parent (config lands in the
+	// same panel; the checkbox ships with it).
+	ExperimentalCascadeApproval bool `json:"experimentalCascadeApproval"`
 
 	VisionModel                  string                     `json:"visionModel"`
 	WebSearchModel               string                     `json:"webSearchModel"`
@@ -470,6 +480,16 @@ type DesktopStartupSettingsView struct {
 	// CollabGuidanceMerge exposes the guidance shelf's manual merge-next
 	// button (task 153). The runtime flag lives on [agent].
 	CollabGuidanceMerge bool `json:"collabGuidanceMerge"`
+	// Task 173: the collaboration panel gates (settings → 实验特性 → 跨会话通信).
+	SessionCollabAllowDelete       bool `json:"sessionCollabAllowDelete"`
+	SessionCollabAllowRequireReply bool `json:"sessionCollabAllowRequireReply"`
+	SessionCollabAllowReadTail     bool `json:"sessionCollabAllowReadTail"`
+	SessionCollabAllowCreate       bool `json:"sessionCollabAllowCreate"`
+	SessionCollabAllowSteer        bool `json:"sessionCollabAllowSteer"`
+	SessionCollabDailySendLimit    int  `json:"sessionCollabDailySendLimit"`
+	// Task 225: cascade approval to the autopilot parent (config lands in the
+	// same panel; the checkbox ships with it).
+	ExperimentalCascadeApproval bool `json:"experimentalCascadeApproval"`
 	// ExperimentalLocalServer exposes the Settings → 本地服务 page (task 130).
 	ExperimentalLocalServer bool `json:"experimentalLocalServer"`
 	// ExperimentalPathRules enables structured path-scope evaluation (task 134).
@@ -1228,7 +1248,16 @@ func (a *App) Settings() SettingsView {
 		ExperimentalAutoLoadOlder:    cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
 		CollabInboxMerge:             config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge),
 		CollabGuidanceMerge:          cfg.Desktop.CollabGuidanceMerge || cfg.Agent.CollabGuidanceMerge,
-		ExperimentalLocalServer:      cfg.Desktop.ExperimentalLocalServer,
+		// Task 173: the collaboration panel gates (single source = [agent]).
+		SessionCollabAllowDelete:       cfg.Agent.SessionCollabAllowDelete,
+		SessionCollabAllowRequireReply: cfg.Agent.SessionCollabAllowRequireReply,
+		SessionCollabAllowReadTail:     cfg.Agent.SessionCollabAllowReadTail,
+		SessionCollabAllowCreate:       cfg.Agent.SessionCollabAllowCreate,
+		SessionCollabAllowSteer:        cfg.Agent.SessionCollabAllowSteer,
+		SessionCollabDailySendLimit:    cfg.Agent.SessionCollabDailySendLimit,
+		// Task 225: cascade approval to the autopilot parent.
+		ExperimentalCascadeApproval: cfg.Agent.ExperimentalCascadeApproval,
+		ExperimentalLocalServer:     cfg.Desktop.ExperimentalLocalServer,
 		ExperimentalPathRules:        cfg.Desktop.ExperimentalPathRules,
 		MaxCachedTabs:                cfg.Desktop.MaxCachedTabs,
 		HistoryBodyBudgetMb:          cfg.Desktop.HistoryBodyBudgetMb,
