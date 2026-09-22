@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
+	"reasonix/internal/eventtrigger"
 	"reasonix/internal/tool"
 )
 
@@ -153,20 +155,49 @@ func (t eventWaitTool) Execute(ctx context.Context, args json.RawMessage) (strin
 	}
 	interval := clampDuration(time.Duration(p.IntervalS)*time.Second, eventWaitMinInterval, eventWaitMaxInterval, eventWaitDefaultInterval)
 	timeout := clampDuration(time.Duration(p.TimeoutS)*time.Second, eventWaitMinTimeout, eventWaitMaxTimeout, eventWaitDefaultTimeout)
-	deadline := time.Now().Add(timeout)
 
-	poll := func() (satisfied bool, firedBy []string, records []map[string]any, unmatched []string) {
+	// Task 230: the verdict and the loop now come from the eventtrigger
+	// engine — event_wait is the first consumer of the generic trigger
+	// mechanism (228/230 boundary: event_wait WAITS by occupying this turn;
+	// the engine TRIGGERS independently). The builtin below routes the very
+	// same eventWaitVerdict + unmatched rule through engine.Evaluate, so the
+	// two call sites cannot disagree (acceptance: one judgement, two
+	// conclusions).
+	records, unmatched := []map[string]any{}, []string{}
+	firedBy := []string{}
+	var modeJSON json.RawMessage = json.RawMessage(strconv.Quote(mode))
+	eng := eventtrigger.NewEngine(nil) // tools unused: this wait has no tool checker
+	if err := eng.RegisterBuiltin("session_status", func(_ context.Context, args json.RawMessage) (string, error) {
 		records, unmatched, _ = collabStatusRecords(t.cfg, p.Targets)
-		satisfied, firedBy = eventWaitVerdict(mode, records)
+		sat, fb := eventWaitVerdict(mode, records)
 		// Task 228 audit m2: under all_idle an unmatched target was never
 		// observed, so "every target is idle" cannot honestly hold while one
-		// is missing from the records. Stay unsatisfied (the any_* modes are
-		// different: one observed hit genuinely satisfies "any") and keep the
-		// gap visible in the snapshot so the caller can fix the target name.
+		// is missing from the records (the any_* modes are different).
 		if mode == "all_idle" && len(unmatched) > 0 {
-			satisfied = false
+			sat = false
 		}
-		return satisfied, firedBy, records, unmatched
+		firedBy = fb
+		out, _ := json.Marshal(map[string]any{"satisfied": sat})
+		return string(out), nil
+	}); err != nil {
+		return "", err
+	}
+	trigger := eventtrigger.Trigger{
+		ID:        "event_wait",
+		IntervalS: int(interval / time.Second),
+		TimeoutS:  int(timeout / time.Second),
+		Checker:   eventtrigger.Checker{Kind: eventtrigger.CheckerBuiltin, Name: "session_status", Args: modeJSON},
+		Match:     eventtrigger.Match{Kind: eventtrigger.MatchJSONPath, Expr: "satisfied==true"},
+	}
+	if err := eng.Validate(trigger); err != nil {
+		return "", err
+	}
+	poll := func() (satisfied bool, fb []string, recs []map[string]any, um []string) {
+		hit, _, err := eng.Evaluate(context.Background(), trigger)
+		if err != nil {
+			return false, firedBy, records, unmatched
+		}
+		return hit, firedBy, records, unmatched
 	}
 	snapshot := func(satisfied bool, firedBy []string, records []map[string]any, unmatched []string, elapsed time.Duration, interrupted bool) string {
 		out, _ := json.Marshal(map[string]any{
@@ -187,29 +218,20 @@ func (t eventWaitTool) Execute(ctx context.Context, args json.RawMessage) (strin
 		return string(out)
 	}
 
-	started := time.Now()
-	// First poll runs immediately: an already-satisfied condition (the common
-	// "they finished while I was composing the call" case) returns without
-	// sleeping at all.
-	satisfied, firedBy, records, unmatched := poll()
-	for !satisfied {
-		remaining := time.Until(deadline)
-		if remaining <= 0 {
-			return snapshot(false, nil, records, unmatched, time.Since(started), false), nil
-		}
-		sleep := interval
-		if remaining < sleep {
-			sleep = remaining
-		}
-		select {
-		case <-ctx.Done():
-			// Turn stop / interrupt: settle with what the last poll saw. No
-			// error — the wait did its job by ending cleanly, and the turn's
-			// recovery contract takes over from here.
-			return snapshot(false, nil, records, unmatched, time.Since(started), true), nil
-		case <-time.After(sleep):
-		}
-		satisfied, firedBy, records, unmatched = poll()
+	// First tick + schedule + cancellation come from the shared loop
+	// (eventtrigger.PollLoop) — the same semantics the trigger engine polls
+	// with. poll data (records/unmatched/firedBy) is refreshed by the builtin
+	// closure on every tick.
+	outcome := eventtrigger.PollLoop(ctx, eventtrigger.PollSpec{Interval: interval, Timeout: timeout}, func() bool {
+		ok, _, _, _ := poll()
+		return ok
+	})
+	switch {
+	case outcome.Satisfied:
+		return snapshot(true, firedBy, records, unmatched, outcome.Elapsed, false), nil
+	case outcome.Interrupted:
+		return snapshot(false, nil, records, unmatched, outcome.Elapsed, true), nil
+	default:
+		return snapshot(false, nil, records, unmatched, outcome.Elapsed, false), nil
 	}
-	return snapshot(true, firedBy, records, unmatched, time.Since(started), false), nil
 }

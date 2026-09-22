@@ -11,6 +11,7 @@ import { useT } from "../lib/i18n";
 import { Tooltip } from "./Tooltip";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
 import { WorktreeBadge } from "./WorktreeBadge";
+import { selectCloseOtherIds, selectCloseRightIds } from "../lib/tabClosePolicy";
 
 interface TabBarProps {
   tabs: TabMeta[];
@@ -237,16 +238,18 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
           key: "close-other",
           label: t("tabBar.closeOtherTabs"),
           disabled: tabs.length <= 1,
-          onSelect: () => closeTabsFromMenu(tabs.filter((tab) => tab.id !== menuTabId).map((tab) => tab.id), menuTabId),
+          onSelect: () => {
+            const target = selectCloseOtherIds(tabs, menuTabId);
+            closeTabsFromMenu(target.ids, target.nextActiveTabId);
+          },
         },
         {
           key: "close-right",
           label: t("tabBar.closeTabsToRight"),
           disabled: menuTabIndex >= tabs.length - 1,
           onSelect: () => {
-            const rightTabIds = tabs.slice(menuTabIndex + 1).map((tab) => tab.id);
-            const nextActiveTabId = resolvedActiveTabId && rightTabIds.includes(resolvedActiveTabId) ? menuTabId : undefined;
-            closeTabsFromMenu(rightTabIds, nextActiveTabId);
+            const target = selectCloseRightIds(tabs, menuTabIndex, menuTabId, resolvedActiveTabId);
+            closeTabsFromMenu(target.ids, target.nextActiveTabId);
           },
         },
       ]
