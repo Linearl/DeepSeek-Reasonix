@@ -1422,6 +1422,14 @@ type AgentConfig struct {
 	// be read off a time series instead of a single snapshot. Off by default: it
 	// is pure observation, but it does write a file while it runs.
 	ExperimentalPerfMonitor bool `toml:"experimental_perf_monitor"`
+	// ExperimentalEventTrigger enables the generic event-trigger engine's
+	// live consumers (task 230): registered triggers poll whitelisted
+	// read-only checkers on an interval and fire events when a match hits
+	// (exit0 / jsonpath / regex). Off by default (fork rule 2): phase 1 ships
+	// the engine as a library with no default consumer, so nothing polls until
+	// this switch is on and a trigger is registered; event_wait's wait path
+	// does not depend on it.
+	ExperimentalEventTrigger bool `toml:"experimental_event_trigger"`
 	// CollabInboxMerge controls how the durable inbox drains multiple queued
 	// items (task 221). "off" (default) keeps the current one-item-per-dispatch
 	// FIFO; "same_sender" merges queued items that share an envelope Source

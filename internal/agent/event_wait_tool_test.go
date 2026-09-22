@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"reasonix/internal/eventtrigger"
 	"reasonix/internal/sessioncollab"
 )
 
@@ -286,5 +287,50 @@ func TestEventWaitAllIdleStaysUnsatisfiedWithUnmatchedTarget(t *testing.T) {
 	payload = execEventWait(t, cfg, `{"targets":["sc_a","sc_typo"],"mode":"any_idle","interval_s":5,"timeout_s":10}`)
 	if payload["satisfied"] != true {
 		t.Fatalf("any_idle is satisfied by the one observed idle target: %v", payload)
+	}
+}
+
+// TestEventWaitVerdictRoutesThroughEngine pins task 230's acceptance "228
+// event_wait 基于本引擎实现（同一判定逻辑，两处结论一致）": the session_status
+// builtin the wait registers must reproduce eventWaitVerdict exactly,
+// including the audit-m2 rule that an unmatched target keeps all_idle
+// unsatisfied.
+func TestEventWaitVerdictRoutesThroughEngine(t *testing.T) {
+	records := []map[string]any{
+		{"contactId": "sc_a", "state": "idle", "unreadInbox": 0},
+		{"contactId": "sc_b", "state": "running", "unreadInbox": 2},
+	}
+	// Direct call (the historic single source).
+	direct, firedDirect := eventWaitVerdict("any_idle", records)
+	// Engine-routed call, same shape Execute builds.
+	eng := eventtrigger.NewEngine(nil)
+	var got []map[string]any
+	var unmatched []string
+	if err := eng.RegisterBuiltin("session_status", func(_ context.Context, args json.RawMessage) (string, error) {
+		got = records
+		sat, fb := eventWaitVerdict("any_idle", got)
+		firedDirect = fb
+		out, _ := json.Marshal(map[string]any{"satisfied": sat})
+		return string(out), nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	trigger := eventtrigger.Trigger{
+		ID: "pin", IntervalS: 60, TimeoutS: 60,
+		Checker: eventtrigger.Checker{Kind: eventtrigger.CheckerBuiltin, Name: "session_status"},
+		Match:   eventtrigger.Match{Kind: eventtrigger.MatchJSONPath, Expr: "satisfied==true"},
+	}
+	hit, _, err := eng.Evaluate(context.Background(), trigger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hit != direct {
+		t.Fatalf("engine verdict diverged from eventWaitVerdict: engine=%v direct=%v", hit, direct)
+	}
+	if len(unmatched) != 0 {
+		t.Fatalf("unmatched leak: %v", unmatched)
+	}
+	if len(firedDirect) != 1 {
+		t.Fatalf("firedBy lost: %v", firedDirect)
 	}
 }

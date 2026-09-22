@@ -1,6 +1,7 @@
 import { ManagementSurface } from "./components/ManagementSurface";
 import { useConfirmDialog } from "./components/ConfirmDialog";
 import { VersionSwitchDialog, type VersionEntry } from "./components/VersionSwitchDialog";
+import { batchClosePolicy } from "./lib/tabClosePolicy";
 import { useManagementWorkspace } from "./lib/useManagementWorkspace";
 import { loadSplitState, persistSplitState, type SplitState } from "./lib/splitView";
 import { useAppNavigationStore } from "./store/appNavigation";
@@ -3032,16 +3033,31 @@ export default function App() {
     const currentIds = tabMetas.map((tab) => tab.id);
     const targets = ids.filter((id, index) => currentIds.includes(id) && ids.indexOf(id) === index);
     if (targets.length === 0) return;
+    // Task 223: batch close (关闭右侧 / 关闭其他) inherits the fork's single-close
+    // semantics (task 162): closing never blocks, active work detaches to the
+    // background runtime. The old per-tab ActiveWorkForTab + pendingClose
+    // prompt ("stop the task first") was residual upstream behavior that only
+    // survived on these two entries; "停止任务并关闭" remains the explicit stop
+    // entry in the context menu. Several active tasks all detach — the
+    // background chip keeps every one visible and re-openable after completion.
+    let detached = 0;
     for (const id of targets) {
       let work: ActiveWorkView | null = null;
       try {
         work = await app.ActiveWorkForTab(id);
-      } catch { /* the close path remains authoritative */ }
+      } catch { /* CloseTabWithPolicy re-checks controller state atomically */ }
       if (work && (work.running || work.pendingPrompt || work.jobs.length > 0)) {
-        setPendingClose({ tabId: id, work, stopping: false });
-        return;
+        detached += 1;
       }
-      await finishTabClose(id, "stop_and_close");
+      const closed = await finishTabClose(id, batchClosePolicy());
+      if (!closed) {
+        // finishTabClose already surfaced the failure toast; stop the batch so
+        // a broken close path cannot cascade through the rest of the list.
+        break;
+      }
+    }
+    if (detached > 0) {
+      showToast(t("runtime.closedIntoBackground"), "info");
     }
     if (nextActiveTabId && currentIds.includes(nextActiveTabId)) {
       const selected = tabMetas.find((tab) => tab.id === nextActiveTabId);
@@ -3050,7 +3066,7 @@ export default function App() {
     }
     await refreshTabMetas(undefined, { afterMutation: true });
     setTabRevealSignal((signal) => signal + 1);
-  }, [closeTransientOverlays, enqueueTabSwitch, finishTabClose, refreshTabMetas, tabMetas]);
+  }, [closeTransientOverlays, enqueueTabSwitch, finishTabClose, refreshTabMetas, showToast, t, tabMetas]);
 
   const handleTabsReorder = useCallback(async (ids: string[]) => {
     setTabOrderIds(ids);
