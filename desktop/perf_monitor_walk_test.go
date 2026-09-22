@@ -50,3 +50,32 @@ func TestWalkProjectsBytesEmptyRoot(t *testing.T) {
 		t.Fatalf("empty root = (%v, %v), want (0, 0)", totalMB, eventsMB)
 	}
 }
+
+// Recovery copies are sibling files named *-recovery-*.events.jsonl in the
+// same directory as their originals — not a "recovery" directory. Task 239 B1-1.
+func TestWalkProjectsBytesSkipsRecoveryFiles(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel string, size int) {
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, make([]byte, size), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("projects/sessions/live.events.jsonl", 100)
+	write("projects/sessions/live-recovery-abcdef12.events.jsonl", 300)
+	write("projects/sessions/other-recovery-ff00aa11.events.jsonl", 500)
+	write("projects/sessions/live.jsonl", 50) // not .events.jsonl, counts in total only
+
+	totalMB, eventsMB := walkProjectsBytesMB(root)
+	gotEvents := int64(math.Round(eventsMB * (1 << 20)))
+	if gotEvents != 100 {
+		t.Fatalf("eventsMB = %.10f (%d bytes), want exactly the 100 live bytes - recovery leaked in", eventsMB, gotEvents)
+	}
+	gotTotal := int64(math.Round(totalMB * (1 << 20)))
+	if gotTotal != 150 {
+		t.Fatalf("totalMB = %.10f (%d bytes), want exactly the 150 live bytes - recovery leaked in", totalMB, gotTotal)
+	}
+}
