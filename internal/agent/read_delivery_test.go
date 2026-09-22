@@ -9,6 +9,8 @@ import (
 
 	"reasonix/internal/event"
 
+	"reasonix/internal/evidence"
+
 	"reasonix/internal/provider"
 	"reasonix/internal/readcoord"
 	"reasonix/internal/tool"
@@ -154,5 +156,62 @@ func TestReadDeliveryAfterRealContextProjection(t *testing.T) {
 	obs := a.turn.readShadow.coord.Snapshot()
 	if len(obs) != 1 || obs[0].State != readcoord.StateSatisfied {
 		t.Fatal("projection revoked historical completion")
+	}
+}
+
+// finalizeDeliveryInBatch is finalizeDelivery with an explicit batch context:
+// the real runner freezes an observation boundary into the batch context
+// (execute_batch) and both the write gate and the read deduper must reason
+// about the same value.
+func finalizeDeliveryInBatch(t *testing.T, a *Agent, ctx context.Context, id, body string, env tool.ReadResultEnvelope) toolOutcome {
+	t.Helper()
+	call := provider.ToolCall{ID: id, Name: "read_file", Arguments: `{"path":"/w/a","intent":"full"}`}
+	o := toolOutcome{output: body, readEnvelope: &env, readActiveMillis: 3}
+	a.finalizeReadDelivery(ctx, call, &o)
+	a.storeBatchToolResult(ctx, call, o)
+	return o
+}
+
+// TestRepeatedReadAfterWriteCrossesBatchBoundary is the task-214 deadlock pin.
+// The batch-two failure was: read → successful edit → gate demands a fresh
+// read → the model retries [re-read, edit] in ONE batch → the deduper treated
+// the re-read as current evidence the gate cannot see (its observation is
+// sequenced after the frozen batch boundary) and suppressed it, so the edit
+// stayed blocked forever. The deduper must reason about the same frozen
+// boundary as the gate: inside the batch it re-delivers; across a boundary an
+// identical window is a true repeat and still deduplicates.
+func TestRepeatedReadAfterWriteCrossesBatchBoundary(t *testing.T) {
+	a, env, body := deliveryFixture(t)
+	if a.task.ledger == nil {
+		a.task.ledger = evidence.NewLedger()
+	}
+	finalizeDelivery(t, a, "first", body, env)
+	a.freezeVisibleReads(provider.ModelMessages(a.Session().Snapshot()))
+	// A successful edit lands after the first read.
+	a.task.ledger.Record(evidence.Receipt{ToolName: "edit_file", Success: true, Mutation: true, Write: true, Paths: []string{"/w/a"}})
+
+	// Same-batch retry: the read pipeline records the re-read's observation
+	// during execution, BEFORE finalize decides dedup (the same order the
+	// real runner uses). The gate freezes the boundary at batch start, so that
+	// fresh observation is invisible to the gate; deduplicating against it
+	// would deadlock the retry edit.
+	frozen := a.task.ledger.ObservationBoundary()
+	window, _ := tool.ParseReadWindow(body)
+	hashes := make([]string, 0, len(window.Lines))
+	for _, line := range window.Lines {
+		hashes = append(hashes, hashLine(line))
+	}
+	a.task.ledger.RecordTextObservation(evidence.TextObservation{Path: "/w/a", Snapshot: env.Source.Snapshot, StartLine: 1, LineHashes: hashes})
+	ctx := withObservationBoundary(context.Background(), frozen)
+	retry := finalizeDeliveryInBatch(t, a, ctx, "same-batch-retry", body, env)
+	if retry.readReference != nil {
+		t.Fatal("same-batch re-read after a write was deduplicated; the write gate would deadlock (task 214)")
+	}
+
+	// Cross-boundary repeat: the retry's observation has now reached a
+	// provider boundary, so an identical window is a true repeat again.
+	repeat := finalizeDelivery(t, a, "cross-boundary-repeat", body, env)
+	if repeat.readReference == nil {
+		t.Fatal("cross-boundary identical re-read stopped being deduplicated")
 	}
 }

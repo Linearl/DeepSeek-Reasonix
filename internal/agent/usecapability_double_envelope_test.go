@@ -219,18 +219,18 @@ func TestArgumentValidationMessageShowsActualVersusExpected(t *testing.T) {
 func TestDedupeProviderVisibleResultKeepsRepeatedErrors(t *testing.T) {
 	a := &Agent{}
 	raw := "error: capability unavailable: server not connected\nretry with action=list"
-	first := a.dedupeProviderVisibleResult("c1", raw, raw)
-	second := a.dedupeProviderVisibleResult("c2", raw, raw)
+	first := a.dedupeProviderVisibleResult("use_capability", "c1", raw, raw)
+	second := a.dedupeProviderVisibleResult("use_capability", "c2", raw, raw)
 	if first != raw || second != raw {
 		t.Fatalf("repeated error was deduped: first=%q second=%q", first, second)
 	}
 
 	// Non-error results keep the existing dedup behavior.
 	plain := "plain result"
-	if got := a.dedupeProviderVisibleResult("c3", plain, plain); got != plain {
+	if got := a.dedupeProviderVisibleResult("use_capability", "c3", plain, plain); got != plain {
 		t.Fatalf("plain first = %q", got)
 	}
-	if got := a.dedupeProviderVisibleResult("c4", plain, plain); !strings.Contains(got, "duplicate tool result") {
+	if got := a.dedupeProviderVisibleResult("use_capability", "c4", plain, plain); !strings.Contains(got, "duplicate tool result") {
 		t.Fatalf("plain second = %q, want dedup notice", got)
 	}
 }
