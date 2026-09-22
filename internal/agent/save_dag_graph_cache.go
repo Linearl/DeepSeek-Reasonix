@@ -32,10 +32,25 @@ var (
 	sessionGraphCacheEvictions atomic.Uint64
 )
 
+// sessionGraphCacheKey normalizes the cache key at the boundary: callers pass
+// either a raw or a canonical session path, and on Windows those diverge by
+// case (C:\Users\... vs c:\users\...). Normalizing here keeps all five call
+// sites consistent without touching each one. Task 239 audit fix.
+func sessionGraphCacheKey(logPath string) string {
+	if logPath == "" {
+		return ""
+	}
+	return canonicalSessionSavePath(logPath)
+}
+
 func sessionGraphCacheGet(logPath string) *sessionDAGState {
+	key := sessionGraphCacheKey(logPath)
+	if key == "" {
+		return nil
+	}
 	sessionGraphCacheMu.Lock()
 	defer sessionGraphCacheMu.Unlock()
-	entry, ok := sessionGraphCache[logPath]
+	entry, ok := sessionGraphCache[key]
 	if !ok || entry == nil {
 		sessionGraphCacheMisses.Add(1)
 		return nil
@@ -49,14 +64,21 @@ func sessionGraphCachePut(logPath string, st *sessionDAGState) {
 	if st == nil || st.tailTruncated {
 		return
 	}
+	key := sessionGraphCacheKey(logPath)
+	if key == "" {
+		return
+	}
 	sessionGraphCacheMu.Lock()
 	defer sessionGraphCacheMu.Unlock()
-	sessionGraphCache[logPath] = &sessionGraphCacheEntry{state: st, lastUsed: time.Now()}
+	sessionGraphCache[key] = &sessionGraphCacheEntry{state: st, lastUsed: time.Now()}
 	for len(sessionGraphCache) > sessionGraphCacheCapacity {
+	// Task 239 M1-1: deterministic tie-break — when timestamps are equal,
+	// compare keys so map iteration order cannot change the eviction victim.
 		oldestKey := ""
 		var oldestUsed time.Time
 		for key, entry := range sessionGraphCache {
-			if oldestKey == "" || entry.lastUsed.Before(oldestUsed) {
+			if oldestKey == "" || entry.lastUsed.Before(oldestUsed) ||
+				(entry.lastUsed.Equal(oldestUsed) && key < oldestKey) {
 				oldestKey, oldestUsed = key, entry.lastUsed
 			}
 		}

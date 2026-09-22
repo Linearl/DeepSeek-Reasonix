@@ -217,6 +217,13 @@ func (s *Session) dagStateForSave(ctx context.Context, path string, now time.Tim
 			return nil, err
 		}
 	}
+	slog.Debug("session: dag state for save", "path", path, "extended", extended, "reason", reason)
+	slog.Debug("session: dag state for save", "path", path, "extended", extended, "reason", reason)
+	slog.Debug("session: dag state for save", "path", path, "extended", extended, "reason", reason)
+	slog.Debug("session: dag state for save", "path", path, "extended", extended, "reason", reason)
+	slog.Debug("session: dag state for save", "path", path, "extended", extended, "reason", reason)
+	slog.Debug("session: dag state for save", "path", path, "extended", extended, "reason", reason)
+	slog.Debug("session: dag state for save", "path", path, "extended", extended, "reason", reason)
 	if elapsed := time.Since(replayStart); elapsed >= sessionDAGReplayLogMin {
 		size := int64(-1)
 		if info, statErr := os.Stat(logPath); statErr == nil {

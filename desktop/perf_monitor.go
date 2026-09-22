@@ -372,9 +372,10 @@ func walkBytesMB(root string) float64 {
 // any depth: they are storage the user chose to keep, not live growth, and
 // counting them made the events alert fire on dead weight (measured: two
 // deleted sessions under sessions/.trash pushed it past 2 GB).
-// Task 239: recovery directories are skipped for the same reason — recovery
-// copies of .events.jsonl are safety snapshots, not live growth, and counting
-// them inflated eventsMb by hundreds of MB after every restart.
+// Task 239: recovery copies are sibling files named *-recovery-*.events.jsonl
+// (see recovery_isolated.go stableRecoverySessionPath) — safety snapshots, not
+// live growth. They must be filtered by filename, not by a "recovery" directory
+// name (there is no such directory).
 func walkProjectsBytesMB(memoryRoot string) (totalMB float64, eventsMB float64) {
 	if memoryRoot == "" {
 		return 0, 0
@@ -386,10 +387,15 @@ func walkProjectsBytesMB(memoryRoot string) (totalMB float64, eventsMB float64) 
 			return nil
 		}
 		if entry.IsDir() {
-			name := entry.Name()
-			if name == ".trash" || name == "recovery" {
+			if entry.Name() == ".trash" {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+		name := entry.Name()
+		// Recovery copies live next to their originals as *-recovery-*.jsonl;
+		// skip them so eventsMb reflects live growth only.
+		if strings.Contains(name, "-recovery-") {
 			return nil
 		}
 		info, statErr := entry.Info()
@@ -397,7 +403,7 @@ func walkProjectsBytesMB(memoryRoot string) (totalMB float64, eventsMB float64) 
 			return nil
 		}
 		total += info.Size()
-		if strings.HasSuffix(entry.Name(), ".events.jsonl") {
+		if strings.HasSuffix(name, ".events.jsonl") {
 			events += info.Size()
 		}
 		return nil
