@@ -102,13 +102,12 @@ type Server struct {
 	detached      map[string]*detachedSession
 	tagsMu        sync.Mutex
 	tags          map[*control.Controller]*sessionTagSink
-	// Remote-client (GrandCouncil) takeover liveness: heartbeatKey(deviceID,
-	// session name) → last heartbeat. A held session whose remote client
-	// stopped beating for heartbeatExpiry is auto-released so the desktop can
-	// reacquire. Keying by device (task 36) keeps multiple clients from
-	// renewing each other's lease: every device's silence is measured alone.
+	// Remote-client (GrandCouncil) device lease (task 36 Phase 2): deviceID
+	// → liveness with the session set it touched. A device that stops
+	// beating for heartbeatExpiry loses its whole lease and the desktop
+	// reacquires; GC's explicit release (onStop) drops it immediately.
 	heartbeatMu sync.Mutex
-	heartbeats  map[string]time.Time
+	heartbeats  map[string]*deviceLiveness
 	hostGate    hostGateState // hostGuard allowlist state; see hostguard.go
 	// mirroredMu guards mirrored: sessions whose lease was handed to a local
 	// runtime via POST /handoff. Serve answers reads from the transcript file
@@ -635,6 +634,7 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("POST /release-session", s.releaseSession)
 	mux.HandleFunc("POST /takeover-session", s.takeoverSession)
 	mux.HandleFunc("POST /heartbeat", s.heartbeat)
+	mux.HandleFunc("POST /release-device", s.releaseDevice)
 	return logMiddleware(gzipMiddleware(s.auth.middleware(s.hostGuard(csrfGuard(mux)))))
 }
 
@@ -735,7 +735,55 @@ func (s *Server) logoWordmark(w http.ResponseWriter, _ *http.Request) {
 // resolved by the controller). Returns 202 — output arrives on the event stream.
 // An optional "format":"json_object" asks the model for structured JSON output
 // on this turn (text.format on the wire).
+// remoteWriteAuthorityHook is the desktop-side observer (same process): a
+// remote device taking or losing the lease flips the desktop's non-persisted
+// runtime read-only state and its tab-lease releases (task 36 Phase 2).
+var remoteWriteAuthorityHook func(deviceID string, held bool)
+
+// SetRemoteWriteAuthorityHook registers the desktop observer; nil clears it.
+func SetRemoteWriteAuthorityHook(fn func(deviceID string, held bool)) {
+	remoteWriteAuthorityHook = fn
+}
+
+func notifyRemoteWriteAuthority(deviceID string, held bool) {
+	if remoteWriteAuthorityHook != nil {
+		remoteWriteAuthorityHook(deviceID, held)
+	}
+}
+
+// remoteDeviceHoldsWrite reports whether any device lease is live — the
+// device-level mutual exclusion (task 36): while a remote device holds the
+// lease, local submits are refused so there is exactly one writer.
+func (s *Server) remoteDeviceHoldsWrite() (string, bool) {
+	s.heartbeatMu.Lock()
+	defer s.heartbeatMu.Unlock()
+	for id, entry := range s.heartbeats {
+		if time.Since(entry.lastBeat) <= heartbeatExpiry {
+			return id, true
+		}
+	}
+	return "", false
+}
+
+// releaseDevice is GC's explicit onStop release: drop the device lease now
+// instead of waiting for expiry (task 36 Phase 2).
+func (s *Server) releaseDevice(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		DeviceID string `json:"device_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.DeviceID) == "" {
+		http.Error(w, "device_id required", http.StatusBadRequest)
+		return
+	}
+	s.releaseDeviceLease(strings.TrimSpace(body.DeviceID))
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
+	if deviceID, held := s.remoteDeviceHoldsWrite(); held {
+		http.Error(w, "write authority held by remote device "+deviceID+"; the desktop is read-only until the device releases (task 36 device-level exclusion)", http.StatusConflict)
+		return
+	}
 	var body struct {
 		Input      string `json:"input"`
 		Format     string `json:"format"`
@@ -1630,34 +1678,80 @@ func (s *Server) heartbeat(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name     string `json:"name"`
 		DeviceID string `json:"device_id"`
+		// Release drops the device's whole lease immediately (task 36:
+		// GC onStop); name may be empty in that case.
+		Release bool `json:"release"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Name) == "" {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	deviceID := strings.TrimSpace(body.DeviceID)
+	if body.Release {
+		s.releaseDeviceLease(deviceID)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if strings.TrimSpace(body.Name) == "" {
 		http.Error(w, "name required", http.StatusBadRequest)
 		return
 	}
 	s.heartbeatMu.Lock()
 	if s.heartbeats == nil {
-		s.heartbeats = map[string]time.Time{}
+		s.heartbeats = map[string]*deviceLiveness{}
 	}
-	s.heartbeats[heartbeatKey(body.DeviceID, body.Name)] = time.Now().UTC()
+	entry := s.heartbeats[deviceID]
+	if entry == nil {
+		entry = &deviceLiveness{sessions: map[string]time.Time{}}
+		s.heartbeats[deviceID] = entry
+	}
+	now := time.Now().UTC()
+	entry.lastBeat = now
+	entry.sessions[strings.TrimSpace(body.Name)] = now
 	s.heartbeatMu.Unlock()
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// heartbeatKey scopes a heartbeat to its owning device (task 36): two
-// devices holding the same-named session renew two independent entries, so
-// one client's silence expires its own lease without the other keeping it
-// alive. An empty device id (legacy clients) keeps a stable key shape.
-func heartbeatKey(deviceID, session string) string {
-	return strings.TrimSpace(deviceID) + "" + strings.TrimSpace(session)
+// deviceLiveness is one remote device's lease: when it last beat plus the
+// sessions it touched (task 36 keeps a set so the protocol can narrow from
+// device-scope to session-scope without another migration).
+type deviceLiveness struct {
+	lastBeat time.Time
+	sessions map[string]time.Time
 }
 
-func splitHeartbeatKey(key string) (deviceID, session string) {
-	parts := strings.SplitN(key, "", 2)
-	if len(parts) != 2 {
-		return "", key
+// releaseDeviceLease drops a device's lease on explicit request (GC onStop)
+// or expiry: free this runtime's lease when the device held the current
+// session, then flip the desktop write-authority hook off (task 36 Phase 2).
+func (s *Server) releaseDeviceLease(deviceID string) {
+	s.heartbeatMu.Lock()
+	entry := s.heartbeats[deviceID]
+	delete(s.heartbeats, deviceID)
+	s.heartbeatMu.Unlock()
+	if entry == nil {
+		return
 	}
-	return parts[0], parts[1]
+	s.freeLeaseIfDeviceHeld(entry, deviceID, "explicit release")
+}
+
+// freeLeaseIfDeviceHeld releases this runtime's lease when the (already
+// removed) device entry covered the current session, and notifies the
+// desktop hook either way so its read-only runtime state follows.
+func (s *Server) freeLeaseIfDeviceHeld(entry *deviceLiveness, deviceID, reason string) {
+	s.bindMu.Lock()
+	keeper := s.leases
+	if keeper != nil {
+		if lease := keeper.Lease(); lease != nil {
+			current := strings.TrimSuffix(filepath.Base(lease.Path()), ".jsonl")
+			if _, held := entry.sessions[current]; held {
+				lease.Release()
+				_ = keeper.Rebind("")
+				slog.Info("serve: released lease for remote device", "session", current, "device", deviceID, "reason", reason)
+			}
+		}
+	}
+	s.bindMu.Unlock()
+	notifyRemoteWriteAuthority(deviceID, false)
 }
 
 // releaseExpiredHeartbeats drops serve-held leases whose remote client
@@ -1665,47 +1759,20 @@ func splitHeartbeatKey(key string) (deviceID, session string) {
 // goroutine and lazily before takeover checks.
 func (s *Server) releaseExpiredHeartbeats() {
 	s.heartbeatMu.Lock()
-	type expiredHeartbeat struct{ deviceID, session string }
-	expired := make([]expiredHeartbeat, 0, len(s.heartbeats))
-	for key, last := range s.heartbeats {
-		if time.Since(last) > heartbeatExpiry {
-			deviceID, session := splitHeartbeatKey(key)
-			expired = append(expired, expiredHeartbeat{deviceID: deviceID, session: session})
-			delete(s.heartbeats, key)
+	type expiredDevice struct {
+		id    string
+		entry *deviceLiveness
+	}
+	expired := make([]expiredDevice, 0, len(s.heartbeats))
+	for id, entry := range s.heartbeats {
+		if time.Since(entry.lastBeat) > heartbeatExpiry {
+			expired = append(expired, expiredDevice{id: id, entry: entry})
+			delete(s.heartbeats, id)
 		}
 	}
 	s.heartbeatMu.Unlock()
-	if len(expired) == 0 {
-		return
-	}
-	s.bindMu.Lock()
-	defer s.bindMu.Unlock()
-	keeper := s.leases
-	if keeper == nil {
-		return
-	}
-	lease := keeper.Lease()
-	if lease == nil {
-		return
-	}
-	current := strings.TrimSuffix(filepath.Base(lease.Path()), ".jsonl")
-	// A session's lease is released only when NO device still beats for it
-	// (task 36): one device going silent must not evict the hold another
-	// live device still maintains. The sweep has already deleted the
-	// expired entries, so any remaining key for this session is live.
-	liveForCurrent := false
-	for key := range s.heartbeats {
-		if _, session := splitHeartbeatKey(key); session == current {
-			liveForCurrent = true
-			break
-		}
-	}
 	for _, e := range expired {
-		if e.session == current && !liveForCurrent {
-			lease.Release()
-			_ = keeper.Rebind("")
-			slog.Info("serve: released lease for silent remote client", "session", e.session, "device", e.deviceID)
-		}
+		s.freeLeaseIfDeviceHeld(e.entry, e.id, "heartbeat expired")
 	}
 }
 
@@ -1875,6 +1942,10 @@ func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 	}
 	// Rebind re-acquired its own lease; release the probe lease we took.
 	lease.Release()
+	// Task 36 Phase 2: the remote device now holds write authority — flip the
+	// desktop's runtime read-only observer on (from may be empty for older
+	// clients; the hook treats it as an anonymous device).
+	notifyRemoteWriteAuthority(strings.TrimSpace(body.From), true)
 	w.WriteHeader(http.StatusNoContent)
 }
 

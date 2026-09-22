@@ -7,10 +7,12 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/control"
+	"reasonix/internal/serve"
 )
 
 // handoffSessionLease acquires path and publishes it on the tab without
@@ -344,4 +346,64 @@ func (t *WorkspaceTab) yieldSessionLeaseToTakeover(path, marker string, interrup
 // changes nothing.
 func (a *App) ResolveTakeoverDecision(marker string, accept bool) bool {
 	return SubmitTakeoverDecision(strings.TrimSpace(marker), accept)
+}
+
+// remoteDeviceReadOnly mirrors serve's device lease into this process (task
+// 36 Phase 2): while a remote device holds write authority the desktop runs
+// in a NON-PERSISTED read-only state — it must never touch the persisted
+// tab.ReadOnly field (pitfall 1: that would survive restarts) nor call
+// setTabReadOnly (pitfall 2: it detaches terminals). The flag only drives
+// UI state; enforcement itself is serve's device-level submit rejection.
+var remoteDeviceReadOnly atomic.Bool
+
+// RemoteDeviceReadOnly reports the live runtime-only read-only flag for the
+// frontend (never persisted; resets to false on restart by construction).
+func RemoteDeviceReadOnly() bool { return remoteDeviceReadOnly.Load() }
+
+// registerRemoteWriteAuthorityHook observes serve's device lease (same
+// process). held=true flips the flag and releases every tab's session lease
+// so no local writer races the device; held=false restores write authority
+// and the next local message reacquires leases normally.
+func (a *App) registerRemoteWriteAuthorityHook() {
+	serve.SetRemoteWriteAuthorityHook(func(deviceID string, held bool) {
+		remoteDeviceReadOnly.Store(held)
+		slog.Info("desktop: remote write authority", "device", deviceID, "held", held)
+		if held {
+			a.releaseAllTabSessionLeases()
+		}
+		runtimeEventsEmitFallback(a.ctx, "app:remote-write-authority", map[string]any{
+			"device": deviceID,
+			"held":   held,
+		})
+	})
+}
+
+// releaseAllTabSessionLeases walks every tab and drops its session lease.
+// Leases reacquire on the next local message; nothing persisted changes.
+func (a *App) releaseAllTabSessionLeases() {
+	a.mu.Lock()
+	tabs := make([]*WorkspaceTab, 0, len(a.tabs))
+	for _, tab := range a.tabs {
+		tabs = append(tabs, tab)
+	}
+	a.mu.Unlock()
+	for _, tab := range tabs {
+		tab.releaseSessionLeaseQuietly()
+	}
+}
+
+// releaseSessionLeaseQuietly drops this tab's lease without touching
+// persisted ReadOnly and without detaching the tab's terminal.
+func (t *WorkspaceTab) releaseSessionLeaseQuietly() {
+	if t == nil {
+		return
+	}
+	t.sessionLeaseMu.Lock()
+	old := t.sessionLease
+	t.sessionLease = nil
+	t.sessionLeaseMu.Unlock()
+	if old != nil {
+		old.Release()
+		slog.Info("desktop: session lease released for remote device", "tab", t.ID)
+	}
 }

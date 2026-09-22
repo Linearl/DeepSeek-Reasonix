@@ -494,6 +494,8 @@ func NewApp() *App {
 	}
 	// Task 36 Phase 1: remote takeover requests prompt the user instead of
 	// yielding silently. The sink owns the wails context at emit time.
+	// Task 36 Phase 2: observe serve's device lease for runtime read-only.
+	a.registerRemoteWriteAuthorityHook()
 	RegisterTakeoverPromptSink(func(req takeoverDecisionReq) {
 		runtimeEventsEmitFallback(a.ctx, "app:takeover-request", map[string]string{
 			"marker": req.Marker,
