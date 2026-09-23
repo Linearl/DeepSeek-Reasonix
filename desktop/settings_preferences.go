@@ -240,6 +240,53 @@ func (a *App) SetExperimentalTodoSidebar(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalTodoSidebar(enabled) })
 }
 
+// Task 262 install-fix: the Wails exposure layer for the intake batch was
+// missed while the config layer landed — the frontend's calls hit a missing
+// App method at runtime, so the switch clicked but never saved (the installed
+// user's "cannot turn it on" report). Eight wrappers, same shape as above.
+// The seven lab-intake switches are nil-means-on on the config side; the
+// wrapper only needs to forward the explicit value the user clicked.
+
+// SetExperimentalQuickCommands toggles the whole quick-commands surface (262).
+func (a *App) SetExperimentalQuickCommands(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalQuickCommands(enabled) })
+}
+
+// SetExperimentalCompactionParallel toggles parallel chunked compaction (265).
+func (a *App) SetExperimentalCompactionParallel(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCompactionParallel(enabled) })
+}
+
+// SetExperimentalContextBudget toggles the per-turn context-state line (265).
+func (a *App) SetExperimentalContextBudget(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalContextBudget(enabled) })
+}
+
+// SetExperimentalResearchBudget toggles the read-only budget extension (265).
+func (a *App) SetExperimentalResearchBudget(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalResearchBudget(enabled) })
+}
+
+// SetExperimentalQuestionSearch toggles the topic-bar question-search entry (265).
+func (a *App) SetExperimentalQuestionSearch(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalQuestionSearch(enabled) })
+}
+
+// SetExperimentalSubagentPolicy toggles the delegation-tier entry points (265).
+func (a *App) SetExperimentalSubagentPolicy(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSubagentPolicy(enabled) })
+}
+
+// SetExperimentalSubagentTps toggles the sub-agent tok/s readouts (265).
+func (a *App) SetExperimentalSubagentTps(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSubagentTps(enabled) })
+}
+
+// SetExperimentalCompletionSummary toggles the per-turn result notice (265).
+func (a *App) SetExperimentalCompletionSummary(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCompletionSummary(enabled) })
+}
+
 // SetExperimentalLocalServer toggles the Settings → 本地服务 page (task 130).
 func (a *App) SetExperimentalLocalServer(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalLocalServer(enabled) })
