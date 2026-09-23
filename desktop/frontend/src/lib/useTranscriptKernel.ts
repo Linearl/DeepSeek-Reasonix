@@ -10,6 +10,7 @@ import {
   type TranscriptViewportSnapshot,
 } from "./transcriptKernel";
 import { TranscriptViewportWriter } from "./transcriptViewportWriter";
+import { observeTranscriptGeometry } from "./transcriptGeometryObserver";
 
 const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 // Native WebViews can leave a short gap between coalesced wheel batches while
@@ -151,6 +152,20 @@ export function useTranscriptKernel({
     writer.attach(element, kernel.generation);
   }, [kernel, writer]);
 
+  // Task 267 (R3): the scroll container's own height can change while the
+  // footer stays fixed (decision-footer internal scroll, split-pane drags,
+  // terminal open/close) — the footer-only ResizeObserver never sees those,
+  // so a tail view silently loses the bottom gap. Watch the container itself
+  // and re-arm the guarded subsidy; scheduleTailSync declines unless the
+  // view still owns the tail, so a reader is never yanked downward.
+  useLayoutEffect(() => {
+    const element = scrollElement;
+    if (!element || typeof ResizeObserver !== "function") return;
+    return observeTranscriptGeometry(kernel, element, () => undefined, () => {
+      kernel.scheduleTailSync();
+    });
+  }, [kernel, scrollElement]);
+
   const settleGeometry = useCallback(function settleGeometry(beforePaint = false) {
     if (!beforePaint && geometryWork.current?.generation === kernel.generation) return;
     geometryWork.current?.cancel();
@@ -174,9 +189,18 @@ export function useTranscriptKernel({
       kernel.reportHealthyGeometry();
       kernel.advanceGeometry();
       const transaction = kernel.activeTransaction ?? (kernel.intent === "tail" ? kernel.begin("tail-sync", { kind: "tail" }) : null);
+      let synced = false;
       if (transaction && element && (transaction.kind !== "prepend" || !prependAwaitingGeometryRef.current)) {
-        kernel.correctAnchor(transaction, (key) => blockTop(element, key));
+        synced = kernel.correctAnchor(transaction, (key) => blockTop(element, key));
       }
+      // Task 267 (R2): tail-sync is the guarded subsidy for streaming growth,
+      // but when the gate above rejects it (gesture held, priority loss,
+      // same-revision dedupe) nothing ever retried — the view detached from
+      // the bottom for good. Re-arm it through the kernel's own rAF guard: a
+      // live gesture defers it to endUserGesture, tailFrame dedupes per frame,
+      // and a higher-priority active transaction declines it — so this fires
+      // only when the subsidy is genuinely missing.
+      if (!synced && kernel.intent === "tail") kernel.scheduleTailSync();
     };
     if (beforePaint) commit();
     else {

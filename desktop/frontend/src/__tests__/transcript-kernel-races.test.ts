@@ -136,6 +136,11 @@ console.log("\nTranscriptKernel deterministic race matrix");
 {
   const { clock, kernel, writes } = setup("prepend-during-gesture");
   const snapshot = readerSnapshot("turn:prepend-anchor");
+  // Task 267 (R1b): gesture entry no longer demotes intent — establish the
+  // reader view with a real displacement first (the old entry did it implicitly).
+  kernel.beginUserGesture(snapshot);
+  kernel.observeNativeScroll(snapshot);
+  kernel.endUserGesture();
   kernel.beginUserGesture(snapshot, "selection");
   const deferred = kernel.begin("prepend", kernel.anchor);
   ok(deferred === null && writes.length === 0, "prepend requested during a gesture captures intent without writing");
@@ -149,6 +154,8 @@ console.log("\nTranscriptKernel deterministic race matrix");
 {
   const { kernel, writes } = setup("prepend-display");
   kernel.beginUserGesture(readerSnapshot("turn:stable"));
+  // Task 267 (R1b): a real displacement owns the reader view now.
+  kernel.observeNativeScroll(readerSnapshot("turn:stable"));
   kernel.endUserGesture();
   const prepend = kernel.begin("prepend", kernel.anchor);
   const display = kernel.begin("display-change", kernel.anchor);
@@ -188,6 +195,9 @@ console.log("\nTranscriptKernel deterministic race matrix");
 {
   const { kernel, writes } = setup("lazy-measure");
   kernel.beginUserGesture(readerSnapshot("turn:markdown"));
+  // Task 267 (R1b): gesture entry no longer demotes — a real displacement
+  // establishes the reader view (block turn:markdown, 12px in-block offset).
+  kernel.observeNativeScroll(readerSnapshot("turn:markdown"));
   kernel.endUserGesture();
   const restore = kernel.begin("restore", kernel.anchor);
   kernel.advanceGeometry();
@@ -199,6 +209,8 @@ console.log("\nTranscriptKernel deterministic race matrix");
   kernel.observeNativeScroll(readerSnapshot("turn:wrong", 922));
   ok(kernel.anchor.kind === "block" && kernel.anchor.blockKey === "turn:markdown", "writer scroll events cannot replace the structural logical anchor");
   kernel.beginUserGesture(readerSnapshot("turn:user", 940));
+  // Task 267 (R1b): the anchor follows the DISPLACEMENT, not the entry tap.
+  kernel.observeNativeScroll(readerSnapshot("turn:user", 940));
   kernel.endUserGesture();
   ok(kernel.anchor.kind === "block" && kernel.anchor.blockKey === "turn:user", "the next native scroll records the user's actual reader anchor");
 }
@@ -206,6 +218,8 @@ console.log("\nTranscriptKernel deterministic race matrix");
 {
   const { kernel } = setup("gesture-anchor-ownership");
   kernel.beginUserGesture(readerSnapshot("turn:reader", 500));
+  // Task 267 (R1b): establish the reader view via real displacement.
+  kernel.observeNativeScroll(readerSnapshot("turn:reader", 500));
   kernel.endUserGesture();
   kernel.beginUserGesture(readerSnapshot("turn:reader", 500));
   kernel.endUserGesture();
