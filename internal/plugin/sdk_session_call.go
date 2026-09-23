@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 )
 
 func (t *sdkSessionTransport) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
@@ -65,5 +66,24 @@ func (t *sdkSessionTransport) call(ctx context.Context, method string, params an
 
 	kind := classifySessionError(err)
 	t.noteRuntimeError(managed, kind, err)
+	// Task 256: initialize answers from cache without touching the wire, so a
+	// strict older server's rejection of the modern negotiation first
+	// surfaces here — on tools/list or another real request. One time per
+	// transport, rebuild the session speaking the classic handshake and retry
+	// the same call; after that the evidence is conclusive and the error
+	// propagates.
+	if isProtocolRejection(err) && !t.legacyFallbackEngaged() && method != "initialize" {
+		t.engageLegacyFallback()
+		t.invalidate(managed)
+		replacement, rebuildErr := t.acquire(ctx)
+		if rebuildErr == nil {
+			if retryResult, retryErr := t.invokeManaged(ctx, replacement, method, params); retryErr == nil {
+				t.clearRuntimeError(replacement)
+				slog.Warn("plugin: request succeeded after falling back to the legacy MCP handshake",
+					"server", t.name, "method", method)
+				return retryResult, nil
+			}
+		}
+	}
 	return nil, t.sanitizeError(err, managed)
 }

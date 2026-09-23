@@ -1,8 +1,12 @@
 package plugin
 
 import (
+	"context"
+	"fmt"
 	"strings"
 	"testing"
+
+	mcpjsonrpc "github.com/modelcontextprotocol/go-sdk/jsonrpc"
 )
 
 // Task 256: the host MCP client must complete the classic initialize +
@@ -27,6 +31,53 @@ func TestConnectOptionsPinsProtocolVersion(t *testing.T) {
 func TestLegacyConnectFallbackIsClassicSpec(t *testing.T) {
 	if legacyConnectFallback != "2025-06-18" {
 		t.Fatalf("fallback = %q, want the classic 2025-06-18 sequence", legacyConnectFallback)
+	}
+}
+
+// TestConnectVersionPrefersEvidencedFallback covers the task-256 rework: a
+// live protocol rejection (surfaces on tools/list because initialize answers
+// from cache) must flip every future build onto the classic handshake, even
+// over an explicit spec pin.
+func TestConnectVersionPrefersEvidencedFallback(t *testing.T) {
+	tr := &sdkSessionTransport{spec: Spec{Name: "x", ProtocolVersion: "2025-11-25"}}
+	if got := tr.connectVersion(); got != "2025-11-25" {
+		t.Fatalf("spec pin must be used before evidence, got %q", got)
+	}
+	tr.engageLegacyFallback()
+	if got := tr.connectVersion(); got != legacyConnectFallback {
+		t.Fatalf("evidenced fallback must win over the spec pin, got %q", got)
+	}
+	if !tr.legacyFallbackEngaged() {
+		t.Fatal("engage must be observable")
+	}
+}
+
+func TestIsProtocolRejectionMatchesStrictServerShapes(t *testing.T) {
+	mcpjsonrpcErr := func(code int64, msg string) error {
+		return &mcpjsonrpc.Error{Code: code, Message: msg}
+	}
+	yes := []error{
+		mcpjsonrpcErr(mcpjsonrpc.CodeInvalidRequest, "invalid request"),
+		mcpjsonrpcErr(-32600, "Invalid Request"),
+		mcpjsonrpcErr(-32000, "unsupported protocol version 2025-11-25"),
+		mcpjsonrpcErr(-32000, "protocol version not supported"),
+		fmt.Errorf(`calling "tools/list": invalid request`),
+	}
+	for _, err := range yes {
+		if !isProtocolRejection(err) {
+			t.Fatalf("expected protocol rejection: %v", err)
+		}
+	}
+	no := []error{
+		nil,
+		fmt.Errorf("transport error: connection reset by peer"),
+		context.DeadlineExceeded,
+		fmt.Errorf("MCP endpoint returned HTTP 404 without an established session"),
+	}
+	for _, err := range no {
+		if isProtocolRejection(err) {
+			t.Fatalf("expected NON-protocol rejection: %v", err)
+		}
 	}
 }
 
