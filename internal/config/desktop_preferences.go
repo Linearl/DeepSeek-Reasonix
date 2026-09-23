@@ -72,6 +72,12 @@ type DesktopConfig struct {
 	// It ships off so production confinement is unchanged. Env
 	// REASONIX_PARALLEL_FULL_ACCESS=1 is a process-local override.
 	ExperimentalParallelFullAccess bool `toml:"experimental_parallel_full_access"`
+	// ExperimentalTodoSidebar moves the live todo list into the right dock as a
+	// fifth tab (task 259). It ships off: with it off the todo list stays pinned
+	// above the composer and the dock tabs look exactly as they did before, and
+	// the extra tab plus the tab-visibility and wrap settings stay opt-in. The
+	// flag is snapshotted at boot, so changes take effect after a restart.
+	ExperimentalTodoSidebar bool `toml:"experimental_todo_sidebar"`
 	// ExperimentalPathRules enables the structured path-scope evaluation order
 	// documented in docs/PATH_SCOPE_RULES.md (task 134). Ships off: production
 	// keeps the existing confine + allow_write + write-access approval model.

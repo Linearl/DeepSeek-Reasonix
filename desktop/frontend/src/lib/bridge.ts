@@ -762,6 +762,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalSessionMonitor(enabled: boolean): Promise<void>;
   // Task 70-1: tab-bar split view (experimental).
   SetExperimentalSplitView(enabled: boolean): Promise<void>;
+  // Task 259: right-dock todo tab + tab visibility/wrap settings (experimental; boot snapshot).
+  SetExperimentalTodoSidebar(enabled: boolean): Promise<void>;
   /** Conversation store: "legacy" (default) or "v4" (experimental; needs a restart). */
   SetSessionStorage(mode: string): Promise<void>;
   /**
@@ -5015,6 +5017,7 @@ function makeMockApp(): AppBindings {
     async ResolveTakeoverDecision() { return false; },
     async SetExperimentalSessionMonitor() {},
     async SetExperimentalSplitView() {},
+    async SetExperimentalTodoSidebar() {},
     async SetSessionStorage() {},
     async RestartDesktop() {},
     async SetExperimentalFeedback() {},

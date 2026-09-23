@@ -145,7 +145,11 @@ export function saveRightDockPreviewWidth(width: number): void {
 // widths, the sidebar button-press flag) is session-local state on this store
 // so resize lifecycles and their consumers read one source of truth; measured
 // footer height and viewport width live in the windowChrome store.
-export type RightDockMode = "context" | "files" | "changed" | "remote";
+export type RightDockMode = "context" | "files" | "changed" | "remote" | "todos";
+// Task 259: "todos" is the fifth dock tab behind the experimental todo-sidebar
+// switch. The mode itself stays persistable — loading a saved "todos" while the
+// switch is off falls back to "files" in App, not here, so normalization keeps
+// accepting every listed mode.
 
 // terminalPanelOpen is independent from rightDockMode — the terminal is a
 // bottom drawer that coexists with the workspace panel, not a mode of it.
@@ -247,7 +251,7 @@ function rightDockModeStorageKey(workspaceRoot: string): string {
   return workspaceRoot ? `${RIGHT_DOCK_MODE_KEY}.${workspaceRoot}` : RIGHT_DOCK_MODE_KEY;
 }
 
-const RIGHT_DOCK_MODES: readonly RightDockMode[] = ["context", "files", "changed", "remote"];
+const RIGHT_DOCK_MODES: readonly RightDockMode[] = ["context", "files", "changed", "remote", "todos"];
 
 function normalizeRightDockMode(raw: string | null): RightDockMode | null {
   if (!raw) return null;

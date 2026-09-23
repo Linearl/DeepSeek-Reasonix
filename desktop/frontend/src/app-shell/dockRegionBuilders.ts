@@ -28,6 +28,10 @@ export function buildWorkspaceDockProps(input: {
   remoteAvailable: boolean;
   showContext: boolean;
   remote: boolean;
+  /** Task 259: the experimental todo-sidebar switch, snapshotted at boot. */
+  todoSidebar: boolean;
+  /** Task 259: same payload the composer footer renders; undefined shows the empty state. */
+  todo?: WorkspaceDockRegionProps["todo"];
   t: Translator;
   context: ConversationView["context"];
   sessionTurns: number;
@@ -62,6 +66,8 @@ export function buildWorkspaceDockProps(input: {
     creation: input.creation,
     remoteAvailable: input.remoteAvailable,
     showContext: input.showContext,
+    todoSidebar: input.todoSidebar,
+    todo: input.todo,
     t: input.t,
     onMode: panels.openRightDockMode,
     onRemote: panels.openRemoteDock,

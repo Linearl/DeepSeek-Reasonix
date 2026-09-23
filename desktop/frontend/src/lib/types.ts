@@ -2326,6 +2326,8 @@ export interface DesktopStartupSettingsView {
   experimentalSplitView?: boolean;
   /** Feedback inbox experiment switch (task 121); off unless the user opts in. */
   experimentalFeedback?: boolean;
+  /** Todo-sidebar experiment switch (task 259); off unless the user opts in; boot snapshot. */
+  experimentalTodoSidebar?: boolean;
   /** Local-server page experiment switch (task 130); off unless the user opts in. */
   experimentalLocalServer?: boolean;
   /** Path-scope rules experiment switch (task 134); off unless the user opts in. */

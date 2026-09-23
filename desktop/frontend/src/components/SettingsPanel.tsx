@@ -5,6 +5,8 @@ import { SettingsSelect } from "./SettingsSelect";
 import { providerProtocolLabel, providerProtocolChoices } from "../lib/providerProtocol";
 import { providerSupportsServerWebSearch } from "../lib/providerSearch";
 import { providerDefaultLabel, providerDisplayLabel } from "../lib/providerLabel";
+import { isDockTabHidden, isLastRenderableVisibleTab, setDockTabHidden } from "../lib/dockTabs";
+import { useRemoteStore } from "../store/remote";
 
 // Autopilot runs unattended, so it needs a wall-clock bound; this is the value the
 // settings switch falls back to when the user turns it on without typing one.
@@ -1757,6 +1759,7 @@ type ExperimentFeatureId =
   | "sessionMonitor"
   | "sessionStorage"
   | "splitView"
+  | "todoSidebar"
   | "feedback"
   | "localServer"
   | "pathRules"
@@ -1773,6 +1776,11 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Set when a boot-time setting is saved: apply() reloads the view, so the fact that a
   // restart is pending has to live outside the data being reloaded.
   const [restartNeeded, setRestartNeeded] = useState(false);
+  // Task 259 (audit-2 minor c): the "keep at least one tab" guard counts only
+  // tabs that can actually render, so it needs the live remote-host presence
+  // and the configured layout.
+  const remoteAvailable = useRemoteStore((state) => state.hosts.length > 0);
+  const desktopLayoutStyle = normalizeDesktopLayoutStyle(s.desktopLayoutStyle);
   const [dreamTaskCreated, setDreamTaskCreated] = useState(false);
   // Task 184: the sampler interval is a number the user can edit; the config layer
   // clamps it, so the box can hold an intermediate value while typing.
@@ -1834,6 +1842,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "feedback", group: "debug", label: t("settings.feedback"), on: Boolean(s.experimentalFeedback) },
     { id: "restartUpdate", group: "debug", label: t("settings.restartUpdate"), on: Boolean(s.experimentalRestartUpdate) },
     { id: "splitView", group: "ui", label: t("settings.splitView"), on: Boolean(s.experimentalSplitView) },
+    { id: "todoSidebar", group: "ui", label: t("settings.todoSidebar"), on: Boolean(s.experimentalTodoSidebar) },
     { id: "autoLoadOlder", group: "ui", label: t("settings.autoLoadOlder"), on: Boolean(s.experimentalAutoLoadOlder) },
     { id: "cacheTuning", group: "storage", label: t("settings.cacheTuning"), on: Boolean(s.experimentalCacheTuning) },
     { id: "sessionStorage", group: "storage", label: t("settings.sessionStorage"), on: (s.sessionStorage ?? "v3_only") !== "v3_only" },
@@ -2042,6 +2051,74 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                 ))}
               </SettingsOptions>
             </SettingsField>
+          )}
+          {selected === "todoSidebar" && (
+            <>
+              <SettingsField label={t("settings.todoSidebar")} hint={t("settings.todoSidebarHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalTodoSidebar) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        // Boot snapshot (task 259): the dock reads the flag once at
+                        // startup, so saving raises the restart banner instead of
+                        // flipping the layout mid-session.
+                        await app.SetExperimentalTodoSidebar(on);
+                        setRestartNeeded(true);
+                      })}
+                    >
+                      {t(on ? "settings.todoSidebar.on" : "settings.todoSidebar.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField
+                label={t("settings.dockTabVisibility")}
+                hint={Boolean(s.experimentalTodoSidebar) ? t("settings.dockTabVisibilityHint") : t("settings.dockTabsDisabledHint")}
+                icon={<Sparkles size={18} />}
+              >
+                <div className="set-gates">
+                  {([
+                    ["context", "rightDock.overview"],
+                    ["files", "workspace.filesTab"],
+                    ["changed", "workspace.changedTab"],
+                    ["remote", "rightDock.remote"],
+                    ["todos", "workspace.todosTab"],
+                  ] as const).map(([tabId, labelKey]) => {
+                    // Task 259: the visibility checkboxes live under the todo-sidebar
+                    // switch; with it off they stay visible and readable but disabled,
+                    // with a hint naming the switch to flip (task 253's lesson).
+                    const locked = busy || !Boolean(s.experimentalTodoSidebar);
+                    const on = !isDockTabHidden(tabId);
+                    // Keep at least one RENDERABLE tab visible (audit-2 minor c):
+                    // gated-off tabs — remote with no hosts, overview in creation —
+                    // must not satisfy the guard, or the user could hide everything
+                    // the dock actually shows and end up with zero tabs.
+                    const lastOn = isLastRenderableVisibleTab(tabId, {
+                      todoSidebar: Boolean(s.experimentalTodoSidebar),
+                      remoteAvailable,
+                      creation: desktopLayoutStyle === "creation",
+                    });
+                    return (
+                      <label key={tabId} className={`set-gates__item${locked ? " set-gates__item--locked" : ""}`}>
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          disabled={locked || lastOn}
+                          onChange={(event) => setDockTabHidden(tabId, !event.target.checked)}
+                        />
+                        <span className="set-gates__label">{t(labelKey)}</span>
+                      </label>
+                    );
+                  })}
+                  {!Boolean(s.experimentalTodoSidebar) && (
+                    <div className="set-gates__hint">{t("settings.dockTabsDisabledHint")}</div>
+                  )}
+                </div>
+              </SettingsField>
+            </>
           )}
           {selected === "feedback" && (
             <>

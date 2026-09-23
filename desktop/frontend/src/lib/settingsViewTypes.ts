@@ -28,6 +28,8 @@ export interface SettingsView {
   sessionStorageRestartPending?: boolean;
   // Task 121: exposes the agent submit_feedback tool and feedback inbox panel.
   experimentalFeedback?: boolean;
+  // Task 259: exposes the right-dock todo tab plus tab visibility/wrap settings.
+  experimentalTodoSidebar?: boolean;
   // Task 130: exposes the Settings → 本地服务 page and serve-pool controls.
   experimentalLocalServer?: boolean;
   // Task 134: structured path-scope evaluation (docs/PATH_SCOPE_RULES.md).
