@@ -110,6 +110,12 @@ type sdkSessionTransport struct {
 	lastStartupStderr string
 	endpointFactory   func(context.Context) (sdkEndpoint, error)
 	wg                sync.WaitGroup
+	// legacyFallbackActive flips on when a live session proves it cannot
+	// speak the SDK's newest negotiation (a protocol rejection on a real
+	// request — initialize answers from cache without touching the wire,
+	// so the failure surfaces on tools/list, task 256). build() then
+	// connects with legacyConnectFallback instead of the spec default.
+	legacyFallbackActive bool
 
 	legacyElicitationMu   sync.Mutex
 	legacyElicitationNext uint64
@@ -365,7 +371,7 @@ func (t *sdkSessionTransport) build(ctx context.Context, generation uint64) (*ma
 	}
 
 	t.setStateIfBuilding(generation, SessionStateListening)
-	session, err := client.Connect(sessionCtx, endpoint.transport, connectOptions(t.spec.ProtocolVersion))
+	session, err := client.Connect(sessionCtx, endpoint.transport, connectOptions(t.connectVersion()))
 	if err != nil {
 		// Task 256: a server that cannot speak the newest handshake (or chokes
 		// on the SDK's server/discover preamble) gets exactly one second
@@ -469,6 +475,34 @@ func connectOptions(pinned string) *mcpsdk.ClientSessionOptions {
 	return &mcpsdk.ClientSessionOptions{ProtocolVersion: pinned}
 }
 
+// connectVersion resolves the protocol version this transport connects with:
+// an evidenced legacy fallback wins (a live session already rejected the
+// modern negotiation), then the spec pin, then the SDK default.
+func (t *sdkSessionTransport) connectVersion() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.legacyFallbackActive {
+		return legacyConnectFallback
+	}
+	return t.spec.ProtocolVersion
+}
+
+// legacyFallbackEngaged reports whether a live protocol rejection has already
+// flipped this transport onto the classic handshake.
+func (t *sdkSessionTransport) legacyFallbackEngaged() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.legacyFallbackActive
+}
+
+// engageLegacyFallback pins this transport to the classic handshake for every
+// future session build.
+func (t *sdkSessionTransport) engageLegacyFallback() {
+	t.mu.Lock()
+	t.legacyFallbackActive = true
+	t.mu.Unlock()
+}
+
 // legacyConnectFallback is the classic-handshake version used when a session
 // build fails before completing a handshake. Newer SDK releases start their
 // negotiation with a SEP-2575 server/discover probe and a 2025-11-25 fallback
@@ -503,7 +537,16 @@ func isProtocolRejection(err error) bool {
 			rejected = true
 		}
 	})
-	return rejected
+	if rejected {
+		return true
+	}
+	// The SDK often wraps the RPC error as plain prose (`calling "tools/list":
+	// invalid request`, task 256 field report) with no *mcpjsonrpc.Error node
+	// to visit. Scan the rendered message with the same markers; the fallback
+	// fires at most once per transport, so a rare false positive costs one
+	// redundant rebuild, not correctness.
+	message := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(message, "invalid request") || strings.Contains(message, "protocol version")
 }
 
 // jsonrpcErrorCode returns the first JSON-RPC error code in the error tree, or
