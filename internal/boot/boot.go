@@ -861,12 +861,6 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if cfg.Agent.ExperimentalUIDriver {
 		reg.Add(builtin.NewUIInteractTool(builtin.UIInteractConfig{WorkDir: root}))
 	}
-	// Task 254: the autonomous-update surface, same iron-rule-2 gate. With
-	// experimental_autonomous_update off the restart_update tool is not in the
-	// registry at all; the boot snapshot decides, so a flip applies on restart.
-	if cfg.Desktop.ExperimentalAutonomousUpdate {
-		reg.Add(builtin.NewRestartUpdate())
-	}
 	addWebSearch(reg, cfg, entry, proxySpec, sink)
 	// Use the caller-supplied shared host when set, so controllers for the same
 	// workspace root reuse running MCP processes (e.g. one CodeGraph daemon
@@ -1977,6 +1971,17 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// even see a tool it is not permitted to call.
 		if cfg.Agent.SessionCollabAllowReadTail {
 			reg.Add(agent.NewReadSessionTailTool(collab))
+		}
+		// Task 254: the autonomous-update surface, same iron-rule-2 gate as the
+		// early builtins — but registered HERE, after the executor exists, so
+		// the constructor can bind executor.SessionPath: capability-routed
+		// calls never cross the agent's context-binding point, and the
+		// busy-guard exemption needs the calling session on every call face.
+		// With experimental_autonomous_update off the tool is not in the
+		// registry at all; the boot snapshot decides, so a flip applies on
+		// restart.
+		if cfg.Desktop.ExperimentalAutonomousUpdate {
+			reg.Add(builtin.NewRestartUpdateWithCallerSession(executor.SessionPath))
 		}
 		if tc := agent.NewTaskCardTool(agent.TaskCardConfig{
 			Enabled:            true,
