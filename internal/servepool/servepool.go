@@ -412,9 +412,11 @@ func (m *Manager) spawn(p *project) error {
 	// Record who owns this spawn (serve pid + desktop pid) so a LATER desktop
 	// launch can reap an orphan whose owning desktop died (task 272 L3):
 	// "owner pid dead + serve pid alive" is the orphan signature, no parent-PID
-	// sniffing required.
-	spawnFile := filepath.Join(filepath.Dir(portFile), "serve.spawn")
-	_ = os.WriteFile(spawnFile, []byte(strconv.Itoa(cmd.Process.Pid)+"\n"+strconv.Itoa(os.Getpid())+"\n"), 0o600)
+	// sniffing required. Audit M2: the third line records the serve image path
+	// so the reap can refuse a recycled pid that no longer maps to this binary.
+	spawnFile := filepath.Join(filepath.Dir(portFile), spawnFileRel)
+	writeSpawnRecord(spawnFile,
+		strconv.Itoa(cmd.Process.Pid)+"\n"+strconv.Itoa(os.Getpid())+"\n"+m.bin+"\n")
 	// A stale port file from a previous spawn would be read on the first
 	// poll and report success before the new serve even bound a socket —
 	// proxying to a dead port (observed 502-in-48ms). Remove it first so

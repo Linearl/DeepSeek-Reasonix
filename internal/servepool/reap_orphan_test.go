@@ -3,6 +3,7 @@ package servepool
 import (
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
 
@@ -32,36 +33,87 @@ func TestOrphanDecisionPinsTheKillRule(t *testing.T) {
 			}
 		})
 	}
-	// owner 101 not in the alive map => not alive; serve 200 alive — wait,
-	// that combination IS the orphan rule; pin it explicitly for an owner the
-	// probe has never heard of (conservative platforms may not resolve pids).
+	// owner unknown to the probe reads as dead: conservative platforms may not
+	// resolve every pid, and the orphan rule still requires a live serve.
 	if !orphanDecision(200, 999, self, probe) {
 		t.Fatal("unknown owner must be treated as dead when the serve is alive")
 	}
 }
 
 // TestSpawnFileRoundTrip pins the on-disk contract between spawn and reap:
-// "<servePid>\n<desktopPid>\n", tolerant of CRLF, rejecting malformed input.
+// "<servePid>\n<ownerDesktopPid>\n<serveImagePath>\n", tolerant of CRLF. A
+// legacy two-line record parses with an empty image path — which the reap
+// refuses to kill against (audit M2: no identity proof, no kill).
 func TestSpawnFileRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, spawnFileRel)
-	if err := os.WriteFile(path, []byte("4321\n8765\r\n"), 0o600); err != nil {
+
+	// Current three-line format.
+	if err := os.WriteFile(path, []byte("4321\n8765\nC:\\bin\\reasonix-cli.exe\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	servePID, ownerPID, ok := readSpawnFile(path)
-	if !ok || servePID != 4321 || ownerPID != 8765 {
-		t.Fatalf("round-trip = (%d, %d, %v), want (4321, 8765, true)", servePID, ownerPID, ok)
+	servePID, ownerPID, image, ok := readSpawnFile(path)
+	if !ok || servePID != 4321 || ownerPID != 8765 || image != `C:\bin\reasonix-cli.exe` {
+		t.Fatalf("round-trip = (%d, %d, %q, %v)", servePID, ownerPID, image, ok)
 	}
+
+	// Legacy two-line record: parses, but image is empty (no kill evidence).
+	if err := os.WriteFile(path, []byte("4321\r\n8765\r\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, _, image, ok = readSpawnFile(path)
+	if !ok || image != "" {
+		t.Fatalf("legacy record must parse with empty image, got image=%q ok=%v", image, ok)
+	}
+
 	// Missing file and malformed content are both "no record", never a kill.
-	if _, _, ok := readSpawnFile(filepath.Join(dir, "absent")); ok {
+	if _, _, _, ok := readSpawnFile(filepath.Join(dir, "absent")); ok {
 		t.Fatal("missing file must not read as a record")
 	}
 	for _, junk := range []string{"", "12", "abc\ndef\n", "12\nabc\n"} {
 		if err := os.WriteFile(path, []byte(junk), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if _, _, ok := readSpawnFile(path); ok {
+		if _, _, _, ok := readSpawnFile(path); ok {
 			t.Fatalf("malformed record %q must be rejected", junk)
 		}
+	}
+}
+
+// TestImagePathMatchesPidReuseGuard pins audit M2's core rule: a recycled pid
+// whose live image no longer matches the record must never be killed, and an
+// unreadable live path (or empty record) fails toward NOT killing.
+func TestImagePathMatchesPidReuseGuard(t *testing.T) {
+	cases := []struct {
+		name, recorded, actual string
+		want                   bool
+	}{
+		{name: "same path kills", recorded: `C:\apps\reasonix\reasonix-cli.exe`, actual: `c:\apps\reasonix\REASONIX-CLI.EXE`, want: true},
+		{name: "unix exact match kills", recorded: "/opt/reasonix/reasonix-cli", actual: "/opt/reasonix/reasonix-cli", want: true},
+		{name: "recycled pid: unrelated image never killed", recorded: `C:\apps\reasonix\reasonix-cli.exe`, actual: `C:\Windows\System32\notepad.exe`, want: false},
+		{name: "empty record (legacy) never killed", recorded: "", actual: `C:\apps\reasonix\reasonix-cli.exe`, want: false},
+		{name: "unreadable live path never killed", recorded: `C:\apps\reasonix\reasonix-cli.exe`, actual: "", want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := imagePathMatches(tc.recorded, tc.actual); got != tc.want {
+				t.Fatalf("imagePathMatches(%q, %q) = %v, want %v", tc.recorded, tc.actual, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestZeroSignalAliveTreatsEPERMAsAlive pins audit M1: EPERM from a Signal(0)
+// probe means "exists but not signalable by us", not death — misreading it
+// would let a live peer desktop's serve be classified as an orphan.
+func TestZeroSignalAliveTreatsEPERMAsAlive(t *testing.T) {
+	if !zeroSignalAlive(nil) {
+		t.Fatal("nil error must read as alive")
+	}
+	if !zeroSignalAlive(syscall.EPERM) {
+		t.Fatal("EPERM must read as alive: the process exists, we just cannot signal it")
+	}
+	if zeroSignalAlive(syscall.ESRCH) {
+		t.Fatal("ESRCH (no such process) must read as dead")
 	}
 }
