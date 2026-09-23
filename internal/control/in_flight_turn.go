@@ -11,6 +11,20 @@ import (
 	"reasonix/internal/provider"
 )
 
+// concurrentDualTabProbe answers "is this conversation open in two live tabs
+// of this window?" (task 203). The host registers one probe at startup — the
+// answer is a global tab-registry fact, so it is process-wide rather than
+// per-controller. nil (headless/CLI) means the local class degrades to the
+// conservative path: an in-process race is logged, never blamed on another
+// window, and a real second process keeps its warning upstream of this check.
+var concurrentDualTabProbe func(sessionPath string) bool
+
+// SetConcurrentDualTabProbe registers the host's dual-tab detector (task 203).
+// The desktop calls it once at startup; tests may swap it.
+func SetConcurrentDualTabProbe(probe func(sessionPath string) bool) {
+	concurrentDualTabProbe = probe
+}
+
 func (c *Controller) markInFlightTurn(startMessageIndex int, preserveUser bool) agent.InFlightTurnMeta {
 	path := c.SessionPath()
 	if path == "" {
@@ -313,6 +327,21 @@ func (c *Controller) emitHeadEvents() {
 	for _, ev := range s.DrainHeadEvents() {
 		switch ev.Kind {
 		case agent.HeadEventForkedConcurrent:
+			// Task 203: attribute before phrasing. external/unknown keep the
+			// outside-window warning (accurate for a real second process);
+			// local is an in-process writer — a dual tab open on the same
+			// conversation is the real dual writer and gets its own notice,
+			// while a plain in-process race is logged without crying wolf.
+			if ev.Class == agent.HeadDivergenceLocal && concurrentDualTabProbe != nil && concurrentDualTabProbe(c.SessionPath()) {
+				c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionConcurrentDualTab,
+					"this conversation is open in two tabs of this window; both wrote, and the extra content is kept as a separate version"))
+				continue
+			}
+			if ev.Class == agent.HeadDivergenceLocal {
+				slog.Info("session: concurrent head fork by an in-process writer (not another window)",
+					"path", c.SessionPath(), "other_writer", ev.OtherWriter, "head", ev.HeadID)
+				continue
+			}
 			c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionConcurrentWriter,
 				"another Reasonix window or process added to this conversation; its content is kept as a separate version"))
 		case agent.HeadEventMultipleRecentHeads:

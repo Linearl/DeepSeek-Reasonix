@@ -346,6 +346,9 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   ConsolidateSessionRecoveryCopies(path: string, winnerPath?: string): Promise<ConsolidationReport>;
   ConsolidateTopicRecoveryCopies(scope: string, workspaceRoot: string, topicID: string): Promise<ConsolidationReport>;
   ForceConsolidateSessionRecoveryCopies(path: string, winnerPath?: string): Promise<ConsolidationReport>;
+  // Task 203: is this conversation open in two live tabs of this window? The
+  // merge surface refuses while it is, so the dual writer is resolved first.
+  IsConversationDualOpen(sessionPath: string): Promise<boolean>;
   PreviewRecoveryChain(mainPath: string, chainPath: string): Promise<RecoveryChainPreview>;
   PreviewRecoveryChainMessages(mainPath: string, chainPath: string, limit?: number): Promise<RecoveryChainPreviewMessage[]>;
   ForceConsolidateTopicRecoveryCopies(scope: string, workspaceRoot: string, topicID: string): Promise<ConsolidationReport>;
@@ -3485,6 +3488,7 @@ function makeMockApp(): AppBindings {
         async RetryInboxItem() {},
         async RefreshInboxItem() {},
         async InboxHasItems() { return recoveryMock; },
+        async IsConversationDualOpen() { return false; },
         async Cancel() {
           cancelled = true;
           emitMockTurnDone();

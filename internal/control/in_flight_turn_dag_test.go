@@ -137,6 +137,11 @@ func TestFinishedTurnClosesLogMarkerInOneBatch(t *testing.T) {
 }
 
 func TestConcurrentWriterEmitsNoticeOnBothSides(t *testing.T) {
+	// Task 203: two controllers on one process classify the competing writer as
+	// local; with the probe reporting an actual dual open this is the real dual
+	// writer and must keep prompting — with its own phrasing now.
+	SetConcurrentDualTabProbe(func(string) bool { return true })
+	t.Cleanup(func() { SetConcurrentDualTabProbe(nil) })
 	dir := t.TempDir()
 	path := filepath.Join(dir, "shared.jsonl")
 	const systemPrompt = "SYS"
@@ -160,10 +165,12 @@ func TestConcurrentWriterEmitsNoticeOnBothSides(t *testing.T) {
 	if err := ctrlB.RunTurn(context.Background(), "second from B"); err != nil {
 		t.Fatal(err)
 	}
-	// Side that discovered the fork: concurrent-writer notice on save.
+	// Side that discovered the fork: dual-tab notice on save (task 203: local
+	// class + probe true = the real dual writer, phrased as a dual tab rather
+	// than blamed on another window).
 	notice, ok := sinkB.lastNotice()
-	if !ok || notice.Code != event.NoticeCodeSessionConcurrentWriter {
-		t.Fatalf("B notice = %+v ok=%v, want concurrent writer notice", notice, ok)
+	if !ok || notice.Code != event.NoticeCodeSessionConcurrentDualTab {
+		t.Fatalf("B notice = %+v ok=%v, want concurrent dual-tab notice", notice, ok)
 	}
 	// Side that reopens after the dual write: head-switched notice on load.
 	// Together these cover "both sides see a prompt" without re-notifying a

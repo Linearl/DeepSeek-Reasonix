@@ -558,6 +558,12 @@ func (a *App) startup(ctx context.Context) {
 	// own install.
 	tool.SetFallbackAutonomousUpdateController(newAutonomousUpdateController(a))
 	tool.SetFallbackRestartUpdater(restartUpdaterAdapter{a})
+	// Task 203: the head-divergence notice needs to tell a real second tab
+	// apart from an in-process race; the answer is a tab-registry fact, so the
+	// desktop registers the probe once per process (same one-App contract as
+	// cascadeApp above). Left nil in CLI/serve — the local class then only
+	// logs, which is the conservative behaviour.
+	control.SetConcurrentDualTabProbe(a.isConversationDualOpen)
 	// Only the process that claimed the pre-Wails diagnostics lock consumes
 	// lifecycle evidence. This remains correct on Linux where Wails invokes
 	// OnStartup before its DBus single-instance handoff.

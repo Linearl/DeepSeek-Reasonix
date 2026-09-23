@@ -258,6 +258,12 @@ func TestDAGSaveConcurrentWritersForkInsteadOfConflicting(t *testing.T) {
 	if len(events) != 1 || events[0].Kind != HeadEventForkedConcurrent || events[0].HeadID != refB.HeadID {
 		t.Fatalf("events = %+v", events)
 	}
+	// Task 203: both sessions were written from this process, so the fork must
+	// be attributed local — the notice layer decides from that class instead
+	// of unconditionally claiming "another window or process".
+	if events[0].Class != HeadDivergenceLocal {
+		t.Fatalf("event class = %q, want %q", events[0].Class, HeadDivergenceLocal)
+	}
 	heads, err := ListSessionHeads(path)
 	if err != nil || len(heads) != 2 || heads[1].Kind != HeadKindConcurrent || heads[1].MessageCount != 4 || heads[0].MessageCount != 4 {
 		t.Fatalf("heads = %+v err=%v", heads, err)

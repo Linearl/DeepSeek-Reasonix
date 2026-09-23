@@ -522,6 +522,19 @@ export function RecoveryCopiesSection() {
         );
         let report: ConsolidationReport;
         try {
+          // Task 203: refuse to merge a conversation two tabs are actively
+          // writing — the merge would race both writers and bury the fork the
+          // user is trying to resolve. Block this group and move on; the
+          // outcome row explains why.
+          if (await app.IsConversationDualOpen(group.mainPath)) {
+            collected.push({
+              label: group.mainLabel,
+              kind: "blocked",
+              detail: t("settings.recoveryCopiesDualOpen"),
+            });
+            setOutcomes([...collected]);
+            continue;
+          }
           report = await app.ConsolidateSessionRecoveryCopies(group.mainPath, pickedChain[group.mainPath] ?? "");
         } catch (err) {
           collected.push({

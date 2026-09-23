@@ -1485,6 +1485,8 @@ export const en = {
   "recovery.cleanupResult": "Moved {moved}; busy {busy}; kept {kept}.",
   "recovery.previewCleanup": "Review safe cleanup",
   "recovery.noticeConcurrentWriter": "Another Reasonix window or process added to this conversation. Its content is kept as a separate version; use View versions to switch.",
+  "recovery.noticeConcurrentDualTab": "This conversation is open in two tabs of this window and both wrote to it; the extra content is kept as a separate version — close one tab before continuing.",
+  "settings.recoveryCopiesDualOpen": "This conversation is open in two tabs of this window — merging is paused. Close one tab (resolve the dual writer) and run the merge again.",
   "recovery.noticeAlsoOpen": "This session is also open in another Reasonix instance. Both may save; conflicts will fork a recovery copy.",
   "recovery.noticeHeadSwitched": "Opened the newest version of this conversation. Other saved versions are available in View versions.",
   "recovery.noticeHeadSelected": "This version is now the current version of the conversation.",
