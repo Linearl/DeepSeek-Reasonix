@@ -100,6 +100,31 @@ import type {
 } from "./types";
 import { reportFrontendLog } from "./frontendLog";
 
+// Task 258 相4: the projected composer running flag. The runtime-state
+// snapshot (runtime-state:changed push) has no stale guard of its own, so it
+// used to win by precedence — a fail turn whose TurnDone finalized the local
+// event flow could be overridden by a snapshot still reporting the SAME turn
+// as running, locking the input after task_stopped. Accept the snapshot's
+// running=true only when it carries a turn id the local flow has not just
+// finalized; a local running turn always beats a pre-start idle snapshot.
+export function projectRunningState(
+  active: Pick<State, "running" | "lastTurnIdAtDone">,
+  runtime: { known: boolean; running?: boolean; state?: { turnId?: string } | null },
+): boolean {
+  const local = Boolean(active.running);
+  if (!runtime.known || runtime.running === undefined) return local;
+  if (Boolean(runtime.running) === local) return local;
+  if (runtime.running && !local) {
+    const snapshotTurnId = runtime.state?.turnId?.trim();
+    // A running flag with no turn id contradicts itself; the same id as the
+    // turn that just finished is a pre-TurnDone push. Both read as stale.
+    if (!snapshotTurnId) return local;
+    if (snapshotTurnId === active.lastTurnIdAtDone) return local;
+    return true; // A genuinely newer turn whose turn_started has not arrived.
+  }
+  return local; // Local event flow is fresher than a pre-start idle snapshot.
+}
+
 export { foregroundRunningFromRuntimeMeta } from "./runtimeMeta";
 export {
   deliveryReadinessDetail,
@@ -451,6 +476,11 @@ export interface State extends ReadStatusHost {
   turnStartAt: number;
   turnDoneAt: number;
   turnLifecycleObservedAt?: number;
+  /** Task 258 相4: turn id finalized by the last locally-observed turn_done —
+   * lets the projected running state spot a runtime snapshot that still
+   * reports THIS turn as running after its terminal event (fail-turn input
+   * lock) instead of rejecting a genuinely newer turn. */
+  lastTurnIdAtDone?: string;
   /** Last runtime snapshot sequence accepted for this tab/epoch. */
   runtimeStatusEpoch?: string; runtimeStatusSeq?: number; runtimeStatusSnapshotAt?: number;
   // Completion tokens accumulated across executor usage events within the
@@ -1500,6 +1530,8 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         currentAssistant: undefined,
         assistantSegmentOrdinal: 0,
         activeTurnId: undefined,
+        // Task 258 相4: same stale-snapshot guard as the normal turn_done.
+        lastTurnIdAtDone: e.turnId ?? s.activeTurnId ?? s.lastTurnIdAtDone,
         live: undefined,
       };
     }
@@ -2063,6 +2095,9 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         currentAssistant: undefined,
         assistantSegmentOrdinal: 0,
         activeTurnId: undefined,
+        // Task 258 相4: remember which turn just finalized so a runtime
+        // snapshot still reporting THAT turn as running reads as stale.
+        lastTurnIdAtDone: e.turnId ?? s.activeTurnId ?? s.lastTurnIdAtDone,
         approval: keepPlanApproval ? s.approval : undefined,
         ask: undefined,
         mcpInteraction: undefined,
@@ -5395,7 +5430,11 @@ export function useController() {
     } catch { /* ignore */ }
   }, []);
 
-  const projectedState = useMemo(() => runtimeState.known ? { ...activeState, running: runtimeState.running ?? activeState.running } : activeState, [activeState, runtimeState.known, runtimeState.running]);
+  const projectedState = useMemo(() => {
+    if (!runtimeState.known) return activeState;
+    const projectedRunning = projectRunningState(activeState, runtimeState);
+    return projectedRunning === activeState.running ? activeState : { ...activeState, running: projectedRunning };
+  }, [activeState, runtimeState.known, runtimeState.running, runtimeState.state?.turnId]);
   return {
     state: projectedState,
     // Read another tab's transcript without switching to it: the split view mounts

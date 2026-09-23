@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { initialState, reducer, STEER_NOTICE_PREFIX, isSteerNoticeText } from "../lib/useController";
+import { initialState, reducer, STEER_NOTICE_PREFIX, isSteerNoticeText, projectRunningState } from "../lib/useController";
 import { retireSubmittedGuidance } from "../lib/composerInboxQueue";
 import type { PendingGuidance } from "../components/ComposerGuidanceShelf";
 import { parseMergedMessage } from "../components/Message";
@@ -158,6 +158,40 @@ function noticeItems(state: typeof initialState) {
     "the consume-time steer event checks the receipt bubble before appending");
 }
 
-assert.ok(passed >= 20, `expected at least 20 checks, got ${passed}`);
+// ── 相4: fail turn → TurnDone → composer running 复位对冲 ───────────────────
+{
+  // The fail-turn lifecycle: turn_started admits, then a FAILED turn_done
+  // (the 273 recovery-exhausted path) must finalize the local running state
+  // and remember which turn it was.
+  let s = reducer(initialState, { type: "event", e: { kind: "turn_started", turnId: "t-1", status: "in_progress" } });
+  ok(s.running === true && s.activeTurnId === "t-1", "turn_started admits the running turn");
+  s = reducer(s, { type: "event", e: { kind: "turn_done", turnId: "t-1", status: "failed", err: "stream ID 3; INTERNAL_ERROR; received from peer" } });
+  ok(s.running === false && s.turnActive === false, "a failed turn_done finalizes the local running state");
+  ok(s.lastTurnIdAtDone === "t-1", "turn_done remembers the finalized turn id");
+
+  // The projected composer flag: a runtime snapshot still reporting THIS turn
+  // as running (stale push / lost refresh) must not resurrect the input lock.
+  ok(projectRunningState(s, { known: true, running: true, state: { turnId: "t-1" } }) === false,
+    "a stale snapshot reporting the just-finished turn as running cannot relock the input");
+  ok(projectRunningState(s, { known: true, running: true, state: { turnId: "" } }) === false,
+    "a running flag carrying no turn id contradicts itself and reads as stale");
+  ok(projectRunningState(s, { known: true, running: true, state: undefined }) === false,
+    "a running flag with no snapshot state falls back to the finalized local turn");
+
+  // A genuinely NEW turn whose turn_started has not arrived yet still wins —
+  // the reconciliation must not swallow fresh evidence.
+  ok(projectRunningState(s, { known: true, running: true, state: { turnId: "t-2" } }) === true,
+    "a new turn's snapshot still wins before its turn_started arrives");
+
+  // Local running beats a pre-start idle snapshot (no mid-turn flicker).
+  const runningLocal = { ...initialState, running: true, turnActive: true, activeTurnId: "t-9" };
+  ok(projectRunningState(runningLocal, { known: true, running: false, state: { turnId: "" } }) === true,
+    "a pre-start idle snapshot never interrupts a locally running turn");
+
+  // Unknown snapshot → local event flow decides.
+  ok(projectRunningState(s, { known: false }) === false, "an unknown runtime snapshot falls back to local state");
+}
+
+assert.ok(passed >= 26, `expected at least 26 checks, got ${passed}`);
 console.log(`\n${passed} checks passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
