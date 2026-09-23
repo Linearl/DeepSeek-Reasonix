@@ -25,5 +25,11 @@ assert.match(
 assert.match(store, /slice\.error/, "transcript store rejects slice.error as failure");
 assert.match(appView, /retrySessionHistory/, "App wires history retry control");
 assert.match(chatPane, /SessionRecoveryBanner/, "App surfaces persistent history recovery above the transcript");
+// Task 255: the store's hasOlder early-out reports kind "exhausted" (single
+// source of truth) and the controller maps it to history_older_exhausted —
+// the two layers resync instead of looping "history page unavailable".
+assert.match(store, /kind: "exhausted"/, "loadOlder's hasOlder early-out returns the exhausted kind");
+assert.match(controller, /result\?\.kind === "exhausted"[\s\S]{0,400}?type: "history_older_exhausted"/,
+  "controller maps the exhausted kind to history_older_exhausted");
 
 console.log("  PASS  history load failure contract");

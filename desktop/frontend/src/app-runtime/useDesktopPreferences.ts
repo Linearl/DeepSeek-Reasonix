@@ -38,8 +38,9 @@ export function useDesktopPreferences() {
     // Task 161: apply the transcript cache tuning (max resident tab states +
     // the two budgets) during boot, BEFORE the first transcriptStore
     // construction reads the effective ceilings. When the experiment is OFF
-    // the user values are ignored entirely — the shipped defaults apply and
-    // the settings controls stay disabled.
+    // the user values are ignored entirely — the shipped defaults apply.
+    // (Task 191: the settings controls stay visible and editable either way;
+    // only the applied effect is gated by this switch.)
     if (Boolean((settings as { experimentalCacheTuning?: boolean }).experimentalCacheTuning)) {
       applyDesktopCacheTuning({
         maxCachedTabs: (settings as { maxCachedTabs?: number }).maxCachedTabs,

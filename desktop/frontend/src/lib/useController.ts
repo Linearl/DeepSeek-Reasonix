@@ -3347,6 +3347,15 @@ export function useController() {
         reportFrontendLog("history-paging", "older page rejected", `tab=${targetTabId} reason=identity-changed`, "warn");
         return false;
       }
+      if (result?.kind === "exhausted") {
+        // Task 255: the store itself reports nothing older (single source of
+        // truth). Syncing the UI flag here is what breaks the millis-retry
+        // loop - the two layers used to disagree forever and every retry
+        // re-entered the store's early-out as "history page unavailable".
+        dispatchTo(targetTabId, { type: "history_older_exhausted" });
+        reportFrontendLog("history-paging", "no older history left", `tab=${targetTabId} trigger=${trigger}`, "info");
+        return false;
+      }
       if (!result) {
         // Two different endings used to share one error string, so a transcript
         // that simply has nothing older showed up as a failure (task 101 P2).

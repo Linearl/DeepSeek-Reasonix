@@ -115,8 +115,9 @@ export interface TranscriptProjection {
 }
 
 export interface LoadOlderResult extends TranscriptProjection {
-  /** "prepend": page older items; "reload": cursor went stale, full latest replace. */
-  kind: "prepend" | "reload";
+  /** "prepend": page older items; "reload": cursor went stale, full latest replace;
+   *  "exhausted": the store itself says nothing older exists (task 255). */
+  kind: "prepend" | "reload" | "exhausted";
   /** Items contributed by the older page (kind === "prepend"). */
   prependItems: Item[];
   /** Existing item ids superseded by cross-page tool merges (kind === "prepend"). */
@@ -989,7 +990,16 @@ export class TranscriptStore {
       const projection = await this.loadLatest(tabId, sessionPath, options);
       return projection ? { ...projection, kind: "reload", prependItems: [], removeIds: [] } : undefined;
     }
-    if (!session.hasOlder || !session.nextCursor || session.olderInFlight) return undefined;
+    if (session.olderInFlight) return undefined;
+    if (!session.hasOlder || !session.nextCursor) {
+      // Task 255: the store is the single source of truth for "nothing older".
+      // Returning undefined here read as a failure while the UI layer still
+      // believed hasOlder (the two flags come from different backend objects),
+      // so a retry re-entered this early-out forever - the millis-failure loop.
+      // Report the authoritative projection instead; the controller maps it to
+      // history_older_exhausted and the two layers resync.
+      return { ...this.projectionOf(session), kind: "exhausted", prependItems: [], removeIds: [] };
+    }
     session.olderInFlight = true;
     const generation = session.generation;
     try {
