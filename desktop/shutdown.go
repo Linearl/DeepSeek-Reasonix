@@ -46,6 +46,10 @@ func completeDesktopShutdown(tracker *desktopLifecycleTracker, body func()) {
 		}
 	}()
 	body()
+	// Task 272 G2: an exit with no terminal log line left "when did the old
+	// process die" undecidable — the incident log just stopped. Name the
+	// normal completion before the lifecycle record is removed.
+	slog.Info("desktop: shutdown teardown complete", "phase", tracker.phase())
 	close(done)
 	tracker.clean()
 }
@@ -125,9 +129,13 @@ func (a *App) shutdownBody() {
 	a.runtimeAdmissionMu.Lock()
 	defer a.runtimeAdmissionMu.Unlock()
 	// Close every shared plugin host before releasing the lifecycle barrier,
-	// even if a tab cleanup panics.
+	// even if a tab cleanup panics. G1: mark inside the defer so a watchdog
+	// firing mid-tail names the section, not just "shutting_down".
+	defer func() {
+		a.lifecycle.tracker.mark("closing_shared_hosts")
+		a.closeAllSharedHosts()
+	}()
 	a.lifecycle.tracker.mark("closing_tabs")
-	defer a.closeAllSharedHosts()
 
 	a.mu.RLock()
 	tabs := a.runtimeTabsLocked()
@@ -144,6 +152,10 @@ func (a *App) shutdownBody() {
 	}
 	a.mu.RUnlock()
 	for _, it := range items {
+		// G1: the incident's wedge candidates were SnapshotForShutdown/Close
+		// hitting a 117MB full save — mark per tab so the watchdog's phase
+		// names exactly which tab teardown blocked.
+		a.lifecycle.tracker.mark("closing_tab:" + it.tab.ID)
 		if !it.readOnly {
 			if err := it.ctrl.SnapshotForShutdown(); err != nil {
 				slog.Warn("desktop: shutdown snapshot failed", "tab", it.tab.ID, "err", err)

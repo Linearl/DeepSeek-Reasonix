@@ -381,6 +381,12 @@ function isStalePromptError(error: unknown): boolean {
 function handlePromptFailure(dispatchTo: (tabId: string, action: Action) => void, tabId: string, id: string, epoch: number, error: unknown, kind?: "approval" | "ask" | "mcp") {
   if (isStalePromptError(error) && kind) dispatchTo(tabId, { type: "expire_prompt", id, epoch, kind });
   else if (kind) dispatchTo(tabId, { type: "submit_prompt_failed", id, epoch });
+  // Task 272 G5: the "cannot send" incident had zero frontend-side logs —
+  // the channel existed (frontendLog.ts) but the send chain never used it.
+  // Stale errors are normal tab-switch noise; everything else is real.
+  if (!isStalePromptError(error)) {
+    reportFrontendLog("send", "prompt resolution failed", `tab=${tabId} kind=${kind ?? "turn"} id=${id}: ${errorMessage(error)}`, "error");
+  }
   replayPendingPromptsForActiveTab(tabId);
 }
 
@@ -3982,6 +3988,12 @@ export function useController() {
   const rejectTurnSubmission = useCallback((tabId: string, submissionId: string, error: unknown) => {
     if (statesRef.current.get(tabId)?.pendingSubmissionId !== submissionId) return;
     dispatchTo(tabId, { type: "turn_submit_rejected", submissionId, error: `Send failed: ${errorMessage(error)}` });
+    // Task 272 G5: a rejected send used to live only in reducer state —
+    // nothing reached the log channel, so the incident's "cannot send" had
+    // no frontend trace at all. Stale/runtime-switch rejections stay quiet.
+    if (!isStalePromptError(error)) {
+      reportFrontendLog("send", "turn submission rejected", `tab=${tabId} submission=${submissionId}: ${errorMessage(error)}`, "error");
+    }
     void reconcileRuntimeAfterRejectedMutation(tabId);
   }, [dispatchTo, reconcileRuntimeAfterRejectedMutation]);
 

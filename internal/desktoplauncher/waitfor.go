@@ -1,8 +1,7 @@
 package desktoplauncher
 
 import (
-	"fmt"
-	"os"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -19,8 +18,8 @@ const relaunchWaitTimeout = 90 * time.Second
 func extractWaitFor(args []string) (int, []string) {
 	for i := range args {
 		var (
-			pid int
-			err error
+			pid  int
+			err  error
 			rest []string
 		)
 		switch {
@@ -51,6 +50,11 @@ func waitForHandoff(pid int) {
 		return
 	}
 	if err := waitForProcessExit(pid, relaunchWaitTimeout); err != nil {
-		fmt.Fprintln(os.Stderr, "warning: wait for previous desktop:", err)
+		// Task 272 G3: this branch fired in the incident (previous desktop
+		// wedged past 90s) with only a bare stderr line — structured severity
+		// so the launcher's own output is greppable; the desktop-side
+		// counterpart is the secondInstanceLaunch slog.
+		slog.Warn("launcher: previous desktop did not exit within the relaunch wait; starting the new instance anyway",
+			"pid", pid, "timeout", relaunchWaitTimeout.String(), "err", err)
 	}
 }
