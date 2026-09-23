@@ -119,3 +119,43 @@ func TestRestartUpdateNotInitRegistered(t *testing.T) {
 		t.Fatal("restart_update must not be in the global builtin registry; boot registers it behind experimental_autonomous_update")
 	}
 }
+
+// TestRestartUpdateResolverCoversCapabilityFace pins the third-face fix
+// (task 254 field report): a capability-routed call carries no caller-session
+// context binding, so the construction-time resolver must supply it — the
+// busy-guard exemption needs the calling session on every call face. The
+// context binding wins when both exist (agent path stays exact).
+func TestRestartUpdateResolverCoversCapabilityFace(t *testing.T) {
+	controller := &fakeUpdateController{}
+
+	// Resolver, no binding: execute forwards the resolver's session.
+	toolWithResolver := NewRestartUpdateWithCallerSession(func() string {
+		return `C:\sessions\capability-caller.jsonl`
+	})
+	ctx := tool.WithAutonomousUpdateController(context.Background(), controller)
+	if _, err := toolWithResolver.Execute(ctx, json.RawMessage(`{"action":"execute"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if len(controller.execCallers) != 1 || controller.execCallers[0] != `C:\sessions\capability-caller.jsonl` {
+		t.Fatalf("resolver caller not forwarded: %v", controller.execCallers)
+	}
+
+	// Binding wins over the resolver (agent path must stay exact).
+	boundCtx := tool.WithRestartCallerSession(ctx, `C:\sessions\agent-caller.jsonl`)
+	if _, err := toolWithResolver.Execute(boundCtx, json.RawMessage(`{"action":"execute"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(controller.execCallers); n != 2 || controller.execCallers[1] != `C:\sessions\agent-caller.jsonl` {
+		t.Fatalf("context binding must win over the resolver: %v", controller.execCallers)
+	}
+
+	// Without a resolver the binding-free face degrades to "" (the host then
+	// refuses via the busy guard instead of exempting the wrong session).
+	plain := NewRestartUpdate()
+	if _, err := plain.Execute(ctx, json.RawMessage(`{"action":"execute"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(controller.execCallers); n != 3 || controller.execCallers[2] != "" {
+		t.Fatalf("resolver-less tool must send an empty caller: %v", controller.execCallers)
+	}
+}

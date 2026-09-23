@@ -20,11 +20,27 @@ import (
 // tool only lists, stages a target, and triggers them. execute needs BOTH
 // switches on: autonomous_update registers the tool, restart_update lets the
 // host swap the version — the host's error names the missing switch.
-type restartUpdate struct{}
+type restartUpdate struct {
+	// callerSession, when set, resolves the calling session at call time
+	// (task 254 third face, S4 call-time evaluation): capability-routed
+	// calls never cross the agent's context-binding point, so the busy-guard
+	// exemption needs a construction-time resolver bound to the executor's
+	// session path. Context bindings win when present (agent path).
+	callerSession func() string
+}
 
-// NewRestartUpdate returns the restart_update tool (task 254). Constructed by
-// the boot code behind experimental_autonomous_update; not auto-registered.
+// NewRestartUpdate returns the restart_update tool without a caller-session
+// resolver: only the context-injected (agent) path carries the calling
+// session. Boot uses NewRestartUpdateWithCallerSession instead.
 func NewRestartUpdate() tool.Tool { return restartUpdate{} }
+
+// NewRestartUpdateWithCallerSession returns the tool bound to a caller-session
+// resolver. Boot constructs it after the executor exists so capability-routed
+// calls — which never cross the agent's context-binding point — still carry
+// the calling session for the busy-guard exemption.
+func NewRestartUpdateWithCallerSession(resolve func() string) tool.Tool {
+	return restartUpdate{callerSession: resolve}
+}
 
 func (restartUpdate) Name() string { return "restart_update" }
 
@@ -48,7 +64,7 @@ func (restartUpdate) Schema() json.RawMessage {
 }`)
 }
 
-func (restartUpdate) Execute(ctx context.Context, args json.RawMessage) (string, error) {
+func (r restartUpdate) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var request struct {
 		Action string `json:"action"`
 		Target string `json:"target"`
@@ -62,6 +78,13 @@ func (restartUpdate) Execute(ctx context.Context, args json.RawMessage) (string,
 	if !ok {
 		return "", fmt.Errorf("restart_update is unavailable outside the desktop app")
 	}
+	// Calling session: the context binding is exact on the agent path; the
+	// construction-time resolver covers every other call face (capability
+	// dispatch, task 254 third face).
+	caller := tool.RestartCallerSessionFromContext(ctx)
+	if caller == "" && r.callerSession != nil {
+		caller = strings.TrimSpace(r.callerSession())
+	}
 	switch request.Action {
 	case "list_versions":
 		return listVersionsReport(ctx, controller)
@@ -71,7 +94,7 @@ func (restartUpdate) Execute(ctx context.Context, args json.RawMessage) (string,
 		}
 		return controller.SetTarget(ctx, strings.TrimSpace(request.Target))
 	case "execute":
-		return controller.ExecuteTarget(ctx, tool.RestartCallerSessionFromContext(ctx))
+		return controller.ExecuteTarget(ctx, caller)
 	case "":
 		return "", fmt.Errorf("restart_update needs action: list_versions, set_target, or execute")
 	default:
