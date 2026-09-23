@@ -18,6 +18,7 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	c.Desktop.ExperimentalSplitView = true
 	c.Desktop.ExperimentalFeedback = true
 	c.Desktop.ExperimentalParallelFullAccess = true
+	c.Desktop.ExperimentalTodoSidebar = true
 	c.Desktop.ExperimentalPathRules = true
 	c.Desktop.ExperimentalTraceAsState = true
 	c.Desktop.ExperimentalDream = true
@@ -32,6 +33,7 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 		"experimental_split_view = true",
 		"experimental_feedback = true",
 		"experimental_parallel_full_access = true",
+		"experimental_todo_sidebar = true",
 		"experimental_path_rules = true",
 		"experimental_trace_as_state = true",
 		"experimental_dream = true",
@@ -56,6 +58,7 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 		"experimental_split_view = false",
 		"experimental_feedback = false",
 		"experimental_parallel_full_access = false",
+		"experimental_todo_sidebar = false",
 		"experimental_path_rules = false",
 		"experimental_trace_as_state = false",
 		"experimental_dream = false", // [agent] and desktop mirror both render this key

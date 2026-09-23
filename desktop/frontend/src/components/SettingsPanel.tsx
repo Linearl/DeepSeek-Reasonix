@@ -5,6 +5,7 @@ import { SettingsSelect } from "./SettingsSelect";
 import { providerProtocolLabel, providerProtocolChoices } from "../lib/providerProtocol";
 import { providerSupportsServerWebSearch } from "../lib/providerSearch";
 import { providerDefaultLabel, providerDisplayLabel } from "../lib/providerLabel";
+import { DOCK_TAB_IDS, isDockTabHidden, setDockTabHidden } from "../lib/dockTabs";
 
 // Autopilot runs unattended, so it needs a wall-clock bound; this is the value the
 // settings switch falls back to when the user turns it on without typing one.
@@ -1757,6 +1758,7 @@ type ExperimentFeatureId =
   | "sessionMonitor"
   | "sessionStorage"
   | "splitView"
+  | "todoSidebar"
   | "feedback"
   | "localServer"
   | "pathRules"
@@ -1834,6 +1836,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "feedback", group: "debug", label: t("settings.feedback"), on: Boolean(s.experimentalFeedback) },
     { id: "restartUpdate", group: "debug", label: t("settings.restartUpdate"), on: Boolean(s.experimentalRestartUpdate) },
     { id: "splitView", group: "ui", label: t("settings.splitView"), on: Boolean(s.experimentalSplitView) },
+    { id: "todoSidebar", group: "ui", label: t("settings.todoSidebar"), on: Boolean(s.experimentalTodoSidebar) },
     { id: "autoLoadOlder", group: "ui", label: t("settings.autoLoadOlder"), on: Boolean(s.experimentalAutoLoadOlder) },
     { id: "cacheTuning", group: "storage", label: t("settings.cacheTuning"), on: Boolean(s.experimentalCacheTuning) },
     { id: "sessionStorage", group: "storage", label: t("settings.sessionStorage"), on: (s.sessionStorage ?? "v3_only") !== "v3_only" },
@@ -2042,6 +2045,68 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                 ))}
               </SettingsOptions>
             </SettingsField>
+          )}
+          {selected === "todoSidebar" && (
+            <>
+              <SettingsField label={t("settings.todoSidebar")} hint={t("settings.todoSidebarHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalTodoSidebar) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        // Boot snapshot (task 259): the dock reads the flag once at
+                        // startup, so saving raises the restart banner instead of
+                        // flipping the layout mid-session.
+                        await app.SetExperimentalTodoSidebar(on);
+                        setRestartNeeded(true);
+                      })}
+                    >
+                      {t(on ? "settings.todoSidebar.on" : "settings.todoSidebar.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField
+                label={t("settings.dockTabVisibility")}
+                hint={Boolean(s.experimentalTodoSidebar) ? t("settings.dockTabVisibilityHint") : t("settings.dockTabsDisabledHint")}
+                icon={<Sparkles size={18} />}
+              >
+                <div className="set-gates">
+                  {([
+                    ["context", "rightDock.overview"],
+                    ["files", "workspace.filesTab"],
+                    ["changed", "workspace.changedTab"],
+                    ["remote", "rightDock.remote"],
+                    ["todos", "workspace.todosTab"],
+                  ] as const).map(([tabId, labelKey]) => {
+                    // Task 259: the visibility checkboxes live under the todo-sidebar
+                    // switch; with it off they stay visible and readable but disabled,
+                    // with a hint naming the switch to flip (task 253's lesson).
+                    const locked = busy || !Boolean(s.experimentalTodoSidebar);
+                    const on = !isDockTabHidden(tabId);
+                    // Keep at least one tab visible: the last checked box cannot be
+                    // unchecked, otherwise the dock would render a body with no tabs.
+                    const lastOn = on && DOCK_TAB_IDS.every((id) => id === tabId || isDockTabHidden(id));
+                    return (
+                      <label key={tabId} className={`set-gates__item${locked ? " set-gates__item--locked" : ""}`}>
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          disabled={locked || lastOn}
+                          onChange={(event) => setDockTabHidden(tabId, !event.target.checked)}
+                        />
+                        <span className="set-gates__label">{t(labelKey)}</span>
+                      </label>
+                    );
+                  })}
+                  {!Boolean(s.experimentalTodoSidebar) && (
+                    <div className="set-gates__hint">{t("settings.dockTabsDisabledHint")}</div>
+                  )}
+                </div>
+              </SettingsField>
+            </>
           )}
           {selected === "feedback" && (
             <>

@@ -348,6 +348,7 @@ type SettingsView struct {
 	SessionStorageEffective      string `json:"sessionStorageEffective"`
 	SessionStorageRestartPending bool   `json:"sessionStorageRestartPending"`
 	ExperimentalFeedback         bool   `json:"experimentalFeedback"`
+	ExperimentalTodoSidebar      bool   `json:"experimentalTodoSidebar"`
 	ExperimentalLocalServer      bool   `json:"experimentalLocalServer"`
 	ExperimentalPathRules        bool   `json:"experimentalPathRules"`
 	ExperimentalTraceAsState     bool   `json:"experimentalTraceAsState"`
@@ -468,6 +469,9 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalFeedback exposes the agent submit_feedback tool and feedback
 	// inbox panel (task 121).
 	ExperimentalFeedback bool `json:"experimentalFeedback"`
+	// ExperimentalTodoSidebar moves the todo list into the right dock (task 259);
+	// the frontend snapshots it at boot, so a change needs a restart.
+	ExperimentalTodoSidebar bool `json:"experimentalTodoSidebar"`
 	// ExperimentalTraceAsState exposes Trace-as-State compaction (task 60).
 	ExperimentalTraceAsState bool `json:"experimentalTraceAsState"`
 	// ExperimentalDream exposes dream/distill memory-curation tools (task 115).
@@ -1161,6 +1165,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.SessionStorageEffective = a.sessionStorageBootMode(view.SessionStorage)
 		view.SessionStorageRestartPending = view.SessionStorageEffective != view.SessionStorage
 		view.ExperimentalFeedback = cfg.Desktop.ExperimentalFeedback
+		view.ExperimentalTodoSidebar = cfg.Desktop.ExperimentalTodoSidebar
 		view.ExperimentalTraceAsState = cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState
 		view.ExperimentalDream = cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream
 		view.ExperimentalPerfMonitor = cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor
@@ -1249,6 +1254,7 @@ func (a *App) Settings() SettingsView {
 		SessionStorageEffective:      storageEffective,
 		SessionStorageRestartPending: storageEffective != storageMode,
 		ExperimentalFeedback:         cfg.Desktop.ExperimentalFeedback,
+		ExperimentalTodoSidebar:      cfg.Desktop.ExperimentalTodoSidebar,
 		ExperimentalTraceAsState:     cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState,
 		ExperimentalDream:            cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream,
 		ExperimentalPerfMonitor:      cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,

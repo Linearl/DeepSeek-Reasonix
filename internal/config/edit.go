@@ -584,6 +584,16 @@ func (c *Config) SetExperimentalFeedback(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalTodoSidebar moves the live todo list into the right dock as a
+// fifth tab, with the dock tab visibility and wrap behaviour under the same
+// switch (task 259). Opt-in: with it off the todo list stays above the composer
+// and the dock is untouched. The desktop snapshots the flag at boot, so a
+// change needs a restart to be seen.
+func (c *Config) SetExperimentalTodoSidebar(enabled bool) error {
+	c.Desktop.ExperimentalTodoSidebar = enabled
+	return nil
+}
+
 // SetExperimentalParallelFullAccess toggles trusted write access to managed
 // worktree roots (task 127). Off by default so production confinement is
 // unchanged; on only widens confine to those roots, never globally.

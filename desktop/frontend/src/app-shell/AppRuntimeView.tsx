@@ -418,6 +418,7 @@ export function AppRuntimeView(props: AppRuntimeViewProps) {
           remoteAvailable: shell.remoteHosts.length > 0,
           showContext: SHOW_CONTEXT_DOCK,
           remote: core.remoteSurfaceActive,
+          todoSidebar: false,
           t,
           context: conversationView.context,
           sessionTurns: session.sessionTurns,

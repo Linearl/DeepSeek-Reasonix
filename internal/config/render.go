@@ -152,6 +152,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "experimental_split_view = %v   # desktop: tab-bar split view (task 70-1)\n", c.Desktop.ExperimentalSplitView)
 		fmt.Fprintf(&b, "experimental_feedback = %v   # desktop: agent submit_feedback tool + feedback inbox panel (task 121)\n", c.Desktop.ExperimentalFeedback)
 		fmt.Fprintf(&b, "experimental_parallel_full_access = %v   # desktop: trust managed worktree roots as write surfaces (task 127); env REASONIX_PARALLEL_FULL_ACCESS=1 also enables\n", c.Desktop.ExperimentalParallelFullAccess)
+		fmt.Fprintf(&b, "experimental_todo_sidebar = %v   # desktop: right-dock todo tab + tab visibility/wrap settings (task 259; boot snapshot)\n", c.Desktop.ExperimentalTodoSidebar)
 		fmt.Fprintf(&b, "experimental_path_rules = %v   # desktop: structured path-scope evaluation (docs/PATH_SCOPE_RULES.md, task 134)\n", c.Desktop.ExperimentalPathRules)
 		fmt.Fprintf(&b, "experimental_local_server = %v   # desktop: expose Settings → Local server (task 130)\n", c.Desktop.ExperimentalLocalServer)
 		fmt.Fprintf(&b, "max_cached_tabs = %d   # desktop: resident tab-state limit for the LRU prune (0 = unlimited, task 161)\n", c.Desktop.MaxCachedTabs)

@@ -34,7 +34,9 @@ import {
   Puzzle,
   X,
   TerminalSquare,
+  ListTodo,
 } from "lucide-react";
+import { loadHiddenDockTabs, onHiddenDockTabsChange, type DockTabId } from "./lib/dockTabs";
 import { useToast } from "./lib/toast";
 import { useGoalActionHandler } from "./lib/goalAction";
 import { useWailsResizeFix } from "./lib/useWailsResizeFix";
@@ -688,6 +690,12 @@ export default function App() {
   }, []);
   // Restart-and-update experiment (task 81): off unless the user opted in.
   const [restartUpdateEnabled, setRestartUpdateEnabled] = useState(false);
+  // Task 259: todo-sidebar experiment, snapshotted at boot — a mid-session
+  // config change only takes effect after a restart, same as the flag above.
+  const [todoSidebarEnabled, setTodoSidebarEnabled] = useState(false);
+  // Task 259: per-tab visibility inside the right dock; applies live.
+  const [hiddenDockTabs, setHiddenDockTabs] = useState<readonly DockTabId[]>(loadHiddenDockTabs);
+  useEffect(() => onHiddenDockTabsChange(setHiddenDockTabs), []);
   type PreservedTranscriptSurface = {
     tabId?: string;
     items: Item[];
@@ -1136,7 +1144,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1155,9 +1163,12 @@ export default function App() {
       setSplitViewEnabled(Boolean(settings.experimentalSplitView));
       // Task 121: the feedback inbox is opt-in; disabling it also closes the panel.
       setFeedbackEnabled(Boolean(settings.experimentalFeedback));
+      // Task 259: the todo sidebar is a boot snapshot — the flag read here is
+      // the one this process runs with until the next restart.
+      setTodoSidebarEnabled(Boolean(settings.experimentalTodoSidebar));
       // One line per startup so a missing rail entry can be traced from desktop.log
       // instead of guessed at (the switches read back correctly in config.toml).
-      reportFrontendLog("desktop-prefs", "experiment flags", `restartUpdate=${Boolean(settings.experimentalRestartUpdate)} sessionMonitor=${Boolean(settings.experimentalSessionMonitor)} splitView=${Boolean(settings.experimentalSplitView)} feedback=${Boolean(settings.experimentalFeedback)}`);
+      reportFrontendLog("desktop-prefs", "experiment flags", `restartUpdate=${Boolean(settings.experimentalRestartUpdate)} sessionMonitor=${Boolean(settings.experimentalSessionMonitor)} splitView=${Boolean(settings.experimentalSplitView)} feedback=${Boolean(settings.experimentalFeedback)} todoSidebar=${Boolean(settings.experimentalTodoSidebar)}`);
       setStartupUpdateChecksEnabled(settings.checkUpdates !== false);
       setStatusBarStyle(settings.statusBarStyle === "text" ? "text" : "icon");
       setQuickCommands(settings.quickCommands ?? []);
@@ -1326,6 +1337,14 @@ export default function App() {
   const automationView = mainView === "automation";
   const effectiveWorkspacePanelRenderable = automationView ? false : workspacePanelRenderable;
   const effectiveWorkspacePanelGridOpen = automationView ? false : workspacePanelGridOpen;
+  // Task 259: a persisted "todos" mode while the experiment is off falls back to
+  // files, so the dock never shows a selected tab it does not render. With the
+  // experiment on the mode passes through unchanged.
+  const effectiveRightDockMode: RightDockMode =
+    !todoSidebarEnabled && rightDockMode === "todos" ? "files" : rightDockMode;
+  // Task 259: tab visibility applies live while the todo sidebar is on; with the
+  // switch off the tab row is the original literal list.
+  const dockTabVisible = (id: DockTabId) => todoSidebarEnabled && !hiddenDockTabs.includes(id);
 
   // Remote tab became ready: refresh the tab list so the spectator banner
   // (takenOver) renders. The agent:ready event only fires for local tabs;
@@ -4872,7 +4891,7 @@ export default function App() {
 
           {!sidebarImDetailConnection && (
           <footer className={["footer", terminalPanelOpen && !sidebarCreation ? "footer--compact" : "", visibleDecisionSurface ? "footer--decision" : ""].filter(Boolean).join(" ")} ref={footerRef}>
-            {!runtimeTransitioning && showTodos && (
+            {!runtimeTransitioning && showTodos && !todoSidebarEnabled && (
               <TodoPanel
                 key={scopedTodoBatch}
                 stateKey={scopedTodoBatch}
@@ -5166,65 +5185,97 @@ export default function App() {
           <aside
             className={[
               "workbench-dock",
-              `workbench-dock--${rightDockMode}`,
+              `workbench-dock--${effectiveRightDockMode}`,
               workspacePanelOverlay ? "workbench-dock--overlay" : "",
             ].join(" ")}
             aria-label={t("rightDock.workbench")}
           >
-            <div className="workbench-dock__tools">
-              <div className="workbench-dock__tabs" role="tablist" aria-label={t("rightDock.views")}>
-                {SHOW_CONTEXT_DOCK && desktopLayoutStyle !== "creation" && (
+            <div className={["workbench-dock__tools", todoSidebarEnabled ? "workbench-dock__tools--wrap" : ""].filter(Boolean).join(" ")}>
+              <div className={["workbench-dock__tabs", todoSidebarEnabled ? "workbench-dock__tabs--wrap" : ""].filter(Boolean).join(" ")} role="tablist" aria-label={t("rightDock.views")}>
+                {SHOW_CONTEXT_DOCK && desktopLayoutStyle !== "creation" && (todoSidebarEnabled ? dockTabVisible("context") : true) && (
                   <button
                     type="button"
                     role="tab"
-                    aria-selected={rightDockMode === "context"}
-                    className={`workbench-dock__tab${rightDockMode === "context" ? " workbench-dock__tab--active" : ""}`}
+                    aria-selected={effectiveRightDockMode === "context"}
+                    className={`workbench-dock__tab${effectiveRightDockMode === "context" ? " workbench-dock__tab--active" : ""}`}
                     onClick={() => openRightDockMode("context")}
                   >
                     <Activity size={13} />
                     <span className="workbench-dock__tab-label">{t("rightDock.overview")}</span>
                   </button>
                 )}
+                {(todoSidebarEnabled ? dockTabVisible("files") : true) && (
                 <button
                   type="button"
                   role="tab"
-                  aria-selected={rightDockMode === "files"}
-                  className={`workbench-dock__tab${rightDockMode === "files" ? " workbench-dock__tab--active" : ""}`}
+                  aria-selected={effectiveRightDockMode === "files"}
+                  className={`workbench-dock__tab${effectiveRightDockMode === "files" ? " workbench-dock__tab--active" : ""}`}
                   onClick={() => openRightDockMode("files")}
                 >
                   <FileText size={13} />
                   <span className="workbench-dock__tab-label">{t("workspace.filesTab")}</span>
                 </button>
+                )}
+                {(todoSidebarEnabled ? dockTabVisible("changed") : true) && (
                 <button
                   type="button"
                   role="tab"
-                  aria-selected={rightDockMode === "changed"}
-                  className={`workbench-dock__tab${rightDockMode === "changed" ? " workbench-dock__tab--active" : ""}`}
+                  aria-selected={effectiveRightDockMode === "changed"}
+                  className={`workbench-dock__tab${effectiveRightDockMode === "changed" ? " workbench-dock__tab--active" : ""}`}
                   onClick={() => openRightDockMode("changed")}
                 >
                   <GitBranch size={13} />
                   <span className="workbench-dock__tab-label">{t("workspace.changedTab")}</span>
                 </button>
-                {remoteHosts.length > 0 && (
+                )}
+                {remoteHosts.length > 0 && (todoSidebarEnabled ? dockTabVisible("remote") : true) && (
                   <button
                     type="button"
                     role="tab"
-                    aria-selected={rightDockMode === "remote"}
-                    className={`workbench-dock__tab${rightDockMode === "remote" ? " workbench-dock__tab--active" : ""}`}
+                    aria-selected={effectiveRightDockMode === "remote"}
+                    className={`workbench-dock__tab${effectiveRightDockMode === "remote" ? " workbench-dock__tab--active" : ""}`}
                     onClick={openRemoteDock}
                   >
                     <Server size={13} />
                     <span className="workbench-dock__tab-label">{t("rightDock.remote")}</span>
                   </button>
                 )}
+                {todoSidebarEnabled && dockTabVisible("todos") && (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={effectiveRightDockMode === "todos"}
+                    className={`workbench-dock__tab${effectiveRightDockMode === "todos" ? " workbench-dock__tab--active" : ""}`}
+                    onClick={() => openRightDockMode("todos")}
+                  >
+                    <ListTodo size={13} />
+                    <span className="workbench-dock__tab-label">{t("workspace.todosTab")}</span>
+                  </button>
+                )}
               </div>
             </div>
             <div className="workbench-dock__body">
-              {rightDockMode === "remote" ? (
+              {effectiveRightDockMode === "todos" ? (
+                showTodos ? (
+                  <div className="workbench-dock__todo">
+                    <TodoPanel
+                      key={scopedTodoBatch}
+                      stateKey={scopedTodoBatch}
+                      todos={todos}
+                      running={state.running}
+                      pendingPrompt={state.pendingPrompt}
+                      onDismiss={dismissTodos}
+                      defaultOpen
+                    />
+                  </div>
+                ) : (
+                  <div className="workbench-dock__todo workbench-dock__todo--empty">{t("rightDock.todoEmpty")}</div>
+                )
+              ) : effectiveRightDockMode === "remote" ? (
                 <Suspense fallback={null}>
                   <RemotePanel onClose={() => setWorkspacePanel(false)} />
                 </Suspense>
-              ) : rightDockMode === "context" && desktopLayoutStyle !== "creation" ? (
+              ) : effectiveRightDockMode === "context" && desktopLayoutStyle !== "creation" ? (
                 <Suspense fallback={null}>
                   <ContextPanel
                     tabId={remoteSurfaceActive ? undefined : activeTabId}

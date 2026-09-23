@@ -59,6 +59,7 @@ export function TodoPanel({
   pendingPrompt,
   onContinue,
   onDismiss,
+  defaultOpen,
 }: {
   stateKey: string;
   todos: Todo[];
@@ -66,6 +67,12 @@ export function TodoPanel({
   pendingPrompt: boolean;
   onContinue?: () => void;
   onDismiss: () => void;
+  /**
+   * Task 259: initial open state for a surface that exists to show the list
+   * (the right-dock tab). Undefined keeps the composer-shelf behaviour —
+   * collapsed by default — so the footer mode stays byte-for-byte identical.
+   */
+  defaultOpen?: boolean;
 }) {
   const t = useT();
   const currentRef = useRef<HTMLLIElement | null>(null);
@@ -74,7 +81,7 @@ export function TodoPanel({
   const current = todos.find((t) => t.status === "in_progress");
   const allDone = todos.length > 0 && done === todos.length;
   const summary = current?.activeForm || current?.content || todos[todos.length - 1]?.content || "";
-  const [open, setOpen] = useState(() => loadOpenState(stateKey, shouldOpenTodoPanelByDefault()));
+  const [open, setOpen] = useState(() => loadOpenState(stateKey, defaultOpen ?? shouldOpenTodoPanelByDefault()));
   const [visible, setVisible] = useState(!allDone);
 
   useEffect(() => {

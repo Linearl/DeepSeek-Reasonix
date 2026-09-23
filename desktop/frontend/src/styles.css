@@ -26619,6 +26619,43 @@ body > .mermaid-diagram--fullscreen {
   }
 }
 
+/* Task 259: wrap mode — only while the todo-sidebar experiment is on. Tabs keep
+   a fixed quarter-width cell so the default dock width fits exactly four per
+   row and a fifth wraps to the next line; hidden tabs just leave gaps. The
+   two-class specificity also wins over the container queries above. */
+.workbench-dock__tools--wrap {
+  height: auto;
+  min-height: 42px;
+  align-items: flex-start;
+}
+
+.workbench-dock__tabs--wrap {
+  flex-wrap: wrap;
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.workbench-dock__tabs--wrap .workbench-dock__tab {
+  flex: 0 0 25%;
+  min-width: 0;
+  max-width: 25%;
+  box-sizing: border-box;
+}
+
+.workbench-dock__todo {
+  height: 100%;
+  overflow-y: auto;
+  padding: 10px 12px;
+}
+
+.workbench-dock__todo--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-faint);
+  font-size: 12px;
+}
+
 .workbench-dock__body {
   flex: 1 1 auto;
   min-height: 0;

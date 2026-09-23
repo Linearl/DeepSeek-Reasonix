@@ -233,6 +233,13 @@ func (a *App) SetExperimentalFeedback(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalFeedback(enabled) })
 }
 
+// SetExperimentalTodoSidebar toggles the right-dock todo tab with its tab
+// visibility and wrap settings (task 259). The frontend snapshots the flag at
+// boot, so the change shows up after a restart.
+func (a *App) SetExperimentalTodoSidebar(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalTodoSidebar(enabled) })
+}
+
 // SetExperimentalLocalServer toggles the Settings → 本地服务 page (task 130).
 func (a *App) SetExperimentalLocalServer(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalLocalServer(enabled) })
