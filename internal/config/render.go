@@ -360,6 +360,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "experimental_context_budget = %v   # task 265: per-turn context-state line (#9520; compress tool not gated here)\n", c.ContextBudgetEnabled())
 	fmt.Fprintf(&b, "experimental_research_budget = %v   # task 265: read-only soft-budget extension via extend_research_budget (#10054)\n", c.ResearchBudgetEnabled())
 	fmt.Fprintf(&b, "experimental_subagent_policy = %v   # task 265: delegation-tier entry points (off forces new sessions to light)\n", c.SubagentPolicyIntakeEnabled())
+	fmt.Fprintf(&b, "experimental_full_access = %v   # task 257: full access (yolo) — all declared write dirs pass preflight, bash runs unwrapped (restart to apply)\n", c.Agent.ExperimentalFullAccess)
 	fmt.Fprintf(&b, "experimental_auto_load_older = %v   # fork task 160: load older history by scrolling up at the transcript top\n", c.Agent.ExperimentalAutoLoadOlder)
 	fmt.Fprintf(&b, "experimental_perf_monitor = %v   # task 184: host performance monitor (5s samples of memory/IO/key files)\n", c.Agent.ExperimentalPerfMonitor)
 	fmt.Fprintf(&b, "perf_monitor_interval_seconds = %d   # task 184: sampler interval in seconds (default 5, clamped 1..300)\n", c.Agent.PerfMonitorIntervalSeconds)

@@ -169,6 +169,21 @@ func TestTask265NilMeansOnSwitchesRoundTrip(t *testing.T) {
 	if !strings.Contains(out, "experimental_quick_commands = true") {
 		t.Fatalf("quick commands enable must render true\n---\n%s", out)
 	}
+
+	// Full access (task 257) is a plain default-off bool: it must render
+	// false on an untouched config and true after enabling.
+	out = RenderTOMLForScope(&Config{}, RenderScopeUser)
+	if !strings.Contains(out, "experimental_full_access = false") {
+		t.Fatalf("full access ships off: missing false render\n---\n%s", out)
+	}
+	full := &Config{}
+	if err := full.SetExperimentalFullAccess(true); err != nil {
+		t.Fatalf("set full access: %v", err)
+	}
+	out = RenderTOMLForScope(full, RenderScopeUser)
+	if !strings.Contains(out, "experimental_full_access = true") {
+		t.Fatalf("full access enable must render true\n---\n%s", out)
+	}
 }
 
 func TestExperimentalSessionCollabRoundTripThroughRender(t *testing.T) {

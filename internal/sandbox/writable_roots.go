@@ -15,6 +15,11 @@ type WritableRootSet struct {
 	mu       sync.RWMutex
 	baseline []string
 	session  []string
+	// unbounded short-circuits every coverage check: full access (yolo,
+	// task 257) passes any declared directory instead of consulting the
+	// roots. Boot sets it once from the experimental_full_access switch;
+	// session grants still record normally underneath.
+	unbounded bool
 }
 
 // NewWritableRootSet builds a set with the given baseline roots.
@@ -132,11 +137,35 @@ func (s *WritableRootSet) EffectiveSandboxRoots(ctx context.Context) []string {
 	return stableWriteRoots(s.Effective(ctx))
 }
 
+// SetUnbounded toggles full access (task 257): coverage checks answer from
+// the flag instead of the root list. Boot sets it once from the config.
+func (s *WritableRootSet) SetUnbounded(on bool) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.unbounded = on
+	s.mu.Unlock()
+}
+
+// Unbounded reports whether full access (task 257) is active on this set.
+func (s *WritableRootSet) Unbounded() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.unbounded
+}
+
 // Covers reports whether dir is inside the current baseline+session snapshot.
 func (s *WritableRootSet) Covers(dir string) bool {
 	dir = canonicalDir(dir)
 	if dir == "" {
 		return false
+	}
+	if s.Unbounded() {
+		return true
 	}
 	for _, root := range stableWriteRoots(s.Snapshot()) {
 		if PathWithin(root, dir) {
@@ -149,6 +178,9 @@ func (s *WritableRootSet) Covers(dir string) bool {
 // Missing returns the subset of dirs not already covered by the snapshot.
 func (s *WritableRootSet) Missing(dirs []string) []string {
 	if len(dirs) == 0 {
+		return nil
+	}
+	if s.Unbounded() {
 		return nil
 	}
 	snap := stableWriteRoots(s.Snapshot())
@@ -173,10 +205,16 @@ func (s *WritableRootSet) Missing(dirs []string) []string {
 // copies the current snapshot (inherit, do not expand).
 func (s *WritableRootSet) CloneRestricted(cap []string) *WritableRootSet {
 	snap := s.Snapshot()
+	var clone *WritableRootSet
 	if len(cap) == 0 {
-		return newVerifiedWritableRootSet(snap)
+		clone = newVerifiedWritableRootSet(snap)
+	} else {
+		clone = newVerifiedWritableRootSet(intersectVerifiedWriteRoots(snap, canonicalDirs(cap)))
 	}
-	return newVerifiedWritableRootSet(intersectVerifiedWriteRoots(snap, canonicalDirs(cap)))
+	// Full access (task 257) is a session-wide grant: sub-agents inherit it
+	// even when their write_paths claim is narrower than the parent's roots.
+	clone.SetUnbounded(s.Unbounded())
+	return clone
 }
 
 // IntersectWriteRoots returns directories that sit in both a and b, preferring

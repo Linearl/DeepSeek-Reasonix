@@ -127,6 +127,12 @@ func (a *Agent) applyWriteAccess(ctx context.Context, plan *toolCallPlan) (toolO
 	if a == nil || plan == nil || plan.readOnly {
 		return toolOutcome{}, false
 	}
+	// Full access (task 257): every declared directory passes preflight and
+	// the desktop gate alike. Set at boot from experimental_full_access; nil
+	// or bounded sets take the original path untouched.
+	if a.svc.writeRoots.Unbounded() {
+		return toolOutcome{}, false
+	}
 	decl, ok := plan.execTool.(tool.WriteAccessDeclarer)
 	if !ok {
 		return toolOutcome{}, false

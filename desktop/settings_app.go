@@ -358,6 +358,8 @@ type SettingsView struct {
 	ExperimentalSubagentTps        bool `json:"experimentalSubagentTps"`
 	ExperimentalCompletionSummary  bool `json:"experimentalCompletionSummary"`
 	ExperimentalQuickCommands      bool `json:"experimentalQuickCommands"`
+	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
+	ExperimentalFullAccess bool `json:"experimentalFullAccess"`
 	ExperimentalLocalServer        bool `json:"experimentalLocalServer"`
 	ExperimentalPathRules          bool `json:"experimentalPathRules"`
 	ExperimentalTraceAsState       bool `json:"experimentalTraceAsState"`
@@ -491,6 +493,16 @@ type DesktopStartupSettingsView struct {
 	ExperimentalSubagentTps        bool `json:"experimentalSubagentTps"`
 	ExperimentalCompletionSummary  bool `json:"experimentalCompletionSummary"`
 	ExperimentalQuickCommands      bool `json:"experimentalQuickCommands"`
+	ExperimentalCompactionParallel bool   `json:"experimentalCompactionParallel"`
+	ExperimentalContextBudget      bool   `json:"experimentalContextBudget"`
+	ExperimentalResearchBudget     bool   `json:"experimentalResearchBudget"`
+	ExperimentalQuestionSearch     bool   `json:"experimentalQuestionSearch"`
+	ExperimentalSubagentPolicy     bool   `json:"experimentalSubagentPolicy"`
+	ExperimentalSubagentTps        bool   `json:"experimentalSubagentTps"`
+	ExperimentalCompletionSummary  bool   `json:"experimentalCompletionSummary"`
+	ExperimentalQuickCommands      bool   `json:"experimentalQuickCommands"`
+	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
+	ExperimentalFullAccess bool `json:"experimentalFullAccess"`
 	// ExperimentalTraceAsState exposes Trace-as-State compaction (task 60).
 	ExperimentalTraceAsState bool `json:"experimentalTraceAsState"`
 	// ExperimentalDream exposes dream/distill memory-curation tools (task 115).
@@ -1195,6 +1207,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalSubagentTps = cfg.DesktopSubagentTpsEnabled()
 		view.ExperimentalCompletionSummary = cfg.DesktopCompletionSummaryEnabled()
 		view.ExperimentalQuickCommands = cfg.Desktop.ExperimentalQuickCommands
+		view.ExperimentalFullAccess = cfg.Agent.ExperimentalFullAccess
 		view.ExperimentalTraceAsState = cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState
 		view.ExperimentalDream = cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream
 		view.ExperimentalPerfMonitor = cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor
@@ -1293,6 +1306,7 @@ func (a *App) Settings() SettingsView {
 		ExperimentalSubagentTps:        cfg.DesktopSubagentTpsEnabled(),
 		ExperimentalCompletionSummary:  cfg.DesktopCompletionSummaryEnabled(),
 		ExperimentalQuickCommands:      cfg.Desktop.ExperimentalQuickCommands,
+		ExperimentalFullAccess:         cfg.Agent.ExperimentalFullAccess,
 		ExperimentalTraceAsState:       cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState,
 		ExperimentalDream:              cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream,
 		ExperimentalPerfMonitor:        cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,

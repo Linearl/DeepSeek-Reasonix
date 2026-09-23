@@ -837,6 +837,16 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	}
 	sessionGuard := builtin.NewSessionDataGuard(config.MemoryUserDir(), allowWriteRoots)
 	writeRootSet := sandbox.NewWritableRootSet(writeRoots)
+	// Full access (task 257): the lab switch is resolved into the boot
+	// snapshot — coverage checks pass any declared directory and bash runs
+	// unwrapped. The session-data guard and ProtectedWriteRoots stay in place:
+	// they defend Reasonix's own stores, not third-party authorization.
+	writeRootSet.SetUnbounded(cfg.Agent.ExperimentalFullAccess)
+	// An explicit CLI --sandbox-bash override outranks the lab switch: the
+	// escape hatch stays an escape hatch in both directions.
+	if cfg.Agent.ExperimentalFullAccess && opts.SandboxBashOverride == "" && bashSpec.Mode == "enforce" {
+		bashSpec.Mode = "off"
+	}
 	bashSpec.ProtectedWriteRoots = sandbox.ProtectedWriteRoots(config.MemoryUserDir())
 	if bashSpec.Mode == "enforce" && !sandbox.Available() {
 		fmt.Fprintln(stderr, "warning: "+sandbox.UnavailableMessage())

@@ -221,6 +221,8 @@ const initialJSBudgetKiB = 470.6; // fork: +2.2 KiB vs upstream 468.3
 // (470.6), which remains one-shot compliant for either measured baseline.
 // (266-A note: 470.6 kept as the LARGER of the two one-shot ratchets —
 // one-shot compliant for either measured baseline, per audit ruling.) // fork: +2.3 KiB vs upstream 468.3
+// Task 257 (batch6 merge): measured 470.3 KiB (yolo lab entry + danger gate),
+// within 470.6 — larger one-shot value stands (audit ruling).
 // [fork note] settings panel (LocalServerPage) that ships with the serve pool gateway.
 assertBudget("initial JavaScript gzip", initialJSGzip, initialJSBudgetKiB * 1024);
 // [fork note] 2026-09-15: pre-existing overage, not task 122 - the clean baseline
@@ -376,6 +378,8 @@ for (const path of localeChunks) {
   // 78.0 / 79.0: task 265 lab intake — 37 new keys per locale (9 features × effect copy); zh measured 77.8 at the old 76.2 ceiling, one-shot +0.5.
   // 78.5 / 79.5: task 264 collab-background switch — 4 new keys per locale;
   // zh measured 78.1 at the old 78.0 ceiling, one-shot +0.5 step on both.
+  // (257 merge note: yolo adds 7 keys/locale; zh measured 78.2 — within 78.5,
+  // same one-shot ceilings kept.)
   const budget = name.startsWith("zh-TW-") ? 79.5 * 1024 : 78.5 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,

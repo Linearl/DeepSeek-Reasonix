@@ -758,6 +758,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 254: the Settings switch for the agent-facing restart_update tool. Registration
   // reads the boot snapshot, so the flip applies on the next restart.
   SetExperimentalAutonomousUpdate(enabled: boolean): Promise<void>;
+  // Task 257: the full-access (yolo) lab switch. Boot resolves it into the
+  // writable-root set and the bash spec — the flip applies on the next restart.
+  SetExperimentalFullAccess(enabled: boolean): Promise<void>;
   // Task 254: the auto-resume scope dial ("off" | "goal_autopilot" | "all").
   // Takes effect live; execute reads it when it fires.
   SetAutonomousUpdateResume(mode: string): Promise<void>;
@@ -5031,6 +5034,7 @@ function makeMockApp(): AppBindings {
     },
     async SetExperimentalRestartUpdate() {},
     async SetExperimentalAutonomousUpdate() {},
+    async SetExperimentalFullAccess() {},
     async SetAutonomousUpdateResume() {},
     async ResolveTakeoverDecision() { return false; },
     async SetExperimentalSessionMonitor() {},

@@ -96,3 +96,42 @@ func TestApplyWriteAccessSubagentUsesStructuredHint(t *testing.T) {
 		t.Fatalf("sub-agent hint missing: %s", out.output)
 	}
 }
+
+// TestApplyWriteAccessFullAccessPasses pins task 257: with the writable-root
+// set unbounded (full access on), a write outside the workspace passes the
+// preflight untouched — no block, no gate call. Bounded sets keep the old
+// denial, which the structured-hint test above already covers.
+func TestApplyWriteAccessFullAccessPasses(t *testing.T) {
+	work := t.TempDir()
+	outside := t.TempDir()
+	set := sandbox.NewWritableRootSet([]string{work})
+	set.SetUnbounded(true)
+	a := &Agent{svc: agentServices{
+		writeRoots:            set,
+		writeAccessExpandable: false,
+		workspaceRoot:         work,
+		homeDir:               work,
+		stateRoot:             t.TempDir(),
+	}}
+	var write tool.Tool
+	for _, tl := range (builtin.Workspace{Dir: work, WriteRoots: []string{work}, WriteRootSet: set}).Tools("write_file") {
+		if tl.Name() == "write_file" {
+			write = tl
+		}
+	}
+	if write == nil {
+		t.Fatal("write_file missing")
+	}
+	args, err := json.Marshal(map[string]string{"path": filepath.Join(outside, "x.go"), "content": "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, early := a.applyWriteAccess(context.Background(), &toolCallPlan{
+		execTool: write,
+		permName: "write_file",
+		permArgs: args,
+	})
+	if early || out.blocked {
+		t.Fatalf("full access must pass the outside write, got %+v early=%v", out, early)
+	}
+}

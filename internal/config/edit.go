@@ -538,6 +538,14 @@ func (c *Config) SetExperimentalAutonomousUpdate(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalFullAccess toggles the full-access (yolo) lab switch
+// (task 257). Boot resolves it into the writable-root set and the bash spec,
+// so the flip applies on the next restart — the settings pane says so.
+func (c *Config) SetExperimentalFullAccess(enabled bool) error {
+	c.Agent.ExperimentalFullAccess = enabled
+	return nil
+}
+
 // SetAutonomousUpdateResume scopes the auto-resume family (task 254). Only the
 // three known values are accepted so a typo cannot silently disable resuming.
 func (c *Config) SetAutonomousUpdateResume(mode string) error {

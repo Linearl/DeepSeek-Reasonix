@@ -1448,6 +1448,13 @@ type AgentConfig struct {
 	// 265): the composer switcher and the settings default. Nil means on; off
 	// hides both entries and forces new sessions to light.
 	ExperimentalSubagentPolicy *bool `toml:"experimental_subagent_policy"`
+	// ExperimentalFullAccess is the "full access (yolo)" lab switch (task 257).
+	// On passes every declared write directory through the preflight and the
+	// desktop gate without authorization, and runs bash unwrapped. The zero
+	// value (off) keeps every authorization surface exactly as it was; boot
+	// resolves the value into the writable-root set and the bash spec, so a
+	// flip applies on the next restart.
+	ExperimentalFullAccess bool `toml:"experimental_full_access"`
 	// SessionCollabHopLimit caps how many hops a cross-session chain may take
 	// (task 204). 0 keeps the package default (5); values are clamped into
 	// [MinHop, MaxHopCeiling] on write, so a stored value is always legal.
