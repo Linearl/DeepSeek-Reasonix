@@ -692,6 +692,19 @@ func (s *MailStore) Ack(contactID string, ids ...string) error {
 	return s.ackLocked(contactID, ids...)
 }
 
+// Settled reports whether messageID has already been consumed from the
+// contact's mailbox (the seen cursor). Task 263: the session-inbox recovery
+// probe uses it to drop in-flight items whose source message was consumed
+// before an update restart, so consumed messages never replay onto the
+// guidance shelf. Read-only; safe under the Store transaction lock.
+func (s *MailStore) Settled(contactID, messageID string) bool {
+	messageID = strings.TrimSpace(messageID)
+	if messageID == "" {
+		return false
+	}
+	return s.readCursor(contactID)[messageID]
+}
+
 // ackLocked is Ack's body under the caller's lock (B1: same-lock Claim+Ack).
 func (s *MailStore) ackLocked(contactID string, ids ...string) error {
 	seen := s.readCursor(contactID)

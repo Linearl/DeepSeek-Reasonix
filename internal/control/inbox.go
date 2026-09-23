@@ -88,6 +88,12 @@ type inboxState struct {
 	// durable-claim -> active-registration transition.
 	activeOwnership    sync.Map
 	admittingOwnership sync.Map
+	// Task 263: settledItem reports whether an in-flight item's source message
+	// was already consumed (the collab mailbox cursor), so recovery drops it
+	// along the completion path instead of resurrecting consumed work. Like
+	// ownsItem it is lock-free — Store recovery calls it under its own lock.
+	// nil keeps the pre-263 behaviour (everything in-flight is recovered).
+	settledItem func(sessioninbox.InboxItemMeta) bool
 	dispatching        bool
 	dispatchPending    bool
 	// Retry bookkeeping is guarded by mu. Retries are bounded so a persistent
@@ -176,6 +182,15 @@ func (s *inboxState) ownsItem(id string) bool {
 	}
 	_, ok := s.activeOwnership.Load(id)
 	return ok
+}
+
+// settled is the recovery-facing view of settledItem: nil probe reports false,
+// so the recovery keeps its old behaviour for hosts that never inject one.
+func (s *inboxState) settled(meta sessioninbox.InboxItemMeta) bool {
+	if s == nil || s.settledItem == nil {
+		return false
+	}
+	return s.settledItem(meta)
 }
 
 func (s *inboxState) activeIDs() []string {
@@ -369,7 +384,7 @@ func (c *Controller) InboxSnapshot() sessioninbox.InboxSnapshot {
 	if err != nil {
 		return sessioninbox.InboxSnapshot{}
 	}
-	if recovered, recoverErr := st.RecoverOrphanedInFlightOwnedBy(c.inbox.ownsItem); recoverErr != nil {
+	if recovered, recoverErr := st.RecoverOrphanedInFlightOwnedBy(c.inbox.ownsItem, c.inbox.settled); recoverErr != nil {
 		slog.Warn("controller: recover orphaned inbox items", "err", recoverErr)
 	} else if recovered > 0 {
 		sessioninbox.NoteRecovered(recovered)
@@ -491,7 +506,7 @@ func (c *Controller) DeleteInboxItem(id string) error {
 	if err != nil {
 		return err
 	}
-	if _, recoverErr := st.RecoverOrphanedInFlightOwnedBy(c.inbox.ownsItem); recoverErr != nil {
+	if _, recoverErr := st.RecoverOrphanedInFlightOwnedBy(c.inbox.ownsItem, c.inbox.settled); recoverErr != nil {
 		slog.Warn("controller: recover inbox item before delete", "err", recoverErr, "id", id)
 	}
 	err = st.DeletePendingOrAcceptedItem(id)

@@ -23,7 +23,7 @@ func (c *Controller) readSteerCandidate(st *sessioninbox.Store, id string) (sess
 	if err != nil || (meta.State != sessioninbox.StateRunning && meta.State != sessioninbox.StateSteerAccepted && meta.State != sessioninbox.StateSteerConsumed) {
 		return meta, env, err
 	}
-	recovered, err := st.RecoverOrphanedInFlightOwnedBy(c.inbox.ownsItem)
+	recovered, err := st.RecoverOrphanedInFlightOwnedBy(c.inbox.ownsItem, c.inbox.settled)
 	if err != nil {
 		return sessioninbox.InboxItemMeta{}, sessioninbox.PromptEnvelope{}, err
 	}

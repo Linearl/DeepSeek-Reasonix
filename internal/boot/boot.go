@@ -34,6 +34,8 @@ import (
 	"reasonix/internal/control"
 	"reasonix/internal/environment"
 	"reasonix/internal/event"
+	"reasonix/internal/sessioncollab"
+	"reasonix/internal/sessioninbox"
 	"reasonix/internal/extension"
 	"reasonix/internal/extension/dispatch"
 	"reasonix/internal/extension/protocol"
@@ -2120,6 +2122,22 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		MemorySystemReload:             memoryReload,
 		PinnedContextLoader:            opts.PinnedContextLoader,
 		SessionDir:                     sessionDir,
+		// Task 263: recovery drops in-flight inbox items whose collab source
+		// message was already consumed (the seen cursor), so an update restart
+		// stops replaying processed messages onto the guidance shelf. The probe
+		// runs under the Store's transaction lock, so it must stay lock-free
+		// file reads only — NewMailStore + readCursor never take a Store lock.
+		InboxSettledProbe: func(meta sessioninbox.InboxItemMeta) bool {
+			from := strings.TrimPrefix(meta.Source, "collab:")
+			if from == meta.Source || from == "" {
+				return false // only collab-sourced items carry a mailbox cursor
+			}
+			msgID := strings.TrimPrefix(meta.Idempotency, "collab:")
+			if msgID == meta.Idempotency || msgID == "" {
+				return false
+			}
+			return sessioncollab.NewMailStore(config.SessionCollabMailDir()).Settled(from, msgID)
+		},
 		SessionV4:                      sessionV4,
 		Host:                           pluginHost,
 		Commands:                       cmds,

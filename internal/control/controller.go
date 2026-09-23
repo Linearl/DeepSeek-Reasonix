@@ -514,6 +514,11 @@ type Options struct {
 	// RecoveryHeadless blocks mutations that need confirmation instead of
 	// waiting forever when no human decision channel exists.
 	RecoveryHeadless bool
+	// InboxSettledProbe reports whether an in-flight inbox item's source
+	// message was already consumed (task 263): recovery then drops it along
+	// the completion path instead of resurrecting consumed work onto the
+	// guidance shelf after an update restart. nil keeps the old behaviour.
+	InboxSettledProbe func(sessioninbox.InboxItemMeta) bool
 	// TaskBudget is the configured spend gate; unset leaves a turn unbounded.
 	TaskBudget agent.TaskBudget
 	// GoalTokenBudget bounds an unattended Goal loop by cumulative tokens.
@@ -756,6 +761,11 @@ func New(opts Options) *Controller {
 		opts.Hooks.SetSessionID(agent.BranchID(opts.SessionPath))
 	}
 	c := &Controller{
+		inbox: inboxState{
+			// Task 263: the host injects the mailbox-cursor probe so recovery
+			// can drop already-consumed in-flight items.
+			settledItem: opts.InboxSettledProbe,
+		},
 		taskBudget:                        opts.TaskBudget,
 		goalTokenBudget:                   opts.GoalTokenBudget,
 		autopilot:                         opts.Autopilot && opts.AutopilotMaxRuntime > 0,
