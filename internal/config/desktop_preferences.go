@@ -78,6 +78,20 @@ type DesktopConfig struct {
 	// the extra tab plus the tab-visibility and wrap settings stay opt-in. The
 	// flag is snapshotted at boot, so changes take effect after a restart.
 	ExperimentalTodoSidebar bool `toml:"experimental_todo_sidebar"`
+	// Task 265 (lab intake): three render-surface features ship ON via
+	// nil-means-on pointers — existing behaviour getting an off switch, so the
+	// default must not regress anyone. Each is a pure frontend gate.
+	// ExperimentalQuestionSearch keeps the topic-bar "search my questions"
+	// button and panel (jump-to-turn, not re-ask). Off hides the entry.
+	ExperimentalQuestionSearch *bool `toml:"experimental_question_search"`
+	// ExperimentalSubagentTps keeps the ~N tok/s heartbeat on sub-agent tool
+	// cards and the status-bar job table. Off hides the readouts; the backend
+	// progress events are unchanged.
+	ExperimentalSubagentTps *bool `toml:"experimental_subagent_tps"`
+	// ExperimentalCompletionSummary keeps the per-turn "本轮结果" notice on the
+	// desktop transcript. Off silences the notice; the dock entry points and
+	// the CLI receipt card are unaffected.
+	ExperimentalCompletionSummary *bool `toml:"experimental_completion_summary"`
 	// ExperimentalPathRules enables the structured path-scope evaluation order
 	// documented in docs/PATH_SCOPE_RULES.md (task 134). Ships off: production
 	// keeps the existing confine + allow_write + write-access approval model.
@@ -138,6 +152,29 @@ type DesktopConfig struct {
 	// + menu (task 18). Array order is the display order; entries with an empty
 	// Title or Text are dropped on save.
 	QuickCommands []QuickCommandEntry `toml:"quick_commands"`
+	// ExperimentalQuickCommands gates the whole quick-commands surface (task
+	// 262). It ships off (new-capability rule): with it off the composer menu,
+	// the general-page entry and the lab pane all hide, and nothing about the
+	// stored snippets changes.
+	ExperimentalQuickCommands bool `toml:"experimental_quick_commands"`
+}
+
+// DesktopQuestionSearchEnabled reports whether the topic-bar question-search
+// entry renders (task 265). Nil means on: the entry predates its switch.
+func (c *Config) DesktopQuestionSearchEnabled() bool {
+	return c == nil || c.Desktop.ExperimentalQuestionSearch == nil || *c.Desktop.ExperimentalQuestionSearch
+}
+
+// DesktopSubagentTpsEnabled reports whether sub-agent tok/s readouts render
+// (task 265). Nil means on.
+func (c *Config) DesktopSubagentTpsEnabled() bool {
+	return c == nil || c.Desktop.ExperimentalSubagentTps == nil || *c.Desktop.ExperimentalSubagentTps
+}
+
+// DesktopCompletionSummaryEnabled reports whether the per-turn result notice
+// renders on the desktop transcript (task 265). Nil means on.
+func (c *Config) DesktopCompletionSummaryEnabled() bool {
+	return c == nil || c.Desktop.ExperimentalCompletionSummary == nil || *c.Desktop.ExperimentalCompletionSummary
 }
 
 // QuickCommandEntry is one quick-command snippet. Title is the menu label, Text

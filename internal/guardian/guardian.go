@@ -99,6 +99,13 @@ func NewSession(prov provider.Provider, readOnlyReg *tool.Registry, policyPrompt
 		ContextWindow:          100_000,
 		CompactRatio:           0.80,
 		StrictAlternatingRoles: true,
+		// Task 265 audit-3 M2 (declared, not wired): the three fork-only
+		// behaviours stay at their zero value here — the guardian is a fixed
+		// 6-round read-only reviewer, so it never reaches a compaction worth
+		// parallelising, the context-state planning line has no planning to
+		// inform, and it has no read-only research budget to extend. Threading
+		// cfg through NewSession would couple a pure reviewer to lab switches;
+		// this comment is the audit-accepted record of the intentional gap.
 		// Guardian's own sink drops everything — the audit line (emitTo) is the
 		// only user-visible output. Usage events are captured internally for
 		// per-review cost reporting.

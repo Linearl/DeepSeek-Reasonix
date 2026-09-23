@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"reflect"
 	"strings"
 	"testing"
@@ -218,5 +219,36 @@ func assertTaskToolConfigEqual(t *testing.T, a, b *TaskTool) {
 	}
 	if a.maxSubagentDepth != b.maxSubagentDepth {
 		t.Fatalf("maxSubagentDepth = %d/%d", a.maxSubagentDepth, b.maxSubagentDepth)
+	}
+}
+
+// Task 265 audit-3 M2: every sub-agent child inherits the three fork-only
+// agent behaviours through the single construction point — without them a
+// child's zero value diverges from the pre-intake behaviour (serial
+// compaction, no context-state line, no budget extension).
+func TestSubagentOptionsInheritsLabBehaviours(t *testing.T) {
+	task := NewTaskToolWithOptions(TaskToolOptions{
+		Provider:          &mockProvider{name: "sub"},
+		ParentRegistry:    tool.NewRegistry(),
+		MaxSteps:          5,
+		CompactionParallel: true,
+		ContextBudget:      true,
+		ResearchBudget:     true,
+	})
+	opts := task.subagentOptions(context.Background(), 5, nil, 100_000, 1, "", nil)
+	if !opts.CompactionParallel {
+		t.Error("child Options.CompactionParallel must inherit the parent's true")
+	}
+	if !opts.ContextBudget {
+		t.Error("child Options.ContextBudget must inherit the parent's true")
+	}
+	if !opts.ResearchBudget {
+		t.Error("child Options.ResearchBudget must inherit the parent's true")
+	}
+	// The TaskTool struct itself carries the values so subagentOptions (the
+	// per-spawn assembly) reads them rather than zeros.
+	if !task.compactionParallel || !task.contextBudget || !task.researchBudget {
+		t.Fatalf("TaskTool fields not carried from TaskToolOptions: parallel=%v budget=%v research=%v",
+			task.compactionParallel, task.contextBudget, task.researchBudget)
 	}
 }

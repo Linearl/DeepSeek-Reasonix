@@ -276,6 +276,16 @@ func (a *Agent) chunkedFoldSummary(ctx context.Context, fold []provider.Message,
 	return result, nil
 }
 
+// compactionConcurrency resolves the fragment pool width (task 265): the
+// 4-way pool while the lab switch is on, serial (1) — the upstream baseline —
+// when the user turned the experiment off.
+func (a *Agent) compactionConcurrency() int {
+	if a.compactionParallel {
+		return extractFragmentConcurrency
+	}
+	return 1
+}
+
 func (a *Agent) summarizeExtractChunks(ctx context.Context, chunks [][]provider.Message, instructions string, progress func(done, total int), run *chunkedSummaryRun) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -290,9 +300,10 @@ func (a *Agent) summarizeExtractChunks(ctx context.Context, chunks [][]provider.
 	// fact - and it is fork-only (upstream summarizes serially). One line per run, never per
 	// fragment: the pool is the whole point of the divergence, so its shape is the thing worth
 	// recording.
+	concurrency := a.compactionConcurrency()
 	slog.Info("compaction: chunked summary run",
 		"feature", "compaction-parallel", "chunks", len(chunks),
-		"concurrency", extractFragmentConcurrency,
+		"concurrency", concurrency,
 		"minCalls", minimumChunkedSummaryCalls(len(chunks)),
 		"budget", maxChunkedSummaryCalls)
 	report := orNoopProgress(progress)
@@ -332,7 +343,7 @@ func (a *Agent) summarizeExtractChunks(ctx context.Context, chunks [][]provider.
 			}
 			cancel() // stop sibling fragments early
 		}
-		sem := make(chan struct{}, extractFragmentConcurrency)
+		sem := make(chan struct{}, concurrency)
 		var wg sync.WaitGroup
 		for i, chunk := range chunks {
 			wg.Add(1)

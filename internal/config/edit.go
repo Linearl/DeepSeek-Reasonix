@@ -594,6 +594,64 @@ func (c *Config) SetExperimentalTodoSidebar(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalCompactionParallel toggles the parallel chunked-compaction
+// fragments (task 265). It ships on (existing behaviour given an off switch);
+// off falls back to the upstream serial summarizer.
+func (c *Config) SetExperimentalCompactionParallel(enabled bool) error {
+	c.Agent.ExperimentalCompactionParallel = &enabled
+	return nil
+}
+
+// SetExperimentalContextBudget toggles the per-turn context-state line (task
+// 265). It ships on; off returns the model to guessing its window. The
+// compress tool is a separate surface and is not gated here.
+func (c *Config) SetExperimentalContextBudget(enabled bool) error {
+	c.Agent.ExperimentalContextBudget = &enabled
+	return nil
+}
+
+// SetExperimentalResearchBudget toggles the read-only soft-budget extension
+// path (task 265). It ships on; off falls back to the plain 10-round nudge.
+func (c *Config) SetExperimentalResearchBudget(enabled bool) error {
+	c.Agent.ExperimentalResearchBudget = &enabled
+	return nil
+}
+
+// SetExperimentalQuestionSearch toggles the topic-bar question-search entry
+// (task 265). It ships on; off hides the entry and the panel.
+func (c *Config) SetExperimentalQuestionSearch(enabled bool) error {
+	c.Desktop.ExperimentalQuestionSearch = &enabled
+	return nil
+}
+
+// SetExperimentalSubagentPolicy toggles the delegation-tier entry points (task
+// 265). It ships on; off hides the entries and forces new sessions to light.
+func (c *Config) SetExperimentalSubagentPolicy(enabled bool) error {
+	c.Agent.ExperimentalSubagentPolicy = &enabled
+	return nil
+}
+
+// SetExperimentalSubagentTps toggles the sub-agent tok/s readouts (task 265).
+// It ships on; off hides the readouts only.
+func (c *Config) SetExperimentalSubagentTps(enabled bool) error {
+	c.Desktop.ExperimentalSubagentTps = &enabled
+	return nil
+}
+
+// SetExperimentalCompletionSummary toggles the desktop per-turn result notice
+// (task 265). It ships on; off silences the notice only.
+func (c *Config) SetExperimentalCompletionSummary(enabled bool) error {
+	c.Desktop.ExperimentalCompletionSummary = &enabled
+	return nil
+}
+
+// SetExperimentalQuickCommands toggles the whole quick-commands surface (task
+// 262). It ships off (new-capability rule); off hides every entry point.
+func (c *Config) SetExperimentalQuickCommands(enabled bool) error {
+	c.Desktop.ExperimentalQuickCommands = enabled
+	return nil
+}
+
 // SetExperimentalParallelFullAccess toggles trusted write access to managed
 // worktree roots (task 127). Off by default so production confinement is
 // unchanged; on only widens confine to those roots, never globally.

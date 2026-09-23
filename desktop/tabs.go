@@ -76,7 +76,6 @@ type WorkspaceTab struct {
 	TopicTitle          string                   // display title
 	topicTitleSource    string                   // auto or manual; controls localization at API boundaries
 	SessionPath         string                   // exact .jsonl file this tab continues
-	bindingNoticeKey    string                   // task 211: last binding-switch notice key; suppresses repeats
 	SessionGeneration   uint64                   // bumps on session rotation (clear/new); frontend hydrate identity
 	ReadOnly            bool                     // true for external channel transcripts opened for browsing
 	Takeover            struct{ Spectator bool } // handoff state grouped by its cross-runtime lifetime
@@ -4200,10 +4199,14 @@ func (a *App) applySessionBindingToTab(tab *WorkspaceTab, binding sessionBinding
 		bindingNoticeKey = describeSessionBindingWorkspace(scope, workspaceRoot) + "|" + canonicalTabSessionPath(binding.path)
 	}
 	// Task 211: the same session moving to the same workspace warns once per
-	// process; reopening it must not re-warn the user about a settled binding.
-	warnBinding := workspaceChanged && tab.bindingNoticeKey != bindingNoticeKey
+	// process (audit-3 M2: per-process, not per-tab — reopening the session in
+	// a fresh tab must not re-warn about a settled binding either).
+	warnBinding := workspaceChanged && !a.bindingNoticeSeen[bindingNoticeKey]
 	if warnBinding {
-		tab.bindingNoticeKey = bindingNoticeKey
+		if a.bindingNoticeSeen == nil {
+			a.bindingNoticeSeen = make(map[string]bool)
+		}
+		a.bindingNoticeSeen[bindingNoticeKey] = true
 	}
 	tab.Scope = scope
 	tab.WorkspaceRoot = workspaceRoot
@@ -4245,16 +4248,26 @@ func (a *App) applySessionBindingToTab(tab *WorkspaceTab, binding sessionBinding
 }
 
 // sessionBindingWorkspaceRootBlocked reports whether root lands inside the app's own
-// session storage: the projects storage dir itself, anything beneath it, or the
-// global session dir. A real project root never lives there, so a binding that
-// claims otherwise is legacy corruption from pre-156.B writers — exactly what
-// resurrects the shadow-project tab (task 211).
+// session storage: the two storage trees (sessions/ and sessions-v4/ under the
+// support dir) plus the whole projects tree. Task 211 audit-3 M1: the real
+// corrupt roots observed were home\projects itself and orphan home\projects\<slug>
+// directories — ancestors of the per-project session dirs the old table listed,
+// so a leaf-dir prefix check never hit them. Blocking the two tree roots covers
+// every current and future slug at once. A real project root never lives there.
 func sessionBindingWorkspaceRootBlocked(root string) bool {
-	return sessionBindingWorkspaceRootBlockedFor(root, []string{
-		config.SessionDir(),
-		config.SessionStoreDir(),
-		desktopSessionDir(globalWorkspaceRoot()),
-	})
+	return sessionBindingWorkspaceRootBlockedFor(root, sessionStorageTreeRoots())
+}
+
+// sessionStorageTreeRoots lists the whole trees the app owns for session
+// storage (task 211 audit-3 M1). sessionBindingWorkspaceRootBlockedFor blocks a
+// root that EQUALS one of these trees or lives BENEATH one — not their
+// ancestors: home\projects is blocked because it is itself listed here.
+func sessionStorageTreeRoots() []string {
+	roots := []string{config.SessionDir(), config.SessionStoreDir()}
+	if base := config.MemoryUserDir(); base != "" {
+		roots = append(roots, filepath.Join(base, "projects"))
+	}
+	return roots
 }
 
 // pruneShadowProjectRoots is the task 211 P2 startup self-check: registry entries
@@ -4270,7 +4283,10 @@ func pruneShadowProjectRoots() {
 	}
 	// Audit M4: only refresh the rollback copy when a prune actually happens,
 	// so a later unrelated registry failure cannot destroy the only backup.
-	storages := []string{config.SessionDir(), config.SessionStoreDir(), desktopSessionDir(globalWorkspaceRoot())}
+	// Task 211 audit-3 M1: block the whole storage trees, not the leaf session
+	// dirs — the corrupt roots observed were the projects tree root and orphan
+	// slugs beneath it.
+	storages := sessionStorageTreeRoots()
 	prunedAny := false
 	_ = updateProjectsFile(func(cur *desktopProjectFile) (bool, error) {
 		kept, pruned := pruneShadowProjectsFor(cur.Projects, storages)

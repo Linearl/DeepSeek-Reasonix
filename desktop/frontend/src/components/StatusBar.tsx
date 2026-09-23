@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Activity, CircleDollarSign, CircleGauge, Database, FileOutput, Folder, Gauge, GitBranch, HardDrive, Layers, Percent, Puzzle, RefreshCw, RotateCw, Server, Settings, Square, Unplug, Wallet, Zap } from "lucide-react";
+import { labFlagEnabled } from "../lib/labFlags";
 import { AnchoredPopover } from "./AnchoredPopover";
 import { RemoteConnectionErrorDialog } from "./RemoteConnectionErrorDialog";
 import { Tooltip } from "./Tooltip";
@@ -650,7 +651,7 @@ function JobsStatusBarChip({
                         <small>
                           {job.kind} · {job.status}
                           {open ? ` · ${formatJobElapsed(job.startedAt, now)}` : ""}
-                          {job.tps ? ` · ~${job.tps} tok/s` : ""}
+                          {labFlagEnabled("subagentTps") && job.tps ? ` · ~${job.tps} tok/s` : ""}
                         </small>
                       </span>
                       <button

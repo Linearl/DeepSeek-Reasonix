@@ -37,6 +37,7 @@ import {
   ListTodo,
 } from "lucide-react";
 import { loadHiddenDockTabs, onHiddenDockTabsChange, type DockTabId } from "./lib/dockTabs";
+import { applyLabFlags, labFlagEnabled, onLabFlagsChange } from "./lib/labFlags";
 import { useToast } from "./lib/toast";
 import { useGoalActionHandler } from "./lib/goalAction";
 import { useWailsResizeFix } from "./lib/useWailsResizeFix";
@@ -696,6 +697,9 @@ export default function App() {
   // Task 259: per-tab visibility inside the right dock; applies live.
   const [hiddenDockTabs, setHiddenDockTabs] = useState<readonly DockTabId[]>(loadHiddenDockTabs);
   useEffect(() => onHiddenDockTabsChange(setHiddenDockTabs), []);
+  // Task 265: the question-search entry hides while its lab flag is off.
+  const [questionSearchEnabled, setQuestionSearchEnabled] = useState(labFlagEnabled("questionSearch"));
+  useEffect(() => onLabFlagsChange(() => setQuestionSearchEnabled(labFlagEnabled("questionSearch"))), []);
   type PreservedTranscriptSurface = {
     tabId?: string;
     items: Item[];
@@ -1144,7 +1148,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1166,12 +1170,24 @@ export default function App() {
       // Task 259: the todo sidebar is a boot snapshot — the flag read here is
       // the one this process runs with until the next restart.
       setTodoSidebarEnabled(Boolean(settings.experimentalTodoSidebar));
+      // Task 265/262 lab intake: the render-surface flags ride the same boot
+      // snapshot (nil-means-on resolved server-side); the agent-side three are
+      // consumed in Go and only feed the lab pane from the settings view.
+      applyLabFlags({
+        questionSearch: settings.experimentalQuestionSearch ?? true,
+        subagentTps: settings.experimentalSubagentTps ?? true,
+        completionSummary: settings.experimentalCompletionSummary ?? true,
+        quickCommands: settings.experimentalQuickCommands ?? false,
+        subagentPolicy: settings.experimentalSubagentPolicy ?? true,
+      });
       // One line per startup so a missing rail entry can be traced from desktop.log
       // instead of guessed at (the switches read back correctly in config.toml).
       reportFrontendLog("desktop-prefs", "experiment flags", `restartUpdate=${Boolean(settings.experimentalRestartUpdate)} sessionMonitor=${Boolean(settings.experimentalSessionMonitor)} splitView=${Boolean(settings.experimentalSplitView)} feedback=${Boolean(settings.experimentalFeedback)} todoSidebar=${Boolean(settings.experimentalTodoSidebar)}`);
       setStartupUpdateChecksEnabled(settings.checkUpdates !== false);
       setStatusBarStyle(settings.statusBarStyle === "text" ? "text" : "icon");
-      setQuickCommands(settings.quickCommands ?? []);
+      // Task 262: with the quick-commands gate off the composer menu hides by
+      // serving an empty list — the stored snippets themselves are untouched.
+      setQuickCommands(settings.experimentalQuickCommands === true ? settings.quickCommands ?? [] : []);
       setAutopilotEnabled(settings.autopilot === true);
       setStatusBarItems(settings.statusBarItems);
       hydrateReasoningDisplayMode(settings.reasoningDisplayMode, settings.reasoningDisplayModeExplicit === true);
@@ -1664,8 +1680,12 @@ export default function App() {
   );
   // Fork: sub-agent delegation tier is a per-tab setting; the + menu is the
   // only entry point now (it needs no frequent switching).
+  // Task 265 audit-3 M3: with the intake switch off the tier entries are
+  // hidden AND switching is refused here, so a stale per-tab tier cannot be
+  // changed behind the hidden UI.
   const applySubagentPolicy = useCallback((policy: SubagentPolicy) => {
     if (!activeTabId) return;
+    if (!labFlagEnabled("subagentPolicy")) return;
     void app.SetSubagentPolicyForTab(activeTabId, policy);
   }, [activeTabId]);
 
@@ -4618,6 +4638,7 @@ export default function App() {
                   <Search size={15} />
                 </button>
               </Tooltip>
+              {questionSearchEnabled && (
               <Tooltip label={t("questionSearch.label")}>
                 <button
                   className="topicbar__action-btn topicbar__action-btn--icon topicbar__action-btn--utility"
@@ -4629,6 +4650,7 @@ export default function App() {
                   <ListTree size={15} />
                 </button>
               </Tooltip>
+              )}
               {shouldMountExternalOpener(activeTab, Boolean(sidebarImDetailConnection)) && activeTab && (
                 <ExternalOpener key={`external-opener:${activeTab.id}`} tabId={activeTab.id} dismissSignal={transientOverlayDismissSignal} />
               )}

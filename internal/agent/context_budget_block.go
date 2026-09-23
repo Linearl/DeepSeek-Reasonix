@@ -45,6 +45,11 @@ func (a *Agent) WithContextBudget(content string) string {
 	if a == nil {
 		return content
 	}
+	// Task 265: the lab switch gates the line itself; off leaves the model to
+	// its own window model (the upstream behaviour).
+	if !a.contextBudget {
+		return content
+	}
 	window := a.effectiveContextWindow()
 	if window <= 0 {
 		return content

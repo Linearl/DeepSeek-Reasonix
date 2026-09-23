@@ -284,6 +284,10 @@ type TaskTool struct {
 	// bashSandboxEnforced reports whether OS sandbox can honour write roots
 	// for bash inside path-bound writer sub-agents.
 	bashSandboxEnforced func() bool
+	// Task 265 audit-3 M2: the fork-only agent behaviours children inherit.
+	compactionParallel bool
+	contextBudget      bool
+	researchBudget     bool
 	// mutationObserver is shared with spawned sub-agents for checkpoint capture.
 	mutationObserver *checkpoint.MutationObserver
 	// recoveryGate is the shared Auto Guard boundary for
@@ -326,6 +330,9 @@ func NewTaskToolWithOptions(opts TaskToolOptions) *TaskTool {
 		subagentEffort:   opts.SubagentEffort,
 		resolveProvider:  opts.ResolveProvider,
 		maxSubagentDepth: DefaultMaxSubagentDepth,
+		compactionParallel: opts.CompactionParallel,
+		contextBudget:      opts.ContextBudget,
+		researchBudget:     opts.ResearchBudget,
 	}
 }
 

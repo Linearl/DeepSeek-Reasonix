@@ -576,6 +576,20 @@ func TestChunkedFoldSummaryHalfSplitsOnContextLimitFragment(t *testing.T) {
 	}
 }
 
+// Task 265: with the lab switch off (the Options zero value) the fragment
+// pool collapses to serial — the upstream baseline. With it on, the pool
+// width is the shared bounded constant.
+func TestChunkedFoldSummarySerialWhenCompactionParallelOff(t *testing.T) {
+	a := New(&extractStubProvider{reply: "digest"}, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
+	if got := a.compactionConcurrency(); got != 1 {
+		t.Fatalf("compactionConcurrency with the switch off = %d, want 1", got)
+	}
+	on := New(&extractStubProvider{reply: "digest"}, tool.NewRegistry(), extractStubSession(), Options{CompactionParallel: true}, event.Discard)
+	if got := on.compactionConcurrency(); got != extractFragmentConcurrency {
+		t.Fatalf("compactionConcurrency with the switch on = %d, want %d", got, extractFragmentConcurrency)
+	}
+}
+
 // Fragments are independent LLM calls and run with bounded parallelism: the
 // pool saturates at extractFragmentConcurrency without exceeding it, and the
 // merge still receives the digests in oldest-first order.
@@ -586,7 +600,8 @@ func TestChunkedFoldSummaryRunsFragmentsInParallel(t *testing.T) {
 	}
 	hold := make(chan struct{})
 	prov := &extractStubProvider{reply: "digest", holdUntil: hold}
-	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
+	// Task 265: parallelism is behind the lab switch now, so this test opts in.
+	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{CompactionParallel: true}, event.Discard)
 
 	done := make(chan error, 1)
 	go func() {

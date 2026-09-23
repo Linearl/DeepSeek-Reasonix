@@ -764,6 +764,17 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalSplitView(enabled: boolean): Promise<void>;
   // Task 259: right-dock todo tab + tab visibility/wrap settings (experimental; boot snapshot).
   SetExperimentalTodoSidebar(enabled: boolean): Promise<void>;
+  // Task 265 lab intake: nil-means-on switches (experimental; boot snapshot).
+  SetExperimentalCompactionParallel(enabled: boolean): Promise<void>;
+  SetExperimentalContextBudget(enabled: boolean): Promise<void>;
+  SetExperimentalResearchBudget(enabled: boolean): Promise<void>;
+  SetExperimentalQuestionSearch(enabled: boolean): Promise<void>;
+  SetExperimentalSubagentTps(enabled: boolean): Promise<void>;
+  SetExperimentalCompletionSummary(enabled: boolean): Promise<void>;
+  // Task 265: delegation-tier entry points (experimental; boot snapshot).
+  SetExperimentalSubagentPolicy(enabled: boolean): Promise<void>;
+  // Task 262: gates the whole quick-commands surface (experimental; boot snapshot).
+  SetExperimentalQuickCommands(enabled: boolean): Promise<void>;
   /** Conversation store: "legacy" (default) or "v4" (experimental; needs a restart). */
   SetSessionStorage(mode: string): Promise<void>;
   /**
@@ -5018,6 +5029,14 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSessionMonitor() {},
     async SetExperimentalSplitView() {},
     async SetExperimentalTodoSidebar() {},
+    async SetExperimentalCompactionParallel() {},
+    async SetExperimentalContextBudget() {},
+    async SetExperimentalResearchBudget() {},
+    async SetExperimentalQuestionSearch() {},
+    async SetExperimentalSubagentTps() {},
+    async SetExperimentalCompletionSummary() {},
+    async SetExperimentalSubagentPolicy() {},
+    async SetExperimentalQuickCommands() {},
     async SetSessionStorage() {},
     async RestartDesktop() {},
     async SetExperimentalFeedback() {},

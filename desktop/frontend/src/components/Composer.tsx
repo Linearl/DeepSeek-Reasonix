@@ -1,4 +1,5 @@
 import { recoveryStatusText, type RecoveryRetry } from "../lib/recoveryStatus";
+import { labFlagEnabled } from "../lib/labFlags";
 import { useRuntimeSession } from "../lib/useRuntimeState";
 import { pendingFollowups, confirmFollowup, followupNotSubmitted, followupSessionKey, type PendingFollowup } from "../lib/pendingFollowup";
 import { useAppNavigationStore } from "../store/appNavigation";
@@ -4441,7 +4442,7 @@ export function Composer({
               {qualityFloor === "delivery" && <Check size={14} aria-hidden="true" />}
             </button>
         </div>
-        {onSetSubagentPolicy && (
+        {onSetSubagentPolicy && labFlagEnabled("subagentPolicy") && (
           <div className="composer-access-menu__section" role="menu" aria-label={t("composer.subagentPolicyTrigger")}>
             <div className="composer-access-menu__label">{t("composer.subagentPolicyTrigger")}</div>
             {(["light", "balanced", "aggressive"] as const).map((level) => (

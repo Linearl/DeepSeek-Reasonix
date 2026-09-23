@@ -1,4 +1,5 @@
 import { searchOutputMetadata } from "../lib/searchSources";
+import { labFlagEnabled } from "../lib/labFlags";
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Suspense, lazy } from "react";
 import { ChevronRight, Compass } from "lucide-react";
@@ -255,7 +256,8 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId, displayN
         return `${label} · ${t("subagent.phase.elapsed", { n: formatElapsedSeconds(nowTick - sp.startedAt) })} · ${t("subagent.activity.ago", { n: formatElapsedSeconds(nowTick - sp.lastActivityAt) })}` +
           // TPS heartbeat (#9521): shown only while output is flowing; a zero
           // rate during tool phases is normal and must not read as "stalled".
-          (sp.tokensPerSec && sp.tokensPerSec > 0 ? ` · ~${sp.tokensPerSec} tok/s` : "");
+          // Task 265: the readout itself is behind the lab flag.
+          (labFlagEnabled("subagentTps") && sp.tokensPerSec && sp.tokensPerSec > 0 ? ` · ~${sp.tokensPerSec} tok/s` : "");
       })()
     : "";
   const presentation = useWorkProcessPresentation();
