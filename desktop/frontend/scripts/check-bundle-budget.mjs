@@ -208,7 +208,10 @@ console.log("\nbundle budgets");
 // 468.2 KiB here; retain a 0.1 KiB ceiling for platform zlib rounding.
 // 1f8c3fe50: fork UI-restoration batch (TopicbarMoreMenu return, locale
 // backfills + recovered keys) measures 469.6 KiB; +0.4 KiB headroom on top.
-const initialJSBudgetKiB = 470.0; // fork: +1.7 KiB vs upstream 468.3
+// Task 258 + 267 merged onto batch6 measures 470.2 KiB combined (message
+// presentation bubbles/fold + tail-follow kernel fixes); one-shot ratchet
+// +0.5 KiB per the one-shot rule (no +0.1 nibbling).
+const initialJSBudgetKiB = 470.5; // fork: +2.2 KiB vs upstream 468.3
 // [fork note] settings panel (LocalServerPage) that ships with the serve pool gateway.
 assertBudget("initial JavaScript gzip", initialJSGzip, initialJSBudgetKiB * 1024);
 // [fork note] 2026-09-15: pre-existing overage, not task 122 - the clean baseline
