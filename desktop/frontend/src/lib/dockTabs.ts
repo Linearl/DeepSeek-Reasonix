@@ -99,8 +99,14 @@ export function renderableDockTabs(ctx: DockTabRenderContext): DockTabId[] {
 /**
  * True when `id` is the only still-visible tab among the currently renderable
  * ones — its checkbox must not be uncheckable, or the dock loses every tab.
+ *
+ * Audit-2 fast-verify: a hidden tab never trips this guard. Without the early
+ * return, an all-hidden state made `every(...)` true for every id at once,
+ * locking all checkboxes with nothing checkable back (a state the previous
+ * release could persist, so an upgrade could boot straight into it).
  */
 export function isLastRenderableVisibleTab(id: DockTabId, ctx: DockTabRenderContext): boolean {
+  if (isDockTabHidden(id)) return false;
   const renderable = renderableDockTabs(ctx);
   if (!renderable.includes(id)) return false;
   return renderable.every((other) => other === id || isDockTabHidden(other));

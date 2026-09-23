@@ -208,5 +208,39 @@ console.log("\ntodo sidebar dock (task 259)");
   dockTabs2.setDockTabHidden("todos", false);
 }
 
+// 9. Audit-2 fast-verify: an all-hidden state must not deadlock the checkboxes.
+//    Upgrade path is real — 14278614f could persist every renderable tab as
+//    hidden (hand-edited storage or the old static-list guard), and the next
+//    boot then loads that state. Hidden tabs must never trip the guard, so
+//    every checkbox stays checkable and the user can always climb back out.
+{
+  const ctx = { todoSidebar: true, remoteAvailable: false, creation: false };
+  // Simulate the carried-over state: every renderable tab hidden.
+  dockTabs.setDockTabHidden("context", true);
+  dockTabs.setDockTabHidden("files", true);
+  dockTabs.setDockTabHidden("changed", true);
+  dockTabs.setDockTabHidden("todos", true);
+
+  for (const id of ["context", "files", "changed", "todos"] as const) {
+    eq(dockTabs.isLastRenderableVisibleTab(id, ctx), false,
+      `all-hidden upgrade: ${id} is not locked and can be checked back`);
+  }
+
+  // Checking one back restores the guard: that one becomes the locked last tab,
+  // the still-hidden ones stay free to check.
+  dockTabs.setDockTabHidden("files", false);
+  eq(dockTabs.isLastRenderableVisibleTab("files", ctx), true,
+    "all-hidden upgrade: the single visible tab locks again");
+  eq(dockTabs.isLastRenderableVisibleTab("context", ctx), false,
+    "all-hidden upgrade: remaining hidden tabs stay checkable");
+  eq(dockTabs.isLastRenderableVisibleTab("todos", ctx), false,
+    "all-hidden upgrade: remaining hidden tabs stay checkable (todos)");
+
+  dockTabs.setDockTabHidden("context", false);
+  dockTabs.setDockTabHidden("files", false);
+  dockTabs.setDockTabHidden("changed", false);
+  dockTabs.setDockTabHidden("todos", false);
+}
+
 console.log(`\ntodo sidebar dock: ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
