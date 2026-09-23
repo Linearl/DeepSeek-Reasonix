@@ -665,6 +665,9 @@ type retargetRuntimeController struct {
 	stubSessionAPI
 	status control.RuntimeStatus
 	path   string
+	// Task 263 fix 2: records the recovery-pause clear the auto-resume issues
+	// so tests can pin the single-channel hand-off.
+	inboxPausedCalls []bool
 }
 
 func (c *retargetRuntimeController) RuntimeStatus() control.RuntimeStatus { return c.status }
@@ -674,6 +677,10 @@ func (c *retargetRuntimeController) AutoApproveTools() bool               { retu
 func (c *retargetRuntimeController) Goal() string                         { return "" }
 func (c *retargetRuntimeController) GoalStatus() string                   { return "" }
 func (c *retargetRuntimeController) ToolApprovalMode() string             { return control.ToolApprovalAsk }
+func (c *retargetRuntimeController) SetInboxPaused(paused bool) error {
+	c.inboxPausedCalls = append(c.inboxPausedCalls, paused)
+	return nil
+}
 
 // SubagentPolicy overrides the stubSessionAPI-embedded nil *Controller:
 // currentTabSubagentPolicy (enrichTabMeta, via openTopicTab) reads it, and the

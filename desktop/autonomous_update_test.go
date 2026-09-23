@@ -283,11 +283,19 @@ func TestMaybeResumeAutonomousUpdateTabConsumesMarkerOnce(t *testing.T) {
 	// Ready tab whose session matches the marker. SubmitToTab may refuse (no
 	// wails runtime here) — the marker must be consumed regardless, so a
 	// failed resume can never resurrect on a later ordinary restart.
-	tab := &WorkspaceTab{ID: "t1", SessionPath: sessionPath, Ready: true, Ctrl: &retargetRuntimeController{path: sessionPath}}
+	ctrl := &retargetRuntimeController{path: sessionPath}
+	tab := &WorkspaceTab{ID: "t1", SessionPath: sessionPath, Ready: true, Ctrl: ctrl}
 	app.maybeResumeAutonomousUpdateTab(tab)
 	state := readAutonomousUpdateResumeFile()
 	if len(state.Sessions) != 0 {
 		t.Fatalf("marker must be consumed on first sight: %+v", state.Sessions)
+	}
+	// Task 263 fix 2: the auto-resume owns the "continue" decision, so it must
+	// clear the recovery pause (the banner's precondition) in the same hand-off —
+	// one channel: no "review before resuming" notice while the resume is
+	// already on its way.
+	if len(ctrl.inboxPausedCalls) != 1 || ctrl.inboxPausedCalls[0] {
+		t.Fatalf("auto-resume must clear the recovery pause exactly once (unpause): %+v", ctrl.inboxPausedCalls)
 	}
 
 	// An unrelated session's restore must neither touch nor consume the entry.

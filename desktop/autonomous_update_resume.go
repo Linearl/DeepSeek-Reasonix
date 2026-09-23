@@ -163,6 +163,17 @@ func (a *App) maybeResumeAutonomousUpdateTab(tab *WorkspaceTab) {
 		return
 	}
 	_ = writeAutonomousUpdateResumeFile(autonomousUpdateResumeFile{Sessions: remaining})
+	// Task 263 fix 2: the auto-resume decides "continue" for this session, so
+	// it also clears the recovery pause (and its banner data) here — otherwise
+	// the ForcePause notice and the automatic resume fight over the same
+	// decision: the user sees "review before resuming" while the resume is
+	// already on its way. One channel owns the choice; SetPaused(false) also
+	// zeroes Recovered/RecoveredN, which is what the banner renders.
+	if tab.Ctrl != nil {
+		if err := tab.Ctrl.SetInboxPaused(false); err != nil {
+			slog.Debug("desktop: clearing recovery pause for auto-resume", "tab", tab.ID, "err", err)
+		}
+	}
 	id := tab.ID
 	go func() {
 		if err := a.SubmitToTab(id, autonomousUpdateResumePrompt); err != nil {
