@@ -545,6 +545,14 @@ func (a *App) startup(ctx context.Context) {
 	// Task 225: the cascade-approval resolver needs the live App to find the
 	// task source's controller. One desktop App per process.
 	cascadeApp = a
+	// Task 254 field report: capability-routed tool calls never cross the
+	// agent's context-binding point, so restart_update / restart_and_update
+	// would report themselves unavailable there. Register the process-wide
+	// fallbacks next to cascadeApp — same one-App-per-process contract,
+	// idempotent, and left nil in hosts (CLI/serve) that cannot swap their
+	// own install.
+	tool.SetFallbackAutonomousUpdateController(newAutonomousUpdateController(a))
+	tool.SetFallbackRestartUpdater(restartUpdaterAdapter{a})
 	// Only the process that claimed the pre-Wails diagnostics lock consumes
 	// lifecycle evidence. This remains correct on Linux where Wails invokes
 	// OnStartup before its DBus single-instance handoff.

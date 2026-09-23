@@ -1,6 +1,9 @@
 package tool
 
-import "context"
+import (
+	"context"
+	"sync/atomic"
+)
 
 // AutonomousUpdateController is the host side of the restart_update tool
 // (task 254). It mirrors the RestartUpdater pattern (task 81): the interface
@@ -61,10 +64,33 @@ func WithAutonomousUpdateController(ctx context.Context, controller AutonomousUp
 }
 
 // AutonomousUpdateControllerFromContext returns the implementation bound to
-// this tool call.
+// this tool call, falling back to the process-wide registration when the call
+// path carries no context binding (capability-routed dispatch never crosses
+// the agent's binding point — task 254 field report). Context bindings win.
 func AutonomousUpdateControllerFromContext(ctx context.Context) (AutonomousUpdateController, bool) {
-	controller, ok := ctx.Value(autonomousUpdateKey{}).(AutonomousUpdateController)
-	return controller, ok && controller != nil
+	if controller, ok := ctx.Value(autonomousUpdateKey{}).(AutonomousUpdateController); ok && controller != nil {
+		return controller, true
+	}
+	if controller := fallbackAutonomousUpdate.Load(); controller != nil {
+		return *controller, true
+	}
+	return nil, false
+}
+
+// fallbackAutonomousUpdate holds the desktop app's controller for call paths
+// that never cross the agent's context-binding point. It mirrors
+// builtin.SetHeartbeatManager: one process-wide slot, registered by the
+// desktop at startup and left nil in hosts that cannot swap their own
+// install, so the tool keeps reporting itself unavailable there.
+var fallbackAutonomousUpdate atomic.Pointer[AutonomousUpdateController]
+
+// SetFallbackAutonomousUpdateController registers the process-wide controller.
+// Later registrations replace earlier ones; nil is ignored.
+func SetFallbackAutonomousUpdateController(controller AutonomousUpdateController) {
+	if controller == nil {
+		return
+	}
+	fallbackAutonomousUpdate.Store(&controller)
 }
 
 // restartCallerSessionKey carries the session path of the turn issuing a tool
