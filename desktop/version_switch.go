@@ -160,6 +160,13 @@ func (a *App) switchToVersionExempt(version, callerSession string) error {
 		return fmt.Errorf("restart: switch pointer: %w", err)
 	}
 	slog.Info("restart: switching active version", "from", current.ActiveVersion, "to", version, "installRoot", installRoot)
+	// Task 272 L3: a version switch is ORTHOGONAL to runtime residue — it
+	// changes code, not live processes (incident ③: rolling back to 1959 did
+	// nothing while an orphan serve still held the lease). State that, and at
+	// least take this process's own pool down with it (idempotent); anything
+	// foreign is left to the next launch's ReapOrphanSpawns.
+	slog.Info("restart: version switch only — live processes are not cleaned here; this process's serve pool closes now, foreign leftovers are reaped on next start")
+	a.closeServePool()
 
 	launcherPath := filepath.Join(installRoot, installlayout.LauncherBinaryName())
 	if info, statErr := os.Lstat(launcherPath); statErr != nil || !info.Mode().IsRegular() {

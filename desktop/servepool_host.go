@@ -52,6 +52,10 @@ func (a *App) startServePool(ctx context.Context) {
 		slog.Warn("servepool: disabled", "err", err)
 		return
 	}
+	// Task 272 L3: before any spawn work, reap serves whose owning desktop is
+	// gone (pre-Job leftovers or a crash that beat the Job handle) — these
+	// orphans held session leases until the user rebooted the machine.
+	mgr.ReapOrphanSpawns()
 	token := loadOrCreateGatewayToken()
 	gw := servepool.NewGateway(mgr, token)
 	gw.SetVirtualSource("global", servepool.VirtualSource{

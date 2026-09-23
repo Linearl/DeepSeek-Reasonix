@@ -268,6 +268,18 @@ func (t *desktopLifecycleTracker) mark(phase string) {
 	_ = t.writeStateLocked()
 }
 
+// phase returns the last recorded phase for the shutdown watchdog's
+// wedge-point log (task 272 L1): shutdownBody stamps stage markers so a
+// forced exit names the section that blocked.
+func (t *desktopLifecycleTracker) phase() string {
+	if t == nil {
+		return ""
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.state.Phase
+}
+
 func (t *desktopLifecycleTracker) clean() {
 	if t == nil || t.path == "" {
 		return

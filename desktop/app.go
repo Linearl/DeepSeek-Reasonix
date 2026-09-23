@@ -9702,11 +9702,24 @@ func (e *sessionLeaseBusyError) Error() string {
 	// holder's host-pid-writer id; every user-facing surface must render
 	// this wrapper instead. An empty setting means the failure gated opening
 	// the session itself (startup bind), not changing a setting on it.
+	//
+	// Task 272 L3: when the holder resolves to a concrete pid that is not
+	// this process, name it and hand over an EXISTING next step — restart
+	// reaps leftovers automatically (ReapOrphanSpawns), taskkill is there
+	// for impatience. The old "close the other window" advice was dead-end
+	// advice for the orphan-serve incidents ②③: there was no other window.
 	setting := strings.TrimSpace(e.setting)
-	if setting == "" {
-		return "this session is already open in another Reasonix window or still running in the background; close the other window or open a copy"
+	base := "this session is already open in another Reasonix window or still running in the background; close the other window or open a copy"
+	var leaseErr *agent.SessionLeaseError
+	if errors.As(e.err, &leaseErr) && leaseErr != nil && leaseErr.Info != nil {
+		if holderPID := leaseErr.Info.PID; holderPID > 0 && holderPID != os.Getpid() {
+			base = fmt.Sprintf("this session is held by a leftover background process (pid %d); restart the desktop to reap it automatically, or run taskkill /PID %d, then reopen the session", holderPID, holderPID)
+		}
 	}
-	return fmt.Sprintf("this session is already open in another Reasonix window or still running in the background; close the other window or open a copy before changing %s", setting)
+	if setting == "" {
+		return base
+	}
+	return fmt.Sprintf("%s before changing %s", base, setting)
 }
 
 func (e *sessionLeaseBusyError) Unwrap() error {
