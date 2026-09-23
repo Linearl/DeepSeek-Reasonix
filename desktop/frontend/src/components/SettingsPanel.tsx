@@ -6,6 +6,7 @@ import { providerProtocolLabel, providerProtocolChoices } from "../lib/providerP
 import { providerSupportsServerWebSearch } from "../lib/providerSearch";
 import { providerDefaultLabel, providerDisplayLabel } from "../lib/providerLabel";
 import { isDockTabHidden, isLastRenderableVisibleTab, setDockTabHidden } from "../lib/dockTabs";
+import { labFlagEnabled } from "../lib/labFlags";
 import { useRemoteStore } from "../store/remote";
 
 // Autopilot runs unattended, so it needs a wall-clock bound; this is the value the
@@ -2952,7 +2953,7 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
             <button
               key={policy}
               className={`set-seg__btn${defaultSubagentPolicy === policy ? " set-seg__btn--on" : ""}`}
-              disabled={busy}
+              disabled={busy || !labFlagEnabled("subagentPolicy")}
               onClick={() => void apply(() => app.SetDefaultSubagentPolicy(policy))}
             >
               {t(`settings.defaultSubagentPolicy.${policy}`)}

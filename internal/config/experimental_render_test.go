@@ -231,3 +231,31 @@ func TestPlanResearchGateRoundTripThroughRender(t *testing.T) {
 		}
 	}
 }
+
+// Task 265 audit-3 M1: the intake switch must not rewrite the render face.
+// With a stored tier + the switch explicitly off, saving any other setting
+// (which re-renders the user config) previously dropped subagent_policy
+// entirely — the "saving a switch deletes the key" family of 2026-09-15.
+func TestSubagentPolicySurvivesRenderWhenIntakeOff(t *testing.T) {
+	c := &Config{}
+	c.Agent.SubagentPolicy = "balanced"
+	if err := c.SetExperimentalSubagentPolicy(false); err != nil {
+		t.Fatalf("set subagent policy off: %v", err)
+	}
+	// Consumer view: forced light while off (the intended gate).
+	if got := c.DefaultSubagentPolicy(); got != "light" {
+		t.Fatalf("intake off must force light at the consumer, got %q", got)
+	}
+	// Render face: the stored tier survives untouched.
+	out := RenderTOMLForScope(c, RenderScopeUser)
+	if !strings.Contains(out, `subagent_policy = "balanced"`) {
+		t.Fatalf("stored tier dropped from the render while the switch is off\n---\n%s", out)
+	}
+	// Re-opening the switch restores the stored value with no data repair.
+	if err := c.SetExperimentalSubagentPolicy(true); err != nil {
+		t.Fatalf("set subagent policy on: %v", err)
+	}
+	if got := c.DefaultSubagentPolicy(); got != "balanced" {
+		t.Fatalf("stored tier must come back after re-enabling, got %q", got)
+	}
+}

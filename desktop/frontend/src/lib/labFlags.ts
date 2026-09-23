@@ -5,13 +5,14 @@
 
 import { reportFrontendLog } from "./frontendLog";
 
-export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands";
+export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy";
 
 const defaults: Record<LabFeatureFlag, boolean> = {
   questionSearch: true,
   subagentTps: true,
   completionSummary: true,
   quickCommands: false,
+  subagentPolicy: true,
 };
 
 const flags: Record<LabFeatureFlag, boolean> = { ...defaults };

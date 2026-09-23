@@ -1148,7 +1148,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1178,6 +1178,7 @@ export default function App() {
         subagentTps: settings.experimentalSubagentTps ?? true,
         completionSummary: settings.experimentalCompletionSummary ?? true,
         quickCommands: settings.experimentalQuickCommands ?? false,
+        subagentPolicy: settings.experimentalSubagentPolicy ?? true,
       });
       // One line per startup so a missing rail entry can be traced from desktop.log
       // instead of guessed at (the switches read back correctly in config.toml).
@@ -1679,8 +1680,12 @@ export default function App() {
   );
   // Fork: sub-agent delegation tier is a per-tab setting; the + menu is the
   // only entry point now (it needs no frequent switching).
+  // Task 265 audit-3 M3: with the intake switch off the tier entries are
+  // hidden AND switching is refused here, so a stale per-tab tier cannot be
+  // changed behind the hidden UI.
   const applySubagentPolicy = useCallback((policy: SubagentPolicy) => {
     if (!activeTabId) return;
+    if (!labFlagEnabled("subagentPolicy")) return;
     void app.SetSubagentPolicyForTab(activeTabId, policy);
   }, [activeTabId]);
 

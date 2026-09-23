@@ -43,6 +43,13 @@ func (t *TaskTool) subagentOptions(ctx context.Context, maxSteps int, pricing *p
 		WriteRoots:               t.writeRoots,
 		DisableWriteAccessExpand: true,
 		WriteWorkspaceRoot:       t.workspaceRoot,
+		// Task 265 audit-3 M2: children inherit the fork-only behaviours, so a
+		// sub-agent compacts in parallel / sees the context-state line / can
+		// extend its read-only budget exactly like the parent — zero-value
+		// parity with the pre-intake behaviour every child used to have.
+		CompactionParallel: t.compactionParallel,
+		ContextBudget:      t.contextBudget,
+		ResearchBudget:     t.researchBudget,
 	}
 	// Writer children inherit the parent turn's frozen risk and closure floors.
 	// The parent publishes its policy into the run context; a child that never
@@ -85,4 +92,11 @@ type TaskToolOptions struct {
 	SubagentModel                         string
 	SubagentEffort                        string
 	ResolveProvider                       func(string, string) (provider.Provider, *provider.Pricing, int, error)
+	// Task 265 audit-3 M2: the three fork-only agent behaviours ride into every
+	// sub-agent (task / read_only_task / parallel_tasks children) through the
+	// single construction point. Zero values only occur in direct unit
+	// construction; boot passes the resolved (nil-means-on) config values.
+	CompactionParallel bool
+	ContextBudget      bool
+	ResearchBudget     bool
 }

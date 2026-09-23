@@ -497,6 +497,12 @@ func (c *Config) DesktopDefaultToolApprovalMode() string {
 // as the default for newly created desktop sessions. Empty or invalid values
 // fall back to light; light|balanced|aggressive are accepted. Backward
 // compatible with builds that predate the key.
+//
+// Task 265 (audit-3 M1): this is the CONSUMER-facing value — with the lab intake
+// switch off it forces light. The renderer must NOT read it: rendering through
+// this function drops the stored tier the moment the switch is off (the
+// "saved switch deletes the key" family), so render.go reads
+// normalizedStoredSubagentPolicy instead.
 func (c *Config) DefaultSubagentPolicy() string {
 	if c == nil {
 		return "light"
@@ -504,6 +510,16 @@ func (c *Config) DefaultSubagentPolicy() string {
 	// Task 265: with the lab intake switch off the entry points are hidden and
 	// every new session resolves to light, whatever the stored default says.
 	if !c.SubagentPolicyIntakeEnabled() {
+		return "light"
+	}
+	return c.normalizedStoredSubagentPolicy()
+}
+
+// normalizedStoredSubagentPolicy normalises what is actually stored, with no
+// switch overlay. The renderer uses it so an off switch never rewrites or drops
+// the user's saved tier (task 265 audit-3 M1).
+func (c *Config) normalizedStoredSubagentPolicy() string {
+	if c == nil {
 		return "light"
 	}
 	switch strings.ToLower(strings.TrimSpace(c.Agent.SubagentPolicy)) {

@@ -323,7 +323,12 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	} else {
 		b.WriteString("# max_subagent_depth = 2   # nested subagent delegation depth; set 1 to disable nested delegation\n")
 	}
-	policy := c.DefaultSubagentPolicy()
+	// Task 265 audit-3 M1: render the STORED tier (normalized, no switch
+	// overlay). Rendering through DefaultSubagentPolicy would drop the saved
+	// value whenever the lab intake switch is off — the same "saving a switch
+	// deletes the key" failure as 2026-09-15. The switch still forces light at
+	// the consumer (DefaultSubagentPolicy), not here.
+	policy := c.normalizedStoredSubagentPolicy()
 	if policy != "light" {
 		fmt.Fprintf(&b, "subagent_policy = %q   # default sub-agent delegation tier for new sessions: light|balanced|aggressive\n", policy)
 	} else {

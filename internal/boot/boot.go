@@ -1270,6 +1270,12 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			SubagentModel:        taskModel,
 			SubagentEffort:       taskEffort,
 			ResolveProvider:      resolveSubagentProvider,
+			// Task 265 audit-3 M2: children inherit the three fork-only
+			// behaviours with the same resolved (nil-means-on) values as the
+			// parent agent assembled above.
+			CompactionParallel: cfg.CompactionParallelEnabled(),
+			ContextBudget:      cfg.ContextBudgetEnabled(),
+			ResearchBudget:     cfg.ResearchBudgetEnabled(),
 		}).
 			WithTranscripts(subagentStore, root, modelName, entry.Effort).
 			WithTranscriptIdentityResolver(subagentIdentity).

@@ -4259,9 +4259,9 @@ func sessionBindingWorkspaceRootBlocked(root string) bool {
 }
 
 // sessionStorageTreeRoots lists the whole trees the app owns for session
-// storage (task 211 audit-3 M1). Ancestors of these roots are blocked too,
-// because sessionBindingWorkspaceRootBlockedFor treats a root as blocked when
-// it equals a listed dir or lives beneath it.
+// storage (task 211 audit-3 M1). sessionBindingWorkspaceRootBlockedFor blocks a
+// root that EQUALS one of these trees or lives BENEATH one — not their
+// ancestors: home\projects is blocked because it is itself listed here.
 func sessionStorageTreeRoots() []string {
 	roots := []string{config.SessionDir(), config.SessionStoreDir()}
 	if base := config.MemoryUserDir(); base != "" {
