@@ -1,5 +1,6 @@
 import type { Item, State } from "./useController";
 import type { HistoryMessage, WireCompletionSummary } from "./types";
+import { labFlagEnabled } from "./labFlags";
 import { t } from "./i18n";
 import { completionSummaryPresentation, normalizeCompletionSummary, sessionQualityFloor } from "./completionSummary";
 import { mergeTurnResult } from "./turnResult";
@@ -10,6 +11,9 @@ function lastUserIndex(items: Item[]): number {
 }
 
 export function historicalResultNotice(message: HistoryMessage, id: string): Extract<Item, { kind: "notice" }> | undefined {
+  // Task 265: the desktop notice is behind the lab flag; the summary state and
+  // the dock entry points stay available.
+  if (!labFlagEnabled("completionSummary")) return undefined;
   const summary = normalizeCompletionSummary(mergeTurnResult(message.completionSummary, message.completionReceipt, message.turnId, message.checkpointTurn));
   const presentation = completionSummaryPresentation(summary, "standard", t);
   return presentation ? { kind: "notice", id, variant: "completion", action: "open_changes", level: presentation.level, title: presentation.title, text: presentation.body, completionSummary: summary } : undefined;
@@ -19,6 +23,9 @@ export function historicalResultNotice(message: HistoryMessage, id: string): Ext
 export function withTurnResult(s: State, summary: WireCompletionSummary): State {
   const boundary = lastUserIndex(s.items);
   const index = s.items.findIndex((item, i) => i > boundary && item.kind === "notice" && item.variant === "completion");
+  // Task 265: with the lab flag off the summary state still updates (the dock
+  // detail entry points stay alive) but no notice item is inserted.
+  if (!labFlagEnabled("completionSummary")) return { ...s, completionSummary: summary, items: index < 0 ? s.items : s.items.filter((_, i) => i !== index) };
   const presentation = completionSummaryPresentation(summary, sessionQualityFloor(s.meta), t);
   if (!presentation) return { ...s, completionSummary: summary, items: index < 0 ? s.items : s.items.filter((_, i) => i !== index) };
   const id = index < 0 ? `q${s.seq}` : s.items[index].id;

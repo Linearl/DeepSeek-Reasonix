@@ -29,6 +29,12 @@ type agentConfig struct {
 	usageSource                string
 	modelRef                   string
 	highSpeedModels            []string
+	// Task 265 lab intake: the three fork-only agent behaviours. All default
+	// true via the boot assembly (nil-means-on config pointers); false falls
+	// back to the upstream-equivalent path. Fixed for the agent's lifetime.
+	compactionParallel bool
+	contextBudget      bool
+	researchBudget     bool
 	// workspaceID is a prompt-cache lineage component, so it must not move
 	// while an agent lives — a change would silently rekey the cache.
 	workspaceID string

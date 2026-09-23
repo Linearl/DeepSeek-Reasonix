@@ -84,6 +84,93 @@ func TestExperimentalDreamRoundTripThroughRender(t *testing.T) {
 	}
 }
 
+// Task 265 lab intake: the intake switches ship ON via nil-means-on pointers.
+// An untouched config must render true (existing behaviour, zero regression),
+// an explicit off must render false (and survive the next load), and an
+// explicit true renders the same as nil.
+func TestTask265NilMeansOnSwitchesRoundTrip(t *testing.T) {
+	// Untouched: every intake switch renders true.
+	out := RenderTOMLForScope(&Config{}, RenderScopeUser)
+	for _, want := range []string{
+		"experimental_compaction_parallel = true",
+		"experimental_context_budget = true",
+		"experimental_research_budget = true",
+		"experimental_question_search = true",
+		"experimental_subagent_tps = true",
+		"experimental_completion_summary = true",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("nil pointer must render on: missing %q\n---\n%s", want, out)
+		}
+	}
+
+	// Explicit off: recorded and rendered false, so it survives the reload.
+	off := &Config{}
+	if err := off.SetExperimentalCompactionParallel(false); err != nil {
+		t.Fatalf("set compaction parallel: %v", err)
+	}
+	if err := off.SetExperimentalContextBudget(false); err != nil {
+		t.Fatalf("set context budget: %v", err)
+	}
+	if err := off.SetExperimentalResearchBudget(false); err != nil {
+		t.Fatalf("set research budget: %v", err)
+	}
+	if err := off.SetExperimentalQuestionSearch(false); err != nil {
+		t.Fatalf("set question search: %v", err)
+	}
+	if err := off.SetExperimentalSubagentPolicy(false); err != nil {
+		t.Fatalf("set subagent policy: %v", err)
+	}
+	if err := off.SetExperimentalSubagentTps(false); err != nil {
+		t.Fatalf("set subagent tps: %v", err)
+	}
+	if err := off.SetExperimentalCompletionSummary(false); err != nil {
+		t.Fatalf("set completion summary: %v", err)
+	}
+	if off.CompactionParallelEnabled() || off.ContextBudgetEnabled() || off.ResearchBudgetEnabled() {
+		t.Fatal("explicitly off agent switches must read back disabled")
+	}
+	if !off.SubagentPolicyIntakeEnabled() {
+		if got := off.DefaultSubagentPolicy(); got != "light" {
+			t.Fatalf("off intake must force a light default, got %q", got)
+		}
+	} else {
+		t.Fatal("explicitly off subagent policy intake must read back disabled")
+	}
+	if off.DesktopQuestionSearchEnabled() || off.DesktopSubagentTpsEnabled() || off.DesktopCompletionSummaryEnabled() {
+		t.Fatal("explicitly off desktop switches must read back disabled")
+	}
+	out = RenderTOMLForScope(off, RenderScopeUser)
+	for _, want := range []string{
+		"experimental_compaction_parallel = false",
+		"experimental_context_budget = false",
+		"experimental_research_budget = false",
+		"experimental_question_search = false",
+		"experimental_subagent_policy = false",
+		"experimental_subagent_tps = false",
+		"experimental_completion_summary = false",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("explicit off must survive the render: missing %q\n---\n%s", want, out)
+		}
+	}
+
+	// Quick commands (task 262) is a plain default-off bool: it must render
+	// false on an untouched config and true after enabling.
+	out = RenderTOMLForScope(&Config{}, RenderScopeUser)
+	if !strings.Contains(out, "experimental_quick_commands = false") {
+		t.Fatalf("quick commands ships off: missing false render\n---\n%s", out)
+	}
+	on := &Config{}
+	if err := on.SetExperimentalQuickCommands(true); err != nil {
+		t.Fatalf("set quick commands: %v", err)
+	}
+	out = RenderTOMLForScope(on, RenderScopeUser)
+	if !strings.Contains(out, "experimental_quick_commands = true") {
+		t.Fatalf("quick commands enable must render true\n---\n%s", out)
+	}
+}
+
 func TestExperimentalSessionCollabRoundTripThroughRender(t *testing.T) {
 	c := &Config{}
 	c.Agent.ExperimentalSessionCollab = true

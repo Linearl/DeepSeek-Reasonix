@@ -153,6 +153,11 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "experimental_feedback = %v   # desktop: agent submit_feedback tool + feedback inbox panel (task 121)\n", c.Desktop.ExperimentalFeedback)
 		fmt.Fprintf(&b, "experimental_parallel_full_access = %v   # desktop: trust managed worktree roots as write surfaces (task 127); env REASONIX_PARALLEL_FULL_ACCESS=1 also enables\n", c.Desktop.ExperimentalParallelFullAccess)
 		fmt.Fprintf(&b, "experimental_todo_sidebar = %v   # desktop: right-dock todo tab + tab visibility/wrap settings (task 259; boot snapshot)\n", c.Desktop.ExperimentalTodoSidebar)
+		// Task 265 lab intake: render-surface features, nil-means-on pointers.
+		fmt.Fprintf(&b, "experimental_question_search = %v   # desktop: topic-bar search-my-questions entry (task 265; boot snapshot)\n", c.DesktopQuestionSearchEnabled())
+		fmt.Fprintf(&b, "experimental_subagent_tps = %v   # desktop: ~N tok/s readouts on sub-agent cards and the job table (task 265; boot snapshot)\n", c.DesktopSubagentTpsEnabled())
+		fmt.Fprintf(&b, "experimental_completion_summary = %v   # desktop: per-turn result notice on the transcript (task 265; boot snapshot)\n", c.DesktopCompletionSummaryEnabled())
+		fmt.Fprintf(&b, "experimental_quick_commands = %v   # desktop: gate the whole quick-commands surface (task 262; boot snapshot)\n", c.Desktop.ExperimentalQuickCommands)
 		fmt.Fprintf(&b, "experimental_path_rules = %v   # desktop: structured path-scope evaluation (docs/PATH_SCOPE_RULES.md, task 134)\n", c.Desktop.ExperimentalPathRules)
 		fmt.Fprintf(&b, "experimental_local_server = %v   # desktop: expose Settings → Local server (task 130)\n", c.Desktop.ExperimentalLocalServer)
 		fmt.Fprintf(&b, "max_cached_tabs = %d   # desktop: resident tab-state limit for the LRU prune (0 = unlimited, task 161)\n", c.Desktop.MaxCachedTabs)
@@ -343,6 +348,13 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// the desktop experimental_* switches: omit-on-off springs back to true).
 	fmt.Fprintf(&b, "experimental_dream = %v   # task 115: enable dream/distill memory-curation tools\n", c.Agent.ExperimentalDream)
 	fmt.Fprintf(&b, "experimental_session_collab = %v   # task 19: multi-session collaboration tools (141-145)\n", c.Agent.ExperimentalSessionCollab)
+	// Task 265 lab intake: existing behaviour given an off switch, so the
+	// pointers render through their nil-means-on helpers (an absent key and an
+	// explicit true render identically, and turning one off stays recorded).
+	fmt.Fprintf(&b, "experimental_compaction_parallel = %v   # task 265: parallel chunked-compaction fragments (off = upstream serial baseline)\n", c.CompactionParallelEnabled())
+	fmt.Fprintf(&b, "experimental_context_budget = %v   # task 265: per-turn context-state line (#9520; compress tool not gated here)\n", c.ContextBudgetEnabled())
+	fmt.Fprintf(&b, "experimental_research_budget = %v   # task 265: read-only soft-budget extension via extend_research_budget (#10054)\n", c.ResearchBudgetEnabled())
+	fmt.Fprintf(&b, "experimental_subagent_policy = %v   # task 265: delegation-tier entry points (off forces new sessions to light)\n", c.SubagentPolicyIntakeEnabled())
 	fmt.Fprintf(&b, "experimental_auto_load_older = %v   # fork task 160: load older history by scrolling up at the transcript top\n", c.Agent.ExperimentalAutoLoadOlder)
 	fmt.Fprintf(&b, "experimental_perf_monitor = %v   # task 184: host performance monitor (5s samples of memory/IO/key files)\n", c.Agent.ExperimentalPerfMonitor)
 	fmt.Fprintf(&b, "perf_monitor_interval_seconds = %d   # task 184: sampler interval in seconds (default 5, clamped 1..300)\n", c.Agent.PerfMonitorIntervalSeconds)

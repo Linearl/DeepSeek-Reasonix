@@ -30,6 +30,16 @@ export interface SettingsView {
   experimentalFeedback?: boolean;
   // Task 259: exposes the right-dock todo tab plus tab visibility/wrap settings.
   experimentalTodoSidebar?: boolean;
+  // Task 265 lab intake: nil-means-on switches, resolved server-side.
+  experimentalCompactionParallel?: boolean;
+  experimentalContextBudget?: boolean;
+  experimentalResearchBudget?: boolean;
+  experimentalQuestionSearch?: boolean;
+  experimentalSubagentPolicy?: boolean;
+  experimentalSubagentTps?: boolean;
+  experimentalCompletionSummary?: boolean;
+  // Task 262: gates the whole quick-commands surface (ships off).
+  experimentalQuickCommands?: boolean;
   // Task 130: exposes the Settings → 本地服务 page and serve-pool controls.
   experimentalLocalServer?: boolean;
   // Task 134: structured path-scope evaluation (docs/PATH_SCOPE_RULES.md).

@@ -1000,6 +1000,11 @@ type Options struct {
 	// matches one, each user turn is prefixed with the exec-speed-mode transient
 	// block coaching async/parallel execution. Never inferred from the model id.
 	HighSpeedModels []string
+	// Task 265 lab intake: the three fork-only agent behaviours, each shipping
+	// on. The boot assembly passes the resolved (nil-means-on) config values.
+	CompactionParallel bool
+	ContextBudget      bool
+	ResearchBudget     bool
 	// RequireVisibleFinal makes internal callers reject reasoning-only responses.
 	RequireVisibleFinal bool
 	// ContinuationPolicy is the internal host policy for synthetic same-Run
@@ -1281,6 +1286,9 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 			usageSource:                usageSourceOrDefault(opts.UsageSource, event.UsageSourceExecutor),
 			modelRef:                   strings.TrimSpace(opts.ModelRef),
 			highSpeedModels:            opts.HighSpeedModels,
+			compactionParallel:         opts.CompactionParallel,
+			contextBudget:              opts.ContextBudget,
+			researchBudget:             opts.ResearchBudget,
 			workspaceID:                strings.TrimSpace(opts.WorkspaceID),
 			classifierTaskText:         opts.ClassifierTaskText,
 			writeWorkspaceRoot:         strings.TrimSpace(opts.WriteWorkspaceRoot),
@@ -1466,8 +1474,12 @@ func (a *Agent) Run(ctx context.Context, input string) (runErr error) {
 	ctx = a.withProviderCacheSession(ctx)
 	// The read-only research budget can be doubled from inside the turn via
 	// extend_research_budget; stamp the extender so the tool is provider-visible
-	// and reaches this turn's soft-budget state.
-	ctx = tool.WithResearchBudgetExtender(ctx, a)
+	// and reaches this turn's soft-budget state. Task 265: with the lab switch
+	// off no extender is stamped — the tool disappears from the toolset
+	// (ProviderVisible requires it) and the 10-round nudge never extends.
+	if a.researchBudget {
+		ctx = tool.WithResearchBudgetExtender(ctx, a)
+	}
 	runMaxSteps := a.maxSteps
 	runMaxStepsKey := a.maxStepsKey
 	a.recovery.runSeq.Add(1)

@@ -49,9 +49,12 @@ func TestQuickCommandsRoundTripThroughRender(t *testing.T) {
 
 func TestQuickCommandsUnsetStaysOutOfTheConfig(t *testing.T) {
 	// A config nobody touched should not grow an empty quick_commands key.
+	// Task 262 note: the scalar experimental_quick_commands gate legitimately
+	// renders false on an untouched config (fixed-key-set rule), so the
+	// assertion targets the array key only.
 	out := RenderTOMLForScope(&Config{}, RenderScopeUser)
-	if strings.Contains(out, "quick_commands") {
-		t.Fatalf("untouched config should not mention quick_commands\n---\n%s", out)
+	if strings.Contains(out, "quick_commands = [") || strings.Contains(out, "quick_commands = []") {
+		t.Fatalf("untouched config should not render the quick_commands array\n---\n%s", out)
 	}
 }
 

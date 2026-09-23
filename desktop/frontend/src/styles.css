@@ -40733,6 +40733,17 @@ body > .mermaid-diagram--fullscreen {
   padding-right: 2px;
 }
 
+/* Task 262-3: the dialog was too narrow for long snippet text (it wrapped
+   mid-word). Give the wide variant a real floor plus a viewport cap so both
+   the rows and the create/edit form get usable line length. */
+.settings-quick-commands--wide {
+  width: min(680px, 92vw);
+  max-width: min(680px, 92vw);
+}
+.settings-quick-commands--wide .settings-quick-commands__row > textarea.mem-input {
+  flex: 1 1 46%;
+}
+
 .settings-quick-commands__row {
   display: flex;
   align-items: flex-start;

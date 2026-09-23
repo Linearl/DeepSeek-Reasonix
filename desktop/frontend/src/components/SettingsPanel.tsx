@@ -1770,7 +1770,18 @@ type ExperimentFeatureId =
   | "autoLoadOlder"
   | "sessionCollab"
   | "messageMerge"
-  | "autopilot";
+  | "autopilot"
+  // Task 265 lab intake (9 fork features) + task 262 quick commands.
+  | "highSpeedModel"
+  | "compactionParallel"
+  | "contextBudget"
+  | "researchBudget"
+  | "draftPersistence"
+  | "questionSearch"
+  | "subagentPolicy"
+  | "subagentTps"
+  | "completionSummary"
+  | "quickCommands";
 
 function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Set when a boot-time setting is saved: apply() reloads the view, so the fact that a
@@ -1847,6 +1858,20 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "cacheTuning", group: "storage", label: t("settings.cacheTuning"), on: Boolean(s.experimentalCacheTuning) },
     { id: "sessionStorage", group: "storage", label: t("settings.sessionStorage"), on: (s.sessionStorage ?? "v3_only") !== "v3_only" },
     { id: "pathRules", group: "misc", label: t("settings.pathRules"), on: Boolean(s.experimentalPathRules) },
+    // Task 265 lab intake: 9 fork features (efficiency 5 / ui 2 / debug 2).
+    // "on" for the two always-on entries reflects that they ship enabled; the
+    // other seven read their nil-means-on switches from the settings view.
+    { id: "highSpeedModel", group: "efficiency", label: t("settings.highSpeedModel"), on: true },
+    { id: "compactionParallel", group: "efficiency", label: t("settings.compactionParallel"), on: Boolean(s.experimentalCompactionParallel) },
+    { id: "contextBudget", group: "efficiency", label: t("settings.contextBudget"), on: Boolean(s.experimentalContextBudget) },
+    { id: "researchBudget", group: "efficiency", label: t("settings.researchBudget"), on: Boolean(s.experimentalResearchBudget) },
+    { id: "draftPersistence", group: "ui", label: t("settings.draftPersistence"), on: true },
+    { id: "questionSearch", group: "ui", label: t("settings.questionSearch"), on: Boolean(s.experimentalQuestionSearch) },
+    { id: "subagentPolicy", group: "efficiency", label: t("settings.subagentPolicy"), on: Boolean(s.experimentalSubagentPolicy) },
+    { id: "subagentTps", group: "debug", label: t("settings.subagentTps"), on: Boolean(s.experimentalSubagentTps) },
+    { id: "completionSummary", group: "debug", label: t("settings.completionSummary"), on: Boolean(s.experimentalCompletionSummary) },
+    // Task 262: quick commands move here from the general page.
+    { id: "quickCommands", group: "efficiency", label: t("settings.quickCommands"), on: Boolean(s.experimentalQuickCommands) },
   ];
 
   return (
@@ -2629,6 +2654,155 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
               </SettingsField>
             </>
           )}
+          {/* ── Task 265 lab intake: 9 fork features + task 262 quick commands ── */}
+          {selected === "highSpeedModel" && (
+            <SettingsField label={t("settings.highSpeedModel")} hint={t("settings.highSpeedModelLabHint")} icon={<Sparkles size={18} />}>
+              <span />
+            </SettingsField>
+          )}
+          {selected === "compactionParallel" && (
+            <SettingsField label={t("settings.compactionParallel")} hint={t("settings.compactionParallelHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalCompactionParallel) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetExperimentalCompactionParallel(on))}
+                  >
+                    {t(on ? "settings.compactionParallel.on" : "settings.compactionParallel.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "contextBudget" && (
+            <>
+              <SettingsField label={t("settings.contextBudget")} hint={t("settings.contextBudgetHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalContextBudget) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalContextBudget(on))}
+                    >
+                      {t(on ? "settings.contextBudget.on" : "settings.contextBudget.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.contextBudgetCompress")} hint={t("settings.contextBudgetCompressHint")} icon={<Sparkles size={18} />}>
+                <span />
+              </SettingsField>
+            </>
+          )}
+          {selected === "researchBudget" && (
+            <SettingsField label={t("settings.researchBudget")} hint={t("settings.researchBudgetHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalResearchBudget) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetExperimentalResearchBudget(on))}
+                  >
+                    {t(on ? "settings.researchBudget.on" : "settings.researchBudget.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "draftPersistence" && (
+            <SettingsField label={t("settings.draftPersistence")} hint={t("settings.draftPersistenceHint")} icon={<Sparkles size={18} />}>
+              <span />
+            </SettingsField>
+          )}
+          {selected === "questionSearch" && (
+            <SettingsField label={t("settings.questionSearch")} hint={t("settings.questionSearchHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalQuestionSearch) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetExperimentalQuestionSearch(on))}
+                  >
+                    {t(on ? "settings.questionSearch.on" : "settings.questionSearch.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "subagentPolicy" && (
+            <SettingsField label={t("settings.subagentPolicy")} hint={t("settings.subagentPolicyHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalSubagentPolicy) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetExperimentalSubagentPolicy(on))}
+                  >
+                    {t(on ? "settings.subagentPolicy.on" : "settings.subagentPolicy.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "subagentTps" && (
+            <SettingsField label={t("settings.subagentTps")} hint={t("settings.subagentTpsHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalSubagentTps) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetExperimentalSubagentTps(on))}
+                  >
+                    {t(on ? "settings.subagentTps.on" : "settings.subagentTps.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "completionSummary" && (
+            <SettingsField label={t("settings.completionSummary")} hint={t("settings.completionSummaryHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalCompletionSummary) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetExperimentalCompletionSummary(on))}
+                  >
+                    {t(on ? "settings.completionSummary.on" : "settings.completionSummary.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "quickCommands" && (
+            <>
+              <SettingsField label={t("settings.quickCommands")} hint={t("settings.quickCommandsLabHint")} icon={<Zap size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalQuickCommands) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalQuickCommands(on))}
+                    >
+                      {t(on ? "settings.quickCommandsLab.on" : "settings.quickCommandsLab.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              {Boolean(s.experimentalQuickCommands) && (
+                <QuickCommandsManager s={s} busy={busy} apply={apply} />
+              )}
+            </>
+          )}
         </div>
       </div>
     </SettingsPageShell>
@@ -2651,20 +2825,6 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
   const [attentionPref, setAttentionPref] = useState<SoundWavPref>(getAttentionPreference());
   const [notificationVolume, setNotificationVolume] = useState(getNotificationVolume);
   const [soundExpanded, setSoundExpanded] = useState(false);
-  // Quick-command manager (task 18 follow-up): the settings row is a single entry
-  // point, and the panel behind it carries search plus the enable switch.
-  const [quickCommandsOpen, setQuickCommandsOpen] = useState(false);
-  const [quickCommandsQuery, setQuickCommandsQuery] = useState("");
-  const [quickCommandsFresh, setQuickCommandsFresh] = useState(-1);
-	// Task: adding used to append a blank row straight into the list, so the entry
-	// only became editable after it existed and a new row read as "nothing happened".
-	// A draft keeps the input step explicit: fill title and text, then confirm.
-	const [quickCommandDraft, setQuickCommandDraft] = useState<{ title: string; text: string } | null>(null);
-  const quickCommandEntries = s.quickCommands ?? [];
-  const quickCommandTerms = quickCommandsQuery.trim().toLowerCase();
-  const quickCommandRows = quickCommandEntries
-    .map((entry, index) => ({ entry, index }))
-    .filter(({ entry }) => !quickCommandTerms || `${entry.title} ${entry.text}`.toLowerCase().includes(quickCommandTerms));
   const statusBarStyle = normalizeStatusBarStyle(s.statusBarStyle);
   const statusBarItems = normalizeStatusBarItems(s.statusBarItems);
   const soundStatus = summarizeSoundStatus(genMusicPreset, soundPref, attentionPref, notificationVolume);
@@ -2800,136 +2960,6 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
           ))}
         </div>
       </SettingsField>
-      <SettingsField label={t("settings.quickCommands")} hint={t("settings.quickCommandsHint")} icon={<Zap size={18} />} stacked>
-        <div className="settings-quick-commands">
-          <button
-            type="button"
-            className="btn btn--small"
-            disabled={busy}
-            onClick={() => { setQuickCommandsQuery(""); setQuickCommandsOpen(true); }}
-          >
-            {t("settings.quickCommandsManage")}{quickCommandEntries.length > 0 ? ` (${quickCommandEntries.length})` : ""}
-          </button>
-        </div>
-      </SettingsField>
-      {quickCommandsOpen && (
-        <ProviderDialog title={t("settings.quickCommandsManage")} onClose={() => setQuickCommandsOpen(false)}>
-          <div className="settings-quick-commands settings-quick-commands--panel">
-            <input
-              className="mem-input"
-              value={quickCommandsQuery}
-              placeholder={t("settings.quickCommandsSearch")}
-              disabled={busy}
-              onChange={(e) => { setQuickCommandsQuery(e.target.value); setQuickCommandsFresh(-1); }}
-            />
-            {quickCommandRows.length === 0 ? (
-              <div className="settings-quick-commands__empty">
-                {quickCommandEntries.length === 0 ? t("settings.quickCommandsEmpty") : t("settings.quickCommandsNoMatch")}
-              </div>
-            ) : (
-              quickCommandRows.map(({ entry, index }) => (
-                <div className={`settings-quick-commands__row${index === quickCommandsFresh ? " settings-quick-commands__row--fresh" : ""}`} key={`qc-${index}`}>
-                  <button
-                    type="button"
-                    className={`btn btn--small${entry.enabled === false ? "" : " btn--primary"}`}
-                    disabled={busy}
-                    title={t(entry.enabled === false ? "settings.quickCommandsEnable" : "settings.quickCommandsDisable")}
-                    onClick={() => void apply(() => app.SetQuickCommands(
-                      quickCommandEntries.map((item, i) => (i === index ? { ...item, enabled: item.enabled === false } : item)),
-                    ))}
-                  >
-                    {entry.enabled === false ? t("settings.quickCommandsOff") : t("settings.quickCommandsOn")}
-                  </button>
-                  <input
-                    className="mem-input"
-                    value={entry.title}
-                    placeholder={t("settings.quickCommandsTitlePlaceholder")}
-                    disabled={busy}
-                    onChange={(e) => {
-                      const next = quickCommandEntries.map((item, i) => (i === index ? { ...item, title: e.target.value } : item));
-                      void apply(() => app.SetQuickCommands(next));
-                    }}
-                  />
-                  <textarea
-                    className="mem-input"
-                    value={entry.text}
-                    rows={2}
-                    placeholder={t("settings.quickCommandsTextPlaceholder")}
-                    disabled={busy}
-                    onChange={(e) => {
-                      const next = quickCommandEntries.map((item, i) => (i === index ? { ...item, text: e.target.value } : item));
-                      void apply(() => app.SetQuickCommands(next));
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn--small"
-                    disabled={busy}
-                    onClick={() => void apply(() => app.SetQuickCommands(quickCommandEntries.filter((_, i) => i !== index)))}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))
-            )}
-            {quickCommandDraft && (
-              <div className="settings-quick-commands__draft">
-                <input
-                  className="mem-input"
-                  autoFocus
-                  value={quickCommandDraft.title}
-                  placeholder={t("settings.quickCommandsTitlePlaceholder")}
-                  disabled={busy}
-                  onChange={(e) => setQuickCommandDraft({ ...quickCommandDraft, title: e.target.value })}
-                />
-                <textarea
-                  className="mem-input"
-                  rows={3}
-                  value={quickCommandDraft.text}
-                  placeholder={t("settings.quickCommandsTextPlaceholder")}
-                  disabled={busy}
-                  onChange={(e) => setQuickCommandDraft({ ...quickCommandDraft, text: e.target.value })}
-                />
-                <div className="settings-quick-commands__draft-actions">
-                  <button
-                    type="button"
-                    className="btn btn--small btn--primary"
-                    disabled={busy || !quickCommandDraft.title.trim()}
-                    onClick={() => {
-                      const entry = { title: quickCommandDraft.title.trim(), text: quickCommandDraft.text, enabled: true };
-                      setQuickCommandDraft(null);
-                      // Clear the query so the new row is actually drawn: the list shows
-                      // the filtered rows, and an entry that misses the search stays
-                      // invisible even though it was stored.
-                      setQuickCommandsQuery("");
-                      setQuickCommandsFresh(quickCommandEntries.length);
-                      void apply(() => app.SetQuickCommands([...quickCommandEntries, entry]));
-                    }}
-                  >
-                    {t("settings.quickCommandsSave")}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn--small"
-                    disabled={busy}
-                    onClick={() => setQuickCommandDraft(null)}
-                  >
-                    {t("common.cancel")}
-                  </button>
-                </div>
-              </div>
-            )}
-            <button
-              type="button"
-              className="btn btn--small"
-              disabled={busy || quickCommandDraft !== null}
-              onClick={() => setQuickCommandDraft({ title: "", text: "" })}
-            >
-              {t("settings.quickCommandsAdd")}
-            </button>
-          </div>
-        </ProviderDialog>
-      )}
       <SettingsField label={t("settings.sound")} hint={t("settings.soundHint")} icon={<Volume2 size={18} />} stacked>
         <div className={`settings-sound-editor${soundExpanded ? " settings-sound-editor--expanded" : ""}`}>
           <div className="settings-sound-editor__summary">
@@ -8807,5 +8837,170 @@ function UpdatesSection({
         </div>
       </details>
     </SettingsSection>
+  );
+}
+
+/** Task 262: the quick-commands manager as a self-contained surface — the lab
+ *  pane hosts the entry button, the dialog carries search, per-row enable and
+ *  inline editing, and an editor form reused for both create and edit (262-4).
+ *  Entry lives in the lab (efficiency) while experimentalQuickCommands is on. */
+function QuickCommandsManager({ s, busy, apply }: { s: SettingsView; busy: boolean; apply: (task: () => Promise<unknown>) => Promise<unknown> }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [fresh, setFresh] = useState(-1);
+  // A draft is the explicit create/edit step: fill title and text, then
+  // confirm. editingIndex switches the same form into "replace row" mode.
+  const [draft, setDraft] = useState<{ title: string; text: string; editingIndex?: number } | null>(null);
+  const entries = s.quickCommands ?? [];
+  const terms = query.trim().toLowerCase();
+  const rows = entries
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => !terms || `${entry.title} ${entry.text}`.toLowerCase().includes(terms));
+  return (
+    <>
+      <div className="settings-quick-commands">
+        <button
+          type="button"
+          className="btn btn--small"
+          disabled={busy}
+          onClick={() => { setQuery(""); setOpen(true); }}
+        >
+          {t("settings.quickCommandsManage")}{entries.length > 0 ? ` (${entries.length})` : ""}
+        </button>
+      </div>
+      {open && (
+        <ProviderDialog title={t("settings.quickCommandsManage")} onClose={() => setOpen(false)}>
+          <div className="settings-quick-commands settings-quick-commands--panel settings-quick-commands--wide">
+            <input
+              className="mem-input"
+              value={query}
+              placeholder={t("settings.quickCommandsSearch")}
+              disabled={busy}
+              onChange={(e) => { setQuery(e.target.value); setFresh(-1); }}
+            />
+            {rows.length === 0 ? (
+              <div className="settings-quick-commands__empty">
+                {entries.length === 0 ? t("settings.quickCommandsEmpty") : t("settings.quickCommandsNoMatch")}
+              </div>
+            ) : (
+              rows.map(({ entry, index }) => (
+                <div className={`settings-quick-commands__row${index === fresh ? " settings-quick-commands__row--fresh" : ""}`} key={`qc-${index}`}>
+                  <button
+                    type="button"
+                    className={`btn btn--small${entry.enabled === false ? "" : " btn--primary"}`}
+                    disabled={busy}
+                    title={t(entry.enabled === false ? "settings.quickCommandsEnable" : "settings.quickCommandsDisable")}
+                    onClick={() => void apply(() => app.SetQuickCommands(
+                      entries.map((item, i) => (i === index ? { ...item, enabled: item.enabled === false } : item)),
+                    ))}
+                  >
+                    {entry.enabled === false ? t("settings.quickCommandsOff") : t("settings.quickCommandsOn")}
+                  </button>
+                  <input
+                    className="mem-input"
+                    value={entry.title}
+                    placeholder={t("settings.quickCommandsTitlePlaceholder")}
+                    disabled={busy}
+                    onChange={(e) => {
+                      const next = entries.map((item, i) => (i === index ? { ...item, title: e.target.value } : item));
+                      void apply(() => app.SetQuickCommands(next));
+                    }}
+                  />
+                  <textarea
+                    className="mem-input"
+                    value={entry.text}
+                    rows={2}
+                    placeholder={t("settings.quickCommandsTextPlaceholder")}
+                    disabled={busy}
+                    onChange={(e) => {
+                      const next = entries.map((item, i) => (i === index ? { ...item, text: e.target.value } : item));
+                      void apply(() => app.SetQuickCommands(next));
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn--small"
+                    disabled={busy || draft !== null}
+                    title={t("settings.quickCommandsEdit")}
+                    onClick={() => setDraft({ title: entry.title, text: entry.text, editingIndex: index })}
+                  >
+                    {t("settings.quickCommandsEdit")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--small"
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetQuickCommands(entries.filter((_, i) => i !== index)))}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))
+            )}
+            {draft && (
+              <div className="settings-quick-commands__draft">
+                <input
+                  className="mem-input"
+                  autoFocus
+                  value={draft.title}
+                  placeholder={t("settings.quickCommandsTitlePlaceholder")}
+                  disabled={busy}
+                  onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                />
+                <textarea
+                  className="mem-input"
+                  rows={3}
+                  value={draft.text}
+                  placeholder={t("settings.quickCommandsTextPlaceholder")}
+                  disabled={busy}
+                  onChange={(e) => setDraft({ ...draft, text: e.target.value })}
+                />
+                <div className="settings-quick-commands__draft-actions">
+                  <button
+                    type="button"
+                    className="btn btn--small btn--primary"
+                    disabled={busy || !draft.title.trim()}
+                    onClick={() => {
+                      const next = { title: draft.title.trim(), text: draft.text, enabled: true };
+                      const editing = draft.editingIndex;
+                      setDraft(null);
+                      setQuery("");
+                      // Edit replaces the row in place; create appends and makes
+                      // the appended row visible by clearing the search filter.
+                      if (editing !== undefined) {
+                        setFresh(editing);
+                        void apply(() => app.SetQuickCommands(entries.map((item, i) => (i === editing ? next : item))));
+                      } else {
+                        setFresh(entries.length);
+                        void apply(() => app.SetQuickCommands([...entries, next]));
+                      }
+                    }}
+                  >
+                    {t("settings.quickCommandsSave")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--small"
+                    disabled={busy}
+                    onClick={() => setDraft(null)}
+                  >
+                    {t("common.cancel")}
+                  </button>
+                </div>
+              </div>
+            )}
+            <button
+              type="button"
+              className="btn btn--small"
+              disabled={busy || draft !== null}
+              onClick={() => setDraft({ title: "", text: "" })}
+            >
+              {t("settings.quickCommandsAdd")}
+            </button>
+          </div>
+        </ProviderDialog>
+      )}
+    </>
   );
 }

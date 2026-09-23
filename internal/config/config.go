@@ -501,6 +501,11 @@ func (c *Config) DefaultSubagentPolicy() string {
 	if c == nil {
 		return "light"
 	}
+	// Task 265: with the lab intake switch off the entry points are hidden and
+	// every new session resolves to light, whatever the stored default says.
+	if !c.SubagentPolicyIntakeEnabled() {
+		return "light"
+	}
 	switch strings.ToLower(strings.TrimSpace(c.Agent.SubagentPolicy)) {
 	case "balanced":
 		return "balanced"
@@ -607,6 +612,32 @@ func (c *Config) DesktopCheckUpdates() bool {
 		return true
 	}
 	return *c.Desktop.CheckUpdates
+}
+
+// CompactionParallelEnabled reports whether chunked compaction may run its
+// fragments in parallel (task 265). Nil means on: the feature predates its
+// switch, so an unconfigured config keeps today's behaviour.
+func (c *Config) CompactionParallelEnabled() bool {
+	return c == nil || c.Agent.ExperimentalCompactionParallel == nil || *c.Agent.ExperimentalCompactionParallel
+}
+
+// ContextBudgetEnabled reports whether the per-turn context-state line is
+// injected (task 265). Nil means on, same reasoning as above.
+func (c *Config) ContextBudgetEnabled() bool {
+	return c == nil || c.Agent.ExperimentalContextBudget == nil || *c.Agent.ExperimentalContextBudget
+}
+
+// ResearchBudgetEnabled reports whether read-only soft budgets may extend via
+// extend_research_budget (task 265). Nil means on, same reasoning as above.
+func (c *Config) ResearchBudgetEnabled() bool {
+	return c == nil || c.Agent.ExperimentalResearchBudget == nil || *c.Agent.ExperimentalResearchBudget
+}
+
+// SubagentPolicyIntakeEnabled reports whether the delegation-tier entry
+// points render (task 265). Nil means on. With it off new sessions resolve
+// to light regardless of the stored default.
+func (c *Config) SubagentPolicyIntakeEnabled() bool {
+	return c == nil || c.Agent.ExperimentalSubagentPolicy == nil || *c.Agent.ExperimentalSubagentPolicy
 }
 
 // NormalizeCLIUpdateChannel returns the only public native CLI update channel.
@@ -1381,6 +1412,26 @@ type AgentConfig struct {
 	// (task 19 / 141–145): contact addressing, talk_to_session, task cards.
 	// Off by default.
 	ExperimentalSessionCollab bool `toml:"experimental_session_collab"`
+	// Task 265 (lab intake): the three fork-only agent-behaviour features below
+	// ship ON via nil-means-on pointers — they are existing behaviour being
+	// given an off switch, not new behaviour, so the default must not regress
+	// anyone. Each off position falls back to the upstream-equivalent path.
+	// ExperimentalCompactionParallel keeps the fork's parallel chunked
+	// compaction fragments (4-way worker pool, task 250 intake). Off falls back
+	// to the upstream serial summarizer (the guaranteed baseline).
+	ExperimentalCompactionParallel *bool `toml:"experimental_compaction_parallel"`
+	// ExperimentalContextBudget keeps the per-turn context-state line (#9520).
+	// Off returns the model to guessing its window; the compress tool is a
+	// separate core-tool surface and is intentionally NOT gated here.
+	ExperimentalContextBudget *bool `toml:"experimental_context_budget"`
+	// ExperimentalResearchBudget keeps the read-only soft-budget extension
+	// path (#10054). Off falls back to the plain 10-round nudge; the
+	// extend_research_budget tool disappears from the model's toolset.
+	ExperimentalResearchBudget *bool `toml:"experimental_research_budget"`
+	// ExperimentalSubagentPolicy keeps the delegation-tier entry points (task
+	// 265): the composer switcher and the settings default. Nil means on; off
+	// hides both entries and forces new sessions to light.
+	ExperimentalSubagentPolicy *bool `toml:"experimental_subagent_policy"`
 	// SessionCollabHopLimit caps how many hops a cross-session chain may take
 	// (task 204). 0 keeps the package default (5); values are clamped into
 	// [MinHop, MaxHopCeiling] on write, so a stored value is always legal.

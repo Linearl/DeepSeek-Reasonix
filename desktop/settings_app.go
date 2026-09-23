@@ -349,7 +349,16 @@ type SettingsView struct {
 	SessionStorageRestartPending bool   `json:"sessionStorageRestartPending"`
 	ExperimentalFeedback         bool   `json:"experimentalFeedback"`
 	ExperimentalTodoSidebar      bool   `json:"experimentalTodoSidebar"`
-	ExperimentalLocalServer      bool   `json:"experimentalLocalServer"`
+	// Task 265 lab intake: nil-means-on switches resolved server-side.
+	ExperimentalCompactionParallel bool `json:"experimentalCompactionParallel"`
+	ExperimentalContextBudget      bool `json:"experimentalContextBudget"`
+	ExperimentalResearchBudget     bool `json:"experimentalResearchBudget"`
+	ExperimentalQuestionSearch     bool `json:"experimentalQuestionSearch"`
+	ExperimentalSubagentPolicy     bool `json:"experimentalSubagentPolicy"`
+	ExperimentalSubagentTps        bool `json:"experimentalSubagentTps"`
+	ExperimentalCompletionSummary  bool `json:"experimentalCompletionSummary"`
+	ExperimentalQuickCommands      bool `json:"experimentalQuickCommands"`
+	ExperimentalLocalServer        bool `json:"experimentalLocalServer"`
 	ExperimentalPathRules        bool   `json:"experimentalPathRules"`
 	ExperimentalTraceAsState     bool   `json:"experimentalTraceAsState"`
 	// Task 161: cache tuning mirrors (Settings panel reads these from this view).
@@ -472,6 +481,15 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalTodoSidebar moves the todo list into the right dock (task 259);
 	// the frontend snapshots it at boot, so a change needs a restart.
 	ExperimentalTodoSidebar bool `json:"experimentalTodoSidebar"`
+	// Task 265 lab intake: nil-means-on switches, resolved server-side.
+	ExperimentalCompactionParallel bool   `json:"experimentalCompactionParallel"`
+	ExperimentalContextBudget      bool   `json:"experimentalContextBudget"`
+	ExperimentalResearchBudget     bool   `json:"experimentalResearchBudget"`
+	ExperimentalQuestionSearch     bool   `json:"experimentalQuestionSearch"`
+	ExperimentalSubagentPolicy     bool   `json:"experimentalSubagentPolicy"`
+	ExperimentalSubagentTps        bool   `json:"experimentalSubagentTps"`
+	ExperimentalCompletionSummary  bool   `json:"experimentalCompletionSummary"`
+	ExperimentalQuickCommands      bool   `json:"experimentalQuickCommands"`
 	// ExperimentalTraceAsState exposes Trace-as-State compaction (task 60).
 	ExperimentalTraceAsState bool `json:"experimentalTraceAsState"`
 	// ExperimentalDream exposes dream/distill memory-curation tools (task 115).
@@ -1166,6 +1184,15 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.SessionStorageRestartPending = view.SessionStorageEffective != view.SessionStorage
 		view.ExperimentalFeedback = cfg.Desktop.ExperimentalFeedback
 		view.ExperimentalTodoSidebar = cfg.Desktop.ExperimentalTodoSidebar
+		// Task 265 lab intake: nil-means-on switches resolved here.
+		view.ExperimentalCompactionParallel = cfg.CompactionParallelEnabled()
+		view.ExperimentalContextBudget = cfg.ContextBudgetEnabled()
+		view.ExperimentalResearchBudget = cfg.ResearchBudgetEnabled()
+		view.ExperimentalQuestionSearch = cfg.DesktopQuestionSearchEnabled()
+		view.ExperimentalSubagentPolicy = cfg.SubagentPolicyIntakeEnabled()
+		view.ExperimentalSubagentTps = cfg.DesktopSubagentTpsEnabled()
+		view.ExperimentalCompletionSummary = cfg.DesktopCompletionSummaryEnabled()
+		view.ExperimentalQuickCommands = cfg.Desktop.ExperimentalQuickCommands
 		view.ExperimentalTraceAsState = cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState
 		view.ExperimentalDream = cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream
 		view.ExperimentalPerfMonitor = cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor
@@ -1255,7 +1282,16 @@ func (a *App) Settings() SettingsView {
 		SessionStorageRestartPending: storageEffective != storageMode,
 		ExperimentalFeedback:         cfg.Desktop.ExperimentalFeedback,
 		ExperimentalTodoSidebar:      cfg.Desktop.ExperimentalTodoSidebar,
-		ExperimentalTraceAsState:     cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState,
+		// Task 265 lab intake: nil-means-on switches resolved here.
+		ExperimentalCompactionParallel: cfg.CompactionParallelEnabled(),
+		ExperimentalContextBudget:      cfg.ContextBudgetEnabled(),
+		ExperimentalResearchBudget:     cfg.ResearchBudgetEnabled(),
+		ExperimentalQuestionSearch:     cfg.DesktopQuestionSearchEnabled(),
+		ExperimentalSubagentPolicy:     cfg.SubagentPolicyIntakeEnabled(),
+		ExperimentalSubagentTps:        cfg.DesktopSubagentTpsEnabled(),
+		ExperimentalCompletionSummary:  cfg.DesktopCompletionSummaryEnabled(),
+		ExperimentalQuickCommands:      cfg.Desktop.ExperimentalQuickCommands,
+		ExperimentalTraceAsState:       cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState,
 		ExperimentalDream:            cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream,
 		ExperimentalPerfMonitor:      cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,
 		PerfMonitorIntervalSeconds:   cfg.Desktop.PerfMonitorIntervalSeconds,
