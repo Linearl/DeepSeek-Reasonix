@@ -806,6 +806,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetSessionCollabHopLimit(limit: number): Promise<void>;
   // Task 173: the collaboration panel gates (settings → 实验特性 → 跨会话通信).
   SetSessionCollabGates(allowDelete: boolean, allowRequireReply: boolean, allowReadTail: boolean, allowCreate: boolean, allowSteer: boolean, dailySendLimit: number): Promise<void>;
+  // Task 264: background-woken sessions stay out of the tab bar (detached
+  // stand-up; delivery unchanged). Live per drain pass — no restart needed.
+  SetSessionCollabBackground(enabled: boolean): Promise<void>;
   // Task 225: cascade approval to the autopilot parent.
   SetExperimentalCascadeApproval(enabled: boolean): Promise<void>;
   // Fork task 160: load older history by scrolling up at the transcript top (experimental).
@@ -5056,6 +5059,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSessionCollab() {},
     async SetSessionCollabHopLimit() {},
     async SetSessionCollabGates() {},
+    async SetSessionCollabBackground() {},
     async SetExperimentalCascadeApproval() {},
     async SetExperimentalAutoLoadOlder() {},
     async SetCollabInboxMerge() {},

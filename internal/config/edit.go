@@ -501,6 +501,15 @@ func (c *Config) SetSessionCollabHopLimit(limit int) error {
 	return nil
 }
 
+// SetSessionCollabBackground toggles the task-264 background mode: on,
+// pump stand-ups build a detached runtime instead of a visible tab (delivery
+// semantics unchanged); off is the byte-for-byte baseline. A regular panel
+// setting — unlike the task-224 consumption switch, delivery never stops.
+func (c *Config) SetSessionCollabBackground(enabled bool) error {
+	c.Agent.SessionCollabBackground = enabled
+	return nil
+}
+
 // SessionCollabHopLimitLive resolves the ceiling currently in force (task 204): the
 // configured value when set, the package default otherwise. Read per call so a settings
 // change applies to newly arriving messages without a restart; chains already in flight

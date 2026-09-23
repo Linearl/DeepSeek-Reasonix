@@ -221,6 +221,15 @@ func (a *App) SetSessionCollabGates(allowDelete, allowRequireReply, allowReadTai
 	})
 }
 
+// SetSessionCollabBackground toggles task-264 background mode: on, pump
+// stand-ups build a detached runtime with no visible tab; off is the baseline.
+// A regular panel setting — read live per drain pass, no restart needed.
+func (a *App) SetSessionCollabBackground(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetSessionCollabBackground(enabled)
+	})
+}
+
 // SetExperimentalSplitView toggles the tab-bar split view (task 70-1): with it off the
 // right-click menu keeps exactly the pre-split item list.
 func (a *App) SetExperimentalSplitView(enabled bool) error {

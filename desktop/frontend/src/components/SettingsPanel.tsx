@@ -2506,6 +2506,24 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   })}
                 />
               </SettingsField>
+              {/* Task 264: background-woken sessions stay out of the tab bar.
+                  A regular live panel setting (unlike the task-224
+                  consumption switch) — delivery is unchanged, only where the
+                  woken runtime lands. */}
+              <SettingsField label={t("settings.sessionCollabBackground")} hint={t("settings.sessionCollabBackgroundHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.sessionCollabBackground) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetSessionCollabBackground(on))}
+                    >
+                      {t(on ? "settings.sessionCollabBackground.on" : "settings.sessionCollabBackground.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
               {/* Task 173: the collaboration panel gates (one apply, cannot half-apply). */}
               <SettingsField label={t("settings.sessionCollabGates")} hint={t("settings.sessionCollabGatesHint")} icon={<Sparkles size={18} />}>
                 <div className="set-gates">

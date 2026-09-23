@@ -2362,6 +2362,7 @@ export interface DesktopStartupSettingsView {
   sessionCollabAllowReadTail?: boolean;
   sessionCollabAllowCreate?: boolean;
   sessionCollabAllowSteer?: boolean;
+  sessionCollabBackground?: boolean;
   sessionCollabDailySendLimit?: number;
   // Task 225: cascade approval to the autopilot parent.
   experimentalCascadeApproval?: boolean;

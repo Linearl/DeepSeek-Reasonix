@@ -137,6 +137,26 @@ func collabBackgroundDeliveryFromConfig(cfg *config.Config) bool {
 	return cfg.Agent.ExperimentalCollabBackgroundDelivery
 }
 
+// CollabOpenDetachedFromConfig is the task-264 pure branch (two-mode test).
+// On: pump stand-ups build a detached runtime instead of a visible tab.
+// Unlike the 224 gate this is a live panel setting — it is read per drain
+// pass so a settings flip applies without a restart, and it never changes
+// delivery semantics (only where the runtime lands).
+func CollabOpenDetachedFromConfig(cfg *config.Config) bool {
+	if cfg == nil {
+		return false
+	}
+	return cfg.Agent.SessionCollabBackground
+}
+
+func collabOpenDetached() bool {
+	cfg, err := config.Load()
+	if err != nil {
+		return false
+	}
+	return CollabOpenDetachedFromConfig(cfg)
+}
+
 // SessionCollabDrainResult reports one delivery pass so failures stay visible.
 type SessionCollabDrainResult struct {
 	Delivered int                        `json:"delivered"`
@@ -739,13 +759,20 @@ func (p *sessionCollabPump) drain() SessionCollabDrainResult {
 		}
 		// Open the session so the next pass can deliver. When
 		// experimental_collab_background_delivery is on, drain() already
-		// returned early above — this path only runs with the switch off
-		// (baseline: auto-activate, zero regression).
-		if _, err := p.app.OpenTopicSession(id.Scope, id.Workspace, id.TopicID, id.SessionPath); err != nil {
+		// returned early above — this path only runs with the switch off.
+		// Task 264: with session_collab_background on, the stand-up builds a
+		// DETACHED runtime (no tab in the bar — the user's final ruling);
+		// delivery semantics are unchanged, the next pass lands through the
+		// detached branch. Off keeps the baseline: open + auto-activate.
+		open := p.app.OpenTopicSession
+		if collabOpenDetached() {
+			open = p.app.OpenTopicSessionDetached
+		}
+		if _, err := open(id.Scope, id.Workspace, id.TopicID, id.SessionPath); err != nil {
 			log.Printf("[session-collab] cannot open session for contact %s (%s): %v", contact, id.Title, err)
 			continue
 		}
-		log.Printf("[session-collab] opened session %q to accept a message for contact %s", id.Title, contact)
+		log.Printf("[session-collab] opened session %q to accept a message for contact %s (background=%v)", id.Title, contact, collabOpenDetached())
 	}
 	return result
 }

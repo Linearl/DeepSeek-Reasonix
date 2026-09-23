@@ -212,6 +212,9 @@ console.log("\nbundle budgets");
 // presentation bubbles/fold + tail-follow kernel fixes); one-shot ratchet
 // +0.5 KiB per the one-shot rule (no +0.1 nibbling).
 const initialJSBudgetKiB = 470.5; // fork: +2.2 KiB vs upstream 468.3
+// Task 264 rebased onto the same budget: measured 470.3 KiB (collab-background
+// switch in the sessionCollab pane), also within 470.5 — same one-shot value
+// stands for both lines (no second ratchet needed).
 // [fork note] settings panel (LocalServerPage) that ships with the serve pool gateway.
 assertBudget("initial JavaScript gzip", initialJSGzip, initialJSBudgetKiB * 1024);
 // [fork note] 2026-09-15: pre-existing overage, not task 122 - the clean baseline
@@ -364,8 +367,10 @@ for (const path of localeChunks) {
   // 76.4 / 75.9: task 253 adds sessionCollabGates.masterOffHint ×3 locales; zh-TW measured 76.4 at the old ceiling (2026-09-22), one-shot +0.5 step on both.
   // 76.2 / 76.9: task 251 ratchet +0.5 one-shot (user 2026-09-20 rule) — zh-TW hit its exact ceiling (76.4) on Node/zlib variance with no locale copy change.
   // 76.2 / 77.4: task 259 ratchet +0.5 one-shot — the todo-sidebar hint gains a layout note per locale; zh-TW measured 77.0 at the old 76.9 ceiling.
-  // 78.0 / 79.0: task 265 lab intake — 37 new keys per locale (9 features × effect copy); zh measured 77.8 at the old 76.2 ceiling, so the batch涨幅 lands both budgets with real headroom in one shot.
-  const budget = name.startsWith("zh-TW-") ? 79.0 * 1024 : 78.0 * 1024;
+  // 78.0 / 79.0: task 265 lab intake — 37 new keys per locale (9 features × effect copy); zh measured 77.8 at the old 76.2 ceiling, one-shot +0.5.
+  // 78.5 / 79.5: task 264 collab-background switch — 4 new keys per locale;
+  // zh measured 78.1 at the old 78.0 ceiling, one-shot +0.5 step on both.
+  const budget = name.startsWith("zh-TW-") ? 79.5 * 1024 : 78.5 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0

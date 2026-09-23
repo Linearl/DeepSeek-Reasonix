@@ -2472,6 +2472,112 @@ func (a *App) openTopicSession(scope, workspaceRoot, topicID, sessionPath string
 	return a.openTopicTab(scope, workspaceRoot, topicID, validPath)
 }
 
+// openTopicSessionInactive is openTopicSession with activation stripped: the
+// same scope/path validation, then the open chain's activate=false entry (the
+// same one openProjectTabInactive / openGlobalTabInactive use, task 264).
+func (a *App) openTopicSessionInactive(scope, workspaceRoot, topicID, sessionPath string) (TabMeta, error) {
+	scope = strings.TrimSpace(scope)
+	if scope != "project" {
+		scope = "global"
+		workspaceRoot = ""
+	}
+	if scope == "project" {
+		workspaceRoot = normalizeProjectRoot(workspaceRoot)
+		if workspaceRoot == "" {
+			return TabMeta{}, fmt.Errorf("workspaceRoot is required")
+		}
+	}
+	_, validPath, err := a.sessionDirForPath(sessionPath)
+	if err != nil {
+		return TabMeta{}, err
+	}
+	return a.openTopicTabPreferLiveActivation(scope, workspaceRoot, topicID, validPath, false)
+}
+
+// parkTabAsDetached removes a just-opened tab from the visible strip while its
+// runtime keeps running in detachedSessions (task 264, user final ruling:
+// background-woken sessions must not appear in the tab bar at all — not the
+// inactive-tab variant). The removal mirrors closeTabRuntime's exact sequence
+// (mutation barrier → sessionRemovalMu → delete + tabOrder + active
+// neighbor + saveTabsLocked) so the frontend sees the same surface change it
+// sees for a closed tab; NOTHING is cancelled or closed — the controller,
+// sink, and lease stay alive and detachSessionRuntime parks the same pointer
+// into the pool the collaboration drain already enumerates (its detached
+// branch, sessionCollabLiveTargets).
+func (a *App) parkTabAsDetached(tabID string) error {
+	defer a.lockRuntimeMutation("park-detached")()
+	a.sessionRemovalMu.Lock()
+	defer a.sessionRemovalMu.Unlock()
+
+	// Park first (takes its own lock): if the runtime cannot be parked the
+	// visible tab stays, and the caller falls back to baseline behaviour —
+	// never a removed tab whose runtime is left unreachable.
+	a.mu.RLock()
+	tab := a.tabs[tabID]
+	a.mu.RUnlock()
+	if tab == nil {
+		return fmt.Errorf("tab %q not found", tabID)
+	}
+	if tab.Ctrl == nil {
+		return fmt.Errorf("tab %q has no runtime yet", tabID)
+	}
+	if !a.detachSessionRuntime(tab) {
+		return fmt.Errorf("tab %q runtime has no session path; cannot park detached", tabID)
+	}
+
+	a.mu.Lock()
+	if current := a.tabs[tabID]; current != tab {
+		a.mu.Unlock()
+		return fmt.Errorf("tab %q changed while parking", tabID)
+	}
+	ordered := a.orderedTabIDsLocked()
+	closedIndex := -1
+	for i, id := range ordered {
+		if id == tabID {
+			closedIndex = i
+			break
+		}
+	}
+	delete(a.tabs, tabID)
+	a.removeTabOrderLocked(tabID)
+	if a.activeTabID == tabID {
+		a.activeTabID = ""
+		if len(a.tabOrder) > 0 {
+			next := max(closedIndex, 0)
+			if next >= len(a.tabOrder) {
+				next = len(a.tabOrder) - 1
+			}
+			a.activeTabID = a.tabOrder[next]
+		}
+	}
+	a.saveTabsLocked()
+	a.mu.Unlock()
+
+	if a.workspaceHub != nil {
+		a.workspaceHub.reconcileRoots()
+	}
+	slog.Info("desktop: parked collaboration stand-up into detached runtime (task 264 background mode)", "tab", tabID)
+	return nil
+}
+
+// OpenTopicSessionDetached opens a session for background-woken collaboration
+// mail WITHOUT leaving a tab in the bar (task 264): build in the background
+// (activate=false), then park the entry as detached so the next drain pass
+// lands the message through the detached delivery branch.
+func (a *App) OpenTopicSessionDetached(scope, workspaceRoot, topicID, sessionPath string) (TabMeta, error) {
+	meta, err := a.openTopicSessionInactive(scope, workspaceRoot, topicID, sessionPath)
+	if err != nil {
+		return TabMeta{}, err
+	}
+	if err := a.parkTabAsDetached(meta.ID); err != nil {
+		// Parking is best-effort: the runtime exists (visible but inactive if
+		// parking failed), so the message still has a home — log and keep it.
+		slog.Warn("desktop: could not park collaboration stand-up detached; leaving it inactive in the tab bar", "tab", meta.ID, "err", err)
+		return meta, nil
+	}
+	return meta, nil
+}
+
 // ActivateTopic opens a topic into the single visible conversation surface used
 // by layouts without a tab strip. It delegates the actual open/reuse behavior to
 // the classic tab path, then prunes every non-active visible tab so historical
