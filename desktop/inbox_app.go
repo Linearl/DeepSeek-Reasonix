@@ -528,8 +528,12 @@ func (a *App) isConversationDualOpen(sessionPath string) bool {
 	}
 	a.mu.RLock()
 	defer a.mu.RUnlock()
+	// First resolve this conversation's own topic from the tab that holds it
+	// (task 203 audit M1: topic counting must be scoped to the queried
+	// conversation — an unrelated conversation's dual open must neither
+	// attribute a local race as dual-tab nor block a merge group).
 	samePath := 0
-	byTopic := map[string]int{}
+	targetTopic := ""
 	for _, tab := range a.tabs {
 		if tab == nil || tab.removed {
 			continue
@@ -539,10 +543,24 @@ func (a *App) isConversationDualOpen(sessionPath string) bool {
 			if samePath > 1 {
 				return true
 			}
+			if topic := strings.TrimSpace(tab.TopicID); topic != "" && targetTopic == "" {
+				targetTopic = topic
+			}
 		}
-		if topic := strings.TrimSpace(tab.TopicID); topic != "" {
-			byTopic[topic]++
-			if byTopic[topic] > 1 {
+	}
+	if targetTopic == "" {
+		return false
+	}
+	// Only the tabs of that topic count: prompt fanout opens the same topic in
+	// several tabs with different session paths — that is the real dual writer.
+	topicTabs := 0
+	for _, tab := range a.tabs {
+		if tab == nil || tab.removed {
+			continue
+		}
+		if strings.TrimSpace(tab.TopicID) == targetTopic {
+			topicTabs++
+			if topicTabs > 1 {
 				return true
 			}
 		}
