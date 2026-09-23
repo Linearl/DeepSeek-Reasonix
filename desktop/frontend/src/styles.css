@@ -22223,7 +22223,11 @@ body > .mermaid-diagram--fullscreen {
 .composer-guidance-item {
   min-height: 32px;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) repeat(3, auto);
+  /* Task 266-A: one row must hold every control — icon, text, edit, merge,
+     guide, dismiss and the reorder arrows (select-mode checkbox + editing
+     badge included). The old repeat(3, auto) left the trailing controls to
+     spill onto a second grid line, doubling each shelf row's height. */
+  grid-template-columns: auto minmax(0, 1fr) repeat(6, auto);
   align-items: center;
   gap: 8px;
   padding: 5px 6px 5px 8px;
@@ -22266,7 +22270,10 @@ body > .mermaid-diagram--fullscreen {
 }
 
 .composer-guidance-item__preview {
-  flex-basis: 100%;
+  /* Task 266-A: grid, not flex — span the whole row so the expandable
+     preview never squeezes into a control column (the old flex-basis was
+     a leftover that grid ignores). */
+  grid-column: 1 / -1;
   min-width: 0;
   margin: 2px 0 0 18px;
   padding: 6px 8px;

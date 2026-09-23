@@ -344,11 +344,11 @@ export function ComposerGuidanceShelf({
                       <Trash2 size={14} />
                     </button>
                   </Tooltip>
-                  {previewing && (
-                    <div className="composer-guidance-item__preview" role="note" aria-busy={previewLoading}>
-                      {previewText}
-                    </div>
-                  )}
+                  {/* Task 266-A: the reorder arrows live INSIDE the button
+                      row (right after dismiss, before the expandable
+                      preview) so every control shares one grid row — the
+                      arrows used to trail the preview and spill onto a
+                      second line, doubling each shelf row's height. */}
                   {movable && !selectMode && (
                     <span className="composer-guidance-item__reorder">
                       <Tooltip label={t("composer.guidanceMoveUp")}>
@@ -374,6 +374,11 @@ export function ComposerGuidanceShelf({
                         </button>
                       </Tooltip>
                     </span>
+                  )}
+                  {previewing && (
+                    <div className="composer-guidance-item__preview" role="note" aria-busy={previewLoading}>
+                      {previewText}
+                    </div>
                   )}
                 </div>
               );

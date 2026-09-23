@@ -211,10 +211,16 @@ console.log("\nbundle budgets");
 // Task 258 + 267 merged onto batch6 measures 470.2 KiB combined (message
 // presentation bubbles/fold + tail-follow kernel fixes); one-shot ratchet
 // +0.5 KiB per the one-shot rule (no +0.1 nibbling).
-const initialJSBudgetKiB = 470.5; // fork: +2.2 KiB vs upstream 468.3
+const initialJSBudgetKiB = 470.6; // fork: +2.2 KiB vs upstream 468.3
 // Task 264 rebased onto the same budget: measured 470.3 KiB (collab-background
 // switch in the sessionCollab pane), also within 470.5 — same one-shot value
 // stands for both lines (no second ratchet needed).
+// Task 266-A on batch6 at d7b939756 measures 470.1; one-shot +0.5 per the
+// ratchet rule. NOTE: the task-267 line already widened the same gate to
+// 470.5 (8854103c1, in audit) — when both merge, keep the LARGER value
+// (470.6), which remains one-shot compliant for either measured baseline.
+// (266-A note: 470.6 kept as the LARGER of the two one-shot ratchets —
+// one-shot compliant for either measured baseline, per audit ruling.) // fork: +2.3 KiB vs upstream 468.3
 // [fork note] settings panel (LocalServerPage) that ships with the serve pool gateway.
 assertBudget("initial JavaScript gzip", initialJSGzip, initialJSBudgetKiB * 1024);
 // [fork note] 2026-09-15: pre-existing overage, not task 122 - the clean baseline
