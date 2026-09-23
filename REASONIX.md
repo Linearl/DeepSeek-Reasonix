@@ -302,3 +302,7 @@ whether the same PR edited `docs/*.md`:
 Documentation-impact: updated - <what changed>            # docs/*.md edited
 Documentation-impact: none - <why the docs stay correct>  # not edited
 ```
+
+<!-- 2026-09-23 追加（255 审计-3 note3 + 255dev 报告） -->
+| 3 | `hydrate-history-apply.test.ts:32`「skipHistory blocks apply」 | 单条稳定红（两次复现非 flaky） | 预存（测试过时或既有代码问题待判） | 测试文件与被测纯函数 blob 哈希 base=head 逐字节一致、与 80c66f87e diff 依赖面零交集 | 2026-09-23 |
+| 4 | `checkpoint-turn-transcript.test.tsx` | >90s 挂起（timeout 非失败） | 预存（待判，与 252 同类另查） | wt-255 与未改动基准均复现 | 2026-09-23 |
