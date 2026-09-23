@@ -2304,7 +2304,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 
 	// Provider-visible tool surface is identical for every role setting before
 	// the extension snapshot freezes registry schemas for cache diagnostics.
-	applyUnifiedProviderToolSurface(reg)
+	applyUnifiedProviderToolSurface(reg, providerSurfaceExtras(cfg)...)
 
 	// Freeze the extension kernel's snapshot of exactly what this build wired.
 	// The snapshot is assembled from the in-hand objects above — discovery
@@ -2406,12 +2406,23 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 // applyUnifiedProviderToolSurface restricts Schemas/ContractEntries to the
 // shared core + host-control tools. use_capability can still Get every
 // registered tool, including those hidden from the provider schema.
-func applyUnifiedProviderToolSurface(reg *tool.Registry) {
+func applyUnifiedProviderToolSurface(reg *tool.Registry, extras ...string) {
 	if reg == nil {
 		return
 	}
 	allow := make([]string, 0, 16)
 	for _, name := range UnifiedProviderToolNames() {
+		if _, ok := reg.Get(name); ok {
+			allow = append(allow, name)
+		}
+	}
+	// Task 254: flag-gated extras join the provider-visible surface. Each must
+	// still exist in the registry — the boot snapshot decides registration and
+	// this list only decides visibility, so the two gates compose.
+	for _, name := range extras {
+		if name == "" {
+			continue
+		}
 		if _, ok := reg.Get(name); ok {
 			allow = append(allow, name)
 		}
@@ -2423,6 +2434,17 @@ func applyUnifiedProviderToolSurface(reg *tool.Registry) {
 		}
 	}
 	reg.SetProviderVisibleTools(allow)
+}
+
+// providerSurfaceExtras returns the registry names that join the
+// provider-visible surface behind their own experiment flags (task 254).
+// Currently only restart_update: it ships hidden from the model unless
+// experimental_autonomous_update is on.
+func providerSurfaceExtras(cfg *config.Config) []string {
+	if cfg != nil && cfg.Desktop.ExperimentalAutonomousUpdate {
+		return []string{"restart_update"}
+	}
+	return nil
 }
 
 // effectivePlannerModel centralizes planner precedence. Every role setting
