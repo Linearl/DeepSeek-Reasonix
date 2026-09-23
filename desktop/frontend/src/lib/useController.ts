@@ -853,6 +853,10 @@ type Action =
   | { type: "history_older_error"; error?: string }
   | { type: "history_older_exhausted" }
   | { type: "local_notice"; level: "info" | "warn"; text: string; preserveRuntime?: boolean }
+  // Task 258: a queued steer/follow-up renders its transcript bubble at
+  // receipt time (the durable hand-off already happened); inboxItemId dedupes
+  // against the agent's consume-time steer event.
+  | { type: "guidance_bubble"; text: string; inboxItemId?: string }
   | { type: "clearApproval" }
   | { type: "clearAsk" }
   | { type: "expire_prompt"; id: string; epoch: number; kind: "approval" | "ask" | "mcp" }
@@ -1889,6 +1893,9 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
     }
     case "steer":
       if (isHostRecoveryGuidance(e.text ?? "")) return s;
+      // Task 258: the receipt-time guidance_bubble already rendered this item;
+      // the consume-time event must not double it.
+      if (e.itemId && s.items.some((item) => item.kind === "notice" && item.inboxItemId === e.itemId)) return s;
       return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "notice", id: `s${s.seq}`, level: "info", text: `${STEER_NOTICE_PREFIX}${e.text ?? ""}`, inboxItemId: e.itemId }] };
     case "approval_request": {
       if (s.cancelRequested) return s;
@@ -2396,6 +2403,13 @@ export function reducer(s: State, a: Action): State {
       return changed ? { ...s, items: next, historyLayoutRevision: s.historyLayoutRevision + 1, historyMutation: { seq: s.historyMutation.seq + 1, kind: "patch" } } : s;
     }
     case "local_notice": return { ...s, running: a.preserveRuntime ? s.running : false, turnActive: a.preserveRuntime ? s.turnActive : false, seq: s.seq + 1, items: [...s.items, { kind: "notice", id: `n${s.seq}`, level: a.level, text: a.text }] };
+    case "guidance_bubble": {
+      // Receipt first, event later: the same inboxItemId keeps a single bubble.
+      if (a.inboxItemId && s.items.some((item) => item.kind === "notice" && item.inboxItemId === a.inboxItemId)) return s;
+      // Append-only — this bubble rides an already-active turn, so it must
+      // never touch running/turnActive/live the way local_notice does.
+      return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "notice", id: `s${s.seq}`, level: "info", text: `${STEER_NOTICE_PREFIX}${a.text}`, inboxItemId: a.inboxItemId }] };
+    }
     case "clearApproval": {
       const next = { ...s, approval: undefined, pendingPrompt: Boolean(s.ask), resolvedPromptId: s.approval?.id ?? s.resolvedPromptId };
       return endPromptWaitIfIdle(next);
@@ -4149,9 +4163,13 @@ export function useController() {
         : await app.EnqueueInboxSteer(tabId, text, text, "")
       : await app.EnqueueInboxSteer(tabId, text, text, "");
     if (receipt?.error) throw new Error(receipt.error);
-    // queued_followup is success: the instruction is durable and will run at
-    // the next idle/tool-boundary kick. Do not surface it as a send failure.
-  }, []);
+    // Task 258: show the bubble at receipt time. The message is durable now;
+    // waiting for the agent's consume event (which may not fire before the
+    // turn ends, and never fires for a rejected steer) reads as "lost".
+    // queued_followup is success: the instruction runs at the next
+    // idle/tool-boundary kick, so it must not surface as a send failure.
+    dispatchTo(tabId, { type: "guidance_bubble", text, inboxItemId: receipt?.itemId });
+  }, [dispatchTo]);
 
   const steer = useCallback(async (text: string) => {
     if (!activeTabId) throw new Error(t("composer.workspaceStarting"));
@@ -4161,6 +4179,15 @@ export function useController() {
   const notice = useCallback((text: string, level: "info" | "warn" = "info") => {
     if (!activeTabId) return;
     dispatchTo(activeTabId, { type: "local_notice", level, text });
+  }, [activeTabId, dispatchTo]);
+
+  // Task 258: the guidance shelf records a receipt-time transcript bubble for
+  // a queued steer/follow-up (Composer owns the durable call, this owns the
+  // display). Same inboxItemId as the later steer event keeps one bubble.
+  const queueGuidanceBubble = useCallback((text: string, inboxItemId?: string, tabId?: string) => {
+    const target = tabId || activeTabId;
+    if (!target || !text.trim()) return;
+    dispatchTo(target, { type: "guidance_bubble", text: text.trim(), inboxItemId });
   }, [activeTabId, dispatchTo]);
 
   // Extension form dismissed/submitted locally: hide the surface. The backend
@@ -5377,7 +5404,7 @@ export function useController() {
     itemsForTab: (tabId: string) => statesRef.current.get(tabId)?.items,
     liveStore,
     activeTabId,
-    send, sendToTab, recoverDeliveryToTab, runShell, runShellForTab, steer, steerForTab, notice,
+    send, sendToTab, recoverDeliveryToTab, runShell, runShellForTab, steer, steerForTab, queueGuidanceBubble, notice,
     cancel, cancelForTab, approve, approveForTab, isPromptCurrentForTab, resolvePlanDecision, resolvePlanDecisionForTab,
     resolveRecovery, resolveRecoveryForTab, answerQuestion, answerQuestionForTab,
     answerMCPInteraction, answerMCPInteractionForTab, setControllerMode, setControllerModeForTab,

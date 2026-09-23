@@ -13,6 +13,8 @@ export function useAppRuntimeAdapter() {
       liveStore: controller.liveStore,
       activeTabId: controller.activeTabId,
       notice: controller.notice,
+      // Task 258: receipt-time transcript bubble for queued guidance.
+      queueGuidanceBubble: controller.queueGuidanceBubble,
     },
     composer: {
       sendToTab: controller.sendToTab,

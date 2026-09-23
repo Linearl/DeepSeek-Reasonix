@@ -3645,6 +3645,8 @@ export const en = {
   "msg.attachments": "Attachments",
   "msg.fromIm": "From {source}",
   "msg.fromCollab": "Cross-session message",
+  "msg.mergedExpand": "Show {n} messages",
+  "msg.mergedCollapse": "Hide",
   "msg.imSender": "Sender {id}",
   "msg.sendFailed": "Send failed — message was not delivered",
   "msg.fileAttachment": "File",

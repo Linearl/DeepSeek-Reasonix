@@ -253,7 +253,7 @@ export type ComposerSurfaceInput = {
   tab: { readOnly?: boolean; floorInferred?: boolean; sessionPath?: string; remote?: { hostId: string; workspace: string } } | undefined;
   tabId: string | undefined;
   profile: ReturnType<typeof useComposerProfileProjection>;
-  router: { handleSend: ComposerProps["onSend"]; handleSteer: ComposerProps["onSteer"] };
+  router: { handleSend: ComposerProps["onSend"]; handleSteer: ComposerProps["onSteer"]; handleQueueGuidanceBubble?: ComposerProps["onQueueGuidanceBubble"] };
   modes: ReturnType<typeof useComposerModeActions>;
   goals: ReturnType<typeof useComposerGoalCommands>;
   remoteGoal: ReturnType<typeof useRemoteComposerRuntimeActions>;
@@ -298,6 +298,7 @@ export function buildComposerSurface(input: ComposerSurfaceInput): DecisionFoote
       onSend: view.remote ? remoteComposer.send : router.handleSend,
       onInvocationMetadataChange: input.onInvocationMetadataChange,
       onSteer: router.handleSteer,
+      onQueueGuidanceBubble: router.handleQueueGuidanceBubble,
       onCancel: view.remote ? remoteComposer.cancel : control.handleCancelActive,
       onCycleMode: input.onCycleMode,
       onSetMode: modes.applyMode,

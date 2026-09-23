@@ -72,6 +72,14 @@ export function mergeGuidanceSnapshot(durable: PendingGuidance[], fallback: Pend
   return durable.length > 0 ? durable : fallback;
 }
 
+// Task 258: rows whose receipt already landed (steer accepted, or a follow-up
+// queued for later dispatch) stay retired across snapshot refreshes — the
+// backend still reports them as queued/steer_accepted, and re-showing the row
+// right after the click is the reported "flash, then the row is back" no-op.
+export function retireSubmittedGuidance(items: PendingGuidance[], submitted: ReadonlySet<string>): PendingGuidance[] {
+  return submitted.size === 0 ? items : items.filter((item) => !submitted.has(item.id));
+}
+
 // Task 153: the manual "merge next" affordance. Joining is a plain double
 // newline — no separator prose, no rephrasing — so both bodies stay verbatim
 // and the merged row keeps the first entry's id (its durable row is the one

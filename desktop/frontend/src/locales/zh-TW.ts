@@ -4110,6 +4110,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.generativeMusicPreview": "試聽",
   "msg.fromIm": "來自 {source}",
   "msg.fromCollab": "跨工作階段訊息",
+  "msg.mergedExpand": "展開 {n} 條",
+  "msg.mergedCollapse": "收起",
   "msg.imSender": "傳送者 {id}",
   "msg.sendFailed": "傳送失敗 — 訊息未送達",
   "tool.readCount": "已讀 {n} 個檔案",

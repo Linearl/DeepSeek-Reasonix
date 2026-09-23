@@ -15,7 +15,7 @@ import {
 import { app, onFilesDropped } from "../lib/bridge";
 import { steerInboxItemForActiveTurn } from "../lib/inboxSubmit";
 import { formatInboxError, isInboxItemMissing } from "../lib/inboxError";
-import { inboxScopeKey, mergeGuidanceTexts, mergeGuidanceWithNext } from "../lib/composerInboxQueue";
+import { inboxScopeKey, mergeGuidanceTexts, mergeGuidanceWithNext, retireSubmittedGuidance } from "../lib/composerInboxQueue";
 import { useCollabGuidanceMergeEnabled } from "../lib/collabGuidanceMergePreference";
 import { useComposerInboxRefresh } from "../lib/useComposerInboxRefresh";
 import { useComposerImeGuard } from "../lib/useComposerImeGuard";
@@ -564,6 +564,7 @@ export function Composer({
   onSplitTargetChange,
   splitActive = false,
   onSteer,
+  onQueueGuidanceBubble,
   localDurableGuidance = true,
   onCancel,
   onCycleMode,
@@ -660,6 +661,8 @@ export function Composer({
   splitActive?: boolean;
   onInvocationMetadataChange?: (metadata: Record<string, { kind: "skill" | "subagent"; color?: string }>) => void;
   onSteer?: (submitText: string, tabId?: string) => void | Promise<void>;
+  /** Task 258: receipt-time transcript bubble for a queued steer/follow-up. */
+  onQueueGuidanceBubble?: (text: string, inboxItemId?: string) => void;
   /** False when the owning surface provides its own durable remote inbox. */
   localDurableGuidance?: boolean;
   // Returns the un-sent text plus the exact durable queue IDs the backend
@@ -1313,7 +1316,21 @@ export function Composer({
     restoreComposerDraft(draft);
   }, [draftKey]);
 
-  const applyInboxQueue = useCallback((items: PendingGuidance[]) => updatePendingGuidanceForDraft(draftKey, () => items), [draftKey]);
+  // Task 258: ids the user already submitted from the shelf. The snapshot
+  // keeps returning them (queued / steer_accepted are still live backend
+  // states, so the refresh layer would resurrect the row right after the
+  // click — the observed "flash, then the row is back" no-op). The row stays
+  // retired once its receipt landed; the set resets with the inbox scope.
+  const submittedGuidanceIdsRef = useRef<Set<string>>(new Set());
+  const submittedScopeRef = useRef(inboxSessionKey);
+  useEffect(() => {
+    if (submittedScopeRef.current === inboxSessionKey) return;
+    submittedScopeRef.current = inboxSessionKey;
+    submittedGuidanceIdsRef.current.clear();
+  }, [inboxSessionKey]);
+  const applyInboxQueue = useCallback((items: PendingGuidance[]) => {
+    updatePendingGuidanceForDraft(draftKey, () => retireSubmittedGuidance(items, submittedGuidanceIdsRef.current));
+  }, [draftKey]);
   const collapseInboxQueue = useCallback(() => setGuidanceExpanded(false), []);
   const refreshInboxQueue = useCallback(() => setGuidanceRetryNonce((value) => value + 1), []);
   useComposerInboxRefresh(tabId, draftKey, guidanceDraftKey, inboxSessionKey, guidanceQueuePreviewKey, guidanceRetryNonce, running, applyInboxQueue, collapseInboxQueue, refreshInboxQueue, runtimeState.state?.revision);
@@ -2273,7 +2290,17 @@ export function Composer({
             if (!duplicate && !receipt?.itemId) throw new Error("Follow-up receipt unconfirmed");
             const itemId = receipt?.itemId;
             const consumedBeforeReceipt = itemId ? (receiptTracker?.takeConsumed(submitDraftKey, itemId) ?? false) : true;
-            if (!consumedBeforeReceipt && !finishing && itemId) {
+            // Task 258: an Enter-queued follow-up renders as a transcript
+            // bubble, not a shelf row — the shelf is for messages still
+            // waiting on the user. Two exceptions keep their row: the
+            // finishing-window request (not durable until the turn closes)
+            // and a paused queue (needs the user's intervention to move).
+            const rowStaysVisible = finishing || Boolean(receipt.paused);
+            if (itemId && !rowStaysVisible) {
+              submittedGuidanceIdsRef.current.add(itemId);
+              onQueueGuidanceBubble?.(guidanceText, itemId);
+            }
+            if (!consumedBeforeReceipt && itemId && rowStaysVisible) {
               updatePendingGuidanceForDraft(submitDraftKey, (items) => {
                 const next = items.map((item) => receipt.paused ? { ...item, paused: true } : item);
                 if (next.some((item) => item.id === itemId)) return next;
@@ -2336,16 +2363,23 @@ export function Composer({
       if (running && durable) {
         const receipt = await steerInboxItemForActiveTurn(app, targetTabId || "", item.id, turnId);
         if (receipt?.error) throw new Error(receipt.error);
-        if (receipt?.disposition === "steer_accepted") {
-          updatePendingGuidanceForDraft(targetDraftKey, (items) => items.filter((queued) => queued.id !== item.id));
-        } else {
-          // Rejected steers remain the same durable follow-up item. The
-          // Controller owns its later FIFO dispatch.
-          updatePendingGuidanceForDraft(targetDraftKey, (items) =>
-            items.map((queued) => queued.id === item.id
-              ? { ...queued, intent: "followup", state: "queued" }
-              : queued),
-          );
+        // Task 258: BOTH dispositions retire the row. The message is durable
+        // now — an accepted steer is consumed by the agent, a rejected one is
+        // a queued follow-up the Controller dispatches later — so the shelf
+        // must not resurrect the row on the next snapshot refresh (that
+        // flash-and-return is the reported "click does nothing" no-op).
+        submittedGuidanceIdsRef.current.add(item.id);
+        updatePendingGuidanceForDraft(targetDraftKey, (items) => items.filter((queued) => queued.id !== item.id));
+        // The bubble carries the full body; the shelf preview is 120 chars.
+        let bubbleText = item.text.trim();
+        try {
+          const env = await app.ReadInboxItem(targetTabId || "", item.id);
+          bubbleText = (env.displayText || env.submitText || bubbleText).trim() || bubbleText;
+        } catch { /* preview-only shelf text */ }
+        onQueueGuidanceBubble?.(bubbleText, item.id);
+        if (receipt?.disposition !== "steer_accepted") {
+          // Rejected steers are follow-ups on disk now; let nonce consumers
+          // re-read scope (the row stays suppressed by the submitted set).
           setGuidanceRetryNonce((value) => value + 1);
         }
         return;
@@ -2494,7 +2528,10 @@ export function Composer({
   useEffect(() => {
     let cancelled = false;
     const targetTabId = tabId || "";
-    if (!targetTabId) {
+    // The badge is a read-only probe: an app binding without the method (task
+    // 221#6 landed after this harness's stub surface; also serve/remote shells)
+    // must read as "no unread" instead of throwing inside the mount effect.
+    if (!targetTabId || typeof app.UnreadMailCount !== "function") {
       setGuidanceUnread(0);
       return () => { cancelled = true; };
     }

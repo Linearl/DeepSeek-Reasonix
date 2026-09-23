@@ -87,6 +87,69 @@ function imSourceLabel(source: ImSourceMessage, t: ReturnType<typeof useT>): str
   return t("settings.botFeishu");
 }
 
+// Task 258 / 221: a drain-merged injection arrives as ONE user body — the
+// "[合并消息 ×N]" header (stamped by internal/control/inbox_merge.go) followed
+// by one "── 合并自 inbox 条目 …──" segment per original. Parse it so the
+// bubble can fold into "合并消息 ×N" and expand back to the per-original view
+// instead of rendering a wall of concatenated text.
+export type MergedMessage = { title: string; count: number; segments: { header: string; body: string }[] };
+const MERGED_TITLE_RE = /^\[合并消息 ×(\d+)\]$/;
+const MERGED_SEGMENT_PREFIX = "── 合并自 inbox 条目 ";
+
+export function parseMergedMessage(text: string): MergedMessage | null {
+  const normalized = text.replace(/^[\uFEFF\u200B]+/, "");
+  const firstBreak = normalized.search(/\r?\n/);
+  const title = (firstBreak < 0 ? normalized : normalized.slice(0, firstBreak)).trim();
+  const match = MERGED_TITLE_RE.exec(title);
+  if (!match) return null;
+  const rest = firstBreak < 0 ? "" : normalized.slice(firstBreak);
+  const segments: { header: string; body: string[] }[] = [];
+  for (const line of rest.split(/\r?\n/)) {
+    if (line.startsWith(MERGED_SEGMENT_PREFIX)) {
+      segments.push({ header: line.trim(), body: [] });
+    } else if (segments.length > 0 && line.trim()) {
+      segments[segments.length - 1].body.push(line);
+    }
+  }
+  return {
+    title,
+    count: Number(match[1]),
+    segments: segments.map((segment) => ({ header: segment.header, body: segment.body.join("\n") })),
+  };
+}
+
+function MergedMessageBody({ merged }: { merged: MergedMessage }) {
+  const t = useT();
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="msg-merged">
+      <button
+        className="msg-merged__head"
+        type="button"
+        aria-expanded={expanded}
+        aria-label={expanded ? t("msg.mergedCollapse") : t("msg.mergedExpand", { n: merged.count })}
+        onClick={() => setExpanded((value) => !value)}
+      >
+        <ChevronDown size={14} className={expanded ? "msg-merged__chevron msg-merged__chevron--open" : "msg-merged__chevron"} />
+        <span className="msg-merged__title">{merged.title}</span>
+        <span className="msg-merged__hint">{expanded ? t("msg.mergedCollapse") : t("msg.mergedExpand", { n: merged.count })}</span>
+      </button>
+      {expanded && (
+        <div className="msg-merged__body">
+          {merged.segments.length === 0
+            ? null
+            : merged.segments.map((segment, index) => (
+              <div className="msg-merged__segment" key={`${segment.header}:${index}`}>
+                <div className="msg-merged__segment-head">{segment.header}</div>
+                {segment.body && <div className="msg__text">{segment.body}</div>}
+              </div>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function attachmentIcon(kind: "image" | "file" | "folder") {
   if (kind === "image") return <Image size={15} />;
   if (kind === "folder") return <Folder size={15} />;
@@ -209,6 +272,9 @@ export function UserMessage({
   const { text: editableDisplayText, attachments } = parseAttachmentRefsForDisplay(editableActionText);
   const selectionLabels = formatSelectionLabels(selectedTextEntries);
   const displayText = [editableDisplayText, selectionLabels].filter(Boolean).join(editableDisplayText && selectionLabels ? " " : "");
+  // Task 258: fold a drain-merged injection into "合并消息 ×N" + expandable
+  // per-original segments (null for every ordinary user message).
+  const mergedMessage = useMemo(() => (imSource ? null : parseMergedMessage(displayText)), [imSource, displayText]);
   const invocationSegments = imSource ? [] : invocationSegmentsFromMessage(displayText, submitText, invocationMetadata);
   const hasInvocationSegments = invocationSegments.some((segment) => segment.type === "invocation");
   const orderedAttachments = sortDisplayAttachments(attachments);
@@ -466,6 +532,8 @@ export function UserMessage({
               </div>
             )}
           </div>
+        ) : mergedMessage ? (
+          <MergedMessageBody merged={mergedMessage} />
         ) : (
           <>
             {hasInvocationSegments && pasteBlocks.length === 0 && selectedTextBlocks.length === 0 ? (

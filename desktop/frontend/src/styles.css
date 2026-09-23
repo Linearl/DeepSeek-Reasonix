@@ -4351,13 +4351,15 @@ a[href] {
   align-items: flex-start;
   gap: 6px;
   max-width: 82%;
-  padding: 6px 12px;
+  /* Task 258: visually a standard user bubble (same metrics as .msg--user
+     .msg__body) — the queued steer/follow-up must read as the user's message. */
+  padding: 10px 16px;
   border: 1px solid var(--chat-user-border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--chat-user-bg) 55%, transparent);
+  border-radius: 14px;
+  background: var(--chat-user-bg);
+  box-shadow: var(--chat-user-shadow);
   color: var(--chat-user-fg);
-  font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.65;
 }
 .steer-line__icon {
   flex: 0 0 auto;
@@ -5125,6 +5127,60 @@ a[href] {
   border-radius: 7px;
   background: var(--panel);
   overflow: hidden;
+}
+/* Task 258: drain-merged injection folded inside the user bubble — header row
+   toggles the per-original segment list (task 221 merge display). */
+.msg-merged {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.msg-merged__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.msg-merged__chevron {
+  flex: 0 0 auto;
+  color: var(--fg-faint);
+  transition: transform 0.15s ease;
+}
+.msg-merged__chevron--open {
+  transform: rotate(-90deg);
+}
+.msg-merged__title {
+  font-weight: 550;
+  word-break: break-word;
+}
+.msg-merged__hint {
+  flex: 0 0 auto;
+  color: var(--fg-dim);
+  font-size: 12px;
+}
+.msg-merged__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.msg-merged__segment {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border-soft);
+}
+.msg-merged__segment-head {
+  color: var(--fg-faint);
+  font-size: 12px;
+  word-break: break-word;
 }
 .msg-pasted-head {
   display: flex;
