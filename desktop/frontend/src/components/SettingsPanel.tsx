@@ -2199,9 +2199,15 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              {Boolean(s.experimentalCacheTuning) && (
-                <>
-                  <SettingsField label={t("settings.cacheTuning.tabs")} hint={t("settings.cacheTuning.tabsHint")}>
+              {/* Task 191: the memory-governance panel is the entry surface, so it stays
+                  visible with the switch off (entry visible ≠ feature on). The controls
+                  keep saving; the boot loader simply ignores the values (see
+                  useDesktopPreferences) until the switch is turned on. */}
+              {!Boolean(s.experimentalCacheTuning) && (
+                <p className="settings-field__hint-line">{t("settings.cacheTuning.inactiveHint")}</p>
+              )}
+              <>
+                <SettingsField label={t("settings.cacheTuning.tabs")} hint={t("settings.cacheTuning.tabsHint")}>
                     <input
                       type="number"
                       min={0}
@@ -2281,7 +2287,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   </SettingsField>
                   <p style={{ opacity: 0.7, fontSize: 12 }}>{t("settings.cacheTuning.restartHint")}</p>
                 </>
-              )}
             </>
           )}
           {selected === "traceAsState" && (
