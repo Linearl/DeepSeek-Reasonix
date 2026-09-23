@@ -120,3 +120,71 @@ func TestPruneShadowProjectsFor(t *testing.T) {
 		t.Fatal("empty registry must produce empty results")
 	}
 }
+
+// TestSessionBindingBlocksProjectsTreeShapes (task 211 audit-3 M1): the real
+// corrupt roots were the projects tree root itself and orphan slug directories
+// beneath it — both ANCESTORS of the leaf session dirs, which is why the old
+// leaf-dir table missed them and the banner kept coming back when the user
+// opened a global session. Both shapes must be blocked against the production
+// tree roots. Deliberately asserts the real cross-section (config.MemoryUserDir
+// + "projects") instead of building fake roots from config.SessionDir(), which
+// is exactly how the previous test passed while the field kept failing.
+func TestSessionBindingBlocksProjectsTreeShapes(t *testing.T) {
+	base := normalizeProjectRoot(config.MemoryUserDir())
+	if base == "" {
+		t.Fatal("config.MemoryUserDir() must resolve to assert the real projects-tree cross-section")
+	}
+	projectsTree := filepath.Join(base, "projects")
+	for _, root := range []string{
+		projectsTree,                                          // the tree root itself
+		filepath.Join(projectsTree, "orphan-slug"),            // an orphan slug dir
+		filepath.Join(projectsTree, "orphan-slug", "sessions"), // the leaf the old table listed
+	} {
+		if !sessionBindingWorkspaceRootBlocked(root) {
+			t.Errorf("projects-tree root %q must be blocked (audit-3 M1 cross-section)", root)
+		}
+	}
+	// A project outside the storage trees is never blocked.
+	outside := filepath.Join(base, "real-work", "my-project")
+	if sessionBindingWorkspaceRootBlocked(outside) {
+		t.Errorf("a real project outside the storage trees must not be blocked: %q", outside)
+	}
+	// The prune path shares the predicate and must drop the same shapes.
+	kept, pruned := pruneShadowProjectsFor([]desktopProject{
+		{Root: projectsTree, Title: "tree-root"},
+		{Root: filepath.Join(projectsTree, "orphan-slug"), Title: "orphan"},
+		{Root: outside, Title: "real"},
+	}, sessionStorageTreeRoots())
+	if len(pruned) != 2 || len(kept) != 1 || kept[0].Root != normalizeProjectRoot(outside) {
+		t.Fatalf("prune must drop both projects-tree shapes: kept=%+v pruned=%+v", kept, pruned)
+	}
+}
+
+// TestBindingNoticeOncePerProcess (task 211 audit-3 M2): the binding banner is
+// suppressed per process, not per tab — reopening the same session in a fresh
+// tab must not warn again about an already settled binding.
+func TestBindingNoticeOncePerProcess(t *testing.T) {
+	a := &App{}
+	if a.bindingNoticeSeen != nil {
+		t.Fatal("the seen-set must start nil and lazily initialize")
+	}
+	key := "global|%5Ctmp%5Cs.jsonl"
+	a.mu.Lock()
+	first := !a.bindingNoticeSeen[key]
+	if first {
+		if a.bindingNoticeSeen == nil {
+			a.bindingNoticeSeen = make(map[string]bool)
+		}
+		a.bindingNoticeSeen[key] = true
+	}
+	a.mu.Unlock()
+	if !first {
+		t.Fatal("first sighting must warn")
+	}
+	a.mu.Lock()
+	second := !a.bindingNoticeSeen[key]
+	a.mu.Unlock()
+	if second {
+		t.Fatal("second sighting of the same key must be suppressed")
+	}
+}

@@ -125,6 +125,11 @@ type App struct {
 	sessionStorageBootValue string
 	sessionStorageBootSet   bool
 
+	// bindingNoticeSeen records the task-211 binding-switch banner keys already
+	// shown in this process (audit-3 M2: per-process, not per-tab — reopening a
+	// settled session in a fresh tab must not warn again). Guarded by a.mu.
+	bindingNoticeSeen map[string]bool
+
 	// autonomousMu guards the pending update target staged by the restart_update
 	// tool's set_target action (task 254). It is its own mutex, never the tab
 	// lock: set_target and execute are separate tool calls and must not race
