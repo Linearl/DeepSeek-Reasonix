@@ -223,7 +223,7 @@ python scripts/tasklist_db.py sql "SELECT num,status FROM tasks WHERE num=NNN"  
 9. **worktree 里跑构建可能报命令找不到**——先确认 junction/依赖完整再归因代码。
 10. **并行会话写同一 tasklist 文件会冲突**——tasklist 只由主会话统一更新。
 11. **跨会话回信 thread_id 必须用「自己收到的入向消息 id」**（用自己发出的 id 会链路校验失败）；送达判定看对方 `inbox.jsonl` + `seen.json`，`queued` ≠ 已读。
-12. **write/edit 在大文件整体替换时会要求"写前已全读"**——`intent=full` 单次约 31KB；`range` 读的累计覆盖不被承认。
+12. **对大文件做 edit 前必须一次完整 read**——`range` 分段读的**累计覆盖不被承认**，否则连续「编辑失败」（2026-09-22 批五线C 实证：删 2 行注释连报十几次；**失败即零写入、不留半截**，可用 `git diff --stat` 核实未损坏）。逃生：`$MIMO_PYTHON -c` 行级改写，**中文文件禁 PowerShell `Set-Content`**（会写坏 UTF-8）。（原写「`intent=full` 单次约 31KB」**无代码常量、无历史报错支撑，已撤回**——reasonix 代码 grep 不到此类常量，会话历史 0 命中。）
 13. **对应用会写回的配置文件打补丁，幂等判定必须段级**（应用渲染会重排字段位置 + 加对齐/注释，只查「name 行下一行」必然失效——2026-09-21 provider hidden 实战）。
 
 ## 7. 时序参考（首轮实测）
