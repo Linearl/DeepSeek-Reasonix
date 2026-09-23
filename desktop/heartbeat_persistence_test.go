@@ -64,6 +64,46 @@ func TestHeartbeatTaskLeaseIsCrossEngine(t *testing.T) {
 	retry()
 }
 
+// Task 199: the model override must survive the save that the editor now
+// actually enables — heartbeat-tasks.json gains tasks[].provider/model and
+// the engine reads them back, which is what execution-time
+// heartbeatModelRef(t.Provider, t.Model) consumes.
+func TestHeartbeatModelOverridePersistsAcrossSaveAndLoad(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	engine := newHeartbeatEngine(nil)
+	task := HeartbeatTask{
+		ID: "override", Title: "t", Prompt: "p", Interval: "1h", Enabled: true,
+		Provider: "mimo", Model: "mimo-v2.6-pro",
+	}
+	if err := engine.saveTasks([]HeartbeatTask{task}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(engine.configPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var onDisk struct {
+		Tasks []struct {
+			Provider string `json:"provider"`
+			Model    string `json:"model"`
+		} `json:"tasks"`
+	}
+	if err := json.Unmarshal(raw, &onDisk); err != nil {
+		t.Fatal(err)
+	}
+	if len(onDisk.Tasks) != 1 || onDisk.Tasks[0].Provider != "mimo" || onDisk.Tasks[0].Model != "mimo-v2.6-pro" {
+		t.Fatalf("persisted override = %+v, want provider=mimo model=mimo-v2.6-pro", onDisk.Tasks)
+	}
+	reloaded := newHeartbeatEngine(nil)
+	tasks := reloaded.loadTasks()
+	if len(tasks) != 1 || tasks[0].Provider != "mimo" || tasks[0].Model != "mimo-v2.6-pro" {
+		t.Fatalf("loaded override = %+v, want provider/model round-tripped", tasks)
+	}
+	if ref := heartbeatModelRef(tasks[0].Provider, tasks[0].Model); ref != "mimo/mimo-v2.6-pro" {
+		t.Fatalf("heartbeatModelRef = %q, want mimo/mimo-v2.6-pro", ref)
+	}
+}
+
 func TestHeartbeatTaskLeaseCoversRunStatePersistence(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	ctrl := &heartbeatSignalingCtrlStub{submittedSignal: make(chan struct{})}

@@ -15,6 +15,33 @@ assert.equal(entry.draft.topicId, "run");
 assert.equal(entry.frequency, "cron");
 assert.equal(entry.tab, "history");
 assert.deepEqual(entry.conflicts, []);
+// Task 199: model override (provider/model) and goal fields are editable — a
+// draft that only changed them must read dirty, or the save button stays
+// disabled while the status bar keeps claiming "saved" (the reported bug).
+store.getState().discard("a");
+assert.equal(automationDraftDirty(store.getState().entries.a), false, "baseline must start clean");
+store.getState().edit("a", (draft) => ({ ...draft, provider: "mimo", model: "mimo-v2.6-pro" }));
+assert.equal(automationDraftDirty(store.getState().entries.a), true, "provider/model edit must mark dirty");
+store.getState().edit("a", (draft) => ({ ...draft, goalMode: true, goalText: "finish it" }));
+assert.equal(automationDraftDirty(store.getState().entries.a), true, "goal edit must mark dirty");
+// An external provider change syncs into an untouched draft …
+store.getState().discard("a");
+store.getState().reconcile([{ ...task, provider: "deepseek", model: "v4" }]);
+entry = store.getState().entries.a;
+assert.equal(entry.draft.provider, "deepseek");
+assert.equal(automationDraftDirty(entry), false, "synced external provider is not local dirt");
+// … and surfaces as a conflict when both sides changed it differently.
+store.getState().edit("a", (draft) => ({ ...draft, provider: "mimo" }));
+store.getState().reconcile([{ ...task, provider: "glm", model: "air" }]);
+entry = store.getState().entries.a;
+assert.ok(entry.conflicts.includes("provider"), "diverging provider edits must conflict");
+store.getState().discard("a");
+assert.equal(automationDraftDirty(store.getState().entries.a), false, "discard restores the synced baseline");
+store.getState().edit("a", (draft) => ({ ...draft, title: "Local" }));
+store.getState().ui("a", { frequency: "cron", tab: "history" });
+store.getState().reconcile([{ ...task, prompt: "External", topicId: "run", lastRunAt: 10 }]);
+entry = store.getState().entries.a;
+assert.equal(entry.draft.title, "Local");
 store.getState().reconcile([{ ...task, title: "Remote", prompt: "External", topicId: "run" }]);
 assert.deepEqual(store.getState().entries.a.conflicts, ["title"]);
 store.getState().reconcile([{ ...task, title: "Remote", prompt: "External", topicId: "new-run" }]);
