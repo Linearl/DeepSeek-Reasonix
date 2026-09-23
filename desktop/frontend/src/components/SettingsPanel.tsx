@@ -5,7 +5,8 @@ import { SettingsSelect } from "./SettingsSelect";
 import { providerProtocolLabel, providerProtocolChoices } from "../lib/providerProtocol";
 import { providerSupportsServerWebSearch } from "../lib/providerSearch";
 import { providerDefaultLabel, providerDisplayLabel } from "../lib/providerLabel";
-import { DOCK_TAB_IDS, isDockTabHidden, setDockTabHidden } from "../lib/dockTabs";
+import { isDockTabHidden, isLastRenderableVisibleTab, setDockTabHidden } from "../lib/dockTabs";
+import { useRemoteStore } from "../store/remote";
 
 // Autopilot runs unattended, so it needs a wall-clock bound; this is the value the
 // settings switch falls back to when the user turns it on without typing one.
@@ -1775,6 +1776,11 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Set when a boot-time setting is saved: apply() reloads the view, so the fact that a
   // restart is pending has to live outside the data being reloaded.
   const [restartNeeded, setRestartNeeded] = useState(false);
+  // Task 259 (audit-2 minor c): the "keep at least one tab" guard counts only
+  // tabs that can actually render, so it needs the live remote-host presence
+  // and the configured layout.
+  const remoteAvailable = useRemoteStore((state) => state.hosts.length > 0);
+  const desktopLayoutStyle = normalizeDesktopLayoutStyle(s.desktopLayoutStyle);
   const [dreamTaskCreated, setDreamTaskCreated] = useState(false);
   // Task 184: the sampler interval is a number the user can edit; the config layer
   // clamps it, so the box can hold an intermediate value while typing.
@@ -2086,9 +2092,15 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                     // with a hint naming the switch to flip (task 253's lesson).
                     const locked = busy || !Boolean(s.experimentalTodoSidebar);
                     const on = !isDockTabHidden(tabId);
-                    // Keep at least one tab visible: the last checked box cannot be
-                    // unchecked, otherwise the dock would render a body with no tabs.
-                    const lastOn = on && DOCK_TAB_IDS.every((id) => id === tabId || isDockTabHidden(id));
+                    // Keep at least one RENDERABLE tab visible (audit-2 minor c):
+                    // gated-off tabs — remote with no hosts, overview in creation —
+                    // must not satisfy the guard, or the user could hide everything
+                    // the dock actually shows and end up with zero tabs.
+                    const lastOn = isLastRenderableVisibleTab(tabId, {
+                      todoSidebar: Boolean(s.experimentalTodoSidebar),
+                      remoteAvailable,
+                      creation: desktopLayoutStyle === "creation",
+                    });
                     return (
                       <label key={tabId} className={`set-gates__item${locked ? " set-gates__item--locked" : ""}`}>
                         <input

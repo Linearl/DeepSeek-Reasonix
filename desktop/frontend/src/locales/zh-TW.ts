@@ -1844,7 +1844,7 @@ export const zhTW: Record<DictKey, string> = {
 "settings.sessionStorage.restartPending": "已儲存，重啟後生效 —— 本程序目前仍在使用 {{mode}}。",
 "settings.splitViewHint": "在分頁右鍵選單加入「分割檢視」：同一視窗左右並排兩個分頁，各自保留自己的轉錄、輸入框與執行狀態。實驗特性，預設關閉——關閉時右鍵選單與現況完全一致。",
 "settings.todoSidebar": "待辦側欄",
-"settings.todoSidebarHint": "把待辦列表從輸入框上方移到右側邊欄的「待辦」標籤頁，標籤可折行、可勾選顯示。實驗特性，預設關閉——關閉時待辦保持在輸入框上方，側欄標籤與現況完全一致。變更在重啟後生效。",
+"settings.todoSidebarHint": "把待辦列表從輸入框上方移到右側邊欄的「待辦」標籤頁，標籤可折行、可勾選顯示。實驗特性，預設關閉——關閉時待辦保持在輸入框上方，側欄標籤與現況完全一致。變更在重啟後生效。適用於主會話介面的右側邊欄；保留的備用視圖不響應此開關，屬預期設計。",
 "settings.todoSidebar.on": "開",
 "settings.todoSidebar.off": "關",
 "settings.dockTabVisibility": "側欄標籤顯示",

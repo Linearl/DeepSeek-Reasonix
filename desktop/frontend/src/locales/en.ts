@@ -2307,7 +2307,7 @@ export const en = {
 "settings.sessionStorage.restartPending": "Saved, but it only takes effect after a restart - this process is still on {{mode}}.",
 "settings.splitViewHint": "Adds a split-view action to the tab context menu: two tabs side by side in one window, each keeping its own transcript, composer and running turn. Experimental, off by default - with it off the menu looks exactly as before.",
 "settings.todoSidebar": "Todo sidebar",
-"settings.todoSidebarHint": "Moves the live todo list from above the composer into a Todos tab in the right dock, where tabs can wrap and be shown or hidden. Experimental, off by default - with it off the todo list stays above the composer and the dock tabs look exactly as before. Changes take effect after a restart.",
+"settings.todoSidebarHint": "Moves the live todo list from above the composer into a Todos tab in the right dock, where tabs can wrap and be shown or hidden. Experimental, off by default - with it off the todo list stays above the composer and the dock tabs look exactly as before. Changes take effect after a restart. Applies to the right dock of the main session surfaces; reserved fallback views intentionally do not respond to this switch.",
 "settings.todoSidebar.on": "On",
 "settings.todoSidebar.off": "Off",
 "settings.dockTabVisibility": "Dock tab visibility",

@@ -62,3 +62,47 @@ export function onHiddenDockTabsChange(listener: (tabs: readonly DockTabId[]) =>
     listeners.delete(listener);
   };
 }
+
+// The overview tab renders behind a constant gate today (App.tsx
+// SHOW_CONTEXT_DOCK = true); kept here so the renderable-set math lives in one
+// place next to the tab ids it reasons about.
+const CONTEXT_TAB_GATE = true;
+
+export type DockTabRenderContext = {
+  /** The switch itself: with it off the dock renders its original literals. */
+  todoSidebar: boolean;
+  /** Remote hosts exist, so the remote tab can actually render. */
+  remoteAvailable: boolean;
+  /** Creation layout hides the overview tab. */
+  creation: boolean;
+};
+
+/**
+ * Task 259 (audit-2 minor c): the tabs that can actually render right now.
+ *
+ * The "keep at least one tab" guard must count only renderable tabs — hidden
+ * but gated-off tabs (remote with no hosts, overview in creation) must not
+ * satisfy it, otherwise the user can hide everything that is really shown and
+ * the dock ends up with zero tabs. Consumers: the settings pane's last-tab
+ * checkbox lock, and tests.
+ */
+export function renderableDockTabs(ctx: DockTabRenderContext): DockTabId[] {
+  if (!ctx.todoSidebar) return [];
+  const out: DockTabId[] = [];
+  if (CONTEXT_TAB_GATE && !ctx.creation) out.push("context");
+  out.push("files", "changed");
+  if (ctx.remoteAvailable) out.push("remote");
+  out.push("todos");
+  return out;
+}
+
+/**
+ * True when `id` is the only still-visible tab among the currently renderable
+ * ones — its checkbox must not be uncheckable, or the dock loses every tab.
+ */
+export function isLastRenderableVisibleTab(id: DockTabId, ctx: DockTabRenderContext): boolean {
+  const renderable = renderableDockTabs(ctx);
+  if (!renderable.includes(id)) return false;
+  return renderable.every((other) => other === id || isDockTabHidden(other));
+}
+

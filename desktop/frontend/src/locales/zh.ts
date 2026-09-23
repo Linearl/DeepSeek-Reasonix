@@ -2311,7 +2311,7 @@ export const zh: Record<DictKey, string> = {
 "settings.splitView.on": "开",
 "settings.splitView.off": "关",
 "settings.todoSidebar": "待办侧栏",
-"settings.todoSidebarHint": "把待办列表从输入框上方移到右侧边栏的「待办」标签页，标签可折行、可勾选显示。实验特性，默认关闭——关闭时待办保持在输入框上方，侧栏标签与现在完全一致。改动在重启后生效。",
+"settings.todoSidebarHint": "把待办列表从输入框上方移到右侧边栏的「待办」标签页，标签可折行、可勾选显示。实验特性，默认关闭——关闭时待办保持在输入框上方，侧栏标签与现在完全一致。改动在重启后生效。适用于主会话界面的右侧边栏；保留的备用视图不响应此开关，属预期设计。",
 "settings.todoSidebar.on": "开",
 "settings.todoSidebar.off": "关",
 "settings.dockTabVisibility": "侧栏标签显示",

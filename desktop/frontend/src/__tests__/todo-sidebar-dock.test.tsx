@@ -162,5 +162,51 @@ console.log("\ntodo sidebar dock (task 259)");
   closedMount.host.remove();
 }
 
+// 8. Audit-2 minor c: the keep-at-least-one guard counts only RENDERABLE tabs.
+//    With no remote host the remote tab cannot render, so hiding the rest must
+//    lock the last renderable tab instead of letting the dock go empty.
+{
+  const dockTabs2 = await import("../lib/dockTabs");
+
+  eq(JSON.stringify(dockTabs2.renderableDockTabs({ todoSidebar: false, remoteAvailable: true, creation: false })), "[]",
+    "renderable set: empty while the switch is off");
+  eq(JSON.stringify(dockTabs2.renderableDockTabs({ todoSidebar: true, remoteAvailable: true, creation: false })),
+    JSON.stringify(["context", "files", "changed", "remote", "todos"]),
+    "renderable set: five tabs on workbench with a remote host");
+  eq(JSON.stringify(dockTabs2.renderableDockTabs({ todoSidebar: true, remoteAvailable: false, creation: false })),
+    JSON.stringify(["context", "files", "changed", "todos"]),
+    "renderable set: no remote host drops the remote tab");
+  eq(JSON.stringify(dockTabs2.renderableDockTabs({ todoSidebar: true, remoteAvailable: false, creation: true })),
+    JSON.stringify(["files", "changed", "todos"]),
+    "renderable set: creation drops the overview too");
+
+  // The reported break: no remote host, everything but "todos" hidden. The old
+  // static-DOCK_TAB_IDS guard kept the switch unlocked (remote was "visible")
+  // and let the dock render zero tabs.
+  dockTabs2.setDockTabHidden("context", true);
+  dockTabs2.setDockTabHidden("files", true);
+  dockTabs2.setDockTabHidden("changed", true);
+  eq(dockTabs2.isLastRenderableVisibleTab("todos", { todoSidebar: true, remoteAvailable: false, creation: false }), true,
+    "audit-2 c: no remote + rest hidden locks the last renderable tab");
+  eq(dockTabs2.isLastRenderableVisibleTab("remote", { todoSidebar: true, remoteAvailable: false, creation: false }), false,
+    "audit-2 c: the unrenderable remote tab never satisfies the guard");
+  dockTabs2.setDockTabHidden("context", false);
+  dockTabs2.setDockTabHidden("files", false);
+  dockTabs2.setDockTabHidden("changed", false);
+
+  // Original behaviour kept: with a remote host present, the remote tab is the
+  // one that locks once everything else is hidden.
+  dockTabs2.setDockTabHidden("context", true);
+  dockTabs2.setDockTabHidden("files", true);
+  dockTabs2.setDockTabHidden("changed", true);
+  dockTabs2.setDockTabHidden("todos", true);
+  eq(dockTabs2.isLastRenderableVisibleTab("remote", { todoSidebar: true, remoteAvailable: true, creation: false }), true,
+    "with remote host: the remote tab locks as the last visible one");
+  dockTabs2.setDockTabHidden("context", false);
+  dockTabs2.setDockTabHidden("files", false);
+  dockTabs2.setDockTabHidden("changed", false);
+  dockTabs2.setDockTabHidden("todos", false);
+}
+
 console.log(`\ntodo sidebar dock: ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

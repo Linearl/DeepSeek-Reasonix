@@ -360,7 +360,8 @@ for (const path of localeChunks) {
   // 75.7 / 76.4: batch 4 line K adds splitView.resizeDivider ×3 locales; measured zh 75.3, so the one-shot +0.5 step lands both budgets at once.
   // 76.4 / 75.9: task 253 adds sessionCollabGates.masterOffHint ×3 locales; zh-TW measured 76.4 at the old ceiling (2026-09-22), one-shot +0.5 step on both.
   // 76.2 / 76.9: task 251 ratchet +0.5 one-shot (user 2026-09-20 rule) — zh-TW hit its exact ceiling (76.4) on Node/zlib variance with no locale copy change.
-  const budget = name.startsWith("zh-TW-") ? 76.9 * 1024 : 76.2 * 1024;
+  // 76.2 / 77.4: task 259 ratchet +0.5 one-shot — the todo-sidebar hint gains a layout note per locale; zh-TW measured 77.0 at the old 76.9 ceiling.
+  const budget = name.startsWith("zh-TW-") ? 77.4 * 1024 : 76.2 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
