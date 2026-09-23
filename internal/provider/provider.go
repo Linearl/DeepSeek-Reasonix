@@ -871,6 +871,11 @@ const (
 	StreamInterruptConnectionReset = "connection_reset"
 	StreamInterruptPrematureEOF    = "premature_eof"
 	StreamInterruptIdleTimeout     = "idle_timeout"
+	// StreamInterruptServerError: the provider's own stream reported an error
+	// event (an SSE error frame such as MiMo's INTERNAL_ERROR) instead of a
+	// clean terminal. Task 273: without this class those errors fell through
+	// as unclassified and skipped the sampling-recovery budget entirely.
+	StreamInterruptServerError = "server_error"
 )
 
 // StreamInterruptedErrormarksthatthecurrentsamplingattemptneverreachedacleanproviderterminaleventandisthereforeuncommitted.

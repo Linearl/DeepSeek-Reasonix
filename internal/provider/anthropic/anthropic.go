@@ -600,7 +600,12 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 			if ev.Error != nil && ev.Error.Message != "" {
 				msg = ev.Error.Message
 			}
-			send(provider.Chunk{Type: provider.ChunkError, Err: fmt.Errorf("%s: %s", c.name, msg)})
+			// Task 273: an SSE error frame means the attempt never reached a
+			// clean terminal — classify it as a stream interruption (matching
+			// the openai/responses body-cut handling) so the Agent's
+			// sampling-recovery budget applies instead of stalling the turn.
+			send(provider.Chunk{Type: provider.ChunkError, Err: provider.StreamInterrupt(
+				fmt.Errorf("%s: %s", c.name, msg), provider.StreamInterruptServerError)})
 			return
 		}
 	}
