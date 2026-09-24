@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -173,5 +174,35 @@ func TestToolApprovalModeAutoApproved(t *testing.T) {
 		if got := toolApprovalModeAutoApproved(mode); got != want {
 			t.Fatalf("toolApprovalModeAutoApproved(%q) = %v, want %v", mode, got, want)
 		}
+	}
+}
+
+// Task 299: the run-tail join honors the same exemption as the write fence.
+// Before this, an autopilot run whose earlier effect was still pending (e.g.
+// restart_update execute left outcome_unknown after the app relaunched) ended
+// EVERY turn with ErrToolRecoveryRequired even though the fence already let
+// the writes through — the goal loop then stalled on a barrier no panel would
+// ever clear. The pending record must stay visible either way: the exemption
+// lifts the error, not the evidence.
+func TestFinishRunRecoveryHonorsExemptionAndKeepsEvidence(t *testing.T) {
+	a, probe, _ := recoveryActionFixture(t)
+	if err := a.beginToolRecovery(WithUnattendedRun(context.Background()), writePlan(probe, "exempt-tail")); err != nil {
+		t.Fatalf("unattended write was stranded: %v", err)
+	}
+	if len(a.PendingToolRecovery()) != 1 {
+		t.Fatalf("pending effects = %d, want the record kept for the panel", len(a.PendingToolRecovery()))
+	}
+	var exemptErr error
+	a.finishRunRecovery(WithUnattendedRun(context.Background()), &exemptErr)
+	if exemptErr != nil {
+		t.Fatalf("exempt turn must not end with the barrier error, got: %v", exemptErr)
+	}
+	var askErr error
+	a.finishRunRecovery(WithToolApprovalMode(context.Background(), "ask"), &askErr)
+	if !errors.Is(askErr, ErrToolRecoveryRequired) {
+		t.Fatalf("ask turn must still end with the barrier error, got: %v", askErr)
+	}
+	if len(a.PendingToolRecovery()) != 1 {
+		t.Fatalf("pending effects = %d after both tails, evidence must survive", len(a.PendingToolRecovery()))
 	}
 }

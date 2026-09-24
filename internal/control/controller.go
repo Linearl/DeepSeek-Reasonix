@@ -1340,23 +1340,34 @@ func (c *Controller) runGoalLoopWithRawDisplay(ctx context.Context, input, raw, 
 	// Structured-output format is bound to the submitted turn (passed via
 	// submitHTTPWithFormat → submitCommandOrTurn → runGoalLoop closure);
 	// no global one-shot slot to race across concurrent requests.
-	// Task 107 P0-0: the agent's recovery fence exempts auto/yolo sessions and
-	// unattended runs (nobody can press the panel); agent reads both from the
-	// turn context because it must not import control. Every turn path funnels
-	// through here, so one binding covers interactive, ACP and goal runs.
+	// Task 107 P0-0 + task 299: the agent's recovery fence exempts auto/yolo
+	// sessions and unattended runs (nobody can press the panel). Task 299
+	// moved the binding into withRecoveryFenceBindings because a plain
+	// foreground turn under autopilot reached the fence unbound and was
+	// stranded again — every entry now wraps it.
+	ctx = c.withRecoveryFenceBindings(ctx)
+	return newTurnOrchestrator(c).runGoalLoopWithRawDisplay(ctx, input, raw, display)
+}
+
+// withRecoveryFenceBindings carries the session's tool-approval mode and the
+// autopilot/unattended flag into agent turns so the recovery fence (task 107
+// P0-0, task 299) can exempt the runs nobody can answer a panel for. Every
+// turn entry wraps its orchestrator call with it; agent reads both from the
+// turn context because it must not import control.
+func (c *Controller) withRecoveryFenceBindings(ctx context.Context) context.Context {
 	ctx = agent.WithToolApprovalMode(ctx, c.ToolApprovalMode())
 	if c.autopilot {
 		ctx = agent.WithUnattendedRun(ctx)
 	}
-	return newTurnOrchestrator(c).runGoalLoopWithRawDisplay(ctx, input, raw, display)
+	return ctx
 }
 
 func (c *Controller) runEditedGoalLoopWithRawDisplay(ctx context.Context, input, raw, display, original string) error {
-	return newTurnOrchestrator(c).runEditedGoalLoopWithRawDisplay(ctx, input, raw, display, original)
+	return newTurnOrchestrator(c).runEditedGoalLoopWithRawDisplay(c.withRecoveryFenceBindings(ctx), input, raw, display, original)
 }
 
 func (c *Controller) runTurnWithRawDisplay(ctx context.Context, input, raw, display string) error {
-	return newTurnOrchestrator(c).runTurnWithRawDisplay(ctx, input, raw, display)
+	return newTurnOrchestrator(c).runTurnWithRawDisplay(c.withRecoveryFenceBindings(ctx), input, raw, display)
 }
 
 func (c *Controller) runSubagentSkillSlash(sk skill.Skill, task, raw, display string) {

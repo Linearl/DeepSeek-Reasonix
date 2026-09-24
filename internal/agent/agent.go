@@ -1466,7 +1466,7 @@ func (a *Agent) reserveParentWrite(runTool tool.Tool, args json.RawMessage, read
 // adaptive stop is the no-progress ladder rather than a round count. Turn policy
 // lives in beginRunTurn / runToolLoop / handleFinalResponse / handleToolRound.
 func (a *Agent) Run(ctx context.Context, input string) (runErr error) {
-	defer a.finishRunRecovery(&runErr)
+	defer func() { a.finishRunRecovery(ctx, &runErr) }()
 	if err := a.prepareProtocolRecovery(ctx); err != nil {
 		return err
 	}

@@ -22,7 +22,18 @@ func (a *Agent) emitToolStarted(c provider.ToolCall) error {
 	return event.EmitChecked(a.svc.sink, event.Event{Kind: event.ToolStarted, Tool: ev})
 }
 
-func (a *Agent) finishRunRecovery(err *error) {
+// finishRunRecovery keeps an unresolved effect from silently closing the run:
+// it joins the barrier error so callers see the turn ended on an unconfirmed
+// external effect. Task 299: exempt turns (auto/yolo/unattended — task 107
+// P0-0) must not take that error either. Joining here would end every turn of
+// an autopilot run with recovery_required even though the write fence already
+// exempts it, so the goal loop would stall on a barrier nobody can press.
+// The pending record itself is untouched: PendingToolRecovery still lists it
+// for the panel and for after-the-fact review.
+func (a *Agent) finishRunRecovery(ctx context.Context, err *error) {
+	if toolRecoveryExempt(ctx) {
+		return
+	}
 	for _, r := range a.PendingToolRecovery() {
 		if !r.ReadOnly {
 			*err = errors.Join(*err, ErrToolRecoveryRequired)
