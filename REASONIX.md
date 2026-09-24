@@ -306,6 +306,7 @@ Documentation-impact: none - <why the docs stay correct>  # not edited
 <!-- 2026-09-23 追加（255 审计-3 note3 + 255dev 报告） -->
 | 3 | `hydrate-history-apply.test.ts:32`「skipHistory blocks apply」 | 单条稳定红（两次复现非 flaky） | 预存（测试过时或既有代码问题待判） | 测试文件与被测纯函数 blob 哈希 base=head 逐字节一致、与 80c66f87e diff 依赖面零交集 | 2026-09-23 |
 | 4 | `checkpoint-turn-transcript.test.tsx` | >90s 挂起（timeout 非失败） | 预存（待判，与 252 同类另查） | wt-255 与未改动基准均复现 | 2026-09-23 |
+| 5 | `composer-run-strip.test.tsx` 4 红（Yolo/approval bar/guidance shelf） | 单包稳定红（79 passed/4 failed 三态同形） | 预存（三态归属定音） | 301 审计三态归因：d9f01412a / 基线 d2426ebb2 rebuild / 最终态逐字同形=非 301 引入（审计 msg_94ce6663d，2026-09-24） | 2026-09-24 |
 ## AB 过程教训（批六 MiMo 侧终止报告，2026-09-24 吸收）
 
 1. **工具循环自检**：同一命令连续 ≥2 次无新输出即换策略（MiMo 侧 40+ 分钟空转主因：重复 bash 探测/Get-Date/同 edit 重试）。
