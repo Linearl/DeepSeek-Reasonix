@@ -8935,7 +8935,7 @@ function QuickCommandsManager({ s, busy, apply }: { s: SettingsView; busy: boole
         </button>
       </div>
       {open && (
-        <ProviderDialog title={t("settings.quickCommandsManage")} onClose={() => setOpen(false)}>
+        <ProviderDialog title={t("settings.quickCommandsManage")} onClose={() => setOpen(false)} wide>
           <div className="settings-quick-commands settings-quick-commands--panel settings-quick-commands--wide">
             <input
               className="mem-input"

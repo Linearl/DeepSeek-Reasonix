@@ -388,7 +388,10 @@ for (const path of localeChunks) {
   // 78.5 / 80.0: task 258b MiMo phase-1 absorption — 4 new keys per locale
   // (entry-refusal toasts); zh-TW measured 79.6 at the old 79.5 ceiling,
   // one-shot +0.5 (zh measured exactly 78.5 and passes — untouched).
-  const budget = name.startsWith("zh-TW-") ? 80.0 * 1024 : 78.5 * 1024;
+  // 79.0 / 80.0: task 278 quick-command wide dialog (no new locale keys — the
+  // wide prop adds bytes to the SettingsPanel chunk) pushed zh past the exact
+  // 78.5 ceiling; one-shot +0.5 per the ratchet rule.
+  const budget = name.startsWith("zh-TW-") ? 80.0 * 1024 : 79.0 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0

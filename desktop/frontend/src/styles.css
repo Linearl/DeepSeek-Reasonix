@@ -40824,10 +40824,14 @@ body > .mermaid-diagram--fullscreen {
 
 /* Task 262-3: the dialog was too narrow for long snippet text (it wrapped
    mid-word). Give the wide variant a real floor plus a viewport cap so both
-   the rows and the create/edit form get usable line length. */
+   the rows and the create/edit form get usable line length.
+   Task 278: the floor moved OUT of this rule — at 680px it still lost to the
+   620px shell (.provider-dialog), which is what actually clipped the rows.
+   The wide shell (.provider-dialog--wide, 900px) now owns the width and this
+   block simply fills it. */
 .settings-quick-commands--wide {
-  width: min(680px, 92vw);
-  max-width: min(680px, 92vw);
+  width: 100%;
+  max-width: none;
 }
 .settings-quick-commands--wide .settings-quick-commands__row > textarea.mem-input {
   flex: 1 1 46%;
