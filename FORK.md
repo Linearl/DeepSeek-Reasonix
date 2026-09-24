@@ -230,6 +230,15 @@ UI 入口** —— 所以对大部分 fork 特性，**日志是唯一的可观�
 - [x] `tsc --noEmit` 0 错误；`node scripts/check-fork-integrity.mjs` **31/31**。
 - [x] v1.38.3 已发布（tag `desktop-v1.38.3` + 9 平台产物）。
 
+0. **合入扫描（2026-09-24 事故后新增，最先做）**：确认没有「做完没合就出包」——
+   ```bash
+   git branch --no-merged main-v2-stable --format='%(refname:short)' | grep -E '^(develop|wt-|feat/)'
+   ```
+   **非空即禁止出包**，除非明确裁剪范围并把未合分支逐个写进 release notes「本版未含」。
+   事故实录：09-23 AB 基线定格（`ace410487`）后 15 个任务（批六 8 + 零散 7，含 196 图缓存修复）全在分支未合，
+   `v1.38.3-20260924-1255` 照样出包 → 装机不含任何新交付、196 修复缺席致切 tab 慢。核查报告：
+   `global-workspace/handoff/fork开发-批六未合缺口核查-20260924.md`
+
 ## 发布前检查清单（fork desktop）
 
 1. **代码**：`git status` 干净 → `go build ./...` → `cd desktop && go build ./...` → `cd desktop/frontend && npx tsc --noEmit` → `node scripts/check-fork-integrity.mjs`（须全绿）
