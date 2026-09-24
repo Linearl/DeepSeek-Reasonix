@@ -92,6 +92,10 @@ type guardedTurnCheckpoint struct {
 
 type guardedTurnCompletion struct {
 	checkpoint *guardedTurnCheckpoint
+	// generation records the Controller.turnGeneration at spawn (Task 303):
+	// a deadlock self-heal bumps the generation, so the abandoned turn's late
+	// finish is recognized as stale instead of clearing the reopened gate.
+	generation uint64
 }
 
 type guardedTurnCompletionKey struct{}
