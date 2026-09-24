@@ -493,14 +493,6 @@ type DesktopStartupSettingsView struct {
 	ExperimentalSubagentTps        bool `json:"experimentalSubagentTps"`
 	ExperimentalCompletionSummary  bool `json:"experimentalCompletionSummary"`
 	ExperimentalQuickCommands      bool `json:"experimentalQuickCommands"`
-	ExperimentalCompactionParallel bool   `json:"experimentalCompactionParallel"`
-	ExperimentalContextBudget      bool   `json:"experimentalContextBudget"`
-	ExperimentalResearchBudget     bool   `json:"experimentalResearchBudget"`
-	ExperimentalQuestionSearch     bool   `json:"experimentalQuestionSearch"`
-	ExperimentalSubagentPolicy     bool   `json:"experimentalSubagentPolicy"`
-	ExperimentalSubagentTps        bool   `json:"experimentalSubagentTps"`
-	ExperimentalCompletionSummary  bool   `json:"experimentalCompletionSummary"`
-	ExperimentalQuickCommands      bool   `json:"experimentalQuickCommands"`
 	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
 	ExperimentalFullAccess bool `json:"experimentalFullAccess"`
 	// ExperimentalTraceAsState exposes Trace-as-State compaction (task 60).
