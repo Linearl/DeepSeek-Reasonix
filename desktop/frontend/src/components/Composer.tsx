@@ -2346,9 +2346,36 @@ export function Composer({
     targetDraftKey = activeDraftKeyRef.current,
     targetTabId = tabId,
   ) => {
-    if (targetDraftKey !== activeDraftKeyRef.current || disabled || readOnly || guidanceSendingIdRef.current !== null) return;
+    // Batch-6 addendum (258 phase 1, absorbed from the MiMo AB side): every
+    // entry refusal below used to return silently — the row stayed put and
+    // the click looked dead, and a latch leaked by a batch/unmount path
+    // silenced every later send forever. Each refusal now says why, and the
+    // stale sending-latch self-heals so one stuck row cannot mute the shelf.
+    // Input-side refusals only: the receipt-side steer/follow-up bubble flow
+    // added by 258 stays toast-free (no double messaging on rejected steers).
+    if (targetDraftKey !== activeDraftKeyRef.current) {
+      showToast(t("composer.guidanceWrongDraft"), "warn");
+      return;
+    }
+    if (disabled || readOnly) {
+      showToast(t("composer.guidanceNotWritable"), "warn");
+      return;
+    }
+    if (guidanceSendingIdRef.current !== null) {
+      // A previous send left the latch held (batch path, unmounted mid-send).
+      // Clear it so one stuck row cannot silence every later click.
+      const staleId = guidanceSendingIdRef.current;
+      guidanceSendingIdRef.current = null;
+      updateGuidanceSendingIdForDraft(targetDraftKey, null);
+      if (staleId !== item.id) {
+        showToast(t("composer.guidanceSendBusyRetry"), "warn");
+      }
+    }
     const durable = !item.id.startsWith("local-");
-    if (running && item.structured) return;
+    if (running && item.structured) {
+      showToast(t("composer.guidanceStructuredBusy"), "warn");
+      return;
+    }
     updateGuidanceSendingIdForDraft(targetDraftKey, item.id);
     try {
       if (durable && guidanceNeedsRetry(item.state)) {

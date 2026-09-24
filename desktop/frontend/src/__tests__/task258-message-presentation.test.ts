@@ -192,6 +192,46 @@ function noticeItems(state: typeof initialState) {
   ok(projectRunningState(s, { known: false }) === false, "an unknown runtime snapshot falls back to local state");
 }
 
-assert.ok(passed >= 26, `expected at least 26 checks, got ${passed}`);
+// ── 258b 追加件: MiMo 相1 吸收——4 态入口拒绝 + latch 自愈 ──────────────────
+{
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const composer = readFileSync(join(root, "components/Composer.tsx"), "utf8").replace(/\n\s*/g, " ");
+  const dicts = [
+    ["zh", readFileSync(join(root, "locales/zh.ts"), "utf8")],
+    ["en", readFileSync(join(root, "locales/en.ts"), "utf8")],
+    ["zh-TW", readFileSync(join(root, "locales/zh-TW.ts"), "utf8")],
+  ] as const;
+
+  // The four entry refusals each say why (the old one-line silent return is gone).
+  ok(/if \(targetDraftKey !== activeDraftKeyRef\.current\) { showToast\(t\("composer\.guidanceWrongDraft"\), "warn"\); return; }/.test(composer),
+    "draft switch refuses with the guidanceWrongDraft toast instead of a silent return");
+  ok(/if \(disabled \|\| readOnly\) { showToast\(t\("composer\.guidanceNotWritable"\), "warn"\); return; }/.test(composer),
+    "disabled/read-only refuses with the guidanceNotWritable toast");
+  ok(/if \(running && item\.structured\) { showToast\(t\("composer\.guidanceStructuredBusy"\), "warn"\); return; }/.test(composer),
+    "structured guidance on a running turn refuses with the guidanceStructuredBusy toast");
+  ok(!/guidanceSendingIdRef\.current !== null\) return;/.test(composer),
+    "the original combined one-line silent latch return is gone");
+
+  // Stuck-latch self-heal: clear the ref AND the UI latch, then only a
+  // DIFFERENT row is told to retry (same row proceeds — MiMo semantics kept).
+  ok(/if \(guidanceSendingIdRef\.current !== null\) {[\s\S]*?const staleId = guidanceSendingIdRef\.current; guidanceSendingIdRef\.current = null; updateGuidanceSendingIdForDraft\(targetDraftKey, null\);[\s\S]*?if \(staleId !== item\.id\) { showToast\(t\("composer\.guidanceSendBusyRetry"\), "warn"\); } }/.test(composer),
+    "a leaked sending-latch self-heals (ref + UI latch cleared) with the actionable retry toast for a different row");
+
+  // Absorption boundary: 258's receipt-side bubble flow stays toast-free —
+  // no double messaging when a steer is rejected into a follow-up.
+  ok(!/onQueueGuidanceBubble[\s\S]{0,260}showToast/.test(composer),
+    "the receipt-side bubble path never toasts (input refusals only — no overlap with 258's rejected-steer receipt)");
+
+  // Three dialects, each key exactly ONCE — the MiMo source diff inserted
+  // every key twice per dialect; absorption dedupes.
+  for (const [name, dict] of dicts) {
+    for (const key of ["guidanceWrongDraft", "guidanceNotWritable", "guidanceSendBusyRetry", "guidanceStructuredBusy"]) {
+      const hits = dict.split(`"composer.${key}"`).length - 1;
+      ok(hits === 1, `${name} defines composer.${key} exactly once (deduped vs MiMo's doubled insert)`);
+    }
+  }
+}
+
+assert.ok(passed >= 44, `expected at least 44 checks, got ${passed}`);
 console.log(`\n${passed} checks passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

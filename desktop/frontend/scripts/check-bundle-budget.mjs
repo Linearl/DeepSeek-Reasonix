@@ -211,7 +211,10 @@ console.log("\nbundle budgets");
 // Task 258 + 267 merged onto batch6 measures 470.2 KiB combined (message
 // presentation bubbles/fold + tail-follow kernel fixes); one-shot ratchet
 // +0.5 KiB per the one-shot rule (no +0.1 nibbling).
-const initialJSBudgetKiB = 470.6; // fork: +2.2 KiB vs upstream 468.3
+// Task 258b (MiMo phase-1 absorption: 4 entry-refusal toasts + latch
+// self-heal + 4 locale keys per dialect) measures 470.7 on top of the
+// merged batch6 tip — one-shot +0.5 to 471.1.
+const initialJSBudgetKiB = 471.1; // fork: +2.8 KiB vs upstream 468.3
 // Task 264 rebased onto the same budget: measured 470.3 KiB (collab-background
 // switch in the sessionCollab pane), also within 470.5 — same one-shot value
 // stands for both lines (no second ratchet needed).
@@ -380,7 +383,10 @@ for (const path of localeChunks) {
   // zh measured 78.1 at the old 78.0 ceiling, one-shot +0.5 step on both.
   // (257 merge note: yolo adds 7 keys/locale; zh measured 78.2 — within 78.5,
   // same one-shot ceilings kept.)
-  const budget = name.startsWith("zh-TW-") ? 79.5 * 1024 : 78.5 * 1024;
+  // 78.5 / 80.0: task 258b MiMo phase-1 absorption — 4 new keys per locale
+  // (entry-refusal toasts); zh-TW measured 79.6 at the old 79.5 ceiling,
+  // one-shot +0.5 (zh measured exactly 78.5 and passes — untouched).
+  const budget = name.startsWith("zh-TW-") ? 80.0 * 1024 : 78.5 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
