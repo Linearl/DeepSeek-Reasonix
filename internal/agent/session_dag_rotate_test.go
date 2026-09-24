@@ -223,11 +223,14 @@ func TestDAGSingleWriterProof(t *testing.T) {
 	recent.Writer = "other-writer"
 	dagAppend(t, path, recent)
 	st = dagReplay(t, path)
-	if err := sessionDAGSingleWriterProof(path, st, now); !errors.As(err, &denied) || !strings.Contains(denied.Reason, "other-writer") {
-		t.Fatalf("recent foreign writer err = %v", err)
-	}
-	if err := sessionDAGSingleWriterProof(path, st, now.Add(sessionDAGWriterQuietPeriod+time.Second)); err != nil {
-		t.Fatalf("quiet foreign writer err = %v", err)
+	// Task 275: a recent foreign append no longer denies rotation while this
+	// runtime holds the lease — appends and rotates serialize on the file
+	// lock and the losing writer rebases via CAS/replay on its next save.
+	// Before this, an actively saved session (another writer id appending
+	// every few seconds) never cleared the 60s quiet window, so maintainDAGLog
+	// deferred forever and the log grew unbounded behind a silent Info line.
+	if err := sessionDAGSingleWriterProof(path, st, now); err != nil {
+		t.Fatalf("recent foreign writer under lease must not deny rotation, got %v", err)
 	}
 	_ = base
 }

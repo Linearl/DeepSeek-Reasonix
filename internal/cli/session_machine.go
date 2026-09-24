@@ -86,7 +86,34 @@ type sessionMachineOptions struct {
 }
 
 func sessionCommand(args []string) int {
+	// Task 275: `session compact` is a human-facing maintenance command, not
+	// part of the machine (--json) protocol below — it prints before/after
+	// sizes to the operator and takes a bare path.
+	if len(args) > 0 && args[0] == "compact" {
+		return sessionCompactHuman(args[1:])
+	}
 	return runSessionCommand(args, os.Stdout)
+}
+
+// sessionCompactHuman implements `reasonix session compact <session-path>`:
+// the manual "slim this session" entry from task 275. The session must be
+// idle (CompactSessionFile acquires the lease, which doubles as the
+// single-writer proof); the rewrite goes through the production
+// SaveRewriteCompact path, so a failed run leaves the old log in place.
+func sessionCompactHuman(args []string) int {
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: reasonix session compact <session-path>")
+		return 2
+	}
+	before, after, err := agent.CompactSessionFile(args[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "session compact failed: %v\n", err)
+		return 1
+	}
+	const mib = 1024 * 1024
+	fmt.Printf("event log: %.1f MiB -> %.1f MiB (freed %.1f MiB)\n",
+		float64(before)/mib, float64(after)/mib, float64(before-after)/mib)
+	return 0
 }
 
 func runSessionCommand(args []string, out io.Writer) int {
