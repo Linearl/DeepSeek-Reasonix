@@ -437,6 +437,13 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
     maxItems: number;
     maxBytes: number;
   }>;
+  // Task 234 (upstream #10547): optional attachment-reader bridges. The
+  // desktop host may not expose them (this fork has no draft-credential or
+  // session-attachment store); MessageAttachments guards each call with a
+  // typeof check and degrades to the workspace attachment path.
+  ReadDraftImageForTab?(tabID: string, token: string): Promise<string>;
+  ReadSessionAttachmentForTab?(tabID: string, digest: string, offset: number): Promise<{ data?: string; nextOffset: number; done: boolean }>;
+  AttachmentDataURLForTab?(tabID: string, path: string): Promise<string>;
   EnqueueInboxSteer(tabID: string, display: string, submit: string, idempotency: string): Promise<{ itemId: string; disposition: string; position: number; paused: boolean; idempotent?: boolean; error?: string }>;
   EnqueueInboxSteerForTurn?(tabID: string, turnID: string, display: string, submit: string, idempotency: string): Promise<{ itemId: string; disposition: string; position: number; paused: boolean; idempotent?: boolean; error?: string }>;
   SteerInboxItem(tabID: string, itemID: string): Promise<{

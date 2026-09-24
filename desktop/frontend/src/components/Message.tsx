@@ -1,6 +1,6 @@
 import { createContext, lazy, memo, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
-import { BrainCircuit, ChevronDown, FileText, Folder, GitBranch, Image, MessageSquare, Pencil, RotateCcw, ScrollText } from "lucide-react";
+import { BrainCircuit, ChevronDown, FileText, GitBranch, Image, MessageSquare, Pencil, RotateCcw, ScrollText } from "lucide-react";
 import { Markdown } from "./Markdown";
 import { CopyButton } from "./CopyButton";
 import { ComposerContextCard } from "./ComposerContextCard";
@@ -10,6 +10,9 @@ import { app } from "../lib/bridge";
 import { replaySubmitTextPreservingSelectedContext } from "../lib/editReplay";
 import { useT } from "../lib/i18n";
 import { Tooltip } from "./Tooltip";
+// Task 234: restored with the edit-state image viewer JSX (the upstream
+// MessageAttachments move dropped the import while the state stayed).
+import { ImageViewer } from "./ImageViewer";
 import { useWorkProcessPresentation } from "../lib/sessionExperience";
 import { stripMemoryCompilerExecution } from "../lib/memoryCompilerDisplay";
 import { invocationSegmentsFromMessage, type InvocationMetadataMap } from "../lib/invocationDisplay";
@@ -23,6 +26,9 @@ import { formatSelectionLabels, languageFor, parseSelectedTextContext, stripSele
 const AssistantReasoningPanel = lazy(() => import("./AssistantReasoningPanel").then((module) => ({ default: module.AssistantReasoningPanel })));
 const MemoryCitations = lazy(() => import("./MemoryCitations").then((module) => ({ default: module.MemoryCitations })));
 const SearchSourcesPanel = lazy(() => import("./SearchSourcesPanel").then((module) => ({ default: module.SearchSourcesPanel }))); type AssistantItem = Extract<Item, { kind: "assistant" }>;
+// Task 234 (upstream #10547): the attachment render half moved into its own
+// lazy component — restore the declaration the conflict resolution dropped.
+const MessageAttachments = lazy(() => import("./MessageAttachments").then((module) => ({ default: module.MessageAttachments })));
 export type TurnActionMenu = "summary" | "rewind" | "fork";
 export const InvocationMetadataContext = createContext<InvocationMetadataMap>({});
 type ImSourceMessage = {
@@ -147,12 +153,6 @@ function MergedMessageBody({ merged }: { merged: MergedMessage }) {
       )}
     </div>
   );
-}
-
-function attachmentIcon(kind: "image" | "file" | "folder") {
-  if (kind === "image") return <Image size={15} />;
-  if (kind === "folder") return <Folder size={15} />;
-  return <FileText size={15} />;
 }
 
 function mergeDisplayAttachments(existing: DisplayAttachment[], incoming: DisplayAttachment[]): DisplayAttachment[] {
@@ -281,7 +281,10 @@ export function UserMessage({
   const canEdit = turn !== undefined && onEdit !== undefined && !editDisabled;
   const [editing, setEditing] = useState(false);
   const [draftText, setDraftText] = useState(editableDisplayText);
-  const [draftAttachments, setDraftAttachments] = useState<DisplayAttachment[]>(attachments);
+  // Task 234: upstream renamed the parsed list to `parsedAttachments` (its
+  // render half moved into MessageAttachments); the edit-state draft seeds
+  // from the same list.
+  const [draftAttachments, setDraftAttachments] = useState<DisplayAttachment[]>(parsedAttachments);
   const [editSubmitting, setEditSubmitting] = useState(false);
   const editRef = useRef<HTMLTextAreaElement>(null);
   const [imagePreviews, setImagePreviews] = useState<Record<string, string>>({});
@@ -355,6 +358,7 @@ export function UserMessage({
       [key]: !prev[key],
     }));
   };
+  const orderedAttachments = sortDisplayAttachments(parsedAttachments);
   const orderedDraftAttachments = sortDisplayAttachments(draftAttachments);
   const imagePreviewKey = orderedAttachments
     .concat(orderedDraftAttachments)
@@ -583,6 +587,15 @@ export function UserMessage({
         )}
         {failed && <div className="msg__send-failed" data-transcript-selection-ignore>{t("msg.sendFailed")}</div>}
         {parsedAttachments.length > 0 && <Suspense fallback={null}><MessageAttachments attachments={parsedAttachments} /></Suspense>}
+        {/* Task 234: restore the fork's edit-state image viewer render (the
+            upstream move into MessageAttachments dropped this JSX while the
+            state + handlers stayed for the editable attachment chips). */}
+        <ImageViewer
+          open={imageViewer.open}
+          imageUrl={imageViewer.url}
+          imageName={imageViewer.name}
+          onClose={closeImageViewer}
+        />
       </div>
       {!editing && (
         <div className="msg-meta" role="group" aria-label={t("rewind.label")}>

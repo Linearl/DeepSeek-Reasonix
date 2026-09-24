@@ -13,7 +13,9 @@ function loadPreview(tabId: string, attachment: DisplayAttachment): Promise<stri
   }
   if (path.startsWith("attachment:") && typeof app.ReadSessionAttachmentForTab === "function") {
     const digest = path.slice("attachment:".length).slice(0, 64);
-    const mime = attachment.mime || (attachment.ext === "JPG" || attachment.ext === "JPEG" ? "image/jpeg" : `image/${attachment.ext.toLowerCase() || "png"}`);
+    // Task 234: this fork's DisplayAttachment carries no `mime` field — derive
+    // it from the extension exactly like the fallback below did.
+    const mime = attachment.ext === "JPG" || attachment.ext === "JPEG" ? "image/jpeg" : `image/${attachment.ext.toLowerCase() || "png"}`;
     return import("../lib/sessionAttachmentRead").then(module => module.readSessionAttachmentDataURL(
       tabId,
       digest,
@@ -21,7 +23,10 @@ function loadPreview(tabId: string, attachment: DisplayAttachment): Promise<stri
       (id, nextDigest, offset) => app.ReadSessionAttachmentForTab!(id, nextDigest, offset),
     ));
   }
-  return app.AttachmentDataURLForTab(tabId, path);
+  // Task 234: per-tab reader is optional on this fork; fall back to the
+  // workspace-scoped data URL the composer already uses.
+  if (typeof app.AttachmentDataURLForTab === "function") return app.AttachmentDataURLForTab(tabId, path);
+  return app.AttachmentDataURL(path);
 }
 
 function attachmentIcon(kind: DisplayAttachment["kind"]) {
