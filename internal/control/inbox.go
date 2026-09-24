@@ -57,6 +57,9 @@ type Inbox interface {
 	CancelWithInboxItemsResult(ids []string, source string) (InboxCancelResult, error)
 	MoveInboxItem(id string, toIndex int) error
 	SetInboxPaused(paused bool) error
+	// Task 300: unpause without dispatching pending work — recovery hand-offs
+	// (the auto-resume) must not replay leftover inbox content into the turn.
+	SetInboxPausedPassive(paused bool) error
 	RetryInboxItem(id string) error
 	RefreshInboxReferences(id string) error
 	TrySubmitInboxItem(id string) (sessioninbox.InboxReceipt, error)
@@ -236,6 +239,13 @@ func (c *Controller) ensureInbox() (*sessioninbox.Store, error) {
 	}
 	c.bindInboxStoreNotifications(st)
 	c.inbox.store = st
+	// Task 300: run the settled-aware recovery before the first snapshot so the
+	// banner counts only surviving work — Open's cross-process pass already
+	// marked states/counts without a settled probe, and the 263 drop only runs
+	// when we call it here. Same ordering as rebindInbox.
+	if _, recoverErr := st.RecoverOrphanedInFlightOwnedBy(c.inbox.ownsItem, c.inbox.settled); recoverErr != nil {
+		slog.Warn("controller: recover inbox on open", "err", recoverErr)
+	}
 	snap := st.Snapshot()
 	if snap.Recovered && snap.RecoveredN > 0 {
 		c.sink.Emit(event.Event{
@@ -278,6 +288,12 @@ func (c *Controller) rebindInbox() {
 	}
 	c.bindInboxStoreNotifications(st)
 	c.inbox.store = st
+	// Task 300: same ordering as ensureInbox — the settled-aware drop runs
+	// before the snapshot that feeds the recovered notice, so processed
+	// guidance never counts or replays after a reopen.
+	if _, recoverErr := st.RecoverOrphanedInFlightOwnedBy(c.inbox.ownsItem, c.inbox.settled); recoverErr != nil {
+		slog.Warn("controller: recover inbox on rebind", "err", recoverErr, "path", path)
+	}
 	snap := st.Snapshot()
 	if snap.Recovered && snap.RecoveredN > 0 {
 		// Emit after unlock via deferred sink call would race; emit here.

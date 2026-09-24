@@ -290,12 +290,13 @@ func TestMaybeResumeAutonomousUpdateTabConsumesMarkerOnce(t *testing.T) {
 	if len(state.Sessions) != 0 {
 		t.Fatalf("marker must be consumed on first sight: %+v", state.Sessions)
 	}
-	// Task 263 fix 2: the auto-resume owns the "continue" decision, so it must
-	// clear the recovery pause (the banner's precondition) in the same hand-off —
+	// Task 263 fix 2 + 300: the auto-resume owns the "continue" decision, so it
+	// clears the recovery pause (the banner's precondition) in the same hand-off —
 	// one channel: no "review before resuming" notice while the resume is
-	// already on its way.
+	// already on its way. Task 300 pins the PASSIVE form: unpause without a
+	// dispatch, so leftover pending guidance never replays into the conversation.
 	if len(ctrl.inboxPausedCalls) != 1 || ctrl.inboxPausedCalls[0] {
-		t.Fatalf("auto-resume must clear the recovery pause exactly once (unpause): %+v", ctrl.inboxPausedCalls)
+		t.Fatalf("auto-resume must clear the recovery pause exactly once, passively (unpause): %+v", ctrl.inboxPausedCalls)
 	}
 
 	// An unrelated session's restore must neither touch nor consume the entry.

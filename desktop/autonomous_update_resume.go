@@ -169,8 +169,13 @@ func (a *App) maybeResumeAutonomousUpdateTab(tab *WorkspaceTab) {
 	// decision: the user sees "review before resuming" while the resume is
 	// already on its way. One channel owns the choice; SetPaused(false) also
 	// zeroes Recovered/RecoveredN, which is what the banner renders.
+	// Task 300: passive form — clearing the pause must not also dispatch the
+	// recovered items (SetInboxPaused unpauses WITH maybeDispatchInbox), or the
+	// leftover guidance content replays into the conversation on its own. True
+	// pending work stays paused-for-review reachable via /queue; the notice
+	// (the "tell") is already gone because we own the continue decision.
 	if tab.Ctrl != nil {
-		if err := tab.Ctrl.SetInboxPaused(false); err != nil {
+		if err := tab.Ctrl.SetInboxPausedPassive(false); err != nil {
 			slog.Debug("desktop: clearing recovery pause for auto-resume", "tab", tab.ID, "err", err)
 		}
 	}

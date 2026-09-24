@@ -682,6 +682,14 @@ func (c *retargetRuntimeController) SetInboxPaused(paused bool) error {
 	return nil
 }
 
+// Task 300: the auto-resume now clears the recovery pause via the passive
+// form (unpause without dispatching pending work) — recording into the same
+// slice keeps the single-channel hand-off assertion in one place.
+func (c *retargetRuntimeController) SetInboxPausedPassive(paused bool) error {
+	c.inboxPausedCalls = append(c.inboxPausedCalls, paused)
+	return nil
+}
+
 // SubagentPolicy overrides the stubSessionAPI-embedded nil *Controller:
 // currentTabSubagentPolicy (enrichTabMeta, via openTopicTab) reads it, and the
 // embedded nil would panic in (*Controller).SubagentPolicy's mutex lock.
