@@ -3,7 +3,7 @@
 
 export const DESKTOP_PROTOCOL_VERSION = 11;
 
-export const DESKTOP_CONTRACT_DIGEST = "sha256:8bd3b74b195c2d40ffd312b3df9b52a65d3836f894ca6be1e2459ae56ce03f78";
+export const DESKTOP_CONTRACT_DIGEST = "sha256:be4936d5592ef32f291df652722b13894f1a3b992e586deb0414112e041f5a3b";
 
 export const DESKTOP_COMMANDS = [
   "AIRenameSession",
@@ -755,6 +755,7 @@ export const DESKTOP_COMMANDS = [
   "TestBotConnection",
   "TestDingtalkBot",
   "TestProviderModel",
+  "TestProviderModelTimed",
   "ToggleMaximiseMainWindow",
   "ToolResultForTab",
   "TranscriptContentForTab",
@@ -3551,6 +3552,16 @@ export interface ProviderModelOverrideView {
   vision?: boolean | null;
   contextWindow?: number;
   maxOutputTokens?: number;
+}
+
+export interface ProviderModelProbeResult {
+  ok: boolean;
+  ttftMs?: number;
+  generationMs?: number;
+  outputTokens?: number;
+  tps?: number;
+  preview?: string;
+  error?: string;
 }
 
 export interface ProviderPresetView {
@@ -6683,6 +6694,7 @@ export interface GeneratedDesktopCommands {
   TestBotConnection(arg0: string, arg1: string): Promise<BotConnectionDiagnostic>;
   TestDingtalkBot(): Promise<BotConnectionDiagnostic>;
   TestProviderModel(arg0: ProviderView, arg1: string, arg2: string): Promise<void>;
+  TestProviderModelTimed(arg0: ProviderView, arg1: string, arg2: string): Promise<ProviderModelProbeResult>;
   ToggleMaximiseMainWindow(): Promise<void>;
   ToolResultForTab(arg0: string, arg1: string): Promise<ToolResultData | null>;
   TranscriptContentForTab(arg0: string, arg1: ContentRequest): Promise<ContentChunk>;

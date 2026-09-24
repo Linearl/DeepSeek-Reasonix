@@ -10904,6 +10904,22 @@
       ]
     }
   },
+  "TestProviderModelTimed": {
+    "domain": "desktop/provider_settings_probe.go",
+    "owner": "App.TestProviderModelTimed",
+    "sources": [
+      "desktop/provider_settings_probe.go"
+    ],
+    "scope": {
+      "kind": "owner-inputs",
+      "resolver": "App.TestProviderModelTimed",
+      "inputs": [
+        "p",
+        "model",
+        "key"
+      ]
+    }
+  },
   "ToggleMaximiseMainWindow": {
     "domain": "desktop/window_controls.go",
     "owner": "App.ToggleMaximiseMainWindow",

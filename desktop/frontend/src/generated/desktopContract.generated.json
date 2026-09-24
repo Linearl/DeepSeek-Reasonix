@@ -20470,6 +20470,40 @@
     },
     {
       "cancellation": "before-dispatch",
+      "domain": "desktop/provider_settings_probe.go",
+      "name": "TestProviderModelTimed",
+      "owner": "App.TestProviderModelTimed",
+      "params": [
+        {
+          "kind": "object",
+          "ref": "main.ProviderView"
+        },
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "object",
+        "ref": "main.ProviderModelProbeResult"
+      },
+      "scope": {
+        "inputs": [
+          "p",
+          "model",
+          "key"
+        ],
+        "kind": "owner-inputs",
+        "resolver": "App.TestProviderModelTimed"
+      },
+      "sources": [
+        "desktop/provider_settings_probe.go"
+      ]
+    },
+    {
+      "cancellation": "before-dispatch",
       "domain": "desktop/window_controls.go",
       "name": "ToggleMaximiseMainWindow",
       "owner": "App.ToggleMaximiseMainWindow",
@@ -36269,6 +36303,58 @@
           "optional": true,
           "type": {
             "kind": "integer"
+          }
+        }
+      ]
+    },
+    "main.ProviderModelProbeResult": {
+      "fields": [
+        {
+          "name": "ok",
+          "type": {
+            "kind": "boolean"
+          }
+        },
+        {
+          "name": "ttftMs",
+          "optional": true,
+          "type": {
+            "kind": "integer"
+          }
+        },
+        {
+          "name": "generationMs",
+          "optional": true,
+          "type": {
+            "kind": "integer"
+          }
+        },
+        {
+          "name": "outputTokens",
+          "optional": true,
+          "type": {
+            "kind": "integer"
+          }
+        },
+        {
+          "name": "tps",
+          "optional": true,
+          "type": {
+            "kind": "number"
+          }
+        },
+        {
+          "name": "preview",
+          "optional": true,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "error",
+          "optional": true,
+          "type": {
+            "kind": "string"
           }
         }
       ]

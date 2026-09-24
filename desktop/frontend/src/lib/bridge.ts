@@ -722,6 +722,7 @@ export interface AppBindings extends AttachmentBindings, SessionExportBindings, 
   FetchProviderModelCatalog(p: ProviderView): Promise<ProviderModelCapabilityView[]>;
   FetchProviderModelCatalogDraft(p: ProviderView, key: string): Promise<ProviderModelCapabilityView[]>;
   TestProviderModel(p: ProviderView, model: string, key: string): Promise<void>;
+  TestProviderModelTimed(p: ProviderView, model: string, key: string): Promise<{ ok: boolean; ttftMs?: number; generationMs?: number; outputTokens?: number; tps?: number; preview?: string; error?: string }>;
   FetchAllProviderModelCatalogs(providers: ProviderView[]): Promise<Record<string, ProviderModelCapabilityView[]>>;
   FetchAllProviderModels(providers: ProviderView[]): Promise<Record<string, string[]>>;
   DeleteProvider(name: string): Promise<void>;
@@ -1132,7 +1133,7 @@ function bridgeBreadcrumb(method: string): string {
     return `model ${method}`;
   if (/^(SetDesktop|SetCloseBehavior|SetDisplayMode|SetStatusBar|SetReasoningDisplayMode|SetExpandThinking|SetAutoPlan|SetDefaultToolApprovalMode|SetCompactRatio|SetReasoningLanguage)/.test(method))
     return `settings ${method}`;
-  if (/^(SetConnectionKey|AddProviderConnection|RenameProviderConnections|SaveProvider|SetProviderWebSearch|SaveProviderModelCatalogs|AddOfficialProviderAccess|UpgradeDeepSeekProviderAccess|AddProviderPresetAccess|ResetProviderPresetAccess|RemoveProviderAccess|RemoveProviderAccesses|DeleteProvider|SaveProviderKey|SetProviderKey|ClearProviderKey|TestProviderModel|FetchProviderModelCatalog|FetchAllProviderModelCatalogs|FetchProviderModels|FetchAllProviderModels|ConnectKey)/.test(method))
+  if (/^(SetConnectionKey|AddProviderConnection|RenameProviderConnections|SaveProvider|SetProviderWebSearch|SaveProviderModelCatalogs|AddOfficialProviderAccess|UpgradeDeepSeekProviderAccess|AddProviderPresetAccess|ResetProviderPresetAccess|RemoveProviderAccess|RemoveProviderAccesses|DeleteProvider|SaveProviderKey|SetProviderKey|ClearProviderKey|TestProviderModelTimed|TestProviderModel|FetchProviderModelCatalog|FetchAllProviderModelCatalogs|FetchProviderModels|FetchAllProviderModels|ConnectKey)/.test(method))
     return `provider ${method}`;
   if (/^(CheckUpdate|ApplyUpdateRequest|OpenDownloadPage|OpenUserConfigPath|ReloadUserConfig)/.test(method)) return `update ${method}`;
   if (/^(AddMCPServer|InstallMCPServer|UpdateMCPServer|RemoveMCPServer|AuthorizeAndConnectMCPServer|AuthenticateMCPServer|ReconnectMCPServer|ClearMCPServerAuthentication|SetMCPServer)/.test(method))
@@ -4871,6 +4872,9 @@ function makeMockApp(): MockAppBindings {
       return this.FetchProviderModelCatalog(p);
     },
     async TestProviderModel(_p: ProviderView, _model: string, _key: string) {},
+    async TestProviderModelTimed(_p: ProviderView, _model: string, _key: string) {
+      return { ok: true, ttftMs: 123, generationMs: 400, outputTokens: 17, tps: 42.5, preview: "1 2 3 …" };
+    },
     async FetchProviderModelCatalog(p: ProviderView) {
       const models = await this.FetchProviderModels(p);
       return models.map((model) => ({

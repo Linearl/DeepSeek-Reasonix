@@ -1,4 +1,3 @@
-import { ErrorMessage } from "./ErrorMessage";
 import { useProviderT as useT } from "../lib/providerSettingsLocale";
 import { useEffect, useRef, useState } from "react";
 import { Pencil, Plus, Plug, RefreshCw, Search, Trash2 } from "lucide-react";
@@ -10,11 +9,17 @@ import { ModelImageInputControl } from "./ModelImageInputControl";
 import { imageInputModeForModel, imageInputModes, mergeImageInputModes, modelCapabilityForModel, matchingModelKey } from "../lib/providerImageInput";
 import { ProviderDialog } from "./ProviderDialog";
 
+// #33: what the probe measures on top of connectivity. Zero timing means the
+// endpoint did not stream, so the row keeps showing plain success.
+export type ModelProbeResult = {
+  ok: boolean; ttftMs?: number; generationMs?: number; outputTokens?: number; tps?: number; preview?: string; error?: string;
+};
+
 export function ProviderModelsEditor({ provider, disabled, canFetch, onChange, onFetch, onTest, probeKey, draft = false }: {
   provider: ProviderView; probeKey?: string; disabled: boolean; canFetch: boolean; draft?: boolean;
   onChange: (models: string[], overrides: ProviderModelOverrideView[], capabilities: ProviderModelCapabilityView[]) => void;
   onFetch: () => Promise<ProviderModelCapabilityView[]>;
-  onTest: (model: string) => Promise<void>;
+  onTest: (model: string) => Promise<ModelProbeResult>;
 }) {
   const t = useT();
   const [editor, setEditor] = useState<{ original?: string; value: ModelDraft } | null>(null);
@@ -23,7 +28,7 @@ export function ProviderModelsEditor({ provider, disabled, canFetch, onChange, o
   const [selection, setSelection] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [fetching, setFetching] = useState(false);
-  const [tests, setTests] = useState<Record<string, { busy: boolean; error?: string }>>({});
+  const [tests, setTests] = useState<Record<string, { busy: boolean; error?: string; probe?: ModelProbeResult }>>({});
   // An endpoint/key/parameter edit invalidates every in-flight result for this draft.
   const identity = JSON.stringify([provider, probeKey]);
   const identityRef = useRef(identity); identityRef.current = identity;
@@ -59,8 +64,8 @@ export function ProviderModelsEditor({ provider, disabled, canFetch, onChange, o
     const generation = epoch.current, fingerprint = identity;
     setTests((prev) => ({ ...prev, [model]: { busy: true } }));
     try {
-      await onTest(model);
-      if (generation === epoch.current && identityRef.current === fingerprint) setTests((prev) => ({ ...prev, [model]: { busy: false } }));
+      const probe = await onTest(model);
+      if (generation === epoch.current && identityRef.current === fingerprint) setTests((prev) => ({ ...prev, [model]: { busy: false, probe } }));
     } catch (e) {
       if (generation === epoch.current && identityRef.current === fingerprint) setTests((prev) => ({ ...prev, [model]: { busy: false, error: String((e as Error).message ?? e) } }));
     }
@@ -81,7 +86,7 @@ export function ProviderModelsEditor({ provider, disabled, canFetch, onChange, o
       <button type="button" className="btn btn--small" disabled={disabled || fetching || !canFetch} onClick={() => void fetchModels()}><RefreshCw size={14} className={fetching ? "provider-spinning" : undefined} />{t(fetching ? "settings.fetchingModels" : "settings.fetchModels")}</button>
       <button type="button" className="btn btn--small" disabled={disabled} onClick={() => openEditor()}><Plus size={14} />{t("providerUI.manualAdd")}</button>
     </div></div>
-    {!editor && error && <p role="alert" className="provider-fetch-status provider-fetch-status--warn"><ErrorMessage error={error} /></p>}
+    {!editor && error && <p role="alert" className="provider-fetch-status provider-fetch-status--warn">{error}</p>}
     {!provider.models.length && <p className="provider-models-editor__empty">{t("providerUI.emptyModels")}</p>}
     <div className="provider-models-editor__list">
       {provider.models.map((model) => {
@@ -97,7 +102,15 @@ export function ProviderModelsEditor({ provider, disabled, canFetch, onChange, o
           </div>
           <ModelImageInputControl model={model} baseURL={provider.baseUrl} capability={modelCapabilityForModel(capabilities, model)} mode={imageInputModeForModel(imageInputModes(overrides), model)} disabled={disabled}
             onChange={(mode) => onChange(provider.models, mergeImageInputModes(overrides, provider.models, { ...imageInputModes(overrides), [model]: mode }), capabilities)} />
-          {result && <div role="status" className={`provider-fetch-status provider-fetch-status--${result.error ? "warn" : "ok"}`}>{result.busy ? t("providerUI.testing") : result.error ? <ErrorMessage error={result.error} /> : t("providerUI.testSuccess")}</div>}
+          {result && <div role="status" className={`provider-fetch-status provider-fetch-status--${result.error ? "warn" : "ok"}`}>{result.busy ? t("providerUI.testing") : result.error || (result.probe?.ttftMs
+              ? (result.probe.tps
+                ? (result.probe.outputTokens
+                  ? t("providerUI.testTimingFull", { ttft: result.probe.ttftMs, tps: result.probe.tps.toFixed(1), tokens: result.probe.outputTokens, gen: result.probe.generationMs ?? 0 })
+                  : t("providerUI.testTiming", { ttft: result.probe.ttftMs, tps: result.probe.tps.toFixed(1) }))
+                : t("providerUI.testTimingTTFT", { ttft: result.probe.ttftMs }))
+              : result.probe
+                ? t("providerUI.testNoTiming")
+                : t("providerUI.testSuccess"))}</div>}
         </div>;
       })}
     </div>
@@ -108,7 +121,7 @@ export function ProviderModelsEditor({ provider, disabled, canFetch, onChange, o
         <ModelImageInputControl model={editor.value.model} baseURL={provider.baseUrl} capability={modelCapabilityForModel(capabilities, editor.value.model)}
           mode={editor.value.vision === "yes" ? "on" : editor.value.vision === "no" ? "off" : "auto"} disabled={disabled}
           onChange={(mode) => setEditor({ ...editor, value: { ...editor.value, vision: mode === "on" ? "yes" : mode === "off" ? "no" : "auto" } })} />
-        {error && <p role="alert" className="provider-fetch-status provider-fetch-status--warn"><ErrorMessage error={error} /></p>}
+        {error && <p role="alert" className="provider-fetch-status provider-fetch-status--warn">{error}</p>}
         <footer><button type="button" className="btn btn--small" onClick={() => { setEditor(null); setError(null); }}>{t("common.cancel")}</button><button type="submit" className="btn btn--primary btn--small" disabled={disabled}>{t(draft ? "providerUI.saveDraft" : "providerUI.applyModel")}</button></footer>
       </form>
     </ProviderDialog>}
