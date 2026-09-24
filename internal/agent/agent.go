@@ -363,6 +363,14 @@ type Agent struct {
 	// replaced at each run start so cursors from an earlier run never continue.
 	reads      readState
 	stragglers runStragglers
+	// softBudgetMutationSeen records that this session ever produced (or
+	// tried to produce) a write (task 240, direction 1): once an
+	// implementation session has written, later read-only-looking turns must
+	// not be nudged as "read-only planning/analysis" — the per-turn ledger
+	// resets between turns, so receipts alone forget the implementation
+	// work. Session-lived runtime state, deliberately not on the frozen
+	// agentConfig (guarded by TestAgentConfigIsNeverAssignedAfterConstruction).
+	softBudgetMutationSeen bool
 	// toolStats accumulates per-tool call/error counters for the session
 	// sidecar (task 227 phase 1: observe only; aggregate counts, no args).
 	toolStats *toolErrorStats

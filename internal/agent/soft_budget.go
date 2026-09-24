@@ -35,10 +35,22 @@ func (a *Agent) applySoftBudget(outcomes []toolOutcome) intervention {
 	if limit.Tokens > 0 || limit.Wall > 0 || limit.Cost > 0 {
 		return intervention{}
 	}
+	// Task 240, direction 3: rounds whose tools failed or were blocked made no
+	// investigation progress. Count them once per batch so they never tighten
+	// the convergence gate; the provider-cost axis (budget.rounds) keeps them.
+	for _, outcome := range outcomes {
+		if outcome.errMsg != "" || outcome.blocked {
+			a.turn.softBudgetFailedRounds++
+			break
+		}
+	}
 	if !a.readonlySoftBudgetApplies(outcomes) {
 		return intervention{}
 	}
-	rounds := a.turn.budget.rounds
+	rounds := a.turn.budget.rounds - a.turn.softBudgetFailedRounds
+	if rounds < 0 {
+		rounds = 0
+	}
 	elapsed := a.turn.budget.elapsed()
 	median := rollingReadonlySoftBudgetMedian(a.softBudgetHistoryKey())
 	extensions := a.turn.loop.softBudgetExtensionCount()
@@ -61,14 +73,14 @@ func (a *Agent) applySoftBudget(outcomes []toolOutcome) intervention {
 		}
 		return intervention{
 			verdict:  verdictRedirect,
-			guidance: "Host budget check: this read-only planning/analysis task exceeded its soft round or elapsed-time budget. First judge whether deeper investigation is genuinely needed: if yes, call extend_research_budget with a reason to double the budget (" + fmt.Sprintf("%d", remaining) + " extension(s) left this turn); if not, stop expanding scope, summarize the evidence you already have, and name the remaining real blocker if any.",
+			guidance: softBudgetNudgeGuidance(a.researchBudget, remaining),
 			notice:   noticeFor(event.NoticeCodeLoopGuard, event.LevelInfo, i18n.M.SoftBudgetConverge, "soft budget after "+trigger),
 		}
 	}
 	if nudgedAt := a.turn.loop.softBudgetNudgedAt(); nudgedAt > 0 && rounds >= nudgedAt+softBudgetHardFollowup {
 		guidance := "Host budget check: two further rounds passed after the convergence nudge. Output the current result or name exactly one real blocker. Do not continue exploring."
-		if remaining > 0 {
-			guidance = "Host budget check: two further rounds passed after the convergence nudge. Output the current result or name exactly one real blocker. If deeper investigation is genuinely required, call extend_research_budget (" + fmt.Sprintf("%d", remaining) + " extension(s) left this turn); otherwise stop exploring."
+		if remaining > 0 && a.researchBudget {
+			guidance = "Host budget check: two further rounds passed after the convergence nudge. Output the current result or name exactly one real blocker. If deeper investigation is genuinely required, call tool:extend_research_budget (" + fmt.Sprintf("%d", remaining) + " extension(s) left this turn); otherwise stop exploring."
 		}
 		return intervention{
 			verdict:  verdictRedirect,
@@ -78,13 +90,38 @@ func (a *Agent) applySoftBudget(outcomes []toolOutcome) intervention {
 	return intervention{}
 }
 
+// softBudgetNudgeGuidance is the first nudge text (task 240, directions 2 and
+// 4). It names the shaped capability id the proxy actually accepts, says what
+// the budget is (a per-turn read-only convergence gate) and what it is not (a
+// session-wide resource cap — the session itself has no fixed total limit),
+// and degrades to a converge-only instruction when research-budget extensions
+// are switched off, so the prompt never points at a tool that cannot run.
+func softBudgetNudgeGuidance(researchBudget bool, remaining int) string {
+	const scope = "This is a per-turn convergence budget for read-only investigation, not a session-wide resource cap (this session has no fixed total limit). "
+	if !researchBudget {
+		return "Host budget check: this read-only planning/analysis task exceeded its per-turn soft round or elapsed-time budget. " + scope +
+			"Research-budget extensions are not enabled in this configuration: converge now — stop expanding scope, summarize the evidence you already have, and name the remaining real blocker if any."
+	}
+	return "Host budget check: this read-only planning/analysis task exceeded its per-turn soft round or elapsed-time budget. " + scope +
+		"First judge whether deeper investigation is genuinely needed: if yes, call tool:extend_research_budget with a reason to double the budget (" +
+		fmt.Sprintf("%d", remaining) + " extension(s) left this turn); if not, stop expanding scope, summarize the evidence you already have, and name the remaining real blocker if any."
+}
+
 func (a *Agent) readonlySoftBudgetApplies(outcomes []toolOutcome) bool {
 	if a.planMode.Load() {
 		return true
 	}
+	// Task 240, direction 1: this agent has already produced (or tried to
+	// produce) a write in an earlier turn — the per-turn ledger reset since,
+	// but an implementation session must never be nudged as "read-only
+	// planning/analysis" again.
+	if a.softBudgetMutationSeen {
+		return false
+	}
 	for _, outcome := range outcomes {
 		if outcome.workspaceMutation != nil || (outcome.resolved && !outcome.resolvedReadOnly) {
 			a.turn.softBudgetMutation = true
+			a.softBudgetMutationSeen = true
 			return false
 		}
 		// A write the host refused leaves no receipt, so counting the round as
@@ -92,6 +129,7 @@ func (a *Agent) readonlySoftBudgetApplies(outcomes []toolOutcome) bool {
 		// was blocked — the loop that ended in the storm breaker (task 171).
 		if refusedWriteIntent(outcome) {
 			a.turn.softBudgetMutation = true
+			a.softBudgetMutationSeen = true
 			return false
 		}
 	}
@@ -99,8 +137,13 @@ func (a *Agent) readonlySoftBudgetApplies(outcomes []toolOutcome) bool {
 		return true
 	}
 	for _, rec := range a.task.ledger.Receipts() {
-		if rec.Write {
+		// Mutation is the same signal operation_lifecycle and the goal
+		// progress scorer already consume (rec.Mutation || rec.Write): a
+		// content mutation whose tool is not on the writer-tool list leaves
+		// Write=false, and checking Write alone missed it (task 240).
+		if rec.Mutation || rec.Write {
 			a.turn.softBudgetMutation = true
+			a.softBudgetMutationSeen = true
 			return false
 		}
 	}

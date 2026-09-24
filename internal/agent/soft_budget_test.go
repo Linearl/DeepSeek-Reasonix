@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"reasonix/internal/evidence"
 	"reasonix/internal/tool"
 )
 
@@ -45,7 +46,12 @@ func TestExtendResearchBudgetDoublesGatesAndCapsAtThree(t *testing.T) {
 		t.Fatal("extension without a reason should be refused")
 	}
 
+	// researchBudget on: the nudge offers the extension (task 240 direction 2
+	// made this conditional — with the feature off the old text pointed at a
+	// tool that could not run). researchBudget lives on the embedded
+	// agentConfig, so it is assigned after construction, not set in the literal.
 	a := &Agent{}
+	a.researchBudget = true
 	a.modelRef = t.Name()
 	a.turn.budget = runBudget{started: time.Now(), rounds: readonlySoftBudgetRounds}
 
@@ -111,5 +117,141 @@ func TestExtendResearchBudgetToolFailsClosedWithoutExtender(t *testing.T) {
 	}
 	if _, err := builtin.Execute(t.Context(), []byte(`{"reason":"need more evidence"}`)); err == nil {
 		t.Fatal("the tool must fail closed outside an agent turn")
+	}
+}
+
+// Task 240, direction 1 / acceptance 1: once the session produced (or tried to
+// produce) a write, later read-only-looking turns must not be nudged as
+// "read-only planning/analysis" — including the cross-turn case where the
+// per-turn ledger has reset, and the Mutation-only receipt whose tool is not
+// on the writer-tool list (Write=false).
+func TestSoftBudgetNeverNudgesASessionThatWrote(t *testing.T) {
+	// Scenario A: the write happened as an outcome of an earlier turn; the
+	// fresh turn now looks read-only and is over the round limit.
+	a := &Agent{}
+	a.modelRef = t.Name()
+	a.turn.budget = runBudget{started: time.Now(), rounds: 1}
+	if got := a.applySoftBudget([]toolOutcome{{resolved: true}}); got.verdict != verdictContinue {
+		t.Fatalf("the writing turn itself must not nudge: %+v", got)
+	}
+	if !a.softBudgetMutationSeen {
+		t.Fatal("a write must be remembered for the whole session")
+	}
+	// Fresh turn, read-only outcomes, budget blown: still no nudge.
+	a.turn = turnRuntime{budget: runBudget{started: time.Now(), rounds: readonlySoftBudgetRounds}}
+	if got := a.applySoftBudget(nil); got.verdict == verdictRedirect {
+		t.Fatalf("a session that wrote must not be nudged as read-only: %+v", got)
+	}
+
+	// Scenario B: a Mutation-only receipt (Write=false because the tool is
+	// not on the writer-tool list) still proves implementation work.
+	b := &Agent{}
+	b.modelRef = t.Name() + "/mutation-receipt"
+	b.task.ledger = evidence.NewLedger()
+	b.task.ledger.Record(evidence.Receipt{Mutation: true})
+	b.turn = turnRuntime{budget: runBudget{started: time.Now(), rounds: readonlySoftBudgetRounds}}
+	if got := b.applySoftBudget(nil); got.verdict == verdictRedirect {
+		t.Fatalf("a Mutation receipt must exempt the session like a Write receipt: %+v", got)
+	}
+}
+
+// Task 240, direction 3 / acceptance 3: rounds whose tools failed or were
+// blocked never advance the convergence gate — the failed-round counter grows,
+// the effective round count stays discounted, and no nudge fires from errors.
+func TestSoftBudgetFailedRoundsDoNotTightenGate(t *testing.T) {
+	a := &Agent{}
+	a.modelRef = t.Name()
+	failed := toolOutcome{errMsg: "edit_file: WRITE_EVIDENCE_MISSING", blocked: true}
+	for i := 1; i <= readonlySoftBudgetRounds; i++ {
+		a.turn.budget = runBudget{started: time.Now(), rounds: i}
+		if got := a.applySoftBudget([]toolOutcome{failed}); got.verdict == verdictRedirect {
+			t.Fatalf("failed round %d must not tighten the gate: %+v", i, got)
+		}
+	}
+	if a.turn.softBudgetFailedRounds != readonlySoftBudgetRounds {
+		t.Fatalf("failed rounds counted = %d, want %d", a.turn.softBudgetFailedRounds, readonlySoftBudgetRounds)
+	}
+	// A later successful round adds to the cost axis but not the failed
+	// counter: effective rounds = rounds - failed = 11 - 10 = 1 < 10.
+	a.turn.budget = runBudget{started: time.Now(), rounds: readonlySoftBudgetRounds + 1}
+	if got := a.applySoftBudget(nil); got.verdict == verdictRedirect {
+		t.Fatalf("one successful round after ten failures is not ten rounds of progress: %+v", got)
+	}
+	if a.turn.softBudgetFailedRounds != readonlySoftBudgetRounds {
+		t.Fatalf("a successful round must not increment the failed counter: %d", a.turn.softBudgetFailedRounds)
+	}
+}
+
+// Task 240, direction 4 + direction 2 / acceptance 2 and 4: the nudge states
+// its scope (per-turn read-only convergence gate, not a session-wide cap —
+// the session has no fixed total limit), names the shaped capability id the
+// proxy accepts, and degrades to converge-only instructions when the extension
+// feature is off instead of pointing at a tool that cannot run.
+func TestSoftBudgetGuidanceScopesTurnBudgetAndNamesShapedID(t *testing.T) {
+	on := &Agent{}
+	on.researchBudget = true
+	on.modelRef = t.Name()
+	on.turn = turnRuntime{budget: runBudget{started: time.Now(), rounds: readonlySoftBudgetRounds}}
+	n := on.applySoftBudget(nil)
+	if n.verdict != verdictRedirect {
+		t.Fatalf("nudge expected: %+v", n)
+	}
+	for _, want := range []string{
+		"tool:extend_research_budget",
+		"per-turn convergence budget",
+		"not a session-wide resource cap",
+		"no fixed total limit",
+	} {
+		if !strings.Contains(n.guidance, want) {
+			t.Fatalf("guidance missing %q:\n%s", want, n.guidance)
+		}
+	}
+
+	off := &Agent{}
+	off.modelRef = t.Name() + "/extension-off"
+	off.turn = turnRuntime{budget: runBudget{started: time.Now(), rounds: readonlySoftBudgetRounds}}
+	o := off.applySoftBudget(nil)
+	if o.verdict != verdictRedirect {
+		t.Fatalf("nudge expected with the feature off too: %+v", o)
+	}
+	if strings.Contains(o.guidance, "extend_research_budget") {
+		t.Fatalf("feature-off guidance must not point at the tool:\n%s", o.guidance)
+	}
+	if !strings.Contains(o.guidance, "not enabled") {
+		t.Fatalf("feature-off guidance must say extensions are off:\n%s", o.guidance)
+	}
+
+	// Acceptance 2, live channel: on a nudged turn with the extender stamped
+	// (what Run does when the feature is on), the tool the guidance names
+	// actually doubles the budget.
+	builtin, ok := tool.LookupBuiltin("extend_research_budget")
+	if !ok {
+		t.Fatal("extend_research_budget builtin not registered")
+	}
+	out, err := builtin.Execute(tool.WithResearchBudgetExtender(t.Context(), on), []byte(`{"reason":"the conflict surface needs another pass"}`))
+	if err != nil {
+		t.Fatalf("nudged turn must be able to extend: %v", err)
+	}
+	if !strings.Contains(out, "20 rounds") {
+		t.Fatalf("extension output = %q", out)
+	}
+}
+
+// Task 240, direction 2 / acceptance 2: the bare-id dead end is gone — the
+// error names both id shapes and the concrete budget-nudge id, instead of the
+// bare "requires an mcp-tool capability id" with no way out.
+func TestUseCapabilityBareIDErrorNamesShapedIDs(t *testing.T) {
+	_, _, err := parseMCPCapabilityID("extend_research_budget")
+	if err == nil {
+		t.Fatal("a bare id must still be rejected")
+	}
+	msg := err.Error()
+	for _, want := range []string{"tool:<name>", "tool:extend_research_budget", "mcp-tool:<server>/<tool>"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("error must point at %q:\n%s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "requires an mcp-tool capability id") {
+		t.Fatalf("old dead-end text survived:\n%s", msg)
 	}
 }

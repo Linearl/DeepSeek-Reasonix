@@ -96,6 +96,12 @@ type turnRuntime struct {
 	repeatSuccessCounts map[string]int
 	loop                turnLoopState
 	softBudgetMutation  bool
+	// softBudgetFailedRounds counts turns whose tool calls failed or were
+	// blocked (task 240, direction 3): the convergence budget exists to stop
+	// a read-only investigation that keeps expanding, so rounds that produced
+	// only errors must not tighten it. The provider-cost axis (budget.rounds)
+	// keeps counting them — this counter only discounts the soft-budget gate.
+	softBudgetFailedRounds int
 
 	// constraints and engine are frozen at the start of the Run.
 	constraints runtimepolicy.Constraints

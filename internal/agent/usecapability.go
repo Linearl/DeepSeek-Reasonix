@@ -1496,7 +1496,12 @@ func parseMCPCapabilityID(id string) (server, raw string, err error) {
 	case strings.HasPrefix(id, "mcp-server:"):
 		return "", "", fmt.Errorf("%q is a server id; call it directly to connect and list tools, or use mcp-tool:<server>/<tool>", id)
 	default:
-		return "", "", fmt.Errorf("action=call requires an mcp-tool capability id, got %q", id)
+		// Task 240, direction 2: this branch was a dead end — the soft-budget
+		// nudge told the model to "call extend_research_budget", the model
+		// routed it here with a bare name, and got this error with no way out.
+		// Name the shapes the proxy accepts and the concrete id for the
+		// nudge's tool so the next attempt lands.
+		return "", "", fmt.Errorf("action=call needs a shaped capability id: local/builtin tools use tool:<name> (for the budget nudge: tool:extend_research_budget), MCP tools use mcp-tool:<server>/<tool>; action=list shows the catalog")
 	}
 }
 
