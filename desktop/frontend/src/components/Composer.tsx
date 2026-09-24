@@ -5,7 +5,8 @@ import { pendingFollowups, confirmFollowup, followupNotSubmitted, followupSessio
 import { useAppNavigationStore } from "../store/appNavigation";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
-import { ArrowRight, ArrowUp, Columns2, Brain, Check, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, Search, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, Users, X, Zap } from "lucide-react";
+import { ArrowRight, ArrowUp, ChevronsDown, Columns2, Brain, Check, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, Search, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, Users, X, Zap } from "lucide-react";
+import { useSessionExperience } from "../lib/sessionExperience";
 import { asArray } from "../lib/array";
 import { filterAtMatches } from "../lib/atMatches";
 import { DedupIndex, sha256 } from "../lib/attachDedup";
@@ -4166,6 +4167,12 @@ export function Composer({
     + (controllerTracksWait ? Math.max(0, now - promptWaitStartedAt) : 0);
   const trackLocalPause = pauseWorkClock && !controllerTracksWait;
   const [localWaitAccumMs, setLocalWaitAccumMs] = useState(0);
+  // Task 269 B: the collapse-all chevron. Hidden in deep (deep keeps work
+  // processes open by design — the button would be a no-op), never disabled
+  // while running (running is exactly the pain scenario), and a brief
+  // after-click gray-out reads as "already collapsed".
+  const experience = useSessionExperience();
+  const [collapseFlashed, setCollapseFlashed] = useState(false);
   const localPauseSinceRef = useRef<number | null>(null);
   useEffect(() => {
     localPauseSinceRef.current = null;
@@ -5164,6 +5171,29 @@ export function Composer({
                     onClick={() => { chooseQualityFloor("standard"); requestActiveDraftFrame(focusComposerInput); }}>
                     <span className="composer-task-mode-trigger__icon"><ShieldCheck size={16} aria-hidden="true" /><X className="composer-task-mode-trigger__remove" size={14} aria-hidden="true" /></span>
                     <span className="composer-task-mode-trigger__value">{t("composer.qualityFloorDelivery")}</span>
+                  </button>
+                </Tooltip>
+              </div>
+            )}
+            {experience !== "deep" && (
+              <div className="composer-meta__control composer-meta__control--fold">
+                <Tooltip label={t("composer.collapseAll")}>
+                  <button
+                    type="button"
+                    className="composer-meta__collapse-all"
+                    aria-label={t("composer.collapseAll")}
+                    title={t("composer.collapseAll")}
+                    disabled={collapseFlashed}
+                    onClick={() => {
+                      // Task 269 B: one window event; the transcript pins
+                      // every fold closed (userOverridden) so the running
+                      // reconcile tick cannot spring them back (R3 reset).
+                      window.dispatchEvent(new CustomEvent("reasonix:collapse-all-folds"));
+                      setCollapseFlashed(true);
+                      window.setTimeout(() => setCollapseFlashed(false), 1600);
+                    }}
+                  >
+                    <ChevronsDown size={16} aria-hidden="true" />
                   </button>
                 </Tooltip>
               </div>

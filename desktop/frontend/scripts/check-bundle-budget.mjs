@@ -215,6 +215,8 @@ console.log("\nbundle budgets");
 // self-heal + 4 locale keys per dialect) measures 470.7 on top of the
 // merged batch6 tip — one-shot +0.5 to 471.1.
 const initialJSBudgetKiB = 471.1; // fork: +2.8 KiB vs upstream 468.3
+// Task 269 rebased onto 471.1: measured 470.7, also within 471.1 —
+// larger one-shot value stands (audit ruling, no second ratchet).
 // Task 264 rebased onto the same budget: measured 470.3 KiB (collab-background
 // switch in the sessionCollab pane), also within 470.5 — same one-shot value
 // stands for both lines (no second ratchet needed).
