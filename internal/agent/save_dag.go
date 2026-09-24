@@ -396,7 +396,11 @@ func (s *Session) maintainDAGLog(ctx context.Context, path string, st *sessionDA
 		return
 	}
 	if err := sessionDAGSingleWriterProof(path, st, now); err != nil {
-		slog.Info("session: log rotation deferred", "path", path, "reason", err)
+		// Task 275: Info hid the only trace while the log grew without bound.
+		// A deferred rotation of an oversized log is an operational condition
+		// (lease stolen / handoff pending), not a routine note — Warn so it
+		// lands in desktop.log and the reason is greppable.
+		slog.Warn("session: log rotation deferred", "path", path, "reason", err)
 		return
 	}
 	if err := rotateSessionDAG(path, st, now); err != nil {

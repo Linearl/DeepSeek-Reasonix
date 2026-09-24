@@ -40,15 +40,19 @@ func sessionDAGSingleWriterProof(sessionPath string, st *sessionDAGState, now ti
 	if info, err := LoadSessionLeaseInfo(sessionPath); err == nil && handoffReservationActive(info, now) {
 		return &SessionRotationDeniedError{Reason: "lease handoff reservation is active"}
 	}
-	me := SessionWriterID()
-	for id, w := range st.writers {
-		if id == me || id == "" {
-			continue
-		}
-		if now.Sub(w.lastActivity) < sessionDAGWriterQuietPeriod {
-			return &SessionRotationDeniedError{Reason: fmt.Sprintf("writer %s appended %s ago", id, now.Sub(w.lastActivity).Round(time.Second))}
-		}
-	}
+	// Task 275: a lease-holding runtime no longer waits out the writers'
+	// quiet period. The old check denied rotation whenever ANY other writer
+	// id had appended within 60s — on an actively saved session (desktop tabs
+	// plus serve sharing the directory) there was always a fresher append, so
+	// maintainDAGLog deferred every time and the log grew unbounded while the
+	// only trace was an Info line nobody saw. Rotation safety never came from
+	// the quiet period: every append and every rotate runs under the same file
+	// lock, and the losing writer detects the bumped generation on its next
+	// save (CAS/replay) instead of blindly appending against a stale base. The
+	// lease (checked above) plus that lock serialization is the real proof —
+	// a foreign runtime that races the lease is a lease violation, not a
+	// rotation race, and is blocked one layer up.
+	_ = SessionWriterID // writer ids remain on the record for diagnostics
 	return nil
 }
 
