@@ -3,6 +3,15 @@ package sessioninbox
 import "time"
 
 // LookupEnvelopeReceipt checks semantic identity before sources are read again.
+//
+// Honest blank note (task 234 minor①, audit): this helper is currently a
+// ZERO-CALLER slice — its upstream caller lives in the #10545 core submission
+// face, which the scope-c ruling excluded from the pick batch. Kept, not
+// deleted: the semantic-identity contract (same key + same envelope hash →
+// idempotent hit, differing hash → ErrIdempotencyConflict) is what the
+// core-side admission must call when it lands; wire it up or remove it
+// together with that landing. Verified zero callers with a full-tree grep at
+// 018798436 (only this defining file matched).
 func (s *Store) LookupEnvelopeReceipt(key string, env PromptEnvelope) (InboxReceipt, bool, error) {
 	if key == "" {
 		return InboxReceipt{}, false, nil

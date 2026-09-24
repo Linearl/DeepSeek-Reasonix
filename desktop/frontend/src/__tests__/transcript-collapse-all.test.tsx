@@ -1,4 +1,6 @@
-// Run: tsx src/__tests__/transcript-collapse-all.test.tsx
+// Run: LANG=en node --import ./scripts/css-stub-register.mjs --import tsx src/__tests__/transcript-collapse-all.test.tsx
+//      (css-stub + LANG=en is the required harness route — a bare `tsx` first
+//       run stalls >120s on the stylesheet import; LANG guards zh copy false-reds.)
 //
 // Task 269: concise three-fix + the collapse-all backstop, pinned end to end
 // on the transcript side (the Composer button dispatches this exact event):

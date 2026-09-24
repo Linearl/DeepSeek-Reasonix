@@ -146,8 +146,12 @@ func contentSnapshotCacheKey(path string) string {
 	// metadata churn and moves exactly when content moves. A source without an
 	// identity (schema-1 log, unreadable sidecar) keeps the old size/mtime
 	// fallback rather than caching under a key too loose to trust.
+	// Task 195 d-point minor (audit): Revision is bumped by sidecar META churn
+	// (SaveBranchMeta title/topic edits) even though the bytes did not move —
+	// including it re-broke the "stable across metadata churn" claim above.
+	// The digest already carries content identity, so the key is path|digest.
 	if state, known, err := SessionContentIdentity(path); err == nil && known && state.DigestHex != "" {
-		return fmt.Sprintf("%s|%s|%d", path, state.DigestHex, state.Revision)
+		return fmt.Sprintf("%s|%s", path, state.DigestHex)
 	}
 	info, err := os.Stat(path)
 	if err != nil {

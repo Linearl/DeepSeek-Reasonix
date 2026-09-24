@@ -54,3 +54,34 @@ func TestContentSnapshotCacheKeyFallsBackWithoutIdentity(t *testing.T) {
 		t.Fatalf("missing file key = %q, want the legacy sentinel", key)
 	}
 }
+
+// TestContentSnapshotCacheKeySurvivesBranchMetaChurn pins the audit's d-point:
+// a sidecar META edit (SaveBranchMeta — title/topic) bumps Revision without
+// moving a single content byte, and that bump must NOT evict the memoization
+// (the pre-fix key was path|digest|Revision and re-broke the churn claim).
+func TestContentSnapshotCacheKeySurvivesBranchMetaChurn(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+	s := NewSession("sys")
+	s.Add(provider.Message{Role: provider.RoleUser, Content: "phoenix marker"})
+	if err := s.SaveSnapshot(path); err != nil {
+		t.Fatal(err)
+	}
+	before := contentSnapshotCacheKey(path)
+	if before == "" || before == path+"|?" {
+		t.Fatalf("identity-backed key expected, got %q", before)
+	}
+
+	meta, _, err := LoadBranchMeta(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta.CustomTitle = "retitled under churn"
+	meta.TopicID = "topic-churn"
+	if err := SaveBranchMeta(path, meta); err != nil {
+		t.Fatal(err)
+	}
+	if after := contentSnapshotCacheKey(path); after != before {
+		t.Fatalf("branch-meta churn moved the key: before=%q after=%q", before, after)
+	}
+}
