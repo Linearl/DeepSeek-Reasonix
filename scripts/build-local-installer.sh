@@ -77,7 +77,7 @@ done
 # on develop/mimo-batch6 => packaged MiMo-side sources (task 258b/199 absent from
 # the exe). Refuse to build off the release branch.
 CUR_BRANCH="$(git -C "$ROOT" branch --show-current 2>/dev/null || echo unknown)"
-[ "$CUR_BRANCH" = "develop/reasonix-batch6" ] || { echo "FATAL: checkout is '$CUR_BRANCH', must be develop/reasonix-batch6 (E1b)"; exit 1; }
+[ "$CUR_BRANCH" = "main-v2-stable" ] || { echo "FATAL: checkout is '$CUR_BRANCH', must be main-v2-stable (E1b, post-merge A ruling)"; exit 1; }
 echo "==> [1.5/3] branch guard: $CUR_BRANCH ✓"
 
 echo "==> [2/3] archive previous artifacts + wails build"
