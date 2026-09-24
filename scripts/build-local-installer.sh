@@ -92,13 +92,8 @@ if [ -d build/bin ] && [ -n "$(ls -A build/bin 2>/dev/null)" ]; then
 fi
 # Inject the version: without it the About box and update checks see "dev".
 BUILD_TS="$(date +%Y-%m-%dT%H:%M:%S%z)"
-# [E1 guard, 2026-09-24] wails runs frontend:build ("pnpm build") with cwd=desktop/
-# (no package.json there) => the pnpm step fails silently and wails embeds whatever
-# stale dist/ snapshot is on disk (1255 packaged a 03:06-10:30 dist: task 199 fix +
-# task 258b locale missing from the exe). Build the frontend explicitly here, and
-# fail closed so a stale dist can never ship again.
-echo "==> [2/3.5] frontend build (explicit, fail-closed — E1 guard)"
-( cd "$ROOT/desktop/frontend" && pnpm build ) || { echo "FATAL: frontend build failed — refusing to package a stale dist (E1)"; exit 1; }
+# [E1 guard superseded] pnpm step moved into wails.json frontend:build (cd frontend) —
+# wails owns the generate→frontend→go order; running pnpm before wails broke bindings.
 wails build -clean -platform windows/amd64 -nsis -webview2 embed -ldflags "-X main.version=$VER -X main.buildTime=$BUILD_TS"
 
 echo "==> [3/3] artifacts"
