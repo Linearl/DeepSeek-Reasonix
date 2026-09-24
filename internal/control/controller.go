@@ -1344,7 +1344,12 @@ func (c *Controller) runGoalLoopWithRawDisplay(ctx context.Context, input, raw, 
 	// sessions and unattended runs (nobody can press the panel). Task 299
 	// moved the binding into withRecoveryFenceBindings because a plain
 	// foreground turn under autopilot reached the fence unbound and was
-	// stranded again — every entry now wraps it.
+	// stranded again. The claim "every entry wraps it" is now exhaustive and
+	// mechanically enforced: all 8 newTurnOrchestrator call sites bind
+	// (controller entries, subagent-skill/prepared turns, the three
+	// turn_images wrappers), each guarded by
+	// TestEveryOrchestratorCallSiteBindsRecoveryFence's dynamic package scan —
+	// no exclusion list.
 	ctx = c.withRecoveryFenceBindings(ctx)
 	return newTurnOrchestrator(c).runGoalLoopWithRawDisplay(ctx, input, raw, display)
 }
@@ -1373,6 +1378,10 @@ func (c *Controller) runTurnWithRawDisplay(ctx context.Context, input, raw, disp
 func (c *Controller) runSubagentSkillSlash(sk skill.Skill, task, raw, display string) {
 	sk = c.skills.prepare(sk)
 	c.runGuarded(func(ctx context.Context) error {
+		// Task 299: the guarded closure's ctx comes from runGuarded, not from
+		// another turn entry, so this subagent-skill turn binds the recovery
+		// fence itself or autopilot slips back into the barrier.
+		ctx = c.withRecoveryFenceBindings(ctx)
 		planMode := c.PlanMode()
 		runner := c.skillRunner
 		if runner == nil {
@@ -1544,6 +1553,10 @@ func (c *Controller) runPreparedInvocationTurn(
 	input, raw, display string,
 	frozenImages []string,
 ) error {
+	// Task 299: both branches below run a turn — the frozen-image goal loop and
+	// the subagent-skill loop — and neither ctx passed through another entry,
+	// so the recovery fence binds here (idempotent if a caller already did).
+	ctx = c.withRecoveryFenceBindings(ctx)
 	if len(prepared.subagents) == 0 {
 		return c.runGoalLoopWithFrozenImagesRawDisplay(ctx, prepared.composed, raw, display, frozenImages)
 	}

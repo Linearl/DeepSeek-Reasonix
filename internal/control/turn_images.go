@@ -50,14 +50,19 @@ func (turn orchestratedTurn) imageReferenceInput() string {
 	return turn.raw
 }
 
+// Task 299: these three Controller wrappers hand ctx straight to the
+// orchestrator, and every caller (prepared-invocation turns, the edited-prompt
+// path, inbox_run) passes its own ctx in. Audit checked whether any bound
+// internally — none did — so each wrapper binds the recovery fence itself.
+// The binding is idempotent, so an already-bound caller pays nothing.
 func (c *Controller) runGoalLoopWithImageRefsRawDisplay(ctx context.Context, input, raw, imageRefs, display string) error {
-	return newTurnOrchestrator(c).runGoalLoopWithImageRefsRawDisplay(ctx, input, raw, imageRefs, display)
+	return newTurnOrchestrator(c).runGoalLoopWithImageRefsRawDisplay(c.withRecoveryFenceBindings(ctx), input, raw, imageRefs, display)
 }
 
 func (c *Controller) runGoalLoopWithFrozenImagesRawDisplay(ctx context.Context, input, raw, display string, images []string) error {
-	return newTurnOrchestrator(c).runGoalLoopWithFrozenImagesRawDisplay(ctx, input, raw, display, images)
+	return newTurnOrchestrator(c).runGoalLoopWithFrozenImagesRawDisplay(c.withRecoveryFenceBindings(ctx), input, raw, display, images)
 }
 
 func (c *Controller) runEditedGoalLoopWithImageRefsRawDisplay(ctx context.Context, input, raw, imageRefs, display, original string) error {
-	return newTurnOrchestrator(c).runEditedGoalLoopWithImageRefsRawDisplay(ctx, input, raw, imageRefs, display, original)
+	return newTurnOrchestrator(c).runEditedGoalLoopWithImageRefsRawDisplay(c.withRecoveryFenceBindings(ctx), input, raw, imageRefs, display, original)
 }
