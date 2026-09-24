@@ -1038,6 +1038,56 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   RemoteLastWorkspace(hostId: string): Promise<string>;
   ScanRemoteLegacyWorkbenchData(): Promise<RemoteLegacyWorkbenchData>;
   CleanRemoteLegacyWorkbenchData(target: "mirrors" | "trust"): Promise<void>;
+
+  // [drift-check repair, 2026-09-24] generated methods with no handwritten twin —
+  // property form keeps signatures auto-synced with wailsjs (task-264 build fix).
+  AIRenameSession: typeof GeneratedApp.AIRenameSession;
+  AcceptDelivery: typeof GeneratedApp.AcceptDelivery;
+  AcceptDeliveryToTab: typeof GeneratedApp.AcceptDeliveryToTab;
+  CancelTaskByKey: typeof GeneratedApp.CancelTaskByKey;
+  CaptureInboxTarget: typeof GeneratedApp.CaptureInboxTarget;
+  CreateBlankProject: typeof GeneratedApp.CreateBlankProject;
+  DismissTodoBatchForTab: typeof GeneratedApp.DismissTodoBatchForTab;
+  EnqueueInboxFollowup: typeof GeneratedApp.EnqueueInboxFollowup;
+  EnqueueInboxFollowupForTarget: typeof GeneratedApp.EnqueueInboxFollowupForTarget;
+  EnqueueInboxFollowupWithInvocations: typeof GeneratedApp.EnqueueInboxFollowupWithInvocations;
+  ExportScrollDiagnostics: typeof GeneratedApp.ExportScrollDiagnostics;
+  GetHistoryIndexStatus: typeof GeneratedApp.GetHistoryIndexStatus;
+  GetHistorySearchContext: typeof GeneratedApp.GetHistorySearchContext;
+  GetPinnedFilesForTab: typeof GeneratedApp.GetPinnedFilesForTab;
+  GetTaskCatalogStatus: typeof GeneratedApp.GetTaskCatalogStatus;
+  GetToolRecoveryForTab: typeof GeneratedApp.GetToolRecoveryForTab;
+  ListHistorySessions: typeof GeneratedApp.ListHistorySessions;
+  ListTaskEventPage: typeof GeneratedApp.ListTaskEventPage;
+  ListTaskPage: typeof GeneratedApp.ListTaskPage;
+  LookupInboxFollowupForTarget: typeof GeneratedApp.LookupInboxFollowupForTarget;
+  MCPAppCallTool: typeof GeneratedApp.MCPAppCallTool;
+  MCPAppCallToolForTab: typeof GeneratedApp.MCPAppCallToolForTab;
+  MCPAppResourceDigest: typeof GeneratedApp.MCPAppResourceDigest;
+  MCPAppResourceDigestForTab: typeof GeneratedApp.MCPAppResourceDigestForTab;
+  MCPCloseAppInstance: typeof GeneratedApp.MCPCloseAppInstance;
+  MCPCloseAppInstanceForTab: typeof GeneratedApp.MCPCloseAppInstanceForTab;
+  MCPOpenAppInstance: typeof GeneratedApp.MCPOpenAppInstance;
+  MCPOpenAppInstanceForTab: typeof GeneratedApp.MCPOpenAppInstanceForTab;
+  MCPOpenAppLink: typeof GeneratedApp.MCPOpenAppLink;
+  MCPOpenAppLinkForTab: typeof GeneratedApp.MCPOpenAppLinkForTab;
+  OpenLocalPathInExternalOpener: typeof GeneratedApp.OpenLocalPathInExternalOpener;
+  OpenTaskSessionByKey: typeof GeneratedApp.OpenTaskSessionByKey;
+  OpenTopicSessionDetached: typeof GeneratedApp.OpenTopicSessionDetached;
+  PickBlankProjectParent: typeof GeneratedApp.PickBlankProjectParent;
+  PinFileForTab: typeof GeneratedApp.PinFileForTab;
+  RebuildHistoryIndex: typeof GeneratedApp.RebuildHistoryIndex;
+  RebuildTaskCatalog: typeof GeneratedApp.RebuildTaskCatalog;
+  RequeueTaskByKey: typeof GeneratedApp.RequeueTaskByKey;
+  ResolveToolRecoveryForTab: typeof GeneratedApp.ResolveToolRecoveryForTab;
+  SaveLocalPathAs: typeof GeneratedApp.SaveLocalPathAs;
+  SearchHistoryContent: typeof GeneratedApp.SearchHistoryContent;
+  SetQualityFloor: typeof GeneratedApp.SetQualityFloor;
+  SetQualityFloorForTab: typeof GeneratedApp.SetQualityFloorForTab;
+  SetQuickCommands: typeof GeneratedApp.SetQuickCommands;
+  StopTaskByKey: typeof GeneratedApp.StopTaskByKey;
+  UnpinFileForTab: typeof GeneratedApp.UnpinFileForTab;
+
 }
 // Compile-time drift check. Exclude<A, B> extracts keys in A that are missing
 // from B. If that set is non-empty, AssertNever<non-never> fails with
@@ -2800,6 +2850,7 @@ function makeMockApp(): AppBindings {
       mockTabs = mockTabs.map((tab, index) => (index === 0 ? { ...tab, label } : tab));
     }
   };
+  // @ts-expect-error mock is a diagnostics-only object; the newest Go methods (228/254/264/267 picks) are intentionally unimplemented — real bridge delegates to wails at runtime. (type bridge 2026-09-24)
   return {
     ...makeMockSessionCatalogBindings(cloneProjectTree),
     ...makeMockBlankProjectBindings(),
