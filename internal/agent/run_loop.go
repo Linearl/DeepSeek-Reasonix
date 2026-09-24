@@ -64,6 +64,10 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string, pinned pinnedRev
 	a.turn = turnRuntime{}
 	a.turn.readShadow = newReadShadowState(a.readCoordinatorShadow)
 	a.turn.incompleteReads.legacyImplicitFullReads = a.legacyImplicitFullReads
+	// Task 283: snapshot the turn's unattended posture once — the readiness
+	// gate (readiness_gate.go) consults it instead of re-reading ctx, so every
+	// later check judges the same value the tool-recovery fence saw (107/299).
+	a.turn.unattended = a.autopilot || toolRecoveryExempt(ctx)
 	a.reads.runGen++
 	a.reads.tasks = newReadTasks(a.sess.path, a.reads.runGen)
 	a.reads.deliveries = make(map[string]readDelivery)

@@ -17,11 +17,25 @@ func (a *Agent) readinessPauseActive(check finalReadinessCheck) bool {
 		return false
 	}
 	// An unattended run has nobody to answer the recovery card, so it advises and
-	// continues instead - see unattendedReadinessAdvisory.
-	if a.autopilot {
+	// continues instead - see unattendedReadinessAdvisory. Task 283 widened this
+	// from autopilot-only to the full unattended family (see unattendedReadiness).
+	if a.unattendedReadiness() {
 		return false
 	}
 	return a.readinessContractApplies(check)
+}
+
+// unattendedReadiness reports whether THIS turn has nobody who can answer a
+// readiness recovery card. It snapshots once per turn (beginRunTurn sets
+// turn.unattended from the turn ctx) and unions the agent-level autopilot flag
+// so tests and rebuilt agents keep the old behavior. The ctx half is exactly
+// toolRecoveryExempt: autopilot, auto/yolo approval posture, or an unattended
+// host run — the same family the tool-recovery fence honors (tasks 107/299).
+// Before task 283 only a.autopilot qualified, so an auto/yolo session with no
+// explicit autopilot flag hit the FinalReadinessError branch and stopped on
+// "delivery incomplete" with nobody ever going to press the card.
+func (a *Agent) unattendedReadiness() bool {
+	return a != nil && (a.turn.unattended || a.autopilot)
 }
 
 // readinessContractApplies reports whether the turn carries a readiness contract
@@ -38,16 +52,17 @@ func (a *Agent) readinessContractApplies(check finalReadinessCheck) bool {
 // unattendedReadinessAdvisory reports whether an unmet requirement should be
 // announced and the run continued rather than paused for a human.
 //
-// Autopilot is unattended: nobody can answer a recovery card, so pausing would
-// strand the run. But dropping the gap silently - the first task-56 attempt,
-// which returned false for every autopilot turn - also waived the evidence bar
-// the contract exists to enforce, so a gap and a satisfied contract looked the
-// same afterwards. The gap is therefore kept, not waived: it is audited,
-// persisted for the next turn, and announced in the transcript, which matches
-// how upstream's evidence flow reports "Recorded as unverified: ..." instead of
-// rejecting the sign-off outright.
+// Unattended runs (task 283: autopilot plus the auto/yolo/unattended family)
+// have nobody to answer a recovery card, so pausing would strand the run. But
+// dropping the gap silently - the first task-56 attempt, which returned false
+// for every autopilot turn - also waived the evidence bar the contract exists
+// to enforce, so a gap and a satisfied contract looked the same afterwards.
+// The gap is therefore kept, not waived: it is audited, persisted for the next
+// turn, and announced in the transcript, which matches how upstream's evidence
+// flow reports "Recorded as unverified: ..." instead of rejecting the sign-off
+// outright.
 func (a *Agent) unattendedReadinessAdvisory(check finalReadinessCheck) bool {
-	return a != nil && a.autopilot && a.readinessContractApplies(check)
+	return a != nil && a.unattendedReadiness() && a.readinessContractApplies(check)
 }
 
 // readinessAdvisoryNotice is the transcript line for an advised gap.

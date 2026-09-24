@@ -20,6 +20,13 @@ type turnRuntime struct {
 	usedAnyTool        bool
 	graceRound         bool
 	recoveryGraceRound bool
+	// unattended marks a turn nobody can answer a readiness recovery card for
+	// (task 283): autopilot, or a tool-approval posture that already delegates
+	// writes to policy (auto/yolo) / an unattended host run — the same
+	// toolRecoveryExempt family the tool-recovery fence honors (task 107/299).
+	// Set once in beginRunTurn from the turn ctx so the readiness gate judges
+	// the whole turn from one snapshot.
+	unattended bool
 
 	todoProgress         int
 	trackingTodoProgress bool
