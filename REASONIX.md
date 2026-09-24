@@ -306,3 +306,10 @@ Documentation-impact: none - <why the docs stay correct>  # not edited
 <!-- 2026-09-23 追加（255 审计-3 note3 + 255dev 报告） -->
 | 3 | `hydrate-history-apply.test.ts:32`「skipHistory blocks apply」 | 单条稳定红（两次复现非 flaky） | 预存（测试过时或既有代码问题待判） | 测试文件与被测纯函数 blob 哈希 base=head 逐字节一致、与 80c66f87e diff 依赖面零交集 | 2026-09-23 |
 | 4 | `checkpoint-turn-transcript.test.tsx` | >90s 挂起（timeout 非失败） | 预存（待判，与 252 同类另查） | wt-255 与未改动基准均复现 | 2026-09-23 |
+## AB 过程教训（批六 MiMo 侧终止报告，2026-09-24 吸收）
+
+1. **工具循环自检**：同一命令连续 ≥2 次无新输出即换策略（MiMo 侧 40+ 分钟空转主因：重复 bash 探测/Get-Date/同 edit 重试）。
+2. **merge 前确认分支**：`git branch --show-current` 先查（MiMo 曾误 merge 向 main-v2-stable，回滚+3 重复 merge 清理成本高）。
+3. **跨分支共享文件预知**：`develop/mimo-batch6` 与 `develop/reasonix-batch6` 同改 `REASONIX.md`（预存红 docs）——合并时以 reasonix 侧为准（含三态归因实验完整版）。
+4. **结构体字段冲突「追加合并」必查重**（2026-09-24 事故）：解 settings_app.go 两侧加字段冲突时无脑 union 把已有 265 lab 组+FullAccess 重复加入 → `8121fbba9..e700bbf6c` tip **Go 编译不过 5 轮**（195 线发现，hotfix 02c45dc25 修）。两侧加字段合并后必须 `sort|uniq -d` 查重或直接 `go build ./desktop/`。
+5. **desktop 是独立 Go module**：验证编译必须 `cd desktop && go build ./...`（根目录 go build 不覆盖）；**pnpm build/tsc 不查 Go desktop 包**——审计 build 面缺口：Go 改动必须附 desktop go build（258b/269 两轮审计漏检即因此）。

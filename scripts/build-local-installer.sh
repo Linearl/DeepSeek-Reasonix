@@ -73,6 +73,13 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
 for pkg in cmd/reasonix-legacy-migrator cmd/reasonix-launcher desktop/cmd/update-helper cmd/reasonix; do
 	rm -f "$ROOT/$pkg/resource.syso"
 done
+# [E1b branch guard, 2026-09-24] 1458 incident: the working tree was checked out
+# on develop/mimo-batch6 => packaged MiMo-side sources (task 258b/199 absent from
+# the exe). Refuse to build off the release branch.
+CUR_BRANCH="$(git -C "$ROOT" branch --show-current 2>/dev/null || echo unknown)"
+[ "$CUR_BRANCH" = "develop/reasonix-batch6" ] || { echo "FATAL: checkout is '$CUR_BRANCH', must be develop/reasonix-batch6 (E1b)"; exit 1; }
+echo "==> [1.5/3] branch guard: $CUR_BRANCH ✓"
+
 echo "==> [2/3] archive previous artifacts + wails build"
 cd "$ROOT/desktop"
 # Move the previous build aside so a new build never silently overwrites an
@@ -85,6 +92,13 @@ if [ -d build/bin ] && [ -n "$(ls -A build/bin 2>/dev/null)" ]; then
 fi
 # Inject the version: without it the About box and update checks see "dev".
 BUILD_TS="$(date +%Y-%m-%dT%H:%M:%S%z)"
+# [E1 guard, 2026-09-24] wails runs frontend:build ("pnpm build") with cwd=desktop/
+# (no package.json there) => the pnpm step fails silently and wails embeds whatever
+# stale dist/ snapshot is on disk (1255 packaged a 03:06-10:30 dist: task 199 fix +
+# task 258b locale missing from the exe). Build the frontend explicitly here, and
+# fail closed so a stale dist can never ship again.
+echo "==> [2/3.5] frontend build (explicit, fail-closed — E1 guard)"
+( cd "$ROOT/desktop/frontend" && pnpm build ) || { echo "FATAL: frontend build failed — refusing to package a stale dist (E1)"; exit 1; }
 wails build -clean -platform windows/amd64 -nsis -webview2 embed -ldflags "-X main.version=$VER -X main.buildTime=$BUILD_TS"
 
 echo "==> [3/3] artifacts"
