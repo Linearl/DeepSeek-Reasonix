@@ -237,11 +237,22 @@ export class TranscriptKernel {
     this.clearNativeGestureLease();
     this.cancelTailFrame();
     this.userGesture = true;
-    this.intentValue = "reader";
-    this.anchorValue = this.capture(snapshot);
-    this.anchors.set(this.session, this.anchorValue);
-    if (owner === "selection") this.begin("selection", this.anchorValue);
-    else this.cancelActive("user-gesture");
+    // Task 267 (R1b): a gesture no longer demotes intent/anchor by itself.
+    // Every gesture-time write is already gated on this.userGesture alone,
+    // and observeNativeScroll re-derives the intent from a REAL displacement —
+    // so a non-displacing tap (copy button, expand reasoning, text select)
+    // keeps the tail follow alive instead of parking the view on the captured
+    // block forever ("point at the bottom, click once, the view stops
+    // following and bounces back to the last user message").
+    if (owner === "selection") {
+      // Selection scrolling still needs a concrete edge anchor. Capture under
+      // the CURRENT intent: a tail view stays a tail anchor, a reader keeps
+      // its block — either way the gesture itself changes nothing.
+      this.anchorValue = this.capture(snapshot);
+      this.begin("selection", this.anchorValue);
+    } else {
+      this.cancelActive("user-gesture");
+    }
   }
 
   endUserGesture(): ScrollTransaction | null {
@@ -250,8 +261,15 @@ export class TranscriptKernel {
     if (this.active?.transaction.kind === "selection") this.finish(this.active.transaction.id, "committed", "selection-ended");
     const deferred = this.deferredStructural;
     this.deferredStructural = null;
-    if (!deferred || deferred.generation !== this.generationValue) return null;
-    return this.begin(deferred.kind, deferred.anchor);
+    let resumed: ScrollTransaction | null = null;
+    if (deferred && deferred.generation === this.generationValue) resumed = this.begin(deferred.kind, deferred.anchor);
+    // Task 267: tail-sync requests arriving during the gesture were dropped
+    // outright (only structural kinds defer), and nothing ever retried them.
+    // With the gate open and the view still owning the tail, re-arm the
+    // subsidy so streaming growth the gesture swallowed catches up next frame.
+    // A reader intent (real upward displacement) is never touched here.
+    if (this.intentValue === "tail") this.scheduleTailSync();
+    return resumed;
   }
 
   renewNativeGesture(

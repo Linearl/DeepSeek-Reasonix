@@ -40,6 +40,8 @@ export interface SettingsView {
   experimentalCompletionSummary?: boolean;
   // Task 262: gates the whole quick-commands surface (ships off).
   experimentalQuickCommands?: boolean;
+  // Task 257: full access (yolo) — all declared write dirs pass, bash unwrapped (ships off; restart to apply).
+  experimentalFullAccess?: boolean;
   // Task 130: exposes the Settings → 本地服务 page and serve-pool controls.
   experimentalLocalServer?: boolean;
   // Task 134: structured path-scope evaluation (docs/PATH_SCOPE_RULES.md).
@@ -72,6 +74,7 @@ export interface SettingsView {
   sessionCollabAllowReadTail?: boolean;
   sessionCollabAllowCreate?: boolean;
   sessionCollabAllowSteer?: boolean;
+  sessionCollabBackground?: boolean;
   sessionCollabDailySendLimit?: number;
   // Task 225: cascade approval to the autopilot parent.
   experimentalCascadeApproval?: boolean;

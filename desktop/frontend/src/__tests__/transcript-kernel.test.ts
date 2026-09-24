@@ -118,6 +118,10 @@ kernel.endUserGesture();
 const measured = new TranscriptMeasurementLedger();
 measured.commit([{ key: "before", size: 100 }, { key: "turn:4", size: 100 }]);
 kernel.beginUserGesture(snapshot);
+// Task 267 (R1b): gesture entry no longer demotes intent by itself — a real
+// displacement is what owns the reader view now (1300px off the bottom here),
+// producing the same captured block + 20px in-block offset as before.
+kernel.observeNativeScroll(snapshot);
 measured.stage([{ key: "before", size: 180 }, { key: "turn:4", size: 340 }]);
 const heldWrites = writes.length;
 measured.publishStaged(() => !kernel.userGestureActive);
@@ -239,7 +243,11 @@ ok(!noInputChangedIntent && kernel.intent === "tail", "a delayed layout scroll c
 const renewalSnapshot = { ...snapshot, scrollTop: 600, visibleBlocks: [{ key: "renewal", top: 580, bottom: 900 }] };
 kernel.beginUserGesture(renewalSnapshot);
 kernel.renewNativeGesture({ ...renewalSnapshot, scrollTop: 640 }, 320, () => {});
-ok(kernel.anchor.kind === "block" && kernel.anchor.offsetPx === 20,
+// Task 267 (R1b): gesture entry no longer captures a block anchor — renewing
+// the lease must leave the pre-gesture TAIL intent untouched. Inventing a
+// block anchor here would be exactly the "fake scroll observation" this case
+// guards against; the real displacement below is what records user movement.
+ok(kernel.anchor.kind === "tail" && kernel.intent === "tail",
   "renewing input ownership does not invent a native scroll observation");
 kernel.observeNativeScroll({ ...renewalSnapshot, scrollTop: 640 });
 ok(kernel.anchor.kind === "block" && kernel.anchor.offsetPx === 60,

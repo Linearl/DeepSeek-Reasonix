@@ -7,7 +7,7 @@ import (
 
 // SchemaVersion is the on-disk format version. Unknown higher versions load
 // read-only and force pause; they never auto-execute.
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 // Default capacity limits.
 const (
@@ -125,16 +125,24 @@ type StructuredInvocation struct {
 
 // PromptEnvelope is the full durable body stored only in blobs/<id>.json.
 type PromptEnvelope struct {
-	DisplayText string `json:"displayText"`
-	RawText     string `json:"rawText"`
-	SubmitText  string `json:"submitText"`
+	FingerprintVersion int    `json:"fingerprintVersion,omitempty"`
+	RequestFingerprint string `json:"requestFingerprint,omitempty"`
+	DisplayText        string `json:"displayText"`
+	RawText            string `json:"rawText"`
+	SubmitText         string `json:"submitText"`
 	// Invocation is retained for schema-v1 compatibility. New writers use
 	// Invocations so multiple rich-composer entities preserve visual order.
 	Invocation  *StructuredInvocation  `json:"invocation,omitempty"`
 	Invocations []StructuredInvocation `json:"invocations,omitempty"`
 	Format      string                 `json:"format,omitempty"`
 	Attachments []string               `json:"attachments,omitempty"`
-	Refs        []RefSnapshot          `json:"refs,omitempty"`
+	// Task 234 (upstream #10457 core slice): stable per-attachment identities
+	// frozen at enqueue so a dispatch-side schema (disk.go's inline envelope)
+	// can round-trip them. Only the field the picked reliability half needs —
+	// the upstream attachment package it belongs to does not exist in this
+	// fork, so ImageInputs/ImageSourceRefs are deliberately NOT introduced.
+	AttachmentIdentities []string             `json:"attachmentIdentities,omitempty"`
+	Refs                 []RefSnapshot        `json:"refs,omitempty"`
 	// FrozenRefBlock is the exact typed reference context rendered at enqueue.
 	// FrozenImages contains already-authorized data URLs for direct image input.
 	FrozenRefBlock  string            `json:"frozenRefBlock,omitempty"`

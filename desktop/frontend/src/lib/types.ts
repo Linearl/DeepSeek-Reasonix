@@ -2338,6 +2338,8 @@ export interface DesktopStartupSettingsView {
   experimentalCompletionSummary?: boolean;
   /** Task 262: gates the whole quick-commands surface; ships off; boot snapshot. */
   experimentalQuickCommands?: boolean;
+  /** Task 257: full access (yolo) — all declared write dirs pass, bash unwrapped; ships off; restart to apply. */
+  experimentalFullAccess?: boolean;
   /** Local-server page experiment switch (task 130); off unless the user opts in. */
   experimentalLocalServer?: boolean;
   /** Path-scope rules experiment switch (task 134); off unless the user opts in. */
@@ -2362,6 +2364,7 @@ export interface DesktopStartupSettingsView {
   sessionCollabAllowReadTail?: boolean;
   sessionCollabAllowCreate?: boolean;
   sessionCollabAllowSteer?: boolean;
+  sessionCollabBackground?: boolean;
   sessionCollabDailySendLimit?: number;
   // Task 225: cascade approval to the autopilot parent.
   experimentalCascadeApproval?: boolean;

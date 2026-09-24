@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { applySessionExperience } from "./sessionExperience";
+import { applySessionExperience, isSessionExperienceHydrated } from "./sessionExperience";
 
 export type ReasoningDisplayMode = "hidden" | "summary" | "auto" | "expanded";
 export type ResolvedReasoningDisplayMode = ReasoningDisplayMode | "legacy-collapsed" | "pending";
@@ -58,7 +58,16 @@ export function hydrateReasoningDisplayMode(configuredMode: unknown, explicit = 
   // Compatibility callers still participate in the canonical two-state
   // model. Historical configuration is intentionally normalized to Standard;
   // only an explicit legacy "expanded" selection maps to Deep.
-  if (explicit) {
+  //
+  // Task 269 A2 (R2 root): this backwrite only runs while the session
+  // experience has NOT been hydrated yet. sessionExperience is the
+  // authoritative field (two-state model, task 111); a stale
+  // reasoningDisplayModeExplicit=true must not overwrite an already-arrived
+  // concise selection — the two hydrate chains raced and whoever landed last
+  // silently flipped the tier to standard (the intermittent bug's second
+  // source). Chain A hydrates first when the snapshot is present; this chain
+  // then only fixes the reasoning display state.
+  if (explicit && !isSessionExperienceHydrated()) {
     applySessionExperience(next === "expanded" ? "deep" : "standard");
   }
   if (next === currentMode && currentModeExplicit === explicit) return;

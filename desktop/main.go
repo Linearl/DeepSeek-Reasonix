@@ -122,6 +122,13 @@ func main() {
 	}
 	capturePreviousFatalCrash()
 	installFatalCrashOutput()
+	// Task 188: register WER LocalDumps early so native/OOM deaths — the class
+	// debug.SetCrashOutput cannot see — still leave a minidump behind. Best
+	// effort; logs and continues.
+	installWERLocalDumps()
+	// Task 188: deliberate-crash acceptance — both crash channels above must be
+	// armed first. Unset in production; a no-op on empty.
+	runCrashTest(crashTestMode())
 
 	launch := parseDesktopLaunchArgs(os.Args[1:])
 	if maybeRelaunchPrimaryIfSuperseded(launch) {

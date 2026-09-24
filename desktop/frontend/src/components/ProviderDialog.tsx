@@ -3,8 +3,11 @@ import { createPortal } from "react-dom";
 import { useT } from "../lib/i18n";
 import { ModalCloseButton } from "./ModalCloseButton";
 
-/** A settings child dialog that owns focus and Escape without closing settings. */
-export function ProviderDialog({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
+/** A settings child dialog that owns focus and Escape without closing settings.
+ *  wide (task 278) widens the shell for panels whose rows carry a search box,
+ *  a title input and a content column — the quick-command manager — without
+ *  changing the default 620px for every other caller. */
+export function ProviderDialog({ title, children, onClose, wide }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean }) {
   const id = useId();
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
@@ -31,7 +34,7 @@ export function ProviderDialog({ title, children, onClose }: { title: string; ch
     return () => window.removeEventListener("keydown", keydown, true);
   }, []);
   return createPortal(<div className="modal-backdrop provider-dialog-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-    <div ref={ref} className="modal provider-dialog" role="dialog" aria-modal="true" aria-labelledby={id}>
+    <div ref={ref} className={`modal provider-dialog${wide ? " provider-dialog--wide" : ""}`} role="dialog" aria-modal="true" aria-labelledby={id}>
       <header><h3 id={id}>{title}</h3><ModalCloseButton label={t("common.close")} onClick={onClose} /></header>
       {children}
     </div>

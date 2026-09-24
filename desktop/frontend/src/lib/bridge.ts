@@ -346,6 +346,9 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   ConsolidateSessionRecoveryCopies(path: string, winnerPath?: string): Promise<ConsolidationReport>;
   ConsolidateTopicRecoveryCopies(scope: string, workspaceRoot: string, topicID: string): Promise<ConsolidationReport>;
   ForceConsolidateSessionRecoveryCopies(path: string, winnerPath?: string): Promise<ConsolidationReport>;
+  // Task 203: is this conversation open in two live tabs of this window? The
+  // merge surface refuses while it is, so the dual writer is resolved first.
+  IsConversationDualOpen(sessionPath: string): Promise<boolean>;
   PreviewRecoveryChain(mainPath: string, chainPath: string): Promise<RecoveryChainPreview>;
   PreviewRecoveryChainMessages(mainPath: string, chainPath: string, limit?: number): Promise<RecoveryChainPreviewMessage[]>;
   ForceConsolidateTopicRecoveryCopies(scope: string, workspaceRoot: string, topicID: string): Promise<ConsolidationReport>;
@@ -434,6 +437,13 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
     maxItems: number;
     maxBytes: number;
   }>;
+  // Task 234 (upstream #10547): optional attachment-reader bridges. The
+  // desktop host may not expose them (this fork has no draft-credential or
+  // session-attachment store); MessageAttachments guards each call with a
+  // typeof check and degrades to the workspace attachment path.
+  ReadDraftImageForTab?(tabID: string, token: string): Promise<string>;
+  ReadSessionAttachmentForTab?(tabID: string, digest: string, offset: number): Promise<{ data?: string; nextOffset: number; done: boolean }>;
+  AttachmentDataURLForTab?(tabID: string, path: string): Promise<string>;
   EnqueueInboxSteer(tabID: string, display: string, submit: string, idempotency: string): Promise<{ itemId: string; disposition: string; position: number; paused: boolean; idempotent?: boolean; error?: string }>;
   EnqueueInboxSteerForTurn?(tabID: string, turnID: string, display: string, submit: string, idempotency: string): Promise<{ itemId: string; disposition: string; position: number; paused: boolean; idempotent?: boolean; error?: string }>;
   SteerInboxItem(tabID: string, itemID: string): Promise<{
@@ -755,6 +765,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 254: the Settings switch for the agent-facing restart_update tool. Registration
   // reads the boot snapshot, so the flip applies on the next restart.
   SetExperimentalAutonomousUpdate(enabled: boolean): Promise<void>;
+  // Task 257: the full-access (yolo) lab switch. Boot resolves it into the
+  // writable-root set and the bash spec — the flip applies on the next restart.
+  SetExperimentalFullAccess(enabled: boolean): Promise<void>;
   // Task 254: the auto-resume scope dial ("off" | "goal_autopilot" | "all").
   // Takes effect live; execute reads it when it fires.
   SetAutonomousUpdateResume(mode: string): Promise<void>;
@@ -803,6 +816,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetSessionCollabHopLimit(limit: number): Promise<void>;
   // Task 173: the collaboration panel gates (settings → 实验特性 → 跨会话通信).
   SetSessionCollabGates(allowDelete: boolean, allowRequireReply: boolean, allowReadTail: boolean, allowCreate: boolean, allowSteer: boolean, dailySendLimit: number): Promise<void>;
+  // Task 264: background-woken sessions stay out of the tab bar (detached
+  // stand-up; delivery unchanged). Live per drain pass — no restart needed.
+  SetSessionCollabBackground(enabled: boolean): Promise<void>;
   // Task 225: cascade approval to the autopilot parent.
   SetExperimentalCascadeApproval(enabled: boolean): Promise<void>;
   // Fork task 160: load older history by scrolling up at the transcript top (experimental).
@@ -3485,6 +3501,7 @@ function makeMockApp(): AppBindings {
         async RetryInboxItem() {},
         async RefreshInboxItem() {},
         async InboxHasItems() { return recoveryMock; },
+        async IsConversationDualOpen() { return false; },
         async Cancel() {
           cancelled = true;
           emitMockTurnDone();
@@ -5024,6 +5041,7 @@ function makeMockApp(): AppBindings {
     },
     async SetExperimentalRestartUpdate() {},
     async SetExperimentalAutonomousUpdate() {},
+    async SetExperimentalFullAccess() {},
     async SetAutonomousUpdateResume() {},
     async ResolveTakeoverDecision() { return false; },
     async SetExperimentalSessionMonitor() {},
@@ -5052,6 +5070,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSessionCollab() {},
     async SetSessionCollabHopLimit() {},
     async SetSessionCollabGates() {},
+    async SetSessionCollabBackground() {},
     async SetExperimentalCascadeApproval() {},
     async SetExperimentalAutoLoadOlder() {},
     async SetCollabInboxMerge() {},

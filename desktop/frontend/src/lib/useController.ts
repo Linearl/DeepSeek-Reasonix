@@ -100,6 +100,31 @@ import type {
 } from "./types";
 import { reportFrontendLog } from "./frontendLog";
 
+// Task 258 相4: the projected composer running flag. The runtime-state
+// snapshot (runtime-state:changed push) has no stale guard of its own, so it
+// used to win by precedence — a fail turn whose TurnDone finalized the local
+// event flow could be overridden by a snapshot still reporting the SAME turn
+// as running, locking the input after task_stopped. Accept the snapshot's
+// running=true only when it carries a turn id the local flow has not just
+// finalized; a local running turn always beats a pre-start idle snapshot.
+export function projectRunningState(
+  active: Pick<State, "running" | "lastTurnIdAtDone">,
+  runtime: { known: boolean; running?: boolean; state?: { turnId?: string } | null },
+): boolean {
+  const local = Boolean(active.running);
+  if (!runtime.known || runtime.running === undefined) return local;
+  if (Boolean(runtime.running) === local) return local;
+  if (runtime.running && !local) {
+    const snapshotTurnId = runtime.state?.turnId?.trim();
+    // A running flag with no turn id contradicts itself; the same id as the
+    // turn that just finished is a pre-TurnDone push. Both read as stale.
+    if (!snapshotTurnId) return local;
+    if (snapshotTurnId === active.lastTurnIdAtDone) return local;
+    return true; // A genuinely newer turn whose turn_started has not arrived.
+  }
+  return local; // Local event flow is fresher than a pre-start idle snapshot.
+}
+
 export { foregroundRunningFromRuntimeMeta } from "./runtimeMeta";
 export {
   deliveryReadinessDetail,
@@ -381,6 +406,12 @@ function isStalePromptError(error: unknown): boolean {
 function handlePromptFailure(dispatchTo: (tabId: string, action: Action) => void, tabId: string, id: string, epoch: number, error: unknown, kind?: "approval" | "ask" | "mcp") {
   if (isStalePromptError(error) && kind) dispatchTo(tabId, { type: "expire_prompt", id, epoch, kind });
   else if (kind) dispatchTo(tabId, { type: "submit_prompt_failed", id, epoch });
+  // Task 272 G5: the "cannot send" incident had zero frontend-side logs —
+  // the channel existed (frontendLog.ts) but the send chain never used it.
+  // Stale errors are normal tab-switch noise; everything else is real.
+  if (!isStalePromptError(error)) {
+    reportFrontendLog("send", "prompt resolution failed", `tab=${tabId} kind=${kind ?? "turn"} id=${id}: ${errorMessage(error)}`, "error");
+  }
   replayPendingPromptsForActiveTab(tabId);
 }
 
@@ -445,6 +476,11 @@ export interface State extends ReadStatusHost {
   turnStartAt: number;
   turnDoneAt: number;
   turnLifecycleObservedAt?: number;
+  /** Task 258 相4: turn id finalized by the last locally-observed turn_done —
+   * lets the projected running state spot a runtime snapshot that still
+   * reports THIS turn as running after its terminal event (fail-turn input
+   * lock) instead of rejecting a genuinely newer turn. */
+  lastTurnIdAtDone?: string;
   /** Last runtime snapshot sequence accepted for this tab/epoch. */
   runtimeStatusEpoch?: string; runtimeStatusSeq?: number; runtimeStatusSnapshotAt?: number;
   // Completion tokens accumulated across executor usage events within the
@@ -847,6 +883,10 @@ type Action =
   | { type: "history_older_error"; error?: string }
   | { type: "history_older_exhausted" }
   | { type: "local_notice"; level: "info" | "warn"; text: string; preserveRuntime?: boolean }
+  // Task 258: a queued steer/follow-up renders its transcript bubble at
+  // receipt time (the durable hand-off already happened); inboxItemId dedupes
+  // against the agent's consume-time steer event.
+  | { type: "guidance_bubble"; text: string; inboxItemId?: string }
   | { type: "clearApproval" }
   | { type: "clearAsk" }
   | { type: "expire_prompt"; id: string; epoch: number; kind: "approval" | "ask" | "mcp" }
@@ -1490,6 +1530,8 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         currentAssistant: undefined,
         assistantSegmentOrdinal: 0,
         activeTurnId: undefined,
+        // Task 258 相4: same stale-snapshot guard as the normal turn_done.
+        lastTurnIdAtDone: e.turnId ?? s.activeTurnId ?? s.lastTurnIdAtDone,
         live: undefined,
       };
     }
@@ -1883,6 +1925,9 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
     }
     case "steer":
       if (isHostRecoveryGuidance(e.text ?? "")) return s;
+      // Task 258: the receipt-time guidance_bubble already rendered this item;
+      // the consume-time event must not double it.
+      if (e.itemId && s.items.some((item) => item.kind === "notice" && item.inboxItemId === e.itemId)) return s;
       return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "notice", id: `s${s.seq}`, level: "info", text: `${STEER_NOTICE_PREFIX}${e.text ?? ""}`, inboxItemId: e.itemId }] };
     case "approval_request": {
       if (s.cancelRequested) return s;
@@ -2050,6 +2095,9 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         currentAssistant: undefined,
         assistantSegmentOrdinal: 0,
         activeTurnId: undefined,
+        // Task 258 相4: remember which turn just finalized so a runtime
+        // snapshot still reporting THAT turn as running reads as stale.
+        lastTurnIdAtDone: e.turnId ?? s.activeTurnId ?? s.lastTurnIdAtDone,
         approval: keepPlanApproval ? s.approval : undefined,
         ask: undefined,
         mcpInteraction: undefined,
@@ -2390,6 +2438,13 @@ export function reducer(s: State, a: Action): State {
       return changed ? { ...s, items: next, historyLayoutRevision: s.historyLayoutRevision + 1, historyMutation: { seq: s.historyMutation.seq + 1, kind: "patch" } } : s;
     }
     case "local_notice": return { ...s, running: a.preserveRuntime ? s.running : false, turnActive: a.preserveRuntime ? s.turnActive : false, seq: s.seq + 1, items: [...s.items, { kind: "notice", id: `n${s.seq}`, level: a.level, text: a.text }] };
+    case "guidance_bubble": {
+      // Receipt first, event later: the same inboxItemId keeps a single bubble.
+      if (a.inboxItemId && s.items.some((item) => item.kind === "notice" && item.inboxItemId === a.inboxItemId)) return s;
+      // Append-only — this bubble rides an already-active turn, so it must
+      // never touch running/turnActive/live the way local_notice does.
+      return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "notice", id: `s${s.seq}`, level: "info", text: `${STEER_NOTICE_PREFIX}${a.text}`, inboxItemId: a.inboxItemId }] };
+    }
     case "clearApproval": {
       const next = { ...s, approval: undefined, pendingPrompt: Boolean(s.ask), resolvedPromptId: s.approval?.id ?? s.resolvedPromptId };
       return endPromptWaitIfIdle(next);
@@ -3982,6 +4037,12 @@ export function useController() {
   const rejectTurnSubmission = useCallback((tabId: string, submissionId: string, error: unknown) => {
     if (statesRef.current.get(tabId)?.pendingSubmissionId !== submissionId) return;
     dispatchTo(tabId, { type: "turn_submit_rejected", submissionId, error: `Send failed: ${errorMessage(error)}` });
+    // Task 272 G5: a rejected send used to live only in reducer state —
+    // nothing reached the log channel, so the incident's "cannot send" had
+    // no frontend trace at all. Stale/runtime-switch rejections stay quiet.
+    if (!isStalePromptError(error)) {
+      reportFrontendLog("send", "turn submission rejected", `tab=${tabId} submission=${submissionId}: ${errorMessage(error)}`, "error");
+    }
     void reconcileRuntimeAfterRejectedMutation(tabId);
   }, [dispatchTo, reconcileRuntimeAfterRejectedMutation]);
 
@@ -4137,9 +4198,13 @@ export function useController() {
         : await app.EnqueueInboxSteer(tabId, text, text, "")
       : await app.EnqueueInboxSteer(tabId, text, text, "");
     if (receipt?.error) throw new Error(receipt.error);
-    // queued_followup is success: the instruction is durable and will run at
-    // the next idle/tool-boundary kick. Do not surface it as a send failure.
-  }, []);
+    // Task 258: show the bubble at receipt time. The message is durable now;
+    // waiting for the agent's consume event (which may not fire before the
+    // turn ends, and never fires for a rejected steer) reads as "lost".
+    // queued_followup is success: the instruction runs at the next
+    // idle/tool-boundary kick, so it must not surface as a send failure.
+    dispatchTo(tabId, { type: "guidance_bubble", text, inboxItemId: receipt?.itemId });
+  }, [dispatchTo]);
 
   const steer = useCallback(async (text: string) => {
     if (!activeTabId) throw new Error(t("composer.workspaceStarting"));
@@ -4149,6 +4214,15 @@ export function useController() {
   const notice = useCallback((text: string, level: "info" | "warn" = "info") => {
     if (!activeTabId) return;
     dispatchTo(activeTabId, { type: "local_notice", level, text });
+  }, [activeTabId, dispatchTo]);
+
+  // Task 258: the guidance shelf records a receipt-time transcript bubble for
+  // a queued steer/follow-up (Composer owns the durable call, this owns the
+  // display). Same inboxItemId as the later steer event keeps one bubble.
+  const queueGuidanceBubble = useCallback((text: string, inboxItemId?: string, tabId?: string) => {
+    const target = tabId || activeTabId;
+    if (!target || !text.trim()) return;
+    dispatchTo(target, { type: "guidance_bubble", text: text.trim(), inboxItemId });
   }, [activeTabId, dispatchTo]);
 
   // Extension form dismissed/submitted locally: hide the surface. The backend
@@ -5356,7 +5430,11 @@ export function useController() {
     } catch { /* ignore */ }
   }, []);
 
-  const projectedState = useMemo(() => runtimeState.known ? { ...activeState, running: runtimeState.running ?? activeState.running } : activeState, [activeState, runtimeState.known, runtimeState.running]);
+  const projectedState = useMemo(() => {
+    if (!runtimeState.known) return activeState;
+    const projectedRunning = projectRunningState(activeState, runtimeState);
+    return projectedRunning === activeState.running ? activeState : { ...activeState, running: projectedRunning };
+  }, [activeState, runtimeState.known, runtimeState.running, runtimeState.state?.turnId]);
   return {
     state: projectedState,
     // Read another tab's transcript without switching to it: the split view mounts
@@ -5365,7 +5443,7 @@ export function useController() {
     itemsForTab: (tabId: string) => statesRef.current.get(tabId)?.items,
     liveStore,
     activeTabId,
-    send, sendToTab, recoverDeliveryToTab, runShell, runShellForTab, steer, steerForTab, notice,
+    send, sendToTab, recoverDeliveryToTab, runShell, runShellForTab, steer, steerForTab, queueGuidanceBubble, notice,
     cancel, cancelForTab, approve, approveForTab, isPromptCurrentForTab, resolvePlanDecision, resolvePlanDecisionForTab,
     resolveRecovery, resolveRecoveryForTab, answerQuestion, answerQuestionForTab,
     answerMCPInteraction, answerMCPInteractionForTab, setControllerMode, setControllerModeForTab,

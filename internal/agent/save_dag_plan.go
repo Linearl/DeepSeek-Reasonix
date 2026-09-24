@@ -17,7 +17,11 @@ type dagWritePlan struct {
 	forked      bool
 	rewound     bool
 	otherWriter string
-	renames     map[string]string
+	// divergenceClass attributes otherWriter where the fork is decided (task
+	// 203): external/local/unknown via classifyHeadDivergence. Empty unless
+	// the plan forked.
+	divergenceClass string
+	renames         map[string]string
 }
 
 // dagDiff describes how the in-memory transcript departs from the persisted
@@ -165,6 +169,10 @@ func (p *dagWritePlan) moveHead(path string, st *sessionDAGState, view dagHeadVi
 		if leafNode := st.nodes[view.head.leaf]; leafNode != nil {
 			p.otherWriter = leafNode.writer
 		}
+		// Task 203: attribute the competing writer where the fork is decided —
+		// the writer registry is live here, and the notice phrasing downstream
+		// must not guess between "another window" and an in-process writer.
+		p.divergenceClass = classifyHeadDivergence(st, p.otherWriter)
 		parent := view.parentFor(diff.k)
 		p.entries = append(p.entries, sessionDAGEntry{Type: sessionDAGTypeFork, Head: view.id, NewHead: p.head, From: parent, Kind: HeadKindConcurrent, At: now})
 		return parent, nil

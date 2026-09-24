@@ -89,6 +89,7 @@ export type AppSessionCompositionInput = {
     liveStore: LiveStore;
     activeTabId: string | undefined;
     notice: Runtime["snapshot"]["notice"];
+    queueGuidanceBubble: Runtime["snapshot"]["queueGuidanceBubble"];
     activeTab: TabMeta | undefined;
     remoteSurfaceActive: boolean;
     remoteSession: RemoteSessionApi;
@@ -142,7 +143,7 @@ export function useAppSessionComposition(input: AppSessionCompositionInput) {
   const { t, showToast, shell, runtime } = input;
   useRecoverableErrorToasts(showToast);
   const {
-    state, liveStore, activeTabId, notice, activeTab, remoteSurfaceActive, remoteSession, remoteComposerReady,
+    state, liveStore, activeTabId, notice, queueGuidanceBubble, activeTab, remoteSurfaceActive, remoteSession, remoteComposerReady,
     remoteSend, activeSessionIdentity, sessionSurfaceFence, sessionOperations,
   } = input.core;
   // remoteCancel is consumed by the shell view through core.
@@ -538,6 +539,7 @@ export function useAppSessionComposition(input: AppSessionCompositionInput) {
     goalDraftActive: collaborationMode === "goal" && !goal.trim(),
     t,
     notice,
+    queueGuidanceBubble,
     showToast,
     ports: {
       runShellForTab,

@@ -1,6 +1,6 @@
 import { createContext, lazy, memo, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
-import { BrainCircuit, ChevronDown, FileText, Folder, GitBranch, Image, MessageSquare, Pencil, RotateCcw, ScrollText } from "lucide-react";
+import { BrainCircuit, ChevronDown, FileText, GitBranch, Image, MessageSquare, Pencil, RotateCcw, ScrollText } from "lucide-react";
 import { Markdown } from "./Markdown";
 import { CopyButton } from "./CopyButton";
 import { ComposerContextCard } from "./ComposerContextCard";
@@ -9,8 +9,10 @@ import type { DisplayAttachment } from "../lib/attachmentDisplay";
 import { app } from "../lib/bridge";
 import { replaySubmitTextPreservingSelectedContext } from "../lib/editReplay";
 import { useT } from "../lib/i18n";
-import { ImageViewer } from "./ImageViewer";
 import { Tooltip } from "./Tooltip";
+// Task 234: restored with the edit-state image viewer JSX (the upstream
+// MessageAttachments move dropped the import while the state stayed).
+import { ImageViewer } from "./ImageViewer";
 import { useWorkProcessPresentation } from "../lib/sessionExperience";
 import { stripMemoryCompilerExecution } from "../lib/memoryCompilerDisplay";
 import { invocationSegmentsFromMessage, type InvocationMetadataMap } from "../lib/invocationDisplay";
@@ -24,6 +26,9 @@ import { formatSelectionLabels, languageFor, parseSelectedTextContext, stripSele
 const AssistantReasoningPanel = lazy(() => import("./AssistantReasoningPanel").then((module) => ({ default: module.AssistantReasoningPanel })));
 const MemoryCitations = lazy(() => import("./MemoryCitations").then((module) => ({ default: module.MemoryCitations })));
 const SearchSourcesPanel = lazy(() => import("./SearchSourcesPanel").then((module) => ({ default: module.SearchSourcesPanel }))); type AssistantItem = Extract<Item, { kind: "assistant" }>;
+// Task 234 (upstream #10547): the attachment render half moved into its own
+// lazy component — restore the declaration the conflict resolution dropped.
+const MessageAttachments = lazy(() => import("./MessageAttachments").then((module) => ({ default: module.MessageAttachments })));
 export type TurnActionMenu = "summary" | "rewind" | "fork";
 export const InvocationMetadataContext = createContext<InvocationMetadataMap>({});
 type ImSourceMessage = {
@@ -87,10 +92,67 @@ function imSourceLabel(source: ImSourceMessage, t: ReturnType<typeof useT>): str
   return t("settings.botFeishu");
 }
 
-function attachmentIcon(kind: "image" | "file" | "folder") {
-  if (kind === "image") return <Image size={15} />;
-  if (kind === "folder") return <Folder size={15} />;
-  return <FileText size={15} />;
+// Task 258 / 221: a drain-merged injection arrives as ONE user body — the
+// "[合并消息 ×N]" header (stamped by internal/control/inbox_merge.go) followed
+// by one "── 合并自 inbox 条目 …──" segment per original. Parse it so the
+// bubble can fold into "合并消息 ×N" and expand back to the per-original view
+// instead of rendering a wall of concatenated text.
+export type MergedMessage = { title: string; count: number; segments: { header: string; body: string }[] };
+const MERGED_TITLE_RE = /^\[合并消息 ×(\d+)\]$/;
+const MERGED_SEGMENT_PREFIX = "── 合并自 inbox 条目 ";
+
+export function parseMergedMessage(text: string): MergedMessage | null {
+  const normalized = text.replace(/^[\uFEFF\u200B]+/, "");
+  const firstBreak = normalized.search(/\r?\n/);
+  const title = (firstBreak < 0 ? normalized : normalized.slice(0, firstBreak)).trim();
+  const match = MERGED_TITLE_RE.exec(title);
+  if (!match) return null;
+  const rest = firstBreak < 0 ? "" : normalized.slice(firstBreak);
+  const segments: { header: string; body: string[] }[] = [];
+  for (const line of rest.split(/\r?\n/)) {
+    if (line.startsWith(MERGED_SEGMENT_PREFIX)) {
+      segments.push({ header: line.trim(), body: [] });
+    } else if (segments.length > 0 && line.trim()) {
+      segments[segments.length - 1].body.push(line);
+    }
+  }
+  return {
+    title,
+    count: Number(match[1]),
+    segments: segments.map((segment) => ({ header: segment.header, body: segment.body.join("\n") })),
+  };
+}
+
+function MergedMessageBody({ merged }: { merged: MergedMessage }) {
+  const t = useT();
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="msg-merged">
+      <button
+        className="msg-merged__head"
+        type="button"
+        aria-expanded={expanded}
+        aria-label={expanded ? t("msg.mergedCollapse") : t("msg.mergedExpand", { n: merged.count })}
+        onClick={() => setExpanded((value) => !value)}
+      >
+        <ChevronDown size={14} className={expanded ? "msg-merged__chevron msg-merged__chevron--open" : "msg-merged__chevron"} />
+        <span className="msg-merged__title">{merged.title}</span>
+        <span className="msg-merged__hint">{expanded ? t("msg.mergedCollapse") : t("msg.mergedExpand", { n: merged.count })}</span>
+      </button>
+      {expanded && (
+        <div className="msg-merged__body">
+          {merged.segments.length === 0
+            ? null
+            : merged.segments.map((segment, index) => (
+              <div className="msg-merged__segment" key={`${segment.header}:${index}`}>
+                <div className="msg-merged__segment-head">{segment.header}</div>
+                {segment.body && <div className="msg__text">{segment.body}</div>}
+              </div>
+            ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function mergeDisplayAttachments(existing: DisplayAttachment[], incoming: DisplayAttachment[]): DisplayAttachment[] {
@@ -206,18 +268,23 @@ export function UserMessage({
   const hasMemoryCompiler = Boolean(submitText?.includes("<memory-compiler-execution>"));
   const selectedTextEntries = useMemo(() => parseSelectedTextContext(submitText), [submitText]);
   const editableActionText = stripSelectionLabels(actionText, selectedTextEntries);
-  const { text: editableDisplayText, attachments } = parseAttachmentRefsForDisplay(editableActionText);
+  const { text: editableDisplayText, attachments: parsedAttachments } = parseAttachmentRefsForDisplay(editableActionText);
   const selectionLabels = formatSelectionLabels(selectedTextEntries);
   const displayText = [editableDisplayText, selectionLabels].filter(Boolean).join(editableDisplayText && selectionLabels ? " " : "");
+  // Task 258: fold a drain-merged injection into "合并消息 ×N" + expandable
+  // per-original segments (null for every ordinary user message).
+  const mergedMessage = useMemo(() => (imSource ? null : parseMergedMessage(displayText)), [imSource, displayText]);
   const invocationSegments = imSource ? [] : invocationSegmentsFromMessage(displayText, submitText, invocationMetadata);
   const hasInvocationSegments = invocationSegments.some((segment) => segment.type === "invocation");
-  const orderedAttachments = sortDisplayAttachments(attachments);
   const sourceLabel = imSource ? imSourceLabel(imSource, t) : "";
   const sentAt = createdAt === undefined ? null : messageDate(createdAt);
   const canEdit = turn !== undefined && onEdit !== undefined && !editDisabled;
   const [editing, setEditing] = useState(false);
   const [draftText, setDraftText] = useState(editableDisplayText);
-  const [draftAttachments, setDraftAttachments] = useState<DisplayAttachment[]>(attachments);
+  // Task 234: upstream renamed the parsed list to `parsedAttachments` (its
+  // render half moved into MessageAttachments); the edit-state draft seeds
+  // from the same list.
+  const [draftAttachments, setDraftAttachments] = useState<DisplayAttachment[]>(parsedAttachments);
   const [editSubmitting, setEditSubmitting] = useState(false);
   const editRef = useRef<HTMLTextAreaElement>(null);
   const [imagePreviews, setImagePreviews] = useState<Record<string, string>>({});
@@ -291,6 +358,7 @@ export function UserMessage({
       [key]: !prev[key],
     }));
   };
+  const orderedAttachments = sortDisplayAttachments(parsedAttachments);
   const orderedDraftAttachments = sortDisplayAttachments(draftAttachments);
   const imagePreviewKey = orderedAttachments
     .concat(orderedDraftAttachments)
@@ -466,6 +534,8 @@ export function UserMessage({
               </div>
             )}
           </div>
+        ) : mergedMessage ? (
+          <MergedMessageBody merged={mergedMessage} />
         ) : (
           <>
             {hasInvocationSegments && pasteBlocks.length === 0 && selectedTextBlocks.length === 0 ? (
@@ -516,50 +586,16 @@ export function UserMessage({
           </>
         )}
         {failed && <div className="msg__send-failed" data-transcript-selection-ignore>{t("msg.sendFailed")}</div>}
-        {orderedAttachments.length > 0 && (
-          <div className="msg-attachments" aria-label={t("msg.attachments")} data-transcript-selection-ignore>
-            {orderedAttachments.map((attachment, index) => {
-              const isImage = attachment.kind === "image";
-              const el = (
-                <div
-                  className={`msg-attachment msg-attachment--${attachment.kind}`}
-                  key={isImage ? undefined : `${attachment.path}:${index}`}
-                  title={isImage ? undefined : attachment.path}
-                  onClick={isImage ? () => openImageViewer(attachment.path, attachment.name) : undefined}
-                  role={isImage ? "button" : undefined}
-                  tabIndex={isImage ? 0 : undefined}
-                  onKeyDown={isImage ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openImageViewer(attachment.path, attachment.name); } } : undefined}
-                >
-                  <span className={`msg-attachment__icon msg-attachment__icon--${attachment.kind}`} aria-hidden="true">
-                    {isImage && imagePreviews[attachment.path] ? <img src={imagePreviews[attachment.path]} alt="" draggable={false} /> : attachmentIcon(attachment.kind)}
-                  </span>
-                  <span className="msg-attachment__main">
-                    <span className="msg-attachment__name">{attachment.name}</span>
-                    <span className="msg-attachment__meta">
-                      {attachment.kind === "folder"
-                        ? t("msg.folderReference")
-                        : `${attachment.ext || t("msg.fileAttachment")} · ${attachment.source === "workspace" ? t("msg.workspaceReference") : attachment.kind === "image" ? t("msg.imageAttachment") : t("msg.fileAttachment")}`}
-                    </span>
-                  </span>
-                </div>
-              );
-              if (isImage) {
-                return (
-                  <Tooltip key={`${attachment.path}:${index}`} label={t("imageViewer.clickToPreview")} block>
-                    {el}
-                  </Tooltip>
-                );
-              }
-              return el;
-            })}
-            <ImageViewer
-              open={imageViewer.open}
-              imageUrl={imageViewer.url}
-              imageName={imageViewer.name}
-              onClose={closeImageViewer}
-            />
-          </div>
-        )}
+        {parsedAttachments.length > 0 && <Suspense fallback={null}><MessageAttachments attachments={parsedAttachments} /></Suspense>}
+        {/* Task 234: restore the fork's edit-state image viewer render (the
+            upstream move into MessageAttachments dropped this JSX while the
+            state + handlers stayed for the editable attachment chips). */}
+        <ImageViewer
+          open={imageViewer.open}
+          imageUrl={imageViewer.url}
+          imageName={imageViewer.name}
+          onClose={closeImageViewer}
+        />
       </div>
       {!editing && (
         <div className="msg-meta" role="group" aria-label={t("rewind.label")}>

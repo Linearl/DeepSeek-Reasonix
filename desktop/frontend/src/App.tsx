@@ -572,6 +572,7 @@ export default function App() {
     recoverDeliveryToTab,
     runShellForTab,
     steerForTab,
+    queueGuidanceBubble,
     notice,
     cancel,
     approve,
@@ -5134,6 +5135,7 @@ export default function App() {
               splitActive={splitTabId !== null}
               onInvocationMetadataChange={handleInvocationMetadataChange}
               onSteer={handleSteer}
+              onQueueGuidanceBubble={(text, itemId) => queueGuidanceBubble(text, itemId)}
               onCancel={cancel}
               onCycleMode={cycleMode}
               onSetMode={applyMode}

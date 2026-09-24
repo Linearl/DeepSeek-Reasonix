@@ -192,6 +192,13 @@ func (a *App) SetExperimentalAutonomousUpdate(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalAutonomousUpdate(enabled) })
 }
 
+// SetExperimentalFullAccess toggles the full-access (yolo) lab switch
+// (task 257). Boot resolves it into the writable-root set and the bash spec,
+// so the flip applies on the next restart — the settings pane says so.
+func (a *App) SetExperimentalFullAccess(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalFullAccess(enabled) })
+}
+
 // SetAutonomousUpdateResume sets the auto-resume scope dial (task 254): off
 // resumes nothing, goal_autopilot resumes goal runs and autopilot sessions
 // that asked for the update, all additionally resumes every mid-turn session.
@@ -218,6 +225,15 @@ func (a *App) SetExperimentalCascadeApproval(enabled bool) error {
 func (a *App) SetSessionCollabGates(allowDelete, allowRequireReply, allowReadTail, allowCreate, allowSteer bool, dailySendLimit int) error {
 	return a.applyConfigOnly(func(c *config.Config) error {
 		return c.SetSessionCollabGates(&allowDelete, &allowRequireReply, &allowReadTail, &allowCreate, &allowSteer, &dailySendLimit)
+	})
+}
+
+// SetSessionCollabBackground toggles task-264 background mode: on, pump
+// stand-ups build a detached runtime with no visible tab; off is the baseline.
+// A regular panel setting — read live per drain pass, no restart needed.
+func (a *App) SetSessionCollabBackground(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetSessionCollabBackground(enabled)
 	})
 }
 

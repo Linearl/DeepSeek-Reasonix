@@ -184,9 +184,15 @@ func sanitizeFatalRuntimeDump(raw string) string {
 
 // installFatalCrashOutput asks the Go runtime to mirror unrecovered panics and
 // fatal runtime errors to a durable file. The runtime duplicates the descriptor,
-// so the file may be closed after SetCrashOutput returns.
+// so the file may be closed after SetCrashOutput returns. REASONIX_CRASH_TEST_FILE
+// (task 188) redirects the destination so the deliberate-crash acceptance test
+// can re-exec this binary and read the death artifact back; unset keeps the
+// default path byte-for-byte.
 func installFatalCrashOutput() {
 	path := fatalCrashPath()
+	if override := os.Getenv(crashTestFileEnv); override != "" {
+		path = override
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return
 	}

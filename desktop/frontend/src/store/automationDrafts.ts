@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { HeartbeatTask } from "../custom/features/heartbeat/heartbeat.types";
 import type { HeartbeatFrequencyType } from "../custom/features/heartbeat/heartbeat.presentation";
-export const automationEditableFields = ["title", "prompt", "interval", "enabled", "scope", "workspaceRoot", "approvalMode", "newConversationEachRun", "notifyChannels", "timeWindowStart", "timeWindowEnd"] as const;
+export const automationEditableFields = ["title", "prompt", "interval", "enabled", "scope", "workspaceRoot", "approvalMode", "newConversationEachRun", "notifyChannels", "timeWindowStart", "timeWindowEnd", "provider", "model", "goalMode", "goalText"] as const;
 type Field = typeof automationEditableFields[number];
 export type AutomationDraft = {
   baseline: HeartbeatTask | null; draft: HeartbeatTask; conflicts: Field[];

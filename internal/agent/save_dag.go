@@ -338,7 +338,7 @@ func (s *Session) adoptDAGPosition(st *sessionDAGState, plan *dagWritePlan) {
 	s.head.state = nil
 	s.head.headCount = len(st.heads)
 	if plan.forked {
-		s.head.events = append(s.head.events, HeadEvent{Kind: HeadEventForkedConcurrent, HeadID: plan.head, OtherWriter: plan.otherWriter})
+		s.head.events = append(s.head.events, HeadEvent{Kind: HeadEventForkedConcurrent, HeadID: plan.head, OtherWriter: plan.otherWriter, Class: plan.divergenceClass})
 	}
 }
 

@@ -73,6 +73,13 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
 for pkg in cmd/reasonix-legacy-migrator cmd/reasonix-launcher desktop/cmd/update-helper cmd/reasonix; do
 	rm -f "$ROOT/$pkg/resource.syso"
 done
+# [E1b branch guard, 2026-09-24] 1458 incident: the working tree was checked out
+# on develop/mimo-batch6 => packaged MiMo-side sources (task 258b/199 absent from
+# the exe). Refuse to build off the release branch.
+CUR_BRANCH="$(git -C "$ROOT" branch --show-current 2>/dev/null || echo unknown)"
+[ "$CUR_BRANCH" = "develop/reasonix-batch6" ] || { echo "FATAL: checkout is '$CUR_BRANCH', must be develop/reasonix-batch6 (E1b)"; exit 1; }
+echo "==> [1.5/3] branch guard: $CUR_BRANCH ✓"
+
 echo "==> [2/3] archive previous artifacts + wails build"
 cd "$ROOT/desktop"
 # Move the previous build aside so a new build never silently overwrites an
@@ -85,6 +92,8 @@ if [ -d build/bin ] && [ -n "$(ls -A build/bin 2>/dev/null)" ]; then
 fi
 # Inject the version: without it the About box and update checks see "dev".
 BUILD_TS="$(date +%Y-%m-%dT%H:%M:%S%z)"
+# [E1 guard superseded] pnpm step moved into wails.json frontend:build (cd frontend) —
+# wails owns the generate→frontend→go order; running pnpm before wails broke bindings.
 wails build -clean -platform windows/amd64 -nsis -webview2 embed -ldflags "-X main.version=$VER -X main.buildTime=$BUILD_TS"
 
 echo "==> [3/3] artifacts"

@@ -76,6 +76,18 @@ func TestLifecycleDiagnosticsUsePreWailsOwnershipGate(t *testing.T) {
 // this, tests that persist desktop state, sessions, cache, or CLI-style config
 // can leak into the developer's real Reasonix directories.
 func TestMain(m *testing.M) {
+	// Task 188: the deliberate-crash acceptance re-executes this same test
+	// binary with REASONIX_CRASH_TEST=panic — arm the crash channel first, then
+	// raise the unrecovered panic BEFORE any scratch dir is created, so the
+	// child's death artifact lands on the pinned REASONIX_CRASH_TEST_FILE path.
+	// An unknown mode falls through (never crash the suite on a typo); unset is
+	// the production default.
+	if mode := crashTestMode(); mode != "" {
+		if mode == "panic" {
+			installFatalCrashOutput()
+		}
+		runCrashTest(mode)
+	}
 	dir, err := os.MkdirTemp("", "reasonix-desktop-test")
 	if err != nil {
 		os.Exit(1)

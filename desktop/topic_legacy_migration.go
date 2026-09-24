@@ -42,6 +42,13 @@ func migrateLegacySessionsIntoGlobalTopicsWithGates(dir string, migrationDone, r
 	if strings.TrimSpace(dir) == "" {
 		return nil
 	}
+	// Repair deliberately runs BEFORE the migration-done short-circuit: a
+	// directory can carry a fresh migration marker while its sidebar index is
+	// still missing topics (fresh repair marker, edited projects file), and
+	// TestProjectTreeRepairsIndexedGlobalTopicsAfterMigrationMarker pins that
+	// self-heal. Task 195's cost here comes from recomputing the directory
+	// signature, which the rewritten structural signature (task 195 marker
+	// rework) already made head-window cheap — not from the gate order.
 	repairedTopicIDs := repairIndexedSessionTopicsWithGate(dir, repairDone)
 	// One-shot per dir: once the migration pass has completed, skip the full
 	// per-render session scan entirely.

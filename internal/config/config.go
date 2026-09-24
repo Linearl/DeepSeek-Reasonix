@@ -1448,6 +1448,13 @@ type AgentConfig struct {
 	// 265): the composer switcher and the settings default. Nil means on; off
 	// hides both entries and forces new sessions to light.
 	ExperimentalSubagentPolicy *bool `toml:"experimental_subagent_policy"`
+	// ExperimentalFullAccess is the "full access (yolo)" lab switch (task 257).
+	// On passes every declared write directory through the preflight and the
+	// desktop gate without authorization, and runs bash unwrapped. The zero
+	// value (off) keeps every authorization surface exactly as it was; boot
+	// resolves the value into the writable-root set and the bash spec, so a
+	// flip applies on the next restart.
+	ExperimentalFullAccess bool `toml:"experimental_full_access"`
 	// SessionCollabHopLimit caps how many hops a cross-session chain may take
 	// (task 204). 0 keeps the package default (5); values are clamped into
 	// [MinHop, MaxHopCeiling] on write, so a stored value is always legal.
@@ -1463,6 +1470,14 @@ type AgentConfig struct {
 	SessionCollabAllowReadTail     bool `toml:"session_collab_allow_read_tail"`
 	SessionCollabAllowCreate       bool `toml:"session_collab_allow_create"`
 	SessionCollabAllowSteer        bool `toml:"session_collab_allow_steer"`
+	// SessionCollabBackground keeps background-woken collaboration sessions
+	// OUT of the tab bar (task 264, user final ruling): on, a stand-up builds
+	// a detached runtime with no visible tab — mail still lands and is
+	// processed through the detached delivery branch. Off (the default) is
+	// byte-for-byte baseline: stand-up opens and activates a tab. This is a
+	// regular panel setting, NOT the task-224 consumption switch (that one
+	// stops delivery entirely); delivery semantics do not change here.
+	SessionCollabBackground bool `toml:"session_collab_background"`
 	// SessionCollabDailySendLimit caps how many cross-session messages one
 	// session may send per day (task 173 ⑥, anti-storm). 0 keeps the package
 	// default (no cap).
@@ -1509,12 +1524,13 @@ type AgentConfig struct {
 	// button (task 153). Off by default: the queue then behaves exactly as
 	// before — one row per message, no merge affordance.
 	CollabGuidanceMerge bool `toml:"collab_guidance_merge"`
-	// ExperimentalCollabBackgroundDelivery (task 224) makes collab delivery
-	// open the target tab inactive instead of activating it — the woken
-	// conversation runs in the background without stealing focus. Off by
-	// default (iron rule 2): delivery keeps its historical auto-activate
-	// behavior so existing flows are unchanged. Host-only this round; the
-	// settings-panel switch lands with the 173 panel later.
+	// ExperimentalCollabBackgroundDelivery (task 224, redo semantics) switches
+	// MailStore's sole consumer: ON, the host pump does NOT stand up sessions
+	// or deliver at all — messages stay in the mailbox for the agent's
+	// drain_inbox tool; OFF (default, iron rule 2) is the historical pump
+	// delivery. It is a CONSUMPTION switch, not an activation policy — for
+	// "background sessions stay out of the tab bar" see session_collab
+	// background (task 264), which keeps delivery exactly as it was.
 	ExperimentalCollabBackgroundDelivery bool `toml:"experimental_collab_background_delivery"`
 	// PerfMonitorIntervalSeconds is the sampler interval; 0 keeps the built-in
 	// default (5s) and values outside 1..300 are clamped.

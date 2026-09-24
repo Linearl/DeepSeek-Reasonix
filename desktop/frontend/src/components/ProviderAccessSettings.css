@@ -186,6 +186,11 @@
 .provider-field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .provider-dialog-backdrop { z-index: var(--z-overlay-backdrop); }
 .provider-dialog { width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow: auto; padding: 24px; background: var(--bg-elev); color: var(--fg); border: 1px solid var(--border); border-radius: 12px; }
+/* Task 278: the quick-command manager carries search + title input + content
+   column per row; 620px clipped them into a horizontal scrollbar (the task
+   262-3 content floor of 680px sat *inside* this shell and never applied).
+   Viewport cap keeps narrow screens from overflowing. */
+.provider-dialog--wide { width: min(900px, calc(100vw - 32px)); }
 .provider-dialog > header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
 .provider-dialog h3 { margin: 0; font-size: 17px; }
 .provider-dialog footer { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--border-soft); }

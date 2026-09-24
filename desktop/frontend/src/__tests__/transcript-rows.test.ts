@@ -346,7 +346,16 @@ const keys = (rows: TranscriptRow[]) => rows.map((row) => row.key).join(",");
   const foldKey = states[0].key;
   eq(defaultFoldOpen(states[0], "concise"), false, "concise keeps a running fold closed");
   eq(defaultFoldOpen(states[0], "auto"), true, "standard still live-expands while running");
-  eq(defaultFoldOpen({ hasOutsideContent: false, hasRunningWork: true }, "concise"), true, "a fold with nothing outside stays open in concise");
+  // Task 269 A1: concise OUTRANKS the whole-turn exemption (the old assertion
+  // below pinned the R1 bug — mid-run, hasOutsideContent is false, and the
+  // exemption froze the fold open); the exemption survives for standard.
+  eq(defaultFoldOpen({ hasOutsideContent: false, hasRunningWork: true }, "concise"), false, "concise collapses the whole-turn fold before the answer streams");
+  eq(defaultFoldOpen({ hasOutsideContent: false, hasRunningWork: true }, "auto"), true, "standard keeps the whole-turn exemption open");
+  // Task 269 A1: the tier-switch branch must collapse an answer-not-yet-fold
+  // instead of re-opening it — the freeze window of the intermittent bug.
+  const midRun: FoldSegmentState = { key: "midrun", hasOutsideContent: false, hasRunningWork: true, keepReasoningExpanded: false };
+  const switchedMid = reconcileFoldEntries(EMPTY_FOLDS, [midRun], "concise", true);
+  ok(switchedMid?.get("midrun")?.open === false, "switching to concise collapses the fold whose answer has not streamed yet");
 
   const seeded = reconcileFoldEntries(EMPTY_FOLDS, states, "concise", false);
   ok(seeded?.get(foldKey)?.open === false, "concise seeds a running fold closed");

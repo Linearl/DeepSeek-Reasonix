@@ -4351,13 +4351,15 @@ a[href] {
   align-items: flex-start;
   gap: 6px;
   max-width: 82%;
-  padding: 6px 12px;
+  /* Task 258: visually a standard user bubble (same metrics as .msg--user
+     .msg__body) — the queued steer/follow-up must read as the user's message. */
+  padding: 10px 16px;
   border: 1px solid var(--chat-user-border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--chat-user-bg) 55%, transparent);
+  border-radius: 14px;
+  background: var(--chat-user-bg);
+  box-shadow: var(--chat-user-shadow);
   color: var(--chat-user-fg);
-  font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.65;
 }
 .steer-line__icon {
   flex: 0 0 auto;
@@ -5125,6 +5127,60 @@ a[href] {
   border-radius: 7px;
   background: var(--panel);
   overflow: hidden;
+}
+/* Task 258: drain-merged injection folded inside the user bubble — header row
+   toggles the per-original segment list (task 221 merge display). */
+.msg-merged {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.msg-merged__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.msg-merged__chevron {
+  flex: 0 0 auto;
+  color: var(--fg-faint);
+  transition: transform 0.15s ease;
+}
+.msg-merged__chevron--open {
+  transform: rotate(-90deg);
+}
+.msg-merged__title {
+  font-weight: 550;
+  word-break: break-word;
+}
+.msg-merged__hint {
+  flex: 0 0 auto;
+  color: var(--fg-dim);
+  font-size: 12px;
+}
+.msg-merged__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.msg-merged__segment {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border-soft);
+}
+.msg-merged__segment-head {
+  color: var(--fg-faint);
+  font-size: 12px;
+  word-break: break-word;
 }
 .msg-pasted-head {
   display: flex;
@@ -8045,6 +8101,32 @@ body > .mermaid-diagram--fullscreen {
   margin-inline-start: 2px;
   display: flex;
   align-items: center;
+}
+
+/* Task 269 B: the collapse-all chevron in the composer meta band. Project
+   baseline tokens only (fg-dim idle, fg+accent on hover, soft border). */
+.composer-meta__collapse-all {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+
+.composer-meta__collapse-all:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.composer-meta__collapse-all:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .composer-meta__control--approval {
@@ -22167,7 +22249,11 @@ body > .mermaid-diagram--fullscreen {
 .composer-guidance-item {
   min-height: 32px;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) repeat(3, auto);
+  /* Task 266-A: one row must hold every control — icon, text, edit, merge,
+     guide, dismiss and the reorder arrows (select-mode checkbox + editing
+     badge included). The old repeat(3, auto) left the trailing controls to
+     spill onto a second grid line, doubling each shelf row's height. */
+  grid-template-columns: auto minmax(0, 1fr) repeat(6, auto);
   align-items: center;
   gap: 8px;
   padding: 5px 6px 5px 8px;
@@ -22210,7 +22296,10 @@ body > .mermaid-diagram--fullscreen {
 }
 
 .composer-guidance-item__preview {
-  flex-basis: 100%;
+  /* Task 266-A: grid, not flex — span the whole row so the expandable
+     preview never squeezes into a control column (the old flex-basis was
+     a leftover that grid ignores). */
+  grid-column: 1 / -1;
   min-width: 0;
   margin: 2px 0 0 18px;
   padding: 6px 8px;
@@ -40735,10 +40824,14 @@ body > .mermaid-diagram--fullscreen {
 
 /* Task 262-3: the dialog was too narrow for long snippet text (it wrapped
    mid-word). Give the wide variant a real floor plus a viewport cap so both
-   the rows and the create/edit form get usable line length. */
+   the rows and the create/edit form get usable line length.
+   Task 278: the floor moved OUT of this rule — at 680px it still lost to the
+   620px shell (.provider-dialog), which is what actually clipped the rows.
+   The wide shell (.provider-dialog--wide, 900px) now owns the width and this
+   block simply fills it. */
 .settings-quick-commands--wide {
-  width: min(680px, 92vw);
-  max-width: min(680px, 92vw);
+  width: 100%;
+  max-width: none;
 }
 .settings-quick-commands--wide .settings-quick-commands__row > textarea.mem-input {
   flex: 1 1 46%;

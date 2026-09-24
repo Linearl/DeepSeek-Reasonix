@@ -8,6 +8,7 @@ import { providerDefaultLabel, providerDisplayLabel } from "../lib/providerLabel
 import { isDockTabHidden, isLastRenderableVisibleTab, setDockTabHidden } from "../lib/dockTabs";
 import { labFlagEnabled } from "../lib/labFlags";
 import { useRemoteStore } from "../store/remote";
+import { useConfirmDialog } from "./ConfirmDialog";
 
 // Autopilot runs unattended, so it needs a wall-clock bound; this is the value the
 // settings switch falls back to when the user turns it on without typing one.
@@ -1782,7 +1783,9 @@ type ExperimentFeatureId =
   | "subagentPolicy"
   | "subagentTps"
   | "completionSummary"
-  | "quickCommands";
+  | "quickCommands"
+  // Task 257: full access (yolo).
+  | "fullAccess";
 
 function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Set when a boot-time setting is saved: apply() reloads the view, so the fact that a
@@ -1804,6 +1807,10 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // load — a session only appears once it has registered a purpose.
   const [sessionCollabRoster, setSessionCollabRoster] = useState<Awaited<ReturnType<typeof app.ListAddressableSessions>>>([]);
   type LabGroupKey = "efficiency" | "debug" | "ui" | "storage" | "misc";
+  // Task 257: turning full access ON passes one danger confirmation first —
+  // the same one-shot gate shape as Claude Code / MiMo's yolo mode. Turning
+  // it OFF never asks.
+  const { confirm: confirmFullAccess, dialog: fullAccessDialog } = useConfirmDialog();
 
 const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
   const [labFilter, setLabFilter] = useState<LabGroupKey | "all">("all");
@@ -1873,6 +1880,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "completionSummary", group: "debug", label: t("settings.completionSummary"), on: Boolean(s.experimentalCompletionSummary) },
     // Task 262: quick commands move here from the general page.
     { id: "quickCommands", group: "efficiency", label: t("settings.quickCommands"), on: Boolean(s.experimentalQuickCommands) },
+    // Task 257: full access (yolo) lands in misc beside path rules — it is a
+    // permission-shape switch, not a plain productivity toggle.
+    { id: "fullAccess", group: "misc", label: t("settings.fullAccess"), on: Boolean(s.experimentalFullAccess) },
   ];
 
   return (
@@ -1941,6 +1951,42 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
               </button>
             </div>
           ) : null}
+          {fullAccessDialog}
+          {selected === "fullAccess" && (
+            <SettingsField label={t("settings.fullAccess")} hint={t("settings.fullAccessHint")} icon={<ShieldCheck size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalFullAccess) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void (async () => {
+                      // One-shot danger gate on the way in (task 257): the
+                      // confirmation spells out that writes need no approval
+                      // afterwards. Turning it off restores the old chain
+                      // without asking.
+                      if (on) {
+                        const ok = await confirmFullAccess({
+                          title: t("settings.fullAccessConfirmTitle"),
+                          message: t("settings.fullAccessConfirmMessage"),
+                          confirmLabel: t("settings.fullAccessConfirm"),
+                          cancelLabel: t("common.cancel"),
+                          tone: "danger",
+                        });
+                        if (!ok) return;
+                      }
+                      await apply(() => app.SetExperimentalFullAccess(on));
+                      // Boot snapshot: the writable-root set and the bash spec
+                      // are built at startup, so the flip lands on restart.
+                      setRestartNeeded(true);
+                    })()}
+                  >
+                    {t(on ? "settings.fullAccess.on" : "settings.fullAccess.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
           {selected === "restartUpdate" && (
             <SettingsField label={t("settings.restartUpdate")} hint={t("settings.restartUpdateHint")} icon={<RefreshCw size={18} />}>
               <SettingsOptions layout="field" className="set-seg">
@@ -2505,6 +2551,24 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                     await app.SetSessionCollabHopLimit(hopLimit);
                   })}
                 />
+              </SettingsField>
+              {/* Task 264: background-woken sessions stay out of the tab bar.
+                  A regular live panel setting (unlike the task-224
+                  consumption switch) — delivery is unchanged, only where the
+                  woken runtime lands. */}
+              <SettingsField label={t("settings.sessionCollabBackground")} hint={t("settings.sessionCollabBackgroundHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.sessionCollabBackground) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetSessionCollabBackground(on))}
+                    >
+                      {t(on ? "settings.sessionCollabBackground.on" : "settings.sessionCollabBackground.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
               </SettingsField>
               {/* Task 173: the collaboration panel gates (one apply, cannot half-apply). */}
               <SettingsField label={t("settings.sessionCollabGates")} hint={t("settings.sessionCollabGatesHint")} icon={<Sparkles size={18} />}>
@@ -8871,7 +8935,7 @@ function QuickCommandsManager({ s, busy, apply }: { s: SettingsView; busy: boole
         </button>
       </div>
       {open && (
-        <ProviderDialog title={t("settings.quickCommandsManage")} onClose={() => setOpen(false)}>
+        <ProviderDialog title={t("settings.quickCommandsManage")} onClose={() => setOpen(false)} wide>
           <div className="settings-quick-commands settings-quick-commands--panel settings-quick-commands--wide">
             <input
               className="mem-input"

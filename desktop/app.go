@@ -558,6 +558,12 @@ func (a *App) startup(ctx context.Context) {
 	// own install.
 	tool.SetFallbackAutonomousUpdateController(newAutonomousUpdateController(a))
 	tool.SetFallbackRestartUpdater(restartUpdaterAdapter{a})
+	// Task 203: the head-divergence notice needs to tell a real second tab
+	// apart from an in-process race; the answer is a tab-registry fact, so the
+	// desktop registers the probe once per process (same one-App contract as
+	// cascadeApp above). Left nil in CLI/serve — the local class then only
+	// logs, which is the conservative behaviour.
+	control.SetConcurrentDualTabProbe(a.isConversationDualOpen)
 	// Only the process that claimed the pre-Wails diagnostics lock consumes
 	// lifecycle evidence. This remains correct on Linux where Wails invokes
 	// OnStartup before its DBus single-instance handoff.
@@ -761,6 +767,12 @@ func (a *App) showMainWindow() {
 }
 
 func (a *App) secondInstanceLaunch() {
+	// Task 272 G3: this exact path ran silently in the incident — the launcher
+	// timed out, booted a fresh instance, and it lost the single-instance lock
+	// to the still-wedged old process, then exited without one log line. Name
+	// the yield before showing the existing window; the 17-minute silent gap
+	// must not repeat as a mystery.
+	slog.Info("desktop: second instance launched while a previous desktop is still running; yielding to the existing process")
 	a.showMainWindowFrom("second_instance")
 }
 
@@ -9696,11 +9708,24 @@ func (e *sessionLeaseBusyError) Error() string {
 	// holder's host-pid-writer id; every user-facing surface must render
 	// this wrapper instead. An empty setting means the failure gated opening
 	// the session itself (startup bind), not changing a setting on it.
+	//
+	// Task 272 L3: when the holder resolves to a concrete pid that is not
+	// this process, name it and hand over an EXISTING next step — restart
+	// reaps leftovers automatically (ReapOrphanSpawns), taskkill is there
+	// for impatience. The old "close the other window" advice was dead-end
+	// advice for the orphan-serve incidents ②③: there was no other window.
 	setting := strings.TrimSpace(e.setting)
-	if setting == "" {
-		return "this session is already open in another Reasonix window or still running in the background; close the other window or open a copy"
+	base := "this session is already open in another Reasonix window or still running in the background; close the other window or open a copy"
+	var leaseErr *agent.SessionLeaseError
+	if errors.As(e.err, &leaseErr) && leaseErr != nil && leaseErr.Info != nil {
+		if holderPID := leaseErr.Info.PID; holderPID > 0 && holderPID != os.Getpid() {
+			base = fmt.Sprintf("this session is held by a leftover background process (pid %d); restart the desktop to reap it automatically, or run taskkill /PID %d, then reopen the session", holderPID, holderPID)
+		}
 	}
-	return fmt.Sprintf("this session is already open in another Reasonix window or still running in the background; close the other window or open a copy before changing %s", setting)
+	if setting == "" {
+		return base
+	}
+	return fmt.Sprintf("%s before changing %s", base, setting)
 }
 
 func (e *sessionLeaseBusyError) Unwrap() error {
@@ -9715,6 +9740,12 @@ func userFacingSessionLeaseError(setting string, err error) error {
 		return nil
 	}
 	if errors.Is(err, agent.ErrSessionLeaseHeld) {
+		// Task 272 G4: this wrap used to be the ONLY thing that happened —
+		// the lease-held failure reached the UI and never the log, so the
+		// orphan-serve hypothesis could be neither confirmed nor refuted from
+		// desktop.log. Log it with the same content the user sees.
+		slog.Warn("desktop: session lease held; refusing session access",
+			"setting", setting, "holder", err.Error())
 		return &sessionLeaseBusyError{setting: setting, err: err}
 	}
 	return err
@@ -9766,6 +9797,13 @@ func withSessionLeaseContentionRetry[T any](acquire func() (T, error)) (T, error
 			return got, nil
 		}
 		if !errors.Is(err, agent.ErrSessionLeaseHeld) || attempt >= sessionLeaseContentionRetryAttempts {
+			if errors.Is(err, agent.ErrSessionLeaseHeld) {
+				// Task 272 G4: the retry loop used to give up silently — a
+				// lease that outlived the contention window (i.e. a real
+				// foreign holder) left no trace in desktop.log.
+				slog.Warn("desktop: session lease still held after contention retries",
+					"attempts", attempt+1, "holder", err.Error())
+			}
 			return zero, err
 		}
 		time.Sleep(sessionLeaseContentionRetryInterval)

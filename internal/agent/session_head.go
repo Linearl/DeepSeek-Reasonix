@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"os"
 	"slices"
 	"time"
 
@@ -28,6 +29,12 @@ type HeadEvent struct {
 	Kind        string
 	HeadID      string
 	OtherWriter string
+	// Class attributes the competing writer before the notice is phrased
+	// (task 203): HeadDivergenceExternal/Unknown keep the outside-window
+	// warning; HeadDivergenceLocal is an in-process writer, which the
+	// controller resolves into "dual tab open" (real dual writer) or a
+	// logged-only in-process race (the misattributed case).
+	Class string
 }
 
 const (
@@ -38,6 +45,42 @@ const (
 	// that were active within recentHeadWindow; the others remain versions.
 	HeadEventMultipleRecentHeads = "multiple_recent_heads"
 )
+
+// HeadDivergence classes for HeadEvent.Class (task 203): who wrote the
+// competing head, decided where the fork happens — the writer identity lives
+// in the replayed DAG writer registry (id + pid + hostname).
+const (
+	// HeadDivergenceExternal: a different process/host wrote the other head —
+	// the outside-window warning is accurate for this one.
+	HeadDivergenceExternal = "external"
+	// HeadDivergenceLocal: an in-process writer wrote it (delivery channel,
+	// second tab, or another save path). The controller resolves this further.
+	HeadDivergenceLocal = "local"
+	// HeadDivergenceUnknown: no identity record — conservatively treated as
+	// external so a real outside writer is never silenced.
+	HeadDivergenceUnknown = "unknown"
+)
+
+// classifyHeadDivergence attributes the competing writer from the writer
+// registry (task 203). Missing identity falls back to unknown, which callers
+// treat like external: losing a real outside-writer warning is worse than
+// keeping a conservative one.
+func classifyHeadDivergence(st *sessionDAGState, otherWriter string) string {
+	if st == nil || otherWriter == "" {
+		return HeadDivergenceUnknown
+	}
+	w := st.writers[otherWriter]
+	if w == nil || w.pid == 0 {
+		return HeadDivergenceUnknown
+	}
+	if w.pid != os.Getpid() {
+		return HeadDivergenceExternal
+	}
+	if host, err := os.Hostname(); err == nil && w.hostname != "" && host != "" && w.hostname != host {
+		return HeadDivergenceExternal
+	}
+	return HeadDivergenceLocal
+}
 
 // recentHeadWindow bounds how old a competing head may be before opening a
 // conversation stops mentioning it.

@@ -34,6 +34,9 @@ const noticeCodeKeys: Record<string, DictKey> = {
   session_recovery_depth_cap: "recovery.noticeKeptCurrent",
   session_shutdown_recovery_forked: "recovery.noticeSavedCopy",
   session_concurrent_writer: "recovery.noticeConcurrentWriter",
+  // Task 203: an in-process second tab on the same conversation — the real
+  // dual writer — gets its own phrasing instead of blaming another window.
+  session_concurrent_dual_tab: "recovery.noticeConcurrentDualTab",
   session_head_switched: "recovery.noticeHeadSwitched",
   session_head_selected: "recovery.noticeHeadSelected",
   session_also_open: "recovery.noticeAlsoOpen",

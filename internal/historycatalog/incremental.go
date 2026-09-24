@@ -7,8 +7,56 @@ import (
 	"reasonix/internal/store"
 )
 
+// sourceProjectionUnchanged reports whether the stored projection still
+// describes the file. Task 195: the transcript fingerprint is size:modTime,
+// which changes on every append-only write — comparing it first forced a full
+// reload for every change even when nothing about the indexed projection was
+// stale. When both sides carry a content digest the digest is authoritative
+// (append-only writes bump it; metadata-only churn leaves it alone).
+// Fingerprints remain the fallback for sources without an identity
+// (schema-1 logs, unreadable sidecars), where the strict comparison still
+// applies. The meta fingerprint stays part of the check either way: it gates
+// the cheap metadata refresh in indexPath before any transcript work.
 func sourceProjectionUnchanged(queryErr error, oldContent, content, oldMeta, meta, oldDigest, digest string) bool {
-	return queryErr == nil && oldContent == content && oldMeta == meta && (digest == "" || digest == oldDigest)
+	if queryErr != nil {
+		return false
+	}
+	if oldDigest != "" && digest != "" {
+		return oldDigest == digest && oldMeta == meta
+	}
+	return oldContent == content && oldMeta == meta
+}
+
+// refreshProjectionMeta rewrites only the metadata columns for a transcript
+// whose content digest is unchanged (task 195), so a title/topic edit or an
+// autosave sidecar bump never costs a full reload. The CAS revision is synced
+// with the columns so later append checks compare against the ledger's current
+// value. It returns false when the row is absent, the preview sidecar is not
+// authoritative, or the row moved under us (the WHERE clause pins
+// content_digest) — callers then continue down the append/full paths.
+func (c *Catalog) refreshProjectionMeta(ctx context.Context, path string, generation int64, metaFingerprint string, revision int64) (bool, error) {
+	meta, ok, err := agent.LoadBranchMeta(path)
+	if err != nil || !ok {
+		return false, nil
+	}
+	index, err := agent.LoadSessionDisplayIndex(store.SessionDisplayIndex(path))
+	if err != nil || !index.RevisionKnown || !index.ListingPreviewKnown {
+		return false, nil
+	}
+	lastActivity := max(int64(0), agent.SessionContentModTime(path).UnixMilli())
+	result, err := c.db.ExecContext(ctx, `UPDATE history_sources SET meta_fingerprint=?, custom_title=?, topic_id=?, topic_title=?,
+		preview=?, created_at=?, last_activity_at=?, content_revision=?, seen_generation=CASE WHEN ?>0 THEN ? ELSE seen_generation END
+		WHERE path=? AND content_digest=?`,
+		metaFingerprint, meta.CustomTitle, meta.TopicID, meta.TopicTitle, index.ListingPreview,
+		meta.CreatedAt.UnixMilli(), lastActivity, revision, generation, generation, path, index.ContentDigest)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return affected > 0, nil
 }
 
 func (c *Catalog) tryAppendPath(ctx context.Context, root Root, path string, generation int64, appendFrom,
@@ -17,7 +65,12 @@ func (c *Catalog) tryAppendPath(ctx context.Context, root Root, path string, gen
 		return false, nil
 	}
 	index, err := agent.LoadSessionDisplayIndex(store.SessionDisplayIndex(path))
-	if err != nil || !index.RevisionKnown || index.Revision != revision || index.ContentDigest != digest || index.MessageCount < appendFrom {
+	// Task 195: the tail range must be strictly non-empty. A same-count rewrite
+	// (compaction that swaps message text without changing the count) satisfies
+	// every other condition — revision+1, digest match — yet appends zero rows,
+	// leaving the old FTS terms in place. `<=` sends that case, like every
+	// other refused increment, to the full reload that rebuilds the terms.
+	if err != nil || !index.RevisionKnown || index.Revision != revision || index.ContentDigest != digest || index.MessageCount <= appendFrom {
 		return false, nil
 	}
 	tail, checkedIndex, err := agent.LoadSessionDisplayMessageRange(path, appendFrom, index.MessageCount)

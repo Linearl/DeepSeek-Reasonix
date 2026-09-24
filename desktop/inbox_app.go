@@ -515,6 +515,66 @@ func (a *App) InboxHasItems(tabID string) (bool, error) {
 	return len(ctrl.InboxSnapshot().Items) > 0, nil
 }
 
+// isConversationDualOpen reports whether the conversation rooted at
+// sessionPath is currently open in two or more live tabs of this window
+// (task 203). The same path in two tabs, or a non-empty topic opened twice
+// (the prompt-fanout shape behind the observed real dual writer), counts;
+// removed or empty-path tabs never do. Registered as the concurrent writer
+// probe at startup.
+func (a *App) isConversationDualOpen(sessionPath string) bool {
+	sessionPath = strings.TrimSpace(sessionPath)
+	if a == nil || sessionPath == "" {
+		return false
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	// First resolve this conversation's own topic from the tab that holds it
+	// (task 203 audit M1: topic counting must be scoped to the queried
+	// conversation — an unrelated conversation's dual open must neither
+	// attribute a local race as dual-tab nor block a merge group).
+	samePath := 0
+	targetTopic := ""
+	for _, tab := range a.tabs {
+		if tab == nil || tab.removed {
+			continue
+		}
+		if p := strings.TrimSpace(tab.currentSessionPath()); p == sessionPath {
+			samePath++
+			if samePath > 1 {
+				return true
+			}
+			if topic := strings.TrimSpace(tab.TopicID); topic != "" && targetTopic == "" {
+				targetTopic = topic
+			}
+		}
+	}
+	if targetTopic == "" {
+		return false
+	}
+	// Only the tabs of that topic count: prompt fanout opens the same topic in
+	// several tabs with different session paths — that is the real dual writer.
+	topicTabs := 0
+	for _, tab := range a.tabs {
+		if tab == nil || tab.removed {
+			continue
+		}
+		if strings.TrimSpace(tab.TopicID) == targetTopic {
+			topicTabs++
+			if topicTabs > 1 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// IsConversationDualOpen is the merge-surface view of the same check (task
+// 203): the recovery-copy merge refuses to run while a conversation is being
+// written by two tabs, so the user resolves the dual writer first.
+func (a *App) IsConversationDualOpen(sessionPath string) bool {
+	return a.isConversationDualOpen(sessionPath)
+}
+
 // FormatInboxRecoveryNotice builds the recovery banner text.
 func FormatInboxRecoveryNotice(n int) string {
 	if n <= 0 {

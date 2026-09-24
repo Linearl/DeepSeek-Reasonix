@@ -32,6 +32,10 @@ const (
 	NoticeCodeSessionRecoveryDepthCap                           = "session_recovery_depth_cap"
 	NoticeCodeSessionShutdownRecoveryForked                     = "session_shutdown_recovery_forked"
 	NoticeCodeSessionConcurrentWriter                           = "session_concurrent_writer"
+	// NoticeCodeSessionConcurrentDualTab (task 203): the competing writer was
+	// an in-process second tab on the same conversation — the real dual-writer
+	// case, phrased as such instead of blaming another window or process.
+	NoticeCodeSessionConcurrentDualTab                          = "session_concurrent_dual_tab"
 	NoticeCodeSessionHeadSwitched                               = "session_head_switched"
 	NoticeCodeSessionHeadSelected                               = "session_head_selected"
 	NoticeCodeSessionAlsoOpen                                   = "session_also_open"

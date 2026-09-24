@@ -95,12 +95,17 @@ type Manager struct {
 }
 
 type project struct {
-	state         string
-	root          string
-	id            string
-	color         string
-	group         string
-	cmd           *exec.Cmd
+	state string
+	root  string
+	id    string
+	color string
+	group string
+	cmd   *exec.Cmd
+	// job is the KILL_ON_JOB_CLOSE Job Object handle from proc.StartTracked
+	// (task 272 L2): it reaps this serve whenever the desktop dies by ANY
+	// path — taskkill, crash, watchdog exit — so an orphan can never keep a
+	// session lease held (incident ②④).
+	job           uintptr
 	port          int
 	token         string
 	lastUse       time.Time
@@ -156,15 +161,15 @@ func NewManager(cfg Config) (*Manager, error) {
 
 // resolveServeBinary picks the binary serve sub-processes are spawned with.
 //
-// 1. Sibling reasonix-cli.exe: launcher installs ship the real CLI beside the
-//    GUI exe, and only the CLI understands the serve contract (--port-file).
-// 2. Active CLI from current.json: after a version switch the running desktop
-//    may live in versions/<ver>.replaced-<nonce>/ — a backup of the previous
-//    layout that does not contain a CLI (task 248) — while versions/<new>/
-//    does. ResolveInstallRoot walks up from the running exe to the install
-//    root, so the active version's CLI is found from any layout directory.
-// 3. Fall back to the running executable itself; serve attempts on it fail
-//    fast into the spawn error path instead of misbehaving quietly.
+//  1. Sibling reasonix-cli.exe: launcher installs ship the real CLI beside the
+//     GUI exe, and only the CLI understands the serve contract (--port-file).
+//  2. Active CLI from current.json: after a version switch the running desktop
+//     may live in versions/<ver>.replaced-<nonce>/ — a backup of the previous
+//     layout that does not contain a CLI (task 248) — while versions/<new>/
+//     does. ResolveInstallRoot walks up from the running exe to the install
+//     root, so the active version's CLI is found from any layout directory.
+//  3. Fall back to the running executable itself; serve attempts on it fail
+//     fast into the spawn error path instead of misbehaving quietly.
 func resolveServeBinary(self string) string {
 	cli := filepath.Join(filepath.Dir(self), installlayout.CLIBinaryName())
 	if st, statErr := os.Stat(cli); statErr == nil && !st.IsDir() {
@@ -348,10 +353,13 @@ func (m *Manager) Close() {
 
 func (m *Manager) stopLocked(p *project) {
 	if p.cmd != nil && p.cmd.Process != nil {
-		_ = p.cmd.Process.Kill()
+		// Task 272 L2: KillTracked tears down the whole tree via the Job
+		// handle (plus a KillTree fallback), never just the direct child.
+		proc.KillTracked(p.cmd, p.job)
 		_, _ = p.cmd.Process.Wait()
 	}
 	p.cmd = nil
+	p.job = 0
 	p.port = 0
 	p.token = ""
 	if p.state != "degraded" {
@@ -387,13 +395,28 @@ func (m *Manager) spawn(p *project) error {
 	out := &tailBuffer{max: 8 * 1024}
 	cmd.Stdout = out
 	cmd.Stderr = out
-	if err := cmd.Start(); err != nil {
+	// Task 272 L2 (iron rule 4): start inside a Job Object instead of a bare
+	// proc.Command start — KILL_ON_JOB_CLOSE reaps the serve on ANY desktop
+	// death (taskkill/crash/watchdog exit), so it can never linger holding a
+	// session lease (incidents ②④). Required (fail-closed): a serve without
+	// the job IS the orphan bug this fixes.
+	job, err := proc.StartTrackedRequired(cmd)
+	if err != nil {
 		m.markFailed(p, fmt.Errorf("spawn serve: %w", err))
 		log.Printf("[servepool] spawn serve failed project=%q bin=%q: %v", p.id, m.bin, err)
 		return err
 	}
 	p.cmd = cmd
+	p.job = job
 	p.token = token
+	// Record who owns this spawn (serve pid + desktop pid) so a LATER desktop
+	// launch can reap an orphan whose owning desktop died (task 272 L3):
+	// "owner pid dead + serve pid alive" is the orphan signature, no parent-PID
+	// sniffing required. Audit M2: the third line records the serve image path
+	// so the reap can refuse a recycled pid that no longer maps to this binary.
+	spawnFile := filepath.Join(filepath.Dir(portFile), spawnFileRel)
+	writeSpawnRecord(spawnFile,
+		strconv.Itoa(cmd.Process.Pid)+"\n"+strconv.Itoa(os.Getpid())+"\n"+m.bin+"\n")
 	// A stale port file from a previous spawn would be read on the first
 	// poll and report success before the new serve even bound a socket —
 	// proxying to a dead port (observed 502-in-48ms). Remove it first so
@@ -442,9 +465,11 @@ func (m *Manager) spawn(p *project) error {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	_ = cmd.Process.Kill()
+	// Task 272 L2: kill through the Job so a wedged spawn's descendants go too.
+	proc.KillTracked(cmd, job)
 	_, _ = cmd.Process.Wait()
 	p.cmd = nil
+	p.job = 0
 	m.markFailed(p, fmt.Errorf("serve did not become ready within %s", m.cfg.SpawnTimeout))
 	return errors.New("servepool: " + p.err)
 }

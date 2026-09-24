@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/store"
 )
 
@@ -101,66 +103,88 @@ func migrationSignatureArtifact(name string) bool {
 		strings.HasSuffix(name, ".jsonl.meta")
 }
 
-// migrationArtifactSignature hashes bounded transcript windows so a large
-// history is never fully read. Metadata gets a full digest under the size cap;
-// mtime, size, prefix, and tail cover ordinary and restored-time rewrites.
+// migrationArtifactSignature (task 195) covers exactly what the migration and
+// repair decisions read, plus one content probe, nothing more:
+//
+//	transcript: name + FIRST LINE — the migration/repair branches read topic
+//	           id, title, recovery flag and preview presence from the
+//	           sidecar, never transcript bytes, so the first line is only a
+//	           guard against a same-size in-place rewrite with a restored
+//	           mtime (an existing contract). Append-only writes add lines and
+//	           never touch the first, so ordinary turns keep the marker valid
+//	           however short the file is — a head window could not say that,
+//	           because short files carry their whole content inside it;
+//	sidecar:    name + structural projection (topic id, custom title, recovery
+//	           flag, preview presence) — autosave revision bumps and activity
+//	           timestamps no longer move it;
+//	events:     name only — migration never reads its bytes, and it appends on
+//	           every turn.
+//
+// A rewrite that touches only tail lines (leaving the first line intact) no
+// longer invalidates the marker — accepted: migration/repair branch on sidecar
+// fields, which move with the rewrite's own metadata, and the old form's
+// per-turn invalidation is exactly the cost task 195 removes.
 func migrationArtifactSignature(path, name string) (string, error) {
+	if strings.HasSuffix(name, ".events.jsonl") {
+		if _, err := os.Stat(path); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%q\tevents", name), nil
+	}
+	if strings.HasSuffix(name, ".jsonl.meta") {
+		projection, err := migrationMetaProjection(path)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%q\tmeta\t%s", name, projection), nil
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
-
-	before, err := f.Stat()
+	info, err := f.Stat()
 	if err != nil {
 		return "", err
 	}
-	if before.IsDir() {
+	if info.IsDir() {
 		return "", fmt.Errorf("migration signature artifact %q is a directory", path)
 	}
-	digest, err := migrationArtifactContentDigest(f, before.Size(), strings.HasSuffix(name, ".jsonl.meta"))
-	if err != nil {
+	// First line only: read a bounded prefix and cut at the newline. A
+	// single-line file (the same-size rewrite fixture) falls through to its
+	// whole content, so an in-place rewrite still moves the signature.
+	buf := make([]byte, 4096)
+	n, err := f.Read(buf)
+	if err != nil && err != io.EOF {
 		return "", err
 	}
-	after, err := f.Stat()
-	if err != nil {
-		return "", err
+	line := buf[:n]
+	if i := bytes.IndexByte(line, '\n'); i >= 0 {
+		line = line[:i+1]
 	}
-	if before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) {
-		return "", fmt.Errorf("migration signature artifact changed while reading: %q", path)
-	}
-	return fmt.Sprintf("%q\t%d\t%d\t%s", name, before.Size(), before.ModTime().UnixNano(), digest), nil
+	sum := sha256.Sum256(line)
+	return fmt.Sprintf("%q\tfirst\t%s", name, hex.EncodeToString(sum[:])), nil
 }
 
-func migrationArtifactContentDigest(f *os.File, size int64, preferFull bool) (string, error) {
-	h := sha256.New()
-	if size <= migrationFingerprintWindow*2 || (preferFull && size <= migrationFullFingerprintLimit) {
-		if _, err := f.Seek(0, io.SeekStart); err != nil {
-			return "", err
-		}
-		if _, err := io.CopyN(h, f, size); err != nil {
-			return "", err
-		}
-		return hex.EncodeToString(h.Sum(nil)), nil
+// migrationMetaProjection reduces a branch-meta sidecar to the fields the
+// migration/repair passes actually branch on. Autosave rewrites the sidecar
+// (revision bump) without changing any of them, which is precisely the churn
+// that used to invalidate the marker on every turn.
+func migrationMetaProjection(metaPath string) (string, error) {
+	sessionPath := strings.TrimSuffix(metaPath, ".meta")
+	meta, ok, err := agent.LoadBranchMeta(sessionPath)
+	if err != nil {
+		return "", err
 	}
-	for _, sample := range []struct {
-		offset int64
-		length int64
-	}{
-		{offset: 0, length: migrationFingerprintWindow},
-		{offset: size - migrationFingerprintWindow, length: migrationFingerprintWindow},
-	} {
-		if _, err := fmt.Fprintf(h, "@%d:%d\n", sample.offset, sample.length); err != nil {
-			return "", err
-		}
-		if _, err := f.Seek(sample.offset, io.SeekStart); err != nil {
-			return "", err
-		}
-		if _, err := io.CopyN(h, f, sample.length); err != nil {
-			return "", err
-		}
+	if !ok {
+		return "none", nil
 	}
-	return hex.EncodeToString(h.Sum(nil)), nil
+	preview := "0"
+	if strings.TrimSpace(meta.Preview) != "" {
+		preview = "1"
+	}
+	return fmt.Sprintf("topic=%s|title=%s|recovered=%t|preview=%s",
+		meta.TopicID, meta.CustomTitle, meta.Recovered, preview), nil
 }
 
 func topicMigrationDone(dir string) bool {

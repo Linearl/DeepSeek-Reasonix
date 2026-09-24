@@ -1,6 +1,8 @@
 package anthropic
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -22,7 +24,15 @@ func streamScanEndError(name string, idleTimeout time.Duration, stalled bool, sc
 		if provider.IsConnReset(scanErr) {
 			return provider.StreamInterrupt(wrapped, provider.ClassifyStreamInterrupt(scanErr))
 		}
-		return wrapped
+		// Task 273: a non-reset scanner failure (e.g. MiMo's HTTP/2
+		// "stream ID 3; INTERNAL_ERROR; received from peer") is still a stream
+		// that never reached a clean terminal — classify it so sampling
+		// recovery applies. User cancellation and deadline expiry keep their
+		// unclassified shape: those must not trigger a retry.
+		if errors.Is(scanErr, context.Canceled) || errors.Is(scanErr, context.DeadlineExceeded) {
+			return wrapped
+		}
+		return provider.StreamInterrupt(wrapped, provider.ClassifyStreamInterrupt(scanErr))
 	}
 	if stopReason != "" {
 		return nil

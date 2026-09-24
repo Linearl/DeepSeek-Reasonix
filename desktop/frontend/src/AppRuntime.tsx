@@ -39,7 +39,7 @@ export function AppRuntime() {
   const appRenderToken = createAppRenderToken();
   useLayoutEffect(() => commitAppRenderToken(appRenderToken));
   const runtime = useAppRuntimeAdapter();
-  const { state, liveStore, activeTabId, notice } = runtime.snapshot;
+  const { state, liveStore, activeTabId, notice, queueGuidanceBubble } = runtime.snapshot;
   const t = useT();
   const { locale } = useI18n();
   const { showToast } = useToast();
@@ -106,7 +106,7 @@ export function AppRuntime() {
     showToast,
     shell,
     core: {
-      state, liveStore, activeTabId, notice, activeTab, remoteSurfaceActive, remoteSession, remoteComposerReady,
+      state, liveStore, activeTabId, notice, queueGuidanceBubble, activeTab, remoteSurfaceActive, remoteSession, remoteComposerReady,
       remoteSend, remoteCancel, activeSessionIdentity, sessionSurfaceFence, sessionOperations,
     },
     surface: navigationSurface,

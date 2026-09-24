@@ -330,12 +330,17 @@ export function defaultFoldOpen(
 ): boolean {
   const normalized = normalizeExperience(experience);
   if (normalized === "deep" || segment.keepReasoningExpanded === true) return true;
-  // A fold with nothing outside it is the whole turn: keep it open so the turn
-  // never renders as an empty header.
-  if (!segment.hasOutsideContent) return true;
-  // Concise keeps the work process collapsed while the turn runs; the user can
-  // still open it deliberately.
+  // Task 269 A1 (R1 root): concise OUTRANKS the whole-turn exemption. The
+  // exemption below was written for standard/deep and short-circuited the
+  // concise collapse whenever the answer had not streamed yet
+  // (hasOutsideContent is turn-level, false mid-run) — the fold froze open in
+  // the exact window the user complained about. The header is never empty
+  // (ProcessFoldHeader renders label + counts), so collapsing is safe.
   if (normalized === "concise") return false;
+  // A fold with nothing outside it is the whole turn: keep it open so the turn
+  // never renders as an empty header. Standard only — deep returned above,
+  // concise returned above.
+  if (!segment.hasOutsideContent) return true;
   return segment.foldActive === true || segment.hasRunningWork;
 }
 
@@ -400,9 +405,11 @@ export function reconcileFoldEntries(
       const open = normalizedExperience === "deep" || segment.keepReasoningExpanded
         ? true
         : normalizedExperience === "concise"
-          // Task 111: switching to concise collapses every fold that has content
-          // outside it, so the whole transcript lands collapsed.
-          ? !segment.hasOutsideContent
+          // Task 269 A1 (R1 root): switching to concise collapses EVERY fold —
+          // the old `!hasOutsideContent` guard re-opened folds whose answer
+          // had not streamed yet (turn-level field, false mid-run), freezing
+          // the open state across the switch window.
+          ? false
           : !segment.hasRunningWork && segment.hasOutsideContent
             ? false
             : entry.open;

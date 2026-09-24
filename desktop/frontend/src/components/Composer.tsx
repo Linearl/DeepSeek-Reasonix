@@ -5,7 +5,8 @@ import { pendingFollowups, confirmFollowup, followupNotSubmitted, followupSessio
 import { useAppNavigationStore } from "../store/appNavigation";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
-import { ArrowRight, ArrowUp, Columns2, Brain, Check, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, Search, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, Users, X, Zap } from "lucide-react";
+import { ArrowRight, ArrowUp, ChevronsDown, Columns2, Brain, Check, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, Search, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, Users, X, Zap } from "lucide-react";
+import { useSessionExperience } from "../lib/sessionExperience";
 import { asArray } from "../lib/array";
 import { filterAtMatches } from "../lib/atMatches";
 import { DedupIndex, sha256 } from "../lib/attachDedup";
@@ -15,7 +16,7 @@ import {
 import { app, onFilesDropped } from "../lib/bridge";
 import { steerInboxItemForActiveTurn } from "../lib/inboxSubmit";
 import { formatInboxError, isInboxItemMissing } from "../lib/inboxError";
-import { inboxScopeKey, mergeGuidanceTexts, mergeGuidanceWithNext } from "../lib/composerInboxQueue";
+import { inboxScopeKey, mergeGuidanceTexts, mergeGuidanceWithNext, retireSubmittedGuidance } from "../lib/composerInboxQueue";
 import { useCollabGuidanceMergeEnabled } from "../lib/collabGuidanceMergePreference";
 import { useComposerInboxRefresh } from "../lib/useComposerInboxRefresh";
 import { useComposerImeGuard } from "../lib/useComposerImeGuard";
@@ -564,6 +565,7 @@ export function Composer({
   onSplitTargetChange,
   splitActive = false,
   onSteer,
+  onQueueGuidanceBubble,
   localDurableGuidance = true,
   onCancel,
   onCycleMode,
@@ -660,6 +662,8 @@ export function Composer({
   splitActive?: boolean;
   onInvocationMetadataChange?: (metadata: Record<string, { kind: "skill" | "subagent"; color?: string }>) => void;
   onSteer?: (submitText: string, tabId?: string) => void | Promise<void>;
+  /** Task 258: receipt-time transcript bubble for a queued steer/follow-up. */
+  onQueueGuidanceBubble?: (text: string, inboxItemId?: string) => void;
   /** False when the owning surface provides its own durable remote inbox. */
   localDurableGuidance?: boolean;
   // Returns the un-sent text plus the exact durable queue IDs the backend
@@ -1313,7 +1317,21 @@ export function Composer({
     restoreComposerDraft(draft);
   }, [draftKey]);
 
-  const applyInboxQueue = useCallback((items: PendingGuidance[]) => updatePendingGuidanceForDraft(draftKey, () => items), [draftKey]);
+  // Task 258: ids the user already submitted from the shelf. The snapshot
+  // keeps returning them (queued / steer_accepted are still live backend
+  // states, so the refresh layer would resurrect the row right after the
+  // click — the observed "flash, then the row is back" no-op). The row stays
+  // retired once its receipt landed; the set resets with the inbox scope.
+  const submittedGuidanceIdsRef = useRef<Set<string>>(new Set());
+  const submittedScopeRef = useRef(inboxSessionKey);
+  useEffect(() => {
+    if (submittedScopeRef.current === inboxSessionKey) return;
+    submittedScopeRef.current = inboxSessionKey;
+    submittedGuidanceIdsRef.current.clear();
+  }, [inboxSessionKey]);
+  const applyInboxQueue = useCallback((items: PendingGuidance[]) => {
+    updatePendingGuidanceForDraft(draftKey, () => retireSubmittedGuidance(items, submittedGuidanceIdsRef.current));
+  }, [draftKey]);
   const collapseInboxQueue = useCallback(() => setGuidanceExpanded(false), []);
   const refreshInboxQueue = useCallback(() => setGuidanceRetryNonce((value) => value + 1), []);
   useComposerInboxRefresh(tabId, draftKey, guidanceDraftKey, inboxSessionKey, guidanceQueuePreviewKey, guidanceRetryNonce, running, applyInboxQueue, collapseInboxQueue, refreshInboxQueue, runtimeState.state?.revision);
@@ -2273,7 +2291,17 @@ export function Composer({
             if (!duplicate && !receipt?.itemId) throw new Error("Follow-up receipt unconfirmed");
             const itemId = receipt?.itemId;
             const consumedBeforeReceipt = itemId ? (receiptTracker?.takeConsumed(submitDraftKey, itemId) ?? false) : true;
-            if (!consumedBeforeReceipt && !finishing && itemId) {
+            // Task 258: an Enter-queued follow-up renders as a transcript
+            // bubble, not a shelf row — the shelf is for messages still
+            // waiting on the user. Two exceptions keep their row: the
+            // finishing-window request (not durable until the turn closes)
+            // and a paused queue (needs the user's intervention to move).
+            const rowStaysVisible = finishing || Boolean(receipt.paused);
+            if (itemId && !rowStaysVisible) {
+              submittedGuidanceIdsRef.current.add(itemId);
+              onQueueGuidanceBubble?.(guidanceText, itemId);
+            }
+            if (!consumedBeforeReceipt && itemId && rowStaysVisible) {
               updatePendingGuidanceForDraft(submitDraftKey, (items) => {
                 const next = items.map((item) => receipt.paused ? { ...item, paused: true } : item);
                 if (next.some((item) => item.id === itemId)) return next;
@@ -2319,9 +2347,36 @@ export function Composer({
     targetDraftKey = activeDraftKeyRef.current,
     targetTabId = tabId,
   ) => {
-    if (targetDraftKey !== activeDraftKeyRef.current || disabled || readOnly || guidanceSendingIdRef.current !== null) return;
+    // Batch-6 addendum (258 phase 1, absorbed from the MiMo AB side): every
+    // entry refusal below used to return silently — the row stayed put and
+    // the click looked dead, and a latch leaked by a batch/unmount path
+    // silenced every later send forever. Each refusal now says why, and the
+    // stale sending-latch self-heals so one stuck row cannot mute the shelf.
+    // Input-side refusals only: the receipt-side steer/follow-up bubble flow
+    // added by 258 stays toast-free (no double messaging on rejected steers).
+    if (targetDraftKey !== activeDraftKeyRef.current) {
+      showToast(t("composer.guidanceWrongDraft"), "warn");
+      return;
+    }
+    if (disabled || readOnly) {
+      showToast(t("composer.guidanceNotWritable"), "warn");
+      return;
+    }
+    if (guidanceSendingIdRef.current !== null) {
+      // A previous send left the latch held (batch path, unmounted mid-send).
+      // Clear it so one stuck row cannot silence every later click.
+      const staleId = guidanceSendingIdRef.current;
+      guidanceSendingIdRef.current = null;
+      updateGuidanceSendingIdForDraft(targetDraftKey, null);
+      if (staleId !== item.id) {
+        showToast(t("composer.guidanceSendBusyRetry"), "warn");
+      }
+    }
     const durable = !item.id.startsWith("local-");
-    if (running && item.structured) return;
+    if (running && item.structured) {
+      showToast(t("composer.guidanceStructuredBusy"), "warn");
+      return;
+    }
     updateGuidanceSendingIdForDraft(targetDraftKey, item.id);
     try {
       if (durable && guidanceNeedsRetry(item.state)) {
@@ -2336,16 +2391,23 @@ export function Composer({
       if (running && durable) {
         const receipt = await steerInboxItemForActiveTurn(app, targetTabId || "", item.id, turnId);
         if (receipt?.error) throw new Error(receipt.error);
-        if (receipt?.disposition === "steer_accepted") {
-          updatePendingGuidanceForDraft(targetDraftKey, (items) => items.filter((queued) => queued.id !== item.id));
-        } else {
-          // Rejected steers remain the same durable follow-up item. The
-          // Controller owns its later FIFO dispatch.
-          updatePendingGuidanceForDraft(targetDraftKey, (items) =>
-            items.map((queued) => queued.id === item.id
-              ? { ...queued, intent: "followup", state: "queued" }
-              : queued),
-          );
+        // Task 258: BOTH dispositions retire the row. The message is durable
+        // now — an accepted steer is consumed by the agent, a rejected one is
+        // a queued follow-up the Controller dispatches later — so the shelf
+        // must not resurrect the row on the next snapshot refresh (that
+        // flash-and-return is the reported "click does nothing" no-op).
+        submittedGuidanceIdsRef.current.add(item.id);
+        updatePendingGuidanceForDraft(targetDraftKey, (items) => items.filter((queued) => queued.id !== item.id));
+        // The bubble carries the full body; the shelf preview is 120 chars.
+        let bubbleText = item.text.trim();
+        try {
+          const env = await app.ReadInboxItem(targetTabId || "", item.id);
+          bubbleText = (env.displayText || env.submitText || bubbleText).trim() || bubbleText;
+        } catch { /* preview-only shelf text */ }
+        onQueueGuidanceBubble?.(bubbleText, item.id);
+        if (receipt?.disposition !== "steer_accepted") {
+          // Rejected steers are follow-ups on disk now; let nonce consumers
+          // re-read scope (the row stays suppressed by the submitted set).
           setGuidanceRetryNonce((value) => value + 1);
         }
         return;
@@ -2494,7 +2556,10 @@ export function Composer({
   useEffect(() => {
     let cancelled = false;
     const targetTabId = tabId || "";
-    if (!targetTabId) {
+    // The badge is a read-only probe: an app binding without the method (task
+    // 221#6 landed after this harness's stub surface; also serve/remote shells)
+    // must read as "no unread" instead of throwing inside the mount effect.
+    if (!targetTabId || typeof app.UnreadMailCount !== "function") {
       setGuidanceUnread(0);
       return () => { cancelled = true; };
     }
@@ -4102,6 +4167,12 @@ export function Composer({
     + (controllerTracksWait ? Math.max(0, now - promptWaitStartedAt) : 0);
   const trackLocalPause = pauseWorkClock && !controllerTracksWait;
   const [localWaitAccumMs, setLocalWaitAccumMs] = useState(0);
+  // Task 269 B: the collapse-all chevron. Hidden in deep (deep keeps work
+  // processes open by design — the button would be a no-op), never disabled
+  // while running (running is exactly the pain scenario), and a brief
+  // after-click gray-out reads as "already collapsed".
+  const experience = useSessionExperience();
+  const [collapseFlashed, setCollapseFlashed] = useState(false);
   const localPauseSinceRef = useRef<number | null>(null);
   useEffect(() => {
     localPauseSinceRef.current = null;
@@ -5100,6 +5171,29 @@ export function Composer({
                     onClick={() => { chooseQualityFloor("standard"); requestActiveDraftFrame(focusComposerInput); }}>
                     <span className="composer-task-mode-trigger__icon"><ShieldCheck size={16} aria-hidden="true" /><X className="composer-task-mode-trigger__remove" size={14} aria-hidden="true" /></span>
                     <span className="composer-task-mode-trigger__value">{t("composer.qualityFloorDelivery")}</span>
+                  </button>
+                </Tooltip>
+              </div>
+            )}
+            {experience !== "deep" && (
+              <div className="composer-meta__control composer-meta__control--fold">
+                <Tooltip label={t("composer.collapseAll")}>
+                  <button
+                    type="button"
+                    className="composer-meta__collapse-all"
+                    aria-label={t("composer.collapseAll")}
+                    title={t("composer.collapseAll")}
+                    disabled={collapseFlashed}
+                    onClick={() => {
+                      // Task 269 B: one window event; the transcript pins
+                      // every fold closed (userOverridden) so the running
+                      // reconcile tick cannot spring them back (R3 reset).
+                      window.dispatchEvent(new CustomEvent("reasonix:collapse-all-folds"));
+                      setCollapseFlashed(true);
+                      window.setTimeout(() => setCollapseFlashed(false), 1600);
+                    }}
+                  >
+                    <ChevronsDown size={16} aria-hidden="true" />
                   </button>
                 </Tooltip>
               </div>

@@ -358,9 +358,11 @@ type SettingsView struct {
 	ExperimentalSubagentTps        bool `json:"experimentalSubagentTps"`
 	ExperimentalCompletionSummary  bool `json:"experimentalCompletionSummary"`
 	ExperimentalQuickCommands      bool `json:"experimentalQuickCommands"`
+	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
+	ExperimentalFullAccess bool `json:"experimentalFullAccess"`
 	ExperimentalLocalServer        bool `json:"experimentalLocalServer"`
-	ExperimentalPathRules        bool   `json:"experimentalPathRules"`
-	ExperimentalTraceAsState     bool   `json:"experimentalTraceAsState"`
+	ExperimentalPathRules          bool `json:"experimentalPathRules"`
+	ExperimentalTraceAsState       bool `json:"experimentalTraceAsState"`
 	// Task 161: cache tuning mirrors (Settings panel reads these from this view).
 	MaxCachedTabs              int    `json:"maxCachedTabs"`
 	HistoryBodyBudgetMb        int    `json:"historyBodyBudgetMb"`
@@ -380,6 +382,7 @@ type SettingsView struct {
 	SessionCollabAllowReadTail     bool `json:"sessionCollabAllowReadTail"`
 	SessionCollabAllowCreate       bool `json:"sessionCollabAllowCreate"`
 	SessionCollabAllowSteer        bool `json:"sessionCollabAllowSteer"`
+	SessionCollabBackground        bool `json:"sessionCollabBackground"`
 	SessionCollabDailySendLimit    int  `json:"sessionCollabDailySendLimit"`
 	// Task 225: cascade approval to the autopilot parent (config lands in the
 	// same panel; the checkbox ships with it).
@@ -482,14 +485,16 @@ type DesktopStartupSettingsView struct {
 	// the frontend snapshots it at boot, so a change needs a restart.
 	ExperimentalTodoSidebar bool `json:"experimentalTodoSidebar"`
 	// Task 265 lab intake: nil-means-on switches, resolved server-side.
-	ExperimentalCompactionParallel bool   `json:"experimentalCompactionParallel"`
-	ExperimentalContextBudget      bool   `json:"experimentalContextBudget"`
-	ExperimentalResearchBudget     bool   `json:"experimentalResearchBudget"`
-	ExperimentalQuestionSearch     bool   `json:"experimentalQuestionSearch"`
-	ExperimentalSubagentPolicy     bool   `json:"experimentalSubagentPolicy"`
-	ExperimentalSubagentTps        bool   `json:"experimentalSubagentTps"`
-	ExperimentalCompletionSummary  bool   `json:"experimentalCompletionSummary"`
-	ExperimentalQuickCommands      bool   `json:"experimentalQuickCommands"`
+	ExperimentalCompactionParallel bool `json:"experimentalCompactionParallel"`
+	ExperimentalContextBudget      bool `json:"experimentalContextBudget"`
+	ExperimentalResearchBudget     bool `json:"experimentalResearchBudget"`
+	ExperimentalQuestionSearch     bool `json:"experimentalQuestionSearch"`
+	ExperimentalSubagentPolicy     bool `json:"experimentalSubagentPolicy"`
+	ExperimentalSubagentTps        bool `json:"experimentalSubagentTps"`
+	ExperimentalCompletionSummary  bool `json:"experimentalCompletionSummary"`
+	ExperimentalQuickCommands      bool `json:"experimentalQuickCommands"`
+	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
+	ExperimentalFullAccess bool `json:"experimentalFullAccess"`
 	// ExperimentalTraceAsState exposes Trace-as-State compaction (task 60).
 	ExperimentalTraceAsState bool `json:"experimentalTraceAsState"`
 	// ExperimentalDream exposes dream/distill memory-curation tools (task 115).
@@ -514,6 +519,7 @@ type DesktopStartupSettingsView struct {
 	SessionCollabAllowReadTail     bool `json:"sessionCollabAllowReadTail"`
 	SessionCollabAllowCreate       bool `json:"sessionCollabAllowCreate"`
 	SessionCollabAllowSteer        bool `json:"sessionCollabAllowSteer"`
+	SessionCollabBackground        bool `json:"sessionCollabBackground"`
 	SessionCollabDailySendLimit    int  `json:"sessionCollabDailySendLimit"`
 	// Task 225: cascade approval to the autopilot parent (config lands in the
 	// same panel; the checkbox ships with it).
@@ -1193,6 +1199,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalSubagentTps = cfg.DesktopSubagentTpsEnabled()
 		view.ExperimentalCompletionSummary = cfg.DesktopCompletionSummaryEnabled()
 		view.ExperimentalQuickCommands = cfg.Desktop.ExperimentalQuickCommands
+		view.ExperimentalFullAccess = cfg.Agent.ExperimentalFullAccess
 		view.ExperimentalTraceAsState = cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState
 		view.ExperimentalDream = cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream
 		view.ExperimentalPerfMonitor = cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor
@@ -1291,21 +1298,23 @@ func (a *App) Settings() SettingsView {
 		ExperimentalSubagentTps:        cfg.DesktopSubagentTpsEnabled(),
 		ExperimentalCompletionSummary:  cfg.DesktopCompletionSummaryEnabled(),
 		ExperimentalQuickCommands:      cfg.Desktop.ExperimentalQuickCommands,
+		ExperimentalFullAccess:         cfg.Agent.ExperimentalFullAccess,
 		ExperimentalTraceAsState:       cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState,
-		ExperimentalDream:            cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream,
-		ExperimentalPerfMonitor:      cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,
-		PerfMonitorIntervalSeconds:   cfg.Desktop.PerfMonitorIntervalSeconds,
-		SessionCollabHopLimit:        cfg.Desktop.SessionCollabHopLimit,
-		ExperimentalSessionCollab:    cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
-		ExperimentalAutoLoadOlder:    cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
-		CollabInboxMerge:             config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge),
-		CollabGuidanceMerge:          cfg.Desktop.CollabGuidanceMerge || cfg.Agent.CollabGuidanceMerge,
+		ExperimentalDream:              cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream,
+		ExperimentalPerfMonitor:        cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,
+		PerfMonitorIntervalSeconds:     cfg.Desktop.PerfMonitorIntervalSeconds,
+		SessionCollabHopLimit:          cfg.Desktop.SessionCollabHopLimit,
+		ExperimentalSessionCollab:      cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
+		ExperimentalAutoLoadOlder:      cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
+		CollabInboxMerge:               config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge),
+		CollabGuidanceMerge:            cfg.Desktop.CollabGuidanceMerge || cfg.Agent.CollabGuidanceMerge,
 		// Task 173: the collaboration panel gates (single source = [agent]).
 		SessionCollabAllowDelete:       cfg.Agent.SessionCollabAllowDelete,
 		SessionCollabAllowRequireReply: cfg.Agent.SessionCollabAllowRequireReply,
 		SessionCollabAllowReadTail:     cfg.Agent.SessionCollabAllowReadTail,
 		SessionCollabAllowCreate:       cfg.Agent.SessionCollabAllowCreate,
 		SessionCollabAllowSteer:        cfg.Agent.SessionCollabAllowSteer,
+		SessionCollabBackground:        cfg.Agent.SessionCollabBackground,
 		SessionCollabDailySendLimit:    cfg.Agent.SessionCollabDailySendLimit,
 		// Task 225: cascade approval to the autopilot parent.
 		ExperimentalCascadeApproval: cfg.Agent.ExperimentalCascadeApproval,

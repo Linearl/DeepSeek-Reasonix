@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -43,6 +44,42 @@ type Catalog struct {
 	closeOnce  sync.Once
 	closeDone  chan struct{}
 	closeErr   error
+	stats      indexStats
+}
+
+// indexStats counts how indexing spends its work (task 195). The counters are
+// cumulative and cheap: they make a silent regression back to full reloads —
+// the pattern that once burned 60.7% of allocations in DAG replay — visible
+// from a test or a single log line instead of a pprof session.
+type indexStats struct {
+	unchangedSkips atomic.Int64 // projection untouched: no transcript work at all
+	metaRefreshes  atomic.Int64 // content digest unchanged, metadata columns rewritten
+	appendHits     atomic.Int64 // tryAppendPath extended the index incrementally
+	appendDeclines atomic.Int64 // the increment path refused (rewrite/jump): full reload followed
+	fullReloads    atomic.Int64 // agent.LoadSession full transcript loads
+}
+
+// IndexStats is a point-in-time snapshot of the index counters (task 195).
+type IndexStats struct {
+	UnchangedSkips int64
+	MetaRefreshes  int64
+	AppendHits     int64
+	AppendDeclines int64
+	FullReloads    int64
+}
+
+// IndexStats returns the cumulative indexing counters (task 195).
+func (c *Catalog) IndexStats() IndexStats {
+	if c == nil {
+		return IndexStats{}
+	}
+	return IndexStats{
+		UnchangedSkips: c.stats.unchangedSkips.Load(),
+		MetaRefreshes:  c.stats.metaRefreshes.Load(),
+		AppendHits:     c.stats.appendHits.Load(),
+		AppendDeclines: c.stats.appendDeclines.Load(),
+		FullReloads:    c.stats.fullReloads.Load(),
+	}
 }
 
 type queuedPath struct {
@@ -415,13 +452,29 @@ func (c *Catalog) reconcileRoot(ctx context.Context, root Root) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := c.indexPath(ctx, root, path, generation, -1); err == nil {
+		// Task 195: reconcile passed appendFrom=-1, which can never pass
+		// tryAppendPath's appendFrom>=0 gate — every changed file fell to a
+		// full LoadSession. Ask for the indexed prefix instead; a rewrite is
+		// still safe because tryAppendPath requires revision==old+1 with a
+		// matching display index, and the save that performed the rewrite
+		// enqueues its own full reindex (EnqueuePersist with Rewrite → -1),
+		// so any race window self-corrects on the same event.
+		appendFrom := -1
+		var indexedCount int
+		if err := c.db.QueryRowContext(ctx, `SELECT indexed_message_count FROM history_sources WHERE path=?`, path).Scan(&indexedCount); err == nil {
+			appendFrom = indexedCount
+		}
+		if err := c.indexPath(ctx, root, path, generation, appendFrom); err == nil {
 			indexed++
 		}
 		if (i+1)%32 == 0 {
 			runtime.Gosched()
 		}
 	}
+	stats := c.IndexStats()
+	slog.Debug("historycatalog: reconcile pass", "root", root.Path, "paths", len(paths),
+		"unchanged", stats.UnchangedSkips, "metaRefresh", stats.MetaRefreshes,
+		"appendHits", stats.AppendHits, "appendDeclines", stats.AppendDeclines, "fullReloads", stats.FullReloads)
 	tx, err = c.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -498,10 +551,29 @@ func (c *Catalog) indexPath(ctx context.Context, root Root, path string, generat
 			_, _ = c.db.ExecContext(ctx, `UPDATE history_sources SET seen_generation=?,missing_since=0,
 				health=CASE WHEN health='evicted' THEN 'evicted' ELSE 'ok' END WHERE path=?`, generation, path)
 		}
+		c.stats.unchangedSkips.Add(1)
 		return nil
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
+	}
+	// Task 195: the transcript digest still matches — only the branch-meta
+	// sidecar moved (every save bumps the sidecar's size/mtime and CAS
+	// revision even when the transcript is untouched, and title/topic edits do
+	// the same). Refresh the projection's metadata columns from the cheap
+	// sidecars instead of falling through to a full transcript reload, which
+	// is what a strict size:mtime comparison used to cost. The digest — not
+	// the revision — is the content identity: a meta-only edit bumps the
+	// revision without moving a byte of the transcript.
+	if err == nil && known && oldDigest != "" && oldDigest == digest {
+		refreshed, refreshErr := c.refreshProjectionMeta(ctx, path, generation, metaFingerprint, revision)
+		if refreshErr != nil {
+			return refreshErr
+		}
+		if refreshed {
+			c.stats.metaRefreshes.Add(1)
+			return nil
+		}
 	}
 	// An evicted projection has no prefix to append onto; fall through to a full reload.
 	if err == nil && known && appendFrom >= 0 && oldHealth != "evicted" {
@@ -511,10 +583,13 @@ func (c *Catalog) indexPath(ctx context.Context, root Root, path string, generat
 			return appendErr
 		}
 		if handled {
+			c.stats.appendHits.Add(1)
 			return nil
 		}
+		c.stats.appendDeclines.Add(1)
 	}
 	session, err := agent.LoadSession(path)
+	c.stats.fullReloads.Add(1)
 	if err != nil {
 		_, _ = c.db.ExecContext(ctx, `INSERT INTO history_sources(path,root,source,scope,workspace_root,content_fingerprint,meta_fingerprint,health,last_error,seen_generation)
             VALUES(?,?,?,?,?,?,?,'corrupt',?,?) ON CONFLICT(path) DO UPDATE SET health='corrupt',last_error=excluded.last_error,

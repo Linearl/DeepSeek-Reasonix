@@ -501,6 +501,15 @@ func (c *Config) SetSessionCollabHopLimit(limit int) error {
 	return nil
 }
 
+// SetSessionCollabBackground toggles the task-264 background mode: on,
+// pump stand-ups build a detached runtime instead of a visible tab (delivery
+// semantics unchanged); off is the byte-for-byte baseline. A regular panel
+// setting — unlike the task-224 consumption switch, delivery never stops.
+func (c *Config) SetSessionCollabBackground(enabled bool) error {
+	c.Agent.SessionCollabBackground = enabled
+	return nil
+}
+
 // SessionCollabHopLimitLive resolves the ceiling currently in force (task 204): the
 // configured value when set, the package default otherwise. Read per call so a settings
 // change applies to newly arriving messages without a restart; chains already in flight
@@ -526,6 +535,14 @@ func (c *Config) SetExperimentalRestartUpdate(enabled bool) error {
 // by itself; registration reads the boot snapshot, so a flip applies on restart.
 func (c *Config) SetExperimentalAutonomousUpdate(enabled bool) error {
 	c.Desktop.ExperimentalAutonomousUpdate = enabled
+	return nil
+}
+
+// SetExperimentalFullAccess toggles the full-access (yolo) lab switch
+// (task 257). Boot resolves it into the writable-root set and the bash spec,
+// so the flip applies on the next restart — the settings pane says so.
+func (c *Config) SetExperimentalFullAccess(enabled bool) error {
+	c.Agent.ExperimentalFullAccess = enabled
 	return nil
 }
 

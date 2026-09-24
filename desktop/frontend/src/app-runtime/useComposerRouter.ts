@@ -20,6 +20,8 @@ export type ComposerRouterInput = {
   goalDraftActive: boolean;
   t: Translator;
   notice(message: string, kind?: "info" | "warn" | "error"): void;
+  /** Task 258: receipt-time transcript bubble for queued guidance. */
+  queueGuidanceBubble?(text: string, inboxItemId?: string, tabId?: string): void;
   showToast(message: string, level: "info" | "warn" | "error", options?: { durationMs?: number }): void;
   ports: {
     runShellForTab(tabId: string, cmd: string): Promise<void>;
@@ -47,7 +49,7 @@ function isThemeMode(value: string): value is "auto" | "light" | "dark" {
  * Only the routes that need a desktop-native UI action are reserved here.
  */
 export function useComposerRouter(input: ComposerRouterInput) {
-  const { activeTabId, goalDraftActive, t, notice, showToast, ports } = input;
+  const { activeTabId, goalDraftActive, t, notice, queueGuidanceBubble, showToast, ports } = input;
 
   const handleSend = useCommittedCommand(async (displayText: string, submitText = displayText, requestedTabId = activeTabId, structured?: StructuredInvocationSubmit) => {
     const sourceTabId = requestedTabId || activeTabId;
@@ -177,5 +179,5 @@ export function useComposerRouter(input: ComposerRouterInput) {
     await ports.steerForTab(sourceTabId, text.trim());
   });
 
-  return { handleSend, handleSteer };
+  return { handleSend, handleSteer, handleQueueGuidanceBubble: queueGuidanceBubble };
 }

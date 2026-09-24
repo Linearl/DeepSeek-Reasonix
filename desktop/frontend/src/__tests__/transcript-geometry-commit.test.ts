@@ -35,7 +35,14 @@ const root = createRoot(document.getElementById("root")!);
 try {
   await act(async () => root.render(React.createElement(TranscriptKernelClockContext.Provider,
     { value: clock }, React.createElement(Probe))));
-  await act(async () => { current.beginGesture(); current.endGesture(); });
+  await act(async () => {
+    // Task 267 (R1b): gesture entry keeps the tail intent now — a real
+    // displacement (onScroll below the bottom threshold) is what establishes
+    // the reader view beginAnchorRestore requires.
+    current.beginGesture();
+    current.onScroll();
+    current.endGesture();
+  });
   writes.length = 0;
   await act(async () => {
     current.beginAnchorRestore();
