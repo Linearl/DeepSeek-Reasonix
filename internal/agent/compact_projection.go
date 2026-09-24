@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -522,12 +523,71 @@ func chunkedFallbackApplies(err error, inputMode string) bool {
 	return summarySizeFailure(err)
 }
 
-// compact writes a context projection; trigger stays "auto"/"manual" for UI cards.
-func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provider.Message, instructions string, sourceTokens int, inputMode string, req foldRequest) (foldSummary, CompactionTelemetry, error) {
-	if req.allowChunked {
-		return a.foldSummaryWithChunkedFallback(ctx, trigger, fold, instructions, sourceTokens, inputMode)
+// summaryTransientMaxAttempts bounds Task 303's automatic retry for transient
+// provider stream failures (the mimo-api INTERNAL_ERROR mid-stream sample).
+// Size/limit failures are excluded — those belong to the chunked fallback.
+const summaryTransientMaxAttempts = 2
+
+// summaryTransientRetryable reports whether a summary request failed in a way
+// that a short backoff can fix: the provider broke the stream or the transport
+// mid-response, not a semantic rejection of the input.
+func summaryTransientRetryable(err error) bool {
+	if err == nil {
+		return false
 	}
-	return a.foldSummaryWithTelemetry(ctx, trigger, fold, instructions, sourceTokens, inputMode)
+	msg := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"stream error", "internal_error", "read stream", "connection reset",
+		"broken pipe", "unexpected eof", "server disconnected", "rate limit",
+		"429", "502", "503", "504", "deadline exceeded",
+	} {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// summarizeFold runs the summary request, retrying transient stream failures
+// with backoff (Task 303). Every attempt and the final outcome carry their
+// reason in slog, so a "summary failed" report always ships its retry trail
+// plus the cache readout that explains a slow full-prefill round.
+func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provider.Message, instructions string, sourceTokens int, inputMode string, req foldRequest) (foldSummary, CompactionTelemetry, error) {
+	var res foldSummary
+	var tele CompactionTelemetry
+	var err error
+	for attempt := 0; ; attempt++ {
+		if req.allowChunked {
+			res, tele, err = a.foldSummaryWithChunkedFallback(ctx, trigger, fold, instructions, sourceTokens, inputMode)
+		} else {
+			res, tele, err = a.foldSummaryWithTelemetry(ctx, trigger, fold, instructions, sourceTokens, inputMode)
+		}
+		if err == nil {
+			if attempt > 0 {
+				slog.Info("agent: summary request succeeded after transient retry",
+					"attempts", attempt+1, "trigger", trigger,
+					"source_tokens", sourceTokens,
+					"cache_hit_tokens", tele.CacheHitTokens, "cache_miss_tokens", tele.CacheMissTokens)
+			}
+			return res, tele, nil
+		}
+		if attempt >= summaryTransientMaxAttempts || !summaryTransientRetryable(err) {
+			slog.Warn("agent: summary request failed",
+				"trigger", trigger, "attempts", attempt+1, "err", err,
+				"transient", summaryTransientRetryable(err),
+				"source_tokens", sourceTokens,
+				"cache_hit_tokens", tele.CacheHitTokens, "cache_miss_tokens", tele.CacheMissTokens)
+			return res, tele, err
+		}
+		slog.Warn("agent: summary request transient failure — retrying",
+			"attempt", attempt+1, "max_attempts", summaryTransientMaxAttempts+1,
+			"trigger", trigger, "err", err)
+		select {
+		case <-ctx.Done():
+			return res, tele, ctx.Err()
+		case <-time.After(time.Duration(attempt+1) * time.Second):
+		}
+	}
 }
 
 func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instructions string, req foldRequest) (CompactionOutcome, error) {
@@ -555,6 +615,9 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 	}
 
 	a.svc.sink.Emit(event.Event{Kind: event.CompactionStarted, Compaction: event.Compaction{Trigger: trigger}})
+	// Task 303: phase 1/3 of the compaction slog trail (start → fold/summary →
+	// done). Token fields live in the done log where the counters exist.
+	slog.Info("agent: compaction started", "trigger", trigger, "stage", "start")
 	if a.svc.hooks != nil {
 		if hookInstr := a.svc.hooks.PreCompact(ctx, trigger); hookInstr != "" {
 			if instructions != "" {
@@ -644,6 +707,15 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 	a.svc.sink.Emit(event.Event{Kind: event.CompactionDone, Compaction: event.Compaction{
 		Trigger: trigger, Messages: len(fold), Summary: summary,
 	}})
+	// Task 303: phase 3/3 — done with the cache readout. The 688K/1.5% sample
+	// (full prefill after a model switch, promptCacheKey carries modelRef) is
+	// quantified here: input vs hit/miss tokens pin a slow round to cache miss.
+	slog.Info("agent: compaction done", "trigger", trigger, "stage", "done",
+		"folded_messages", len(fold), "source_tokens", sourceTokens,
+		"projection_tokens", projTokens,
+		"input_tokens", tele.InputTokens, "output_tokens", tele.OutputTokens,
+		"cache_hit_tokens", tele.CacheHitTokens, "cache_miss_tokens", tele.CacheMissTokens,
+		"request_count", tele.RequestCount)
 	return CompactionInstalled, nil
 }
 

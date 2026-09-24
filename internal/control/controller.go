@@ -318,7 +318,17 @@ type Controller struct {
 	// execution. Unlike canceling (which kills everything), interrupting
 	// lets tools with InterruptBehaviorContinue (bash) keep running in the
 	// background while ending the turn gracefully.
-	interrupting       bool
+	interrupting bool
+	// interruptRequestedAt stamps the park-path interrupt (Task 303): a turn
+	// body that ignores ctx cancellation keeps running=true forever, silently
+	// dropping every later submit. admitGuardedTurn self-heals once the
+	// interrupt is staler than turnInterruptStaleTimeout; finishGuardedTurn
+	// clears the stamp on the normal exit path.
+	interruptRequestedAt time.Time
+	// turnGeneration increments only on a deadlock self-heal to invalidate the
+	// abandoned turn's late completion — its finishGuardedTurn must not clear
+	// the freshly reopened gate or emit TurnDone over the new turn.
+	turnGeneration uint64
 	memorySystemReload func() string
 	// closed marks the controller as terminally torn down (close() ran). It
 	// seals turn admission: without it, a submit arriving AFTER close cleared
@@ -1123,6 +1133,12 @@ func (c *Controller) rebindCheckpoints(sessionPath string) {
 func (c *Controller) spawnGuardedTurn(ctx context.Context, cancel context.CancelFunc, body func(ctx context.Context) error) {
 	body = c.prepareTurnAdmission(body)
 	ctx, completion := withGuardedTurnCompletion(ctx)
+	// Task 303: stamp the generation this completion belongs to, so a late
+	// finish from a turn abandoned by the deadlock self-heal is recognized as
+	// stale instead of clearing the freshly reopened gate.
+	c.mu.Lock()
+	completion.generation = c.turnGeneration
+	c.mu.Unlock()
 	c.liveness.reset(time.Now())
 	c.autosaveWG.Go(func() {
 		c.autosaveWhileRunning(ctx)
@@ -1154,6 +1170,16 @@ func (c *Controller) spawnGuardedTurn(ctx context.Context, cancel context.Cancel
 func (c *Controller) finishGuardedTurn(err error, completion *guardedTurnCompletion) {
 	c.memory.clearAutoRemember()
 	c.mu.Lock()
+	// Task 303: a completion from an abandoned (deadlock-self-healed) turn must
+	// not touch the gate the current turn now owns — no state flip, no TurnDone
+	// over the replacement turn's stream. Only slog: the turn is already gone.
+	if completion != nil && completion.generation != c.turnGeneration {
+		staleGen, current := completion.generation, c.turnGeneration
+		c.mu.Unlock()
+		slog.Warn("control: stale turn completion ignored after deadlock self-heal",
+			"completion_generation", staleGen, "current_generation", current, "err", err)
+		return
+	}
 	cancelRequested := c.canceling
 	c.running = false
 	// A live controller keeps admission closed until TurnDone fan-out finishes.
@@ -1162,6 +1188,11 @@ func (c *Controller) finishGuardedTurn(err error, completion *guardedTurnComplet
 	c.finishing = !c.closed
 	c.finishingBoundary.begin(c.finishing)
 	c.cancel = nil
+	// Task 303: the interrupt state dies with its turn — previously
+	// interrupting had no clear point at all, so any later stall check would
+	// have inherited a stale interrupt from a finished turn.
+	c.interrupting = false
+	c.interruptRequestedAt = time.Time{}
 	// Keep cancelling visible through TurnDone fan-out; clearing it here creates
 	// a finishing-only window before Stop reaches its durable terminal event.
 	// A closed controller has no live surface and may clear immediately.

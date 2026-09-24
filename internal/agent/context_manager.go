@@ -202,6 +202,10 @@ func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContex
 	maxSummaries := maxSummariesFor(policy, est >= hard)
 	ladder := newSummaryLadder(maxSummaries)
 	result := prepared
+	// Task 303: tracks whether an earlier ladder round already installed a
+	// fold, so a later round's summary failure is reported as a summary-only
+	// problem (compaction kept) instead of "the compaction failed".
+	foldInstalled := false
 	for ladder.next() {
 		mustFree := policy.Trigger == CompactionTriggerOverflow || result.InputTokens >= hard
 		outcome, err := a.compactToProjectionLocked(ctx, policy.Trigger, policy.Instructions,
@@ -213,11 +217,12 @@ func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContex
 			if ladder.absorbOverflow(err) {
 				continue
 			}
-			return m.summaryFailed(policy, inputHash, hard, err)
+			return m.summaryFailed(policy, inputHash, hard, foldInstalled, err)
 		}
 		if outcome == CompactionNoop {
 			return m.summaryNoop(policy, inputHash, hard)
 		}
+		foldInstalled = true
 
 		result = m.currentPrepared()
 		if foldLanded(policy, result.InputTokens, fold, hard) {
@@ -250,10 +255,11 @@ func foldLanded(policy ContextPreparePolicy, tokens, fold, hard int) bool {
 	}
 }
 
-func (m ContextManager) summaryFailed(policy ContextPreparePolicy, inputHash string, hard int, err error) (PreparedContext, error) {
+func (m ContextManager) summaryFailed(policy ContextPreparePolicy, inputHash string, hard int, foldInstalled bool, err error) (PreparedContext, error) {
 	a := m.agent
 	if errors.Is(err, errCompressStaleContext) && policy.Trigger != CompactionTriggerManual {
 		reason := "context changed during summary; automatic retry blocked for this generation"
+		slog.Warn("agent: context summary blocked", "reason", reason, "trigger", policy.Trigger, "fold_installed", foldInstalled)
 		a.recordContextMaintenanceBlocked(inputHash, policy.Trigger, "summary", reason)
 		return m.rescueOrFail(policy, hard, errors.New(reason))
 	}
@@ -261,7 +267,20 @@ func (m ContextManager) summaryFailed(policy ContextPreparePolicy, inputHash str
 	if errors.Is(err, errSummaryOutputTruncated) || errors.Is(err, errCheckpointRejected) {
 		status = "blocked"
 	}
-	a.recordContextMaintenanceOutcome(inputHash, policy.Trigger, "summary", status, fmt.Sprintf("context summary failed: %v", err))
+	// Task 303: compaction result and summary result are separate outcomes.
+	// When an earlier ladder round already installed the fold, this round's
+	// failure (typically a provider stream error mid-summary — the mimo
+	// INTERNAL_ERROR sample) must not present as the compaction failing: the
+	// projection is live, only the summary refresh is missing, and it stays
+	// retryable on the next generation.
+	reason := fmt.Sprintf("context summary failed: %v", err)
+	if foldInstalled {
+		reason = fmt.Sprintf("summary refresh failed after fold was applied (compaction kept): %v", err)
+	}
+	slog.Warn("agent: context summary failed",
+		"status", status, "trigger", policy.Trigger, "fold_installed", foldInstalled,
+		"transient_stream", summaryTransientRetryable(err), "err", err)
+	a.recordContextMaintenanceOutcome(inputHash, policy.Trigger, "summary", status, reason)
 	return m.rescueOrFail(policy, hard, err)
 }
 
