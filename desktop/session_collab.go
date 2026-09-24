@@ -15,6 +15,7 @@ import (
 	"reasonix/internal/boot"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
+	"reasonix/internal/safego"
 	"reasonix/internal/sessioncollab"
 	"reasonix/internal/sessioninbox"
 )
@@ -55,7 +56,11 @@ func (p *sessionCollabPump) Start() {
 	p.stop = make(chan struct{})
 	stop := p.stop
 	p.mu.Unlock()
-	go p.loop(stop)
+	// Task 188: the pump owns the delivery path whose last words before the
+	// 2026-09-20 silent exit were "[session-collab] opened session" — wrap the
+	// loop so a panic inside a delivery pass is recovered with its stack in the
+	// rolling log instead of taking the whole process down unseen.
+	safego.Go("sessioncollab.pump.loop", func() { p.loop(stop) })
 }
 
 func (p *sessionCollabPump) Stop() {
