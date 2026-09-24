@@ -32092,6 +32092,11 @@ body > .mermaid-diagram--fullscreen {
   opacity: 0.6;
   font-weight: 400;
 }
+/* Task 312: collapsed-group activity dot beside the count badge. Reuses the
+   member-row .project-tree__topic-state visuals; only flex protection is new. */
+.project-tree__group-state {
+  flex: none;
+}
 .project-tree__group-input {
   flex: 1 1 auto;
   min-width: 0;

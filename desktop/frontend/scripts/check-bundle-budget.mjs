@@ -214,7 +214,10 @@ console.log("\nbundle budgets");
 // Task 258b (MiMo phase-1 absorption: 4 entry-refusal toasts + latch
 // self-heal + 4 locale keys per dialect) measures 470.7 on top of the
 // merged batch6 tip — one-shot +0.5 to 471.1.
-const initialJSBudgetKiB = 471.1; // fork: +2.8 KiB vs upstream 468.3
+// Task 312 (collapsed group activity dot): baseline at 8641f24d1 measures
+// 471.1 (at the line, PASS) and the group-row dot inline adds bytes over it —
+// the gate trips. One-shot +0.5 to 471.6 per the ratchet rule.
+const initialJSBudgetKiB = 471.6; // fork: +2.8 KiB vs upstream 468.3
 // Task 269 rebased onto 471.1: measured 470.7, also within 471.1 —
 // larger one-shot value stands (audit ruling, no second ratchet).
 // Task 264 rebased onto the same budget: measured 470.3 KiB (collab-background
@@ -259,7 +262,10 @@ if (initialCSS.length > 0) {
   // 125.2: task 181 guidance edit banner styles (+0.1 over 124.6 measured at merge, 2026-09-20).
   // 125.2 again: task 253 set-gates checkbox grid styles measured 124.9 KiB (2026-09-22); ratchet +0.5 in one step.
   // 125.2: task 251 pre-existing-red fix — composer-guidance-head token --fg-default → --fg re-gzips +0.1 (measured 124.8).
-assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 125.2 * 1024); // fork: upstream 1.38.3 raised its own budget to 120.4 KiB; the fork's LocalServerPage delta plus the merge measured 121.3 KiB. The session-version panel adds its table and phase styles, measuring 122.0 KiB. Task 123's session-monitor board adds its own ~0.4 KiB of panel styles (measured 123.1 KiB), so keep bounded headroom.
+  // 125.7: task 312 collapsed-group activity dot (.project-tree__group-state rule + comment)
+  // — baseline at 8641f24d1 measures 125.2 (at the line, PASS); the new rule trips the
+  // gate. One-shot +0.5 per the ratchet rule.
+assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 125.7 * 1024); // fork: upstream 1.38.3 raised its own budget to 120.4 KiB; the fork's LocalServerPage delta plus the merge measured 121.3 KiB. The session-version panel adds its table and phase styles, measuring 122.0 KiB. Task 123's session-monitor board adds its own ~0.4 KiB of panel styles (measured 123.1 KiB), so keep bounded headroom.
 if (localeChunks.length !== 2) {
   throw new Error(`expected 2 on-demand Chinese locale chunks, found ${localeChunks.length}`);
 }

@@ -381,6 +381,25 @@ export function topicStatus(node: ProjectNode): ProjectTopicStatus | "" {
   return live;
 }
 
+// Task 312: the sidebar status dot the member rows render (and therefore the
+// exact set a collapsed group header aggregates). Kept as one predicate so the
+// row condition (ProjectTree's showStatusInSide) and the group aggregation can
+// never drift apart.
+export function projectTreeStatusShowsDot(status: ProjectTopicStatus | ""): boolean {
+  return status === "thinking" || status === "streaming" || status === "waiting_confirmation" || status === "background_job";
+}
+
+// Task 312: the dot a collapsed group header shows — the first member whose
+// live status (topicStatus folds node.running into "streaming") qualifies, so
+// every group aggregates independently and an all-idle group returns "".
+export function projectTreeGroupDotStatus(members: ProjectNode[]): ProjectTopicStatus | "" {
+  for (const member of members) {
+    const status = topicStatus(member);
+    if (projectTreeStatusShowsDot(status)) return status;
+  }
+  return "";
+}
+
 export function projectTreeTopicArchiveBlocked(node: ProjectNode): boolean {
   if (node.status === "finishing" || node.status === "cancelling" || node.status === "unknown") return true;
   if (asArray(node.children).some(projectTreeTopicArchiveBlocked)) return true;

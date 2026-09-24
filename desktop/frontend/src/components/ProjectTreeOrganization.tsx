@@ -3,7 +3,7 @@ import { Eraser, FolderMinus, Pencil, Trash2 } from "lucide-react";
 import { app } from "../lib/bridge";
 import { asArray } from "../lib/array";
 import type { Translator } from "../lib/i18n";
-import { isTopicNode, projectTreeTopicArchiveBlocked } from "../lib/projectTreeTopic";
+import { isTopicNode, projectTreeGroupDotStatus, projectTreeTopicArchiveBlocked } from "../lib/projectTreeTopic";
 import { loadSessionGroupCollapsed, persistSessionGroupCollapsed } from "../lib/projectGroups";
 import type { ProjectTreeRefresh } from "../lib/projectTreeArchive";
 import type { ProjectNode, ProjectTreeOrganizationBindings, SessionGroup } from "../lib/types";
@@ -511,6 +511,14 @@ export function ProjectTreeGroupRows({
             onClick={(event) => event.stopPropagation()}
           /> : <span className="project-tree__group-title">{group.title}</span>}
           <span className="project-tree__group-count">{memberCount}</span>
+          {/* Task 312: collapsed group shows the member activity dot beside the
+              count — same .project-tree__topic-state visual the rows use, driven
+              by the same topicStatus pipeline (running folds to streaming), so it
+              appears and clears with the rows at the same rate. */}
+          {(() => {
+            const dot = collapsed ? projectTreeGroupDotStatus(members) : "";
+            return dot ? <span className={`project-tree__group-state project-tree__topic-state project-tree__topic-state--${dot}`} aria-hidden="true" /> : null;
+          })()}
         </div>
         {menuGroup === group.id && <ContextMenu
           open
