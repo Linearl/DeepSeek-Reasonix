@@ -80,6 +80,13 @@ CUR_BRANCH="$(git -C "$ROOT" branch --show-current 2>/dev/null || echo unknown)"
 [ "$CUR_BRANCH" = "main-v2-stable" ] || { echo "FATAL: checkout is '$CUR_BRANCH', must be main-v2-stable (E1b, post-merge A ruling)"; exit 1; }
 echo "==> [1.5/3] branch guard: $CUR_BRANCH ✓"
 
+# [E1 guard v2, 2026-09-24] wails swallows frontend:build failures (1255 shipped a
+# stale dist when pnpm failed under a broken node_modules). Run the frontend build
+# here first and fail closed; wails will run pnpm build again (cwd=frontend is
+# correct there) but by then we know the sources compile.
+echo "==> [1.6/3] frontend build (explicit, fail-closed — E1 guard v2)"
+( cd "$ROOT/desktop/frontend" && pnpm build ) || { echo "FATAL: frontend build failed — refusing to package (E1)"; exit 1; }
+
 echo "==> [2/3] archive previous artifacts + wails build"
 cd "$ROOT/desktop"
 # Move the previous build aside so a new build never silently overwrites an

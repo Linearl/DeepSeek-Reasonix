@@ -3,7 +3,7 @@
   "name": "reasonix-desktop",
   "outputfilename": "reasonix-desktop",
   "frontend:install": "node scripts/ensure-frontend-deps.mjs",
-  "frontend:build": "pnpm -C frontend build",
+  "frontend:build": "pnpm build",
   "frontend:dev:watcher": "pnpm dev",
   "frontend:dev:serverUrl": "auto",
   "author": {
