@@ -8,6 +8,7 @@ import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, MouseEven
 import { ArrowRight, ArrowUp, ChevronsDown, Columns2, Brain, Check, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, Search, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, Users, X, Zap } from "lucide-react";
 import { useSessionExperience } from "../lib/sessionExperience";
 import { asArray } from "../lib/array";
+import { EFFORT_PRESETS, normalizeEffortForMenu } from "../lib/effortTiers";
 import { filterAtMatches } from "../lib/atMatches";
 import { DedupIndex, sha256 } from "../lib/attachDedup";
 import {
@@ -4144,8 +4145,23 @@ export function Composer({
   const taskModeTooltipLabel = taskModeTriggerLabel;
   const effortOptions = asArray(effort?.options);
   const effortLabel = (id: string) => id === "auto" ? t("common.auto") : effortOptions.find((option) => option.id === id)?.name || id;
-  const effortLevels = effort?.options ? ["auto", ...effortOptions.map((option) => option.id)] : asArray(effort?.levels);
-  const currentEffort = effort?.current || "auto";
+  // Task 301 (user ruling, MiMo): the composer picker joins the four honest
+  // tiers from lib/effortTiers.ts (task 254). The wire still carries all
+  // eight levels — minimal/xhigh/max/ultra are MiMo compatibility aliases —
+  // but this display surface folds them (normalizeEffortForMenu): stored=xhigh
+  // shows as high and the aliases are never offered. Wire normalization is
+  // untouched; a level outside the presets (hand-edited or non-MiMo model)
+  // passes through in folded form so nothing real is hidden.
+  const rawEffortLevels = effort?.options ? effortOptions.map((option) => option.id) : asArray(effort?.levels);
+  const foldedEffortLevels = [...new Set(rawEffortLevels.map(level => normalizeEffortForMenu(level)))];
+  const menuEffortLevels = [
+    ...EFFORT_PRESETS.filter(tier => foldedEffortLevels.includes(tier)),
+    ...foldedEffortLevels.filter(level => level !== "auto" && !EFFORT_PRESETS.includes(level)),
+  ];
+  const effortLevels = (effort?.options || rawEffortLevels.includes("auto"))
+    ? ["auto", ...menuEffortLevels]
+    : menuEffortLevels;
+  const currentEffort = normalizeEffortForMenu(effort?.current) || "auto";
   const hasEffort = Boolean(effort?.supported && effortLevels.length > 0);
   const chooseEffortLevel = (level: string) => {
     if (level !== currentEffort) onSetEffort(level);
