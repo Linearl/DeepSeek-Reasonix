@@ -247,6 +247,35 @@ export function Transcript(props: TranscriptProps) {
       return next;
     });
   });
+  // Task 269 B: "collapse all work processes" — the composer's chevron button
+  // reaches the transcript through this window event (the two are not in a
+  // parent/child relation; the session-experience event is the existing
+  // convention). userOverridden=true is load-bearing: without it the running
+  // branch of the next reconcile tick would re-open every fold (the R3
+  // deliberate-open semantics would undo the collapse a moment later). The
+  // B-layer component states need no individual clearing: they are invisible
+  // once the header is closed and re-derive from presentation on next open.
+  const handleCollapseAll = useTranscriptCommand(() => {
+    beginStructural("display-change");
+    setFolds((previous) => {
+      const next = new Map(previous);
+      for (const segment of segmentStates) {
+        next.set(segment.key, {
+          open: false,
+          userOverridden: true,
+          running: segment.hasRunningWork,
+          keepReasoningExpanded: segment.keepReasoningExpanded,
+        });
+      }
+      replaceTranscriptFoldOverrides(resolvedSessionKey, next);
+      return next;
+    });
+  });
+  useEffect(() => {
+    const onCollapseAll = () => handleCollapseAll();
+    window.addEventListener("reasonix:collapse-all-folds", onCollapseAll);
+    return () => window.removeEventListener("reasonix:collapse-all-folds", onCollapseAll);
+  }, [handleCollapseAll]);
   const renderRow = useTranscriptRowRenderer({
     tabId, checkpoints, subcallsByParent, creationMode, running, actionPending,
     rewindDisabled, actionHoverMenus, turnStartAt, lastTurn,

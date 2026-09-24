@@ -54,10 +54,30 @@ function writeCompatibilityMirrors(next: SessionExperience): void {
 }
 
 export function getSessionExperience(): SessionExperience {
-  // The backend snapshot is authoritative. Before it arrives, use the safe
-  // default instead of reviving a stale value written by an older frontend.
-  if (!hydrated) return "standard";
+  // The backend snapshot is authoritative once it arrives. Task 269 A3:
+  // BEFORE hydration read the compatibility mirror instead of assuming
+  // "standard" — writeCompatibilityMirrors syncs it on every persisted
+  // change, so the startup/restore window renders the user's actual tier
+  // instead of live-expanding folds under standard until the snapshot lands.
+  if (!hydrated) {
+    try {
+      if (typeof localStorage !== "undefined") {
+        const mirrored = localStorage.getItem(SESSION_EXPERIENCE_KEY);
+        if (mirrored !== null) return normalize(mirrored);
+      }
+    } catch {
+      // Storage unavailable (privacy mode): fall through to the safe default.
+    }
+    return "standard";
+  }
   return current;
+}
+
+/** True once the authoritative backend snapshot has arrived (task 269 A2:
+ * the reasoning-display hydrate must not overwrite an already-hydrated
+ * session experience — see hydrateReasoningDisplayMode). */
+export function isSessionExperienceHydrated(): boolean {
+  return hydrated;
 }
 
 export function hydrateSessionExperience(value: unknown): void {

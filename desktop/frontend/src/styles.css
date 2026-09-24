@@ -8103,6 +8103,32 @@ body > .mermaid-diagram--fullscreen {
   align-items: center;
 }
 
+/* Task 269 B: the collapse-all chevron in the composer meta band. Project
+   baseline tokens only (fg-dim idle, fg+accent on hover, soft border). */
+.composer-meta__collapse-all {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+
+.composer-meta__collapse-all:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.composer-meta__collapse-all:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .composer-meta__control--approval {
   flex: 0 1 auto;
   min-width: 216px;

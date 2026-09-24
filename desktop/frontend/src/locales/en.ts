@@ -842,6 +842,7 @@ export const en = {
   "composer.qualityFloor": "Verification",
   "composer.qualityFloorStandard": "Standard",
   "composer.qualityFloorDelivery": "Delivery",
+  "composer.collapseAll": "Collapse all work processes",
   "composer.qualityFloorDeliveryTitle": "Delivery: writes require full verification and green project checks; combines with goal mode.",
   "composer.taskModeGoalTooltipSummary": "Keep working until done or blocked",
   "composer.taskModeStopGoal": "End goal",
