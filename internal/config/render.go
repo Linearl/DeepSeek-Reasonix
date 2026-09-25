@@ -173,6 +173,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "experimental_autonomous_idle_terminate = %v   # desktop: settings-view mirror of [agent] experimental_autonomous_idle_terminate (task 244 B1)\n", c.Desktop.ExperimentalAutonomousIdleTerminate)
 		fmt.Fprintf(&b, "experimental_loop_streak_note = %v   # desktop: settings-view mirror of [agent] experimental_loop_streak_note (task 244 B2)\n", c.Desktop.ExperimentalLoopStreakNote)
 		fmt.Fprintf(&b, "experimental_event_wait_recheck = %v   # desktop: settings-view mirror of [agent] experimental_event_wait_recheck (task 244 B3)\n", c.Desktop.ExperimentalEventWaitRecheck)
+
+		fmt.Fprintf(&b, "experimental_orphan_lease_reclaim = %v   # desktop: settings-view mirror of [agent] experimental_orphan_lease_reclaim (task 244 B5)\n", c.Desktop.ExperimentalOrphanLeaseReclaim)
+		fmt.Fprintf(&b, "experimental_recovery_orphan_sweep = %v   # desktop: settings-view mirror of [agent] experimental_recovery_orphan_sweep (task 244 B4)\n", c.Desktop.ExperimentalRecoveryOrphanSweep)
 		fmt.Fprintf(&b, "perf_monitor_interval_seconds = %d   # desktop: settings-view mirror of [agent] perf_monitor_interval_seconds (task 184; 0 = 5s)\n", c.Desktop.PerfMonitorIntervalSeconds)
 		fmt.Fprintf(&b, "session_collab_hop_limit = %d   # desktop: settings-view mirror of [agent] session_collab_hop_limit (task 204)\n", c.Desktop.SessionCollabHopLimit)
 		fmt.Fprintf(&b, "collab_inbox_merge = %q   # desktop: settings-view mirror of [agent] collab_inbox_merge (task 221; off | same_sender | all)\n", NormalizeCollabInboxMerge(c.Desktop.CollabInboxMerge))
@@ -385,6 +388,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "experimental_autonomous_idle_terminate = %v   # task 244 B1: heartbeat self-disables after 3 consecutive runs with no conversation history\n", c.Agent.ExperimentalAutonomousIdleTerminate)
 	fmt.Fprintf(&b, "experimental_loop_streak_note = %v   # task 244 B2: bounded neutral Continue. note instead of an immediate second text-repeat pause\n", c.Agent.ExperimentalLoopStreakNote)
 	fmt.Fprintf(&b, "experimental_event_wait_recheck = %v   # task 244 B3: re-evaluate the event_wait checker before returning (recheckSatisfied field)\n", c.Agent.ExperimentalEventWaitRecheck)
+
+	fmt.Fprintf(&b, "experimental_orphan_lease_reclaim = %v   # task 244 B5: reclaim a session lease whose recorded owner process is dead (live foreign owners still respected)\n", c.Agent.ExperimentalOrphanLeaseReclaim)
+	fmt.Fprintf(&b, "experimental_recovery_orphan_sweep = %v   # task 244 B4: settle recovery-store operations past the covered durable sequence at open\n", c.Agent.ExperimentalRecoveryOrphanSweep)
 	fmt.Fprintf(&b, "perf_monitor_interval_seconds = %d   # task 184: sampler interval in seconds (default 5, clamped 1..300)\n", c.Agent.PerfMonitorIntervalSeconds)
 	fmt.Fprintf(&b, "session_collab_hop_limit = %d   # task 204: cross-session chain ceiling (default 5, clamped 3..1000; 0 = default)\n", c.Agent.SessionCollabHopLimit)
 	// Task 173: the collaboration panel gates. All default off, so the rendered

@@ -29,6 +29,10 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	c.Agent.ExperimentalLoopStreakNote = true
 	c.Desktop.ExperimentalEventWaitRecheck = true
 	c.Agent.ExperimentalEventWaitRecheck = true
+	c.Desktop.ExperimentalOrphanLeaseReclaim = true
+	c.Agent.ExperimentalOrphanLeaseReclaim = true
+	c.Desktop.ExperimentalRecoveryOrphanSweep = true
+	c.Agent.ExperimentalRecoveryOrphanSweep = true
 	c.Desktop.ExperimentalSessionCollab = true
 
 	out := RenderTOMLForScope(c, RenderScopeUser)
@@ -47,6 +51,8 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 		"experimental_autonomous_idle_terminate = true",
 		"experimental_loop_streak_note = true",
 		"experimental_event_wait_recheck = true",
+		"experimental_orphan_lease_reclaim = true",
+		"experimental_recovery_orphan_sweep = true",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("rendered user config is missing %q\n---\n%s", want, out)
@@ -75,6 +81,8 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 		"experimental_autonomous_idle_terminate = false",
 		"experimental_loop_streak_note = false",
 		"experimental_event_wait_recheck = false",
+		"experimental_orphan_lease_reclaim = false",
+		"experimental_recovery_orphan_sweep = false",
 		"trace_as_state = false",
 		"stalled_intent_nudge = false",
 		"readiness_catch_up = false",

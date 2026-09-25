@@ -787,6 +787,22 @@ func (c *Config) SetExperimentalEventWaitRecheck(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalOrphanLeaseReclaim toggles orphan lease takeover (task 244 B5).
+// Desktop keeps the settings-view mirror; Agent is the runtime flag.
+func (c *Config) SetExperimentalOrphanLeaseReclaim(enabled bool) error {
+	c.Desktop.ExperimentalOrphanLeaseReclaim = enabled
+	c.Agent.ExperimentalOrphanLeaseReclaim = enabled
+	return nil
+}
+
+// SetExperimentalRecoveryOrphanSweep toggles the open-path orphan sweep
+// (task 244 B4). Desktop keeps the settings-view mirror; Agent is the runtime flag.
+func (c *Config) SetExperimentalRecoveryOrphanSweep(enabled bool) error {
+	c.Desktop.ExperimentalRecoveryOrphanSweep = enabled
+	c.Agent.ExperimentalRecoveryOrphanSweep = enabled
+	return nil
+}
+
 // SetSessionCollabGates writes the task-173 collaboration panel gates in one
 // call so the settings view cannot half-apply a panel. Nil pointers keep the
 // current value; the master switch is written separately through

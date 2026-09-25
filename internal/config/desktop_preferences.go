@@ -122,6 +122,11 @@ type DesktopConfig struct {
 	ExperimentalAutonomousIdleTerminate bool `toml:"experimental_autonomous_idle_terminate"`
 	ExperimentalLoopStreakNote          bool `toml:"experimental_loop_streak_note"`
 	ExperimentalEventWaitRecheck        bool `toml:"experimental_event_wait_recheck"`
+
+	// ExperimentalOrphanLeaseReclaim / ExperimentalRecoveryOrphanSweep are the
+	// settings-view mirrors for the [agent] runtime flags of task 244 B5/B4.
+	ExperimentalOrphanLeaseReclaim  bool `toml:"experimental_orphan_lease_reclaim"`
+	ExperimentalRecoveryOrphanSweep bool `toml:"experimental_recovery_orphan_sweep"`
 	// CollabInboxMerge is the settings-view mirror for Agent.CollabInboxMerge
 	// (task 221): off | same_sender | all.
 	CollabInboxMerge string `toml:"collab_inbox_merge"`

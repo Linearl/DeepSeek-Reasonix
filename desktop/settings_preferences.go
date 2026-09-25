@@ -391,6 +391,18 @@ func (a *App) SetExperimentalEventWaitRecheck(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalEventWaitRecheck(enabled) })
 }
 
+// SetExperimentalOrphanLeaseReclaim toggles orphan lease takeover (task 244 B5).
+// Read at call time by the reclaim decision — no restart needed.
+func (a *App) SetExperimentalOrphanLeaseReclaim(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalOrphanLeaseReclaim(enabled) })
+}
+
+// SetExperimentalRecoveryOrphanSweep toggles the recovery-store open sweep
+// (task 244 B4). Read at call time by the injected probe — no restart needed.
+func (a *App) SetExperimentalRecoveryOrphanSweep(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalRecoveryOrphanSweep(enabled) })
+}
+
 // SetExperimentalPerfMonitor toggles the host performance monitor (task 184).
 // Restart-scoped: interval and file table are read while the app starts.
 func (a *App) SetExperimentalPerfMonitor(enabled bool) error {

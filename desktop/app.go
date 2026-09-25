@@ -9854,6 +9854,37 @@ func (a *App) ensureTabSessionLeaseForRebuild(tab *WorkspaceTab, path, setting s
 	return nil
 }
 
+// leaseReclaimDecision answers whether a lease error may be reclaimed by this
+// process (task 244 B5). nil Info keeps the historical "attempt the reclaim,
+// the OS lock is the arbiter" path; a lease owned by this PID and writer is
+// ours; anything else is a foreign runtime. With orphanReclaim on, a foreign
+// lease whose recorded owner process no longer exists is a crash leftover
+// (orphan) and may be taken back — a live foreign owner is still respected.
+// Pure so both switch states are testable without a real lease.
+func leaseReclaimDecision(info *agent.SessionLeaseInfo, ownPID int, ownWriter string, orphanReclaim bool, pidAlive func(int) bool) bool {
+	if info == nil {
+		return true
+	}
+	if info.PID == ownPID && info.WriterID == ownWriter {
+		return true
+	}
+	if !orphanReclaim {
+		return false
+	}
+	return !pidAlive(info.PID)
+}
+
+// experimentalOrphanLeaseReclaim reads the switch at call time (S4) so a
+// settings toggle applies to the next reclaim without a restart. Missing
+// config = off.
+func (a *App) experimentalOrphanLeaseReclaim() bool {
+	cfg, err := config.Load()
+	if err != nil {
+		return false
+	}
+	return cfg.Agent.ExperimentalOrphanLeaseReclaim || cfg.Desktop.ExperimentalOrphanLeaseReclaim
+}
+
 func (a *App) canReclaimCurrentProcessSessionLease(tab *WorkspaceTab, path string, err error) bool {
 	key := sessionRuntimeKey(path)
 	if tab == nil || key == "" || !errors.Is(err, agent.ErrSessionLeaseHeld) {
@@ -9868,8 +9899,12 @@ func (a *App) canReclaimCurrentProcessSessionLease(tab *WorkspaceTab, path strin
 	// quarantined by AV, or torn by a crash) must still attempt the reclaim:
 	// the OS lock is the arbiter there, and refusing on missing metadata
 	// wedges a session nobody actually holds as permanently busy.
-	if leaseErr.Info != nil &&
-		(leaseErr.Info.PID != os.Getpid() || leaseErr.Info.WriterID != agent.SessionWriterID()) {
+	// Task 244 B5: with the experiment on, a foreign lease whose recorded
+	// owner process is DEAD is an orphan (crash leftover), not a holder —
+	// taking it back is the registry's "reclaim orphans by instance identity
+	// after restart". A live foreign owner keeps being respected, exactly as
+	// before; the switch off keeps the original decision byte-for-byte.
+	if leaseErr.Info != nil && !leaseReclaimDecision(leaseErr.Info, os.Getpid(), agent.SessionWriterID(), a.experimentalOrphanLeaseReclaim(), desktopProcessAlive) {
 		return false
 	}
 	a.mu.RLock()
