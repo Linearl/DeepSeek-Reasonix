@@ -610,6 +610,24 @@ func (a *App) coldHistorySlice(sessionDir, path string, req HistorySliceRequest)
 			indexIdentityValid = !idx.RevisionKnown
 		}
 	}
+	// Task 123 tail: when Validate fails because the read model (jsonl) grew
+	// past a warn-only-stale index, extend the index from the tail bytes alone
+	// (measured: full authoritative replay 1290ms vs tail extension ~tens of
+	// ms). Any precondition miss leaves the original path untouched.
+	if idx != nil && err == nil && !indexIdentityValid {
+		if refreshed, refreshErr := agent.RefreshSessionDisplayIndexFromReadModel(sessionPath); refreshErr == nil && refreshed {
+			if reIdx, reloadErr := agent.LoadSessionDisplayIndex(indexPath); reloadErr == nil && reIdx != nil {
+				idx = reIdx
+				if identityKnown {
+					indexIdentityValid = agent.ValidateSessionDisplayIndex(idx, identity.Revision, identity.RevisionKnown, identity.Digest, info.Size())
+				} else {
+					indexIdentityValid = !idx.RevisionKnown
+				}
+			}
+		} else if refreshErr != nil {
+			slog.Debug("desktop: read-model tail extension skipped", "path", sessionPath, "err", refreshErr)
+		}
+	}
 	if idx != nil && err == nil && idx.TranscriptSize == info.Size() && indexIdentityValid && historyIndexTimestampValid(indexPath, sessionPath, info, idx, true) {
 		slice, pageErr := a.pageHistorySliceSource(coldHistorySliceSource(sessionPath, idx), req, resolver, sessionPlannerDisplayTurns(sessionDir, sessionPath), nil, sessionPath)
 		if pageErr != nil {
