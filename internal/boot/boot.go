@@ -223,6 +223,10 @@ type Options struct {
 	// refusal (CLI/tests build configs without a host runtime).
 	OnSessionStop     func(contactID string) (stopped, wasRunning, known bool, err error)
 	OnSessionSetModel func(contactID, model string) (applied, wasRunning, known bool, newRef string, err error)
+	// OnSessionTurnStatus (task 319) exposes a peer's authoritative turn
+	// lifecycle to the subscription verdict (abnormal-end detection). Nil
+	// keeps every status unknown so the detector never guesses a death.
+	OnSessionTurnStatus func(contactID string) (status string, known bool)
 	// OnCascadeDelegate (task 225) resolves the task-source parent's Ask
 	// channel for THIS session's approval prompts — the host owns the
 	// contact-bound grant registry (24h). Nil keeps every prompt local.
@@ -1975,6 +1979,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 				Stop:     opts.OnSessionStop,
 				SetModel: opts.OnSessionSetModel,
 			},
+			SessionTurnStatus: opts.OnSessionTurnStatus,
 			// Task 173: parameter-level panel gates, checked at call time with
 			// actionable refusals that name the panel switch.
 			AllowRequireReply: cfg.Agent.SessionCollabAllowRequireReply,

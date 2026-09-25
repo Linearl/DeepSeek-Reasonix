@@ -3918,6 +3918,7 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 		OnSessionInfo:          a.collabSessionInfo,
 		OnSessionStop:          a.collabSessionStop,
 		OnSessionSetModel:          a.collabSessionSetModel,
+		OnSessionTurnStatus:          a.collabSessionTurnStatus,
 		OnCascadeDelegate:        cascadeDelegateFor,
 		OnDeleteSession:          a.deleteCollabSession,
 		OnRenameSession:          a.renameCollabSession,

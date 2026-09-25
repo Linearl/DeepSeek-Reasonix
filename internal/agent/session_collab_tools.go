@@ -69,6 +69,13 @@ type SessionCollabConfig struct {
 	// Both funcs nil keeps session_control a refusal (CLI/tests build configs
 	// without a host runtime).
 	SessionControl SessionControlHooks
+	// SessionTurnStatus (task 319) exposes a peer's authoritative turn
+	// lifecycle (event.TurnStatus as string: completed/failed/interrupted/
+	// recovery_required/...). The subscription verdict classifies an abnormal
+	// terminal state — the peer turn that died instead of completing — and
+	// notifies the watcher. known=false: runtime not visible here. Nil keeps
+	// every status unknown, so turn_abnormal_end can never fire by guessing.
+	SessionTurnStatus func(contactID string) (status string, known bool)
 	// Task 173: the collaboration panel gates. Tool-level gates (delete /
 	// read_tail / create) keep boot from registering the tool at all, so they
 	// are not consulted here. The parameter-level gates are checked at call

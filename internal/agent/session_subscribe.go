@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -48,15 +49,22 @@ const (
 	SubscribeBlockingWait = "blocking_wait"  // status stream: gate blocking a turn (283 family)
 	SubscribeNeedsDecision = "needs_decision" // status stream: human decision required (283 family)
 	SubscribeStuck        = "stuck"          // running with no turn progress for stuck_after_s
+	// SubscribeTurnAbnormalEnd (task 319) fires when the watched peer's turn
+	// reaches a NON-completed terminal state (failed/interrupted/
+	// recovery_required — the event.TurnStatus set): the peer died instead of
+	// finishing, which is how a dispatched task goes silent. paired with the
+	// watcher notification carrying the recovery guidance.
+	SubscribeTurnAbnormalEnd = "turn_abnormal_end"
 )
 
 // subscribeEventKinds is the v1 whitelist: anomalies only, no arbitrary events.
 var subscribeEventKinds = map[string]bool{
-	SubscribeStateChange:   true,
-	SubscribeToolError:     true,
-	SubscribeBlockingWait:  true,
-	SubscribeNeedsDecision: true,
-	SubscribeStuck:         true,
+	SubscribeStateChange:      true,
+	SubscribeToolError:        true,
+	SubscribeBlockingWait:     true,
+	SubscribeNeedsDecision:    true,
+	SubscribeStuck:            true,
+	SubscribeTurnAbnormalEnd:  true,
 }
 
 // SubscribeEventKinds returns the sorted v1 whitelist (tool schema help).
@@ -107,6 +115,9 @@ type subscribeCursor struct {
 	streamOff   int64             // bytes consumed from the status stream
 	streamReady bool              // initial park done (off==0 alone cannot say: an empty file parks at 0)
 	stuck       bool              // stuck edge latched (push once per episode)
+	// abnormalLatched (task 319) edge-latches turn_abnormal_end: the dead
+	// turn pages once per episode, cleared when the peer returns healthy.
+	abnormalLatched bool
 }
 
 // SubscribeService owns the registry, cursors, and the single push loop.
@@ -560,6 +571,31 @@ func (s *SubscribeService) sessionEventsVerdict(sub Subscription, cur *subscribe
 		}
 	}
 
+	// Task 319: the peer turn that died instead of completing. The authoritative
+	// signal is event.TurnStatus's non-completed terminal set — the same enum
+	// the controller publishes on RuntimeStatus — surfaced through the injected
+	// SessionTurnStatus probe (nil probe = unknown = never fires; a guess here
+	// would page the watcher for a healthy peer). Edge-latched like stuck: the
+	// abnormal state fires ONCE per episode and clears when the peer returns to
+	// a non-terminal state, so a watchdog redraw does not re-page.
+	if want[SubscribeTurnAbnormalEnd] {
+		if s.cfg.SessionTurnStatus != nil {
+			status, known := s.cfg.SessionTurnStatus(sub.Target)
+			if known && turnStatusIsAbnormalEnd(status) {
+				if !cur.abnormalLatched {
+					kinds = append(kinds, SubscribeTurnAbnormalEnd)
+					details = append(details, fmt.Sprintf("%s: turn ended abnormally (status=%s)", sub.Target, status))
+					slog.Warn("agent: abnormal turn end detected on watched session",
+						"target", sub.Target, "status", status, "death_class", classifyTurnDeath(status),
+						"at", s.now().UTC().Format(time.RFC3339))
+				}
+				cur.abnormalLatched = true
+			} else {
+				cur.abnormalLatched = false
+			}
+		}
+	}
+
 	fired := len(kinds) > 0
 	out, _ := json.Marshal(map[string]any{
 		"fired":  fired,
@@ -567,6 +603,37 @@ func (s *SubscribeService) sessionEventsVerdict(sub Subscription, cur *subscribe
 		"detail": strings.Join(details, "; "),
 	})
 	return string(out), nil
+}
+
+// turnStatusIsAbnormalEnd is the task 319 classifier over event.TurnStatus:
+// completed is the only healthy terminal; cancelled-by-user reads as
+// interrupted (a watcher still needs to know the task did not finish), and
+// queued/in_progress/waiting_user/cancelling are not terminals at all.
+func turnStatusIsAbnormalEnd(status string) bool {
+	switch status {
+	case "failed", "interrupted", "recovery_required", "protocol_failed":
+		return true
+	default:
+		return false
+	}
+}
+
+// classifyTurnDeath buckets the status for the death-cause log line (task 319
+// ④, in the 304 logging family): a coarse but honest class so "mimo died
+// again" becomes countable instead of anecdotal. The finer provider-level
+// reason (model interrupt vs hook reject) rides the log line's own err text
+// when the runtime exposes it.
+func classifyTurnDeath(status string) string {
+	switch status {
+	case "failed", "protocol_failed":
+		return "provider_or_turn_failure"
+	case "interrupted":
+		return "interrupted"
+	case "recovery_required":
+		return "recovery_required"
+	default:
+		return "unknown"
+	}
 }
 
 // stuckDetected mirrors get_session_status's live probe: running with the
@@ -665,6 +732,16 @@ func (s *SubscribeService) pushSubscription(sub Subscription, kinds []string, de
 	body := fmt.Sprintf("%s %s 事件=%s 细节=%s（订阅 %s，剩余 %s，可 unsubscribe 退订）",
 		subscribeMessagePrefix, sub.Target, strings.Join(kinds, ","), detail,
 		sub.ID, sub.ExpiresAt.Sub(s.now()).Round(time.Second))
+	// Task 319 (recovery leg): a dead or stalled peer means the dispatched
+	// work may be unfinished — say so EXPLICITLY so the task never disappears
+	// silently. v1 recovery is report-style (the honest, non-duplicating
+	// choice): the watcher decides between re-dispatch (progress document
+	// present = continue, not redo) and rebuilding the session. Automatic
+	// re-dispatch is deferred until its idempotency ledger exists — a blind
+	// resend would double-run work that is still in flight.
+	if slices.Contains(kinds, SubscribeTurnAbnormalEnd) || slices.Contains(kinds, SubscribeStuck) {
+		body += fmt.Sprintf("\n⚠️ 任务状态提示：目标 %s 的 turn 已异常终止/长时间无进展——派发给它的任务可能未完成（任务不无声丢失）。请核对：1) 其进展文档（tasks/批*-进展-*.md）是否已交付——在则续跑（重派同任务即可，勿重做已完成部分）；2) 会话是否需要人工重建后重派；3) 本机日志 death_class 分类（slog: abnormal turn end detected）。", sub.Target)
+	}
 	msg := sessioncollab.MailMessage{
 		From:     "",
 		To:       s.selfContact(),
