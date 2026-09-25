@@ -1311,6 +1311,27 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			CompactionParallel: cfg.CompactionParallelEnabled(),
 			ContextBudget:      cfg.ContextBudgetEnabled(),
 			ResearchBudget:     cfg.ResearchBudgetEnabled(),
+			// Task 244 B9: call-time probes (S4) — the switch follows settings
+			// without a restart, and vision is re-read from config so a model
+			// capability edit applies to the next dispatch too.
+			ModelCapabilityFilterEnabled: func() bool {
+				c, err := config.Load()
+				if err != nil {
+					return false
+				}
+				return c.Agent.ExperimentalModelCapabilityFilter || c.Desktop.ExperimentalModelCapabilityFilter
+			},
+			VisionForModel: func(ref string) (bool, bool) {
+				c, err := config.Load()
+				if err != nil {
+					return false, false
+				}
+				resolved, ok := c.ResolveModel(ref)
+				if !ok || resolved == nil {
+					return false, false
+				}
+				return resolved.Vision || resolved.HasVisionModel(modelRefFromEntry(resolved)), true
+			},
 		}).
 			WithTranscripts(subagentStore, root, modelName, entry.Effort).
 			WithTranscriptIdentityResolver(subagentIdentity).

@@ -393,6 +393,25 @@ func (a *Agent) commitBatchCallResolution(call provider.ToolCall) {
 // batchCallMutationFailureCause returns a sanitized effect description when a
 // durable-state mutation failed or was blocked. Verification failures alone do
 // not open the dependency barrier.
+// batchCallMutationFailureCause decides fail-cascade admission (task 244 B8;
+// Reasonix's side of MiMo #2463's exemption face, sub-report 03-④B). The four
+// rules, absorbed as classification rules rather than copied mechanics:
+//
+//  1. Only EFFECTIVE read/search failures exempt the cascade: the test is the
+//     effects classification (non-StateMutation ⇒ nil), not the tool's name —
+//     a read that failed for any reason never poisons the batch.
+//  2. Every side-effect failure closes the batch, in both phases: "failed"
+//     (executed, broke) and "blocked" (permission/evidence refused) — a
+//     blocked write is still a write whose effect cannot be proven.
+//  3. Read-only verification commands (bash && IsVerificationCommand, no
+//     mutation) exempt like rule 1: they observe, they do not change state.
+//  4. Unknown classification fails CLOSED: effects with Known=false ride the
+//     writer side (readOnly defaults false), matching MiMo's "invalid calls
+//     enter the cascade" direction — an unproven call never reads as safe.
+//
+// Pinned by TestBatchCascadeExemptionFace; evidenceOnly stays a further
+// exemption layer for independent evidence writers (see
+// applyMutationDependencyBarrier).
 func batchCallMutationFailureCause(a *Agent, call provider.ToolCall, o toolOutcome) *mutationBarrierCause {
 	if o.errMsg == "" && !o.blocked && outcomeRunState(o) != provider.ToolRunUnknown {
 		return nil

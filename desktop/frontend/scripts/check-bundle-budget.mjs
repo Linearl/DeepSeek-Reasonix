@@ -226,7 +226,9 @@ console.log("\nbundle budgets");
 // card component, bridge pair and 45 locale keys; one-shot +0.5 to 473.6.
 // Merge batch (244 batch 2 stacked onto 163): measured 473.9 over 473.6 —
 // one-shot +0.5 to 474.1 (merge-batch precedent, same as the 472.7 landing).
-const initialJSBudgetKiB = 474.1; // fork: chain 468.8-era → 471.1 → 471.6 → 472.1 → 472.6 (tasks 242/192) → 473.1 (merge batch) → 473.6 (tasks 244 batch 1 + 163, same gate) → 474.1 (244 batch 2 stacked, 473.9 measured; one-shot +0.5 per the 2026-09-20 ratchet rule)
+// Task 244 batch 4/B9 panel entry landed at the same 474.1 gate — one bump,
+// shared value (no double).
+const initialJSBudgetKiB = 474.1; // fork: chain 468.8-era → 471.1 → 471.6 → 472.1 → 472.6 (tasks 242/192) → 473.1 (merge batch) → 473.6 (tasks 244 batch 1 + 163, same gate) → 474.1 (244 batch 2 stacked, 473.9 measured, AND batch 4/B9 panel entry same gate — one bump; one-shot +0.5 per the 2026-09-20 ratchet rule)
 // Task 269 rebased onto 471.1: measured 470.7, also within 471.1 —
 // larger one-shot value stands (audit ruling, no second ratchet).
 // Task 264 rebased onto the same budget: measured 470.3 KiB (collab-background
@@ -419,6 +421,9 @@ for (const path of localeChunks) {
   // Merge batch (244 batch 1 + 163 stacked): zh trips the shared 80.0 gate in
   // the merged tree — one-shot +0.5 to 80.5; zh-TW measures 81.2 over 81.0 —
   // one-shot +0.5 to 81.5 (same merge-batch precedent as the initial gzip 472.7 landing).
+  // Task 244 batch 4: B9 added 4 keys x 3 locales while zh-TW already sat at
+  // the exact 81.0 ceiling — one-shot +0.5 each (its own bump landed at the
+  // same 80.5/81.5 gate as the merge-batch lines above — one shared value, no double).
   const budget = name.startsWith("zh-TW-") ? 81.5 * 1024 : 80.5 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,

@@ -32,7 +32,9 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	c.Desktop.ExperimentalOrphanLeaseReclaim = true
 	c.Agent.ExperimentalOrphanLeaseReclaim = true
 	c.Desktop.ExperimentalRecoveryOrphanSweep = true
-	c.Agent.ExperimentalRecoveryOrphanSweep = true
+
+	c.Desktop.ExperimentalModelCapabilityFilter = true
+	c.Agent.ExperimentalModelCapabilityFilter = true
 	c.Desktop.ExperimentalSessionCollab = true
 
 	out := RenderTOMLForScope(c, RenderScopeUser)
@@ -53,6 +55,7 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 		"experimental_event_wait_recheck = true",
 		"experimental_orphan_lease_reclaim = true",
 		"experimental_recovery_orphan_sweep = true",
+		"experimental_model_capability_filter = true",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("rendered user config is missing %q\n---\n%s", want, out)
@@ -83,6 +86,7 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 		"experimental_event_wait_recheck = false",
 		"experimental_orphan_lease_reclaim = false",
 		"experimental_recovery_orphan_sweep = false",
+		"experimental_model_capability_filter = false",
 		"trace_as_state = false",
 		"stalled_intent_nudge = false",
 		"readiness_catch_up = false",
