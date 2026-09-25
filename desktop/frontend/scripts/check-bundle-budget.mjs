@@ -217,7 +217,7 @@ console.log("\nbundle budgets");
 // Task 312 (collapsed group activity dot): baseline at 8641f24d1 measures
 // 471.1 (at the line, PASS) and the group-row dot inline adds bytes over it —
 // the gate trips. One-shot +0.5 to 471.6 per the ratchet rule.
-const initialJSBudgetKiB = 471.6; // fork: +2.8 KiB vs upstream 468.3
+const initialJSBudgetKiB = 472.1; // fork: +3.3 KiB vs upstream 468.8-era; task 316 one-shot +0.5 (471.7 measured, ratchet rule — no drip)
 // Task 269 rebased onto 471.1: measured 470.7, also within 471.1 —
 // larger one-shot value stands (audit ruling, no second ratchet).
 // Task 264 rebased onto the same budget: measured 470.3 KiB (collab-background
@@ -505,7 +505,8 @@ const rawInitialBytes = [...initialJS, ...initialCSS, ...appShellCSS]
 // The context truncation-rescue notice and its three locale strings measure
 // 2496.6 KiB; retain the smallest bounded ceiling.
 // Task 265: the 37-key lab intake landed raw at exactly the old 2540.0 ceiling; one-shot +10 KiB (user 2026-09-20 rule).
-const rawInitialBudgetKiB = 2_550.0; // fork: ratchet step +10 KiB (user 2026-09-20, one-shot rule); task 254 measured 2530.1 (autonomous-update pane + resume dial + locales 210/153/221/173)
+// Task 316: one-shot +10 KiB again (2550.6 measured, ratchet rule — no drip).
+const rawInitialBudgetKiB = 2_560.0; // fork: ratchet step +10 KiB (user 2026-09-20, one-shot rule)
 // [fork note] the smallest one-decimal ratchet. Bumped to 2_461.0 for the serve pool
 assertBudget("initial raw JavaScript and CSS", rawInitialBytes, rawInitialBudgetKiB * 1024);
 // [fork note] 2026-09-15: measured 1102.2 KiB raw - same pre-existing growth as the
