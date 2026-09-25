@@ -755,6 +755,31 @@ func (c *Config) SetExperimentalSessionCollab(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalAutonomousIdleTerminate toggles the heartbeat idle-streak
+// self-terminate guard (task 244 B1). Desktop keeps the settings-view mirror;
+// Agent carries the runtime flag.
+func (c *Config) SetExperimentalAutonomousIdleTerminate(enabled bool) error {
+	c.Desktop.ExperimentalAutonomousIdleTerminate = enabled
+	c.Agent.ExperimentalAutonomousIdleTerminate = enabled
+	return nil
+}
+
+// SetExperimentalLoopStreakNote toggles the neutral Continue. streak note
+// (task 244 B2). Desktop keeps the settings-view mirror; Agent is the runtime flag.
+func (c *Config) SetExperimentalLoopStreakNote(enabled bool) error {
+	c.Desktop.ExperimentalLoopStreakNote = enabled
+	c.Agent.ExperimentalLoopStreakNote = enabled
+	return nil
+}
+
+// SetExperimentalEventWaitRecheck toggles event_wait's return-time recheck
+// (task 244 B3). Desktop keeps the settings-view mirror; Agent is the runtime flag.
+func (c *Config) SetExperimentalEventWaitRecheck(enabled bool) error {
+	c.Desktop.ExperimentalEventWaitRecheck = enabled
+	c.Agent.ExperimentalEventWaitRecheck = enabled
+	return nil
+}
+
 // SetSessionCollabGates writes the task-173 collaboration panel gates in one
 // call so the settings view cannot half-apply a panel. Nil pointers keep the
 // current value; the master switch is written separately through

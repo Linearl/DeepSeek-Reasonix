@@ -1892,6 +1892,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		WriteScheduler:               subagentScheduler,
 		WriteWorkspaceRoot:           root,
 		OptimisticWrite:              cfg.Sandbox.OptimisticWrite,
+		LoopStreakNote:               cfg.Agent.ExperimentalLoopStreakNote,
 		SessionTemp:                  sessionTemp,
 		WriteRoots:                   writeRootSet,
 		HomeDir:                      userHomeDir(),
@@ -1977,6 +1978,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			// Task 173: parameter-level panel gates, checked at call time with
 			// actionable refusals that name the panel switch.
 			AllowRequireReply: cfg.Agent.SessionCollabAllowRequireReply,
+			EventWaitRecheck:  cfg.Agent.ExperimentalEventWaitRecheck,
 			AllowSteer:        cfg.Agent.SessionCollabAllowSteer,
 			DailySendLimit:    cfg.Agent.SessionCollabDailySendLimit,
 		}

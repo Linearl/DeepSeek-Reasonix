@@ -37,6 +37,12 @@ type SessionCollabConfig struct {
 	ResolveSessionPath func() string
 	// MailDir overrides the shared collab mailbox root; empty uses config's.
 	MailDir string
+
+	// EventWaitRecheck enables task 244 B3: event_wait re-evaluates its checker
+	// once more right before returning and reports the second verdict as
+	// recheckSatisfied, exposing a judged-vs-returned window race. Off
+	// (default) keeps the return shape byte-identical.
+	EventWaitRecheck bool
 	// CurrentContactID is filled on first ensure for the calling session.
 	CurrentContactID string
 	// HopLimit resolves the live collaboration chain ceiling AT CALL TIME (task 204),
@@ -738,15 +744,15 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 	}
 	mail := sessioncollab.NewMailStoreWithHopLimit(mailDir, t.cfg.hopLimit())
 	msg := sessioncollab.MailMessage{
-		From:        fromContact,
-		FromSession: fromSession,
-		To:          target.ContactID,
-		Body:        strings.TrimSpace(p.Message),
-		Delivery:    string(delivery),
-		Hop:         p.Hop,
-		CardID:      p.CardID,
-		ReplyTo:     fromContact,
-		ThreadID:    strings.TrimSpace(p.ThreadID),
+		From:         fromContact,
+		FromSession:  fromSession,
+		To:           target.ContactID,
+		Body:         strings.TrimSpace(p.Message),
+		Delivery:     string(delivery),
+		Hop:          p.Hop,
+		CardID:       p.CardID,
+		ReplyTo:      fromContact,
+		ThreadID:     strings.TrimSpace(p.ThreadID),
 		RequireReply: p.RequireReply,
 	}
 	// Task 225 (user ruling): an explicit approver overrides the task-source

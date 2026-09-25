@@ -61,6 +61,10 @@ type HeartbeatTask struct {
 	// Prompt, so a task that already states its objective needs no extra field.
 	GoalMode bool   `json:"goalMode,omitempty"`
 	GoalText string `json:"goalText,omitempty"`
+	// IdleStreak counts consecutive runs whose conversation stayed a shell
+	// (task 244 B1). Only advanced while experimental_autonomous_idle_terminate
+	// is on; reaching heartbeatIdleTerminateStrikes disables the task.
+	IdleStreak int `json:"idleStreak,omitempty"`
 }
 
 // HeartbeatRun records a single successful execution of a heartbeat task.
@@ -69,6 +73,11 @@ type HeartbeatTask struct {
 type HeartbeatRun struct {
 	At      int64  `json:"at"`      // unix millis execution time
 	TopicID string `json:"topicId"` // topic used/created by this run
+
+	// Idle marks that this run's conversation produced no real history — the
+	// prompt was submitted but the topic stayed a shell (task 244 B1). Backfilled
+	// when the next run evaluates it; always false while the experiment is off.
+	Idle bool `json:"idle,omitempty"`
 }
 
 // maxRunHistory caps how many recent executions are kept per task.
@@ -166,6 +175,11 @@ type HeartbeatEngine struct {
 	done           chan struct{}
 	running        bool
 	app            *App // back-reference for topic creation, tab routing, and prompt submission
+
+	// idleTerminate reads experimental_autonomous_idle_terminate at call time
+	// (task 244 B1, S4 call-time evaluation so a settings toggle applies to the
+	// next run without a restart). Nil = always off.
+	idleTerminate func() bool
 }
 
 type heartbeatPendingTopic struct {
@@ -658,6 +672,43 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 	t.RunHistory = append(t.RunHistory, HeartbeatRun{At: t.LastRunAt, TopicID: topicID})
 	if len(t.RunHistory) > maxRunHistory {
 		t.RunHistory = t.RunHistory[len(t.RunHistory)-maxRunHistory:]
+	}
+	return t
+}
+
+// ListTasks returns a copy of the current tasks (in-memory).// heartbeatIdleTerminateStrikes is the strike ceiling for task 244 B1: three
+// consecutive runs that produced no conversation history disable the task
+// (MiMo sentinel's three-idle self-terminate, ported as an opt-in burn guard).
+const heartbeatIdleTerminateStrikes = 3
+
+// heartbeatIdleStreakNext folds one run's outcome into the streak: an idle run
+// extends it, any productive run resets it. Pure so both states are testable
+// without a wired app.
+func heartbeatIdleStreakNext(prevStreak int, prevIdle bool) int {
+	if prevIdle {
+		return prevStreak + 1
+	}
+	return 0
+}
+
+// evaluateIdleStreak applies task 244 B1's guard to a task about to run. Off
+// (default) it is a no-op — no streak advances, no task is disabled — so the
+// zero-regression contract is the early return itself.
+func (e *HeartbeatEngine) evaluateIdleStreak(t HeartbeatTask, prevIdle bool) HeartbeatTask {
+	if e == nil || e.idleTerminate == nil || !e.idleTerminate() {
+		return t
+	}
+	if len(t.RunHistory) > 0 {
+		t.RunHistory[len(t.RunHistory)-1].Idle = prevIdle
+	}
+	t.IdleStreak = heartbeatIdleStreakNext(t.IdleStreak, prevIdle)
+	if t.IdleStreak >= heartbeatIdleTerminateStrikes {
+		slog.Warn("heartbeat: autonomous idle terminate — task disabled",
+			"task", t.ID, "title", t.Title,
+			"idle_streak", t.IdleStreak,
+			"last_run_idle", prevIdle,
+			"gate", "experimental_autonomous_idle_terminate")
+		t.Enabled = false
 	}
 	return t
 }

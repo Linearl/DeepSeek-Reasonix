@@ -23,6 +23,12 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	c.Desktop.ExperimentalTraceAsState = true
 	c.Desktop.ExperimentalDream = true
 	c.Agent.ExperimentalSessionCollab = true
+	c.Desktop.ExperimentalAutonomousIdleTerminate = true
+	c.Agent.ExperimentalAutonomousIdleTerminate = true
+	c.Desktop.ExperimentalLoopStreakNote = true
+	c.Agent.ExperimentalLoopStreakNote = true
+	c.Desktop.ExperimentalEventWaitRecheck = true
+	c.Agent.ExperimentalEventWaitRecheck = true
 	c.Desktop.ExperimentalSessionCollab = true
 
 	out := RenderTOMLForScope(c, RenderScopeUser)
@@ -38,6 +44,9 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 		"experimental_trace_as_state = true",
 		"experimental_dream = true",
 		"experimental_session_collab = true",
+		"experimental_autonomous_idle_terminate = true",
+		"experimental_loop_streak_note = true",
+		"experimental_event_wait_recheck = true",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("rendered user config is missing %q\n---\n%s", want, out)
@@ -63,6 +72,9 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 		"experimental_trace_as_state = false",
 		"experimental_dream = false", // [agent] and desktop mirror both render this key
 		"experimental_session_collab = false",
+		"experimental_autonomous_idle_terminate = false",
+		"experimental_loop_streak_note = false",
+		"experimental_event_wait_recheck = false",
 		"trace_as_state = false",
 		"stalled_intent_nudge = false",
 		"readiness_catch_up = false",

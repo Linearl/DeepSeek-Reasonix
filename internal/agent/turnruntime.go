@@ -178,6 +178,11 @@ type terminalProtocolState struct {
 	// textRepeatNudges counts host reminders after a streamed text loop
 	// (task 110). A second hit pauses the run instead of spinning.
 	textRepeatNudges int
+
+	// loopStreakNotes counts neutral "Continue." injections issued instead of
+	// pausing on a repeated text loop (task 244 B2). Bounded by
+	// maxLoopStreakNotes; after that the ordinary pause contract applies.
+	loopStreakNotes int
 	// contextToolRepairs counts contextual-tool repair rounds; a second
 	// violation after a repair ends the run in a recoverable pause.
 	contextToolRepairs int
@@ -203,3 +208,8 @@ type pendingTurn struct {
 	// right after beginRunTurn — the counterfactual-continuation seam.
 	forkRestore func(*turnRuntime)
 }
+
+// maxLoopStreakNotes bounds task 244 B2's neutral Continue. injections per
+// turn: two notes, then the ordinary text-repeat pause. The bound is what
+// makes the opt-in safe against an unbounded loop (fork rule 2).
+const maxLoopStreakNotes = 2

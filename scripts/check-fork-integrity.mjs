@@ -140,6 +140,12 @@ const CHECKS = [
 
   // ── 任务 184：host 性能监控 + heap profile（2026-09-19）───────────
   { feature: "任务184 监控开关与配置字段", file: "internal/config/config.go", patterns: ["experimental_perf_monitor", "perf_monitor_interval_seconds", "perf_monitor_retention_hours"] },
+  { feature: "任务244 B1 心跳空转自终止开关", file: "internal/config/config.go", patterns: ["experimental_autonomous_idle_terminate"] },
+  { feature: "任务244 B1 心跳空转自终止逻辑", file: "desktop/heartbeat.go", patterns: ["heartbeatIdleTerminateStrikes", "evaluateIdleStreak", "IdleStreak"] },
+  { feature: "任务244 B2 循环中性继续注记开关", file: "internal/config/config.go", patterns: ["experimental_loop_streak_note"] },
+  { feature: "任务244 B2 循环中性继续注记逻辑", file: "internal/agent/run_loop.go", patterns: ["maxLoopStreakNotes", "Loop-streak note"] },
+  { feature: "任务244 B3 等待返回前复查开关", file: "internal/config/config.go", patterns: ["experimental_event_wait_recheck"] },
+  { feature: "任务244 B3 等待返回前复查逻辑", file: "internal/agent/event_wait_tool.go", patterns: ["eventWaitRecheckValue", "recheckSatisfied"] },
   { feature: "任务184 监控采样器与 heap profile", file: "desktop/perf_monitor.go", patterns: ["func (a *App) SaveHeapProfile", "func (m *perfMonitor) writeHeapProfile", "perf-sample-", "perfMonitorHeapKept"] },
   { feature: "任务184 窗口指标（Win32 计数器）", file: "desktop/perf_monitor_windows.go", patterns: ["GetProcessMemoryInfo", "GetProcessIoCounters"] },
   { feature: "任务184 session 常驻统计", file: "internal/session/stats.go", patterns: ["func (s *Service) OperationResidency", "func (s *Session) OperationResidency"] },
