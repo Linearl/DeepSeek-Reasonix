@@ -25,6 +25,7 @@ const CHECKS = [
   { feature: "heartbeat 编辑器样式", file: "desktop/frontend/src/custom/features/heartbeat/heartbeat.css", patterns: [".heartbeat-editor__model-override", ".heartbeat-editor__input"] },
 
   // ── 前端 TS ─────────────────────────────────────────────────────
+  { feature: "task 192 驻留豁免开关（store 策略）", file: "desktop/frontend/src/lib/transcriptStore.ts", patterns: ["setResidentPolicy", "shouldRetainOnSwitch", "ResidentExemptLimit", "noteResidentBudgetOver"] },
   { feature: "#9221 颜色筛选 TSX", file: "desktop/frontend/src/components/ProjectTree.tsx", patterns: ["colorFilter", "renderColorFilterControl", "project-tree__action-btn"] },
   { feature: "#9222 分组 TSX + 持久化（上游等价实现）", file: "desktop/frontend/src/components/ProjectTreeOrganization.tsx", patterns: ["ProjectTreeGroupRows", "useProjectTreeOrganization", "persistSessionGroupCollapsed"] },
   { feature: "#9518 分组计数后端权威", file: "desktop/frontend/src/components/ProjectTreeOrganization.tsx", patterns: ["memberCount", "group.topicIds?.length ?? 0"] },

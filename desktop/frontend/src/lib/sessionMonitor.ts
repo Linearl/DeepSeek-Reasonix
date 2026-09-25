@@ -222,6 +222,22 @@ export function noteEviction(event: Omit<SessionEviction, "at">): void {
   );
 }
 
+/**
+ * Task 192: the residency exemptions held while the byte budget was already
+ * over — the run stayed above 190's global budget on purpose instead of
+ * evicting an exempt session. Logged loudly so "the cache is big" is answered
+ * by a name, not by silence (acceptance: the overrun is prompted, not
+ * silently absorbed).
+ */
+export function noteResidentBudgetOver(totalBytes: number, budgetBytes: number): void {
+  reportFrontendLog(
+    "session-monitor",
+    "resident budget exceeded by exempt sessions (task 192)",
+    `totalBytes=${totalBytes} budgetBytes=${budgetBytes} overBy=${totalBytes - budgetBytes}`,
+    "warn",
+  );
+}
+
 /** Stage timings for one tab, newest last (capped by limit). */
 export function stageTimingsFor(tabId: string, limit = 12): StageTiming[] {
   const out: StageTiming[] = [];

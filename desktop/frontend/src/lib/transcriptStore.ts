@@ -33,7 +33,7 @@ import { asArray } from "./array";
 import { historicalResultNotice } from "./completionResultState";
 import { app } from "./bridge";
 import { noteHistoryPage, registerTranscriptCacheDiagnostics } from "./sessionDiagnostics";
-import { noteEviction } from "./sessionMonitor";
+import { noteEviction, noteResidentBudgetOver } from "./sessionMonitor";
 import { TranscriptMarkdownCache, type ParsedMarkdownValue } from "./transcriptMarkdownCache";
 export type { ParsedMarkdownValue } from "./transcriptMarkdownCache";
 import { historySearchAndAnswer } from "./searchTranscript";
@@ -101,6 +101,14 @@ export interface TranscriptStoreOptions {
    * the loop: every tab ages out and then evicts as usual. Default 30 minutes.
    */
   recentActiveExemptMs?: number;
+  /**
+   * Task 192: active-tab residency policy (experimental_active_tab_resident).
+   * Off (default) keeps today's semantics byte-for-byte. On exempts at most
+   * ACTIVE_RESIDENT_EXEMPT_LIMIT pinned/running tabs (oldest released first)
+   * and lets the switch-away release retain the active/running tab's state —
+   * the 1.34 second-switch feel.
+   */
+  activeTabResident?: boolean;
 }
 
 export interface TranscriptProjection {
@@ -441,6 +449,15 @@ export class TranscriptStore {
   private readonly evictCooldownMs: number;
   private readonly recentActiveExemptMs: number;
   private readonly lastActiveAt = new Map<string, number>();
+  /**
+   * Task 192: how many tabs may hold the residency exemption while the
+   * experimental policy is on — the hard stop that keeps "never evict the
+   * running tab" from turning into unbounded growth. Oldest exempt tabs are
+   * released first; the policy off keeps the unbounded status quo.
+   */
+  private static readonly ResidentExemptLimit = 2;
+  /** Task 192: experimental_active_tab_resident, applied via setResidentPolicy. */
+  private residentPolicy = false;
 
   constructor(backend: TranscriptBackend, options: TranscriptStoreOptions = {}) {
     this.backend = backend;
@@ -449,6 +466,28 @@ export class TranscriptStore {
     this.markdown = new TranscriptMarkdownCache(Math.max(0, options.markdownBudgetBytes ?? DEFAULT_MARKDOWN_BUDGET));
     this.evictCooldownMs = Math.max(0, options.evictCooldownMs ?? DEFAULT_EVICT_COOLDOWN_MS);
     this.recentActiveExemptMs = Math.max(0, options.recentActiveExemptMs ?? DEFAULT_RECENT_ACTIVE_EXEMPT_MS);
+    this.residentPolicy = Boolean(options.activeTabResident);
+  }
+
+  /** Task 192: flip the residency policy at runtime (settings hydrate, no restart). */
+  setResidentPolicy(on: boolean): void {
+    this.residentPolicy = on;
+  }
+
+  /** Task 192: expose the policy so the switch-away release can retain state. */
+  get activeTabResident(): boolean {
+    return this.residentPolicy;
+  }
+
+  /**
+   * Task 192: should the switch-away release keep this tab's whole live state
+   * (subscriptions, projector, store)? On with an active/live pin: yes — the
+   * tab comes back with zero reload. Off: the caller releases exactly as today.
+   */
+  shouldRetainOnSwitch(tabId: string): boolean {
+    if (!this.residentPolicy) return false;
+    const pins = this.tabPins.get(tabId);
+    return Boolean(pins?.live || pins?.active);
   }
 
   // ── session identity / LRU ────────────────────────────────────────────────
@@ -490,7 +529,29 @@ export class TranscriptStore {
 
   private isPinned(session: SessionTranscript): boolean {
     const pins = this.tabPins.get(session.tabId);
-    return Boolean(pins?.live || pins?.active);
+    const pinned = Boolean(pins?.live || pins?.active);
+    if (!pinned || !this.residentPolicy) return pinned;
+    // Task 192 (policy on): the exemption is real but bounded. Keep the two
+    // most recently active pinned/running tabs — anything older loses the pin
+    // and returns to the normal eviction pools, so "never evict what is
+    // running" can never grow past ACTIVE_RESIDENT_EXEMPT_LIMIT (acceptance:
+    // exceeding the cap releases the oldest exemption). Off returns the line
+    // above: today's unbounded pin semantics, byte-for-byte.
+    const pinnedTabs: { tabId: string; at: number }[] = [];
+    for (const [tabId, p] of this.tabPins) {
+      if (!p.live && !p.active) continue;
+      // Recency order: the current active tab is by definition the newest
+      // (lastActiveAt only stamps tabs that LEFT the slot), departed tabs
+      // carry their leave stamp, and a never-active live tab is the oldest.
+      const at = p.active ? Number.MAX_SAFE_INTEGER : (this.lastActiveAt.get(tabId) ?? 0);
+      pinnedTabs.push({ tabId, at });
+    }
+    if (pinnedTabs.length <= TranscriptStore.ResidentExemptLimit) return true;
+    pinnedTabs.sort((a, b) => b.at - a.at); // newest first
+    const kept = new Set(
+      pinnedTabs.slice(0, TranscriptStore.ResidentExemptLimit).map((entry) => entry.tabId),
+    );
+    return kept.has(session.tabId);
   }
 
   /** Pin/unpin a tab with live or in-flight turn state out of the LRU. */
@@ -614,6 +675,13 @@ export class TranscriptStore {
         residentSessions: this.sessions.size,
         totalBodyBytes: total + victim.bodyBytes,
       });
+    }
+    // Task 192 (190 collaboration): with the residency policy on, the exempt
+    // set may hold the store above the global byte budget on purpose. Name the
+    // overrun once per breach instead of letting it grow silently — the
+    // exemptions are counted in the total, they are just not evictable.
+    if (this.residentPolicy && total > this.historyBodyBudgetBytes) {
+      noteResidentBudgetOver(total, this.historyBodyBudgetBytes);
     }
   }
 

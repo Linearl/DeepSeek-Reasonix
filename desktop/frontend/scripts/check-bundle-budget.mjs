@@ -217,6 +217,8 @@ console.log("\nbundle budgets");
 // Task 312 (collapsed group activity dot): baseline at 8641f24d1 measures
 // 471.1 (at the line, PASS) and the group-row dot inline adds bytes over it —
 // the gate trips. One-shot +0.5 to 471.6 per the ratchet rule.
+// Task 192 (active-tab residency): measured 472.5 over 472.1 — the settings
+// entry/card, store policy and locale keys; one-shot +0.5 to 472.6.
 const initialJSBudgetKiB = 472.6; // fork: task 242 (fallback switch+target locale, 7 keys × 3 dialects) measures 472.1 at the 472.1 ceiling — one-shot +0.5 per the ratchet rule (chain: 468.8-era → 471.1 → 471.6 → 472.1 → 472.6)
 // Task 269 rebased onto 471.1: measured 470.7, also within 471.1 —
 // larger one-shot value stands (audit ruling, no second ratchet).
@@ -399,6 +401,9 @@ for (const path of localeChunks) {
   // 78.5 ceiling; one-shot +0.5 per the ratchet rule.
   // 79.0 → 79.5 and zh-TW 80.0 → 80.5: task 242 fallback locale (7 keys ×
   // 3 dialects) measured exactly at each ceiling — one-shot +0.5 each.
+  // Task 192: four zh-TW locale keys measured 80.1 over 80.0 — one-shot +0.5
+  // (zh-TW folded into the shared 80.5 line; zh keeps the LARGER 79.5 of the
+  // two one-shot values, per the 266-A/267 audit ruling).
   const budget = name.startsWith("zh-TW-") ? 80.5 * 1024 : 79.5 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,

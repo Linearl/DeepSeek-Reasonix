@@ -9,6 +9,7 @@ import { hydrateSessionExperience } from "../lib/sessionExperience";
 import { setSessionMonitorEnabled } from "../lib/sessionMonitor";
 import { setAutoLoadOlderEnabled } from "../lib/autoLoadOlderPreference";
 import { setCollabGuidanceMergeEnabled } from "../lib/collabGuidanceMergePreference";
+import { getTranscriptStore } from "../lib/transcriptStore";
 import { setFeedbackEnabled } from "../components/FeedbackPanel";
 import type { BotRuntimeStatusView } from "../lib/types";
 import { app } from "../lib/bridge";
@@ -35,6 +36,10 @@ export function useDesktopPreferences() {
     setAutoLoadOlderEnabled(Boolean((settings as { experimentalAutoLoadOlder?: boolean }).experimentalAutoLoadOlder));
     // Task 153: hydrate the guidance shelf's merge-next affordance the same way.
     setCollabGuidanceMergeEnabled(Boolean((settings as { collabGuidanceMerge?: boolean }).collabGuidanceMerge));
+    // Task 192: apply the active-tab residency policy from the same snapshot so
+    // flipping the switch takes effect without a restart (task 160 pattern);
+    // off keeps today's switch-away release exactly as it is.
+    getTranscriptStore().setResidentPolicy(Boolean((settings as { experimentalActiveTabResident?: boolean }).experimentalActiveTabResident));
     // Task 161: apply the transcript cache tuning (max resident tab states +
     // the two budgets) during boot, BEFORE the first transcriptStore
     // construction reads the effective ceilings. When the experiment is OFF
