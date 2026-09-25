@@ -41,6 +41,34 @@ type SessionLeaseInfo struct {
 	HandoffTo        string    `json:"handoff_to,omitempty"`
 	HandoffID        string    `json:"handoff_id,omitempty"`
 	HandoffExpiresAt time.Time `json:"handoff_expires_at,omitempty"`
+	// Turn is the optional active-turn registration for this session (task
+	// 290 S1). Absent (nil) means "no turn registered by this writer" and
+	// keeps the sidecar byte-identical to the pre-290 shape. Readers that do
+	// not know the field ignore it (standard encoding/json behavior — the
+	// same compatibility the handoff fields rely on).
+	Turn *SessionLeaseTurn `json:"turn,omitempty"`
+}
+
+// SessionLeaseTurn names the turn a writer is currently running inside the
+// leased session so another local process can address it (task 290). The
+// control endpoint is short-lived: it only exists while the turn runs, and
+// the token dies with the turn. This record is purely for lookup — it grants
+// no write authority and is never a recovery input (turnevent.Ledger stays
+// the single authority for turn state).
+type SessionLeaseTurn struct {
+	TurnID    string                   `json:"turn_id"`
+	Status    string                   `json:"status,omitempty"`
+	StartedAt time.Time                `json:"started_at"`
+	Control   *SessionLeaseTurnControl `json:"control,omitempty"`
+}
+
+// SessionLeaseTurnControl is the loopback-only dispatch endpoint of the
+// process that owns the turn. kind is "tcp" for now (127.0.0.1/::1 only);
+// the token is a short-lived shared secret, never written to transcripts.
+type SessionLeaseTurnControl struct {
+	Kind  string `json:"kind"`
+	Addr  string `json:"addr"`
+	Token string `json:"token,omitempty"`
 }
 
 // MarshalJSON makes the zero time genuinely optional. encoding/json does not
@@ -59,6 +87,10 @@ func (i SessionLeaseInfo) MarshalJSON() ([]byte, error) {
 		HandoffTo        string     `json:"handoff_to,omitempty"`
 		HandoffID        string     `json:"handoff_id,omitempty"`
 		HandoffExpiresAt *time.Time `json:"handoff_expires_at,omitempty"`
+		// Task 290 S1: kept in lockstep with the struct tag above — the wire
+		// copy is hand-written, so a field missing here is silently dropped
+		// from every persisted sidecar (the 81/123 render-table lesson).
+		Turn *SessionLeaseTurn `json:"turn,omitempty"`
 	}
 	var expires *time.Time
 	if !i.HandoffExpiresAt.IsZero() {
@@ -68,6 +100,7 @@ func (i SessionLeaseInfo) MarshalJSON() ([]byte, error) {
 	return json.Marshal(wire{
 		SessionPath: i.SessionPath, WriterID: i.WriterID, PID: i.PID, Hostname: i.Hostname,
 		AcquiredAt: i.AcquiredAt, HandoffTo: i.HandoffTo, HandoffID: i.HandoffID, HandoffExpiresAt: expires,
+		Turn: i.Turn,
 	})
 }
 
