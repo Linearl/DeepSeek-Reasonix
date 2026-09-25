@@ -400,6 +400,17 @@ export function projectTreeGroupDotStatus(members: ProjectNode[]): ProjectTopicS
   return "";
 }
 
+// Task 313: how many members the collapsed-group dot stands for. Same predicate
+// (projectTreeStatusShowsDot) and same topicStatus pipeline as the dot, so the
+// count and the dot live and die together — zero new push wiring.
+export function projectTreeGroupActiveCount(members: ProjectNode[]): number {
+  let count = 0;
+  for (const member of members) {
+    if (projectTreeStatusShowsDot(topicStatus(member))) count += 1;
+  }
+  return count;
+}
+
 export function projectTreeTopicArchiveBlocked(node: ProjectNode): boolean {
   if (node.status === "finishing" || node.status === "cancelling" || node.status === "unknown") return true;
   if (asArray(node.children).some(projectTreeTopicArchiveBlocked)) return true;

@@ -3,7 +3,7 @@ import { Eraser, FolderMinus, Pencil, Trash2 } from "lucide-react";
 import { app } from "../lib/bridge";
 import { asArray } from "../lib/array";
 import type { Translator } from "../lib/i18n";
-import { isTopicNode, projectTreeGroupDotStatus, projectTreeTopicArchiveBlocked } from "../lib/projectTreeTopic";
+import { isTopicNode, projectTreeGroupActiveCount, projectTreeGroupDotStatus, projectTreeTopicArchiveBlocked } from "../lib/projectTreeTopic";
 import { loadSessionGroupCollapsed, persistSessionGroupCollapsed } from "../lib/projectGroups";
 import type { ProjectTreeRefresh } from "../lib/projectTreeArchive";
 import type { ProjectNode, ProjectTreeOrganizationBindings, SessionGroup } from "../lib/types";
@@ -460,7 +460,13 @@ export function ProjectTreeGroupRows({
           role="button"
           tabIndex={0}
           className={`project-tree__group-main${canDrop ? " project-tree__group-main--drop-target" : ""}${groupDropTarget === group.id && groupDropTarget !== draggingGroup ? " project-tree__group-main--reorder-target" : ""}${draggingGroup === group.id ? " project-tree__group-main--dragging" : ""}`}
-          style={{ paddingLeft: 14 + depth * 16 }}
+          // Task 313: the group header used to ride the children depth (the
+          // caller passes folder depth + 1), sitting 22px right of the project
+          // folder row. Rewriting to the folder row's own formula —
+          // 8 + (depth - 1) * 16 — puts the collapse chevron exactly on the
+          // folder icon column. Member rows keep the depth they are rendered
+          // with, so the project tree and expanded children do not move.
+          style={{ paddingLeft: 8 + (depth - 1) * 16 }}
           title={group.title}
           onClick={() => {
             // A press that became a drag already did its work on release; the click it
@@ -514,10 +520,19 @@ export function ProjectTreeGroupRows({
           {/* Task 312: collapsed group shows the member activity dot beside the
               count — same .project-tree__topic-state visual the rows use, driven
               by the same topicStatus pipeline (running folds to streaming), so it
-              appears and clears with the rows at the same rate. */}
+              appears and clears with the rows at the same rate.
+              Task 313: the dot is joined by the number of members it stands
+              for; the badge renders inside the same dot guard, so count and dot
+              live and die together (all idle → both gone) and the expanded
+              view still shows neither (rows own their own indicators). */}
           {(() => {
             const dot = collapsed ? projectTreeGroupDotStatus(members) : "";
-            return dot ? <span className={`project-tree__group-state project-tree__topic-state project-tree__topic-state--${dot}`} aria-hidden="true" /> : null;
+            if (!dot) return null;
+            const activeCount = projectTreeGroupActiveCount(members);
+            return <>
+              <span className={`project-tree__group-state project-tree__topic-state project-tree__topic-state--${dot}`} aria-hidden="true" />
+              {activeCount > 0 && <span className="project-tree__group-active-count" aria-hidden="true">{activeCount}</span>}
+            </>;
           })()}
         </div>
         {menuGroup === group.id && <ContextMenu
