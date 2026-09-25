@@ -29,7 +29,12 @@ console.log("\nhydrate history apply");
 
 const mode = hydratedHistoryApplyMode;
 
-ok(mode(true, true, false, { items: [] }) === "skip", "skipHistory blocks apply");
+// Task 232 (757e55058) reworked the skipHistory contract: a populated surface
+// still skips, but an empty one must apply the peeked snapshot or switch-back
+// renders nothing. The old blanket "skipHistory blocks apply" assertion was
+// never updated with that change (main-line pre-existing red, 2026-09-25).
+ok(mode(true, true, false, { items: [{ kind: "user" }] }) === "skip", "skipHistory blocks apply on a populated surface");
+ok(mode(true, true, false, { items: [] }) === "replace", "skipHistory still applies the snapshot onto an empty surface (task 232)");
 ok(mode(false, false, false, { items: [] }) === "skip", "missing projection blocks apply");
 ok(mode(false, true, false, { items: [] }) === "replace", "idle empty surface applies history");
 ok(mode(false, true, true, { running: true, items: [] }) === "replace", "running empty surface applies history");
