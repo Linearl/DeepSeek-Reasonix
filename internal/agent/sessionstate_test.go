@@ -13,12 +13,15 @@ import (
 // holding atomics and mutexes cannot be assigned, so reset must name each field
 // and this list is what keeps it honest.
 var sessionReset = map[string]bool{
-	"mu":               true,
-	"conversation":     true,
-	"output":           true,
-	"cacheHit":         true,
-	"cacheMiss":        true,
-	"missingReasoning": true,
+	"mu":           true,
+	"conversation": true,
+	"output":       true,
+	"cacheHit":     true,
+	"cacheMiss":    true,
+	// Task 317: a fresh conversation starts in the "no recent provider error"
+	// state or compaction miss attribution would blame a stale window.
+	"lastProviderErrorAt": true,
+	"missingReasoning":    true,
 	// A strong-projection repair belongs to the corrupted conversation; a new
 	// conversation starts without it.
 	"reasoningReplayStrongProjection":       true,
