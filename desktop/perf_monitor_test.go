@@ -71,6 +71,21 @@ func TestPerfMonitorWritesSamplesThenStops(t *testing.T) {
 	if sample.OSCounters && sample.WorkingSetMB <= 0 {
 		t.Fatalf("platform reported counters but working set is zero: %+v", sample)
 	}
+	// Task 182 acceptance: the line carries the IO keys and threads on every
+	// row (no omitempty — a missing key would read as "not measured"), and
+	// the default cadence is the user's 5 seconds.
+	raw := lines[0]
+	for _, key := range []string{`"ioWriteMb"`, `"ioReadMb"`, `"threads"`} {
+		if !strings.Contains(raw, key) {
+			t.Fatalf("sample line missing %s: %s", key, raw)
+		}
+	}
+	if sample.OSCounters && sample.Threads == 0 {
+		t.Fatalf("platform reported counters but thread count is zero: %+v", sample)
+	}
+	if perfMonitorDefaultSeconds != 5 {
+		t.Fatalf("default interval = %ds, want 5s (user instruction)", perfMonitorDefaultSeconds)
+	}
 
 	before := len(read())
 	time.Sleep(150 * time.Millisecond)

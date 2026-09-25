@@ -15,9 +15,13 @@ type procCounters struct {
 	WorkingSetBytes uint64
 	PrivateBytes    uint64
 	Handles         uint32
-	ReadBytes       uint64
-	WriteBytes      uint64
-	CPUSeconds      float64
+	// Threads (task 182) counts this process's OS threads — the companion to
+	// handles for spotting a leak that is not memory (stuck goroutines pin
+	// OS threads through cgo/syscalls).
+	Threads    uint32
+	ReadBytes  uint64
+	WriteBytes uint64
+	CPUSeconds float64
 	// KernelSeconds and UserSeconds split the same total (task 196): CPU saturation
 	// caused by parsing looks different from saturation caused by syscalls and file
 	// IO, and the first thing to rule in or out is which half is burning the cores.
@@ -98,5 +102,35 @@ func readProcCounters() procCounters {
 		out.UserSeconds = float64(user.Nanoseconds()) / 1e9
 		out.CPUSeconds = out.KernelSeconds + out.UserSeconds
 	}
+	out.Threads = threadCount()
 	return out
+}
+
+// threadCount counts this process's OS threads through one Toolhelp snapshot
+// (task 182: handles/threads beside the existing counters). A snapshot is a
+// few syscalls; the 5s cadence pays for it gladly, and a failed snapshot
+// leaves Threads at zero while Available still reports the other counters —
+// a missing thread count never falsifies the sample.
+func threadCount() uint32 {
+	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPTHREAD, 0)
+	if err != nil {
+		return 0
+	}
+	defer windows.CloseHandle(snap)
+	var entry windows.ThreadEntry32
+	entry.Size = uint32(unsafe.Sizeof(entry))
+	pid := windows.GetCurrentProcessId()
+	var n uint32
+	if err := windows.Thread32First(snap, &entry); err != nil {
+		return 0
+	}
+	for {
+		if entry.OwnerProcessID == pid {
+			n++
+		}
+		if err := windows.Thread32Next(snap, &entry); err != nil {
+			break
+		}
+	}
+	return n
 }

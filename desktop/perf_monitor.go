@@ -68,10 +68,17 @@ type perfSample struct {
 	// perf_monitor_other.go): a zero must never be mistaken for a measurement.
 	OSCounters bool `json:"osCounters"`
 
-	IOWriteMB      float64 `json:"ioWriteMb,omitempty"`
-	IOReadMB       float64 `json:"ioReadMb,omitempty"`
-	IOWriteDeltaMB float64 `json:"ioWriteDeltaMb,omitempty"`
-	IOReadDeltaMB  float64 `json:"ioReadDeltaMb,omitempty"`
+	// Task 182: the IO quartet dropped omitempty so the core counters appear
+	// in EVERY line — a missing key reads as an absent measurement while a
+	// zero (with osCounters) reads as a real one, and the series exists to
+	// answer "what did the last interval cost".
+	IOWriteMB      float64 `json:"ioWriteMb"`
+	IOReadMB       float64 `json:"ioReadMb"`
+	IOWriteDeltaMB float64 `json:"ioWriteDeltaMb"`
+	IOReadDeltaMB  float64 `json:"ioReadDeltaMb"`
+	// Threads (task 182) is the OS thread count beside handles: the leak
+	// that is not memory (threads pinned by stuck syscalls/cgo).
+	Threads uint32 `json:"threads"`
 
 	// FilesKB is path -> KiB for the configured key-file table.
 	FilesKB map[string]float64 `json:"filesKb,omitempty"`
@@ -254,6 +261,7 @@ func (m *perfMonitor) takeSample(now time.Time) perfSample {
 		sample.WorkingSetMB = float64(counters.WorkingSetBytes) / (1 << 20)
 		sample.PrivateMB = float64(counters.PrivateBytes) / (1 << 20)
 		sample.Handles = counters.Handles
+		sample.Threads = counters.Threads
 		sample.IOWriteMB = float64(counters.WriteBytes) / (1 << 20)
 		sample.IOReadMB = float64(counters.ReadBytes) / (1 << 20)
 	}
