@@ -1512,6 +1512,13 @@ type AgentConfig struct {
 	// this switch is on and a trigger is registered; event_wait's wait path
 	// does not depend on it.
 	ExperimentalEventTrigger bool `toml:"experimental_event_trigger"`
+	// ExperimentalSessionControl enables the cross-session control tools
+	// (task 274): stop a peer's active turn and switch a peer's model with
+	// fail-closed semantics (set_model refuses while a turn is running —
+	// mid-turn model swaps break sampling/promptCacheKey consistency).
+	// Off by default (fork rule 2): the directory gains no mutating verbs
+	// until this switch is on.
+	ExperimentalSessionControl bool `toml:"experimental_session_control"`
 	// CollabInboxMerge controls how the durable inbox drains multiple queued
 	// items (task 221). "off" (default) keeps the current one-item-per-dispatch
 	// FIFO; "same_sender" merges queued items that share an envelope Source

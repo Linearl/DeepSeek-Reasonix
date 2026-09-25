@@ -2218,6 +2218,13 @@ func (c *Controller) notice(text string) {
 	c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Text: text})
 }
 
+// Notice (task 274 ②) is the exported port surface over notice: the
+// cross-session stop hook writes the remote-stop trace on the target's own
+// transcript before cancelling, so who ended the turn is part of history.
+func (c *Controller) Notice(text string) {
+	c.notice(text)
+}
+
 func (c *Controller) noticeDetail(text, detail string) {
 	c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Text: text, Detail: detail})
 }

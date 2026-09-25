@@ -64,6 +64,11 @@ type TurnControl interface {
 	RunFinalReadinessRecovery(ctx context.Context, input string) error
 	RunShell(command string)
 	Cancel()
+	// Notice (task 274 ②) surfaces an information line on this session's
+	// transcript through the same sink the session's own notices use — the
+	// cross-session stop hook writes its "remotely stopped" trace here before
+	// cancelling, so the target's history records who ended the turn.
+	Notice(text string)
 	Steer(text string)
 	SteerConsumed() bool
 	Running() bool

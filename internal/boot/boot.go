@@ -214,6 +214,15 @@ type Options struct {
 	// backlog (degraded steers included). Nil leaves every reported state
 	// unknown — honest, never a guessed idle.
 	OnSessionStatus func(contactID string) (running bool, lastTurnAtMS int64, pending int, known bool)
+	// OnSessionInfo (task 274 ①) exposes a contact's current model to the
+	// collaboration directory: modelRef as the switcher shows it, provider as
+	// its catalog prefix. Nil omits the fields from every row (CLI/tests).
+	OnSessionInfo func(contactID string) (modelRef string, provider string, known bool)
+	// OnSessionStop / OnSessionSetModel (task 274 ②③) carry the host's
+	// controller hooks for the two mutating verbs. Nil keeps every call a
+	// refusal (CLI/tests build configs without a host runtime).
+	OnSessionStop func(contactID string) (stopped, wasRunning, known bool, err error)
+	OnSessionSetModel func(contactID, model string) (applied, wasRunning, known bool, newRef string, err error)
 	// OnCascadeDelegate (task 225) resolves the task-source parent's Ask
 	// channel for THIS session's approval prompts — the host owns the
 	// contact-bound grant registry (24h). Nil keeps every prompt local.
@@ -1948,6 +1957,13 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			// Task 218: the host answers running/idle from its own controllers;
 			// nil (CLI, tests) keeps every state unknown instead of a guess.
 			SessionStatus: opts.OnSessionStatus,
+			// Task 274 ①: model/provider visibility for the directory rows.
+			SessionInfo: opts.OnSessionInfo,
+			// Task 274 ②③: controller hooks for stop/set_model (gated below).
+			SessionControl: agent.SessionControlHooks{
+				Stop:     opts.OnSessionStop,
+				SetModel: opts.OnSessionSetModel,
+			},
 			// Task 173: parameter-level panel gates, checked at call time with
 			// actionable refusals that name the panel switch.
 			AllowRequireReply: cfg.Agent.SessionCollabAllowRequireReply,
@@ -1980,6 +1996,12 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			subscribeSvc := SharedSubscribeService(collab)
 			reg.Add(agent.NewSubscribeSessionTool(collab, subscribeSvc, nil))
 			subscribeSvc.EnsureStarted()
+		}
+		// Task 274: cross-session control (stop/set_model) — registered only
+		// under its own experimental switch (fork rule 2, default off): with
+		// the switch off the directory gains no mutating verbs at all.
+		if cfg.Agent.ExperimentalSessionControl {
+			reg.Add(agent.NewSessionControlTool(collab))
 		}
 		// Task 235: the receive half of the collab mailbox. Pure pull into a
 		// tool result (D1) — settle=true claims+acks, settle=false peeks.

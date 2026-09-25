@@ -1400,6 +1400,14 @@ export function ProjectTree({
             <span className="project-tree__topic-copy">
               <span className="project-tree__topic-heading">
                 <span className="project-tree__topic-label">{label}</span>
+                {/* Task 274 ①: model visibility on the sidebar row — provider
+                    shown inline, the full modelRef on hover (title/data attr).
+                    Absent when the host cannot see the runtime: no guess. */}
+                {node.modelRef ? (
+                  <span className="project-tree__topic-time" title={node.modelRef} data-model={node.modelRef}>
+                    {node.provider || node.modelRef}
+                  </span>
+                ) : null}
                 {recoveryLabel && <span className="project-tree__topic-recovery" title={recoveryLabel}>{recoveryLabel}</span>}
                 {imSource && (
                   <span
