@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"math/rand"
 	"time"
 
@@ -215,6 +216,31 @@ func (a *Agent) canWaitSampling(ctx context.Context, s *samplingRecoveryState, f
 
 func (a *Agent) waitSamplingRetry(ctx context.Context, s *samplingRecoveryState, result *streamedTurn, sink *deferredStreamSink, attempt int, id string) bool {
 	failure := provider.ClassifyRecovery(result.err)
+	reason := failure.Phase
+	if provider.IsStreamInterrupted(result.err) {
+		reason = provider.StreamInterruptReason(result.err)
+	}
+	// Task 317: every failed attempt leaves a searchable slog trail carrying
+	// this turn's cache surface — events alone left desktop.log blind to the
+	// error round (304 error-path rule). A nil usage is the zero-usage round
+	// cache-查证 candidate A predicts (the server never persisted the prefix
+	// of a request that never completed), logged explicitly as
+	// usage_present=false instead of an indistinguishable hit=0. The stamp
+	// feeds compaction miss attribution (the error→compact gap vs TTL).
+	var cacheHit, cacheMiss int64
+	usagePresent := result.usage != nil
+	if result.usage != nil {
+		cacheHit, cacheMiss = int64(result.usage.CacheHitTokens), int64(result.usage.CacheMissTokens)
+	}
+	a.sess.lastProviderErrorAt.Store(time.Now().UnixMilli())
+	slog.Info("agent: sampling attempt failed",
+		"attempt", attempt, "max_attempts", maxSamplingAttempts,
+		"phase", failure.Phase, "status", failure.Status, "code", failure.Code,
+		"reason", reason, "retryable", failure.Retryable,
+		"cache_hit_tokens", cacheHit, "cache_miss_tokens", cacheMiss,
+		"usage_present", usagePresent,
+		"session_hit_total", a.sess.cacheHit.Load(), "session_miss_total", a.sess.cacheMiss.Load(),
+		"err", result.err)
 	waiting := attempt >= maxSamplingAttempts && a.canWaitSampling(ctx, s, failure)
 	if !failure.Retryable || (attempt >= maxSamplingAttempts && !waiting) {
 		return false
@@ -226,14 +252,16 @@ func (a *Agent) waitSamplingRetry(ctx context.Context, s *samplingRecoveryState,
 	}
 	delay = max(delay, failure.RetryAfter)
 	if waiting && s.waited+delay > recoveryWaitBudget {
+		slog.Warn("agent: recovery wait budget exhausted",
+			"phase", failure.Phase, "status", failure.Status, "code", failure.Code,
+			"attempts", attempt, "waited_ms", s.waited.Milliseconds(),
+			"budget_ms", recoveryWaitBudget.Milliseconds(),
+			"cache_hit_tokens", cacheHit, "cache_miss_tokens", cacheMiss,
+			"usage_present", usagePresent, "err", result.err)
 		result.err = &provider.RecoveryWaitExhaustedError{Phase: failure.Phase, Code: failure.Code, Status: failure.Status, Waited: s.waited, Attempts: attempt, Cause: result.err}
 		return false
 	}
 	sink.Discard()
-	reason := failure.Phase
-	if provider.IsStreamInterrupted(result.err) {
-		reason = provider.StreamInterruptReason(result.err)
-	}
 	a.emitStreamAttempt(id, event.StreamAttemptDiscard, attempt, reason, result.err)
 	status := &event.RecoveryStatus{Phase: failure.Phase, Reason: failure.Code, NextAttemptAt: time.Now().Add(delay).UnixMilli(), WaitedMs: s.waited.Milliseconds(), Waiting: waiting}
 	if waiting {

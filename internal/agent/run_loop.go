@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -266,6 +267,21 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 			// bounded LocalOnly recovery record for the next real user message.
 			// Intermediate failed attempts never wrote session state.
 			a.recordInterruptedDisplay(text, reasoning, partialCalls, true, err, state.workDurationMs())
+			// Task 317: the turn-level failure line closes the per-attempt
+			// trail (waitSamplingRetry) so an incident can be grepped end to
+			// end: final classification, then the session cache surface the
+			// failed turn leaves behind (304 error-path rule). A cancellation
+			// is the user's own action, not a provider failure — ClassifyRecovery
+			// excludes it from recovery, so it must not be logged as one either.
+			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				failure := provider.ClassifyRecovery(err)
+				slog.Warn("agent: turn ended with provider failure",
+					"phase", failure.Phase, "status", failure.Status, "code", failure.Code,
+					"usage_present", usage != nil,
+					"session_hit_total", a.sess.cacheHit.Load(),
+					"session_miss_total", a.sess.cacheMiss.Load(),
+					"err", err)
+			}
 			// A broken provider stream can otherwise look like a silent hang
 			// followed only by the generic interrupted-turn notice (#9560).
 			if code, msg := streamInterruptNotice(err); msg != "" {

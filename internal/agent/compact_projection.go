@@ -322,6 +322,10 @@ func (a *Agent) compressVisibleRange(
 	a.svc.sink.Emit(event.Event{Kind: event.CompactionDone, Compaction: event.Compaction{
 		Trigger: trigger, Messages: len(plan.fold), Summary: summary, Archive: state.LastReceipt.Archive,
 	}})
+	// Task 317: the explicit compress tool is the manual "second compaction"
+	// a user reaches for after a network error — its zero-hit round must
+	// attribute its miss exactly like the automatic fold does.
+	a.logCompactionMissAttribution(trigger, tele, result.SourceTokens)
 	result.Status = "ok"
 	result.Reason = ""
 	return result, nil
@@ -548,6 +552,64 @@ func summaryTransientRetryable(err error) bool {
 	return false
 }
 
+// promptCacheTTLEstimate is the observation-only TTL assumption for cache-miss
+// attribution (task 317): providers do not publish their prompt-cache window;
+// the industry range is 5–10 minutes, so the lower bound is used. Nothing
+// gates on this value — it only labels a log line.
+const promptCacheTTLEstimate = 5 * time.Minute
+
+// compactionMissAttribution names why a compaction round measured zero cache
+// hit (task 317, cache-查证 §④ candidates). Pure for testing:
+//   - zero_usage_no_request: the summary request never carried usage — the
+//     server never reported (or never wrote) a cache surface;
+//   - error_gap_over_ttl: the last provider error is older than the TTL
+//     estimate, so the server-side prefix has likely been evicted (candidate B);
+//   - error_gap_within_ttl: a recent error sits inside the window — the miss
+//     more likely comes from a never-written prefix (zero-usage error round,
+//     candidate A) than from TTL;
+//   - prefix_or_model_shape: no recent error — the known prefix/model-shape
+//     family (modelRef switch, #9572).
+func compactionMissAttribution(tele CompactionTelemetry, errorGap time.Duration, hadError bool) string {
+	if tele.InputTokens == 0 && tele.RequestCount == 0 {
+		return "zero_usage_no_request"
+	}
+	if !hadError {
+		return "prefix_or_model_shape"
+	}
+	if errorGap >= promptCacheTTLEstimate {
+		return "error_gap_over_ttl"
+	}
+	return "error_gap_within_ttl"
+}
+
+// logCompactionMissAttribution emits the miss-attribution line for a
+// successful compaction round that measured zero cache hit (task 317, cache
+// 保全 面 b). Both compaction entry points call it — the explicit compress
+// tool and the automatic projection fold — so a manual "second compaction"
+// after an outage ships the same evidence as an auto fold. Observation only:
+// no behavior decision reads this line.
+func (a *Agent) logCompactionMissAttribution(trigger string, tele CompactionTelemetry, sourceTokens int) {
+	if tele.CacheHitTokens != 0 || sourceTokens <= 0 {
+		return
+	}
+	lastErr := a.sess.lastProviderErrorAt.Load()
+	hadError := lastErr > 0
+	var gap time.Duration
+	gapMs := int64(-1)
+	if hadError {
+		gap = time.Since(time.UnixMilli(lastErr))
+		gapMs = gap.Milliseconds()
+	}
+	slog.Warn("agent: compaction cache miss attribution",
+		"trigger", trigger,
+		"attribution", compactionMissAttribution(tele, gap, hadError),
+		"error_gap_ms", gapMs,
+		"model_ref", a.modelRef,
+		"input_tokens", tele.InputTokens,
+		"cache_miss_tokens", tele.CacheMissTokens,
+		"source_tokens", sourceTokens)
+}
+
 // summarizeFold runs the summary request, retrying transient stream failures
 // with backoff (Task 303). Every attempt and the final outcome carry their
 // reason in slog, so a "summary failed" report always ships its retry trail
@@ -572,6 +634,10 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 			return res, tele, nil
 		}
 		if attempt >= summaryTransientMaxAttempts || !summaryTransientRetryable(err) {
+			// Task 317: a failed summary is a provider error too — stamp it so
+			// the NEXT compaction round can attribute its miss against the
+			// error→compact gap (same stamp the sampling trail writes).
+			a.sess.lastProviderErrorAt.Store(time.Now().UnixMilli())
 			slog.Warn("agent: summary request failed",
 				"trigger", trigger, "attempts", attempt+1, "err", err,
 				"transient", summaryTransientRetryable(err),
@@ -716,6 +782,9 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 		"input_tokens", tele.InputTokens, "output_tokens", tele.OutputTokens,
 		"cache_hit_tokens", tele.CacheHitTokens, "cache_miss_tokens", tele.CacheMissTokens,
 		"request_count", tele.RequestCount)
+	// Task 317 (cache 保全 面 b): the automatic fold attributes its miss the
+	// same way the explicit tool does (shared helper, both entry points).
+	a.logCompactionMissAttribution(trigger, tele, sourceTokens)
 	return CompactionInstalled, nil
 }
 

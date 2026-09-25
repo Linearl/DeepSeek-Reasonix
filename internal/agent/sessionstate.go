@@ -23,6 +23,13 @@ type sessionRuntime struct {
 	cacheHit  atomic.Int64
 	cacheMiss atomic.Int64
 
+	// lastProviderErrorAt is the unix-milli stamp of the most recent failed
+	// sampling/summary attempt (task 317). Compaction miss attribution reads
+	// it to report the error→compact gap against the provider prompt-cache TTL
+	// window — observation only, never a behavior gate. Reset with the
+	// conversation so a fresh session starts in the "no recent error" state.
+	lastProviderErrorAt atomic.Int64
+
 	missingReasoning missingReasoningWatch
 
 	// reasoningReplayStrongProjection records the provider-visible history cutoff
@@ -69,6 +76,7 @@ func (r *sessionRuntime) reset(s *Session) {
 	r.mu.Unlock()
 	r.cacheHit.Store(0)
 	r.cacheMiss.Store(0)
+	r.lastProviderErrorAt.Store(0)
 	r.output.reset()
 	r.missingReasoning = missingReasoningWatch{}
 	r.reasoningReplayStrongProjection = 0
