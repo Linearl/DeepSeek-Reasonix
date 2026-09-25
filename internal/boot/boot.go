@@ -34,8 +34,6 @@ import (
 	"reasonix/internal/control"
 	"reasonix/internal/environment"
 	"reasonix/internal/event"
-	"reasonix/internal/sessioncollab"
-	"reasonix/internal/sessioninbox"
 	"reasonix/internal/extension"
 	"reasonix/internal/extension/dispatch"
 	"reasonix/internal/extension/protocol"
@@ -63,7 +61,9 @@ import (
 	"reasonix/internal/rules"
 	"reasonix/internal/sandbox"
 	"reasonix/internal/secrets"
+	"reasonix/internal/sessioncollab"
 	"reasonix/internal/sessioncontext"
+	"reasonix/internal/sessioninbox"
 	"reasonix/internal/sessiontemp"
 	"reasonix/internal/skill"
 	"reasonix/internal/stats"
@@ -221,7 +221,7 @@ type Options struct {
 	// OnSessionStop / OnSessionSetModel (task 274 ②③) carry the host's
 	// controller hooks for the two mutating verbs. Nil keeps every call a
 	// refusal (CLI/tests build configs without a host runtime).
-	OnSessionStop func(contactID string) (stopped, wasRunning, known bool, err error)
+	OnSessionStop     func(contactID string) (stopped, wasRunning, known bool, err error)
 	OnSessionSetModel func(contactID, model string) (applied, wasRunning, known bool, newRef string, err error)
 	// OnCascadeDelegate (task 225) resolves the task-source parent's Ask
 	// channel for THIS session's approval prompts — the host owns the
@@ -1191,6 +1191,11 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		cfg.Agent.MaxSubagentConcurrency, cfg.Agent.MaxParallelWriters,
 	)
 	subagentScheduler := agent.NewSubagentScheduler(maxSubagentConcurrency, maxParallelWriters)
+	// Task 315: optimistic_write (#9213 / task 280) also lifts the parent-claim
+	// dispatch gate — with the parallel-write safety check disabled, a parent
+	// write must not fail-fast any subagent. Boot snapshot, same lifecycle as
+	// the tool-layer optimisticWrite flag (config change applies on restart).
+	subagentScheduler.SetOptimistic(cfg.Sandbox.OptimisticWrite)
 	// Task 115 dispatch wiring: .reasonix/agent/*.md definitions become
 	// additional task profile= candidates. Skills win on a name collision so a
 	// workspace md file cannot shadow an installed runAs=subagent playbook.
@@ -2141,15 +2146,15 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	}
 	imageSnapshot := config.ModelCapabilitySnapshot(cfg, modelCapabilities)
 	ctrlOpts := control.Options{
-		ModelSettingsRevision:          cfg.ModelRuntimeFingerprint(modelRef),
-		ModelSettingsCurrent:           runtimeModelSettingsReader(root, modelName, modelRef, opts.ModelSettings),
-		FrozenImageInput:               &imageEnabled,
-		ImageCapabilityChanged:         runtimeImageCapabilityReader(root, modelName, imageSnapshot, opts.ModelSettings),
-		TaskBudget:                     taskBudgetFromConfig(cfg),
-		GoalTokenBudget:                cfg.Agent.GoalTokenBudget,
-		Autopilot:                      opts.Autopilot,
-		AutopilotMaxRuntime:            opts.MaxRuntime,
-		AutopilotApprovalGrace:         opts.AutopilotApprovalGrace,
+		ModelSettingsRevision:  cfg.ModelRuntimeFingerprint(modelRef),
+		ModelSettingsCurrent:   runtimeModelSettingsReader(root, modelName, modelRef, opts.ModelSettings),
+		FrozenImageInput:       &imageEnabled,
+		ImageCapabilityChanged: runtimeImageCapabilityReader(root, modelName, imageSnapshot, opts.ModelSettings),
+		TaskBudget:             taskBudgetFromConfig(cfg),
+		GoalTokenBudget:        cfg.Agent.GoalTokenBudget,
+		Autopilot:              opts.Autopilot,
+		AutopilotMaxRuntime:    opts.MaxRuntime,
+		AutopilotApprovalGrace: opts.AutopilotApprovalGrace,
 		// Task 231: the managed-path pre-approval snapshot. All five flags ship
 		// false (default-off experimental); the two home-derived dirs give the
 		// classifier its skills/stores boundaries, and hooks classify by the
@@ -2163,22 +2168,22 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			SkillsDir:  filepath.Join(config.MemoryUserDir(), "skills"),
 			StoresDir:  config.MemoryUserDir(),
 		},
-		ApprovalTier:                   approvalTierForBuild(cfg, opts),
-		Runner:                         runner,
-		Executor:                       executor,
-		Sink:                           sink,
-		Policy:                         policy,
-		SubagentGate:                   headlessGate,
-		Label:                          label,
-		ModelRef:                       modelRef,
-		VisionModel:                    cfg.Agent.VisionModel,
-		VisionProviderResolver:         visionProviderResolver,
-		VisionModelSelector:            visionModelSelector,
-		ModelCapabilityResolver:        modelCapabilities.Resolve,
-		SystemPrompt:                   sysPrompt,
-		MemorySystemReload:             memoryReload,
-		PinnedContextLoader:            opts.PinnedContextLoader,
-		SessionDir:                     sessionDir,
+		ApprovalTier:            approvalTierForBuild(cfg, opts),
+		Runner:                  runner,
+		Executor:                executor,
+		Sink:                    sink,
+		Policy:                  policy,
+		SubagentGate:            headlessGate,
+		Label:                   label,
+		ModelRef:                modelRef,
+		VisionModel:             cfg.Agent.VisionModel,
+		VisionProviderResolver:  visionProviderResolver,
+		VisionModelSelector:     visionModelSelector,
+		ModelCapabilityResolver: modelCapabilities.Resolve,
+		SystemPrompt:            sysPrompt,
+		MemorySystemReload:      memoryReload,
+		PinnedContextLoader:     opts.PinnedContextLoader,
+		SessionDir:              sessionDir,
 		// Task 263: recovery drops in-flight inbox items whose collab source
 		// message was already consumed (the seen cursor), so an update restart
 		// stops replaying processed messages onto the guidance shelf. The probe
