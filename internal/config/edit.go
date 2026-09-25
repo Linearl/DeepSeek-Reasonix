@@ -634,6 +634,19 @@ func (c *Config) SetExperimentalResearchBudget(enabled bool) error {
 	return nil
 }
 
+// SetPreapproveManagedPaths stores the task-231 master switch plus its four
+// independently checked categories in one write, so a settings save can never
+// land half-applied. All five ship false: the zero value keeps every approval
+// prompt exactly where it is today (铁律 2 — default-off experimental).
+func (c *Config) SetPreapproveManagedPaths(enabled, skills, hooks, sessionStores, bashEscape bool) error {
+	c.Agent.ExperimentalPreapproveManagedPaths = enabled
+	c.Agent.PreapproveManagedSkills = skills
+	c.Agent.PreapproveManagedHooks = hooks
+	c.Agent.PreapproveManagedStores = sessionStores
+	c.Agent.PreapproveManagedBashEscape = bashEscape
+	return nil
+}
+
 // SetExperimentalQuestionSearch toggles the topic-bar question-search entry
 // (task 265). It ships on; off hides the entry and the panel.
 func (c *Config) SetExperimentalQuestionSearch(enabled bool) error {

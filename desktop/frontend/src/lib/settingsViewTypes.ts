@@ -40,6 +40,13 @@ export interface SettingsView {
   experimentalCompletionSummary?: boolean;
   // Task 262: gates the whole quick-commands surface (ships off).
   experimentalQuickCommands?: boolean;
+  // Task 231: managed-path pre-approval — master switch + four checkboxes
+  // (all ship off; the bypass only arms under autopilot).
+  experimentalPreapproveManagedPaths?: boolean;
+  preapproveSkills?: boolean;
+  preapproveHooks?: boolean;
+  preapproveSessionStores?: boolean;
+  preapproveBashEscape?: boolean;
   // Task 257: full access (yolo) — all declared write dirs pass, bash unwrapped (ships off; restart to apply).
   experimentalFullAccess?: boolean;
   // Task 130: exposes the Settings → 本地服务 page and serve-pool controls.

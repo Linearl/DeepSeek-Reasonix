@@ -24,7 +24,7 @@ import { catalogForPreset } from "../lib/providerCatalog";
 import { ProviderCatalogPicker, type CatalogChoice } from "./ProviderCatalogPicker";
 import { Eye, EyeOff, Files } from "lucide-react";
 import { lazy, memo, Suspense, startTransition, useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { ArrowRight, Check, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, FolderLock, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, Server, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, Volume2, Zap } from "lucide-react";
+import { ArrowRight, Check, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, FolderLock, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, Server, ShieldAlert, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, Volume2, Zap } from "lucide-react";
 import { asArray } from "../lib/array";
 import { ShellInterpreterFields } from "./SettingsShellSupport";
 import { CHANNEL_ICONS } from "./channelIcons";
@@ -1778,6 +1778,8 @@ type ExperimentFeatureId =
   | "compactionParallel"
   | "contextBudget"
   | "researchBudget"
+  // Task 231: managed-path pre-approval (master switch + four checkboxes).
+  | "preapproveManagedPaths"
   | "draftPersistence"
   | "questionSearch"
   | "subagentPolicy"
@@ -1883,6 +1885,11 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     // Task 257: full access (yolo) lands in misc beside path rules — it is a
     // permission-shape switch, not a plain productivity toggle.
     { id: "fullAccess", group: "misc", label: t("settings.fullAccess"), on: Boolean(s.experimentalFullAccess) },
+    // Task 231: also a permission-shape switch (misc) — the entry light reads
+    // the master switch; the four checkboxes live inside the detail card.
+    // Part of the render table: a missing entry would silently drop the save
+    // (the 81/123 lost-save lesson).
+    { id: "preapproveManagedPaths", group: "misc", label: t("settings.preapproveManagedPaths"), on: Boolean(s.experimentalPreapproveManagedPaths) },
   ];
 
   return (
@@ -2776,6 +2783,72 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   </button>
                 ))}
               </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "preapproveManagedPaths" && (
+            <SettingsField label={t("settings.preapproveManagedPaths")} hint={t("settings.preapproveManagedPathsHint")} icon={<ShieldAlert size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalPreapproveManagedPaths) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetPreapproveManagedPaths(
+                      on,
+                      Boolean(s.preapproveSkills),
+                      Boolean(s.preapproveHooks),
+                      Boolean(s.preapproveSessionStores),
+                      Boolean(s.preapproveBashEscape),
+                    ))}
+                  >
+                    {t(on ? "settings.preapproveManagedPaths.on" : "settings.preapproveManagedPaths.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+              {/* Task 231: with the master switch on, the four categories check
+                  independently — one write carries all five values so a save can
+                  never land half-applied. The risk line stays visible the whole
+                  time this card is open: checking a box accepts that a prompt
+                  injection could make the agent write that class unattended. */}
+              {Boolean(s.experimentalPreapproveManagedPaths) && (
+                <div className="set-preapprove">
+                  <p className="set-preapprove__warning">{t("settings.preapproveManagedPaths.warning")}</p>
+                  {([
+                    { key: "preapproveSkills", label: t("settings.preapproveManagedPaths.skills"), checked: Boolean(s.preapproveSkills) },
+                    { key: "preapproveHooks", label: t("settings.preapproveManagedPaths.hooks"), checked: Boolean(s.preapproveHooks) },
+                    { key: "preapproveSessionStores", label: t("settings.preapproveManagedPaths.sessionStores"), checked: Boolean(s.preapproveSessionStores) },
+                    { key: "preapproveBashEscape", label: t("settings.preapproveManagedPaths.bashEscape"), checked: Boolean(s.preapproveBashEscape) },
+                  ]).map((row) => (
+                    <label key={row.key} className="set-preapprove__row">
+                      <input
+                        type="checkbox"
+                        checked={row.checked}
+                        disabled={busy}
+                        onChange={(event) => {
+                          const next = {
+                            skills: Boolean(s.preapproveSkills),
+                            hooks: Boolean(s.preapproveHooks),
+                            stores: Boolean(s.preapproveSessionStores),
+                            bash: Boolean(s.preapproveBashEscape),
+                          };
+                          if (row.key === "preapproveSkills") next.skills = event.target.checked;
+                          else if (row.key === "preapproveHooks") next.hooks = event.target.checked;
+                          else if (row.key === "preapproveSessionStores") next.stores = event.target.checked;
+                          else next.bash = event.target.checked;
+                          void apply(() => app.SetPreapproveManagedPaths(
+                            Boolean(s.experimentalPreapproveManagedPaths),
+                            next.skills,
+                            next.hooks,
+                            next.stores,
+                            next.bash,
+                          ));
+                        }}
+                      />
+                      <span>{row.label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
             </SettingsField>
           )}
           {selected === "draftPersistence" && (
