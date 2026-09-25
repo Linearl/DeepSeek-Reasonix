@@ -288,6 +288,10 @@ type TaskTool struct {
 	compactionParallel bool
 	contextBudget      bool
 	researchBudget     bool
+
+	// Task 244 B9 capability filter (nil = off; boot injects call-time probes).
+	modelCapabilityFilter func() bool
+	visionForModel        func(modelRef string) (vision bool, known bool)
 	// mutationObserver is shared with spawned sub-agents for checkpoint capture.
 	mutationObserver *checkpoint.MutationObserver
 	// recoveryGate is the shared Auto Guard boundary for
@@ -310,29 +314,31 @@ func NewTaskToolWithOptions(opts TaskToolOptions) *TaskTool {
 		sysPrompt = DefaultTaskSystemPrompt
 	}
 	return &TaskTool{
-		imageInput:       opts.ImageInput,
-		prov:             opts.Provider,
-		pricing:          opts.Pricing,
-		quoteContext:     opts.QuoteContext,
-		parentReg:        opts.ParentRegistry,
-		maxSteps:         opts.MaxSteps,
-		reviewMaxSteps:   opts.ReviewMaxSteps,
-		defaultSteps:     opts.SubagentDefaultSteps,
-		contextWindow:    opts.ContextWindow,
-		recentKeep:       opts.RecentKeep,
-		compactRatio:     opts.CompactRatio,
-		temperature:      opts.Temperature,
-		archiveDir:       opts.ArchiveDir,
-		keepPolicy:       opts.KeepPolicy,
-		sysPrompt:        sysPrompt,
-		gate:             opts.Gate,
-		subagentModel:    opts.SubagentModel,
-		subagentEffort:   opts.SubagentEffort,
-		resolveProvider:  opts.ResolveProvider,
-		maxSubagentDepth: DefaultMaxSubagentDepth,
-		compactionParallel: opts.CompactionParallel,
-		contextBudget:      opts.ContextBudget,
-		researchBudget:     opts.ResearchBudget,
+		imageInput:            opts.ImageInput,
+		prov:                  opts.Provider,
+		pricing:               opts.Pricing,
+		quoteContext:          opts.QuoteContext,
+		parentReg:             opts.ParentRegistry,
+		maxSteps:              opts.MaxSteps,
+		reviewMaxSteps:        opts.ReviewMaxSteps,
+		defaultSteps:          opts.SubagentDefaultSteps,
+		contextWindow:         opts.ContextWindow,
+		recentKeep:            opts.RecentKeep,
+		compactRatio:          opts.CompactRatio,
+		temperature:           opts.Temperature,
+		archiveDir:            opts.ArchiveDir,
+		keepPolicy:            opts.KeepPolicy,
+		sysPrompt:             sysPrompt,
+		gate:                  opts.Gate,
+		subagentModel:         opts.SubagentModel,
+		subagentEffort:        opts.SubagentEffort,
+		resolveProvider:       opts.ResolveProvider,
+		maxSubagentDepth:      DefaultMaxSubagentDepth,
+		compactionParallel:    opts.CompactionParallel,
+		contextBudget:         opts.ContextBudget,
+		researchBudget:        opts.ResearchBudget,
+		modelCapabilityFilter: opts.ModelCapabilityFilterEnabled,
+		visionForModel:        opts.VisionForModel,
 	}
 }
 
@@ -1537,6 +1543,27 @@ func FilterReadOnlyRegistry(parent *tool.Registry, exclude ...string) *tool.Regi
 	return sub
 }
 
+// checkModelImageCapability enforces task 244 B9: with the filter on, an
+// image-bearing dispatch to an explicit per-task model without vision is an
+// explained rejection instead of silently dropping the image parts (the child
+// would run blind on the text-only model). modelRef=="" inherits the parent's
+// model — nothing per-task to filter. An unknown ref passes: uncertainty never
+// refuses (same degrade-not-refuse shape as resolveProvider).
+func (t *TaskTool) checkModelImageCapability(ctx context.Context, modelRef string) error {
+	images := SubagentImageCandidates(ctx)
+	if len(images) == 0 || modelRef == "" {
+		return nil
+	}
+	if t == nil || t.modelCapabilityFilter == nil || t.visionForModel == nil || !t.modelCapabilityFilter() {
+		return nil
+	}
+	vision, known := t.visionForModel(modelRef)
+	if !known || vision {
+		return nil
+	}
+	return fmt.Errorf("blocked: model %q has no vision capability but this task carries %d image(s) (task 244 B9 capability filter, experimental_model_capability_filter): dispatch with a vision-capable per-task model, or drop the images from the task", modelRef, len(images))
+}
+
 func (t *TaskTool) resolveSubSessionRuntime(modelRef, effort string) (provider.Provider, *provider.Pricing, int, error) {
 	prov, pricing, ctxWin := t.prov, t.pricing, t.contextWindow
 	if t.resolveProvider != nil && (modelRef != "" || effort != "") {
@@ -1561,6 +1588,9 @@ func (t *TaskTool) runSubSession(ctx context.Context, prompt string, subReg *too
 	prompt = t.withWorkspaceContext(prompt) + "\n\n" + completeSubtaskContract
 	// The child provider owns the final vision decision. Text-only providers
 	// retain the attachment metadata but omit image parts during serialization.
+	if err := t.checkModelImageCapability(ctx, modelRef); err != nil {
+		return "", err
+	}
 	ctx = WithUserImages(ctx, SubagentImageCandidates(ctx))
 	return RunSubAgentWithSession(ctx, prov, subReg, sess, prompt, opts, sink)
 }
@@ -1572,6 +1602,9 @@ func (t *TaskTool) runReadOnlySubSession(ctx context.Context, prompt string, sub
 	// intent classification must judge the task, not the wrapper.
 	opts.ClassifierTaskText = prompt
 	prompt = t.withWorkspaceContext(prompt)
+	if err := t.checkModelImageCapability(ctx, modelRef); err != nil {
+		return "", err
+	}
 	ctx = WithUserImages(ctx, SubagentImageCandidates(ctx))
 	return RunReadOnlySubAgentWithSession(ctx, prov, subReg, sess, prompt, opts, sink)
 }

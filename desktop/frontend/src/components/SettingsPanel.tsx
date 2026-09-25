@@ -1778,6 +1778,8 @@ type ExperimentFeatureId =
   // Task 244 B5/B4 (batch 2).
   | "orphanLeaseReclaim"
   | "recoveryOrphanSweep"
+  // Task 244 B9 (batch 4, final).
+  | "modelCapabilityFilter"
   | "messageMerge"
   | "autopilot"
   // Task 265 lab intake (9 fork features) + task 262 quick commands.
@@ -1869,6 +1871,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "eventWaitRecheck", group: "efficiency", label: t("settings.eventWaitRecheck"), on: Boolean(s.experimentalEventWaitRecheck) },
     { id: "orphanLeaseReclaim", group: "misc", label: t("settings.orphanLeaseReclaim"), on: Boolean(s.experimentalOrphanLeaseReclaim) },
     { id: "recoveryOrphanSweep", group: "misc", label: t("settings.recoveryOrphanSweep"), on: Boolean(s.experimentalRecoveryOrphanSweep) },
+    { id: "modelCapabilityFilter", group: "misc", label: t("settings.modelCapabilityFilter"), on: Boolean(s.experimentalModelCapabilityFilter) },
     { id: "messageMerge", group: "efficiency", label: t("settings.messageMerge"), on: (s.collabInboxMerge || "off") !== "off" || Boolean(s.collabGuidanceMerge) },
     { id: "localServer", group: "efficiency", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
     { id: "traceAsState", group: "efficiency", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
@@ -2577,6 +2580,27 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                       })}
                     >
                       {t(on ? "settings.recoveryOrphanSweep.on" : "settings.recoveryOrphanSweep.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+            </>
+          )}
+
+          {selected === "modelCapabilityFilter" && (
+            <>
+              <SettingsField label={t("settings.modelCapabilityFilter")} hint={t("settings.modelCapabilityFilterHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalModelCapabilityFilter) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalModelCapabilityFilter(on);
+                      })}
+                    >
+                      {t(on ? "settings.modelCapabilityFilter.on" : "settings.modelCapabilityFilter.off")}
                     </button>
                   ))}
                 </SettingsOptions>

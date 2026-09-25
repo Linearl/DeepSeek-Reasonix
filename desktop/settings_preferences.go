@@ -395,6 +395,12 @@ func (a *App) SetExperimentalRecoveryOrphanSweep(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalRecoveryOrphanSweep(enabled) })
 }
 
+// SetExperimentalModelCapabilityFilter toggles the per-task model capability
+// filter (task 244 B9). Read at call time by the dispatch probe — no restart.
+func (a *App) SetExperimentalModelCapabilityFilter(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalModelCapabilityFilter(enabled) })
+}
+
 // SetExperimentalPerfMonitor toggles the host performance monitor (task 184).
 // Restart-scoped: interval and file table are read while the app starts.
 func (a *App) SetExperimentalPerfMonitor(enabled bool) error {

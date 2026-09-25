@@ -1585,6 +1585,12 @@ type AgentConfig struct {
 	// Reasonix shape is an idempotent open-path sweep, not a structured-exit
 	// hook). Off by default: the open path stays byte-identical (fork rule 2).
 	ExperimentalRecoveryOrphanSweep bool `toml:"experimental_recovery_orphan_sweep"`
+	// ExperimentalModelCapabilityFilter turns a per-task model that lacks a
+	// capability the task needs into an explicit, explained rejection instead
+	// of a silent degradation (task 244 B9; today an image-bearing subagent on
+	// a text-only model just drops the image parts and runs blind). Off by
+	// default (fork rule 2): the current silent path stays byte-identical.
+	ExperimentalModelCapabilityFilter bool `toml:"experimental_model_capability_filter"`
 	// CollabInboxMerge controls how the durable inbox drains multiple queued
 	// items (task 221). "off" (default) keeps the current one-item-per-dispatch
 	// FIFO; "same_sender" merges queued items that share an envelope Source

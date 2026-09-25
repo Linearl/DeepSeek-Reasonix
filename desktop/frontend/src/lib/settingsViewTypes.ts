@@ -102,6 +102,8 @@ export interface SettingsView {
   experimentalOrphanLeaseReclaim?: boolean;
   // Task 244 B4: recovery-store open-path orphan sweep.
   experimentalRecoveryOrphanSweep?: boolean;
+  // Task 244 B9: per-task model capability filter.
+  experimentalModelCapabilityFilter?: boolean;
   visionModel: string;
   webSearchModel?: string;
   webSearchModels?: string[];

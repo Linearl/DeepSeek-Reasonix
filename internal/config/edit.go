@@ -796,6 +796,15 @@ func (c *Config) SetExperimentalRecoveryOrphanSweep(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalModelCapabilityFilter toggles the per-task model capability
+// filter with explained rejections (task 244 B9). Desktop keeps the
+// settings-view mirror; Agent carries the runtime flag.
+func (c *Config) SetExperimentalModelCapabilityFilter(enabled bool) error {
+	c.Desktop.ExperimentalModelCapabilityFilter = enabled
+	c.Agent.ExperimentalModelCapabilityFilter = enabled
+	return nil
+}
+
 // SetSessionCollabGates writes the task-173 collaboration panel gates in one
 // call so the settings view cannot half-apply a panel. Nil pointers keep the
 // current value; the master switch is written separately through

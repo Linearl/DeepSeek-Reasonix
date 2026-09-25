@@ -222,7 +222,7 @@ console.log("\nbundle budgets");
 // Merge batch (242+192+315, audit-ratchet one-shot): each landed at 472.6 for
 // its own measured baseline, but the stacked initial chunk measures 472.7 —
 // one-shot +0.5 to 473.1 (same merge-batch precedent as the raw 2511.8 landing).
-const initialJSBudgetKiB = 473.6; // fork: chain 468.8-era → 471.1 → 471.6 → 472.1 → 472.6 (tasks 242/192) → 473.1 (merge batch) → 473.6 (task 244 batch 1, measured 473.2; one-shot +0.5 per the 2026-09-20 ratchet rule)
+const initialJSBudgetKiB = 474.1; // fork: chain 468.8-era → 471.1 → 471.6 → 472.1 → 472.6 (tasks 242/192) → 473.1 (merge batch) → 473.6 (task 244 batch 1) → 474.1 (task 244 batch 4/B9 panel entry, measured >473.6; one-shot +0.5 per the 2026-09-20 ratchet rule)
 // Task 269 rebased onto 471.1: measured 470.7, also within 471.1 —
 // larger one-shot value stands (audit ruling, no second ratchet).
 // Task 264 rebased onto the same budget: measured 470.3 KiB (collab-background
@@ -409,7 +409,10 @@ for (const path of localeChunks) {
   // two one-shot values, per the 266-A/267 audit ruling).
   // Task 244 batch 1: 12 new keys × 3 locales (B1/B2/B3 switches) measured zh
   // 79.6 over 79.5 — one-shot +0.5 each per the 2026-09-20 ratchet rule.
-  const budget = name.startsWith("zh-TW-") ? 81.0 * 1024 : 80.0 * 1024;
+  // Task 244 batch 4: B9 added 4 keys x 3 locales while zh-TW already sat at
+  // the exact 81.0 ceiling — one-shot +0.5 each per the ratchet rule (the
+  // pre-batch dispatch warned this touch was expected).
+  const budget = name.startsWith("zh-TW-") ? 81.5 * 1024 : 80.5 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0

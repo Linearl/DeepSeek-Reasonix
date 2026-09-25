@@ -384,8 +384,9 @@ type SettingsView struct {
 	ExperimentalSessionCollab  bool `json:"experimentalSessionCollab"`
 	ExperimentalAutoLoadOlder  bool `json:"experimentalAutoLoadOlder"`
 	// Task 244 B5/B4: settings-view mirrors of the [agent] runtime flags.
-	ExperimentalOrphanLeaseReclaim  bool `json:"experimentalOrphanLeaseReclaim"`
-	ExperimentalRecoveryOrphanSweep bool `json:"experimentalRecoveryOrphanSweep"`
+	ExperimentalOrphanLeaseReclaim    bool `json:"experimentalOrphanLeaseReclaim"`
+	ExperimentalRecoveryOrphanSweep   bool `json:"experimentalRecoveryOrphanSweep"`
+	ExperimentalModelCapabilityFilter bool `json:"experimentalModelCapabilityFilter"`
 	// Task 244 B1/B2/B3: settings-view mirrors of the [agent] runtime flags.
 	ExperimentalAutonomousIdleTerminate bool   `json:"experimentalAutonomousIdleTerminate"`
 	ExperimentalLoopStreakNote          bool   `json:"experimentalLoopStreakNote"`
@@ -536,8 +537,9 @@ type DesktopStartupSettingsView struct {
 	// task 160). The runtime flag lives on [agent]; this view mirrors it.
 	ExperimentalAutoLoadOlder bool `json:"experimentalAutoLoadOlder"`
 	// Task 244 B5/B4: settings-view mirrors of the [agent] runtime flags.
-	ExperimentalOrphanLeaseReclaim  bool `json:"experimentalOrphanLeaseReclaim"`
-	ExperimentalRecoveryOrphanSweep bool `json:"experimentalRecoveryOrphanSweep"`
+	ExperimentalOrphanLeaseReclaim    bool `json:"experimentalOrphanLeaseReclaim"`
+	ExperimentalRecoveryOrphanSweep   bool `json:"experimentalRecoveryOrphanSweep"`
+	ExperimentalModelCapabilityFilter bool `json:"experimentalModelCapabilityFilter"`
 	// Task 244 B1/B2/B3: settings-view mirrors of the [agent] runtime flags.
 	ExperimentalAutonomousIdleTerminate bool `json:"experimentalAutonomousIdleTerminate"`
 	ExperimentalLoopStreakNote          bool `json:"experimentalLoopStreakNote"`
@@ -1252,7 +1254,8 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalLoopStreakNote = cfg.Desktop.ExperimentalLoopStreakNote || cfg.Agent.ExperimentalLoopStreakNote
 		view.ExperimentalEventWaitRecheck = cfg.Desktop.ExperimentalEventWaitRecheck || cfg.Agent.ExperimentalEventWaitRecheck
 		view.ExperimentalOrphanLeaseReclaim = cfg.Desktop.ExperimentalOrphanLeaseReclaim || cfg.Agent.ExperimentalOrphanLeaseReclaim
-		view.ExperimentalRecoveryOrphanSweep = cfg.Desktop.ExperimentalRecoveryOrphanSweep || cfg.Agent.ExperimentalRecoveryOrphanSweep
+
+		view.ExperimentalModelCapabilityFilter = cfg.Desktop.ExperimentalModelCapabilityFilter || cfg.Agent.ExperimentalModelCapabilityFilter
 		view.ExperimentalPerfMonitor = cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor
 		view.PerfMonitorIntervalSeconds = cfg.Desktop.PerfMonitorIntervalSeconds
 		view.SessionCollabHopLimit = cfg.Desktop.SessionCollabHopLimit
@@ -1364,14 +1367,15 @@ func (a *App) Settings() SettingsView {
 		ExperimentalLoopStreakNote:          cfg.Desktop.ExperimentalLoopStreakNote || cfg.Agent.ExperimentalLoopStreakNote,
 		ExperimentalEventWaitRecheck:        cfg.Desktop.ExperimentalEventWaitRecheck || cfg.Agent.ExperimentalEventWaitRecheck,
 		ExperimentalOrphanLeaseReclaim:      cfg.Desktop.ExperimentalOrphanLeaseReclaim || cfg.Agent.ExperimentalOrphanLeaseReclaim,
-		ExperimentalRecoveryOrphanSweep:     cfg.Desktop.ExperimentalRecoveryOrphanSweep || cfg.Agent.ExperimentalRecoveryOrphanSweep,
-		ExperimentalPerfMonitor:             cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,
-		PerfMonitorIntervalSeconds:          cfg.Desktop.PerfMonitorIntervalSeconds,
-		SessionCollabHopLimit:               cfg.Desktop.SessionCollabHopLimit,
-		ExperimentalSessionCollab:           cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
-		ExperimentalAutoLoadOlder:           cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
-		CollabInboxMerge:                    config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge),
-		CollabGuidanceMerge:                 cfg.Desktop.CollabGuidanceMerge || cfg.Agent.CollabGuidanceMerge,
+
+		ExperimentalModelCapabilityFilter: cfg.Desktop.ExperimentalModelCapabilityFilter || cfg.Agent.ExperimentalModelCapabilityFilter,
+		ExperimentalPerfMonitor:           cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,
+		PerfMonitorIntervalSeconds:        cfg.Desktop.PerfMonitorIntervalSeconds,
+		SessionCollabHopLimit:             cfg.Desktop.SessionCollabHopLimit,
+		ExperimentalSessionCollab:         cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
+		ExperimentalAutoLoadOlder:         cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
+		CollabInboxMerge:                  config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge),
+		CollabGuidanceMerge:               cfg.Desktop.CollabGuidanceMerge || cfg.Agent.CollabGuidanceMerge,
 		// Task 173: the collaboration panel gates (single source = [agent]).
 		SessionCollabAllowDelete:       cfg.Agent.SessionCollabAllowDelete,
 		SessionCollabAllowRequireReply: cfg.Agent.SessionCollabAllowRequireReply,
