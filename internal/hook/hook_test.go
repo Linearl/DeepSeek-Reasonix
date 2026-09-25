@@ -1877,3 +1877,23 @@ func TestWellFormedNodeEvalKeepsShellSemantics(t *testing.T) {
 		t.Fatalf("stdout = %q, want %q — $VAR expansion was lost (command bypassed the shell)", r.Stdout, "expanded-bash")
 	}
 }
+
+// Task 314: a timed-out blocking hook still fails closed (the decideOutcome
+// matrix pins that) — this pins the other half of the fix: the message the
+// user/agent sees must say why it happened and what to do next, instead of
+// the old bare "hook timed out after 5s".
+func TestStderrForTimeoutGivesActionableGuidance(t *testing.T) {
+	msg := stderrFor(SpawnResult{TimedOut: true}, 5*time.Second)
+	if !strings.HasPrefix(msg, "hook timed out after 5s") {
+		t.Fatalf("timeout message must keep its searchable prefix, got %q", msg)
+	}
+	for _, want := range []string{
+		"retry the tool once",
+		`raise this hook's "timeout" in settings.json`,
+		"fail-closed",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("timeout message missing %q:\n%s", want, msg)
+		}
+	}
+}
