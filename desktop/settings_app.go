@@ -2369,6 +2369,7 @@ func (a *App) buildSettingReplacementController(tab *WorkspaceTab, snap tabRunti
 		OnSessionInfo:            a.collabSessionInfo,
 		OnSessionStop:            a.collabSessionStop,
 		OnSessionSetModel:        a.collabSessionSetModel,
+		OnSessionTurnStatus:        a.collabSessionTurnStatus,
 		OnCascadeDelegate:        cascadeDelegateFor,
 		OnDeleteSession:          a.deleteCollabSession,
 		OnRenameSession:          a.renameCollabSession,

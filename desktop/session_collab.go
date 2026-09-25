@@ -1424,6 +1424,26 @@ func (a *App) collabSessionSetModel(contactID, model string) (applied, wasRunnin
 	return false, false, false, "", nil
 }
 
+// collabSessionTurnStatus (task 319) exposes the peer's authoritative turn
+// lifecycle to the subscription verdict: a turn that reached a NON-completed
+// terminal state (failed/interrupted/recovery_required) is the peer dying
+// instead of finishing — the signal that a dispatched task went silent.
+// known=false: runtime not visible (another process / not stood up) — the
+// verdict then never fires rather than guessing a death.
+func (a *App) collabSessionTurnStatus(contactID string) (status string, known bool) {
+	contactID = strings.TrimSpace(contactID)
+	if contactID == "" {
+		return "", false
+	}
+	for _, target := range a.sessionCollabLiveTargets(nil) {
+		if target.contactID != contactID || target.ctrl == nil {
+			continue
+		}
+		return string(target.ctrl.RuntimeStatus().Status), true
+	}
+	return "", false
+}
+
 // sessionCollabLiveTargets is every place a message can land without first
 // standing anything up: visible tabs bound to a session, plus detached runtimes
 // whose tab was closed but whose work is still alive. Only the contacts in
