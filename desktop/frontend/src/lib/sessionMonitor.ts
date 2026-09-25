@@ -4,7 +4,15 @@
 //
 // Observation only: nothing in this module changes transcript behaviour. The
 // board exists because desktop.log could not answer "did this tab keep its cache
-// and where did the three seconds go" (task 123 sections D and F).
+// and where the three seconds went" (task 123 sections D and F).
+//
+// Task 268 (6.1): stage rows are grouped by a per-tab monotonically increasing
+// switchSeq, bumped at every hydrate begin. The old grouping walked newest→old
+// until a `:total` marker; a switch that died before writing its total made that
+// walk cross the boundary and concatenate the PREVIOUS switch's segments into
+// this summary (1846/1846 lines carried >1 `total=` key; 114 groups double-reported
+// the same value). Grouping by seq makes cross-switch accumulation impossible
+// regardless of early exits, and the seq on the log line lets a reader dedupe.
 
 import { reportFrontendLog } from "./frontendLog";
 
@@ -28,7 +36,7 @@ export type SessionEviction = {
   totalBodyBytes?: number;
 };
 
-export type StageTiming = { at: number; tabId: string; stage: string; ms: number };
+export type StageTiming = { at: number; tabId: string; stage: string; ms: number; /** task 268: hydrate grouping */ seq: number };
 
 export type HydrateDecision = {
   at: number;
@@ -48,6 +56,9 @@ const HYDRATE_STAGE_MS = 100;
 const stageTimings: StageTiming[] = [];
 const hydrateDecisions = new Map<string, HydrateDecision>();
 const evictions: SessionEviction[] = [];
+// Task 268: per-tab hydrate generation. noteBeginSwitch opens a new group;
+// every noteStageTiming row joins the group current at record time.
+const switchSeqByTab = new Map<string, number>();
 
 // Task 125 render-side: geometry estimation is called once per row and does not
 // know its tab, so it accumulates into a short-lived frame window. The window
@@ -63,12 +74,29 @@ const enabledListeners = new Set<(enabled: boolean) => void>();
 const openListeners = new Set<(open: boolean) => void>();
 
 /**
+ * Task 268: opens a new stage group for one hydrate/switch. Call once at the
+ * hydrate entry; stages recorded afterwards belong to the returned seq until
+ * the next begin. The counter is monotonic per tab (never reset), so seq alone
+ * orders every switch of a tab for the whole process lifetime.
+ */
+export function noteBeginSwitch(tabId: string): number {
+  const next = (switchSeqByTab.get(tabId) ?? 0) + 1;
+  switchSeqByTab.set(tabId, next);
+  return next;
+}
+
+/** The stage group a tab is currently recording into (0 before the first begin). */
+export function currentSwitchSeq(tabId: string): number {
+  return switchSeqByTab.get(tabId) ?? 0;
+}
+
+/**
  * Records one timed switch stage. Stages at or above SLOW_STAGE_MS also go to
  * desktop.log, so a slow switch can be diagnosed after the fact instead of only
  * being visible while the monitor happens to be open.
  */
 export function noteStageTiming(tabId: string, stage: string, ms: number): void {
-  stageTimings.push({ at: Date.now(), tabId, stage, ms });
+  stageTimings.push({ at: Date.now(), tabId, stage, ms, seq: currentSwitchSeq(tabId) });
   if (stageTimings.length > STAGE_LIMIT) stageTimings.splice(0, stageTimings.length - STAGE_LIMIT);
   // Task 196: the hydrate stages are logged from a much lower bar than a switch
   // stage. A 13.7 s hydrate is only diagnosable if its parts are visible too, and
@@ -79,7 +107,7 @@ export function noteStageTiming(tabId: string, stage: string, ms: number): void 
     reportFrontendLog(
       "session-monitor",
       stage.startsWith("hydrate:") ? "hydrate stage" : "slow switch stage",
-      `tab=${tabId} stage=${stage} ms=${Math.round(ms)}`,
+      `tab=${tabId} stage=${stage} ms=${Math.round(ms)} seq=${currentSwitchSeq(tabId)}`,
       "warn",
     );
   }
@@ -93,15 +121,15 @@ export function noteHydrateDecision(decision: Omit<HydrateDecision, "at">): void
     if (oldest !== undefined) hydrateDecisions.delete(oldest);
   }
   // Task 151 (A-level prerequisite): the decision used to live only in this
-  // in-memory map, which made "why did this switch re-load history"
-  // undiagnosable after the fact (the 2026-09-16 switch-tab investigation
-  // stalled exactly here). Log the non-reuse branch — the diagnostic signal —
-  // while cache hits stay monitor-only to keep desktop.log quiet.
+  // in-memory map, which made "why did this switch re-load history" undiagnosable
+  // after the fact (the 2026-09-16 switch-tab investigation stalled exactly here).
+  // Log the non-reuse branch — the diagnostic signal — while cache hits stay
+  // monitor-only to keep desktop.log quiet.
   if (!decision.skipHistory) {
     reportFrontendLog(
       "session-monitor",
       "hydrate reloaded history",
-      `tab=${decision.tabId} reason=${decision.reason} path=${decision.sessionPath}`,
+      `tab=${decision.tabId} reason=${decision.reason} path=${decision.sessionPath} seq=${currentSwitchSeq(decision.tabId)}`,
       "info",
     );
   }
@@ -202,17 +230,24 @@ export function stageTimingsFor(tabId: string, limit = 12): StageTiming[] {
 }
 
 /**
- * Task 151: the stage window of the MOST RECENT switch for a tab — from the
- * newest entry back to (and including) its `:total` marker. Without this
- * window the board's headline mixed every past switch of the tab, so a
- * stale 5-6 s reload kept masking today's fast cached switches
- * (2026-09-17 screenshot evidence: 辣椒识别2 showed total 5156 ms while every
- * live segment was under 300 ms).
+ * Task 268 (was task 151): the stage window of the MOST RECENT switch for a
+ * tab, now grouped by switchSeq instead of walking back to a `:total` marker.
+ * The marker walk broke whenever a switch exited before writing its total —
+ * the window then spanned two switches and the summary double-reported the
+ * previous one (the 7486ms×3 evidence). A row from before the current seq can
+ * never enter this window, early exit or not. Rows without a recorded begin
+ * (seq 0 legacy) fall back to the marker walk so a mixed stream still resolves.
  */
 export function latestSwitchStages(tabId: string, cap = 24): StageTiming[] {
   const all: StageTiming[] = [];
   for (const entry of stageTimings) if (entry.tabId === tabId) all.push(entry);
   const recent = all.slice(-cap);
+  const maxSeq = recent.length > 0 ? Math.max(...recent.map((entry) => entry.seq)) : 0;
+  if (maxSeq > 0) {
+    const grouped = recent.filter((entry) => entry.seq === maxSeq);
+    if (grouped.length > 0) return grouped;
+  }
+  // seq-less fallback (a stage recorded before the first begin of its tab).
   let start = recent.length;
   for (let i = recent.length - 1; i >= 0; i--) {
     start = i;
@@ -251,21 +286,23 @@ export function recentEvictions(limit = 10): SessionEviction[] {
  * where the time went, and the stages are otherwise only visible while the board is
  * open. Format keeps every segment on one greppable line so a slow switch can be
  * reconstructed from desktop.log.
+ *
+ * Task 268 (6.1): `seq=` dedupes the line, the window is seq-grouped, and the
+ * per-segment `total=` is dropped from parts (the line already leads with the
+ * total — the duplicated key was what made parsers count one slow switch three
+ * times).
  */
 export function reportStageSummary(tabId: string, reason: string): void {
   const prefix = `${reason}:`;
-  // Task 151: only the latest switch's stages — stageTimingsFor pulled up to
-  // 24 records spanning SEVERAL switches, which concatenated multiple
-  // meta/ancillary segments into one summary line and made desktop.log
-  // summaries unreadable (2026-09-17 evidence: one line carried three
-  // meta/ancillary sequences).
   const stages = latestSwitchStages(tabId, 24).filter((entry) => entry.stage.startsWith(prefix));
   if (stages.length === 0) return;
   const total = stages.find((entry) => entry.stage.endsWith(":total"))?.ms ?? 0;
   const parts = stages
+    .filter((entry) => entry.stage.slice(prefix.length) !== "total")
     .map((entry) => `${entry.stage.slice(prefix.length)}=${Math.round(entry.ms)}ms`)
     .join(" ");
-  reportFrontendLog("tab-switch", `${reason} summary`, `tab=${tabId} total=${Math.round(total)}ms ${parts}`);
+  const seq = currentSwitchSeq(tabId);
+  reportFrontendLog("tab-switch", `${reason} summary`, `tab=${tabId} seq=${seq} total=${Math.round(total)}ms ${parts}`);
 }
 
 // ── stores ─────────────────────────────────────────────────────────────────────
@@ -314,6 +351,7 @@ export function resetSessionMonitor(): void {
   stageTimings.length = 0;
   hydrateDecisions.clear();
   evictions.length = 0;
+  switchSeqByTab.clear();
   geometryFrameActive = false;
   geometryFrameMs = 0;
   surfaceFrameStart = null;

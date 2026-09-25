@@ -27,7 +27,7 @@ import { replayPendingPromptsForActiveTab } from "./promptReplay";
 import { createRafBatch } from "./rafBatch";
 import { foregroundRunningFromRuntimeMeta, type RuntimeMetaSnapshot } from "./runtimeMeta";
 import { aliasActivationRequest, noteActivationRequested, noteActivationSettled, noteActivationStarted } from "./sessionDiagnostics";
-import { noteEviction, noteHydrateDecision, noteStageTiming, reportStageSummary } from "./sessionMonitor";
+import { currentSwitchSeq, noteBeginSwitch, noteEviction, noteHydrateDecision, noteStageTiming, reportStageSummary } from "./sessionMonitor";
 import { applyLiveSegments, coalesceStreamDeltas, completeLiveReasoning, type StreamDeltaEntry, type StreamSegment } from "./streamDeltaBatch";
 import { assistantHasContent, ensureActiveAssistant, ensureAssistant, removeEmptyAssistantItems } from "./assistantItems";
 import { getTranscriptStore } from "./transcriptStore";
@@ -3013,7 +3013,12 @@ export function useController() {
             ? "local-snapshot"
             : "preserveCachedHistory"
           : resetSurface
-            ? "reset"
+            // Task 268 (6.4): one word "reset" hid two different triggers with
+            // opposite cost semantics — a caller-requested reset rebuilds the
+            // surface by contract, while replace-surface comes from the policy
+            // branch. Split at the judgement point so the 69% bucket becomes
+            // attributable (which caller wants a rebuild vs which policy does).
+            ? reset ? "reset" : "replace-surface"
             : residentVeto
               ? "cache-vetoed"
               : "backend-fetch";
@@ -3037,6 +3042,10 @@ export function useController() {
       };
       if (!stillCurrent()) return;
       addBreadcrumb("tab.hydrate", `start ${reason} ${tabId}`);
+      // Task 268 (6.1): open a new stage group for THIS hydrate. Every stage
+      // timed below joins this seq, so a summary can never assemble rows from
+      // two switches even when this hydrate exits before writing its total.
+      noteBeginSwitch(tabId);
       ensureTranscriptSubscription(tabId);
       dispatchTo(tabId, { type: "hydrate_start", reason, placeholderItems: resolveHydratePlaceholders(options.placeholderItems) });
       if (resetSurface && !deferResetUntilHistory && stillCurrent()) dispatchTo(tabId, { type: "reset" });
@@ -3082,6 +3091,11 @@ export function useController() {
             expectedDigest: sessionDigest,
           }),
         );
+        // Task 268 (6.2): the hot switch-tab path only had one `switch-tab:history`
+        // blob — the 54 slow events could not tell bridge round trip from store
+        // application. Same split Task 196 built for resume-session: read is the
+        // load round trip (this point), apply is the controller dispatch below.
+        noteStageTiming(tabId, "hydrate:read", Date.now() - historyStartedAt);
       }
 
       if (!stillCurrent()) return;
@@ -3097,6 +3111,7 @@ export function useController() {
       };
       const applyMode = hydratedHistoryApplyMode(skipHistory, projection !== undefined, foregroundTurnActive(), statesRef.current.get(tabId), applyProj);
       if (projection !== undefined && applyMode !== "skip") {
+        const historyApplyStartedAt = Date.now();
         if (deferResetUntilHistory && stillCurrent() && !foregroundTurnActive()) dispatchTo(tabId, { type: "reset" });
         const page = {
           items: projection.items,
@@ -3109,6 +3124,7 @@ export function useController() {
         dispatchTo(tabId, applyMode === "prepend"
           ? { type: "history_prepend", ...page, removeIds: duplicateLiveItemIds(projection.items, statesRef.current.get(tabId)?.items ?? []) }
           : { type: "history_replace", ...page });
+        noteStageTiming(tabId, "hydrate:apply", Date.now() - historyApplyStartedAt);
         addBreadcrumb(
           "tab.hydrate",
           `history page ${tabId} items=${projection.items.length} turns=${projection.startTurn}-${projection.endTurn}/${projection.totalTurns} ms=${Date.now() - historyStartedAt}`,
@@ -3162,7 +3178,15 @@ export function useController() {
         !foregroundTurnActive() && !historyFingerprintMatchesMeta(projection, meta)) {
         const seedMeta = meta;
         backgroundReconcile = (async () => {
+          // Task 268 (6.3): the 19 second-scale reconcile events had no inner
+          // stages — read is already timed as `switch-tab:history reconcile`;
+          // record the apply leg plus its cardinality so "what did reconcile do"
+          // is answerable (items/turns/attempt per the research report 6.3).
+          const reconcileStartedAt = Date.now();
           let currentMeta = seedMeta;
+          let appliedItems = 0;
+          let appliedTurns = "";
+          let appliedAttempt = 0;
           for (let attempt = 0; attempt < 2; attempt += 1) {
             const reconciledProjection = await loadTimed("history reconcile", () => getTranscriptStore().loadLatest(tabId, sessionPath, {
               turns: HISTORY_PAGE_TURNS,
@@ -3176,6 +3200,7 @@ export function useController() {
             currentMeta = reconciledMeta;
             dispatchTo(tabId, { type: "meta", meta: reconciledMeta });
             if (!foregroundTurnActive() && historyFingerprintMatchesMeta(reconciledProjection, reconciledMeta)) {
+              const applyStartedAt = Date.now();
               dispatchTo(tabId, {
                 type: "history_replace",
                 items: reconciledProjection.items,
@@ -3185,9 +3210,20 @@ export function useController() {
                 revision: reconciledProjection.revisionKnown ? reconciledProjection.revision : undefined,
                 digest: reconciledProjection.digest || undefined,
               });
+              noteStageTiming(tabId, `${reason}:reconcile:apply`, Date.now() - applyStartedAt);
+              appliedItems = reconciledProjection.items.length;
+              appliedTurns = `${reconciledProjection.startTurn}-${reconciledProjection.endTurn}/${reconciledProjection.totalTurns}`;
+              appliedAttempt = attempt + 1;
               break;
             }
             if (foregroundTurnActive()) break;
+          }
+          if (appliedItems > 0 || appliedAttempt > 0) {
+            reportFrontendLog(
+              "tab-switch",
+              "reconcile applied",
+              `tab=${tabId} seq=${currentSwitchSeq(tabId)} attempt=${appliedAttempt} items=${appliedItems} turns=${appliedTurns} ms=${Date.now() - reconcileStartedAt}`,
+            );
           }
         })();
       }

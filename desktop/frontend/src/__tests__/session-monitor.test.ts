@@ -7,11 +7,14 @@ import {
   beginSurfaceFrame,
   completeSurfaceFrame,
   consumeGeometryFrame,
+  currentSwitchSeq,
   evictionsFor,
   hydrateDecisionFor,
   isGeometryFrameOpen,
   isSessionMonitorEnabled,
   isSessionMonitorOpen,
+  latestSwitchStages,
+  noteBeginSwitch,
   noteEviction,
   noteGeometrySample,
   noteHydrateDecision,
@@ -52,6 +55,26 @@ check((slowestStageFor("tab-a")?.ms ?? 0) === 3075, "slowest stage keeps its dur
 check(slowestStageFor("tab-b")?.stage === "switch-tab:history", "each tab has its own slowest stage");
 check(stageTimingsFor("tab-missing").length === 0, "an unknown tab reports nothing");
 check(stageTimingsFor("tab-a", 1).length === 1, "the limit caps the returned slice");
+
+// ── task 268 (6.1): switchSeq grouping — a summary can never span two switches ──
+// The field bug (research 6.1): rows were grouped by walking back to a `:total`
+// marker; a switch that exited before writing its total pulled the PREVIOUS
+// switch's 7486ms into this summary, three switches reporting the same value.
+resetSessionMonitor();
+const seq1 = noteBeginSwitch("tab-seq");
+check(seq1 === 1, "the first begin opens seq 1");
+noteStageTiming("tab-seq", "switch-tab:history", 7486);
+noteStageTiming("tab-seq", "switch-tab:total", 7486);
+const seq2 = noteBeginSwitch("tab-seq");
+check(seq2 === 2, "seq is monotonic per tab");
+check(currentSwitchSeq("tab-seq") === 2, "currentSwitchSeq follows the last begin");
+noteStageTiming("tab-seq", "switch-tab:meta", 5); // no :total — the old early-exit shape
+const windowed = latestSwitchStages("tab-seq");
+check(windowed.length === 1 && windowed[0]?.stage === "switch-tab:meta", "the window stops at the seq boundary even without a :total marker");
+check(windowed.every((entry) => entry.seq === seq2), "every row in the window belongs to the newest seq");
+check((slowestStageFor("tab-seq")?.ms ?? 0) === 5, "the previous switch's 7486ms can no longer leak into this switch's slowest");
+check(stageTimingsFor("tab-seq").length === 3, "rows from earlier switches are still kept (dedupe, not delete)");
+check(noteBeginSwitch("tab-other") === 1, "seq counters are per tab");
 
 // ── hydrate decisions ─────────────────────────────────────────────────────────
 noteHydrateDecision({ tabId: "tab-a", sessionPath: "/s/a.jsonl", skipHistory: true, reason: "preserveCachedHistory" });
