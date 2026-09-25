@@ -44,7 +44,7 @@ import { applyReadStatusEvent, type ReadStatusHost } from "./readStatus";
 import { upsertReadPause } from "./readPause";
 import { applyHydrateErrorState, hydratePlaceholderItems as resolveHydratePlaceholders } from "./hydrateErrorState";
 import { isHostRecoveryGuidance } from "./hostRecoverySteer";
-import { activeTabHydrationPlan, canAdoptUnboundLiveSurface, duplicateLiveItemIds, explainReusableCache, hasResidentSnapshotForEmptySurface, hasReusableCachedTranscript, hydratedHistoryApplyMode, sameSessionHydrateIdentity, sameSessionPlaceholderItems, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
+import { activeTabHydrationPlan, canAdoptUnboundLiveSurface, countSameIdDuplicates, duplicateLiveItemIds, explainReusableCache, hasResidentSnapshotForEmptySurface, hasReusableCachedTranscript, hydratedHistoryApplyMode, retainedLiveTail, sameSessionHydrateIdentity, sameSessionPlaceholderItems, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
 import { effectiveMaxResidentSessions } from "./resourceBudgets";
 import { prefetchMruTabs, type PrefetchCandidate } from "./transcriptPrefetch";
 import { loadLastActiveTabId, saveLastActiveTabId } from "./layoutPreferences";
@@ -2383,8 +2383,12 @@ export function reducer(s: State, a: Action): State {
     case "history_rebase": {
       if (historyRevisionIsOlder(s.historyRevision, a.revision)) return s;
       const liveTail = s.items.slice(Math.min(s.historyPrefixCount, s.items.length));
-      const duplicates = new Set(duplicateLiveItemIds(a.items, liveTail));
-      const retainedTail = liveTail.filter((item) => !duplicates.has(item.id));
+      // Task 316: stable-id union replaces the signature-only filter — the
+      // suffix matcher missed same-id rows whose text changed under a
+      // ref-resolved patch (L1) and off-head/reset-window overlaps (L2),
+      // leaving one entryId twice in items. retainedLiveTail keeps the
+      // signature path for id-less rows only.
+      const retainedTail = retainedLiveTail(liveTail, a.items);
       return {
         ...s,
         items: compactArchivedToolItems([...a.items, ...retainedTail]),
@@ -2404,10 +2408,15 @@ export function reducer(s: State, a: Action): State {
     }
     case "history_prepend": {
       if (historyRevisionIsOlder(s.historyRevision, a.revision)) return s;
-      const remove = a.removeIds.length > 0 ? new Set(a.removeIds) : undefined;
-      const rest = remove ? s.items.filter((item) => !remove.has(item.id)) : s.items;
+      // Task 316: the drop set is caller removeIds (signature path) UNION the
+      // stable-id overlap with the incoming page, so both keys agree inside
+      // the reducer regardless of what the call site managed to compute.
+      const drop = new Set(a.removeIds);
+      for (const item of a.items) if (item.id) drop.add(item.id);
+      const keep = (item: { id?: string }) => !item.id || !drop.has(item.id);
+      const rest = drop.size > 0 ? s.items.filter(keep) : s.items;
       const prefix = s.items.slice(0, Math.min(s.historyPrefixCount, s.items.length));
-      const retainedPrefix = remove ? prefix.filter((item) => !remove.has(item.id)) : prefix;
+      const retainedPrefix = drop.size > 0 ? prefix.filter(keep) : prefix;
       return {
         ...s,
         items: compactArchivedToolItems([...a.items, ...rest]),
@@ -3339,6 +3348,23 @@ export function useController() {
       revision: projection.revisionKnown ? projection.revision : undefined,
       digest: projection.digest || undefined,
     });
+    // Task 316 observability: after the stable-id union merge, a surviving
+    // same-id pair means BOTH keys missed (only id-less rows can collapse that
+    // way) — the forensic scene the research asked to keep logging instead of
+    // silently re-rendering. seq= ties the line to 268's switch grouping (one
+    // probe, both consumers of the same hydrate chain). statesRef may lag one
+    // tick behind the dispatch; a lag reads as a missed warning, never a false
+    // one, which is the safe direction for a diagnostic.
+    const mergedItems = statesRef.current.get(tabId)?.items ?? [];
+    const dupsAfterMerge = countSameIdDuplicates(mergedItems);
+    if (dupsAfterMerge > 0) {
+      reportFrontendLog(
+        "session-monitor",
+        "merge-dedup-miss",
+        `tab=${tabId} seq=${currentSwitchSeq(tabId)} where=history_rebase dups=${dupsAfterMerge}`,
+        "warn",
+      );
+    }
     return true;
   }, [dispatchTo, ensureTranscriptSubscription]);
 

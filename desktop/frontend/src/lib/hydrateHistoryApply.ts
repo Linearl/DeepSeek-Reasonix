@@ -317,6 +317,90 @@ export function duplicateLiveItemIds(
   return [];
 }
 
+// ── task 316: stable-key union dedup (the main fix) ───────────────────────────
+//
+// The signature suffix match above has two hard preconditions, both broken in
+// the field (see __tests__/history-merge-dedup.test.ts reproduction asserts):
+//   L1 — ref-resolved patch between reads: same stable id, different text ⇒
+//        signature mismatch ⇒ nothing removed.
+//   L2 — reset window / off-head / non-contiguous overlap ⇒ longest run 0.
+// The union of stable ids is the actual truth of "this row is already shown"
+// (the steer inboxItemId precedent, useController :1930/:2443): a page row and
+// a live row sharing an id are the same message regardless of text. Rows
+// without ids keep the signature fallback — transient injections
+// (session-context etc.) carry distinct ids by design and are never touched.
+
+function stableIdSet(items: readonly { id?: string }[]): Set<string> {
+  const ids = new Set<string>();
+  for (const item of items) if (item.id) ids.add(item.id);
+  return ids;
+}
+
+// retainedLiveTail computes the live rows that survive a rebase against the
+// incoming page. Two keys, strictly ranked (task 316):
+//   - rows WITH a stable id are judged by the id union alone — the patch
+//     window (L1) changed their text, so a signature veto would wrongly keep
+//     them, and id-distinct transients with identical content are design rows
+//     the union deliberately leaves alone;
+//   - rows WITHOUT an id fall back to the signature suffix match over the
+//     id-less subset only, addressed by object identity (every id-less row
+//     shares "" as an id, so ids cannot tell them apart).
+export function retainedLiveTail<T extends { id?: string }>(liveTail: readonly T[], pageItems: readonly T[]): T[] {
+  const pageIds = stableIdSet(pageItems);
+  const idLessPage = pageItems.filter((item) => !item.id);
+  const idLessLive = liveTail.filter((item) => !item.id);
+  const idLessOverlap = longestSuffixHeadMatch(idLessPage, idLessLive);
+  const idLessDupes = new Set<unknown>(idLessLive.slice(0, idLessOverlap));
+  return liveTail.filter((item) => {
+    if (item.id) return !pageIds.has(item.id);
+    return !idLessDupes.has(item);
+  });
+}
+
+// longestSuffixHeadMatch is the positional core of duplicateLiveItemIds (same
+// signature rule) returning the overlap LENGTH instead of ids, so id-less rows
+// can be addressed by object identity.
+function longestSuffixHeadMatch(pageItems: readonly { id?: string }[], liveItems: readonly { id?: string }[]): number {
+  for (let k = Math.min(pageItems.length, liveItems.length); k > 0; k -= 1) {
+    let same = true;
+    for (let i = 0; i < k && same; i += 1) {
+      same = itemSignature(pageItems[pageItems.length - k + i] as SignatureItem) === itemSignature(liveItems[i] as SignatureItem);
+    }
+    if (same) return k;
+  }
+  return 0;
+}
+
+// prependRestAfterMerge computes the existing rows that stay when an older
+// page is prepended: caller-provided removeIds (signature path) UNION the
+// stable-id overlap with the page. The reducer applies this on top of its own
+// remove-set so both keys always agree.
+export function prependRestAfterMerge<T extends { id?: string }>(
+  existing: readonly T[],
+  pageItems: readonly T[],
+  removeIds: readonly string[],
+): T[] {
+  const drop = new Set(removeIds);
+  for (const id of stableIdSet(pageItems)) drop.add(id);
+  return existing.filter((item) => !item.id || !drop.has(item.id));
+}
+
+// mergeDedupMissAfterMerge reports same-id duplicates still present in the
+// merged result (task 316 observability): the signature match fired nothing
+// AND the union could not help (id-less rows collapsed by content). It must
+// never fire after this fix — a fired line is a new forensic scene, and its
+// seq= ties it to the 268 switch grouping (one probe, both consumers).
+export function countSameIdDuplicates(items: readonly { id?: string }[]): number {
+  const seen = new Set<string>();
+  let dup = 0;
+  for (const item of items) {
+    if (!item.id) continue;
+    if (seen.has(item.id)) dup += 1;
+    else seen.add(item.id);
+  }
+  return dup;
+}
+
 export function sameSessionPlaceholderItems<T>(
   target: SessionHydrateIdentity | undefined,
   prev: { meta?: SessionHydrateIdentity; items?: T[] } | undefined,
