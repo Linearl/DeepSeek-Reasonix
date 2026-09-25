@@ -1969,6 +1969,18 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// what get_session_status answers). Read-only and messaging-independent.
 		reg.Add(agent.NewReadCollabStatusTool(collab))
 		reg.Add(agent.NewTalkToSessionTool(collab))
+		// Task 284: cross-session subscriptions (the push half). Registered
+		// ONLY under task 230's experimental_event_trigger switch — 284 is
+		// the persistent form of the same engine family, so one switch
+		// governs both and no new polling surface appears while it is off
+		// (fork rule 2: default off). EnsureStarted is idempotent over the
+		// process-wide singleton; with zero subscriptions its loop blocks on
+		// the wake channel (never polls).
+		if cfg.Agent.ExperimentalEventTrigger {
+			subscribeSvc := SharedSubscribeService(collab)
+			reg.Add(agent.NewSubscribeSessionTool(collab, subscribeSvc, nil))
+			subscribeSvc.EnsureStarted()
+		}
 		// Task 235: the receive half of the collab mailbox. Pure pull into a
 		// tool result (D1) — settle=true claims+acks, settle=false peeks.
 		// Block2 M-a (mutual exclusion, per the M4 user ruling "consumed
