@@ -1993,6 +1993,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			// Task 218: the host answers running/idle from its own controllers;
 			// nil (CLI, tests) keeps every state unknown instead of a guess.
 			SessionStatus: opts.OnSessionStatus,
+			// Task 243 A2: turn-scoped dispatch echo — agent method values
+			// (executor exists above; call-time reads keep it turn-accurate).
+			RecordDispatch:   executor.RecordDispatch,
+			RecentDispatches: executor.RecentDispatches,
 			// Task 274 ①: model/provider visibility for the directory rows.
 			SessionInfo: opts.OnSessionInfo,
 			// Task 274 ②③: controller hooks for stop/set_model (gated below).

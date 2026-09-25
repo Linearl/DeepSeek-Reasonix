@@ -86,18 +86,30 @@ func mergeInboxEnvelope(metas []sessioninbox.InboxItemMeta, envelopes []sessioni
 	merged := strings.TrimSpace(b.String())
 	first := envelopes[0]
 	return sessioninbox.PromptEnvelope{
-		DisplayText:  merged,
-		RawText:      merged,
-		SubmitText:   merged,
-		Format:       first.Format,
-		Source:       first.Source,
-		Invocations:  first.Invocations,
-		Refs:         first.Refs,
+		DisplayText:    merged,
+		RawText:        merged,
+		SubmitText:     merged,
+		Format:         first.Format,
+		Source:         first.Source,
+		Invocations:    first.Invocations,
+		Refs:           first.Refs,
 		FrozenRefBlock: first.FrozenRefBlock,
 		FrozenImages:   first.FrozenImages,
 		ExplicitRefs:   first.ExplicitRefs,
 		Extra:          mergeExtra(metas, mode),
 	}
+}
+
+// envelopeBodiesAllEmpty reports that every member renders to nothing but the
+// merge scaffolding — all three text slots empty on every envelope (invocation
+// metadata does not count as content for the merged body).
+func envelopeBodiesAllEmpty(envelopes []sessioninbox.PromptEnvelope) bool {
+	for _, env := range envelopes {
+		if strings.TrimSpace(firstNonEmptyStr(env.SubmitText, env.RawText, env.DisplayText)) != "" {
+			return false
+		}
+	}
+	return true
 }
 
 func mergeExtra(metas []sessioninbox.InboxItemMeta, mode string) map[string]string {
@@ -142,6 +154,16 @@ func (c *Controller) maybeMergeInboxDispatchGroup(first sessioninbox.InboxItemMe
 		}
 		metas = append(metas, meta)
 		envelopes = append(envelopes, env)
+	}
+	// Task 243 A5 (sub-report 01-④5): "宁可留队列不写空消息". A group whose
+	// bodies are all empty would merge into a header-only shell and consume
+	// the queue doing it. Leave everything queued for a human to fill in —
+	// the single-item twin of this defence is Enqueue's ErrEmpty rejection
+	// (sessioninbox store.go), so both drain paths refuse empty renders.
+	if envelopeBodiesAllEmpty(envelopes) {
+		slog.Warn("inbox merge: group bodies all empty, leaving queue untouched",
+			"carrier", first.ID, "members", len(metas), "mode", mode)
+		return first
 	}
 	merged := mergeInboxEnvelope(metas, envelopes, mode)
 	if _, err := st.UpdateItem(first.ID, merged); err != nil {

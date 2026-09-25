@@ -57,6 +57,11 @@ type SessionCollabConfig struct {
 	// (other process, runtime not stood up) — the tool must report unknown
 	// rather than guess an idle. Nil makes every state unknown.
 	SessionStatus func(contactID string) (running bool, lastTurnAtMS int64, pending int, known bool)
+	// Task 243 A2: turn-scoped dispatch echo. Injected by boot as agent method
+	// values (executor exists before the collab literal); nil in direct unit
+	// construction, which omits the echo field entirely.
+	RecordDispatch   func(target string)
+	RecentDispatches func() []string
 	// Task 274 ①: per-contact model visibility. modelRef is the session's
 	// current model (the same value the switcher shows, e.g.
 	// "mimo-api/mimo-v2.6-flash"); provider is its catalog prefix. known=false
@@ -483,6 +488,16 @@ func (t searchSessionsTool) Execute(_ context.Context, args json.RawMessage) (st
 // directoryPage is the shared projection for list and search: live-only by
 // default, metadata-only rows, and a total that respects the same filter the
 // caller is paging over (so total never counts archive when archive is hidden).
+// collabDispatchEcho reads the turn-scoped dispatch ledger through the injected
+// probe (task 243 A2); nil probe or empty ledger returns nil so callers can
+// omit the field instead of emitting null.
+func collabDispatchEcho(cfg SessionCollabConfig) []string {
+	if cfg.RecentDispatches == nil {
+		return nil
+	}
+	return cfg.RecentDispatches()
+}
+
 func directoryPage(cfg SessionCollabConfig, limit int, archived *bool, query string) (string, error) {
 	if limit <= 0 {
 		limit = 200
@@ -547,7 +562,7 @@ func directoryPage(cfg SessionCollabConfig, limit int, archived *bool, query str
 			})
 		}
 	}
-	out, _ := json.Marshal(map[string]any{
+	payload := map[string]any{
 		"returned": len(rows),
 		"total":    eligible,
 		"limit":    limit,
@@ -556,7 +571,14 @@ func directoryPage(cfg SessionCollabConfig, limit int, archived *bool, query str
 		"content":  "none — use read_session_tail(target) for transcript bytes",
 		"note":     "live conversations only; pass archived=true to include retired history. Deleted (.trash) sessions are never listed.",
 		"sessions": rows,
-	})
+	}
+	// Task 243 A2: the directory doubles as the batch echo — who this turn
+	// already dispatched to, so a batch dispatcher can spot its own sends
+	// before double-sending (tasks 175/218).
+	if echo := collabDispatchEcho(cfg); echo != nil {
+		payload["dispatchedThisTurn"] = echo
+	}
+	out, _ := json.Marshal(payload)
 	return string(out), nil
 }
 
@@ -825,7 +847,17 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 	if p.RequireReply {
 		t.cfg.collabStatusEvent(CollabStatusNeedsDecision, fmt.Sprintf("awaiting reply from %s", deliveredTo), true)
 	}
-	out, _ := json.Marshal(map[string]any{
+	// Task 243 A2: record this dispatch on the turn ledger, then echo the
+	// whole turn's ledger back — display-only, never a refusal (no semantic
+	// de-duplication; the model decides what a repeat means).
+	if t.cfg.RecordDispatch != nil {
+		record := target.ContactID
+		if target.Title != "" {
+			record += " (" + target.Title + ")"
+		}
+		t.cfg.RecordDispatch(record)
+	}
+	payload := map[string]any{
 		"status":       "queued",
 		"messageId":    msg.ID,
 		"threadId":     msg.ID,
@@ -836,7 +868,11 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 		"delivery":     msg.Delivery,
 		"hop":          msg.Hop,
 		"queued":       true,
-	})
+	}
+	if echo := collabDispatchEcho(t.cfg); echo != nil {
+		payload["dispatchedThisTurn"] = echo
+	}
+	out, _ := json.Marshal(payload)
 	// Task 174: the sync twin collapsed into wait=true. Without it this is the
 	// exact async contract the tests pinned; with it, the bounded wait runs
 	// after the durable delivery has already been acknowledged.
@@ -1116,24 +1152,67 @@ func scanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity 
 	return out
 }
 
+// collabRefMatches is the two-sided compare: exact (case-insensitive) first so
+// titles the normalizer cannot represent — CJK-only names fold to an empty
+// key — keep their precise match, then the non-empty normalized form so
+// "PR 1741" reaches "pr_1741". An empty normalized side never participates,
+// which is what keeps two distinct CJK titles out of each other's ambiguity.
+func collabRefMatches(key, ref, normKey, normRef string) bool {
+	if strings.EqualFold(key, ref) {
+		return true
+	}
+	return normKey != "" && normRef != "" && normKey == normRef
+}
+
 // ResolveTarget maps a directory reference — contact_id, topic_id, or an
 // exact title — to a session. A session that has not minted a contact_id yet
 // gets one now, so the first message to a named conversation is enough to make
 // it permanently addressable.
+// normalizeCollabRef folds a directory reference to the canonical match form
+// (task 243 A6, sub-report 01-④3): trim, lower-case, and collapse every
+// non-alphanumeric run to a single underscore — the MiMo topicKey rule, so
+// "PR 1741" and "pr_1741" address the same session. Applied to BOTH sides of
+// every directory comparison; a normalization collision surfaces as the
+// existing multi-match ambiguity error, never as a silent wrong pick.
+func normalizeCollabRef(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	prevUnderscore := false
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			prevUnderscore = false
+			continue
+		}
+		if !prevUnderscore && b.Len() > 0 {
+			b.WriteByte('_')
+			prevUnderscore = true
+		}
+	}
+	return strings.TrimRight(b.String(), "_")
+}
+
 func ResolveTarget(ids []sessioncollab.Identity, ref string) (sessioncollab.Identity, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return sessioncollab.Identity{}, fmt.Errorf("target is required")
 	}
-	var byContact, byTopic, byTitle []sessioncollab.Identity
+	// Task 243 A6: every key compares on the normalized form (two-sided), so
+	// "PR 1741" reaches a session titled "pr_1741" and vice versa; purpose
+	// joins title as the fourth find-or-reuse key — a hit relays to the
+	// existing session (never a new one) exactly like title does.
+	norm := normalizeCollabRef(ref)
+	var byContact, byTopic, byTitle, byPurpose []sessioncollab.Identity
 	for _, id := range ids {
 		switch {
-		case id.ContactID != "" && strings.EqualFold(id.ContactID, ref):
+		case id.ContactID != "" && collabRefMatches(id.ContactID, ref, normalizeCollabRef(id.ContactID), norm):
 			byContact = append(byContact, id)
-		case id.TopicID != "" && strings.EqualFold(id.TopicID, ref):
+		case id.TopicID != "" && collabRefMatches(id.TopicID, ref, normalizeCollabRef(id.TopicID), norm):
 			byTopic = append(byTopic, id)
-		case id.Title != "" && strings.EqualFold(id.Title, ref):
+		case id.Title != "" && collabRefMatches(id.Title, ref, normalizeCollabRef(id.Title), norm):
 			byTitle = append(byTitle, id)
+		case id.Purpose != "" && collabRefMatches(id.Purpose, ref, normalizeCollabRef(id.Purpose), norm):
+			byPurpose = append(byPurpose, id)
 		}
 	}
 	if len(byContact) == 1 {
@@ -1152,6 +1231,17 @@ func ResolveTarget(ids []sessioncollab.Identity, ref string) (sessioncollab.Iden
 	}
 	if len(byTitle) == 1 {
 		return byTitle[0], nil
+	}
+	if len(byPurpose) > 1 {
+		names := make([]string, 0, len(byPurpose))
+		for _, id := range byPurpose {
+			names = append(names, id.Title+" ("+id.TopicID+")")
+		}
+		return sessioncollab.Identity{}, fmt.Errorf("purpose %q matches %d sessions — use topic_id instead: %s",
+			ref, len(byPurpose), strings.Join(names, ", "))
+	}
+	if len(byPurpose) == 1 {
+		return byPurpose[0], nil
 	}
 	return sessioncollab.Identity{}, fmt.Errorf("%w: %q is not in the contact directory (use list_addressable_sessions)", sessioncollab.ErrNotFound, ref)
 }

@@ -26,7 +26,13 @@ type turnRuntime struct {
 	// toolRecoveryExempt family the tool-recovery fence honors (task 107/299).
 	// Set once in beginRunTurn from the turn ctx so the readiness gate judges
 	// the whole turn from one snapshot.
-	unattended bool
+
+	// dispatchLedger records who this turn already talked to (task 243 A2,
+	// sub-report 01-④1): the directory echo that stops the "cannot see my own
+	// batch → double dispatch" hole (tasks 175/218). Reset with the turn by
+	// beginRunTurn's full struct reassignment; display-only, never a gate.
+	dispatchLedger []string
+	unattended     bool
 
 	todoProgress         int
 	trackingTodoProgress bool
