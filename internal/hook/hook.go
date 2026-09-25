@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1155,6 +1156,17 @@ func Run(ctx context.Context, payload Payload, hooks []ResolvedHook, spawner Spa
 		}
 		start := time.Now()
 		r := runResolvedHook(ctx, h, input, spawner)
+		// Task 314: a timeout previously surfaced only as the block text in
+		// the transcript ("no log = didn't happen" trap) — log it with the
+		// hook identity, event, and budget so intermittent 5s stalls are
+		// diagnosable after the fact.
+		if r.TimedOut {
+			slog.Warn("task314: hook timed out",
+				"hook", h.Command,
+				"event", string(event),
+				"timeout", timeout.String(),
+				"elapsed", time.Since(start).Round(time.Millisecond).String())
+		}
 		decision := decideOutcome(h, r)
 		if decision == DecisionPass && h.PayloadFormat == "claude" {
 			if deny, reason := claudeJSONDeny(event, r.Stdout); deny {
@@ -1264,7 +1276,16 @@ func stderrFor(r SpawnResult, timeout time.Duration) string {
 		return r.SpawnErr.Error()
 	}
 	if r.TimedOut {
-		return fmt.Sprintf("hook timed out after %s", timeout)
+		// Task 314: the old bare "hook timed out after 5s" told the reader
+		// nothing actionable. Keep the fail-closed block, but say why it
+		// happens and what to do about it (315-style cause + workaround).
+		return fmt.Sprintf(
+			"hook timed out after %s: the hook script did not finish within its budget "+
+				"(usual causes: script cold start, antivirus scanning, or a disk stall). "+
+				"The call stays blocked fail-closed so the gate keeps its meaning. "+
+				"What to do: retry the tool once; if it keeps happening, raise this hook's "+
+				"\"timeout\" in settings.json (e.g. 15000) or temporarily disable the hook (task 314).",
+			timeout)
 	}
 	return ""
 }
