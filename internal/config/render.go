@@ -369,6 +369,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "preapprove_hooks = %v   # task 231: checkbox — settings.json writes under autopilot (HIGHEST RISK: prompt injection can rewrite hooks)\n", c.Agent.PreapproveManagedHooks)
 	fmt.Fprintf(&b, "preapprove_session_stores = %v   # task 231: checkbox — session-store writes under autopilot skip approval\n", c.Agent.PreapproveManagedStores)
 	fmt.Fprintf(&b, "preapprove_bash_escape = %v   # task 231: checkbox — bash sandbox-escape approvals under autopilot\n", c.Agent.PreapproveManagedBashEscape)
+	// Task 192: renders explicitly — omit-on-off would silently disable a
+	// saved-on residency policy on the next render (81/123 lost-save lesson).
+	fmt.Fprintf(&b, "experimental_active_tab_resident = %v   # task 192: keep the active/running tab resident across switches (zero-reload), exemption capped at 2, overruns logged (restart to apply)\n", c.Agent.ExperimentalActiveTabResident)
 	fmt.Fprintf(&b, "experimental_auto_load_older = %v   # fork task 160: load older history by scrolling up at the transcript top\n", c.Agent.ExperimentalAutoLoadOlder)
 	fmt.Fprintf(&b, "experimental_perf_monitor = %v   # task 184: host performance monitor (5s samples of memory/IO/key files)\n", c.Agent.ExperimentalPerfMonitor)
 	fmt.Fprintf(&b, "perf_monitor_interval_seconds = %d   # task 184: sampler interval in seconds (default 5, clamped 1..300)\n", c.Agent.PerfMonitorIntervalSeconds)

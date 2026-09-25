@@ -292,6 +292,14 @@ func (a *App) SetPreapproveManagedPaths(enabled, skills, hooks, sessionStores, b
 	})
 }
 
+// SetExperimentalActiveTabResident toggles the task-192 residency policy
+// (ships off; applied to the transcript store through the preferences sync).
+func (a *App) SetExperimentalActiveTabResident(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetExperimentalActiveTabResident(enabled)
+	})
+}
+
 // SetExperimentalQuestionSearch toggles the topic-bar question-search entry (265).
 func (a *App) SetExperimentalQuestionSearch(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalQuestionSearch(enabled) })

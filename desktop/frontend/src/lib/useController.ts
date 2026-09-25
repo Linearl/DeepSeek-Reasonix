@@ -2894,6 +2894,15 @@ export function useController() {
     transcriptSubscriptions.current.set(tabId, unsubscribe);
   }, [dispatchTo]);
   const releaseTranscriptState = useCallback((tabId: string) => {
+    // Task 192: with the residency policy on, an active/running tab keeps its
+    // whole live state across a switch-away — subscriptions, projector and
+    // store stay, so switching back is a zero-reload return (the 1.34 feel).
+    // Off falls through to the exact release below (zero regression), and a
+    // closing/cleared tab never reaches this guard (its pin is already gone).
+    if (getTranscriptStore().shouldRetainOnSwitch(tabId)) {
+      noteStageTiming(tabId, "switch-out:retained", performance.now());
+      return;
+    }
     // A released tab can still have an older-page request awaiting Wails. Keep
     // a tombstone generation so a later tab reusing the same id cannot make
     // that completion current again.

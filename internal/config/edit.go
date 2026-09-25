@@ -647,6 +647,13 @@ func (c *Config) SetPreapproveManagedPaths(enabled, skills, hooks, sessionStores
 	return nil
 }
 
+// SetExperimentalActiveTabResident toggles the task-192 residency policy.
+// Ships off: the zero value keeps today's singleSurface-prune behavior.
+func (c *Config) SetExperimentalActiveTabResident(enabled bool) error {
+	c.Agent.ExperimentalActiveTabResident = enabled
+	return nil
+}
+
 // SetExperimentalQuestionSearch toggles the topic-bar question-search entry
 // (task 265). It ships on; off hides the entry and the panel.
 func (c *Config) SetExperimentalQuestionSearch(enabled bool) error {

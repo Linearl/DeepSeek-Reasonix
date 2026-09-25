@@ -1780,6 +1780,8 @@ type ExperimentFeatureId =
   | "researchBudget"
   // Task 231: managed-path pre-approval (master switch + four checkboxes).
   | "preapproveManagedPaths"
+  // Task 192: active-tab residency policy.
+  | "activeTabResident"
   | "draftPersistence"
   | "questionSearch"
   | "subagentPolicy"
@@ -1890,6 +1892,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     // Part of the render table: a missing entry would silently drop the save
     // (the 81/123 lost-save lesson).
     { id: "preapproveManagedPaths", group: "misc", label: t("settings.preapproveManagedPaths"), on: Boolean(s.experimentalPreapproveManagedPaths) },
+    // Task 192: residency policy entry (render table — a missing entry would
+    // silently drop the save, 81/123 lesson).
+    { id: "activeTabResident", group: "misc", label: t("settings.activeTabResident"), on: Boolean(s.experimentalActiveTabResident) },
   ];
 
   return (
@@ -2849,6 +2854,22 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   ))}
                 </div>
               )}
+            </SettingsField>
+          )}
+          {selected === "activeTabResident" && (
+            <SettingsField label={t("settings.activeTabResident")} hint={t("settings.activeTabResidentHint")} icon={<RefreshCw size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalActiveTabResident) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetExperimentalActiveTabResident(on))}
+                  >
+                    {t(on ? "settings.activeTabResident.on" : "settings.activeTabResident.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
             </SettingsField>
           )}
           {selected === "draftPersistence" && (

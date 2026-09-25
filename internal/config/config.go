@@ -1471,6 +1471,13 @@ type AgentConfig struct {
 	PreapproveManagedHooks      bool `toml:"preapprove_hooks"`
 	PreapproveManagedStores     bool `toml:"preapprove_session_stores"`
 	PreapproveManagedBashEscape bool `toml:"preapprove_bash_escape"`
+	// ExperimentalActiveTabResident is the task-192 residency policy: off
+	// (default) is today's singleSurface-prune + unbounded pin semantics, on
+	// retains the active/running tab across a switch-away (zero-reload), caps
+	// the exemption at the two most recent tabs, and logs any budget overrun
+	// the exemptions cause instead of growing silently (铁律 2/8: the upstream
+	// bounded window stays the fallback, this is the opt-in enhancement).
+	ExperimentalActiveTabResident bool `toml:"experimental_active_tab_resident"`
 	// SessionCollabHopLimit caps how many hops a cross-session chain may take
 	// (task 204). 0 keeps the package default (5); values are clamped into
 	// [MinHop, MaxHopCeiling] on write, so a stored value is always legal.
