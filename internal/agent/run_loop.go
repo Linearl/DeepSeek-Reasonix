@@ -442,6 +442,35 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 			StopReason: reason,
 		}
 	}
+	// Task 286 (upstream #10721): a fixed provider safety-rejection sentence
+	// delivered over the normal content stream is not an answer. It used to
+	// fall through as a visible final answer and end the turn silently — no
+	// recognition, no retry, no notice. Recognize it BEFORE the readiness /
+	// grace / empty-final paths (they would all happily deliver it), emit a
+	// searchable notice, replay the request once, and end as an error if the
+	// provider rejects again. The counter is independent of emptyFinalBlocks
+	// (different cause, different ceiling), and the pending rejection template
+	// itself is never committed as the model's reply.
+	if isKnownProviderRejection(text) {
+		state.terminal.rejectedTemplateBlocks++
+		providerName := ""
+		if a.svc.prov != nil {
+			providerName = a.svc.prov.Name()
+		}
+		a.svc.sink.Emit(event.Event{
+			Kind:   event.Notice,
+			Level:  event.LevelWarn,
+			Code:   event.NoticeCodeProviderRejection,
+			Text:   providerRejectionNotice(),
+			Detail: providerRejectionDetail(providerName, strings.TrimSpace(text)),
+		})
+		if state.terminal.rejectedTemplateBlocks >= maxRejectedTemplateBlocks {
+			return false, fmt.Errorf("provider rejected the request with a fixed safety sentence %d times and the replay was also rejected; the answer was not delivered", state.terminal.rejectedTemplateBlocks)
+		}
+		a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(providerRejectionRetryMessage())))
+		a.contextManager().ObserveUsage(usage)
+		return true, nil
+	}
 	readiness := a.finalReadinessCheckFor()
 	if state.graceRound && (readiness.reason != "" || !hasVisibleFinalAnswer(text)) {
 		a.contextManager().ObserveUsage(usage)
@@ -726,6 +755,10 @@ func closeTruncatedJSON(s string) (string, bool) {
 
 func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step int, text, reasoning string, calls []provider.ToolCall, usage *provider.Usage) (cont bool, err error) {
 	state.terminal.emptyFinalBlocks = 0
+	// Task 286: like emptyFinalBlocks, the rejection budget is per consecutive
+	// streak — new tool work starts a fresh streak; a pure replay round (no
+	// tools) keeps counting, which is exactly the one-retry bound.
+	state.terminal.rejectedTemplateBlocks = 0
 	state.usedAnyTool = true
 	unavailableContextTools := a.unavailableContextualToolCalls(ctx, calls)
 	if len(unavailableContextTools) > 0 && state.terminal.contextToolRepairs > 0 {

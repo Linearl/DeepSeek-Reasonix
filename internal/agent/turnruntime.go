@@ -149,6 +149,11 @@ type terminalProtocolState struct {
 	// emptyFinalBlocks counts consecutive reasoning-only stops retried for a
 	// visible final answer.
 	emptyFinalBlocks int
+	// rejectedTemplateBlocks counts fixed provider rejection sentences seen
+	// this run (task 286 / #10721). Kept separate from emptyFinalBlocks: the
+	// causes differ (provider filter vs no output), the ceilings differ, and
+	// mixing them would let one budget silently consume the other.
+	rejectedTemplateBlocks int
 	// readinessAdvisories counts turns that ended with an unmet readiness contract
 	// carried forward instead of pausing. Unattended (autopilot) runs advise and
 	// continue, and this bounds that so a gap the model cannot close does not spin.
