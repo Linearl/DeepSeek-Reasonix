@@ -1771,6 +1771,10 @@ type ExperimentFeatureId =
   | "perfMonitor"
   | "autoLoadOlder"
   | "sessionCollab"
+  // Task 244 B1/B2/B3 (batch 1 of the MiMo-inspired experiment switches).
+  | "autonomousIdleTerminate"
+  | "loopStreakNote"
+  | "eventWaitRecheck"
   | "messageMerge"
   | "autopilot"
   // Task 265 lab intake (9 fork features) + task 262 quick commands.
@@ -1857,6 +1861,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "autopilot", group: "efficiency", label: t("settings.autopilot"), on: Boolean(s.autopilot) },
     { id: "dream", group: "efficiency", label: t("settings.dream"), on: Boolean(s.experimentalDream) },
     { id: "sessionCollab", group: "efficiency", label: t("settings.sessionCollab"), on: Boolean(s.experimentalSessionCollab) },
+    { id: "autonomousIdleTerminate", group: "efficiency", label: t("settings.autonomousIdleTerminate"), on: Boolean(s.experimentalAutonomousIdleTerminate) },
+    { id: "loopStreakNote", group: "efficiency", label: t("settings.loopStreakNote"), on: Boolean(s.experimentalLoopStreakNote) },
+    { id: "eventWaitRecheck", group: "efficiency", label: t("settings.eventWaitRecheck"), on: Boolean(s.experimentalEventWaitRecheck) },
     { id: "messageMerge", group: "efficiency", label: t("settings.messageMerge"), on: (s.collabInboxMerge || "off") !== "off" || Boolean(s.collabGuidanceMerge) },
     { id: "localServer", group: "efficiency", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
     { id: "traceAsState", group: "efficiency", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
@@ -2523,6 +2530,69 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                       })}
                     >
                       {t(on ? "settings.collabGuidanceMerge.on" : "settings.collabGuidanceMerge.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+            </>
+          )}
+
+          {selected === "autonomousIdleTerminate" && (
+            <>
+              <SettingsField label={t("settings.autonomousIdleTerminate")} hint={t("settings.autonomousIdleTerminateHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalAutonomousIdleTerminate) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalAutonomousIdleTerminate(on);
+                      })}
+                    >
+                      {t(on ? "settings.autonomousIdleTerminate.on" : "settings.autonomousIdleTerminate.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+            </>
+          )}
+          {selected === "loopStreakNote" && (
+            <>
+              <SettingsField label={t("settings.loopStreakNote")} hint={t("settings.loopStreakNoteHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalLoopStreakNote) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalLoopStreakNote(on);
+                        setRestartNeeded(true);
+                      })}
+                    >
+                      {t(on ? "settings.loopStreakNote.on" : "settings.loopStreakNote.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+            </>
+          )}
+          {selected === "eventWaitRecheck" && (
+            <>
+              <SettingsField label={t("settings.eventWaitRecheck")} hint={t("settings.eventWaitRecheckHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalEventWaitRecheck) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalEventWaitRecheck(on);
+                        setRestartNeeded(true);
+                      })}
+                    >
+                      {t(on ? "settings.eventWaitRecheck.on" : "settings.eventWaitRecheck.off")}
                     </button>
                   ))}
                 </SettingsOptions>

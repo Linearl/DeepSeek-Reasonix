@@ -365,6 +365,24 @@ func (a *App) SetExperimentalDream(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalDream(enabled) })
 }
 
+// SetExperimentalAutonomousIdleTerminate toggles heartbeat's idle-streak burn
+// guard (task 244 B1). Read at call time by the engine — no restart needed.
+func (a *App) SetExperimentalAutonomousIdleTerminate(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalAutonomousIdleTerminate(enabled) })
+}
+
+// SetExperimentalLoopStreakNote toggles the neutral Continue. streak note
+// (task 244 B2). Runtime flag rides Options — sessions rebuild on restart.
+func (a *App) SetExperimentalLoopStreakNote(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalLoopStreakNote(enabled) })
+}
+
+// SetExperimentalEventWaitRecheck toggles event_wait's return-time recheck
+// (task 244 B3). Registered with the tool set — sessions rebuild on restart.
+func (a *App) SetExperimentalEventWaitRecheck(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalEventWaitRecheck(enabled) })
+}
+
 // SetExperimentalPerfMonitor toggles the host performance monitor (task 184).
 // Restart-scoped: interval and file table are read while the app starts.
 func (a *App) SetExperimentalPerfMonitor(enabled bool) error {

@@ -114,6 +114,14 @@ type DesktopConfig struct {
 	// ExperimentalAutoLoadOlder is the settings-view mirror for
 	// Agent.ExperimentalAutoLoadOlder (fork task 160).
 	ExperimentalAutoLoadOlder bool `toml:"experimental_auto_load_older"`
+
+	// ExperimentalAutonomousIdleTerminate / ExperimentalLoopStreakNote /
+	// ExperimentalEventWaitRecheck are the settings-view mirrors for the
+	// [agent] runtime flags of task 244 B1/B2/B3 (same double-write pattern
+	// as experimental_dream).
+	ExperimentalAutonomousIdleTerminate bool `toml:"experimental_autonomous_idle_terminate"`
+	ExperimentalLoopStreakNote          bool `toml:"experimental_loop_streak_note"`
+	ExperimentalEventWaitRecheck        bool `toml:"experimental_event_wait_recheck"`
 	// CollabInboxMerge is the settings-view mirror for Agent.CollabInboxMerge
 	// (task 221): off | same_sender | all.
 	CollabInboxMerge string `toml:"collab_inbox_merge"`

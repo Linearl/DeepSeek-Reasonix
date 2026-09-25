@@ -199,8 +199,8 @@ func (t eventWaitTool) Execute(ctx context.Context, args json.RawMessage) (strin
 		}
 		return hit, firedBy, records, unmatched
 	}
-	snapshot := func(satisfied bool, firedBy []string, records []map[string]any, unmatched []string, elapsed time.Duration, interrupted bool) string {
-		out, _ := json.Marshal(map[string]any{
+	snapshot := func(satisfied bool, firedBy []string, records []map[string]any, unmatched []string, elapsed time.Duration, interrupted bool, recheck *bool) string {
+		payload := map[string]any{
 			"satisfied":   satisfied,
 			"mode":        mode,
 			"targets":     p.Targets,
@@ -214,7 +214,14 @@ func (t eventWaitTool) Execute(ctx context.Context, args json.RawMessage) (strin
 			// get_session_status would answer with, so "keep waiting, re-check
 			// or give up" is decidable without another round trip.
 			"sessions": records,
-		})
+		}
+		// Task 244 B3: when the experiment is on, the second verdict rides
+		// along — a disagreement with the judged tick is the judged-vs-returned
+		// window race made visible instead of silently swallowed.
+		if recheck != nil {
+			payload["recheckSatisfied"] = *recheck
+		}
+		out, _ := json.Marshal(payload)
 		return string(out)
 	}
 
@@ -228,10 +235,26 @@ func (t eventWaitTool) Execute(ctx context.Context, args json.RawMessage) (strin
 	})
 	switch {
 	case outcome.Satisfied:
-		return snapshot(true, firedBy, records, unmatched, outcome.Elapsed, false), nil
+		rc := eventWaitRecheckValue(t.cfg.EventWaitRecheck, func() bool { h, _, _, _ := poll(); return h })
+		return snapshot(true, firedBy, records, unmatched, outcome.Elapsed, false, rc), nil
 	case outcome.Interrupted:
-		return snapshot(false, nil, records, unmatched, outcome.Elapsed, true), nil
+		rci := eventWaitRecheckValue(t.cfg.EventWaitRecheck, func() bool { h, _, _, _ := poll(); return h })
+		return snapshot(false, nil, records, unmatched, outcome.Elapsed, true, rci), nil
 	default:
-		return snapshot(false, nil, records, unmatched, outcome.Elapsed, false), nil
+		rcd := eventWaitRecheckValue(t.cfg.EventWaitRecheck, func() bool { h, _, _, _ := poll(); return h })
+		return snapshot(false, nil, records, unmatched, outcome.Elapsed, false, rcd), nil
 	}
+}
+
+// eventWaitRecheckValue re-evaluates the event_wait checker once more at
+// return time (task 244 B3; the bind/snapshot compensation pattern ported
+// ahead of an event-bus migration). Off by default it returns nil, so the
+// return shape stays byte-identical; on it returns the second verdict, whose
+// disagreement with the judged tick is the window race made visible.
+func eventWaitRecheckValue(enabled bool, again func() bool) *bool {
+	if !enabled || again == nil {
+		return nil
+	}
+	v := again()
+	return &v
 }

@@ -98,6 +98,10 @@ type agentServices struct {
 	// optimisticWrite enables write-if-unchanged concurrency: path-bound file
 	// writers skip the whole-path serialization wait (see #9213).
 	optimisticWrite bool
+
+	// loopStreakNote gates task 244 B2's neutral Continue. streak note
+	// (Options.LoopStreakNote → run_loop text-repeat branch).
+	loopStreakNote bool
 	// memQueue lets the remember/forget tools fold a turn-tail note about a
 	// just-made memory change into the next turn, so it applies this session
 	// without touching the cache-stable prefix.
@@ -141,6 +145,7 @@ func newAgentServices(
 		writeScheduler:        opts.WriteScheduler,
 		workspaceLease:        opts.WorkspaceLease,
 		optimisticWrite:       opts.OptimisticWrite,
+		loopStreakNote:        opts.LoopStreakNote,
 		warnState:             missingReasoningWarnStateFor(opts.MissingReasoningWarnStateDir),
 		mutationObserver:      opts.MutationObserver,
 		writeRoots:            opts.WriteRoots,

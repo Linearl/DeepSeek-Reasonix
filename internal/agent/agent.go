@@ -1086,6 +1086,11 @@ type Options struct {
 	// path-bound file writers skip the whole-path serialization wait and rely on
 	// the "expected" stale-content check for parallel safety. Default false.
 	OptimisticWrite bool
+
+	// LoopStreakNote enables task 244 B2: after the first text-repeat nudge, a
+	// repeated loop injects a bounded neutral "Continue." host note instead of
+	// pausing. Off (default) keeps the nudge-then-pause contract untouched.
+	LoopStreakNote bool
 	// SessionTemp owns the exact private scratch root for delivery accounting.
 	SessionTemp *sessiontemp.Manager
 	// WriteRoots is the session-scoped writable directory manager.

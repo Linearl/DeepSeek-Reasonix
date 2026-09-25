@@ -1554,6 +1554,24 @@ type AgentConfig struct {
 	// Off by default (fork rule 2): the directory gains no mutating verbs
 	// until this switch is on.
 	ExperimentalSessionControl bool `toml:"experimental_session_control"`
+
+	// ExperimentalAutonomousIdleTerminate lets a heartbeat task disable itself
+	// after three consecutive runs that produced no conversation history
+	// (task 244 B1; MiMo sentinel three-idle self-terminate). Off by default:
+	// an unattended burn-guard must stay opt-in (fork rule 2).
+	ExperimentalAutonomousIdleTerminate bool `toml:"experimental_autonomous_idle_terminate"`
+	// ExperimentalLoopStreakNote replaces the second text-repeat pause with a
+	// bounded, neutral "Continue." host note when the assistant loops
+	// (task 244 B2; detection stays with the task-110 repeat guard, clipping
+	// stays in the existing fold/compaction channels). Off by default: the
+	// current nudge-then-pause contract is untouched (fork rule 2).
+	ExperimentalLoopStreakNote bool `toml:"experimental_loop_streak_note"`
+	// ExperimentalEventWaitRecheck re-evaluates the checker once more right
+	// before event_wait returns, exposing a judged-vs-returned window race as
+	// recheckSatisfied (task 244 B3; the bind/snapshot compensation pattern
+	// ported ahead of an event-bus migration). Off by default: the return
+	// shape stays byte-identical (fork rule 2).
+	ExperimentalEventWaitRecheck bool `toml:"experimental_event_wait_recheck"`
 	// CollabInboxMerge controls how the durable inbox drains multiple queued
 	// items (task 221). "off" (default) keeps the current one-item-per-dispatch
 	// FIFO; "same_sender" merges queued items that share an envelope Source

@@ -113,16 +113,28 @@ func (p *MockProvider) Stream(ctx context.Context, req provider.Request) (<-chan
 	ch := make(chan provider.Chunk)
 	go func() {
 		defer close(ch)
+		// sendOrGone delivers a chunk or gives up once nobody can read it: a
+		// cancelled run's producer must never block forever on an unbuffered
+		// channel (task 244: the goleak contract exposed this latent leak when
+		// an interrupting reader stopped consuming mid-stream).
+		sendOrGone := func(c provider.Chunk) bool {
+			select {
+			case ch <- c:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		}
 		for _, c := range chunks {
 			// Check before every send so an already-observed cancellation is
 			// never masked by a select that also has a ready receiver.
 			if err := ctx.Err(); err != nil {
-				ch <- provider.Chunk{Type: provider.ChunkError, Err: err}
+				sendOrGone(provider.Chunk{Type: provider.ChunkError, Err: err})
 				return
 			}
 			select {
 			case <-ctx.Done():
-				ch <- provider.Chunk{Type: provider.ChunkError, Err: ctx.Err()}
+				sendOrGone(provider.Chunk{Type: provider.ChunkError, Err: ctx.Err()})
 				return
 			case ch <- c:
 			}

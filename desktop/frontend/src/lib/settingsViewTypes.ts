@@ -92,6 +92,12 @@ export interface SettingsView {
   fallbackModel?: string;
   // Task 19: multi-session collaboration experiment.
   experimentalSessionCollab?: boolean;
+  // Task 244 B1: heartbeat idle-streak burn guard.
+  experimentalAutonomousIdleTerminate?: boolean;
+  // Task 244 B2: bounded neutral Continue. note on repeated text loops.
+  experimentalLoopStreakNote?: boolean;
+  // Task 244 B3: event_wait return-time recheck.
+  experimentalEventWaitRecheck?: boolean;
   visionModel: string;
   webSearchModel?: string;
   webSearchModels?: string[];

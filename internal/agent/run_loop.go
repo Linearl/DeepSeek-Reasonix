@@ -258,6 +258,24 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 					continue
 				}
 				a.recordInterruptedDisplay(text, reasoning, partialCalls, true, err, state.workDurationMs())
+				// Task 244 B2: with the experiment on, a second strike injects a
+				// bounded neutral "Continue." note instead of pausing — the note
+				// carries no repetition wording, so the loop pattern is never
+				// written back into the context (MiMo neutral-note semantics);
+				// after maxLoopStreakNotes the pause below applies unchanged.
+				if a.svc.loopStreakNote && state.terminal.loopStreakNotes < maxLoopStreakNotes {
+					state.terminal.loopStreakNotes++
+					a.svc.sink.Emit(event.Event{
+						Kind:   event.Notice,
+						Level:  event.LevelInfo,
+						Code:   event.NoticeCodeExecutorHandoff,
+						Text:   fmt.Sprintf("Loop-streak note %d/%d injected; the run continues without a pause (task 244 B2).", state.terminal.loopStreakNotes, maxLoopStreakNotes),
+						Detail: "loop streak neutral note",
+					})
+					a.sess.conversation.Add(HostGeneratedUserMessage("Continue."))
+					a.contextManager().ObserveUsage(usage)
+					continue
+				}
 				return &RecoveryPauseError{
 					Message:    "Stopped: the assistant repeated the same output. Completed work is kept; send \"continue\" to try a different approach.",
 					StopReason: "text_repeat",

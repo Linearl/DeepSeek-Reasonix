@@ -621,6 +621,16 @@ func (a *App) startup(ctx context.Context) {
 	a.startMainThreadWatchdog()
 
 	a.heartbeat = newHeartbeatEngine(a)
+	// Task 244 B1: call-time evaluation (S4) — the burn guard reads the
+	// saved switch on every run, so toggling it in settings applies without a
+	// restart. Missing config = off.
+	a.heartbeat.idleTerminate = func() bool {
+		cfg, err := config.Load()
+		if err != nil {
+			return false
+		}
+		return cfg.Agent.ExperimentalAutonomousIdleTerminate || cfg.Desktop.ExperimentalAutonomousIdleTerminate
+	}
 	a.heartbeat.Start()
 	// Expose the scheduler's admin surface to agent tools (task 201). The
 	// adapter keeps the engine as the single source of truth for validation
