@@ -302,6 +302,16 @@ func (o *turnOrchestrator) runOrchestratedTurn(ctx context.Context, turn orchest
 	c.captureGoalRunWorkDuration(startMessages)
 	c.persistGoalDeliveryCheckpoint()
 	if err != nil {
+		// Task 242: a quota-class error that qualifies (switch on, target
+		// configured, not already on the fallback) swaps the model and recovers
+		// the turn. Goal loops continue into a fresh turn that already runs on
+		// the fallback; a non-goal turn ends with the visible switch notice so
+		// the next user message runs on the fallback — the notice, never a
+		// silent empty answer, tells the user what happened. Anything the
+		// switch cannot handle falls through to the normal error path below.
+		if absorbQuotaForFallback(c, err) == nil {
+			return nil
+		}
 		// When the user explicitly cancels, keep the real prompt and any fully
 		// paired tool work. Partial reasoning/output remains durable for display
 		// but is marked local-only, and a bounded recovery summary is folded into

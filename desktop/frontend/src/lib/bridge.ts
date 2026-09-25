@@ -824,6 +824,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetSessionCollabBackground(enabled: boolean): Promise<void>;
   // Task 225: cascade approval to the autopilot parent.
   SetExperimentalCascadeApproval(enabled: boolean): Promise<void>;
+  // Task 242: quota fallback switch + provider/model target.
+  SetExperimentalFallbackModel(enabled: boolean): Promise<void>;
+  SetFallbackModel(model: string): Promise<void>;
   // Fork task 160: load older history by scrolling up at the transcript top (experimental).
   SetExperimentalAutoLoadOlder(enabled: boolean): Promise<void>;
   // Task 221: inbox drain merge tri-state (off | same_sender | all).
@@ -5127,6 +5130,8 @@ function makeMockApp(): AppBindings {
     async SetSessionCollabGates() {},
     async SetSessionCollabBackground() {},
     async SetExperimentalCascadeApproval() {},
+    async SetExperimentalFallbackModel() {},
+    async SetFallbackModel() {},
     async SetExperimentalAutoLoadOlder() {},
     async SetCollabInboxMerge() {},
     async SetCollabGuidanceMerge() {},

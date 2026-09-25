@@ -242,7 +242,15 @@ func (a *Agent) waitSamplingRetry(ctx context.Context, s *samplingRecoveryState,
 		"session_hit_total", a.sess.cacheHit.Load(), "session_miss_total", a.sess.cacheMiss.Load(),
 		"err", result.err)
 	waiting := attempt >= maxSamplingAttempts && a.canWaitSampling(ctx, s, failure)
-	if !failure.Retryable || (attempt >= maxSamplingAttempts && !waiting) {
+	// Task 242: quota-class failures join the ordinary fast retry loop ONLY
+	// when a fallback target is configured — the retries exist to absorb
+	// transient quota jitter, and the exhausted loop hands the error up so the
+	// controller can switch models. With the switch off (default) quota keeps
+	// its pre-242 immediate failure: zero regression. Quota never enters the
+	// minute-scale `waiting` lane (canWaitSampling unchanged): waiting out a
+	// 5h window is pointless.
+	quotaFallback := failure.Phase == "quota" && ModelFallbackTarget(ctx) != ""
+	if (!failure.Retryable && !quotaFallback) || (attempt >= maxSamplingAttempts && !waiting) {
 		return false
 	}
 	base := time.Duration(1<<min(attempt-1, 2)) * 2 * time.Second

@@ -85,6 +85,9 @@ export interface SettingsView {
   sessionCollabDailySendLimit?: number;
   // Task 225: cascade approval to the autopilot parent.
   experimentalCascadeApproval?: boolean;
+  // Task 242: quota fallback switch + provider/model target.
+  experimentalFallbackModel?: boolean;
+  fallbackModel?: string;
   // Task 19: multi-session collaboration experiment.
   experimentalSessionCollab?: boolean;
   visionModel: string;

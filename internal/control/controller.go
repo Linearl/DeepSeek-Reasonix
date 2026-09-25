@@ -204,6 +204,14 @@ type Controller struct {
 	// onCascadeDelegate (task 225): resolves the task-source parent's Ask
 	// channel for approval forwarding. nil keeps every prompt local.
 	onCascadeDelegate func(selfPath string) (delegate agent.Asker, source string, ok bool)
+	// onFallbackSwitch (task 242) swaps the session's model to the configured
+	// fallback after a quota-class error exhausts the sampling retries. The
+	// controller only decides WHEN (quota + target live + not already on the
+	// fallback); the host executes the swap (SetModelForTab's rebuild shape),
+	// because model replacement is a host-layer rebuild, not an agent write.
+	// selfPath identifies WHICH session to swap so the host never touches an
+	// unrelated tab; nil or an error keeps pre-242 behavior (quota surfaces).
+	onFallbackSwitch func(selfPath, target string) error
 
 	// balanceURL/balanceKey target the active provider's optional wallet-balance
 	// endpoint (empty when the provider declares none). Captured at build so a
@@ -703,6 +711,12 @@ type Options struct {
 	// answers; otherwise its user is asked). nil or ok=false keeps every
 	// prompt local.
 	OnCascadeDelegate func(selfPath string) (delegate agent.Asker, source string, ok bool)
+	// OnFallbackSwitch (task 242) executes the model swap to the fallback
+	// target when the controller has decided a quota error qualifies. Host-
+	// injected because the swap is a host-layer rebuild; selfPath says WHICH
+	// session to swap (never an unrelated tab); nil keeps quota errors
+	// surfacing exactly as before (default-off switch anyway).
+	OnFallbackSwitch func(selfPath, target string) error
 	// OnPersistWriteAccess writes sandbox.allow_write and an optional permission
 	// rule to the workspace reasonix.toml as one transaction.
 	OnPersistWriteAccess PersistWriteAccessFunc
@@ -838,6 +852,7 @@ func New(opts Options) *Controller {
 		onRemember:                        opts.OnRemember,
 		onRememberPlanModeReadOnlyCommand: opts.OnRememberPlanModeReadOnlyCommand,
 		onCascadeDelegate:                 opts.OnCascadeDelegate,
+		onFallbackSwitch:                  opts.OnFallbackSwitch,
 		writeAccess:                       newControllerWriteAccess(opts),
 		sessionRecoveryMeta:               opts.SessionRecoveryMeta,
 		onSessionRecovered:                opts.OnSessionRecovered,
@@ -1404,6 +1419,11 @@ func (c *Controller) withRecoveryFenceBindings(ctx context.Context) context.Cont
 	if c.autopilot {
 		ctx = agent.WithUnattendedRun(ctx)
 	}
+	// Task 242: every turn also carries the live fallback target ("" when the
+	// experimental switch is off or unconfigured — pre-242 quota behavior).
+	// Read per turn so a settings change applies without a restart, same
+	// pattern as CascadeApprovalLive.
+	ctx = agent.WithModelFallback(ctx, config.FallbackModelLive())
 	return ctx
 }
 

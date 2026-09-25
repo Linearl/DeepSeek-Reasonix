@@ -1504,6 +1504,18 @@ type AgentConfig struct {
 	// default (iron rule 2); the settings-panel checkbox lands with the 173
 	// panel, so config.toml is the switch for now.
 	ExperimentalCascadeApproval bool `toml:"experimental_cascade_approval"`
+	// ExperimentalFallbackModel enables task 242: when the primary model fails
+	// with a quota-class error after the sampling retry budget, the turn
+	// switches to FallbackModel instead of dying. Off by default (iron rule 2)
+	// — a silent model swap changes every subsequent answer's provenance, so
+	// it must be opted in.
+	ExperimentalFallbackModel bool `toml:"experimental_fallback_model"`
+	// FallbackModel is the provider/model pair used once the primary is
+	// quota-exhausted (task 242). Written as "provider/model"; a bare model
+	// id is rejected by SetFallbackModel so identity stays unambiguous (the
+	// create_collab_session approver convention). Empty = the switch is on but
+	// no target is configured, which keeps the primary behavior.
+	FallbackModel string `toml:"fallback_model"`
 	// ExperimentalUIDriver enables the task 233 batch-2 ui_interact tool:
 	// controlled UI driving (activate / click / type / key) for agent-run
 	// verification. Off by default (iron rule 2) — injecting input into

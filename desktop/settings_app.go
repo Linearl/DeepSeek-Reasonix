@@ -366,10 +366,10 @@ type SettingsView struct {
 	PreapproveSessionStores            bool `json:"preapproveSessionStores"`
 	PreapproveBashEscape               bool `json:"preapproveBashEscape"`
 	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
-	ExperimentalFullAccess bool `json:"experimentalFullAccess"`
-	ExperimentalLocalServer        bool `json:"experimentalLocalServer"`
-	ExperimentalPathRules          bool `json:"experimentalPathRules"`
-	ExperimentalTraceAsState       bool `json:"experimentalTraceAsState"`
+	ExperimentalFullAccess   bool `json:"experimentalFullAccess"`
+	ExperimentalLocalServer  bool `json:"experimentalLocalServer"`
+	ExperimentalPathRules    bool `json:"experimentalPathRules"`
+	ExperimentalTraceAsState bool `json:"experimentalTraceAsState"`
 	// Task 161: cache tuning mirrors (Settings panel reads these from this view).
 	MaxCachedTabs              int    `json:"maxCachedTabs"`
 	HistoryBodyBudgetMb        int    `json:"historyBodyBudgetMb"`
@@ -394,6 +394,9 @@ type SettingsView struct {
 	// Task 225: cascade approval to the autopilot parent (config lands in the
 	// same panel; the checkbox ships with it).
 	ExperimentalCascadeApproval bool `json:"experimentalCascadeApproval"`
+	// Task 242: fallback model switch + target (model-preference companion).
+	ExperimentalFallbackModel bool   `json:"experimentalFallbackModel"`
+	FallbackModel             string `json:"fallbackModel"`
 
 	VisionModel                  string                     `json:"visionModel"`
 	WebSearchModel               string                     `json:"webSearchModel"`
@@ -538,6 +541,9 @@ type DesktopStartupSettingsView struct {
 	// Task 225: cascade approval to the autopilot parent (config lands in the
 	// same panel; the checkbox ships with it).
 	ExperimentalCascadeApproval bool `json:"experimentalCascadeApproval"`
+	// Task 242: fallback model switch + target.
+	ExperimentalFallbackModel bool   `json:"experimentalFallbackModel"`
+	FallbackModel             string `json:"fallbackModel"`
 	// ExperimentalLocalServer exposes the Settings → 本地服务 page (task 130).
 	ExperimentalLocalServer bool `json:"experimentalLocalServer"`
 	// ExperimentalPathRules enables structured path-scope evaluation (task 134).
@@ -1324,16 +1330,16 @@ func (a *App) Settings() SettingsView {
 		PreapproveHooks:                    cfg.Agent.PreapproveManagedHooks,
 		PreapproveSessionStores:            cfg.Agent.PreapproveManagedStores,
 		PreapproveBashEscape:               cfg.Agent.PreapproveManagedBashEscape,
-		ExperimentalFullAccess:         cfg.Agent.ExperimentalFullAccess,
-		ExperimentalTraceAsState:       cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState,
-		ExperimentalDream:              cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream,
-		ExperimentalPerfMonitor:        cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,
-		PerfMonitorIntervalSeconds:     cfg.Desktop.PerfMonitorIntervalSeconds,
-		SessionCollabHopLimit:          cfg.Desktop.SessionCollabHopLimit,
-		ExperimentalSessionCollab:      cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
-		ExperimentalAutoLoadOlder:      cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
-		CollabInboxMerge:               config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge),
-		CollabGuidanceMerge:            cfg.Desktop.CollabGuidanceMerge || cfg.Agent.CollabGuidanceMerge,
+		ExperimentalFullAccess:             cfg.Agent.ExperimentalFullAccess,
+		ExperimentalTraceAsState:           cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState,
+		ExperimentalDream:                  cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream,
+		ExperimentalPerfMonitor:            cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,
+		PerfMonitorIntervalSeconds:         cfg.Desktop.PerfMonitorIntervalSeconds,
+		SessionCollabHopLimit:              cfg.Desktop.SessionCollabHopLimit,
+		ExperimentalSessionCollab:          cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
+		ExperimentalAutoLoadOlder:          cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
+		CollabInboxMerge:                   config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge),
+		CollabGuidanceMerge:                cfg.Desktop.CollabGuidanceMerge || cfg.Agent.CollabGuidanceMerge,
 		// Task 173: the collaboration panel gates (single source = [agent]).
 		SessionCollabAllowDelete:       cfg.Agent.SessionCollabAllowDelete,
 		SessionCollabAllowRequireReply: cfg.Agent.SessionCollabAllowRequireReply,
@@ -1344,21 +1350,24 @@ func (a *App) Settings() SettingsView {
 		SessionCollabDailySendLimit:    cfg.Agent.SessionCollabDailySendLimit,
 		// Task 225: cascade approval to the autopilot parent.
 		ExperimentalCascadeApproval: cfg.Agent.ExperimentalCascadeApproval,
-		ExperimentalLocalServer:     cfg.Desktop.ExperimentalLocalServer,
-		ExperimentalPathRules:       cfg.Desktop.ExperimentalPathRules,
-		MaxCachedTabs:               cfg.Desktop.MaxCachedTabs,
-		HistoryBodyBudgetMb:         cfg.Desktop.HistoryBodyBudgetMb,
-		MarkdownBudgetMb:            cfg.Desktop.MarkdownBudgetMb,
-		ExperimentalCacheTuning:     cfg.Desktop.ExperimentalCacheTuning,
-		VisionModel:                 cfg.Agent.VisionModel,
-		WebSearchModel:              cfg.Agent.WebSearchModel,
-		WebSearchModels:             []string{},
-		SubagentModel:               cfg.Agent.SubagentModel,
-		SubagentEffort:              cfg.Agent.SubagentEffort,
-		AutoPlan:                    "off", // deprecated JSON compatibility for older frontends
-		Providers:                   []ProviderView{},
-		OfficialProviders:           []ProviderView{},
-		ProviderPresets:             []ProviderPresetView{},
+		// Task 242: fallback model switch + provider/model target.
+		ExperimentalFallbackModel: cfg.Agent.ExperimentalFallbackModel,
+		FallbackModel:             cfg.Agent.FallbackModel,
+		ExperimentalLocalServer:   cfg.Desktop.ExperimentalLocalServer,
+		ExperimentalPathRules:     cfg.Desktop.ExperimentalPathRules,
+		MaxCachedTabs:             cfg.Desktop.MaxCachedTabs,
+		HistoryBodyBudgetMb:       cfg.Desktop.HistoryBodyBudgetMb,
+		MarkdownBudgetMb:          cfg.Desktop.MarkdownBudgetMb,
+		ExperimentalCacheTuning:   cfg.Desktop.ExperimentalCacheTuning,
+		VisionModel:               cfg.Agent.VisionModel,
+		WebSearchModel:            cfg.Agent.WebSearchModel,
+		WebSearchModels:           []string{},
+		SubagentModel:             cfg.Agent.SubagentModel,
+		SubagentEffort:            cfg.Agent.SubagentEffort,
+		AutoPlan:                  "off", // deprecated JSON compatibility for older frontends
+		Providers:                 []ProviderView{},
+		OfficialProviders:         []ProviderView{},
+		ProviderPresets:           []ProviderPresetView{},
 		Permissions: PermissionsView{
 			Mode:  orDefault(cfg.Permissions.Mode, "ask"),
 			Allow: nonNil(cfg.Permissions.Allow),
@@ -2316,9 +2325,9 @@ func (a *App) buildSettingReplacementController(tab *WorkspaceTab, snap tabRunti
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
 		OnCreateCollabSession:    a.createCollabSession,
 		OnSessionStatus:          a.collabSessionStatus,
-		OnSessionInfo:          a.collabSessionInfo,
-		OnSessionStop:          a.collabSessionStop,
-		OnSessionSetModel:          a.collabSessionSetModel,
+		OnSessionInfo:            a.collabSessionInfo,
+		OnSessionStop:            a.collabSessionStop,
+		OnSessionSetModel:        a.collabSessionSetModel,
 		OnCascadeDelegate:        cascadeDelegateFor,
 		OnDeleteSession:          a.deleteCollabSession,
 		OnRenameSession:          a.renameCollabSession,
