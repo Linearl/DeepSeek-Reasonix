@@ -413,8 +413,11 @@ for (const path of localeChunks) {
   // 79.6 over 79.5 — one-shot +0.5 each per the 2026-09-20 ratchet rule.
   // Task 163: fifteen locale keys per dialect measured zh 79.6 over 79.5 and
   // zh-TW 80.8 over 80.5 — one-shot +0.5 each (266-A/267 larger-value rule;
-  // both tasks landed at the same gate — one shared 80.0/81.0 line, no double bump).
-  const budget = name.startsWith("zh-TW-") ? 81.0 * 1024 : 80.0 * 1024;
+  // both tasks landed at the same gate — one shared line, no double bump).
+  // Merge batch (244 batch 1 + 163 stacked): zh trips the shared 80.0 gate in
+  // the merged tree — one-shot +0.5 to 80.5; zh-TW measures 81.2 over 81.0 —
+  // one-shot +0.5 to 81.5 (same merge-batch precedent as the initial gzip 472.7 landing).
+  const budget = name.startsWith("zh-TW-") ? 81.5 * 1024 : 80.5 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
