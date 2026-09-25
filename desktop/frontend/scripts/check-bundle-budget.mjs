@@ -224,7 +224,9 @@ console.log("\nbundle budgets");
 // one-shot +0.5 to 473.1 (same merge-batch precedent as the raw 2511.8 landing).
 // Task 163 (OpenCode Go usage card): measured 473.1 over the line — the detail
 // card component, bridge pair and 45 locale keys; one-shot +0.5 to 473.6.
-const initialJSBudgetKiB = 473.6; // fork: chain 468.8-era → 471.1 → 471.6 → 472.1 → 472.6 (tasks 242/192) → 473.1 (merge batch) → 473.6 (tasks 244 batch 1 + 163 landed at the same gate — one bump, take the shared value; one-shot +0.5 per the 2026-09-20 ratchet rule)
+// Merge batch (244 batch 2 stacked onto 163): measured 473.9 over 473.6 —
+// one-shot +0.5 to 474.1 (merge-batch precedent, same as the 472.7 landing).
+const initialJSBudgetKiB = 474.1; // fork: chain 468.8-era → 471.1 → 471.6 → 472.1 → 472.6 (tasks 242/192) → 473.1 (merge batch) → 473.6 (tasks 244 batch 1 + 163, same gate) → 474.1 (244 batch 2 stacked, 473.9 measured; one-shot +0.5 per the 2026-09-20 ratchet rule)
 // Task 269 rebased onto 471.1: measured 470.7, also within 471.1 —
 // larger one-shot value stands (audit ruling, no second ratchet).
 // Task 264 rebased onto the same budget: measured 470.3 KiB (collab-background
