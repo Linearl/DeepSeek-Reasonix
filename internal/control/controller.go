@@ -2730,10 +2730,22 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// exactly "delegate per the parent's policy". Every gate stays with the
 	// host resolver (contact-bound grant, 24h expiry); a miss falls through to
 	// the local prompt, and the delegation is logged for audit either way.
+	//
+	// Round-2 hardening (task 225): the delegate wait is bounded and the
+	// chain is depth-limited. Without the deadline a source that is itself
+	// unattended (or long-running) freezes the child forever — the 264 stall
+	// shape; after DefaultAutopilotAskWait we fall back to the local prompt
+	// instead. Without the hop stamp two sessions granting each other would
+	// stack Ask frames until the process died; maxCascadeHops terminates the
+	// cycle and keeps the prompt local, again the pre-225 behavior.
 	if c.onCascadeDelegate != nil && config.CascadeApprovalLive() {
-		if delegate, source, ok := c.onCascadeDelegate(c.SessionPath()); ok && delegate != nil {
+		if agent.CascadeHopExhausted(ctx) {
+			log.Printf("[cascade-approval] hop limit reached (%d); keeping prompt local (task 225)", agent.MaxCascadeHops())
+		} else if delegate, source, ok := c.onCascadeDelegate(c.SessionPath()); ok && delegate != nil {
 			log.Printf("[cascade-approval] forwarding %d prompt(s) to task source %s (task 225)", len(questions), source)
-			answers, err := delegate.Ask(ctx, questions)
+			delegateCtx, cancelDelegate := context.WithTimeout(ctx, DefaultAutopilotAskWait)
+			answers, err := delegate.Ask(agent.WithCascadeHop(delegateCtx), questions)
+			cancelDelegate()
 			if err != nil {
 				log.Printf("[cascade-approval] delegate %s failed (%v); falling back to the local prompt", source, err)
 			} else {
@@ -6129,6 +6141,46 @@ func (c *Controller) requestApprovalDecisionWithOptions(ctx context.Context, too
 			}
 			// An "allow" opinion on a fresh-human-required decision is
 			// ignored; fall through to the normal interactive prompt.
+		}
+	}
+
+	// Task 225: an interactive decision cascades to the task source the same
+	// way the Ask path does — the source's own semantics decide (its user
+	// answers; its autopilot classifies the risk and may decline to auto-
+	// answer). The hooks above ran first so locally auto-answerable prompts
+	// never pay a cross-session round trip. The question carries tool,
+	// subject and reason so the source's risk classifier judges exactly what
+	// a local user would see; a dangerous request therefore stays human-only
+	// there too. Answers map: "Allow" and an explicit "decide for yourself"
+	// (the source's unattended judgment that this risk is self-decidable)
+	// allow; anything else — Deny, silence, a timed-out or failing delegate —
+	// refuses and falls back to the local prompt, the safe direction.
+	if c.onCascadeDelegate != nil && config.CascadeApprovalLive() && !agent.CascadeHopExhausted(ctx) {
+		if delegate, source, ok := c.onCascadeDelegate(c.SessionPath()); ok && delegate != nil {
+			question := event.AskQuestion{
+				ID:     "approval-" + tool,
+				Header: tool,
+				Prompt: approvalCascadePrompt(subject, reason),
+				Options: []event.AskOption{
+					{Label: "Allow", Description: "grant this one request"},
+					{Label: "Deny", Description: "refuse and let the model find another way"},
+				},
+			}
+			delegateCtx, cancelDelegate := context.WithTimeout(ctx, DefaultAutopilotAskWait)
+			answers, err := delegate.Ask(agent.WithCascadeHop(delegateCtx), []event.AskQuestion{question})
+			cancelDelegate()
+			if err != nil || len(answers) != 1 {
+				reasonText := "no answer"
+				if err != nil {
+					reasonText = err.Error()
+				}
+				log.Printf("[cascade-approval] source %s could not decide %s (%s); falling back to the local prompt (task 225)", source, tool, reasonText)
+			} else {
+				selection := strings.Join(answers[0].Selected, " ")
+				allow := strings.Contains(selection, "Allow") || strings.Contains(selection, "decide for yourself")
+				log.Printf("[cascade-approval] source %s decided %s: allow=%v selection=%q (task 225)", source, tool, allow, selection)
+				return approvalReply{allow: allow}, nil
+			}
 		}
 	}
 
