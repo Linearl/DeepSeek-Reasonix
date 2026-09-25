@@ -352,6 +352,13 @@ func collabStatusRecords(cfg SessionCollabConfig, targets []string) (records []m
 		busy := unread + probePending
 		// State precedence (task 218): an active turn wins over pending mail; a
 		// runtime the probe cannot see is unknown — never a guessed idle.
+
+		// Direction (task 244 B7): Reasonix's form of MiMo's roster rule
+		// "prefer repeating a child over routing into a corpse"
+		// (actor/schema.ts:135-140): uncertainty resolves to a state no router
+		// treats as free, so a stalled peer is re-contacted or skipped, never
+		// dispatched into. Pinned by session_collab_status_test.go (unknown
+		// stays unknown) and event_wait's unmatched rule.
 		state := "unknown"
 		switch {
 		case known && running:

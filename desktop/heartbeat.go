@@ -299,6 +299,15 @@ func heartbeatControllerBusy(ctrl heartbeatRuntimeStatus) bool {
 // cold boot measured on this machine (10.23s for a heartbeat session), so a
 // healthy-but-slow boot no longer loses the race the way the previous fixed
 // 40×250ms window did (task 197). A var so tests can compress the clock.
+// heartbeatControllerWaitTimeout bounds waiting for a topic tab's controller
+// before a run retries next tick (task 244 B7: threshold-derivation note).
+// Method borrowed from MiMo's liveness work (actor/schema.ts:104-140: 43,120
+// measured intervals, p99.9=296.8s, stall/abandon set above it): derive such
+// bounds from a measured high percentile, not taste. This 60s is NOT a
+// measurement -- controller build is empirically seconds, so 60s is a
+// conservative multiple on that observation. To harden it: sample wait
+// durations from RunHistory/slog, take p99.9, set the bound above it with
+// headroom; until then cite it as a conservative constant, never as data.
 var heartbeatControllerWaitTimeout = 60 * time.Second
 
 // heartbeatControllerPollInterval is the fallback poll used only while the tab
