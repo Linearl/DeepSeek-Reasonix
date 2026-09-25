@@ -220,6 +220,19 @@ func (a *App) SetExperimentalCascadeApproval(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCascadeApproval(enabled) })
 }
 
+// SetExperimentalFallbackModel toggles task 242's quota fallback switch
+// (iron rule 2: off by default; settings → 实验特性 → 备用模型).
+func (a *App) SetExperimentalFallbackModel(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalFallbackModel(enabled) })
+}
+
+// SetFallbackModel writes the task 242 fallback target ("provider/model";
+// bare model ids are rejected by the config setter so identity stays
+// unambiguous). Empty clears the target.
+func (a *App) SetFallbackModel(model string) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetFallbackModel(model) })
+}
+
 // SetSessionCollabGates writes the task-173 collaboration panel gates in one
 // call, so the panel cannot half-apply (settings → 实验特性 → 跨会话通信).
 func (a *App) SetSessionCollabGates(allowDelete, allowRequireReply, allowReadTail, allowCreate, allowSteer bool, dailySendLimit int) error {

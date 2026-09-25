@@ -2653,6 +2653,23 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* Task 242: quota fallback switch (iron rule 2: off by default). */}
+              <SettingsField label={t("settings.fallbackModelSwitch")} hint={t("settings.fallbackModelSwitchHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalFallbackModel) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalFallbackModel(on);
+                      })}
+                    >
+                      {t(on ? "settings.fallbackModelSwitch.on" : "settings.fallbackModelSwitch.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
               <SettingsField label={t("settings.sessionCollabRoster")} hint={t("settings.sessionCollabRosterHint")} icon={<Sparkles size={18} />}>
                 <button
                   type="button"
@@ -5736,6 +5753,21 @@ export function ModelsSection({ s, busy, apply, backgroundApply, subtab, onboard
               </div>
               <span className="model-assignment-connection">{!s.webSearchModel || s.webSearchModel === "auto" ? t("settings.webSearchModelAutomatic") : providerViewLabel(s.providers.find(p => p.name === s.webSearchModel?.split("/")[0]), s.webSearchModel.split("/")[0])}</span>
             </SettingsField>
+
+            {/* Task 242: the fallback target — shown only while the switch is on. */}
+            {Boolean(s.experimentalFallbackModel) && (
+              <SettingsField className="model-assignment-row" label={<ModelSettingHelp label={t("settings.fallbackModel")} text={t("settings.fallbackModelHelp")} />}>
+                <ModelPicker
+                  s={s}
+                  refs={refs}
+                  value={s.fallbackModel || ""}
+                  disabled={busy}
+                  ariaLabel={t("settings.fallbackModel")}
+                  autoOptionLabel={t("settings.fallbackModel.none")}
+                  onPick={(ref) => void apply(async () => { await app.SetFallbackModel(ref); })}
+                />
+              </SettingsField>
+            )}
 
             <SettingsField className="model-assignment-row" label={<ModelSettingHelp label={t("settings.subagentModel")} text={t("providerUI.subagentModelHelp")} />}>
               <ModelPicker

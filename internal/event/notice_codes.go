@@ -9,6 +9,7 @@ const (
 	NoticeCodeFinalReadiness                                    = "final_readiness"
 	NoticeCodeEmptyFinal                                        = "empty_final"
 	NoticeCodeProviderRejection                                 = "provider_rejection"
+	NoticeCodeFallbackModelSwitched                             = "fallback_model_switched"
 	NoticeCodeReadinessAdvisory                                 = "readiness_advisory"
 	NoticeCodeExecutorHandoff                                   = "executor_handoff"
 	NoticeCodeToolBudget                                        = "tool_budget"

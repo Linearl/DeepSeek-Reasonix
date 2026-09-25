@@ -2377,6 +2377,9 @@ export interface DesktopStartupSettingsView {
   sessionCollabDailySendLimit?: number;
   // Task 225: cascade approval to the autopilot parent.
   experimentalCascadeApproval?: boolean;
+  // Task 242: quota fallback switch + provider/model target.
+  experimentalFallbackModel?: boolean;
+  fallbackModel?: string;
   bot: BotSettingsView;
   desktopLanguage: string; // "" | "en" | "zh"; empty = auto
   desktopLayoutStyle: string; // "classic" | "workbench"

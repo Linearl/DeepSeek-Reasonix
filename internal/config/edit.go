@@ -796,6 +796,42 @@ func CascadeApprovalLive() bool {
 	return cfg.Agent.ExperimentalCascadeApproval
 }
 
+// SetExperimentalFallbackModel toggles task 242 (iron rule 2: default off).
+func (c *Config) SetExperimentalFallbackModel(enabled bool) error {
+	c.Agent.ExperimentalFallbackModel = enabled
+	return nil
+}
+
+// SetFallbackModel stores the provider/model pair used after a quota
+// exhaustion. A bare model id is rejected: without the provider half the
+// identity is ambiguous across connections (the create_collab_session
+// approver convention). Empty clears the target (switch may stay on, which
+// then keeps primary behavior).
+func (c *Config) SetFallbackModel(model string) error {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		c.Agent.FallbackModel = ""
+		return nil
+	}
+	provider, id, ok := strings.Cut(model, "/")
+	if !ok || strings.TrimSpace(provider) == "" || strings.TrimSpace(id) == "" || strings.Contains(id, "/") {
+		return fmt.Errorf("fallback model must be \"provider/model\", got %q", model)
+	}
+	c.Agent.FallbackModel = strings.TrimSpace(provider) + "/" + strings.TrimSpace(id)
+	return nil
+}
+
+// FallbackModelLive resolves task 242's current switch+target in one shot:
+// read per call so a settings change applies without a restart. Returns ""
+// when off or unconfigured — callers treat "" as "keep primary behavior".
+func FallbackModelLive() string {
+	cfg, err := Load()
+	if err != nil || cfg == nil || !cfg.Agent.ExperimentalFallbackModel {
+		return ""
+	}
+	return strings.TrimSpace(cfg.Agent.FallbackModel)
+}
+
 // NormalizeCollabInboxMerge clamps a merge mode into the legal tri-state
 // (task 221). Anything unknown reads as "off", so a hand-edited config can
 // never arm a mode the dispatcher does not implement.

@@ -227,6 +227,11 @@ type Options struct {
 	// channel for THIS session's approval prompts — the host owns the
 	// contact-bound grant registry (24h). Nil keeps every prompt local.
 	OnCascadeDelegate func(selfPath string) (delegate agent.Asker, source string, ok bool)
+	// OnFallbackSwitch (task 242) executes the model swap to the configured
+	// fallback after a quota-class error exhausts the sampling retries (the
+	// host swaps exactly the session identified by selfPath). Nil keeps quota
+	// errors surfacing exactly as before.
+	OnFallbackSwitch func(selfPath, target string) error
 	// OnDeleteSession lets a host move a collaborating session to trash on the
 	// agent's behalf (task 154 sub-item A). Nil omits the delete_session tool.
 	OnDeleteSession func(contactID, sessionPath string, dryRun bool) (agent.DeleteSessionImpact, agent.DeleteSessionResult, error)
@@ -2257,6 +2262,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// Task 225: the host resolves the task-source parent's Ask channel for
 		// a dispatched session's approval prompts (contact-bound grant, 24h).
 		OnCascadeDelegate:   opts.OnCascadeDelegate,
+		OnFallbackSwitch:    opts.OnFallbackSwitch,
 		SessionRecoveryMeta: opts.SessionRecoveryMeta,
 		OnSessionRecovered:  opts.OnSessionRecovered,
 		OnSessionTransition: opts.OnSessionTransition,
