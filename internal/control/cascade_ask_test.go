@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -19,7 +20,8 @@ import (
 // use).
 func enableCascadeApproval(t *testing.T) {
 	t.Helper()
-	t.Setenv("REASONIX_HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("REASONIX_HOME", home)
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatalf("load isolated config: %v", err)
@@ -27,7 +29,10 @@ func enableCascadeApproval(t *testing.T) {
 	if err := cfg.SetExperimentalCascadeApproval(true); err != nil {
 		t.Fatalf("arm cascade approval: %v", err)
 	}
-	if err := cfg.Save(); err != nil {
+	// SaveTo the isolated home: Save() with no SourcePath falls back to the
+	// RELATIVE "reasonix.toml" — i.e. the package working directory — which
+	// leaked a config file into internal/control the first time this ran.
+	if err := cfg.SaveTo(filepath.Join(home, "config.toml")); err != nil {
 		t.Fatalf("save isolated config: %v", err)
 	}
 	if !config.CascadeApprovalLive() {
