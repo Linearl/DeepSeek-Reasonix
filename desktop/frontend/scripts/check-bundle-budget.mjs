@@ -219,7 +219,10 @@ console.log("\nbundle budgets");
 // the gate trips. One-shot +0.5 to 471.6 per the ratchet rule.
 // Task 192 (active-tab residency): measured 472.5 over 472.1 — the settings
 // entry/card, store policy and locale keys; one-shot +0.5 to 472.6.
-const initialJSBudgetKiB = 472.6; // fork: task 242 (fallback switch+target locale, 7 keys × 3 dialects) measures 472.1 at the 472.1 ceiling — one-shot +0.5 per the ratchet rule (chain: 468.8-era → 471.1 → 471.6 → 472.1 → 472.6)
+// Merge batch (242+192+315, audit-ratchet one-shot): each landed at 472.6 for
+// its own measured baseline, but the stacked initial chunk measures 472.7 —
+// one-shot +0.5 to 473.1 (same merge-batch precedent as the raw 2511.8 landing).
+const initialJSBudgetKiB = 473.1; // fork: chain 468.8-era → 471.1 → 471.6 → 472.1 → 472.6 (tasks 242/192) → 473.1 (merge batch, 472.7 measured)
 // Task 269 rebased onto 471.1: measured 470.7, also within 471.1 —
 // larger one-shot value stands (audit ruling, no second ratchet).
 // Task 264 rebased onto the same budget: measured 470.3 KiB (collab-background
