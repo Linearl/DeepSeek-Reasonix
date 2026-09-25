@@ -32097,6 +32097,21 @@ body > .mermaid-diagram--fullscreen {
 .project-tree__group-state {
   flex: none;
 }
+/* Task 313: how many members the dot stands for, in a compact pill beside it.
+   Renders only inside the dot guard, so it appears and disappears with the
+   dot itself (all idle → both gone). */
+.project-tree__group-active-count {
+  flex: none;
+  min-width: 14px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--fg);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 14px;
+  text-align: center;
+}
 .project-tree__group-input {
   flex: 1 1 auto;
   min-width: 0;
