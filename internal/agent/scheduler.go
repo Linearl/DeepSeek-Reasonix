@@ -3,7 +3,9 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
+	"sync/atomic"
 )
 
 // SubagentSlotStatus is the queue lifecycle shown for background task/fleet
@@ -50,6 +52,13 @@ type SubagentScheduler struct {
 	// subagent concurrency slot (parent is not a subagent).
 	parentClaims []WritePathSet
 
+	// optimistic (task 315, linked to #9213 optimistic_write / task 280): when
+	// set, parent-write claims gate no subagent at all — the user has disabled
+	// the parallel-write safety check, so a parent write and a child slot are
+	// not mutually exclusive by choice. The conservative state keeps the #9688
+	// fail-fast. Atomic so a runtime toggle takes effect on the next dispatch.
+	optimistic atomic.Bool
+
 	// waiters are FIFO waiters for non-nested acquires.
 	waiters []*schedulerWaiter
 }
@@ -65,6 +74,17 @@ type schedulerWaiter struct {
 func NewSubagentScheduler(maxTotal, maxWriters int) *SubagentScheduler {
 	maxTotal, maxWriters = NormalizeConcurrencyLimits(maxTotal, maxWriters)
 	return &SubagentScheduler{maxTotal: maxTotal, maxWriters: maxWriters}
+}
+
+// SetOptimistic toggles the optimistic-parallel parent-claim gate (task 315,
+// the scheduler half of optimistic_write / task 280). On: parent writes
+// neither register nor enforce a claim, so no subagent — read-only or writer —
+// is gated by the parent turn's writes. Off: the conservative #9688 fail-fast.
+func (s *SubagentScheduler) SetOptimistic(on bool) {
+	if s == nil {
+		return
+	}
+	s.optimistic.Store(on)
 }
 
 // Limits returns the effective total/writer caps.
@@ -107,7 +127,23 @@ func (s *SubagentScheduler) AcquireWithID(ctx context.Context, req AcquireReques
 		s.mu.Unlock()
 		return s.makeReleaseID(id), id, nil
 	} else if req.Nested || reason == parentHeldClaimReason {
+		// Task 315: snapshot the refusal state under the lock, then tell the
+		// two causes apart. A parent-held claim is a deadlock guard, not a
+		// concurrency ceiling — the old unified "concurrency limit reached"
+		// wording sent users chasing a full pool that was never full.
+		parentClaims := len(s.parentClaims)
+		aw, at := s.activeWriters, s.activeTotal
+		optimistic := s.optimistic.Load()
 		s.mu.Unlock()
+		slog.Warn("agent: subagent dispatch fail-fast",
+			"reason", reason, "label", req.Label,
+			"writer", req.Writer, "nested", req.Nested,
+			"optimistic", optimistic,
+			"parent_claims", parentClaims,
+			"active_writers", aw, "active_total", at)
+		if reason == parentHeldClaimReason {
+			return noop, 0, fmt.Errorf("subagent dispatch refused: %s — a nested subagent cannot wait for a claim only the parent turn can release (deadlock guard, #9688). Wait for the in-flight write to finish and dispatch again, or dispatch a read-only subagent (read_only_task / read_only_skill), which never takes a write slot; with optimistic_write enabled no parent claim gates dispatch at all", reason)
+		}
 		return noop, 0, fmt.Errorf("subagent concurrency limit reached (%s); nested subagents fail fast to avoid parent/child slot deadlock", reason)
 	}
 
@@ -209,6 +245,12 @@ func (s *SubagentScheduler) MarkOpaque(id int64) error {
 func (s *SubagentScheduler) ReserveParentWrite(paths WritePathSet) (release func(), err error) {
 	noop := func() {}
 	if s == nil || paths.Empty() {
+		return noop, nil
+	}
+	// Task 315: in optimistic-parallel mode (#9213 / task 280) a parent write
+	// registers no claim at all — the user opted out of the parallel-write
+	// safety check, so parent writes must not gate any subagent dispatch.
+	if s.optimistic.Load() {
 		return noop, nil
 	}
 	s.mu.Lock()
@@ -329,9 +371,14 @@ func (s *SubagentScheduler) canStartLocked(req AcquireRequest) (bool, string) {
 			return false, "write path conflict with a running subagent"
 		}
 	}
-	for _, active := range s.parentClaims {
-		if ScheduleOverlaps(req.WritePaths, active) {
-			return false, parentHeldClaimReason
+	// Task 315: optimistic-parallel mode lifts the parent-claim gate entirely,
+	// so a claim registered before the toggle stops gating too (dynamic switch);
+	// flipping back restores the conservative #9688 fail-fast.
+	if !s.optimistic.Load() {
+		for _, active := range s.parentClaims {
+			if ScheduleOverlaps(req.WritePaths, active) {
+				return false, parentHeldClaimReason
+			}
 		}
 	}
 	return true, ""
