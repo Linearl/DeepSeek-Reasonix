@@ -1572,6 +1572,19 @@ type AgentConfig struct {
 	// ported ahead of an event-bus migration). Off by default: the return
 	// shape stays byte-identical (fork rule 2).
 	ExperimentalEventWaitRecheck bool `toml:"experimental_event_wait_recheck"`
+
+	// ExperimentalOrphanLeaseReclaim lets this process take over a session
+	// lease whose recorded owner PID no longer exists (task 244 B5; MiMo
+	// registry "reclaim orphans by instance identity after restart"). A live
+	// foreign owner is still respected exactly as before. Off by default
+	// (fork rule 2): lease takeover stays opt-in.
+	ExperimentalOrphanLeaseReclaim bool `toml:"experimental_orphan_lease_reclaim"`
+	// ExperimentalRecoveryOrphanSweep marks recovery-store operations that
+	// point past the covered durable sequence as settled when the store opens
+	// (task 244 B4; MiMo #2445 ownership-boundary orphan reclamation — the
+	// Reasonix shape is an idempotent open-path sweep, not a structured-exit
+	// hook). Off by default: the open path stays byte-identical (fork rule 2).
+	ExperimentalRecoveryOrphanSweep bool `toml:"experimental_recovery_orphan_sweep"`
 	// CollabInboxMerge controls how the durable inbox drains multiple queued
 	// items (task 221). "off" (default) keeps the current one-item-per-dispatch
 	// FIFO; "same_sender" merges queued items that share an envelope Source

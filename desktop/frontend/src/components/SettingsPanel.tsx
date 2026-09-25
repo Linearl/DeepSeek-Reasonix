@@ -1775,6 +1775,9 @@ type ExperimentFeatureId =
   | "autonomousIdleTerminate"
   | "loopStreakNote"
   | "eventWaitRecheck"
+  // Task 244 B5/B4 (batch 2).
+  | "orphanLeaseReclaim"
+  | "recoveryOrphanSweep"
   | "messageMerge"
   | "autopilot"
   // Task 265 lab intake (9 fork features) + task 262 quick commands.
@@ -1864,6 +1867,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "autonomousIdleTerminate", group: "efficiency", label: t("settings.autonomousIdleTerminate"), on: Boolean(s.experimentalAutonomousIdleTerminate) },
     { id: "loopStreakNote", group: "efficiency", label: t("settings.loopStreakNote"), on: Boolean(s.experimentalLoopStreakNote) },
     { id: "eventWaitRecheck", group: "efficiency", label: t("settings.eventWaitRecheck"), on: Boolean(s.experimentalEventWaitRecheck) },
+    { id: "orphanLeaseReclaim", group: "misc", label: t("settings.orphanLeaseReclaim"), on: Boolean(s.experimentalOrphanLeaseReclaim) },
+    { id: "recoveryOrphanSweep", group: "misc", label: t("settings.recoveryOrphanSweep"), on: Boolean(s.experimentalRecoveryOrphanSweep) },
     { id: "messageMerge", group: "efficiency", label: t("settings.messageMerge"), on: (s.collabInboxMerge || "off") !== "off" || Boolean(s.collabGuidanceMerge) },
     { id: "localServer", group: "efficiency", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
     { id: "traceAsState", group: "efficiency", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
@@ -2537,6 +2542,47 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
             </>
           )}
 
+
+          {selected === "orphanLeaseReclaim" && (
+            <>
+              <SettingsField label={t("settings.orphanLeaseReclaim")} hint={t("settings.orphanLeaseReclaimHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalOrphanLeaseReclaim) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalOrphanLeaseReclaim(on);
+                      })}
+                    >
+                      {t(on ? "settings.orphanLeaseReclaim.on" : "settings.orphanLeaseReclaim.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+            </>
+          )}
+          {selected === "recoveryOrphanSweep" && (
+            <>
+              <SettingsField label={t("settings.recoveryOrphanSweep")} hint={t("settings.recoveryOrphanSweepHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalRecoveryOrphanSweep) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalRecoveryOrphanSweep(on);
+                      })}
+                    >
+                      {t(on ? "settings.recoveryOrphanSweep.on" : "settings.recoveryOrphanSweep.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+            </>
+          )}
           {selected === "autonomousIdleTerminate" && (
             <>
               <SettingsField label={t("settings.autonomousIdleTerminate")} hint={t("settings.autonomousIdleTerminateHint")} icon={<Sparkles size={18} />}>

@@ -2367,6 +2367,10 @@ export interface DesktopStartupSettingsView {
   experimentalLoopStreakNote?: boolean;
   /** event_wait return-time recheck (task 244 B3); off unless the user opts in. */
   experimentalEventWaitRecheck?: boolean;
+  /** orphan lease takeover (task 244 B5); off unless the user opts in. */
+  experimentalOrphanLeaseReclaim?: boolean;
+  /** recovery-store open-path orphan sweep (task 244 B4); off unless the user opts in. */
+  experimentalRecoveryOrphanSweep?: boolean;
   sessionCollabHopLimit?: number; // task 204: cross-session chain ceiling (3..1000, default 5)
   /** Fork task 160: scroll-driven "load older" trigger at the transcript top. */
   experimentalAutoLoadOlder?: boolean;

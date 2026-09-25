@@ -98,6 +98,10 @@ export interface SettingsView {
   experimentalLoopStreakNote?: boolean;
   // Task 244 B3: event_wait return-time recheck.
   experimentalEventWaitRecheck?: boolean;
+  // Task 244 B5: orphan lease takeover.
+  experimentalOrphanLeaseReclaim?: boolean;
+  // Task 244 B4: recovery-store open-path orphan sweep.
+  experimentalRecoveryOrphanSweep?: boolean;
   visionModel: string;
   webSearchModel?: string;
   webSearchModels?: string[];

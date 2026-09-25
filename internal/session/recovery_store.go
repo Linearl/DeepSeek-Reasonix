@@ -8,9 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -106,6 +108,10 @@ type recoveryOperation struct {
 	OperationHash    string    `json:"operationHash"`
 	WriterGeneration uint64    `json:"writerGeneration"`
 	CreatedAt        time.Time `json:"createdAt"`
+	// Settled marks an operation the open-path sweep recognized as an orphan
+	// past the covered durable sequence (task 244 B4). Stored, never deleted;
+	// omitempty keeps pre-field records decoding as unsettled.
+	Settled bool `json:"settled,omitempty"`
 }
 
 func operationForRecovery(record operationRecord) recoveryOperation {
@@ -218,6 +224,17 @@ func readStorageIdentity(sessionDir string, manifest Manifest) (storageIdentity,
 	return identity, nil
 }
 
+// orphanSweepProbe reports whether the open-path orphan sweep runs (task 244
+// B4). Injected by the host at call time (S4) so the settings switch applies
+// to the next open without a restart; nil = off, and the open path stays
+// byte-identical to the pre-task behaviour.
+var orphanSweepProbe func() bool
+
+// SetOrphanSweepProbe injects the experimental_recovery_orphan_sweep reader.
+func SetOrphanSweepProbe(probe func() bool) {
+	orphanSweepProbe = probe
+}
+
 func openRecoveryStore(sessionDir string, identity storageIdentity) (*recoveryStore, error) {
 	dir := recoveryCacheDir(sessionDir)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -245,7 +262,8 @@ func openRecoveryStore(sessionDir string, identity storageIdentity) (*recoverySt
 		_ = checkpoints
 		_ = operations
 		stored := string(meta.Get([]byte("storage_generation")))
-		if stored != "" && stored != identity.Generation {
+		generationMismatch := stored != "" && stored != identity.Generation
+		if generationMismatch {
 			if err := tx.DeleteBucket(recoveryCheckpointBucket); err != nil {
 				return err
 			}
@@ -257,6 +275,62 @@ func openRecoveryStore(sessionDir string, identity storageIdentity) (*recoverySt
 			}
 			if _, err := tx.CreateBucket(recoveryOperationBucket); err != nil {
 				return err
+			}
+		}
+		// Task 244 B4: idempotent open-path sweep. A generation mismatch took
+		// the delete-and-recreate branch above (empty bucket, nothing to
+		// settle), so running here only ever touches the matching generation
+		// — the task's "generation criterion, skip otherwise". An operation
+		// whose FirstSequence sits past coverage_sequence points beyond what
+		// the recovery checkpoint covers: a crash/rewind leftover that must
+		// not keep representing an in-flight recovery surface. Settle it
+		// (never delete) and report; repeated opens are no-ops.
+		// Generation criterion (task 244 B4): a mismatch rebuilt the buckets
+		// above — the old records are gone and the fresh operations handle
+		// holds nothing, so the sweep skips entirely.
+		if probe := orphanSweepProbe; probe != nil && probe() && !generationMismatch {
+			coverage := uint64(0)
+			if raw := meta.Get([]byte("coverage_sequence")); len(raw) > 0 {
+				if parsed, perr := strconv.ParseUint(string(raw), 10, 64); perr == nil {
+					coverage = parsed
+				}
+			}
+			// Collect first, write after: bbolt forbids mutating a bucket
+			// while its ForEach cursor is live (the nodes-map assertion), so
+			// the scan and the writes are two phases inside the same tx.
+			type pendingSettle struct {
+				key, value []byte
+			}
+			var pending []pendingSettle
+			if err := operations.ForEach(func(k, v []byte) error {
+				var op recoveryOperation
+				if err := json.Unmarshal(v, &op); err != nil {
+					return nil // undecodable: leave for the damage paths
+				}
+				if op.Settled || op.FirstSequence <= coverage {
+					return nil
+				}
+				op.Settled = true
+				encoded, merr := json.Marshal(op)
+				if merr != nil {
+					return merr
+				}
+				key := append([]byte(nil), k...)
+				pending = append(pending, pendingSettle{key: key, value: encoded})
+				return nil
+			}); err != nil {
+				return err
+			}
+			for _, item := range pending {
+				if err := operations.Put(item.key, item.value); err != nil {
+					return err
+				}
+			}
+			settled := len(pending)
+			if settled > 0 {
+				slog.Info("session: settled orphan recovery operations at open",
+					"session_dir", sessionDir, "settled", settled,
+					"coverage_sequence", coverage, "gate", "experimental_recovery_orphan_sweep")
 			}
 		}
 		return meta.Put([]byte("storage_generation"), []byte(identity.Generation))

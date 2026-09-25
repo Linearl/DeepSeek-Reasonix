@@ -821,6 +821,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalAutonomousIdleTerminate(enabled: boolean): Promise<void>;
   SetExperimentalLoopStreakNote(enabled: boolean): Promise<void>;
   SetExperimentalEventWaitRecheck(enabled: boolean): Promise<void>;
+  SetExperimentalOrphanLeaseReclaim(enabled: boolean): Promise<void>;
+  SetExperimentalRecoveryOrphanSweep(enabled: boolean): Promise<void>;
   SetSessionCollabHopLimit(limit: number): Promise<void>;
   // Task 173: the collaboration panel gates (settings → 实验特性 → 跨会话通信).
   SetSessionCollabGates(allowDelete: boolean, allowRequireReply: boolean, allowReadTail: boolean, allowCreate: boolean, allowSteer: boolean, dailySendLimit: number): Promise<void>;
@@ -5135,6 +5137,8 @@ function makeMockApp(): AppBindings {
     async SetExperimentalAutonomousIdleTerminate() {},
     async SetExperimentalLoopStreakNote() {},
     async SetExperimentalEventWaitRecheck() {},
+    async SetExperimentalOrphanLeaseReclaim() {},
+    async SetExperimentalRecoveryOrphanSweep() {},
     async SetSessionCollabHopLimit() {},
     async SetSessionCollabGates() {},
     async SetSessionCollabBackground() {},
