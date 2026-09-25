@@ -19032,6 +19032,55 @@ body > .mermaid-diagram--fullscreen {
 .set-preapprove__row input {
   accent-color: var(--accent);
 }
+/* Task 163: the OpenCode Go usage rows under the detail switch — three
+   window lines (label · percent · reset countdown) plus a refresh action
+   and the degradation note (tokens only). */
+.opencode-go-usage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.opencode-go-usage__row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  color: var(--fg-dim);
+  font-size: var(--font-control-small);
+}
+.opencode-go-usage__window {
+  min-width: 72px;
+  font-weight: 620;
+}
+.opencode-go-usage__percent {
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+.opencode-go-usage__reset {
+  margin-left: auto;
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+.opencode-go-usage__note {
+  margin: 0;
+  color: var(--warn);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.opencode-go-usage__refresh {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--font-control-small);
+  cursor: pointer;
+}
 
 /* ─── Session-collab capability gates (task 253) ─────
    Checkboxes, two per row. Locked (master switch off) items keep their

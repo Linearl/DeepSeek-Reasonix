@@ -313,6 +313,14 @@ func (a *App) SetExperimentalActiveTabResident(enabled bool) error {
 	})
 }
 
+// SetExperimentalOpenCodeGoUsage toggles the task-163 usage card (ships off;
+// the frontend gate issues no usage query while it is off).
+func (a *App) SetExperimentalOpenCodeGoUsage(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetExperimentalOpenCodeGoUsage(enabled)
+	})
+}
+
 // SetExperimentalQuestionSearch toggles the topic-bar question-search entry (265).
 func (a *App) SetExperimentalQuestionSearch(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalQuestionSearch(enabled) })

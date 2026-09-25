@@ -367,6 +367,8 @@ type SettingsView struct {
 	PreapproveBashEscape               bool `json:"preapproveBashEscape"`
 	// Task 192: active-tab residency policy (default false; 铁律 2).
 	ExperimentalActiveTabResident bool `json:"experimentalActiveTabResident"`
+	// Task 163: OpenCode Go usage card switch (default false; 铁律 2).
+	ExperimentalOpenCodeGoUsage bool `json:"experimentalOpenCodeGoUsage"`
 	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
 	ExperimentalFullAccess   bool `json:"experimentalFullAccess"`
 	ExperimentalLocalServer  bool `json:"experimentalLocalServer"`
@@ -514,6 +516,8 @@ type DesktopStartupSettingsView struct {
 	PreapproveBashEscape               bool `json:"preapproveBashEscape"`
 	// Task 192: active-tab residency policy (default false; 铁律 2).
 	ExperimentalActiveTabResident bool `json:"experimentalActiveTabResident"`
+	// Task 163: OpenCode Go usage card switch (default false; 铁律 2).
+	ExperimentalOpenCodeGoUsage bool `json:"experimentalOpenCodeGoUsage"`
 	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
 	ExperimentalFullAccess bool `json:"experimentalFullAccess"`
 	// ExperimentalTraceAsState exposes Trace-as-State compaction (task 60).
@@ -1231,6 +1235,8 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.PreapproveBashEscape = cfg.Agent.PreapproveManagedBashEscape
 		// Task 192: residency policy readback.
 		view.ExperimentalActiveTabResident = cfg.Agent.ExperimentalActiveTabResident
+		// Task 163: usage card switch readback.
+		view.ExperimentalOpenCodeGoUsage = cfg.Agent.ExperimentalOpenCodeGoUsage
 		view.ExperimentalFullAccess = cfg.Agent.ExperimentalFullAccess
 		view.ExperimentalTraceAsState = cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState
 		view.ExperimentalDream = cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream
@@ -1338,16 +1344,18 @@ func (a *App) Settings() SettingsView {
 		PreapproveBashEscape:               cfg.Agent.PreapproveManagedBashEscape,
 		// Task 192: residency policy readback.
 		ExperimentalActiveTabResident: cfg.Agent.ExperimentalActiveTabResident,
-		ExperimentalFullAccess:        cfg.Agent.ExperimentalFullAccess,
-		ExperimentalTraceAsState:      cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState,
-		ExperimentalDream:             cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream,
-		ExperimentalPerfMonitor:       cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,
-		PerfMonitorIntervalSeconds:    cfg.Desktop.PerfMonitorIntervalSeconds,
-		SessionCollabHopLimit:         cfg.Desktop.SessionCollabHopLimit,
-		ExperimentalSessionCollab:     cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
-		ExperimentalAutoLoadOlder:     cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
-		CollabInboxMerge:              config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge),
-		CollabGuidanceMerge:           cfg.Desktop.CollabGuidanceMerge || cfg.Agent.CollabGuidanceMerge,
+		// Task 163: usage card switch readback.
+		ExperimentalOpenCodeGoUsage: cfg.Agent.ExperimentalOpenCodeGoUsage,
+		ExperimentalFullAccess:      cfg.Agent.ExperimentalFullAccess,
+		ExperimentalTraceAsState:    cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState,
+		ExperimentalDream:           cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream,
+		ExperimentalPerfMonitor:     cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,
+		PerfMonitorIntervalSeconds:  cfg.Desktop.PerfMonitorIntervalSeconds,
+		SessionCollabHopLimit:       cfg.Desktop.SessionCollabHopLimit,
+		ExperimentalSessionCollab:   cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
+		ExperimentalAutoLoadOlder:   cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
+		CollabInboxMerge:            config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge),
+		CollabGuidanceMerge:         cfg.Desktop.CollabGuidanceMerge || cfg.Agent.CollabGuidanceMerge,
 		// Task 173: the collaboration panel gates (single source = [agent]).
 		SessionCollabAllowDelete:       cfg.Agent.SessionCollabAllowDelete,
 		SessionCollabAllowRequireReply: cfg.Agent.SessionCollabAllowRequireReply,

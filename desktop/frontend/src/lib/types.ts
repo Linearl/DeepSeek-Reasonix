@@ -2349,6 +2349,8 @@ export interface DesktopStartupSettingsView {
   preapproveBashEscape?: boolean;
   /** Task 192: active-tab residency policy; ships off; boot snapshot. */
   experimentalActiveTabResident?: boolean;
+  /** Task 163: OpenCode Go usage card; ships off; boot snapshot. */
+  experimentalOpenCodeGoUsage?: boolean;
   /** Task 257: full access (yolo) — all declared write dirs pass, bash unwrapped; ships off; restart to apply. */
   experimentalFullAccess?: boolean;
   /** Local-server page experiment switch (task 130); off unless the user opts in. */

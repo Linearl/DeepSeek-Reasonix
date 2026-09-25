@@ -1478,6 +1478,11 @@ type AgentConfig struct {
 	// the exemptions cause instead of growing silently (铁律 2/8: the upstream
 	// bounded window stays the fallback, this is the opt-in enhancement).
 	ExperimentalActiveTabResident bool `toml:"experimental_active_tab_resident"`
+	// ExperimentalOpenCodeGoUsage is the task-163 subscription usage card:
+	// off (default) hides the card and issues no usage query at all (zero
+	// regression); on shows the three rolling windows with reset countdowns
+	// in the settings detail card (铁律 2 — default-off experimental).
+	ExperimentalOpenCodeGoUsage bool `toml:"experimental_opencode_go_usage"`
 	// SessionCollabHopLimit caps how many hops a cross-session chain may take
 	// (task 204). 0 keeps the package default (5); values are clamped into
 	// [MinHop, MaxHopCeiling] on write, so a stored value is always legal.

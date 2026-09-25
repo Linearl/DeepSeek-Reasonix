@@ -79,6 +79,7 @@ import {
 } from "../lib/fontFamily";
 import { SessionExperienceSettings } from "./SessionExperienceSettings";
 import { SettingsField, SettingsSection } from "./SettingsForm";
+import { SettingsOpenCodeGoUsageCard } from "./SettingsOpenCodeGoUsageCard";
 import { normalizeStatusBarItems, type StatusBarItemId } from "../lib/statusBarItems";
 import { normalizeSubagentPolicy, normalizeToolApprovalMode } from "../lib/types";
 import {
@@ -1782,6 +1783,8 @@ type ExperimentFeatureId =
   | "preapproveManagedPaths"
   // Task 192: active-tab residency policy.
   | "activeTabResident"
+  // Task 163: OpenCode Go subscription usage card.
+  | "opencodeGoUsage"
   | "draftPersistence"
   | "questionSearch"
   | "subagentPolicy"
@@ -1895,6 +1898,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     // Task 192: residency policy entry (render table — a missing entry would
     // silently drop the save, 81/123 lesson).
     { id: "activeTabResident", group: "misc", label: t("settings.activeTabResident"), on: Boolean(s.experimentalActiveTabResident) },
+    // Task 163: usage card entry (render table — same 81/123 lost-save rule).
+    { id: "opencodeGoUsage", group: "misc", label: t("settings.opencodeGoUsage"), on: Boolean(s.experimentalOpenCodeGoUsage) },
   ];
 
   return (
@@ -2888,6 +2893,13 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                 ))}
               </SettingsOptions>
             </SettingsField>
+          )}
+          {selected === "opencodeGoUsage" && (
+            <SettingsOpenCodeGoUsageCard
+              enabled={Boolean(s.experimentalOpenCodeGoUsage)}
+              busy={busy}
+              onToggle={(on) => void apply(() => app.SetExperimentalOpenCodeGoUsage(on))}
+            />
           )}
           {selected === "draftPersistence" && (
             <SettingsField label={t("settings.draftPersistence")} hint={t("settings.draftPersistenceHint")} icon={<Sparkles size={18} />}>

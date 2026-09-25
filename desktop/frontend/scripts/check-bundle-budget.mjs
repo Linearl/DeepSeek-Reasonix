@@ -222,7 +222,9 @@ console.log("\nbundle budgets");
 // Merge batch (242+192+315, audit-ratchet one-shot): each landed at 472.6 for
 // its own measured baseline, but the stacked initial chunk measures 472.7 —
 // one-shot +0.5 to 473.1 (same merge-batch precedent as the raw 2511.8 landing).
-const initialJSBudgetKiB = 473.1; // fork: chain 468.8-era → 471.1 → 471.6 → 472.1 → 472.6 (tasks 242/192) → 473.1 (merge batch, 472.7 measured)
+// Task 163 (OpenCode Go usage card): measured 473.1 over the line — the detail
+// card component, bridge pair and 45 locale keys; one-shot +0.5 to 473.6.
+const initialJSBudgetKiB = 473.6; // fork: chain 468.8-era → 471.1 → 471.6 → 472.1 → 472.6 (tasks 242/192) → 473.1 (merge batch, 472.7 measured) → 473.6 (task 163)
 // Task 269 rebased onto 471.1: measured 470.7, also within 471.1 —
 // larger one-shot value stands (audit ruling, no second ratchet).
 // Task 264 rebased onto the same budget: measured 470.3 KiB (collab-background
@@ -407,7 +409,9 @@ for (const path of localeChunks) {
   // Task 192: four zh-TW locale keys measured 80.1 over 80.0 — one-shot +0.5
   // (zh-TW folded into the shared 80.5 line; zh keeps the LARGER 79.5 of the
   // two one-shot values, per the 266-A/267 audit ruling).
-  const budget = name.startsWith("zh-TW-") ? 80.5 * 1024 : 79.5 * 1024;
+  // Task 163: fifteen locale keys per dialect measured zh 79.6 over 79.5 and
+  // zh-TW 80.8 over 80.5 — one-shot +0.5 each (266-A/267 larger-value rule).
+  const budget = name.startsWith("zh-TW-") ? 81.0 * 1024 : 80.0 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0

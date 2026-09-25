@@ -786,6 +786,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetPreapproveManagedPaths(enabled: boolean, skills: boolean, hooks: boolean, sessionStores: boolean, bashEscape: boolean): Promise<void>;
   // Task 192: active-tab residency policy (ships off).
   SetExperimentalActiveTabResident(enabled: boolean): Promise<void>;
+  // Task 163: OpenCode Go usage card switch + the usage query itself. baseUrl
+  // is allow-listed host-side; off (the default) never reaches either call.
+  SetExperimentalOpenCodeGoUsage(enabled: boolean): Promise<void>;
+  GetOpenCodeGoUsage(baseUrl: string): Promise<{ tiers: { window: string; percent: number | null; resetsAt: string }[]; note: string }>;
   SetExperimentalQuestionSearch(enabled: boolean): Promise<void>;
   SetExperimentalSubagentTps(enabled: boolean): Promise<void>;
   SetExperimentalCompletionSummary(enabled: boolean): Promise<void>;
@@ -5112,6 +5116,8 @@ function makeMockApp(): AppBindings {
     async SetPreapproveManagedPaths() {},
     async SetExperimentalQuestionSearch() {},
     async SetExperimentalActiveTabResident() {},
+    async SetExperimentalOpenCodeGoUsage() {},
+    async GetOpenCodeGoUsage() { return { tiers: [], note: "no-key" }; },
     async SetExperimentalSubagentTps() {},
     async SetExperimentalCompletionSummary() {},
     async SetExperimentalSubagentPolicy() {},
