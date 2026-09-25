@@ -470,9 +470,11 @@ type toolCallBatch struct {
 	parallel bool
 }
 
-// toolCallBatches preserves read-only fan-out unless a tool hook can mutate the
-// workspace. Such hooks are covered by a whole-workspace claim, so their calls
-// must run in provider order instead of racing that claim against each other.
+// toolCallBatches preserves read-only fan-out unless a tool hook can mutate
+// the workspace (task 244 B6, the hook row of the admission table). Such hooks
+// are covered by a whole-workspace claim, so every batch flattens to provider
+// order instead of racing that claim against each other: the table above
+// classifies tools, this layer decides whether classification still matters.
 func (a *Agent) toolCallBatches(calls []provider.ToolCall) []toolCallBatch {
 	batches := partitionToolCalls(a.svc.tools, calls)
 	if !toolHooksMayMutateWorkspace(a.svc.hooks) {
@@ -484,11 +486,28 @@ func (a *Agent) toolCallBatches(calls []provider.ToolCall) []toolCallBatch {
 	return batches
 }
 
-// partitionToolCalls keeps provider order while letting contiguous known
-// read-only tools run together; unknown and writer tools are single-call
-// serial batches. Evidence-ledger tools (complete_step, todo_write, wait,
-// bash_output) never join a parallel run so provider order stays receipt
-// order; use_capability is serial as it may resolve to a real MCP writer.
+// partitionToolCalls is the tool-dispatch admission table (task 244 B6; the
+// Reasonix form of MiMo #2456's realpath concurrency classes). Three classes,
+// decided per call, provider order preserved:
+//
+//   - parallel: Known + ReadOnly + ParallelSafe (tool.BatchClassifier), or a
+//     plain ReadOnly tool without dynamic resolution; contiguous members share
+//     one batch (maxParallel slots in runParallel).
+//   - barrier: the evidence-ledger tools (complete_step, todo_write, wait,
+//     bash_output) plus compress; receipts must land in provider order, so
+//     each is its own serial batch. use_capability joins them because it may
+//     resolve to a real MCP writer (the CallResolver short-circuit below).
+//   - writer: anything not ReadOnly, task included; serial batches whose
+//     exclusion is owned by write claims/coordination
+//     (tool_write_coordination.go), not by this table.
+//
+// Unknown names are serial by default: deterministic errors, never fanned out.
+//
+// Nested dispatch needs no MiMo #2456-style deadlock exemption: task is a
+// writer via ReadOnly()==false, so a nested call enters its child serially,
+// and the child's own executor runs this same table. There is no FIFO queue
+// a parent wait could deadlock against. Do not "add the exemption" without
+// first adding a queue that would need it.
 func partitionToolCalls(r *tool.Registry, calls []provider.ToolCall) []toolCallBatch {
 	var batches []toolCallBatch
 	for i := 0; i < len(calls); {

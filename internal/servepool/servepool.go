@@ -68,6 +68,15 @@ type SessionEntry struct {
 	MtimeMilli int64  `json:"mtimeMilli"`
 	// HeldBy reports lease ownership for clients, same semantics as the
 	// real serve list: "me", "other", or "" (free).
+	//
+	// Direction (task 244 B7, the "never route into a corpse" rule): "other"
+	// is read as a live holder even though it may be a dead process's leftover
+	// lease -- the reader stays conservative and refuses rather than stealing
+	// from something that might still be alive. Users resolve it by hand, or
+	// on the desktop side via experimental_orphan_lease_reclaim (task 244 B5),
+	// which reclaims only after the recorded PID is proven dead. "" means no
+	// readable lease metadata: free to attempt, with the OS file lock as the
+	// final arbiter.
 	HeldBy string `json:"heldBy,omitempty"`
 }
 
