@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"time"
 
@@ -215,6 +216,178 @@ func refreshSessionDisplayIndex(path string, msgs []provider.Message, digest [sh
 		return fmt.Errorf("encode session display index")
 	}
 	return WriteSessionDisplayIndex(indexPath, idx)
+}
+
+// RefreshSessionDisplayIndexFromReadModel is the task 123-tail cold-path
+// incremental repair (187 prefix-rescan family). Save appends the read model
+// (jsonl) BEFORE refreshing the display index, and the index refresh is
+// warn-only — so the common stale shape is "read model already has the tail,
+// index identity lags". A cold open that fails Validate used to fall through
+// to the authoritative full replay (measured 1290ms on a 15MiB transcript,
+// the reconcile bottleneck). This function re-derives ONLY the transcript
+// bytes past the index's TranscriptSize and extends the index in place —
+// no full decode, no event-log replay.
+//
+// Preconditions (any failure returns false; callers keep the full path):
+//  1. the sidecar index loads and its entries are self-consistent
+//     (last entry end == TranscriptSize, size on a line boundary);
+//  2. the transcript GREW past the recorded size (append-only tail);
+//  3. the tail decodes cleanly to complete provider messages;
+//  4. alignment with the authoritative counts: the session event index's
+//     MessageCount == index count + tail count, and its revision/digest
+//     match the ledger identity — the tail provably reaches exactly the
+//     authoritative end, so stamping the ledger identity cannot lie.
+func RefreshSessionDisplayIndexFromReadModel(path string) (bool, error) {
+	// Every refusal logs its stage at Debug (observability only — no runtime
+	// behavior change): the guards are deliberately conservative, and an
+	// operator must be able to see WHICH guard declined instead of only the
+	// fallback cost.
+	refuse := func(stage string, kv ...any) (bool, error) {
+		slog.Debug("agent: display index tail extension declined",
+			append([]any{"stage", stage, "path", path}, kv...)...)
+		return false, nil
+	}
+	if path == "" {
+		return false, nil
+	}
+	indexPath := store.SessionDisplayIndex(path)
+	prev, err := LoadSessionDisplayIndex(indexPath)
+	if err != nil || prev == nil || prev.SchemaVersion != SessionDisplayIndexSchemaVersion {
+		return refuse("load_index", "err", err, "have", prev != nil)
+	}
+	if len(prev.Entries) != prev.MessageCount {
+		return refuse("entries_count_mismatch", "entries", len(prev.Entries), "count", prev.MessageCount)
+	}
+	if prev.TranscriptSize > 0 {
+		last := prev.Entries[len(prev.Entries)-1]
+		if last.Offset+last.Length != prev.TranscriptSize {
+			return refuse("entries_tail_mismatch", "end", last.Offset+last.Length, "size", prev.TranscriptSize)
+		}
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return refuse("stat", "err", err)
+	}
+	if info.Size() <= prev.TranscriptSize {
+		return refuse("no_growth", "file", info.Size(), "index", prev.TranscriptSize)
+	}
+	// Line-boundary guard: a mid-line index size means the transcript was
+	// rewritten underneath, not appended — never extend over a rewrite.
+	if prev.TranscriptSize > 0 {
+		f, err := os.Open(path)
+		if err != nil {
+			return refuse("probe_open", "err", err)
+		}
+		probe := make([]byte, 1)
+		_, err = f.ReadAt(probe, prev.TranscriptSize-1)
+		f.Close()
+		if err != nil || (probe[0] != '\n' && probe[0] != '\r') {
+			return refuse("not_line_boundary", "err", err, "byte", probe[0])
+		}
+	}
+
+	identity, identityKnown, err := SessionContentIdentity(path)
+	if err != nil || !identityKnown {
+		return refuse("identity", "err", err, "known", identityKnown)
+	}
+	evtIdx, err := readSessionEventIndex(path)
+	if err != nil || evtIdx == nil {
+		return refuse("event_index", "err", err, "have", evtIdx != nil)
+	}
+
+	// Read only the tail the index has never seen; a trailing partial line
+	// (a save mid-write) aborts — the next request retries after the save lands.
+	tail, complete, err := readTranscriptTail(path, prev.TranscriptSize)
+	if err != nil || !complete || len(tail) == 0 {
+		return refuse("tail_read", "err", err, "complete", complete, "count", len(tail))
+	}
+	if evtIdx.Revision != identity.Revision || evtIdx.ContentDigest != identity.DigestHex {
+		return refuse("event_index_vs_ledger",
+			"evt_rev", evtIdx.Revision, "ledger_rev", identity.Revision,
+			"evt_digest", evtIdx.ContentDigest[:min(12, len(evtIdx.ContentDigest))],
+			"ledger_digest", identity.DigestHex[:min(12, len(identity.DigestHex))])
+	}
+	if evtIdx.MessageCount != prev.MessageCount+len(tail) {
+		return refuse("alignment",
+			"evt_count", evtIdx.MessageCount, "index_count", prev.MessageCount, "tail_count", len(tail))
+	}
+
+	idx := *prev // shallow copy; entries are replaced below
+	idx.Entries = append(make([]DisplayIndexEntry, 0, prev.MessageCount+len(tail)), prev.Entries...)
+	offset := prev.TranscriptSize
+	turn := prev.AuthoredTurns
+	for k, m := range tail {
+		b, err := json.Marshal(m)
+		if err != nil {
+			return false, err
+		}
+		entry, nextTurn := classifyDisplayIndexMessage(m, prev.MessageCount+k, offset, int64(len(b))+1, turn)
+		turn = nextTurn
+		idx.Entries = append(idx.Entries, entry)
+		offset += int64(len(b)) + 1
+	}
+	if offset != info.Size() {
+		return refuse("encode_size_drift", "encoded", offset, "file", info.Size())
+	}
+	idx.MessageCount = prev.MessageCount + len(tail)
+	idx.AuthoredTurns = turn
+	idx.TranscriptSize = offset
+	idx.Revision = identity.Revision
+	idx.RevisionKnown = true
+	idx.ContentDigest = identity.DigestHex
+	idx.UpdatedAt = time.Now().UTC()
+	// ListingPreview stays the previous one: computing it needs the full
+	// message slice (the cost this function exists to avoid). It is a derived
+	// preview; the background full repair refreshes it.
+	if err := WriteSessionDisplayIndex(indexPath, &idx); err != nil {
+		return false, err
+	}
+	slog.Info("agent: display index extended from read-model tail",
+		"path", path, "appended", len(tail), "from_bytes", prev.TranscriptSize)
+	return true, nil
+}
+
+// readTranscriptTail decodes complete JSON-message lines starting at offset.
+// complete=false means the file ends mid-line (a save is still writing).
+func readTranscriptTail(path string, offset int64) (msgs []provider.Message, complete bool, err error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, false, err
+	}
+	defer f.Close()
+	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		return nil, false, err
+	}
+	reader := bufio.NewReader(f)
+	for {
+		line, readErr := reader.ReadBytes('\n')
+		if readErr != nil {
+			if readErr == io.EOF {
+				if len(line) == 0 {
+					return msgs, true, nil
+				}
+				return nil, false, nil // partial trailing line (save still writing)
+			}
+			return nil, false, readErr
+		}
+		trimmed := bytesTrimSpace(line)
+		if len(trimmed) == 0 {
+			continue
+		}
+		var m provider.Message
+		if err := json.Unmarshal(trimmed, &m); err != nil {
+			return nil, false, fmt.Errorf("decode transcript tail line: %w", err)
+		}
+		msgs = append(msgs, m)
+	}
+}
+
+// bytesTrimSpace avoids importing bytes for one ASCII trim of JSON lines.
+func bytesTrimSpace(b []byte) []byte {
+	for len(b) > 0 && (b[len(b)-1] == '\n' || b[len(b)-1] == '\r' || b[len(b)-1] == ' ' || b[len(b)-1] == '\t') {
+		b = b[:len(b)-1]
+	}
+	return b
 }
 
 // WriteSessionDisplayIndex publishes the index atomically (tmp + fsync +
