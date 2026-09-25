@@ -49,6 +49,8 @@ export interface SettingsView {
   preapproveBashEscape?: boolean;
   // Task 192: active-tab residency policy (ships off; keeps the running tab resident across switches).
   experimentalActiveTabResident?: boolean;
+  // Task 163: OpenCode Go subscription usage card (ships off; no query while off).
+  experimentalOpenCodeGoUsage?: boolean;
   // Task 257: full access (yolo) — all declared write dirs pass, bash unwrapped (ships off; restart to apply).
   experimentalFullAccess?: boolean;
   // Task 130: exposes the Settings → 本地服务 page and serve-pool controls.
