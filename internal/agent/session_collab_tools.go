@@ -51,6 +51,18 @@ type SessionCollabConfig struct {
 	// (other process, runtime not stood up) — the tool must report unknown
 	// rather than guess an idle. Nil makes every state unknown.
 	SessionStatus func(contactID string) (running bool, lastTurnAtMS int64, pending int, known bool)
+	// Task 274 ①: per-contact model visibility. modelRef is the session's
+	// current model (the same value the switcher shows, e.g.
+	// "mimo-api/mimo-v2.6-flash"); provider is its catalog prefix. known=false
+	// means this host cannot see the session's runtime — the row omits the
+	// fields instead of guessing. Nil keeps every row model-less (CLI/tests).
+	SessionInfo func(contactID string) (modelRef string, provider string, known bool)
+	// SessionControl (task 274 ②③) carries the host's controller hooks for
+	// the two mutating verbs: cancel a peer's active turn (with a remote-stop
+	// transcript notice) and switch its model through the switcher-same setter.
+	// Both funcs nil keeps session_control a refusal (CLI/tests build configs
+	// without a host runtime).
+	SessionControl SessionControlHooks
 	// Task 173: the collaboration panel gates. Tool-level gates (delete /
 	// read_tail / create) keep boot from registering the tool at all, so they
 	// are not consulted here. The parameter-level gates are checked at call
@@ -468,6 +480,11 @@ func directoryPage(cfg SessionCollabConfig, limit int, archived *bool, query str
 		ContactID string `json:"contactId,omitempty"`
 		TopicID   string `json:"topicId,omitempty"`
 		Archived  bool   `json:"archived,omitempty"`
+		// Task 274 ①: the session's current model, when this host can see the
+		// runtime. Absent (omitempty) when the probe is nil or unknown — a
+		// guessed model would route work onto the wrong provider assumption.
+		ModelRef string `json:"modelRef,omitempty"`
+		Provider string `json:"provider,omitempty"`
 		// Task 175 ③: a purpose frozen since long before the last activity is
 		// more misleading than no purpose at all — callers route work by it.
 		Stale bool `json:"stale,omitempty"`
@@ -490,6 +507,14 @@ func directoryPage(cfg SessionCollabConfig, limit int, archived *bool, query str
 		eligible++
 		if len(rows) < limit {
 			stale := id.UpdatedAt > 0 && time.Since(time.UnixMilli(id.UpdatedAt)) > purposeStaleAfter
+			modelRef, provider := "", ""
+			// Task 274 ①: model visibility rides the injected probe — absent or
+			// unknown keeps the fields empty (omitempty) instead of guessing.
+			if cfg.SessionInfo != nil && id.ContactID != "" {
+				if ref, prov, known := cfg.SessionInfo(id.ContactID); known {
+					modelRef, provider = ref, prov
+				}
+			}
 			rows = append(rows, row{
 				Title:     id.Title,
 				Purpose:   id.Purpose,
@@ -497,6 +522,8 @@ func directoryPage(cfg SessionCollabConfig, limit int, archived *bool, query str
 				TopicID:   id.TopicID,
 				Archived:  id.Archived,
 				Stale:     stale,
+				ModelRef:  modelRef,
+				Provider:  provider,
 			})
 		}
 	}

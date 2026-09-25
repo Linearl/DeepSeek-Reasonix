@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/control"
 	"reasonix/internal/event"
 	"reasonix/internal/sessioncatalog"
@@ -157,6 +158,7 @@ func (a *App) metadataProjectTopics(scope, workspaceRoot string) []ProjectNode {
 			node.Status = runtimeNode.Status
 			node.Children = runtimeNode.Children
 		}
+		a.fillNodeModel(&node)
 		out = append(out, node)
 	}
 	for _, runtimeNode := range runtimeNodes {
@@ -164,9 +166,28 @@ func (a *App) metadataProjectTopics(scope, workspaceRoot string) []ProjectNode {
 			continue
 		}
 		runtimeNode.RuntimeOnly = true
+		a.fillNodeModel(&runtimeNode)
 		out = append(out, runtimeNode)
 	}
 	return out
+}
+
+// fillNodeModel (task 274 ①) stamps a tree row with the session's current
+// model when this host can see its runtime — the same collabSessionInfo probe
+// the directory rows use, so the sidebar and list_addressable_sessions can
+// never disagree. Rows whose runtime is invisible stay unstamped (no guess).
+func (a *App) fillNodeModel(node *ProjectNode) {
+	if node == nil || node.SessionPath == "" {
+		return
+	}
+	contact := agent.SessionContactID(node.SessionPath)
+	if contact == "" {
+		return
+	}
+	if ref, prov, known := a.collabSessionInfo(contact); known {
+		node.ModelRef = ref
+		node.Provider = prov
+	}
 }
 
 func (a *App) runtimeOnlyProjectTopics(scope, workspaceRoot string) []ProjectNode {

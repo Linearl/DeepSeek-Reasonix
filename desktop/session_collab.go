@@ -1324,6 +1324,106 @@ func (a *App) collabSessionStatus(contactID string) (running bool, lastTurnAtMS 
 	return false, 0, 0, false
 }
 
+// collabSessionInfo (task 274 ①) reports a contact's current model through
+// the same live-target walk as collabSessionStatus: the model is a runtime
+// fact, so a runtime this host cannot see answers known=false and the row
+// simply omits the fields — never a stale guess. Only attached tabs carry a
+// model (detached runtimes expose none on RuntimeStatus), which is reported
+// honestly rather than fabricated. provider is the catalog prefix of the
+// modelRef ("provider/model"), matching what the switcher shows.
+func (a *App) collabSessionInfo(contactID string) (modelRef string, provider string, known bool) {
+	contactID = strings.TrimSpace(contactID)
+	if contactID == "" {
+		return "", "", false
+	}
+	for _, target := range a.sessionCollabLiveTargets(nil) {
+		if target.contactID != contactID {
+			continue
+		}
+		if target.tabID == "" {
+			return "", "", false // detached: no model surface on the runtime
+		}
+		tab := a.tabByID(target.tabID)
+		if tab == nil {
+			return "", "", false
+		}
+		a.mu.RLock()
+		model := strings.TrimSpace(tab.model)
+		a.mu.RUnlock()
+		if model == "" {
+			return "", "", false
+		}
+		prov, _, _ := strings.Cut(model, "/")
+		return model, prov, true
+	}
+	return "", "", false
+}
+
+// collabSessionStop (task 274 ②) cancels a peer's active turn through the
+// same cancel chain the session's own stop button uses. The remote-stop trace
+// is written to the target's transcript BEFORE the cancel lands, so history
+// records who ended the turn (the 237-family copy lives in the notice text).
+// known=false: this host cannot see that runtime — the caller reports it
+// instead of pretending a stop happened.
+func (a *App) collabSessionStop(contactID string) (stopped, wasRunning, known bool, err error) {
+	contactID = strings.TrimSpace(contactID)
+	if contactID == "" {
+		return false, false, false, nil
+	}
+	for _, target := range a.sessionCollabLiveTargets(nil) {
+		if target.contactID != contactID || target.ctrl == nil {
+			continue
+		}
+		if !target.ctrl.RuntimeStatus().Running {
+			return false, false, true, nil // idle: idempotent no-op, honest receipt
+		}
+		target.ctrl.Notice("本会话的运行中 turn 已被发起方对话远程停止（remote stop from the parent conversation）")
+		target.ctrl.Cancel()
+		return true, true, true, nil
+	}
+	return false, false, false, nil
+}
+
+// collabSessionSetModel (task 274 ③) observes the active-turn state so the
+// tool can fail closed FIRST, then routes the change through the tab's own
+// switcher setter (SetModelForTab — the same build+swap path the UI uses;
+// its rebuildControllerActiveWorkErrorFor guard is the second line of
+// defence if a turn starts between this check and the swap).
+// detached runtimes have no switcher surface: known=true, applied=false, no
+// error — the tool renders the specific refusal.
+func (a *App) collabSessionSetModel(contactID, model string) (applied, wasRunning, known bool, newRef string, err error) {
+	contactID = strings.TrimSpace(contactID)
+	if contactID == "" {
+		return false, false, false, "", nil
+	}
+	for _, target := range a.sessionCollabLiveTargets(nil) {
+		if target.contactID != contactID {
+			continue
+		}
+		if target.ctrl == nil {
+			return false, false, false, "", nil
+		}
+		if target.ctrl.RuntimeStatus().Running {
+			// Fail closed (user hard constraint): never swap a running turn's
+			// model — sampling and promptCacheKey consistency would break.
+			return false, true, true, "", nil
+		}
+		if target.tabID == "" {
+			return false, false, true, "", nil
+		}
+		if err := a.SetModelForTab(target.tabID, model); err != nil {
+			return false, false, true, "", err
+		}
+		if tab := a.tabByID(target.tabID); tab != nil {
+			a.mu.RLock()
+			newRef = strings.TrimSpace(tab.model)
+			a.mu.RUnlock()
+		}
+		return true, false, true, newRef, nil
+	}
+	return false, false, false, "", nil
+}
+
 // sessionCollabLiveTargets is every place a message can land without first
 // standing anything up: visible tabs bound to a session, plus detached runtimes
 // whose tab was closed but whose work is still alive. Only the contacts in

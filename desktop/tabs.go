@@ -3915,6 +3915,9 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
 		OnCreateCollabSession:    a.createCollabSession,
 		OnSessionStatus:          a.collabSessionStatus,
+		OnSessionInfo:          a.collabSessionInfo,
+		OnSessionStop:          a.collabSessionStop,
+		OnSessionSetModel:          a.collabSessionSetModel,
 		OnCascadeDelegate:        cascadeDelegateFor,
 		OnDeleteSession:          a.deleteCollabSession,
 		OnRenameSession:          a.renameCollabSession,
@@ -6546,6 +6549,11 @@ type ProjectNode struct {
 	Root                         string `json:"root,omitempty"` // project workspace root
 	TopicID                      string `json:"topicId,omitempty"`
 	SessionPath                  string `json:"sessionPath,omitempty"`
+	// Task 274 ①: the session's current model on the sidebar row — same probe
+	// as the directory list (fillNodeModel), absent when the runtime is
+	// invisible (no guessing).
+	ModelRef string `json:"modelRef,omitempty"`
+	Provider string `json:"provider,omitempty"`
 	Preview                      string `json:"preview,omitempty"`
 	ProjectColor                 string `json:"projectColor,omitempty"`
 	Turns                        int    `json:"turns,omitempty"`

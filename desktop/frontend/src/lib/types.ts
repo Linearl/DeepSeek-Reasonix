@@ -628,6 +628,9 @@ export interface ProjectNode extends RemoteProjectNodeFields {
   topicId?: string;
   recoveryPath?: string;
   sessionPath?: string;
+  /** Task 274 ①: the session's current model on the sidebar row (absent when the runtime is invisible). */
+  modelRef?: string;
+  provider?: string;
   preview?: string;
   projectColor?: string;
   turns?: number;
