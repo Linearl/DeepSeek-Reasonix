@@ -1794,6 +1794,9 @@ type ExperimentFeatureId =
   | "activeTabResident"
   // Task 163: OpenCode Go subscription usage card.
   | "opencodeGoUsage"
+  // Task 280: the former permissions-area safety checkbox, re-homed here as
+  // "optimistic parallel writes" (same underlying key, inverted checkbox).
+  | "optimisticParallel"
   | "draftPersistence"
   | "questionSearch"
   | "subagentPolicy"
@@ -1872,6 +1875,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "autonomousIdleTerminate", group: "efficiency", label: t("settings.autonomousIdleTerminate"), on: Boolean(s.experimentalAutonomousIdleTerminate) },
     { id: "loopStreakNote", group: "efficiency", label: t("settings.loopStreakNote"), on: Boolean(s.experimentalLoopStreakNote) },
     { id: "eventWaitRecheck", group: "efficiency", label: t("settings.eventWaitRecheck"), on: Boolean(s.experimentalEventWaitRecheck) },
+    // Task 280: re-homed from the permissions area (task 280; inverted bind —
+    // `on` here means optimistic ON = safety check OFF, default off).
+    { id: "optimisticParallel", group: "efficiency", label: t("settings.optimisticParallel"), on: Boolean(s.sandbox?.optimisticWrite) },
     { id: "orphanLeaseReclaim", group: "misc", label: t("settings.orphanLeaseReclaim"), on: Boolean(s.experimentalOrphanLeaseReclaim) },
     { id: "recoveryOrphanSweep", group: "misc", label: t("settings.recoveryOrphanSweep"), on: Boolean(s.experimentalRecoveryOrphanSweep) },
     { id: "modelCapabilityFilter", group: "misc", label: t("settings.modelCapabilityFilter"), on: Boolean(s.experimentalModelCapabilityFilter) },
@@ -2845,6 +2851,19 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                 </SettingsField>
               ) : null}
             </>
+          )}
+          {selected === "optimisticParallel" && (
+            <SettingsField label={t("settings.optimisticParallel")} hint={t("settings.optimisticParallelHint")} icon={<Sparkles size={18} />}>
+              <label className="set-check set-check--inline">
+                <input
+                  type="checkbox"
+                  checked={Boolean(s.sandbox?.optimisticWrite)}
+                  disabled={busy}
+                  onChange={(e) => void apply(() => app.SetOptimisticWrite(e.target.checked))}
+                />
+                {t("settings.optimisticParallel")}
+              </label>
+            </SettingsField>
           )}
           {selected === "autopilot" && (
             <>
@@ -8218,17 +8237,9 @@ function PermissionsSection({ s, busy, apply }: SectionProps) {
           <option value="deny">{t("settings.modeDeny")}</option>
         </SettingsSelect>
       </SettingsField>
-      <SettingsField label={t("settings.optimisticWrite")} hint={t("settings.optimisticWriteHint")}>
-        <label className="set-check set-check--inline">
-          <input
-            type="checkbox"
-            checked={!s.sandbox?.optimisticWrite}
-            disabled={busy}
-            onChange={(e) => void apply(() => app.SetOptimisticWrite(!e.target.checked))}
-          />
-          {t("settings.optimisticWrite")}
-        </label>
-      </SettingsField>
+      {/* Task 280: the parallel-write safety checkbox moved to
+          Settings → lab → efficiency as "optimistic parallel writes"
+          (same `sandbox.optimistic_write` key, checkbox read upright). */}
     </SettingsSection>
     <SettingsSection title={t("settings.permissionRules")} description={t("settings.ruleForm")}>
       <div className="set-rules-grid">
