@@ -8532,6 +8532,12 @@ function SandboxSection({ s, busy, apply, windows }: SectionProps & { windows: b
           <p className="sandbox-write-roots__hint">{t("settings.writeRootsGroupHint")}</p>
         </div>
         <div className="sandbox-write-roots__grid">
+          {/* Task 157.C: vertical order follows the hint's narrow-to-wide
+              reading — session (one session) → project (this reasonix.toml) →
+              global (every project); the grid stacks since d5f7f9147. */}
+          <div className="sandbox-write-roots__col">
+            <SessionWriteRootsSection t={t} busy={busy} />
+          </div>
           <div className="sandbox-write-roots__col">
             <RuleList
               list="allow_write"
@@ -8541,9 +8547,6 @@ function SandboxSection({ s, busy, apply, windows }: SectionProps & { windows: b
               onRemove={async (d) => { await set({ allowWrite: sb.allowWrite.filter((x) => x !== d) }); }}
             />
             <p className="sandbox-write-roots__col-hint">{t("settings.projectWriteRootsHint")}</p>
-          </div>
-          <div className="sandbox-write-roots__col">
-            <SessionWriteRootsSection t={t} busy={busy} />
           </div>
           <div className="sandbox-write-roots__col">
             <GlobalWriteRootsSection t={t} busy={busy} />

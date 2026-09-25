@@ -106,6 +106,37 @@ func (s *WritableRootSet) RemoveSessionRoot(dir string) {
 	}
 }
 
+// RemoveBaselineDir removes one path from the persistent baseline (task 157.A).
+// Symmetric to RemoveSessionRoot: config-backed add/remove entries must take
+// effect on the live set instead of waiting for the next LoadForRoot. The
+// baseline is a collapsed set, so this drops the matching identity only —
+// boot-only extras (--add-dir) and unrelated roots are preserved, and an entry
+// already folded under a covering parent stays covered (same semantics as the
+// config it mirrors). No-op when the root is not present.
+func (s *WritableRootSet) RemoveBaselineDir(dir string) {
+	if s == nil || strings.TrimSpace(dir) == "" {
+		return
+	}
+	target := canonicalDir(dir)
+	if target == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := s.baseline[:0]
+	changed := false
+	for _, root := range s.baseline {
+		if canonicalDir(root) == target {
+			changed = true
+			continue
+		}
+		out = append(out, root)
+	}
+	if changed {
+		s.baseline = CollapseWriteRoots(out)
+	}
+}
+
 // SessionRoots returns a copy of the session-approved directories.
 func (s *WritableRootSet) SessionRoots() []string {
 	if s == nil {

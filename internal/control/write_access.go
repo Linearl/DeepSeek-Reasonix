@@ -498,9 +498,14 @@ func (c *Controller) RemoveAuthorizedWriteDir(scope sandbox.ApprovalScope, dir s
 		if err := c.persistSetWriteAccess(kept); err != nil {
 			return err
 		}
-		// The persisted [sandbox].allow_write rewrite is authoritative for the
-		// project scope; the in-memory baseline will refresh from config on the
-		// next LoadForRoot. Nothing to mutate in session roots here.
+		// Task 157.A: drop the entry from the live baseline now — the
+		// persisted rewrite and the runtime roots change together instead of
+		// waiting for the next LoadForRoot (the old deferral comment was the
+		// same "removed but still allowed" gap, the mirror of "added but
+		// still prompts").
+		if c.writeAccess.roots != nil {
+			c.writeAccess.roots.RemoveBaselineDir(dir)
+		}
 		return nil
 	case sandbox.ApprovalScopeSession:
 		if c.writeAccess.roots != nil {
@@ -543,7 +548,16 @@ func (c *Controller) AddGlobalWriteDir(dir string) error {
 	if !containsWriteRoot(global, verified) {
 		global = append(global, verified)
 	}
-	return config.SetGlobalWriteAccess(global)
+	if err := config.SetGlobalWriteAccess(global); err != nil {
+		return err
+	}
+	// Task 157.A: the config write must land on the live runtime roots too —
+	// otherwise the very next write in this session still misses the root and
+	// prompts again (boot builds the set once; see boot.go NewWritableRootSet).
+	if c.writeAccess.roots != nil {
+		c.writeAccess.roots.GrantVerifiedBaseline([]string{verified})
+	}
+	return nil
 }
 
 // RemoveGlobalWriteDir removes a directory from the user-global common-directory
@@ -557,13 +571,23 @@ func (c *Controller) RemoveGlobalWriteDir(dir string) error {
 	}
 	global := c.GlobalWriteDirs()
 	kept := global[:0]
+	removed := ""
 	for _, g := range global {
 		if pathEqualDir(g, dir) {
+			removed = g
 			continue
 		}
 		kept = append(kept, g)
 	}
-	return config.SetGlobalWriteAccess(kept)
+	if err := config.SetGlobalWriteAccess(kept); err != nil {
+		return err
+	}
+	// Task 157.A: removal must re-block in this session too (task acceptance:
+	// "移除后恢复拦截"), not on the next boot/LoadForRoot.
+	if removed != "" && c.writeAccess.roots != nil {
+		c.writeAccess.roots.RemoveBaselineDir(removed)
+	}
+	return nil
 }
 
 func containsWriteRoot(roots []string, target string) bool {

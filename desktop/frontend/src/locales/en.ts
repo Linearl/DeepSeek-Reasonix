@@ -4327,7 +4327,7 @@ export const en = {
   "settings.sessionWriteRootsActive": "active session",
   "settings.sessionWriteRootsHint": "Write dirs additionally approved for a session (in-memory, cleared when the session ends). Switch the session below to view or manage its grants; defaults to the active session.",
   "settings.writeRootsGroup": "Three write-directory tiers",
-  "settings.writeRootsGroupHint": "Write access is tiered: project write dirs go into this project's reasonix.toml, session write dirs live only in memory for one session, and global write dirs apply to every project. Narrow to wide.",
+  "settings.writeRootsGroupHint": "Write access is tiered, narrow to wide: session write dirs live only in memory for one session, project write dirs go into this project's reasonix.toml, and global write dirs apply to every project.",
   "settings.projectWriteRoots": "Project write dirs",
   "settings.projectWriteRootsHint": "Written into this project's reasonix.toml [sandbox].allow_write; persists for later sessions of this project.",
   "settings.sessionWriteRootsPicker": "Pick the session to manage",

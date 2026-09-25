@@ -4326,7 +4326,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.sessionWriteRootsActive": "當前會話",
   "settings.sessionWriteRootsHint": "會話內額外批准的寫入目錄（進程內記憶體，隨會話結束清空）。可在下方切換要查看/管理的會話，預設為當前會話。",
   "settings.writeRootsGroup": "寫入目錄三層",
-  "settings.writeRootsGroupHint": "寫入權限分三層：專案寫入目錄寫入本專案 reasonix.toml，會話寫入目錄僅本會話記憶體有效，全域寫入目錄對所有專案生效。層級由窄到寬。",
+  "settings.writeRootsGroupHint": "寫入權限分三層，按由窄到寬排列：會話寫入目錄僅本會話記憶體有效，專案寫入目錄寫入本專案 reasonix.toml，全域寫入目錄對所有專案生效。",
   "settings.projectWriteRoots": "專案寫入目錄",
   "settings.projectWriteRootsHint": "寫入本專案 reasonix.toml 的 [sandbox].allow_write，對該專案後續會話持續生效。",
   "settings.sessionWriteRootsPicker": "選擇要管理的會話",

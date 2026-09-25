@@ -205,3 +205,38 @@ func TestWritableRootSetRemoveSessionRoot(t *testing.T) {
 		t.Fatalf("ClearSession should empty session roots")
 	}
 }
+
+// Task 157.A: RemoveBaselineDir drops one config-backed root from the live
+// baseline immediately (the symmetric half of GrantVerifiedBaseline).
+func TestWritableRootSetRemoveBaselineDir(t *testing.T) {
+	ws := t.TempDir()
+	a := t.TempDir()
+	b := t.TempDir()
+	bootExtra := t.TempDir() // stands in for a boot-only --add-dir root
+	set := NewWritableRootSet([]string{ws, a, b, bootExtra})
+
+	set.RemoveBaselineDir(b)
+	snap := set.Snapshot()
+	if containsRoot(snap, b) {
+		t.Fatalf("b should be removed from the baseline, got %v", snap)
+	}
+	if !containsRoot(snap, ws) || !containsRoot(snap, a) || !containsRoot(snap, bootExtra) {
+		t.Fatalf("ws/a/boot-extra must survive a targeted removal, got %v", snap)
+	}
+	if set.Missing([]string{b}) == nil || len(set.Missing([]string{b})) == 0 {
+		t.Fatal("removed root must report Missing again")
+	}
+
+	// No-op: a path that was never granted changes nothing.
+	set.RemoveBaselineDir(t.TempDir())
+	if len(set.Snapshot()) != 3 {
+		t.Fatalf("no-op removal changed the baseline: %v", set.Snapshot())
+	}
+
+	// Session grants are untouched by a baseline removal.
+	set.GrantVerifiedSession([]string{b})
+	set.RemoveBaselineDir(b)
+	if !containsRoot(set.SessionRoots(), b) {
+		t.Fatal("baseline removal must not touch session grants")
+	}
+}

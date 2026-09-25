@@ -4330,7 +4330,7 @@ export const zh: Record<DictKey, string> = {
   "settings.sessionWriteRootsActive": "当前会话",
   "settings.sessionWriteRootsHint": "会话内额外批准的写目录（进程内内存，随会话结束清空）。可在下方切换要查看/管理的会话，默认为当前会话。",
   "settings.writeRootsGroup": "写目录三层",
-  "settings.writeRootsGroupHint": "写入权限分三层：项目写目录写入本项目 reasonix.toml，会话写目录仅本会话内存有效，全局写目录对所有项目生效。层级从窄到宽。",
+  "settings.writeRootsGroupHint": "写入权限分三层，按从窄到宽排列：会话写目录仅本会话内存有效，项目写目录写入本项目 reasonix.toml，全局写目录对所有项目生效。",
   "settings.projectWriteRoots": "项目写目录",
   "settings.projectWriteRootsHint": "写入本项目 reasonix.toml 的 [sandbox].allow_write，对该项目后续会话持续生效。",
   "settings.sessionWriteRootsPicker": "选择要管理的会话",
