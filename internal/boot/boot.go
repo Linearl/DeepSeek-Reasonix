@@ -2128,6 +2128,19 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		Autopilot:                      opts.Autopilot,
 		AutopilotMaxRuntime:            opts.MaxRuntime,
 		AutopilotApprovalGrace:         opts.AutopilotApprovalGrace,
+		// Task 231: the managed-path pre-approval snapshot. All five flags ship
+		// false (default-off experimental); the two home-derived dirs give the
+		// classifier its skills/stores boundaries, and hooks classify by the
+		// settings.json file name so no extra import is needed here.
+		PreapproveManaged: control.PreapproveManagedOptions{
+			Enabled:    cfg.Agent.ExperimentalPreapproveManagedPaths,
+			Skills:     cfg.Agent.PreapproveManagedSkills,
+			Hooks:      cfg.Agent.PreapproveManagedHooks,
+			Stores:     cfg.Agent.PreapproveManagedStores,
+			BashEscape: cfg.Agent.PreapproveManagedBashEscape,
+			SkillsDir:  filepath.Join(config.MemoryUserDir(), "skills"),
+			StoresDir:  config.MemoryUserDir(),
+		},
 		ApprovalTier:                   approvalTierForBuild(cfg, opts),
 		Runner:                         runner,
 		Executor:                       executor,

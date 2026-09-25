@@ -133,6 +133,9 @@ type Controller struct {
 	// autopilotAskWait is how long an unattended run waits for a human on a
 	// high-risk question before stopping (task 109 B4). 0 uses the default.
 	autopilotAskWait time.Duration
+	// preapproveManaged is the task-231 snapshot (master switch + four
+	// checkboxes + home paths) fixed at construction; see preapprove_managed.go.
+	preapproveManaged PreapproveManagedOptions
 	// evaluator is the bounded Goal completion evaluator consulted when the
 	// working model submits no update_goal report. nil fails closed: the goal
 	// pauses instead of defaulting to continue.
@@ -546,6 +549,11 @@ type Options struct {
 	// high-risk question before it stops with a terminal failure. Zero uses
 	// DefaultAutopilotAskWait; tests set it short to exercise that path.
 	AutopilotAskWait time.Duration
+	// PreapproveManaged carries the task-231 master switch, its four category
+	// checkboxes, and the three home-derived paths the classifier matches on.
+	// Boot resolves it from config; the zero value keeps every approval prompt
+	// exactly where it is today (default-off experimental, 铁律 2).
+	PreapproveManaged PreapproveManagedOptions
 	// ApprovalTier selects who decides reversible unattended approvals
 	// (task 52): "guardian" (default, A5), "parent" (parent session
 	// self-approves low-risk with an audit notice), or "human" (never
@@ -782,6 +790,7 @@ func New(opts Options) *Controller {
 		autopilotApprovalGrace:            autopilotApprovalGrace(opts),
 		approvalTier:                      NormalizeApprovalTier(opts.ApprovalTier),
 		autopilotAskWait:                  opts.AutopilotAskWait,
+		preapproveManaged:                 opts.PreapproveManaged,
 		goals: goalMachine{
 			tokenBudget: opts.GoalTokenBudget,
 			autopilot:   opts.Autopilot && opts.AutopilotMaxRuntime > 0,
@@ -5801,6 +5810,14 @@ type sandboxEscapeApprover struct{ c *Controller }
 func (s sandboxEscapeApprover) ApproveSandboxEscape(ctx context.Context, req sandbox.EscapeRequest) (bool, string, error) {
 	subject := sandboxEscapeApprovalSubject(req.Command)
 	reason := sandboxEscapeApprovalReason(req.Reason)
+	// Task 231: master switch + autopilot + the bash-escape checkbox let this
+	// escape through without a prompt. The bypass logs its category and
+	// subject for the audit trail; every other combination still reaches the
+	// human prompt below, byte-for-byte as before.
+	if s.c.preapproveManaged.allows(s.c.autopilot, managedKindBash) {
+		auditPreapprove(string(managedKindBash), subject, s.c.autopilot)
+		return true, "", nil
+	}
 	reply, err := s.c.requestFreshApprovalDecision(ctx, SandboxEscapeApprovalTool, subject, req.Args, reason)
 	if err != nil {
 		return false, "approval aborted", err
@@ -5843,6 +5860,14 @@ type managedConfigWriteApprover struct{ c *Controller }
 
 func (m managedConfigWriteApprover) ApproveManagedConfigWrite(ctx context.Context, req tool.ConfigWriteRequest) (bool, string, error) {
 	subject := managedConfigWriteApprovalSubject(req.Path)
+	// Task 231: a checked class under autopilot skips the prompt; unclassified
+	// managed files (config.toml and friends) classify as "other" and always
+	// keep asking, so the checkboxes never widen past their four classes.
+	kind := classifyManagedWrite(req.Path, m.c.preapproveManaged)
+	if kind != managedKindOther && m.c.preapproveManaged.allows(m.c.autopilot, kind) {
+		auditPreapprove(string(kind), subject, m.c.autopilot)
+		return true, "", nil
+	}
 	args, _ := json.Marshal(map[string]string{"path": req.Path})
 	reply, err := m.c.requestFreshApprovalDecision(ctx, ManagedConfigWriteApprovalTool, subject, args, i18n.M.ConfigWriteReason)
 	if err != nil {

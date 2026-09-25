@@ -781,6 +781,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalCompactionParallel(enabled: boolean): Promise<void>;
   SetExperimentalContextBudget(enabled: boolean): Promise<void>;
   SetExperimentalResearchBudget(enabled: boolean): Promise<void>;
+  // Task 231: managed-path pre-approval — master switch + four checkboxes in
+  // one write so a settings save can never land half-applied (all default off).
+  SetPreapproveManagedPaths(enabled: boolean, skills: boolean, hooks: boolean, sessionStores: boolean, bashEscape: boolean): Promise<void>;
   SetExperimentalQuestionSearch(enabled: boolean): Promise<void>;
   SetExperimentalSubagentTps(enabled: boolean): Promise<void>;
   SetExperimentalCompletionSummary(enabled: boolean): Promise<void>;
@@ -5101,6 +5104,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalCompactionParallel() {},
     async SetExperimentalContextBudget() {},
     async SetExperimentalResearchBudget() {},
+    async SetPreapproveManagedPaths() {},
     async SetExperimentalQuestionSearch() {},
     async SetExperimentalSubagentTps() {},
     async SetExperimentalCompletionSummary() {},

@@ -505,7 +505,8 @@ const rawInitialBytes = [...initialJS, ...initialCSS, ...appShellCSS]
 // The context truncation-rescue notice and its three locale strings measure
 // 2496.6 KiB; retain the smallest bounded ceiling.
 // Task 265: the 37-key lab intake landed raw at exactly the old 2540.0 ceiling; one-shot +10 KiB (user 2026-09-20 rule).
-const rawInitialBudgetKiB = 2_550.0; // fork: ratchet step +10 KiB (user 2026-09-20, one-shot rule); task 254 measured 2530.1 (autonomous-update pane + resume dial + locales 210/153/221/173)
+// Task 231 (managed-path pre-approval): the settings card + 27 locale keys measured 2550.3, tripping the 2550.0 line; one-shot +10 KiB per the raw-step rule.
+const rawInitialBudgetKiB = 2_560.0; // fork: ratchet step +10 KiB (user 2026-09-20, one-shot rule); task 254 measured 2530.1 (autonomous-update pane + resume dial + locales 210/153/221/173)
 // [fork note] the smallest one-decimal ratchet. Bumped to 2_461.0 for the serve pool
 assertBudget("initial raw JavaScript and CSS", rawInitialBytes, rawInitialBudgetKiB * 1024);
 // [fork note] 2026-09-15: measured 1102.2 KiB raw - same pre-existing growth as the

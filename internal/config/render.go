@@ -361,6 +361,14 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "experimental_research_budget = %v   # task 265: read-only soft-budget extension via extend_research_budget (#10054)\n", c.ResearchBudgetEnabled())
 	fmt.Fprintf(&b, "experimental_subagent_policy = %v   # task 265: delegation-tier entry points (off forces new sessions to light)\n", c.SubagentPolicyIntakeEnabled())
 	fmt.Fprintf(&b, "experimental_full_access = %v   # task 257: full access (yolo) — all declared write dirs pass preflight, bash runs unwrapped (restart to apply)\n", c.Agent.ExperimentalFullAccess)
+	// Task 231: the master switch and its four independent checkboxes all render
+	// explicitly — omit-on-off would silently spring a saved checkmark back off
+	// on the next render (the 81/123 lost-save lesson).
+	fmt.Fprintf(&b, "experimental_preapprove_managed = %v   # task 231: master switch — under autopilot the checked classes below skip their approval prompt (restart to apply)\n", c.Agent.ExperimentalPreapproveManagedPaths)
+	fmt.Fprintf(&b, "preapprove_skills = %v   # task 231: checkbox — skill-directory writes under autopilot skip approval\n", c.Agent.PreapproveManagedSkills)
+	fmt.Fprintf(&b, "preapprove_hooks = %v   # task 231: checkbox — settings.json writes under autopilot (HIGHEST RISK: prompt injection can rewrite hooks)\n", c.Agent.PreapproveManagedHooks)
+	fmt.Fprintf(&b, "preapprove_session_stores = %v   # task 231: checkbox — session-store writes under autopilot skip approval\n", c.Agent.PreapproveManagedStores)
+	fmt.Fprintf(&b, "preapprove_bash_escape = %v   # task 231: checkbox — bash sandbox-escape approvals under autopilot\n", c.Agent.PreapproveManagedBashEscape)
 	fmt.Fprintf(&b, "experimental_auto_load_older = %v   # fork task 160: load older history by scrolling up at the transcript top\n", c.Agent.ExperimentalAutoLoadOlder)
 	fmt.Fprintf(&b, "experimental_perf_monitor = %v   # task 184: host performance monitor (5s samples of memory/IO/key files)\n", c.Agent.ExperimentalPerfMonitor)
 	fmt.Fprintf(&b, "perf_monitor_interval_seconds = %d   # task 184: sampler interval in seconds (default 5, clamped 1..300)\n", c.Agent.PerfMonitorIntervalSeconds)

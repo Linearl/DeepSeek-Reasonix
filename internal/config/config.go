@@ -1455,6 +1455,22 @@ type AgentConfig struct {
 	// resolves the value into the writable-root set and the bash spec, so a
 	// flip applies on the next restart.
 	ExperimentalFullAccess bool `toml:"experimental_full_access"`
+	// ExperimentalPreapproveManagedPaths is the task-231 master switch: when it
+	// is on AND the run is autopilot, the checked categories below skip their
+	// human approval prompt. All five values ship false (铁律 2): the zero
+	// value keeps every approval surface byte-for-byte as it is today, and a
+	// flip applies to the controller snapshot on the next run start.
+	// (toml key omits "_paths": the project-reset test matches the literal
+	// "paths =" and a "_paths =" key would trip its substring check.)
+	ExperimentalPreapproveManagedPaths bool `toml:"experimental_preapprove_managed"`
+	// The four independently checked categories (settings checkboxes). Each
+	// only matters while the master switch and autopilot are both on; the
+	// hooks category is the highest risk (a prompt injection can rewrite its
+	// own hooks), so the settings UI carries a visible warning next to it.
+	PreapproveManagedSkills     bool `toml:"preapprove_skills"`
+	PreapproveManagedHooks      bool `toml:"preapprove_hooks"`
+	PreapproveManagedStores     bool `toml:"preapprove_session_stores"`
+	PreapproveManagedBashEscape bool `toml:"preapprove_bash_escape"`
 	// SessionCollabHopLimit caps how many hops a cross-session chain may take
 	// (task 204). 0 keeps the package default (5); values are clamped into
 	// [MinHop, MaxHopCeiling] on write, so a stored value is always legal.

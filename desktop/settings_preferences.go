@@ -283,6 +283,15 @@ func (a *App) SetExperimentalResearchBudget(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalResearchBudget(enabled) })
 }
 
+// SetPreapproveManagedPaths stores the task-231 master switch plus its four
+// checkboxes in one write (so a settings save can never land half-applied).
+// All five ship false; the bypass itself only ever arms under autopilot.
+func (a *App) SetPreapproveManagedPaths(enabled, skills, hooks, sessionStores, bashEscape bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetPreapproveManagedPaths(enabled, skills, hooks, sessionStores, bashEscape)
+	})
+}
+
 // SetExperimentalQuestionSearch toggles the topic-bar question-search entry (265).
 func (a *App) SetExperimentalQuestionSearch(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalQuestionSearch(enabled) })

@@ -2338,6 +2338,12 @@ export interface DesktopStartupSettingsView {
   experimentalCompletionSummary?: boolean;
   /** Task 262: gates the whole quick-commands surface; ships off; boot snapshot. */
   experimentalQuickCommands?: boolean;
+  /** Task 231: managed-path pre-approval — master switch + four checkboxes; all ship off; boot snapshot. */
+  experimentalPreapproveManagedPaths?: boolean;
+  preapproveSkills?: boolean;
+  preapproveHooks?: boolean;
+  preapproveSessionStores?: boolean;
+  preapproveBashEscape?: boolean;
   /** Task 257: full access (yolo) — all declared write dirs pass, bash unwrapped; ships off; restart to apply. */
   experimentalFullAccess?: boolean;
   /** Local-server page experiment switch (task 130); off unless the user opts in. */

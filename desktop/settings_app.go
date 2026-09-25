@@ -358,6 +358,13 @@ type SettingsView struct {
 	ExperimentalSubagentTps        bool `json:"experimentalSubagentTps"`
 	ExperimentalCompletionSummary  bool `json:"experimentalCompletionSummary"`
 	ExperimentalQuickCommands      bool `json:"experimentalQuickCommands"`
+	// Task 231: managed-path pre-approval — master switch + four independent
+	// checkboxes (all default false; autopilot-only effect, 铁律 2).
+	ExperimentalPreapproveManagedPaths bool `json:"experimentalPreapproveManagedPaths"`
+	PreapproveSkills                   bool `json:"preapproveSkills"`
+	PreapproveHooks                    bool `json:"preapproveHooks"`
+	PreapproveSessionStores            bool `json:"preapproveSessionStores"`
+	PreapproveBashEscape               bool `json:"preapproveBashEscape"`
 	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
 	ExperimentalFullAccess bool `json:"experimentalFullAccess"`
 	ExperimentalLocalServer        bool `json:"experimentalLocalServer"`
@@ -493,6 +500,13 @@ type DesktopStartupSettingsView struct {
 	ExperimentalSubagentTps        bool `json:"experimentalSubagentTps"`
 	ExperimentalCompletionSummary  bool `json:"experimentalCompletionSummary"`
 	ExperimentalQuickCommands      bool `json:"experimentalQuickCommands"`
+	// Task 231: managed-path pre-approval — master switch + four independent
+	// checkboxes (all default false; autopilot-only effect, 铁律 2).
+	ExperimentalPreapproveManagedPaths bool `json:"experimentalPreapproveManagedPaths"`
+	PreapproveSkills                   bool `json:"preapproveSkills"`
+	PreapproveHooks                    bool `json:"preapproveHooks"`
+	PreapproveSessionStores            bool `json:"preapproveSessionStores"`
+	PreapproveBashEscape               bool `json:"preapproveBashEscape"`
 	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
 	ExperimentalFullAccess bool `json:"experimentalFullAccess"`
 	// ExperimentalTraceAsState exposes Trace-as-State compaction (task 60).
@@ -1199,6 +1213,12 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalSubagentTps = cfg.DesktopSubagentTpsEnabled()
 		view.ExperimentalCompletionSummary = cfg.DesktopCompletionSummaryEnabled()
 		view.ExperimentalQuickCommands = cfg.Desktop.ExperimentalQuickCommands
+		// Task 231: managed-path pre-approval readback (five default-false flags).
+		view.ExperimentalPreapproveManagedPaths = cfg.Agent.ExperimentalPreapproveManagedPaths
+		view.PreapproveSkills = cfg.Agent.PreapproveManagedSkills
+		view.PreapproveHooks = cfg.Agent.PreapproveManagedHooks
+		view.PreapproveSessionStores = cfg.Agent.PreapproveManagedStores
+		view.PreapproveBashEscape = cfg.Agent.PreapproveManagedBashEscape
 		view.ExperimentalFullAccess = cfg.Agent.ExperimentalFullAccess
 		view.ExperimentalTraceAsState = cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState
 		view.ExperimentalDream = cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream
@@ -1298,6 +1318,12 @@ func (a *App) Settings() SettingsView {
 		ExperimentalSubagentTps:        cfg.DesktopSubagentTpsEnabled(),
 		ExperimentalCompletionSummary:  cfg.DesktopCompletionSummaryEnabled(),
 		ExperimentalQuickCommands:      cfg.Desktop.ExperimentalQuickCommands,
+		// Task 231: managed-path pre-approval readback (five default-false flags).
+		ExperimentalPreapproveManagedPaths: cfg.Agent.ExperimentalPreapproveManagedPaths,
+		PreapproveSkills:                   cfg.Agent.PreapproveManagedSkills,
+		PreapproveHooks:                    cfg.Agent.PreapproveManagedHooks,
+		PreapproveSessionStores:            cfg.Agent.PreapproveManagedStores,
+		PreapproveBashEscape:               cfg.Agent.PreapproveManagedBashEscape,
 		ExperimentalFullAccess:         cfg.Agent.ExperimentalFullAccess,
 		ExperimentalTraceAsState:       cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState,
 		ExperimentalDream:              cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream,
