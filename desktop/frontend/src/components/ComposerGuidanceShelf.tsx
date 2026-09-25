@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Combine, CornerDownRight, Pencil, Send, Trash2 } from "lucide-react";
 import {
   guidanceEditableInComposer,
@@ -30,6 +30,11 @@ export type InboxRecoveryNotice = {
   count: number;
   recovered: boolean;
 };
+
+/** Task 289: a hung preview fetch must not keep the row in its loading state
+ * forever — after this budget the fetch loses the race and the row falls back
+ * to its own text (already in place), fully interactive and collapsible. */
+export const PREVIEW_TIMEOUT_MS = 8000;
 
 export function ComposerGuidanceShelf({
   recovery,
@@ -110,6 +115,15 @@ export function ComposerGuidanceShelf({
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [previewText, setPreviewText] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
+  // Task 289: previewId is the single source of truth for everything preview —
+  // a ref mirrors it so async callbacks (which close over a stale state) can
+  // check whether their preview is still the open one before touching state.
+  const previewIdRef = useRef<string | null>(null);
+  const previewTimeoutRef = useRef<number | null>(null);
+  const setPreviewingId = (id: string | null) => {
+    previewIdRef.current = id;
+    setPreviewId(id);
+  };
   // Task 221#6 / 181: batch selection (ids managed by the composer) and the
   // drag source for reorder. A row is batch-selectable when at least one batch
   // action can still land on it — never an in-flight/delivering/unknown row,
@@ -125,18 +139,36 @@ export function ComposerGuidanceShelf({
     (item) => !(running && !guidanceNeedsRetry(item.state) && Boolean(item.structured)),
   );
 
+  const clearPreviewTimeout = () => {
+    if (previewTimeoutRef.current !== null) {
+      window.clearTimeout(previewTimeoutRef.current);
+      previewTimeoutRef.current = null;
+    }
+  };
+
   const closePreview = () => {
-    setPreviewId(null);
+    clearPreviewTimeout();
+    setPreviewingId(null);
     setPreviewText("");
     setPreviewLoading(false);
   };
 
+  // Task 289 (previewId single driver): collapsing the queue — by the head
+  // button, the more/collapse footer, or Composer's auto-collapse rules — also
+  // closes any open preview, so no "open but unlisted" preview survives into
+  // the next expansion (the tab-switch auto-recovery was this residue).
+  useEffect(() => {
+    if (!expanded && previewIdRef.current !== null) closePreview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded]);
+
   const togglePreview = async (item: PendingGuidance) => {
-    if (previewId === item.id) {
+    if (previewIdRef.current === item.id) {
       closePreview();
       return;
     }
-    setPreviewId(item.id);
+    clearPreviewTimeout();
+    setPreviewingId(item.id);
     setPreviewLoading(true);
     const fallback = item.submitText.trim() || item.text.trim();
     setPreviewText(fallback);
@@ -145,12 +177,21 @@ export function ComposerGuidanceShelf({
       return;
     }
     try {
-      const full = await onPreviewText(item);
+      const full = await Promise.race([
+        onPreviewText(item),
+        new Promise<never>((_, reject) => {
+          previewTimeoutRef.current = window.setTimeout(() => reject(new Error("guidance preview timed out")), PREVIEW_TIMEOUT_MS);
+        }),
+      ]);
+      // The fetch lost to a close/switch: previewId has moved on, so this
+      // result must not repaint the newer preview (task 289, driver #2).
+      if (previewIdRef.current !== item.id) return;
       setPreviewText(full.trim() || fallback);
     } catch {
       // The preview is a convenience; the row's own text already stands in.
     } finally {
-      setPreviewLoading(false);
+      clearPreviewTimeout();
+      if (previewIdRef.current === item.id) setPreviewLoading(false);
     }
   };
 
@@ -181,6 +222,20 @@ export function ComposerGuidanceShelf({
                   {t("composer.mailUnread", { n: unreadMailCount ?? 0 })}
                 </span>
               </Tooltip>
+            )}
+            {/* Task 289: an explicit collapse entry in the head while the queue
+                is expanded — the footer chevron alone hid too far down a long
+                list, and the user asked for a visible "collapse" control. */}
+            {expanded && (
+              <button
+                className="composer-guidance-head__collapse"
+                type="button"
+                aria-expanded={expanded}
+                aria-label={t("composer.guidanceCollapse")}
+                onClick={onToggleExpanded}
+              >
+                <ChevronUp size={13} />
+              </button>
             )}
             {!readOnly && !disabled && items.length > 1 && onToggleSelectMode && (
               <button
@@ -222,7 +277,11 @@ export function ComposerGuidanceShelf({
               )}
             </div>
           )}
-          <div className="composer-guidance-list">
+          {/* Task 289: a long expanded queue stops stretching the composer —
+              beyond five entries the list caps at 40vh and scrolls inside
+              itself (the 21-entry screenshot state), while the head collapse
+              button remains one click away. */}
+          <div className={`composer-guidance-list${expanded && items.length > 5 ? " composer-guidance-list--tall" : ""}`}>
             {visible.map((item, index) => {
               const inFlight = guidanceIsInFlight(item.state);
               // Task 159: `running` / `steer_consumed` have left the cancellable queue, so
@@ -254,6 +313,16 @@ export function ComposerGuidanceShelf({
                 <div
                   className={`composer-guidance-item${editing ? " composer-guidance-item--editing" : ""}${dragId === item.id ? " composer-guidance-item--dragging" : ""}`}
                   key={item.id}
+                  // Task 289 (root cause: the card body had no click handler, so
+                  // anything outside the tiny text button felt stuck open). The
+                  // whole card toggles the preview; row controls are protected
+                  // by the closest() guard instead of stopPropagation on every
+                  // button, so their own handlers fire exactly once and the
+                  // 266-A source pins keep their literal onClick shapes.
+                  onClick={(event) => {
+                    if ((event.target as HTMLElement).closest("button, input")) return;
+                    void togglePreview(item);
+                  }}
                   draggable={movable && !selectMode}
                   onDragStart={movable && !selectMode ? () => setDragId(item.id) : undefined}
                   onDragEnd={() => setDragId(null)}

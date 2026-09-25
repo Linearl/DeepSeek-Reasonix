@@ -22188,6 +22188,24 @@ body > .mermaid-diagram--fullscreen {
   font-weight: 650;
 }
 
+/* Task 289: explicit collapse entry in the expanded shelf head (chevron-up,
+   same right-hand cluster as the select toggle). */
+.composer-guidance-head__collapse {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+
+.composer-guidance-head__collapse + .composer-guidance-head__select-toggle {
+  margin-left: 4px;
+}
+
 .composer-guidance-head__select-toggle {
   margin-left: auto;
   padding: 0 8px;
@@ -22244,6 +22262,14 @@ body > .mermaid-diagram--fullscreen {
   border: 1px solid var(--border-soft);
   border-radius: 9px;
   background: color-mix(in srgb, var(--bg-soft) 74%, transparent);
+}
+
+/* Task 289: a long expanded queue must not stretch the composer — beyond five
+   entries the list caps at 40vh and scrolls inside itself (the 21-entry
+   screenshot state), while the head collapse button stays one click away. */
+.composer-guidance-list--tall {
+  max-height: 40vh;
+  overflow-y: auto;
 }
 
 .composer-guidance-item {
