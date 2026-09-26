@@ -31,6 +31,12 @@ console.log("\nsettings navigation contract");
 // reported a deliberate fork difference as a regression.
 ok(panel.includes('["workbench", "classic", "creation"] as const'), "desktop settings offer workbench, classic and creation");
 ok(panel.includes('desktopLayoutStyleLabel'), "every layout option has a localized label");
+// Task 335: the picker offers creation (2ed751a46 restored it) but 9deafd5eb's
+// normalizer drop stayed behind — every read folded creation back to workbench,
+// so the seg snapped back and the settings bench hung on .app.app--creation.
+// The normalizer must accept what the picker and App.tsx both offer.
+ok(panel.includes('if (style === "creation") return "creation"'),
+  "the settings normalizer accepts creation instead of folding it to workbench");
 ok(/useEffect\(\(\) => \{[\s\S]*?content\.scrollTop = 0;[\s\S]*?content\.scrollLeft = 0;[\s\S]*?\}, \[tab\]\);/.test(panel), "switching settings pages resets both content scroll axes");
 ok(navigation.includes('aria-current={activeTab === id ? "page" : undefined}'), "the active settings page is exposed semantically");
 ok(navigation.includes('item.meta && query.trim()'), "navigation metadata appears only in search results");

@@ -1647,9 +1647,13 @@ type DesktopLayoutStyle = "classic" | "workbench" | "creation";
 
 function normalizeDesktopLayoutStyle(style: string | undefined): DesktopLayoutStyle {
   if (style === "classic") return "classic";
-  // "creation" is no longer offered. A config that still carries it (or a client that sends it)
-  // normalizes to workbench rather than being rejected, so an existing install keeps working
-  // instead of falling back to a style the user did not choose.
+  // Creation was dropped upstream (9deafd5eb) and its picker restored in
+  // 2ed751a46, but this normalizer kept the drop: every read of
+  // sandbox-style "creation" folded back to workbench, so the restored seg
+  // silently snapped back to Workbench, App never gained app--creation, and
+  // the settings bench stalled waiting for that class. Keep the restored
+  // picker honest — accept what the picker and App.tsx both offer.
+  if (style === "creation") return "creation";
   return "workbench";
 }
 

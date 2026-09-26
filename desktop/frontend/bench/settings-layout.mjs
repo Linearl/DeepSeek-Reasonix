@@ -13,7 +13,10 @@ const port = Number(process.env.REASONIX_SETTINGS_PORT ?? 4679);
 const preview = await startPreviewServer(root, port);
 const themes = ["graphite", "aurora", "slate", "carbon", "nocturne", "amber"];
 const sizes = [1600, 1100, 900, 700, 400];
-const assignmentRows = 5;
+// Task 242 (d8fcca713) added the fallback-model assignment row on 2026-09-25;
+// this expectation stayed at 5 from 982386e51 (web-search row, 2026-09-08)
+// and the settings bench has been red on `actual 6 !== expected 5` since.
+const assignmentRows = 6;
 let cases = 0;
 
 async function settle(page) {
@@ -177,7 +180,10 @@ try {
         await search.fill("no-such-setting-regression");
         await page.locator(".settings-center__navempty").waitFor();
         await page.getByRole("button", { name: "Clear settings search", exact: true }).click();
-        assert.equal(await page.locator(".settings-center__navitem").count(), 20, "clearing search restores every navigation item");
+        // 20 was the count at b6e671c09 (2026-09-08). The fork-alignment merge
+        // (e0a092e6c) and the Experimental section (f3c804d97) grew the union
+        // to 22 tabs with 21 rendered; the expectation never followed.
+        assert.equal(await page.locator(".settings-center__navitem").count(), 21, "clearing search restores every navigation item");
         const picker = page.getByRole("button", { name: "Default model", exact: true });
         await picker.click();
         await page.getByRole("listbox", { name: "Default model", exact: true }).waitFor();
