@@ -1552,6 +1552,13 @@ type AgentConfig struct {
 	// this switch is on and a trigger is registered; event_wait's wait path
 	// does not depend on it.
 	ExperimentalEventTrigger bool `toml:"experimental_event_trigger"`
+	// ExperimentalToolFloodLimit (task 243 A1) enforces a per-turn tool-call
+	// cap (toolFloodTurnLimit, 16): a batch that would cross it is cancelled
+	// whole with a structured continuation reminder instead of executing.
+	// Single-turn count face — storm breaker stays the cross-turn repeat
+	// guard. Off by default (fork rule 2): upstream behavior (no count cap)
+	// remains the default until the switch is on.
+	ExperimentalToolFloodLimit bool `toml:"experimental_tool_flood_limit"`
 	// ExperimentalSessionControl enables the cross-session control tools
 	// (task 274): stop a peer's active turn and switch a peer's model with
 	// fail-closed semantics (set_model refuses while a turn is running —

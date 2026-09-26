@@ -20,6 +20,11 @@ type turnRuntime struct {
 	usedAnyTool        bool
 	graceRound         bool
 	recoveryGraceRound bool
+	// toolCallsThisTurn counts every dispatch admission this turn (task 243
+	// A1): the flood cap compares a batch against the turn-cumulative total so
+	// "the 17th call cancels the batch" reads one counter, not per-batch math.
+	// Zeroed by `a.turn = turnRuntime{}` in beginRunTurn.
+	toolCallsThisTurn int
 	// unattended marks a turn nobody can answer a readiness recovery card for
 	// (task 283): autopilot, or a tool-approval posture that already delegates
 	// writes to policy (auto/yolo) / an unattended host run — the same

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -12,6 +13,14 @@ import (
 	"reasonix/internal/provider"
 	"reasonix/internal/tool"
 )
+
+// toolFloodTurnLimit is the per-turn tool-call cap (task 243 A1): MiMo's
+// TOOLCALL_FLOODING_LIMIT borrowed as a RULE, not its AI SDK middleware — a
+// batch whose admission would cross this line is cancelled whole with a
+// structured continuation reminder. Consulted only while Agent.toolFloodLimit
+// (experimental_tool_flood_limit) is on; storm breaker remains the separate
+// cross-turn repeat-failure guard.
+const toolFloodTurnLimit = 16
 
 // mutationBarrierCause is an immutable, argument-free description of the
 // first durable-state write that failed or was blocked in a tool batch.
@@ -112,6 +121,38 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 	if err := a.prepareToolBatch(ctx, calls); err != nil {
 		return batchExecution{err: err}
 	}
+	// Task 243 A1 (MiMo #2463's flood rule, borrowed as a rule without the AI
+	// SDK middleware): a single-turn tool-call cap. When admitting this batch
+	// would push the turn past toolFloodTurnLimit calls, cancel the WHOLE
+	// batch before anything executes — a cancel never releases a partial
+	// batch — and hand the model a structured reminder to continue in smaller
+	// steps. The count is turn-cumulative ("the 17th call cancels the batch"),
+	// while storm breaker stays the separate cross-turn repeat-failure guard.
+	// The cancelled calls never ran: no side effect exists, so nothing enters
+	// writeRecovery/unknownRecovery and recovery never replays the batch —
+	// the reminder is all the model receives.
+	if a.toolFloodLimit && turn.toolCallsThisTurn+len(calls) > toolFloodTurnLimit {
+		total := turn.toolCallsThisTurn + len(calls)
+		turn.toolCallsThisTurn = total // keep counting so the cap keeps holding
+		reminder := fmt.Sprintf("tool_flood_cancelled: this batch of %d calls would bring the turn to %d tool calls (limit %d). Nothing was executed, and this batch will NOT be replayed — continue with smaller batches (prefer 1-3 tool calls per step).", len(calls), total, toolFloodTurnLimit)
+		results := make([]string, len(calls))
+		outcomes := make([]toolOutcome, len(calls))
+		images := make([][]string, len(calls))
+		executions := make([]*tool.ShellExecution, len(calls))
+		for i := range calls {
+			outcomes[i] = toolOutcome{output: reminder, blocked: true, errMsg: reminder}
+			results[i] = reminder
+		}
+		slog.Warn("agent: tool flood cap cancelled batch (task 243 A1)",
+			"calls_in_batch", len(calls), "turn_total", total, "limit", toolFloodTurnLimit)
+		return batchExecution{
+			results:    results,
+			outcomes:   outcomes,
+			images:     images,
+			executions: executions,
+		}
+	}
+	turn.toolCallsThisTurn += len(calls)
 	if a.task.ledger != nil {
 		ctx = withObservationBoundary(ctx, a.task.ledger.ObservationBoundary())
 	}

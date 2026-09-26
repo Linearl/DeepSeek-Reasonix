@@ -1946,6 +1946,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		StalledIntentNudgeLimit:      cfg.Agent.StalledIntentNudgeLimit,
 		ReadinessCatchUp:             cfg.Agent.ReadinessCatchUp,
 		ReadinessCatchUpLimit:        cfg.Agent.ReadinessCatchUpLimit,
+		ToolFloodLimit:               cfg.Agent.ExperimentalToolFloodLimit,
 		CollabStatusPath:             collabStatusPath,
 		PlanResearchGate:             cfg.Agent.PlanResearchGate,
 		PlanResearchGateLimit:        cfg.Agent.PlanResearchGateLimit,
