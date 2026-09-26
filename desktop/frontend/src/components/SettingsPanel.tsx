@@ -230,7 +230,12 @@ export function SettingsPanel({
       setS(next);
       if (application && applicationSeq === modelApplicationSeq.current) setModelApplication(application);
       return next;
-    } catch {
+    } catch (e) {
+      // Task 163 fix (0926): the bare `catch {}` swallowed the rejection
+      // reason, so a failing app.Settings() left the lab page blank with no
+      // trace anywhere ("no log != no event"). Log it until task 304 wires
+      // reportFrontendLog into this path.
+      console.error("[settings] Settings() load failed:", e);
       if (seq !== settingsLoadSeq.current) return null;
       setSettingsLoadFailed(true);
       return null;
@@ -454,7 +459,11 @@ export function SettingsPanel({
   const pageApply = useCallback((fn: () => Promise<unknown>) => apply(fn, pageScope), [apply, pageScope]);
 
   // These pages need SettingsView; capability pages load their own data.
-  const needsSettings = tab === "general" || tab === "models" || tab === "providers" || tab === "model-stats" || tab === "bots" || tab === "subagents" || tab === "network" || tab === "permissions" || tab === "sandbox" || tab === "appearance" || tab === "updates";
+  // Task 163 fix (0926): experimental also needs SettingsView — its section
+  // renders only when `s` is loaded, so without this entry a Settings() load
+  // failure left the lab page blank with no error banner and no retry button
+  // (the "设置加载失败" banner is gated on needsSettings).
+  const needsSettings = tab === "general" || tab === "models" || tab === "providers" || tab === "model-stats" || tab === "bots" || tab === "subagents" || tab === "network" || tab === "permissions" || tab === "sandbox" || tab === "appearance" || tab === "updates" || tab === "experimental";
   const lazySettingsPageFallback = <div className="empty">{t("settings.loading")}</div>;
   const settingsNavigationItems = useMemo(() => SETTINGS_NAV_TABS
     // Task 130: the local-server page stays hidden until the experiment is on.
