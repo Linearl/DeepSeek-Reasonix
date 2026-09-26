@@ -250,6 +250,22 @@ func (a *Agent) waitSamplingRetry(ctx context.Context, s *samplingRecoveryState,
 	// minute-scale `waiting` lane (canWaitSampling unchanged): waiting out a
 	// 5h window is pointless.
 	quotaFallback := failure.Phase == "quota" && ModelFallbackTarget(ctx) != ""
+	// Task 243 A4: the kind-aware bounded budget gates the fast lane BEFORE
+	// the attempt-cap logic: a terminal 4xx shape is refused by the matrix
+	// (the provider will refuse it again), and transient/unknown shapes
+	// consume a sliding 8/15min window shared across turns — one turn's
+	// attempt cap alone let failure storms restart the loop every turn. A
+	// refusal keeps the ORIGINAL error string as the phase's refused
+	// identity (no re-encoding). Quota keeps its task-242 lane untouched.
+	if !quotaFallback {
+		if allowed, kind, why := a.streamRetryBudget.Allow(failure.Phase, result.err, time.Now()); !allowed {
+			slog.Warn("agent: retry budget refused stream attempt (task 243 A4)",
+				"phase", failure.Phase, "kind", string(kind), "reason", why,
+				"identity", a.streamRetryBudget.RefusedIdentity(failure.Phase),
+				"attempt", attempt, "err", result.err)
+			return false
+		}
+	}
 	if (!failure.Retryable && !quotaFallback) || (attempt >= maxSamplingAttempts && !waiting) {
 		return false
 	}

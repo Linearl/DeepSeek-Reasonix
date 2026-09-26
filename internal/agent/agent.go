@@ -396,6 +396,13 @@ type Agent struct {
 	// the rounds per run.
 	readinessCatchUp      bool
 	readinessCatchUpLimit int
+	// toolFloodLimit (task 243 A1) enables the per-turn tool-call cap in
+	// executeBatch — experimental_tool_flood_limit, default off (fork rule 2).
+	toolFloodLimit bool
+	// streamRetryBudget (task 243 A4) is the kind-aware bounded budget for
+	// provider stream retries: 4xx terminal by matrix, transient kinds
+	// consume a sliding 8/15min window. Constructed in New; nil fails closed.
+	streamRetryBudget *RetryBudget
 	// Task 202: when set, the engine appends batch collaboration status
 	// events (turn start/end, tool failures, commits) to the shared stream
 	// file. Empty keeps the engine fully silent.
@@ -1218,6 +1225,14 @@ type Options struct {
 	// ReadinessCatchUpLimit overrides maxReadinessCatchUps (default 1).
 	// Values above maxReadinessCatchUpHardCap are clamped.
 	ReadinessCatchUpLimit int
+	// ToolFloodLimit (task 243 A1, fork rule 2 default-off) caps how many tool
+	// calls one turn may dispatch: a batch whose turn-cumulative count would
+	// cross toolFloodTurnLimit is cancelled whole with a structured reminder —
+	// the model continues in smaller batches, and the cancelled batch is never
+	// replayed (no side effects were run, so nothing enters writeRecovery).
+	// Distinct from storm breaker (cross-turn repeat failures): this is the
+	// single-turn call-count face MiMo's TOOLCALL_FLOODING_LIMIT guards.
+	ToolFloodLimit bool
 	// Task 202: when set, the engine appends batch collaboration status
 	// events (turn start/end, tool failures, git commits, received
 	// cross-session messages) to the shared stream file this path names.
@@ -1336,6 +1351,8 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 		stalledIntentNudgeLimit: normalizeStalledIntentNudgeLimit(opts.StalledIntentNudgeLimit),
 		readinessCatchUp:        opts.ReadinessCatchUp,
 		readinessCatchUpLimit:   normalizeReadinessCatchUpLimit(opts.ReadinessCatchUpLimit),
+		toolFloodLimit:          opts.ToolFloodLimit,
+		streamRetryBudget:       NewRetryBudget(),
 		collabStatusPath:        strings.TrimSpace(opts.CollabStatusPath),
 		planResearchGate:        opts.PlanResearchGate,
 		planResearchGateLimit:   normalizePlanResearchNudgeLimit(opts.PlanResearchGateLimit),
