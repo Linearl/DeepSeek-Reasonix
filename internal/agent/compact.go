@@ -35,6 +35,11 @@ const (
 var (
 	errSummaryOutputTruncated = errors.New("summarizer output truncated")
 	errCheckpointRejected     = errors.New("checkpoint candidate rejected")
+	// Task 307: the physical-ceiling rejection is a dead end for this round -
+	// the same oversized projection is rejected again next round - so callers
+	// need to tell it apart from the recoverable rejections. It wraps
+	// errCheckpointRejected, so existing errors.Is checks keep working.
+	errCheckpointCeiling = fmt.Errorf("checkpoint candidate above physical ceiling: %w", errCheckpointRejected)
 )
 
 // summaryTag wraps the compaction summary so the model can distinguish it from

@@ -281,6 +281,17 @@ func (m ContextManager) summaryFailed(policy ContextPreparePolicy, inputHash str
 		"status", status, "trigger", policy.Trigger, "fold_installed", foldInstalled,
 		"transient_stream", summaryTransientRetryable(err), "err", err)
 	a.recordContextMaintenanceOutcome(inputHash, policy.Trigger, "summary", status, reason)
+	// Task 307: a candidate at or above the physical ceiling would be rejected
+	// again with the very same oversized projection, so waiting for the view
+	// itself to cross the ceiling (rescueOrFail's below-hard path) only lets
+	// the context keep growing - the 17:50 event did exactly that: three
+	// back-to-back rejections and no rescue, on to 3.8M tokens. End the loop
+	// on the first rejection: truncation is the same recovery overflow uses.
+	// Manual compaction never reaches this branch (the ceiling check skips
+	// manual triggers) and keeps its fail-visible semantics.
+	if errors.Is(err, errCheckpointCeiling) && policy.Trigger != CompactionTriggerManual {
+		return m.rescueByTruncation(policy, hard, err)
+	}
 	return m.rescueOrFail(policy, hard, err)
 }
 

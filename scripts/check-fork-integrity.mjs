@@ -165,6 +165,7 @@ const CHECKS = [
   { feature: "任务243 A5 空消息 merge 防御", file: "internal/control/inbox_merge.go", patterns: ["envelopeBodiesAllEmpty", "leaving queue untouched"] },
   { feature: "任务243 A6 topic 归一化与 purpose 键", file: "internal/agent/session_collab_tools.go", patterns: ["normalizeCollabRef", "collabRefMatches"] },
   { feature: "任务196fix save 链日志 path 双 root 归一", file: "internal/agent/session_persist_observer.go", patterns: ["canonicalSessionSavePath(path), \"messages\"", "canonicalSessionSavePath(path), \"ms\""] },
+  { feature: "任务307 physical ceiling 拒当轮 truncation 兜底", file: "internal/agent/context_manager.go", patterns: ["errors.Is(err, errCheckpointCeiling)", "End the loop"] },
   { feature: "任务184 监控采样器与 heap profile", file: "desktop/perf_monitor.go", patterns: ["func (a *App) SaveHeapProfile", "func (m *perfMonitor) writeHeapProfile", "perf-sample-", "perfMonitorHeapKept"] },
   { feature: "任务184 窗口指标（Win32 计数器）", file: "desktop/perf_monitor_windows.go", patterns: ["GetProcessMemoryInfo", "GetProcessIoCounters"] },
   { feature: "任务184 session 常驻统计", file: "internal/session/stats.go", patterns: ["func (s *Service) OperationResidency", "func (s *Session) OperationResidency"] },
