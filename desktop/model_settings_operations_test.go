@@ -9,7 +9,7 @@ import (
 )
 
 func TestModelSettingsEveryOperationWithoutSessionRejectsForeignFields(t *testing.T) {
-	kinds := []string{"default", "planner", "guardian", "vision", "search", "subagent", "subagent_effort", "profile_model", "profile_effort", "depth", "concurrency", "writers", "provider_save", "credential", "web_search_capability", "connection_add", "official_add", "preset_add", "preset_reset", "protocol_upgrade", "catalogs", "provider_remove", "access_remove", "rename"}
+	kinds := []string{"default", "planner", "guardian", "vision", "search", "subagent", "subagent_effort", "profile_model", "profile_effort", "depth", "concurrency", "writers", "provider_save", "credential", "web_search_capability", "connection_add", "official_add", "preset_add", "preset_reset", "protocol_upgrade", "provider_toggle", "catalogs", "provider_remove", "access_remove", "rename"}
 	for _, kind := range kinds {
 		t.Run(kind, func(t *testing.T) {
 			isolateDesktopUserDirs(t)
@@ -94,6 +94,8 @@ func sessionlessModelSettingsOperation(t *testing.T, app *App, kind, ref string)
 			t.Fatal(err)
 		}
 		change.Name = "deepseek-flash"
+	case "provider_toggle":
+		change.Name, change.Enabled = "old", &enabled
 	case "catalogs":
 		cfg := config.LoadForEdit(config.UserConfigPath())
 		entry, _ := cfg.Provider("old")

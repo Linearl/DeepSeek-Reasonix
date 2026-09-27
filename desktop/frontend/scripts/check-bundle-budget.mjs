@@ -444,6 +444,10 @@ for (const path of localeChunks) {
   // Task 333 (rotation gate panel): zh measures 81.4 over 81.0 (20 new keys
   // x 3 dialects) — one-shot +0.5 to 81.5; zh-TW measures 82.6 over 82.5 —
   // one-shot +0.5 to 83.0.
+  // Task 279 (provider enable/disable switch): 3 new keys x 3 dialects —
+  // zh measures 81.4 under the 81.5 line on this branch, so no bump here;
+  // stacked onto task 282's tree (zh 81.9 + these keys) the merge batch trips
+  // the line — pre-register that landing at one-shot +0.5 (282's 82.0 gate).
   const budget = name.startsWith("zh-TW-") ? 83.0 * 1024 : 81.5 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
