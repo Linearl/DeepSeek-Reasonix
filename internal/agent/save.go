@@ -1277,7 +1277,7 @@ func lockSessionSavePath(path string) func() {
 	waitStart := time.Now()
 	mu.Lock()
 	if waited := time.Since(waitStart); waited >= sessionSaveLockWarnWait {
-		slog.Warn("session: save-path lock waited", "path", path, "wait_ms", waited.Milliseconds())
+		slog.Warn("session: save-path lock waited", "path", canonicalSessionSavePath(path), "wait_ms", waited.Milliseconds())
 	}
 	return mu.Unlock
 }

@@ -88,9 +88,9 @@ func (s *Session) saveObserved(path string, mode sessionSaveMode) error {
 	s.mu.RLock()
 	saveMessages := len(s.Messages)
 	s.mu.RUnlock()
-	slog.Info("session: save begin", "path", path, "messages", saveMessages, "mode", mode)
+	slog.Info("session: save begin", "path", canonicalSessionSavePath(path), "messages", saveMessages, "mode", mode)
 	defer func() {
-		slog.Info("session: save end", "path", path, "ms", time.Since(saveStart).Milliseconds())
+		slog.Info("session: save end", "path", canonicalSessionSavePath(path), "ms", time.Since(saveStart).Milliseconds())
 	}()
 	appendFrom := -1
 	if mode == sessionSaveSnapshot {
