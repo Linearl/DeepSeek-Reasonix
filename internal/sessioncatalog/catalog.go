@@ -724,6 +724,7 @@ func (c *Catalog) Close(ctx context.Context) error {
 		close(c.stop)
 		go func() {
 			c.workers.Wait()
+			projectiondb.CheckpointBeforeClose(context.Background(), c.db)
 			c.closeErr = c.db.Close()
 			c.statusMu.Lock()
 			c.status.State = StateClosed

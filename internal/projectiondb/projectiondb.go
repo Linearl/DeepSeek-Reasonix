@@ -76,6 +76,18 @@ type OpenOptions struct {
 	QuickCheck bool
 }
 
+// WALSizeLimit is the size a disk projection's WAL is truncated back to after
+// a checkpoint.
+const WALSizeLimit = 4 << 20
+
+// CheckpointBeforeClose folds the WAL into the database and truncates it. It is
+// best-effort: another process's reader leaves the WAL for its next checkpoint.
+func CheckpointBeforeClose(ctx context.Context, db *sql.DB) {
+	if db != nil {
+		_, _ = db.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`)
+	}
+}
+
 type Handle struct {
 	DB     *sql.DB
 	Status Status
@@ -194,7 +206,10 @@ func diskFileDSN(path string) string {
 		slash = "/" + slash
 	}
 	u := &url.URL{Scheme: "file", Path: slash}
-	return u.String() + "?_pragma=busy_timeout%28150%29&_pragma=foreign_keys%281%29"
+	// journal_size_limit is per connection, so it rides the DSN to reach
+	// every pooled one; without it a checkpointed WAL keeps its peak size.
+	return u.String() + "?_pragma=busy_timeout%28150%29&_pragma=foreign_keys%281%29" +
+		fmt.Sprintf("&_pragma=journal_size_limit%%28%d%%29", WALSizeLimit)
 }
 
 func open(ctx context.Context, opts OpenOptions, mode Mode) (*sql.DB, error) {

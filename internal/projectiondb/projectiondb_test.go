@@ -344,3 +344,79 @@ func TestRebuildHoldsExclusiveLifecycleLock(t *testing.T) {
 	}
 	release()
 }
+
+func TestDiskOpenLimitsWALOnEveryPooledConnection(t *testing.T) {
+	ctx := context.Background()
+	handle, err := Open(ctx, OpenOptions{Path: filepath.Join(t.TempDir(), "catalog.sqlite"), Migrations: testMigrations(), MaxOpenConns: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = handle.DB.Close() })
+	conns := make([]*sql.Conn, 0, 4)
+	for range 4 {
+		conn, err := handle.DB.Conn(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		conns = append(conns, conn)
+	}
+	for i, conn := range conns {
+		var limit int64
+		if err := conn.QueryRowContext(ctx, `PRAGMA journal_size_limit`).Scan(&limit); err != nil || limit != WALSizeLimit {
+			t.Fatalf("connection %d journal_size_limit=%d err=%v", i, limit, err)
+		}
+	}
+	for _, conn := range conns {
+		_ = conn.Close()
+	}
+}
+
+// A reader pinning an old snapshot lets the WAL grow past the limit; once it
+// is released, a checkpoint must bring the file back under it (#10714).
+func TestCheckpointedWALShrinksToLimit(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "catalog.sqlite")
+	handle, err := Open(ctx, OpenOptions{Path: path, Migrations: testMigrations(), MaxOpenConns: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = handle.DB.Close() })
+	reader, err := handle.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reader.QueryRowContext(ctx, `SELECT count(*) FROM values_table`).Scan(new(int)); err != nil {
+		t.Fatal(err)
+	}
+	for range 4 {
+		if _, err := handle.DB.ExecContext(ctx, `INSERT INTO values_table(value)
+			WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x < 1024)
+			SELECT hex(randomblob(1024)) FROM n`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	walSize := func() int64 {
+		info, err := os.Stat(path + "-wal")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return info.Size()
+	}
+	if size := walSize(); size <= WALSizeLimit {
+		t.Fatalf("fixture WAL=%d did not exceed the limit", size)
+	}
+	_ = reader.Rollback()
+	if _, err := handle.DB.ExecContext(ctx, `PRAGMA wal_checkpoint(PASSIVE)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := handle.DB.ExecContext(ctx, `INSERT INTO values_table(value) VALUES('after')`); err != nil {
+		t.Fatal(err)
+	}
+	if size := walSize(); size > WALSizeLimit {
+		t.Fatalf("WAL after checkpoint=%d, limit %d", size, WALSizeLimit)
+	}
+	CheckpointBeforeClose(ctx, handle.DB)
+	if size := walSize(); size != 0 {
+		t.Fatalf("WAL after close checkpoint=%d", size)
+	}
+}
