@@ -694,7 +694,7 @@ func TestFinalReadinessPermissionLoopGuardAllowsBlockedFinal(t *testing.T) {
 		{toolCallChunk("b3", "bash", `{"command":"ls -la"}`), {Type: provider.ChunkDone}},
 		{{Type: provider.ChunkText, Text: "blocked by permission"}, {Type: provider.ChunkDone}},
 	}}
-	sink, notices := noticeRecorder()
+	sink, _ := noticeRecorder()
 	a := New(prov, reg, NewSession(""), Options{
 		Gate: &stubGate{deny: map[string]bool{"bash": true}},
 	}, sink)
@@ -705,14 +705,15 @@ func TestFinalReadinessPermissionLoopGuardAllowsBlockedFinal(t *testing.T) {
 	if prov.call != 5 {
 		t.Fatalf("provider calls = %d, want writer turn, three blocked bash calls, then final", prov.call)
 	}
-	if got := lastToolResult(a.sess.conversation, "bash"); !strings.Contains(got, "[loop guard]") {
-		t.Fatalf("last bash result = %q, want permission loop guard", got)
+	// The storm breaker that used to rewrite the last blocked result into
+	// "[loop guard] ..." retired with upstream #10223 (#9766); blocked results
+	// now keep their raw text while the final-readiness pass still lets the
+	// model report the blocker (observeBlockedBatch arms it).
+	if got := lastToolResult(a.sess.conversation, "bash"); strings.Contains(got, "[loop guard]") {
+		t.Fatalf("last bash result = %q, retired storm-breaker text must not be injected", got)
 	}
 	if got := toolResults(a.sess.conversation, "bash"); len(got) != stormBreakThreshold {
 		t.Fatalf("bash results = %d, want exactly %d blocked attempts", len(got), stormBreakThreshold)
-	}
-	if len(*notices) == 0 {
-		t.Fatal("loop guard should emit a user-facing notice")
 	}
 }
 
@@ -767,8 +768,10 @@ func TestFinalReadinessPermissionLoopGuardAllowsBlockedFinalForBatch(t *testing.
 	if len(results) != 2*stormBreakThreshold {
 		t.Fatalf("bash results = %d, want %d blocked attempts across three batches", len(results), 2*stormBreakThreshold)
 	}
-	if !strings.Contains(results[len(results)-2], "[loop guard]") {
-		t.Fatalf("first result of the guarded batch should carry the loop guard, got: %q", results[len(results)-2])
+	// Retired storm-breaker text (#10223): no result carries "[loop guard]"
+	// anymore, and the final-readiness pass no longer depends on where it sat.
+	if strings.Contains(results[len(results)-2], "[loop guard]") {
+		t.Fatalf("retired storm-breaker text must not be injected, got: %q", results[len(results)-2])
 	}
 	if strings.Contains(results[len(results)-1], "[loop guard]") {
 		t.Fatalf("last result of the guarded batch should stay untouched (the pass must not depend on it), got: %q", results[len(results)-1])

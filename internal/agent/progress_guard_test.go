@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -13,15 +12,6 @@ import (
 	_ "reasonix/internal/tool/builtin"
 )
 
-func bashProgressReceipt(t *testing.T, command string, success bool) evidence.Receipt {
-	t.Helper()
-	args, err := json.Marshal(map[string]string{"command": command})
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	return evidence.ReceiptFromToolCall("bash", args, success, false)
-}
-
 // runRound executes one read-only batch and returns its result texts.
 func runRound(t *testing.T, a *Agent, path string) []string {
 	t.Helper()
@@ -31,44 +21,37 @@ func runRound(t *testing.T, a *Agent, path string) []string {
 	return batch.results
 }
 
-func TestProgressGuardEscalatesOnZeroGainRounds(t *testing.T) {
+// TestReadOnlyLongZeroGainRoundsNeverStopTheTurn is the task 329 regression:
+// the two upstream no-progress guards (the zero-gain progress ladder and the
+// storm breaker, retired in #10223 / upstream #9766) used to inject guidance
+// at rounds 2/4/6 and stop the turn at the stop tier. A run of more than 21
+// consecutive same-read rounds — the upstream reproduction window — must now
+// pass through untouched: no guard text, no loop-guard arm, results flowing
+// every round.
+func TestReadOnlyLongZeroGainRoundsNeverStopTheTurn(t *testing.T) {
 	reg := tool.NewRegistry()
 	reg.Add(fakeTool{name: "read_probe", readOnly: true})
 	a := New(nil, reg, NewSession(""), Options{}, event.Discard)
-	a.turn.progress.reset()
+	a.resetTurnEvidence()
 
-	if got := runRound(t, a, "same.go"); strings.Contains(got[0], "[progress guard]") {
-		t.Fatalf("round 1 (new read, +1 gain) must not trip the guard: %q", got[0])
+	const rounds = 25
+	for i := 1; i <= rounds; i++ {
+		got := runRound(t, a, "same.go")
+		if len(got) == 0 || got[0] == "" {
+			t.Fatalf("round %d produced no result — the turn would stall here", i)
+		}
+		if strings.Contains(got[0], "[progress guard]") {
+			t.Fatalf("round %d injected retired progress-guard guidance: %q", i, got[0])
+		}
+		if strings.Contains(got[0], "[loop guard]") {
+			t.Fatalf("round %d injected retired storm-breaker guidance: %q", i, got[0])
+		}
 	}
-	// Every later round re-reads the same path: zero gain, streak +1 per round.
-	if got := runRound(t, a, "same.go"); strings.Contains(got[0], "[progress guard]") {
-		t.Fatalf("one zero-gain round must not trip the guard yet: %q", got[0])
+	if a.turn.loopGuardArmed {
+		t.Fatal("read-only zero-gain rounds must not arm the final-readiness pass")
 	}
-	got := runRound(t, a, "same.go")
-	if !strings.Contains(got[0], "[progress guard]") || !strings.Contains(got[0], "Narrow the investigation") {
-		t.Fatalf("streak %d must nudge: %q", progressNudgeStreak, got[0])
-	}
-	runRound(t, a, "same.go")
-	got = runRound(t, a, "same.go")
-	if !strings.Contains(got[0], "Change strategy now") {
-		t.Fatalf("streak %d must force a pivot: %q", progressPivotStreak, got[0])
-	}
-	runRound(t, a, "same.go")
-	got = runRound(t, a, "same.go")
-	if !strings.Contains(got[0], "produce your final answer now") {
-		t.Fatalf("streak %d must demand the final answer: %q", progressStopStreak, got[0])
-	}
-	if !a.turn.loopGuardArmed {
-		t.Fatal("stop tier must arm the loop-guard pass so readiness stands down")
-	}
-	// Past the stop tier the loop-guard pass carries the pressure; repeating
-	// the injected text every round would only inflate prompts.
-	got = runRound(t, a, "same.go")
-	if strings.Contains(got[0], "[progress guard]") {
-		t.Fatalf("thresholds fire once, not every round: %q", got[0])
-	}
-	if !a.turn.loopGuardArmed {
-		t.Fatal("loop-guard pass must remain armed past the stop tier")
+	if a.turn.blockedTurnStreak != 0 {
+		t.Fatalf("blocked streak = %d, want 0 for successful read-only rounds", a.turn.blockedTurnStreak)
 	}
 }
 
@@ -81,7 +64,7 @@ func (s *outcomeSampleSink) RecordOutcomeProgress(sample evidence.OutcomeSample)
 	s.samples = append(s.samples, sample)
 }
 
-func TestOutcomeShadowRecordsEveryRoundWithoutTouchingGuards(t *testing.T) {
+func TestOutcomeShadowRecordsEveryRoundWithoutTouchingGuardText(t *testing.T) {
 	reg := tool.NewRegistry()
 	reg.Add(fakeTool{name: "read_probe", readOnly: true})
 	sink := &outcomeSampleSink{}
@@ -103,30 +86,8 @@ func TestOutcomeShadowRecordsEveryRoundWithoutTouchingGuards(t *testing.T) {
 	} else if s.Runway != 19 || s.RunwayDry != 1 || s.RunwayIdle != 2 || s.RunwaySpent {
 		t.Fatalf("round 2 runway = %+v, want balance 19, dry 1, idle 2", s)
 	}
-	// The shadow observes; the guard alone decides. Round texts stay untouched
-	// below the nudge threshold exactly as before.
+	// The shadow observes; retired guards never write into round texts.
 	if strings.Contains(first[0], "[progress guard]") || strings.Contains(second[0], "[progress guard]") {
-		t.Fatalf("shadow must not change guard behavior: %q / %q", first[0], second[0])
-	}
-}
-
-func TestProgressGuardResetsOnNewEvidence(t *testing.T) {
-	reg := tool.NewRegistry()
-	reg.Add(fakeTool{name: "read_probe", readOnly: true})
-	a := New(nil, reg, NewSession(""), Options{}, event.Discard)
-	a.turn.progress.reset()
-
-	runRound(t, a, "a.go")
-	runRound(t, a, "a.go")
-	runRound(t, a, "a.go")
-	if a.turn.progress.streak < progressNudgeStreak {
-		t.Fatalf("streak = %d, want >= %d before fresh evidence", a.turn.progress.streak, progressNudgeStreak)
-	}
-	// A successful bash command receipt is fresh evidence: streak resets.
-	a.task.ledger.Record(bashProgressReceipt(t, "go test ./pkg", true))
-	mark := a.task.ledger.Len() - 1
-	a.turn.progress.observe(a.task.ledger.ReceiptsSince(mark))
-	if a.turn.progress.streak != 0 {
-		t.Fatalf("fresh evidence must reset the streak, got %d", a.turn.progress.streak)
+		t.Fatalf("shadow must not resurrect guard text: %q / %q", first[0], second[0])
 	}
 }

@@ -97,12 +97,15 @@ func TestArgumentStormEncouragesCorrection(t *testing.T) {
 		if strings.Contains(out, "Do not retry by rewriting arguments") || strings.Contains(out, "do not keep retrying a blocked tool") {
 			t.Fatalf("permission-style advice: %s", out)
 		}
-		if i == 3 && !strings.Contains(out, "tool argument generation failed") {
-			t.Errorf("missing parameter convergence advice: %s", out)
+		// The storm breaker's parameter convergence advice (and its soft final
+		// exit arm) retired with upstream #10223; repeated parameter errors now
+		// keep their raw validation text on every attempt.
+		if strings.Contains(out, "tool argument generation failed") {
+			t.Errorf("retired convergence advice injected: %s", out)
 		}
 	}
-	if !a.turn.loopGuardArmed {
-		t.Fatal("soft final exit not armed")
+	if a.turn.loopGuardArmed {
+		t.Fatal("parameter-only storms must not arm the retired soft final exit")
 	}
 	out := executeBatchOutputs(a, context.Background(), []provider.ToolCall{{ID: "good", Name: "bash", Arguments: `{"command":"pwd"}`}})[0]
 	if stripReceiptCitation(out) != "executed" || len(b.inputs) != 1 {
@@ -365,8 +368,9 @@ func TestArgumentStormBatchCountsAndSuccessReset(t *testing.T) {
 	bad := []provider.ToolCall{{ID: "b", Name: "bash", Arguments: `{}`}, {ID: "r", Name: "read_file", Arguments: `{}`}}
 	for i := 1; i <= 3; i++ {
 		batch := a.executeBatch(context.Background(), &a.turn, bad)
-		if (strings.Contains(batch.results[0], "tool argument generation failed")) != (i == 3) {
-			t.Fatalf("batch %d: %v", i, batch.results)
+		// Retired #10223: the convergence advice never injects, at any attempt.
+		if strings.Contains(batch.results[0], "tool argument generation failed") {
+			t.Fatalf("batch %d injected retired convergence advice: %v", i, batch.results)
 		}
 		for _, out := range batch.outcomes {
 			if out.blocked {
@@ -395,8 +399,10 @@ func TestArgumentStormMixedPermissionFailure(t *testing.T) {
 		if batch.outcomes[0].blocked || !batch.outcomes[1].blocked {
 			t.Fatalf("per-call classification lost: %+v", batch.outcomes)
 		}
-		if i == 2 && (!strings.Contains(batch.results[0], "Respect the permission") || !strings.Contains(batch.results[0], "required properties: command") || !strings.Contains(batch.results[1], "denied")) {
-			t.Fatalf("mixed batch lost its errors: %v", batch.results)
+		if i == 2 && (!strings.Contains(batch.results[0], "required properties: command") || !strings.Contains(batch.results[1], "denied")) {
+			// Retired #10223: the storm breaker's "Respect the permission"
+			// advice no longer rewrites results[0]; both raw errors must stand.
+			t.Fatalf("mixed batch lost its raw errors: %v", batch.results)
 		}
 	}
 }
@@ -506,8 +512,11 @@ func TestArgumentRecoverySoftLimitAndExplicitBudget(t *testing.T) {
 				if ctx.Err() == nil || len(p.messages) != 7 {
 					t.Fatalf("unconfigured run stopped before cancellation: %v requests=%d", err, len(p.messages))
 				}
-				if !a.turn.loopGuardArmed {
-					t.Fatal("soft convergence never activated")
+				// Retired #10223: the storm breaker's soft-convergence arm no
+				// longer fires on parameter storms; the fixture still cancels
+				// the unconfigured run at its own bound.
+				if a.turn.loopGuardArmed {
+					t.Fatal("retired soft convergence must not arm the loop-guard pass")
 				}
 			} else {
 				var pause *maxStepsPause
