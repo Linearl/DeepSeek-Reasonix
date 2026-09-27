@@ -8,7 +8,7 @@ import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, MouseEven
 import { ArrowRight, ArrowUp, ChevronsDown, Columns2, Brain, Check, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, Search, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, Users, X, Zap } from "lucide-react";
 import { useSessionExperience } from "../lib/sessionExperience";
 import { asArray } from "../lib/array";
-import { foldEffortMenu } from "../lib/effortTiers";
+import { foldEffortCurrent, foldEffortMenu } from "../lib/effortTiers";
 import { filterAtMatches } from "../lib/atMatches";
 import { DedupIndex, sha256 } from "../lib/attachDedup";
 import {
@@ -4154,13 +4154,15 @@ export function Composer({
   // Task 331: folding only applies to the MiMo vocabulary itself — deepseek's
   // disabled/low/high/max (and GLM's enabled/disabled) are honest levels, not
   // aliases, so they pass through with their order intact (foldEffortMenu
-  // decides by the MiMo-only alias words).
+  // decides by the MiMo-only alias words). Task effortfix2: the decision
+  // tightened to minimal+ultra together (xhigh alone is not MiMo-exclusive),
+  // and the current level follows the same vocabulary rule.
   const rawEffortLevels = effort?.options ? effortOptions.map((option) => option.id) : asArray(effort?.levels);
   const menuEffortLevels = foldEffortMenu(rawEffortLevels);
   const effortLevels = (effort?.options || rawEffortLevels.includes("auto"))
     ? ["auto", ...menuEffortLevels]
     : menuEffortLevels;
-  const currentEffort = foldEffortMenu([effort?.current || "auto"])[0] || "auto";
+  const currentEffort = foldEffortCurrent(rawEffortLevels, effort?.current || "auto");
   const hasEffort = Boolean(effort?.supported && effortLevels.length > 0);
   const chooseEffortLevel = (level: string) => {
     if (level !== currentEffort) onSetEffort(level);

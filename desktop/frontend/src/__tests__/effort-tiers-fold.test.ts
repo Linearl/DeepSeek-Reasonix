@@ -6,8 +6,10 @@
 // the tail (the installed 1615 build). foldEffortMenu must fold only the MiMo
 // compatibility set and pass every other provider's vocabulary through,
 // preserving both contents and order.
+// Task effortfix2: the MiMo trigger tightened to minimal+ultra together —
+// xhigh alone appears in honest anthropic/luna vocabularies and must not fold.
 
-import { EFFORT_PRESETS, foldEffortMenu, normalizeEffortForMenu } from "../lib/effortTiers";
+import { EFFORT_PRESETS, foldEffortCurrent, foldEffortMenu, normalizeEffortForMenu } from "../lib/effortTiers";
 
 let passed = 0;
 let failed = 0;
@@ -48,10 +50,33 @@ eq(foldEffortMenu(["enabled", "disabled"]),
   ["enabled", "disabled"],
   "GLM-style binary vocabulary passes through untouched");
 
+// Task effortfix2: xhigh alone is NOT MiMo-exclusive — the deepseek model
+// behind opencode-go-anthropic and gpt-5.6-luna carry honest xhigh/max sets
+// and must pass through untouched (331's first判据 dropped their max).
+eq(foldEffortMenu(["low", "medium", "high", "xhigh", "max"]),
+  ["low", "medium", "high", "xhigh", "max"],
+  "anthropic-family vocabulary (xhigh/max honest) passes through untouched");
+eq(foldEffortMenu(["none", "low", "medium", "high", "xhigh", "max"]),
+  ["none", "low", "medium", "high", "xhigh", "max"],
+  "luna vocabulary (xhigh honest) passes through untouched");
+eq(foldEffortMenu(["auto", "disabled", "low", "medium", "high", "xhigh", "max"]),
+  ["auto", "disabled", "low", "medium", "high", "xhigh", "max"],
+  "xhigh without minimal+ultra never triggers the MiMo fold");
+
 // currentEffort uses the same per-family decision on a single value.
-eq(foldEffortMenu(["max"]), ["max"], "deepseek current=max stays max");
-eq(foldEffortMenu(["xhigh"]), ["high"], "MiMo current=xhigh folds to high");
-eq(foldEffortMenu(["enabled"]), ["enabled"], "GLM current=enabled stays enabled");
+eq(foldEffortMenu(["max"]), ["max"], "single max passes through");
+eq(foldEffortMenu(["xhigh"]), ["xhigh"], "single xhigh alone is not a MiMo fold trigger");
+eq(foldEffortMenu(["enabled"]), ["enabled"], "single enabled passes through");
+
+// foldEffortCurrent: current follows the VOCABULARY's family, not the value.
+eq(foldEffortCurrent(["low", "medium", "high", "xhigh", "max"], "max"), "max",
+  "anthropic-family current=max stays max");
+eq(foldEffortCurrent(["disabled", "low", "high", "max"], "max"), "max",
+  "deepseek current=max stays max");
+eq(foldEffortCurrent(["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "xhigh"), "high",
+  "MiMo vocabulary current=xhigh folds to high");
+eq(foldEffortCurrent(["enabled", "disabled"], "enabled"), "enabled",
+  "GLM current=enabled stays enabled");
 
 // normalizeEffortForMenu itself is unchanged (task 254 contract).
 eq(normalizeEffortForMenu("ultra"), "high", "ultra still normalizes to high");
