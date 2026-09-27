@@ -11,6 +11,7 @@ import (
 
 	"log/slog"
 	"reasonix/internal/provider"
+	"time"
 )
 
 // Chunked session recovery summarizes an over-length transcript in
@@ -150,6 +151,37 @@ func (r *chunkedSummaryRun) summarize(ctx context.Context, fold []provider.Messa
 	r.calls++
 	r.mu.Unlock()
 	res, err := r.a.foldToSummary(ctx, fold, instructions)
+	// Task 330: a mid-chain 429 waits THIS fragment out and resumes it - the
+	// already-summarized siblings are not redone (per-fragment wait, not a
+	// whole-chain restart). The resume call passes the shared budget like any
+	// other, so a rate-limited wait can't silently double-spend the run.
+	if err != nil && summaryRateLimited(err) && ctx.Err() == nil {
+		wait := summaryRateLimitWait(err)
+		slog.Info("agent: summary fragment rate limited — waiting to resume",
+			"messages", len(fold), "wait_s", int(wait/time.Second), "err", err)
+		r.mu.Lock()
+		budgetErr := r.requireCallsLocked(1)
+		if budgetErr == nil {
+			r.calls++
+		}
+		r.mu.Unlock()
+		if budgetErr != nil {
+			return res, err
+		}
+		select {
+		case <-ctx.Done():
+			return res, ctx.Err()
+		case <-time.After(wait):
+		}
+		resumed, resumeErr := r.a.foldToSummary(ctx, fold, instructions)
+		if resumeErr == nil {
+			slog.Info("agent: summary fragment resumed after rate-limit wait",
+				"messages", len(fold))
+			res, err = resumed, nil
+		} else {
+			res, err = resumed, resumeErr
+		}
+	}
 	r.mu.Lock()
 	r.usage = mergeSamplingUsage(r.usage, res.Usage)
 	r.mu.Unlock()
@@ -401,6 +433,11 @@ func (a *Agent) extractFragmentResilient(ctx context.Context, chunk []provider.M
 	if !summarySizeFailure(err) || !splittable {
 		return "", err
 	}
+	// Task 330: one structured line per binary split — the round count the
+	// convergence claim (fewer rounds than serial whole-fold retries) is
+	// read straight from these lines plus the fragment-done lines below.
+	slog.Info("agent: summary fragment split",
+		"parent_messages", len(chunk), "left_messages", len(leftChunk), "right_messages", len(rightChunk))
 	report(true)
 	left, err := a.extractFragmentResilient(ctx, leftChunk, instructions, mergeInstructions, report, run, reserveAfter+2)
 	if err != nil {

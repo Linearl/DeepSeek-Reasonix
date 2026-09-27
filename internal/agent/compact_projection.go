@@ -547,6 +547,55 @@ func chunkedFallbackApplies(err error, inputMode string) bool {
 // Size/limit failures are excluded — those belong to the chunked fallback.
 const summaryTransientMaxAttempts = 2
 
+// Task 330: a 429 is not a stream hiccup - the 10M TPM window needs roughly
+// a minute, so the generic short backoff (303) would just re-trip the limit.
+// Rate-limited summaries get their own lane: wait out the provider's
+// Retry-After when it states one, otherwise wait a default minute, then
+// resume the same request once. The wait is not a blind retry: the request
+// is identical, only the window has to roll over.
+var summaryRateLimitWaitDefault = 60 * time.Second
+
+// summaryRateLimitWaitDefaultCap bounds a provider-supplied Retry-After so a
+// hostile or buggy value cannot park the compaction goroutine for hours.
+const summaryRateLimitWaitCap = 300 * time.Second
+
+// summaryRateLimited reports the rate-limit shape: a stated 429 status or a
+// rate-limit message. It is deliberately separate from
+// summaryTransientRetryable (task 330): 429 waits, it does not fast-retry.
+func summaryRateLimited(err error) bool {
+	if err == nil {
+		return false
+	}
+	low := strings.ToLower(err.Error())
+	if strings.Contains(low, "rate limit") || strings.Contains(low, "429") {
+		return true
+	}
+	return httpStatusOf(err.Error()) == 429
+}
+
+// summaryRateLimitWait returns how long to wait before resuming: the
+// provider's Retry-After when the error text carries one (numeric seconds -
+// the form our providers emit), otherwise the default minute, both capped.
+func summaryRateLimitWait(err error) time.Duration {
+	low := strings.ToLower(err.Error())
+	for _, marker := range []string{"retry-after:", "retry after:", "retry-after ", "retry after "} {
+		if i := strings.Index(low, marker); i >= 0 {
+			rest := strings.TrimSpace(low[i+len(marker):])
+			n := 0
+			for _, c := range rest {
+				if c < '0' || c > '9' {
+					break
+				}
+				n = n*10 + int(c-'0')
+			}
+			if n > 0 {
+				return min(time.Duration(n)*time.Second, summaryRateLimitWaitCap)
+			}
+		}
+	}
+	return summaryRateLimitWaitDefault
+}
+
 // summaryTransientRetryable reports whether a summary request failed in a way
 // that a short backoff can fix: the provider broke the stream or the transport
 // mid-response, not a semantic rejection of the input.
@@ -557,7 +606,7 @@ func summaryTransientRetryable(err error) bool {
 	msg := strings.ToLower(err.Error())
 	for _, marker := range []string{
 		"stream error", "internal_error", "read stream", "connection reset",
-		"broken pipe", "unexpected eof", "server disconnected", "rate limit",
+		"broken pipe", "unexpected eof", "server disconnected",
 		"429", "502", "503", "504", "deadline exceeded",
 	} {
 		if strings.Contains(msg, marker) {
@@ -633,6 +682,7 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 	var res foldSummary
 	var tele CompactionTelemetry
 	var err error
+	rateWaits := 0
 	for attempt := 0; ; attempt++ {
 		if req.allowChunked {
 			res, tele, err = a.foldSummaryWithChunkedFallback(ctx, trigger, fold, instructions, sourceTokens, inputMode)
@@ -640,13 +690,36 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 			res, tele, err = a.foldSummaryWithTelemetry(ctx, trigger, fold, instructions, sourceTokens, inputMode)
 		}
 		if err == nil {
-			if attempt > 0 {
+			if rateWaits > 0 {
+				slog.Info("agent: summary request resumed after rate-limit wait",
+					"waits", rateWaits, "attempts", attempt+1, "trigger", trigger,
+					"source_tokens", sourceTokens)
+			}
+			if attempt > 0 && rateWaits == 0 {
 				slog.Info("agent: summary request succeeded after transient retry",
 					"attempts", attempt+1, "trigger", trigger,
 					"source_tokens", sourceTokens,
 					"cache_hit_tokens", tele.CacheHitTokens, "cache_miss_tokens", tele.CacheMissTokens)
 			}
 			return res, tele, nil
+		}
+		// Task 330: 429 gets its own lane ahead of the generic transient
+		// backoff - wait the window out (Retry-After when the provider states
+		// it, default a minute), then resume this identical request once.
+		// The wait is logged with its duration for the acceptance readout, and
+		// a successful resume logs separately from the generic transient one.
+		if summaryRateLimited(err) && rateWaits < 1 {
+			wait := summaryRateLimitWait(err)
+			slog.Info("agent: summary rate limited — waiting to resume",
+				"trigger", trigger, "wait_s", int(wait/time.Second),
+				"attempt", attempt+1, "err", err)
+			select {
+			case <-ctx.Done():
+				return res, tele, ctx.Err()
+			case <-time.After(wait):
+			}
+			rateWaits++
+			continue
 		}
 		if attempt >= summaryTransientMaxAttempts || !summaryTransientRetryable(err) {
 			// Task 317: a failed summary is a provider error too — stamp it so
@@ -656,6 +729,7 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 			slog.Warn("agent: summary request failed",
 				"trigger", trigger, "attempts", attempt+1, "err", err,
 				"transient", summaryTransientRetryable(err),
+				"rate_limited", summaryRateLimited(err),
 				"source_tokens", sourceTokens,
 				"cache_hit_tokens", tele.CacheHitTokens, "cache_miss_tokens", tele.CacheMissTokens)
 			return res, tele, err
