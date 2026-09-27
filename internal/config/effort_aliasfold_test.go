@@ -40,3 +40,32 @@ func TestAliasFoldIdentityIsolation(t *testing.T) {
 		t.Fatalf("config-declared vocabulary must not carry AliasFold: %+v", ec)
 	}
 }
+
+// Task effortfix2 P1-① end-to-end at the config layer: the 283-block shape
+// (no provider-level supported_efforts, bare deepseek-flash model, official
+// endpoint) must reach the full-depth family through the fixed provider
+// list — the menu the user sees carries "low" again, matching what config
+// 173's supported_efforts declared for the flash family.
+func TestBareDeepSeekFlashKeepsLowWithoutDeclaredSupport(t *testing.T) {
+	flash := &ProviderEntry{
+		Kind:    "openai",
+		BaseURL: "https://api.deepseek.com",
+		Model:   "deepseek-flash", // the bare alias the 283 block lists
+	}
+	if len(flash.SupportedEfforts) != 0 {
+		t.Fatalf("test entry must have no declared support (283 shape): %v", flash.SupportedEfforts)
+	}
+	ec := EffortCapabilityForEntry(flash)
+	if !ec.Supported {
+		t.Fatal("deepseek endpoint must offer an effort vocabulary")
+	}
+	want := []string{"auto", "disabled", "low", "high", "max"}
+	if len(ec.Levels) != len(want) {
+		t.Fatalf("levels = %v, want %v (low must survive the alias fix)", ec.Levels, want)
+	}
+	for i := range want {
+		if ec.Levels[i] != want[i] {
+			t.Fatalf("levels[%d] = %q, want %q", i, ec.Levels[i], want[i])
+		}
+	}
+}
