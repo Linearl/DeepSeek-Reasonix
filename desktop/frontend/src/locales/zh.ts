@@ -2445,7 +2445,7 @@ export const zh: Record<DictKey, string> = {
 "settings.opencodeGoUsage.window.monthly": "本月",
 "settings.opencodeGoUsage.resetsIn": "重置于",
 "settings.opencodeGoUsage.refresh": "刷新",
-"settings.opencodeGoUsage.note.noKey": "未配置 OPENCODE_GO_API_KEY——设置后即可查询订阅用量。",
+"settings.opencodeGoUsage.note.noKey": "未配置 OpenCode Go API Key——可在「设置 → 模型服务 → OpenCode Go」连接中填写，或设置 OPENCODE_GO_API_KEY 环境变量。",
 "settings.opencodeGoUsage.note.noSubscription": "API key 有效但该 workspace 没有 OpenCode Go 订阅（HTTP 403）。",
 "settings.opencodeGoUsage.note.authFailed": "API key 无效（HTTP 401）。",
 "settings.opencodeGoUsage.note.unsupported": "仅官方 opencode.ai 端点可查询。",

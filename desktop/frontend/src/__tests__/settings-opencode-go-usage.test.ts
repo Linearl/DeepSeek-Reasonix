@@ -108,12 +108,23 @@ for (const key of keys) {
   ok(zhTW.includes(`"${key}"`), `zh-TW ships ${key}`);
 }
 
+// ── the no-key note carries setup guidance (task 337 acceptance ③) ─────────
+// The card must tell users where to put the key: Settings → Model services →
+// OpenCode Go (the configured connection they already saw), plus the env var.
+const noKeyLine = (source: string) => (source.match(/"settings\.opencodeGoUsage\.note\.noKey":\s*"([^"]+)"/) ?? [])[1] ?? "";
+ok(/设置\s*→\s*模型服务\s*→\s*OpenCode Go/.test(noKeyLine(zh)) && noKeyLine(zh).includes("OPENCODE_GO_API_KEY"),
+  "zh no-key note points at Settings → Model services → OpenCode Go and the env var");
+ok(/設定\s*→\s*模型服務\s*→\s*OpenCode Go/.test(noKeyLine(zhTW)) && noKeyLine(zhTW).includes("OPENCODE_GO_API_KEY"),
+  "zh-TW no-key note carries the same guidance");
+ok(/Settings → Model services → OpenCode Go/.test(noKeyLine(en)) && noKeyLine(en).includes("OPENCODE_GO_API_KEY"),
+  "en no-key note carries the same guidance");
+
 function eqCountdown(iso: string, expected: string, label: string) {
   const actual = resetCountdown(iso, now);
   if (actual === expected) ok(true, `countdown: ${label}`);
   else ok(false, `countdown: ${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
 }
 
-assert.ok(passed >= 59, `expected at least 59 checks (57 prior + 2 boundary wiring), got ${passed}`);
+assert.ok(passed >= 62, `expected at least 62 checks (59 prior + 3 no-key guidance), got ${passed}`);
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

@@ -3648,7 +3648,7 @@ export const zhTW: Record<DictKey, string> = {
 "settings.opencodeGoUsage.window.monthly": "本月",
 "settings.opencodeGoUsage.resetsIn": "重置於",
 "settings.opencodeGoUsage.refresh": "重新整理",
-"settings.opencodeGoUsage.note.noKey": "未設定 OPENCODE_GO_API_KEY——設定後即可查詢訂閱用量。",
+"settings.opencodeGoUsage.note.noKey": "未設定 OpenCode Go API Key——可在「設定 → 模型服務 → OpenCode Go」連線中填寫，或設定 OPENCODE_GO_API_KEY 環境變數。",
 "settings.opencodeGoUsage.note.noSubscription": "API key 有效但該 workspace 沒有 OpenCode Go 訂閱（HTTP 403）。",
 "settings.opencodeGoUsage.note.authFailed": "API key 無效（HTTP 401）。",
 "settings.opencodeGoUsage.note.unsupported": "僅官方 opencode.ai 端點可查詢。",

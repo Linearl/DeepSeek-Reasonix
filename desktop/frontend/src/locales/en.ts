@@ -2443,7 +2443,7 @@ export const en = {
 "settings.opencodeGoUsage.window.monthly": "This month",
 "settings.opencodeGoUsage.resetsIn": "resets in",
 "settings.opencodeGoUsage.refresh": "Refresh",
-"settings.opencodeGoUsage.note.noKey": "OPENCODE_GO_API_KEY is not configured — set it to query subscription usage.",
+"settings.opencodeGoUsage.note.noKey": "OpenCode Go API Key is not configured — add it under Settings → Model services → OpenCode Go, or set the OPENCODE_GO_API_KEY environment variable.",
 "settings.opencodeGoUsage.note.noSubscription": "This API key is valid but has no OpenCode Go subscription (HTTP 403).",
 "settings.opencodeGoUsage.note.authFailed": "Invalid API key (HTTP 401).",
 "settings.opencodeGoUsage.note.unsupported": "Only official opencode.ai endpoints can be queried.",

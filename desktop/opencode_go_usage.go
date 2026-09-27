@@ -26,6 +26,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"reasonix/internal/config"
 )
 
 // openCodeGoUsageEndpoint is a var only so the test suite can repoint it at an
@@ -83,6 +85,67 @@ func usageView(note string) OpenCodeGoUsageView {
 	return OpenCodeGoUsageView{Tiers: []OpenCodeGoUsageTier{}, Note: note}
 }
 
+// openCodeGoUsageKey resolves the usage-query credential in priority order:
+//
+//  1. the OPENCODE_GO_API_KEY process env — explicit overrides keep working
+//     exactly as before (tests and CI pin this path);
+//  2. the OpenCode Go (Recommended) bundle's shared api_key_env. Chat and
+//     /zen/go/v1/usage are the same opencode.ai credential, and the official
+//     installer (StageModelCredentialLocked) rewrites the whole bundle's
+//     APIKeyEnv to one REASONIX_CONNECTION_* name — so the key users already
+//     configured for the model connection is the same key this card needs.
+//     Entries outside the preset bundle are deliberately ignored: a
+//     hand-built opencode-compatible endpoint may carry a different
+//     credential, and the card must never silently reuse it (task 337 ③).
+//
+// resolve maps an env var name to its value; it is injected so the priority
+// chain stays a pure function under test. The App wrapper supplies the
+// CredentialResolver, which reads Reasonix's global .env / credential store
+// read-only. The value never reaches logs, notes, or the wire.
+func resolveOpenCodeGoUsageKey(explicit string, entries []config.ProviderEntry, resolve func(env string) (string, bool)) string {
+	if key := strings.TrimSpace(explicit); key != "" {
+		return key
+	}
+	for i := range entries {
+		entry := &entries[i]
+		presetID, _, ok := config.CatalogForProviderEntry(entry)
+		if !ok || presetID != "opencode-go-recommended" {
+			continue
+		}
+		envName := strings.TrimSpace(entry.APIKeyEnv)
+		if envName == "" {
+			continue
+		}
+		if value, set := resolve(envName); set {
+			if key := strings.TrimSpace(value); key != "" {
+				return key
+			}
+		}
+	}
+	return ""
+}
+
+// openCodeGoUsageKey wires the pure chain to this app's config and global
+// credential resolver. Config load failures degrade to no-key — the card
+// already renders that note with setup guidance — and no error carries a
+// secret.
+func (a *App) openCodeGoUsageKey() string {
+	// Explicit process env short-circuits before any config or credential
+	// lookup, so override setups keep their original zero-dependency path.
+	if key := strings.TrimSpace(os.Getenv("OPENCODE_GO_API_KEY")); key != "" {
+		return key
+	}
+	cfg, _, err := a.loadDesktopUserConfigForView()
+	if err != nil || cfg == nil {
+		return ""
+	}
+	resolver := config.NewCredentialResolverForRoot(a.activeWorkspaceRoot())
+	return resolveOpenCodeGoUsageKey("", cfg.Providers, func(env string) (string, bool) {
+		res := resolver.ResolveGlobalFirst(env)
+		return res.Value, res.Set
+	})
+}
+
 // GetOpenCodeGoUsage queries the subscription usage endpoint for the settings
 // card (task 163). baseUrl is the provider the card belongs to; anything off
 // the official host returns before any network I/O.
@@ -90,7 +153,7 @@ func (a *App) GetOpenCodeGoUsage(baseUrl string) (OpenCodeGoUsageView, error) {
 	if !isOfficialOpenCodeGoBase(baseUrl) {
 		return usageView("unsupported-endpoint"), nil
 	}
-	key := strings.TrimSpace(os.Getenv("OPENCODE_GO_API_KEY"))
+	key := a.openCodeGoUsageKey()
 	if key == "" {
 		return usageView("no-key"), nil
 	}

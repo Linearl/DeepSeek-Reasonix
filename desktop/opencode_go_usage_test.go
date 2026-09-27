@@ -5,8 +5,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"reasonix/internal/config"
 )
 
 // Task 163 — usage query contracts: allow-list first, Bearer auth, the three
@@ -77,6 +81,9 @@ func TestGetOpenCodeGoUsageRejectsNonOfficialHostWithoutRequest(t *testing.T) {
 
 func TestGetOpenCodeGoUsageWithoutKeyMakesNoRequest(t *testing.T) {
 	t.Setenv("OPENCODE_GO_API_KEY", "")
+	// Config is a key source since task 337 — isolate so a developer machine
+	// with a real OpenCode Go connection cannot turn this into a live request.
+	isolateUsageKeyEnvironment(t)
 	hits, restore := withUsageEndpoint(t, func(http.ResponseWriter, *http.Request) {
 		t.Error("a missing key must not reach the network")
 	})
@@ -225,6 +232,9 @@ func TestGetOpenCodeGoUsageWireNeverNullsTiers(t *testing.T) {
 	checked := 0
 	for _, v := range variants {
 		t.Setenv("OPENCODE_GO_API_KEY", v.key)
+		// Task 337: config is a key source — keep the empty-explicit variants
+		// hermetic so a configured dev machine cannot flip them live.
+		isolateUsageKeyEnvironment(t)
 		var restore func()
 		if v.handler != nil {
 			_, restore = withUsageEndpoint(t, v.handler)
@@ -269,5 +279,159 @@ func TestGetOpenCodeGoUsageWireNeverNullsTiers(t *testing.T) {
 	checked++
 	if checked != 7 {
 		t.Fatalf("checked = %d note paths, want 7 (enumeration guard)", checked)
+	}
+}
+
+// isolateUsageKeyEnvironment points config and credential lookups at an empty
+// temp Reasonix home so openCodeGoUsageKey never consults the developer's
+// real OpenCode Go connection (task 337: config is now a key source).
+func isolateUsageKeyEnvironment(t *testing.T) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("REASONIX_HOME", home)
+	t.Setenv("REASONIX_CREDENTIALS_STORE", "file")
+	t.Setenv("REASONIX_STATE_HOME", filepath.Join(home, "state"))
+	t.Setenv("REASONIX_CACHE_HOME", filepath.Join(home, "cache"))
+}
+
+// TestResolveOpenCodeGoUsageKeyPriorityChain locks task 337's resolution
+// order as a pure function: explicit env first, then the OpenCode Go
+// (Recommended) bundle's shared api_key_env, never a foreign connection.
+// Zero skips — every branch is a constructed case.
+func TestResolveOpenCodeGoUsageKeyPriorityChain(t *testing.T) {
+	bundle := func(name, env string) config.ProviderEntry {
+		return config.ProviderEntry{Name: name, PresetID: "opencode-go-recommended", APIKeyEnv: env}
+	}
+	newResolve := func(mapping map[string]string, calls *int) func(string) (string, bool) {
+		return func(env string) (string, bool) {
+			if calls != nil {
+				*calls++
+			}
+			value, ok := mapping[env]
+			return value, ok
+		}
+	}
+
+	t.Run("explicit env wins without touching the connection", func(t *testing.T) {
+		calls := 0
+		got := resolveOpenCodeGoUsageKey("sk-explicit",
+			[]config.ProviderEntry{bundle("opencode-go", "REASONIX_CONNECTION_OC_KEY")},
+			newResolve(map[string]string{"REASONIX_CONNECTION_OC_KEY": "sk-connection"}, &calls))
+		if got != "sk-explicit" {
+			t.Fatalf("got %q, want sk-explicit (explicit priority)", got)
+		}
+		if calls != 0 {
+			t.Fatalf("fallback resolve called %d times, want 0 while explicit is set", calls)
+		}
+	})
+
+	t.Run("connection key is reused through the preset bundle", func(t *testing.T) {
+		got := resolveOpenCodeGoUsageKey("",
+			[]config.ProviderEntry{bundle("opencode-go", "REASONIX_CONNECTION_OC_KEY")},
+			newResolve(map[string]string{"REASONIX_CONNECTION_OC_KEY": "sk-connection"}, nil))
+		if got != "sk-connection" {
+			t.Fatalf("got %q, want sk-connection (the configured connection key)", got)
+		}
+	})
+
+	t.Run("hand-built non-preset connections are never reused", func(t *testing.T) {
+		got := resolveOpenCodeGoUsageKey("",
+			[]config.ProviderEntry{{Name: "my-opencode", APIKeyEnv: "CUSTOM_OPENCODE_KEY"}},
+			newResolve(map[string]string{"CUSTOM_OPENCODE_KEY": "sk-foreign"}, nil))
+		if got != "" {
+			t.Fatalf("got %q, want empty — only the opencode-go-recommended bundle counts (337 ③)", got)
+		}
+	})
+
+	t.Run("bundle entries without an env name are skipped", func(t *testing.T) {
+		got := resolveOpenCodeGoUsageKey("", []config.ProviderEntry{bundle("opencode-go", "  ")}, newResolve(nil, nil))
+		if got != "" {
+			t.Fatalf("got %q, want empty", got)
+		}
+	})
+
+	t.Run("unset or empty resolution degrades to no-key", func(t *testing.T) {
+		entries := []config.ProviderEntry{bundle("opencode-go", "MISSING_KEY")}
+		if got := resolveOpenCodeGoUsageKey("", entries, newResolve(map[string]string{}, nil)); got != "" {
+			t.Fatalf("unset: got %q, want empty", got)
+		}
+		if got := resolveOpenCodeGoUsageKey("", entries, newResolve(map[string]string{"MISSING_KEY": "   "}, nil)); got != "" {
+			t.Fatalf("blank value: got %q, want empty", got)
+		}
+	})
+
+	t.Run("a bundle whose first route resolves nothing falls to the next", func(t *testing.T) {
+		got := resolveOpenCodeGoUsageKey("",
+			[]config.ProviderEntry{
+				bundle("opencode-go-anthropic", "ROUTE_A_KEY"),
+				bundle("opencode-go-responses", "ROUTE_B_KEY"),
+			},
+			newResolve(map[string]string{"ROUTE_B_KEY": "sk-b"}, nil))
+		if got != "sk-b" {
+			t.Fatalf("got %q, want sk-b (walk the bundle until one resolves)", got)
+		}
+	})
+
+	t.Run("whitespace explicit counts as unset", func(t *testing.T) {
+		got := resolveOpenCodeGoUsageKey("   ",
+			[]config.ProviderEntry{bundle("opencode-go", "CONNECTION_KEY")},
+			newResolve(map[string]string{"CONNECTION_KEY": "sk-connection"}, nil))
+		if got != "sk-connection" {
+			t.Fatalf("got %q, want sk-connection", got)
+		}
+	})
+}
+
+// TestOpenCodeGoUsageKeyShellDegradesWithoutConfig: the App wrapper on an
+// empty home (no config.toml) must degrade to no-key instead of erroring.
+func TestOpenCodeGoUsageKeyShellDegradesWithoutConfig(t *testing.T) {
+	isolateUsageKeyEnvironment(t)
+	t.Setenv("OPENCODE_GO_API_KEY", "")
+	app := &App{}
+	if key := app.openCodeGoUsageKey(); key != "" {
+		t.Fatalf("key = %q on an empty home, want empty (no-key degradation)", key)
+	}
+}
+
+// TestOpenCodeGoUsageKeyAndWireNeverLeakSecrets: the resolved key may only
+// reach the Authorization header. It must never appear in the JSON view, the
+// returned error, or any logging call in the source (task 337 acceptance:
+// credentials stay out of logs and reports; .env is read, never written).
+func TestOpenCodeGoUsageKeyAndWireNeverLeakSecrets(t *testing.T) {
+	const sentinel = "sk-SENTINEL-task337-DO-NOT-LEAK"
+	t.Setenv("OPENCODE_GO_API_KEY", sentinel)
+
+	hits, restore := withUsageEndpoint(t, func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer "+sentinel {
+			t.Errorf("Authorization = %q, want the resolved key as Bearer", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"usage":{"rolling":{"status":"ok","percent":10,"resetsAt":"2026-10-01T00:00:00Z"}}}`)
+	})
+	defer restore()
+
+	app := &App{}
+	view, err := app.GetOpenCodeGoUsage("https://opencode.ai/zen/go/v1")
+	if err != nil || view.Note != "" {
+		t.Fatalf("view = %+v err = %v, want a clean success", view, err)
+	}
+	if *hits != 1 {
+		t.Fatalf("hits = %d, want 1", *hits)
+	}
+	payload, marshalErr := json.Marshal(view)
+	if marshalErr != nil {
+		t.Fatalf("marshal: %v", marshalErr)
+	}
+	if strings.Contains(string(payload), sentinel) {
+		t.Fatalf("wire leaked the key: %s", payload)
+	}
+	src, readErr := os.ReadFile("opencode_go_usage.go")
+	if readErr != nil {
+		t.Fatalf("read source: %v", readErr)
+	}
+	for _, forbidden := range []string{"fmt.Print", "slog.", "log.Print", "log.Printf"} {
+		if strings.Contains(string(src), forbidden) {
+			t.Errorf("source contains %q — the usage key must never be logged", forbidden)
+		}
 	}
 }
