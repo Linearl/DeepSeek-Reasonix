@@ -52,28 +52,40 @@ type Config struct {
 	// pre-task-155 spellings "legacy" and "v4" are still read and normalize onto
 	// v3_only / dual_write_read_v4 respectively. REASONIX_SESSION_STORAGE
 	// overrides this when set. See internal/config/session_storage.go.
-	SessionStorage string              `toml:"session_storage"`
-	UI             UIConfig            `toml:"ui"`
-	CLI            CLIConfig           `toml:"cli"`
-	Desktop        DesktopConfig       `toml:"desktop"`
-	Billing        BillingConfig       `toml:"billing"`
-	Telemetry      TelemetryConfig     `toml:"telemetry"`
-	Notifications  NotificationsConfig `toml:"notifications"`
-	Agent          AgentConfig         `toml:"agent"`
-	Providers      []ProviderEntry     `toml:"providers"`
-	Tools          ToolsConfig         `toml:"tools"`
-	Permissions    PermissionsConfig   `toml:"permissions"`
-	Sandbox        SandboxConfig       `toml:"sandbox"`
-	Network        NetworkConfig       `toml:"network"`
-	Environment    EnvironmentConfig   `toml:"environment"`
-	Plugins        []PluginEntry       `toml:"plugins"`
-	Skills         SkillsConfig        `toml:"skills"`
-	Statusline     StatuslineConfig    `toml:"statusline"`
-	LSP            LSPConfig           `toml:"lsp"`
-	Bot            BotConfig           `toml:"bot"`
-	Serve          ServeConfig         `toml:"serve"`
-	Secrets        SecretsConfig       `toml:"secrets"`
-	Remote         RemoteConfig        `toml:"remote"`
+	SessionStorage string `toml:"session_storage"`
+	// EventsAutoRotation selects the automatic event-log rotation gate (task
+	// 333): "off" skips the oversized gate entirely (slim via UI/CLI only),
+	// "manual" (default) keeps today's behavior — the gate runs with its
+	// built-in factor, thresholds below are inert — and "auto" lets the two
+	// rotation thresholds drive the gate. Empty normalizes to "manual".
+	EventsAutoRotation string `toml:"events_auto_rotation"`
+	// EventsRotationFactor is the auto-mode multiple threshold: rotate once the
+	// event log exceeds this multiple of the live transcript content (2-16).
+	EventsRotationFactor float64 `toml:"events_rotation_factor"`
+	// EventsRotationCapMB is the optional auto-mode absolute ceiling in MiB
+	// (0 = disabled). Factor and cap OR together.
+	EventsRotationCapMB int64               `toml:"events_rotation_cap_mb"`
+	UI                  UIConfig            `toml:"ui"`
+	CLI                 CLIConfig           `toml:"cli"`
+	Desktop             DesktopConfig       `toml:"desktop"`
+	Billing             BillingConfig       `toml:"billing"`
+	Telemetry           TelemetryConfig     `toml:"telemetry"`
+	Notifications       NotificationsConfig `toml:"notifications"`
+	Agent               AgentConfig         `toml:"agent"`
+	Providers           []ProviderEntry     `toml:"providers"`
+	Tools               ToolsConfig         `toml:"tools"`
+	Permissions         PermissionsConfig   `toml:"permissions"`
+	Sandbox             SandboxConfig       `toml:"sandbox"`
+	Network             NetworkConfig       `toml:"network"`
+	Environment         EnvironmentConfig   `toml:"environment"`
+	Plugins             []PluginEntry       `toml:"plugins"`
+	Skills              SkillsConfig        `toml:"skills"`
+	Statusline          StatuslineConfig    `toml:"statusline"`
+	LSP                 LSPConfig           `toml:"lsp"`
+	Bot                 BotConfig           `toml:"bot"`
+	Serve               ServeConfig         `toml:"serve"`
+	Secrets             SecretsConfig       `toml:"secrets"`
+	Remote              RemoteConfig        `toml:"remote"`
 
 	systemPromptFileSource     promptFileSource
 	providerSources            map[string]providerSourceScope

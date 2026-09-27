@@ -63,6 +63,7 @@ func (a *App) defaultSettingsView() SettingsView {
 		CloseBehavior: "background", DisplayMode: "standard", ReasoningDisplayMode: "auto",
 		StatusBarStyle: "icon", StatusBarItems: config.DefaultDesktopStatusBarItems(), SessionExperience: "standard",
 		DefaultToolApprovalMode: "auto", CheckUpdates: true, UpdateChannel: "stable",
+		EventsAutoRotation: config.EventsAutoRotationManual, EventsRotationFactor: config.EventsRotationFactorDefault,
 		Telemetry: true, Metrics: true, ExpandThinking: false, ConversationWidth: "standard",
 	}
 }
