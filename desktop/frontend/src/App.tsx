@@ -46,6 +46,7 @@ import { activeLeaseBlockedTab, createBoundedRefreshCoordinator, sameTabMetaList
 import { clearLegacyLangPref, normalizeLangPref, readLegacyLangPref, useI18n, useT } from "./lib/i18n";
 import { useActiveRemoteSession } from "./lib/useRemoteSession";
 import { publishNavigationIntent } from "./lib/useNavigationIntentFence";
+import { consumedGuidanceIdsFromItems } from "./lib/composerInboxQueue";
 import { RemoteNavigationContext, type RemoteNavigationCommand } from "./lib/remoteNavigationCommands";
 import type { CommandOutcome } from "./lib/commandOutcome";
 import { useController, type Item } from "./lib/useController";
@@ -3417,6 +3418,10 @@ export default function App() {
     }
     return null;
   }, [state.items]);
+  // Task 336: every injected guidance id, not just the newest notice. The shelf
+  // re-filters inbox snapshots with this set after a tab round-trip, so rows
+  // whose injection receipt is already in the transcript never come back.
+  const consumedGuidanceIds = useMemo(() => consumedGuidanceIdsFromItems(state.items), [state.items]);
 
   // send wrapper: clear local undo banner state before sending a new turn
   // (new mutation invalidates undo). Rewind itself already committed immediately.
@@ -5257,6 +5262,7 @@ export default function App() {
               guidanceConsumedKey={latestGuidanceConsumed?.key}
               guidanceConsumedItemId={latestGuidanceConsumed?.itemId}
               guidanceConsumedText={latestGuidanceConsumed?.text}
+              guidanceConsumedIds={consumedGuidanceIds}
               guidanceQueuePreviewItems={guidanceQueueMockItems}
               showContextWindowRing={sidebarCreation}
               heroMode={creationEmptyHero}

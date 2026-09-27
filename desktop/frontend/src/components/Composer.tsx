@@ -620,6 +620,7 @@ export function Composer({
   guidanceConsumedKey,
   guidanceConsumedItemId,
   guidanceConsumedText,
+  guidanceConsumedIds,
   guidanceQueuePreviewItems,
   showContextWindowRing = false,
   heroMode = false,
@@ -742,6 +743,9 @@ export function Composer({
   guidanceConsumedKey?: string;
   guidanceConsumedItemId?: string;
   guidanceConsumedText?: string;
+  // Task 336: every guidance id whose ↪ receipt is already in the transcript;
+  // the shelf re-filters snapshots with it so consumed rows never return.
+  guidanceConsumedIds?: ReadonlySet<string>;
   guidanceQueuePreviewItems?: readonly string[];
   showContextWindowRing?: boolean;
   // Creation empty-session hero: slim centered composer under the welcome
@@ -1331,11 +1335,36 @@ export function Composer({
     submittedGuidanceIdsRef.current.clear();
   }, [inboxSessionKey]);
   const applyInboxQueue = useCallback((items: PendingGuidance[]) => {
-    updatePendingGuidanceForDraft(draftKey, () => retireSubmittedGuidance(items, submittedGuidanceIdsRef.current));
-  }, [draftKey]);
+    // Task 336: retire both what this client submitted from the shelf AND what
+    // the transcript already carries an injection receipt for — host guidance
+    // and collab replies never pass through the submitted set, yet the backend
+    // keeps reporting them until its own acknowledgement lands.
+    const retired = retireSubmittedGuidance(items, submittedGuidanceIdsRef.current);
+    updatePendingGuidanceForDraft(draftKey, () =>
+      guidanceConsumedIds && guidanceConsumedIds.size > 0
+        ? retireSubmittedGuidance(retired, guidanceConsumedIds)
+        : retired);
+  }, [draftKey, guidanceConsumedIds]);
   const collapseInboxQueue = useCallback(() => setGuidanceExpanded(false), []);
   const refreshInboxQueue = useCallback(() => setGuidanceRetryNonce((value) => value + 1), []);
   useComposerInboxRefresh(tabId, draftKey, guidanceDraftKey, inboxSessionKey, guidanceQueuePreviewKey, guidanceRetryNonce, running, applyInboxQueue, collapseInboxQueue, refreshInboxQueue, runtimeState.state?.revision);
+
+  // Task 336 hydrate reconciliation: the transcript's ↪ receipts can land
+  // AFTER the inbox snapshot applied (tab round-trip, history reload). Re-run
+  // the consumed filter whenever the receipt set grows, so a snapshot taken
+  // too early cannot leave already-injected rows on the shelf.
+  useEffect(() => {
+    if (!guidanceConsumedIds || guidanceConsumedIds.size === 0) return;
+    updatePendingGuidanceForDraft(draftKey, (items) => {
+      const filtered = retireSubmittedGuidance(items, guidanceConsumedIds);
+      // Identity guard: a no-op filter returns the same array so React
+      // bails out of the re-render. The update helper is a plain per-render
+      // closure (refs only), deliberately NOT a dependency here — listing it
+      // would re-run this effect every render and loop.
+      return filtered.length === items.length ? items : filtered;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey, guidanceConsumedIds]);
 
   useEffect(() => {
     // Cold start (#9580): the first draftKey's persisted draft restores into
