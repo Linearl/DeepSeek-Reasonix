@@ -943,7 +943,7 @@ func (a *Agent) acceptCheckpointCandidate(trigger string, sourceTokens, candidat
 	}
 	hard := a.hardInputCeiling()
 	if trigger != CompactionTriggerManual && hard > 0 && candidateTokens >= hard {
-		return fmt.Errorf("%w: candidate %d still at or above physical ceiling %d", errCheckpointRejected, candidateTokens, hard)
+		return fmt.Errorf("%w: candidate %d still at or above physical ceiling %d", errCheckpointCeiling, candidateTokens, hard)
 	}
 	return nil
 }
