@@ -52,6 +52,13 @@ func TestEventsRotationHelpersClamp(t *testing.T) {
 	if got := EventsRotationCapMB(bad); got != 0 {
 		t.Fatalf("negative cap reads as %d, want 0", got)
 	}
+	// Hand-edited config past the bound clamps instead of flowing into a
+	// capMB<<20 shift that would wrap negative and mark every log over
+	// (overflow reverse-case requested with the fix, 2026-09-28).
+	overBound := &Config{EventsRotationCapMB: EventsRotationCapMBMax + 1}
+	if got := EventsRotationCapMB(overBound); got != EventsRotationCapMBMax {
+		t.Fatalf("hand-edited cap above the bound clamps to %d, got %d", EventsRotationCapMBMax, got)
+	}
 }
 
 // TestSetEventsRotationValidation: the setters refuse bad input rather than
