@@ -122,13 +122,6 @@ func TestSaveCompactsAtHalfRecordBudget(t *testing.T) {
 		t.Fatalf("index at %d records must trigger the 50%% near-cap branch (threshold %d); the old 40_000 headroom would have waited for %d",
 			records, sessionEventReplayMaxRecords-sessionEventReplayCompactHeadroom, sessionEventReplayMaxRecords-40_000)
 	}
-	// Byte-side gate must stay quiet for the whole test: if the log were
-	// oversized the full-rewrite path would fold it instead and mask the
-	// near-cap branch (that is exactly what happened before the padding).
-	if sessionEventLogOversized(int64(logBytes), int64(sessionEventEstimateBytesForTest(t, records, pad))) {
-		t.Fatalf("construction must sit under the byte gate: logBytes=%d would be oversized", logBytes)
-	}
-
 	// In-memory snapshot = disk prefix + one fresh message so Save takes the
 	// appendOnly path where the near-cap case lives. AddBatch keeps setup O(1)
 	// in lock acquisitions (per-Add recovery expiry made 200k Adds quadratic).
@@ -139,6 +132,17 @@ func TestSaveCompactsAtHalfRecordBudget(t *testing.T) {
 	}
 	s.AddBatch(prefix...)
 	s.Add(provider.Message{Role: provider.RoleUser, Content: "fresh"})
+	// Byte-side gate must stay quiet for the whole test: an oversized log
+	// would fold on the full-rewrite path and mask the near-cap branch (that
+	// is exactly what happened before the padding). Assert with the exact
+	// production measurement, not an estimate.
+	_, exactContentBytes, mErr := digestAndSizeSessionMessages(s.Messages)
+	if mErr != nil {
+		t.Fatalf("measure content bytes: %v", mErr)
+	}
+	if sessionEventLogOversized(int64(logBytes), exactContentBytes) {
+		t.Fatalf("construction must sit under the byte gate: logBytes=%d vs contentBytes=%d", logBytes, exactContentBytes)
+	}
 	if err := s.Save(path); err != nil {
 		t.Fatalf("Save at half record budget: %v", err)
 	}
@@ -172,17 +176,4 @@ func TestSaveCompactsAtHalfRecordBudget(t *testing.T) {
 	if got := rep.msgs[len(rep.msgs)-1].Content; got != "fresh" {
 		t.Fatalf("last message after compact = %q, want %q", got, "fresh")
 	}
-}
-
-// sessionEventEstimateBytesForTest returns a lower-bound estimate of what
-// digestAndSizeSessionMessages would report for this test's in-memory
-// snapshot, so the test can assert the byte gate stays quiet. It mirrors the
-// per-message JSON shape (id, role, content) plus framing overhead; only the
-// magnitude matters (the gate is 4x contentBytes vs logBytes).
-func sessionEventEstimateBytesForTest(t *testing.T, records int, pad string) int {
-	t.Helper()
-	// avg "m<i>" digits ~6 for 200k ids; id/role/content/framing ~90B base.
-	const perMessageOverhead = 96
-	avgContent := 1 + 6 + len(pad)
-	return records * (perMessageOverhead + avgContent)
 }
