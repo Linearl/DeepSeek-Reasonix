@@ -66,17 +66,17 @@ func TestStormBreakerEscalatesRepeatedFailure(t *testing.T) {
 		last = executeBatchOutputs(a, context.Background(), []provider.ToolCall{call})[0]
 	}
 
-	if !strings.Contains(last, "[loop guard]") {
-		t.Fatalf("after %d same-error failures the result should carry the loop guard, got: %q", stormBreakThreshold, last)
-	}
-	if !strings.Contains(last, "write_file") {
-		t.Errorf("loop-guard text should name the offending tool, got: %q", last)
+	// Retired #10223: the storm breaker no longer rewrites repeated failures
+	// into a loop-guard directive and emits no notice; the raw error must
+	// stand on every attempt.
+	if strings.Contains(last, "[loop guard]") {
+		t.Fatalf("retired loop-guard directive must not inject, got: %q", last)
 	}
 	if !strings.Contains(last, "unexpected end of JSON input") {
-		t.Errorf("loop-guard result should still preserve the original error, got: %q", last)
+		t.Errorf("the raw error must be preserved, got: %q", last)
 	}
-	if len(*notices) == 0 {
-		t.Errorf("loop guard should emit a notice to the user")
+	if len(*notices) != 0 {
+		t.Errorf("retired loop guard must not emit a notice, got %v", *notices)
 	}
 }
 
@@ -104,14 +104,13 @@ func TestStormBreakerEscalatesRepeatedBlockedPermission(t *testing.T) {
 		last = executeBatchOutputs(a, context.Background(), []provider.ToolCall{call})[0]
 	}
 
-	if !strings.Contains(last, "[loop guard]") {
-		t.Fatalf("after %d same permission blocks the result should carry the loop guard, got: %q", stormBreakThreshold, last)
+	// Retired #10223: repeated permission blocks keep their raw refusal text;
+	// no loop-guard rewrite, no notice.
+	if strings.Contains(last, "[loop guard]") {
+		t.Fatalf("retired loop-guard directive must not inject, got: %q", last)
 	}
-	if !strings.Contains(last, "blocked") || !strings.Contains(last, "permission") {
-		t.Fatalf("permission loop guard should preserve blocked context, got: %q", last)
-	}
-	if len(*notices) == 0 {
-		t.Errorf("loop guard should emit a notice to the user")
+	if len(*notices) != 0 {
+		t.Errorf("retired loop guard must not emit a notice, got %v", *notices)
 	}
 }
 
@@ -138,14 +137,17 @@ func TestStormBreakerEscalatesAlternatingBlockedShapes(t *testing.T) {
 		last = executeBatchOutputs(a, context.Background(), []provider.ToolCall{call})[0]
 	}
 
-	if !strings.Contains(last, "[loop guard]") {
-		t.Fatalf("after %d all-blocked turns the guard should fire despite alternating tools, got: %q", stormBreakThreshold, last)
+	// Retired #10223: no loop-guard rewrite and no notice — but the blocked
+	// streak still arms the final-readiness report pass after the threshold
+	// (observeBlockedBatch), so a blocked model can report and end.
+	if strings.Contains(last, "[loop guard]") {
+		t.Fatalf("retired loop-guard directive must not inject despite alternating tools, got: %q", last)
 	}
 	if !a.turn.loopGuardArmed {
-		t.Fatal("streak guard should arm the final-readiness loop-guard pass")
+		t.Fatal("blocked streak should still arm the final-readiness report pass")
 	}
-	if len(*notices) == 0 {
-		t.Errorf("streak loop guard should emit a notice to the user")
+	if len(*notices) != 0 {
+		t.Errorf("retired loop guard must not emit a notice, got %v", *notices)
 	}
 }
 
@@ -197,14 +199,13 @@ func TestStormBreakerEscalatesRepeatedBatch(t *testing.T) {
 		first = executeBatchOutputs(a, context.Background(), batch)[0]
 	}
 
-	if !strings.Contains(first, "[loop guard]") {
-		t.Fatalf("a repeated all-failing batch should trip the guard, got: %q", first)
+	// Retired #10223: a repeated all-failing batch keeps its raw per-call
+	// errors with no loop-guard rewrite, no batch naming, no notice.
+	if strings.Contains(first, "[loop guard]") {
+		t.Fatalf("retired loop-guard directive must not inject for a failing batch, got: %q", first)
 	}
-	if !strings.Contains(first, "batch of 2") {
-		t.Errorf("guard should name the repeated batch, got: %q", first)
-	}
-	if len(*notices) == 0 {
-		t.Errorf("loop guard should emit a notice for a repeated batch")
+	if len(*notices) != 0 {
+		t.Errorf("retired loop guard must not emit a notice, got %v", *notices)
 	}
 }
 

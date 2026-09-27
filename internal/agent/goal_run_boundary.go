@@ -35,7 +35,6 @@ func (a *Agent) HostProgressSignatures() []string {
 
 func (a *Agent) resetStructuralRunGuards() {
 	a.turn.stormSig, a.turn.stormCount, a.turn.blockedTurnStreak = "", 0, 0
-	a.turn.progress.reset()
 }
 
 func (a *Agent) stopUnexecutedBoundaryCalls(ctx context.Context, state *turnRuntime, calls []provider.ToolCall, usage *provider.Usage) (error, bool) {
@@ -91,7 +90,7 @@ func (a *Agent) trackTodoProgress(ctx context.Context, state *turnRuntime, recei
 		state.todoStallRounds = 0
 		a.ReplaceTodoState(nil)
 		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Code: event.NoticeCodeLoopGuard,
-			Text: loopGuardNoticeText(),
+			Text:   loopGuardNoticeText(),
 			Detail: fmt.Sprintf("the current todo list made no host-observed progress for %d tool-call rounds; the list was cleared so a fresh todo_write can start", rounds)})
 		if a.hostContinuationEnabled(ctx) {
 			message := fmt.Sprintf(

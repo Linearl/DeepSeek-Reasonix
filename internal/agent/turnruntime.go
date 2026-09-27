@@ -127,10 +127,6 @@ type turnRuntime struct {
 	stormSig   string
 	stormCount int
 
-	// progress escalates adaptively on consecutive zero-evidence-gain rounds;
-	// see progress_guard.go.
-	progress progressGuard
-
 	// lastReasoning is the previous executor round's reasoning-token spend,
 	// read by the governor trigger (live policy and fork capture alike).
 	lastReasoning int

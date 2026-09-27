@@ -78,11 +78,16 @@ func TestGoalSameFailureRedirectsWithoutPausing(t *testing.T) {
 	}
 }
 
-func TestGoalZeroEvidenceRedirectsAndContinues(t *testing.T) {
+// TestGoalZeroEvidenceNeverStopsTheRun pins task 329: the zero-evidence
+// progress ladder that once redirected (and, outside Goal, stopped) this run
+// retired with upstream #10223 (#9766). Seven consecutive same-read rounds
+// must pass through without any guard pausing or redirecting the turn.
+func TestGoalZeroEvidenceNeverStopsTheRun(t *testing.T) {
 	reg := tool.NewRegistry()
 	reg.Add(fakeTool{name: "read_file", readOnly: true})
-	turns := make([]testutil.Turn, 0, progressStopStreak+2)
-	for i := range progressStopStreak + 1 {
+	const zeroEvidenceRounds = 7
+	turns := make([]testutil.Turn, 0, zeroEvidenceRounds+1)
+	for i := range zeroEvidenceRounds {
 		turns = append(turns, testutil.Turn{ToolCalls: []provider.ToolCall{{
 			ID: "same-" + string(rune('a'+i)), Name: "read_file", Arguments: `{"path":"same"}`,
 		}}})
@@ -93,7 +98,7 @@ func TestGoalZeroEvidenceRedirectsAndContinues(t *testing.T) {
 	ctx := WithDeliveryExecutionScope(context.Background(), DeliveryExecutionScope{ID: "goal-1", TaskText: "research"})
 	err := a.Run(ctx, "work")
 	if err != nil {
-		t.Fatalf("Goal progress guard paused the run: %v", err)
+		t.Fatalf("retired progress guard must not pause the run: %v", err)
 	}
 }
 

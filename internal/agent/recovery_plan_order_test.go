@@ -4,10 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"reasonix/internal/event"
 	"reasonix/internal/evidence"
-	"reasonix/internal/provider"
-	"reasonix/internal/tool"
 )
 
 // Task 23 P1-d: once out-of-order completion is legal (P1-a), the position of
@@ -62,25 +59,5 @@ func TestRecoveryPlanTransitionIgnoresReorderedCompletedSteps(t *testing.T) {
 	]}`)
 	if changed, _, _, _ := a.recoveryPlanTransition("todo_write", reorderedSpine); !changed {
 		t.Fatal("reordering unfinished steps must still reach the plan reviewer")
-	}
-}
-
-// Task 23 P1-c end to end: three todo_write rejections in a row trip the loop
-// guard even though the model reworks the list (and therefore the message) on
-// every retry.
-func TestStormBreakerCatchesRepeatedTodoWriteRejections(t *testing.T) {
-	a := New(nil, tool.NewRegistry(), NewSession(""), Options{}, event.Discard)
-	calls := []provider.ToolCall{{Name: "todo_write"}}
-	messages := []string{
-		`todo 2 "step two" is a second in_progress item; a serial task list allows exactly one current item`,
-		`todo 5 "another step" is in_progress after pending work; the current item must be the first unfinished item`,
-		`todo 3 "third try" is a level-1 sub-step with no phase above it; add a level-0 phase header`,
-	}
-	var last intervention
-	for _, msg := range messages {
-		last = a.applyStormBreaker(calls, []toolOutcome{{errMsg: msg}}, 0)
-	}
-	if !last.fired() {
-		t.Fatalf("three rejections of the same todo_write family must trip the loop guard, got %+v", last)
 	}
 }
