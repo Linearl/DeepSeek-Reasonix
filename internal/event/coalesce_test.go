@@ -259,6 +259,37 @@ func TestCoalesceCapabilityCannotOvertakeActiveDrainer(t *testing.T) {
 	}
 }
 
+func TestCoalesceMergesToolOutputPerTool(t *testing.T) {
+	inner := &coalesceRecordSink{}
+	c := Coalesce(inner, time.Hour)
+	c.Emit(Event{Kind: ToolProgress, Tool: Tool{ID: "a", Output: "1\n"}}) // leading edge
+	c.Emit(Event{Kind: ToolProgress, Tool: Tool{ID: "a", Output: "2\n"}})
+	c.Emit(Event{Kind: ToolProgress, Tool: Tool{ID: "a", Output: "3\n"}})
+	c.Emit(Event{Kind: ToolProgress, Tool: Tool{ID: "b", Output: "x\n"}}) // other tool: flush + buffer
+	c.Emit(Event{Kind: ToolProgress, Tool: Tool{ID: "b", Verifying: true}})
+	c.Emit(Event{Kind: ToolProgress, Tool: Tool{ID: "c", Name: SubagentProgressStatusName, Output: "running"}})
+	c.Emit(Event{Kind: ToolResult, Tool: Tool{ID: "a", Output: "done"}})
+
+	got := inner.snapshot()
+	want := []Event{
+		{Kind: ToolProgress, Tool: Tool{ID: "a", Output: "1\n"}},
+		{Kind: ToolProgress, Tool: Tool{ID: "a", Output: "2\n3\n"}},
+		{Kind: ToolProgress, Tool: Tool{ID: "b", Output: "x\n"}},
+		{Kind: ToolProgress, Tool: Tool{ID: "b", Verifying: true}},
+		{Kind: ToolProgress, Tool: Tool{ID: "c", Name: SubagentProgressStatusName, Output: "running"}},
+		{Kind: ToolResult, Tool: Tool{ID: "a", Output: "done"}},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d events, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i].Kind != want[i].Kind || got[i].Tool.ID != want[i].Tool.ID || got[i].Tool.Output != want[i].Tool.Output ||
+			got[i].Tool.Verifying != want[i].Tool.Verifying || got[i].Tool.Name != want[i].Tool.Name {
+			t.Fatalf("event %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
 func TestCoalesceNonPureDeltaPassesThrough(t *testing.T) {
 	inner := &coalesceRecordSink{}
 	c := Coalesce(inner, time.Hour)
@@ -334,5 +365,33 @@ func TestCoalesceDisabledOrNil(t *testing.T) {
 	}
 	if _, ok := Coalesce(nil, time.Second).(*coalescer); ok {
 		t.Fatalf("nil inner must not be wrapped")
+	}
+}
+
+// TestCoalesceToolOutputFlushesAtByteCap pins the overflow boundary for the
+// new ToolProgress merging: the buffer never carries a burst past
+// coalesceMaxBytes, and an over-cap same-tool burst emits a fresh event
+// instead of growing without bound. (The upstream follow_stream test's
+// TestFollowOverflowRequiresNewBaseline exercises the follower's queue bound
+// on top of this; that harness lands with the upstream transcript subsystem
+// this fork has not merged yet — deferred with the dependency.)
+func TestCoalesceToolOutputFlushesAtByteCap(t *testing.T) {
+	inner := &coalesceRecordSink{}
+	c := Coalesce(inner, time.Hour)
+	// The first delta of a burst forwards immediately, so the cap event is the
+	// second one: it buffers, hits coalesceMaxBytes, and flushes synchronously.
+	c.Emit(Event{Kind: ToolProgress, Tool: Tool{ID: "a", Output: "lead\n"}})
+	c.Emit(Event{Kind: ToolProgress, Tool: Tool{ID: "a", Output: strings.Repeat("x", coalesceMaxBytes)}})
+	got := inner.snapshot()
+	if len(got) != 2 || got[0].Tool.Output != "lead\n" || len(got[1].Tool.Output) != coalesceMaxBytes {
+		t.Fatalf("tool output byte cap must flush synchronously, got %d events: %+v", len(got), got)
+	}
+	// A following same-tool delta starts a fresh buffer and must not leak an
+	// over-cap payload: nothing larger than the cap ever reaches inner.
+	c.Emit(Event{Kind: ToolProgress, Tool: Tool{ID: "a", Output: "tail\n"}})
+	for i, e := range inner.snapshot() {
+		if len(e.Tool.Output) > coalesceMaxBytes {
+			t.Fatalf("event %d carries %d bytes past the cap", i, len(e.Tool.Output))
+		}
 	}
 }
