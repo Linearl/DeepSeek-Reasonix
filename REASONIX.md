@@ -27,6 +27,14 @@ agent. It is the Reasonix analog of Claude Code's CLAUDE.md.
   (`internal/boot/effect_test.go` pattern): assert what actually reaches the
   provider request, frontend sink, or trajectory through the real `boot.Build`
   assembly. Component correctness is not system effectiveness.
+- Error paths must log (task 304): a wrap-return that reaches only the UI is
+  not a full destination — every failure that can explain a support incident
+  also gets one `slog` line (or a frontend `reportFrontendLog` hop) with a
+  stable greppable phrase. `desktop.log` silent therefore means "did not
+  happen" only for channels with a tested log line; the four formerly silent
+  channels (session lease, single-instance yield, launcher relaunch-wait,
+  frontend send rejection) each have one in `*_test.go` pinning the wording.
+  New silent channels are review findings, not acceptable shape.
 - A mutex- or atomic-guarded struct is ratcheted on its **scalar** field count
   (`struct-state`), not its total: independent flags multiply into states no
   type records as legal. Fixing a boundary case by adding one more `bool` is

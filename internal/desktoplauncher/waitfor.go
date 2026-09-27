@@ -1,10 +1,15 @@
 package desktoplauncher
 
 import (
+	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"reasonix/internal/config"
 )
 
 // relaunchWaitTimeout bounds how long --wait-for will block on the exiting
@@ -54,7 +59,44 @@ func waitForHandoff(pid int) {
 		// wedged past 90s) with only a bare stderr line — structured severity
 		// so the launcher's own output is greppable; the desktop-side
 		// counterpart is the secondInstanceLaunch slog.
-		slog.Warn("launcher: previous desktop did not exit within the relaunch wait; starting the new instance anyway",
+		//
+		// Task 304 (channel 3): the launcher is its own process, so this slog
+		// goes to the launcher's stderr and dies with it - desktop.log never
+		// saw the line even though it is exactly the incident's evidence.
+		// Mirror the same structured line into the desktop rolling log; the
+		// stderr copy stays for the immediate console.
+		msg := "launcher: previous desktop did not exit within the relaunch wait; starting the new instance anyway"
+		slog.Warn(msg,
 			"pid", pid, "timeout", relaunchWaitTimeout.String(), "err", err)
+		appendDesktopLogLine(fmt.Sprintf("%s pid=%d timeout=%s err=%s",
+			msg, pid, relaunchWaitTimeout, err))
 	}
+}
+
+// desktopLogPath resolves the same file installDesktopLogging writes (task
+// 304 channel 3). Variable so tests can point it at a temp dir.
+var desktopLogPath = func() string {
+	return filepath.Join(config.MemoryUserDir(), "logs", "desktop", "desktop.log")
+}
+
+// appendDesktopLogLine adds one slog-shaped WARN line to the desktop rolling
+// log from the launcher process. Short open-append-close on purpose: the
+// desktop owns rotation, and holding no descriptor between writes keeps the
+// overlap window microsecond-scale (a rotation landing inside it fails that
+// one rename, nothing else). Any failure falls back to the stderr copy the
+// caller already emitted - diagnostics never break the launch.
+func appendDesktopLogLine(line string) {
+	path := desktopLogPath()
+	if path == "" {
+		return
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	// slog TextHandler shape so grep and the readers do not care which
+	// process wrote the line.
+	fmt.Fprintf(f, "time=%s level=WARN msg=%q source=launcher\n",
+		time.Now().Format(time.RFC3339), line)
 }
