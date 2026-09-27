@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"reasonix/internal/agent"
 	"reasonix/internal/config"
 	"strings"
 	"time"
@@ -575,4 +576,42 @@ func (a *App) MigrateDesktopPreferences(language, theme, style string) error {
 		}
 		return nil
 	})
+}
+
+// SetEventsAutoRotation selects the task-333 event-log rotation gate mode
+// (off | manual | auto). Unlike the restart-scoped switches above this takes
+// effect on the very next save: the config write is followed by a push into
+// the agent save path, so no restart is involved.
+func (a *App) SetEventsAutoRotation(mode string) error {
+	if err := a.applyConfigOnly(func(c *config.Config) error { return c.SetEventsAutoRotation(mode) }); err != nil {
+		return err
+	}
+	a.pushEventsRotationSettings()
+	return nil
+}
+
+// SetEventsRotation stores the task-333 auto-mode thresholds (factor 2-16,
+// cap in MiB with 0 disabling it) and pushes them live like the mode setter.
+func (a *App) SetEventsRotation(factor float64, capMB int64) error {
+	if err := a.applyConfigOnly(func(c *config.Config) error { return c.SetEventsRotation(factor, capMB) }); err != nil {
+		return err
+	}
+	a.pushEventsRotationSettings()
+	return nil
+}
+
+// pushEventsRotationSettings forwards the normalized gate settings to the
+// agent layer after a successful write (task 333). A config-load failure
+// leaves the agent on its last pushed value — the boot default is manual, so
+// the gate never invents rotation from a config it could not read.
+func (a *App) pushEventsRotationSettings() {
+	cfg, err := config.Load()
+	if err != nil {
+		return
+	}
+	agent.SetEventsAutoRotation(
+		config.EventsAutoRotationMode(cfg),
+		config.EventsRotationFactor(cfg),
+		config.EventsRotationCapMB(cfg),
+	)
 }

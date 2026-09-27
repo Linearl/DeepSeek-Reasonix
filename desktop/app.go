@@ -591,6 +591,18 @@ func (a *App) startup(ctx context.Context) {
 	a.startTray()
 	a.enableDeferredRebuildRetry()
 	a.startHistoryIndexMigration()
+	// Task 333: forward the event-log rotation gate into the agent's save path.
+	// The agent layer cannot import config (layering), so the host pushes the
+	// normalized settings once at boot and again on every settings change.
+	// Before any push the agent-side value equals the default config (manual),
+	// so CLI/serve hosts and tests keep today's behavior.
+	if cfg, err := config.Load(); err == nil {
+		agent.SetEventsAutoRotation(
+			config.EventsAutoRotationMode(cfg),
+			config.EventsRotationFactor(cfg),
+			config.EventsRotationCapMB(cfg),
+		)
+	}
 	// Task 184: the performance monitor is opt-in and restart-scoped (its interval
 	// and file table come from the config read here). When the switch is off this
 	// block does nothing at all.
@@ -2417,7 +2429,7 @@ func (a *App) clearActiveSessionRuntime(tab *WorkspaceTab, oldCtrl control.Sessi
 		OnSessionInfo:              a.collabSessionInfo,
 		OnSessionStop:              a.collabSessionStop,
 		OnSessionSetModel:          a.collabSessionSetModel,
-		OnSessionTurnStatus:          a.collabSessionTurnStatus,
+		OnSessionTurnStatus:        a.collabSessionTurnStatus,
 		OnCascadeDelegate:          cascadeDelegateFor,
 		OnFallbackSwitch:           a.fallbackSwitch,
 		OnDeleteSession:            a.deleteCollabSession,
@@ -4435,7 +4447,7 @@ func (a *App) buildSessionRebindCandidate(
 		OnSessionInfo:              a.collabSessionInfo,
 		OnSessionStop:              a.collabSessionStop,
 		OnSessionSetModel:          a.collabSessionSetModel,
-		OnSessionTurnStatus:          a.collabSessionTurnStatus,
+		OnSessionTurnStatus:        a.collabSessionTurnStatus,
 		OnCascadeDelegate:          cascadeDelegateFor,
 		OnFallbackSwitch:           a.fallbackSwitch,
 		OnDeleteSession:            a.deleteCollabSession,
@@ -10136,7 +10148,7 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 		OnSessionInfo:              a.collabSessionInfo,
 		OnSessionStop:              a.collabSessionStop,
 		OnSessionSetModel:          a.collabSessionSetModel,
-		OnSessionTurnStatus:          a.collabSessionTurnStatus,
+		OnSessionTurnStatus:        a.collabSessionTurnStatus,
 		OnCascadeDelegate:          cascadeDelegateFor,
 		OnFallbackSwitch:           a.fallbackSwitch,
 		OnDeleteSession:            a.deleteCollabSession,
@@ -10344,7 +10356,7 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 		OnSessionInfo:              a.collabSessionInfo,
 		OnSessionStop:              a.collabSessionStop,
 		OnSessionSetModel:          a.collabSessionSetModel,
-		OnSessionTurnStatus:          a.collabSessionTurnStatus,
+		OnSessionTurnStatus:        a.collabSessionTurnStatus,
 		OnCascadeDelegate:          cascadeDelegateFor,
 		OnFallbackSwitch:           a.fallbackSwitch,
 		OnDeleteSession:            a.deleteCollabSession,

@@ -2,6 +2,7 @@ import { saveModelSettings, isModelSettingsResult } from "../lib/modelSettings";
 import { ModelSettingHelp } from "./ModelSettingHelp";
 import { SettingsOptions } from "./SettingsOptions";
 import { SettingsSelect } from "./SettingsSelect";
+import { SessionEventsPanel, type RotationMode } from "./SessionEventsPanel";
 import { providerProtocolLabel, providerProtocolChoices } from "../lib/providerProtocol";
 import { providerSupportsServerWebSearch } from "../lib/providerSearch";
 import { providerDefaultLabel, providerDisplayLabel } from "../lib/providerLabel";
@@ -1777,6 +1778,8 @@ type ExperimentFeatureId =
   // (the two underlying switches stay independent inside the page).
   | "monitoring"
   | "sessionStorage"
+  // Task 333: event-log rotation gate + storage statistic card (lab → storage).
+  | "eventsRotation"
   | "splitView"
   | "todoSidebar"
   | "feedback"
@@ -1917,6 +1920,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "sessionStorage", group: "storage", label: t("settings.sessionStorage"), on: (s.sessionStorage ?? "v3_only") !== "v3_only" },
     // Task 318.2: configurable fold cooldown (task 297 cost family), storage group.
     { id: "proactiveCompact", group: "storage", label: t("settings.proactiveCompact"), on: Boolean(s.experimentalProactiveCompact) },
+    // Task 333: rotation gate entry — the light reads any non-default mode so
+    // the statistic card stays discoverable (render table: a missing entry
+    // would silently drop the save, 81/123 lesson).
+    { id: "eventsRotation", group: "storage", label: t("settings.eventsRotation"), on: (s.eventsAutoRotation ?? "manual") !== "manual" },
     { id: "pathRules", group: "misc", label: t("settings.pathRules"), on: Boolean(s.experimentalPathRules) },
     // Task 265 lab intake: 9 fork features (efficiency 5 / ui 2 / debug 2).
     // Task 318.1: highSpeedModel's light reads the new switch (default off).
@@ -2209,6 +2216,14 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   })}
                 </p>
               ) : null}
+            </SettingsField>
+          )}
+          {selected === "eventsRotation" && (
+            <SettingsField label={t("settings.eventsRotation")} hint={t("settings.eventsRotationHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
+              {/* The backend normalizes the stored mode to off|manual|auto
+                  (config helper falls back to manual), so the cast cannot name
+                  a value the locales lack. */}
+              <SessionEventsPanel mode={(s.eventsAutoRotation ?? "manual") as RotationMode} busy={busy} apply={apply} />
             </SettingsField>
           )}
           {selected === "splitView" && (

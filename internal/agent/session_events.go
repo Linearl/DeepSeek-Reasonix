@@ -42,7 +42,7 @@ const (
 	// sessionEventReplayCompactHeadroom keeps the records-aware compaction
 	// trigger (task 193) ahead of the replay caps: Save compacts at 90% so a
 	// live turn's remaining appends never push the log past the replay gate.
-	sessionEventReplayCompactHeadroom    = 40_000
+	sessionEventReplayCompactHeadroom = 40_000
 	// sessionEventLogCompactFloor is the smallest log size that can trigger
 	// event-log maintenance, so short sessions never pay a checkpoint rewrite.
 	sessionEventLogCompactFloor = int64(256 << 10)
@@ -350,12 +350,26 @@ func sessionEventIndexNearCap(sessionPath string) bool {
 	return estimated > sessionEventReplayMaxRecords-sessionEventReplayCompactHeadroom
 }
 
+// sessionEventLogOversized reports whether the automatic gate should rotate
+// the event log. The task-333 rotation mode decides the judgment: "off" never
+// rotates and leaves a greppable WARN when the log is over the built-in
+// limit, "manual" (default) keeps today's built-in factor judgment exactly,
+// and "auto" applies the configured factor plus the optional MiB cap (OR).
 func sessionEventLogOversized(logSize, contentBytes int64) bool {
-	limit := sessionEventLogCompactFloor
-	if scaled := contentBytes * sessionEventLogCompactFactor; scaled > limit {
-		limit = scaled
+	cfg := currentEventsRotation()
+	switch cfg.mode {
+	case eventsRotationOff:
+		if eventsLogAboveFactor(logSize, contentBytes, float64(sessionEventLogCompactFactor)) {
+			slog.Warn("session: oversized event log left in place (events auto rotation off)",
+				"logSize", logSize, "contentBytes", contentBytes)
+		}
+		return false
+	case eventsRotationAuto:
+		return eventsLogAboveFactor(logSize, contentBytes, cfg.factor) ||
+			(cfg.capMB > 0 && logSize > cfg.capMB<<20)
+	default: // manual: today's built-in gate
+		return eventsLogAboveFactor(logSize, contentBytes, float64(sessionEventLogCompactFactor))
 	}
-	return logSize > limit
 }
 
 // sessionEventReplay is the result of a tolerant event-log replay: the

@@ -160,6 +160,38 @@ import { browserPreviewShellSupport } from "./shellSupportPreview";
 export * from "./remoteTabEvents";
 export const COMPACT_RATIO_MIN_PERCENT = 30, COMPACT_RATIO_MAX_PERCENT = 85;
 
+// SessionEventsEntry/SessionEventsInventoryView/SessionEventsCompactResult
+// carry the task-333 storage panel's event-log statistic card and compact run.
+export interface SessionEventsEntry {
+  path: string;
+  name: string;
+  eventsBytes: number;
+  liveBytes: number;
+  ratio: number;
+  overLimit: boolean;
+  open: boolean;
+}
+
+export interface SessionEventsInventoryView {
+  entries: SessionEventsEntry[];
+  overCount: number;
+  mode: string;
+  factor: number;
+  capMB: number;
+}
+
+export interface SessionEventsCompactResult {
+  path: string;
+  name: string;
+  round: number;
+  before: number;
+  after: number;
+  freed: number;
+  elapsedMs: number;
+  skipped: boolean;
+  error?: string;
+}
+
 // ConsolidationReport summarizes one "merge recovery copies" run.
 export interface ConsolidationReport {
   mainPath: string;
@@ -369,6 +401,13 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   SetSubagentPolicyForTab(tabID: string, policy: string): Promise<void>;
   TrashTopicForce(topicID: string): Promise<void>;
   AnswerQuestionForTab(tabID: string, id: string, answers: QuestionAnswer[]): Promise<void>;
+  // Task 333: event-log rotation gate + storage panel actions. The mode/threshold
+  // setters write config and push into the agent save path immediately (no restart).
+  SetEventsAutoRotation(mode: string): Promise<void>;
+  SetEventsRotation(factor: number, capMB: number): Promise<void>;
+  SessionEventsInventory(): Promise<SessionEventsInventoryView>;
+  CompactSessionEvents(path: string): Promise<SessionEventsCompactResult>;
+  CompactAllSessionEvents(maxRounds: number): Promise<SessionEventsCompactResult[]>;
 }
 
 export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings, SessionCatalogBindings, ProjectTreeOrganizationBindings, HistoryCatalogBindings, TaskCatalogBindings, BlankProjectBindings, QualityFloorBindings, SessionTitleBindings, ScrollDiagnosticBindings, RemoteProjectBindings, MCPAppBindings, PinnedContextBindings, FollowupBindings {
@@ -5050,6 +5089,15 @@ function makeMockApp(): AppBindings {
     },
     ...makeMockModelSettingsBindings(settings, loadMockProviderCatalog, mockProviderPresetViews),
     async StorageSettings() { return { defaultWorkspace: cwd, statePath: `${cwd}/.reasonix`, cachePath: `${cwd}/.reasonix/cache`, extensionsPath: `${cwd}/.reasonix/plugins` }; },
+    // Task 333: the mock keeps the gate settings on the shared settings view so
+    // the storage detail card sees its own writes like the real backend does.
+    async SetEventsAutoRotation(mode: string) { settings.eventsAutoRotation = mode; },
+    async SetEventsRotation(factor: number, capMB: number) { settings.eventsRotationFactor = factor; settings.eventsRotationCapMB = capMB; },
+    async SessionEventsInventory() {
+      return { entries: [], overCount: 0, mode: settings.eventsAutoRotation ?? "manual", factor: settings.eventsRotationFactor ?? 4, capMB: settings.eventsRotationCapMB ?? 0 };
+    },
+    async CompactSessionEvents(path: string) { return { path, name: "", round: 1, before: 0, after: 0, freed: 0, elapsedMs: 0, skipped: false }; },
+    async CompactAllSessionEvents() { return []; },
     async HooksSettings(scope: string) {
       const key = scope === "project" ? "project" : "global";
       return JSON.parse(JSON.stringify(hookSettings[key])) as HooksSettingsView;

@@ -26,6 +26,11 @@ export interface SettingsView {
   // still waiting for a restart to take effect.
   sessionStorageEffective?: string;
   sessionStorageRestartPending?: boolean;
+  // Task 333: event-log rotation gate (off | manual | auto) and its auto-mode
+  // thresholds — read by the storage panel's detail card.
+  eventsAutoRotation?: string;
+  eventsRotationFactor?: number;
+  eventsRotationCapMB?: number;
   // Task 121: exposes the agent submit_feedback tool and feedback inbox panel.
   experimentalFeedback?: boolean;
   // Task 259: exposes the right-dock todo tab plus tab visibility/wrap settings.

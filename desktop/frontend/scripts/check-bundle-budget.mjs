@@ -236,7 +236,9 @@ console.log("\nbundle budgets");
 // Task 337 (usage-card key reuse): the guidance copy in the three noKey
 // locale strings pushed initial gzip to 475.1 against the 475.1 line —
 // measured 475.1, one-shot +0.5 to 475.6 (ratchet rule, no drip).
-const initialJSBudgetKiB = 475.6; // fork: chain 468.8-era → 471.1 → 471.6 → 472.1 → 472.6 (tasks 242/192) → 473.1 (merge batch) → 473.6 (tasks 244 batch 1 + 163, same gate) → 474.1 (244 batch 2 + batch 4 same gate) → 474.6 (335 收口 jitter, pre-registered rule) → 475.1 (B3+opencodefix+effortfix2 merge batch, 475.0 measured; one-shot +0.5 per the 2026-09-20 ratchet rule) → 475.6 (task 337 locale guidance, 475.1 measured; one-shot +0.5)
+// Task 333 (rotation gate panel + 20 locale keys ×3): measured 475.7 against
+// the 475.6 line — one-shot +0.5 to 476.1 (ratchet rule, no drip).
+const initialJSBudgetKiB = 476.1; // fork: chain 468.8-era → 471.1 → 471.6 → 472.1 → 472.6 (tasks 242/192) → 473.1 (merge batch) → 473.6 (tasks 244 batch 1 + 163, same gate) → 474.1 (244 batch 2 + batch 4 same gate) → 474.6 (335 收口 jitter, pre-registered rule) → 475.1 (B3+opencodefix+effortfix2 merge batch, 475.0 measured; one-shot +0.5 per the 2026-09-20 ratchet rule) → 475.6 (task 337 locale guidance, 475.1 measured; one-shot +0.5) → 476.1 (task 333 rotation gate, 475.7 measured; one-shot +0.5)
 // Task 269 rebased onto 471.1: measured 470.7, also within 471.1 —
 // larger one-shot value stands (audit ruling, no second ratchet).
 // Task 264 rebased onto the same budget: measured 470.3 KiB (collab-background
@@ -439,7 +441,10 @@ for (const path of localeChunks) {
   // one-shot +0.5 to 81.0 per the ratchet rule (11 new locale keys x 3 dialects);
   // zh-TW then measured dead-even at 82.0 (same Error semantics as the 474.1
   // initial line) — one-shot +0.5 to 82.5.
-  const budget = name.startsWith("zh-TW-") ? 82.5 * 1024 : 81.0 * 1024;
+  // Task 333 (rotation gate panel): zh measures 81.4 over 81.0 (20 new keys
+  // x 3 dialects) — one-shot +0.5 to 81.5; zh-TW measures 82.6 over 82.5 —
+  // one-shot +0.5 to 83.0.
+  const budget = name.startsWith("zh-TW-") ? 83.0 * 1024 : 81.5 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0

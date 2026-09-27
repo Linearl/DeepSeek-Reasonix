@@ -347,8 +347,13 @@ type SettingsView struct {
 	// restart (only the read side moves under a live runtime).
 	SessionStorageEffective      string `json:"sessionStorageEffective"`
 	SessionStorageRestartPending bool   `json:"sessionStorageRestartPending"`
-	ExperimentalFeedback         bool   `json:"experimentalFeedback"`
-	ExperimentalTodoSidebar      bool   `json:"experimentalTodoSidebar"`
+	// Task 333: the event-log rotation gate (off | manual | auto) and its
+	// auto-mode thresholds; the settings panel reads all three from this view.
+	EventsAutoRotation      string  `json:"eventsAutoRotation"`
+	EventsRotationFactor    float64 `json:"eventsRotationFactor"`
+	EventsRotationCapMB     int64   `json:"eventsRotationCapMB"`
+	ExperimentalFeedback    bool    `json:"experimentalFeedback"`
+	ExperimentalTodoSidebar bool    `json:"experimentalTodoSidebar"`
 	// Task 265 lab intake: nil-means-on switches resolved server-side.
 	ExperimentalCompactionParallel bool `json:"experimentalCompactionParallel"`
 	ExperimentalContextBudget      bool `json:"experimentalContextBudget"`
@@ -1358,6 +1363,9 @@ func (a *App) Settings() SettingsView {
 		SessionStorage:               storageMode,
 		SessionStorageEffective:      storageEffective,
 		SessionStorageRestartPending: storageEffective != storageMode,
+		EventsAutoRotation:           config.EventsAutoRotationMode(cfg),
+		EventsRotationFactor:         config.EventsRotationFactor(cfg),
+		EventsRotationCapMB:          config.EventsRotationCapMB(cfg),
 		ExperimentalFeedback:         cfg.Desktop.ExperimentalFeedback,
 		ExperimentalTodoSidebar:      cfg.Desktop.ExperimentalTodoSidebar,
 		// Task 265 lab intake: nil-means-on switches resolved here.
