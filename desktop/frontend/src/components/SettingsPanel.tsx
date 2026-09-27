@@ -10,6 +10,7 @@ import { isDockTabHidden, isLastRenderableVisibleTab, setDockTabHidden } from ".
 import { labFlagEnabled } from "../lib/labFlags";
 import { useRemoteStore } from "../store/remote";
 import { useConfirmDialog } from "./ConfirmDialog";
+import ForkFeaturesIntro from "./ForkFeaturesIntro";
 
 // Autopilot runs unattended, so it needs a wall-clock bound; this is the value the
 // settings switch falls back to when the user turns it on without typing one.
@@ -2006,6 +2007,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
               );
             })}
           </nav>
+          {/* Task 282: pure-display section for fork improvements with no lab
+              switch — group count and entries are pinned to the design table
+              in lib/forkFeaturesIntro (tsc-checked), with no controls here. */}
+          <ForkFeaturesIntro t={t} />
         </div>
         <div className="experimental-pane">
           {restartNeeded ? (
