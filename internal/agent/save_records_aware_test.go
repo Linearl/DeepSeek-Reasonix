@@ -1,11 +1,14 @@
 package agent
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+
+	"reasonix/internal/provider"
 )
 
 // Task 193 long fix: when the persisted event index shows the message count
@@ -44,5 +47,105 @@ func TestSaveCompactsWhenEventIndexNearRecordCap(t *testing.T) {
 	}
 	if sessionEventIndexNearCap(logPath) {
 		t.Fatal("small index must not trigger near-cap")
+	}
+}
+
+// Task 193 tuning (2026-09-27): the record-aware compaction trigger fires at
+// 50% of the 400k record cap (headroom 200_000) instead of 90% (40_000).
+// End-to-end proof on a real 200k+ record session: hand-write a schema-1
+// append log one record past the tuned trigger, keep the in-memory snapshot
+// as disk prefix + one new message, then Save. Asserts the near-cap branch
+// fires at 200_001 records (the old 360_000 threshold would not have fired),
+// the log folds back to a single replace snapshot with every message kept,
+// and the 400_000 hard cap is never approached.
+func TestSaveCompactsAtHalfRecordBudget(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v1") // pin the schema-1 save route; the near-cap branch lives there
+	dir := t.TempDir()
+	path := filepath.Join(dir, "budget.jsonl")
+	logPath := SessionEventLogPath(path)
+	indexPath := SessionEventIndexPath(logPath)
+
+	const records = sessionEventReplayCompactHeadroom + 1 // 200_001: one past the tuned 50% trigger
+	var b strings.Builder
+	for i := 0; i < records; i++ {
+		b.WriteString(`{"schema_version":1,"type":"append","revision":`)
+		b.WriteString(strconv.Itoa(i + 1))
+		b.WriteString(`,"base_revision":`)
+		b.WriteString(strconv.Itoa(i))
+		b.WriteString(`,"message_index":`)
+		b.WriteString(strconv.Itoa(i))
+		b.WriteString(`,"messages":[{"id":"mid`)
+		b.WriteString(strconv.Itoa(i))
+		b.WriteString(`","role":"user","content":"m`)
+		b.WriteString(strconv.Itoa(i))
+		b.WriteString(`"}]}` + "\n")
+	}
+	logBytes := b.Len()
+	if err := os.WriteFile(logPath, []byte(b.String()), 0o600); err != nil {
+		t.Fatalf("write event log: %v", err)
+	}
+	b.Reset()
+	idx := `{"schema_version":1,"log_size":` + strconv.FormatInt(int64(logBytes), 10) + `,"message_count":` + strconv.Itoa(records) + `,"revision":` + strconv.Itoa(records) + `}`
+	if err := os.WriteFile(indexPath, []byte(idx), 0o600); err != nil {
+		t.Fatalf("write event index: %v", err)
+	}
+
+	// Hard cap untouched: replaying 200_001 records must succeed outright
+	// (the 400_000 cap rejects at >= 400_000, which this never reaches).
+	rep, err := replaySessionEventLog(logPath)
+	if err != nil {
+		t.Fatalf("replay of %d records must succeed below the hard cap: %v", records, err)
+	}
+	if len(rep.msgs) != records {
+		t.Fatalf("replayed messages = %d, want %d", len(rep.msgs), records)
+	}
+
+	if !sessionEventIndexNearCap(logPath) {
+		t.Fatalf("index at %d records must trigger the 50%% near-cap branch (threshold %d); the old 40_000 headroom would have waited for %d",
+			records, sessionEventReplayMaxRecords-sessionEventReplayCompactHeadroom, sessionEventReplayMaxRecords-40_000)
+	}
+
+	// In-memory snapshot = disk prefix + one fresh message so Save takes the
+	// appendOnly path where the near-cap case lives. AddBatch keeps setup O(1)
+	// in lock acquisitions (per-Add recovery expiry made 200k Adds quadratic).
+	s := NewSession("sys")
+	prefix := make([]provider.Message, 0, records)
+	for i := 0; i < records; i++ {
+		prefix = append(prefix, provider.Message{ID: "mid" + strconv.Itoa(i), Role: provider.RoleUser, Content: "m" + strconv.Itoa(i)})
+	}
+	s.AddBatch(prefix...)
+	s.Add(provider.Message{Role: provider.RoleUser, Content: "fresh"})
+	if err := s.Save(path); err != nil {
+		t.Fatalf("Save at half record budget: %v", err)
+	}
+
+	// The log folded: 200_002 append records collapsed to a single replace
+	// snapshot (compact may leave at most a follow-up bookkeeping event).
+	lineCount := 0
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read compacted log: %v", err)
+	}
+	for _, line := range bytes.Split(bytes.TrimRight(data, "\n"), []byte("\n")) {
+		if len(bytes.TrimSpace(line)) > 0 {
+			lineCount++
+		}
+	}
+	if lineCount > 2 {
+		t.Fatalf("event log lines after Save = %d, want folded to <= 2 (records did not fall back)", lineCount)
+	}
+
+	// Messages survive the fold, including the new one that triggered Save:
+	// replay must reproduce the exact in-memory snapshot (200_003 = the
+	// session's leading system prompt + 200_001 hand-written records + fresh).
+	rep, err = replaySessionEventLog(logPath)
+	if err != nil {
+		t.Fatalf("replay after compact: %v", err)
+	}
+	if len(rep.msgs) != len(s.Messages) {
+		t.Fatalf("messages after compact = %d, want %d (fold must keep every message)", len(rep.msgs), len(s.Messages))
+	}
+	if got := rep.msgs[len(rep.msgs)-1].Content; got != "fresh" {
+		t.Fatalf("last message after compact = %q, want %q", got, "fresh")
 	}
 }

@@ -40,9 +40,12 @@ const (
 	sessionEventReplayMaxCollectionItems = 400_000
 	sessionEventProbeMaxBytes            = int64(4 << 10)
 	// sessionEventReplayCompactHeadroom keeps the records-aware compaction
-	// trigger (task 193) ahead of the replay caps: Save compacts at 90% so a
-	// live turn's remaining appends never push the log past the replay gate.
-	sessionEventReplayCompactHeadroom    = 40_000
+	// trigger (task 193) ahead of the replay caps: Save compacts at 50% of
+	// the record cap so a live turn's remaining appends never push the log
+	// past the replay gate. Widened from 40_000 (90% trigger) to 200_000
+	// (50% trigger) on 2026-09-27 user decision - folding at 360k records
+	// was too late; the byte-side gate below is untouched.
+	sessionEventReplayCompactHeadroom = 200_000
 	// sessionEventLogCompactFloor is the smallest log size that can trigger
 	// event-log maintenance, so short sessions never pay a checkpoint rewrite.
 	sessionEventLogCompactFloor = int64(256 << 10)
