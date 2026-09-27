@@ -50,6 +50,14 @@ ok(card.includes('data-testid="opencode-go-usage-card"') && card.includes('data-
 ok(card.includes("resetCountdown(tier.resetsAt)") && card.includes("settings.opencodeGoUsage.resetsIn"),
   "rows show the reset countdown");
 
+// ── null wire payload can never crash render (opencodefix) ────────────────
+// The Go side used to marshal a nil Tiers slice as "tiers": null and render
+// threw TypeError: null.find. Both consumers must read through the guard.
+ok(card.includes("const tiers = usage?.tiers ?? []") && card.includes("tiers.find((tier) => tier.window === key)"),
+  "the render lookup normalizes a null wire tiers payload");
+ok(card.includes("!(usage?.tiers ?? []).some((tier) => tier.resetsAt)"),
+  "the countdown gate reads through the same null guard with the original negation");
+
 // ── formatting helpers ──────────────────────────────────────────────────────
 const now = Date.parse("2026-09-25T12:00:00Z");
 eqCountdown("", "", "empty iso stays empty");
@@ -96,6 +104,6 @@ function eqCountdown(iso: string, expected: string, label: string) {
   else ok(false, `countdown: ${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
 }
 
-assert.ok(passed >= 55, `expected at least 55 checks, got ${passed}`);
+assert.ok(passed >= 57, `expected at least 57 checks (55 original + 2 null-guard), got ${passed}`);
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);
