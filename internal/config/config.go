@@ -1528,6 +1528,24 @@ type AgentConfig struct {
 	// create_collab_session approver convention). Empty = the switch is on but
 	// no target is configured, which keeps the primary behavior.
 	FallbackModel string `toml:"fallback_model"`
+	// Task 318.1: allow the high-speed model lane (exec-speed prompt injection
+	// for the configured highSpeedModels list, task-sibling of the lab page).
+	// Off by default (iron rule 2) — off means the list is ignored even when
+	// configured, so an unconfigured default config behaves as before.
+	ExperimentalHighSpeedModel bool `toml:"experimental_high_speed_model"`
+	// Task 318.2: expose the model-driven fold cooldown as configuration.
+	// Off by default: the fold cooldown stays the hard-coded 10-minute
+	// interval (today's behavior byte-for-byte). On: the cooldown below
+	// applies; zero/negative normalizes to 10.
+	ExperimentalProactiveCompact bool `toml:"experimental_proactive_compact"`
+	// ProactiveCompactCooldownMinutes is the minimum gap between two
+	// model-driven folds while ExperimentalProactiveCompact is on (task 318.2;
+	// default 10 minutes — the value the hard-coded path always used).
+	ProactiveCompactCooldownMinutes int `toml:"proactive_compact_cooldown_minutes"`
+	// Task 318.3: persist composer drafts across restarts (localStorage
+	// cold-start layer, #9580). Off by default (iron rule 2): drafts are
+	// runtime-memory only, exactly the pre-#9580 contract.
+	ExperimentalComposerDraft bool `toml:"experimental_composer_draft"`
 	// ExperimentalUIDriver enables the task 233 batch-2 ui_interact tool:
 	// controlled UI driving (activate / click / type / key) for agent-run
 	// verification. Off by default (iron rule 2) — injecting input into

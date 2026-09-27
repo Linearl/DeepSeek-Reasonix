@@ -234,6 +234,7 @@ import { formatShortcutCombo, resolvedShortcutCombo, useGlobalShortcut } from ".
 import { useWarmTerminalPanel } from "./lib/useWarmTerminalPanel";
 import { topicShortcutIndexFromEvent, useTopicShortcuts, type TopicShortcutEntry } from "./lib/topicShortcuts";
 import { composerDraftKeyForTab } from "./lib/composerDraftKey";
+import { setComposerDraftPersistenceEnabled } from "./lib/composerDraftPersistence";
 import { continueDelivery } from "./lib/deliveryContinue";
 import { activateGoalAndSubmitOnTab } from "./lib/goalSubmit";
 import logoWordmark from "./assets/logo-wordmark.svg";
@@ -1149,7 +1150,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1171,6 +1172,9 @@ export default function App() {
       // Task 259: the todo sidebar is a boot snapshot — the flag read here is
       // the one this process runs with until the next restart.
       setTodoSidebarEnabled(Boolean(settings.experimentalTodoSidebar));
+      // Task 318.3: draft persistence gate — off (default) means no reads and
+      // no writes for the whole session; flips live on the settings refresh.
+      setComposerDraftPersistenceEnabled(Boolean(settings.experimentalComposerDraft));
       // Task 265/262 lab intake: the render-surface flags ride the same boot
       // snapshot (nil-means-on resolved server-side); the agent-side three are
       // consumed in Go and only feed the lab pane from the settings view.

@@ -839,6 +839,11 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 242: quota fallback switch + provider/model target.
   SetExperimentalFallbackModel(enabled: boolean): Promise<void>;
   SetFallbackModel(model: string): Promise<void>;
+  // Task 318: lab internal optimizations (three switches + cooldown minutes).
+  SetExperimentalHighSpeedModel(enabled: boolean): Promise<void>;
+  SetExperimentalProactiveCompact(enabled: boolean): Promise<void>;
+  SetProactiveCompactCooldownMinutes(minutes: number): Promise<void>;
+  SetExperimentalComposerDraft(enabled: boolean): Promise<void>;
   // Fork task 160: load older history by scrolling up at the transcript top (experimental).
   SetExperimentalAutoLoadOlder(enabled: boolean): Promise<void>;
   // Task 221: inbox drain merge tri-state (off | same_sender | all).
@@ -5153,6 +5158,10 @@ function makeMockApp(): AppBindings {
     async SetExperimentalCascadeApproval() {},
     async SetExperimentalFallbackModel() {},
     async SetFallbackModel() {},
+    async SetExperimentalHighSpeedModel() {},
+    async SetExperimentalProactiveCompact() {},
+    async SetProactiveCompactCooldownMinutes() {},
+    async SetExperimentalComposerDraft() {},
     async SetExperimentalAutoLoadOlder() {},
     async SetCollabInboxMerge() {},
     async SetCollabGuidanceMerge() {},

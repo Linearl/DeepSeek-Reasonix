@@ -860,9 +860,72 @@ func CascadeApprovalLive() bool {
 	return cfg.Agent.ExperimentalCascadeApproval
 }
 
+// ProactiveCompactCooldownLive is the package-level read for the fold-cooldown
+// policy (task 318.2). Returns 0 when the switch is off — callers treat 0 as
+// "use the hard-coded default" so the off path keeps today's 10-minute
+// behavior byte-for-byte. Loaded per fold request: the compress tool fires
+// orders of magnitude less often than a turn, so the read cost never rides
+// the hot path.
+func ProactiveCompactCooldownLive() int {
+	cfg, err := Load()
+	if err != nil || cfg == nil {
+		return 0
+	}
+	return cfg.ProactiveCompactCooldownMinutesLive()
+}
+
 // SetExperimentalFallbackModel toggles task 242 (iron rule 2: default off).
 func (c *Config) SetExperimentalFallbackModel(enabled bool) error {
 	c.Agent.ExperimentalFallbackModel = enabled
+	return nil
+}
+
+// SetExperimentalHighSpeedModel toggles the high-speed model lane (task 318.1,
+// iron rule 2: default off — off ignores the configured highSpeedModels list).
+func (c *Config) SetExperimentalHighSpeedModel(enabled bool) error {
+	c.Agent.ExperimentalHighSpeedModel = enabled
+	return nil
+}
+
+// SetExperimentalProactiveCompact toggles the configurable fold cooldown
+// (task 318.2, iron rule 2: default off — off keeps the hard-coded 10-minute
+// cooldown byte-for-byte).
+func (c *Config) SetExperimentalProactiveCompact(enabled bool) error {
+	c.Agent.ExperimentalProactiveCompact = enabled
+	return nil
+}
+
+// SetProactiveCompactCooldownMinutes stores the fold cooldown in minutes
+// (task 318.2). Zero/negative normalize to the historical 10 so an explicit
+// "on with default" and a fresh config share one behavior.
+func (c *Config) SetProactiveCompactCooldownMinutes(minutes int) error {
+	if minutes <= 0 {
+		minutes = 10
+	}
+	c.Agent.ProactiveCompactCooldownMinutes = minutes
+	return nil
+}
+
+// ProactiveCompactCooldownMinutesLive returns the effective fold cooldown in
+// minutes: the configured value when the switch is on (normalizing 0 to 10),
+// or 0 meaning "the hard-coded default applies" when off. Read per use so a
+// settings change applies without a restart (same live-read shape as
+// FallbackModelLive, task 242).
+func (c *Config) ProactiveCompactCooldownMinutesLive() int {
+	if c == nil || !c.Agent.ExperimentalProactiveCompact {
+		return 0
+	}
+	if c.Agent.ProactiveCompactCooldownMinutes <= 0 {
+		return 10
+	}
+	return c.Agent.ProactiveCompactCooldownMinutes
+}
+
+// SetExperimentalComposerDraft toggles cross-restart composer draft
+// persistence (task 318.3, iron rule 2: default off — off restores the
+// pre-#9580 runtime-memory-only drafts).
+func (c *Config) SetExperimentalComposerDraft(enabled bool) error {
+	c.Agent.ExperimentalComposerDraft = enabled
 	return nil
 }
 

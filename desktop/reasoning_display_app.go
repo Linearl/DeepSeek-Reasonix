@@ -27,9 +27,12 @@ func desktopStartupSettingsFromConfig(cfg *config.Config) DesktopStartupSettings
 		ReasoningDisplayModeExplicit: cfg.DesktopReasoningDisplayModeExplicit(), StatusBarStyle: cfg.DesktopStatusBarStyle(),
 		StatusBarItems: cfg.DesktopStatusBarItems(), CheckUpdates: cfg.DesktopCheckUpdates(),
 		UpdateChannel: cfg.DesktopUpdateChannel(), ConversationWidth: cfg.DesktopConversationWidth(),
-		Autopilot: cfg.Desktop.Autopilot,
+		Autopilot:                 cfg.Desktop.Autopilot,
 		ExperimentalAutoLoadOlder: cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
-		ConfigWarnings: cfg.LoadWarnings(), ConfigPath: config.UserConfigPath(),
+		// Task 318.3: the draft-persistence gate is read at startup so a
+		// restart with the switch off never rehydrates old drafts.
+		ExperimentalComposerDraft: cfg.Agent.ExperimentalComposerDraft,
+		ConfigWarnings:            cfg.LoadWarnings(), ConfigPath: config.UserConfigPath(),
 	}
 }
 

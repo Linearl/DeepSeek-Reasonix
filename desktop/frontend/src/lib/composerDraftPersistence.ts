@@ -78,7 +78,18 @@ function writeAll(drafts: PersistedDrafts): boolean {
   }
 }
 
+// Task 318.3: cross-restart persistence is opt-in (iron rule 2, default off —
+// off restores the pre-#9580 runtime-memory-only contract: no reads, no
+// writes; stored drafts merely stay untouched on disk for when it is
+// re-enabled).
+let persistenceEnabled = false;
+
+export function setComposerDraftPersistenceEnabled(enabled: boolean): void {
+  persistenceEnabled = enabled;
+}
+
 export function loadPersistedComposerDraft(draftKey: string): PersistedComposerDraft | null {
+  if (!persistenceEnabled) return null;
   if (!draftKey) return null;
   const draft = readAll()[draftKey];
   if (!draft || typeof draft !== "object") return null;
@@ -108,6 +119,7 @@ function normalize(draft: PersistedComposerDraft): PersistedComposerDraft {
 }
 
 export function persistComposerDraft(draftKey: string, draft: PersistedComposerDraft, immediate = false): void {
+  if (!persistenceEnabled) return;
   if (!draftKey) return;
   if (flushTimer !== null) {
     window.clearTimeout(flushTimer);

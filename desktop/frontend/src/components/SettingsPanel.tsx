@@ -1772,7 +1772,9 @@ function asSessionStorageMode(value: string | undefined): SessionStorageMode {
 
 type ExperimentFeatureId =
   | "restartUpdate"
-  | "sessionMonitor"
+  // Task 318.5: session + performance monitoring merge into one lab entry
+  // (the two underlying switches stay independent inside the page).
+  | "monitoring"
   | "sessionStorage"
   | "splitView"
   | "todoSidebar"
@@ -1782,7 +1784,6 @@ type ExperimentFeatureId =
   | "cacheTuning"
   | "traceAsState"
   | "dream"
-  | "perfMonitor"
   | "autoLoadOlder"
   | "sessionCollab"
   // Task 244 B1/B2/B3 (batch 1 of the MiMo-inspired experiment switches).
@@ -1798,6 +1799,8 @@ type ExperimentFeatureId =
   | "autopilot"
   // Task 265 lab intake (9 fork features) + task 262 quick commands.
   | "highSpeedModel"
+  // Task 318.2: configurable fold cooldown (storage group, task 297 family).
+  | "proactiveCompact"
   | "compactionParallel"
   | "contextBudget"
   | "researchBudget"
@@ -1832,6 +1835,10 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Task 184: the sampler interval is a number the user can edit; the config layer
   // clamps it, so the box can hold an intermediate value while typing.
   const [perfInterval, setPerfInterval] = useState<number>(s.perfMonitorIntervalSeconds ?? 5);
+  // Task 318.2: the fold-cooldown minutes only matter while the switch is on;
+  // the config layer normalizes 0 → 10, so the box may hold an intermediate
+  // value while typing.
+  const [proactiveCooldownMinutes, setProactiveCooldownMinutes] = useState<number>(s.proactiveCompactCooldownMinutes ?? 10);
   // Task 204: the cross-session chain ceiling is a number the user can edit; the
   // config layer clamps it, so the box may hold an intermediate value while typing.
   const [hopLimit, setHopLimit] = useState<number>(s.sessionCollabHopLimit ?? 5);
@@ -1897,8 +1904,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "messageMerge", group: "efficiency", label: t("settings.messageMerge"), on: (s.collabInboxMerge || "off") !== "off" || Boolean(s.collabGuidanceMerge) },
     { id: "localServer", group: "efficiency", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
     { id: "traceAsState", group: "efficiency", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
-    { id: "sessionMonitor", group: "debug", label: t("settings.sessionMonitor"), on: Boolean(s.experimentalSessionMonitor) },
-    { id: "perfMonitor", group: "debug", label: t("settings.perfMonitor"), on: Boolean(s.experimentalPerfMonitor) },
+    // Task 318.5: one lab entry for both monitors — the entry light is on when
+    // either switch is on; the page keeps two independent switches.
+    { id: "monitoring", group: "debug", label: t("settings.monitoring"), on: Boolean(s.experimentalSessionMonitor) || Boolean(s.experimentalPerfMonitor) },
     { id: "feedback", group: "debug", label: t("settings.feedback"), on: Boolean(s.experimentalFeedback) },
     { id: "restartUpdate", group: "debug", label: t("settings.restartUpdate"), on: Boolean(s.experimentalRestartUpdate) },
     { id: "splitView", group: "ui", label: t("settings.splitView"), on: Boolean(s.experimentalSplitView) },
@@ -1906,19 +1914,22 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "autoLoadOlder", group: "ui", label: t("settings.autoLoadOlder"), on: Boolean(s.experimentalAutoLoadOlder) },
     { id: "cacheTuning", group: "storage", label: t("settings.cacheTuning"), on: Boolean(s.experimentalCacheTuning) },
     { id: "sessionStorage", group: "storage", label: t("settings.sessionStorage"), on: (s.sessionStorage ?? "v3_only") !== "v3_only" },
+    // Task 318.2: configurable fold cooldown (task 297 cost family), storage group.
+    { id: "proactiveCompact", group: "storage", label: t("settings.proactiveCompact"), on: Boolean(s.experimentalProactiveCompact) },
     { id: "pathRules", group: "misc", label: t("settings.pathRules"), on: Boolean(s.experimentalPathRules) },
     // Task 265 lab intake: 9 fork features (efficiency 5 / ui 2 / debug 2).
-    // "on" for the two always-on entries reflects that they ship enabled; the
-    // other seven read their nil-means-on switches from the settings view.
-    { id: "highSpeedModel", group: "efficiency", label: t("settings.highSpeedModel"), on: true },
+    // Task 318.1: highSpeedModel's light reads the new switch (default off).
+    { id: "highSpeedModel", group: "efficiency", label: t("settings.highSpeedModel"), on: Boolean(s.experimentalHighSpeedModel) },
     { id: "compactionParallel", group: "efficiency", label: t("settings.compactionParallel"), on: Boolean(s.experimentalCompactionParallel) },
     { id: "contextBudget", group: "efficiency", label: t("settings.contextBudget"), on: Boolean(s.experimentalContextBudget) },
     { id: "researchBudget", group: "efficiency", label: t("settings.researchBudget"), on: Boolean(s.experimentalResearchBudget) },
-    { id: "draftPersistence", group: "ui", label: t("settings.draftPersistence"), on: true },
+    // Task 318.3: draft persistence light reads the new switch (default off).
+    { id: "draftPersistence", group: "ui", label: t("settings.draftPersistence"), on: Boolean(s.experimentalComposerDraft) },
     { id: "questionSearch", group: "ui", label: t("settings.questionSearch"), on: Boolean(s.experimentalQuestionSearch) },
     { id: "subagentPolicy", group: "efficiency", label: t("settings.subagentPolicy"), on: Boolean(s.experimentalSubagentPolicy) },
     { id: "subagentTps", group: "debug", label: t("settings.subagentTps"), on: Boolean(s.experimentalSubagentTps) },
-    { id: "completionSummary", group: "debug", label: t("settings.completionSummary"), on: Boolean(s.experimentalCompletionSummary) },
+    // Task 318.4: completion summary moves from debug to the ui group.
+    { id: "completionSummary", group: "ui", label: t("settings.completionSummary"), on: Boolean(s.experimentalCompletionSummary) },
     // Task 262: quick commands move here from the general page.
     { id: "quickCommands", group: "efficiency", label: t("settings.quickCommands"), on: Boolean(s.experimentalQuickCommands) },
     // Task 257: full access (yolo) lands in misc beside path rules — it is a
@@ -2096,7 +2107,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
               </SettingsOptions>
             </SettingsField>
           )}
-          {selected === "sessionMonitor" && (
+          {/* Task 318.5: one entry hosts both monitors. The two switches stay
+              fully independent — enabling one never flips the other. */}
+          {selected === "monitoring" && (
             <>
               <SettingsField label={t("settings.sessionMonitor")} hint={t("settings.sessionMonitorHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
@@ -2123,6 +2136,47 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   onClick={() => setSessionMonitorOpen(true)}
                 >
                   {t("settings.sessionMonitorOpenAction")}
+                </button>
+              </SettingsField>
+              <SettingsField label={t("settings.perfMonitor")} hint={t("settings.perfMonitorHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalPerfMonitor) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalPerfMonitor(on);
+                      })}
+                    >
+                      {t(on ? "settings.perfMonitorMode.on" : "settings.perfMonitorMode.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.perfMonitor.interval")} hint={t("settings.perfMonitor.intervalHint")} icon={<Sparkles size={18} />}>
+                <input
+                  type="number"
+                  min={1}
+                  max={300}
+                  value={perfInterval}
+                  disabled={busy}
+                  onChange={(event) => setPerfInterval(Number(event.target.value))}
+                  onBlur={() => void apply(async () => {
+                    await app.SetPerfMonitorIntervalSeconds(perfInterval);
+                  })}
+                />
+              </SettingsField>
+              <SettingsField label={t("settings.perfMonitor.heap")} hint={t("settings.perfMonitor.heapHint")} icon={<Sparkles size={18} />}>
+                <button
+                  type="button"
+                  className="btn btn--sm"
+                  disabled={busy}
+                  onClick={() => void apply(async () => {
+                    await app.SaveHeapProfile();
+                  })}
+                >
+                  {t("settings.perfMonitor.heapAction")}
                 </button>
               </SettingsField>
             </>
@@ -2427,51 +2481,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                 ))}
               </SettingsOptions>
             </SettingsField>
-          )}
-          {selected === "perfMonitor" && (
-            <>
-              <SettingsField label={t("settings.perfMonitor")} hint={t("settings.perfMonitorHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalPerfMonitor) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalPerfMonitor(on);
-                      })}
-                    >
-                      {t(on ? "settings.perfMonitorMode.on" : "settings.perfMonitorMode.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              <SettingsField label={t("settings.perfMonitor.interval")} hint={t("settings.perfMonitor.intervalHint")} icon={<Sparkles size={18} />}>
-                <input
-                  type="number"
-                  min={1}
-                  max={300}
-                  value={perfInterval}
-                  disabled={busy}
-                  onChange={(event) => setPerfInterval(Number(event.target.value))}
-                  onBlur={() => void apply(async () => {
-                    await app.SetPerfMonitorIntervalSeconds(perfInterval);
-                  })}
-                />
-              </SettingsField>
-              <SettingsField label={t("settings.perfMonitor.heap")} hint={t("settings.perfMonitor.heapHint")} icon={<Sparkles size={18} />}>
-                <button
-                  type="button"
-                  className="btn btn--sm"
-                  disabled={busy}
-                  onClick={() => void apply(async () => {
-                    await app.SaveHeapProfile();
-                  })}
-                >
-                  {t("settings.perfMonitor.heapAction")}
-                </button>
-              </SettingsField>
-            </>
           )}
           {selected === "dream" && (
             <>
@@ -2928,8 +2937,59 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
           {/* ── Task 265 lab intake: 9 fork features + task 262 quick commands ── */}
           {selected === "highSpeedModel" && (
             <SettingsField label={t("settings.highSpeedModel")} hint={t("settings.highSpeedModelLabHint")} icon={<Sparkles size={18} />}>
-              <span />
+              {/* Task 318.1: the lane arms from the next boot (boot-snapshot
+                  read in Go); the light above reflects the stored switch. */}
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalHighSpeedModel) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalHighSpeedModel(on);
+                    })}
+                  >
+                    {t(on ? "settings.highSpeedModel.on" : "settings.highSpeedModel.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
             </SettingsField>
+          )}
+          {selected === "proactiveCompact" && (
+            <>
+              <SettingsField label={t("settings.proactiveCompact")} hint={t("settings.proactiveCompactHint")} icon={<Sparkles size={18} />}>
+                {/* Task 318.2: off (default) keeps the hard-coded 10-minute
+                    fold cooldown byte-for-byte; on makes the minutes below
+                    authoritative (live read on the next fold). */}
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalProactiveCompact) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalProactiveCompact(on);
+                      })}
+                    >
+                      {t(on ? "settings.proactiveCompact.on" : "settings.proactiveCompact.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.proactiveCompact.cooldown")} hint={t("settings.proactiveCompact.cooldownHint")} icon={<Sparkles size={18} />}>
+                <input
+                  type="number"
+                  min={1}
+                  max={720}
+                  value={proactiveCooldownMinutes}
+                  disabled={busy || !Boolean(s.experimentalProactiveCompact)}
+                  onChange={(event) => setProactiveCooldownMinutes(Number(event.target.value))}
+                  onBlur={() => void apply(async () => {
+                    await app.SetProactiveCompactCooldownMinutes(proactiveCooldownMinutes);
+                  })}
+                />
+              </SettingsField>
+            </>
           )}
           {selected === "compactionParallel" && (
             <SettingsField label={t("settings.compactionParallel")} hint={t("settings.compactionParallelHint")} icon={<Sparkles size={18} />}>
@@ -3075,7 +3135,23 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
           )}
           {selected === "draftPersistence" && (
             <SettingsField label={t("settings.draftPersistence")} hint={t("settings.draftPersistenceHint")} icon={<Sparkles size={18} />}>
-              <span />
+              {/* Task 318.3: off (default) = runtime-memory-only drafts
+                  (pre-#9580 contract); the settings refresh feeds the live
+                  gate in composerDraftPersistence. */}
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalComposerDraft) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalComposerDraft(on);
+                    })}
+                  >
+                    {t(on ? "settings.draftPersistence.on" : "settings.draftPersistence.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
             </SettingsField>
           )}
           {selected === "questionSearch" && (

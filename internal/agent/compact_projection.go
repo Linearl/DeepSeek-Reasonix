@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"reasonix/internal/config"
 	"reasonix/internal/event"
 	"reasonix/internal/provider"
 	"reasonix/internal/tool"
@@ -36,6 +37,16 @@ const explicitCompressFloorRatio = 0.5
 // session inside its window, so it must always be able to fire.
 // var, not const: tests that exercise consecutive folds collapse the window.
 var minExplicitFoldInterval = 10 * time.Minute
+
+// foldCooldownInterval resolves the effective fold cooldown (task 318.2): the
+// configured minutes when experimental_proactive_compact is on (live read),
+// otherwise the hard-coded default — the off path is today's behavior.
+func foldCooldownInterval() time.Duration {
+	if minutes := config.ProactiveCompactCooldownLive(); minutes > 0 {
+		return time.Duration(minutes) * time.Minute
+	}
+	return minExplicitFoldInterval
+}
 
 // visibleContextTokens estimates what the visible transcript costs in prompt
 // tokens, using the same calibration the compaction path uses.
@@ -69,12 +80,16 @@ func (a *Agent) CompressContext(ctx context.Context, req tool.CompressRequest) (
 
 	// A fold rewrites the prompt prefix, so it costs the cache for every later
 	// turn: hold model-driven folds to one per interval (task 60, point 2).
+	// Task 318.2: with the experiment on, the configured cooldown minutes
+	// apply (live read, no restart); with it off — the default — the
+	// hard-coded interval below governs exactly as before.
 	if last := a.lastExplicitFoldAt.Load(); a.traceAsState && last != 0 {
-		if elapsed := time.Since(time.Unix(0, last)); elapsed < minExplicitFoldInterval {
-			wait := (minExplicitFoldInterval - elapsed).Round(time.Second)
+		interval := foldCooldownInterval()
+		if elapsed := time.Since(time.Unix(0, last)); elapsed < interval {
+			wait := (interval - elapsed).Round(time.Second)
 			return tool.CompressResult{
 				Status: "rejected",
-				Reason: fmt.Sprintf("a fold already ran %s ago; folding again within %s would keep invalidating the prompt cache, try again in about %s", elapsed.Round(time.Second), minExplicitFoldInterval, wait),
+				Reason: fmt.Sprintf("a fold already ran %s ago; folding again within %s would keep invalidating the prompt cache, try again in about %s", elapsed.Round(time.Second), interval, wait),
 			}, nil
 		}
 	}

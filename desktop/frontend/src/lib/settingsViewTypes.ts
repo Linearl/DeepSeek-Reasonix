@@ -92,6 +92,11 @@ export interface SettingsView {
   // Task 242: quota fallback switch + provider/model target.
   experimentalFallbackModel?: boolean;
   fallbackModel?: string;
+  // Task 318: lab internal optimizations (three switches default off).
+  experimentalHighSpeedModel?: boolean;
+  experimentalProactiveCompact?: boolean;
+  proactiveCompactCooldownMinutes?: number;
+  experimentalComposerDraft?: boolean;
   // Task 19: multi-session collaboration experiment.
   experimentalSessionCollab?: boolean;
   // Task 244 B1: heartbeat idle-streak burn guard.

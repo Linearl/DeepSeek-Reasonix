@@ -4,12 +4,17 @@ import {
   deletePersistedComposerDraft,
   loadPersistedComposerDraft,
   persistComposerDraft,
+  setComposerDraftPersistenceEnabled,
   type PersistedComposerDraft,
 } from "../lib/composerDraftPersistence";
 
 // jsdom provides localStorage
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost" });
 (globalThis as unknown as { localStorage: Storage }).localStorage = dom.window.localStorage;
+// Task 318.3: the module gate ships off (iron rule 2); the round-trip cases
+// below describe the ON state, so they enable it explicitly. The gate's own
+// off-state behavior is pinned at the bottom of this file.
+setComposerDraftPersistenceEnabled(true);
 
 let passed = 0;
 let failed = 0;
@@ -84,6 +89,18 @@ function main() {
   persistComposerDraft("key-c", sample({ text: "keep me" }), true);
   deletePersistedComposerDraft("key-c");
   ok(loadPersistedComposerDraft("key-c") === null, "deletePersistedComposerDraft clears the entry");
+
+  // Task 318.3: gate off (the shipped default) — no reads, no writes; the
+  // stored bytes merely stay on disk untouched.
+  setComposerDraftPersistenceEnabled(true);
+  persistComposerDraft("key-gate", sample({ text: "stored while on" }), true);
+  setComposerDraftPersistenceEnabled(false);
+  ok(loadPersistedComposerDraft("key-gate") === null, "gate off: load never rehydrates");
+  persistComposerDraft("key-gate", sample({ text: "ignored while off" }), true);
+  ok(loadPersistedComposerDraft("key-gate") === null, "gate off: persist writes nothing");
+  setComposerDraftPersistenceEnabled(true);
+  ok(loadPersistedComposerDraft("key-gate") !== null, "gate re-enabled: stored draft is readable again");
+  setComposerDraftPersistenceEnabled(false);
 
   dom.window.localStorage.clear();
   process.stdout.write(`\n${passed} passed, ${failed} failed\n`);

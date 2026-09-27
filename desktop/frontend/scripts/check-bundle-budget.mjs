@@ -430,7 +430,11 @@ for (const path of localeChunks) {
   // Merge batch (B9 stacked onto the merged tree): zh-TW measures 81.6 over
   // 81.5 — one-shot +0.5 to 82.0 (merge-batch precedent; zh 80.5 holds at the
   // line with zero headroom, watch the next landing).
-  const budget = name.startsWith("zh-TW-") ? 82.0 * 1024 : 80.5 * 1024;
+  // Task 318 (that next landing): zh measures 80.8 over the dead-even 80.5 —
+  // one-shot +0.5 to 81.0 per the ratchet rule (11 new locale keys x 3 dialects);
+  // zh-TW then measured dead-even at 82.0 (same Error semantics as the 474.1
+  // initial line) — one-shot +0.5 to 82.5.
+  const budget = name.startsWith("zh-TW-") ? 82.5 * 1024 : 81.0 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
@@ -540,7 +544,8 @@ const rawInitialBytes = [...initialJS, ...initialCSS, ...appShellCSS]
 // Task 265: the 37-key lab intake landed raw at exactly the old 2540.0 ceiling; one-shot +10 KiB (user 2026-09-20 rule).
 // Task 316: one-shot +10 KiB again (2550.6 measured, ratchet rule — no drip).
 // Task 231 (managed-path pre-approval): the settings card + 27 locale keys measured 2550.3, tripping the 2550.0 line; one-shot +10 KiB per the raw-step rule.
-const rawInitialBudgetKiB = 2_560.0; // fork: ratchet step +10 KiB (user 2026-09-20, one-shot rule); task 254 measured 2530.1 (autonomous-update pane + resume dial + locales 210/153/221/173)
+// Task 318 (lab internals five): three switches + merge/regroup pages + 11 locale keys x 3 measured 2560.6 over the 2560.0 line — one-shot +10 KiB per the raw-step rule.
+const rawInitialBudgetKiB = 2_570.0; // fork: ratchet step +10 KiB (user 2026-09-20, one-shot rule); task 254 measured 2530.1 (autonomous-update pane + resume dial + locales 210/153/221/173)
 // [fork note] the smallest one-decimal ratchet. Bumped to 2_461.0 for the serve pool
 assertBudget("initial raw JavaScript and CSS", rawInitialBytes, rawInitialBudgetKiB * 1024);
 // [fork note] 2026-09-15: measured 1102.2 KiB raw - same pre-existing growth as the

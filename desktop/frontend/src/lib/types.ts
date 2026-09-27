@@ -2396,6 +2396,11 @@ export interface DesktopStartupSettingsView {
   // Task 242: quota fallback switch + provider/model target.
   experimentalFallbackModel?: boolean;
   fallbackModel?: string;
+  // Task 318: lab internal optimizations (three switches default off).
+  experimentalHighSpeedModel?: boolean;
+  experimentalProactiveCompact?: boolean;
+  proactiveCompactCooldownMinutes?: number;
+  experimentalComposerDraft?: boolean;
   bot: BotSettingsView;
   desktopLanguage: string; // "" | "en" | "zh"; empty = auto
   desktopLayoutStyle: string; // "classic" | "workbench"

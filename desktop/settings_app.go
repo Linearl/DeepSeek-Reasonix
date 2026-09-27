@@ -409,6 +409,11 @@ type SettingsView struct {
 	// Task 242: fallback model switch + target (model-preference companion).
 	ExperimentalFallbackModel bool   `json:"experimentalFallbackModel"`
 	FallbackModel             string `json:"fallbackModel"`
+	// Task 318: lab internal optimizations (three switches default off).
+	ExperimentalHighSpeedModel      bool `json:"experimentalHighSpeedModel"`
+	ExperimentalProactiveCompact    bool `json:"experimentalProactiveCompact"`
+	ProactiveCompactCooldownMinutes int  `json:"proactiveCompactCooldownMinutes"`
+	ExperimentalComposerDraft       bool `json:"experimentalComposerDraft"`
 
 	VisionModel                  string                     `json:"visionModel"`
 	WebSearchModel               string                     `json:"webSearchModel"`
@@ -568,6 +573,11 @@ type DesktopStartupSettingsView struct {
 	// Task 242: fallback model switch + target.
 	ExperimentalFallbackModel bool   `json:"experimentalFallbackModel"`
 	FallbackModel             string `json:"fallbackModel"`
+	// Task 318: lab internal optimizations (three switches default off).
+	ExperimentalHighSpeedModel      bool `json:"experimentalHighSpeedModel"`
+	ExperimentalProactiveCompact    bool `json:"experimentalProactiveCompact"`
+	ProactiveCompactCooldownMinutes int  `json:"proactiveCompactCooldownMinutes"`
+	ExperimentalComposerDraft       bool `json:"experimentalComposerDraft"`
 	// ExperimentalLocalServer exposes the Settings → 本地服务 page (task 130).
 	ExperimentalLocalServer bool `json:"experimentalLocalServer"`
 	// ExperimentalPathRules enables structured path-scope evaluation (task 134).
@@ -1400,21 +1410,26 @@ func (a *App) Settings() SettingsView {
 		// Task 242: fallback model switch + provider/model target.
 		ExperimentalFallbackModel: cfg.Agent.ExperimentalFallbackModel,
 		FallbackModel:             cfg.Agent.FallbackModel,
-		ExperimentalLocalServer:   cfg.Desktop.ExperimentalLocalServer,
-		ExperimentalPathRules:     cfg.Desktop.ExperimentalPathRules,
-		MaxCachedTabs:             cfg.Desktop.MaxCachedTabs,
-		HistoryBodyBudgetMb:       cfg.Desktop.HistoryBodyBudgetMb,
-		MarkdownBudgetMb:          cfg.Desktop.MarkdownBudgetMb,
-		ExperimentalCacheTuning:   cfg.Desktop.ExperimentalCacheTuning,
-		VisionModel:               cfg.Agent.VisionModel,
-		WebSearchModel:            cfg.Agent.WebSearchModel,
-		WebSearchModels:           []string{},
-		SubagentModel:             cfg.Agent.SubagentModel,
-		SubagentEffort:            cfg.Agent.SubagentEffort,
-		AutoPlan:                  "off", // deprecated JSON compatibility for older frontends
-		Providers:                 []ProviderView{},
-		OfficialProviders:         []ProviderView{},
-		ProviderPresets:           []ProviderPresetView{},
+		// Task 318: lab internal optimizations (three switches default off).
+		ExperimentalHighSpeedModel:      cfg.Agent.ExperimentalHighSpeedModel,
+		ExperimentalProactiveCompact:    cfg.Agent.ExperimentalProactiveCompact,
+		ProactiveCompactCooldownMinutes: cfg.Agent.ProactiveCompactCooldownMinutes,
+		ExperimentalComposerDraft:       cfg.Agent.ExperimentalComposerDraft,
+		ExperimentalLocalServer:         cfg.Desktop.ExperimentalLocalServer,
+		ExperimentalPathRules:           cfg.Desktop.ExperimentalPathRules,
+		MaxCachedTabs:                   cfg.Desktop.MaxCachedTabs,
+		HistoryBodyBudgetMb:             cfg.Desktop.HistoryBodyBudgetMb,
+		MarkdownBudgetMb:                cfg.Desktop.MarkdownBudgetMb,
+		ExperimentalCacheTuning:         cfg.Desktop.ExperimentalCacheTuning,
+		VisionModel:                     cfg.Agent.VisionModel,
+		WebSearchModel:                  cfg.Agent.WebSearchModel,
+		WebSearchModels:                 []string{},
+		SubagentModel:                   cfg.Agent.SubagentModel,
+		SubagentEffort:                  cfg.Agent.SubagentEffort,
+		AutoPlan:                        "off", // deprecated JSON compatibility for older frontends
+		Providers:                       []ProviderView{},
+		OfficialProviders:               []ProviderView{},
+		ProviderPresets:                 []ProviderPresetView{},
 		Permissions: PermissionsView{
 			Mode:  orDefault(cfg.Permissions.Mode, "ask"),
 			Allow: nonNil(cfg.Permissions.Allow),

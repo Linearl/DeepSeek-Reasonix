@@ -1905,13 +1905,17 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		Pricing:                    entry.Price,
 		QuoteContext:               quoteCtx,
 		ModelRef:                   modelRef,
-		HighSpeedModels:            entry.HighSpeedModels,
-		CompactionParallel:         cfg.CompactionParallelEnabled(),
-		ContextBudget:              cfg.ContextBudgetEnabled(),
-		ResearchBudget:             cfg.ResearchBudgetEnabled(),
-		Gate:                       headlessGate,
-		Hooks:                      hookRunner,
-		Jobs:                       jm,
+		// Task 318.1: the high-speed lane only arms when the experiment is on
+		// (iron rule 2, default off — the configured list is ignored otherwise).
+		// Boot-time read: flipping the setting applies from the next start,
+		// same contract as the other boot-snapshot options here.
+		HighSpeedModels:    highSpeedModelsFromConfig(cfg, entry.HighSpeedModels),
+		CompactionParallel: cfg.CompactionParallelEnabled(),
+		ContextBudget:      cfg.ContextBudgetEnabled(),
+		ResearchBudget:     cfg.ResearchBudgetEnabled(),
+		Gate:               headlessGate,
+		Hooks:              hookRunner,
+		Jobs:               jm,
 		// Parent write reservation at the executor entry covers all writers
 		// (including late Economy/MCP adds) without wrapping tool schemas.
 		WriteScheduler:               subagentScheduler,
@@ -3395,6 +3399,17 @@ func collabDisabledSkillNames(cfg *config.Config) []string {
 // toolset while Settings still showed the experiment as enabled.
 func sessionCollabEnabled(cfg *config.Config) bool {
 	return cfg != nil && (cfg.Agent.ExperimentalSessionCollab || cfg.Desktop.ExperimentalSessionCollab)
+}
+
+// highSpeedModelsFromConfig arms the high-speed model lane only when the
+// experiment is on (task 318.1). Off — the default — ignores the configured
+// list entirely, so exec-speed injection stays dormant no matter what the
+// provider entry declares.
+func highSpeedModelsFromConfig(cfg *config.Config, models []string) []string {
+	if cfg == nil || !cfg.Agent.ExperimentalHighSpeedModel {
+		return nil
+	}
+	return models
 }
 
 // sessionCollabIndexBlock is the system-prompt section that teaches the model

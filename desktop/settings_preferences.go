@@ -286,6 +286,30 @@ func (a *App) SetExperimentalCompactionParallel(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCompactionParallel(enabled) })
 }
 
+// SetExperimentalHighSpeedModel toggles the high-speed model lane (task 318.1,
+// iron rule 2: default off; applies from the next boot — boot-snapshot read).
+func (a *App) SetExperimentalHighSpeedModel(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalHighSpeedModel(enabled) })
+}
+
+// SetExperimentalProactiveCompact toggles the configurable fold cooldown
+// (task 318.2; live-read on the next fold, no restart).
+func (a *App) SetExperimentalProactiveCompact(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalProactiveCompact(enabled) })
+}
+
+// SetProactiveCompactCooldownMinutes stores the fold cooldown in minutes
+// (task 318.2; 0/negative normalize to 10).
+func (a *App) SetProactiveCompactCooldownMinutes(minutes int) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetProactiveCompactCooldownMinutes(minutes) })
+}
+
+// SetExperimentalComposerDraft toggles cross-restart composer draft
+// persistence (task 318.3; the frontend live-reads this on settings change).
+func (a *App) SetExperimentalComposerDraft(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalComposerDraft(enabled) })
+}
+
 // SetExperimentalContextBudget toggles the per-turn context-state line (265).
 func (a *App) SetExperimentalContextBudget(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalContextBudget(enabled) })
