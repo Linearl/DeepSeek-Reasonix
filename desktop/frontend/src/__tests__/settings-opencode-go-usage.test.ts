@@ -27,6 +27,7 @@ function ok(condition: unknown, label: string) {
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const panel = readFileSync(join(root, "components/SettingsPanel.tsx"), "utf8").replace(/\n\s*/g, " ");
 const card = readFileSync(join(root, "components/SettingsOpenCodeGoUsageCard.tsx"), "utf8").replace(/\n\s*/g, " ");
+const styles = readFileSync(join(root, "styles.css"), "utf8");
 const bridge = readFileSync(join(root, "lib/bridge.ts"), "utf8");
 const en = readFileSync(join(root, "locales/en.ts"), "utf8");
 const zh = readFileSync(join(root, "locales/zh.ts"), "utf8");
@@ -119,12 +120,26 @@ ok(/設定\s*→\s*模型服務\s*→\s*OpenCode Go/.test(noKeyLine(zhTW)) && no
 ok(/Settings → Model services → OpenCode Go/.test(noKeyLine(en)) && noKeyLine(en).includes("OPENCODE_GO_API_KEY"),
   "en no-key note carries the same guidance");
 
+// ── task 337 layout fix: single column, status always below the switch ─────
+// The two-column settings-field grid parked the switch and status copy in
+// the card's top-right corner (user 0927 evening). The field collapses to
+// one column, and the card body structurally follows the switch.
+ok(card.includes('className="settings-field--opencode-usage"'),
+  "the usage field opts into the single-column layout class");
+const segAt = card.indexOf("<SettingsOptions");
+const cardBodyAt = card.indexOf('data-testid="opencode-go-usage-card"');
+ok(segAt >= 0 && cardBodyAt > segAt,
+  "the switch renders before the card body — status copy always follows it downward");
+ok(styles.includes(".settings-field.settings-field--opencode-usage")
+  && styles.includes("grid-template-columns: minmax(0, 1fr)"),
+  "the single-column rule outranks the later two-column component CSS (doubled class)");
+
 function eqCountdown(iso: string, expected: string, label: string) {
   const actual = resetCountdown(iso, now);
   if (actual === expected) ok(true, `countdown: ${label}`);
   else ok(false, `countdown: ${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
 }
 
-assert.ok(passed >= 62, `expected at least 62 checks (59 prior + 3 no-key guidance), got ${passed}`);
+assert.ok(passed >= 65, `expected at least 65 checks (62 prior + 3 layout), got ${passed}`);
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

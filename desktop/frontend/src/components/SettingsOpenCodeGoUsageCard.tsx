@@ -81,7 +81,12 @@ export function SettingsOpenCodeGoUsageCard({
   const noteText = usage ? usageNoteText(usage.note, t) : "";
 
   return (
-    <SettingsField label={t("settings.opencodeGoUsage")} hint={t("settings.opencodeGoUsageHint")} icon={<Activity size={18} />}>
+    <SettingsField
+      label={t("settings.opencodeGoUsage")}
+      hint={t("settings.opencodeGoUsageHint")}
+      icon={<Activity size={18} />}
+      className="settings-field--opencode-usage"
+    >
       <SettingsOptions layout="field" className="set-seg">
         {[false, true].map((on) => (
           <button

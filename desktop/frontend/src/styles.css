@@ -19032,6 +19032,19 @@ body > .mermaid-diagram--fullscreen {
 .set-preapprove__row input {
   accent-color: var(--accent);
 }
+/* Task 337 layout fix (user 0927 evening): the two-column settings-field
+   grid squeezed the switch and the status copy into the card's top-right
+   corner. Collapse this one field to a single column so the card reads
+   top-down: icon + title -> description -> switch -> status / three-window
+   data. Structure and CSS only — zero behavior change. The doubled class
+   raises specificity above SettingsPanel.css's
+   :where(.settings-center .settings-page[data-layout]) .settings-field
+   two-column rule, which loads later as component CSS. */
+.settings-field.settings-field--opencode-usage {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
 /* Task 163: the OpenCode Go usage rows under the detail switch — three
    window lines (label · percent · reset countdown) plus a refresh action
    and the degradation note (tokens only). */
