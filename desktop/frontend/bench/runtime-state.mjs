@@ -11,7 +11,9 @@ const { chromium } = await import("playwright");
 const server = await createServer({ root, logLevel: "error", server: { host: "127.0.0.1", port: 4668, strictPort: true } });
 await server.listen();
 const browser = await chromium.launch({ headless: true });
-const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+// Pin the locale like app-browser does (335 root cause C): Chromium otherwise
+// follows the host zh-CN and English aria-label assertions never match.
+const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, locale: "en-US" });
 const errors = [];
 page.on("pageerror", error => errors.push(error.message));
 const check = (yes, message) => { if (!yes) throw new Error(message); console.log("PASS " + message); };

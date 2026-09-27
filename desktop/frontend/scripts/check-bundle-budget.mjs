@@ -545,6 +545,7 @@ const rawInitialBytes = [...initialJS, ...initialCSS, ...appShellCSS]
 // Task 316: one-shot +10 KiB again (2550.6 measured, ratchet rule — no drip).
 // Task 231 (managed-path pre-approval): the settings card + 27 locale keys measured 2550.3, tripping the 2550.0 line; one-shot +10 KiB per the raw-step rule.
 // Task 318 (lab internals five): three switches + merge/regroup pages + 11 locale keys x 3 measured 2560.6 over the 2560.0 line — one-shot +10 KiB per the raw-step rule.
+// B3 remote fix (App tree remote-project navigation branch + RemoteNavigationContext Provider + Composer inbox props): measured 2560.5, tripping the 2560.0 line; one-shot +10 KiB per the ratchet rule (same gate as 318 — one shared 2570 value, no double).
 const rawInitialBudgetKiB = 2_570.0; // fork: ratchet step +10 KiB (user 2026-09-20, one-shot rule); task 254 measured 2530.1 (autonomous-update pane + resume dial + locales 210/153/221/173)
 // [fork note] the smallest one-decimal ratchet. Bumped to 2_461.0 for the serve pool
 assertBudget("initial raw JavaScript and CSS", rawInitialBytes, rawInitialBudgetKiB * 1024);
