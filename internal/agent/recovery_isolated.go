@@ -123,7 +123,7 @@ func writeRecoveryEventLog(path string, msgs []provider.Message, digest [sha256.
 	// the loader must not fall back to an older checkpoint and hide the newer
 	// turns the log holds.
 	if _, contentBytes, err := digestAndSizeSessionMessages(msgs); err == nil &&
-		sessionEventLogOversized(sessionEventLogSize(path), contentBytes) {
+		sessionEventLogOversized(path, sessionEventLogSize(path), contentBytes) {
 		return compactSessionEventLog(path, msgs, digest, baseRevision, "recovery")
 	}
 	return appendSessionReplaceEvent(path, msgs, digest, baseRevision, "recovery")

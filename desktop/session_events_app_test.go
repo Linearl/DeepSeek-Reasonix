@@ -122,14 +122,16 @@ func TestCompactSessionEventsBusyReportsSkipped(t *testing.T) {
 
 	app := &App{ctx: context.Background()}
 	res, compactErr := app.CompactSessionEvents(path)
-	if compactErr == nil {
-		t.Fatal("compact on a busy session must fail with the lease error")
+	if compactErr != nil {
+		// The per-row result must reach Wails: a non-nil error would discard
+		// (res, err) and hide the skipped state from the UI (review finding).
+		t.Fatalf("busy must report through the result, not a rejected pair: %v", compactErr)
 	}
 	if !res.Skipped {
 		t.Fatalf("busy result must be marked skipped: %+v", res)
 	}
-	if !strings.Contains(compactErr.Error(), "not idle") {
-		t.Fatalf("lease error must stay readable, got %q", compactErr.Error())
+	if !strings.Contains(res.Error, "not idle") {
+		t.Fatalf("lease reason must stay readable in res.Error, got %q", res.Error)
 	}
 }
 

@@ -355,16 +355,18 @@ func sessionEventIndexNearCap(sessionPath string) bool {
 
 // sessionEventLogOversized reports whether the automatic gate should rotate
 // the event log. The task-333 rotation mode decides the judgment: "off" never
-// rotates and leaves a greppable WARN when the log is over the built-in
-// limit, "manual" (default) keeps today's built-in factor judgment exactly,
-// and "auto" applies the configured factor plus the optional MiB cap (OR).
-func sessionEventLogOversized(logSize, contentBytes int64) bool {
+// rotates and leaves a greppable per-session WARN when the log is over the
+// built-in limit, "manual" (default) keeps today's built-in factor judgment
+// exactly, and "auto" applies the configured factor plus the optional MiB cap
+// (OR). path is only attributed in the off-mode WARN so the skip is
+// diagnosable per session (review finding, 2026-09-28).
+func sessionEventLogOversized(path string, logSize, contentBytes int64) bool {
 	cfg := currentEventsRotation()
 	switch cfg.mode {
 	case eventsRotationOff:
 		if eventsLogAboveFactor(logSize, contentBytes, float64(sessionEventLogCompactFactor)) {
 			slog.Warn("session: oversized event log left in place (events auto rotation off)",
-				"logSize", logSize, "contentBytes", contentBytes)
+				"path", path, "logSize", logSize, "contentBytes", contentBytes)
 		}
 		return false
 	case eventsRotationAuto:

@@ -18,6 +18,12 @@ func legacyOversized(logSize, contentBytes int64) bool {
 	return logSize > limit
 }
 
+// gateJudges calls the mode-aware gate with a stable attributed path (the
+// off-mode WARN carries it, review finding 2026-09-28).
+func gateJudges(log, content int64) bool {
+	return sessionEventLogOversized("test.events.jsonl", log, content)
+}
+
 // resetEventsRotation restores the zero-value default for the next test.
 func resetEventsRotation(t *testing.T) {
 	t.Helper()
@@ -40,21 +46,22 @@ func TestEventsRotationDefaultMatchesLegacy(t *testing.T) {
 		{1 << 30, 100 << 20},
 	}
 	for _, tc := range cases {
-		if got, want := sessionEventLogOversized(tc.log, tc.content), legacyOversized(tc.log, tc.content); got != want {
+		if got, want := gateJudges(tc.log, tc.content), legacyOversized(tc.log, tc.content); got != want {
 			t.Fatalf("default gate(%d, %d) = %v, want legacy %v", tc.log, tc.content, got, want)
 		}
 	}
 	// Explicit manual push behaves the same (config default = manual).
 	SetEventsAutoRotation("manual", 4, 0)
 	for _, tc := range cases {
-		if got, want := sessionEventLogOversized(tc.log, tc.content), legacyOversized(tc.log, tc.content); got != want {
+		if got, want := gateJudges(tc.log, tc.content), legacyOversized(tc.log, tc.content); got != want {
 			t.Fatalf("manual gate(%d, %d) = %v, want legacy %v", tc.log, tc.content, got, want)
 		}
 	}
 }
 
 // TestEventsRotationOffSkipsGateAndWarns pins acceptance c1 (off): an
-// oversized log is never rotated and the skip is greppable in the log.
+// oversized log is never rotated, the skip is greppable, and the WARN names
+// the session path so the message is attributable per review finding.
 func TestEventsRotationOffSkipsGateAndWarns(t *testing.T) {
 	resetEventsRotation(t)
 	var buf bytes.Buffer
@@ -63,15 +70,19 @@ func TestEventsRotationOffSkipsGateAndWarns(t *testing.T) {
 	defer slog.SetDefault(prev)
 
 	SetEventsAutoRotation("off", 4, 0)
-	if sessionEventLogOversized((4<<20)+1, 1<<20) {
+	if gateJudges((4<<20)+1, 1<<20) {
 		t.Fatal("off mode must skip the oversized gate")
 	}
-	if !strings.Contains(buf.String(), "left in place (events auto rotation off)") {
-		t.Fatalf("off-mode skip must leave a greppable WARN, log=%q", buf.String())
+	warn := buf.String()
+	if !strings.Contains(warn, "left in place (events auto rotation off)") {
+		t.Fatalf("off-mode skip must leave a greppable WARN, log=%q", warn)
+	}
+	if !strings.Contains(warn, "path=test.events.jsonl") {
+		t.Fatalf("off-mode WARN must attribute the session path, log=%q", warn)
 	}
 	// A log under the limit must not warn (the WARN marks real overflow only).
 	buf.Reset()
-	if sessionEventLogOversized(1<<10, 1<<20) {
+	if gateJudges(1<<10, 1<<20) {
 		t.Fatal("under-limit log must not be oversized")
 	}
 	if buf.Len() != 0 {
@@ -89,14 +100,14 @@ func TestEventsRotationAutoThresholds(t *testing.T) {
 
 	// Factor 2: over-2x rotates, the same log did not rotate under manual 4x.
 	SetEventsAutoRotation("manual", 4, 0)
-	if sessionEventLogOversized(over2x, content) {
+	if gateJudges(over2x, content) {
 		t.Fatal("manual 4x must not rotate at 2x+1")
 	}
 	SetEventsAutoRotation("auto", 2, 0) // immediate effect: next judgment flips
-	if !sessionEventLogOversized(over2x, content) {
+	if !gateJudges(over2x, content) {
 		t.Fatal("auto factor 2 must rotate at 2x+1")
 	}
-	if sessionEventLogOversized(2<<20, content) {
+	if gateJudges(2<<20, content) {
 		t.Fatal("auto factor 2 must not rotate exactly at 2x")
 	}
 
@@ -104,25 +115,27 @@ func TestEventsRotationAutoThresholds(t *testing.T) {
 	// 16x factor 3.1 MiB of headroom, so only the 1 MiB cap can rotate the
 	// 1.5 MiB log — thresholds OR together.
 	SetEventsAutoRotation("auto", 16, 1)
-	if !sessionEventLogOversized(3<<19, 200<<10) { // 1.5 MiB log
+	if !gateJudges(3<<19, 200<<10) { // 1.5 MiB log
 		t.Fatal("auto cap 1 MiB must rotate a 1.5 MiB log (thresholds OR)")
 	}
-	if sessionEventLogOversized(900<<10, 200<<10) { // 900 KiB: under the cap
+	if gateJudges(900<<10, 200<<10) { // 900 KiB: under the cap
 		t.Fatal("auto cap 1 MiB must not rotate below the cap")
 	}
 
 	// Pushing thresholds back re-judges immediately.
 	SetEventsAutoRotation("manual", 4, 0)
-	if sessionEventLogOversized(over4x, content) {
+	if gateJudges(over4x, content) {
 		t.Fatal("exactly 4x must not rotate under manual")
 	}
-	if sessionEventLogOversized(over4x+1, content) != legacyOversized(over4x+1, content) {
+	if gateJudges(over4x+1, content) != legacyOversized(over4x+1, content) {
 		t.Fatal("return to manual must restore the legacy judgment")
 	}
 }
 
 // TestEventsRotationSetterClamps pins the backstop semantics: bad inputs land
-// on the safe default instead of being rejected silently mid-flight.
+// on the safe default instead of being rejected silently mid-flight. The cap
+// clamp keeps capMB<<20 inside int64 — an unbounded cap would wrap the shift
+// negative and mark every log over (review finding, 2026-09-28).
 func TestEventsRotationSetterClamps(t *testing.T) {
 	resetEventsRotation(t)
 	SetEventsAutoRotation("weird", 99, -5)
@@ -139,5 +152,21 @@ func TestEventsRotationSetterClamps(t *testing.T) {
 	SetEventsAutoRotation("auto", 1, 0)
 	if cfg := currentEventsRotation(); cfg.factor != 2 {
 		t.Fatalf("factor clamped up to %v, want 2", cfg.factor)
+	}
+	SetEventsAutoRotation("auto", 4, 1<<40) // way past the bound
+	if cfg := currentEventsRotation(); cfg.capMB != eventsRotationCapMBMax {
+		t.Fatalf("oversized cap clamped to %d, want %d", cfg.capMB, eventsRotationCapMBMax)
+	}
+}
+
+// TestEventsLogAboveThresholdClampsRawCap: the exported judgment is reachable
+// with caller-supplied values, so its own clamp is what keeps an absurd cap
+// from overflowing the shift and marking a tiny log over the threshold.
+func TestEventsLogAboveThresholdClampsRawCap(t *testing.T) {
+	if EventsLogAboveThreshold(1<<10, 1<<20, 4, 1<<40) {
+		t.Fatal("raw cap beyond the bound must clamp, not overflow into always-true")
+	}
+	if !EventsLogAboveThreshold((2<<20)+1, 1<<20, 2, 0) {
+		t.Fatal("factor threshold must still fire through the exported judgment")
 	}
 }

@@ -12,6 +12,8 @@ const viewTypes = readFileSync(resolve(testDir, "../lib/settingsViewTypes.ts"), 
 const backend = readFileSync(resolve(testDir, "../../../session_events_app.go"), "utf8");
 const prefs = readFileSync(resolve(testDir, "../../../settings_preferences.go"), "utf8");
 const appGo = readFileSync(resolve(testDir, "../../../app.go"), "utf8");
+const gateEvents = readFileSync(resolve(testDir, "../../../../internal/agent/session_events.go"), "utf8");
+const rotationConfig = readFileSync(resolve(testDir, "../../../../internal/config/events_rotation.go"), "utf8");
 const locales = ["zh.ts", "zh-TW.ts", "en.ts"].map((name) => readFileSync(resolve(testDir, `../locales/${name}`), "utf8"));
 
 let passed = 0;
@@ -63,7 +65,13 @@ ok(appGo.includes("agent.SetEventsAutoRotation(") && appGo.includes("Task 333: f
 ok(backend.includes("agent.CompactSessionFile("), "Compact API wraps the production engine entry");
 ok(backend.includes("func (a *App) CompactAllSessionEvents(maxRounds int)") && backend.includes("maxRounds > 3"), "Batch repair runs a bounded multi-round loop (max 3)");
 ok(backend.includes("agent.EventsLogAboveThreshold("), "Inventory over-limit marks share the gate's judgment source");
-ok(backend.includes(`strings.Contains(err.Error(), "not idle")`), "Busy sessions are reported as skipped, not silent");
+// Review round (2026-09-28) contracts:
+ok(backend.includes("isSessionNotIdle(err)") && backend.includes("agent.SessionLeaseError"), "Busy skip uses the typed lease error, not a string match");
+ok(backend.includes("return res, nil") && !backend.includes("return res, err"), "Per-row compact resolves with the result so Wails cannot discard skipped/error state");
+ok(gateEvents.includes(`"path", path`) && gateEvents.includes("sessionEventLogOversized(path string"), "Off-mode WARN attributes the session path");
+ok(rotationConfig.includes("EventsRotationCapMBMax") && rotationConfig.includes("capMB > EventsRotationCapMBMax"), "Cap is upper-bounded in config (capMB<<20 must not overflow)");
+ok(panel.includes("max={1073741824}"), "Cap input mirrors the backend bound");
+ok(prefs.includes("events rotation settings push skipped") && appGo.includes("events rotation gate not push"), "Failed gate pushes are logged, not silent");
 
 // Panel behavior markers.
 ok(panel.includes('const ROTATION_MODES = ["off", "manual", "auto"] as const'), "Panel offers the three-way gate");

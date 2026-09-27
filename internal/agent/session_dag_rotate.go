@@ -69,7 +69,7 @@ func sessionDAGLogOversized(st *sessionDAGState) bool {
 			live += size
 		}
 	}
-	return sessionEventLogOversized(st.size, live)
+	return sessionEventLogOversized(st.path, st.size, live)
 }
 
 // rotateSessionDAG atomically replaces the log with the next generation: live

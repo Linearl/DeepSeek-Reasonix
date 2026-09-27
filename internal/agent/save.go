@@ -461,7 +461,7 @@ func (s *Session) saveLocked(path string, mode sessionSaveMode) error {
 		if err := compactSessionEventLog(path, msgs, digest, baseRevision, reason); err != nil {
 			return err
 		}
-	case repairLog, sessionEventLogOversized(logSize, contentBytes):
+	case repairLog, sessionEventLogOversized(path, logSize, contentBytes):
 		if err := compactSessionEventLog(path, msgs, digest, baseRevision, reason); err != nil {
 			return err
 		}

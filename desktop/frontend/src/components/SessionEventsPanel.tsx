@@ -56,10 +56,16 @@ export function SessionEventsPanel({ mode, busy, apply }: { mode: RotationMode; 
   }, [refresh]);
 
   useEffect(() => {
+    // Sync only when the server values themselves change: keying on the
+    // inventory object would rewrite the inputs on every refresh (including
+    // after a repair), clobbering in-progress typing (review finding).
+    if (factor === String(inventory?.factor ?? 4) && capMB === String(inventory?.capMB ?? 0)) return;
     if (!inventory) return;
     setFactor(String(inventory.factor));
     setCapMB(String(inventory.capMB));
-  }, [inventory]);
+    // Only re-sync while the user is not editing (auto mode inputs are unmounted otherwise).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inventory?.factor, inventory?.capMB]);
 
   const overEntries = (inventory?.entries ?? []).filter((entry) => entry.overLimit);
   const topThree = overEntries.slice(0, 3);
@@ -67,11 +73,13 @@ export function SessionEventsPanel({ mode, busy, apply }: { mode: RotationMode; 
   const compactOne = (path: string) =>
     void apply(async () => {
       try {
+        // The backend resolves busy/failures into the result itself (it never
+        // rejects with a partial result, which Wails would discard), so the
+        // row renders skipped/error/done from res; the catch below only covers
+        // a transport-level rejection.
         const res = await app.CompactSessionEvents(path);
         setResults((prev) => [res, ...prev].slice(0, 20));
       } catch (err) {
-        // The bridge surfaces lease-busy and I/O failures as rejections with the
-        // backend message; show it in the result list instead of swallowing.
         setResults((prev) =>
           [{ path, name: "", round: 1, before: 0, after: 0, freed: 0, elapsedMs: 0, skipped: false, error: String(err) }, ...prev].slice(0, 20),
         );
@@ -116,6 +124,7 @@ export function SessionEventsPanel({ mode, busy, apply }: { mode: RotationMode; 
               className="mem-input events-rotation-panel__num"
               type="number"
               min={0}
+              max={1073741824}
               step={1}
               value={capMB}
               disabled={busy}
@@ -129,6 +138,9 @@ export function SessionEventsPanel({ mode, busy, apply }: { mode: RotationMode; 
             onClick={() =>
               void apply(async () => {
                 await app.SetEventsRotation(Number(factor), Number(capMB));
+                // Refresh the marks right away: the over-limit judgment basis
+                // just changed, so the card must not sit stale (review finding).
+                await refresh();
               })
             }
           >

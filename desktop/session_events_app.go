@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -52,27 +53,38 @@ type SessionEventsCompactResult struct {
 	Error     string `json:"error,omitempty"`
 }
 
-// eventsRotationJudgment reads the display judgment: auto mode uses the
-// configured thresholds, off/manual fall back to the built-in factor so the
-// card's "over limit" keeps a stable meaning when the gate is not auto.
-func eventsRotationJudgment() (factor float64, capMB int64) {
-	cfg, err := config.Load()
-	if err != nil {
-		return config.EventsRotationFactorDefault, 0
-	}
+// eventsRotationJudgmentFrom computes the display judgment from an already
+// loaded config: auto mode uses the configured thresholds, off/manual fall
+// back to the built-in factor so the card's "over limit" keeps a stable
+// meaning when the gate is not auto. Loading once keeps the mode and the
+// thresholds from disagreeing between two reads (review finding, 2026-09-28).
+func eventsRotationJudgmentFrom(cfg *config.Config) (factor float64, capMB int64) {
 	if config.EventsAutoRotationMode(cfg) == config.EventsAutoRotationAuto {
 		return config.EventsRotationFactor(cfg), config.EventsRotationCapMB(cfg)
 	}
 	return config.EventsRotationFactorDefault, 0
 }
 
+// eventsRotationJudgment reads the display judgment with its own config load
+// (used by tests and single callers).
+func eventsRotationJudgment() (factor float64, capMB int64) {
+	cfg, err := config.Load()
+	if err != nil {
+		return config.EventsRotationFactorDefault, 0
+	}
+	return eventsRotationJudgmentFrom(cfg)
+}
+
 // SessionEventsInventory lists the active directory's sessions with their
 // event-log sizes (largest first) and the over-limit marks (task 333).
 func (a *App) SessionEventsInventory() SessionEventsInventoryView {
-	factor, capMB := eventsRotationJudgment()
+	cfg, loadErr := config.Load()
 	mode := config.EventsAutoRotationManual
-	if cfg, err := config.Load(); err == nil {
+	factor := config.EventsRotationFactorDefault
+	var capMB int64
+	if loadErr == nil {
 		mode = config.EventsAutoRotationMode(cfg)
+		factor, capMB = eventsRotationJudgmentFrom(cfg)
 	}
 	view := SessionEventsInventoryView{Entries: []SessionEventsEntry{}, Mode: mode, Factor: factor, CapMB: capMB}
 	for _, meta := range a.ListSessions() {
@@ -138,10 +150,21 @@ func (a *App) sessionEventsName(path string) string {
 	return ""
 }
 
+// isSessionNotIdle reports whether a compact failure is the lease-busy skip.
+// The typed check replaces an error-string match so rewording the agent's
+// message cannot silently turn "skipped" rows into "failed" (review finding).
+func isSessionNotIdle(err error) bool {
+	var leaseErr *agent.SessionLeaseError
+	return errors.As(err, &leaseErr)
+}
+
 // CompactSessionEvents runs the task-333 "repair this session" action on one
 // session. Lease acquisition inside agent.CompactSessionFile is the idleness
-// check: a busy session returns the lease error to the UI instead of failing
-// silently, and before/after are the exact file sizes the rewrite saw.
+// check: a busy session lands in Error+Skipped and — unlike a Go-style error
+// return — the result still reaches the UI, because Wails discards a (res,
+// err) pair whenever err is non-nil (review finding). before/after are the
+// exact file sizes the rewrite saw; the error return stays reserved for
+// failures that produce no result at all.
 func (a *App) CompactSessionEvents(path string) (SessionEventsCompactResult, error) {
 	res := SessionEventsCompactResult{Path: path, Name: a.sessionEventsName(path), Round: 1}
 	start := time.Now()
@@ -151,8 +174,7 @@ func (a *App) CompactSessionEvents(path string) (SessionEventsCompactResult, err
 	res.Freed = before - after
 	if err != nil {
 		res.Error = err.Error()
-		res.Skipped = strings.Contains(err.Error(), "not idle")
-		return res, err
+		res.Skipped = isSessionNotIdle(err)
 	}
 	return res, nil
 }
@@ -192,7 +214,7 @@ func runEventsRepairRounds(maxRounds int, inventory func() SessionEventsInventor
 			res.Freed = before - after
 			if err != nil {
 				res.Error = err.Error()
-				res.Skipped = strings.Contains(err.Error(), "not idle")
+				res.Skipped = isSessionNotIdle(err)
 			} else {
 				freedThisRound += res.Freed
 			}

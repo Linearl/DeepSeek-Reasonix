@@ -602,6 +602,12 @@ func (a *App) startup(ctx context.Context) {
 			config.EventsRotationFactor(cfg),
 			config.EventsRotationCapMB(cfg),
 		)
+	} else {
+		// Without the push the gate stays on the pre-push default (manual =
+		// today's rotating gate): a config that says "off" would keep rotating
+		// until a successful push. Log the divergence instead of hiding it
+		// (review finding, 2026-09-28).
+		slog.Warn("desktop: events rotation gate not pushed at boot (config load failed)", "err", err)
 	}
 	// Task 184: the performance monitor is opt-in and restart-scoped (its interval
 	// and file table come from the config read here). When the switch is off this

@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"log/slog"
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
 	"strings"
@@ -609,11 +610,14 @@ func (a *App) SetEventsRotation(factor float64, capMB int64) error {
 
 // pushEventsRotationSettings forwards the normalized gate settings to the
 // agent layer after a successful write (task 333). A config-load failure
-// leaves the agent on its last pushed value — the boot default is manual, so
-// the gate never invents rotation from a config it could not read.
+// leaves the agent on its last pushed value and logs the miss: manual (the
+// pre-push default) is today's rotating gate, so if the file says "off" and
+// this push fails the gate keeps rotating — the WARN is what makes that
+// divergence greppable instead of silent (review finding, 2026-09-28).
 func (a *App) pushEventsRotationSettings() {
 	cfg, err := config.Load()
 	if err != nil {
+		slog.Warn("desktop: events rotation settings push skipped (config load failed)", "err", err)
 		return
 	}
 	agent.SetEventsAutoRotation(

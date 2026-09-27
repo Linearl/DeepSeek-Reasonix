@@ -79,6 +79,12 @@ func TestSetEventsRotationValidation(t *testing.T) {
 	if err := c.SetEventsRotation(8, -1); err == nil {
 		t.Fatal("negative cap must be refused")
 	}
+	if err := c.SetEventsRotation(8, EventsRotationCapMBMax+1); err == nil {
+		t.Fatal("cap above the bound must be refused (capMB<<20 would overflow)")
+	}
+	if err := c.SetEventsRotation(8, EventsRotationCapMBMax); err != nil {
+		t.Fatalf("cap at the bound must be accepted: %v", err)
+	}
 	if err := c.SetEventsRotation(8, 512); err != nil {
 		t.Fatalf("valid thresholds: %v", err)
 	}
@@ -88,9 +94,11 @@ func TestSetEventsRotationValidation(t *testing.T) {
 }
 
 // TestRenderEventsRotationLines pins the render table (81/123 lost-line
-// lesson): the main renderer carries all three lines unconditionally — even at
-// defaults — so a hand-edited value survives the next settings save, while the
-// project delta stays sparse.
+// lesson): both renderers carry all three lines unconditionally — even at
+// defaults — so a hand-edited value survives the next settings save and a
+// reverted setting overwrites the stale line instead of leaving it behind
+// (mergeTOMLTopLevelFields only replaces keys the delta carries; review
+// finding, 2026-09-28).
 func TestRenderEventsRotationLines(t *testing.T) {
 	out := RenderTOML(&Config{}) // defaults
 	for _, want := range []string{
@@ -102,17 +110,45 @@ func TestRenderEventsRotationLines(t *testing.T) {
 			t.Errorf("RenderTOML(defaults) missing %q", want)
 		}
 	}
-	// Defaults add nothing to the project delta (sparse semantics).
+	// The project delta carries the lines at defaults too — that is what
+	// overwrites a stale non-default value in an existing project file.
 	delta := RenderTOMLProjectDelta(&Config{})
-	if strings.Contains(delta, "events_auto_rotation") || strings.Contains(delta, "events_rotation_factor") || strings.Contains(delta, "events_rotation_cap_mb") {
-		t.Errorf("default project delta must stay sparse, got:\n%s", delta)
+	for _, want := range []string{
+		`events_auto_rotation = "manual"`,
+		"events_rotation_factor = 4.0",
+		"events_rotation_cap_mb = 0",
+	} {
+		if !strings.Contains(delta, want) {
+			t.Errorf("default project delta missing %q (stale lines could survive), got:\n%s", want, delta)
+		}
 	}
-	// A non-default override shows up.
+	// A non-default override renders its own values.
 	custom := &Config{EventsAutoRotation: EventsAutoRotationAuto, EventsRotationFactor: 8, EventsRotationCapMB: 256}
 	delta = RenderTOMLProjectDelta(custom)
 	for _, want := range []string{`events_auto_rotation = "auto"`, "events_rotation_factor = 8.0", "events_rotation_cap_mb = 256"} {
 		if !strings.Contains(delta, want) {
 			t.Errorf("project delta missing %q, got:\n%s", want, delta)
+		}
+	}
+}
+
+// TestProjectDeltaRevertsStaleRotationLines runs the merge itself: a project
+// file that once stored auto must come back to manual after the setting is
+// reverted, proving the unconditional rendering actually clears the stale
+// line through mergeTOMLTopLevelFields (the inverted 81/123 class).
+func TestProjectDeltaRevertsStaleRotationLines(t *testing.T) {
+	body := "# project overrides\nevents_auto_rotation = \"auto\"\nevents_rotation_factor = 9.0\nevents_rotation_cap_mb = 77\n"
+	merged := mergeTOMLTopLevelFields(body, RenderTOMLProjectDelta(&Config{}))
+	// Match the full lines: the delta output legitimately contains other
+	// defaults like proxy_mode = "auto", so a bare `"auto"` would false-hit.
+	if strings.Contains(merged, `events_auto_rotation = "auto"`) ||
+		strings.Contains(merged, "events_rotation_factor = 9.0") ||
+		strings.Contains(merged, "events_rotation_cap_mb = 77") {
+		t.Fatalf("stale rotation lines survived the revert merge:\n%s", merged)
+	}
+	for _, want := range []string{`events_auto_rotation = "manual"`, "events_rotation_factor = 4.0", "events_rotation_cap_mb = 0"} {
+		if !strings.Contains(merged, want) {
+			t.Fatalf("reverted merge missing %q:\n%s", want, merged)
 		}
 	}
 }

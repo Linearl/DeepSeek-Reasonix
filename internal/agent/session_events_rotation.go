@@ -28,12 +28,16 @@ const (
 )
 
 // Auto-mode threshold bounds, kept in lockstep with internal/config
-// (EventsRotationFactorMin/Max/Default) — the desktop setter normalizes first,
-// these bounds are the agent-side backstop.
+// (EventsRotationFactorMin/Max/Default, EventsRotationCapMBMax) — the desktop
+// setter normalizes first, these bounds are the agent-side backstop. The cap
+// bound keeps capMB<<20 inside int64 (1 TiB shifts to 1<<50): an unbounded
+// cap would wrap the shift negative and rotate every log every save (review
+// finding, 2026-09-28).
 const (
 	eventsRotationFactorMin     = 2.0
 	eventsRotationFactorMax     = 16.0
 	eventsRotationFactorDefault = 4.0
+	eventsRotationCapMBMax      = int64(1) << 30
 )
 
 // SetEventsAutoRotation stores the rotation gate settings (task 333). Invalid
@@ -57,6 +61,9 @@ func SetEventsAutoRotation(mode string, factor float64, capMB int64) {
 	}
 	if capMB < 0 {
 		capMB = 0
+	}
+	if capMB > eventsRotationCapMBMax {
+		capMB = eventsRotationCapMBMax
 	}
 	eventsRotationStore.Store(&eventsRotationConfig{mode: normalized, factor: factor, capMB: capMB})
 }
@@ -85,8 +92,16 @@ func eventsLogAboveFactor(logSize, contentBytes int64, factor float64) bool {
 // task-333 storage panel's inventory marks sessions over-limit through this
 // one function so the UI's statistic card, the gate and the CLI stay on the
 // same source of truth (the factor threshold and the optional MiB cap OR
-// together, matching the auto-mode gate).
+// together, matching the auto-mode gate). Both inputs are defensively clamped:
+// a raw caller-supplied cap beyond the bound would overflow capMB<<20 into a
+// negative threshold and mark every log over (review finding, 2026-09-28).
 func EventsLogAboveThreshold(logSize, contentBytes int64, factor float64, capMB int64) bool {
+	if math.IsNaN(factor) || math.IsInf(factor, 0) {
+		factor = eventsRotationFactorDefault
+	}
+	if capMB > eventsRotationCapMBMax {
+		capMB = eventsRotationCapMBMax
+	}
 	return eventsLogAboveFactor(logSize, contentBytes, factor) ||
 		(capMB > 0 && logSize > capMB<<20)
 }

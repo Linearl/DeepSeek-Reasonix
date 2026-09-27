@@ -1008,18 +1008,14 @@ func RenderTOMLProjectDelta(c *Config) string {
 	// dropped by the next settings save. (It used to sit inside the default_model
 	// branch above, so a mode change on its own was silently dropped on save.)
 	fmt.Fprintf(&b, "session_storage = %q   # v3_only (default) | dual_write_read_v3 | dual_write_read_v4 | v4_only (needs a restart)\n", SessionStorageMode(c))
-	// Event-log rotation gate/thresholds (task 333): sparse in the project
-	// delta — only a non-default override belongs here, so removing the line
-	// hands the project back to the global setting.
-	if mode := EventsAutoRotationMode(c); mode != EventsAutoRotationManual {
-		fmt.Fprintf(&b, "events_auto_rotation = %q   # off | manual (default) | auto\n", mode)
-	}
-	if factor := EventsRotationFactor(c); factor != EventsRotationFactorDefault {
-		fmt.Fprintf(&b, "events_rotation_factor = %.1f   # auto only (2-16)\n", factor)
-	}
-	if capMB := EventsRotationCapMB(c); capMB != 0 {
-		fmt.Fprintf(&b, "events_rotation_cap_mb = %d   # auto only; 0 = off\n", capMB)
-	}
+	// Event-log rotation gate/thresholds (task 333): rendered unconditionally
+	// like session_storage above — mergeTOMLTopLevelFields only replaces keys
+	// the delta carries, so a sparse rendering would leave a stale
+	// events_auto_rotation = "auto" line behind after the setting reverts to
+	// the default (the 81/123 lost-line class, inverted; review finding).
+	fmt.Fprintf(&b, "events_auto_rotation = %q   # off | manual (default) | auto\n", EventsAutoRotationMode(c))
+	fmt.Fprintf(&b, "events_rotation_factor = %.1f   # auto only (2-16)\n", EventsRotationFactor(c))
+	fmt.Fprintf(&b, "events_rotation_cap_mb = %d   # auto only; 0 = off\n", EventsRotationCapMB(c))
 	if c.Language != "" && c.Language != d.Language {
 		fmt.Fprintf(&b, "language = %q\n", c.Language)
 	}

@@ -19,10 +19,14 @@ var EventsAutoRotationModes = []string{EventsAutoRotationOff, EventsAutoRotation
 
 // Rotation threshold bounds for auto mode (task 333): the factor stays near
 // the built-in 4x default, the cap is an optional MiB ceiling (0 = disabled).
+// The cap's upper bound keeps capMB<<20 far inside int64 (1 TiB MiB units
+// shifts to 1<<50): an unbounded cap would overflow the shift into a negative
+// threshold and rotate every log on every save (review finding, 2026-09-28).
 const (
 	EventsRotationFactorDefault = 4.0
 	EventsRotationFactorMin     = 2.0
 	EventsRotationFactorMax     = 16.0
+	EventsRotationCapMBMax      = int64(1) << 30
 )
 
 // NormalizeEventsAutoRotation maps a raw config value onto off|manual|auto.
@@ -67,10 +71,14 @@ func EventsRotationFactor(cfg *Config) float64 {
 }
 
 // EventsRotationCapMB returns the auto-mode absolute ceiling in MiB; a
-// negative stored value disables the cap (same as 0).
+// negative stored value disables the cap (same as 0), and a hand-edited value
+// above the bound clamps to it so capMB<<20 can never overflow downstream.
 func EventsRotationCapMB(cfg *Config) int64 {
 	if cfg == nil || cfg.EventsRotationCapMB < 0 {
 		return 0
+	}
+	if cfg.EventsRotationCapMB > EventsRotationCapMBMax {
+		return EventsRotationCapMBMax
 	}
 	return cfg.EventsRotationCapMB
 }
@@ -90,16 +98,19 @@ func (c *Config) SetEventsAutoRotation(mode string) error {
 }
 
 // SetEventsRotation stores the auto-mode thresholds: factor within 2-16, cap
-// in MiB with 0 disabling it. Both are validated so a bad value fails in the
-// setter instead of disabling rotation at save time.
+// in MiB with 0 disabling it and an upper bound of EventsRotationCapMBMax.
+// Both are validated so a bad value fails in the setter instead of disabling
+// rotation at save time — an unbounded cap would overflow capMB<<20 into a
+// negative threshold and rotate everything (review finding, 2026-09-28).
 func (c *Config) SetEventsRotation(factor float64, capMB int64) error {
 	if math.IsNaN(factor) || math.IsInf(factor, 0) ||
 		factor < EventsRotationFactorMin || factor > EventsRotationFactorMax {
 		return fmt.Errorf("events rotation factor %v: must be between %.0f and %.0f",
 			factor, EventsRotationFactorMin, EventsRotationFactorMax)
 	}
-	if capMB < 0 {
-		return fmt.Errorf("events rotation cap %d MiB: must be >= 0 (0 disables the cap)", capMB)
+	if capMB < 0 || capMB > EventsRotationCapMBMax {
+		return fmt.Errorf("events rotation cap %d MiB: must be between 0 and %d (0 disables the cap)",
+			capMB, EventsRotationCapMBMax)
 	}
 	c.EventsRotationFactor = factor
 	c.EventsRotationCapMB = capMB
