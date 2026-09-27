@@ -85,7 +85,7 @@ func EffortCapabilityForEntry(e *ProviderEntry) EffortCapability {
 		if cap, ok := resolvedModelReasoningCapability(e); ok && cap.Protocol == ReasoningProtocolDeepSeek {
 			return effortCapabilityFromModel(cap)
 		}
-		return deepSeekEffortCapability()
+		return deepSeekEffortCapability(e)
 	case ReasoningProtocolGLM:
 		return glmEffortCapability()
 	case ReasoningProtocolOpenAI:
@@ -110,7 +110,7 @@ func EffortCapabilityForEntry(e *ProviderEntry) EffortCapability {
 	}
 	switch ReasoningProtocolForEntry(e) {
 	case ReasoningProtocolDeepSeek:
-		return deepSeekEffortCapability()
+		return deepSeekEffortCapability(e)
 	case ReasoningProtocolGLM:
 		return glmEffortCapability()
 	case ReasoningProtocolKimiK3:
@@ -535,8 +535,36 @@ func effortCapabilityFromModel(cap modelReasoningCapability) EffortCapability {
 	return EffortCapability{Supported: true, Levels: levels, Default: def}
 }
 
-func deepSeekEffortCapability() EffortCapability {
+// deepSeekEffortCapability is the config-layer DeepSeek protocol default.
+// Task effortfix2 (A-line P1): the full-depth SKU family — the v4 names,
+// their bare compatibility aliases (deepseek-flash / deepseek-pro), and the
+// pinned vision SKU — carries "low" too; everything else keeps the generic
+// three depth levels. This mirrors the provider-layer gate in
+// internal/provider/openai/reasoning_capability.go so the menu and the wire
+// never disagree (the end-to-end test pins the bare-alias case: without this
+// the 283-block deepseek-flash reached the generic table and lost "low" even
+// after the provider fix).
+func deepSeekEffortCapability(e *ProviderEntry) EffortCapability {
+	if sku := deepSeekSKU(e); sku == "deepseek-v4-flash" || sku == "deepseek-v4-pro" ||
+		sku == "deepseek-flash" || sku == "deepseek-pro" ||
+		(e != nil && openai.IsOfficialDeepSeekVisionModel(e.Model)) {
+		return EffortCapability{Supported: true, Levels: []string{"auto", "disabled", "low", "high", "max"}, Default: "high"}
+	}
 	return EffortCapability{Supported: true, Levels: []string{"auto", "disabled", "high", "max"}, Default: "high"}
+}
+
+// deepSeekSKU strips a leading "provider/" segment from the entry's model ref
+// ("deepseek/deepseek-flash" → "deepseek-flash") so identity checks compare
+// the bare SKU, matching the provider layer's prefixed-ref handling.
+func deepSeekSKU(e *ProviderEntry) string {
+	if e == nil {
+		return ""
+	}
+	m := strings.TrimSpace(e.Model)
+	if slash := strings.IndexByte(m, '/'); slash >= 0 {
+		return strings.TrimSpace(m[slash+1:])
+	}
+	return m
 }
 
 func openAIEffortCapability() EffortCapability {
