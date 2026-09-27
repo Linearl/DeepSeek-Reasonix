@@ -1,16 +1,18 @@
 // Run: tsx src/__tests__/settings-opencode-go-usage-card.test.tsx
 //
-// opencodefix — render the OpenCode Go usage card against the three wire
-// states the settings pane can hand it: a null tiers payload (the Go nil
-// slice that used to marshal as "tiers": null and crash render with
-// TypeError: null.find), an empty array (no data yet), and a normal
-// three-window payload. Zero skips: every state must render without throwing.
+// opencodefix — render the OpenCode Go usage card against the wire states the
+// settings pane can hand it: a null tiers payload (the Go nil slice that used
+// to marshal as "tiers": null and crash render with TypeError: null.find), an
+// empty array (no data), a normal three-window payload, plus crash isolation
+// and recovery behind the pane's ErrorBoundary (the fourth acceptance state).
+// Zero skips: every state must render without throwing.
 
 import assert from "node:assert/strict";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { SettingsOpenCodeGoUsageCard } from "../components/SettingsOpenCodeGoUsageCard";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import { LocaleProvider } from "../lib/i18n";
 
 const dom = new JSDOM("<div id='root'></div>", { url: "http://localhost" });
@@ -137,6 +139,58 @@ console.log("\nopencode-go usage card wire states");
   await view.dispose();
 }
 
-assert.ok(passed >= 12, `expected at least 12 checks, got ${passed}`);
+// 5. crash isolation + recovery (fourth acceptance state): a payload whose
+//    tiers accessor itself throws is a shape beyond even the Array.isArray
+//    guard. Rendered behind the pane's ErrorBoundary wiring (same structure
+//    SettingsPanel uses: sibling OUTSIDE the boundary, card inside), the
+//    crash must stay inside the card slot — settings siblings survive — and
+//    re-entering with healthy data must recover.
+{
+  const poisoned: { note: string; tiers?: unknown } = { note: "" };
+  Object.defineProperty(poisoned, "tiers", {
+    enumerable: true,
+    get() {
+      throw new Error("wire explosion: tiers accessor threw");
+    },
+  });
+  payload = poisoned;
+  queries = 0;
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  const originalConsoleError = console.error;
+  console.error = () => {}; // React logs caught render errors; keep output readable
+  try {
+    await act(async () => {
+      root.render(
+        <LocaleProvider>
+          <div data-testid="settings-sibling">settings shell survives</div>
+          <ErrorBoundary>
+            <SettingsOpenCodeGoUsageCard enabled busy={false} onToggle={() => {}} />
+          </ErrorBoundary>
+        </LocaleProvider>,
+      );
+    });
+  } finally {
+    console.error = originalConsoleError;
+  }
+  ok(container.querySelector('[data-testid="settings-sibling"]') !== null,
+    "crash isolation: settings siblings outside the boundary survive the card crash");
+  ok(container.querySelector('[data-testid="opencode-go-usage-card"]') === null,
+    "crash isolation: the card slot renders empty instead of taking the tree down");
+
+  // Recover: leave the pane and re-enter with healthy data (boundary state
+  // resets on remount, exactly like selected-pane switching in SettingsPanel).
+  await act(async () => root.unmount());
+  container.remove();
+  const recovered = await renderCard({
+    next: { tiers: [{ window: "rolling", percent: 7, resetsAt: new Date(Date.now() + 60_000).toISOString() }], note: "" },
+  });
+  ok(recovered.card !== null && recovered.rows.length === 1,
+    `recovery: re-entering the pane with healthy data renders the card again (${recovered.rows.length} row)`);
+  await recovered.dispose();
+}
+
+assert.ok(passed >= 18, `expected at least 18 checks (15 wire states + 3 crash-isolation/recovery), got ${passed}`);
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

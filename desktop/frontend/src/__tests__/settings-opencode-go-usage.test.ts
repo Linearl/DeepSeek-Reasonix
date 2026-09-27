@@ -50,13 +50,23 @@ ok(card.includes('data-testid="opencode-go-usage-card"') && card.includes('data-
 ok(card.includes("resetCountdown(tier.resetsAt)") && card.includes("settings.opencodeGoUsage.resetsIn"),
   "rows show the reset countdown");
 
-// ── null wire payload can never crash render (opencodefix) ────────────────
+// ── malformed wire payloads can never crash render (opencodefix) ───────────
 // The Go side used to marshal a nil Tiers slice as "tiers": null and render
-// threw TypeError: null.find. Both consumers must read through the guard.
-ok(card.includes("const tiers = usage?.tiers ?? []") && card.includes("tiers.find((tier) => tier.window === key)"),
-  "the render lookup normalizes a null wire tiers payload");
-ok(card.includes("!(usage?.tiers ?? []).some((tier) => tier.resetsAt)"),
-  "the countdown gate reads through the same null guard with the original negation");
+// threw TypeError: null.find. Both consumers must normalize through
+// Array.isArray (covers null AND non-array shapes like an object).
+ok(card.includes("const tiers = Array.isArray(usage?.tiers) ? usage.tiers : []") && card.includes("tiers.find((tier) => tier.window === key)"),
+  "the render lookup normalizes null and non-array wire tiers payloads");
+ok(card.includes("const wireTiers = Array.isArray(usage?.tiers) ? usage.tiers : []") && card.includes("!wireTiers.some((tier) => tier.resetsAt)"),
+  "the countdown gate normalizes through the same Array.isArray guard");
+
+// ── crash isolation: the pane's detail card sits behind an ErrorBoundary ──
+// A failure beyond the known shapes must not kill the settings subtree
+// (A-line evidence: post-crash the settings child tree stayed unrecoverable).
+ok(panel.includes("<ErrorBoundary>") && panel.includes("<SettingsOpenCodeGoUsageCard")
+  && /<ErrorBoundary>[\s\S]*<SettingsOpenCodeGoUsageCard[\s\S]*<\/ErrorBoundary>/.test(panel),
+  "the usage card renders behind an ErrorBoundary in the settings pane");
+ok(panel.includes('import { ErrorBoundary } from "./ErrorBoundary"'),
+  "SettingsPanel imports the shared ErrorBoundary");
 
 // ── formatting helpers ──────────────────────────────────────────────────────
 const now = Date.parse("2026-09-25T12:00:00Z");
@@ -104,6 +114,6 @@ function eqCountdown(iso: string, expected: string, label: string) {
   else ok(false, `countdown: ${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
 }
 
-assert.ok(passed >= 57, `expected at least 57 checks (55 original + 2 null-guard), got ${passed}`);
+assert.ok(passed >= 59, `expected at least 59 checks (57 prior + 2 boundary wiring), got ${passed}`);
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

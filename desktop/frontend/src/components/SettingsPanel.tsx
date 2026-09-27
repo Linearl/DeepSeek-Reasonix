@@ -78,6 +78,7 @@ import {
   type MonoFontFamily,
 } from "../lib/fontFamily";
 import { SessionExperienceSettings } from "./SessionExperienceSettings";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { SettingsField, SettingsSection } from "./SettingsForm";
 import { SettingsOpenCodeGoUsageCard } from "./SettingsOpenCodeGoUsageCard";
 import { normalizeStatusBarItems, type StatusBarItemId } from "../lib/statusBarItems";
@@ -3127,11 +3128,13 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
             </SettingsField>
           )}
           {selected === "opencodeGoUsage" && (
-            <SettingsOpenCodeGoUsageCard
-              enabled={Boolean(s.experimentalOpenCodeGoUsage)}
-              busy={busy}
-              onToggle={(on) => void apply(() => app.SetExperimentalOpenCodeGoUsage(on))}
-            />
+            <ErrorBoundary>
+              <SettingsOpenCodeGoUsageCard
+                enabled={Boolean(s.experimentalOpenCodeGoUsage)}
+                busy={busy}
+                onToggle={(on) => void apply(() => app.SetExperimentalOpenCodeGoUsage(on))}
+              />
+            </ErrorBoundary>
           )}
           {selected === "draftPersistence" && (
             <SettingsField label={t("settings.draftPersistence")} hint={t("settings.draftPersistenceHint")} icon={<Sparkles size={18} />}>

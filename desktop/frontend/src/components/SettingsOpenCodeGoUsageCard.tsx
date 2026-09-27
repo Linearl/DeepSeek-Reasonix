@@ -61,16 +61,20 @@ export function SettingsOpenCodeGoUsageCard({
     void refresh();
   }, [enabled, refresh]);
   useEffect(() => {
-    if (!enabled || !(usage?.tiers ?? []).some((tier) => tier.resetsAt)) return;
+    const wireTiers = Array.isArray(usage?.tiers) ? usage.tiers : [];
+    if (!enabled || !wireTiers.some((tier) => tier.resetsAt)) return;
     const timer = window.setInterval(() => setTick((value) => value + 1), 30_000);
     return () => window.clearInterval(timer);
   }, [enabled, usage]);
 
-  // tiers is typed non-null, but the wire can still hand the card null (a
-  // Go nil slice used to marshal as "tiers": null and crash this lookup with
-  // TypeError: null.find — opencodefix). Normalize so the card falls to its
-  // note/empty branch instead of throwing in render.
-  const tiers = usage?.tiers ?? [];
+  // tiers is typed non-null, but the wire can still hand the card a null —
+  // or a non-array shape entirely (a Go nil slice used to marshal as
+  // "tiers": null and crash this lookup with TypeError: null.find —
+  // opencodefix). Normalize any malformed payload so the card falls to its
+  // note/empty branch instead of throwing in render; anything beyond these
+  // known shapes stays behind the caller's ErrorBoundary, which isolates the
+  // crash to this card and recovers when the pane is re-entered.
+  const tiers = Array.isArray(usage?.tiers) ? usage.tiers : [];
   const windows = OPENCODE_GO_WINDOW_KEYS
     .map((key) => tiers.find((tier) => tier.window === key))
     .filter((tier): tier is NonNullable<typeof tier> => Boolean(tier));
