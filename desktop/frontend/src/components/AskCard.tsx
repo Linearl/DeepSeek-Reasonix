@@ -379,7 +379,9 @@ function AskCardBody({ ask, onAnswer, onStop, draftKey }: AskCardProps & { draft
           <div
             className={`ask-shelf__custom-row${custom[q.id]?.trim() ? " ask-shelf__custom-row--active" : ""}`}
             role="group"
-            onClick={() => {
+            onClick={(event) => {
+              // The card toggles collapse on clicks outside its controls; this row is a control.
+              event.stopPropagation();
               setSelectedIndex(customRowIndex);
               setAnswerMode((m) => ({ ...m, [q.id]: "custom" }));
               setCustomOpen(true);
