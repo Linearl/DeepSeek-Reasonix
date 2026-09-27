@@ -37,7 +37,7 @@ type editStep struct {
 func (multiEdit) Name() string { return "multi_edit" }
 
 func (multiEdit) Description() string {
-	return "Apply a list of edits to a single file atomically: each edit runs against the result of the previous one, all in memory; the file is rewritten only if every edit succeeds. Cheaper and safer than chaining edit_file calls — a failure in step 3 leaves the file untouched instead of half-edited."
+	return "WHEN TO USE: modifying 2+ places in the same file — use this INSTEAD of chained edit_file calls (atomic, fewer calls, per-step errors). Apply a list of edits to a single file atomically: each edit runs against the result of the previous one, all in memory; the file is rewritten only if every edit succeeds. Cheaper and safer than chaining edit_file calls — a failure in step 3 leaves the file untouched instead of half-edited."
 }
 
 func (multiEdit) Schema() json.RawMessage {
