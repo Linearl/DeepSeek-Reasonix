@@ -1,6 +1,8 @@
 package openai
 
 import (
+	"strings"
+
 	"reasonix/internal/provider"
 )
 
@@ -22,7 +24,18 @@ func ReasoningForConfig(cfg provider.Config) provider.ReasoningCapability {
 		cap = provider.ReasoningOptions("adaptive", "adaptive", "disabled")
 	case protocol == "deepseek" || (protocol == "" && IsDeepSeek(cfg.BaseURL)):
 		cap = provider.ReasoningOptions("high", "disabled", "high", "max")
-		if cfg.Model == "deepseek-v4-flash" || cfg.Model == "deepseek-v4-pro" || IsOfficialDeepSeekVisionModel(cfg.Model) {
+		// The full-depth SKU family: the v4 names, their bare compatibility
+		// aliases (deepseek-flash / deepseek-pro — the refs users and
+		// ResolveModel actually hand out, see the default-ref alias tests), and
+		// the pinned vision SKU. Task effortfix2 (A-line P1): the aliases were
+		// missing here, so a bare deepseek-flash landed on the generic three
+		// levels and silently lost "low". Matching runs on the ref with any
+		// "provider/" prefix stripped — users grant "deepseek/deepseek-flash"
+		// exactly like the vision SKU's documented prefixed form.
+		sku := modelWithoutProviderRef(cfg.Model)
+		if sku == "deepseek-v4-flash" || sku == "deepseek-v4-pro" ||
+			sku == "deepseek-flash" || sku == "deepseek-pro" ||
+			IsOfficialDeepSeekVisionModel(cfg.Model) {
 			cap = provider.ReasoningOptions("high", "disabled", "low", "high", "max")
 		}
 	case protocol == "" && IsOllamaCloud(cfg.BaseURL):
@@ -44,6 +57,19 @@ func ReasoningForConfig(cfg provider.Config) provider.ReasoningCapability {
 	}
 	return cap
 }
+
+// modelWithoutProviderRef strips a leading "provider/" segment from a model
+// ref ("deepseek/deepseek-flash" → "deepseek-flash"), mirroring the vision
+// SKU's documented prefixed-ref handling. Identity checks compare the bare
+// SKU so granted refs behave exactly like bare model names (task effortfix2).
+func modelWithoutProviderRef(model string) string {
+	m := strings.TrimSpace(model)
+	if slash := strings.IndexByte(m, '/'); slash >= 0 {
+		return strings.TrimSpace(m[slash+1:])
+	}
+	return m
+}
+
 func (c *client) ReasoningCapability() provider.ReasoningCapability { return c.reasoning.Clone() }
 
 func configuredEffort(cfg provider.Config) (string, error) {

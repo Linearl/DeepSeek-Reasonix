@@ -1562,6 +1562,9 @@ export interface EffortInfo {
   current: string; // adapter-owned ID; "auto" inherits the configured default
   default: string;
   levels: string[];
+  // Task effortfix2: MiMo identity mark — the composer folds the four honest
+  // tiers ONLY when this is true (never by sniffing the vocabulary shape).
+  aliasFold?: boolean;
 }
 
 // Slash sub-command / argument completion (desktop/app.go SlashArgs). Mirrors the

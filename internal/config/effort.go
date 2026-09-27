@@ -24,6 +24,13 @@ type EffortCapability struct {
 	Supported bool
 	Levels    []string
 	Default   string
+	// AliasFold marks the MiMo compatibility vocabulary (task effortfix2,
+	// A-line P2): display surfaces fold it onto the four honest tiers, and
+	// ONLY it — the flag is the provider/protocol identity, not a vocabulary
+	// shape sniff, so honest xhigh/max sets (anthropic-family, luna) are never
+	// folded. Config-declared supported_efforts never set it: a user-authored
+	// vocabulary is displayed verbatim.
+	AliasFold bool
 }
 
 type modelReasoningCapability struct {
@@ -461,6 +468,9 @@ func mimoEffortCapability() EffortCapability {
 		Supported: true,
 		Levels:    []string{"auto", "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"},
 		Default:   "auto",
+		// Task effortfix2: identity mark for display folding — only this
+		// vocabulary (and never a shape sniff) is folded onto the four tiers.
+		AliasFold: true,
 	}
 }
 
