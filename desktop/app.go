@@ -9586,6 +9586,10 @@ type EffortInfo struct {
 	Current   string                     `json:"current"`
 	Default   string                     `json:"default"`
 	Levels    []string                   `json:"levels"`
+	// AliasFold carries the MiMo identity mark (task effortfix2): display
+	// surfaces fold the four honest tiers only for this family — never by
+	// sniffing the vocabulary's shape.
+	AliasFold bool `json:"aliasFold,omitempty"`
 }
 
 // Models flattens the configured providers into their (provider, model) pairs —
@@ -10223,7 +10227,7 @@ func (a *App) EffortForTab(tabID string) EffortInfo {
 	if levels == nil {
 		levels = []string{}
 	}
-	return EffortInfo{Supported: true, Current: config.EffortDisplay(entry), Default: cap.Default, Levels: levels, Options: config.ReasoningCapabilityForEntry(entry).Options}
+	return EffortInfo{Supported: true, Current: config.EffortDisplay(entry), Default: cap.Default, Levels: levels, Options: config.ReasoningCapabilityForEntry(entry).Options, AliasFold: cap.AliasFold}
 }
 
 func (a *App) SetEffort(level string) error {

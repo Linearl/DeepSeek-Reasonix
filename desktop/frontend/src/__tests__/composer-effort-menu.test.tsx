@@ -143,7 +143,7 @@ const mimoEffortOptions = [
   const dom = installDom();
   const picked: string[] = [];
   const { root } = await renderComposer({
-    effort: { supported: true, current: "xhigh", default: "high", options: mimoEffortOptions },
+    effort: { supported: true, current: "xhigh", default: "high", options: mimoEffortOptions, aliasFold: true },
     onSetEffort: level => picked.push(level),
   });
 
