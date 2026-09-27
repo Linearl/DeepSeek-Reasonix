@@ -154,6 +154,18 @@ func (s *Session) saveDAGLocked(path string, mode sessionSaveMode, route dagRout
 // worth a line in the log: it names whether the graph was extended or rebuilt.
 const sessionDAGReplayLogMin = 250 * time.Millisecond
 
+// sameSessionLogPath compares two session log paths by canonical identity so
+// case/separator differences in the raw forms cannot split a single physical
+// file into two reuse guards (task 196fix).
+func sameSessionLogPath(a, b string) bool {
+	if a == "" || b == "" {
+		// Empty never claims a physical file: canonical("") resolves to the
+		// working directory, which would make two empties "match".
+		return false
+	}
+	return canonicalSessionSavePath(a) == canonicalSessionSavePath(b)
+}
+
 // dagStateForSave returns the replayed graph, extending the cached state by
 // the bytes appended since its last observed tail when the generation and
 // size still allow it, and settles a torn tail before any append.
@@ -181,7 +193,14 @@ func (s *Session) dagStateForSave(ctx context.Context, path string, now time.Tim
 	extended := false
 	reason := "extended"
 	var st *sessionDAGState
-	if cached != nil && ok && cached.path == logPath && header.generation == cached.generation && !cached.damaged {
+	// Task 196fix / 330: the cache key is canonical (task 239), but the entry's
+	// st.path and this call's logPath arrive from callers in whatever case the
+	// session path was handed to them (the C-Users vs c-users log split). The
+	// reuse guard compares the two raw - a same-physical-file pair mismatched
+	// here falls through to a full replay (reason=path_mismatch) even though
+	// the cache just served the graph. Compare both sides canonically.
+	sameLogPath := cached != nil && sameSessionLogPath(cached.path, logPath)
+	if cached != nil && ok && sameLogPath && header.generation == cached.generation && !cached.damaged {
 		if info, err := os.Stat(logPath); err == nil && info.Size() >= cached.lastGoodEnd {
 			st = cached
 			extended = true
@@ -201,7 +220,7 @@ func (s *Session) dagStateForSave(ctx context.Context, path string, now time.Tim
 			reason = "nil_cache"
 		case !ok:
 			reason = "no_header"
-		case cached.path != logPath:
+		case !sameLogPath:
 			reason = "path_mismatch"
 		case header.generation != cached.generation:
 			reason = "generation"
@@ -223,7 +242,7 @@ func (s *Session) dagStateForSave(ctx context.Context, path string, now time.Tim
 		if info, statErr := os.Stat(logPath); statErr == nil {
 			size = info.Size()
 		}
-		slog.Info("session: dag state for save", "path", path, "extended", extended,
+		slog.Info("session: dag state for save", "path", canonicalSessionSavePath(path), "extended", extended,
 			"reason", reason, "ms", elapsed.Milliseconds(), "log_bytes", size)
 	}
 	if st.damaged {
