@@ -3,6 +3,7 @@ import { ModelSettingHelp } from "./ModelSettingHelp";
 import { SettingsOptions } from "./SettingsOptions";
 import { SettingsSelect } from "./SettingsSelect";
 import { SessionEventsPanel, type RotationMode } from "./SessionEventsPanel";
+import { PerfMemorySection } from "./PerfMemorySection";
 import { providerProtocolLabel, providerProtocolChoices } from "../lib/providerProtocol";
 import { providerSupportsServerWebSearch } from "../lib/providerSearch";
 import { providerDefaultLabel, providerDisplayLabel } from "../lib/providerLabel";
@@ -2187,6 +2188,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   {t("settings.perfMonitor.heapAction")}
                 </button>
               </SettingsField>
+              {/* Task 338: WS series + heap pie, read-only over the existing
+                  samples (no new sampling cost; the switch stays authoritative). */}
+              <PerfMemorySection busy={busy} apply={apply} />
             </>
           )}
           {selected === "sessionStorage" && (
