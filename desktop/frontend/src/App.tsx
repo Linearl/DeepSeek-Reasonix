@@ -46,6 +46,8 @@ import { activeLeaseBlockedTab, createBoundedRefreshCoordinator, sameTabMetaList
 import { clearLegacyLangPref, normalizeLangPref, readLegacyLangPref, useI18n, useT } from "./lib/i18n";
 import { useActiveRemoteSession } from "./lib/useRemoteSession";
 import { publishNavigationIntent } from "./lib/useNavigationIntentFence";
+import { RemoteNavigationContext, type RemoteNavigationCommand } from "./lib/remoteNavigationCommands";
+import type { CommandOutcome } from "./lib/commandOutcome";
 import { useController, type Item } from "./lib/useController";
 import { noteStageTiming, setSessionMonitorEnabled } from "./lib/sessionMonitor";
 import { FeedbackPanel, setFeedbackEnabled } from "./components/FeedbackPanel";
@@ -70,6 +72,10 @@ const ProjectTree = lazy(() => import("./components/ProjectTree").then((module) 
 const ExtensionFormDialog = lazy(() => import("./components/ExtensionFormDialog").then((module) => ({ default: module.ExtensionFormDialog })));
 const MCPInteractionCard = lazy(() => import("./components/MCPInteractionCard").then((module) => ({ default: module.MCPInteractionCard })));
 const WorktreeMergeModal = lazy(() => import("./components/WorktreeMergeModal").then((module) => ({ default: module.WorktreeMergeModal })));
+// B3 remote main-pane fix: 27fa47f76 moved this surface into the AppRuntimeView
+// tree (unmounted since a141c4aa1/e0a092e6c), leaving the mounted App's main
+// region on the local Transcript for remote tabs. Restore the eb4ea9c45 mount.
+const RemoteSessionSurface = lazy(() => import("./components/RemoteSessionSurface").then((module) => ({ default: module.RemoteSessionSurface })));
 /** Footer decision surface kinds. Runtime blockers are explicit recovery choices. */
 import { StatusBar } from "./components/StatusBar";
 import { RemoteHostKeyDialog } from "./components/RemoteHostKeyDialog";
@@ -117,6 +123,8 @@ import {
   modeHasPlan,
   type RewindResultView,
   type RemoteHostView,
+  type RemoteTabOpenOptions,
+  type RemoteTabRefView,
   type SessionMeta,
   type SettingsView,
   type QualityFloor,
@@ -395,12 +403,15 @@ function WindowsWindowControls({
     </div>
   );
 }
+/** Outcome slot a queued remote-project request writes back through the shared navigation queue. */
+type RemoteNavigationOutcomeSlot = { value?: CommandOutcome<TabMeta | undefined> };
 type DesktopNavigationIntent =
   | { kind: "topic"; scope: string; workspaceRoot: string; topicId: string; sessionPath?: string }
   | { kind: "blank"; scope: string; workspaceRoot: string }
   | { kind: "isolated-worktree"; workspaceRoot: string }
   | { kind: "sidebar-im"; connection: SidebarImConnection }
-  | { kind: "resume-session"; session: SessionMeta };
+  | { kind: "resume-session"; session: SessionMeta }
+  | { kind: "remote-project"; remote: RemoteTabRefView; options: RemoteTabOpenOptions; remoteOutcome?: RemoteNavigationOutcomeSlot };
 type DesktopNavigationInput = DesktopNavigationIntent & { navigationIntentSeq: number };
 type PendingDesktopNavigationRequest = PendingNavigationRequest<DesktopNavigationInput>;
 type SidebarImConnectionDetailProps = {
@@ -622,6 +633,7 @@ export default function App() {
     reorderTabs,
     openTopicSession,
     activateTopic,
+    switchRemoteTab,
     noteNavigationIntent,
     registeredNavigationIntent,
     isNavigationIntentCurrent,
@@ -3636,6 +3648,34 @@ export default function App() {
     };
 
     try {
+      if (request.kind === "remote-project") {
+        // B3 remote product fix: the mounted App tree supplies this intent's
+        // execution (the only RemoteNavigationContext Provider lives in the
+        // unmounted a141c4aa1 AppRuntimeView). Sequence mirrors
+        // desktopNavigationOwner's remote-project branch: fence -> bridge open
+        // -> seed -> remote switch -> reveal -> refresh, with the outcome
+        // handed back to the Provider command through the request slot.
+        const outcome = request.remoteOutcome;
+        const superseded = () => { if (outcome) outcome.value = { status: "cancelled", reason: "superseded" }; };
+        try {
+          const token = await registeredNavigationIntent(request.navigationIntentSeq);
+          if (!latest() || !token) { superseded(); return; }
+          const openedTab = await app.OpenRemoteProjectTab(request.remote.hostId, request.remote.workspace, request.options);
+          if (!latest()) { superseded(); return; }
+          seedActiveTabMeta(openedTab);
+          await switchRemoteTab(openedTab, request.navigationIntentSeq);
+          if (!latest()) { superseded(); return; }
+          setTabRevealSignal((signal) => signal + 1);
+          setTranscriptRevealSignal((signal) => signal + 1);
+          await refreshLatestTabMetas();
+          if (outcome) outcome.value = { status: "completed", value: openedTab };
+        } catch (err) {
+          console.warn("remote navigation failed", err);
+          if (outcome) outcome.value = { status: "failed", error: err };
+        }
+        return;
+      }
+
       if (request.kind === "topic") {
         const openedTab = await openTopicTarget(request.scope, request.workspaceRoot, request.topicId, request.sessionPath);
         if (!latest()) return;
@@ -3735,6 +3775,9 @@ export default function App() {
       setTranscriptRevealSignal((value) => value + 1);
     } catch (err: any) {
       if (!latest()) return;
+      // remote-project is fully handled inside its own try above; the guard
+      // keeps the history-error fallback below from narrowing over it.
+      if (request.kind === "remote-project") return;
       if (request.kind === "topic" || request.kind === "blank") {
         console.warn("desktop navigation failed", err);
         showToast(t("history.failedOpenSession"), "error");
@@ -3800,6 +3843,22 @@ export default function App() {
     return enqueueNavigationWithIntent(input, navigationIntentSeq);
   }, [enqueueNavigationWithIntent, noteNavigationIntent, enterConversation]);
 
+  // B3 remote product fix: the value RemoteNavigationContext consumers resolve
+  // (ProjectTree remote topics, RemoteConnectWizard, RemoteSessionSurface).
+  // The unmounted AppRuntimeView Provider serves session.desktopNavigation
+  // .openRemoteProject; this tree sources the same execution from its own
+  // navigation queue. A request coalesced away or superseded before running
+  // resolves as cancelled — consumers already treat that as a silent return,
+  // same as the notReady default.
+  const openRemoteProjectCommand = useCallback<RemoteNavigationCommand>(async (remote, options) => {
+    // Mirror startRemoteNavigation: reveal the chat surface before executing.
+    enterConversation();
+    const navigationIntentSeq = noteNavigationIntent();
+    const remoteOutcome: RemoteNavigationOutcomeSlot = {};
+    await enqueueNavigationWithIntent({ kind: "remote-project", remote, options, remoteOutcome }, navigationIntentSeq);
+    return remoteOutcome.value ?? { status: "cancelled", reason: "superseded" };
+  }, [enterConversation, noteNavigationIntent, enqueueNavigationWithIntent]);
+
   const openBlankSession = useCallback((scope: string, workspaceRoot: string): Promise<void> =>
     enqueueNavigation({ kind: "blank", scope, workspaceRoot: scope === "project" ? workspaceRoot : "" }),
   [enqueueNavigation]);
@@ -3807,9 +3866,17 @@ export default function App() {
   const handleNewTab = useCallback(async () => {
     closeTransientOverlays();
     setSidebarImDetailConnectionId("");
+    // B3: a New Session issued while a remote tab is active opens on that
+    // remote workspace (mirror of useSessionNavigationCommands.handleNewTab;
+    // the local blank path would silently detach from the remote session).
+    if (activeTab?.remote) {
+      const outcome = await openRemoteProjectCommand(activeTab.remote, { newSession: true });
+      if (outcome.status === "failed") showToast(outcome.error instanceof Error ? outcome.error.message : String(outcome.error), "error");
+      return;
+    }
     const target = blankSessionTarget();
     await openBlankSession(target.scope, target.workspaceRoot);
-  }, [blankSessionTarget, closeTransientOverlays, openBlankSession]);
+  }, [activeTab, blankSessionTarget, closeTransientOverlays, openBlankSession, openRemoteProjectCommand, showToast]);
 
   const handleOpenTopic = useCallback((scope: string, workspaceRoot: string, topicId: string, sessionPath?: string): Promise<void> => {
     closeTransientOverlays();
@@ -4230,6 +4297,7 @@ export default function App() {
 
   return (
     <ShellExpandProvider>
+    <RemoteNavigationContext.Provider value={openRemoteProjectCommand}>
     <UpdaterProvider>
     <ShellHotkeys />
     <TextSizeHotkeys />
@@ -4790,6 +4858,10 @@ export default function App() {
               />
             ) : noticePreviewMockEnabled() ? (
               <NoticePreviewPanel />
+            ) : activeTab?.remote ? (
+              <Suspense fallback={null}>
+                <RemoteSessionSurface tab={activeTab} session={remoteSession} />
+              </Suspense>
             ) : (
               <>
                 <div className="transcript-navigation-surface" aria-busy={runtimeTransitioning}>
@@ -5108,6 +5180,14 @@ export default function App() {
             )}
             <Composer
               running={state.running || rewindCommitting}
+              // B3 finishing-followup fix: the durable-followup path keys
+              // submitPendingKey on these (Composer.tsx inbox_not_submitted
+              // guard). The unmounted AppRuntimeView tree supplied them via
+              // decisionFooterBuilders; this tree must source them from the
+              // active tab so finishing submits can enqueue.
+              inboxSessionPath={activeTab?.sessionPath}
+              inboxHostId={activeTab?.remote?.hostId}
+              inboxWorkspace={activeTab?.remote?.workspace}
               collaborationMode={collaborationMode}
               toolApprovalMode={toolApprovalMode}
               qualityFloor={composerProfile.qualityFloor}
@@ -5618,6 +5698,7 @@ export default function App() {
       <FeedbackPanel />
     </div>
     </UpdaterProvider>
+    </RemoteNavigationContext.Provider>
     </ShellExpandProvider>
   );
 }
