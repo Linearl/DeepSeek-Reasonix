@@ -61,13 +61,18 @@ export function SettingsOpenCodeGoUsageCard({
     void refresh();
   }, [enabled, refresh]);
   useEffect(() => {
-    if (!enabled || !usage?.tiers.some((tier) => tier.resetsAt)) return;
+    if (!enabled || !(usage?.tiers ?? []).some((tier) => tier.resetsAt)) return;
     const timer = window.setInterval(() => setTick((value) => value + 1), 30_000);
     return () => window.clearInterval(timer);
   }, [enabled, usage]);
 
+  // tiers is typed non-null, but the wire can still hand the card null (a
+  // Go nil slice used to marshal as "tiers": null and crash this lookup with
+  // TypeError: null.find — opencodefix). Normalize so the card falls to its
+  // note/empty branch instead of throwing in render.
+  const tiers = usage?.tiers ?? [];
   const windows = OPENCODE_GO_WINDOW_KEYS
-    .map((key) => usage?.tiers.find((tier) => tier.window === key))
+    .map((key) => tiers.find((tier) => tier.window === key))
     .filter((tier): tier is NonNullable<typeof tier> => Boolean(tier));
   const noteText = usage ? usageNoteText(usage.note, t) : "";
 

@@ -75,47 +75,55 @@ func isOfficialOpenCodeGoBase(base string) bool {
 	return strings.EqualFold(u.Hostname(), "opencode.ai")
 }
 
+// usageView assembles a note-only payload with a non-nil empty Tiers slice.
+// A nil slice marshals to JSON null, and the settings card's tier lookup
+// crashed on it (TypeError: null.find) — the wire carries [] for every
+// degradation note so the card falls to its note/empty branch instead.
+func usageView(note string) OpenCodeGoUsageView {
+	return OpenCodeGoUsageView{Tiers: []OpenCodeGoUsageTier{}, Note: note}
+}
+
 // GetOpenCodeGoUsage queries the subscription usage endpoint for the settings
 // card (task 163). baseUrl is the provider the card belongs to; anything off
 // the official host returns before any network I/O.
 func (a *App) GetOpenCodeGoUsage(baseUrl string) (OpenCodeGoUsageView, error) {
 	if !isOfficialOpenCodeGoBase(baseUrl) {
-		return OpenCodeGoUsageView{Note: "unsupported-endpoint"}, nil
+		return usageView("unsupported-endpoint"), nil
 	}
 	key := strings.TrimSpace(os.Getenv("OPENCODE_GO_API_KEY"))
 	if key == "" {
-		return OpenCodeGoUsageView{Note: "no-key"}, nil
+		return usageView("no-key"), nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), openCodeGoUsageTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, openCodeGoUsageEndpoint, nil)
 	if err != nil {
-		return OpenCodeGoUsageView{Note: "network"}, fmt.Errorf("build usage request: %w", err)
+		return usageView("network"), fmt.Errorf("build usage request: %w", err)
 	}
 	// Bearer here, x-api-key on the inference side — never interchangeable.
 	req.Header.Set("Authorization", "Bearer "+key)
 	req.Header.Set("Accept", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return OpenCodeGoUsageView{Note: "network"}, fmt.Errorf("query usage: %w", err)
+		return usageView("network"), fmt.Errorf("query usage: %w", err)
 	}
 	defer resp.Body.Close()
 	switch {
 	case resp.StatusCode == http.StatusForbidden:
 		// Valid key, no Go subscription — distinct from an auth failure.
-		return OpenCodeGoUsageView{Note: "no-subscription"}, nil
+		return usageView("no-subscription"), nil
 	case resp.StatusCode == http.StatusUnauthorized:
-		return OpenCodeGoUsageView{Note: "auth-failed"}, nil
+		return usageView("auth-failed"), nil
 	case resp.StatusCode < 200 || resp.StatusCode > 299:
-		return OpenCodeGoUsageView{Note: fmt.Sprintf("http-%d", resp.StatusCode)}, nil
+		return usageView(fmt.Sprintf("http-%d", resp.StatusCode)), nil
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return OpenCodeGoUsageView{Note: "parse"}, fmt.Errorf("read usage body: %w", err)
+		return usageView("parse"), fmt.Errorf("read usage body: %w", err)
 	}
 	tiers, err := parseOpenCodeGoUsage(body)
 	if err != nil {
-		return OpenCodeGoUsageView{Note: "parse"}, err
+		return usageView("parse"), err
 	}
 	return OpenCodeGoUsageView{Tiers: tiers}, nil
 }
