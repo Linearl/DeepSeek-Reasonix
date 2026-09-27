@@ -231,7 +231,9 @@ console.log("\nbundle budgets");
 // Zero-src-change re-build tripped the 474.1 gate twice (edge jitter at the
 // dead-even line — the pre-registered 280 warning): one-shot +0.5 to 474.6
 // per the pre-filed rule (initial tripping -> 474.6).
-const initialJSBudgetKiB = 474.6; // fork: chain 468.8-era → 471.1 → 471.6 → 472.1 → 472.6 (tasks 242/192) → 473.1 (merge batch) → 473.6 (tasks 244 batch 1 + 163, same gate) → 474.1 (244 batch 2 + batch 4 same gate) → 474.6 (335 收口 zero-src jitter trip, pre-registered rule; one-shot +0.5 per the 2026-09-20 ratchet rule)
+// Merge batch (B3 remote + opencodefix + effortfix2 stacked onto 318):
+// measured 475.0 over 474.6 — one-shot +0.5 to 475.1 (merge-batch precedent).
+const initialJSBudgetKiB = 475.1; // fork: chain 468.8-era → 471.1 → 471.6 → 472.1 → 472.6 (tasks 242/192) → 473.1 (merge batch) → 473.6 (tasks 244 batch 1 + 163, same gate) → 474.1 (244 batch 2 + batch 4 same gate) → 474.6 (335 收口 jitter, pre-registered rule) → 475.1 (B3+opencodefix+effortfix2 merge batch, 475.0 measured; one-shot +0.5 per the 2026-09-20 ratchet rule)
 // Task 269 rebased onto 471.1: measured 470.7, also within 471.1 —
 // larger one-shot value stands (audit ruling, no second ratchet).
 // Task 264 rebased onto the same budget: measured 470.3 KiB (collab-background
