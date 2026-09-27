@@ -651,3 +651,26 @@ func TestGrepGB18030TruncationDoesNotLeakGoroutine(t *testing.T) {
 		t.Fatalf("missing truncation marker:\n%s", out)
 	}
 }
+
+// Task 322/323: the tool descriptions steer batch edits (copy-only, zero
+// behavior change). Each check is its own guard so a partial rewrite of the
+// guidance is caught at the exact line it lost.
+func TestToolDescriptionsSteerBatchEditing(t *testing.T) {
+	multi := multiEdit{}.Description()
+	single := editFile{}.Description()
+	if !strings.HasPrefix(multi, "WHEN TO USE: modifying 2+ places") {
+		t.Fatalf("multi_edit description lacks the WHEN TO USE trigger: %q", multi)
+	}
+	if !strings.Contains(multi, "INSTEAD of chained edit_file calls") {
+		t.Fatalf("multi_edit trigger must name the chained-edit_file anti-pattern: %q", multi)
+	}
+	if !strings.Contains(single, "prefer multi_edit (atomic batch)") {
+		t.Fatalf("edit_file description lacks the multi_edit cross-reference: %q", single)
+	}
+	if !strings.Contains(multi, "atomic") || !strings.Contains(multi, "per-step errors") {
+		t.Fatalf("multi_edit trigger must promise atomicity and per-step errors: %q", multi)
+	}
+	if !strings.Contains(single, "line_range") || !strings.Contains(single, "source_token") {
+		t.Fatalf("edit_file description must keep its line_range/source_token guidance: %q", single)
+	}
+}
