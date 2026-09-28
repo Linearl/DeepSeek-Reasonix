@@ -193,6 +193,13 @@ func (a *App) SetExperimentalAutonomousUpdate(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalAutonomousUpdate(enabled) })
 }
 
+// SetUpdateChime toggles the update-complete chime (task 277). The frontend
+// owns the one-shot gate (last-chimed version), so this is a live config flip
+// with no restart.
+func (a *App) SetUpdateChime(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetUpdateChime(enabled) })
+}
+
 // SetExperimentalFullAccess toggles the full-access (yolo) lab switch
 // (task 257). Boot resolves it into the writable-root set and the bash spec,
 // so the flip applies on the next restart — the settings pane says so.

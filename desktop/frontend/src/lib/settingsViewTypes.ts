@@ -15,6 +15,8 @@ export interface SettingsView {
   experimentalAutonomousUpdate?: boolean;
   // Task 254: auto-resume scope after an update restart (off | goal_autopilot | all).
   autonomousUpdateResume?: string;
+  // Task 277: update-complete chime (first launch after a version swap).
+  updateChime?: boolean;
   // Task 123: exposes the left-rail session monitor board (experimental).
   experimentalSessionMonitor?: boolean;
   // Task 70-1: exposes the tab-bar split view (experimental).

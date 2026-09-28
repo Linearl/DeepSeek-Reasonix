@@ -58,7 +58,7 @@ import { reportFrontendLog } from "./lib/frontendLog";
 import { app, onEvent, onReady, onRemoteForwards, onRemoteServer, onRemoteStatus, onRuntimeRebuilt, openExternal } from "./lib/bridge";
 import { useConfigLoadWarnings } from "./lib/useConfigLoadWarnings";
 import { generativeMusic, isGenerativeMusicEnabled } from "./lib/generative-music";
-import { clearAttentionChimeKeys, playAttentionChime, playSuccessChime, shouldPlayAttentionChimeForEvent } from "./lib/sound";
+import { clearAttentionChimeKeys, maybePlayUpdateChime, playAttentionChime, playSuccessChime, playUpdateChime, shouldPlayAttentionChimeForEvent } from "./lib/sound";
 import { Transcript } from "./components/Transcript";
 import { Composer } from "./components/Composer";
 import { TodoPanel } from "./components/TodoPanel";
@@ -657,6 +657,21 @@ export default function App() {
   // Task 70-5: the topicbar shows one title per pane. The secondary pane's title
   // travels through the split store (the topicbar sits under the shell and does not
   // receive the split state).
+  // Task 277: update-complete chime — one shot, on the first launch after a
+  // version swap. The gate lives in maybePlayUpdateChime (seen-version record
+  // + lab switch), and any failure never blocks startup.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [view, versions] = await Promise.all([app.Settings(), app.ListInstalledVersions()]);
+        await maybePlayUpdateChime({
+          enabled: Boolean(view.updateChime),
+          listVersions: async () => versions,
+          play: playUpdateChime,
+        });
+      } catch { /* never block startup */ }
+    })();
+  }, []);
   useEffect(() => {
     const secondaryId = splitState.secondaryTabId;
     const meta = secondaryId ? tabMetas.find((tab) => tab.id === secondaryId) : undefined;

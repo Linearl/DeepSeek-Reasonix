@@ -154,6 +154,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "experimental_restart_update = %v   # desktop: show the restart-and-update action (task 81)\n", c.Desktop.ExperimentalRestartUpdate)
 		fmt.Fprintf(&b, "experimental_autonomous_update = %v   # desktop: register the agent restart_update tool (task 254; boot snapshot)\n", c.Desktop.ExperimentalAutonomousUpdate)
 		fmt.Fprintf(&b, "autonomous_update_resume = %q   # desktop: auto-resume after an update restart: off | goal_autopilot | all (task 254)\n", c.AutonomousUpdateResumeMode())
+		// Task 277: same fixed-key-set rule — a missing line would flip the
+		// switch back to off on the next save (the 81/123 lesson).
+		fmt.Fprintf(&b, "update_chime = %v   # desktop: play the ~3s update-complete chime on the first launch after a version swap (task 277)\n", c.Desktop.UpdateChime)
 		fmt.Fprintf(&b, "experimental_session_monitor = %v   # desktop: left-rail session monitor board (task 123)\n", c.Desktop.ExperimentalSessionMonitor)
 		fmt.Fprintf(&b, "experimental_split_view = %v   # desktop: tab-bar split view (task 70-1)\n", c.Desktop.ExperimentalSplitView)
 		fmt.Fprintf(&b, "experimental_feedback = %v   # desktop: agent submit_feedback tool + feedback inbox panel (task 121)\n", c.Desktop.ExperimentalFeedback)

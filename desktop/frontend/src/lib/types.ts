@@ -2326,6 +2326,8 @@ export interface DesktopStartupSettingsView {
   experimentalAutonomousUpdate?: boolean;
   /** Auto-resume scope after an update restart (task 254): off | goal_autopilot | all. */
   autonomousUpdateResume?: string;
+  /** Update-complete chime (task 277): plays once on the first launch after a version swap; off by default. */
+  updateChime?: boolean;
   /** Session-monitor board experiment switch (task 123); off unless the user opts in. */
   experimentalSessionMonitor?: boolean;
   /** Split-view experiment switch (task 70-1); off unless the user opts in. */

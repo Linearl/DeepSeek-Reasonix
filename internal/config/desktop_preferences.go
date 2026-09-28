@@ -45,6 +45,10 @@ type DesktopConfig struct {
 	// whole auto-resume family off, which is what a conservative user opting
 	// out is asking for.
 	AutonomousUpdateResume string `toml:"autonomous_update_resume"`
+	// UpdateChime plays a short sound on the first launch after an update swaps
+	// versions (task 277). Opt-in (fork rule 2); the frontend gates one-shot
+	// playback by the last-chimed version, so an off switch is zero-behaviour.
+	UpdateChime bool `toml:"update_chime"`
 	// ExperimentalSessionMonitor exposes the left-rail "session monitor" board
 	// (task 123). It ships off: the board is a diagnostics surface for cache
 	// residency and switch cost, so it stays behind an explicit opt-in.
