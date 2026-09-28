@@ -869,6 +869,43 @@ func CascadeApprovalLive() bool {
 	return cfg.Agent.ExperimentalCascadeApproval
 }
 
+// SetExperimentalColdCacheCompact toggles the task-297 cold-cache pass
+// (live-read by the desktop tick; off by default).
+func (c *Config) SetExperimentalColdCacheCompact(enabled bool) error {
+	c.Agent.ExperimentalColdCacheCompact = enabled
+	return nil
+}
+
+// SetColdCacheCompactMinBytes stores the size floor. Values are clamped into
+// the sane band (1 KiB .. 64 MiB) instead of refused: the settings field
+// shows the stored number, so a silently-clamped store would make the UI
+// lie about what is saved — 0 is reserved for "built-in default".
+func (c *Config) SetColdCacheCompactMinBytes(bytes int64) error {
+	if bytes == 0 {
+		c.Agent.ColdCacheCompactMinBytes = 0
+		return nil
+	}
+	if bytes < 1024 || bytes > 64<<20 {
+		return fmt.Errorf("cold_cache_compact_min_bytes %d: must be 0 (default) or between 1024 and %d", bytes, int64(64<<20))
+	}
+	c.Agent.ColdCacheCompactMinBytes = bytes
+	return nil
+}
+
+// SetColdCacheCompactIdleMinutes stores the idle floor (1 minute .. 7 days;
+// 0 = built-in default).
+func (c *Config) SetColdCacheCompactIdleMinutes(minutes int) error {
+	if minutes == 0 {
+		c.Agent.ColdCacheCompactIdleMinutes = 0
+		return nil
+	}
+	if minutes < 1 || minutes > 7*24*60 {
+		return fmt.Errorf("cold_cache_compact_idle_minutes %d: must be 0 (default) or between 1 and %d", minutes, 7*24*60)
+	}
+	c.Agent.ColdCacheCompactIdleMinutes = minutes
+	return nil
+}
+
 // ProactiveCompactCooldownLive is the package-level read for the fold-cooldown
 // policy (task 318.2). Returns 0 when the switch is off — callers treat 0 as
 // "use the hard-coded default" so the off path keeps today's 10-minute

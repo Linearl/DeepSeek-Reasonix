@@ -1807,6 +1807,7 @@ type ExperimentFeatureId =
   | "highSpeedModel"
   // Task 318.2: configurable fold cooldown (storage group, task 297 family).
   | "proactiveCompact"
+  | "coldCacheCompact"
   | "compactionParallel"
   | "contextBudget"
   | "researchBudget"
@@ -1921,6 +1922,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "sessionStorage", group: "storage", label: t("settings.sessionStorage"), on: (s.sessionStorage ?? "v3_only") !== "v3_only" },
     // Task 318.2: configurable fold cooldown (task 297 cost family), storage group.
     { id: "proactiveCompact", group: "storage", label: t("settings.proactiveCompact"), on: Boolean(s.experimentalProactiveCompact) },
+    { id: "coldCacheCompact", group: "storage", label: t("settings.coldCacheCompact"), on: Boolean(s.experimentalColdCacheCompact) },
     // Task 333: rotation gate entry — the light reads any non-default mode so
     // the statistic card stays discoverable (render table: a missing entry
     // would silently drop the save, 81/123 lesson).
@@ -3065,6 +3067,54 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                     await app.SetProactiveCompactCooldownMinutes(proactiveCooldownMinutes);
                   })}
                 />
+              </SettingsField>
+            </>
+          )}
+          {selected === "coldCacheCompact" && (
+            <>
+              <SettingsField label={t("settings.coldCacheCompact")} hint={t("settings.coldCacheCompactHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalColdCacheCompact) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalColdCacheCompact(on))}
+                    >
+                      {t(on ? "settings.coldCacheCompact.on" : "settings.coldCacheCompact.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.coldCacheCompact.minBytes")} hint={t("settings.coldCacheCompact.minBytesHint")} icon={<Sparkles size={18} />}>
+                <input
+                  type="number"
+                  min={1}
+                  max={64384}
+                  defaultValue={Math.round((s.coldCacheCompactMinBytes || 614400) / 1024)}
+                  disabled={busy}
+                  onBlur={(e) => {
+                    const kb = Math.max(1, Math.min(64384, Math.floor(Number(e.target.value) || 600)));
+                    e.target.value = String(kb);
+                    void apply(() => app.SetColdCacheCompactMinBytes(kb * 1024));
+                  }}
+                />
+                <span> KB</span>
+              </SettingsField>
+              <SettingsField label={t("settings.coldCacheCompact.idleHours")} hint={t("settings.coldCacheCompact.idleHoursHint")} icon={<Sparkles size={18} />}>
+                <input
+                  type="number"
+                  min={1}
+                  max={168}
+                  defaultValue={Math.max(1, Math.round((s.coldCacheCompactIdleMinutes || 300) / 60))}
+                  disabled={busy}
+                  onBlur={(e) => {
+                    const h = Math.max(1, Math.min(168, Math.floor(Number(e.target.value) || 5)));
+                    e.target.value = String(h);
+                    void apply(() => app.SetColdCacheCompactIdleMinutes(h * 60));
+                  }}
+                />
+                <span> h</span>
               </SettingsField>
             </>
           )}

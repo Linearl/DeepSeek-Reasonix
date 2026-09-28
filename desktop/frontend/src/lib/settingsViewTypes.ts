@@ -107,6 +107,10 @@ export interface SettingsView {
   experimentalProactiveCompact?: boolean;
   proactiveCompactCooldownMinutes?: number;
   experimentalComposerDraft?: boolean;
+  // Task 297: cold-cache compact pass (lab storage cost card).
+  experimentalColdCacheCompact?: boolean;
+  coldCacheCompactMinBytes?: number;
+  coldCacheCompactIdleMinutes?: number;
   // Task 19: multi-session collaboration experiment.
   experimentalSessionCollab?: boolean;
   // Task 244 B1: heartbeat idle-streak burn guard.

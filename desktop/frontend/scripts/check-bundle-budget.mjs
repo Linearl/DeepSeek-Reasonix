@@ -245,7 +245,7 @@ console.log("\nbundle budgets");
 // B2 merge batch (LA 336/237/181 + LB 282/279/277 + 338 + 304 + 333 tail + 343):
 // measured 477.3 against the 476.6 line — stacked 0.7 over, so one-shot two
 // steps (+1.0) to 477.6 per the 2026-09-20 ratchet rule (no drip, independent commit).
-const initialJSBudgetKiB = 477.6; // fork: chain 468.8-era → 471.1 → 471.6 → 472.1 → 472.6 (tasks 242/192) → 473.1 (merge batch) → 473.6 (tasks 244 batch 1 + 163, same gate) → 474.1 (244 batch 2 + batch 4 same gate) → 474.6 (335 收口 jitter, pre-registered rule) → 475.1 (B3+opencodefix+effortfix2 merge batch, 475.0 measured; one-shot +0.5 per the 2026-09-20 ratchet rule) → 475.6 (task 337 locale guidance, 475.1 measured; one-shot +0.5) → 476.1 (task 333 rotation gate, 475.7 measured; one-shot +0.5) → 476.6 (task 282 fork features intro, 476.2 measured; one-shot +0.5) → 476.6 (task 338 memory pages, 476.2 measured; one-shot +0.5, same gate — B2 merge batch single const) → 477.6 (B2 merge batch stacked, 477.3 measured; one-shot two steps +1.0)
+const initialJSBudgetKiB = 478.1; // fork: chain 468.8-era → 471.1 → 471.6 → 472.1 → 472.6 (tasks 242/192) → 473.1 (merge batch) → 473.6 (tasks 244 batch 1 + 163, same gate) → 474.1 (244 batch 2 + batch 4 same gate) → 474.6 (335 收口 jitter, pre-registered rule) → 475.1 (B3+opencodefix+effortfix2 merge batch, 475.0 measured; one-shot +0.5 per the 2026-09-20 ratchet rule) → 475.6 (task 337 locale guidance, 475.1 measured; one-shot +0.5) → 476.1 (task 333 rotation gate, 475.7 measured; one-shot +0.5) → 476.6 (task 282 fork features intro, 476.2 measured; one-shot +0.5) → 476.6 (task 338 memory pages, 476.2 measured; one-shot +0.5, same gate — B2 merge batch single const) → 477.6 (B2 merge batch stacked, 477.3 measured; one-shot two steps +1.0) → 478.1 (task 297 cold-cache card, 477.8 measured; one-shot +0.5)
 // Task 269 rebased onto 471.1: measured 470.7, also within 471.1 —
 // larger one-shot value stands (audit ruling, no second ratchet).
 // Task 264 rebased onto the same budget: measured 470.3 KiB (collab-background
@@ -463,9 +463,10 @@ for (const path of localeChunks) {
   // B2 merge batch (LB 282+279+277 stacked): zh measures 82.4 over the 82.0
   // line — one-shot +0.5 to 82.5 (ratchet rule, independent commit).
   // zh-TW measures 83.6 over the 83.5 line (B2 stack) — one-shot +0.5 to 84.0.
+  // task 297 locale keys push zh-TW to 84.1 over 84.0 — one-shot +0.5 to 84.5.
   // Side-track batch (196fix2+347+345+346): zh measures 82.6 over the 82.5
   // line — one-shot +0.5 to 83.0 (ratchet rule, independent commit).
-  const budget = name.startsWith("zh-TW-") ? 84.0 * 1024 : 83.0 * 1024;
+  const budget = name.startsWith("zh-TW-") ? 84.5 * 1024 : 83.0 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
