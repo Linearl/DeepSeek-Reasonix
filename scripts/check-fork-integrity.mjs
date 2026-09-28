@@ -172,6 +172,7 @@ const CHECKS = [
   { feature: "任务196fix 注记 path_mismatch 判定归一+226 Info canonical", file: "internal/agent/save_dag.go", patterns: ["sameSessionLogPath", "canonicalSessionSavePath(path), \"extended\""] },
   { feature: "任务307 physical ceiling 拒当轮 truncation 兜底", file: "internal/agent/context_manager.go", patterns: ["errors.Is(err, errCheckpointCeiling)", "End the loop"] },
   { feature: "任务357 save 链毫秒分段打点（phases+dag 三段+锁等待）", file: "internal/agent/save.go", patterns: ["session: save phases", "lastSaveLockWaitMs.Store"] },
+  { feature: "任务221#6 unread 计数与 inbox 真值对账（claim 背书+渲染面）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["InboxStatus reports, read-only", "seen[m.ID]"] },
   { feature: "任务297 冷缓存压缩 tick 判据与防循环", file: "desktop/cold_cache_compact.go", patterns: ["coldCacheCompactDecision", "already compacted this cooling window", "cold cache compact completed"] },
   { feature: "任务356 手动挡修复按钮不置灰（分档 disabled+confirm+分档 hint）", file: "desktop/frontend/src/components/SessionEventsPanel.tsx", patterns: ["mode === \"manual\" ? busy : busy || entry.busy", "busyConfirm", "busyHintManual"] },
   { feature: "任务297 实验室存储成本卡（开关+两数值）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["SetColdCacheCompactMinBytes(kb * 1024)", "SetColdCacheCompactIdleMinutes(h * 60)"] },
