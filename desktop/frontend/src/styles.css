@@ -3958,6 +3958,14 @@ a[href] {
   gap: 4px;
   position: sticky;
   top: 0;
+  /* Task 353: the rail floats over the lab column while scrolling (task 282's
+     intro section sits right below it). Without an opaque backdrop the intro
+     text scrolls *through* the floating rail and prints over the switch rows —
+     visible only after scrolling to the bottom. Background + stacking order
+     keep the two surfaces separated at every scroll position. */
+  z-index: var(--z-inline-sticky);
+  background: var(--bg);
+  padding: 6px 0 8px;
 }
 .experimental-rail__item {
   display: flex;
@@ -4025,6 +4033,10 @@ a[href] {
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid var(--border-soft);
+  /* Task 353: own stacking context below the sticky rail so the section never
+     interleaves with the floating switch rows while scrolling. */
+  position: relative;
+  z-index: var(--z-theme-bg);
 }
 .experimental-intro__title {
   color: var(--fg);
