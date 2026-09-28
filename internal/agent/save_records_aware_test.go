@@ -140,7 +140,7 @@ func TestSaveCompactsAtHalfRecordBudget(t *testing.T) {
 	if mErr != nil {
 		t.Fatalf("measure content bytes: %v", mErr)
 	}
-	if sessionEventLogOversized(int64(logBytes), exactContentBytes) {
+	if sessionEventLogOversized(path, int64(logBytes), exactContentBytes) {
 		t.Fatalf("construction must sit under the byte gate: logBytes=%d vs contentBytes=%d", logBytes, exactContentBytes)
 	}
 	if err := s.Save(path); err != nil {

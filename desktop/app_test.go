@@ -3198,12 +3198,20 @@ func TestSetEffortForTabSameLevelShortCircuit(t *testing.T) {
 		t.Fatal("same-level effort switch rebuilt the controller")
 	}
 
-	// A genuinely different depth still rebuilds.
+	// A genuinely different depth takes the per-request fast path when the
+	// provider varies effort per call: the running controller is kept (no
+	// rebuild) and the tab's depth follows. Task 334: this assertion predates
+	// 866's fast path — "still rebuilds" described a world without it; the
+	// fallback direction (provider without a per-request vocabulary, recovery
+	// fork) is covered by the rebuild tests and agent-side decline logs.
 	if err := app.SetEffortForTab(tab.ID, "low"); err != nil {
 		t.Fatalf("SetEffortForTab low: %v", err)
 	}
-	if tab.Ctrl == rebuilt {
-		t.Fatal("different-level effort switch kept the controller")
+	if tab.Ctrl != rebuilt {
+		t.Fatal("different-level effort switch rebuilt the controller despite a per-request-capable provider")
+	}
+	if tab.effort == nil || *tab.effort != "low" {
+		t.Fatalf("tab effort after different-level switch = %v, want low", tab.effort)
 	}
 }
 

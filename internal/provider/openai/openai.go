@@ -259,6 +259,7 @@ func New(cfg provider.Config) (provider.Provider, error) {
 		visionDetail:    visionDetail,
 		maxOutputTokens: maxOutputTokens,
 		effort:          effort,
+		requestEfforts:  supportedEfforts,
 		http:            httpClient,
 		idleTimeout:     defaultStreamIdleTimeout,
 		// The official OpenCode Go chat gateway 400s any message-level `name`
@@ -319,6 +320,7 @@ type client struct {
 	visionDetail    string        // image_url detail hint (low|high); "" = auto/omit
 	maxOutputTokens int           // resolved total output budget; <=0 omits the optional field
 	effort          string        // reasoning_effort for OpenAI; thinking.type for MiniMax; "" = auto/provider default
+	requestEfforts  []string      // depth levels a request-scoped EffortOverride may take; empty = overrides ignored (task 334, #9866)
 	idleTimeout     time.Duration // SSE stall watchdog window; defaultStreamIdleTimeout unless a test overrides
 	authed          atomic.Bool   // a request has succeeded — gate transient-401 retry
 	// dropToolMessageName suppresses the message-level `name` key on role=tool

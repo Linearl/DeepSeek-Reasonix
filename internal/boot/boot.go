@@ -896,6 +896,13 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// workspace root reuse running MCP processes (e.g. one CodeGraph daemon
 	// instead of one per tab). Otherwise construct a private host per controller.
 	pluginHost := opts.SharedHost
+	if opts.SharedHost != nil && os.Getenv("REASONIX_MCP_NO_REUSE") != "" {
+		// Task 334 (iron law 1): escape hatch — ignore the shared host so this
+		// build gets a private host and handshakes every enabled server from
+		// scratch, matching pre-reuse builds for A/B comparison.
+		slog.Warn("boot: MCP shared-host reuse disabled by REASONIX_MCP_NO_REUSE")
+		pluginHost = nil
+	}
 	if pluginHost == nil {
 		pluginHost = plugin.NewHostWithProfile(opts.MCPHostProfile)
 	}
@@ -989,10 +996,15 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// for this controller and still take a short readiness probe so recovery and
 	// session-scoped servers are deterministic. User/project config MCP stays
 	// catalog-first and process-idle until first real tool call.
+	// Task 334: count what this stage actually did — connect_fresh is the
+	// handshake count (config-unchanged rebuilds must show 0 here), cache_hits
+	// is the HasClient reuse path, kick_fresh counts lazily started processes.
+	var connectFresh, cacheHits, kickFresh int
 	if len(extraSpecs) > 0 {
 		for _, s := range extraSpecs {
 			if pluginHost.HasClient(s.Name) {
 				if tools, err := pluginHost.ToolsFor(ctx, s.Name); err == nil {
+					cacheHits++
 					for _, t := range tools {
 						reg.Add(t)
 					}
@@ -1005,6 +1017,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			if err != nil {
 				if plugin.IsServerAlreadyConnected(err) {
 					if tools, err2 := pluginHost.ToolsFor(ctx, s.Name); err2 == nil {
+						cacheHits++
 						for _, t := range tools {
 							reg.Add(t)
 						}
@@ -1020,6 +1033,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 					Text: "An MCP server failed to start.", Detail: fmt.Sprintf("mcp %s: %v", s.Name, err)})
 				continue
 			}
+			connectFresh++
 			for _, t := range tools {
 				reg.Add(t)
 			}
@@ -1033,6 +1047,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			if pluginHost.HasClient(s.Name) {
 				tools, err := pluginHost.ToolsFor(ctx, s.Name)
 				if err == nil {
+					cacheHits++
 					for _, t := range tools {
 						reg.Add(t)
 					}
@@ -1043,6 +1058,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			// Only kick a process for catalog discovery when no usable schema is
 			// cached. Cache-hit sessions stay process-idle until first tool call.
 			kick := cs == nil || len(cs.Tools) == 0
+			if kick {
+				kickFresh++
+			}
 			for _, t := range plugin.LazyToolset(s, cs, pluginHost, reg, ctx, kick) {
 				reg.Add(t)
 			}
@@ -1067,6 +1085,12 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	}
 	registerEnabledMCP(configSpecs)
 	bootTime.mark("mcp")
+	// Task 334: the reuse proof the bench reads — a rebuild with an unchanged
+	// MCP config and a shared host must log connect_fresh=0; any connect here
+	// names a reuse miss (host/key/spec) instead of inferring it later.
+	slog.Info("boot: mcp stage", "shared_host_reused", opts.SharedHost != nil,
+		"connect_fresh", connectFresh, "cache_hits", cacheHits, "kick_fresh", kickFresh,
+		"specs", len(configSpecs))
 
 	for _, msg := range demoteMessages {
 		sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Text: msg})

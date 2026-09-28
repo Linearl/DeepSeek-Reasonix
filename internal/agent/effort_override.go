@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"log/slog"
 	"strings"
 	"sync/atomic"
 )
@@ -43,11 +44,17 @@ func (a *Agent) SetSessionEffortOverride(level string) bool {
 	// use. Defer such sessions to the caller's fallback.
 	if path := strings.TrimSpace(a.sess.path); path != "" {
 		if meta, ok, err := LoadBranchMeta(path); err == nil && ok && meta.Recovered {
+			// Task 334: name why the fast path declined — this is one of the
+			// two documented fallback causes (recovery fork keeps reanchor).
+			slog.Info("agent: effort override declined", "reason", "recovery-fork")
 			return false
 		}
 	}
 	varying, ok := a.svc.prov.(effortVarying)
 	if !ok {
+		// Task 334: provider exposes no per-request vocabulary probe — the
+		// other documented fallback cause (e.g. non-openai adapters).
+		slog.Info("agent: effort override declined", "reason", "provider-not-effort-varying")
 		return false
 	}
 	for _, l := range varying.PerRequestEfforts() {
@@ -56,6 +63,7 @@ func (a *Agent) SetSessionEffortOverride(level string) bool {
 			return true
 		}
 	}
+	slog.Info("agent: effort override declined", "reason", "level-not-in-vocabulary", "level", level)
 	return false
 }
 
