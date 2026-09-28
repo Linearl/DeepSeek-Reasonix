@@ -642,6 +642,10 @@ func (a *App) startup(ctx context.Context) {
 	a.observeIncompleteWindowRestore()
 	a.startMainThreadWatchdog()
 
+	// Task 297: the cold-cache compact pass ticks unconditioned; the lab
+	// switch is read live inside the loop, so OFF is one config read per
+	// tick and ON applies without a restart.
+	a.startColdCacheCompactLoop()
 	a.heartbeat = newHeartbeatEngine(a)
 	// Task 244 B1: call-time evaluation (S4) — the burn guard reads the
 	// saved switch on every run, so toggling it in settings applies without a

@@ -313,6 +313,24 @@ func (a *App) SetProactiveCompactCooldownMinutes(minutes int) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetProactiveCompactCooldownMinutes(minutes) })
 }
 
+// SetExperimentalColdCacheCompact toggles the task-297 cold-cache pass
+// (the desktop tick live-reads it; off by default).
+func (a *App) SetExperimentalColdCacheCompact(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalColdCacheCompact(enabled) })
+}
+
+// SetColdCacheCompactMinBytes stores the context size floor for the pass
+// (task 297; 0 = built-in 600 KiB, clamped band rejected outside range).
+func (a *App) SetColdCacheCompactMinBytes(bytes int64) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetColdCacheCompactMinBytes(bytes) })
+}
+
+// SetColdCacheCompactIdleMinutes stores the idle floor for the pass
+// (task 297; 0 = built-in 300 minutes).
+func (a *App) SetColdCacheCompactIdleMinutes(minutes int) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetColdCacheCompactIdleMinutes(minutes) })
+}
+
 // SetExperimentalComposerDraft toggles cross-restart composer draft
 // persistence (task 318.3; the frontend live-reads this on settings change).
 func (a *App) SetExperimentalComposerDraft(enabled bool) error {

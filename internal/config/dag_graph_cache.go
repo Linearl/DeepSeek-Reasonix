@@ -46,3 +46,28 @@ func (c *Config) SetDagGraphCacheCapacity(capacity int) error {
 	c.Agent.DagGraphCacheCapacity = capacity
 	return nil
 }
+
+// Built-in defaults for the cold-cache pass (task 297): 600 KiB of stored
+// context and 5h of idle — the two numbers the user set on 2026-09-24. A
+// zero/absent file value means "use these", never "disable".
+const (
+	ColdCacheCompactMinBytesDefault    int64 = 600 * 1024
+	ColdCacheCompactIdleMinutesDefault int   = 300
+)
+
+// ColdCacheCompactEffectiveMinBytes/IdleMinutes report the task-297 knob the
+// view should display: the stored value when set, the built-in default when
+// 0/absent — the settings field never shows a bare 0.
+func ColdCacheCompactEffectiveMinBytes(cfg *Config) int64 {
+	if cfg == nil || cfg.Agent.ColdCacheCompactMinBytes <= 0 {
+		return ColdCacheCompactMinBytesDefault
+	}
+	return cfg.Agent.ColdCacheCompactMinBytes
+}
+
+func ColdCacheCompactEffectiveIdleMinutes(cfg *Config) int {
+	if cfg == nil || cfg.Agent.ColdCacheCompactIdleMinutes <= 0 {
+		return ColdCacheCompactIdleMinutesDefault
+	}
+	return cfg.Agent.ColdCacheCompactIdleMinutes
+}

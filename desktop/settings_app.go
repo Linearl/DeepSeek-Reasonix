@@ -426,6 +426,10 @@ type SettingsView struct {
 	ExperimentalProactiveCompact    bool `json:"experimentalProactiveCompact"`
 	ProactiveCompactCooldownMinutes int  `json:"proactiveCompactCooldownMinutes"`
 	ExperimentalComposerDraft       bool `json:"experimentalComposerDraft"`
+	// Task 297: cold-cache compact pass knobs (lab storage cost card).
+	ExperimentalColdCacheCompact bool   `json:"experimentalColdCacheCompact"`
+	ColdCacheCompactMinBytes    int64  `json:"coldCacheCompactMinBytes"`
+	ColdCacheCompactIdleMinutes int    `json:"coldCacheCompactIdleMinutes"`
 
 	VisionModel                  string                     `json:"visionModel"`
 	WebSearchModel               string                     `json:"webSearchModel"`
@@ -592,6 +596,10 @@ type DesktopStartupSettingsView struct {
 	ExperimentalProactiveCompact    bool `json:"experimentalProactiveCompact"`
 	ProactiveCompactCooldownMinutes int  `json:"proactiveCompactCooldownMinutes"`
 	ExperimentalComposerDraft       bool `json:"experimentalComposerDraft"`
+	// Task 297: cold-cache compact pass knobs (lab storage cost card).
+	ExperimentalColdCacheCompact bool   `json:"experimentalColdCacheCompact"`
+	ColdCacheCompactMinBytes    int64  `json:"coldCacheCompactMinBytes"`
+	ColdCacheCompactIdleMinutes int    `json:"coldCacheCompactIdleMinutes"`
 	// ExperimentalLocalServer exposes the Settings → 本地服务 page (task 130).
 	ExperimentalLocalServer bool `json:"experimentalLocalServer"`
 	// ExperimentalPathRules enables structured path-scope evaluation (task 134).
@@ -1432,6 +1440,9 @@ func (a *App) Settings() SettingsView {
 		// Task 318: lab internal optimizations (three switches default off).
 		ExperimentalHighSpeedModel:      cfg.Agent.ExperimentalHighSpeedModel,
 		ExperimentalProactiveCompact:    cfg.Agent.ExperimentalProactiveCompact,
+		ExperimentalColdCacheCompact:     cfg.Agent.ExperimentalColdCacheCompact,
+		ColdCacheCompactMinBytes:         config.ColdCacheCompactEffectiveMinBytes(cfg),
+		ColdCacheCompactIdleMinutes:      config.ColdCacheCompactEffectiveIdleMinutes(cfg),
 		ProactiveCompactCooldownMinutes: cfg.Agent.ProactiveCompactCooldownMinutes,
 		ExperimentalComposerDraft:       cfg.Agent.ExperimentalComposerDraft,
 		ExperimentalLocalServer:         cfg.Desktop.ExperimentalLocalServer,

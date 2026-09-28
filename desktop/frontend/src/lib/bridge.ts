@@ -888,6 +888,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalCacheTuning(enabled: boolean): Promise<void>;
   SetTranscriptCacheTuning(maxCachedTabs: number, historyBodyBudgetMb: number, markdownBudgetMb: number): Promise<void>;
   SetDagGraphCacheCapacity(capacity: number): Promise<void>;
+  SetExperimentalColdCacheCompact(enabled: boolean): Promise<void>;
+  SetColdCacheCompactMinBytes(bytes: number): Promise<void>;
+  SetColdCacheCompactIdleMinutes(minutes: number): Promise<void>;
   // Task 60: Trace-as-State compaction (experimental).
   SetExperimentalTraceAsState(enabled: boolean): Promise<void>;
   // Task 115: dream/distill memory-curation tools (experimental).
@@ -5230,6 +5233,9 @@ function makeMockApp(): AppBindings {
     async SetExperimentalCacheTuning() {},
     async SetTranscriptCacheTuning() {},
     async SetDagGraphCacheCapacity() {},
+    async SetExperimentalColdCacheCompact() {},
+    async SetColdCacheCompactMinBytes() {},
+    async SetColdCacheCompactIdleMinutes() {},
     async SetExperimentalTraceAsState() {},
     async SetExperimentalDream() {},
     async SetExperimentalPerfMonitor() {},

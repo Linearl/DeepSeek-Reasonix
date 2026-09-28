@@ -1564,6 +1564,18 @@ type AgentConfig struct {
 	// cold-start layer, #9580). Off by default (iron rule 2): drafts are
 	// runtime-memory only, exactly the pre-#9580 contract.
 	ExperimentalComposerDraft bool `toml:"experimental_composer_draft"`
+	// Task 297: before a long conversation goes cold, compact it once while
+	// the cache is still warm — one compaction fee now beats a full-price
+	// input on every later wake (a switched model invalidates the whole
+	// prefix anyway). Off by default (iron rule 2); mounted on the lab
+	// storage group as the "cost optimization" card with two knobs.
+	ExperimentalColdCacheCompact bool `toml:"experimental_cold_cache_compact"`
+	// ColdCacheCompactMinBytes is the visible-context size floor (0 = the
+	// built-in 600 KiB); the tick counts live transcript + events bytes.
+	ColdCacheCompactMinBytes int64 `toml:"cold_cache_compact_min_bytes"`
+	// ColdCacheCompactIdleMinutes is the idle time before the pass fires
+	// (0 = the built-in 300 minutes = 5h).
+	ColdCacheCompactIdleMinutes int `toml:"cold_cache_compact_idle_minutes"`
 	// ExperimentalUIDriver enables the task 233 batch-2 ui_interact tool:
 	// controlled UI driving (activate / click / type / key) for agent-run
 	// verification. Off by default (iron rule 2) — injecting input into
