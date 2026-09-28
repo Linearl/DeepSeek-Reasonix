@@ -4020,6 +4020,60 @@ a[href] {
     flex-wrap: wrap;
   }
 }
+/* Task 282: lab "Fork features" intro — pure display cards, no controls. */
+.experimental-intro {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-soft);
+}
+.experimental-intro__title {
+  color: var(--fg);
+  font-size: 14.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.experimental-intro__lead {
+  margin: 4px 0 0;
+  color: var(--fg-dim);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.experimental-intro__group-title {
+  color: var(--fg-dim);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 12px 0 6px;
+}
+.experimental-intro__cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.experimental-intro__card {
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-soft) 72%, var(--bg-elev));
+}
+.experimental-intro__card-title {
+  margin: 0;
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 700;
+}
+.experimental-intro__card-desc {
+  margin: 4px 0 0;
+  color: var(--fg-dim);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.experimental-intro__card-how {
+  margin: 6px 0 0;
+  color: var(--fg-faint, var(--fg-dim));
+  font-size: 12px;
+  line-height: 1.5;
+}
 /* Task 112: structured completion hand-off card at the answer tail. */
 .completion-report {
   margin-top: 10px;
