@@ -48,7 +48,7 @@ const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.met
   const navIdx = panel.indexOf("</nav>");
   const introIdx = panel.indexOf("<ForkFeaturesIntro");
   const paneIdx = panel.indexOf('className="experimental-pane"');
-  ok(navIdx > 0 && introIdx > navIdx && paneIdx > introIdx, "intro renders in the lab column: after </nav>, before the pane");
+  ok(navIdx > 0 && introIdx > 0 && introIdx < navIdx && paneIdx > introIdx, "intro renders in the lab column above the rail and before the pane (task 359 moved it to the top banner)");
   ok(panel.includes("selected === \"forkFeaturesIntro\"") === false, "no phantom detail branch — intro is a plain in-flow section");
 
   const lib = read("../lib/forkFeaturesIntro.ts");
