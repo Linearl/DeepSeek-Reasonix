@@ -2403,6 +2403,8 @@ export const en = {
 "settings.eventsRotation.card.statusIdle": "Idle",
 "settings.eventsRotation.card.statusBusy": "In use",
 "settings.eventsRotation.card.busyHint": "Session is in use (open or held); close it to repair",
+"settings.eventsRotation.card.busyHintManual": "Session in use (manual mode stays clickable; you will confirm the risk first)",
+"settings.eventsRotation.card.busyConfirm": "This session is in use; repairing may collide with its running operation. Repair anyway?",
 "settings.restartRequired": "Saved. This setting is applied at startup - restart to take effect.",
 "settings.restartNow": "Restart now",
 "settings.sessionStorageHint": "Four stages along one upgrade path, never straight from v3 to v4. Stage 2 mirrors every save into sessions-v4/ while reads stay on sessions/. Stage 3 keeps both writes and prefers the v4 copy on reads (falling back to sessions/ on a miss). Stage 4 freezes sessions/ as read-only history. Changing the write side (enabling or retiring the mirror) takes a restart; moving between the two dual-write stages is live.",
