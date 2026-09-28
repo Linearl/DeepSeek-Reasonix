@@ -602,6 +602,10 @@ func (a *App) startup(ctx context.Context) {
 			config.EventsRotationFactor(cfg),
 			config.EventsRotationCapMB(cfg),
 		)
+		// Task 196fix2: same load pushes the tunable graph-cache LRU capacity
+		// (0/unset reads as the built-in 3) — the save-path cache must reflect
+		// the configured value from the first save, not the first settings open.
+		agent.SetSessionGraphCacheCapacity(config.DagGraphCacheCapacity(cfg))
 	} else {
 		// Without the push the gate stays on the pre-push default (manual =
 		// today's rotating gate): a config that says "off" would keep rotating

@@ -12,12 +12,21 @@ import (
 // save-path lock (measured: 20-30s on a 728 MB log). Entries hold references
 // shared with the owning Session, never copies.
 //
-// Capacity is deliberately 1 (reviewed 2026-09-21): a second large graph would
-// sit resident for its own sake, against the memory-governance targets, while
-// the dominant pattern - one large file saved repeatedly - is already covered.
+// Capacity is tunable (task 196fix2, reviewed 2026-09-28): the original
+// capacity-1 design assumed one large file saved repeatedly, but the 0928
+// reading showed three sessions interleaving their saves — every neighbour
+// Put evicted the entry the next save needed, so the cache scored zero hits
+// and every save replayed 122 MB under the lock. The built-in default is now
+// 3 (covers the primary session plus two companions) and the host pushes a
+// configured value through SetSessionGraphCacheCapacity (0 in the file means
+// "use the default"; the reader/setter bound the range to 1..16).
 // tailTruncated window states are never admitted: the write-path contract
 // forbids them anywhere near a save.
-const sessionGraphCacheCapacity = 1
+const (
+	sessionGraphCacheCapacityDefault = 3
+	sessionGraphCacheCapacityMin     = 1
+	sessionGraphCacheCapacityMax     = 16
+)
 
 type sessionGraphCacheEntry struct {
 	state    *sessionDAGState
@@ -30,7 +39,34 @@ var (
 	sessionGraphCacheHits      atomic.Uint64
 	sessionGraphCacheMisses    atomic.Uint64
 	sessionGraphCacheEvictions atomic.Uint64
+	// sessionGraphCacheCapacityVar holds the tunable LRU capacity (task
+	// 196fix2). The zero value means "never pushed" and reads as the built-in
+	// default, so CLI/serve hosts and tests behave sanely before any push.
+	sessionGraphCacheCapacityVar atomic.Int64
 )
+
+// SetSessionGraphCacheCapacity pushes the tunable LRU capacity (task 196fix2).
+// Invalid values are clamped rather than refused: this is the backstop behind
+// the config-layer setter, and a silently rejected update would leave the gate
+// on the previous capacity with no signal.
+func SetSessionGraphCacheCapacity(capacity int) {
+	if capacity < sessionGraphCacheCapacityMin {
+		capacity = sessionGraphCacheCapacityDefault
+	}
+	if capacity > sessionGraphCacheCapacityMax {
+		capacity = sessionGraphCacheCapacityMax
+	}
+	sessionGraphCacheCapacityVar.Store(int64(capacity))
+}
+
+// currentSessionGraphCacheCapacity resolves the effective capacity: an
+// unpromoted zero reads as the built-in default.
+func currentSessionGraphCacheCapacity() int {
+	if v := int(sessionGraphCacheCapacityVar.Load()); v >= sessionGraphCacheCapacityMin && v <= sessionGraphCacheCapacityMax {
+		return v
+	}
+	return sessionGraphCacheCapacityDefault
+}
 
 // sessionGraphCacheKey normalizes the cache key at the boundary: callers pass
 // either a raw or a canonical session path, and on Windows those diverge by
@@ -71,7 +107,8 @@ func sessionGraphCachePut(logPath string, st *sessionDAGState) {
 	sessionGraphCacheMu.Lock()
 	defer sessionGraphCacheMu.Unlock()
 	sessionGraphCache[key] = &sessionGraphCacheEntry{state: st, lastUsed: time.Now()}
-	for len(sessionGraphCache) > sessionGraphCacheCapacity {
+	capacity := currentSessionGraphCacheCapacity()
+	for len(sessionGraphCache) > capacity {
 		// Task 239 M1-1: deterministic tie-break — when timestamps are equal,
 		// compare keys so map iteration order cannot change the eviction victim.
 		oldestKey := ""
@@ -91,7 +128,16 @@ func sessionGraphCachePut(logPath string, st *sessionDAGState) {
 }
 
 // SessionGraphCacheStats returns the hit/miss/eviction counters so tests and
-// diagnostics can prove cache behaviour instead of inferring it.
+// diagnostics can prove cache behaviour instead of inferring it (task 196fix2
+// feeds them into the "dag state for save" log line for the on-device
+// hits>0 self-verification).
 func SessionGraphCacheStats() (hits, misses, evictions uint64) {
 	return sessionGraphCacheHits.Load(), sessionGraphCacheMisses.Load(), sessionGraphCacheEvictions.Load()
+}
+
+// SessionGraphCacheCapacityNow reports the effective LRU capacity (task
+// 196fix2) — the host-side setter test proves a config push landed, and the
+// "dag state for save" log line carries the same value for on-device checks.
+func SessionGraphCacheCapacityNow() int {
+	return currentSessionGraphCacheCapacity()
 }
