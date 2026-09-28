@@ -1859,6 +1859,34 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
 
 const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
   const [labFilter, setLabFilter] = useState<LabGroupKey | "all">("all");
+  // Task 359: lab navigation — collapsible groups, intro banner (collapsed by
+  // default), and the "disabled sink" display-order switch. The order switch
+  // is a pure display preference (localStorage, no experimental_* chain — it
+  // never touches switch semantics or persistence, task 359 / rule 2).
+  const [introOpen, setIntroOpen] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<LabGroupKey>>(() => new Set());
+  const [enabledFirst, setEnabledFirst] = useState<boolean>(
+    () => {
+      try { return globalThis.localStorage?.getItem("reasonix.lab.enabledFirst") === "1"; } catch { return false; }
+    },
+  );
+  const toggleGroup = (key: LabGroupKey) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+  const jumpToGroup = (key: LabGroupKey) => {
+    setExpandedGroups((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+    requestAnimationFrame(() => {
+      document.getElementById(`lab-group-${key}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+  };
+  const setEnabledFirstPref = (on: boolean) => {
+    setEnabledFirst(on);
+    try { globalThis.localStorage?.setItem("reasonix.lab.enabledFirst", on ? "1" : "0"); } catch { /* private mode: session-only */ }
+  };
   const t = useT();
   // Task 155: the configured store mode, normalized so every stage key stays a
   // literal (the dictionaries are typed by DictKey).
@@ -1961,6 +1989,37 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     <SettingsPageShell s={s} tab="experimental" busy={busy} apply={apply}>
       <div className="experimental-layout">
         <div className="experimental-lab">
+          {/* Task 359 (Q1-A): intro as a collapsed top banner — one row by
+              default, expandable; the old bottom section is removed (single
+              entry point). Button lives here, not in ForkFeaturesIntro, so the
+              task-282 "pure display, no controls in the component" contract
+              stays untouched. */}
+          <button
+            type="button"
+            className={`experimental-lab__intro-toggle${introOpen ? " experimental-lab__intro-toggle--open" : ""}`}
+            aria-expanded={introOpen}
+            onClick={() => setIntroOpen((v) => !v)}
+          >
+            <span className="experimental-lab__intro-chevron" aria-hidden="true">{introOpen ? "▾" : "▸"}</span>
+            <span>{t("settings.forkFeaturesIntro.title")}</span>
+          </button>
+          {introOpen ? <ForkFeaturesIntro t={t} /> : null}
+          {/* Task 359 (③): display-order switch — enabled items first, disabled
+              sunk to the end of each group. Display order only: no config,
+              no semantics, no experimental_* chain; preference persists in
+              localStorage (page preference), toggle restores source order. */}
+          <div className="experimental-lab__order-row">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={enabledFirst}
+              className={`experimental-lab__order-toggle${enabledFirst ? " experimental-lab__order-toggle--on" : ""}`}
+              onClick={() => setEnabledFirstPref(!enabledFirst)}
+            >
+              <span className="experimental-lab__order-dot" aria-hidden="true" />
+              <span>{t("settings.lab.enabledFirst")}</span>
+            </button>
+          </div>
           <div className="experimental-lab__chips" role="tablist" aria-label={t("settings.experimentalIntro")}>
             <button
               key="all"
@@ -1986,13 +2045,43 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
             })}
           </div>
           <nav className="experimental-rail" aria-label={t("settings.experimentalIntro")}>
+            {/* Task 359 (Q2③): sticky group directory — jump scrolls the rail
+                to the group and auto-expands it (user-annotated requirement). */}
+            <div className="experimental-rail__toc" role="navigation" aria-label={t("settings.lab.tocLabel")}>
+              {labGroups.map((g) => (
+                <button
+                  key={g.key}
+                  type="button"
+                  className="experimental-rail__toc-item"
+                  onClick={() => jumpToGroup(g.key)}
+                >
+                  {t(g.labelKey)}
+                </button>
+              ))}
+            </div>
             {labGroups.map((g) => {
-              const items = features.filter((f) => f.group === g.key && (labFilter === "all" || labFilter === g.key));
-              if (items.length === 0) return null;
+              const filtered = features.filter((f) => f.group === g.key && (labFilter === "all" || labFilter === g.key));
+              if (filtered.length === 0) return null;
+              // Task 359 (③): display order only — enabled items first when the
+              // top switch is on, source order when off. Stable sort keeps the
+              // config/persistence untouched (rule 2: off = zero behavior).
+              const items = enabledFirst ? [...filtered].sort((a, b) => Number(b.on) - Number(a.on)) : filtered;
+              const onCount = filtered.filter((f) => f.on).length;
+              const expanded = expandedGroups.has(g.key);
               return (
-                <div key={g.key} className="experimental-lab__group">
-                  <div className="experimental-lab__group-title">{t(g.labelKey)}</div>
-                  {items.map((feature) => (
+                <div key={g.key} className={`experimental-lab__group${expanded ? " experimental-lab__group--open" : ""}`}>
+                  <button
+                    type="button"
+                    id={`lab-group-${g.key}`}
+                    className="experimental-lab__group-title experimental-lab__group-toggle"
+                    aria-expanded={expanded}
+                    onClick={() => toggleGroup(g.key)}
+                  >
+                    <span className="experimental-lab__group-arrow" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+                    <span className="experimental-lab__group-name">{t(g.labelKey)}</span>
+                    <span className="experimental-lab__group-count">{t("settings.labGroup.onCount", { n: onCount })}</span>
+                  </button>
+                  {expanded ? items.map((feature) => (
                     <button
                       key={feature.id}
                       type="button"
@@ -2003,15 +2092,13 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                       <span className={`experimental-rail__dot${feature.on ? " experimental-rail__dot--on" : ""}`} aria-hidden="true" />
                       <span className="experimental-rail__label">{feature.label}</span>
                     </button>
-                  ))}
+                  )) : null}
                 </div>
               );
             })}
           </nav>
-          {/* Task 282: pure-display section for fork improvements with no lab
-              switch — group count and entries are pinned to the design table
-              in lib/forkFeaturesIntro (tsc-checked), with no controls here. */}
-          <ForkFeaturesIntro t={t} />
+          {/* Task 359 (Q1-A): the intro section moved to the top banner above
+              the chips — bottom entry removed to avoid a double entry point. */}
         </div>
         <div className="experimental-pane">
           {restartNeeded ? (
