@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -26,6 +27,12 @@ type SessionEventsEntry struct {
 	Ratio       float64 `json:"ratio"`     // eventsBytes / LiveBytes, 0 when live is 0
 	OverLimit   bool    `json:"overLimit"`
 	Open        bool    `json:"open"`
+	// Task 345: Busy marks a session the repair must not touch right now -
+	// its tab is open (the desktop holds the lease) or any lease record is
+	// live (another writer, serve, or a stale in-process holder). The panel
+	// disables the per-row repair and shows the state so "which of these is
+	// safe to fix" is answered before the click, not after the skip.
+	Busy bool `json:"busy"`
 }
 
 // SessionEventsInventoryView is the statistic card's data: every session in
@@ -99,12 +106,15 @@ func (a *App) SessionEventsInventory() SessionEventsInventoryView {
 		if info, err := os.Stat(meta.Path); err == nil {
 			liveBytes = info.Size()
 		}
-		name := strings.TrimSpace(meta.Title)
-		if name == "" {
-			name = strings.TrimSpace(meta.Preview)
-		}
-		if runecount := len([]rune(name)); runecount > 40 {
-			name = string([]rune(name)[:40]) + "…"
+		name := sessionEventsDisplayTitle(meta.Title, meta.Preview, meta.TopicTitle, meta.Path)
+		// Task 345: an open tab keeps this process's lease on the session and
+		// any live lease record (foreign writer, serve, or stale holder)
+		// blocks CompactSessionFile - surface it before the click.
+		busy := meta.Open
+		if !busy {
+			if info, leaseErr := agent.LoadSessionLeaseInfo(meta.Path); leaseErr == nil && info != nil {
+				busy = true
+			}
 		}
 		ratio := float64(0)
 		if liveBytes > 0 {
@@ -118,6 +128,7 @@ func (a *App) SessionEventsInventory() SessionEventsInventoryView {
 			Ratio:       ratio,
 			OverLimit:   agent.EventsLogAboveThreshold(eventsBytes, liveBytes, factor, capMB),
 			Open:        meta.Open,
+			Busy:        busy,
 		}
 		if entry.OverLimit {
 			view.OverCount++
@@ -134,6 +145,32 @@ func (a *App) SessionEventsInventory() SessionEventsInventoryView {
 		return a.EventsBytes > b.EventsBytes
 	})
 	return view
+}
+
+// sessionEventsDisplayTitle is task 345's name chain: user title, then the
+// first-message preview, then the topic title, then a human-readable stamp
+// carved from the session file name (20260927-030006.576166300-... -> "0927
+// 03:00"). A bare jsonl path is what the user rejected - the last resort is
+// a short recognizable label, never the full path.
+func sessionEventsDisplayTitle(title, preview, topic, path string) string {
+	for _, candidate := range []string{title, preview, topic} {
+		if s := strings.TrimSpace(candidate); s != "" {
+			if runecount := len([]rune(s)); runecount > 40 {
+				return string([]rune(s)[:40]) + "…"
+			}
+			return s
+		}
+	}
+	base := strings.TrimSuffix(filepath.Base(strings.TrimSpace(path)), ".jsonl")
+	if len(base) >= 13 {
+		if _, err := time.Parse("20060102-1504", base[:13]); err == nil {
+			return base[:8] + " " + base[9:11] + ":" + base[11:13]
+		}
+	}
+	if base != "" && base != "." {
+		return base
+	}
+	return strings.TrimSpace(path)
 }
 
 // sessionEventsName resolves a display name for a path from the current list.
