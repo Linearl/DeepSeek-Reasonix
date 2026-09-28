@@ -2115,6 +2115,24 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
               </SettingsOptions>
             </SettingsField>
           )}
+          {selected === "restartUpdate" && (
+            // Task 277: update-complete chime. The one-shot gate lives in the
+            // frontend (last-chimed version), so the flip applies immediately.
+            <SettingsField label={t("settings.updateChime")} hint={t("settings.updateChimeHint")} icon={<Volume2 size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.updateChime) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetUpdateChime(on))}
+                  >
+                    {t(on ? "settings.updateChime.on" : "settings.updateChime.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
           {/* Task 318.5: one entry hosts both monitors. The two switches stay
               fully independent — enabling one never flips the other. */}
           {selected === "monitoring" && (

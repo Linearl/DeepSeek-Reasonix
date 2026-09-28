@@ -219,6 +219,70 @@ export function playAttentionChime(): void {
   }
 }
 
+// ── Task 277: update-complete chime ──────────────────────────────────────────
+
+/** localStorage key remembering which version already chimed (one-shot). */
+export const UPDATE_CHIME_LAST_VERSION_KEY = "updateChimeLastVersion";
+
+/**
+ * Play the bundled ~3s update chime. It goes through the exact same
+ * AudioContext → default-output path as every notification chime, so a system
+ * mute silences it like any other app sound (no exclusive/raw output device).
+ * The bundled "positive" wav is 2.8s — the ~3s the task asks for.
+ */
+export function playUpdateChime(): void {
+  const volume = notificationVolumeToGain(getNotificationVolume());
+  if (volume <= 0) return;
+  void playWav("positive", volume, playSynthSuccess);
+}
+
+export type UpdateChimeOutcome =
+  | "played"
+  | "disabled"
+  | "already-chimed"
+  | "no-active-version"
+  | "no-storage";
+
+export type UpdateChimeOptions = {
+  /** Lab switch (config update_chime). Off ⇒ zero playback, but the seen
+   *  version is still recorded so flipping the switch later never replays a
+   *  version the user already (knowingly) skipped. */
+  enabled: boolean;
+  listVersions: () => Promise<Array<{ version: string; active: boolean }>>;
+  play?: () => void;
+  storage?: Pick<Storage, "getItem" | "setItem">;
+};
+
+/**
+ * One-shot gate for the update chime: plays only when this launch sees a
+ * version that has never chimed before (first launch after a version swap).
+ * The seen-version record is written BEFORE playback so a disabled switch or
+ * a crash can never arm a replay on a later launch.
+ */
+export async function maybePlayUpdateChime(options: UpdateChimeOptions): Promise<UpdateChimeOutcome> {
+  const storage = options.storage
+    ?? (typeof localStorage === "undefined" ? undefined : localStorage);
+  if (!storage) return "no-storage";
+  let versions: Array<{ version: string; active: boolean }>;
+  try {
+    versions = await options.listVersions();
+  } catch {
+    return "no-active-version";
+  }
+  const active = versions.find((entry) => entry.active)?.version;
+  if (!active) return "no-active-version";
+  if (storage.getItem(UPDATE_CHIME_LAST_VERSION_KEY) === active) return "already-chimed";
+  try {
+    storage.setItem(UPDATE_CHIME_LAST_VERSION_KEY, active);
+  } catch {
+    // Storage full/blocked: never let the chime gate fail open into a replay.
+    return "no-storage";
+  }
+  if (!options.enabled) return "disabled";
+  options.play?.();
+  return "played";
+}
+
 export type AttentionChimeEvent = {
   kind?: string;
   tabId?: string;

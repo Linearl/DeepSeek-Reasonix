@@ -538,6 +538,15 @@ func (c *Config) SetExperimentalAutonomousUpdate(enabled bool) error {
 	return nil
 }
 
+// SetUpdateChime toggles the update-complete chime (task 277): when an update
+// swaps versions, the new version's first launch plays a short notification
+// sound. Opt-in (iron-rule 2); the frontend owns the one-shot gate, so a flip
+// applies on the next launch check.
+func (c *Config) SetUpdateChime(enabled bool) error {
+	c.Desktop.UpdateChime = enabled
+	return nil
+}
+
 // SetExperimentalFullAccess toggles the full-access (yolo) lab switch
 // (task 257). Boot resolves it into the writable-root set and the bash spec,
 // so the flip applies on the next restart — the settings pane says so.
