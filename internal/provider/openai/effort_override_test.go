@@ -3,6 +3,7 @@ package openai
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"reasonix/internal/provider"
@@ -91,4 +92,29 @@ func TestEffortOverrideRejectedWithoutDepthVocabulary(t *testing.T) {
 	assertRejectedEffort(t, c, "low")
 	disabled := newTestClient(t, "deepseek-v4", map[string]any{"reasoning_protocol": "deepseek", "thinking": "disabled"})
 	assertRejectedEffort(t, disabled, "high")
+}
+
+// Task 354: MiMo's per-request probe must expose exactly the canonical
+// four-level set that NormalizeEffort emits for a MiMo entry
+// (normalizeMimoEffort folds minimal→low, xhigh/max/ultra→high,
+// none/disabled/off→none). Before this, the probe read configured
+// supported_efforts — empty for a stock MiMo entry — so every medium/high
+// switch was declined as level-not-in-vocabulary and paid a full rebuild
+// (1855 installed log: 25-26s per switch).
+func TestEffortOverrideMiMoVocabulary(t *testing.T) {
+	p, err := New(provider.Config{
+		Name:    "mimo",
+		BaseURL: "https://api.xiaomimimo.com/v1",
+		Model:   "mimo-v2.6-flash",
+		APIKey:  "k",
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	c := p.(*client)
+	got := c.PerRequestEfforts()
+	want := []string{"none", "low", "medium", "high"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("PerRequestEfforts = %v, want %v", got, want)
+	}
 }

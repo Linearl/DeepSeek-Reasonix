@@ -3215,6 +3215,100 @@ func TestSetEffortForTabSameLevelShortCircuit(t *testing.T) {
 	}
 }
 
+// Task 354: a stock MiMo entry (no supported_efforts configured) must switch
+// medium/high over the per-request fast path — the probe now reports the
+// canonical four-level set NormalizeEffort emits for MiMo, which the 1855
+// installed log showed being declined as level-not-in-vocabulary (25-26s
+// full rebuild per switch). The third segment pins the fail-fast for a level
+// the provider never offered: usage error, no rebuild.
+func TestSetEffortForTabMiMoVocabularyFastPath(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	setDesktopTestCredential(t, "MIMO_KEY", "sk-test")
+
+	cfg := config.Default()
+	cfg.DefaultModel = "mimo/mimo-v2.6-flash"
+	cfg.Desktop.ProviderAccess = []string{"mimo"}
+	cfg.Providers = []config.ProviderEntry{{
+		Name:      "mimo",
+		Kind:      "openai",
+		BaseURL:   "https://api.xiaomimimo.com/v1",
+		Model:     "mimo-v2.6-flash",
+		APIKeyEnv: "MIMO_KEY",
+		// no SupportedEfforts: the 1855 log entry had none, which is
+		// exactly the configuration that used to decline every override.
+	}}
+	if err := cfg.SaveTo(config.UserConfigPath()); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	dir := config.SessionDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir session dir: %v", err)
+	}
+	exec := agent.New(nil, nil, agent.NewSession("mimo system prompt"), agent.Options{}, event.Discard)
+
+	app := NewApp()
+	app.ctx = context.Background()
+	app.runtimeEvents.emit = func(context.Context, string, ...any) {}
+	tab := &WorkspaceTab{
+		ID:          "tab_effort_mimo_fast",
+		Scope:       "global",
+		Ready:       true,
+		model:       "mimo/mimo-v2.6-flash",
+		disabledMCP: map[string]ServerView{},
+	}
+	tab.sink = &tabEventSink{tabID: tab.ID, app: app}
+	tab.Ctrl = control.New(control.Options{
+		Executor:    exec,
+		SessionDir:  dir,
+		SessionPath: filepath.Join(dir, "effort-mimo-fast.jsonl"),
+		Label:       "mimo",
+		Sink:        tab.sink,
+	})
+	app.tabs = map[string]*WorkspaceTab{tab.ID: tab}
+	app.tabOrder = []string{tab.ID}
+	app.activeTabID = tab.ID
+	t.Cleanup(func() {
+		tab.Ctrl.Close()
+		tab.releaseSessionLease()
+	})
+
+	// First switch builds the real controller (boot-time provider wiring),
+	// mirroring the first phase of TestSetEffortForTabSameLevelShortCircuit.
+	if err := app.SetEffortForTab(tab.ID, "medium"); err != nil {
+		t.Fatalf("SetEffortForTab medium: %v", err)
+	}
+	if tab.effort == nil || *tab.effort != "medium" {
+		t.Fatalf("tab effort after medium switch = %v, want medium", tab.effort)
+	}
+	time.Sleep(500 * time.Millisecond)
+	built := tab.Ctrl
+
+	// Medium→high on the real MiMo client: the four-level probe admits it,
+	// so the switch must not touch the controller (no runtime build).
+	if err := app.SetEffortForTab(tab.ID, "high"); err != nil {
+		t.Fatalf("SetEffortForTab high: %v", err)
+	}
+	if tab.Ctrl != built {
+		t.Fatal("mimo high switch rebuilt the controller despite the four-level request vocabulary")
+	}
+	if tab.effort == nil || *tab.effort != "high" {
+		t.Fatalf("tab effort after high switch = %v, want high", tab.effort)
+	}
+
+	// A level outside the provider's input vocabulary is a usage error: fail
+	// fast with no rebuild (task 354's second acceptance leg).
+	if err := app.SetEffortForTab(tab.ID, "nonexistent"); err == nil {
+		t.Fatal("unsupported effort level succeeded, want usage error")
+	}
+	if tab.Ctrl != built {
+		t.Fatal("unsupported effort level rebuilt the controller; want fail-fast with the old controller kept")
+	}
+	if tab.effort == nil || *tab.effort != "high" {
+		t.Fatalf("tab effort after failed switch = %v, want high (unchanged)", tab.effort)
+	}
+}
+
 func TestRemoveBuiltInProviderAccessRetargetsDefaultToRemainingAccess(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	setDesktopTestCredential(t, "MIMO_API_KEY", "sk-test")

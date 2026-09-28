@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -595,6 +596,19 @@ func normalizeGLMEffort(level string) (string, error) {
 	}
 }
 
+// errEffortNotConfigurable marks the "this provider cannot configure effort
+// at all" class (task 354): callers fall back to a full rebuild for it, while
+// a plain usage error for one unsupported level must fail fast instead of
+// paying a rebuild.
+var errEffortNotConfigurable = errors.New("effort not configurable")
+
+// IsEffortNotConfigurable reports whether err is the capability-class
+// fallback (provider has no effort knob) as opposed to a usage error for a
+// single unsupported level.
+func IsEffortNotConfigurable(err error) bool {
+	return errors.Is(err, errEffortNotConfigurable)
+}
+
 func effortNotConfigurableError(e *ProviderEntry) error {
 	name := ""
 	if e != nil {
@@ -603,7 +617,7 @@ func effortNotConfigurableError(e *ProviderEntry) error {
 	if name == "" {
 		name = "this model"
 	}
-	return fmt.Errorf("effort is not configurable for %s", name)
+	return fmt.Errorf("effort is not configurable for %s: %w", name, errEffortNotConfigurable)
 }
 
 func containsString(haystack []string, needle string) bool {

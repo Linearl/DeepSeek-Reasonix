@@ -10323,7 +10323,15 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 	// snapshot) identical to the model switch.
 	if ctrl := a.controllerForTab(tab); ctrl != nil {
 		if entry, err := a.currentProviderEntryForTab(tabID); err == nil {
-			if effort, err := config.NormalizeEffort(entry, level); err == nil {
+			effort, nerr := config.NormalizeEffort(entry, level)
+			if nerr != nil && !config.IsEffortNotConfigurable(nerr) {
+				// Task 354: an unsupported level is a usage error — fail fast
+				// with no build instead of paying the full rebuild for a level
+				// the provider never offered. The capability-class
+				// (not-configurable) error keeps falling through to rebuild.
+				return nerr
+			}
+			if nerr == nil {
 				if setter, ok := ctrl.(interface {
 					SetSessionEffortOverride(string) bool
 				}); ok && setter.SetSessionEffortOverride(effort) {

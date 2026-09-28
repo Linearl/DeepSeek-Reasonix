@@ -259,7 +259,7 @@ func New(cfg provider.Config) (provider.Provider, error) {
 		visionDetail:    visionDetail,
 		maxOutputTokens: maxOutputTokens,
 		effort:          effort,
-		requestEfforts:  supportedEfforts,
+		requestEfforts:  requestEffortVocabularyFor(cfg.BaseURL, supportedEfforts), // task 354: MiMo probes its canonical four-level set.
 		http:            httpClient,
 		idleTimeout:     defaultStreamIdleTimeout,
 		// The official OpenCode Go chat gateway 400s any message-level `name`
