@@ -52,7 +52,7 @@ func TestMailDeliverHopAndInbox(t *testing.T) {
 		t.Fatal("expected hop limit error")
 	}
 	box, err := mail.Inbox("sc_a")
-	if err != nil || len(box) != 1 || box[0].Delivery != "followup" {
+	if err != nil || len(box) != 1 || box[0].Delivery != "steer" {
 		t.Fatalf("inbox: %v %v", box, err)
 	}
 	if _, err := mail.Deliver(MailMessage{To: "", Body: "x"}); err == nil {

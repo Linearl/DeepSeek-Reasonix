@@ -916,6 +916,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 264: background-woken sessions stay out of the tab bar (detached
   // stand-up; delivery unchanged). Live per drain pass — no restart needed.
   SetSessionCollabBackground(enabled: boolean): Promise<void>;
+  // Task 309: mailbox defaults for talk_to_session (idempotency default,
+  // read-receipt default, default delivery channel).
+  SetSessionCollabMailDefaults(idempotent: boolean, receiptDefault: boolean, defaultDelivery: string): Promise<void>;
   // Task 225: cascade approval to the autopilot parent.
   SetExperimentalCascadeApproval(enabled: boolean): Promise<void>;
   // Task 242: quota fallback switch + provider/model target.
@@ -5263,6 +5266,7 @@ function makeMockApp(): AppBindings {
     async SetSessionCollabHopLimit() {},
     async SetSessionCollabGates() {},
     async SetSessionCollabBackground() {},
+    async SetSessionCollabMailDefaults() {},
     async SetExperimentalCascadeApproval() {},
     async SetExperimentalFallbackModel() {},
     async SetFallbackModel() {},

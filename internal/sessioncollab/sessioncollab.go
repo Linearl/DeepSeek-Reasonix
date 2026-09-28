@@ -135,16 +135,24 @@ type MailMessage struct {
 	// channel answers this task's approval prompts (task 225, user ruling).
 	// Empty means the sender is the approver. The dispatcher sets it, so the
 	// approval route travels WITH the task instead of being guessed later.
-	Approver    string `json:"approver,omitempty"`
-	ToTitle     string `json:"toTitle,omitempty"`
-	At          int64  `json:"at"`
-	Idempotency string `json:"idempotency,omitempty"`
+	Approver string `json:"approver,omitempty"`
+	ToTitle  string `json:"toTitle,omitempty"`
+	At       int64  `json:"at"`
+	// ReceiptRequested asks for a read receipt (task 309): the sender wants a
+	// reply message once this mail enters the recipient's context (turn
+	// injection / drain consumption). Delivery-level confirmation already
+	// rides the talk_to_session return value, so this covers the read level
+	// only. Receipt messages themselves never request receipts — that would
+	// make a receipt storm self-sustaining.
+	ReceiptRequested bool   `json:"receiptRequested,omitempty"`
+	Idempotency      string `json:"idempotency,omitempty"`
 }
 
-// Delivery semantics for talk_to_session (task 143). Followup is the default
-// and the conservative choice: the target processes it after its current turn.
-// Steer asks for mid-turn injection and degrades to followup when the target
-// has no injectable turn.
+// Delivery semantics for talk_to_session (task 143; default changed to steer
+// by task 309). Steer is the mailbox default: it injects mid-turn when the
+// target is running and degrades to a queued follow-up when it cannot, so the
+// empty value now means "deliver as soon as possible". An explicit followup
+// keeps the old queue-until-next-turn semantics.
 type Delivery string
 
 const (
@@ -152,13 +160,15 @@ const (
 	DeliverySteer    Delivery = "steer"
 )
 
-// ValidateDelivery normalizes an empty value to followup and rejects others.
+// ValidateDelivery normalizes an empty value to steer (task 309 mailbox
+// default; the steer→followup degradation remains the safety net) and rejects
+// unknown values. An explicit "followup" is unchanged.
 func ValidateDelivery(value string) (Delivery, error) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", string(DeliveryFollowup):
-		return DeliveryFollowup, nil
-	case string(DeliverySteer):
+	case "", string(DeliverySteer):
 		return DeliverySteer, nil
+	case string(DeliveryFollowup):
+		return DeliveryFollowup, nil
 	default:
 		return "", fmt.Errorf("talk_to_session: unknown delivery %q (want followup|steer)", value)
 	}

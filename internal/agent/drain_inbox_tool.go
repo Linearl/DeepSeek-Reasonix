@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 
@@ -189,6 +190,21 @@ func drainInboxFromSessionInbox(sessionPath, sourceFilter string, settle bool, l
 			if err := store.ClaimItem(item.ID); err == nil {
 				if err := store.AckDequeue(item.ID); err == nil {
 					settledIDs = append(settledIDs, item.ID)
+					// Task 309: consumed into context — read level. Best-effort.
+					if item.ReceiptRequested {
+						if rerr := sessioncollab.SendReadReceipt(config.SessionCollabMailDir(),
+							strings.TrimPrefix(item.Source, "collab:"), item.CollabMailTo, item.CollabMsgID); rerr != nil {
+							log.Printf("[session-collab] read receipt for %s failed: %v", item.CollabMsgID, rerr)
+						}
+					}
+					// Task 309 × 221: the row may carry folded originals — one
+					// consume, one receipt per folded sender.
+					for _, ref := range item.FoldedReceipts {
+						if rerr := sessioncollab.SendReadReceipt(config.SessionCollabMailDir(),
+							strings.TrimPrefix(item.Source, "collab:"), ref.MailTo, ref.MsgID); rerr != nil {
+							log.Printf("[session-collab] folded read receipt for %s failed: %v", ref.MsgID, rerr)
+						}
+					}
 				}
 			}
 		}
@@ -278,6 +294,13 @@ func (t drainInboxTool) Execute(_ context.Context, args json.RawMessage) (string
 		payload.Refused = len(refused)
 		for _, m := range taken {
 			payload.Messages = append(payload.Messages, drainInboxConvert(m, m.Hop))
+			// Task 309: the mail just entered the recipient's context — the
+			// read level. Best-effort: a receipt failure never fails the drain.
+			if m.ReceiptRequested {
+				if rerr := sessioncollab.SendReadReceipt(mailDir, m.From, me, m.ID); rerr != nil {
+					log.Printf("[session-collab] read receipt for %s failed: %v", m.ID, rerr)
+				}
+			}
 		}
 		for _, m := range refused {
 			payload.RefusedMsgs = append(payload.RefusedMsgs, drainInboxConvert(m, m.Hop))

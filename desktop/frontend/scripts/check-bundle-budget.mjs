@@ -466,7 +466,10 @@ for (const path of localeChunks) {
   // task 297 locale keys push zh-TW to 84.1 over 84.0 — one-shot +0.5 to 84.5.
   // Side-track batch (196fix2+347+345+346): zh measures 82.6 over the 82.5
   // line — one-shot +0.5 to 83.0 (ratchet rule, independent commit).
-  const budget = name.startsWith("zh-TW-") ? 84.5 * 1024 : 83.0 * 1024;
+  // Task 309 (mailbox defaults panel): zh measures 83.1 over the 83.0 line
+  // (7 new locale keys x 3 dialects) — one-shot +0.5 to 83.5 per the
+  // 2026-09-20 ratchet rule.
+  const budget = name.startsWith("zh-TW-") ? 84.5 * 1024 : 83.5 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0

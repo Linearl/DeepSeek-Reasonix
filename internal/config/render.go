@@ -409,6 +409,11 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "experimental_model_capability_filter = %v   # task 244 B9: reject a per-task model that lacks a capability the task needs (explained rejection instead of silent degradation)\n", c.Agent.ExperimentalModelCapabilityFilter)
 	fmt.Fprintf(&b, "perf_monitor_interval_seconds = %d   # task 184: sampler interval in seconds (default 5, clamped 1..300)\n", c.Agent.PerfMonitorIntervalSeconds)
 	fmt.Fprintf(&b, "session_collab_hop_limit = %d   # task 204: cross-session chain ceiling (default 5, clamped 3..1000; 0 = default)\n", c.Agent.SessionCollabHopLimit)
+	// Task 309: mailbox defaults for talk_to_session. Unconditional render —
+	// omit-on-default would let a hand-added line vanish on the next save.
+	fmt.Fprintf(&b, "session_collab_mail_idempotent_default = %v   # task 309: same-content redeliveries dedup onto the original mail (default on)\n", c.Agent.SessionCollabMailIdempotentDefault)
+	fmt.Fprintf(&b, "session_collab_mail_receipt_default = %v   # task 309: ask for a read receipt on every send unless the call overrides (default off)\n", c.Agent.SessionCollabMailReceiptDefault)
+	fmt.Fprintf(&b, "session_collab_default_delivery = %q   # task 309: channel used when a call omits delivery (steer | followup; default steer)\n", c.Agent.SessionCollabDefaultDelivery)
 	// Task 173: the collaboration panel gates. All default off, so the rendered
 	// block states them explicitly (omit-on-off would spring them back to off).
 	fmt.Fprintf(&b, "session_collab_allow_delete = %v   # task 173: expose delete_session (settings → 实验特性 → 跨会话通信)\n", c.Agent.SessionCollabAllowDelete)

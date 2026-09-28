@@ -87,6 +87,24 @@ type InboxItemMeta struct {
 	Refs        []RefSummary `json:"refs,omitempty"`
 	BlockReason string       `json:"blockReason,omitempty"`
 	RunID       string       `json:"runId,omitempty"`
+	// Task 309 read-receipt bookkeeping. ReceiptRequested mirrors the
+	// envelope flag; CollabMsgID/CollabMailTo carry the original mail's ID and
+	// recipient so the consume-side receipt knows who to answer and which
+	// mail it is answering — both survive merges because they live on the
+	// delivery record, not on queue rows.
+	ReceiptRequested bool   `json:"receiptRequested,omitempty"`
+	CollabMsgID      string `json:"collabMsgId,omitempty"`
+	CollabMailTo     string `json:"collabMailTo,omitempty"`
+	// FoldedReceipts records original mails whose rows were folded into this
+	// one by a merge (task 309 × 221): consuming the merged body receipts
+	// every folded sender, not just the first mail.
+	FoldedReceipts []ReceiptRef `json:"foldedReceipts,omitempty"`
+}
+
+// ReceiptRef is one original mail folded into a surviving item by a merge.
+type ReceiptRef struct {
+	MsgID  string `json:"msgId,omitempty"`
+	MailTo string `json:"mailTo,omitempty"`
 }
 
 // RefSummary is a short reference summary stored in the manifest.
@@ -132,17 +150,29 @@ type PromptEnvelope struct {
 	SubmitText         string `json:"submitText"`
 	// Invocation is retained for schema-v1 compatibility. New writers use
 	// Invocations so multiple rich-composer entities preserve visual order.
-	Invocation  *StructuredInvocation  `json:"invocation,omitempty"`
-	Invocations []StructuredInvocation `json:"invocations,omitempty"`
-	Format      string                 `json:"format,omitempty"`
-	Attachments []string               `json:"attachments,omitempty"`
+	// ReceiptRequested (task 309) rides the envelope so the read receipt
+	// survives blob round-trips: the recipient sends a system receipt back to
+	// the mail's sender when this item is consumed into context (steer
+	// injection or drain). Delivery-level confirmation needs no flag — the
+	// talk_to_session return value already covers it.
+	ReceiptRequested bool `json:"receiptRequested,omitempty"`
+	// CollabMsgID/CollabMailTo (task 309) carry the original mail's ID and
+	// recipient so the consume-side receipt knows which mail it is answering
+	// and who originally asked for it; both survive merges because they ride
+	// the delivery record, not queue rows.
+	CollabMsgID  string                 `json:"collabMsgId,omitempty"`
+	CollabMailTo string                 `json:"collabMailTo,omitempty"`
+	Invocation   *StructuredInvocation  `json:"invocation,omitempty"`
+	Invocations  []StructuredInvocation `json:"invocations,omitempty"`
+	Format       string                 `json:"format,omitempty"`
+	Attachments  []string               `json:"attachments,omitempty"`
 	// Task 234 (upstream #10457 core slice): stable per-attachment identities
 	// frozen at enqueue so a dispatch-side schema (disk.go's inline envelope)
 	// can round-trip them. Only the field the picked reliability half needs —
 	// the upstream attachment package it belongs to does not exist in this
 	// fork, so ImageInputs/ImageSourceRefs are deliberately NOT introduced.
-	AttachmentIdentities []string             `json:"attachmentIdentities,omitempty"`
-	Refs                 []RefSnapshot        `json:"refs,omitempty"`
+	AttachmentIdentities []string      `json:"attachmentIdentities,omitempty"`
+	Refs                 []RefSnapshot `json:"refs,omitempty"`
 	// FrozenRefBlock is the exact typed reference context rendered at enqueue.
 	// FrozenImages contains already-authorized data URLs for direct image input.
 	FrozenRefBlock  string            `json:"frozenRefBlock,omitempty"`
@@ -184,7 +214,12 @@ type InboxReceipt struct {
 	Position    int         `json:"position"`
 	Paused      bool        `json:"paused"`
 	Capacity    Capacity    `json:"capacity"`
-	Idempotent  bool        `json:"idempotent,omitempty"`
+	// MergedInto (task 309) is set on an idempotent hit when the original
+	// item's content was folded into another queue row by a merge: the
+	// receipt still names the surviving row, and this field tells the sender
+	// which item their mail ended up inside. Empty = not merged.
+	MergedInto string `json:"mergedInto,omitempty"`
+	Idempotent bool   `json:"idempotent,omitempty"`
 }
 
 // EnqueueRequest is the input for durable admission.

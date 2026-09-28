@@ -2893,6 +2893,58 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   })}
                 />
               </SettingsField>
+              {/* Task 309: mailbox defaults for talk_to_session. */}
+              <SettingsField label={t("settings.sessionCollabMailDefaults")} hint={t("settings.sessionCollabMailDefaultsHint")} icon={<Sparkles size={18} />}>
+                <div className="set-gates">
+                  <label className="set-gates__item">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(s.sessionCollabMailIdempotentDefault)}
+                      disabled={busy}
+                      onChange={() => void apply(async () => {
+                        await app.SetSessionCollabMailDefaults(
+                          !Boolean(s.sessionCollabMailIdempotentDefault),
+                          Boolean(s.sessionCollabMailReceiptDefault),
+                          s.sessionCollabDefaultDelivery ?? "steer",
+                        );
+                      })}
+                    />
+                    <span className="set-gates__label">{t("settings.sessionCollabMailIdempotent")}</span>
+                  </label>
+                  <label className="set-gates__item">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(s.sessionCollabMailReceiptDefault)}
+                      disabled={busy}
+                      onChange={() => void apply(async () => {
+                        await app.SetSessionCollabMailDefaults(
+                          Boolean(s.sessionCollabMailIdempotentDefault),
+                          !Boolean(s.sessionCollabMailReceiptDefault),
+                          s.sessionCollabDefaultDelivery ?? "steer",
+                        );
+                      })}
+                    />
+                    <span className="set-gates__label">{t("settings.sessionCollabMailReceipt")}</span>
+                  </label>
+                  <label className="set-gates__item">
+                    <select
+                      value={s.sessionCollabDefaultDelivery ?? "steer"}
+                      disabled={busy}
+                      onChange={(e) => void apply(async () => {
+                        await app.SetSessionCollabMailDefaults(
+                          Boolean(s.sessionCollabMailIdempotentDefault),
+                          Boolean(s.sessionCollabMailReceiptDefault),
+                          e.target.value,
+                        );
+                      })}
+                    >
+                      <option value="steer">{t("settings.sessionCollabDefaultDeliverySteer")}</option>
+                      <option value="followup">{t("settings.sessionCollabDefaultDeliveryFollowup")}</option>
+                    </select>
+                    <span className="set-gates__label">{t("settings.sessionCollabDefaultDelivery")}</span>
+                  </label>
+                </div>
+              </SettingsField>
               {/* Task 225: cascade approval to the autopilot parent. */}
               <SettingsField label={t("settings.cascadeApproval")} hint={t("settings.cascadeApprovalHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">

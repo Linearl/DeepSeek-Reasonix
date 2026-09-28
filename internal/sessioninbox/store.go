@@ -353,13 +353,21 @@ func (s *Store) Enqueue(req EnqueueRequest) (InboxReceipt, error) {
 	if idem != "" && !validIdempotencyKey(idem) {
 		return InboxReceipt{}, fmt.Errorf("sessioninbox: invalid idempotency key")
 	}
-	source := strings.TrimSpace(firstNonEmpty(req.Source, env.Source))
-
-	blobBytes, checksum, byteSize, err := encodeEnvelope(env)
+	requestHash, err := idempotencyRequestHash(env)
 	if err != nil {
 		return InboxReceipt{}, err
 	}
-	requestHash, err := idempotencyRequestHash(env)
+	// Task 309: mailbox idempotency defaults ON. With no explicit key the
+	// content fingerprint IS the key, so a retried send (fresh mail id, same
+	// from/thread/body) dedups onto the original delivery instead of
+	// enqueueing a duplicate; differing content under an explicit key still
+	// conflicts below. The pump composes the thread-aware key upstream.
+	if idem == "" {
+		idem = "auto:" + requestHash
+	}
+	source := strings.TrimSpace(firstNonEmpty(req.Source, env.Source))
+
+	blobBytes, checksum, byteSize, err := encodeEnvelope(env)
 	if err != nil {
 		return InboxReceipt{}, err
 	}
@@ -407,8 +415,12 @@ func (s *Store) Enqueue(req EnqueueRequest) (InboxReceipt, error) {
 		ByteSize:    byteSize,
 		Checksum:    checksum,
 		Idempotency: idem,
-		Refs:        refSummaries(env.Refs),
-		RunID:       s.runID,
+		// Task 309 read-receipt bookkeeping rides the envelope.
+		ReceiptRequested: env.ReceiptRequested,
+		CollabMsgID:      env.CollabMsgID,
+		CollabMailTo:     env.CollabMailTo,
+		Refs:             refSummaries(env.Refs),
+		RunID:            s.runID,
 	}
 
 	// Transaction: write blob → commit manifest → receipt.
@@ -540,6 +552,22 @@ func (s *Store) UpdateItemWithIdempotency(id string, env PromptEnvelope, alias s
 	next.Items[i].Refs = refSummaries(env.Refs)
 	next.Items[i].UpdatedAt = time.Now().UTC()
 	next.Items[i].Revision = next.Revision + 1
+	// Task 309 × 221: fold the aliased mail's read-receipt bookkeeping into
+	// the surviving row — consuming the merged body must receipt every folded
+	// sender, not just the first mail. The alias row itself is about to be
+	// superseded, so its bookkeeping is read off the current manifest.
+	if alias != "" {
+		if aliasID, ok := s.man.Idempotency[alias]; ok && aliasID != id {
+			if aliasItem, found := s.man.item(aliasID); found {
+				if aliasItem.CollabMsgID != "" || aliasItem.CollabMailTo != "" {
+					next.Items[i].FoldedReceipts = append(next.Items[i].FoldedReceipts, ReceiptRef{
+						MsgID:  aliasItem.CollabMsgID,
+						MailTo: aliasItem.CollabMailTo,
+					})
+				}
+			}
+		}
+	}
 	bindIdempotency(next, alias, id, aliasHash)
 	if next.Items[i].State == StateBlocked {
 		next.Items[i].State = StateQueued

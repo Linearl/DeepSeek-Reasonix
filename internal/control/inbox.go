@@ -39,8 +39,15 @@ type InboxRequest struct {
 	Format              string
 	Source              string
 	Idempotency         string
-	Invocations         []InvocationRequest
-	Extra               map[string]string
+	// Task 309 read-receipt request: when set, the recipient sends a system
+	// receipt back to the collab sender once this item is consumed into
+	// context (steer injection / drain). Delivery confirmation already rides
+	// the enqueue return value.
+	ReceiptRequested bool
+	CollabMsgID      string
+	CollabMailTo     string
+	Invocations      []InvocationRequest
+	Extra            map[string]string
 	// FreezeRefs lists workspace-relative paths to freeze at enqueue time.
 	FreezeRefs []string
 }
@@ -96,9 +103,9 @@ type inboxState struct {
 	// along the completion path instead of resurrecting consumed work. Like
 	// ownsItem it is lock-free — Store recovery calls it under its own lock.
 	// nil keeps the pre-263 behaviour (everything in-flight is recovered).
-	settledItem func(sessioninbox.InboxItemMeta) bool
-	dispatching        bool
-	dispatchPending    bool
+	settledItem     func(sessioninbox.InboxItemMeta) bool
+	dispatching     bool
+	dispatchPending bool
 	// Retry bookkeeping is guarded by mu. Retries are bounded so a persistent
 	// disk or materialization failure cannot create a hot background loop.
 	dispatchRetryAttempts  int
@@ -347,6 +354,10 @@ func (c *Controller) EnqueueInbox(req InboxRequest) (sessioninbox.InboxReceipt, 
 		ExplicitRefs: append([]string(nil), req.FreezeRefs...),
 		Invocations:  sessionInboxInvocations(req.Invocations),
 		Extra:        maps.Clone(req.Extra),
+		// Task 309 read-receipt bookkeeping, down to the durable item.
+		ReceiptRequested: req.ReceiptRequested,
+		CollabMsgID:      req.CollabMsgID,
+		CollabMailTo:     req.CollabMailTo,
 	}
 	env.FrozenRefBlock, env.FrozenImages, env.ReferenceErrors = c.freezeInboxReferences(context.Background(), submit, req.FreezeRefs)
 	intent := req.Intent
@@ -385,9 +396,9 @@ func (c *Controller) EnqueueInbox(req InboxRequest) (sessioninbox.InboxReceipt, 
 	if sp := st.SessionPath(); sp != "" {
 		if budget := agent.SessionReplayBudgetFor(sp); budget.ApproachingFence(0.90) {
 			c.sink.Emit(event.Event{
-				Kind:  event.Notice,
-				Level: event.LevelWarn,
-				Text:  "Session history is approaching the safe replay limit; compact or split the conversation soon.",
+				Kind:   event.Notice,
+				Level:  event.LevelWarn,
+				Text:   "Session history is approaching the safe replay limit; compact or split the conversation soon.",
 				Detail: fmt.Sprintf("encoded_bytes=%d limit=%d ratio=%.0f%%", budget.Size, budget.Limit, budget.Ratio*100),
 			})
 		}

@@ -2010,6 +2010,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			CollabStatusPath:   collabStatusPath,
 			CurrentSessionPath: sessionPath,
 			CurrentContactID:   currentContact,
+			// Task 309: mailbox defaults from [agent] config.
+			MailReceiptDefault: cfg.Agent.SessionCollabMailReceiptDefault,
+			DefaultDelivery:    cfg.Agent.SessionCollabDefaultDelivery,
 			// Task 158.B: the transcript path is bound by the control layer
 			// AFTER boot, so `sessionPath` above is empty for a fresh desktop
 			// session. Resolving at call time keeps a self-directed call

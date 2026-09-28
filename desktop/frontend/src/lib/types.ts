@@ -2396,6 +2396,10 @@ export interface DesktopStartupSettingsView {
   sessionCollabAllowSteer?: boolean;
   sessionCollabBackground?: boolean;
   sessionCollabDailySendLimit?: number;
+  // Task 309: mailbox defaults for talk_to_session.
+  sessionCollabMailIdempotentDefault?: boolean;
+  sessionCollabMailReceiptDefault?: boolean;
+  sessionCollabDefaultDelivery?: string;
   // Task 225: cascade approval to the autopilot parent.
   experimentalCascadeApproval?: boolean;
   // Task 242: quota fallback switch + provider/model target.

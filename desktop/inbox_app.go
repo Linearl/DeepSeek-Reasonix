@@ -310,14 +310,14 @@ func (a *App) enqueueInbox(tabID string, intent sessioninbox.InboxIntent, displa
 }
 
 func (a *App) enqueueInboxWithController(tabID string, ctrl control.SessionAPI, intent sessioninbox.InboxIntent, display, submit string, invocations []InvocationRequest, idempotency string, trySteer bool, turnID, expectedPath string) (InboxReceiptView, error) {
-	return a.enqueueInboxWithControllerSource(tabID, ctrl, intent, display, submit, invocations, idempotency, trySteer, turnID, expectedPath, "desktop")
+	return a.enqueueInboxWithControllerSource(tabID, ctrl, intent, display, submit, invocations, idempotency, trySteer, turnID, expectedPath, "desktop", false, "", "")
 }
 
 // enqueueInboxWithControllerSource is enqueueInboxWithController with an
 // explicit envelope Source. Task 221's drain merge groups by Source, so the
 // collaboration pump stamps "collab:<fromContactID>" to make the sender
 // structurally addressable instead of only inside the message text.
-func (a *App) enqueueInboxWithControllerSource(tabID string, ctrl control.SessionAPI, intent sessioninbox.InboxIntent, display, submit string, invocations []InvocationRequest, idempotency string, trySteer bool, turnID, expectedPath, source string) (InboxReceiptView, error) {
+func (a *App) enqueueInboxWithControllerSource(tabID string, ctrl control.SessionAPI, intent sessioninbox.InboxIntent, display, submit string, invocations []InvocationRequest, idempotency string, trySteer bool, turnID, expectedPath, source string, receiptRequested bool, collabMsgID, collabMailTo string) (InboxReceiptView, error) {
 	if ensurer, ok := ctrl.(interface{ EnsureSessionPath() }); ok {
 		ensurer.EnsureSessionPath()
 	}
@@ -341,6 +341,11 @@ func (a *App) enqueueInboxWithControllerSource(tabID string, ctrl control.Sessio
 		Source:              source,
 		Idempotency:         strings.TrimSpace(idempotency),
 		Invocations:         controlInvocationRequests(invocations),
+		// Task 309 read-receipt bookkeeping (collab mail only; other callers
+		// pass false/"","").
+		ReceiptRequested: receiptRequested,
+		CollabMsgID:      collabMsgID,
+		CollabMailTo:     collabMailTo,
 	}
 	var (
 		rec sessioninbox.InboxReceipt
