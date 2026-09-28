@@ -35,6 +35,17 @@ const zhTW = readFileSync(join(root, "locales/zh-TW.ts"), "utf8");
 
 // ── render table + union + detail wiring ────────────────────────────────────
 ok(panel.includes('{ id: "opencodeGoUsage", group: "misc",'), "render table carries the entry (81/123)");
+// Task 346 (0928 second-pass layout): the control stacks vertically - the
+// default flex-row control squeezed the switch and the three window rows
+// into one line. Pure CSS, asserted at the source level.
+ok(
+  styles.includes(".settings-field--opencode-usage .settings-field__control") &&
+    styles.includes("flex-direction: column"),
+  "usage control stacks vertically inside its own field (task 346)",
+);
+ok(styles.includes(".settings-field--opencode-usage .settings-field__control > .set-seg") && styles.includes("width: fit-content"), "switch keeps its natural width on its own row");
+ok(styles.includes("min-width: 4ch") && styles.includes(".opencode-go-usage__percent"), "window percent column carries a fixed alignment slot");
+ok(styles.includes(".opencode-go-usage__refresh") && styles.includes("align-self: flex-end"), "refresh button sits flush right");
 ok(panel.includes('| "opencodeGoUsage"'), "the detail-card union includes the id");
 ok(panel.includes("Boolean(s.experimentalOpenCodeGoUsage)") && panel.includes("<SettingsOpenCodeGoUsageCard"),
   "the detail card renders the component gated by the switch value");

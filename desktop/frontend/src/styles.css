@@ -17044,6 +17044,20 @@ body > .mermaid-diagram--fullscreen {
   display: block;
 }
 
+/* Task 346: the OpenCode Go usage control stacks vertically - switch on its
+   own row, the three window rows as an aligned table, refresh flush right.
+   The default .settings-field__control is a flex ROW, which squeezed the
+   switch block and the 5h/7d/month rows into one line (0928 screenshot). */
+.settings-field--opencode-usage .settings-field__control {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+.settings-field--opencode-usage .settings-field__control > .set-seg {
+  width: fit-content;
+}
+
 .settings-field--stacked .settings-field__control > * {
   max-width: 100%;
 }
@@ -19120,6 +19134,7 @@ body > .mermaid-diagram--fullscreen {
   font-weight: 620;
 }
 .opencode-go-usage__percent {
+  min-width: 4ch;
   color: var(--fg);
   font-variant-numeric: tabular-nums;
 }
@@ -19135,7 +19150,7 @@ body > .mermaid-diagram--fullscreen {
   line-height: 1.45;
 }
 .opencode-go-usage__refresh {
-  align-self: flex-start;
+  align-self: flex-end;
   display: inline-flex;
   align-items: center;
   gap: 6px;
