@@ -43,8 +43,21 @@ ok(settings.includes('| "eventsRotation"'), "ExperimentFeatureId union exposes e
 ok(panel.includes("title={entry.path}"), "Row demotes the raw path to the hover title");
 ok(panel.includes("events-rotation-panel__status"), "Row renders a status badge");
 ok(panel.includes("entry.busy ? \"settings.eventsRotation.card.statusBusy\" : \"settings.eventsRotation.card.statusIdle\""), "Status badge picks idle/busy copy by entry.busy");
-ok(panel.includes("disabled={busy || entry.busy}"), "Repair button is disabled for busy sessions");
-ok(panel.includes("settings.eventsRotation.card.busyHint"), "Busy rows carry an actionable hint");
+// Task 356: manual mode is a deliberate action — busy rows stay clickable
+// behind a confirm, while auto/off keep the pre-disable from task 345.
+ok(
+  panel.includes('mode === "manual" ? busy : busy || entry.busy'),
+  "repair disabled splits by mode: manual drops the entry-busy gate, auto/off keep it",
+);
+ok(panel.includes("settings.eventsRotation.card.busyHint"), "auto/off busy rows keep the actionable hint");
+ok(
+  panel.includes("settings.eventsRotation.card.busyHintManual"),
+  "manual busy rows carry their own risk hint",
+);
+ok(
+  panel.includes('window.confirm(t("settings.eventsRotation.card.busyConfirm"))'),
+  "manual clicks on an in-use session confirm the collision risk first",
+);
 ok(settings.includes('selected === "eventsRotation"') && settings.includes("<SessionEventsPanel"), "Storage detail card mounts the panel");
 ok(settings.includes('import { SessionEventsPanel, type RotationMode }'), "SettingsPanel imports the panel with its literal mode type");
 
@@ -111,10 +124,17 @@ const requiredKeys = [
   "settings.eventsRotation.card.skipped",
   "settings.eventsRotation.card.failedRow",
   "settings.eventsRotation.card.doneRow",
+  // Task 345: idle/busy badge + hint (repair-list state).
+  "settings.eventsRotation.card.statusIdle",
+  "settings.eventsRotation.card.statusBusy",
+  "settings.eventsRotation.card.busyHint",
+  // Task 356: manual-mode risk copy split off the shared hint.
+  "settings.eventsRotation.card.busyHintManual",
+  "settings.eventsRotation.card.busyConfirm",
 ];
 ok(
   locales.every((locale) => requiredKeys.every((key) => locale.includes(`"${key}"`))),
-  "zh, zh-TW and en each define all 20 task-333 keys",
+  "zh, zh-TW and en each define all 25 task-333/345/356 keys",
 );
 
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);

@@ -194,9 +194,25 @@ export function SessionEventsPanel({ mode, busy, apply }: { mode: RotationMode; 
                 <button
                   type="button"
                   className="btn btn--small"
-                  disabled={busy || entry.busy}
-                  title={entry.busy ? t("settings.eventsRotation.card.busyHint") : undefined}
-                  onClick={() => compactOne(entry.path)}
+                  disabled={mode === "manual" ? busy : busy || entry.busy}
+                  title={
+                    entry.busy
+                      ? t(
+                          mode === "manual"
+                            ? "settings.eventsRotation.card.busyHintManual"
+                            : "settings.eventsRotation.card.busyHint",
+                        )
+                      : undefined
+                  }
+                  onClick={() => {
+                    // Task 356: manual mode is a deliberate user action — an
+                    // in-use session must not gray the button out. Confirm the
+                    // collision risk instead; auto/off keep the pre-disable.
+                    if (mode === "manual" && entry.busy && !window.confirm(t("settings.eventsRotation.card.busyConfirm"))) {
+                      return;
+                    }
+                    compactOne(entry.path);
+                  }}
                 >
                   {t("settings.eventsRotation.card.repair")}
                 </button>

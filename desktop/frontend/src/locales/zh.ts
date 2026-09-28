@@ -2405,6 +2405,8 @@ export const zh: Record<DictKey, string> = {
 "settings.eventsRotation.card.statusIdle": "空闲可修复",
 "settings.eventsRotation.card.statusBusy": "使用中",
 "settings.eventsRotation.card.busyHint": "会话正在使用（已打开或被占用），关闭后可修复",
+"settings.eventsRotation.card.busyHintManual": "会话使用中（手动模式可点击，将先确认风险）",
+"settings.eventsRotation.card.busyConfirm": "该会话正在使用中，修复可能与其正在进行的操作冲突。仍要修复？",
 "settings.restartRequired": "已保存。该设置在启动时生效 —— 重启后才会应用。",
 "settings.restartNow": "立即重启",
 "settings.sessionStorageHint": "沿一条升级路径分四档，不允许从 v3 直接跳到 v4。档 2 把每次保存全量镜像到 sessions-v4/，读取仍走 sessions/；档 3 双写不变、读取优先改用 v4 副本（未命中回落 sessions/）；档 4 把 sessions/ 冻结为只读历史。改变写端（启用/停用 v4 镜像）需要重启；在两个双写档之间切换读取端立即生效。",
