@@ -340,10 +340,10 @@ type SettingsView struct {
 	AutonomousUpdateResume       string `json:"autonomousUpdateResume"`
 	// UpdateChime exposes the update-complete chime switch (task 277) — same
 	// render-table rule as the switches above (a missing entry silently reads off).
-	UpdateChime bool `json:"updateChime"`
-	ExperimentalSessionMonitor   bool   `json:"experimentalSessionMonitor"`
-	ExperimentalSplitView        bool   `json:"experimentalSplitView"`
-	SessionStorage               string `json:"sessionStorage"`
+	UpdateChime                bool   `json:"updateChime"`
+	ExperimentalSessionMonitor bool   `json:"experimentalSessionMonitor"`
+	ExperimentalSplitView      bool   `json:"experimentalSplitView"`
+	SessionStorage             string `json:"sessionStorage"`
 	// Task 155: the four-mode conversation store switch. sessionStorage is the
 	// configured mode, sessionStorageEffective the mode this process started
 	// with, and sessionStorageRestartPending flags a change that still needs a
@@ -415,6 +415,10 @@ type SettingsView struct {
 	SessionCollabAllowSteer        bool `json:"sessionCollabAllowSteer"`
 	SessionCollabBackground        bool `json:"sessionCollabBackground"`
 	SessionCollabDailySendLimit    int  `json:"sessionCollabDailySendLimit"`
+	// Task 309: mailbox defaults for talk_to_session.
+	SessionCollabMailIdempotentDefault bool   `json:"sessionCollabMailIdempotentDefault"`
+	SessionCollabMailReceiptDefault    bool   `json:"sessionCollabMailReceiptDefault"`
+	SessionCollabDefaultDelivery       string `json:"sessionCollabDefaultDelivery"`
 	// Task 225: cascade approval to the autopilot parent (config lands in the
 	// same panel; the checkbox ships with it).
 	ExperimentalCascadeApproval bool `json:"experimentalCascadeApproval"`
@@ -427,9 +431,9 @@ type SettingsView struct {
 	ProactiveCompactCooldownMinutes int  `json:"proactiveCompactCooldownMinutes"`
 	ExperimentalComposerDraft       bool `json:"experimentalComposerDraft"`
 	// Task 297: cold-cache compact pass knobs (lab storage cost card).
-	ExperimentalColdCacheCompact bool   `json:"experimentalColdCacheCompact"`
-	ColdCacheCompactMinBytes    int64  `json:"coldCacheCompactMinBytes"`
-	ColdCacheCompactIdleMinutes int    `json:"coldCacheCompactIdleMinutes"`
+	ExperimentalColdCacheCompact bool  `json:"experimentalColdCacheCompact"`
+	ColdCacheCompactMinBytes     int64 `json:"coldCacheCompactMinBytes"`
+	ColdCacheCompactIdleMinutes  int   `json:"coldCacheCompactIdleMinutes"`
 
 	VisionModel                  string                     `json:"visionModel"`
 	WebSearchModel               string                     `json:"webSearchModel"`
@@ -585,6 +589,10 @@ type DesktopStartupSettingsView struct {
 	SessionCollabAllowSteer        bool `json:"sessionCollabAllowSteer"`
 	SessionCollabBackground        bool `json:"sessionCollabBackground"`
 	SessionCollabDailySendLimit    int  `json:"sessionCollabDailySendLimit"`
+	// Task 309: mailbox defaults for talk_to_session.
+	SessionCollabMailIdempotentDefault bool   `json:"sessionCollabMailIdempotentDefault"`
+	SessionCollabMailReceiptDefault    bool   `json:"sessionCollabMailReceiptDefault"`
+	SessionCollabDefaultDelivery       string `json:"sessionCollabDefaultDelivery"`
 	// Task 225: cascade approval to the autopilot parent (config lands in the
 	// same panel; the checkbox ships with it).
 	ExperimentalCascadeApproval bool `json:"experimentalCascadeApproval"`
@@ -597,9 +605,9 @@ type DesktopStartupSettingsView struct {
 	ProactiveCompactCooldownMinutes int  `json:"proactiveCompactCooldownMinutes"`
 	ExperimentalComposerDraft       bool `json:"experimentalComposerDraft"`
 	// Task 297: cold-cache compact pass knobs (lab storage cost card).
-	ExperimentalColdCacheCompact bool   `json:"experimentalColdCacheCompact"`
-	ColdCacheCompactMinBytes    int64  `json:"coldCacheCompactMinBytes"`
-	ColdCacheCompactIdleMinutes int    `json:"coldCacheCompactIdleMinutes"`
+	ExperimentalColdCacheCompact bool  `json:"experimentalColdCacheCompact"`
+	ColdCacheCompactMinBytes     int64 `json:"coldCacheCompactMinBytes"`
+	ColdCacheCompactIdleMinutes  int   `json:"coldCacheCompactIdleMinutes"`
 	// ExperimentalLocalServer exposes the Settings → 本地服务 page (task 130).
 	ExperimentalLocalServer bool `json:"experimentalLocalServer"`
 	// ExperimentalPathRules enables structured path-scope evaluation (task 134).
@@ -1432,6 +1440,10 @@ func (a *App) Settings() SettingsView {
 		SessionCollabAllowSteer:        cfg.Agent.SessionCollabAllowSteer,
 		SessionCollabBackground:        cfg.Agent.SessionCollabBackground,
 		SessionCollabDailySendLimit:    cfg.Agent.SessionCollabDailySendLimit,
+		// Task 309: mailbox defaults for talk_to_session.
+		SessionCollabMailIdempotentDefault: cfg.Agent.SessionCollabMailIdempotentDefault,
+		SessionCollabMailReceiptDefault:    cfg.Agent.SessionCollabMailReceiptDefault,
+		SessionCollabDefaultDelivery:       cfg.Agent.SessionCollabDefaultDelivery,
 		// Task 225: cascade approval to the autopilot parent.
 		ExperimentalCascadeApproval: cfg.Agent.ExperimentalCascadeApproval,
 		// Task 242: fallback model switch + provider/model target.
@@ -1440,9 +1452,9 @@ func (a *App) Settings() SettingsView {
 		// Task 318: lab internal optimizations (three switches default off).
 		ExperimentalHighSpeedModel:      cfg.Agent.ExperimentalHighSpeedModel,
 		ExperimentalProactiveCompact:    cfg.Agent.ExperimentalProactiveCompact,
-		ExperimentalColdCacheCompact:     cfg.Agent.ExperimentalColdCacheCompact,
-		ColdCacheCompactMinBytes:         config.ColdCacheCompactEffectiveMinBytes(cfg),
-		ColdCacheCompactIdleMinutes:      config.ColdCacheCompactEffectiveIdleMinutes(cfg),
+		ExperimentalColdCacheCompact:    cfg.Agent.ExperimentalColdCacheCompact,
+		ColdCacheCompactMinBytes:        config.ColdCacheCompactEffectiveMinBytes(cfg),
+		ColdCacheCompactIdleMinutes:     config.ColdCacheCompactEffectiveIdleMinutes(cfg),
 		ProactiveCompactCooldownMinutes: cfg.Agent.ProactiveCompactCooldownMinutes,
 		ExperimentalComposerDraft:       cfg.Agent.ExperimentalComposerDraft,
 		ExperimentalLocalServer:         cfg.Desktop.ExperimentalLocalServer,

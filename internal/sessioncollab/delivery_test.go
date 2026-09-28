@@ -2,19 +2,21 @@ package sessioncollab
 
 import "testing"
 
-// Task 143: delivery defaults to followup (conservative) and rejects garbage
-// instead of silently treating every value as followup.
+// Task 143 + task 309: delivery defaults to steer (mailbox semantics —
+// immediate injection, automatic follow-up degradation) and rejects garbage
+// instead of silently treating every value as steer. An explicit followup
+// keeps the old queued semantics.
 func TestValidateDelivery(t *testing.T) {
 	cases := []struct {
 		in      string
 		want    Delivery
 		wantErr bool
 	}{
-		{"", DeliveryFollowup, false},
+		{"", DeliverySteer, false},
+		{"steer", DeliverySteer, false},
+		{"STEER", DeliverySteer, false},
 		{"followup", DeliveryFollowup, false},
 		{"FOLLOWUP", DeliveryFollowup, false},
-		{" steer ", DeliverySteer, false},
-		{"steer", DeliverySteer, false},
 		{"interrupt", "", true},
 	}
 	for _, c := range cases {
@@ -36,8 +38,8 @@ func TestValidateDelivery(t *testing.T) {
 func TestDeliverNormalizesDelivery(t *testing.T) {
 	mail := NewMailStore(t.TempDir())
 	msg, err := mail.Deliver(MailMessage{To: "sc_a", Body: "x"})
-	if err != nil || msg.Delivery != string(DeliveryFollowup) {
-		t.Fatalf("empty delivery must normalize to followup: %+v %v", msg, err)
+	if err != nil || msg.Delivery != string(DeliverySteer) {
+		t.Fatalf("empty delivery must normalize to steer (task 309 mailbox default): %+v %v", msg, err)
 	}
 	steer, err := mail.Deliver(MailMessage{To: "sc_a", Body: "y", Delivery: "steer"})
 	if err != nil || steer.Delivery != string(DeliverySteer) {

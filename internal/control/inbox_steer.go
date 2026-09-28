@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"reasonix/internal/agent"
+	"reasonix/internal/config"
+	"reasonix/internal/sessioncollab"
 	"reasonix/internal/sessioninbox"
 )
 
@@ -42,7 +44,7 @@ func (c *Controller) unlockInboxSteerAdmission(dispatch *bool) {
 
 func inboxSteerLoader(st *sessioninbox.Store, itemID string) func() (string, error) {
 	return func() (string, error) {
-		_, env, err := st.ReadItem(itemID)
+		meta, env, err := st.ReadItem(itemID)
 		if err != nil {
 			if errors.Is(err, sessioninbox.ErrNotFound) {
 				return "", agent.ErrSteerWithdrawn
@@ -73,6 +75,18 @@ func inboxSteerLoader(st *sessioninbox.Store, itemID string) func() (string, err
 				return "", agent.ErrSteerWithdrawn
 			}
 			return "", err
+		}
+		// Task 309: the mail just entered the recipient's context — the read
+		// level. Best-effort: a receipt failure must not fail the injection,
+		// so the error is swallowed after this consume boundary succeeded.
+		if env.ReceiptRequested {
+			_ = sessioncollab.SendReadReceipt(config.SessionCollabMailDir(),
+				strings.TrimPrefix(env.Source, "collab:"), env.CollabMailTo, env.CollabMsgID)
+		}
+		// Task 309 × 221: folded originals receipt from the meta bookkeeping.
+		for _, ref := range meta.FoldedReceipts {
+			_ = sessioncollab.SendReadReceipt(config.SessionCollabMailDir(),
+				strings.TrimPrefix(env.Source, "collab:"), ref.MailTo, ref.MsgID)
 		}
 		return firstNonEmptyStr(materialized, text), nil
 	}

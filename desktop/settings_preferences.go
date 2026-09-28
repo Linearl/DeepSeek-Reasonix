@@ -250,6 +250,15 @@ func (a *App) SetSessionCollabGates(allowDelete, allowRequireReply, allowReadTai
 	})
 }
 
+// SetSessionCollabMailDefaults writes the task-309 mailbox defaults in one
+// call (settings → 实验特性 → 跨会话通信): idempotency default, read-receipt
+// default, and the default delivery channel.
+func (a *App) SetSessionCollabMailDefaults(idempotent, receiptDefault bool, defaultDelivery string) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetSessionCollabMailDefaults(&idempotent, &receiptDefault, &defaultDelivery)
+	})
+}
+
 // SetSessionCollabBackground toggles task-264 background mode: on, pump
 // stand-ups build a detached runtime with no visible tab; off is the baseline.
 // A regular panel setting — read live per drain pass, no restart needed.

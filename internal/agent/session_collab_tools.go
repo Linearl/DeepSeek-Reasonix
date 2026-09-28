@@ -45,6 +45,12 @@ type SessionCollabConfig struct {
 	EventWaitRecheck bool
 	// CurrentContactID is filled on first ensure for the calling session.
 	CurrentContactID string
+	// Task 309 mailbox defaults for talk_to_session (boot-bridged from
+	// [agent] config): MailReceiptDefault applies when a call omits
+	// `receipt`; DefaultDelivery applies when a call omits `delivery` (empty
+	// still validates to steer if this is empty).
+	MailReceiptDefault bool
+	DefaultDelivery    string
 	// HopLimit resolves the live collaboration chain ceiling AT CALL TIME (task 204),
 	// mirroring ResolveSessionPath: a boot snapshot would freeze the value for the
 	// life of a session. Nil keeps the package default.
@@ -694,11 +700,11 @@ type talkToSessionTool struct{ cfg SessionCollabConfig }
 func (talkToSessionTool) Name() string { return "talk_to_session" }
 
 func (talkToSessionTool) Description() string {
-	return "Send a message to another session in the contact directory (通讯录, task 19 / 142-143). `to` accepts a contact_id, a topic_id, or the exact title shown by list_addressable_sessions — the title is the human way to pick someone when you have not met them yet, and the target gains a contact_id on first contact. delivery=followup queues for the target's next turn; delivery=steer asks for mid-turn injection and degrades to a queued follow-up when the target has no injectable turn (the sender is told). Your own contact_id is minted automatically on first send, so the target can always reply. When answering a message that was delivered to you, ALWAYS reply through this tool with to = the From contact_id carried in the delivery text — never answer inside your own transcript, the sender cannot see it. Experimental."
+	return "Send a message to another session in the contact directory (通讯录, task 19 / 142-143). `to` accepts a contact_id, a topic_id, or the exact title shown by list_addressable_sessions — the title is the human way to pick someone when you have not met them yet, and the target gains a contact_id on first contact. delivery=steer (default, task 309) asks for mid-turn injection and degrades to a queued follow-up when the target has no injectable turn; delivery=followup explicitly queues for the target's next turn. Resending the same content on the same thread inside the dedup window returns the original messageId instead of enqueueing a duplicate (mailbox idempotency, task 309). Your own contact_id is minted automatically on first send, so the target can always reply. When answering a message that was delivered to you, ALWAYS reply through this tool with to = the From contact_id carried in the delivery text — never answer inside your own transcript, the sender cannot see it. Experimental."
 }
 
 func (talkToSessionTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target: contact_id, topic_id, or the exact title from list_addressable_sessions."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain. The system derives the real depth from the thread."},"delivery":{"type":"string","enum":["followup","steer"],"description":"followup (default) queues; steer injects mid-turn, degrading to followup when it cannot."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."},"thread_id":{"type":"string","description":"When answering a message, pass the threadId it carried so the requester can match your reply."},"require_reply":{"type":"boolean","description":"Set true when the sender needs an answer on this thread (task 173). Requires the panel switch session_collab_allow_require_reply."},"approver":{"type":"string","description":"contact_id (or resolvable title) of the session that answers THIS task's approval prompts (task 225). Default: the sender. Must be a registered session."},"wait":{"type":"boolean","description":"Set true to wait — bounded — for a reply on this thread instead of returning queued at once (the old talk_to_session_sync behavior)."},"timeout_ms":{"type":"integer","description":"wait: how long to wait for the reply (default 30000, max 120000)."}},"required":["to","message"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target: contact_id, topic_id, or the exact title from list_addressable_sessions."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain. The system derives the real depth from the thread."},"delivery":{"type":"string","enum":["followup","steer"],"description":"steer (default, task 309) injects mid-turn, degrading to followup when it cannot; followup explicitly queues for the next turn."},"receipt":{"type":"boolean","description":"Task 309: request a read receipt — the target sends back a system receipt message when this mail enters its context (turn injection / drain consumption). Default off; delivery-level confirmation already rides the return value."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."},"thread_id":{"type":"string","description":"When answering a message, pass the threadId it carried so the requester can match your reply."},"require_reply":{"type":"boolean","description":"Set true when the sender needs an answer on this thread (task 173). Requires the panel switch session_collab_allow_require_reply."},"approver":{"type":"string","description":"contact_id (or resolvable title) of the session that answers THIS task's approval prompts (task 225). Default: the sender. Must be a registered session."},"wait":{"type":"boolean","description":"Set true to wait — bounded — for a reply on this thread instead of returning queued at once (the old talk_to_session_sync behavior)."},"timeout_ms":{"type":"integer","description":"wait: how long to wait for the reply (default 30000, max 120000)."}},"required":["to","message"]}`)
 }
 
 func (talkToSessionTool) ReadOnly() bool { return false }
@@ -716,6 +722,7 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 		Message      string `json:"message"`
 		Hop          int    `json:"hop"`
 		Delivery     string `json:"delivery"`
+		Receipt      *bool  `json:"receipt"`
 		CardID       string `json:"card_id"`
 		ThreadID     string `json:"thread_id"`
 		RequireReply bool   `json:"require_reply"`
@@ -732,9 +739,20 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 	if limit := t.cfg.hopLimit(); p.Hop < 0 || p.Hop > limit+1 {
 		return "", fmt.Errorf("invalid hop %d", p.Hop)
 	}
+	// Task 309: an omitted delivery uses the configured mailbox default
+	// (steer unless [agent] session_collab_default_delivery says otherwise).
+	if strings.TrimSpace(p.Delivery) == "" && strings.TrimSpace(t.cfg.DefaultDelivery) != "" {
+		p.Delivery = t.cfg.DefaultDelivery
+	}
 	delivery, err := sessioncollab.ValidateDelivery(p.Delivery)
 	if err != nil {
 		return "", err
+	}
+	// Task 309: an omitted receipt uses the configured default (off unless
+	// session_collab_mail_receipt_default turns it on).
+	receiptRequested := t.cfg.MailReceiptDefault
+	if p.Receipt != nil {
+		receiptRequested = *p.Receipt
 	}
 	if delivery == sessioncollab.DeliverySteer && !t.cfg.AllowSteer {
 		// Task 173 ④: with the panel switch off, steer degrades to followup —
@@ -780,16 +798,17 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 	}
 	mail := sessioncollab.NewMailStoreWithHopLimit(mailDir, t.cfg.hopLimit())
 	msg := sessioncollab.MailMessage{
-		From:         fromContact,
-		FromSession:  fromSession,
-		To:           target.ContactID,
-		Body:         strings.TrimSpace(p.Message),
-		Delivery:     string(delivery),
-		Hop:          p.Hop,
-		CardID:       p.CardID,
-		ReplyTo:      fromContact,
-		ThreadID:     strings.TrimSpace(p.ThreadID),
-		RequireReply: p.RequireReply,
+		From:             fromContact,
+		FromSession:      fromSession,
+		To:               target.ContactID,
+		Body:             strings.TrimSpace(p.Message),
+		Delivery:         string(delivery),
+		Hop:              p.Hop,
+		CardID:           p.CardID,
+		ReplyTo:          fromContact,
+		ThreadID:         strings.TrimSpace(p.ThreadID),
+		RequireReply:     p.RequireReply,
+		ReceiptRequested: receiptRequested, // task 309: read receipt, consumed at turn-injection/drain time on the recipient side.
 	}
 	// Task 225 (user ruling): an explicit approver overrides the task-source
 	// default for this task's approval prompts. It must resolve to a real
@@ -826,7 +845,14 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 	}
 	delivered, derr := mail.Deliver(msg)
 	if derr != nil {
-		return "", derr
+		// Task 309 NDR: a refused delivery reads like a mailbox bounce —
+		// recipient, reason, and a quoted excerpt of the original body, so
+		// the sender can decide whether to resend without opening any log.
+		excerpt := strings.TrimSpace(p.Message)
+		if runes := []rune(excerpt); len(runes) > 80 {
+			excerpt = string(runes[:80]) + "…"
+		}
+		return "", fmt.Errorf("退信（NDR）：致 %s；原因：%v；原文「%s」", target.Title, derr, excerpt)
 	}
 	msg = delivered
 	// Task 175: the sender keeps its own sent log — the inbox only shows what

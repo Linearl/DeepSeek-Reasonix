@@ -1528,6 +1528,15 @@ type AgentConfig struct {
 	// session may send per day (task 173 ⑥, anti-storm). 0 keeps the package
 	// default (no cap).
 	SessionCollabDailySendLimit int `toml:"session_collab_daily_send_limit"`
+	// Task 309 mailbox defaults for talk_to_session. MailIdempotentDefault
+	// (on) dedups same-content redeliveries onto the original mail instead of
+	// enqueueing duplicates; MailReceiptDefault (off) asks for a read receipt
+	// on every send unless the call overrides it; DefaultDelivery ("steer")
+	// is the channel used when a call omits delivery — "followup" restores
+	// the old queue-until-next-turn semantics.
+	SessionCollabMailIdempotentDefault bool   `toml:"session_collab_mail_idempotent_default"`
+	SessionCollabMailReceiptDefault    bool   `toml:"session_collab_mail_receipt_default"`
+	SessionCollabDefaultDelivery       string `toml:"session_collab_default_delivery"`
 	// ExperimentalCascadeApproval enables task 225: a session working on a
 	// task dispatched by an autopilot parent forwards its approval prompts to
 	// that parent's Ask channel instead of blocking on its own. Off by

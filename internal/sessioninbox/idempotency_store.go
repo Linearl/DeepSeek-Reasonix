@@ -1,6 +1,9 @@
 package sessioninbox
 
-import "time"
+import (
+	"log/slog"
+	"time"
+)
 
 // LookupEnvelopeReceipt checks semantic identity before sources are read again.
 //
@@ -58,6 +61,10 @@ func (s *Store) idempotentReceiptLocked(key, requestHash string) (InboxReceipt, 
 			if previous := s.man.IdempotencyHashes[key]; previous != "" && previous != requestHash {
 				return InboxReceipt{}, false, ErrIdempotencyConflict
 			}
+			// Task 309: the dedup proof line — a repeated delivery of the same
+			// content on the same thread lands here instead of the queue.
+			slog.Info("sessioninbox: idempotent hit, duplicate delivery deduped",
+				"key", key, "item_id", item.ID, "position", s.man.indexOf(item.ID)+1)
 			return InboxReceipt{
 				ItemID: item.ID, Disposition: DispositionIdempotentHit,
 				Position: s.man.indexOf(item.ID) + 1, Paused: s.man.Paused,
@@ -72,6 +79,8 @@ func (s *Store) idempotentReceiptLocked(key, requestHash string) (InboxReceipt, 
 	if receipt.RequestHash != requestHash {
 		return InboxReceipt{}, false, ErrIdempotencyConflict
 	}
+	slog.Info("sessioninbox: idempotent hit, already-consumed receipt replayed",
+		"key", key, "item_id", receipt.ItemID)
 	return InboxReceipt{
 		ItemID: receipt.ItemID, Disposition: DispositionIdempotentHit,
 		Paused: s.man.Paused, Capacity: s.snapshotLocked().Capacity, Idempotent: true,
@@ -86,10 +95,12 @@ func (s *Store) idempotentAliasReplayLocked(key, requestHash, itemID string) (bo
 		if existingHash := s.man.IdempotencyHashes[key]; existingHash != "" && existingHash != requestHash {
 			return false, ErrIdempotencyConflict
 		}
-		if existingID != itemID {
-			return false, ErrIdempotencyConflict
-		}
-		return true, nil
+		// Task 309 × 221: same content under a key that points at another
+		// item is the merge rebind (B's key aliased onto the surviving row)
+		// — allowed to proceed, not a conflict. Only a content change under
+		// the same key conflicts.
+		_ = existingID
+		return false, nil
 	}
 	receipt, ok := s.man.Receipts[key]
 	if !ok || time.Since(receipt.CompletedAt) > idempotencyReceiptTTL {

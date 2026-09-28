@@ -522,6 +522,17 @@ func SessionCollabHopLimitLive() int {
 	return sessioncollab.ClampHopLimit(cfg.Agent.SessionCollabHopLimit)
 }
 
+// SessionCollabMailIdempotentEnabled reports the task-309 mailbox idempotency
+// default from [agent] config: same-content redeliveries dedup onto the
+// original mail. Load errors degrade to the ON default.
+func SessionCollabMailIdempotentEnabled() bool {
+	cfg, err := Load()
+	if err != nil || cfg == nil {
+		return true
+	}
+	return cfg.Agent.SessionCollabMailIdempotentDefault
+}
+
 // SetExperimentalRestartUpdate toggles the restart-and-update action (task 81). It is
 // opt-in because it swaps the running install for a staged one - a path that has no
 // verification step, by design, since the update itself comes from a trusted release.
@@ -825,6 +836,29 @@ func (c *Config) SetExperimentalModelCapabilityFilter(enabled bool) error {
 // call so the settings view cannot half-apply a panel. Nil pointers keep the
 // current value; the master switch is written separately through
 // SetExperimentalSessionCollab.
+// SetSessionCollabMailDefaults writes the task-309 mailbox defaults (settings
+// → 实验特性 → 跨会话通信): idempotency default, read-receipt default, and the
+// default delivery channel used when a talk_to_session call omits delivery.
+func (c *Config) SetSessionCollabMailDefaults(idempotent, receiptDefault *bool, defaultDelivery *string) error {
+	if idempotent != nil {
+		c.Agent.SessionCollabMailIdempotentDefault = *idempotent
+	}
+	if receiptDefault != nil {
+		c.Agent.SessionCollabMailReceiptDefault = *receiptDefault
+	}
+	if defaultDelivery != nil {
+		switch strings.ToLower(strings.TrimSpace(*defaultDelivery)) {
+		case "", "steer":
+			c.Agent.SessionCollabDefaultDelivery = "steer"
+		case "followup":
+			c.Agent.SessionCollabDefaultDelivery = "followup"
+		default:
+			return fmt.Errorf("session_collab_default_delivery must be steer|followup, got %q", *defaultDelivery)
+		}
+	}
+	return nil
+}
+
 func (c *Config) SetSessionCollabGates(allowDelete, allowRequireReply, allowReadTail, allowCreate, allowSteer *bool, dailySendLimit *int) error {
 	if allowDelete != nil {
 		c.Agent.SessionCollabAllowDelete = *allowDelete

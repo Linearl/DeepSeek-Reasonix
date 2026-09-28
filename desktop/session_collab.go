@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -1019,7 +1021,17 @@ func sessionCollabDeliveryFailedText(msg sessioncollab.MailMessage, cause error)
 // detached target is reached through its controller — there is no visible tab
 // to address by id.
 func (p *sessionCollabPump) deliverOne(target sessionCollabTarget, msg sessioncollab.MailMessage, body string) (bool, error) {
+	// Task 309: the idempotency key defaults to content-based (from, thread,
+	// body) — a retried send mints a fresh msg.ID but must dedup onto the
+	// original delivery, and the pump's own redelivery of the same mail lands
+	// on the same key too. The store still rejects differing content under
+	// one key. [agent] session_collab_mail_idempotent_default=false restores
+	// the per-message key (no content dedup).
 	idem := "collab:" + msg.ID
+	if config.SessionCollabMailIdempotentEnabled() {
+		sum := sha256.Sum256([]byte(msg.From + "\x00" + msg.ThreadID + "\x00" + strings.TrimSpace(msg.Body)))
+		idem = "collab:" + msg.From + ":" + msg.ThreadID + ":" + hex.EncodeToString(sum[:8])
+	}
 	// Task 221: stamp the sender into the envelope Source so the drain-time
 	// merge can group by sender structurally ("collab:<contactID>") instead of
 	// parsing the rendered header text.
@@ -1029,10 +1041,10 @@ func (p *sessionCollabPump) deliverOne(target sessionCollabTarget, msg sessionco
 			return false, fmt.Errorf("detached runtime has no controller")
 		}
 		if msg.Delivery != string(sessioncollab.DeliverySteer) {
-			_, err := p.app.enqueueInboxWithControllerSource(target.tabID, target.ctrl, sessioninbox.IntentFollowup, body, body, nil, idem, false, "", "", source)
+			_, err := p.app.enqueueInboxWithControllerSource(target.tabID, target.ctrl, sessioninbox.IntentFollowup, body, body, nil, idem, false, "", "", source, msg.ReceiptRequested, msg.ID, msg.To)
 			return false, err
 		}
-		receipt, err := p.app.enqueueInboxWithControllerSource(target.tabID, target.ctrl, sessioninbox.IntentSteer, body, body, nil, idem, true, "", "", source)
+		receipt, err := p.app.enqueueInboxWithControllerSource(target.tabID, target.ctrl, sessioninbox.IntentSteer, body, body, nil, idem, true, "", "", source, msg.ReceiptRequested, msg.ID, msg.To)
 		if err != nil {
 			return false, err
 		}
@@ -1053,14 +1065,14 @@ func (p *sessionCollabPump) deliverOne(target sessionCollabTarget, msg sessionco
 		return false, ctrlErr
 	}
 	if msg.Delivery != string(sessioncollab.DeliverySteer) && !target.activeTab {
-		_, err := p.app.enqueueInboxWithControllerSource(target.tabID, ctrl, sessioninbox.IntentFollowup, body, body, nil, idem, false, "", "", source)
+		_, err := p.app.enqueueInboxWithControllerSource(target.tabID, ctrl, sessioninbox.IntentFollowup, body, body, nil, idem, false, "", "", source, msg.ReceiptRequested, msg.ID, msg.To)
 		return false, err
 	}
-	receipt, err := p.app.enqueueInboxWithControllerSource(target.tabID, ctrl, sessioninbox.IntentSteer, body, body, nil, idem, true, "", "", source)
+	receipt, err := p.app.enqueueInboxWithControllerSource(target.tabID, ctrl, sessioninbox.IntentSteer, body, body, nil, idem, true, "", "", source, msg.ReceiptRequested, msg.ID, msg.To)
 	if err != nil {
 		// Steer rejected: fall back to a queued follow-up so the message is not lost.
 		if msg.Delivery != string(sessioncollab.DeliverySteer) {
-			_, ferr := p.app.enqueueInboxWithControllerSource(target.tabID, ctrl, sessioninbox.IntentFollowup, body, body, nil, idem, false, "", "", source)
+			_, ferr := p.app.enqueueInboxWithControllerSource(target.tabID, ctrl, sessioninbox.IntentFollowup, body, body, nil, idem, false, "", "", source, msg.ReceiptRequested, msg.ID, msg.To)
 			if ferr != nil {
 				return false, ferr
 			}
