@@ -157,15 +157,27 @@ export function PerfMemorySection({ busy, apply }: { busy: boolean; apply: Apply
           <p className="settings-field__hint-line">{t("settings.perfMonitor.chartNoSamples")}</p>
         ) : (
           <>
-            <svg className="perf-memory-section__chart" viewBox="0 0 600 120" preserveAspectRatio="none" role="img" aria-label={t("settings.perfMonitor.chartTitle")}>
-              <polyline
-                points={wsPolyline(wsValues)}
-                fill="none"
-                stroke="var(--accent)"
-                strokeWidth={2}
-                vectorEffect="non-scaling-stroke"
-              />
-            </svg>
+            <div className="perf-memory-section__chart-row">
+              {/* Task 355: Y axis in MB (max / mid / min) beside the curve —
+                  before this, the series had only the min/max footer note and
+                  no way to read an arbitrary point. */}
+              <div className="perf-memory-section__yaxis" aria-hidden="true">
+                <span>{`${wsMax.toFixed(1)} MB`}</span>
+                <span>{((wsMax + wsMin) / 2).toFixed(1)}</span>
+                <span>{wsMin.toFixed(1)}</span>
+              </div>
+              <svg className="perf-memory-section__chart" viewBox="0 0 600 120" preserveAspectRatio="none" role="img" aria-label={t("settings.perfMonitor.chartTitle")}>
+                <line className="perf-memory-section__grid" x1="0" y1="6" x2="600" y2="6" vectorEffect="non-scaling-stroke" />
+                <line className="perf-memory-section__grid" x1="0" y1="60" x2="600" y2="60" vectorEffect="non-scaling-stroke" />
+                <polyline
+                  points={wsPolyline(wsValues)}
+                  fill="none"
+                  stroke="var(--accent)"
+                  strokeWidth={2}
+                  vectorEffect="non-scaling-stroke"
+                />
+              </svg>
+            </div>
             <div className="perf-memory-section__axis">
               <span>{`max ${wsMax.toFixed(1)} MB`}</span>
               <span>{`${series.points.length} × ${series.intervalSeconds}s`}</span>
@@ -190,7 +202,7 @@ export function PerfMemorySection({ busy, apply }: { busy: boolean; apply: Apply
         ) : null}
         {breakdown && categories.length > 0 ? (
           <div className="perf-memory-section__pie-row">
-            <svg className="perf-memory-section__pie" viewBox="0 0 120 120" role="img" aria-label={t("settings.perfMonitor.heapPieTitle")}>
+            <svg className="perf-memory-section__pie" viewBox="0 0 120 120" width="120" height="120" preserveAspectRatio="xMidYMid meet" role="img" aria-label={t("settings.perfMonitor.heapPieTitle")}>
               {(() => {
                 let cursor = 0;
                 return categories.map((category) => {

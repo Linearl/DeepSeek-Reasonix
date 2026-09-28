@@ -14,3 +14,13 @@
 .perf-memory-section__legend-name { flex: 1; min-width: 0; color: var(--text); }
 .perf-memory-section__legend-value { color: var(--fg-dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .perf-memory-section__export { overflow-wrap: anywhere; }
+
+/* Task 355: Y axis (MB ticks) beside the WS curve + pie never clipped. */
+.perf-memory-section__chart-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: stretch; }
+.perf-memory-section__yaxis { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; min-width: 56px; color: var(--fg-dim); font-size: 11px; line-height: 1; font-variant-numeric: tabular-nums; padding: 2px 0; }
+.perf-memory-section__grid { stroke: var(--border-soft); stroke-dasharray: 3 4; opacity: 0.7; }
+/* The pie's geometry already stays inside viewBox 0 0 120 120 (pieArc r=50
+   around 60,60); allow any stroke/edge pixels to paint instead of being
+   clipped by the SVG box, and keep the row from forcing an X overflow. */
+.perf-memory-section__pie { overflow: visible; }
+.perf-memory-section__pie-row { overflow: visible; }
