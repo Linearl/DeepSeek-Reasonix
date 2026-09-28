@@ -28,10 +28,12 @@ export function inboxSnapshotBelongsToScope(snapshotPath: string | undefined, sc
   return scopeKey.split("\u0000").includes(path);
 }
 
-export function localGuidanceFallback(previewKey: string): PendingGuidance[] {
-  return previewKey
-    .split("\n")
-    .filter(Boolean)
+// Task 237 (次修①): the preview key arrives as the caller's item array, not a
+// joined string — splitting on "\n" used to shred any message that itself
+// contains newlines back into fake queue rows. Each entry stays whole.
+export function localGuidanceFallback(previewItems: readonly string[]): PendingGuidance[] {
+  return previewItems
+    .filter((text) => text.trim() !== "")
     .map((text, i) => ({ id: `local-${i}`, text, submitText: text }));
 }
 

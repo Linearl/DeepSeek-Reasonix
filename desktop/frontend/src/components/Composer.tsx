@@ -881,7 +881,13 @@ export function Composer({
   cwdRef.current = cwd;
   const attachmentDedupRef = useRef(new DedupIndex());
   const attachmentDedupKeysRef = useRef<Record<string, AttachmentDedupKey>>({});
-  const guidanceQueuePreviewKey = (guidanceQueuePreviewItems ?? []).map((item) => item.trim()).filter(Boolean).join("\n");
+  // Task 237 (次修①): pass the preview items as an array (memoized — the
+  // refresh effect keys on this reference) so each message keeps its own
+  // newlines instead of being re-split from a joined string.
+  const guidanceQueuePreviewKey = useMemo(
+    () => (guidanceQueuePreviewItems ?? []).map((item) => item.trim()).filter(Boolean),
+    [guidanceQueuePreviewItems],
+  );
   const draftsBySessionRef = useRef<Record<string, ComposerDraft>>({});
   const activeDraftKeyRef = useRef(draftKey);
   const draftActivationEpochRef = useRef(0);
@@ -3244,9 +3250,31 @@ export function Composer({
       const outcome = (await onCancel(durableItemIDs)) ?? { discardedItemIds: [] };
       const discarded = new Set(outcome.discardedItemIds);
       const restorable = ownedGuidance.filter((item) => item.id.startsWith("local-") || discarded.has(item.id));
-      const queued = restorable
-        .map((item) => item.structured?.display ?? item.text)
-        .filter((part) => part.trim() !== "");
+      // Task 237: durable rows reach the shelf as a 120-rune single-line
+      // preview (DefaultPreviewRunes); restoring item.text silently truncates
+      // the message and the model then receives the cut. Read the full body by
+      // id on the restore path (upstream #10640; upstream #10626 fixed it by
+      // keeping the queue instead — fork has no InboxQueueForTarget and its
+      // stop flow restores in place, so it reads the body). structured.display
+      // and local rows are already full text; failures fall back to preview.
+      const queued = (
+        await Promise.all(
+          restorable.map(async (item) => {
+            const structuredDisplay = item.structured?.display;
+            if (structuredDisplay) return structuredDisplay;
+            if (!item.id.startsWith("local-")) {
+              try {
+                const env = await app.ReadInboxItem(tabId || "", item.id);
+                const full = env.displayText || env.submitText || env.rawText;
+                if (full && full.trim()) return full;
+              } catch {
+                // Fall back to the preview text below.
+              }
+            }
+            return item.text;
+          }),
+        )
+      ).filter((part) => part.trim() !== "");
       const restoredIDs = new Set(restorable.map((item) => item.id));
       if (restoredIDs.size > 0) {
         updatePendingGuidanceForDraft(targetDraftKey, (items) => items.filter((item) => !restoredIDs.has(item.id)));

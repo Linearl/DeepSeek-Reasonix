@@ -15,7 +15,7 @@ export function useComposerInboxRefresh(
   draftKey: string,
   guidanceDraftKey: string,
   inboxSessionKey: string,
-  previewKey: string,
+  previewKey: readonly string[],
   retryNonce: number,
   running: boolean,
   applyQueue: (items: PendingGuidance[]) => void,
