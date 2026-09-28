@@ -236,6 +236,7 @@ func (s *Session) withSessionSaveLocks(path string, fn func() error) error {
 	if strings.TrimSpace(path) == "" {
 		return fmt.Errorf("empty session path")
 	}
+	lockWaitStart := time.Now()
 	unlock := lockSessionSavePath(path)
 	defer unlock()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -246,6 +247,9 @@ func (s *Session) withSessionSaveLocks(path string, fn func() error) error {
 		return fmt.Errorf("lock session file: %w", err)
 	}
 	defer unlockFile()
+	// Task 357: both save locks are held from here; the wait just paid is a
+	// first-class segment of the save total (196-family attribution).
+	s.lastSaveLockWaitMs.Store(time.Since(lockWaitStart).Milliseconds())
 	return fn()
 }
 
@@ -278,17 +282,32 @@ func sessionArtifactExists(path string) bool {
 
 func (s *Session) saveLocked(path string, mode sessionSaveMode) error {
 	baseRevision := int64(0)
+	// Task 357: millisecond segments for the locked section. The dag path
+	// carries its own line (dag state for save); this one accounts for the
+	// rest so "where do the seconds go" answers from one grep.
+	phaseStart := time.Now()
+	var authMs, healMs, snapMs, probeMs int64
+	defer func() {
+		slog.Info("session: save phases",
+			"path", canonicalSessionSavePath(path), "mode", int(mode),
+			"lock_wait_ms", s.lastSaveLockWaitMs.Load(),
+			"auth_ms", authMs, "heal_ms", healMs, "snap_ms", snapMs, "probe_ms", probeMs,
+			"locked_total_ms", time.Since(phaseStart).Milliseconds())
+	}()
 	releaseAuth, err := s.requireWriteAuthorityForSave(path)
 	if err != nil {
 		return err
 	}
+	authMs = time.Since(phaseStart).Milliseconds()
 	defer releaseAuth()
+	healStart := time.Now()
 	observeUnleasedSessionWrite(path, mode)
 	// Heal an empty/missing checkpoint from a valid WAL before classification
 	// so a 0-byte .jsonl never forces a false diverged recovery.
 	if err := healEmptyCheckpointFromWAL(path); err != nil {
 		return err
 	}
+	healMs = time.Since(healStart).Milliseconds()
 	if mode == sessionSaveSnapshot && s.snapshotUpToDate(path) {
 		// Nothing changed since the last successful save to this exact path:
 		// skip the rest of the save — including the full transcript serialize
@@ -318,11 +337,15 @@ func (s *Session) saveLocked(path string, mode sessionSaveMode) error {
 	// snapshot) that captured before locking could land out of order: the
 	// stalest capture written last would then read the newer transcript it
 	// lost the race to as a bogus stale-prefix conflict.
+	snapStart := time.Now()
 	msgs, version, rewriteVersion := s.snapshotWithVersion()
+	snapMs = time.Since(snapStart).Milliseconds()
+	probeStart := time.Now()
 	probe, err := probeLogForSave(path)
 	if err != nil {
 		return err
 	}
+	probeMs = time.Since(probeStart).Milliseconds()
 	if route := s.dagSaveRoute(path, probe); route != dagRouteSchemaOne {
 		digest, err := s.snapshotDigest(path, msgs, version)
 		if err != nil {

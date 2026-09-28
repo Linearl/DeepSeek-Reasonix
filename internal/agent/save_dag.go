@@ -170,6 +170,7 @@ func sameSessionLogPath(a, b string) bool {
 // the bytes appended since its last observed tail when the generation and
 // size still allow it, and settles a torn tail before any append.
 func (s *Session) dagStateForSave(ctx context.Context, path string, now time.Time) (*sessionDAGState, error) {
+	headerStart := time.Now()
 	logPath := store.SessionEventLog(path)
 	s.mu.RLock()
 	cached := s.head.state
@@ -190,8 +191,10 @@ func (s *Session) dagStateForSave(ctx context.Context, path string, now time.Tim
 	// is slow because it re-reads everything" from "the save is slow because a
 	// reader holds the lock", and no counter could tell them apart before.
 	replayStart := time.Now()
+	headerMs := time.Since(headerStart).Milliseconds()
 	extended := false
 	reason := "extended"
+	decideStart := time.Now()
 	var st *sessionDAGState
 	// Task 196fix / 330: the cache key is canonical (task 239), but the entry's
 	// st.path and this call's logPath arrive from callers in whatever case the
@@ -209,6 +212,8 @@ func (s *Session) dagStateForSave(ctx context.Context, path string, now time.Tim
 			}
 		}
 	}
+	decideMs := time.Since(decideStart).Milliseconds()
+	replayStart2 := time.Now()
 	if st == nil {
 		// Task 196: name the guard that failed, because the guards need different
 		// fixes. A fresh Session has no graph to reuse (nil_cache); a truncated
@@ -236,7 +241,9 @@ func (s *Session) dagStateForSave(ctx context.Context, path string, now time.Tim
 			return nil, err
 		}
 	}
-	slog.Debug("session: dag state for save", "path", canonicalSessionSavePath(path), "extended", extended, "reason", reason)
+	replayMs := time.Since(replayStart2).Milliseconds()
+	slog.Debug("session: dag state for save", "path", canonicalSessionSavePath(path), "extended", extended, "reason", reason,
+		"header_ms", headerMs, "decide_ms", decideMs, "replay_ms", replayMs)
 	if elapsed := time.Since(replayStart); elapsed >= sessionDAGReplayLogMin {
 		size := int64(-1)
 		if info, statErr := os.Stat(logPath); statErr == nil {
@@ -247,6 +254,7 @@ func (s *Session) dagStateForSave(ctx context.Context, path string, now time.Tim
 		cacheHits, cacheMisses, cacheEvictions := SessionGraphCacheStats()
 		slog.Info("session: dag state for save", "path", canonicalSessionSavePath(path), "extended", extended,
 			"reason", reason, "ms", elapsed.Milliseconds(), "log_bytes", size,
+			"header_ms", headerMs, "decide_ms", decideMs, "replay_ms", replayMs,
 			"cache_hits", cacheHits, "cache_misses", cacheMisses, "cache_evictions", cacheEvictions,
 			"cache_capacity", currentSessionGraphCacheCapacity())
 	}
