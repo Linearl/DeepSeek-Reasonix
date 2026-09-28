@@ -387,6 +387,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// Task 192: renders explicitly — omit-on-off would silently disable a
 	// saved-on residency policy on the next render (81/123 lost-save lesson).
 	fmt.Fprintf(&b, "experimental_active_tab_resident = %v   # task 192: keep the active/running tab resident across switches (zero-reload), exemption capped at 2, overruns logged (restart to apply)\n", c.Agent.ExperimentalActiveTabResident)
+	// Task 196fix2: explicit render — 0 keeps the built-in 3; an omitted line
+	// would let the next render drop a tuned value (81/123 lost-save lesson).
+	fmt.Fprintf(&b, "dag_graph_cache_capacity = %d   # task 196: replayed-graph cache LRU capacity across saves (0 = built-in 3, range 1-16)\n", c.Agent.DagGraphCacheCapacity)
 	// Task 163: explicit render — omit-on-off would silently disable a
 	// saved-on usage card on the next render (81/123 lost-save lesson).
 	fmt.Fprintf(&b, "experimental_opencode_go_usage = %v   # task 163: OpenCode Go subscription usage card (5h/7d/month windows; no query while off)\n", c.Agent.ExperimentalOpenCodeGoUsage)

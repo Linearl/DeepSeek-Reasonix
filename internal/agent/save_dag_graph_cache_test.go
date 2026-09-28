@@ -21,10 +21,17 @@ func TestSessionGraphCacheRefusesTailTruncatedState(t *testing.T) {
 	}
 }
 
-// Task 196 (T-f): capacity is 1 - the newest entry wins, the older one is
-// evicted. Reviewed 2026-09-21: a second large graph must not sit resident
-// against the memory-governance targets.
+// Task 196 (T-f): at capacity 1 the newest entry wins, the older one is
+// evicted. The capacity became tunable (task 196fix2, built-in default 3), so
+// this boundary behavior is pinned behind an explicit Set(1) — the test names
+// the edge instead of assuming it is the default.
 func TestSessionGraphCacheCapacityOneEvictsOldest(t *testing.T) {
+	t.Cleanup(func() {
+		SetSessionGraphCacheCapacity(sessionGraphCacheCapacityDefault)
+		resetGraphCacheForTest()
+	})
+	SetSessionGraphCacheCapacity(1)
+	resetGraphCacheForTest()
 	logA := filepath.Join(t.TempDir(), "a.events.jsonl")
 	logB := filepath.Join(t.TempDir(), "b.events.jsonl")
 	sessionGraphCachePut(logA, &sessionDAGState{path: logA})
@@ -98,5 +105,40 @@ func TestDagStateForSaveErrorsWhenLogVanishes(t *testing.T) {
 	second := &Session{}
 	if _, err := second.dagStateForSave(context.Background(), path, time.Now().UTC()); err == nil {
 		t.Fatal("a vanished log must error, not succeed from cache or replay")
+	}
+}
+
+// TestSessionGraphCacheCapacitySetterClamps pins the task-196fix2 backstop:
+// the pushed value is clamped into 1..16, an unset (zero) store reads as the
+// built-in default, and the exported snapshot reflects what the save path
+// will actually enforce (host setter tests prove the same push end to end).
+func TestSessionGraphCacheCapacitySetterClamps(t *testing.T) {
+	t.Cleanup(func() {
+		SetSessionGraphCacheCapacity(sessionGraphCacheCapacityDefault)
+		resetGraphCacheForTest()
+	})
+
+	// Never pushed (fresh zero) -> built-in default 3.
+	sessionGraphCacheCapacityVar.Store(0)
+	if got := SessionGraphCacheCapacityNow(); got != sessionGraphCacheCapacityDefault {
+		t.Fatalf("unpushed capacity = %d, want built-in %d", got, sessionGraphCacheCapacityDefault)
+	}
+	SetSessionGraphCacheCapacity(5)
+	if got := SessionGraphCacheCapacityNow(); got != 5 {
+		t.Fatalf("pushed capacity = %d, want 5", got)
+	}
+	// 0 means "use the default", never "disable the cache".
+	SetSessionGraphCacheCapacity(0)
+	if got := SessionGraphCacheCapacityNow(); got != sessionGraphCacheCapacityDefault {
+		t.Fatalf("capacity 0 pushed -> %d, want built-in %d (0 = unset)", got, sessionGraphCacheCapacityDefault)
+	}
+	// Out-of-range tops clamp instead of silently disabling or unbounding.
+	SetSessionGraphCacheCapacity(99)
+	if got := SessionGraphCacheCapacityNow(); got != 16 {
+		t.Fatalf("capacity 99 pushed -> %d, want 16 (max clamp)", got)
+	}
+	SetSessionGraphCacheCapacity(-3)
+	if got := SessionGraphCacheCapacityNow(); got != sessionGraphCacheCapacityDefault {
+		t.Fatalf("negative pushed -> %d, want built-in %d", got, sessionGraphCacheCapacityDefault)
 	}
 }

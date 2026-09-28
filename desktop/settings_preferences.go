@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"log/slog"
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
 	"strings"
@@ -614,4 +615,23 @@ func (a *App) pushEventsRotationSettings() {
 		config.EventsRotationFactor(cfg),
 		config.EventsRotationCapMB(cfg),
 	)
+}
+
+// SetDagGraphCacheCapacity stores the tunable replayed-graph cache LRU
+// capacity (task 196fix2) and pushes it into the agent save path immediately
+// — no restart: the next save already judges with the new capacity. The
+// config layer refuses out-of-range values (1..16), so the settings UI (task
+// 347, cache-tuning page) and the file can never disagree about what is
+// stored. A failed load after the write is logged rather than silently
+// leaving the agent on the old capacity (same pattern as the 333 push).
+func (a *App) SetDagGraphCacheCapacity(capacity int) error {
+	if err := a.applyConfigOnly(func(c *config.Config) error { return c.SetDagGraphCacheCapacity(capacity) }); err != nil {
+		return err
+	}
+	if cfg, err := config.Load(); err == nil {
+		agent.SetSessionGraphCacheCapacity(config.DagGraphCacheCapacity(cfg))
+	} else {
+		slog.Warn("desktop: dag graph cache capacity push skipped (config load failed)", "err", err)
+	}
+	return nil
 }

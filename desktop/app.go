@@ -602,6 +602,10 @@ func (a *App) startup(ctx context.Context) {
 			config.EventsRotationFactor(cfg),
 			config.EventsRotationCapMB(cfg),
 		)
+		// Task 196fix2: same load pushes the tunable graph-cache LRU capacity
+		// (0/unset reads as the built-in 3) — the save-path cache must reflect
+		// the configured value from the first save, not the first settings open.
+		agent.SetSessionGraphCacheCapacity(config.DagGraphCacheCapacity(cfg))
 	}
 	// Task 184: the performance monitor is opt-in and restart-scoped (its interval
 	// and file table come from the config read here). When the switch is off this

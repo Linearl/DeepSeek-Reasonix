@@ -1490,6 +1490,12 @@ type AgentConfig struct {
 	// the exemptions cause instead of growing silently (铁律 2/8: the upstream
 	// bounded window stays the fallback, this is the opt-in enhancement).
 	ExperimentalActiveTabResident bool `toml:"experimental_active_tab_resident"`
+	// DagGraphCacheCapacity bounds the process-wide replayed-graph cache that
+	// saves reuse across Session instances (task 196fix2). 0 keeps the
+	// built-in default (3); the reader clamps outside 1..16 and the setter
+	// refuses them. Tunable because multi-session interleaved saves thrash any
+	// fixed small LRU — capacity 1 scored zero hits on the 0928 reading.
+	DagGraphCacheCapacity int `toml:"dag_graph_cache_capacity"`
 	// ExperimentalOpenCodeGoUsage is the task-163 subscription usage card:
 	// off (default) hides the card and issues no usage query at all (zero
 	// regression); on shows the three rolling windows with reset countdowns
