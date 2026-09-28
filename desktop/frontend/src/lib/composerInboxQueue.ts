@@ -1,5 +1,6 @@
 import type { PendingGuidance } from "../components/ComposerGuidanceShelf";
 import { asArray } from "./array";
+import { STEER_NOTICE_PREFIX } from "./useController";
 
 export type InboxSnapshotLike = {
   paused?: boolean;
@@ -27,10 +28,12 @@ export function inboxSnapshotBelongsToScope(snapshotPath: string | undefined, sc
   return scopeKey.split("\u0000").includes(path);
 }
 
-export function localGuidanceFallback(previewKey: string): PendingGuidance[] {
-  return previewKey
-    .split("\n")
-    .filter(Boolean)
+// Task 237 (次修①): the preview key arrives as the caller's item array, not a
+// joined string — splitting on "\n" used to shred any message that itself
+// contains newlines back into fake queue rows. Each entry stays whole.
+export function localGuidanceFallback(previewItems: readonly string[]): PendingGuidance[] {
+  return previewItems
+    .filter((text) => text.trim() !== "")
     .map((text, i) => ({ id: `local-${i}`, text, submitText: text }));
 }
 
@@ -78,6 +81,25 @@ export function mergeGuidanceSnapshot(durable: PendingGuidance[], fallback: Pend
 // right after the click is the reported "flash, then the row is back" no-op.
 export function retireSubmittedGuidance(items: PendingGuidance[], submitted: ReadonlySet<string>): PendingGuidance[] {
   return submitted.size === 0 ? items : items.filter((item) => !submitted.has(item.id));
+}
+
+// Task 336: ids of every guidance item whose injection receipt already landed
+// in the transcript (the durable ↪ steer notice, prefix is the only marker —
+// see STEER_NOTICE_PREFIX). The set is derived from the live items on every
+// change, so a tab round-trip re-filters the inbox snapshot instead of
+// trusting one keyed one-shot effect: host guidance and collab replies are
+// injected without ever passing through the shelf's submitted set, and the
+// backend still reports them until its own acknowledgement lands.
+export function consumedGuidanceIdsFromItems(
+  items: ReadonlyArray<{ kind: string; text?: string; inboxItemId?: string }>,
+): Set<string> {
+  const ids = new Set<string>();
+  for (const item of items) {
+    if (item.kind === "notice" && (item.text ?? "").startsWith(STEER_NOTICE_PREFIX) && item.inboxItemId) {
+      ids.add(item.inboxItemId);
+    }
+  }
+  return ids;
 }
 
 // Task 153: the manual "merge next" affordance. Joining is a plain double

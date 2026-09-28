@@ -620,6 +620,7 @@ export function Composer({
   guidanceConsumedKey,
   guidanceConsumedItemId,
   guidanceConsumedText,
+  guidanceConsumedIds,
   guidanceQueuePreviewItems,
   showContextWindowRing = false,
   heroMode = false,
@@ -742,6 +743,9 @@ export function Composer({
   guidanceConsumedKey?: string;
   guidanceConsumedItemId?: string;
   guidanceConsumedText?: string;
+  // Task 336: every guidance id whose ↪ receipt is already in the transcript;
+  // the shelf re-filters snapshots with it so consumed rows never return.
+  guidanceConsumedIds?: ReadonlySet<string>;
   guidanceQueuePreviewItems?: readonly string[];
   showContextWindowRing?: boolean;
   // Creation empty-session hero: slim centered composer under the welcome
@@ -877,7 +881,13 @@ export function Composer({
   cwdRef.current = cwd;
   const attachmentDedupRef = useRef(new DedupIndex());
   const attachmentDedupKeysRef = useRef<Record<string, AttachmentDedupKey>>({});
-  const guidanceQueuePreviewKey = (guidanceQueuePreviewItems ?? []).map((item) => item.trim()).filter(Boolean).join("\n");
+  // Task 237 (次修①): pass the preview items as an array (memoized — the
+  // refresh effect keys on this reference) so each message keeps its own
+  // newlines instead of being re-split from a joined string.
+  const guidanceQueuePreviewKey = useMemo(
+    () => (guidanceQueuePreviewItems ?? []).map((item) => item.trim()).filter(Boolean),
+    [guidanceQueuePreviewItems],
+  );
   const draftsBySessionRef = useRef<Record<string, ComposerDraft>>({});
   const activeDraftKeyRef = useRef(draftKey);
   const draftActivationEpochRef = useRef(0);
@@ -1331,11 +1341,36 @@ export function Composer({
     submittedGuidanceIdsRef.current.clear();
   }, [inboxSessionKey]);
   const applyInboxQueue = useCallback((items: PendingGuidance[]) => {
-    updatePendingGuidanceForDraft(draftKey, () => retireSubmittedGuidance(items, submittedGuidanceIdsRef.current));
-  }, [draftKey]);
+    // Task 336: retire both what this client submitted from the shelf AND what
+    // the transcript already carries an injection receipt for — host guidance
+    // and collab replies never pass through the submitted set, yet the backend
+    // keeps reporting them until its own acknowledgement lands.
+    const retired = retireSubmittedGuidance(items, submittedGuidanceIdsRef.current);
+    updatePendingGuidanceForDraft(draftKey, () =>
+      guidanceConsumedIds && guidanceConsumedIds.size > 0
+        ? retireSubmittedGuidance(retired, guidanceConsumedIds)
+        : retired);
+  }, [draftKey, guidanceConsumedIds]);
   const collapseInboxQueue = useCallback(() => setGuidanceExpanded(false), []);
   const refreshInboxQueue = useCallback(() => setGuidanceRetryNonce((value) => value + 1), []);
   useComposerInboxRefresh(tabId, draftKey, guidanceDraftKey, inboxSessionKey, guidanceQueuePreviewKey, guidanceRetryNonce, running, applyInboxQueue, collapseInboxQueue, refreshInboxQueue, runtimeState.state?.revision);
+
+  // Task 336 hydrate reconciliation: the transcript's ↪ receipts can land
+  // AFTER the inbox snapshot applied (tab round-trip, history reload). Re-run
+  // the consumed filter whenever the receipt set grows, so a snapshot taken
+  // too early cannot leave already-injected rows on the shelf.
+  useEffect(() => {
+    if (!guidanceConsumedIds || guidanceConsumedIds.size === 0) return;
+    updatePendingGuidanceForDraft(draftKey, (items) => {
+      const filtered = retireSubmittedGuidance(items, guidanceConsumedIds);
+      // Identity guard: a no-op filter returns the same array so React
+      // bails out of the re-render. The update helper is a plain per-render
+      // closure (refs only), deliberately NOT a dependency here — listing it
+      // would re-run this effect every render and loop.
+      return filtered.length === items.length ? items : filtered;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey, guidanceConsumedIds]);
 
   useEffect(() => {
     // Cold start (#9580): the first draftKey's persisted draft restores into
@@ -3215,9 +3250,31 @@ export function Composer({
       const outcome = (await onCancel(durableItemIDs)) ?? { discardedItemIds: [] };
       const discarded = new Set(outcome.discardedItemIds);
       const restorable = ownedGuidance.filter((item) => item.id.startsWith("local-") || discarded.has(item.id));
-      const queued = restorable
-        .map((item) => item.structured?.display ?? item.text)
-        .filter((part) => part.trim() !== "");
+      // Task 237: durable rows reach the shelf as a 120-rune single-line
+      // preview (DefaultPreviewRunes); restoring item.text silently truncates
+      // the message and the model then receives the cut. Read the full body by
+      // id on the restore path (upstream #10640; upstream #10626 fixed it by
+      // keeping the queue instead — fork has no InboxQueueForTarget and its
+      // stop flow restores in place, so it reads the body). structured.display
+      // and local rows are already full text; failures fall back to preview.
+      const queued = (
+        await Promise.all(
+          restorable.map(async (item) => {
+            const structuredDisplay = item.structured?.display;
+            if (structuredDisplay) return structuredDisplay;
+            if (!item.id.startsWith("local-")) {
+              try {
+                const env = await app.ReadInboxItem(tabId || "", item.id);
+                const full = env.displayText || env.submitText || env.rawText;
+                if (full && full.trim()) return full;
+              } catch {
+                // Fall back to the preview text below.
+              }
+            }
+            return item.text;
+          }),
+        )
+      ).filter((part) => part.trim() !== "");
       const restoredIDs = new Set(restorable.map((item) => item.id));
       if (restoredIDs.size > 0) {
         updatePendingGuidanceForDraft(targetDraftKey, (items) => items.filter((item) => !restoredIDs.has(item.id)));
