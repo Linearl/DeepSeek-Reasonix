@@ -8,6 +8,8 @@
 .events-rotation-panel__actions { display: inline-flex; gap: 8px; }
 .events-rotation-panel__list, .events-rotation-panel__results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .events-rotation-panel__row { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.events-rotation-panel__status { flex: none; font-size: 12px; color: var(--fg-faint); }
+.events-rotation-panel__status--busy { color: var(--warn); }
 .events-rotation-panel__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .events-rotation-panel__stat { color: var(--fg-dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .events-rotation-panel__results { border-top: 1px solid var(--border); padding-top: 8px; }

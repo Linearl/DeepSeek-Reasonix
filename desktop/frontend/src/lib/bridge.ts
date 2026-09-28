@@ -170,6 +170,7 @@ export interface SessionEventsEntry {
   ratio: number;
   overLimit: boolean;
   open: boolean;
+  busy: boolean;
 }
 
 export interface SessionEventsInventoryView {

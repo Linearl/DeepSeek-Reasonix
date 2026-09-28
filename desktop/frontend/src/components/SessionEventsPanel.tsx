@@ -168,13 +168,24 @@ export function SessionEventsPanel({ mode, busy, apply }: { mode: RotationMode; 
           <ul className="events-rotation-panel__list">
             {topThree.map((entry) => (
               <li key={entry.path} className="events-rotation-panel__row">
-                <span className="events-rotation-panel__name" title={entry.name || entry.path}>
+                <span className="events-rotation-panel__name" title={entry.path}>
                   {entry.name || entry.path}
+                </span>
+                <span
+                  className={`events-rotation-panel__status${entry.busy ? " events-rotation-panel__status--busy" : ""}`}
+                >
+                  {t(entry.busy ? "settings.eventsRotation.card.statusBusy" : "settings.eventsRotation.card.statusIdle")}
                 </span>
                 <span className="events-rotation-panel__stat">
                   {formatBytes(entry.eventsBytes)} · ×{entry.ratio.toFixed(1)}
                 </span>
-                <button type="button" className="btn btn--small" disabled={busy} onClick={() => compactOne(entry.path)}>
+                <button
+                  type="button"
+                  className="btn btn--small"
+                  disabled={busy || entry.busy}
+                  title={entry.busy ? t("settings.eventsRotation.card.busyHint") : undefined}
+                  onClick={() => compactOne(entry.path)}
+                >
                   {t("settings.eventsRotation.card.repair")}
                 </button>
               </li>

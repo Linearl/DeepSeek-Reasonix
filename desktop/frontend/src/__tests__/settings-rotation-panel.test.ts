@@ -35,6 +35,14 @@ ok(
   "Render table carries the eventsRotation entry in the storage group",
 );
 ok(settings.includes('| "eventsRotation"'), "ExperimentFeatureId union exposes eventsRotation");
+// Task 345: the repair list must answer "which session, is it safe" before the
+// click — display name with the path demoted to the hover title, a status
+// badge, and a disabled repair on busy rows.
+ok(panel.includes("title={entry.path}"), "Row demotes the raw path to the hover title");
+ok(panel.includes("events-rotation-panel__status"), "Row renders a status badge");
+ok(panel.includes("entry.busy ? \"settings.eventsRotation.card.statusBusy\" : \"settings.eventsRotation.card.statusIdle\""), "Status badge picks idle/busy copy by entry.busy");
+ok(panel.includes("disabled={busy || entry.busy}"), "Repair button is disabled for busy sessions");
+ok(panel.includes("settings.eventsRotation.card.busyHint"), "Busy rows carry an actionable hint");
 ok(settings.includes('selected === "eventsRotation"') && settings.includes("<SessionEventsPanel"), "Storage detail card mounts the panel");
 ok(settings.includes('import { SessionEventsPanel, type RotationMode }'), "SettingsPanel imports the panel with its literal mode type");
 
