@@ -1,304 +1,141 @@
-<p align="center">
-  <img src="docs/logo-ghost-wave-effect.svg" alt="Reasonix" width="360"/>
-</p>
+# DeepSeek-Reasonix（Linearl 维护分支）
 
-<p align="center">
-  <strong>English</strong>
-  &nbsp;·&nbsp;
-  <a href="./README.zh-CN.md">简体中文</a>
-  &nbsp;·&nbsp;
-  <a href="./docs/GUIDE.md">Guide</a>
-  &nbsp;·&nbsp;
-  <a href="./docs/ACP.md">ACP</a>
-  &nbsp;·&nbsp;
-  <a href="./docs/EXTENSIONS.md">Extensions</a>
-  &nbsp;·&nbsp;
-  <a href="./docs/SPEC.md">Spec</a>
-  &nbsp;·&nbsp;
-  <a href="https://esengine.github.io/DeepSeek-Reasonix/">Website</a>
-  &nbsp;·&nbsp;
-  <strong><a href="https://discord.gg/XF78rEME2D">Discord</a></strong>
-</p>
+> **上游项目与完整介绍见 → [esengine/DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix)**（README / 官方文档 / studio 分支）。
+> 本仓库是其**长期维护的功能超集分支**：保持与上游版本对齐，持续修复与优化，并承载上游未合并的体验与效率特性。
+> 版本节奏：`1.38.3-YYYYMMDD-HHMM` 时间戳构建，每包配 release notes。
 
-<p align="center">
-  <a href="https://www.npmjs.com/package/reasonix"><img src="https://img.shields.io/npm/v/reasonix.svg?style=flat-square&color=cb3837&labelColor=161b22&logo=npm&logoColor=white" alt="npm version"/></a>
-  <a href="https://github.com/esengine/DeepSeek-Reasonix/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/esengine/DeepSeek-Reasonix/ci.yml?style=flat-square&label=ci&labelColor=161b22&logo=githubactions&logoColor=white" alt="CI"/></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/npm/l/reasonix.svg?style=flat-square&color=8b949e&labelColor=161b22" alt="license"/></a>
-  <a href="https://www.npmjs.com/package/reasonix"><img src="https://img.shields.io/npm/dm/reasonix.svg?style=flat-square&color=3fb950&labelColor=161b22&label=downloads" alt="downloads"/></a>
-  <a href="https://github.com/esengine/DeepSeek-Reasonix/stargazers"><img src="https://img.shields.io/github/stars/esengine/DeepSeek-Reasonix.svg?style=flat-square&color=dbab09&labelColor=161b22&logo=github&logoColor=white" alt="GitHub stars"/></a>
-  <a href="https://atomgit.com/esengine/DeepSeek-Reasonix"><img src="https://atomgit.com/esengine/DeepSeek-Reasonix/star/badge.svg" alt="AtomGit stars"/></a>
-  <a href="https://github.com/esengine/DeepSeek-Reasonix/graphs/contributors"><img src="https://img.shields.io/github/contributors/esengine/DeepSeek-Reasonix.svg?style=flat-square&color=bc8cff&labelColor=161b22&logo=github&logoColor=white" alt="contributors"/></a>
-  <a href="https://github.com/esengine/DeepSeek-Reasonix/discussions"><img src="https://img.shields.io/github/discussions/esengine/DeepSeek-Reasonix.svg?style=flat-square&color=58a6ff&labelColor=161b22&logo=github&logoColor=white" alt="Discussions"/></a>
-  <a href="https://discord.gg/XF78rEME2D"><img src="https://img.shields.io/badge/discord-join-5865F2.svg?style=flat-square&labelColor=161b22&logo=discord&logoColor=white" alt="Discord"/></a>
-</p>
+## English TL;DR
 
-<p align="center">
-  <a href="https://trendshift.io/repositories/27020?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-27020" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/27020/monthly?language=Go" alt="esengine/DeepSeek-Reasonix | Trendshift" width="250" height="55"/></a>
-  <a href="https://trendshift.io/repositories/27020?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-27020" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/27020" alt="esengine/DeepSeek-Reasonix | Trendshift" width="250" height="55"/></a>
-</p>
+A **long-term maintained, feature-superset fork** of [esengine/DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix):
 
-<br/>
+- **Track every stable upstream release** (6 major versions aligned so far) while keeping our own fixes and features on top — everything upstream has, plus more.
+- **Stability first**: the upstream `main-v2` line has been through repeated regressions and sweeping re-architecture; we ship timestamped builds (`1.38.3-YYYYMMDD-HHMM`) with per-build release notes, machine-level verification, and default-off experimental switches so the default experience stays predictable.
+- **Active upstream collaboration**: 95 issues + 84 pull requests contributed upstream; anything valuable to both sides lands upstream first, anything not merged stays maintained here.
 
-<p align="center"><strong>Open source · MIT · a single Go binary</strong></p>
-<h3 align="center">A coding agent you can leave running.</h3>
-<p align="center">One local engine, four ways in — terminal, desktop app, browser, or your editor over ACP. Plan mode, permissions, a workspace sandbox and per-turn checkpoints keep a long autonomous run something you can still read and undo.</p>
+Upstream project & docs: **[esengine/DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix)**.
 
-<div align="center">
-  <video src="https://github.com/user-attachments/assets/ab2f3878-e224-4931-8254-060e7695cfb9" controls preload="metadata" width="560"></video>
-</div>
+---
 
-<br/>
+## 中文速览（TL;DR）
 
-> [!IMPORTANT]
-> **Community · 加入社区** — bilingual Discord for setup help (`#help` / `#求助`), workflow showcases, and feature ideas. → **<https://discord.gg/XF78rEME2D>**
+- **上游功能的超集**——追齐上游每个稳定版本（已对齐 6 个大版本），上游有的我们都有；我们有的（多会话协作、项目分组、autopilot…）上游不一定有。
+- **长期维护**——不是临时补丁仓：持续 bug 修复、体验优化、装机级验证；**发版节奏约每周一包**（时间戳构建 + 增量 release notes）。**重点维护 desktop 桌面版**，目前不做 CLI 的发版（CLI 侧改动随源码进仓库，但不单独出包）。
+- **向上游持续回馈**——累计向上游提交 **95 个 issue + 84 个 PR**，能进上游的尽量进上游，进不了的留在这里长期维护。
 
-<br/>
+---
 
-## About this fork
+## 1. 为什么会有这个分支：历史与现状
 
-This repository is a **long-lived fork** of
-[esengine/DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix) (`main-v2-stable`):
-it tracks upstream and keeps the changes we actually need on top. What that means in practice:
+### 上游发生了什么
 
-- **Your data stays upstream-compatible.** Session data is written in upstream's format and read
-  as liberally; on top of that there is a repair path — sessions that upstream stops loading
-  (interrupted or damaged writes) still open here. **Switching back to the official build is
-  always safe**: install the official package over this one, or let the built-in updater do it.
-- **Only the Windows desktop build is tested** — `win-amd64-desktop`, with the **classic layout**.
-  That is the configuration we use daily. Other targets (other platforms, CLI/TUI, the VS Code
-  extension, the workbench layout) are not verified here and promise neither usability nor
-  feature parity.
-- **We do not chase an unstable upstream.** While upstream is mid-refactor or its releases are
-  churning, this branch stays on its current baseline instead of following.
-- **Every fork modification is listed per version** in
-  [`release-notes/FORK-vs-upstream.md`](release-notes/FORK-vs-upstream.md) — with its switch, its
-  default, the files that carry it, and whether upstream has absorbed it. For a shorter,
-  user-facing tour of what actually changed in daily use, see
-  [`release-notes/FORK-features-intro.md`](release-notes/FORK-features-intro.md) (13 highlights).
-  [`FORK.md`](FORK.md) is the full entry document, and [`release-notes/`](release-notes/) carries
-  the per-version notes.
-- **Builds carry a timestamp.** This branch stays on `1.38.3` while upstream moves on, so more
-  than one build legitimately shares that version number. Packages therefore append their build
-  time — `1.38.3-20260916-1152` — which is what the installer records in
-  `versions/<name>/`, letting you tell two builds apart and roll back to a specific one. Release
-  notes are still looked up by the bare version, so a stamped build documents itself with its
-  base version's notes.
-- **Stable versions: `1.31.4` – `1.34`, and `1.38.3`.** `1.38.1` is known unstable — do not run it.
-- **Questions, bugs, ideas:** please open an
-  [issue](https://github.com/Linearl/DeepSeek-Reasonix/issues) — see also
-  [CONTRIBUTING.md](CONTRIBUTING.md).
+DeepSeek-Reasonix 主线（`main-v2`）在近期经历了连串动荡：
 
-<br/>
+- **稳定性问题连续多个版本反复出现**：近 60 天内 **100+ 个 Bug 类 issue**（标题含 Bug，实际触到查询上限），近 90 天 14 个 `crash`、5 个 `regression` 标题 issue；上游 discussions 里有用户「用了两个月失望透顶，我已经弃坑了」（#10744）与「1.38.3 版本 bash 编辑被频繁拒绝」（#10497）等真实反馈。
+- **旧问题未收敛即大改架构，1.38.3 之后的若干个版本都不稳定**：上游在 v1.38 系对桌面布局与运行时做了多轮结构性重做（含 Electron 迁移方向的反复），**随后的 1.39.x 若干版本持续暴露大量问题**——界面回归、升级断裂、启动链缺陷（#10222 / #10106 / #10171 等）批量出现，直到今天仍在点状修复。
+- **issue 被批量关闭，而不是被修复**：issue 一度积累到 **约 1.5k**，后来 open 数「奇迹般」降到 121——见 discussions [#11140「issues 从 1.5k 降到 121，怎么做到的」](https://github.com/esengine/DeepSeek-Reasonix/discussions/11140)。**这种做法实际埋掉了大量合理的用户需求：只要用户继续停留在上游版本，这些问题就永远不会被修复。** 当前 open 仍有 123（截至 2026-09-28）。
+- **主线进入仅维护态，开发精力转向 studio**：上游默认分支已切为 `studio`（studio-v2.20.x 一天可发四版），主线版本（v1.39.3）转为点状修复推进。
 
-## What this fork adds
+### 我们在跟进中遇到的困难
 
-A condensed view. The **complete list** — every capability with where to find it in the UI —
-lives in [`FORK.md`](FORK.md#这个-fork-提供了什么); the per-version diff ledger is
-[`release-notes/FORK-vs-upstream.md`](release-notes/FORK-vs-upstream.md); a user-facing tour of
-the 13 most daily-visible changes is
-[`release-notes/FORK-features-intro.md`](release-notes/FORK-features-intro.md).
+- **高频反馈仍跟不上上游变动速度**：95 个 issue + 84 个 PR 持续回馈，但复发有两层——
+  - **上游架构级改动让老问题重犯**：新一批回归随每次大改批量出现，我们刚收敛稳定又要重查一遍；
+  - **上游更新让我们的补丁失效**：上游改掉补丁赖以成立的前提（文件搬迁、结构重做、行为改写），补丁看似还在、实际已被架空——例如 classic 布局被上游分批退役后，每次合并都要手工恢复我们的布局实现；基于上一版做的优化也会在合并中被上游侧改动冲掉，只能靠每次合并后的完整性核对（`check-fork-integrity.mjs`）逐项找回。
+- **我们需要的能力长期得不到合并**：项目分组（上游 #9222）、颜色筛选（#9221）等至今仍 open——「上游不一定合」正是这个 fork 长期存在的原因。
+- **版本跃迁成本高**：1.34 → 1.39 跨多个大版本，每轮追齐都要做逐文件论证、双向比对与全量验证，否则就是静默丢功能。
 
-| Area | Highlights |
+---
+
+## 2. 我们的定位
+
+**长期维护（bug 修复 + 体验优化）+ 新特性，相当于上游功能的超集。**
+
+三条原则（详见 [`FORK.md`](./FORK.md)）：
+
+1. **保持对齐** —— 持续追齐上游稳定版本；每次合并逐文件论证、保留差异、双向 tree 比对。
+2. **吸收合理改进** —— 上游的重构或修复只要更优就采用，**哪怕替换我们自己的实现**。
+3. **向上游反馈** —— 对上游也有价值的能力以高质量 issue + PR 回馈；上游吸收后不再长期自己背。
+
+---
+
+## 3. 核心特性（区别于上游）
+
+重点是**大幅改善日常体验与工作效率**的部分；完整清单见 [`FORK.md`](./FORK.md)。
+
+### 多会话协作与自动化
+
+| 特性 | 说明 |
 |---|---|
-| **Desktop UI** | Project groups; colour filter and sort (multi-select); local server / remote gateway for phone and Tailscale access; authorised write-directory panel; merge-recovery copies; search past prompts; input-draft persistence; scheduled tasks / heartbeat |
-| **Agent & context** | Read-only turn budget doubling (10→80); per-turn context-budget line; path-scoped rules; optimistic concurrent writes; parallel chunked compaction; subagent delegation levels |
-| **Server & remote** | serve pool with a single-entry gateway; standalone CLI gateway for NAS / systemd; multi-project session browsing; image upload endpoint; session ownership handoff |
-| **Recent additions** | Conversation store v4 (experimental switch, dual-write mirror); one-click relaunch for settings that only apply at boot |
+| **多会话协作** | 会话间互发消息、派单/回执/进度对齐；主对话协调子对话分工（调研/开发/审计多线并行），跨会话任务链全程留痕 |
+| **autopilot / 自动档** | 长任务自动推进、交付检查自动放行（无人值守跑长链）；配合 yolo/询问档分级授权 |
+| **计划任务与心跳** | 侧边栏「自动化」：定时唤醒、周期任务，provider/model 可配置 |
+| **子代理委派档位** | 输入框「+」菜单：light / balanced / aggressive 三档委派深度 |
 
-## Features
+### 项目组织与界面
 
-- **Config-driven.** Providers, the agent, enabled tools, and plugins are all
-  declared in `reasonix.toml`. No hardcoded models.
-- **Multi-model & composable.** DeepSeek ships as a preset; any
-  OpenAI-compatible endpoint is a config entry, not new code. Optionally run
-  two models together (executor + planner) in separate, cache-stable sessions.
-- **Plugin-driven.** MCP servers contribute tools, prompts, and resources;
-  Extension Protocol v1 sidecars can also intercept runtime events, contribute
-  Providers and structured UI, and ship versioned plugin packages.
-- **Cache-aware context maintenance.** Startup injects a small stable environment
-  summary, stale tool output is snipped/pruned before summary compaction, and the
-  built-in tool schema contract is documented for regression review.
-- **Zero-friction distribution.** `CGO_ENABLED=0` single binary; cross-compile
-  to six targets with one command. The result is a fully self-contained static
-  binary — nothing to install on the target machine beyond the binary itself.
+| 特性 | 说明 |
+|---|---|
+| **项目分组**（上游 #9222 未合并） | 项目树新建分组、右键移动、可折叠、跨重启保持 |
+| **颜色筛选与多选排序**（上游 #9221 未合并） | 调色板筛选/排序，支持多选（上游只有设色数据层，无筛选 UI） |
+| **经典布局** | 上游已分批退役，我们保留——单栏/工作台布局长期可用 |
+| **搜索历史提问** | 长会话内搜索并跳转历史提问，滚顶加载更早历史 |
+| **输入框草稿持久化** | 草稿/粘贴块/附件路径跨重启不丢 |
 
-## Install
+### 稳定性与数据安全
 
-Choose the path that matches how you want to use Reasonix. The CLI/TUI,
-desktop app, and VS Code extension all use the same local Reasonix engine.
+| 特性 | 说明 |
+|---|---|
+| **会话压缩稳定性族** | 压缩失败不再拖死对话（失败截断/限流等待续跑/提前折叠）；长只读任务不再被误停 |
+| **恢复副本查看与合并** | 设置→存储：列出 recovery 副本的主线/独有计数，预览分支后一键合并，孤儿副本可归档回收 |
+| **存储自动瘦身** | 大会话 event log 按 records 上限自动压缩，根治长会话保存卡死 |
+| **WAL 自动收缩** | 数据库日志文件超限自动回收，不再只增不减 |
+| **桌面日志轮转** | `logs/desktop/desktop.log` 4MB × 25 份，GUI 无控制台时的诊断依据 |
 
-### Path A: CLI / TUI
+### 效率与集成
 
-Install the native binary through npm on any supported platform, or use
-Homebrew on macOS:
-
-```sh
-npm i -g reasonix                  # any OS; pulls the prebuilt native binary
-brew install esengine/reasonix/reasonix   # macOS
-```
-
-Prebuilt archives (`darwin|linux|windows × amd64|arm64`) and `SHA256SUMS` are on
-every [GitHub release](https://github.com/esengine/DeepSeek-Reasonix/releases).
-
-### Path B: Desktop app
-
-Use the [official download page](https://reasonix.io/?download=desktop#start)
-for the latest desktop build.
-
-| Platform | Package | Architecture |
-| --- | --- | --- |
-| macOS | Universal `.dmg` or `.zip` | Apple Silicon / Intel |
-| Windows | Installer `.exe` or portable `.zip` | x64 / ARM64 |
-| Linux | `.deb` or `.tar.gz` | x64 |
-
-Windows installers are code-signed through [SignPath.io](https://signpath.io/)
-with a free certificate provided by the [SignPath Foundation](https://signpath.org/).
-
-### Path C: VS Code extension
-
-Complete Path A first. The extension does not bundle the CLI; it starts your
-local `reasonix acp` backend and adds native chat, editor context, tool-call
-approvals, model selection, and workspace sessions.
-
-- **VS Code:** [install from Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=SivanLiu.reasonix-agent)
-- **VSCodium / Eclipse Theia:** [install from Open VSX Registry](https://open-vsx.org/extension/SivanLiu/reasonix-agent)
-- **Extension ID:** `SivanLiu.reasonix-agent` · [source and usage guide](https://github.com/SivanCola/reasonix-vscode)
-
-### Path D: Build from source
-
-Clone the repository first:
-
-```sh
-git clone https://github.com/esengine/DeepSeek-Reasonix.git
-cd DeepSeek-Reasonix
-```
-
-#### CLI
-
-The CLI build requires **Go 1.26+**. The module pins a `toolchain` directive;
-keep `GOTOOLCHAIN=auto` so Go downloads the pinned toolchain, or install it.
-
-```sh
-make build      # -> bin/reasonix(.exe)
-make cross      # -> dist/ (darwin|linux|windows × amd64|arm64)
-```
-
-#### Desktop
-
-The desktop build additionally requires:
-
-- **Node 24+ and pnpm 10** (`npm install -g pnpm@10`) for the frontend
-- **Wails CLI** matching the shared `.wails-version` pin
-
-```sh
-make wails-install
-cd desktop
-wails build
-```
-
-See the [desktop build guide](desktop/README.md#prerequisites) for platform
-webview dependencies and Linux build tags.
-
-## Quick start
-
-### CLI / TUI
-
-These commands are for the CLI/TUI installed through Path A:
-
-```sh
-reasonix setup                      # configure a provider and model
-reasonix                            # start an interactive session
-reasonix run "implement the TODOs in main.go"
-```
-
-In an interactive session, run `/init` when you want Reasonix to create project
-instructions.
-
-### Desktop app
-
-Download the installer for your platform from the
-[official download page](https://reasonix.io/?download=desktop#start), install
-and launch Reasonix, then configure a provider and model in the app. The CLI
-commands above are not required for the desktop app.
-
-For advanced CLI usage and configuration, see the **[CLI reference](./docs/CLI.md)**,
-**[Guide](./docs/GUIDE.md)**, and
-**[configuration paths](./docs/CONFIG_PATHS.md)**.
-
-## Documentation
-
-- **Getting started:** [Guide](./docs/GUIDE.md) · [CLI reference](./docs/CLI.md) ·
-  [Configuration paths](./docs/CONFIG_PATHS.md) · [ACP editor integration](./docs/ACP.md)
-- **Features & troubleshooting:** [Subagent profiles](./docs/SUBAGENT_PROFILES.md) ·
-  [Context Engine v2](./docs/SESSION_MEMORY_RETRIEVAL.md) ·
-  [Capability diagnostics](./docs/CAPABILITY_DIAGNOSTICS.md) ·
-  [Recovery and updates](./docs/RECOVERY.md) · [Bot guide](./docs/BOT_GUIDE.md) ·
-  [Checkpoints & rewind](./docs/CHECKPOINTS.md)
-- **Engineering & migration:** [Spec](./docs/SPEC.md) ·
-  [Task contracts & pause policy](./docs/TASK_CONTRACT.md) ·
-  [Tool contract](./docs/TOOL_CONTRACT.md) · [Migrating from 0.x](./docs/MIGRATING.md)
-- **Extension development:** [Extensions](./docs/EXTENSIONS.md) ·
-  [Plugin packages and Manifest v1](./docs/PLUGIN_PACKAGES.md) ·
-  [Extension Protocol](./docs/EXTENSION_PROTOCOL.md) ·
-  [Go SDK and starter](./sdk/go/README.md)
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=esengine%2FDeepSeek-Reasonix&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/esengine/DeepSeek-Reasonix/star-history/assets/star-history/star-history-dark.svg" />
-   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/esengine/DeepSeek-Reasonix/star-history/assets/star-history/star-history-light.svg" />
-   <img alt="Star History Chart" src="https://raw.githubusercontent.com/esengine/DeepSeek-Reasonix/star-history/assets/star-history/star-history-light.svg" />
- </picture>
-</a>
-
-<br/>
-
-## Acknowledgments
-
-A small list of folks whose work has shaped Reasonix the most — the current top
-20 contributors by commit count. The full contributor graph is on
-[GitHub](https://github.com/esengine/DeepSeek-Reasonix/graphs/contributors?all=1).
-
-<!-- reasonix-top-contributors:start -->
-| Contributor | Contributor | Contributor | Contributor |
-| --- | --- | --- | --- |
-| [**SivanCola**](https://github.com/SivanCola) | [**esengine**](https://github.com/esengine) | [**ttmouse**](https://github.com/ttmouse) | [**lifu963**](https://github.com/lifu963) |
-| **reasonix** | [**HUQIANTAO**](https://github.com/HUQIANTAO) | [**GTC2080**](https://github.com/GTC2080) | [**light-front-theory**](https://github.com/light-front-theory) |
-| **merge-order-check** | [**Li-Charles-One**](https://github.com/Li-Charles-One) | [**eghrhegpe**](https://github.com/eghrhegpe) | **wufengfan** |
-| [**CVEngineer66**](https://github.com/CVEngineer66) | [**dependabot\[bot\]**](https://github.com/apps/dependabot) | [**lanshi17**](https://github.com/lanshi17) | [**SuMuxi66**](https://github.com/SuMuxi66) |
-| [**CnsMaple**](https://github.com/CnsMaple) | [**cyq1017**](https://github.com/cyq1017) | [**JesonChou**](https://github.com/JesonChou) | [**XTLine**](https://github.com/XTLine) |
-<!-- reasonix-top-contributors:end -->
-
-Special thanks to [**Bernardxu123**](https://github.com/Bernardxu123) for designing the project logo and intro video.
-
-<p align="center">
-  <a href="https://github.com/esengine/DeepSeek-Reasonix/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=esengine/DeepSeek-Reasonix&max=100&columns=12" alt="Contributors to esengine/DeepSeek-Reasonix" width="860"/>
-  </a>
-</p>
-
-<br/>
+| 特性 | 说明 |
+|---|---|
+| **已授权写目录面板 + 乐观并发写** | 设置→权限：会话级/全局写目录可视化管理；并行写不靠加锁换安全 |
+| **本地服务器 / 远程网关** | 手机端 / Tailscale 接入，gateway token 一键复制。手机端 **GrandCouncil 尚在开发中**（能连、核心链路可用，但功能未完——不要当作成品依赖） |
+| **DeepSeek effort 档位** | 4 档推理强度 + auto，按请求覆盖 |
+| **OpenCode Go 用量** | 实验室开关：订阅三档窗口用量页内直看 |
+| **实验室（实验特性面板）** | 大量默认关闭的实验特性集中管理，手动挡与旧行为逐位一致 |
 
 ---
 
-<p align="center">
-  <sub>MIT — see <a href="./LICENSE">LICENSE</a></sub>
-  <br/>
-  <sub>Built by the community at <a href="https://github.com/esengine/DeepSeek-Reasonix/graphs/contributors">esengine/DeepSeek-Reasonix</a></sub>
-</p>
+## 4. 使用指南
+
+### 安装与升级
+
+1. **下载**：[Releases](https://github.com/Linearl/DeepSeek-Reasonix/releases) 中选 `1.38.3-YYYYMMDD-HHMM` 时间戳包（每包对应一份 release notes，注明包含的修复与特性）。
+2. **升级**：直接覆盖安装；无存储格式变更时可无损升级。**回滚**：设置 → 实验 → 快速切换版本，或安装旧时间戳包。
+3. **首次使用**：与上游一致；**改变使用体验的新增特性默认关闭**，在 设置 → 实验室（Laboratory） 中按需开启——不影响体验的内部改进（性能、稳定性、日志）则直接生效，无需配置。
+
+### 仓库导览
+
+| 路径 | 内容 |
+|---|---|
+| [`FORK.md`](./FORK.md) | fork 定位、与上游差异的结构化纪律、特性全表 |
+| [`release-notes/`](./release-notes/) | 每个时间戳包的增量 release notes + `FORK-vs-upstream.md`（逐版本上游差异台账） |
+| `scripts/check-fork-integrity.mjs` | 合并上游后的完整性核对清单（每次合并必跑） |
+| `desktop/` | 桌面端（独立 Go module + 前端）；构建见 `scripts/build-local-installer.sh` |
+
+### 从源码构建
+
+```bash
+bash scripts/build-local-installer.sh <版本号>   # 产出 NSIS 安装器并铺 staging
+```
+
+构建依赖 wails CLI + NSIS（本机工具链位置见仓库文档）；构建前请先更新 `release-notes/` 对应 notes 文件。
 
 ---
 
-<p align="center"><sub><strong>Support this project</strong></sub></p>
+## 5. 欢迎提 issue
 
-If Reasonix has been useful and you'd like to say thanks, you can. It stays a
-coffee, not a contract — donations don't buy feature priority or change how
-issues get triaged.
+- **在这个仓库提**：使用体验、bug、特性建议都欢迎——我们响应快、装机验证、修复直接进时间戳包。
+- **建议用内置 gh 技能提**：让 agent 直接用内置的 GitHub 技能做**问题分析**（日志取证、源码定位、复现步骤整理），再产出**高质量 issue / PR**——这是我们向上游 95 issue + 84 PR 的标准姿势，本地反馈同样适用：分析到位的 issue 修得快，PR 直接带验证面。
+- **也继续向上游提**：对上游也有价值的修复，我们会整理成高质量 issue/PR 反馈给 [esengine/DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix)——上游合并后两边都不用再背。
+- 报 bug 时附上：时间戳包版本 + 复现步骤 + `logs/desktop/desktop.log` 相关片段，能大幅缩短定位时间。
 
-- **International** — PayPal: [paypal.me/yuhuahui](https://paypal.me/yuhuahui)
-- **国内** — 微信支付（扫码）
+---
 
-<p align="center">
-  <img src=".github/sponsor/wechat-pay.jpg" alt="WeChat Pay QR code" width="180"/>
-</p>
+*本 fork 与上游 DeepSeek-Reasonix 并行维护；上游项目介绍与授权协议见 [上游 README](https://github.com/esengine/DeepSeek-Reasonix#readme)。*
