@@ -53,6 +53,13 @@ function recoveredSnapshot(count = 3) {
 }
 
 console.log("\ncomposer inbox recovery");
+// Task 343: pre-load the module Composer dynamic-imports on the finishing send
+// path. Inside this jsdom harness the first `await import(...)` issued from the
+// click/act context never settles, so submit hangs with `submitting` stuck true
+// and the send button stays disabled (3 stable reds). Top-level import loads it
+// into the module cache first; the Composer-side dynamic import then resolves
+// immediately. Product code is unchanged (WebView2 has no such stall).
+await import("../lib/inboxGuidanceSubmit");
 
 {
   const dom = installDom();
@@ -592,9 +599,12 @@ console.log("\ncomposer inbox recovery");
   await waitFor("duplicate long guidance rendered", () => document.querySelectorAll(".composer-guidance-item").length === 2);
   await rerender({ guidanceConsumedKey: "steer-event-1", guidanceConsumedItemId: "same-second", guidanceConsumedText: longText });
   await waitFor("item id removes one duplicate", () => document.querySelectorAll(".composer-guidance-item").length === 1);
-  const duplicateActions = document.querySelectorAll(".composer-guidance-item__action");
-  const dismiss = duplicateActions[duplicateActions.length - 1] as HTMLButtonElement;
-  await act(async () => { dismiss.click(); await flushTimers(); });
+  const duplicateActions = Array.from(document.querySelectorAll(".composer-guidance-item__action"));
+  // Task 343: pick the dismiss button by aria-label — task 266-A added
+  // MoveUp/MoveDown reorder buttons reusing the same class after dismiss, so
+  // "last action" is no longer the trash button.
+  const dismiss = duplicateActions.find((el) => el.getAttribute("aria-label") === "Dismiss queued guidance") as HTMLButtonElement | undefined;
+  await act(async () => { dismiss?.click(); await flushTimers(); });
   ok(deletedID === "same-first", "consumed steer uses item ID for long duplicate text");
   await act(async () => { root.unmount(); });
   dom.window.close();
@@ -716,9 +726,14 @@ console.log("\ncomposer inbox recovery");
     await flushTimers();
   });
   await act(async () => { (document.querySelector(".composer__btn--send") as HTMLButtonElement).click(); await flushTimers(); });
+  // Task 343: the finishing submit runs an async chain (capture -> dynamic
+  // import -> enqueue) — a single flush is not always enough under load, so
+  // wait for the enqueue attempt instead of racing it.
+  await waitFor("first enqueue attempt lands", () => calls.length >= 1);
   ok(calls.length === 1 && input.value.includes("follow up"), "uncertain queue failure retains draft and makes one request");
   rejectEnqueue = false;
   await act(async () => { (document.querySelector(".composer__btn--send") as HTMLButtonElement).click(); await flushTimers(); });
+  await waitFor("retry resolves the receipt", () => lookups.length >= 1);
   ok(calls.length === 1 && calls[0].id !== "" && calls[0].id === lookups[0], "explicit retry only looks up the original idempotency key");
   ok(calls[0]?.submit === "follow up after cleanup" && input.value === "", "durable queue receipt clears the complete submitted draft");
   ok(direct === 0 && cancelled === 0, "finishing neither directly submits nor cancels");
