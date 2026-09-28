@@ -1811,7 +1811,6 @@ type ExperimentFeatureId =
   // Task 231: managed-path pre-approval (master switch + four checkboxes).
   | "preapproveManagedPaths"
   // Task 192: active-tab residency policy.
-  | "activeTabResident"
   // Task 163: OpenCode Go subscription usage card.
   | "opencodeGoUsage"
   // Task 280: the former permissions-area safety checkbox, re-homed here as
@@ -1950,7 +1949,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "preapproveManagedPaths", group: "misc", label: t("settings.preapproveManagedPaths"), on: Boolean(s.experimentalPreapproveManagedPaths) },
     // Task 192: residency policy entry (render table — a missing entry would
     // silently drop the save, 81/123 lesson).
-    { id: "activeTabResident", group: "misc", label: t("settings.activeTabResident"), on: Boolean(s.experimentalActiveTabResident) },
     // Task 163: usage card entry (render table — same 81/123 lost-save rule).
     { id: "opencodeGoUsage", group: "misc", label: t("settings.opencodeGoUsage"), on: Boolean(s.experimentalOpenCodeGoUsage) },
   ];
@@ -2477,6 +2475,42 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                       />
                       <span>MB</span>
                     </div>
+                  </SettingsField>
+
+                  {/* Task 347: same-domain switches move in from misc. The
+                      resident exemption is NOT the tabs pool limit above:
+                      pool = total resident LRU line, this = active/running
+                      exemption quota (two parameters, two hints). */}
+                  <SettingsField label={t("settings.activeTabResident")} hint={t("settings.activeTabResidentHint")}>
+                    <SettingsOptions layout="field" className="set-seg">
+                      {[false, true].map((on) => (
+                        <button
+                          key={String(on)}
+                          className={`set-seg__btn${Boolean(s.experimentalActiveTabResident) === on ? " set-seg__btn--on" : ""}`}
+                          disabled={busy}
+                          onClick={() => void apply(() => app.SetExperimentalActiveTabResident(on))}
+                        >
+                          {t(on ? "settings.activeTabResident.on" : "settings.activeTabResident.off")}
+                        </button>
+                      ))}
+                    </SettingsOptions>
+                  </SettingsField>
+                  {/* Task 347: tunable replayed-graph cache LRU (task 196fix2
+                      contract: 1..16, write pushes immediately, the view
+                      reports the effective value so 0-in-file shows 3). */}
+                  <SettingsField label={t("settings.cacheTuning.dagCache")} hint={t("settings.cacheTuning.dagCacheHint")}>
+                    <input
+                      type="number"
+                      min={1}
+                      max={16}
+                      defaultValue={s.dagGraphCacheCapacity || 3}
+                      disabled={busy}
+                      onBlur={(e) => {
+                        const v = Math.max(1, Math.min(16, Math.floor(Number(e.target.value) || 3)));
+                        e.target.value = String(v);
+                        void apply(() => app.SetDagGraphCacheCapacity(v));
+                      }}
+                    />
                   </SettingsField>
                   <p style={{ opacity: 0.7, fontSize: 12 }}>{t("settings.cacheTuning.restartHint")}</p>
                 </>
@@ -3124,22 +3158,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   ))}
                 </div>
               )}
-            </SettingsField>
-          )}
-          {selected === "activeTabResident" && (
-            <SettingsField label={t("settings.activeTabResident")} hint={t("settings.activeTabResidentHint")} icon={<RefreshCw size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalActiveTabResident) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(() => app.SetExperimentalActiveTabResident(on))}
-                  >
-                    {t(on ? "settings.activeTabResident.on" : "settings.activeTabResident.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
             </SettingsField>
           )}
           {selected === "opencodeGoUsage" && (

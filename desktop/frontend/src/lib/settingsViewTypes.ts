@@ -64,6 +64,9 @@ export interface SettingsView {
   experimentalPathRules?: boolean;
   // Task 161: transcript cache tuning (experimental; user values ignored while off).
   maxCachedTabs?: number;
+  // Task 347: effective replayed-graph cache LRU capacity (task 196fix2;
+  // 0-in-file reports as the built-in 3, range 1-16).
+  dagGraphCacheCapacity?: number;
   historyBodyBudgetMb?: number;
   markdownBudgetMb?: number;
   experimentalCacheTuning?: boolean;

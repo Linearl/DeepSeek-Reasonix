@@ -852,6 +852,7 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 161: transcript cache-size tuning (experimental).
   SetExperimentalCacheTuning(enabled: boolean): Promise<void>;
   SetTranscriptCacheTuning(maxCachedTabs: number, historyBodyBudgetMb: number, markdownBudgetMb: number): Promise<void>;
+  SetDagGraphCacheCapacity(capacity: number): Promise<void>;
   // Task 60: Trace-as-State compaction (experimental).
   SetExperimentalTraceAsState(enabled: boolean): Promise<void>;
   // Task 115: dream/distill memory-curation tools (experimental).
@@ -5188,6 +5189,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalPathRules() {},
     async SetExperimentalCacheTuning() {},
     async SetTranscriptCacheTuning() {},
+    async SetDagGraphCacheCapacity() {},
     async SetExperimentalTraceAsState() {},
     async SetExperimentalDream() {},
     async SetExperimentalPerfMonitor() {},

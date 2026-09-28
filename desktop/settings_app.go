@@ -380,7 +380,11 @@ type SettingsView struct {
 	ExperimentalPathRules    bool `json:"experimentalPathRules"`
 	ExperimentalTraceAsState bool `json:"experimentalTraceAsState"`
 	// Task 161: cache tuning mirrors (Settings panel reads these from this view).
-	MaxCachedTabs              int  `json:"maxCachedTabs"`
+	MaxCachedTabs int `json:"maxCachedTabs"`
+	// Task 347: effective replayed-graph cache LRU capacity (task 196fix2
+	// tunable). The view reports the EFFECTIVE value: a 0 in the file is
+	// the built-in default, never shown as 0.
+	DagGraphCacheCapacity      int  `json:"dagGraphCacheCapacity"`
 	HistoryBodyBudgetMb        int  `json:"historyBodyBudgetMb"`
 	MarkdownBudgetMb           int  `json:"markdownBudgetMb"`
 	ExperimentalCacheTuning    bool `json:"experimentalCacheTuning"`
@@ -1426,6 +1430,7 @@ func (a *App) Settings() SettingsView {
 		ExperimentalLocalServer:         cfg.Desktop.ExperimentalLocalServer,
 		ExperimentalPathRules:           cfg.Desktop.ExperimentalPathRules,
 		MaxCachedTabs:                   cfg.Desktop.MaxCachedTabs,
+		DagGraphCacheCapacity:           config.DagGraphCacheCapacity(cfg),
 		HistoryBodyBudgetMb:             cfg.Desktop.HistoryBodyBudgetMb,
 		MarkdownBudgetMb:                cfg.Desktop.MarkdownBudgetMb,
 		ExperimentalCacheTuning:         cfg.Desktop.ExperimentalCacheTuning,

@@ -174,10 +174,20 @@ async function threeLiveTabs(store: TranscriptStore): Promise<void> {
   ok(prefsSource.includes('import { getTranscriptStore } from "../lib/transcriptStore"'),
     "the hydration file imports the store");
 
-  // 铁律 2 full chain: render table entry, union id, detail card, three locales.
-  ok(panel.includes('{ id: "activeTabResident", group: "misc",'), "render table carries the entry (81/123)");
-  ok(panel.includes('| "activeTabResident"'), "the detail-card union includes the id");
-  ok(panel.includes("app.SetExperimentalActiveTabResident(on)"), "the detail card writes through the setter");
+  // Task 347 moved the switch into the cache-tuning page as its fourth
+  // block: the standalone misc entry is gone and the two appear-points are
+  // mutually exclusive - only the cache-tuning detail shows it.
+  ok(!panel.includes('{ id: "activeTabResident", group: "misc",'), "misc group no longer lists the entry (task 347)");
+  ok(!panel.includes('| "activeTabResident"'), "the standalone detail-card union id is gone (task 347)");
+  ok(panel.includes("app.SetExperimentalActiveTabResident(on)"), "the cache-tuning detail card writes through the setter");
+  ok(
+    panel.includes('selected === "cacheTuning"') &&
+      panel.slice(panel.indexOf('selected === "cacheTuning"')).includes("SetExperimentalActiveTabResident"),
+    "the switch renders inside the cache-tuning detail (fourth block)",
+  );
+  // LRU capacity field (task 347 half 2, task 196fix2 contract).
+  ok(panel.includes("app.SetDagGraphCacheCapacity(v)"), "capacity field writes through the 196fix2 setter");
+  ok(panel.includes('t("settings.cacheTuning.dagCache")'), "capacity field carries its own label");
   const keys = ["settings.activeTabResident", "settings.activeTabResidentHint", "settings.activeTabResident.on", "settings.activeTabResident.off"];
   for (const key of keys) {
     ok(en.includes(`"${key}"`), `en ships ${key}`);
