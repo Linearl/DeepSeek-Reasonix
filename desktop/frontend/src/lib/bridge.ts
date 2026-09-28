@@ -192,6 +192,38 @@ export interface SessionEventsCompactResult {
   error?: string;
 }
 
+// Task 338: monitoring-panel memory pages — WS time series points and the
+// post-sample heap pie breakdown.
+export interface PerfPoint {
+  ts: string;
+  workingSetMb: number;
+  heapInuseMb: number;
+  goroutines: number;
+  handles: number;
+  cpuPercent: number;
+}
+
+export interface PerfTimeSeriesView {
+  enabled: boolean;
+  available: boolean;
+  intervalSeconds: number;
+  points: PerfPoint[];
+}
+
+export interface HeapCategory {
+  key: string;
+  name: string;
+  bytes: number;
+  percent: number;
+}
+
+export interface HeapBreakdownView {
+  path: string;
+  sampledAt: string;
+  totalBytes: number;
+  categories: HeapCategory[];
+}
+
 // ConsolidationReport summarizes one "merge recovery copies" run.
 export interface ConsolidationReport {
   mainPath: string;
@@ -861,6 +893,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalPerfMonitor(enabled: boolean): Promise<void>;
   SetPerfMonitorIntervalSeconds(seconds: number): Promise<void>;
   SaveHeapProfile(): Promise<string>;
+  // Task 338: monitoring-panel memory pages (WS series + heap pie).
+  PerfTimeSeries(windowMinutes: number): Promise<PerfTimeSeriesView>;
+  SampleHeapBreakdown(): Promise<HeapBreakdownView>;
+  HeapBreakdownPath(): Promise<string>;
   // Task 19: multi-session collaboration tools (experimental).
   SetExperimentalSessionCollab(enabled: boolean): Promise<void>;
   SetExperimentalAutonomousIdleTerminate(enabled: boolean): Promise<void>;
@@ -5196,6 +5232,18 @@ function makeMockApp(): AppBindings {
     async SetExperimentalPerfMonitor() {},
     async SetPerfMonitorIntervalSeconds() {},
     async SaveHeapProfile() { return ""; },
+    // Task 338 mocks: honest empty states (the dev shell has no sampler).
+    async PerfTimeSeries() { return { enabled: false, available: false, intervalSeconds: 5, points: [] }; },
+    async SampleHeapBreakdown() {
+      return { path: "", sampledAt: "", totalBytes: 0, categories: [
+        { key: "transcript", name: "Transcript", bytes: 0, percent: 0 },
+        { key: "snapshot", name: "Snapshot", bytes: 0, percent: 0 },
+        { key: "dag", name: "DAG", bytes: 0, percent: 0 },
+        { key: "frontendCache", name: "Frontend cache", bytes: 0, percent: 0 },
+        { key: "other", name: "Other", bytes: 0, percent: 0 },
+      ] };
+    },
+    async HeapBreakdownPath() { return ""; },
     async SetExperimentalSessionCollab() {},
     async SetExperimentalAutonomousIdleTerminate() {},
     async SetExperimentalLoopStreakNote() {},

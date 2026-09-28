@@ -1,0 +1,16 @@
+/* Task 338: monitoring-panel memory block — WS chart + heap pie. */
+.perf-memory-section { display: flex; flex-direction: column; gap: 16px; }
+.perf-memory-section__block { border: 1px solid var(--border); border-radius: 10px; background: var(--bg-elev); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.perf-memory-section__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.perf-memory-section__actions { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.perf-memory-section__windows .set-seg__btn { padding: 2px 8px; font-size: 12px; }
+.perf-memory-section__chart { width: 100%; height: 120px; display: block; }
+.perf-memory-section__axis { display: flex; justify-content: space-between; gap: 8px; color: var(--fg-dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+.perf-memory-section__pie-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.perf-memory-section__pie { width: 120px; height: 120px; flex-shrink: 0; }
+.perf-memory-section__legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; min-width: 220px; }
+.perf-memory-section__legend-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.perf-memory-section__swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+.perf-memory-section__legend-name { flex: 1; min-width: 0; color: var(--text); }
+.perf-memory-section__legend-value { color: var(--fg-dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.perf-memory-section__export { overflow-wrap: anywhere; }
