@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"reasonix/internal/provider"
 )
@@ -17,6 +18,10 @@ import (
 // the run-loop goroutine stay lock-free (serial with its own writes); cross-
 // goroutine access goes through Snapshot.
 type Session struct {
+	// Task 357: milliseconds the last save spent waiting for the two save
+	// locks; surfaced by the "save phases" line for 196-family attribution.
+	lastSaveLockWaitMs atomic.Int64
+
 	cacheSessionID          string // ephemeral transport identity; never model-visible or persisted
 	mu                      sync.RWMutex
 	Messages                []provider.Message
