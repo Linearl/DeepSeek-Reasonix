@@ -460,7 +460,8 @@ for (const path of localeChunks) {
   // — 338's 83.0 loses to 282's measured 83.1→83.5 (larger value wins).
   // B2 merge batch (LB 282+279+277 stacked): zh measures 82.4 over the 82.0
   // line — one-shot +0.5 to 82.5 (ratchet rule, independent commit).
-  const budget = name.startsWith("zh-TW-") ? 83.5 * 1024 : 82.5 * 1024;
+  // zh-TW measures 83.6 over the 83.5 line (B2 stack) — one-shot +0.5 to 84.0.
+  const budget = name.startsWith("zh-TW-") ? 84.0 * 1024 : 82.5 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
