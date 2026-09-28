@@ -6491,7 +6491,11 @@ export function ProvidersSection({ s, busy, apply, onboarding, onOnboardingCompl
   const fetchGate = useMemo(createLatestRequestGate, []);
   const [fetchResults, setFetchResults] = useState<Record<string, ProviderFetchResult>>({});
   const [modelDrafts, setModelDrafts] = useState<Record<string, ProviderModelDraft>>({});
-  const visibleProviders = useMemo(() => s.providers.filter((p) => (p.added || p.name === revealedProvider) && !p.hidden), [s.providers, revealedProvider]);
+  const visibleProviders = useMemo(() => s.providers
+    .filter((p) => (p.added || p.name === revealedProvider))
+    // Task 279: disabled (hidden) providers stay listed — they carry the
+    // enable/disable switch — but sort to the bottom of the list.
+    .sort((a, b) => Number(Boolean(a.hidden)) - Number(Boolean(b.hidden))), [s.providers, revealedProvider]);
   const groups = useMemo(() => visibleProviders.map(p => ({...providerAccessGroups([p], t)[0], id: `connection:${p.name}`, label: providerDisplayLabel(p)})), [visibleProviders, t]);
 
   useEffect(() => {
@@ -6745,9 +6749,34 @@ export function ProvidersSection({ s, busy, apply, onboarding, onOnboardingCompl
           />
         )}
         <ProviderConnections groups={groups} presets={s.providerPresets} revealedProvider={revealedProvider} hidden={adding !== null} busy={busy} onAdd={() => setAdding("official")} renderDetail={(group) => (
-          <ProviderAccessCard
-            key={group.id}
-            detail
+          <>
+            {/* Task 279: enable/disable switch per connection. Disabling maps
+                to the stored Hidden flag, so the connection's models leave
+                every model picker while saved refs keep resolving (current
+                sessions are never hard-cut). */}
+            <div className={`provider-enabled-row${group.providers.every((p) => p.hidden) ? " provider-enabled-row--off" : ""}`}>
+              <label className="provider-enabled-row__label">
+                <input
+                  type="checkbox"
+                  checked={!group.providers.every((p) => Boolean(p.hidden))}
+                  disabled={busy}
+                  onChange={(event) => {
+                    const enabled = event.target.checked;
+                    for (const p of group.providers) {
+                      void apply(() => saveModelSettings(s, { kind: "provider_toggle", name: p.name, enabled }));
+                    }
+                  }}
+                />
+                <span>{t("settings.providerEnabled.toggle")}</span>
+              </label>
+              {group.providers.every((p) => p.hidden) ? (
+                <span className="provider-enabled-row__badge">{t("settings.providerDisabled.badge")}</span>
+              ) : null}
+              <span className="provider-enabled-row__hint">{t("settings.providerDisabled.hint")}</span>
+            </div>
+            <ProviderAccessCard
+              key={group.id}
+              detail
             onCopy={() => void apply(() => saveModelSettings(s, {kind: "connection_add", name: group.providers[0].name, key: ""}))}
             onRename={(label) => apply(() => {
               if (typeof app.RenameProviderConnections !== "function") throw new Error(t("settings.connections.restartRequired"));
@@ -6821,6 +6850,7 @@ export function ProvidersSection({ s, busy, apply, onboarding, onOnboardingCompl
               });
             }}
           />
+          </>
         )} />
       </div>
     </SettingsSection>

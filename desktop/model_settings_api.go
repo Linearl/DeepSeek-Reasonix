@@ -255,6 +255,23 @@ func applyModelSettingsChange(c *config.Config, change ModelSettingsChange, resu
 			}
 		}
 		return nil
+	case "provider_toggle":
+		// Task 279: enable/disable a provider from the connections list.
+		// Enabled=false maps to the stored Hidden flag (the picker-exclusion
+		// mechanism already threaded through every candidate list).
+		if change.Enabled == nil {
+			return fmt.Errorf("enabled is required")
+		}
+		if change.Name == "" {
+			return fmt.Errorf("provider name is required")
+		}
+		p, ok := c.Provider(change.Name)
+		if !ok {
+			return fmt.Errorf("unknown provider %q", change.Name)
+		}
+		entry := *p
+		entry.Hidden = !*change.Enabled
+		return c.UpsertProvider(entry)
 	case "provider_remove", "access_remove":
 		return applyModelProviderRemoval(c, change)
 	case "rename":
@@ -379,6 +396,8 @@ func validateModelSettingsFields(change ModelSettingsChange) error {
 		allowed = "PresetID Key"
 	case "preset_reset":
 		allowed = "PresetID"
+	case "provider_toggle":
+		allowed = "Name Enabled"
 	case "protocol_upgrade":
 		allowed = "Name"
 	case "catalogs":

@@ -77,6 +77,13 @@ export function makeMockModelSettingsBindings(
         case "provider_remove": for (const name of change.names) await this.DeleteProvider(name); break;
         case "access_remove": await this.RemoveProviderAccesses(change.names); break;
         case "rename": await this.RenameProviderConnections(change.names, change.ref); break;
+        case "provider_toggle": {
+          // Task 279 mock path: flip the stored hidden flag so previews/tests
+          // mirror the real ApplyModelSettings provider_toggle case.
+          const target = (settings as { providers?: { name: string; hidden?: boolean }[] }).providers?.find((p) => p.name === change.name);
+          if (target) target.hidden = !change.enabled;
+          break;
+        }
       }
       settings.modelSettingsFingerprint = `mock-model-settings-${crypto.randomUUID()}`;
       return remember({...result, revision: settings.modelSettingsFingerprint});

@@ -72,6 +72,12 @@ func (a *App) remoteProxyModelCatalog(curModel string) []ModelInfo {
 		if !modelProviderAccessAllowed(cfg.Desktop.ProviderAccess, entry.Name) || !entry.Configured() {
 			continue
 		}
+		// Task 279: disabled (hidden) providers stay out of every picker here
+		// too — the local desktopModelCatalog filter applies to remote-proxied
+		// tabs reading the same config.
+		if entry.Hidden {
+			continue
+		}
 		for _, model := range entry.ChatModelList() {
 			ref := entry.Name + "/" + model
 			out = append(out, configuredModelInfo(cfg, entry.Name, model, ref == canonical))
