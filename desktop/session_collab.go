@@ -426,6 +426,14 @@ func (a *App) queueCollabFirstMessage(result *agent.CreateCollabSessionResult, b
 		if result.MessageID == "" {
 			result.MessageID = msg.ID
 		}
+		// Task 365 C5: the steer path never runs the mail pump's onDelivered
+		// hook, so the very message that creates the task relationship used
+		// to leave the cascade grant unregistered — the child's first
+		// sensitive ask missed cascadeDelegateFor and parked locally. Bind
+		// the grant here, with the same semantics as onDelivered
+		// (target=recipient, source=sender). Registering is idempotent and
+		// the TTL re-arms, so a later mail delivery just refreshes it.
+		registerCascadeGrant(item.ContactID, from)
 	}
 	// Deliver now instead of waiting for the next pump tick, so a steer reaches
 	// the new session while the caller is still in its turn.
