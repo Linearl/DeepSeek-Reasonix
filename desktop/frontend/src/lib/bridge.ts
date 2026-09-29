@@ -530,6 +530,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   MoveInboxItem(tabID: string, id: string, toIndex: number): Promise<void>;
   /** Task 221#6: cross-session mailbox unread count for this tab's session
    * (mailbox badge semantics; read-only probe, never advances the seen cursor). */
+  /** Task 366: the drain-merge tier (off | same_sender | all) the shelf's
+   * cross-hint needs to explain why manual merge-next is unavailable. */
+  GetCollabInboxMergeMode(): Promise<string>;
   UnreadMailCount(tabID: string): Promise<number>;
   SetInboxPaused(tabID: string, paused: boolean): Promise<void>;
   RetryInboxItem(tabID: string, id: string): Promise<void>;
@@ -3655,6 +3658,7 @@ function makeMockApp(): AppBindings {
         async UpdateInboxItem() {},
         async DeleteInboxItem() {},
         async MoveInboxItem() {},
+        async GetCollabInboxMergeMode() { return "off"; },
         async UnreadMailCount() { return 0; },
         async SetInboxPaused(_tabID, paused) { if (recoveryMock) (await import("./inboxRecoveryPreview")).setInboxRecoveryPreviewPaused(paused); },
         async RetryInboxItem() {},

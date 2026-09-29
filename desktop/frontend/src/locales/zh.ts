@@ -949,6 +949,7 @@ export const zh: Record<DictKey, string> = {
   "composer.guidanceRetryMode": "重试",
   "composer.guidanceRetry": "重试这条引导",
 "composer.guidanceMergeNext": "合并下条",
+  "composer.guidanceMergeNextUnavailableAll": "全部合并档下逐条合并不可用（到货即自动合并）",
   "composer.guidanceDismiss": "移除这条引导提示",
   "composer.guidanceEdit": "编辑这条待处理引导",
   "composer.guidanceSaveEdit": "保存引导修改",

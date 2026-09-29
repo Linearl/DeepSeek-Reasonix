@@ -189,6 +189,7 @@ const CHECKS = [
   // ── 构建配置 ────────────────────────────────────────────────────
   { feature: "release notes 存在", file: "release-notes/FORK-v1.33.0.md", patterns: ["Fork 修复"] },
   { feature: "wails 版本号", file: "desktop/wails.json", patterns: ["1.38.3"] },
+  { feature: "任务366 153 合并下条可达性：merge-all 交叉提示（S1）+ 隐藏原因位日志（S2）", file: "desktop/frontend/src/components/ComposerGuidanceShelf.tsx", patterns: ["guidanceMergeNextUnavailableAll", "guidance-merge-next] hidden", "mergeNextActive = onMergeNext && index < items.length - 1"] },
 ];
 
 let failed = 0;

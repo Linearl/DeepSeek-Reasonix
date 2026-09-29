@@ -498,6 +498,22 @@ func (a *App) SetExperimentalSessionCollab(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSessionCollab(enabled) })
 }
 
+// GetCollabInboxMergeMode exposes the drain-merge tri-state (task 221:
+// off | same_sender | all) to the composer, which needs it for the task-366
+// cross-hint: the guidance shelf can only explain "manual merge-next is
+// unavailable under the merge-all tier" when it knows the tier.
+func (a *App) GetCollabInboxMergeMode() string {
+	cfg, err := config.Load()
+	if err != nil || cfg == nil {
+		return "off"
+	}
+	mode := strings.TrimSpace(cfg.Agent.CollabInboxMerge)
+	if mode == "" {
+		return "off"
+	}
+	return mode
+}
+
 // SetCollabInboxMerge sets the inbox drain merge tri-state (task 221):
 // off | same_sender | all. The config layer normalizes unknown values to off.
 func (a *App) SetCollabInboxMerge(mode string) error {

@@ -62,6 +62,7 @@ export function ComposerGuidanceShelf({
   onDismiss,
   onEdit,
   onMergeNext,
+  mergeMode,
   onPreviewText,
 }: {
   recovery: InboxRecoveryNotice | null;
@@ -98,6 +99,11 @@ export function ComposerGuidanceShelf({
    * then never renders and the shelf behaves exactly as before.
    */
   onMergeNext?: (item: PendingGuidance) => void;
+  /** Task 366: the drain-merge tier (task 221, off | same_sender | all). Under
+   * "all" the dispatcher merges queued rows at admit time, so the manual
+   * merge-next button can never fire — the row then shows a disabled control
+   * with a cross-hint instead of silently hiding it. */
+  mergeMode?: string;
   /**
    * Task 181: the pencil no longer edits in place — a queued guidance body is
    * multi-line (cross-session replies carry a header plus prose), and a one-line
@@ -118,6 +124,9 @@ export function ComposerGuidanceShelf({
   // Task 289: previewId is the single source of truth for everything preview —
   // a ref mirrors it so async callbacks (which close over a stale state) can
   // check whether their preview is still the open one before touching state.
+  // Task 366 S2: last logged hidden-reason signature, so the debug line fires
+  // on change only instead of on every render.
+  const mergeNextLogRef = useRef("");
   const previewIdRef = useRef<string | null>(null);
   const previewTimeoutRef = useRef<number | null>(null);
   const setPreviewingId = (id: string | null) => {
@@ -377,19 +386,63 @@ export function ComposerGuidanceShelf({
                    * delivering row can never merge, and the editing row hides the
                    * button entirely (edit/merge are exclusive).
                    */}
-                  {onMergeNext && index < items.length - 1 && !editing && !inFlight && !delivering && !unknownState && !needsRetry && !item.paused && (
-                    <Tooltip label={t("composer.guidanceMergeNext")}>
-                      <button
-                        className="composer-guidance-item__action"
-                        type="button"
-                        aria-label={t("composer.guidanceMergeNext")}
-                        disabled={disabled || readOnly || sendingId !== null || waitingForEarlier}
-                        onClick={() => onMergeNext(item)}
-                      >
-                        <Combine size={14} />
-                      </button>
-                    </Tooltip>
-                  )}
+                  {(() => {
+                    // Task 153 original gate, kept byte-for-byte (task 366: zero
+                    // relaxation — the conditions below decide the ACTIVE button).
+                    const mergeNextActive = onMergeNext && index < items.length - 1 && !editing && !inFlight && !delivering && !unknownState && !needsRetry && !item.paused;
+                    if (onMergeNext && !mergeNextActive) {
+                      // Task 366 S2: reason-tagged debug line so the next "why is
+                      // the button missing" investigation is one console glance
+                      // instead of a full survey. Deduplicated per row+reasons.
+                      const reasons: string[] = [];
+                      if (!(index < items.length - 1)) reasons.push("length");
+                      if (editing) reasons.push("editing");
+                      if (inFlight) reasons.push("inFlight");
+                      if (delivering) reasons.push("delivering");
+                      if (unknownState) reasons.push("unknownState");
+                      if (needsRetry) reasons.push("needsRetry");
+                      if (item.paused) reasons.push("paused");
+                      const dedupeKey = `${item.id}:${reasons.join(",")}`;
+                      if (mergeNextLogRef.current !== dedupeKey) {
+                        mergeNextLogRef.current = dedupeKey;
+                        console.debug(`[guidance-merge-next] hidden id=${item.id} reasons=${reasons.join(",") || "none"} (task 366 S2)`);
+                      }
+                    }
+                    // Task 366 S1: under the merge-all tier (task 221) the dispatcher
+                    // merges queued rows at admit time, so this button can never fire
+                    // — show a disabled control with a cross-hint instead of hiding
+                    // the capability entirely. The original gate above is untouched.
+                    if (onMergeNext && mergeMode === "all" && !mergeNextActive) {
+                      return (
+                        <Tooltip label={t("composer.guidanceMergeNextUnavailableAll")}>
+                          <button
+                            className="composer-guidance-item__action"
+                            type="button"
+                            aria-label={t("composer.guidanceMergeNextUnavailableAll")}
+                            disabled
+                          >
+                            <Combine size={14} />
+                          </button>
+                        </Tooltip>
+                      );
+                    }
+                    if (mergeNextActive) {
+                      return (
+                        <Tooltip label={t("composer.guidanceMergeNext")}>
+                          <button
+                            className="composer-guidance-item__action"
+                            type="button"
+                            aria-label={t("composer.guidanceMergeNext")}
+                            disabled={disabled || readOnly || sendingId !== null || waitingForEarlier}
+                            onClick={() => onMergeNext(item)}
+                          >
+                            <Combine size={14} />
+                          </button>
+                        </Tooltip>
+                      );
+                    }
+                    return null;
+                  })()}
                   <Tooltip label={actionLabel}>
                     <button
                       className="composer-guidance-item__guide"

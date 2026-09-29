@@ -829,6 +829,25 @@ export function Composer({
   const guidanceSendingIdRef = useRef<string | null>(null);
   // Task 153: the manual "merge next" affordance lives behind an experiment.
   const collabGuidanceMergeEnabled = useCollabGuidanceMergeEnabled();
+  // Task 366: the shelf's cross-hint needs the drain-merge tier (221) to
+  // explain why manual merge-next is structurally unavailable under "all".
+  // One fetch at mount is enough: the tier changes at settings time and the
+  // composer remounts far more often than that in practice; the hint is a
+  // static explanation, not live control state.
+  const [inboxMergeMode, setInboxMergeMode] = useState("off");
+  useEffect(() => {
+    if (typeof app.GetCollabInboxMergeMode !== "function") return;
+    let cancelled = false;
+    void app
+      .GetCollabInboxMergeMode()
+      .then((mode) => {
+        if (!cancelled) setInboxMergeMode(mode || "off");
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [loadingPastChats, setLoadingPastChats] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const cancelSettlingDraftsRef = useRef(new Set<string>());
@@ -4817,6 +4836,7 @@ export function Composer({
             onSend={(item) => void sendQueuedGuidance(item)}
             onDismiss={(item) => void dismissQueuedGuidance(item)}
             onMergeNext={collabGuidanceMergeEnabled ? (item) => void mergeQueuedGuidance(item) : undefined}
+            mergeMode={inboxMergeMode}
             onEdit={(item) => void beginGuidanceCompose(item)}
             onPreviewText={(item) => readGuidanceBody(item)}
           />
