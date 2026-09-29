@@ -229,6 +229,11 @@ tree before any of this session's edits, and it is timing, not logic: the same r
 without a code change. Chasing it means fixing the harness's module loading, which is a separate
 piece of work from the history failures above.
 
+- **2026-09-29 合并验证时发现 3 个 agent 包预存红**（基线 fa5771dc1 同红实证，非本批引入）：
+  - `TestWithContextBudgetPrefixesAndSkips`（budget block missing from turn）
+  - `TestReadOnlyWanderingTripsTheProgressGuard` / `TestRepeatedReadTripsTheProgressGuard`（41 轮 guard 未触发，runaway_repro_test.go）
+  - 归属待判（测试过时 vs 代码问题）——下批清理；`TestAppendForShutdownWithoutLockAfterTornTail` 有 7m42s 挂起特征（同 342 申报的 watchdog flaky 家族）。
+
 ## Import cycle rule
 
 Before importing a new internal package from a non-test file, verify the target package's **test files** aren't already importing back to you:
