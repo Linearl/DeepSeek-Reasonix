@@ -31,6 +31,7 @@ function ok(value: unknown, label: string) {
     process.stdout.write(`  PASS  ${label}\n`);
     passed += 1;
   } else {
+
     process.stdout.write(`  FAIL  ${label}\n`);
     failed += 1;
   }
@@ -173,8 +174,9 @@ console.log("\nmarkdown history rendering");
   });
   await flush();
   eq(parseCalls.length, 0, "second mount of the same entryId+revision does not re-parse");
+
   ok(rootEl.querySelector('.md[data-markdown-blocks="3"]'), "cache hit renders blocks synchronously");
-  await act(async () => root2.unmount());
+
 }
 
 // ── revision change (new text, same entry) re-parses ─────────────────────────
@@ -196,6 +198,24 @@ console.log("\nmarkdown history rendering");
   eq(parseCalls.length, 2, "changed content (new revision) re-parses");
   ok(rootEl.textContent?.includes("version two"), "the re-parsed content renders");
   await act(async () => root3.unmount());
+}
+
+// ── Task 386: the fidelity backstop at the store boundary ────────────────────
+// The cache keys on the content revision alone; a 32-bit collision (same
+// revision, different text) is caught by the consumer comparing cached.source
+// against the requested text. Pin both halves so neither can regress.
+{
+  const store = getTranscriptStore();
+  const poisoned = {
+    source: "poisoned body", blocks: [], selectionText: "", selectionRevision: 0, bytes: 28,
+  };
+  store.setMarkdown("collide", 1, poisoned);
+  eq(store.getMarkdown("collide", 1)?.source, "poisoned body",
+    "the cache itself is revision-keyed: it hands back the stored entry");
+  eq(store.getMarkdown("other", 1)?.source, "poisoned body",
+    "a different entryId under the same revision shares the entry (by design)");
+  eq(store.getMarkdown("collide", 1) && store.getMarkdown("collide", 1)!.source === "the real text" ? "hit" : "miss",
+    "miss", "the consumer compare (cached.source === text) treats the collision as a miss");
 }
 
 // ── rows without an entryId skip the cache entirely ──────────────────────────

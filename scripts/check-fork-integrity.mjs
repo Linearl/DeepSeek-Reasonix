@@ -200,6 +200,7 @@ const CHECKS = [
   { feature: "任务381 staging 读取点全收敛", file: "desktop/restart_update.go", patterns: ["stagingRoot()"] },
   { feature: "任务383 #2 workbench 项目分组入口（header 菜单 group 项）", file: "desktop/frontend/src/components/ProjectTreeAddControls.tsx", patterns: ["new-project-group", "onGroup"] },
   { feature: "任务383 #5 classic footer icon-only（creation 保文字）+#8 automation→heartbeat 文案统一", file: "desktop/frontend/src/App.tsx", patterns: ["sidebarCreation ? <span>{t(\"sidebar.trash\")}</span> : <span className=\"sr-only\">", "heartbeat.scheduler"] },
+  { feature: "任务386 markdown cache 碰撞守卫 backstop 测试（消费比对 miss 语义）", file: "desktop/frontend/src/__tests__/markdown-history.test.tsx", patterns: ["fidelity backstop at the store boundary", "treats the collision as a miss"] },
 ];
 
 let failed = 0;
