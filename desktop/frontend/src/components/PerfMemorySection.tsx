@@ -66,7 +66,11 @@ function pieArc(startPercent: number, endPercent: number): string {
   };
   const [x1, y1] = toXY(startPercent);
   const [x2, y2] = toXY(endPercent);
-  const largeArc = endPercent - startPercent > 0.5 ? 1 : 0;
+  // Task 361: the SVG large-arc flag means ">half the circle", and our inputs
+  // are PERCENT — half a circle is 50, not 0.5. The old 0.5 (ratio-era value)
+  // flagged every slice ≥0.6% as a major arc, so tiny slices wrapped the long
+  // way round and visually burst out of the pie (user capture 0929).
+  const largeArc = endPercent - startPercent > 50 ? 1 : 0;
   return `M60,60 L${x1.toFixed(2)},${y1.toFixed(2)} A50,50 0 ${largeArc} 1 ${x2.toFixed(2)},${y2.toFixed(2)} Z`;
 }
 
@@ -204,12 +208,19 @@ export function PerfMemorySection({ busy, apply }: { busy: boolean; apply: Apply
           <div className="perf-memory-section__pie-row">
             <svg className="perf-memory-section__pie" viewBox="0 0 120 120" width="120" height="120" preserveAspectRatio="xMidYMid meet" role="img" aria-label={t("settings.perfMonitor.heapPieTitle")}>
               {(() => {
+                // Task 361: the sample's percent field rounds independently
+                // (0.6+53.4+0.6+45.5 = 100.1 in the user's capture), so a raw
+                // cumulative cursor overshoots 100 and the last slice never
+                // closes. Normalize to the real total: slice angles then span
+                // exactly 0..100 and the 12-o'clock seam meets precisely.
+                const total = categories.reduce((sum, c) => sum + c.percent, 0) || 1;
                 let cursor = 0;
-                return categories.map((category) => {
-                  const start = cursor;
+                return categories.map((category, index) => {
+                  const start = (cursor / total) * 100;
                   cursor += category.percent;
+                  const end = index === categories.length - 1 ? 100 : (cursor / total) * 100;
                   return (
-                    <path key={category.key} d={pieArc(start, cursor)} fill={CATEGORY_COLORS[category.key] ?? "var(--fg-dim)"} stroke="var(--bg-elev)" strokeWidth={1}>
+                    <path key={category.key} d={pieArc(start, end)} fill={CATEGORY_COLORS[category.key] ?? "var(--fg-dim)"} stroke="var(--bg-elev)" strokeWidth={1}>
                       <title>{`${category.name} ${category.percent}%`}</title>
                     </path>
                   );

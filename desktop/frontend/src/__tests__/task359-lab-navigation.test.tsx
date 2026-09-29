@@ -73,11 +73,12 @@ ok(panel.includes("const items = enabledFirst ? [...filtered].sort((a, b) => Num
   );
 }
 
-// Locale keys in all three languages (3 new keys).
+// Locale keys in all three languages (task 359 set + task 361 split the
+// order-switch caption into on/off state keys).
 for (const [name, dict] of [["zh", zh], ["en", en], ["zh-TW", zhTW]] as const) {
-  const keys = ["settings.labGroup.onCount", "settings.lab.enabledFirst", "settings.lab.tocLabel"];
+  const keys = ["settings.labGroup.onCount", "settings.lab.enabledFirst.on", "settings.lab.enabledFirst.off", "settings.lab.tocLabel"];
   const missing = keys.filter((k) => !(k in dict));
-  ok(missing.length === 0, `locale ${name} carries all 3 task-359 keys`);
+  ok(missing.length === 0, `locale ${name} carries all 4 task-359/361 keys`);
 }
 ok(String(zh["settings.labGroup.onCount"]) === "{n} 开", "zh count format keeps the {n} placeholder");
 

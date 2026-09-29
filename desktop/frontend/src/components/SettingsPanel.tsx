@@ -2017,7 +2017,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
               onClick={() => setEnabledFirstPref(!enabledFirst)}
             >
               <span className="experimental-lab__order-dot" aria-hidden="true" />
-              <span>{t("settings.lab.enabledFirst")}</span>
+              {/* Task 361: the label itself must show the CURRENT state — a
+                  static caption read as "on" even when the switch was off.
+                  Two keys (on/off), both languages, switched by aria state. */}
+              <span>{t(enabledFirst ? "settings.lab.enabledFirst.on" : "settings.lab.enabledFirst.off")}</span>
             </button>
           </div>
           <div className="experimental-lab__chips" role="tablist" aria-label={t("settings.experimentalIntro")}>
