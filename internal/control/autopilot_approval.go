@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -148,7 +149,16 @@ func (c *Controller) reviewUnattendedApproval(ctx context.Context, tool, subject
 		c.emitAutopilotApprovalNotice(tool, subject, "refused: no reviewer available to judge an unattended approval")
 		return approvalReply{allow: false}, true
 	}
-	allow, why, err := reviewer.ReviewAction(ctx, tool, args, reason)
+	// Task 388: the proxy reviewer gets the batch context — scope dial
+	// (level 1 related-only / level 2 full) and, when configured, the
+	// natural-language allow/deny manifest — prepended to the request
+	// reason so the verdict is context-aware instead of in-a-vacuum.
+	// Absent manifest = model self-judgment (no hardcoded fallback).
+	reviewReason := reason
+	if proxyCtx := c.autopilotProxyContext(); proxyCtx != "" {
+		reviewReason = proxyCtx + "\n" + reason
+	}
+	allow, why, err := reviewer.ReviewAction(ctx, tool, args, reviewReason)
 	if err != nil {
 		// Fail closed: never guess. Refuse so the model can take another path
 		// instead of parking the run on a prompt nobody will answer.
@@ -175,4 +185,47 @@ func (c *Controller) emitAutopilotApprovalNotice(tool, subject, verdict string) 
 		Level: event.LevelInfo,
 		Text:  "autopilot · " + tool + " " + subject + " — " + verdict,
 	})
+}
+
+// Task 388: the proxy-review context block — scope dial plus, when
+// configured, the natural-language manifest file. Empty return = no proxy
+// context (model self-judgment with no manifest section). The manifest is
+// size-capped and truncated OLDEST FIRST (tail kept), per the acceptance.
+func (c *Controller) autopilotProxyContext() string {
+	cfg, err := config.Load()
+	if err != nil || cfg == nil {
+		return ""
+	}
+	var b strings.Builder
+	switch cfg.AutopilotProxyScopeLevel() {
+	case "all":
+		b.WriteString("PROXY SCOPE: level 2 (full proxy) — you may proxy-approve requests even when they only loosely relate to this session's own task.\n")
+	default:
+		b.WriteString("PROXY SCOPE: level 1 (related-only) — approve ONLY requests that clearly serve this session's own task; requests unrelated to this session's own work must NOT be proxy-approved (treat them as refused so a human handles them).\n")
+	}
+	if path := strings.TrimSpace(cfg.Desktop.AutopilotProxyManifest); path != "" {
+		raw, readErr := os.ReadFile(path)
+		if readErr != nil {
+			b.WriteString("PROXY MANIFEST: configured at " + path + " but unreadable (" + readErr.Error() + ") — judge without it.\n")
+			return b.String()
+		}
+		content := strings.TrimSpace(string(raw))
+		const manifestCap = 4096
+		if len(content) > manifestCap {
+			// Truncate OLDEST first: keep the tail (latest entries), cut at a
+			// line boundary so no entry is half-presented.
+			lines := strings.Split(content, "\n")
+			kept := 0
+			total := 0
+			start := len(lines)
+			for start > 0 && total <= manifestCap {
+				start--
+				total += len(lines[start]) + 1
+				kept++
+			}
+			content = "… (older entries truncated)\n" + strings.Join(lines[start+1:], "\n")
+		}
+		b.WriteString("PROXY MANIFEST (natural-language allow/deny list; follow it when judging this request):\n" + content + "\n")
+	}
+	return b.String()
 }

@@ -12,7 +12,9 @@ import (
 // Settings and still vanish on save (that is exactly how the restart-and-update and
 // session-monitor switches shipped broken until 2026-09-15).
 var desktopRenderOmissions = map[string]string{
-	"update_channel": "legacy compatibility field: accepted on read, never written back",
+	"autopilot_proxy_scope":    "task 388: always rendered via the normalized dial (default related)",
+	"autopilot_proxy_manifest": "task 388: rendered only when the manifest path is set; empty = model self-judgment",
+	"update_channel":           "legacy compatibility field: accepted on read, never written back",
 	// Conditionally rendered: written only once the user leaves the default, so an
 	// untouched config stays short. They are listed here deliberately - the point of
 	// this guard is that no preference can reach the config surface without someone

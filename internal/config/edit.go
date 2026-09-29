@@ -601,6 +601,38 @@ func (c *Config) SetAutonomousUpdateResume(mode string) error {
 	}
 }
 
+// SetAutopilotProxyScope sets the proxy-approval scope dial (task 388). Only
+// the two known values are accepted so a typo cannot silently widen approval.
+func (c *Config) SetAutopilotProxyScope(scope string) error {
+	switch scope {
+	case "related", "all":
+		c.Desktop.AutopilotProxyScope = scope
+		return nil
+	default:
+		return fmt.Errorf("autopilot_proxy_scope must be related or all (got %q)", scope)
+	}
+}
+
+// SetAutopilotProxyManifest sets the natural-language manifest path (task
+// 388). Empty clears the override; existence is checked at read time.
+func (c *Config) SetAutopilotProxyManifest(path string) error {
+	c.Desktop.AutopilotProxyManifest = strings.TrimSpace(path)
+	return nil
+}
+
+// AutopilotProxyScopeLevel returns the normalized proxy scope: empty and
+// unknown values read as "related" (level 1) — the pre-task-388 behavior plus
+// the explicit dial, never a silent widening.
+func (c *Config) AutopilotProxyScopeLevel() string {
+	switch c.Desktop.AutopilotProxyScope {
+	case "all":
+		return "all"
+	default:
+		return "related"
+	}
+}
+
+// AutopilotProxyScopeLevel returns the normalized proxy scope. Empty and
 // AutonomousUpdateResumeMode returns the normalized resume scope. Empty and
 // unknown values read as "goal_autopilot": the pre-task-254 behavior plus the
 // autopilot marker chain, never a silent opt-out.
