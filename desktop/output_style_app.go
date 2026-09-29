@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -82,24 +83,63 @@ func (a *App) ListOutputStyles() (OutputStyleListView, error) {
 	return view, nil
 }
 
-// SetOutputStyle persists the chosen style into [agent] output_style (task
-// 385a: the persistence half of the dual-layer switch; the session-level
-// instant apply is task 385b). The running session keeps the system prompt it
-// already built — the style folds in at boot, so the choice takes effect on
-// the next session. An unknown name is an error rather than a silent write:
-// the selector only offers styles that exist, and a stale name must not look
-// like a successful switch.
-func (a *App) SetOutputStyle(name string) error {
+// SetOutputStyle persists the chosen style into [agent] output_style, then
+// refreshes the ACTIVE tab's runtime so the new style takes effect in the
+// current session (task 385b; 385a shipped the persistence half). The refresh
+// goes through rebuildSetting — the same runtimeRebuildMu build+swap
+// orchestration the model/effort switches use — so it is failure-atomic: a
+// failed build leaves the old controller and its old-style system prompt
+// running untouched, and the error is surfaced to the caller.
+//
+// Order is persist-first, never rebuild-first: a streaming turn must not lose
+// the switch. When the active tab is mid-turn (rebuildBusyError) or another
+// process holds the session lease, the choice is already on disk and the
+// deferred-rebuild loop replays the refresh once the tab goes idle, announcing
+// it with the usual "output style applied: session refreshed ..." notice — a
+// streaming turn is never killed. Other tabs are never touched: only the
+// active tab rebuilds, and every other runtime keeps the style it booted with
+// (its own refresh comes from its next rebuild or next session).
+//
+// The returned string is a non-empty warning when the save landed but the
+// refresh is deferred or unavailable; the settings banner renders it.
+func (a *App) SetOutputStyle(name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name != "" && !strings.EqualFold(name, "default") {
 		if _, ok := outputstyle.Resolve(name, outputstyle.Dirs()); !ok {
-			return fmt.Errorf("output style %q was not found in %s",
+			return "", fmt.Errorf("output style %q was not found in %s",
 				name, strings.Join(outputstyle.Dirs(), ", "))
 		}
 	}
-	return a.applyConfigOnly(func(c *config.Config) error {
+	if err := a.applyConfigOnly(func(c *config.Config) error {
 		return c.SetOutputStyle(name)
-	})
+	}); err != nil {
+		return "", err
+	}
+	if a.ctx != nil && a.activeTab() == nil {
+		// Frontend attached but no session yet: the save is the whole job —
+		// the next session builds with the new style (same soft-warning shape
+		// SetOptimisticWrite uses for its restart-only case).
+		return "output style saved — it takes effect on the next session", nil
+	}
+	if err := a.rebuildSetting("output style"); err != nil {
+		if warning, ok := a.deferredRebuildWarning("output style", err); ok {
+			return warning, nil // foreign lease: saved + scheduled for replay
+		}
+		var busy *rebuildBusyError
+		if errors.As(err, &busy) {
+			if tab := a.activeTab(); tab != nil {
+				// Streaming turn: never kill it. The retry loop keeps waiting
+				// while controllerHasActiveRuntimeWork is set, then replays
+				// this rebuild with the already-persisted value.
+				a.scheduleDeferredRebuild(tab.ID, "output style")
+				return "output style saved; it will apply when the current turn finishes", nil
+			}
+		}
+		// Real build failure: atomic — the old runtime is still live with the
+		// old style — so report it instead of pretending the switch happened.
+		return "", err
+	}
+	return "", nil
 }
 
 // SetExperimentalOutputStyleUI toggles the lab's 回答风格 section (task 385a).

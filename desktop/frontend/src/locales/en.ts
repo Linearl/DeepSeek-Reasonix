@@ -2581,11 +2581,11 @@ export const en = {
 "settings.cdpDebugPort.off": "Off",
 // Task 385a: output style selector (lab, efficiency group).
 "settings.outputStyle": "Output style (experimental)",
-"settings.outputStyleLabHint": "Pick an output style folded into the system prompt. The switch only controls whether this panel's selector shows; the choice takes effect on the next session (the current session keeps its prompt). Main sessions only — sub-sessions never carry a style. Off by default.",
+"settings.outputStyleLabHint": "Pick an output style folded into the system prompt. The switch only controls whether this panel's selector shows; switching rebuilds the current session so it applies immediately (a running turn is never interrupted — the change lands when the turn finishes). Main sessions only — sub-sessions never carry a style. Off by default.",
 "settings.outputStyle.on": "On",
 "settings.outputStyle.off": "Off",
 "settings.outputStyle.selector": "Style",
-"settings.outputStyle.selectorHint": "The built-in explanatory / learning / concise styles plus custom .md files from the output-styles directories. Selecting writes [agent] output_style in reasonix.toml and applies from the next session.",
+"settings.outputStyle.selectorHint": "Five built-ins — explanatory / learning / concise / proactive plus Default (no injection) — and custom .md files from the output-styles directories. Selecting writes [agent] output_style in reasonix.toml and rebuilds the current session immediately; during a running turn it applies when the turn finishes.",
 "settings.outputStyle.searchPlaceholder": "Search styles",
 "settings.outputStyle.default": "Default (no style)",
 "settings.outputStyle.defaultHint": "Keep the system prompt as-is",

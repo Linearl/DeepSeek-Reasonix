@@ -881,8 +881,11 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 385a: lab 回答风格 — the UI gate, the persisted selection (validates
   // against outputstyle.List; unknown names reject), and the selector payload
   // (loadable styles + files that failed to load, surfaced never silent).
+  // 385b: SetOutputStyle also rebuilds the active session immediately and
+  // returns a warning string when the refresh is deferred (streaming turn),
+  // rendered by the settings banner (SetOptimisticWrite pattern).
   SetExperimentalOutputStyleUI(enabled: boolean): Promise<void>;
-  SetOutputStyle(name: string): Promise<void>;
+  SetOutputStyle(name: string): Promise<string>;
   ListOutputStyles(): Promise<OutputStyleListView>;
   // Task 265: delegation-tier entry points (experimental; boot snapshot).
   SetExperimentalSubagentPolicy(enabled: boolean): Promise<void>;
@@ -5252,7 +5255,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalCompletionSummary() {},
     async SetExperimentalCDPDebugPort() {},
     async SetExperimentalOutputStyleUI() {},
-    async SetOutputStyle() {},
+    async SetOutputStyle() { return ""; },
     // Honest built-in-only payload: the dev shell discovers nothing on disk.
     async ListOutputStyles() {
       return {

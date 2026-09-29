@@ -27,7 +27,7 @@ func writeOutputStyleFile(t *testing.T, home, name, content string) {
 // instead of resurfacing as a dead selector behind a clicking switch.
 type outputStyleBindings interface {
 	SetExperimentalOutputStyleUI(bool) error
-	SetOutputStyle(string) error
+	SetOutputStyle(string) (string, error)
 	ListOutputStyles() (OutputStyleListView, error)
 }
 
@@ -81,7 +81,7 @@ func TestOutputStyleLabRoundTrip(t *testing.T) {
 	}
 
 	// 3. Selection round trip: setter → Settings readback → selector active.
-	if err := app.SetOutputStyle("concise"); err != nil {
+	if _, err := app.SetOutputStyle("concise"); err != nil {
 		t.Fatalf("SetOutputStyle(concise): %v", err)
 	}
 	if got := app.Settings(); got.OutputStyle != "concise" {
@@ -116,7 +116,7 @@ func TestOutputStyleLabRoundTrip(t *testing.T) {
 	}
 
 	// 4. An unknown style is a visible error, not a silent write.
-	if err := app.SetOutputStyle("no-such-style-385a"); err == nil {
+	if _, err := app.SetOutputStyle("no-such-style-385a"); err == nil {
 		t.Fatal("unknown style must be rejected with an error")
 	}
 	if got := app.Settings(); got.OutputStyle != "concise" {
@@ -162,7 +162,7 @@ func TestOutputStyleLabRoundTrip(t *testing.T) {
 	}
 
 	// A custom style is selectable — the write goes through the same setter.
-	if err := app.SetOutputStyle("plain"); err != nil {
+	if _, err := app.SetOutputStyle("plain"); err != nil {
 		t.Fatalf("SetOutputStyle(plain): %v", err)
 	}
 	if got := app.Settings(); got.OutputStyle != "plain" {
@@ -170,7 +170,7 @@ func TestOutputStyleLabRoundTrip(t *testing.T) {
 	}
 
 	// 6. "default" is the no-style sentinel: it normalizes to the empty value.
-	if err := app.SetOutputStyle("default"); err != nil {
+	if _, err := app.SetOutputStyle("default"); err != nil {
 		t.Fatalf("SetOutputStyle(default): %v", err)
 	}
 	if got := app.Settings(); got.OutputStyle != "" {

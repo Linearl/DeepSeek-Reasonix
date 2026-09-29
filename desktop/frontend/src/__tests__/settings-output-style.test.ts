@@ -84,8 +84,8 @@ ok(
   "bridge declares SetExperimentalOutputStyleUI",
 );
 ok(
-  bridge.includes("SetOutputStyle(name: string): Promise<void>;"),
-  "bridge declares SetOutputStyle",
+  bridge.includes("SetOutputStyle(name: string): Promise<string>;"),
+  "bridge declares SetOutputStyle returning the 385b warning string",
 );
 ok(
   bridge.includes("ListOutputStyles(): Promise<OutputStyleListView>;"),
@@ -116,8 +116,16 @@ ok(
 
 // 4. Backend behaviour: persistence + validation + issue surfacing.
 ok(
-  outputStyleApp.includes("func (a *App) SetOutputStyle(name string) error"),
-  "App.SetOutputStyle exists",
+  outputStyleApp.includes("func (a *App) SetOutputStyle(name string) (string, error)"),
+  "App.SetOutputStyle exists with the 385b warning signature",
+);
+ok(
+  outputStyleApp.includes('a.rebuildSetting("output style")'),
+  "385b: SetOutputStyle rebuilds the active session (shared rebuildSetting path)",
+);
+ok(
+  outputStyleApp.includes('a.scheduleDeferredRebuild(tab.ID, "output style")'),
+  "385b: a streaming turn defers the rebuild instead of being killed",
 );
 ok(
   outputStyleApp.includes("outputstyle.Resolve"),

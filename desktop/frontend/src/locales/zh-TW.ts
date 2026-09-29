@@ -3786,11 +3786,11 @@ export const zhTW: Record<DictKey, string> = {
 "settings.cdpDebugPort.off": "關",
 // 任務 385a：回答風格選擇器（實驗室，提效組）。
 "settings.outputStyle": "回答風格（實驗）",
-"settings.outputStyleLabHint": "選擇折入 system prompt 的回答風格（Output Style）。開關僅控制本面板的選擇器顯示；儲存後下次工作階段生效，目前工作階段保持原樣。僅影響主要工作階段，子工作階段不帶風格。預設關閉。",
+"settings.outputStyleLabHint": "選擇折入 system prompt 的回答風格（Output Style）。開關僅控制本面板的選擇器顯示；切換後當前工作階段立即重建生效（正在執行的任務不會被打斷，本輪結束後自動套用）。僅影響主要工作階段，子工作階段不帶風格。預設關閉。",
 "settings.outputStyle.on": "開",
 "settings.outputStyle.off": "關",
 "settings.outputStyle.selector": "選擇風格",
-"settings.outputStyle.selectorHint": "內建 explanatory / learning / concise，加上 output-styles 目錄裡的自訂 .md 檔案。選擇即寫入 reasonix.toml [agent] output_style，下次工作階段生效。",
+"settings.outputStyle.selectorHint": "內建 explanatory / learning / concise / proactive 與預設（不注入）共五種，另有 output-styles 目錄裡的自訂 .md 檔案。選擇即寫入 reasonix.toml [agent] output_style 並立即重建當前工作階段生效；正在執行任務時則本輪結束後自動套用。",
 "settings.outputStyle.searchPlaceholder": "搜尋風格",
 "settings.outputStyle.default": "預設（不注入風格）",
 "settings.outputStyle.defaultHint": "保持 system prompt 原樣",

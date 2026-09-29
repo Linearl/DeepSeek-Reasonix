@@ -2583,11 +2583,11 @@ export const zh: Record<DictKey, string> = {
 "settings.cdpDebugPort.off": "关",
 // 任务 385a：回答风格选择器（实验室，提效组）。
 "settings.outputStyle": "回答风格（实验）",
-"settings.outputStyleLabHint": "选择折入 system prompt 的回答风格（Output Style）。开关仅控制本面板的选择器显示；保存后下次会话生效，当前会话保持原样。仅影响主会话，子会话不带风格。默认关闭。",
+"settings.outputStyleLabHint": "选择折入 system prompt 的回答风格（Output Style）。开关仅控制本面板的选择器显示；切换后当前会话立即重建生效（正在执行的任务不会被打断，本轮结束后自动应用）。仅影响主会话，子会话不带风格。默认关闭。",
 "settings.outputStyle.on": "开",
 "settings.outputStyle.off": "关",
 "settings.outputStyle.selector": "选择风格",
-"settings.outputStyle.selectorHint": "内置 explanatory / learning / concise，加上 output-styles 目录里的自定义 .md 文件。选择即写入 reasonix.toml [agent] output_style，下次会话生效。",
+"settings.outputStyle.selectorHint": "内置 explanatory / learning / concise / proactive 与默认（不注入）共五种，另有 output-styles 目录里的自定义 .md 文件。选择即写入 reasonix.toml [agent] output_style 并立即重建当前会话生效；正在执行任务时则本轮结束后自动应用。",
 "settings.outputStyle.searchPlaceholder": "搜索风格",
 "settings.outputStyle.default": "默认（不注入风格）",
 "settings.outputStyle.defaultHint": "保持 system prompt 原样",
