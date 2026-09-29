@@ -1803,6 +1803,8 @@ type ExperimentFeatureId =
   | "modelCapabilityFilter"
   // Task 363A: runtime assembly reuse pool.
   | "runtimeReuse"
+  // Task 373-R1: image dedup write gate.
+  | "imageDedup"
   | "messageMerge"
   | "autopilot"
   // Task 265 lab intake (9 fork features) + task 262 quick commands.
@@ -1942,6 +1944,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "recoveryOrphanSweep", group: "misc", label: t("settings.recoveryOrphanSweep"), on: Boolean(s.experimentalRecoveryOrphanSweep) },
     { id: "modelCapabilityFilter", group: "misc", label: t("settings.modelCapabilityFilter"), on: Boolean(s.experimentalModelCapabilityFilter) },
     { id: "runtimeReuse", group: "misc", label: t("settings.runtimeReuse"), on: Boolean(s.experimentalRuntimeReuse) },
+    { id: "imageDedup", group: "misc", label: t("settings.imageDedup"), on: Boolean(s.experimentalImageDedup) },
     { id: "messageMerge", group: "efficiency", label: t("settings.messageMerge"), on: (s.collabInboxMerge || "off") !== "off" || Boolean(s.collabGuidanceMerge) },
     { id: "localServer", group: "efficiency", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
     { id: "traceAsState", group: "efficiency", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
@@ -2870,6 +2873,26 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                       })}
                     >
                       {t(on ? "settings.runtimeReuse.on" : "settings.runtimeReuse.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+            </>
+          )}
+          {selected === "imageDedup" && (
+            <>
+              <SettingsField label={t("settings.imageDedup")} hint={t("settings.imageDedupHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalImageDedup) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalImageDedup(on);
+                      })}
+                    >
+                      {t(on ? "settings.imageDedup.on" : "settings.imageDedup.off")}
                     </button>
                   ))}
                 </SettingsOptions>
