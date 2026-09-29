@@ -2177,6 +2177,36 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   </button>
                 ))}
               </SettingsOptions>
+              {/*
+               * Task 381: the fast-switch staging directory. Empty = the
+               * historical default under the install root; the restart-and-
+               * update path names the exact directory in its error when the
+               * artifacts are missing, so a wrong path is never a silent
+               * failure. The reset button clears the override back to the
+               * default semantics.
+               */}
+              <SettingsField label={t("settings.stagingDir")} hint={t("settings.stagingDirHint")} icon={<RefreshCw size={18} />}>
+                <div className="set-seg" style={{ display: "flex", gap: 8, alignItems: "center", width: "100%" }}>
+                  <input
+                    key={`staging-${s.stagingDir ?? ""}`}
+                    className="set-input"
+                    type="text"
+                    defaultValue={String(s.stagingDir ?? "")}
+                    disabled={busy}
+                    placeholder="<installRoot>/staging"
+                    aria-label={t("settings.stagingDir")}
+                    onBlur={(e) => void apply(() => app.SetStagingDir(e.target.value))}
+                  />
+                  <button
+                    className="set-seg__btn"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetStagingDir(""))}
+                  >
+                    {t("settings.stagingDirReset")}
+                  </button>
+                </div>
+              </SettingsField>
             </SettingsField>
           )}
           {selected === "restartUpdate" && (

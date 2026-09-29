@@ -536,6 +536,15 @@ func SessionCollabMailIdempotentEnabled() bool {
 // SetExperimentalRestartUpdate toggles the restart-and-update action (task 81). It is
 // opt-in because it swaps the running install for a staged one - a path that has no
 // verification step, by design, since the update itself comes from a trusted release.
+// SetStagingDir sets the fast-switch staging directory override (task 381).
+// Empty (after trimming) restores the default <installRoot>/staging. The value
+// is stored as given; a missing directory surfaces later as a named error on
+// the restart-and-update path instead of failing the save silently.
+func (c *Config) SetStagingDir(dir string) error {
+	c.Desktop.StagingDir = strings.TrimSpace(dir)
+	return nil
+}
+
 func (c *Config) SetExperimentalRestartUpdate(enabled bool) error {
 	c.Desktop.ExperimentalRestartUpdate = enabled
 	return nil

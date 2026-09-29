@@ -535,6 +535,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   /** Task 366: the drain-merge tier (off | same_sender | all) the shelf's
    * cross-hint needs to explain why manual merge-next is unavailable. */
   GetCollabInboxMergeMode(): Promise<string>;
+  /** Task 381: the fast-switch staging directory override (empty = default). */
+  GetStagingDir(): Promise<string>;
+  SetStagingDir(dir: string): Promise<void>;
   UnreadMailCount(tabID: string): Promise<number>;
   SetInboxPaused(tabID: string, paused: boolean): Promise<void>;
   RetryInboxItem(tabID: string, id: string): Promise<void>;
@@ -3666,6 +3669,8 @@ function makeMockApp(): AppBindings {
         async DeleteInboxItem() {},
         async MoveInboxItem() {},
         async GetCollabInboxMergeMode() { return "off"; },
+        async GetStagingDir() { return ""; },
+        async SetStagingDir() {},
         async UnreadMailCount() { return 0; },
         async SetInboxPaused(_tabID, paused) { if (recoveryMock) (await import("./inboxRecoveryPreview")).setInboxRecoveryPreviewPaused(paused); },
         async RetryInboxItem() {},

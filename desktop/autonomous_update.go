@@ -112,12 +112,17 @@ func (c autonomousUpdateController) SetTarget(_ context.Context, target string) 
 	var pending pendingUpdateTarget
 	var description string
 	if strings.EqualFold(target, "staging") {
-		label, ok := readStagingVersion(installRoot)
-		if !ok {
-			return "", fmt.Errorf("restart: no staged build: %s is missing or unreadable (rebuild to re-stage)", filepath.Join(installRoot, "staging", "version.txt"))
+		// Task 381: honor the configured staging directory (empty = default).
+		stagingDir, stagingErr := stagingRoot()
+		if stagingErr != nil {
+			return "", stagingErr
 		}
-		if !stagingHealthy(installRoot) {
-			return "", fmt.Errorf("restart: the staged build in %s is missing the desktop or CLI binary; rebuild before publishing", filepath.Join(installRoot, "staging"))
+		label, ok := readStagingVersionAt(stagingDir)
+		if !ok {
+			return "", fmt.Errorf("restart: no staged build: %s is missing or unreadable (rebuild to re-stage)", filepath.Join(stagingDir, "version.txt"))
+		}
+		if !stagingHealthyAt(stagingDir) {
+			return "", fmt.Errorf("restart: the staged build in %s is missing the desktop or CLI binary; rebuild before publishing", stagingDir)
 		}
 		pending = pendingUpdateTarget{kind: "staging", version: label}
 		description = fmt.Sprintf("target staged: publish the staged build %s as a new version and restart", label)
@@ -196,15 +201,25 @@ func versionTreeHealthy(installRoot, version string) bool {
 }
 
 // stagingHealthy reports whether staging/ carries the desktop and CLI binaries.
+// Task 381: the dir-level variants take the resolved staging root directly so
+// the configured override flows through; the no-arg forms keep the historical
+// default-root callers working.
 func stagingHealthy(installRoot string) bool {
-	dir := filepath.Join(installRoot, "staging")
+	return stagingHealthyAt(filepath.Join(installRoot, "staging"))
+}
+
+func stagingHealthyAt(dir string) bool {
 	return regularFileExists(filepath.Join(dir, installlayout.DesktopBinaryName())) &&
 		regularFileExists(filepath.Join(dir, installlayout.CLIBinaryName()))
 }
 
 // readStagingVersion returns the normalized staging/version.txt label.
 func readStagingVersion(installRoot string) (string, bool) {
-	raw, err := os.ReadFile(filepath.Join(installRoot, "staging", "version.txt"))
+	return readStagingVersionAt(filepath.Join(installRoot, "staging"))
+}
+
+func readStagingVersionAt(dir string) (string, bool) {
+	raw, err := os.ReadFile(filepath.Join(dir, "version.txt"))
 	if err != nil {
 		return "", false
 	}

@@ -335,7 +335,11 @@ type SettingsView struct {
 	// Task 81 / 123: the Settings panel renders these two experiment switches from
 	// this view; carrying them only on DesktopStartupSettingsView left both switches
 	// permanently reading "off" and impossible to turn on (fixed 2026-09-15).
-	ExperimentalRestartUpdate    bool   `json:"experimentalRestartUpdate"`
+	ExperimentalRestartUpdate bool `json:"experimentalRestartUpdate"`
+	// Task 381: fast-switch staging directory override; empty = the default
+	// staging directory under the install root. A missing directory surfaces
+	// as a named error on the restart-and-update path (never silent).
+	StagingDir                   string `json:"stagingDir"`
 	ExperimentalAutonomousUpdate bool   `json:"experimentalAutonomousUpdate"`
 	AutonomousUpdateResume       string `json:"autonomousUpdateResume"`
 	// UpdateChime exposes the update-complete chime switch (task 277) — same
@@ -1392,7 +1396,9 @@ func (a *App) Settings() SettingsView {
 		AutopilotMaxRuntime:      cfg.Desktop.AutopilotMaxRuntime,
 		AutopilotApprovalGrace:   cfg.Desktop.AutopilotApprovalGrace,
 		// The Settings panel reads these switches from this view (see the struct note).
-		ExperimentalRestartUpdate:    cfg.Desktop.ExperimentalRestartUpdate,
+		ExperimentalRestartUpdate: cfg.Desktop.ExperimentalRestartUpdate,
+		StagingDir:                strings.TrimSpace(cfg.Desktop.StagingDir),
+
 		ExperimentalAutonomousUpdate: cfg.Desktop.ExperimentalAutonomousUpdate,
 		AutonomousUpdateResume:       cfg.AutonomousUpdateResumeMode(),
 		UpdateChime:                  cfg.Desktop.UpdateChime,

@@ -50,6 +50,24 @@ var (
 // resolveVersionedInstallRoot returns the install root for the running binary
 // with task-81 wording for the not-a-versioned-install case, so both entry
 // points fail the same way.
+// stagingRoot resolves the fast-switch staging directory (task 381): the
+// configured override ([desktop].staging_dir) when set, otherwise the
+// historical default <installRoot>/staging. Every staging reader/writer goes
+// through this so a configured directory is honored everywhere, and the
+// default keeps the old byte-for-byte behavior.
+func stagingRoot() (string, error) {
+	installRoot, err := versionSwitchInstallRoot()
+	if err != nil {
+		return "", err
+	}
+	if cfg, err := config.Load(); err == nil && cfg != nil {
+		if dir := strings.TrimSpace(cfg.Desktop.StagingDir); dir != "" {
+			return dir, nil
+		}
+	}
+	return filepath.Join(installRoot, "staging"), nil
+}
+
 func resolveVersionedInstallRoot() (string, error) {
 	executable, err := os.Executable()
 	if err != nil {

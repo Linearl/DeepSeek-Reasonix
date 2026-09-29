@@ -26,6 +26,10 @@ type DesktopConfig struct {
 	// session unattended: the goal machine bounds it by wall clock, and the reviewer
 	// answers approval prompts nobody is there to answer.
 	Autopilot bool `toml:"autopilot"`
+	// Task 381: configurable fast-switch staging directory (task 81 family).
+	// Empty = the historical default (<installRoot>/staging). Behavior config,
+	// not a new capability — no experimental_ prefix.
+	StagingDir string `toml:"staging_dir"`
 	// ExperimentalRestartUpdate exposes the "restart and update" action (task 81).
 	// It ships off: the action swaps the active install version, so it stays behind an
 	// explicit opt-in until it has been exercised in the field.
