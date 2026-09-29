@@ -1954,7 +1954,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     // Task 333: rotation gate entry — the light reads any non-default mode so
     // the statistic card stays discoverable (render table: a missing entry
     // would silently drop the save, 81/123 lesson).
-    { id: "eventsRotation", group: "storage", label: t("settings.eventsRotation"), on: (s.eventsAutoRotation ?? "manual") !== "manual" },
+    { id: "eventsRotation", group: "storage", label: t("settings.eventsRotation"), on: (s.eventsAutoRotation ?? "manual") !== "off" },
     { id: "pathRules", group: "misc", label: t("settings.pathRules"), on: Boolean(s.experimentalPathRules) },
     // Task 265 lab intake: 9 fork features (efficiency 5 / ui 2 / debug 2).
     // Task 318.1: highSpeedModel's light reads the new switch (default off).

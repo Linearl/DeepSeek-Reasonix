@@ -102,6 +102,19 @@ ok(panel.includes("app.CompactAllSessionEvents(3)"), "Repair-all runs the bounde
 ok(panel.includes("overCount") && panel.includes("overLimit") && panel.includes("topThree"), "Statistic card reads over-count + top offenders");
 ok(panel.includes("settings.eventsRotation.desc.${mode}") && panel.includes("settings.eventsRotation.mode.${candidate}"), "Mode copy resolves through the typed locale keys");
 
+// Task 362: the LEFT-MENU entry mirrors the switch state itself (the 356
+// card-button split is about busy, the menu must not gray out on
+// manual/auto). The old gate treated "manual" as off AND let "off" light up —
+// both wrong against the three-state mode.
+ok(
+  settings.includes('on: (s.eventsAutoRotation ?? "manual") !== "off"'),
+  "menu entry lights for manual/auto and grays ONLY on off (switch state, task 362)",
+);
+ok(
+  !settings.includes('on: (s.eventsAutoRotation ?? "manual") !== "manual"'),
+  "the old manual-as-off gate is gone",
+);
+
 // Locales: every key present in all three languages.
 const requiredKeys = [
   "settings.eventsRotation",
