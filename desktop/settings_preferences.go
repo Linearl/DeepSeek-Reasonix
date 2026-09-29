@@ -469,6 +469,12 @@ func (a *App) SetExperimentalModelCapabilityFilter(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalModelCapabilityFilter(enabled) })
 }
 
+// SetExperimentalRuntimeReuse toggles the task-363A runtime assembly reuse
+// pool. Read at Build time per new tab — no restart needed for new tabs.
+func (a *App) SetExperimentalRuntimeReuse(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalRuntimeReuse(enabled) })
+}
+
 // SetExperimentalPerfMonitor toggles the host performance monitor (task 184).
 // Restart-scoped: interval and file table are read while the app starts.
 func (a *App) SetExperimentalPerfMonitor(enabled bool) error {

@@ -114,6 +114,20 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 	return res.Controller, nil
 }
 
+// BuildWithAssembly is Build plus the assembled ReusedAssembly (task 363A):
+// the desktop runtime-reuse pool stores it keyed by root+model+effort and
+// feeds it back through Options.ReuseAssembly so the next same-key build
+// skips prompt/skills/commands/hooks discovery. The returned assembly shares
+// the exact objects wired into the controller; the pool only holds
+// references and never mutates them.
+func BuildWithAssembly(ctx context.Context, opts Options) (*control.Controller, *ReusedAssembly, error) {
+	res, err := BuildRuntime(ctx, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	return res.Controller, res.Assembly, nil
+}
+
 // legacyAssembly carries the already-assembled runtime resources the kernel
 // snapshot is built from. Every field is the exact object the rest of the
 // build wired into the controller — the snapshot never re-derives anything.

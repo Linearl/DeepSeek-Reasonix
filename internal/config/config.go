@@ -1660,6 +1660,13 @@ type AgentConfig struct {
 	// a text-only model just drops the image parts and runs blind). Off by
 	// default (fork rule 2): the current silent path stays byte-identical.
 	ExperimentalModelCapabilityFilter bool `toml:"experimental_model_capability_filter"`
+	// ExperimentalRuntimeReuse lets a new conversation tab reuse the runtime
+	// assembly (system prompt, skills/commands/hooks discovery, static tool
+	// registry) from a pool keyed by workspace root + model + effort instead
+	// of re-running boot discovery every time (task 363A; same idea as the
+	// per-request effort override). Off by default (fork rule 2): the current
+	// full-rebuild path stays byte-identical.
+	ExperimentalRuntimeReuse bool `toml:"experimental_runtime_reuse"`
 	// CollabInboxMerge controls how the durable inbox drains multiple queued
 	// items (task 221). "off" (default) keeps the current one-item-per-dispatch
 	// FIFO; "same_sender" merges queued items that share an envelope Source

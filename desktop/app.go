@@ -4446,7 +4446,16 @@ func (a *App) buildSessionRebindCandidate(
 	runtimeBuildStart := time.Now()
 	slog.Info("desktop: runtime build begin", "trigger", "rebind", "model", model, "session", sessionPath) // task 196: name who is building a runtime, so a startup burst can be attributed instead of inferred.
 	defer logRuntimeBuildEnd("rebind", runtimeBuildStart, sharedHost != nil)                               // task 334: begin→end pair.
-	ctrl, err := boot.Build(a.bootContext(), boot.Options{
+	// Task 363A: feed the pooled assembly (same root+model+effort) so prompt/
+	// skills/commands/hooks discovery is skipped on the second same-key tab;
+	// store what this build assembled for the next one. Gate-off keeps the
+	// legacy path byte-identical (acquire returns nil, store is a no-op).
+	effortKey := ""
+	if source.effort != nil {
+		effortKey = *source.effort
+	}
+	assemblyKey := runtimeAssemblyKeyForTab(root, model, effortKey)
+	ctrl, assembly, err := boot.BuildWithAssembly(a.bootContext(), boot.Options{
 		RestartUpdater:             restartUpdaterAdapter{a},
 		AutonomousUpdateController: newAutonomousUpdateController(a),
 		Model:                      model,
@@ -4482,6 +4491,12 @@ func (a *App) buildSessionRebindCandidate(
 		OnDeleteSession:            a.deleteCollabSession,
 		OnRenameSession:            a.renameCollabSession,
 		OnMoveTopicToGroup:         a.moveCollabTopicToGroup,
+		// ReuseAssembly lives on the embedded RuntimeReload; promoted names
+		// cannot appear in the outer literal, so name the embedded struct.
+		RuntimeReload: boot.RuntimeReload{
+			ReuseAssembly: a.acquireRuntimeAssembly(assemblyKey),
+			PreviousPlan:  boot.FullReusePlan(),
+		},
 	})
 	if err != nil {
 		sink.clearContext()
@@ -4490,6 +4505,7 @@ func (a *App) buildSessionRebindCandidate(
 		}
 		return nil, err
 	}
+	a.storeRuntimeAssembly(assemblyKey, assembly)
 	candidate := &sessionRebindCandidate{
 		app: a, ctrl: ctrl, sink: sink, model: model, runtime: runtimeProfile,
 		sharedHostKey: source.sharedHostKey, ownsSharedHostRef: ownsSharedHostRef,

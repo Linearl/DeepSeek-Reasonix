@@ -2380,6 +2380,8 @@ export interface DesktopStartupSettingsView {
   experimentalRecoveryOrphanSweep?: boolean;
   /** per-task model capability filter with explained rejections (task 244 B9); off unless the user opts in. */
   experimentalModelCapabilityFilter?: boolean;
+  /** Task 363A: reuse the runtime assembly across same-config tabs instead of full rebuild; off unless the user opts in. */
+  experimentalRuntimeReuse?: boolean;
   sessionCollabHopLimit?: number; // task 204: cross-session chain ceiling (3..1000, default 5)
   /** Fork task 160: scroll-driven "load older" trigger at the transcript top. */
   experimentalAutoLoadOlder?: boolean;

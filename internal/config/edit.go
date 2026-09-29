@@ -832,6 +832,15 @@ func (c *Config) SetExperimentalModelCapabilityFilter(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalRuntimeReuse toggles the task-363A runtime assembly reuse
+// pool (settings → 实验特性). Desktop keeps the settings-view mirror; Agent
+// carries the runtime flag.
+func (c *Config) SetExperimentalRuntimeReuse(enabled bool) error {
+	c.Desktop.ExperimentalRuntimeReuse = enabled
+	c.Agent.ExperimentalRuntimeReuse = enabled
+	return nil
+}
+
 // SetSessionCollabGates writes the task-173 collaboration panel gates in one
 // call so the settings view cannot half-apply a panel. Nil pointers keep the
 // current value; the master switch is written separately through

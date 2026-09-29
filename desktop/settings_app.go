@@ -401,6 +401,7 @@ type SettingsView struct {
 	ExperimentalOrphanLeaseReclaim    bool `json:"experimentalOrphanLeaseReclaim"`
 	ExperimentalRecoveryOrphanSweep   bool `json:"experimentalRecoveryOrphanSweep"`
 	ExperimentalModelCapabilityFilter bool `json:"experimentalModelCapabilityFilter"`
+	ExperimentalRuntimeReuse          bool `json:"experimentalRuntimeReuse"`
 	// Task 244 B1/B2/B3: settings-view mirrors of the [agent] runtime flags.
 	ExperimentalAutonomousIdleTerminate bool   `json:"experimentalAutonomousIdleTerminate"`
 	ExperimentalLoopStreakNote          bool   `json:"experimentalLoopStreakNote"`
@@ -571,6 +572,7 @@ type DesktopStartupSettingsView struct {
 	ExperimentalOrphanLeaseReclaim    bool `json:"experimentalOrphanLeaseReclaim"`
 	ExperimentalRecoveryOrphanSweep   bool `json:"experimentalRecoveryOrphanSweep"`
 	ExperimentalModelCapabilityFilter bool `json:"experimentalModelCapabilityFilter"`
+	ExperimentalRuntimeReuse          bool `json:"experimentalRuntimeReuse"`
 	// Task 244 B1/B2/B3: settings-view mirrors of the [agent] runtime flags.
 	ExperimentalAutonomousIdleTerminate bool `json:"experimentalAutonomousIdleTerminate"`
 	ExperimentalLoopStreakNote          bool `json:"experimentalLoopStreakNote"`
@@ -1304,6 +1306,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalRecoveryOrphanSweep = cfg.Desktop.ExperimentalRecoveryOrphanSweep || cfg.Agent.ExperimentalRecoveryOrphanSweep
 
 		view.ExperimentalModelCapabilityFilter = cfg.Desktop.ExperimentalModelCapabilityFilter || cfg.Agent.ExperimentalModelCapabilityFilter
+		view.ExperimentalRuntimeReuse = cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse
 		view.ExperimentalPerfMonitor = cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor
 		view.PerfMonitorIntervalSeconds = cfg.Desktop.PerfMonitorIntervalSeconds
 		view.SessionCollabHopLimit = cfg.Desktop.SessionCollabHopLimit
@@ -1425,6 +1428,7 @@ func (a *App) Settings() SettingsView {
 		ExperimentalRecoveryOrphanSweep: cfg.Desktop.ExperimentalRecoveryOrphanSweep || cfg.Agent.ExperimentalRecoveryOrphanSweep,
 		// Task 244 batch 4: B9 model capability filter.
 		ExperimentalModelCapabilityFilter: cfg.Desktop.ExperimentalModelCapabilityFilter || cfg.Agent.ExperimentalModelCapabilityFilter,
+		ExperimentalRuntimeReuse:          cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse,
 		ExperimentalPerfMonitor:           cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,
 		PerfMonitorIntervalSeconds:        cfg.Desktop.PerfMonitorIntervalSeconds,
 		SessionCollabHopLimit:             cfg.Desktop.SessionCollabHopLimit,

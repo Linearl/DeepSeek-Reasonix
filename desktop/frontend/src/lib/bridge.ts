@@ -910,6 +910,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalOrphanLeaseReclaim(enabled: boolean): Promise<void>;
   SetExperimentalRecoveryOrphanSweep(enabled: boolean): Promise<void>;
   SetExperimentalModelCapabilityFilter(enabled: boolean): Promise<void>;
+  // Task 363A: runtime assembly reuse pool (same root+model+effort tabs).
+  SetExperimentalRuntimeReuse(enabled: boolean): Promise<void>;
   SetSessionCollabHopLimit(limit: number): Promise<void>;
   // Task 173: the collaboration panel gates (settings → 实验特性 → 跨会话通信).
   SetSessionCollabGates(allowDelete: boolean, allowRequireReply: boolean, allowReadTail: boolean, allowCreate: boolean, allowSteer: boolean, dailySendLimit: number): Promise<void>;
@@ -5263,6 +5265,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalOrphanLeaseReclaim() {},
     async SetExperimentalRecoveryOrphanSweep() {},
     async SetExperimentalModelCapabilityFilter() {},
+    async SetExperimentalRuntimeReuse() {},
     async SetSessionCollabHopLimit() {},
     async SetSessionCollabGates() {},
     async SetSessionCollabBackground() {},

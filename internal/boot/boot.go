@@ -2161,6 +2161,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// the executing agent through the call context that executeOne stamps.
 	reg.Add(agent.NewToolRecoveryTool())
 
+	// Task 363A: split the agent stage for the timings line — the tool
+	// registration face above vs the runner/executor construction below. Same
+	// greppable summary, two finer segments; observation only.
+	bootTime.mark("agent:tools")
 	var runner agent.Runner = executor
 	label := entry.Model
 	// Two-model collaboration: a distinct planner_model wraps the executor in a
