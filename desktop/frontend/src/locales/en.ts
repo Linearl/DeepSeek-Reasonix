@@ -4260,6 +4260,7 @@ export const en = {
   "context.maintenanceActionPrune": "Tool result prune",
   "context.maintenanceActionNative": "Native tool clearing",
   "context.sessionMetrics": "Session metrics",
+  "context.sessionGroup": "Group",
   "context.mcpListTitle": "MCP tools/list",
   "context.mcpListSharedHost": "Shared host",
   "context.mcpListDiskCache": "Disk cache",

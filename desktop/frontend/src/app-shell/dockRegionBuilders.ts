@@ -41,6 +41,9 @@ export function buildWorkspaceDockProps(input: {
   mode: RightDockMode;
   meta: Meta | null | undefined;
   tabId: string | undefined;
+  /** wt-zcode-285: active tab identity feeding the context panel's session
+   *  info rows (group title + recovery copy role). Narrow shape on purpose. */
+  tab?: { topicId?: string; scope?: string; workspaceRoot?: string; sessionPath?: string };
   completionSummary: WireCompletionSummary | undefined;
   turnStartAt: number;
   sessionItems?: readonly SessionSideItem[];
@@ -75,6 +78,10 @@ export function buildWorkspaceDockProps(input: {
     context: {
       ...input.context, sessionTurns: input.sessionTurns,
       refreshKey: input.contextRefreshKey,
+      sessionInfo: input.tab?.topicId ? {
+        topicId: input.tab.topicId, scope: input.tab.scope,
+        workspaceRoot: input.tab.workspaceRoot, sessionPath: input.tab.sessionPath,
+      } : undefined,
     },
     workspaceKey: input.workspaceKey,
     workspace: {

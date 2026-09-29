@@ -428,6 +428,7 @@ export function AppRuntimeView(props: AppRuntimeViewProps) {
           mode: shell.rightDockMode,
           meta: state.meta,
           tabId: activeTabId,
+          tab: activeTab,
           completionSummary: state.completionSummary,
           turnStartAt: state.turnStartAt,
           sessionItems: state.items,
