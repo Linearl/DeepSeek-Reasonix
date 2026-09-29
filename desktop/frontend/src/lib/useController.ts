@@ -3420,8 +3420,11 @@ export function useController() {
     }
 
     let state = statesRef.current.get(targetTabId);
-    if (!state?.historyHasOlder || state.running) return false;
-    if (state.historyOlderLoading) {
+    // Task 384 (A′+C①): the self-heal runs BEFORE every gate — a stuck
+    // loading flag must be resettable no matter which gate would otherwise
+    // fire (the 0831 loading-leak lesson: an unreachable self-heal = a
+    // permanently stuck "loading"). Running sessions reach it too.
+    if (state?.historyOlderLoading) {
       // Self-heal a stuck loading gate (task 101 P0): loading true with no
       // live store call is the lock-out that used to require closing the tab.
       const startedAt = historyOlderStartedAtByTab.current.get(targetTabId) ?? 0;
@@ -3435,9 +3438,22 @@ export function useController() {
         reportFrontendLog("history-paging", "older loading self-healed", `tab=${targetTabId} ageMs=${staleMs}`, "warn");
         state = statesRef.current.get(targetTabId);
       }
-      if (state?.historyOlderLoading) return false;
+      if (state?.historyOlderLoading) {
+        // Task 384 (C②): zero-silent skip paths — the gate is still loading
+        // and not yet stale; the in-flight store call owns the spinner.
+        reportFrontendLog("history-paging", "older skipped", `tab=${targetTabId} reason=loading-in-progress ageMs=${staleMs}`, "info");
+        return false;
+      }
     }
-    if (!state?.historyHasOlder || state.running) return false;
+    // Task 384 (A′): `historyHasOlder` is the only remaining hard gate. The
+    // old `state.running` refusal is removed — a live turn appends at the
+    // TAIL while a history page prepends at the HEAD, and the existing
+    // generation checks below (revision/digest fingerprints, request seq,
+    // double dedupe, identity-retry) already cover the collision surface
+    // (task-384 调研: three protections verified). If the turn later ends the
+    // session (compact/rewind generation change), the fingerprint check
+    // discards the in-flight page with a logged rejection.
+    if (!state?.historyHasOlder) return false;
     const sessionPath = state.meta?.sessionPath ?? "";
     const sessionRevision = state.meta?.sessionRevision ?? state.historyRevision;
     const sessionDigest = state.meta?.sessionDigest ?? state.historyDigest;
