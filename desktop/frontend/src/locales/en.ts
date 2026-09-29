@@ -1094,6 +1094,11 @@ export const en = {
   "status.recoveryWaitHint": "Retries continue until the wait budget runs out, then the turn fails. Check your network, proxy, or provider status, or stop now.",
   "status.recoveryWaitStop": "Stop waiting",
   "status.retrying": "retrying ({attempt}/{max})…",
+  "status.retryingBudget": "auto-retried {used}/{limit} times, recovering…",
+  "status.retryExhausted": "terminated (gave up after {limit} retries; {used} tried)",
+  "notice.retryExhausted": "Auto-retry terminated: gave up after {limit} attempts — continue manually.",
+  "notice.retryExhaustedContinuePrompt": "Continue.",
+  "notice.manualContinue": "Continue manually",
   "status.balanceTitle": "Wallet balance",
   "status.spendTitle": "Estimated billable spend in this session, including model, subagent, and helper calls",
 

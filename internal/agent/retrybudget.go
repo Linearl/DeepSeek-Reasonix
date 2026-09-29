@@ -187,3 +187,32 @@ func (b *RetryBudget) RefusedIdentity(phase string) string {
 	defer b.mu.Unlock()
 	return b.refused[phase]
 }
+
+// Count reports how many admitted attempts this phase holds inside the
+// sliding window right now (task 372 visibility face: the UI's "N" in
+// "auto-retried N (N/limit) times"). Read-only — it never mutates stamps,
+// so the admission path in Allow is byte-for-byte unchanged.
+func (b *RetryBudget) Count(phase string, now time.Time) int {
+	if b == nil {
+		return 0
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	cut := now.Add(-b.window)
+	n := 0
+	for _, t := range b.stamps[phase] {
+		if t.After(cut) {
+			n++
+		}
+	}
+	return n
+}
+
+// Limit is the window bound (visibility face for task 372). The limit is
+// fixed at construction, so no lock is needed.
+func (b *RetryBudget) Limit() int {
+	if b == nil {
+		return 0
+	}
+	return b.limit
+}

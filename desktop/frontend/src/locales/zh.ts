@@ -1095,6 +1095,11 @@ export const zh: Record<DictKey, string> = {
   "status.recoveryWaitHint": "会持续重试，直到等待预算用尽后本轮报错结束。可检查网络、代理或供应商状态，也可立即停止。",
   "status.recoveryWaitStop": "停止等待",
   "status.retrying": "正在重试 ({attempt}/{max})…",
+  "status.retryingBudget": "已自动重试 {used}/{limit} 次，恢复中…",
+  "status.retryExhausted": "已终止（重试 {limit} 次后放弃，已试 {used} 次）",
+  "notice.retryExhausted": "自动重试已终止：{limit} 次尝试后放弃，可手动继续。",
+  "notice.retryExhaustedContinuePrompt": "继续。",
+  "notice.manualContinue": "手动继续",
   "status.balanceTitle": "钱包余额",
   "status.spendTitle": "当前会话估算计费费用，包含主模型、子代理和辅助调用",
 

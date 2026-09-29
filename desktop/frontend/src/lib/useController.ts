@@ -303,7 +303,7 @@ export type Item =
   | { kind: "user"; id: string; submissionId?: string; text: string; submitText?: string; failed?: boolean; createdAt?: number; checkpointTurn?: number; historyTurn?: number }
   | { kind: "assistant"; id: string; text: string; reasoning: string; streaming: boolean; wasStreamed?: true; reasoningComplete?: boolean; reasoningDurationMs?: number; workDurationMs?: number; memoryCitations?: MemoryCitation[]; searchSources?: SearchSource[] }
   | { kind: "phase"; id: string; text: string }
-  | { kind: "notice"; id: string; level: "info" | "warn"; text: string; detail?: string; code?: string; title?: string; variant?: "delivery" | "completion"; action?: "continue_delivery" | "open_changes" | "recover_context" | "consolidate_recovery"; recoveryId?: string; completionSummary?: WireCompletionSummary; decisionReceipt?: WireDecisionReceipt; missing?: string[]; inboxItemId?: string }
+  | { kind: "notice"; id: string; level: "info" | "warn"; text: string; detail?: string; code?: string; title?: string; variant?: "delivery" | "completion"; action?: "continue_delivery" | "open_changes" | "recover_context" | "consolidate_recovery" | "manual_continue"; recoveryId?: string; completionSummary?: WireCompletionSummary; decisionReceipt?: WireDecisionReceipt; missing?: string[]; inboxItemId?: string }
   | {
       kind: "compaction";
       id: string;
@@ -2072,7 +2072,18 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         }
         items = [...finalized, ...interruptItems];
       } else if (e.err && !s.streamInterruptNoticeShown) {
-        items = [...finalized, { kind: "notice", id: `e${s.seq}`, level: "warn", text: e.err, detail: e.detail }];
+        // Task 372: if the retry loop gave up during this turn (the budget
+        // window or the attempt cap refused another round), the error strip
+        // must name the termination and offer the manual-continue cue
+        // instead of reading like a silent crash. The raw provider error
+        // stays in `detail`. Non-exhausted errors keep the original text.
+        // Cancellations route through the interrupted branch above, and a
+        // cancelled turn never carries an exhausted frame — no extra guard.
+        const exhausted = Boolean(s.retry?.recovery?.budget_exhausted);
+        const exhaustedLimit = s.retry?.recovery?.budget_limit || s.retry?.max || 0;
+        items = [...finalized, exhausted && exhaustedLimit > 0
+          ? { kind: "notice", id: `e${s.seq}`, level: "warn", text: t("notice.retryExhausted", { limit: exhaustedLimit }), detail: e.detail ?? e.err, action: "manual_continue" }
+          : { kind: "notice", id: `e${s.seq}`, level: "warn", text: e.err, detail: e.detail }];
       }
       if (e.protocolRecovery?.id && e.status !== "interrupted" && !s.cancelRequested) {
         items = items.map(item => item.kind==="notice" && item.action==="recover_context" ? {...item,action:undefined} : item);
@@ -2106,6 +2117,10 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         seq: s.seq + Math.max(items.length - finalized.length, 1),
         lastStreamInterrupt: undefined,
         streamInterruptNoticeShown: undefined,
+        // Task 372: the retry strip is per-turn — clear it at turn end so a
+        // recovered turn drops the "retrying" line (scope 3: recover →
+        // downgrade/vanish) and an exhausted one leaves only the notice card.
+        retry: undefined,
       };
       // Close user-wait unless the plan approval gate remains open.
       next = keepPlanApproval ? beginPromptWait(next, now) : endPromptWait(next, now);

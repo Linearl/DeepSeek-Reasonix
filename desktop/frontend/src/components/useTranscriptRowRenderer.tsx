@@ -106,7 +106,11 @@ export function useTranscriptRowRenderer({
         const action = row.item.action === "continue_delivery"
           ? (onDeliveryContinue ?? (() => onPrompt(t("notice.deliveryIncompleteContinuePrompt"))))
           : row.item.action === "open_changes" && onOpenChanges ? () => onOpenChanges(row.item.completionSummary)
-            : row.item.code === "session_recovery_forked" && onConsolidateRecovery ? () => onConsolidateRecovery() : undefined;
+            // Task 372: the give-up notice's manual-continue cue — drop the
+            // continuation prompt into the composer so the user drives the
+            // next round by hand (same onPrompt shape as delivery continue).
+            : row.item.action === "manual_continue" ? () => onPrompt(t("notice.retryExhaustedContinuePrompt"))
+              : row.item.code === "session_recovery_forked" && onConsolidateRecovery ? () => onConsolidateRecovery() : undefined;
         return <NoticeCard
           item={row.item} actionDisabled={running && row.item.action !== "open_changes"} onAction={action}
           onOpenVerification={row.item.variant === "completion" ? onOpenVerification : undefined}
