@@ -1,7 +1,7 @@
-# DeepSeek-Reasonix Fork v1.38.3-20260929-1832
+# DeepSeek-Reasonix Fork v1.38.3-20260929-1849
 
-- **构建时间**：2026-09-29 18:32（本地构建）
-- **安装目录**：`%LOCALAPPDATA%\Programs\Reasonix\versions\v1.38.3-20260929-1832\`
+- **构建时间**：2026-09-29 18:49（本地构建）
+- **安装目录**：`%LOCALAPPDATA%\Programs\Reasonix\versions\v1.38.3-20260929-1849\`
 - **增量基线**：上一包 `v1.38.3-20260928-2337`（本包仅写相对该包的新增/变更）
 
 ---
