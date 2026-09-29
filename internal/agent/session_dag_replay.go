@@ -110,14 +110,65 @@ func newSessionDAGState(path string) *sessionDAGState {
 	return st
 }
 
+// dagFoldCheckpointEnabled reads the task-308-O2 gate (REASONIX_DAG_FOLD_
+// CHECKPOINT=1), the same env-switch precedent as REASONIX_MCP_NO_REUSE;
+// default off.
+func dagFoldCheckpointEnabled() bool {
+	return os.Getenv("REASONIX_DAG_FOLD_CHECKPOINT") == "1"
+}
+
+// replaySessionDAGFromCheckpoint restores the state from the fold checkpoint
+// and replays only the trailing window from its offset. ok=false on any
+// mismatch (gate off, missing/torn checkpoint, offset out of range, replay
+// error) and the caller falls back to the full replay.
+func replaySessionDAGFromCheckpoint(ctx context.Context, path string, limits sessionReplayLimits) (*sessionDAGState, bool) {
+	if !dagFoldCheckpointEnabled() {
+		return nil, false
+	}
+	snap, ok := loadDAGCheckpoint(path)
+	if !ok {
+		return nil, false
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, false
+	}
+	if err := dagCheckpointUsable(snap, path, sessionDAGSchemaVersion, info.Size()); err != nil {
+		return nil, false
+	}
+	st := snap.restoreState(path)
+	if err := st.replayFrom(ctx, st.lastGoodEnd, limits); err != nil {
+		return nil, false
+	}
+	return st, true
+}
+
 // replaySessionDAG decodes a schema-2 log. Decoding stops at the first entry
 // that fails to parse (damaged=true, lastGoodEnd set); an unsupported schema
 // or entry type is a hard error because a newer writer owns the log.
 func replaySessionDAG(ctx context.Context, path string, limits sessionReplayLimits) (*sessionDAGState, error) {
 	limits = limitsForSessionLog(path, limits)
+	// Task 308-O2: checkpoint-first — restore the replayed state from the fold
+	// checkpoint and replay only the trailing window from its offset. Any
+	// mismatch falls back to the full replay below, so the checkpoint only
+	// ever saves work.
+	if st, ok := replaySessionDAGFromCheckpoint(ctx, path, limits); ok {
+		return st, nil
+	}
 	st := newSessionDAGState(path)
 	if err := st.replayFrom(ctx, 0, limits); err != nil {
 		return st, err
+	}
+	// Self-seeding: after a successful full replay of a session whose head
+	// carries a compaction fold, persist the checkpoint so the NEXT cold read
+	// takes the fast path. Failures are silent — the checkpoint is an
+	// optimization, never a dependency.
+	if dagFoldCheckpointEnabled() {
+		if head := st.heads[st.selectedHead()]; head != nil && head.compaction != nil {
+			if snap := snapshotFromState(st, head.compaction.prefixHash); snap != nil {
+				_ = saveDAGCheckpoint(path, snap)
+			}
+		}
 	}
 	for attempt := 0; st.damaged && attempt < sessionDAGTornRetries; attempt++ {
 		time.Sleep(sessionDAGTornRetryDelay)
