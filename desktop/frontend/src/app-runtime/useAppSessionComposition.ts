@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, type CSSProperties } from "react";
 import { useCommittedCommand } from "../lib/useCommittedCommand";
+import { workspacePanelMemoryRoot } from "../store/layout";
 import { projectSessionAvailability } from "../lib/sessionAvailability";
 import { useWailsResizeFix } from "../lib/useWailsResizeFix";
 import type { RemoteSessionApi } from "../lib/useRemoteSession";
@@ -592,7 +593,10 @@ export function useAppSessionComposition(input: AppSessionCompositionInput) {
   });
 
   const workspacePanelCommands = useWorkspacePanelCommands({
-    workspaceRoot: activeTab?.workspaceRoot ?? state.meta?.cwd ?? "",
+    // Task 245: domain-scoped dock memory key — Global is one key, the session
+    // cwd never shards it (the old `?? state.meta?.cwd ?? ""` fallback flipped
+    // the dock on every Global tab switch).
+    workspaceRoot: workspacePanelMemoryRoot(activeTab?.scope, activeTab?.workspaceRoot),
     creation: desktopLayoutStyle === "creation", visible: surfaceWorkspacePanelRenderable,
     closeOverlays: closeTransientOverlays, clearLiveWidth: setLiveWorkspacePanelRenderWidth,
     availableWidth: workspacePanelAvailableWidth, clampTreeWidth: rightDockTreeWidthClamp, setTreeWidth: setRightDockTreeWidth,

@@ -209,6 +209,7 @@ import {
   loadWorkspacePanelOpen,
   loadRightDockMode,
   saveRightDockMode,
+  workspacePanelMemoryRoot,
   useLayoutStore,
 } from "./store/layout";
 import { useOverlayStore } from "./store/overlays";
@@ -2415,7 +2416,9 @@ export default function App() {
 
   // Creation no longer exposes the overview tab. If a previous session left
   // rightDockMode on "context", coerce it to files so 文件 stays selected.
-  const creationCoerceWorkspaceRoot = activeTab?.workspaceRoot ?? "";
+  // Task 245: write through the same domain-scoped key as the rest of the
+  // dock memory, so a Global tab no longer stamps a ghost workspace path.
+  const creationCoerceWorkspaceRoot = workspacePanelMemoryRoot(activeTab?.scope, activeTab?.workspaceRoot);
   useEffect(() => {
     if (desktopLayoutStyle !== "creation") return;
     if (rightDockMode !== "context") return;
@@ -2647,7 +2650,10 @@ export default function App() {
     [setSavedTerminalHeight, terminalPanelOpen, terminalRenderHeight, terminalResizeMaxHeight],
   );
 
-  const activeWorkspaceRoot = activeTab?.workspaceRoot ?? state.meta?.cwd ?? "";
+  // Task 245: the dock memory key is domain-scoped (Global = one base key,
+  // each project = its root). The session cwd never participates, so panel
+  // state survives session switches inside the Global domain.
+  const activeWorkspaceRoot = workspacePanelMemoryRoot(activeTab?.scope, activeTab?.workspaceRoot);
 
   const openWorkspacePanel = useCallback(
     (mode: RightDockMode = rightDockMode) => {

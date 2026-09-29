@@ -200,6 +200,12 @@ const CHECKS = [
   { feature: "任务381 staging 读取点全收敛", file: "desktop/restart_update.go", patterns: ["stagingRoot()"] },
   { feature: "任务383 #2 workbench 项目分组入口（header 菜单 group 项）", file: "desktop/frontend/src/components/ProjectTreeAddControls.tsx", patterns: ["new-project-group", "onGroup"] },
   { feature: "任务383 #5 classic footer icon-only（creation 保文字）+#8 automation→heartbeat 文案统一", file: "desktop/frontend/src/App.tsx", patterns: ["sidebarCreation ? <span>{t(\"sidebar.trash\")}</span> : <span className=\"sr-only\">", "heartbeat.scheduler"] },
+  // 任务 245：面板记忆键域级归一。三个锚点锁「键只经 workspacePanelMemoryRoot 产出」：
+  // 映射函数本体（global→单键分支）+ 两条接线点（App 与 composition）的调用形状。
+  // 上游若重新引入 `?? state.meta?.cwd` 兜底，Global 域面板记忆会重新按会话碎裂。
+  { feature: "任务245 面板键域级映射（global 单键 + cwd 兜底禁入）", file: "desktop/frontend/src/store/layout.ts", patterns: ["export function workspacePanelMemoryRoot(scope: string | undefined, workspaceRoot: string | undefined): string {", "if (scope === \"global\") return \"\";"] },
+  { feature: "任务245 面板键归一接线（App 侧）", file: "desktop/frontend/src/App.tsx", patterns: ["workspacePanelMemoryRoot(activeTab?.scope, activeTab?.workspaceRoot)"] },
+  { feature: "任务245 面板键归一接线（composition 侧）", file: "desktop/frontend/src/app-runtime/useAppSessionComposition.ts", patterns: ["workspacePanelMemoryRoot(activeTab?.scope, activeTab?.workspaceRoot)"] },
 ];
 
 let failed = 0;
