@@ -11,7 +11,7 @@ import { isDockTabHidden, isLastRenderableVisibleTab, setDockTabHidden } from ".
 import { labFlagEnabled } from "../lib/labFlags";
 import { useRemoteStore } from "../store/remote";
 import { useConfirmDialog } from "./ConfirmDialog";
-import ForkFeaturesIntro from "./ForkFeaturesIntro";
+import ForkFeaturesIntroDialog from "./ForkFeaturesIntroDialog";
 
 // Autopilot runs unattended, so it needs a wall-clock bound; this is the value the
 // settings switch falls back to when the user turns it on without typing one.
@@ -1989,21 +1989,23 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     <SettingsPageShell s={s} tab="experimental" busy={busy} apply={apply}>
       <div className="experimental-layout">
         <div className="experimental-lab">
-          {/* Task 359 (Q1-A): intro as a collapsed top banner — one row by
-              default, expandable; the old bottom section is removed (single
-              entry point). Button lives here, not in ForkFeaturesIntro, so the
-              task-282 "pure display, no controls in the component" contract
-              stays untouched. */}
+          {/* Task 359 (Q1-A) upgraded by task 379 (0929): the entry now opens
+              a LARGE modal with a card wall instead of the inline banner — the
+              narrow-column form is retired. Button stays here (not in the
+              panel), and every dialog control lives in the dialog layer, so
+              the task-282 "pure display, no controls in the component"
+              contract remains untouched. */}
           <button
             type="button"
             className={`experimental-lab__intro-toggle${introOpen ? " experimental-lab__intro-toggle--open" : ""}`}
             aria-expanded={introOpen}
+            aria-haspopup="dialog"
             onClick={() => setIntroOpen((v) => !v)}
           >
             <span className="experimental-lab__intro-chevron" aria-hidden="true">{introOpen ? "▾" : "▸"}</span>
             <span>{t("settings.forkFeaturesIntro.title")}</span>
           </button>
-          {introOpen ? <ForkFeaturesIntro t={t} /> : null}
+          {introOpen ? <ForkFeaturesIntroDialog t={t} onClose={() => setIntroOpen(false)} /> : null}
           {/* Task 359 (③): display-order switch — enabled items first, disabled
               sunk to the end of each group. Display order only: no config,
               no semantics, no experimental_* chain; preference persists in

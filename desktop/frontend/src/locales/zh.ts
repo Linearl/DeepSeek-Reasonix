@@ -2007,6 +2007,8 @@ export const zh: Record<DictKey, string> = {
   "settings.lab.tocLabel": "分组目录",
   "settings.forkFeaturesIntro.title": "Fork 特性速览",
   "settings.forkFeaturesIntro.lead": "以下改进已在各处生效，无需开关；每条注明在哪里找到。",
+  "settings.forkFeaturesIntro.recommended": "推荐",
+  "settings.forkFeaturesIntro.close": "关闭",
   "settings.forkFeaturesIntro.group.layout": "界面布局",
   "settings.forkFeaturesIntro.group.projects": "项目管理",
   "settings.forkFeaturesIntro.group.sessions": "会话与分支",

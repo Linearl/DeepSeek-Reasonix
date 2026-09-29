@@ -28,10 +28,11 @@ const intro = readFileSync(fileURLToPath(new URL("../components/ForkFeaturesIntr
 
 console.log("\ntask 359 lab navigation");
 
-// Q1-A: banner default-collapsed, single entry point.
-ok(/const \[introOpen, setIntroOpen\] = useState\(false\)/.test(panel), "intro banner state defaults to CLOSED (collapsed)");
-ok(panel.includes("aria-expanded={introOpen}"), "banner exposes aria-expanded");
-ok(panel.includes("{introOpen ? <ForkFeaturesIntro t={t} /> : null}"), "intro renders only while open");
+// Q1-A: entry default-collapsed, single entry point (task 379: the open state
+// now hosts the large dialog instead of the inline banner).
+ok(/const \[introOpen, setIntroOpen\] = useState\(false\)/.test(panel), "intro entry state defaults to CLOSED (dialog not open)");
+ok(panel.includes("aria-expanded={introOpen}"), "entry exposes aria-expanded");
+ok(panel.includes("{introOpen ? <ForkFeaturesIntroDialog t={t} onClose={() => setIntroOpen(false)} /> : null}"), "intro dialog mounts only while open");
 {
   const calls = panel.match(/<ForkFeaturesIntro/g) ?? [];
   ok(calls.length === 1, `exactly ONE ForkFeaturesIntro mount point (got ${calls.length}) — no double entry`);
