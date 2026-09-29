@@ -29,9 +29,38 @@ type OutputStyle struct {
 	Path        string // file it loaded from ("" for built-ins)
 }
 
-// builtins are the always-available styles. Default ("" / "default") is absent
-// on purpose — no style means the unmodified system prompt.
+// builtins are the always-available styles, listed alphabetically (task 385d:
+// the set reaches five so it matches Claude Code's default lineup —
+// Default / Proactive / Explanatory / Learning / Concise).
+//
+// "default" is the no-style sentinel, kept visible in the list for parity
+// with CC while remaining inert everywhere else: Resolve refuses "" and
+// "default" before it ever consults this slice, so the boot injection path
+// (`if st, ok := Resolve(...); ok { Apply(...) }`) never folds it in and
+// Apply stays untouched upstream-shape. Its empty Body is a second layer of
+// the same guarantee — Apply on an empty body is a no-op by contract.
 var builtins = []OutputStyle{
+	{
+		Name:        "default",
+		Description: "默认：不注入任何风格，system prompt 保持原样",
+		KeepCoding:  true,
+		Builtin:     true,
+		// Body intentionally empty: Resolve treats "default" as no-style
+		// (ok=false), so this entry is list-only — nothing to inject.
+		Body: "",
+	},
+	{
+		Name:        "proactive",
+		Description: "立即行动：合理假设、行动优先，先推进再校正",
+		KeepCoding:  true,
+		Builtin:     true,
+		Body: "Communication style — Proactive: act immediately instead of waiting for " +
+			"perfect information. When the path is clear enough to proceed, make the reasonable " +
+			"assumption, note it in one line as you go, and correct course later rather than " +
+			"blocking on clarifying questions. Favor forward progress: pick the most plausible " +
+			"interpretation of an ambiguous request, do the work, and surface any assumption " +
+			"that turned out wrong in the wrap-up.",
+	},
 	{
 		Name:        "explanatory",
 		Description: "Explain non-obvious implementation choices as you go",

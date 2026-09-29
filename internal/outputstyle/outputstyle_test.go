@@ -57,6 +57,108 @@ func TestListIncludesBuiltinsSorted(t *testing.T) {
 	}
 }
 
+// Task 385d: the built-in set reaches five, matching the CC lineup
+// (Default / Proactive / Explanatory / Learning / Concise). List sorts by
+// name, so the expectation doubles as an ordering pin.
+func TestBuiltinStyleSetIsFive(t *testing.T) {
+	got := List(nil)
+	want := []string{"concise", "default", "explanatory", "learning", "proactive"}
+	if len(got) != len(want) {
+		t.Fatalf("want %d built-in styles, got %d: %+v", len(want), len(got), got)
+	}
+	for i, name := range want {
+		if got[i].Name != name {
+			t.Errorf("style %d = %q, want %q (sorted by name)", i, got[i].Name, name)
+		}
+		if !got[i].Builtin {
+			t.Errorf("%q must be marked builtin", name)
+		}
+		if strings.TrimSpace(got[i].Description) == "" {
+			t.Errorf("%q must carry a selector-visible description", name)
+		}
+	}
+}
+
+// Task 385d: Proactive resolves case-insensitively and folds in append-style
+// like the other coding-preserving built-ins.
+func TestProactiveResolvesAndApplies(t *testing.T) {
+	st, ok := Resolve("proactive", nil)
+	if !ok {
+		t.Fatal("proactive built-in should resolve")
+	}
+	if !st.Builtin || !st.KeepCoding {
+		t.Errorf("proactive must be builtin + keep-coding (append): %+v", st)
+	}
+	if strings.TrimSpace(st.Body) == "" {
+		t.Fatal("proactive must carry a body")
+	}
+	for _, want := range []string{"Proactive", "assumption", "forward progress"} {
+		if !strings.Contains(st.Body, want) {
+			t.Errorf("proactive body missing %q: %s", want, st.Body)
+		}
+	}
+	if got := Apply("BASE", st); got != "BASE\n\n"+st.Body {
+		t.Errorf("proactive must append, got %q", got)
+	}
+	if _, ok := Resolve("PROACTIVE", nil); !ok {
+		t.Error("resolve must stay case-insensitive with the fifth style added")
+	}
+}
+
+// Task 385d: Default is list-only — the no-injection path. Resolve refuses
+// ""/"default" before consulting the slice, and boot guards the injection on
+// `ok`, so Apply never receives it; the empty Body keeps Apply a no-op even
+// if a caller applies the listed entry directly.
+func TestDefaultStyleListedButNeverInjects(t *testing.T) {
+	var listed *OutputStyle
+	for _, st := range List(nil) {
+		if st.Name == "default" {
+			listed = &st
+			break
+		}
+	}
+	if listed == nil {
+		t.Fatal("default must appear in the list (CC parity)")
+	}
+	if !listed.Builtin || listed.Body != "" {
+		t.Errorf("default must be builtin with an empty body: %+v", listed)
+	}
+	for _, name := range []string{"", "default", "DEFAULT", "  default  "} {
+		if _, ok := Resolve(name, nil); ok {
+			t.Errorf("Resolve(%q) must report no-style so boot skips injection", name)
+		}
+	}
+	if got := Apply("BASE", *listed); got != "BASE" {
+		t.Errorf("applying the default entry must leave the prompt unchanged, got %q", got)
+	}
+}
+
+// Task 385d: custom dirs keep working with five built-ins present — a custom
+// file adds a sixth style, resolves, and the built-ins stay resolvable next
+// to it (the override path itself is pinned by
+// TestCustomFileOverridesBuiltinAndParses).
+func TestCustomDirsStillWorkWithFiveBuiltins(t *testing.T) {
+	dir := t.TempDir()
+	md := "---\ndescription: persona from a custom dir\n---\nCustom body.\n"
+	if err := os.WriteFile(filepath.Join(dir, "persona.md"), []byte(md), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := List([]string{dir})
+	if len(got) != 6 {
+		t.Fatalf("want 5 built-ins + 1 custom = 6, got %d: %+v", len(got), got)
+	}
+	st, ok := Resolve("persona", []string{dir})
+	if !ok || st.Builtin || st.Description != "persona from a custom dir" {
+		t.Errorf("custom style must resolve from its dir: %+v ok=%v", st, ok)
+	}
+	for _, name := range []string{"proactive", "explanatory", "learning", "concise"} {
+		if _, ok := Resolve(name, []string{dir}); !ok {
+			t.Errorf("built-in %q must still resolve with a custom dir present", name)
+		}
+	}
+}
+
 func TestCustomFileOverridesBuiltinAndParses(t *testing.T) {
 	dir := t.TempDir()
 	// Override the built-in "explanatory" with a custom replace-style file.
