@@ -657,6 +657,8 @@ func (a *App) startup(ctx context.Context) {
 	// switch is read live inside the loop, so OFF is one config read per
 	// tick and ON applies without a restart.
 	a.startColdCacheCompactLoop()
+	// Task 308-O4: release detached/idle runtimes (gate: env minutes, default off).
+	a.startDetachedIdleReleaseLoop()
 	a.heartbeat = newHeartbeatEngine(a)
 	// Task 244 B1: call-time evaluation (S4) — the burn guard reads the
 	// saved switch on every run, so toggling it in settings applies without a
