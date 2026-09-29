@@ -948,6 +948,7 @@ export const en = {
   "composer.guidanceRetryMode": "Retry",
   "composer.guidanceRetry": "Retry this guidance",
 "composer.guidanceMergeNext": "Merge next",
+  "composer.guidanceMergeNextUnavailableAll": "Manual merge-next is unavailable under the merge-all tier (arrivals merge automatically)",
   "composer.guidanceDismiss": "Dismiss queued guidance",
   "composer.guidanceEdit": "Edit this queued guidance",
   "composer.guidanceSaveEdit": "Save guidance edits",

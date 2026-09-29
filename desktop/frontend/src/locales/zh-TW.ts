@@ -731,6 +731,7 @@ export const zhTW: Record<DictKey, string> = {
   "composer.guidanceRetryMode": "重試",
   "composer.guidanceRetry": "重試這條引導",
 "composer.guidanceMergeNext": "合併下條",
+  "composer.guidanceMergeNextUnavailableAll": "全部合併檔下逐條合併不可用（到貨即自動合併）",
   "composer.guidanceDismiss": "移除這條引導提示",
   "composer.guidanceEdit": "編輯這條待處理引導",
   "composer.guidanceSaveEdit": "儲存引導修改",
