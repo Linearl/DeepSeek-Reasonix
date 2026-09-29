@@ -32,6 +32,7 @@ type statusRecord struct {
 	State      string `json:"state"`
 	Unread     int    `json:"unreadInbox"`
 	LastActity int64  `json:"lastActivity"`
+	Hint       string `json:"hint,omitempty"`
 }
 
 type statusPayload struct {
@@ -126,6 +127,56 @@ func TestGetSessionStatusInvisibleProcessIsUnknown(t *testing.T) {
 	payload := execStatus(t, cfg, `{"targets":["sc_ghost"]}`)
 	if payload.Sessions[0].State != "unknown" {
 		t.Fatalf("an invisible process must read unknown: %+v", payload.Sessions[0])
+	}
+}
+
+// Task 375: unknown must be self-explanatory — the record carries an
+// actionable hint (process invisible; check lastActivity and the inbox tail
+// before concluding idle), and running/idle/queued rows carry NO hint so the
+// field never dilutes a definite answer.
+func TestGetSessionStatusUnknownCarriesHint(t *testing.T) {
+	dir := t.TempDir()
+	statusFixture(t, dir, "ghost", "Ghost", "sc_ghost375", "")
+	statusFixture(t, dir, "live", "Live", "sc_live375", "")
+	cfg := SessionCollabConfig{
+		Enabled:       true,
+		SessionDir:    dir,
+		WorkspaceRoot: dir,
+		MailDir:       filepath.Join(t.TempDir(), "mail"),
+		SessionStatus: func(id string) (bool, int64, int, bool) {
+			if id == "sc_live375" {
+				return true, 0, 0, true // running, known
+			}
+			return false, 0, 0, false // invisible -> unknown
+		},
+	}
+	out, err := NewGetSessionStatusTool(cfg).Execute(nil, []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "unknown = this process cannot see the session's runtime") {
+		t.Fatalf("the unknown hint must be present and actionable, got: %s", out)
+	}
+	if !strings.Contains(out, "inbox.jsonl tail") {
+		t.Fatalf("the hint must name the authoritative check (inbox tail), got: %s", out)
+	}
+	// Per-record check: the ghost row carries the hint; the known-running row
+	// must NOT — the field never dilutes a definite answer.
+	full := execStatus(t, cfg, `{}`)
+	ghostHint, liveHint := "", ""
+	for _, rec := range full.Sessions {
+		if rec.ContactID == "sc_ghost375" {
+			ghostHint = rec.Hint
+		}
+		if rec.ContactID == "sc_live375" {
+			liveHint = rec.Hint
+		}
+	}
+	if ghostHint == "" || !strings.Contains(ghostHint, "runtime") {
+		t.Fatalf("the unknown record must carry the actionable hint, got %q", ghostHint)
+	}
+	if liveHint != "" {
+		t.Fatalf("a known-running record must not carry the unknown hint, got %q", liveHint)
 	}
 }
 

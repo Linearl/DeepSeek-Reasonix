@@ -194,3 +194,38 @@ func TestTaskCardCarriesLiveSessionIdentity(t *testing.T) {
 		t.Fatalf("card must carry the initiator's contact id: %+v", card)
 	}
 }
+
+// Task 375: when the target's runtime state is unknown to this process, the
+// send receipt says so — queued is the mailbox acknowledgment, NOT proof of
+// delivery; the authoritative signal is the target's inbox.jsonl tail.
+func TestTalkToSessionUnknownTargetCarriesStatusHint(t *testing.T) {
+	dir := t.TempDir()
+	mailDir := filepath.Join(dir, "mail")
+	self := filepath.Join(dir, "self.jsonl")
+	other := filepath.Join(dir, "other.jsonl")
+	writeEmpty(t, self)
+	writeEmpty(t, other)
+	otherID, err := EnsureContactID(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sendTool := NewTalkToSessionTool(SessionCollabConfig{
+		Enabled:            true,
+		SessionDir:         dir,
+		WorkspaceRoot:      dir,
+		MailDir:            mailDir,
+		ResolveSessionPath: func() string { return self },
+		// No SessionStatus hook at all: every state is unknown (CLI-style host).
+	})
+	out, err := sendTool.Execute(context.Background(), json.RawMessage(`{"to":"`+otherID+`","message":"status?"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "targetStatusHint") || !strings.Contains(out, "inbox.jsonl") {
+		t.Fatalf("an unknown-target receipt must carry the status hint, got: %s", out)
+	}
+	if !strings.Contains(out, `"queued":true`) {
+		t.Fatalf("the receipt must still report the queued acknowledgment, got: %s", out)
+	}
+}
