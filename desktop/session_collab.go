@@ -1432,6 +1432,12 @@ func (a *App) collabSessionSetModel(contactID, model string) (applied, wasRunnin
 			return false, false, true, "", nil
 		}
 		if err := a.SetModelForTab(target.tabID, model); err != nil {
+			// Task 387: actionable refusal — name the entries the target's own
+			// switcher would offer (its workspace config catalog), capped so a
+			// huge catalog stays a one-line error.
+			if wrapped, wrapErr := a.wrapUnknownModelErr(target.tabID, model, err); wrapErr == nil {
+				err = wrapped
+			}
 			return false, false, true, "", err
 		}
 		if tab := a.tabByID(target.tabID); tab != nil {
@@ -1450,6 +1456,46 @@ func (a *App) collabSessionSetModel(contactID, model string) (applied, wasRunnin
 // instead of finishing — the signal that a dispatched task went silent.
 // known=false: runtime not visible (another process / not stood up) — the
 // verdict then never fires rather than guessing a death.
+
+// wrapUnknownModelErr (task 387): an unknown-model refusal gains the list of
+// models the target workspace actually offers, so the caller can retry with a
+// valid id without opening the target's switcher. Non-unknown errors (lease,
+// active work, persistence) pass through untouched.
+func (a *App) wrapUnknownModelErr(tabID, model string, err error) (error, error) {
+	if err == nil || !strings.Contains(err.Error(), "unknown model") {
+		return nil, errors.New("not-unknown")
+	}
+	tab := a.tabByID(tabID)
+	if tab == nil {
+		return nil, errors.New("no-tab")
+	}
+	cfg, cfgErr := config.LoadForRoot(tab.WorkspaceRoot)
+	if cfgErr != nil || cfg == nil {
+		return nil, errors.New("no-config")
+	}
+	names := make([]string, 0, 8)
+	for i := range cfg.Providers {
+		p := &cfg.Providers[i]
+		for _, m := range p.Models {
+			names = append(names, p.Name+"/"+m)
+			if len(names) >= 8 {
+				break
+			}
+		}
+		if len(names) >= 8 {
+			break
+		}
+	}
+	if len(names) == 0 {
+		return nil, errors.New("empty-catalog")
+	}
+	more := ""
+	if len(names) >= 8 {
+		more = ", …"
+	}
+	return fmt.Errorf("%w — available models on that session's workspace: %s%s", err, strings.Join(names, ", "), more), nil
+}
+
 func (a *App) collabSessionTurnStatus(contactID string) (status string, known bool) {
 	contactID = strings.TrimSpace(contactID)
 	if contactID == "" {
