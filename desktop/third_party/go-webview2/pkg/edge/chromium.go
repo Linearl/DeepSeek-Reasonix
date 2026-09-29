@@ -115,7 +115,23 @@ func NewChromium() *Chromium {
 	// Reasonix's native UI loads embedded assets and loopback workspace pages.
 	// Provider, updater, MCP and SSH traffic use separate Go clients, so a stale
 	// system proxy must not make the WebView itself unavailable.
-	e := &Chromium{AdditionalBrowserArgs: []string{reasonixNoProxyServerBrowserArg}}
+	browserArgs := []string{reasonixNoProxyServerBrowserArg}
+	// Task 342: the host process may append browser arguments through the
+	// fork-owned REASONIX_WEBVIEW2_EXTRA_ARGS channel (the official
+	// WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS is cleared by webviewloader's
+	// preventEnvAndRegistryOverrides init() before any read, so it is only
+	// honored here for forward compatibility). With BOTH unset the args slice
+	// is byte-identical to the pre-task-342 baseline — the CDP lab switch
+	// only ever appends `--remote-debugging-port=0 --remote-debugging-pipe=0`
+	// style flags from desktop/cdp_debug_port.go, never from this library.
+	extra := strings.TrimSpace(os.Getenv("REASONIX_WEBVIEW2_EXTRA_ARGS"))
+	if extra == "" {
+		extra = strings.TrimSpace(os.Getenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"))
+	}
+	if extra != "" {
+		browserArgs = append(browserArgs, extra)
+	}
+	e := &Chromium{AdditionalBrowserArgs: browserArgs}
 	/*
 	 All these handlers are passed to native code through syscalls with 'uintptr(unsafe.Pointer(handler))' and we know
 	 that a pointer to those will be kept in the native code. Furthermore these handlers als contain pointer to other Go

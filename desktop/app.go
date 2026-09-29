@@ -580,6 +580,10 @@ func (a *App) startup(ctx context.Context) {
 	// OnStartup before its DBus single-instance handoff.
 	initializeLifecycleDiagnostics(a)
 	a.startWindowsWebView2StartupFallback(ctx)
+	// Task 342: if the CDP lab switch was on at boot, watch for the browser
+	// child process and publish the resolved loopback port. No-op when the
+	// switch (or the platform) does not support the endpoint.
+	publishCDPDebugEndpoint()
 	a.webView2Recovery.startGuidance(ctx)
 	a.desktopShell.coordinator.start(ctx)
 	a.lifecycle.tracker.markAsync("ready")

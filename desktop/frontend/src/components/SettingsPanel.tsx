@@ -27,7 +27,7 @@ import { catalogForPreset } from "../lib/providerCatalog";
 import { ProviderCatalogPicker, type CatalogChoice } from "./ProviderCatalogPicker";
 import { Eye, EyeOff, Files } from "lucide-react";
 import { lazy, memo, Suspense, startTransition, useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { ArrowRight, Check, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, FolderLock, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, Server, ShieldAlert, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, Volume2, Zap } from "lucide-react";
+import { ArrowRight, Check, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, FolderLock, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, Server, ShieldAlert, ShieldCheck, SlidersHorizontal, Sparkles, Terminal, Trash2, Volume2, Zap } from "lucide-react";
 import { asArray } from "../lib/array";
 import { ShellInterpreterFields } from "./SettingsShellSupport";
 import { CHANNEL_ICONS } from "./channelIcons";
@@ -1827,6 +1827,8 @@ type ExperimentFeatureId =
   | "subagentTps"
   | "completionSummary"
   | "quickCommands"
+  // Task 342: WebView2 CDP debug endpoint.
+  | "cdpDebugPort"
   // Task 257: full access (yolo).
   | "fullAccess";
 
@@ -1974,6 +1976,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "completionSummary", group: "ui", label: t("settings.completionSummary"), on: Boolean(s.experimentalCompletionSummary) },
     // Task 262: quick commands move here from the general page.
     { id: "quickCommands", group: "efficiency", label: t("settings.quickCommands"), on: Boolean(s.experimentalQuickCommands) },
+    // Task 342: CDP debug endpoint (debug group) — render table: a missing
+    // entry would silently drop the save, 81/123 lesson.
+    { id: "cdpDebugPort", group: "debug", label: t("settings.cdpDebugPort"), on: Boolean(s.experimentalCDPDebugPort) },
     // Task 257: full access (yolo) lands in misc beside path rules — it is a
     // permission-shape switch, not a plain productivity toggle.
     // Task 364: full access (YOLO) re-homed from misc to efficiency — it
@@ -3524,6 +3529,28 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                 <QuickCommandsManager s={s} busy={busy} apply={apply} />
               )}
             </>
+          )}
+          {selected === "cdpDebugPort" && (
+            // Task 342: WebView2 CDP debug endpoint. The WebView2 browser
+            // environment is created once at startup, so a flip needs a
+            // restart — same banner pattern as the full-access boot snapshot.
+            <SettingsField label={t("settings.cdpDebugPort")} hint={t("settings.cdpDebugPortHint")} icon={<Terminal size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalCDPDebugPort) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalCDPDebugPort(on);
+                      setRestartNeeded(true);
+                    })}
+                  >
+                    {t(on ? "settings.cdpDebugPort.on" : "settings.cdpDebugPort.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
           )}
         </div>
       </div>

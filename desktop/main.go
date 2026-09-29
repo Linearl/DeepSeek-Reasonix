@@ -107,6 +107,11 @@ func preparePrimaryDesktopRuntime(app *App) {
 	installWebView2ProcessObserver(app)
 	prepareDesktopDiagnostics(app)
 	capturePendingUpdateHealthIdentity(app)
+	// Task 342: the CDP debug endpoint must be decided before the WebView2
+	// browser environment is created (it happens inside wails.Run when the
+	// window builds). The resolved port lands in the endpoint file so the
+	// five-step CDP verification flow can connect without guessing.
+	prepareCDPDebugEndpoint()
 }
 
 func main() {

@@ -181,6 +181,18 @@ type DesktopConfig struct {
 	// the general-page entry and the lab pane all hide, and nothing about the
 	// stored snippets changes.
 	ExperimentalQuickCommands bool `toml:"experimental_quick_commands"`
+	// ExperimentalCDPDebugPort is the task-342 lab switch for a WebView2 CDP
+	// (Chrome DevTools Protocol) debug endpoint. It ships OFF (铁律 2): with
+	// the zero value the desktop binary is byte-for-byte behaviour-identical
+	// to a build without the feature — no extra browser argument, no port,
+	// nothing to connect to. The WebView2 environment is created once at
+	// startup, so a flip applies on the next restart (the settings card says
+	// so). When on, the browser gets `--remote-debugging-port=0` pinned to
+	// loopback only: Chromium then picks a free ephemeral port (random, so a
+	// fixed 9222 collision is impossible) and binds it to 127.0.0.1, which is
+	// not reachable from other machines. The resolved port is written to
+	// <REASONIX_HOME>/logs/desktop/cdp-endpoint.txt for tooling to read.
+	ExperimentalCDPDebugPort bool `toml:"experimental_cdp_debug_port"`
 }
 
 // DesktopQuestionSearchEnabled reports whether the topic-bar question-search

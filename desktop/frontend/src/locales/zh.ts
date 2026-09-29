@@ -2570,6 +2570,11 @@ export const zh: Record<DictKey, string> = {
 "settings.quickCommandsLabHint": "在输入框 + 菜单提供自定义指令片段（需手动开启本开关）。开启后此处可管理片段；关闭则所有入口隐藏，已存片段保留。",
 "settings.quickCommandsLab.on": "开",
 "settings.quickCommandsLab.off": "关",
+// 任务 342：WebView2 CDP 调试端口（实验室，调试组）。
+"settings.cdpDebugPort": "CDP 调试端口（实验）",
+"settings.cdpDebugPortHint": "重启后在内置 WebView2 浏览器上打开 Chrome DevTools Protocol 调试端口，供脚本化界面验证（connectOverCDP）驱动真实界面。仅绑定 127.0.0.1 回环地址并使用随机端口，其他机器无法访问。端口写入 logs/desktop/cdp-endpoint.txt。默认关闭：浏览器参数与网络行为与没有此功能的版本完全一致。",
+"settings.cdpDebugPort.on": "开",
+"settings.cdpDebugPort.off": "关",
 "settings.quickCommandsEdit": "编辑",
   "settings.quickCommandsTitlePlaceholder": "名称（菜单里显示）",
   "settings.quickCommandsTextPlaceholder": "插入的正文",

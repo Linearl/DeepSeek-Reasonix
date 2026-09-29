@@ -47,6 +47,9 @@ export interface SettingsView {
   experimentalCompletionSummary?: boolean;
   // Task 262: gates the whole quick-commands surface (ships off).
   experimentalQuickCommands?: boolean;
+  // Task 342: WebView2 CDP debug endpoint (loopback-only random port; ships
+  // off; the WebView2 browser args are read at startup — restart to apply).
+  experimentalCDPDebugPort?: boolean;
   // Task 231: managed-path pre-approval — master switch + four checkboxes
   // (all ship off; the bypass only arms under autopilot).
   experimentalPreapproveManagedPaths?: boolean;

@@ -3773,6 +3773,11 @@ export const zhTW: Record<DictKey, string> = {
 "settings.quickCommandsLabHint": "在輸入框 + 選單提供自訂指令片段（需手動開啟本開關）。開啟後此處可管理片段；關閉則所有入口隱藏，已存片段保留。",
 "settings.quickCommandsLab.on": "開",
 "settings.quickCommandsLab.off": "關",
+// 任務 342：WebView2 CDP 除錯連接埠（實驗室，除錯組）。
+"settings.cdpDebugPort": "CDP 除錯連接埠（實驗）",
+"settings.cdpDebugPortHint": "重啟後在內建 WebView2 瀏覽器上開啟 Chrome DevTools Protocol 除錯連接埠，供腳本化介面驗證（connectOverCDP）驅動真實介面。僅繫結 127.0.0.1 回環位址並使用隨機連接埠，其他機器無法存取。連接埠寫入 logs/desktop/cdp-endpoint.txt。預設關閉：瀏覽器參數與網路行為與沒有此功能的版本完全一致。",
+"settings.cdpDebugPort.on": "開",
+"settings.cdpDebugPort.off": "關",
 "settings.quickCommandsEdit": "編輯",
   "settings.quickCommandsTitlePlaceholder": "名稱（選單中顯示）",
   "settings.quickCommandsTextPlaceholder": "插入的內容",

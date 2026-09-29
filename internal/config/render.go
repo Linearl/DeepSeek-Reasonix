@@ -167,6 +167,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "experimental_subagent_tps = %v   # desktop: ~N tok/s readouts on sub-agent cards and the job table (task 265; boot snapshot)\n", c.DesktopSubagentTpsEnabled())
 		fmt.Fprintf(&b, "experimental_completion_summary = %v   # desktop: per-turn result notice on the transcript (task 265; boot snapshot)\n", c.DesktopCompletionSummaryEnabled())
 		fmt.Fprintf(&b, "experimental_quick_commands = %v   # desktop: gate the whole quick-commands surface (task 262; boot snapshot)\n", c.Desktop.ExperimentalQuickCommands)
+		// Task 342: same fixed-key-set rule — an unlisted key is dropped on
+		// every save and the lab switch would flip itself back off.
+		fmt.Fprintf(&b, "experimental_cdp_debug_port = %v   # desktop: WebView2 CDP debug endpoint (task 342; loopback-only random port; boot snapshot, restart to apply)\n", c.Desktop.ExperimentalCDPDebugPort)
 		fmt.Fprintf(&b, "experimental_path_rules = %v   # desktop: structured path-scope evaluation (docs/PATH_SCOPE_RULES.md, task 134)\n", c.Desktop.ExperimentalPathRules)
 		fmt.Fprintf(&b, "experimental_local_server = %v   # desktop: expose Settings → Local server (task 130)\n", c.Desktop.ExperimentalLocalServer)
 		fmt.Fprintf(&b, "max_cached_tabs = %d   # desktop: resident tab-state limit for the LRU prune (0 = unlimited, task 161)\n", c.Desktop.MaxCachedTabs)
