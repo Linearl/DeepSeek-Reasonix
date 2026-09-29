@@ -109,3 +109,110 @@ func TestParseFileNameFromFilename(t *testing.T) {
 		t.Errorf("filename-derived style wrong: %+v ok=%v", st, ok)
 	}
 }
+
+// Task 385a: both keep-coding-instructions states must load — absent means
+// append (the safe default), false means replace. This is the acceptance case
+// for custom .md files with and without the flag.
+func TestListReportBothKeepCodingStatesLoad(t *testing.T) {
+	dir := t.TempDir()
+	withFlag := "---\ndescription: pure persona\nkeep-coding-instructions: false\n---\nAnswer as a pirate.\n"
+	if err := os.WriteFile(filepath.Join(dir, "pirate.md"), []byte(withFlag), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	withoutFlag := "---\ndescription: keeps the coding prompt\n---\nBe brief.\n"
+	if err := os.WriteFile(filepath.Join(dir, "brief.md"), []byte(withoutFlag), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	styles, issues := ListReport([]string{dir})
+	if len(issues) != 0 {
+		t.Fatalf("two valid files must load without issues, got %+v", issues)
+	}
+	byName := map[string]OutputStyle{}
+	for _, st := range styles {
+		byName[st.Name] = st
+	}
+	pirate, ok := byName["pirate"]
+	if !ok || pirate.KeepCoding {
+		t.Errorf("keep-coding-instructions: false must load with KeepCoding=false: %+v ok=%v", pirate, ok)
+	}
+	brief, ok := byName["brief"]
+	if !ok || !brief.KeepCoding {
+		t.Errorf("an absent keep-coding-instructions must default to KeepCoding=true: %+v ok=%v", brief, ok)
+	}
+	if pirate.Builtin || brief.Builtin {
+		t.Error("custom files must be marked non-builtin")
+	}
+}
+
+// Task 385a acceptance: a broken frontmatter is a visible error, not a silent
+// no-op. List still skips such files (the boot path must not fail), and
+// ListReport reports each one with its path and reason.
+func TestListReportSurfacesUnloadableStyleFiles(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("good.md", "---\ndescription: fine\n---\nLoad me.\n")
+	write("broken-yaml.md", "---\ndescription: \"unclosed quote\n---\nBody.\n")
+	write("unclosed-fence.md", "---\nname: ghost\ndescription: never closed\nBody that swallows the fence.\n")
+	write("empty-body.md", "---\nname: hollow\n---\n\n")
+
+	styles, issues := ListReport([]string{dir})
+	byName := map[string]OutputStyle{}
+	for _, st := range styles {
+		byName[st.Name] = st
+	}
+	if _, ok := byName["good"]; !ok {
+		t.Fatalf("the valid file must still load: %+v", styles)
+	}
+	for _, name := range []string{"broken-yaml", "unclosed-fence", "hollow"} {
+		if _, ok := byName[name]; ok {
+			t.Errorf("unloadable file %q must not appear as a style", name)
+		}
+	}
+
+	if len(issues) != 3 {
+		t.Fatalf("want 3 issues, got %d: %+v", len(issues), issues)
+	}
+	reasonByName := map[string]string{}
+	for _, is := range issues {
+		if is.Path == "" || is.Reason == "" {
+			t.Errorf("issue must carry path and reason: %+v", is)
+		}
+		reasonByName[is.Name] = is.Reason
+	}
+	// Issue.Name is the filename stem — what the file would have been called.
+	for name, fragment := range map[string]string{
+		"broken-yaml":    "invalid frontmatter",
+		"unclosed-fence": "never closed",
+		"empty-body":     "empty body",
+	} {
+		got, ok := reasonByName[name]
+		if !ok {
+			t.Errorf("missing issue for %q: %+v", name, reasonByName)
+			continue
+		}
+		if !strings.Contains(got, fragment) {
+			t.Errorf("issue for %q must say %q, got %q", name, fragment, got)
+		}
+	}
+
+	// List keeps its silent-skip contract: the built-ins plus the one valid
+	// file, and none of the broken ones.
+	names := map[string]bool{}
+	for _, st := range List([]string{dir}) {
+		names[st.Name] = true
+	}
+	if !names["good"] {
+		t.Errorf("the valid file must load")
+	}
+	for _, name := range []string{"broken-yaml", "unclosed-fence", "empty-body", "hollow"} {
+		if names[name] {
+			t.Errorf("List must skip unloadable file %q", name)
+		}
+	}
+}

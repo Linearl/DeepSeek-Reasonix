@@ -173,6 +173,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// Task 342: same fixed-key-set rule — an unlisted key is dropped on
 		// every save and the lab switch would flip itself back off.
 		fmt.Fprintf(&b, "experimental_cdp_debug_port = %v   # desktop: WebView2 CDP debug endpoint (task 342; loopback-only random port; boot snapshot, restart to apply)\n", c.Desktop.ExperimentalCDPDebugPort)
+		// Task 385a: fixed-key-set rule — an unlisted key would be dropped on
+		// every save and the lab switch would flip itself back off.
+		fmt.Fprintf(&b, "experimental_output_style_ui = %v   # desktop: gate the lab 回答风格 (output style) section (task 385a; UI surface only)\n", c.Desktop.ExperimentalOutputStyleUI)
 		fmt.Fprintf(&b, "experimental_path_rules = %v   # desktop: structured path-scope evaluation (docs/PATH_SCOPE_RULES.md, task 134)\n", c.Desktop.ExperimentalPathRules)
 		fmt.Fprintf(&b, "experimental_local_server = %v   # desktop: expose Settings → Local server (task 130)\n", c.Desktop.ExperimentalLocalServer)
 		fmt.Fprintf(&b, "max_cached_tabs = %d   # desktop: resident tab-state limit for the LRU prune (0 = unlimited, task 161)\n", c.Desktop.MaxCachedTabs)

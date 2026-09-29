@@ -748,6 +748,28 @@ func (c *Config) SetExperimentalCDPDebugPort(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalOutputStyleUI toggles the lab's 「回答风格」 section (task
+// 385a). It ships off (new-capability rule); off hides the selector and every
+// entry point, and changes nothing about how [agent] output_style is read.
+func (c *Config) SetExperimentalOutputStyleUI(enabled bool) error {
+	c.Desktop.ExperimentalOutputStyleUI = enabled
+	return nil
+}
+
+// SetOutputStyle records the chosen output style in [agent] output_style (task
+// 385a). Empty and "default" both mean the unmodified system prompt, so
+// "default" is normalized to the empty string — one canonical on-disk value
+// for "no style". Existence of the named style is the caller's check (the
+// desktop App validates against outputstyle.List before calling).
+func (c *Config) SetOutputStyle(name string) error {
+	name = strings.TrimSpace(name)
+	if strings.EqualFold(name, "default") {
+		name = ""
+	}
+	c.Agent.OutputStyle = name
+	return nil
+}
+
 // SetExperimentalParallelFullAccess toggles trusted write access to managed
 // worktree roots (task 127). Off by default so production confinement is
 // unchanged; on only widens confine to those roots, never globally.

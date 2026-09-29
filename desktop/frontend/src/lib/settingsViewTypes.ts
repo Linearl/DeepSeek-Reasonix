@@ -52,6 +52,10 @@ export interface SettingsView {
   // Task 342: WebView2 CDP debug endpoint (loopback-only random port; ships
   // off; the WebView2 browser args are read at startup — restart to apply).
   experimentalCDPDebugPort?: boolean;
+  // Task 385a: lab 回答风格 gate (ships off) + the persisted [agent]
+  // output_style the selector reads back ("" = default, no style).
+  experimentalOutputStyleUI?: boolean;
+  outputStyle?: string;
   // Task 231: managed-path pre-approval — master switch + four checkboxes
   // (all ship off; the bypass only arms under autopilot).
   experimentalPreapproveManagedPaths?: boolean;
@@ -187,4 +191,28 @@ export interface QuickCommandEntry {
   title: string;
   text: string;
   enabled?: boolean; // absent means enabled (older configs)
+}
+
+// Task 385a: the lab 回答风格 selector payload — one round trip from
+// App.ListOutputStyles(). Keys mirror the Go json tags of output_style_app.go.
+export interface OutputStyleOption {
+  name: string;
+  description: string;
+  builtin: boolean;
+  keepCoding: boolean;
+  path: string; // "" for built-ins
+  active: boolean; // matches the persisted [agent] output_style
+}
+
+export interface OutputStyleIssue {
+  path: string;
+  name: string; // filename stem
+  reason: string; // why the file did not load (surfaced, never silent)
+}
+
+export interface OutputStyleListView {
+  active: string; // "" = default, no style
+  options: OutputStyleOption[];
+  issues: OutputStyleIssue[];
+  dirs: string[]; // search path the list was built from
 }

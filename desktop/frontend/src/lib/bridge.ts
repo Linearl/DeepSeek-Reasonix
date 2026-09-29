@@ -5,7 +5,7 @@ import { mockProviderTemplate, mockPreset, mockBundlePreset, mockKimiAPIModels, 
 import type * as GeneratedApp from "../../wailsjs/go/main/App";
 import type { InvocationRequest } from "./invocationDisplay";
 import type { FollowupBindings } from "./pendingFollowup";
-import type { QuickCommandEntry } from "./settingsViewTypes";
+import type { OutputStyleListView, QuickCommandEntry } from "./settingsViewTypes";
 import { addBreadcrumb } from "./breadcrumbs";
 import { maybeShare } from "./queryCoalesce";
 import { makeMockSessionCatalogBindings } from "./sessionCatalogBridge";
@@ -878,6 +878,12 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 342: WebView2 CDP debug endpoint switch (loopback-only random port;
   // ships off; the browser args are read at startup — restart to apply).
   SetExperimentalCDPDebugPort(enabled: boolean): Promise<void>;
+  // Task 385a: lab 回答风格 — the UI gate, the persisted selection (validates
+  // against outputstyle.List; unknown names reject), and the selector payload
+  // (loadable styles + files that failed to load, surfaced never silent).
+  SetExperimentalOutputStyleUI(enabled: boolean): Promise<void>;
+  SetOutputStyle(name: string): Promise<void>;
+  ListOutputStyles(): Promise<OutputStyleListView>;
   // Task 265: delegation-tier entry points (experimental; boot snapshot).
   SetExperimentalSubagentPolicy(enabled: boolean): Promise<void>;
   // Task 262: gates the whole quick-commands surface (experimental; boot snapshot).
@@ -5245,6 +5251,21 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSubagentTps() {},
     async SetExperimentalCompletionSummary() {},
     async SetExperimentalCDPDebugPort() {},
+    async SetExperimentalOutputStyleUI() {},
+    async SetOutputStyle() {},
+    // Honest built-in-only payload: the dev shell discovers nothing on disk.
+    async ListOutputStyles() {
+      return {
+        active: "",
+        options: [
+          { name: "concise", description: "Terse replies: minimal prose, code and bullets only", builtin: true, keepCoding: true, path: "", active: false },
+          { name: "explanatory", description: "Explain non-obvious implementation choices as you go", builtin: true, keepCoding: true, path: "", active: false },
+          { name: "learning", description: "Collaborate and leave TODO(human) stubs for the user to complete", builtin: true, keepCoding: true, path: "", active: false },
+        ],
+        issues: [],
+        dirs: [],
+      };
+    },
     async SetExperimentalSubagentPolicy() {},
     async SetExperimentalQuickCommands() {},
     async SetSessionStorage() {},

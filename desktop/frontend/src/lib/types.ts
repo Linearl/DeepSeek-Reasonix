@@ -2348,6 +2348,10 @@ export interface DesktopStartupSettingsView {
   experimentalQuickCommands?: boolean;
   /** Task 342: WebView2 CDP debug endpoint (loopback-only random port); ships off; restart to apply. */
   experimentalCDPDebugPort?: boolean;
+  /** Task 385a: lab 回答风格 gate; ships off; UI surface only. */
+  experimentalOutputStyleUI?: boolean;
+  /** Task 385a: persisted [agent] output_style ("" = default, no style). */
+  outputStyle?: string;
   /** Task 231: managed-path pre-approval — master switch + four checkboxes; all ship off; boot snapshot. */
   experimentalPreapproveManagedPaths?: boolean;
   preapproveSkills?: boolean;
