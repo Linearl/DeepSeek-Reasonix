@@ -140,6 +140,7 @@ func replaySessionDAGFromCheckpoint(ctx context.Context, path string, limits ses
 	if err := st.replayFrom(ctx, st.lastGoodEnd, limits); err != nil {
 		return nil, false
 	}
+	slog.Info("agent: dag checkpoint hit", "path", path, "offset", st.lastGoodEnd)
 	return st, true
 }
 

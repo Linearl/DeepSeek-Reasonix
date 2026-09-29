@@ -1,7 +1,11 @@
 package agent
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -102,5 +106,76 @@ func TestDAGCheckpointEquivalence(t *testing.T) {
 	got3, _ := st3.materialize(st3.selectedHead())
 	if len(dagContents(got3)) != 6 {
 		t.Fatalf("gate-off replay diverged: %v", dagContents(got3))
+	}
+}
+
+// TestDAGCheckpointLoadSessionEntry is the entry-level proof (task 308-O2):
+// through the real loadSessionTranscript entry — the one save, recovery and
+// export all share — a gated cold read hits the checkpoint (the hit log line
+// fires) and produces the same transcript the full replay produces, with and
+// without a post-checkpoint append.
+func TestDAGCheckpointLoadSessionEntry(t *testing.T) {
+	dir := t.TempDir()
+	sessionPath := dir + "/s2"
+	base := time.UnixMilli(1790700000000)
+
+	sys := dagMsg(provider.RoleSystem, "sys", "S0")
+	q1 := dagMsg(provider.RoleUser, "one", "U1")
+	a1 := dagMsg(provider.RoleAssistant, "two", "A1")
+	dagAppend(t, sessionPath,
+		sessionDAGEntry{Type: sessionDAGTypeLog, Generation: 1, At: base},
+		dagMessageEntry(t, SessionMainHead, "", "t1", sys, base),
+		dagMessageEntry(t, SessionMainHead, "S0", "t1", q1, base.Add(time.Second)),
+		dagMessageEntry(t, SessionMainHead, "U1", "t1", a1, base.Add(2*time.Second)),
+		sessionDAGEntry{Type: sessionDAGTypeCompaction, Head: SessionMainHead, CoveredLeaf: "A1", CoveredCount: 3, PrefixHash: "ph-e", At: base.Add(3 * time.Second)},
+	)
+
+	var logBuf bytes.Buffer
+	prevLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prevLogger) })
+
+	// Seed: one full replay under the gate self-seeds the checkpoint (no hit
+	// yet — the checkpoint does not exist before this load).
+	t.Setenv("REASONIX_DAG_FOLD_CHECKPOINT", "1")
+	res1, err := loadSessionTranscript(context.Background(), sessionPath, defaultSessionReplayLimits, newSessionTranscriptHasher())
+	if err != nil {
+		t.Fatalf("seed load: %v", err)
+	}
+	if strings.Contains(logBuf.String(), "agent: dag checkpoint hit") {
+		t.Fatal("seed load hit a checkpoint that could not exist yet")
+	}
+	if _, err := os.Stat(store.SessionEventLog(sessionPath) + dagCheckpointSuffix); err != nil {
+		t.Fatalf("seed load did not persist a checkpoint: %v", err)
+	}
+	logBuf.Reset()
+
+	// Entry-level cold read: same messages, and the hit line fires again.
+	res2, err := loadSessionTranscript(context.Background(), sessionPath, defaultSessionReplayLimits, newSessionTranscriptHasher())
+	if err != nil {
+		t.Fatalf("cold load: %v", err)
+	}
+	if !strings.Contains(logBuf.String(), "msg=\"agent: dag checkpoint hit\"") {
+		t.Fatalf("cold load did not hit the checkpoint, log:\n%s", logBuf.String())
+	}
+	if a, b := dagContents(res1.msgs), dagContents(res2.msgs); len(a) != len(b) {
+		t.Fatalf("entry-level transcript mismatch: %v vs %v", a, b)
+	}
+	if !res2.dag {
+		t.Fatal("entry-level load did not take the DAG path")
+	}
+
+	// Gate off: no hit line, same transcript — legacy behaviour.
+	t.Setenv("REASONIX_DAG_FOLD_CHECKPOINT", "")
+	logBuf.Reset()
+	res3, err := loadSessionTranscript(context.Background(), sessionPath, defaultSessionReplayLimits, newSessionTranscriptHasher())
+	if err != nil {
+		t.Fatalf("gate-off load: %v", err)
+	}
+	if strings.Contains(logBuf.String(), "agent: dag checkpoint hit") {
+		t.Fatal("gate-off load still hit the checkpoint")
+	}
+	if a, b := dagContents(res2.msgs), dagContents(res3.msgs); len(a) != len(b) {
+		t.Fatalf("gate-off transcript diverged: %v vs %v", a, b)
 	}
 }
