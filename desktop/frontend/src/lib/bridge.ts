@@ -429,7 +429,9 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   // Optimistic-concurrency write mode (#9213): when enabled, path-bound file
   // writers skip the whole-path serialization wait and use write-if-unchanged
   // stale-content detection instead.
-  SetOptimisticWrite(enabled: boolean): Promise<void>;
+  /** Task 374fix: returns a restart-effect warning when the live rebuild is
+   * deferred — the save itself has landed and must not be bounced. */
+  SetOptimisticWrite(enabled: boolean): Promise<string>;
   // Per-session sub-agent delegation tier for a tab (light|balanced|aggressive).
   SetSubagentPolicyForTab(tabID: string, policy: string): Promise<void>;
   TrashTopicForce(topicID: string): Promise<void>;
@@ -3013,7 +3015,7 @@ function makeMockApp(): AppBindings {
     async CloseMainWindow() {
       console.info("mock CloseMainWindow");
     },
-    async SetOptimisticWrite(_enabled: boolean) {
+    async SetOptimisticWrite(_enabled: boolean) { return "";
       // Mock hook kept for browser-preview API compatibility (#9213).
     },
     async QueryAuthorizedWriteDirs() {

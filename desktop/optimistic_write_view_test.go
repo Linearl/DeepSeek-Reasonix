@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"path/filepath"
 	"strings"
@@ -32,7 +33,7 @@ func newIsolatedSettingsApp(t *testing.T) *App {
 func TestOptimisticWriteRoundTripThroughSettingsView(t *testing.T) {
 	a := newIsolatedSettingsApp(t)
 
-	if err := a.SetOptimisticWrite(true); err != nil {
+	if _, err := a.SetOptimisticWrite(true); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
 	view := a.Settings()
@@ -54,7 +55,7 @@ func TestOptimisticWriteRoundTripThroughSettingsView(t *testing.T) {
 		t.Fatal("the serialized sandbox view must carry optimisticWrite=true for the checkbox")
 	}
 
-	if err := a.SetOptimisticWrite(false); err != nil {
+	if _, err := a.SetOptimisticWrite(false); err != nil {
 		t.Fatalf("disable: %v", err)
 	}
 	view = a.Settings()
@@ -74,5 +75,25 @@ func TestSandboxViewAlwaysSerializesOptimisticWrite(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), `"optimisticWrite":true`) {
 		t.Fatalf("SandboxView serialization must include optimisticWrite, got: %s", raw)
+	}
+}
+
+// Task 374fix (plan B acceptance): a machine with no active tab (fresh
+// install, few sessions) must not turn the successful save into a bounced
+// checkbox — the flag takes effect on restart, so the save lands, the
+// rebuild failure degrades to a warning, and the view reads back true.
+func TestOptimisticWriteSurvivesMissingActiveTab(t *testing.T) {
+	a := newIsolatedSettingsApp(t)
+	a.ctx = context.Background() // frontend attached, but no tabs at all
+
+	warning, err := a.SetOptimisticWrite(true)
+	if err != nil {
+		t.Fatalf("save must not fail on a missing active tab: %v", err)
+	}
+	if warning == "" || !strings.Contains(warning, "takes effect after a restart") {
+		t.Fatalf("the degraded path must return the restart-effect warning, got %q", warning)
+	}
+	if view := a.Settings(); !view.Sandbox.OptimisticWrite {
+		t.Fatal("the saved flag must read back true despite the degraded rebuild")
 	}
 }
