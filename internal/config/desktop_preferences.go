@@ -135,6 +135,9 @@ type DesktopConfig struct {
 	// ExperimentalModelCapabilityFilter is the settings-view mirror for the
 	// [agent] runtime flag of task 244 B9.
 	ExperimentalModelCapabilityFilter bool `toml:"experimental_model_capability_filter"`
+	// ExperimentalRuntimeReuse is the settings-view mirror for the [agent]
+	// runtime flag of task 363A (runtime assembly reuse pool).
+	ExperimentalRuntimeReuse bool `toml:"experimental_runtime_reuse"`
 	// CollabInboxMerge is the settings-view mirror for Agent.CollabInboxMerge
 	// (task 221): off | same_sender | all.
 	CollabInboxMerge string `toml:"collab_inbox_merge"`

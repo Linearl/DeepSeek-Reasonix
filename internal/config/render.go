@@ -187,6 +187,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 
 		fmt.Fprintf(&b, "experimental_recovery_orphan_sweep = %v   # desktop: settings-view mirror of [agent] experimental_recovery_orphan_sweep (task 244 B4)\n", c.Desktop.ExperimentalRecoveryOrphanSweep)
 		fmt.Fprintf(&b, "experimental_model_capability_filter = %v   # desktop: settings-view mirror of [agent] experimental_model_capability_filter (task 244 B9)\n", c.Desktop.ExperimentalModelCapabilityFilter)
+		fmt.Fprintf(&b, "experimental_runtime_reuse = %v   # desktop: settings-view mirror of [agent] experimental_runtime_reuse (task 363A)\n", c.Desktop.ExperimentalRuntimeReuse)
 		fmt.Fprintf(&b, "perf_monitor_interval_seconds = %d   # desktop: settings-view mirror of [agent] perf_monitor_interval_seconds (task 184; 0 = 5s)\n", c.Desktop.PerfMonitorIntervalSeconds)
 		fmt.Fprintf(&b, "session_collab_hop_limit = %d   # desktop: settings-view mirror of [agent] session_collab_hop_limit (task 204)\n", c.Desktop.SessionCollabHopLimit)
 		fmt.Fprintf(&b, "collab_inbox_merge = %q   # desktop: settings-view mirror of [agent] collab_inbox_merge (task 221; off | same_sender | all)\n", NormalizeCollabInboxMerge(c.Desktop.CollabInboxMerge))
@@ -407,6 +408,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 
 	fmt.Fprintf(&b, "experimental_recovery_orphan_sweep = %v   # task 244 B4: settle recovery-store operations past the covered durable sequence at open\n", c.Agent.ExperimentalRecoveryOrphanSweep)
 	fmt.Fprintf(&b, "experimental_model_capability_filter = %v   # task 244 B9: reject a per-task model that lacks a capability the task needs (explained rejection instead of silent degradation)\n", c.Agent.ExperimentalModelCapabilityFilter)
+	// Task 363A: runtime assembly reuse pool. Unconditional render —
+	// omit-on-default would let a hand-added line vanish on the next save.
+	fmt.Fprintf(&b, "experimental_runtime_reuse = %v   # task 363A: reuse the runtime assembly (prompt/skills/commands/hooks/registry) across tabs with the same root+model+effort instead of full rebuild\n", c.Agent.ExperimentalRuntimeReuse)
 	fmt.Fprintf(&b, "perf_monitor_interval_seconds = %d   # task 184: sampler interval in seconds (default 5, clamped 1..300)\n", c.Agent.PerfMonitorIntervalSeconds)
 	fmt.Fprintf(&b, "session_collab_hop_limit = %d   # task 204: cross-session chain ceiling (default 5, clamped 3..1000; 0 = default)\n", c.Agent.SessionCollabHopLimit)
 	// Task 309: mailbox defaults for talk_to_session. Unconditional render —

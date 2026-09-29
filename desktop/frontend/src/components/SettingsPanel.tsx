@@ -1801,6 +1801,8 @@ type ExperimentFeatureId =
   | "recoveryOrphanSweep"
   // Task 244 B9 (batch 4, final).
   | "modelCapabilityFilter"
+  // Task 363A: runtime assembly reuse pool.
+  | "runtimeReuse"
   | "messageMerge"
   | "autopilot"
   // Task 265 lab intake (9 fork features) + task 262 quick commands.
@@ -1935,6 +1937,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "orphanLeaseReclaim", group: "misc", label: t("settings.orphanLeaseReclaim"), on: Boolean(s.experimentalOrphanLeaseReclaim) },
     { id: "recoveryOrphanSweep", group: "misc", label: t("settings.recoveryOrphanSweep"), on: Boolean(s.experimentalRecoveryOrphanSweep) },
     { id: "modelCapabilityFilter", group: "misc", label: t("settings.modelCapabilityFilter"), on: Boolean(s.experimentalModelCapabilityFilter) },
+    { id: "runtimeReuse", group: "misc", label: t("settings.runtimeReuse"), on: Boolean(s.experimentalRuntimeReuse) },
     { id: "messageMerge", group: "efficiency", label: t("settings.messageMerge"), on: (s.collabInboxMerge || "off") !== "off" || Boolean(s.collabGuidanceMerge) },
     { id: "localServer", group: "efficiency", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
     { id: "traceAsState", group: "efficiency", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
@@ -2803,6 +2806,26 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                       })}
                     >
                       {t(on ? "settings.modelCapabilityFilter.on" : "settings.modelCapabilityFilter.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+            </>
+          )}
+          {selected === "runtimeReuse" && (
+            <>
+              <SettingsField label={t("settings.runtimeReuse")} hint={t("settings.runtimeReuseHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalRuntimeReuse) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalRuntimeReuse(on);
+                      })}
+                    >
+                      {t(on ? "settings.runtimeReuse.on" : "settings.runtimeReuse.off")}
                     </button>
                   ))}
                 </SettingsOptions>

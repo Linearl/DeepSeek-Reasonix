@@ -129,6 +129,8 @@ export interface SettingsView {
   experimentalRecoveryOrphanSweep?: boolean;
   // Task 244 B9: per-task model capability filter.
   experimentalModelCapabilityFilter?: boolean;
+  // Task 363A: runtime assembly reuse pool (same root+model+effort tabs).
+  experimentalRuntimeReuse?: boolean;
   visionModel: string;
   webSearchModel?: string;
   webSearchModels?: string[];

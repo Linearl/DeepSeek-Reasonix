@@ -507,17 +507,27 @@ func (c *Client) listTools(ctx context.Context) ([]tool.Tool, error) {
 	if tools, ok := c.cachedTools(); ok {
 		return tools, nil
 	}
+	// Task 363B: queueing telemetry, observation only. wait_ms is time spent
+	// blocked on the per-client fetch mutex (the concurrent-boot queueing
+	// evidence); fetch_ms is the tools/list round trip including the
+	// empty-settle window. No control flow changes.
+	waitStart := time.Now()
 	c.toolListFetchMu.Lock()
+	waitMs := time.Since(waitStart).Milliseconds()
 	defer c.toolListFetchMu.Unlock()
 	if tools, ok := c.cachedTools(); ok {
+		slog.Info("plugin: tools fetch", "name", c.name, "cached", true, "wait_ms", waitMs, "fetch_ms", int64(0))
 		return tools, nil
 	}
+	fetchStart := time.Now()
 	targetRevision := c.refresh.noticeRevision.Load()
 	candidate, err := c.fetchToolCatalog(ctx, true)
 	if err != nil {
 		return nil, err
 	}
 	tools, _, err := c.publishToolCatalog(candidate, targetRevision)
+	slog.Info("plugin: tools fetch", "name", c.name, "cached", false,
+		"wait_ms", waitMs, "fetch_ms", time.Since(fetchStart).Milliseconds())
 	return tools, err
 }
 

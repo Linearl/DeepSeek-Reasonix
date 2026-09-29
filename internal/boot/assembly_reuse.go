@@ -48,6 +48,15 @@ func shouldReuseSnapshot(plan *extension.RuntimePlan) bool {
 	return plan.IsNoOp() || !plan.MayChangePrefix()
 }
 
+// FullReusePlan returns the plan a cold cross-tab build presents when it wants
+// full assembly reuse (task 363A): SubgraphNone — nothing extension-side
+// changed between tabs, so cached prompt/skill/command/hook discovery inputs
+// stay valid. Without a plan the reuse guards refuse (they are designed for
+// incremental rebuilds that know their previous generation).
+func FullReusePlan() *extension.RuntimePlan {
+	return &extension.RuntimePlan{Kind: extension.SubgraphNone}
+}
+
 // shouldSkipPromptStrategy is true when system_prompt.build must not re-run.
 func shouldSkipPromptStrategy(plan *extension.RuntimePlan) bool {
 	return shouldReuseSnapshot(plan)

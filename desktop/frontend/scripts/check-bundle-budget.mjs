@@ -469,7 +469,10 @@ for (const path of localeChunks) {
   // Task 309 (mailbox defaults panel): zh measures 83.1 over the 83.0 line
   // (7 new locale keys x 3 dialects) — one-shot +0.5 to 83.5 per the
   // 2026-09-20 ratchet rule.
-  const budget = name.startsWith("zh-TW-") ? 84.5 * 1024 : 83.5 * 1024;
+  // Task 363A (runtime reuse lab page): zh-TW measures dead-even 84.5/84.5
+  // (4 new locale keys x 3 dialects) — one-shot +0.5 to 85.0; zh holds at
+  // 83.5 (measured under the line this batch).
+  const budget = name.startsWith("zh-TW-") ? 85.0 * 1024 : 83.5 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
