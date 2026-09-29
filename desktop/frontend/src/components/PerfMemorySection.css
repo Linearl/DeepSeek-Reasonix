@@ -19,8 +19,12 @@
 .perf-memory-section__chart-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: stretch; }
 .perf-memory-section__yaxis { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; min-width: 56px; color: var(--fg-dim); font-size: 11px; line-height: 1; font-variant-numeric: tabular-nums; padding: 2px 0; }
 .perf-memory-section__grid { stroke: var(--border-soft); stroke-dasharray: 3 4; opacity: 0.7; }
-/* The pie's geometry already stays inside viewBox 0 0 120 120 (pieArc r=50
-   around 60,60); allow any stroke/edge pixels to paint instead of being
-   clipped by the SVG box, and keep the row from forcing an X overflow. */
-.perf-memory-section__pie { overflow: visible; }
+/* Task 355 kept the pie's explicit size + xMidYMid meet (that is what fixed
+   the left-edge clip: geometry r=50 around 60,60 stays in 10..110 of the
+   120 box, stroke 0.5 → 9.5..110.5, all inside). Task 361: overflow:visible
+   here was over-insurance — it also painted anything the renderer produced
+   OUTSIDE the circle (the user's "sectors bleeding past the rim" capture).
+   Clip at the SVG box again (still 9.5 units of headroom, nothing real is
+   cut) and keep the row itself unclipped. */
+.perf-memory-section__pie { overflow: hidden; }
 .perf-memory-section__pie-row { overflow: visible; }
