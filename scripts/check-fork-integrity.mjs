@@ -195,6 +195,7 @@ const CHECKS = [
   { feature: "任务367 C1 hop 单跳恒放行钉死（对照表入码）", file: "internal/agent/cascade_hop.go", patterns: ["single-hop delegation is always allowed", "depth <= 1"] },
   { feature: "任务367 C2 父侧决策留痕 slog", file: "internal/control/controller.go", patterns: ["cascade %s by parent %s"] },
   { feature: "任务366 153 合并下条可达性：merge-all 交叉提示（S1）+ 隐藏原因位日志（S2）", file: "desktop/frontend/src/components/ComposerGuidanceShelf.tsx", patterns: ["guidanceMergeNextUnavailableAll", "guidance-merge-next] hidden", "mergeNextActive = onMergeNext && index < items.length - 1"] },
+  { feature: "任务374fix 乐观写读回链测试钉死（Set→Settings→JSON+序列化+wiring）", file: "desktop/optimistic_write_view_test.go", patterns: ["TestOptimisticWriteRoundTripThroughSettingsView", "TestSandboxViewAlwaysSerializesOptimisticWrite"] },
 ];
 
 let failed = 0;

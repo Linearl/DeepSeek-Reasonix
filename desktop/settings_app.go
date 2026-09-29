@@ -3472,11 +3472,30 @@ func (a *App) SetSandbox(bash string, network bool, workspaceRoot string, allowW
 // SetOptimisticWrite toggles the optimistic-concurrency write mode (#9213).
 // When enabled, path-bound file writers skip the whole-path serialization wait
 // and rely on write-if-unchanged ("expected") stale-content detection instead.
-func (a *App) SetOptimisticWrite(enabled bool) error {
-	return a.applyConfigChange(func(c *config.Config) error {
+//
+// Task 374fix: the flag takes effect after a restart (its own hint says so),
+// so persistence must not be held hostage by the active-tab rebuild — a fresh
+// machine with no sessions ("no active tab") or a busy runtime used to turn a
+// successful save into a bounced checkbox. The value is saved through the
+// light path first; the live rebuild is then attempted once, and any failure
+// degrades to a warning string (returned to the frontend, which shows it
+// instead of bouncing the checkbox) — the save has already landed.
+func (a *App) SetOptimisticWrite(enabled bool) (string, error) {
+	if err := a.applyConfigOnly(func(c *config.Config) error {
 		c.Sandbox.OptimisticWrite = enabled
 		return nil
-	})
+	}); err != nil {
+		return "", err
+	}
+	if err := a.rebuildSetting("optimistic parallel writes"); err != nil {
+		if warning, ok := a.deferredRebuildWarning("optimistic parallel writes", err); ok {
+			return warning, nil
+		}
+		slog.Warn("desktop: optimistic-write rebuild deferred; the saved change takes effect after a restart",
+			"enabled", enabled, "err", err)
+		return "Optimistic parallel writes saved — the change takes effect after a restart.", nil
+	}
+	return "", nil
 }
 
 // SetNetwork updates ordinary outbound proxy settings.
