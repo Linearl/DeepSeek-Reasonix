@@ -17,8 +17,12 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
+
+	"reasonix/internal/agent"
+	"reasonix/internal/config"
 
 	"reasonix/internal/event"
 )
@@ -90,6 +94,42 @@ func (c *Controller) reviewUnattendedApproval(ctx context.Context, tool, subject
 	if askRiskOfApproval(tool, subject, reason, args) == askRiskNeedsHuman {
 		c.emitAutopilotApprovalNotice(tool, subject, "refused: destructive, outward-facing, or credential-touching")
 		return approvalReply{allow: false}, true
+	}
+	// Task 365 C6: this timeout fires for child sessions too — their
+	// inbox-started turns run the same unattended review, and before this
+	// fix a child with no usable cascade grant just refused here while its
+	// real decision-maker (the task source) was reachable. Before the tier
+	// machinery refuses, re-evaluate the cascade once: the create-path grant
+	// (task 365 C5) or a mail grant may have landed while the request was
+	// waiting. Freshness, source liveness and the hop ceiling are all
+	// enforced inside cascadeDelegateFor / CascadeHopExhausted. High-risk
+	// asks never reach this point (askRiskNeedsHuman returned above), so
+	// they stay human-only. A miss falls through to the original tier logic
+	// unchanged — the fail-closed direction is preserved.
+	if c.onCascadeDelegate != nil && config.CascadeApprovalLive() && !agent.CascadeHopExhausted(ctx) {
+		if delegate, source, ok := c.onCascadeDelegate(c.SessionPath()); ok && delegate != nil {
+			question := event.AskQuestion{
+				ID:     "approval-" + tool,
+				Header: tool,
+				Prompt: approvalCascadePrompt(subject, reason),
+				Options: []event.AskOption{
+					{Label: "Allow", Description: "grant this one request"},
+					{Label: "Deny", Description: "refuse and let the model find another way"},
+				},
+			}
+			answers, askErr := delegate.Ask(agent.WithCascadeHop(ctx), []event.AskQuestion{question})
+			if askErr == nil && len(answers) == 1 {
+				selection := strings.Join(answers[0].Selected, " ")
+				allow := strings.Contains(selection, "Allow") || strings.Contains(selection, "decide for yourself")
+				c.emitAutopilotApprovalNotice(tool, subject, fmt.Sprintf("cascaded to task source %s: allow=%v (task 365 C6)", source, allow))
+				return approvalReply{allow: allow}, true
+			}
+			missText := "no answer"
+			if askErr != nil {
+				missText = askErr.Error()
+			}
+			c.emitAutopilotApprovalNotice(tool, subject, "cascade re-evaluation missed ("+missText+"); falling back to the unattended tiers (task 365 C6)")
+		}
 	}
 	tier := c.approvalTier
 	if tier == "" {

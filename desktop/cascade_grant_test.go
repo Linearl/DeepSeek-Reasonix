@@ -1,6 +1,9 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -43,4 +46,29 @@ func TestCascadeGrantRegistryAndExpiry(t *testing.T) {
 			t.Fatalf("the grant must record the source: %+v", g)
 		}
 	})
+}
+
+// Task 365 C5: the first message of create_collab_session rides the steer
+// path, which never runs the mail pump's onDelivered hook — the grant that
+// binds the child to its task source has to be registered at the delivery
+// site itself. This is a wiring assertion: the register call must sit inside
+// the successful Deliver branch of queueCollabFirstMessage, with the same
+// target/source orientation as onDelivered (recipient, sender).
+func TestFirstMessageDeliveryBindsCascadeGrant(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("session_collab.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	code := string(src)
+	queueIdx := strings.Index(code, "func (a *App) queueCollabFirstMessage")
+	if queueIdx < 0 {
+		t.Fatal("queueCollabFirstMessage not found")
+	}
+	body := code[queueIdx:]
+	if !strings.Contains(body, "registerCascadeGrant(item.ContactID, from)") {
+		t.Fatal("queueCollabFirstMessage must bind the cascade grant on successful delivery (task 365 C5)")
+	}
+	if !strings.Contains(body, "Task 365 C5") {
+		t.Fatal("the grant binding must carry the task-365 rationale comment")
+	}
 }

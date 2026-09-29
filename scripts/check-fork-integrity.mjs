@@ -189,6 +189,8 @@ const CHECKS = [
   // ── 构建配置 ────────────────────────────────────────────────────
   { feature: "release notes 存在", file: "release-notes/FORK-v1.33.0.md", patterns: ["Fork 修复"] },
   { feature: "wails 版本号", file: "desktop/wails.json", patterns: ["1.38.3"] },
+  { feature: "任务365 级联审批断链：create 首信即挂 grant（C5）+ 15s 超时再评转父（C6）", file: "desktop/session_collab.go", patterns: ["Task 365 C5", "registerCascadeGrant(item.ContactID, from)"] },
+  { feature: "任务365 C6 unattended 超时 cascade 再评", file: "internal/control/autopilot_approval.go", patterns: ["cascade re-evaluation missed", "cascaded to task source"] },
 ];
 
 let failed = 0;
