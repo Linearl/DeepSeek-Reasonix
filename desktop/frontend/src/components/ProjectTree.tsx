@@ -2084,7 +2084,9 @@ export function ProjectTree({
     localLabel: t("projectTree.addProjectTooltip"), remoteLabel: t("projectTree.remoteConnection"), disabled: addingProject, ...addItemCallbacks,
   });
   const workbenchHeaderAddItems = projectTreeHeaderAddItems({
-    blankLabel: t("projectTree.createBlankProject"), localLabel: t("projectTree.useExistingFolder"), remoteLabel: t("projectTree.remoteConnection"), disabled: addingProject, ...addItemCallbacks,
+    blankLabel: t("projectTree.createBlankProject"), localLabel: t("projectTree.useExistingFolder"), remoteLabel: t("projectTree.remoteConnection"),
+    groupLabel: t("projectGroup.createNew"), onGroup: handleAddGroup,
+    disabled: addingProject, ...addItemCallbacks,
   });
 
   const timeFilterBadge = timeFilter !== "all" ? (timeFilter === "1d" ? "24h" : timeFilter) : "";

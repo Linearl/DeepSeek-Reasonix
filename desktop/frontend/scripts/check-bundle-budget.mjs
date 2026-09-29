@@ -479,6 +479,9 @@ for (const path of localeChunks) {
   // 84.5/84.5 (2 new locale keys x 3 dialects) — one-shot +0.5 to 85.0; zh
   // holds at 83.5 (measured under the line this batch).
   const budget = name.startsWith("zh-TW-") ? 85.0 * 1024 : 83.5 * 1024;
+  const budget = name.startsWith("zh-TW-") ? 85.5 * 1024 : 84.0 * 1024;
+  // task 383 automation->heartbeat copy unification lengthens both locale
+  // chunks (zh 83.8 over 83.5; zh-TW 85.1 over 85.0) — one-shot +0.5 each.
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
@@ -592,6 +595,7 @@ const rawInitialBytes = [...initialJS, ...initialCSS, ...appShellCSS]
 // B3 remote fix (App tree remote-project navigation branch + RemoteNavigationContext Provider + Composer inbox props): measured 2560.5, tripping the 2560.0 line; one-shot +10 KiB per the ratchet rule (same gate as 318 — one shared 2570 value, no double).
 // B2 merge batch (LA+LB+338+304+333 tail+343 stacked): measured 2571.9 over the 2570.0 line — one-shot +10 KiB per the raw-step rule (independent commit).
 const rawInitialBudgetKiB = 2_590.0; // fork: ratchet step +10 KiB (user 2026-09-20, one-shot rule); task 254 measured 2530.1 (autonomous-update pane + resume dial + locales 210/153/221/173) -> 2590.0 (batch 7.6+CDP-B merge batch stacked, 2581.2 measured; one-shot +10)
+const rawInitialBudgetKiB = 2_590.0; // fork: ratchet step +10 KiB (user 2026-09-20, one-shot rule); task 254 measured 2530.1; task 383 layout consistency (project-group menu item + classic icon-only footer branch) measured 2581.4 — one-shot +10 per the raw-step rule
 // [fork note] the smallest one-decimal ratchet. Bumped to 2_461.0 for the serve pool
 assertBudget("initial raw JavaScript and CSS", rawInitialBytes, rawInitialBudgetKiB * 1024);
 // [fork note] 2026-09-15: measured 1102.2 KiB raw - same pre-existing growth as the
