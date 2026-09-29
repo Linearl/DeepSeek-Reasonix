@@ -78,7 +78,7 @@ export function SidebarRegion(props: SidebarRegionProps) {
               <FeatureButton icon={<Command size={14} />} label={t("creation.sidebar.skills")} onClick={() => props.onOpenSettings("skills")} />
               <FeatureButton icon={<Brain size={14} />} label={t("settings.tab.memory")} onClick={() => props.onOpenSettings("memory")} />
               <FeatureButton icon={<MessageSquare size={14} />} label={t("creation.sidebar.messageChannels")} onClick={() => props.onOpenSettings("bots")} />
-              <FeatureButton active={props.automation} icon={<AlarmClock size={14} />} label={t("sidebar.automation")} onClick={props.onOpenAutomation} />
+              <FeatureButton active={props.automation} icon={<AlarmClock size={14} />} label={t("heartbeat.scheduler")} onClick={props.onOpenAutomation} />
             </div>
           </section>
         )}

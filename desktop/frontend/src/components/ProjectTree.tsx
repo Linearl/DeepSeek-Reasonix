@@ -2085,7 +2085,7 @@ export function ProjectTree({
   });
   const workbenchHeaderAddItems = projectTreeHeaderAddItems({
     blankLabel: t("projectTree.createBlankProject"), localLabel: t("projectTree.useExistingFolder"), remoteLabel: t("projectTree.remoteConnection"),
-    groupLabel: t("projectGroup.createNew"), onGroup: handleAddGroup,
+    groupLabel: t("projectGroup.createNew"), onGroup: () => setNewGroupOpen(true),
     disabled: addingProject, ...addItemCallbacks,
   });
 
