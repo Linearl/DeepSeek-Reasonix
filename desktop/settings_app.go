@@ -395,6 +395,7 @@ type SettingsView struct {
 	ExperimentalPerfMonitor    bool `json:"experimentalPerfMonitor"`
 	PerfMonitorIntervalSeconds int  `json:"perfMonitorIntervalSeconds"`
 	SessionCollabHopLimit      int  `json:"sessionCollabHopLimit"`
+	DetachedIdleReleaseMinutes int  `json:"detachedIdleReleaseMinutes"`
 	ExperimentalSessionCollab  bool `json:"experimentalSessionCollab"`
 	ExperimentalAutoLoadOlder  bool `json:"experimentalAutoLoadOlder"`
 	// Task 244 B5/B4: settings-view mirrors of the [agent] runtime flags.
@@ -562,6 +563,7 @@ type DesktopStartupSettingsView struct {
 	ExperimentalPerfMonitor    bool `json:"experimentalPerfMonitor"`
 	PerfMonitorIntervalSeconds int  `json:"perfMonitorIntervalSeconds"`
 	SessionCollabHopLimit      int  `json:"sessionCollabHopLimit"`
+	DetachedIdleReleaseMinutes int  `json:"detachedIdleReleaseMinutes"`
 	// ExperimentalSessionCollab exposes multi-session collaboration (task 19).
 	ExperimentalSessionCollab bool `json:"experimentalSessionCollab"`
 	// ExperimentalAutoLoadOlder exposes the scroll-driven history trigger (fork
@@ -1307,6 +1309,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalPerfMonitor = cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor
 		view.PerfMonitorIntervalSeconds = cfg.Desktop.PerfMonitorIntervalSeconds
 		view.SessionCollabHopLimit = cfg.Desktop.SessionCollabHopLimit
+		view.DetachedIdleReleaseMinutes = cfg.Desktop.DetachedIdleReleaseMinutes
 		view.ExperimentalSessionCollab = cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab
 		view.ExperimentalAutoLoadOlder = cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder
 		view.CollabInboxMerge = config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge)
@@ -1428,6 +1431,7 @@ func (a *App) Settings() SettingsView {
 		ExperimentalPerfMonitor:           cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,
 		PerfMonitorIntervalSeconds:        cfg.Desktop.PerfMonitorIntervalSeconds,
 		SessionCollabHopLimit:             cfg.Desktop.SessionCollabHopLimit,
+		DetachedIdleReleaseMinutes:        cfg.Desktop.DetachedIdleReleaseMinutes,
 		ExperimentalSessionCollab:         cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
 		ExperimentalAutoLoadOlder:         cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
 		CollabInboxMerge:                  config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge),

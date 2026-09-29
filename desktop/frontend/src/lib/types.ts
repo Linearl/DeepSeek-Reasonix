@@ -2381,6 +2381,8 @@ export interface DesktopStartupSettingsView {
   /** per-task model capability filter with explained rejections (task 244 B9); off unless the user opts in. */
   experimentalModelCapabilityFilter?: boolean;
   sessionCollabHopLimit?: number; // task 204: cross-session chain ceiling (3..1000, default 5)
+  /** Task 308-O4: detached idle runtime release threshold in minutes (0 = never release). */
+  detachedIdleReleaseMinutes?: number;
   /** Fork task 160: scroll-driven "load older" trigger at the transcript top. */
   experimentalAutoLoadOlder?: boolean;
   /** Task 221: inbox drain merge tri-state (off | same_sender | all). */

@@ -501,6 +501,20 @@ func (c *Config) SetSessionCollabHopLimit(limit int) error {
 	return nil
 }
 
+// SetDetachedIdleReleaseMinutes sets the task-308-O4 idle threshold (minutes).
+// Clamped into [0, 10080] (a week) — 0 disables the release loop entirely.
+func (c *Config) SetDetachedIdleReleaseMinutes(minutes int) error {
+	if minutes < 0 {
+		minutes = 0
+	}
+	if minutes > 10080 {
+		minutes = 10080
+	}
+	c.Desktop.DetachedIdleReleaseMinutes = minutes
+	c.Agent.DetachedIdleReleaseMinutes = minutes
+	return nil
+}
+
 // SetSessionCollabBackground toggles the task-264 background mode: on,
 // pump stand-ups build a detached runtime instead of a visible tab (delivery
 // semantics unchanged); off is the byte-for-byte baseline. A regular panel

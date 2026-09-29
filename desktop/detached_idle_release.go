@@ -25,8 +25,18 @@ import (
 
 const detachedIdleReleaseTick = 5 * time.Minute
 
-// detachedIdleReleaseMinutes reads the gate. 0 = loop disabled.
+// detachedIdleReleaseMinutes resolves the idle threshold: the config value is
+// authoritative (task-308-O4 settings key); the env override still wins for
+// one-process debugging, and 0 keeps the never-release behaviour.
 func (a *App) detachedIdleReleaseMinutes() int {
+	if cfg, _, err := a.loadDesktopUserConfigForView(); err == nil && cfg != nil {
+		if cfg.Agent.DetachedIdleReleaseMinutes > 0 {
+			return cfg.Agent.DetachedIdleReleaseMinutes
+		}
+		if cfg.Desktop.DetachedIdleReleaseMinutes > 0 {
+			return cfg.Desktop.DetachedIdleReleaseMinutes
+		}
+	}
 	return parseDetachedIdleMinutes(os.Getenv("REASONIX_DETACHED_IDLE_RELEASE_MINUTES"))
 }
 

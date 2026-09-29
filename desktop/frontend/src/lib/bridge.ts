@@ -911,6 +911,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalRecoveryOrphanSweep(enabled: boolean): Promise<void>;
   SetExperimentalModelCapabilityFilter(enabled: boolean): Promise<void>;
   SetSessionCollabHopLimit(limit: number): Promise<void>;
+  // Task 308-O4: detached idle runtime release threshold (minutes; 0 = never).
+  SetDetachedIdleReleaseMinutes(minutes: number): Promise<void>;
   // Task 173: the collaboration panel gates (settings → 实验特性 → 跨会话通信).
   SetSessionCollabGates(allowDelete: boolean, allowRequireReply: boolean, allowReadTail: boolean, allowCreate: boolean, allowSteer: boolean, dailySendLimit: number): Promise<void>;
   // Task 264: background-woken sessions stay out of the tab bar (detached
@@ -5264,6 +5266,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalRecoveryOrphanSweep() {},
     async SetExperimentalModelCapabilityFilter() {},
     async SetSessionCollabHopLimit() {},
+    async SetDetachedIdleReleaseMinutes() {},
     async SetSessionCollabGates() {},
     async SetSessionCollabBackground() {},
     async SetSessionCollabMailDefaults() {},

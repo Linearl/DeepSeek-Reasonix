@@ -2300,6 +2300,8 @@ export const en = {
   "settings.sessionCollab.hopLimit": "Collaboration hop limit",
   "settings.sessionCollab.hopLimitHint": "Maximum hops a cross-session chain may take: 3-1000, default 5. Lowering it only affects newly arriving messages; chains already in flight are untouched, and out-of-range entries are clamped.",
 "settings.sessionCollabHint": "Task 19: enables the multi-session collaboration tools (contact-directory addressing, talk_to_session delivery, collaboration task cards). Off by default; after turning it on, restart (or open a new session) so the tools register on existing sessions.",
+"settings.detachedIdleRelease": "Detached idle release (task 308-O4)",
+"settings.detachedIdleReleaseHint": "A backgrounded session (tab closed) that has finished its turn and been idle for this many minutes gets its runtime released; session files stay on disk and reopening reloads normally. 0 = never release. Off by default; applies to the next release check.",
 "settings.autonomousIdleTerminate": "Heartbeat idle self-terminate",
 "settings.autonomousIdleTerminateHint": "Task 244 B1: disables a heartbeat task after 3 consecutive runs whose conversation never produced real history (burn guard against unattended spinning; MiMo's three-idle self-terminate). Off by default; takes effect immediately, no restart.",
 "settings.autonomousIdleTerminate.on": "On",
