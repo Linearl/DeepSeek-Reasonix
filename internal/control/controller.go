@@ -164,8 +164,8 @@ type Controller struct {
 	sessionContextStatic    sessioncontext.Sections
 	sessionDir              string
 	// sessionV4 mirrors transcripts into the experimental v4 store when set.
-	sessionV4               *SessionV4Bridge
-	commands                atomic.Pointer[[]command.Command]
+	sessionV4 *SessionV4Bridge
+	commands  atomic.Pointer[[]command.Command]
 	// skills owns the session's discovered skills (enabled subset, full set, and
 	// the reloadable stores) — the skills slice of the Capabilities concern. See
 	// skill.go.
@@ -339,7 +339,7 @@ type Controller struct {
 	// turnGeneration increments only on a deadlock self-heal to invalidate the
 	// abandoned turn's late completion — its finishGuardedTurn must not clear
 	// the freshly reopened gate or emit TurnDone over the new turn.
-	turnGeneration uint64
+	turnGeneration     uint64
 	memorySystemReload func() string
 	// closed marks the controller as terminally torn down (close() ran). It
 	// seals turn admission: without it, a submit arriving AFTER close cleared
@@ -615,8 +615,8 @@ type Options struct {
 	SessionPath         string
 	// SessionV4 optionally mirrors transcripts into sessions-v4 for the
 	// session_storage=v4 experiment. Nil disables mirroring.
-	SessionV4           *SessionV4Bridge
-	Host                *plugin.Host
+	SessionV4 *SessionV4Bridge
+	Host      *plugin.Host
 	// MCPHostProfile is the surface lazily created hosts declare; injected
 	// hosts keep their own profile.
 	MCPHostProfile plugin.HostProfile
@@ -798,13 +798,13 @@ func New(opts Options) *Controller {
 			// can drop already-consumed in-flight items.
 			settledItem: opts.InboxSettledProbe,
 		},
-		taskBudget:                        opts.TaskBudget,
-		goalTokenBudget:                   opts.GoalTokenBudget,
-		autopilot:                         opts.Autopilot && opts.AutopilotMaxRuntime > 0,
-		autopilotApprovalGrace:            autopilotApprovalGrace(opts),
-		approvalTier:                      NormalizeApprovalTier(opts.ApprovalTier),
-		autopilotAskWait:                  opts.AutopilotAskWait,
-		preapproveManaged:                 opts.PreapproveManaged,
+		taskBudget:             opts.TaskBudget,
+		goalTokenBudget:        opts.GoalTokenBudget,
+		autopilot:              opts.Autopilot && opts.AutopilotMaxRuntime > 0,
+		autopilotApprovalGrace: autopilotApprovalGrace(opts),
+		approvalTier:           NormalizeApprovalTier(opts.ApprovalTier),
+		autopilotAskWait:       opts.AutopilotAskWait,
+		preapproveManaged:      opts.PreapproveManaged,
 		goals: goalMachine{
 			tokenBudget: opts.GoalTokenBudget,
 			autopilot:   opts.Autopilot && opts.AutopilotMaxRuntime > 0,
@@ -6241,6 +6241,16 @@ func (c *Controller) requestApprovalDecisionWithOptions(ctx context.Context, too
 			} else {
 				selection := strings.Join(answers[0].Selected, " ")
 				allow := strings.Contains(selection, "Allow") || strings.Contains(selection, "decide for yourself")
+				// Task 367 C2: the parent-side decision must be auditable from
+				// the log alone — one grep-able line per Allow/Deny, naming the
+				// source contact and the tool. The source side already carries
+				// its own notice (AutopilotApprovalNotice); this is the
+				// previously missing parent half.
+				verb := "denied"
+				if allow {
+					verb = "approved"
+				}
+				slog.Info(fmt.Sprintf("cascade %s by parent %s", verb, source), "tool", tool, "selection", selection, "task", "367/C2")
 				log.Printf("[cascade-approval] source %s decided %s: allow=%v selection=%q (task 225)", source, tool, allow, selection)
 				return approvalReply{allow: allow}, nil
 			}
