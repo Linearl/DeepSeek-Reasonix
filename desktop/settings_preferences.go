@@ -299,6 +299,13 @@ func (a *App) SetExperimentalQuickCommands(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalQuickCommands(enabled) })
 }
 
+// SetExperimentalCDPDebugPort toggles the WebView2 CDP debug endpoint (task
+// 342). Ships off; the browser args are read at startup, so a flip needs a
+// restart — the settings card communicates that and raises the restart banner.
+func (a *App) SetExperimentalCDPDebugPort(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCDPDebugPort(enabled) })
+}
+
 // SetExperimentalCompactionParallel toggles parallel chunked compaction (265).
 func (a *App) SetExperimentalCompactionParallel(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCompactionParallel(enabled) })

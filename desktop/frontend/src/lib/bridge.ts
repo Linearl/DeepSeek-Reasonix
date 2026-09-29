@@ -867,6 +867,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalQuestionSearch(enabled: boolean): Promise<void>;
   SetExperimentalSubagentTps(enabled: boolean): Promise<void>;
   SetExperimentalCompletionSummary(enabled: boolean): Promise<void>;
+  // Task 342: WebView2 CDP debug endpoint switch (loopback-only random port;
+  // ships off; the browser args are read at startup — restart to apply).
+  SetExperimentalCDPDebugPort(enabled: boolean): Promise<void>;
   // Task 265: delegation-tier entry points (experimental; boot snapshot).
   SetExperimentalSubagentPolicy(enabled: boolean): Promise<void>;
   // Task 262: gates the whole quick-commands surface (experimental; boot snapshot).
@@ -5226,6 +5229,7 @@ function makeMockApp(): AppBindings {
     async GetOpenCodeGoUsage() { return { tiers: [], note: "no-key" }; },
     async SetExperimentalSubagentTps() {},
     async SetExperimentalCompletionSummary() {},
+    async SetExperimentalCDPDebugPort() {},
     async SetExperimentalSubagentPolicy() {},
     async SetExperimentalQuickCommands() {},
     async SetSessionStorage() {},

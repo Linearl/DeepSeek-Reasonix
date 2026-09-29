@@ -55,6 +55,10 @@ func completeDesktopShutdown(tracker *desktopLifecycleTracker, body func()) {
 }
 
 func (a *App) shutdownBody() {
+	// Task 342: the endpoint file must never survive the process — a stale
+	// port would point the CDP verification flow at a dead (or worse, a
+	// different) browser. Best effort, before anything else can fail.
+	removeCDPDebugEndpointFile()
 	if a.perfMonitor != nil {
 		a.perfMonitor.Stop()
 		a.perfMonitor = nil

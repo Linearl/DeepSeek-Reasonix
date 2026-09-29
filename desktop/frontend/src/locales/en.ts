@@ -2557,6 +2557,11 @@ export const en = {
 "settings.quickCommandsLabHint": "Custom snippets in the composer + menu (requires turning this switch on). When on, manage snippets here; when off every entry hides while stored snippets are kept.",
 "settings.quickCommandsLab.on": "On",
 "settings.quickCommandsLab.off": "Off",
+// Task 342: WebView2 CDP debug endpoint (lab, debug group).
+"settings.cdpDebugPort": "CDP debug endpoint (experimental)",
+"settings.cdpDebugPortHint": "Opens a Chrome DevTools Protocol debug endpoint on the embedded WebView2 browser after a restart, so scripted UI verification (connectOverCDP) can drive the real interface. Loopback (127.0.0.1) only with a random port — not reachable from other machines. The endpoint file is written to logs/desktop/cdp-endpoint.txt. Off (default) keeps the browser arguments and network behavior unchanged.",
+"settings.cdpDebugPort.on": "On",
+"settings.cdpDebugPort.off": "Off",
 "settings.quickCommandsEdit": "Edit",
   "settings.quickCommandsTitlePlaceholder": "Name (shown in the menu)",
   "settings.quickCommandsTextPlaceholder": "Text to insert",

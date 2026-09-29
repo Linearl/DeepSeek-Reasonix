@@ -2346,6 +2346,8 @@ export interface DesktopStartupSettingsView {
   experimentalCompletionSummary?: boolean;
   /** Task 262: gates the whole quick-commands surface; ships off; boot snapshot. */
   experimentalQuickCommands?: boolean;
+  /** Task 342: WebView2 CDP debug endpoint (loopback-only random port); ships off; restart to apply. */
+  experimentalCDPDebugPort?: boolean;
   /** Task 231: managed-path pre-approval — master switch + four checkboxes; all ship off; boot snapshot. */
   experimentalPreapproveManagedPaths?: boolean;
   preapproveSkills?: boolean;

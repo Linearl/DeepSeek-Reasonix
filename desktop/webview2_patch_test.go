@@ -18,6 +18,43 @@ const (
 	webview2PatchPath  = "./third_party/go-webview2"
 )
 
+// fnStmts returns the statement list of NewChromium in the parsed patch file,
+// so the wiring test can inspect how the browser-args slice is initialized.
+func fnStmts(file *ast.File) []ast.Stmt {
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if ok && fn.Name.Name == "NewChromium" && fn.Body != nil {
+			return fn.Body.List
+		}
+	}
+	return nil
+}
+
+// browserArgsInitFromProxyArg verifies the task-342 initializer shape:
+// `browserArgs := []string{reasonixNoProxyServerBrowserArg}` must be the
+// first statement of NewChromium, so the proxy-isolation argument can never
+// be dropped when extra debug arguments are appended.
+func browserArgsInitFromProxyArg(file *ast.File) bool {
+	stmts := fnStmts(file)
+	if len(stmts) == 0 {
+		return false
+	}
+	assign, ok := stmts[0].(*ast.AssignStmt)
+	if !ok || len(assign.Lhs) != 1 || len(assign.Rhs) != 1 {
+		return false
+	}
+	name, ok := assign.Lhs[0].(*ast.Ident)
+	if !ok || name.Name != "browserArgs" {
+		return false
+	}
+	lit, ok := assign.Rhs[0].(*ast.CompositeLit)
+	if !ok || len(lit.Elts) != 1 {
+		return false
+	}
+	arg, ok := lit.Elts[0].(*ast.Ident)
+	return ok && arg.Name == "reasonixNoProxyServerBrowserArg"
+}
+
 func TestWebView2PatchWiring(t *testing.T) {
 	modData, err := os.ReadFile("go.mod")
 	if err != nil {
@@ -88,12 +125,17 @@ func TestWebView2PatchWiring(t *testing.T) {
 				if !ok || key.Name != "AdditionalBrowserArgs" {
 					continue
 				}
-				args, ok := entry.Value.(*ast.CompositeLit)
-				if !ok || len(args.Elts) != 1 {
+				if args, ok := entry.Value.(*ast.CompositeLit); ok && len(args.Elts) == 1 {
+					// Legacy single-arg form (pre task 342): the sole element
+					// must be the proxy-isolation argument.
+					arg, ok := args.Elts[0].(*ast.Ident)
+					proxyIsolationArgApplied = ok && arg.Name == "reasonixNoProxyServerBrowserArg"
 					continue
 				}
-				arg, ok := args.Elts[0].(*ast.Ident)
-				proxyIsolationArgApplied = ok && arg.Name == "reasonixNoProxyServerBrowserArg"
+				// Task 342 form: AdditionalBrowserArgs references a local
+				// `browserArgs` slice initialized from the proxy-isolation
+				// argument (extra debug arguments may be appended after it).
+				proxyIsolationArgApplied = browserArgsInitFromProxyArg(parsed)
 			}
 		}
 		return true

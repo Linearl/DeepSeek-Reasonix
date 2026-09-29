@@ -716,6 +716,15 @@ func (c *Config) SetExperimentalQuickCommands(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalCDPDebugPort toggles the task-342 WebView2 CDP debug
+// endpoint. It ships off: the zero value leaves the browser argument list
+// unchanged. The WebView2 environment is created once per process, so the
+// flip applies on the next restart — the settings card communicates that.
+func (c *Config) SetExperimentalCDPDebugPort(enabled bool) error {
+	c.Desktop.ExperimentalCDPDebugPort = enabled
+	return nil
+}
+
 // SetExperimentalParallelFullAccess toggles trusted write access to managed
 // worktree roots (task 127). Off by default so production confinement is
 // unchanged; on only widens confine to those roots, never globally.
