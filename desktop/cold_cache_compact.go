@@ -1,13 +1,18 @@
 package main
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
+	"reasonix/internal/boot"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
+	"reasonix/internal/event"
+	"reasonix/internal/plugin"
 	"reasonix/internal/store"
 )
 
@@ -69,7 +74,7 @@ func normalizeColdCacheCompactKnobs(enabled bool, minBytes int64, idleMinutes in
 // same cooling window never compacts twice, while a conversation the user
 // touches again and lets cool a second time stays eligible — that is the
 // "compact before it goes cold, not in a loop" contract.
-func coldCacheCompactDecision(enabled bool, now time.Time, lastActivityAt, attemptedActivityAt, sizeBytes int64, minBytes int64, idleMinutes int) (bool, string) {
+func coldCacheCompactDecision(enabled bool, now time.Time, lastActivityAt, lastOpenedAt, attemptedActivityAt, sizeBytes int64, minBytes int64, idleMinutes int) (bool, string) {
 	if !enabled {
 		return false, "switch off"
 	}
@@ -79,7 +84,15 @@ func coldCacheCompactDecision(enabled bool, now time.Time, lastActivityAt, attem
 	if lastActivityAt <= 0 {
 		return false, "no activity stamp"
 	}
-	idle := now.Sub(time.UnixMilli(lastActivityAt))
+	// Task 380-A: opening a conversation is a wake-up. The idle clock runs
+	// from the later of (last activity, last open) so a cold session the user
+	// just opened is not compacted synchronously on their wait path — that is
+	// the 297 symptom this task fixes; the headless path covers it before.
+	idleAnchor := lastActivityAt
+	if lastOpenedAt > idleAnchor {
+		idleAnchor = lastOpenedAt
+	}
+	idle := now.Sub(time.UnixMilli(idleAnchor))
 	if idle < time.Duration(idleMinutes)*time.Minute {
 		return false, "not idle long enough"
 	}
@@ -111,13 +124,25 @@ type coldCacheCompactLoop struct {
 	a    *App
 	mu   sync.Mutex
 	done map[string]int64 // session path -> LastActivityAt the attempt was made for
+	// Task 380-A/B: firstSeen records when this process first noticed a live
+	// controller for a session (≈ open time, bounded by the tick interval);
+	// inFlight marks a compact currently running so later ticks don't stack
+	// duplicate passes on the same session (an in-flight pass runs to
+	// completion, it is never interrupted).
+	firstSeen map[string]int64
+	inFlight  map[string]bool
 }
 
 // startColdCacheCompactLoop boots the unconditioned ticker: the lab switch is
 // read live on every tick, so OFF costs one config read and never touches a
 // session, while ON takes effect without a restart.
 func (a *App) startColdCacheCompactLoop() {
-	l := &coldCacheCompactLoop{a: a, done: make(map[string]int64)}
+	l := &coldCacheCompactLoop{
+		a:         a,
+		done:      make(map[string]int64),
+		firstSeen: make(map[string]int64),
+		inFlight:  make(map[string]bool),
+	}
 	a.goSafe("coldCacheCompactLoop", l.run)
 }
 
@@ -134,38 +159,73 @@ func (l *coldCacheCompactLoop) tick(now time.Time) {
 	if !knobs.Enabled {
 		return
 	}
+	active := l.a.activeTab()
 	for _, meta := range l.a.ListSessions() {
 		if meta.DeletedAt != 0 {
 			continue
 		}
-		l.mu.Lock()
-		attempted := l.done[meta.Path]
-		l.mu.Unlock()
-		size := sessionContextBytes(meta.Path)
-		ok, reason := coldCacheCompactDecision(knobs.Enabled, now, meta.LastActivityAt, attempted, size, knobs.MinBytes, knobs.IdleMinutes)
-		if !ok {
-			if reason == "eligible" {
-				continue
-			}
+		// Task 380-B: a tab the user is actively looking at is never a
+		// compaction candidate — only background/cold tabs qualify.
+		tab, ctrl := l.a.controllerForSessionPath(meta.Path)
+		if tab != nil && tab == active {
 			continue
 		}
-		l.compactOne(meta.Path, size, now.Sub(time.UnixMilli(meta.LastActivityAt)), meta.LastActivityAt)
+		l.mu.Lock()
+		attempted := l.done[meta.Path]
+		if ctrl != nil {
+			if _, seen := l.firstSeen[meta.Path]; !seen {
+				l.firstSeen[meta.Path] = now.UnixMilli()
+			}
+		}
+		openedAt := l.firstSeen[meta.Path]
+		busy := l.inFlight[meta.Path]
+		l.mu.Unlock()
+		if busy {
+			// An in-flight pass runs to completion; never stack a second one.
+			continue
+		}
+		size := sessionContextBytes(meta.Path)
+		ok, _ := coldCacheCompactDecision(knobs.Enabled, now, meta.LastActivityAt, openedAt, attempted, size, knobs.MinBytes, knobs.IdleMinutes)
+		if !ok {
+			continue
+		}
+		l.compactOne(meta.Path, meta.WorkspaceRoot, size, now.Sub(time.UnixMilli(meta.LastActivityAt)), meta.LastActivityAt)
 	}
 }
 
-// compactOne resolves the session's live controller and runs the same pass as
-// the "compact now" button. A session without a controller (tab closed or
-// evicted) is skipped without an attempt stamp: the next tick may find it
-// resident again, and opening a conversation just to compact it would cost
-// more than the pass saves.
-func (l *coldCacheCompactLoop) compactOne(path string, size int64, idle time.Duration, lastActivityAt int64) {
-	_, ctrl := l.a.controllerForSessionPath(path)
-	if ctrl == nil {
-		slog.Debug("desktop: cold cache compact skipped (no live controller)",
-			"path", path, "bytes", size)
+// compactOne runs the same pass as the "compact now" button — through the
+// live controller when the session has one (task 380-B: background tabs
+// only), or through the task-380 headless path when it does not. Either way
+// the pass is marked in-flight so later ticks never stack a duplicate, and
+// the attempt stamp is only written on success.
+func (l *coldCacheCompactLoop) compactOne(path, workspaceRoot string, size int64, idle time.Duration, lastActivityAt int64) {
+	l.mu.Lock()
+	if l.inFlight[path] {
+		l.mu.Unlock()
 		return
 	}
-	if err := ctrl.Compact(l.a.ctx, ""); err != nil {
+	l.inFlight[path] = true
+	l.mu.Unlock()
+	defer func() {
+		l.mu.Lock()
+		delete(l.inFlight, path)
+		l.mu.Unlock()
+	}()
+
+	_, ctrl := l.a.controllerForSessionPath(path)
+	var err error
+	if ctrl != nil {
+		err = ctrl.Compact(l.a.ctx, "")
+	} else {
+		// Task 380 main fix: cold sessions with no live controller used to be
+		// skipped forever, so the whole compaction landed on the user's wait
+		// path when they opened the conversation. Build a throwaway headless
+		// controller on the same compact chain instead — the user is not
+		// present (idle >5h, background), so a background build here is the
+		// cheap side of the trade.
+		err = l.headlessCompactOne(path, workspaceRoot)
+	}
+	if err != nil {
 		// Failed passes stay invisible to the user (no dialog) and retry on
 		// the next tick: the attempt stamp is only written on success, so a
 		// transient provider error does not park the conversation until the
@@ -180,6 +240,30 @@ func (l *coldCacheCompactLoop) compactOne(path string, size int64, idle time.Dur
 	slog.Info("desktop: cold cache compact completed",
 		"path", path, "bytes", size,
 		"idleMinutes", int(idle.Minutes()))
+}
+
+// headlessCompactOne compacts a controller-less session: a throwaway
+// boot.Build carries the session's saved state (SessionDir = the session's
+// directory, same fold the restart checks use), runs the one compact pass on
+// the standard chain, and closes. No sink output, no tab, no hydrate of any
+// UI surface — the cost is one cold build plus the compaction itself, paid
+// while the user is away instead of in front of them.
+func (l *coldCacheCompactLoop) headlessCompactOne(path, workspaceRoot string) error {
+	sessionDir := filepath.Dir(path)
+	ctrl, err := boot.Build(l.a.bootContext(), boot.Options{
+		Sink:                     event.Discard,
+		RequireKey:               false,
+		StatsSource:              "cold-cache-compact",
+		SessionDir:               sessionDir,
+		WorkspaceRoot:            workspaceRoot,
+		MCPHostProfile:           plugin.HostProfileDesktopApps,
+		CleanupPendingReconciler: reconcileDesktopCleanupPending,
+	})
+	if err != nil {
+		return fmt.Errorf("headless build: %w", err)
+	}
+	defer ctrl.Close()
+	return ctrl.Compact(l.a.ctx, "")
 }
 
 // controllerForSessionPath finds the live tab/controller bound to a session

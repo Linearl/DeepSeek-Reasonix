@@ -39,19 +39,25 @@ func TestColdCacheCompactDecision(t *testing.T) {
 		name      string
 		enabled   bool
 		activity  int64
+		openedAt  int64
 		attempted int64
 		size      int64
 		wantDo    bool
 		wantWhy   string
 	}{
-		{"switch off is zero behaviour", false, idleActivity, 0, 1000 * kb, false, "switch off"},
-		{"eligible: idle 6h, 700KB, no prior attempt", true, idleActivity, 0, 700 * kb, true, "eligible"},
-		{"under floor skipped", true, idleActivity, 0, 599 * kb, false, "context under size floor"},
-		{"recently active skipped", true, freshActivity, 0, 700 * kb, false, "not idle long enough"},
-		{"same cooling window never twice", true, idleActivity, idleActivity, 700 * kb, false, "already compacted this cooling window"},
-		{"user touched it again -> re-armed", true, idleActivity + 1, idleActivity, 700 * kb, true, "eligible"},
-		{"no activity stamp is skipped", true, 0, 0, 700 * kb, false, "no activity stamp"},
-		{"invalid config (zero idle) is skipped", true, idleActivity, 0, 700 * kb, false, "eligible"}, // idleMinutes supplied by caller below
+		{"switch off is zero behaviour", false, idleActivity, 0, 0, 1000 * kb, false, "switch off"},
+		{"eligible: idle 6h, 700KB, no prior attempt", true, idleActivity, 0, 0, 700 * kb, true, "eligible"},
+		{"under floor skipped", true, idleActivity, 0, 0, 599 * kb, false, "context under size floor"},
+		{"recently active skipped", true, freshActivity, 0, 0, 700 * kb, false, "not idle long enough"},
+		{"same cooling window never twice", true, idleActivity, 0, idleActivity, 700 * kb, false, "already compacted this cooling window"},
+		{"user touched it again -> re-armed", true, idleActivity + 1, 0, idleActivity, 700 * kb, true, "eligible"},
+		{"no activity stamp is skipped", true, 0, 0, 0, 700 * kb, false, "no activity stamp"},
+		{"invalid config (zero idle) is skipped", true, idleActivity, 0, 0, 700 * kb, false, "eligible"}, // idleMinutes supplied by caller below
+		// Task 380-A: opening a cold session is a wake-up — the idle clock
+		// restarts from the open even though LastActivityAt still reads old.
+		{"recently opened cold session skipped (open exemption)", true, idleActivity, now.Add(-30 * time.Minute).UnixMilli(), 0, 700 * kb, false, "not idle long enough"},
+		{"old open does not shield a cold session", true, idleActivity, now.Add(-7 * time.Hour).UnixMilli(), 0, 700 * kb, true, "eligible"},
+		{"later of open and activity wins", true, now.Add(-2 * time.Hour).UnixMilli(), now.Add(-4 * time.Hour).UnixMilli(), 0, 700 * kb, false, "not idle long enough"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -60,7 +66,7 @@ func TestColdCacheCompactDecision(t *testing.T) {
 				idleMinutes = 0
 				c.wantDo, c.wantWhy = false, "invalid config"
 			}
-			do, why := coldCacheCompactDecision(c.enabled, now, c.activity, c.attempted, c.size, 600*kb, idleMinutes)
+			do, why := coldCacheCompactDecision(c.enabled, now, c.activity, c.openedAt, c.attempted, c.size, 600*kb, idleMinutes)
 			if do != c.wantDo || why != c.wantWhy {
 				t.Fatalf("do=%v why=%q, want do=%v why=%q", do, why, c.wantDo, c.wantWhy)
 			}
@@ -69,7 +75,7 @@ func TestColdCacheCompactDecision(t *testing.T) {
 	// Exact-floor semantics: equal to the floor is eligible (size < floor is
 	// the only rejection), pinned outside the table because 600*1024 is both
 	// the default floor and the case's size.
-	do, _ := coldCacheCompactDecision(true, now, idleActivity, 0, 600*kb, 600*kb, 300)
+	do, _ := coldCacheCompactDecision(true, now, idleActivity, 0, 0, 600*kb, 600*kb, 300)
 	if !do {
 		t.Fatal("size equal to the floor must be eligible")
 	}
