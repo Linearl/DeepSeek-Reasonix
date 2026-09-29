@@ -72,4 +72,14 @@ for (const [name, table] of [["en", en], ["zh", zh], ["zh-TW", zhTW]] as const) 
 
 assert.ok(passed >= 18, `expected at least 18 checks, got ${passed}`);
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
+// ── Task 374fix: read-back chain pinned at the Go source ──────────────────
+{
+  ok(
+    /OptimisticWrite\s+bool\s+`json:"optimisticWrite"`/.test(shellSupport),
+    "SandboxView carries the optimisticWrite JSON field",
+  );
+  // (the assignment itself is already pinned above by the 280-era assertion,
+  // which covers all three spacing shapes of the struct literal)
+}
+
 if (failed > 0) process.exit(1);
