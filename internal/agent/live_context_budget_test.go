@@ -93,7 +93,11 @@ func TestLiveSharedWindowOutputFieldCache(t *testing.T) {
 		t.Skipf("provider returned no cache telemetry: omitted=%+v limited=%+v", omitted, limited)
 	}
 	if omitted.hit == 0 {
-		t.Skipf("provider cache did not warm: omitted=%+v", omitted)
+		// Task 371 (C4): the test warms its own provider before this point, so
+		// hit==0 here means OUR construction failed (warm path broke) — not a
+		// benign environment gap. Skipping would retire the cache regression
+		// assertion silently (305 discipline): abort loudly instead.
+		t.Fatalf("provider cache did not warm (test construction failed): omitted=%+v", omitted)
 	}
 	if limited.hit*100 < omitted.hit*90 {
 		t.Fatalf("limited cache hit regressed by more than 10%%: omitted=%+v limited=%+v", omitted, limited)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,7 +19,13 @@ import (
 // Approve answers a pending ApprovalRequest by ID. It remains the compatibility
 // bridge for clients that do not yet call the scope-aware resolver directly.
 func (c *Controller) Approve(id string, allow, session, persist bool) {
-	_ = c.approveChecked(id, allow, session, persist)
+	// Task 371 (A2): the void bridge used to drop every error silently — a
+	// failed approval emission left the tool pending forever with zero trace.
+	// Log with the approval id so "clicked allow, nothing happened" is
+	// diagnosable. Behavior unchanged: the error is still not propagated.
+	if err := c.approveChecked(id, allow, session, persist); err != nil {
+		slog.Error("control: approval bridge dropped error", "approvalID", id, "allow", allow, "err", err)
+	}
 }
 
 func (c *Controller) approveChecked(id string, allow, session, persist bool) error {

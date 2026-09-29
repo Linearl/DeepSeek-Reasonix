@@ -1957,7 +1957,10 @@ func safeBotControllerRuntimeStatus(ctrl botController) (status control.RuntimeS
 		return control.RuntimeStatus{}, false
 	}
 	defer func() {
-		if recover() != nil {
+		// Task 371 (A3): a panic in RuntimeStatus now logs before the caller
+		// degrades to "unknown status" so bot-side status flapping has a trace.
+		if r := recover(); r != nil {
+			slog.Warn("bot: controller RuntimeStatus panicked; reporting unknown", "panic", r)
 			status = control.RuntimeStatus{}
 			ok = false
 		}
@@ -2575,7 +2578,11 @@ func safeBotControllerWorkspaceRoot(ctrl botController) (root string, ok bool) {
 		return "", false
 	}
 	defer func() {
-		if recover() != nil {
+		// Task 371 (A3): same silent-recover family — log the panic before
+		// degrading to an empty workspace root so bot routing quirks have a
+		// trace. Behavior unchanged.
+		if r := recover(); r != nil {
+			slog.Warn("bot: controller WorkspaceRoot panicked; reporting empty", "panic", r)
 			root = ""
 			ok = false
 		}
@@ -2588,7 +2595,13 @@ func safeBotSetToolApprovalMode(ctrl botController, mode string) {
 		return
 	}
 	defer func() {
-		_ = recover()
+		// Task 371 (A3): this recover guards SetToolApprovalMode — a panic
+		// here silently skipped the approval-mode switch and the session kept
+		// running at the wrong permission level. Log the panic with the mode
+		// so a security downgrade is traceable. Behavior unchanged.
+		if r := recover(); r != nil {
+			slog.Error("bot: SetToolApprovalMode panicked; approval mode NOT applied", "mode", mode, "panic", r)
+		}
 	}()
 	ctrl.SetToolApprovalMode(mode)
 }

@@ -293,7 +293,11 @@ func TestTrashSessionMatchesLiveSeesEventLogDivergence(t *testing.T) {
 	liveAnchor, _ := os.ReadFile(live)
 	trashAnchor, _ := os.ReadFile(trashPath)
 	if string(liveAnchor) != string(trashAnchor) {
-		t.Skip("checkpoints diverged on disk; byte-compare trap not reproducible here")
+		// Task 371 (C3): this precondition failing means the byte-compare
+		// trap this test exists to pin is no longer constructible — skipping
+		// would let the data-loss guard silently lose coverage. The test's
+		// own construction broke, so abort loudly (305 discipline).
+		t.Fatal("checkpoints diverged on disk; byte-compare trap not reproducible here — test construction is broken, not skippable")
 	}
 	same, err = trashSessionMatchesLive(live, trashPath)
 	if err != nil {

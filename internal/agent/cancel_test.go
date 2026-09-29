@@ -422,10 +422,17 @@ func TestCancelDuringToolExecutionBreaksOutPromptly(t *testing.T) {
 	}
 
 	// The error should be related to context cancellation
+	// The error should be related to context cancellation. Task 371 (E1):
+	// the old t.Log path made a nil return indistinguishable from a real
+	// cancellation error, so a regression that ignores ctx.Done (or a cancel
+	// signal that never propagates) passed green. Pin the error contract:
+	// after a mid-tool cancel on slowTool (whose Execute returns ctx.Err()
+	// on ctx.Done), Run must surface a non-nil error. The elapsed windows
+	// above already prove the loop actually broke out at the cancel point.
 	if err == nil {
-		t.Log("Run returned nil error after cancel (acceptable if tools detected ctx.Done)")
+		t.Errorf("Run returned nil error after cancel — expected a cancellation error; tools may be ignoring ctx.Done")
 	} else {
-		t.Logf("Run returned error after cancel: %v (elapsed: %v)", err, elapsed)
+		t.Logf("cancel propagated: err=%v (elapsed: %v)", err, elapsed)
 	}
 }
 

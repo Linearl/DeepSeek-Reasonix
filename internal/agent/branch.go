@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -601,7 +602,14 @@ func ListBranches(dir string) ([]BranchInfo, error) {
 		}
 		meta, ok, err := LoadBranchMeta(path)
 		if err != nil {
-			continue
+			// Task 371 (D3): LoadBranchMeta deliberately preserves a
+			// corruption error (sidecar damaged) — this was the only outlet
+			// that swallowed it, so a session with a corrupt sidecar just
+			// vanished from ListBranches with no trace. Log and fall through
+			// to the !ok fallback so the session still shows up (visibility
+			// restored; listing behavior otherwise unchanged).
+			slog.Warn("agent: session branch meta unreadable; using fallback entry", "path", path, "err", err)
+			ok = false
 		}
 		if !ok {
 			meta = BranchMeta{

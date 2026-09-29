@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -55,6 +56,13 @@ func DetectWorktreeMergeConflicts(ctx context.Context, items []WorktreeRef) ([]W
 		}
 		head, err := gitOutput(ctx, root, "rev-parse", "HEAD")
 		if err != nil {
+			// Task 371 (D1): HEAD read failures are NOT the benign "not a
+			// worktree" case above (that one already continued at
+			// --git-common-dir). A corrupt HEAD / permission / timeout here
+			// silently dropped the worktree from merge-conflict detection and
+			// the preflight went green. Log it; the worktree still exits the
+			// candidate list (behavior unchanged in batch 1).
+			slog.Warn("agent: fleet preflight skipping worktree with unreadable HEAD", "root", root, "err", err)
 			continue
 		}
 		kept = append(kept, resolved{

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -175,7 +176,11 @@ func (s *FileStore) ListTasks(ctx context.Context, projectDir string) ([]TaskSna
 		}
 		snap, err := s.readSnapshot(taskDir)
 		if err != nil {
-			continue // skip corrupt entries
+			// Task 371 (C1): corrupt entries used to vanish silently — a task
+			// disappearing from the board was undiagnosable. Log the skipped
+			// directory. List behavior unchanged (entry still omitted).
+			slog.Warn("taskmonitor: skipping unreadable task snapshot", "dir", taskDir, "err", err)
+			continue
 		}
 		reconcileRuntime(&snap, timeNow())
 		result = append(result, snap)
@@ -308,8 +313,13 @@ func (s *FileStore) readEvents(taskDir string) ([]TaskEvent, error) {
 	if err != nil {
 		return nil, err
 	}
-	// JSONL: one JSON object per line
+	// Task 371 (C2): corrupt JSONL lines used to be dropped with no trace —
+	// the task timeline silently lost segments. Count and log the skipped
+	// line numbers; the returned events are unchanged.
+	corruptLines := 0
+	var lastCorruptErr error
 	var events []TaskEvent
+	lineNumber := 0
 	raw := string(data)
 	for raw != "" {
 		idx := 0
@@ -322,14 +332,21 @@ func (s *FileStore) readEvents(taskDir string) ([]TaskEvent, error) {
 		if len(raw) > 0 {
 			raw = raw[1:] // skip newline
 		}
+		lineNumber++
 		if line == "" {
 			continue
 		}
 		var ev TaskEvent
 		if err := json.Unmarshal([]byte(line), &ev); err != nil {
-			continue // skip corrupt lines
+			// Task 371 (C2): log instead of vanishing; return value unchanged.
+			corruptLines++
+			lastCorruptErr = err
+			continue
 		}
 		events = append(events, ev)
+	}
+	if corruptLines > 0 {
+		slog.Warn("taskmonitor: skipped corrupt event lines", "dir", taskDir, "lines", corruptLines, "lastErr", lastCorruptErr)
 	}
 	return events, nil
 }

@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"slices"
 	"sort"
 	"strconv"
@@ -1182,6 +1183,12 @@ func (c *Controller) spawnGuardedTurn(ctx context.Context, cancel context.Cancel
 		defer cancel()
 		defer func() {
 			if r := recover(); r != nil {
+				// Task 371 (A1): a turn panic must never lose its call stack —
+				// the recover site is the only place the stack still exists.
+				// Log with the stack and keep the original error contract
+				// (finishGuardedTurn still receives the same internal error).
+				stack := debug.Stack()
+				slog.Error("controller: turn goroutine panic", "panic", r, "stack", string(stack))
 				c.finishGuardedTurn(fmt.Errorf("internal error: %v", r), completion)
 			}
 		}()

@@ -258,7 +258,11 @@ func runMultiProviderCase(t *testing.T, tc multiProviderCase, scenario string, b
 			rejected = rejected || status == 400
 		}
 		if !rejected {
-			t.Skip("upstream accepted modified replay; no rejection recovery exercised")
+			// Task 371 (C5): same injector-failure family — the modified
+			// replay comes from the test's own fault layer, so "accepted"
+			// means the injection regressed and the rejection-recovery chain
+			// went untested. Fail instead of skipping (305 discipline).
+			t.Errorf("server_replay_rejection: upstream accepted modified replay — fault injection did not trigger (no 400), recovery chain untested")
 		}
 	}
 	if scenario == "cut_once" {
@@ -267,7 +271,11 @@ func runMultiProviderCase(t *testing.T, tc multiProviderCase, scenario string, b
 		}
 	}
 	if strings.HasPrefix(scenario, "missing") && mutations == 0 {
-		t.Skip("endpoint produced no reasoning: missing-reasoning fault was not exercised")
+		// Task 371 (C5): the fault injector is the test's own construction —
+		// mutations==0 means the injection mechanism regressed, not that the
+		// environment is benign. Skipping here retired both recovery-chain
+		// assertions with a green tick (305 discipline): fail loudly.
+		t.Errorf("missing-reasoning fault was not exercised (injector produced 0 mutations — test construction failed)")
 	}
 	if scenario == "continuity" {
 		checkMultiProviderPrefix(t, tc.protocol, bodies)
