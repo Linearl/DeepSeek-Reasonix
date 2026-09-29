@@ -86,7 +86,6 @@ export const en = {
   // sidebar
   "sidebar.conversations": "Chats",
   "sidebar.trash": "Trash",
-  "sidebar.automation": "Automation",
   "sidebar.memorySkills": "Memory & Skills",
   "sidebar.workspace": "Workspace",
   "sidebar.changeWorkspace": "Change",

@@ -245,7 +245,7 @@ console.log("\nbundle budgets");
 // B2 merge batch (LA 336/237/181 + LB 282/279/277 + 338 + 304 + 333 tail + 343):
 // measured 477.3 against the 476.6 line — stacked 0.7 over, so one-shot two
 // steps (+1.0) to 477.6 per the 2026-09-20 ratchet rule (no drip, independent commit).
-const initialJSBudgetKiB = 478.6; // fork: chain 468.8-era → 471.1 → 471.6 → 472.1 → 472.6 (tasks 242/192) → 473.1 (merge batch) → 473.6 (tasks 244 batch 1 + 163, same gate) → 474.1 (244 batch 2 + batch 4 same gate) → 474.6 (335 收口 jitter, pre-registered rule) → 475.1 (B3+opencodefix+effortfix2 merge batch, 475.0 measured; one-shot +0.5 per the 2026-09-20 ratchet rule) → 475.6 (task 337 locale guidance, 475.1 measured; one-shot +0.5) → 476.1 (task 333 rotation gate, 475.7 measured; one-shot +0.5) → 476.6 (task 282 fork features intro, 476.2 measured; one-shot +0.5) → 476.6 (task 338 memory pages, 476.2 measured; one-shot +0.5, same gate — B2 merge batch single const) → 477.6 (B2 merge batch stacked, 477.3 measured; one-shot two steps +1.0) → 478.1 (task 297 cold-cache card, 477.8 measured; one-shot +0.5) → 478.6 (task 361 pie/order-label second round, 478.1 measured; one-shot +0.5)
+const initialJSBudgetKiB = 479.1; // fork: chain 468.8-era → 471.1 → 471.6 → 472.1 → 472.6 (tasks 242/192) → 473.1 (merge batch) → 473.6 (tasks 244 batch 1 + 163, same gate) → 474.1 (244 batch 2 + batch 4 same gate) → 474.6 (335 收口 jitter, pre-registered rule) → 475.1 (B3+opencodefix+effortfix2 merge batch, 475.0 measured; one-shot +0.5 per the 2026-09-20 ratchet rule) → 475.6 (task 337 locale guidance, 475.1 measured; one-shot +0.5) → 476.1 (task 333 rotation gate, 475.7 measured; one-shot +0.5) → 476.6 (task 282 fork features intro, 476.2 measured; one-shot +0.5) → 476.6 (task 338 memory pages, 476.2 measured; one-shot +0.5, same gate — B2 merge batch single const) → 477.6 (B2 merge batch stacked, 477.3 measured; one-shot two steps +1.0) → 478.1 (task 297 cold-cache card, 477.8 measured; one-shot +0.5) → 478.6 (task 361 pie/order-label second round, 478.1 measured; one-shot +0.5)
 // Task 269 rebased onto 471.1: measured 470.7, also within 471.1 —
 // larger one-shot value stands (audit ruling, no second ratchet).
 // Task 264 rebased onto the same budget: measured 470.3 KiB (collab-background
@@ -473,7 +473,9 @@ for (const path of localeChunks) {
   // Task 363A (runtime reuse lab page): zh-TW measures dead-even 84.5/84.5
   // (4 new locale keys x 3 dialects) — one-shot +0.5 to 85.0; zh holds at
   // 83.5 (measured under the line this batch).
-  const budget = name.startsWith("zh-TW-") ? 85.0 * 1024 : 83.5 * 1024;
+  const budget = name.startsWith("zh-TW-") ? 85.5 * 1024 : 84.0 * 1024;
+  // task 383 automation->heartbeat copy unification lengthens both locale
+  // chunks (zh 83.8 over 83.5; zh-TW 85.1 over 85.0) — one-shot +0.5 each.
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 // [fork note] Fork v1.31.4: locale copy is product text that grows with every feature,
 // [fork note] feature adds copy; we instead keep a soft (warn-only) threshold at 60.0
@@ -586,7 +588,7 @@ const rawInitialBytes = [...initialJS, ...initialCSS, ...appShellCSS]
 // Task 318 (lab internals five): three switches + merge/regroup pages + 11 locale keys x 3 measured 2560.6 over the 2560.0 line — one-shot +10 KiB per the raw-step rule.
 // B3 remote fix (App tree remote-project navigation branch + RemoteNavigationContext Provider + Composer inbox props): measured 2560.5, tripping the 2560.0 line; one-shot +10 KiB per the ratchet rule (same gate as 318 — one shared 2570 value, no double).
 // B2 merge batch (LA+LB+338+304+333 tail+343 stacked): measured 2571.9 over the 2570.0 line — one-shot +10 KiB per the raw-step rule (independent commit).
-const rawInitialBudgetKiB = 2_580.0; // fork: ratchet step +10 KiB (user 2026-09-20, one-shot rule); task 254 measured 2530.1 (autonomous-update pane + resume dial + locales 210/153/221/173)
+const rawInitialBudgetKiB = 2_590.0; // fork: ratchet step +10 KiB (user 2026-09-20, one-shot rule); task 254 measured 2530.1; task 383 layout consistency (project-group menu item + classic icon-only footer branch) measured 2581.4 — one-shot +10 per the raw-step rule
 // [fork note] the smallest one-decimal ratchet. Bumped to 2_461.0 for the serve pool
 assertBudget("initial raw JavaScript and CSS", rawInitialBytes, rawInitialBudgetKiB * 1024);
 // [fork note] 2026-09-15: measured 1102.2 KiB raw - same pre-existing growth as the

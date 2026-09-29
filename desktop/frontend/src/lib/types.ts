@@ -2416,7 +2416,7 @@ export interface DesktopStartupSettingsView {
   experimentalComposerDraft?: boolean;
   bot: BotSettingsView;
   desktopLanguage: string; // "" | "en" | "zh"; empty = auto
-  desktopLayoutStyle: string; // "classic" | "workbench"
+  desktopLayoutStyle: string; // "classic" | "workbench" | "creation"
   desktopTheme: string; // "auto" | "dark" | "light"
   desktopThemeStyle: string;
   desktopTerminalTheme: string; // "auto" follows app | "dark" | "light"

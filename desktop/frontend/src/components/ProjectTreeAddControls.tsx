@@ -1,5 +1,5 @@
 import type { MouseEvent as ReactMouseEvent } from "react";
-import { FolderPlus, Server } from "lucide-react";
+import { FolderInput, FolderPlus, Server } from "lucide-react";
 
 import { ContextMenu, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
 import { Tooltip } from "./Tooltip";
@@ -8,22 +8,31 @@ export function projectTreeHeaderAddItems({
   blankLabel,
   localLabel,
   remoteLabel,
+  groupLabel,
   disabled,
   onBlank,
   onLocal,
   onRemote,
+  onGroup,
 }: {
   blankLabel?: string;
   localLabel: string;
   remoteLabel: string;
+  /** Task 383 #2: project groups (a header feature distinct from the row
+   * context-menu's session groups) — workbench/creation parity with classic. */
+  groupLabel?: string;
   disabled: boolean;
   onBlank?: () => void;
   onLocal: () => void;
   onRemote: () => void;
+  onGroup?: () => void;
 }): ContextMenuItem[] {
   const items: ContextMenuItem[] = [];
   if (onBlank && blankLabel) {
     items.push({ key: "blank-project", icon: <FolderPlus size={13} />, label: blankLabel, disabled, onSelect: onBlank });
+  }
+  if (onGroup && groupLabel) {
+    items.push({ key: "new-project-group", icon: <FolderInput size={13} />, label: groupLabel, disabled, onSelect: onGroup });
   }
   items.push(
     { key: "open-local-folder", icon: <FolderPlus size={13} />, label: localLabel, disabled, onSelect: onLocal },

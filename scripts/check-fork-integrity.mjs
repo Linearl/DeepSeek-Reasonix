@@ -198,6 +198,8 @@ const CHECKS = [
   { feature: "任务374fix 乐观写读回链测试钉死（Set→Settings→JSON+序列化+wiring）", file: "desktop/optimistic_write_view_test.go", patterns: ["TestOptimisticWriteRoundTripThroughSettingsView", "TestSandboxViewAlwaysSerializesOptimisticWrite"] },
   { feature: "任务381 快速切换 staging 目录可配置+复位", file: "desktop/version_switch.go", patterns: ["func stagingRoot()", "staging_dir"] },
   { feature: "任务381 staging 读取点全收敛", file: "desktop/restart_update.go", patterns: ["stagingRoot()"] },
+  { feature: "任务383 #2 workbench 项目分组入口（header 菜单 group 项）", file: "desktop/frontend/src/components/ProjectTreeAddControls.tsx", patterns: ["new-project-group", "onGroup"] },
+  { feature: "任务383 #5 classic footer icon-only（creation 保文字）+#8 automation→heartbeat 文案统一", file: "desktop/frontend/src/App.tsx", patterns: ["sidebarCreation ? <span>{t(\"sidebar.trash\")}</span> : <span className=\"sr-only\">", "heartbeat.scheduler"] },
 ];
 
 let failed = 0;

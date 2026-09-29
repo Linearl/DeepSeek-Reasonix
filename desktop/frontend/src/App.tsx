@@ -4018,7 +4018,7 @@ export default function App() {
   const paletteItems = useMemo<PaletteItem[]>(() => {
     const cmds: PaletteItem[] = [
       { id: "cmd-new", group: t("palette.group.commands"), title: t("palette.cmd.newSession"), icon: <SquarePen size={15} />, compact: true, keywords: ["new", "新建"], run: () => void handleNewTab() },
-      { id: "cmd-automation", group: t("palette.group.commands"), title: t("sidebar.automation"), icon: <AlarmClock size={15} />, compact: true, keywords: ["automation", "自动化"], run: () => openPage({ kind: "automation" }) },
+      { id: "cmd-automation", group: t("palette.group.commands"), title: t("heartbeat.scheduler"), icon: <AlarmClock size={15} />, compact: true, keywords: ["automation", "自动化"], run: () => openPage({ kind: "automation" }) },
       { id: "cmd-trash", group: t("palette.group.commands"), title: t("palette.cmd.trash"), icon: <Trash2 size={15} />, compact: true, keywords: ["trash", "回收站"], run: () => void openTrash() },
       { id: "cmd-settings", group: t("palette.group.commands"), title: t("palette.cmd.settings"), icon: <SettingsIcon size={15} />, compact: true, keywords: ["settings", "设置"], run: () => setSettingsTarget(useAppNavigationStore.getState().lastSettingsTarget) },
       { id: "cmd-appearance", group: t("palette.group.commands"), title: t("palette.cmd.appearance"), icon: <Palette size={15} />, compact: true, keywords: ["theme", "appearance", "外观", "主题"], run: () => setSettingsTarget("appearance") },
@@ -4478,7 +4478,7 @@ export default function App() {
                   onClick={(event) => { event.currentTarget.focus({ preventScroll: true }); openPage({ kind: "automation" }); }}
                 >
                   <AlarmClock size={14} aria-hidden="true" />
-                  <span>{t("sidebar.automation")}</span>
+                  <span>{t("heartbeat.scheduler")}</span>
                 </button>
               </div>
             </section>
@@ -4531,7 +4531,7 @@ export default function App() {
                     onClick={(event) => { event.currentTarget.focus({ preventScroll: true }); openPage({ kind: "automation" }); }}
                   >
                     <AlarmClock size={16} aria-hidden="true" />
-                    <span className="sr-only">{t("sidebar.automation")}</span>
+                    <span className="sr-only">{t("heartbeat.scheduler")}</span>
                   </button>
                 </Tooltip>
                 <Tooltip label={t("topbar.settings")} fill side="top">
@@ -4575,7 +4575,7 @@ export default function App() {
                   onClick={(event) => { event.currentTarget.focus({ preventScroll: true }); void openTrash(); }}
                 >
                   <Trash2 size={15} />
-                  <span>{t("sidebar.trash")}</span>
+                  {sidebarCreation ? <span>{t("sidebar.trash")}</span> : <span className="sr-only">{t("sidebar.trash")}</span>}
                 </button>
               </Tooltip>
               {!sidebarCreation && (
@@ -4585,7 +4585,7 @@ export default function App() {
                     onClick={(event) => { event.currentTarget.focus({ preventScroll: true }); openPage({ kind: "automation" }); }}
                   >
                     <AlarmClock size={15} />
-                    <span>{t("sidebar.automation")}</span>
+                    <span className="sr-only">{t("heartbeat.scheduler")}</span>
                   </button>
                 </Tooltip>
               )}
@@ -4599,7 +4599,7 @@ export default function App() {
                   }}
                 >
                   <SettingsIcon size={15} />
-                  <span>{t("topbar.settings")}</span>
+                  {sidebarCreation ? <span>{t("topbar.settings")}</span> : <span className="sr-only">{t("topbar.settings")}</span>}
                 </button>
               </Tooltip>
             </nav>
