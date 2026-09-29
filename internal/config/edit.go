@@ -632,7 +632,6 @@ func (c *Config) AutopilotProxyScopeLevel() string {
 	}
 }
 
-// AutopilotProxyScopeLevel returns the normalized proxy scope. Empty and
 // AutonomousUpdateResumeMode returns the normalized resume scope. Empty and
 // unknown values read as "goal_autopilot": the pre-task-254 behavior plus the
 // autopilot marker chain, never a silent opt-out.

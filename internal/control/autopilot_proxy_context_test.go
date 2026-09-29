@@ -72,15 +72,18 @@ func TestProxyContextLevel2AndManifestFlowThrough(t *testing.T) {
 func TestProxyContextManifestIsBoundedTailKept(t *testing.T) {
 	lines := make([]string, 0, 400)
 	for i := 0; i < 400; i++ {
-		lines = append(lines, "ALLOW: filler entry number "+strings.Repeat("x", 30))
+		lines = append(lines, "ALLOW: filler entry number "+itoa(i)+" "+strings.Repeat("x", 30))
 	}
 	_, c := proxyContextFixture(t, "all", strings.Join(lines, "\n"))
 	ctx := c.autopilotProxyContext()
 	if len(ctx) > 8192 {
 		t.Fatalf("context must stay bounded, got %d bytes", len(ctx))
 	}
-	if strings.Contains(ctx, "filler entry number 0\n") && strings.Contains(ctx, "ALLOW: filler entry number 000") {
-		t.Fatal("the oldest filler lines must be truncated first")
+	if !strings.Contains(ctx, "entry number 399 ") {
+		t.Fatal("the tail (newest filler, entry 399) must survive the truncation")
+	}
+	if strings.Contains(ctx, "entry number 0 ") {
+		t.Fatal("the oldest filler (entry 0) must be truncated first")
 	}
 	if !strings.Contains(ctx, "older entries truncated") {
 		t.Fatal("truncation must be marked")
@@ -115,4 +118,16 @@ func Test388ProxyContextReachesGuardianPrompt(t *testing.T) {
 		}
 	}
 	_ = manifest
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	digits := ""
+	for n > 0 {
+		digits = string(rune('0'+n%10)) + digits
+		n /= 10
+	}
+	return digits
 }
