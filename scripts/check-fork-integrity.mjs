@@ -192,6 +192,8 @@ const CHECKS = [
   { feature: "任务362 修复会话菜单入口=开关态（manual/auto 点亮仅 off 置灰）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["on: (s.eventsAutoRotation ?? \"manual\") !== \"off\""] },
   { feature: "任务365 级联审批断链：create 首信即挂 grant（C5）+ 15s 超时再评转父（C6）", file: "desktop/session_collab.go", patterns: ["Task 365 C5", "registerCascadeGrant(item.ContactID, from)"] },
   { feature: "任务365 C6 unattended 超时 cascade 再评", file: "internal/control/autopilot_approval.go", patterns: ["cascade re-evaluation missed", "cascaded to task source"] },
+  { feature: "任务367 C1 hop 单跳恒放行钉死（对照表入码）", file: "internal/agent/cascade_hop.go", patterns: ["single-hop delegation is always allowed", "depth <= 1"] },
+  { feature: "任务367 C2 父侧决策留痕 slog", file: "internal/control/controller.go", patterns: ["cascade %s by parent %s"] },
 ];
 
 let failed = 0;
