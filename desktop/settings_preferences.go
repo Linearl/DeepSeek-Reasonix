@@ -500,6 +500,12 @@ func (a *App) SetSessionCollabHopLimit(limit int) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetSessionCollabHopLimit(limit) })
 }
 
+// SetDetachedIdleReleaseMinutes sets the task-308-O4 idle threshold; the config
+// layer clamps it (0..10080). Applied live by the release loop's next tick.
+func (a *App) SetDetachedIdleReleaseMinutes(minutes int) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetDetachedIdleReleaseMinutes(minutes) })
+}
+
 // SetExperimentalAutoLoadOlder toggles the scroll-driven history trigger (fork
 // task 160). The explicit "load older" button stays available either way.
 func (a *App) SetExperimentalAutoLoadOlder(enabled bool) error {

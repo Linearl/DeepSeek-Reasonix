@@ -119,6 +119,10 @@ type DesktopConfig struct {
 	// (task 204). 0 keeps the package default (5); values are clamped into
 	// [MinHop, MaxHopCeiling] on write, so a stored value is always legal.
 	SessionCollabHopLimit int `toml:"session_collab_hop_limit"`
+	// DetachedIdleReleaseMinutes is the settings-view mirror for the [agent]
+	// runtime value of task 308-O4 (idle threshold in minutes, 0 = never
+	// release).
+	DetachedIdleReleaseMinutes int `toml:"detached_idle_release_minutes"`
 	// ExperimentalAutoLoadOlder is the settings-view mirror for
 	// Agent.ExperimentalAutoLoadOlder (fork task 160).
 	ExperimentalAutoLoadOlder bool `toml:"experimental_auto_load_older"`

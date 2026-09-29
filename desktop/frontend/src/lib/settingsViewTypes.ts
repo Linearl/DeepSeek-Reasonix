@@ -87,6 +87,8 @@ export interface SettingsView {
   perfMonitorIntervalSeconds?: number;
   // Task 204: cross-session chain ceiling (3..1000, default 5).
   sessionCollabHopLimit?: number;
+  // Task 308-O4: detached idle runtime release threshold (minutes; 0 = never).
+  detachedIdleReleaseMinutes?: number;
   // Fork task 160: scroll-driven "load older" trigger at the transcript top.
   experimentalAutoLoadOlder?: boolean;
   // Task 221: inbox drain merge tri-state (off | same_sender | all).

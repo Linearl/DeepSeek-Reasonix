@@ -2314,6 +2314,8 @@ export const zh: Record<DictKey, string> = {
   "settings.sessionCollab.hopLimit": "协作链 hop 上限",
   "settings.sessionCollab.hopLimitHint": "跨会话消息来回轮次的上限，范围 3~1000，默认 5。调低只影响新到达的消息，已在途的链不变；越界值按范围钳制。",
 "settings.sessionCollabHint": "任务 19：启用多会话协作工具（通讯录寻址 / talk_to_session 跨会话投递 / 协作任务卡）。默认关闭；开启后需重启（或新开会话）才会向会话注册工具。",
+"settings.detachedIdleRelease": "后台会话闲置释放（task 308-O4）",
+"settings.detachedIdleReleaseHint": "关闭标签页转入后台的会话，完成当前轮次且闲置超过此分钟数后释放其运行时（会话文件保留，重新打开即重载）。0 = 从不释放。默认关闭；改后对下一次释放判定生效。",
 "settings.autonomousIdleTerminate": "心跳空转自终止",
 "settings.autonomousIdleTerminateHint": "任务 244 B1：心跳任务连续 3 次运行后会话仍无真实记录时，自动禁用该任务（防无人值守烧钱，借鉴 MiMo 三空转自终止）。默认关闭；开启即刻生效，无需重启。",
 "settings.autonomousIdleTerminate.on": "开",

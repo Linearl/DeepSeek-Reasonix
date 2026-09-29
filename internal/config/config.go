@@ -1505,6 +1505,13 @@ type AgentConfig struct {
 	// (task 204). 0 keeps the package default (5); values are clamped into
 	// [MinHop, MaxHopCeiling] on write, so a stored value is always legal.
 	SessionCollabHopLimit int `toml:"session_collab_hop_limit"`
+	// DetachedIdleReleaseMinutes is the task-308-O4 idle threshold: a detached
+	// session (tab closed, no live turn) idle this many minutes gets its
+	// runtime released; files stay on disk and reopening reloads through the
+	// normal hydrate chain. 0 keeps the package behaviour (never release);
+	// values are clamped into [0, 10080] on write. The
+	// REASONIX_DETACHED_IDLE_RELEASE_MINUTES env overrides for one process.
+	DetachedIdleReleaseMinutes int `toml:"detached_idle_release_minutes"`
 	// Task 173: per-capability gates for the collaboration toolset. All ship
 	// off (the cautious reading of "the panel decides what is allowed"): a
 	// gate off means the capability is withheld — tool-level gates keep the

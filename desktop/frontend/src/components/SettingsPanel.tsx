@@ -1852,6 +1852,8 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Task 204: the cross-session chain ceiling is a number the user can edit; the
   // config layer clamps it, so the box may hold an intermediate value while typing.
   const [hopLimit, setHopLimit] = useState<number>(s.sessionCollabHopLimit ?? 5);
+  // Task 308-O4: detached idle release threshold (minutes; 0 = never release).
+  const [detachedIdleRelease, setDetachedIdleRelease] = useState<number>(s.detachedIdleReleaseMinutes ?? 0);
   // Task 19: the addressable roster is read on demand, not on every settings
   // load — a session only appears once it has registered a purpose.
   const [sessionCollabRoster, setSessionCollabRoster] = useState<Awaited<ReturnType<typeof app.ListAddressableSessions>>>([]);
@@ -2963,6 +2965,20 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   onChange={(event) => setHopLimit(Number(event.target.value))}
                   onBlur={() => void apply(async () => {
                     await app.SetSessionCollabHopLimit(hopLimit);
+                  })}
+                />
+              </SettingsField>
+              {/* Task 308-O4: idle threshold for releasing detached runtimes. */}
+              <SettingsField label={t("settings.detachedIdleRelease")} hint={t("settings.detachedIdleReleaseHint")} icon={<Sparkles size={18} />}>
+                <input
+                  type="number"
+                  min={0}
+                  max={10080}
+                  value={detachedIdleRelease}
+                  disabled={busy}
+                  onChange={(event) => setDetachedIdleRelease(Number(event.target.value))}
+                  onBlur={() => void apply(async () => {
+                    await app.SetDetachedIdleReleaseMinutes(detachedIdleRelease);
                   })}
                 />
               </SettingsField>
