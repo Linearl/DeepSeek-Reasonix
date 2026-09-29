@@ -525,6 +525,8 @@ func (a *App) GetCollabInboxMergeMode() string {
 		return "off"
 	}
 	return mode
+}
+
 // SetStagingDir stores the fast-switch staging directory override (task 381).
 // Light path on purpose: the key is read at restart-and-update time, not by
 // the running tab runtime, so no rebuild is attempted and the save cannot be
