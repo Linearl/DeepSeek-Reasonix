@@ -189,6 +189,7 @@ const CHECKS = [
   // ── 构建配置 ────────────────────────────────────────────────────
   { feature: "release notes 存在", file: "release-notes/FORK-v1.33.0.md", patterns: ["Fork 修复"] },
   { feature: "wails 版本号", file: "desktop/wails.json", patterns: ["1.38.3"] },
+  { feature: "任务362 修复会话菜单入口=开关态（manual/auto 点亮仅 off 置灰）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["on: (s.eventsAutoRotation ?? \"manual\") !== \"off\""] },
 ];
 
 let failed = 0;
