@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
-import { Archive, ArchiveX, ArrowDown, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput } from "lucide-react";
+import { Archive, ArchiveX, ArrowDown, CheckCheck, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput } from "lucide-react";
 import { asArray } from "../lib/array";
 import { useToast } from "../lib/toast";
 import { app } from "../lib/bridge";
@@ -39,6 +39,7 @@ import {
 } from "../lib/projectGroups";
 import { MoveToGroupPanel } from "./MoveToGroupPanel";
 import { NewGroupPanel } from "./NewGroupPanel";
+import { loadReadActivityStore, markReadKeysRead, persistReadActivity, readActivityEquals, readActivityKeysInScope, readActivityKeysInSubtree, READ_ACTIVITY_CHANGED_EVENT } from "../lib/readActivity";
 import { ProjectTreeHeaderAddControl, ProjectTreeRemoteAction, projectTreeHeaderAddItems } from "./ProjectTreeAddControls";
 import { activeRemoteProjectAncestorKeys, buildRemoteProjectMenuItems, useRemoteRuntimeTree, openRemoteSessionNode, remoteProjectKey, remoteServeBadgeState, renameRemoteProjectTitle, RemoteProjectEmptyState, useRemoteProjectGroups, useRemoteSessionActions } from "./ProjectTreeRemoteGroups";
 import type { ProjectTreeProps } from "./ProjectTreeProps";
@@ -56,31 +57,9 @@ type CollapseSnapshot = {
   manuallyCollapsed: Set<string>;
 };
 
-const READ_ACTIVITY_KEY = "projectTree:readActivity";
+// wt-zcode-288：readActivity 的存取与「全部已读」批量标记收口到 lib/readActivity
+// （TabBar 等树外组件也要写同一份存档）；这里只保留 baseline 的本地初始化。
 const READ_ACTIVITY_BASELINE_KEY = "projectTree:readActivityBaselineAt";
-
-function loadReadActivity(): ProjectTreeReadActivity {
-  try {
-    const raw = localStorage.getItem(READ_ACTIVITY_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const out: ProjectTreeReadActivity = {};
-    for (const [key, value] of Object.entries(parsed)) {
-      if (typeof value === "number" && Number.isFinite(value)) out[key] = value;
-    }
-    return out;
-  } catch {
-    return {};
-  }
-}
-
-function saveReadActivity(readActivity: ProjectTreeReadActivity) {
-  try {
-    localStorage.setItem(READ_ACTIVITY_KEY, JSON.stringify(readActivity));
-  } catch {
-    /* localStorage unavailable */
-  }
-}
 
 function loadReadActivityBaselineAt(): number {
   try {
@@ -282,7 +261,7 @@ export function ProjectTree({
   const [workbenchOrganizeMode, setWorkbenchOrganizeMode] = useState<WorkbenchOrganizeMode>(loadWorkbenchOrganizeMode);
   const [workbenchSortMode, setWorkbenchSortMode] = useState<WorkbenchSortMode>(loadWorkbenchSortMode);
   const workbenchSortModeRef = useRef(workbenchSortMode);
-  const [readActivity, setReadActivity] = useState<ProjectTreeReadActivity>(loadReadActivity);
+  const [readActivity, setReadActivity] = useState<ProjectTreeReadActivity>(loadReadActivityStore);
   const [readBaselineAt] = useState(loadReadActivityBaselineAt);
   const filterRef = useRef<HTMLDivElement>(null);
   const filterTriggerRef = useRef<HTMLButtonElement>(null);
@@ -568,9 +547,31 @@ export function ProjectTree({
       const readAt = Math.max(activityAt, Date.now());
       if ((prev[key] ?? 0) >= readAt) return prev;
       const next = { ...prev, [key]: readAt };
-      saveReadActivity(next);
+      persistReadActivity(next);
       return next;
     });
+  }, []);
+
+  // wt-zcode-288：「全部已读」——把给定 readActivity key 的会话一次标记已读。
+  // 三处右键菜单（tab / 项目分组 / 会话行）只负责凑出各自的 key 集合。
+  const markAllRead = (keys: string[]) => {
+    const next = markReadKeysRead(readActivity, keys);
+    if (next === readActivity) return;
+    setReadActivity(next);
+    persistReadActivity(next);
+  };
+
+  // 树外组件（如 TabBar「全部已读」）写档后广播；这里重载内存态让侧栏未读点
+  // 立即清零。等值时保持原引用，避免事件回声引发多余渲染。
+  useEffect(() => {
+    const syncFromStore = () => {
+      setReadActivity((prev) => {
+        const next = loadReadActivityStore();
+        return readActivityEquals(prev, next) ? prev : next;
+      });
+    };
+    window.addEventListener(READ_ACTIVITY_CHANGED_EVENT, syncFromStore);
+    return () => window.removeEventListener(READ_ACTIVITY_CHANGED_EVENT, syncFromStore);
   }, []);
 
   useEffect(() => {
@@ -1266,6 +1267,19 @@ export function ProjectTree({
         setConfirmArchiveTarget(null);
       };
       const topicMenuItems: ContextMenuItem[] = [
+        // wt-zcode-288：会话行右键「全部已读」——当前上下文 = 该会话所属工作区
+        // （project scope 即同一工作区；Global 会话即整个 Global 区）的全部会话。
+        ...(openRequest
+          ? [{
+              key: "markAllRead",
+              icon: <CheckCheck size={13} />,
+              label: t("projectTree.markAllRead"),
+              onSelect: () => {
+                markAllRead(readActivityKeysInScope(treeWithRemoteSessions, openRequest.scope, openRequest.workspaceRoot));
+                closeMenu();
+              },
+            }]
+          : []),
         ...organization.topicMenuItems(node, t),
         ...(projectTreeTopicMenuOffersPin(variant)
           ? [
@@ -1625,6 +1639,16 @@ export function ProjectTree({
           void handleCreateTopic(scope, projectPath, key);
         },
       },
+      // wt-zcode-288：项目分组右键「全部已读」——当前上下文 = 该分组子树内全部会话。
+      {
+        key: "mark-all-read",
+        icon: <CheckCheck size={13} />,
+        label: t("projectTree.markAllRead"),
+        onSelect: () => {
+          markAllRead(readActivityKeysInSubtree([node]));
+          closeMenu();
+        },
+      },
       ...isolatedWorkspaceItems,
       {
         key: "rename",
@@ -1742,6 +1766,16 @@ export function ProjectTree({
         label: t("projectTree.renameProjectWorkbench"),
         onSelect: () => startRenameProject(key, projectRoot, projectLabel),
       },
+      // wt-zcode-288：workbench 变体的项目分组右键同样提供「全部已读」。
+      {
+        key: "mark-all-read",
+        icon: <CheckCheck size={13} />,
+        label: t("projectTree.markAllRead"),
+        onSelect: () => {
+          markAllRead(readActivityKeysInSubtree([node]));
+          closeMenu();
+        },
+      },
       {
         key: "archive-active-topic",
         icon: <Archive className={activeTopicId && trashingTopics.has(activeTopicId) ? "project-tree__archive-spinner" : undefined} size={13} />,
@@ -1854,7 +1888,7 @@ export function ProjectTree({
       return (
         <div className={`project-tree__children${isExpanded ? " project-tree__children--expanded" : ""}`}>
           <div className="project-tree__children-inner">
-            <ProjectTreeGroupRows folder={node} children={windowedChildren} depth={depth + 1} section={section} visible={isVisible && isExpanded} organization={organization} renderNode={renderNode} t={t} />
+            <ProjectTreeGroupRows folder={node} children={windowedChildren} depth={depth + 1} section={section} visible={isVisible && isExpanded} organization={organization} renderNode={renderNode} t={t} onMarkAllRead={(members) => markAllRead(readActivityKeysInSubtree(members))} />
             {windowToggleVisible && (
               <button
                 type="button"

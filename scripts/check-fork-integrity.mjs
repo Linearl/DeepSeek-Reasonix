@@ -75,6 +75,12 @@ const CHECKS = [
   // 版顶掉时不会有冲突标记，故登记语义锚点（含开关参数名与顶部守卫常量）。
   { feature: "任务160 顶部上滚加载更早（开关门控）", file: "desktop/frontend/src/lib/useTranscriptKernel.ts", patterns: ["autoLoadOlderAtTop", "HISTORY_TOP_GUARD_PX", "requestOlderAtTop"] },
   { feature: "任务160 加载更早按钮", file: "desktop/frontend/src/components/TranscriptViewport.tsx", patterns: ["chat-older", "showLoadOlder"] },
+  // 288：tab/项目分组/会话三处右键菜单「全部已读」。readActivity 存取收口在
+  // lib/readActivity.ts（ProjectTree 之外 TabBar 也写同一份存档），三处菜单接线
+  // 各登记符号锚点——上游未实现该交互，合并丢块时只有运行时缺菜单、无编译错误。
+  { feature: "288 全部已读（readActivity 存储层）", file: "desktop/frontend/src/lib/readActivity.ts", patterns: ["READ_ACTIVITY_STORAGE_KEY", "READ_ACTIVITY_CHANGED_EVENT", "markReadKeysRead", "persistReadActivity", "readActivityKeysInSubtree"] },
+  { feature: "288 全部已读（tab/项目分组/会话菜单接线）", file: "desktop/frontend/src/components/ProjectTree.tsx", patterns: ["markAllRead", "readActivityKeysInScope", "readActivityKeysInSubtree", "READ_ACTIVITY_CHANGED_EVENT", "onMarkAllRead"] },
+  { feature: "288 全部已读（tab 菜单）", file: "desktop/frontend/src/components/TabBar.tsx", patterns: ["markTabsAllRead", "mark-all-read"] },
 
   // ── Go 后端 ─────────────────────────────────────────────────────
   { feature: "#9572 摘要安全前缀", file: "internal/agent/compact_projection.go", patterns: ["trigger != CompactionTriggerManual", "maximumSafeSummaryPrefixEnd"] },
