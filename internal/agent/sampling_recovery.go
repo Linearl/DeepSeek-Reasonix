@@ -263,10 +263,33 @@ func (a *Agent) waitSamplingRetry(ctx context.Context, s *samplingRecoveryState,
 				"phase", failure.Phase, "kind", string(kind), "reason", why,
 				"identity", a.streamRetryBudget.RefusedIdentity(failure.Phase),
 				"attempt", attempt, "err", result.err)
+			// Task 372 (visibility only): a window/shape refusal is the
+			// give-up frame — emit it so the UI can show "terminated after
+			// N attempts" instead of flipping to an ambiguous idle state.
+			// Admission itself is unchanged (Allow already returned false).
+			a.svc.sink.Emit(event.Event{Kind: event.Retrying, RetryAttempt: attempt, RetryMax: maxStreamRecoveries, RetryScope: event.RetryScopeStream, Recovery: &event.RecoveryStatus{
+				Phase:           failure.Phase,
+				Reason:          why,
+				BudgetUsed:      a.streamRetryBudget.Count(failure.Phase, time.Now()),
+				BudgetLimit:     a.streamRetryBudget.Limit(),
+				BudgetExhausted: true,
+			}})
 			return false
 		}
 	}
 	if (!failure.Retryable && !quotaFallback) || (attempt >= maxSamplingAttempts && !waiting) {
+		// Task 372 (visibility only): the loop gives up here (attempt cap or
+		// non-retryable shape) — emit the terminal frame BEFORE returning so
+		// the UI can show "terminated (gave up after N attempts)" with a
+		// manual-continue cue instead of a silent status flip. The decision
+		// itself (`return false`) is unchanged.
+		a.svc.sink.Emit(event.Event{Kind: event.Retrying, RetryAttempt: attempt, RetryMax: maxStreamRecoveries, RetryScope: event.RetryScopeStream, Recovery: &event.RecoveryStatus{
+			Phase:           failure.Phase,
+			Reason:          "retry loop ended",
+			BudgetUsed:      a.streamRetryBudget.Count(failure.Phase, time.Now()),
+			BudgetLimit:     a.streamRetryBudget.Limit(),
+			BudgetExhausted: true,
+		}})
 		return false
 	}
 	base := time.Duration(1<<min(attempt-1, 2)) * 2 * time.Second
@@ -291,6 +314,12 @@ func (a *Agent) waitSamplingRetry(ctx context.Context, s *samplingRecoveryState,
 	if waiting {
 		status.WaitBudgetMs = recoveryWaitBudget.Milliseconds()
 	}
+	// Task 372 (visibility only): mirror the task-243 sliding-window counts so
+	// the UI can say "auto-retried N (N/limit) times, recovering". Allow
+	// already admitted this round — Count is a read-only observation of the
+	// window and never changes admission.
+	status.BudgetUsed = a.streamRetryBudget.Count(failure.Phase, time.Now())
+	status.BudgetLimit = a.streamRetryBudget.Limit()
 	a.svc.sink.Emit(event.Event{Kind: event.Retrying, RetryAttempt: attempt, RetryMax: maxStreamRecoveries, RetryScope: event.RetryScopeStream, Recovery: status})
 	s.waited += delay
 	if !waiting && failure.RetryAfter <= base {

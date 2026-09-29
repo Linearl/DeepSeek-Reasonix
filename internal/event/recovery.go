@@ -26,4 +26,13 @@ type RecoveryStatus struct {
 	WaitedMs             int64  `json:"waited_ms,omitempty"`
 	WaitBudgetMs         int64  `json:"wait_budget_ms,omitempty"`
 	Waiting              bool   `json:"waiting,omitempty"`
+	// Task 372 (visibility only — the task-243 A4 admission semantics are
+	// untouched): BudgetUsed/BudgetLimit mirror the sliding window behind
+	// Allow so the UI can say "auto-retried N (N/limit) times, recovering".
+	// BudgetExhausted marks the terminal frame once the window or the
+	// attempt cap refuses another round — the UI then shows the give-up
+	// end state instead of an ambiguous running/idle flip.
+	BudgetUsed      int  `json:"budget_used,omitempty"`
+	BudgetLimit     int  `json:"budget_limit,omitempty"`
+	BudgetExhausted bool `json:"budget_exhausted,omitempty"`
 }

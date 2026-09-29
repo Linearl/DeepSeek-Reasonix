@@ -101,7 +101,7 @@ export function NoticeCard({ item, onAction, onAccept, onOpenVerification, onUnd
             {item.action && onAction ? (
               <button className="btn btn--small" type="button" onClick={onAction} disabled={actionDisabled}>
                 <ActionIcon size={13} aria-hidden="true" />
-                <span>{item.action === "recover_context" ? t("notice.protocolRecoveryAction") : item.action === "open_changes" ? t("notice.completionViewChanges") : t("notice.deliveryIncompleteContinue")}</span>
+                <span>{item.action === "manual_continue" ? t("notice.manualContinue") : item.action === "recover_context" ? t("notice.protocolRecoveryAction") : item.action === "open_changes" ? t("notice.completionViewChanges") : t("notice.deliveryIncompleteContinue")}</span>
               </button>
             ) : null}
             {showVerification ? (
