@@ -493,6 +493,12 @@ func (a *App) SetDetachedIdleReleaseMinutes(minutes int) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetDetachedIdleReleaseMinutes(minutes) })
 }
 
+// SetGoMemLimitMB sets the task-308-O3 soft memory limit (0 = unbounded). The
+// caller re-applies it live via applyGoMemLimit after the config write.
+func (a *App) SetGoMemLimitMB(mb int) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetGoMemLimitMB(mb) })
+}
+
 // SetExperimentalAutoLoadOlder toggles the scroll-driven history trigger (fork
 // task 160). The explicit "load older" button stays available either way.
 func (a *App) SetExperimentalAutoLoadOlder(enabled bool) error {

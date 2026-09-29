@@ -913,6 +913,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetSessionCollabHopLimit(limit: number): Promise<void>;
   // Task 308-O4: detached idle runtime release threshold (minutes; 0 = never).
   SetDetachedIdleReleaseMinutes(minutes: number): Promise<void>;
+  // Task 308-O3: soft memory limit in MB (0 = unbounded).
+  SetGoMemLimitMB(mb: number): Promise<void>;
   // Task 173: the collaboration panel gates (settings → 实验特性 → 跨会话通信).
   SetSessionCollabGates(allowDelete: boolean, allowRequireReply: boolean, allowReadTail: boolean, allowCreate: boolean, allowSteer: boolean, dailySendLimit: number): Promise<void>;
   // Task 264: background-woken sessions stay out of the tab bar (detached
@@ -5267,6 +5269,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalModelCapabilityFilter() {},
     async SetSessionCollabHopLimit() {},
     async SetDetachedIdleReleaseMinutes() {},
+    async SetGoMemLimitMB() {},
     async SetSessionCollabGates() {},
     async SetSessionCollabBackground() {},
     async SetSessionCollabMailDefaults() {},

@@ -396,6 +396,7 @@ type SettingsView struct {
 	PerfMonitorIntervalSeconds int  `json:"perfMonitorIntervalSeconds"`
 	SessionCollabHopLimit      int  `json:"sessionCollabHopLimit"`
 	DetachedIdleReleaseMinutes int  `json:"detachedIdleReleaseMinutes"`
+	GoMemLimitMB               int  `json:"goMemLimitMB"`
 	ExperimentalSessionCollab  bool `json:"experimentalSessionCollab"`
 	ExperimentalAutoLoadOlder  bool `json:"experimentalAutoLoadOlder"`
 	// Task 244 B5/B4: settings-view mirrors of the [agent] runtime flags.
@@ -564,6 +565,8 @@ type DesktopStartupSettingsView struct {
 	PerfMonitorIntervalSeconds int  `json:"perfMonitorIntervalSeconds"`
 	SessionCollabHopLimit      int  `json:"sessionCollabHopLimit"`
 	DetachedIdleReleaseMinutes int  `json:"detachedIdleReleaseMinutes"`
+	// GoMemLimitMB is the task-308-O3 soft memory limit in MB (0 = unbounded).
+	GoMemLimitMB int `json:"goMemLimitMB"`
 	// ExperimentalSessionCollab exposes multi-session collaboration (task 19).
 	ExperimentalSessionCollab bool `json:"experimentalSessionCollab"`
 	// ExperimentalAutoLoadOlder exposes the scroll-driven history trigger (fork
@@ -1310,6 +1313,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.PerfMonitorIntervalSeconds = cfg.Desktop.PerfMonitorIntervalSeconds
 		view.SessionCollabHopLimit = cfg.Desktop.SessionCollabHopLimit
 		view.DetachedIdleReleaseMinutes = cfg.Desktop.DetachedIdleReleaseMinutes
+		view.GoMemLimitMB = cfg.Desktop.GoMemLimitMB
 		view.ExperimentalSessionCollab = cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab
 		view.ExperimentalAutoLoadOlder = cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder
 		view.CollabInboxMerge = config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge)
@@ -1432,6 +1436,7 @@ func (a *App) Settings() SettingsView {
 		PerfMonitorIntervalSeconds:        cfg.Desktop.PerfMonitorIntervalSeconds,
 		SessionCollabHopLimit:             cfg.Desktop.SessionCollabHopLimit,
 		DetachedIdleReleaseMinutes:        cfg.Desktop.DetachedIdleReleaseMinutes,
+		GoMemLimitMB:                      cfg.Desktop.GoMemLimitMB,
 		ExperimentalSessionCollab:         cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
 		ExperimentalAutoLoadOlder:         cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
 		CollabInboxMerge:                  config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge),

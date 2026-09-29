@@ -84,6 +84,8 @@ export interface SettingsView {
   sessionCollabHopLimit?: number;
   // Task 308-O4: detached idle runtime release threshold (minutes; 0 = never).
   detachedIdleReleaseMinutes?: number;
+  // Task 308-O3: soft memory limit in MB (0 = unbounded).
+  goMemLimitMB?: number;
   // Fork task 160: scroll-driven "load older" trigger at the transcript top.
   experimentalAutoLoadOlder?: boolean;
   // Task 221: inbox drain merge tri-state (off | same_sender | all).

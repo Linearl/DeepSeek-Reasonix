@@ -119,6 +119,9 @@ type DesktopConfig struct {
 	// runtime value of task 308-O4 (idle threshold in minutes, 0 = never
 	// release).
 	DetachedIdleReleaseMinutes int `toml:"detached_idle_release_minutes"`
+	// GoMemLimitMB is the settings-view mirror for the [agent] runtime value
+	// of task 308-O3 (soft memory limit in MB, 0 = unbounded).
+	GoMemLimitMB int `toml:"go_mem_limit_mb"`
 	// ExperimentalAutoLoadOlder is the settings-view mirror for
 	// Agent.ExperimentalAutoLoadOlder (fork task 160).
 	ExperimentalAutoLoadOlder bool `toml:"experimental_auto_load_older"`

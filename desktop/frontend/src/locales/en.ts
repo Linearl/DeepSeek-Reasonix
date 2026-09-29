@@ -2302,6 +2302,8 @@ export const en = {
 "settings.sessionCollabHint": "Task 19: enables the multi-session collaboration tools (contact-directory addressing, talk_to_session delivery, collaboration task cards). Off by default; after turning it on, restart (or open a new session) so the tools register on existing sessions.",
 "settings.detachedIdleRelease": "Detached idle release (task 308-O4)",
 "settings.detachedIdleReleaseHint": "A backgrounded session (tab closed) that has finished its turn and been idle for this many minutes gets its runtime released; session files stay on disk and reopening reloads normally. 0 = never release. Off by default; applies to the next release check.",
+"settings.goMemLimit": "Go soft memory limit (task 308-O3)",
+"settings.goMemLimitHint": "Sets the Go runtime soft memory limit in MB (debug.SetMemoryLimit): as the heap approaches the limit the runtime collects and returns memory to the OS more aggressively, countering heapSys that only ever grows. 0 = unbounded. Off by default; takes effect immediately.",
 "settings.autonomousIdleTerminate": "Heartbeat idle self-terminate",
 "settings.autonomousIdleTerminateHint": "Task 244 B1: disables a heartbeat task after 3 consecutive runs whose conversation never produced real history (burn guard against unattended spinning; MiMo's three-idle self-terminate). Off by default; takes effect immediately, no restart.",
 "settings.autonomousIdleTerminate.on": "On",

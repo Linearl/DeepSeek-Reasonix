@@ -1838,6 +1838,8 @@ export const zhTW: Record<DictKey, string> = {
 "settings.sessionCollabHint": "任務 19：啟用多會話協作工具（通訊錄尋址 / talk_to_session 跨會話投遞 / 協作任務卡）。預設關閉；開啟後需重啟（或新開會話）才會向會話註冊工具。",
 "settings.detachedIdleRelease": "背景會話閒置釋放（task 308-O4）",
 "settings.detachedIdleReleaseHint": "關閉標籤頁轉入背景的會話，完成當前輪次且閒置超過此分鐘數後釋放其執行時（會話檔案保留，重新開啟即重載）。0 = 從不釋放。預設關閉；改後對下一次釋放判定生效。",
+"settings.goMemLimit": "Go 軟記憶體上限（task 308-O3）",
+"settings.goMemLimitHint": "以 MB 為單位設定 Go 執行時軟記憶體上限（debug.SetMemoryLimit）：堆接近上限時執行時會更積極地回收並把記憶體歸還系統，抑制 heapSys 只漲不降。0 = 不設上限。預設關閉；改後即刻生效。",
 "settings.autonomousIdleTerminate": "心跳空轉自終止",
 "settings.autonomousIdleTerminateHint": "任務 244 B1：心跳任務連續 3 次執行後會話仍無真實記錄時，自動停用該任務（防無人值守燒錢，借鏡 MiMo 三空轉自終止）。預設關閉；開啟即時生效，無需重啟。",
 "settings.autonomousIdleTerminate.on": "開",

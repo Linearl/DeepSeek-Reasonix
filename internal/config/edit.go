@@ -515,6 +515,20 @@ func (c *Config) SetDetachedIdleReleaseMinutes(minutes int) error {
 	return nil
 }
 
+// SetGoMemLimitMB sets the task-308-O3 soft memory limit in MB (0 = unset).
+// Clamped into [0, 65536] — 64 GiB is far past any sane desktop ceiling.
+func (c *Config) SetGoMemLimitMB(mb int) error {
+	if mb < 0 {
+		mb = 0
+	}
+	if mb > 65536 {
+		mb = 65536
+	}
+	c.Desktop.GoMemLimitMB = mb
+	c.Agent.GoMemLimitMB = mb
+	return nil
+}
+
 // SetSessionCollabBackground toggles the task-264 background mode: on,
 // pump stand-ups build a detached runtime instead of a visible tab (delivery
 // semantics unchanged); off is the byte-for-byte baseline. A regular panel
