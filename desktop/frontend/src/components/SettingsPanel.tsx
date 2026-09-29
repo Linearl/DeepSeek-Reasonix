@@ -2179,16 +2179,21 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   </button>
                 ))}
               </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "restartUpdate" && (
+            <>
               {/*
                * Task 381: the fast-switch staging directory. Empty = the
                * historical default under the install root; the restart-and-
                * update path names the exact directory in its error when the
                * artifacts are missing, so a wrong path is never a silent
                * failure. The reset button clears the override back to the
-               * default semantics.
+               * default semantics. Rendered as a sibling block (not nested)
+               * so it gets its own full-width row.
                */}
               <SettingsField label={t("settings.stagingDir")} hint={t("settings.stagingDirHint")} icon={<RefreshCw size={18} />}>
-                <div className="set-seg" style={{ display: "flex", gap: 8, alignItems: "center", width: "100%" }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", width: "100%" }}>
                   <input
                     key={`staging-${s.stagingDir ?? ""}`}
                     className="set-input"
@@ -2209,7 +2214,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   </button>
                 </div>
               </SettingsField>
-            </SettingsField>
+            </>
           )}
           {selected === "restartUpdate" && (
             // Task 254: the agent-facing half of the restart-and-update lab. The
