@@ -200,6 +200,8 @@ const CHECKS = [
   { feature: "任务381 staging 读取点全收敛", file: "desktop/restart_update.go", patterns: ["stagingRoot()"] },
   { feature: "任务383 #2 workbench 项目分组入口（header 菜单 group 项）", file: "desktop/frontend/src/components/ProjectTreeAddControls.tsx", patterns: ["new-project-group", "onGroup"] },
   { feature: "任务383 #5 classic footer icon-only（creation 保文字）+#8 automation→heartbeat 文案统一", file: "desktop/frontend/src/App.tsx", patterns: ["sidebarCreation ? <span>{t(\"sidebar.trash\")}</span> : <span className=\"sr-only\">", "heartbeat.scheduler"] },
+  { feature: "任务389 catalog 空闲 CPU 修复：30s 循环→fsnotify watch 单点移植（上游 #10603）", file: "desktop/session_catalog_watch.go", patterns: ["func (a *App) watchSessionCatalog", "5 * time.Minute"] },
+  { feature: "任务389 循环移除守护", file: "desktop/session_catalog_lifecycle.go", patterns: ["watchSessionCatalog(ctx, catalog)"] },
 ];
 
 let failed = 0;

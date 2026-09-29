@@ -84,26 +84,10 @@ func (a *App) runSessionCatalog(ctx context.Context) {
 	a.runSessionCatalogRefreshLoop(ctx, catalog)
 }
 
+// Task 389: the 30s full-target reconcile/migrate/sweep loop burned idle CPU
+// (upstream #11181); this is the single-point port of the upstream 1.38.12
+// catalog rework (#10603) — fsnotify-driven dirty-directory refreshes with
+// periodic metadata/audit fallbacks instead of the unconditional loop.
 func (a *App) runSessionCatalogRefreshLoop(ctx context.Context, catalog *sessioncatalog.Catalog) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			if err := a.syncSessionCatalogMetadataBounded(ctx, catalog); err != nil && !errors.Is(err, context.Canceled) {
-				slog.Debug("desktop: refresh session catalog metadata", "err", err)
-			}
-			for _, target := range a.sessionCatalogTargets() {
-				if migrated := migrateLegacySessionsIntoGlobalTopics(target.Path); len(migrated) > 0 {
-					_ = a.syncSessionCatalogMetadataBounded(ctx, catalog)
-				}
-				catalog.RequestReconcile(target)
-				// Count sweep rides the periodic reconcile tick; it only moves
-				// provably redundant copies into the recoverable trash.
-				a.sweepExcessRecoveryCopies(catalog, target)
-			}
-		case <-ctx.Done():
-			return
-		}
-	}
+	a.watchSessionCatalog(ctx, catalog)
 }
