@@ -498,6 +498,18 @@ func (a *App) SetExperimentalSessionCollab(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSessionCollab(enabled) })
 }
 
+// SetStagingDir stores the fast-switch staging directory override (task 381).
+// Light path on purpose: the key is read at restart-and-update time, not by
+// the running tab runtime, so no rebuild is attempted and the save cannot be
+// bounced by one. Empty restores the default staging directory. A missing
+// directory is not an error here — the restart-and-update path names the
+// exact path in its error when the artifacts are absent.
+func (a *App) SetStagingDir(dir string) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetStagingDir(dir)
+	})
+}
+
 // SetCollabInboxMerge sets the inbox drain merge tri-state (task 221):
 // off | same_sender | all. The config layer normalizes unknown values to off.
 func (a *App) SetCollabInboxMerge(mode string) error {

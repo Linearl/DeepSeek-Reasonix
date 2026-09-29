@@ -11,6 +11,8 @@ export interface SettingsView {
   autopilotApprovalGrace: string;
   // Task 81: exposes the restart-and-update action. Same preference restart_and_update reads.
   experimentalRestartUpdate?: boolean;
+  /** Task 381: fast-switch staging directory override; empty = the default. */
+  stagingDir?: string;
   // Task 254: registers the agent-facing restart_update tool (boot snapshot).
   experimentalAutonomousUpdate?: boolean;
   // Task 254: auto-resume scope after an update restart (off | goal_autopilot | all).

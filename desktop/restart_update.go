@@ -52,7 +52,9 @@ func (a *App) restartAndUpdateExempt(sourceDir, version, callerSession string) e
 	// that refusal names the staging path so the caller can tell a malformed
 	// request from a disabled feature (task 81 guard order preserved).
 	if sourceDir == "" {
-		if executable, execErr := os.Executable(); execErr == nil {
+		if dir, dirErr := stagingRoot(); dirErr == nil && dir != "" {
+			sourceDir = dir
+		} else if executable, execErr := os.Executable(); execErr == nil {
 			if installRoot, rootErr := installlayout.ResolveInstallRoot(executable); rootErr == nil && installRoot != "" {
 				sourceDir = filepath.Join(installRoot, "staging")
 			}
@@ -90,10 +92,14 @@ func (a *App) restartAndUpdateExempt(sourceDir, version, callerSession string) e
 		return fmt.Errorf("restart: this build is not a versioned install, so there is no pointer to move: %w", err)
 	}
 
-	// Default staging location: a local build dropped into InstallRoot/staging/. Kept
-	// as a convention rather than a setting so the button needs no configuration.
+	// Default staging location (task 381: the configured override wins when
+	// set; the historical InstallRoot/staging convention stays the fallback).
 	if sourceDir == "" {
-		sourceDir = filepath.Join(installRoot, "staging")
+		if dir, dirErr := stagingRoot(); dirErr == nil && dir != "" {
+			sourceDir = dir
+		} else {
+			sourceDir = filepath.Join(installRoot, "staging")
+		}
 	}
 
 	// The status-bar button sends an empty version on purpose: a local build has no

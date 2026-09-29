@@ -17,6 +17,7 @@ var desktopRenderOmissions = map[string]string{
 	// untouched config stays short. They are listed here deliberately - the point of
 	// this guard is that no preference can reach the config surface without someone
 	// deciding, in one of these two lists, how it gets there.
+	"staging_dir":              "task 381: rendered only when the override is set; empty = the byte-identical default staging directory",
 	"autopilot":                "rendered together with its bound, only when configured",
 	"autopilot_max_runtime":    "rendered with the autopilot flag",
 	"autopilot_approval_grace": "rendered with the autopilot flag",

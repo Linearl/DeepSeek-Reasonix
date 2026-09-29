@@ -152,6 +152,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// back to off. Both experiment switches shipped broken until 2026-09-15 (task
 		// 81's restart-and-update and task 123's session monitor could never be enabled).
 		fmt.Fprintf(&b, "experimental_restart_update = %v   # desktop: show the restart-and-update action (task 81)\n", c.Desktop.ExperimentalRestartUpdate)
+		if dir := strings.TrimSpace(c.Desktop.StagingDir); dir != "" {
+			fmt.Fprintf(&b, "staging_dir = %q   # desktop: fast-switch staging override (task 381); empty = the default staging directory\n", dir)
+		}
 		fmt.Fprintf(&b, "experimental_autonomous_update = %v   # desktop: register the agent restart_update tool (task 254; boot snapshot)\n", c.Desktop.ExperimentalAutonomousUpdate)
 		fmt.Fprintf(&b, "autonomous_update_resume = %q   # desktop: auto-resume after an update restart: off | goal_autopilot | all (task 254)\n", c.AutonomousUpdateResumeMode())
 		// Task 277: same fixed-key-set rule — a missing line would flip the

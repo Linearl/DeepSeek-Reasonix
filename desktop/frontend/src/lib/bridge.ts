@@ -530,6 +530,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   MoveInboxItem(tabID: string, id: string, toIndex: number): Promise<void>;
   /** Task 221#6: cross-session mailbox unread count for this tab's session
    * (mailbox badge semantics; read-only probe, never advances the seen cursor). */
+  /** Task 381: the fast-switch staging directory override (empty = default). */
+  GetStagingDir(): Promise<string>;
+  SetStagingDir(dir: string): Promise<void>;
   UnreadMailCount(tabID: string): Promise<number>;
   SetInboxPaused(tabID: string, paused: boolean): Promise<void>;
   RetryInboxItem(tabID: string, id: string): Promise<void>;
@@ -3655,6 +3658,8 @@ function makeMockApp(): AppBindings {
         async UpdateInboxItem() {},
         async DeleteInboxItem() {},
         async MoveInboxItem() {},
+        async GetStagingDir() { return ""; },
+        async SetStagingDir() {},
         async UnreadMailCount() { return 0; },
         async SetInboxPaused(_tabID, paused) { if (recoveryMock) (await import("./inboxRecoveryPreview")).setInboxRecoveryPreviewPaused(paused); },
         async RetryInboxItem() {},
