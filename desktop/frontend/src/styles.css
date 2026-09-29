@@ -41868,3 +41868,20 @@ body > .mermaid-diagram--fullscreen {
   font-size: 11.5px;
   line-height: 1.45;
 }
+
+/* 383 #5: classic sidebar bottom nav is horizontal when icon-only (matches workbench) */
+.sidebar__nav--utility {
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+}
+
+.sidebar__nav--utility .sidebar__navitem {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  justify-content: center;
+  padding: 0;
+  border-radius: 8px;
+}

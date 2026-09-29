@@ -94,7 +94,7 @@ export function SidebarRegion(props: SidebarRegionProps) {
             </div>
           </nav>
         ) : (
-          <nav className="sidebar__nav">
+          <nav className={`sidebar__nav${!props.creation ? " sidebar__nav--utility" : ""}`}>
             {props.creation && (
               <Tooltip label={t("projectTree.searchPlaceholder")} fill side="right" disabled={props.navTooltipDisabled}>
                 <button className={`sidebar__navitem sidebar__navitem--search${props.searchOpen ? " sidebar__navitem--active" : ""}`} type="button"
