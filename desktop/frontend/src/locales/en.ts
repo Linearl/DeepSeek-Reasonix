@@ -2012,6 +2012,8 @@ export const en = {
   "settings.lab.tocLabel": "Group directory",
   "settings.forkFeaturesIntro.title": "Fork Features",
   "settings.forkFeaturesIntro.lead": "These improvements are already active everywhere — no switches needed; each entry says where to find it.",
+  "settings.forkFeaturesIntro.recommended": "Recommended",
+  "settings.forkFeaturesIntro.close": "Close",
   "settings.forkFeaturesIntro.group.layout": "Layout",
   "settings.forkFeaturesIntro.group.projects": "Projects",
   "settings.forkFeaturesIntro.group.sessions": "Sessions & Branches",

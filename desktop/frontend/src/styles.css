@@ -4037,6 +4037,74 @@ a[href] {
   color: var(--fg);
 }
 
+/* Task 379: the intro as a LARGE modal + card wall (the 0929 direction). */
+.fork-features-dialog__backdrop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.fork-features-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(980px, 94vw);
+  max-height: 88vh;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+.fork-features-dialog__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.fork-features-dialog__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--fg);
+}
+.fork-features-dialog__body {
+  overflow: auto;
+  padding: 6px 18px 18px;
+}
+/* The wall: a real grid so every feature tile lays out side by side instead
+   of the old stacked column (which is retired by 379). */
+.experimental-intro__cards--wall {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(236px, 1fr));
+  gap: 10px;
+}
+.experimental-intro__card--wall {
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg) 55%, var(--bg-elev));
+}
+.experimental-intro__card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.experimental-intro__card-icon {
+  font-size: 17px;
+  line-height: 1;
+}
+.experimental-intro__card-badge {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
 /* Task 132: experimental features left rail + detail pane. */
 .experimental-layout {
   display: grid;

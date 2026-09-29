@@ -1613,6 +1613,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.lab.tocLabel": "分組目錄",
   "settings.forkFeaturesIntro.title": "Fork 功能速覽",
   "settings.forkFeaturesIntro.lead": "以下改進已在各處生效，無需開關；每條註明在哪裡找到。",
+  "settings.forkFeaturesIntro.recommended": "推薦",
+  "settings.forkFeaturesIntro.close": "關閉",
   "settings.forkFeaturesIntro.group.layout": "介面佈局",
   "settings.forkFeaturesIntro.group.projects": "專案管理",
   "settings.forkFeaturesIntro.group.sessions": "對話與分支",

@@ -1,0 +1,48 @@
+# Task 379 — Fork feature intro copy, externalized from the code.
+# Path: frontend/public/fork-features.yaml (runtime fetch, refreshed on reload;
+# any missing file or field falls back to the task-282 locale keys, so a bad
+# edit never blanks the panel). Schema is intentionally simple.
+#
+# Fields per feature: id (must match the task-282 design-table id),
+# title, desc, how, icon (emoji), recommended (badge; default none).
+# Nothing here is sensitive — same surface as the public locale strings.
+
+lead: 以下改进已在各处生效，无需开关；每条注明在哪里找到。
+
+groups:
+  - key: layout
+    features:
+      - id: classicLayout
+        icon: "🖥️"
+        title: 经典布局
+        desc: 保留 classic 经典布局选项，与新 workbench 布局自由切换。
+        how: 设置 → 外观 → 布局风格。
+      - id: groupFold
+        icon: "🗂️"
+        title: 项目分组折叠
+        desc: 项目树分组可折叠，长列表收纳更清爽。
+        how: 项目树分组标题点击折叠。
+  - key: projects
+    features:
+      - id: projectGroups
+        icon: "📁"
+        title: 项目内会话分组
+        desc: 项目内会话按分组归置，多线工作不混淆。
+        how: 会话列表顶部分组选择器。
+      - id: colorFilter
+        icon: "🎨"
+        title: 项目树颜色筛选
+        desc: 给项目打颜色标签并一键筛选，多项目快速定位。
+        how: 项目右键 → 颜色，顶部筛选条。
+  - key: sessions
+    features:
+      - id: mergePanel
+        icon: "🧩"
+        title: 工作区合并面板
+        desc: 分支工作区合并预览与冲突处理的专用面板。
+        how: 分支菜单 → 合并面板。
+      - id: detachedTabs
+        icon: "💤"
+        title: 后台会话不占标签栏
+        desc: 后台唤起的会话不挤占标签栏，保持工作区整洁。
+        how: 后台唤起会话自动生效。

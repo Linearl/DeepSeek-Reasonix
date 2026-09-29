@@ -295,7 +295,8 @@ if (initialCSS.length > 0) {
   // gate. One-shot +0.5 per the ratchet rule.
   // 126.2: side-track merge batch (346 usage-card CSS grouping among the four pieces)
   // measures 125.7 over the 125.7 line — one-shot +0.5 per the ratchet rule (independent commit).
-assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 126.2 * 1024); // fork: upstream 1.38.3 raised its own budget to 120.4 KiB; the fork's LocalServerPage delta plus the merge measured 121.3 KiB. The session-version panel adds its table and phase styles, measuring 122.0 KiB. Task 123's session-monitor board adds its own ~0.4 KiB of panel styles (measured 123.1 KiB), so keep bounded headroom.
+  // 126.7: task 379 (intro dialog + card wall styles, 126.2 measured) — one-shot +0.5.
+assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 126.7 * 1024); // fork: upstream 1.38.3 raised its own budget to 120.4 KiB; the fork's LocalServerPage delta plus the merge measured 121.3 KiB. The session-version panel adds its table and phase styles, measuring 122.0 KiB. Task 123's session-monitor board adds its own ~0.4 KiB of panel styles (measured 123.1 KiB), so keep bounded headroom.
 if (localeChunks.length !== 2) {
   throw new Error(`expected 2 on-demand Chinese locale chunks, found ${localeChunks.length}`);
 }
