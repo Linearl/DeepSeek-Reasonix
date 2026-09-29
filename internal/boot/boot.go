@@ -1044,16 +1044,25 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// cache-miss servers get one background catalog discovery.
 	registerEnabledMCP := func(specs []plugin.Spec) {
 		for _, s := range specs {
+			// Task 363B: per-spec timing so a slow mcp stage decomposes into
+			// named specs from desktop.log. Observation only; the loop body is
+			// unchanged apart from clock reads and the two slog lines.
+			specStart := time.Now()
 			if pluginHost.HasClient(s.Name) {
+				claimStart := time.Now()
 				tools, err := pluginHost.ToolsFor(ctx, s.Name)
+				claimMs := time.Since(claimStart).Milliseconds()
 				if err == nil {
 					cacheHits++
 					for _, t := range tools {
 						reg.Add(t)
 					}
+					slog.Info("boot: mcp spec", "name", s.Name, "path", "host_tools",
+						"claim_ms", claimMs, "spec_ms", time.Since(specStart).Milliseconds())
 					continue
 				}
 			}
+			csStart := time.Now()
 			cs, _ := plugin.LoadCachedSchemaForSpec(s)
 			// Only kick a process for catalog discovery when no usable schema is
 			// cached. Cache-hit sessions stay process-idle until first tool call.
@@ -1061,9 +1070,14 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			if kick {
 				kickFresh++
 			}
+			toolsetStart := time.Now()
 			for _, t := range plugin.LazyToolset(s, cs, pluginHost, reg, ctx, kick) {
 				reg.Add(t)
 			}
+			slog.Info("boot: mcp spec", "name", s.Name, "path", "lazy",
+				"kick", kick, "schema_ms", time.Since(csStart).Milliseconds(),
+				"toolset_ms", time.Since(toolsetStart).Milliseconds(),
+				"spec_ms", time.Since(specStart).Milliseconds())
 		}
 	}
 	// eagerSpecs already includes extraSpecs; avoid double
