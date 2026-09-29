@@ -131,9 +131,22 @@ func TestRunStopsAfterExhaustedZeroContentRetriesWithoutCommittingEmptyMessages(
 			t.Fatalf("empty attempt injected synthetic user prompt: %q", message.Content)
 		}
 	}
-	retries := sink.kinds(event.Retrying)
-	if len(retries) != maxStreamRecoveries {
-		t.Fatalf("retry events = %d, want %d", len(retries), maxStreamRecoveries)
+	// Task 372 emits one terminal BudgetExhausted frame on the same Retrying
+	// kind once the retry window is spent, so count only the real retry frames
+	// here and assert the terminal frame separately.
+	retries, terminal := 0, 0
+	for _, ev := range sink.kinds(event.Retrying) {
+		if ev.Recovery != nil && ev.Recovery.BudgetExhausted {
+			terminal++
+			continue
+		}
+		retries++
+	}
+	if retries != maxStreamRecoveries {
+		t.Fatalf("retry events = %d, want %d", retries, maxStreamRecoveries)
+	}
+	if terminal != 1 {
+		t.Fatalf("terminal BudgetExhausted frames = %d, want 1", terminal)
 	}
 }
 
