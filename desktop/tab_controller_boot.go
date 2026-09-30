@@ -10,20 +10,24 @@ import (
 
 var errTabControllerExtensionsChanged = errors.New("desktop: controller extensions changed during build")
 
-// buildTabControllerBoot is a thin wrapper around boot.Build so the large
-// controller assembly path can stay under function-size / complexity budgets.
-func (a *App) buildTabControllerBoot(ctx context.Context, opts boot.Options) (control.SessionAPI, error) {
-	return boot.Build(ctx, opts)
+// buildTabControllerBoot is a thin wrapper around boot.BuildWithAssembly so
+// the large controller assembly path can stay under function-size / complexity
+// budgets. Task 405 Q1: the assembly is surfaced so the startup chain can feed
+// the 363A runtime-reuse pool (hit → skip discovery; post-build → store).
+// opts.ReuseAssembly may be nil (gate off / cold pool) — BuildWithAssembly
+// then behaves exactly like boot.Build.
+func (a *App) buildTabControllerBoot(ctx context.Context, opts boot.Options) (control.SessionAPI, *boot.ReusedAssembly, error) {
+	return boot.BuildWithAssembly(ctx, opts)
 }
 
 // buildTabControllerBootFenced keeps optimistic builds concurrent with each
 // other but excludes live MCP mutation. The generation check happens after the
 // gate so a build that loaded stale configuration never launches extensions.
-func (a *App) buildTabControllerBootFenced(ctx context.Context, generation uint64, opts boot.Options) (control.SessionAPI, error) {
+func (a *App) buildTabControllerBootFenced(ctx context.Context, generation uint64, opts boot.Options) (control.SessionAPI, *boot.ReusedAssembly, error) {
 	a.extensionBuildMu.RLock()
 	defer a.extensionBuildMu.RUnlock()
 	if a.currentExtensionGeneration() != generation {
-		return nil, errTabControllerExtensionsChanged
+		return nil, nil, errTabControllerExtensionsChanged
 	}
 	return a.buildTabControllerBoot(ctx, opts)
 }
