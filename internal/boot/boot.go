@@ -885,6 +885,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	}
 	// Register the full built-in inventory for use_capability dispatch. The
 	// provider-visible surface is narrowed later via SetProviderVisibleTools.
+	// Task 413: everything between the prompt mark and the mcp mark bills to
+	// the mcp stage's wall clock, but builtin registration is invisible in
+	// the per-spec lines — time it so a 21s stage decomposes.
+	builtinsStart := time.Now()
 	addBuiltins(reg, enabledBuiltins, writeRoots, writeRootSet, bashSpec, bashTimeout, searchSpec, stderr, root, proxySpec, forbidReadRoots, readPathResolver, sessionGuard, managedConfig, opts.FileOverlay, opts.TerminalRunner, sessionTemp, fileWriteReceipt)
 	// Task 233 batch 2: controlled UI driving, gated by iron-rule-2 config —
 	// with the switch off the tool does not exist in the registry at all.
@@ -892,6 +896,11 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		reg.Add(builtin.NewUIInteractTool(builtin.UIInteractConfig{WorkDir: root}))
 	}
 	addWebSearch(reg, cfg, entry, proxySpec, sink)
+	builtinsMs := time.Since(builtinsStart).Milliseconds()
+	// Task 413: the mcp pre-enumeration segment (host pick, enabled-plugin
+	// disk read, tier partition) — the segment the 15:41:52 window's
+	// unaccounted 21.3s lives in (spec detail was only 5ms).
+	prepStart := time.Now()
 	// Use the caller-supplied shared host when set, so controllers for the same
 	// workspace root reuse running MCP processes (e.g. one CodeGraph daemon
 	// instead of one per tab). Otherwise construct a private host per controller.
@@ -999,6 +1008,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// for this controller and still take a short readiness probe so recovery and
 	// session-scoped servers are deterministic. User/project config MCP stays
 	// catalog-first and process-idle until first real tool call.
+	// Task 413: close the pre-enumeration segment (host pick, enabled-plugin
+	// disk read, tier partition, spec option application).
+	mcpPrepMs := time.Since(prepStart).Milliseconds()
+	specsStart := time.Now()
 	// Task 334: count what this stage actually did — connect_fresh is the
 	// handshake count (config-unchanged rebuilds must show 0 here), cache_hits
 	// is the HasClient reuse path, kick_fresh counts lazily started processes.
@@ -1111,6 +1124,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		configSpecs = filtered
 	}
 	registerEnabledMCP(configSpecs)
+	mcpSpecsMs := time.Since(specsStart).Milliseconds()
 	bootTime.mark("mcp")
 	// Task 334: the reuse proof the bench reads — a rebuild with an unchanged
 	// MCP config and a shared host must log connect_fresh=0; any connect here
@@ -1119,11 +1133,16 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// un-instrumented extraSpecs loop (a 5s-timeout connect attempt per spec
 	// can hide there while connect_fresh stays 0); stage_ms is the wall clock
 	// the summary line can be diffed against the per-spec lines.
+	// Task 413 step 2: the 15:41:52 window localized the 21.3s to BEFORE spec
+	// enumeration (spec detail was 5ms) — builtins_ms (builtin registration
+	// also bills to this stage's wall clock) and prep_ms (host pick +
+	// enabled-plugin disk read + tier partition) now close that gap.
 	slog.Info("boot: mcp stage", "shared_host_reused", opts.SharedHost != nil,
 		"connect_fresh", connectFresh, "cache_hits", cacheHits, "kick_fresh", kickFresh,
 		"specs", len(configSpecs),
 		"extra_specs", len(extraSpecs), "extra_connect_ms", extraConnectMs,
 		"extra_fail_ms", extraFailMs,
+		"builtins_ms", builtinsMs, "prep_ms", mcpPrepMs, "specs_ms", mcpSpecsMs,
 		"stage_ms", bootTime.stageMs("mcp"))
 
 	for _, msg := range demoteMessages {
