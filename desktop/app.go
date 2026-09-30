@@ -923,7 +923,12 @@ func (a *App) restoreOrBuildTabs() {
 	if len(f.Tabs) > 0 {
 		toBuild := make([]*WorkspaceTab, 0, len(f.Tabs))
 		for _, entry := range f.Tabs {
-			releaseAdmission, admissionErr := a.beginProjectRuntimeAdmission(entry.Scope, entry.WorkspaceRoot)
+			// Task 186: a persisted tab sitting on one of the host's own directories
+			// (left over from the era when the global workspace rendered as a project)
+			// restores as a Global tab; otherwise its first turn would index the topic
+			// under a project entry the next save strips, losing it on tab close.
+			scope, workspaceRoot := normalizeWorkspaceScope(entry.Scope, entry.WorkspaceRoot)
+			releaseAdmission, admissionErr := a.beginProjectRuntimeAdmission(scope, workspaceRoot)
 			if admissionErr != nil {
 				continue
 			}
@@ -932,8 +937,8 @@ func (a *App) restoreOrBuildTabs() {
 			a.mu.Unlock()
 
 			var tab *WorkspaceTab
-			if entry.Scope == "project" {
-				tab = a.createTabEntryWithID(entry.Scope, entry.WorkspaceRoot, entry.TopicID, id)
+			if scope == "project" {
+				tab = a.createTabEntryWithID(scope, workspaceRoot, entry.TopicID, id)
 			} else {
 				tab = a.createTabEntryWithID("global", globalTabWorkspaceRoot(), entry.TopicID, id)
 			}
@@ -3564,6 +3569,9 @@ func (a *App) openTransientBlankRuntime(scope, workspaceRoot string) error {
 	if scope != "project" {
 		scope = "global"
 	}
+	// Task 186: a transient runtime on one of the host's own directories is a
+	// global-scope runtime — same rule as the visible tab opens.
+	scope, workspaceRoot = normalizeWorkspaceScope(scope, workspaceRoot)
 	actualRoot := ""
 	if scope == "project" {
 		workspaceRoot = normalizeProjectRoot(workspaceRoot)

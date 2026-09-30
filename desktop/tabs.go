@@ -2329,6 +2329,10 @@ func (a *App) openGlobalTabInactive(topicID string) (TabMeta, error) {
 }
 
 func (a *App) openTopicTabWithActivation(scope, workspaceRoot, topicID, sessionPath string, activate bool) (TabMeta, error) {
+	// Task 186: the sidebar never carries a project node for one of the host's own
+	// directories, so a project-scope open pointed at one is a global-scope open —
+	// every open entry (project/global/topic-session, active or not) funnels here.
+	scope, workspaceRoot = normalizeWorkspaceScope(scope, workspaceRoot)
 	actualRoot, sessionPath := a.resolveOpenTopicSessionPath(scope, workspaceRoot, sessionPath)
 	releaseAdmission, err := a.beginProjectRuntimeAdmission(scope, actualRoot)
 	if err != nil {
@@ -2663,6 +2667,9 @@ func (a *App) ensureBlankTab(scope, workspaceRoot string) (TabMeta, error) {
 	if scope != "project" {
 		scope = "global"
 	}
+	// Task 186: a blank tab on one of the host's own directories is a Global tab —
+	// the sidebar would never carry the project node its topic would be indexed under.
+	scope, workspaceRoot = normalizeWorkspaceScope(scope, workspaceRoot)
 
 	globalRoot := ""
 	if scope == "project" {
@@ -4255,6 +4262,9 @@ func (a *App) applySessionBindingToTab(tab *WorkspaceTab, binding sessionBinding
 	if scope == "" {
 		scope = "global"
 	}
+	// Task 186: a binding naming one of the host's own directories binds as Global —
+	// registering the root as a project would be dropped by the next save anyway.
+	scope, workspaceRoot = normalizeWorkspaceScope(scope, workspaceRoot)
 	if scope == "project" {
 		workspaceRoot = normalizeProjectRoot(workspaceRoot)
 		if workspaceRoot == "" {

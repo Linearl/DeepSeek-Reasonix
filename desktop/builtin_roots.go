@@ -50,6 +50,20 @@ func isBuiltinWorkspaceRoot(root string) bool {
 	return false
 }
 
+// normalizeWorkspaceScope routes a project-scope request pointed at one of the host's
+// own directories to the built-in Global scope. The sidebar never renders a project
+// node for a builtin root, so a project-scope tab on one would index its topic into a
+// project entry that every save strips away — a conversation reachable only while its
+// tab stays open (the failure task 197 recorded for heartbeat runs). The built-in
+// Global folder is the one node that legitimately carries those roots, and its session
+// directory is the very same directory, so the open loses nothing by becoming global.
+func normalizeWorkspaceScope(scope, workspaceRoot string) (string, string) {
+	if strings.TrimSpace(scope) == "project" && isBuiltinWorkspaceRoot(workspaceRoot) {
+		return "global", ""
+	}
+	return scope, workspaceRoot
+}
+
 // stripBuiltinProjects removes every project entry that points at a builtin root, plus the
 // sidebar-order and pinned entries that named it. Session data is deliberately untouched:
 // only the project node disappears, so the conversations remain reachable from the Global

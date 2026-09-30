@@ -154,3 +154,15 @@ export function splitPinnedProjectTree(
   pinnedProjects.sort((a, b) => projectSortValue(b, sortMode) - projectSortValue(a, sortMode));
   return { pinned: [...pinnedTopics, ...pinnedProjects], projects };
 }
+
+// Task 186: the Global folder legitimately carries the host's own workspace
+// root, and the backend whitelist keeps that root out of the project list.
+// This render-side backstop drops a project node pointing at that same root,
+// so even a backend path that forgets the whitelist cannot put the builtin
+// workspace back into the sidebar as a manageable project. Everything else —
+// including the Global folder itself — passes through untouched.
+export function projectTreeWithoutBuiltinWorkspaceNodes(projects: ProjectNode[]): ProjectNode[] {
+  const globalRoot = projects.find((node) => node.kind === "global_folder")?.root;
+  if (!globalRoot) return projects;
+  return projects.filter((node) => node.kind !== "project" || node.root !== globalRoot);
+}

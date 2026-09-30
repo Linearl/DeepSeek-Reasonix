@@ -35,8 +35,15 @@ func workspaceListPath() string {
 	return filepath.Join(dir, "desktop-workspaces.json")
 }
 
-// saveWorkspace records dir as the last working folder.
+// saveWorkspace records dir as the last working folder. One of the host's own
+// directories (task 186) is never the user's working folder: a pointer at it
+// once made startup chdir into the sessions container, which is how the
+// `%APPDATA%\reasonix\projects` "project" of task 161 kept its ambient
+// legitimacy. The pointer ignores those roots in both directions.
 func saveWorkspace(dir string) {
+	if isBuiltinWorkspaceRoot(dir) {
+		return
+	}
 	p := workspaceStatePath()
 	if p == "" || dir == "" {
 		return
@@ -67,7 +74,13 @@ func loadWorkspace() string {
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(b))
+	// Task 186: a stale pointer at one of the host's own directories (writable
+	// by saveWorkspace before the guard existed) reads back as unset, so
+	// startup stops chdir-ing into the sessions container.
+	if ws := strings.TrimSpace(string(b)); ws != "" && !isBuiltinWorkspaceRoot(ws) {
+		return ws
+	}
+	return ""
 }
 
 func loadWorkspaces() []string {
@@ -100,6 +113,11 @@ func rememberWorkspace(dir string) {
 	}
 	if abs, err := filepath.Abs(dir); err == nil {
 		dir = abs
+	}
+	// Task 186: same whitelist as saveWorkspace — the recent-workspaces list
+	// must not accumulate the host's own directories either.
+	if isBuiltinWorkspaceRoot(dir) {
+		return
 	}
 	paths := []string{dir}
 	for _, path := range loadWorkspaces() {

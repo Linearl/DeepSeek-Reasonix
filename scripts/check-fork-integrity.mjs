@@ -36,6 +36,16 @@ const CHECKS = [
   // #9222 的项目级分组 UI 接线（2026-09-10 恢复）：上游的会话级分组占用了同一渲染位置，
   // 每次 merge 都要确认这四处调用点还在，而不是被上游实现悄悄顶掉。
   { feature: "#9222 项目分组 UI 接线", file: "desktop/frontend/src/components/ProjectTree.tsx", patterns: ["addProjectGroup", "groupForProjectRoot", "NewGroupPanel", "MoveToGroupPanel", "projectGroup.createNew"] },
+  // 任务 186：内置 root（global-workspace / 会话目录 / projects 容器）不是项目。
+  // 白名单是「读写收口 + 打开路径 scope 归 Global + 前端渲染兜底」三道闸，
+  // 上游 merge 丢掉任何一道都会让幽灵节点复活或会话失联，故逐文件登记。
+  { feature: "任务186 内置 root 白名单与 scope 归一", file: "desktop/builtin_roots.go", patterns: ["func builtinWorkspaceRoots", "func isBuiltinWorkspaceRoot", "func stripBuiltinProjects", "func normalizeWorkspaceScope"] },
+  { feature: "任务186 项目表读写剥离（load/update 收口）", file: "desktop/tabs.go", patterns: ["stripBuiltinProjects(applyProjectOrganization(f, organization))", "saveProjectsFile(stripBuiltinProjects(f))", "normalizeWorkspaceScope(scope, workspaceRoot)"] },
+  { feature: "任务186 注册表/工作区指针拒绝内置 root", file: "desktop/project_root_registration.go", patterns: ["isBuiltinWorkspaceRoot(workspaceRoot)"] },
+  { feature: "任务186 工作区指针双向忽略内置 root", file: "desktop/workspace.go", patterns: ["isBuiltinWorkspaceRoot(dir)", "isBuiltinWorkspaceRoot(ws)"] },
+  { feature: "任务186 恢复标签页 scope 归一", file: "desktop/app.go", patterns: ["normalizeWorkspaceScope(entry.Scope, entry.WorkspaceRoot)"] },
+  { feature: "任务186 前端渲染兜底过滤", file: "desktop/frontend/src/lib/projectTreePresentation.ts", patterns: ["projectTreeWithoutBuiltinWorkspaceNodes"] },
+  { feature: "任务186 快照过滤接线", file: "desktop/frontend/src/components/ProjectTree.tsx", patterns: ["projectTreeWithoutBuiltinWorkspaceNodes(asArray(snapshot.projects))"] },
   { feature: "#9580 草稿持久化存储层", file: "desktop/frontend/src/lib/composerDraftPersistence.ts", patterns: ["composer:drafts:v1", "pagehide", "MAX_PERSISTED_BYTES"] },
   // 任务 90 链拼接：promote 时把落败链（当前 main）中 winner 缺失的头部 graft 到新主线。
   // 三个锚点按「顺序」登记——gap 在 rename 前算、graft 在侧车搬移后写、事件日志随即折叠；
