@@ -1854,6 +1854,8 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
   const [hopLimit, setHopLimit] = useState<number>(s.sessionCollabHopLimit ?? 5);
   // Task 308-O4: detached idle release threshold (minutes; 0 = never release).
   const [detachedIdleRelease, setDetachedIdleRelease] = useState<number>(s.detachedIdleReleaseMinutes ?? 0);
+  // Task 308-O3: soft memory limit (MB; 0 = unbounded runtime).
+  const [goMemLimit, setGoMemLimit] = useState<number>(s.goMemLimitMB ?? 0);
   // Task 19: the addressable roster is read on demand, not on every settings
   // load — a session only appears once it has registered a purpose.
   const [sessionCollabRoster, setSessionCollabRoster] = useState<Awaited<ReturnType<typeof app.ListAddressableSessions>>>([]);
@@ -2984,6 +2986,20 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   onChange={(event) => setDetachedIdleRelease(Number(event.target.value))}
                   onBlur={() => void apply(async () => {
                     await app.SetDetachedIdleReleaseMinutes(detachedIdleRelease);
+                  })}
+                />
+              </SettingsField>
+              {/* Task 308-O3: soft memory limit (debug.SetMemoryLimit), MB. */}
+              <SettingsField label={t("settings.goMemLimit")} hint={t("settings.goMemLimitHint")} icon={<Sparkles size={18} />}>
+                <input
+                  type="number"
+                  min={0}
+                  max={65536}
+                  value={goMemLimit}
+                  disabled={busy}
+                  onChange={(event) => setGoMemLimit(Number(event.target.value))}
+                  onBlur={() => void apply(async () => {
+                    await app.SetGoMemLimitMB(goMemLimit);
                   })}
                 />
               </SettingsField>

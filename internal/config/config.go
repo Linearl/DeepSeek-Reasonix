@@ -1512,6 +1512,12 @@ type AgentConfig struct {
 	// values are clamped into [0, 10080] on write. The
 	// REASONIX_DETACHED_IDLE_RELEASE_MINUTES env overrides for one process.
 	DetachedIdleReleaseMinutes int `toml:"detached_idle_release_minutes"`
+	// GoMemLimitMB is the task-308-O3 soft memory limit (debug.SetMemoryLimit)
+	// in MB. 0 (default) leaves the Go runtime unbounded — the pre-O3
+	// behaviour; a positive value makes the runtime return memory to the OS
+	// aggressively once the heap crosses the limit (heapSys 3-4GB never
+	// returning was the measured driver). Clamped into [0, 65536] on write.
+	GoMemLimitMB int `toml:"go_mem_limit_mb"`
 	// Task 173: per-capability gates for the collaboration toolset. All ship
 	// off (the cautious reading of "the panel decides what is allowed"): a
 	// gate off means the capability is withheld — tool-level gates keep the

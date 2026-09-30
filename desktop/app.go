@@ -663,6 +663,11 @@ func (a *App) startup(ctx context.Context) {
 	a.startColdCacheCompactLoop()
 	// Task 308-O4: release detached/idle runtimes (gate: env minutes, default off).
 	a.startDetachedIdleReleaseLoop()
+	// Task 308-O3: apply the soft memory limit from config (live-capable via
+	// SetGoMemLimitMB in settings; startup applies the stored value once).
+	if cfg, _, err := a.loadDesktopUserConfigForView(); err == nil {
+		applyGoMemLimit(cfg)
+	}
 	a.heartbeat = newHeartbeatEngine(a)
 	// Task 244 B1: call-time evaluation (S4) — the burn guard reads the
 	// saved switch on every run, so toggling it in settings applies without a
