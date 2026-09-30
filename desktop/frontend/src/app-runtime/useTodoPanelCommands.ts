@@ -4,6 +4,7 @@ import { loadDismissedTodoKeys, saveDismissedTodoKeys } from "../lib/todoDismiss
 import { parseTodos, type Todo } from "../lib/tools";
 import {
   dismissedTodoKeyForScope,
+  partitionTodoBatches,
   resolveTodoPanelTodos,
   scopedTodoBatchKey,
   scopedTodoDismissalKey,
@@ -12,6 +13,7 @@ import {
   todoContinueTarget,
   todoDismissalKey,
   todoPanelScope,
+  type TodoBatch,
 } from "../lib/todoVisibility";
 import type { Translator } from "../lib/i18n";
 import type { Item } from "../lib/useController";
@@ -121,5 +123,21 @@ export function useTodoPanelCommands(input: TodoPanelCommandsInput) {
     void ports.sendToTab(targetTabId, prompt);
   });
 
-  return { showTodos, scopedTodoBatch, todos, dismissTodos, handleTodoContinue };
+  // Task 152: earlier fully-terminal todo_write batches become the panel's
+  // collapsed archive; sidecar-dismissed batches stay retired.
+  const todoArchive = useMemo(() => {
+    const batches: TodoBatch[] = [];
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
+      if (it.kind !== "tool" || it.name !== "todo_write" || it.parentId || it.status !== "done" || it.error) continue;
+      const parsed = parseTodos(it.args);
+      if (parsed.length > 0) batches.push({ key: todoBatchKey(parsed), todos: parsed });
+    }
+    return partitionTodoBatches(batches, {
+      includeTerminal: true,
+      dismissedBatches: !remote && input.meta?.sessionPath === activeTab?.sessionPath ? input.meta?.dismissedTodoBatches : undefined,
+    }).archive;
+  }, [items, remote, activeTab?.sessionPath, input.meta?.sessionPath, input.meta?.dismissedTodoBatches]);
+
+  return { showTodos, scopedTodoBatch, todos, archive: todoArchive, dismissTodos, handleTodoContinue };
 }

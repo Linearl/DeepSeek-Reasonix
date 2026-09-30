@@ -208,6 +208,17 @@ const CHECKS = [
   { feature: "任务389 循环移除守护", file: "desktop/session_catalog_lifecycle.go", patterns: ["watchSessionCatalog(ctx, catalog)"] },
   { feature: "任务386 markdown cache 碰撞守卫 backstop 测试（消费比对 miss 语义）", file: "desktop/frontend/src/__tests__/markdown-history.test.tsx", patterns: ["fidelity backstop at the store boundary", "treats the collision as a miss"] },
 
+  // ── 任务 152：todo 树状任务系统（2026-09-30）────────────────────
+  // schema/校验在 evidence（树状状态机 + 终态 + 层级 ID），工具面在 builtin/todo，
+  // agent 侧树列表跳过扁平 normalizer，前端树渲染 + 归档区——五处都要在。
+  { feature: "任务152 树状校验状态机+终态+层级 ID（Go）", file: "internal/evidence/evidence.go", patterns: ["validateTreeSerialTodos", "func HierarchicalTodoIDs", "func TodoTerminalStatus", "ParentID string `json:\"parent_id,omitempty\"`"] },
+  { feature: "任务152 todo_write 工具面（parent_id schema+归档迁移守卫）", file: "internal/tool/builtin/todo.go", patterns: ["\"parent_id\":{\"type\":\"string\",\"description\":\"Task 152 tree", "cannot be archived straight from", "cannot jump from in_progress to archived"] },
+  { feature: "任务152 树列表跳过扁平 normalizer", file: "internal/agent/agent.go", patterns: ["func todoListHasExplicitParents"] },
+  { feature: "任务152 前端树数据层（终态/深度/层级码/批次归档分区）", file: "desktop/frontend/src/lib/todoVisibility.ts", patterns: ["export function todoTerminalStatus", "export function todoTreeDepths", "export function todoHierarchyCodes", "export function partitionTodoBatches"] },
+  { feature: "任务152 面板树渲染+归档区 TSX", file: "desktop/frontend/src/components/TodoPanel.tsx", patterns: ["function TodoTree", "function TodoArchive", "todobar__archive-toggle", "todobar__caret"] },
+  { feature: "任务152 树/归档 CSS（theme token）", file: "desktop/frontend/src/styles.css", patterns: [".todobar__item--deep", ".todobar__caret", ".todobar__code", ".todobar__archive-toggle"] },
+  { feature: "任务152 压缩摘要任务树快照段", file: "internal/agent/compact.go", patterns: ["## Task tree"] },
+
 ];
 
 let failed = 0;

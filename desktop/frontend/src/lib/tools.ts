@@ -131,6 +131,11 @@ export interface Todo {
   status: TodoStatus | string;
   activeForm?: string;
   level?: number; // 0 = phase, 1 = sub-step of the phase above it
+  // Task 152 tree: step_id of the parent task; empty/absent = root (or a flat
+  // level 0/1 item, whose parent comes from level adjacency). step_id below
+  // stays the only stable identity — parent_id merely references one.
+  parent_id?: string;
+  step_id?: string;
 }
 
 // parseTodos pulls the task list out of a todo_write call's args.

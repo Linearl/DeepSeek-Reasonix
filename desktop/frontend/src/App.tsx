@@ -102,9 +102,10 @@ import { applyTerminalThemePreference } from "./lib/terminalTheme";
 import { formatTerminalOutputForComposer } from "./lib/terminalOutput";
 import { useTerminalStore } from "./store/terminal";
 import { hydrateReasoningDisplayMode, setReasoningDisplayPending } from "./lib/reasoningDisplayPreference";
-import { parseTodos } from "./lib/tools";
+import { parseTodos, type Todo } from "./lib/tools";
 import {
   dismissedTodoKeyForScope,
+  partitionTodoBatches,
   resolveTodoPanelTodos,
   scopedTodoBatchKey,
   scopedTodoDismissalKey,
@@ -112,6 +113,7 @@ import {
   todoBatchKey,
   todoDismissalKey,
   todoPanelScope,
+  type TodoBatch,
 } from "./lib/todoVisibility";
 import {
   type BotRuntimeStatusView,
@@ -1849,6 +1851,23 @@ export default function App() {
     () => resolveTodoPanelTodos(metaTodos, todoItem ? parseTodos(todoItem.args) : undefined),
     [metaTodos, todoItem],
   );
+  // Task 152: every earlier successful top-level todo_write whose items all
+  // reached a terminal status becomes the panel's collapsed archive — history
+  // stays reachable instead of living only in the transcript. Batches the user
+  // dismissed (sidecar) stay retired.
+  const todoArchive = useMemo(() => {
+    const batches: TodoBatch[] = [];
+    for (let i = state.items.length - 1; i >= 0; i--) {
+      const it = state.items[i];
+      if (it.kind !== "tool" || it.name !== "todo_write" || it.parentId || it.status !== "done" || it.error) continue;
+      const parsed = parseTodos(it.args);
+      if (parsed.length > 0) batches.push({ key: todoBatchKey(parsed), todos: parsed satisfies Todo[] });
+    }
+    return partitionTodoBatches(batches, {
+      includeTerminal: true,
+      dismissedBatches: state.meta?.sessionPath === activeTab?.sessionPath ? state.meta?.dismissedTodoBatches : undefined,
+    }).archive;
+  }, [state.items, activeTab?.sessionPath, state.meta?.sessionPath, state.meta?.dismissedTodoBatches]);
   const [dismissedTodoKeys, setDismissedTodoKeys] = useState<Set<string>>(loadDismissedTodoKeys);
   const todoKey = useMemo(() => todoDismissalKey(todos), [todos]);
   const todoBatch = useMemo(() => todoBatchKey(todos), [todos]);
@@ -5018,6 +5037,7 @@ export default function App() {
                 running={state.running}
                 pendingPrompt={state.pendingPrompt}
                 onDismiss={dismissTodos}
+                archive={todoArchive}
               />
             )}
             {!runtimeTransitioning && rewindState && (
@@ -5395,6 +5415,7 @@ export default function App() {
                       pendingPrompt={state.pendingPrompt}
                       onDismiss={dismissTodos}
                       defaultOpen
+                      archive={todoArchive}
                     />
                   </div>
                 ) : (

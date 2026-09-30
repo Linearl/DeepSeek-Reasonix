@@ -38,6 +38,13 @@ type TodoItem struct {
 	// Running marks an item a parallel executor is currently working on, so a
 	// second executor can see who else is live without inventing a status.
 	Running bool `json:"running,omitempty"`
+	// ParentID (task 152) names the step_id of this item's parent task. Empty
+	// means a root: either a true root of an explicit tree, or a flat/level
+	// list item whose parent comes from the level 0/1 adjacency rule (a level-1
+	// item belongs to the nearest preceding level-0 phase). step_id stays the
+	// only identity — ParentID is a structural reference to one, not an
+	// identity of its own.
+	ParentID string `json:"parent_id,omitempty"`
 }
 
 // ValidateSerialTodos enforces the task-list state machine promised by
@@ -48,16 +55,29 @@ type TodoItem struct {
 // pending, and the phase becomes the single in_progress item only after every
 // sub-step has completed — the phase signs off last. A fully completed or
 // empty list is also valid.
+//
+// Task 152: a list that carries an explicit parent_id tree is validated by the
+// tree state machine instead (validateTreeSerialTodos) — the same single
+// in_progress slot and the same "a parent signs off only after its subtree has
+// converged" rule, generalized past the level 0/1 adjacency that the segment
+// machine is hard-wired to. Lists without parent_id keep the segment machine
+// byte-for-byte, so every flat usage behaves exactly as before.
 func ValidateSerialTodos(todos []TodoItem) error {
+	if hasExplicitTodoParents(todos) {
+		return validateTreeSerialTodos(todos)
+	}
 	ipSeen := false
 	for i, todo := range todos {
 		switch todoStatus(todo.Status) {
 		case "completed", "pending":
+		case "abandoned", "archived":
+			// Task 152: terminal states. They occupy no in_progress slot and
+			// no longer count as unfinished work; see TodoTerminalStatus.
 		case "in_progress":
 			if ipSeen {
 				// Task 23 P0-a: a rejection has to say how to fix it — a bare rule statement
-			// is what left the model retrying the same list.
-			return fmt.Errorf("todo %d %q is a second in_progress item; a serial task list allows exactly one current item — demote this one back to pending, or mark the current item completed first", i+1, todo.Content)
+				// is what left the model retrying the same list.
+				return fmt.Errorf("todo %d %q is a second in_progress item; a serial task list allows exactly one current item — demote this one back to pending, or mark the current item completed first", i+1, todo.Content)
 			}
 			ipSeen = true
 		default:
@@ -140,6 +160,11 @@ func validateSerialSegment(todos []TodoItem, seg todoSegment) (string, error) {
 	head := todos[seg.head]
 	headStatus := todoStatus(head.Status)
 	if seg.end == seg.head+1 {
+		if TodoTerminalStatus(headStatus) {
+			// Task 152: abandoned/archived work is converged — it does not
+			// hold the serial spine open the way untouched pending work does.
+			return "completed", nil
+		}
 		return headStatus, nil
 	}
 	seenSubCurrent := false
@@ -151,6 +176,9 @@ func validateSerialSegment(todos []TodoItem, seg todoSegment) (string, error) {
 		switch todoStatus(sub.Status) {
 		case "completed":
 			// Sub-steps may finish out of order too (#9949 / task 23 P1-a).
+			completedSubs++
+		case "abandoned", "archived":
+			// Task 152: terminal sub-steps count as finished for the phase.
 			completedSubs++
 		case "in_progress":
 			if seenSubPending {
@@ -173,6 +201,13 @@ func validateSerialSegment(todos []TodoItem, seg todoSegment) (string, error) {
 			return "", fmt.Errorf("phase %d %q is completed but sub-step %d %q is unfinished; complete every sub-step, then sign the phase off with complete_step", seg.head+1, head.Content, unfinished+1, todos[unfinished].Content)
 		}
 		return "completed", nil
+	case "archived":
+		// Task 152: archived phase = completed work kept for the record; the
+		// same convergence rule applies.
+		if unfinished >= 0 {
+			return "", fmt.Errorf("phase %d %q is archived but sub-step %d %q is unfinished; finish every sub-step (or abandon it), then archive the phase", seg.head+1, head.Content, unfinished+1, todos[unfinished].Content)
+		}
+		return "completed", nil
 	case "in_progress":
 		if unfinished >= 0 {
 			return "", fmt.Errorf("phase %d %q cannot be in_progress while sub-step %d %q is unfinished; keep the phase pending, finish its sub-steps in order, then mark the phase in_progress to sign it off", seg.head+1, head.Content, unfinished+1, todos[unfinished].Content)
@@ -189,12 +224,263 @@ func validateSerialSegment(todos []TodoItem, seg todoSegment) (string, error) {
 	}
 }
 
+// TodoTerminalStatus reports whether a todo status is terminal (task 152):
+// "completed" is the signed-off state, "abandoned" marks work the agent
+// deliberately gave up, "archived" marks completed work kept for the record.
+// Terminal work is converged: it occupies no in_progress slot, no longer
+// blocks its parent's sign-off, and no longer holds final readiness open.
+// "completed" → "archived" is the migration rule; "completed" → "abandoned"
+// stays a regression elsewhere (PreservesCompletedTodoPositions).
+func TodoTerminalStatus(status string) bool {
+	switch todoStatus(status) {
+	case "completed", "abandoned", "archived":
+		return true
+	}
+	return false
+}
+
+// hasExplicitTodoParents reports whether any item declares a parent_id. Such a
+// list is an explicit task tree (task 152) and validates by the tree state
+// machine; every other list keeps the flat segment machine.
+func hasExplicitTodoParents(todos []TodoItem) bool {
+	for _, todo := range todos {
+		if strings.TrimSpace(todo.ParentID) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveTodoParents maps each item to the index of its parent (-1 = root).
+// An explicit parent_id wins and must reference an EARLIER item's step_id
+// (list order is display order, so a parent always renders above its
+// children); otherwise the legacy level 0/1 adjacency rule applies — a
+// level-1 item belongs to the nearest preceding level-0 item.
+func resolveTodoParents(todos []TodoItem) ([]int, error) {
+	byStepID := make(map[string]int, len(todos))
+	parents := make([]int, len(todos))
+	for i, todo := range todos {
+		parents[i] = -1
+		if id := strings.TrimSpace(todo.StepID); id != "" {
+			byStepID[id] = i
+		}
+	}
+	depth := make([]int, len(todos))
+	lastLevel0 := -1
+	for i, todo := range todos {
+		switch {
+		case strings.TrimSpace(todo.ParentID) != "":
+			p, ok := byStepID[strings.TrimSpace(todo.ParentID)]
+			if !ok {
+				return nil, fmt.Errorf("todo %d %q has parent_id %q, but no earlier item carries that step_id; a child must come after its parent — give the parent that step_id or clear the parent_id", i+1, todo.Content, todo.ParentID)
+			}
+			parents[i] = p
+			depth[i] = depth[p] + 1
+		case todo.Level == 1 && lastLevel0 >= 0:
+			parents[i] = lastLevel0
+			depth[i] = depth[lastLevel0] + 1
+		}
+		if todo.Level == 0 && parents[i] < 0 {
+			lastLevel0 = i
+		}
+	}
+	return parents, nil
+}
+
+// hierarchicalTodoID renders the dotted position code of one item ("T1",
+// "T1.2", "T1.2.1" — task 152): the parent's code plus the item's 1-based
+// position among its siblings. codes must be pre-sized; -1 marks unresolved.
+func hierarchicalTodoID(todos []TodoItem, parents []int, i int, codes []string) string {
+	if codes[i] != "" {
+		return codes[i]
+	}
+	position := 1
+	for j := 0; j < i; j++ {
+		if parents[j] == parents[i] {
+			position++
+		}
+	}
+	if parents[i] < 0 {
+		codes[i] = fmt.Sprintf("T%d", position)
+		return codes[i]
+	}
+	parent := hierarchicalTodoID(todos, parents, parents[i], codes)
+	codes[i] = fmt.Sprintf("%s.%d", parent, position)
+	return codes[i]
+}
+
+// HierarchicalTodoIDs computes the dotted position code of every item (task
+// 152): roots count T1, T2, …; a child appends its 1-based sibling position —
+// T1.1, T1.2 under T1, T1.1.1 under T1.1. The code is derived from tree
+// position, not an identity: step_id stays the only stable handle. Items whose
+// parent chain cannot be resolved fall back to their flat position (T<n>).
+func HierarchicalTodoIDs(todos []TodoItem) []string {
+	codes := make([]string, len(todos))
+	parents, err := resolveTodoParents(todos)
+	if err != nil {
+		for i := range todos {
+			codes[i] = fmt.Sprintf("T%d", i+1)
+		}
+		return codes
+	}
+	for i := range todos {
+		hierarchicalTodoID(todos, parents, i, codes)
+	}
+	return codes
+}
+
+// validateTreeSerialTodos is the task-152 state machine for explicit parent_id
+// trees. It keeps the two serial invariants the flat machine enforces — exactly
+// one in_progress item, and the current item must precede untouched work — and
+// redefines the flat "completed prefix is immutable" as the subtree constraint:
+// a parent may sign off (completed or archived) only after every descendant has
+// reached a terminal status (completed / abandoned / archived). Every rejection
+// names the offending descendant by its hierarchical code and the exact fix, so
+// a rejected write can be repaired without guessing (#9998/#10023).
+func validateTreeSerialTodos(todos []TodoItem) error {
+	parents, err := resolveTodoParents(todos)
+	if err != nil {
+		return err
+	}
+	codes := make([]string, len(todos))
+	for i := range todos {
+		hierarchicalTodoID(todos, parents, i, codes)
+	}
+	ipSeen := false
+	for i, todo := range todos {
+		switch todoStatus(todo.Status) {
+		case "in_progress":
+			if ipSeen {
+				return fmt.Errorf("todo %s %q is a second in_progress item; a serial task list allows exactly one current item — demote this one back to pending, or mark the current item completed first", codes[i], todo.Content)
+			}
+			ipSeen = true
+		case "completed", "abandoned", "archived", "pending":
+		default:
+			return fmt.Errorf("todo %s %q has invalid status %q", codes[i], todo.Content, todo.Status)
+		}
+	}
+	// Subtree convergence: a signed-off parent implies a converged subtree.
+	// "archived" follows the same rule as "completed" (it is completed work
+	// kept for the record); "abandoned" carries no constraint — giving a parent
+	// up must not force the agent to individually resolve its descendants.
+	for i, todo := range todos {
+		status := todoStatus(todo.Status)
+		if status != "completed" && status != "archived" {
+			continue
+		}
+		if _, code, content, ok := firstUnfinishedDescendant(todos, parents, i, codes); ok {
+			return fmt.Errorf("task %s %q is %s but its subtask %s %q is still unfinished; finish every subtask (or abandon the work you are giving up), then sign the parent off", codes[i], todo.Content, status, code, content)
+		}
+	}
+	// Serial spine: the single current item must precede untouched work, so a
+	// reader scanning the list top-down meets the live task before the backlog.
+	// Two pending shapes carry progress rather than blocking it (mirroring the
+	// flat segment machine): a pending ANCESTOR of the current item (its
+	// subtree is running), and pending work inherited from an abandoned parent
+	// (#9998 lesson: an unsatisfiable demand deadlocks the model).
+	seenPending := false
+	ipIndex := -1
+	for i := range todos {
+		switch todoStatus(todos[i].Status) {
+		case "in_progress":
+			ipIndex = i
+		case "pending":
+			if !hasAbandonedAncestor(parents, i, todos) {
+				seenPending = true
+			}
+		}
+	}
+	if ipIndex >= 0 && seenPending {
+		for j := 0; j < ipIndex; j++ {
+			if todoStatus(todos[j].Status) != "pending" || hasAbandonedAncestor(parents, j, todos) {
+				continue
+			}
+			if TodoHasAncestor(todos, ipIndex, j) {
+				continue // the pending parent owns the running subtree
+			}
+			return fmt.Errorf("task %s %q is in_progress after pending work; the current item must be the first unfinished item — start %s %q first, or mark the earlier pending work abandoned if it was given up", codes[ipIndex], todos[ipIndex].Content, codes[j], todos[j].Content)
+		}
+	}
+	if len(todos) > 0 && seenPending && ipIndex < 0 {
+		return fmt.Errorf("serial task list has pending work but no in_progress item — mark the first unfinished item in_progress so the list has a current step")
+	}
+	return nil
+}
+
+// hasAbandonedAncestor reports whether item i sits under a parent chain that
+// contains an abandoned task: that work is given up as a subtree.
+func hasAbandonedAncestor(parents []int, i int, todos []TodoItem) bool {
+	for p := parents[i]; p >= 0; p = parents[p] {
+		if todoStatus(todos[p].Status) == "abandoned" {
+			return true
+		}
+	}
+	return false
+}
+
+// TodoHasAncestor reports whether todos[child] descends from todos[ancestor]
+// through parent_id links (task 152). Unresolvable structure returns false.
+func TodoHasAncestor(todos []TodoItem, child, ancestor int) bool {
+	if child < 0 || ancestor < 0 || child >= len(todos) || ancestor >= len(todos) {
+		return false
+	}
+	parents, err := resolveTodoParents(todos)
+	if err != nil {
+		return false
+	}
+	for p := parents[child]; p >= 0; p = parents[p] {
+		if p == ancestor {
+			return true
+		}
+	}
+	return false
+}
+
+// firstUnfinishedDescendant walks item i's subtree and reports its first
+// descendant that has not reached a terminal status.
+func firstUnfinishedDescendant(todos []TodoItem, parents []int, i int, codes []string) (int, string, string, bool) {
+	for j := i + 1; j < len(todos); j++ {
+		if parents[j] < i {
+			continue
+		}
+		// Only the subtree: j is a descendant of i when its parent chain leads
+		// back to i. parents[j] >= i is necessary but not sufficient, so walk
+		// the chain instead of trusting the index comparison alone.
+		for p := parents[j]; p >= 0; p = parents[p] {
+			if p == i {
+				if !TodoTerminalStatus(todos[j].Status) {
+					return j, codes[j], todos[j].Content, true
+				}
+				break
+			}
+		}
+	}
+	return -1, "", "", false
+}
+
 // NormalizeSerialTodos repairs legacy host state that predates
 // ValidateSerialTodos. It preserves the leading run of fully completed
 // segments and makes the first unfinished segment current: its completed
 // sub-step prefix is kept and its first unfinished sub-step becomes the
 // single in_progress item — or the phase itself when every sub-step is
 // already completed. Every later segment returns to pending.
+//
+// Task 152: terminal statuses are never rewritten. An abandoned or archived
+// item counts as converged for the segment walk, and its status survives —
+// normalizing an abandoned item back to pending would resurrect work the
+// agent explicitly gave up.
+// todoRewritableStatus reports whether the legacy repair may rewrite a status.
+// Task 152: abandoned/archived are deliberate terminal decisions — the repair
+// must never resurrect or un-record them. Everything else (including
+// completed, which the trailing rewrite historically demotes) is rewritable.
+func todoRewritableStatus(status string) bool {
+	switch todoStatus(status) {
+	case "abandoned", "archived":
+		return false
+	}
+	return true
+}
+
 func NormalizeSerialTodos(todos []TodoItem) []TodoItem {
 	out := append([]TodoItem(nil), todos...)
 	unfinished := false
@@ -204,7 +490,9 @@ func NormalizeSerialTodos(todos []TodoItem) []TodoItem {
 		}
 		if unfinished {
 			for i := seg.head; i < seg.end; i++ {
-				out[i].Status = "pending"
+				if todoRewritableStatus(out[i].Status) {
+					out[i].Status = "pending"
+				}
 			}
 			continue
 		}
@@ -215,18 +503,22 @@ func NormalizeSerialTodos(todos []TodoItem) []TodoItem {
 		}
 		subUnfinished := false
 		for i := seg.head + 1; i < seg.end; i++ {
-			if !subUnfinished && todoStatus(out[i].Status) == "completed" {
-				continue
-			}
 			if !subUnfinished {
+				if TodoTerminalStatus(out[i].Status) {
+					continue
+				}
 				out[i].Status = "in_progress"
 				subUnfinished = true
 				continue
 			}
-			out[i].Status = "pending"
+			if todoRewritableStatus(out[i].Status) {
+				out[i].Status = "pending"
+			}
 		}
 		if subUnfinished {
-			out[seg.head].Status = "pending"
+			if todoRewritableStatus(out[seg.head].Status) {
+				out[seg.head].Status = "pending"
+			}
 		} else {
 			out[seg.head].Status = "in_progress"
 		}
@@ -236,7 +528,7 @@ func NormalizeSerialTodos(todos []TodoItem) []TodoItem {
 
 func serialSegmentCompleted(todos []TodoItem, seg todoSegment) bool {
 	for i := seg.head; i < seg.end; i++ {
-		if todoStatus(todos[i].Status) != "completed" {
+		if !TodoTerminalStatus(todos[i].Status) {
 			return false
 		}
 	}
@@ -246,7 +538,8 @@ func serialSegmentCompleted(todos []TodoItem, seg todoSegment) bool {
 // FirstUnfinishedSubStep reports whether todos[index] is a level-0 phase with
 // level-1 sub-steps, and if so the 0-based index of its first sub-step that is
 // not yet completed. ok is false when index is not a phase header; a phase
-// whose sub-steps are all completed returns (-1, true).
+// whose sub-steps have all reached a terminal status (completed, or abandoned/
+// archived per task 152) returns (-1, true).
 func FirstUnfinishedSubStep(todos []TodoItem, index int) (int, bool) {
 	if index < 0 || index >= len(todos) || todos[index].Level != 0 {
 		return -1, false
@@ -255,7 +548,7 @@ func FirstUnfinishedSubStep(todos []TodoItem, index int) (int, bool) {
 		return -1, false
 	}
 	for i := index + 1; i < len(todos) && todos[i].Level == 1; i++ {
-		if todoStatus(todos[i].Status) != "completed" {
+		if !TodoTerminalStatus(todos[i].Status) {
 			return i, true
 		}
 	}
@@ -885,12 +1178,15 @@ func (l *Ledger) IncompleteLatestTodos() ([]TodoStepMatch, bool) {
 	return nil, false
 }
 
-// IncompleteTodos returns the items of a todo list that are not completed.
+// IncompleteTodos returns the items of a todo list that have not reached a
+// terminal status. "completed" is the ordinary finish; "abandoned" (given up)
+// and "archived" (completed, kept for the record) are terminal since task 152,
+// so they no longer hold final readiness open.
 func IncompleteTodos(todos []TodoItem) []TodoStepMatch {
 	incomplete := make([]TodoStepMatch, 0)
 	for j, t := range todos {
 		status := todoStatus(t.Status)
-		if status == "completed" {
+		if TodoTerminalStatus(status) {
 			continue
 		}
 		incomplete = append(incomplete, TodoStepMatch{
@@ -938,18 +1234,24 @@ func MatchTodoIdentity(todo TodoItem, todos []TodoItem) (TodoStepMatch, bool) {
 }
 
 // PreservesCompletedTodoPositions reports whether every previously completed
-// item is still present and still completed in the replacement list. The fork
+// item is still present and still done in the replacement list. The fork
 // deliberately does not pin the index: parallel subagents finish out of order,
 // the model may rewrite the whole list, and inserting a new step above a
 // completed one is legitimate. What must never happen is a completed step
-// disappearing or regressing to an unfinished status.
+// disappearing or regressing to an unfinished status. Task 152: moving a
+// completed step to "archived" preserves it (archived is completed work kept
+// for the record — the completed→archived migration rule); regressing it to
+// "abandoned" or anything unfinished still fails.
 func PreservesCompletedTodoPositions(previous, next []TodoItem) bool {
 	for _, todo := range previous {
 		if todoStatus(todo.Status) != "completed" {
 			continue
 		}
 		match, found := MatchTodoIdentity(todo, next)
-		if !found || todoStatus(match.Status) != "completed" {
+		if !found {
+			return false
+		}
+		if status := todoStatus(match.Status); status != "completed" && status != "archived" {
 			return false
 		}
 	}

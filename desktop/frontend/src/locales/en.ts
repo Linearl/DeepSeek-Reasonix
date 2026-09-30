@@ -3819,6 +3819,12 @@ export const en = {
   "todo.inProgress": "In progress",
   "todo.paused": "Ready to continue",
   "todo.completed": "Completed",
+  // Task 152: tree lifecycle (abandoned/archived) + tree/archive controls.
+  "todo.abandoned": "Abandoned",
+  "todo.archived": "Archived",
+  "todo.collapse": "Collapse subtasks",
+  "todo.expand": "Expand subtasks",
+  "todo.archiveToggle": "Archived batches ({n})",
   "todo.continue": "Continue",
 
   // slash menu tags

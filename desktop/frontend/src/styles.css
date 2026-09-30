@@ -22489,6 +22489,107 @@ body > .mermaid-diagram--fullscreen {
 .todobar__item--sub {
   padding-left: 18px;
 }
+/* Task 152: explicit parent_id trees can nest deeper than the legacy two
+   levels; each extra level adds one indent step. Existing theme tokens only. */
+.todobar__item--deep {
+  padding-left: 36px;
+}
+.todobar__caret {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-right: 4px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 11px;
+  line-height: 1.35;
+  cursor: pointer;
+}
+.todobar__caret:hover {
+  color: var(--fg);
+  background: var(--bg-soft);
+}
+.todobar__code {
+  margin-right: 4px;
+  color: var(--fg-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.todobar__status--abandoned {
+  border-color: color-mix(in srgb, var(--warn) 32%, var(--border-soft));
+  color: var(--warn);
+}
+.todobar__status--archived {
+  border-color: var(--border-soft);
+  color: var(--fg-dim);
+}
+.todobar__item--abandoned .todobar__text {
+  color: var(--fg-faint);
+  text-decoration: line-through;
+}
+.todobar__item--archived .todobar__text {
+  color: var(--fg-faint);
+}
+/* Task 152: collapsed record of earlier fully-finished batches — completing no
+   longer means the history is transcript-only. */
+.todobar__archive {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-soft);
+}
+.todobar__archive-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.todobar__archive-toggle:hover {
+  color: var(--fg);
+  background: var(--bg-soft);
+}
+.todobar__archive-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.todobar__archive-batch {
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+}
+.todobar__archive-batch-title {
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+.todobar__archive-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.todobar__archive-item {
+  color: var(--fg-faint);
+}
+.todobar__archive-item--completed {
+  text-decoration: line-through;
+}
+.todobar__archive-item--abandoned {
+  text-decoration: line-through;
+  color: var(--fg-dim);
+}
 
 .composer-guidance-shelf {
   --wails-draggable: no-drag;

@@ -3822,6 +3822,12 @@ export const zh: Record<DictKey, string> = {
   "todo.inProgress": "进行中",
   "todo.paused": "待继续",
   "todo.completed": "已完成",
+  // 任务 152：树状生命周期（放弃/归档）+ 树/归档控件。
+  "todo.abandoned": "已放弃",
+  "todo.archived": "已归档",
+  "todo.collapse": "收起子任务",
+  "todo.expand": "展开子任务",
+  "todo.archiveToggle": "已归档批次（{n}）",
   "todo.continue": "继续",
 
   // 斜杠菜单标签

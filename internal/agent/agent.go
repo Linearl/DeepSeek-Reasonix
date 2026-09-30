@@ -1692,9 +1692,27 @@ func (a *Agent) deliveryMutationCheckpointReady() bool {
 }
 
 func (a *Agent) setTodoState(todos []evidence.TodoItem) {
+	// Task 152: an explicit parent_id tree manages its own state machine — the
+	// legacy segment normalizer is hard-wired to level 0/1 adjacency and would
+	// rewrite statuses the tree validation already approved. Normalization
+	// stays a flat-list repair only.
+	if !todoListHasExplicitParents(todos) {
+		todos = evidence.NormalizeSerialTodos(todos)
+	}
 	a.sess.todoMu.Lock()
-	a.sess.todoState = evidence.NormalizeSerialTodos(todos)
+	a.sess.todoState = todos
 	a.sess.todoMu.Unlock()
+}
+
+// todoListHasExplicitParents reports whether any item declares a parent_id
+// (task 152 tree). Mirrors evidence's own check without exporting it wider.
+func todoListHasExplicitParents(todos []evidence.TodoItem) bool {
+	for _, todo := range todos {
+		if strings.TrimSpace(todo.ParentID) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *Agent) hasActiveCanonicalTodo() bool {
@@ -1800,7 +1818,13 @@ func (a *Agent) rebuildTodoState(msgs []provider.Message) {
 			rec := evidence.ReceiptFromToolCall(tc.Name, json.RawMessage(tc.Arguments), true, true)
 			// A successful empty todo_write is an explicit clear. Preserve it as the
 			// latest base so history reloads do not resurrect an older non-empty list.
-			todos = evidence.NormalizeSerialTodos(rec.Todos)
+			// Task 152: explicit parent_id trees skip the legacy normalizer (see
+			// setTodoState).
+			if !todoListHasExplicitParents(rec.Todos) {
+				todos = evidence.NormalizeSerialTodos(rec.Todos)
+			} else {
+				todos = rec.Todos
+			}
 			baseIdx = i
 		}
 	}
