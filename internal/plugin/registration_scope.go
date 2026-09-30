@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
+	"time"
 )
 
 // HostClientRef identifies one live Client instance on a Host. Desktop
@@ -239,7 +241,16 @@ func (h *Host) claimClientFromContext(ctx context.Context, c *Client) error {
 	if h == nil || c == nil {
 		return errors.New("plugin: client is unavailable")
 	}
+	// Task 413: the host write lock is the one un-instrumented shared-host
+	// serialization point left (363B already covers the per-client fetch
+	// mutex in listTools). Under concurrent boots a long-held lock here
+	// queues every spec claim; surface waits over 50ms so the mcp stage's
+	// hidden time decomposes. Observation only.
+	lockStart := time.Now()
 	h.mu.Lock()
+	if waitMs := time.Since(lockStart).Milliseconds(); waitMs > 50 {
+		slog.Warn("plugin: host lock wait", "name", c.name, "wait_ms", waitMs)
+	}
 	defer h.mu.Unlock()
 	if h.closed {
 		return errors.New("plugin host is closed")

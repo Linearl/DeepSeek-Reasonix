@@ -37,6 +37,21 @@ func (t *bootTiming) mark(name string) {
 	t.last = now
 }
 
+// stageMs returns the already-closed duration of a named stage (task 413:
+// lets a mid-stage summary line carry the stage's own wall clock). A stage
+// that has not been marked yet reads 0.
+func (t *bootTiming) stageMs(name string) int64 {
+	if t == nil {
+		return 0
+	}
+	for _, s := range t.stages {
+		if s.name == name {
+			return s.ms
+		}
+	}
+	return 0
+}
+
 // summary renders one line: total=…ms config=…ms extensions=…ms …
 func (t *bootTiming) summary() string {
 	if t == nil {

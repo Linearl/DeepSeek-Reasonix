@@ -1003,8 +1003,15 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// handshake count (config-unchanged rebuilds must show 0 here), cache_hits
 	// is the HasClient reuse path, kick_fresh counts lazily started processes.
 	var connectFresh, cacheHits, kickFresh int
+	// Task 413: the extraSpecs loop had ZERO instrumentation — a failing or
+	// slow EnsureConnectedWithLifecycle (5s timeout each) could silently
+	// accumulate tens of seconds inside the mcp stage while connect_fresh
+	// stays 0 (failures are not connects). Time each spec and surface every
+	// non-cache path so the 21s class decomposes into named specs.
+	var extraConnectMs, extraFailMs int64
 	if len(extraSpecs) > 0 {
 		for _, s := range extraSpecs {
+			extraStart := time.Now()
 			if pluginHost.HasClient(s.Name) {
 				if tools, err := pluginHost.ToolsFor(ctx, s.Name); err == nil {
 					cacheHits++
@@ -1017,7 +1024,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			addCtx, addCancel := context.WithTimeout(ctx, 5*time.Second)
 			tools, err := pluginHost.EnsureConnectedWithLifecycle(ctx, addCtx, s, 0)
 			addCancel()
+			spent := time.Since(extraStart).Milliseconds()
 			if err != nil {
+				extraFailMs += spent
 				if plugin.IsServerAlreadyConnected(err) {
 					if tools, err2 := pluginHost.ToolsFor(ctx, s.Name); err2 == nil {
 						cacheHits++
@@ -1037,6 +1046,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 				continue
 			}
 			connectFresh++
+			extraConnectMs += spent
 			for _, t := range tools {
 				reg.Add(t)
 			}
@@ -1105,9 +1115,16 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// Task 334: the reuse proof the bench reads — a rebuild with an unchanged
 	// MCP config and a shared host must log connect_fresh=0; any connect here
 	// names a reuse miss (host/key/spec) instead of inferring it later.
+	// Task 413: extra_connect_ms/extra_fail_ms decompose the previously
+	// un-instrumented extraSpecs loop (a 5s-timeout connect attempt per spec
+	// can hide there while connect_fresh stays 0); stage_ms is the wall clock
+	// the summary line can be diffed against the per-spec lines.
 	slog.Info("boot: mcp stage", "shared_host_reused", opts.SharedHost != nil,
 		"connect_fresh", connectFresh, "cache_hits", cacheHits, "kick_fresh", kickFresh,
-		"specs", len(configSpecs))
+		"specs", len(configSpecs),
+		"extra_specs", len(extraSpecs), "extra_connect_ms", extraConnectMs,
+		"extra_fail_ms", extraFailMs,
+		"stage_ms", bootTime.stageMs("mcp"))
 
 	for _, msg := range demoteMessages {
 		sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Text: msg})
