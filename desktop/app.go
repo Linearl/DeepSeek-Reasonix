@@ -2440,6 +2440,7 @@ func (a *App) clearActiveSessionRuntime(tab *WorkspaceTab, oldCtrl control.Sessi
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
 		RestartUpdater:             restartUpdaterAdapter{a},
 		AutonomousUpdateController: newAutonomousUpdateController(a),
+		WorktreeProjectOpener:      appWorktreeProjectOpener{app: a}, // 任务128：会话自主建项目——注册为项目并开后台 tab
 		Model:                      snap.model,
 		Autopilot:                  snap.autopilot,
 		MaxRuntime:                 snap.autopilotMaxRuntime,
@@ -4469,6 +4470,7 @@ func (a *App) buildSessionRebindCandidate(
 	ctrl, assembly, err := boot.BuildWithAssembly(a.bootContext(), boot.Options{
 		RestartUpdater:             restartUpdaterAdapter{a},
 		AutonomousUpdateController: newAutonomousUpdateController(a),
+		WorktreeProjectOpener:      appWorktreeProjectOpener{app: a}, // 任务128：会话自主建项目——注册为项目并开后台 tab
 		Model:                      model,
 		Autopilot:                  source.autopilot,
 		MaxRuntime:                 source.autopilotMaxRuntime,
@@ -10179,6 +10181,7 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
 		RestartUpdater:             restartUpdaterAdapter{a},
 		AutonomousUpdateController: newAutonomousUpdateController(a),
+		WorktreeProjectOpener:      appWorktreeProjectOpener{app: a}, // 任务128：会话自主建项目——注册为项目并开后台 tab
 		Model:                      name,
 		Autopilot:                  tab.autopilot,
 		MaxRuntime:                 tab.autopilotMaxRuntime,
@@ -10432,6 +10435,7 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
 		RestartUpdater:             restartUpdaterAdapter{a},
 		AutonomousUpdateController: newAutonomousUpdateController(a),
+		WorktreeProjectOpener:      appWorktreeProjectOpener{app: a}, // 任务128：会话自主建项目——注册为项目并开后台 tab
 		Model:                      modelRef,
 		Autopilot:                  tab.autopilot,
 		MaxRuntime:                 tab.autopilotMaxRuntime,

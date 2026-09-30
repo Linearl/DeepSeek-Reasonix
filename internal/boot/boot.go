@@ -116,6 +116,12 @@ type Options struct {
 	// (task 254); nil in a host without a versions/ install. Registration is
 	// gated by experimental_autonomous_update in the boot code.
 	AutonomousUpdateController tool.AutonomousUpdateController
+	// WorktreeProjectOpener carries the host's project-registration capability
+	// (task 128): open_isolated_worktree_project uses it to register a freshly
+	// created worktree as a visible project (desktop: topic + background tab).
+	// nil in hosts without project registration — the tool then returns the
+	// worktree path only, which is the documented degraded boundary.
+	WorktreeProjectOpener tool.WorktreeProjectOpener
 	// AutopilotApprovalGrace is how long an unattended run waits for a human on an
 	// approval prompt before the reviewer decides. Zero uses the control default.
 	AutopilotApprovalGrace time.Duration
@@ -1939,6 +1945,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		TraceAsState:               cfg.Agent.TraceAsState,
 		RestartUpdater:             opts.RestartUpdater,
 		AutonomousUpdateController: opts.AutonomousUpdateController,
+		WorktreeProjectOpener:      opts.WorktreeProjectOpener,
 		TaskBudget:                 taskBudgetFromConfig(cfg),
 		Pricing:                    entry.Price,
 		QuoteContext:               quoteCtx,

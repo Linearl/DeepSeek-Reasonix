@@ -207,6 +207,13 @@ const CHECKS = [
   { feature: "任务389 catalog 空闲 CPU 修复：30s 循环→fsnotify watch 单点移植（上游 #10603）", file: "desktop/session_catalog_watch.go", patterns: ["func (a *App) watchSessionCatalog", "5 * time.Minute"] },
   { feature: "任务389 循环移除守护", file: "desktop/session_catalog_lifecycle.go", patterns: ["watchSessionCatalog(ctx, catalog)"] },
   { feature: "任务386 markdown cache 碰撞守卫 backstop 测试（消费比对 miss 语义）", file: "desktop/frontend/src/__tests__/markdown-history.test.tsx", patterns: ["fidelity backstop at the store boundary", "treats the collision as a miss"] },
+  // 任务128 会话自主创建新项目：工具（52=纯分配 / 128=创建+once 写授权+项目注册）+
+  // host 注册接线（executeOne ctx stamping → desktop 注册项目并开后台 tab）。
+  // 三处锚点锁住整条链——丢任何一环，agent 建的项目就静默退化为「仅返回路径」。
+  { feature: "任务128 open_isolated_worktree_project 工具（创建+once 写授权+注册边界）", file: "internal/tool/builtin/open_worktree_project.go", patterns: ["WorktreeProjectOpenerFromContext", "hostRegistered", "create_worktree = allocation only"] },
+  { feature: "任务128 agent 侧 opener 传递（executeOne ctx stamping）", file: "internal/agent/execute_one.go", patterns: ["WithWorktreeProjectOpener(cctx, a.svc.worktreeProjectOpener)"] },
+  { feature: "任务128 desktop 注册实现（项目 topic+后台 tab+幂等防重复）", file: "desktop/worktree_project_opener.go", patterns: ["func (o appWorktreeProjectOpener) OpenIsolatedWorktreeProject", "visibleProjectTabIDForRoot", "openProjectTabInactive"] },
+  { feature: "任务128 boot Options 字段（host 能力下发）", file: "internal/boot/boot.go", patterns: ["WorktreeProjectOpener tool.WorktreeProjectOpener"] },
 
 ];
 

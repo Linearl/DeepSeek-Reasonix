@@ -25,8 +25,11 @@ func init() { tool.RegisterBuiltin(openIsolatedWorktreeProject{}) }
 //     fleet write_paths / worktree_root. Prefer this when the session must
 //     immediately work inside the new project.
 //
-// It never opens a desktop tab. Hosts that want UI registration bind a
-// WorktreeProjectOpener on the call context; absence is not an error.
+// The desktop host (task 128 integration) binds a WorktreeProjectOpener on
+// the call context: registration lands as a first-class project plus a
+// background session bound to the new root ("new session binds the new root";
+// the calling session is never hot-rebound). Absence is not an error — hosts
+// without project registration degrade to path-only.
 type openIsolatedWorktreeProject struct {
 	workDir     string
 	managedRoot string
@@ -35,7 +38,7 @@ type openIsolatedWorktreeProject struct {
 func (openIsolatedWorktreeProject) Name() string { return "open_isolated_worktree_project" }
 
 func (openIsolatedWorktreeProject) Description() string {
-	return "Create an isolated Git worktree project the session can write into immediately. Allocates a reasonix/delivery-* branch worktree under Reasonix-managed storage, requests once write authorization for that storage root, and returns the new workspace path plus fleet handoff fields (write_paths / worktree_root). Prefer this over create_worktree when the session itself will work in the new project; use create_worktree for low-level allocation without write-access setup. Does not open a desktop tab. Failed allocations are rolled back — no empty shell is left behind."
+	return "Create an isolated Git worktree project the session can write into immediately. Allocates a reasonix/delivery-* branch worktree under Reasonix-managed storage, requests once write authorization for that storage root, and returns the new workspace path plus fleet handoff fields (write_paths / worktree_root). When the host supports project registration (desktop), the new project is registered in the sidebar and a background session is opened bound to the new root — the calling session keeps its own workspace and reaches the new root through the granted write root. Hosts without registration (CLI) return the path only. Prefer this over create_worktree when the session itself will work in the new project; use create_worktree for low-level allocation without write-access setup or registration. Failed allocations are rolled back — no empty shell is left behind."
 }
 
 func (openIsolatedWorktreeProject) Schema() json.RawMessage {
@@ -86,16 +89,22 @@ func (w openIsolatedWorktreeProject) Execute(ctx context.Context, args json.RawM
 		// leaves no empty shell for the session to trip over.
 		return "", err
 	}
-	// Optional host hook: desktop may open a tab. Missing hook is fine.
+	// Optional host hook: desktop registers the project and opens a background
+	// session bound to the new root. Missing hook is fine (CLI degrades to
+	// path-only).
+	hostRegistered := false
 	if opener, ok := tool.WorktreeProjectOpenerFromContext(ctx); ok {
 		if regErr := opener.OpenIsolatedWorktreeProject(ctx, created.WorktreeRoot); regErr != nil {
 			// The worktree itself succeeded; surface the registration failure
-			// as text without destroying the allocation.
+			// as text without destroying the allocation — and without leaving
+			// a half-registered project behind (no shell: registration did not
+			// land, the path stays usable directly).
 			return fmt.Sprintf(
 				"created worktree at %s (branch %s) but host registration failed: %v\nUse the path directly; it is already on disk.",
 				created.WorktreeRoot, created.Branch, regErr,
 			), nil
 		}
+		hostRegistered = true
 	}
 	name := strings.TrimSpace(p.ProjectName)
 	payload := map[string]any{
@@ -109,8 +118,9 @@ func (w openIsolatedWorktreeProject) Execute(ctx context.Context, args json.RawM
 		"writableRoot":   created.WorktreeRoot,
 		"writePaths":     []string{created.WorktreeRoot},
 		"worktreeRootForFleet": created.WorktreeRoot,
+		"hostRegistered": hostRegistered,
 		"next": "Write files under worktreeRoot. For parallel sub-agents, declare write_paths/worktree_root pointing at this root. Merge back with prepare_worktree_merge then merge_worktree_back.",
-		"division": "open_isolated_worktree_project = create + once write auth + handoff. create_worktree = allocation only.",
+		"division": "open_isolated_worktree_project = create + once write auth + project registration (host permitting). create_worktree = allocation only.",
 	}
 	out, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
