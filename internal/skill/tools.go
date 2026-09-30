@@ -182,7 +182,7 @@ func (t *runSkillTool) Execute(ctx context.Context, args json.RawMessage) (strin
 	if opts.ContinueFrom != "" || opts.ForkFrom != "" {
 		return "", fmt.Errorf("run_skill: subagent continuation is only valid for runAs=subagent skills")
 	}
-	return renderInline(sk, rawArgs), nil
+	return RenderInline(sk, rawArgs), nil
 }
 
 func (t *runSkillTool) ResolveProfile(args json.RawMessage) *event.Profile {
@@ -328,7 +328,7 @@ func (t *readOnlySkillTool) Execute(ctx context.Context, args json.RawMessage) (
 		}
 		return tool.GuardSubagentHostDecisionText(out), nil
 	}
-	return renderInline(sk, rawArgs), nil
+	return RenderInline(sk, rawArgs), nil
 }
 
 func (t *readOnlySkillTool) ResolveProfile(args json.RawMessage) *event.Profile {
@@ -415,7 +415,7 @@ func (t *readSkillTool) Execute(_ context.Context, args json.RawMessage) (string
 	if sk.RunAs == RunSubagent {
 		return "", fmt.Errorf("read_skill: skill %q is a subagent and must be executed, not read — use run_skill (or the dedicated %s tool)", name, name)
 	}
-	return renderInline(sk, strings.TrimSpace(p.Arguments)), nil
+	return RenderInline(sk, strings.TrimSpace(p.Arguments)), nil
 }
 
 // dedicated subagent wrappers (explore / research / review / security_review)
@@ -729,9 +729,9 @@ func RenderSkillFile(opts SkillFileOptions) string {
 // shared helpers
 
 // Render builds a skill's invocation text: a header (name, description, source)
-// followed by the body and any arguments. Used directly when a user invokes a
-// skill via "/<name>" (sent as a turn); the run_skill tool wraps the same text
-// in a skill-pin sentinel (see renderInline).
+// followed by the body and any arguments. Prefer RenderInline when the text is
+// sent as a turn: the run_skill tool wraps the same text in a skill-pin
+// sentinel (see RenderInline), and other invocation paths must match it.
 func Render(sk Skill, args string) string {
 	var b strings.Builder
 	b.WriteString("# Skill: " + sk.Name)
@@ -746,9 +746,11 @@ func Render(sk Skill, args string) string {
 	return b.String()
 }
 
-// renderInline wraps Render's output in a skill-pin sentinel so context
-// compaction preserves the body verbatim instead of paraphrasing it.
-func renderInline(sk Skill, args string) string {
+// RenderInline wraps Render's output in a skill-pin sentinel so context
+// compaction preserves the body verbatim instead of paraphrasing it. This is
+// the canonical invocation form: the run_skill tool returns it, and inline
+// slash invocation sends the same text (task 395, upstream #11004/#11007).
+func RenderInline(sk Skill, args string) string {
 	return "<skill-pin name=" + strconv.Quote(sk.Name) + ">\n" + Render(sk, args) + "\n</skill-pin>"
 }
 

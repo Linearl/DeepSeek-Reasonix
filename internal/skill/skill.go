@@ -290,6 +290,10 @@ func (s *Store) Prepare(sk Skill) Skill {
 // Render prepares and renders a skill for a direct slash invocation.
 func (s *Store) Render(sk Skill, args string) string { return Render(s.Prepare(sk), args) }
 
+// RenderInline prepares and renders a skill in the pinned invocation form —
+// byte-identical to the run_skill tool product (task 395, upstream #11007).
+func (s *Store) RenderInline(sk Skill, args string) string { return RenderInline(s.Prepare(sk), args) }
+
 func bindAllowedTools(refs []string, bindings []tool.MCPBinding) []string {
 	if len(refs) == 0 {
 		return refs
