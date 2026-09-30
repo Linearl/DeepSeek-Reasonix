@@ -37,3 +37,25 @@ func TestBootTimingSummary(t *testing.T) {
 		t.Fatalf("nil timing summary = %q, want empty", nilTiming.summary())
 	}
 }
+
+// TestBootTimingStageMs: the task-413 helper returns the closed duration of a
+// named stage so a mid-stage summary line can carry its own wall clock;
+// unknown names read 0 and a nil receiver is safe.
+func TestBootTimingStageMs(t *testing.T) {
+	var nilTiming *bootTiming
+	if nilTiming.stageMs("mcp") != 0 {
+		t.Fatal("nil receiver must read 0")
+	}
+	timing := newBootTiming()
+	if timing.stageMs("mcp") != 0 {
+		t.Fatal("unmarked stage must read 0")
+	}
+	time.Sleep(2 * time.Millisecond)
+	timing.mark("mcp")
+	if timing.stageMs("mcp") <= 0 {
+		t.Fatalf("closed stage ms = %d, want > 0", timing.stageMs("mcp"))
+	}
+	if timing.stageMs("nonexistent") != 0 {
+		t.Fatal("unknown stage must read 0")
+	}
+}
