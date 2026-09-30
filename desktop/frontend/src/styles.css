@@ -4222,6 +4222,13 @@ a[href] {
   flex-direction: column;
   gap: 8px;
 }
+/* 379 wall: double-class selector beats the base class above regardless of
+   source order. The wall block originally sat BEFORE this base class, so the
+   base `display:flex` won and the dialog rendered single-column
+   (2026-09-30 install bug, user-confirmed twice). */
+.experimental-intro__cards.experimental-intro__cards--wall {
+  display: grid;
+}
 .experimental-intro__card {
   padding: 10px 12px;
   border: 1px solid var(--border-soft);
