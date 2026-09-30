@@ -87,6 +87,7 @@ git ls-tree -r --name-only upstream/main-v2 -- <目标路径>/ | grep -i <关键
 | **分片压缩并行化** | 分块压缩片段走有界 worker pool（此前串行），超窗时半切递归 |
 | **任务完成摘要** | 后台作业完成通知携带结果摘要（400 字符、CJK 安全、单行化） |
 | **hook 作用域** | `HookConfig.AppliesTo`：`main` 跳过子代理、`subagent` 仅子代理（修「`match:*` hook 冻结子代理全部工具」缺陷） |
+| **跨会话 unknown 状态自解释**（task 375） | `get_session_status` 的 unknown 记录与 `talk_to_session` 的回执在目标进程不可见时各带 hint：**unknown ≠ idle/dead**——先对照 lastActivity、再读目标 inbox.jsonl tail（权威派发证据），queued 只是入箱确认而非送达证明 |
 
 ### 服务端 / 远程
 

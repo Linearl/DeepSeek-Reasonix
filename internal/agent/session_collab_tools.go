@@ -297,7 +297,7 @@ type getSessionStatusTool struct{ cfg SessionCollabConfig }
 func (getSessionStatusTool) Name() string { return "get_session_status" }
 
 func (getSessionStatusTool) Description() string {
-	return "Check whether collaboration peers are busy before assigning work (task 218). Without arguments returns every addressable live session; pass targets (mixed contact_id / topic_id / exact title) to query one or many in one call. Each record is lightweight structured metadata — running/idle/queued/unknown state, last activity, unread inbox count — never transcript content; unmatched targets are reported explicitly. Strictly read-only. Experimental."
+	return "Check whether collaboration peers are busy before assigning work (task 218). Without arguments returns every addressable live session; pass targets (mixed contact_id / topic_id / exact title) to query one or many in one call. Each record is lightweight structured metadata — running/idle/queued/unknown state, last activity, unread inbox count — never transcript content; unmatched targets are reported explicitly. state=unknown means THIS process cannot see the session's runtime — never that it is idle or dead; before treating it as idle check lastActivity and read the target's inbox.jsonl tail. Strictly read-only. Experimental."
 }
 
 func (getSessionStatusTool) Schema() json.RawMessage {
@@ -390,7 +390,7 @@ func collabStatusRecords(cfg SessionCollabConfig, targets []string) (records []m
 		if activity == 0 {
 			activity = lastDelivery
 		}
-		return map[string]any{
+		record := map[string]any{
 			"contactId":    id.ContactID,
 			"topicId":      id.TopicID,
 			"title":        id.Title,
@@ -401,6 +401,14 @@ func collabStatusRecords(cfg SessionCollabConfig, targets []string) (records []m
 			// the controller's session inbox (degraded steers live there).
 			"unreadInbox": busy,
 		}
+		// Task 375: unknown must be self-explanatory — it means THIS process
+		// cannot see the target's runtime, never that the session is idle or
+		// dead. Twice misread as "won't start" (0920, 0927); the actionable
+		// check is lastActivity age plus the target's inbox tail.
+		if state == "unknown" {
+			record["hint"] = "unknown = this process cannot see the session's runtime (another process owns it, or the runtime is not stood up) — it is NOT evidence the session is idle or dead. Before treating it as idle: compare lastActivity against how recently work was expected, then read the session's inbox.jsonl tail — the mailbox is the authoritative dispatch evidence."
+		}
+		return record
 	}
 
 	records = make([]map[string]any, 0)
@@ -894,6 +902,17 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 		"delivery":     msg.Delivery,
 		"hop":          msg.Hop,
 		"queued":       true,
+	}
+	// Task 375: when the target's runtime state is unknown to this process,
+	// say so on the receipt — queued is the mailbox acknowledgment, NOT proof
+	// of delivery; the authoritative signal is the target's inbox.jsonl.
+	// Guidance only: the probe result changes nothing about the delivery.
+	// A nil SessionStatus probe means every state is unknown (CLI-style host)
+	// — exactly the situation the hint exists for.
+	if t.cfg.SessionStatus == nil {
+		payload["targetStatusHint"] = "the target's runtime state is unknown to this process (no status probe is wired here). queued means the message is in the durable mailbox — it is NOT proof the target has picked it up; read the target's inbox.jsonl tail for authoritative dispatch evidence."
+	} else if _, _, _, known := t.cfg.SessionStatus(target.ContactID); !known {
+		payload["targetStatusHint"] = "the target's runtime state is unknown to this process (another process owns it, or the runtime is not stood up). queued means the message is in the durable mailbox — it is NOT proof the target has picked it up; read the target's inbox.jsonl tail for authoritative dispatch evidence."
 	}
 	if echo := collabDispatchEcho(t.cfg); echo != nil {
 		payload["dispatchedThisTurn"] = echo

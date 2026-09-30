@@ -200,6 +200,7 @@ const CHECKS = [
   { feature: "任务381 staging 读取点全收敛", file: "desktop/restart_update.go", patterns: ["stagingRoot()"] },
   { feature: "任务383 #2 workbench 项目分组入口（header 菜单 group 项）", file: "desktop/frontend/src/components/ProjectTreeAddControls.tsx", patterns: ["new-project-group", "onGroup"] },
   { feature: "任务383 #5 classic footer icon-only（creation 保文字）+#8 automation→heartbeat 文案统一", file: "desktop/frontend/src/App.tsx", patterns: ["sidebarCreation ? <span>{t(\"sidebar.trash\")}</span> : <span className=\"sr-only\">", "heartbeat.scheduler"] },
+  { feature: "任务375 collab unknown 状态自解释 hint（status+talk 回执+FORK）", file: "internal/agent/session_collab_tools.go", patterns: ["unknown = this process cannot see the session", "targetStatusHint", "authoritative dispatch evidence"] },
 ];
 
 let failed = 0;
