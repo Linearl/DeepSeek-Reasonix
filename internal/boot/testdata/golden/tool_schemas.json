@@ -353,7 +353,7 @@
   },
   {
     "Name": "todo_write",
-    "Description": "Record and update a structured task list for the current work. Prefer `ops` for small edits (replace/insert/delete/move by step_id) after calling todo_read; send the COMPLETE `todos` list only for a wholesale rewrite. Use it to plan multi-step work and show progress: keep exactly one item in_progress at a time, and flip an item to completed the moment it's done (don't batch completions). Skip it for trivial single-step tasks. The list is two-level: a `level` 0 item is a PHASE (a milestone) and the `level` 1 items after it are its concrete sub-steps; omit `level` (0) for a flat list. Each item has `content` (imperative, e.g. \"Add the parser\"), `status` (pending|in_progress|completed), `activeForm` (present-continuous shown while in progress, e.g. \"Adding the parser\"), optional `level` (0 phase | 1 sub-step), and `step_id` — an item's stable identity. COPY `step_id` VERBATIM for every item that already has one: it is how a completion stays attached to its step when you retitle it, insert a step above it, or reorder the list. Give a new item a fresh unique id (e.g. \"plan_step_07\"); never reuse or renumber an existing one.",
+    "Description": "Record and update a structured task list for the current work. Prefer `ops` for small edits (replace/insert/delete/move by step_id) after calling todo_read; send the COMPLETE `todos` list only for a wholesale rewrite. Use it to plan multi-step work and show progress: keep exactly one item in_progress at a time, and flip an item to completed the moment it's done (don't batch completions). Skip it for trivial single-step tasks. The list is two-level: a `level` 0 item is a PHASE (a milestone) and the `level` 1 items after it are its concrete sub-steps; omit `level` (0) for a flat list. Deeper nesting (task 152): give a sub-step `parent_id` = the parent's step_id to build a tree (T1 / T1.1 / T1.1.1 — a parent may be signed off only once every subtask under it is finished, abandoned, or archived). Statuses: pending | in_progress | completed, plus abandoned (you are giving this item up — say so instead of leaving it dangling) and archived (a completed item kept for the record; only completed items may be archived). Each item has `content` (imperative, e.g. \"Add the parser\"), `status`, `activeForm` (present-continuous shown while in progress, e.g. \"Adding the parser\"), optional `level` (0 phase | 1 sub-step), optional `parent_id`, and `step_id` — an item's stable identity. COPY `step_id` VERBATIM for every item that already has one: it is how a completion stays attached to its step when you retitle it, insert a step above it, or reorder the list. Give a new item a fresh unique id (e.g. \"plan_step_07\"); never reuse or renumber an existing one.",
     "ReadOnly": true,
     "Schema": {
       "properties": {
@@ -362,11 +362,11 @@
           "items": {
             "properties": {
               "after_step_id": {
-                "description": "Insert/move: place after this step_id; empty = end of list.",
+                "description": "Insert/move: place after this step_id; empty = end of list. When inserting a child, place it after its parent's subtree so the parent stays earlier in the list.",
                 "type": "string"
               },
               "item": {
-                "description": "replace/insert payload (content,status,activeForm,level,step_id).",
+                "description": "replace/insert payload (content,status,activeForm,level,step_id,parent_id).",
                 "properties": {
                   "activeForm": {
                     "type": "string"
@@ -384,6 +384,10 @@
                   "owner": {
                     "type": "string"
                   },
+                  "parent_id": {
+                    "description": "Task 152 tree: parent task's step_id; the parent must appear earlier in the list.",
+                    "type": "string"
+                  },
                   "running": {
                     "type": "boolean"
                   },
@@ -391,7 +395,9 @@
                     "enum": [
                       "pending",
                       "in_progress",
-                      "completed"
+                      "completed",
+                      "abandoned",
+                      "archived"
                     ],
                     "type": "string"
                   },
@@ -446,21 +452,27 @@
                 "description": "Optional executor label for this item (\"main\", \"subagent:api\", ...). Coordination metadata only: it never changes status and no validator reads it.",
                 "type": "string"
               },
+              "parent_id": {
+                "description": "Task 152 tree: step_id of this item's parent task. The parent must appear earlier in the list. Build T1/T1.1/T1.1.1 hierarchies for stage→substep work; a parent may be completed or archived only after every subtask under it is finished, abandoned, or archived. A child must come after its parent.",
+                "type": "string"
+              },
               "running": {
                 "description": "Optional marker that a parallel executor is currently on this item. Metadata only.",
                 "type": "boolean"
               },
               "status": {
-                "description": "Task state. Keep at most one in_progress.",
+                "description": "Task state. Keep at most one in_progress. abandoned = you are giving this item up; archived = completed work kept for the record (only completed items may be archived).",
                 "enum": [
                   "pending",
                   "in_progress",
-                  "completed"
+                  "completed",
+                  "abandoned",
+                  "archived"
                 ],
                 "type": "string"
               },
               "step_id": {
-                "description": "Stable identity for this item, e.g. \"plan_step_02\". Copy it verbatim from the item's previous entry so completions stay attached across retitles, insertions, and reordering; use a fresh unique id for a genuinely new item.",
+                "description": "Stable identity for this item, e.g. \"plan_step_02\". Copy it verbatim from the item's previous entry so completions stay attached across retitles, insertions, and reordering; use a fresh unique id for a genuinely new item. Also the handle other items' parent_id references.",
                 "type": "string"
               }
             },

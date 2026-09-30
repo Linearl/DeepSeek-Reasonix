@@ -349,3 +349,48 @@ func TestAdvanceSerialTodoSkipsAbandonedSubStep(t *testing.T) {
 		t.Fatalf("the phase must become current once sub-steps converge (abandoned counts), got %q", todos[0].Status)
 	}
 }
+
+// Task 420 Q2a: the tree validator mirrors the flat machine's three hard
+// rejections; its messages must carry the same positive example.
+func TestValidateTreeSerialTodosRejectionsCarryPositiveExample(t *testing.T) {
+	const example = "a well-formed list reads [completed, in_progress, pending]"
+	cases := []struct {
+		name  string
+		todos []TodoItem
+	}{
+		{
+			name: "second in_progress",
+			todos: []TodoItem{
+				{Content: "a", Status: "in_progress", StepID: "a"},
+				{Content: "b", Status: "in_progress", StepID: "b", ParentID: "a"},
+			},
+		},
+		{
+			name: "in_progress after pending work",
+			todos: []TodoItem{
+				{Content: "backlog", Status: "pending", StepID: "a"},
+				{Content: "backlog sub", Status: "pending", StepID: "b", ParentID: "a"},
+				{Content: "unrelated current", Status: "in_progress", StepID: "c"},
+			},
+		},
+		{
+			name: "pending work without a current item",
+			todos: []TodoItem{
+				{Content: "done", Status: "completed", StepID: "a"},
+				{Content: "backlog", Status: "pending", StepID: "b"},
+				{Content: "backlog sub", Status: "pending", StepID: "c", ParentID: "b"},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateSerialTodos(tc.todos)
+			if err == nil {
+				t.Fatal("expected a serial-shape rejection, got nil")
+			}
+			if !strings.Contains(err.Error(), example) {
+				t.Fatalf("rejection must carry the positive example %q, got: %v", example, err)
+			}
+		})
+	}
+}
