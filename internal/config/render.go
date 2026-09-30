@@ -157,6 +157,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		}
 		fmt.Fprintf(&b, "experimental_autonomous_update = %v   # desktop: register the agent restart_update tool (task 254; boot snapshot)\n", c.Desktop.ExperimentalAutonomousUpdate)
 		fmt.Fprintf(&b, "autonomous_update_resume = %q   # desktop: auto-resume after an update restart: off | goal_autopilot | all (task 254)\n", c.AutonomousUpdateResumeMode())
+		fmt.Fprintf(&b, "autopilot_proxy_scope = %q   # desktop: autopilot proxy-approval scope: related (level 1) | all (level 2) (task 388)\n", c.AutopilotProxyScopeLevel())
+		if p := strings.TrimSpace(c.Desktop.AutopilotProxyManifest); p != "" {
+			fmt.Fprintf(&b, "autopilot_proxy_manifest = %q   # desktop: natural-language allow/deny manifest for the proxy reviewer (task 388)\n", p)
+		}
 		// Task 277: same fixed-key-set rule — a missing line would flip the
 		// switch back to off on the next save (the 81/123 lesson).
 		fmt.Fprintf(&b, "update_chime = %v   # desktop: play the ~3s update-complete chime on the first launch after a version swap (task 277)\n", c.Desktop.UpdateChime)

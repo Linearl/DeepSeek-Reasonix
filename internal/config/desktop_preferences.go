@@ -49,6 +49,14 @@ type DesktopConfig struct {
 	// whole auto-resume family off, which is what a conservative user opting
 	// out is asking for.
 	AutonomousUpdateResume string `toml:"autonomous_update_resume"`
+	// Task 388: autopilot proxy-approval scope — "related" (default; empty or
+	// unknown reads as it) approves only requests serving this session's own
+	// task, "all" also proxy-approves loosely-related requests from other
+	// sessions. Behavior dial, not a capability switch.
+	AutopilotProxyScope string `toml:"autopilot_proxy_scope"`
+	// Task 388: natural-language allow/deny manifest for the proxy reviewer.
+	// Absent path = model self-judgment with no manifest section.
+	AutopilotProxyManifest string `toml:"autopilot_proxy_manifest"`
 	// UpdateChime plays a short sound on the first launch after an update swaps
 	// versions (task 277). Opt-in (fork rule 2); the frontend gates one-shot
 	// playback by the last-chimed version, so an off switch is zero-behaviour.
