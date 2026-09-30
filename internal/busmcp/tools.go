@@ -2,6 +2,7 @@ package busmcp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ const (
 	sendDesc       = "Send a message to a bus contact (e.g. zcode-heartbeat, or any Reasonix session contact id). Messages wait durably until the target reads them."
 	taskCreateDesc = "Create a bus task card. State machine: pending → running → done/failed/blocked; blocked returns via running. Title is required."
 	taskUpdateDesc = "Update a bus task card's status. Illegal transitions (e.g. done → running) are rejected; reopening terminal cards goes through pending."
+	spawnDesc      = "Create a task card AND dispatch its assignment mail to a target contact in one step (e.g. to zcode-worker for unattended headless execution). Gated to spawn-authorized roles with a daily quota."
 )
 
 // ── collab_inbox_read ────────────────────────────────────────────────────────
@@ -215,9 +217,94 @@ func (rt roleRuntime) taskUpdate(_ context.Context, _ *mcp.CallToolRequest, in t
 	return nil, taskUpdateOut{CardID: card.ID, Status: string(card.Status)}, nil
 }
 
+// ── collab_spawn ─────────────────────────────────────────────────────────────
+
+type spawnIn struct {
+	To        string `json:"to" jsonschema:"target contact that receives the assignment, e.g. zcode-worker (the headless pool) or another session contact"`
+	Title     string `json:"title" jsonschema:"short task title"`
+	Body      string `json:"body" jsonschema:"task instructions; put acceptance criteria here — they ride both the card and the assignment mail"`
+	Workspace string `json:"workspace,omitempty" jsonschema:"working directory hint for the assignee, when the task is workspace-bound"`
+}
+
+type spawnOut struct {
+	CardID string `json:"card_id"`
+	MailID string `json:"mail_id"`
+	To     string `json:"to"`
+}
+
+// spawn creates a task card and dispatches its assignment mail in one step.
+// It is the only tool that hands out work, so it is registered exclusively
+// for roles in spawn_roles and additionally capped by a per-role daily quota
+// (both fail-closed: an unlisted role never even sees the tool, and the
+// counters below make the cap exact under concurrency).
+func (rt roleRuntime) spawn(_ context.Context, _ *mcp.CallToolRequest, in spawnIn) (*mcp.CallToolResult, spawnOut, error) {
+	if strings.TrimSpace(in.To) == "" {
+		return nil, spawnOut{}, fmt.Errorf("to is required")
+	}
+	if strings.TrimSpace(in.Title) == "" {
+		return nil, spawnOut{}, fmt.Errorf("title is required")
+	}
+	if strings.TrimSpace(in.Body) == "" {
+		return nil, spawnOut{}, fmt.Errorf("body is required")
+	}
+	if !rt.bus.spawnAllowed[rt.role] {
+		rt.bus.audit(rt.role, "spawn", "denied: role not in spawn_roles", false)
+		return nil, spawnOut{}, fmt.Errorf("spawn: role %q is not allowed to spawn tasks", rt.role)
+	}
+	rt.bus.spawnMu.Lock()
+	today := time.Now().Format("2006-01-02")
+	if today != rt.bus.spawnDay {
+		rt.bus.spawnDay = today
+		rt.bus.spawnUsed = map[string]int{}
+	}
+	if rt.bus.spawnUsed[rt.role] >= rt.bus.spawnQuota {
+		rt.bus.spawnMu.Unlock()
+		rt.bus.audit(rt.role, "spawn", "denied: daily quota exhausted", false)
+		return nil, spawnOut{}, fmt.Errorf("spawn: daily quota (%d) exhausted for role %q", rt.bus.spawnQuota, rt.role)
+	}
+	rt.bus.spawnUsed[rt.role]++
+	rt.bus.spawnMu.Unlock()
+
+	card, err := rt.bus.cards.Create(sessioncollab.Card{
+		Title:     in.Title,
+		Body:      in.Body,
+		Initiator: rt.contact,
+		Assignee:  in.To,
+		Workspace: in.Workspace,
+	})
+	if err != nil {
+		return nil, spawnOut{}, fmt.Errorf("create card: %w", err)
+	}
+	// The assignment mail is the machine contract busworker (or any assignee
+	// runtime) parses; RequireReply pins the "report back on this card"
+	// expectation onto the message itself.
+	body, err := json.Marshal(map[string]string{
+		"kind":      "bus-task",
+		"card_id":   card.ID,
+		"prompt":    in.Body,
+		"title":     in.Title,
+		"workspace": in.Workspace,
+	})
+	if err != nil {
+		return nil, spawnOut{}, fmt.Errorf("encode assignment: %w", err)
+	}
+	msg, err := rt.bus.mail.Deliver(sessioncollab.MailMessage{
+		From:         rt.contact,
+		To:           in.To,
+		Body:         string(body),
+		CardID:       card.ID,
+		RequireReply: true,
+	})
+	if err != nil {
+		return nil, spawnOut{}, fmt.Errorf("deliver assignment to %s: %w", in.To, err)
+	}
+	rt.bus.audit(rt.role, "spawn", in.To+" card="+card.ID+" mail="+msg.ID, true)
+	return nil, spawnOut{CardID: card.ID, MailID: msg.ID, To: msg.To}, nil
+}
+
 // ── per-role server assembly ─────────────────────────────────────────────────
 
-// roleRuntime binds the four tools to one caller's identity. It exists so the
+// roleRuntime binds the tools to one caller's identity. It exists so the
 // tool handlers never have to trust a per-request header for identity: the
 // binding happens once, at server construction, from the token table.
 type roleRuntime struct {
@@ -226,7 +313,7 @@ type roleRuntime struct {
 	contact string
 }
 
-func (s *Server) newRoleServer(role, contact string) *mcp.Server {
+func (s *Server) newRoleServer(role, contact string, canSpawn bool) *mcp.Server {
 	rt := roleRuntime{bus: s, role: role, contact: contact}
 	srv := mcp.NewServer(&mcp.Implementation{Name: "reasonix-bus", Version: "1.0.0"}, &mcp.ServerOptions{
 		Instructions: "Reasonix task bus: read the shared inbox, send cross-runtime mail, and keep task cards. " +
@@ -236,5 +323,8 @@ func (s *Server) newRoleServer(role, contact string) *mcp.Server {
 	mcp.AddTool(srv, &mcp.Tool{Name: "collab_send", Description: sendDesc}, rt.send)
 	mcp.AddTool(srv, &mcp.Tool{Name: "collab_task_create", Description: taskCreateDesc}, rt.taskCreate)
 	mcp.AddTool(srv, &mcp.Tool{Name: "collab_task_update", Description: taskUpdateDesc}, rt.taskUpdate)
+	if canSpawn {
+		mcp.AddTool(srv, &mcp.Tool{Name: "collab_spawn", Description: spawnDesc}, rt.spawn)
+	}
 	return srv
 }

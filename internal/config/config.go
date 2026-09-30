@@ -1027,6 +1027,10 @@ type ServeConfig struct {
 	// bearer tokens (never the browser cookie), and the routes fail closed:
 	// no usable role table means nothing is mounted.
 	BusMCP BusMCPConfig `toml:"bus_mcp"`
+	// BusWorker runs the unattended headless execution pool for bus task
+	// assignments. Independent of BusMCP: mail to the worker contact can
+	// come from Reasonix sessions just as well. Off by default.
+	BusWorker BusWorkerConfig `toml:"bus_worker"`
 }
 
 // BusMCPConfig is the [serve.bus_mcp] table. See [ServeConfig.BusMCP].
@@ -1048,6 +1052,51 @@ type BusMCPConfig struct {
 	// EventTarget is the contact that hook pushes (POST /bus/events) are
 	// delivered to. Empty defaults to "zcode-heartbeat".
 	EventTarget string `toml:"event_target"`
+	// SpawnRoles lists the roles allowed to call collab_spawn (create a task
+	// card and dispatch its assignment mail). Empty denies every role — the
+	// tool hands out work, so it stays closed until named explicitly.
+	SpawnRoles []string `toml:"spawn_roles"`
+	// SpawnDailyQuota caps collab_spawn calls per role per local calendar
+	// day. 0 keeps the default (20); the counter lives in the serve process,
+	// so it is runaway protection, not billing.
+	SpawnDailyQuota int `toml:"spawn_daily_quota"`
+}
+
+// BusWorkerConfig is the [serve.bus_worker] table: unattended execution of bus
+// task assignments through an external headless agent CLI. The pool drains one
+// mailbox contact and runs one subprocess per task, so nothing here touches
+// session state — see the busworker package doc for the concurrency model.
+type BusWorkerConfig struct {
+	// Enabled gates the pool. Explicit opt-in: it spawns external processes
+	// with whatever permission mode is configured below.
+	Enabled bool `toml:"enabled"`
+	// Command is the agent CLI argv[0] to spawn per task. It is invoked as:
+	//   <command> -p <prompt> --output-format stream-json --mode <mode>
+	Command string `toml:"command"` // default "zcode"
+	// Mode is the headless permission mode passed to the CLI: "build"
+	// (default; unapproved writes are refused) or "yolo". This is the exact
+	// lever the permission matrix discipline warns about — choose per threat
+	// model and test both.
+	Mode string `toml:"mode"`
+	// Workspace is the working directory for spawned runs. Empty inherits
+	// the serve process cwd; per-task workspaces ride the assignment mail.
+	Workspace string `toml:"workspace"`
+	// Concurrency caps parallel runs. Default 2; every lane is one
+	// goroutine plus one tracked child process (see busworker doc).
+	Concurrency int `toml:"concurrency"`
+	// Timeout is the per-run budget (Go duration). Default "30m"; expiry
+	// kills the child process tree and fails the card.
+	Timeout string `toml:"timeout"`
+	// PollInterval is the mailbox poll cadence. Default "5s".
+	PollInterval string `toml:"poll_interval"`
+	// Contact is the mailbox contact this pool drains. Default
+	// "zcode-worker".
+	Contact string `toml:"contact"`
+	// MailDir overrides the shared mailbox directory (empty: default).
+	MailDir string `toml:"mail_dir"`
+	// ResultDir is where result_ref JSON files are written. Empty:
+	// <mailDir>/bus-results.
+	ResultDir string `toml:"result_dir"`
 }
 
 // NetworkConfig controls ordinary outbound HTTP traffic such as model providers,
