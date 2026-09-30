@@ -1021,6 +1021,33 @@ type ServeConfig struct {
 	// rate-limiting and Secure-cookie decisions. When false (default), they
 	// are ignored — an attacker can otherwise forge them.
 	BehindProxy bool `toml:"behind_proxy"`
+	// BusMCP exposes the sessioncollab mailbox and task cards as an MCP
+	// streamable-HTTP endpoint for external agent runtimes (zcode). Off by
+	// default; when on, /mcp and /bus/events authenticate with per-role
+	// bearer tokens (never the browser cookie), and the routes fail closed:
+	// no usable role table means nothing is mounted.
+	BusMCP BusMCPConfig `toml:"bus_mcp"`
+}
+
+// BusMCPConfig is the [serve.bus_mcp] table. See [ServeConfig.BusMCP].
+type BusMCPConfig struct {
+	// Enabled gates the bus routes. Explicit opt-in, like the serve
+	// frontend itself.
+	Enabled bool `toml:"enabled"`
+	// Roles maps role name → bearer token. Role names are [a-z0-9-]+ and
+	// become bus contacts "zcode-<role>"; tokens are 256-bit hex strings
+	// (generate with `reasonix bus enroll`, which also writes the remote
+	// runtime's MCP config).
+	Roles map[string]string `toml:"roles"`
+	// MailDir overrides the shared collab mailbox directory. Empty uses the
+	// default session-chat support directory, so bus mail and collab mail
+	// stay one stream.
+	MailDir string `toml:"mail_dir"`
+	// HopLimit overrides the mail chain ceiling. 0 keeps the default.
+	HopLimit int `toml:"hop_limit"`
+	// EventTarget is the contact that hook pushes (POST /bus/events) are
+	// delivered to. Empty defaults to "zcode-heartbeat".
+	EventTarget string `toml:"event_target"`
 }
 
 // NetworkConfig controls ordinary outbound HTTP traffic such as model providers,
