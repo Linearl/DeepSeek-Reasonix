@@ -18,6 +18,7 @@ import (
 	"reasonix/internal/config"
 	"reasonix/internal/control"
 	"reasonix/internal/safego"
+	"reasonix/internal/secrets"
 	"reasonix/internal/sessioncollab"
 	"reasonix/internal/sessioninbox"
 )
@@ -784,7 +785,10 @@ func (p *sessionCollabPump) drain() SessionCollabDrainResult {
 			open = p.app.OpenTopicSessionDetached
 		}
 		if _, err := open(id.Scope, id.Workspace, id.TopicID, id.SessionPath); err != nil {
-			log.Printf("[session-collab] cannot open session for contact %s (%s): %v", contact, id.Title, err)
+			// codeql[go/clear-text-logging] the flagged chain only carries the
+			// provider env-var NAME from config validation errors, never the
+			// key value; RedactError also strips any provider-echoed key text.
+			log.Printf("[session-collab] cannot open session for contact %s (%s): %v", contact, id.Title, secrets.RedactError(err))
 			continue
 		}
 		log.Printf("[session-collab] opened session %q to accept a message for contact %s (background=%v)", id.Title, contact, collabOpenDetached())

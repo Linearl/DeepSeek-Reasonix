@@ -771,7 +771,10 @@ func isExecutableFile(path string) bool {
 }
 
 func setEnvValue(env []string, key, value string) []string {
-	out := make([]string, 0, len(env)+1)
+	// Hint deliberately drops the +1: len(env)+1 is an overflow-prone sum for
+	// the allocator on 32-bit builds (codeql go/allocation-size-overflow), and
+	// the not-replaced tail append costs at most one amortized growth.
+	out := make([]string, 0, len(env))
 	replaced := false
 	for _, kv := range env {
 		k, _, ok := strings.Cut(kv, "=")

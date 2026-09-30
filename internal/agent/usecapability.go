@@ -622,7 +622,11 @@ func (*UseCapabilityTool) Description() string {
 // deduplicated order (single id first), so one call can dismiss many
 // candidates the capability route listed for the turn.
 func declineCapabilityIDs(id string, batch []string) []string {
-	candidates := make([]string, 0, len(batch)+1)
+	// Hint deliberately drops the +1: len(batch)+1 is an overflow-prone sum
+	// for the allocator on 32-bit builds (codeql
+	// go/allocation-size-overflow); the single-id prepend costs at most one
+	// amortized growth.
+	candidates := make([]string, 0, len(batch))
 	if trimmed := strings.TrimSpace(id); trimmed != "" {
 		candidates = append(candidates, trimmed)
 	}

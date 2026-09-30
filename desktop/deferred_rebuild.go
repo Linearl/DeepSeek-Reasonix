@@ -279,8 +279,11 @@ func (a *App) retryDeferredRebuild(tabID string, request deferredRebuildRequest)
 	// Anything else will not resolve by waiting; give up loudly instead of
 	// retrying forever.
 	a.clearDeferredRebuildVersion(tabID, request.sequence)
-	slog.Warn("desktop: deferred settings rebuild failed", "setting", setting, "tab", tabID, "err", err)
-	a.warnForTab(tabID, fmt.Sprintf("%s was saved but the session could not refresh: %s", setting, err.Error()))
+	// codeql[go/clear-text-logging] the flagged chain only carries the provider
+	// env-var NAME from config validation errors, never the key value;
+	// RedactError also strips any provider-echoed key text.
+	slog.Warn("desktop: deferred settings rebuild failed", "setting", setting, "tab", tabID, "err", secrets.RedactError(err))
+	a.warnForTab(tabID, fmt.Sprintf("%s was saved but the session could not refresh: %s", setting, secrets.RedactError(err)))
 }
 
 // retryDeferredRuntimeReload drives one queued ReloadRuntime pass. The

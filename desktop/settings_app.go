@@ -30,6 +30,7 @@ import (
 	"reasonix/internal/netclient"
 	"reasonix/internal/provider"
 	"reasonix/internal/sandbox"
+	"reasonix/internal/secrets"
 )
 
 // settings_app.go is the desktop Settings panel's command surface: it reads the
@@ -2026,7 +2027,10 @@ func (a *App) deferredRebuildWarningForTab(setting string, err error, tab *Works
 	}
 	userErr := userFacingSessionLeaseError(setting, err)
 	warning := fmt.Sprintf("%s saved, but the current session could not refresh yet: %s", setting, userErr.Error())
-	slog.Warn("desktop: deferred settings rebuild", "setting", setting, "err", err)
+	// codeql[go/clear-text-logging] the flagged chain only carries the provider
+	// env-var NAME from config validation errors, never the key value;
+	// RedactError also strips any provider-echoed key text.
+	slog.Warn("desktop: deferred settings rebuild", "setting", setting, "err", secrets.RedactError(err))
 	// Bind both the warning and the retry to the tab whose refresh failed, so a
 	// tab switch or a multi-tab mutation cannot misroute either one.
 	if tab != nil {
