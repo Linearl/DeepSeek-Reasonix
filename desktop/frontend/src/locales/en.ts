@@ -1570,6 +1570,7 @@ export const en = {
   "projectTree.aiRenamingTopic": "AI renaming…",
   "projectTree.aiRenameDone": "Renamed to “{title}”",
   "projectTree.newGroup": "New group",
+  "projectTree.markAllRead": "Mark all read",
   "projectTree.renameGroup": "Rename group",
   "projectTree.deleteGroup": "Delete group",
   "projectTree.clearGroup": "Clear group",

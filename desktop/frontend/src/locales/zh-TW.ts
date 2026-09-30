@@ -1305,6 +1305,7 @@ export const zhTW: Record<DictKey, string> = {
   "projectTree.aiRenamingTopic": "AI 正在重新命名…",
   "projectTree.aiRenameDone": "已重新命名為「{title}」",
   "projectTree.newGroup": "新建分組",
+  "projectTree.markAllRead": "全部已讀",
   "projectTree.renameGroup": "重新命名分組",
   "projectTree.deleteGroup": "刪除分組",
   "projectTree.clearGroup": "清空分組",

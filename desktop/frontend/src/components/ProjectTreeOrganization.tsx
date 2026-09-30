@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, lazy, Suspense, type DragEvent, type HTMLAttributes, type ReactNode } from "react";
-import { Eraser, FolderMinus, Pencil, Trash2 } from "lucide-react";
+import { CheckCheck, Eraser, FolderMinus, Pencil, Trash2 } from "lucide-react";
 import { app } from "../lib/bridge";
 import { asArray } from "../lib/array";
 import type { Translator } from "../lib/i18n";
@@ -368,6 +368,7 @@ export function ProjectTreeGroupRows({
   organization,
   renderNode,
   t,
+  onMarkAllRead,
 }: {
   folder: ProjectNode;
   children: ProjectNode[];
@@ -377,6 +378,9 @@ export function ProjectTreeGroupRows({
   organization: ProjectTreeOrganizationController;
   renderNode: (node: ProjectNode, depth: number, section: "pinned" | "projects", visible: boolean) => ReactNode;
   t: Translator;
+  // wt-zcode-288：分组头右键「全部已读」——把该自定义分组的成员会话标记已读；
+  // 可选 prop，未接线时菜单里不出现该项（测试挂载点无需感知）。
+  onMarkAllRead?: (members: ProjectNode[]) => void;
 }) {
   const [menuGroup, setMenuGroup] = useState<string | null>(null);
   const [menuPoint, setMenuPoint] = useState<ContextMenuPoint | null>(null);
@@ -539,6 +543,13 @@ export function ProjectTreeGroupRows({
           open
           point={menuPoint}
           items={[
+            // wt-zcode-288：会话分组头右键「全部已读」——成员会话一次标记已读。
+            ...(onMarkAllRead && members.length > 0 ? [{
+              key: "mark-all-read",
+              icon: <CheckCheck size={13} />,
+              label: t("projectTree.markAllRead"),
+              onSelect: () => { onMarkAllRead(members); setMenuGroup(null); },
+            }] : []),
             { key: "rename", icon: <Pencil size={13} />, label: t("projectTree.renameGroup"), onSelect: () => { setEditingGroup(group.id); setGroupDraft(group.title); setMenuGroup(null); } },
             { key: "clear", icon: <Eraser size={13} />, label: t("projectTree.clearGroup"), onSelect: () => { organization.clearGroup(key, group.id); setMenuGroup(null); } },
             { key: "dissolve", icon: <FolderMinus size={13} />, label: t("projectTree.dissolveGroup"), onSelect: () => { organization.dissolveGroup(key, group.id); setMenuGroup(null); } },

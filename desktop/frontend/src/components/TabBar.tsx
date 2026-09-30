@@ -3,7 +3,7 @@
 import { crossGroupDropIntent, isSplitViewEnabled, onSplitViewEnabledChange } from "../lib/splitView";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, DragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
-import { FileText, Plus, Search, X } from "lucide-react";
+import { CheckCheck, FileText, Plus, Search, X } from "lucide-react";
 import { normalizeCollaborationMode, normalizeMode, normalizeToolApprovalMode, type Mode, type TabMeta } from "../lib/types";
 import { projectColorValue } from "../lib/projectColors";
 import { prefetchTabTranscript } from "../lib/transcriptPrefetch";
@@ -12,6 +12,8 @@ import { Tooltip } from "./Tooltip";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
 import { WorktreeBadge } from "./WorktreeBadge";
 import { selectCloseOtherIds, selectCloseRightIds } from "../lib/tabClosePolicy";
+// wt-zcode-288：标签页右键「全部已读」——读档/写档与未读判定统一走 readActivity 存档。
+import { markTabsAllRead } from "../lib/readActivity";
 
 interface TabBarProps {
   tabs: TabMeta[];
@@ -226,6 +228,13 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
               onSelect: () => onToggleSplit?.(menuTabId),
             }]
           : []),
+        {
+          key: "mark-all-read",
+          icon: <CheckCheck size={13} />,
+          // wt-zcode-288：当前上下文 = 打开的全部标签页对应的会话。
+          label: t("projectTree.markAllRead"),
+          onSelect: () => markTabsAllRead(tabs),
+        },
         {
           key: "close-current",
           label: t("tabBar.closeTab"),
