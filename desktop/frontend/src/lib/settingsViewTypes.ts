@@ -37,6 +37,8 @@ export interface SettingsView {
   eventsRotationCapMB?: number;
   // Task 121: exposes the agent submit_feedback tool and feedback inbox panel.
   experimentalFeedback?: boolean;
+  // Task 172: feedback touchpoint dial (T1 completion + T2 steer); boot snapshot.
+  experimentalFeedbackNudge?: boolean;
   // Task 259: exposes the right-dock todo tab plus tab visibility/wrap settings.
   experimentalTodoSidebar?: boolean;
   // Task 265 lab intake: nil-means-on switches, resolved server-side.

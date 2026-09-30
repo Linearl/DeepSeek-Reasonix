@@ -356,11 +356,15 @@ type SettingsView struct {
 	SessionStorageRestartPending bool   `json:"sessionStorageRestartPending"`
 	// Task 333: the event-log rotation gate (off | manual | auto) and its
 	// auto-mode thresholds; the settings panel reads all three from this view.
-	EventsAutoRotation      string  `json:"eventsAutoRotation"`
-	EventsRotationFactor    float64 `json:"eventsRotationFactor"`
-	EventsRotationCapMB     int64   `json:"eventsRotationCapMB"`
-	ExperimentalFeedback    bool    `json:"experimentalFeedback"`
-	ExperimentalTodoSidebar bool    `json:"experimentalTodoSidebar"`
+	EventsAutoRotation   string  `json:"eventsAutoRotation"`
+	EventsRotationFactor float64 `json:"eventsRotationFactor"`
+	EventsRotationCapMB  int64   `json:"eventsRotationCapMB"`
+	ExperimentalFeedback bool    `json:"experimentalFeedback"`
+	// Task 172: feedback touchpoint dial (T1 completion + T2 steer invite).
+	// Rendered in both views for the same reason the switches above are: a
+	// view that omits it would read the sub-switch as permanently off.
+	ExperimentalFeedbackNudge bool `json:"experimentalFeedbackNudge"`
+	ExperimentalTodoSidebar   bool `json:"experimentalTodoSidebar"`
 	// Task 265 lab intake: nil-means-on switches resolved server-side.
 	ExperimentalCompactionParallel bool `json:"experimentalCompactionParallel"`
 	ExperimentalContextBudget      bool `json:"experimentalContextBudget"`
@@ -545,6 +549,9 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalFeedback exposes the agent submit_feedback tool and feedback
 	// inbox panel (task 121).
 	ExperimentalFeedback bool `json:"experimentalFeedback"`
+	// ExperimentalFeedbackNudge is the feedback touchpoint dial (task 172);
+	// boot snapshot — the agent reads it at construction, restart to apply.
+	ExperimentalFeedbackNudge bool `json:"experimentalFeedbackNudge"`
 	// ExperimentalTodoSidebar moves the todo list into the right dock (task 259);
 	// the frontend snapshots it at boot, so a change needs a restart.
 	ExperimentalTodoSidebar bool `json:"experimentalTodoSidebar"`
@@ -1320,6 +1327,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.SessionStorageEffective = a.sessionStorageBootMode(view.SessionStorage)
 		view.SessionStorageRestartPending = view.SessionStorageEffective != view.SessionStorage
 		view.ExperimentalFeedback = cfg.Desktop.ExperimentalFeedback
+		view.ExperimentalFeedbackNudge = cfg.Desktop.ExperimentalFeedbackNudge
 		view.ExperimentalTodoSidebar = cfg.Desktop.ExperimentalTodoSidebar
 		// Task 265 lab intake: nil-means-on switches resolved here.
 		view.ExperimentalCompactionParallel = cfg.CompactionParallelEnabled()
@@ -1451,6 +1459,7 @@ func (a *App) Settings() SettingsView {
 		EventsRotationFactor:         config.EventsRotationFactor(cfg),
 		EventsRotationCapMB:          config.EventsRotationCapMB(cfg),
 		ExperimentalFeedback:         cfg.Desktop.ExperimentalFeedback,
+		ExperimentalFeedbackNudge:    cfg.Desktop.ExperimentalFeedbackNudge,
 		ExperimentalTodoSidebar:      cfg.Desktop.ExperimentalTodoSidebar,
 		// Task 265 lab intake: nil-means-on switches resolved here.
 		ExperimentalCompactionParallel: cfg.CompactionParallelEnabled(),

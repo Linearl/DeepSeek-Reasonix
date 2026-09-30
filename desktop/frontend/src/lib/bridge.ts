@@ -900,6 +900,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   RestartDesktop(): Promise<void>;
   // Task 121: agent submit_feedback tool + feedback inbox panel (experimental).
   SetExperimentalFeedback(enabled: boolean): Promise<void>;
+  // Task 172: feedback touchpoint dial (T1 completion + T2 steer); boot snapshot.
+  SetExperimentalFeedbackNudge(enabled: boolean): Promise<void>;
   // Task 130: Settings → 本地服务 page (experimental).
   SetExperimentalLocalServer(enabled: boolean): Promise<void>;
   // Task 134: structured path-scope evaluation (experimental).
@@ -974,6 +976,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetServePoolPort(port: number): Promise<void>;
   ListFeedbackEntries(limit: number): Promise<{ at: string; kind: string; text: string; tags?: string[]; session?: string; model?: string }[]>;
   ClearFeedbackEntries(): Promise<void>;
+  // Task 172: the inbox directory (created when missing) for the panel's open-folder action.
+  GetFeedbackInboxPath(): Promise<string>;
   SetDefaultAutoRecoveryCheckpoint(enabled: boolean): Promise<void>;
 
   RenameProviderConnections: typeof GeneratedApp.RenameProviderConnections;
@@ -5278,6 +5282,7 @@ function makeMockApp(): AppBindings {
     async SetSessionStorage() {},
     async RestartDesktop() {},
     async SetExperimentalFeedback() {},
+    async SetExperimentalFeedbackNudge() {},
     async SetExperimentalLocalServer() {},
     async SetExperimentalPathRules() {},
     async SetExperimentalCacheTuning() {},
@@ -5334,6 +5339,7 @@ function makeMockApp(): AppBindings {
     async SetServePoolPort() {},
     async ListFeedbackEntries() { return []; },
     async ClearFeedbackEntries() {},
+    async GetFeedbackInboxPath() { return ""; },
     async SetDesktopAutopilot(enabled: boolean, maxRuntime: string, approvalGrace: string) {
       settings.autopilot = enabled;
       settings.autopilotMaxRuntime = maxRuntime;

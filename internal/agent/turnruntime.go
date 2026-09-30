@@ -193,6 +193,10 @@ type terminalProtocolState struct {
 	// contextToolRepairs counts contextual-tool repair rounds; a second
 	// violation after a repair ends the run in a recoverable pause.
 	contextToolRepairs int
+	// feedbackNudges counts task-172 feedback touchpoints sent this run (T1
+	// completion invitation, T2 steer note). Hard-capped at 1: the turn a nudge
+	// produced must never produce a second one (anti-loop gate 1).
+	feedbackNudges int
 }
 
 // pendingTurn is what someone outside the Run arms for the next one: a

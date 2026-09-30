@@ -689,6 +689,17 @@ func (c *Config) SetExperimentalFeedback(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalFeedbackNudge toggles the feedback touchpoint dial (task 172):
+// one feedback-inbox invitation after a completed turn (T1) plus one short
+// guidance note after a mid-turn user steer (T2). Opt-in: every T1 trigger
+// costs one extra model round. The parent feedback switch still wins at read
+// time (FeedbackNudgeEnabled ANDs both), so flipping this alone never arms the
+// nudge while the feature itself is off.
+func (c *Config) SetExperimentalFeedbackNudge(enabled bool) error {
+	c.Desktop.ExperimentalFeedbackNudge = enabled
+	return nil
+}
+
 // SetExperimentalTodoSidebar moves the live todo list into the right dock as a
 // fifth tab, with the dock tab visibility and wrap behaviour under the same
 // switch (task 259). Opt-in: with it off the todo list stays above the composer

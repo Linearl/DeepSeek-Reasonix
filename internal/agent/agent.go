@@ -373,7 +373,9 @@ type Agent struct {
 	softBudgetMutationSeen bool
 	// toolStats accumulates per-tool call/error counters for the session
 	// sidecar (task 227 phase 1: observe only; aggregate counts, no args).
-	toolStats *toolErrorStats
+	// toolStatsMu guards it: record runs on parallel tool goroutines.
+	toolStats   *toolErrorStats
+	toolStatsMu sync.Mutex
 	// svc are the collaborators this agent talks to; see services.go.
 	svc agentServices
 	// sess is the state one conversation owns; SetSession restarts it. See
@@ -466,6 +468,13 @@ type Agent struct {
 	// steers are rejected so the caller can deliver them as a regular turn
 	// instead of leaving them in a queue no loop will ever consume.
 	steerRunActive bool
+
+	// feedbackNudgeTurn counts Run entries (user message rounds) and
+	// feedbackNudgeLastTurn stores the round of the last task-172 nudge
+	// injection (0 = never nudged). Session-lived cooldown state for the
+	// shared T1/T2 throttle; atomics because Steer and Run race on it.
+	feedbackNudgeTurn     atomic.Int64
+	feedbackNudgeLastTurn atomic.Int64
 
 	// task is the state shared by every Run continuing one delivery scope: the
 	// receipt ledger complete_step validates citations against, the spend that
@@ -1099,6 +1108,12 @@ type Options struct {
 	// repeated loop injects a bounded neutral "Continue." host note instead of
 	// pausing. Off (default) keeps the nudge-then-pause contract untouched.
 	LoopStreakNote bool
+	// FeedbackNudge enables the task-172 feedback touchpoints: one feedback-inbox
+	// invitation after a completed turn (T1) and one short guidance note after a
+	// mid-turn user steer (T2). Boot passes cfg.FeedbackNudgeEnabled(), which
+	// already ANDs the nudge dial with the parent feedback switch. Off (default)
+	// keeps turns byte-for-byte free of any extra host message or model round.
+	FeedbackNudge bool
 	// SessionTemp owns the exact private scratch root for delivery accounting.
 	SessionTemp *sessiontemp.Manager
 	// WriteRoots is the session-scoped writable directory manager.
@@ -1514,6 +1529,8 @@ func (a *Agent) Run(ctx context.Context, input string) (runErr error) {
 	runMaxSteps := a.maxSteps
 	runMaxStepsKey := a.maxStepsKey
 	a.recovery.runSeq.Add(1)
+	// Task 172: advance the user-round counter the shared T1/T2 cooldown reads.
+	a.feedbackNudgeTurn.Add(1)
 	// Participate in the run lease; per-tool write leases end with execution.
 	if a.svc.workspaceLease != nil {
 		a.svc.workspaceLease.BeginRun()

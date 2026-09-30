@@ -79,6 +79,13 @@ type DesktopConfig struct {
 	// "意见箱" panel (task 121). It ships off: feedback is a local inbox, not a
 	// product surface, so both the tool and the viewer stay behind an opt-in.
 	ExperimentalFeedback bool `toml:"experimental_feedback"`
+	// ExperimentalFeedbackNudge is the feedback touchpoint dial (task 172): with
+	// it on, the host appends one feedback-inbox invitation after a completed
+	// turn (T1) and one short guidance note after a mid-turn user steer (T2).
+	// It ships off (铁律 2): every T1 trigger costs one extra model round, and
+	// it only means anything with the feedback feature itself on, so the
+	// runtime gate ANDs it with ExperimentalFeedback (FeedbackNudgeEnabled).
+	ExperimentalFeedbackNudge bool `toml:"experimental_feedback_nudge"`
 	// ExperimentalLocalServer exposes the Settings → 本地服务 page and its
 	// serve-pool gateway controls (task 130). It ships off: the gateway binds
 	// 0.0.0.0, so it stays behind an explicit opt-in.
@@ -239,6 +246,14 @@ func (c *Config) DesktopSubagentTpsEnabled() bool {
 // renders on the desktop transcript (task 265). Nil means on.
 func (c *Config) DesktopCompletionSummaryEnabled() bool {
 	return c == nil || c.Desktop.ExperimentalCompletionSummary == nil || *c.Desktop.ExperimentalCompletionSummary
+}
+
+// FeedbackNudgeEnabled reports whether the host may append feedback-inbox
+// nudges (task 172). The parent ExperimentalFeedback switch wins: with the
+// feedback feature off the nudge dial reads as off no matter how it is set,
+// so a stray sub-switch can never resurrect the surface it lives under.
+func (c *Config) FeedbackNudgeEnabled() bool {
+	return c != nil && c.Desktop.ExperimentalFeedback && c.Desktop.ExperimentalFeedbackNudge
 }
 
 // QuickCommandEntry is one quick-command snippet. Title is the menu label, Text

@@ -1956,10 +1956,14 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		Jobs:               jm,
 		// Parent write reservation at the executor entry covers all writers
 		// (including late Economy/MCP adds) without wrapping tool schemas.
-		WriteScheduler:               subagentScheduler,
-		WriteWorkspaceRoot:           root,
-		OptimisticWrite:              cfg.Sandbox.OptimisticWrite,
-		LoopStreakNote:               cfg.Agent.ExperimentalLoopStreakNote,
+		WriteScheduler:     subagentScheduler,
+		WriteWorkspaceRoot: root,
+		OptimisticWrite:    cfg.Sandbox.OptimisticWrite,
+		LoopStreakNote:     cfg.Agent.ExperimentalLoopStreakNote,
+		// Task 172: feedback touchpoints — FeedbackNudgeEnabled ANDs the nudge
+		// dial with the parent feedback switch, so the agent sees one dial that
+		// already respects the parent-wins rule. Boot snapshot: restart to apply.
+		FeedbackNudge:                cfg.FeedbackNudgeEnabled(),
 		SessionTemp:                  sessionTemp,
 		WriteRoots:                   writeRootSet,
 		HomeDir:                      userHomeDir(),

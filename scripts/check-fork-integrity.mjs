@@ -208,6 +208,15 @@ const CHECKS = [
   { feature: "任务389 循环移除守护", file: "desktop/session_catalog_lifecycle.go", patterns: ["watchSessionCatalog(ctx, catalog)"] },
   { feature: "任务386 markdown cache 碰撞守卫 backstop 测试（消费比对 miss 语义）", file: "desktop/frontend/src/__tests__/markdown-history.test.tsx", patterns: ["fidelity backstop at the store boundary", "treats the collision as a miss"] },
 
+  // ── 任务 172：意见箱触达策略（T1 完成时 + T2 插话时 + 面板打开目录）───
+  { feature: "任务172 nudge 子开关全链路（config 字段+父开关优先）", file: "internal/config/desktop_preferences.go", patterns: ["experimental_feedback_nudge", "func (c *Config) FeedbackNudgeEnabled()"] },
+  { feature: "任务172 渲染表登记（漏渲染表=保存被静默丢弃）", file: "internal/config/render.go", patterns: ["experimental_feedback_nudge"] },
+  { feature: "任务172 T1/T2 双触发+防死循环闸门", file: "internal/agent/feedback_nudge.go", patterns: ["FeedbackNudgeMarker", "feedbackNudgeCooldownTurns", "feedbackNudgeMaxPerTurn"] },
+  { feature: "任务172 run_loop 注入点（T1 完成时 + T2 插话后）", file: "internal/agent/run_loop.go", patterns: ["maybeNudgeFeedbackCompletion", "maybeNudgeFeedbackSteer"] },
+  { feature: "任务172 App 绑定 GetFeedbackInboxPath（先建目录再回路径）", file: "desktop/feedback.go", patterns: ["func (a *App) GetFeedbackInboxPath", "builtin.FeedbackInboxDir()"] },
+  { feature: "任务172 面板打开目录按钮（清空左侧，复用 RevealPath）", file: "desktop/frontend/src/components/FeedbackPanel.tsx", patterns: ["feedbackInbox.openDir", "app.RevealPath(dir)"] },
+  { feature: "任务172 设置页触达子项+开销说明文案", file: "desktop/frontend/src/locales/zh.ts", patterns: ["settings.feedbackNudge", "settings.feedbackNudgeHint"] },
+
 ];
 
 let failed = 0;
