@@ -922,6 +922,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		Network:               networkEnabled,
 		PackageOwners:         pluginPackageOwners(cfg),
 		OAuthHTTPClient:       balanceClient,
+		// Overseas http MCP servers (e.g. mcp.exa.ai) must share the user's
+		// proxy; a direct dial without one hangs at TCP level (task 168).
+		NetworkProxy: proxySpec,
 	}
 	autoStartEntries := cfg.EnabledPlugins(root, config.DefaultMCPActivationStore())
 	enabledMCPNames := make(map[string]bool, len(autoStartEntries))
@@ -3181,6 +3184,7 @@ func pluginSpecFromEntryWithOptions(e config.PluginEntry, workspaceRoot string, 
 		ConfigSource:          configSource,
 		Authorized:            e.Source.UserAuthorized(),
 		OAuthHTTPClient:       opts.OAuthHTTPClient,
+		Proxy:                 opts.NetworkProxy,
 	}, workspaceRoot)
 	if e.Source.ProjectScoped() && strings.TrimSpace(spec.Dir) == "" {
 		spec.Dir = workspaceRoot

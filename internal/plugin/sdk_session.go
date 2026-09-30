@@ -265,6 +265,15 @@ func (t *sdkSessionTransport) runBuild(attempt *sessionBuild, generation uint64)
 	buildCtx, cancel := context.WithTimeout(t.lifeCtx, t.spec.startupTimeout())
 	managed, buildErr := t.build(buildCtx, generation)
 	cancel()
+	// The connect deadline is the server's startup timeout. Name the server and
+	// the limit in the error itself: a bare "context deadline exceeded" or
+	// "context canceled" (the SDK cancels its derived session context) gives
+	// the model and the user nothing to act on (task 168). buildCtx keeps its
+	// DeadlineExceeded after build returns, so an expired buildCtx attributes
+	// the failure to the startup timeout regardless of how the SDK phrased it.
+	if managed == nil && buildErr != nil && errors.Is(buildCtx.Err(), context.DeadlineExceeded) {
+		buildErr = fmt.Errorf("MCP server %q startup timed out after %s (initialize + tools/list); raise tools.mcp_startup_timeout_seconds or the server's startup_timeout_seconds if it is healthy but slow", t.name, t.spec.startupTimeout())
+	}
 
 	t.mu.Lock()
 	if t.closed && managed != nil {
