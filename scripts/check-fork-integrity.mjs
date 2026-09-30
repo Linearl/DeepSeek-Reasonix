@@ -76,6 +76,11 @@ const CHECKS = [
   // parked: fork 分支不含该实现（1f8c3fe50 对齐时移除 / 上游另有设计）
   // { feature: "#9601 验收框 parked 消费", file: "desktop/frontend/src/lib/useController.ts", patterns: ["parkedDelivery", "parkedConsumed"] },
   { feature: "会话分组折叠持久化", file: "desktop/frontend/src/components/ProjectTreeOrganization.tsx", patterns: ["loadSessionGroupCollapsed", "persistSessionGroupCollapsed"] },
+  // 任务 169：分组头拖拽手柄（任务 50 桌面可用性补齐）。手柄 span + 立即进入
+  // 拖拽状态机的 beginGroupDrag 是纯前端交互，上游合并时最容易被同名重构顶掉，
+  // 锚定渲染形状与入口函数；hover 显隐是 CSS 契约，单独锁样式规则。
+  { feature: "任务169 分组头拖拽手柄（TSX）", file: "desktop/frontend/src/components/ProjectTreeOrganization.tsx", patterns: ['className="project-tree__group-drag"', "beginGroupDrag"] },
+  { feature: "任务169 分组头拖拽手柄（hover 显隐 CSS）", file: "desktop/frontend/src/styles.css", patterns: [".project-tree__group-main:hover .project-tree__group-drag", ".project-tree__group-main--dragging .project-tree__group-drag"] },
   { feature: "#9580 草稿 v2 接入", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["loadPersistedComposerDraft", "persistComposerDraft", "persisted.pastedBlocks.map"] },
   // parked: fork 分支不含该实现（1f8c3fe50 对齐时移除 / 上游另有设计）
   // { feature: "#9570 Markdown 门控放宽", file: "desktop/frontend/src/components/MarkdownHistory.tsx", patterns: ["markerInView", "MARKDOWN_TAIL_BLOCKS) {"] },

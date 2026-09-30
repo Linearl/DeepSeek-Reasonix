@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, lazy, Suspense, type DragEvent, type HTMLAttributes, type ReactNode } from "react";
-import { CheckCheck, Eraser, FolderMinus, Pencil, Trash2 } from "lucide-react";
+import { CheckCheck, Eraser, FolderMinus, GripVertical, Pencil, Trash2 } from "lucide-react";
 import { app } from "../lib/bridge";
 import { asArray } from "../lib/array";
 import type { Translator } from "../lib/i18n";
@@ -388,6 +388,9 @@ export function ProjectTreeGroupRows({
   // Task 50: long-press a group header to drag it within its project. The reorder is
   // committed once on release rather than per hover, so a drag writes the roster a
   // single time, and a press that never became a drag stays a plain click.
+  // Task 169: the same release-commit machine is also entered instantly from the
+  // header's drag handle — long-press stays for touch, the handle is the desktop
+  // affordance (a 350ms invisible press is undiscoverable with a mouse).
   const [draggingGroup, setDraggingGroup] = useState<string | null>(null);
   const [groupDropTarget, setGroupDropTarget] = useState<string | null>(null);
   const groupDragRef = useRef<{ from: string | null; to: string | null; moved: boolean }>({ from: null, to: null, moved: false });
@@ -423,10 +426,23 @@ export function ProjectTreeGroupRows({
 
   const beginGroupPress = (id: string) => {
     groupDragRef.current = { from: id, to: id, moved: false };
+    // The flag only exists to swallow the click of the release that just
+    // dragged. Scoped to the gesture: if no click materialised (release over
+    // another header fires it on a common ancestor), the stale flag must not
+    // eat the user's next real click on a group header.
+    groupSuppressClickRef.current = false;
     groupPressTimerRef.current = window.setTimeout(() => {
       groupPressTimerRef.current = null;
       setDraggingGroup(id);
     }, 350);
+  };
+  // Task 169: the drag handle skips the long-press delay and enters the very same
+  // drag state immediately. No pointer capture is taken, so the sibling headers'
+  // pointerenter hover tracking (the drop-target recorder) keeps working.
+  const beginGroupDrag = (id: string) => {
+    groupDragRef.current = { from: id, to: id, moved: false };
+    groupSuppressClickRef.current = false;
+    setDraggingGroup(id);
   };
   const cancelGroupPress = () => {
     if (groupPressTimerRef.current !== null) {
@@ -506,6 +522,26 @@ export function ProjectTreeGroupRows({
             if (canDrop) organization.dropTopicInto(key, group.id);
           }}
         >
+          {/* Task 169: desktop affordance for the task-50 drag. Hidden until the
+              header is hovered (CSS), pressed-and-held to drag without the
+              long-press delay. Purely a pointer affordance: aria-hidden and
+              unfocusable — collapse stays on the header (Enter/Space), and a
+              keyboard reorder would need menu items, not this handle. */}
+          <span
+            className="project-tree__group-drag"
+            aria-hidden="true"
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              // Not a click on the header: no long-press timer, and the release
+              // must not fall through to the collapse toggle.
+              event.preventDefault();
+              event.stopPropagation();
+              beginGroupDrag(group.id);
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <GripVertical size={12} />
+          </span>
           <span className="project-tree__group-chevron" aria-hidden="true">{collapsed ? "▸" : "▾"}</span>
           {editingGroup === group.id ? <input
             autoFocus
