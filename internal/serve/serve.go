@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"reasonix/internal/agent"
@@ -38,6 +39,7 @@ import (
 	"reasonix/internal/sandbox"
 	"reasonix/internal/stats"
 	"reasonix/internal/store"
+	"reasonix/internal/zcodebridge"
 )
 
 //go:embed index.html
@@ -124,6 +126,10 @@ type Server struct {
 	// [serve.bus_worker] enabled AND its config validated; started in
 	// Run/RunGracefulListener next to the heartbeat sweeper.
 	busWorker *busworker.Worker
+	// zcodeBridge holds the live reasonix→zcode injection bridge (M4a) when
+	// the environment opted in (REASONIX_ZCODE_BRIDGE=1); nil while no child
+	// is connected. See zcodebridge.go for the lifecycle and env surface.
+	zcodeBridge atomic.Pointer[zcodebridge.Bridge]
 }
 
 // SetControllerBuildOptions records the process-local options used to build
@@ -704,6 +710,7 @@ func (s *Server) Run(addr string) error {
 	s.ctl().EnableInteractiveApproval()
 	s.setListenAddr(addr)
 	s.startBusWorker()
+	s.startZcodeBridge()
 	return http.ListenAndServe(addr, s.Handler())
 }
 
@@ -736,6 +743,7 @@ func (s *Server) RunGracefulListener(ctx context.Context, ln net.Listener) error
 	}
 	s.startHeartbeatSweeper()
 	s.startBusWorker()
+	s.startZcodeBridge()
 	errCh := make(chan error, 1)
 	safego.Go("serve.http", func() {
 		errCh <- srv.Serve(ln)
