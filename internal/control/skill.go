@@ -70,6 +70,17 @@ func (s *skillSet) render(sk skill.Skill, args string) string {
 	return skill.Render(sk, args)
 }
 
+// renderPinned renders a skill in the pinned invocation form — byte-identical
+// to the run_skill tool product. Inline slash invocation ("/name args") sends
+// this instead of bare Render output so context compaction and provenance treat
+// both entry points the same (task 395, upstream #11004/#11007).
+func (s *skillSet) renderPinned(sk skill.Skill, args string) string {
+	if s.store != nil {
+		return s.store.RenderInline(sk, args)
+	}
+	return skill.RenderInline(sk, args)
+}
+
 // writer returns the live store to use for authoring (create/delete), preferring
 // allStore since management surfaces must resolve disabled and builtin skills
 // too (e.g. a create-time name-collision check). nil when this session has no

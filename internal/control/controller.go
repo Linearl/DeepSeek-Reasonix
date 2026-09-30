@@ -1880,9 +1880,13 @@ func (c *Controller) submitCommandOrTurnReady(trimmed, input, display string, sc
 				c.runSubagentSkillSlash(sk, task, trimmed, display)
 				return
 			}
-			sent := c.skills.render(sk, task)
+			// Task 395 (upstream #11004/#11012): the pinned form matches the
+			// run_skill tool product, and raw stays the user's typed "/name
+			// args" line — require routing, memory recall, and the transcript's
+			// raw content must not consume the rendered skill body.
+			sent := c.skills.renderPinned(sk, task)
 			c.runGuarded(func(ctx context.Context) error {
-				return runGoalLoop(ctx, sent, sent, display)
+				return runGoalLoop(ctx, sent, trimmed, display)
 			})
 			return
 		}
