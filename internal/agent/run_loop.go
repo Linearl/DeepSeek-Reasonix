@@ -63,6 +63,16 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string, pinned pinnedRev
 	// budgets) lives in taskRuntime and is reconciled there.
 	a.stragglers.drain(ctx, parallelStragglerGrace)
 	a.turn = turnRuntime{}
+	// Task 406: the previous Run ended on a deadline and this one is starting
+	// anyway - log the continuation so "fence blocked" and "timeout-then-
+	// continued" are distinguishable in the log, not guessed from a static tail.
+	if a.turnTimedOutPendingContinue {
+		a.turnTimedOutPendingContinue = false
+		slog.Info("agent: recovery-timeout-continued",
+			"session", a.recoveryLogSessionName(),
+			"mode", a.toolRecoveryModeLabel(ctx),
+			"pending_fences", len(a.PendingToolRecovery()))
+	}
 	a.turn.readShadow = newReadShadowState(a.readCoordinatorShadow)
 	a.turn.incompleteReads.legacyImplicitFullReads = a.legacyImplicitFullReads
 	// Task 283: snapshot the turn's unattended posture once — the readiness
