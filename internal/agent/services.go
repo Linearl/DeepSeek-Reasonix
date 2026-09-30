@@ -56,6 +56,11 @@ type agentServices struct {
 	// configWrite can ask the user whether a file tool may write a
 	// Reasonix-managed config file outside the workspace roots.
 	configWrite tool.ConfigWriteApprover
+	// worktreeProjectOpener lets open_isolated_worktree_project (task 128)
+	// register a freshly created worktree as a visible host project. nil in
+	// hosts without project registration (CLI): the tool then returns the path
+	// only, which is the documented degraded boundary.
+	worktreeProjectOpener tool.WorktreeProjectOpener
 	// writeRoots is the session-scoped writable directory manager.
 	writeRoots *sandbox.WritableRootSet
 	// writeAccess authorizes extra writable directories. nil skips expansion
@@ -143,6 +148,7 @@ func newAgentServices(
 		planTrust:             planTrust,
 		sandboxEscape:         sandboxEscape,
 		configWrite:           configWrite,
+		worktreeProjectOpener: opts.WorktreeProjectOpener,
 		hooks:                 hooks,
 		jobs:                  opts.Jobs,
 		memQueue:              opts.MemoryQueue,

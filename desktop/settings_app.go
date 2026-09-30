@@ -2534,6 +2534,7 @@ func (a *App) buildSettingReplacementController(tab *WorkspaceTab, snap tabRunti
 		RuntimeReload:            boot.RuntimeReload{ForceFullRebuild: reload},
 		StatsSource:              "desktop",
 		TaskStore:                a.taskStore(),
+		WorktreeProjectOpener:    appWorktreeProjectOpener{app: a}, // 任务128：注册为项目并开后台 tab
 		OnConfigLoadWarnings:     a.configLoadWarningsHandler(),
 		Sink:                     snap.sink,
 		WorkspaceRoot:            snap.workspaceRoot,

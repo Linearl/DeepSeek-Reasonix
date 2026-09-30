@@ -578,6 +578,13 @@ func (a *Agent) prepareToolExecution(ctx context.Context, plan *toolCallPlan) (t
 	if a.svc.configWrite != nil {
 		cctx = tool.WithConfigWriteApprover(cctx, a.svc.configWrite)
 	}
+	// Task 128: hosts with project registration hand the opener down here, so
+	// open_isolated_worktree_project can register the new project. A nil svc
+	// keeps the context clean, and an inherited opener from a parent's call
+	// context survives for sub-agents (only non-nil svc re-stamps).
+	if a.svc.worktreeProjectOpener != nil {
+		cctx = tool.WithWorktreeProjectOpener(cctx, a.svc.worktreeProjectOpener)
+	}
 	if v := a.responseLanguage.Load(); v != nil {
 		if lang, ok := v.(string); ok {
 			cctx = WithResponseLanguagePreference(cctx, lang)

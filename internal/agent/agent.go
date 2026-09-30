@@ -1058,6 +1058,14 @@ type Options struct {
 	// files outside the workspace roots. nil keeps fail-closed behavior.
 	ConfigWriteApprover tool.ConfigWriteApprover
 
+	// WorktreeProjectOpener lets open_isolated_worktree_project (task 128)
+	// register a freshly created worktree as a visible host project (desktop:
+	// project topic + background tab). nil in hosts without project
+	// registration: the tool degrades to returning the path only. Stamped onto
+	// every tool-call context in executeOne, so sub-agents inherit it through
+	// the parent's call context.
+	WorktreeProjectOpener tool.WorktreeProjectOpener
+
 	// Context management. ContextWindow <= 0 disables compaction. Ratios and
 	// RecentKeep fall back to defaults when unset.
 	ContextWindow int
@@ -1296,6 +1304,11 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 	configWriteApprover := opts.ConfigWriteApprover
 	if nilutil.IsNil(configWriteApprover) {
 		configWriteApprover = nil
+	}
+	// Task 128: a typed-nil opener must not reach the call context as a
+	// non-nil interface — the tool would trust it and panic on call.
+	if nilutil.IsNil(opts.WorktreeProjectOpener) {
+		opts.WorktreeProjectOpener = nil
 	}
 	hooks := opts.Hooks
 	if nilutil.IsNil(hooks) {
