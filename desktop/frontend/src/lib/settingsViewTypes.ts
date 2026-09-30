@@ -118,6 +118,8 @@ export interface SettingsView {
   experimentalProactiveCompact?: boolean;
   proactiveCompactCooldownMinutes?: number;
   experimentalComposerDraft?: boolean;
+  /** Task 369: selection quick-actions floating card (translate/explain). */
+  experimentalSelectionActions?: boolean;
   // Task 297: cold-cache compact pass (lab storage cost card).
   experimentalColdCacheCompact?: boolean;
   coldCacheCompactMinBytes?: number;

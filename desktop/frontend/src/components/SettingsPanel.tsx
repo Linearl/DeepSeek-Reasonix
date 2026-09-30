@@ -1822,6 +1822,7 @@ type ExperimentFeatureId =
   // "optimistic parallel writes" (same underlying key, inverted checkbox).
   | "optimisticParallel"
   | "draftPersistence"
+  | "selectionActions"
   | "questionSearch"
   | "subagentPolicy"
   | "subagentTps"
@@ -1971,6 +1972,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "researchBudget", group: "efficiency", label: t("settings.researchBudget"), on: Boolean(s.experimentalResearchBudget) },
     // Task 318.3: draft persistence light reads the new switch (default off).
     { id: "draftPersistence", group: "ui", label: t("settings.draftPersistence"), on: Boolean(s.experimentalComposerDraft) },
+    { id: "selectionActions", group: "ui", label: t("settings.selectionActions"), on: Boolean(s.experimentalSelectionActions) },
     { id: "questionSearch", group: "ui", label: t("settings.questionSearch"), on: Boolean(s.experimentalQuestionSearch) },
     { id: "subagentPolicy", group: "efficiency", label: t("settings.subagentPolicy"), on: Boolean(s.experimentalSubagentPolicy) },
     { id: "subagentTps", group: "debug", label: t("settings.subagentTps"), on: Boolean(s.experimentalSubagentTps) },
@@ -3493,6 +3495,27 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                     })}
                   >
                     {t(on ? "settings.draftPersistence.on" : "settings.draftPersistence.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+
+          {selected === "selectionActions" && (
+            <SettingsField label={t("settings.selectionActions")} hint={t("settings.selectionActionsHint")} icon={<Sparkles size={18} />}>
+              {/* Task 369: off (default) = the selection menu is exactly the
+                  pre-369 surface (fork rule 2). */}
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalSelectionActions) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalSelectionActions(on);
+                    })}
+                  >
+                    {t(on ? "settings.selectionActions.on" : "settings.selectionActions.off")}
                   </button>
                 ))}
               </SettingsOptions>

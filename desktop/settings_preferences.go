@@ -349,6 +349,16 @@ func (a *App) SetColdCacheCompactIdleMinutes(minutes int) error {
 
 // SetExperimentalComposerDraft toggles cross-restart composer draft
 // persistence (task 318.3; the frontend live-reads this on settings change).
+// SetExperimentalSelectionActions toggles the selection quick-actions
+// floating card (task 369). Ships off (fork rule 2): off = the selection
+// menu is exactly the pre-369 surface.
+func (a *App) SetExperimentalSelectionActions(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		c.Agent.ExperimentalSelectionActions = enabled
+		return nil
+	})
+}
+
 func (a *App) SetExperimentalComposerDraft(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalComposerDraft(enabled) })
 }

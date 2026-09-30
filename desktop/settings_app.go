@@ -439,6 +439,7 @@ type SettingsView struct {
 	ExperimentalProactiveCompact    bool `json:"experimentalProactiveCompact"`
 	ProactiveCompactCooldownMinutes int  `json:"proactiveCompactCooldownMinutes"`
 	ExperimentalComposerDraft       bool `json:"experimentalComposerDraft"`
+	ExperimentalSelectionActions    bool `json:"experimentalSelectionActions"`
 	// Task 297: cold-cache compact pass knobs (lab storage cost card).
 	ExperimentalColdCacheCompact bool  `json:"experimentalColdCacheCompact"`
 	ColdCacheCompactMinBytes     int64 `json:"coldCacheCompactMinBytes"`
@@ -1481,6 +1482,7 @@ func (a *App) Settings() SettingsView {
 		ColdCacheCompactIdleMinutes:     config.ColdCacheCompactEffectiveIdleMinutes(cfg),
 		ProactiveCompactCooldownMinutes: cfg.Agent.ProactiveCompactCooldownMinutes,
 		ExperimentalComposerDraft:       cfg.Agent.ExperimentalComposerDraft,
+		ExperimentalSelectionActions:    cfg.Agent.ExperimentalSelectionActions,
 		ExperimentalLocalServer:         cfg.Desktop.ExperimentalLocalServer,
 		ExperimentalPathRules:           cfg.Desktop.ExperimentalPathRules,
 		MaxCachedTabs:                   cfg.Desktop.MaxCachedTabs,

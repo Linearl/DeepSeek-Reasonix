@@ -944,6 +944,11 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalProactiveCompact(enabled: boolean): Promise<void>;
   SetProactiveCompactCooldownMinutes(minutes: number): Promise<void>;
   SetExperimentalComposerDraft(enabled: boolean): Promise<void>;
+  /** Task 369: selection quick-actions floating card switch. */
+  SetExperimentalSelectionActions(enabled: boolean): Promise<void>;
+  /** Task 369: one-shot no-turn side query for selection quick-actions
+   * (translate/explain). Never touches the transcript or the turn ledger. */
+  RunSelectionSideQuery(action: string, text: string, contextText: string): Promise<string>;
   // Fork task 160: load older history by scrolling up at the transcript top (experimental).
   SetExperimentalAutoLoadOlder(enabled: boolean): Promise<void>;
   // Task 221: inbox drain merge tri-state (off | same_sender | all).
@@ -5294,6 +5299,8 @@ function makeMockApp(): AppBindings {
     async SetExperimentalHighSpeedModel() {},
     async SetExperimentalProactiveCompact() {},
     async SetProactiveCompactCooldownMinutes() {},
+    async RunSelectionSideQuery() { return ""; },
+    async SetExperimentalSelectionActions() {},
     async SetExperimentalComposerDraft() {},
     async SetExperimentalAutoLoadOlder() {},
     async SetCollabInboxMerge() {},

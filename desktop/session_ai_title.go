@@ -140,3 +140,36 @@ func topicSessionPreview(sessions []sessioncatalog.SessionRecord, path string) s
 	}
 	return ""
 }
+
+// RunSelectionSideQuery (task 369) answers a selection quick-action
+// (translate/explain) for the ACTIVE tab's session with a one-shot no-turn
+// no-tools request. The result goes back to the floating card — never into
+// the conversation. uiLanguageEmpty means "resolve from config".
+func (a *App) RunSelectionSideQuery(action, text, contextText string) (string, error) {
+	action = strings.TrimSpace(action)
+	if action != "translate" && action != "explain" {
+		return "", fmt.Errorf("unknown quick action %q (want translate or explain)", action)
+	}
+	if strings.TrimSpace(text) == "" {
+		return "", fmt.Errorf("empty selection")
+	}
+	ctrl := a.controllerForActiveSession()
+	if ctrl == nil {
+		return "", fmt.Errorf("no active session runtime — open the session before using quick actions")
+	}
+	return ctrl.SideQuery(a.bootContext(), control.SideQueryKind(action), text, contextText)
+}
+
+// controllerForActiveSession returns the active tab's controller (task 369).
+func (a *App) controllerForActiveSession() *control.Controller {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	tab := a.tabs[a.activeTabID]
+	if tab == nil || tab.Ctrl == nil {
+		return nil
+	}
+	if ctrl, ok := tab.Ctrl.(*control.Controller); ok {
+		return ctrl
+	}
+	return nil
+}

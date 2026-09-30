@@ -1630,6 +1630,10 @@ type AgentConfig struct {
 	// Off by default (fork rule 2): the directory gains no mutating verbs
 	// until this switch is on.
 	ExperimentalSessionControl bool `toml:"experimental_session_control"`
+	// Task 369: selection quick-actions (translate/explain floating card on
+	// transcript selection). Ships off (fork rule 2): off = the selection menu
+	// is byte-identical to the pre-369 surface.
+	ExperimentalSelectionActions bool `toml:"experimental_selection_actions"`
 
 	// ExperimentalAutonomousIdleTerminate lets a heartbeat task disable itself
 	// after three consecutive runs that produced no conversation history

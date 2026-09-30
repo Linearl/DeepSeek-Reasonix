@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { MessageSquare } from "lucide-react";
+import { MessageSquare, Languages, Pin, Sparkles, X } from "lucide-react";
+import { useSelectionActionsEnabled } from "../lib/selectionActionsPreference";
 import { ContextMenu, type ContextMenuPoint } from "./ContextMenu";
 import { messageSelectionContextText, TRANSCRIPT_COPY_FAILED_EVENT } from "../lib/messageSelectionCopy";
 import { writeClipboardText } from "../lib/clipboard";
@@ -75,10 +76,16 @@ export function TranscriptSelectionMenu({
   enabled = true,
   resetKey,
   onAddToChat,
+  onQuickAction,
+  quickActionsEnabled: quickActionsEnabledProp,
 }: {
   enabled?: boolean;
   resetKey?: string | number;
   onAddToChat?: (text: string) => void;
+  /** Task 369: runs the one-shot side query; result renders in the floating card. */
+  onQuickAction?: (action: string, text: string, contextText: string) => Promise<string>;
+  /** Task 369: experimental_selection_actions gate (store-fed; prop overrides for tests). */
+  quickActionsEnabled?: boolean;
 }) {
   const t = useT();
   const { showToast } = useToast();
@@ -103,11 +110,6 @@ export function TranscriptSelectionMenu({
   const shortcutPlatform = useMemo(() => detectShortcutPlatform(), []);
   const [shortcutRevision, setShortcutRevision] = useState(0);
   useEffect(() => onShortcutsChanged(() => setShortcutRevision((value) => value + 1)), []);
-  const addShortcut = useMemo(
-    () => formatShortcutCombo(resolvedShortcutCombo("selection.addToChat", shortcutPlatform), shortcutPlatform),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [shortcutPlatform, shortcutRevision],
-  );
 
   const closeAction = useCallback(() => {
     dispatchActionOverlay({ type: "close" });
@@ -150,6 +152,79 @@ export function TranscriptSelectionMenu({
     ) return null;
     return text;
   }, []);
+  // Task 369: selection quick-actions (translate/explain) behind the
+  // experimental_selection_actions switch — off = byte-identical legacy menu.
+  const quickActionsEnabledStore = useSelectionActionsEnabled();
+  const quickActionsEnabled = quickActionsEnabledProp ?? quickActionsEnabledStore;
+  const [quickAction, setQuickAction] = useState<"translate" | "explain" | null>(null);
+  const [quickResult, setQuickResult] = useState("");
+  const [quickError, setQuickError] = useState(false);
+  const [quickPinned, setQuickPinned] = useState(false);
+  const quickActionRef = useRef<((action: string, text: string, contextText: string) => Promise<string>) | null>(null);
+  const addShortcut = useMemo(
+    () => formatShortcutCombo(resolvedShortcutCombo("selection.addToChat", shortcutPlatform), shortcutPlatform),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [shortcutPlatform, shortcutRevision],
+  );
+
+  const QUICK_TEXT_CAP = 9000; // ~3k tokens CJK-heavy; longer selections truncate
+  const QUICK_CONTEXT_CAP = 3000; // ~3k CJK tokens (task 369 spec)
+
+  const runQuickAction = useCallback(async (kind: "translate" | "explain", selection: SelectionAction) => {
+    const text = selection.kind === "native"
+      ? selection.text
+      : await resolveLogical(selection);
+    if (!text) return;
+    const truncated = text.length > QUICK_TEXT_CAP;
+    const body = truncated ? text.slice(0, QUICK_TEXT_CAP) : text;
+    // Neighbor context: the selection's own row text already rides in `body`;
+    // the surrounding-window scrape is DOM-local and stays within the cap.
+    let contextText = "";
+    try {
+      const container = actionRef.current?.closest(".transcript") ?? document.querySelector("[data-surface=\"transcript\"]");
+      contextText = truncated ? "" : (container?.textContent ?? "").slice(0, QUICK_CONTEXT_CAP);
+    } catch { /* context scrape is best-effort */ }
+    setQuickAction(kind);
+    setQuickResult("");
+    setQuickError(false);
+    try {
+      const runner = onQuickAction ?? quickActionRef.current ?? (async () => "");
+      const result = await runner(kind, body, contextText);
+      let next = result || t("selection.quickAction.empty");
+      if (truncated) next = next + "\n\n" + t("selection.quickAction.truncated");
+      setQuickResult(next);
+      if (quickError) setQuickError(false);
+    } catch {
+      setQuickError(true);
+      setQuickResult(t("selection.quickAction.failed"));
+    }
+  }, [onQuickAction, resolveLogical, t]);
+
+  const closeQuickCard = useCallback(() => {
+    setQuickAction(null);
+    setQuickResult("");
+    setQuickError(false);
+    setQuickPinned(false);
+  }, []);
+
+  useEffect(() => {
+    if (quickAction == null) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { closeQuickCard(); closeAction(); }
+    };
+    const onDown = (event: MouseEvent) => {
+      if (quickPinned) return;
+      if (actionRef.current?.contains(event.target as Node)) return;
+      if ((event.target as HTMLElement)?.closest?.(".transcript-selection-result-card")) return;
+      closeQuickCard();
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onDown);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onDown);
+    };
+  }, [quickAction, quickPinned, closeQuickCard, closeAction]);
 
   const copySelection = useCallback(async (selection: SelectionAction) => {
     if (selection.kind === "native") {
@@ -397,7 +472,25 @@ export function TranscriptSelectionMenu({
           if (menu) void copySelection(menu);
           setMenu(null);
         },
-      }]}
+      },
+      ...(quickActionsEnabled && onQuickAction ? [
+        {
+          key: "quick-translate",
+          label: t("selection.quickAction.translate"),
+          onSelect: () => {
+            if (menu) void runQuickAction("translate", menu);
+            setMenu(null);
+          },
+        },
+        {
+          key: "quick-explain",
+          label: t("selection.quickAction.explain"),
+          onSelect: () => {
+            if (menu) void runQuickAction("explain", menu);
+            setMenu(null);
+          },
+        },
+      ] : [])]}
       onClose={() => setMenu(null)}
     />
     {typeof document !== "undefined" && createPortal(
@@ -429,6 +522,79 @@ export function TranscriptSelectionMenu({
           <span>{t("selection.addToChat")}</span>
           <kbd>{addShortcut}</kbd>
         </button>
+        {quickActionsEnabled && onQuickAction && (
+          <>
+            <button
+              type="button"
+              disabled={actionOverlay.phase !== "open"}
+              tabIndex={actionOverlay.phase === "open" ? 0 : -1}
+              onClick={() => {
+                if (actionOverlay.action) void runQuickAction("translate", actionOverlay.action);
+              }}
+            >
+              <Languages size={14} aria-hidden="true" />
+              <span>{t("selection.quickAction.translate")}</span>
+            </button>
+            <button
+              type="button"
+              disabled={actionOverlay.phase !== "open"}
+              tabIndex={actionOverlay.phase === "open" ? 0 : -1}
+              onClick={() => {
+                if (actionOverlay.action) void runQuickAction("explain", actionOverlay.action);
+              }}
+            >
+              <Sparkles size={14} aria-hidden="true" />
+              <span>{t("selection.quickAction.explain")}</span>
+            </button>
+          </>
+        )}
+      </div>,
+      document.body,
+    )}
+    {/*
+     * Task 369: the floating result card — action title, pin, close, streamed
+     * content region. Dismisses on click-away / new selection / Escape; the
+     * pin only keeps the card on screen, it never changes the discard
+     * semantics (close = drop; reopening re-requests).
+     */}
+    {quickAction != null && createPortal(
+      <div
+        className="transcript-selection-result-card"
+        data-pinned={quickPinned ? "true" : undefined}
+        role="dialog"
+        aria-label={t(quickAction === "translate" ? "selection.quickAction.translate" : "selection.quickAction.explain")}
+        style={{
+          left: actionOverlay.point.left,
+          top: actionOverlay.point.top,
+        }}
+      >
+        <div className="transcript-selection-result-card__head">
+          <span className="transcript-selection-result-card__title">
+            {t(quickAction === "translate" ? "selection.quickAction.translate" : "selection.quickAction.explain")}
+          </span>
+          <button
+            type="button"
+            className="transcript-selection-result-card__pin"
+            aria-pressed={quickPinned}
+            aria-label={t("selection.quickAction.pin")}
+            onClick={() => setQuickPinned((value) => !value)}
+          >
+            <Pin size={13} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="transcript-selection-result-card__close"
+            aria-label={t("common.close")}
+            onClick={closeQuickCard}
+          >
+            <X size={13} aria-hidden="true" />
+          </button>
+        </div>
+        <div className="transcript-selection-result-card__body" data-state={quickError ? "error" : quickResult ? "done" : "loading"}>
+          {quickError
+            ? quickResult
+            : quickResult || t("selection.quickAction.thinking")}
+        </div>
       </div>,
       document.body,
     )}
