@@ -163,6 +163,10 @@ func (a *App) openForkedSessionTabWithWorkspace(sourceTab *WorkspaceTab, newPath
 	if strings.TrimSpace(workspaceRootOverride) != "" {
 		workspaceRoot = workspaceRootOverride
 	}
+	// Task 186: a fork landing on one of the host's own directories is a Global
+	// fork; its topic would otherwise be indexed under a project entry that the
+	// next save strips.
+	scope, workspaceRoot = normalizeWorkspaceScope(scope, workspaceRoot)
 	sourceTitle := sourceTab.TopicTitle
 	model := sourceTab.model
 	effort := cloneStringPtr(sourceTab.effort)

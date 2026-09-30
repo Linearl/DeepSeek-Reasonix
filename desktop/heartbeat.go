@@ -557,10 +557,9 @@ func heartbeatRunScope(scope, workspaceRoot string) (string, string) {
 	if scope == "" {
 		scope = "global"
 	}
-	if scope == "project" && isBuiltinWorkspaceRoot(workspaceRoot) {
-		return "global", ""
-	}
-	return scope, workspaceRoot
+	// Task 186: the builtin-root downgrade lives in one shared helper every
+	// tab-open path applies, so a run and a manual open cannot drift apart.
+	return normalizeWorkspaceScope(scope, workspaceRoot)
 }
 
 func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {

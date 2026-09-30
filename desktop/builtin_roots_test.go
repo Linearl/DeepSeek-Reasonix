@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -128,6 +130,112 @@ func TestLoadProjectsFileEvictsBuiltinRootsAcrossRestart(t *testing.T) {
 	}
 	if containsDesktopString(after.SidebarOrder, globalRoot) {
 		t.Fatalf("sidebar order was resurrected: %v", after.SidebarOrder)
+	}
+}
+
+func TestNormalizeWorkspaceScopeRoutesBuiltinRootsToGlobal(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("REASONIX_HOME", home)
+	globalRoot := globalWorkspaceRoot()
+	userRoot := filepath.Join(home, "work", "my-project")
+
+	for _, tc := range []struct {
+		name          string
+		scope         string
+		workspaceRoot string
+		wantScope     string
+		wantRoot      string
+	}{
+		{name: "project on the global workspace becomes global", scope: "project", workspaceRoot: globalRoot, wantScope: "global", wantRoot: ""},
+		{name: "project on the session dir becomes global", scope: "project", workspaceRoot: config.SessionDir(), wantScope: "global", wantRoot: ""},
+		{name: "project on the projects container becomes global", scope: "project", workspaceRoot: filepath.Join(config.MemoryUserDir(), "projects"), wantScope: "global", wantRoot: ""},
+		{name: "user project is untouched", scope: "project", workspaceRoot: userRoot, wantScope: "project", wantRoot: userRoot},
+		{name: "global scope is untouched", scope: "global", workspaceRoot: globalRoot, wantScope: "global", wantRoot: globalRoot},
+		{name: "empty root stays a validation problem, not a rewrite", scope: "project", wantScope: "project", wantRoot: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gotScope, gotRoot := normalizeWorkspaceScope(tc.scope, tc.workspaceRoot)
+			if gotScope != tc.wantScope || gotRoot != tc.wantRoot {
+				t.Fatalf("normalizeWorkspaceScope(%q, %q) = (%q, %q), want (%q, %q)",
+					tc.scope, tc.workspaceRoot, gotScope, gotRoot, tc.wantScope, tc.wantRoot)
+			}
+		})
+	}
+}
+
+// The open paths normalize before anything durable happens: no project entry,
+// no workspace pointer, no recent-workspaces residue may name a builtin root.
+func TestRegisterProjectRootAndWorkspacePointerSkipBuiltinRoots(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("REASONIX_HOME", home)
+	builtin := globalWorkspaceRoot()
+	if err := os.MkdirAll(builtin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	userRoot := filepath.Join(home, "work", "my-project")
+
+	app := NewApp()
+	app.registerProjectRoot(builtin)
+	if loaded := loadProjectsFile(); len(loaded.Projects) != 0 {
+		t.Fatalf("projects after registering the builtin root = %+v, want none", loaded.Projects)
+	}
+
+	app.registerProjectRoot(userRoot)
+	loaded := loadProjectsFile()
+	if len(loaded.Projects) != 1 || loaded.Projects[0].Root != userRoot {
+		t.Fatalf("projects after registering the user root = %+v, want exactly it", loaded.Projects)
+	}
+
+	saveWorkspace(builtin)
+	if got := loadWorkspace(); got != "" {
+		t.Fatalf("workspace pointer = %q, want empty after saving the builtin root", got)
+	}
+	saveWorkspace(userRoot)
+	if got := loadWorkspace(); !sameDesktopPath(got, userRoot) {
+		t.Fatalf("workspace pointer = %q, want the user root %q", got, userRoot)
+	}
+
+	rememberWorkspace(builtin)
+	if list := loadWorkspaces(); len(list) != 0 {
+		t.Fatalf("recent workspaces = %v, want empty after remembering the builtin root", list)
+	}
+	rememberWorkspace(userRoot)
+	if list := loadWorkspaces(); len(list) != 1 || !sameDesktopPath(list[0], userRoot) {
+		t.Fatalf("recent workspaces = %v, want exactly the user root", list)
+	}
+}
+
+// TestOpenBuiltinRootTabIsGlobalTab pins the open-path normalization end to end:
+// opening a tab that claims project scope on one of the host's own directories
+// produces a Global tab whose future turns index into the Global section, and
+// leaves no project entry or workspace pointer behind.
+func TestOpenBuiltinRootTabIsGlobalTab(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	builtin := globalWorkspaceRoot()
+	if err := os.MkdirAll(builtin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	app := NewApp()
+	app.ctx = context.Background()
+	app.readyHook = func() {}
+	app.runtimeEvents.emit = func(context.Context, string, ...any) {}
+
+	meta, err := app.openTopicTab("project", builtin, "topic-builtin-open", "")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if meta.Scope != "global" {
+		t.Fatalf("opened tab scope = %q, want global", meta.Scope)
+	}
+	if !sameDesktopPath(meta.WorkspaceRoot, builtin) {
+		t.Fatalf("opened tab root = %q, want the global workspace %q", meta.WorkspaceRoot, builtin)
+	}
+	if loaded := loadProjectsFile(); len(loaded.Projects) != 0 {
+		t.Fatalf("projects after the open = %+v, want none", loaded.Projects)
+	}
+	if got := loadWorkspace(); got != "" {
+		t.Fatalf("workspace pointer = %q, want empty", got)
 	}
 }
 
