@@ -13,6 +13,8 @@ import { contextSessionCache } from "../lib/contextSessionCache";
 import { ContextBudgetCard, resolveContextBudget } from "./ContextBudgetCard";
 import type { Item } from "../lib/useController";
 import { contextWindowStatus, formatCacheHitRate } from "../lib/contextPanelUtils";
+import { resolveSessionGroupTitle, sessionRecoveryDisplay, type SessionPanelIdentity, type SessionRecoveryStatus } from "../lib/sessionInfoPanel";
+import { normalizeRecoveryLineageView } from "../lib/sessionRecoveryVersions";
 export { contextSessionCache } from "../lib/contextSessionCache";
 const McpListLayers = lazy(() => import("./McpListLayers").then((module) => ({ default: module.McpListLayers })));
 interface ContextPanelProps {
@@ -34,6 +36,9 @@ interface ContextPanelProps {
   // The executor-gated `usage` prop freezes during sub-agent runs, which used
   // to pin 会话指标/用量分析 for minutes; this keeps the snapshot ticking.
   usageSeq?: number;
+  // wt-zcode-285: identity of the open conversation, used to resolve its
+  // session-group title and recovery-copy role for the info rows below.
+  sessionInfo?: SessionPanelIdentity;
 }
 
 function fmtDuration(ms: number, t: Translator): string {
@@ -382,6 +387,7 @@ export function ContextPanel({
   sessionGen,
   refreshKey,
   usageSeq,
+  sessionInfo,
 }: ContextPanelProps) {
   const { locale, t } = useI18n();
   const [info, setInfo] = useState<ContextPanelInfo | null>(null);
@@ -389,6 +395,48 @@ export function ContextPanel({
   const refreshSeq = useRef(0);
   const lastRefreshTime = useRef(0);
   const usageRefreshKey = contextUsageRefreshKey(usage);
+
+  // wt-zcode-285: session-group title + recovery-copy role for the open
+  // conversation. Both ride existing read-only bindings (GetProjectGroups /
+  // GetRecoveryLineage); failures degrade to hidden rows, never an error UI.
+  const [sessionInfoState, setSessionInfoState] = useState<{ groupTitle: string | null; recovery: SessionRecoveryStatus | null } | null>(null);
+  const sessionInfoSeq = useRef(0);
+  const infoTopicId = sessionInfo?.topicId;
+  const infoScope = sessionInfo?.scope === "project" ? "project" : "global";
+  const infoRoot = infoScope === "project" ? sessionInfo?.workspaceRoot ?? "" : "";
+  const infoPath = sessionInfo?.sessionPath;
+
+  useEffect(() => {
+    if (!infoTopicId) {
+      setSessionInfoState(null);
+      return;
+    }
+    const seq = ++sessionInfoSeq.current;
+    const load = async () => {
+      let groupTitle: string | null = null;
+      let recovery: SessionRecoveryStatus | null = null;
+      try {
+        const snapshot = await app.GetProjectGroups?.(infoScope, infoRoot);
+        if (sessionInfoSeq.current === seq) {
+          groupTitle = resolveSessionGroupTitle(snapshot?.groups, infoTopicId);
+        }
+      } catch {
+        /* groups unavailable — row stays hidden */
+      }
+      try {
+        const view = await app.GetRecoveryLineage({ scope: infoScope, workspaceRoot: infoRoot || undefined, topicId: infoTopicId, path: infoPath });
+        if (sessionInfoSeq.current === seq) {
+          recovery = sessionRecoveryDisplay(normalizeRecoveryLineageView(view), infoPath);
+        }
+      } catch {
+        /* lineage unavailable — row stays hidden */
+      }
+      if (sessionInfoSeq.current === seq) {
+        setSessionInfoState({ groupTitle, recovery });
+      }
+    };
+    void load();
+  }, [infoTopicId, infoScope, infoRoot, infoPath]);
 
   const refresh = useCallback(async () => {
     if (!tabId) return;
@@ -617,6 +665,8 @@ export function ContextPanel({
                 <MiniStat label={t("context.time")} value={fmtDuration(elapsed, t)} />
                 <MiniStat label={t("context.requests")} value={requestCount > 0 ? String(requestCount) : "-"} />
                 <MiniStat label={t("context.sessionTokensShort")} value={markEstimated(totalTokensMetric.display, sessionEstimated)} title={totalTokensTitle} wide />
+                {sessionInfoState?.groupTitle && <MiniStat label={t("context.sessionGroup")} value={sessionInfoState.groupTitle} wide />}
+                {sessionInfoState?.recovery && <MiniStat label={t("recovery.badge")} value={t(sessionInfoState.recovery.labelKey)} title={sessionInfoState.recovery.role} />}
               </div>
             </div>
           </section>

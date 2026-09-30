@@ -127,6 +127,10 @@ const CHECKS = [
   { feature: "任务232 hasResidentSnapshotForEmptySurface 定义", file: "desktop/frontend/src/lib/hydrateHistoryApply.ts", patterns: ["hasResidentSnapshotForEmptySurface"] },
   { feature: "任务95 promote sidecar 迁移（damaged 清理 + pinned 身份重写）", file: "internal/agent/recovery_consolidate.go", patterns: ["rewritePinnedContextSessionID", "SessionEventLogDamaged(winnerPath)"] },
 
+  // ── wt-zcode-285：会话信息面（ContextPanel）分组名 + recovery 副本状态 ──
+  { feature: "285 信息面分组名+副本状态解析层", file: "desktop/frontend/src/lib/sessionInfoPanel.ts", patterns: ["resolveSessionGroupTitle", "sessionRecoveryDisplay", "recovery.role.covered_copy"] },
+  { feature: "285 信息面展示接线", file: "desktop/frontend/src/components/ContextPanel.tsx", patterns: ["GetProjectGroups", "GetRecoveryLineage", "sessionInfo"] },
+
   // ── 任务 155：会话存储四档 + bridge 健康债（2026-09-17）──────────
   { feature: "任务155 四档枚举与渐进校验", file: "internal/config/session_storage.go", patterns: ["SessionStorageDualWriteReadV3", "ValidateSessionStorageTransition", "ResolveSafeSessionStorageMode"] },
   { feature: "任务155 bridge 健康债修复（登记即用 + 同 root 接管 + 批 id 幂等）", file: "internal/control/session_v4_bridge.go", patterns: ["reclaimSession", "v4BridgePeers", "ErrLegacyReadOnly"] },

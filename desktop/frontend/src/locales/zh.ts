@@ -4284,6 +4284,7 @@ export const zh: Record<DictKey, string> = {
   "context.maintenanceActionPrune": "裁剪",
   "context.maintenanceActionNative": "原生清理",
   "context.sessionMetrics": "会话指标",
+  "context.sessionGroup": "分组",
   "context.mcpListTitle": "MCP tools/list",
   "context.mcpListSharedHost": "共享 Host",
   "context.mcpListDiskCache": "磁盘缓存",
