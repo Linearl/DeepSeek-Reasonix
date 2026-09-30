@@ -1831,6 +1831,8 @@ type ExperimentFeatureId =
   | "quickCommands"
   // Task 342: WebView2 CDP debug endpoint.
   | "cdpDebugPort"
+  // Task 385a: lab 回答风格 (output style selector + persistence).
+  | "outputStyle"
   // Task 257: full access (yolo).
   | "fullAccess";
 
@@ -1869,6 +1871,30 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
 
 const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
   const [labFilter, setLabFilter] = useState<LabGroupKey | "all">("all");
+  // Task 385a: the 回答风格 selector payload loads on demand — only while its
+  // lab entry is open, and again after every save that can change the active
+  // style or the discovered files (apply() reloads s, which re-fires this).
+  const [outputStyles, setOutputStyles] = useState<Awaited<ReturnType<typeof app.ListOutputStyles>> | null>(null);
+  const [outputStylesError, setOutputStylesError] = useState<string | null>(null);
+  useEffect(() => {
+    if (selected !== "outputStyle") return undefined;
+    let alive = true;
+    void app.ListOutputStyles()
+      .then((view) => {
+        if (alive) {
+          setOutputStyles(view);
+          setOutputStylesError(null);
+        }
+      })
+      .catch((e: unknown) => {
+        if (!alive) return;
+        setOutputStyles(null);
+        setOutputStylesError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      alive = false;
+    };
+  }, [selected, s.outputStyle, s.experimentalOutputStyleUI]);
   // Task 359: lab navigation — collapsible groups, intro banner (collapsed by
   // default), and the "disabled sink" display-order switch. The order switch
   // is a pure display preference (localStorage, no experimental_* chain — it
@@ -1983,6 +2009,11 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "completionSummary", group: "ui", label: t("settings.completionSummary"), on: Boolean(s.experimentalCompletionSummary) },
     // Task 262: quick commands move here from the general page.
     { id: "quickCommands", group: "efficiency", label: t("settings.quickCommands"), on: Boolean(s.experimentalQuickCommands) },
+    // Task 385a: 回答风格 (output style) — 提效类, efficiency group; render
+    // table: a missing entry would silently drop the save, 81/123 lesson.
+    // The light also reads a configured style: it stays discoverable after
+    // the panel is closed, same shape as the storage entries below.
+    { id: "outputStyle", group: "efficiency", label: t("settings.outputStyle"), on: Boolean(s.experimentalOutputStyleUI) || (s.outputStyle ?? "") !== "" },
     // Task 342: CDP debug endpoint (debug group) — render table: a missing
     // entry would silently drop the save, 81/123 lesson.
     { id: "cdpDebugPort", group: "debug", label: t("settings.cdpDebugPort"), on: Boolean(s.experimentalCDPDebugPort) },
@@ -3643,6 +3674,62 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                 ))}
               </SettingsOptions>
             </SettingsField>
+          )}
+          {selected === "outputStyle" && (
+            // Task 385a: 回答风格 — the gate plus the selector. Persistence
+            // only: the style folds into the system prompt at boot, so the
+            // choice lands on the next session (in-session apply = 385b).
+            <>
+              <SettingsField label={t("settings.outputStyle")} hint={t("settings.outputStyleLabHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalOutputStyleUI) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalOutputStyleUI(on))}
+                    >
+                      {t(on ? "settings.outputStyle.on" : "settings.outputStyle.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              {Boolean(s.experimentalOutputStyleUI) && (
+                <>
+                  <SettingsField label={t("settings.outputStyle.selector")} hint={t("settings.outputStyle.selectorHint")} icon={<SlidersHorizontal size={18} />}>
+                    <SettingsSelect
+                      value={s.outputStyle ?? ""}
+                      onValueChange={(next) => void apply(() => app.SetOutputStyle(next))}
+                      searchPlaceholder={t("settings.outputStyle.searchPlaceholder")}
+                      options={[
+                        { value: "", label: t("settings.outputStyle.default"), hint: t("settings.outputStyle.defaultHint") },
+                        ...(outputStyles?.options ?? []).map((opt) => ({
+                          value: opt.name,
+                          label: opt.name,
+                          hint: [
+                            opt.builtin ? t("settings.outputStyle.builtin") : t("settings.outputStyle.custom"),
+                            opt.description,
+                          ].filter(Boolean).join(" — "),
+                        })),
+                      ]}
+                    />
+                  </SettingsField>
+                  {outputStylesError && (
+                    <div className="banner banner--error" role="alert">{outputStylesError}</div>
+                  )}
+                  {outputStyles && outputStyles.issues.length > 0 && (
+                    // A style file that did not load must be visible here —
+                    // the loader itself skips it silently (task 385a).
+                    <div className="banner banner--error" role="alert">
+                      <div>{t("settings.outputStyle.issues")}</div>
+                      {outputStyles.issues.map((issue) => (
+                        <div key={issue.path}>{issue.name}: {issue.reason}</div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </>
           )}
         </div>
       </div>

@@ -215,6 +215,12 @@ type DesktopConfig struct {
 	// not reachable from other machines. The resolved port is written to
 	// <REASONIX_HOME>/logs/desktop/cdp-endpoint.txt for tooling to read.
 	ExperimentalCDPDebugPort bool `toml:"experimental_cdp_debug_port"`
+	// ExperimentalOutputStyleUI gates the lab's 「回答风格」 section (task 385a).
+	// It ships OFF (铁律 2): with the zero value the desktop exposes no
+	// output-style UI at all. It gates the UI surface only — prompt injection
+	// keeps reading [agent] output_style, so a hand-written toml entry still
+	// applies without this switch.
+	ExperimentalOutputStyleUI bool `toml:"experimental_output_style_ui"`
 }
 
 // DesktopQuestionSearchEnabled reports whether the topic-bar question-search

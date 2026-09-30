@@ -373,6 +373,10 @@ type SettingsView struct {
 	// Task 342: WebView2 CDP debug endpoint switch (default false; 铁律 2).
 	// Loopback-only random port, boot snapshot — restart to apply.
 	ExperimentalCDPDebugPort bool `json:"experimentalCDPDebugPort"`
+	// Task 385a: lab 「回答风格」 gate (default false; 铁律 2) plus the persisted
+	// [agent] output_style value the selector reads back.
+	ExperimentalOutputStyleUI bool   `json:"experimentalOutputStyleUI"`
+	OutputStyle               string `json:"outputStyle"`
 	// Task 231: managed-path pre-approval — master switch + four independent
 	// checkboxes (all default false; autopilot-only effect, 铁律 2).
 	ExperimentalPreapproveManagedPaths bool `json:"experimentalPreapproveManagedPaths"`
@@ -547,6 +551,10 @@ type DesktopStartupSettingsView struct {
 	// Task 342: WebView2 CDP debug endpoint switch (default false; 铁律 2).
 	// Loopback-only random port, boot snapshot — restart to apply.
 	ExperimentalCDPDebugPort bool `json:"experimentalCDPDebugPort"`
+	// Task 385a: lab 「回答风格」 gate (default false; 铁律 2) plus the persisted
+	// [agent] output_style value the selector reads back.
+	ExperimentalOutputStyleUI bool   `json:"experimentalOutputStyleUI"`
+	OutputStyle               string `json:"outputStyle"`
 	// Task 265 lab intake: nil-means-on switches, resolved server-side.
 	ExperimentalCompactionParallel bool `json:"experimentalCompactionParallel"`
 	ExperimentalContextBudget      bool `json:"experimentalContextBudget"`
@@ -1306,6 +1314,9 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalQuickCommands = cfg.Desktop.ExperimentalQuickCommands
 		// Task 342: CDP debug endpoint switch readback (boot snapshot).
 		view.ExperimentalCDPDebugPort = cfg.Desktop.ExperimentalCDPDebugPort
+		// Task 385a: lab 回答风格 gate + persisted output_style readback.
+		view.ExperimentalOutputStyleUI = cfg.Desktop.ExperimentalOutputStyleUI
+		view.OutputStyle = cfg.Agent.OutputStyle
 		// Task 231: managed-path pre-approval readback (five default-false flags).
 		view.ExperimentalPreapproveManagedPaths = cfg.Agent.ExperimentalPreapproveManagedPaths
 		view.PreapproveSkills = cfg.Agent.PreapproveManagedSkills
@@ -1434,6 +1445,9 @@ func (a *App) Settings() SettingsView {
 		ExperimentalQuickCommands:      cfg.Desktop.ExperimentalQuickCommands,
 		// Task 342: CDP debug endpoint switch readback.
 		ExperimentalCDPDebugPort: cfg.Desktop.ExperimentalCDPDebugPort,
+		// Task 385a: lab 回答风格 gate + persisted output_style readback.
+		ExperimentalOutputStyleUI: cfg.Desktop.ExperimentalOutputStyleUI,
+		OutputStyle:               cfg.Agent.OutputStyle,
 		// Task 231: managed-path pre-approval readback (five default-false flags).
 		ExperimentalPreapproveManagedPaths: cfg.Agent.ExperimentalPreapproveManagedPaths,
 		PreapproveSkills:                   cfg.Agent.PreapproveManagedSkills,

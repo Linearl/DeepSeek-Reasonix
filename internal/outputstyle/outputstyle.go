@@ -29,9 +29,38 @@ type OutputStyle struct {
 	Path        string // file it loaded from ("" for built-ins)
 }
 
-// builtins are the always-available styles. Default ("" / "default") is absent
-// on purpose — no style means the unmodified system prompt.
+// builtins are the always-available styles, listed alphabetically (task 385d:
+// the set reaches five so it matches Claude Code's default lineup —
+// Default / Proactive / Explanatory / Learning / Concise).
+//
+// "default" is the no-style sentinel, kept visible in the list for parity
+// with CC while remaining inert everywhere else: Resolve refuses "" and
+// "default" before it ever consults this slice, so the boot injection path
+// (`if st, ok := Resolve(...); ok { Apply(...) }`) never folds it in and
+// Apply stays untouched upstream-shape. Its empty Body is a second layer of
+// the same guarantee — Apply on an empty body is a no-op by contract.
 var builtins = []OutputStyle{
+	{
+		Name:        "default",
+		Description: "默认：不注入任何风格，system prompt 保持原样",
+		KeepCoding:  true,
+		Builtin:     true,
+		// Body intentionally empty: Resolve treats "default" as no-style
+		// (ok=false), so this entry is list-only — nothing to inject.
+		Body: "",
+	},
+	{
+		Name:        "proactive",
+		Description: "立即行动：合理假设、行动优先，先推进再校正",
+		KeepCoding:  true,
+		Builtin:     true,
+		Body: "Communication style — Proactive: act immediately instead of waiting for " +
+			"perfect information. When the path is clear enough to proceed, make the reasonable " +
+			"assumption, note it in one line as you go, and correct course later rather than " +
+			"blocking on clarifying questions. Favor forward progress: pick the most plausible " +
+			"interpretation of an ambiguous request, do the work, and surface any assumption " +
+			"that turned out wrong in the wrap-up.",
+	},
 	{
 		Name:        "explanatory",
 		Description: "Explain non-obvious implementation choices as you go",
@@ -83,14 +112,38 @@ func Dirs() []string {
 // cycle; config imports nothing from here, but this package stays dependency-light).
 var conventionDirs = []string{".reasonix", ".agents", ".agent", ".claude"}
 
+// Issue reports one style file that had to be skipped. List drops such files
+// without a word — the boot path must not fail on a stray file — but a UI
+// selector needs the same skip list surfaced, because a file the user just
+// wrote that never loads must be a visible error, not a silent no-op (task
+// 385a).
+type Issue struct {
+	Path   string // file that could not be loaded
+	Name   string // filename stem — the name the file would have had
+	Reason string // human-readable cause
+}
+
 // List returns every available style — built-ins plus the markdown files under
 // dirs — deduped by lowercased name, with custom files overriding built-ins.
-// Sorted by name. Malformed files are skipped.
+// Sorted by name. Unloadable files are skipped (see ListReport for why).
 func List(dirs []string) []OutputStyle {
+	styles, _ := collect(dirs)
+	return styles
+}
+
+// ListReport is List plus every file List had to skip, so callers can show
+// "your .md did not load, here is why" instead of silently hiding it. Built-in
+// styles never appear as issues.
+func ListReport(dirs []string) ([]OutputStyle, []Issue) {
+	return collect(dirs)
+}
+
+func collect(dirs []string) ([]OutputStyle, []Issue) {
 	byName := map[string]OutputStyle{}
 	for _, b := range builtins {
 		byName[strings.ToLower(b.Name)] = b
 	}
+	var issues []Issue
 	for _, dir := range dirs {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
@@ -100,8 +153,14 @@ func List(dirs []string) []OutputStyle {
 			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
 				continue
 			}
-			st, ok := parseFile(filepath.Join(dir, e.Name()))
+			path := filepath.Join(dir, e.Name())
+			st, reason, ok := parseFile(path)
 			if !ok {
+				issues = append(issues, Issue{
+					Path:   path,
+					Name:   strings.TrimSuffix(e.Name(), ".md"),
+					Reason: reason,
+				})
 				continue
 			}
 			byName[strings.ToLower(st.Name)] = st
@@ -112,7 +171,8 @@ func List(dirs []string) []OutputStyle {
 		out = append(out, st)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out
+	sort.Slice(issues, func(i, j int) bool { return issues[i].Path < issues[j].Path })
+	return out, issues
 }
 
 // Resolve finds the style named name (case-insensitive) among dirs + built-ins.
@@ -148,20 +208,32 @@ func Apply(base string, st OutputStyle) string {
 
 // parseFile loads one <name>.md output-style file. The name is the filename
 // stem; frontmatter supplies description and keep-coding-instructions; the body
-// is the prompt text.
-func parseFile(path string) (OutputStyle, bool) {
+// is the prompt text. reason is non-empty exactly when ok is false, and always
+// says why the file did not load.
+func parseFile(path string) (OutputStyle, string, bool) {
 	b, err := fileencoding.ReadFileUTF8(path)
 	if err != nil {
-		return OutputStyle{}, false
+		return OutputStyle{}, "read failed: " + err.Error(), false
 	}
-	meta, body := frontmatter.Split(string(b))
+	content := string(b)
+	if unclosedFrontmatterFence(content) {
+		return OutputStyle{}, "frontmatter fence opened but never closed", false
+	}
+	// frontmatter.Split is deliberately permissive: a malformed YAML block is
+	// dropped without a word, which would load the style with its metadata
+	// (including keep-coding-instructions) silently lost. Validate first so a
+	// broken frontmatter is reported instead of half-loading.
+	if _, err := frontmatter.Decode(content, new(map[string]any), frontmatter.DecodeOptions{}); err != nil {
+		return OutputStyle{}, "invalid frontmatter: " + err.Error(), false
+	}
+	meta, body := frontmatter.Split(content)
 	name := meta["name"]
 	if name == "" {
 		name = strings.TrimSuffix(filepath.Base(path), ".md")
 	}
 	body = strings.TrimSpace(body)
 	if body == "" {
-		return OutputStyle{}, false
+		return OutputStyle{}, "empty body: the file has no prompt text", false
 	}
 	keep := true // default: augment the coding prompt rather than replace it
 	if v, ok := meta["keep-coding-instructions"]; ok {
@@ -173,7 +245,24 @@ func parseFile(path string) (OutputStyle, bool) {
 		Body:        body,
 		KeepCoding:  keep,
 		Path:        path,
-	}, true
+	}, "", true
+}
+
+// unclosedFrontmatterFence reports a file that opens a --- frontmatter fence
+// and never closes it. frontmatter.Split treats such a file as body-only (no
+// partial parse), which would silently swallow the whole file as prompt text.
+func unclosedFrontmatterFence(s string) bool {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	lines := strings.Split(s, "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return false
+	}
+	for _, line := range lines[1:] {
+		if strings.TrimSpace(line) == "---" {
+			return false
+		}
+	}
+	return true
 }
 
 func isFalse(s string) bool {

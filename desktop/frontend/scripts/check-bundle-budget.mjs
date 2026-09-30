@@ -245,7 +245,9 @@ console.log("\nbundle budgets");
 // B2 merge batch (LA 336/237/181 + LB 282/279/277 + 338 + 304 + 333 tail + 343):
 // measured 477.3 against the 476.6 line — stacked 0.7 over, so one-shot two
 // steps (+1.0) to 477.6 per the 2026-09-20 ratchet rule (no drip, independent commit).
-const initialJSBudgetKiB = 479.6; // +0.5: batch 7.6+CDP-B+B3+383 merge batch stacked, 479.2 measured; one-shot per 2026-09-20 rule // fork: chain 468.8-era → 471.1 → 471.6 → 472.1 → 472.6 (tasks 242/192) → 473.1 (merge batch) → 473.6 (tasks 244 batch 1 + 163, same gate) → 474.1 (244 batch 2 + batch 4 same gate) → 474.6 (335 收口 jitter, pre-registered rule) → 475.1 (B3+opencodefix+effortfix2 merge batch, 475.0 measured; one-shot +0.5 per the 2026-09-20 ratchet rule) → 475.6 (task 337 locale guidance, 475.1 measured; one-shot +0.5) → 476.1 (task 333 rotation gate, 475.7 measured; one-shot +0.5) → 476.6 (task 282 fork features intro, 476.2 measured; one-shot +0.5) → 476.6 (task 338 memory pages, 476.2 measured; one-shot +0.5, same gate — B2 merge batch single const) → 477.6 (B2 merge batch stacked, 477.3 measured; one-shot two steps +1.0) → 478.1 (task 297 cold-cache card, 477.8 measured; one-shot +0.5) → 478.6 (task 361 pie/order-label second round, 478.1 measured; one-shot +0.5)
+// Task 385a (lab 回答风格 selector + 11 locale keys ×3): initial gzip
+// measures 479.632 over the 479.6 line — one-shot +0.5 to 480.1 (ratchet rule).
+const initialJSBudgetKiB = 480.1; // +0.5: batch 7.6+CDP-B+B3+383 merge batch stacked, 479.2 measured; one-shot per 2026-09-20 rule // fork: chain 468.8-era → 471.1 → 471.6 → 472.1 → 472.6 (tasks 242/192) → 473.1 (merge batch) → 473.6 (tasks 244 batch 1 + 163, same gate) → 474.1 (244 batch 2 + batch 4 same gate) → 474.6 (335 收口 jitter, pre-registered rule) → 475.1 (B3+opencodefix+effortfix2 merge batch, 475.0 measured; one-shot +0.5 per the 2026-09-20 ratchet rule) → 475.6 (task 337 locale guidance, 475.1 measured; one-shot +0.5) → 476.1 (task 333 rotation gate, 475.7 measured; one-shot +0.5) → 476.6 (task 282 fork features intro, 476.2 measured; one-shot +0.5) → 476.6 (task 338 memory pages, 476.2 measured; one-shot +0.5, same gate — B2 merge batch single const) → 477.6 (B2 merge batch stacked, 477.3 measured; one-shot two steps +1.0) → 478.1 (task 297 cold-cache card, 477.8 measured; one-shot +0.5) → 478.6 (task 361 pie/order-label second round, 478.1 measured; one-shot +0.5)
 // Task 269 rebased onto 471.1: measured 470.7, also within 471.1 —
 // larger one-shot value stands (audit ruling, no second ratchet).
 // Task 264 rebased onto the same budget: measured 470.3 KiB (collab-background
@@ -478,7 +480,9 @@ for (const path of localeChunks) {
   // Task 373-R1 (image dedup panel): zh measures 84.1 over the 84.0 line
   // (4 new locale keys x 3 dialects) — one-shot +0.5 to 84.5; zh-TW holds
   // at 85.5 (this branch's merged budget, measured under the line).
-  const budget = name.startsWith("zh-TW-") ? 85.5 * 1024 : 84.5 * 1024;
+  // Task 385a (回答风格 selector, 11 locale keys ×3): zh measures 84.250 over
+  // the 84.0 line and zh-TW 85.547 over 85.5 — one-shot +0.5 each (ratchet rule).
+  const budget = name.startsWith("zh-TW-") ? 86.0 * 1024 : 84.5 * 1024; // task 385a: zh 84.0->84.5, zh-TW 85.5->86.0; one-shot +0.5 each
   // Task 380/O4 (detached idle release input): zh-TW measures dead-even
   // 84.5/84.5 (2 new locale keys x 3 dialects) — one-shot +0.5 to 85.0; zh
   // holds at 83.5 (measured under the line this batch).
