@@ -687,7 +687,7 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("POST /takeover-session", s.takeoverSession)
 	mux.HandleFunc("POST /heartbeat", s.heartbeat)
 	mux.HandleFunc("POST /release-device", s.releaseDevice)
-	return logMiddleware(gzipMiddleware(s.auth.middleware(s.hostGuard(csrfGuard(mux)))))
+	return logMiddleware(securityHeaders(gzipMiddleware(s.auth.middleware(s.hostGuard(csrfGuard(mux))))))
 }
 
 func (s *Server) reloadExtensionsHTTP(w http.ResponseWriter, r *http.Request) {
@@ -1095,6 +1095,18 @@ func (rw *responseWriter) Unwrap() http.ResponseWriter { return rw.ResponseWrite
 func (rw *responseWriter) WriteHeader(code int) {
 	rw.status = code
 	rw.ResponseWriter.WriteHeader(code)
+}
+
+// securityHeaders sets the chain-wide X-Content-Type-Options: nosniff guard
+// (task 415, code-scanning reflected-xss). Serve handlers always declare an
+// explicit Content-Type (JSON, SSE, static HTML, SVG), but nosniff at the
+// edge keeps browser content-type confusion from promoting any response —
+// including reflected error text — into a different document type.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // Flush delegates to the underlying ResponseWriter if it supports flushing
