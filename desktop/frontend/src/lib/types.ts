@@ -2334,6 +2334,8 @@ export interface DesktopStartupSettingsView {
   experimentalSplitView?: boolean;
   /** Feedback inbox experiment switch (task 121); off unless the user opts in. */
   experimentalFeedback?: boolean;
+  /** Feedback touchpoint dial (task 172); off unless the user opts in; boot snapshot. */
+  experimentalFeedbackNudge?: boolean;
   /** Todo-sidebar experiment switch (task 259); off unless the user opts in; boot snapshot. */
   experimentalTodoSidebar?: boolean;
   /** Task 265 lab intake: nil-means-on switches resolved server-side; boot snapshots. */

@@ -25,7 +25,7 @@ type submitFeedback struct{}
 func (submitFeedback) Name() string { return "submit_feedback" }
 
 func (submitFeedback) Description() string {
-	return "Submit a short product feedback note into the local feedback inbox (markdown files under the Reasonix feedback-inbox directory). Use it when the user asks you to record a suggestion, bug report, or opinion about Reasonix itself (not about their code). Notes stay on this machine and appear in the desktop feedback panel when that experimental feature is enabled. Keep each note focused: one observation or suggestion per call."
+	return "Submit a short product feedback note into the local feedback inbox (意见箱; markdown files under the Reasonix feedback-inbox directory). Use it when the user asks you to record a suggestion, bug report, or opinion about Reasonix itself (not about their code) — Chinese phrasings like 意见箱, 反馈, 记一条意见 all mean this tool. Notes stay on this machine, land on disk as markdown files, and can later be collected and analyzed by the collect_issues skill. They also appear in the desktop feedback panel when that experimental feature is enabled. Keep each note focused: one observation or suggestion per call."
 }
 
 func (submitFeedback) Schema() json.RawMessage {
@@ -80,6 +80,17 @@ func feedbackDir() string {
 		return env
 	}
 	return filepath.Join(config.ReasonixHomeDir(), "feedback-inbox")
+}
+
+// FeedbackInboxDir returns the local feedback inbox directory (task 121/172),
+// creating it when missing so the desktop panel can open it in the file
+// manager even before the first note exists.
+func FeedbackInboxDir() (string, error) {
+	dir := feedbackDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("feedback inbox: %w", err)
+	}
+	return dir, nil
 }
 
 var slugRe = regexp.MustCompile(`[^a-z0-9]+`)

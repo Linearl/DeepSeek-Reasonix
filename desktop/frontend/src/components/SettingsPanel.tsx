@@ -2535,6 +2535,27 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* Task 172: the touchpoint sub-switch lives under the feedback
+                  entry. The parent switch wins at runtime (config gate); the
+                  agent reads the dial at boot, so a change raises the restart
+                  banner instead of flipping behavior mid-session. */}
+              <SettingsField label={t("settings.feedbackNudge")} hint={t("settings.feedbackNudgeHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalFeedbackNudge) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalFeedbackNudge(on);
+                        setRestartNeeded(true);
+                      })}
+                    >
+                      {t(on ? "settings.feedbackNudge.on" : "settings.feedbackNudge.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
               <SettingsField label={t("settings.feedbackOpen")} hint={t("settings.feedbackOpenHint")} icon={<Sparkles size={18} />}>
                 <button
                   type="button"

@@ -207,6 +207,11 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 				Content: a.withTurnPreferences(midTurnSteerMessage(text)), RawContent: text,
 			})
 			a.svc.sink.Emit(event.Event{Kind: event.Steer, Text: text, ItemID: itemID})
+			// Task 172 T2: a user steering mid-turn is the high-signal moment —
+			// append one optional inbox mention to the correction round. The
+			// shared cooldown consumed here keeps T1 from stacking onto the
+			// same turn.
+			a.maybeNudgeFeedbackSteer(state, text)
 		} else if itemID != "" {
 			// Loader failed after dequeue: durable entry stays for inspection
 			// (unapplied path marks uncertain + pause via the notice sink).
@@ -675,6 +680,14 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 	}
 	a.emitTurnShadows(a.turn.turnInput)
 	if !a.closeSteerIntakeIfIdle() {
+		return true, nil
+	}
+	// Task 172 T1: the turn reached a clean final answer with steer intake
+	// closed — this is "AI completed work". Append ONE feedback-inbox
+	// invitation round; the per-turn cap plus the shared cooldown make the
+	// invitation turn itself unable to ask again (anti-loop gates 1+2).
+	if a.maybeNudgeFeedbackCompletion(state, state.input) {
+		a.contextManager().ObserveUsage(usage)
 		return true, nil
 	}
 	// A final-answer turn skips compaction, so a large context

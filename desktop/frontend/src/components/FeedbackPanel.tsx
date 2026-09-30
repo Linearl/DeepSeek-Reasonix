@@ -105,11 +105,26 @@ export function FeedbackPanel() {
     }
   };
 
+  // Task 172: reveal the on-disk inbox in the file manager. The backend
+  // binding creates the directory when missing; the reveal itself rides the
+  // existing RevealPath binding (explorer /select on Windows) — no raw exec.
+  const openFolder = async () => {
+    try {
+      const dir = await app.GetFeedbackInboxPath();
+      if (dir) await app.RevealPath(dir);
+    } catch (e) {
+      reportFrontendLog("session-monitor", "feedback open folder failed", String(e));
+    }
+  };
+
   return createPortal(
     <div className="feedback-panel" role="dialog" aria-label={t("feedbackInbox.title")}>
       <div className="feedback-panel__head">
         <span className="feedback-panel__title">{t("feedbackInbox.title")}</span>
         <div className="feedback-panel__actions">
+          <button type="button" className="btn btn--small" onClick={() => void openFolder()}>
+            {t("feedbackInbox.openDir")}
+          </button>
           <button type="button" className="btn btn--small" disabled={busy || entries.length === 0} onClick={() => void clear()}>
             {t("feedbackInbox.clear")}
           </button>

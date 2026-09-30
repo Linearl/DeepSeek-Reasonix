@@ -280,6 +280,13 @@ func (a *App) SetExperimentalFeedback(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalFeedback(enabled) })
 }
 
+// SetExperimentalFeedbackNudge toggles the feedback touchpoint dial (task 172).
+// The runtime reads it as a boot snapshot (agent construction), so a change
+// shows up after a restart — same contract as the other agent-behavior dials.
+func (a *App) SetExperimentalFeedbackNudge(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalFeedbackNudge(enabled) })
+}
+
 // SetExperimentalTodoSidebar toggles the right-dock todo tab with its tab
 // visibility and wrap settings (task 259). The frontend snapshots the flag at
 // boot, so the change shows up after a restart.

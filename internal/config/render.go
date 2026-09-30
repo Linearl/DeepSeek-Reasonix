@@ -168,6 +168,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "experimental_session_monitor = %v   # desktop: left-rail session monitor board (task 123)\n", c.Desktop.ExperimentalSessionMonitor)
 		fmt.Fprintf(&b, "experimental_split_view = %v   # desktop: tab-bar split view (task 70-1)\n", c.Desktop.ExperimentalSplitView)
 		fmt.Fprintf(&b, "experimental_feedback = %v   # desktop: agent submit_feedback tool + feedback inbox panel (task 121)\n", c.Desktop.ExperimentalFeedback)
+		// Task 172: fixed-key-set rule — an unlisted key would be dropped on
+		// every save and the touchpoint switch would flip itself back off.
+		fmt.Fprintf(&b, "experimental_feedback_nudge = %v   # desktop: feedback touchpoints — invite after a completed turn (T1) + steer note (T2); parent experimental_feedback wins (task 172)\n", c.Desktop.ExperimentalFeedbackNudge)
 		fmt.Fprintf(&b, "experimental_parallel_full_access = %v   # desktop: trust managed worktree roots as write surfaces (task 127); env REASONIX_PARALLEL_FULL_ACCESS=1 also enables\n", c.Desktop.ExperimentalParallelFullAccess)
 		fmt.Fprintf(&b, "experimental_todo_sidebar = %v   # desktop: right-dock todo tab + tab visibility/wrap settings (task 259; boot snapshot)\n", c.Desktop.ExperimentalTodoSidebar)
 		// Task 265 lab intake: render-surface features, nil-means-on pointers.

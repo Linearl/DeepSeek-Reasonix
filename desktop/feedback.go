@@ -36,3 +36,11 @@ func (a *App) ListFeedbackEntries(limit int) ([]FeedbackEntryView, error) {
 func (a *App) ClearFeedbackEntries() error {
 	return builtin.ClearFeedbackEntries()
 }
+
+// GetFeedbackInboxPath returns the local feedback inbox directory (task 172),
+// creating it when missing so the panel's "open folder" action works even
+// before the first note exists. The frontend reveals it via the existing
+// RevealPath binding (explorer /select on Windows) — no raw exec here.
+func (a *App) GetFeedbackInboxPath() (string, error) {
+	return builtin.FeedbackInboxDir()
+}

@@ -102,6 +102,10 @@ type agentServices struct {
 	// loopStreakNote gates task 244 B2's neutral Continue. streak note
 	// (Options.LoopStreakNote → run_loop text-repeat branch).
 	loopStreakNote bool
+	// feedbackNudge gates the task-172 feedback touchpoints
+	// (Options.FeedbackNudge → run_loop T1/T2 injection points). Boot passes
+	// the AND of both config switches, so the agent sees one ready-made dial.
+	feedbackNudge bool
 	// memQueue lets the remember/forget tools fold a turn-tail note about a
 	// just-made memory change into the next turn, so it applies this session
 	// without touching the cache-stable prefix.
@@ -146,6 +150,7 @@ func newAgentServices(
 		workspaceLease:        opts.WorkspaceLease,
 		optimisticWrite:       opts.OptimisticWrite,
 		loopStreakNote:        opts.LoopStreakNote,
+		feedbackNudge:         opts.FeedbackNudge,
 		warnState:             missingReasoningWarnStateFor(opts.MissingReasoningWarnStateDir),
 		mutationObserver:      opts.MutationObserver,
 		writeRoots:            opts.WriteRoots,

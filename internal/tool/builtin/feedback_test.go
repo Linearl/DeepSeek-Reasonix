@@ -130,3 +130,35 @@ func TestSubmitFeedbackValidation(t *testing.T) {
 		t.Fatal("blank text must fail in AppendFeedbackEntry")
 	}
 }
+
+// Task 172: the desktop "open folder" binding reads the inbox path through
+// FeedbackInboxDir, which must create a missing directory instead of failing,
+// so the panel button works before the first note exists.
+func TestFeedbackInboxDirCreatesMissingDirectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "nested", "feedback-inbox")
+	SetFeedbackHome(dir)
+	t.Cleanup(func() { SetFeedbackHome("") })
+
+	got, err := FeedbackInboxDir()
+	if err != nil {
+		t.Fatalf("FeedbackInboxDir: %v", err)
+	}
+	if got != dir {
+		t.Fatalf("FeedbackInboxDir = %q, want %q", got, dir)
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		t.Fatalf("inbox directory missing after FeedbackInboxDir: %v", err)
+	}
+}
+
+// Task 172 sub-item D: the tool description must name the Chinese trigger
+// words (意见箱) and the collect_issues handoff, so the model can route
+// "意见箱" asks to submit_feedback instead of hand-writing md files.
+func TestSubmitFeedbackDescriptionNamesInboxAndCollector(t *testing.T) {
+	desc := submitFeedback{}.Description()
+	for _, want := range []string{"意见箱", "collect_issues", "feedback-inbox"} {
+		if !strings.Contains(desc, want) {
+			t.Fatalf("Description() missing %q:\n%s", want, desc)
+		}
+	}
+}

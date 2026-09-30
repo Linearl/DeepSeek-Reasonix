@@ -246,6 +246,15 @@ const CHECKS = [
   { feature: "任务245 面板键域级映射（global 单键 + cwd 兜底禁入）", file: "desktop/frontend/src/store/layout.ts", patterns: ["export function workspacePanelMemoryRoot(scope: string | undefined, workspaceRoot: string | undefined): string {", "if (scope === \"global\") return \"\";"] },
   { feature: "任务245 面板键归一接线（App 侧）", file: "desktop/frontend/src/App.tsx", patterns: ["workspacePanelMemoryRoot(activeTab?.scope, activeTab?.workspaceRoot)"] },
   { feature: "任务245 面板键归一接线（composition 侧）", file: "desktop/frontend/src/app-runtime/useAppSessionComposition.ts", patterns: ["workspacePanelMemoryRoot(activeTab?.scope, activeTab?.workspaceRoot)"] },
+
+  // ── 任务 172：意见箱触达策略（T1 完成时 + T2 插话时 + 面板打开目录）───
+  { feature: "任务172 nudge 子开关全链路（config 字段+父开关优先）", file: "internal/config/desktop_preferences.go", patterns: ["experimental_feedback_nudge", "func (c *Config) FeedbackNudgeEnabled()"] },
+  { feature: "任务172 渲染表登记（漏渲染表=保存被静默丢弃）", file: "internal/config/render.go", patterns: ["experimental_feedback_nudge"] },
+  { feature: "任务172 T1/T2 双触发+防死循环闸门", file: "internal/agent/feedback_nudge.go", patterns: ["FeedbackNudgeMarker", "feedbackNudgeCooldownTurns", "feedbackNudgeMaxPerTurn"] },
+  { feature: "任务172 run_loop 注入点（T1 完成时 + T2 插话后）", file: "internal/agent/run_loop.go", patterns: ["maybeNudgeFeedbackCompletion", "maybeNudgeFeedbackSteer"] },
+  { feature: "任务172 App 绑定 GetFeedbackInboxPath（先建目录再回路径）", file: "desktop/feedback.go", patterns: ["func (a *App) GetFeedbackInboxPath", "builtin.FeedbackInboxDir()"] },
+  { feature: "任务172 面板打开目录按钮（清空左侧，复用 RevealPath）", file: "desktop/frontend/src/components/FeedbackPanel.tsx", patterns: ["feedbackInbox.openDir", "app.RevealPath(dir)"] },
+  { feature: "任务172 设置页触达子项+开销说明文案", file: "desktop/frontend/src/locales/zh.ts", patterns: ["settings.feedbackNudge", "settings.feedbackNudgeHint"] },
 ];
 
 let failed = 0;

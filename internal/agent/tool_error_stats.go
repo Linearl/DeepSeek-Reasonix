@@ -50,7 +50,14 @@ func (a *Agent) toolErrorStatsPath() string {
 // loadToolErrorStats restores counters from a previous run of the same
 // session, so phase-1 statistics survive restarts. Missing or corrupt files
 // start a fresh counter (observation must never break the session).
+//
+// a.toolStatsMu guards the Tools map: recordToolErrorStats runs inside
+// runParallel goroutines (one per concurrent tool call), so unguarded map
+// writes are a hard "concurrent map writes" crash, not a lost update. First
+// exposed by task 172's run-loop tests shifting batch timing (2026-09-30).
 func (a *Agent) loadToolErrorStats() {
+	a.toolStatsMu.Lock()
+	defer a.toolStatsMu.Unlock()
 	a.toolStats = newToolErrorStats()
 	path := a.toolErrorStatsPath()
 	if path == "" {
@@ -79,6 +86,8 @@ func (a *Agent) loadToolErrorStats() {
 //   - A bash non-zero exit is neither: the shell executed fine, the command
 //     under test failed — that is the test-driven loop working as designed.
 func (a *Agent) recordToolErrorStats(toolName string, o toolOutcome) {
+	a.toolStatsMu.Lock()
+	defer a.toolStatsMu.Unlock()
 	if a.toolStats == nil {
 		a.toolStats = newToolErrorStats()
 	}
@@ -98,12 +107,12 @@ func (a *Agent) recordToolErrorStats(toolName string, o toolOutcome) {
 		entry.SoftErrors++
 	}
 	a.toolStats.Tools[name] = entry
-	a.persistToolErrorStats()
+	a.persistToolErrorStatsLocked()
 }
 
 // persistToolErrorStats atomically rewrites the sidecar. Failures log and
-// continue: statistics are advisory in phase 1.
-func (a *Agent) persistToolErrorStats() {
+// continue: statistics are advisory in phase 1. Callers hold toolStatsMu.
+func (a *Agent) persistToolErrorStatsLocked() {
 	path := a.toolErrorStatsPath()
 	if path == "" {
 		return
@@ -120,6 +129,8 @@ func (a *Agent) persistToolErrorStats() {
 // ToolErrorStatsSnapshot returns a copy of the current counters for display
 // or the CLI aggregator. It contains only tool names and counts.
 func (a *Agent) ToolErrorStatsSnapshot() map[string]toolErrorCount {
+	a.toolStatsMu.Lock()
+	defer a.toolStatsMu.Unlock()
 	out := make(map[string]toolErrorCount, len(a.toolStats.Tools))
 	for k, v := range a.toolStats.Tools {
 		out[k] = v
