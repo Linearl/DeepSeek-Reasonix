@@ -946,6 +946,14 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		b.WriteString("\n")
 	}
 
+	// [serve] is user/global only: it carries the serve frontend auth settings
+	// and the bus bearer tokens, which must never land in a shared project
+	// reasonix.toml. Rendered via renderServeConfig (task 432): before that the
+	// whole section was silently dropped on save — `reasonix bus enroll` set
+	// [serve.bus_mcp] in memory, cfg.Save() rewrote the file without it, and
+	// enroll reported success.
+	renderServeConfig(&b, c, scope)
+
 	renderRemoteConfig(&b, c, scope)
 
 	b.WriteString("# External MCP servers. type: \"stdio\" (default, a subprocess) | \"http\" | \"sse\".\n")
@@ -1641,6 +1649,131 @@ func renderLSPConfig(b *strings.Builder, cfg LSPConfig) {
 		}
 		b.WriteString("\n")
 	}
+}
+
+// renderServeConfig writes the [serve] frontend section plus its bus
+// sub-tables ([serve.bus_mcp], [serve.bus_worker]). User/global only: the bus
+// roles table carries bearer tokens, so the project scope never renders any of
+// it. House style throughout: a set field renders its actual value, a
+// field at its zero value renders as a commented example so the key set stays
+// visible without inventing config for people who never run `reasonix serve`.
+func renderServeConfig(b *strings.Builder, c *Config, scope RenderScope) {
+	if scope == RenderScopeProject {
+		return
+	}
+	b.WriteString("[serve]\n")
+	if c.Serve.AuthMode != "" {
+		fmt.Fprintf(b, "auth_mode = %q   # none (default) | token | password\n", c.Serve.AuthMode)
+	} else {
+		b.WriteString("# auth_mode = \"token\"   # none (default) | token | password\n")
+	}
+	if c.Serve.Token != "" {
+		fmt.Fprintf(b, "token = %q   # pre-shared token for auth_mode = \"token\"\n", c.Serve.Token)
+	} else {
+		b.WriteString("# token = \"...\"   # pre-shared token for auth_mode = \"token\"; empty = a random token is generated per startup and printed\n")
+	}
+	if c.Serve.PasswordHash != "" {
+		fmt.Fprintf(b, "password_hash = %q   # bcrypt hash for auth_mode = \"password\"\n", c.Serve.PasswordHash)
+	} else {
+		b.WriteString("# password_hash = \"...\"   # generate with `reasonix serve --hash-password --password '...'\n")
+	}
+	if c.Serve.BehindProxy {
+		b.WriteString("behind_proxy = true   # trusted reverse proxy in front; X-Forwarded-* headers are honored\n")
+	} else {
+		b.WriteString("# behind_proxy = false   # set true only behind a trusted reverse proxy\n")
+	}
+	b.WriteString("\n")
+
+	b.WriteString("[serve.bus_mcp]\n")
+	if c.Serve.BusMCP.Enabled {
+		b.WriteString("enabled = true   # mount /mcp and /bus routes for external runtimes (`reasonix bus enroll` sets this)\n")
+	} else {
+		b.WriteString("# enabled = false   # opt-in; `reasonix bus enroll --role dev` creates and enables this section\n")
+	}
+	if len(c.Serve.BusMCP.Roles) > 0 {
+		fmt.Fprintf(b, "roles = %s   # role name → bearer token (256-bit hex); managed by `reasonix bus enroll`\n", renderStringMap(c.Serve.BusMCP.Roles))
+	} else {
+		b.WriteString("# roles = { dev = \"64-hex-token\" }   # role → bearer token; keep in sync with the runtime's own config\n")
+	}
+	if c.Serve.BusMCP.MailDir != "" {
+		fmt.Fprintf(b, "mail_dir = %q   # shared collab mailbox override; empty = the default session-chat support directory\n", c.Serve.BusMCP.MailDir)
+	} else {
+		b.WriteString("# mail_dir = \"\"   # empty = bus mail and collab mail stay one stream\n")
+	}
+	if c.Serve.BusMCP.HopLimit != 0 {
+		fmt.Fprintf(b, "hop_limit = %d   # mail chain ceiling; 0 keeps the default\n", c.Serve.BusMCP.HopLimit)
+	} else {
+		b.WriteString("# hop_limit = 0   # 0 keeps the default\n")
+	}
+	if c.Serve.BusMCP.EventTarget != "" {
+		fmt.Fprintf(b, "event_target = %q   # contact for hook pushes (POST /bus/events); empty = zcode-heartbeat\n", c.Serve.BusMCP.EventTarget)
+	} else {
+		b.WriteString("# event_target = \"zcode-heartbeat\"   # contact for hook pushes (POST /bus/events); empty = zcode-heartbeat\n")
+	}
+	if len(c.Serve.BusMCP.SpawnRoles) > 0 {
+		fmt.Fprintf(b, "spawn_roles = %s   # roles allowed to call collab_spawn; empty denies every role\n", renderStringArray(c.Serve.BusMCP.SpawnRoles))
+	} else {
+		b.WriteString("# spawn_roles = [\"dev\"]   # roles allowed to call collab_spawn; empty denies every role\n")
+	}
+	if c.Serve.BusMCP.SpawnDailyQuota != 0 {
+		fmt.Fprintf(b, "spawn_daily_quota = %d   # collab_spawn calls per role per day; 0 keeps the default (20)\n", c.Serve.BusMCP.SpawnDailyQuota)
+	} else {
+		b.WriteString("# spawn_daily_quota = 0   # 0 keeps the default (20)\n")
+	}
+	b.WriteString("\n")
+
+	b.WriteString("[serve.bus_worker]\n")
+	if c.Serve.BusWorker.Enabled {
+		b.WriteString("enabled = true   # unattended headless execution pool for bus task assignments\n")
+	} else {
+		b.WriteString("# enabled = false   # opt-in; spawns external processes per bus task\n")
+	}
+	if c.Serve.BusWorker.Command != "" {
+		fmt.Fprintf(b, "command = %q   # agent CLI spawned per task; empty/default = zcode\n", c.Serve.BusWorker.Command)
+	} else {
+		b.WriteString("# command = \"zcode\"   # agent CLI spawned per task; empty = zcode\n")
+	}
+	if c.Serve.BusWorker.Mode != "" {
+		fmt.Fprintf(b, "mode = %q   # headless permission mode passed to the CLI: build (default) | yolo\n", c.Serve.BusWorker.Mode)
+	} else {
+		b.WriteString("# mode = \"build\"   # headless permission mode: build (default; unapproved writes refused) | yolo\n")
+	}
+	if c.Serve.BusWorker.Workspace != "" {
+		fmt.Fprintf(b, "workspace = %q   # working directory for spawned runs; empty = serve process cwd\n", c.Serve.BusWorker.Workspace)
+	} else {
+		b.WriteString("# workspace = \"\"   # empty = the serve process cwd; per-task workspaces ride the assignment mail\n")
+	}
+	if c.Serve.BusWorker.Concurrency != 0 {
+		fmt.Fprintf(b, "concurrency = %d   # parallel runs; 0 keeps the default (2)\n", c.Serve.BusWorker.Concurrency)
+	} else {
+		b.WriteString("# concurrency = 0   # 0 keeps the default (2)\n")
+	}
+	if c.Serve.BusWorker.Timeout != "" {
+		fmt.Fprintf(b, "timeout = %q   # per-run budget (Go duration); empty keeps the default (30m)\n", c.Serve.BusWorker.Timeout)
+	} else {
+		b.WriteString("# timeout = \"30m\"   # per-run budget; expiry kills the child process tree and fails the card\n")
+	}
+	if c.Serve.BusWorker.PollInterval != "" {
+		fmt.Fprintf(b, "poll_interval = %q   # mailbox poll cadence; empty keeps the default (5s)\n", c.Serve.BusWorker.PollInterval)
+	} else {
+		b.WriteString("# poll_interval = \"5s\"   # mailbox poll cadence\n")
+	}
+	if c.Serve.BusWorker.Contact != "" {
+		fmt.Fprintf(b, "contact = %q   # mailbox contact this pool drains; empty = zcode-worker\n", c.Serve.BusWorker.Contact)
+	} else {
+		b.WriteString("# contact = \"zcode-worker\"   # mailbox contact this pool drains\n")
+	}
+	if c.Serve.BusWorker.MailDir != "" {
+		fmt.Fprintf(b, "mail_dir = %q   # mailbox directory override; empty = default\n", c.Serve.BusWorker.MailDir)
+	} else {
+		b.WriteString("# mail_dir = \"\"   # empty = the default mailbox directory\n")
+	}
+	if c.Serve.BusWorker.ResultDir != "" {
+		fmt.Fprintf(b, "result_dir = %q   # where result_ref JSON files are written; empty = <mail_dir>/bus-results\n", c.Serve.BusWorker.ResultDir)
+	} else {
+		b.WriteString("# result_dir = \"\"   # empty = <mail_dir>/bus-results\n")
+	}
+	b.WriteString("\n")
 }
 
 func renderTOMLKeyPart(key string) string {

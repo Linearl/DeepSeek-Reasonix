@@ -87,8 +87,21 @@ func runBusEnroll(args []string) int {
 	}
 	cfg.Serve.BusMCP.Enabled = true
 	cfg.Serve.BusMCP.Roles[*role] = token
-	if err := cfg.Save(); err != nil {
+	// Save to the user config explicitly, not cfg.Save(): Save targets
+	// SourcePath(), which falls back to ./reasonix.toml (project scope — the
+	// renderer drops serve sections there) whenever the user config file does
+	// not exist yet. The enroll contract is "user config", so aim at it.
+	if err := cfg.SaveTo(config.UserConfigPath()); err != nil {
 		fmt.Fprintf(os.Stderr, "bus enroll: save config: %v\n", err)
+		return 1
+	}
+	// Self-check (task 432): Save() used to silently drop [serve.bus_mcp] — the
+	// hand-written TOML renderer did not know the section, enroll printed
+	// success, and the token existed only in memory. Reload the user config and
+	// assert the role round-tripped before claiming anything.
+	if err := verifyBusEnrollPersisted(*role, token); err != nil {
+		fmt.Fprintf(os.Stderr, "bus enroll: %v\n", err)
+		fmt.Fprintf(os.Stderr, "  the user config on disk does NOT carry the enrolled role; not writing %s\n", filepath.Join(*ws, ".zcode", "config.json"))
 		return 1
 	}
 
@@ -99,11 +112,29 @@ func runBusEnroll(args []string) int {
 	}
 
 	fmt.Printf("enrolled role %q as contact zcode-%s\n", *role, *role)
-	fmt.Printf("  reasonix side: [serve.bus_mcp] enabled in user config (token stored there)\n")
+	fmt.Printf("  reasonix side: [serve.bus_mcp] enabled in user config, role token verified by re-reading the file\n")
 	fmt.Printf("  zcode side:    %s (mcp server \"reasonix\")\n", zcodeCfgPath)
 	fmt.Printf("  endpoint:      %s\n", *url)
 	fmt.Println("next: restart `reasonix serve` so the bus routes mount, then check /mcp shows connected in zcode.")
 	return 0
+}
+
+// verifyBusEnrollPersisted re-loads the user config from disk and asserts the
+// freshly enrolled role survived the save. It fails loudly instead of letting
+// enroll report success while the renderer dropped the section (the exact
+// failure task 432 shipped with). Read-only load: no migrations, no writes.
+func verifyBusEnrollPersisted(role, token string) error {
+	reloaded, err := config.LoadUserConfigReadOnly()
+	if err != nil {
+		return fmt.Errorf("verify enrollment: reload user config: %w", err)
+	}
+	if !reloaded.Serve.BusMCP.Enabled {
+		return fmt.Errorf("verify enrollment: [serve.bus_mcp] enabled=true did not survive the save (renderer dropped the section?)")
+	}
+	if got := reloaded.Serve.BusMCP.Roles[role]; got != token {
+		return fmt.Errorf("verify enrollment: role %q token did not survive the save (got %d bytes back, renderer dropped the section?)", role, len(got))
+	}
+	return nil
 }
 
 // writeZcodeBusConfig merges the reasonix MCP server entry into the

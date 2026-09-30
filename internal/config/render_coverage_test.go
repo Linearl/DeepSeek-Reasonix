@@ -60,3 +60,52 @@ func TestDesktopRenderTableCoversEveryKey(t *testing.T) {
 		t.Fatalf("these [desktop] keys never reach the config file (add them to render.go, or list them in desktopRenderOmissions with a reason): %v", missing)
 	}
 }
+
+// serveRenderOmissions lists [serve]/[serve.bus_mcp]/[serve.bus_worker] keys
+// that are deliberately not written to the config file. Empty on purpose: the
+// task 432 bug was exactly a key with no entry in either list — enroll set
+// [serve.bus_mcp] and the renderer dropped it, so every future serve key must
+// either reach render.go or be named here with a reason.
+var serveRenderOmissions = map[string]string{}
+
+// TestServeRenderTableCoversEveryKey is the [serve] twin of the desktop guard
+// above: it fails as soon as a Serve/BusMCP/BusWorker field is added without
+// teaching renderServeConfig about it.
+func TestServeRenderTableCoversEveryKey(t *testing.T) {
+	c := Default()
+	out := RenderTOMLForScope(c, RenderScopeUser)
+
+	tables := []struct {
+		name string
+		typ  reflect.Type
+	}{
+		{"serve", reflect.TypeOf(c.Serve)},
+		{"serve.bus_mcp", reflect.TypeOf(c.Serve.BusMCP)},
+		{"serve.bus_worker", reflect.TypeOf(c.Serve.BusWorker)},
+	}
+	for _, table := range tables {
+		var missing []string
+		for i := 0; i < table.typ.NumField(); i++ {
+			field := table.typ.Field(i)
+			tag := field.Tag.Get("toml")
+			if tag == "" || tag == "-" {
+				continue
+			}
+			key := strings.Split(tag, ",")[0]
+			if _, ok := serveRenderOmissions[key]; ok {
+				continue
+			}
+			// Only leaf preferences have a rendered line of their own.
+			switch field.Type.Kind() {
+			case reflect.Struct, reflect.Map, reflect.Slice, reflect.Ptr:
+				continue
+			}
+			if !strings.Contains(out, key+" =") {
+				missing = append(missing, key)
+			}
+		}
+		if len(missing) > 0 {
+			t.Fatalf("these [%s] keys never reach the config file (add them to renderServeConfig, or list them in serveRenderOmissions with a reason): %v", table.name, missing)
+		}
+	}
+}
