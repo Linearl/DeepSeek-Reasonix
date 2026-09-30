@@ -87,6 +87,17 @@ func zcodeBridgeEnvConfig() (bool, zcodebridge.Config) {
 // NOT retried: the peer does not speak the frozen M4a face, and per spec §三
 // the client refuses instead of guessing.
 func (s *Server) runZcodeBridge(cfg zcodebridge.Config) {
+	// Resolve the child's effective workspace once (the mail injector prefers
+	// sessions whose workspace matches it). Empty config inherits the serve
+	// process cwd, which is what the child will actually run in.
+	ws := strings.TrimSpace(cfg.Workspace)
+	if ws == "" {
+		if cwd, err := os.Getwd(); err == nil {
+			ws = cwd
+		}
+	}
+	s.zcodeBridgeWorkspace.Store(&ws)
+
 	backoff := zcodeBridgeRetryInitial
 	first := true
 	for {
