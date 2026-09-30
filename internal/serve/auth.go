@@ -125,6 +125,11 @@ type authGate struct {
 	sessKey      []byte     // HMAC key for session signing (password mode, generated at startup)
 	behindProxy  bool       // trust X-Forwarded-For / X-Forwarded-Proto headers
 	rateLimit    *rateLimit // per-IP rate limiter for /login
+	// busPublic marks the bus-mcp routes as self-authenticating: they carry
+	// per-role bearer tokens checked inside busmcp, so the browser-oriented
+	// cookie/query gate must not reject those clients. Only set when the bus
+	// actually mounted; see registerBusRoutes.
+	busPublic bool
 }
 
 // newAuthGate creates the auth middleware from the serve config. For token mode
@@ -207,6 +212,12 @@ func (ag *authGate) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if ag.mode == authInvalid {
 			ag.deny(w, r)
+			return
+		}
+		// Bus-mcp paths authenticate with their own per-role bearer tokens
+		// inside the busmcp handlers (fail-closed: no bus, no exemption).
+		if ag.busPublic && isBusPublicPath(r.URL.Path) {
+			next.ServeHTTP(w, r)
 			return
 		}
 		if ag.mode == authNone {

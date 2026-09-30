@@ -272,3 +272,19 @@ stalled_warning_seconds = 900   # heads-up once per background job after this ma
 # token      = ""          # pre-shared token for auth_mode = "token" (auto-generated if empty)
 # password_hash = ""       # bcrypt hash for auth_mode = "password". Generate with: reasonix serve --hash-password <password>
 # behind_proxy = false      # set true when behind a trusted reverse proxy (nginx, Caddy, etc.) that sets X-Forwarded-* headers
+
+# [serve.bus_mcp]
+# Task bus for external agent runtimes (zcode): exposes the shared collab
+# mailbox and task cards as an MCP streamable-HTTP endpoint at /mcp. Off by
+# default. Enroll a runtime with: reasonix bus enroll --role dev --ws <path>
+# — it generates the token, enables this section, and writes the runtime's
+# MCP config. Identity comes only from the per-role token (contacts are
+# "zcode-<role>"); restart serve after enrolling.
+# enabled = false
+# [serve.bus_mcp.roles]
+# heartbeat = "<256-bit hex token>"
+# dev       = "<256-bit hex token>"
+# # mail_dir     = ""                  # override the shared mailbox dir (empty: session-chat default)
+# # hop_limit    = 0                   # mail chain ceiling (0: default)
+# # event_target = "zcode-heartbeat"   # where hook pushes (POST /bus/events) land
+

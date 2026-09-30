@@ -25,6 +25,7 @@ import (
 
 	"reasonix/internal/agent"
 	"reasonix/internal/boot"
+	"reasonix/internal/busmcp"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
 	"reasonix/internal/event"
@@ -114,6 +115,10 @@ type Server struct {
 	// and mirrors the writer's frames, but holds no write authority.
 	mirrorMu sync.Mutex
 	mirrored map[string]mirroredSession
+	// bus adapts the shared collab mailbox/task cards to MCP for external
+	// runtimes (zcode). Nil unless [serve.bus_mcp] enabled AND its config
+	// validated; every nil state leaves the routes unmounted (fail-closed).
+	bus *busmcp.Server
 }
 
 // SetControllerBuildOptions records the process-local options used to build
@@ -146,6 +151,24 @@ func New(ctrl control.SessionAPI, bc *Broadcaster, serveCfg config.ServeConfig) 
 	bc.SetCurrentSession(agent.CanonicalSessionPath(ctrl.SessionPath()))
 	if cfg, err := config.Load(); err == nil {
 		bc.SetDisplayCurrency(cfg.ExplicitDisplayCurrency())
+	}
+	if serveCfg.BusMCP.Enabled {
+		bus, err := busmcp.New(busmcp.Config{
+			Enabled:     serveCfg.BusMCP.Enabled,
+			Roles:       serveCfg.BusMCP.Roles,
+			MailDir:     serveCfg.BusMCP.MailDir,
+			HopLimit:    serveCfg.BusMCP.HopLimit,
+			EventTarget: serveCfg.BusMCP.EventTarget,
+		})
+		if err != nil {
+			// A broken bus config must not take down the user's session
+			// server: log and continue with the routes unmounted, which is
+			// the fail-closed state (clients see 404/401, never open access).
+			slog.Warn("serve: bus-mcp disabled by config", "err", err)
+		} else {
+			s.bus = bus
+			s.auth.busPublic = true
+		}
 	}
 	s.initTitleProvider()
 	if concrete, ok := ctrl.(*control.Controller); ok {
@@ -583,6 +606,7 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /context", s.context)
 	mux.HandleFunc("POST /submit", s.submit)
 	s.registerInboxRoutes(mux)
+	s.registerBusRoutes(mux)
 	mux.HandleFunc("GET /projects", s.listProjects)
 	mux.HandleFunc("POST /attachments", s.uploadAttachment)
 	mux.HandleFunc("POST /cancel", s.foregroundMutation(s.cancel))

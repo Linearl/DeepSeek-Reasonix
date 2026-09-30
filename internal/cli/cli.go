@@ -125,6 +125,8 @@ func RunWithBuildInfo(args []string, info BuildInfo) int {
 		return runInteractiveSession(rest, version)
 	case "serve":
 		return runServe(rest)
+	case "bus":
+		return runBus(rest)
 	case "web":
 		return runWebCommand(rest)
 	case "setup":
