@@ -62,22 +62,40 @@ func isImageRef(s string) bool {
 
 func imageRefHash(s string) string { return strings.TrimPrefix(s, imageRefScheme) }
 
-// imageDedupGateOn reads the task-373-R1 write gate
-// (the experimental_image_dedup config key is the settings surface;
-// REASONIX_IMAGE_DEDUP=1 overrides for one process — env precedent
-// REASONIX_MCP_NO_REUSE). Default off: the write path is byte-identical to
-// before and no pack is created. The read-side de-reference is NOT gated, so
-// files written while the gate was on keep loading correctly after it is
-// switched off.
-func imageDedupGateOn() bool {
-	if os.Getenv("REASONIX_IMAGE_DEDUP") == "1" {
-		return true
+// Image dedup modes (task 373-R1.1 three-position switch):
+//   - "off": byte-identical write path, no pack (default).
+//   - "first": first occurrence inline, later occurrences referenced
+//     (original R1 behaviour).
+//   - "all": every image above the min-size floor becomes a reference —
+//     zero image bytes in the events log. Tradeoff (same signed
+//     fork-only extension as R1): ALL images become invisible if the file
+//     is opened by upstream readers. Sub-floor tiny images (<4KB icons)
+//     stay inline even in "all" to keep the pack directory bounded.
+const (
+	imageDedupOff   = "off"
+	imageDedupFirst = "first"
+	imageDedupAll   = "all"
+)
+
+// imageDedupMode reads the task-373-R1.1 three-position switch (the
+// experimental_image_dedup config key is the settings surface;
+// REASONIX_IMAGE_DEDUP=first|all|off overrides for one process). Default
+// off: the write path is byte-identical to before and no pack is created.
+// The read-side de-reference is NOT gated, so files written in any mode
+// keep loading correctly after the switch changes.
+func imageDedupMode() string {
+	switch os.Getenv("REASONIX_IMAGE_DEDUP") {
+	case imageDedupFirst, imageDedupAll:
+		return os.Getenv("REASONIX_IMAGE_DEDUP")
 	}
-	cfg, err := config.Load()
-	if err != nil || cfg == nil {
-		return false
+	mode := imageDedupOff
+	if cfg, err := config.Load(); err == nil && cfg != nil {
+		switch cfg.Agent.ExperimentalImageDedup {
+		case imageDedupFirst, imageDedupAll:
+			mode = cfg.Agent.ExperimentalImageDedup
+		}
 	}
-	return cfg.Agent.ExperimentalImageDedup
+	return mode
 }
 
 // imageBlobExists reports whether the pack already holds this hash.
@@ -133,8 +151,8 @@ func getImageBlob(logPath, hashHex string) ([]byte, error) {
 // every later occurrence becomes a reasonix-img:// reference with the blob
 // stored in the pack (written before the referencing entry lands). Returns
 // the number of references installed. An empty Images field is a no-op.
-func dedupeMessageImages(m *provider.Message, logPath string) int {
-	if len(m.Images) == 0 {
+func dedupeMessageImages(m *provider.Message, logPath, mode string) int {
+	if len(m.Images) == 0 || mode == imageDedupOff {
 		return 0
 	}
 	refs := 0
@@ -148,11 +166,17 @@ func dedupeMessageImages(m *provider.Message, logPath string) int {
 			refs++
 			continue
 		}
-		// First sighting: keep inline for upstream readability and store the
-		// blob so later copies (and our own reader) can resolve.
+		// First sighting. "first" keeps it inline for upstream readability
+		// and stores the blob so later copies (and our own reader) can
+		// resolve; "all" references it too — zero image bytes in the log
+		// (signed fork-only tradeoff, task 373-R1.1).
 		if err := putImageBlob(logPath, hashHex, []byte(img)); err != nil {
 			slog.Warn("image blob store failed, keeping inline", "err", err)
 			continue
+		}
+		if mode == imageDedupAll {
+			m.Images[i] = imageRef(hashHex)
+			refs++
 		}
 	}
 	return refs

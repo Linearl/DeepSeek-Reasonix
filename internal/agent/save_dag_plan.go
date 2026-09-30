@@ -228,10 +228,12 @@ func (p *dagWritePlan) addAppends(st *sessionDAGState, logPath string, msgs []pr
 	if n := st.nodes[parent]; n != nil {
 		parentDigest = n.digest
 	}
-	// Task 373-R1: with the gate on, collapse duplicate image bytes into
-	// content-addressed references backed by the .imgpack sidecar (first copy
-	// stays inline). Gate off: no-op, entry bytes unchanged.
-	dedupe := imageDedupGateOn()
+	// Task 373-R1/R1.1: per the three-position switch, collapse image bytes
+	// into content-addressed references backed by the .imgpack sidecar
+	// ("first": first copy inline; "all": zero image bytes). "off" (the
+	// default) short-circuits inside dedupeMessageImages — entry bytes
+	// unchanged.
+	dedupMode := imageDedupMode()
 	for j := from; j < len(msgs); j++ {
 		m := msgs[j]
 		if _, exists := st.nodes[m.ID]; exists || m.ID == "" {
@@ -242,8 +244,8 @@ func (p *dagWritePlan) addAppends(st *sessionDAGState, logPath string, msgs []pr
 			m.ID = fresh
 			msgs[j].ID = fresh
 		}
-		if dedupe {
-			dedupeMessageImages(&m, logPath)
+		if dedupMode != imageDedupOff {
+			dedupeMessageImages(&m, logPath, dedupMode)
 		}
 		e, err := newSessionDAGMessageEntry(p.head, parent, parentDigest, "", m, now)
 		if err != nil {

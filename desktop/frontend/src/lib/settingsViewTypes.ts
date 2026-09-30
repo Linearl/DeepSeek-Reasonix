@@ -145,7 +145,8 @@ export interface SettingsView {
   // Task 363A: runtime assembly reuse pool (same root+model+effort tabs).
   experimentalRuntimeReuse?: boolean;
   // Task 373-R1: image dedup write gate (references in new entries).
-  experimentalImageDedup?: boolean;
+  /** Task 373-R1/R1.1: image dedup three-position switch (off|first|all). */
+  experimentalImageDedup?: "off" | "first" | "all";
   visionModel: string;
   webSearchModel?: string;
   webSearchModels?: string[];

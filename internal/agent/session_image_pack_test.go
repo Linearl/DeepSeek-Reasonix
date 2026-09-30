@@ -12,8 +12,8 @@ import (
 
 // imageDedupFixture builds a session log through the real entry path with the
 // task-373-R1 transform (dedupeMessageImages) applied per message, exactly as
-// the gated addAppends path does.
-func imageDedupFixture(t *testing.T, dir string) (sessionPath, logPath, big, small string) {
+// the gated addAppends path does. mode: imageDedupFirst | imageDedupAll.
+func imageDedupFixture(t *testing.T, dir, mode string) (sessionPath, logPath, big, small string) {
 	t.Helper()
 	sessionPath = dir + "/s1"
 	logPath = store.SessionEventLog(sessionPath)
@@ -32,7 +32,7 @@ func imageDedupFixture(t *testing.T, dir string) (sessionPath, logPath, big, sma
 	parent := ""
 	for i, m := range []provider.Message{sys, u1, a1, u2} {
 		// Same transform the gated addAppends path applies before encoding.
-		dedupeMessageImages(&m, logPath)
+		dedupeMessageImages(&m, logPath, mode)
 		e := dagMessageEntry(t, SessionMainHead, parent, "t1", m, base.Add(time.Duration(i)*time.Second))
 		dagAppend(t, sessionPath, e)
 		parent = m.ID
@@ -40,15 +40,15 @@ func imageDedupFixture(t *testing.T, dir string) (sessionPath, logPath, big, sma
 	return sessionPath, logPath, big, small
 }
 
-// TestImageDedupFirstInlineRestReferenced is the task-373-R1 core proof: with
-// the transform applied, the first occurrence of a unique image stays inline
+// TestImageDedupFirstInlineRestReferenced is the task-373-R1 core proof for
+// the "first" position: the first occurrence of a unique image stays inline
 // in the log and every later occurrence is a reasonix-img:// reference whose
 // blob lives in the .imgpack sidecar (written before the referencing entry).
 // Loading through the normal replay path restores the original bytes — the
 // read side is not gated.
 func TestImageDedupFirstInlineRestReferenced(t *testing.T) {
 	dir := t.TempDir()
-	sessionPath, logPath, big, small := imageDedupFixture(t, dir)
+	sessionPath, logPath, big, small := imageDedupFixture(t, dir, imageDedupFirst)
 
 	// The pack holds exactly one blob (the big image; the small one is below
 	// the min-size floor and stays inline everywhere).
@@ -143,5 +143,52 @@ func TestImageDedupPackSurvivesRestart(t *testing.T) {
 	resolveMessageImages(&m, logPath)
 	if m.Images[0] != big {
 		t.Fatal("resolveMessageImages could not restore the blob after restart")
+	}
+}
+
+// TestImageDedupAllModeZeroInlineBytes is the task-373-R1.1 "all" position
+// proof: even the FIRST occurrence becomes a reasonix-img:// reference, so
+// the events log carries zero image bytes (sub-floor tiny images excepted —
+// a 4KB icon per blob file would not pay for itself). The pack holds the
+// blob, and the replay resolves references so the materialized transcript is
+// still semantically complete (2 occurrences of the big image). Upstream
+// readability tradeoff (signed fork-only): an upstream reader of this log
+// sees no images at all — asserted here via the raw-bytes check.
+func TestImageDedupAllModeZeroInlineBytes(t *testing.T) {
+	dir := t.TempDir()
+	sessionPath, logPath, big, small := imageDedupFixture(t, dir, imageDedupAll)
+
+	if !imageBlobExists(logPath, imageHash(big)) {
+		t.Fatal("big image blob missing from pack in all mode")
+	}
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Zero inline bytes of the big image in the log; both occurrences are
+	// references. Upstream would render no image — the documented tradeoff.
+	if inline := strings.Count(string(raw), big); inline != 0 {
+		t.Fatalf("inline occurrences of the big image in all mode = %d, want 0", inline)
+	}
+	if refs := strings.Count(string(raw), imageRef(imageHash(big))); refs != 2 {
+		t.Fatalf("reference occurrences in all mode = %d, want 2 (U1 first + U2 dup)", refs)
+	}
+	// The sub-floor small image stays inline even in all mode.
+	if !strings.Contains(string(raw), small) {
+		t.Fatal("sub-floor small image should stay inline in all mode")
+	}
+
+	st := dagReplay(t, sessionPath)
+	msgs, _ := st.materialize(st.selectedHead())
+	seen := 0
+	for _, m := range msgs {
+		for _, img := range m.Images {
+			if img == big {
+				seen++
+			}
+		}
+	}
+	if seen != 2 {
+		t.Fatalf("materialized transcript in all mode carries the big image %d times, want 2", seen)
 	}
 }
