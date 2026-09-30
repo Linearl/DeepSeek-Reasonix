@@ -4722,30 +4722,69 @@ a[href] {
 .jump-dot[data-d="2"] {
   background: color-mix(in srgb, var(--accent) 35%, transparent);
 }
+/* Rich hover card for the question rail (task 149). `top` carries the fully
+   computed placement from jumpPreviewPlacement() — centered by default and
+   flipped/clamped near the rail's edges — so no translate centering here. */
 .jump-preview {
   position: absolute;
   right: 100%;
   top: 0;
-  max-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: max-content;
+  max-width: 260px;
   margin-right: 12px;
-  padding: 4px 8px;
+  padding: 8px 10px;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--bg-elev);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   color: var(--fg);
   font-size: 12px;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.45;
   pointer-events: none;
-  transform: translateY(-50%);
 }
-.jump-text {
-  display: block;
+.jump-preview-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+  color: var(--fg);
+}
+.jump-preview-body {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: var(--fg-dim);
+}
+.jump-preview-line {
+  display: block;
+}
+.jump-preview-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+/* Tool tag mirrors the tool-card chip pattern (.tool__subagent-chip). */
+.jump-preview-tool {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-soft);
+  font-family: var(--font-code-family);
+  font-size: var(--font-caption);
+  line-height: 1.4;
+  color: var(--fg-dim);
+  white-space: nowrap;
 }
 @keyframes jump-bar-in {
   to {

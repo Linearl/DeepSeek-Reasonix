@@ -23,6 +23,7 @@ const CHECKS = [
   { feature: "#9221 颜色筛选 CSS", file: "desktop/frontend/src/styles.css", patterns: [".project-tree__color-filter", ".project-tree__color-opt", ".project-tree__color-swatch", ".project-tree__action-btn--active"] },
   { feature: "#9221 颜色筛选锚点", file: "desktop/frontend/src/styles.css", patterns: [".project-tree__color-filter {\n  position: relative;"] },
   { feature: "heartbeat 编辑器样式", file: "desktop/frontend/src/custom/features/heartbeat/heartbeat.css", patterns: [".heartbeat-editor__model-override", ".heartbeat-editor__input"] },
+  { feature: "任务149 悬停预览富文本卡 CSS", file: "desktop/frontend/src/styles.css", patterns: [".jump-preview-title", ".jump-preview-body", ".jump-preview-tool"] },
 
   // ── 前端 TS ─────────────────────────────────────────────────────
   { feature: "task 163 OpenCode Go 用量查询（后端）", file: "desktop/opencode_go_usage.go", patterns: ["isOfficialOpenCodeGoBase", "no-subscription", "Bearer ", "parseOpenCodeGoUsage"] },
@@ -99,6 +100,10 @@ const CHECKS = [
   { feature: "288 全部已读（readActivity 存储层）", file: "desktop/frontend/src/lib/readActivity.ts", patterns: ["READ_ACTIVITY_STORAGE_KEY", "READ_ACTIVITY_CHANGED_EVENT", "markReadKeysRead", "persistReadActivity", "readActivityKeysInSubtree"] },
   { feature: "288 全部已读（tab/项目分组/会话菜单接线）", file: "desktop/frontend/src/components/ProjectTree.tsx", patterns: ["markAllRead", "readActivityKeysInScope", "readActivityKeysInSubtree", "READ_ACTIVITY_CHANGED_EVENT", "onMarkAllRead"] },
   { feature: "288 全部已读（tab 菜单）", file: "desktop/frontend/src/components/TabBar.tsx", patterns: ["markTabsAllRead", "mark-all-read"] },
+  // 任务 149：预览卡是 fork 独有交互（上游 jump 预览只有一行纯文本），内容结构
+  // （粗体标题/多行正文/工具标记）与贴边翻转都在 fork 侧，整块被顶掉不会有冲突标记。
+  { feature: "任务149 悬停预览富文本卡 TSX", file: "desktop/frontend/src/components/QuestionJumpBar.tsx", patterns: ["jump-preview-title", "jump-preview-tool", "jumpPreviewPlacement", "data-flip"] },
+  { feature: "任务149 预览内容/翻转纯函数", file: "desktop/frontend/src/lib/jumpPreview.ts", patterns: ["buildJumpPreviewContent", "jumpPreviewPlacement", "JUMP_PREVIEW_MAX_TOOLS"] },
 
   // ── Go 后端 ─────────────────────────────────────────────────────
   { feature: "#9572 摘要安全前缀", file: "internal/agent/compact_projection.go", patterns: ["trigger != CompactionTriggerManual", "maximumSafeSummaryPrefixEnd"] },
