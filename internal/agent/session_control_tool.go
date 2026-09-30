@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"reasonix/internal/tool"
@@ -51,7 +52,7 @@ func NewSessionControlTool(cfg SessionCollabConfig) tool.Tool {
 func (sessionControlTool) Name() string { return "session_control" }
 
 func (sessionControlTool) Description() string {
-	return "Stop a peer session's active turn or switch its model (task 274, experimental). Actions: stop (cancels the target's running turn through its own cancel chain; the target's transcript gets a remote-stop notice) and set_model (switches the target's model with the SAME setter its own switcher uses). HARD RULE: set_model refuses while the target has an active turn — mid-turn swaps break sampling/cache consistency; stop first (action=stop) or wait for the turn to end, then call again. Resolution goes through the contact directory like talk_to_session — bare/unknown refs are refused. Requires experimental_session_control. Receipts carry the outcome (stopped/no-active-turn/applied-modelRef)."
+	return "Stop a peer session's active turn or switch its model (task 274, experimental). Actions: stop (cancels the target's running turn through its own cancel chain; the target's transcript gets a remote-stop notice) and set_model (switches the target's model with the SAME setter its own switcher uses). HARD RULE: set_model refuses while the target has an active turn — mid-turn swaps break sampling/cache consistency; stop first (action=stop) or wait for the turn to end, then call again. Resolution goes through the contact directory like talk_to_session — bare/unknown refs are refused. Requires experimental_session_control. set_model NEVER acts on the calling session itself (use the in-session switcher) and every applied change is audited (caller, target, old and new model). Receipts carry the outcome (stopped/no-active-turn/applied-modelRef with the previous model)."
 }
 
 func (sessionControlTool) Schema() json.RawMessage {
@@ -92,6 +93,12 @@ func (t sessionControlTool) Execute(ctx context.Context, args json.RawMessage) (
 	if resolved.ContactID == "" {
 		return "", fmt.Errorf("session %q has no contact_id — message it once first (first contact mints the address)", target)
 	}
+	// Task 387: a model change is a peer-session operation — "非己" (not self)
+	// is a hard rule from the capability-gating list. Acting on the caller's
+	// own session is what the in-session switcher is for.
+	if caller := strings.TrimSpace(t.cfg.currentContactID()); caller != "" && caller == resolved.ContactID {
+		return "", fmt.Errorf("session %q is the calling session itself — use its own model switcher instead (cross-session model change refuses to act on self)", target)
+	}
 	controlHooks := t.cfg.SessionControl
 	if controlHooks.Stop == nil || controlHooks.SetModel == nil {
 		return "", fmt.Errorf("session_control is not wired on this host (no controller hooks) — the capability is unavailable here")
@@ -107,9 +114,9 @@ func (t sessionControlTool) Execute(ctx context.Context, args json.RawMessage) (
 			return "", fmt.Errorf("session %q is not visible to this host (another process or runtime not stood up) — cannot stop what this host cannot see", target)
 		}
 		out, _ := json.Marshal(map[string]any{
-			"stopped":   stopped,
+			"stopped":    stopped,
 			"wasRunning": wasRunning,
-			"target":    resolved.ContactID,
+			"target":     resolved.ContactID,
 			"note": func() string {
 				if !wasRunning {
 					return "no active turn — nothing to stop (idempotent no-op)"
@@ -124,7 +131,24 @@ func (t sessionControlTool) Execute(ctx context.Context, args json.RawMessage) (
 		if model == "" {
 			return "", fmt.Errorf("model is required for set_model (the name exactly as the target's switcher shows it)")
 		}
+		// Task 387: audit trail — caller, target, old model, new model. The old
+		// ref is read BEFORE the switch through the same per-contact model
+		// visibility the status rows use.
+		oldRef := ""
+		if t.cfg.SessionInfo != nil {
+			if prev, _, infoKnown := t.cfg.SessionInfo(resolved.ContactID); infoKnown {
+				oldRef = prev
+			}
+		}
 		applied, wasRunning, known, newRef, merr := controlHooks.SetModel(resolved.ContactID, model)
+		if merr == nil && known && applied {
+			slog.Info("cross-session model change",
+				"caller", strings.TrimSpace(t.cfg.currentContactID()),
+				"target", resolved.ContactID,
+				"old_model", oldRef,
+				"new_model", newRef,
+				"task", "387")
+		}
 		if merr != nil {
 			return "", merr
 		}
@@ -145,7 +169,12 @@ func (t sessionControlTool) Execute(ctx context.Context, args json.RawMessage) (
 			"applied":  true,
 			"modelRef": newRef,
 			"target":   resolved.ContactID,
-			"note":     "model applied through the target's own switcher setter (idle at observation)",
+			"oldModel": oldRef,
+			// Task 387: the effort warning — the target's effort level resets to
+			// the new model's default when the previous level is not supported
+			// (config.NormalizeEffort in SetModelForTab clears it silently); the
+			// per-request effort override (task 9866) still applies per turn.
+			"note": "model applied through the target's own switcher setter (idle at observation); if the target had an effort level the new model does not support, it resets to the new model's default",
 		})
 		return string(out), nil
 

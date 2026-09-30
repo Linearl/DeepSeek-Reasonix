@@ -201,6 +201,8 @@ const CHECKS = [
   { feature: "任务383 #2 workbench 项目分组入口（header 菜单 group 项）", file: "desktop/frontend/src/components/ProjectTreeAddControls.tsx", patterns: ["new-project-group", "onGroup"] },
   { feature: "任务383 #5 classic footer icon-only（creation 保文字）+#8 automation→heartbeat 文案统一", file: "desktop/frontend/src/App.tsx", patterns: ["sidebarCreation ? <span>{t(\"sidebar.trash\")}</span> : <span className=\"sr-only\">", "heartbeat.scheduler"] },
   { feature: "任务375 collab unknown 状态自解释 hint（status+talk 回执+FORK）", file: "internal/agent/session_collab_tools.go", patterns: ["unknown = this process cannot see the session", "targetStatusHint", "authoritative dispatch evidence"] },
+  { feature: "任务387 跨会话换模型增强：非己拒绝+审计行+effort note+actionable 列表", file: "internal/agent/session_control_tool.go", patterns: ["calling session itself", "cross-session model change", "old_model", "resets to the new model"] },
+  { feature: "任务387 unknown-model actionable 列表包装", file: "desktop/session_collab.go", patterns: ["wrapUnknownModelErr", "available models on that session"] },
 ];
 
 let failed = 0;
