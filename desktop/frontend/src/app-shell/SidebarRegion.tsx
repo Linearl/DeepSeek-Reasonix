@@ -89,12 +89,12 @@ export function SidebarRegion(props: SidebarRegionProps) {
           <nav className="sidebar__nav sidebar__nav--footer">
             <div className="sidebar__utility-row" aria-label={t("sidebar.utilityActions")}>
               <UtilityButton label={t("sidebar.trash")} icon={<Trash2 size={16} />} onClick={props.onOpenTrash} />
-              <UtilityButton label={t("heartbeat.scheduler")} icon={<AlarmClock size={16} />} onClick={props.onOpenAutomation} />
+              <UtilityButton active={props.automation} label={t("heartbeat.scheduler")} icon={<AlarmClock size={16} />} onClick={props.onOpenAutomation} />
               <UtilityButton label={t("topbar.settings")} icon={<Settings size={16} />} onClick={() => props.onOpenSettings("general")} />
             </div>
           </nav>
-        ) : (
-          <nav className={`sidebar__nav${!props.creation ? " sidebar__nav--utility" : ""}`}>
+        ) : props.creation ? (
+          <nav className="sidebar__nav">
             {props.creation && (
               <Tooltip label={t("projectTree.searchPlaceholder")} fill side="right" disabled={props.navTooltipDisabled}>
                 <button className={`sidebar__navitem sidebar__navitem--search${props.searchOpen ? " sidebar__navitem--active" : ""}`} type="button"
@@ -104,8 +104,21 @@ export function SidebarRegion(props: SidebarRegionProps) {
               </Tooltip>
             )}
             <NavButton label={t("sidebar.trash")} icon={<Trash2 size={15} />} disabledTooltip={props.navTooltipDisabled} onClick={props.onOpenTrash} />
-            {!props.creation && <NavButton active={props.automation} label={t("heartbeat.scheduler")} icon={<AlarmClock size={15} />} disabledTooltip={props.navTooltipDisabled} onClick={props.onOpenAutomation} />}
             <NavButton label={t("topbar.settings")} icon={<Settings size={15} />} disabledTooltip={props.navTooltipDisabled} onClick={() => props.onOpenSettings("general")} />
+          </nav>
+        ) : (
+          // Task 412: classic (non-creation) previously rendered the three
+          // utility entries as a vertical NavButton list at the sidebar foot —
+          // the workbench bottom-rail revamp (task 383 verdict 5) never synced
+          // here, which is what the user's v1520 screenshot shows. Align to
+          // the workbench layout: one horizontal .sidebar__utility-row of
+          // icon-only UtilityButtons with hover tooltips.
+          <nav className="sidebar__nav sidebar__nav--footer">
+            <div className="sidebar__utility-row" aria-label={t("sidebar.utilityActions")}>
+              <UtilityButton label={t("sidebar.trash")} icon={<Trash2 size={16} />} onClick={props.onOpenTrash} />
+              <UtilityButton active={props.automation} label={t("heartbeat.scheduler")} icon={<AlarmClock size={16} />} onClick={props.onOpenAutomation} />
+              <UtilityButton label={t("topbar.settings")} icon={<Settings size={16} />} onClick={() => props.onOpenSettings("general")} />
+            </div>
           </nav>
         )}
       </aside>
@@ -126,8 +139,8 @@ function FeatureButton({ icon, label, onClick, active }: { icon: ReactNode; labe
   return <button className={`sidebar-feature-zone__item${active ? " sidebar-feature-zone__item--active" : ""}`} aria-current={active ? "page" : undefined} type="button" onClick={onClick}>{icon}<span>{label}</span></button>;
 }
 
-function UtilityButton({ icon, label, onClick }: { icon: ReactNode; label: string; onClick: () => void }) {
-  return <Tooltip label={label} fill side="top"><button className="sidebar__utility-button" type="button" onClick={onClick}>{icon}<span className="sr-only">{label}</span></button></Tooltip>;
+function UtilityButton({ icon, label, onClick, active }: { icon: ReactNode; label: string; onClick: () => void; active?: boolean }) {
+  return <Tooltip label={label} fill side="top"><button className={`sidebar__utility-button${active ? " sidebar__utility-button--active" : ""}`} aria-current={active ? "page" : undefined} type="button" onClick={onClick}>{icon}<span className="sr-only">{label}</span></button></Tooltip>;
 }
 
 function NavButton({ icon, label, disabledTooltip, onClick, active }: { icon: ReactNode; label: string; disabledTooltip: boolean; onClick: () => void; active?: boolean }) {

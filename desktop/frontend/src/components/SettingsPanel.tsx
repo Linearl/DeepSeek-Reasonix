@@ -10,6 +10,7 @@ import { providerDefaultLabel, providerDisplayLabel } from "../lib/providerLabel
 import { isDockTabHidden, isLastRenderableVisibleTab, setDockTabHidden } from "../lib/dockTabs";
 import { labFlagEnabled } from "../lib/labFlags";
 import { useRemoteStore } from "../store/remote";
+import { reportFrontendLog } from "../lib/frontendLog";
 import { useConfirmDialog } from "./ConfirmDialog";
 import ForkFeaturesIntroDialog from "./ForkFeaturesIntroDialog";
 
@@ -3809,7 +3810,24 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
               key={style}
               className={`set-seg__btn${desktopLayoutStyle === style ? " set-seg__btn--on" : ""}`}
               disabled={busy}
-              onClick={() => void apply(() => app.SetDesktopLayoutStyle(style))}
+              onClick={() => {
+                // Task 412 (evidence-first): the layout switch had NO dedicated
+                // timing trace — desktop.log only carries tab-switch timing, so
+                // the user's "classic→workbench takes forever" could not be
+                // quantified. Three probes per switch, both directions (from/to
+                // recorded): started → applied (settings write chain resolved)
+                // → painted (double-rAF, UI actually re-laid-out). The data
+                // decides whether an optimization task is warranted.
+                const from = desktopLayoutStyle;
+                const t0 = performance.now();
+                reportFrontendLog("layout-switch", "layout switch started", `from=${from} to=${style}`, "info");
+                void apply(() => app.SetDesktopLayoutStyle(style)).then(() => {
+                  reportFrontendLog("layout-switch", "layout switch applied", `from=${from} to=${style} durationMs=${Math.round(performance.now() - t0)}`, "info");
+                  requestAnimationFrame(() => requestAnimationFrame(() => {
+                    reportFrontendLog("layout-switch", "layout switch painted", `from=${from} to=${style} durationMs=${Math.round(performance.now() - t0)}`, "info");
+                  }));
+                });
+              }}
             >
               {desktopLayoutStyleLabel(style, t)}
             </button>

@@ -32425,6 +32425,48 @@ body > .mermaid-diagram--fullscreen {
   stroke-width: 1.9;
 }
 
+/* Task 412: classic's bottom rail now renders the same utility-row markup as
+   workbench (SidebarRegion), but every utility style above lives under
+   .sidebar--workbench — mirror the layout scope for classic so the three
+   icons sit on one horizontal rail instead of the old vertical NavButton
+   column. Tokens are the same mixes the workbench block defines; spelled out
+   because --sidebar-workbench-* are scoped to .sidebar--workbench. */
+.sidebar:not(.sidebar--workbench) .sidebar__nav--footer .sidebar__utility-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  --wails-draggable: no-drag;
+}
+.sidebar:not(.sidebar--workbench) .sidebar__utility-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 32px;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--fg-faint);
+  transition: color var(--dur-fast), background var(--dur-fast), border-color var(--dur-fast);
+}
+.sidebar:not(.sidebar--workbench) .sidebar__utility-button:hover {
+  border-color: color-mix(in srgb, var(--border-soft) 82%, var(--fg-faint));
+  background: var(--sidebar-hover);
+  color: var(--fg);
+}
+.sidebar:not(.sidebar--workbench) .sidebar__utility-button svg {
+  flex: 0 0 auto;
+  stroke-width: 1.9;
+}
+/* Automation-active marker shared by both layouts (declared after the
+   workbench utility rules so it wins the equal-specificity cascade). */
+.sidebar .sidebar__utility-button--active {
+  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+}
+
 .project-tree__group {
   position: relative;
 }
