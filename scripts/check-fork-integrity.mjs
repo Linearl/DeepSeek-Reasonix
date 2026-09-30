@@ -272,6 +272,13 @@ const CHECKS = [
   { feature: "任务152 面板树渲染+归档区 TSX", file: "desktop/frontend/src/components/TodoPanel.tsx", patterns: ["function TodoTree", "function TodoArchive", "todobar__archive-toggle", "todobar__caret"] },
   { feature: "任务152 树/归档 CSS（theme token）", file: "desktop/frontend/src/styles.css", patterns: [".todobar__item--deep", ".todobar__caret", ".todobar__code", ".todobar__archive-toggle"] },
   { feature: "任务152 压缩摘要任务树快照段", file: "internal/agent/compact.go", patterns: ["## Task tree"] },
+  // M4a zcodebridge：reasonix→zcode 实时注入通道（spawn app-server --stdio，
+  // 冻结面 = 握手 fail-closed + session/list + sendText + session/events afterSeq）。
+  // 接线锚点锁三处：env 门、双启动点、协议闸门——任一被 merge 丢掉 = 静默失联。
+  { feature: "M4a zcodebridge 客户端与握手 fail-closed", file: "internal/zcodebridge/zcodebridge.go", patterns: ["ErrProtocolMismatch", "func Open(", "func (b *Bridge) handshake("] },
+  { feature: "M4a zcodebridge sendText/events 冻结面", file: "internal/zcodebridge/inject.go", patterns: ["DeliveryStartNow", "requestedDelivery", "func (b *Bridge) SendText("] },
+  { feature: "M4a zcodebridge serve 接线（env 门+启动点）", file: "internal/serve/zcodebridge.go", patterns: ["REASONIX_ZCODE_BRIDGE", "func (s *Server) startZcodeBridge()", "runZcodeBridge"] },
+  { feature: "M4a zcodebridge 双启动调用点", file: "internal/serve/serve.go", patterns: ["s.startZcodeBridge()"] },
 ];
 
 let failed = 0;
