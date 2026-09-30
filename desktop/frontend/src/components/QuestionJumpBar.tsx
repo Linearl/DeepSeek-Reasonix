@@ -1,8 +1,9 @@
 // QuestionJumpBar: the question navigator rail along the transcript edge.
 
-import { useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { useT } from "../lib/i18n";
 import type { QuestionAnchor } from "../lib/transcriptGrouping";
+import { buildJumpPreviewContent, jumpPreviewPlacement, JUMP_PREVIEW_ESTIMATED_HEIGHT } from "../lib/jumpPreview";
 
 export const QUESTION_JUMP_MAX_MARKERS = 60;
 
@@ -54,7 +55,20 @@ export function QuestionJumpBar({
   const barRef = useRef<HTMLElement>(null);
   const railRef = useRef<HTMLDivElement>(null);
   const previewTop = useRef(0);
+  const previewRef = useRef<HTMLDivElement>(null);
   const [showPreview, setShowPreview] = useState(false);
+  // The card is measured after paint-free layout so the edge-flip placement
+  // works with the real card height, not a guess. The estimate only covers the
+  // very first frame; useLayoutEffect corrects it before the browser paints.
+  const [cardHeight, setCardHeight] = useState(JUMP_PREVIEW_ESTIMATED_HEIGHT);
+
+  useLayoutEffect(() => {
+    if (!showPreview) return;
+    const element = previewRef.current;
+    if (!element) return;
+    const measured = Math.round(element.getBoundingClientRect().height);
+    if (measured > 0 && measured !== cardHeight) setCardHeight(measured);
+  }, [showPreview, hovered, cardHeight]);
 
   const loadedByTurn = useMemo(() => {
     const loaded = new Map<number, QuestionAnchor>();
@@ -157,6 +171,15 @@ export function QuestionJumpBar({
   const density = markerTurns.length > 40 ? "packed" : markerTurns.length > 20 ? "compact" : "normal";
   const activeValue = active ?? Math.max(0, total - 1);
 
+  // Rich hover card content (task 149): bold lead + body lines + tool tags.
+  // The anchor is forwarded as-is — the pure builder reads `text`/`loaded`
+  // today and will pick up optional `title`/`body`/`tools` fields on the
+  // anchor automatically once the data path attaches them.
+  const preview = hoveredQuestion ? buildJumpPreviewContent(hoveredQuestion) : null;
+  const placement = preview
+    ? jumpPreviewPlacement(previewTop.current, cardHeight, barRef.current?.clientHeight ?? 0)
+    : null;
+
   // When many history turns are marked, grow the rail's vertical extent so each
   // marker keeps a comfortable ~12px gap instead of being packed into a fixed
   // 240px column. The height grows with the marker count, capped at 70vh, so a
@@ -207,9 +230,30 @@ export function QuestionJumpBar({
           </span>
         ))}
       </div>
-      {showPreview && hoveredQuestion && (
-        <div className="jump-preview" style={{ top: previewTop.current }} role="tooltip">
-          <span className="jump-text">{hoveredQuestion.text}</span>
+      {showPreview && preview && placement && (
+        <div
+          className="jump-preview"
+          ref={previewRef}
+          style={{ top: placement.top }}
+          role="tooltip"
+          data-flip={placement.flip}
+          data-placeholder={preview.placeholder || undefined}
+        >
+          <span className="jump-preview-title">{preview.title}</span>
+          {preview.bodyLines.length > 0 && (
+            <span className="jump-preview-body">
+              {preview.bodyLines.map((line, index) => (
+                <span className="jump-preview-line" key={index}>{line}</span>
+              ))}
+            </span>
+          )}
+          {preview.tools.length > 0 && (
+            <span className="jump-preview-tools">
+              {preview.tools.map((tool) => (
+                <span className="jump-preview-tool" key={tool}>{tool}</span>
+              ))}
+            </span>
+          )}
         </div>
       )}
     </nav>

@@ -23,6 +23,7 @@ const CHECKS = [
   { feature: "#9221 颜色筛选 CSS", file: "desktop/frontend/src/styles.css", patterns: [".project-tree__color-filter", ".project-tree__color-opt", ".project-tree__color-swatch", ".project-tree__action-btn--active"] },
   { feature: "#9221 颜色筛选锚点", file: "desktop/frontend/src/styles.css", patterns: [".project-tree__color-filter {\n  position: relative;"] },
   { feature: "heartbeat 编辑器样式", file: "desktop/frontend/src/custom/features/heartbeat/heartbeat.css", patterns: [".heartbeat-editor__model-override", ".heartbeat-editor__input"] },
+  { feature: "任务149 悬停预览富文本卡 CSS", file: "desktop/frontend/src/styles.css", patterns: [".jump-preview-title", ".jump-preview-body", ".jump-preview-tool"] },
 
   // ── 前端 TS ─────────────────────────────────────────────────────
   { feature: "task 163 OpenCode Go 用量查询（后端）", file: "desktop/opencode_go_usage.go", patterns: ["isOfficialOpenCodeGoBase", "no-subscription", "Bearer ", "parseOpenCodeGoUsage"] },
@@ -75,6 +76,10 @@ const CHECKS = [
   // 版顶掉时不会有冲突标记，故登记语义锚点（含开关参数名与顶部守卫常量）。
   { feature: "任务160 顶部上滚加载更早（开关门控）", file: "desktop/frontend/src/lib/useTranscriptKernel.ts", patterns: ["autoLoadOlderAtTop", "HISTORY_TOP_GUARD_PX", "requestOlderAtTop"] },
   { feature: "任务160 加载更早按钮", file: "desktop/frontend/src/components/TranscriptViewport.tsx", patterns: ["chat-older", "showLoadOlder"] },
+  // 任务 149：预览卡是 fork 独有交互（上游 jump 预览只有一行纯文本），内容结构
+  // （粗体标题/多行正文/工具标记）与贴边翻转都在 fork 侧，整块被顶掉不会有冲突标记。
+  { feature: "任务149 悬停预览富文本卡 TSX", file: "desktop/frontend/src/components/QuestionJumpBar.tsx", patterns: ["jump-preview-title", "jump-preview-tool", "jumpPreviewPlacement", "data-flip"] },
+  { feature: "任务149 预览内容/翻转纯函数", file: "desktop/frontend/src/lib/jumpPreview.ts", patterns: ["buildJumpPreviewContent", "jumpPreviewPlacement", "JUMP_PREVIEW_MAX_TOOLS"] },
 
   // ── Go 后端 ─────────────────────────────────────────────────────
   { feature: "#9572 摘要安全前缀", file: "internal/agent/compact_projection.go", patterns: ["trigger != CompactionTriggerManual", "maximumSafeSummaryPrefixEnd"] },
