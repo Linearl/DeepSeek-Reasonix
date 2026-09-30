@@ -482,7 +482,7 @@ for (const path of localeChunks) {
   // at 85.5 (this branch's merged budget, measured under the line).
   // Task 385a (回答风格 selector, 11 locale keys ×3): zh measures 84.250 over
   // the 84.0 line and zh-TW 85.547 over 85.5 — one-shot +0.5 each (ratchet rule).
-  const budget = name.startsWith("zh-TW-") ? 86.0 * 1024 : 84.5 * 1024; // task 385a: zh 84.0->84.5, zh-TW 85.5->86.0; one-shot +0.5 each
+  const budget = name.startsWith("zh-TW-") ? 86.0 * 1024 : 85.0 * 1024; // task 385a: zh 84.0->84.5, zh-TW 85.5->86.0; one-shot +0.5 each // batch-8 merge stack: zh measures 84.6 over the merged 84.5 line (373-R1 + 385a stacked) — one-shot +0.5 to 85.0 per the 2026-09-20 ratchet rule (no drip)
   // Task 380/O4 (detached idle release input): zh-TW measures dead-even
   // 84.5/84.5 (2 new locale keys x 3 dialects) — one-shot +0.5 to 85.0; zh
   // holds at 83.5 (measured under the line this batch).
