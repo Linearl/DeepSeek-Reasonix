@@ -24,6 +24,7 @@ import (
 
 	"reasonix/internal/event"
 	"reasonix/internal/mcplaunch"
+	"reasonix/internal/netclient"
 	"reasonix/internal/sandbox"
 	"reasonix/internal/secrets"
 	"reasonix/internal/tool"
@@ -134,6 +135,14 @@ type Spec struct {
 	Sandbox         sandbox.Spec
 	StateDir        string
 	OAuthHTTPClient *http.Client
+	// Proxy carries the session's user-facing proxy resolution (netclient) for
+	// http/sse transports. Zero value keeps the fail-open auto mode: environment
+	// proxy variables first, then the OS system proxy — so an overseas http MCP
+	// server (e.g. https://mcp.exa.ai/mcp) still routes through the user's
+	// system proxy without any env var set. Boot fills it from
+	// cfg.NetworkProxySpec(); it is host-only transport policy and never
+	// contributes to SchemaCacheKey or provider-visible tool schemas.
+	Proxy netclient.ProxySpec
 	// ProtocolVersion pins the MCP protocol version requested during the
 	// handshake (task 256). Empty keeps the SDK default, which starts at the
 	// newest spec version and probes SEP-2575 server/discover first — a
@@ -1116,6 +1125,7 @@ type mcpRuntimeSpecIdentity struct {
 	StateDir                string
 	StripRawPrefix          string
 	LowPriority             bool
+	Proxy                   netclient.ProxySpec
 }
 
 func mcpRuntimeSpecIdentityOf(s Spec) mcpRuntimeSpecIdentity {
@@ -1152,6 +1162,7 @@ func mcpRuntimeSpecIdentityOf(s Spec) mcpRuntimeSpecIdentity {
 		StateDir:                s.StateDir,
 		StripRawPrefix:          s.StripRawPrefix,
 		LowPriority:             s.LowPriority,
+		Proxy:                   canonicalMCPRuntimeProxy(s.Proxy),
 	}
 }
 
@@ -1173,6 +1184,15 @@ func canonicalMCPRuntimeSandbox(in sandbox.Spec) sandbox.Spec {
 	in.ReadRoots = nonEmptyStrings(in.ReadRoots)
 	in.AppContainerWriteRoots = nonEmptyStrings(in.AppContainerWriteRoots)
 	in.ForbidReadRoots = nonEmptyStrings(in.ForbidReadRoots)
+	return in
+}
+
+// canonicalMCPRuntimeProxy normalizes the proxy spec for runtime identity
+// comparison: empty/unknown modes collapse to auto, and empty direct-host
+// lists compare equal regardless of nil vs empty slice.
+func canonicalMCPRuntimeProxy(in netclient.ProxySpec) netclient.ProxySpec {
+	in.Mode = netclient.NormalizeMode(in.Mode)
+	in.DirectHosts = nonEmptyStrings(in.DirectHosts)
 	return in
 }
 

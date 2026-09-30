@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
+	"reasonix/internal/netclient"
 )
 
 const mcpSubscriptionsListenMethod = "subscriptions/listen"
@@ -72,7 +74,24 @@ func newMCPHTTPClient(lifetime context.Context, s Spec) (*http.Client, error) {
 	}
 	headers := make(map[string]string, len(s.Headers))
 	maps.Copy(headers, s.Headers)
-	base := http.DefaultTransport.(*http.Transport).Clone()
+	// Build the base transport through netclient so the session's user-facing
+	// proxy settings apply: an overseas http MCP server must not dial direct
+	// when the user only has a system proxy (or [network] proxy_mode) set —
+	// a direct dial to a blocked endpoint hangs at TCP level. The zero-value
+	// spec keeps netclient's fail-open auto mode (env vars, then OS proxy).
+	//
+	// Loopback endpoints are the exception (task 168 regression): local IDE and
+	// browser MCP proxies listen on 127.0.0.1, and the OS system proxy can
+	// never reach the user's own loopback listeners. httpproxy's built-in
+	// localhost bypass only covers the env leg, so force direct here for every
+	// proxy mode.
+	if isLoopbackHTTPOrigin(origin) {
+		s.Proxy = netclient.ProxySpec{Mode: netclient.ModeOff}
+	}
+	base, err := netclient.NewTransport(s.Proxy, netclient.TransportOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("MCP transport %q: %w", s.Name, err)
+	}
 	client := &http.Client{
 		Transport: &sameOriginMCPRoundTripper{
 			origin:   origin,
@@ -190,6 +209,22 @@ func sameHTTPOrigin(a, b *url.URL) bool {
 		}
 	}
 	return effectivePort(a) == effectivePort(b)
+}
+
+// isLoopbackHTTPOrigin reports whether the endpoint host is the local machine
+// (127.0.0.0/8, ::1, or the localhost names).
+func isLoopbackHTTPOrigin(origin *url.URL) bool {
+	if origin == nil {
+		return false
+	}
+	host := strings.ToLower(strings.TrimSpace(origin.Hostname()))
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
 }
 
 func (t *sdkSessionTransport) newEndpoint(ctx context.Context) (sdkEndpoint, error) {
