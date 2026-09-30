@@ -1,0 +1,181 @@
+package agent
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"log/slog"
+	"os"
+	"strings"
+
+	"reasonix/internal/config"
+	"reasonix/internal/provider"
+)
+
+// Task 373-R1: content-addressed image storage for session event logs.
+//
+// Vision-heavy sessions re-serialize every still-visible image into each new
+// message entry, so an append-only log accumulates hundreds of duplicate
+// copies of the same bytes (measured: 200 attachments / 35 unique / 165
+// duplicate copies = 124MiB pure redundancy in one 259MB file). With the
+// experimental_image_dedup gate ON, the write path stores each image blob
+// once in a <log>.imgpack/ sidecar directory (hash-keyed one-file-per-blob,
+// atomic temp+rename, blob written before the referencing entry) and keeps
+// only the FIRST occurrence inline — later occurrences carry a
+// reasonix-img://<sha256hex> reference. Upstream readers see the first copy
+// inline (fully readable) and gracefully skip the non-data-URL references
+// (provider layers only parse data URLs); our reader de-references references
+// from the pack on load. Gate OFF: the write path is byte-identical to before
+// and no pack is created; the read-side de-reference is not gated, so files
+// written while the gate was on keep loading correctly after it is switched
+// off.
+
+const (
+	// imageRefScheme marks a de-duplicated image reference inside a message.
+	imageRefScheme = "reasonix-img://"
+	// imageDedupeMinBytes skips tiny images (icons) — the dedupe overhead is
+	// not worth it below this size.
+	imageDedupeMinBytes = 4096
+)
+
+// imagePackDir maps an event-log path to its blob directory.
+func imagePackDir(logPath string) string { return logPath + ".imgpack" }
+
+// imageBlobPath maps a hash to its one-file-per-blob path. Naming blobs by
+// their own hash keeps writes idempotent: two racers write the same bytes to
+// the same temp file and rename over the same final name.
+func imageBlobPath(logPath, hashHex string) string {
+	return fmt.Sprintf("%s/%s.imgblob", imagePackDir(logPath), hashHex)
+}
+
+// imageHash is the content hash used as the dedupe key and reference id.
+func imageHash(image string) string {
+	sum := sha256.Sum256([]byte(image))
+	return hex.EncodeToString(sum[:])
+}
+
+func imageRef(hashHex string) string { return imageRefScheme + hashHex }
+
+func isImageRef(s string) bool {
+	return strings.HasPrefix(s, imageRefScheme)
+}
+
+func imageRefHash(s string) string { return strings.TrimPrefix(s, imageRefScheme) }
+
+// imageDedupGateOn reads the task-373-R1 write gate
+// (the experimental_image_dedup config key is the settings surface;
+// REASONIX_IMAGE_DEDUP=1 overrides for one process — env precedent
+// REASONIX_MCP_NO_REUSE). Default off: the write path is byte-identical to
+// before and no pack is created. The read-side de-reference is NOT gated, so
+// files written while the gate was on keep loading correctly after it is
+// switched off.
+func imageDedupGateOn() bool {
+	if os.Getenv("REASONIX_IMAGE_DEDUP") == "1" {
+		return true
+	}
+	cfg, err := config.Load()
+	if err != nil || cfg == nil {
+		return false
+	}
+	return cfg.Agent.ExperimentalImageDedup
+}
+
+// imageBlobExists reports whether the pack already holds this hash.
+func imageBlobExists(logPath, hashHex string) bool {
+	_, err := os.Stat(imageBlobPath(logPath, hashHex))
+	return err == nil
+}
+
+// putImageBlob stores the blob once (idempotent via same-name rename) before
+// the referencing entry is appended.
+func putImageBlob(logPath, hashHex string, data []byte) error {
+	dir := imagePackDir(logPath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	final := imageBlobPath(logPath, hashHex)
+	if _, err := os.Stat(final); err == nil {
+		return nil
+	}
+	tmp, err := os.CreateTemp(dir, ".imgblob-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	return os.Rename(tmpName, final)
+}
+
+// getImageBlob loads the blob bytes for a hash from the pack directory.
+func getImageBlob(logPath, hashHex string) ([]byte, error) {
+	data, err := os.ReadFile(imageBlobPath(logPath, hashHex))
+	if err != nil {
+		return nil, fmt.Errorf("image blob %s: %w", hashHex[:12], err)
+	}
+	return data, nil
+}
+
+// dedupeMessageImages rewrites m.Images in place per the signed design: the
+// first occurrence of each unique image stays inline (upstream-readable);
+// every later occurrence becomes a reasonix-img:// reference with the blob
+// stored in the pack (written before the referencing entry lands). Returns
+// the number of references installed. An empty Images field is a no-op.
+func dedupeMessageImages(m *provider.Message, logPath string) int {
+	if len(m.Images) == 0 {
+		return 0
+	}
+	refs := 0
+	for i, img := range m.Images {
+		if len(img) < imageDedupeMinBytes || isImageRef(img) {
+			continue
+		}
+		hashHex := imageHash(img)
+		if imageBlobExists(logPath, hashHex) {
+			m.Images[i] = imageRef(hashHex)
+			refs++
+			continue
+		}
+		// First sighting: keep inline for upstream readability and store the
+		// blob so later copies (and our own reader) can resolve.
+		if err := putImageBlob(logPath, hashHex, []byte(img)); err != nil {
+			slog.Warn("image blob store failed, keeping inline", "err", err)
+			continue
+		}
+	}
+	return refs
+}
+
+// resolveMessageImages de-references reasonix-img:// entries in m.Images from
+// the pack, restoring the original inline bytes. Read-side: NOT gated by the
+// write switch, so files written under the gate keep loading after it is
+// switched off. Missing blobs degrade to an unresolved reference with a
+// warning — never a load failure.
+func resolveMessageImages(m *provider.Message, logPath string) {
+	if len(m.Images) == 0 {
+		return
+	}
+	for i, img := range m.Images {
+		if !isImageRef(img) {
+			continue
+		}
+		data, err := getImageBlob(logPath, imageRefHash(img))
+		if err != nil {
+			slog.Warn("image reference unresolved", "ref", imageRefHash(img)[:12], "err", err)
+			continue
+		}
+		m.Images[i] = string(data)
+	}
+}

@@ -2384,6 +2384,8 @@ export interface DesktopStartupSettingsView {
   experimentalModelCapabilityFilter?: boolean;
   /** Task 363A: reuse the runtime assembly across same-config tabs instead of full rebuild; off unless the user opts in. */
   experimentalRuntimeReuse?: boolean;
+  /** Task 373-R1: image dedup write gate (references in new entries). */
+  experimentalImageDedup?: boolean;
   sessionCollabHopLimit?: number; // task 204: cross-session chain ceiling (3..1000, default 5)
   /** Task 308-O4: detached idle runtime release threshold in minutes (0 = never release). */
   detachedIdleReleaseMinutes?: number;

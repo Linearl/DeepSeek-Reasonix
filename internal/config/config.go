@@ -1680,6 +1680,12 @@ type AgentConfig struct {
 	// per-request effort override). Off by default (fork rule 2): the current
 	// full-rebuild path stays byte-identical.
 	ExperimentalRuntimeReuse bool `toml:"experimental_runtime_reuse"`
+	// ExperimentalImageDedup enables the task-373-R1 image dedup write gate:
+	// new message entries store each unique image blob once in the .imgpack
+	// sidecar and keep only duplicates as reasonix-img:// references. Off by
+	// default (fork rule 2): the write path is byte-identical to before. The
+	// read side de-references references regardless of this switch.
+	ExperimentalImageDedup bool `toml:"experimental_image_dedup"`
 	// CollabInboxMerge controls how the durable inbox drains multiple queued
 	// items (task 221). "off" (default) keeps the current one-item-per-dispatch
 	// FIFO; "same_sender" merges queued items that share an envelope Source

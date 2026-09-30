@@ -570,6 +570,11 @@ func decodeSessionEventMessages(
 		if err := dec.Decode(&msg); err != nil {
 			return nil, existingCollectionItems, err
 		}
+		// Task 373-R1: de-reference reasonix-img:// entries from the .imgpack
+		// sidecar. Read-side — deliberately NOT gated by the write switch, so
+		// files written while the gate was on keep loading after it is
+		// switched off. Unresolvable refs degrade with a warning, never fail.
+		resolveMessageImages(&msg, path)
 		msgs = append(msgs, msg)
 	}
 	if _, err := dec.Token(); err != nil {

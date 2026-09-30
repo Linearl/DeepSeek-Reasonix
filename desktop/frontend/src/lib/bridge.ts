@@ -923,6 +923,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalModelCapabilityFilter(enabled: boolean): Promise<void>;
   // Task 363A: runtime assembly reuse pool (same root+model+effort tabs).
   SetExperimentalRuntimeReuse(enabled: boolean): Promise<void>;
+  // Task 373-R1: image dedup write gate (references in new entries).
+  SetExperimentalImageDedup(enabled: boolean): Promise<void>;
   SetSessionCollabHopLimit(limit: number): Promise<void>;
   // Task 308-O4: detached idle runtime release threshold (minutes; 0 = never).
   SetDetachedIdleReleaseMinutes(minutes: number): Promise<void>;
@@ -5285,6 +5287,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalRecoveryOrphanSweep() {},
     async SetExperimentalModelCapabilityFilter() {},
     async SetExperimentalRuntimeReuse() {},
+    async SetExperimentalImageDedup() {},
     async SetSessionCollabHopLimit() {},
     async SetDetachedIdleReleaseMinutes() {},
     async SetGoMemLimitMB() {},

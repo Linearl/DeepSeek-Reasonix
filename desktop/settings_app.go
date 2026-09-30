@@ -411,6 +411,7 @@ type SettingsView struct {
 	ExperimentalRecoveryOrphanSweep   bool `json:"experimentalRecoveryOrphanSweep"`
 	ExperimentalModelCapabilityFilter bool `json:"experimentalModelCapabilityFilter"`
 	ExperimentalRuntimeReuse          bool `json:"experimentalRuntimeReuse"`
+	ExperimentalImageDedup            bool `json:"experimentalImageDedup"`
 	// Task 244 B1/B2/B3: settings-view mirrors of the [agent] runtime flags.
 	ExperimentalAutonomousIdleTerminate bool   `json:"experimentalAutonomousIdleTerminate"`
 	ExperimentalLoopStreakNote          bool   `json:"experimentalLoopStreakNote"`
@@ -588,6 +589,8 @@ type DesktopStartupSettingsView struct {
 	ExperimentalRecoveryOrphanSweep   bool `json:"experimentalRecoveryOrphanSweep"`
 	ExperimentalModelCapabilityFilter bool `json:"experimentalModelCapabilityFilter"`
 	ExperimentalRuntimeReuse          bool `json:"experimentalRuntimeReuse"`
+	// ExperimentalImageDedup is the task-373-R1 image dedup write gate.
+	ExperimentalImageDedup              bool `json:"experimentalImageDedup"`
 	// Task 244 B1/B2/B3: settings-view mirrors of the [agent] runtime flags.
 	ExperimentalAutonomousIdleTerminate bool `json:"experimentalAutonomousIdleTerminate"`
 	ExperimentalLoopStreakNote          bool `json:"experimentalLoopStreakNote"`
@@ -1324,6 +1327,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 
 		view.ExperimentalModelCapabilityFilter = cfg.Desktop.ExperimentalModelCapabilityFilter || cfg.Agent.ExperimentalModelCapabilityFilter
 		view.ExperimentalRuntimeReuse = cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse
+		view.ExperimentalImageDedup = cfg.Desktop.ExperimentalImageDedup || cfg.Agent.ExperimentalImageDedup
 		view.ExperimentalPerfMonitor = cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor
 		view.PerfMonitorIntervalSeconds = cfg.Desktop.PerfMonitorIntervalSeconds
 		view.SessionCollabHopLimit = cfg.Desktop.SessionCollabHopLimit
@@ -1452,6 +1456,7 @@ func (a *App) Settings() SettingsView {
 		// Task 244 batch 4: B9 model capability filter.
 		ExperimentalModelCapabilityFilter: cfg.Desktop.ExperimentalModelCapabilityFilter || cfg.Agent.ExperimentalModelCapabilityFilter,
 		ExperimentalRuntimeReuse:          cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse,
+		ExperimentalImageDedup:            cfg.Desktop.ExperimentalImageDedup || cfg.Agent.ExperimentalImageDedup,
 		ExperimentalPerfMonitor:           cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,
 		PerfMonitorIntervalSeconds:        cfg.Desktop.PerfMonitorIntervalSeconds,
 		SessionCollabHopLimit:             cfg.Desktop.SessionCollabHopLimit,

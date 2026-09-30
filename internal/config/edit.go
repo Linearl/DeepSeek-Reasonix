@@ -918,6 +918,16 @@ func (c *Config) SetExperimentalRuntimeReuse(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalImageDedup toggles the task-373-R1 image dedup write gate
+// (settings → 实验特性). Desktop keeps the settings-view mirror; Agent
+// carries the runtime flag. Applies to newly appended entries without a
+// restart; already-written reference files keep loading either way.
+func (c *Config) SetExperimentalImageDedup(enabled bool) error {
+	c.Desktop.ExperimentalImageDedup = enabled
+	c.Agent.ExperimentalImageDedup = enabled
+	return nil
+}
+
 // SetSessionCollabGates writes the task-173 collaboration panel gates in one
 // call so the settings view cannot half-apply a panel. Nil pointers keep the
 // current value; the master switch is written separately through
