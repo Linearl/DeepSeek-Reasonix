@@ -279,6 +279,15 @@ const CHECKS = [
   { feature: "M4a zcodebridge sendText/events 冻结面", file: "internal/zcodebridge/inject.go", patterns: ["DeliveryStartNow", "requestedDelivery", "func (b *Bridge) SendText("] },
   { feature: "M4a zcodebridge serve 接线（env 门+启动点）", file: "internal/serve/zcodebridge.go", patterns: ["REASONIX_ZCODE_BRIDGE", "func (s *Server) startZcodeBridge()", "runZcodeBridge"] },
   { feature: "M4a zcodebridge 双启动调用点", file: "internal/serve/serve.go", patterns: ["s.startZcodeBridge()"] },
+  // bus#3 邮件→注入接线：zcode 角色信箱投递成功后经 zcodebridge 给运行中会话
+  // 打实时提醒（queue 语义）。失败语义 = 邮件留在收件箱（不丢不重），zcode 会话
+  // 自觉轮询兜底。锚点锁四处：busmcp 回调面、两处投递点、serve 注入器——任一被
+  // merge 丢掉 = reasonix→zcode「实时」半环静默断裂（只剩轮询）。
+  { feature: "bus3 busmcp 投递后注入回调面", file: "internal/busmcp/inject.go", patterns: ["type MailInjector interface", "func (s *Server) notifyInjector("] },
+  { feature: "bus3 event 投递点接线", file: "internal/busmcp/busmcp.go", patterns: ["s.notifyInjector(s.eventTarget, msg)"] },
+  { feature: "bus3 send/spawn 投递点接线", file: "internal/busmcp/tools.go", patterns: ["rt.bus.notifyInjector(msg.To, msg)"] },
+  { feature: "bus3 serve 注入器（queue 语义+邮件留存兜底）", file: "internal/serve/zcodebridgeinject.go", patterns: ["func injectBusMailVia(", "zcodebridge.DeliveryQueue", "mail stays in inbox"] },
+  { feature: "bus3 serve 接线注入器与桥 workspace 解析", file: "internal/serve/serve.go", patterns: ["Injector: zcodeMailInjector{s: s}", "zcodeBridgeWorkspace atomic.Pointer[string]"] },
 ];
 
 let failed = 0;
