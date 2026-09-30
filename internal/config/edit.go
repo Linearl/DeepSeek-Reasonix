@@ -873,13 +873,20 @@ func (c *Config) SetExperimentalRuntimeReuse(enabled bool) error {
 	return nil
 }
 
-// SetExperimentalImageDedup toggles the task-373-R1 image dedup write gate
-// (settings → 实验特性). Desktop keeps the settings-view mirror; Agent
-// carries the runtime flag. Applies to newly appended entries without a
+// SetExperimentalImageDedup sets the task-373-R1/R1.1 three-position image
+// dedup switch (settings → 实验特性): "off" | "first" | "all". Any other
+// value is clamped to "off". Desktop keeps the settings-view mirror; Agent
+// carries the runtime value. Applies to newly appended entries without a
 // restart; already-written reference files keep loading either way.
-func (c *Config) SetExperimentalImageDedup(enabled bool) error {
-	c.Desktop.ExperimentalImageDedup = enabled
-	c.Agent.ExperimentalImageDedup = enabled
+func (c *Config) SetExperimentalImageDedup(mode string) error {
+	switch mode {
+	case "first", "all":
+		c.Desktop.ExperimentalImageDedup = mode
+		c.Agent.ExperimentalImageDedup = mode
+	default:
+		c.Desktop.ExperimentalImageDedup = "off"
+		c.Agent.ExperimentalImageDedup = "off"
+	}
 	return nil
 }
 

@@ -147,8 +147,8 @@ type DesktopConfig struct {
 	// runtime flag of task 363A (runtime assembly reuse pool).
 	ExperimentalRuntimeReuse bool `toml:"experimental_runtime_reuse"`
 	// ExperimentalImageDedup is the settings-view mirror for the [agent]
-	// runtime flag of task 373-R1 (image dedup write gate).
-	ExperimentalImageDedup bool `toml:"experimental_image_dedup"`
+	// three-position image dedup switch of task 373-R1/R1.1: off | first | all.
+	ExperimentalImageDedup string `toml:"experimental_image_dedup"`
 	// CollabInboxMerge is the settings-view mirror for Agent.CollabInboxMerge
 	// (task 221): off | same_sender | all.
 	CollabInboxMerge string `toml:"collab_inbox_merge"`

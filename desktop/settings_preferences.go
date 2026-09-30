@@ -485,8 +485,8 @@ func (a *App) SetExperimentalRuntimeReuse(enabled bool) error {
 // SetExperimentalImageDedup toggles the task-373-R1 image dedup write gate.
 // Read per append for new entries — no restart; already-written reference
 // files keep loading via the ungated read side.
-func (a *App) SetExperimentalImageDedup(enabled bool) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalImageDedup(enabled) })
+func (a *App) SetExperimentalImageDedup(mode string) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalImageDedup(mode) })
 }
 
 // SetExperimentalPerfMonitor toggles the host performance monitor (task 184).

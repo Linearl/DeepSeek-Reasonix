@@ -406,11 +406,11 @@ type SettingsView struct {
 	ExperimentalSessionCollab  bool `json:"experimentalSessionCollab"`
 	ExperimentalAutoLoadOlder  bool `json:"experimentalAutoLoadOlder"`
 	// Task 244 B5/B4: settings-view mirrors of the [agent] runtime flags.
-	ExperimentalOrphanLeaseReclaim    bool `json:"experimentalOrphanLeaseReclaim"`
-	ExperimentalRecoveryOrphanSweep   bool `json:"experimentalRecoveryOrphanSweep"`
-	ExperimentalModelCapabilityFilter bool `json:"experimentalModelCapabilityFilter"`
-	ExperimentalRuntimeReuse          bool `json:"experimentalRuntimeReuse"`
-	ExperimentalImageDedup            bool `json:"experimentalImageDedup"`
+	ExperimentalOrphanLeaseReclaim    bool   `json:"experimentalOrphanLeaseReclaim"`
+	ExperimentalRecoveryOrphanSweep   bool   `json:"experimentalRecoveryOrphanSweep"`
+	ExperimentalModelCapabilityFilter bool   `json:"experimentalModelCapabilityFilter"`
+	ExperimentalRuntimeReuse          bool   `json:"experimentalRuntimeReuse"`
+	ExperimentalImageDedup            string `json:"experimentalImageDedup"`
 	// Task 244 B1/B2/B3: settings-view mirrors of the [agent] runtime flags.
 	ExperimentalAutonomousIdleTerminate bool   `json:"experimentalAutonomousIdleTerminate"`
 	ExperimentalLoopStreakNote          bool   `json:"experimentalLoopStreakNote"`
@@ -586,8 +586,9 @@ type DesktopStartupSettingsView struct {
 	ExperimentalRecoveryOrphanSweep   bool `json:"experimentalRecoveryOrphanSweep"`
 	ExperimentalModelCapabilityFilter bool `json:"experimentalModelCapabilityFilter"`
 	ExperimentalRuntimeReuse          bool `json:"experimentalRuntimeReuse"`
-	// ExperimentalImageDedup is the task-373-R1 image dedup write gate.
-	ExperimentalImageDedup              bool `json:"experimentalImageDedup"`
+	// ExperimentalImageDedup is the task-373-R1/R1.1 three-position image
+	// dedup switch (off|first|all).
+	ExperimentalImageDedup string `json:"experimentalImageDedup"`
 	// Task 244 B1/B2/B3: settings-view mirrors of the [agent] runtime flags.
 	ExperimentalAutonomousIdleTerminate bool `json:"experimentalAutonomousIdleTerminate"`
 	ExperimentalLoopStreakNote          bool `json:"experimentalLoopStreakNote"`
@@ -680,6 +681,23 @@ func nonNil(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// strongerImageDedupMode merges the [desktop]/[agent] mirror pair for the
+// task-373-R1.1 three-position switch: the strongest mode wins
+// (all > first > off), unknown strings count as "off".
+func strongerImageDedupMode(a, b string) string {
+	rank := map[string]int{"all": 2, "first": 1}
+	if rank[a] >= rank[b] {
+		if rank[a] > 0 {
+			return a
+		}
+		return "off"
+	}
+	if rank[b] > 0 {
+		return b
+	}
+	return "off"
 }
 
 func nonNilStringMap(m map[string]string) map[string]string {
@@ -1324,7 +1342,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 
 		view.ExperimentalModelCapabilityFilter = cfg.Desktop.ExperimentalModelCapabilityFilter || cfg.Agent.ExperimentalModelCapabilityFilter
 		view.ExperimentalRuntimeReuse = cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse
-		view.ExperimentalImageDedup = cfg.Desktop.ExperimentalImageDedup || cfg.Agent.ExperimentalImageDedup
+		view.ExperimentalImageDedup = strongerImageDedupMode(cfg.Desktop.ExperimentalImageDedup, cfg.Agent.ExperimentalImageDedup)
 		view.ExperimentalPerfMonitor = cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor
 		view.PerfMonitorIntervalSeconds = cfg.Desktop.PerfMonitorIntervalSeconds
 		view.SessionCollabHopLimit = cfg.Desktop.SessionCollabHopLimit
@@ -1452,7 +1470,7 @@ func (a *App) Settings() SettingsView {
 		// Task 244 batch 4: B9 model capability filter.
 		ExperimentalModelCapabilityFilter: cfg.Desktop.ExperimentalModelCapabilityFilter || cfg.Agent.ExperimentalModelCapabilityFilter,
 		ExperimentalRuntimeReuse:          cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse,
-		ExperimentalImageDedup:            cfg.Desktop.ExperimentalImageDedup || cfg.Agent.ExperimentalImageDedup,
+		ExperimentalImageDedup:            strongerImageDedupMode(cfg.Desktop.ExperimentalImageDedup, cfg.Agent.ExperimentalImageDedup),
 		ExperimentalPerfMonitor:           cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,
 		PerfMonitorIntervalSeconds:        cfg.Desktop.PerfMonitorIntervalSeconds,
 		SessionCollabHopLimit:             cfg.Desktop.SessionCollabHopLimit,

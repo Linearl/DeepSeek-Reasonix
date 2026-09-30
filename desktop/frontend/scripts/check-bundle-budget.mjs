@@ -478,7 +478,10 @@ for (const path of localeChunks) {
   // Task 373-R1 (image dedup panel): zh measures 84.1 over the 84.0 line
   // (4 new locale keys x 3 dialects) — one-shot +0.5 to 84.5; zh-TW holds
   // at 85.5 (this branch's merged budget, measured under the line).
-  const budget = name.startsWith("zh-TW-") ? 85.5 * 1024 : 84.5 * 1024;
+  // Task 373-R1.1 (three-position switch hint rewrite lengthens zh-TW):
+  // zh-TW measures 85.6 over 85.5 — one-shot +0.5 to 86.0; zh holds at
+  // 84.5 (measured under the line this batch).
+  const budget = name.startsWith("zh-TW-") ? 86.0 * 1024 : 84.5 * 1024;
   // Task 380/O4 (detached idle release input): zh-TW measures dead-even
   // 84.5/84.5 (2 new locale keys x 3 dialects) — one-shot +0.5 to 85.0; zh
   // holds at 83.5 (measured under the line this batch).
