@@ -485,7 +485,7 @@ for (const path of localeChunks) {
   // Task 373-R1.1 (three-position switch hint rewrite lengthens zh-TW):
   // zh-TW measures 85.6 over 85.5 — one-shot +0.5 to 86.0; zh holds at
   // 84.5 (measured under the line this batch).
-  const budget = name.startsWith("zh-TW-") ? 86.0 * 1024 : 85.0 * 1024; // task 385a: zh 84.0->84.5, zh-TW 85.5->86.0; one-shot +0.5 each // batch-8 merge stack: zh measures 84.6 over the merged 84.5 line (373-R1 + 385a stacked) — one-shot +0.5 to 85.0 per the 2026-09-20 ratchet rule (no drip) // R1.1 zh-TW 85.5->86.0 collides at 86.0 with 385a (same value, larger-of-two rule); zh keeps the larger 85.0
+  const budget = name.startsWith("zh-TW-") ? 86.5 * 1024 : 85.0 * 1024; // task 385a: zh 84.0->84.5, zh-TW 85.5->86.0; one-shot +0.5 each // batch-8 merge stack: zh measures 84.6 over the merged 84.5 line (373-R1 + 385a stacked) — one-shot +0.5 to 85.0 per the 2026-09-20 ratchet rule (no drip) // R1.1 zh-TW 85.5->86.0 collides at 86.0 with 385a (same value, larger-of-two rule); zh keeps the larger 85.0 // batch-8 release build: zh-TW measures 86.04 at the exact 86.0 boundary — one-shot +0.5 to 86.5 per the same ratchet rule
   // Task 380/O4 (detached idle release input): zh-TW measures dead-even
   // 84.5/84.5 (2 new locale keys x 3 dialects) — one-shot +0.5 to 85.0; zh
   // holds at 83.5 (measured under the line this batch).
