@@ -1,22 +1,36 @@
-// Task 379 — fork feature intro copy comes from a YAML file at runtime so
-// copy edits never touch code:
+// Task 379 (+ 379 rework, user 0929 additions) — fork feature intro copy
+// comes from a YAML file at runtime so copy edits never touch code:
 //
 //   layer 1  fetch("/fork-features.yaml")  — public asset, edit + reload
 //   layer 2  the task-282 locale keys      — per-field fallback
 //
-// The parser below is intentionally schema-scoped (this exact file shape:
-// one top-level `lead:`, a `groups:` list of maps with nested `features:`
-// lists of maps). It is not a general YAML engine — a malformed file simply
-// fails a field (or the whole parse) and the locale fallback keeps the panel
-// alive, which is the acceptance rule ("missing yaml/fields → no white
-// screen"). No secrets live in this file; it mirrors public locale copy.
+// The parser is schema-scoped (top-level `columns:`/`lead:`, a `groups:` list
+// with optional `label`, nested `features:` lists) and driven by content shape
+// rather than hardcoded indents, so an odd indent can never silently drop a
+// feature. The renderer is yaml-DRIVEN since the rework: whatever groups and
+// ids this file carries get wall tiles (the six task-282 ids still prefer
+// their locale keys; yaml-only ids — like the rework's project grouping /
+// long-running dev / sandbox switch entries — render straight from yaml).
+// A malformed file fails the parse and the whole panel falls back to locale
+// (no white screen). No secrets live in this file; it mirrors public locale
+// copy only.
 
 import type { ForkFeatureIntroGroup } from "./forkFeaturesIntro";
 
+export interface ForkFeaturesYamlGroup {
+  key: string;
+  label: string;
+  ids: string[];
+}
+
 export interface ForkFeaturesCopy {
   lead: string;
+  columns: number;
+  groups: ForkFeaturesYamlGroup[];
   byId: Record<string, { title: string; desc: string; how: string; icon: string; recommended: boolean }>;
 }
+
+export const FORK_FEATURES_DEFAULT_COLUMNS = 3;
 
 const YAML_URL = "fork-features.yaml";
 
@@ -29,8 +43,8 @@ function parseScalar(raw: string): string {
 /** parseForkFeaturesYaml accepts the file's fixed shape; throws on structural
  * trouble so the caller falls back to locale wholesale. */
 export function parseForkFeaturesYaml(text: string): ForkFeaturesCopy {
-  const out: ForkFeaturesCopy = { lead: "", byId: {} };
-  let group: { key: string } | null = null;
+  const out: ForkFeaturesCopy = { lead: "", columns: FORK_FEATURES_DEFAULT_COLUMNS, groups: [], byId: {} };
+  let group: ForkFeaturesYamlGroup | null = null;
   let feature: Record<string, string> | null = null;
   const flushFeature = () => {
     if (feature?.id) {
@@ -41,6 +55,7 @@ export function parseForkFeaturesYaml(text: string): ForkFeaturesCopy {
         icon: feature.icon ?? "",
         recommended: feature.recommended === "true",
       };
+      if (group && !group.ids.includes(feature.id)) group.ids.push(feature.id);
     }
     feature = null;
   };
@@ -51,8 +66,16 @@ export function parseForkFeaturesYaml(text: string): ForkFeaturesCopy {
     const body = line.trim();
     if (indent === 0) {
       flushFeature();
-      const m = body.match(/^lead:\s*(.*)$/);
-      if (m) out.lead = parseScalar(m[1]);
+      const lead = body.match(/^lead:\s*(.*)$/);
+      if (lead) { out.lead = parseScalar(lead[1]); continue; }
+      const cols = body.match(/^columns:\s*(\d+)\s*$/);
+      if (cols) {
+        const n = Number(cols[1]);
+        // Guard against nonsense values from a hand edit: 1..6 only, else keep
+        // the default — a bad number must never destroy the wall layout.
+        out.columns = n >= 1 && n <= 6 ? n : FORK_FEATURES_DEFAULT_COLUMNS;
+        continue;
+      }
       continue;
     }
     // Indent tiers vary between editors (groups 2 / features 4 / item 6 /
@@ -63,7 +86,10 @@ export function parseForkFeaturesYaml(text: string): ForkFeaturesCopy {
     if (body.startsWith("- key:")) {
       flushFeature();
       const m = body.slice(2).match(/^key:\s*(.*)$/);
-      if (m) group = { key: parseScalar(m[1]) };
+      if (m) {
+        group = { key: parseScalar(m[1]), label: "", ids: [] };
+        out.groups.push(group);
+      }
       continue;
     }
     if (body.startsWith("- ")) {
@@ -73,6 +99,10 @@ export function parseForkFeaturesYaml(text: string): ForkFeaturesCopy {
       if (m) feature[m[1]] = parseScalar(m[2]);
       continue;
     }
+    if (group && !feature) {
+      const lbl = body.match(/^label:\s*(.*)$/);
+      if (lbl) { group.label = parseScalar(lbl[1]); continue; }
+    }
     if (feature) {
       const m = body.match(/^([A-Za-z]+):\s*(.*)$/);
       if (m) feature[m[1]] = parseScalar(m[2]);
@@ -80,7 +110,6 @@ export function parseForkFeaturesYaml(text: string): ForkFeaturesCopy {
     }
   }
   flushFeature();
-  void group;
   if (Object.keys(out.byId).length === 0 && !out.lead) throw new Error("fork-features.yaml: no content parsed");
   return out;
 }
@@ -105,32 +134,76 @@ export function loadForkFeaturesCopy(): Promise<ForkFeaturesCopy | null> {
   return inFlight;
 }
 
-/** forkFeatureCopyFor merges yaml copy over the locale table field-by-field:
- * a feature missing from yaml keeps its locale text, a blank yaml field keeps
- * the locale value — a partial file can never blank a card. */
+export interface ForkFeatureWallGroup {
+  id: string;
+  yamlLabel: string;
+  features: Array<{ id: string; title: string; desc: string; how: string; icon: string; recommended: boolean }>;
+}
+
+/** forkFeatureCopyFor builds the WALL MODEL:
+ *  - with yaml: groups come FROM THE YAML (yaml-only ids and groups render),
+ *    fields prefer yaml then fall back per field to the task-282 locale keys;
+ *  - without yaml: the design table drives the wall exactly as before (the
+ *    original 379/282 behaviour), so the panel degrades to locale wholesale.
+ * `columns` rides along (default 3) so the layout is yaml-configurable. */
 export function forkFeatureCopyFor(
   yaml: ForkFeaturesCopy | null,
   groups: readonly ForkFeatureIntroGroup[],
   localeFor: (kind: "title" | "desc" | "how", id: string) => string,
-): { lead: string; groups: Array<{ id: string; label: string; features: Array<{ id: string; title: string; desc: string; how: string; icon: string; recommended: boolean }> }> } {
-  const pick = (id: string, kind: "title" | "desc" | "how", fallback: string): string => {
+): { lead: string; columns: number; groups: ForkFeatureWallGroup[] } {
+  const pick = (id: string, kind: "title" | "desc" | "how", yamlFallback: string): string => {
     const fromYaml = yaml?.byId[id]?.[kind];
     if (fromYaml && fromYaml.trim()) return fromYaml;
-    if (fallback && fallback.trim()) return fallback;
-    return localeFor(kind, id);
+    const fromLocale = localeFor(kind, id);
+    if (fromLocale && fromLocale.trim()) return fromLocale;
+    return yamlFallback;
   };
+  const card = (id: string) => ({
+    id,
+    title: pick(id, "title", yaml?.byId[id]?.title ?? ""),
+    desc: pick(id, "desc", yaml?.byId[id]?.desc ?? ""),
+    how: pick(id, "how", yaml?.byId[id]?.how ?? ""),
+    icon: yaml?.byId[id]?.icon ?? "",
+    recommended: yaml?.byId[id]?.recommended === true,
+  });
+  if (yaml && yaml.groups.length > 0) {
+    // Rework skeleton: yaml drives WHICH groups/ids exist (yaml-only entries
+    // render), but every task-282 design-table entry stays mounted even when
+    // a hand edit deletes its yaml block — deleting a yaml feature must fall
+    // back to the locale card (no blank, no disappearance), which is the
+    // original 379 fallback promise. Union per group + append missing groups.
+    const wallGroups: ForkFeatureWallGroup[] = yaml.groups.map((g) => {
+      const designed = groups.find((d) => d.key === g.key);
+      const ids = designed
+        ? [...designed.features.map((f) => f.id), ...g.ids.filter((id) => !designed.features.some((f) => f.id === id))]
+        : [...g.ids];
+      return { id: g.key, yamlLabel: g.label, features: ids.map(card) };
+    });
+    for (const d of groups) {
+      if (!wallGroups.some((g) => g.id === d.key)) {
+        wallGroups.push({ id: d.key, yamlLabel: "", features: d.features.map((f) => card(f.id)) });
+      }
+    }
+    return {
+      lead: yaml.lead.trim(),
+      columns: yaml.columns,
+      groups: wallGroups,
+    };
+  }
+  // Layer 2: pure locale wall (original shape).
   return {
-    lead: yaml?.lead?.trim() || "",
+    lead: "",
+    columns: FORK_FEATURES_DEFAULT_COLUMNS,
     groups: groups.map((g) => ({
       id: g.key,
-      label: g.key,
+      yamlLabel: "",
       features: g.features.map((f) => ({
         id: f.id,
-        title: pick(f.id, "title", ""),
-        desc: pick(f.id, "desc", ""),
-        how: pick(f.id, "how", ""),
-        icon: yaml?.byId[f.id]?.icon ?? "",
-        recommended: yaml?.byId[f.id]?.recommended === true,
+        title: localeFor("title", f.id),
+        desc: localeFor("desc", f.id),
+        how: localeFor("how", f.id),
+        icon: "",
+        recommended: false,
       })),
     })),
   };

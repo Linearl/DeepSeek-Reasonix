@@ -3,10 +3,14 @@
 # any missing file or field falls back to the task-282 locale keys, so a bad
 # edit never blanks the panel). Schema is intentionally simple.
 #
-# Fields per feature: id (must match the task-282 design-table id),
-# title, desc, how, icon (emoji), recommended (badge; default none).
+# Fields per feature: id (task-282 design-table id OR a yaml-only id — the
+# wall renders whatever is here), title, desc, how, icon (emoji), recommended
+# (badge; default none). Groups may carry `label` (display name; design-table
+# groups still win via locale). Top-level `columns` sets the wall grid columns
+# (default 3) — change it here, no code edit needed.
 # Nothing here is sensitive — same surface as the public locale strings.
 
+columns: 3
 lead: 以下改进已在各处生效，无需开关；每条注明在哪里找到。
 
 groups:
@@ -34,6 +38,11 @@ groups:
         title: 项目树颜色筛选
         desc: 给项目打颜色标签并一键筛选，多项目快速定位。
         how: 项目右键 → 颜色，顶部筛选条。
+      - id: projectGroupingManage
+        icon: "🗃️"
+        title: 项目分组
+        desc: 方便管理更多项目。
+        how: 项目树分组标题与拖拽。
   - key: sessions
     features:
       - id: mergePanel
@@ -46,3 +55,23 @@ groups:
         title: 后台会话不占标签栏
         desc: 后台唤起的会话不挤占标签栏，保持工作区整洁。
         how: 后台唤起会话自动生效。
+  # Task 379 rework (user 0929 additions): yaml-only groups below are NOT in
+  # the task-282 design table — the wall renders them straight from this file
+  # (edit + reload), with locale keys still winning for the original six.
+  - key: automation
+    label: 自动化与协作
+    features:
+      - id: longRunningDev
+        icon: "🚀"
+        title: 自动驾驶 + 跨会话协作长时开发
+        desc: 使用内置技能，配合心跳机制，可长时间开发。
+        how: 三阶段：需求收集 → 计划 → 开发验证。
+  - key: sandbox
+    label: 沙箱与权限
+    features:
+      - id: sandboxSwitches
+        icon: "🔐"
+        title: 沙箱页开关群
+        desc: 乐观并行、快捷指令、完全访问、写目录授权集中在沙箱页。
+        how: 设置 → 沙箱与权限。
+
