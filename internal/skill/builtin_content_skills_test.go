@@ -7,8 +7,10 @@ import (
 	"reasonix/internal/skill"
 )
 
-// Task 139 / 138: GitHub issue playbooks and the fork usage guide ship as
-// builtins so a user installs nothing for them to appear in the catalog.
+// Task 139 / 138: GitHub issue playbooks and the fork guide ship as builtins
+// so a user installs nothing for them to appear in the catalog. Task 430
+// replaced the reasonix-fork-guide builtin with the user-authored
+// ll-fork-guide (fork development discipline quick reference).
 func TestGitHubIssueSkillsRegistered(t *testing.T) {
 	store := skill.New(skill.Options{HomeDir: t.TempDir()})
 	for _, name := range []string{"gh-issue-submit", "gh-issue-triage"} {
@@ -32,17 +34,24 @@ func TestGitHubIssueSkillsRegistered(t *testing.T) {
 	}
 }
 
-func TestReasonixForkGuideRegistered(t *testing.T) {
+func TestLlForkGuideRegistered(t *testing.T) {
 	store := skill.New(skill.Options{HomeDir: t.TempDir()})
-	sk, ok := store.Read("reasonix-fork-guide")
+	sk, ok := store.Read("ll-fork-guide")
 	if !ok {
-		t.Fatal("reasonix-fork-guide must be a builtin")
+		t.Fatal("ll-fork-guide must be a builtin")
 	}
 	if sk.Scope != skill.ScopeBuiltin {
 		t.Fatalf("scope = %s", sk.Scope)
 	}
 	if !strings.Contains(sk.Body, "worktree") {
 		t.Fatal("fork guide body missing worktree guidance")
+	}
+	if !strings.Contains(sk.Body, "FORK.md") {
+		t.Fatal("ll-fork-guide body missing FORK.md pointer")
+	}
+	// The retired name must not come back as a builtin.
+	if _, ok := store.Read("reasonix-fork-guide"); ok {
+		t.Fatal("reasonix-fork-guide must be retired (replaced by ll-fork-guide)")
 	}
 	// Distinct from the self-diagnostics guide.
 	guide, ok := store.Read("reasonix-guide")
@@ -51,5 +60,25 @@ func TestReasonixForkGuideRegistered(t *testing.T) {
 	}
 	if sk.Body == guide.Body {
 		t.Fatal("fork guide must not duplicate reasonix-guide body")
+	}
+}
+
+func TestLlUpdateRegistered(t *testing.T) {
+	store := skill.New(skill.Options{HomeDir: t.TempDir()})
+	sk, ok := store.Read("ll-update")
+	if !ok {
+		t.Fatal("ll-update must be a builtin")
+	}
+	if sk.Scope != skill.ScopeBuiltin {
+		t.Fatalf("scope = %s", sk.Scope)
+	}
+	if sk.Description == "" {
+		t.Fatal("ll-update missing description")
+	}
+	if !strings.Contains(sk.Body, "restart_update") {
+		t.Fatal("ll-update body missing restart_update guidance")
+	}
+	if !strings.Contains(sk.Body, "scripts/switch-version.sh") {
+		t.Fatal("ll-update body missing switch-version.sh reference")
 	}
 }
