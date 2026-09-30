@@ -271,7 +271,7 @@ UI 入口** —— 所以对大部分 fork 特性，**日志是唯一的可观�
 ## Bundle 预算棘轮规则（2026-09-20 用户定，改自 +0.1 旧规）
 
 改 locale/CSS 等前端产物导致 `check-bundle-budget.mjs` 超限时，**一次放宽到位，步长加大**：
-- gzip 类（zh / zh-TW / deferred app-shell CSS）：**+0.5 KiB**（实测值 + 0.5 headroom，取一位小数）
+- gzip 类（zh / zh-TW / deferred app-shell CSS）：**+1.0 KiB**（实测值 + 1 headroom，取一位小数；2026-09-30 用户指令：原 +0.5 步长在构建间字节微抖下频繁精确边界炸——批八出包连炸 zh-TW/initial JS 两次，步长翻倍根治）
 - raw 类（initial raw JS+CSS）：**+10 KiB**
 - 每次上调在预算行旁注释：哪个任务加的、实测值多少、新步长依据
 - 禁止按 +0.1 挤牙膏式上调——反复撞墙浪费时间（2026-09-20 合并批连撞 CSS/locale/raw 三道）
