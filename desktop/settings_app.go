@@ -1830,7 +1830,10 @@ func (a *App) applySkillConfigChangeForFields(fields []string, setting string, m
 		return err
 	}
 	if err := a.rebuildSetting(setting); err != nil {
-		if _, ok := a.deferredRebuildWarning(setting, err); ok {
+		// Same post-save downgrade as applyConfigChangeWithSave (task 382):
+		// the project-side save already landed, so a refresh failure warns
+		// instead of bouncing the form back.
+		if _, ok := a.downgradePostSaveRebuildFailure(setting, err); ok {
 			return nil
 		}
 		return err
@@ -1865,14 +1868,54 @@ func (a *App) applyConfigChangeWithSave(setting string, mutate func(*config.Conf
 		return "", err
 	}
 	if err := a.rebuildSetting(setting); err != nil {
-		if warning, ok := a.deferredRebuildWarning(setting, err); ok {
+		if warning, ok := a.downgradePostSaveRebuildFailure(setting, err); ok {
 			a.refreshActiveTabMetaExtras()
 			return warning, nil
 		}
+		a.refreshActiveTabMetaExtras()
 		return "", err
 	}
 	a.refreshActiveTabMetaExtras()
 	return "", nil
+}
+
+// downgradePostSaveRebuildFailure classifies a rebuild failure that happened
+// AFTER the config already landed on disk (task 382, 374fix 方案 B泛化). The
+// save stands in every case, so the UI must not bounce back as if the write
+// failed — that is the 「保存成功但 UI 假失败」 pattern. Three recovery paths:
+//
+//   - session lease held elsewhere → the deferred-rebuild loop replays the
+//     refresh once the holder releases it (existing behavior, unchanged);
+//   - the active turn started mid-save (rebuildBusyError) → queue the same
+//     loop, which keeps waiting while the turn runs — never kill a turn;
+//   - any other build failure → the old runtime keeps running; say so and
+//     hand the user the restart path (the save is already durable).
+//
+// Every branch surfaces the warning as a tab notice (warnForTab), so the
+// message is visible even for setters whose wails signature returns only
+// error. Returns downgraded=false only for err==nil.
+func (a *App) downgradePostSaveRebuildFailure(setting string, err error) (string, bool) {
+	if err == nil {
+		return "", false
+	}
+	if warning, ok := a.deferredRebuildWarning(setting, err); ok {
+		return warning, true
+	}
+	if tab := a.activeTab(); tab != nil {
+		var busy *rebuildBusyError
+		if errors.As(err, &busy) {
+			a.scheduleDeferredRebuild(tab.ID, setting)
+			warning := fmt.Sprintf("%s saved; it will apply when the current turn finishes", setting)
+			a.warnForTab(tab.ID, warning)
+			return warning, true
+		}
+	}
+	slog.Warn("desktop: settings rebuild failed after save", "setting", setting, "err", err)
+	warning := fmt.Sprintf("%s saved, but the current session could not refresh: %s — restart the desktop to apply", setting, err.Error())
+	if tab := a.activeTab(); tab != nil {
+		a.warnForTab(tab.ID, warning)
+	}
+	return warning, true
 }
 
 // refreshActiveTabMetaExtras invalidates the cached model capability snapshot
