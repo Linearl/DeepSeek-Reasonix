@@ -301,7 +301,9 @@ func (w *Worker) execute(ctx context.Context, j job) {
 	if dir == "" {
 		dir = w.workspace
 	}
-	cmd := exec.Command(w.command, "-p", j.Prompt, "--output-format", "stream-json", "--mode", w.mode)
+	// Construct through internal/proc (desktop background-process gate): argv
+	// values stay separate and Windows hides the child console window.
+	cmd := proc.Command(w.command, "-p", j.Prompt, "--output-format", "stream-json", "--mode", w.mode)
 	cmd.Dir = dir
 	stdoutTail := newTail(resultTailCap)
 	stderrTail := newTail(16 << 10)

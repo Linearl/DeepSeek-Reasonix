@@ -503,3 +503,47 @@ func TestRemoteMarkdownImageOnlyAllowsGet(t *testing.T) {
 		t.Fatalf("POST status=%d factoryCalled=%v", rec.Code, called)
 	}
 }
+
+// TestRemoteMarkdownImageRejectsRedirectEscapes pins the task-415 code-scanning
+// SSRF triage on the client.Do call: a public first hop must not be usable as
+// a trampoline into loopback/private space or a non-HTTP scheme. CheckRedirect
+// re-validates every hop with the same URL rules as the initial request.
+func TestRemoteMarkdownImageRejectsRedirectEscapes(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		location string
+	}{
+		{name: "loopback", location: "http://127.0.0.1:9/secret.png"},
+		{name: "private-range", location: "http://192.168.1.1/router.png"},
+		{name: "link-local metadata", location: "http://169.254.169.254/latest/meta-data/"},
+		{name: "non-http scheme", location: "file:///C:/Windows/win.ini"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hops := 0
+			factory := func(netclient.ProxySpec) (*http.Client, error) {
+				return &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+					hops++
+					if hops > 1 {
+						t.Errorf("redirect escape was followed: %s", req.URL)
+					}
+					return &http.Response{
+						StatusCode: http.StatusFound,
+						Header:     http.Header{"Location": []string{tc.location}},
+						Body:       io.NopCloser(bytes.NewReader(nil)),
+						Request:    req,
+					}, nil
+				})}, nil
+			}
+			req := httptest.NewRequest(http.MethodGet, remoteMarkdownImagePath+"?url="+url.QueryEscape("http://ads.example.invalid/track.png"), nil)
+			rec := httptest.NewRecorder()
+			serveRemoteMarkdownImage(rec, req, netclient.ProxySpec{}, factory)
+
+			if rec.Code != http.StatusBadGateway {
+				t.Fatalf("status = %d, want 502; body = %q", rec.Code, rec.Body.String())
+			}
+			if hops != 1 {
+				t.Fatalf("redirect hops = %d, want 1 (private escape must not be followed)", hops)
+			}
+		})
+	}
+}
