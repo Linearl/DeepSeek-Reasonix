@@ -41317,6 +41317,37 @@ body > .mermaid-diagram--fullscreen {
   box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.5);
 }
 
+/* Task 169: desktop drag affordance for group reordering. The grip sits at the
+   row start and appears on header hover (plus while dragging), the same
+   discoverability contract as the status-bar item editor's handle. Colours use
+   the established text tokens; the handle is the only place the cursor
+   advertises grabbing, the header itself keeps its pointer cursor. */
+.project-tree__group-drag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 12px;
+  width: 12px;
+  color: var(--fg-faint);
+  opacity: 0;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.project-tree__group-main:hover .project-tree__group-drag,
+.project-tree__group-main--dragging .project-tree__group-drag {
+  opacity: 1;
+}
+
+.project-tree__group-main:hover .project-tree__group-drag {
+  color: var(--fg-dim);
+}
+
+.project-tree__group-main--dragging .project-tree__group-drag {
+  cursor: grabbing;
+}
+
 /* The classified gateway-failure cause is what the user acts on; the raw backend
    text stays visible but subordinate, so it can be copied into a report without
    competing with the cause. Standalone (no parent class) because the panel renders
