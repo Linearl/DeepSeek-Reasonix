@@ -68,6 +68,12 @@ type Config struct {
 	// day; 0 keeps the default (20). The counter lives in this process, so
 	// it is runaway protection, not billing.
 	SpawnDailyQuota int
+	// Injector is the optional mail→inject hook (bus dev item #3): after a
+	// successful delivery to a zcode- contact it nudges a running zcode
+	// session through the zcodebridge. Nil (tests, unwired serve) keeps the
+	// realtime path out entirely; the durable inbox delivery is unaffected
+	// either way. See inject.go for the contract.
+	Injector MailInjector
 }
 
 // Server owns the bus surface: the MCP streamable handler, the /bus/events
@@ -91,6 +97,9 @@ type Server struct {
 	spawnMu      sync.Mutex
 	spawnUsed    map[string]int
 	spawnDay     string
+	// injector is the optional realtime nudge hook, set once at New and
+	// read-only afterwards (see Config.Injector).
+	injector MailInjector
 }
 
 // New validates cfg and builds the bus. A returned error means "do not
@@ -117,6 +126,7 @@ func New(cfg Config) (*Server, error) {
 		roleServers: map[string]*mcp.Server{},
 		eventTarget: cfg.EventTarget,
 		auditPath:   filepath.Join(mailDir, "bus-mcp-audit.jsonl"),
+		injector:    cfg.Injector,
 	}
 	if s.eventTarget == "" {
 		s.eventTarget = "zcode-heartbeat"
@@ -232,6 +242,9 @@ func (s *Server) HandleEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(role, "event", payload.Event+" → "+s.eventTarget+" ("+msg.ID+")", true)
+	// The mail is durable at this point; the nudge is best-effort on top of
+	// it and must not influence the HTTP answer (see inject.go).
+	s.notifyInjector(s.eventTarget, msg)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	_ = writeJSON(w, map[string]string{"id": msg.ID, "to": s.eventTarget})

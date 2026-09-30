@@ -134,6 +134,8 @@ func (rt roleRuntime) send(_ context.Context, _ *mcp.CallToolRequest, in sendIn)
 		return nil, sendOut{}, fmt.Errorf("deliver to %s: %w", in.To, err)
 	}
 	rt.bus.audit(rt.role, "send", in.To+" ("+msg.ID+")", true)
+	// Realtime nudge for zcode- targets; a no-op for session contacts.
+	rt.bus.notifyInjector(msg.To, msg)
 	return nil, sendOut{ID: msg.ID, ThreadID: msg.ThreadID, To: msg.To}, nil
 }
 
@@ -299,6 +301,9 @@ func (rt roleRuntime) spawn(_ context.Context, _ *mcp.CallToolRequest, in spawnI
 		return nil, spawnOut{}, fmt.Errorf("deliver assignment to %s: %w", in.To, err)
 	}
 	rt.bus.audit(rt.role, "spawn", in.To+" card="+card.ID+" mail="+msg.ID, true)
+	// Assignment mail nudges a live session too when the assignee is a
+	// zcode- contact; the zcode-worker pool keeps its own polling cadence.
+	rt.bus.notifyInjector(msg.To, msg)
 	return nil, spawnOut{CardID: card.ID, MailID: msg.ID, To: msg.To}, nil
 }
 
