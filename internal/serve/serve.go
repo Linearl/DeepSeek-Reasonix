@@ -1283,6 +1283,55 @@ func resolveSessionPathStatus(err error) int {
 	return http.StatusBadRequest
 }
 
+// pathInsideDir reports whether abs is strictly inside absDir after cleaning.
+// It is the structural containment check behind the client-supplied session
+// name resolvers: string-level validation of the name is necessary but not
+// sufficient (CodeQL does not model it as a sanitizer), so every handler that
+// turns a remote name into a transcript path re-proves containment here.
+func pathInsideDir(absDir, abs string) bool {
+	rel, err := filepath.Rel(filepath.Clean(absDir), filepath.Clean(abs))
+	if err != nil {
+		return false
+	}
+	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
+
+// errSessionNameOutsideDir marks a resolved transcript path that escaped the
+// session directory. The message is load-bearing: resolveSessionPathStatus
+// maps it to 403 exactly like resolveSessionPath's own containment failure.
+var errSessionNameOutsideDir = errors.New("path outside session dir")
+
+// sessionFileForName resolves a client-supplied bare session name to the
+// absolute transcript path directly inside dir, plus the absolute directory
+// for sidecar artifacts. The name must be a single path-free segment; the
+// resolved path must re-prove containment against the session directory, so
+// a remote "/name" can never address files outside it regardless of platform
+// separator tricks.
+func sessionFileForName(dir, name string) (absDir, abs string, err error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", "", errors.New("name required")
+	}
+	if name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
+		return "", "", errors.New("invalid session name")
+	}
+	if dir == "" {
+		return "", "", errors.New("sessions disabled")
+	}
+	absDir, err = filepath.Abs(dir)
+	if err != nil {
+		return "", "", errors.New("invalid session dir")
+	}
+	abs, err = filepath.Abs(filepath.Join(absDir, name+".jsonl"))
+	if err != nil {
+		return "", "", errors.New("invalid session path")
+	}
+	if !pathInsideDir(absDir, abs) {
+		return "", "", errSessionNameOutsideDir
+	}
+	return absDir, abs, nil
+}
+
 // resumeSession moves the foreground to realPath. Callers hold bindMu.
 func (s *Server) resumeSession(w http.ResponseWriter, r *http.Request, realPath string) {
 	cur := s.ctl()
@@ -1652,8 +1701,11 @@ func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "name required", http.StatusBadRequest)
 		return
 	}
-	if name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
-		http.Error(w, "invalid session name", http.StatusBadRequest)
+	// Resolve and contain the name before taking bindMu so invalid requests
+	// never touch the lock (same validate-first rule as /resume).
+	absDir, abs, err := sessionFileForName(s.ctl().SessionDir(), name)
+	if err != nil {
+		http.Error(w, err.Error(), resolveSessionPathStatus(err))
 		return
 	}
 	// Serialize active/detached ownership checks with session promotion. A
@@ -1665,27 +1717,6 @@ func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request) {
 	}
 	s.bindMu.Lock()
 	defer s.bindMu.Unlock()
-	dir := s.ctl().SessionDir()
-	if dir == "" {
-		http.Error(w, "sessions disabled", http.StatusBadRequest)
-		return
-	}
-	target := filepath.Join(dir, name+".jsonl")
-	abs, err := filepath.Abs(target)
-	if err != nil {
-		http.Error(w, "invalid session path", http.StatusBadRequest)
-		return
-	}
-	absDir, err := filepath.Abs(dir)
-	if err != nil {
-		http.Error(w, "invalid session dir", http.StatusBadRequest)
-		return
-	}
-	rel, err := filepath.Rel(absDir, abs)
-	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
-		http.Error(w, "path outside session dir", http.StatusForbidden)
-		return
-	}
 	if filepath.Clean(abs) == filepath.Clean(s.ctl().SessionPath()) {
 		http.Error(w, "cannot delete active session", http.StatusConflict)
 		return
@@ -1868,24 +1899,9 @@ func (s *Server) releaseSession(w http.ResponseWriter, r *http.Request) {
 	// target is optional: empty releases without a handoff reservation (the
 	// desktop reacquires on its next write); a non-empty target reserves the
 	// lease for that writer specifically.
-	if name == "." || name == ".." || strings.ContainsAny(name, `\/`) {
-		http.Error(w, "invalid session name", http.StatusBadRequest)
-		return
-	}
-	dir := s.ctl().SessionDir()
-	if dir == "" {
-		http.Error(w, "sessions disabled", http.StatusBadRequest)
-		return
-	}
-	absDir, err := filepath.Abs(dir)
+	_, abs, err := sessionFileForName(s.ctl().SessionDir(), name)
 	if err != nil {
-		http.Error(w, "invalid session dir", http.StatusBadRequest)
-		return
-	}
-	abs := filepath.Join(absDir, name+".jsonl")
-	rel, err := filepath.Rel(absDir, abs)
-	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
-		http.Error(w, "path outside session dir", http.StatusForbidden)
+		http.Error(w, err.Error(), resolveSessionPathStatus(err))
 		return
 	}
 	currentPath, err := filepath.Abs(s.ctl().SessionPath())
@@ -1946,16 +1962,15 @@ func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := strings.TrimSpace(body.Name)
-	if name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
-		http.Error(w, "invalid session name", http.StatusBadRequest)
+	// Resolve the transcript path with the same containment proof as
+	// /delete-session and /release-session: the name is remote input, so the
+	// resolved path must stay inside the session directory no matter what the
+	// request carried.
+	_, abs, err := sessionFileForName(s.ctl().SessionDir(), name)
+	if err != nil {
+		http.Error(w, err.Error(), resolveSessionPathStatus(err))
 		return
 	}
-	dir := s.ctl().SessionDir()
-	if dir == "" {
-		http.Error(w, "sessions disabled", http.StatusBadRequest)
-		return
-	}
-	abs := filepath.Join(dir, name+".jsonl")
 	if _, err := os.Stat(abs); err != nil {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
@@ -1968,7 +1983,7 @@ func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 		// lease (flipping its tab to read-only), and this acquire succeeds —
 		// the user-authorized explicit takeover path. Without a holder
 		// response within the window the request surfaces as 409.
-		marker := filepath.Join(dir, name+".takeover-request")
+		marker := strings.TrimSuffix(abs, ".jsonl") + ".takeover-request"
 		_ = os.WriteFile(marker, []byte(agent.SessionWriterID()), 0o600)
 		deadline := time.Now().Add(9 * time.Second)
 		for time.Now().Before(deadline) {
@@ -2047,6 +2062,12 @@ func removeSessionFiles(absDir, abs string) error {
 	for _, p := range remove {
 		if p == "" {
 			continue
+		}
+		// Self-contained containment proof: callers validate the session path
+		// before handing it over, but a delete routine must not trust that —
+		// refuse any target that is not strictly inside the session directory.
+		if !pathInsideDir(absDir, p) {
+			return fmt.Errorf("refusing to remove %s: path outside session dir", p)
 		}
 		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
 			return err
