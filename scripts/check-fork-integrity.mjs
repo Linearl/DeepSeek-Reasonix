@@ -213,7 +213,12 @@ const CHECKS = [
   { feature: "任务389 catalog 空闲 CPU 修复：30s 循环→fsnotify watch 单点移植（上游 #10603）", file: "desktop/session_catalog_watch.go", patterns: ["func (a *App) watchSessionCatalog", "5 * time.Minute"] },
   { feature: "任务389 循环移除守护", file: "desktop/session_catalog_lifecycle.go", patterns: ["watchSessionCatalog(ctx, catalog)"] },
   { feature: "任务386 markdown cache 碰撞守卫 backstop 测试（消费比对 miss 语义）", file: "desktop/frontend/src/__tests__/markdown-history.test.tsx", patterns: ["fidelity backstop at the store boundary", "treats the collision as a miss"] },
-
+  // 任务 245：面板记忆键域级归一。三个锚点锁「键只经 workspacePanelMemoryRoot 产出」：
+  // 映射函数本体（global→单键分支）+ 两条接线点（App 与 composition）的调用形状。
+  // 上游若重新引入 `?? state.meta?.cwd` 兜底，Global 域面板记忆会重新按会话碎裂。
+  { feature: "任务245 面板键域级映射（global 单键 + cwd 兜底禁入）", file: "desktop/frontend/src/store/layout.ts", patterns: ["export function workspacePanelMemoryRoot(scope: string | undefined, workspaceRoot: string | undefined): string {", "if (scope === \"global\") return \"\";"] },
+  { feature: "任务245 面板键归一接线（App 侧）", file: "desktop/frontend/src/App.tsx", patterns: ["workspacePanelMemoryRoot(activeTab?.scope, activeTab?.workspaceRoot)"] },
+  { feature: "任务245 面板键归一接线（composition 侧）", file: "desktop/frontend/src/app-runtime/useAppSessionComposition.ts", patterns: ["workspacePanelMemoryRoot(activeTab?.scope, activeTab?.workspaceRoot)"] },
 ];
 
 let failed = 0;

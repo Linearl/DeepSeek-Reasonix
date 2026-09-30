@@ -213,6 +213,17 @@ export function clampTerminalHeight(height: number, viewportHeight: number): num
   return Math.min(max, Math.max(TERMINAL_MIN_HEIGHT, Math.round(height)));
 }
 
+// Task 245: panel memory keys are domain-scoped. The Global domain is ONE key
+// (the base key) and every project root keeps its own, so switching sessions
+// inside one domain can never change the key. The session cwd is deliberately
+// NOT consulted here: the old `activeTab?.workspaceRoot ?? state.meta?.cwd`
+// fallback sharded the Global domain into per-session keys (and per Global-tab
+// ghost workspace paths), which flipped the dock on every tab switch.
+export function workspacePanelMemoryRoot(scope: string | undefined, workspaceRoot: string | undefined): string {
+  if (scope === "global") return "";
+  return workspaceRoot || "";
+}
+
 function workspacePanelOpenStorageKey(workspaceRoot: string): string {
   return workspaceRoot ? `${WORKSPACE_PANEL_OPEN_KEY}.${workspaceRoot}` : WORKSPACE_PANEL_OPEN_KEY;
 }
