@@ -47,6 +47,9 @@ const CHECKS = [
   { feature: "任务186 前端渲染兜底过滤", file: "desktop/frontend/src/lib/projectTreePresentation.ts", patterns: ["projectTreeWithoutBuiltinWorkspaceNodes"] },
   { feature: "任务186 快照过滤接线", file: "desktop/frontend/src/components/ProjectTree.tsx", patterns: ["projectTreeWithoutBuiltinWorkspaceNodes(asArray(snapshot.projects))"] },
   { feature: "#9580 草稿持久化存储层", file: "desktop/frontend/src/lib/composerDraftPersistence.ts", patterns: ["composer:drafts:v1", "pagehide", "MAX_PERSISTED_BYTES"] },
+  { feature: "task 369 选区快捷操作 one-shot 通道", file: "internal/control/side_query.go", patterns: ["func (c *Controller) SideQuery(", "sideQueryMaxTextRunes", "boundedllm.Call"] },
+  { feature: "task 369 选区快捷操作前端（开关两态+结果卡）", file: "desktop/frontend/src/components/TranscriptSelectionMenu.tsx", patterns: ["quickActionsEnabled", "transcript-selection-result-card", "runQuickAction"] },
+  { feature: "task 369 选区快捷操作桥接线（App 设置回调）", file: "desktop/frontend/src/App.tsx", patterns: ["RunSelectionSideQuery(action, text, contextText)", "setSelectionActionsEnabled"] },
   // 任务 90 链拼接：promote 时把落败链（当前 main）中 winner 缺失的头部 graft 到新主线。
   // 三个锚点按「顺序」登记——gap 在 rename 前算、graft 在侧车搬移后写、事件日志随即折叠；
   // 顺序错位造成的失败是静默的（文件对而读回旧），所以这里锁的是调用形状，不只是符号名。

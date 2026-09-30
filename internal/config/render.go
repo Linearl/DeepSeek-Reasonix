@@ -152,6 +152,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// back to off. Both experiment switches shipped broken until 2026-09-15 (task
 		// 81's restart-and-update and task 123's session monitor could never be enabled).
 		fmt.Fprintf(&b, "experimental_restart_update = %v   # desktop: show the restart-and-update action (task 81)\n", c.Desktop.ExperimentalRestartUpdate)
+		fmt.Fprintf(&b, "experimental_selection_actions = %v   # desktop: selection quick-actions (translate/explain floating card) (task 369)\n", c.Agent.ExperimentalSelectionActions)
 		if dir := strings.TrimSpace(c.Desktop.StagingDir); dir != "" {
 			fmt.Fprintf(&b, "staging_dir = %q   # desktop: fast-switch staging override (task 381); empty = the default staging directory\n", dir)
 		}

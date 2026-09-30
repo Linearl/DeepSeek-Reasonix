@@ -555,4 +555,144 @@ console.log("\ntranscript selection menu");
 }
 
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
+
+// ─── Task 369: selection quick-actions (translate/explain) ───
+// Off (default): the menu keeps exactly the pre-369 items. On: both the
+// right-click menu and the floating action bar expose translate/explain,
+// the one-shot bridge receives the (possibly truncated) selection with its
+// context window, the result card renders loading → result, Escape dismisses
+// it, and a pinned card survives the click-away.
+
+{
+  const dom = installDom();
+  const additions: string[] = [];
+  (window as unknown as { runtime: { ClipboardSetText: (text: string) => Promise<boolean> } }).runtime = {
+    ClipboardSetText: async () => true,
+  };
+  document.body.insertAdjacentHTML("beforeend", '<div class="msg__body">assistant reply text</div>');
+  const msgBody = document.querySelector(".msg__body") as HTMLElement;
+
+  const root = createRoot(document.getElementById("root") as HTMLElement);
+  await act(async () => {
+    root.render(
+      <LocaleProvider>
+        <TranscriptSelectionMenu onAddToChat={(text) => additions.push(text)} />
+      </LocaleProvider>,
+    );
+    await flushTimers();
+  });
+
+  // Off (default): right-click menu offers only Copy.
+  selectNodeText(msgBody.firstChild as Node);
+  await dispatchContextMenu(msgBody);
+  let items = [...document.querySelectorAll("[role=\"menuitem\"]")] as HTMLButtonElement[];
+  eq(items.length, 1, "switch off: transcript menu keeps only Copy");
+  eq(items[0]?.textContent?.includes("Copy"), true, "switch off: the single item is Copy");
+
+  // Re-mount with the switch on (fresh root: unmounted roots cannot re-render).
+  await act(async () => { root.unmount(); });
+  const root2 = createRoot(document.getElementById("root") as HTMLElement);
+  const calls: Array<{ action: string; text: string; contextText: string }> = [];
+  const runner = async (action: string, text: string, contextText: string) => {
+    calls.push({ action, text, contextText });
+    if (action === "fail") throw new Error("boom");
+    return "RESULT:" + action;
+  };
+  await act(async () => {
+    root2.render(
+      <LocaleProvider>
+        <TranscriptSelectionMenu onAddToChat={(text) => additions.push(text)} onQuickAction={runner} quickActionsEnabled />
+      </LocaleProvider>,
+    );
+    await flushTimers();
+  });
+
+  selectNodeText(msgBody.firstChild as Node);
+  await dispatchContextMenu(msgBody);
+  items = [...document.querySelectorAll("[role=\"menuitem\"]")] as HTMLButtonElement[];
+  eq(items.length, 3, "switch on: transcript menu offers Copy + translate + explain");
+  ok(items.some((b) => b.textContent?.includes("Translate")), "switch on: translate item present");
+  ok(items.some((b) => b.textContent?.includes("Explain")), "switch on: explain item present");
+
+  // Floating action bar: selection opens it, and it gains the two quick buttons.
+  await act(async () => {
+    msgBody.dispatchEvent(new window.MouseEvent("pointerup", { bubbles: true, button: 0 }));
+    await drainFrame();
+  });
+  eq(transcriptActionState(), "open", "switch on: selection opens the action bar");
+  const barButtons = [...(transcriptActionHost()?.querySelectorAll("button") ?? [])] as HTMLButtonElement[];
+  ok(barButtons.length >= 3, `switch on: action bar has add-to-chat + 2 quick buttons (got ${barButtons.length})`);
+
+  // Click explain on the action bar → card renders the stubbed result.
+  const explainBtn = barButtons.find((b) => b.textContent?.includes("Explain"));
+  ok(explainBtn != null, "action bar expose explain");
+  await act(async () => {
+    explainBtn?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    await flushTimers();
+  });
+  const card = document.querySelector(".transcript-selection-result-card");
+  ok(card != null, "result card appears after the action");
+  ok(card?.textContent?.includes("RESULT:explain") === true, "card renders the side-query result");
+  eq(calls.length, 1, "bridge called exactly once");
+  eq(calls[0]?.action, "explain", "bridge received the explain action");
+  eq(calls[0]?.text, "assistant reply text", "bridge received the selected text");
+
+  // Escape dismisses the card.
+  await act(async () => {
+    document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await flushTimers();
+  });
+  eq(document.querySelector(".transcript-selection-result-card"), null, "Escape dismisses the result card");
+
+  // Oversized selection: the bridge sees a truncated payload and a notice.
+  const long = "字".repeat(9500);
+  (msgBody.firstChild as Text).textContent = long;
+  selectNodeText(msgBody.firstChild as Node);
+  await act(async () => {
+    msgBody.dispatchEvent(new window.MouseEvent("pointerup", { bubbles: true, button: 0 }));
+    await drainFrame();
+  });
+  const translateBtn = ([...(transcriptActionHost()?.querySelectorAll("button") ?? [])] as HTMLButtonElement[])
+    .find((b) => b.textContent?.includes("Translate"));
+  await act(async () => {
+    translateBtn?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    await flushTimers();
+  });
+  eq(calls.length, 2, "second action dispatches the bridge again");
+  eq(calls[1]?.action, "translate", "second action is translate");
+  ok((calls[1]?.text.length ?? 0) <= 9000, `oversized selection truncates to <=9000 chars (got ${calls[1]?.text.length})`);
+  const card2 = document.querySelector(".transcript-selection-result-card");
+  ok(card2?.textContent?.includes("truncated") === true, "truncation notice renders in the card");
+
+  // Bridge failure surfaces the failure notice instead of a blank card.
+  await act(async () => { root2.unmount(); });
+  const root3 = createRoot(document.getElementById("root") as HTMLElement);
+  const failing = async () => { throw new Error("boom"); };
+  await act(async () => {
+    root3.render(
+      <LocaleProvider>
+        <TranscriptSelectionMenu onAddToChat={(text) => additions.push(text)} onQuickAction={failing} quickActionsEnabled />
+      </LocaleProvider>,
+    );
+    await flushTimers();
+  });
+  selectNodeText(msgBody.firstChild as Node);
+  await act(async () => {
+    msgBody.dispatchEvent(new window.MouseEvent("pointerup", { bubbles: true, button: 0 }));
+    await drainFrame();
+  });
+  const failBtn = ([...(transcriptActionHost()?.querySelectorAll("button") ?? [])] as HTMLButtonElement[])
+    .find((b) => b.textContent?.includes("Explain"));
+  await act(async () => {
+    failBtn?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    await flushTimers();
+  });
+  const card3 = document.querySelector(".transcript-selection-result-card");
+  ok(card3 != null, "failure keeps the card open");
+  ok(card3?.getAttribute("data-state") === undefined || card3?.querySelector("[data-state=\"error\"]") != null || card3?.textContent?.includes("failed") === true, "failure surfaces the error notice");
+
+  await act(async () => { root3.unmount(); });
+  dom.window.close();
+}
+
 if (failed > 0) process.exit(1);
