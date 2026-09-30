@@ -3619,6 +3619,83 @@ func (a *App) closeTabRuntimeAdmissionHeld(tab *WorkspaceTab) {
 	a.mu.Unlock()
 }
 
+// startupBootConcurrency caps the number of concurrent startup boot builds
+// (task 405 Q2). 2 slots: the measured failure mode is same-key builds
+// dragging each other's mcp stage to 21-38s spikes at 4-way concurrency,
+// while 2 keeps the pipeline full without the thrash. Deliberately NOT
+// behind a config switch — it is a resource guard, not a behavior change.
+const startupBootConcurrency = 2
+
+// orderTabsActiveFirst returns toBuild with the active tab moved to the
+// front, preserving the relative order of everything else (stable). The
+// active tab is what the user sees first, so its boot — and therefore its
+// sendable state — should not queue behind background restores.
+func orderTabsActiveFirst(tabs []*WorkspaceTab, activeTabID string) []*WorkspaceTab {
+	ordered := make([]*WorkspaceTab, 0, len(tabs))
+	rest := make([]*WorkspaceTab, 0, len(tabs))
+	for _, tab := range tabs {
+		if tab != nil && tab.ID == activeTabID {
+			ordered = append(ordered, tab)
+		} else {
+			rest = append(rest, tab)
+		}
+	}
+	return append(ordered, rest...)
+}
+
+// buildSlot is the throttled-build semaphore handle. A nil slot (non-startup
+// paths) builds unthrottled, exactly as before task 405.
+type buildSlot struct{ sem chan struct{} }
+
+func (s buildSlot) acquire() {
+	if s.sem != nil {
+		s.sem <- struct{}{}
+	}
+}
+
+func (s buildSlot) release() {
+	if s.sem != nil {
+		<-s.sem
+	}
+}
+
+// startTabControllerBuildThrottled is startTabControllerBuild with the
+// task-405 Q2 startup semaphore: the goroutine waits for a free slot BEFORE
+// doing any build work, then releases when the build core returns. The wait
+// happens off the foreground path (inside the build goroutine), so the
+// restore loop itself never blocks. Background tabs are never dropped — they
+// queue until a slot frees up.
+func (a *App) startTabControllerBuildThrottled(tab *WorkspaceTab, sem chan struct{}) {
+	buildCtx, cancel := context.WithCancel(a.bootContext())
+	a.mu.Lock()
+	if tab == nil || tab.removed {
+		a.mu.Unlock()
+		cancel()
+		return
+	}
+	tab.buildGeneration++
+	generation := tab.buildGeneration
+	tab.buildCancel = cancel
+	if tab.buildDone != nil {
+		close(tab.buildDone)
+	}
+	tab.buildDone = make(chan struct{})
+	tab.buildDoneGen = generation
+	slot := buildSlot{sem: sem}
+	a.mu.Unlock()
+	if a.ctx == nil {
+		slot.acquire()
+		a.buildTabControllerWithContext(tab, loadedTabSession{}, buildCtx, generation, cancel)
+		slot.release()
+		return
+	}
+	go func() {
+		slot.acquire()
+		defer slot.release()
+		a.buildTabControllerWithContext(tab, loadedTabSession{}, buildCtx, generation, cancel)
+	}()
+}
+
 // buildTabController assembles a controller for a tab in the background, the
 // same way buildController works for the single-controller App. On success it
 // wires the controller and flips Ready; on failure it stores StartupErr.
@@ -3894,7 +3971,20 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 	sink := a.desktopControllerSink(buildSink, cfg.Notifications)
 	buildCtx, registration := beginSharedHostMCPRegistration(buildCtx, sharedHost)
 	defer registration.rollback()
-	ctrl, err := a.buildTabControllerBootFenced(buildCtx, extensionGen, boot.Options{
+	// Task 405 Q1: feed the 363A runtime-reuse pool into the startup/rebuild
+	// chain. Same gate (experimental_runtime_reuse, enforced inside
+	// acquireRuntimeAssembly) and same key identity as the rebind chain; the
+	// second+ same-key build skips prompt/skills/commands/hooks discovery.
+	// ReuseAssembly is nil when the gate is off or the pool is cold —
+	// BuildWithAssembly then behaves exactly like boot.Build.
+	// Task 363A key identity: deref the effort pointer the same way the
+	// rebind chain does (empty string when unset).
+	effortKey := ""
+	if buildEffort != nil {
+		effortKey = *buildEffort
+	}
+	assemblyKey := runtimeAssemblyKeyForTab(root, model, effortKey)
+	ctrl, assembly, err := a.buildTabControllerBootFenced(buildCtx, extensionGen, boot.Options{
 		Model:                    model,
 		RequireKey:               false,
 		StatsSource:              "desktop",
@@ -3915,18 +4005,28 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
 		OnCreateCollabSession:    a.createCollabSession,
 		OnSessionStatus:          a.collabSessionStatus,
-		OnSessionInfo:          a.collabSessionInfo,
-		OnSessionStop:          a.collabSessionStop,
-		OnSessionSetModel:          a.collabSessionSetModel,
-		OnSessionTurnStatus:          a.collabSessionTurnStatus,
+		OnSessionInfo:            a.collabSessionInfo,
+		OnSessionStop:            a.collabSessionStop,
+		OnSessionSetModel:        a.collabSessionSetModel,
+		OnSessionTurnStatus:      a.collabSessionTurnStatus,
 		OnCascadeDelegate:        cascadeDelegateFor,
 		OnDeleteSession:          a.deleteCollabSession,
 		OnRenameSession:          a.renameCollabSession,
 		OnMoveTopicToGroup:       a.moveCollabTopicToGroup,
+		// ReuseAssembly lives on the embedded RuntimeReload; promoted names
+		// cannot appear in the outer literal, so name the embedded struct
+		// (same shape as the rebind chain in app.go).
+		RuntimeReload: boot.RuntimeReload{
+			ReuseAssembly: a.acquireRuntimeAssembly(assemblyKey),
+			PreviousPlan:  boot.FullReusePlan(),
+		},
 	})
 	if a.handleTabControllerBootError(tab, registration, rootKey, buildGeneration, wailsCtx, err) {
 		return
 	}
+	// Task 405 Q1: publish the freshly built assembly so later same-key
+	// builds (startup siblings, new tabs, rebinds) skip discovery.
+	a.storeRuntimeAssembly(assemblyKey, assembly)
 	if a.tabBuildSuperseded(tab, buildGeneration) {
 		registration.rollback()
 		a.abandonSupersededBuild(tab, ctrl, rootKey, "")
@@ -6544,17 +6644,17 @@ func loadTelemetry(path string) tabTelemetrySnapshot {
 // ProjectNode is one node in the sidebar project tree (a project folder or a
 // topic leaf).
 type ProjectNode struct {
-	Key                          string `json:"key"`  // stable key for React
-	Kind                         string `json:"kind"` // "project" | "topic" | "session" | "global_folder" | "global_topic" | "global_session"
-	Label                        string `json:"label"`
-	Root                         string `json:"root,omitempty"` // project workspace root
-	TopicID                      string `json:"topicId,omitempty"`
-	SessionPath                  string `json:"sessionPath,omitempty"`
+	Key         string `json:"key"`  // stable key for React
+	Kind        string `json:"kind"` // "project" | "topic" | "session" | "global_folder" | "global_topic" | "global_session"
+	Label       string `json:"label"`
+	Root        string `json:"root,omitempty"` // project workspace root
+	TopicID     string `json:"topicId,omitempty"`
+	SessionPath string `json:"sessionPath,omitempty"`
 	// Task 274 ①: the session's current model on the sidebar row — same probe
 	// as the directory list (fillNodeModel), absent when the runtime is
 	// invisible (no guessing).
-	ModelRef string `json:"modelRef,omitempty"`
-	Provider string `json:"provider,omitempty"`
+	ModelRef                     string `json:"modelRef,omitempty"`
+	Provider                     string `json:"provider,omitempty"`
 	Preview                      string `json:"preview,omitempty"`
 	ProjectColor                 string `json:"projectColor,omitempty"`
 	Turns                        int    `json:"turns,omitempty"`

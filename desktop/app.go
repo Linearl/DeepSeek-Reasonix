@@ -988,8 +988,18 @@ func (a *App) restoreOrBuildTabs() {
 		}
 		a.saveTabsLocked()
 		a.mu.Unlock()
-		for _, tab := range toBuild {
-			a.startTabControllerBuild(tab)
+		// Task 405 Q2: throttle the startup build storm and build the active
+		// tab first. Restoring N tabs fires N concurrent full boot.Builds;
+		// same-key builds drag each other's mcp/tool-discovery stages out to
+		// 21-38s spikes (2026-09-30 diagnosis: 4-way interleave measured
+		// mcp=21.3s×4). A 2-slot semaphore keeps 2 builds in flight — a
+		// resource guard, not a behavior change — while ordering puts the
+		// tab the user is looking at first. Background tabs are never
+		// dropped: they simply start as slots free up.
+		restored := orderTabsActiveFirst(toBuild, a.activeTabID)
+		sem := make(chan struct{}, startupBootConcurrency)
+		for _, tab := range restored {
+			a.startTabControllerBuildThrottled(tab, sem)
 		}
 		return
 	}
