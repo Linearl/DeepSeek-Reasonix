@@ -1,9 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { useT } from "../lib/i18n";
 import type { Todo } from "../lib/tools";
 import {
   shouldOpenTodoPanelByDefault,
+  todoHierarchyCodes,
   todoPresentationStatus,
+  todoTerminalStatus,
+  todoTreeDepths,
+  type TodoBatch,
   type TodoPresentationStatus,
 } from "../lib/todoVisibility";
 import { PromptBadge, PromptHeaderAction, PromptShelf } from "./PromptShelf";
@@ -52,6 +56,9 @@ function saveOpenState(stateKey: string, open: boolean): void {
 // space. A batch that just reached completion briefly shows its final count,
 // then leaves the composer shelf; the transcript tool call remains.
 // Manual expand/collapse is restored only for the same batch.
+// Task 152: the list renders as a tree (parent_id nesting with indent and
+// per-parent collapse, dotted T1/T1.1 position codes) and optionally carries an
+// archive of earlier fully-finished batches, collapsed by default.
 export function TodoPanel({
   stateKey,
   todos,
@@ -60,6 +67,7 @@ export function TodoPanel({
   onContinue,
   onDismiss,
   defaultOpen,
+  archive,
 }: {
   stateKey: string;
   todos: Todo[];
@@ -73,11 +81,13 @@ export function TodoPanel({
    * collapsed by default — so the footer mode stays byte-for-byte identical.
    */
   defaultOpen?: boolean;
+  /** Task 152: earlier fully-terminal batches, newest first. Undefined keeps the single-batch behaviour. */
+  archive?: TodoBatch[];
 }) {
   const t = useT();
   const currentRef = useRef<HTMLLIElement | null>(null);
 
-  const done = todos.filter((t) => t.status === "completed").length;
+  const done = todos.filter((t) => todoTerminalStatus(t.status)).length;
   const current = todos.find((t) => t.status === "in_progress");
   const allDone = todos.length > 0 && done === todos.length;
   const summary = current?.activeForm || current?.content || todos[todos.length - 1]?.content || "";
@@ -133,48 +143,182 @@ export function TodoPanel({
       ) : undefined}
     >
       {open && (
-        <ul className="todobar__list">
-          {todos.map((todo, index) => {
-            const sourceStatus = normalizeTodoStatus(todo.status);
-            const status = todoPresentationStatus(sourceStatus, { running, pendingPrompt });
-            return (
-              <li
-                key={index}
-                ref={sourceStatus === "in_progress" ? currentRef : undefined}
-                className={`todobar__item todobar__item--${status}${todo.level ? " todobar__item--sub" : ""}`}
-              >
-                <span className={`todobar__status todobar__status--${status}`}>
-                  {t(todoStatusLabelKey(status))}
-                </span>
-                <span className="todobar__text">
-                  {sourceStatus === "in_progress" && todo.activeForm ? todo.activeForm : todo.content}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
+        <TodoTree
+          todos={todos}
+          running={running}
+          pendingPrompt={pendingPrompt}
+          currentRef={currentRef}
+        />
+      )}
+      {open && archive && archive.length > 0 && (
+        <TodoArchive batches={archive} />
       )}
     </PromptShelf>
   );
 }
 
-function normalizeTodoStatus(status: Todo["status"]): "pending" | "in_progress" | "completed" {
+// TodoTree renders one batch: depth-based indent, dotted hierarchy codes, and
+// per-parent collapse.
+function TodoTree({
+  todos,
+  running,
+  pendingPrompt,
+  currentRef,
+}: {
+  todos: Todo[];
+  running: boolean;
+  pendingPrompt: boolean;
+  currentRef: RefObject<HTMLLIElement | null>;
+}) {
+  const t = useT();
+  const depths = todoTreeDepths(todos);
+  const codes = todoHierarchyCodes(todos);
+  const [collapsed, setCollapsed] = useState<Set<number>>(() => new Set());
+  const hidden = new Set<number>();
+  depths.forEach((_depth, index) => {
+    for (let parent = parentIndexFor(depths, index); parent >= 0; parent = parentIndexFor(depths, parent)) {
+      if (collapsed.has(parent)) {
+        hidden.add(index);
+        break;
+      }
+    }
+  });
+
+  return (
+    <ul className="todobar__list">
+      {todos.map((todo, index) => {
+        if (hidden.has(index)) return null;
+        const sourceStatus = normalizeTodoStatus(todo.status);
+        const status = todoPresentationStatus(sourceStatus, { running, pendingPrompt });
+        const depth = depths[index];
+        const childrenCount = childCountFor(depths, index);
+        const isCollapsed = collapsed.has(index);
+        return (
+          <li
+            key={index}
+            ref={sourceStatus === "in_progress" ? currentRef : undefined}
+            className={[
+              "todobar__item",
+              `todobar__item--${status}`,
+              depth > 0 ? "todobar__item--sub" : "",
+              depth > 1 ? "todobar__item--deep" : "",
+            ].filter(Boolean).join(" ")}
+          >
+            <span className={`todobar__status todobar__status--${status}`}>
+              {t(todoStatusLabelKey(status))}
+            </span>
+            <span className="todobar__text">
+              {childrenCount > 0 && (
+                <button
+                  type="button"
+                  className="todobar__caret"
+                  aria-expanded={!isCollapsed}
+                  aria-label={`${isCollapsed ? t("todo.expand") : t("todo.collapse")} ${codes[index]}`}
+                  onClick={() => setCollapsed((current) => {
+                    const next = new Set(current);
+                    if (next.has(index)) next.delete(index);
+                    else next.add(index);
+                    return next;
+                  })}
+                >
+                  {isCollapsed ? "▸" : "▾"} {childrenCount}
+                </button>
+              )}
+              <span className="todobar__code">{codes[index]}</span>{" "}
+              {sourceStatus === "in_progress" && todo.activeForm ? todo.activeForm : todo.content}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+// TodoArchive is the collapsed record of earlier fully-finished batches (task
+// 152): completing no longer means vanishing — the history stays reachable
+// without putting it back on the live spine.
+function TodoArchive({ batches }: { batches: TodoBatch[] }) {
+  const t = useT();
+  const [openArchive, setOpenArchive] = useState(false);
+  return (
+    <div className="todobar__archive">
+      <button
+        type="button"
+        className="todobar__archive-toggle"
+        aria-expanded={openArchive}
+        onClick={() => setOpenArchive((value) => !value)}
+      >
+        {openArchive ? "▾" : "▸"} {t("todo.archiveToggle", { n: batches.length })}
+      </button>
+      {openArchive && (
+        <ul className="todobar__archive-list">
+          {batches.map((batch) => (
+            <TodoArchiveBatch key={batch.key} batch={batch} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function TodoArchiveBatch({ batch }: { batch: TodoBatch }) {
+  const done = batch.todos.filter((todo) => todoTerminalStatus(todo.status)).length;
+  return (
+    <li className="todobar__archive-batch">
+      <span className="todobar__archive-batch-title">{done}/{batch.todos.length}</span>
+      <ul className="todobar__archive-items">
+        {batch.todos.map((todo, index) => (
+          <li key={index} className={`todobar__archive-item todobar__archive-item--${normalizeTodoStatus(todo.status)}`}>
+            {todo.content}
+          </li>
+        ))}
+      </ul>
+    </li>
+  );
+}
+
+function parentIndexFor(depths: readonly number[], index: number): number {
+  const depth = depths[index];
+  for (let i = index - 1; i >= 0; i--) {
+    if (depths[i] < depth) return i;
+  }
+  return -1;
+}
+
+function childCountFor(depths: readonly number[], index: number): number {
+  const depth = depths[index];
+  let count = 0;
+  for (let i = index + 1; i < depths.length && depths[i] > depth; i++) {
+    if (depths[i] === depth + 1) count++;
+  }
+  return count;
+}
+
+function normalizeTodoStatus(status: Todo["status"]): "pending" | "in_progress" | "completed" | "abandoned" | "archived" {
   switch (String(status ?? "").trim()) {
     case "completed":
       return "completed";
     case "in_progress":
       return "in_progress";
+    case "abandoned":
+      return "abandoned";
+    case "archived":
+      return "archived";
     default:
       return "pending";
   }
 }
 
-function todoStatusLabelKey(status: TodoPresentationStatus): "todo.pending" | "todo.inProgress" | "status.runtimePendingPrompt" | "todo.paused" | "todo.completed" {
+function todoStatusLabelKey(status: TodoPresentationStatus): "todo.pending" | "todo.inProgress" | "status.runtimePendingPrompt" | "todo.paused" | "todo.completed" | "todo.abandoned" | "todo.archived" {
   switch (status) {
     case "completed":
       return "todo.completed";
     case "in_progress":
       return "todo.inProgress";
+    case "abandoned":
+      return "todo.abandoned";
+    case "archived":
+      return "todo.archived";
     case "waiting":
       return "status.runtimePendingPrompt";
     case "paused":

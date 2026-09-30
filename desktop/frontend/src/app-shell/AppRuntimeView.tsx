@@ -147,6 +147,7 @@ export function AppRuntimeView(props: AppRuntimeViewProps) {
     show: session.todoPanel.showTodos,
     identity: session.todoPanel.scopedTodoBatch,
     todos: session.todoPanel.todos,
+    archive: session.todoPanel.archive,
     running: visibleRuntimeState.running,
     pendingPrompt: visibleRuntimeState.pendingPrompt,
     continueReady: Boolean(activeTabId && !activeTab?.readOnly && (core.remoteSurfaceActive ? core.remoteComposerReady : controllerReady)),

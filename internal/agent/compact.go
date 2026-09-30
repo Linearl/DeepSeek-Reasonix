@@ -61,6 +61,9 @@ Everything the user stated that still governs the work — names, paths, IDs, ve
 ## Goal
 The user's request and intent.
 
+## Task tree
+If the prefix contains todo_write calls, reproduce the latest task tree as a checklist with every item's exact status (pending / in_progress / completed / abandoned / archived) and step_id — subtasks indented under their parent. This snapshot is what keeps task progress intact across the compaction boundary: the folded todo_write calls leave the model-visible view, so an omitted item looks like it never existed (task 152). Omit the heading only when no todo_write appears in the prefix.
+
 ## Decisions & rationale
 Key choices made so far and why — so they are not re-litigated or reversed.
 

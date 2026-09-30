@@ -1,4 +1,5 @@
 import type { Todo } from "../lib/tools";
+import type { TodoBatch } from "../lib/todoVisibility";
 import type { RewindUndoState } from "../lib/rewindTypes";
 import type { WorkspaceConflictView } from "../lib/types";
 import type { DecisionSurfaceKind as MockDecisionSurfaceKind } from "../lib/decisionSurfaceMock";
@@ -40,6 +41,8 @@ export function buildFooterTodo(input: {
   show: boolean;
   identity: string;
   todos: Todo[];
+  // Task 152: earlier fully-terminal batches for the collapsed archive section.
+  archive?: TodoBatch[];
   running: boolean;
   pendingPrompt: boolean;
   continueReady: boolean;
@@ -52,6 +55,7 @@ export function buildFooterTodo(input: {
     props: {
       stateKey: input.identity,
       todos: input.todos,
+      archive: input.archive,
       running: input.running,
       pendingPrompt: input.pendingPrompt,
       onContinue: input.continueReady ? input.onContinue : undefined,

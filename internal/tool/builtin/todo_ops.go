@@ -31,6 +31,7 @@ func applyTodoOps(baseline []evidence.TodoItem, ops []todoOp) ([]todoItem, error
 			StepID:     t.StepID,
 			Owner:      t.Owner,
 			Running:    t.Running,
+			ParentID:   t.ParentID, // task 152: ops must not strip the tree structure
 		})
 	}
 	if len(ops) == 0 {

@@ -2768,6 +2768,12 @@ export const zhTW: Record<DictKey, string> = {
   "todo.inProgress": "進行中",
   "todo.paused": "待繼續",
   "todo.completed": "已完成",
+  // 任務 152：樹狀生命週期（放棄/歸檔）+ 樹/歸檔控件。
+  "todo.abandoned": "已放棄",
+  "todo.archived": "已歸檔",
+  "todo.collapse": "收合子任務",
+  "todo.expand": "展開子任務",
+  "todo.archiveToggle": "已歸檔批次（{n}）",
   "todo.continue": "繼續",
 
   // 斜線選單標籤
