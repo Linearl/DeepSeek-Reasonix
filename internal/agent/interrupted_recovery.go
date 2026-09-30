@@ -39,6 +39,7 @@ func (a *Agent) transcriptInterruptedRecovery() *provider.InterruptedTurnRecover
 			copy.InterruptedTools = append([]string(nil), copy.InterruptedTools...)
 			copy.NotStartedTools = append([]provider.InterruptedToolSummary(nil), copy.NotStartedTools...)
 			copy.UnknownTools = append([]provider.InterruptedToolSummary(nil), copy.UnknownTools...)
+			a.reclassifySideEffectFreeUnknowns(&copy)
 			return &copy
 		}
 		if IsUserAuthoredTurnMessage(m) {
@@ -131,6 +132,44 @@ func withInterruptedRecovery(input string, r *provider.InterruptedTurnRecovery) 
 		return input
 	}
 	return block + "\n\n" + input
+}
+
+// reclassifySideEffectFreeUnknowns applies the task-433 whitelist to the
+// prompt-tail handoff copy: an outcome-unknown entry whose call could not have
+// produced an external effect is downgraded to not_started, so the model is
+// told it may re-plan the call immediately instead of being told to inspect
+// effects that cannot exist (自动判「未生效」→ 快速续轮). The durable handoff
+// message itself is never rewritten — only the returned copy is.
+func (a *Agent) reclassifySideEffectFreeUnknowns(r *provider.InterruptedTurnRecovery) {
+	if a == nil || a.sess.conversation == nil || r == nil || len(r.UnknownTools) == 0 {
+		return
+	}
+	moved := false
+	kept := r.UnknownTools[:0]
+	for _, c := range r.UnknownTools {
+		if a.interruptedSummarySideEffectFree(c) {
+			r.NotStartedTools = append(r.NotStartedTools, provider.InterruptedToolSummary{ID: c.ID, Name: c.Name})
+			moved = true
+			continue
+		}
+		kept = append(kept, c)
+	}
+	if moved {
+		r.UnknownTools = kept
+	}
+}
+
+// interruptedSummarySideEffectFree judges one handoff entry. The durable
+// record, when available, supplies the canonical tool and the real arguments
+// (a bash probe needs its command text); without a record the name alone
+// decides and bash fails closed (unknown args → keep the manual review).
+func (a *Agent) interruptedSummarySideEffectFree(c provider.InterruptedToolSummary) bool {
+	if record := a.sess.conversation.toolRecoveryRecord(c.ID); record != nil {
+		if interruptedCallSideEffectFree(record.Identity.CanonicalTool, record.Arguments) {
+			return true
+		}
+	}
+	return interruptedCallSideEffectFree(c.Name, nil)
 }
 
 func clipRecoveryValue(value string) string {
