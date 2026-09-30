@@ -27,6 +27,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -59,6 +60,14 @@ type Config struct {
 	// EventTarget is the contact that HandleEvent delivers to. Empty defaults
 	// to "zcode-heartbeat" so the heartbeat runtime sees hook pushes.
 	EventTarget string
+	// SpawnRoles lists the roles allowed to call collab_spawn. Empty denies
+	// every role: the tool creates task cards and dispatches assignment
+	// mail, so it stays closed until named explicitly.
+	SpawnRoles []string
+	// SpawnDailyQuota caps collab_spawn calls per role per local calendar
+	// day; 0 keeps the default (20). The counter lives in this process, so
+	// it is runaway protection, not billing.
+	SpawnDailyQuota int
 }
 
 // Server owns the bus surface: the MCP streamable handler, the /bus/events
@@ -74,6 +83,14 @@ type Server struct {
 	eventTarget string
 	auditMu     sync.Mutex
 	auditPath   string
+	// Spawn gate: which roles may hand out work, and how often. spawnMu
+	// guards the counters; MailStore and CardStore serialize their own
+	// writes, so this mutex only makes quota accounting exact.
+	spawnAllowed map[string]bool
+	spawnQuota   int
+	spawnMu      sync.Mutex
+	spawnUsed    map[string]int
+	spawnDay     string
 }
 
 // New validates cfg and builds the bus. A returned error means "do not
@@ -104,6 +121,16 @@ func New(cfg Config) (*Server, error) {
 	if s.eventTarget == "" {
 		s.eventTarget = "zcode-heartbeat"
 	}
+	s.spawnAllowed = map[string]bool{}
+	for _, role := range cfg.SpawnRoles {
+		s.spawnAllowed[role] = true
+	}
+	s.spawnQuota = cfg.SpawnDailyQuota
+	if s.spawnQuota <= 0 {
+		s.spawnQuota = 20
+	}
+	s.spawnUsed = map[string]int{}
+	s.spawnDay = time.Now().Format("2006-01-02")
 	for role, token := range cfg.Roles {
 		if !validRole.MatchString(role) {
 			return nil, fmt.Errorf("busmcp: invalid role name %q (want [a-z0-9-]+)", role)
@@ -117,7 +144,7 @@ func New(cfg Config) (*Server, error) {
 		s.roleByTk[token] = role
 		contact := "zcode-" + role
 		s.contact[role] = contact
-		s.roleServers[role] = s.newRoleServer(role, contact)
+		s.roleServers[role] = s.newRoleServer(role, contact, s.spawnAllowed[role])
 	}
 	s.mcpHandler = mcp.NewStreamableHTTPHandler(s.serverForRequest, nil)
 	return s, nil

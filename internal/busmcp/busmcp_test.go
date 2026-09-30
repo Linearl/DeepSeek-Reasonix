@@ -313,3 +313,77 @@ func callTool(t *testing.T, cs *mcp.ClientSession, name string, args map[string]
 	}
 	return json.Unmarshal(b, out)
 }
+
+// TestSpawnGateAndQuota pins the collab_spawn fail-closed contract: the tool
+// exists only for spawn-authorized roles, and the daily quota caps even the
+// authorized ones. Every denial lands in the audit log.
+func TestSpawnGateAndQuota(t *testing.T) {
+	s, err := New(Config{
+		Enabled: true,
+		Roles: map[string]string{
+			"dev":       testTokenDev,
+			"heartbeat": testTokenHB,
+		},
+		MailDir:         t.TempDir(),
+		SpawnRoles:      []string{"heartbeat"},
+		SpawnDailyQuota: 1,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	srv := httptest.NewServer(s.Handler())
+	t.Cleanup(func() { srv.Close() })
+
+	// Unauthorized role: the tool was never registered for it.
+	csDev := connectAs(t, srv.URL, testTokenDev)
+	result, err := csDev.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "collab_spawn",
+		Arguments: map[string]any{"to": "zcode-worker", "title": "t", "body": "b"},
+	})
+	if err == nil && !result.IsError {
+		t.Fatal("dev spawn: want tool-not-found or error, got success")
+	}
+
+	// Authorized role: first call succeeds and creates card + assignment mail.
+	csHB := connectAs(t, srv.URL, testTokenHB)
+	var first spawnOut
+	if err := callTool(t, csHB, "collab_spawn", map[string]any{
+		"to": "zcode-worker", "title": "run batch", "body": "acceptance: batch green",
+	}, &first); err != nil {
+		t.Fatalf("heartbeat spawn: %v", err)
+	}
+	if first.CardID == "" || first.MailID == "" || first.To != "zcode-worker" {
+		t.Fatalf("spawn result: %+v", first)
+	}
+	pending, err := s.mail.Peek("zcode-worker")
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("assignment mail: want 1, got %v (%v)", pending, err)
+	}
+	card, err := s.cards.Get(first.CardID)
+	if err != nil || card.Initiator != "zcode-heartbeat" || card.Assignee != "zcode-worker" {
+		t.Fatalf("card: %+v (%v)", card, err)
+	}
+
+	// Quota (1/day): the second call must fail and the audit trail must
+	// show both a success and the denial.
+	var second spawnOut
+	err = callTool(t, csHB, "collab_spawn", map[string]any{
+		"to": "zcode-worker", "title": "second", "body": "b",
+	}, &second)
+	if err == nil || !strings.Contains(err.Error(), "quota") {
+		t.Fatalf("second spawn: want quota error, got %v", err)
+	}
+	audit := readAudit(t, s)
+	if !strings.Contains(audit, "daily quota exhausted") || !strings.Contains(audit, "card=") {
+		t.Fatalf("audit missing spawn traces: %s", audit)
+	}
+}
+
+func readAudit(t *testing.T, s *Server) string {
+	t.Helper()
+	b, err := os.ReadFile(s.auditPath)
+	if err != nil {
+		t.Fatalf("read audit: %v", err)
+	}
+	return string(b)
+}

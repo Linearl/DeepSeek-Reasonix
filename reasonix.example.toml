@@ -287,4 +287,23 @@ stalled_warning_seconds = 900   # heads-up once per background job after this ma
 # # mail_dir     = ""                  # override the shared mailbox dir (empty: session-chat default)
 # # hop_limit    = 0                   # mail chain ceiling (0: default)
 # # event_target = "zcode-heartbeat"   # where hook pushes (POST /bus/events) land
+# # spawn_roles  = ["heartbeat"]       # roles allowed collab_spawn (empty: nobody — it hands out work)
+# # spawn_daily_quota = 20             # collab_spawn calls per role per day (runaway protection)
+
+# [serve.bus_worker]
+# Unattended headless execution pool for bus task assignments. Independent
+# of bus_mcp: it drains one mailbox contact (default "zcode-worker") and runs
+# one tracked subprocess per task: <command> -p <prompt> --output-format
+# stream-json --mode <mode>. Results go to a JSON file + the task card +
+# a receipt mail to the sender. Off by default.
+# enabled = false
+# # command        = "zcode"           # agent CLI to spawn per task
+# # mode           = "build"           # headless permission mode: build | yolo
+# # workspace      = ""                # child working dir (empty: serve cwd)
+# # concurrency    = 2                 # parallel lanes (1 goroutine + 1 child each)
+# # timeout        = "30m"             # per-run budget; expiry kills the child tree
+# # poll_interval  = "5s"              # mailbox poll cadence
+# # contact        = "zcode-worker"    # mailbox contact this pool drains
+# # mail_dir       = ""                # override the shared mailbox dir
+# # result_dir     = ""                # result_ref files (empty: <mail_dir>/bus-results)
 

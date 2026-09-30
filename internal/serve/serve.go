@@ -26,6 +26,7 @@ import (
 	"reasonix/internal/agent"
 	"reasonix/internal/boot"
 	"reasonix/internal/busmcp"
+	"reasonix/internal/busworker"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
 	"reasonix/internal/event"
@@ -119,6 +120,10 @@ type Server struct {
 	// runtimes (zcode). Nil unless [serve.bus_mcp] enabled AND its config
 	// validated; every nil state leaves the routes unmounted (fail-closed).
 	bus *busmcp.Server
+	// busWorker runs the unattended headless assignment pool. Nil unless
+	// [serve.bus_worker] enabled AND its config validated; started in
+	// Run/RunGracefulListener next to the heartbeat sweeper.
+	busWorker *busworker.Worker
 }
 
 // SetControllerBuildOptions records the process-local options used to build
@@ -154,11 +159,13 @@ func New(ctrl control.SessionAPI, bc *Broadcaster, serveCfg config.ServeConfig) 
 	}
 	if serveCfg.BusMCP.Enabled {
 		bus, err := busmcp.New(busmcp.Config{
-			Enabled:     serveCfg.BusMCP.Enabled,
-			Roles:       serveCfg.BusMCP.Roles,
-			MailDir:     serveCfg.BusMCP.MailDir,
-			HopLimit:    serveCfg.BusMCP.HopLimit,
-			EventTarget: serveCfg.BusMCP.EventTarget,
+			Enabled:         serveCfg.BusMCP.Enabled,
+			Roles:           serveCfg.BusMCP.Roles,
+			MailDir:         serveCfg.BusMCP.MailDir,
+			HopLimit:        serveCfg.BusMCP.HopLimit,
+			EventTarget:     serveCfg.BusMCP.EventTarget,
+			SpawnRoles:      serveCfg.BusMCP.SpawnRoles,
+			SpawnDailyQuota: serveCfg.BusMCP.SpawnDailyQuota,
 		})
 		if err != nil {
 			// A broken bus config must not take down the user's session
@@ -168,6 +175,27 @@ func New(ctrl control.SessionAPI, bc *Broadcaster, serveCfg config.ServeConfig) 
 		} else {
 			s.bus = bus
 			s.auth.busPublic = true
+		}
+	}
+	if serveCfg.BusWorker.Enabled {
+		worker, err := busworker.New(busworker.Config{
+			Enabled:      serveCfg.BusWorker.Enabled,
+			Command:      serveCfg.BusWorker.Command,
+			Mode:         serveCfg.BusWorker.Mode,
+			Workspace:    serveCfg.BusWorker.Workspace,
+			Concurrency:  serveCfg.BusWorker.Concurrency,
+			Timeout:      serveCfg.BusWorker.Timeout,
+			PollInterval: serveCfg.BusWorker.PollInterval,
+			Contact:      serveCfg.BusWorker.Contact,
+			MailDir:      serveCfg.BusWorker.MailDir,
+			ResultDir:    serveCfg.BusWorker.ResultDir,
+		})
+		if err != nil {
+			// Same posture as bus-mcp: a broken worker config never takes
+			// the session server down; the pool just doesn't start.
+			slog.Warn("serve: bus-worker disabled by config", "err", err)
+		} else {
+			s.busWorker = worker
 		}
 	}
 	s.initTitleProvider()
@@ -675,6 +703,7 @@ func (s *Server) reloadExtensionsHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) Run(addr string) error {
 	s.ctl().EnableInteractiveApproval()
 	s.setListenAddr(addr)
+	s.startBusWorker()
 	return http.ListenAndServe(addr, s.Handler())
 }
 
@@ -706,6 +735,7 @@ func (s *Server) RunGracefulListener(ctx context.Context, ln net.Listener) error
 		ErrorLog: log.New(log.Writer(), "[serve-http] ", log.LstdFlags),
 	}
 	s.startHeartbeatSweeper()
+	s.startBusWorker()
 	errCh := make(chan error, 1)
 	safego.Go("serve.http", func() {
 		errCh <- srv.Serve(ln)
@@ -1809,6 +1839,19 @@ func (s *Server) startHeartbeatSweeper() {
 			s.releaseExpiredHeartbeats()
 		}
 	}()
+}
+
+// startBusWorker runs the headless assignment pool for the lifetime of the
+// server (background context, matching the sweeper's house pattern — process
+// exit is the stop signal; per-run contexts make in-flight runs settle as
+// failed only on their own timeout or cancellation).
+func (s *Server) startBusWorker() {
+	if s.busWorker == nil {
+		return
+	}
+	safego.Go("busworker.run", func() {
+		s.busWorker.Run(context.Background())
+	})
 }
 
 func (s *Server) releaseSession(w http.ResponseWriter, r *http.Request) {
