@@ -3894,6 +3894,8 @@ export const zh: Record<DictKey, string> = {
   "msg.folderReference": "文件夹 · 工作区引用",
   "msg.pastedExpandTooltip": "展开粘贴文本",
   "msg.pastedCollapseTooltip": "收起粘贴文本",
+  "msg.foldExpand": "展开全文",
+  "msg.foldCollapse": "收起",
   "turnActions.summary": "压缩",
   "turnActions.rewind": "回溯",
   "transcript.jumpToBottom": "跳到底部",

@@ -240,6 +240,32 @@ function formatMessageTime(date: Date): string {
   return `${hours}:${minutes}`;
 }
 
+// Task 436: overly long user messages (typed, steered, or injected guidance)
+// default to a height-clamped card so a wall of text cannot push the rest of
+// the conversation out of view. Display-only: the full text stays rendered in
+// the DOM (and in the model context) — only the visual height is clamped, with
+// a chevron toggle to expand / re-collapse.
+//
+// Threshold 14 estimated lines: a user bubble renders ≈22px per line, so 14
+// lines ≈ 300px — well above the 200px clamp (folding has to visibly pay off)
+// while staying inside the 12–16 line band where anything readable on one
+// screen is never folded. Estimated lines weight CJK/fullwidth chars double
+// because they render ≈2× wider than Latin glyphs at the bubble's font size.
+export const USER_MSG_FOLD_LINE_THRESHOLD = 14;
+export const USER_MSG_FOLD_CLAMP_HEIGHT_PX = 200;
+const USER_MSG_FOLD_UNITS_PER_LINE = 110;
+
+export function estimateUserMessageLines(text: string): number {
+  if (!text) return 0;
+  let total = 0;
+  for (const line of text.split(/\r?\n/)) {
+    let units = 0;
+    for (const ch of line) units += ch.charCodeAt(0) > 0x2e7f ? 2 : 1;
+    total += Math.max(1, Math.ceil(units / USER_MSG_FOLD_UNITS_PER_LINE));
+  }
+  return total;
+}
+
 export function UserMessage({
   text,
   submitText,
@@ -281,6 +307,12 @@ export function UserMessage({
   const canEdit = turn !== undefined && onEdit !== undefined && !editDisabled;
   const [editing, setEditing] = useState(false);
   const [draftText, setDraftText] = useState(editableDisplayText);
+  // Task 436: clamp long ordinary bodies (typed / steered / injected guidance
+  // all land here as plain user messages). IM-source cards and drain-merged
+  // injections keep their own dedicated folding surfaces.
+  const foldCandidate = !imSource && !mergedMessage && estimateUserMessageLines(displayText) >= USER_MSG_FOLD_LINE_THRESHOLD;
+  const [foldExpanded, setFoldExpanded] = useState(false);
+  const foldActive = foldCandidate && !foldExpanded;
   // Task 234: upstream renamed the parsed list to `parsedAttachments` (its
   // render half moved into MessageAttachments); the edit-state draft seeds
   // from the same list.
@@ -538,51 +570,71 @@ export function UserMessage({
           <MergedMessageBody merged={mergedMessage} />
         ) : (
           <>
-            {hasInvocationSegments && pasteBlocks.length === 0 && selectedTextBlocks.length === 0 ? (
-              <div className="msg__text msg__rich-text">
-                {invocationSegments.map((segment, index) => segment.type === "text"
-                  ? <span key={`text:${segment.start}:${index}`}>{segment.content}</span>
-                  : (
-                    <InvocationBadge
-                      key={`invocation:${segment.invocation.name}:${segment.offset}:${index}`}
-                      invocation={segment.invocation}
-                      kind={segment.invocation.kind}
-                      variant="message"
-                    />
-                  ))}
-              </div>
-            ) : displaySegments.map((seg, i) => {
-              if (seg.type === "text") {
-                return seg.content ? <div className="msg__text" key={`s${i}`}>{seg.content}</div> : null;
-              }
-              const expanded = Boolean(expandedBlockKeys[seg.key]);
-              return (
-                <div className="msg-pasted" key={seg.key}>
-                  <div className="msg-pasted-block">
-                    <div className="msg-pasted-head" data-transcript-selection-ignore>
-                      {seg.kind === "code" ? <FileText size={15} /> : <MessageSquare size={15} />}
-                      <span className="msg-pasted-label">{seg.block.label}</span>
-                      <div className="msg-pasted-actions">
-                        <Tooltip label={t(expanded ? "msg.pastedCollapseTooltip" : "msg.pastedExpandTooltip")}>
-                          <button type="button" onClick={() => toggleBlockExpand(seg.key)}>
-                            {expanded ? t("common.collapse") : t("composer.pastedExpand")}
-                          </button>
-                        </Tooltip>
-                      </div>
-                    </div>
-                    {expanded && (
-                      <div className="msg-pasted-expanded">
-                        {seg.kind === "chat"
-                          ? <Markdown text={seg.block.content} />
-                          : seg.kind === "code" || seg.kind === "terminal"
-                            ? <CodeViewer value={seg.block.content} language={seg.kind === "terminal" ? "console" : languageFor(seg.block.path ?? "")} maxHeight={360} />
-                            : seg.block.content}
-                      </div>
-                    )}
-                  </div>
+            {/* Task 436: the clamp keeps the full text in the DOM — only the
+                visual height folds, so copy/selection and the model context
+                never lose content. */}
+            <div
+              className={foldActive ? "msg-fold msg-fold--clamped" : "msg-fold"}
+              data-msg-fold={foldActive ? "clamped" : "open"}
+            >
+              {hasInvocationSegments && pasteBlocks.length === 0 && selectedTextBlocks.length === 0 ? (
+                <div className="msg__text msg__rich-text">
+                  {invocationSegments.map((segment, index) => segment.type === "text"
+                    ? <span key={`text:${segment.start}:${index}`}>{segment.content}</span>
+                    : (
+                      <InvocationBadge
+                        key={`invocation:${segment.invocation.name}:${segment.offset}:${index}`}
+                        invocation={segment.invocation}
+                        kind={segment.invocation.kind}
+                        variant="message"
+                      />
+                    ))}
                 </div>
-              );
-            })}
+              ) : displaySegments.map((seg, i) => {
+                if (seg.type === "text") {
+                  return seg.content ? <div className="msg__text" key={`s${i}`}>{seg.content}</div> : null;
+                }
+                const expanded = Boolean(expandedBlockKeys[seg.key]);
+                return (
+                  <div className="msg-pasted" key={seg.key}>
+                    <div className="msg-pasted-block">
+                      <div className="msg-pasted-head" data-transcript-selection-ignore>
+                        {seg.kind === "code" ? <FileText size={15} /> : <MessageSquare size={15} />}
+                        <span className="msg-pasted-label">{seg.block.label}</span>
+                        <div className="msg-pasted-actions">
+                          <Tooltip label={t(expanded ? "msg.pastedCollapseTooltip" : "msg.pastedExpandTooltip")}>
+                            <button type="button" onClick={() => toggleBlockExpand(seg.key)}>
+                              {expanded ? t("common.collapse") : t("composer.pastedExpand")}
+                            </button>
+                          </Tooltip>
+                        </div>
+                      </div>
+                      {expanded && (
+                        <div className="msg-pasted-expanded">
+                          {seg.kind === "chat"
+                            ? <Markdown text={seg.block.content} />
+                            : seg.kind === "code" || seg.kind === "terminal"
+                              ? <CodeViewer value={seg.block.content} language={seg.kind === "terminal" ? "console" : languageFor(seg.block.path ?? "")} maxHeight={360} />
+                              : seg.block.content}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {foldCandidate && (
+              <button
+                className="msg-fold__toggle"
+                type="button"
+                data-transcript-selection-ignore
+                aria-expanded={foldExpanded}
+                onClick={() => setFoldExpanded((value) => !value)}
+              >
+                <ChevronDown size={13} className={foldExpanded ? "msg-fold__chevron msg-fold__chevron--open" : "msg-fold__chevron"} />
+                <span>{foldExpanded ? t("msg.foldCollapse") : t("msg.foldExpand")}</span>
+              </button>
+            )}
           </>
         )}
         {failed && <div className="msg__send-failed" data-transcript-selection-ignore>{t("msg.sendFailed")}</div>}

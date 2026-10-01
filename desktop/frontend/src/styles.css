@@ -5512,6 +5512,53 @@ a[href] {
   white-space: normal;
 }
 
+/* Task 436: height clamp for overly long user messages — display-only fold,
+   the full text stays in the DOM; the fade hints there is more to expand. */
+.msg-fold {
+  position: relative;
+  min-width: 0;
+}
+.msg-fold--clamped {
+  max-height: 200px;
+  overflow: hidden;
+}
+.msg-fold--clamped::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 56px;
+  background: linear-gradient(to bottom, transparent, var(--chat-user-bg));
+  pointer-events: none;
+}
+.msg-fold__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--chat-user-fg);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  opacity: 0.72;
+}
+.msg-fold__toggle:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+.msg-fold__chevron {
+  flex: 0 0 auto;
+  transition: transform 0.15s ease;
+}
+.msg-fold__chevron--open {
+  transform: rotate(-180deg);
+}
+
 .msg--assistant {
   color: var(--fg);
   display: flex;

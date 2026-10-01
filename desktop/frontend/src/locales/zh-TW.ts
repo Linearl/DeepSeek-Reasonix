@@ -2817,6 +2817,8 @@ export const zhTW: Record<DictKey, string> = {
   "msg.folderReference": "資料夾 · 工作區引用",
   "msg.pastedExpandTooltip": "展開貼上文字",
   "msg.pastedCollapseTooltip": "收起貼上文字",
+  "msg.foldExpand": "展開全文",
+  "msg.foldCollapse": "收起",
   "turnActions.summary": "壓縮",
   "turnActions.rewind": "回溯",
   "transcript.jumpToBottom": "跳到底部",
