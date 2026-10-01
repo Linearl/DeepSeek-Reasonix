@@ -250,7 +250,6 @@ import { setComposerDraftPersistenceEnabled } from "./lib/composerDraftPersisten
 import { setSelectionActionsEnabled } from "./lib/selectionActionsPreference";
 import { continueDelivery } from "./lib/deliveryContinue";
 import { activateGoalAndSubmitOnTab } from "./lib/goalSubmit";
-import logoWordmark from "./assets/logo-wordmark.svg";
 import { isChannelSession, taskSessionIDFromPath } from "./app-runtime/sidebarImProjection";
 import { WorkspaceInsertTarget } from "./app-runtime/useComposerInsertCommands";
 import { isMacOSWorkbenchSidebarTitlebar, normalizeDesktopPlatform } from "./lib/desktopPlatform";
@@ -4427,7 +4426,7 @@ export default function App() {
             <>
               <div className="sidebar__head" aria-hidden={sidebarCollapsed}>
                 <div className="sidebar__brand sidebar__brand--workbench">
-                  <img src={logoWordmark} alt="Reasonix" className="sidebar__brand-logo sidebar__brand-logo--workbench" draggable={false} />
+                  <span role="img" aria-label="Reasonix" className="sidebar__brand-logo sidebar__brand-logo--workbench" />
                 </div>
               </div>
 
@@ -4447,7 +4446,7 @@ export default function App() {
           ) : (
             <>
               <div className="sidebar__brand" aria-hidden={sidebarCollapsed}>
-                <img src={logoWordmark} alt="Reasonix" className="sidebar__brand-logo" draggable={false} />
+                <span role="img" aria-label="Reasonix" className="sidebar__brand-logo" />
               </div>
 
               <button

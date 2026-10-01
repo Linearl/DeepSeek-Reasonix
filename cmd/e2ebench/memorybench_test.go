@@ -87,3 +87,100 @@ func TestSeedTaskMemoryBuildsIsolatedStateRoot(t *testing.T) {
 		t.Fatalf("task without seeds must be a no-op, got %v %v", env, err)
 	}
 }
+
+// TestTaskExperimentEnvMemoryOffCannotReachSeeds pins the #11247 → #11251
+// counterfactual contract: the memory-off arm's state home must exist (so the
+// child never falls back to the developer's real store) but must NOT contain
+// the task's seeded memories, which the shell tool's passed-through env would
+// otherwise let the agent read straight from disk. The memory-on arms keep the
+// seeded layout unchanged.
+func TestTaskExperimentEnvMemoryOffCannotReachSeeds(t *testing.T) {
+	taskDir := t.TempDir()
+	work := t.TempDir()
+	seedRel := filepath.Join("memory", "project", "fact.md")
+	seedPath := filepath.Join(taskDir, seedRel)
+	if err := os.MkdirAll(filepath.Dir(seedPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const seedBody = "MEMKEY-OFFARM secret fact"
+	if err := os.WriteFile(seedPath, []byte(seedBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := suiteConfig{policy: "memory-off"}
+	env, note := taskExperimentEnv(cfg, task{ID: "mb-x", dir: taskDir}, work)
+	if note != "" {
+		t.Fatalf("unexpected note: %s", note)
+	}
+	var noMemory, stateHome string
+	for _, e := range env {
+		if e == "REASONIX_EXPERIMENT_NO_MEMORY=1" {
+			noMemory = e
+		}
+		if rest, ok := strings.CutPrefix(e, "REASONIX_STATE_HOME="); ok {
+			stateHome = rest
+		}
+	}
+	if noMemory == "" || stateHome == "" {
+		t.Fatalf("memory-off env must carry the flag and an isolated state home, got %v", env)
+	}
+	// The seeded store must be unreachable: no seed file anywhere under the
+	// state home this arm will see.
+	err := filepath.Walk(stateHome, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		data, rerr := os.ReadFile(path)
+		if rerr != nil {
+			return rerr
+		}
+		if strings.Contains(string(data), seedBody) {
+			t.Fatalf("memory-off arm can reach the seeded store: %s", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A seedless task's off arm still gets an isolated home (never the
+	// developer's real store).
+	env, note = taskExperimentEnv(cfg, task{ID: "mb-x", dir: t.TempDir()}, work)
+	if note != "" {
+		t.Fatalf("unexpected note: %s", note)
+	}
+	found := false
+	for _, e := range env {
+		if rest, ok := strings.CutPrefix(e, "REASONIX_STATE_HOME="); ok && rest != "" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("seedless memory-off task must still isolate the state home, got %v", env)
+	}
+
+	// Non-off policies keep the seeded layout (behavior unchanged).
+	for _, policy := range []string{"", "ebm", "governor"} {
+		cfg := suiteConfig{policy: policy}
+		env, note := taskExperimentEnv(cfg, task{ID: "mb-x", dir: taskDir}, work)
+		if note != "" {
+			t.Fatalf("policy %q note: %s", policy, note)
+		}
+		stateHome := ""
+		for _, e := range env {
+			if rest, ok := strings.CutPrefix(e, "REASONIX_STATE_HOME="); ok {
+				stateHome = rest
+			}
+		}
+		if stateHome == "" {
+			t.Fatalf("policy %q lost the seeded state home", policy)
+		}
+		matches, _ := filepath.Glob(filepath.Join(stateHome, "projects", "*", "memory", "fact.md"))
+		if len(matches) != 1 {
+			t.Fatalf("policy %q: seeded project memory missing under %s", policy, stateHome)
+		}
+	}
+}

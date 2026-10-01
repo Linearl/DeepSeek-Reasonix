@@ -72,6 +72,20 @@ func taskExperimentEnv(cfg suiteConfig, t task, work string) (env []string, note
 	if cfg.forkCapture != "" {
 		env = append(env, "REASONIX_EXPERIMENT_FORK_CAPTURE_DIR="+filepath.Join(cfg.forkCapture, t.ID))
 	}
+	// The memory-off counterfactual arm gets an isolated but EMPTY state home
+	// (upstream #11247 → #11251): seeding the store and then trusting the
+	// engine's recall flag left the seed files on disk behind REASONIX_STATE_HOME,
+	// which the child passes through to shell tools — an agent that ran `env`
+	// could read the counterfactual's "hidden" memories straight from disk and
+	// pollute the paired readout. Same env var, zero seeds: recall is hidden by
+	// the engine flag AND the store it would read is empty by construction.
+	if cfg.policy == "memory-off" {
+		home, err := os.MkdirTemp("", "e2ebench-memoff-")
+		if err != nil {
+			return env, "memory-off state home: " + err.Error()
+		}
+		return append(env, "REASONIX_STATE_HOME="+home), ""
+	}
 	seedEnv, err := seedTaskMemory(t.dir, work)
 	if err != nil {
 		return env, "memory seed: " + err.Error()

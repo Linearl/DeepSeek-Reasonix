@@ -404,6 +404,30 @@ const CHECKS = [
   { feature: "任务348 身份枚举闭集+扫描器带出", file: "internal/sessioncollab/sessioncollab.go", patterns: ["IdentityHeartbeat", "NormalizeIdentityType", "ScanDirMeta", "identityType,omitempty"] },
   { feature: "任务348 SetSessionDuty presence 写入", file: "internal/agent/branch.go", patterns: ["func SetSessionDuty(", "identity_type,omitempty"] },
   { feature: "任务348 工具面加参与通讯录行导出", file: "internal/agent/session_collab_tools.go", patterns: ["SetSessionDuty(session, p.Purpose", "identityDomain,omitempty"] },
+  // 任务 396（上游 #11311 → #11327）：Windows 非 UTF-8 code page 的 shell 输出
+  // 乱码。解码收口在 RunForeground（转录/工具卡的唯一输出来源），级联 = 严格
+  // UTF-8 直通 → 控制台输出码页 → ANSI 码页 →（中文系统）GB18030，全拒则回落
+  // 原文字节。锚点锁三处：入口接线、Windows 码页候选映射、回落语义——丢任何
+  // 一处，GBK 输出重新以 U+FFFD 进转录。
+  { feature: "任务396 shell 输出码页解码（RunForeground 收口）", file: "internal/shellrun/runner.go", patterns: ["decodeConsoleOutput(collector.combined.String())", "utf8SafeTrimTail(combined, tool.OutputTailMaxBytes)"] },
+  { feature: "任务396 Windows 码页候选映射（控制台输出码页优先）", file: "internal/shellrun/codepage_windows.go", patterns: ["windows.GetConsoleOutputCP", "encodingForCodePage", "chineseSupersetDecoder"] },
+  { feature: "任务396 解码失败回落原文（不阻断不崩）", file: "internal/shellrun/codepage.go", patterns: ["utf8.ValidString(raw)", "tryDecodeCodePage", "return raw"] },
+  // 任务 397（上游 #11329/#11323/#11247）：MemoryBench 评测有效性。三处对照中
+  // 两处同源修复：mb-contradiction 负向匹配词边界（"pnpm install" 含子串
+  // "npm install"，裸负向=结构性永假）+ memory-off 对照臂空隔离 state home
+  // （种子不再落在 agent 经 shell env 可读的磁盘路径）。#11323 经核对 fork 已
+  // 隔离（verify.sh 延迟投放+临时 workdir），锚点锁修复两处——被 merge 丢掉
+  // 即评测数字重新失真。
+  { feature: "任务397 mb-contradiction 负向匹配词边界", file: "benchmarks/memorybench/tasks/mb-contradiction/verify.sh", patterns: ["grep -qE \"(^|[^A-Za-z])npm install\""] },
+  { feature: "任务397 memory-off 臂空隔离 state home", file: "cmd/e2ebench/memorybench.go", patterns: ["e2ebench-memoff-", "cfg.policy == \"memory-off\""] },
+  // 任务 401（上游 #11168 → #11188）：侧栏品牌 logo 随主题强调色着色。svg 资产
+  // 不动，改成 masked span 用 --accent 上色；锚点锁三处——两个渲染点（App.tsx
+  // 与 SidebarRegion 各两形态）不再出 <img>、CSS 用 var(--accent) 走 SVG mask、
+  // 暗色 brightness/invert 规则不再认领 .sidebar__brand-logo（否则强调色被压成
+  // 纯白）。丢任何一处，logo 回退成固定品牌蓝或被反相成白。
+  { feature: "任务401 侧栏 logo 强调色 mask（App.tsx 渲染点）", file: "desktop/frontend/src/App.tsx", patterns: ["<span role=\"img\" aria-label=\"Reasonix\" className=\"sidebar__brand-logo sidebar__brand-logo--workbench\" />", "<span role=\"img\" aria-label=\"Reasonix\" className=\"sidebar__brand-logo\" />"] },
+  { feature: "任务401 侧栏 logo 强调色 mask（SidebarRegion 渲染点）", file: "desktop/frontend/src/app-shell/SidebarRegion.tsx", patterns: ["<span role=\"img\" aria-label=\"Reasonix\" className=\"sidebar__brand-logo sidebar__brand-logo--workbench\" />", "<span role=\"img\" aria-label=\"Reasonix\" className=\"sidebar__brand-logo\" />"] },
+  { feature: "任务401 侧栏 logo 强调色 mask（CSS 上色与暗色规则解绑）", file: "desktop/frontend/src/styles.css", patterns: ["background-color: var(--accent);", "-webkit-mask-image: url(\"./assets/logo-wordmark.svg\");", ":root[data-theme=\"dark\"] .welcome__brand-logo {"] },
 ];
 
 let failed = 0;
