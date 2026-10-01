@@ -404,6 +404,11 @@ const CHECKS = [
   { feature: "任务276 焦点三探针（composer-focus 通道）", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["draft epoch bumped", "focus restore cancelled by draft epoch", "focus restore exhausted retries"] },
   { feature: "任务276 IME 组合打断探针", file: "desktop/frontend/src/lib/useComposerImeGuard.ts", patterns: ["ime composition interrupted by focus loss", "ime composition interrupted by unmount"] },
   { feature: "任务276 禁用翻转焦点自愈", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["focus restored after disable flip", "composerInputWasFocusedRef"] },
+  // 任务 323：multi_edit 引导——正文裁决是描述改文案（不放 AGENTS.md/技能）：
+  // multi_edit 前置 WHEN TO USE 触发句、edit_file 尾部互引，加中文触发词
+  // （172 惯例）。锚点锁双侧指路，merge 静默丢任一侧即报。
+  { feature: "任务323 multi_edit WHEN TO USE 触发句+中文触发词", file: "internal/tool/builtin/multiedit.go", patterns: ["WHEN TO USE: modifying 2+ places in the same file", "INSTEAD of chained edit_file calls", "同文件多处修改", "批量修改"] },
+  { feature: "任务323 edit_file 尾部互引 multi_edit", file: "internal/tool/builtin/editfile.go", patterns: ["For multiple edits in one file (同文件多处修改), prefer multi_edit (atomic batch)"] },
   // 任务 348：会话身份与职责结构化字段（三层架构角色字段化）。锁三处——
   // ①枚举闭集（human|main|sub|heartbeat|system，无第七种私造值）②presence-
   // based 写入（旧调用不清新字段=零迁移）③通讯录行带出（omitempty 形状

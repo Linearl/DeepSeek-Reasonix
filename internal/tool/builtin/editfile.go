@@ -27,7 +27,7 @@ type editFile struct {
 func (editFile) Name() string { return "edit_file" }
 
 func (editFile) Description() string {
-	return "Replace an exact string in a file with another. old_string must occur exactly once; add surrounding context to disambiguate. Use for targeted edits instead of rewriting the whole file. For replacing or deleting a whole line block you may instead pass line_range (e.g. \"278-292\") with the source_token from your latest read_file; anchor_head/anchor_tail prefixes are recommended so drifted line numbers are rejected instead of editing the wrong block. For multiple edits in one file, prefer multi_edit (atomic batch)."
+	return "Replace an exact string in a file with another. old_string must occur exactly once; add surrounding context to disambiguate. Use for targeted edits instead of rewriting the whole file. For replacing or deleting a whole line block you may instead pass line_range (e.g. \"278-292\") with the source_token from your latest read_file; anchor_head/anchor_tail prefixes are recommended so drifted line numbers are rejected instead of editing the wrong block. For multiple edits in one file (同文件多处修改), prefer multi_edit (atomic batch)."
 }
 
 func (editFile) Schema() json.RawMessage {

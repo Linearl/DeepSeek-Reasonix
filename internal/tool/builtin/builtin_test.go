@@ -673,4 +673,15 @@ func TestToolDescriptionsSteerBatchEditing(t *testing.T) {
 	if !strings.Contains(single, "line_range") || !strings.Contains(single, "source_token") {
 		t.Fatalf("edit_file description must keep its line_range/source_token guidance: %q", single)
 	}
+	// Task 323 (172 convention): descriptions carry the Chinese trigger words
+	// users actually say, so a 同文件多处修改 ask routes to the batch tool even
+	// when the model only skims the tool list.
+	for _, want := range []string{"同文件多处修改", "批量修改"} {
+		if !strings.Contains(multi, want) {
+			t.Fatalf("multi_edit description missing Chinese trigger %q:\n%s", want, multi)
+		}
+	}
+	if !strings.Contains(single, "同文件多处修改") {
+		t.Fatalf("edit_file cross-reference missing Chinese trigger 同文件多处修改:\n%s", single)
+	}
 }
