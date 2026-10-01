@@ -397,6 +397,13 @@ const CHECKS = [
   { feature: "任务276 焦点三探针（composer-focus 通道）", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["draft epoch bumped", "focus restore cancelled by draft epoch", "focus restore exhausted retries"] },
   { feature: "任务276 IME 组合打断探针", file: "desktop/frontend/src/lib/useComposerImeGuard.ts", patterns: ["ime composition interrupted by focus loss", "ime composition interrupted by unmount"] },
   { feature: "任务276 禁用翻转焦点自愈", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["focus restored after disable flip", "composerInputWasFocusedRef"] },
+  // 任务 348：会话身份与职责结构化字段（三层架构角色字段化）。锁三处——
+  // ①枚举闭集（human|main|sub|heartbeat|system，无第七种私造值）②presence-
+  // based 写入（旧调用不清新字段=零迁移）③通讯录行带出（omitempty 形状
+  // 不变）。merge 丢任一处，字段会静默退化回纯 purpose 而构建不红。
+  { feature: "任务348 身份枚举闭集+扫描器带出", file: "internal/sessioncollab/sessioncollab.go", patterns: ["IdentityHeartbeat", "NormalizeIdentityType", "ScanDirMeta", "identityType,omitempty"] },
+  { feature: "任务348 SetSessionDuty presence 写入", file: "internal/agent/branch.go", patterns: ["func SetSessionDuty(", "identity_type,omitempty"] },
+  { feature: "任务348 工具面加参与通讯录行导出", file: "internal/agent/session_collab_tools.go", patterns: ["SetSessionDuty(session, p.Purpose", "identityDomain,omitempty"] },
 ];
 
 let failed = 0;

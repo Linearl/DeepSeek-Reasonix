@@ -15,6 +15,7 @@ import (
 	"time"
 
 	fileencoding "reasonix/internal/fileutil/encoding"
+	"reasonix/internal/sessioncollab"
 	"reasonix/internal/store"
 )
 
@@ -46,6 +47,14 @@ type BranchMeta struct {
 	Purpose       string `json:"purpose,omitempty"`
 	Model         string `json:"model,omitempty"`
 	ModelIdentity string `json:"model_identity,omitempty"`
+	// Task 348: the structured side of the registration — the
+	// 「【类型】-【编号】-【领域】」 naming convention lifted into fields.
+	// All three are optional: a purpose-only sidecar (every pre-348 session)
+	// leaves them absent, and old readers ignore the keys outright (Go json
+	// drops unknown fields), so migration is zero in both directions.
+	IdentityType   string   `json:"identity_type,omitempty"`
+	IdentityDomain string   `json:"identity_domain,omitempty"`
+	Duties         []string `json:"duties,omitempty"`
 	// TokenMode and AgentPreset are deprecated dual-write fields derived from
 	// QualityFloor; delivery writes "delivery", standard writes "full"/"".
 	TokenMode   string `json:"token_mode,omitempty"`
@@ -796,12 +805,60 @@ func SessionContactID(sessionPath string) string {
 }
 
 // SetSessionPurpose updates purpose and ensures a contact id exists (task 141).
+// It is the purpose-only entry point (pending-purpose pump, desktop pump): the
+// task-348 fields are left exactly as they are — see SetSessionDuty.
 func SetSessionPurpose(sessionPath, purpose string) (contactID string, err error) {
+	return SetSessionDuty(sessionPath, purpose, nil, nil)
+}
+
+// SessionIdentity is the task-348 structured identity block
+// (identity = {type, domain} on set_session_purpose).
+type SessionIdentity struct {
+	Type   string
+	Domain string
+}
+
+// SetSessionDuty registers purpose plus the task-348 structured fields
+// (三层架构角色字段化). Semantics are presence-based so an older caller can
+// never erase what it cannot see:
+//
+//   - identity nil → stored identity untouched; non-nil → REPLACES both
+//     sub-fields (an empty Type/Domain clears that sub-field). Type is
+//     normalized through the five-value enum and an unknown value fails the
+//     call BEFORE anything is written.
+//   - duties nil → stored list untouched; non-nil (possibly empty) → replaces
+//     the list. Entries are trimmed and blank ones dropped.
+//
+// purpose keeps its task-141 overwrite semantics.
+func SetSessionDuty(sessionPath, purpose string, identity *SessionIdentity, duties *[]string) (contactID string, err error) {
+	var canonicalType, domain string
+	if identity != nil {
+		canonicalType, err = sessioncollab.NormalizeIdentityType(identity.Type)
+		if err != nil {
+			return "", err
+		}
+		domain = strings.TrimSpace(identity.Domain)
+	}
+	var normalizedDuties []string
+	if duties != nil {
+		for _, d := range *duties {
+			if d = strings.TrimSpace(d); d != "" {
+				normalizedDuties = append(normalizedDuties, d)
+			}
+		}
+	}
 	err = UpdateBranchMeta(sessionPath, true, func(current *BranchMeta) error {
 		if current.ContactID == "" {
 			current.ContactID = newContactID()
 		}
 		current.Purpose = strings.TrimSpace(purpose)
+		if identity != nil {
+			current.IdentityType = canonicalType
+			current.IdentityDomain = domain
+		}
+		if duties != nil {
+			current.Duties = normalizedDuties
+		}
 		contactID = current.ContactID
 		return nil
 	})

@@ -66,11 +66,68 @@ type Identity struct {
 	Title       string `json:"title,omitempty"`
 	Workspace   string `json:"workspaceRoot,omitempty"`
 	Scope       string `json:"scope,omitempty"`
+	// Task 348: the structured form of the "【类型】-【编号】-【领域】" naming
+	// convention. All three fields are optional — a purpose-only session
+	// (every pre-348 sidecar) leaves them empty and no reader changes shape,
+	// so the migration is zero by construction.
+	IdentityType   string   `json:"identityType,omitempty"`
+	IdentityDomain string   `json:"identityDomain,omitempty"`
+	Duties         []string `json:"duties,omitempty"`
 	// Archived marks a session found in the archive: it still has an address,
 	// but it is no longer an active participant, and callers must say so rather
 	// than reporting it as never registered.
 	Archived  bool  `json:"archived,omitempty"`
 	UpdatedAt int64 `json:"updatedAt,omitempty"`
+}
+
+// Task 348: the canonical identity types — the three-layer architecture roles
+// (人 → 主对话 → 子对话, 2026-09-25 ruling) plus the two roles the system
+// itself occupies (heartbeat tasks and the system layer). Exactly five values;
+// a sixth is rejected at the write boundary instead of stored as a private
+// dialect, so every later reader (3b/3c/team) sees one vocabulary.
+const (
+	IdentityHuman     = "human"     // 人 — the user, decision layer
+	IdentityMain      = "main"      // 主对话 — a coordinating conversation
+	IdentitySub       = "sub"       // 子对话 — a dispatched worker conversation
+	IdentityHeartbeat = "heartbeat" // heartbeat — the scheduled-task runner
+	IdentitySystem    = "system"    // 系统 — platform/system registrations
+)
+
+// identityTypeAliases accepts the naming-convention spellings alongside the
+// canonical English tokens so a caller raised on 「主对话」 and a caller raised
+// on "main" converge on the SAME stored value — aliases widen input, never the
+// value set.
+var identityTypeAliases = map[string]string{
+	"人":         IdentityHuman,
+	"human":     IdentityHuman,
+	"主对话":       IdentityMain,
+	"main":      IdentityMain,
+	"子对话":       IdentitySub,
+	"sub":       IdentitySub,
+	"heartbeat": IdentityHeartbeat,
+	"系统":        IdentitySystem,
+	"system":    IdentitySystem,
+}
+
+// NormalizeIdentityType folds an input spelling to its canonical value. The
+// empty string passes through (fields are optional by design — task 348: zero
+// migration for every purpose-only sidecar); anything outside the five-value
+// set is an error, never a silently stored variant.
+func NormalizeIdentityType(value string) (string, error) {
+	key := strings.ToLower(strings.TrimSpace(value))
+	if key == "" {
+		return "", nil
+	}
+	if canonical, ok := identityTypeAliases[key]; ok {
+		return canonical, nil
+	}
+	return "", fmt.Errorf("sessioncollab: unknown identity type %q (want one of: human|main|sub|heartbeat|system)", value)
+}
+
+// IdentityTypes returns the canonical value set — for schemas and tests that
+// must assert the enum has exactly five members.
+func IdentityTypes() []string {
+	return []string{IdentityHuman, IdentityMain, IdentitySub, IdentityHeartbeat, IdentitySystem}
 }
 
 // CardStatus is the task-card state machine (task 145).
@@ -242,12 +299,41 @@ func IsMainTranscript(name string) bool {
 	return !strings.HasSuffix(base, ".inbox.jsonl")
 }
 
+// MetaInfo is what a directory scan learns from one session's sidecar
+// (task 348). OK=false skips the file entirely; the task-348 fields are
+// optional and absent for every purpose-only (pre-348) session, so a caller
+// that only reads ContactID/Purpose/TopicID/Title sees no change at all.
+type MetaInfo struct {
+	ContactID      string
+	Purpose        string
+	TopicID        string
+	Title          string
+	IdentityType   string
+	IdentityDomain string
+	Duties         []string
+	OK             bool
+}
+
 // ScanDir walks one sessions directory for BranchMeta contact fields.
 // workspaceRoot is the root those sessions belong to; it is published on every
 // identity so delivery can route to the target's own mailbox rather than the
 // sender's. Meta loader is injected so this package stays free of the agent
 // import cycle.
+//
+// It is the thin (task 141) loader over ScanDirMeta: existing callers keep the
+// four-field signature, callers that surface identity/duties (task 348) use
+// ScanDirMeta directly instead of re-reading the sidecar.
 func ScanDir(dir, workspaceRoot string, loadMeta func(sessionPath string) (contactID, purpose, topicID, title string, ok bool)) []Identity {
+	return ScanDirMeta(dir, workspaceRoot, func(sessionPath string) MetaInfo {
+		contact, purpose, topic, title, ok := loadMeta(sessionPath)
+		return MetaInfo{ContactID: contact, Purpose: purpose, TopicID: topic, Title: title, OK: ok}
+	})
+}
+
+// ScanDirMeta is ScanDir with the task-348 fields on the loader. Everything
+// else (filtering, sort order, "contact_id mints on first contact") is
+// identical by construction — there is one walk, not two.
+func ScanDirMeta(dir, workspaceRoot string, loadMeta func(sessionPath string) MetaInfo) []Identity {
 	if strings.TrimSpace(dir) == "" {
 		return nil
 	}
@@ -261,8 +347,8 @@ func ScanDir(dir, workspaceRoot string, loadMeta func(sessionPath string) (conta
 			continue
 		}
 		path := filepath.Join(dir, e.Name())
-		contact, purpose, topic, title, ok := loadMeta(path)
-		if !ok {
+		info := loadMeta(path)
+		if !info.OK {
 			continue
 		}
 		// A session with no contact_id yet still belongs in the directory: it is
@@ -270,17 +356,20 @@ func ScanDir(dir, workspaceRoot string, loadMeta func(sessionPath string) (conta
 		// address. Filtering on contact here would make the directory list only
 		// people who already spoke, which is the opposite of the point.
 		var updated int64
-		if info, err := os.Stat(path); err == nil {
-			updated = info.ModTime().UnixMilli()
+		if stat, err := os.Stat(path); err == nil {
+			updated = stat.ModTime().UnixMilli()
 		}
 		out = append(out, Identity{
-			ContactID:   contact,
-			Purpose:     purpose,
-			SessionPath: path,
-			TopicID:     topic,
-			Title:       title,
-			Workspace:   workspaceRoot,
-			UpdatedAt:   updated,
+			ContactID:      info.ContactID,
+			Purpose:        info.Purpose,
+			SessionPath:    path,
+			TopicID:        info.TopicID,
+			Title:          info.Title,
+			Workspace:      workspaceRoot,
+			IdentityType:   info.IdentityType,
+			IdentityDomain: info.IdentityDomain,
+			Duties:         info.Duties,
+			UpdatedAt:      updated,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt > out[j].UpdatedAt })

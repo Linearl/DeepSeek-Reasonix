@@ -180,11 +180,11 @@ type setSessionPurposeTool struct{ cfg SessionCollabConfig }
 func (setSessionPurposeTool) Name() string { return "set_session_purpose" }
 
 func (setSessionPurposeTool) Description() string {
-	return "Register a session's duty (one-line purpose) in the contact directory (通讯录). By default it is THIS session; pass `target` to register another session's duty when you know what it does (after reading its tail with read_session_tail, or after it told you). A session can also change its own duty this way — later calls overwrite. Experimental. Renaming the topic does not change the contact id."
+	return "Register a session's duty (one-line purpose) in the contact directory (通讯录). By default it is THIS session; pass `target` to register another session's duty when you know what it does (after reading its tail with read_session_tail, or after it told you). A session can also change its own duty this way — later calls overwrite. Task 348: optionally pass `identity` = {type, domain} (type ∈ human|main|sub|heartbeat|system — the 人/主对话/子对话 three-layer roles field-formatted; Chinese spellings accepted; domain = the 【领域】 segment) and `duties` = [] (the structured duty list behind the free-text purpose). Omitting them leaves the stored values untouched; passing identity replaces the whole block, passing duties replaces the list ([] clears it). Experimental. Renaming the topic does not change the contact id."
 }
 
 func (setSessionPurposeTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"purpose":{"type":"string","description":"One-line duty, e.g. 'React frontend expert'."},"target":{"type":"string","description":"Optional: contact_id, topic_id, or exact title of ANOTHER session to register. Omit to register this session."}},"required":["purpose"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"purpose":{"type":"string","description":"One-line duty, e.g. 'React frontend expert'."},"target":{"type":"string","description":"Optional: contact_id, topic_id, or exact title of ANOTHER session to register. Omit to register this session."},"identity":{"type":"object","description":"Task 348: structured identity (三层架构角色字段化). Omit to keep the stored identity; pass to REPLACE it — type: one of human|main|sub|heartbeat|system (aliases 人/主对话/子对话/系统 accepted; empty clears), domain: the 【领域】 segment e.g. '开发'.","properties":{"type":{"type":"string","enum":["human","main","sub","heartbeat","system"]},"domain":{"type":"string"}}},"duties":{"type":"array","items":{"type":"string"},"description":"Task 348: structured duty list. Omit to keep the stored list; pass [] to clear."}},"required":["purpose"]}`)
 }
 
 func (setSessionPurposeTool) ReadOnly() bool { return false }
@@ -193,6 +193,13 @@ func (t setSessionPurposeTool) Execute(_ context.Context, args json.RawMessage) 
 	var p struct {
 		Purpose string `json:"purpose"`
 		Target  string `json:"target"`
+		// Task 348: pointer receivers, so "omitted" and "passed empty" are
+		// different calls — omitted keeps the stored value, passed replaces it.
+		Identity *struct {
+			Type   string `json:"type"`
+			Domain string `json:"domain"`
+		} `json:"identity"`
+		Duties *[]string `json:"duties"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
@@ -217,11 +224,29 @@ func (t setSessionPurposeTool) Execute(_ context.Context, args json.RawMessage) 
 	if session == "" {
 		return "", fmt.Errorf("set_session_purpose: no session path (pass target, or run inside a session)")
 	}
-	contact, err := SetSessionPurpose(session, p.Purpose)
+	var identity *SessionIdentity
+	if p.Identity != nil {
+		identity = &SessionIdentity{Type: p.Identity.Type, Domain: p.Identity.Domain}
+	}
+	contact, err := SetSessionDuty(session, p.Purpose, identity, p.Duties)
 	if err != nil {
 		return "", err
 	}
-	out, _ := json.Marshal(map[string]string{"contactId": contact, "purpose": strings.TrimSpace(p.Purpose), "appliedTo": appliedTo})
+	// Task 348: same three keys as before for a purpose-only call (byte
+	// identical result); the structured keys appear only when they were sent.
+	outMap := map[string]any{"contactId": contact, "purpose": strings.TrimSpace(p.Purpose), "appliedTo": appliedTo}
+	if identity != nil {
+		canonical, cerr := sessioncollab.NormalizeIdentityType(identity.Type)
+		if cerr != nil {
+			return "", cerr
+		}
+		outMap["identityType"] = canonical
+		outMap["identityDomain"] = strings.TrimSpace(identity.Domain)
+	}
+	if p.Duties != nil {
+		outMap["duties"] = *p.Duties
+	}
+	out, _ := json.Marshal(outMap)
 	return string(out), nil
 }
 
@@ -234,7 +259,7 @@ type listAddressableSessionsTool struct{ cfg SessionCollabConfig }
 func (listAddressableSessionsTool) Name() string { return "list_addressable_sessions" }
 
 func (listAddressableSessionsTool) Description() string {
-	return "List the contact directory (通讯录): metadata only — title, purpose, contact_id, topic_id, and the sidebar session group when the host knows it (task 285). No transcript content (read_session_tail does that). Task 174 merged search in: omit query for the newest-first page; pass query for a keyword filter over title/purpose/contact_id/topic_id; pass group to keep only one session group. Task 175: pass sent=true to read YOUR OWN outgoing log — the misdirected-send check after a batch dispatch. Use contact_id, topic_id, or the exact title as `to` in talk_to_session. Entries frozen for over a week carry stale=true (task 175) — re-check before trusting the purpose. Experimental."
+	return "List the contact directory (通讯录): metadata only — title, purpose, contact_id, topic_id, and the sidebar session group when the host knows it (task 285). Task 348: rows registered with structured fields also carry identityType (human|main|sub|heartbeat|system), identityDomain and duties[] — absent for purpose-only sessions. No transcript content (read_session_tail does that). Task 174 merged search in: omit query for the newest-first page; pass query for a keyword filter over title/purpose/contact_id/topic_id; pass group to keep only one session group. Task 175: pass sent=true to read YOUR OWN outgoing log — the misdirected-send check after a batch dispatch. Use contact_id, topic_id, or the exact title as `to` in talk_to_session. Entries frozen for over a week carry stale=true (task 175) — re-check before trusting the purpose. Experimental."
 }
 
 func (listAddressableSessionsTool) Schema() json.RawMessage {
@@ -577,6 +602,12 @@ func directoryPageFiltered(cfg SessionCollabConfig, limit int, archived *bool, q
 		Stale bool `json:"stale,omitempty"`
 		// 任务 285: the sidebar session group, when the host probe knows it.
 		Group string `json:"group,omitempty"`
+		// 任务 348: structured identity/duties. All omitempty — a purpose-only
+		// session (every pre-348 sidecar) emits the exact same row as before,
+		// which is the zero-migration acceptance in wire form.
+		IdentityType   string   `json:"identityType,omitempty"`
+		IdentityDomain string   `json:"identityDomain,omitempty"`
+		Duties         []string `json:"duties,omitempty"`
 	}
 	// A duty older than a week, in a codebase where batches live for days, is
 	// presumed stale rather than presumed current.
@@ -614,15 +645,18 @@ func directoryPageFiltered(cfg SessionCollabConfig, limit int, archived *bool, q
 				}
 			}
 			rows = append(rows, row{
-				Title:     id.Title,
-				Purpose:   id.Purpose,
-				ContactID: id.ContactID,
-				TopicID:   id.TopicID,
-				Archived:  id.Archived,
-				Stale:     stale,
-				ModelRef:  modelRef,
-				Provider:  provider,
-				Group:     rowGroup,
+				Title:          id.Title,
+				Purpose:        id.Purpose,
+				ContactID:      id.ContactID,
+				TopicID:        id.TopicID,
+				Archived:       id.Archived,
+				Stale:          stale,
+				ModelRef:       modelRef,
+				Provider:       provider,
+				Group:          rowGroup,
+				IdentityType:   id.IdentityType,
+				IdentityDomain: id.IdentityDomain,
+				Duties:         id.Duties,
 			})
 		}
 	}
@@ -1250,20 +1284,28 @@ func workspaceRootForMail(cfg SessionCollabConfig, target sessioncollab.Identity
 // DuplicateContacts: two sessions sharing an address would silently route one
 // session's mail to the other.
 func scanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity {
-	load := func(sessionPath string) (contact, purpose, topic, title string, ok bool) {
+	load := func(sessionPath string) sessioncollab.MetaInfo {
 		m, found, err := LoadBranchMeta(sessionPath)
 		if err != nil {
-			return "", "", "", "", false
-		}
-		title = SessionDirectoryTitle(sessionPath)
-		if found {
-			contact = m.ContactID
-			purpose = m.Purpose
-			topic = m.TopicID
+			return sessioncollab.MetaInfo{}
 		}
 		// Every conversation belongs in the directory; contact_id is minted on
 		// first contact rather than being a precondition for existence.
-		return contact, purpose, topic, title, true
+		info := sessioncollab.MetaInfo{
+			Title: SessionDirectoryTitle(sessionPath),
+			OK:    true,
+		}
+		if found {
+			info.ContactID = m.ContactID
+			info.Purpose = m.Purpose
+			info.TopicID = m.TopicID
+			// 任务 348: structured fields ride the same sidecar read — no second
+			// file access, and absent for every purpose-only (pre-348) session.
+			info.IdentityType = m.IdentityType
+			info.IdentityDomain = m.IdentityDomain
+			info.Duties = m.Duties
+		}
+		return info
 	}
 	var out []sessioncollab.Identity
 	seenPath := map[string]bool{}
@@ -1312,14 +1354,14 @@ func scanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity 
 		if strings.TrimSpace(dir.dir) == "" {
 			continue
 		}
-		add(sessioncollab.ScanDir(dir.dir, dir.workspace, load), dir.workspace, dir.scope, dir.archived)
+		add(sessioncollab.ScanDirMeta(dir.dir, dir.workspace, load), dir.workspace, dir.scope, dir.archived)
 	}
 	for _, projectSessions := range config.AllProjectSessionDirs() {
 		root := ""
 		// sessions dir is <state>/projects/<slug>/sessions; the slug is enough
 		// for OpenTopicSession, which only needs a consistent scope+root pair.
 		root = filepath.Dir(filepath.Dir(projectSessions))
-		add(sessioncollab.ScanDir(projectSessions, root, load), root, "project", false)
+		add(sessioncollab.ScanDirMeta(projectSessions, root, load), root, "project", false)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt > out[j].UpdatedAt })
 	return out
