@@ -4766,6 +4766,16 @@ func (c *Controller) ContextSnapshot() (int, int) {
 	return c.executor.ContextUsedTokens(), c.executor.ContextWindow()
 }
 
+// ContextComposition returns the live view's display segments (system prompt /
+// builtin tools / skills / MCP tools / messages) for the composer gauge popup
+// (task 442). Zero total means no data yet.
+func (c *Controller) ContextComposition() agent.ContextComposition {
+	if c.executor == nil {
+		return agent.ContextComposition{}
+	}
+	return c.executor.ContextComposition()
+}
+
 // CompactRatio returns the auto-compaction threshold as a fraction of the window
 // (0 when the executor is unset). The status line shows headroom against it.
 func (c *Controller) CompactRatio() float64 {

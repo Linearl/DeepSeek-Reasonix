@@ -1,12 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import { app } from "../lib/bridge";
 import { contextWindowPercentages } from "../lib/contextWindow";
 import { useI18n } from "../lib/i18n";
+import type { DictKey } from "../locales/en";
 import { formatMoneyLocalized } from "../lib/money";
 import { appendRateBand, rateBandLabel } from "../lib/costRateBand";
 import type { BalanceInfo, ContextInfo, ContextPanelInfo } from "../lib/types";
 import { AnchoredPopover } from "./AnchoredPopover";
 import { contextWindowStatus, formatCacheHitRate } from "../lib/contextPanelUtils";
+import { compositionSegments, isOpencodeGoProvider, requestContextOverview } from "../lib/contextGaugePopup";
+import {
+  OPENCODE_GO_OFFICIAL_BASE,
+  OPENCODE_GO_WINDOW_KEYS,
+  resetCountdown,
+  usageNoteText,
+  type OpenCodeGoUsageResult,
+} from "../lib/opencodeGoUsage";
 
 interface ContextWindowRingProps {
   turnMetrics?: { elapsed: string; tokens: string | null; tps: string | null };
@@ -34,12 +44,20 @@ function fmtCompact(n: number): string {
 
 function fmtDuration(ms: number, t: ReturnType<typeof useI18n>['t']): string {
   if (ms <= 0) return "-";
-  const totalSeconds = Math.max(1, Math.round(ms / 1000));
+  const totalSeconds = Math.floor(ms / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   if (minutes <= 0) return t("context.durationSeconds", { seconds });
   return t("context.durationMinutesSeconds", { minutes, seconds });
 }
+
+// Task 442: the quota cards reuse the settings card's window labels — same
+// wire keys (rolling/weekly/monthly), same subscription, one wording.
+const QUOTA_WINDOW_LABEL: Record<string, DictKey> = {
+  rolling: "settings.opencodeGoUsage.window.rolling",
+  weekly: "settings.opencodeGoUsage.window.weekly",
+  monthly: "settings.opencodeGoUsage.window.monthly",
+};
 
 export function ContextWindowRing({ enabled = true, context, tabId, turnCost, turnRateBand, currency, cacheHitTokens, cacheMissTokens, balance, turnMetrics }: ContextWindowRingProps) {
   const { locale, t } = useI18n();
@@ -81,6 +99,43 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
     setInfo(null);
     if (!enabled) setOpen(false);
   }, [enabled, tabId]);
+
+  // Task 442: the quota cards are provider-conditional — shown whenever the
+  // session's provider is opencode-go (a lab switch would make this a feature
+  // flag; it is not one). One query per provider while the popup is open; the
+  // settings card keeps owning refresh, this popup shows the snapshot it read
+  // when it opened. A provider without an opencode-go half issues no call.
+  const [quota, setQuota] = useState<OpenCodeGoUsageResult | null>(null);
+  const quotaProviderRef = useRef<string | null>(null);
+  const providerName = info?.providerName ?? "";
+  const quotaEligible = isOpencodeGoProvider(providerName);
+
+  useEffect(() => {
+    if (!quotaEligible) {
+      quotaProviderRef.current = null;
+      setQuota(null);
+      return;
+    }
+    if (!open || quotaProviderRef.current === providerName) return;
+    quotaProviderRef.current = providerName;
+    let cancelled = false;
+    app.GetOpenCodeGoUsage(OPENCODE_GO_OFFICIAL_BASE)
+      .then((result) => {
+        if (!cancelled) setQuota(result);
+      })
+      .catch(() => {
+        // Network/parse failures degrade to the same note the settings card
+        // shows — the popup never throws out of a quota read.
+        if (!cancelled) setQuota({ tiers: [], note: "failed" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, providerName, quotaEligible]);
+
+  // Task 442: the segmented bar reads the host's composition; absent when the
+  // host predates the accessor, and then the whole block hides.
+  const segments = compositionSegments(info?.composition);
 
   useEffect(() => () => {
     requestSeq.current += 1;
@@ -201,6 +256,32 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
               <span className="context-ring-popover__mark context-ring-popover__mark--attention" style={{ left: `30%` }} />
             </div>
           </div>
+          {/* Task 442: composition segments — a separate block below the
+              capacity fill, never mixed into it (the capacity bar answers
+              "how full", this one answers "what is in there"). */}
+          {segments.length > 0 && (
+            <div className="context-composition" role="group" aria-label={t("context.compositionTitle")}>
+              <div className="context-composition__bar" aria-hidden="true">
+                {segments.map((seg) => (
+                  <span
+                    key={seg.key}
+                    className={`context-composition__seg context-composition__seg--${seg.key}`}
+                    style={{ width: `${seg.share}%` }}
+                  />
+                ))}
+              </div>
+              <ul className="context-composition__legend">
+                {segments.map((seg) => (
+                  <li className="context-composition__legend-item" key={seg.key}>
+                    <span className={`context-composition__dot context-composition__dot--${seg.key}`} aria-hidden="true" />
+                    <span className="context-composition__label">{t(seg.labelKey)}</span>
+                    <span className="context-composition__tokens">{fmtCompact(seg.tokens)}</span>
+                    <span className="context-composition__share">{seg.share.toFixed(1)}%</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className="context-ring-popover__rows">
             <div className="context-ring-popover__row">
               <span className="context-ring-popover__label">{t("context.windowCompactDistance")}</span>
@@ -229,6 +310,14 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
             <div className="context-ring-popover__row">
               <span className="context-ring-popover__label">{t("status.cacheLabel")}</span>
               <span className="context-ring-popover__value">{turnCacheRate}</span>
+            </div>
+            {/* Task 442: the session-wide average sits beside the per-turn
+                number — one is "this request", this one is "the session". */}
+            <div className="context-ring-popover__row">
+              <span className="context-ring-popover__label">{t("context.avgCacheHitRate")}</span>
+              <span className="context-ring-popover__value">
+                {formatCacheHitRate(info?.sessionCacheHitTokens ?? 0, info?.sessionCacheMissTokens ?? 0)}
+              </span>
             </div>
             {turnCost != null && turnCost > 0 && (
               <div className="context-ring-popover__row">
@@ -267,6 +356,50 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
               </div>
             )}
           </div>
+          {/* Task 442: multi-channel quota cards. Only opencode-go has a
+              quota endpoint today, and it shows only for its own providers —
+              the card list grows when another channel gains a data source. */}
+          {quotaEligible && quota && quota.tiers.length > 0 && (
+            <div className="context-quota" role="group" aria-label={t("context.quotaTitle")}>
+              <div className="context-quota__head">{t("context.quotaTitle")}</div>
+              <div className="context-quota__cards">
+                {OPENCODE_GO_WINDOW_KEYS.map((windowKey) => {
+                  const tier = quota.tiers.find((candidate) => candidate.window === windowKey);
+                  if (!tier) return null;
+                  const used = tier.percent ?? null;
+                  const left = used == null ? null : Math.max(0, Math.round(100 - used));
+                  const labelKey: DictKey = QUOTA_WINDOW_LABEL[windowKey] ?? "settings.opencodeGoUsage.window.monthly";
+                  return (
+                    <div className="context-quota__card" key={windowKey} data-window={windowKey}>
+                      <span className="context-quota__window">{t(labelKey)}</span>
+                      <span className="context-quota__value">
+                        {left == null ? "—" : `${t("context.quotaRemaining")} ${left}%`}
+                      </span>
+                      <span className="context-quota__resets">
+                        {tier.resetsAt
+                          ? `${t("settings.opencodeGoUsage.resetsIn")} ${resetCountdown(tier.resetsAt) || "—"}`
+                          : ""}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {quotaEligible && quota && quota.tiers.length === 0 && quota.note && (
+            <p className="context-quota__note">{usageNoteText(quota.note, t)}</p>
+          )}
+          <button
+            type="button"
+            className="context-ring-popover__more"
+            onClick={() => {
+              requestContextOverview();
+              setOpen(false);
+            }}
+          >
+            <span>{t("context.moreDetail")}</span>
+            <ChevronRight size={12} aria-hidden="true" />
+          </button>
         </div>
       </AnchoredPopover>
     </>

@@ -234,6 +234,10 @@ type Status interface {
 	ContextSnapshot() (int, int)
 	ContextMaintenanceSnapshot() agent.ContextMaintenanceSnapshot
 	LastUsage() *provider.Usage
+	// ContextComposition returns the live view's display segments (system
+	// prompt / builtin tools / skills / MCP tools / messages) for the composer
+	// gauge popup — task 442. Zero total means no data yet.
+	ContextComposition() agent.ContextComposition
 	Balance(ctx context.Context) (*billing.Balance, error)
 	Jobs() []jobs.View
 	Todos() []evidence.TodoItem
