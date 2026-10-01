@@ -92,7 +92,9 @@ const CHECKS = [
   // 任务 160：顶部上滚加载更早 + 「加载更早」按钮都是 fork 独有交互（上游已改为纯按钮
   // 驱动，无同类实现），且滚动触发受 experimental_auto_load_older 开关门控——整段被上游
   // 版顶掉时不会有冲突标记，故登记语义锚点（含开关参数名与顶部守卫常量）。
-  { feature: "任务160 顶部上滚加载更早（开关门控）", file: "desktop/frontend/src/lib/useTranscriptKernel.ts", patterns: ["autoLoadOlderAtTop", "HISTORY_TOP_GUARD_PX", "requestOlderAtTop"] },
+  // 448：半径常量 HISTORY_TOP_GUARD_PX 已并入共享的 olderHistoryTriggerPx（两视口预取），
+  // 锚点随之换锁 —— 保住的是"开关门控 + 顶部上滚触发"这个特征，不是那个字面量。
+  { feature: "任务160 顶部上滚加载更早（开关门控）", file: "desktop/frontend/src/lib/useTranscriptKernel.ts", patterns: ["autoLoadOlderAtTop", "olderHistoryTriggerPx(element.clientHeight)", "requestOlderAtTop"] },
   { feature: "任务160 加载更早按钮", file: "desktop/frontend/src/components/TranscriptViewport.tsx", patterns: ["chat-older", "showLoadOlder"] },
   // 288：tab/项目分组/会话三处右键菜单「全部已读」。readActivity 存取收口在
   // lib/readActivity.ts（ProjectTree 之外 TabBar 也写同一份存档），三处菜单接线
@@ -437,6 +439,16 @@ const CHECKS = [
   { feature: "任务400 历史读端错误入 hydrate_error", file: "desktop/frontend/src/lib/useController.ts", patterns: ["(err) => { historyLoadCause = err; }", "historyLoadCause,", "text: t(\"history.failedLoadHistory\")"] },
   { feature: "任务400 导航失败透传 cause", file: "desktop/frontend/src/lib/useController.ts", patterns: ["tabId: string, cause?: unknown", "failSessionNavigation(navigationSeq, targetTabId, resumeErr)", "failSessionNavigation(navigationSeq, tabId, channelErr)"] },
   { feature: "任务400 详情文案三语 i18n", file: "desktop/frontend/src/locales/zh.ts", patterns: ["history.failedLoadHistoryDetail", "history.failedOpenSessionDetail", "{reason}"] },
+  // 任务 448（384 组件层收尾 + 445 调研借鉴 B1/B3）：更早历史请求的闸收敛为
+  // 「hasOlder + loading 两态」，四个入口共用 historyOlderGates 一份判定；触发
+  // 半径改两视口预取。锚点锁共享谓词本体 + 四个调用点各自的接线——任何一个
+  // 入口被改回自带 `running`/`olderHistoryError` 闸，384 的 controller 层解锁就
+  // 又被组件层挡死（445 调研 §2.3 的同形复发）。
+  { feature: "任务448 更早历史闸单一判定（共享谓词+预取半径）", file: "desktop/frontend/src/lib/historyOlderGates.ts", patterns: ["export function canRequestOlderHistory", "export function olderHistoryTriggerPx", "state.hasOlderHistory !== false"] },
+  { feature: "任务448 滚动/按钮/自动填充闸接线", file: "desktop/frontend/src/components/Transcript.tsx", patterns: ["canRequestOlderHistory({ hasOlderHistory, loadingOlderHistory })", "olderHistoryTriggerPx(element.clientHeight)"] },
+  { feature: "任务448 加载更早按钮可见性接线", file: "desktop/frontend/src/components/TranscriptViewport.tsx", patterns: ["canRequestOlderHistory({ hasOlderHistory: projection.hasOlderHistory, loadingOlderHistory })"] },
+  { feature: "任务448 问题跳转闸接线", file: "desktop/frontend/src/lib/useTranscriptHistoryNavigation.ts", patterns: ["canRequestOlderHistory({ loadingOlderHistory })"] },
+  { feature: "任务448 wheel/key 触发共用预取半径", file: "desktop/frontend/src/lib/useTranscriptKernel.ts", patterns: ["olderHistoryTriggerPx(element.clientHeight)"] },
 ];
 
 let failed = 0;
