@@ -2102,6 +2102,22 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
             text: t("notice.streamInterruptReason", { reason: streamInterruptReasonText(s.lastStreamInterrupt.reason) }),
           });
         }
+        // Task 340 (upstream #10778, fixes #10254): an interrupted or
+        // recovery_required turn that carries a provider error must keep that
+        // error visible - this branch used to emit only the generic
+        // interrupted guidance and swallow e.err/e.detail entirely, so an
+        // HTTP 402 quota failure read like an unexplained stop. A
+        // cancellation (diagnostic.kind "cancelled") is a user stop, not a
+        // failure, and a stream-interrupt notice already names its reason.
+        if (e.err && e.diagnostic && e.diagnostic.kind !== "cancelled" && !s.streamInterruptNoticeShown) {
+          interruptItems.push({
+            kind: "notice",
+            id: `e${s.seq + interruptItems.length}`,
+            level: "warn",
+            text: e.err,
+            detail: e.detail,
+          });
+        }
         items = [...finalized, ...interruptItems];
       } else if (e.err && !s.streamInterruptNoticeShown) {
         // Task 372: if the retry loop gave up during this turn (the budget

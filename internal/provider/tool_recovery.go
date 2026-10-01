@@ -111,6 +111,13 @@ type InterruptedTurnRecovery struct {
 	Cause                   string                   `json:"cause,omitempty"`
 	TerminalStatus          string                   `json:"terminalStatus,omitempty"` // failed | interrupted; absent preserves legacy display
 	FailureDiagnostic       *FailureDiagnostic       `json:"failureDiagnostic,omitempty"`
+	// FailureSummary is the bounded, credential-scrubbed terminal error text
+	// (task 340, upstream #10778). The diagnostic classifies the failure
+	// safely but intentionally carries no message; without the summary a
+	// history reload shows "Provider request failed (HTTP 402)." while the
+	// status line and response-body snippet that named the real cause stay
+	// invisible. Set only for non-cancelled terminal errors.
+	FailureSummary          string                   `json:"failureSummary,omitempty"`
 	WriteChecks             []WriteRecoveryCheck     `json:"write_checks,omitempty"`
 	SatisfiedWrites         []InterruptedToolSummary `json:"satisfied_writes,omitempty"`
 	Pending                 bool                     `json:"pending,omitempty"`

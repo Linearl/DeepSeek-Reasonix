@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"mvdan.cc/sh/v3/syntax"
 
@@ -33,6 +34,7 @@ import (
 	"reasonix/internal/provider"
 	"reasonix/internal/runtimepolicy"
 	"reasonix/internal/sandbox"
+	"reasonix/internal/secrets"
 	"reasonix/internal/sessiontemp"
 	"reasonix/internal/shellparse"
 	"reasonix/internal/taskcontract"
@@ -2423,9 +2425,11 @@ func (a *Agent) recordInterruptedDisplay(text, reasoning string, calls []provide
 	}
 	terminalStatus := "interrupted"
 	var failureDiagnostic *provider.FailureDiagnostic
+	var failureSummary string
 	if terminalErr != nil && !errors.Is(terminalErr, context.Canceled) {
 		terminalStatus = "failed"
 		failureDiagnostic = provider.DiagnoseFailure(terminalErr)
+		failureSummary = interruptedFailureSummary(terminalErr)
 	}
 	a.sess.conversation.Add(provider.Message{
 		Role:             provider.RoleTool,
@@ -2439,6 +2443,7 @@ func (a *Agent) recordInterruptedDisplay(text, reasoning string, calls []provide
 		InterruptedTurn: &provider.InterruptedTurnRecovery{
 			TerminalStatus:          terminalStatus,
 			FailureDiagnostic:       failureDiagnostic,
+			FailureSummary:          failureSummary,
 			Pending:                 pending,
 			InterruptedTools:        interrupted,
 			NotStartedTools:         notStarted,
@@ -2446,6 +2451,28 @@ func (a *Agent) recordInterruptedDisplay(text, reasoning string, calls []provide
 			DroppedPartialReasoning: strings.TrimSpace(reasoning) != "",
 		},
 	})
+}
+
+// interruptedFailureSummary bounds and credential-scrubs the terminal error
+// text for the durable interrupted-turn record (task 340, upstream #10778).
+// History reloads rebuild their failure notice from this record, so the
+// summary is the only place the real provider error - status line and
+// response-body snippet - survives the reload; the scrub runs here, before
+// anything durable is written, per the 418 RedactError discipline.
+func interruptedFailureSummary(err error) string {
+	if err == nil {
+		return ""
+	}
+	summary := strings.TrimSpace(secrets.RedactError(err))
+	const maxFailureSummaryBytes = 512
+	if len(summary) <= maxFailureSummaryBytes {
+		return summary
+	}
+	cut := summary[:maxFailureSummaryBytes]
+	for len(cut) > 0 && !utf8.ValidString(cut) {
+		cut = cut[:len(cut)-1]
+	}
+	return strings.TrimRight(cut, " \t\n") + "…"
 }
 
 func (a *Agent) capturePrefixShape(schemas []provider.ToolSchema) PrefixShape {
