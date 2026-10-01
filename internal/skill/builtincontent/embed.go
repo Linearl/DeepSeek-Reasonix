@@ -14,7 +14,7 @@ import (
 )
 
 //go:embed reasonix-guide/SKILL.md
-//go:embed reasonix-fork-guide/SKILL.md
+//go:embed ll-fork-guide/SKILL.md
 //go:embed deep-research/SKILL.md
 //go:embed data-analytics/SKILL.md
 //go:embed memory-search/SKILL.md
@@ -24,6 +24,8 @@ import (
 //go:embed ll-iteration-intake/SKILL.md
 //go:embed ll-iteration-plan/SKILL.md
 //go:embed ll-iteration-parallel-dev/SKILL.md
+//go:embed ll-update/SKILL.md
+//go:embed ll-update/scripts/switch-version.sh
 var files embed.FS
 
 // SkillMarkdown is one embedded skill file after frontmatter split.
@@ -78,7 +80,8 @@ func loadSkill(embedPath string) (SkillMarkdown, error) {
 
 // ParseSkillMarkdown splits embedded (or test) skill markdown using the same
 // frontmatter rules as on-disk skills. It does not expand references/scripts
-// (embedded skills ship a single file).
+// (a skill's auxiliary files, e.g. ll-update/scripts/switch-version.sh, are
+// only materialized by InstallToUserDir).
 func ParseSkillMarkdown(sourcePath, content string) (SkillMarkdown, error) {
 	content = strings.TrimPrefix(strings.ReplaceAll(content, "\r\n", "\n"), "\uFEFF")
 	fm, body := frontmatter.Split(content)

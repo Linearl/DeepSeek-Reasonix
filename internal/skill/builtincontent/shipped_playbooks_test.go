@@ -20,7 +20,7 @@ func TestShippedPlaybooksAreEmbedded(t *testing.T) {
 	}
 	for _, want := range []string{
 		"reasonix-guide",
-		"reasonix-fork-guide",
+		"ll-fork-guide",
 		"deep-research",
 		"data-analytics",
 		"memory-search",
@@ -29,6 +29,7 @@ func TestShippedPlaybooksAreEmbedded(t *testing.T) {
 		"ll-iteration-intake",
 		"ll-iteration-plan",
 		"ll-iteration-parallel-dev",
+		"ll-update",
 	} {
 		sk, ok := byName[want]
 		if !ok {
@@ -37,7 +38,9 @@ func TestShippedPlaybooksAreEmbedded(t *testing.T) {
 		if sk.Description == "" {
 			t.Fatalf("embedded skill %q has no description", want)
 		}
-		if sk.RunAs != "inline" {
+		// ll-fork-guide (user-authored, task 430) has no runAs frontmatter;
+		// parseRunAs defaults an empty value to inline, so "" is acceptable.
+		if sk.RunAs != "inline" && sk.RunAs != "" {
 			t.Fatalf("embedded skill %q runAs = %q, want inline", want, sk.RunAs)
 		}
 	}
