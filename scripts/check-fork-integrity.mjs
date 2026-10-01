@@ -484,6 +484,13 @@ const CHECKS = [
   { feature: "任务442 Go 构成访问器", file: "internal/agent/context_composition.go", patterns: ["func (a *Agent) ContextComposition", "computeContextComposition", "skillToolNames"] },
   { feature: "任务442 ContextPanel 构成/ProviderName 接线", file: "desktop/tabs.go", patterns: ["Composition *ContextCompositionInfo", "ProviderName string", "ctrl.ContextComposition()"] },
   { feature: "任务442 浮层 CSS（分段条+额度卡+更多）", file: "desktop/frontend/src/styles.css", patterns: [".context-composition__bar", ".context-quota__card", ".context-ring-popover__more"] },
+  // ── S1 底座常驻子进程（设计 2026-09-30，§10 S1a 切片）──────────────────
+  // 纯增量骨架：协议 v1 + 双实现（inline/remote）+ base serve 子命令 + 开关。
+  // 任何一道被 merge 顶掉，后续 S1b/S1c 切片都会骑在断墙上施工。
+  { feature: "S1a base 协议 v1 定义", file: "internal/baseproc/protocol.go", patterns: ["ProtocolVersion = 1", "\"base.hello\"", "\"base.toolCall\"", "\"base.dying\"", "CodeVersionMismatch"] },
+  { feature: "S1a base 双实现骨架与 R1 回退", file: "internal/baseproc/manager.go", patterns: ["boot: base fallback", "boot: base remote", "func Start(", "subprocessDial", "RunStdioServer"] },
+  { feature: "S1a base serve 子命令接线", file: "internal/cli/base.go", patterns: ["base serve", "--stdio", "RunStdioServer"] },
+  { feature: "S1a experimental_base_process 开关", file: "internal/config/config.go", patterns: ["experimental_base_process"] },
 ];
 
 let failed = 0;
