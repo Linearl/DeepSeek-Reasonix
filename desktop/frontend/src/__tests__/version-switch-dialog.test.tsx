@@ -46,7 +46,8 @@ globalThis.MouseEvent = dom.window.MouseEvent;
 globalThis.requestAnimationFrame = dom.window.requestAnimationFrame.bind(dom.window);
 globalThis.cancelAnimationFrame = dom.window.cancelAnimationFrame.bind(dom.window);
 
-const events: { switched?: string; closed?: boolean; staging?: boolean } = {};
+const events: { switched?: string; deleted?: string; closed?: boolean; staging?: boolean } = {};
+let deletingNow: string | null = null;
 
 function Harness() {
   return (
@@ -55,14 +56,28 @@ function Harness() {
         open
         versions={versions}
         switching={null}
+        deleting={deletingNow}
         error={null}
         onSwitch={(version) => { events.switched = version; }}
+        onDelete={(version) => { events.deleted = version; }}
         onClose={() => { events.closed = true; }}
         onPublishStaging={() => { events.staging = true; }}
         formatTime={(unix) => new Date(unix * 1000).toISOString().slice(0, 10)}
       />
     </LocaleProvider>
   );
+}
+
+function clickButtonByLabel(label: string) {
+  const buttons = Array.from(document.querySelectorAll('[role="dialog"] button'));
+  const target = buttons.find((b) => (b.textContent ?? "").includes(label));
+  if (!target) throw new Error(`button not found: ${label}`);
+  target.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  return target;
+}
+
+function click(el: Element) {
+  el.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
 }
 
 console.log("\nVersion switch dialog (task 210)");
@@ -102,6 +117,44 @@ await act(async () => {
   await flush();
 });
 ok(events.switched === "v1.38.3-20260922-0100", "clicking a version requests the switch");
+
+// Task 411: per-row delete entry with an in-row confirm step. The active row
+// has no delete entry at all; a non-active row must not fire onDelete until
+// its 确认删除 is clicked, and 取消 backs out without any call.
+{
+  const deleteButtons = Array.from(document.querySelectorAll('[role="dialog"] button'))
+    .filter((b) => (b.textContent ?? "").includes("删除"));
+  ok(deleteButtons.length === 2, "non-active rows carry a delete entry (active row has none)");
+  const firstDelete = deleteButtons[0];
+  await act(async () => {
+    click(firstDelete);
+    await flush();
+  });
+  ok(events.deleted === undefined, "clicking 删除 only opens the confirm, no delete fires yet");
+  ok(document.body.textContent?.includes("删除该版本") ?? false, "confirm prompt appears in the row");
+
+  // 取消 backs out.
+  await act(async () => {
+    clickButtonByLabel("取消");
+    await flush();
+  });
+  ok(events.deleted === undefined, "取消 closes the confirm without deleting");
+  ok(!(document.body.textContent?.includes("删除该版本") ?? false), "confirm prompt gone after cancel");
+
+  // Delete again and confirm this time.
+  const del2 = Array.from(document.querySelectorAll('[role="dialog"] button'))
+    .find((b) => (b.textContent ?? "").includes("删除"));
+  await act(async () => {
+    click(del2 as Element);
+    await flush();
+  });
+  await act(async () => {
+    clickButtonByLabel("确认删除");
+    await flush();
+  });
+  ok(events.deleted === "v1.38.3-20260922-0100", "确认删除 fires onDelete with the row's version");
+  ok(!(document.body.textContent?.includes("删除该版本") ?? false), "confirm prompt cleared after firing");
+}
 
 // Footer buttons: publish-staging keeps the task-81 entry, cancel closes.
 const buttons = Array.from(document.querySelectorAll('[role="dialog"] button'));

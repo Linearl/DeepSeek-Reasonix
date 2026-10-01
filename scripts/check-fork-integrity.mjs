@@ -653,6 +653,9 @@ const CHECKS = [
   // 出包脚本经 tools/prune-versions 调它；合并丢了任一环都会让 versions/ 重新堆积。
   { feature: "任务411 versions 保留规则（保留 N + current 指向硬跳过）", file: "internal/installlayout/prune.go", patterns: ["func PruneVersionTrees", "keep must be >= 0", "name == active"] },
   { feature: "任务411 出包脚本接自动清理（--keep/REASONIX_VERSIONS_KEEP）", file: "scripts/build-local-installer.sh", patterns: ["tools/prune-versions", "--keep", "REASONIX_VERSIONS_KEEP"] },
+  { feature: "任务411 面板删除历史版本（Go 绑定拒绝 current/运行中版本）", file: "desktop/version_switch.go", patterns: ["func (a *App) DeleteInstalledVersion", "is the active version", "running from"] },
+  { feature: "任务411 面板删除入口+确认交互（TSX）", file: "desktop/frontend/src/components/VersionSwitchDialog.tsx", patterns: ["versionSwitchDeleteConfirm", "onDelete", "btn--danger"] },
+  { feature: "任务411 面板删除接线（App.tsx handler）", file: "desktop/frontend/src/App.tsx", patterns: ["handleDeleteVersion", "DeleteInstalledVersion(version)"] },
 ];
 
 let failed = 0;

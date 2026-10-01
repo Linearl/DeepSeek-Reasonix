@@ -45,7 +45,27 @@ var (
 	// versionSwitchInstallRoot lets tests point the switcher at a scratch
 	// install root instead of deriving one from the test binary's path.
 	versionSwitchInstallRoot = resolveVersionedInstallRoot
+	// versionSwitchRunningVersion reports which versions/<name> tree this
+	// process runs from ("" when none); a hook so tests can simulate a
+	// versioned layout without copying the test binary into one.
+	versionSwitchRunningVersion = runningVersionName
 )
+
+// runningVersionName walks up from this executable: when it lives in
+// <installRoot>/versions/<name>, that name is the running version. Deleting
+// the tree a live process executes from is refused even if current.json has
+// already been moved elsewhere (a switch relaunches, it does not reload).
+func runningVersionName() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	dir := filepath.Dir(exe)
+	if filepath.Base(filepath.Dir(dir)) != installlayout.VersionsDirName {
+		return ""
+	}
+	return filepath.Base(dir)
+}
 
 // resolveVersionedInstallRoot returns the install root for the running binary
 // with task-81 wording for the not-a-versioned-install case, so both entry
@@ -216,4 +236,52 @@ func (a *App) switchToVersionExempt(version, callerSession string) (string, erro
 		versionSwitchQuit(a)
 	}()
 	return forced.forcedNote(), nil
+}
+
+// DeleteInstalledVersion removes one non-active version tree under versions/
+// (task 411): the quick-switch panel's per-row delete. Guard order mirrors
+// SwitchToVersion — experiment opt-in first (deleting a tree is the same
+// destructive class as publishing/switching), then the busy guard (a running
+// turn may still be a rollback target, task 254), then argument validation.
+// Two trees are hard-refused: the one current.json points at (the launcher
+// boots it next start) and the one this process is executing from.
+func (a *App) DeleteInstalledVersion(version string) error {
+	if a == nil {
+		return fmt.Errorf("restart: no app")
+	}
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return fmt.Errorf("restart: version is required; call ListInstalledVersions for the available names")
+	}
+	if cfg, cfgErr := config.Load(); cfgErr != nil || !cfg.Desktop.ExperimentalRestartUpdate {
+		return fmt.Errorf("restart: the restart-and-update experiment is off; enable experimental_restart_update in the desktop settings")
+	}
+	if busy := a.restartBusyReason(""); busy != "" {
+		return fmt.Errorf("%s", busy)
+	}
+
+	installRoot, err := versionSwitchInstallRoot()
+	if err != nil {
+		return err
+	}
+	if err := installlayout.ValidateVersionName(version); err != nil {
+		return fmt.Errorf("restart: %w", err)
+	}
+	if ptr, ptrErr := installlayout.ReadCurrent(installRoot); ptrErr == nil && ptr.ActiveVersion == version {
+		return fmt.Errorf("restart: %s is the active version (current.json points at it); switching away first is the way off it", version)
+	}
+	if running := versionSwitchRunningVersion(); running != "" && running == version {
+		return fmt.Errorf("restart: %s is the version this process is running from; refusing to delete it under a live process", version)
+	}
+	versionDir := filepath.Join(installRoot, installlayout.VersionDirRelative(version))
+	if info, statErr := os.Stat(versionDir); statErr != nil {
+		return fmt.Errorf("restart: version %s is not installed: %w", version, statErr)
+	} else if !info.IsDir() {
+		return fmt.Errorf("restart: %s is not a version directory; refusing to delete", version)
+	}
+	slog.Info("restart: deleting installed version", "version", version, "dir", versionDir)
+	if err := os.RemoveAll(versionDir); err != nil {
+		return fmt.Errorf("restart: delete version %s: %w", version, err)
+	}
+	return nil
 }
