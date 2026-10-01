@@ -722,6 +722,11 @@ export function HeartbeatView({ onOpenTopic, active = true, onBack = () => {} }:
                           </div>
                           <div className="worktree-node__meta">
                             <span className="worktree-node__scope-tag">{scopeLabel}</span>
+                            {task.reuseSession && (
+                              <span className="worktree-node__scope-tag heartbeat-reuse-badge" title={t("heartbeat.reuseBadgeTip")}>
+                                {task.topicId ? t("heartbeat.reuseBadge", { id: task.topicId.slice(0, 6) }) : t("heartbeat.reuseBadgeUnbound")}
+                              </span>
+                            )}
                             <span className="worktree-node__interval">{formatInterval(task.interval, t)}{nextRun ? ` · ${nextRun}` : ""}</span>
                           </div>
                         </div>
@@ -825,6 +830,11 @@ export function HeartbeatView({ onOpenTopic, active = true, onBack = () => {} }:
                                 </span>
                                 </div>
                                 <div className="worktree-node__meta">
+                                  {task.reuseSession && (
+                                    <span className="worktree-node__scope-tag heartbeat-reuse-badge" title={t("heartbeat.reuseBadgeTip")}>
+                                      {task.topicId ? t("heartbeat.reuseBadge", { id: task.topicId.slice(0, 6) }) : t("heartbeat.reuseBadgeUnbound")}
+                                    </span>
+                                  )}
                                   <span className="worktree-node__interval">{formatInterval(task.interval, t)}{nextRun ? ` · ${nextRun}` : ""}</span>
                                 </div>
                               </div>

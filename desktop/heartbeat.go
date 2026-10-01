@@ -61,6 +61,16 @@ type HeartbeatTask struct {
 	// Prompt, so a task that already states its objective needs no extra field.
 	GoalMode bool   `json:"goalMode,omitempty"`
 	GoalText string `json:"goalText,omitempty"`
+	// ReuseSession enables "resume an existing conversation" mode (task 437):
+	// every run appends the prompt to the conversation bound at TopicID, so
+	// context stays continuous and no extra session is spawned per run. The
+	// bound conversation is often the user's own working session, so a run is
+	// skipped entirely (LastRunAt untouched, retried next tick) while that
+	// conversation's controller is busy — a heartbeat never injects into a
+	// turn the user is running. ReuseSession takes precedence over
+	// NewConversationEachRun when both are set. Off (default) keeps the
+	// existing new-per-run / legacy semantics byte-for-byte unchanged.
+	ReuseSession bool `json:"reuseSession,omitempty"`
 	// IdleStreak counts consecutive runs whose conversation stayed a shell
 	// (task 244 B1). Only advanced while experimental_autonomous_idle_terminate
 	// is on; reaching heartbeatIdleTerminateStrikes disables the task.
@@ -86,6 +96,10 @@ const maxRunHistory = 20
 // heartbeatSchemaVersion is the current on-disk config schema version.
 // v1 (schemaVersion absent/0): interval-only tasks, no runHistory.
 // v2: adds runHistory per task (execution history, capped at maxRunHistory).
+// v3: adds ReuseSession per task (task 437, resume-an-existing-conversation
+// mode). An older binary doing a full-table save would silently drop the flag
+// and revert the task to new-per-run, so v3 claims forward protection: an
+// older binary refuses to write a newer config instead of downgrading it.
 //
 // Migration boundary: configs written by v2+ binaries are read fine by older
 // binaries (unknown fields are ignored by json.Unmarshal), but an older
@@ -94,7 +108,7 @@ const maxRunHistory = 20
 // upgrade — once a v2+ binary has saved, do not run an older binary that
 // writes the config. writeTasks refuses to overwrite a config with a
 // schemaVersion newer than this binary understands (forward protection).
-const heartbeatSchemaVersion = 2
+const heartbeatSchemaVersion = 3
 
 // heartbeatConfig is the on-disk format.
 type heartbeatConfig struct {
@@ -445,7 +459,29 @@ func (e *HeartbeatEngine) releaseTask(id string) {
 	e.mu.Unlock()
 }
 
+// heartbeatReuseMode reports whether a run resumes the conversation bound at
+// TopicID (task 437). ReuseSession wins over NewConversationEachRun when both
+// are set, so a task on the wire never has an ambiguous session mode.
+func heartbeatReuseMode(t HeartbeatTask) bool {
+	return t.ReuseSession
+}
+
+// heartbeatFreshConversationMode reports whether a run spawns a fresh topic.
+// Off while reuse mode is active — the pending-topic in-flight guard is a
+// fresh-conversation mechanism and must never latch onto a bound conversation.
+func heartbeatFreshConversationMode(t HeartbeatTask) bool {
+	return t.NewConversationEachRun && !t.ReuseSession
+}
+
 // resolveHeartbeatTopic selects or creates the topic for one run.
+//
+// For ReuseSession (task 437, resume mode):
+//   - Append to the conversation bound at TopicID; the first run creates one
+//     and binds it (persisted, so the panel can show the binding).
+//   - A binding that already existed is NOT re-stamped with the heartbeat
+//     origin: the bound conversation is often the user's own working session,
+//     and re-stamping would re-file it under the heartbeat group on every run.
+//     Only a topic this run created gets the stamp.
 //
 // For NewConversationEachRun:
 //   - Reuse a pending topic from a failed pre-submit attempt.
@@ -461,7 +497,26 @@ func (e *HeartbeatEngine) releaseTask(id string) {
 func (e *HeartbeatEngine) resolveHeartbeatTopic(t HeartbeatTask, scope, workspaceRoot, title string) (HeartbeatTask, string, bool, bool) {
 	var topicID string
 	var pendingSubmitted bool
-	if t.NewConversationEachRun {
+	// Non-resume modes refresh the heartbeat origin on every run (task 17).
+	// Resume mode stamps only a topic it created itself: a pre-existing binding
+	// is often the user's own working session and must keep its grouping.
+	stampOrigin := true
+	createdForResume := false
+	if heartbeatReuseMode(t) {
+		topicID = t.TopicID
+		if topicID == "" {
+			meta, err := e.app.CreateTopic(scope, workspaceRoot, title)
+			if err != nil {
+				log.Printf("[heartbeat] CreateTopic(%q): %v", t.Title, err)
+				t.LastRunAt = time.Now().UnixMilli()
+				return t, "", false, false
+			}
+			topicID = meta.ID
+			t.TopicID = topicID
+			createdForResume = true
+		}
+		stampOrigin = createdForResume
+	} else if heartbeatFreshConversationMode(t) {
 		e.mu.Lock()
 		pending := e.pendingTopics[t.ID]
 		e.mu.Unlock()
@@ -500,8 +555,10 @@ func (e *HeartbeatEngine) resolveHeartbeatTopic(t HeartbeatTask, scope, workspac
 	}
 	// Stamp the origin so automatic grouping can find heartbeat sessions without
 	// guessing from a renameable title (task 17). Idempotent by design: running
-	// an existing task refreshes the stamp rather than duplicating it.
-	if topicID != "" {
+	// an existing task refreshes the stamp rather than duplicating it. Resume
+	// mode skips this for a pre-existing binding so a bound user conversation
+	// keeps its own grouping.
+	if topicID != "" && stampOrigin {
 		if err := e.app.topicState.markTopicOrigin(workspaceRoot, topicID, heartbeatTopicOrigin, t.ID); err != nil {
 			log.Printf("[heartbeat] markTopicOrigin(%q): %v", topicID, err)
 		}
@@ -602,10 +659,19 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 		return t // don't update LastRunAt — retry next tick
 	}
 	if heartbeatControllerBusy(ctrl) {
-		log.Printf("[heartbeat] controller busy for %q, skipping", t.Title)
+		// Task 437 (resume mode): the bound conversation may be the user's own
+		// working session — a busy controller means a turn is in flight, so the
+		// run must not inject. Skip here and at submit time (beginTabTurn
+		// rejects a running turn) without touching LastRunAt; the next tick
+		// retries when the conversation is idle again.
+		if heartbeatReuseMode(t) {
+			log.Printf("[heartbeat] resume target busy for %q, skipping (retries next tick)", t.Title)
+		} else {
+			log.Printf("[heartbeat] controller busy for %q, skipping", t.Title)
+		}
 		return t // don't change approval mode for an existing turn — retry next tick
 	}
-	if t.NewConversationEachRun && pendingSubmitted {
+	if heartbeatFreshConversationMode(t) && pendingSubmitted {
 		e.mu.Lock()
 		if pending := e.pendingTopics[t.ID]; pending.TopicID == topicID && pending.Submitted {
 			delete(e.pendingTopics, t.ID)
@@ -663,7 +729,7 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 
 	// After a successful submit, keep the topic as an in-flight guard. The next
 	// due run will busy-check this controller before creating a fresh topic.
-	if t.NewConversationEachRun {
+	if heartbeatFreshConversationMode(t) {
 		e.mu.Lock()
 		if e.pendingTopics == nil {
 			e.pendingTopics = make(map[string]heartbeatPendingTopic)
@@ -825,7 +891,7 @@ func (e *HeartbeatEngine) prunePendingTopicsLocked(tasks []HeartbeatTask) {
 	}
 	keep := make(map[string]bool, len(tasks))
 	for _, task := range tasks {
-		if task.NewConversationEachRun {
+		if heartbeatFreshConversationMode(task) {
 			keep[task.ID] = true
 		}
 	}

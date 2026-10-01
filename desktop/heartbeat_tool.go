@@ -62,6 +62,7 @@ func heartbeatTaskToView(t HeartbeatTask, now time.Time) builtin.HeartbeatTaskVi
 		TimeWindowEnd:          t.TimeWindowEnd,
 		NotifyChannels:         t.NotifyChannels,
 		NewConversationEachRun: t.NewConversationEachRun,
+		ReuseSession:           t.ReuseSession,
 		Provider:               t.Provider,
 		Model:                  t.Model,
 		GoalMode:               t.GoalMode,
@@ -277,6 +278,9 @@ func applyHeartbeatPatch(t *HeartbeatTask, patch builtin.HeartbeatTaskPatch) err
 	}
 	if patch.NewConversationEachRun != nil {
 		t.NewConversationEachRun = *patch.NewConversationEachRun
+	}
+	if patch.ReuseSession != nil {
+		t.ReuseSession = *patch.ReuseSession
 	}
 	if set("provider") {
 		t.Provider = patch.Provider

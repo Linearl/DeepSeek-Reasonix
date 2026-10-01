@@ -16,6 +16,8 @@ export interface HeartbeatTask {
   topicId?: string;
   lastRunAt?: number;  // unix millis
   newConversationEachRun?: boolean; // true = create new topic each run
+  reuseSession?: boolean;           // task 437: true = append each run's prompt to the bound conversation (topicId);
+                                    // skips while that conversation is busy. Wins over newConversationEachRun.
   runHistory?: HeartbeatRun[];      // recent executions (oldest first)
   createdAt?: number;
   approvalMode?: "ask" | "auto" | "yolo"; // empty defaults to "yolo"

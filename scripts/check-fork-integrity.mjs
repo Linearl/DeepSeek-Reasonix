@@ -321,6 +321,12 @@ const CHECKS = [
   { feature: "任务428 ask 面板投递门纯判定（C1/C2）", file: "desktop/frontend/src/lib/askPanelGate.ts", patterns: ["export function judgeAskArrival", "clearCancelResidue", "export function decideActivationPrompt", "resetPromptAnchor"] },
   { feature: "任务428 ask 面板投递门 reducer 接线", file: "desktop/frontend/src/lib/useController.ts", patterns: ["judgeAskArrival(", "decideActivationPrompt({", "reportAskPanelVerdict", "\"ask-panel\""] },
   { feature: "任务428 ask 打点（Go emit 侧）", file: "internal/control/controller.go", patterns: ["[ask-panel] ask request emitted", "[ask-panel] ask request emit failed"] },
+
+  // 任务437（20261001 批十小件）：心跳复用已有会话续跑。（任务436 折叠限高锚点随 436 分支登记）
+  { feature: "任务437 心跳续跑模式（Go 引擎）", file: "desktop/heartbeat.go", patterns: ["reuseSession,omitempty", "heartbeatReuseMode", "heartbeatFreshConversationMode"] },
+  { feature: "任务437 心跳续跑（agent 工具面）", file: "internal/tool/builtin/heartbeat_tasks.go", patterns: ["ReuseSession", "reuseSession"] },
+  { feature: "任务437 心跳续跑（前端开关+绑定行）", file: "desktop/frontend/src/custom/features/heartbeat/HeartbeatTaskEditor.tsx", patterns: ["reuseSession", "heartbeat-editor__bound-topic"] },
+  { feature: "任务437 心跳续跑 CSS", file: "desktop/frontend/src/custom/features/heartbeat/heartbeat.css", patterns: [".heartbeat-reuse-badge", ".heartbeat-editor__bound-id"] },
 ];
 
 let failed = 0;
