@@ -15,6 +15,7 @@ import {
   loadPersistedComposerDraft, persistComposerDraft,
 } from "../lib/composerDraftPersistence";
 import { app, onFilesDropped } from "../lib/bridge";
+import { reportFrontendLog } from "../lib/frontendLog";
 import { steerInboxItemForActiveTurn } from "../lib/inboxSubmit";
 import { formatInboxError, isInboxItemMissing } from "../lib/inboxError";
 import { inboxScopeKey, mergeGuidanceTexts, mergeGuidanceWithNext, retireSubmittedGuidance } from "../lib/composerInboxQueue";
@@ -1301,6 +1302,14 @@ export function Composer({
     // debounced write fires (#9580).
     persistComposerDraft(previousKey, previousSnapshot, true);
     draftActivationEpochRef.current += 1;
+    // 任务 276 探针 1：草稿 epoch 自增只发生在草稿键切换。调研类高频会话若出
+    // 现键抖动，这里就是挂起的焦点恢复被连坐取消的源头；复发时 grep
+    // composer-focus 即可对上探针 3 的取消记录。
+    reportFrontendLog(
+      "composer-focus",
+      "draft epoch bumped",
+      `${previousKey || "(empty)"} -> ${draftKey || "(empty)"}`,
+    );
     activeDraftKeyRef.current = draftKey;
     setGuidanceDraftKey(draftKey);
     // Startup window: the active tab (and therefore the key) is not known yet, so its
@@ -1814,18 +1823,96 @@ export function Composer({
     void ensurePromptHistoryIndex(historyEntriesRef.current.length);
   };
 
-  const focusComposerInput = () => {
-    if (invocationsRef.current.length > 0) richInputRef.current?.focus();
-    else taRef.current?.focus();
+  // 任务 276 修复 b（有界兜底重试）：focus() 在目标瞬时 disabled / 同帧重挂
+  // 时会静默失败，此后没有任何机制把焦点还回来。focus 后确认 activeElement
+  // 真的落位；未落位则在下一帧重试（上限 COMPOSER_FOCUS_RETRY_FRAMES），期
+  // 间草稿切换即放弃（不跨草稿抢焦点，与 epoch 守卫同语义）。重试耗尽仍失败
+  // 落探针日志，复发时与探针 1/3 对链。
+  const COMPOSER_FOCUS_RETRY_FRAMES = 3;
+  const focusComposerInput = (attempt = 0) => {
+    const epochAtSchedule = draftActivationEpochRef.current;
+    const target = invocationsRef.current.length > 0 ? richInputRef.current : taRef.current;
+    target?.focus();
+    if (document.activeElement === target) return;
+    if (attempt >= COMPOSER_FOCUS_RETRY_FRAMES) {
+      reportFrontendLog(
+        "composer-focus",
+        "focus restore exhausted retries",
+        `attempt=${attempt + 1} target=${invocationsRef.current.length > 0 ? "rich" : "plain"}`,
+      );
+      return;
+    }
+    requestAnimationFrame(() => {
+      if (draftActivationEpochRef.current !== epochAtSchedule) return;
+      focusComposerInput(attempt + 1);
+    });
   };
 
   const requestActiveDraftFrame = (callback: () => void) => {
     const activationEpoch = draftActivationEpochRef.current;
+    const scheduledKey = activeDraftKeyRef.current;
     requestAnimationFrame(() => {
-      if (draftActivationEpochRef.current !== activationEpoch) return;
+      if (draftActivationEpochRef.current !== activationEpoch) {
+        // 任务 276 探针 3：排定的焦点/选区恢复被草稿切换连坐取消。与探针 1
+        // 的 bump 记录按时间对齐即可确认这条链是否为失焦元凶。
+        reportFrontendLog(
+          "composer-focus",
+          "focus restore cancelled by draft epoch",
+          `${scheduledKey || "(empty)"} -> ${activeDraftKeyRef.current || "(empty)"}`,
+        );
+        return;
+      }
       callback();
     });
   };
+
+  // 任务 276 修复 b（禁用翻转自愈）：runtimeState.unknown 等瞬时态把 textarea
+  // 置 disabled 时，浏览器会静默夺走焦点且通常不派发 blur——重新可用后没有
+  // 任何机制把焦点还回来，用户必须手点才能输入（调研类高频会话的典型失焦
+  // 面）。仅当失焦前焦点确在输入框（没有 blur 事件 = 非用户主动离开）、重新
+  // 可用且当前焦点空闲（body 或仍停在输入框自身）时才归还，帧内有界重试。
+  const COMPOSER_INPUT_DISABLE_HEAL_FRAMES = 3;
+  const composerInputWasFocusedRef = useRef(false);
+  const composerInputDisabled = disabled || readOnly;
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+    const onFocus = () => { composerInputWasFocusedRef.current = true; };
+    const onBlur = () => { composerInputWasFocusedRef.current = false; };
+    ta.addEventListener("focus", onFocus);
+    ta.addEventListener("blur", onBlur);
+    return () => {
+      ta.removeEventListener("focus", onFocus);
+      ta.removeEventListener("blur", onBlur);
+    };
+    // invocations 0↔n 会卸载/重挂普通 textarea，监听器跟着重挂。
+  }, [invocations.length]);
+  useEffect(() => {
+    if (composerInputDisabled) return;
+    if (!composerInputWasFocusedRef.current) return;
+    // 只看 body 与普通 textarea 自身（rich input 永不被禁用，无翻转自愈面；
+    // richInputRef 是 imperative handle，不能与 activeElement 比较）。
+    const active = document.activeElement;
+    if (active && active !== document.body && active !== taRef.current) {
+      return;
+    }
+    composerInputWasFocusedRef.current = false;
+    const epochAtHeal = draftActivationEpochRef.current;
+    let attempt = 0;
+    const tryRefocus = () => {
+      if (draftActivationEpochRef.current !== epochAtHeal) return;
+      const target = invocationsRef.current.length > 0 ? richInputRef.current : taRef.current;
+      target?.focus();
+      if (document.activeElement === target) {
+        reportFrontendLog("composer-focus", "focus restored after disable flip");
+        return;
+      }
+      if (attempt >= COMPOSER_INPUT_DISABLE_HEAL_FRAMES) return;
+      attempt += 1;
+      requestAnimationFrame(tryRefocus);
+    };
+    requestAnimationFrame(tryRefocus);
+  }, [composerInputDisabled]);
 
   const getComposerSelection = () => {
     if (invocationsRef.current.length > 0) return richInputRef.current?.getSelection() ?? richSelection;

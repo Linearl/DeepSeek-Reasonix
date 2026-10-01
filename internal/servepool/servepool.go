@@ -335,6 +335,18 @@ func (m *Manager) Token(id string) string {
 	return ""
 }
 
+// Root returns a project's workspace root ("" when unknown). The takeover
+// gate (task 249) uses it to resolve a session name to the project's session
+// directory without spawning the project serve.
+func (m *Manager) Root(id string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if p, ok := m.projects[id]; ok {
+		return p.root
+	}
+	return ""
+}
+
 // Invalidate marks a project's cached serve as unresponsive so the next
 // Open re-spawns instead of proxying to a dead port. The gateway calls this
 // when a proxied write-back fails (dial refused after the serve died); the

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
+import { reportFrontendLog } from "./frontendLog";
 
 // Plain-textarea IME guard (#8593/#8409). While a composition is active the
 // composer textarea renders uncontrolled (value={undefined}), so no unrelated
@@ -48,6 +49,14 @@ export function useComposerImeGuard(options: ComposerImeGuardOptions): ComposerI
       composingRef.current = true;
       imeStateTextRef.current = textRef.current;
     };
+    // 任务 276 探针 2：组合进行中可编辑框丢了焦点 = IME 组合被打断（中文
+    // 选词中途无法输入的直接机制）。focusout 在 blur 之前同步触发，此处
+    // composingRef 仍为 true 即打断实锤；复发时 grep composer-focus。
+    const onFocusOut = (event: FocusEvent) => {
+      if (!composingRef.current) return;
+      if (event.relatedTarget === node) return;
+      reportFrontendLog("composer-focus", "ime composition interrupted by focus loss");
+    };
     const onEnd = () => {
       composingRef.current = false;
       lastCompositionEndAt.current = Date.now();
@@ -68,9 +77,11 @@ export function useComposerImeGuard(options: ComposerImeGuardOptions): ComposerI
     };
     node.addEventListener("compositionstart", onStart);
     node.addEventListener("compositionend", onEnd);
+    node.addEventListener("focusout", onFocusOut);
     return () => {
       node.removeEventListener("compositionstart", onStart);
       node.removeEventListener("compositionend", onEnd);
+      node.removeEventListener("focusout", onFocusOut);
       // Unmounting the textarea mid-composition (e.g. an invocation token
       // swaps in the rich input) may never deliver compositionend; leaving
       // composingRef stuck would suppress Enter-to-send forever.
@@ -78,6 +89,9 @@ export function useComposerImeGuard(options: ComposerImeGuardOptions): ComposerI
         composingRef.current = false;
         lastCompositionEndAt.current = Date.now();
         imeStateTextRef.current = null;
+        // 任务 276 探针 2：组件树卸载打断组合（invocation token 换入 rich
+        // input 等）——与 focusout 打断共用 composer-focus 通道，便于对链。
+        reportFrontendLog("composer-focus", "ime composition interrupted by unmount");
       }
     };
   }, [invocationCount, taRef, textRef, lastSelectionRef, setText, setPlainSelection]);

@@ -63,6 +63,10 @@ func (a *App) startServePool(ctx context.Context) {
 		History:    serve.HistoryJSONForFile,
 		AllowedDir: config.SessionDir(),
 	})
+	// Task 249: every explicit remote takeover (GC 获取所有权) prompts the
+	// desktop user before the request reaches the pooled serve — the marker
+	// watcher alone only covers the lease-conflict path.
+	a.installServePoolTakeoverGate(gw)
 	port := gatewayPort()
 	ln, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
 	if err != nil {
