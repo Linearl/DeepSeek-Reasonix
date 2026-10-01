@@ -311,6 +311,16 @@ const CHECKS = [
   { feature: "bus#1 talk_to_session 放行 zcode- 合成联系人（agent 回退）", file: "internal/agent/session_collab_tools.go", patterns: ["BusContacts func() []string", "func (t talkToSessionTool) resolveBusContact", "func (t talkToSessionTool) mailDirFor"] },
   { feature: "bus#1 bus 联系人表 live 解析与角色表单源校验（config）", file: "internal/config/bus.go", patterns: ["func ValidateBusRoles", "func BusContactsLive", "func BusMailDirLive", "var BusRolePattern"] },
   { feature: "bus#1 busmcp 复用 config 角色表校验（单源）", file: "internal/busmcp/busmcp.go", patterns: ["config.ValidateBusRoles(cfg.Roles)"] },
+
+  // ── 任务 428：ask 面板投递门（2026-10-01）────────────────────────
+  // 现场面：折叠条到了、面板从未弹出（turn 运行中 ask 双向干等）。
+  // 两条吞没路径都要在：C1 残留 cancelRequested 不吞 ask（judgeAskArrival）、
+  // C2 兼容激活不清空存活 prompt 等待（decideActivationPrompt，#6429 锚点
+  // 语义保持）；打点三方按 prompt id + turn id 关联：前端 feature=ask-panel、
+  // Go [ask-panel] emit 行、406 interrupted-turn-recovery 记录。
+  { feature: "任务428 ask 面板投递门纯判定（C1/C2）", file: "desktop/frontend/src/lib/askPanelGate.ts", patterns: ["export function judgeAskArrival", "clearCancelResidue", "export function decideActivationPrompt", "resetPromptAnchor"] },
+  { feature: "任务428 ask 面板投递门 reducer 接线", file: "desktop/frontend/src/lib/useController.ts", patterns: ["judgeAskArrival(", "decideActivationPrompt({", "reportAskPanelVerdict", "\"ask-panel\""] },
+  { feature: "任务428 ask 打点（Go emit 侧）", file: "internal/control/controller.go", patterns: ["[ask-panel] ask request emitted", "[ask-panel] ask request emit failed"] },
 ];
 
 let failed = 0;
