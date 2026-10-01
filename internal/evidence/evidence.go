@@ -77,7 +77,7 @@ func ValidateSerialTodos(todos []TodoItem) error {
 			if ipSeen {
 				// Task 23 P0-a: a rejection has to say how to fix it — a bare rule statement
 				// is what left the model retrying the same list.
-				return fmt.Errorf("todo %d %q is a second in_progress item; a serial task list allows exactly one current item — demote this one back to pending, or mark the current item completed first", i+1, todo.Content)
+				return fmt.Errorf("todo %d %q is a second in_progress item; a serial task list allows exactly one current item — demote this one back to pending, or mark the current item completed first (a well-formed list reads [completed, in_progress, pending])", i+1, todo.Content)
 			}
 			ipSeen = true
 		default:
@@ -108,7 +108,7 @@ func ValidateSerialTodos(todos []TodoItem) error {
 						break
 					}
 				}
-				return fmt.Errorf("todo %d %q is in_progress after pending work; the current item must be the first unfinished item", ip+1, todos[ip].Content)
+				return fmt.Errorf("todo %d %q is in_progress after pending work; the current item must be the first unfinished item (a well-formed list reads [completed, in_progress, pending], not [completed, pending, in_progress])", ip+1, todos[ip].Content)
 			}
 			seenCurrent = true
 		case "pending":
@@ -120,7 +120,7 @@ func ValidateSerialTodos(todos []TodoItem) error {
 		}
 	}
 	if len(todos) > 0 && seenPending && !seenCurrent {
-		return fmt.Errorf("serial task list has pending work but no in_progress item — mark the first unfinished item in_progress so the list has a current step")
+		return fmt.Errorf("serial task list has pending work but no in_progress item — mark the first unfinished item in_progress so the list has a current step (a well-formed list reads [completed, in_progress, pending])")
 	}
 	return nil
 }
@@ -351,7 +351,7 @@ func validateTreeSerialTodos(todos []TodoItem) error {
 		switch todoStatus(todo.Status) {
 		case "in_progress":
 			if ipSeen {
-				return fmt.Errorf("todo %s %q is a second in_progress item; a serial task list allows exactly one current item — demote this one back to pending, or mark the current item completed first", codes[i], todo.Content)
+				return fmt.Errorf("todo %s %q is a second in_progress item; a serial task list allows exactly one current item — demote this one back to pending, or mark the current item completed first (a well-formed list reads [completed, in_progress, pending])", codes[i], todo.Content)
 			}
 			ipSeen = true
 		case "completed", "abandoned", "archived", "pending":
@@ -398,11 +398,11 @@ func validateTreeSerialTodos(todos []TodoItem) error {
 			if TodoHasAncestor(todos, ipIndex, j) {
 				continue // the pending parent owns the running subtree
 			}
-			return fmt.Errorf("task %s %q is in_progress after pending work; the current item must be the first unfinished item — start %s %q first, or mark the earlier pending work abandoned if it was given up", codes[ipIndex], todos[ipIndex].Content, codes[j], todos[j].Content)
+			return fmt.Errorf("task %s %q is in_progress after pending work; the current item must be the first unfinished item — start %s %q first, or mark the earlier pending work abandoned if it was given up (a well-formed list reads [completed, in_progress, pending], not [completed, pending, in_progress])", codes[ipIndex], todos[ipIndex].Content, codes[j], todos[j].Content)
 		}
 	}
 	if len(todos) > 0 && seenPending && ipIndex < 0 {
-		return fmt.Errorf("serial task list has pending work but no in_progress item — mark the first unfinished item in_progress so the list has a current step")
+		return fmt.Errorf("serial task list has pending work but no in_progress item — mark the first unfinished item in_progress so the list has a current step (a well-formed list reads [completed, in_progress, pending])")
 	}
 	return nil
 }

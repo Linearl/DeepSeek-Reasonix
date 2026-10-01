@@ -1338,3 +1338,49 @@ func TestLedgerDeliverySignoffRejectsInspectionCommandMasqueradingAsVerification
 		t.Fatal("inspection-only git status must not count as delivery verification")
 	}
 }
+
+// Task 420 Q2a: the three hard serial-shape rejections must each carry a
+// positive example. A bare rule statement is what left the model retrying the
+// same list (task 23 P0-a); the example shows the accepted shape in one glance.
+func TestSerialTodoRejectionsCarryPositiveExample(t *testing.T) {
+	const example = "a well-formed list reads [completed, in_progress, pending]"
+	cases := []struct {
+		name  string
+		todos []TodoItem
+	}{
+		{
+			name: "second in_progress",
+			todos: []TodoItem{
+				{Content: "first", Status: "completed"},
+				{Content: "second", Status: "in_progress"},
+				{Content: "third", Status: "in_progress"},
+			},
+		},
+		{
+			name: "in_progress after pending work",
+			todos: []TodoItem{
+				{Content: "first", Status: "completed"},
+				{Content: "second", Status: "pending"},
+				{Content: "third", Status: "in_progress"},
+			},
+		},
+		{
+			name: "pending work without a current item",
+			todos: []TodoItem{
+				{Content: "first", Status: "completed"},
+				{Content: "second", Status: "pending"},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateSerialTodos(tc.todos)
+			if err == nil {
+				t.Fatal("expected a serial-shape rejection, got nil")
+			}
+			if !strings.Contains(err.Error(), example) {
+				t.Fatalf("rejection must carry the positive example %q, got: %v", example, err)
+			}
+		})
+	}
+}
