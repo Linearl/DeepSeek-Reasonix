@@ -159,6 +159,12 @@ const CHECKS = [
   { feature: "任务298 open 汇合点接线（分相耗时标记）", file: "desktop/tabs.go", patterns: ["beginOpenSessionTrace", "tr.mark(\"tabLock\")", "tr.mark(\"sessionCreate\")"] },
   { feature: "任务298 超限 WARN 限频门 + 元凶指认 + 处置联动", file: "desktop/perf_monitor.go", patterns: ["perfWarnGate", "topEventsFileUnder", "EventsAutoRotationSnapshot"] },
 
+  // ── 任务 285：会话信息面 agent 工具（分组/版本谱系/结构化 meta）──
+  { feature: "任务285 agent 侧三工具（info/versions/adopt）", file: "internal/agent/session_info_tools.go", patterns: ["func NewGetSessionInfoTool", "func NewListSessionVersionsTool", "func NewAdoptSessionVersionTool"] },
+  { feature: "任务285 目录行分组字段+group 过滤", file: "internal/agent/session_collab_tools.go", patterns: ["directoryPageFiltered", "SessionGroup func(topicID string)"] },
+  { feature: "任务285 宿主探针（分组/谱系/切换）", file: "desktop/session_info_collab.go", patterns: ["func (a *App) collabSessionGroup", "func (a *App) collabSessionVersions", "SetActiveSessionVersion"] },
+  { feature: "任务285 boot 探针接线", file: "internal/boot/boot.go", patterns: ["OnSessionGroup", "OnSessionVersions", "OnAdoptSessionVersion"] },
+
   // ── 任务 155：会话存储四档 + bridge 健康债（2026-09-17）──────────
   { feature: "任务155 四档枚举与渐进校验", file: "internal/config/session_storage.go", patterns: ["SessionStorageDualWriteReadV3", "ValidateSessionStorageTransition", "ResolveSafeSessionStorageMode"] },
   { feature: "任务155 bridge 健康债修复（登记即用 + 同 root 接管 + 批 id 幂等）", file: "internal/control/session_v4_bridge.go", patterns: ["reclaimSession", "v4BridgePeers", "ErrLegacyReadOnly"] },

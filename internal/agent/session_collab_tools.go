@@ -112,6 +112,18 @@ type SessionCollabConfig struct {
 	// evidence alone. Event identity (contact id or session path basename) is
 	// resolved at call time, mirroring currentSessionPath.
 	CollabStatusPath string
+	// 任务 285（会话信息面）三个宿主探针，全部调用时求值（task 274 探针同款）；
+	// nil（CLI/测试）时对应字段缺席或给出可操作拒绝，绝不猜。
+	// SessionGroup answers which sidebar session group a topic belongs to.
+	SessionGroup func(topicID string) (group string, known bool)
+	// SessionVersions reports a conversation's recovery lineage (the same data
+	// the UI version viewer shows). ok=false: single-version conversations
+	// have no lineage worth listing.
+	SessionVersions func(scope, workspaceRoot, topicID, sessionPath string) (members []SessionVersionInfo, ok bool)
+	// AdoptSessionVersion switches the conversation's active version through
+	// the host's existing recovery selection path. The tool gates on
+	// confirm=true before this probe ever runs.
+	AdoptSessionVersion func(scope, workspaceRoot, topicID, sessionPath, versionID string) error
 }
 
 // collabStatusEvent appends one event to the configured stream, if any.
@@ -222,11 +234,11 @@ type listAddressableSessionsTool struct{ cfg SessionCollabConfig }
 func (listAddressableSessionsTool) Name() string { return "list_addressable_sessions" }
 
 func (listAddressableSessionsTool) Description() string {
-	return "List the contact directory (通讯录): metadata only — title, purpose, contact_id, topic_id. No transcript content (read_session_tail does that). Task 174 merged search in: omit query for the newest-first page; pass query for a keyword filter over title/purpose/contact_id/topic_id. Task 175: pass sent=true to read YOUR OWN outgoing log — the misdirected-send check after a batch dispatch. Use contact_id, topic_id, or the exact title as `to` in talk_to_session. Entries frozen for over a week carry stale=true (task 175) — re-check before trusting the purpose. Experimental."
+	return "List the contact directory (通讯录): metadata only — title, purpose, contact_id, topic_id, and the sidebar session group when the host knows it (task 285). No transcript content (read_session_tail does that). Task 174 merged search in: omit query for the newest-first page; pass query for a keyword filter over title/purpose/contact_id/topic_id; pass group to keep only one session group. Task 175: pass sent=true to read YOUR OWN outgoing log — the misdirected-send check after a batch dispatch. Use contact_id, topic_id, or the exact title as `to` in talk_to_session. Entries frozen for over a week carry stale=true (task 175) — re-check before trusting the purpose. Experimental."
 }
 
 func (listAddressableSessionsTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Max rows to return (directory: newest first, default 200, max 1000; sent: default 20)."},"archived":{"type":"boolean","description":"Include retired archive sessions (default false)."},"query":{"type":"string","description":"Keyword filter over title/purpose/ids (the old search_sessions). Omit for the unfiltered newest-first page."},"sent":{"type":"boolean","description":"Return your OWN outgoing log instead of the directory (task 175) — id, recipient, thread, first line of each message you sent. Use it to catch a misdirected send."}},"required":[]}`)
+	return json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Max rows to return (directory: newest first, default 200, max 1000; sent: default 20)."},"archived":{"type":"boolean","description":"Include retired archive sessions (default false)."},"query":{"type":"string","description":"Keyword filter over title/purpose/ids (the old search_sessions). Omit for the unfiltered newest-first page."},"group":{"type":"string","description":"Keep only sessions in this sidebar session group (task 285; case-insensitive exact group title). Omit for all groups."},"sent":{"type":"boolean","description":"Return your OWN outgoing log instead of the directory (task 175) — id, recipient, thread, first line of each message you sent. Use it to catch a misdirected send."}},"required":[]}`)
 }
 
 func (listAddressableSessionsTool) ReadOnly() bool { return true }
@@ -236,6 +248,7 @@ func (t listAddressableSessionsTool) Execute(_ context.Context, args json.RawMes
 		Limit    int    `json:"limit"`
 		Archived *bool  `json:"archived"`
 		Query    string `json:"query"`
+		Group    string `json:"group"`
 		Sent     bool   `json:"sent"`
 	}
 	if len(args) > 0 {
@@ -244,7 +257,7 @@ func (t listAddressableSessionsTool) Execute(_ context.Context, args json.RawMes
 	if p.Sent {
 		return sentLogPage(t.cfg, p.Limit)
 	}
-	return directoryPage(t.cfg, p.Limit, p.Archived, p.Query)
+	return directoryPageFiltered(t.cfg, p.Limit, p.Archived, p.Query, p.Group)
 }
 
 // sentLogPage renders the caller's own outgoing log (task 175), reachable as
@@ -529,6 +542,14 @@ func collabDispatchEcho(cfg SessionCollabConfig) []string {
 const collabDirectoryMaxRows = 1000
 
 func directoryPage(cfg SessionCollabConfig, limit int, archived *bool, query string) (string, error) {
+	return directoryPageFiltered(cfg, limit, archived, query, "")
+}
+
+// directoryPageFiltered is directoryPage with the task-285 group filter: rows
+// carry their sidebar session group (when the host probe knows it) and a
+// non-empty group argument keeps only that group. The filter applies BEFORE
+// the eligibility count, so `total` respects it exactly like the query filter.
+func directoryPageFiltered(cfg SessionCollabConfig, limit int, archived *bool, query, group string) (string, error) {
 	if limit <= 0 {
 		limit = 200
 	}
@@ -537,6 +558,7 @@ func directoryPage(cfg SessionCollabConfig, limit int, archived *bool, query str
 	}
 	includeArchived := archived != nil && *archived
 	q := strings.ToLower(strings.TrimSpace(query))
+	group = strings.TrimSpace(group)
 
 	all := scanAddressable(cfg.SessionDir, cfg.WorkspaceRoot)
 	type row struct {
@@ -553,6 +575,8 @@ func directoryPage(cfg SessionCollabConfig, limit int, archived *bool, query str
 		// Task 175 ③: a purpose frozen since long before the last activity is
 		// more misleading than no purpose at all — callers route work by it.
 		Stale bool `json:"stale,omitempty"`
+		// 任务 285: the sidebar session group, when the host probe knows it.
+		Group string `json:"group,omitempty"`
 	}
 	// A duty older than a week, in a codebase where batches live for days, is
 	// presumed stale rather than presumed current.
@@ -568,6 +592,15 @@ func directoryPage(cfg SessionCollabConfig, limit int, archived *bool, query str
 			if !strings.Contains(hay, q) {
 				continue
 			}
+		}
+		rowGroup := ""
+		if cfg.SessionGroup != nil && id.TopicID != "" {
+			if g, known := cfg.SessionGroup(id.TopicID); known {
+				rowGroup = g
+			}
+		}
+		if group != "" && !strings.EqualFold(rowGroup, group) {
+			continue
 		}
 		eligible++
 		if len(rows) < limit {
@@ -589,6 +622,7 @@ func directoryPage(cfg SessionCollabConfig, limit int, archived *bool, query str
 				Stale:     stale,
 				ModelRef:  modelRef,
 				Provider:  provider,
+				Group:     rowGroup,
 			})
 		}
 	}
@@ -597,6 +631,7 @@ func directoryPage(cfg SessionCollabConfig, limit int, archived *bool, query str
 		"total":    eligible,
 		"limit":    limit,
 		"query":    q,
+		"group":    group,
 		// Explicit so a caller never expects content here: that is read_session_tail.
 		"content":  "none — use read_session_tail(target) for transcript bytes",
 		"note":     "live conversations only; pass archived=true to include retired history. Deleted (.trash) sessions are never listed.",
