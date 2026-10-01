@@ -369,13 +369,15 @@ export class TranscriptKernel {
     return this.writeAndFinish(active, owner, top + active.anchor.offsetPx);
   }
 
-  jumpToBlock(blockKey: string, blockTop: (blockKey: string) => number | undefined): boolean {
-    const transaction = this.begin("jump", { kind: "block", blockKey, offsetPx: 0 });
+  // offsetPx (task 399): row-level find jumps land mid-block; the default 0
+  // keeps every existing block-top caller's behavior byte-identical.
+  jumpToBlock(blockKey: string, blockTop: (blockKey: string) => number | undefined, offsetPx = 0): boolean {
+    const transaction = this.begin("jump", { kind: "block", blockKey, offsetPx });
     return transaction ? this.correctAnchor(transaction, blockTop) : false;
   }
 
-  stageJumpToBlock(blockKey: string): ScrollTransaction | null {
-    return this.begin("jump", { kind: "block", blockKey, offsetPx: 0 });
+  stageJumpToBlock(blockKey: string, offsetPx = 0): ScrollTransaction | null {
+    return this.begin("jump", { kind: "block", blockKey, offsetPx });
   }
 
   scrollToTail(): boolean {

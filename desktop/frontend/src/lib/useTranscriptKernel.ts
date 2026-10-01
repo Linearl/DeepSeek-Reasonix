@@ -378,13 +378,13 @@ export function useTranscriptKernel({
     refresh();
   }, [kernel, refresh]);
 
-  const jumpToBlock = useCallback((key: string) => {
+  const jumpToBlock = useCallback((key: string, offsetPx = 0) => {
     const element = scrollRef.current;
     if (!element) return false;
     const mountedTop = blockTop(element, key);
     const accepted = mountedTop == null
-      ? Boolean(kernel.stageJumpToBlock(key))
-      : kernel.jumpToBlock(key, (blockKey) => blockTop(element, blockKey));
+      ? Boolean(kernel.stageJumpToBlock(key, offsetPx))
+      : kernel.jumpToBlock(key, (blockKey) => blockTop(element, blockKey), offsetPx);
     refresh();
     return accepted;
   }, [kernel, refresh]);

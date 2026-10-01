@@ -8,6 +8,7 @@ import {
 } from "../lib/transcriptRows";
 import { transcriptRowLayoutVariant } from "../lib/transcriptRowGeometry";
 import type { TimelineBlock } from "../lib/transcriptTimeline";
+import { useTranscriptFindHighlight } from "./TranscriptFindContext";
 
 const TranscriptRowView = memo(function TranscriptRowView({
   row,
@@ -20,14 +21,23 @@ const TranscriptRowView = memo(function TranscriptRowView({
 }) {
   const entryId = historyEntryIdForRow(row);
   const estimate = estimateTranscriptRowSize(row);
+  // Task 399: find highlight rides context so the hit set can change per
+  // keystroke without re-threading props through Viewport/ProjectionView and
+  // busting every block's memo. null (bar closed) is a stable identity, so
+  // rows re-render only while a search is actually active.
+  const find = useTranscriptFindHighlight();
+  const findHit = find?.hits.has(String(row.key)) ?? false;
+  const findActive = find?.active === String(row.key);
   useEffect(() => {
     if (entryId) getTranscriptStore().requestEntryFullContent(tabId, entryId);
   }, [entryId, tabId]);
   return (
     <div
-      className="transcript__row"
+      className={`transcript__row${findHit ? " transcript__row--find" : ""}${findActive ? " transcript__row--find-active" : ""}`}
       data-row-key={String(row.key)}
       data-row-kind={row.kind}
+      data-find-hit={findHit || undefined}
+      data-find-active={findActive || undefined}
       data-layout-version={transcriptRowMeasurementVersion(row)}
       data-transcript-layout-variant={transcriptRowLayoutVariant(row)}
       style={{ "--transcript-row-estimate": `${estimate}px` } as CSSProperties}

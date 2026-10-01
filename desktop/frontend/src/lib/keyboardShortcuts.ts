@@ -13,6 +13,7 @@ export type ShortcutAction =
   | "composer.undo"
   | "selection.addToChat"
   | "settings.open"
+  | "transcript.find"
   | "tab.close"
   | "shell.toggle"
   | "terminal.toggle"
@@ -148,6 +149,18 @@ export const SHORTCUT_DEFINITIONS: readonly ShortcutDefinition[] = [
     preventDefault: true,
     // The handler only arms while the transcript selection action is visible,
     // so firing from an editable target (composer focus) is safe and expected.
+    allowInEditable: true,
+  },
+  {
+    // Task 399: transcript find. allowInEditable so Ctrl+F works from the
+    // composer; the handler itself yields to code blocks (their own Ctrl+F
+    // search owns that domain — see shouldIgnoreFindShortcutTarget).
+    action: "transcript.find",
+    section: "session",
+    labelKey: "shortcuts.action.transcriptFind",
+    descriptionKey: "shortcuts.desc.transcriptFind",
+    defaults: modCombo("f"),
+    preventDefault: true,
     allowInEditable: true,
   },
   {

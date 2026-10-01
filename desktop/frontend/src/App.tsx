@@ -243,6 +243,7 @@ import { useViewportHeightVar, useWindowStatePersistence } from "./lib/windowSta
 import { availableWorkspacePanelWidth, resolveLiveWorkspacePanelWidth, resolveWorkspacePanelPlacement, workspacePanelAriaMinWidth } from "./lib/workspaceLayout";
 import { createPointerResizeLifecycle, createRafResizeUpdater } from "./lib/resizeDrag";
 import { formatShortcutCombo, resolvedShortcutCombo, useGlobalShortcut } from "./lib/keyboardShortcuts";
+import { shouldIgnoreFindShortcutTarget } from "./lib/transcriptFind";
 import { useWarmTerminalPanel } from "./lib/useWarmTerminalPanel";
 import { topicShortcutIndexFromEvent, useTopicShortcuts, type TopicShortcutEntry } from "./lib/topicShortcuts";
 import { composerDraftKeyForTab } from "./lib/composerDraftKey";
@@ -734,6 +735,11 @@ export default function App() {
   // Task 265: the question-search entry hides while its lab flag is off.
   const [questionSearchEnabled, setQuestionSearchEnabled] = useState(labFlagEnabled("questionSearch"));
   useEffect(() => onLabFlagsChange(() => setQuestionSearchEnabled(labFlagEnabled("questionSearch"))), []);
+  // Task 399: in-session Ctrl+F find. Owned here (not per Transcript) so one
+  // global shortcut can't double-fire in split view; pulse re-selects the
+  // query when the chord repeats while the bar is already open.
+  const [transcriptFindOpen, setTranscriptFindOpen] = useState(false);
+  const [transcriptFindPulse, setTranscriptFindPulse] = useState(0);
   type PreservedTranscriptSurface = {
     tabId?: string;
     items: Item[];
@@ -4015,6 +4021,14 @@ export default function App() {
   }, [activeTabId, handleTabClose, managementActive, returnToWorkspace], managementActive || Boolean(activeTabId));
   useGlobalShortcut("shortcuts.show", () => setShortcutsOpen(true));
   useGlobalShortcut("sidebar.toggle", toggleSidebar, [toggleSidebar], !managementActive);
+  // Task 399: Ctrl+F opens the transcript find bar. Yield to code blocks —
+  // LineNumberCode owns Ctrl+F inside .code-block__wrap (its capture handler
+  // opens the editor search), so the two shortcut domains stay isolated.
+  useGlobalShortcut("transcript.find", (event) => {
+    if (shouldIgnoreFindShortcutTarget(event.target)) return;
+    setTranscriptFindOpen(true);
+    setTranscriptFindPulse((value) => value + 1);
+  }, []);
 
   // --- Topic shortcut navigation (Cmd/Ctrl+1-9) ---
   const visibleTopicsRef = useRef<TopicShortcutEntry[]>([]);
@@ -4939,6 +4953,9 @@ export default function App() {
                       footerHeight={footerHeight}
                       questionSearchOpen={questionSearchOpen}
                       onCloseQuestionSearch={() => setQuestionSearchOpen(false)}
+                      findOpen={transcriptFindOpen}
+                      findPulse={transcriptFindPulse}
+                      onCloseFind={() => setTranscriptFindOpen(false)}
                       onPrompt={handleTranscriptPrompt}
                       onDeliveryContinue={() => void handleDeliveryContinue()}
                       onAcceptDelivery={() => void app.AcceptDeliveryToTab(activeTabIdRef.current ?? "")}

@@ -398,6 +398,14 @@ const CHECKS = [
   { feature: "任务276 焦点三探针（composer-focus 通道）", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["draft epoch bumped", "focus restore cancelled by draft epoch", "focus restore exhausted retries"] },
   { feature: "任务276 IME 组合打断探针", file: "desktop/frontend/src/lib/useComposerImeGuard.ts", patterns: ["ime composition interrupted by focus loss", "ime composition interrupted by unmount"] },
   { feature: "任务276 禁用翻转焦点自愈", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["focus restored after disable flip", "composerInputWasFocusedRef"] },
+  // 任务 399：会话内 Ctrl+F 搜索（对照上游 #11230→#11236）。四件套锁：
+  // 行级检索纯逻辑（数据面搜索，虚拟滚动下 DOM 搜索会漏未挂载行）、
+  // 搜索条 UI、行高亮 context 接线、快捷键注册 + 代码块域隔离——
+  // 丢任何一环 = Ctrl+F 回归为 webview 原生搜索或折叠内容不可搜。
+  { feature: "任务399 行级检索逻辑", file: "desktop/frontend/src/lib/transcriptFind.ts", patterns: ["buildTranscriptFindIndex", "searchTranscriptFind", "shouldIgnoreFindShortcutTarget", "TRANSCRIPT_FIND_HIT_CAP"] },
+  { feature: "任务399 搜索条组件", file: "desktop/frontend/src/components/TranscriptFindBar.tsx", patterns: ["TranscriptFindBar", "focusSignal", "onPrev"] },
+  { feature: "任务399 行高亮 context", file: "desktop/frontend/src/components/TranscriptBlockView.tsx", patterns: ["useTranscriptFindHighlight", "transcript__row--find-active", "data-find-active"] },
+  { feature: "任务399 Ctrl+F 快捷键注册（代码块域隔离）", file: "desktop/frontend/src/App.tsx", patterns: ["transcript.find", "shouldIgnoreFindShortcutTarget", "setTranscriptFindPulse"] },
 ];
 
 let failed = 0;
