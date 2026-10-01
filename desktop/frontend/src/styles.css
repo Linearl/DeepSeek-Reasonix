@@ -41882,6 +41882,10 @@ body > .mermaid-diagram--fullscreen {
 
 .settings-quick-commands__row > textarea.mem-input {
   flex: 2 1 52%;
+  /* 任务 278 防反弹：flex 子项的自动最小宽（min-width:auto）会让超长
+     无空格内容把行撑破、在 900px 弹窗内再次出现横向滚动条；显式归零后
+     文本列只能换行/内部滚动，行宽恒等于弹窗内容宽。 */
+  min-width: 0;
   resize: vertical;
 }
 
