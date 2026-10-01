@@ -154,6 +154,11 @@ const CHECKS = [
   { feature: "285 信息面分组名+副本状态解析层", file: "desktop/frontend/src/lib/sessionInfoPanel.ts", patterns: ["resolveSessionGroupTitle", "sessionRecoveryDisplay", "recovery.role.covered_copy"] },
   { feature: "285 信息面展示接线", file: "desktop/frontend/src/components/ContextPanel.tsx", patterns: ["GetProjectGroups", "GetRecoveryLineage", "sessionInfo"] },
 
+  // ── 任务 298：open 失败/慢打点 + eventsMb 超限治理（2026-10-01）────
+  { feature: "任务298 open 出口打点（失败落 slog + 慢打开分相）", file: "desktop/open_session_trace.go", patterns: ["desktop: open session failed", "desktop: open session slow", "phasesMs"] },
+  { feature: "任务298 open 汇合点接线（分相耗时标记）", file: "desktop/tabs.go", patterns: ["beginOpenSessionTrace", "tr.mark(\"tabLock\")", "tr.mark(\"sessionCreate\")"] },
+  { feature: "任务298 超限 WARN 限频门 + 元凶指认 + 处置联动", file: "desktop/perf_monitor.go", patterns: ["perfWarnGate", "topEventsFileUnder", "EventsAutoRotationSnapshot"] },
+
   // ── 任务 155：会话存储四档 + bridge 健康债（2026-09-17）──────────
   { feature: "任务155 四档枚举与渐进校验", file: "internal/config/session_storage.go", patterns: ["SessionStorageDualWriteReadV3", "ValidateSessionStorageTransition", "ResolveSafeSessionStorageMode"] },
   { feature: "任务155 bridge 健康债修复（登记即用 + 同 root 接管 + 批 id 幂等）", file: "internal/control/session_v4_bridge.go", patterns: ["reclaimSession", "v4BridgePeers", "ErrLegacyReadOnly"] },

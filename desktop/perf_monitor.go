@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
 )
@@ -126,6 +127,61 @@ type perfMonitor struct {
 	// lastKey is the previous sample's key numbers: identical keys mean nothing
 	// moved, which is what turns a sample into a heartbeat instead of a full line.
 	lastKey string
+
+	// 任务 298: 超限 WARN 限频门。1.35GB events 实测下 eventsMb WARN 每 3s 刷一条
+	// （整个操作窗口被日志淹没，且不说是哪个文件的锅）。warnGate 抑制平坦的超限
+	// 重复告警；eventsTopFile 可注入（测试用），nil 时走真实扫描。
+	warnGate      *perfWarnGate
+	eventsTopFile func() (string, int64)
+}
+
+// perfWarnGate 决定同一 metric 的超限 WARN 何时再发：首次必发；之后仅当
+// 数值较上次告警增长 ≥ rearm 比例（恶化中的曲线不被抑制）或距上次告警超过
+// cooldown（持续超限定期重申）才再发。被抑制的样本数随下次告警一并带出，
+// 「抑制了多久、多少条」不再无据可查。
+type perfWarnGate struct {
+	cooldown time.Duration
+	rearm    float64
+	memo     map[string]perfWarnMemo
+}
+
+type perfWarnMemo struct {
+	lastValue  float64
+	lastAt     time.Time
+	suppressed int
+}
+
+const (
+	perfWarnCooldown        = 15 * time.Minute
+	perfWarnRearmRatio      = 1.1
+	perfWarnInitialMapSlots = 8
+)
+
+func newPerfWarnGate() *perfWarnGate {
+	return &perfWarnGate{
+		cooldown: perfWarnCooldown,
+		rearm:    perfWarnRearmRatio,
+		memo:     make(map[string]perfWarnMemo, perfWarnInitialMapSlots),
+	}
+}
+
+// allow 报告 metric 在此刻是否应发告警。ok=false 时返回自上次告警以来的
+// 抑制计数；ok=true 时 suppressed 为刚被吞掉的条数（随告警带出），sinceMinutes
+// 是距上次告警的分钟数（首次为 0）。
+func (g *perfWarnGate) allow(metric string, value float64, now time.Time) (ok bool, suppressed int, sinceMinutes float64) {
+	memo, seen := g.memo[metric]
+	if seen {
+		suppressed = memo.suppressed
+		sinceMinutes = now.Sub(memo.lastAt).Minutes()
+		grown := value > memo.lastValue && value >= memo.lastValue*g.rearm
+		if now.Sub(memo.lastAt) < g.cooldown && !grown {
+			memo.suppressed++
+			g.memo[metric] = memo
+			return false, memo.suppressed, sinceMinutes
+		}
+	}
+	g.memo[metric] = perfWarnMemo{lastValue: value, lastAt: now}
+	return true, suppressed, sinceMinutes
 }
 
 // perfMonitorSettings resolves the config into sampler settings, clamping the
@@ -225,9 +281,30 @@ func (m *perfMonitor) sampleAndWrite(now time.Time) {
 
 // warnThresholds turns a sample that left the observed band into a log line, so
 // the same curve is visible in desktop.log without opening the series.
+// 任务 298: 同一 metric 平坦超限不再每 interval 刷屏（perfWarnGate 限频）；
+// eventsMb 告警带元凶文件与处置通道（auto 旋转门状态），超限后「下一步做什么」
+// 直接可读，而不是只剩一条孤立数字。
 func (m *perfMonitor) warnThresholds(sample perfSample) {
+	m.warnThresholdsAt(sample, time.Now())
+}
+
+func (m *perfMonitor) warnThresholdsAt(sample perfSample, now time.Time) {
+	if m.warnGate == nil {
+		m.warnGate = newPerfWarnGate()
+	}
 	warn := func(metric string, value, limit float64) {
-		slog.Warn("desktop: perf monitor threshold", "metric", metric, "value", value, "limit", limit)
+		ok, suppressed, sinceMinutes := m.warnGate.allow(metric, value, now)
+		if !ok {
+			return
+		}
+		fields := []any{"metric", metric, "value", value, "limit", limit}
+		if suppressed > 0 {
+			fields = append(fields, "suppressed", suppressed, "sinceMinutes", int64(sinceMinutes))
+		}
+		if metric == "eventsMb" {
+			fields = append(fields, m.eventsMbContext()...)
+		}
+		slog.Warn("desktop: perf monitor threshold", fields...)
 	}
 	if sample.OSCounters && sample.WorkingSetMB > perfMonitorWarnWorkingSetMB {
 		warn("workingSetMb", sample.WorkingSetMB, perfMonitorWarnWorkingSetMB)
@@ -241,6 +318,65 @@ func (m *perfMonitor) warnThresholds(sample perfSample) {
 	if float64(sample.V4OperationBytes)/(1<<20) > perfMonitorWarnV4OpsMB {
 		warn("v4OperationMb", float64(sample.V4OperationBytes)/(1<<20), perfMonitorWarnV4OpsMB)
 	}
+}
+
+// eventsMbContext 组装 eventsMb 超限告警的追加字段：最大的 live events 文件
+// （元凶）与当前处置通道状态（auto 旋转门）。扫描仅在告警真正发出时发生，
+// 常态采样零额外开销。
+func (m *perfMonitor) eventsMbContext() []any {
+	fields := []any{}
+	top := m.eventsTopFile
+	if top == nil {
+		top = func() (string, int64) { return topEventsFileUnder(config.MemoryUserDir()) }
+	}
+	if path, bytes := top(); path != "" {
+		fields = append(fields, "topPath", path, "topMB", float64(bytes)/(1<<20))
+	}
+	mode, factor, capMB := agent.EventsAutoRotationSnapshot()
+	if mode == config.EventsAutoRotationAuto {
+		fields = append(fields, "disposal", fmt.Sprintf("events_auto_rotation=auto (factor %.1f, cap %d MiB) — the save-path gate compacts over-limit logs", factor, capMB))
+	} else {
+		fields = append(fields, "disposal", fmt.Sprintf("events_auto_rotation=%s — no automatic compaction; run the storage panel's per-session/all repair, or set events_auto_rotation=auto", mode))
+	}
+	return fields
+}
+
+// topEventsFileUnder walks the memory root once and reports the largest live
+// events log (path, bytes) — the same live-growth rules as walkProjectsBytesMB
+// (.trash skipped at any depth, *-recovery-* siblings excluded, .events.jsonl
+// only). 1.35GB 超限（任务 298）下告警必须能指认是哪个会话的文件在涨。
+func topEventsFileUnder(memoryRoot string) (string, int64) {
+	if memoryRoot == "" {
+		return "", 0
+	}
+	root := filepath.Join(memoryRoot, "projects")
+	var topPath string
+	var topBytes int64
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || entry == nil {
+			return nil
+		}
+		if entry.IsDir() {
+			if entry.Name() == ".trash" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".events.jsonl") || strings.Contains(name, "-recovery-") {
+			return nil
+		}
+		info, statErr := entry.Info()
+		if statErr != nil {
+			return nil
+		}
+		if info.Size() > topBytes {
+			topBytes = info.Size()
+			topPath = path
+		}
+		return nil
+	})
+	return topPath, topBytes
 }
 
 func (m *perfMonitor) takeSample(now time.Time) perfSample {

@@ -2329,17 +2329,25 @@ func (a *App) openGlobalTabInactive(topicID string) (TabMeta, error) {
 	return a.openTopicTabWithActivation("global", "", topicID, sessionPath, false)
 }
 
-func (a *App) openTopicTabWithActivation(scope, workspaceRoot, topicID, sessionPath string, activate bool) (TabMeta, error) {
+// 任务 298: 命名返回值 + 出口 trace——所有打开入口的汇合点在这里统一落
+// 失败/慢打开日志（desktop/open_session_trace.go），分相耗时区分
+// 锁等待（tabLock）/文件 IO（sessionCreate、profile）/路径解析（resolve）。
+func (a *App) openTopicTabWithActivation(scope, workspaceRoot, topicID, sessionPath string, activate bool) (meta TabMeta, err error) {
+	tr := beginOpenSessionTrace(scope, workspaceRoot, topicID, sessionPath)
+	defer func() { tr.finish(err) }()
+
 	// Task 186: the sidebar never carries a project node for one of the host's own
 	// directories, so a project-scope open pointed at one is a global-scope open —
 	// every open entry (project/global/topic-session, active or not) funnels here.
 	scope, workspaceRoot = normalizeWorkspaceScope(scope, workspaceRoot)
 	actualRoot, sessionPath := a.resolveOpenTopicSessionPath(scope, workspaceRoot, sessionPath)
+	tr.mark("resolve")
 	releaseAdmission, err := a.beginProjectRuntimeAdmission(scope, actualRoot)
 	if err != nil {
 		return TabMeta{}, err
 	}
 	defer releaseAdmission()
+	tr.mark("admission")
 	if strings.TrimSpace(scope) == "project" {
 		saveWorkspace(actualRoot)
 		a.registerProjectRoot(actualRoot)
@@ -2347,6 +2355,7 @@ func (a *App) openTopicTabWithActivation(scope, workspaceRoot, topicID, sessionP
 	targetKey := sessionRuntimeKey(sessionPath)
 
 	a.mu.Lock()
+	tr.mark("tabLock")
 	if targetKey != "" {
 		for _, tab := range a.tabs {
 			if tab == nil {
@@ -2404,8 +2413,10 @@ func (a *App) openTopicTabWithActivation(scope, workspaceRoot, topicID, sessionP
 			a.mu.Unlock()
 			return TabMeta{}, err
 		}
+		tr.mark("sessionCreate")
 	}
 	profile := loadTabSessionProfile(sessionPath)
+	tr.mark("profile")
 	tab := &WorkspaceTab{
 		ID:               tabID,
 		Scope:            scope,
@@ -2425,7 +2436,7 @@ func (a *App) openTopicTabWithActivation(scope, workspaceRoot, topicID, sessionP
 		a.activeTabID = tabID
 	}
 	a.saveTabsLocked()
-	meta := a.tabMeta(tab, tab.ID == a.activeTabID)
+	meta = a.tabMeta(tab, tab.ID == a.activeTabID)
 	a.mu.Unlock()
 
 	a.startTabControllerBuild(tab)
