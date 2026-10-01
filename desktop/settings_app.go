@@ -2817,8 +2817,16 @@ func (a *App) SetDefaultToolApprovalMode(mode string) error {
 // desktop sessions. An empty maxRuntime disables autopilot: a run with no
 // wall-clock bound is what the CLI refuses outright, and the same refusal belongs
 // here rather than letting a session start with nobody watching and no limit.
+//
+// Task 325 (user ruling 2026-09-25): enabling the autopilot default additionally
+// requires the new-session approval default to be yolo. ask/auto defaults would
+// create unattended sessions that stack human approval prompts; the refusal
+// names the switch to flip first. Disabling is always allowed.
 func (a *App) SetDesktopAutopilot(enabled bool, maxRuntime, approvalGrace string) error {
 	return a.applyConfigOnly(func(c *config.Config) error {
+		if enabled && c.DesktopDefaultToolApprovalMode() != "yolo" {
+			return fmt.Errorf("autopilot requires the yolo approval mode (需要 yolo 审批模式); set desktop.default_tool_approval_mode = \"yolo\" (currently %q) before enabling the autopilot default", c.DesktopDefaultToolApprovalMode())
+		}
 		c.Desktop.Autopilot = enabled
 		c.Desktop.AutopilotMaxRuntime = strings.TrimSpace(maxRuntime)
 		c.Desktop.AutopilotApprovalGrace = strings.TrimSpace(approvalGrace)
