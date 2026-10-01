@@ -397,6 +397,11 @@ const CHECKS = [
   { feature: "任务276 焦点三探针（composer-focus 通道）", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["draft epoch bumped", "focus restore cancelled by draft epoch", "focus restore exhausted retries"] },
   { feature: "任务276 IME 组合打断探针", file: "desktop/frontend/src/lib/useComposerImeGuard.ts", patterns: ["ime composition interrupted by focus loss", "ime composition interrupted by unmount"] },
   { feature: "任务276 禁用翻转焦点自愈", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["focus restored after disable flip", "composerInputWasFocusedRef"] },
+  // 任务441：排队引导消息六点手柄拖拽排序，替换 266-A 的上移/下移按钮。
+  // 锚点锁两半：手柄是唯一拖源（卡片本体不再 draggable）+ 落点仍走既有
+  // onMove 持久化；CSS 单列一条（merge 丢手柄样式=拖拽入口不可见）。
+  { feature: "任务441 排队引导拖拽手柄（接线）", file: "desktop/frontend/src/components/ComposerGuidanceShelf.tsx", patterns: ["GripVertical", "draggable", "onDragStart", "onMove("] },
+  { feature: "任务441 拖拽手柄 CSS", file: "desktop/frontend/src/styles.css", patterns: [".composer-guidance-item__handle {", ".composer-guidance-item__handle--dragging"] },
 ];
 
 let failed = 0;
