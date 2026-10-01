@@ -321,6 +321,14 @@ const CHECKS = [
   { feature: "任务428 ask 面板投递门纯判定（C1/C2）", file: "desktop/frontend/src/lib/askPanelGate.ts", patterns: ["export function judgeAskArrival", "clearCancelResidue", "export function decideActivationPrompt", "resetPromptAnchor"] },
   { feature: "任务428 ask 面板投递门 reducer 接线", file: "desktop/frontend/src/lib/useController.ts", patterns: ["judgeAskArrival(", "decideActivationPrompt({", "reportAskPanelVerdict", "\"ask-panel\""] },
   { feature: "任务428 ask 打点（Go emit 侧）", file: "internal/control/controller.go", patterns: ["[ask-panel] ask request emitted", "[ask-panel] ask request emit failed"] },
+
+  // ── S1 底座常驻子进程（设计 2026-09-30，§10 S1a 切片）──────────────────
+  // 纯增量骨架：协议 v1 + 双实现（inline/remote）+ base serve 子命令 + 开关。
+  // 任何一道被 merge 顶掉，后续 S1b/S1c 切片都会骑在断墙上施工。
+  { feature: "S1a base 协议 v1 定义", file: "internal/baseproc/protocol.go", patterns: ["ProtocolVersion = 1", "\"base.hello\"", "\"base.toolCall\"", "\"base.dying\"", "CodeVersionMismatch"] },
+  { feature: "S1a base 双实现骨架与 R1 回退", file: "internal/baseproc/manager.go", patterns: ["boot: base fallback", "boot: base remote", "func Start(", "subprocessDial", "RunStdioServer"] },
+  { feature: "S1a base serve 子命令接线", file: "internal/cli/base.go", patterns: ["base serve", "--stdio", "RunStdioServer"] },
+  { feature: "S1a experimental_base_process 开关", file: "internal/config/config.go", patterns: ["experimental_base_process"] },
 ];
 
 let failed = 0;

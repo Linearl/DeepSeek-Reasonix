@@ -127,6 +127,10 @@ func RunWithBuildInfo(args []string, info BuildInfo) int {
 		return runServe(rest)
 	case "bus":
 		return runBus(rest)
+	case "base":
+		// S1 底座常驻子进程（设计 D4）：`reasonix base serve --stdio` 子命令。
+		// 无 GUI、无会话锁、stdout 纯协议通道——不做主题配置，不走遗留配置迁移。
+		return baseCommand(rest, version)
 	case "web":
 		return runWebCommand(rest)
 	case "setup":

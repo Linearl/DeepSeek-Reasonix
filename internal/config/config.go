@@ -1566,6 +1566,16 @@ type AgentConfig struct {
 	// the exemptions cause instead of growing silently (铁律 2/8: the upstream
 	// bounded window stays the fallback, this is the opt-in enhancement).
 	ExperimentalActiveTabResident bool `toml:"experimental_active_tab_resident"`
+	// ExperimentalBaseProcess is the S1 resident-base-subprocess switch
+	// (design "S1 底座常驻子进程" 2026-09-30 §7 R4): off (default) is pure
+	// inline — byte-identical to the pre-S1 behaviour, the boot.Build base
+	// section runs per controller exactly as before; on prefers the resident
+	// `reasonix base serve --stdio` subprocess with inline fallback whenever
+	// spawn or the protocol handshake fails. S1a ships the switch register
+	// and the protocol skeleton only; the boot-path consumer lands with the
+	// S1b tool-surface migration, so flipping it today changes nothing (铁律
+	// 2: the on state is opt-in, the off state is the guaranteed baseline).
+	ExperimentalBaseProcess bool `toml:"experimental_base_process"`
 	// DagGraphCacheCapacity bounds the process-wide replayed-graph cache that
 	// saves reuse across Session instances (task 196fix2). 0 keeps the
 	// built-in default (3); the reader clamps outside 1..16 and the setter

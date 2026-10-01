@@ -120,6 +120,13 @@ func cliCompletionRootSpec() cliCompletionSpec {
 		completionSpec("run", runFlags),
 		completionSpecWithAliases("chat", []string{"code"}, interactiveFlags),
 		completionSpec("serve", serveFlags),
+		// S1 底座常驻子进程（设计 D4）：内部管道子命令，仅 --stdio 一种传输。
+		// 登记进补全注册表只为满足 dispatch 全覆盖守卫测试，不在 usage 文案出现。
+		completionSpec("base", []cliCompletionFlag{help},
+			completionSpec("serve", []cliCompletionFlag{
+				completionFlag("--stdio", cliCompletionNoValue), help,
+			}),
+		),
 		completionSpec("bus", []cliCompletionFlag{help},
 			completionSpec("enroll", []cliCompletionFlag{
 				completionFlag("--role --ws --url", cliCompletionStaticValue), help,
