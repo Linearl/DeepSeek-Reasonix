@@ -12,6 +12,13 @@ import (
 
 func (s *Session) classifySnapshotWriteForCommit(path string, msgs []provider.Message, digest [sha256.Size]byte, version uint64, ownedRewrite bool, mode sessionSaveMode) (snapshotWriteDecision, error) {
 	decision, err := s.classifySnapshotWrite(path, msgs, digest, version, ownedRewrite)
+	if err != nil && s.rescueReplayLimitedEventLog(path, msgs, digest, err) {
+		// Task 339: the on-disk event log sits past the replay caps, the disk
+		// state was provably this runtime's own last write, and the rescue
+		// folded it from the in-memory snapshot. Re-classify against the folded
+		// log; its error (if any) is the honest answer now.
+		decision, err = s.classifySnapshotWrite(path, msgs, digest, version, ownedRewrite)
+	}
 	if err != nil || decision.upToDate && mode != sessionSaveRewriteCompact && !decision.ledgerStale {
 		return decision, err
 	}

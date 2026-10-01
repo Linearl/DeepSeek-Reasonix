@@ -321,6 +321,27 @@ const CHECKS = [
   { feature: "任务428 ask 面板投递门纯判定（C1/C2）", file: "desktop/frontend/src/lib/askPanelGate.ts", patterns: ["export function judgeAskArrival", "clearCancelResidue", "export function decideActivationPrompt", "resetPromptAnchor"] },
   { feature: "任务428 ask 面板投递门 reducer 接线", file: "desktop/frontend/src/lib/useController.ts", patterns: ["judgeAskArrival(", "decideActivationPrompt({", "reportAskPanelVerdict", "\"ask-panel\""] },
   { feature: "任务428 ask 打点（Go emit 侧）", file: "internal/control/controller.go", patterns: ["[ask-panel] ask request emitted", "[ask-panel] ask request emit failed"] },
+  // 任务 339（上游 #10970 并用）：replay 预算双保险的第二道——触顶有出路。
+  // 锚点锁「所有权证明→内存折叠→失败原样透出」的形状：fold 只在 ledger 仍
+  // 等于本 runtime 基线时触发（防丢别的 writer 的新 turn），DAG 日志与非
+  // limit 错误一律原样拒绝；auto 旋进 cap 分支带上游 fold-only-if-shrinks
+  // 纪律（折不缩则留+可检索 WARN）。
+  { feature: "任务339 replay 超限 Save 自救（所有权证明+内存折叠）", file: "internal/agent/save_replay_rescue.go", patterns: [
+    "func (s *Session) rescueReplayLimitedEventLog(",
+    "errors.As(cause, &limitErr)",
+    "diskRevision != base.revision",
+    "compact-replay-limit",
+  ] },
+  { feature: "任务339 Save probe 修复路径接线", file: "internal/agent/save.go", patterns: [
+    "s.rescueReplayLimitedEventLog(path, msgs, rescueDigest, err)",
+  ] },
+  { feature: "任务339 classify 路径接线", file: "internal/agent/save_listing_projection.go", patterns: [
+    "s.rescueReplayLimitedEventLog(path, msgs, digest, err)",
+  ] },
+  { feature: "任务339 auto cap 折叠缩水守卫（上游 fold-only-if-shrinks）", file: "internal/agent/session_events.go", patterns: [
+    "fold would not shrink it",
+    "contentBytes*2 >= logSize",
+  ] },
 ];
 
 let failed = 0;

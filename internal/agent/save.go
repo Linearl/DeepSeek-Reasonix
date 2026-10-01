@@ -343,7 +343,21 @@ func (s *Session) saveLocked(path string, mode sessionSaveMode) error {
 	probeStart := time.Now()
 	probe, err := probeLogForSave(path)
 	if err != nil {
-		return err
+		// Task 339: the tail repair replays the log, so a log already past the
+		// replay caps refuses here, before classification ever runs. When the
+		// disk state is provably this runtime's own last write, fold the log
+		// from the in-memory snapshot and re-probe; the folded log repairs and
+		// classifies as a healthy single replace.
+		var limitErr *SessionReplayLimitError
+		if errors.As(err, &limitErr) {
+			if rescueDigest, _, digestErr := digestAndSizeSessionMessages(msgs); digestErr == nil &&
+				s.rescueReplayLimitedEventLog(path, msgs, rescueDigest, err) {
+				probe, err = probeLogForSave(path)
+			}
+		}
+		if err != nil {
+			return err
+		}
 	}
 	probeMs = time.Since(probeStart).Milliseconds()
 	if route := s.dagSaveRoute(path, probe); route != dagRouteSchemaOne {
