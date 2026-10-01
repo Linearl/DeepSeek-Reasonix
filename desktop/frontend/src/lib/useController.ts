@@ -43,7 +43,7 @@ import {
 } from "./controllerNotices";
 import { applyReadStatusEvent, type ReadStatusHost } from "./readStatus";
 import { upsertReadPause } from "./readPause";
-import { applyHydrateErrorState, hydratePlaceholderItems as resolveHydratePlaceholders } from "./hydrateErrorState";
+import { applyHydrateErrorState, hydrateFailureDetail, hydratePlaceholderItems as resolveHydratePlaceholders } from "./hydrateErrorState";
 import { isHostRecoveryGuidance } from "./hostRecoverySteer";
 import { activeTabHydrationPlan, canAdoptUnboundLiveSurface, countSameIdDuplicates, duplicateLiveItemIds, explainReusableCache, hasResidentSnapshotForEmptySurface, hasReusableCachedTranscript, hydratedHistoryApplyMode, retainedLiveTail, sameSessionHydrateIdentity, sameSessionPlaceholderItems, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
 import { effectiveMaxResidentSessions } from "./resourceBudgets";
@@ -3162,7 +3162,11 @@ export function useController() {
         addBreadcrumb("tab.hydrate", `${label} failed ${tabId}: ${errorMessage(err)}`);
       };
 
-      const loadTimed = async <T,>(label: string, load: () => Promise<T>): Promise<T | undefined> => {
+      // Task 400 (upstream #11282): the history failure paths threw away the
+      // reader's own error, leaving the banner's Details to repeat the fixed
+      // headline. `onError` captures the cause so the hydrate_error below can
+      // surface it; every other label keeps discarding it as before.
+      const loadTimed = async <T,>(label: string, load: () => Promise<T>, onError?: (err: unknown) => void): Promise<T | undefined> => {
         const startedAt = Date.now();
         addBreadcrumb("tab.hydrate", `${label} start ${reason} ${tabId}`);
         try {
@@ -3173,11 +3177,13 @@ export function useController() {
           return value;
         } catch (err) {
           noteFailure(label, err);
+          onError?.(err);
           return undefined;
         }
       };
 
       const historyStartedAt = Date.now();
+      let historyLoadCause: unknown;
       let projection = skipHistory && surfaceEmptyAtHydrate
         ? // Task 232: local snapshot onto the emptied surface; fall back to
           // the real fetch when the LRU lost it (genuine eviction).
@@ -3193,6 +3199,7 @@ export function useController() {
             expectedRevision: sessionRevision,
             expectedDigest: sessionDigest,
           }),
+          (err) => { historyLoadCause = err; },
         );
         // Task 268 (6.2): the hot switch-tab path only had one `switch-tab:history`
         // blob — the 54 slow events could not tell bridge round trip from store
@@ -3203,10 +3210,18 @@ export function useController() {
 
       if (!stillCurrent()) return;
       if (!skipHistory && projection === undefined) {
-        const errText = t("history.failedLoadHistory");
+        // Task 400: the banner's Details now repeats hydrateError verbatim, so
+        // it must carry the reader's own failure (permission/corruption/…)
+        // instead of the fixed headline. The in-transcript notice keeps the
+        // short summary — it is a status line, not a diagnosis panel.
+        const errText = hydrateFailureDetail(
+          t("history.failedLoadHistory"),
+          historyLoadCause,
+          (causeText) => t("history.failedLoadHistoryDetail", { reason: causeText }),
+        );
         dispatchTo(tabId, { type: "hydrate_error", reason, error: errText });
         // Hydration failure is not turn completion; keep any raced Ask/approval blocked.
-        dispatchTo(tabId, { type: "local_notice", level: "warn", text: errText, preserveRuntime: true });
+        dispatchTo(tabId, { type: "local_notice", level: "warn", text: t("history.failedLoadHistory"), preserveRuntime: true });
         addBreadcrumb("tab.hydrate", `history failed ${tabId} ms=${Date.now() - historyStartedAt}`); return;
       }
       const applyProj = projection && {
@@ -4798,9 +4813,15 @@ export function useController() {
     replayPendingPromptsForActiveTab(tabId);
     return true;
   }, [isNavigationIntentCurrent, reconcileTabRuntime, refreshMetaOnlyForTab, sessionLoadCurrent]);
-  const failSessionNavigation = useCallback(async (navigationSeq: number, tabId: string): Promise<SurfaceDataCommit> => {
+  // Task 400: `cause` is the caught read error; when present the hydrate_error
+  // detail carries it so the banner's Details names the real failure.
+  const failSessionNavigation = useCallback(async (navigationSeq: number, tabId: string, cause?: unknown): Promise<SurfaceDataCommit> => {
     if (!isNavigationIntentCurrent(navigationSeq)) return { intent: navigationSeq, outcome: "superseded", tabId };
-    const error = t("history.failedOpenSession");
+    const error = hydrateFailureDetail(
+      t("history.failedOpenSession"),
+      cause,
+      (causeText) => t("history.failedOpenSessionDetail", { reason: causeText }),
+    );
     dispatchTo(tabId, { type: "hydrate_error", reason: "resume-session", error });
     await restoreNavigationSource(navigationSeq, tabId, error);
     return { intent: navigationSeq, outcome: "failed", tabId, error };
@@ -4835,10 +4856,10 @@ export function useController() {
         page = tabId
           ? await app.ResumeSessionPageForTab(tabId, path, HISTORY_PAGE_TURNS)
           : await app.ResumeSessionPage(path, HISTORY_PAGE_TURNS);
-      } catch {
+      } catch (resumeErr) {
         noteStageTiming(targetTabId, "hydrate:read", performance.now() - hydrateReadStart);
         if (!isNavigationIntentCurrent(navigationSeq) || !sessionLoadCurrent(targetTabId, seq)) return terminal("superseded");
-        return failSessionNavigation(navigationSeq, targetTabId);
+        return failSessionNavigation(navigationSeq, targetTabId, resumeErr);
       }
       noteStageTiming(targetTabId, "hydrate:read", performance.now() - hydrateReadStart);
       if (!navigationCompletionCurrent(navigationSeq, "session.resume", targetTabId) || !sessionLoadCurrent(targetTabId, seq)) return terminal("superseded");
@@ -4851,7 +4872,7 @@ export function useController() {
       app.ContextUsageForTab(targetTabId).then((context) => dispatchTo(targetTabId, { type: "context", context })).catch(() => {});
       void refreshCheckpoints(targetTabId);
       return terminal("ready");
-    })().catch(() => failSessionNavigation(navigationSeq, targetTabId));
+    })().catch((surfaceErr) => failSessionNavigation(navigationSeq, targetTabId, surfaceErr));
     return { value: undefined, surfaceReady };
   }, [activeTabId, beginActiveNavigation, bumpSessionLoadSeq, dispatchTo, failSessionNavigation, navigationCompletionCurrent, reconcileSessionNavigationForTab, refreshCheckpoints, requireRegisteredNavigationIntent, sessionLoadCurrent, snapshotNavigationSourceTab, waitForBackendActiveTab, waitForTabReady]);
 
@@ -4872,9 +4893,9 @@ export function useController() {
       let page: HistoryPage;
       try {
         page = await app.OpenChannelSessionPageForTab(tabId, path, HISTORY_PAGE_TURNS);
-      } catch {
+      } catch (channelErr) {
         if (!isNavigationIntentCurrent(navigationSeq) || !sessionLoadCurrent(tabId, seq)) return terminal("superseded");
-        return failSessionNavigation(navigationSeq, tabId);
+        return failSessionNavigation(navigationSeq, tabId, channelErr);
       }
       if (!navigationCompletionCurrent(navigationSeq, "session.channel", tabId) || !sessionLoadCurrent(tabId, seq)) return terminal("superseded");
       dispatchTo(tabId, { type: "reset" });
@@ -4884,7 +4905,7 @@ export function useController() {
       app.ContextUsageForTab(tabId).then((context) => dispatchTo(tabId, { type: "context", context })).catch(() => {});
       void refreshCheckpoints(tabId);
       return terminal("ready");
-    })().catch(() => failSessionNavigation(navigationSeq, tabId));
+    })().catch((surfaceErr) => failSessionNavigation(navigationSeq, tabId, surfaceErr));
     return { value: undefined, surfaceReady };
   }, [beginActiveNavigation, bumpSessionLoadSeq, dispatchTo, failSessionNavigation, isNavigationIntentCurrent, navigationCompletionCurrent, reconcileSessionNavigationForTab, refreshCheckpoints, requireRegisteredNavigationIntent, sessionLoadCurrent, snapshotNavigationSourceTab, waitForTabReady]);
 

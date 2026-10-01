@@ -428,6 +428,15 @@ const CHECKS = [
   { feature: "任务401 侧栏 logo 强调色 mask（App.tsx 渲染点）", file: "desktop/frontend/src/App.tsx", patterns: ["<span role=\"img\" aria-label=\"Reasonix\" className=\"sidebar__brand-logo sidebar__brand-logo--workbench\" />", "<span role=\"img\" aria-label=\"Reasonix\" className=\"sidebar__brand-logo\" />"] },
   { feature: "任务401 侧栏 logo 强调色 mask（SidebarRegion 渲染点）", file: "desktop/frontend/src/app-shell/SidebarRegion.tsx", patterns: ["<span role=\"img\" aria-label=\"Reasonix\" className=\"sidebar__brand-logo sidebar__brand-logo--workbench\" />", "<span role=\"img\" aria-label=\"Reasonix\" className=\"sidebar__brand-logo\" />"] },
   { feature: "任务401 侧栏 logo 强调色 mask（CSS 上色与暗色规则解绑）", file: "desktop/frontend/src/styles.css", patterns: ["background-color: var(--accent);", "-webkit-mask-image: url(\"./assets/logo-wordmark.svg\");", ":root[data-theme=\"dark\"] .welcome__brand-logo {"] },
+  // 任务 400（上游 #11272 → #11282）：会话历史加载失败显示原因。固定文案升级为
+  // 「摘要 + 读端自身错误」——锚点锁四处：hydrateFailureDetail 纯函数（无因不拼、
+  // 同文不重）、loadTimed 错误入参 historyLoadCause 接线、hydrate_error 走 detail
+  // 模板而 local_notice 保摘要、resume/channel 捕获错误透传 failSessionNavigation。
+  // 丢任何一处，banner Details 重新只剩固定标题，真实因由再次不可见。
+  { feature: "任务400 失败原因合成 helper", file: "desktop/frontend/src/lib/hydrateErrorState.ts", patterns: ["export function hydrateFailureReason", "export function hydrateFailureDetail", "reason === summary"] },
+  { feature: "任务400 历史读端错误入 hydrate_error", file: "desktop/frontend/src/lib/useController.ts", patterns: ["(err) => { historyLoadCause = err; }", "historyLoadCause,", "text: t(\"history.failedLoadHistory\")"] },
+  { feature: "任务400 导航失败透传 cause", file: "desktop/frontend/src/lib/useController.ts", patterns: ["tabId: string, cause?: unknown", "failSessionNavigation(navigationSeq, targetTabId, resumeErr)", "failSessionNavigation(navigationSeq, tabId, channelErr)"] },
+  { feature: "任务400 详情文案三语 i18n", file: "desktop/frontend/src/locales/zh.ts", patterns: ["history.failedLoadHistoryDetail", "history.failedOpenSessionDetail", "{reason}"] },
 ];
 
 let failed = 0;
