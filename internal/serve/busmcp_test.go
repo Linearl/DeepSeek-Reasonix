@@ -8,7 +8,67 @@ import (
 
 	"reasonix/internal/busmcp"
 	"reasonix/internal/config"
+	"reasonix/internal/control"
 )
+
+// busTestToken is a syntactically valid stand-in bearer token; busmcp.New
+// only needs a non-empty table, no hex enforcement at construction time.
+const busTestToken = "tok-0000000000000000000000000000dev"
+
+// TestHandlerWithBusMountedBootsWithoutRouteConflict pins task 434: with
+// bus_mcp enabled the full handler() wiring must build and serve. Go 1.22+'s
+// ServeMux panics when one mux holds both the method-less "/mcp" and the
+// upstream catch-all "GET /" ("matches more methods, but a more specific
+// path") — that panic was serve's startup crash with bus_mcp enabled. The
+// registration must stay method-scoped; the catch-all must stay catch-all.
+func TestHandlerWithBusMountedBootsWithoutRouteConflict(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("handler() with bus_mcp enabled panicked on route registration: %v", r)
+		}
+	}()
+	s := New(control.New(control.Options{}), NewBroadcaster(), config.ServeConfig{
+		BusMCP: config.BusMCPConfig{
+			Enabled: true,
+			Roles:   map[string]string{"dev": busTestToken},
+			MailDir: t.TempDir(),
+		},
+	})
+	if s.bus == nil {
+		// A vacuous pass here would hide the conflict: fail-closed means
+		// nothing is mounted, so the mux would never see /mcp at all.
+		t.Fatal("bus failed to construct — test would not exercise the conflict")
+	}
+	h := s.Handler()
+
+	// POST /mcp reaches the bus endpoint: without a bearer it must be the
+	// bus's own 401, not the mux's 404/405 for an unreachable route. The
+	// trio loop pins each method-scoped registration — an unregistered
+	// method would 405 at the mux instead of reaching bus auth.
+	for _, method := range []string{"POST", "GET", "DELETE"} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(method, "/mcp", strings.NewReader("{}"))
+		req.Host = "127.0.0.1" // httptest defaults to example.com; hostGuard 421s that
+		req.Header.Set("Content-Type", "application/json")
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("%s /mcp without bearer: want 401 from bus auth, got %d", method, rec.Code)
+		}
+	}
+
+	// The upstream surface is untouched: GET / still answers with the index
+	// page, and the catch-all still catches unknown GET paths (both were
+	// served before the fix; narrowing GET / to GET /{$} would 404 them).
+	for _, target := range []string{"/", "/some-unknown-page"} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", target, nil)
+		req.Host = "127.0.0.1"
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s: want 200 via the unchanged catch-all, got %d", target, rec.Code)
+		}
+	}
+}
 
 // TestBusPublicPathExemption pins the contract between the bus and the
 // serve-wide auth gate: /mcp and /bus/events skip the browser cookie/query
