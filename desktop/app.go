@@ -2159,6 +2159,8 @@ func (a *App) SetComposerProfileForTab(tabID, collaborationMode, toolApprovalMod
 	// with a non-yolo approval posture turns autopilot off instead (same
 	// fail-closed direction as SetToolApprovalModeForTab).
 	autopilotClosed := closeAutopilotForOffYolo(tab, toolApprovalMode)
+	// Task 326: same symmetric cleanup as the approval-switch path below.
+	guardTopic := strings.TrimSpace(tab.TopicID)
 	if goal != "" {
 		tab.goal = goal
 		tab.mode = tabModeFromAxes(false, toolApprovalMode == control.ToolApprovalYolo)
@@ -2174,6 +2176,7 @@ func (a *App) SetComposerProfileForTab(tabID, collaborationMode, toolApprovalMod
 
 	if autopilotClosed {
 		a.noticeCodeForTab(tabIDForSave, event.LevelWarn, NoticeCodeAutopilotClosedOffYolo, autopilotClosedOffYoloText)
+		a.clearAutopilotGuard(guardTopic)
 	}
 	if ctrl != nil {
 		ctrl.SetPlanMode(tabModeHasPlan(mode))
@@ -2209,6 +2212,15 @@ func (a *App) SetCollaborationModeForTab(tabID, mode string) {
 	// Leaving autopilot must clear it: a tab that kept the flag would silently stay
 	// unattended after the user switched back to a normal mode.
 	autopilotOn, autopilotRuntime, autopilotGrace := false, time.Duration(0), time.Duration(0)
+	// Task 326: remember the guard's owner identity and whether autopilot was on
+	// before this switch, so the guard is ensured/disabled right after the lock
+	// is released (the engine takes its own locks).
+	wasAutopilot := tab.autopilot
+	guardOwner := autopilotGuardOwner{
+		TopicID:       strings.TrimSpace(tab.TopicID),
+		Scope:         tab.Scope,
+		WorkspaceRoot: tab.WorkspaceRoot,
+	}
 	// Task 325: when the autopilot request is refused (approval mode not yolo)
 	// the mode falls back to normal and the notice is emitted after the lock
 	// below is released (noticeCodeForTab re-enters the App lock).
@@ -2249,6 +2261,14 @@ func (a *App) SetCollaborationModeForTab(tabID, mode string) {
 	plan := tabModeHasPlan(tab.mode)
 	tabIDForSave := tab.ID
 	a.mu.Unlock()
+	// Task 326: this is the one real edge (autopilot off→on). Creation is
+	// idempotent and keyed by topic, so the periodic sweep covers every other
+	// entry (new-session defaults, restart restore) without duplicating.
+	if autopilotOn {
+		a.ensureAutopilotGuard(guardOwner)
+	} else if wasAutopilot && guardOwner.TopicID != "" {
+		a.clearAutopilotGuard(guardOwner.TopicID)
+	}
 	if autopilotRefused {
 		// Task 325: the refusal tells the user exactly which switch to flip.
 		a.noticeCodeForTab(tabIDForSave, event.LevelWarn, NoticeCodeAutopilotRequiresYolo, autopilotRequiresYoloText)
@@ -7326,9 +7346,13 @@ func (a *App) SetToolApprovalModeForTab(tabID, mode string) []string {
 	autopilotClosed := closeAutopilotForOffYolo(tab, mode)
 	ctrl := tab.Ctrl
 	tabIDForSave := tab.ID
+	guardTopic := strings.TrimSpace(tab.TopicID)
 	a.mu.Unlock()
 	if autopilotClosed {
 		a.noticeCodeForTab(tabIDForSave, event.LevelWarn, NoticeCodeAutopilotClosedOffYolo, autopilotClosedOffYoloText)
+		// Task 326: symmetric cleanup — once autopilot is off there is no
+		// session left for the guard to watch.
+		a.clearAutopilotGuard(guardTopic)
 	}
 	drained := applyTabToolApprovalModeToController(ctrl, mode)
 	a.mu.Lock()

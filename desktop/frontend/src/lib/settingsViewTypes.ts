@@ -9,6 +9,10 @@ export interface SettingsView {
   autopilot: boolean;
   autopilotMaxRuntime: string;
   autopilotApprovalGrace: string;
+  /** Task 326: the autopilot guard task's run interval, in minutes (effective value). */
+  autopilotGuardInterval?: number;
+  /** Task 326: what happens to the guard once the watched session goes quiet. */
+  autopilotGuardQuiescent?: string;
   // Task 81: exposes the restart-and-update action. Same preference restart_and_update reads.
   experimentalRestartUpdate?: boolean;
   /** Task 381: fast-switch staging directory override; empty = the default. */

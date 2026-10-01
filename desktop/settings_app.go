@@ -333,6 +333,11 @@ type SettingsView struct {
 	Autopilot                bool   `json:"autopilot"`
 	AutopilotMaxRuntime      string `json:"autopilotMaxRuntime"`
 	AutopilotApprovalGrace   string `json:"autopilotApprovalGrace"`
+	// Task 326: autopilot guard task dials — interval in minutes (effective
+	// value, so the panel never shows a bare 0) and the self-close policy for a
+	// watched session that goes quiet.
+	AutopilotGuardInterval  int    `json:"autopilotGuardInterval"`
+	AutopilotGuardQuiescent string `json:"autopilotGuardQuiescent"`
 	// Task 81 / 123: the Settings panel renders these two experiment switches from
 	// this view; carrying them only on DesktopStartupSettingsView left both switches
 	// permanently reading "off" and impossible to turn on (fixed 2026-09-15).
@@ -1445,6 +1450,8 @@ func (a *App) Settings() SettingsView {
 		Autopilot:                cfg.Desktop.Autopilot,
 		AutopilotMaxRuntime:      cfg.Desktop.AutopilotMaxRuntime,
 		AutopilotApprovalGrace:   cfg.Desktop.AutopilotApprovalGrace,
+		AutopilotGuardInterval:   cfg.AutopilotGuardIntervalMinutes(),
+		AutopilotGuardQuiescent:  cfg.AutopilotGuardQuiescentPolicy(),
 		// The Settings panel reads these switches from this view (see the struct note).
 		ExperimentalRestartUpdate: cfg.Desktop.ExperimentalRestartUpdate,
 		StagingDir:                strings.TrimSpace(cfg.Desktop.StagingDir),
@@ -2830,6 +2837,40 @@ func (a *App) SetDesktopAutopilot(enabled bool, maxRuntime, approvalGrace string
 		c.Desktop.Autopilot = enabled
 		c.Desktop.AutopilotMaxRuntime = strings.TrimSpace(maxRuntime)
 		c.Desktop.AutopilotApprovalGrace = strings.TrimSpace(approvalGrace)
+		return nil
+	})
+}
+
+// SetDesktopAutopilotGuardInterval sets how often (in minutes) an autopilot
+// session's guard task fires (task 326). Existing guards are re-pointed in
+// place — never recreated — so widening the dial cannot grow a second guard
+// for the same session.
+func (a *App) SetDesktopAutopilotGuardInterval(minutes int) error {
+	if minutes < 1 || minutes > 1440 {
+		return fmt.Errorf("autopilot guard interval must be between 1 and 1440 minutes, got %d", minutes)
+	}
+	if err := a.applyConfigOnly(func(c *config.Config) error {
+		c.Desktop.AutopilotGuardInterval = minutes
+		return nil
+	}); err != nil {
+		return err
+	}
+	a.resyncAutopilotGuardInterval(minutes)
+	return nil
+}
+
+// SetDesktopAutopilotGuardQuiescent picks what happens to a guard after the
+// session it watches has been quiet with no new work: disable (self-disable,
+// re-enableable), standby (stay armed), or destroy (delete the task).
+func (a *App) SetDesktopAutopilotGuardQuiescent(policy string) error {
+	policy = strings.TrimSpace(policy)
+	switch policy {
+	case "disable", "standby", "destroy":
+	default:
+		return fmt.Errorf("autopilot guard quiescent policy %q is invalid; use \"disable\", \"standby\", or \"destroy\"", policy)
+	}
+	return a.applyConfigOnly(func(c *config.Config) error {
+		c.Desktop.AutopilotGuardQuiescent = policy
 		return nil
 	})
 }

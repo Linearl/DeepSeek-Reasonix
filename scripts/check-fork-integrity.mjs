@@ -508,6 +508,16 @@ const CHECKS = [
   { feature: "任务327 maxRuns 编辑器（无限/单次/自定义 N）", file: "desktop/frontend/src/custom/features/heartbeat/HeartbeatTaskEditor.tsx", patterns: ["heartbeat.maxRunsUnlimited", "heartbeat.maxRunsOnce", "data-testid=\"heartbeat-max-runs-input\""] },
   { feature: "任务327 maxRuns 列表 k/N 与终态徽标", file: "desktop/frontend/src/custom/features/heartbeat/HeartbeatPanel.tsx", patterns: ["heartbeat-maxruns-badge", "heartbeat-maxruns-badge--done", "heartbeat.maxRunsCompleted"] },
   { feature: "任务327 maxRuns 终态徽标 CSS", file: "desktop/frontend/src/custom/features/heartbeat/heartbeat.css", patterns: [".heartbeat-maxruns-badge", ".heartbeat-maxruns-badge--done"] },
+  // 任务 326：autopilot 启动自动 ensure 守护定时任务（幂等单例 + 对账清理 + 自关闭 + 面板间隔）。
+  // 锁 ensure/对账/自关闭三件、两条 App 接线、权限隔离（守护不改会话审批——丢了它，
+  // 守护每次运行都会把 owner 的审批改掉并触发 325 反向联动把 autopilot 关了）。
+  { feature: "任务326 守护任务 ensure/对账/自关闭", file: "desktop/autopilot_guard.go", patterns: ["func (e *HeartbeatEngine) EnsureAutopilotGuard", "func (e *HeartbeatEngine) ReconcileAutopilotGuards", "func (e *HeartbeatEngine) evaluateAutopilotGuardClose", "const autopilotGuardIDPrefix"] },
+  { feature: "任务326 守护接线（边沿 ensure + 对称清理）", file: "desktop/app.go", patterns: ["a.ensureAutopilotGuard(guardOwner)", "a.clearAutopilotGuard(guardTopic)", "a.clearAutopilotGuard(guardOwner.TopicID)"] },
+  { feature: "任务326 守护权限隔离（不改会话审批）", file: "desktop/heartbeat.go", patterns: ["if !isAutopilotGuardTask(t) {", "evaluateAutopilotGuardClose(t, guardQuiet)", "reconcileAutopilotGuardsCheap"] },
+  { feature: "任务326 守护自关闭终态不被复活", file: "desktop/heartbeat_store.go", patterns: ["if isAutopilotGuardTask(tasks[i]) && !update.Enabled {", "tasks[i].IdleStreak = update.IdleStreak"] },
+  { feature: "任务326 守护面板间隔与自关闭档位（setter）", file: "desktop/settings_app.go", patterns: ["SetDesktopAutopilotGuardInterval", "SetDesktopAutopilotGuardQuiescent"] },
+  { feature: "任务326 守护面板档位进 render 表", file: "internal/config/render.go", patterns: ["autopilot_guard_interval", "autopilot_guard_quiescent"] },
+  { feature: "任务326 守护面板档位 UI", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["settings.autopilotGuardInterval", "settings.autopilotGuardQuiescent.destroy"] },
 ];
 
 let failed = 0;

@@ -3346,6 +3346,43 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   onBlur={(e) => void apply(() => app.SetDesktopAutopilot(Boolean(s.autopilot), String(s.autopilotMaxRuntime ?? ""), e.target.value))}
                 />
               </SettingsField>
+              {/* Task 326: the guard task autopilot keeps watching its session.
+                  The dial is in minutes and re-points guards that already
+                  exist in place, so widening it can never grow a second guard
+                  for the same session. */}
+              <SettingsField label={t("settings.autopilotGuardInterval")} hint={t("settings.autopilotGuardIntervalHint")} icon={<ShieldCheck size={18} />}>
+                <input
+                  className="set-input"
+                  type="number"
+                  min={1}
+                  max={1440}
+                  defaultValue={String(s.autopilotGuardInterval ?? 30)}
+                  disabled={busy}
+                  placeholder="30"
+                  aria-label={t("settings.autopilotGuardInterval")}
+                  onBlur={(e) => void apply(() => app.SetDesktopAutopilotGuardInterval(Number(e.target.value)))}
+                />
+              </SettingsField>
+              {/* Task 326: what happens after the watched session has been quiet
+                  with no new work for three checks in a row. */}
+              <SettingsField label={t("settings.autopilotGuardQuiescent")} hint={t("settings.autopilotGuardQuiescentHint")} icon={<ShieldCheck size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {([
+                    ["disable", t("settings.autopilotGuardQuiescent.disable")],
+                    ["standby", t("settings.autopilotGuardQuiescent.standby")],
+                    ["destroy", t("settings.autopilotGuardQuiescent.destroy")],
+                  ] as const).map(([policy, label]) => (
+                    <button
+                      key={policy}
+                      className={`set-seg__btn${(s.autopilotGuardQuiescent ?? "disable") === policy ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetDesktopAutopilotGuardQuiescent(policy))}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
               {/* Task 364: managed-path pre-approval moved here from its own
                   misc entry — it only affects autopilot behaviour, so it lives
                   inside this card as a sub-block. Config keys, persistence and
