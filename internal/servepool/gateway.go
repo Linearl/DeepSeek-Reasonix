@@ -1,8 +1,10 @@
 package servepool
 
 import (
+	"bytes"
 	"crypto/subtle"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -26,6 +28,10 @@ type Gateway struct {
 	virtualMu  sync.Mutex
 	virtuals   map[string]*VirtualSource
 	virtualCur map[string]string // virtual id -> current session path (resume)
+	// takeoverGate intercepts POST /p/<id>/takeover-session before it reaches
+	// the project serve (task 249). The desktop installs a prompt-backed gate;
+	// nil keeps the historical pass-through.
+	takeoverGate TakeoverGateFunc
 }
 
 // VirtualSource is the inline handler bundle for a virtual project.
@@ -60,6 +66,31 @@ func (g *Gateway) SetVirtualSource(id string, src VirtualSource) {
 	g.virtualMu.Lock()
 	defer g.virtualMu.Unlock()
 	g.virtuals[id] = &src
+}
+
+// TakeoverGateRequest is one intercepted remote takeover call (task 249).
+// ProjectRoot lets the gate resolve the session name against the right
+// project's session directory.
+type TakeoverGateRequest struct {
+	ProjectID   string
+	ProjectRoot string
+	SessionName string
+	From        string
+}
+
+// TakeoverGateFunc decides whether a remote takeover request may proceed to
+// the project serve. allow=false answers the client with denyStatus and
+// denyMessage without contacting the serve. The desktop installs a
+// prompt-backed gate (task 249: an API-direct takeover that found no
+// desktop-held lease used to acquire silently with a 204 and no desktop
+// feedback — the marker-watcher popup only fires on a lease conflict, and
+// the pooled serve subprocess has no write-authority hook). nil keeps the
+// historical pass-through for headless/test hosts.
+type TakeoverGateFunc func(req TakeoverGateRequest) (allow bool, denyStatus int, denyMessage string)
+
+// SetTakeoverGate installs the gate. Call before serving traffic.
+func (g *Gateway) SetTakeoverGate(fn TakeoverGateFunc) {
+	g.takeoverGate = fn
 }
 
 // virtualSource returns the registered source for a virtual id.
@@ -207,6 +238,16 @@ func (g *Gateway) handleProxy(w http.ResponseWriter, r *http.Request) {
 		g.handleVirtual(w, r, id, tail)
 		return
 	}
+	// Task 249: gate explicit remote takeovers BEFORE lazily spawning or
+	// proxying — a denied takeover must not spawn a serve, and an allowed one
+	// carries the desktop user's verdict (the tab lease is already yielded),
+	// so the serve-side acquire succeeds cleanly instead of racing the
+	// marker-yield protocol a second time.
+	if r.Method == http.MethodPost && tail == "takeover-session" && g.takeoverGate != nil {
+		if !g.gateTakeover(w, r, id) {
+			return
+		}
+	}
 	if err := g.mgr.Open(id); err != nil {
 		writeJSONStatus(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
 		return
@@ -312,6 +353,46 @@ func (g *Gateway) handleVirtual(w http.ResponseWriter, r *http.Request, id, tail
 	}
 }
 
+// gateTakeover runs the takeover gate for POST /p/<id>/takeover-session. The
+// body is small JSON ({"name","from"}); it is buffered and re-exposed so the
+// proxy forward below is unchanged. Returns false when the response has
+// already been written (gate denial or unreadable body).
+func (g *Gateway) gateTakeover(w http.ResponseWriter, r *http.Request, id string) bool {
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64<<10))
+	_ = r.Body.Close()
+	if err != nil {
+		http.Error(w, "read takeover body: "+err.Error(), http.StatusBadRequest)
+		return false
+	}
+	var body struct {
+		Name string `json:"name"`
+		From string `json:"from"`
+	}
+	// Best effort: the gate decides on whatever parsed; a malformed name
+	// falls through to the serve's own validation (404/400).
+	_ = json.Unmarshal(raw, &body)
+	allow, status, message := g.takeoverGate(TakeoverGateRequest{
+		ProjectID:   id,
+		ProjectRoot: g.mgr.Root(id),
+		SessionName: strings.TrimSpace(body.Name),
+		From:        strings.TrimSpace(body.From),
+	})
+	if !allow {
+		if status == 0 {
+			status = http.StatusConflict
+		}
+		if message == "" {
+			message = "takeover denied by the desktop"
+		}
+		http.Error(w, message, status)
+		return false
+	}
+	r.Body = io.NopCloser(bytes.NewReader(raw))
+	return true
+}
+
+// proxyFor is reached through handleProxy; gateTakeover re-exposes the
+// buffered body before the request is cloned for the proxy.
 func (g *Gateway) proxyFor(id string, port int) *httputil.ReverseProxy {
 	if p, ok := g.proxy[id]; ok {
 		return p

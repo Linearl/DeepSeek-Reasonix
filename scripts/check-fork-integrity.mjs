@@ -321,6 +321,14 @@ const CHECKS = [
   { feature: "任务428 ask 面板投递门纯判定（C1/C2）", file: "desktop/frontend/src/lib/askPanelGate.ts", patterns: ["export function judgeAskArrival", "clearCancelResidue", "export function decideActivationPrompt", "resetPromptAnchor"] },
   { feature: "任务428 ask 面板投递门 reducer 接线", file: "desktop/frontend/src/lib/useController.ts", patterns: ["judgeAskArrival(", "decideActivationPrompt({", "reportAskPanelVerdict", "\"ask-panel\""] },
   { feature: "任务428 ask 打点（Go emit 侧）", file: "internal/control/controller.go", patterns: ["[ask-panel] ask request emitted", "[ask-panel] ask request emit failed"] },
+  // 任务 249：GC 经 servepool 网关的显式接管必须先过 desktop 弹窗闸门——
+  // pooled serve 是子进程，marker watcher 只覆盖租约冲突路径；无租约冲突时
+  // 旧链路 204 静默成功、桌面零反馈。锚点锁三处：网关拦截（转发前闸门）、
+  // 桌面闸门（复用弹窗桥 + 接受即释放租约）、启动接线——丢任何一环 =
+  // GC 接管再次静默成功。
+  { feature: "任务249 网关接管闸门（转发前拦截）", file: "internal/servepool/gateway.go", patterns: ["takeoverGate TakeoverGateFunc", "gateTakeover(w, r, id)", "tail == \"takeover-session\""] },
+  { feature: "任务249 桌面接管闸门（弹窗桥 + 释放租约）", file: "desktop/servepool_takeover_gate.go", patterns: ["func (a *App) servePoolTakeoverGate", "registerTakeoverPending(marker)", "func (a *App) yieldTabsToGatewayTakeover"] },
+  { feature: "任务249 闸门接线（startServePool）", file: "desktop/servepool_host.go", patterns: ["a.installServePoolTakeoverGate(gw)"] },
 ];
 
 let failed = 0;
