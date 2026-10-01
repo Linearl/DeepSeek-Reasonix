@@ -25,6 +25,7 @@ func (s *Server) AttachToolSurface(surface ToolSurface) {
 	s.surface = surface
 	s.mu.Unlock()
 	s.Register(MethodToolCatalog, guardHandler("base.toolCatalog", s.handleToolCatalog))
+	s.Register(MethodToolCall, guardHandler("base.toolCall", s.handleToolCall))
 	s.AddCapabilities(CapTools)
 }
 
@@ -80,4 +81,43 @@ func (s *Server) handleToolCatalog(ctx context.Context, params json.RawMessage) 
 		return nil, err
 	}
 	return ToolCatalogResult{Tools: tools}, nil
+}
+
+// validateToolCallParams pins the v1 call contract on BOTH implementations:
+// call_id correlates the base.toolProgress stream (design D3) and tool names
+// the target. The inline client runs the same check so a caller observes one
+// error shape whether the switch is on or off.
+func validateToolCallParams(p ToolCallParams) *RPCError {
+	if p.CallID == "" {
+		return &RPCError{Code: CodeInvalidParams, Message: "call_id is required (progress correlation)"}
+	}
+	if p.Tool == "" {
+		return &RPCError{Code: CodeInvalidParams, Message: "tool is required"}
+	}
+	return nil
+}
+
+// handleToolCall executes one tool from the attached surface (design §5/D3):
+// progress chunks ride base.toolProgress notifications keyed by call_id while
+// the RPC response only fires on completion, so a minute-long bash run cannot
+// wedge the control channel.
+func (s *Server) handleToolCall(ctx context.Context, params json.RawMessage) (any, error) {
+	var p ToolCallParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, &RPCError{Code: CodeInvalidParams, Message: fmt.Sprintf("toolCall params: %v", err)}
+	}
+	if rpcErr := validateToolCallParams(p); rpcErr != nil {
+		return nil, rpcErr
+	}
+	surface := s.toolSurface()
+	if surface == nil {
+		return nil, errors.New("baseproc: tool surface not attached")
+	}
+	progress := func(chunk string) {
+		// Best effort: a failed write means the channel is already dying, and
+		// the pending call then fails through connection teardown. Progress
+		// loss must never wedge or abort the tool itself.
+		_ = s.Notify(NotifyToolProgress, ToolProgressParams{CallID: p.CallID, Chunk: chunk})
+	}
+	return surface.Execute(ctx, p, progress)
 }
