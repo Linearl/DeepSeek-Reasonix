@@ -363,6 +363,60 @@ export interface VersionEntry {
   modTimeUnix: number;
 }
 
+/** Task 320: one row of the unified cross-session mail table (collabinbox.Entry). */
+export interface CollabMailEntryView {
+  id: string;
+  from: string;
+  fromSession?: string;
+  to: string;
+  toTitle?: string;
+  at: number;
+  threadId: string;
+  hop?: number;
+  cardId?: string;
+  approver?: string;
+  requireReply?: boolean;
+  delivery?: string;
+  bucket: string;
+  preview: string;
+  delivered: boolean;
+  read: boolean;
+  dismissed?: boolean;
+  decidedBy?: string;
+  decidedAt?: number;
+  pendingMe?: boolean;
+  mine?: boolean;
+}
+
+/** Task 320: revision-stamped snapshot (collabinbox.Snapshot) — contract ①. */
+export interface CollabMailSnapshotView {
+  revision: string;
+  settings: { retention: string };
+  total: number;
+  returned: number;
+  truncated: boolean;
+  entries: CollabMailEntryView[];
+}
+
+/** Task 320 g: one conversation chain (collabinbox.Chain). */
+export interface CollabMailChainView {
+  threadId: string;
+  participants: string[];
+  count: number;
+  firstAt: number;
+  lastAt: number;
+  preview: string;
+  entries: CollabMailEntryView[];
+}
+
+/** Task 320 g: the chain view snapshot (collabinbox.ChainSnapshot). */
+export interface CollabMailChainsView {
+  revision: string;
+  settings: { retention: string };
+  total: number;
+  chains: CollabMailChainView[];
+}
+
 interface NativeConfirmRequest {
   title: string;
   message: string;
@@ -983,6 +1037,15 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   ClearFeedbackEntries(): Promise<void>;
   // Task 172: the inbox directory (created when missing) for the panel's open-folder action.
   GetFeedbackInboxPath(): Promise<string>;
+  // Task 320: cross-session inbox panel — every call answers a
+  // revision-stamped snapshot (contract ①), so dismiss/decide/retention
+  // return the NEW state directly.
+  ListCollabMail(bucket: string, from: string, to: string, state: string, limit: number, includeDismissed: boolean): Promise<CollabMailSnapshotView>;
+  ListCollabMailChains(bucket: string, limit: number): Promise<CollabMailChainsView>;
+  DismissCollabMail(ids: string[]): Promise<CollabMailSnapshotView>;
+  UndismissCollabMail(ids: string[]): Promise<CollabMailSnapshotView>;
+  MarkCollabMailDecided(messageID: string, by: string): Promise<CollabMailSnapshotView>;
+  SetCollabMailRetention(retention: string): Promise<CollabMailSnapshotView>;
   SetDefaultAutoRecoveryCheckpoint(enabled: boolean): Promise<void>;
 
   RenameProviderConnections: typeof GeneratedApp.RenameProviderConnections;
@@ -5347,6 +5410,25 @@ function makeMockApp(): AppBindings {
     async ListFeedbackEntries() { return []; },
     async ClearFeedbackEntries() {},
     async GetFeedbackInboxPath() { return ""; },
+    // Task 320 mocks: honest empty states (the dev shell has no mailbox).
+    async ListCollabMail() {
+      return { revision: "0.0.0", settings: { retention: "7d" }, total: 0, returned: 0, truncated: false, entries: [] };
+    },
+    async ListCollabMailChains() {
+      return { revision: "0.0.0", settings: { retention: "7d" }, total: 0, chains: [] };
+    },
+    async DismissCollabMail() {
+      return { revision: "0.0.0", settings: { retention: "7d" }, total: 0, returned: 0, truncated: false, entries: [] };
+    },
+    async UndismissCollabMail() {
+      return { revision: "0.0.0", settings: { retention: "7d" }, total: 0, returned: 0, truncated: false, entries: [] };
+    },
+    async MarkCollabMailDecided() {
+      return { revision: "0.0.0", settings: { retention: "7d" }, total: 0, returned: 0, truncated: false, entries: [] };
+    },
+    async SetCollabMailRetention() {
+      return { revision: "0.0.0", settings: { retention: "7d" }, total: 0, returned: 0, truncated: false, entries: [] };
+    },
     async SetDesktopAutopilot(enabled: boolean, maxRuntime: string, approvalGrace: string) {
       settings.autopilot = enabled;
       settings.autopilotMaxRuntime = maxRuntime;

@@ -42102,6 +42102,216 @@ body > .mermaid-diagram--fullscreen {
   word-break: break-word;
 }
 
+/* 跨会话收件箱面板 (task 320): fixed overlay beside the feedback inbox,
+   five-bucket tabs + filters + revision footer. Theme tokens only — no raw
+   colors — so graphite/aurora/... themes all render it correctly. */
+.collab-inbox-panel {
+  position: fixed;
+  left: 12px;
+  bottom: 56px;
+  z-index: var(--z-popover);
+  width: min(620px, calc(100vw - 24px));
+  max-height: min(640px, calc(100vh - 120px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated, var(--bg));
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  overflow: auto;
+}
+.collab-inbox-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.collab-inbox-panel__title {
+  font-weight: 600;
+  font-size: 13px;
+}
+.collab-inbox-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.collab-inbox-panel__retention {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+.collab-inbox-panel__buckets,
+.collab-inbox-panel__states {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.collab-inbox-panel__bucket,
+.collab-inbox-panel__state {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--fg-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+.collab-inbox-panel__bucket--on,
+.collab-inbox-panel__state--on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.collab-inbox-panel__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.collab-inbox-panel__filter {
+  flex: 1 1 140px;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+}
+.collab-inbox-panel__viewtoggle {
+  display: flex;
+  gap: 6px;
+}
+.collab-inbox-panel__showdismissed {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+.collab-inbox-panel__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.collab-inbox-panel__empty {
+  color: var(--fg-faint);
+  font-size: 12px;
+  padding: 8px 0;
+}
+.collab-inbox-panel__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.collab-inbox-panel__row--dismissed {
+  opacity: 0.55;
+}
+.collab-inbox-panel__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+.collab-inbox-panel__bucketbadge {
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-weight: 600;
+}
+.collab-inbox-panel__bucketbadge--approval {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.collab-inbox-panel__read {
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px dashed var(--border);
+}
+.collab-inbox-panel__read--on {
+  border-style: solid;
+  color: var(--fg-dim);
+}
+.collab-inbox-panel__decided {
+  color: var(--accent);
+  font-weight: 600;
+}
+.collab-inbox-panel__pending {
+  color: var(--warn, var(--accent));
+  font-weight: 600;
+}
+.collab-inbox-panel__preview {
+  font-size: 12px;
+  color: var(--fg);
+  word-break: break-word;
+}
+.collab-inbox-panel__rowactions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.collab-inbox-panel__chain {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.collab-inbox-panel__chainhead {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  background: none;
+  border: none;
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.collab-inbox-panel__chaincount {
+  font-weight: 600;
+  color: var(--accent);
+}
+.collab-inbox-panel__chainroute {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-dim);
+}
+.collab-inbox-panel__chainbody {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 8px 8px;
+}
+.collab-inbox-panel__chainentry {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+.collab-inbox-panel__foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+.collab-inbox-panel__time {
+  color: var(--fg-faint);
+}
+
 .session-monitor__log {
   display: flex;
   flex-direction: column;

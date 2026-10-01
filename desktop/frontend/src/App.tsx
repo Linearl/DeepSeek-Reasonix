@@ -52,6 +52,7 @@ import type { CommandOutcome } from "./lib/commandOutcome";
 import { useController, type Item } from "./lib/useController";
 import { noteStageTiming, setSessionMonitorEnabled } from "./lib/sessionMonitor";
 import { FeedbackPanel, setFeedbackEnabled } from "./components/FeedbackPanel";
+import { CollabInboxPanel } from "./components/CollabInboxPanel";
 import { SessionMonitorPanel } from "./components/SessionMonitorPanel";
 import { clampedSplitRatio, loadSplitRatio, persistSplitRatio, setSplitPaneTitle, setSplitViewEnabled } from "./lib/splitView";
 import { reportFrontendLog } from "./lib/frontendLog";
@@ -5752,6 +5753,9 @@ export default function App() {
           unchanged. */}
       <SessionMonitorPanel />
       <FeedbackPanel />
+      {/* Task 320: cross-session inbox — same portal-at-root rule as above,
+          opened from settings → 跨会话通信. */}
+      <CollabInboxPanel />
     </div>
     </UpdaterProvider>
     </RemoteNavigationContext.Provider>

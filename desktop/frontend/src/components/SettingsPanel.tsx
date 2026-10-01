@@ -38,6 +38,7 @@ import { setSessionMonitorEnabled, setSessionMonitorOpen } from "../lib/sessionM
 import { setAutoLoadOlderEnabled } from "../lib/autoLoadOlderPreference";
 import { setCollabGuidanceMergeEnabled } from "../lib/collabGuidanceMergePreference";
 import { setFeedbackEnabled, setFeedbackOpen } from "./FeedbackPanel";
+import { setCollabInboxOpen } from "./CollabInboxPanel";
 import { setSplitViewEnabled } from "../lib/splitView";
 import { normalizeLangPref, useI18n, type DictKey, type LangPref } from "../lib/i18n";
 import { createLatestRequestGate, mergedFetchedProviderModels, mergeProviderModelContextWindows, providerApiKeyEnvForSave, providerDefaultModel, providerIsConfigured, providerModelCandidates, providerModelContextWindowDrafts, providerRequiresKey, reconcileManualModels } from "../lib/providerModels";
@@ -3209,6 +3210,18 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                     <span className="set-gates__label">{t("settings.sessionCollabDefaultDelivery")}</span>
                   </label>
                 </div>
+              </SettingsField>
+              {/* Task 320: the cross-session inbox panel entry — history query,
+                  five-bucket views, retention and dismissals in one place. */}
+              <SettingsField label={t("settings.collabInbox")} hint={t("settings.collabInboxHint")} icon={<Sparkles size={18} />}>
+                <button
+                  type="button"
+                  className="btn btn--small"
+                  disabled={busy}
+                  onClick={() => setCollabInboxOpen(true)}
+                >
+                  {t("settings.collabInbox.open")}
+                </button>
               </SettingsField>
               {/* Task 225: cascade approval to the autopilot parent. */}
               <SettingsField label={t("settings.cascadeApproval")} hint={t("settings.cascadeApprovalHint")} icon={<Sparkles size={18} />}>
