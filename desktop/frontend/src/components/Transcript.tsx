@@ -38,6 +38,7 @@ import {
 import { useTranscriptCommand } from "../lib/useTranscriptCommand";
 import { composeDomRef } from "../lib/composeDomRef";
 import { useTranscriptKernel } from "../lib/useTranscriptKernel";
+import { canRequestOlderHistory, olderHistoryTriggerPx } from "../lib/historyOlderGates";
 import { useAutoLoadOlderEnabled } from "../lib/autoLoadOlderPreference";
 import { TranscriptHistoryRequest } from "../lib/transcriptHistoryRequest";
 import type { TranscriptQuestionNavigatorHandle } from "./TranscriptQuestionNavigator";
@@ -296,7 +297,10 @@ export function Transcript(props: TranscriptProps) {
   const questionNavigatorRef = useRef<TranscriptQuestionNavigatorHandle>(null);
   const history = useMemo(() => new TranscriptHistoryRequest(transcriptKernel), [transcriptKernel]);
   const requestOlder = useTranscriptCommand((turn?: number, trigger: HistoryLoadTrigger = "viewport-user") => {
-    if (!onLoadOlderHistory || !hasOlderHistory || loadingOlderHistory || running) return Promise.resolve(false);
+    // 任务 448（384 收尾）：闸只剩 hasOlder + loading 两态，与 controller 层同口径。
+    // 旧代码在这里还有 `|| running` —— 会话跑着时滚动到顶、按钮、横条跳转全部静默
+    // 拒绝（零日志），把 384 在 controller 层的解锁挡在了组件层之后（445 调研 §2.3）。
+    if (!onLoadOlderHistory || !canRequestOlderHistory({ hasOlderHistory, loadingOlderHistory })) return Promise.resolve(false);
     if (trigger !== "question-jump" && trigger !== "retry") beginStructural("prepend");
     return history.load(() => onLoadOlderHistory(turn, trigger));
   });
@@ -319,7 +323,9 @@ export function Transcript(props: TranscriptProps) {
     if (towardHistory === null) return;
     scheduleActiveQuestionSync();
     const element = scrollRef.current;
-    if (towardHistory && element && element.scrollTop <= 64) void requestOlder(undefined, "viewport-user");
+    // 任务 448（B1 预取）：到顶 64px 改为两个视口（`olderHistoryTriggerPx`），
+    // 读者抵达边界前一页已在本地；请求侧的 in-flight 复用与 loading 闸照旧单飞。
+    if (towardHistory && element && element.scrollTop <= olderHistoryTriggerPx(element.clientHeight)) void requestOlder(undefined, "viewport-user");
   });
   const {
     state: creationScrollbar,
@@ -405,14 +411,18 @@ export function Transcript(props: TranscriptProps) {
   const autoFillRef = useRef({ surface: "", pages: 0 });
   useEffect(() => {
     if (autoFillRef.current.surface !== surfaceKey) autoFillRef.current = { surface: surfaceKey, pages: 0 };
-    if (hydrating || !hasOlderHistory || loadingOlderHistory || olderHistoryError || running || autoFillRef.current.pages >= 3) return;
+    // 任务 448（B2+B3）：自动填充的闸与滚动/按钮同口径 —— `running` 不再停摆
+    // （384 收尾），`olderHistoryError` 也不再是永久死锁（zcode 借鉴：失败不进
+    // error 态）。失败后 loading 翻回 false 触发本 effect 重跑，于是下一轮直接
+    // 重试；预算仍是每 surface 最多 3 页，绝不会无限重发。
+    if (hydrating || !canRequestOlderHistory({ hasOlderHistory, loadingOlderHistory }) || autoFillRef.current.pages >= 3) return;
     return transcriptKernel.afterCurrentGenerationPaint(() => {
       const geometry = snapshot();
       if (!geometry || geometry.clientHeight <= 0 || geometry.scrollHeight > geometry.clientHeight + 4) return;
       autoFillRef.current.pages += 1;
       void requestOlder(undefined, "auto-fill");
     });
-  }, [hasOlderHistory, hydrating, snapshot, loadingOlderHistory, olderHistoryError, projection.completedBlocks.length, requestOlder, running, surfaceKey, transcriptKernel]);
+  }, [hasOlderHistory, hydrating, snapshot, loadingOlderHistory, projection.completedBlocks.length, requestOlder, surfaceKey, transcriptKernel]);
 
   const showQuestionNav = questionNavigator && totalQuestions >= QUESTION_NAV_MIN_COUNT;
   const selectionSnapshot = useSyncExternalStore(transcriptSelectionStore.subscribe, transcriptSelectionStore.getSnapshot, transcriptSelectionStore.getSnapshot);
@@ -495,7 +505,7 @@ export function Transcript(props: TranscriptProps) {
           <div className="transcript__scrollbar-thumb" style={{ top: creationScrollbar.thumbTop, height: creationScrollbar.thumbHeight } as CSSProperties} onPointerDown={handleCreationScrollbarThumbPointerDown} />
         </div>}
         {!empty && showQuestionNav && <Suspense fallback={null}><TranscriptQuestionNavigator ref={questionNavigatorRef} kernel={transcriptKernel}
-          requestOlder={requestOlder} loadingOlderHistory={loadingOlderHistory} running={running} loadedByTurn={loadedByTurn}
+          requestOlder={requestOlder} loadingOlderHistory={loadingOlderHistory} loadedByTurn={loadedByTurn}
           jump={jumpToLoadedQuestion} questions={questions} totalQuestions={totalQuestions} activeTurn={activeQuestion} /></Suspense>}
       {showQuestionNav && (
         <Suspense fallback={null}>

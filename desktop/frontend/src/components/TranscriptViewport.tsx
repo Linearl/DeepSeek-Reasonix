@@ -1,6 +1,7 @@
 import { Loader2, RotateCcw } from "lucide-react";
 import { forwardRef, lazy, Suspense, useImperativeHandle, useLayoutEffect, useState, type ReactNode } from "react";
 import { estimateTranscriptRowSize, type TranscriptRow } from "../lib/transcriptRows";
+import { canRequestOlderHistory } from "../lib/historyOlderGates";
 import type { LogicalAnchor, TranscriptKernel } from "../lib/transcriptKernel";
 import type { TimelineBlock, TimelineProjection, TranscriptRenderMode } from "../lib/transcriptTimeline";
 import { useT } from "../lib/i18n";
@@ -61,8 +62,12 @@ export const TranscriptViewport = forwardRef<TranscriptViewportHandle, {
   // viewport already parked at the top never emits another one — that is why the
   // user could only reach older history through the question rail. The button is
   // the reliable entry point; it calls the same `requestOlder` gate as the scroll
-  // path, so no gate (hasOlderHistory / loadingOlderHistory / running) is relaxed.
-  const showLoadOlder = Boolean(onLoadOlder) && projection.hasOlderHistory && !loadingOlderHistory && !olderHistoryError && !running;
+  // path.
+  // 任务 448（B2+B3，384 收尾 + zcode 借鉴）：闸收敛到 hasOlder + loading 两态，
+  // 与滚动路径、`canRequestOlderHistory` 同口径。`running` 移除 = 384 组件层收尾；
+  // `olderHistoryError` 移除 = 失败不锁 UI —— 按钮在失败后仍在，下面的失败行照样
+  // 带原因和"重试"，点哪个都发新请求并由 `history_older_start` 清掉 error。
+  const showLoadOlder = Boolean(onLoadOlder) && canRequestOlderHistory({ hasOlderHistory: projection.hasOlderHistory, loadingOlderHistory });
   const prefix = (showOlderRow || showLoadOlder) && (
     <div className="transcript__header">
       {showLoadOlder && (

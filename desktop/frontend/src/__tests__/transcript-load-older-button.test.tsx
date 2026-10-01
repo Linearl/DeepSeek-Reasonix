@@ -2,6 +2,11 @@
 // It has to work while the viewport already sits at scrollTop === 0 — the case the
 // scroll trigger can never serve, because a parked viewport emits no further
 // scroll events and the direction signal has nothing left to measure.
+//
+// Task 448 (384 收尾 + B3) evolved the gate contract: `running` and
+// `olderHistoryError` no longer hide the button — only the controller's own two
+// gates (hasOlder / loading) do. The task-384 controller-layer unlock was
+// unreachable while the component layer still refused; this pins both halves.
 import { act } from "react";
 import { createTranscriptHarness } from "./transcript-dom-harness";
 import type { Item } from "../lib/useController";
@@ -57,8 +62,9 @@ try {
     `clicking it requests a user-driven history load (${JSON.stringify(calls)})`);
   check(topBeforeClick === 0 && scroll.scrollTop === topBeforeClick, "the request needed no scrollTop delta at all");
 
-  // The gates the scroll path uses stay in force: the button must not become a way
-  // around them (task 160 explicitly keeps hasOlderHistory / loading / running).
+  // The two states the controller itself gates on stay in force: the button must
+  // not become a way around hasOlder / loading (task 160). `running` and
+  // `olderHistoryError` are NOT gates any more — task 448 (384 收尾 + B3).
   calls.length = 0;
   await harness.render(turns(20), {
     geometrySessionKey: "load-older-loading",
@@ -70,6 +76,7 @@ try {
   check(harness.container.querySelector(".chat-older") === null, "an in-flight load hides the button behind the loading row");
   check(harness.container.querySelector(".transcript__older-status") != null, "the loading row still reports progress");
 
+  // 任务 448 / 384 收尾：running 不再闸组件层（滚动/按钮/跳转此前全部静默拒绝）。
   await harness.render(turns(20), {
     geometrySessionKey: "load-older-running",
     hasOlderHistory: true,
@@ -77,7 +84,31 @@ try {
     onLoadOlderHistory,
   });
   await harness.settle();
-  check(harness.container.querySelector(".chat-older") === null, "a running turn keeps the button gated, exactly like the scroll path");
+  const runningButton = harness.container.querySelector<HTMLButtonElement>(".chat-older");
+  check(Boolean(runningButton), "a running turn still offers the load-older button (task 448 B2)");
+  calls.length = 0;
+  await act(async () => { runningButton?.click(); });
+  await harness.flush();
+  check(calls.length === 1 && calls[0] === "viewport-user",
+    `clicking it during a running turn requests the load (${JSON.stringify(calls)})`);
+
+  // 任务 448 B3（zcode 借鉴：失败不进 error 态）：一次历史页失败不锁 UI ——
+  // 按钮仍在，点它发新请求并由 history_older_start 清 error；失败行继续带原因。
+  await harness.render(turns(20), {
+    geometrySessionKey: "load-older-error",
+    hasOlderHistory: true,
+    olderHistoryError: "history identity changed",
+    onLoadOlderHistory,
+  });
+  await harness.settle();
+  const retryButton = harness.container.querySelector<HTMLButtonElement>(".chat-older");
+  check(Boolean(retryButton), "a failed load keeps the load-older button visible (task 448 B3, no error lock-out)");
+  check(harness.container.querySelector(".transcript__older-status") != null, "the failure row still reports the reason");
+  calls.length = 0;
+  await act(async () => { retryButton?.click(); });
+  await harness.flush();
+  check(calls.length === 1 && calls[0] === "viewport-user",
+    `the button retries after a failure (${JSON.stringify(calls)})`);
 
   await harness.render(turns(20), {
     geometrySessionKey: "load-older-exhausted",
