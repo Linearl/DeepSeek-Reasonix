@@ -437,6 +437,17 @@ const CHECKS = [
   { feature: "任务400 历史读端错误入 hydrate_error", file: "desktop/frontend/src/lib/useController.ts", patterns: ["(err) => { historyLoadCause = err; }", "historyLoadCause,", "text: t(\"history.failedLoadHistory\")"] },
   { feature: "任务400 导航失败透传 cause", file: "desktop/frontend/src/lib/useController.ts", patterns: ["tabId: string, cause?: unknown", "failSessionNavigation(navigationSeq, targetTabId, resumeErr)", "failSessionNavigation(navigationSeq, tabId, channelErr)"] },
   { feature: "任务400 详情文案三语 i18n", file: "desktop/frontend/src/locales/zh.ts", patterns: ["history.failedLoadHistoryDetail", "history.failedOpenSessionDetail", "{reason}"] },
+  // 任务 320：跨会话收件箱（历史查询/筛选/保留期 + 五桶聚合 + revision/
+  // dismiss 落库两契约）。锁索引核心、传输层 Prune/History、只读查询工具、
+  // boot 注册、Wails 面、面板组件与 locale——任一侧被上游 merge 摘掉，
+  // 收件箱都会静默少一块而构建不红。
+  { feature: "任务320 收件箱索引核心（五桶/保留/revision）", file: "internal/collabinbox/collabinbox.go", patterns: ["func (s *Store) List(", "BucketAutomation", "ApplyRetention", "revisionOf"] },
+  { feature: "任务320 传输层 History+PruneInbox+Kind", file: "internal/sessioncollab/sessioncollab.go", patterns: ["func (s *MailStore) History", "PruneInbox", "Kind string"] },
+  { feature: "任务320 query_collab_mail 只读查询工具", file: "internal/agent/query_collab_mail_tool.go", patterns: ["query_collab_mail", "applyRetention=false"] },
+  { feature: "任务320 查询工具 boot 注册", file: "internal/boot/boot.go", patterns: ["NewQueryCollabMailTool(collab)"] },
+  { feature: "任务320 Wails 收件箱面", file: "desktop/collab_inbox_app.go", patterns: ["func (a *App) ListCollabMail(", "MarkCollabMailDecided", "SetCollabMailRetention"] },
+  { feature: "任务320 收件箱面板组件", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["collab-inbox-panel__bucket", "SetCollabMailRetention", "ListCollabMailChains"] },
+  { feature: "任务320 收件箱三语 locale", file: "desktop/frontend/src/locales/zh.ts", patterns: ["collabInbox.title", "collabInbox.bucket.approval"] },
 ];
 
 let failed = 0;

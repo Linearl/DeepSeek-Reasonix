@@ -203,6 +203,12 @@ type MailMessage struct {
 	// make a receipt storm self-sustaining.
 	ReceiptRequested bool   `json:"receiptRequested,omitempty"`
 	Idempotency      string `json:"idempotency,omitempty"`
+	// Kind is the task-320 five-bucket classification stamp (approval |
+	// mention | automation | system). Optional: an unstamped message is
+	// classified by the index from its fields (approver / sender identity),
+	// and platform-generated mail (read receipts, status notes) stamps itself
+	// at creation so the system bucket never depends on a text sniff.
+	Kind string `json:"kind,omitempty"`
 }
 
 // Delivery semantics for talk_to_session (task 143; default changed to steer
@@ -1220,4 +1226,117 @@ func (s *MailStore) Inbox(contactID string) ([]MailMessage, error) {
 		out = append(out, m)
 	}
 	return out, nil
+}
+
+// HistoryRow pairs one delivered message with the mailbox that holds it and
+// that mailbox's read state (task 320). "Delivered" is by construction: a row
+// exists only because the message sits in a recipient's inbox file — queued /
+// staged sends (sent-log only) never appear, which is the notification
+// contract's "真实落库后才提醒" made structural.
+type HistoryRow struct {
+	Mail    MailMessage
+	Mailbox string // the recipient contact whose inbox file holds the row
+	Read    bool   // the recipient's seen cursor covers this id
+}
+
+// History returns every delivered message across every inbox in the store,
+// newest first. One lock, one cursor read per mailbox — the task-320 index
+// consumer, so it must not re-read a cursor per message.
+func (s *MailStore) History() []HistoryRow {
+	unlock, err := s.lock()
+	if err != nil {
+		return nil
+	}
+	defer unlock()
+	entries, err := os.ReadDir(s.root)
+	if err != nil {
+		return nil
+	}
+	var out []HistoryRow
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".inbox.jsonl") {
+			continue
+		}
+		contact := strings.TrimSuffix(name, ".inbox.jsonl")
+		all, err := s.readAll(contact)
+		if err != nil {
+			continue
+		}
+		seen := s.readCursor(contact)
+		for _, m := range all {
+			out = append(out, HistoryRow{Mail: m, Mailbox: contact, Read: seen[m.ID]})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Mail.At > out[j].Mail.At })
+	return out
+}
+
+// PruneInbox physically removes every message older than beforeUnixMilli from
+// every inbox file in the store (task 320 retention). It runs under the same
+// cross-process lock that serializes Deliver, so a prune can never interleave
+// with an append. Unparsable lines are kept verbatim — retention deletes old
+// mail, never corrupt data. Returns how many messages were removed. The
+// sender-side sent logs are deliberately NOT pruned: they are the sender's own
+// audit trail, and the index never reads them (queued ≠ delivered).
+func (s *MailStore) PruneInbox(beforeUnixMilli int64) (int, error) {
+	unlock, err := s.lock()
+	if err != nil {
+		return 0, err
+	}
+	defer unlock()
+	entries, err := os.ReadDir(s.root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	removed := 0
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".inbox.jsonl") {
+			continue
+		}
+		path := filepath.Join(s.root, name)
+		b, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var keep []string
+		fileRemoved := 0
+		for _, line := range strings.Split(string(b), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" {
+				continue
+			}
+			var m MailMessage
+			if err := json.Unmarshal([]byte(trimmed), &m); err != nil {
+				keep = append(keep, trimmed) // never destroy an unparsable line
+				continue
+			}
+			if m.At != 0 && m.At < beforeUnixMilli {
+				fileRemoved++
+				continue
+			}
+			keep = append(keep, trimmed)
+		}
+		if fileRemoved == 0 {
+			continue
+		}
+		out := strings.Join(keep, "\n")
+		if out != "" {
+			out += "\n"
+		}
+		tmp := path + "." + newID("t") + ".tmp"
+		if err := os.WriteFile(tmp, []byte(out), 0o600); err != nil {
+			continue
+		}
+		if err := os.Rename(tmp, path); err != nil {
+			_ = os.Remove(tmp)
+			continue
+		}
+		removed += fileRemoved
+	}
+	return removed, nil
 }

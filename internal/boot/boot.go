@@ -2137,6 +2137,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// Task 202: batch progress events (not busy/idle metadata - that is
 		// what get_session_status answers). Read-only and messaging-independent.
 		reg.Add(agent.NewReadCollabStatusTool(collab))
+		// Task 320 b: the SQL-shaped history query over the same unified mail
+		// table the inbox panel shows. Read-only + hard-capped limit, so it
+		// registers unconditionally beside the other read verbs.
+		reg.Add(agent.NewQueryCollabMailTool(collab))
 		reg.Add(agent.NewTalkToSessionTool(collab))
 		// Task 284: cross-session subscriptions (the push half). Registered
 		// ONLY under task 230's experimental_event_trigger switch — 284 is
