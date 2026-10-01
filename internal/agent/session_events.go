@@ -370,8 +370,25 @@ func sessionEventLogOversized(path string, logSize, contentBytes int64) bool {
 		}
 		return false
 	case eventsRotationAuto:
-		return eventsLogAboveFactor(logSize, contentBytes, cfg.factor) ||
-			(cfg.capMB > 0 && logSize > cfg.capMB<<20)
+		if eventsLogAboveFactor(logSize, contentBytes, cfg.factor) {
+			return true
+		}
+		if cfg.capMB > 0 && logSize > cfg.capMB<<20 {
+			// Upstream #10970 fold discipline (task 339): fold only when the
+			// fold actually shrinks the log. Over the configured cap but not
+			// over the factor, the folded log (~content) would land at or above
+			// the size it replaced - rewriting it on every save is pure IO.
+			// Leave it with a greppable WARN like off mode; the explicit
+			// slimming entries still force the fold, and the storage inventory
+			// keeps flagging the log as over its cap.
+			if contentBytes*2 >= logSize {
+				slog.Warn("session: oversized event log left in place (fold would not shrink it)",
+					"path", path, "logSize", logSize, "contentBytes", contentBytes, "capMB", cfg.capMB)
+				return false
+			}
+			return true
+		}
+		return false
 	default: // manual: today's built-in gate
 		return eventsLogAboveFactor(logSize, contentBytes, float64(sessionEventLogCompactFactor))
 	}

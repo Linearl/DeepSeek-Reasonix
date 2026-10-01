@@ -325,6 +325,27 @@ const CHECKS = [
   // 任务436（20261001 批十小件）：过长用户侧消息默认折叠限高。（任务437 心跳续跑锚点随 437 分支登记）
   { feature: "任务436 用户消息折叠限高（组件+阈值）", file: "desktop/frontend/src/components/Message.tsx", patterns: ["USER_MSG_FOLD_LINE_THRESHOLD", "estimateUserMessageLines", "msg-fold--clamped", "msg-fold__toggle"] },
   { feature: "任务436 用户消息折叠 CSS", file: "desktop/frontend/src/styles.css", patterns: [".msg-fold--clamped", ".msg-fold__toggle"] },
+  // 任务 339（上游 #10970 并用）：replay 预算双保险的第二道——触顶有出路。
+  // 锚点锁「所有权证明→内存折叠→失败原样透出」的形状：fold 只在 ledger 仍
+  // 等于本 runtime 基线时触发（防丢别的 writer 的新 turn），DAG 日志与非
+  // limit 错误一律原样拒绝；auto 旋进 cap 分支带上游 fold-only-if-shrinks
+  // 纪律（折不缩则留+可检索 WARN）。
+  { feature: "任务339 replay 超限 Save 自救（所有权证明+内存折叠）", file: "internal/agent/save_replay_rescue.go", patterns: [
+    "func (s *Session) rescueReplayLimitedEventLog(",
+    "errors.As(cause, &limitErr)",
+    "diskRevision != base.revision",
+    "compact-replay-limit",
+  ] },
+  { feature: "任务339 Save probe 修复路径接线", file: "internal/agent/save.go", patterns: [
+    "s.rescueReplayLimitedEventLog(path, msgs, rescueDigest, err)",
+  ] },
+  { feature: "任务339 classify 路径接线", file: "internal/agent/save_listing_projection.go", patterns: [
+    "s.rescueReplayLimitedEventLog(path, msgs, digest, err)",
+  ] },
+  { feature: "任务339 auto cap 折叠缩水守卫（上游 fold-only-if-shrinks）", file: "internal/agent/session_events.go", patterns: [
+    "fold would not shrink it",
+    "contentBytes*2 >= logSize",
+  ] },
 ];
 
 let failed = 0;
