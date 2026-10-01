@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Combine, CornerDownRight, Pencil, Send, Trash2 } from "lucide-react";
 import {
   guidanceEditableInComposer,
@@ -11,6 +12,7 @@ import { useI18n } from "../lib/i18n";
 import type { StructuredInvocationSubmit } from "../lib/invocationDisplay";
 import { InboxRecoveryBanner } from "./InboxRecoveryBanner";
 import { Tooltip } from "./Tooltip";
+import { estimateUserMessageLines } from "../lib/messageFold";
 
 export type PendingGuidance = {
   id: string;
@@ -35,6 +37,25 @@ export type InboxRecoveryNotice = {
  * forever — after this budget the fetch loses the race and the row falls back
  * to its own text (already in place), fully interactive and collapsible. */
 export const PREVIEW_TIMEOUT_MS = 8000;
+
+/** Task 446: the queue row's text clamps to 2 rendered lines
+ * (`-webkit-line-clamp: 2` on .composer-guidance-item__text) — the row-local
+ * counterpart of task 436's USER_MSG_FOLD_LINE_THRESHOLD, which budgets the
+ * transcript bubble instead. Hover peek fires only past this budget, so a
+ * message the row already shows in full never spawns a floating card. */
+export const GUIDANCE_ROW_VISIBLE_LINES = 2;
+const GUIDANCE_HOVER_CARD_MAX_W = 420;
+const GUIDANCE_HOVER_GAP = 8;
+
+/** Task 446: does this row hide content worth a hover peek? Exact in a real
+ * layout — the clamped box reports scrollHeight beyond clientHeight only when
+ * line-clamp actually cuts it (jsdom reports no layout, i.e. both zero, so
+ * fall back to task 436's CJK-aware line estimate there). */
+export function guidanceRowIsTruncated(target: HTMLElement | null, text: string): boolean {
+  const laidOut = target !== null && (target.scrollHeight > 0 || target.clientHeight > 0);
+  if (laidOut) return target.scrollHeight > target.clientHeight;
+  return estimateUserMessageLines(text) > GUIDANCE_ROW_VISIBLE_LINES;
+}
 
 export function ComposerGuidanceShelf({
   recovery,
@@ -162,14 +183,121 @@ export function ComposerGuidanceShelf({
     setPreviewLoading(false);
   };
 
+  // Task 446: hovering a clamped row peeks its body in a floating card, so a
+  // long queued guidance reads without the click-to-expand round trip. Own
+  // state machine (hoverIdRef mirrors previewIdRef's stale-guard pattern):
+  // the card closes on mouseleave, scroll/resize, queue collapse, row removal,
+  // drag start, and whenever the inline preview for the same row opens — hover
+  // never writes previewId, so the click preview's expand/collapse is intact.
+  const [hoverCard, setHoverCard] = useState<{ id: string; text: string; left: number; top: number | null; bottom: number | null } | null>(null);
+  const hoverIdRef = useRef<string | null>(null);
+  const hoverTimeoutRef = useRef<number | null>(null);
+  const hoverCardRef = useRef<HTMLDivElement | null>(null);
+
+  const clearHoverTimeout = () => {
+    if (hoverTimeoutRef.current !== null) {
+      window.clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+  };
+
+  const closeHoverCard = (id?: string) => {
+    if (id !== undefined && hoverIdRef.current !== id) return;
+    clearHoverTimeout();
+    hoverIdRef.current = null;
+    setHoverCard(null);
+  };
+
+  const openHoverCard = async (item: PendingGuidance, target: HTMLElement) => {
+    // The inline preview already shows this row in full — no floating double.
+    if (previewIdRef.current === item.id) return;
+    // Acceptance: a row the layout says is NOT clamped never gets a card.
+    // (jsdom reports no layout, so the estimator carries that path in tests.)
+    if (!guidanceRowIsTruncated(target, item.text)) return;
+    clearHoverTimeout();
+    hoverIdRef.current = item.id;
+    const rect = target.getBoundingClientRect();
+    const viewW = window.innerWidth || 0;
+    const viewH = window.innerHeight || 0;
+    const left = Math.max(GUIDANCE_HOVER_GAP, Math.min(rect.left, viewW - GUIDANCE_HOVER_CARD_MAX_W - GUIDANCE_HOVER_GAP));
+    // Prefer above the row (the composer sits at the bottom of the window);
+    // flip below when the row is near the top.
+    const above = rect.top > 260;
+    const fallback = item.submitText.trim() || item.text.trim();
+    setHoverCard({
+      id: item.id,
+      text: fallback,
+      left,
+      top: above ? null : rect.bottom + GUIDANCE_HOVER_GAP,
+      bottom: above ? viewH - rect.top + GUIDANCE_HOVER_GAP : null,
+    });
+    if (!onPreviewText) return;
+    try {
+      const full = await Promise.race([
+        onPreviewText(item),
+        new Promise<never>((_, reject) => {
+          hoverTimeoutRef.current = window.setTimeout(() => reject(new Error("guidance hover preview timed out")), PREVIEW_TIMEOUT_MS);
+        }),
+      ]);
+      // The mouse left (or moved to another row) while the body was in flight
+      // — same stale-id rule as the click preview (task 289).
+      if (hoverIdRef.current !== item.id) return;
+      const text = full.trim() || fallback;
+      setHoverCard((prev) => (prev && prev.id === item.id ? { ...prev, text } : prev));
+    } catch {
+      // The row's own text already stands in the card (task 289's fallback rule).
+    } finally {
+      if (hoverIdRef.current === item.id) clearHoverTimeout();
+    }
+  };
+
   // Task 289 (previewId single driver): collapsing the queue — by the head
   // button, the more/collapse footer, or Composer's auto-collapse rules — also
   // closes any open preview, so no "open but unlisted" preview survives into
   // the next expansion (the tab-switch auto-recovery was this residue).
+  // Task 446: the hover card follows the same collapse rule.
   useEffect(() => {
     if (!expanded && previewIdRef.current !== null) closePreview();
+    if (!expanded && hoverIdRef.current !== null) closeHoverCard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expanded]);
+
+  // Task 446: the card is pinned to viewport coordinates captured at hover
+  // time — scrolling (the tall list scrolls internally) or resizing would
+  // strand it, so it closes; a re-hover re-anchors it.
+  useEffect(() => {
+    if (!hoverCard) return;
+    const hide = () => closeHoverCard(hoverCard.id);
+    window.addEventListener("scroll", hide, true);
+    window.addEventListener("resize", hide);
+    return () => {
+      window.removeEventListener("scroll", hide, true);
+      window.removeEventListener("resize", hide);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hoverCard]);
+
+  // Task 446: the card must not outlive its row (dismissed/sent), a drag, or
+  // the inline preview taking the same row over.
+  useEffect(() => {
+    if (!hoverCard) return;
+    if (dragId || previewId === hoverCard.id || !items.some((item) => item.id === hoverCard.id)) {
+      closeHoverCard(hoverCard.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hoverCard, items, previewId, dragId]);
+
+  // Task 446: a pending body fetch must not outlive the shelf itself.
+  useEffect(() => () => clearHoverTimeout(), []);
+
+  // Task 446: the 436-style bottom fade only belongs on a clamped card — a
+  // short body must not fade its own last line.
+  useLayoutEffect(() => {
+    const card = hoverCardRef.current;
+    if (!card) return;
+    if (card.scrollHeight > card.clientHeight) card.setAttribute("data-clipped", "");
+    else card.removeAttribute("data-clipped");
+  }, [hoverCard]);
 
   const togglePreview = async (item: PendingGuidance) => {
     if (previewIdRef.current === item.id) {
@@ -361,6 +489,13 @@ export function ComposerGuidanceShelf({
                     aria-expanded={previewing}
                     aria-label={previewing ? t("composer.guidancePreviewClose") : t("composer.guidancePreviewOpen")}
                     onClick={() => void togglePreview(item)}
+                    /* Task 446: hover peeks a clamped row in a floating card —
+                       display-only, never writes previewId, so the click path
+                       below keeps owning expand/collapse. */
+                    onMouseEnter={(event) => {
+                      void openHoverCard(item, event.currentTarget);
+                    }}
+                    onMouseLeave={() => closeHoverCard(item.id)}
                   >
                     {item.text.trim() || t("composer.guidanceEmptyPreview")}
                   </button>
@@ -519,6 +654,28 @@ export function ComposerGuidanceShelf({
           </div>
         </div>
       )}
+      {/* Task 446: the hover peek card — portal to <body> so neither the
+          shelf's own overflow (the tall list scrolls at 40vh) nor a transformed
+          composer ancestor can clip or offset it; position: fixed anchors it
+          to the viewport coordinates captured at hover time. */}
+      {hoverCard &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={hoverCardRef}
+            className="guidance-hover-preview"
+            role="tooltip"
+            data-guidance-hover={hoverCard.id}
+            style={
+              hoverCard.top !== null
+                ? { left: hoverCard.left, top: hoverCard.top }
+                : { left: hoverCard.left, bottom: hoverCard.bottom ?? GUIDANCE_HOVER_GAP }
+            }
+          >
+            {hoverCard.text}
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

@@ -22878,6 +22878,45 @@ body > .mermaid-diagram--fullscreen {
   overflow-y: auto;
 }
 
+/* Task 446: hover peek card for a clamped queue row — the hover-side variant
+   of the 436 fold (max-height + bottom fade instead of a chevron click).
+   Portal'd to <body> as position:fixed, so neither the tall list's own scroll
+   box nor a transformed composer ancestor can clip it; pointer-events: none
+   keeps the card a pure peek — it never steals the row's click targets. */
+.guidance-hover-preview {
+  --wails-draggable: no-drag;
+  position: fixed;
+  z-index: var(--z-tooltip);
+  max-width: min(420px, calc(100vw - 16px));
+  max-height: min(320px, calc(100vh - 32px));
+  overflow: hidden;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elev);
+  color: var(--fg);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  font-size: 12.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  animation: tooltip-in var(--dur-fast) var(--ease-out) both;
+}
+/* Task 446: 436's bottom fade, hover-side — only mounted when the card's own
+   content overflows (data-clipped set in a layout pass), so a short peek never
+   fades its own last line. */
+.guidance-hover-preview[data-clipped]::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 48px;
+  background: linear-gradient(to bottom, transparent, var(--bg-elev));
+  pointer-events: none;
+}
+
 .composer-guidance-item__badge {
   flex: 0 0 auto;
   padding: 1px 6px;

@@ -336,6 +336,10 @@ const CHECKS = [
   // 任务436（20261001 批十小件）：过长用户侧消息默认折叠限高。（任务437 心跳续跑锚点随 437 分支登记）
   { feature: "任务436 用户消息折叠限高（组件+阈值）", file: "desktop/frontend/src/components/Message.tsx", patterns: ["USER_MSG_FOLD_LINE_THRESHOLD", "estimateUserMessageLines", "msg-fold--clamped", "msg-fold__toggle"] },
   { feature: "任务436 用户消息折叠 CSS", file: "desktop/frontend/src/styles.css", patterns: [".msg-fold--clamped", ".msg-fold__toggle"] },
+  // 任务446（20261002 批十一）：排队引导消息 hover 浮层预览（436 估行器抽轻量 lib 供复用）。
+  { feature: "任务446 估行器轻量抽出（lib/messageFold）", file: "desktop/frontend/src/lib/messageFold.ts", patterns: ["USER_MSG_FOLD_LINE_THRESHOLD", "estimateUserMessageLines", "0x2e7f"] },
+  { feature: "任务446 排队引导 hover 浮层（组件）", file: "desktop/frontend/src/components/ComposerGuidanceShelf.tsx", patterns: ["guidanceRowIsTruncated", "GUIDANCE_ROW_VISIBLE_LINES", "openHoverCard", "guidance-hover-preview"] },
+  { feature: "任务446 排队引导 hover 浮层 CSS", file: "desktop/frontend/src/styles.css", patterns: [".guidance-hover-preview", "data-clipped"] },
   // 任务 339（上游 #10970 并用）：replay 预算双保险的第二道——触顶有出路。
   // 锚点锁「所有权证明→内存折叠→失败原样透出」的形状：fold 只在 ledger 仍
   // 等于本 runtime 基线时触发（防丢别的 writer 的新 turn），DAG 日志与非
