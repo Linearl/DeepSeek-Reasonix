@@ -397,6 +397,14 @@ const CHECKS = [
   { feature: "任务276 焦点三探针（composer-focus 通道）", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["draft epoch bumped", "focus restore cancelled by draft epoch", "focus restore exhausted retries"] },
   { feature: "任务276 IME 组合打断探针", file: "desktop/frontend/src/lib/useComposerImeGuard.ts", patterns: ["ime composition interrupted by focus loss", "ime composition interrupted by unmount"] },
   { feature: "任务276 禁用翻转焦点自愈", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["focus restored after disable flip", "composerInputWasFocusedRef"] },
+  // 任务 396（上游 #11311 → #11327）：Windows 非 UTF-8 code page 的 shell 输出
+  // 乱码。解码收口在 RunForeground（转录/工具卡的唯一输出来源），级联 = 严格
+  // UTF-8 直通 → 控制台输出码页 → ANSI 码页 →（中文系统）GB18030，全拒则回落
+  // 原文字节。锚点锁三处：入口接线、Windows 码页候选映射、回落语义——丢任何
+  // 一处，GBK 输出重新以 U+FFFD 进转录。
+  { feature: "任务396 shell 输出码页解码（RunForeground 收口）", file: "internal/shellrun/runner.go", patterns: ["decodeConsoleOutput(collector.combined.String())", "utf8SafeTrimTail(combined, tool.OutputTailMaxBytes)"] },
+  { feature: "任务396 Windows 码页候选映射（控制台输出码页优先）", file: "internal/shellrun/codepage_windows.go", patterns: ["windows.GetConsoleOutputCP", "encodingForCodePage", "chineseSupersetDecoder"] },
+  { feature: "任务396 解码失败回落原文（不阻断不崩）", file: "internal/shellrun/codepage.go", patterns: ["utf8.ValidString(raw)", "tryDecodeCodePage", "return raw"] },
 ];
 
 let failed = 0;

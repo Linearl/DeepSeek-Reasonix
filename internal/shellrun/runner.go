@@ -136,9 +136,14 @@ func RunForeground(ctx context.Context, req Request) Result {
 		CommandPreview:  req.CommandPreview,
 	})
 
+	// Decode system-code-page output before it reaches the model transcript or
+	// any tool card (upstream #11311 → #11327). Decoding the combined buffer
+	// once and deriving the failure tail from it keeps both views consistent
+	// when a multi-byte sequence straddles the tail boundary.
+	combined := decodeConsoleOutput(collector.combined.String())
 	out := Result{
-		Combined:   collector.combined.String(),
-		OutputTail: collector.tailString(),
+		Combined:   combined,
+		OutputTail: utf8SafeTrimTail(combined, tool.OutputTailMaxBytes),
 		Started:    processStarted(cmd, err),
 		Tracked:    tracked,
 		Cmd:        cmd,
