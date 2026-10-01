@@ -473,6 +473,28 @@ func TestForceThresholdNoopReturnsCompactionRequired(t *testing.T) {
 	}
 }
 
+// Task 424: the manual force path (the one the desktop cold-cache loop drives
+// through Controller.Compact) is the summaryNoop Force branch when nothing
+// foldable remains — the exact branch the loop parks on. Pinned including the
+// exact wire text so the wrapped message cannot drift.
+func TestSummaryNoopForceCarriesNoFoldableRegion(t *testing.T) {
+	a := New(&fakeProvider{reply: "unused"}, tool.NewRegistry(),
+		&Session{Messages: []provider.Message{{Role: provider.RoleUser, Content: "task"}}},
+		Options{ContextWindow: 200}, event.Discard)
+
+	_, err := a.contextManager().summaryNoop(ContextPreparePolicy{Trigger: CompactionTriggerManual, Force: true}, "hash-424", 100000)
+	if err == nil {
+		t.Fatal("expected an error from the force noop branch")
+	}
+	if !errors.Is(err, ErrCompactionRequired) || !errors.Is(err, ErrNoFoldableRegion) {
+		t.Fatalf("err = %v, want ErrCompactionRequired wrapping ErrNoFoldableRegion", err)
+	}
+	const want = "context exceeds provider limit and compaction failed: context is above the maintenance threshold but no foldable region remains"
+	if err.Error() != want {
+		t.Fatalf("error text drifted:\n got %q\nwant %q", err.Error(), want)
+	}
+}
+
 func TestSummarizeOnceDoesNotRetry(t *testing.T) {
 	fp := &retryUsageProvider{
 		failOnce: errors.New("transient"),

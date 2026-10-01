@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -8,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"reasonix/internal/agent"
+	"reasonix/internal/billing"
 	"reasonix/internal/boot"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
@@ -74,7 +77,12 @@ func normalizeColdCacheCompactKnobs(enabled bool, minBytes int64, idleMinutes in
 // same cooling window never compacts twice, while a conversation the user
 // touches again and lets cool a second time stays eligible — that is the
 // "compact before it goes cold, not in a loop" contract.
-func coldCacheCompactDecision(enabled bool, now time.Time, lastActivityAt, lastOpenedAt, attemptedActivityAt, sizeBytes int64, minBytes int64, idleMinutes int) (bool, string) {
+//
+// Task 424 adds the park guard: a session whose last attempt ended in the
+// terminal "no foldable region remains" class is parked for its current
+// activity stamp — retrying cannot succeed until the session itself changes
+// (a new write bumps LastActivityAt, which re-arms eligibility).
+func coldCacheCompactDecision(enabled bool, now time.Time, lastActivityAt, lastOpenedAt, attemptedActivityAt, parkedActivityAt, sizeBytes int64, minBytes int64, idleMinutes int) (bool, string) {
 	if !enabled {
 		return false, "switch off"
 	}
@@ -98,6 +106,9 @@ func coldCacheCompactDecision(enabled bool, now time.Time, lastActivityAt, lastO
 	}
 	if sizeBytes < minBytes {
 		return false, "context under size floor"
+	}
+	if parkedActivityAt == lastActivityAt {
+		return false, "parked: no foldable region remains (re-arms on new activity)"
 	}
 	if attemptedActivityAt == lastActivityAt {
 		return false, "already compacted this cooling window"
@@ -124,6 +135,12 @@ type coldCacheCompactLoop struct {
 	a    *App
 	mu   sync.Mutex
 	done map[string]int64 // session path -> LastActivityAt the attempt was made for
+	// Task 424: parked records the terminal "no foldable region remains"
+	// outcome the same way done records success — keyed by the LastActivityAt
+	// the failed attempt was made for. A parked session is skipped until its
+	// activity stamp changes (a new write re-arms it); the other failure
+	// classes keep the per-tick retry.
+	parked map[string]int64
 	// Task 380-A/B: firstSeen records when this process first noticed a live
 	// controller for a session (≈ open time, bounded by the tick interval);
 	// inFlight marks a compact currently running so later ticks don't stack
@@ -140,10 +157,80 @@ func (a *App) startColdCacheCompactLoop() {
 	l := &coldCacheCompactLoop{
 		a:         a,
 		done:      make(map[string]int64),
+		parked:    make(map[string]int64),
 		firstSeen: make(map[string]int64),
 		inFlight:  make(map[string]bool),
 	}
 	a.goSafe("coldCacheCompactLoop", l.run)
+}
+
+const (
+	coldCacheCompactModeLive     = "live"
+	coldCacheCompactModeHeadless = "headless"
+)
+
+// coldCacheUsageCapture collects the billable usage of one headless compact
+// pass (task 380 sixth-acceptance accounting log). boot.Build wraps opts.Sink
+// with the cost-quote sink, so Usage events arrive with CostQuote already
+// priced from the billing catalog — the capture only sums. Non-usage events
+// are dropped exactly like the event.Discard this replaces.
+type coldCacheUsageCapture struct {
+	mu               sync.Mutex
+	promptTokens     int
+	completionTokens int
+	cacheHitTokens   int
+	requests         int
+	cost             billing.Money
+	costKnown        bool
+	costMixed        bool
+}
+
+func (c *coldCacheUsageCapture) Emit(e event.Event) {
+	if c == nil || e.Kind != event.Usage || e.Usage == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.promptTokens += e.Usage.PromptTokens
+	c.completionTokens += e.Usage.CompletionTokens
+	c.cacheHitTokens += e.Usage.CacheHitTokens
+	c.requests += e.Usage.RequestCount
+	if e.CostQuote == nil {
+		return
+	}
+	if !c.costKnown {
+		c.cost, c.costKnown = e.CostQuote.Original, true
+		return
+	}
+	if sum, err := billing.AddMoney(c.cost, e.CostQuote.Original); err == nil {
+		c.cost = sum
+	} else {
+		c.costMixed = true
+	}
+}
+
+// logFields renders the capture as slog fields for the accounting log. A nil
+// capture (the live path) renders nothing — that pass's usage already lands in
+// the session's own ledger, so the cost is not double-counted here.
+func (c *coldCacheUsageCapture) logFields() []any {
+	if c == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	fields := []any{
+		"usagePromptTokens", c.promptTokens,
+		"usageCompletionTokens", c.completionTokens,
+		"usageCacheHitTokens", c.cacheHitTokens,
+		"usageRequests", c.requests,
+	}
+	switch {
+	case c.costMixed:
+		fields = append(fields, "costMixedCurrency", true)
+	case c.costKnown:
+		fields = append(fields, "costAmount", c.cost.Float64(), "costCurrency", c.cost.Currency)
+	}
+	return fields
 }
 
 func (l *coldCacheCompactLoop) run() {
@@ -172,6 +259,7 @@ func (l *coldCacheCompactLoop) tick(now time.Time) {
 		}
 		l.mu.Lock()
 		attempted := l.done[meta.Path]
+		parked := l.parked[meta.Path]
 		if ctrl != nil {
 			if _, seen := l.firstSeen[meta.Path]; !seen {
 				l.firstSeen[meta.Path] = now.UnixMilli()
@@ -185,7 +273,7 @@ func (l *coldCacheCompactLoop) tick(now time.Time) {
 			continue
 		}
 		size := sessionContextBytes(meta.Path)
-		ok, _ := coldCacheCompactDecision(knobs.Enabled, now, meta.LastActivityAt, openedAt, attempted, size, knobs.MinBytes, knobs.IdleMinutes)
+		ok, _ := coldCacheCompactDecision(knobs.Enabled, now, meta.LastActivityAt, openedAt, attempted, parked, size, knobs.MinBytes, knobs.IdleMinutes)
 		if !ok {
 			continue
 		}
@@ -213,6 +301,14 @@ func (l *coldCacheCompactLoop) compactOne(path, workspaceRoot string, size int64
 	}()
 
 	_, ctrl := l.a.controllerForSessionPath(path)
+	// Task 380 sixth-acceptance accounting: every pass logs the trigger moment
+	// (log timestamp; durationMs derives it), the target session, the
+	// before/after context bytes and the catalog-priced cost of the summary
+	// call. The usage capture only exists on the headless path — a live tab's
+	// usage already lands in its own session ledger.
+	started := time.Now()
+	var usage *coldCacheUsageCapture
+	mode := coldCacheCompactModeLive
 	var err error
 	if ctrl != nil {
 		err = ctrl.Compact(l.a.ctx, "")
@@ -223,23 +319,61 @@ func (l *coldCacheCompactLoop) compactOne(path, workspaceRoot string, size int64
 		// controller on the same compact chain instead — the user is not
 		// present (idle >5h, background), so a background build here is the
 		// cheap side of the trade.
-		err = l.headlessCompactOne(path, workspaceRoot)
+		mode = coldCacheCompactModeHeadless
+		usage = &coldCacheUsageCapture{}
+		err = l.headlessCompactOne(path, workspaceRoot, usage)
 	}
+	duration := time.Since(started)
 	if err != nil {
+		// Task 424: the terminal "no foldable region remains" class parks the
+		// session for its current activity stamp instead of retrying every
+		// tick — the session state itself cannot yield a compaction, so the
+		// old per-tick WARN turned into an endless 10-minute log burst (one
+		// ~5s headless build per dead session). New activity bumps
+		// LastActivityAt, which re-arms the pass.
+		if coldCacheCompactTerminal(err) {
+			l.parkNoFoldable(path, lastActivityAt)
+			slog.Info("desktop: cold cache compact parked (nothing foldable left; re-arms on next session activity)",
+				"path", path, "bytes", size, "mode", mode,
+				"idleMinutes", int(idle.Minutes()))
+			return
+		}
 		// Failed passes stay invisible to the user (no dialog) and retry on
 		// the next tick: the attempt stamp is only written on success, so a
 		// transient provider error does not park the conversation until the
 		// user touches it again.
 		slog.Warn("desktop: cold cache compact failed (will retry next tick)",
-			"path", path, "err", err)
+			"path", path, "mode", mode, "bytes", size,
+			"durationMs", duration.Milliseconds(), "err", err)
 		return
 	}
 	l.mu.Lock()
 	l.done[path] = lastActivityAt
 	l.mu.Unlock()
-	slog.Info("desktop: cold cache compact completed",
-		"path", path, "bytes", size,
-		"idleMinutes", int(idle.Minutes()))
+	fields := append([]any{
+		"path", path, "mode", mode,
+		"bytesBefore", size, "bytesAfter", sessionContextBytes(path),
+		"idleMinutes", int(idle.Minutes()), "durationMs", duration.Milliseconds(),
+	}, usage.logFields()...)
+	slog.Info("desktop: cold cache compact completed", fields...)
+}
+
+// parkNoFoldable records the task-424 park stamp: the compact attempt for
+// this LastActivityAt ended in the terminal no-foldable-region class, so the
+// tick skips the session until its activity stamp changes.
+func (l *coldCacheCompactLoop) parkNoFoldable(path string, lastActivityAt int64) {
+	l.mu.Lock()
+	l.parked[path] = lastActivityAt
+	l.mu.Unlock()
+}
+
+// coldCacheCompactTerminal reports whether a compact failure is the task-424
+// terminal class: the context is over the maintenance threshold with no
+// foldable region left, so retrying over the unchanged session state can never
+// succeed (task 297's missing termination condition). Every other failure
+// class stays retryable on the next tick.
+func coldCacheCompactTerminal(err error) bool {
+	return errors.Is(err, agent.ErrNoFoldableRegion)
 }
 
 // headlessCompactOne compacts a controller-less session: a throwaway
@@ -247,11 +381,13 @@ func (l *coldCacheCompactLoop) compactOne(path, workspaceRoot string, size int64
 // directory, same fold the restart checks use), runs the one compact pass on
 // the standard chain, and closes. No sink output, no tab, no hydrate of any
 // UI surface — the cost is one cold build plus the compaction itself, paid
-// while the user is away instead of in front of them.
-func (l *coldCacheCompactLoop) headlessCompactOne(path, workspaceRoot string) error {
+// while the user is away instead of in front of them. sink collects the pass's
+// billable usage for the task-380 accounting log; boot.Build wraps it with the
+// cost-quote sink so usage arrives already priced from the billing catalog.
+func (l *coldCacheCompactLoop) headlessCompactOne(path, workspaceRoot string, sink event.Sink) error {
 	sessionDir := filepath.Dir(path)
 	ctrl, err := boot.Build(l.a.bootContext(), boot.Options{
-		Sink:                     event.Discard,
+		Sink:                     sink,
 		RequireKey:               false,
 		StatsSource:              "cold-cache-compact",
 		SessionDir:               sessionDir,
