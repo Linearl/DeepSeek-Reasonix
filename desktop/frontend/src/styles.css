@@ -22776,16 +22776,38 @@ body > .mermaid-diagram--fullscreen {
   font-weight: 620;
 }
 
-/* Task 221#6 / 181: row checkbox, reorder arrows, and the drag affordance. */
+/* Task 221#6 / 181: row checkbox and the drag affordance.
+   Task 441: the reorder arrows are gone — the six-dot handle (⠿) is the
+   drag affordance and doubles as the row glyph on movable rows. */
 .composer-guidance-item__check {
   flex: 0 0 auto;
   accent-color: var(--accent);
   cursor: pointer;
 }
 
-.composer-guidance-item__reorder {
+.composer-guidance-item__handle {
   display: inline-flex;
-  gap: 2px;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-faint);
+  cursor: grab;
+}
+
+.composer-guidance-item__handle:hover,
+.composer-guidance-item__handle:focus-visible {
+  background: color-mix(in srgb, var(--bg-elev-2) 80%, transparent);
+  color: var(--fg);
+}
+
+.composer-guidance-item__handle--dragging {
+  cursor: grabbing;
+  color: var(--accent);
 }
 
 .composer-guidance-item--dragging {
@@ -22812,11 +22834,11 @@ body > .mermaid-diagram--fullscreen {
 .composer-guidance-item {
   min-height: 32px;
   display: grid;
-  /* Task 266-A: one row must hold every control — icon, text, edit, merge,
-     guide, dismiss and the reorder arrows (select-mode checkbox + editing
-     badge included). The old repeat(3, auto) left the trailing controls to
-     spill onto a second grid line, doubling each shelf row's height. */
-  grid-template-columns: auto minmax(0, 1fr) repeat(6, auto);
+  /* Task 266-A: one row must hold every control. Task 441: the leading slot
+     is the six-dot drag handle (or the row glyph on non-movable rows) and the
+     up/down arrows are gone — handle/text/edit/merge/guide/dismiss still fit
+     one line (select-mode checkbox + editing badge included). */
+  grid-template-columns: auto minmax(0, 1fr) repeat(4, auto);
   align-items: center;
   gap: 8px;
   padding: 5px 6px 5px 8px;

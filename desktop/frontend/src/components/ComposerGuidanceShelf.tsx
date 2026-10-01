@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Combine, CornerDownRight, Pencil, Send, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Combine, CornerDownRight, GripVertical, Pencil, Send, Trash2 } from "lucide-react";
 import {
   guidanceEditableInComposer,
   guidanceHasKnownPendingState,
@@ -138,6 +138,9 @@ export function ComposerGuidanceShelf({
   // action can still land on it — never an in-flight/delivering/unknown row,
   // never the row being edited into the composer.
   const selectedSet = new Set(selectedIds ?? []);
+  // Task 441: dragId is set ONLY by a handle dragstart (task 181 had the whole
+  // card draggable plus up/down arrows; both are gone — the six-dot handle is
+  // the single reorder affordance now).
   const [dragId, setDragId] = useState<string | null>(null);
   const batchSelected = (selectedIds ?? [])
     .map((id) => items.find((item) => item.id === id))
@@ -332,9 +335,6 @@ export function ComposerGuidanceShelf({
                     if ((event.target as HTMLElement).closest("button, input")) return;
                     void togglePreview(item);
                   }}
-                  draggable={movable && !selectMode}
-                  onDragStart={movable && !selectMode ? () => setDragId(item.id) : undefined}
-                  onDragEnd={() => setDragId(null)}
                   onDragOver={movable && dragId !== null && dragId !== item.id ? (event) => event.preventDefault() : undefined}
                   onDrop={movable && dragId !== null && dragId !== item.id
                     ? (event) => {
@@ -345,7 +345,29 @@ export function ComposerGuidanceShelf({
                       }
                     : undefined}
                 >
-                  <CornerDownRight size={14} className="composer-guidance-item__icon" />
+                  {/* Task 441: the six-dot handle (⠿) is the drag source — the card
+                      itself is no longer draggable, so text selection and the
+                      card-body preview toggle stay clean. Dropping the drag on
+                      another row still lands through the card's onDrop above. */}
+                  {movable && !selectMode ? (
+                    <Tooltip label={t("composer.guidanceDragHint")}>
+                      <button
+                        type="button"
+                        className={`composer-guidance-item__handle${dragId === item.id ? " composer-guidance-item__handle--dragging" : ""}`}
+                        aria-label={t("composer.guidanceDragHint")}
+                        draggable
+                        onDragStart={(event) => {
+                          event.dataTransfer?.setData?.("text/plain", item.id);
+                          setDragId(item.id);
+                        }}
+                        onDragEnd={() => setDragId(null)}
+                      >
+                        <GripVertical size={13} />
+                      </button>
+                    </Tooltip>
+                  ) : (
+                    <CornerDownRight size={14} className="composer-guidance-item__icon" />
+                  )}
                   {selectMode && selectable && onToggleSelect && (
                     <input
                       className="composer-guidance-item__check"
@@ -466,37 +488,11 @@ export function ComposerGuidanceShelf({
                       <Trash2 size={14} />
                     </button>
                   </Tooltip>
-                  {/* Task 266-A: the reorder arrows live INSIDE the button
-                      row (right after dismiss, before the expandable
-                      preview) so every control shares one grid row — the
-                      arrows used to trail the preview and spill onto a
-                      second line, doubling each shelf row's height. */}
-                  {movable && !selectMode && (
-                    <span className="composer-guidance-item__reorder">
-                      <Tooltip label={t("composer.guidanceMoveUp")}>
-                        <button
-                          className="composer-guidance-item__action"
-                          type="button"
-                          aria-label={t("composer.guidanceMoveUp")}
-                          disabled={index === 0 || disabled || readOnly || sendingId !== null}
-                          onClick={() => onMove?.(item, index - 1)}
-                        >
-                          <ArrowUp size={13} />
-                        </button>
-                      </Tooltip>
-                      <Tooltip label={t("composer.guidanceMoveDown")}>
-                        <button
-                          className="composer-guidance-item__action"
-                          type="button"
-                          aria-label={t("composer.guidanceMoveDown")}
-                          disabled={index >= items.length - 1 || disabled || readOnly || sendingId !== null}
-                          onClick={() => onMove?.(item, index + 1)}
-                        >
-                          <ArrowDown size={13} />
-                        </button>
-                      </Tooltip>
-                    </span>
-                  )}
+                  {/* Task 441: the task 266-A up/down reorder arrows are gone —
+                      the six-dot handle drag replaces them (dispatch 20261002-0010:
+                      remove the 「↑ 立即」button plan; edit/delete stay). The
+                      preview block below still follows the control row, so the
+                      one-grid-line layout 266-A pinned is unchanged. */}
                   {previewing && (
                     <div className="composer-guidance-item__preview" role="note" aria-busy={previewLoading}>
                       {previewText}
