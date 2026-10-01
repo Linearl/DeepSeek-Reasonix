@@ -1,5 +1,6 @@
 import { createContext, useContext, useCallback, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { recordTranscriptScrollDiagnostic } from "./transcriptScrollProbe";
+import { olderHistoryTriggerPx } from "./historyOlderGates";
 import {
   TranscriptKernel,
   type TranscriptKernelClock,
@@ -71,10 +72,11 @@ function readSnapshot(element: HTMLElement): TranscriptViewportSnapshot {
   return snapshot;
 }
 
-// Fork (task 160): the transcript's scroll path already treats "within 64px of the
-// top" as its older-history preload radius; the input-driven trigger reuses that
-// same guard so both entries agree on when the reader is at the top.
-const HISTORY_TOP_GUARD_PX = 64;
+// Fork (task 160): the transcript's scroll path and this input-driven trigger
+// share one preload radius so both entries agree on "the reader is near the top" —
+// task 448 (B1) widened it from a flat 64px to `max(64, 2 × viewport)` (zcode's
+// two-viewport prefetch), so the next earlier page is already local by the time
+// the reader arrives at the boundary. `olderHistoryTriggerPx` is the single copy.
 // Keys that mean "read further back" once the viewport is already at the top.
 const HISTORY_UP_KEYS = new Set(["ArrowUp", "PageUp", "Home"]);
 
@@ -306,7 +308,7 @@ export function useTranscriptKernel({
     const request = autoLoadOlderAtTopRef.current;
     if (!request) return;
     const element = scrollRef.current;
-    if (!element || element.scrollTop > HISTORY_TOP_GUARD_PX) return;
+    if (!element || element.scrollTop > olderHistoryTriggerPx(element.clientHeight)) return;
     request();
   }, []);
   useLayoutEffect(() => {
