@@ -237,6 +237,13 @@ const CHECKS = [
   { feature: "任务387 跨会话换模型增强：非己拒绝+审计行+effort note+actionable 列表", file: "internal/agent/session_control_tool.go", patterns: ["calling session itself", "cross-session model change", "old_model", "resets to the new model"] },
   { feature: "任务387 unknown-model actionable 列表包装", file: "desktop/session_collab.go", patterns: ["wrapUnknownModelErr", "available models on that session"] },
   { feature: "任务388 autopilot 代批上下文感知：两档 scope+自然语言 manifest（tail-kept 有界）", file: "internal/control/autopilot_approval.go", patterns: ["autopilotProxyContext", "PROXY SCOPE: level 1", "PROXY SCOPE: level 2", "PROXY MANIFEST"] },
+  // 任务 433：recovery fence 无副作用工具白名单。三个锚点按链路登记——
+  // 白名单表本体（bash 走 shellsafe 只读判定，fail closed）、中断即判未生效
+  // 的 finish 钩子、prompt 收尾把 outcome-unknown 降级 not_started 的重分类。
+  // 少任何一个都会退回「弹面板等人点」或「误导模型去核实不存在的副作用」。
+  { feature: "任务433 fence 无副作用白名单判定（枚举表+shellsafe 只读 bash）", file: "internal/agent/tool_recovery_records.go", patterns: ["noSideEffectTools", "interruptedCallSideEffectFree", "bashCommandSideEffectFree", "IsPermissionReader"] },
+  { feature: "任务433 白名单中断自动判未生效+notice 留痕", file: "internal/agent/tool_recovery_records.go", patterns: ["resolveSideEffectFreeInterruptedCalls", "autoResolveSideEffectFreeRecord", "noticeCodeSideEffectFreeAutoResolved"] },
+  { feature: "任务433 prompt 收尾未决重分类（unknown→not_started）", file: "internal/agent/interrupted_recovery.go", patterns: ["reclassifySideEffectFreeUnknowns", "interruptedSummarySideEffectFree"] },
   { feature: "任务389 catalog 空闲 CPU 修复：30s 循环→fsnotify watch 单点移植（上游 #10603）", file: "desktop/session_catalog_watch.go", patterns: ["func (a *App) watchSessionCatalog", "5 * time.Minute"] },
   { feature: "任务389 循环移除守护", file: "desktop/session_catalog_lifecycle.go", patterns: ["watchSessionCatalog(ctx, catalog)"] },
   { feature: "任务386 markdown cache 碰撞守卫 backstop 测试（消费比对 miss 语义）", file: "desktop/frontend/src/__tests__/markdown-history.test.tsx", patterns: ["fidelity backstop at the store boundary", "treats the collision as a miss"] },

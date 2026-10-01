@@ -16,10 +16,69 @@ import (
 
 	"reasonix/internal/event"
 	"reasonix/internal/provider"
+	"reasonix/internal/shellsafe"
 	"reasonix/internal/tool"
 )
 
 var ErrToolRecoveryRequired = errors.New("recovery_required: an external tool effect has not been confirmed")
+
+// noticeCodeSideEffectFreeAutoResolved marks the task-433 auto-resolution
+// notice so frontends can localize or filter it. Text carries the tool name
+// and the verdict only — never arguments or output.
+const noticeCodeSideEffectFreeAutoResolved = "tool_recovery_side_effect_free"
+
+// sideEffectFreeResolution names the verdict recorded on an auto-resolved
+// record: the interrupted call could not have landed an external effect, so
+// 「未生效」 is the only truthful state and no human confirmation is needed.
+const sideEffectFreeResolution = "side_effect_free"
+
+// noSideEffectTools is the task-433 enumerable whitelist: tools whose calls
+// cannot produce an external effect by construction, so an interrupted call is
+// auto-resolved as not started instead of stranding the turn behind the review
+// panel. Anything not listed here (write_file, git writes, network sends, MCP
+// tools, …) keeps the manual panel; when in doubt, leave a tool out. Extending
+// the whitelist means adding one row here.
+var noSideEffectTools = map[string]bool{
+	tool.HostAsk: true, // ask: 问用户选择题，无外部副作用
+	"read_file":  true, // 只读文件工具
+	"glob":       true,
+	"grep":       true,
+	"ls":         true,
+	"todo_write": true, // 会话内 todo 状态，不落外部
+}
+
+// interruptedCallSideEffectFree reports whether a call of this tool, whose
+// outcome is unknown, can be judged「未生效」on its own: no external effect was
+// possible, so there is nothing to verify. bash needs its arguments — the
+// command text decides via shellsafe, the single source of truth for read-only
+// classification; it fails closed, so an unparsable or unknown command stays
+// out of the whitelist (宁可多人工核实，不可误放).
+func interruptedCallSideEffectFree(canonicalTool string, args json.RawMessage) bool {
+	if noSideEffectTools[canonicalTool] {
+		return true
+	}
+	if canonicalTool == "bash" {
+		return bashCommandSideEffectFree(args)
+	}
+	return false
+}
+
+// bashCommandSideEffectFree accepts only statically proven read-only probes.
+// Declared write roots (additional_write_dirs) are write intent and disqualify
+// the call regardless of the command text.
+func bashCommandSideEffectFree(args json.RawMessage) bool {
+	var params struct {
+		Command             string   `json:"command"`
+		AdditionalWriteDirs []string `json:"additional_write_dirs"`
+	}
+	if err := json.Unmarshal(args, &params); err != nil {
+		return false
+	}
+	if len(params.AdditionalWriteDirs) > 0 {
+		return false
+	}
+	return shellsafe.ClassifyBash(params.Command).IsPermissionReader()
+}
 
 // Approval modes under which an unresolved tool effect no longer blocks writes. Values mirror
 // control.ToolApprovalAuto / ToolApprovalYolo; spelled here because agent must not import control.
@@ -106,6 +165,12 @@ func (a *Agent) beginToolRecovery(ctx context.Context, p *toolCallPlan) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	// Task 433: settle no-side-effect interrupted calls before the barrier is
+	// judged. A whitelisted call (ask / read-only probe / read tools) cannot
+	// have landed an external effect, so its leftover record is resolved as
+	//「未生效」right here — a session reloaded with such a record must not have
+	// its next write fenced, and the panel must not light up for it at turn end.
+	a.resolveSideEffectFreeInterruptedCalls()
 	// An unresolved external effect survives subsequent user turns. Read-only
 	// diagnosis remains available; new call IDs cannot bypass this barrier.
 	// Unattended hosts (yolo/auto/autopilot) skip it: nobody is there to resolve
@@ -223,10 +288,64 @@ func (a *Agent) finishToolRecovery(call provider.ToolCall, out toolOutcome) {
 	if out.executed && out.errMsg != "" && r.State == provider.ToolRunCompleted {
 		r.State = provider.ToolRunFailed
 	}
+	// Task 433: an interrupted whitelisted call (cancelled/timed out with an
+	// unknown outcome) is decided on the spot instead of stranding the turn:
+	// no external effect was possible, so「未生效」is recorded durably with a
+	// notice for traceability, and the run ends without the review panel or
+	// the ErrToolRecoveryRequired barrier. Write-capable tools keep the manual
+	// path below.
+	if r.State == provider.ToolRunUnknown && interruptedCallSideEffectFree(r.Identity.CanonicalTool, r.Arguments) {
+		a.autoResolveSideEffectFreeRecord(*r)
+		return
+	}
 	// An explicit tool error proves failure, not absence of partial effects.
 	r.FinishedAt = time.Now().UnixMilli()
 	r.ResultDigest = recoveryDigest([]byte(out.output))
 	a.sess.conversation.setToolRecoveryRecord(call.ID, *r)
+}
+
+// resolveSideEffectFreeInterruptedCalls settles every pending record whose
+// call is provably free of external effects (task 433). Called before the
+// write barrier is judged so leftover whitelisted records — including ones
+// loaded from storage with an unresolved state — can never fence a write or
+// light up the review panel.
+func (a *Agent) resolveSideEffectFreeInterruptedCalls() {
+	for _, r := range a.PendingToolRecovery() {
+		if !interruptedCallSideEffectFree(r.Identity.CanonicalTool, r.Arguments) {
+			continue
+		}
+		a.autoResolveSideEffectFreeRecord(r)
+	}
+}
+
+// autoResolveSideEffectFreeRecord marks one record as「未生效」(never started)
+// with a host-sourced resolution and emits a trace notice naming only the tool
+// and the verdict. Like the host-verified-absent path this checkpoint is best
+// effort: the in-memory record is the evidence, and rolling it back would
+// resurrect a barrier that cannot correspond to any real effect.
+func (a *Agent) autoResolveSideEffectFreeRecord(r provider.ToolCallRecord) {
+	resolved := r
+	resolved.State = provider.ToolRunNotStarted
+	resolved.Resolution = sideEffectFreeResolution
+	resolved.ResolutionSource = "host"
+	resolved.ResolvedAt = time.Now().UnixMilli()
+	if !a.sess.conversation.setToolRecoveryRecord(r.Identity.CallID, resolved) {
+		return
+	}
+	name := strings.TrimSpace(r.Identity.CanonicalTool)
+	if name == "" {
+		name = "tool"
+	}
+	if err := event.EmitChecked(a.svc.sink, event.Event{
+		Kind:               event.Notice,
+		Level:              event.LevelInfo,
+		Code:               noticeCodeSideEffectFreeAutoResolved,
+		Text:               fmt.Sprintf("interrupted %s call auto-resolved as not started: no external side effect possible; safe to re-issue", name),
+		Detail:             sideEffectFreeResolution,
+		RecoveryCheckpoint: true,
+	}); err != nil {
+		slog.Warn("agent: side-effect-free auto-resolution not persisted", "call", r.Identity.CallID, "err", err)
+	}
 }
 
 func unresolvedToolRecord(r provider.ToolCallRecord) bool {
