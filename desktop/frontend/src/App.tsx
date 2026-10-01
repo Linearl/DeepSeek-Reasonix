@@ -4538,7 +4538,7 @@ export default function App() {
               /></Suspense>
           </section>
 
-          {sidebarWorkbench ? (
+          {(sidebarWorkbench || !sidebarCreation) ? (
             <nav className="sidebar__nav sidebar__nav--footer">
               <div className="sidebar__utility-row" aria-label={t("sidebar.utilityActions")}>
                 <Tooltip label={t("sidebar.trash")} fill side="top">
