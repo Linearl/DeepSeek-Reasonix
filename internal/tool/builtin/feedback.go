@@ -25,7 +25,11 @@ type submitFeedback struct{}
 func (submitFeedback) Name() string { return "submit_feedback" }
 
 func (submitFeedback) Description() string {
-	return "Submit a short product feedback note into the local feedback inbox (意见箱; markdown files under the Reasonix feedback-inbox directory). Use it when the user asks you to record a suggestion, bug report, or opinion about Reasonix itself (not about their code) — Chinese phrasings like 意见箱, 反馈, 记一条意见 all mean this tool. Notes stay on this machine, land on disk as markdown files, and can later be collected and analyzed by the collect_issues skill. They also appear in the desktop feedback panel when that experimental feature is enabled. Keep each note focused: one observation or suggestion per call."
+	// Task 324: the trigger rules (user-approved 2026-09-26) live here, not in
+	// AGENTS.md or skills — the tool description is the one place a submitting
+	// model definitely reads. Low-noise first: 4 evidence-backed triggers,
+	// 5 non-triggers, 3 cost gates.
+	return "Submit a short product feedback note into the local feedback inbox (意见箱; markdown files under the Reasonix feedback-inbox directory; collected later by the collect_issues skill). Chinese phrasings like 意见箱, 反馈, 记一条意见 all mean this tool, and when the user asks you to record a suggestion, bug report, or opinion about Reasonix itself (not about their code), always use this tool. Agent-initiated notes are limited to four evidence-backed triggers: (A) a tool or guard misbehaved — quote the error verbatim plus the scenario; (B) docs or a tool description contradicts actual behavior — cite the description line vs what actually happened; (C) the same error hit 3+ times in a row (a one-off may be your own mistake — self-check first and do not submit); (D) the user explicitly asks. Do NOT submit: your own misuse from skipping a description or doc (self-check first), tasks that are merely hard or slow, transient network failures (retry first), nice-to-have suggestions, or a topic already in the inbox (check feedback-inbox for duplicates first). Cost gates: at most 2 notes per session (merge the rest into one summary note); one issue per note, at most 5 lines, opening with a category tag ([bug], [gap], or [docs]); only report an error that has cost 5+ minutes or 3+ wasted rounds. Notes stay on this machine and also appear in the desktop feedback panel when that experimental feature is enabled."
 }
 
 func (submitFeedback) Schema() json.RawMessage {

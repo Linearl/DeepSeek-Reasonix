@@ -409,6 +409,11 @@ const CHECKS = [
   // （172 惯例）。锚点锁双侧指路，merge 静默丢任一侧即报。
   { feature: "任务323 multi_edit WHEN TO USE 触发句+中文触发词", file: "internal/tool/builtin/multiedit.go", patterns: ["WHEN TO USE: modifying 2+ places in the same file", "INSTEAD of chained edit_file calls", "同文件多处修改", "批量修改"] },
   { feature: "任务323 edit_file 尾部互引 multi_edit", file: "internal/tool/builtin/editfile.go", patterns: ["For multiple edits in one file (同文件多处修改), prefer multi_edit (atomic batch)"] },
+  // 任务 324：反馈触发规则定稿（2026-09-26 用户批准）内嵌 submit_feedback
+  // 描述——4 触发全带证据 / 5 不触发 / 三闸（≤2 条每会话、≤5 行带标签、
+  // ≥5 分钟或 ≥3 轮才投）。低噪声优先：merge 丢规则段即失守，锚点锁死。
+  { feature: "任务324 submit_feedback 4 触发+5 不触发", file: "internal/tool/builtin/feedback.go", patterns: ["(A) a tool or guard misbehaved", "(B) docs or a tool description contradicts actual behavior", "3+ times in a row", "(D) the user explicitly asks", "nice-to-have suggestions", "a topic already in the inbox"] },
+  { feature: "任务324 submit_feedback 成本三闸+172 中文触发词保留", file: "internal/tool/builtin/feedback.go", patterns: ["at most 2 notes per session", "at most 5 lines", "[bug], [gap], or [docs]", "5+ minutes or 3+ wasted rounds", "意见箱, 反馈, 记一条意见"] },
   // 任务 348：会话身份与职责结构化字段（三层架构角色字段化）。锁三处——
   // ①枚举闭集（human|main|sub|heartbeat|system，无第七种私造值）②presence-
   // based 写入（旧调用不清新字段=零迁移）③通讯录行带出（omitempty 形状

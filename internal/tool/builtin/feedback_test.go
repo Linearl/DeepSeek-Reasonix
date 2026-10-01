@@ -162,3 +162,37 @@ func TestSubmitFeedbackDescriptionNamesInboxAndCollector(t *testing.T) {
 		}
 	}
 }
+
+// Task 324: the user-approved trigger rules (2026-09-26) are embedded in the
+// tool description — 4 evidence-backed triggers, 5 non-triggers, 3 cost
+// gates. Each claim gets its own contains check so a partial rewrite of the
+// description fails at the exact rule it dropped.
+func TestSubmitFeedbackDescriptionEncodesTriggerRules(t *testing.T) {
+	desc := submitFeedback{}.Description()
+	for _, want := range []string{
+		// Trigger class A: tool/guard misbehavior with verbatim error + scenario.
+		"(A) a tool or guard misbehaved", "error verbatim",
+		// Trigger class B: docs/description vs actual behavior, with citation.
+		"(B) docs or a tool description contradicts actual behavior",
+		// Trigger class C: 3+ consecutive occurrences only; one-off = self-check.
+		"3+ times in a row", "self-check first",
+		// Trigger class D: explicit user request stays an always-on route.
+		"the user explicitly asks",
+		// Non-triggers (5).
+		"tasks that are merely hard or slow",
+		"transient network failures (retry first)",
+		"nice-to-have suggestions",
+		"a topic already in the inbox",
+		// Cost gates.
+		"at most 2 notes per session",
+		"at most 5 lines",
+		"[bug]", "[gap]", "[docs]",
+		"5+ minutes or 3+ wasted rounds",
+		// Task 172 anchors must survive the rewrite.
+		"意见箱", "反馈", "记一条意见", "collect_issues", "feedback-inbox",
+	} {
+		if !strings.Contains(desc, want) {
+			t.Fatalf("Description() missing trigger-rule claim %q:\n%s", want, desc)
+		}
+	}
+}
