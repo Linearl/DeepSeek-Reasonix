@@ -28,6 +28,12 @@ func (a *Agent) dispatchResolvedTool(ctx context.Context, plan *toolCallPlan) (r
 }
 
 func (a *Agent) invokeResolvedTool(ctx context.Context, plan *toolCallPlan) (result string, images []string, execution *tool.ShellExecution, err error) {
+	// S1b base gate: only a remote-capable resident base advertising the tools
+	// capability can take this branch; every other state falls through to the
+	// pre-S1 dispatch below, byte for byte (base_toolcall.go).
+	if out, ok := a.baseToolCall(ctx, plan); ok {
+		return out.result, out.images, out.execution, out.err
+	}
 	runTool, runArgs := plan.runTool, plan.runArgs
 	if reader, ok := runTool.(tool.ReadExecutor); ok {
 		start := time.Now()

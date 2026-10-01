@@ -1967,6 +1967,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		return missing
 	})
 
+	// S1b resident-base client (design §10): one Start per build, consumed by
+	// the executor (base-toolcall gate), the controller (tool-catalog gate)
+	// and the cleanup chain. Default switch off → inline, zero side effects.
+	baseClient := startBaseClient(ctx, cfg, reg)
 	execSess := newObservedSession(sysPrompt)
 	// Task 202 + M2: the collaboration status stream must be shared across
 	// every session of a batch even when their workspace roots point at
@@ -2000,6 +2004,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		Gate:               headlessGate,
 		Hooks:              hookRunner,
 		Jobs:               jm,
+		BaseClient:         baseClient,
 		// Parent write reservation at the executor entry covers all writers
 		// (including late Economy/MCP adds) without wrapping tool schemas.
 		WriteScheduler:     subagentScheduler,
@@ -2253,6 +2258,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			ImageInput:                   imageConfig,
 			MaxSteps:                     0,
 			Gate:                         headlessGate,
+			BaseClient:                   baseClient,
 			ModelRef:                     modelRefFromEntry(pe),
 			QuoteContext:                 quoteCtx,
 			ContextWindow:                pe.ContextWindow,
@@ -2307,6 +2313,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		},
 		ApprovalTier:            approvalTierForBuild(cfg, opts),
 		Runner:                  runner,
+		BaseClient:              baseClient,
 		Executor:                executor,
 		Sink:                    sink,
 		Policy:                  policy,
@@ -2490,6 +2497,16 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		ctrlOpts.SessionV4 = sessionV4
 		ctrlOpts.Cleanup = func() { cleanup() }
 	}
+	// S1b: base-client teardown rides the controller's cleanup chain — inline
+	// Close is a no-op (zero change with the switch off); remote Close tears
+	// the subprocess channel and process down (R1 counterpart to Start).
+	baseCleanup := ctrlOpts.Cleanup
+	ctrlOpts.Cleanup = func() {
+		if baseCleanup != nil {
+			baseCleanup()
+		}
+		_ = baseClient.Close()
+	}
 	ctrl := control.New(ctrlOpts)
 	bootTime.mark("controller")
 	// The role inputs set the session quality floor: delivery/deliver/quality
@@ -2632,7 +2649,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// after the fact. Observation only — never fails a build.
 	bootTime.mark("finalize")
 	slog.Info("boot: stage timings", "summary", bootTime.summary(), "root", root, "model", modelRef)
-	return finalizeBuildResult(&BuildResult{Controller: ctrl, Snapshot: snap, Runtime: runtimeSet, Owner: owner, Extensions: extensionMgr, Dispatcher: extensionDispatcher, ExtensionUI: extUIHub, ProviderResolver: providerResolver, BaseProviderResolver: baseResolver, Assembly: assembly}, !opts.deferPublish), nil
+	return finalizeBuildResult(&BuildResult{Controller: ctrl, Snapshot: snap, Runtime: runtimeSet, Owner: owner, Extensions: extensionMgr, Dispatcher: extensionDispatcher, ExtensionUI: extUIHub, ProviderResolver: providerResolver, BaseProviderResolver: baseResolver, Assembly: assembly, BaseClient: baseClient}, !opts.deferPublish), nil
 }
 
 // applyUnifiedProviderToolSurface restricts Schemas/ContractEntries to the

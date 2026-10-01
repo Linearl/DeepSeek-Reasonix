@@ -223,11 +223,16 @@ func (p *procRW) Close() error {
 // Parent death surfaces as stdin EOF (decision D4's Windows orphan path),
 // which Serve already answers with a clean nil and exit code 0.
 //
-// TODO(S1b): host the heavy base here — MCP connections, plugin/tool
-// registries, builtin registration, provider factory — and register the tool
-// surface handlers + capabilities.
-// TODO(S1c): logs/base.log (F2, subprocess panic must land in a file),
-// liveness tick, and the parent-liveness watchdog beyond pipe EOF.
+// The S1b tool-surface MECHANISM (AttachToolSurface + CapTools, see
+// serve_toolface.go) exists, but hosting the registry here still needs a
+// workspace root — which arrives with base.attach bookkeeping (sessions
+// domain). Until a surface is attached this process advertises no tools
+// capability, and every client gate falls back inline per R1: an empty serve
+// process never serves a wrong catalog.
+// TODO(S1c): host the heavy base (MCP connections, plugin/tool registries,
+// builtin registration, provider factory) once attach carries the root;
+// logs/base.log (F2, subprocess panic must land in a file), liveness tick,
+// and the parent-liveness watchdog beyond pipe EOF.
 func RunStdioServer(ctx context.Context, version string, in io.Reader, out io.Writer, errw io.Writer) int {
 	s := NewServer(version)
 	if err := s.Serve(ctx, in, out); err != nil {
