@@ -405,6 +405,14 @@ const CHECKS = [
   { feature: "任务396 shell 输出码页解码（RunForeground 收口）", file: "internal/shellrun/runner.go", patterns: ["decodeConsoleOutput(collector.combined.String())", "utf8SafeTrimTail(combined, tool.OutputTailMaxBytes)"] },
   { feature: "任务396 Windows 码页候选映射（控制台输出码页优先）", file: "internal/shellrun/codepage_windows.go", patterns: ["windows.GetConsoleOutputCP", "encodingForCodePage", "chineseSupersetDecoder"] },
   { feature: "任务396 解码失败回落原文（不阻断不崩）", file: "internal/shellrun/codepage.go", patterns: ["utf8.ValidString(raw)", "tryDecodeCodePage", "return raw"] },
+  // 任务 397（上游 #11329/#11323/#11247）：MemoryBench 评测有效性。三处对照中
+  // 两处同源修复：mb-contradiction 负向匹配词边界（"pnpm install" 含子串
+  // "npm install"，裸负向=结构性永假）+ memory-off 对照臂空隔离 state home
+  // （种子不再落在 agent 经 shell env 可读的磁盘路径）。#11323 经核对 fork 已
+  // 隔离（verify.sh 延迟投放+临时 workdir），锚点锁修复两处——被 merge 丢掉
+  // 即评测数字重新失真。
+  { feature: "任务397 mb-contradiction 负向匹配词边界", file: "benchmarks/memorybench/tasks/mb-contradiction/verify.sh", patterns: ["grep -qE \"(^|[^A-Za-z])npm install\""] },
+  { feature: "任务397 memory-off 臂空隔离 state home", file: "cmd/e2ebench/memorybench.go", patterns: ["e2ebench-memoff-", "cfg.policy == \"memory-off\""] },
 ];
 
 let failed = 0;
