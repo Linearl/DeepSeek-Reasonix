@@ -7,7 +7,6 @@ import { useHydrateSessionExperimentFlags } from "../app-runtime/useHydrateSessi
 import { Tooltip } from "../components/Tooltip";
 import type { Translator } from "../lib/i18n";
 import type { SettingsTab } from "../lib/types";
-import logoWordmark from "../assets/logo-wordmark.svg";
 
 const ProjectTree = lazy(() => import("../components/ProjectTree").then((module) => ({ default: module.ProjectTree })));
 
@@ -52,7 +51,7 @@ export function SidebarRegion(props: SidebarRegionProps) {
           <>
             <div className="sidebar__head" aria-hidden={props.collapsed}>
               <div className="sidebar__brand sidebar__brand--workbench">
-                <img src={logoWordmark} alt="Reasonix" className="sidebar__brand-logo sidebar__brand-logo--workbench" draggable={false} />
+                <span role="img" aria-label="Reasonix" className="sidebar__brand-logo sidebar__brand-logo--workbench" />
               </div>
             </div>
             <div className="sidebar__quick-actions">
@@ -64,7 +63,7 @@ export function SidebarRegion(props: SidebarRegionProps) {
         ) : (
           <>
             <div className="sidebar__brand" aria-hidden={props.collapsed}>
-              <img src={logoWordmark} alt="Reasonix" className="sidebar__brand-logo" draggable={false} />
+              <span role="img" aria-label="Reasonix" className="sidebar__brand-logo" />
             </div>
             <button className="sidebar__new" onClick={props.onNewSession}>
               <SquarePen size={18} /><span>{props.creation ? t("creation.sidebar.newChat") : t("topbar.newSession")}</span>

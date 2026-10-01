@@ -413,6 +413,14 @@ const CHECKS = [
   // 即评测数字重新失真。
   { feature: "任务397 mb-contradiction 负向匹配词边界", file: "benchmarks/memorybench/tasks/mb-contradiction/verify.sh", patterns: ["grep -qE \"(^|[^A-Za-z])npm install\""] },
   { feature: "任务397 memory-off 臂空隔离 state home", file: "cmd/e2ebench/memorybench.go", patterns: ["e2ebench-memoff-", "cfg.policy == \"memory-off\""] },
+  // 任务 401（上游 #11168 → #11188）：侧栏品牌 logo 随主题强调色着色。svg 资产
+  // 不动，改成 masked span 用 --accent 上色；锚点锁三处——两个渲染点（App.tsx
+  // 与 SidebarRegion 各两形态）不再出 <img>、CSS 用 var(--accent) 走 SVG mask、
+  // 暗色 brightness/invert 规则不再认领 .sidebar__brand-logo（否则强调色被压成
+  // 纯白）。丢任何一处，logo 回退成固定品牌蓝或被反相成白。
+  { feature: "任务401 侧栏 logo 强调色 mask（App.tsx 渲染点）", file: "desktop/frontend/src/App.tsx", patterns: ["<span role=\"img\" aria-label=\"Reasonix\" className=\"sidebar__brand-logo sidebar__brand-logo--workbench\" />", "<span role=\"img\" aria-label=\"Reasonix\" className=\"sidebar__brand-logo\" />"] },
+  { feature: "任务401 侧栏 logo 强调色 mask（SidebarRegion 渲染点）", file: "desktop/frontend/src/app-shell/SidebarRegion.tsx", patterns: ["<span role=\"img\" aria-label=\"Reasonix\" className=\"sidebar__brand-logo sidebar__brand-logo--workbench\" />", "<span role=\"img\" aria-label=\"Reasonix\" className=\"sidebar__brand-logo\" />"] },
+  { feature: "任务401 侧栏 logo 强调色 mask（CSS 上色与暗色规则解绑）", file: "desktop/frontend/src/styles.css", patterns: ["background-color: var(--accent);", "-webkit-mask-image: url(\"./assets/logo-wordmark.svg\");", ":root[data-theme=\"dark\"] .welcome__brand-logo {"] },
 ];
 
 let failed = 0;

@@ -4831,15 +4831,13 @@ a[href] {
   object-fit: contain;
 }
 
-:root[data-theme="dark"] .sidebar__brand-logo,
 :root[data-theme="dark"] .welcome__brand-logo {
   filter: brightness(0) invert(1);
   opacity: 0.94;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) .sidebar__brand-logo,
-  :root:not([data-theme]) .welcome__brand-logo {
+    :root:not([data-theme]) .welcome__brand-logo {
     filter: brightness(0) invert(1);
     opacity: 0.94;
   }
@@ -28858,8 +28856,19 @@ body > .mermaid-diagram--fullscreen {
   width: 136px;
   height: 32px;
   margin-left: -21px;
-  object-fit: contain;
-  object-position: left center;
+  /* Task 401 (upstream #11168 -> #11188): the wordmark is a masked span, not
+     an <img>, so its fill follows the theme accent instead of the fixed
+     brand blue (which was near-invisible on dark themes). The SVG asset is
+     unchanged; only the paint source changed. */
+  background-color: var(--accent);
+  -webkit-mask-image: url("./assets/logo-wordmark.svg");
+  mask-image: url("./assets/logo-wordmark.svg");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: left center;
+  mask-position: left center;
 }
 
 .sidebar__new {
