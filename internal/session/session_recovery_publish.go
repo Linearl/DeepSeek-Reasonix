@@ -30,6 +30,7 @@ func (s *Session) recoveryForDurable(durable uint64) (recoveryPublishState, bool
 		AnchorCommitID: tip.AnchorCommitID, AnchorHash: tip.AnchorHash,
 		ProjectionVersion: recoveryProjectionVersion, Projection: projection,
 		RecentMessages: detachMessages(s.recentMessages), CatalogPreview: s.catalogPreview,
+		MessageIDs: s.messageIDs.list(),
 	}
 	operations := make(map[string]operationRecord, len(s.commits))
 	for _, commit := range s.commits {

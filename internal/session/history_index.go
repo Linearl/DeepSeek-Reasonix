@@ -515,6 +515,14 @@ func indexMessageEvent(ctx context.Context, content *sessioncontent.Store, state
 		if err := strictPayload(payload, &body); err != nil || body.Message == nil {
 			return damagedPayload(event, err)
 		}
+		// Task 398: a repeated message/complete keeps the id's first record so
+		// the index build — and every history query behind it — survives a log
+		// that already carries a duplicate (upstream #10893).
+		if event.Kind == "message/complete" {
+			if _, repeated := state.positions[strings.TrimSpace(body.Message.ID)]; repeated {
+				return nil
+			}
+		}
 		return indexOneMessage(ctx, content, state, *body.Message, event.Sequence, event.Kind == "message/upsert")
 	case "history/replace":
 		var body struct {
