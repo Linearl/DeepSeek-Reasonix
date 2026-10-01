@@ -36,6 +36,15 @@ func (s *Server) registerBusRoutes(mux *http.ServeMux) {
 	}
 	// Streamable HTTP lives on one endpoint for all methods: POST for
 	// JSON-RPC, GET for the optional SSE stream, DELETE for session end.
-	mux.Handle("/mcp", s.bus.Handler())
+	// Each method is registered separately (task 434): a method-less "/mcp"
+	// alongside the upstream catch-all "GET /" is ambiguous to Go 1.22+'s
+	// ServeMux and panics at registration — serve never started. The MCP
+	// streamable transport only defines POST/GET/DELETE (the SDK handler
+	// 405s everything else, and HEAD already follows GET), so the scoped
+	// trio covers the exact protocol surface.
+	handler := s.bus.Handler()
+	mux.Handle("POST /mcp", handler)
+	mux.Handle("GET /mcp", handler)
+	mux.Handle("DELETE /mcp", handler)
 	mux.HandleFunc("POST /bus/events", s.bus.HandleEvent)
 }
