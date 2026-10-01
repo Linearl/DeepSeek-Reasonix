@@ -272,6 +272,16 @@ const CHECKS = [
   { feature: "任务152 面板树渲染+归档区 TSX", file: "desktop/frontend/src/components/TodoPanel.tsx", patterns: ["function TodoTree", "function TodoArchive", "todobar__archive-toggle", "todobar__caret"] },
   { feature: "任务152 树/归档 CSS（theme token）", file: "desktop/frontend/src/styles.css", patterns: [".todobar__item--deep", ".todobar__caret", ".todobar__code", ".todobar__archive-toggle"] },
   { feature: "任务152 压缩摘要任务树快照段", file: "internal/agent/compact.go", patterns: ["## Task tree"] },
+
+  // ── 任务 428：ask 面板投递门（2026-10-01）────────────────────────
+  // 现场面：折叠条到了、面板从未弹出（turn 运行中 ask 双向干等）。
+  // 两条吞没路径都要在：C1 残留 cancelRequested 不吞 ask（judgeAskArrival）、
+  // C2 兼容激活不清空存活 prompt 等待（decideActivationPrompt，#6429 锚点
+  // 语义保持）；打点三方按 prompt id + turn id 关联：前端 feature=ask-panel、
+  // Go [ask-panel] emit 行、406 interrupted-turn-recovery 记录。
+  { feature: "任务428 ask 面板投递门纯判定（C1/C2）", file: "desktop/frontend/src/lib/askPanelGate.ts", patterns: ["export function judgeAskArrival", "clearCancelResidue", "export function decideActivationPrompt", "resetPromptAnchor"] },
+  { feature: "任务428 ask 面板投递门 reducer 接线", file: "desktop/frontend/src/lib/useController.ts", patterns: ["judgeAskArrival(", "decideActivationPrompt({", "reportAskPanelVerdict", "\"ask-panel\""] },
+  { feature: "任务428 ask 打点（Go emit 侧）", file: "internal/control/controller.go", patterns: ["[ask-panel] ask request emitted", "[ask-panel] ask request emit failed"] },
 ];
 
 let failed = 0;

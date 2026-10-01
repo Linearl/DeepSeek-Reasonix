@@ -24,6 +24,7 @@ import { historicalResultNotice, withRunningChecks, withTurnResult } from "./com
 import { mergeTurnResult } from "./turnResult";
 import { invalidateSharedQuery } from "./queryCoalesce";
 import { replayPendingPromptsForActiveTab } from "./promptReplay";
+import { decideActivationPrompt, judgeAskArrival, type AskArrivalVerdict } from "./askPanelGate";
 import { createRafBatch } from "./rafBatch";
 import { foregroundRunningFromRuntimeMeta, type RuntimeMetaSnapshot } from "./runtimeMeta";
 import { aliasActivationRequest, noteActivationRequested, noteActivationSettled, noteActivationStarted } from "./sessionDiagnostics";
@@ -1514,6 +1515,24 @@ function applyExtensionNotification(s: State, surface: WireExtensionSurface): St
   return { ...s, seq: s.seq + 1, extensionNotifications: [...s.extensionNotifications, entry] };
 }
 
+// Task 428 diagnostic (C1 side): the frontend half of the ask-panel trail.
+// Fires only on the branches the pre-428 code used to swallow silently — a
+// prompt surfacing through cleared cancel residue, or one dropped after a
+// settled cancel. Normal deliveries stay silent. Fields join against the Go
+// `[ask-panel]` emit line (internal/control/controller.go) and the 406
+// interrupted-turn-recovery record via prompt id + turn id, so the
+// emit → frontend verdict → fence outcome chain is reconstructable from
+// desktop.log alone.
+function reportAskPanelVerdict(verdict: AskArrivalVerdict, s: State, e: WireEvent): void {
+  if (verdict.action === "surface" && !verdict.clearCancelResidue) return;
+  if (verdict.action === "drop" && verdict.reason === "already-resolved") return;
+  const label = verdict.action === "drop"
+    ? `dropped:${verdict.reason}`
+    : `residue-cleared`;
+  const detail = `verdict=${label} ask=${e.ask?.id ?? "-"} turn=${e.turnId ?? s.activeTurnId ?? "-"} resolved=${s.resolvedPromptId ?? "-"} running=${s.running} turnActive=${s.turnActive}`;
+  reportFrontendLog("ask-panel", "ask arrival judged", detail, verdict.action === "drop" ? "info" : "warn");
+}
+
 function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State {
   if (s.discardTurn) {
     if (e.kind === "turn_done") {
@@ -1951,13 +1970,26 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       });
     }
     case "ask_request": {
-      if (s.cancelRequested) return s;
-      if (e.ask?.id !== undefined && e.ask.id === s.resolvedPromptId) return s;
+      // Task 428 C1: the old blanket `cancelRequested → drop` turned a stale
+      // cancel flag (Stop pressed earlier, turn kept running via steer/retry)
+      // into a silent ask-panel swallow that left agent and user blocked on
+      // each other for the whole prompt timeout. judgeAskArrival keeps the
+      // drop only where it is provably right (the prompt was already answered
+      // locally, or the turn really settled after a cancel) and otherwise
+      // surfaces the prompt, clearing the residue so later prompt kinds are
+      // not swallowed by the same stale flag.
+      const verdict = judgeAskArrival(
+        { cancelRequested: s.cancelRequested, turnLive: s.running || s.turnActive, resolvedPromptId: s.resolvedPromptId },
+        e.ask?.id,
+      );
+      reportAskPanelVerdict(verdict, s, e);
+      if (verdict.action === "drop") return s;
+      const base = verdict.clearCancelResidue ? { ...s, cancelRequested: false } : s;
       return beginPromptWait({
-        ...s,
-        activeTurnId: e.turnId ?? s.activeTurnId,
+        ...base,
+        activeTurnId: e.turnId ?? base.activeTurnId,
         ask: e.ask ? { ...e.ask, turnId: e.turnId ?? e.ask.turnId, runtimeEpoch: e.runtimeEpoch ?? e.ask.runtimeEpoch } : e.ask,
-        promptArrivedAt: e.ask?.id === s.promptArrivedId ? s.promptArrivedAt : promptEventClock(),
+        promptArrivedAt: e.ask?.id === base.promptArrivedId ? base.promptArrivedAt : promptEventClock(),
         promptArrivedId: e.ask?.id,
         pendingPrompt: true,
         running: true,
@@ -2327,18 +2359,40 @@ export function reducer(s: State, a: Action): State {
       : s;
     case "hydrate_error": return applyHydrateErrorState(s, a.reason, a.error);
     case "backend_activation_start": {
-      // Backend metadata makes a cached background prompt safe to preserve.
-      // Otherwise retain the compatibility reset for stale/untagged events.
-      const preservePrompt = Boolean(a.backendPendingPrompt && (s.approval || s.ask));
+      // Task 428 C2: the untagged compatibility path (e.g. restoreNavigationSource)
+      // used to wipe whatever prompt wait the tab state still held, so an ask
+      // panel vanished the moment a navigation restore crossed it. The tagged
+      // fast path keeps its original semantics; decideActivationPrompt adds a
+      // guard so a prompt wait on a turn the state still believes is live is
+      // never wiped, while a stale cached prompt on a settled turn still is.
+      const decision = decideActivationPrompt({
+        backendPendingPrompt: a.backendPendingPrompt,
+        approval: s.approval,
+        ask: s.ask,
+        mcpInteraction: s.mcpInteraction,
+        running: s.running,
+        turnActive: s.turnActive,
+      });
+      if (decision.guardedKind) {
+        reportFrontendLog(
+          "ask-panel",
+          "activation start kept live prompt wait",
+          `kind=${decision.guardedKind} id=${decision.guardedPromptId ?? "-"} tagged=${Boolean(a.backendPendingPrompt)} running=${s.running} turnActive=${s.turnActive}`,
+          "warn",
+        );
+      }
+      const preservePrompt = decision.preservePrompt;
       return {
         ...s,
         backendActivationPending: true,
         pendingPrompt: preservePrompt,
         approval: preservePrompt ? s.approval : undefined,
         ask: preservePrompt ? s.ask : undefined,
-        // A confirmed cached prompt keeps its original freshness boundary.
-        promptArrivedAt: preservePrompt ? s.promptArrivedAt : undefined,
-        promptArrivedId: preservePrompt ? s.promptArrivedId : undefined,
+        // A confirmed cached prompt keeps its original freshness boundary; the
+        // guard-kept one drops it so a post-activation replay re-anchors
+        // against the activation (#6429), while the panel itself survives.
+        promptArrivedAt: preservePrompt && !decision.resetPromptAnchor ? s.promptArrivedAt : undefined,
+        promptArrivedId: preservePrompt && !decision.resetPromptAnchor ? s.promptArrivedId : undefined,
         running: preservePrompt,
         turnActive: preservePrompt,
         cancellable: preservePrompt,

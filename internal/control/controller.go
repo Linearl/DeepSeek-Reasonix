@@ -2831,10 +2831,17 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	if err := event.EmitChecked(c.sink, event.Event{Kind: event.AskRequest, TurnID: turnID, ItemID: id, Ask: event.Ask{ID: id, Questions: questions, TurnID: turnID}}); err != nil {
 		c.approval.promptEmitMu.Unlock()
 		c.cancelOwnedPrompt(id)
+		// Task 428 instrumentation: the backend half of the ask-panel trail.
+		// The frontend logs its ask_request verdict under feature=ask-panel and
+		// the 406 recovery record closes the chain, all joinable by prompt id +
+		// turn id — an ask that never showed a panel is now reconstructable
+		// from desktop.log alone.
+		log.Printf("[ask-panel] ask request emit failed turn=%s item=%s err=%v", turnID, id, err)
 		return nil, fmt.Errorf("persist ask request: %w", err)
 	}
 	c.approval.markAskEmitted(id)
 	c.approval.promptEmitMu.Unlock()
+	log.Printf("[ask-panel] ask request emitted turn=%s item=%s questions=%d", turnID, id, len(questions))
 
 	waitCtx, cancelWait := c.approval.waitContext(ctx)
 	defer cancelWait()

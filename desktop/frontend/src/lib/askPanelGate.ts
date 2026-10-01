@@ -1,0 +1,106 @@
+/**
+ * Task 428 — ask 面板投递门（纯判定）。
+ *
+ * ask 选择面板在两条路径上会被静默吞掉（现场：折叠条到了、面板从未弹出，
+ * agent 与用户双向干等整个 ask 超时）：
+ *
+ *   C1 — `ask_request` 事件进入 reducer 时，只要 `cancelRequested` 残留为
+ *   true 就整体丢弃。turn 被 Stop 后经 steer/恢复继续跑时，该标志可能残留
+ *   整个 turn 生命周期，后续每一次 ask（含重放）都被吞。
+ *
+ *   C2 — `backend_activation_start` 兼容路径（未带 `backendPendingPrompt`
+ *   标签，如 restoreNavigationSource）无条件清空本地还活着的 prompt 等待。
+ *
+ * 两个判定都抽成纯函数：吞没决策可脱离 DOM 单测，reducer 分支与诊断日志
+ * 读同一份结论，永不漂移。
+ *
+ * 判据与 406（工具恢复围栏）联动：前端打点 feature=ask-panel、Go 侧
+ * [ask-panel] emit 行、interrupted-turn-recovery 记录，三方按 prompt id +
+ * turn id 关联，可从日志直接复原「发出→前端处理→围栏收尾」全链。
+ */
+
+/** C1 判定输入：reducer 进入 ask_request 分支时的状态切片。 */
+export interface AskArrivalView {
+  cancelRequested: boolean;
+  /** 本地仍认为 turn 存活（running 或 turnActive）。 */
+  turnLive: boolean;
+  /** 已本地作答/提交成功的 prompt id（#6432 墓碑）。 */
+  resolvedPromptId?: string;
+}
+
+export type AskArrivalVerdict =
+  | { action: "surface"; clearCancelResidue: false; reason: "fresh" }
+  | { action: "surface"; clearCancelResidue: true; reason: "cancel-residue" }
+  | { action: "drop"; reason: "already-resolved" }
+  | { action: "drop"; reason: "cancelled-idle" };
+
+/**
+ * 判定一条到来的 ask 是否允许打开面板。
+ *
+ * 顺序即语义：
+ * 1. 已作答墓碑（resolvedPromptId）绝对优先——延迟重放不得复活已答过的
+ *    面板（#6432 round 2），即使 cancel 残留也一样丢弃；
+ * 2. cancel 残留 + turn 仍存活 → 新 ask 本身就是「运行时活着且在等用户」
+ *    的正面证据（真正被取消的 turn 不会再提出新问题），视为残留并清掉，
+ *    面板照常弹出——这是 428 的防御修复点；
+ * 3. cancel + turn 已落定 → 维持旧行为丢弃（取消落地后的迟到重放，弹出
+ *    只会制造僵尸面板）；
+ * 4. 其余一律放行。
+ */
+export function judgeAskArrival(state: AskArrivalView, askId?: string): AskArrivalVerdict {
+  if (askId !== undefined && state.resolvedPromptId !== undefined && askId === state.resolvedPromptId) {
+    return { action: "drop", reason: "already-resolved" };
+  }
+  if (state.cancelRequested) {
+    if (state.turnLive) return { action: "surface", clearCancelResidue: true, reason: "cancel-residue" };
+    return { action: "drop", reason: "cancelled-idle" };
+  }
+  return { action: "surface", clearCancelResidue: false, reason: "fresh" };
+}
+
+/** C2 判定输入：backend_activation_start 分支的状态切片（结构性最小视图）。 */
+export interface ActivationPromptView {
+  /** 后端标签：激活元数据确认该会话确有挂起 prompt。 */
+  backendPendingPrompt?: boolean;
+  approval?: { id?: string };
+  ask?: { id?: string };
+  mcpInteraction?: { id?: string };
+  running: boolean;
+  turnActive: boolean;
+}
+
+export interface ActivationPromptDecision {
+  preservePrompt: boolean;
+  /**
+   * 护栏保留面板时仍丢弃新鲜度锚点（promptArrivedId/At）：激活后的重放要
+   * 相对本次激活重新锚定（#6429 tab-switch 语义）。面板留下，锚点重置。
+   */
+  resetPromptAnchor: boolean;
+  /** 护栏生效时给出被保住的 prompt 种类（旧代码在这里会清空它）。 */
+  guardedKind?: "ask" | "approval" | "mcp";
+  guardedPromptId?: string;
+}
+
+/**
+ * 判定 backend_activation_start 是否保留本地 prompt 等待。
+ *
+ * 带标签的快路径维持原语义（后端确认挂起 + 本地确有 approval/ask 才保留，
+ * 且保留原新鲜度边界）。护栏只补兼容路径的缺口：本地还持有 prompt 等待、
+ * 且 turn 仍存活时保留面板——清空一个活着的等待就是 428 的 C2 吞面板；
+ * turn 已落定的缓存残留仍按原兼容语义清掉（陈旧面板不复活）。
+ */
+export function decideActivationPrompt(state: ActivationPromptView): ActivationPromptDecision {
+  const tagged = Boolean(state.backendPendingPrompt && (state.approval || state.ask));
+  if (tagged) return { preservePrompt: true, resetPromptAnchor: false };
+  const live = state.ask
+    ? ({ kind: "ask" as const, id: state.ask.id })
+    : state.approval
+      ? ({ kind: "approval" as const, id: state.approval.id })
+      : state.mcpInteraction
+        ? ({ kind: "mcp" as const, id: state.mcpInteraction.id })
+        : undefined;
+  if (live && (state.running || state.turnActive)) {
+    return { preservePrompt: true, resetPromptAnchor: true, guardedKind: live.kind, guardedPromptId: live.id };
+  }
+  return { preservePrompt: false, resetPromptAnchor: false };
+}
