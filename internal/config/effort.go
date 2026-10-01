@@ -72,7 +72,11 @@ func EffortCapabilityForEntry(e *ProviderEntry) EffortCapability {
 	}
 	supported := normalizedSupportedEfforts(e)
 	if len(supported) > 0 {
-		levels := make([]string, 0, len(supported)+1)
+		// Hint deliberately drops the +1: len(supported)+1 is an overflow-prone
+		// sum for the allocator on 32-bit builds (codeql
+		// go/allocation-size-overflow); the "auto" prepend costs at most one
+		// amortized growth.
+		levels := make([]string, 0, len(supported))
 		levels = append(levels, "auto")
 		levels = append(levels, supported...)
 		def := normalizeEffortLevel(e.DefaultEffort)

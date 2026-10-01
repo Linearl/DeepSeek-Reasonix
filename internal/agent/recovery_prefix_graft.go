@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"reasonix/internal/provider"
@@ -36,11 +37,10 @@ func graftPrefixOntoLines(lines []string, gap []provider.Message) ([]string, err
 	if err != nil {
 		return nil, err
 	}
-	merged := make([]string, 0, len(lines)+len(encoded))
-	merged = append(merged, lines[:insertAt]...)
-	merged = append(merged, encoded...)
-	merged = append(merged, lines[insertAt:]...)
-	return merged, nil
+	// slices.Concat sizes the result internally: the len(a)+len(b) hint this
+	// replaces is an overflow-prone sum for the allocator on 32-bit builds
+	// (codeql go/allocation-size-overflow).
+	return slices.Concat(lines[:insertAt], encoded, lines[insertAt:]), nil
 }
 
 // leadingSystemLineCount counts the leading lines that decode to system-role

@@ -24,6 +24,7 @@ import (
 	"reasonix/internal/fileutil"
 	"reasonix/internal/notify"
 	"reasonix/internal/provider"
+	"reasonix/internal/secrets"
 	"reasonix/internal/store"
 	"reasonix/internal/turnevent"
 	"slices"
@@ -4283,7 +4284,10 @@ func (a *App) maybeResumeAutopilotTab(tab *WorkspaceTab) {
 	}
 	go func() {
 		if err := a.SubmitToTab(id, autopilotResumePrompt); err != nil {
-			slog.Debug("desktop: autopilot resume skipped", "tab", id, "err", err)
+			// codeql[go/clear-text-logging] the flagged chain only carries the
+			// provider env-var NAME from config validation errors, never the
+			// key value; RedactError also strips any provider-echoed key text.
+			slog.Debug("desktop: autopilot resume skipped", "tab", id, "err", secrets.RedactError(err))
 			return
 		}
 		slog.Info("desktop: autopilot run resumed", "tab", id)

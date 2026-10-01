@@ -49,8 +49,12 @@ func fileReservation(root string, paths []string) WritePathSet {
 }
 
 func mergeRealized(existing []string, add WritePathSet) []string {
-	seen := make(map[string]bool, len(existing)+len(add.Paths))
-	out := make([]string, 0, len(existing)+len(add.Paths))
+	// Hint via max(): len(existing)+len(add.Paths) is an overflow-prone sum for
+	// the allocator on 32-bit builds (codeql go/allocation-size-overflow), and
+	// dedup means the larger input is the realistic lower bound anyway.
+	hint := max(len(existing), len(add.Paths))
+	seen := make(map[string]bool, hint)
+	out := make([]string, 0, hint)
 	for _, p := range existing {
 		key := foldPathKey(p)
 		if seen[key] {

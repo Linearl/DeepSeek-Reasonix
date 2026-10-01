@@ -6,6 +6,7 @@ import (
 	"syscall"
 
 	"reasonix/internal/agent"
+	"reasonix/internal/secrets"
 )
 
 // Sanitized errors surfaced when a destructive or restore session operation
@@ -61,6 +62,9 @@ func friendlySessionFileError(err error) error {
 	default:
 		return err
 	}
-	slog.Warn("desktop: session file operation blocked", "err", err)
+	// codeql[go/clear-text-logging] the flagged chain only carries the provider
+	// env-var NAME from config validation errors, never the key value;
+	// RedactError also strips any provider-echoed key text.
+	slog.Warn("desktop: session file operation blocked", "err", secrets.RedactError(err))
 	return friendly
 }

@@ -512,12 +512,20 @@ func collabDispatchEcho(cfg SessionCollabConfig) []string {
 	return cfg.RecentDispatches()
 }
 
+// collabDirectoryMaxRows is the hard row ceiling for list/search pages — the
+// tool schema's documented "max 1000". The rows hint below deliberately uses
+// this constant instead of the caller-controlled limit: a limit-derived hint
+// stays flagged by codeql go/uncontrolled-allocation-size even after the
+// clamp above, and the constant keeps the allocation provably bounded
+// (~100KB of metadata structs worst case, per tool call).
+const collabDirectoryMaxRows = 1000
+
 func directoryPage(cfg SessionCollabConfig, limit int, archived *bool, query string) (string, error) {
 	if limit <= 0 {
 		limit = 200
 	}
-	if limit > 1000 {
-		limit = 1000
+	if limit > collabDirectoryMaxRows {
+		limit = collabDirectoryMaxRows
 	}
 	includeArchived := archived != nil && *archived
 	q := strings.ToLower(strings.TrimSpace(query))
@@ -541,7 +549,7 @@ func directoryPage(cfg SessionCollabConfig, limit int, archived *bool, query str
 	// A duty older than a week, in a codebase where batches live for days, is
 	// presumed stale rather than presumed current.
 	const purposeStaleAfter = 7 * 24 * time.Hour
-	rows := make([]row, 0, limit)
+	rows := make([]row, 0, collabDirectoryMaxRows)
 	eligible := 0
 	for _, id := range all {
 		if id.Archived && !includeArchived {

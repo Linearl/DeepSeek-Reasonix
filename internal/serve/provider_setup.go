@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"reasonix/internal/config"
+	"reasonix/internal/secrets"
 )
 
 //go:embed provider_setup.html
@@ -151,7 +152,11 @@ func (s *Server) providerSetupSave(w http.ResponseWriter, r *http.Request) {
 		}
 		// Setup failures can contain filesystem or provider details. Keep those in
 		// the remote process log rather than reflecting them into the browser.
-		slog.Warn("serve: remote provider setup failed", "err", err)
+		// This handler processes the submitted credential itself: activation
+		// errors can embed provider-echoed key text, so the log boundary
+		// redacts (codeql[go/clear-text-logging] — the flagged chain otherwise
+		// carries only the env-var NAME from config validation errors).
+		slog.Warn("serve: remote provider setup failed", "err", secrets.RedactError(err))
 		http.Error(w, "unable to complete remote Provider setup", status)
 		return
 	}
