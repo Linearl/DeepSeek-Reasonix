@@ -233,6 +233,13 @@ type Options struct {
 	// lifecycle to the subscription verdict (abnormal-end detection). Nil
 	// keeps every status unknown so the detector never guesses a death.
 	OnSessionTurnStatus func(contactID string) (status string, known bool)
+	// 任务 285（会话信息面）三个宿主探针：侧栏分组归属、recovery 版本谱系
+	// （与 UI「查看版本」同源）、版本切换（宿主既有 recovery 选择路径）。
+	// Nil keeps the info fields absent and the version tools refusing
+	// actionably (CLI/tests).
+	OnSessionGroup        func(topicID string) (group string, known bool)
+	OnSessionVersions     func(scope, workspaceRoot, topicID, sessionPath string) (members []agent.SessionVersionInfo, ok bool)
+	OnAdoptSessionVersion func(scope, workspaceRoot, topicID, sessionPath, versionID string) error
 	// OnCascadeDelegate (task 225) resolves the task-source parent's Ask
 	// channel for THIS session's approval prompts — the host owns the
 	// contact-bound grant registry (24h). Nil keeps every prompt local.
@@ -2095,6 +2102,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			RecentDispatches: executor.RecentDispatches,
 			// Task 274 ①: model/provider visibility for the directory rows.
 			SessionInfo: opts.OnSessionInfo,
+			// 任务 285: 会话信息面三探针（分组/版本谱系/版本切换）。
+			SessionGroup:        opts.OnSessionGroup,
+			SessionVersions:     opts.OnSessionVersions,
+			AdoptSessionVersion: opts.OnAdoptSessionVersion,
 			// Task 274 ②③: controller hooks for stop/set_model (gated below).
 			SessionControl: agent.SessionControlHooks{
 				Stop:     opts.OnSessionStop,
@@ -2115,6 +2126,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		reg.Add(agent.NewSetSessionPurposeTool(collab))
 		reg.Add(agent.NewListAddressableSessionsTool(collab))
 		reg.Add(agent.NewGetSessionStatusTool(collab))
+		// 任务 285: 会话信息面三工具（分组/版本谱系读 + 带确认的版本切换写）。
+		reg.Add(agent.NewGetSessionInfoTool(collab))
+		reg.Add(agent.NewListSessionVersionsTool(collab))
+		reg.Add(agent.NewAdoptSessionVersionTool(collab))
 		// Task 228: the orchestration wait — same state judgement as
 		// get_session_status (shared collabStatusRecords), blocking semantics.
 		// Read-only, so it rides the same unconditional registration.
