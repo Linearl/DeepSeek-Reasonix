@@ -137,6 +137,17 @@ type App struct {
 	autonomousMu      sync.Mutex
 	autonomousPending pendingUpdateTarget
 
+	// Task 421: bounded effort re-fetch (see effort_fetch.go). effortCache
+	// holds the last completed EffortInfo per tab ID ("" = the active-tab
+	// form) so a read that blows the timeout serves this instead of stalling
+	// the switch-tab ancillary batch. Display data only. The stub and the
+	// limit override are test-only (catalogReconcileHook convention: set
+	// before concurrent calls, zero/nil in production).
+	effortReadStub          func(tabID string) EffortInfo
+	effortReadLimitOverride time.Duration
+	effortCacheMu           sync.Mutex
+	effortCache             map[string]effortCacheEntry
+
 	// sessionCatalog is a disposable, asynchronously opened projection of
 	// authoritative session sidecars. Project-shell APIs must tolerate nil here:
 	// opening, migration, repair, and corruption recovery never gate the UI.
@@ -10305,7 +10316,12 @@ func (a *App) Effort() EffortInfo {
 	return a.EffortForTab("")
 }
 
-func (a *App) EffortForTab(tabID string) EffortInfo {
+// effortForTabDirect is the unbounded effort read: provider entry resolution
+// (a full config disk load plus session-binding reconcile per call) followed
+// by capability mapping. Task 421 bounds it behind EffortForTab in
+// effort_fetch.go; binding surfaces must go through EffortForTab so a stalled
+// read cannot hang a tab switch.
+func (a *App) effortForTabDirect(tabID string) EffortInfo {
 	entry, err := a.currentProviderEntryForTab(tabID)
 	if err != nil {
 		return EffortInfo{Current: "auto", Levels: []string{}}

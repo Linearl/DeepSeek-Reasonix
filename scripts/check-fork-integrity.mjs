@@ -247,6 +247,12 @@ const CHECKS = [
   { feature: "任务389 catalog 空闲 CPU 修复：30s 循环→fsnotify watch 单点移植（上游 #10603）", file: "desktop/session_catalog_watch.go", patterns: ["func (a *App) watchSessionCatalog", "5 * time.Minute"] },
   { feature: "任务389 循环移除守护", file: "desktop/session_catalog_lifecycle.go", patterns: ["watchSessionCatalog(ctx, catalog)"] },
   { feature: "任务386 markdown cache 碰撞守卫 backstop 测试（消费比对 miss 语义）", file: "desktop/frontend/src/__tests__/markdown-history.test.tsx", patterns: ["fidelity backstop at the store boundary", "treats the collision as a miss"] },
+  // 任务421 switch-tab ancillary effort 补取止血：EffortForTab 必须经超时上限+缓存兜底包装，
+  // 直读函数不得被 binding 面直接调用。锚点锁「包装入口 + 上限常量 + 三态测试」，
+  // 上游 merge 若把 EffortForTab 还原成直读（无上限），7-15s 坏样本会无声复发。
+  { feature: "任务421 effort 补取超时上限+缓存兜底（入口包装）", file: "desktop/effort_fetch.go", patterns: ["effortReadTimeout = 2 * time.Second", "func (a *App) EffortForTab(tabID string) EffortInfo", "serving cached value"] },
+  { feature: "任务421 直读函数让位包装（app.go 不再直连 binding）", file: "desktop/app.go", patterns: ["func (a *App) effortForTabDirect(tabID string) EffortInfo"] },
+  { feature: "任务421 三态测试（超时兜底/冷缓存缺省/正常刷新）", file: "desktop/effort_fetch_test.go", patterns: ["TestEffortForTabTimeoutServesCachedValue", "TestEffortForTabTimeoutWithoutCacheServesDefault", "TestEffortForTabNormalReadRefreshesCache"] },
   // 任务 245：面板记忆键域级归一。三个锚点锁「键只经 workspacePanelMemoryRoot 产出」：
   // 映射函数本体（global→单键分支）+ 两条接线点（App 与 composition）的调用形状。
   // 上游若重新引入 `?? state.meta?.cwd` 兜底，Global 域面板记忆会重新按会话碎裂。
