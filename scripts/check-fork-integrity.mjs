@@ -329,6 +329,13 @@ const CHECKS = [
   { feature: "任务249 网关接管闸门（转发前拦截）", file: "internal/servepool/gateway.go", patterns: ["takeoverGate TakeoverGateFunc", "gateTakeover(w, r, id)", "tail == \"takeover-session\""] },
   { feature: "任务249 桌面接管闸门（弹窗桥 + 释放租约）", file: "desktop/servepool_takeover_gate.go", patterns: ["func (a *App) servePoolTakeoverGate", "registerTakeoverPending(marker)", "func (a *App) yieldTabsToGatewayTakeover"] },
   { feature: "任务249 闸门接线（startServePool）", file: "desktop/servepool_host.go", patterns: ["a.installServePoolTakeoverGate(gw)"] },
+  // 任务 276：输入框易失焦。三探针（epoch bump / IME 组合被打断 / 焦点恢复
+  // 被取消）统一走 composer-focus 通道落 desktop.log；修复 b = focus 落位
+  // 校验 + 有界帧内重试 + 禁用翻转自愈（runtimeState.unknown 等瞬时态静默
+  // 夺焦后归还）。锚点锁探针与自愈两侧——merge 丢任何一侧，复发即失证据。
+  { feature: "任务276 焦点三探针（composer-focus 通道）", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["draft epoch bumped", "focus restore cancelled by draft epoch", "focus restore exhausted retries"] },
+  { feature: "任务276 IME 组合打断探针", file: "desktop/frontend/src/lib/useComposerImeGuard.ts", patterns: ["ime composition interrupted by focus loss", "ime composition interrupted by unmount"] },
+  { feature: "任务276 禁用翻转焦点自愈", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["focus restored after disable flip", "composerInputWasFocusedRef"] },
 ];
 
 let failed = 0;
