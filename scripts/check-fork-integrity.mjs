@@ -647,6 +647,12 @@ const CHECKS = [
   { feature: "S1 开关实验室入口（rail 行+详情卡+重启横幅）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["| \"baseProcess\"", "{ id: \"baseProcess\", group: \"misc\"", "selected === \"baseProcess\" && (", "app.SetExperimentalBaseProcess(on)"] },
   { feature: "S1 开关桥接线（接口声明+mock 桩）", file: "desktop/frontend/src/lib/bridge.ts", patterns: ["SetExperimentalBaseProcess(enabled: boolean): Promise<void>;", "async SetExperimentalBaseProcess() {}"] },
   { feature: "S1 开关 Go 侧读写链（setter+视图字段）", file: "desktop/settings_app.go", patterns: ["ExperimentalBaseProcess bool `json:\"experimentalBaseProcess\"`", "view.ExperimentalBaseProcess = cfg.Agent.ExperimentalBaseProcess", "ExperimentalBaseProcess:             cfg.Agent.ExperimentalBaseProcess"] },
+
+  // 任务411（20261001 批十收尾）：快速切换版本治理——出包自动清理 + 面板删除历史版本。
+  // 保留规则只实现一次（installlayout.PruneVersionTrees，含 current.json 指向硬跳过），
+  // 出包脚本经 tools/prune-versions 调它；合并丢了任一环都会让 versions/ 重新堆积。
+  { feature: "任务411 versions 保留规则（保留 N + current 指向硬跳过）", file: "internal/installlayout/prune.go", patterns: ["func PruneVersionTrees", "keep must be >= 0", "name == active"] },
+  { feature: "任务411 出包脚本接自动清理（--keep/REASONIX_VERSIONS_KEEP）", file: "scripts/build-local-installer.sh", patterns: ["tools/prune-versions", "--keep", "REASONIX_VERSIONS_KEEP"] },
 ];
 
 let failed = 0;
