@@ -93,5 +93,20 @@ console.log("\ntask 412 classic rail + switch timing");
   ok(/requestAnimationFrame\(\(\) => requestAnimationFrame\(/.test(panel), "painted probe waits for a real re-layout (double-rAF)");
 }
 
+// ── Rework (v2058 install-feedback): classic renders through App.tsx, not
+//    SidebarRegion — the harness DOM assertions passed while the installed
+//    app still stacked vertically because App.tsx's footer ternary only sent
+//    workbench down the utility-row path (classic fell through to the old
+//    vertical navitem list with sr-only labels = "icons only but stacked",
+//    exactly the user's screenshot). Both render paths must now reach it.
+{
+  const app = readFileSync(fileURLToPath(new URL("../App.tsx", import.meta.url)), "utf8");
+  ok(app.includes("{(sidebarWorkbench || !sidebarCreation) ? (\n            <nav className=\"sidebar__nav sidebar__nav--footer\">"), "App.tsx footer ternary sends classic (non-creation) down the utility-row path");
+  // condition semantics: workbench ✓, classic ✓, creation ✗
+  const cond = (w: boolean, c: boolean) => w || !c;
+  ok(cond(false, false) && cond(true, false) && !cond(false, true), "condition truth table: classic→row, workbench→row, creation→nav");
+  ok(/\{sidebarCreation && \(\s*<Tooltip label=\{t\("projectTree\.searchPlaceholder"\)\}/.test(app), "App.tsx creation nav rows kept (search + labeled buttons unchanged)");
+}
+
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
 if (failed > 0) process.exit(1);
