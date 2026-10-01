@@ -29,6 +29,7 @@ import {
   projectTreeShellSignature,
 } from "../components/ProjectTree";
 import { projectTreeTrashingTopics } from "../lib/projectTreeArchive";
+import { topicUnknownTimeLabel } from "../lib/projectTreeTopic";
 import { normalizeProjectTreeRuntimeSnapshot } from "../lib/projectTreeRuntime";
 import { runProjectTreeSortRuntimeTests } from "./project-tree-sort-runtime.test";
 import { runProjectTreePinnedShellRuntimeTests } from "./project-tree-pinned-shell-runtime.test";
@@ -193,6 +194,49 @@ eq(
   }, testT),
   "projectTree.justNow",
   "topic with a real recent timestamp still renders just-now meta",
+);
+
+// Task 352: the "previously" fallback may only surface for genuinely
+// zero-metadata rows. Window-period session rows carry no file-stem label
+// anymore (the Go runtime projection merges copies into the topic row), and a
+// session row that DOES carry timestamps must never degrade to the fallback —
+// neither in the meta line nor in the row's right-side time label.
+eq(
+  projectTreeTopicMetaLine({
+    key: "global_session_stamped",
+    kind: "global_session",
+    label: "Session with metadata",
+    topicId: "topic-window",
+    sessionPath: "/s/stamped.jsonl",
+    createdAt: Date.now(),
+  }, testT),
+  "projectTree.justNow",
+  "session row with timestamps renders real time metadata, never the previously fallback",
+);
+
+eq(
+  topicUnknownTimeLabel({
+    key: "global_session_stamped",
+    kind: "global_session",
+    label: "Session with metadata",
+    topicId: "topic-window",
+    sessionPath: "/s/stamped.jsonl",
+    lastActivityAt: Date.now() - 5 * 60_000,
+  }, testT),
+  "",
+  "session row with activity timestamps hides the previously fallback from the side time label",
+);
+
+eq(
+  topicUnknownTimeLabel({
+    key: "global_session_blank",
+    kind: "global_session",
+    label: "Zero metadata session",
+    topicId: "topic-window",
+    sessionPath: "/s/blank.jsonl",
+  }, testT),
+  "projectTree.previously",
+  "genuinely zero-metadata session rows keep the previously fallback",
 );
 
 const completedTopic: ProjectNode = {
