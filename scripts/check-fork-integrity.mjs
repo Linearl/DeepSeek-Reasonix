@@ -402,6 +402,15 @@ const CHECKS = [
   // onMove 持久化；CSS 单列一条（merge 丢手柄样式=拖拽入口不可见）。
   { feature: "任务441 排队引导拖拽手柄（接线）", file: "desktop/frontend/src/components/ComposerGuidanceShelf.tsx", patterns: ["GripVertical", "draggable", "onDragStart", "onMove("] },
   { feature: "任务441 拖拽手柄 CSS", file: "desktop/frontend/src/styles.css", patterns: [".composer-guidance-item__handle {", ".composer-guidance-item__handle--dragging"] },
+  // 任务442：上下文容量+额度弹窗（composer 指示器浮层）。锚点锁四层：
+  // 纯模型（分段归一/provider 门/更多事件）→ 浮层渲染（分段条/额度卡/更多）
+  // → Go 构成访问器与面板接线 → 浮层 CSS（auto-merge 静默丢块高发区）。
+  // 丢任何一层：分段条消失或额度卡对非 opencode-go provider 误显示。
+  { feature: "任务442 浮层数据模型（分段归一+provider 门+更多事件）", file: "desktop/frontend/src/lib/contextGaugePopup.ts", patterns: ["compositionSegments", "normalizeShares", "isOpencodeGoProvider", "OPEN_CONTEXT_OVERVIEW_EVENT"] },
+  { feature: "任务442 构成分段条+额度卡浮层（渲染）", file: "desktop/frontend/src/components/ContextWindowRing.tsx", patterns: ["context-composition__bar", "context-quota__card", "context-ring-popover__more", "GetOpenCodeGoUsage"] },
+  { feature: "任务442 Go 构成访问器", file: "internal/agent/context_composition.go", patterns: ["func (a *Agent) ContextComposition", "computeContextComposition", "skillToolNames"] },
+  { feature: "任务442 ContextPanel 构成/ProviderName 接线", file: "desktop/tabs.go", patterns: ["Composition *ContextCompositionInfo", "ProviderName string", "ctrl.ContextComposition()"] },
+  { feature: "任务442 浮层 CSS（分段条+额度卡+更多）", file: "desktop/frontend/src/styles.css", patterns: [".context-composition__bar", ".context-quota__card", ".context-ring-popover__more"] },
 ];
 
 let failed = 0;

@@ -790,6 +790,23 @@ export interface ContextPanelInfo {
   readFiles: ReadFileRecord[];
   changedFiles: ChangedFileInfo[];
   contextBudget?: ContextBudgetInfo;
+  // Task 442: live-view composition segments for the gauge popup's segmented
+  // bar. Absent when the host predates the accessor — the bar then hides.
+  composition?: ContextCompositionInfo;
+  // Task 442: the active session's provider name (model ref's provider half),
+  // used for provider-conditional quota cards (opencode-go shows only there).
+  providerName?: string;
+}
+
+// Task 442: composition segments. Shares are frontend-normalized to 100% so
+// rounding can never make the segmented bar disagree with itself.
+export interface ContextCompositionInfo {
+  systemPromptTokens: number;
+  builtinToolTokens: number;
+  skillTokens: number;
+  mcpToolTokens: number;
+  messageTokens: number;
+  totalTokens: number;
 }
 
 export interface UsageSourceStats {

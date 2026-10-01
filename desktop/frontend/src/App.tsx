@@ -47,6 +47,7 @@ import { clearLegacyLangPref, normalizeLangPref, readLegacyLangPref, useI18n, us
 import { useActiveRemoteSession } from "./lib/useRemoteSession";
 import { publishNavigationIntent } from "./lib/useNavigationIntentFence";
 import { consumedGuidanceIdsFromItems } from "./lib/composerInboxQueue";
+import { OPEN_CONTEXT_OVERVIEW_EVENT, contextOverviewTarget } from "./lib/contextGaugePopup";
 import { RemoteNavigationContext, type RemoteNavigationCommand } from "./lib/remoteNavigationCommands";
 import type { CommandOutcome } from "./lib/commandOutcome";
 import { useController, type Item } from "./lib/useController";
@@ -2746,6 +2747,22 @@ export default function App() {
     },
     [openWorkspacePanel],
   );
+
+  // Task 442: the composer gauge popup's 「更多 >」 entry. The gauge lives
+  // inside the composer, so the request travels as a window event; this spot
+  // is the one that knows both the dock opener and the layout's rules — the
+  // creation layout hides the 概览 tab, so it goes to the settings usage page.
+  useEffect(() => {
+    const onOpenContextOverview = () => {
+      if (contextOverviewTarget(desktopLayoutStyle) === "settings-usage") {
+        useAppNavigationStore.getState().setSettingsTarget("model-stats");
+        return;
+      }
+      openRightDockMode("context");
+    };
+    window.addEventListener(OPEN_CONTEXT_OVERVIEW_EVENT, onOpenContextOverview);
+    return () => window.removeEventListener(OPEN_CONTEXT_OVERVIEW_EVENT, onOpenContextOverview);
+  }, [desktopLayoutStyle, openRightDockMode]);
 
   const verificationRevealSequenceRef = useRef(0);
   const [verificationRevealRequest, setVerificationRevealRequest] = useState<WorkspaceVerificationRevealRequest | null>(null);

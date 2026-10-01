@@ -7427,6 +7427,24 @@ type ContextPanelInfo struct {
 	ReadFiles               []readFileRecord            `json:"readFiles"`
 	ChangedFiles            []ChangedFileInfo           `json:"changedFiles"`
 	ContextBudget           *ContextBudgetInfo          `json:"contextBudget,omitempty"`
+	// Task 442: live view composition segments for the gauge popup's
+	// segmented bar. Nil when the controller predates the accessor — the
+	// frontend then hides the bar instead of showing zeros.
+	Composition *ContextCompositionInfo `json:"composition,omitempty"`
+	// Task 442: the active session's provider name (the model ref's provider
+	// half), so the popup can show provider-conditional quota cards
+	// (opencode-go) without a lab switch.
+	ProviderName string `json:"providerName,omitempty"`
+}
+
+// ContextCompositionInfo mirrors agent.ContextComposition for the frontend.
+type ContextCompositionInfo struct {
+	SystemPromptTokens int `json:"systemPromptTokens"`
+	BuiltinToolTokens  int `json:"builtinToolTokens"`
+	SkillTokens        int `json:"skillTokens"`
+	McpToolTokens      int `json:"mcpToolTokens"`
+	MessageTokens      int `json:"messageTokens"`
+	TotalTokens        int `json:"totalTokens"`
 }
 
 type ChangedFileInfo struct {
@@ -7522,6 +7540,21 @@ func (a *App) ContextPanel(tabID string) ContextPanelInfo {
 		if snap := ctrl.ContextMaintenanceSnapshot(); snap.ContextBudget != nil {
 			info.ContextBudget = contextBudgetInfo(snap.ContextBudget)
 		}
+		comp := ctrl.ContextComposition()
+		if comp.TotalTokens > 0 {
+			info.Composition = &ContextCompositionInfo{
+				SystemPromptTokens: comp.SystemPromptTokens,
+				BuiltinToolTokens:  comp.BuiltinToolTokens,
+				SkillTokens:        comp.SkillTokens,
+				McpToolTokens:      comp.McpToolTokens,
+				MessageTokens:      comp.MessageTokens,
+				TotalTokens:        comp.TotalTokens,
+			}
+		}
+	}
+	// Task 442: the provider half of the tab's model ref ("provider/model").
+	if provider, _, ok := strings.Cut(tab.model, "/"); ok && strings.TrimSpace(provider) != "" {
+		info.ProviderName = strings.TrimSpace(provider)
 	}
 
 	// Gather workspace changes for this tab's root.

@@ -34597,6 +34597,177 @@ body > .mermaid-diagram--fullscreen {
   stroke: var(--err);
 }
 
+/* ── 任务 442：构成分段条 + 多通道额度卡 + 「更多」入口 ──────────────
+ * 分段条与容量条刻意分开：容量条回答「还剩多少」，分段条回答「装了什么」；
+ * 混在同一根条上会让「68% 已用」和「43% 是消息」两个口径互相打架。
+ * 字号沿用本浮层的 calc(px * var(--font-scale)) 契约（portaled 到 body，
+ * 无 layout 前缀），裸 px 会挂 typography-overflow-contract。 */
+.context-composition {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.context-composition__bar {
+  display: flex;
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--fg-faint) 10%, transparent);
+}
+.context-composition__seg {
+  height: 100%;
+  min-width: 0;
+}
+.context-composition__seg--message {
+  background: var(--accent);
+}
+.context-composition__seg--builtinTools {
+  background: color-mix(in srgb, var(--accent) 55%, var(--fg-faint));
+}
+.context-composition__seg--skills {
+  background: var(--warn);
+}
+.context-composition__seg--systemPrompt {
+  background: color-mix(in srgb, var(--fg-faint) 75%, transparent);
+}
+.context-composition__seg--other {
+  background: color-mix(in srgb, var(--fg-faint) 45%, transparent);
+}
+.context-composition__seg--mcpTools {
+  background: color-mix(in srgb, var(--accent) 40%, var(--warn));
+}
+.context-composition__legend {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 10px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.context-composition__legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.context-composition__dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+}
+.context-composition__dot--message {
+  background: var(--accent);
+}
+.context-composition__dot--builtinTools {
+  background: color-mix(in srgb, var(--accent) 55%, var(--fg-faint));
+}
+.context-composition__dot--skills {
+  background: var(--warn);
+}
+.context-composition__dot--systemPrompt {
+  background: color-mix(in srgb, var(--fg-faint) 75%, transparent);
+}
+.context-composition__dot--other {
+  background: color-mix(in srgb, var(--fg-faint) 45%, transparent);
+}
+.context-composition__dot--mcpTools {
+  background: color-mix(in srgb, var(--accent) 40%, var(--warn));
+}
+.context-composition__label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-faint);
+  font-size: calc(11px * var(--font-scale));
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.context-composition__tokens {
+  color: var(--fg-dim);
+  font-size: calc(11px * var(--font-scale));
+  font-variant-numeric: tabular-nums;
+}
+.context-composition__share {
+  margin-left: auto;
+  color: var(--fg);
+  font-size: calc(11px * var(--font-scale));
+  font-variant-numeric: tabular-nums;
+}
+/* 多通道额度卡：当前只有 opencode-go 有额度端点，且只对它自己的 provider 显示 */
+.context-quota {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-soft);
+}
+.context-quota__head {
+  margin-bottom: 5px;
+  color: var(--fg-faint);
+  font-size: calc(11px * var(--font-scale));
+}
+.context-quota__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(74px, 1fr));
+  gap: 6px;
+}
+.context-quota__card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 7px;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--fg-faint) 6%, transparent);
+}
+.context-quota__window {
+  color: var(--fg-faint);
+  font-size: calc(10.5px * var(--font-scale));
+  white-space: nowrap;
+}
+.context-quota__value {
+  color: var(--accent);
+  font-size: calc(12px * var(--font-scale));
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.context-quota__resets {
+  overflow: hidden;
+  color: var(--fg-dim);
+  font-size: calc(10.5px * var(--font-scale));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.context-quota__note {
+  margin: 8px 0 0;
+  color: var(--fg-faint);
+  font-size: calc(11px * var(--font-scale));
+  line-height: 1.45;
+}
+/* 「更多 >」：浮层只给摘要，详情页走右栏概览（creation 布局走设置用量页） */
+.context-ring-popover__more {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  width: 100%;
+  margin-top: 8px;
+  padding-top: 7px;
+  border: 0;
+  border-top: 1px solid var(--border-soft);
+  background: none;
+  color: var(--accent);
+  font-size: calc(11.5px * var(--font-scale));
+  cursor: pointer;
+}
+.context-ring-popover__more:hover {
+  text-decoration: underline;
+}
+.context-ring-popover__more:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 2px;
+}
+
 @media (max-width: 760px) {
   .app--creation .footer,
   :root[data-theme-style] .app--creation .footer {
