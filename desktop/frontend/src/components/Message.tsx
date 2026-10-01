@@ -240,31 +240,16 @@ function formatMessageTime(date: Date): string {
   return `${hours}:${minutes}`;
 }
 
-// Task 436: overly long user messages (typed, steered, or injected guidance)
-// default to a height-clamped card so a wall of text cannot push the rest of
-// the conversation out of view. Display-only: the full text stays rendered in
-// the DOM (and in the model context) — only the visual height is clamped, with
-// a chevron toggle to expand / re-collapse.
-//
-// Threshold 14 estimated lines: a user bubble renders ≈22px per line, so 14
-// lines ≈ 300px — well above the 200px clamp (folding has to visibly pay off)
-// while staying inside the 12–16 line band where anything readable on one
-// screen is never folded. Estimated lines weight CJK/fullwidth chars double
-// because they render ≈2× wider than Latin glyphs at the bubble's font size.
-export const USER_MSG_FOLD_LINE_THRESHOLD = 14;
-export const USER_MSG_FOLD_CLAMP_HEIGHT_PX = 200;
-const USER_MSG_FOLD_UNITS_PER_LINE = 110;
-
-export function estimateUserMessageLines(text: string): number {
-  if (!text) return 0;
-  let total = 0;
-  for (const line of text.split(/\r?\n/)) {
-    let units = 0;
-    for (const ch of line) units += ch.charCodeAt(0) > 0x2e7f ? 2 : 1;
-    total += Math.max(1, Math.ceil(units / USER_MSG_FOLD_UNITS_PER_LINE));
-  }
-  return total;
-}
+// Task 436: the fold gate (threshold + CJK-aware line estimator) lives in
+// lib/messageFold.ts so light consumers (task 446) can reuse it without
+// pulling this module's full graph; re-exported here to keep the 436 surface
+// (and its integrity anchors) where callers already expect it.
+import { USER_MSG_FOLD_LINE_THRESHOLD, estimateUserMessageLines } from "../lib/messageFold";
+export {
+  USER_MSG_FOLD_LINE_THRESHOLD,
+  USER_MSG_FOLD_CLAMP_HEIGHT_PX,
+  estimateUserMessageLines,
+} from "../lib/messageFold";
 
 export function UserMessage({
   text,
