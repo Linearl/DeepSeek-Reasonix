@@ -93,6 +93,12 @@ func (g *Gateway) Token() string { return g.token }
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	rec := &loggingResponseWriter{ResponseWriter: w}
+	// Task 415 (code-scanning reflected-xss): gateway responses are JSON or
+	// plain text only, and the JSON encoder HTML-escapes reflected values
+	// (path ids, error strings). nosniff at the edge additionally stops
+	// browser content-type confusion from promoting any reflected value into
+	// script context.
+	rec.Header().Set("X-Content-Type-Options", "nosniff")
 	defer func() {
 		// Access log for the phone-connect/disconnect triage (2026-09-01
 		// desktop deaths): every request records method, path, status,

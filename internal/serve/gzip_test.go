@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -106,5 +107,62 @@ func TestGzipMiddlewareHonorsDisabledEncoding(t *testing.T) {
 		if got := rr.Header().Get("Content-Encoding"); got != "" {
 			t.Fatalf("Accept-Encoding %q produced %q", encoding, got)
 		}
+	}
+}
+
+// TestSecurityHeadersGuardGzipPassthrough pins the task-415 code-scanning
+// reflected-xss triage on gzip.go: the chain-wide sniff guard must reach the
+// response even on the sub-threshold plain-write passthrough (the flagged
+// ResponseWriter.Write path), including when the handler echoes request data,
+// and gzip compression must keep working above the threshold.
+func TestSecurityHeadersGuardGzipPassthrough(t *testing.T) {
+	handler := securityHeaders(gzipMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"echo":"` + r.URL.Query().Get("q") + `"}`))
+	})))
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	// Small reflected body: plain passthrough, still guarded.
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/echo?q="+url.QueryEscape("<script>alert(1)</script>"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	plain, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("passthrough X-Content-Type-Options = %q, want nosniff", got)
+	}
+	if got := resp.Header.Get("Content-Encoding"); got != "" {
+		t.Fatalf("small response encoding = %q, want plain", got)
+	}
+	if len(plain) >= gzipThreshold {
+		t.Fatalf("passthrough body unexpectedly large: %d bytes", len(plain))
+	}
+
+	// Large body: still compressed, still guarded.
+	big := strings.Repeat("x", gzipThreshold+1)
+	req, err = http.NewRequest(http.MethodGet, srv.URL+"/echo?q="+url.QueryEscape(big), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Accept-Encoding", "gzip")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("compressed X-Content-Type-Options = %q, want nosniff", got)
+	}
+	if got := resp.Header.Get("Content-Encoding"); got != "gzip" {
+		t.Fatalf("large response encoding = %q, want gzip", got)
 	}
 }
