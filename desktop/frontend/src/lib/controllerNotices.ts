@@ -43,6 +43,10 @@ const noticeCodeKeys: Record<string, DictKey> = {
   decision_receipt: "notice.decisionReceiptTitle",
   context_editing_fallback: "notice.contextEditingFallback",
   turn_stalled: "notice.turnStalled",
+  // Task 325: autopilot is yolo-only, so both gate outcomes get their own copy
+  // instead of falling through to the backend's bilingual fallback string.
+  autopilot_requires_yolo: "notice.autopilotRequiresYolo",
+  autopilot_closed_off_yolo: "notice.autopilotClosedOffYolo",
 };
 
 const streamInterruptReasonCodeKeys: Record<string, DictKey> = {

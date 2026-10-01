@@ -976,14 +976,18 @@ func (a *App) restoreOrBuildTabs() {
 			// supply the bound, because the previous deadline died with the process.
 			// Without a usable bound the run stays interactive - the same refusal the
 			// CLI makes - rather than resuming with no limit at all.
-			if tabSessionAutopilot(tab.SessionPath) {
-				if on, maxRuntime, grace := desktopAutopilotDefaults(); on {
-					tab.autopilot, tab.autopilotMaxRuntime, tab.autopilotApprovalGrace = on, maxRuntime, grace
-				}
-			}
 			tab.toolApprovalMode = normalizeToolApprovalMode(entry.ToolApprovalMode)
 			if tab.toolApprovalMode == control.ToolApprovalAsk && tabModeHasAutoApproveTools(entry.Mode) {
 				tab.toolApprovalMode = control.ToolApprovalYolo
+			}
+			// Task 325: the approval posture must be resolved before autopilot
+			// is restored — a persisted unattended run may only come back under
+			// yolo, otherwise it stays interactive (the gate refuses silently
+			// here; the run is bounded as a normal goal instead).
+			if tabSessionAutopilot(tab.SessionPath) {
+				if on, maxRuntime, grace := desktopAutopilotDefaults(); on {
+					tab.autopilot, tab.autopilotMaxRuntime, tab.autopilotApprovalGrace = gateRestoredAutopilotDefaults(on, maxRuntime, grace, tab.toolApprovalMode)
+				}
 			}
 			tab.SessionPath = strings.TrimSpace(entry.SessionPath)
 			tab.ReadOnly = entry.ReadOnly
@@ -1102,7 +1106,10 @@ func resolveNewSessionModel(cfg *config.Config) string {
 
 func (a *App) createTabEntryWithID(scope, workspaceRoot, topicID, id string) *WorkspaceTab {
 	model, toolApprovalMode, subagentPolicy := desktopNewSessionDefaults(scope, workspaceRoot)
+	// Task 325: a fresh tab may only start unattended when its approval default
+	// is yolo — otherwise desktopAutopilotDefaults is refused here too.
 	autopilot, maxRuntime, approvalGrace := desktopAutopilotDefaults()
+	autopilot, maxRuntime, approvalGrace = gateRestoredAutopilotDefaults(autopilot, maxRuntime, approvalGrace, toolApprovalMode)
 	return &WorkspaceTab{
 		ID:                     id,
 		Scope:                  scope,
@@ -2148,6 +2155,10 @@ func (a *App) SetComposerProfileForTab(tabID, collaborationMode, toolApprovalMod
 		return []string{}, fmt.Errorf("tab is no longer available")
 	}
 	tab.toolApprovalMode = toolApprovalMode
+	// Task 325 reverse linkage: a composer profile that would pair autopilot
+	// with a non-yolo approval posture turns autopilot off instead (same
+	// fail-closed direction as SetToolApprovalModeForTab).
+	autopilotClosed := closeAutopilotForOffYolo(tab, toolApprovalMode)
 	if goal != "" {
 		tab.goal = goal
 		tab.mode = tabModeFromAxes(false, toolApprovalMode == control.ToolApprovalYolo)
@@ -2161,6 +2172,9 @@ func (a *App) SetComposerProfileForTab(tabID, collaborationMode, toolApprovalMod
 	tabIDForSave := tab.ID
 	a.mu.Unlock()
 
+	if autopilotClosed {
+		a.noticeCodeForTab(tabIDForSave, event.LevelWarn, NoticeCodeAutopilotClosedOffYolo, autopilotClosedOffYoloText)
+	}
 	if ctrl != nil {
 		ctrl.SetPlanMode(tabModeHasPlan(mode))
 	}
@@ -2195,6 +2209,10 @@ func (a *App) SetCollaborationModeForTab(tabID, mode string) {
 	// Leaving autopilot must clear it: a tab that kept the flag would silently stay
 	// unattended after the user switched back to a normal mode.
 	autopilotOn, autopilotRuntime, autopilotGrace := false, time.Duration(0), time.Duration(0)
+	// Task 325: when the autopilot request is refused (approval mode not yolo)
+	// the mode falls back to normal and the notice is emitted after the lock
+	// below is released (noticeCodeForTab re-enters the App lock).
+	autopilotRefused := false
 	switch mode {
 	case "plan":
 		tab.mode = tabModeFromAxes(true, approvalMode == control.ToolApprovalYolo)
@@ -2205,8 +2223,16 @@ func (a *App) SetCollaborationModeForTab(tabID, mode string) {
 		// The bound comes from the [desktop] preferences; without one autopilot
 		// stays off - the same refusal the CLI makes - and the mode falls back to
 		// normal rather than starting an unbounded unattended run.
-		autopilotOn, autopilotRuntime, autopilotGrace = desktopAutopilotDefaults()
-		tab.mode = tabModeFromAxes(false, approvalMode == control.ToolApprovalYolo)
+		prefOn, prefRuntime, prefGrace := desktopAutopilotDefaults()
+		// Task 325: yolo is a hard precondition, not a hint — an unattended run
+		// under ask/auto would stack approval prompts nobody can answer.
+		autopilotOn, autopilotRuntime, autopilotGrace = gateRestoredAutopilotDefaults(prefOn, prefRuntime, prefGrace, approvalMode)
+		if autopilotOn {
+			tab.mode = tabModeFromAxes(false, true)
+		} else {
+			tab.mode = tabModeFromAxes(false, approvalMode == control.ToolApprovalYolo)
+			autopilotRefused = prefOn && !autopilotGateAllowed(approvalMode)
+		}
 		tab.goal = ""
 		if !autopilotOn {
 			mode = "normal"
@@ -2223,6 +2249,10 @@ func (a *App) SetCollaborationModeForTab(tabID, mode string) {
 	plan := tabModeHasPlan(tab.mode)
 	tabIDForSave := tab.ID
 	a.mu.Unlock()
+	if autopilotRefused {
+		// Task 325: the refusal tells the user exactly which switch to flip.
+		a.noticeCodeForTab(tabIDForSave, event.LevelWarn, NoticeCodeAutopilotRequiresYolo, autopilotRequiresYoloText)
+	}
 	if ctrl != nil {
 		ctrl.SetPlanMode(plan)
 		syncTabGoalToController(ctrl, goal)
@@ -7287,9 +7317,19 @@ func (a *App) SetToolApprovalModeForTab(tabID, mode string) []string {
 	}
 	tab.toolApprovalMode = mode
 	tab.mode = tabModeFromAxes(plan, mode == control.ToolApprovalYolo)
+	// Task 325 reverse linkage (fail-closed): autopilot on + approval leaving
+	// yolo must not persist, and blocking the approval switch here would also
+	// trap heartbeat runs that legitimately set their task's mode — so the
+	// unattended flag is the side that yields. The live controller keeps its
+	// built-in autopilot posture until the next rebuild, but its approval mode
+	// is updated below in the same call, so no build accepts the combination.
+	autopilotClosed := closeAutopilotForOffYolo(tab, mode)
 	ctrl := tab.Ctrl
 	tabIDForSave := tab.ID
 	a.mu.Unlock()
+	if autopilotClosed {
+		a.noticeCodeForTab(tabIDForSave, event.LevelWarn, NoticeCodeAutopilotClosedOffYolo, autopilotClosedOffYoloText)
+	}
 	drained := applyTabToolApprovalModeToController(ctrl, mode)
 	a.mu.Lock()
 	if a.tabs[tabIDForSave] == tab {

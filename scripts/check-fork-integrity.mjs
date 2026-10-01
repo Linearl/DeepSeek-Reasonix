@@ -491,6 +491,13 @@ const CHECKS = [
   { feature: "S1a base 双实现骨架与 R1 回退", file: "internal/baseproc/manager.go", patterns: ["boot: base fallback", "boot: base remote", "func Start(", "subprocessDial", "RunStdioServer"] },
   { feature: "S1a base serve 子命令接线", file: "internal/cli/base.go", patterns: ["base serve", "--stdio", "RunStdioServer"] },
   { feature: "S1a experimental_base_process 开关", file: "internal/config/config.go", patterns: ["experimental_base_process"] },
+  // 任务 325：autopilot 只能在 yolo 审批模式下开启（用户 2026-09-25 裁决）。
+  // 锁三处——闸门本体、四个开启入口的接线、前端按码本地化。merge 丢掉接线
+  // 会重新出现「autopilot 挂着但审批是 ask/auto」的无人值守中间态。
+  { feature: "任务325 autopilot yolo 闸门（判定+反向联动+通知码）", file: "desktop/autopilot_gate.go", patterns: ["func autopilotGateAllowed", "func gateRestoredAutopilotDefaults", "func closeAutopilotForOffYolo", "\"autopilot_requires_yolo\"", "\"autopilot_closed_off_yolo\""] },
+  { feature: "任务325 开启入口接线（恢复/新标签/选择器/审批切换）", file: "desktop/app.go", patterns: ["gateRestoredAutopilotDefaults(on, maxRuntime, grace, tab.toolApprovalMode)", "gateRestoredAutopilotDefaults(autopilot, maxRuntime, approvalGrace, toolApprovalMode)", "gateRestoredAutopilotDefaults(prefOn, prefRuntime, prefGrace, approvalMode)", "closeAutopilotForOffYolo(tab, mode)"] },
+  { feature: "任务325 设置默认值前置校验（拒绝非 yolo）", file: "desktop/settings_app.go", patterns: ["autopilot requires the yolo approval mode"] },
+  { feature: "任务325 拒绝/关闭提示按码本地化", file: "desktop/frontend/src/lib/controllerNotices.ts", patterns: ["autopilot_requires_yolo: \"notice.autopilotRequiresYolo\"", "autopilot_closed_off_yolo: \"notice.autopilotClosedOffYolo\""] },
 ];
 
 let failed = 0;

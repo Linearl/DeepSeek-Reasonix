@@ -1083,6 +1083,11 @@ function formatSettingsError(error: unknown, t: ReturnType<typeof useT>): string
   // through entry points that already exist: the composer's stop control, answering
   // a pending prompt, and the task panel's per-job stop.
   if (/^active work is still running;/i.test(msg)) return t("settings.errorRebuildBusy");
+  // Task 325: enabling the autopilot default while the new-session approval
+  // default is ask/auto is refused (desktop/settings_app.go). The Go error
+  // names the config key; the panel names the switch the user can actually
+  // flip, in the user's language.
+  if (/autopilot requires the yolo approval mode/i.test(msg)) return t("settings.errorAutopilotRequiresYolo");
   return msg || t("settings.errorUnknown");
 }
 
