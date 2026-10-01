@@ -279,6 +279,22 @@ const CHECKS = [
   { feature: "任务152 面板树渲染+归档区 TSX", file: "desktop/frontend/src/components/TodoPanel.tsx", patterns: ["function TodoTree", "function TodoArchive", "todobar__archive-toggle", "todobar__caret"] },
   { feature: "任务152 树/归档 CSS（theme token）", file: "desktop/frontend/src/styles.css", patterns: [".todobar__item--deep", ".todobar__caret", ".todobar__code", ".todobar__archive-toggle"] },
   { feature: "任务152 压缩摘要任务树快照段", file: "internal/agent/compact.go", patterns: ["## Task tree"] },
+  // M4a zcodebridge：reasonix→zcode 实时注入通道（spawn app-server --stdio，
+  // 冻结面 = 握手 fail-closed + session/list + sendText + session/events afterSeq）。
+  // 接线锚点锁三处：env 门、双启动点、协议闸门——任一被 merge 丢掉 = 静默失联。
+  { feature: "M4a zcodebridge 客户端与握手 fail-closed", file: "internal/zcodebridge/zcodebridge.go", patterns: ["ErrProtocolMismatch", "func Open(", "func (b *Bridge) handshake("] },
+  { feature: "M4a zcodebridge sendText/events 冻结面", file: "internal/zcodebridge/inject.go", patterns: ["DeliveryStartNow", "requestedDelivery", "func (b *Bridge) SendText("] },
+  { feature: "M4a zcodebridge serve 接线（env 门+启动点）", file: "internal/serve/zcodebridge.go", patterns: ["REASONIX_ZCODE_BRIDGE", "func (s *Server) startZcodeBridge()", "runZcodeBridge"] },
+  { feature: "M4a zcodebridge 双启动调用点", file: "internal/serve/serve.go", patterns: ["s.startZcodeBridge()"] },
+  // bus#3 邮件→注入接线：zcode 角色信箱投递成功后经 zcodebridge 给运行中会话
+  // 打实时提醒（queue 语义）。失败语义 = 邮件留在收件箱（不丢不重），zcode 会话
+  // 自觉轮询兜底。锚点锁四处：busmcp 回调面、两处投递点、serve 注入器——任一被
+  // merge 丢掉 = reasonix→zcode「实时」半环静默断裂（只剩轮询）。
+  { feature: "bus3 busmcp 投递后注入回调面", file: "internal/busmcp/inject.go", patterns: ["type MailInjector interface", "func (s *Server) notifyInjector("] },
+  { feature: "bus3 event 投递点接线", file: "internal/busmcp/busmcp.go", patterns: ["s.notifyInjector(s.eventTarget, msg)"] },
+  { feature: "bus3 send/spawn 投递点接线", file: "internal/busmcp/tools.go", patterns: ["rt.bus.notifyInjector(msg.To, msg)"] },
+  { feature: "bus3 serve 注入器（queue 语义+邮件留存兜底）", file: "internal/serve/zcodebridgeinject.go", patterns: ["func injectBusMailVia(", "zcodebridge.DeliveryQueue", "mail stays in inbox"] },
+  { feature: "bus3 serve 接线注入器与桥 workspace 解析", file: "internal/serve/serve.go", patterns: ["Injector: zcodeMailInjector{s: s}", "zcodeBridgeWorkspace atomic.Pointer[string]"] },
 ];
 
 let failed = 0;
