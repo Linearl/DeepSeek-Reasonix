@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -211,10 +210,10 @@ func (a *App) runtimeOnlyProjectTopicsWithSessions(scope, workspaceRoot string) 
 		}
 		snapshots = append(snapshots, snapshot)
 	}
-	return a.runtimeProjectTopicNodes(scope, workspaceRoot, snapshots, true)
+	return a.runtimeProjectTopicNodes(scope, workspaceRoot, snapshots)
 }
 
-func (a *App) runtimeProjectTopicNodes(scope, workspaceRoot string, snapshots []catalogRuntimeSnapshot, previews bool) ([]ProjectNode, map[string][]string) {
+func (a *App) runtimeProjectTopicNodes(scope, workspaceRoot string, snapshots []catalogRuntimeSnapshot) ([]ProjectNode, map[string][]string) {
 	byTopic := map[string][]catalogRuntimeSnapshot{}
 	sessionsByTopic := map[string][]string{}
 	for _, snapshot := range snapshots {
@@ -236,10 +235,8 @@ func (a *App) runtimeProjectTopicNodes(scope, workspaceRoot string, snapshots []
 		sessions := byTopic[topicID]
 		sort.Slice(sessions, func(i, j int) bool { return sessions[i].sessionPath < sessions[j].sessionPath })
 		kind := "topic"
-		sessionKind := "session"
 		if scope != "project" {
 			kind = "global_topic"
-			sessionKind = "global_session"
 		}
 		label := defaultTopicTitle
 		if strings.TrimSpace(sessions[0].topicTitle) != "" {
@@ -250,33 +247,54 @@ func (a *App) runtimeProjectTopicNodes(scope, workspaceRoot string, snapshots []
 			Root: workspaceRoot, TopicID: topicID, TurnsState: string(sessioncatalog.TurnsUnknown),
 			Health: string(sessioncatalog.HealthOK), Children: []ProjectNode{},
 		}
+		// Task 352: the ordinary tree is one logical row per topic — the same
+		// contract projectNodeFromCatalogTopic enforces for catalog rows.
+		// During the create/recover window a topic can hold two runtime
+		// records for one conversation; expanding them as per-session children
+		// painted raw file stems ("20260928-042815-…") with a "previously"
+		// meta line until recovery consolidated the copy. Every snapshot now
+		// aggregates onto the single logical row (an open snapshot wins the
+		// representative SessionPath, a running snapshot wins the status) and
+		// no session-kind child is ever emitted from the runtime path; the
+		// guard test keeps this contract from regrowing (see
+		// project_tree_window_copies_test.go).
+		sessionPath := ""
+		openPath := ""
+		idleStatus := ""
+		runningStatus := ""
 		for _, session := range sessions {
 			status, running := catalogControllerStatus(session.ctrl, session.activity)
 			if session.state != nil {
 				status, running = catalogStateStatus(*session.state, session.activity)
 			}
-			if len(sessions) == 1 {
-				node.Open = session.open
-				node.Running = running
-				node.Status = status
-				continue
+			if path := strings.TrimSpace(session.sessionPath); path != "" {
+				if sessionPath == "" {
+					sessionPath = path
+				}
+				if session.open && openPath == "" {
+					openPath = path
+				}
 			}
-			path := strings.TrimSpace(session.sessionPath)
-			sessionLabel := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-			if sessionLabel == "" || sessionLabel == "." {
-				sessionLabel = label
+			if session.open {
+				node.Open = true
 			}
-			preview := ""
-			if previews {
-				preview = sessionPreviewForPath(path)
+			if running {
+				node.Running = true
+				if runningStatus == "" {
+					runningStatus = status
+				}
+			} else if idleStatus == "" {
+				idleStatus = status
 			}
-			node.Children = append(node.Children, ProjectNode{
-				Key: projectSessionNodeKey(scope, path), Kind: sessionKind, Label: sessionLabel,
-				Root: workspaceRoot, TopicID: topicID, SessionPath: path, Preview: preview,
-				Open: session.open, Running: running, Status: status,
-				TurnsState: string(sessioncatalog.TurnsUnknown), Health: string(sessioncatalog.HealthOK),
-				Children: []ProjectNode{},
-			})
+		}
+		if runningStatus != "" {
+			node.Status = runningStatus
+		} else {
+			node.Status = idleStatus
+		}
+		node.SessionPath = openPath
+		if node.SessionPath == "" {
+			node.SessionPath = sessionPath
 		}
 		out = append(out, node)
 	}

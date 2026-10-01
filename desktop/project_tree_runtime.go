@@ -143,7 +143,7 @@ func (a *App) projectTreeRuntimeTopics(snapshots []catalogRuntimeSnapshot) []Pro
 	topics := make([]ProjectRuntimeTopic, 0, len(keys))
 	for _, key := range keys {
 		group := groups[key]
-		nodes, _ := a.runtimeProjectTopicNodes(group.scope, group.workspaceRoot, group.snapshots, false)
+		nodes, _ := a.runtimeProjectTopicNodes(group.scope, group.workspaceRoot, group.snapshots)
 		if len(nodes) > 0 {
 			topics = append(topics, ProjectRuntimeTopic{Scope: group.scope, WorkspaceRoot: group.workspaceRoot, Node: nodes[0]})
 		}
