@@ -59,16 +59,19 @@ type BaseClient interface {
 
 // InlineBaseClient is the current path: the heavy base keeps being built
 // in-process by boot.Build exactly as before (R1 — fallback is the default
-// path, not the exceptional one). S1a skeleton: identity and health answer
-// locally; the tool/session methods return ErrNotWired until S1b wraps the
-// existing base-section code behind them.
+// path, not the exceptional one). Identity and health answer locally; the
+// S1b tool surface is backed by Surface when the caller attached one (boot
+// hands over the registry it just built), and returns ErrNotWired otherwise —
+// which is how an S1a-era inline client keeps behaving after S1b lands.
 //
-// TODO(S1b): hold the boot.Build base-section handle and back
-// ToolCatalog/ToolCall/Attach/Detach/ProviderResolve with the existing
-// in-process implementations, same functions and inputs as today.
+// TODO(S1c): Attach/Detach lease accounting and ProviderResolve still return
+// ErrNotWired.
 type InlineBaseClient struct {
 	// ServerVersion is the local build identity reported by Hello.
 	ServerVersion string
+	// Surface backs ToolCatalog/ToolCall in-process (S1b). nil keeps the S1a
+	// ErrNotWired semantics.
+	Surface ToolSurface
 }
 
 // Mode implements BaseClient.
@@ -76,15 +79,21 @@ func (c InlineBaseClient) Mode() Mode { return ModeInline }
 
 // Hello implements BaseClient. In-process there is no version skew (caller
 // and server share one binary), so negotiation reduces to the uniform rule.
+// The tools capability mirrors the attached Surface: an inline client with a
+// surface behaves like a subprocess that advertised CapTools.
 func (c InlineBaseClient) Hello(_ context.Context, params HelloParams) (HelloResult, error) {
 	version, rpcErr := negotiateVersion(params.ProtocolVersion, ProtocolVersion)
 	if rpcErr != nil {
 		return HelloResult{}, rpcErr
 	}
+	var caps []string
+	if c.Surface != nil {
+		caps = []string{CapTools}
+	}
 	return HelloResult{
 		ProtocolVersion: version,
 		ServerVersion:   c.ServerVersion,
-		Capabilities:    nil, // no optional capability until S1b wraps the tool surface
+		Capabilities:    caps,
 	}, nil
 }
 
@@ -101,9 +110,19 @@ func (c InlineBaseClient) Detach(_ context.Context, _ DetachParams) (DetachResul
 	return DetachResult{}, ErrNotWired // TODO(S1b)
 }
 
-// ToolCatalog implements BaseClient.
-func (c InlineBaseClient) ToolCatalog(_ context.Context, _ ToolCatalogParams) (ToolCatalogResult, error) {
-	return ToolCatalogResult{}, ErrNotWired // TODO(S1b): wrap the existing tool registry ToolsFor path
+// ToolCatalog implements BaseClient: the same query the remote path sends
+// over base.toolCatalog, answered here from the in-process surface — the S1b
+// parity test (switch off = current path, switch on = the same query over the
+// channel) compares exactly these two answers.
+func (c InlineBaseClient) ToolCatalog(ctx context.Context, params ToolCatalogParams) (ToolCatalogResult, error) {
+	if c.Surface == nil {
+		return ToolCatalogResult{}, ErrNotWired
+	}
+	tools, err := c.Surface.Catalog(ctx, params.Scope)
+	if err != nil {
+		return ToolCatalogResult{}, err
+	}
+	return ToolCatalogResult{Tools: tools}, nil
 }
 
 // ToolCall implements BaseClient.

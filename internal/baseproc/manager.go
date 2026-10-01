@@ -46,6 +46,11 @@ type Options struct {
 	Env []string
 	// HandshakeTimeout bounds spawn + hello. Zero uses defaultHandshakeTimeout.
 	HandshakeTimeout time.Duration
+	// Surface backs the inline fallback's tool face (S1b): boot hands over the
+	// registry it just built so an inline client answers toolCatalog/toolCall
+	// with the same functions the pre-S1 path uses (R1). Nil keeps the S1a
+	// ErrNotWired semantics.
+	Surface ToolSurface
 	// Log receives the fallback/remote decisions. Nil uses slog.Default().
 	Log *slog.Logger
 	// Notify receives server→client notifications from the remote path. Nil
@@ -68,8 +73,9 @@ type Options struct {
 // Restart/backoff/degraded transitions and the periodic health loop are S1c
 // (TODO); the S1a manager is one-shot: it decides once, inline or remote.
 func Start(ctx context.Context, opts Options) BaseClient {
+	inline := InlineBaseClient{ServerVersion: opts.ServerVersion, Surface: opts.Surface}
 	if !opts.Enabled {
-		return InlineBaseClient{ServerVersion: opts.ServerVersion}
+		return inline
 	}
 	log := opts.Log
 	if log == nil {
@@ -85,7 +91,7 @@ func Start(ctx context.Context, opts Options) BaseClient {
 	remote, err := dialAndHello(hsCtx, opts)
 	if err != nil {
 		log.Warn("boot: base fallback", "reason", err.Error())
-		return InlineBaseClient{ServerVersion: opts.ServerVersion}
+		return inline
 	}
 	log.Info("boot: base remote",
 		"server_version", remote.hello.ServerVersion,
