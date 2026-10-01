@@ -272,10 +272,16 @@ jobs:
         with:
           ref: ${{ needs.resolve.outputs.sha }}
 
+      # codeql[actions/cache-poisoning/poisonable-step] The checkout above pins
+      # the candidate SHA from the resolve job. Caching is disabled on purpose:
+      # setup-go would save a build cache seeded by the candidate checkout under
+      # a go.sum-keyed entry that later runs on the default branch could
+      # restore. The guard only runs two targeted go test invocations, so the
+      # cold build cost is acceptable.
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
 
       - name: Cache hit guard
         run: ./scripts/cache-guard.sh
