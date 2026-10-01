@@ -448,6 +448,12 @@ const CHECKS = [
   { feature: "任务320 Wails 收件箱面", file: "desktop/collab_inbox_app.go", patterns: ["func (a *App) ListCollabMail(", "MarkCollabMailDecided", "SetCollabMailRetention"] },
   { feature: "任务320 收件箱面板组件", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["collab-inbox-panel__bucket", "SetCollabMailRetention", "ListCollabMailChains"] },
   { feature: "任务320 收件箱三语 locale", file: "desktop/frontend/src/locales/zh.ts", patterns: ["collabInbox.title", "collabInbox.bucket.approval"] },
+  // 任务 349：群聊通道——channel 实体（SQLite+md 导出）+ 发布订阅展开单发
+  // （复用 309 MailStore，铁律 8 无第二投递通道）+ per-recipient delivered/
+  // read + 429 治理（错峰/followup/小时上限）。锁实体层、三工具与注册。
+  { feature: "任务349 channel 实体+展开单发+429 治理", file: "internal/collabchannel/collabchannel.go", patterns: ["DrainFanout", "ErrHourlyCap", "ExportMarkdown", "s.mail.Deliver("] },
+  { feature: "任务349 三工具（查看/获取/发送）", file: "internal/agent/channel_tools.go", patterns: ["channel_list", "channel_read", "channel_send", "channelSpawn"] },
+  { feature: "任务349 三工具 boot 注册", file: "internal/boot/boot.go", patterns: ["NewChannelSendTool(collab)", "NewChannelReadTool(collab)"] },
 ];
 
 let failed = 0;
