@@ -55,7 +55,7 @@ const bridge = readFileSync(join(root, "lib/bridge.ts"), "utf8").replace(/\n\s*/
     "successful dismissals drop out of the selection, failures stay selected for retry");
 }
 
-// ── 181 reorder: MoveInboxItem is the UI's only ordering write ─────────────
+// ── 181 reorder + 441 handle drag: MoveInboxItem is the UI's only ordering write ──
 {
   ok(/MoveInboxItem\(tabID: string, id: string, toIndex: number\): Promise<void>/.test(bridge),
     "bridge contract keeps MoveInboxItem(tabID, id, toIndex) as the backend + bridge already exposed");
@@ -66,12 +66,18 @@ const bridge = readFileSync(join(root, "lib/bridge.ts"), "utf8").replace(/\n\s*/
   ok(/if \(item\.id\.startsWith\("local-"\)\) return;/.test(composer),
     "a local (unsent) row never moves — it has no durable queue position");
   ok(/const movable = Boolean\(onMove\) && !item\.id\.startsWith\("local-"\) && selectable/.test(shelf),
-    "the same gate hides the arrows and the drag handle on rows that cannot move");
-  ok(/onClick=\{\(\) => onMove\?\.\(item, index - 1\)\}/.test(shelf) && /onClick=\{\(\) => onMove\?\.\(item, index \+ 1\)\}/.test(shelf),
-    "up/down arrows move by exactly one position");
+    "the same gate hides the handle on rows that cannot move");
+  // Task 441: the arrows are gone; the six-dot handle is the single reorder
+  // affordance and the drop still lands on the hovered row's index.
+  ok(!/guidanceMoveUp/.test(shelf) && !/guidanceMoveDown/.test(shelf) && !/composer-guidance-item__reorder/.test(shelf),
+    "the up/down arrows are removed — no reorder span, no arrow locale keys (task 441)");
+  ok(/className=\{`composer-guidance-item__handle/.test(shelf) && /draggable/.test(shelf),
+    "the six-dot handle is the drag source (task 441)");
   ok(/onDrop=/.test(shelf) && /onDragStart=/.test(shelf) && /setDragId/.test(shelf),
     "drag reorder tracks its source id and drops at the hovered row's index");
-  ok(/draggable=\{movable && !selectMode\}/.test(shelf),
+  ok(/composer\.guidanceDragHint/.test(shelf),
+    "the handle carries a drag hint label");
+  ok(/\{movable && !selectMode \? \(/.test(shelf),
     "drag is disabled in select mode — batch and reorder never race");
 }
 
@@ -105,8 +111,7 @@ const bridge = readFileSync(join(root, "lib/bridge.ts"), "utf8").replace(/\n\s*/
     "composer.guidanceBatchSelected",
     "composer.guidanceBatchSend",
     "composer.guidanceBatchDismiss",
-    "composer.guidanceMoveUp",
-    "composer.guidanceMoveDown",
+    "composer.guidanceDragHint",
   ];
   for (const locale of ["zh.ts", "en.ts", "zh-TW.ts"]) {
     const src = readFileSync(join(root, "locales", locale), "utf8");
