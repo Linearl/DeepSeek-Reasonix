@@ -97,6 +97,14 @@ type SessionCollabConfig struct {
 	// DailySendLimit caps this session's outgoing cross-session messages per
 	// day (task 173 ⑥). 0 = no cap.
 	DailySendLimit int
+	// Bus #1: BusContacts answers the addressable task-bus synthetic contacts
+	// ("zcode-<role>", e.g. "zcode-worker" the headless pool) AT CALL TIME.
+	// Nil resolves from the live user config ([serve.bus_mcp] roles +
+	// [serve.bus_worker] contact, via config.BusContactsLive) — production
+	// needs no boot wiring; tests inject a fixed table to stay hermetic.
+	// talk_to_session falls back to these contacts ONLY after the contact
+	// directory misses, so a real session always wins.
+	BusContacts func() []string
 	// Task 202: the collaboration status stream. CollabStatusPath is the
 	// append-only jsonl the engine writes lifecycle events to; empty disables
 	// the stream entirely. It is deliberately independent of Enabled: with
@@ -716,11 +724,11 @@ type talkToSessionTool struct{ cfg SessionCollabConfig }
 func (talkToSessionTool) Name() string { return "talk_to_session" }
 
 func (talkToSessionTool) Description() string {
-	return "Send a message to another session in the contact directory (通讯录, task 19 / 142-143). `to` accepts a contact_id, a topic_id, or the exact title shown by list_addressable_sessions — the title is the human way to pick someone when you have not met them yet, and the target gains a contact_id on first contact. delivery=steer (default, task 309) asks for mid-turn injection and degrades to a queued follow-up when the target has no injectable turn; delivery=followup explicitly queues for the target's next turn. Resending the same content on the same thread inside the dedup window returns the original messageId instead of enqueueing a duplicate (mailbox idempotency, task 309). Your own contact_id is minted automatically on first send, so the target can always reply. When answering a message that was delivered to you, ALWAYS reply through this tool with to = the From contact_id carried in the delivery text — never answer inside your own transcript, the sender cannot see it. Experimental."
+	return "Send a message to another session in the contact directory (通讯录, task 19 / 142-143). `to` accepts a contact_id, a topic_id, or the exact title shown by list_addressable_sessions — the title is the human way to pick someone when you have not met them yet, and the target gains a contact_id on first contact. Task-bus synthetic contacts (zcode-<role>: enrolled bus roles, plus the zcode-worker headless pool) are also addressable while the bus is configured — mail lands in the role's shared bus inbox; for the pool to EXECUTE a task, send a kind=bus-task JSON body naming a pending card created with the task card tool. delivery=steer (default, task 309) asks for mid-turn injection and degrades to a queued follow-up when the target has no injectable turn; delivery=followup explicitly queues for the target's next turn. Resending the same content on the same thread inside the dedup window returns the original messageId instead of enqueueing a duplicate (mailbox idempotency, task 309). Your own contact_id is minted automatically on first send, so the target can always reply. When answering a message that was delivered to you, ALWAYS reply through this tool with to = the From contact_id carried in the delivery text — never answer inside your own transcript, the sender cannot see it. Experimental."
 }
 
 func (talkToSessionTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target: contact_id, topic_id, or the exact title from list_addressable_sessions."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain. The system derives the real depth from the thread."},"delivery":{"type":"string","enum":["followup","steer"],"description":"steer (default, task 309) injects mid-turn, degrading to followup when it cannot; followup explicitly queues for the next turn."},"receipt":{"type":"boolean","description":"Task 309: request a read receipt — the target sends back a system receipt message when this mail enters its context (turn injection / drain consumption). Default off; delivery-level confirmation already rides the return value."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."},"thread_id":{"type":"string","description":"When answering a message, pass the threadId it carried so the requester can match your reply."},"require_reply":{"type":"boolean","description":"Set true when the sender needs an answer on this thread (task 173). Requires the panel switch session_collab_allow_require_reply."},"approver":{"type":"string","description":"contact_id (or resolvable title) of the session that answers THIS task's approval prompts (task 225). Default: the sender. Must be a registered session."},"wait":{"type":"boolean","description":"Set true to wait — bounded — for a reply on this thread instead of returning queued at once (the old talk_to_session_sync behavior)."},"timeout_ms":{"type":"integer","description":"wait: how long to wait for the reply (default 30000, max 120000)."}},"required":["to","message"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target: contact_id, topic_id, the exact title from list_addressable_sessions, or an enrolled task-bus contact (zcode-<role>, e.g. zcode-worker)."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain. The system derives the real depth from the thread."},"delivery":{"type":"string","enum":["followup","steer"],"description":"steer (default, task 309) injects mid-turn, degrading to followup when it cannot; followup explicitly queues for the next turn."},"receipt":{"type":"boolean","description":"Task 309: request a read receipt — the target sends back a system receipt message when this mail enters its context (turn injection / drain consumption). Default off; delivery-level confirmation already rides the return value."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."},"thread_id":{"type":"string","description":"When answering a message, pass the threadId it carried so the requester can match your reply."},"require_reply":{"type":"boolean","description":"Set true when the sender needs an answer on this thread (task 173). Requires the panel switch session_collab_allow_require_reply."},"approver":{"type":"string","description":"contact_id (or resolvable title) of the session that answers THIS task's approval prompts (task 225). Default: the sender. Must be a registered session."},"wait":{"type":"boolean","description":"Set true to wait — bounded — for a reply on this thread instead of returning queued at once (the old talk_to_session_sync behavior)."},"timeout_ms":{"type":"integer","description":"wait: how long to wait for the reply (default 30000, max 120000)."}},"required":["to","message"]}`)
 }
 
 func (talkToSessionTool) ReadOnly() bool { return false }
@@ -783,8 +791,24 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 	}
 	ids := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
 	target, err := ResolveTarget(ids, p.To)
+	viaBus := false
 	if err != nil {
-		return "", err
+		// Bus #1: "zcode-<role>" task-bus contacts are not directory sessions —
+		// the directory has no row for them, so ResolveTarget reports
+		// ErrNotFound. When the ref IS an enrolled bus contact, resolve it
+		// there instead; anything else keeps the original directory error. The
+		// fallback lives HERE, not inside ResolveTarget: the other callers
+		// (read_session_tail, approver, set_session_purpose) are session-file
+		// semantics a synthetic mailbox contact cannot satisfy.
+		resolved, busOK := t.resolveBusContact(p.To)
+		if !busOK {
+			if isZcodeRef(p.To) {
+				return "", fmt.Errorf("%w; %q looks like a task-bus contact — enroll the role first (reasonix bus enroll --role <name>)", err, p.To)
+			}
+			return "", err
+		}
+		target = resolved
+		viaBus = true
 	}
 	if target.Archived {
 		// Archived is a different situation from unknown: the address is real,
@@ -808,10 +832,7 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 	// set_session_purpose fail and every unregistered sender read as "(未登记)".
 	fromContact := t.cfg.currentContactID()
 	fromSession := t.cfg.currentSessionPath()
-	mailDir := t.cfg.MailDir
-	if mailDir == "" {
-		mailDir = config.SessionCollabMailDir()
-	}
+	mailDir := t.mailDirFor(target, viaBus)
 	mail := sessioncollab.NewMailStoreWithHopLimit(mailDir, t.cfg.hopLimit())
 	msg := sessioncollab.MailMessage{
 		From:             fromContact,
@@ -934,6 +955,70 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 		return t.waitReply(ctx, msg.ID, p.TimeoutMS)
 	}
 	return string(out), nil
+}
+
+// resolveBusContact maps a "zcode-<role>" reference to a synthetic task-bus
+// contact (bus #1) when that contact is live — an enrolled [serve.bus_mcp]
+// role, or the [serve.bus_worker] pool contact. Membership against the
+// contact table is the only gate: the table itself is shape-validated in
+// config (busContactsFrom), so a hand-edited config can never mint a
+// traversing mailbox path here, and an unenrolled role stays ErrNotFound.
+// Matching is case-insensitive like the directory's own; the canonical
+// lower-case contact from the table wins.
+func (t talkToSessionTool) resolveBusContact(ref string) (sessioncollab.Identity, bool) {
+	contacts := t.busContacts()
+	if len(contacts) == 0 {
+		return sessioncollab.Identity{}, false
+	}
+	key := strings.ToLower(strings.TrimSpace(ref))
+	for _, contact := range contacts {
+		if strings.EqualFold(contact, key) {
+			return sessioncollab.Identity{
+				ContactID: contact,
+				Title:     contact,
+				Purpose:   "zcode task-bus contact",
+			}, true
+		}
+	}
+	return sessioncollab.Identity{}, false
+}
+
+// busContacts answers the addressable bus contacts: the injected probe when
+// the host wired one (tests), else the live user config. A nil probe reading
+// live config means production needs no boot wiring for the fallback.
+func (t talkToSessionTool) busContacts() []string {
+	if t.cfg.BusContacts != nil {
+		return t.cfg.BusContacts()
+	}
+	return config.BusContactsLive()
+}
+
+// isZcodeRef reports whether a target reference sits in the synthetic-contact
+// namespace. Messaging only — it decides whether a failed resolution should
+// point at bus enroll; the actual gate is contact-table membership.
+func isZcodeRef(ref string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(ref)), "zcode-")
+}
+
+// mailDirFor picks the mailbox root for one delivery. Session targets use the
+// shared collab directory (or the host override). A bus synthetic contact
+// must land in the bus's OWN resolution of that directory
+// (config.BusMailDirLive mirrors busmcp.New), otherwise a deployment with a
+// custom [serve.bus_mcp].mail_dir would silently strand agent mail in a box
+// no zcode role reads. An explicit cfg.MailDir override (tests, custom hosts)
+// wins over both. viaBus marks a bus-fallback target so a real directory
+// session that happens to carry a zcode-prefixed contact id keeps routing to
+// the session stream.
+func (t talkToSessionTool) mailDirFor(target sessioncollab.Identity, viaBus bool) string {
+	if strings.TrimSpace(t.cfg.MailDir) != "" {
+		return t.cfg.MailDir
+	}
+	if viaBus {
+		if dir := config.BusMailDirLive(); dir != "" {
+			return dir
+		}
+	}
+	return config.SessionCollabMailDir()
 }
 
 // waitReply polls the caller's own inbox for an answer on the delivered

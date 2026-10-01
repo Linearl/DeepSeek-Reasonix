@@ -295,6 +295,13 @@ const CHECKS = [
   { feature: "bus3 send/spawn 投递点接线", file: "internal/busmcp/tools.go", patterns: ["rt.bus.notifyInjector(msg.To, msg)"] },
   { feature: "bus3 serve 注入器（queue 语义+邮件留存兜底）", file: "internal/serve/zcodebridgeinject.go", patterns: ["func injectBusMailVia(", "zcodebridge.DeliveryQueue", "mail stays in inbox"] },
   { feature: "bus3 serve 接线注入器与桥 workspace 解析", file: "internal/serve/serve.go", patterns: ["Injector: zcodeMailInjector{s: s}", "zcodeBridgeWorkspace atomic.Pointer[string]"] },
+  // ── bus#1：talk_to_session 放行 zcode- 合成联系人（reasonix 会话可发信 bus）──
+  // 三处锚点锁整条链：agent 侧目录未命中后的 bus 联系人回退（放行本体）、config 侧
+  // 联系人表/信箱目录的 live 解析（唯一数据面）、busmcp 复用同一张校验表（单源，
+  // 防端点与 agent 两侧判表规则漂移）。丢任何一环，回退要么失活要么与端点不一致。
+  { feature: "bus#1 talk_to_session 放行 zcode- 合成联系人（agent 回退）", file: "internal/agent/session_collab_tools.go", patterns: ["BusContacts func() []string", "func (t talkToSessionTool) resolveBusContact", "func (t talkToSessionTool) mailDirFor"] },
+  { feature: "bus#1 bus 联系人表 live 解析与角色表单源校验（config）", file: "internal/config/bus.go", patterns: ["func ValidateBusRoles", "func BusContactsLive", "func BusMailDirLive", "var BusRolePattern"] },
+  { feature: "bus#1 busmcp 复用 config 角色表校验（单源）", file: "internal/busmcp/busmcp.go", patterns: ["config.ValidateBusRoles(cfg.Roles)"] },
 ];
 
 let failed = 0;

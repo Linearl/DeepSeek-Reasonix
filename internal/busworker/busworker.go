@@ -1,8 +1,11 @@
 // Package busworker runs unattended bus task assignments through an external
 // headless agent CLI. It drains ONE mailbox contact (default "zcode-worker"),
-// so any bus participant — a zcode role via collab_spawn, a Reasonix session
-// via talk_to_session — can hand work to the pool with the same durable
-// primitives everything else on the bus already uses. Nothing here touches
+// so any bus participant can hand work to the pool with the same durable
+// primitives everything else on the bus already uses: a zcode role via
+// collab_spawn (card + assignment mail in one step), or a Reasonix session
+// via talk_to_session to the pool contact (bus #1) — the mail body must be
+// the kind=bus-task contract over a pending card, which is exactly what
+// collab_spawn produces and what parseJob below demands. Nothing here touches
 // controller/session state: a run is one tracked child process plus a result
 // file plus a card update plus a receipt mail.
 //

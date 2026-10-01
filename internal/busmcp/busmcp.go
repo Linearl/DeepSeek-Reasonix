@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -34,10 +33,6 @@ import (
 	"reasonix/internal/config"
 	"reasonix/internal/sessioncollab"
 )
-
-// validRole constrains role names so the derived contactID is always a safe
-// filename component (MailStore uses "<contactID>.inbox.jsonl").
-var validRole = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
 
 // ErrDisabled is returned by New when the role table is empty or invalid —
 // callers must treat it as "do not mount", never as a partial start.
@@ -141,16 +136,15 @@ func New(cfg Config) (*Server, error) {
 	}
 	s.spawnUsed = map[string]int{}
 	s.spawnDay = time.Now().Format("2006-01-02")
+	// Fail closed on the WHOLE table before building any per-role state.
+	// config.ValidateBusRoles is the single source of the table rules (bus #1):
+	// the agent side resolves talk_to_session targets from the same validated
+	// table, so the endpoint and talk_to_session can never disagree about what
+	// a usable role table is.
+	if err := config.ValidateBusRoles(cfg.Roles); err != nil {
+		return nil, fmt.Errorf("busmcp: %w", err)
+	}
 	for role, token := range cfg.Roles {
-		if !validRole.MatchString(role) {
-			return nil, fmt.Errorf("busmcp: invalid role name %q (want [a-z0-9-]+)", role)
-		}
-		if strings.TrimSpace(token) == "" {
-			return nil, fmt.Errorf("busmcp: role %q has an empty token", role)
-		}
-		if _, dup := s.roleByTk[token]; dup {
-			return nil, fmt.Errorf("busmcp: duplicate token across roles (role %q)", role)
-		}
 		s.roleByTk[token] = role
 		contact := "zcode-" + role
 		s.contact[role] = contact
