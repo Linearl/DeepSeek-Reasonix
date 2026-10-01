@@ -1,8 +1,10 @@
 package provider
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -116,5 +118,25 @@ func TestSearchStatusStaysOutsideReplay(t *testing.T) {
 	}
 	if ServerSearchSourcesStatus(ServerSearchCall{Results: []ServerSearchHit{{URL: "https://example.com"}}}) != SourcesAvailable {
 		t.Fatal("valid source missing")
+	}
+}
+
+// Task 340 (upstream #10778): surfaces branch on the named cancelled kind, not
+// error text, so a wrapped cancellation and a real provider failure can never
+// be confused - a user stop shows only the interrupted notice, any other
+// terminal error keeps its provider failure visible.
+func TestFailureKindCancelledCoversWrappedCancellationOnly(t *testing.T) {
+	if d := DiagnoseFailure(context.Canceled); d.Kind != FailureKindCancelled {
+		t.Fatalf("cancellation kind = %q, want %q", d.Kind, FailureKindCancelled)
+	}
+	wrapped := fmt.Errorf("stream: %w", context.Canceled)
+	if d := DiagnoseFailure(wrapped); d.Kind != FailureKindCancelled {
+		t.Fatalf("wrapped cancellation kind = %q, want %q", d.Kind, FailureKindCancelled)
+	}
+	if d := DiagnoseFailure(&APIError{Status: 402}); d.Kind == FailureKindCancelled {
+		t.Fatal("a provider HTTP failure must not classify as cancelled")
+	}
+	if FailureKindCancelled != "cancelled" {
+		t.Fatalf("FailureKindCancelled = %q, wire contract is %q", FailureKindCancelled, "cancelled")
 	}
 }

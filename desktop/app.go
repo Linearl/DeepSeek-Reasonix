@@ -5511,6 +5511,16 @@ func interruptedTurnHistoryNotice(recovery *provider.InterruptedTurnRecovery) Hi
 		diagnostic := recovery.FailureDiagnostic
 		message := "The provider request failed. Check the connection settings and try again."
 		detail := provider.FailureDiagnosticDetail(diagnostic)
+		// Task 340 (upstream #10778): the summary carries the real provider
+		// error - status line and response-body snippet, credential-scrubbed
+		// when the record was written. Without it a reload names only the
+		// status class and drops the actual cause.
+		if recovery.FailureSummary != "" {
+			if detail != "" {
+				detail += "\n"
+			}
+			detail += recovery.FailureSummary
+		}
 		if diagnostic != nil {
 			if statusMessage := i18n.M.ProviderStatusMessage(diagnostic.Status); statusMessage != "" {
 				message = statusMessage

@@ -346,6 +346,26 @@ const CHECKS = [
     "fold would not shrink it",
     "contentBytes*2 >= logSize",
   ] },
+  // 任务 340（上游 #10778 / #10254）：中断轮保留 provider 真错误。四道闸：
+  // wire 契约常量（前端按 kind==="cancelled" 区分用户停止与真失败）、持久化
+  // 摘要（写时脱敏，reload 后真错误仍在）、历史 notice 拼接、live reducer
+  // 透出（吞错误分支补 warn 行）——任何一道被 merge 丢掉，#10254 复发。
+  { feature: "任务340 FailureKindCancelled wire 契约常量", file: "internal/provider/failure_diagnostic.go", patterns: [
+    "FailureKindCancelled = \"cancelled\"",
+    "d.Kind = FailureKindCancelled",
+  ] },
+  { feature: "任务340 中断轮持久化真错误摘要（写时脱敏+定长）", file: "internal/agent/agent.go", patterns: [
+    "func interruptedFailureSummary(",
+    "secrets.RedactError(err)",
+    "FailureSummary:          failureSummary",
+  ] },
+  { feature: "任务340 历史 reload notice 携带失败摘要", file: "desktop/app.go", patterns: [
+    "recovery.FailureSummary != \"\"",
+    "detail += recovery.FailureSummary",
+  ] },
+  { feature: "任务340 live reducer 中断分支透出真错误（cancelled 除外）", file: "desktop/frontend/src/lib/useController.ts", patterns: [
+    "e.diagnostic.kind !== \"cancelled\" && !s.streamInterruptNoticeShown",
+  ] },
 ];
 
 let failed = 0;
