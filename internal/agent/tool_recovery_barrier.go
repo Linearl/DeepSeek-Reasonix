@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"log/slog"
+
 	"reasonix/internal/event"
 	"reasonix/internal/provider"
 )
@@ -32,6 +34,18 @@ func (a *Agent) emitToolStarted(c provider.ToolCall) error {
 // for the panel and for after-the-fact review.
 func (a *Agent) finishRunRecovery(ctx context.Context, err *error) {
 	if toolRecoveryExempt(ctx) {
+		// Task 406: the waiver is only worth a line when a write fence is
+		// actually standing - one scan of the pending records, log only; the
+		// early return below (no joined error) is the original behavior.
+		for _, r := range a.PendingToolRecovery() {
+			if !r.ReadOnly {
+				slog.Info("agent: fence-waived",
+					"session", a.recoveryLogSessionName(),
+					"mode", a.toolRecoveryModeLabel(ctx),
+					"tool", r.Identity.CanonicalTool)
+				break
+			}
+		}
 		return
 	}
 	for _, r := range a.PendingToolRecovery() {

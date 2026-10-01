@@ -371,6 +371,12 @@ type Agent struct {
 	// work. Session-lived runtime state, deliberately not on the frozen
 	// agentConfig (guarded by TestAgentConfigIsNeverAssignedAfterConstruction).
 	softBudgetMutationSeen bool
+	// turnTimedOutPendingContinue marks a Run that ended on a deadline so the
+	// NEXT turn can log recovery-timeout-continued when it starts (task 406):
+	// a session that timed out and kept going must be distinguishable in logs
+	// from one stuck on the recovery fence. Log-only state, deliberately not on
+	// the frozen agentConfig; no decision reads it.
+	turnTimedOutPendingContinue bool
 	// toolStats accumulates per-tool call/error counters for the session
 	// sidecar (task 227 phase 1: observe only; aggregate counts, no args).
 	// toolStatsMu guards it: record runs on parallel tool goroutines.
@@ -1524,8 +1530,22 @@ func (a *Agent) reserveParentWrite(runTool tool.Tool, args json.RawMessage, read
 // leaves the loop unbounded here: bounding it is the host's call, and the
 // adaptive stop is the no-progress ladder rather than a round count. Turn policy
 // lives in beginRunTurn / runToolLoop / handleFinalResponse / handleToolRound.
+// noteRunTimeout records that a Run ended on a deadline so the next
+// beginRunTurn can log recovery-timeout-continued (task 406): the marker that
+// separates "the turn timed out and the session kept going" from a session
+// stuck on the recovery fence. Only a real deadline counts - a deliberate
+// budget pause (taskBudgetPause) is a policy stop, not a timeout.
+func (a *Agent) noteRunTimeout(runErr error) {
+	if errors.Is(runErr, context.DeadlineExceeded) {
+		a.turnTimedOutPendingContinue = true
+	}
+}
+
 func (a *Agent) Run(ctx context.Context, input string) (runErr error) {
 	defer func() { a.finishRunRecovery(ctx, &runErr) }()
+	// Task 406: remember a deadline-ended Run so the next beginRunTurn can log
+	// recovery-timeout-continued (see noteRunTimeout). Log-only.
+	defer func() { a.noteRunTimeout(runErr) }()
 	if err := a.prepareProtocolRecovery(ctx); err != nil {
 		return err
 	}

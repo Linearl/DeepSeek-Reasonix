@@ -100,6 +100,16 @@ func (a *Agent) ResolveToolRecovery(attempt, inspection, action string) error {
 	if !a.Session().setToolRecoveryRecord(call.ID, r) {
 		return fmt.Errorf("recovery attempt changed")
 	}
+	// Task 406: the release half of the fence lifecycle - how long the fence
+	// stood before the panel lifted it. Log only; the rollback path below is
+	// untouched (an unpersisted confirmation never reaches here).
+	slog.Info("agent: recovery fence released",
+		"session", a.recoveryLogSessionName(),
+		"source", "manual",
+		"resolution", action,
+		"tool", call.Name,
+		"wait_ms", r.ResolvedAt-r.StartedAt,
+		"fence_wait_ms", r.ResolvedAt-r.FinishedAt)
 	// Unlike the inspection checkpoint, this one must not be best-effort: it is the record that
 	// the barrier was lifted. An unpersisted confirmation must not remove an effect barrier, so
 	// the in-memory state is rolled back and the error surfaced - pinned by
@@ -160,7 +170,7 @@ func (a *Agent) RetryToolRecovery(ctx context.Context, attempt, inspection strin
 	a.Session().Add(provider.Message{Role: provider.RoleAssistant, LocalOnly: true, ToolCalls: []provider.ToolCall{call}})
 	ctx = context.WithValue(ctx, recoveryRetryKey{}, &r)
 	out := a.executeOne(ctx, &a.turn, call)
-	a.finishToolRecovery(call, out)
+	a.finishToolRecovery(ctx, call, out)
 	a.Session().Add(provider.Message{Role: provider.RoleTool, LocalOnly: true, ToolCallID: call.ID, Name: call.Name, Content: out.output, ToolRunState: outcomeRunState(out)})
 	if err := event.EmitChecked(a.svc.sink, event.Event{Kind: event.Notice, RecoveryCheckpoint: true}); err != nil {
 		return err

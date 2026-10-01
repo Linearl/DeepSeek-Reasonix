@@ -232,7 +232,7 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 		a.finalizeReadDelivery(ctx, calls[i], &outcomes[i])
 		results[i] = outcomes[i].output
 		a.commitBatchCallResolution(calls[i])
-		a.finishToolRecovery(calls[i], outcomes[i])
+		a.finishToolRecovery(ctx, calls[i], outcomes[i])
 		a.storeBatchToolResult(ctx, calls[i], outcomes[i])
 		if err := a.emitBatchToolResult(calls[i], outcomes[i], durations[i], startedAt[i], ranParallel[i], batchStart); err != nil {
 			batchErrOnce.Do(func() { batchErr = fmt.Errorf("persist tool result %s: %w", calls[i].ID, err) })

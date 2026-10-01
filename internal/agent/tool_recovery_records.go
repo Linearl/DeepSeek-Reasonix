@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -120,6 +121,35 @@ func toolRecoveryExempt(ctx context.Context) bool {
 	}
 	unattended, _ := ctx.Value(unattendedRunContextKey{}).(bool)
 	return unattended
+}
+
+// toolRecoveryModeLabel names the turn's fence posture for the task-406 log
+// lines (fence created / waived). Read-only: it derives the label from the
+// same ctx bindings the exemption reads, with autopilot (an agent-level
+// posture) winning over the unattended flag its controller also sets. Anything
+// else - notably "ask" - is "normal", the posture that keeps the full fence.
+func (a *Agent) toolRecoveryModeLabel(ctx context.Context) string {
+	if a != nil && a.autopilot {
+		return "autopilot"
+	}
+	if mode, _ := ctx.Value(toolApprovalModeContextKey{}).(string); mode == toolApprovalModeYolo {
+		return "yolo"
+	} else if mode == toolApprovalModeAuto {
+		return "auto"
+	}
+	if unattended, _ := ctx.Value(unattendedRunContextKey{}).(bool); unattended {
+		return "unattended"
+	}
+	return "normal"
+}
+
+// recoveryLogSessionName is the greppable session identity for the task-406
+// fence log lines (created / waived / released); empty for pathless sessions.
+func (a *Agent) recoveryLogSessionName() string {
+	if a == nil || strings.TrimSpace(a.sess.path) == "" {
+		return ""
+	}
+	return filepath.Base(a.sess.path)
 }
 
 func recoveryDigest(b []byte) string { sum := sha256.Sum256(b); return hex.EncodeToString(sum[:]) }
@@ -279,7 +309,12 @@ func (a *Agent) beginToolRecovery(ctx context.Context, p *toolCallPlan) error {
 	return nil
 }
 
-func (a *Agent) finishToolRecovery(call provider.ToolCall, out toolOutcome) {
+// finishToolRecovery closes one attempt's record. Task 406: when the outcome
+// leaves a write unresolved, the fence it raises is logged here - session,
+// mode, interrupted-call digest and durations - so a later stall report can be
+// checked against logs instead of inferred from a static tail snapshot. Log
+// only; the state transitions below are untouched.
+func (a *Agent) finishToolRecovery(ctx context.Context, call provider.ToolCall, out toolOutcome) {
 	r := a.sess.conversation.toolRecoveryRecord(call.ID)
 	if r == nil {
 		return
@@ -302,6 +337,20 @@ func (a *Agent) finishToolRecovery(call provider.ToolCall, out toolOutcome) {
 	r.FinishedAt = time.Now().UnixMilli()
 	r.ResultDigest = recoveryDigest([]byte(out.output))
 	a.sess.conversation.setToolRecoveryRecord(call.ID, *r)
+	if !r.ReadOnly && unresolvedToolRecord(*r) {
+		var turnMs int64
+		if started := a.turn.budget.started; !started.IsZero() {
+			turnMs = time.Since(started).Milliseconds()
+		}
+		slog.Info("agent: recovery fence created",
+			"session", a.recoveryLogSessionName(),
+			"mode", a.toolRecoveryModeLabel(ctx),
+			"tool", call.Name,
+			"args_digest", r.Identity.ArgumentDigest,
+			"duration_ms", r.FinishedAt-r.StartedAt,
+			"turn_duration_ms", turnMs,
+			"state", string(r.State))
+	}
 }
 
 // resolveSideEffectFreeInterruptedCalls settles every pending record whose
@@ -447,6 +496,15 @@ func (a *Agent) resolveHostVerifiableEffects(ctx context.Context) {
 		if !a.sess.conversation.setToolRecoveryRecord(record.Identity.CallID, resolved) {
 			continue
 		}
+		// Task 406: the release half of the fence lifecycle - how long the
+		// fence stood and that the host lifted it without a human. Log only.
+		slog.Info("agent: recovery fence released",
+			"session", a.recoveryLogSessionName(),
+			"source", "auto",
+			"resolution", resolved.Resolution,
+			"tool", record.Identity.CanonicalTool,
+			"wait_ms", resolved.ResolvedAt-record.StartedAt,
+			"fence_wait_ms", resolved.ResolvedAt-record.FinishedAt)
 		// Best effort, like the inspection checkpoint: the in-memory record is
 		// the evidence, and rolling it back would resurrect a barrier the host
 		// already disproved.
