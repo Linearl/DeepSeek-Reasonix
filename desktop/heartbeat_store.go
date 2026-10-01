@@ -138,6 +138,22 @@ func (e *HeartbeatEngine) writeTasks(tasks []HeartbeatTask, expected heartbeatCo
 	if compare && (current.exists != expected.exists || current.digest != expected.digest || current.cfg.Revision != expected.cfg.Revision) {
 		return ErrHeartbeatConfigConflict
 	}
+	// Task 327: re-enabling a task whose run budget is spent starts a fresh
+	// budget (重开 = 重置计数). This is the single persistence choke point every
+	// editor goes through — the settings panel, the agent tools'
+	// heartbeat_task_enable / heartbeat_task_upsert, and the engine's own
+	// writes — so the rule has exactly one home. A hand-edit of the JSON
+	// bypasses it by design: an external re-enable keeps its counter (clear
+	// runsUsed by hand if that is what you mean).
+	for i := range tasks {
+		if !tasks[i].Enabled || tasks[i].RunsUsed == 0 {
+			continue
+		}
+		if prev := heartbeatTaskByID(current.cfg.Tasks, tasks[i].ID); prev != nil && prev.Enabled {
+			continue // unchanged or still-running task: keep the counter
+		}
+		tasks[i].RunsUsed = 0
+	}
 	revision := current.cfg.Revision + 1
 	if !current.exists {
 		revision = 1
@@ -275,6 +291,18 @@ func mergeHeartbeatRunUpdates(tasks []HeartbeatTask, updates map[string]Heartbea
 		if len(update.RunHistory) > 0 {
 			tasks[i].RunHistory = mergeRunHistory(tasks[i].RunHistory, update.RunHistory)
 		}
+		// Task 327: the run budget is engine-owned run state. Publishing only
+		// timestamps would silently resurrect a task the runtime just disabled
+		// for spending maxRuns — the next tick would see it enabled again while
+		// the counter still read "spent". Take the higher counter so a stale
+		// snapshot cannot hand out extra runs, and honor the runtime's terminal
+		// disable against the disk's (authoritative) budget.
+		if update.RunsUsed > tasks[i].RunsUsed {
+			tasks[i].RunsUsed = update.RunsUsed
+		}
+		if tasks[i].MaxRuns > 0 && update.RunsUsed >= tasks[i].MaxRuns && !update.Enabled {
+			tasks[i].Enabled = false
+		}
 	}
 }
 
@@ -319,6 +347,12 @@ func mergeHeartbeatDiskRunHistory(submitted, disk []HeartbeatTask) []HeartbeatTa
 		}
 		out[i].TopicID = diskTask.TopicID
 		out[i].LastRunAt = diskTask.LastRunAt
+		// Task 327: runsUsed is engine-owned like LastRunAt — a stale panel
+		// snapshot must not roll the counter back and grant extra runs. The one
+		// legitimate reset (re-enable) is applied afterwards in writeTasks.
+		if diskTask.RunsUsed > out[i].RunsUsed {
+			out[i].RunsUsed = diskTask.RunsUsed
+		}
 		// Always union by At: once history reaches maxRunHistory, a new disk run
 		// replaces the oldest entry without changing length, so length comparison
 		// would incorrectly drop the engine's new run.

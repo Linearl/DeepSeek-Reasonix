@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { HeartbeatTask } from "../custom/features/heartbeat/heartbeat.types";
 import type { HeartbeatFrequencyType } from "../custom/features/heartbeat/heartbeat.presentation";
-export const automationEditableFields = ["title", "prompt", "interval", "enabled", "scope", "workspaceRoot", "approvalMode", "newConversationEachRun", "reuseSession", "notifyChannels", "timeWindowStart", "timeWindowEnd", "provider", "model", "goalMode", "goalText"] as const;
+export const automationEditableFields = ["title", "prompt", "interval", "enabled", "scope", "workspaceRoot", "approvalMode", "newConversationEachRun", "reuseSession", "maxRuns", "notifyChannels", "timeWindowStart", "timeWindowEnd", "provider", "model", "goalMode", "goalText"] as const;
 type Field = typeof automationEditableFields[number];
 export type AutomationDraft = {
   baseline: HeartbeatTask | null; draft: HeartbeatTask; conflicts: Field[];
@@ -32,6 +32,7 @@ export function reconcileAutomationDraft(entry: AutomationDraft, current?: Heart
     if (draft[key] === current[key]) conflicts.delete(key);
   }
   draft.topicId = current.topicId; draft.lastRunAt = current.lastRunAt; draft.runHistory = current.runHistory;
+  draft.runsUsed = current.runsUsed; // engine-owned counter (task 327): always take the freshest value
   return { ...entry, baseline: { ...current }, draft, missing: false, conflicts: [...conflicts],
     frequency: draft.interval === entry.draft.interval ? entry.frequency : frequencyOf(draft.interval) };
 }

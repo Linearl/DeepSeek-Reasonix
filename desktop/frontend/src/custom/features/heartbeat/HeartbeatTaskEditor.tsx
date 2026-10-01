@@ -87,7 +87,7 @@ export function TaskEditor({
   useEffect(() => {
     if (managed) return;
     setDraft((current) => mergeEngineRunState({ ...current, enabled: task.enabled }, task));
-  }, [managed, setDraft, task.enabled, task.lastRunAt, task.runHistory, task.topicId]);
+  }, [managed, setDraft, task.enabled, task.lastRunAt, task.runHistory, task.topicId, task.runsUsed]);
   const isNew = managed ? !entry?.baseline : !task.createdAt;
   const isDirty = managed && entry ? automationDraftDirty(entry) : draft.title !== initialTaskRef.current.title
     || draft.prompt !== initialTaskRef.current.prompt
@@ -96,6 +96,7 @@ export function TaskEditor({
     || draft.approvalMode !== initialTaskRef.current.approvalMode
     || draft.newConversationEachRun !== initialTaskRef.current.newConversationEachRun
     || draft.reuseSession !== initialTaskRef.current.reuseSession
+    || draft.maxRuns !== initialTaskRef.current.maxRuns
     || draft.notifyChannels !== initialTaskRef.current.notifyChannels
     || draft.scope !== initialTaskRef.current.scope
     || draft.workspaceRoot !== initialTaskRef.current.workspaceRoot
@@ -138,6 +139,26 @@ export function TaskEditor({
   }, [draft, onSave]);
   const set = useCallback((field: keyof HeartbeatTask, value: string | boolean) => {
     setDraft((prev) => ({ ...prev, [field]: value }));
+  }, [setDraft]);
+
+  // 运行次数上限（task 327）：maxRuns 与 interval 正交——interval 决定何时跑，
+  // maxRuns 决定跑几次停。0/缺省 = 无限（现有任务零变化），1 = 单次，
+  // >1 = 自定义 N（跑满自动禁用）。选「自定义」时若当前值不是有效 N 则给 3，
+  // 免得用户从「无限」切过去得到输入框里的 0。
+  const maxRunsKind: "unlimited" | "once" | "custom" = !draft.maxRuns
+    ? "unlimited"
+    : draft.maxRuns === 1
+      ? "once"
+      : "custom";
+  const selectMaxRuns = useCallback((kind: "unlimited" | "once" | "custom") => {
+    setDraft((prev) => ({
+      ...prev,
+      maxRuns: kind === "unlimited"
+        ? 0
+        : kind === "once"
+          ? 1
+          : Math.max(2, prev.maxRuns && prev.maxRuns !== 1 ? prev.maxRuns : 3),
+    }));
   }, [setDraft]);
 
   // #30: pick the model override from the providers the user already configured
@@ -569,6 +590,52 @@ export function TaskEditor({
               <span className="heartbeat-editor__bound-unbound">{t("heartbeat.reuseSessionUnbound")}</span>
             )}
           </div>
+        )}
+      </div>
+
+      {/* 运行次数上限（task 327）：interval 决定何时跑，maxRuns 决定跑几次停；
+          0/缺省=无限重复（现行为不变），1=单次，N=跑满自动禁用。计数按触发算
+          （失败也计），跑满后列表显示「已完成（已自动禁用）」与 k/N。 */}
+      <div className="heartbeat-editor__field">
+        <label>{t("heartbeat.fieldMaxRuns")}</label>
+        <div className="set-seg" style={{ alignSelf: "flex-start" }}>
+          {([
+            ["unlimited", t("heartbeat.maxRunsUnlimited")],
+            ["once", t("heartbeat.maxRunsOnce")],
+            ["custom", t("heartbeat.maxRunsCustom")],
+          ] as const).map(([v, label]) => (
+            <button
+              key={v}
+              type="button"
+              className={`set-seg__btn${maxRunsKind === v ? " set-seg__btn--on" : ""}`}
+              onClick={() => selectMaxRuns(v)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {maxRunsKind === "custom" && (
+          <div className="heartbeat-editor__freq-interval">
+            <input
+              type="number"
+              min={2}
+              step={1}
+              value={Math.max(2, draft.maxRuns || 3)}
+              onChange={(e) => {
+                const parsed = Math.floor(Number(e.target.value));
+                setDraft((prev) => ({ ...prev, maxRuns: Number.isFinite(parsed) && parsed > 1 ? parsed : 2 }));
+              }}
+              aria-label={t("heartbeat.maxRunsCustom")}
+              data-testid="heartbeat-max-runs-input"
+            />
+            <span>{t("heartbeat.maxRunsCustomHint")}</span>
+          </div>
+        )}
+        <span className="heartbeat-editor__mode-hint">{t("heartbeat.maxRunsHint")}</span>
+        {Boolean(draft.maxRuns) && (
+          <span className="heartbeat-editor__mode-hint" data-testid="heartbeat-max-runs-progress">
+            {t("heartbeat.maxRunsProgress", { used: draft.runsUsed ?? 0, max: draft.maxRuns ?? 0 })}
+          </span>
         )}
       </div>
 
