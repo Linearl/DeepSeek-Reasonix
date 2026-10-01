@@ -1163,6 +1163,25 @@ func (m *Manager) SetActiveSessionPath(parentSession, sessionPath string) {
 		m.mu.Unlock()
 		return
 	}
+	// parentSession doubles as a temporary artifact subdirectory name
+	// (artifactDirLocked) whenever no persistent binding exists, so it must
+	// pass the same segment validation StartForSession applies before a job
+	// may run under it. Rejecting here keeps a traversal-shaped parent
+	// session from steering artifact migration at the temp-root boundary.
+	if err := validatePathSegment(parentSession, "parentSession"); err != nil {
+		m.mu.Lock()
+		m.active = parentSession
+		delete(m.artifactDirs, parentSession)
+		delete(m.loaded, parentSession)
+		m.mu.Unlock()
+		m.sink.Emit(event.Event{
+			Kind:   event.Notice,
+			Level:  event.LevelWarn,
+			Text:   "Ignoring SetActiveSessionPath with invalid parent session",
+			Detail: fmt.Sprintf("parent session %q: %v", parentSession, err),
+		})
+		return
+	}
 	// Reject malformed trusted paths before any filesystem side effect. This is
 	// syntax hardening, not a boundary for arbitrary caller-controlled paths.
 	if err := validateTrustedSessionPath(sessionPath); err != nil {
@@ -1482,10 +1501,18 @@ func (m *Manager) loadSessionArtifacts(parentSession, sessionPath, dir string) {
 		if err != nil || strings.TrimSpace(meta.ID) == "" {
 			continue
 		}
-		id := strings.TrimSpace(meta.ID)
-		if seq := maxJobSeq(id); seq > maxSeq {
-			maxSeq = seq
-		}
+			id := strings.TrimSpace(meta.ID)
+			// The id is untrusted-at-load: it was read from JSON persisted on
+			// disk and is joined into artifact paths below. Reuse the #6932
+			// segment validator so a tampered or foreign meta can never steer
+			// a loaded artifact path outside dir. Like unreadable metas,
+			// invalid ones are skipped without registering a job.
+			if err := validatePathSegment(id, "job id"); err != nil {
+				continue
+			}
+			if seq := maxJobSeq(id); seq > maxSeq {
+				maxSeq = seq
+			}
 		// A persisted Running record may belong to another manager in this
 		// process or to another Reasonix process entirely. Only the runtime that
 		// owns the session lease may repair an abandoned record as Interrupted.
