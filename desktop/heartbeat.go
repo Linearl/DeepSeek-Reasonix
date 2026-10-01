@@ -75,6 +75,19 @@ type HeartbeatTask struct {
 	// (task 244 B1). Only advanced while experimental_autonomous_idle_terminate
 	// is on; reaching heartbeatIdleTerminateStrikes disables the task.
 	IdleStreak int `json:"idleStreak,omitempty"`
+	// MaxRuns caps how many times a task may run (task 327). 0 = unlimited,
+	// which is byte-for-byte today's repeating behavior, so every existing task
+	// is unaffected. MaxRuns=1 is the "single run" case and is deliberately not
+	// a separate "once" grammar: one primitive covers single, N runs, and the
+	// guard-task self-close floor task 326 builds on. Interval keeps deciding
+	// when to fire; MaxRuns only decides when to stop. Charged 触发即计数 by
+	// spendRunBudget, so a bounded task always terminates.
+	MaxRuns int `json:"maxRuns,omitempty"`
+	// RunsUsed is how much of MaxRuns has been charged (task 327). Engine-owned
+	// run state like topicId/lastRunAt: a stale panel save must not roll it
+	// back, and it is reset only by an explicit false→true re-enable (see
+	// writeTasks). Surfaced read-only as the k of the panel's "k/N" badge.
+	RunsUsed int `json:"runsUsed,omitempty"`
 }
 
 // HeartbeatRun records a single successful execution of a heartbeat task.
@@ -100,6 +113,10 @@ const maxRunHistory = 20
 // mode). An older binary doing a full-table save would silently drop the flag
 // and revert the task to new-per-run, so v3 claims forward protection: an
 // older binary refuses to write a newer config instead of downgrading it.
+// v4: adds MaxRuns/RunsUsed per task (task 327, run-count budget). Losing
+// maxRuns on an old binary's full-table save is worse than losing a mode
+// switch — a bounded once/N-run task silently becomes an unbounded repeating
+// one and keeps spending turns, so v4 extends the same forward protection.
 //
 // Migration boundary: configs written by v2+ binaries are read fine by older
 // binaries (unknown fields are ignored by json.Unmarshal), but an older
@@ -108,7 +125,7 @@ const maxRunHistory = 20
 // upgrade — once a v2+ binary has saved, do not run an older binary that
 // writes the config. writeTasks refuses to overwrite a config with a
 // schemaVersion newer than this binary understands (forward protection).
-const heartbeatSchemaVersion = 3
+const heartbeatSchemaVersion = 4
 
 // heartbeatConfig is the on-disk format.
 type heartbeatConfig struct {
@@ -624,7 +641,10 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 	scope, workspaceRoot := heartbeatRunScope(t.Scope, t.WorkspaceRoot)
 	t, topicID, pendingSubmitted, ok := e.resolveHeartbeatTopic(t, scope, workspaceRoot, title)
 	if !ok {
-		return t
+		// Task 327: this exit already advanced LastRunAt (the clock spent a
+		// slot), so the run budget must be charged with it — otherwise a
+		// permanently failing task would retry forever and never terminate.
+		return e.spendRunBudget(t)
 	}
 
 	// Open the tab for the topic (creates one if needed) without changing the
@@ -639,7 +659,7 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 	if err != nil {
 		log.Printf("[heartbeat] OpenTab(%q): %s", t.Title, secrets.RedactError(err))
 		t.LastRunAt = time.Now().UnixMilli()
-		return t
+		return e.spendRunBudget(t) // clock spent a slot → charge with it (task 327)
 	}
 
 	// Wait for the tab's controller to be built (it's started asynchronously in
@@ -679,6 +699,14 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 		e.mu.Unlock()
 		return e.executeTaskOwned(t)
 	}
+
+	// Task 327 (maxRuns): the attempt is committed here — topic resolved, tab
+	// open, controller built and idle. Everything after this point is charged
+	// 触发即计数 whether it ends in a submitted prompt or a failed submit, so a
+	// bounded task always terminates; the deferral exits above (no controller,
+	// busy controller, held lease, not due) never reached an attempt and cost
+	// nothing. The recursion just above re-enters without charging again.
+	t = e.spendRunBudget(t)
 
 	// Set the task's approval mode only after confirming the controller is idle.
 	// SetToolApprovalModeForTab may drain pending approvals for auto/yolo modes,
@@ -785,6 +813,45 @@ func (e *HeartbeatEngine) evaluateIdleStreak(t HeartbeatTask, prevIdle bool) Hea
 		t.Enabled = false
 	}
 	return t
+}
+
+// spendRunBudget charges one trigger against t.MaxRuns (task 327) and flips
+// the task off once the budget is gone, reusing the existing enabled switch so
+// no second scheduler mechanism is introduced.
+//
+// Semantics written down here because the task spec leaves them to the
+// implementer:
+//   - 触发即计数: the charge happens at the attempt's commitment point, so a
+//     failed submit spends a unit just like a successful one — the guarantee
+//     that matters is "a finite task always stops", not "a finite task always
+//     succeeds".
+//   - Deferrals (not due, lease held, no controller, busy controller) charge
+//     nothing; they are the scheduler deciding not to fire yet.
+//   - 重开 = 重置计数: re-enabling an exhausted task starts a fresh budget.
+//     That transition is detected once, at the persistence choke point
+//     (writeTasks), so panel saves and agent-tool edits share one rule.
+//   - MaxRuns <= 0 is unlimited: the function is a no-op and today's repeating
+//     behavior is untouched.
+func (e *HeartbeatEngine) spendRunBudget(t HeartbeatTask) HeartbeatTask {
+	if t.MaxRuns <= 0 {
+		return t
+	}
+	t.RunsUsed++
+	if t.RunsUsed >= t.MaxRuns {
+		t.Enabled = false
+		slog.Info("heartbeat: run budget exhausted — task disabled",
+			"task", t.ID, "title", t.Title,
+			"max_runs", t.MaxRuns, "runs_used", t.RunsUsed,
+			"gate", "maxRuns")
+	}
+	return t
+}
+
+// heartbeatBudgetExhausted reports whether a task has no run budget left. Used
+// to refuse a manual trigger instead of silently spending an extra unit (task
+// 327).
+func heartbeatBudgetExhausted(t HeartbeatTask) bool {
+	return t.MaxRuns > 0 && t.RunsUsed >= t.MaxRuns
 }
 
 // ListTasks returns a copy of the current tasks (in-memory).
@@ -1037,9 +1104,18 @@ func (e *HeartbeatEngine) TriggerNow(id string) {
 					return task, false
 				}
 				for _, current := range snapshot.cfg.Tasks {
-					if current.ID == task.ID {
-						return current, true
+					if current.ID != task.ID {
+						continue
 					}
+					// Task 327: an exhausted task is finished. A manual trigger
+					// refuses instead of spending a unit the budget never
+					// granted, so maxRuns is a real ceiling for every entry.
+					if heartbeatBudgetExhausted(current) {
+						log.Printf("[heartbeat] task %q already ran its full budget (%d/%d), not triggering",
+							current.Title, current.RunsUsed, current.MaxRuns)
+						return current, false
+					}
+					return current, true
 				}
 				return task, false
 			})

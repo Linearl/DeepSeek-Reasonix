@@ -404,6 +404,16 @@ const CHECKS = [
   { feature: "任务325 开启入口接线（恢复/新标签/选择器/审批切换）", file: "desktop/app.go", patterns: ["gateRestoredAutopilotDefaults(on, maxRuntime, grace, tab.toolApprovalMode)", "gateRestoredAutopilotDefaults(autopilot, maxRuntime, approvalGrace, toolApprovalMode)", "gateRestoredAutopilotDefaults(prefOn, prefRuntime, prefGrace, approvalMode)", "closeAutopilotForOffYolo(tab, mode)"] },
   { feature: "任务325 设置默认值前置校验（拒绝非 yolo）", file: "desktop/settings_app.go", patterns: ["autopilot requires the yolo approval mode"] },
   { feature: "任务325 拒绝/关闭提示按码本地化", file: "desktop/frontend/src/lib/controllerNotices.ts", patterns: ["autopilot_requires_yolo: \"notice.autopilotRequiresYolo\"", "autopilot_closed_off_yolo: \"notice.autopilotClosedOffYolo\""] },
+  // 任务 327：自动化任务运行次数上限 maxRuns（单次 = N 的特例、跑满自动禁用）。
+  // 锁计费点/自禁用、合并与「重开=重置计数」收口、schema 前向保护——丢掉合并
+  // 那条，引擎刚禁用的任务下一 tick 会被磁盘上的 enabled=true 复活。
+  { feature: "任务327 maxRuns 引擎（触发即计数+跑满自禁用）", file: "desktop/heartbeat.go", patterns: ["func (e *HeartbeatEngine) spendRunBudget", "func heartbeatBudgetExhausted", "MaxRuns int", "RunsUsed int"] },
+  { feature: "任务327 maxRuns 持久化合并与重开重置", file: "desktop/heartbeat_store.go", patterns: ["update.RunsUsed >= tasks[i].MaxRuns && !update.Enabled", "diskTask.RunsUsed > out[i].RunsUsed", "重开 = 重置计数"] },
+  { feature: "任务327 maxRuns schema 前向保护", file: "desktop/heartbeat.go", patterns: ["const heartbeatSchemaVersion = 4"] },
+  { feature: "任务327 maxRuns agent 工具面", file: "internal/tool/builtin/heartbeat_tasks.go", patterns: ["\"maxRuns\":{\"type\":\"integer\"", "\"runsUsed\": true", "maxRuns: integer budget"] },
+  { feature: "任务327 maxRuns 编辑器（无限/单次/自定义 N）", file: "desktop/frontend/src/custom/features/heartbeat/HeartbeatTaskEditor.tsx", patterns: ["heartbeat.maxRunsUnlimited", "heartbeat.maxRunsOnce", "data-testid=\"heartbeat-max-runs-input\""] },
+  { feature: "任务327 maxRuns 列表 k/N 与终态徽标", file: "desktop/frontend/src/custom/features/heartbeat/HeartbeatPanel.tsx", patterns: ["heartbeat-maxruns-badge", "heartbeat-maxruns-badge--done", "heartbeat.maxRunsCompleted"] },
+  { feature: "任务327 maxRuns 终态徽标 CSS", file: "desktop/frontend/src/custom/features/heartbeat/heartbeat.css", patterns: [".heartbeat-maxruns-badge", ".heartbeat-maxruns-badge--done"] },
 ];
 
 let failed = 0;

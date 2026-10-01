@@ -1957,6 +1957,14 @@
 .heartbeat-reuse-badge {
   color: var(--accent);
 }
+/* Task 327: run-count budget badge (k/N). The --done variant is the terminal
+   "finished, auto-disabled" state so it never reads as a user's manual pause. */
+.heartbeat-maxruns-badge {
+  color: var(--fg-dim);
+}
+.heartbeat-maxruns-badge--done {
+  color: var(--ok);
+}
 .heartbeat-editor__bound-topic {
   display: flex;
   align-items: center;

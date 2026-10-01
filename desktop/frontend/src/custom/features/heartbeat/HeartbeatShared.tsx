@@ -6,6 +6,9 @@ export function mergeEngineRunState(prev: HeartbeatTask, fresh: HeartbeatTask): 
     ...(fresh.runHistory ? { runHistory: fresh.runHistory } : {}),
     ...(fresh.topicId ? { topicId: fresh.topicId } : {}),
     ...(fresh.lastRunAt ? { lastRunAt: fresh.lastRunAt } : {}),
+    // Task 327: runsUsed is charged by the engine, so an open editor must pick
+    // up the fresh counter instead of displaying its stale snapshot.
+    ...(typeof fresh.runsUsed === "number" ? { runsUsed: fresh.runsUsed } : {}),
   };
 }
 

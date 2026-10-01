@@ -46,13 +46,21 @@ type HeartbeatTaskView struct {
 	Model                  string `json:"model,omitempty"`
 	GoalMode               bool   `json:"goalMode,omitempty"`
 	GoalText               string `json:"goalText,omitempty"`
+	// MaxRuns caps the number of runs (task 327); 0 = unlimited (default),
+	// 1 = single run. Writable through heartbeat_task_upsert.
+	MaxRuns int `json:"maxRuns,omitempty"`
 	// Engine-owned read-only state.
-	TopicID     string `json:"topicId,omitempty"`
-	LastRunAt   int64  `json:"lastRunAt,omitempty"`
-	CreatedAt   int64  `json:"createdAt,omitempty"`
-	RunCount    int    `json:"runCount,omitempty"`
-	NextRunAt   int64  `json:"nextRunAt"`             // unix millis; 0 = never (see NextRunHint)
-	NextRunHint string `json:"nextRunHint,omitempty"` // "", "disabled", "invalid-interval", "due-now", "overdue"
+	TopicID   string `json:"topicId,omitempty"`
+	LastRunAt int64  `json:"lastRunAt,omitempty"`
+	CreatedAt int64  `json:"createdAt,omitempty"`
+	RunCount  int    `json:"runCount,omitempty"`
+	// RunsUsed is how much of MaxRuns has been charged (task 327), read-only:
+	// k of the panel's k/N badge. Reset only by an explicit re-enable.
+	RunsUsed  int   `json:"runsUsed,omitempty"`
+	NextRunAt int64 `json:"nextRunAt"` // unix millis; 0 = never (see NextRunHint)
+	// NextRunHint: "", "disabled", "budget-exhausted", "invalid-interval",
+	// "due-now", "overdue".
+	NextRunHint string `json:"nextRunHint,omitempty"`
 }
 
 // HeartbeatListView is the list result plus the CAS token every mutating call
@@ -83,6 +91,7 @@ type HeartbeatTaskPatch struct {
 	NotifyChannels         *bool
 	NewConversationEachRun *bool
 	ReuseSession           *bool
+	MaxRuns                *int
 	Provider               string
 	Model                  string
 	GoalMode               *bool
@@ -176,10 +185,11 @@ const heartbeatContractDoc = `Field contract (authoritative):
 - timeWindowStart/timeWindowEnd: optional "HH:MM" bounds (start inclusive, end exclusive) for interval tasks; cross-midnight windows like 22:00-06:00 are supported.
 - notifyChannels: boolean; true forwards the run's output to connected bot channels. Omit/false = no forwarding.
 - newConversationEachRun: boolean; true creates a fresh topic per run (topicId then always points at the latest conversation).
+- maxRuns: integer budget on how many times the task may run (task 327). 0/omitted = unlimited (today's repeating behavior); 1 = single run; N = stop after N. Counting is per trigger — a failed attempt spends a unit too, so a bounded task always stops — while a skipped tick (not due, lease held, busy conversation) spends nothing. Reaching the budget flips enabled to false and the task shows runsUsed == maxRuns; re-enabling it (heartbeat_task_enable or upsert with enabled=true) resets runsUsed to zero, so each re-enable grants a fresh budget of maxRuns. runsUsed itself is engine-owned and rejected on write.
 - reuseSession: boolean; true resumes the conversation bound at topicId — each run appends the prompt there (context stays continuous, no new session per run). The first run creates and binds the topic. A run whose target conversation is busy (a turn is running) is skipped and retried next tick, never injected mid-turn. Takes precedence over newConversationEachRun.
 - provider/model: optional per-run model override; accepts "provider/model", a provider name, or a bare model name. Both empty keeps the topic's current model.
 - goalMode/goalText: goal-mode runs continue until the goal is met instead of stopping after one turn; empty goalText falls back to prompt.
-- Engine-owned, read-only for tools (writing them is rejected): topicId, lastRunAt, createdAt, runHistory — the scheduler maintains them.
+- Engine-owned, read-only for tools (writing them is rejected): topicId, lastRunAt, createdAt, runHistory, runsUsed — the scheduler maintains them.
 Revision contract (authoritative): the engine increments revision on every persisted write (a new file starts at 1); schemaVersion is code-owned and never written by tools. Every mutating call must pass expected_revision taken from the latest heartbeat_task_list result; on mismatch the call fails with the current revision instead of overwriting the concurrent writer (read again, re-apply, retry). This replaces the legacy hand-edit rule "bump revision yourself after changing path-like fields" — engine writes make it automatic.`
 
 // heartbeat_task_list ----------------------------------------------------------------
@@ -240,6 +250,7 @@ func (heartbeatTaskUpsert) Schema() json.RawMessage {
   "notifyChannels":{"type":"boolean"},
   "newConversationEachRun":{"type":"boolean"},
   "reuseSession":{"type":"boolean"},
+  "maxRuns":{"type":"integer","minimum":0,"description":"Run-count budget: 0 = unlimited (default), 1 = single run, N = stop after N runs. Charged per trigger (failures count); reaching it auto-disables the task. Re-enabling resets the count."},
   "provider":{"type":"string"},
   "model":{"type":"string"},
   "goalMode":{"type":"boolean"},
@@ -274,13 +285,16 @@ func (heartbeatTaskUpsert) Execute(ctx context.Context, args json.RawMessage) (s
 var heartbeatUpsertArgOrder = []string{
 	"id", "title", "prompt", "interval", "enabled", "scope", "workspaceRoot",
 	"approvalMode", "timeWindowStart", "timeWindowEnd", "notifyChannels",
-	"newConversationEachRun", "reuseSession", "provider", "model", "goalMode", "goalText",
+	"newConversationEachRun", "reuseSession", "maxRuns", "provider", "model", "goalMode", "goalText",
 }
 
 // heartbeatEngineOwnedFields are scheduler-maintained; an upsert that names
 // them is rejected instead of silently overwriting run state.
 var heartbeatEngineOwnedFields = map[string]bool{
 	"topicId": true, "lastRunAt": true, "createdAt": true, "runHistory": true,
+	// Task 327: the spent budget is charged by the scheduler; only the budget
+	// itself (maxRuns) is writable, and even that is reset on re-enable.
+	"runsUsed": true,
 }
 
 func decodeHeartbeatUpsertArgs(args json.RawMessage) (HeartbeatTaskPatch, uint64, error) {
@@ -343,6 +357,22 @@ func decodeHeartbeatUpsertArgs(args json.RawMessage) (HeartbeatTaskPatch, uint64
 		}
 		return s, true, nil
 	}
+	// Task 327: maxRuns is an integer budget. Absent (or null) keeps the
+	// current value; 0 is a real value meaning "unlimited".
+	intPtr := func(key string) (*int, error) {
+		v, ok := raw[key]
+		if !ok {
+			return nil, nil
+		}
+		var n int
+		if err := json.Unmarshal(v, &n); err != nil {
+			return nil, fmt.Errorf("field %q must be an integer number of runs (0 = unlimited, 1 = single run)", key)
+		}
+		if n < 0 {
+			return nil, fmt.Errorf("field %q must not be negative; use 0 for unlimited, 1 for a single run, or a positive N", key)
+		}
+		return &n, nil
+	}
 
 	patch := HeartbeatTaskPatch{Provided: map[string]bool{}}
 	var err error
@@ -398,6 +428,9 @@ func decodeHeartbeatUpsertArgs(args json.RawMessage) (HeartbeatTaskPatch, uint64
 		return HeartbeatTaskPatch{}, 0, err
 	}
 	if patch.ReuseSession, err = boolPtr("reuseSession"); err != nil {
+		return HeartbeatTaskPatch{}, 0, err
+	}
+	if patch.MaxRuns, err = intPtr("maxRuns"); err != nil {
 		return HeartbeatTaskPatch{}, 0, err
 	}
 	if patch.GoalMode, err = boolPtr("goalMode"); err != nil {

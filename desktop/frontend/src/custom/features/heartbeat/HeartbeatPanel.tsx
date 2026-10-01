@@ -46,6 +46,25 @@ export { heartbeatBuildCycleInterval } from "./HeartbeatCycleEditor";
 export { TaskEditor } from "./HeartbeatTaskEditor";
 export { mergeEngineRunState } from "./HeartbeatShared";
 
+// 任务 327：有 maxRuns 的任务在列表上给出已跑次数 k/N；跑满且已被引擎禁用的
+// 任务显示终态「已完成（已自动禁用）」——否则它和「用户手动暂停」在列表里长
+// 得一模一样，用户会以为是自己关的。无 maxRuns 的任务不渲染任何徽标（现行为不变）。
+function MaxRunsBadge({ task, t }: { task: HeartbeatTask; t: HeartbeatTranslator }) {
+  if (!task.maxRuns) return null;
+  const used = task.runsUsed ?? 0;
+  const done = !task.enabled && used >= task.maxRuns;
+  return (
+    <span
+      className={`worktree-node__scope-tag heartbeat-maxruns-badge${done ? " heartbeat-maxruns-badge--done" : ""}`}
+      data-testid="heartbeat-maxruns-badge"
+      title={t("heartbeat.maxRunsHint")}
+    >
+      {t("heartbeat.maxRunsProgress", { used, max: task.maxRuns })}
+      {done ? ` · ${t("heartbeat.maxRunsCompleted")}` : ""}
+    </span>
+  );
+}
+
 interface HeartbeatPanelProps {
   active?: boolean; onBack?: () => void;
   onOpenTopic?: (scope: string, workspaceRoot: string, topicId: string) => void;
@@ -727,6 +746,7 @@ export function HeartbeatView({ onOpenTopic, active = true, onBack = () => {} }:
                                 {task.topicId ? t("heartbeat.reuseBadge", { id: task.topicId.slice(0, 6) }) : t("heartbeat.reuseBadgeUnbound")}
                               </span>
                             )}
+                            <MaxRunsBadge task={task} t={t} />
                             <span className="worktree-node__interval">{formatInterval(task.interval, t)}{nextRun ? ` · ${nextRun}` : ""}</span>
                           </div>
                         </div>
@@ -835,6 +855,7 @@ export function HeartbeatView({ onOpenTopic, active = true, onBack = () => {} }:
                                       {task.topicId ? t("heartbeat.reuseBadge", { id: task.topicId.slice(0, 6) }) : t("heartbeat.reuseBadgeUnbound")}
                                     </span>
                                   )}
+                                  <MaxRunsBadge task={task} t={t} />
                                   <span className="worktree-node__interval">{formatInterval(task.interval, t)}{nextRun ? ` · ${nextRun}` : ""}</span>
                                 </div>
                               </div>

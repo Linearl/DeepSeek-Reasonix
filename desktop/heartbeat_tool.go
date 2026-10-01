@@ -71,8 +71,12 @@ func heartbeatTaskToView(t HeartbeatTask, now time.Time) builtin.HeartbeatTaskVi
 		LastRunAt:              t.LastRunAt,
 		CreatedAt:              t.CreatedAt,
 		RunCount:               len(t.RunHistory),
-		NextRunAt:              unixMilliOrZero(next),
-		NextRunHint:            hint,
+		// Task 327: maxRuns is writable budget, runsUsed is engine-owned read
+		// only (k of the panel's k/N badge).
+		MaxRuns:     t.MaxRuns,
+		RunsUsed:    t.RunsUsed,
+		NextRunAt:   unixMilliOrZero(next),
+		NextRunHint: hint,
 	}
 }
 
@@ -282,6 +286,9 @@ func applyHeartbeatPatch(t *HeartbeatTask, patch builtin.HeartbeatTaskPatch) err
 	if patch.ReuseSession != nil {
 		t.ReuseSession = *patch.ReuseSession
 	}
+	if patch.MaxRuns != nil {
+		t.MaxRuns = *patch.MaxRuns
+	}
 	if set("provider") {
 		t.Provider = patch.Provider
 	}
@@ -337,6 +344,11 @@ func validateHeartbeatTaskEdit(t HeartbeatTask) error {
 			return fmt.Errorf("field \"timeWindowEnd\": %q is not a valid HH:MM time", t.TimeWindowEnd)
 		}
 	}
+	if t.MaxRuns < 0 {
+		// Task 327: 0 means unlimited, negative means nothing — reject instead
+		// of normalizing, so a typo cannot silently remove the ceiling.
+		return fmt.Errorf("field \"maxRuns\": %d is invalid; use 0 (unlimited, the default), 1 for a single run, or a positive N", t.MaxRuns)
+	}
 	return nil
 }
 
@@ -386,6 +398,12 @@ func generateHeartbeatTaskID() string {
 // tools, not the scheduling source of truth; the scheduler keeps firing on
 // heartbeatTaskDueAt.
 func nextHeartbeatRunAt(t HeartbeatTask, now time.Time) (time.Time, string) {
+	// Task 327: an enabled-but-spent budget (only reachable through a hand edit
+	// of the JSON, since every in-app re-enable resets the counter) never fires
+	// again until the budget is reset, so it must not project a next run.
+	if heartbeatBudgetExhausted(t) {
+		return time.Time{}, "budget-exhausted"
+	}
 	if !t.Enabled {
 		return time.Time{}, "disabled"
 	}

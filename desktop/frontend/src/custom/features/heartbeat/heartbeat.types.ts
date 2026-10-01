@@ -28,4 +28,8 @@ export interface HeartbeatTask {
   goalText?: string;        // #31 goal description; empty falls back to prompt
   provider?: string;        // #9070 per-task model override: provider name (optional)
   model?: string;           // #9070 per-task model override: model name; empty keeps the topic's current model
+  maxRuns?: number;         // task 327: run-count budget. 0/absent = unlimited (repeating, unchanged);
+                            // 1 = single run; N = stop after N. Orthogonal to interval.
+  runsUsed?: number;        // task 327: how much of maxRuns has been charged (engine-owned, read-only);
+                            // reset to 0 by an explicit re-enable.
 }
