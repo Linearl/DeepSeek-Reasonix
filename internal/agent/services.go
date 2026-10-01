@@ -4,6 +4,7 @@ import (
 	"strings"
 	"sync"
 
+	"reasonix/internal/baseproc"
 	"reasonix/internal/checkpoint"
 	"reasonix/internal/diff"
 	"reasonix/internal/event"
@@ -25,6 +26,11 @@ import (
 type agentServices struct {
 	prov  provider.Provider
 	tools *tool.Registry
+	// base is the resident-base client (S1b), set once from Options at
+	// construction: nil keeps every tool call on the in-process path; a remote
+	// client opens the base-toolcall gate in base_toolcall.go. Sub-agents never
+	// receive one (boot wires only the executor/planner), so they stay local.
+	base baseproc.BaseClient
 	// pricing turns provider usage into money for the task budget.
 	pricing      *provider.Pricing
 	quoteContext *event.QuoteContext
@@ -139,6 +145,7 @@ func newAgentServices(
 	return agentServices{
 		prov:                  prov,
 		tools:                 tools,
+		base:                  opts.BaseClient,
 		pricing:               opts.Pricing,
 		quoteContext:          opts.QuoteContext,
 		sink:                  sink,

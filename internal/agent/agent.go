@@ -15,6 +15,7 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 
 	"reasonix/internal/ablation"
+	"reasonix/internal/baseproc"
 	"reasonix/internal/capability"
 	"reasonix/internal/checkpoint"
 	"reasonix/internal/diff"
@@ -1053,6 +1054,12 @@ type Options struct {
 	// authorized, non-destructive tools may run without readOnlyHint. Only
 	// NewPlannerAgent sets this; strict read-only sub-agents must not.
 	PlannerMCPExecution bool
+
+	// BaseClient is the resident-base client boot built (design §10 S1b).
+	// Plain registry tools route over base.toolCall when — and only when — the
+	// client is remote-capable; nil (every existing construction) keeps the
+	// pre-S1 in-process dispatch byte for byte. See base_toolcall.go.
+	BaseClient baseproc.BaseClient
 
 	// PlanModeReadOnlyTrustGate is retained for legacy controller compatibility.
 	// The main Plan execution path no longer invokes it.

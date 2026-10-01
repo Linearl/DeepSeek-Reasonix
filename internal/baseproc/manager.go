@@ -46,6 +46,11 @@ type Options struct {
 	Env []string
 	// HandshakeTimeout bounds spawn + hello. Zero uses defaultHandshakeTimeout.
 	HandshakeTimeout time.Duration
+	// Surface backs the inline fallback's tool face (S1b): boot hands over the
+	// registry it just built so an inline client answers toolCatalog/toolCall
+	// with the same functions the pre-S1 path uses (R1). Nil keeps the S1a
+	// ErrNotWired semantics.
+	Surface ToolSurface
 	// Log receives the fallback/remote decisions. Nil uses slog.Default().
 	Log *slog.Logger
 	// Notify receives server→client notifications from the remote path. Nil
@@ -68,8 +73,9 @@ type Options struct {
 // Restart/backoff/degraded transitions and the periodic health loop are S1c
 // (TODO); the S1a manager is one-shot: it decides once, inline or remote.
 func Start(ctx context.Context, opts Options) BaseClient {
+	inline := InlineBaseClient{ServerVersion: opts.ServerVersion, Surface: opts.Surface}
 	if !opts.Enabled {
-		return InlineBaseClient{ServerVersion: opts.ServerVersion}
+		return inline
 	}
 	log := opts.Log
 	if log == nil {
@@ -85,7 +91,7 @@ func Start(ctx context.Context, opts Options) BaseClient {
 	remote, err := dialAndHello(hsCtx, opts)
 	if err != nil {
 		log.Warn("boot: base fallback", "reason", err.Error())
-		return InlineBaseClient{ServerVersion: opts.ServerVersion}
+		return inline
 	}
 	log.Info("boot: base remote",
 		"server_version", remote.hello.ServerVersion,
@@ -217,11 +223,16 @@ func (p *procRW) Close() error {
 // Parent death surfaces as stdin EOF (decision D4's Windows orphan path),
 // which Serve already answers with a clean nil and exit code 0.
 //
-// TODO(S1b): host the heavy base here — MCP connections, plugin/tool
-// registries, builtin registration, provider factory — and register the tool
-// surface handlers + capabilities.
-// TODO(S1c): logs/base.log (F2, subprocess panic must land in a file),
-// liveness tick, and the parent-liveness watchdog beyond pipe EOF.
+// The S1b tool-surface MECHANISM (AttachToolSurface + CapTools, see
+// serve_toolface.go) exists, but hosting the registry here still needs a
+// workspace root — which arrives with base.attach bookkeeping (sessions
+// domain). Until a surface is attached this process advertises no tools
+// capability, and every client gate falls back inline per R1: an empty serve
+// process never serves a wrong catalog.
+// TODO(S1c): host the heavy base (MCP connections, plugin/tool registries,
+// builtin registration, provider factory) once attach carries the root;
+// logs/base.log (F2, subprocess panic must land in a file), liveness tick,
+// and the parent-liveness watchdog beyond pipe EOF.
 func RunStdioServer(ctx context.Context, version string, in io.Reader, out io.Writer, errw io.Writer) int {
 	s := NewServer(version)
 	if err := s.Serve(ctx, in, out); err != nil {

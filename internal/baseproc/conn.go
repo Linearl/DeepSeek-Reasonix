@@ -51,6 +51,18 @@ func newConn(rw io.ReadWriteCloser, onNotify func(method string, params json.Raw
 	return c
 }
 
+// swapNotify replaces the notification callback and returns the previous one.
+// The S1b RemoteBaseClient installs its per-call progress router here after
+// construction (S1a callers keep their callback as the passthrough); the read
+// loop consumes onNotify concurrently, so both sides go through c.mu.
+func (c *conn) swapNotify(f func(method string, params json.RawMessage)) func(method string, params json.RawMessage) {
+	c.mu.Lock()
+	prev := c.onNotify
+	c.onNotify = f
+	c.mu.Unlock()
+	return prev
+}
+
 // call sends one request and waits for the matching response. When result is
 // non-nil the response payload is unmarshalled into it. A peer error response
 // surfaces as *RPCError; a dead connection as a wrapped errConnClosed or the
@@ -203,8 +215,11 @@ func (c *conn) readLoop() {
 		}
 		switch f.Kind() {
 		case FrameNotification:
-			if c.onNotify != nil {
-				c.onNotify(f.Method, f.Params)
+			c.mu.Lock()
+			notify := c.onNotify
+			c.mu.Unlock()
+			if notify != nil {
+				notify(f.Method, f.Params)
 			}
 		case FrameRequest:
 			// The v1 server never issues requests toward the client, but the

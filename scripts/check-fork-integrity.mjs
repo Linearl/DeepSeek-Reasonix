@@ -518,6 +518,18 @@ const CHECKS = [
   { feature: "任务326 守护面板间隔与自关闭档位（setter）", file: "desktop/settings_app.go", patterns: ["SetDesktopAutopilotGuardInterval", "SetDesktopAutopilotGuardQuiescent"] },
   { feature: "任务326 守护面板档位进 render 表", file: "internal/config/render.go", patterns: ["autopilot_guard_interval", "autopilot_guard_quiescent"] },
   { feature: "任务326 守护面板档位 UI", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["settings.autopilotGuardInterval", "settings.autopilotGuardQuiescent.destroy"] },
+
+  // ── S1 底座常驻子进程（设计 2026-09-30，§10 S1b 工具面迁移）────────────
+  // 工具目录/工具调用经 base 通道 + 进度流 + sink 适配器 + boot 消费点；
+  // 开关默认 off，任一道被顶掉都会让「开关关=现行为」的对照失去支点。
+  { feature: "S1b base ToolSurface 与 RegistrySurface", file: "internal/baseproc/surface.go", patterns: ["type ToolSurface interface", "RegistrySurface", "ScopeProvider", "ErrUnknownScope"] },
+  { feature: "S1b serve 端工具面挂载与 toolCall 进度流", file: "internal/baseproc/serve_toolface.go", patterns: ["AttachToolSurface", "handleToolCall", "validateToolCallParams", "NotifyToolProgress"] },
+  { feature: "S1b 客户端进度路由（call_id 分发）", file: "internal/baseproc/client.go", patterns: ["dispatchNotify", "trackProgress", "untrackProgress", "ProgressFrom"] },
+  { feature: "S1b sink 适配器（ToolProgress 事件形状）", file: "internal/baseproc/sink.go", patterns: ["WithToolProgress", "ToolEventSink", "event.ToolProgress"] },
+  { feature: "S1b 控制器工具目录闸", file: "internal/control/base_gate.go", patterns: ["baseCatalogEntries", "ModeRemote", "ErrNotWired"] },
+  { feature: "S1b agent 工具调用闸", file: "internal/agent/base_toolcall.go", patterns: ["baseToolCall", "ModeRemote", "ErrNotWired"] },
+  { feature: "S1b boot 消费点（Start 接线）", file: "internal/boot/base_client.go", patterns: ["startBaseClient", "ExperimentalBaseProcess", "RegistrySurface"] },
+  { feature: "S1b boot 消费点（注入与拆除）", file: "internal/boot/boot.go", patterns: ["startBaseClient(ctx, cfg, reg)", "_ = baseClient.Close()"] },
 ];
 
 let failed = 0;

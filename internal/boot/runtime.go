@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"reasonix/internal/baseproc"
 	"reasonix/internal/command"
 	"reasonix/internal/control"
 	"reasonix/internal/extension"
@@ -69,6 +70,11 @@ type BuildResult struct {
 	// Assembly is retained so a subsequent RebuildFrom can skip rediscovery
 	// when the RuntimePlan is no-op or interceptor/UI-only.
 	Assembly *ReusedAssembly
+	// BaseClient is the resident-base client this build started (S1b): inline
+	// with the switch off (default), remote with it on and the spawn healthy.
+	// The controller holds the same instance for its gates; the field exists
+	// so tests and hosts can read the decision (Mode) directly.
+	BaseClient baseproc.BaseClient
 	// ReusedController is true when a true subgraph rebuild kept the previous
 	// controller pointer (no control.New / BuildRuntime). Callers must not
 	// Close the "old" controller when it is the same pointer as Controller.

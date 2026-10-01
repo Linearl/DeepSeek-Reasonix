@@ -27,9 +27,10 @@ type HandlerFunc func(ctx context.Context, params json.RawMessage) (any, error)
 // serialises handlers), and writes responses serialized under a mutex so
 // interleaved notifications cannot corrupt frames.
 //
-// The S1a core server knows hello/ping/shutdown only. Unregistered methods —
-// including every S1b surface — answer CodeMethodNotFound and the connection
-// stays usable (design §5 contract discipline).
+// The core server always knows hello/ping/shutdown. The S1b tool face joins
+// via AttachToolSurface (base.toolCatalog/base.toolCall + CapTools); any other
+// unregistered method answers CodeMethodNotFound and the connection stays
+// usable (design §5 contract discipline).
 type Server struct {
 	version string
 
@@ -40,6 +41,10 @@ type Server struct {
 	out        io.Writer
 	writeMu    sync.Mutex
 	notifyFunc func(method string, params json.RawMessage)
+	// surface is the S1b tool face behind base.toolCatalog/base.toolCall
+	// (AttachToolSurface). nil until attached: the S1a core server then keeps
+	// answering -32601 for tool methods without dropping the connection.
+	surface ToolSurface
 
 	quitOnce sync.Once
 	quit     chan struct{}

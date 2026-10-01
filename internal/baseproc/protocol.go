@@ -17,13 +17,21 @@
 // decision D5's grep-able family).
 //
 // Slice state (design §10):
-//   - S1a (this package): protocol v1 definitions, frame codec, JSON-RPC serve
-//     dispatch, hello/ping/shutdown core, dual-implementation skeletons, and
-//     the experimental_base_process switch register.
-//   - S1b owns the tool-surface migration (toolCatalog/toolCall over IPC,
-//     base.toolProgress notification streaming, sink adapter).
+//   - S1a: protocol v1 definitions, frame codec, JSON-RPC serve dispatch,
+//     hello/ping/shutdown core, dual-implementation skeletons, and the
+//     experimental_base_process switch register.
+//   - S1b (this slice): the tool surface — ToolSurface/RegistrySurface
+//     (surface.go), base.toolCatalog/base.toolCall handlers behind
+//     AttachToolSurface with the CapTools capability (serve_toolface.go),
+//     per-call_id progress routing (client.go), the event-sink adapter
+//     (sink.go), and the boot/controller/agent consumption gates. The
+//     subprocess does not host a registry yet (no workspace root before
+//     base.attach), so a real serve process advertises no capability and
+//     every gate falls back inline per R1 — the channel and gates are proven
+//     by tests that attach a surface directly.
 //   - S1c owns lifecycle (health/restart/backoff/degraded, shutdown/orphan
-//     hardening, logs/base.log per F2, REASONIX_BASE_HEALTH_* thresholds).
+//     hardening, logs/base.log per F2, REASONIX_BASE_HEALTH_* thresholds,
+//     attach/detach lease accounting, providerResolve).
 //
 // Contract discipline (design §5): protocol_version is negotiated at hello and
 // v1 only ever grows; unknown methods answer JSON-RPC -32601 instead of
@@ -209,9 +217,10 @@ type ShutdownResult struct {
 	OK bool `json:"ok"`
 }
 
-// ToolCatalogParams carries the visibility filter scope. The exact scope
-// vocabulary is an S1b decision (it must mirror the in-process ToolsFor
-// filters); S1a freezes only the wire field.
+// ToolCatalogParams carries the visibility filter scope. S1b settled the
+// vocabulary in surface.go — ScopeAll/ScopeProvider mirror the in-process
+// Registry.AllContractEntries/ContractEntries filters; an unknown scope is
+// rejected, never silently reinterpreted.
 type ToolCatalogParams struct {
 	Scope string `json:"scope,omitempty"`
 }
