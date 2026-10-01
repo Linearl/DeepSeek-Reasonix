@@ -95,6 +95,7 @@ export function TaskEditor({
     || draft.enabled !== initialTaskRef.current.enabled
     || draft.approvalMode !== initialTaskRef.current.approvalMode
     || draft.newConversationEachRun !== initialTaskRef.current.newConversationEachRun
+    || draft.reuseSession !== initialTaskRef.current.reuseSession
     || draft.notifyChannels !== initialTaskRef.current.notifyChannels
     || draft.scope !== initialTaskRef.current.scope
     || draft.workspaceRoot !== initialTaskRef.current.workspaceRoot
@@ -532,6 +533,43 @@ export function TaskEditor({
             {t("heartbeat.newConversationEachRunOn")}
           </button>
         </div>
+      </div>
+
+      {/* 复用已有会话续跑（task 437）：开 = 每次运行把 prompt 追加到绑定的会话
+          （上下文连续、不新增会话）；目标会话忙时跳过等下次。默认关 = 现有行为。 */}
+      <div className="heartbeat-editor__field">
+        <label>
+          {t("heartbeat.fieldReuseSession")} <span className="heartbeat-editor__optional">{t("heartbeat.optional")}</span>
+        </label>
+        <label className="heartbeat-editor__toggle-field">
+          <input
+            type="checkbox"
+            checked={Boolean(draft.reuseSession)}
+            onChange={(e) => set("reuseSession", e.target.checked)}
+          />
+          <span>{t("heartbeat.reuseSessionHint")}</span>
+        </label>
+        {Boolean(draft.reuseSession) && (
+          <div className="heartbeat-editor__bound-topic" data-testid="heartbeat-bound-topic">
+            <span className="heartbeat-editor__bound-label">{t("heartbeat.reuseSessionBoundLabel")}</span>
+            {draft.topicId ? (
+              <button
+                className="heartbeat-editor__bound-id"
+                type="button"
+                title={t("heartbeat.openTopic")}
+                onClick={() => {
+                  if (draft.topicId && onOpenTopic) {
+                    onOpenTopic(draft.scope || "global", draft.workspaceRoot || "", draft.topicId);
+                  }
+                }}
+              >
+                {draft.topicId}
+              </button>
+            ) : (
+              <span className="heartbeat-editor__bound-unbound">{t("heartbeat.reuseSessionUnbound")}</span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Frequency */}

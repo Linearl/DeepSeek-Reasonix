@@ -377,6 +377,11 @@ const CHECKS = [
   { feature: "任务340 live reducer 中断分支透出真错误（cancelled 除外）", file: "desktop/frontend/src/lib/useController.ts", patterns: [
     "e.diagnostic.kind !== \"cancelled\" && !s.streamInterruptNoticeShown",
   ] },
+  // 任务437（20261001 批十小件）：心跳复用已有会话续跑。（任务436 折叠限高锚点随 436 分支登记）
+  { feature: "任务437 心跳续跑模式（Go 引擎）", file: "desktop/heartbeat.go", patterns: ["reuseSession,omitempty", "heartbeatReuseMode", "heartbeatFreshConversationMode"] },
+  { feature: "任务437 心跳续跑（agent 工具面）", file: "internal/tool/builtin/heartbeat_tasks.go", patterns: ["ReuseSession", "reuseSession"] },
+  { feature: "任务437 心跳续跑（前端开关+绑定行）", file: "desktop/frontend/src/custom/features/heartbeat/HeartbeatTaskEditor.tsx", patterns: ["reuseSession", "heartbeat-editor__bound-topic"] },
+  { feature: "任务437 心跳续跑 CSS", file: "desktop/frontend/src/custom/features/heartbeat/heartbeat.css", patterns: [".heartbeat-reuse-badge", ".heartbeat-editor__bound-id"] },
 ];
 
 let failed = 0;

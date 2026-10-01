@@ -41,6 +41,7 @@ type HeartbeatTaskView struct {
 	TimeWindowEnd          string `json:"timeWindowEnd,omitempty"`
 	NotifyChannels         *bool  `json:"notifyChannels,omitempty"`
 	NewConversationEachRun bool   `json:"newConversationEachRun,omitempty"`
+	ReuseSession           bool   `json:"reuseSession,omitempty"`
 	Provider               string `json:"provider,omitempty"`
 	Model                  string `json:"model,omitempty"`
 	GoalMode               bool   `json:"goalMode,omitempty"`
@@ -81,6 +82,7 @@ type HeartbeatTaskPatch struct {
 	TimeWindowEnd          string
 	NotifyChannels         *bool
 	NewConversationEachRun *bool
+	ReuseSession           *bool
 	Provider               string
 	Model                  string
 	GoalMode               *bool
@@ -174,6 +176,7 @@ const heartbeatContractDoc = `Field contract (authoritative):
 - timeWindowStart/timeWindowEnd: optional "HH:MM" bounds (start inclusive, end exclusive) for interval tasks; cross-midnight windows like 22:00-06:00 are supported.
 - notifyChannels: boolean; true forwards the run's output to connected bot channels. Omit/false = no forwarding.
 - newConversationEachRun: boolean; true creates a fresh topic per run (topicId then always points at the latest conversation).
+- reuseSession: boolean; true resumes the conversation bound at topicId — each run appends the prompt there (context stays continuous, no new session per run). The first run creates and binds the topic. A run whose target conversation is busy (a turn is running) is skipped and retried next tick, never injected mid-turn. Takes precedence over newConversationEachRun.
 - provider/model: optional per-run model override; accepts "provider/model", a provider name, or a bare model name. Both empty keeps the topic's current model.
 - goalMode/goalText: goal-mode runs continue until the goal is met instead of stopping after one turn; empty goalText falls back to prompt.
 - Engine-owned, read-only for tools (writing them is rejected): topicId, lastRunAt, createdAt, runHistory — the scheduler maintains them.
@@ -236,6 +239,7 @@ func (heartbeatTaskUpsert) Schema() json.RawMessage {
   "timeWindowEnd":{"type":"string","description":"HH:MM exclusive bound."},
   "notifyChannels":{"type":"boolean"},
   "newConversationEachRun":{"type":"boolean"},
+  "reuseSession":{"type":"boolean"},
   "provider":{"type":"string"},
   "model":{"type":"string"},
   "goalMode":{"type":"boolean"},
@@ -270,7 +274,7 @@ func (heartbeatTaskUpsert) Execute(ctx context.Context, args json.RawMessage) (s
 var heartbeatUpsertArgOrder = []string{
 	"id", "title", "prompt", "interval", "enabled", "scope", "workspaceRoot",
 	"approvalMode", "timeWindowStart", "timeWindowEnd", "notifyChannels",
-	"newConversationEachRun", "provider", "model", "goalMode", "goalText",
+	"newConversationEachRun", "reuseSession", "provider", "model", "goalMode", "goalText",
 }
 
 // heartbeatEngineOwnedFields are scheduler-maintained; an upsert that names
@@ -391,6 +395,9 @@ func decodeHeartbeatUpsertArgs(args json.RawMessage) (HeartbeatTaskPatch, uint64
 		return HeartbeatTaskPatch{}, 0, err
 	}
 	if patch.NewConversationEachRun, err = boolPtr("newConversationEachRun"); err != nil {
+		return HeartbeatTaskPatch{}, 0, err
+	}
+	if patch.ReuseSession, err = boolPtr("reuseSession"); err != nil {
 		return HeartbeatTaskPatch{}, 0, err
 	}
 	if patch.GoalMode, err = boolPtr("goalMode"); err != nil {
