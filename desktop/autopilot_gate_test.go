@@ -73,8 +73,8 @@ func autopilotGateTestApp(t *testing.T, approvalMode string) (*App, *WorkspaceTa
 func TestAutopilotGateAllowedMatrix(t *testing.T) {
 	for mode, want := range map[string]bool{
 		control.ToolApprovalYolo: true,
-		"full":                   true,  // legacy yolo alias
-		"bypass":                 true,  // legacy yolo alias
+		"full":                   true, // legacy yolo alias
+		"bypass":                 true, // legacy yolo alias
 		control.ToolApprovalAsk:  false,
 		control.ToolApprovalAuto: false,
 		"":                       false, // empty normalizes to ask

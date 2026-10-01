@@ -839,6 +839,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetAutoPlan(mode: string): Promise<void>;
   SetDefaultToolApprovalMode(mode: string): Promise<void>;
   SetDesktopAutopilot(enabled: boolean, maxRuntime: string, approvalGrace: string): Promise<void>;
+  // Task 326: autopilot guard task dials — interval in minutes, and the
+  // self-close policy applied once the watched session goes quiet.
+  SetDesktopAutopilotGuardInterval(minutes: number): Promise<void>;
+  SetDesktopAutopilotGuardQuiescent(policy: string): Promise<void>;
   // Task 81: the Settings switch for the restart-and-update action. Same preference the
   // restart_and_update tool reads, so one enables both.
   SetExperimentalRestartUpdate(enabled: boolean): Promise<void>;
@@ -2197,6 +2201,8 @@ function makeMockApp(): AppBindings {
     autopilot: false,
     autopilotMaxRuntime: "",
     autopilotApprovalGrace: "",
+    autopilotGuardInterval: 30,
+    autopilotGuardQuiescent: "disable",
     visionModel: "",
     webSearchModel: "auto",
     webSearchModels: ["deepseek/deepseek-v4-flash", "deepseek/deepseek-v4-pro"],
@@ -5351,6 +5357,18 @@ function makeMockApp(): AppBindings {
       settings.autopilot = enabled;
       settings.autopilotMaxRuntime = maxRuntime;
       settings.autopilotApprovalGrace = approvalGrace;
+    },
+    async SetDesktopAutopilotGuardInterval(minutes: number) {
+      if (!Number.isFinite(minutes) || minutes < 1 || minutes > 1440) {
+        throw new Error(`autopilot guard interval must be between 1 and 1440 minutes, got ${minutes}`);
+      }
+      settings.autopilotGuardInterval = Math.trunc(minutes);
+    },
+    async SetDesktopAutopilotGuardQuiescent(policy: string) {
+      if (policy !== "disable" && policy !== "standby" && policy !== "destroy") {
+        throw new Error(`autopilot guard quiescent policy ${policy} is invalid`);
+      }
+      settings.autopilotGuardQuiescent = policy;
     },
     async SetDefaultAutoRecoveryCheckpoint(_enabled: boolean) {
       // Legacy no-op; Auto Guard is always built into Auto.

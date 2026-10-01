@@ -290,6 +290,17 @@ func (e *HeartbeatEngine) tick() {
 	tasks := append([]HeartbeatTask(nil), e.tasks...)
 	e.mu.Unlock()
 
+	// Task 326: the guard sweep is the backstop for every enable/close path —
+	// it creates a guard an autopilot session is missing, disables one whose
+	// owner left autopilot, and deletes an orphan. It runs after the external
+	// edit adoption above so it sees the same task list the run loop does, and
+	// short-circuits when there is neither an autopilot session nor a guard to
+	// check (the common case: one map scan, no disk read).
+	e.reconcileAutopilotGuardsCheap()
+	e.mu.Lock()
+	tasks = append([]HeartbeatTask(nil), e.tasks...)
+	e.mu.Unlock()
+
 	now := time.Now()
 	for _, t := range tasks {
 		if !t.Enabled {
@@ -438,6 +449,9 @@ func (e *HeartbeatEngine) executeTaskWithLease(t HeartbeatTask, prepare func(Hea
 	e.mu.Lock()
 	e.mergeRunUpdatesLocked(map[string]HeartbeatTask{updated.ID: updated})
 	e.mu.Unlock()
+	// Task 326: "destroy" cannot be expressed through the run-state merge (that
+	// channel carries state, not row lifetime), so the row is removed here.
+	e.finishAutopilotGuardRun(updated)
 	return updated
 }
 
@@ -708,13 +722,28 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 	// nothing. The recursion just above re-enters without charging again.
 	t = e.spendRunBudget(t)
 
+	// Task 326: sample the watched session *before* the wake, because the wake
+	// itself makes the session busy — the self-close strike has to describe
+	// what the guard found, not what it just caused.
+	guardQuiet := false
+	if isAutopilotGuardTask(t) {
+		guardQuiet = e.autopilotGuardOwnerQuiescent(topicID)
+	}
+
 	// Set the task's approval mode only after confirming the controller is idle.
 	// SetToolApprovalModeForTab may drain pending approvals for auto/yolo modes,
 	// so applying it to a busy reused topic would accidentally approve a previous
 	// turn instead of preparing this heartbeat prompt.
 	mode := normalizeHeartbeatApprovalMode(t.ApprovalMode)
 	t.ApprovalMode = mode
-	e.app.SetToolApprovalModeForTab(tabMeta.ID, mode)
+	// Task 326 permission isolation: a guard watches the owner's own
+	// conversation, so touching that conversation's approval mode would both
+	// rewrite the owner's permissions and trip task 325's reverse linkage
+	// (autopilot is yolo). The guard's recorded "ask" is what a guard-owned
+	// session would run under; a guard never grants itself proxy-approval.
+	if !isAutopilotGuardTask(t) {
+		e.app.SetToolApprovalModeForTab(tabMeta.ID, mode)
+	}
 
 	// Per-task model override (#9070): switch the tab onto the task's
 	// provider/model before submitting so one heartbeat task always runs on
@@ -775,7 +804,9 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 	if len(t.RunHistory) > maxRunHistory {
 		t.RunHistory = t.RunHistory[len(t.RunHistory)-maxRunHistory:]
 	}
-	return t
+	// Task 326: the guard just pulled. If the owner had nothing to do again,
+	// count it; three in a row and the configured self-close policy applies.
+	return e.evaluateAutopilotGuardClose(t, guardQuiet)
 }
 
 // ListTasks returns a copy of the current tasks (in-memory).// heartbeatIdleTerminateStrikes is the strike ceiling for task 244 B1: three
@@ -852,6 +883,29 @@ func (e *HeartbeatEngine) spendRunBudget(t HeartbeatTask) HeartbeatTask {
 // 327).
 func heartbeatBudgetExhausted(t HeartbeatTask) bool {
 	return t.MaxRuns > 0 && t.RunsUsed >= t.MaxRuns
+}
+
+// reconcileAutopilotGuardsCheap gates the guard sweep: with no autopilot
+// session open and no guard task in memory there is nothing to reconcile, so
+// the 30s tick costs one map scan instead of a config read and a disk lookup.
+func (e *HeartbeatEngine) reconcileAutopilotGuardsCheap() {
+	if e == nil || e.app == nil {
+		return
+	}
+	need := len(e.app.autopilotGuardOwners()) > 0
+	if !need {
+		e.mu.Lock()
+		for _, t := range e.tasks {
+			if isAutopilotGuardTask(t) {
+				need = true
+				break
+			}
+		}
+		e.mu.Unlock()
+	}
+	if need {
+		e.ReconcileAutopilotGuards()
+	}
 }
 
 // ListTasks returns a copy of the current tasks (in-memory).

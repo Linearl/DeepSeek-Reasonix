@@ -303,6 +303,19 @@ func mergeHeartbeatRunUpdates(tasks []HeartbeatTask, updates map[string]Heartbea
 		if tasks[i].MaxRuns > 0 && update.RunsUsed >= tasks[i].MaxRuns && !update.Enabled {
 			tasks[i].Enabled = false
 		}
+		// Task 326: IdleStreak is engine-owned run state too. Without it the
+		// guard's self-close strike would reset to whatever the (possibly
+		// stale) disk snapshot carried, so three consecutive quiet checks could
+		// never add up. The update is rebuilt from the freshest config on every
+		// trigger, so it is the authoritative value.
+		tasks[i].IdleStreak = update.IdleStreak
+		// Task 326: a guard the runtime just self-closed must not be
+		// resurrected by the enabled flag the disk snapshot still carries —
+		// the same failure mode as task 327's terminal disable, except this
+		// task carries no run budget to lean on.
+		if isAutopilotGuardTask(tasks[i]) && !update.Enabled {
+			tasks[i].Enabled = false
+		}
 	}
 }
 

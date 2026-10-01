@@ -646,6 +646,35 @@ func (c *Config) AutopilotProxyScopeLevel() string {
 	}
 }
 
+// AutopilotGuardDefaultIntervalMinutes is the guard task's run interval when
+// desktop.autopilot_guard_interval is unset or non-positive (task 326).
+const AutopilotGuardDefaultIntervalMinutes = 30
+
+// AutopilotGuardIntervalMinutes returns the guard interval in minutes. 0 and
+// negative values read as the default so an untouched config keeps a sane
+// cadence instead of an "every second" guard.
+func (c *Config) AutopilotGuardIntervalMinutes() int {
+	if c == nil || c.Desktop.AutopilotGuardInterval <= 0 {
+		return AutopilotGuardDefaultIntervalMinutes
+	}
+	return c.Desktop.AutopilotGuardInterval
+}
+
+// AutopilotGuardQuiescentPolicy returns the normalized self-close policy
+// (task 326): disable (default) | standby | destroy. Empty and unknown values
+// read as "disable" — a guard must never linger unbounded by a typo.
+func (c *Config) AutopilotGuardQuiescentPolicy() string {
+	if c == nil {
+		return "disable"
+	}
+	switch c.Desktop.AutopilotGuardQuiescent {
+	case "standby", "destroy":
+		return c.Desktop.AutopilotGuardQuiescent
+	default:
+		return "disable"
+	}
+}
+
 // AutonomousUpdateResumeMode returns the normalized resume scope. Empty and
 // unknown values read as "goal_autopilot": the pre-task-254 behavior plus the
 // autopilot marker chain, never a silent opt-out.
