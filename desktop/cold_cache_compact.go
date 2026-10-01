@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/boot"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
@@ -74,7 +76,12 @@ func normalizeColdCacheCompactKnobs(enabled bool, minBytes int64, idleMinutes in
 // same cooling window never compacts twice, while a conversation the user
 // touches again and lets cool a second time stays eligible — that is the
 // "compact before it goes cold, not in a loop" contract.
-func coldCacheCompactDecision(enabled bool, now time.Time, lastActivityAt, lastOpenedAt, attemptedActivityAt, sizeBytes int64, minBytes int64, idleMinutes int) (bool, string) {
+//
+// Task 424 adds the park guard: a session whose last attempt ended in the
+// terminal "no foldable region remains" class is parked for its current
+// activity stamp — retrying cannot succeed until the session itself changes
+// (a new write bumps LastActivityAt, which re-arms eligibility).
+func coldCacheCompactDecision(enabled bool, now time.Time, lastActivityAt, lastOpenedAt, attemptedActivityAt, parkedActivityAt, sizeBytes int64, minBytes int64, idleMinutes int) (bool, string) {
 	if !enabled {
 		return false, "switch off"
 	}
@@ -98,6 +105,9 @@ func coldCacheCompactDecision(enabled bool, now time.Time, lastActivityAt, lastO
 	}
 	if sizeBytes < minBytes {
 		return false, "context under size floor"
+	}
+	if parkedActivityAt == lastActivityAt {
+		return false, "parked: no foldable region remains (re-arms on new activity)"
 	}
 	if attemptedActivityAt == lastActivityAt {
 		return false, "already compacted this cooling window"
@@ -124,6 +134,12 @@ type coldCacheCompactLoop struct {
 	a    *App
 	mu   sync.Mutex
 	done map[string]int64 // session path -> LastActivityAt the attempt was made for
+	// Task 424: parked records the terminal "no foldable region remains"
+	// outcome the same way done records success — keyed by the LastActivityAt
+	// the failed attempt was made for. A parked session is skipped until its
+	// activity stamp changes (a new write re-arms it); the other failure
+	// classes keep the per-tick retry.
+	parked map[string]int64
 	// Task 380-A/B: firstSeen records when this process first noticed a live
 	// controller for a session (≈ open time, bounded by the tick interval);
 	// inFlight marks a compact currently running so later ticks don't stack
@@ -140,6 +156,7 @@ func (a *App) startColdCacheCompactLoop() {
 	l := &coldCacheCompactLoop{
 		a:         a,
 		done:      make(map[string]int64),
+		parked:    make(map[string]int64),
 		firstSeen: make(map[string]int64),
 		inFlight:  make(map[string]bool),
 	}
@@ -172,6 +189,7 @@ func (l *coldCacheCompactLoop) tick(now time.Time) {
 		}
 		l.mu.Lock()
 		attempted := l.done[meta.Path]
+		parked := l.parked[meta.Path]
 		if ctrl != nil {
 			if _, seen := l.firstSeen[meta.Path]; !seen {
 				l.firstSeen[meta.Path] = now.UnixMilli()
@@ -185,7 +203,7 @@ func (l *coldCacheCompactLoop) tick(now time.Time) {
 			continue
 		}
 		size := sessionContextBytes(meta.Path)
-		ok, _ := coldCacheCompactDecision(knobs.Enabled, now, meta.LastActivityAt, openedAt, attempted, size, knobs.MinBytes, knobs.IdleMinutes)
+		ok, _ := coldCacheCompactDecision(knobs.Enabled, now, meta.LastActivityAt, openedAt, attempted, parked, size, knobs.MinBytes, knobs.IdleMinutes)
 		if !ok {
 			continue
 		}
@@ -226,6 +244,19 @@ func (l *coldCacheCompactLoop) compactOne(path, workspaceRoot string, size int64
 		err = l.headlessCompactOne(path, workspaceRoot)
 	}
 	if err != nil {
+		// Task 424: the terminal "no foldable region remains" class parks the
+		// session for its current activity stamp instead of retrying every
+		// tick — the session state itself cannot yield a compaction, so the
+		// old per-tick WARN turned into an endless 10-minute log burst (one
+		// ~5s headless build per dead session). New activity bumps
+		// LastActivityAt, which re-arms the pass.
+		if coldCacheCompactTerminal(err) {
+			l.parkNoFoldable(path, lastActivityAt)
+			slog.Info("desktop: cold cache compact parked (nothing foldable left; re-arms on next session activity)",
+				"path", path, "bytes", size,
+				"idleMinutes", int(idle.Minutes()))
+			return
+		}
 		// Failed passes stay invisible to the user (no dialog) and retry on
 		// the next tick: the attempt stamp is only written on success, so a
 		// transient provider error does not park the conversation until the
@@ -240,6 +271,24 @@ func (l *coldCacheCompactLoop) compactOne(path, workspaceRoot string, size int64
 	slog.Info("desktop: cold cache compact completed",
 		"path", path, "bytes", size,
 		"idleMinutes", int(idle.Minutes()))
+}
+
+// parkNoFoldable records the task-424 park stamp: the compact attempt for
+// this LastActivityAt ended in the terminal no-foldable-region class, so the
+// tick skips the session until its activity stamp changes.
+func (l *coldCacheCompactLoop) parkNoFoldable(path string, lastActivityAt int64) {
+	l.mu.Lock()
+	l.parked[path] = lastActivityAt
+	l.mu.Unlock()
+}
+
+// coldCacheCompactTerminal reports whether a compact failure is the task-424
+// terminal class: the context is over the maintenance threshold with no
+// foldable region left, so retrying over the unchanged session state can never
+// succeed (task 297's missing termination condition). Every other failure
+// class stays retryable on the next tick.
+func coldCacheCompactTerminal(err error) bool {
+	return errors.Is(err, agent.ErrNoFoldableRegion)
 }
 
 // headlessCompactOne compacts a controller-less session: a throwaway

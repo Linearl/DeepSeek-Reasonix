@@ -296,14 +296,16 @@ func (m ContextManager) summaryFailed(policy ContextPreparePolicy, inputHash str
 }
 
 func (m ContextManager) summaryNoop(policy ContextPreparePolicy, inputHash string, hard int) (PreparedContext, error) {
-	reason := "context is above the maintenance threshold but no foldable region remains"
-	m.agent.recordContextMaintenanceBlocked(inputHash, policy.Trigger, "summary", reason)
+	// Task 424: the reason doubles as the ErrNoFoldableRegion sentinel so
+	// failure consumers recognise the terminal "nothing foldable left" class
+	// without string matching (the desktop cold-cache loop parks on it).
+	m.agent.recordContextMaintenanceBlocked(inputHash, policy.Trigger, "summary", ErrNoFoldableRegion.Error())
 	latest := m.currentPrepared()
 	switch {
 	case policy.Trigger == CompactionTriggerOverflow || latest.InputTokens >= hard:
-		return m.rescueByTruncation(policy, hard, errors.New(reason))
+		return m.rescueByTruncation(policy, hard, ErrNoFoldableRegion)
 	case policy.Force:
-		return PreparedContext{}, fmt.Errorf("%w: %s", ErrCompactionRequired, reason)
+		return PreparedContext{}, fmt.Errorf("%w: %w", ErrCompactionRequired, ErrNoFoldableRegion)
 	default:
 		return latest, nil
 	}

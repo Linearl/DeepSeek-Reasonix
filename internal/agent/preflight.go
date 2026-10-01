@@ -13,6 +13,14 @@ import (
 // and compaction could not produce a usable projection. Callers may retry.
 var ErrCompactionRequired = errors.New("context exceeds provider limit and compaction failed")
 
+// ErrNoFoldableRegion is the terminal compaction outcome (task 424): the
+// context is over the maintenance threshold but nothing foldable remains, so
+// retrying over the same session state can never succeed. The desktop
+// cold-cache loop parks such sessions until new activity re-arms them instead
+// of retrying every tick. The text is the historical reason string so wrapped
+// messages stay byte-identical.
+var ErrNoFoldableRegion = errors.New("context is above the maintenance threshold but no foldable region remains")
+
 // modelVisibleMessages returns the provider-bound message list: a valid
 // projection plus any post-projection appends, otherwise the full canonical
 // transcript. LocalOnly stripping still happens in prepareSamplingRequest.
