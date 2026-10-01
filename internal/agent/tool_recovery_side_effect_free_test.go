@@ -81,7 +81,7 @@ func addInterruptedHandoff(a *Agent, unknown []provider.InterruptedToolSummary) 
 // 把它归入 not_started（可立即重发，自动续轮）。
 func TestInterruptedReadOnlyBashAutoResolvesAndContinues(t *testing.T) {
 	a, sink, call := sideEffectFreeFixture(t, "bash", `{"command":"ls -la"}`, false)
-	a.finishToolRecovery(call, unknownOutcome())
+	a.finishToolRecovery(context.Background(), call, unknownOutcome())
 
 	if got := a.PendingToolRecovery(); len(got) != 0 {
 		t.Fatalf("pending effects = %d, want 0 (panel must not light up)", len(got))
@@ -123,7 +123,7 @@ func TestInterruptedReadOnlyBashAutoResolvesAndContinues(t *testing.T) {
 // not_started —— 模型被告知可以立即重发，而不是先去核实不可能存在的外部效果。
 func TestInterruptedReadOnlyBashReclassifiedInPromptHandoff(t *testing.T) {
 	a, _, call := sideEffectFreeFixture(t, "bash", `{"command":"grep -rn todo ."}`, false)
-	a.finishToolRecovery(call, unknownOutcome())
+	a.finishToolRecovery(context.Background(), call, unknownOutcome())
 	handoff := addInterruptedHandoff(a, []provider.InterruptedToolSummary{{ID: "call-interrupted", Name: "bash"}})
 
 	view := a.transcriptInterruptedRecovery()
@@ -149,7 +149,7 @@ func TestInterruptedReadOnlyBashReclassifiedInPromptHandoff(t *testing.T) {
 // 维持现状：pending 不为空、run 以 ErrToolRecoveryRequired 收尾、后续写被拦。
 func TestInterruptedWriteBashKeepsManualReview(t *testing.T) {
 	a, sink, call := sideEffectFreeFixture(t, "bash", `{"command":"printf x >> tasklist.md"}`, false)
-	a.finishToolRecovery(call, unknownOutcome())
+	a.finishToolRecovery(context.Background(), call, unknownOutcome())
 
 	r := a.Session().toolRecoveryRecord("call-interrupted")
 	if r == nil || r.State != provider.ToolRunUnknown || r.Resolution != "" {
@@ -179,7 +179,7 @@ func TestInterruptedWriteBashKeepsManualReview(t *testing.T) {
 // 自动判「未生效」：不进围栏、面板判据为空、prompt 收尾可立即重发。
 func TestInterruptedAskNeverEntersFence(t *testing.T) {
 	a, sink, call := sideEffectFreeFixture(t, "ask", `{"questions":[{"question":"which?","header":"h","options":[{"label":"a"},{"label":"b"}]}]}`, true)
-	a.finishToolRecovery(call, unknownOutcome())
+	a.finishToolRecovery(context.Background(), call, unknownOutcome())
 
 	if got := a.PendingToolRecovery(); len(got) != 0 {
 		t.Fatalf("pending effects = %d, want 0 (428: no panel for a hung ask)", len(got))
@@ -229,7 +229,7 @@ func TestBeginToolRecoverySettlesLeftoverSideEffectFreeRecords(t *testing.T) {
 func TestSideEffectFreeResolutionSurvivesStorageFailure(t *testing.T) {
 	a, sink, call := sideEffectFreeFixture(t, "read_file", `{"path":"a.txt"}`, true)
 	sink.fail = true
-	a.finishToolRecovery(call, unknownOutcome())
+	a.finishToolRecovery(context.Background(), call, unknownOutcome())
 	if got := a.PendingToolRecovery(); len(got) != 0 {
 		t.Fatalf("in-memory verdict must survive a storage failure, pending = %d", len(got))
 	}
