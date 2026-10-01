@@ -10,7 +10,10 @@ import (
 	"time"
 
 	"reasonix/internal/agent"
+	"reasonix/internal/billing"
 	"reasonix/internal/config"
+	"reasonix/internal/event"
+	"reasonix/internal/provider"
 )
 
 // Task 297: the policy knobs' file-value rules — zero means built-in default,
@@ -167,6 +170,72 @@ func TestColdCacheCompactTerminalClass(t *testing.T) {
 			t.Fatalf("error %v must stay retryable (not terminal)", err)
 		}
 	}
+}
+
+// Task 380 sixth-acceptance accounting: the headless capture sums the pass's
+// billable usage and the catalog-priced cost quote; non-usage events are
+// dropped like the event.Discard it replaces, and a nil capture (live path)
+// renders no fields instead of double-counting the session's own ledger.
+func TestColdCacheUsageCapture(t *testing.T) {
+	c := &coldCacheUsageCapture{}
+	c.Emit(event.Event{Kind: event.CompactionStarted}) // non-usage: dropped
+	c.Emit(event.Event{Kind: event.Usage, Usage: &provider.Usage{
+		PromptTokens: 1200, CompletionTokens: 90, CacheHitTokens: 800, TotalTokens: 1290, RequestCount: 1,
+	}, CostQuote: &billing.CostQuote{Original: billing.MoneyOf(amountMustParse(t, "0.0042"), "CNY")}})
+	c.Emit(event.Event{Kind: event.Usage, Usage: &provider.Usage{
+		PromptTokens: 300, CompletionTokens: 10, CacheHitTokens: 0, TotalTokens: 310, RequestCount: 1,
+	}, CostQuote: &billing.CostQuote{Original: billing.MoneyOf(amountMustParse(t, "0.0008"), "CNY")}})
+
+	fields := c.logFields()
+	got := map[string]any{}
+	for i := 0; i+1 < len(fields); i += 2 {
+		got[fields[i].(string)] = fields[i+1]
+	}
+	if got["usagePromptTokens"] != 1500 || got["usageCompletionTokens"] != 100 ||
+		got["usageCacheHitTokens"] != 800 || got["usageRequests"] != 2 {
+		t.Fatalf("token sums drifted: %+v", got)
+	}
+	if got["costAmount"] != 0.005 || got["costCurrency"] != "CNY" {
+		t.Fatalf("cost sum = %v %v, want 0.005 CNY", got["costAmount"], got["costCurrency"])
+	}
+	if _, ok := got["costMixedCurrency"]; ok {
+		t.Fatal("same-currency sums must not flag mixed currency")
+	}
+
+	// Mixed currencies cannot be summed honestly: tokens still add up, the
+	// cost is flagged instead of silently wrong.
+	m := &coldCacheUsageCapture{}
+	m.Emit(event.Event{Kind: event.Usage, Usage: &provider.Usage{PromptTokens: 10, TotalTokens: 10, RequestCount: 1},
+		CostQuote: &billing.CostQuote{Original: billing.MoneyOf(amountMustParse(t, "0.01"), "CNY")}})
+	m.Emit(event.Event{Kind: event.Usage, Usage: &provider.Usage{PromptTokens: 20, TotalTokens: 20, RequestCount: 1},
+		CostQuote: &billing.CostQuote{Original: billing.MoneyOf(amountMustParse(t, "0.01"), "USD")}})
+	mf := map[string]any{}
+	fields = m.logFields()
+	for i := 0; i+1 < len(fields); i += 2 {
+		mf[fields[i].(string)] = fields[i+1]
+	}
+	if mf["costMixedCurrency"] != true {
+		t.Fatalf("mixed-currency capture must flag costMixedCurrency: %+v", mf)
+	}
+	if _, ok := mf["costAmount"]; ok {
+		t.Fatal("mixed-currency capture must not log a summed costAmount")
+	}
+
+	// The live path has no capture: no fields, no panic.
+	var nilCapture *coldCacheUsageCapture
+	if f := nilCapture.logFields(); f != nil {
+		t.Fatalf("nil capture must render no fields, got %v", f)
+	}
+	nilCapture.Emit(event.Event{Kind: event.Usage, Usage: &provider.Usage{PromptTokens: 1}})
+}
+
+func amountMustParse(t *testing.T, s string) billing.Amount {
+	t.Helper()
+	a, err := billing.ParseAmount(s)
+	if err != nil {
+		t.Fatalf("ParseAmount(%q): %v", s, err)
+	}
+	return a
 }
 
 // sessionContextBytes counts live transcript + events, missing files as zero.

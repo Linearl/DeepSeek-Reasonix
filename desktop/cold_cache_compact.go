@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"reasonix/internal/agent"
+	"reasonix/internal/billing"
 	"reasonix/internal/boot"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
@@ -163,6 +164,75 @@ func (a *App) startColdCacheCompactLoop() {
 	a.goSafe("coldCacheCompactLoop", l.run)
 }
 
+const (
+	coldCacheCompactModeLive     = "live"
+	coldCacheCompactModeHeadless = "headless"
+)
+
+// coldCacheUsageCapture collects the billable usage of one headless compact
+// pass (task 380 sixth-acceptance accounting log). boot.Build wraps opts.Sink
+// with the cost-quote sink, so Usage events arrive with CostQuote already
+// priced from the billing catalog — the capture only sums. Non-usage events
+// are dropped exactly like the event.Discard this replaces.
+type coldCacheUsageCapture struct {
+	mu               sync.Mutex
+	promptTokens     int
+	completionTokens int
+	cacheHitTokens   int
+	requests         int
+	cost             billing.Money
+	costKnown        bool
+	costMixed        bool
+}
+
+func (c *coldCacheUsageCapture) Emit(e event.Event) {
+	if c == nil || e.Kind != event.Usage || e.Usage == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.promptTokens += e.Usage.PromptTokens
+	c.completionTokens += e.Usage.CompletionTokens
+	c.cacheHitTokens += e.Usage.CacheHitTokens
+	c.requests += e.Usage.RequestCount
+	if e.CostQuote == nil {
+		return
+	}
+	if !c.costKnown {
+		c.cost, c.costKnown = e.CostQuote.Original, true
+		return
+	}
+	if sum, err := billing.AddMoney(c.cost, e.CostQuote.Original); err == nil {
+		c.cost = sum
+	} else {
+		c.costMixed = true
+	}
+}
+
+// logFields renders the capture as slog fields for the accounting log. A nil
+// capture (the live path) renders nothing — that pass's usage already lands in
+// the session's own ledger, so the cost is not double-counted here.
+func (c *coldCacheUsageCapture) logFields() []any {
+	if c == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	fields := []any{
+		"usagePromptTokens", c.promptTokens,
+		"usageCompletionTokens", c.completionTokens,
+		"usageCacheHitTokens", c.cacheHitTokens,
+		"usageRequests", c.requests,
+	}
+	switch {
+	case c.costMixed:
+		fields = append(fields, "costMixedCurrency", true)
+	case c.costKnown:
+		fields = append(fields, "costAmount", c.cost.Float64(), "costCurrency", c.cost.Currency)
+	}
+	return fields
+}
+
 func (l *coldCacheCompactLoop) run() {
 	ticker := time.NewTicker(coldCacheCompactTickInterval)
 	defer ticker.Stop()
@@ -231,6 +301,14 @@ func (l *coldCacheCompactLoop) compactOne(path, workspaceRoot string, size int64
 	}()
 
 	_, ctrl := l.a.controllerForSessionPath(path)
+	// Task 380 sixth-acceptance accounting: every pass logs the trigger moment
+	// (log timestamp; durationMs derives it), the target session, the
+	// before/after context bytes and the catalog-priced cost of the summary
+	// call. The usage capture only exists on the headless path — a live tab's
+	// usage already lands in its own session ledger.
+	started := time.Now()
+	var usage *coldCacheUsageCapture
+	mode := coldCacheCompactModeLive
 	var err error
 	if ctrl != nil {
 		err = ctrl.Compact(l.a.ctx, "")
@@ -241,8 +319,11 @@ func (l *coldCacheCompactLoop) compactOne(path, workspaceRoot string, size int64
 		// controller on the same compact chain instead — the user is not
 		// present (idle >5h, background), so a background build here is the
 		// cheap side of the trade.
-		err = l.headlessCompactOne(path, workspaceRoot)
+		mode = coldCacheCompactModeHeadless
+		usage = &coldCacheUsageCapture{}
+		err = l.headlessCompactOne(path, workspaceRoot, usage)
 	}
+	duration := time.Since(started)
 	if err != nil {
 		// Task 424: the terminal "no foldable region remains" class parks the
 		// session for its current activity stamp instead of retrying every
@@ -253,7 +334,7 @@ func (l *coldCacheCompactLoop) compactOne(path, workspaceRoot string, size int64
 		if coldCacheCompactTerminal(err) {
 			l.parkNoFoldable(path, lastActivityAt)
 			slog.Info("desktop: cold cache compact parked (nothing foldable left; re-arms on next session activity)",
-				"path", path, "bytes", size,
+				"path", path, "bytes", size, "mode", mode,
 				"idleMinutes", int(idle.Minutes()))
 			return
 		}
@@ -262,15 +343,19 @@ func (l *coldCacheCompactLoop) compactOne(path, workspaceRoot string, size int64
 		// transient provider error does not park the conversation until the
 		// user touches it again.
 		slog.Warn("desktop: cold cache compact failed (will retry next tick)",
-			"path", path, "err", err)
+			"path", path, "mode", mode, "bytes", size,
+			"durationMs", duration.Milliseconds(), "err", err)
 		return
 	}
 	l.mu.Lock()
 	l.done[path] = lastActivityAt
 	l.mu.Unlock()
-	slog.Info("desktop: cold cache compact completed",
-		"path", path, "bytes", size,
-		"idleMinutes", int(idle.Minutes()))
+	fields := append([]any{
+		"path", path, "mode", mode,
+		"bytesBefore", size, "bytesAfter", sessionContextBytes(path),
+		"idleMinutes", int(idle.Minutes()), "durationMs", duration.Milliseconds(),
+	}, usage.logFields()...)
+	slog.Info("desktop: cold cache compact completed", fields...)
 }
 
 // parkNoFoldable records the task-424 park stamp: the compact attempt for
@@ -296,11 +381,13 @@ func coldCacheCompactTerminal(err error) bool {
 // directory, same fold the restart checks use), runs the one compact pass on
 // the standard chain, and closes. No sink output, no tab, no hydrate of any
 // UI surface — the cost is one cold build plus the compaction itself, paid
-// while the user is away instead of in front of them.
-func (l *coldCacheCompactLoop) headlessCompactOne(path, workspaceRoot string) error {
+// while the user is away instead of in front of them. sink collects the pass's
+// billable usage for the task-380 accounting log; boot.Build wraps it with the
+// cost-quote sink so usage arrives already priced from the billing catalog.
+func (l *coldCacheCompactLoop) headlessCompactOne(path, workspaceRoot string, sink event.Sink) error {
 	sessionDir := filepath.Dir(path)
 	ctrl, err := boot.Build(l.a.bootContext(), boot.Options{
-		Sink:                     event.Discard,
+		Sink:                     sink,
 		RequireKey:               false,
 		StatsSource:              "cold-cache-compact",
 		SessionDir:               sessionDir,
