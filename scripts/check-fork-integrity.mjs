@@ -141,6 +141,10 @@ const CHECKS = [
   { feature: "20261002 提示词沟通段+忠实汇报", file: "internal/config/config.go", patterns: ["UserCommunicationPolicy", "with no tool calls after", "Report outcomes faithfully"] },
   { feature: "20261002 核心政策接线含沟通段", file: "internal/boot/prompt_policy.go", patterns: ["config.UserCommunicationPolicy", "config.CompletionReportPolicy"] },
   { feature: "20261002 记忆写作质量指南", file: "internal/memory/memory.go", patterns: ["instead of creating a near-duplicate", "not derivable from the code or git history"] },
+  // 20261002 G1+G5 提示词补充（细节差距调研 §2，wt-zcode-prompt）。锚点选
+  // 两段新增正文语义句，防止上游 merge 静默顶掉例外/外发条款。
+  { feature: "20261002 自主性提问例外(G1)", file: "internal/config/config.go", patterns: ["the deliverable is your assessment", "Don't apply a fix until they ask for one"] },
+  { feature: "20261002 外发动作三语义(G5)", file: "internal/config/config.go", patterns: ["approval in one context does not extend to the next", "cached or indexed even after deletion"] },
   // parked: fork 分支不含该实现（1f8c3fe50 对齐时移除 / 上游另有设计）
   // { feature: "#9526 task 后台引导", file: "internal/agent/task.go", patterns: ["Do not sleep or poll for progress"] },
   { feature: "#9566 截断参数修复", file: "internal/agent/run_loop.go", patterns: ["repairTruncatedToolCallArgs"] },
