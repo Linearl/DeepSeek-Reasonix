@@ -209,6 +209,12 @@ type MailMessage struct {
 	// and platform-generated mail (read receipts, status notes) stamps itself
 	// at creation so the system bucket never depends on a text sniff.
 	Kind string `json:"kind,omitempty"`
+	// Channel is the task-349 group-source stamp (349 挂账 note①): the name
+	// of the chat channel this mail was fanned out from, captured at delivery
+	// time. Empty = ordinary point-to-point mail. It is presentation-only
+	// provenance — the inbox index surfaces it as the entry's group
+	// identifier so channel copies stop looking identical to direct sends.
+	Channel string `json:"channel,omitempty"`
 }
 
 // Delivery semantics for talk_to_session (task 143; default changed to steer

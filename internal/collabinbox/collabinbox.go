@@ -100,6 +100,11 @@ type Entry struct {
 	Delivery     string `json:"delivery,omitempty"`
 	// Bucket is the five-way view classification (approval|mention|automation|system).
 	Bucket string `json:"bucket"`
+	// Channel is the task-349 group identifier (349 挂账 note①): the chat
+	// channel this mail was fanned out from (its name at delivery time).
+	// Empty = point-to-point mail. Presentation-only provenance — the bucket
+	// classification (task 320 d) is deliberately untouched by it.
+	Channel string `json:"channel,omitempty"`
 	// Preview is the first line of the body, rune-bounded — enough to triage,
 	// never a transcript dump.
 	Preview string `json:"preview"`
@@ -333,6 +338,7 @@ func (s *Store) build() ([]Entry, error) {
 			RequireReply: m.RequireReply,
 			Delivery:     m.Delivery,
 			Bucket:       s.classify(m),
+			Channel:      m.Channel,
 			Preview:      previewOf(m.Body),
 			Delivered:    true,
 			Read:         row.Read,

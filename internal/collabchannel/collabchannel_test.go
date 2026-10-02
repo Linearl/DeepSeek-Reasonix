@@ -485,3 +485,43 @@ func TestMigrateV1DatabaseAddsCancelledAt(t *testing.T) {
 		t.Fatalf("migrated cancelled row must not deliver: %+v err=%v", stats, err)
 	}
 }
+
+// 349 挂账 note①：fan-out 落箱信带群来源戳（channel 名，投递时点快照），
+// 收件箱据此呈现群标识；点对点直发信没有该戳。
+func TestFanoutDeliveredMailCarriesChannelStamp(t *testing.T) {
+	s, dir, _ := newStore(t)
+	if _, err := s.CreateChannel("dev", "engineering", 0, "sc_a", "sc_b"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Publish("dev", "sc_s", "hello channel"); err != nil {
+		t.Fatal(err)
+	}
+	stats, err := s.DrainFanout(context.Background())
+	if err != nil || stats.Delivered != 2 {
+		t.Fatalf("drain: %+v err=%v", stats, err)
+	}
+	mail := sessioncollab.NewMailStore(dir)
+	for _, member := range []string{"sc_a", "sc_b"} {
+		inbox, err := mail.Inbox(member)
+		if err != nil || len(inbox) != 1 {
+			t.Fatalf("%s inbox: %v len=%d", member, err, len(inbox))
+		}
+		if inbox[0].Channel != "dev" {
+			t.Fatalf("%s fan-out mail must carry the channel name stamp: %+v", member, inbox[0])
+		}
+	}
+
+	// 对照：同邮箱直发一封点对点信，不得带群戳（戳是 fan-out 专属）。
+	if _, err := mail.Deliver(sessioncollab.MailMessage{From: "sc_s", To: "sc_a", Body: "direct line", At: 1}); err != nil {
+		t.Fatal(err)
+	}
+	inbox, err := mail.Inbox("sc_a")
+	if err != nil || len(inbox) != 2 {
+		t.Fatalf("sc_a inbox after direct send: %v len=%d", err, len(inbox))
+	}
+	for _, m := range inbox {
+		if m.Body == "direct line" && m.Channel != "" {
+			t.Fatalf("point-to-point mail must not carry a channel stamp: %+v", m)
+		}
+	}
+}
