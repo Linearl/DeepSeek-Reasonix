@@ -1,8 +1,9 @@
 // 跨会话收件箱面板 (task 320): the one place that shows every cross-session
 // mail — five-bucket aggregation (views, not storage), sender/recipient/date
-// filtering, revision-stamped dismiss (contract ①), retention picker, approval
-// sub-states with their decider recorded (task 320 d), and the thread-chain
-// view (task 320 g). The panel is a pure consumer of the Go index: everything
+// filtering with an asc/desc date toggle (a), revision-stamped dismiss
+// (contract ①), retention picker, approval sub-states with their decider
+// recorded (task 320 d), and the thread-chain view (task 320 g). The panel is
+// a pure consumer of the Go index: everything
 // it shows already sits in a recipient inbox — a queued send is not an entry
 // (contract ②), and dismissed/decided/retention state lives on disk, so a
 // restart keeps all of it (contract f).
@@ -65,7 +66,7 @@ export type CollabMailChains = {
 };
 
 export type CollabInboxBindings = {
-  ListCollabMail(bucket: string, from: string, to: string, state: string, limit: number, includeDismissed: boolean): Promise<CollabMailSnapshot>;
+  ListCollabMail(bucket: string, from: string, to: string, state: string, limit: number, includeDismissed: boolean, order: string): Promise<CollabMailSnapshot>;
   ListCollabMailChains(bucket: string, limit: number): Promise<CollabMailChains>;
   DismissCollabMail(ids: string[]): Promise<CollabMailSnapshot>;
   UndismissCollabMail(ids: string[]): Promise<CollabMailSnapshot>;
@@ -95,9 +96,11 @@ export function onCollabInboxOpenChange(cb: (open: boolean) => void): () => void
 const BUCKETS = ["all", "approval", "mention", "automation", "system"] as const;
 const STATES = ["all", "pendingMe", "mine", "decided"] as const;
 const RETENTIONS = ["7d", "30d", "90d", "forever"] as const;
+const ORDERS = ["desc", "asc"] as const;
 
 type Bucket = (typeof BUCKETS)[number];
 type StateFilter = (typeof STATES)[number];
+type OrderFilter = (typeof ORDERS)[number];
 
 function formatTime(ms: number): string {
   if (!ms) return "";
@@ -110,6 +113,7 @@ export function CollabInboxPanel({ bindings }: { bindings?: CollabInboxBindings 
   const [open, setOpen] = useState(panelOpen);
   const [bucket, setBucket] = useState<Bucket>("all");
   const [state, setState] = useState<StateFilter>("all");
+  const [order, setOrder] = useState<OrderFilter>("desc");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [view, setView] = useState<"list" | "chains">("list");
@@ -126,12 +130,12 @@ export function CollabInboxPanel({ bindings }: { bindings?: CollabInboxBindings 
       if (view === "chains") {
         setChains(await b.ListCollabMailChains(bucket, 100));
       } else {
-        setSnapshot(await b.ListCollabMail(bucket, from.trim(), to.trim(), state, 100, showDismissed));
+        setSnapshot(await b.ListCollabMail(bucket, from.trim(), to.trim(), state, 100, showDismissed, order));
       }
     } catch {
       // A closed gateway must not crash the panel — it simply shows no data.
     }
-  }, [b, bucket, from, to, state, showDismissed, view]);
+  }, [b, bucket, from, to, state, order, showDismissed, view]);
 
   useEffect(() => {
     if (!open) return;
@@ -220,6 +224,19 @@ export function CollabInboxPanel({ bindings }: { bindings?: CollabInboxBindings 
           value={to}
           onChange={(event) => setTo(event.target.value)}
         />
+        <div className="collab-inbox-panel__ordertoggle" role="group" aria-label={t("collabInbox.sortByDate")}>
+          {ORDERS.map((name) => (
+            <button
+              key={name}
+              type="button"
+              aria-pressed={order === name}
+              className={`collab-inbox-panel__state${order === name ? " collab-inbox-panel__state--on" : ""}`}
+              onClick={() => setOrder(name)}
+            >
+              {t(`collabInbox.order.${name}` as "collabInbox.order.desc")}
+            </button>
+          ))}
+        </div>
         <div className="collab-inbox-panel__viewtoggle">
           <button
             type="button"

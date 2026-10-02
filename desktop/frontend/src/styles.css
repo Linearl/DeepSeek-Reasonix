@@ -42814,6 +42814,11 @@ body > .mermaid-diagram--fullscreen {
   display: flex;
   gap: 6px;
 }
+/* Date sort toggle (task 320 a): same chip row shape as the view toggle. */
+.collab-inbox-panel__ordertoggle {
+  display: flex;
+  gap: 6px;
+}
 .collab-inbox-panel__showdismissed {
   display: flex;
   align-items: center;

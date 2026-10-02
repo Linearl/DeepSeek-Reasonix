@@ -44,14 +44,18 @@ func (a *App) collabInboxViewer() string {
 
 // ListCollabMail returns one revision-stamped page of the unified mail table.
 // bucket: all|approval|mention|automation|system (empty = all); state:
-// all|pendingMe|mine|decided; limit <= 0 uses the default (50, hard max 500).
-func (a *App) ListCollabMail(bucket, from, to, state string, limit int, includeDismissed bool) (collabinbox.Snapshot, error) {
+// all|pendingMe|mine|decided; limit <= 0 uses the default (50, hard max 500);
+// order: desc (newest first, the default) | asc (oldest first) — task 320 a's
+// date sort, surfaced as a panel toggle (the index layer has always been
+// dual-order; the agent query tool exposes the same field).
+func (a *App) ListCollabMail(bucket, from, to, state string, limit int, includeDismissed bool, order string) (collabinbox.Snapshot, error) {
 	return collabInboxStore().List(collabinbox.Query{
 		Bucket:           bucket,
 		From:             from,
 		To:               to,
 		State:            state,
 		Viewer:           a.collabInboxViewer(),
+		Order:            order,
 		Limit:            limit,
 		IncludeDismissed: includeDismissed,
 	}, true) // panel calls may apply retention (the agent tool path never does)

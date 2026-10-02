@@ -1,6 +1,7 @@
 // Run: tsx src/__tests__/collab-inbox-panel.test.tsx
 // Task 320 acceptance on the panel side: five buckets render, sender filter
-// reaches the backend, dismiss/decide/retention return the new snapshot
+// reaches the backend, the asc/desc date toggle re-queries with order=asc (a),
+// dismiss/decide/retention return the new snapshot
 // (contract ①), the chain view groups by thread (g), and the revision footer
 // is visible. The Go tests own the storage contracts; this harness owns the
 // rendering + binding wiring.
@@ -65,8 +66,8 @@ let snapshot: CollabMailSnapshot = {
 };
 
 const bindings: CollabInboxBindings = {
-  async ListCollabMail(bucket, from, to, state, limit, includeDismissed) {
-    calls.push({ name: "ListCollabMail", args: [bucket, from, to, state, limit, includeDismissed] });
+  async ListCollabMail(bucket, from, to, state, limit, includeDismissed, order) {
+    calls.push({ name: "ListCollabMail", args: [bucket, from, to, state, limit, includeDismissed, order] });
     return {
       ...snapshot,
       entries: snapshot.entries.filter((e) => (bucket === "all" ? true : e.bucket === bucket))
@@ -151,6 +152,27 @@ await act(async () => {
 });
 lastList = calls.filter((c) => c.name === "ListCollabMail").pop();
 assert.deepEqual(lastList?.args[1], "sc_alice", "the sender filter reaches the backend query");
+
+// 日期排序切换（a）：默认最新在前（desc）；点「Oldest first」→ 透传 order=asc。
+// 排序本身的正确性由 Go 侧 TestFilterBySenderRecipientAndDateOrder 承担，
+// 这里的接缝职责是「控件状态一定到达后端查询」。
+const orderButtons = Array.from(
+  panel!.querySelectorAll<HTMLButtonElement>(".collab-inbox-panel__ordertoggle .collab-inbox-panel__state"),
+);
+assert.equal(orderButtons.length, 2, "the date sort toggle renders two options");
+assert.equal(
+  calls.filter((c) => c.name === "ListCollabMail").pop()?.args[6],
+  "desc",
+  "the date sort defaults to newest-first",
+);
+await act(async () => {
+  orderButtons.find((b) => b.textContent === "Oldest first")!.click();
+});
+assert.equal(
+  calls.filter((c) => c.name === "ListCollabMail").pop()?.args[6],
+  "asc",
+  "clicking oldest-first re-queries with order=asc",
+);
 
 // 待我审子态可见（审批桶激活后 state chips 出现）。
 assert.ok(
