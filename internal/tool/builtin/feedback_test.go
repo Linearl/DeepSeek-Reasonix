@@ -194,6 +194,9 @@ func TestSubmitFeedbackDescriptionEncodesTriggerRules(t *testing.T) {
 		if !strings.Contains(desc, want) {
 			t.Fatalf("Description() missing trigger-rule claim %q:\n%s", want, desc)
 		}
+	}
+}
+
 // Task 344-B: extended frontmatter fields written by the signal-scan drafts
 // (origin/fingerprint/confirmed/evidence-id/rule-version) and by the supersede
 // workflow (superseded-by) must not break parsing — field-style optional keys,
