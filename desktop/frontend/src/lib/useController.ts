@@ -3198,6 +3198,10 @@ export function useController() {
             preferResident: shouldPreferResidentHistory(resetSurface, options.preserveCachedHistory),
             expectedRevision: sessionRevision,
             expectedDigest: sessionDigest,
+            // 任务 451 分相打点：loadLatest 内部（bridge 往返 / 记录换转）逐段
+            // 上报，`<reason>:history/<phase>` 进入 desktop.log（>=150ms）与
+            // summary 行，回答"history 这 1.4s 花在后端还是前端"。
+            onPhase: (phase, ms) => reportStageTiming(tabId, `${reason}:history/${phase}`, ms),
           }),
           (err) => { historyLoadCause = err; },
         );

@@ -988,7 +988,17 @@ export class TranscriptStore {
   async loadLatest(
     tabId: string,
     sessionPath: string,
-    options: { turns?: number; entries?: number; bytes?: number; preferResident?: boolean; expectedRevision?: number; expectedDigest?: string } = {},
+    options: {
+      turns?: number;
+      entries?: number;
+      bytes?: number;
+      preferResident?: boolean;
+      expectedRevision?: number;
+      expectedDigest?: string;
+      // 任务 451 分相打点：把 loadLatest 内部的候选阶段（后端往返 bridge /
+      // 记录换转 convert）逐段报给调用方。可选；只计时不改行为。
+      onPhase?: (phase: "bridge" | "bridge-retry" | "convert", ms: number) => void;
+    } = {},
   ): Promise<TranscriptProjection | undefined> {
     const key = sessionKeyFor(tabId, sessionPath);
     const existing = this.sessions.get(key);
@@ -1018,15 +1028,22 @@ export class TranscriptStore {
     this.touch(session);
 
     const { turns, entries, bytes } = options;
+    const nowMs = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+    let phaseStartedAt = nowMs();
     let slice = await this.fetchSlice(tabId, { cursor: "", turns, entries, bytes });
+    options.onPhase?.("bridge", nowMs() - phaseStartedAt);
     if (this.sessions.get(key) !== session || session.generation !== generation) return undefined;
     if (slice.stale) {
       // cursor "" cannot bind a stale identity, but a concurrent rewrite may
       // still report one — retry once against the settled revision.
+      phaseStartedAt = nowMs();
       slice = await this.fetchSlice(tabId, { cursor: "", turns, entries, bytes });
+      options.onPhase?.("bridge-retry", nowMs() - phaseStartedAt);
       if (this.sessions.get(key) !== session || session.generation !== generation) return undefined;
     }
+    phaseStartedAt = nowMs();
     this.replaceRecords(session, asArray<HistoryEntry>(slice.entries));
+    options.onPhase?.("convert", nowMs() - phaseStartedAt);
     session.nextCursor = slice.nextCursor ?? "";
     session.hasOlder = Boolean(slice.hasOlder);
     session.totalTurns = slice.totalTurns ?? 0;
