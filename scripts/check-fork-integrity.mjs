@@ -510,6 +510,12 @@ const CHECKS = [
   // 被 merge 摘掉则面板退回仅设置可达。
   { feature: "任务320 左下角图标行入口（邮箱图标+开合接线）", file: "desktop/frontend/src/App.tsx", patterns: ["Mailbox size={16}", "setCollabInboxOpen(true)", "sidebar.collabInbox"] },
   { feature: "任务320 图标行入口三语 locale", file: "desktop/frontend/src/locales/zh.ts", patterns: ["sidebar.collabInbox"] },
+  // 任务 320 余段（20261003）：a 的面板侧日期升/降切换——索引层 Query.Order
+  // 双序早已在，缺的是 Wails 透传与面板控件；锁 Go 参数、控件类与三语键，
+  // 任一侧被摘则排序切换静默失灵。
+  { feature: "任务320 面板日期排序切换（Wails 透传）", file: "desktop/collab_inbox_app.go", patterns: ["order string", "Order:            order"] },
+  { feature: "任务320 面板日期排序切换（控件+透传）", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["collab-inbox-panel__ordertoggle", "collabInbox.order.${name}", "showDismissed, order)"] },
+  { feature: "任务320 面板日期排序切换三语 locale", file: "desktop/frontend/src/locales/zh.ts", patterns: ["collabInbox.order.desc", "collabInbox.order.asc"] },
   // 任务 349：群聊通道——channel 实体（SQLite+md 导出）+ 发布订阅展开单发
   // （复用 309 MailStore，铁律 8 无第二投递通道）+ per-recipient delivered/
   // read + 429 治理（错峰/followup/小时上限）+ 取消消息（20261002 增量：

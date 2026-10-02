@@ -1068,7 +1068,7 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 320: cross-session inbox panel — every call answers a
   // revision-stamped snapshot (contract ①), so dismiss/decide/retention
   // return the NEW state directly.
-  ListCollabMail(bucket: string, from: string, to: string, state: string, limit: number, includeDismissed: boolean): Promise<CollabMailSnapshotView>;
+  ListCollabMail(bucket: string, from: string, to: string, state: string, limit: number, includeDismissed: boolean, order: string): Promise<CollabMailSnapshotView>;
   ListCollabMailChains(bucket: string, limit: number): Promise<CollabMailChainsView>;
   DismissCollabMail(ids: string[]): Promise<CollabMailSnapshotView>;
   UndismissCollabMail(ids: string[]): Promise<CollabMailSnapshotView>;
