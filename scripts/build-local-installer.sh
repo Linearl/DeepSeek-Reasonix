@@ -14,17 +14,31 @@
 #   Shortcuts in project.nsi also point their icon at the main exe.
 #
 # Usage:
-#   scripts/build-local-installer.sh [VERSION]   # VERSION defaults to
-#                                                 # desktop/wails.json productVersion
+#   scripts/build-local-installer.sh [VERSION] [--keep N]
+#     VERSION defaults to 1.38.3-<timestamp> (see below); --keep N (or env
+#     REASONIX_VERSIONS_KEEP, default 5) sets how many newest versions/ trees
+#     survive the post-build prune (task 411).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CHANNEL="${REASONIX_CHANNEL:-stable}"
 
-# --- version: $1 overrides desktop/wails.json productVersion ---
-if [ -n "${1:-}" ]; then
-	VER="$1"
-else
+# --- version: first non-flag arg overrides desktop/wails.json productVersion;
+# --- --keep N / REASONIX_VERSIONS_KEEP set the versions/ retention count.
+VER=""
+KEEP="${REASONIX_VERSIONS_KEEP:-5}"
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--keep)
+			[ -n "${2:-}" ] || { echo "ERROR: --keep needs a number" >&2; exit 1; }
+			KEEP="$2"; shift 2 ;;
+		--keep=*)
+			KEEP="${1#--keep=}"; shift ;;
+		*)
+			if [ -z "$VER" ]; then VER="$1"; fi; shift ;;
+	esac
+done
+if [ -z "$VER" ]; then
 	# Task 171 batch lesson: a bare productVersion ("1.38.3") makes every build
 	# overwrite the same staging/version.txt, so RestartAndUpdate has no unique
 	# version to publish and the quick-switch list never grows. Auto-timestamp
@@ -195,6 +209,24 @@ else
   echo "    RestartAndUpdate requires a versioned install. To enable it:"
   echo "    1. Install the NSIS installer (or set REASONIX_INSTALL_ROOT)"
   echo "    2. Re-run this script so binaries are copied to <InstallRoot>/staging/"
+fi
+
+# --- prune old versions (task 411) ---
+# Every build publishes a new tree and nothing deleted the old ones: versions/
+# regrew to 40 trees / 6.2GB between manual cleanups (user report 2026-09-30).
+# After a successful build-and-stage, apply the retention rule — keep the
+# newest KEEP trees plus whatever current.json points at (hard-skipped even if
+# it is the oldest). The rule lives in internal/installlayout.PruneVersionTrees
+# (unit-tested there); bash only forwards -root/-keep so there is no retention
+# logic to test here. Prune failure is a warning, never a failed build.
+if [ -n "$STAGING_DIR" ]; then
+	INSTALL_ROOT="$(dirname "$STAGING_DIR")"
+	echo "==> pruning versions/ (keep=$KEEP; the current.json target is always kept)"
+	if (cd "$ROOT" && go run ./tools/prune-versions -root "$INSTALL_ROOT" -keep "$KEEP"); then
+		:
+	else
+		echo "WARN: versions prune failed (non-fatal; versions/ left untouched)" >&2
+	fi
 fi
 
 echo "DONE: desktop/build/bin/reasonix-desktop-amd64-installer.exe (v$VER)"

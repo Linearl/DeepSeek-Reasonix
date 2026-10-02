@@ -3407,8 +3407,9 @@ export default function App() {
     open: boolean;
     versions: VersionEntry[];
     switching: string | null;
+    deleting: string | null;
     error: string | null;
-  }>({ open: false, versions: [], switching: null, error: null });
+  }>({ open: false, versions: [], switching: null, deleting: null, error: null });
 
   const handleOpenVersionSwitch = useCallback(async () => {
     let versions: VersionEntry[] = [];
@@ -3418,7 +3419,7 @@ export default function App() {
       await handleRestartUpdate();
       return;
     }
-    setVersionSwitch({ open: true, versions, switching: null, error: null });
+    setVersionSwitch({ open: true, versions, switching: null, deleting: null, error: null });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -3432,6 +3433,24 @@ export default function App() {
       setVersionSwitch((prev) => ({
         ...prev,
         switching: null,
+        error: error instanceof Error ? error.message : String(error),
+      }));
+    }
+  }, []);
+
+  // Task 411: per-row delete of a non-active version tree. The dialog owns the
+  // confirmation step; this handler re-lists on success so the row disappears
+  // without reopening the picker.
+  const handleDeleteVersion = useCallback(async (version: string) => {
+    setVersionSwitch((prev) => ({ ...prev, deleting: version, error: null }));
+    try {
+      await app.DeleteInstalledVersion(version);
+      const versions = await app.ListInstalledVersions();
+      setVersionSwitch((prev) => ({ ...prev, versions, deleting: null }));
+    } catch (error) {
+      setVersionSwitch((prev) => ({
+        ...prev,
+        deleting: null,
         error: error instanceof Error ? error.message : String(error),
       }));
     }
@@ -5821,8 +5840,10 @@ export default function App() {
         open={versionSwitch.open}
         versions={versionSwitch.versions}
         switching={versionSwitch.switching}
+        deleting={versionSwitch.deleting}
         error={versionSwitch.error}
         onSwitch={(version) => void handleSwitchToVersion(version)}
+        onDelete={(version) => void handleDeleteVersion(version)}
         onClose={() => setVersionSwitch((prev) => ({ ...prev, open: false }))}
         onPublishStaging={() => {
           setVersionSwitch((prev) => ({ ...prev, open: false }));

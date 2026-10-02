@@ -44,6 +44,7 @@ func fakeInstallRoot(t *testing.T, versions []string, active string) string {
 		versionSwitchInstallRoot = resolveVersionedInstallRoot
 		versionSwitchStartLauncher = startDetachedLauncher
 		versionSwitchQuit = func(a *App) { a.quitApp() }
+		versionSwitchRunningVersion = runningVersionName
 	})
 	versionSwitchInstallRoot = func() (string, error) { return root, nil }
 	return root
@@ -204,5 +205,78 @@ func TestSwitchToVersionMissingLauncherReportsAndKeepsPointer(t *testing.T) {
 	}
 	if ptr.ActiveVersion != "v1.37.0" {
 		t.Fatalf("pointer unexpected after launcher failure: %+v", ptr)
+	}
+}
+
+// ---- task 411: DeleteInstalledVersion ----
+
+// deleteFixture combines the install root and experiment toggles the delete
+// guards need, and restores the running-version hook afterwards.
+func deleteFixture(t *testing.T, experimentOn bool, running string) string {
+	t.Helper()
+	fakeVersionedConfig(t, experimentOn)
+	root := fakeInstallRoot(t, []string{"v1.38.3", "v1.38.3-20260930-1200", "v1.37.0"}, "v1.38.3-20260930-1200")
+	versionSwitchRunningVersion = func() string { return running }
+	return root
+}
+
+func TestDeleteInstalledVersionGuards(t *testing.T) {
+	root := deleteFixture(t, false, "")
+	app := &App{}
+	if err := app.DeleteInstalledVersion("v1.37.0"); err == nil || !strings.Contains(err.Error(), "experiment is off") {
+		t.Fatalf("delete with experiment off must refuse, got %v", err)
+	}
+	deleteFixture(t, true, "")
+	if err := app.DeleteInstalledVersion(""); err == nil || !strings.Contains(err.Error(), "version is required") {
+		t.Fatalf("empty version must be refused, got %v", err)
+	}
+	if err := app.DeleteInstalledVersion("../escape"); err == nil {
+		t.Fatalf("traversal version must be refused")
+	}
+	// Task 411 hard rule: the tree current.json points at is never deletable,
+	// and the directory must still exist after the refusal.
+	if err := app.DeleteInstalledVersion("v1.38.3-20260930-1200"); err == nil || !strings.Contains(err.Error(), "is the active version") {
+		t.Fatalf("deleting the current.json target must refuse, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, installlayout.VersionsDirName, "v1.38.3-20260930-1200")); err != nil {
+		t.Fatalf("active version tree must survive the refused delete: %v", err)
+	}
+}
+
+func TestDeleteInstalledVersionRefusesRunningTree(t *testing.T) {
+	deleteFixture(t, true, "v1.37.0") // simulate running from the oldest tree
+	app := &App{}
+	if err := app.DeleteInstalledVersion("v1.37.0"); err == nil || !strings.Contains(err.Error(), "running from") {
+		t.Fatalf("deleting the tree this process runs from must refuse, got %v", err)
+	}
+	// A different tree is unaffected by the running-version guard.
+	root := versionSwitchRootForTest()
+	if err := app.DeleteInstalledVersion("v1.38.3"); err != nil {
+		t.Fatalf("non-running tree should delete cleanly: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, installlayout.VersionsDirName, "v1.38.3")); !os.IsNotExist(err) {
+		t.Fatalf("deleted tree must be gone, got %v", err)
+	}
+}
+
+func TestDeleteInstalledVersionRemovesOnlyTarget(t *testing.T) {
+	root := deleteFixture(t, true, "")
+	app := &App{}
+	if err := app.DeleteInstalledVersion("v1.37.0"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, installlayout.VersionsDirName, "v1.37.0")); !os.IsNotExist(err) {
+		t.Fatalf("target tree must be gone, got %v", err)
+	}
+	got, err := app.ListInstalledVersions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("other trees must survive: %+v", got)
+	}
+	// A second delete of the same name is a named error, not a silent no-op.
+	if err := app.DeleteInstalledVersion("v1.37.0"); err == nil || !strings.Contains(err.Error(), "not installed") {
+		t.Fatalf("deleting a missing version must surface, got %v", err)
 	}
 }

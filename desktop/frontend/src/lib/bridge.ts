@@ -1230,6 +1230,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   ListInstalledVersions(): Promise<VersionEntry[]>;
   /** SwitchToVersion moves current.json onto an existing version and relaunches (task 210). */
   SwitchToVersion(version: string): Promise<void>;
+  /** DeleteInstalledVersion removes one non-active version tree (task 411); the Go side refuses the current.json target. */
+  DeleteInstalledVersion(version: string): Promise<void>;
   SetProjectPinned(workspaceRoot: string, pinned: boolean): Promise<void>;
   ReorderProjects(workspaceRoots: string[]): Promise<void>;
   RequestOwnershipFromRemote(workspaceRoot: string, topicID: string): Promise<void>;
@@ -3115,6 +3117,9 @@ function makeMockApp(): AppBindings {
     },
     async SwitchToVersion(_version: string) {
       throw new Error("SwitchToVersion is unavailable in the preview build");
+    },
+    async DeleteInstalledVersion(_version: string) {
+      throw new Error("DeleteInstalledVersion is unavailable in the preview build");
     },
     async ServePoolStatus() {
       return { enabled: false, running: false, bind: "", addr: "", port: 18789, token: "mock-gateway-token", listen: "0.0.0.0:18789" };

@@ -670,6 +670,15 @@ const CHECKS = [
   { feature: "任务451 A：planner 侧车缓存（mtime+size 校验+单飞+上限）", file: "desktop/sessions_planner_display_cache.go", patterns: ["loadCachedSessionPlannerDisplays", "plannerDisplayCacheMaxEntries", "plannerDisplayCacheInflight"] },
   { feature: "任务451 A：写侧失效（save/remove 双出口清条目）", file: "desktop/sessions.go", patterns: ["invalidateSessionPlannerDisplayCache(dir)"] },
   { feature: "任务451 C：尾读缓存单飞（inflight 共享冷读）", file: "desktop/history_time_overlay.go", patterns: ["historyTimeOverlayInflight", "delete(historyTimeOverlayCache.inflight, cacheKey)"] },
+
+  // 任务411（20261001 批十收尾）：快速切换版本治理——出包自动清理 + 面板删除历史版本。
+  // 保留规则只实现一次（installlayout.PruneVersionTrees，含 current.json 指向硬跳过），
+  // 出包脚本经 tools/prune-versions 调它；合并丢了任一环都会让 versions/ 重新堆积。
+  { feature: "任务411 versions 保留规则（保留 N + current 指向硬跳过）", file: "internal/installlayout/prune.go", patterns: ["func PruneVersionTrees", "keep must be >= 0", "name == active"] },
+  { feature: "任务411 出包脚本接自动清理（--keep/REASONIX_VERSIONS_KEEP）", file: "scripts/build-local-installer.sh", patterns: ["tools/prune-versions", "--keep", "REASONIX_VERSIONS_KEEP"] },
+  { feature: "任务411 面板删除历史版本（Go 绑定拒绝 current/运行中版本）", file: "desktop/version_switch.go", patterns: ["func (a *App) DeleteInstalledVersion", "is the active version", "running from"] },
+  { feature: "任务411 面板删除入口+确认交互（TSX）", file: "desktop/frontend/src/components/VersionSwitchDialog.tsx", patterns: ["versionSwitchDeleteConfirm", "onDelete", "btn--danger"] },
+  { feature: "任务411 面板删除接线（App.tsx handler）", file: "desktop/frontend/src/App.tsx", patterns: ["handleDeleteVersion", "DeleteInstalledVersion(version)"] },
 ];
 
 let failed = 0;
