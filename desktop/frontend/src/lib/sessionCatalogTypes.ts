@@ -78,6 +78,9 @@ export interface SessionGroup {
   id: string;
   title: string;
   topicIds?: string[];
+  /** Task 350: display-only nesting (层级≠指挥权). Optional and additive —
+   * flat data has no field, and the backend caps the tree at depth 2. */
+  parent?: string;
 }
 
 export interface ProjectGroupsSnapshot {

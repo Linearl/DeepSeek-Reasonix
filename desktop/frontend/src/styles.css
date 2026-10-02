@@ -32778,6 +32778,16 @@ body > .mermaid-diagram--fullscreen {
 .project-tree__group {
   position: relative;
 }
+/* Task 350: display-only group nesting (top-level group > child group). The
+   child subtree indents one step and carries a faint guide line; hierarchy is
+   pure display (层级≠指挥权), so no emphasis beyond geometry. */
+.project-tree__group--nested > .project-tree__group-main {
+  font-weight: 500;
+}
+.project-tree__group-subtree {
+  margin-left: 12px;
+  border-left: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+}
 .project-tree__group-main {
   display: flex;
   align-items: center;

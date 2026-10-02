@@ -1580,6 +1580,8 @@ export const en = {
   "projectTree.newGroup": "New group",
   "projectTree.markAllRead": "Mark all read",
   "projectTree.renameGroup": "Rename group",
+  "projectTree.nestGroupUnder": "Move under \"{title}\"",
+  "projectTree.moveGroupToTopLevel": "Move to top level",
   "projectTree.deleteGroup": "Delete group",
   "projectTree.clearGroup": "Clear group",
   "projectTree.dissolveGroup": "Dissolve group",

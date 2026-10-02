@@ -64,8 +64,10 @@ for (const members of [[running("a")], [idle("a")], [running("a"), idle("b")], [
     "project folder rows keep their own indentation formula (zero regression)");
   ok(/style=\{\{ paddingLeft: 14 \+ depth \* 16 \}\}/.test(treeSource),
     "member/topic rows keep 14 + depth * 16 (expanded children do not move)");
-  ok(orgSource.includes("style={{ paddingLeft: 8 + (depth - 1) * 16 }}"),
-    "the group header now uses the folder row's column (depth + 1 unwound)");
+  // Task 350: the base formula stays the task-313 folder column; a nested
+  // group rides one extra 16px step on top of it.
+  ok(orgSource.includes("style={{ paddingLeft: 8 + (depth - 1) * 16 + (nested ? 16 : 0) }}"),
+    "the group header keeps the task-313 folder column (task 350 adds a nested step on top)");
   ok(orgSource.includes("depth={depth + 1}") === false || treeSource.includes("depth={depth + 1}"),
     "the caller still passes folder depth + 1 — member rows keep their level");
 }

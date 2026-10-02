@@ -1315,6 +1315,8 @@ export const zhTW: Record<DictKey, string> = {
   "projectTree.newGroup": "新建分組",
   "projectTree.markAllRead": "全部已讀",
   "projectTree.renameGroup": "重新命名分組",
+  "projectTree.nestGroupUnder": "移到「{title}」子層",
+  "projectTree.moveGroupToTopLevel": "移到頂層",
   "projectTree.deleteGroup": "刪除分組",
   "projectTree.clearGroup": "清空分組",
   "projectTree.dissolveGroup": "解散分組",
