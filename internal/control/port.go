@@ -21,14 +21,29 @@ import (
 
 // This file defines the driving port: the typed, segregated interface surface
 // that frontends (cli, desktop, bot, acp, serve) consume instead of coupling to
-// the concrete *Controller and its ~99 methods. Each frontend depends only on
-// the sub-ports it actually uses (interface segregation), so e.g. the bot never
-// sees checkpoint or memory methods.
+// the concrete *Controller. That concrete surface is large and still growing —
+// 597 methods as of 2026-10-02 (main-v2-stable, task 328 baseline; an earlier
+// revision of this comment claimed ~99, which has been stale for a long time).
+// Re-count before quoting it anywhere:
+//
+//	grep -h "^func (c \*Controller)" $(ls internal/control/*.go | grep -v _test) | wc -l
+//
+// Each frontend depends only on the sub-ports it actually uses (interface
+// segregation), so e.g. the bot never sees checkpoint or memory methods.
 //
 // The sub-ports are also the intended decomposition boundary for Controller
 // itself: the port comes first and gives the later collaborator splits a spec to
 // follow. *Controller implements every sub-port (asserted below). The full
 // SessionAPI composition will accrete here as the remaining frontends migrate.
+//
+// Migration status at the same baseline, facts only (the split itself is
+// architecture item B1): the eleven sub-ports below plus Inbox (inbox.go) carry
+// 187 methods, about a third of the concrete surface. All five frontends still
+// build *Controller at their factory boundaries; bot and acp then narrow to
+// sub-port slices (botController / acpController) with occasional
+// type-assertions back to the concrete type, while cli, desktop and serve also
+// reference the concrete type directly — desktop additionally imports
+// internal/agent in 74 non-test files.
 
 // Lifecycle covers a session's identity and lifecycle: minting, resuming,
 // clearing, and locating the active session.
