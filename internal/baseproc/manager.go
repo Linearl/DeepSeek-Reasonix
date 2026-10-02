@@ -58,9 +58,18 @@ type Options struct {
 	// drops them (the v1 core server emits none; base.dying handling is S1c).
 	Notify func(method string, params json.RawMessage)
 	// Dial, when set, replaces subprocess spawning entirely (tests inject
-	// pipe pairs; S1c crash-injection reuses it). It returns the framed
+	// pipe pairs; crash-injection reuses it). It returns the framed
 	// transport and a teardown func that is idempotent.
 	Dial func(ctx context.Context) (io.ReadWriteCloser, func(), error)
+
+	// LogFile is the subprocess log destination (design F2: logs/base.log).
+	// Empty resolves to <REASONIX_HOME>/logs/base/base.log. The child's fd 2
+	// becomes that file, so its slog lines and any panic land on disk instead
+	// of a console nobody has.
+	LogFile string
+	// Stderr overrides where the subprocess's stderr goes — tests inject a
+	// buffer. Nil resolves LogFile (the production path).
+	Stderr io.Writer
 
 	// Lifecycle thresholds (design §4). Zero falls back to the
 	// REASONIX_BASE_HEALTH_* environment variable, then to the design
@@ -147,32 +156,47 @@ func subprocessDial(opts Options) func(ctx context.Context) (io.ReadWriteCloser,
 		if env == nil {
 			env = os.Environ()
 		}
+		// F2: the subprocess writes into a dedicated log file, and F1: it is
+		// told which one. The path travels in the environment rather than
+		// being re-derived so the child never guesses its own log location.
+		stderr := resolveStderr(opts)
+		env = withBaseLogEnv(env, stderr.path)
 		// The exec context must NOT be the handshake context: Start cancels
 		// that one right after the handshake, which would kill a healthy
 		// subprocess. The process lifetime belongs to RemoteBaseClient.Close
-		// (graceful stdin EOF, bounded kill) plus the pipe-EOF orphan path
-		// (decision D4); ctx-cleanup hardening is S1c.
+		// (base.shutdown → graceful stdin EOF → bounded kill, design §4) plus
+		// the pipe-EOF orphan path (decision D4); Manager.Close also cancels
+		// its own baseCtx so an in-flight restart attempt aborts with it.
 		cmd := proc.CommandContext(context.WithoutCancel(ctx), argv[0], argv[1:]...)
 		cmd.Env = env
-		cmd.Stderr = os.Stderr // S1a: inherit; logs/base.log (F2) is S1c
+		cmd.Stderr = stderr.w
 
 		stdin, err := cmd.StdinPipe()
 		if err != nil {
+			stderr.cleanup()
 			return nil, nil, fmt.Errorf("stdin pipe: %w", err)
 		}
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
+			stderr.cleanup()
 			_ = stdin.Close()
 			return nil, nil, fmt.Errorf("stdout pipe: %w", err)
 		}
 		job, err := proc.StartTracked(cmd)
 		if err != nil {
+			stderr.cleanup()
 			_ = stdin.Close()
 			_ = stdout.Close()
 			return nil, nil, fmt.Errorf("start %s: %w", argv[0], err)
 		}
 		rw := &procRW{r: stdout, w: stdin}
-		return rw, func() { teardownSubprocess(cmd, job, stdin, stdout) }, nil
+		return rw, func() {
+			// The log file outlives the process only long enough for the
+			// reaper to finish: closing it first would swallow a dying
+			// child's last lines (and its panic).
+			teardownSubprocess(cmd, job, stdin, stdout)
+			stderr.cleanup()
+		}, nil
 	}
 }
 
