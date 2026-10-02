@@ -53,10 +53,20 @@ var historyTimeOverlayCache = struct {
 	mu      sync.Mutex
 	entries map[string]historyTimeOverlayCacheEntry
 	order   []string
-	hits    int
-	misses  int
-	extends int
-}{entries: map[string]historyTimeOverlayCacheEntry{}}
+	// inflight 承接同一会话的并发冷读（任务 451 方案 C）：先到者做全量
+	// 尾读，后到者等 ready 关闭共享结果，仿 historyDerivedCache 的身份
+	// 绑定单飞模式。
+	inflight map[string]*historyTimeOverlayInflight
+	hits     int
+	misses   int
+	extends  int
+}{entries: map[string]historyTimeOverlayCacheEntry{}, inflight: map[string]*historyTimeOverlayInflight{}}
+
+type historyTimeOverlayInflight struct {
+	ready    chan struct{}
+	times    map[string]int64
+	complete bool
+}
 
 // historyTimeOverlayLogIdentity identifies one generation of a session's event
 // log: its size plus the bytes it opens with. Size alone is not a generation
@@ -139,7 +149,22 @@ func persistedUserTimesForWindow(sessionPath string) map[string]int64 {
 			historyTimeOverlayCache.mu.Lock()
 		}
 	}
+	// 任务 451 方案 C：冷读（全量尾部重读，实测 8MiB 预算下 70-140ms）
+	// 前先看单飞表（此时仍持有 mu：未命中路径自 117 带锁直落，range 扫描
+	// 失败的回退路径也已在上方重新拿锁）。同一会话的并发首读只发生一次
+	// 磁盘扫描，其余等待共享；跟随者不计 misses（计数语义 = 真实发生的
+	// 全量尾读次数）。
+	if historyTimeOverlayCache.inflight == nil {
+		historyTimeOverlayCache.inflight = map[string]*historyTimeOverlayInflight{}
+	}
+	if fl, ok := historyTimeOverlayCache.inflight[cacheKey]; ok {
+		historyTimeOverlayCache.mu.Unlock()
+		<-fl.ready
+		return fl.times
+	}
 	historyTimeOverlayCache.misses++
+	fl := &historyTimeOverlayInflight{ready: make(chan struct{})}
+	historyTimeOverlayCache.inflight[cacheKey] = fl
 	historyTimeOverlayCache.mu.Unlock()
 
 	startedAt := time.Now()
@@ -147,11 +172,18 @@ func persistedUserTimesForWindow(sessionPath string) map[string]int64 {
 	elapsed := time.Since(startedAt)
 
 	historyTimeOverlayCache.mu.Lock()
+	fl.times, fl.complete = times, complete
+	delete(historyTimeOverlayCache.inflight, cacheKey)
+	close(fl.ready)
 	if _, found := historyTimeOverlayCache.entries[cacheKey]; !found {
 		historyTimeOverlayCache.order = append(historyTimeOverlayCache.order, cacheKey)
 	}
-	historyTimeOverlayCache.entries[cacheKey] = historyTimeOverlayCacheEntry{
-		head: head, size: size, times: times, complete: complete,
+	// 并发增量扩展可能已存下 size 更新的条目：追加只读语义下更大的 size
+	// 覆盖面只增不减，保留它，本次冷读结果只喂给等待者。
+	if current, found := historyTimeOverlayCache.entries[cacheKey]; !found || current.size <= size {
+		historyTimeOverlayCache.entries[cacheKey] = historyTimeOverlayCacheEntry{
+			head: head, size: size, times: times, complete: complete,
+		}
 	}
 	for len(historyTimeOverlayCache.order) > historyTimeOverlayCacheEntries {
 		oldest := historyTimeOverlayCache.order[0]
@@ -186,7 +218,7 @@ func historyTimeOverlayLog(level, msg, sessionPath string, entries int, elapsed 
 
 // historyTimeOverlayStats reports the cache counters for probes and tests:
 // hits are exact re-serves, extends are append-absorbing range scans, misses are
-// full tail reads.
+// full tail reads (并发单飞的跟随者不算，任务 451 方案 C 起只计真实扫描).
 func historyTimeOverlayStats() (hits, misses, extends int) {
 	historyTimeOverlayCache.mu.Lock()
 	defer historyTimeOverlayCache.mu.Unlock()
@@ -199,6 +231,7 @@ func resetHistoryTimeOverlayCache() {
 	historyTimeOverlayCache.mu.Lock()
 	defer historyTimeOverlayCache.mu.Unlock()
 	historyTimeOverlayCache.entries = map[string]historyTimeOverlayCacheEntry{}
+	historyTimeOverlayCache.inflight = map[string]*historyTimeOverlayInflight{}
 	historyTimeOverlayCache.order = nil
 	historyTimeOverlayCache.hits = 0
 	historyTimeOverlayCache.misses = 0

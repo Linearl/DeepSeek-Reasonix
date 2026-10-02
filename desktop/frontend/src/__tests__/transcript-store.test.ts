@@ -580,5 +580,55 @@ console.log("\ntranscript store");
   eq(compatible?.revisionKnown, true, "positive legacy slice revision implies a known canonical identity");
 }
 
+{
+  console.log("\nload-latest phase timing (task 451)");
+
+  const messages: HistoryMessage[] = [
+    { role: "user", content: "phase probe" },
+    { role: "assistant", content: "answer" },
+  ];
+  const phases: Array<[string, number]> = [];
+  const store = new TranscriptStore(new FakeBackend(messages));
+  const projection = await store.loadLatest("tab-phase", "/s/phase.jsonl", {
+    turns: 12,
+    onPhase: (phase, ms) => phases.push([phase, ms]),
+  });
+  ok(projection !== undefined, "phase probe load returned a projection");
+  eq(phases.map(([phase]) => phase).join(","), "bridge,convert", "cold load reports bridge then convert phases");
+  ok(phases.every(([, ms]) => typeof ms === "number" && ms >= 0), "phase timings are non-negative numbers");
+
+  // Resident shortcut: matching fingerprint serves without any phase (no
+  // bridge/convert work happens), so slow-phase dashboards cannot mistake it
+  // for a hidden round trip.
+  phases.length = 0;
+  await store.loadLatest("tab-phase", "/s/phase.jsonl", {
+    preferResident: true,
+    expectedRevision: 1,
+    expectedDigest: "digest-1",
+  });
+  eq(phases.length, 0, "resident shortcut reports no phases");
+
+  // Stale identity: the retry is its own bridge round trip and must be visible
+  // as such instead of inflating the first bridge phase.
+  const backend2 = new FakeBackend(messages);
+  const store2 = new TranscriptStore(backend2);
+  const originalSlice = backend2.HistorySliceForTab.bind(backend2);
+  let staleOnce = true;
+  backend2.HistorySliceForTab = async (tabID: string, req: HistorySliceRequest) => {
+    const slice = await originalSlice(tabID, req);
+    if (staleOnce) {
+      staleOnce = false;
+      return { ...slice, stale: true };
+    }
+    return slice;
+  };
+  const phases2: Array<[string, number]> = [];
+  await store2.loadLatest("tab-phase2", "/s/phase2.jsonl", {
+    turns: 12,
+    onPhase: (phase, ms) => phases2.push([phase, ms]),
+  });
+  eq(phases2.map(([phase]) => phase).join(","), "bridge,bridge-retry,convert", "stale retry reports a second bridge phase");
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

@@ -71,7 +71,7 @@ func TestHistoryReconcileCostProbe(t *testing.T) {
 
 	app := &App{} // historyDerivedCache lazily inits its map on first miss
 	t0 = time.Now()
-	slice, pageErr := app.coldHistorySlice(filepath.Dir(path), path, HistorySliceRequest{Cursor: "", Turns: 12})
+	slice, pageErr := app.coldHistorySlice(filepath.Dir(path), path, HistorySliceRequest{Cursor: "", Turns: 12}, nil)
 	pageMs := time.Since(t0).Milliseconds()
 
 	src := "err"

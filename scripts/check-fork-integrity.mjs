@@ -647,6 +647,14 @@ const CHECKS = [
   { feature: "S1 开关实验室入口（rail 行+详情卡+重启横幅）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["| \"baseProcess\"", "{ id: \"baseProcess\", group: \"misc\"", "selected === \"baseProcess\" && (", "app.SetExperimentalBaseProcess(on)"] },
   { feature: "S1 开关桥接线（接口声明+mock 桩）", file: "desktop/frontend/src/lib/bridge.ts", patterns: ["SetExperimentalBaseProcess(enabled: boolean): Promise<void>;", "async SetExperimentalBaseProcess() {}"] },
   { feature: "S1 开关 Go 侧读写链（setter+视图字段）", file: "desktop/settings_app.go", patterns: ["ExperimentalBaseProcess bool `json:\"experimentalBaseProcess\"`", "view.ExperimentalBaseProcess = cfg.Agent.ExperimentalBaseProcess", "ExperimentalBaseProcess:             cfg.Agent.ExperimentalBaseProcess"] },
+  // ── 任务 451：history 慢分相打点 + planner/尾读缓存（2026-10-02）──────
+  // 打点件是验收基建（phases 一行可 grep 重建）；A 缓存三道闸（校验命中 /
+  // 写侧失效 / 单飞+上限）与 C 单飞都要在 merge 后存活，否则 planner-turns
+  // 相位退回每请求整读 12MB。
+  { feature: "任务451 history 切片分相打点（historySliceTrace）", file: "desktop/history_slice_timing.go", patterns: ["historySliceSlowLogMs", "desktop: history slice timing", "func (t *historySliceTrace) run("] },
+  { feature: "任务451 A：planner 侧车缓存（mtime+size 校验+单飞+上限）", file: "desktop/sessions_planner_display_cache.go", patterns: ["loadCachedSessionPlannerDisplays", "plannerDisplayCacheMaxEntries", "plannerDisplayCacheInflight"] },
+  { feature: "任务451 A：写侧失效（save/remove 双出口清条目）", file: "desktop/sessions.go", patterns: ["invalidateSessionPlannerDisplayCache(dir)"] },
+  { feature: "任务451 C：尾读缓存单飞（inflight 共享冷读）", file: "desktop/history_time_overlay.go", patterns: ["historyTimeOverlayInflight", "delete(historyTimeOverlayCache.inflight, cacheKey)"] },
 ];
 
 let failed = 0;

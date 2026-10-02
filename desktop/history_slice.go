@@ -278,6 +278,8 @@ type historySliceSource struct {
 	// windowBytes estimates the raw transcript span of [lo, hi); 0 means
 	// unbounded-but-cheap (in-memory). Used to cap cold-path reads.
 	windowBytes func(lo, hi int) int64
+	// trace 收集本次切片的分相耗时（任务 451 打点）；nil 表示不记录。
+	trace *historySliceTrace
 }
 
 type historyDerivedCacheEntry struct {
@@ -407,11 +409,16 @@ func (a *App) HistorySliceForTab(tabID string, req HistorySliceRequest) HistoryS
 	}
 	a.mu.RUnlock()
 
+	// 任务 451 分相打点：慢调用（>=150ms）在 desktop.log 留一行分相汇总，
+	// 回答"读/解析/投影哪步占大头"；快调用降为 Debug，噪音水位不变。
+	tr := newHistorySliceTrace()
+	defer tr.emit(tabID)
+
 	if ctrl == nil {
 		if strings.TrimSpace(sessionPath) == "" {
 			return failedHistorySlice("session path unavailable before controller ready")
 		}
-		slice, err := a.coldHistorySlice(sessionDir, sessionPath, req)
+		slice, err := a.coldHistorySlice(sessionDir, sessionPath, req, tr)
 		if err != nil {
 			slog.Debug("desktop: cold history slice failed", "path", sessionPath, "err", err)
 			return failedHistorySlice(err.Error())
@@ -422,23 +429,28 @@ func (a *App) HistorySliceForTab(tabID string, req HistorySliceRequest) HistoryS
 		sessionPath = p
 		sessionDir = controllerSessionDir(ctrl)
 	}
-	return a.liveHistorySlice(ctrl, sessionDir, sessionPath, req)
+	return a.liveHistorySlice(ctrl, sessionDir, sessionPath, req, tr)
 }
 
 // liveHistorySlice pages a tab with a running controller. The display index
 // supplies turn boundaries when it validates against the session's persisted
 // state; otherwise a single in-memory snapshot walk classifies turns (still
 // converting only the window) and a background rebuild is kicked.
-func (a *App) liveHistorySlice(ctrl control.SessionAPI, sessionDir, sessionPath string, req HistorySliceRequest) HistorySlice {
+func (a *App) liveHistorySlice(ctrl control.SessionAPI, sessionDir, sessionPath string, req HistorySliceRequest, tr *historySliceTrace) HistorySlice {
 	resolver := sessionDisplayResolver(sessionDir, sessionPath)
-	src, indexUsed := a.liveHistorySliceSource(ctrl, sessionPath, resolver)
+	var src *historySliceSource
+	var indexUsed bool
+	tr.run("live-source", func() { src, indexUsed = a.liveHistorySliceSource(ctrl, sessionPath, resolver, tr) })
 	if src == nil {
 		return emptyHistorySlice()
 	}
+	src.trace = tr
 	if !indexUsed {
 		a.kickHistoryIndexRebuild(sessionPath)
 	}
-	slice, err := a.pageHistorySliceSource(src, req, resolver, sessionPlannerDisplayTurns(sessionDir, sessionPath), ctrl.CheckpointTurnsByMessageIndex(), sessionPath)
+	var plannerTurns []plannerDisplayTurn
+	tr.run("planner-turns", func() { plannerTurns = sessionPlannerDisplayTurns(sessionDir, sessionPath) })
+	slice, err := a.pageHistorySliceSource(src, req, resolver, plannerTurns, ctrl.CheckpointTurnsByMessageIndex(), sessionPath)
 	if err != nil {
 		slog.Debug("desktop: live history slice failed", "path", sessionPath, "err", err)
 		return failedHistorySlice(err.Error())
@@ -448,22 +460,27 @@ func (a *App) liveHistorySlice(ctrl control.SessionAPI, sessionDir, sessionPath 
 	} else {
 		slice.Source = "live-fallback"
 	}
+	tr.markSource(slice.Source)
 	return slice
 }
 
-func (a *App) liveHistorySliceSource(ctrl control.SessionAPI, sessionPath string, resolver func(string) string) (*historySliceSource, bool) {
+func (a *App) liveHistorySliceSource(ctrl control.SessionAPI, sessionPath string, resolver func(string) string, tr *historySliceTrace) (*historySliceSource, bool) {
 	sessionID := strings.TrimSuffix(filepath.Base(sessionPath), ".jsonl")
 	wc, ok := ctrl.(historyWindowController)
 	if !ok {
 		// Compat for fakes: full snapshot, windowed conversion.
-		msgs := ctrl.History()
+		var msgs []provider.Message
+		tr.run("live-snapshot", func() { msgs = ctrl.History() })
 		src := newInMemoryHistorySliceSource(sessionID, msgs, resolver, agent.PersistedState{}, false)
 		return src, false
 	}
 	n := wc.HistoryLen()
 	ps, psOK := wc.SessionPersistedState()
 	if psOK && ps.AppendOnlyTail && n > 0 {
-		if idx, err := agent.LoadSessionDisplayIndex(store.SessionDisplayIndex(sessionPath)); err == nil &&
+		var idx *agent.SessionDisplayIndex
+		var idxErr error
+		tr.run("live-index-load", func() { idx, idxErr = agent.LoadSessionDisplayIndex(store.SessionDisplayIndex(sessionPath)) })
+		if idxErr == nil &&
 			idx.RevisionKnown == ps.RevisionKnown &&
 			(!ps.RevisionKnown || idx.Revision == ps.Revision) &&
 			idx.ContentDigest == ps.DigestHex &&
@@ -476,7 +493,8 @@ func (a *App) liveHistorySliceSource(ctrl control.SessionAPI, sessionPath string
 			}
 			turn := idx.AuthoredTurns
 			if idx.MessageCount < n {
-				tail := wc.HistoryWindow(idx.MessageCount, n)
+				var tail []provider.Message
+				tr.run("live-tail", func() { tail = wc.HistoryWindow(idx.MessageCount, n) })
 				for j, m := range tail {
 					if isVisibleHistoryUser(m, resolver) {
 						turn++
@@ -508,7 +526,8 @@ func (a *App) liveHistorySliceSource(ctrl control.SessionAPI, sessionPath string
 	// Fallback: one full snapshot for classification; conversion stays
 	// windowed. The background rebuild republishes the index when the
 	// in-memory log is exactly the persisted transcript.
-	msgs := ctrl.History()
+	var msgs []provider.Message
+	tr.run("live-snapshot", func() { msgs = ctrl.History() })
 	var state agent.PersistedState
 	if psOK {
 		state = ps
@@ -573,12 +592,15 @@ func historyDerivedSourceKey(sessionPath string, src *historySliceSource) string
 // loads the whole session: a valid on-disk display index + byte-offset reads
 // serve the window; a missing/stale/corrupt index is rebuilt by streaming
 // scan (constant memory) and the first page is served from the scan result.
-func (a *App) coldHistorySlice(sessionDir, path string, req HistorySliceRequest) (HistorySlice, error) {
+func (a *App) coldHistorySlice(sessionDir, path string, req HistorySliceRequest, tr *historySliceTrace) (HistorySlice, error) {
 	sessionPath, _, err := validateSessionPath(sessionDir, path)
 	if err != nil {
 		return emptyHistorySlice(), err
 	}
-	info, err := os.Stat(sessionPath)
+	var info os.FileInfo
+	tr.run("cold-validate", func() {
+		info, err = os.Stat(sessionPath)
+	})
 	if err != nil {
 		return emptyHistorySlice(), err
 	}
@@ -588,14 +610,23 @@ func (a *App) coldHistorySlice(sessionDir, path string, req HistorySliceRequest)
 	if historySessionLooksEventFormat(sessionPath) {
 		// Legacy event-record format: stream-decode (constant memory) and page
 		// the decoded rows. Only ancient sessions take this path.
-		slice, err := coldEventHistorySlice(sessionPath, info, req)
+		var slice HistorySlice
+		var sliceErr error
+		tr.run("cold-event-scan", func() { slice, sliceErr = coldEventHistorySlice(sessionPath, info, req) })
 		slice.Source = "scan"
-		return slice, err
+		tr.markSource(slice.Source)
+		return slice, sliceErr
 	}
 	resolver := sessionDisplayResolver(sessionDir, sessionPath)
 	indexPath := store.SessionDisplayIndex(sessionPath)
-	idx, err := agent.LoadSessionDisplayIndex(indexPath)
-	identity, identityKnown, identityErr := agent.SessionContentIdentity(sessionPath)
+	var idx *agent.SessionDisplayIndex
+	var identity agent.PersistedState
+	var identityKnown bool
+	var identityErr error
+	tr.run("cold-identity", func() {
+		idx, err = agent.LoadSessionDisplayIndex(indexPath)
+		identity, identityKnown, identityErr = agent.SessionContentIdentity(sessionPath)
+	})
 	if identityErr != nil {
 		return emptyHistorySlice(), identityErr
 	}
@@ -615,25 +646,32 @@ func (a *App) coldHistorySlice(sessionDir, path string, req HistorySliceRequest)
 	// (measured: full authoritative replay 1290ms vs tail extension ~tens of
 	// ms). Any precondition miss leaves the original path untouched.
 	if idx != nil && err == nil && !indexIdentityValid {
-		if refreshed, refreshErr := agent.RefreshSessionDisplayIndexFromReadModel(sessionPath); refreshErr == nil && refreshed {
-			if reIdx, reloadErr := agent.LoadSessionDisplayIndex(indexPath); reloadErr == nil && reIdx != nil {
-				idx = reIdx
-				if identityKnown {
-					indexIdentityValid = agent.ValidateSessionDisplayIndex(idx, identity.Revision, identity.RevisionKnown, identity.Digest, info.Size())
-				} else {
-					indexIdentityValid = !idx.RevisionKnown
+		tr.run("cold-index-refresh", func() {
+			if refreshed, refreshErr := agent.RefreshSessionDisplayIndexFromReadModel(sessionPath); refreshErr == nil && refreshed {
+				if reIdx, reloadErr := agent.LoadSessionDisplayIndex(indexPath); reloadErr == nil && reIdx != nil {
+					idx = reIdx
+					if identityKnown {
+						indexIdentityValid = agent.ValidateSessionDisplayIndex(idx, identity.Revision, identity.RevisionKnown, identity.Digest, info.Size())
+					} else {
+						indexIdentityValid = !idx.RevisionKnown
+					}
 				}
+			} else if refreshErr != nil {
+				slog.Debug("desktop: read-model tail extension skipped", "path", sessionPath, "err", refreshErr)
 			}
-		} else if refreshErr != nil {
-			slog.Debug("desktop: read-model tail extension skipped", "path", sessionPath, "err", refreshErr)
-		}
+		})
 	}
 	if idx != nil && err == nil && idx.TranscriptSize == info.Size() && indexIdentityValid && historyIndexTimestampValid(indexPath, sessionPath, info, idx, true) {
-		slice, pageErr := a.pageHistorySliceSource(coldHistorySliceSource(sessionPath, idx), req, resolver, sessionPlannerDisplayTurns(sessionDir, sessionPath), nil, sessionPath)
+		src := coldHistorySliceSource(sessionPath, idx)
+		src.trace = tr
+		var plannerTurns []plannerDisplayTurn
+		tr.run("planner-turns", func() { plannerTurns = sessionPlannerDisplayTurns(sessionDir, sessionPath) })
+		slice, pageErr := a.pageHistorySliceSource(src, req, resolver, plannerTurns, nil, sessionPath)
 		if pageErr != nil {
 			return emptyHistorySlice(), pageErr
 		}
 		slice.Source = "index"
+		tr.markSource(slice.Source)
 		return slice, nil
 	}
 
@@ -642,7 +680,9 @@ func (a *App) coldHistorySlice(sessionDir, path string, req HistorySliceRequest)
 	// the ledger before falling back to a full event-log replay. This preserves
 	// the bounded cold path for ordinary legacy/index-migration reads while
 	// still rejecting same-size anchor rewrites.
-	scanned, scanErr := agent.ScanSessionDisplayIndex(sessionPath)
+	var scanned *agent.SessionDisplayIndex
+	var scanErr error
+	tr.run("cold-scan", func() { scanned, scanErr = agent.ScanSessionDisplayIndex(sessionPath) })
 	if scanErr == nil {
 		if !identityKnown || scanned.ContentDigest == identity.DigestHex {
 			if identityKnown {
@@ -652,11 +692,16 @@ func (a *App) coldHistorySlice(sessionDir, path string, req HistorySliceRequest)
 			if writeErr := agent.WriteSessionDisplayIndex(store.SessionDisplayIndex(sessionPath), scanned); writeErr != nil {
 				slog.Debug("desktop: history display index republish failed", "path", sessionPath, "err", writeErr)
 			}
-			slice, pageErr := a.pageHistorySliceSource(coldHistorySliceSource(sessionPath, scanned), req, resolver, sessionPlannerDisplayTurns(sessionDir, sessionPath), nil, sessionPath)
+			src := coldHistorySliceSource(sessionPath, scanned)
+			src.trace = tr
+			var plannerTurns []plannerDisplayTurn
+			tr.run("planner-turns", func() { plannerTurns = sessionPlannerDisplayTurns(sessionDir, sessionPath) })
+			slice, pageErr := a.pageHistorySliceSource(src, req, resolver, plannerTurns, nil, sessionPath)
 			if pageErr != nil {
 				return emptyHistorySlice(), pageErr
 			}
 			slice.Source = "scan"
+			tr.markSource(slice.Source)
 			return slice, nil
 		}
 	}
@@ -665,17 +710,25 @@ func (a *App) coldHistorySlice(sessionDir, path string, req HistorySliceRequest)
 	// is newer than the compatibility .jsonl anchor, so scanning the anchor
 	// would silently omit the tail even when a display index covers it.
 	if eventInfo, statErr := os.Stat(store.SessionEventLog(sessionPath)); statErr == nil && !eventInfo.IsDir() && eventInfo.Size() > 0 {
-		messages, state, repairable, loadErr := agent.LoadSessionDisplayMessages(sessionPath)
+		var messages []provider.Message
+		var state agent.PersistedState
+		var repairable bool
+		var loadErr error
+		tr.run("cold-eventlog", func() { messages, state, repairable, loadErr = agent.LoadSessionDisplayMessages(sessionPath) })
 		if loadErr != nil {
 			return emptyHistorySlice(), loadErr
 		}
 		src := newInMemoryHistorySliceSource(strings.TrimSuffix(filepath.Base(sessionPath), ".jsonl"), messages, resolver, state, true)
 		src.cacheKey = historyDerivedSourceKey(sessionPath, src)
-		slice, pageErr := a.pageHistorySliceSource(src, req, resolver, sessionPlannerDisplayTurns(sessionDir, sessionPath), nil, sessionPath)
+		src.trace = tr
+		var plannerTurns []plannerDisplayTurn
+		tr.run("planner-turns", func() { plannerTurns = sessionPlannerDisplayTurns(sessionDir, sessionPath) })
+		slice, pageErr := a.pageHistorySliceSource(src, req, resolver, plannerTurns, nil, sessionPath)
 		if pageErr != nil {
 			return emptyHistorySlice(), pageErr
 		}
 		slice.Source = "event-log"
+		tr.markSource(slice.Source)
 		if repairable {
 			a.kickHistoryReadModelRepair(sessionPath)
 		}
@@ -690,17 +743,25 @@ func (a *App) coldHistorySlice(sessionDir, path string, req HistorySliceRequest)
 		// records before allocating without limit. A legacy transcript still
 		// remains readable through the ordinary authoritative loader, then gets
 		// a file-exact index in the background for subsequent opens.
-		messages, state, repairable, loadErr := agent.LoadSessionDisplayMessages(sessionPath)
+		var messages []provider.Message
+		var state agent.PersistedState
+		var repairable bool
+		var loadErr error
+		tr.run("cold-eventlog", func() { messages, state, repairable, loadErr = agent.LoadSessionDisplayMessages(sessionPath) })
 		if loadErr != nil {
 			return emptyHistorySlice(), errors.Join(scanErr, loadErr)
 		}
 		src := newInMemoryHistorySliceSource(strings.TrimSuffix(filepath.Base(sessionPath), ".jsonl"), messages, resolver, state, true)
 		src.cacheKey = historyDerivedSourceKey(sessionPath, src)
-		slice, pageErr := a.pageHistorySliceSource(src, req, resolver, sessionPlannerDisplayTurns(sessionDir, sessionPath), nil, sessionPath)
+		src.trace = tr
+		var plannerTurns []plannerDisplayTurn
+		tr.run("planner-turns", func() { plannerTurns = sessionPlannerDisplayTurns(sessionDir, sessionPath) })
+		slice, pageErr := a.pageHistorySliceSource(src, req, resolver, plannerTurns, nil, sessionPath)
 		if pageErr != nil {
 			return emptyHistorySlice(), pageErr
 		}
 		slice.Source = "scan"
+		tr.markSource(slice.Source)
 		if repairable {
 			a.kickHistoryReadModelRepair(sessionPath)
 		}
@@ -715,11 +776,16 @@ func (a *App) coldHistorySlice(sessionDir, path string, req HistorySliceRequest)
 	if writeErr := agent.WriteSessionDisplayIndex(store.SessionDisplayIndex(sessionPath), scanned); writeErr != nil {
 		slog.Debug("desktop: history display index republish failed", "path", sessionPath, "err", writeErr)
 	}
-	slice, pageErr := a.pageHistorySliceSource(coldHistorySliceSource(sessionPath, scanned), req, resolver, sessionPlannerDisplayTurns(sessionDir, sessionPath), nil, sessionPath)
+	src := coldHistorySliceSource(sessionPath, scanned)
+	src.trace = tr
+	var plannerTurns []plannerDisplayTurn
+	tr.run("planner-turns", func() { plannerTurns = sessionPlannerDisplayTurns(sessionDir, sessionPath) })
+	slice, pageErr := a.pageHistorySliceSource(src, req, resolver, plannerTurns, nil, sessionPath)
 	if pageErr != nil {
 		return emptyHistorySlice(), pageErr
 	}
 	slice.Source = "scan"
+	tr.markSource(slice.Source)
 	return slice, nil
 }
 
@@ -882,6 +948,7 @@ func historySessionLooksEventFormat(path string) bool {
 // and the entry/byte budgets drop the oldest whole-message groups — so cuts
 // always land on message boundaries.
 func (a *App) pageHistorySliceSource(src *historySliceSource, req HistorySliceRequest, resolver func(string) string, plannerTurns []plannerDisplayTurn, checkpointTurns map[int]int, sessionPath string) (HistorySlice, error) {
+	tr := src.trace
 	cursor, err := decodeHistorySliceCursor(req.Cursor)
 	// An undecodable cursor is treated like a request for the latest page.
 	hasCursor := req.Cursor != "" && err == nil
@@ -924,27 +991,35 @@ func (a *App) pageHistorySliceSource(src *historySliceSource, req HistorySliceRe
 		}
 	}
 
-	window, fetchErr := src.fetch(candidateLo, hi)
+	var window []provider.Message
+	var fetchErr error
+	tr.run("page-fetch", func() { window, fetchErr = src.fetch(candidateLo, hi) })
 	if fetchErr != nil {
 		return emptyHistorySlice(), fetchErr
 	}
 	if len(window) != hi-candidateLo {
 		return emptyHistorySlice(), fmt.Errorf("history window length %d, want %d", len(window), hi-candidateLo)
 	}
-	window = historyWindowWithPersistedTimes(window, sessionPath, countRoleBefore(src.roles, candidateLo, provider.RoleUser))
+	tr.run("page-times", func() {
+		window = historyWindowWithPersistedTimes(window, sessionPath, countRoleBefore(src.roles, candidateLo, provider.RoleUser))
+	})
 	todoArgs := map[string]string{}
 	if historyWindowContainsTodoWrite(window) {
 		var todoErr error
-		todoArgs, todoErr = a.historyDerived.todoArgs(src.cacheKey, func() (map[string]string, error) {
-			return historyTodoArgsForSource(src)
+		tr.run("page-todo", func() {
+			todoArgs, todoErr = a.historyDerived.todoArgs(src.cacheKey, func() (map[string]string, error) {
+				return historyTodoArgsForSource(src)
+			})
 		})
 		if todoErr != nil {
 			return emptyHistorySlice(), todoErr
 		}
 	}
 	toolResults := historyToolResultsByID(window)
-	if err := extendHistoryToolResults(src, window, hi, toolResults); err != nil {
-		return emptyHistorySlice(), err
+	if toolErr := tr.runErr("page-toolresults", func() error {
+		return extendHistoryToolResults(src, window, hi, toolResults)
+	}); toolErr != nil {
+		return emptyHistorySlice(), toolErr
 	}
 
 	type entryGroup struct {
@@ -955,32 +1030,36 @@ func (a *App) pageHistorySliceSource(src *historySliceSource, req HistorySliceRe
 	groups := []entryGroup{}
 	entryCount, byteCount := 0, 0
 	state := newHistoryMessageConvertState(plannerTurns)
-	if err := primeHistoryPlannerState(src, state, candidateLo, resolver); err != nil {
-		return emptyHistorySlice(), err
+	if plannerErr := tr.runErr("page-planner", func() error {
+		return primeHistoryPlannerState(src, state, candidateLo, resolver)
+	}); plannerErr != nil {
+		return emptyHistorySlice(), plannerErr
 	}
-	for i := candidateLo; i < hi; i++ {
-		m := window[i-candidateLo]
-		rows := state.convertHistoryMessage(i, m, resolver, checkpointTurns, todoArgs, toolResults)
-		if len(rows) == 0 {
-			continue
+	tr.run("page-convert", func() {
+		for i := candidateLo; i < hi; i++ {
+			m := window[i-candidateLo]
+			rows := state.convertHistoryMessage(i, m, resolver, checkpointTurns, todoArgs, toolResults)
+			if len(rows) == 0 {
+				continue
+			}
+			g := entryGroup{msgIndex: i, entries: make([]HistoryEntry, 0, len(rows))}
+			for sub, row := range rows {
+				entry := newHistoryEntry(src, fmt.Sprintf("s%s:r%d:m%d:o%d", src.sessionID, src.epoch, i, sub), i, sub, row)
+				g.bytes += entry.inlineBytes()
+				g.entries = append(g.entries, entry)
+			}
+			groups = append(groups, g)
+			entryCount += len(g.entries)
+			byteCount += g.bytes
+			// Keep the newest suffix within budget; always keep the newest group
+			// so a single oversized message still makes progress.
+			for len(groups) > 1 && (entryCount > req.Entries || byteCount > req.Bytes) {
+				entryCount -= len(groups[0].entries)
+				byteCount -= groups[0].bytes
+				groups = groups[1:]
+			}
 		}
-		g := entryGroup{msgIndex: i, entries: make([]HistoryEntry, 0, len(rows))}
-		for sub, row := range rows {
-			entry := newHistoryEntry(src, fmt.Sprintf("s%s:r%d:m%d:o%d", src.sessionID, src.epoch, i, sub), i, sub, row)
-			g.bytes += entry.inlineBytes()
-			g.entries = append(g.entries, entry)
-		}
-		groups = append(groups, g)
-		entryCount += len(g.entries)
-		byteCount += g.bytes
-		// Keep the newest suffix within budget; always keep the newest group
-		// so a single oversized message still makes progress.
-		for len(groups) > 1 && (entryCount > req.Entries || byteCount > req.Bytes) {
-			entryCount -= len(groups[0].entries)
-			byteCount -= groups[0].bytes
-			groups = groups[1:]
-		}
-	}
+	})
 
 	pageStart := candidateLo
 	if len(groups) > 0 {
@@ -1454,7 +1533,7 @@ func (a *App) liveHistoryFieldValue(ctrl control.SessionAPI, sessionDir, session
 		return "", false, true
 	}
 	resolver := sessionDisplayResolver(sessionDir, sessionPath)
-	src, _ := a.liveHistorySliceSource(ctrl, sessionPath, resolver)
+	src, _ := a.liveHistorySliceSource(ctrl, sessionPath, resolver, nil)
 	if src == nil {
 		return "", false, true
 	}
