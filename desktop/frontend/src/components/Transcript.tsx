@@ -48,7 +48,8 @@ import {
 } from "../lib/transcriptFind";
 import { composeDomRef } from "../lib/composeDomRef";
 import { useTranscriptKernel } from "../lib/useTranscriptKernel";
-import { canRequestOlderHistory, olderHistoryTriggerPx } from "../lib/historyOlderGates";
+import { canRequestOlderHistory, createOlderHistoryGateLogger, explainOlderHistoryGate, olderHistoryTriggerPx } from "../lib/historyOlderGates";
+import { reportFrontendLog } from "../lib/frontendLog";
 import { useAutoLoadOlderEnabled } from "../lib/autoLoadOlderPreference";
 import { TranscriptHistoryRequest } from "../lib/transcriptHistoryRequest";
 import type { TranscriptQuestionNavigatorHandle } from "./TranscriptQuestionNavigator";
@@ -417,11 +418,25 @@ export function Transcript(props: TranscriptProps) {
   });
   const questionNavigatorRef = useRef<TranscriptQuestionNavigatorHandle>(null);
   const history = useMemo(() => new TranscriptHistoryRequest(transcriptKernel), [transcriptKernel]);
+  // 任务 448 收尾（445 调研 §1.5-2）：组件层拒绝此前零日志，装机取证只能靠
+  // `history.older-request` 缺席反推。转换式留痕：同一原因连续拒绝只记首条，
+  // 翻回允许后重置——4MB 滚动日志装不下每滚动帧一条（frontendLog 纪律）。
+  const reportOlderGateBlock = useRef<ReturnType<typeof createOlderHistoryGateLogger> | null>(null);
+  if (!reportOlderGateBlock.current) {
+    reportOlderGateBlock.current = createOlderHistoryGateLogger((message, detail) => reportFrontendLog("history-paging", message, detail, "info"));
+  }
   const requestOlder = useTranscriptCommand((turn?: number, trigger: HistoryLoadTrigger = "viewport-user") => {
     // 任务 448（384 收尾）：闸只剩 hasOlder + loading 两态，与 controller 层同口径。
     // 旧代码在这里还有 `|| running` —— 会话跑着时滚动到顶、按钮、横条跳转全部静默
     // 拒绝（零日志），把 384 在 controller 层的解锁挡在了组件层之后（445 调研 §2.3）。
-    if (!onLoadOlderHistory || !canRequestOlderHistory({ hasOlderHistory, loadingOlderHistory })) return Promise.resolve(false);
+    if (!onLoadOlderHistory || !canRequestOlderHistory({ hasOlderHistory, loadingOlderHistory })) {
+      reportOlderGateBlock.current?.(
+        onLoadOlderHistory ? explainOlderHistoryGate({ hasOlderHistory, loadingOlderHistory }) : { allowed: false },
+        trigger,
+      );
+      return Promise.resolve(false);
+    }
+    reportOlderGateBlock.current?.({ allowed: true }, trigger);
     if (trigger !== "question-jump" && trigger !== "retry") beginStructural("prepend");
     return history.load(() => onLoadOlderHistory(turn, trigger));
   });

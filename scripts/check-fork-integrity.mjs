@@ -529,6 +529,11 @@ const CHECKS = [
   { feature: "任务448 加载更早按钮可见性接线", file: "desktop/frontend/src/components/TranscriptViewport.tsx", patterns: ["canRequestOlderHistory({ hasOlderHistory: projection.hasOlderHistory, loadingOlderHistory })"] },
   { feature: "任务448 问题跳转闸接线", file: "desktop/frontend/src/lib/useTranscriptHistoryNavigation.ts", patterns: ["canRequestOlderHistory({ loadingOlderHistory })"] },
   { feature: "任务448 wheel/key 触发共用预取半径", file: "desktop/frontend/src/lib/useTranscriptKernel.ts", patterns: ["olderHistoryTriggerPx(element.clientHeight)"] },
+  // 任务448收尾（445 调研 §1.5-2）：组件层闸拒绝留痕。此前组件层拒绝零日志，
+  // 装机取证只能靠 history.older-request 缺席反推；现在 explain 回答"为什么拒"、
+  // 发射器转换式去重（同因连续拒绝只记首条），接入 controller 同域 history-paging。
+  { feature: "任务448收尾 闸拒绝留痕（explain+转换式发射器）", file: "desktop/frontend/src/lib/historyOlderGates.ts", patterns: ["export function explainOlderHistoryGate", "export function createOlderHistoryGateLogger"] },
+  { feature: "任务448收尾 requestOlder 拒绝分支接线 history-paging", file: "desktop/frontend/src/components/Transcript.tsx", patterns: ["reportOlderGateBlock.current?.(", "explainOlderHistoryGate({ hasOlderHistory, loadingOlderHistory })", 'reportFrontendLog("history-paging"'] },
   // 任务441：排队引导消息六点手柄拖拽排序，替换 266-A 的上移/下移按钮。
   // 锚点锁两半：手柄是唯一拖源（卡片本体不再 draggable）+ 落点仍走既有
   // onMove 持久化；CSS 单列一条（merge 丢手柄样式=拖拽入口不可见）。

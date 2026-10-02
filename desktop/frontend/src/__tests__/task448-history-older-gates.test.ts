@@ -5,6 +5,9 @@
 //      不再永久停掉自动填充；失败行照旧带原因和"重试"，下次触发直接重试。
 //  B1  2 视口预取 —— 触发半径 64px → max(64, 2 × 视口高)。
 //  B4  四个入口共用 `canRequestOlderHistory` 一份判定（本文件测一次）。
+//  收尾（445 §1.5-2）闸拒绝留痕 —— `explainOlderHistoryGate` 回答"为什么拒"，
+//      `createOlderHistoryGateLogger` 转换式去重（同因连续拒绝只记首条），
+//      Transcript.requestOlder 拒绝分支接入 `history-paging` 域日志。
 //
 // 语义测试（running 中点击按钮确实发出请求 / 失败后按钮仍在且可点）落在
 // transcript-load-older-button.test.tsx 的 DOM 断言里；本文件锁源码形状与谓词本身。
@@ -13,7 +16,7 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { canRequestOlderHistory, olderHistoryTriggerPx } from "../lib/historyOlderGates";
+import { canRequestOlderHistory, createOlderHistoryGateLogger, explainOlderHistoryGate, olderHistoryTriggerPx } from "../lib/historyOlderGates";
 
 let passed = 0;
 let failed = 0;
@@ -116,6 +119,58 @@ console.log("\ntask 448 component-layer history gates");
     "the wheel/key trigger shares the same radius");
   ok(!kernel.includes("HISTORY_TOP_GUARD_PX") && !/scrollTop <= 64/.test(transcript),
     "the legacy flat-64px constants are gone from both entries");
+}
+
+// ── 收尾（445 §1.5-2）：闸拒绝留痕 ────────────────────────────────────────
+// 445 取证缺口：组件层拒绝此前零日志，desktop.log 里只能看到
+// `history.older-request` 缺席，说不出是哪道闸、什么原因。本节锁三件事：
+// explain 回答"为什么拒"、发射器只记"转换"不记每帧、Transcript 接了线。
+{
+  ok(explainOlderHistoryGate({ hasOlderHistory: true, loadingOlderHistory: true })
+    .reason === "loading-in-progress", "explain names loading as the refusal reason");
+  ok(explainOlderHistoryGate({ hasOlderHistory: false, loadingOlderHistory: false })
+    .reason === "no-older-page", "explain names exhaustion as the refusal reason");
+  ok(explainOlderHistoryGate({ hasOlderHistory: true, loadingOlderHistory: false }).allowed === true,
+    "explain agrees with the boolean predicate on the allow side");
+  ok(explainOlderHistoryGate({ loadingOlderHistory: false }).allowed === true,
+    "explain treats unknown hasOlder the same way the predicate does");
+  // 两份判定互为对照：任何一方漂移，这里当场红。
+  const pairs: Array<{ hasOlderHistory?: boolean; loadingOlderHistory: boolean }> = [
+    { hasOlderHistory: true, loadingOlderHistory: true },
+    { hasOlderHistory: true, loadingOlderHistory: false },
+    { hasOlderHistory: false, loadingOlderHistory: true },
+    { hasOlderHistory: false, loadingOlderHistory: false },
+    { loadingOlderHistory: false },
+  ];
+  ok(pairs.every((p) => explainOlderHistoryGate(p).allowed === canRequestOlderHistory(p)),
+    "explain and the boolean predicate never disagree");
+
+  // 发射器：同一原因连续拒绝只记首条；翻回允许后重置；原因切换各记一条。
+  const lines: string[] = [];
+  const log = createOlderHistoryGateLogger((message, detail) => lines.push(`${message} ${detail}`));
+  log({ allowed: false, reason: "loading-in-progress" }, "viewport-user");
+  log({ allowed: false, reason: "loading-in-progress" }, "load-older-button");
+  log({ allowed: false, reason: "loading-in-progress" }, "auto-fill");
+  ok(lines.length === 1 && lines[0].includes("reason=loading-in-progress") && lines[0].includes("trigger=viewport-user"),
+    "consecutive refusals with the same reason log exactly one line");
+  log({ allowed: true }, "viewport-user");
+  log({ allowed: false, reason: "loading-in-progress" }, "viewport-user");
+  ok(lines.length === 2, "a refusal after recovery logs a fresh line");
+  log({ allowed: false, reason: "no-older-page" }, "viewport-user");
+  log({ allowed: false, reason: "no-older-page" }, "viewport-user");
+  ok(lines.length === 3 && lines[2].includes("reason=no-older-page"),
+    "a reason switch logs its own line and stays deduplicated");
+  ok(!lines.some((l) => l.includes("allowed")), "recovery itself stays silent (only refusals are logged)");
+}
+
+// ── 收尾接线：requestOlder 的拒绝分支接了发射器 ───────────────────────────
+{
+  const requestIdx = transcript.indexOf("const requestOlder = useTranscriptCommand");
+  const requestGate = code(transcript.slice(requestIdx, requestIdx + 900));
+  ok(requestGate.includes("reportOlderGateBlock.current?.(") && requestGate.includes("explainOlderHistoryGate("),
+    "the refusal branch reports through the transition logger with a reason");
+  ok(transcript.includes('reportFrontendLog("history-paging"'),
+    "the log lands in the history-paging domain (same channel the controller layer uses)");
 }
 
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
