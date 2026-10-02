@@ -689,6 +689,16 @@ const CHECKS = [
   { feature: "任务411 面板删除历史版本（Go 绑定拒绝 current/运行中版本）", file: "desktop/version_switch.go", patterns: ["func (a *App) DeleteInstalledVersion", "is the active version", "running from"] },
   { feature: "任务411 面板删除入口+确认交互（TSX）", file: "desktop/frontend/src/components/VersionSwitchDialog.tsx", patterns: ["versionSwitchDeleteConfirm", "onDelete", "btn--danger"] },
   { feature: "任务411 面板删除接线（App.tsx handler）", file: "desktop/frontend/src/App.tsx", patterns: ["handleDeleteVersion", "DeleteInstalledVersion(version)"] },
+
+  // 任务455fix（20261003）：boot canonical 化收敛为 sandbox 有界+缓存单实现。
+  // confine.go realPath 与 write_path.go ResolveAbsPath 原是同一逐级
+  // EvalSymlinks 逻辑的两份无界实现，allow_write 里一条死网络盘会让每次
+  // boot 各吃满一次 SMB 重连预算（实测 ~21s）。共享引擎提供 250ms 有界超时、
+  // 30s TTL 缓存（含失败）与并发单飞；审批身份复核走 ResolveAbsPathFresh
+  // 旁路缓存。上游 merge 若恢复了任何一份无界双实现，上述保障即失效。
+  { feature: "任务455fix 共享有界 canonical 引擎（250ms 超时+30s TTL 缓存含失败+并发单飞）", file: "internal/sandbox/canonical.go", patterns: ["func resolveCanonicalPath", "canonicalFlights", "canonicalCacheStore", "network drive offline?", "canonicalResolveTimeoutBudget = 250 * time.Millisecond"] },
+  { feature: "任务455fix boot 两处 canonicalizer 收敛委托 + 审批复核旁路缓存", file: "internal/sandbox/write_path.go", patterns: ["resolveCanonicalPath(path)", "ResolveAbsPathFresh(approved)"] },
+  { feature: "任务455fix builtin realPath 委托共享实现（消双实现）", file: "internal/tool/builtin/confine.go", patterns: ["sandbox.ResolveAbsPath(path)"] },
 ];
 
 let failed = 0;
