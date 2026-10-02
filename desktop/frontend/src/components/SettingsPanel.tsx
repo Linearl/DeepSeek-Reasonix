@@ -1842,7 +1842,9 @@ type ExperimentFeatureId =
   // Task 385a: lab 回答风格 (output style selector + persistence).
   | "outputStyle"
   // Task 257: full access (yolo).
-  | "fullAccess";
+  | "fullAccess"
+  // S1: resident base subprocess (design 2026-09-30 §7 R4).
+  | "baseProcess";
 
 function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Set when a boot-time setting is saved: apply() reloads the view, so the fact that a
@@ -2038,6 +2040,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     // silently drop the save, 81/123 lesson).
     // Task 163: usage card entry (render table — same 81/123 lost-save rule).
     { id: "opencodeGoUsage", group: "misc", label: t("settings.opencodeGoUsage"), on: Boolean(s.experimentalOpenCodeGoUsage) },
+    // S1: resident base subprocess (infrastructure switch; misc beside the
+    // other infrastructure entries). Render table: a missing entry would
+    // silently drop the save, 81/123 lesson.
+    { id: "baseProcess", group: "misc", label: t("settings.baseProcess"), on: Boolean(s.experimentalBaseProcess) },
   ];
 
   return (
@@ -2316,6 +2322,30 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                     onClick={() => void apply(() => app.SetUpdateChime(on))}
                   >
                     {t(on ? "settings.updateChime.on" : "settings.updateChime.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "baseProcess" && (
+            // S1: resident base subprocess (design 2026-09-30 §7 R4). Boot
+            // builds the base client section once per process, so the flip
+            // lands on restart — same boot-snapshot rule as the
+            // restart_update tool toggle above. Standalone block, deliberately
+            // separate from the surrounding cards (task 449 merge hygiene).
+            <SettingsField label={t("settings.baseProcess")} hint={t("settings.baseProcessHint")} icon={<Server size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalBaseProcess) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalBaseProcess(on);
+                      setRestartNeeded(true);
+                    })}
+                  >
+                    {t(on ? "settings.baseProcess.on" : "settings.baseProcess.off")}
                   </button>
                 ))}
               </SettingsOptions>

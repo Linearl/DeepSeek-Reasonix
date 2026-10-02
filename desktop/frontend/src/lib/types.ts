@@ -2386,6 +2386,8 @@ export interface DesktopStartupSettingsView {
   experimentalOpenCodeGoUsage?: boolean;
   /** Task 257: full access (yolo) — all declared write dirs pass, bash unwrapped; ships off; restart to apply. */
   experimentalFullAccess?: boolean;
+  /** S1: resident-base-subprocess switch (design 2026-09-30 §7 R4); ships off (pure inline); restart to apply. */
+  experimentalBaseProcess?: boolean;
   /** Local-server page experiment switch (task 130); off unless the user opts in. */
   experimentalLocalServer?: boolean;
   /** Path-scope rules experiment switch (task 134); off unless the user opts in. */

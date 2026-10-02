@@ -126,6 +126,43 @@ func (a *App) sessionsWithActiveWork() []string {
 	return out
 }
 
+// stageInterruptedByRestart records a session THIS restart path cancelled
+// (task 450, plan A): "whoever we interrupted, we resume". Unlike
+// stageAutonomousUpdateResume the autopilot check does not apply — the
+// interruption was our own doing, not a resume-policy decision, so the entry
+// rides into the same task-254 roster regardless of the session's mode. Only
+// the dial's explicit "off" opt-out is honored: at off the restore gate
+// (tabs.go) skips every resume path, so a staged entry could only resurface on
+// some much later restart with the dial flipped — staging then would be a
+// deferred surprise resume, not a repair.
+func (a *App) stageInterruptedByRestart(sessionPath string) {
+	sessionPath = strings.TrimSpace(sessionPath)
+	if sessionPath == "" {
+		return
+	}
+	if a.autonomousUpdateResumeMode() == "off" {
+		slog.Info("restart: auto-resume off; interrupted session not staged", "session", sessionPath)
+		return
+	}
+	state := readAutonomousUpdateResumeFile()
+	replaced := false
+	for i := range state.Sessions {
+		if state.Sessions[i].Path == sessionPath {
+			state.Sessions[i].StagedAt = time.Now().Unix()
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		state.Sessions = append(state.Sessions, autonomousUpdateResumeEntry{Path: sessionPath, StagedAt: time.Now().Unix()})
+	}
+	if err := writeAutonomousUpdateResumeFile(state); err != nil {
+		slog.Error("restart: staging interrupted-session resume failed", "session", sessionPath, "err", err)
+		return
+	}
+	slog.Info("restart: interrupted session staged for auto-resume", "session", sessionPath)
+}
+
 // maybeResumeAutonomousUpdateTab continues a session this process restarted via
 // the restart_update tool (task 254). Called from the same restore point as
 // maybeResumeAutopilotTab: the tab is live, so the normal admission path can

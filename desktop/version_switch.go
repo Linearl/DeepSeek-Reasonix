@@ -121,52 +121,58 @@ func (a *App) ListInstalledVersions() ([]InstalledVersion, error) {
 
 // SwitchToVersion moves current.json onto an existing version tree and
 // relaunches through the launcher. Guard order mirrors RestartAndUpdate:
-// opt-in experiment first, then busy state, then argument validation, so a
-// misdirected call can never become a version swap while the feature is off
-// or a turn is running (task 81 guard semantics preserved).
+// opt-in experiment first, then the task-450 grace window, then argument
+// validation, so a misdirected call can never become a version swap while the
+// feature is off (task 81 guard semantics preserved).
 func (a *App) SwitchToVersion(version string) error {
-	return a.switchToVersionExempt(version, "")
+	// The forced-through note is log-only on the UI face (same as
+	// RestartAndUpdate); every forced step already warned with the marker.
+	_, err := a.switchToVersionExempt(version, "")
+	return err
 }
 
 // switchToVersionExempt is SwitchToVersion with a busy-guard exemption for
 // callerSession (task 254): the restart_update tool's rollback runs inside the
 // turn it is about to end, so that one session cannot block itself. UI callers
-// pass "" and keep the old behavior.
-func (a *App) switchToVersionExempt(version, callerSession string) error {
+// pass "" and scope the whole workspace. Task 450 (plan A) replaced the busy
+// refusal with the shared grace window (clearRestartPath) on both faces; the
+// returned string is the forced-through note for the tool face ("" on the
+// natural path).
+func (a *App) switchToVersionExempt(version, callerSession string) (string, error) {
 	if a == nil {
-		return fmt.Errorf("restart: no app")
+		return "", fmt.Errorf("restart: no app")
 	}
 	version = strings.TrimSpace(version)
 	if version == "" {
-		return fmt.Errorf("restart: version is required; call ListInstalledVersions for the available names")
+		return "", fmt.Errorf("restart: version is required; call ListInstalledVersions for the available names")
 	}
 	// Opt-in only, same as task 81: switching the active version is the same
 	// destructive class as publishing one.
 	if cfg, cfgErr := config.Load(); cfgErr != nil || !cfg.Desktop.ExperimentalRestartUpdate {
-		return fmt.Errorf("restart: the restart-and-update experiment is off; enable experimental_restart_update in the desktop settings")
+		return "", fmt.Errorf("restart: the restart-and-update experiment is off; enable experimental_restart_update in the desktop settings")
 	}
-	// Same busy guard as RestartDesktop, with the task-254 caller exemption.
-	if busy := a.restartBusyReason(callerSession); busy != "" {
-		return fmt.Errorf("%s", busy)
-	}
+	// Task 450 (plan A): the same grace-and-cancel window as the publish path —
+	// heartbeat stopped first, bounded wait, cancel with a resume marker, and
+	// the swap proceeds either way.
+	forced := a.clearRestartPath(callerSession)
 
 	installRoot, err := versionSwitchInstallRoot()
 	if err != nil {
-		return err
+		return "", err
 	}
 	if err := installlayout.ValidateVersionName(version); err != nil {
-		return fmt.Errorf("restart: %w", err)
+		return "", fmt.Errorf("restart: %w", err)
 	}
 	current, err := installlayout.ReadCurrent(installRoot)
 	if err != nil {
-		return fmt.Errorf("restart: read current pointer: %w", err)
+		return "", fmt.Errorf("restart: read current pointer: %w", err)
 	}
 	if current.ActiveVersion == version {
-		return fmt.Errorf("restart: %s is already the active version; nothing to switch", version)
+		return "", fmt.Errorf("restart: %s is already the active version; nothing to switch", version)
 	}
 	versionDir := filepath.Join(installRoot, installlayout.VersionDirRelative(version))
 	if info, statErr := os.Stat(filepath.Join(versionDir, installlayout.DesktopBinaryName())); statErr != nil || info.IsDir() {
-		return fmt.Errorf("restart: %s has no %s; refusing to point the install at an incomplete version tree", version, installlayout.DesktopBinaryName())
+		return "", fmt.Errorf("restart: %s has no %s; refusing to point the install at an incomplete version tree", version, installlayout.DesktopBinaryName())
 	}
 
 	// The one write: move the pointer. WriteCurrent re-validates the version
@@ -175,7 +181,7 @@ func (a *App) switchToVersionExempt(version, callerSession string) error {
 		ActiveVersion: version,
 		ActiveDir:     installlayout.VersionDirRelative(version),
 	}); err != nil {
-		return fmt.Errorf("restart: switch pointer: %w", err)
+		return "", fmt.Errorf("restart: switch pointer: %w", err)
 	}
 	slog.Info("restart: switching active version", "from", current.ActiveVersion, "to", version, "installRoot", installRoot)
 	// Task 272 L3: a version switch is ORTHOGONAL to runtime residue — it
@@ -188,11 +194,11 @@ func (a *App) switchToVersionExempt(version, callerSession string) error {
 
 	launcherPath := filepath.Join(installRoot, installlayout.LauncherBinaryName())
 	if info, statErr := os.Lstat(launcherPath); statErr != nil || !info.Mode().IsRegular() {
-		return fmt.Errorf("restart: the launcher %s is missing from %s (pointer already moved; run the launcher manually to boot %s)", installlayout.LauncherBinaryName(), installRoot, version)
+		return "", fmt.Errorf("restart: the launcher %s is missing from %s (pointer already moved; run the launcher manually to boot %s)", installlayout.LauncherBinaryName(), installRoot, version)
 	}
 	if err := versionSwitchStartLauncher(launcherPath, os.Getpid()); err != nil {
 		slog.Error("restart: launcher start failed after version switch", "version", version, "err", err)
-		return fmt.Errorf("restart: start launcher: %w", err)
+		return "", fmt.Errorf("restart: start launcher: %w", err)
 	}
 	// Answer first, exit after — same contract as the other restart paths. The
 	// tool path (task 254) grants a longer grace so the calling turn's
@@ -205,5 +211,5 @@ func (a *App) switchToVersionExempt(version, callerSession string) error {
 		time.Sleep(grace)
 		versionSwitchQuit(a)
 	}()
-	return nil
+	return forced.forcedNote(), nil
 }

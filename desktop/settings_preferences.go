@@ -208,6 +208,14 @@ func (a *App) SetExperimentalFullAccess(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalFullAccess(enabled) })
 }
 
+// SetExperimentalBaseProcess toggles the S1 resident-base-subprocess lab
+// switch (design 2026-09-30 §7 R4). Boot resolves it when the base client
+// section is built, so the flip applies on the next restart — the settings
+// pane says so.
+func (a *App) SetExperimentalBaseProcess(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalBaseProcess(enabled) })
+}
+
 // SetAutonomousUpdateResume sets the auto-resume scope dial (task 254): off
 // resumes nothing, goal_autopilot resumes goal runs and autopilot sessions
 // that asked for the update, all additionally resumes every mid-turn session.

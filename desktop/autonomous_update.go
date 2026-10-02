@@ -172,24 +172,37 @@ func (c autonomousUpdateController) ExecuteTarget(_ context.Context, callerSessi
 		return "", fmt.Errorf("restart: no update target staged; call set_target first")
 	}
 
+	var forcedNote string
 	switch pending.kind {
 	case "staging":
-		if err := a.restartAndUpdateExempt("", pending.version, callerSession); err != nil {
+		note, err := a.restartAndUpdateExempt("", pending.version, callerSession)
+		if err != nil {
 			return "", err
 		}
+		forcedNote = note
 	case "installed":
-		if err := a.switchToVersionExempt(pending.version, callerSession); err != nil {
+		note, err := a.switchToVersionExempt(pending.version, callerSession)
+		if err != nil {
 			return "", err
 		}
+		forcedNote = note
 	default:
 		return "", fmt.Errorf("restart: unknown staged target kind %q", pending.kind)
 	}
 	// After the swap is committed: mark the calling session for auto-resume, so
 	// the fresh process continues the work (task 254). After — not before — so
 	// a failed swap never leaves a stale marker that would resume the session
-	// on some later unrelated restart.
+	// on some later unrelated restart. (Sessions the task-450 grace window had
+	// to cancel are staged separately, inside clearRestartPath — "whoever we
+	// interrupted, we resume".)
 	a.stageAutonomousUpdateResume(callerSession)
-	return "restart scheduled: the version swap is committed and the app will relaunch shortly — do not retry", nil
+	msg := "restart scheduled: the version swap is committed and the app will relaunch shortly — do not retry"
+	if forcedNote != "" {
+		// Task 450 acceptance 4: a forced pass through someone else's work is
+		// part of the result the model sees, not a silent side effect.
+		msg += "\n" + forcedNote
+	}
+	return msg, nil
 }
 
 // versionTreeHealthy reports whether versions/<version> carries the desktop and

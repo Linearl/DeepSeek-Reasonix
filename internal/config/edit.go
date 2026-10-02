@@ -603,6 +603,16 @@ func (c *Config) SetExperimentalFullAccess(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalBaseProcess toggles the S1 resident-base-subprocess switch
+// (design 2026-09-30 §7 R4). Boot resolves it when the base client section is
+// built (internal/boot/base_client.go), so the flip applies on the next
+// restart — the settings pane says so. Off (the default) stays the guaranteed
+// pure-inline baseline.
+func (c *Config) SetExperimentalBaseProcess(enabled bool) error {
+	c.Agent.ExperimentalBaseProcess = enabled
+	return nil
+}
+
 // SetAutonomousUpdateResume scopes the auto-resume family (task 254). Only the
 // three known values are accepted so a typo cannot silently disable resuming.
 func (c *Config) SetAutonomousUpdateResume(mode string) error {
