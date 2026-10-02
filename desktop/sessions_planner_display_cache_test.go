@@ -11,8 +11,9 @@ import (
 	"time"
 )
 
-// 任务 451 方案 A 验收测试：warm 命中零重读（第二次 planner-turns ≤1ms 的
-// 结构性保证）、写后失效、mtime/存在性变更重载、并发单飞、条目上限。
+// 任务 451 方案 A 验收测试：warm 命中零重读（planner-turns 亚毫秒的
+// 结构性保证，不设时钟阈值断言）、写后失效、mtime/存在性变更重载、
+// 并发单飞、条目上限。
 
 // plannerDisplayCacheTestSwapReader 把读接缝换成可计数实现，返回还原函数与
 // 计数指针。slowMs>0 时每次读模拟一次慢盘（单飞测试用）。
@@ -64,14 +65,12 @@ func TestLoadSessionPlannerDisplaysWarmHitSkipsReread(t *testing.T) {
 		t.Fatalf("first load reads = %d, want 1", reads.Load())
 	}
 
-	startedAt := time.Now()
+	// 不设时钟阈值断言（audit-2 minor：>1ms 断言在负载调度抖动下假挂
+	// 2/5，且冗余——零重读由 reads==1 结构性证明：命中路径只有锁+一次
+	// stat+比较，完全不读盘）。
 	second := loadSessionPlannerDisplays(dir)
-	elapsed := time.Since(startedAt)
 	if reads.Load() != 1 {
 		t.Fatalf("warm hit must not reread, reads = %d", reads.Load())
-	}
-	if elapsed > time.Millisecond {
-		t.Fatalf("warm hit took %v, want <=1ms", elapsed)
 	}
 	if got := second["one.jsonl"][0].Messages[0].Content; got != "answer-one-v1" {
 		t.Fatalf("warm hit content changed: %q", got)
