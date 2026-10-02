@@ -3513,7 +3513,14 @@ export function useController() {
     // loading flag must be resettable no matter which gate would otherwise
     // fire (the 0831 loading-leak lesson: an unreachable self-heal = a
     // permanently stuck "loading"). Running sessions reach it too.
-    if (state?.historyOlderLoading) {
+    // Task 445: the identity-retry re-entry (`isRetry`) SKIPS this gate —
+    // the outer call still owns the spinner when it re-asks after a
+    // mid-flight generation change (model switch snapshot), so gating on
+    // `historyOlderLoading` here used to short-circuit the retry into a
+    // silent drop ("older page abandoned") and the user had to scroll again.
+    // The retry is seq-guarded below like any other request, and the outer
+    // finally still owns the stuck-loading backstop for both calls.
+    if (!isRetry && state?.historyOlderLoading) {
       // Self-heal a stuck loading gate (task 101 P0): loading true with no
       // live store call is the lock-out that used to require closing the tab.
       const startedAt = historyOlderStartedAtByTab.current.get(targetTabId) ?? 0;
@@ -3587,7 +3594,9 @@ export function useController() {
         // A turn-event replay that rebased the transcript while this page was in flight
         // discards it by design; the same transcript then simply asks again, once, rather
         // than showing "earlier conversation could not be loaded" for a recoverable
-        // scheduling collision. A different transcript is never retried.
+        // scheduling collision. A different transcript is never retried. (Task 445:
+        // the retry bypasses the loading gate above — the outer call owns the
+        // spinner, so the gate used to bounce the re-ask into a silent drop.)
         if (sameTranscript && !isRetry) return await loadOlder(targetTabId, targetTurn, trigger, true);
         dispatchTo(targetTabId, { type: "history_older_error", error: "history identity changed" });
         reportFrontendLog("history-paging", "older page rejected", `tab=${targetTabId} reason=identity-changed`, "warn");

@@ -540,6 +540,11 @@ const CHECKS = [
   // 发射器转换式去重（同因连续拒绝只记首条），接入 controller 同域 history-paging。
   { feature: "任务448收尾 闸拒绝留痕（explain+转换式发射器）", file: "desktop/frontend/src/lib/historyOlderGates.ts", patterns: ["export function explainOlderHistoryGate", "export function createOlderHistoryGateLogger"] },
   { feature: "任务448收尾 requestOlder 拒绝分支接线 history-paging", file: "desktop/frontend/src/components/Transcript.tsx", patterns: ["reportOlderGateBlock.current?.(", "explainOlderHistoryGate({ hasOlderHistory, loadingOlderHistory })", 'reportFrontendLog("history-paging"'] },
+  // 任务445修复：identity-retry 绕过 loading 闸。切模型 snapshot bump revision →
+  // 在途更早页时代错配 → retry 重入时外层仍持有 historyOlderLoading，旧闸把
+  // 重试短路成静默丢弃（"older page abandoned"，用户需再滚一次）。锚点锁
+  // isRetry 绕行条件 + retry 发射点仍在（缺一即红）。
+  { feature: "任务445 identity-retry 绕过 loading 闸（isRetry 短路修复）", file: "desktop/frontend/src/lib/useController.ts", patterns: ["if (!isRetry && state?.historyOlderLoading) {", "if (sameTranscript && !isRetry) return await loadOlder(targetTabId, targetTurn, trigger, true);"] },
   // 任务441：排队引导消息六点手柄拖拽排序，替换 266-A 的上移/下移按钮。
   // 锚点锁两半：手柄是唯一拖源（卡片本体不再 draggable）+ 落点仍走既有
   // onMove 持久化；CSS 单列一条（merge 丢手柄样式=拖拽入口不可见）。
