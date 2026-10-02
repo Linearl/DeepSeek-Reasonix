@@ -977,6 +977,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalFeedback(enabled: boolean): Promise<void>;
   // Task 172: feedback touchpoint dial (T1 completion + T2 steer); boot snapshot.
   SetExperimentalFeedbackNudge(enabled: boolean): Promise<void>;
+  // Task 377: the lifecycle noise triage switch. Startup diagnostics read it
+  // once per process — restart to apply.
+  SetExperimentalLifecycleNoiseGate(enabled: boolean): Promise<void>;
   // Task 130: Settings → 本地服务 page (experimental).
   SetExperimentalLocalServer(enabled: boolean): Promise<void>;
   // Task 134: structured path-scope evaluation (experimental).
@@ -5396,6 +5399,7 @@ function makeMockApp(): AppBindings {
     async RestartDesktop() {},
     async SetExperimentalFeedback() {},
     async SetExperimentalFeedbackNudge() {},
+    async SetExperimentalLifecycleNoiseGate() {},
     async SetExperimentalLocalServer() {},
     async SetExperimentalPathRules() {},
     async SetExperimentalCacheTuning() {},

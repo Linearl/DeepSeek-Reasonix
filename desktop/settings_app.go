@@ -405,10 +405,13 @@ type SettingsView struct {
 	ExperimentalFullAccess bool `json:"experimentalFullAccess"`
 	// ExperimentalBaseProcess is the S1 resident-base-subprocess lab switch
 	// (design 2026-09-30 §7 R4); boot snapshot, restart to apply.
-	ExperimentalBaseProcess  bool `json:"experimentalBaseProcess"`
-	ExperimentalLocalServer  bool `json:"experimentalLocalServer"`
-	ExperimentalPathRules    bool `json:"experimentalPathRules"`
-	ExperimentalTraceAsState bool `json:"experimentalTraceAsState"`
+	ExperimentalBaseProcess bool `json:"experimentalBaseProcess"`
+	// ExperimentalLifecycleNoiseGate is the task-377 crash-report noise
+	// triage; the gate is read once at startup diagnostics, restart to apply.
+	ExperimentalLifecycleNoiseGate bool `json:"experimentalLifecycleNoiseGate"`
+	ExperimentalLocalServer        bool `json:"experimentalLocalServer"`
+	ExperimentalPathRules          bool `json:"experimentalPathRules"`
+	ExperimentalTraceAsState       bool `json:"experimentalTraceAsState"`
 	// Task 161: cache tuning mirrors (Settings panel reads these from this view).
 	MaxCachedTabs int `json:"maxCachedTabs"`
 	// Task 347: effective replayed-graph cache LRU capacity (task 196fix2
@@ -665,6 +668,9 @@ type DesktopStartupSettingsView struct {
 	ColdCacheCompactIdleMinutes  int   `json:"coldCacheCompactIdleMinutes"`
 	// ExperimentalLocalServer exposes the Settings → 本地服务 page (task 130).
 	ExperimentalLocalServer bool `json:"experimentalLocalServer"`
+	// ExperimentalLifecycleNoiseGate is the task-377 crash-report noise
+	// triage; the gate is read once at startup diagnostics, restart to apply.
+	ExperimentalLifecycleNoiseGate bool `json:"experimentalLifecycleNoiseGate"`
 	// ExperimentalPathRules enables structured path-scope evaluation (task 134).
 	ExperimentalPathRules bool `json:"experimentalPathRules"`
 	// Task 161: transcript cache tuning (max resident tab states + the two
@@ -1396,6 +1402,8 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.CollabInboxMerge = config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge)
 		view.CollabGuidanceMerge = cfg.Desktop.CollabGuidanceMerge || cfg.Agent.CollabGuidanceMerge
 		view.ExperimentalLocalServer = cfg.Desktop.ExperimentalLocalServer
+		// Task 377: noise-triage readback (boot snapshot).
+		view.ExperimentalLifecycleNoiseGate = cfg.Desktop.ExperimentalLifecycleNoiseGate
 		view.ExperimentalPathRules = cfg.Desktop.ExperimentalPathRules
 		return view
 	}
@@ -1558,6 +1566,7 @@ func (a *App) Settings() SettingsView {
 		ExperimentalComposerDraft:       cfg.Agent.ExperimentalComposerDraft,
 		ExperimentalSelectionActions:    cfg.Agent.ExperimentalSelectionActions,
 		ExperimentalLocalServer:         cfg.Desktop.ExperimentalLocalServer,
+		ExperimentalLifecycleNoiseGate:  cfg.Desktop.ExperimentalLifecycleNoiseGate,
 		ExperimentalPathRules:           cfg.Desktop.ExperimentalPathRules,
 		MaxCachedTabs:                   cfg.Desktop.MaxCachedTabs,
 		DagGraphCacheCapacity:           config.DagGraphCacheCapacity(cfg),

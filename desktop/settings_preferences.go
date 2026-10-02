@@ -450,6 +450,14 @@ func (a *App) SetExperimentalPathRules(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalPathRules(enabled) })
 }
 
+// SetExperimentalLifecycleNoiseGate toggles the task-377 lifecycle noise
+// triage (skip crash reports for clean-shutdown residue). The gate is read
+// once at startup diagnostics setup, so the flip lands on restart; off
+// (default) keeps the reporting behavior byte-for-byte unchanged.
+func (a *App) SetExperimentalLifecycleNoiseGate(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalLifecycleNoiseGate(enabled) })
+}
+
 // SetExperimentalCacheTuning toggles the transcript cache-size controls (task 161).
 func (a *App) SetExperimentalCacheTuning(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCacheTuning(enabled) })

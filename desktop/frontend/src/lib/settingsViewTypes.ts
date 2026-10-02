@@ -80,6 +80,8 @@ export interface SettingsView {
   // S1: resident-base-subprocess switch (design 2026-09-30 §7 R4; ships off —
   // the pure-inline baseline; restart to apply).
   experimentalBaseProcess?: boolean;
+  // Task 377: crash-report lifecycle noise triage (boot snapshot; restart to apply).
+  experimentalLifecycleNoiseGate?: boolean;
   // Task 130: exposes the Settings → 本地服务 page and serve-pool controls.
   experimentalLocalServer?: boolean;
   // Task 134: structured path-scope evaluation (docs/PATH_SCOPE_RULES.md).

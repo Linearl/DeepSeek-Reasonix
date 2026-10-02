@@ -2641,6 +2641,10 @@ export const en = {
 "settings.quickCommandsLab.on": "On",
 "settings.quickCommandsLab.off": "Off",
 // Task 342: WebView2 CDP debug endpoint (lab, debug group).
+"settings.lifecycleNoiseGate": "Crash lifecycle noise triage (experimental)",
+"settings.lifecycleNoiseGateHint": "Task 377: skips crash reports for clean-shutdown lifecycle residue (phases shutting_down/healthy left behind by clean()/exit races). Wedged shutdowns and unknown phases are never suppressed; each suppression is counted in the log summary and metrics. The gate is read once at startup, so a change needs a restart. Off (default) keeps reporting byte-for-byte unchanged.",
+"settings.lifecycleNoiseGate.on": "On",
+"settings.lifecycleNoiseGate.off": "Off",
 "settings.cdpDebugPort": "CDP debug endpoint (experimental)",
 "settings.cdpDebugPortHint": "Opens a Chrome DevTools Protocol debug endpoint on the embedded WebView2 browser after a restart, so scripted UI verification (connectOverCDP) can drive the real interface. Loopback (127.0.0.1) only with a random port — not reachable from other machines. The endpoint file is written to logs/desktop/cdp-endpoint.txt. Off (default) keeps the browser arguments and network behavior unchanged.",
 "settings.cdpDebugPort.on": "On",
