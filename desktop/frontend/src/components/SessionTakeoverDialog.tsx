@@ -68,6 +68,10 @@ export function SessionTakeoverDialog({ tabId, onClose }: { tabId: string; onClo
   };
 
   const busy = busyMode !== null;
+  // Task 456: a locally-held session (this window's own leftover runtime, or
+  // a dead holder) takes the same dialog, but "remote" copy would read
+  // backwards — the holder is on THIS machine.
+  const localHolder = view?.holder === "desktop-local";
   let body: React.ReactNode;
   if (queryError) {
     body = <span className="reasonix-confirm-dialog__message-error">{t("takeover.unavailable", { reason: queryError })}</span>;
@@ -78,9 +82,9 @@ export function SessionTakeoverDialog({ tabId, onClose }: { tabId: string; onClo
   } else {
     body = (
       <>
-        <span>{t("takeover.descRemote")}</span>
+        <span>{localHolder ? t("takeover.descLocal") : t("takeover.descRemote")}</span>
         <span className="session-takeover-dialog__state">
-          {view.running ? t("takeover.running") : t("takeover.idle")}
+          {view.running ? (localHolder ? t("takeover.runningLocal") : t("takeover.running")) : (localHolder ? t("takeover.idleLocal") : t("takeover.idle"))}
         </span>
       </>
     );
