@@ -27,6 +27,7 @@ import {
   RotateCw,
   Trash2,
   AlarmClock,
+  Mailbox,
   BarChart3,
   Brain,
   Cpu,
@@ -54,7 +55,7 @@ import type { CommandOutcome } from "./lib/commandOutcome";
 import { useController, type Item } from "./lib/useController";
 import { noteStageTiming, setSessionMonitorEnabled } from "./lib/sessionMonitor";
 import { FeedbackPanel, setFeedbackEnabled } from "./components/FeedbackPanel";
-import { CollabInboxPanel } from "./components/CollabInboxPanel";
+import { CollabInboxPanel, setCollabInboxOpen } from "./components/CollabInboxPanel";
 import { SessionMonitorPanel } from "./components/SessionMonitorPanel";
 import { clampedSplitRatio, loadSplitRatio, persistSplitRatio, setSplitPaneTitle, setSplitViewEnabled } from "./lib/splitView";
 import { reportFrontendLog } from "./lib/frontendLog";
@@ -4613,6 +4614,18 @@ export default function App() {
                     <span className="sr-only">{t("sidebar.trash")}</span>
                   </button>
                 </Tooltip>
+                {/* 任务 320 UI 规格（20261002 用户钦定）：跨会话收件箱进左下角图标行，
+                    与回收站/自动化/设置同排；群聊（任务 349/409）图标后续并排加入此行。 */}
+                <Tooltip label={t("sidebar.collabInbox")} fill side="top">
+                  <button
+                    className="sidebar__utility-button"
+                    type="button"
+                    onClick={(event) => { event.currentTarget.focus({ preventScroll: true }); setCollabInboxOpen(true); }}
+                  >
+                    <Mailbox size={16} aria-hidden="true" />
+                    <span className="sr-only">{t("sidebar.collabInbox")}</span>
+                  </button>
+                </Tooltip>
                 <Tooltip label={t("heartbeat.scheduler")} fill side="top">
                   <button
                     className="sidebar__utility-button"
@@ -5863,8 +5876,8 @@ export default function App() {
           unchanged. */}
       <SessionMonitorPanel />
       <FeedbackPanel />
-      {/* Task 320: cross-session inbox — same portal-at-root rule as above,
-          opened from settings → 跨会话通信. */}
+      {/* Task 320: cross-session inbox — same portal-at-root rule as above;
+          primary entry = sidebar bottom utility row (20261002 UI spec), settings keeps a secondary path. */}
       <CollabInboxPanel />
     </div>
     </UpdaterProvider>

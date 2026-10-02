@@ -505,6 +505,11 @@ const CHECKS = [
   { feature: "任务320 Wails 收件箱面", file: "desktop/collab_inbox_app.go", patterns: ["func (a *App) ListCollabMail(", "MarkCollabMailDecided", "SetCollabMailRetention"] },
   { feature: "任务320 收件箱面板组件", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["collab-inbox-panel__bucket", "SetCollabMailRetention", "ListCollabMailChains"] },
   { feature: "任务320 收件箱三语 locale", file: "desktop/frontend/src/locales/zh.ts", patterns: ["collabInbox.title", "collabInbox.bucket.approval"] },
+  // 任务 320 UI 规格（20261002 用户钦定）：面板入口进左下角图标行（与回收站/
+  // 自动化/设置同排，邮箱图标）。锁 App.tsx 接线与三语键——图标行是常驻入口，
+  // 被 merge 摘掉则面板退回仅设置可达。
+  { feature: "任务320 左下角图标行入口（邮箱图标+开合接线）", file: "desktop/frontend/src/App.tsx", patterns: ["Mailbox size={16}", "setCollabInboxOpen(true)", "sidebar.collabInbox"] },
+  { feature: "任务320 图标行入口三语 locale", file: "desktop/frontend/src/locales/zh.ts", patterns: ["sidebar.collabInbox"] },
   // 任务 349：群聊通道——channel 实体（SQLite+md 导出）+ 发布订阅展开单发
   // （复用 309 MailStore，铁律 8 无第二投递通道）+ per-recipient delivered/
   // read + 429 治理（错峰/followup/小时上限）。锁实体层、三工具与注册。

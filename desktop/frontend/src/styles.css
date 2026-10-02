@@ -32911,7 +32911,9 @@ body > .mermaid-diagram--fullscreen {
 
 .sidebar--workbench .sidebar__utility-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* 任务 320 UI 规格（20261002）：回收站/收件箱/自动化/设置 = 4 列同排；
+     群聊（349/409）图标后续并排，届时同步扩列。 */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -32949,7 +32951,8 @@ body > .mermaid-diagram--fullscreen {
    because --sidebar-workbench-* are scoped to .sidebar--workbench. */
 .sidebar:not(.sidebar--workbench) .sidebar__nav--footer .sidebar__utility-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* 任务 320 UI 规格（20261002）：classic 同排 4 列（回收站/收件箱/自动化/设置）。 */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   --wails-draggable: no-drag;
 }

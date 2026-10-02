@@ -76,7 +76,9 @@ console.log("\ntask 412 classic rail + switch timing");
 {
   const css = readFileSync(fileURLToPath(new URL("../styles.css", import.meta.url)), "utf8");
   const classicRule = css.match(/\.sidebar:not\(\.sidebar--workbench\) \.sidebar__nav--footer \.sidebar__utility-row\s*\{[^}]*\}/);
-  ok(!!classicRule && /grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/.test(classicRule![0]), "classic CSS: utility-row grid mirrors workbench (3 equal columns)");
+  // 任务 320 UI 规格（20261002）：行内加入收件箱（邮箱图标）→ 3 列扩为 4 列；
+  // 群聊（349/409）图标后续并排，届时同步扩列。
+  ok(!!classicRule && /grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/.test(classicRule![0]), "classic CSS: utility-row grid mirrors workbench (4 equal columns after task 320 inbox)");
   ok(/\.sidebar:not\(\.sidebar--workbench\) \.sidebar__utility-button\s*\{[^}]*justify-content:\s*center/.test(css), "classic CSS: utility buttons mirror the workbench icon-button shape");
   ok(/\.sidebar \.sidebar__utility-button--active\s*\{[^}]*var\(--accent\)/.test(css), "active marker styled with accent tokens (theme-token only)");
 }
