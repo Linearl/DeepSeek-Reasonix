@@ -644,6 +644,8 @@ const CHECKS = [
   { feature: "450 回滚入口共窗", file: "desktop/version_switch.go", patterns: ["forced := a.clearRestartPath(callerSession)", "forced.forcedNote()"] },
   { feature: "450 工具面结果显形强制说明", file: "desktop/autonomous_update.go", patterns: ["forcedNote"] },
   { feature: "450 谁断谁续（被打断会话无条件入 254 名册）", file: "desktop/autonomous_update_resume.go", patterns: ["func (a *App) stageInterruptedByRestart", "whoever we interrupted, we resume"] },
+  { feature: "450n2 名册口径统一（入册/消费 sessionRuntimeKey 归一化）", file: "desktop/autonomous_update_resume.go", patterns: ["sessionRuntimeKey(state.Sessions[i].Path) == key", "sessionRuntimeKey(entry.Path) == sessionKey"] },
+  { feature: "450n2 窄窗测试（两口径拼写不等、归一化后命中）", file: "desktop/restart_resume_normalize_test.go", patterns: ["TestResumeRosterMatchesAcrossPathForms", "TestStageInterruptedByRestartDedupesAcrossPathForms"] },
 
   // ── 任务 435 断后恢复链（名册会话续跑不落 fence + 未入册防静默丢）────
   // 450 管「重启之前」能否出发，435 管「重启之后」恢复质量。缺了 settle，
