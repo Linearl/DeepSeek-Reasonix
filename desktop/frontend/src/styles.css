@@ -19555,7 +19555,9 @@ body > .mermaid-diagram--fullscreen {
   line-height: 1.45;
 }
 .set-preapprove__row {
-  display: inline-flex;
+  /* B1 (2026-10-03 night dispatch): flex, not inline-flex — each of the four
+     categories owns exactly one full-width line under the switch row. */
+  display: flex;
   align-items: center;
   gap: 8px;
   color: var(--fg-dim);
@@ -19564,6 +19566,17 @@ body > .mermaid-diagram--fullscreen {
 }
 .set-preapprove__row input {
   accent-color: var(--accent);
+}
+/* B1 (2026-10-03 night dispatch): the pre-approval field reads top-down in
+   one column — icon + title -> hint -> on/off switch row -> four category
+   lines -> risk line. The existing sub-block wrapper is the CSS hook (zero
+   TSX change); specificity (0,2,0) beats the later-loaded :where(...) two
+   -column rule (0,1,0) in SettingsPanel.css. Same precedent as the task 337
+   single-column collapse. */
+.autopilot-preapprove-subblock .settings-field {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
 }
 /* Task 337 layout fix (user 0927 evening): the two-column settings-field
    grid squeezed the switch and the status copy into the card's top-right
