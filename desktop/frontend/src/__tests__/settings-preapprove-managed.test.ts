@@ -30,9 +30,11 @@ const en = readFileSync(join(root, "locales/en.ts"), "utf8");
 const zh = readFileSync(join(root, "locales/zh.ts"), "utf8");
 const zhTW = readFileSync(join(root, "locales/zh-TW.ts"), "utf8");
 
-// ── render table: the entry light must exist or the save silently drops ─────
-ok(panel.includes('{ id: "preapproveManagedPaths", group: "misc",'),
-  "render table carries the preapproveManagedPaths entry (settings list = render table)");
+// ── render table: since task 364 the block lives INSIDE the autopilot card
+//    as a named sub-block with no rail entry of its own (single entry).
+ok(!panel.includes('{ id: "preapproveManagedPaths", group:'),
+  "render table has no preapprove rail entry (task 364 folded it into the autopilot card)");
+ok(panel.includes("autopilot-preapprove-subblock"), "the pre-approval sub-block renders inside the autopilot card");
 ok(panel.includes('| "preapproveManagedPaths"'), "the detail-card union includes the id");
 
 // ── detail card: master switch + four independent checkboxes + risk line ────
@@ -70,6 +72,19 @@ for (const key of keys) {
 }
 ok(zh.includes("prompt injection") && zhTW.includes("prompt injection") && en.includes("prompt injection"),
   "the risk line names prompt injection in all three locales");
+
+// ── B1 (2026-10-03 night dispatch): vertical layout + simplified hooks copy ──
+const styles = readFileSync(join(root, "styles.css"), "utf8").replace(/\n\s*/g, " ");
+ok(/\.autopilot-preapprove-subblock \.settings-field \{ grid-template-columns: minmax\(0, 1fr\);/.test(styles),
+  "the pre-approval field collapses to a single top-down column (vertical layout)");
+ok(/\.set-preapprove__row \{ \/\* B1[^]*?display: flex;/.test(styles) || /\.set-preapprove__row \{[^}]*display: flex;/.test(styles),
+  "each category row is a block-level flex line (one category per line)");
+for (const [name, text] of [["en", en], ["zh", zh], ["zh-TW", zhTW]] as const) {
+  const hooks = text.match(/"settings\.preapproveManagedPaths\.hooks": "([^"]*)"/)?.[1] ?? "";
+  const warn = text.match(/"settings\.preapproveManagedPaths\.warning": "([^"]*)"/)?.[1] ?? "";
+  ok(hooks.length > 0 && !hooks.includes("settings.json"), `${name} hooks label is simplified (settings.json detail moved out)`);
+  ok(warn.includes("settings.json"), `${name} risk line carries the hooks settings.json detail`);
+}
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);
