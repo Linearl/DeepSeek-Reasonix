@@ -35,7 +35,7 @@ import (
 	_ "modernc.org/sqlite" // registers the "sqlite" driver (house pattern: projectiondb/topicstate)
 )
 
-const schemaVersion = 1
+const schemaVersion = 2
 
 // ErrHourlyCap is the per-channel 429 guard: publish refused until the
 // rolling hour window frees up.
@@ -43,6 +43,10 @@ var ErrHourlyCap = errors.New("collabchannel: hourly message cap reached")
 
 // ErrNotFound reports an unknown channel reference (name or id).
 var ErrNotFound = errors.New("collabchannel: channel not found")
+
+// ErrNotSender rejects a cancel by anyone but the original sender (取消消息
+// 是发送方权利，不是管理员权利 — one session cannot retract another's line).
+var ErrNotSender = errors.New("collabchannel: only the sender can cancel a message")
 
 // DefaultHourlyCap is the storm ceiling for a channel that sets no explicit
 // limit (429: 单群每小时消息上限).
@@ -140,7 +144,8 @@ func migrate(db *sql.DB) error {
 			channel_id TEXT NOT NULL,
 			at INTEGER NOT NULL,
 			sender TEXT NOT NULL,
-			body TEXT NOT NULL
+			body TEXT NOT NULL,
+			cancelled_at INTEGER
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_messages_channel_at ON messages (channel_id, at)`,
 		`CREATE TABLE IF NOT EXISTS fanout (
@@ -158,6 +163,12 @@ func migrate(db *sql.DB) error {
 		if _, err := db.Exec(stmt); err != nil {
 			return fmt.Errorf("collabchannel: migrate: %w", err)
 		}
+	}
+	// v1→v2: 取消墓碑列。旧库（schema v1）靠 ALTER 补列；新库 CREATE 已带，
+	// 重复列报错按已存在忽略（SQLite: "duplicate column name"）。
+	if _, err := db.Exec(`ALTER TABLE messages ADD COLUMN cancelled_at INTEGER`); err != nil &&
+		!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+		return fmt.Errorf("collabchannel: migrate cancelled_at: %w", err)
 	}
 	_, err := db.Exec(`INSERT INTO meta (key, value) VALUES ('schema_version', ?)
 		ON CONFLICT(key) DO UPDATE SET value=excluded.value`, fmt.Sprint(schemaVersion))
@@ -206,6 +217,24 @@ type Message struct {
 	At      int64  `json:"at"`
 	Sender  string `json:"sender"`
 	Body    string `json:"body"`
+	// CancelledAt is the cancel tombstone (取消消息): 0 = live. A cancelled
+	// message keeps its history line but stops pending fan-out and is marked
+	// in every later read/export.
+	CancelledAt int64 `json:"cancelledAt,omitempty"`
+}
+
+// CancelResult reports what one cancel touched: the tombstone time, how many
+// queued fan-out rows were stopped before delivery, and how many had already
+// been delivered. Delivered copies stay (the task-309 inbox belongs to the
+// recipient — there is no cross-owner inbox rewrite); the tombstone is what
+// every later channel read / md export shows.
+type CancelResult struct {
+	MessageID        string `json:"messageId"`
+	Channel          string `json:"channel"`
+	CancelledAt      int64  `json:"cancelledAt"`
+	CancelledQueued  int    `json:"cancelledQueued"`
+	AlreadyDelivered int    `json:"alreadyDelivered"`
+	AlreadyCancelled bool   `json:"alreadyCancelled"`
 }
 
 // FanoutRow is the per-recipient delivery state of one channel message
@@ -225,7 +254,8 @@ type FanoutStats struct {
 	Queued    int `json:"queued"`
 	Delivered int `json:"delivered"`
 	Failed    int `json:"failed"`
-	Skipped   int `json:"skipped"` // already in the member's inbox (crash retry)
+	Skipped   int `json:"skipped"`   // already in the member's inbox (crash retry)
+	Cancelled int `json:"cancelled"` // row stopped by a cancel between claim and deliver
 }
 
 // resolve maps a channel name-or-id to its id.
@@ -438,6 +468,71 @@ func (s *Store) Publish(ref, sender, body string) (Message, error) {
 	return msg, nil
 }
 
+// Cancel (取消消息) tombstones one channel message and stops its PENDING
+// fan-out: queued rows flip to state='cancelled' so DrainFanout skips them,
+// and an in-flight drain re-checks every row right before delivery, so a
+// cancel wins even against a drain that is mid-pass. Copies already delivered
+// into member mailboxes are NOT retracted — the task-309 inbox belongs to the
+// recipient and no code path rewrites another session's inbox file; the
+// tombstone is what every later channel history / md export shows. Only the
+// original sender may cancel; cancelling twice is idempotent (the second call
+// reports the first tombstone and stops nothing new).
+func (s *Store) Cancel(ref, messageID, requester string) (CancelResult, error) {
+	requester = strings.TrimSpace(requester)
+	if requester == "" {
+		return CancelResult{}, errors.New("collabchannel: requester identity is required")
+	}
+	id, err := s.resolve(ref)
+	if err != nil {
+		return CancelResult{}, err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return CancelResult{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var sender string
+	var tombstone sql.NullInt64
+	err = tx.QueryRow(`SELECT sender, cancelled_at FROM messages WHERE id = ? AND channel_id = ?`,
+		messageID, id).Scan(&sender, &tombstone)
+	if errors.Is(err, sql.ErrNoRows) {
+		return CancelResult{}, fmt.Errorf("%w: message %q", ErrNotFound, messageID)
+	}
+	if err != nil {
+		return CancelResult{}, err
+	}
+	if sender != requester {
+		return CancelResult{}, fmt.Errorf("%w: %q was sent by %s, not %s", ErrNotSender, messageID, sender, requester)
+	}
+
+	res := CancelResult{MessageID: messageID, Channel: id}
+	if tombstone.Valid && tombstone.Int64 > 0 {
+		res.CancelledAt = tombstone.Int64
+		res.AlreadyCancelled = true
+	} else {
+		res.CancelledAt = s.now()
+		if _, err := tx.Exec(`UPDATE messages SET cancelled_at = ? WHERE id = ?`, res.CancelledAt, messageID); err != nil {
+			return CancelResult{}, err
+		}
+	}
+	qr, err := tx.Exec(`UPDATE fanout SET state = 'cancelled' WHERE message_id = ? AND state = 'queued'`, messageID)
+	if err != nil {
+		return CancelResult{}, err
+	}
+	if n, err := qr.RowsAffected(); err == nil {
+		res.CancelledQueued = int(n)
+	}
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM fanout WHERE message_id = ? AND state = 'delivered'`,
+		messageID).Scan(&res.AlreadyDelivered); err != nil {
+		return CancelResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return CancelResult{}, err
+	}
+	return res, nil
+}
+
 // Messages answers 获取消息: channel history since an optional ms bound,
 // oldest first, hard-capped.
 func (s *Store) Messages(ref string, sinceMs int64, limit int) ([]Message, error) {
@@ -451,7 +546,7 @@ func (s *Store) Messages(ref string, sinceMs int64, limit int) ([]Message, error
 	if limit > 500 {
 		limit = 500
 	}
-	rows, err := s.db.Query(`SELECT id, channel_id, at, sender, body FROM messages
+	rows, err := s.db.Query(`SELECT id, channel_id, at, sender, body, COALESCE(cancelled_at, 0) FROM messages
 		WHERE channel_id = ? AND (? = 0 OR at >= ?) ORDER BY at DESC LIMIT ?`, id, sinceMs, sinceMs, limit)
 	if err != nil {
 		return nil, err
@@ -460,7 +555,7 @@ func (s *Store) Messages(ref string, sinceMs int64, limit int) ([]Message, error
 	var out []Message
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.Channel, &m.At, &m.Sender, &m.Body); err != nil {
+		if err := rows.Scan(&m.ID, &m.Channel, &m.At, &m.Sender, &m.Body, &m.CancelledAt); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
@@ -520,6 +615,18 @@ func (s *Store) DrainFanout(ctx context.Context) (FanoutStats, error) {
 		}
 		if i > 0 {
 			s.sleep(pace(i)) // 错峰: never land a burst as a burst
+		}
+		// Cancel guard (取消消息): the rows were claimed before the pacing
+		// sleeps, so re-check right before delivering — a cancel that lands
+		// mid-drain still wins.
+		var state string
+		var tombstone sql.NullInt64
+		if err := s.db.QueryRow(`SELECT f.state, m.cancelled_at
+			FROM fanout f JOIN messages m ON m.id = f.message_id
+			WHERE f.message_id = ? AND f.member = ?`, j.messageID, j.member).Scan(&state, &tombstone); err == nil &&
+			(state != "queued" || (tombstone.Valid && tombstone.Int64 > 0)) {
+			stats.Cancelled++
+			continue
 		}
 		// Crash-retry dedupe: if the fan-out mail is already in this member's
 		// inbox, just settle the row.
@@ -630,6 +737,13 @@ func (s *Store) ExportMarkdown(ref, path string) (string, error) {
 	fmt.Fprintf(&b, "- messages: %d (exported %s)\n\n", len(msgs),
 		time.UnixMilli(s.now()).Format("2006-01-02 15:04:05"))
 	for _, m := range msgs {
+		if m.CancelledAt > 0 {
+			// 取消墓碑：保留时间与发送方便于对账，正文不再渲染。
+			fmt.Fprintf(&b, "- %s — %s（已取消）\n",
+				time.UnixMilli(m.At).Format("2006-01-02 15:04:05"),
+				m.Sender)
+			continue
+		}
 		fmt.Fprintf(&b, "- %s — %s:\n  %s\n",
 			time.UnixMilli(m.At).Format("2006-01-02 15:04:05"),
 			m.Sender,

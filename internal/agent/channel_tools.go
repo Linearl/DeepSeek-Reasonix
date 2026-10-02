@@ -238,3 +238,59 @@ func (t channelSendTool) Execute(_ context.Context, args json.RawMessage) (strin
 	})
 	return string(out), nil
 }
+
+// ── channel_cancel (取消消息) ──────────────────────────────────────────────
+
+type channelCancelTool struct{ cfg SessionCollabConfig }
+
+// NewChannelCancelTool builds the retract half: tombstone the channel log and
+// stop every not-yet-delivered copy (本段增量, 20261002 派单工具集).
+func NewChannelCancelTool(cfg SessionCollabConfig) tool.Tool { return channelCancelTool{cfg: cfg} }
+
+func (channelCancelTool) Name() string { return "channel_cancel" }
+
+func (channelCancelTool) Description() string {
+	return "Cancel a message YOU previously sent to a chat channel (task 349): the channel history is marked cancelled (later channel_read / md exports show it as cancelled) and every not-yet-delivered copy is stopped before it reaches that member's mailbox. Copies already delivered into other members' mailboxes cannot be retracted — the mailbox belongs to the recipient; the tool reports how many were stopped vs already delivered. Only the original sender can cancel. Experimental."
+}
+
+func (channelCancelTool) Schema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"channel":{"type":"string","description":"Channel name or id."},"messageId":{"type":"string","description":"The channel message id (chm_…) to cancel."}},"required":["channel","messageId"]}`)
+}
+
+func (channelCancelTool) ReadOnly() bool { return false }
+
+func (t channelCancelTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
+	var p struct {
+		Channel   string `json:"channel"`
+		MessageID string `json:"messageId"`
+	}
+	if err := json.Unmarshal(args, &p); err != nil {
+		return "", fmt.Errorf("invalid args: %w", err)
+	}
+	if strings.TrimSpace(p.Channel) == "" || strings.TrimSpace(p.MessageID) == "" {
+		return "", fmt.Errorf("channel_cancel: channel and messageId are required")
+	}
+	caller := t.cfg.currentContactID()
+	if caller == "" {
+		return "", fmt.Errorf("channel_cancel: no session identity — call from a registered session")
+	}
+	store, err := channelStore(t.cfg)
+	if err != nil {
+		return "", err
+	}
+	defer store.Close()
+	res, err := store.Cancel(p.Channel, p.MessageID, caller)
+	if err != nil {
+		return "", err
+	}
+	out, _ := json.Marshal(map[string]any{
+		"channel":          p.Channel,
+		"messageId":        res.MessageID,
+		"cancelledAt":      res.CancelledAt,
+		"cancelledQueued":  res.CancelledQueued,
+		"alreadyDelivered": res.AlreadyDelivered,
+		"alreadyCancelled": res.AlreadyCancelled,
+		"note":             "pending fan-out stopped and history tombstoned; copies already delivered to member mailboxes are not retracted",
+	})
+	return string(out), nil
+}

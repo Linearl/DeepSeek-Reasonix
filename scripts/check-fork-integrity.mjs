@@ -512,10 +512,13 @@ const CHECKS = [
   { feature: "任务320 图标行入口三语 locale", file: "desktop/frontend/src/locales/zh.ts", patterns: ["sidebar.collabInbox"] },
   // 任务 349：群聊通道——channel 实体（SQLite+md 导出）+ 发布订阅展开单发
   // （复用 309 MailStore，铁律 8 无第二投递通道）+ per-recipient delivered/
-  // read + 429 治理（错峰/followup/小时上限）。锁实体层、三工具与注册。
+  // read + 429 治理（错峰/followup/小时上限）+ 取消消息（20261002 增量：
+  // 发送方墓碑 + 拦 queued + 在途 drain 投递前重查；已投递副本不追回）。
+  // 锁实体层、四工具与注册。
   { feature: "任务349 channel 实体+展开单发+429 治理", file: "internal/collabchannel/collabchannel.go", patterns: ["DrainFanout", "ErrHourlyCap", "ExportMarkdown", "s.mail.Deliver("] },
-  { feature: "任务349 三工具（查看/获取/发送）", file: "internal/agent/channel_tools.go", patterns: ["channel_list", "channel_read", "channel_send", "channelSpawn"] },
-  { feature: "任务349 三工具 boot 注册", file: "internal/boot/boot.go", patterns: ["NewChannelSendTool(collab)", "NewChannelReadTool(collab)"] },
+  { feature: "任务349 取消消息（墓碑+拦 queued+在途重查）", file: "internal/collabchannel/collabchannel.go", patterns: ["func (s *Store) Cancel(", "ErrNotSender", "state != \"queued\"", "cancelled_at"] },
+  { feature: "任务349 四工具（查看/获取/发送/取消）", file: "internal/agent/channel_tools.go", patterns: ["channel_list", "channel_read", "channel_send", "channel_cancel", "channelSpawn"] },
+  { feature: "任务349 四工具 boot 注册", file: "internal/boot/boot.go", patterns: ["NewChannelSendTool(collab)", "NewChannelReadTool(collab)", "NewChannelCancelTool(collab)"] },
   // 任务 448（384 组件层收尾 + 445 调研借鉴 B1/B3）：更早历史请求的闸收敛为
   // 「hasOlder + loading 两态」，四个入口共用 historyOlderGates 一份判定；触发
   // 半径改两视口预取。锚点锁共享谓词本体 + 四个调用点各自的接线——任何一个
