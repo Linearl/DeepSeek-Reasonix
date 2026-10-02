@@ -987,6 +987,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalAutonomousIdleTerminate(enabled: boolean): Promise<void>;
   SetExperimentalLoopStreakNote(enabled: boolean): Promise<void>;
   SetExperimentalEventWaitRecheck(enabled: boolean): Promise<void>;
+  // Task 449: the merged orphan switch (folds task 244 B5 lease reclaim +
+  // B4 recovery sweep). The two pre-449 setters stay declared because the
+  // generated bindings still export them; both delegate to the merged key.
+  SetExperimentalOrphanHandling(enabled: boolean): Promise<void>;
   SetExperimentalOrphanLeaseReclaim(enabled: boolean): Promise<void>;
   SetExperimentalRecoveryOrphanSweep(enabled: boolean): Promise<void>;
   SetExperimentalModelCapabilityFilter(enabled: boolean): Promise<void>;
@@ -5386,6 +5390,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalAutonomousIdleTerminate() {},
     async SetExperimentalLoopStreakNote() {},
     async SetExperimentalEventWaitRecheck() {},
+    async SetExperimentalOrphanHandling() {},
     async SetExperimentalOrphanLeaseReclaim() {},
     async SetExperimentalRecoveryOrphanSweep() {},
     async SetExperimentalModelCapabilityFilter() {},

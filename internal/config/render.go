@@ -209,9 +209,15 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "experimental_loop_streak_note = %v   # desktop: settings-view mirror of [agent] experimental_loop_streak_note (task 244 B2)\n", c.Desktop.ExperimentalLoopStreakNote)
 		fmt.Fprintf(&b, "experimental_event_wait_recheck = %v   # desktop: settings-view mirror of [agent] experimental_event_wait_recheck (task 244 B3)\n", c.Desktop.ExperimentalEventWaitRecheck)
 
-		fmt.Fprintf(&b, "experimental_orphan_lease_reclaim = %v   # desktop: settings-view mirror of [agent] experimental_orphan_lease_reclaim (task 244 B5)\n", c.Desktop.ExperimentalOrphanLeaseReclaim)
+		fmt.Fprintf(&b, "experimental_orphan_handling = %v   # desktop: settings-view mirror of [agent] experimental_orphan_handling (task 449: merged 244 B5 lease reclaim + B4 recovery sweep)\n", c.Desktop.ExperimentalOrphanHandling)
 
-		fmt.Fprintf(&b, "experimental_recovery_orphan_sweep = %v   # desktop: settings-view mirror of [agent] experimental_recovery_orphan_sweep (task 244 B4)\n", c.Desktop.ExperimentalRecoveryOrphanSweep)
+		// Task 449: legacy keys are read-only (folded into
+		// experimental_orphan_handling at load) but still rendered so an older
+		// binary reading this file sees the migrated-off state instead of a
+		// stale on.
+		fmt.Fprintf(&b, "experimental_orphan_lease_reclaim = %v   # desktop: legacy key (task 244 B5), migrated into experimental_orphan_handling (task 449)\n", c.Desktop.ExperimentalOrphanLeaseReclaim)
+
+		fmt.Fprintf(&b, "experimental_recovery_orphan_sweep = %v   # desktop: legacy key (task 244 B4), migrated into experimental_orphan_handling (task 449)\n", c.Desktop.ExperimentalRecoveryOrphanSweep)
 		fmt.Fprintf(&b, "experimental_model_capability_filter = %v   # desktop: settings-view mirror of [agent] experimental_model_capability_filter (task 244 B9)\n", c.Desktop.ExperimentalModelCapabilityFilter)
 		fmt.Fprintf(&b, "experimental_runtime_reuse = %v   # desktop: settings-view mirror of [agent] experimental_runtime_reuse (task 363A)\n", c.Desktop.ExperimentalRuntimeReuse)
 		fmt.Fprintf(&b, "experimental_image_dedup = %q   # desktop: settings-view mirror of [agent] experimental_image_dedup (task 373-R1/R1.1: off|first|all)\n", c.Desktop.ExperimentalImageDedup)
@@ -437,9 +443,14 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "experimental_loop_streak_note = %v   # task 244 B2: bounded neutral Continue. note instead of an immediate second text-repeat pause\n", c.Agent.ExperimentalLoopStreakNote)
 	fmt.Fprintf(&b, "experimental_event_wait_recheck = %v   # task 244 B3: re-evaluate the event_wait checker before returning (recheckSatisfied field)\n", c.Agent.ExperimentalEventWaitRecheck)
 
-	fmt.Fprintf(&b, "experimental_orphan_lease_reclaim = %v   # task 244 B5: reclaim a session lease whose recorded owner process is dead (live foreign owners still respected)\n", c.Agent.ExperimentalOrphanLeaseReclaim)
+	fmt.Fprintf(&b, "experimental_orphan_handling = %v   # task 449: merged orphan switch — B5 reclaim a session lease whose recorded owner process is dead (live foreign owners still respected) + B4 settle recovery-store operations past the covered durable sequence at open\n", c.Agent.ExperimentalOrphanHandling)
 
-	fmt.Fprintf(&b, "experimental_recovery_orphan_sweep = %v   # task 244 B4: settle recovery-store operations past the covered durable sequence at open\n", c.Agent.ExperimentalRecoveryOrphanSweep)
+	// Task 449: legacy keys stay rendered (post-migration they read false) so
+	// the render face keeps the pinned task-244 round-trip and an older binary
+	// never sees a stale on.
+	fmt.Fprintf(&b, "experimental_orphan_lease_reclaim = %v   # task 244 B5: legacy key, migrated into experimental_orphan_handling (task 449)\n", c.Agent.ExperimentalOrphanLeaseReclaim)
+
+	fmt.Fprintf(&b, "experimental_recovery_orphan_sweep = %v   # task 244 B4: legacy key, migrated into experimental_orphan_handling (task 449)\n", c.Agent.ExperimentalRecoveryOrphanSweep)
 	fmt.Fprintf(&b, "experimental_model_capability_filter = %v   # task 244 B9: reject a per-task model that lacks a capability the task needs (explained rejection instead of silent degradation)\n", c.Agent.ExperimentalModelCapabilityFilter)
 	// Task 363A: runtime assembly reuse pool. Unconditional render —
 	// omit-on-default would let a hand-added line vanish on the next save.

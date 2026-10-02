@@ -1803,9 +1803,8 @@ type ExperimentFeatureId =
   | "autonomousIdleTerminate"
   | "loopStreakNote"
   | "eventWaitRecheck"
-  // Task 244 B5/B4 (batch 2).
-  | "orphanLeaseReclaim"
-  | "recoveryOrphanSweep"
+  // Task 244 B5/B4, merged into one switch by task 449.
+  | "orphanHandling"
   // Task 244 B9 (batch 4, final).
   | "modelCapabilityFilter"
   // Task 363A: runtime assembly reuse pool.
@@ -1976,8 +1975,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     // Task 280: re-homed from the permissions area (task 280; inverted bind —
     // `on` here means optimistic ON = safety check OFF, default off).
     { id: "optimisticParallel", group: "efficiency", label: t("settings.optimisticParallel"), on: Boolean(s.sandbox?.optimisticWrite) },
-    { id: "orphanLeaseReclaim", group: "misc", label: t("settings.orphanLeaseReclaim"), on: Boolean(s.experimentalOrphanLeaseReclaim) },
-    { id: "recoveryOrphanSweep", group: "misc", label: t("settings.recoveryOrphanSweep"), on: Boolean(s.experimentalRecoveryOrphanSweep) },
+    // Task 449: the task-244 B5 lease reclaim + B4 recovery sweep are one
+    // switch now — the entry light reads the single merged key.
+    { id: "orphanHandling", group: "misc", label: t("settings.orphanHandling"), on: Boolean(s.experimentalOrphanHandling) },
     { id: "modelCapabilityFilter", group: "misc", label: t("settings.modelCapabilityFilter"), on: Boolean(s.experimentalModelCapabilityFilter) },
     { id: "runtimeReuse", group: "misc", label: t("settings.runtimeReuse"), on: Boolean(s.experimentalRuntimeReuse) },
     { id: "imageDedup", group: "misc", label: t("settings.imageDedup"), on: (s.experimentalImageDedup || "off") !== "off" },
@@ -2861,40 +2861,20 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
           )}
 
 
-          {selected === "orphanLeaseReclaim" && (
+          {selected === "orphanHandling" && (
             <>
-              <SettingsField label={t("settings.orphanLeaseReclaim")} hint={t("settings.orphanLeaseReclaimHint")} icon={<Sparkles size={18} />}>
+              <SettingsField label={t("settings.orphanHandling")} hint={t("settings.orphanHandlingHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
                       key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalOrphanLeaseReclaim) === on ? " set-seg__btn--on" : ""}`}
+                      className={`set-seg__btn${Boolean(s.experimentalOrphanHandling) === on ? " set-seg__btn--on" : ""}`}
                       disabled={busy}
                       onClick={() => void apply(async () => {
-                        await app.SetExperimentalOrphanLeaseReclaim(on);
+                        await app.SetExperimentalOrphanHandling(on);
                       })}
                     >
-                      {t(on ? "settings.orphanLeaseReclaim.on" : "settings.orphanLeaseReclaim.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-            </>
-          )}
-          {selected === "recoveryOrphanSweep" && (
-            <>
-              <SettingsField label={t("settings.recoveryOrphanSweep")} hint={t("settings.recoveryOrphanSweepHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalRecoveryOrphanSweep) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalRecoveryOrphanSweep(on);
-                      })}
-                    >
-                      {t(on ? "settings.recoveryOrphanSweep.on" : "settings.recoveryOrphanSweep.off")}
+                      {t(on ? "settings.orphanHandling.on" : "settings.orphanHandling.off")}
                     </button>
                   ))}
                 </SettingsOptions>

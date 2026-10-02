@@ -420,9 +420,9 @@ type SettingsView struct {
 	GoMemLimitMB               int  `json:"goMemLimitMB"`
 	ExperimentalSessionCollab  bool `json:"experimentalSessionCollab"`
 	ExperimentalAutoLoadOlder  bool `json:"experimentalAutoLoadOlder"`
-	// Task 244 B5/B4: settings-view mirrors of the [agent] runtime flags.
-	ExperimentalOrphanLeaseReclaim    bool   `json:"experimentalOrphanLeaseReclaim"`
-	ExperimentalRecoveryOrphanSweep   bool   `json:"experimentalRecoveryOrphanSweep"`
+	// Task 449: merged orphan switch (settings-view mirror of [agent]; folds
+	// the task 244 B5 lease reclaim + B4 recovery sweep into one key).
+	ExperimentalOrphanHandling        bool   `json:"experimentalOrphanHandling"`
 	ExperimentalModelCapabilityFilter bool   `json:"experimentalModelCapabilityFilter"`
 	ExperimentalRuntimeReuse          bool   `json:"experimentalRuntimeReuse"`
 	ExperimentalImageDedup            string `json:"experimentalImageDedup"`
@@ -606,9 +606,9 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalAutoLoadOlder exposes the scroll-driven history trigger (fork
 	// task 160). The runtime flag lives on [agent]; this view mirrors it.
 	ExperimentalAutoLoadOlder bool `json:"experimentalAutoLoadOlder"`
-	// Task 244 B5/B4: settings-view mirrors of the [agent] runtime flags.
-	ExperimentalOrphanLeaseReclaim    bool `json:"experimentalOrphanLeaseReclaim"`
-	ExperimentalRecoveryOrphanSweep   bool `json:"experimentalRecoveryOrphanSweep"`
+	// Task 449: merged orphan switch (mirror of [agent]; folds the task 244
+	// B5 lease reclaim + B4 recovery sweep into one key).
+	ExperimentalOrphanHandling        bool `json:"experimentalOrphanHandling"`
 	ExperimentalModelCapabilityFilter bool `json:"experimentalModelCapabilityFilter"`
 	ExperimentalRuntimeReuse          bool `json:"experimentalRuntimeReuse"`
 	// ExperimentalImageDedup is the task-373-R1/R1.1 three-position image
@@ -1366,8 +1366,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalAutonomousIdleTerminate = cfg.Desktop.ExperimentalAutonomousIdleTerminate || cfg.Agent.ExperimentalAutonomousIdleTerminate
 		view.ExperimentalLoopStreakNote = cfg.Desktop.ExperimentalLoopStreakNote || cfg.Agent.ExperimentalLoopStreakNote
 		view.ExperimentalEventWaitRecheck = cfg.Desktop.ExperimentalEventWaitRecheck || cfg.Agent.ExperimentalEventWaitRecheck
-		view.ExperimentalOrphanLeaseReclaim = cfg.Desktop.ExperimentalOrphanLeaseReclaim || cfg.Agent.ExperimentalOrphanLeaseReclaim
-		view.ExperimentalRecoveryOrphanSweep = cfg.Desktop.ExperimentalRecoveryOrphanSweep || cfg.Agent.ExperimentalRecoveryOrphanSweep
+		view.ExperimentalOrphanHandling = cfg.Desktop.ExperimentalOrphanHandling || cfg.Agent.ExperimentalOrphanHandling
 
 		view.ExperimentalModelCapabilityFilter = cfg.Desktop.ExperimentalModelCapabilityFilter || cfg.Agent.ExperimentalModelCapabilityFilter
 		view.ExperimentalRuntimeReuse = cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse
@@ -1500,9 +1499,8 @@ func (a *App) Settings() SettingsView {
 		ExperimentalEventWaitRecheck:        cfg.Desktop.ExperimentalEventWaitRecheck || cfg.Agent.ExperimentalEventWaitRecheck,
 		// Task 163: usage card switch readback.
 		ExperimentalOpenCodeGoUsage: cfg.Agent.ExperimentalOpenCodeGoUsage,
-		// Task 244 batch 2: orphan reclaim / sweep switch readback.
-		ExperimentalOrphanLeaseReclaim:  cfg.Desktop.ExperimentalOrphanLeaseReclaim || cfg.Agent.ExperimentalOrphanLeaseReclaim,
-		ExperimentalRecoveryOrphanSweep: cfg.Desktop.ExperimentalRecoveryOrphanSweep || cfg.Agent.ExperimentalRecoveryOrphanSweep,
+		// Task 449: merged orphan switch readback (folds task 244 B5 + B4).
+		ExperimentalOrphanHandling: cfg.Desktop.ExperimentalOrphanHandling || cfg.Agent.ExperimentalOrphanHandling,
 		// Task 244 batch 4: B9 model capability filter.
 		ExperimentalModelCapabilityFilter: cfg.Desktop.ExperimentalModelCapabilityFilter || cfg.Agent.ExperimentalModelCapabilityFilter,
 		ExperimentalRuntimeReuse:          cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse,

@@ -802,11 +802,38 @@ func normalizeConfigForEdit(cfg *Config) bool {
 	normalizeDesktopOfficialProviderAccess(cfg)
 	normalizeOfficialDeepSeekModels(cfg)
 	migrateBillingDisplayCurrency(cfg)
+	changed = migrateOrphanHandlingMerge(cfg) || changed
 	freezeProviderBillingCurrencies(cfg)
 	applyDeepSeekOfficialDefaultPricing(cfg)
 	backfillDeepSeekOfficialPrices(cfg)
 	normalizeEffortConfig(cfg)
 	return changed
+}
+
+// migrateOrphanHandlingMerge folds the two legacy task-244 orphan keys into
+// the single task-449 experimental_orphan_handling switch. Any legacy true
+// means the user had that half of the orphan flow enabled before the merge, so
+// the merged switch reads on; the legacy fields are then cleared so an
+// explicit off (which only writes the merged key) can never be resurrected by
+// a stale legacy true on the next load. Returns true when anything changed so
+// loadForEditStrict can persist the folded state.
+func migrateOrphanHandlingMerge(c *Config) bool {
+	if c == nil {
+		return false
+	}
+	// A bool cannot distinguish "absent" from false, so only legacy true carries
+	// intent: either half on = the merged switch on (both halves follow it).
+	if !(c.Desktop.ExperimentalOrphanLeaseReclaim || c.Agent.ExperimentalOrphanLeaseReclaim ||
+		c.Desktop.ExperimentalRecoveryOrphanSweep || c.Agent.ExperimentalRecoveryOrphanSweep) {
+		return false
+	}
+	c.Desktop.ExperimentalOrphanHandling = true
+	c.Agent.ExperimentalOrphanHandling = true
+	c.Desktop.ExperimentalOrphanLeaseReclaim = false
+	c.Agent.ExperimentalOrphanLeaseReclaim = false
+	c.Desktop.ExperimentalRecoveryOrphanSweep = false
+	c.Agent.ExperimentalRecoveryOrphanSweep = false
+	return true
 }
 
 // normalizeRetiredMultiThresholdCompaction clears retired multi-threshold keys

@@ -117,15 +117,16 @@ func NewSessionV4Bridge(root string) (*SessionV4Bridge, error) {
 	if root == "" {
 		return nil, fmt.Errorf("session v4 bridge: empty root")
 	}
-	// Task 244 B4: call-time read (S4) — the open-path orphan sweep follows
-	// experimental_recovery_orphan_sweep without a restart; nil-safe by design
+	// Task 244 B4 + task 449: call-time read (S4) — the open-path orphan sweep
+	// follows the merged experimental_orphan_handling switch (config.Load folds
+	// the legacy task-244 keys into it) without a restart; nil-safe by design
 	// (a config load failure keeps the switch off).
 	session.SetOrphanSweepProbe(func() bool {
 		cfg, cerr := config.Load()
 		if cerr != nil {
 			return false
 		}
-		return cfg.Agent.ExperimentalRecoveryOrphanSweep || cfg.Desktop.ExperimentalRecoveryOrphanSweep
+		return cfg.Agent.ExperimentalOrphanHandling || cfg.Desktop.ExperimentalOrphanHandling
 	})
 	svc, err := session.NewService("desktop-v4-bridge", session.NewFilesystemPersistence(root))
 	if err != nil {

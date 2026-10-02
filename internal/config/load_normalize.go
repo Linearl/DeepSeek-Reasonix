@@ -21,6 +21,7 @@ func normalizeLoadedConfig(cfg *Config) error {
 	normalizeDesktopOfficialProviderAccess(cfg)
 	normalizeOfficialDeepSeekModels(cfg)
 	migrateBillingDisplayCurrency(cfg)
+	migrateOrphanHandlingMerge(cfg)
 	freezeProviderBillingCurrencies(cfg)
 	applyDeepSeekOfficialDefaultPricing(cfg)
 	backfillDeepSeekOfficialPrices(cfg)

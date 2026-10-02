@@ -153,8 +153,12 @@ type DesktopConfig struct {
 	ExperimentalLoopStreakNote          bool `toml:"experimental_loop_streak_note"`
 	ExperimentalEventWaitRecheck        bool `toml:"experimental_event_wait_recheck"`
 
-	// ExperimentalOrphanLeaseReclaim / ExperimentalRecoveryOrphanSweep are the
-	// settings-view mirrors for the [agent] runtime flags of task 244 B5/B4.
+	// ExperimentalOrphanHandling is the settings-view mirror for the [agent]
+	// merged orphan switch (task 449; folds task 244 B5 lease reclaim + B4
+	// recovery sweep into one).
+	ExperimentalOrphanHandling bool `toml:"experimental_orphan_handling"`
+	// Legacy task-244 keys: READ-ONLY, migrated into
+	// experimental_orphan_handling at load (task 449), never written back.
 	ExperimentalOrphanLeaseReclaim  bool `toml:"experimental_orphan_lease_reclaim"`
 	ExperimentalRecoveryOrphanSweep bool `toml:"experimental_recovery_orphan_sweep"`
 

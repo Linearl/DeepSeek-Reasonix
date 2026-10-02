@@ -475,14 +475,23 @@ func (a *App) SetExperimentalEventWaitRecheck(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalEventWaitRecheck(enabled) })
 }
 
-// SetExperimentalOrphanLeaseReclaim toggles orphan lease takeover (task 244 B5).
-// Read at call time by the reclaim decision — no restart needed.
+// SetExperimentalOrphanHandling toggles the merged orphan switch (task 449):
+// both the lease reclaim (task 244 B5) and the recovery-store sweep (B4)
+// follow this one key. Read at call time — no restart needed.
+func (a *App) SetExperimentalOrphanHandling(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalOrphanHandling(enabled) })
+}
+
+// SetExperimentalOrphanLeaseReclaim is the pre-449 binding kept as a delegate
+// (the generated wails surface still exports it); it toggles the merged
+// orphan switch now.
 func (a *App) SetExperimentalOrphanLeaseReclaim(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalOrphanLeaseReclaim(enabled) })
 }
 
-// SetExperimentalRecoveryOrphanSweep toggles the recovery-store open sweep
-// (task 244 B4). Read at call time by the injected probe — no restart needed.
+// SetExperimentalRecoveryOrphanSweep is the pre-449 binding kept as a delegate
+// (the generated wails surface still exports it); it toggles the merged
+// orphan switch now.
 func (a *App) SetExperimentalRecoveryOrphanSweep(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalRecoveryOrphanSweep(enabled) })
 }

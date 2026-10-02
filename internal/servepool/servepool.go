@@ -73,7 +73,8 @@ type SessionEntry struct {
 	// is read as a live holder even though it may be a dead process's leftover
 	// lease -- the reader stays conservative and refuses rather than stealing
 	// from something that might still be alive. Users resolve it by hand, or
-	// on the desktop side via experimental_orphan_lease_reclaim (task 244 B5),
+	// on the desktop side via experimental_orphan_handling (task 449, which
+	// merged experimental_orphan_lease_reclaim / task 244 B5 into one switch),
 	// which reclaims only after the recorded PID is proven dead. "" means no
 	// readable lease metadata: free to attempt, with the OS file lock as the
 	// final arbiter.
