@@ -15,16 +15,17 @@ import (
 )
 
 const (
-	// defaultHandshakeTimeout bounds spawn + hello in Start. The 15s health
-	// ping loop and its env-tunable thresholds are S1c; this only covers the
-	// first handshake so a wedged spawn cannot stall a boot decision.
+	// defaultHandshakeTimeout bounds spawn + hello in Start. The health loop's
+	// own ping budget is separate (Options.HealthTimeout); this only covers
+	// the first handshake so a wedged spawn cannot stall a boot decision.
 	defaultHandshakeTimeout = 10 * time.Second
 
 	// subprocess close budgets, mirroring the plugin stdio transport's
-	// graceful/kill split. The full §4 shutdown state machine (in-flight
-	// ToolCall drain, orphan watchdog) is S1c; these bounds keep S1a Close
-	// from wedging a caller.
-	gracefulCloseWait = 750 * time.Millisecond
+	// graceful/kill split. gracefulCloseWait matches the server's own
+	// gracefulDrainBudget (design §4: 在途 ≤5s then kill) so an acknowledged
+	// base.shutdown gets its full drain before the tree is killed; the kill
+	// budget then bounds a wedged child so Close can never hang a caller.
+	gracefulCloseWait = 5 * time.Second
 	killCloseWait     = 5 * time.Second
 )
 
@@ -60,43 +61,40 @@ type Options struct {
 	// pipe pairs; S1c crash-injection reuses it). It returns the framed
 	// transport and a teardown func that is idempotent.
 	Dial func(ctx context.Context) (io.ReadWriteCloser, func(), error)
+
+	// Lifecycle thresholds (design §4). Zero falls back to the
+	// REASONIX_BASE_HEALTH_* environment variable, then to the design
+	// defaults; the fields exist so tests can drive the state machine without
+	// exporting process-wide env vars.
+	HealthInterval     time.Duration // ping period while ready (default 15s)
+	HealthTimeout      time.Duration // one ping's budget (default 5s)
+	HealthMaxMisses    int           // consecutive misses that kill it (default 2)
+	RestartBaseDelay   time.Duration // first backoff step (default 1s)
+	RestartMaxDelay    time.Duration // backoff cap (default 30s)
+	RestartMaxFailures int           // failures before degraded_inline (default 5)
+	DegradedRetry      time.Duration // probe period while degraded (default 5m)
 }
 
 // Start returns the BaseClient per R1 and never fails:
 //
-//   - switch off (the default): inline client, zero side effects;
-//   - switch on: spawn the subprocess, run the hello handshake; any failure
-//     (spawn error, timeout, protocol/version mismatch) logs `boot: base
-//     fallback` and returns inline — the pre-S1 behaviour;
-//   - success logs `boot: base remote` (decision D5's grep-able family).
+//   - switch off (the default): inline client, zero side effects (no manager,
+//     no goroutine, no log line);
+//   - switch on: a Manager spawns the subprocess, runs the hello handshake,
+//     and then supervises it (design §4/D5) — health pings, exponential-backoff
+//     restart, degraded fallback — returning a refcounted view whose Mode
+//     follows the manager's state;
+//   - any spawn/handshake failure logs `boot: base fallback` and leaves the
+//     view inline (the pre-S1 behaviour); success logs `boot: base remote`.
 //
-// Restart/backoff/degraded transitions and the periodic health loop are S1c
-// (TODO); the S1a manager is one-shot: it decides once, inline or remote.
+// The view owns one Manager reference: its Close tears the subprocess down
+// (design §4 shutdown). Callers that want to share one subprocess across N
+// builds hold a Manager and Acquire views from it instead (S1c: the S1b
+// "N boots = N subprocesses" convergence).
 func Start(ctx context.Context, opts Options) BaseClient {
-	inline := InlineBaseClient{ServerVersion: opts.ServerVersion, Surface: opts.Surface}
 	if !opts.Enabled {
-		return inline
+		return InlineBaseClient{ServerVersion: opts.ServerVersion, Surface: opts.Surface}
 	}
-	log := opts.Log
-	if log == nil {
-		log = slog.Default()
-	}
-	timeout := opts.HandshakeTimeout
-	if timeout <= 0 {
-		timeout = defaultHandshakeTimeout
-	}
-	hsCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	remote, err := dialAndHello(hsCtx, opts)
-	if err != nil {
-		log.Warn("boot: base fallback", "reason", err.Error())
-		return inline
-	}
-	log.Info("boot: base remote",
-		"server_version", remote.hello.ServerVersion,
-		"protocol", remote.hello.ProtocolVersion)
-	return remote
+	return NewManager(ctx, opts).Acquire()
 }
 
 // dialAndHello spawns (or dials) the base and completes the handshake. On any

@@ -83,6 +83,10 @@ func newGateRemoteBase(t *testing.T, surface baseproc.ToolSurface) baseproc.Base
 	if client.Mode() != baseproc.ModeRemote {
 		t.Fatalf("Start mode = %q, want remote (dial+hello must succeed)", client.Mode())
 	}
+	// S1c: the client is a lifecycle-managed view — it owns a supervision
+	// goroutine and a backoff loop. Release it before the pipes go away
+	// (cleanups run LIFO) or goleak sees the supervisor still parked.
+	t.Cleanup(func() { _ = client.Close() })
 	return client
 }
 

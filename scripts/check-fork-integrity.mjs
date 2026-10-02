@@ -559,6 +559,14 @@ const CHECKS = [
   { feature: "任务398 读端投影 keep-first", file: "internal/session/projection.go", patterns: ["a repeat already on disk keeps the id's", "return nil"] },
   { feature: "任务398 历史/搜索索引 keep-first", file: "internal/session/history_index.go", patterns: ["repeated message/complete keeps the id's first record", "state.positions[strings.TrimSpace(body.Message.ID)]"] },
   { feature: "任务398 checkpoint 携带 id 集+版本3", file: "internal/session/recovery_store.go", patterns: ["MessageIDs []string", "recoveryProjectionVersion = 3", "state.messageIDs.admit(commit)"] },
+
+  // ── S1 底座常驻子进程（设计 2026-09-30，§10 S1c 生命周期收口）──────────
+  // health/退避重启/degraded 状态机 + 托管视图；任一道被顶掉，矩阵 C6 的
+  // 「子进程死则全体 inline」就没有落点，开关 on 会退回 S1a 的 one-shot。
+  { feature: "S1c base 生命周期状态机（D5）", file: "internal/baseproc/lifecycle.go", patterns: ["type Manager struct", "degraded_inline", "boot: base dying", "func (m *Manager) markDead("] },
+  { feature: "S1c 心跳检测与退避重启", file: "internal/baseproc/lifecycle.go", patterns: ["REASONIX_BASE_HEALTH_INTERVAL", "func (m *Manager) healthTick(", "func (m *Manager) restartTick(", "func (m *Manager) backoffLocked("] },
+  { feature: "S1c 托管视图（Mode 跟随状态）", file: "internal/baseproc/lifecycle.go", patterns: ["type ManagedClient struct", "func (c *ManagedClient) Mode()", "errClientClosed"] },
+  { feature: "S1c Start 托管与生命周期阈值选项", file: "internal/baseproc/manager.go", patterns: ["NewManager(ctx, opts).Acquire()", "RestartMaxFailures", "gracefulCloseWait = 5 * time.Second"] },
 ];
 
 let failed = 0;
