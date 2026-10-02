@@ -1791,6 +1791,7 @@ type ExperimentFeatureId =
   | "eventsRotation"
   | "splitView"
   | "todoSidebar"
+  | "promptHistoryPicker"
   | "feedback"
   | "localServer"
   | "pathRules"
@@ -1991,6 +1992,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "restartUpdate", group: "debug", label: t("settings.restartUpdate"), on: Boolean(s.experimentalRestartUpdate) },
     { id: "splitView", group: "ui", label: t("settings.splitView"), on: Boolean(s.experimentalSplitView) },
     { id: "todoSidebar", group: "ui", label: t("settings.todoSidebar"), on: Boolean(s.experimentalTodoSidebar) },
+    // Task 261: composer history picker + narrowed ArrowUp (upstream #10425).
+    { id: "promptHistoryPicker", group: "ui", label: t("settings.promptHistoryPicker"), on: Boolean(s.experimentalPromptHistoryPicker) },
     { id: "autoLoadOlder", group: "ui", label: t("settings.autoLoadOlder"), on: Boolean(s.experimentalAutoLoadOlder) },
     { id: "cacheTuning", group: "storage", label: t("settings.cacheTuning"), on: Boolean(s.experimentalCacheTuning) },
     { id: "sessionStorage", group: "storage", label: t("settings.sessionStorage"), on: (s.sessionStorage ?? "v3_only") !== "v3_only" },
@@ -2524,6 +2527,27 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
               </SettingsField>
             </>
           )}
+              {selected === "promptHistoryPicker" && (
+                <SettingsField label={t("settings.promptHistoryPicker")} hint={t("settings.promptHistoryPickerHint")} icon={<Sparkles size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.experimentalPromptHistoryPicker) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(async () => {
+                          // Boot snapshot (task 261): the composer reads the flag
+                          // once at startup; saving raises the restart banner.
+                          await app.SetExperimentalPromptHistoryPicker(on);
+                          setRestartNeeded(true);
+                        })}
+                      >
+                        {t(on ? "settings.promptHistoryPicker.on" : "settings.promptHistoryPicker.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+              )}
           {selected === "feedback" && (
             <>
               <SettingsField label={t("settings.feedback")} hint={t("settings.feedbackHint")} icon={<Sparkles size={18} />}>

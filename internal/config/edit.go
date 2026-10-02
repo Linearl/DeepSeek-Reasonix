@@ -739,6 +739,15 @@ func (c *Config) SetExperimentalTodoSidebar(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalPromptHistoryPicker gates the composer history-navigation
+// safety rework (task 261): clock-icon history picker + narrowed ArrowUp
+// trigger. Opt-in: with it off the composer keeps the legacy behaviour. The
+// desktop snapshots the flag at boot, so a change needs a restart to be seen.
+func (c *Config) SetExperimentalPromptHistoryPicker(enabled bool) error {
+	c.Desktop.ExperimentalPromptHistoryPicker = enabled
+	return nil
+}
+
 // SetExperimentalCompactionParallel toggles the parallel chunked-compaction
 // fragments (task 265). It ships on (existing behaviour given an off switch);
 // off falls back to the upstream serial summarizer.

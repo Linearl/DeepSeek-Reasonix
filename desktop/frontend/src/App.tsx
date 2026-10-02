@@ -734,6 +734,8 @@ export default function App() {
   // Task 259: todo-sidebar experiment, snapshotted at boot — a mid-session
   // config change only takes effect after a restart, same as the flag above.
   const [todoSidebarEnabled, setTodoSidebarEnabled] = useState(false);
+  // Task 261: composer history picker + narrowed ArrowUp (boot snapshot).
+  const [promptHistoryPickerEnabled, setPromptHistoryPickerEnabled] = useState(false);
   // Task 259: per-tab visibility inside the right dock; applies live.
   const [hiddenDockTabs, setHiddenDockTabs] = useState<readonly DockTabId[]>(loadHiddenDockTabs);
   useEffect(() => onHiddenDockTabsChange(setHiddenDockTabs), []);
@@ -1193,7 +1195,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1215,6 +1217,8 @@ export default function App() {
       // Task 259: the todo sidebar is a boot snapshot — the flag read here is
       // the one this process runs with until the next restart.
       setTodoSidebarEnabled(Boolean(settings.experimentalTodoSidebar));
+      // Task 261: composer history picker + narrowed ArrowUp, same boot snapshot.
+      setPromptHistoryPickerEnabled(Boolean(settings.experimentalPromptHistoryPicker));
       // Task 318.3: draft persistence gate — off (default) means no reads and
       // no writes for the whole session; flips live on the settings refresh.
       setComposerDraftPersistenceEnabled(Boolean(settings.experimentalComposerDraft));
@@ -1231,7 +1235,7 @@ export default function App() {
       });
       // One line per startup so a missing rail entry can be traced from desktop.log
       // instead of guessed at (the switches read back correctly in config.toml).
-      reportFrontendLog("desktop-prefs", "experiment flags", `restartUpdate=${Boolean(settings.experimentalRestartUpdate)} sessionMonitor=${Boolean(settings.experimentalSessionMonitor)} splitView=${Boolean(settings.experimentalSplitView)} feedback=${Boolean(settings.experimentalFeedback)} todoSidebar=${Boolean(settings.experimentalTodoSidebar)}`);
+      reportFrontendLog("desktop-prefs", "experiment flags", `restartUpdate=${Boolean(settings.experimentalRestartUpdate)} sessionMonitor=${Boolean(settings.experimentalSessionMonitor)} splitView=${Boolean(settings.experimentalSplitView)} feedback=${Boolean(settings.experimentalFeedback)} todoSidebar=${Boolean(settings.experimentalTodoSidebar)} historyPicker=${Boolean(settings.experimentalPromptHistoryPicker)}`);
       setStartupUpdateChecksEnabled(settings.checkUpdates !== false);
       setStatusBarStyle(settings.statusBarStyle === "text" ? "text" : "icon");
       // Task 262: with the quick-commands gate off the composer menu hides by
@@ -5286,6 +5290,7 @@ export default function App() {
               subagentPolicy={state.meta?.subagentPolicy}
               onSetSubagentPolicy={applySubagentPolicy}
               quickCommands={quickCommands}
+              historyPickerEnabled={promptHistoryPickerEnabled}
               autopilotEnabled={autopilotEnabled}
               onInsertQuickCommand={insertQuickCommand}
               turnPhase={state.turnPhase}

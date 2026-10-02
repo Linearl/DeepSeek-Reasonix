@@ -2358,6 +2358,8 @@ export interface DesktopStartupSettingsView {
   experimentalFeedbackNudge?: boolean;
   /** Todo-sidebar experiment switch (task 259); off unless the user opts in; boot snapshot. */
   experimentalTodoSidebar?: boolean;
+  /** Composer history picker + narrowed ArrowUp (task 261); off by default; boot snapshot. */
+  experimentalPromptHistoryPicker?: boolean;
   /** Task 265 lab intake: nil-means-on switches resolved server-side; boot snapshots. */
   experimentalCompactionParallel?: boolean;
   experimentalContextBudget?: boolean;

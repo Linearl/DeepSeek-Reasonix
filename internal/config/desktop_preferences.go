@@ -101,6 +101,13 @@ type DesktopConfig struct {
 	// the extra tab plus the tab-visibility and wrap settings stay opt-in. The
 	// flag is snapshotted at boot, so changes take effect after a restart.
 	ExperimentalTodoSidebar bool `toml:"experimental_todo_sidebar"`
+	// ExperimentalPromptHistoryPicker gates the composer history-navigation
+	// safety rework (task 261, upstream #10425): the clock-icon history picker
+	// plus the narrowed plain-ArrowUp trigger (up enters history only from an
+	// empty composer or while already browsing). It ships off: with it off the
+	// composer keeps the exact legacy ArrowUp/ArrowDown behaviour. The flag is
+	// snapshotted at boot, so changes take effect after a restart.
+	ExperimentalPromptHistoryPicker bool `toml:"experimental_prompt_history_picker"`
 	// Task 265 (lab intake): three render-surface features ship ON via
 	// nil-means-on pointers — existing behaviour getting an off switch, so the
 	// default must not regress anyone. Each is a pure frontend gate.

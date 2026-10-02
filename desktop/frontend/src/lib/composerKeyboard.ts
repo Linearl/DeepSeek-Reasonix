@@ -130,6 +130,11 @@ export interface PromptHistoryEligibility {
   selectionStart: number | null;
   selectionEnd: number | null;
   historyIndex: number;
+  // Task 261 (upstream #10425): narrowed plain-ArrowUp trigger. Default off =
+  // the legacy behaviour (caret at position 0 starts history). On: up enters
+  // history only from an EMPTY composer or while already browsing, so editing
+  // multi-line text and pressing ArrowUp always just moves the caret.
+  upStartsOnlyFromEmpty?: boolean;
 }
 
 export function isFnKeyEvent(event: PromptHistoryKeyLike): boolean {
@@ -171,6 +176,9 @@ export function canUsePromptHistory(options: PromptHistoryEligibility): boolean 
   if (selectionStart !== selectionEnd) return false;
 
   if (direction === "up") {
+    if (options.upStartsOnlyFromEmpty) {
+      return historyIndex >= 0 || value === "";
+    }
     return historyIndex >= 0 || selectionStart === 0;
   }
 

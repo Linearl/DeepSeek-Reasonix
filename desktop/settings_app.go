@@ -371,6 +371,9 @@ type SettingsView struct {
 	// view that omits it would read the sub-switch as permanently off.
 	ExperimentalFeedbackNudge bool `json:"experimentalFeedbackNudge"`
 	ExperimentalTodoSidebar   bool `json:"experimentalTodoSidebar"`
+	// Task 261: composer history-navigation safety (clock picker + narrowed
+	// ArrowUp); boot snapshot, restart to apply.
+	ExperimentalPromptHistoryPicker bool `json:"experimentalPromptHistoryPicker"`
 	// Task 265 lab intake: nil-means-on switches resolved server-side.
 	ExperimentalCompactionParallel bool `json:"experimentalCompactionParallel"`
 	ExperimentalContextBudget      bool `json:"experimentalContextBudget"`
@@ -562,6 +565,9 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalTodoSidebar moves the todo list into the right dock (task 259);
 	// the frontend snapshots it at boot, so a change needs a restart.
 	ExperimentalTodoSidebar bool `json:"experimentalTodoSidebar"`
+	// ExperimentalPromptHistoryPicker gates the composer history picker plus
+	// the narrowed ArrowUp trigger (task 261); boot snapshot - restart to apply.
+	ExperimentalPromptHistoryPicker bool `json:"experimentalPromptHistoryPicker"`
 	// Task 342: WebView2 CDP debug endpoint switch (default false; 铁律 2).
 	// Loopback-only random port, boot snapshot — restart to apply.
 	ExperimentalCDPDebugPort bool `json:"experimentalCDPDebugPort"`
@@ -1336,6 +1342,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalFeedback = cfg.Desktop.ExperimentalFeedback
 		view.ExperimentalFeedbackNudge = cfg.Desktop.ExperimentalFeedbackNudge
 		view.ExperimentalTodoSidebar = cfg.Desktop.ExperimentalTodoSidebar
+		view.ExperimentalPromptHistoryPicker = cfg.Desktop.ExperimentalPromptHistoryPicker
 		// Task 265 lab intake: nil-means-on switches resolved here.
 		view.ExperimentalCompactionParallel = cfg.CompactionParallelEnabled()
 		view.ExperimentalContextBudget = cfg.ContextBudgetEnabled()
@@ -1456,20 +1463,21 @@ func (a *App) Settings() SettingsView {
 		ExperimentalRestartUpdate: cfg.Desktop.ExperimentalRestartUpdate,
 		StagingDir:                strings.TrimSpace(cfg.Desktop.StagingDir),
 
-		ExperimentalAutonomousUpdate: cfg.Desktop.ExperimentalAutonomousUpdate,
-		AutonomousUpdateResume:       cfg.AutonomousUpdateResumeMode(),
-		UpdateChime:                  cfg.Desktop.UpdateChime,
-		ExperimentalSessionMonitor:   cfg.Desktop.ExperimentalSessionMonitor,
-		ExperimentalSplitView:        cfg.Desktop.ExperimentalSplitView,
-		SessionStorage:               storageMode,
-		SessionStorageEffective:      storageEffective,
-		SessionStorageRestartPending: storageEffective != storageMode,
-		EventsAutoRotation:           config.EventsAutoRotationMode(cfg),
-		EventsRotationFactor:         config.EventsRotationFactor(cfg),
-		EventsRotationCapMB:          config.EventsRotationCapMB(cfg),
-		ExperimentalFeedback:         cfg.Desktop.ExperimentalFeedback,
-		ExperimentalFeedbackNudge:    cfg.Desktop.ExperimentalFeedbackNudge,
-		ExperimentalTodoSidebar:      cfg.Desktop.ExperimentalTodoSidebar,
+		ExperimentalAutonomousUpdate:    cfg.Desktop.ExperimentalAutonomousUpdate,
+		AutonomousUpdateResume:          cfg.AutonomousUpdateResumeMode(),
+		UpdateChime:                     cfg.Desktop.UpdateChime,
+		ExperimentalSessionMonitor:      cfg.Desktop.ExperimentalSessionMonitor,
+		ExperimentalSplitView:           cfg.Desktop.ExperimentalSplitView,
+		SessionStorage:                  storageMode,
+		SessionStorageEffective:         storageEffective,
+		SessionStorageRestartPending:    storageEffective != storageMode,
+		EventsAutoRotation:              config.EventsAutoRotationMode(cfg),
+		EventsRotationFactor:            config.EventsRotationFactor(cfg),
+		EventsRotationCapMB:             config.EventsRotationCapMB(cfg),
+		ExperimentalFeedback:            cfg.Desktop.ExperimentalFeedback,
+		ExperimentalFeedbackNudge:       cfg.Desktop.ExperimentalFeedbackNudge,
+		ExperimentalTodoSidebar:         cfg.Desktop.ExperimentalTodoSidebar,
+		ExperimentalPromptHistoryPicker: cfg.Desktop.ExperimentalPromptHistoryPicker,
 		// Task 265 lab intake: nil-means-on switches resolved here.
 		ExperimentalCompactionParallel: cfg.CompactionParallelEnabled(),
 		ExperimentalContextBudget:      cfg.ContextBudgetEnabled(),

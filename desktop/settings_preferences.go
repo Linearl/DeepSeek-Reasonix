@@ -294,6 +294,13 @@ func (a *App) SetExperimentalTodoSidebar(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalTodoSidebar(enabled) })
 }
 
+// SetExperimentalPromptHistoryPicker toggles the composer history-navigation
+// safety rework (task 261, upstream #10425): clock-icon history picker plus
+// the narrowed plain-ArrowUp trigger. Boot snapshot, restart to apply.
+func (a *App) SetExperimentalPromptHistoryPicker(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalPromptHistoryPicker(enabled) })
+}
+
 // Task 262 install-fix: the Wails exposure layer for the intake batch was
 // missed while the config layer landed — the frontend's calls hit a missing
 // App method at runtime, so the switch clicked but never saved (the installed

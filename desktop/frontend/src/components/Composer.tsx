@@ -5,7 +5,7 @@ import { pendingFollowups, confirmFollowup, followupNotSubmitted, followupSessio
 import { useAppNavigationStore } from "../store/appNavigation";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
-import { ArrowRight, ArrowUp, ChevronsDown, Columns2, Brain, Check, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, Search, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, Users, X, Zap } from "lucide-react";
+import { ArrowRight, ArrowUp, ChevronsDown, Columns2, Brain, Check, Clock, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, Search, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, Users, X, Zap } from "lucide-react";
 import { useSessionExperience } from "../lib/sessionExperience";
 import { asArray } from "../lib/array";
 import { foldEffortCurrent, foldEffortMenu } from "../lib/effortTiers";
@@ -25,7 +25,8 @@ import { useComposerImeGuard } from "../lib/useComposerImeGuard";
 import { useComposerCommandCatalog } from "../lib/useComposerCommandCatalog";
 import { guidanceIsDelivering, guidanceIsInFlight, guidanceNeedsRetry, guidanceTextMatches, kickIdleGuidance, markGuidanceQueued } from "../lib/composerGuidance";
 import { canUsePromptHistory, composerEnterAction, composerEscapeAction, composerMenuKeyAction, insertComposerNewline, isFnKeyEvent, isImeKeyEvent, promptHistoryDirectionFromEvent } from "../lib/composerKeyboard";
-import { cacheGeneration, loadOlder } from "../lib/composerHistory";
+import { cacheGeneration, hasMoreOlder, loadOlder } from "../lib/composerHistory";
+import { PromptHistoryPicker } from "./PromptHistoryPicker";
 import { sessionTurnsLabel } from "../lib/sessionTurnsPresentation";
 import { useI18n, type Translator } from "../lib/i18n";
 import { detectShortcutPlatform, formatShortcutCombo, isReservedComposerHistoryShortcut, matchesShortcut, useShortcutComboLabel } from "../lib/keyboardShortcuts";
@@ -584,6 +585,7 @@ export function Composer({
   subagentPolicy,
   onSetSubagentPolicy,
   quickCommands,
+  historyPickerEnabled = false,
   onInsertQuickCommand,
   autopilotEnabled = false,
   insertRequest,
@@ -686,6 +688,9 @@ export function Composer({
   subagentPolicy?: SubagentPolicy;
   onSetSubagentPolicy?: (policy: SubagentPolicy) => void;
   quickCommands?: QuickCommandEntry[]; // user-defined snippets (#18)
+  // Task 261 (upstream #10425): clock-icon history picker + narrowed plain-ArrowUp
+  // trigger. Off (default) keeps the exact legacy history behaviour.
+  historyPickerEnabled?: boolean;
   autopilotEnabled?: boolean; // offered only once the preference is on
   onInsertQuickCommand?: (text: string) => void;
   insertRequest?: ComposerInsertRequest | null;
@@ -865,6 +870,14 @@ export function Composer({
   // historyIndex state is written (via setHistoryIndex) for potential future
   // UI feedback (e.g. "3/200" indicator); currently unused in render.
   const [, setHistoryIndex] = useState(-1);
+  // Task 261: clock-icon history picker state. The picker shares the same
+  // backend tape (historyEntriesRef/ensurePromptHistoryIndex) as the arrow
+  // navigation but never touches historyIndexRef - picking inserts at the
+  // caret and leaves the unsent draft alone.
+  const [historyPickerOpen, setHistoryPickerOpen] = useState(false);
+  const [historyPickerEntries, setHistoryPickerEntries] = useState<PromptHistoryEntry[]>([]);
+  const [historyPickerHasMore, setHistoryPickerHasMore] = useState(false);
+  const [historyPickerLoading, setHistoryPickerLoading] = useState(false);
   const savedTextRef = useRef("");
   const taRef = useRef<HTMLTextAreaElement>(null);
   const measureTaRef = useRef<HTMLTextAreaElement>(null);
@@ -1821,6 +1834,56 @@ export function Composer({
   const prefetchPromptHistoryTail = () => {
     if (historyLoadRef.current) return;
     void ensurePromptHistoryIndex(historyEntriesRef.current.length);
+  };
+
+  // Task 261: history picker loading. Serves the picker from the same tape the
+  // arrow navigation uses, so opening it after ArrowUp browsing reuses pages
+  // and the generation invalidation stays in one place.
+  const loadHistoryPickerPage = async () => {
+    setHistoryPickerLoading(true);
+    try {
+      syncPromptHistoryGeneration();
+      const target = Math.max(historyEntriesRef.current.length, 0) + 50;
+      await ensurePromptHistoryIndex(Math.max(target - 1, 0));
+      setHistoryPickerEntries(historyEntriesRef.current.slice());
+      setHistoryPickerHasMore(hasMoreOlder());
+    } finally {
+      setHistoryPickerLoading(false);
+    }
+  };
+
+  const openHistoryPicker = () => {
+    if (!historyPickerEnabled) return;
+    setHistoryPickerOpen(true);
+    void loadHistoryPickerPage();
+  };
+
+  const closeHistoryPicker = () => {
+    setHistoryPickerOpen(false);
+  };
+
+  // Picking inserts the entry at the caret (an active selection is consumed,
+  // nothing else) - the unsent draft is never discarded. Recorded as an edit
+  // transaction, so Ctrl+Z walks straight back to the pre-pick draft.
+  const pickHistoryEntry = (entryText: string) => {
+    const targetDraftKey = activeDraftKeyRef.current;
+    const beforeEdit = composerEditSnapshot(targetDraftKey);
+    const selection = getComposerSelection();
+    const current = textRef.current;
+    const start = Math.min(selection.start, current.length);
+    const end = Math.min(selection.end, current.length);
+    const next = current.slice(0, start) + entryText + current.slice(Math.max(end, start));
+    textRef.current = next;
+    setText(next);
+    const caret = start + entryText.length;
+    setComposerSelection(caret);
+    recordComposerEdit(
+      targetDraftKey,
+      beforeEdit,
+      composerEditSnapshot(targetDraftKey, { start: caret, end: caret }),
+    );
+    setHistoryPickerOpen(false);
+    requestActiveDraftFrame(focusComposerInput);
   };
 
   // 任务 276 修复 b（有界兜底重试）：focus() 在目标瞬时 disabled / 同帧重挂
@@ -4001,6 +4064,10 @@ export function Composer({
       selectionStart: inputSelection.start,
       selectionEnd: inputSelection.end,
       historyIndex: historyIndexRef.current,
+      // Task 261: with the picker experiment on, plain ArrowUp only starts
+      // history browsing from an empty composer - editing text always moves
+      // the caret (upstream #10425: caret-at-start used to flip the draft).
+      upStartsOnlyFromEmpty: historyPickerEnabled,
     }) && invocationsRef.current.length === 0;
 
     // Prompt history navigation: plain ↑/↓ only. Fn/Page/Home/End are left to
@@ -5410,6 +5477,37 @@ export function Composer({
               </div>}
             </div>
             <div className={`composer-toolbar-send${submitUnavailableHint ? " composer-toolbar-send--unavailable" : ""}`}>
+              {/* Task 261: explicit history picker - picking never replaces the
+                  unsent draft (insert-at-caret), unlike the legacy ArrowUp path. */}
+              {historyPickerEnabled && (
+                <div className="composer-history-picker">
+                  {historyPickerOpen && (
+                    <>
+                      <div className="composer-history-picker__backdrop" onMouseDown={closeHistoryPicker} />
+                      <PromptHistoryPicker
+                        entries={historyPickerEntries}
+                        hasMore={historyPickerHasMore}
+                        loading={historyPickerLoading}
+                        onPick={pickHistoryEntry}
+                        onLoadMore={() => void loadHistoryPickerPage()}
+                        onClose={closeHistoryPicker}
+                        t={t}
+                      />
+                    </>
+                  )}
+                  <Tooltip label={t("composer.historyPicker")}>
+                    <button
+                      className={`composer__btn${historyPickerOpen ? " composer__btn--on" : ""}`}
+                      type="button"
+                      onClick={() => (historyPickerOpen ? closeHistoryPicker() : openHistoryPicker())}
+                      aria-label={t("composer.historyPicker")}
+                      aria-expanded={historyPickerOpen}
+                    >
+                      <Clock size={14} />
+                    </button>
+                  </Tooltip>
+                </div>
+              )}
               {running && !finishing && !runtimeState.unknown && (
                 <Tooltip label={t("composer.stop")}>
                   <button
