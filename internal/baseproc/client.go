@@ -10,10 +10,11 @@ import (
 )
 
 // ErrNotWired marks protocol surface that is defined on the wire but has no
-// behaviour behind it yet: attach/detach lease accounting and
-// providerResolve (later slices), an inline client with no Surface attached,
-// or a remote server that does not advertise the capability. Callers treat it
-// as "take the pre-S1 local path" — never as a failure.
+// behaviour on THIS path: the inline attach/detach (an inline client has no
+// base process to account leases against), providerResolve (serve side needs
+// a workspace root first), an inline client with no Surface attached, or a
+// remote server that does not advertise the capability. Callers treat it as
+// "take the pre-S1 local path" — never as a failure.
 var ErrNotWired = errors.New("baseproc: method not wired in this slice")
 
 // Mode reports which R1 path produced a BaseClient (decision D5's state pairs:
@@ -43,7 +44,8 @@ type BaseClient interface {
 	// Ping is the health probe (the 15s loop itself is S1c).
 	Ping(ctx context.Context) error
 	// Attach binds a session to the base, returning the in-memory lease
-	// (design §6 — R3; not exercised before the tool surface lands).
+	// (design §6 — matrix C3/C4). The subprocess serves it under CapSessions;
+	// the inline path answers ErrNotWired (see InlineBaseClient.Attach).
 	Attach(ctx context.Context, params AttachParams) (AttachResult, error)
 	// Detach releases one lease.
 	Detach(ctx context.Context, params DetachParams) (DetachResult, error)
@@ -68,8 +70,10 @@ type BaseClient interface {
 // hands over the registry it just built), and returns ErrNotWired otherwise —
 // which is how an S1a-era inline client keeps behaving after S1b lands.
 //
-// TODO(S1c): Attach/Detach lease accounting and ProviderResolve still return
-// ErrNotWired.
+// Attach/Detach and ProviderResolve return ErrNotWired on this path by
+// design (see the method comments): leases are a base-process concern and
+// provider resolution needs the base's own config/root, which is the same
+// workspace-root prerequisite the serve-side registry hosting waits on.
 type InlineBaseClient struct {
 	// ServerVersion is the local build identity reported by Hello.
 	ServerVersion string
@@ -104,14 +108,19 @@ func (c InlineBaseClient) Hello(_ context.Context, params HelloParams) (HelloRes
 // Ping implements BaseClient. Inline is the process itself: always alive.
 func (c InlineBaseClient) Ping(_ context.Context) error { return nil }
 
-// Attach implements BaseClient.
+// Attach implements BaseClient. Deliberately unwired on the inline path: the
+// lease exists so the BASE process can remember which workspace roots are
+// live (design §6), and an inline client has no base process to remember it
+// for — the caller already holds its own root locally. Returning a synthetic
+// lease would hand out an id nothing accounts against, so ErrNotWired stays
+// the honest answer and callers take the pre-S1 local path (R1).
 func (c InlineBaseClient) Attach(_ context.Context, _ AttachParams) (AttachResult, error) {
-	return AttachResult{}, ErrNotWired // TODO(S1c): lease accounting around the existing per-tab base
+	return AttachResult{}, ErrNotWired
 }
 
-// Detach implements BaseClient.
+// Detach implements BaseClient — same reasoning as Attach.
 func (c InlineBaseClient) Detach(_ context.Context, _ DetachParams) (DetachResult, error) {
-	return DetachResult{}, ErrNotWired // TODO(S1c)
+	return DetachResult{}, ErrNotWired
 }
 
 // ToolCatalog implements BaseClient: the same query the remote path sends
@@ -220,8 +229,8 @@ func (r *RemoteBaseClient) Ping(ctx context.Context) error {
 	return r.c.call(ctx, MethodPing, nil, nil)
 }
 
-// Attach implements BaseClient (capability-gated; a later slice turns the
-// server side on).
+// Attach implements BaseClient (capability-gated on CapSessions — the serve
+// process turns that on with AttachSessionAccounting).
 func (r *RemoteBaseClient) Attach(ctx context.Context, params AttachParams) (AttachResult, error) {
 	if !r.hasCapability(CapSessions) {
 		return AttachResult{}, ErrNotWired

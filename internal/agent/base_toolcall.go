@@ -41,10 +41,12 @@ type baseToolOutcome struct {
 // decision, not a mid-call one).
 //
 // Activation note: the gate is dormant on current installations because no
-// serve process advertises CapTools yet (the subprocess has no workspace
-// root to build a registry for — base.attach root bookkeeping is a later
-// slice). Advertising the capability for a registry is the point at which the
-// base-side ownership review (ctx-bound tools, error typing) must pass.
+// serve process advertises CapTools yet. S1c taught base.attach to carry the
+// workspace root (baseproc/lease.go), but hosting a workspace-bound registry
+// inside the subprocess still needs boot's construction code there plus this
+// base-side ownership review (ctx-bound tools, error typing) — that is the
+// declared remaining work, so the capability stays unadvertised and both
+// gates keep falling back inline per R1.
 func (a *Agent) baseToolCall(ctx context.Context, plan *toolCallPlan) (baseToolOutcome, bool) {
 	bc := a.svc.base
 	if bc == nil || bc.Mode() != baseproc.ModeRemote {

@@ -245,18 +245,30 @@ func (p *procRW) Close() error {
 // Parent death surfaces as stdin EOF (decision D4's Windows orphan path),
 // which Serve already answers with a clean nil and exit code 0.
 //
-// The S1b tool-surface MECHANISM (AttachToolSurface + CapTools, see
-// serve_toolface.go) exists, but hosting the registry here still needs a
-// workspace root — which arrives with base.attach bookkeeping (sessions
-// domain). Until a surface is attached this process advertises no tools
-// capability, and every client gate falls back inline per R1: an empty serve
-// process never serves a wrong catalog.
-// TODO(S1c): host the heavy base (MCP connections, plugin/tool registries,
-// builtin registration, provider factory) once attach carries the root;
-// logs/base.log (F2, subprocess panic must land in a file), liveness tick,
-// and the parent-liveness watchdog beyond pipe EOF.
+// S1c status of this process:
+//
+//   - session lease accounting is ON (AttachSessionAccounting): base.attach
+//     now records session_id + root + workspace_scope against the declaring
+//     client pid, base.detach releases it, and a later hello sweeps orphans
+//     (matrix C3/C4). The root is carried but not yet CONSUMED — see below.
+//   - logs/base.log (F2) is owned by the PARENT: cmd.Stderr points at the
+//     file, so this process's fd 2 already is the log, including a panic.
+//   - parent liveness beyond pipe EOF needs no watchdog: design §4 picks pipe
+//     EOF as the Windows detector, and Serve returns a clean nil on it.
+//   - NOT DONE: hosting the heavy base (MCP connections, plugin/tool
+//     registries, builtin registration, provider factory) behind a
+//     workspace-bound surface, and with it the CapTools advertisement. That
+//     needs boot's registry construction inside this process plus the
+//     base-side ownership review S1b listed (ctx-bound tools, typed errors) —
+//     reported as remaining, not attempted here. Until then this process
+//     advertises no tools capability and every client gate falls back inline
+//     per R1: an empty serve process never serves a wrong catalog.
 func RunStdioServer(ctx context.Context, version string, in io.Reader, out io.Writer, errw io.Writer) int {
 	s := NewServer(version)
+	// The real subprocess always carries the session face: attach/detach lease
+	// accounting (design §6, C3/C4) is what tells the base which workspace
+	// roots are live. Tests that want the bare S1a core use NewServer directly.
+	s.AttachSessionAccounting()
 	if err := s.Serve(ctx, in, out); err != nil {
 		fmt.Fprintf(errw, "base serve: %v\n", err)
 		return 1

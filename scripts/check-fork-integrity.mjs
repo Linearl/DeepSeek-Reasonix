@@ -541,6 +541,13 @@ const CHECKS = [
   { feature: "S1c 子进程日志面（F2 logs/base.log）", file: "internal/baseproc/baselog.go", patterns: ["baseLogFileName", "defaultBaseLogPath", "func openBaseLog(", "REASONIX_BASE_LOG"] },
   { feature: "S1c spawn stderr 接线（F1 环境显式传递）", file: "internal/baseproc/manager.go", patterns: ["resolveStderr(opts)", "withBaseLogEnv(env, stderr.path)", "cmd.Stderr = stderr.w"] },
   { feature: "S1c shutdown 前置与关闭可中止重启", file: "internal/baseproc/lifecycle.go", patterns: ["alreadySent := m.shutdownSent", "m.baseCancel()", "abort a restart attempt already in flight"] },
+
+  // ── S1 底座常驻子进程（设计 2026-09-30，§10 S1c 会话租约）──────────────
+  // base.attach 携 workspace root + client_pid owner key；C3 隔离、C4 孤儿
+  // 回收。掉一道，底座就无从知道哪些 workspace 在用（注册表托管的前置）。
+  { feature: "S1c 会话租约表与 attach/detach 处理器", file: "internal/baseproc/lease.go", patterns: ["type leaseTable struct", "func (t *leaseTable) reclaimDead(", "AttachSessionAccounting", "func (s *Server) handleAttach("] },
+  { feature: "S1c 孤儿回收挂在 base.hello 上", file: "internal/baseproc/serve.go", patterns: ["leases *leaseTable", "onHello := s.onHello", "onHello(p.ClientPID)"] },
+  { feature: "S1c 孤儿判定 pidAlive（双平台）", file: "internal/baseproc/pidalive_windows.go", patterns: ["func pidAlive(pid int) bool", "os.FindProcess(pid)"] },
 ];
 
 let failed = 0;
