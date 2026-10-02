@@ -39,9 +39,26 @@ function ok(value: boolean, label: string) {
   }
 }
 
+// Failure-path formatter: assertion subjects are often DOM nodes, whose
+// circular (React fiber) references crash plain JSON.stringify and masked the
+// real assertion failure with a TypeError (seen on trunk 20261003).
+function describeValue(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "object" && value instanceof Element) {
+    const html = value.outerHTML;
+    return `<Element ${html.length > 120 ? `${html.slice(0, 120)}…` : html}>`;
+  }
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
 function eq(actual: unknown, expected: unknown, label: string) {
   if (actual === expected) ok(true, label);
-  else ok(false, `${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+  else ok(false, `${label}: expected ${describeValue(expected)}, got ${describeValue(actual)}`);
 }
 
 async function flush(ms = 0): Promise<void> {
@@ -271,12 +288,15 @@ console.log("\nguidance hover preview (task 446)");
 // ── 7. drag start closes the card (441 drag handle owns the row while dragging) ──
 {
   const { dom, root } = await mount({ items: [makeItem("a", LONG_BODY)], onMove: () => {} });
-  const row = document.querySelector(".composer-guidance-item");
-  ok(row !== null, "the queue row exists");
+  // Task 441 union: the card is no longer draggable — the six-dot handle is the
+  // only drag source, so the dragstart simulation must target the handle (the
+  // row-body dispatch went stale at the merge and reported a false regression).
+  const handle = document.querySelector(".composer-guidance-item__handle");
+  ok(handle !== null, "the six-dot handle exists (drag source since the 441 union)");
   await mouseOver(textButton());
   ok(hoverCard() !== null, "card open before the drag starts");
   await act(async () => {
-    row?.dispatchEvent(new MouseEvent("dragstart", { bubbles: true }));
+    handle?.dispatchEvent(new MouseEvent("dragstart", { bubbles: true }));
     await flush(0);
   });
   eq(hoverCard(), null, "drag start closes the card (hover yields to the 441 drag surface)");

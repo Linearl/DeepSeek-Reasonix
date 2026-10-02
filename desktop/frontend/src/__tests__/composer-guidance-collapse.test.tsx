@@ -162,8 +162,10 @@ console.log("\ncomposer guidance collapse (task 289)");
   await act(async () => { textButton("a")?.click(); await new Promise((r) => setTimeout(r, 0)); });
   eq(document.querySelector('[role="note"]') !== null, true, "preview open before exercising the controls");
   const dismiss = document.querySelector<HTMLButtonElement>('button[aria-label$=""]');
+  // lucide-react ≥1.48 exports Trash2 as an alias of Trash: the svg carries
+  // `lucide-trash lucide-trash-2` (deps bump 5cb2de739), not `lucide-trash2`.
   const trash = [...document.querySelectorAll<HTMLButtonElement>(".composer-guidance-item button")]
-    .find((b) => b.querySelector("svg.lucide-trash2"));
+    .find((b) => b.querySelector("svg.lucide-trash-2"));
   ok(trash !== undefined, "the dismiss control exists on the row");
   await act(async () => { trash?.click(); await new Promise((r) => setTimeout(r, 0)); });
   eq(dismissed.join(","), "a", "the dismiss handler fired exactly once");

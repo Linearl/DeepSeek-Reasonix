@@ -210,7 +210,9 @@ console.log("\ntask 441 guidance drag handle");
   });
   const rowButtons = [...document.querySelectorAll<HTMLButtonElement>(".composer-guidance-item button")];
   const pencil = rowButtons.find((b) => b.querySelector("svg.lucide-pencil"));
-  const trash = rowButtons.find((b) => b.querySelector("svg.lucide-trash2"));
+  // lucide-react ≥1.48 exports Trash2 as an alias of Trash: the svg carries
+  // `lucide-trash lucide-trash-2` (deps bump 5cb2de739), not `lucide-trash2`.
+  const trash = rowButtons.find((b) => b.querySelector("svg.lucide-trash-2"));
   ok(pencil !== undefined, "the edit (pencil) button still renders on the row");
   ok(trash !== undefined, "the delete (trash) button still renders on the row");
   await act(async () => { pencil?.click(); await new Promise((r) => setTimeout(r, 0)); });
