@@ -530,6 +530,14 @@ const CHECKS = [
   { feature: "S1b agent 工具调用闸", file: "internal/agent/base_toolcall.go", patterns: ["baseToolCall", "ModeRemote", "ErrNotWired"] },
   { feature: "S1b boot 消费点（Start 接线）", file: "internal/boot/base_client.go", patterns: ["startBaseClient", "ExperimentalBaseProcess", "RegistrySurface"] },
   { feature: "S1b boot 消费点（注入与拆除）", file: "internal/boot/boot.go", patterns: ["startBaseClient(ctx, cfg, reg)", "_ = baseClient.Close()"] },
+
+  // ── S1 底座常驻子进程（设计 2026-09-30，§10 S1c 生命周期收口）──────────
+  // health/退避重启/degraded 状态机 + 托管视图；任一道被顶掉，矩阵 C6 的
+  // 「子进程死则全体 inline」就没有落点，开关 on 会退回 S1a 的 one-shot。
+  { feature: "S1c base 生命周期状态机（D5）", file: "internal/baseproc/lifecycle.go", patterns: ["type Manager struct", "degraded_inline", "boot: base dying", "func (m *Manager) markDead("] },
+  { feature: "S1c 心跳检测与退避重启", file: "internal/baseproc/lifecycle.go", patterns: ["REASONIX_BASE_HEALTH_INTERVAL", "func (m *Manager) healthTick(", "func (m *Manager) restartTick(", "func (m *Manager) backoffLocked("] },
+  { feature: "S1c 托管视图（Mode 跟随状态）", file: "internal/baseproc/lifecycle.go", patterns: ["type ManagedClient struct", "func (c *ManagedClient) Mode()", "errClientClosed"] },
+  { feature: "S1c Start 托管与生命周期阈值选项", file: "internal/baseproc/manager.go", patterns: ["NewManager(ctx, opts).Acquire()", "RestartMaxFailures", "gracefulCloseWait = 5 * time.Second"] },
 ];
 
 let failed = 0;

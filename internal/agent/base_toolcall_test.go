@@ -99,6 +99,16 @@ func (t *gateReadTool) ExecuteRead(context.Context, json.RawMessage) (string, to
 // and returns the dialed/handshaked client from baseproc.Start.
 func newAgentRemoteBase(t *testing.T, surface baseproc.ToolSurface) baseproc.BaseClient {
 	t.Helper()
+	client, _ := newAgentRemoteBaseWithKill(t, surface)
+	return client
+}
+
+// newAgentRemoteBaseWithKill is the S1c variant: it also returns a func that
+// severs the channel the way a crashed subprocess does (pipe EOF) WITHOUT
+// releasing the view, so a test can observe the manager degrade a live client
+// (design C6) instead of only a closed one.
+func newAgentRemoteBaseWithKill(t *testing.T, surface baseproc.ToolSurface) (baseproc.BaseClient, func()) {
+	t.Helper()
 	serverIn, clientOut := io.Pipe()
 	clientIn, serverOut := io.Pipe()
 	s := baseproc.NewServer("agent-gate-test")
@@ -109,12 +119,15 @@ func newAgentRemoteBase(t *testing.T, surface baseproc.ToolSurface) baseproc.Bas
 		_ = s.Serve(ctx, serverIn, serverOut)
 		close(done)
 	}()
-	t.Cleanup(func() {
-		cancel()
+	kill := func() {
 		_ = clientOut.Close()
 		_ = clientIn.Close()
 		_ = serverIn.Close()
 		_ = serverOut.Close()
+	}
+	t.Cleanup(func() {
+		cancel()
+		kill()
 		select {
 		case <-done:
 		case <-time.After(5 * time.Second):
@@ -132,7 +145,11 @@ func newAgentRemoteBase(t *testing.T, surface baseproc.ToolSurface) baseproc.Bas
 	if client.Mode() != baseproc.ModeRemote {
 		t.Fatalf("Start mode = %q, want remote", client.Mode())
 	}
-	return client
+	// Registered last, so it runs first (cleanups are LIFO): the S1c
+	// supervisor goroutine must be released before the pipes go away or
+	// goleak reports it still parked in its backoff wait.
+	t.Cleanup(func() { _ = client.Close() })
+	return client, kill
 }
 
 // gatePipeRW adapts a pipe pair for baseproc.Options.Dial (control has its
@@ -349,30 +366,122 @@ func TestBaseToolCallGateMatrix(t *testing.T) {
 		}
 	})
 
-	t.Run("dead channel fails the call without local rerun", func(t *testing.T) {
+	// S1c split the old "dead channel fails the call without local rerun"
+	// case in two: a lifecycle-managed client DEGRADES when its channel dies
+	// (design C6 — the gate must then take the pre-S1 local path, because
+	// nothing was ever sent), while the double-execution property itself is
+	// about a call that already went out. Both halves are asserted below.
+	t.Run("dead channel degrades the gate to the local path", func(t *testing.T) {
 		var localRuns atomic.Int32
 		target := &gatePlainTool{name: "echo", runs: &localRuns, label: "local"}
 		reg := tool.NewRegistry()
 		reg.Add(target)
-		remote := newAgentRemoteBase(t, &baseproc.RegistrySurface{Reg: tool.NewRegistry()})
-		if err := remote.Close(); err != nil {
-			t.Fatalf("close: %v", err)
+		remote, kill := newAgentRemoteBaseWithKill(t, &baseproc.RegistrySurface{Reg: tool.NewRegistry()})
+		kill() // pipe EOF: what a subprocess crash looks like from the client
+
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) && remote.Mode() != baseproc.ModeInline {
+			time.Sleep(5 * time.Millisecond)
+		}
+		if remote.Mode() != baseproc.ModeInline {
+			t.Fatalf("mode = %q 3s after the channel died, want inline (matrix C6)", remote.Mode())
 		}
 		a := &Agent{svc: agentServices{tools: reg, base: remote}}
 		plan := gateCall("c1", "echo", json.RawMessage(`{}`))
 		plan.runTool = gateMustGet(t, reg, "echo")
 
-		out, handled := a.baseToolCall(ctx, plan)
-		if !handled {
-			t.Fatal("sent-but-dead call fell back local: double-execution risk")
+		if _, handled := a.baseToolCall(ctx, plan); handled {
+			t.Fatal("degraded gate routed a call at a dead channel")
 		}
-		if out.err == nil {
-			t.Fatal("dead-channel call returned no error")
+		if localRuns.Load() != 0 {
+			t.Fatalf("local tool ran %d times inside the gate, want 0 (the caller runs it once)", localRuns.Load())
+		}
+		// Degraded, not released: the view still answers in-process.
+		if err := remote.Ping(ctx); err != nil {
+			t.Fatalf("ping on a degraded view: %v", err)
+		}
+	})
+
+	t.Run("in-flight call dies without a local rerun", func(t *testing.T) {
+		// The safety property itself: a call that HAS been sent must fail when
+		// the channel dies mid-execution — never fall back and execute twice.
+		started := make(chan struct{})
+		release := make(chan struct{})
+		t.Cleanup(func() {
+			select {
+			case <-release: // already open
+			default:
+				close(release)
+			}
+		})
+		serverReg := tool.NewRegistry()
+		serverReg.Add(&gateBlockingTool{name: "echo", started: started, release: release})
+		remote, kill := newAgentRemoteBaseWithKill(t, &baseproc.RegistrySurface{Reg: serverReg})
+
+		var localRuns atomic.Int32
+		reg := tool.NewRegistry()
+		reg.Add(&gatePlainTool{name: "echo", runs: &localRuns, label: "local"})
+		a := &Agent{svc: agentServices{tools: reg, base: remote}}
+		plan := gateCall("c1", "echo", json.RawMessage(`{}`))
+		plan.runTool = gateMustGet(t, reg, "echo")
+
+		callCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		type outcome struct {
+			out     baseToolOutcome
+			handled bool
+		}
+		result := make(chan outcome, 1)
+		go func() {
+			out, handled := a.baseToolCall(callCtx, plan)
+			result <- outcome{out: out, handled: handled}
+		}()
+
+		select {
+		case <-started: // the request is on the wire, executing in the subprocess
+		case <-callCtx.Done():
+			t.Fatal("the remote tool call never started")
+		}
+		kill()
+
+		var got outcome
+		select {
+		case got = <-result:
+		case <-callCtx.Done():
+			t.Fatal("in-flight call did not return when the channel died")
+		}
+		if !got.handled {
+			t.Fatal("in-flight call fell back local: double-execution risk")
+		}
+		if got.out.err == nil {
+			t.Fatal("in-flight call on a dead channel returned no error")
 		}
 		if localRuns.Load() != 0 {
 			t.Fatalf("local tool ran %d times after a sent call, want 0", localRuns.Load())
 		}
 	})
+}
+
+// gateBlockingTool parks inside Execute until release is closed — the shape a
+// minute-long remote tool run has while the channel is killed underneath it.
+type gateBlockingTool struct {
+	name    string
+	started chan<- struct{}
+	release <-chan struct{}
+}
+
+func (t *gateBlockingTool) Name() string            { return t.name }
+func (t *gateBlockingTool) Description() string     { return "blocking stub " + t.name }
+func (t *gateBlockingTool) Schema() json.RawMessage { return json.RawMessage(`{"type":"object"}`) }
+func (t *gateBlockingTool) ReadOnly() bool          { return false }
+func (t *gateBlockingTool) Execute(ctx context.Context, _ json.RawMessage) (string, error) {
+	close(t.started)
+	select {
+	case <-t.release:
+		return "blocked:done", nil
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
 }
 
 // gateEventRecorder captures emitted events for the progress assertions.
