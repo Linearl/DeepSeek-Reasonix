@@ -51,19 +51,23 @@ func autonomousUpdateResumePath() string {
 //     autopilot. Goal-driven sessions are covered by the task-49 sidecar path.
 //   - "all": stage the caller (any mode) plus every other session with active
 //     work, so a multi-session batch survives the restart intact.
-func (a *App) stageAutonomousUpdateResume(callerSession string) {
+//
+// Returns whether the caller was staged; a false return means the caller's own
+// turn is interrupted by this restart without a resume marker — the 1545
+// anti-silent-loss face names it on the tool text instead.
+func (a *App) stageAutonomousUpdateResume(callerSession string) bool {
 	callerSession = strings.TrimSpace(callerSession)
 	if callerSession == "" {
-		return
+		return false
 	}
 	mode := a.autonomousUpdateResumeMode()
 	if mode == "off" {
 		slog.Info("restart: auto-resume off; not staging", "session", callerSession)
-		return
+		return false
 	}
 	if mode != "all" && !a.sessionRunsAutopilot(callerSession) {
 		slog.Info("restart: not staging auto-resume; session is not on autopilot", "session", callerSession)
-		return
+		return false
 	}
 	entries := []autonomousUpdateResumeEntry{{Path: callerSession, StagedAt: time.Now().Unix()}}
 	if mode == "all" {
@@ -91,9 +95,10 @@ func (a *App) stageAutonomousUpdateResume(callerSession string) {
 	}
 	if err := writeAutonomousUpdateResumeFile(state); err != nil {
 		slog.Error("restart: staging auto-resume failed", "session", callerSession, "err", err)
-		return
+		return false
 	}
 	slog.Info("restart: auto-resume staged", "mode", mode, "sessions", len(entries))
+	return true
 }
 
 // autonomousUpdateResumeMode reads the dial live: execute applies it when it
@@ -134,15 +139,16 @@ func (a *App) sessionsWithActiveWork() []string {
 // the dial's explicit "off" opt-out is honored: at off the restore gate
 // (tabs.go) skips every resume path, so a staged entry could only resurface on
 // some much later restart with the dial flipped — staging then would be a
-// deferred surprise resume, not a repair.
-func (a *App) stageInterruptedByRestart(sessionPath string) {
+// deferred surprise resume, not a repair. Returns whether the entry was
+// staged (a false return feeds the 1545 unstaged face).
+func (a *App) stageInterruptedByRestart(sessionPath string) bool {
 	sessionPath = strings.TrimSpace(sessionPath)
 	if sessionPath == "" {
-		return
+		return false
 	}
 	if a.autonomousUpdateResumeMode() == "off" {
 		slog.Info("restart: auto-resume off; interrupted session not staged", "session", sessionPath)
-		return
+		return false
 	}
 	state := readAutonomousUpdateResumeFile()
 	replaced := false
@@ -158,9 +164,52 @@ func (a *App) stageInterruptedByRestart(sessionPath string) {
 	}
 	if err := writeAutonomousUpdateResumeFile(state); err != nil {
 		slog.Error("restart: staging interrupted-session resume failed", "session", sessionPath, "err", err)
-		return
+		return false
 	}
 	slog.Info("restart: interrupted session staged for auto-resume", "session", sessionPath)
+	return true
+}
+
+// restartResumeSubmit is the submit seam for the resume chain, mirroring the
+// restart-family process seams (restartQuit etc.): tests record the continue
+// prompt instead of driving a wails submission. Assigned in init — a package-
+// level literal here makes the var-initialization dependency analysis walk the
+// whole SubmitToTab call graph, which closes a cycle through the restore path.
+var restartResumeSubmit func(a *App, tabID, prompt string) error
+
+func init() {
+	restartResumeSubmit = func(a *App, tabID, prompt string) error {
+		return a.SubmitToTab(tabID, prompt)
+	}
+}
+
+// restartFenceSettler is the narrow control surface for the task-435 fence
+// handoff: the roster-resumed session's leftover effect records are settled
+// host-side so the review panel does not light up for a planned restart
+// interruption. Type-asserted, not a SessionAPI member — a fake or an older
+// controller without the capability simply keeps its fence.
+type restartFenceSettler interface {
+	SettleRestartInterruptedEffects() int
+}
+
+// settleRestartFenceForTab clears the tab session's pending effect records via
+// SettleRestartInterruptedEffects (task 435). Called from the roster-consume
+// restore point BEFORE the continue prompt is submitted, so the panel's first
+// post-ready probe already sees an empty pending set — the panel must not
+// flash for an interruption this very chain owns.
+func (a *App) settleRestartFenceForTab(tab *WorkspaceTab) int {
+	if tab == nil || tab.Ctrl == nil {
+		return 0
+	}
+	settler, ok := tab.Ctrl.(restartFenceSettler)
+	if !ok {
+		return 0
+	}
+	settled := settler.SettleRestartInterruptedEffects()
+	if settled > 0 {
+		slog.Info("desktop: restart-interrupted session resumed; pending effects settled without the review panel", "tab", tab.ID, "settled", settled)
+	}
+	return settled
 }
 
 // maybeResumeAutonomousUpdateTab continues a session this process restarted via
@@ -169,6 +218,11 @@ func (a *App) stageInterruptedByRestart(sessionPath string) {
 // accept or refuse the submit. The consumed entry is dropped even when the
 // submit fails — a session that fails to resume here should not resurrect on
 // some later unrelated restart.
+//
+// Task 435 (the fence half of 谁断谁续): consuming the entry also settles the
+// session's pending effect records (settleRestartFenceForTab) — the roster
+// entry is the marker that separates a planned restart interruption from a
+// genuine crash, so only roster sessions skip the review panel.
 func (a *App) maybeResumeAutonomousUpdateTab(tab *WorkspaceTab) {
 	if a == nil || tab == nil {
 		return
@@ -216,9 +270,15 @@ func (a *App) maybeResumeAutonomousUpdateTab(tab *WorkspaceTab) {
 			slog.Debug("desktop: clearing recovery pause for auto-resume", "tab", tab.ID, "err", err)
 		}
 	}
+	// Task 435: settle before the submit lands, so the panel's first probe sees
+	// an empty pending set (不弹 fence). If the submit is then refused the
+	// session idles without a fence — logged below by the submit seam's caller
+	// at Debug today; the resume submission failing is the exception path, and
+	// the record facts survive in the transcript for manual follow-up.
+	a.settleRestartFenceForTab(tab)
 	id := tab.ID
 	go func() {
-		if err := a.SubmitToTab(id, autonomousUpdateResumePrompt); err != nil {
+		if err := restartResumeSubmit(a, id, autonomousUpdateResumePrompt); err != nil {
 			slog.Debug("desktop: autonomous-update resume skipped", "tab", id, "err", err)
 			return
 		}

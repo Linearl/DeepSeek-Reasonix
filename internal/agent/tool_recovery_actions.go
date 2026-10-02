@@ -125,6 +125,51 @@ func (a *Agent) ResolveToolRecovery(attempt, inspection, action string) error {
 	return nil
 }
 
+// restartResumeResolution marks a record settled by the restart resume chain
+// (task 435): the effect's outcome is still unknown, but the interruption was
+// the host's own planned restart and the roster-resumed run owns the continue
+// decision — so the review panel must not demand a human for it. The prompt
+// tail still tells the model the outcome-unknown facts and the inspect-before-
+// retry duty; only the host-side fence goes. Source stays "host": nobody
+// confirmed anything.
+const restartResumeResolution = "interrupted_by_restart"
+
+// ResolveInterruptedByRestart settles every unresolved effect record this
+// session still carries (task 435). Called by the resume chain when a
+// restart-staged session is restored and its continue prompt is on its way —
+// the roster entry is exactly what distinguishes a planned restart
+// interruption from a genuine crash: only the former reaches here, so a crash
+// interruption keeps the manual review panel (两者区分). The settled records
+// keep their facts (tool, digest, arguments, timestamps); the state moves to
+// not_started with the restartResumeResolution label, which empties
+// PendingToolRecovery — the face the review panel and the write barrier read.
+// Returns how many records were settled.
+func (a *Agent) ResolveInterruptedByRestart() int {
+	if a == nil || a.sess.conversation == nil {
+		return 0
+	}
+	settled := 0
+	for _, r := range a.PendingToolRecovery() {
+		resolved := r
+		resolved.State = provider.ToolRunNotStarted
+		resolved.Resolution = restartResumeResolution
+		resolved.ResolutionSource = "host"
+		resolved.ResolvedAt = time.Now().UnixMilli()
+		if !a.sess.conversation.setToolRecoveryRecord(r.Identity.CallID, resolved) {
+			continue
+		}
+		settled++
+		slog.Info("agent: recovery fence released",
+			"session", a.recoveryLogSessionName(),
+			"source", "auto",
+			"resolution", restartResumeResolution,
+			"tool", r.Identity.CanonicalTool,
+			"wait_ms", resolved.ResolvedAt-r.StartedAt,
+			"fence_wait_ms", resolved.ResolvedAt-r.FinishedAt)
+	}
+	return settled
+}
+
 type recoveryRetryKey struct{}
 
 // RetryToolRecovery executes only stored arguments through the ordinary

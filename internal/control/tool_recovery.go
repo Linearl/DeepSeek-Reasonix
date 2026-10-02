@@ -49,6 +49,20 @@ func (c *Controller) ToolRecoverySnapshot() ToolRecoverySnapshot {
 	return view
 }
 
+// SettleRestartInterruptedEffects hands the session's pending effect records
+// to the restart resume chain (task 435): a session staged in the task-254
+// roster was interrupted by OUR planned restart, so when its restore point
+// resumes it, the leftover unknown-outcome records are settled host-side
+// instead of lighting the 「中断的工具需要核实」 review panel. A session not in
+// the roster — a genuine crash interruption — never reaches this method and
+// keeps the manual review. Returns the number of records settled.
+func (c *Controller) SettleRestartInterruptedEffects() int {
+	if c == nil || c.executor == nil {
+		return 0
+	}
+	return c.executor.ResolveInterruptedByRestart()
+}
+
 // ResolveToolRecovery uses the same admission exclusion and session write
 // authority as model turns. No stale tab may resolve a replacement session.
 func (c *Controller) ResolveToolRecovery(ctx context.Context, req ToolRecoveryRequest) (ToolRecoverySnapshot, error) {

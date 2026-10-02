@@ -195,12 +195,20 @@ func (c autonomousUpdateController) ExecuteTarget(_ context.Context, callerSessi
 	// on some later unrelated restart. (Sessions the task-450 grace window had
 	// to cancel are staged separately, inside clearRestartPath — "whoever we
 	// interrupted, we resume".)
-	a.stageAutonomousUpdateResume(callerSession)
+	//
+	// 1545 anti-silent-loss: when the caller itself was NOT staged (attended
+	// session under the goal_autopilot dial, or the dial off), the restart
+	// still ends this very turn — the model must carry that fact back instead
+	// of assuming an automatic continuation.
+	callerStaged := a.stageAutonomousUpdateResume(callerSession)
 	msg := "restart scheduled: the version swap is committed and the app will relaunch shortly — do not retry"
 	if forcedNote != "" {
 		// Task 450 acceptance 4: a forced pass through someone else's work is
 		// part of the result the model sees, not a silent side effect.
 		msg += "\n" + forcedNote
+	}
+	if !callerStaged && strings.TrimSpace(callerSession) != "" {
+		msg += "\nthis session is interrupted by the restart but NOT staged for auto-resume (" + restartUnstagedMarker + "): it will not continue by itself after the relaunch"
 	}
 	return msg, nil
 }
