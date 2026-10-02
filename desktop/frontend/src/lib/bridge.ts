@@ -379,6 +379,8 @@ export interface CollabMailEntryView {
   requireReply?: boolean;
   delivery?: string;
   bucket: string;
+  /** Task 349n1: group-source stamp — the channel this mail was fanned out from (empty = point-to-point). */
+  channel?: string;
   preview: string;
   delivered: boolean;
   read: boolean;

@@ -27,6 +27,8 @@ export type CollabMailEntry = {
   requireReply?: boolean;
   delivery?: string;
   bucket: string;
+  /** 任务 349n1 群标识：fan-out 来源频道名（空 = 点对点信）。 */
+  channel?: string;
   preview: string;
   delivered: boolean;
   read: boolean;
@@ -274,6 +276,11 @@ export function CollabInboxPanel({ bindings }: { bindings?: CollabInboxBindings 
                 <span className={`collab-inbox-panel__bucketbadge collab-inbox-panel__bucketbadge--${entry.bucket}`}>
                   {t(`collabInbox.bucket.${entry.bucket as Bucket}` as "collabInbox.bucket.all")}
                 </span>
+                {entry.channel && (
+                  <span className="collab-inbox-panel__channel" title={t("collabInbox.channel")}>
+                    #{entry.channel}
+                  </span>
+                )}
                 <span className="collab-inbox-panel__route">
                   {entry.from} → {entry.toTitle || entry.to}
                 </span>
@@ -346,6 +353,11 @@ export function CollabInboxPanel({ bindings }: { bindings?: CollabInboxBindings 
                 <div className="collab-inbox-panel__chainbody">
                   {chain.entries.map((entry) => (
                     <div key={entry.id} className="collab-inbox-panel__chainentry">
+                      {entry.channel && (
+                        <span className="collab-inbox-panel__channel" title={t("collabInbox.channel")}>
+                          #{entry.channel}
+                        </span>
+                      )}
                       <span className="collab-inbox-panel__route">{entry.from}</span>
                       <span className="collab-inbox-panel__preview">{entry.preview}</span>
                       <span className="collab-inbox-panel__time">{formatTime(entry.at)}</span>

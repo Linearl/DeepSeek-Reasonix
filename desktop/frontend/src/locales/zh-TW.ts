@@ -4640,6 +4640,7 @@ export const zhTW: Record<DictKey, string> = {
 "sessionMonitor.neverEvicted": "未發生驅逐",
 "sessionMonitor.recentEvictions": "最近驅逐",
 "sessionMonitor.stageRow": "{stage} · {ms} ms",
+  "collabInbox.channel": "群聊頻道",
   "collabInbox.title": "跨會話收件匣",
   "collabInbox.close": "關閉",
   "collabInbox.empty": "暫無信件",

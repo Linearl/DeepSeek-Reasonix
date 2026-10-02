@@ -42866,6 +42866,15 @@ body > .mermaid-diagram--fullscreen {
   color: var(--accent);
   border-color: var(--accent);
 }
+/* 任务 349n1 群标识：fan-out 来源频道的 #名 chip（列表行 + 对话链条目共用）。 */
+.collab-inbox-panel__channel {
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
 .collab-inbox-panel__read {
   padding: 0 6px;
   border-radius: 999px;

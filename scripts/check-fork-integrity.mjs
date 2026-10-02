@@ -525,6 +525,15 @@ const CHECKS = [
   { feature: "任务349 取消消息（墓碑+拦 queued+在途重查）", file: "internal/collabchannel/collabchannel.go", patterns: ["func (s *Store) Cancel(", "ErrNotSender", "state != \"queued\"", "cancelled_at"] },
   { feature: "任务349 四工具（查看/获取/发送/取消）", file: "internal/agent/channel_tools.go", patterns: ["channel_list", "channel_read", "channel_send", "channel_cancel", "channelSpawn"] },
   { feature: "任务349 四工具 boot 注册", file: "internal/boot/boot.go", patterns: ["NewChannelSendTool(collab)", "NewChannelReadTool(collab)", "NewChannelCancelTool(collab)"] },
+  // 任务 349 挂账 note①（20261003 增量，inbox 群标识）：fan-out 落箱信带
+  // 群来源戳（channel 名，投递时点快照），收件箱索引透出 Channel 条目字段，
+  // 面板以 #名 chip 标注列表行与对话链条目——群消息不再与点对点信无法区分
+  // （chf_ 前缀混显挂账收口）。戳只做来源呈现，不动 320 五桶分类（那是
+  // Kind 戳 note② 的职责，由 409view 分支承载，合并时两条 Deliver 字段取并集）。
+  { feature: "任务349n1 fan-out 群来源戳（传输字段+投递打戳）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["Channel string"] },
+  { feature: "任务349n1 DrainFanout 投递带频道名", file: "internal/collabchannel/collabchannel.go", patterns: ["JOIN channels c ON c.id = m.channel_id", "Channel: j.channel"] },
+  { feature: "任务349n1 收件箱条目群标识（索引+面板 chip）", file: "internal/collabinbox/collabinbox.go", patterns: ["Channel string", "Channel:      m.Channel"] },
+  { feature: "任务349n1 面板群标识 chip（列表行+对话链）", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["collab-inbox-panel__channel", "#{entry.channel}"] },
   // 任务 448（384 组件层收尾 + 445 调研借鉴 B1/B3）：更早历史请求的闸收敛为
   // 「hasOlder + loading 两态」，四个入口共用 historyOlderGates 一份判定；触发
   // 半径改两视口预取。锚点锁共享谓词本体 + 四个调用点各自的接线——任何一个
