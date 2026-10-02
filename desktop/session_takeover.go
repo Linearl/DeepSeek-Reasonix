@@ -228,6 +228,23 @@ func (a *App) QuerySessionTakeover(tabID string) (*SessionTakeoverView, error) {
 	defer cancel()
 	_, _, view, err := a.findTakeoverTarget(ctx, path)
 	if err != nil {
+		// Task 456 ②/③: no resident serve holds the session — inspect the
+		// LOCAL lease record before reporting the dead-end "no resident serve"
+		// error. A self-held or dead-holder lease is adoptable right here; a
+		// live local runtime at least gets pid + cleanup guidance instead of
+		// an unsolvable message.
+		if holder := a.inspectLocalLeaseHolder(path); holder.verdict != leaseHolderNone && holder.info != nil {
+			if guidance, ok := localLeaseHolderGuidance(holder); ok {
+				adoptable := holder.verdict == leaseHolderSelf || holder.verdict == leaseHolderForeignDead
+				return &SessionTakeoverView{
+					Available:   adoptable,
+					Reason:      guidance,
+					SessionPath: path,
+					Holder:      "desktop-local",
+					HolderPID:   holder.info.PID,
+				}, nil
+			}
+		}
 		return &SessionTakeoverView{Available: false, Reason: err.Error(), SessionPath: path}, nil
 	}
 	view.Available = true
@@ -271,6 +288,17 @@ func (a *App) TakeoverSession(tabID, mode string) error {
 		record, client, view, err = a.findTakeoverTarget(ctx, path)
 	}
 	if err != nil {
+		// Task 456 ②: the serve scan came up empty — the incident's dead end
+		// ("no resident serve on this machine holds this session" for a
+		// session this very window's background runtime held). Fall back to
+		// desktop-internal adoption of the locally-held session; when even
+		// that is refused, surface the pid-liveness guidance instead of the
+		// unsolvable serve error.
+		if adoptErr := a.adoptLocalLeaseHeldSession(tab, path); adoptErr == nil {
+			return nil
+		} else if guidance, ok := a.describeLocalLeaseBlocker(path); ok {
+			return fmt.Errorf("%s", guidance)
+		}
 		return err
 	}
 	if view.Mirrored || view.Holder != "serve" {
