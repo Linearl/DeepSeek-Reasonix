@@ -50,6 +50,7 @@ const fixtureEntries: CollabMailEntry[] = [
   entry({ id: "m_approval", bucket: "approval", approver: "sc_main", pendingMe: true, preview: "deploy request" }),
   entry({ id: "m_decided", bucket: "approval", approver: "sc_main", decidedBy: "human", preview: "already judged" }),
   entry({ id: "m_mention", preview: "please investigate" }),
+  entry({ id: "m_group", channel: "dev", preview: "from the dev channel" }),
   entry({ id: "m_auto", bucket: "automation", from: "sc_heartbeat", preview: "cron report" }),
   entry({ id: "m_system", bucket: "system", preview: "read receipt" }),
 ];
@@ -89,7 +90,7 @@ const bindings: CollabInboxBindings = {
           firstAt: 1_600_000_000_000,
           lastAt: 1_700_000_000_000,
           preview: "please investigate",
-          entries: [entry({ id: "m_mention", preview: "please investigate" }), entry({ id: "r1" }), entry({ id: "r2" })],
+          entries: [entry({ id: "m_mention", preview: "please investigate", channel: "dev" }), entry({ id: "r1" }), entry({ id: "r2" })],
         },
       ],
     };
@@ -131,6 +132,11 @@ const panel = document.querySelector(".collab-inbox-panel");
 assert.ok(panel, "the panel renders into document.body once opened");
 assert.equal(calls.some((c) => c.name === "ListCollabMail"), true, "opening loads the list snapshot");
 assert.match(panel!.textContent ?? "", /Snapshot 1\.5\.1700000000000/, "the revision footer is visible (contract ①)");
+
+// 任务 349n1 群标识：fan-out 来源频道以 #名 chip 标注在条目上；点对点信不出 chip。
+const channelChips = Array.from(panel!.querySelectorAll(".collab-inbox-panel__channel"));
+assert.equal(channelChips.length, 1, "exactly one group-stamped entry renders a channel chip");
+assert.equal(channelChips[0].textContent, "#dev", "the channel chip shows #name");
 
 // 五桶 tab 切换 → 后端按桶过滤。
 const bucketButtons = Array.from(panel!.querySelectorAll<HTMLButtonElement>(".collab-inbox-panel__bucket"));
@@ -223,6 +229,7 @@ await act(async () => {
   chainHead!.click();
 });
 assert.match(document.body.textContent ?? "", /please investigate/, "expanding a chain reveals its rounds");
+assert.match(document.body.textContent ?? "", /#dev/, "the chain entry carries the channel chip too");
 
 await act(async () => setCollabInboxOpen(false));
 assert.equal(document.querySelector(".collab-inbox-panel"), null, "closing unmounts the panel");

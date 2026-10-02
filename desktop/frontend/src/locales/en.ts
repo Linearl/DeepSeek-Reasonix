@@ -4642,6 +4642,7 @@ export const en = {
 "sessionMonitor.neverEvicted": "never evicted",
 "sessionMonitor.recentEvictions": "Recent evictions",
 "sessionMonitor.stageRow": "{stage} · {ms} ms",
+  "collabInbox.channel": "Group channel",
   "collabInbox.title": "Cross-session inbox",
   "collabInbox.close": "Close",
   "collabInbox.empty": "No mail yet",

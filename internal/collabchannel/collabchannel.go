@@ -579,20 +579,25 @@ func (s *Store) DrainFanout(ctx context.Context) (FanoutStats, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	rows, err := s.db.Query(`SELECT f.message_id, f.member, f.fanout_id, m.sender, m.at, m.body
+	rows, err := s.db.Query(`SELECT f.message_id, f.member, f.fanout_id, m.sender, m.at, m.body, c.name
 		FROM fanout f JOIN messages m ON m.id = f.message_id
+		JOIN channels c ON c.id = m.channel_id
 		WHERE f.state = 'queued' ORDER BY m.at, f.member`)
 	if err != nil {
 		return FanoutStats{}, err
 	}
 	type job struct {
 		messageID, member, fanoutID, sender, body string
-		at                                        int64
+		// channel is the group-source stamp (349 挂账 note①): the channel's
+		// name at delivery time, so the recipient's inbox can show where the
+		// mail came from even if the channel is renamed or gone later.
+		channel string
+		at      int64
 	}
 	var jobs []job
 	for rows.Next() {
 		var j job
-		if err := rows.Scan(&j.messageID, &j.member, &j.fanoutID, &j.sender, &j.at, &j.body); err != nil {
+		if err := rows.Scan(&j.messageID, &j.member, &j.fanoutID, &j.sender, &j.at, &j.body, &j.channel); err != nil {
 			rows.Close()
 			return FanoutStats{}, err
 		}
@@ -644,6 +649,10 @@ func (s *Store) DrainFanout(ctx context.Context) (FanoutStats, error) {
 			Body:     j.body,
 			Delivery: string(sessioncollab.DeliveryFollowup), // 429: idle members are never steer-woken
 			At:       j.at,
+			// 349 挂账 note①: the group-source stamp — the task-320 inbox
+			// surfaces it as the entry's channel identifier (a delivered
+			// channel copy must not look identical to a direct send).
+			Channel: j.channel,
 		})
 		if err != nil {
 			_ = s.settle(j.messageID, j.member, "failed", err.Error(), 0)

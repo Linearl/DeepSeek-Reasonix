@@ -465,3 +465,33 @@ func TestStateFileStaysBesideMail(t *testing.T) {
 		t.Fatalf("state file must live in the mail dir: %v %s", err, b)
 	}
 }
+
+// 349 挂账 note①：带群来源戳的信 → 条目透出 Channel 群标识；未打戳的
+// 点对点信保持为空。桶分类不受该戳影响（分类是 Kind/身份的职责）。
+func TestEntryCarriesChannelGroupStamp(t *testing.T) {
+	s, mail := fixtureStore(t)
+	now := s.now()
+	stamped := deliver(t, mail, sessioncollab.MailMessage{
+		From: "sc_s", To: "sc_main", Body: "来自群聊的行", At: now, Channel: "dev",
+	})
+	plain := deliver(t, mail, sessioncollab.MailMessage{
+		From: "sc_alice", To: "sc_main", Body: "点对点派活", At: now - 1000,
+	})
+	snap, err := s.List(Query{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]Entry{}
+	for _, e := range snap.Entries {
+		byID[e.ID] = e
+	}
+	if got := byID[stamped.ID].Channel; got != "dev" {
+		t.Fatalf("stamped entry must carry the group identifier: %+v", byID[stamped.ID])
+	}
+	if byID[stamped.ID].Bucket != BucketMention {
+		t.Fatalf("channel stamp must not change bucket classification: %+v", byID[stamped.ID])
+	}
+	if got := byID[plain.ID].Channel; got != "" {
+		t.Fatalf("point-to-point entry must have no channel identifier: %+v", byID[plain.ID])
+	}
+}
