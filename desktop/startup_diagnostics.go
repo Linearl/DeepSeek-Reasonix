@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"runtime"
+	"strings"
 	"time"
 
 	"reasonix/internal/repair"
@@ -19,7 +21,16 @@ func (a *App) recordPreviousRunDiagnostics() {
 			m.persist()
 		}
 	}
+	// Task 377: the noise gate (experimental, default off) skips the report for
+	// phases that prove a clean shutdown was already underway — the clean()/exit
+	// race C-20260920-02 documented, not crash evidence. Suppression stays
+	// observable: one summary line + a metrics bucket, never a silent drop.
+	suppressed := 0
 	for _, lifecycle := range a.lifecycle.previousRuns {
+		if a.lifecycle.noiseGate && lifecycleNoiseBenign(lifecycle.Phase) {
+			suppressed++
+			continue
+		}
 		_ = writePendingReport(desktopLifecycleReport(lifecycle), true)
 		if m := a.metrics.Load(); m != nil {
 			m.inc("desktop_exit", "abnormal")
@@ -27,6 +38,25 @@ func (a *App) recordPreviousRunDiagnostics() {
 			m.persist()
 		}
 	}
+	if suppressed > 0 {
+		slog.Info("desktop: lifecycle noise gate suppressed clean-shutdown residue",
+			"suppressed", suppressed, "phases", "shutting_down/healthy")
+		if m := a.metrics.Load(); m != nil {
+			m.inc("desktop_exit_phase", "noise_gate_suppressed")
+			m.persist()
+		}
+	}
+}
+
+// lifecycleNoiseBenign reports whether the phase proves the previous run was
+// already in (or finished) its clean shutdown. wedged (shutdown watchdog forced
+// exit — a real abnormal termination) and unknown phases are never benign.
+func lifecycleNoiseBenign(phase string) bool {
+	switch strings.ToLower(strings.TrimSpace(phase)) {
+	case "shutting_down", "healthy":
+		return true
+	}
+	return false
 }
 
 func previousRunReport(previous repair.PreviousRunObservation) crashReport {

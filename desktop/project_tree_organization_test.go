@@ -396,3 +396,154 @@ func TestMoveTopicToGroupCreatesMissingGroup(t *testing.T) {
 		t.Fatalf("groups = %#v", groups)
 	}
 }
+
+
+// Task 350: session group hierarchy (parent pointers).
+func TestSessionGroupParentAdditiveMigration(t *testing.T) {
+	// Old flat JSON (no parent field) still unmarshals; the new field stays empty.
+	var groups []desktopGroup
+	if err := json.Unmarshal([]byte(`[{"id":"g1","title":"Team","topicIds":["a"]}]`), &groups); err != nil {
+		t.Fatalf("old json: %v", err)
+	}
+	if groups[0].Parent != "" {
+		t.Fatalf("old data gained a parent: %q", groups[0].Parent)
+	}
+	// A legacy reader (struct without the field, modeled as a raw map) keeps the
+	// unknown key in the payload — new data is inert for old binaries.
+	var legacy []map[string]any
+	if err := json.Unmarshal([]byte(`[{"id":"g1","title":"Team","parent":"g0"}]`), &legacy); err != nil {
+		t.Fatalf("new json into legacy reader: %v", err)
+	}
+	if _, has := legacy[0]["parent"]; !has {
+		t.Fatal("legacy reader dropped the parent key")
+	}
+	if err := json.Unmarshal([]byte(`[{"id":"g1","title":"Team","parent":"g0"}]`), &groups); err != nil {
+		t.Fatalf("new json: %v", err)
+	}
+	if groups[0].Parent != "g0" {
+		t.Fatalf("parent = %q, want g0", groups[0].Parent)
+	}
+}
+
+func TestSessionGroupHierarchyValidation(t *testing.T) {
+	ok := []desktopGroup{
+		{ID: "top", Title: "Top"},
+		{ID: "child", Title: "Child", Parent: "top"},
+	}
+	if err := validateSessionGroups(ok); err != nil {
+		t.Fatalf("valid hierarchy rejected: %v", err)
+	}
+	cases := []struct {
+		name   string
+		groups []desktopGroup
+	}{
+		{"unknown parent", []desktopGroup{{ID: "a", Title: "A", Parent: "ghost"}}},
+		{"self parent", []desktopGroup{{ID: "a", Title: "A", Parent: "a"}}},
+		{"nested parent (depth 3)", []desktopGroup{
+			{ID: "a", Title: "A"},
+			{ID: "b", Title: "B", Parent: "a"},
+			{ID: "c", Title: "C", Parent: "b"},
+		}},
+		{"two-node cycle", []desktopGroup{
+			{ID: "a", Title: "A", Parent: "b"},
+			{ID: "b", Title: "B", Parent: "a"},
+		}},
+	}
+	for _, tc := range cases {
+		if err := validateSessionGroups(tc.groups); err == nil {
+			t.Fatalf("%s: expected rejection, got nil", tc.name)
+		}
+	}
+}
+
+// TestSessionGroupHierarchyDisplayOnly is the 层级≠指挥权 guard (task 350, the
+// design rule fixed by the 0928 decision): nesting a group under another must
+// not touch ids, titles, or membership, and addressing must stay flat — filing
+// a session into a child group by id works exactly like before the hierarchy
+// existed, and a parent-pointer-only change still advances the CAS revision.
+func TestSessionGroupHierarchyDisplayOnly(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	root := t.TempDir()
+	if err := addProject(root, "Project"); err != nil {
+		t.Fatal(err)
+	}
+	if err := updateProjectsFile(func(f *desktopProjectFile) (bool, error) {
+		i := projectIndexByRoot(f.Projects, root)
+		f.Projects[i].Topics = []string{"a", "b", "c"}
+		f.Projects[i].Groups = []desktopGroup{
+			{ID: "team-a", Title: "Team A", TopicIDs: []string{"a"}},
+			{ID: "team-b", Title: "Team B", TopicIDs: []string{"b"}},
+		}
+		f.Projects[i].GroupsRevision = 1
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	app := NewApp()
+	before, err := app.ListProjectGroups("project", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Nest Team B under Team A (the same mutation the sidebar drag performs).
+	nested := append([]desktopGroup(nil), before...)
+	for i := range nested {
+		if nested[i].ID == "team-b" {
+			nested[i].Parent = "team-a"
+		}
+	}
+	snapshot, err := app.SaveSessionGroupsVersioned("project", root, 1, nested)
+	if err != nil || !snapshot.Applied {
+		t.Fatalf("save nested: %v applied=%v", err, snapshot.Applied)
+	}
+	after, err := app.ListProjectGroups("project", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Hierarchy is display only: membership, ids and titles are untouched.
+	for _, was := range before {
+		for _, now := range after {
+			if was.ID != now.ID {
+				continue
+			}
+			if was.Title != now.Title || !reflect.DeepEqual(was.TopicIDs, now.TopicIDs) {
+				t.Fatalf("nesting mutated group %q: %#v -> %#v", was.ID, was, now)
+			}
+		}
+	}
+
+	// Addressing stays flat: filing into the child group by id ignores the tree.
+	if err := app.AddTopicToGroup("project", root, "c", "team-b", ""); err != nil {
+		t.Fatalf("AddTopicToGroup into nested group: %v", err)
+	}
+	groups, err := app.ListProjectGroups("project", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, group := range groups {
+		if group.ID != "team-b" {
+			continue
+		}
+		if !reflect.DeepEqual(group.TopicIDs, []string{"b", "c"}) {
+			t.Fatalf("child group membership = %#v", group.TopicIDs)
+		}
+	}
+
+	// A parent-pointer-only change must bump the revision: equalGroups compares
+	// Parent, so a pure re-nesting is never mistaken for a no-op.
+	current, err := app.GetProjectGroups("project", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	detached := append([]desktopGroup(nil), current.Groups...)
+	for i := range detached {
+		detached[i].Parent = ""
+	}
+	next, err := app.SaveSessionGroupsVersioned("project", root, current.Revision, detached)
+	if err != nil {
+		t.Fatalf("detach: %v", err)
+	}
+	if !next.Applied || next.Revision <= current.Revision {
+		t.Fatalf("parent-only change did not advance revision: applied=%v %d->%d", next.Applied, current.Revision, next.Revision)
+	}
+}

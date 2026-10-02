@@ -5,6 +5,7 @@ import { asArray } from "../lib/array";
 import type { Translator } from "../lib/i18n";
 import { isTopicNode, projectTreeGroupActiveCount, projectTreeGroupDotStatus, projectTreeTopicArchiveBlocked } from "../lib/projectTreeTopic";
 import { loadSessionGroupCollapsed, persistSessionGroupCollapsed } from "../lib/projectGroups";
+import { canNestUnder, childGroups, inheritedMemberIDs, nestGroup as nestInRoster, nestTargets, topLevelGroups, unnestGroup as unnestInRoster } from "../lib/sessionGroupTree";
 import type { ProjectTreeRefresh } from "../lib/projectTreeArchive";
 import type { ProjectNode, ProjectTreeOrganizationBindings, SessionGroup } from "../lib/types";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
@@ -95,6 +96,10 @@ export interface ProjectTreeOrganizationController {
   /** moveGroup reorders a group inside its project (task 50): the caller passes the
    * dragged group id and the id it was dropped on, matching the topic drag helpers. */
   moveGroup(key: string, fromID: string, toID: string): void;
+  /** nestGroup moves a group under another (parentID) or to the top level
+   * (null) — task 350. Display-only: the hierarchy never touches ids,
+   * membership, or permissions (层级≠指挥权); the backend caps depth at 2. */
+  nestGroup(key: string, childID: string, parentID: string | null): void;
   /** clearGroup keeps the group shell and drops its sessions (task 17). */
   clearGroup(key: string, id: string): void;
   /** dissolveGroup removes the shell; its sessions return to ungrouped. This is
@@ -343,6 +348,11 @@ export function useProjectTreeOrganization({
     },
     clearGroup(key, id) { mutateGroups(key, (groups) => groups.map((group) => group.id === id ? { ...group, topicIds: [] } : group)); },
     dissolveGroup(key, id) { mutateGroups(key, (groups) => groups.filter((group) => group.id !== id)); },
+    nestGroup(key, childID, parentID) {
+      // Task 350: hierarchy is display organization — the roster helpers only
+      // rewrite the `parent` pointer, never ids or membership.
+      mutateGroups(key, (groups) => parentID ? nestInRoster(groups, childID, parentID) : unnestInRoster(groups, childID));
+    },
     canDropTopicInto(key) {
       const context = dragContextRef.current;
       return Boolean(dragTopicID && context && key === (context.scope === "global" ? "global|" : `project|${context.root}`));
@@ -399,16 +409,23 @@ export function ProjectTreeGroupRows({
   const [groupDraft, setGroupDraft] = useState("");
   const key = projectTreeOrganizationKey(folder);
   const groups = organization.groupsFor(folder);
+  const roots = topLevelGroups(groups);
   const groupedIDs = new Set(groups.flatMap((group) => group.topicIds ?? []));
   useEffect(() => {
     if (!draggingGroup) return;
-    const finish = () => {
+    const finish = (event: PointerEvent) => {
       if (groupPressTimerRef.current !== null) {
         window.clearTimeout(groupPressTimerRef.current);
         groupPressTimerRef.current = null;
       }
       const { from, to, moved } = groupDragRef.current;
-      if (moved && from && to && from !== to) organization.moveGroup(key, from, to);
+      if (moved && from && to && from !== to) {
+        // Task 350: Alt+drop nests the dragged group under the target instead
+        // of reordering (display-only hierarchy, depth capped by canNestUnder);
+        // a plain drop keeps the task-50 flat reorder.
+        if (event.altKey && canNestUnder(groups, from, to)) organization.nestGroup(key, from, to);
+        else organization.moveGroup(key, from, to);
+      }
       // Swallow the click the release would otherwise produce: a drag must not also
       // toggle the group it started on.
       groupSuppressClickRef.current = moved;
@@ -422,7 +439,7 @@ export function ProjectTreeGroupRows({
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", finish);
     };
-  }, [draggingGroup, key, organization]);
+  }, [draggingGroup, groups, key, organization]);
 
   const beginGroupPress = (id: string) => {
     groupDragRef.current = { from: id, to: id, moved: false };
@@ -464,18 +481,30 @@ export function ProjectTreeGroupRows({
     organization.renameGroup(key, id, groupDraft);
     setEditingGroup(null);
   };
-  return <>
-    {children.filter((child) => !groupedIDs.has(child.topicId ?? "")).map((child) => renderNode(child, depth, section, visible))}
-    {groups.map((group) => {
+  // Task 350: groups render as a two-level tree (top-level group → child
+  // group). `roots` hides orphaned pointers (parent dissolved elsewhere), so a
+  // stale pointer can never swallow a group off the sidebar.
+  const renderGroupRow = (group: SessionGroup, nested: boolean) => {
       const collapsed = organization.groupCollapsed(key, group.id);
       // The count badge reads the persisted roster (already filtered against
       // the session catalog by the backend), not the windowed render list —
       // collapsed groups render no member rows, so the badge is the only
       // signal and must not shrink with classic preview / pagination (#9518).
       const memberCount = group.topicIds?.length ?? 0;
-      const members = children.filter((child) => group.topicIds?.includes(child.topicId ?? ""));
+      const ownMembers = children.filter((child) => group.topicIds?.includes(child.topicId ?? ""));
+      // Task 350 activity inheritance: a parent header's dot stands for its own
+      // members plus every child group's members (a collapsed tree still shows
+      // where things run). A child aggregates only itself. Flat groups are
+      // unchanged — the inherited set equals the own set.
+      const dotMemberIDs = new Set(nested ? (group.topicIds ?? []) : inheritedMemberIDs(groups, group.id));
+      const dotMembers = children.filter((child) => dotMemberIDs.has(child.topicId ?? ""));
+      const members = dotMembers;
+      const kids = nested ? [] : childGroups(groups, group.id);
       const canDrop = organization.canDropTopicInto(key);
-      return <div key={group.id} className={`project-tree__group${collapsed ? " project-tree__group--collapsed" : ""}`}>
+      // Menu economy: at most four inline nest targets — beyond that the roster
+      // is big enough that the context menu should not grow linearly with it.
+      const nestInto = nested ? [] : nestTargets(groups, group.id).slice(0, 4);
+      return <div key={group.id} className={`project-tree__group${collapsed ? " project-tree__group--collapsed" : ""}${nested ? " project-tree__group--nested" : ""}`}>
         <div
           role="button"
           tabIndex={0}
@@ -486,7 +515,8 @@ export function ProjectTreeGroupRows({
           // 8 + (depth - 1) * 16 — puts the collapse chevron exactly on the
           // folder icon column. Member rows keep the depth they are rendered
           // with, so the project tree and expanded children do not move.
-          style={{ paddingLeft: 8 + (depth - 1) * 16 }}
+          // Task 350: a nested group rides one extra step.
+          style={{ paddingLeft: 8 + (depth - 1) * 16 + (nested ? 16 : 0) }}
           title={group.title}
           onClick={() => {
             // A press that became a drag already did its work on release; the click it
@@ -526,7 +556,8 @@ export function ProjectTreeGroupRows({
               header is hovered (CSS), pressed-and-held to drag without the
               long-press delay. Purely a pointer affordance: aria-hidden and
               unfocusable — collapse stays on the header (Enter/Space), and a
-              keyboard reorder would need menu items, not this handle. */}
+              keyboard reorder would need menu items, not this handle. Alt+drop
+              on another header nests instead of reordering (task 350). */}
           <span
             className="project-tree__group-drag"
             aria-hidden="true"
@@ -564,7 +595,8 @@ export function ProjectTreeGroupRows({
               Task 313: the dot is joined by the number of members it stands
               for; the badge renders inside the same dot guard, so count and dot
               live and die together (all idle → both gone) and the expanded
-              view still shows neither (rows own their own indicators). */}
+              view still shows neither (rows own their own indicators).
+              Task 350: for a parent the dot/count aggregate child groups too. */}
           {(() => {
             const dot = collapsed ? projectTreeGroupDotStatus(members) : "";
             if (!dot) return null;
@@ -585,6 +617,21 @@ export function ProjectTreeGroupRows({
               icon: <CheckCheck size={13} />,
               label: t("projectTree.markAllRead"),
               onSelect: () => { onMarkAllRead(members); setMenuGroup(null); },
+            }] : []),
+            // Task 350: display-only hierarchy moves — nest under a top-level
+            // group (≤4 inline targets), or back to the top level. No authority
+            // follows the pointer (层级≠指挥权).
+            ...nestInto.map((target) => ({
+              key: `nest:${target.id}`,
+              icon: <FolderMinus size={13} />,
+              label: t("projectTree.nestGroupUnder", { title: target.title }),
+              onSelect: () => { organization.nestGroup(key, group.id, target.id); setMenuGroup(null); },
+            })),
+            ...(nested ? [{
+              key: "move-to-top",
+              icon: <FolderMinus size={13} />,
+              label: t("projectTree.moveGroupToTopLevel"),
+              onSelect: () => { organization.nestGroup(key, group.id, null); setMenuGroup(null); },
             }] : []),
             { key: "rename", icon: <Pencil size={13} />, label: t("projectTree.renameGroup"), onSelect: () => { setEditingGroup(group.id); setGroupDraft(group.title); setMenuGroup(null); } },
             { key: "clear", icon: <Eraser size={13} />, label: t("projectTree.clearGroup"), onSelect: () => { organization.clearGroup(key, group.id); setMenuGroup(null); } },
@@ -622,11 +669,17 @@ export function ProjectTreeGroupRows({
           ariaLabel={t("projectTree.renameGroup")}
           onClose={() => setMenuGroup(null)}
         />}
-        {!collapsed && members.length > 0 && <div className="project-tree__group-children">
-          {members.map((child) => renderNode(child, depth, section, visible))}
+        {!collapsed && ownMembers.length > 0 && <div className="project-tree__group-children">
+          {ownMembers.map((child) => renderNode(child, depth, section, visible))}
+        </div>}
+        {!collapsed && kids.length > 0 && <div className="project-tree__group-subtree">
+          {kids.map((kid) => renderGroupRow(kid, true))}
         </div>}
       </div>;
-    })}
+  };
+  return <>
+    {children.filter((child) => !groupedIDs.has(child.topicId ?? "")).map((child) => renderNode(child, depth, section, visible))}
+    {roots.map((group) => renderGroupRow(group, false))}
   </>;
 }
 

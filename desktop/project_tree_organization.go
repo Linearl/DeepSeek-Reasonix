@@ -13,6 +13,10 @@ const (
 	maxSessionGroupIDRunes = 160
 	maxSessionGroupRunes   = 120
 	maxSessionGroupTopics  = 10_000
+	// maxSessionGroupDepth caps the nesting introduced by task 350 (session
+	// group hierarchy). The tree is a display organization only — Discord-style
+	// shallow categories — so a child may never itself have a child.
+	maxSessionGroupDepth = 2
 )
 
 type desktopProject struct {
@@ -31,6 +35,13 @@ type desktopGroup struct {
 	ID       string   `json:"id"`
 	Title    string   `json:"title"`
 	TopicIDs []string `json:"topicIds,omitempty"`
+	// Parent (task 350) nests this group under another group of the same
+	// workspace. Purely additive and optional: empty for flat data, and old
+	// binaries ignore the unknown JSON key, so flat and hierarchical saves stay
+	// interchangeable. HIERARCHY IS DISPLAY ONLY — it must never imply
+	// permission or command semantics (层级≠指挥权); addressing keeps using the
+	// flat group id.
+	Parent string `json:"parent,omitempty"`
 }
 
 type ProjectGroupsSnapshot struct {
@@ -60,6 +71,12 @@ func normalizeGroups(groups []desktopGroup) []desktopGroup {
 	for _, group := range groups {
 		group.ID = strings.TrimSpace(group.ID)
 		group.Title = strings.TrimSpace(group.Title)
+		// Task 350: a self parent is meaningless; drop it rather than reject the
+		// whole roster so stale editor state cannot wedge a save.
+		group.Parent = strings.TrimSpace(group.Parent)
+		if group.Parent == group.ID {
+			group.Parent = ""
+		}
 		if group.ID == "" || seenGroups[group.ID] {
 			continue
 		}
@@ -91,6 +108,11 @@ func mergeDesktopGroups(left, right []desktopGroup) []desktopGroup {
 		if index, ok := byID[group.ID]; ok {
 			if out[index].Title == "" {
 				out[index].Title = strings.TrimSpace(group.Title)
+			}
+			// Task 350: keep the parent pointer across merges the same way the
+			// title is kept — first side wins, the other fills a blank.
+			if out[index].Parent == "" {
+				out[index].Parent = strings.TrimSpace(group.Parent)
 			}
 			out[index].TopicIDs = append(out[index].TopicIDs, group.TopicIDs...)
 			continue
@@ -128,6 +150,34 @@ func validateSessionGroups(groups []desktopGroup) error {
 				return fmt.Errorf("invalid or duplicate grouped topic %q", topicID)
 			}
 			seenTopics[topicID] = true
+		}
+	}
+	return validateSessionGroupHierarchy(groups)
+}
+
+// validateSessionGroupHierarchy checks the task-350 parent pointers: a parent
+// must exist, must not be the group itself (normalize clears that case), and
+// must keep the tree shallow — a child group may never have children of its own
+// (maxSessionGroupDepth 2, Discord-category style). Cycles are impossible under
+// that cap because a chain longer than two links is rejected outright. The
+// hierarchy is display organization only, so these checks guard data integrity,
+// not permissions.
+func validateSessionGroupHierarchy(groups []desktopGroup) error {
+	byID := make(map[string]desktopGroup, len(groups))
+	for _, group := range groups {
+		byID[group.ID] = group
+	}
+	for _, group := range groups {
+		parent := strings.TrimSpace(group.Parent)
+		if parent == "" {
+			continue
+		}
+		p, ok := byID[parent]
+		if !ok {
+			return fmt.Errorf("session group %q: unknown parent %q", group.ID, parent)
+		}
+		if strings.TrimSpace(p.Parent) != "" {
+			return fmt.Errorf("session group %q: parent %q is itself nested (max depth %d)", group.ID, parent, maxSessionGroupDepth)
 		}
 	}
 	return nil
@@ -644,7 +694,7 @@ func equalGroups(left, right []desktopGroup) bool {
 		return false
 	}
 	for i := range left {
-		if left[i].ID != right[i].ID || left[i].Title != right[i].Title || !sameStringList(left[i].TopicIDs, right[i].TopicIDs) {
+		if left[i].ID != right[i].ID || left[i].Title != right[i].Title || left[i].Parent != right[i].Parent || !sameStringList(left[i].TopicIDs, right[i].TopicIDs) {
 			return false
 		}
 	}

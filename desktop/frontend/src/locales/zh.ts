@@ -78,6 +78,7 @@ export const zh: Record<DictKey, string> = {
   // 顶部应用栏
   "tabBar.closeTab": "关闭标签页",
   "tabBar.closeOtherTabs": "关闭其他标签页",
+  "tabBar.closeInactiveTabs": "关闭非活跃标签页",
   "tabBar.closeTabsToRight": "关闭右侧标签页",
   "tabBar.stopAndCloseTab": "停止任务并关闭",
   "composer.splitTargetPrimary": "发送到左栏",
@@ -1602,6 +1603,8 @@ export const zh: Record<DictKey, string> = {
   "projectTree.newGroup": "新建分组",
   "projectTree.markAllRead": "全部已读",
   "projectTree.renameGroup": "重命名分组",
+  "projectTree.nestGroupUnder": "移到「{title}」子层",
+  "projectTree.moveGroupToTopLevel": "移到顶层",
   "projectTree.deleteGroup": "删除分组",
   "projectTree.clearGroup": "清空分组",
   "projectTree.dissolveGroup": "解散分组",

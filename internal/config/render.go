@@ -166,6 +166,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 			fmt.Fprintf(&b, "staging_dir = %q   # desktop: fast-switch staging override (task 381); empty = the default staging directory\n", dir)
 		}
 		fmt.Fprintf(&b, "experimental_autonomous_update = %v   # desktop: register the agent restart_update tool (task 254; boot snapshot)\n", c.Desktop.ExperimentalAutonomousUpdate)
+		fmt.Fprintf(&b, "experimental_lifecycle_noise_gate = %v   # desktop: task 377 - skip crash reports for clean-shutdown lifecycle residue (shutting_down/healthy)\n", c.Desktop.ExperimentalLifecycleNoiseGate)
 		fmt.Fprintf(&b, "autonomous_update_resume = %q   # desktop: auto-resume after an update restart: off | goal_autopilot | all (task 254)\n", c.AutonomousUpdateResumeMode())
 		fmt.Fprintf(&b, "autopilot_proxy_scope = %q   # desktop: autopilot proxy-approval scope: related (level 1) | all (level 2) (task 388)\n", c.AutopilotProxyScopeLevel())
 		if p := strings.TrimSpace(c.Desktop.AutopilotProxyManifest); p != "" {

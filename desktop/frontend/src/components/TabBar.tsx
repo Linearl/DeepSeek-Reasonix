@@ -11,7 +11,7 @@ import { useT } from "../lib/i18n";
 import { Tooltip } from "./Tooltip";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
 import { WorktreeBadge } from "./WorktreeBadge";
-import { selectCloseOtherIds, selectCloseRightIds } from "../lib/tabClosePolicy";
+import { selectCloseInactiveIds, selectCloseOtherIds, selectCloseRightIds } from "../lib/tabClosePolicy";
 // wt-zcode-288：标签页右键「全部已读」——读档/写档与未读判定统一走 readActivity 存档。
 import { markTabsAllRead } from "../lib/readActivity";
 
@@ -259,6 +259,18 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
           disabled: tabs.length <= 1,
           onSelect: () => {
             const target = selectCloseOtherIds(tabs, menuTabId);
+            closeTabsFromMenu(target.ids, target.nextActiveTabId);
+          },
+        },
+        {
+          // 任务 368：关闭非活跃标签页——保留的是「当前活跃标签」而非右击的
+          // 那个（对齐 Chrome「关闭其他标签页」语义，锚点=活跃而非锚点=右击）。
+          // 无副作用：批量关闭走 keep_running（任务 223），会话零删除，无确认弹窗。
+          key: "close-inactive",
+          label: t("tabBar.closeInactiveTabs"),
+          disabled: tabs.length <= 1,
+          onSelect: () => {
+            const target = selectCloseInactiveIds(tabs, resolvedActiveTabId);
             closeTabsFromMenu(target.ids, target.nextActiveTabId);
           },
         },

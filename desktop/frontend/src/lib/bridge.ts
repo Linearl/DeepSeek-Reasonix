@@ -446,6 +446,11 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   // General form of the same channel: one line per fork-feature event the frontend wants in
   // desktop.log. The fork's features are mostly frontend-side and had no way to reach the log.
   ReportFrontendLog(feature: string, level: string, message: string, detail: string): Promise<void>;
+  // Task 360: one frontend jank event (label + reason + performance snapshot +
+  // sampled frames + breadcrumbs) as a JSON object string; the backend appends
+  // it to logs/perf/jank-YYYYMMDD.jsonl. Optional: older backends drop it
+  // silently (the call sites use ?. so diagnostics never break features).
+  ReportJankRecord?(record: string): Promise<void>;
   // Serve pool remote gateway (Settings → 集成与连接 → 本地服务器服务).
   ServePoolStatus(): Promise<{ enabled: boolean; running: boolean; bind: string; addr: string; port: number; token: string; listen: string }>;
   SetServePoolEnabled(enabled: boolean): Promise<void>;

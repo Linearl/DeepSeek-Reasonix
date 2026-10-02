@@ -3,6 +3,7 @@
 
 import { addBreadcrumb, dumpBreadcrumbs, snapshotBreadcrumbs, type Breadcrumb } from "./breadcrumbs";
 import { writeClipboardText } from "./clipboard";
+import { app } from "./bridge";
 import { t } from "./i18n";
 import { sessionPipelineDiagnostics, type SessionPipelineDiagnostics } from "./sessionDiagnostics";
 import { isWailsRuntimeOnlyCrashEvent } from "./wailsRuntimeCrash";
@@ -865,6 +866,93 @@ function isPerfLabelHandled(label: string): boolean {
   return dismissedPerfLabels.has(label) || getReportedPerfLabels().has(label);
 }
 
+// ── Task 360: 卡顿事件自动落盘 ───────────────────────────────────────────────
+// 弹窗详情/breadcrumb/帧采样过去只活在内存与弹窗 payload 里（breadcrumb=30 条
+// 环形、desktop.log 对前端卡顿零痕迹），不点「发送报告」事后无从排障。这里把
+// 三个触发源（long task / js heap / event loop lag）任一触发整理成一条 jank
+// 记录，经 ReportJankRecord 落 logs/perf/jank-YYYYMMDD.jsonl（与后端
+// perf-sample 同目录同天，时间轴可对齐）。
+
+export type JankRecord = {
+  recordedAt: string;
+  label: string;
+  reason: string;
+  /** Same-label triggers folded into this record by the throttle. */
+  suppressedSinceLast?: number;
+  snapshot: PerformanceSnapshot;
+  breadcrumbs: Breadcrumb[];
+};
+
+const JANK_LOG_COOLDOWN_MS = 60_000;
+const jankLastWriteByLabel = new Map<string, number>();
+const jankSuppressedByLabel = new Map<string, number>();
+
+/** Test seam: the throttle is module state, suites reset it between blocks. */
+export function resetJankRecordingForTest(): void {
+  jankLastWriteByLabel.clear();
+  jankSuppressedByLabel.clear();
+}
+
+/** Test seam: pretend a record was just written for `label` (the real write
+ * happens inside recordJankEvent's async path). */
+export function markJankRecordedForTest(label: string, now: number): void {
+  jankLastWriteByLabel.set(label, now);
+}
+
+export function jankRecordingDue(label: string, now: number): boolean {
+  const last = jankLastWriteByLabel.get(label) ?? 0;
+  return now - last >= JANK_LOG_COOLDOWN_MS;
+}
+
+export function buildJankRecord(
+  label: string,
+  snapshot: PerformanceSnapshot,
+  breadcrumbs: Breadcrumb[],
+  suppressedSinceLast: number,
+  recordedAt: string,
+): JankRecord {
+  return {
+    recordedAt,
+    label,
+    reason: snapshot.reason,
+    ...(suppressedSinceLast > 0 ? { suppressedSinceLast } : {}),
+    snapshot,
+    breadcrumbs,
+  };
+}
+
+function recordJankEvent(reason: string, label: string, currentLagMs: number): void {
+  try {
+    const now = Date.now();
+    if (!jankRecordingDue(label, now)) {
+      jankSuppressedByLabel.set(label, (jankSuppressedByLabel.get(label) ?? 0) + 1);
+      return;
+    }
+    jankLastWriteByLabel.set(label, now);
+    const suppressed = jankSuppressedByLabel.get(label) ?? 0;
+    jankSuppressedByLabel.set(label, 0);
+    const snapshot = performanceSnapshot(reason, currentLagMs);
+    // Same attribution windows as the prompt path: every recorded long task,
+    // plus the lag spike itself for event-loop reports.
+    const windows = [...longTasks];
+    if (currentLagMs > 0) {
+      const nowMs = performance.now();
+      windows.push({ startMs: Math.max(0, nowMs - currentLagMs), durationMs: currentLagMs });
+    }
+    void collectLongTaskFrames(windows)
+      .then((frames) => {
+        if (frames.length) snapshot.longTaskFrames = frames;
+        const record = buildJankRecord(label, snapshot, snapshotBreadcrumbs(), suppressed, new Date(now).toISOString());
+        // Optional binding: older backends drop it silently; diagnostics must
+        // never break the trigger path.
+        void app.ReportJankRecord?.(JSON.stringify(record))?.catch(() => {});
+      })
+      .catch(() => {});
+  } catch {
+    // Never let the recorder throw into the trigger path.
+  }
+}
+
 function shouldPromptForPerformance(now: number, label: string): boolean {
   const hidden = typeof document !== "undefined" && document.visibilityState === "hidden";
   const focused = typeof document === "undefined" || document.hasFocus?.() !== false;
@@ -874,6 +962,10 @@ function shouldPromptForPerformance(now: number, label: string): boolean {
 function promptPerformanceReport(reason: string, currentLagMs = 0): void {
   const now = Date.now();
   const label = performanceLabelForReason(reason);
+  // Task 360: 落盘走自己的节流（每 label 60s，被抑制的触发并入下一条的
+  // suppressedSinceLast），在弹窗门控之前——弹窗被冷却/隐藏压住时事件照样
+  // 有本地档，事后排障不再依赖用户点「发送报告」。
+  recordJankEvent(reason, label, currentLagMs);
   if (!shouldPromptForPerformance(now, label)) return;
   lastPerformancePromptAt = now;
   addBreadcrumb("performance", reason);

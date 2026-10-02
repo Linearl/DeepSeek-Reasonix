@@ -49,6 +49,10 @@ type desktopLifecycleRuntime struct {
 	previousRun  repair.PreviousRunObservation
 	previousRuns []desktopLifecycleObservation
 	tracker      *desktopLifecycleTracker
+	// noiseGate (task 377): when on, recordPreviousRunDiagnostics skips the
+	// crash-pending report for clean-shutdown phases (shutting_down/healthy).
+	// Default off — every dead-process record keeps reporting exactly as before.
+	noiseGate bool
 }
 
 type desktopLifecycleTracker struct {
@@ -160,6 +164,11 @@ func initializeLifecycleDiagnostics(app *App) {
 		app.lifecycle.previousRun = legacy
 	}
 	app.lifecycle.previousRuns = tracker.consumePrevious(enabled)
+	// Task 377: the noise triage reads its own desktop switch; a load failure
+	// leaves the gate off (the default), never silently on.
+	if cfg, cfgErr := config.Load(); cfgErr == nil {
+		app.lifecycle.noiseGate = cfg.Desktop.ExperimentalLifecycleNoiseGate
+	}
 	if enabled {
 		refreshWebRuntimeContext()
 	}

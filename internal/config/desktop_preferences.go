@@ -40,6 +40,14 @@ type DesktopConfig struct {
 	// It ships off (fork rule 2) and, like every tool registration, reads the boot
 	// snapshot — a flip applies on the next restart.
 	ExperimentalAutonomousUpdate bool `toml:"experimental_autonomous_update"`
+	// ExperimentalLifecycleNoiseGate is the task-377 noise triage: when on,
+	// startup skips the crash-pending report for per-process lifecycle records
+	// whose phase proves a clean shutdown was already underway
+	// (shutting_down/healthy — the clean()/exit race C-20260920-02 documented,
+	// not crash evidence). Off by default (铁律 2): the zero value keeps every
+	// dead-process record reporting exactly as before. wedged and unknown
+	// phases always report — they are real abnormal exits (task 377 定性).
+	ExperimentalLifecycleNoiseGate bool `toml:"experimental_lifecycle_noise_gate"`
 	// AutonomousUpdateResume scopes the auto-resume after an autonomous-update
 	// restart (task 254, user ruling): "off" resumes nothing, "goal_autopilot"
 	// (the default; empty or unknown values normalize to it) resumes sessions

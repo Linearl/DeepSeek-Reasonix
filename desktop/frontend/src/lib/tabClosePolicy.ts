@@ -31,6 +31,16 @@ export function selectCloseOtherIds(tabs: TabLike[], menuTabId: string | null): 
   return { ids: tabs.filter((tab) => tab.id !== menuTabId).map((tab) => tab.id), nextActiveTabId: menuTabId };
 }
 
+/** 关闭非活跃标签页 (task 368): every tab except the currently ACTIVE one —
+ * Chrome's "close other tabs" semantics keyed to the active tab instead of the
+ * right-clicked tab. No side effects beyond the close: sessions are not
+ * touched and batch close keeps running work (batchClosePolicy), so no
+ * confirmation dialog and no experimental flag (正文口径：默认可用). */
+export function selectCloseInactiveIds(tabs: TabLike[], activeTabId: string | null | undefined): BatchCloseTarget {
+  if (!activeTabId) return { ids: [] };
+  return { ids: tabs.filter((tab) => tab.id !== activeTabId).map((tab) => tab.id), nextActiveTabId: activeTabId };
+}
+
 /** 关闭右侧: every tab strictly right of the menu tab. */
 export function selectCloseRightIds(
   tabs: TabLike[],
