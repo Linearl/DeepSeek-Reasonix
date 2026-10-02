@@ -2488,6 +2488,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                     ["changed", "workspace.changedTab"],
                     ["remote", "rightDock.remote"],
                     ["todos", "workspace.todosTab"],
+                    ["artifacts", "workspace.artifactsTab"],
+                    ["references", "workspace.referencesTab"],
                   ] as const).map(([tabId, labelKey]) => {
                     // Task 259: the visibility checkboxes live under the todo-sidebar
                     // switch; with it off they stay visible and readable but disabled,

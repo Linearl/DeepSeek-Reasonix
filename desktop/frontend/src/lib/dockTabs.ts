@@ -9,9 +9,11 @@
 const STORAGE_KEY = "rightDockTabs:hidden";
 
 /** Dock tab ids, matching RightDockMode plus every tab the dock can render. */
-export type DockTabId = "context" | "files" | "changed" | "remote" | "todos";
+export type DockTabId = "context" | "files" | "changed" | "remote" | "todos" | "artifacts" | "references";
 
-export const DOCK_TAB_IDS: readonly DockTabId[] = ["context", "files", "changed", "remote", "todos"];
+// Task 260: artifacts/references (session write-path/read-path files) join the
+// same experimental sidebar family as todos — hideable while the switch is on.
+export const DOCK_TAB_IDS: readonly DockTabId[] = ["context", "files", "changed", "remote", "todos", "artifacts", "references"];
 
 function loadHiddenTabs(): readonly DockTabId[] {
   try {
@@ -93,6 +95,9 @@ export function renderableDockTabs(ctx: DockTabRenderContext): DockTabId[] {
   out.push("files", "changed");
   if (ctx.remoteAvailable) out.push("remote");
   out.push("todos");
+  // Task 260: the two session side-files tabs render alongside todos while the
+  // family switch is on, so the last-tab guard must count them the same way.
+  out.push("artifacts", "references");
   return out;
 }
 

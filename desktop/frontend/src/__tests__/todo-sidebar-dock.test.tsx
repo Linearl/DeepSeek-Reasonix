@@ -175,14 +175,16 @@ console.log("\ntodo sidebar dock (task 259)");
 
   eq(JSON.stringify(dockTabs2.renderableDockTabs({ todoSidebar: false, remoteAvailable: true, creation: false })), "[]",
     "renderable set: empty while the switch is off");
+  // Task 260: artifacts/references join the family, so the on-switch sets grow
+  // by the two tabs (order: after todos, matching the tab row).
   eq(JSON.stringify(dockTabs2.renderableDockTabs({ todoSidebar: true, remoteAvailable: true, creation: false })),
-    JSON.stringify(["context", "files", "changed", "remote", "todos"]),
-    "renderable set: five tabs on workbench with a remote host");
+    JSON.stringify(["context", "files", "changed", "remote", "todos", "artifacts", "references"]),
+    "renderable set: seven tabs on workbench with a remote host");
   eq(JSON.stringify(dockTabs2.renderableDockTabs({ todoSidebar: true, remoteAvailable: false, creation: false })),
-    JSON.stringify(["context", "files", "changed", "todos"]),
+    JSON.stringify(["context", "files", "changed", "todos", "artifacts", "references"]),
     "renderable set: no remote host drops the remote tab");
   eq(JSON.stringify(dockTabs2.renderableDockTabs({ todoSidebar: true, remoteAvailable: false, creation: true })),
-    JSON.stringify(["files", "changed", "todos"]),
+    JSON.stringify(["files", "changed", "todos", "artifacts", "references"]),
     "renderable set: creation drops the overview too");
 
   // The reported break: no remote host, everything but "todos" hidden. The old
@@ -191,6 +193,12 @@ console.log("\ntodo sidebar dock (task 259)");
   dockTabs2.setDockTabHidden("context", true);
   dockTabs2.setDockTabHidden("files", true);
   dockTabs2.setDockTabHidden("changed", true);
+  // Task 260: with the two side-files tabs still visible the dock is not empty,
+  // so nothing locks yet - the guard only fires on the actual last visible tab.
+  eq(dockTabs2.isLastRenderableVisibleTab("todos", { todoSidebar: true, remoteAvailable: false, creation: false }), false,
+    "audit-2 c: side-files tabs visible keeps every checkbox free");
+  dockTabs2.setDockTabHidden("artifacts", true);
+  dockTabs2.setDockTabHidden("references", true);
   eq(dockTabs2.isLastRenderableVisibleTab("todos", { todoSidebar: true, remoteAvailable: false, creation: false }), true,
     "audit-2 c: no remote + rest hidden locks the last renderable tab");
   eq(dockTabs2.isLastRenderableVisibleTab("remote", { todoSidebar: true, remoteAvailable: false, creation: false }), false,
@@ -198,6 +206,8 @@ console.log("\ntodo sidebar dock (task 259)");
   dockTabs2.setDockTabHidden("context", false);
   dockTabs2.setDockTabHidden("files", false);
   dockTabs2.setDockTabHidden("changed", false);
+  dockTabs2.setDockTabHidden("artifacts", false);
+  dockTabs2.setDockTabHidden("references", false);
 
   // Original behaviour kept: with a remote host present, the remote tab is the
   // one that locks once everything else is hidden.
@@ -205,12 +215,16 @@ console.log("\ntodo sidebar dock (task 259)");
   dockTabs2.setDockTabHidden("files", true);
   dockTabs2.setDockTabHidden("changed", true);
   dockTabs2.setDockTabHidden("todos", true);
+  dockTabs2.setDockTabHidden("artifacts", true);
+  dockTabs2.setDockTabHidden("references", true);
   eq(dockTabs2.isLastRenderableVisibleTab("remote", { todoSidebar: true, remoteAvailable: true, creation: false }), true,
     "with remote host: the remote tab locks as the last visible one");
   dockTabs2.setDockTabHidden("context", false);
   dockTabs2.setDockTabHidden("files", false);
   dockTabs2.setDockTabHidden("changed", false);
   dockTabs2.setDockTabHidden("todos", false);
+  dockTabs2.setDockTabHidden("artifacts", false);
+  dockTabs2.setDockTabHidden("references", false);
 }
 
 // 9. Audit-2 fast-verify: an all-hidden state must not deadlock the checkboxes.
@@ -220,13 +234,16 @@ console.log("\ntodo sidebar dock (task 259)");
 //    every checkbox stays checkable and the user can always climb back out.
 {
   const ctx = { todoSidebar: true, remoteAvailable: false, creation: false };
-  // Simulate the carried-over state: every renderable tab hidden.
+  // Simulate the carried-over state: every renderable tab hidden
+  // (task 260: that now includes artifacts/references).
   dockTabs.setDockTabHidden("context", true);
   dockTabs.setDockTabHidden("files", true);
   dockTabs.setDockTabHidden("changed", true);
   dockTabs.setDockTabHidden("todos", true);
+  dockTabs.setDockTabHidden("artifacts", true);
+  dockTabs.setDockTabHidden("references", true);
 
-  for (const id of ["context", "files", "changed", "todos"] as const) {
+  for (const id of ["context", "files", "changed", "todos", "artifacts", "references"] as const) {
     eq(dockTabs.isLastRenderableVisibleTab(id, ctx), false,
       `all-hidden upgrade: ${id} is not locked and can be checked back`);
   }
@@ -240,11 +257,17 @@ console.log("\ntodo sidebar dock (task 259)");
     "all-hidden upgrade: remaining hidden tabs stay checkable");
   eq(dockTabs.isLastRenderableVisibleTab("todos", ctx), false,
     "all-hidden upgrade: remaining hidden tabs stay checkable (todos)");
+  eq(dockTabs.isLastRenderableVisibleTab("artifacts", ctx), false,
+    "all-hidden upgrade: remaining hidden tabs stay checkable (artifacts)");
+  eq(dockTabs.isLastRenderableVisibleTab("references", ctx), false,
+    "all-hidden upgrade: remaining hidden tabs stay checkable (references)");
 
   dockTabs.setDockTabHidden("context", false);
   dockTabs.setDockTabHidden("files", false);
   dockTabs.setDockTabHidden("changed", false);
   dockTabs.setDockTabHidden("todos", false);
+  dockTabs.setDockTabHidden("artifacts", false);
+  dockTabs.setDockTabHidden("references", false);
 }
 
 // 10. CSS cascade contract (task 447 fix for the task 259 wrap layer). Static

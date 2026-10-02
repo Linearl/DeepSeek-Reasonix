@@ -145,11 +145,14 @@ export function saveRightDockPreviewWidth(width: number): void {
 // widths, the sidebar button-press flag) is session-local state on this store
 // so resize lifecycles and their consumers read one source of truth; measured
 // footer height and viewport width live in the windowChrome store.
-export type RightDockMode = "context" | "files" | "changed" | "remote" | "todos";
+export type RightDockMode = "context" | "files" | "changed" | "remote" | "todos" | "artifacts" | "references";
 // Task 259: "todos" is the fifth dock tab behind the experimental todo-sidebar
 // switch. The mode itself stays persistable — loading a saved "todos" while the
 // switch is off falls back to "files" in App, not here, so normalization keeps
 // accepting every listed mode.
+// Task 260: "artifacts"/"references" (session write-path/read-path files) join
+// the same experimental sidebar family — persistable modes, gated in App by
+// dockModeWithinSidebarGates exactly like "todos".
 
 // terminalPanelOpen is independent from rightDockMode — the terminal is a
 // bottom drawer that coexists with the workspace panel, not a mode of it.
@@ -262,11 +265,21 @@ function rightDockModeStorageKey(workspaceRoot: string): string {
   return workspaceRoot ? `${RIGHT_DOCK_MODE_KEY}.${workspaceRoot}` : RIGHT_DOCK_MODE_KEY;
 }
 
-const RIGHT_DOCK_MODES: readonly RightDockMode[] = ["context", "files", "changed", "remote", "todos"];
+const RIGHT_DOCK_MODES: readonly RightDockMode[] = ["context", "files", "changed", "remote", "todos", "artifacts", "references"];
 
 function normalizeRightDockMode(raw: string | null): RightDockMode | null {
   if (!raw) return null;
   return (RIGHT_DOCK_MODES as readonly string[]).includes(raw) ? (raw as RightDockMode) : null;
+}
+
+// Task 260: one gate rule for every experiment-family dock mode. A persisted
+// "todos"/"artifacts"/"references" while the sidebar-extension switch is off
+// falls back to "files", so the dock never shows a selected tab it does not
+// render. With the switch on every mode passes through unchanged. Pure so the
+// fallback matrix is directly testable.
+export function dockModeWithinSidebarGates(mode: RightDockMode, sidebarExtended: boolean): RightDockMode {
+  if (!sidebarExtended && (mode === "todos" || mode === "artifacts" || mode === "references")) return "files";
+  return mode;
 }
 
 export function loadRightDockMode(workspaceRoot: string): RightDockMode {

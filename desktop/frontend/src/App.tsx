@@ -35,6 +35,7 @@ import {
   X,
   TerminalSquare,
   ListTodo,
+  FilePlus2,
 } from "lucide-react";
 import { loadHiddenDockTabs, onHiddenDockTabsChange, type DockTabId } from "./lib/dockTabs";
 import { applyLabFlags, labFlagEnabled, onLabFlagsChange } from "./lib/labFlags";
@@ -214,6 +215,7 @@ import {
   loadRightDockMode,
   saveRightDockMode,
   workspacePanelMemoryRoot,
+  dockModeWithinSidebarGates,
   useLayoutStore,
 } from "./store/layout";
 import { useOverlayStore } from "./store/overlays";
@@ -276,6 +278,8 @@ const loadTrashPage = () => import("./components/TrashPage").then((module) => ({
 const loadAutomationPage = () => import("./custom/features/heartbeat/HeartbeatPanel").then((module) => ({ default: module.HeartbeatView }));
 const loadSettingsPage = () => import("./components/SettingsPanelEntry").then((module) => ({ default: module.SettingsPanel }));
 const RemotePanel = lazy(() => import("./components/RemotePanel").then((module) => ({ default: module.RemotePanel })));
+// Task 260: the two session side-files dock tabs share one lazy chunk.
+const SideFilesDockPanel = lazy(() => import("./components/SessionSideFilesPanel").then((module) => ({ default: module.SideFilesDockPanel })));
 const TerminalPanel = lazy(() => import("./components/TerminalPanel").then((module) => ({ default: module.TerminalPanel })));
 const TaskMonitorPanel = lazy(() => import("./components/TaskMonitorPanel").then((module) => ({ default: module.TaskMonitorPanel })));
 const WorkspacePanel = lazy(async () => {
@@ -1401,8 +1405,8 @@ export default function App() {
   // Task 259: a persisted "todos" mode while the experiment is off falls back to
   // files, so the dock never shows a selected tab it does not render. With the
   // experiment on the mode passes through unchanged.
-  const effectiveRightDockMode: RightDockMode =
-    !todoSidebarEnabled && rightDockMode === "todos" ? "files" : rightDockMode;
+  // Task 260: artifacts/references join the same gate (one shared pure helper).
+  const effectiveRightDockMode: RightDockMode = dockModeWithinSidebarGates(rightDockMode, todoSidebarEnabled);
   // Task 259: tab visibility applies live while the todo sidebar is on; with the
   // switch off the tab row is the original literal list.
   const dockTabVisible = (id: DockTabId) => todoSidebarEnabled && !hiddenDockTabs.includes(id);
@@ -5443,10 +5447,44 @@ export default function App() {
                     <span className="workbench-dock__tab-label">{t("workspace.todosTab")}</span>
                   </button>
                 )}
+                {/* Task 260: session side-files tabs — write path (artifacts) and read path (references). */}
+                {todoSidebarEnabled && dockTabVisible("artifacts") && (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={effectiveRightDockMode === "artifacts"}
+                    className={`workbench-dock__tab${effectiveRightDockMode === "artifacts" ? " workbench-dock__tab--active" : ""}`}
+                    onClick={() => openRightDockMode("artifacts")}
+                  >
+                    <FilePlus2 size={13} />
+                    <span className="workbench-dock__tab-label">{t("workspace.artifactsTab")}</span>
+                  </button>
+                )}
+                {todoSidebarEnabled && dockTabVisible("references") && (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={effectiveRightDockMode === "references"}
+                    className={`workbench-dock__tab${effectiveRightDockMode === "references" ? " workbench-dock__tab--active" : ""}`}
+                    onClick={() => openRightDockMode("references")}
+                  >
+                    <FileText size={13} />
+                    <span className="workbench-dock__tab-label">{t("workspace.referencesTab")}</span>
+                  </button>
+                )}
               </div>
             </div>
             <div className="workbench-dock__body">
-              {effectiveRightDockMode === "todos" ? (
+              {effectiveRightDockMode === "artifacts" || effectiveRightDockMode === "references" ? (
+                /* Task 260: read-only session side-files lists; references can inject into the composer. */
+                <Suspense fallback={null}>
+                  <SideFilesDockPanel
+                    items={exportItems}
+                    variant={effectiveRightDockMode === "artifacts" ? "artifacts" : "references"}
+                    onInjectReferences={addWorkspaceTextToComposer}
+                  />
+                </Suspense>
+              ) : effectiveRightDockMode === "todos" ? (
                 showTodos ? (
                   <div className="workbench-dock__todo">
                     <TodoPanel
