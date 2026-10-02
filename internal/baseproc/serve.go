@@ -46,6 +46,15 @@ type Server struct {
 	// answering -32601 for tool methods without dropping the connection.
 	surface ToolSurface
 
+	// leases is the S1c session lease table (AttachSessionAccounting); nil
+	// until attached, which is what keeps the S1a core-only contract.
+	leases *leaseTable
+	// clientPID is the owner key the latest base.hello declared; attach stamps
+	// it onto the leases it creates (design §6 C4).
+	clientPID int
+	// onHello runs after a successful base.hello — the orphan-lease sweep.
+	onHello func(clientPID int)
+
 	quitOnce sync.Once
 	quit     chan struct{}
 
@@ -286,7 +295,15 @@ func (s *Server) handleHello(_ context.Context, params json.RawMessage) (any, er
 	}
 	s.mu.Lock()
 	caps := slices.Clone(s.caps)
+	onHello := s.onHello
 	s.mu.Unlock()
+	// The session face's orphan sweep (matrix C4) runs after the answer is
+	// assembled but before it is returned, so a client that re-attaches right
+	// after hello already sees a cleaned table. It must run outside s.mu: the
+	// sweep takes the same lock to record the declaring pid.
+	if onHello != nil {
+		onHello(p.ClientPID)
+	}
 	return HelloResult{
 		ProtocolVersion: version,
 		ServerVersion:   s.version,
