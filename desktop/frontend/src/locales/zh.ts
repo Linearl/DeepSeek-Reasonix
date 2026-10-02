@@ -95,6 +95,7 @@ export const zh: Record<DictKey, string> = {
   // 侧边栏
   "sidebar.conversations": "会话",
   "sidebar.trash": "回收站",
+  "sidebar.collabInbox": "跨会话收件箱",
   "sidebar.memorySkills": "记忆与技能",
   "sidebar.workspace": "工作区",
   "sidebar.changeWorkspace": "更改",
