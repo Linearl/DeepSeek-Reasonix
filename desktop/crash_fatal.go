@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -18,6 +19,12 @@ const (
 	fatalCrashCoveredSuffix     = ".covered"
 	legacyFatalCrashFile        = "crash-fatal.log"
 	legacyFatalCrashCoveredFile = "crash-fatal-covered"
+	// fatalCrashLogHeaderPrefix marks the provenance line installFatalCrashOutput
+	// writes when creating the sink (task 377). The header keeps the file from
+	// ever being 0 bytes — the state巡检 read as known noise — while capture
+	// treats a header-only file exactly like the old empty one: no crash
+	// evidence, remove.
+	fatalCrashLogHeaderPrefix = "reasonix fatal-crash sink"
 )
 
 var fatalCrashProcessAlive = desktopProcessAlive
@@ -125,7 +132,8 @@ func captureFatalCrashFile(path, coveredPath string, removeEmpty bool) {
 	}
 	raw, readErr := io.ReadAll(io.LimitReader(f, maxCrashStackBytes+1))
 	_ = f.Close()
-	if readErr != nil || len(strings.TrimSpace(string(raw))) == 0 {
+	text := stripFatalCrashHeader(string(raw))
+	if readErr != nil || len(strings.TrimSpace(text)) == 0 {
 		if removeEmpty {
 			_ = os.Remove(coveredPath)
 			_ = os.Remove(path)
@@ -137,7 +145,7 @@ func captureFatalCrashFile(path, coveredPath string, removeEmpty bool) {
 		_ = os.Remove(path)
 		return
 	}
-	stack := sanitizeFatalRuntimeDump(string(raw))
+	stack := sanitizeFatalRuntimeDump(text)
 	report := baseCrashReport("crash")
 	report.SchemaVersion = 2
 	report.Source = "go.runtime"
@@ -153,6 +161,19 @@ func captureFatalCrashFile(path, coveredPath string, removeEmpty bool) {
 		_ = os.Remove(coveredPath)
 		_ = os.Remove(path)
 	}
+}
+
+// stripFatalCrashHeader removes the provenance line installFatalCrashOutput
+// writes (task 377). A header-only file is the same "process died without
+// runtime crash output" case a 0-byte file used to be — no evidence, no report.
+func stripFatalCrashHeader(raw string) string {
+	if !strings.HasPrefix(raw, fatalCrashLogHeaderPrefix) {
+		return raw
+	}
+	if idx := strings.IndexByte(raw, '\n'); idx >= 0 {
+		return raw[idx+1:]
+	}
+	return ""
 }
 
 // sanitizeFatalRuntimeDump removes panic values and preamble text that could
@@ -198,6 +219,18 @@ func installFatalCrashOutput() {
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
+		return
+	}
+	// Task 377: stamp provenance so the sink is never 0 bytes. The runtime
+	// duplicates the descriptor and appends its dump after this line on a real
+	// crash; capture strips the header before the emptiness check, so a
+	// header-only file is handled exactly like the old empty one (removed, no
+	// report) instead of being read as crash evidence.
+	header := fmt.Sprintf("%s pid=%d started=%s\n",
+		fatalCrashLogHeaderPrefix, os.Getpid(), time.Now().UTC().Format(time.RFC3339))
+	if _, err := f.WriteString(header); err != nil {
+		_ = f.Close()
+		_ = os.Remove(path)
 		return
 	}
 	if err := debug.SetCrashOutput(f, debug.CrashOptions{}); err != nil {

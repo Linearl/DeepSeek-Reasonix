@@ -871,6 +871,15 @@ func (c *Config) SetExperimentalPathRules(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalLifecycleNoiseGate toggles the task-377 lifecycle noise
+// triage. Off by default: every dead-process lifecycle record keeps writing
+// its crash-pending report; on skips only the clean-shutdown phases
+// (shutting_down/healthy) - wedged and unknown phases always report.
+func (c *Config) SetExperimentalLifecycleNoiseGate(enabled bool) error {
+	c.Desktop.ExperimentalLifecycleNoiseGate = enabled
+	return nil
+}
+
 // SetExperimentalCacheTuning toggles the transcript cache-size controls
 // (task 161). Off by default: user values in MaxCachedTabs /
 // HistoryBodyBudgetMb / MarkdownBudgetMb are ignored until this is on.

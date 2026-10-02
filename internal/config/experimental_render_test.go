@@ -32,6 +32,7 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	c.Desktop.ExperimentalOrphanLeaseReclaim = true
 	c.Agent.ExperimentalOrphanLeaseReclaim = true
 	c.Desktop.ExperimentalRecoveryOrphanSweep = true
+	c.Desktop.ExperimentalLifecycleNoiseGate = true
 
 	c.Desktop.ExperimentalModelCapabilityFilter = true
 	c.Agent.ExperimentalModelCapabilityFilter = true
