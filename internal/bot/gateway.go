@@ -202,7 +202,7 @@ type BotGateway struct {
 // botController is the slice of the controller's driving port the gateway needs:
 // session lifecycle, turn execution, and approval/ask handling. The bot never
 // touches goals, checkpoints, or memory, so it depends on those sub-ports only —
-// not the concrete *control.Controller and its ~99 methods.
+// not the concrete *control.Controller.
 type botController interface {
 	control.Lifecycle
 	control.TurnControl
