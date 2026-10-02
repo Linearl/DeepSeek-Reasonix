@@ -77,6 +77,7 @@ export const en = {
   // app chrome
   "tabBar.closeTab": "Close tab",
   "tabBar.closeOtherTabs": "Close other tabs",
+  "tabBar.closeInactiveTabs": "Close inactive tabs",
   "tabBar.closeTabsToRight": "Close tabs to right",
   "tabBar.stopAndCloseTab": "Stop tasks and close",
   "composer.splitTargetPrimary": "Send to left pane",

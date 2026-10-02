@@ -24,6 +24,8 @@ const CHECKS = [
   { feature: "任务350 层级化测试", file: "desktop/frontend/src/__tests__/project-tree-group-hierarchy.test.tsx", patterns: ["GUARD 层级≠指挥权: nesting touches nothing but parent", "inherited active count = 1"] },
   { feature: "任务350 后端 parent 校验", file: "desktop/project_tree_organization.go", patterns: ["maxSessionGroupDepth", "validateSessionGroupHierarchy"] },
   { feature: "任务350 locale 三语", file: "desktop/frontend/src/locales/zh.ts", patterns: ["projectTree.nestGroupUnder", "projectTree.moveGroupToTopLevel"] },
+  { feature: "任务368 关闭非活跃标签页（策略+菜单+三语）", file: "desktop/frontend/src/lib/tabClosePolicy.ts", patterns: ["selectCloseInactiveIds"] },
+  { feature: "任务368 locale", file: "desktop/frontend/src/locales/zh.ts", patterns: ["tabBar.closeInactiveTabs"] },
   { feature: "#9222 项目分组 CSS", file: "desktop/frontend/src/styles.css", patterns: [".project-tree__group", ".project-tree__group-count", ".project-tree__group-caret"] },
   { feature: "#9221 颜色筛选 CSS", file: "desktop/frontend/src/styles.css", patterns: [".project-tree__color-filter", ".project-tree__color-opt", ".project-tree__color-swatch", ".project-tree__action-btn--active"] },
   { feature: "#9221 颜色筛选锚点", file: "desktop/frontend/src/styles.css", patterns: [".project-tree__color-filter {\n  position: relative;"] },

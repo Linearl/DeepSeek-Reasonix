@@ -78,6 +78,7 @@ export const zh: Record<DictKey, string> = {
   // 顶部应用栏
   "tabBar.closeTab": "关闭标签页",
   "tabBar.closeOtherTabs": "关闭其他标签页",
+  "tabBar.closeInactiveTabs": "关闭非活跃标签页",
   "tabBar.closeTabsToRight": "关闭右侧标签页",
   "tabBar.stopAndCloseTab": "停止任务并关闭",
   "composer.splitTargetPrimary": "发送到左栏",

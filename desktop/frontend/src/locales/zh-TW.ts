@@ -3299,6 +3299,7 @@ export const zhTW: Record<DictKey, string> = {
   "mock.changedFile2Path": ".reasonix/project.md",
   "tabBar.closeTab": "關閉標籤頁",
   "tabBar.closeOtherTabs": "關閉其他標籤頁",
+  "tabBar.closeInactiveTabs": "關閉非活躍標籤頁",
   "tabBar.closeTabsToRight": "關閉右側標籤頁",
   "tabBar.stopAndCloseTab": "停止任務並關閉",
   "composer.splitTargetPrimary": "傳送到左欄",
