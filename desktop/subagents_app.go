@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -18,6 +20,117 @@ import (
 	"reasonix/internal/tool"
 	"reasonix/internal/tool/builtin"
 )
+
+// listSubagentsViewLimit bounds the directory listing payload (task 447).
+// Sub-agent transcripts are keyed per invocation, so a long-lived session can
+// accumulate hundreds; the capsule panel only needs the recent tail.
+const listSubagentsViewLimit = 200
+
+// SubagentArtifactView is the whitelisted projection of agent.SubagentMeta
+// for the frontend (task 447 capsule). Deliberately narrow: execution
+// internals (system prompt hash, tool scope/schema hashes, context capsule)
+// stay backend-only.
+type SubagentArtifactView struct {
+	Ref           string `json:"ref"`
+	CreatedAt     int64  `json:"createdAt"` // unix milliseconds
+	UpdatedAt     int64  `json:"updatedAt"` // unix milliseconds
+	Status        string `json:"status"`    // running|completed|failed|interrupted
+	Outcome       string `json:"outcome,omitempty"`
+	Kind          string `json:"kind,omitempty"` // task|skill
+	Name          string `json:"name,omitempty"`
+	Model         string `json:"model,omitempty"`
+	ParentSession string `json:"parentSession,omitempty"`
+	// HasTranscript reports whether the <ref>.jsonl transcript exists on
+	// disk. A meta can survive without its transcript after a crash; such
+	// entries are listed but not openable.
+	HasTranscript bool `json:"hasTranscript"`
+}
+
+// ListSubagentsByParent lists the persisted sub-agent artifacts owned by the
+// given parent session path (task 447 capsule panel "ended sub-agents"
+// directory): newest first — createdAt desc, ref desc as the deterministic
+// tie-break — capped at listSubagentsViewLimit. Read-only: a directory scan
+// plus metadata reads, no store mutation and no lease acquisition. An empty
+// session path yields an empty list, not an error: the panel calls this
+// whenever the active tab has no bound session yet.
+func (a *App) ListSubagentsByParent(sessionPath string) ([]SubagentArtifactView, error) {
+	sessionPath = strings.TrimSpace(sessionPath)
+	if sessionPath == "" {
+		return []SubagentArtifactView{}, nil
+	}
+	dir, validated, err := a.sessionDirForPath(sessionPath)
+	if err != nil {
+		return nil, err
+	}
+	artifacts, err := agent.ListSubagentsByParent(dir, agent.BranchID(validated))
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(artifacts, func(i, j int) bool {
+		if !artifacts[i].Meta.CreatedAt.Equal(artifacts[j].Meta.CreatedAt) {
+			return artifacts[i].Meta.CreatedAt.After(artifacts[j].Meta.CreatedAt)
+		}
+		return artifacts[i].Ref > artifacts[j].Ref
+	})
+	if len(artifacts) > listSubagentsViewLimit {
+		artifacts = artifacts[:listSubagentsViewLimit]
+	}
+	out := make([]SubagentArtifactView, 0, len(artifacts))
+	for _, artifact := range artifacts {
+		_, statErr := os.Stat(artifact.SessionPath)
+		out = append(out, SubagentArtifactView{
+			Ref:           artifact.Ref,
+			CreatedAt:     artifact.Meta.CreatedAt.UnixMilli(),
+			UpdatedAt:     artifact.Meta.UpdatedAt.UnixMilli(),
+			Status:        string(artifact.Meta.Status),
+			Outcome:       artifact.Meta.Outcome,
+			Kind:          artifact.Meta.Kind,
+			Name:          artifact.Meta.Name,
+			Model:         artifact.Meta.Model,
+			ParentSession: artifact.Meta.ParentSession,
+			HasTranscript: statErr == nil,
+		})
+	}
+	return out, nil
+}
+
+// ReadSubagentSession returns one sub-agent transcript owned by the given
+// parent session, rendered through the same preview pipeline the history
+// drawer uses (previewSessionMessages), so the capsule history view shows
+// exactly what PreviewSession would for that file. The ref must appear in
+// the parent's own artifact list — membership is proven before any path is
+// built, so a traversal-shaped ref can only fail with "not found".
+func (a *App) ReadSubagentSession(sessionPath, ref string) ([]HistoryMessage, error) {
+	sessionPath = strings.TrimSpace(sessionPath)
+	ref = strings.TrimSpace(ref)
+	if sessionPath == "" {
+		return nil, fmt.Errorf("empty session path")
+	}
+	if ref == "" {
+		return nil, fmt.Errorf("empty subagent reference")
+	}
+	dir, validated, err := a.sessionDirForPath(sessionPath)
+	if err != nil {
+		return nil, err
+	}
+	artifacts, err := agent.ListSubagentsByParent(dir, agent.BranchID(validated))
+	if err != nil {
+		return nil, err
+	}
+	for _, artifact := range artifacts {
+		if artifact.Ref != ref {
+			continue
+		}
+		if _, err := os.Stat(artifact.SessionPath); err != nil {
+			if os.IsNotExist(err) {
+				return nil, fmt.Errorf("subagent transcript %q has not been saved yet", ref)
+			}
+			return nil, err
+		}
+		return previewSessionMessages(dir, artifact.SessionPath)
+	}
+	return nil, fmt.Errorf("subagent %q does not belong to this session", ref)
+}
 
 // SubagentProfileInput is the desktop-bound shape for authoring a subagent
 // profile. Named SubagentProfile* rather than bare Subagent* to stay distinct
