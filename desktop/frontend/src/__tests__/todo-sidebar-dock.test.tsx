@@ -333,10 +333,22 @@ console.log("\ntodo sidebar dock (task 259)");
     "css: wrap tab strip keeps flex-wrap");
   eq(finalDeclaration(":root[data-theme-style] .workbench-dock__tabs--wrap", "width"), "100%",
     "css: wrap tab strip spans the row (theme layer declares width:auto)");
-  eq(finalDeclaration(":root[data-theme-style] .workbench-dock__tabs--wrap .workbench-dock__tab", "flex"), "0 0 25%",
-    "css: quarter-width cells survive the theme layer (it declares flex: 0 0 auto)");
-  eq(finalDeclaration(":root[data-theme-style] .workbench-dock__tabs--wrap .workbench-dock__tab", "max-width"), "25%",
-    "css: quarter-width cap survive the theme layer (it declares max-width: none)");
+  // Task 452: quarter cells must subtract the strip's row gap — a bare 25%
+  // cell plus the 3px/4px gaps overflowed the row and dropped it to three
+  // tabs per row. The pins below lock the arithmetic: 4 × cell + 3 × gap ≤
+  // 100% (with rounding slack), in both the base layer and the theme layer.
+  eq(finalDeclaration(".workbench-dock__tabs", "gap"), "3px",
+    "css: base wrap strip gap stays 3px (the quarter-cell calc assumes it)");
+  eq(finalDeclaration(".workbench-dock__tabs--wrap .workbench-dock__tab", "flex"), "0 0 calc(25% - 2.5px)",
+    "css: base quarter cell subtracts the gap share (4×25% + 3×3px overflowed)");
+  eq(finalDeclaration(".workbench-dock__tabs--wrap .workbench-dock__tab", "max-width"), "calc(25% - 2.5px)",
+    "css: base quarter-cell cap matches the gap-aware flex basis");
+  eq(finalDeclaration(":root[data-theme-style] .workbench-dock__tabs", "gap"), "4px",
+    "css: theme wrap strip gap stays 4px (the theme quarter-cell calc assumes it)");
+  eq(finalDeclaration(":root[data-theme-style] .workbench-dock__tabs--wrap .workbench-dock__tab", "flex"), "0 0 calc(25% - 3.5px)",
+    "css: theme quarter-width cells go gap-aware (theme strip gap is 4px)");
+  eq(finalDeclaration(":root[data-theme-style] .workbench-dock__tabs--wrap .workbench-dock__tab", "max-width"), "calc(25% - 3.5px)",
+    "css: theme quarter-cell cap survive the theme layer (it declares max-width: none)");
   eq(finalDeclaration(":root[data-theme-style] .workbench-dock__tabs--wrap .workbench-dock__tab-label", "text-overflow"), "ellipsis",
     "css: label truncates inside a quarter cell (theme layer turns overflow off)");
 

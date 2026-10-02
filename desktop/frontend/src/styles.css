@@ -27548,10 +27548,14 @@ body > .mermaid-diagram--fullscreen {
   justify-content: flex-start;
 }
 
+/* Task 452: a bare 25% cell ignores the strip's row gap (3px) — 4×25% + 3
+   gaps never fits, so only three tabs landed per row. The cell is a quarter
+   minus the gap share (exact 2.25px, rounded up to 2.5px so sub-pixel
+   rounding can never push the fourth tab to the next line). */
 .workbench-dock__tabs--wrap .workbench-dock__tab {
-  flex: 0 0 25%;
+  flex: 0 0 calc(25% - 2.5px);
   min-width: 0;
-  max-width: 25%;
+  max-width: calc(25% - 2.5px);
   box-sizing: border-box;
 }
 
@@ -31447,10 +31451,12 @@ body > .mermaid-diagram--fullscreen {
   flex: 1 1 auto;
 }
 
+/* Task 452: same gap-aware quarter cell as the base layer; the theme strip
+   declares gap 4px, so the share per cell is 3px (+0.5px rounding slack). */
 :root[data-theme-style] .workbench-dock__tabs--wrap .workbench-dock__tab {
-  flex: 0 0 25%;
+  flex: 0 0 calc(25% - 3.5px);
   min-width: 0;
-  max-width: 25%;
+  max-width: calc(25% - 3.5px);
   box-sizing: border-box;
 }
 
