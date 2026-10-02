@@ -40,3 +40,48 @@ export function olderHistoryTriggerPx(viewportHeight: number): number {
   if (!Number.isFinite(viewportHeight) || viewportHeight <= 0) return 64;
   return Math.max(64, viewportHeight * 2);
 }
+
+// ── 任务 448 收尾（445 调研 §1.5-2）：闸拒绝留痕 ─────────────────────────
+//
+// 445 取证时发现组件层拒绝是静默的：desktop.log 里 `history.older-request`
+// 完全缺席，只能反推"请求被组件层吞了"，说不出是哪一道、什么原因。控制器层
+// 早有同域日志（`history fetch skipped` / `older skipped reason=loading-in-progress`），
+// 组件层补齐同一种可取证性，装机复现时才有据可查。
+//
+// explain 与 canRequest 是同一份判定的两种读法：一个给原因，一个给布尔。
+// 两者各有一半测试锁着（task448 套件互为对照），谁漂移都会当场红。
+
+export type OlderHistoryGateReason = "loading-in-progress" | "no-older-page";
+
+export type OlderHistoryGateDecision = {
+  allowed: boolean;
+  reason?: OlderHistoryGateReason;
+};
+
+/** 与 `canRequestOlderHistory` 同一份两态判定，但回答"为什么拒"。 */
+export function explainOlderHistoryGate(state: OlderHistoryRequestState): OlderHistoryGateDecision {
+  if (state.loadingOlderHistory) return { allowed: false, reason: "loading-in-progress" };
+  if (state.hasOlderHistory === false) return { allowed: false, reason: "no-older-page" };
+  return { allowed: true };
+}
+
+/**
+ * 转换式留痕发射器：同一原因**连续**拒绝只记首条，翻回允许后重置。
+ *
+ * frontendLog 的纪律是"记转换，不记每帧"——滚动路径在 loading 在途时会被
+ * 连续拒绝，逐次上报会把 4MB 滚动日志刷穿；而"拒绝 → 允许 → 又拒绝"是
+ * 新发生的行为，值得再记一条。`report` 由调用方注入（通常包一层
+ * `reportFrontendLog("history-paging", ...)`），判定模块因此保持零依赖。
+ */
+export function createOlderHistoryGateLogger(
+  report: (message: string, detail: string) => void,
+): (decision: OlderHistoryGateDecision, trigger: string) => void {
+  let last: OlderHistoryGateReason | "allowed" | undefined;
+  return (decision, trigger) => {
+    const key = decision.allowed ? "allowed" : decision.reason;
+    if (key === last) return;
+    last = key;
+    if (decision.allowed) return;
+    report("older request blocked at component gate", `trigger=${trigger} reason=${decision.reason ?? "unknown"}`);
+  };
+}
