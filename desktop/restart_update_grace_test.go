@@ -417,29 +417,35 @@ func TestGraceWindowStopsTheHeartbeat(t *testing.T) {
 
 // TestRestartDesktopSharesTheGraceWindow pins the user ruling (2026-10-02):
 // the plain settings-page restart runs the same window — busy tabs are
-// cancelled with a resume marker instead of refusing the restart.
+// cancelled with a resume marker instead of refusing the restart. Audit-2
+// fix: the window runs AFTER the launchability checks, so this uses the
+// install-root seam to pass them and proves the window still fires on the
+// success path (the refusal faces are pinned by
+// TestClearRestartPathHoldsUntilValidationPasses).
 func TestRestartDesktopSharesTheGraceWindow(t *testing.T) {
 	isolateDesktopUserDirs(t)
+	root := fakeInstallRoot(t, nil, "")
+	oldResolve := restartResolveInstallRoot
+	restartResolveInstallRoot = func(string) (string, error) { return root, nil }
+	t.Cleanup(func() { restartResolveInstallRoot = oldResolve })
 	shrinkRestartWindows(t, 100*time.Millisecond, 100*time.Millisecond)
-	heartbeatStopped, _, quitCalled := stubRestartSeams(t)
+	heartbeatStopped, launcherStarted, _ := stubRestartSeams(t)
 	busyCtrl := &restartProbeController{path: filepath.Join(t.TempDir(), "busy.session.jsonl"), status: control.RuntimeStatus{Running: true}}
 	app := &App{tabs: map[string]*WorkspaceTab{
 		"t1": {ID: "t1", SessionPath: busyCtrl.path, Ctrl: busyCtrl, Ready: true},
 	}}
 
-	// The test binary is not a real versioned install, so the process-exit
-	// half names that (either no install root or no launcher in the derived
-	// root); getting to an error at all proves the window replaced the old
-	// busy refusal — the window effects are asserted below.
-	err := app.RestartDesktop()
-	if err == nil {
-		t.Fatal("expected the process-exit half to refuse in a test environment")
+	if err := app.RestartDesktop(); err != nil {
+		t.Fatalf("a launchable plain restart must go through: %v", err)
 	}
 	if got := busyCtrl.cancelCount(); got != 1 {
 		t.Fatalf("the plain restart must cancel the busy tab (no busy refusal anymore), got %d", got)
 	}
 	if !heartbeatStopped.Load() {
 		t.Fatal("the plain restart must stop the heartbeat too")
+	}
+	if !launcherStarted.Load() {
+		t.Fatal("the launcher seam must have been reached")
 	}
 	found := false
 	for _, p := range rosterPaths(t) {
@@ -450,11 +456,64 @@ func TestRestartDesktopSharesTheGraceWindow(t *testing.T) {
 	if !found {
 		t.Fatalf("the cancelled session must be staged: %v", rosterPaths(t))
 	}
-	// The 750ms quit is scheduled only after a launcher start, which the test
-	// binary cannot do; nothing to drain here (quitCalled stays false).
-	if quitCalled.Load() {
-		t.Fatal("no launcher start means no quit scheduling")
+}
+
+// TestClearRestartPathHoldsUntilValidationPasses pins the audit-2 major fix:
+// the grace window is side-effectful (heartbeat stop with no restart path, and
+// cancels whose resume markers only get consumed after a restart), so every
+// fallible exit BEFORE the first irreversible step must refuse without paying
+// those costs — heartbeat still running, roster empty, nobody cancelled.
+func TestClearRestartPathHoldsUntilValidationPasses(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	fakeInstallRoot(t, []string{"v1.38.3-20260923-1010"}, "v1.38.3-20260923-1010")
+	fakeVersionedConfig(t, true)
+	shrinkRestartWindows(t, 80*time.Millisecond, 40*time.Millisecond)
+	heartbeatStopped, _, _ := stubRestartSeams(t)
+	busyCtrl := &restartProbeController{path: filepath.Join(t.TempDir(), "busy.session.jsonl"), status: control.RuntimeStatus{Running: true}}
+	app := &App{tabs: map[string]*WorkspaceTab{
+		"t1": {ID: "t1", SessionPath: busyCtrl.path, Ctrl: busyCtrl, Ready: true},
+	}}
+	expectNoSideEffects := func(stage string) {
+		t.Helper()
+		if heartbeatStopped.Load() {
+			t.Fatalf("%s: the heartbeat must not be stopped by a refused call", stage)
+		}
+		if got := busyCtrl.cancelCount(); got != 0 {
+			t.Fatalf("%s: a refused call must not cancel anyone, got %d cancels", stage, got)
+		}
+		if roster := rosterPaths(t); len(roster) != 0 {
+			t.Fatalf("%s: a refused call must stage nobody, roster = %v", stage, roster)
+		}
 	}
+
+	// (a) Publish face: the staged build is incomplete — a fallible exit that
+	// used to sit behind the window.
+	if _, err := app.restartAndUpdateExempt("", "v1.38.3-20260923-1010", ""); err == nil {
+		t.Fatal("publishing an incomplete staging must be refused")
+	} else if !strings.Contains(err.Error(), "missing") {
+		t.Fatalf("expected the staged-members refusal, got: %v", err)
+	}
+	expectNoSideEffects("publish with incomplete staging")
+
+	// (b) Rollback face: the common misuse — switching to the ACTIVE version.
+	if _, err := app.switchToVersionExempt("v1.38.3-20260923-1010", ""); err == nil {
+		t.Fatal("switching to the active version must be refused")
+	} else if !strings.Contains(err.Error(), "already the active version") {
+		t.Fatalf("expected the no-op-switch refusal, got: %v", err)
+	}
+	expectNoSideEffects("rollback to the active version")
+
+	// (c) Plain restart on a portable build: not a versioned install, the
+	// launcher hand-off cannot work.
+	portable := restartResolveInstallRoot
+	restartResolveInstallRoot = func(string) (string, error) { return "", nil }
+	t.Cleanup(func() { restartResolveInstallRoot = portable })
+	if err := app.RestartDesktop(); err == nil {
+		t.Fatal("a portable plain restart must be refused")
+	} else if !strings.Contains(err.Error(), "not a versioned install") {
+		t.Fatalf("expected the not-a-versioned-install refusal, got: %v", err)
+	}
+	expectNoSideEffects("plain restart on a portable build")
 }
 
 // TestInterruptedRosterFeedsTheResumeRestorePoint is the 450→254 handoff

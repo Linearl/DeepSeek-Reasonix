@@ -82,12 +82,16 @@ func (a *App) restartAndUpdateExempt(sourceDir, version, callerSession string) (
 		return "", fmt.Errorf("restart: the restart-and-update experiment is off; enable experimental_restart_update in the desktop settings")
 	}
 
-	// Task 450 (plan A): the busy refusal is gone. clearRestartPath stops the
-	// heartbeat, gives the other tabs' active work a bounded grace window to
-	// finish on its own, cancels whatever is still running (staging every
-	// interrupted session for auto-resume), and always lets the swap proceed.
-	forced := a.clearRestartPath(callerSession)
-
+	// Task 450 (plan A): the busy refusal is gone — but the grace window is
+	// SIDE-EFFECTFUL (audit-2 major fix): it stops the heartbeat (no restart
+	// path exists until the app relaunches) and cancels other tabs (their
+	// resume markers only get consumed after a restart). Running it before the
+	// validation gates meant a misdirected call — switching to the active
+	// version, a plain restart on a portable build — paid those costs and then
+	// failed, silently. So the window runs only AFTER every fallible check,
+	// immediately before the first irreversible step (ActivateVersion): past
+	// that point the swap is committed and the restart is happening, which is
+	// exactly what the window's side effects presume.
 	executable, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("restart: locate executable: %w", err)
@@ -149,6 +153,7 @@ func (a *App) restartAndUpdateExempt(sourceDir, version, callerSession string) (
 		return "", fmt.Errorf("restart: staged %s is missing from %s", launcherName, sourceDir)
 	}
 
+	forced := a.clearRestartPath(callerSession)
 	if err := installlayout.ActivateVersion(installlayout.ActivationRequest{
 		InstallRoot:       installRoot,
 		Version:           version,
@@ -218,10 +223,13 @@ func stopHeartbeatEngine(a *App) {
 
 // Launcher/quit seams for the publish path, mirroring versionSwitchStartLauncher
 // and versionSwitchQuit so tests can intercept the process side effects the same
-// way on both restart faces.
+// way on both restart faces. restartResolveInstallRoot exists for the same
+// reason on the plain-restart face: the audit-2 fix gates the grace window on
+// launchability, so tests need to point it at a scratch install root.
 var (
-	restartStartLauncher = startDetachedLauncher
-	restartQuit          = func(a *App) { a.quitApp() }
+	restartStartLauncher      = startDetachedLauncher
+	restartQuit               = func(a *App) { a.quitApp() }
+	restartResolveInstallRoot = installlayout.ResolveInstallRoot
 )
 
 // restartForcedMarker is the greppable token every forced-path log line and
@@ -435,27 +443,30 @@ func (a *App) RestartDesktop() error {
 	if a == nil {
 		return fmt.Errorf("restart: no app")
 	}
-	// Task 450 (user ruling 2026-10-02): the plain restart shares the update
-	// path's grace window — one restart family, one semantics, no dual-track.
-	// No caller session exists on this path, so every busy tab is inside the
-	// window's scope: given the grace to finish, cancelled with a resume
-	// marker if they don't, pending prompts never vetoed.
-	report := a.clearRestartPath("")
-	if note := report.forcedNote(); note != "" {
-		slog.Warn("restart: plain restart " + note)
-	}
-
 	executable, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("restart: locate executable: %w", err)
 	}
-	installRoot, err := installlayout.ResolveInstallRoot(executable)
+	installRoot, err := restartResolveInstallRoot(executable)
 	if err != nil || installRoot == "" {
 		return fmt.Errorf("restart: this build is not a versioned install, so there is no launcher to hand off to: %w", err)
 	}
 	launcherPath := filepath.Join(installRoot, installlayout.LauncherBinaryName())
 	if info, statErr := os.Lstat(launcherPath); statErr != nil || !info.Mode().IsRegular() {
 		return fmt.Errorf("restart: the launcher %s is missing from %s", installlayout.LauncherBinaryName(), installRoot)
+	}
+
+	// Task 450 (user ruling 2026-10-02): the plain restart shares the update
+	// path's grace window — one restart family, one semantics, no dual-track.
+	// No caller session exists on this path, so every busy tab is inside the
+	// window's scope: given the grace to finish, cancelled with a resume
+	// marker if they don't, pending prompts never vetoed. Audit-2 major fix:
+	// the window is side-effectful (heartbeat stop + cancels), so it runs only
+	// after the launchability checks — a portable build or a missing launcher
+	// must refuse without paying those costs (nothing restores them).
+	report := a.clearRestartPath("")
+	if note := report.forcedNote(); note != "" {
+		slog.Warn("restart: plain restart " + note)
 	}
 
 	// A silent restart reads as a dead button, so log the milestone the way the

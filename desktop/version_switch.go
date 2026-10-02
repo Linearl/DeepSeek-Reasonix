@@ -151,10 +151,6 @@ func (a *App) switchToVersionExempt(version, callerSession string) (string, erro
 	if cfg, cfgErr := config.Load(); cfgErr != nil || !cfg.Desktop.ExperimentalRestartUpdate {
 		return "", fmt.Errorf("restart: the restart-and-update experiment is off; enable experimental_restart_update in the desktop settings")
 	}
-	// Task 450 (plan A): the same grace-and-cancel window as the publish path —
-	// heartbeat stopped first, bounded wait, cancel with a resume marker, and
-	// the swap proceeds either way.
-	forced := a.clearRestartPath(callerSession)
 
 	installRoot, err := versionSwitchInstallRoot()
 	if err != nil {
@@ -174,6 +170,14 @@ func (a *App) switchToVersionExempt(version, callerSession string) (string, erro
 	if info, statErr := os.Stat(filepath.Join(versionDir, installlayout.DesktopBinaryName())); statErr != nil || info.IsDir() {
 		return "", fmt.Errorf("restart: %s has no %s; refusing to point the install at an incomplete version tree", version, installlayout.DesktopBinaryName())
 	}
+
+	// Task 450 (plan A): the same grace-and-cancel window as the publish path —
+	// heartbeat stopped first, bounded wait, cancel with a resume marker, and
+	// the swap proceeds either way. Audit-2 major fix: the window is
+	// side-effectful (heartbeat stop + cancels), so it runs only after every
+	// fallible check above — the common misuse "switch to the active version"
+	// must refuse without paying those costs (nothing restores them).
+	forced := a.clearRestartPath(callerSession)
 
 	// The one write: move the pointer. WriteCurrent re-validates the version
 	// name and active dir, and its atomic replace is the layout commit point.
