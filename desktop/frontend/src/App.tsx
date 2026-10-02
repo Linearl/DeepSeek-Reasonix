@@ -55,7 +55,7 @@ import type { CommandOutcome } from "./lib/commandOutcome";
 import { useController, type Item } from "./lib/useController";
 import { noteStageTiming, setSessionMonitorEnabled } from "./lib/sessionMonitor";
 import { FeedbackPanel, setFeedbackEnabled } from "./components/FeedbackPanel";
-import { CollabInboxPanel, setCollabInboxOpen } from "./components/CollabInboxPanel";
+import { CollabInboxPanel, setCollabInboxOpen, useCollabInboxUnreadCount } from "./components/CollabInboxPanel";
 import { SessionMonitorPanel } from "./components/SessionMonitorPanel";
 import { clampedSplitRatio, loadSplitRatio, persistSplitRatio, setSplitPaneTitle, setSplitViewEnabled } from "./lib/splitView";
 import { reportFrontendLog } from "./lib/frontendLog";
@@ -588,6 +588,8 @@ function TextSizeHotkeys() {
 }
 
 export default function App() {
+  // 任务 320 遗留 #1：左下角图标行收件箱按钮的未读徽标数（面板开合时刷新）。
+  const collabInboxUnread = useCollabInboxUnreadCount();
   const {
     state,
     liveStore,
@@ -4623,7 +4625,13 @@ export default function App() {
                     onClick={(event) => { event.currentTarget.focus({ preventScroll: true }); setCollabInboxOpen(true); }}
                   >
                     <Mailbox size={16} aria-hidden="true" />
-                    <span className="sr-only">{t("sidebar.collabInbox")}</span>
+                    {/* 任务 320 遗留 #1：未读徽标（>0 才渲染；>99 折叠为 99+）。 */}
+                    {collabInboxUnread > 0 && (
+                      <span className="sidebar__utility-badge" aria-hidden="true">
+                        {collabInboxUnread > 99 ? "99+" : collabInboxUnread}
+                      </span>
+                    )}
+                    <span className="sr-only">{t("sidebar.collabInbox")}{collabInboxUnread > 0 ? ` (${collabInboxUnread})` : ""}</span>
                   </button>
                 </Tooltip>
                 <Tooltip label={t("heartbeat.scheduler")} fill side="top">

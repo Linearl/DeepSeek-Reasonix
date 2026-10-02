@@ -27,7 +27,7 @@ Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.
 
 const { default: React, act } = await import("react");
 const { createRoot } = await import("react-dom/client");
-const { CollabInboxPanel, setCollabInboxOpen } = await import("../components/CollabInboxPanel");
+const { CollabInboxPanel, setCollabInboxOpen, useCollabInboxUnreadCount } = await import("../components/CollabInboxPanel");
 const { LocaleProvider } = await import("../lib/i18n");
 type CollabInboxBindings = import("../components/CollabInboxPanel").CollabInboxBindings;
 type CollabMailEntry = import("../components/CollabInboxPanel").CollabMailEntry;
@@ -226,6 +226,40 @@ assert.match(document.body.textContent ?? "", /please investigate/, "expanding a
 
 await act(async () => setCollabInboxOpen(false));
 assert.equal(document.querySelector(".collab-inbox-panel"), null, "closing unmounts the panel");
+
+// 任务 320 遗留 #1：图标行未读徽标 hook —— 挂载取一次数；面板开/合各刷新一次
+// （打开路径可能触发保留期清理，关闭路径紧随已读/消除，两个时刻都可能变）。
+// 徽标的按钮接线与 >99 折叠由 App.tsx 承担（integrity 锚点锁接缝）。
+let unreadCount = 3;
+const badgeBindings: CollabInboxBindings = {
+  ...bindings,
+  async CountUnreadCollabMail() {
+    calls.push({ name: "CountUnreadCollabMail", args: [] });
+    return unreadCount;
+  },
+};
+function BadgeProbe() {
+  const n = useCollabInboxUnreadCount(badgeBindings);
+  return <span className="badge-probe">{n}</span>;
+}
+const badgeHost = document.createElement("div");
+document.body.appendChild(badgeHost);
+const badgeRoot = createRoot(badgeHost);
+await act(async () => {
+  badgeRoot.render(<BadgeProbe />);
+});
+assert.equal(document.querySelector(".badge-probe")!.textContent, "3", "mounting the badge hook fetches the unread count");
+unreadCount = 1;
+await act(async () => setCollabInboxOpen(true));
+await act(async () => setCollabInboxOpen(false));
+assert.equal(document.querySelector(".badge-probe")!.textContent, "1", "panel open/close transitions refresh the count");
+assert.equal(
+  calls.filter((c) => c.name === "CountUnreadCollabMail").length >= 3,
+  true,
+  "the badge count is fetched on mount and on every open/close transition",
+);
+await act(async () => badgeRoot.unmount());
+badgeHost.remove();
 
 await act(async () => root.unmount());
 dom.window.close();

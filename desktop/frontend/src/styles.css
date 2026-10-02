@@ -32999,6 +32999,31 @@ body > .mermaid-diagram--fullscreen {
   color: var(--accent);
 }
 
+/* 任务 320 遗留 #1：图标行收件箱未读徽标（数字胶囊，>0 才渲染；面板开合时
+   刷新，计数来源 = CollabInboxPanel 的 useCollabInboxUnreadCount）。声明在
+   两个布局的 utility-button 规则之后，.sidebar 作用域对 workbench/classic
+   同时生效；文字用 control-primary 对（主题钦定的 accent 上文字配对）。 */
+.sidebar .sidebar__utility-button {
+  position: relative;
+}
+.sidebar .sidebar__utility-badge {
+  position: absolute;
+  top: 1px;
+  right: calc(50% - 16px);
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--control-primary-fg);
+  background: var(--control-primary-bg);
+  pointer-events: none;
+}
+
 .project-tree__group {
   position: relative;
 }

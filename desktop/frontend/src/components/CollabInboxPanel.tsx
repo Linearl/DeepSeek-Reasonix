@@ -68,6 +68,7 @@ export type CollabMailChains = {
 export type CollabInboxBindings = {
   ListCollabMail(bucket: string, from: string, to: string, state: string, limit: number, includeDismissed: boolean, order: string): Promise<CollabMailSnapshot>;
   ListCollabMailChains(bucket: string, limit: number): Promise<CollabMailChains>;
+  CountUnreadCollabMail(): Promise<number>;
   DismissCollabMail(ids: string[]): Promise<CollabMailSnapshot>;
   UndismissCollabMail(ids: string[]): Promise<CollabMailSnapshot>;
   MarkCollabMailDecided(messageID: string, by: string): Promise<CollabMailSnapshot>;
@@ -91,6 +92,30 @@ export function setCollabInboxOpen(next: boolean): void {
 export function onCollabInboxOpenChange(cb: (open: boolean) => void): () => void {
   openListeners.add(cb);
   return () => openListeners.delete(cb);
+}
+
+/**
+ * 任务 320 遗留 #1：图标行收件箱按钮的未读徽标数 —— 未读（收件方 seen 游标
+ * 未覆盖）且未消除的统一表条目数，与面板默认视图的「待处理」口径一致。
+ * 刷新时机（派单钦定）：挂载时 + 面板每次开/合切换时 —— 打开路径会应用保留期
+ * （可能清理旧信），关闭路径紧随刚发生的已读/消除，两个时刻的数字都可能变；
+ * 不做轮询。网关不可达时保留上次数值（与面板 refresh 的容错同款）。
+ */
+export function useCollabInboxUnreadCount(bindings?: CollabInboxBindings): number {
+  const b: CollabInboxBindings = bindings ?? app;
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const refresh = () => {
+      b.CountUnreadCollabMail()
+        .then((n) => { if (alive) setCount(n); })
+        .catch(() => { /* closed gateway: keep the last count */ });
+    };
+    refresh();
+    const off = onCollabInboxOpenChange(refresh);
+    return () => { alive = false; off(); };
+  }, [b]);
+  return count;
 }
 
 const BUCKETS = ["all", "approval", "mention", "automation", "system"] as const;

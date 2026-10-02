@@ -516,6 +516,11 @@ const CHECKS = [
   { feature: "任务320 面板日期排序切换（Wails 透传）", file: "desktop/collab_inbox_app.go", patterns: ["order string", "Order:            order"] },
   { feature: "任务320 面板日期排序切换（控件+透传）", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["collab-inbox-panel__ordertoggle", "collabInbox.order.${name}", "showDismissed, order)"] },
   { feature: "任务320 面板日期排序切换三语 locale", file: "desktop/frontend/src/locales/zh.ts", patterns: ["collabInbox.order.desc", "collabInbox.order.asc"] },
+  // 任务 320 遗留 #1（320n）：图标行收件箱未读徽标——只读计数 Wails 方法
+  // （applyRetention=false，徽标路径绝不 prune）+ 面板开合刷新 hook + 按钮接线。
+  { feature: "任务320n 未读徽标只读计数 Wails 方法", file: "desktop/collab_inbox_app.go", patterns: ["func (a *App) CountUnreadCollabMail(", "Unread: true"] },
+  { feature: "任务320n 未读徽标 hook 与绑定", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["useCollabInboxUnreadCount", "CountUnreadCollabMail"] },
+  { feature: "任务320n 图标行按钮徽标接线", file: "desktop/frontend/src/App.tsx", patterns: ["useCollabInboxUnreadCount", "sidebar__utility-badge"] },
   // 任务 349：群聊通道——channel 实体（SQLite+md 导出）+ 发布订阅展开单发
   // （复用 309 MailStore，铁律 8 无第二投递通道）+ per-recipient delivered/
   // read + 429 治理（错峰/followup/小时上限）+ 取消消息（20261002 增量：

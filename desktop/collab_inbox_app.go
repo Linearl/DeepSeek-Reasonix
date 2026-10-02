@@ -71,6 +71,21 @@ func (a *App) ListCollabMailChains(bucket string, limit int) (collabinbox.ChainS
 	})
 }
 
+// CountUnreadCollabMail answers the icon-row badge (task 320 遗留 #1): how
+// many unified-table entries are unread (the recipient's seen cursor does not
+// cover them) and not dismissed — exactly what the panel's default view would
+// list as awaiting attention. READ-ONLY by contract: applyRetention stays
+// false, so a sidebar refresh never prunes the transport layer (that side
+// effect belongs to the panel path alone), and no entries travel the wire —
+// just the count.
+func (a *App) CountUnreadCollabMail() (int64, error) {
+	snap, err := collabInboxStore().List(collabinbox.Query{Unread: true, Limit: 1}, false)
+	if err != nil {
+		return 0, err
+	}
+	return int64(snap.Total), nil
+}
+
 // DismissCollabMail eliminates entries from the default view and returns the
 // fresh snapshot (batch dismiss → new revision, e-①).
 func (a *App) DismissCollabMail(ids []string) (collinboxSnapshot, error) {

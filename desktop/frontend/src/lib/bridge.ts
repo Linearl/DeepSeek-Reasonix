@@ -1070,6 +1070,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // return the NEW state directly.
   ListCollabMail(bucket: string, from: string, to: string, state: string, limit: number, includeDismissed: boolean, order: string): Promise<CollabMailSnapshotView>;
   ListCollabMailChains(bucket: string, limit: number): Promise<CollabMailChainsView>;
+  // 任务 320 遗留 #1：图标行未读徽标的只读计数（不应用保留期，零副作用）。
+  CountUnreadCollabMail(): Promise<number>;
   DismissCollabMail(ids: string[]): Promise<CollabMailSnapshotView>;
   UndismissCollabMail(ids: string[]): Promise<CollabMailSnapshotView>;
   MarkCollabMailDecided(messageID: string, by: string): Promise<CollabMailSnapshotView>;
@@ -5466,6 +5468,9 @@ function makeMockApp(): AppBindings {
     },
     async ListCollabMailChains() {
       return { revision: "0.0.0", settings: { retention: "7d" }, total: 0, chains: [] };
+    },
+    async CountUnreadCollabMail() {
+      return 0; // dev shell has no mailbox — an honest empty badge
     },
     async DismissCollabMail() {
       return { revision: "0.0.0", settings: { retention: "7d" }, total: 0, returned: 0, truncated: false, entries: [] };
