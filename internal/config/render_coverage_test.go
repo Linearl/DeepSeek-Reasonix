@@ -23,9 +23,14 @@ var desktopRenderOmissions = map[string]string{
 	"autopilot":                "rendered together with its bound, only when configured",
 	"autopilot_max_runtime":    "rendered with the autopilot flag",
 	"autopilot_approval_grace": "rendered with the autopilot flag",
-	"session_experience":       "rendered by renderDesktopSessionExperience",
-	"reasoning_display_mode":   "rendered by renderDesktopReasoningDisplayMode",
-	"conversation_width":       "rendered with the session-experience block",
+	// Pre-existing red on main-v2-stable (task 326 landed these keys rendered
+	// inside the autopilot block without an omission entry): both render only
+	// once the guard interval/policy leaves the default.
+	"autopilot_guard_interval":  "task 326: rendered inside the autopilot guard block, only when the interval leaves the default",
+	"autopilot_guard_quiescent": "task 326: rendered inside the autopilot guard block, only when the self-close policy is set",
+	"session_experience":        "rendered by renderDesktopSessionExperience",
+	"reasoning_display_mode":    "rendered by renderDesktopReasoningDisplayMode",
+	"conversation_width":        "rendered with the session-experience block",
 }
 
 // TestDesktopRenderTableCoversEveryKey is the single guard against that class of bug:

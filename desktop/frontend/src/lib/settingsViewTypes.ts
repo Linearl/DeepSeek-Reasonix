@@ -146,10 +146,9 @@ export interface SettingsView {
   experimentalLoopStreakNote?: boolean;
   // Task 244 B3: event_wait return-time recheck.
   experimentalEventWaitRecheck?: boolean;
-  // Task 244 B5: orphan lease takeover.
-  experimentalOrphanLeaseReclaim?: boolean;
-  // Task 244 B4: recovery-store open-path orphan sweep.
-  experimentalRecoveryOrphanSweep?: boolean;
+  // Task 449: merged orphan switch (folds task 244 B5 lease reclaim + B4
+  // recovery sweep into one key).
+  experimentalOrphanHandling?: boolean;
   // Task 244 B9: per-task model capability filter.
   experimentalModelCapabilityFilter?: boolean;
   // Task 363A: runtime assembly reuse pool (same root+model+effort tabs).

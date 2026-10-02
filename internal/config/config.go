@@ -1745,17 +1745,20 @@ type AgentConfig struct {
 	// shape stays byte-identical (fork rule 2).
 	ExperimentalEventWaitRecheck bool `toml:"experimental_event_wait_recheck"`
 
-	// ExperimentalOrphanLeaseReclaim lets this process take over a session
-	// lease whose recorded owner PID no longer exists (task 244 B5; MiMo
-	// registry "reclaim orphans by instance identity after restart"). A live
-	// foreign owner is still respected exactly as before. Off by default
-	// (fork rule 2): lease takeover stays opt-in.
-	ExperimentalOrphanLeaseReclaim bool `toml:"experimental_orphan_lease_reclaim"`
-	// ExperimentalRecoveryOrphanSweep marks recovery-store operations that
-	// point past the covered durable sequence as settled when the store opens
-	// (task 244 B4; MiMo #2445 ownership-boundary orphan reclamation — the
-	// Reasonix shape is an idempotent open-path sweep, not a structured-exit
-	// hook). Off by default: the open path stays byte-identical (fork rule 2).
+	// ExperimentalOrphanHandling is the single merged orphan switch (task 449):
+	// it gates BOTH halves of the task-244 orphan flow — reclaiming a session
+	// lease whose recorded owner PID is dead (B5: crash leftover; a live
+	// foreign owner is still respected exactly as before) AND settling
+	// recovery-store operations past the covered durable sequence when the
+	// store opens (B4: idempotent, same-generation only, records are never
+	// deleted). Off by default (fork rule 2): both halves stay opt-in.
+	ExperimentalOrphanHandling bool `toml:"experimental_orphan_handling"`
+	// ExperimentalOrphanLeaseReclaim / ExperimentalRecoveryOrphanSweep are the
+	// legacy task-244 keys, kept READ-ONLY so old configs still load.
+	// migrateOrphanHandlingMerge folds any legacy true into
+	// ExperimentalOrphanHandling at load and clears them, so the next save
+	// carries only the merged key (task 449).
+	ExperimentalOrphanLeaseReclaim  bool `toml:"experimental_orphan_lease_reclaim"`
 	ExperimentalRecoveryOrphanSweep bool `toml:"experimental_recovery_orphan_sweep"`
 	// ExperimentalModelCapabilityFilter turns a per-task model that lacks a
 	// capability the task needs into an explicit, explained rejection instead

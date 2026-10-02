@@ -2404,10 +2404,8 @@ export interface DesktopStartupSettingsView {
   experimentalLoopStreakNote?: boolean;
   /** event_wait return-time recheck (task 244 B3); off unless the user opts in. */
   experimentalEventWaitRecheck?: boolean;
-  /** orphan lease takeover (task 244 B5); off unless the user opts in. */
-  experimentalOrphanLeaseReclaim?: boolean;
-  /** recovery-store open-path orphan sweep (task 244 B4); off unless the user opts in. */
-  experimentalRecoveryOrphanSweep?: boolean;
+  /** merged orphan switch (task 449; folds task 244 B5 lease reclaim + B4 recovery sweep); off unless the user opts in. */
+  experimentalOrphanHandling?: boolean;
   /** per-task model capability filter with explained rejections (task 244 B9); off unless the user opts in. */
   experimentalModelCapabilityFilter?: boolean;
   /** Task 363A: reuse the runtime assembly across same-config tabs instead of full rebuild; off unless the user opts in. */

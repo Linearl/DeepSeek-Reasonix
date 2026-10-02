@@ -955,20 +955,33 @@ func (c *Config) SetExperimentalEventWaitRecheck(enabled bool) error {
 	return nil
 }
 
-// SetExperimentalOrphanLeaseReclaim toggles orphan lease takeover (task 244 B5).
-// Desktop keeps the settings-view mirror; Agent is the runtime flag.
-func (c *Config) SetExperimentalOrphanLeaseReclaim(enabled bool) error {
-	c.Desktop.ExperimentalOrphanLeaseReclaim = enabled
-	c.Agent.ExperimentalOrphanLeaseReclaim = enabled
+// SetExperimentalOrphanHandling toggles the merged orphan switch (task 449):
+// both the task-244 B5 lease reclaim and the B4 recovery-store sweep follow
+// this one key. Desktop keeps the settings-view mirror; Agent is the runtime
+// flag. The legacy keys are cleared too so an explicit off can never be
+// resurrected by an unmigrated legacy true.
+func (c *Config) SetExperimentalOrphanHandling(enabled bool) error {
+	c.Desktop.ExperimentalOrphanHandling = enabled
+	c.Agent.ExperimentalOrphanHandling = enabled
+	c.Desktop.ExperimentalOrphanLeaseReclaim = false
+	c.Agent.ExperimentalOrphanLeaseReclaim = false
+	c.Desktop.ExperimentalRecoveryOrphanSweep = false
+	c.Agent.ExperimentalRecoveryOrphanSweep = false
 	return nil
 }
 
-// SetExperimentalRecoveryOrphanSweep toggles the open-path orphan sweep
-// (task 244 B4). Desktop keeps the settings-view mirror; Agent is the runtime flag.
+// SetExperimentalOrphanLeaseReclaim is the pre-449 API kept as a delegate so
+// the generated wails binding surface stays valid; it toggles the whole
+// merged orphan switch (task 449).
+func (c *Config) SetExperimentalOrphanLeaseReclaim(enabled bool) error {
+	return c.SetExperimentalOrphanHandling(enabled)
+}
+
+// SetExperimentalRecoveryOrphanSweep is the pre-449 API kept as a delegate so
+// the generated wails binding surface stays valid; it toggles the whole
+// merged orphan switch (task 449).
 func (c *Config) SetExperimentalRecoveryOrphanSweep(enabled bool) error {
-	c.Desktop.ExperimentalRecoveryOrphanSweep = enabled
-	c.Agent.ExperimentalRecoveryOrphanSweep = enabled
-	return nil
+	return c.SetExperimentalOrphanHandling(enabled)
 }
 
 // SetExperimentalModelCapabilityFilter toggles the per-task model capability

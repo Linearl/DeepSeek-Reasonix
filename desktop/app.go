@@ -10059,15 +10059,18 @@ func leaseReclaimDecision(info *agent.SessionLeaseInfo, ownPID int, ownWriter st
 	return !pidAlive(info.PID)
 }
 
-// experimentalOrphanLeaseReclaim reads the switch at call time (S4) so a
-// settings toggle applies to the next reclaim without a restart. Missing
-// config = off.
+// experimentalOrphanLeaseReclaim reports whether orphan handling may reclaim
+// this lease. It reads the merged experimental_orphan_handling switch (task
+// 449, which folded task 244 B5 + B4 into one key) at call time (S4) so a
+// settings toggle applies to the next reclaim without a restart; config.Load
+// normalizes, so a legacy task-244 key still on is folded in by
+// migrateOrphanHandlingMerge. Missing config = off.
 func (a *App) experimentalOrphanLeaseReclaim() bool {
 	cfg, err := config.Load()
 	if err != nil {
 		return false
 	}
-	return cfg.Agent.ExperimentalOrphanLeaseReclaim || cfg.Desktop.ExperimentalOrphanLeaseReclaim
+	return cfg.Agent.ExperimentalOrphanHandling || cfg.Desktop.ExperimentalOrphanHandling
 }
 
 func (a *App) canReclaimCurrentProcessSessionLease(tab *WorkspaceTab, path string, err error) bool {
