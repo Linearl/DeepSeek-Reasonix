@@ -155,10 +155,9 @@ var errClientClosed = errors.New("baseproc: client closed")
 // client (inline while not ready), which is R1 restated for the lifecycle
 // slice.
 type Manager struct {
-	opts   Options
-	log    *slog.Logger
-	inline InlineBaseClient
-	th     lifecycleThresholds
+	opts Options
+	log  *slog.Logger
+	th   lifecycleThresholds
 
 	mu            sync.Mutex
 	state         baseState
@@ -196,7 +195,6 @@ func NewManager(ctx context.Context, opts Options) *Manager {
 	m := &Manager{
 		opts:       opts,
 		log:        log,
-		inline:     InlineBaseClient{ServerVersion: opts.ServerVersion, Surface: opts.Surface},
 		th:         resolveThresholds(opts),
 		state:      stateWarming,
 		baseCtx:    baseCtx,
@@ -229,14 +227,30 @@ func NewManager(ctx context.Context, opts Options) *Manager {
 	return m
 }
 
-// Acquire returns a refcounted view. Every acquired view must be released
-// with ManagedClient.Close; the underlying subprocess is torn down when the
-// last view goes (design §4 shutdown on app exit).
-func (m *Manager) Acquire() *ManagedClient {
+// Acquire returns a refcounted view carrying THIS caller's inline fallback
+// surface. That split matters once managers are shared (S1c: N boots, one
+// subprocess): the subprocess is process-wide, but each boot built its own
+// registry for its own workspace root, so the fallback answer a view gives
+// when the base is down must be the caller's own — never another tab's.
+//
+// Every view must be released with ManagedClient.Close.
+func (m *Manager) Acquire(opts Options) *ManagedClient {
 	m.mu.Lock()
 	m.views++
 	m.mu.Unlock()
-	return &ManagedClient{m: m}
+	return &ManagedClient{
+		m:      m,
+		inline: InlineBaseClient{ServerVersion: opts.ServerVersion, Surface: opts.Surface},
+	}
+}
+
+// Closed reports whether this manager has been shut down — the shared pool in
+// boot uses it to drop a finished manager instead of handing out views on a
+// corpse.
+func (m *Manager) Closed() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.closed
 }
 
 // State reports the current D5 node (inline_warming / remote_ready /
@@ -257,18 +271,6 @@ func (m *Manager) Mode() Mode {
 		return ModeRemote
 	}
 	return ModeInline
-}
-
-// current resolves the client every view call delegates to. The pointer is
-// captured once per call so an in-flight call keeps talking to the connection
-// it started on (a mid-call swap would risk a double execution).
-func (m *Manager) current() BaseClient {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.state == stateRemoteReady && m.remote != nil {
-		return m.remote
-	}
-	return m.inline
 }
 
 func (m *Manager) setState(s baseState) {
@@ -612,12 +614,19 @@ func isVersionMismatch(err error) bool {
 // last view closes.
 type ManagedClient struct {
 	m *Manager
+	// inline is THIS view's fallback: the registry its own boot built for its
+	// own workspace root. Shared managers must never answer from another
+	// view's surface.
+	inline InlineBaseClient
 
 	once sync.Once
 	mu   sync.Mutex
 	done bool
 }
 
+// target resolves the client one call delegates to. The pointer is captured
+// once per call so an in-flight call keeps talking to the connection it
+// started on (a mid-call swap would risk a double execution).
 func (c *ManagedClient) target() (BaseClient, error) {
 	c.mu.Lock()
 	closed := c.done
@@ -625,7 +634,16 @@ func (c *ManagedClient) target() (BaseClient, error) {
 	if closed {
 		return nil, errClientClosed
 	}
-	return c.m.current(), nil
+	// One critical section decides remote vs inline so the answer cannot go
+	// stale between the check and the hand-off.
+	c.m.mu.Lock()
+	if c.m.state == stateRemoteReady && c.m.remote != nil {
+		remote := c.m.remote
+		c.m.mu.Unlock()
+		return remote, nil
+	}
+	c.m.mu.Unlock()
+	return c.inline, nil
 }
 
 // Mode implements BaseClient (delegates to the manager's D5 state).

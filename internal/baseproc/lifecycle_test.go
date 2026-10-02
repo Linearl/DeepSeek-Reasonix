@@ -241,7 +241,7 @@ func TestManagerStartsRemoteAndServesCatalogFromSubprocess(t *testing.T) {
 	if state := h.mgr.State(); state != "remote_ready" {
 		t.Fatalf("state = %q, want remote_ready", state)
 	}
-	got, err := firstTool(t, h.mgr.Acquire())
+	got, err := firstTool(t, h.mgr.Acquire(h.opts))
 	if err != nil {
 		t.Fatalf("remote catalog: %v", err)
 	}
@@ -263,7 +263,7 @@ func TestManagerChannelDeathDegradesViewsThenRespawns(t *testing.T) {
 		opts.RestartMaxDelay = time.Second
 	})
 
-	view := h.mgr.Acquire()
+	view := h.mgr.Acquire(h.opts)
 	defer view.Close()
 	if got, err := firstTool(t, view); err != nil || got != "alpha" {
 		t.Fatalf("catalog before death = %q/%v, want alpha/nil", got, err)
@@ -400,8 +400,8 @@ func TestManagerSharedSubprocessTearsDownOnLastViewOnly(t *testing.T) {
 		rec.serveSurface("alpha")
 	})
 
-	first := h.mgr.Acquire()
-	second := h.mgr.Acquire()
+	first := h.mgr.Acquire(h.opts)
+	second := h.mgr.Acquire(h.opts)
 
 	if err := first.Close(); err != nil {
 		t.Fatalf("first close: %v", err)
