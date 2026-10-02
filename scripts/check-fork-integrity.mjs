@@ -641,6 +641,17 @@ const CHECKS = [
   { feature: "450 工具面结果显形强制说明", file: "desktop/autonomous_update.go", patterns: ["forcedNote"] },
   { feature: "450 谁断谁续（被打断会话无条件入 254 名册）", file: "desktop/autonomous_update_resume.go", patterns: ["func (a *App) stageInterruptedByRestart", "whoever we interrupted, we resume"] },
 
+  // ── 任务 435 断后恢复链（名册会话续跑不落 fence + 未入册防静默丢）────
+  // 450 管「重启之前」能否出发，435 管「重启之后」恢复质量。缺了 settle，
+  // 被续跑的会话照样弹「中断的工具需要核实」等人；缺了未入册显形，拨盘
+  // off/非 autopilot 调用者被重启打断后无声消失。任何一道被 merge 顶掉，
+  // 「谁断谁续」就断在最后一公里。
+  { feature: "435 agent 层结算（interrupted_by_restart 主方结算）", file: "internal/agent/tool_recovery_actions.go", patterns: ["restartResumeResolution = \"interrupted_by_restart\"", "func (a *Agent) ResolveInterruptedByRestart"] },
+  { feature: "435 control 层委托（控制器结算入口，nil 安全）", file: "internal/control/tool_recovery.go", patterns: ["func (c *Controller) SettleRestartInterruptedEffects", "ResolveInterruptedByRestart()"] },
+  { feature: "435 名册消费点接线（settle 先于续跑提交，面板不亮）", file: "desktop/autonomous_update_resume.go", patterns: ["type restartFenceSettler interface", "func (a *App) settleRestartFenceForTab", "a.settleRestartFenceForTab(tab)", "restartResumeSubmit func(a *App, tabID, prompt string) error"] },
+  { feature: "435 未入册显形（1545 防静默丢标记）", file: "desktop/restart_update.go", patterns: ["restartUnstagedMarker = \"未入册\"", "report.unstaged = append(report.unstaged, sp)", "interrupted but NOT staged for auto-resume"] },
+  { feature: "435 调用者未入册工具面显形", file: "desktop/autonomous_update.go", patterns: ["callerStaged := a.stageAutonomousUpdateResume(callerSession)", "NOT staged for auto-resume"] },
+
   // ── S1 开关 UI 入口（任务 450 并入小件：experimental_base_process 实验室控件）──
   // 开关注册（S1a）已进 render 表但没有 UI 面，用户无法打开开关；四处接线
   // 缺一，开关就「看得见配置改不了」或「改了读不回」。

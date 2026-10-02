@@ -237,20 +237,31 @@ var (
 // visible on both faces, not buried in behavior).
 const restartForcedMarker = "超时强制"
 
+// restartUnstagedMarker is the greppable token for the 1545 anti-silent-loss
+// face: a session this restart interrupts but does NOT stage for auto-resume
+// (dial off, or an attended caller under the goal_autopilot dial) would
+// otherwise reappear after the relaunch as a fenced, nobody-resumes-it
+// transcript with no trace of why. Every unstaged session is named on the log
+// and the tool-facing note under this marker.
+const restartUnstagedMarker = "未入册"
+
 // restartWindowReport summarizes what the grace window did: natural = the
 // other tabs settled (or none were busy); cancelled = sessions this path
 // cancelled (each staged for auto-resume); forcedPrompt = sessions pushed
 // through while holding an unanswered prompt (never cancelled — the prompt is
-// the user's decision; the shutdown snapshot closes the card out as cancelled).
+// the user's decision; the shutdown snapshot closes the card out as cancelled);
+// unstaged = interrupted-by-this-restart sessions that did NOT get a resume
+// marker (1545: named on every face so they cannot be silently lost).
 type restartWindowReport struct {
 	natural      bool
 	cancelled    []string
 	forcedPrompt []string
+	unstaged     []string
 }
 
 // forcedNote renders the report for the tool face; "" when nothing was forced.
 func (r restartWindowReport) forcedNote() string {
-	if len(r.cancelled) == 0 && len(r.forcedPrompt) == 0 {
+	if len(r.cancelled) == 0 && len(r.forcedPrompt) == 0 && len(r.unstaged) == 0 {
 		return ""
 	}
 	var b strings.Builder
@@ -260,6 +271,9 @@ func (r restartWindowReport) forcedNote() string {
 	}
 	if len(r.forcedPrompt) > 0 {
 		fmt.Fprintf(&b, "; went through past an unanswered prompt (not cancelled): %s", strings.Join(r.forcedPrompt, ", "))
+	}
+	if len(r.unstaged) > 0 {
+		fmt.Fprintf(&b, "; interrupted but NOT staged for auto-resume (%s, review manually after the relaunch): %s", restartUnstagedMarker, strings.Join(r.unstaged, ", "))
 	}
 	return b.String()
 }
@@ -335,7 +349,13 @@ func (a *App) clearRestartPath(callerSession string) restartWindowReport {
 		time.Sleep(restartCancelSettlePoll)
 	}
 	for _, sp := range report.cancelled {
-		a.stageInterruptedByRestart(sp)
+		// 1545 anti-silent-loss: a cancelled session whose staging declined
+		// (dial off) is interrupted without a resume marker — name it here and
+		// on the note, so the post-relaunch fence is never unexplained.
+		if !a.stageInterruptedByRestart(sp) {
+			report.unstaged = append(report.unstaged, sp)
+			slog.Warn("restart: session interrupted but NOT staged for auto-resume ("+restartUnstagedMarker+"; review manually after the relaunch)", "session", sp)
+		}
 	}
 	return report
 }
