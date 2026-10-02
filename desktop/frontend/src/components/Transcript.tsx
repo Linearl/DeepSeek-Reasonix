@@ -2,6 +2,7 @@ import {
   lazy,
   Suspense,
   useCallback,
+  useDeferredValue,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -36,6 +37,15 @@ import {
   writeTranscriptFoldOverride,
 } from "../lib/transcriptFoldOverrides";
 import { useTranscriptCommand } from "../lib/useTranscriptCommand";
+import {
+  EMPTY_FIND_INDEX,
+  buildTranscriptFindIndex,
+  findAttributeSelector,
+  searchTranscriptFind,
+  stepFindHit,
+  type TranscriptFindHighlight,
+  type TranscriptFindHit,
+} from "../lib/transcriptFind";
 import { composeDomRef } from "../lib/composeDomRef";
 import { useTranscriptKernel } from "../lib/useTranscriptKernel";
 import { canRequestOlderHistory, olderHistoryTriggerPx } from "../lib/historyOlderGates";
@@ -68,6 +78,8 @@ const EMPTY_INVOCATION_METADATA: InvocationMetadataMap = {};
 const QUESTION_NAV_MIN_COUNT = 2;
 const TranscriptQuestionNavigator = lazy(() => import("./TranscriptQuestionNavigator"));
 const QuestionSearchPanel = lazy(() => import("./QuestionSearchPanel"));
+import { TranscriptFindBar } from "./TranscriptFindBar";
+import { TranscriptFindContext } from "./TranscriptFindContext";
 const SHOW_FRONTEND_DIAGNOSTICS = typeof __BUILD_CHANNEL__ === "undefined"
   || __BUILD_CHANNEL__ === "test"
   || __BUILD_CHANNEL__ === "preview"
@@ -99,6 +111,12 @@ export type TranscriptProps = {
   questionNavigator?: boolean;
   questionSearchOpen?: boolean;
   onCloseQuestionSearch?: () => void;
+  /** Task 399: in-session Ctrl+F find. Open state is owned by App so the two
+   *  split Transcripts don't each register their own global listener. */
+  findOpen?: boolean;
+  onCloseFind?: () => void;
+  /** Bumped by every Ctrl+F; forwarded so a repeat chord re-selects the query. */
+  findPulse?: number;
   welcomeVariant?: "default" | "creation";
   creationMode?: boolean;
   actionHoverMenus?: boolean;
@@ -127,6 +145,7 @@ export function Transcript(props: TranscriptProps) {
     onEditPrompt, onRewind, checkpoints = EMPTY_CHECKPOINTS, actionPending = false,
     rewindDisabled = false, running = false, questionNavigator = true,
     questionSearchOpen = false, onCloseQuestionSearch,
+    findOpen = false, onCloseFind, findPulse = 0,
     welcomeVariant = "default", creationMode = false, actionHoverMenus = false,
     rewindSignal = 0, revealSignal = 0, hydrating = false, hasOlderHistory = false,
     historyStartTurn = 0, historyTotalTurns = 0, loadingOlderHistory = false,
@@ -228,6 +247,108 @@ export function Transcript(props: TranscriptProps) {
     writeOffset: writeOffset,
     cancelStreamingScroll,
   });
+
+  // ── Task 399: in-session Ctrl+F find ──────────────────────────────────
+  // Query lives here (not in App) so split panes keep independent searches;
+  // the open flag is lifted so a single global shortcut can't double-fire.
+  const [findQuery, setFindQuery] = useState("");
+  const [findCursor, setFindCursor] = useState(0);
+  // Deferred keeps typing responsive on 万行 sessions: the scan runs after
+  // the input paint instead of blocking the keystroke.
+  const deferredFindQuery = useDeferredValue(findQuery);
+  const findIndexEntries = useMemo(
+    () => (findOpen ? buildTranscriptFindIndex(blocks) : EMPTY_FIND_INDEX),
+    [findOpen, blocks],
+  );
+  const findResult = useMemo(
+    () => searchTranscriptFind(findIndexEntries, deferredFindQuery),
+    [findIndexEntries, deferredFindQuery],
+  );
+  // Cursor may drift out of range when rows stream in/out; clamp on read so
+  // highlights never point at a stale index (and no effect loop is needed).
+  const activeFindIndex = findResult.hits.length === 0
+    ? -1
+    : Math.min(Math.max(findCursor, 0), findResult.hits.length - 1);
+  const activeFindHit = activeFindIndex >= 0 ? findResult.hits[activeFindIndex] : null;
+  const findNoMatches = deferredFindQuery.trim() !== "" && findResult.hits.length === 0;
+
+  // Mount the hit's block first (windowed mode may not have it), then measure
+  // the row against its block and jump with that offset so deep rows land
+  // visible, not just their block header. Falls back to a plain block jump
+  // when measurement isn't possible yet; the kernel re-anchors on geometry
+  // changes either way.
+  const jumpToFindHit = useTranscriptCommand((hit: TranscriptFindHit) => {
+    const element = scrollRef.current;
+    if (!element) return false;
+    document.getSelection()?.removeAllRanges();
+    clearSelection("find-navigation");
+    viewportRef.current?.mountBlock(hit.blockKey);
+    const measure = (): number | null => {
+      const blockEl = element.querySelector<HTMLElement>(findAttributeSelector("data-transcript-block-key", hit.blockKey));
+      const rowEl = element.querySelector<HTMLElement>(findAttributeSelector("data-row-key", hit.rowKey));
+      if (!blockEl || !rowEl) return null;
+      // Land the row a little below the viewport top so the find bar doesn't
+      // cover the hit; clamp at 0 (kernel never scrolls to a negative offset).
+      const rowOffset = Math.round(rowEl.getBoundingClientRect().top - blockEl.getBoundingClientRect().top);
+      return Math.max(0, rowOffset - 56);
+    };
+    const offset = measure();
+    if (offset !== null) return jumpToBlock(hit.blockKey, offset);
+    // Pinned block hasn't painted yet — jump after the next frame, once the
+    // row exists; offset 0 (block top) is the honest fallback if it never does.
+    requestAnimationFrame(() => {
+      const lateOffset = measure();
+      jumpToBlock(hit.blockKey, lateOffset ?? 0);
+    });
+    return true;
+  });
+
+  const stepFind = useTranscriptCommand((direction: 1 | -1) => {
+    const total = findResult.hits.length;
+    if (total === 0) return;
+    const next = stepFindHit(activeFindIndex, total, direction);
+    setFindCursor(next);
+    const hit = findResult.hits[next];
+    if (hit) jumpToFindHit(hit);
+  });
+
+  // Jump to the first hit when the QUERY changes — not when the match list
+  // refreshes from streaming/paging (that would yank the viewport while the
+  // reader is watching). lastJumpedQuery latches per committed query.
+  const lastJumpedQueryRef = useRef("");
+  useEffect(() => {
+    if (!findOpen) {
+      lastJumpedQueryRef.current = "";
+      return;
+    }
+    const query = deferredFindQuery.trim();
+    // Clearing the query re-arms the latch so retyping the same term jumps again.
+    if (!query) {
+      lastJumpedQueryRef.current = "";
+      return;
+    }
+    if (query === lastJumpedQueryRef.current) return;
+    lastJumpedQueryRef.current = query;
+    setFindCursor(0);
+    const first = findResult.hits[0];
+    if (first) jumpToFindHit(first);
+  }, [findOpen, deferredFindQuery, findResult, jumpToFindHit]);
+
+  // Closing the bar clears the query so the next Ctrl+F starts fresh and no
+  // highlight survives an invisible bar.
+  useEffect(() => {
+    if (findOpen) return;
+    setFindQuery("");
+    setFindCursor(0);
+  }, [findOpen]);
+
+  const findHighlight = useMemo<TranscriptFindHighlight>(() => {
+    if (!findOpen || findResult.hits.length === 0) return null;
+    return {
+      hits: new Set(findResult.hits.map((hit) => hit.rowKey)),
+      active: activeFindHit?.rowKey ?? null,
+    };
+  }, [findOpen, findResult, activeFindHit]);
 
   const handleFoldToggle = useTranscriptCommand((segmentKey: string, open: boolean) => {
     beginStructural("display-change");
@@ -448,6 +569,7 @@ export function Transcript(props: TranscriptProps) {
     <MarkdownImageTabContext.Provider value={tabId ?? ""}>
     <TranscriptLayoutIntentProvider value={() => { beginStructural("display-change"); }}>
     <TranscriptScrollWriteProvider value={writeOffset}>
+    <TranscriptFindContext.Provider value={findHighlight}>
       <div className="transcript-shell" aria-busy={loadingOlderHistory || undefined} data-protected-blocks={protectedBlockKeys.size}>
         {tabId && <Suspense fallback={null}><ToolRecoveryPanel key={resolvedSessionKey} tabId={tabId} sessionKey={resolvedSessionKey} running={running} refreshKey={items.length} onResume={() => onPrompt?.(t("toolRecovery.resumePrompt"))} /></Suspense>}
         {empty ? (
@@ -518,9 +640,23 @@ export function Transcript(props: TranscriptProps) {
           />
         </Suspense>
       )}
+        <TranscriptFindBar
+          open={findOpen}
+          query={findQuery}
+          onQueryChange={setFindQuery}
+          activeIndex={activeFindIndex + 1}
+          matchCount={findResult.hits.length}
+          capped={findResult.capped}
+          noMatches={findNoMatches}
+          onPrev={() => stepFind(-1)}
+          onNext={() => stepFind(1)}
+          onClose={() => onCloseFind?.()}
+          focusSignal={findPulse}
+        />
         {!empty && <button type="button" className="transcript__jump-bottom" hidden={!jumpBottomVisible} onClick={() => { endStaleGesture(); scrollToBottom(); }} aria-label={t("transcript.jumpToBottom")} title={t("transcript.jumpToBottom")}><ArrowDown size={18} strokeWidth={2.2} aria-hidden="true" /></button>}
         {FrontendDiagnosticsPanel && <Suspense fallback={null}><FrontendDiagnosticsPanel scrollElement={scrollElement} totalRows={allRows.length} /></Suspense>}
       </div>
+    </TranscriptFindContext.Provider>
     </TranscriptScrollWriteProvider>
     </TranscriptLayoutIntentProvider>
     </MarkdownImageTabContext.Provider>

@@ -41495,6 +41495,88 @@ body > .mermaid-diagram--fullscreen {
   color: var(--fg-faint);
   font-size: 12px;
 }
+/* Task 399: transcript find bar — same top-center anchor family as the
+   question search panel, clear of the right-edge jump bar. */
+.transcript-find {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-popover);
+  width: min(460px, calc(100% - 48px));
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elev);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+  color: var(--fg);
+}
+.transcript-find__icon {
+  flex: none;
+  color: var(--fg-faint);
+}
+.transcript-find__input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 13px;
+}
+.transcript-find__input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+}
+.transcript-find__count {
+  flex: none;
+  min-width: 52px;
+  padding: 0 4px;
+  color: var(--fg-faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+}
+.transcript-find__btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+.transcript-find__btn:hover:not(:disabled) {
+  background: var(--bg-hover, var(--bg));
+  border-color: var(--border);
+  color: var(--fg);
+}
+.transcript-find__btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* Task 399: hit rows. Row backgrounds vary by kind, so highlight with an
+   inset accent bar + tint that composites over any row surface. */
+.transcript__row--find {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 65%, transparent);
+}
+.transcript__row--find-active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+  outline: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: -1px;
+}
 /* Shared composer toolbar: context and permissions left, model controls right. */
 :root[data-theme-style] .composer-meta.composer-meta--unified .composer-meta__params,
 .composer-meta.composer-meta--unified .composer-meta__params {

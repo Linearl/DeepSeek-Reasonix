@@ -249,6 +249,7 @@ const CHECKS = [
   { feature: "任务381 staging 读取点全收敛", file: "desktop/restart_update.go", patterns: ["stagingRoot()"] },
   { feature: "任务383 #2 workbench 项目分组入口（header 菜单 group 项）", file: "desktop/frontend/src/components/ProjectTreeAddControls.tsx", patterns: ["new-project-group", "onGroup"] },
   { feature: "任务383 #5 classic footer icon-only（creation 保文字）+#8 automation→heartbeat 文案统一", file: "desktop/frontend/src/App.tsx", patterns: ["sidebarCreation ? <span>{t(\"sidebar.trash\")}</span> : <span className=\"sr-only\">", "heartbeat.scheduler"] },
+  { feature: "任务383 #10 layout 枚举注释三值一致 + 十条裁决验收 harness（#2 菜单接线 / #8 locale 去重守卫）", file: "desktop/frontend/src/__tests__/task383-layout-consistency.test.tsx", patterns: ["new-project-group", "Go normalizer emits exactly the three canonical values", "no longer defines sidebar.automation"] },
   { feature: "任务375 collab unknown 状态自解释 hint（status+talk 回执+FORK）", file: "internal/agent/session_collab_tools.go", patterns: ["unknown = this process cannot see the session", "targetStatusHint", "authoritative dispatch evidence"] },
   { feature: "任务387 跨会话换模型增强：非己拒绝+审计行+effort note+actionable 列表", file: "internal/agent/session_control_tool.go", patterns: ["calling session itself", "cross-session model change", "old_model", "resets to the new model"] },
   { feature: "任务387 unknown-model actionable 列表包装", file: "desktop/session_collab.go", patterns: ["wrapUnknownModelErr", "available models on that session"] },
@@ -530,6 +531,14 @@ const CHECKS = [
   { feature: "S1b agent 工具调用闸", file: "internal/agent/base_toolcall.go", patterns: ["baseToolCall", "ModeRemote", "ErrNotWired"] },
   { feature: "S1b boot 消费点（Start 接线）", file: "internal/boot/base_client.go", patterns: ["startBaseClient", "ExperimentalBaseProcess", "RegistrySurface"] },
   { feature: "S1b boot 消费点（注入与拆除）", file: "internal/boot/boot.go", patterns: ["startBaseClient(ctx, cfg, reg)", "_ = baseClient.Close()"] },
+  // 任务 399：会话内 Ctrl+F 搜索（对照上游 #11230→#11236）。四件套锁：
+  // 行级检索纯逻辑（数据面搜索，虚拟滚动下 DOM 搜索会漏未挂载行）、
+  // 搜索条 UI、行高亮 context 接线、快捷键注册 + 代码块域隔离——
+  // 丢任何一环 = Ctrl+F 回归为 webview 原生搜索或折叠内容不可搜。
+  { feature: "任务399 行级检索逻辑", file: "desktop/frontend/src/lib/transcriptFind.ts", patterns: ["buildTranscriptFindIndex", "searchTranscriptFind", "shouldIgnoreFindShortcutTarget", "TRANSCRIPT_FIND_HIT_CAP"] },
+  { feature: "任务399 搜索条组件", file: "desktop/frontend/src/components/TranscriptFindBar.tsx", patterns: ["TranscriptFindBar", "focusSignal", "onPrev"] },
+  { feature: "任务399 行高亮 context", file: "desktop/frontend/src/components/TranscriptBlockView.tsx", patterns: ["useTranscriptFindHighlight", "transcript__row--find-active", "data-find-active"] },
+  { feature: "任务399 Ctrl+F 快捷键注册（代码块域隔离）", file: "desktop/frontend/src/App.tsx", patterns: ["transcript.find", "shouldIgnoreFindShortcutTarget", "setTranscriptFindPulse"] },
 ];
 
 let failed = 0;
