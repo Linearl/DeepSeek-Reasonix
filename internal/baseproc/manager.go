@@ -103,7 +103,7 @@ func Start(ctx context.Context, opts Options) BaseClient {
 	if !opts.Enabled {
 		return InlineBaseClient{ServerVersion: opts.ServerVersion, Surface: opts.Surface}
 	}
-	return NewManager(ctx, opts).Acquire()
+	return NewManager(ctx, opts).Acquire(opts)
 }
 
 // dialAndHello spawns (or dials) the base and completes the handshake. On any
