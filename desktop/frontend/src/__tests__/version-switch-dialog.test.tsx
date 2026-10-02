@@ -68,9 +68,11 @@ function Harness() {
   );
 }
 
-function clickButtonByLabel(label: string) {
+function clickButtonByLabel(label: string | RegExp) {
   const buttons = Array.from(document.querySelectorAll('[role="dialog"] button'));
-  const target = buttons.find((b) => (b.textContent ?? "").includes(label));
+  const hit = (b: Element) =>
+    typeof label === "string" ? (b.textContent ?? "").includes(label) : label.test(b.textContent ?? "");
+  const target = buttons.find(hit);
   if (!target) throw new Error(`button not found: ${label}`);
   target.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
   return target;
@@ -120,40 +122,44 @@ ok(events.switched === "v1.38.3-20260922-0100", "clicking a version requests the
 
 // Task 411: per-row delete entry with an in-row confirm step. The active row
 // has no delete entry at all; a non-active row must not fire onDelete until
-// its 确认删除 is clicked, and 取消 backs out without any call.
+// its confirm button is clicked, and cancel backs out without any call.
+// Bilingual matchers: the runner pins en_US (task-210 convention), a direct
+// run under a zh locale must pass the same assertions.
 {
+  const isDeleteEntry = (b: Element) => /^(删除|Delete)$/.test((b.textContent ?? "").trim());
+  const confirmPromptGone = () => !/删除该版本|Delete this version/.test(document.body.textContent ?? "");
   const deleteButtons = Array.from(document.querySelectorAll('[role="dialog"] button'))
-    .filter((b) => (b.textContent ?? "").includes("删除"));
+    .filter(isDeleteEntry);
   ok(deleteButtons.length === 2, "non-active rows carry a delete entry (active row has none)");
   const firstDelete = deleteButtons[0];
   await act(async () => {
     click(firstDelete);
     await flush();
   });
-  ok(events.deleted === undefined, "clicking 删除 only opens the confirm, no delete fires yet");
-  ok(document.body.textContent?.includes("删除该版本") ?? false, "confirm prompt appears in the row");
+  ok(events.deleted === undefined, "clicking delete only opens the confirm, no delete fires yet");
+  ok(/删除该版本|Delete this version/.test(document.body.textContent ?? ""), "confirm prompt appears in the row");
 
-  // 取消 backs out.
+  // Cancel backs out.
   await act(async () => {
-    clickButtonByLabel("取消");
+    clickButtonByLabel(/^(取消|Cancel)$/);
     await flush();
   });
-  ok(events.deleted === undefined, "取消 closes the confirm without deleting");
-  ok(!(document.body.textContent?.includes("删除该版本") ?? false), "confirm prompt gone after cancel");
+  ok(events.deleted === undefined, "cancel closes the confirm without deleting");
+  ok(confirmPromptGone(), "confirm prompt gone after cancel");
 
   // Delete again and confirm this time.
   const del2 = Array.from(document.querySelectorAll('[role="dialog"] button'))
-    .find((b) => (b.textContent ?? "").includes("删除"));
+    .find(isDeleteEntry);
   await act(async () => {
     click(del2 as Element);
     await flush();
   });
   await act(async () => {
-    clickButtonByLabel("确认删除");
+    clickButtonByLabel(/^(确认删除|Confirm delete)$/);
     await flush();
   });
-  ok(events.deleted === "v1.38.3-20260922-0100", "确认删除 fires onDelete with the row's version");
-  ok(!(document.body.textContent?.includes("删除该版本") ?? false), "confirm prompt cleared after firing");
+  ok(events.deleted === "v1.38.3-20260922-0100", "confirm fires onDelete with the row's version");
+  ok(confirmPromptGone(), "confirm prompt cleared after firing");
 }
 
 // Footer buttons: publish-staging keeps the task-81 entry, cancel closes.
