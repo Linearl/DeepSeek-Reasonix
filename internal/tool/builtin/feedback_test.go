@@ -162,3 +162,30 @@ func TestSubmitFeedbackDescriptionNamesInboxAndCollector(t *testing.T) {
 		}
 	}
 }
+
+// Task 344-B: extended frontmatter fields written by the signal-scan drafts
+// (origin/fingerprint/confirmed/evidence-id/rule-version) and by the supersede
+// workflow (superseded-by) must not break parsing — field-style optional keys,
+// schema compatible with old entries that lack them.
+func TestParseFeedbackMDExtendedFrontmatterCompat(t *testing.T) {
+	raw := "---\nat: 2026-10-02T05:00:00Z\ncategory: bug\norigin: signal-scan\nfingerprint: fp:desktop.log:perf-threshold:eventsMb:v1\nevidence-id: eventsMb|2026-10-02\nconfirmed: false\nrule-version: v1\nsuperseded-by: feedback-20261003-090000-note.md\ntags: [signal-scan, desktop.log]\n---\n\n# [signal-scan] perf threshold\n\nbody text\n"
+	entry := parseFeedbackMD(raw)
+	if entry.Kind != "bug" {
+		t.Fatalf("Kind = %q, want bug", entry.Kind)
+	}
+	if entry.At != "2026-10-02T05:00:00Z" {
+		t.Fatalf("At = %q", entry.At)
+	}
+	if len(entry.Tags) != 2 || entry.Tags[0] != "signal-scan" {
+		t.Fatalf("Tags = %v", entry.Tags)
+	}
+	if entry.Text == "" || !strings.Contains(entry.Text, "body text") {
+		t.Fatalf("Text = %q", entry.Text)
+	}
+
+	// Old entries without any extended field keep parsing unchanged.
+	old := parseFeedbackMD("---\nat: 2026-09-01T00:00:00Z\ncategory: idea\n---\n\n# plain\n\nold body\n")
+	if old.Kind != "idea" || old.Session != "" || old.Model != "" || len(old.Tags) != 0 {
+		t.Fatalf("legacy entry = %+v", old)
+	}
+}
