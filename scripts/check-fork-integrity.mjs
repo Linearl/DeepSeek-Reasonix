@@ -619,6 +619,24 @@ const CHECKS = [
   // 「常驻底座」就退回「每 tab 一个底座进程」，S1 的内存/启动收益全部落空。
   { feature: "S1c 每视图自带 inline 回退面", file: "internal/baseproc/lifecycle.go", patterns: ["func (m *Manager) Acquire(opts Options)", "inline InlineBaseClient", "One critical section decides remote vs inline"] },
   { feature: "S1c boot 常驻单例（N boot → 1 子进程）", file: "internal/boot/base_client.go", patterns: ["func sharedBaseClient(", "baseproc.NewManager(ctx, opts)", "sharedBase = m"] },
+
+  // ── 任务 450 重启宽限窗（方案 A：停心跳 → 宽限 10s → 到期 Cancel → 谁断谁续）────
+  // 旧守卫是「任一他 tab 忙即拒」；宽限窗是重启族三入口（发布/回滚/普通重启）
+  // 的唯一出口。任何一道被 merge 顶掉，restart_update 退回永拒，或中断他
+  // 会话却不补偿续跑（450 变 435 放大器）。
+  { feature: "450 宽限窗主体（停心跳/轮询/到期取消/有界收束）", file: "desktop/restart_update.go", patterns: ["func (a *App) clearRestartPath", "restartGraceWait = 10 * time.Second", "restartStopHeartbeat(a)", "restartForcedMarker = \"超时强制\""] },
+  { feature: "450 不替用户否决（pending prompt 永不 Cancel）", file: "desktop/restart_update.go", patterns: ["RuntimeStatus().PendingPrompt", "forcedPrompt"] },
+  { feature: "450 三入口同窗（发布+回滚+普通重启）", file: "desktop/restart_update.go", patterns: ["report := a.clearRestartPath(\"\")", "forced := a.clearRestartPath(callerSession)", "restartStartLauncher", "restartQuit"] },
+  { feature: "450 回滚入口共窗", file: "desktop/version_switch.go", patterns: ["forced := a.clearRestartPath(callerSession)", "forced.forcedNote()"] },
+  { feature: "450 工具面结果显形强制说明", file: "desktop/autonomous_update.go", patterns: ["forcedNote"] },
+  { feature: "450 谁断谁续（被打断会话无条件入 254 名册）", file: "desktop/autonomous_update_resume.go", patterns: ["func (a *App) stageInterruptedByRestart", "whoever we interrupted, we resume"] },
+
+  // ── S1 开关 UI 入口（任务 450 并入小件：experimental_base_process 实验室控件）──
+  // 开关注册（S1a）已进 render 表但没有 UI 面，用户无法打开开关；四处接线
+  // 缺一，开关就「看得见配置改不了」或「改了读不回」。
+  { feature: "S1 开关实验室入口（rail 行+详情卡+重启横幅）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["| \"baseProcess\"", "{ id: \"baseProcess\", group: \"misc\"", "selected === \"baseProcess\" && (", "app.SetExperimentalBaseProcess(on)"] },
+  { feature: "S1 开关桥接线（接口声明+mock 桩）", file: "desktop/frontend/src/lib/bridge.ts", patterns: ["SetExperimentalBaseProcess(enabled: boolean): Promise<void>;", "async SetExperimentalBaseProcess() {}"] },
+  { feature: "S1 开关 Go 侧读写链（setter+视图字段）", file: "desktop/settings_app.go", patterns: ["ExperimentalBaseProcess bool `json:\"experimentalBaseProcess\"`", "view.ExperimentalBaseProcess = cfg.Agent.ExperimentalBaseProcess", "ExperimentalBaseProcess:             cfg.Agent.ExperimentalBaseProcess"] },
 ];
 
 let failed = 0;

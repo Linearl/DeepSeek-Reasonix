@@ -77,6 +77,9 @@ export interface SettingsView {
   experimentalOpenCodeGoUsage?: boolean;
   // Task 257: full access (yolo) — all declared write dirs pass, bash unwrapped (ships off; restart to apply).
   experimentalFullAccess?: boolean;
+  // S1: resident-base-subprocess switch (design 2026-09-30 §7 R4; ships off —
+  // the pure-inline baseline; restart to apply).
+  experimentalBaseProcess?: boolean;
   // Task 130: exposes the Settings → 本地服务 page and serve-pool controls.
   experimentalLocalServer?: boolean;
   // Task 134: structured path-scope evaluation (docs/PATH_SCOPE_RULES.md).

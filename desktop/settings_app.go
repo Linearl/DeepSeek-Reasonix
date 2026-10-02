@@ -402,7 +402,10 @@ type SettingsView struct {
 	// Task 163: OpenCode Go usage card switch (default false; 铁律 2).
 	ExperimentalOpenCodeGoUsage bool `json:"experimentalOpenCodeGoUsage"`
 	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
-	ExperimentalFullAccess   bool `json:"experimentalFullAccess"`
+	ExperimentalFullAccess bool `json:"experimentalFullAccess"`
+	// ExperimentalBaseProcess is the S1 resident-base-subprocess lab switch
+	// (design 2026-09-30 §7 R4); boot snapshot, restart to apply.
+	ExperimentalBaseProcess  bool `json:"experimentalBaseProcess"`
 	ExperimentalLocalServer  bool `json:"experimentalLocalServer"`
 	ExperimentalPathRules    bool `json:"experimentalPathRules"`
 	ExperimentalTraceAsState bool `json:"experimentalTraceAsState"`
@@ -597,6 +600,9 @@ type DesktopStartupSettingsView struct {
 	ExperimentalOpenCodeGoUsage bool `json:"experimentalOpenCodeGoUsage"`
 	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
 	ExperimentalFullAccess bool `json:"experimentalFullAccess"`
+	// ExperimentalBaseProcess is the S1 resident-base-subprocess lab switch
+	// (design 2026-09-30 §7 R4); boot snapshot, restart to apply.
+	ExperimentalBaseProcess bool `json:"experimentalBaseProcess"`
 	// ExperimentalTraceAsState exposes Trace-as-State compaction (task 60).
 	ExperimentalTraceAsState bool `json:"experimentalTraceAsState"`
 	// ExperimentalDream exposes dream/distill memory-curation tools (task 115).
@@ -1368,6 +1374,8 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		// Task 163: usage card switch readback.
 		view.ExperimentalOpenCodeGoUsage = cfg.Agent.ExperimentalOpenCodeGoUsage
 		view.ExperimentalFullAccess = cfg.Agent.ExperimentalFullAccess
+		// S1: resident-base-subprocess switch readback (design §7 R4).
+		view.ExperimentalBaseProcess = cfg.Agent.ExperimentalBaseProcess
 		view.ExperimentalTraceAsState = cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState
 		view.ExperimentalDream = cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream
 		view.ExperimentalAutonomousIdleTerminate = cfg.Desktop.ExperimentalAutonomousIdleTerminate || cfg.Agent.ExperimentalAutonomousIdleTerminate
@@ -1500,6 +1508,7 @@ func (a *App) Settings() SettingsView {
 		// Task 192: residency policy readback.
 		ExperimentalActiveTabResident:       cfg.Agent.ExperimentalActiveTabResident,
 		ExperimentalFullAccess:              cfg.Agent.ExperimentalFullAccess,
+		ExperimentalBaseProcess:             cfg.Agent.ExperimentalBaseProcess,
 		ExperimentalTraceAsState:            cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState,
 		ExperimentalDream:                   cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream,
 		ExperimentalAutonomousIdleTerminate: cfg.Desktop.ExperimentalAutonomousIdleTerminate || cfg.Agent.ExperimentalAutonomousIdleTerminate,
