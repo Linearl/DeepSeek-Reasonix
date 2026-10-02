@@ -44,6 +44,8 @@ import {
 } from "../lib/invocationDisplay";
 import { formatTokens } from "../lib/format";
 import type { CancelOutcome } from "../lib/inboxCancel";
+import type { JobView } from "../lib/types";
+import { CapsuleIndicator } from "./CapsulePanel";
 import type { ControllerLiveStore } from "../lib/useController";
 import { clearLayoutSize, loadOptionalLayoutSize, saveLayoutSize } from "../lib/layoutPreferences";
 import { createRafResizeUpdater } from "../lib/resizeDrag";
@@ -635,6 +637,11 @@ export function Composer({
   cacheMissTokens,
   balance,
   pinnedFiles,
+  capsuleJobs,
+  onCapsuleCancelJob,
+  capsuleSessionPath,
+  onCapsuleListSubagents,
+  onCapsuleReadSubagent,
   onInvocationMetadataChange,
 }: {
   running: boolean;
@@ -765,6 +772,15 @@ export function Composer({
   cacheMissTokens?: number;
   balance?: BalanceInfo;
   pinnedFiles?: import("../lib/pinnedContextBridge").PinnedFileInfo[];
+  // Task 447 capsule: running background jobs snapshot feeding the capsule
+  // floating panel, plus the existing stop chain and the active tab's
+  // session path (owner filter for the ended sub-agents directory).
+  capsuleJobs?: readonly JobView[];
+  onCapsuleCancelJob?: (jobID: string) => Promise<boolean>;
+  capsuleSessionPath?: string;
+  // Stable wrappers over the read-only subagent Wails surface (task 447).
+  onCapsuleListSubagents?: (sessionPath: string) => Promise<import("../lib/types").SubagentArtifactView[]>;
+  onCapsuleReadSubagent?: (sessionPath: string, ref: string) => Promise<import("../lib/types").HistoryMessage[]>;
 }) {
   const { t, locale } = useI18n();
   const { showToast } = useToast();
@@ -5287,6 +5303,18 @@ export function Composer({
         />
         <div className={composerMetaClass}>
           <div className="composer-meta__params">
+            {!heroMode && (
+              <div className="composer-meta__control composer-meta__control--capsule">
+                {/* 任务 447 胶囊：悬浮窗面板——运行中任务 + 已结束子代理目录 + 子代理历史查看。 */}
+                <CapsuleIndicator
+                  jobs={capsuleJobs}
+                  onCancelJob={onCapsuleCancelJob}
+                  sessionPath={capsuleSessionPath}
+                  onListSubagents={onCapsuleListSubagents}
+                  onReadSubagent={onCapsuleReadSubagent}
+                />
+              </div>
+            )}
             {!heroMode && (
               <div className="composer-meta__control composer-meta__control--content">
                 <Tooltip label={t("composer.contentMenuTitle")} disabled={contentMenuOpen}>
