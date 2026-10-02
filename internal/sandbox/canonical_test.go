@@ -308,6 +308,23 @@ func TestResolveCanonicalPathLocalBehaviorRegression(t *testing.T) {
 	if got, err := ResolveAbsPath(underLink); err != nil || got != filepath.Clean(filepath.Join(real, "created-later.txt")) {
 		t.Fatalf("write under symlink = %q, %v", got, err)
 	}
+
+	// Drive-letter casing: the walk must land on the volume-canonical
+	// spelling (455 acceptance list), not echo the caller's casing.
+	if runtime.GOOS == "windows" {
+		lowerCased := strings.ToLower(real)
+		want, evalErr := canonicalEvalSymlinks(real)
+		if evalErr != nil {
+			t.Fatal(evalErr)
+		}
+		got, err := ResolveAbsPath(lowerCased)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Fatalf("lower-cased drive input %q resolved to %q, want volume-canonical %q", lowerCased, got, want)
+		}
+	}
 }
 
 // TestResolveAbsPathFreshBypassesCache pins the approval-identity contract:
