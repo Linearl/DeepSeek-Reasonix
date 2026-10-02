@@ -31211,6 +31211,44 @@ body > .mermaid-diagram--fullscreen {
   display: none;
 }
 
+/* Task 447 (fix for the task 259 wrap layer): data-theme-style is written by
+   initTheme() before React mounts, so the three theme rules above are live in
+   every session and out-specify the plain wrap selectors below (0-3-0 beats
+   0-1-0/0-2-0): the quarter-width cells collapse to natural width, the tools
+   row stays pinned at 45px, and five tabs wrap onto a second row the row never
+   grows for — the fifth (todos) tab spills over the dock body. These variants
+   restate the wrap contract at the theme layer's own specificity (and, being
+   later, win the equal-specificity tie against the rules above). */
+:root[data-theme-style] .workbench-dock__tools--wrap {
+  height: auto;
+  min-height: 45px;
+  padding: 6px 12px;
+  align-items: center;
+}
+
+:root[data-theme-style] .workbench-dock__tabs--wrap {
+  flex-wrap: wrap;
+  width: 100%;
+  flex: 1 1 auto;
+}
+
+:root[data-theme-style] .workbench-dock__tabs--wrap .workbench-dock__tab {
+  flex: 0 0 25%;
+  min-width: 0;
+  max-width: 25%;
+  box-sizing: border-box;
+}
+
+/* Quarter cells need the base layer's truncating label back: the theme layer
+   turns overflow off for natural-width tabs, which would let a long label run
+   into the neighbouring cell once the width is capped at 25%. */
+:root[data-theme-style] .workbench-dock__tabs--wrap .workbench-dock__tab-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 /* Classic and Workbench use compact text tabs in the right dock. A restrained
 /* Classic and Workbench use compact text tabs in the right dock. A restrained
    hairline clarifies each hit target without turning the strip into boxed
@@ -37392,6 +37430,18 @@ body > .mermaid-diagram--fullscreen {
   height: 1px;
   background: var(--border-soft);
   pointer-events: none;
+}
+
+/* Task 447: wrap mode under the frameless Workbench title strip. The rules
+   above pin the tools row to calc(40px + caption) at the same 0-5-0 as this
+   selector, so this block must follow them in source order to win: the caption
+   padding stays, the height goes auto, and the wrapped second tab row grows
+   the strip instead of clipping under the caption buttons. */
+.app--windows-frameless.app--workbench .workbench-dock__tools--wrap,
+:root[data-theme-style] .app--windows-frameless.app--workbench .workbench-dock__tools--wrap {
+  height: auto;
+  min-height: calc(40px + var(--windows-window-controls-height));
+  padding: var(--windows-window-controls-height) 12px 6px;
 }
 
 /* macOS keeps dock tabs and the fixed workspace toggle in one title row. The

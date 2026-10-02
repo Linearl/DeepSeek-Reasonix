@@ -10,7 +10,12 @@
 // - mode "todos" renders the empty state without a payload (the panel itself
 //   is lazy, so its expanded/collapsed behaviour is covered directly below);
 // - TodoPanel's defaultOpen only shifts the initial state; undefined keeps the
-//   composer-shelf default from todo-panel-lifecycle.
+//   composer-shelf default from todo-panel-lifecycle;
+// - CSS cascade (task 447, fixing the task 259 wrap layer): the theme layer
+//   ships its own tools/tabs/tab rules at 0-3-0 and data-theme-style is
+//   written before React mounts, so the wrap contract only holds if
+//   theme-scoped --wrap variants exist AND follow their plain theme
+//   counterparts in source order (equal specificity, last rule wins).
 
 import assert from "node:assert/strict";
 import { createElement } from "react";
@@ -240,6 +245,84 @@ console.log("\ntodo sidebar dock (task 259)");
   dockTabs.setDockTabHidden("files", false);
   dockTabs.setDockTabHidden("changed", false);
   dockTabs.setDockTabHidden("todos", false);
+}
+
+// 10. CSS cascade contract (task 447 fix for the task 259 wrap layer). Static
+//     text assertions on styles.css - same finalDeclaration pattern as
+//     app-chrome-tabs.test.ts. What broke: the theme layer's
+//     ':root[data-theme-style]' rules sit at 0-3-0 and are always active, so
+//     the plain wrap selectors (0-1-0/0-2-0) never won: quarter cells
+//     collapsed, the tools row stayed pinned at 45px, and the fifth tab
+//     wrapped onto a row that never grew. The fix must therefore satisfy two
+//     properties - the variant blocks exist with the right final
+//     declarations, and they appear AFTER their theme counterparts (the
+//     equal-specificity tie-break that a specificity bump alone cannot buy).
+{
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const url = await import("node:url");
+  const stylesSource = fs.readFileSync(path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../styles.css"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+
+  function matchingBlocks(selector: string): string[] {
+    const blocks: string[] = [];
+    const rule = /([^{}]+)\{([^{}]*)\}/g;
+    let match: RegExpExecArray | null;
+    while ((match = rule.exec(stylesSource)) !== null) {
+      const selectors = match[1].split(",").map((part) => part.trim());
+      if (selectors.includes(selector)) blocks.push(match[2]);
+    }
+    return blocks;
+  }
+
+  function finalDeclaration(selector: string, property: string): string | undefined {
+    let value: string | undefined;
+    for (const block of matchingBlocks(selector)) {
+      const declaration = new RegExp("(?:^|;)\\s*" + property + "\\s*:\\s*([^;]+)", "g");
+      let match: RegExpExecArray | null;
+      while ((match = declaration.exec(block)) !== null) {
+        value = match[1].trim();
+      }
+    }
+    return value;
+  }
+
+  function blockIndex(selector: string): number {
+    return stylesSource.indexOf(selector + " {");
+  }
+
+  const themeToolsIdx = blockIndex(":root[data-theme-style] .workbench-dock__tools");
+  const themeTabsIdx = blockIndex(":root[data-theme-style] .workbench-dock__tabs");
+  const wrapToolsIdx = blockIndex(":root[data-theme-style] .workbench-dock__tools--wrap");
+  const wrapTabsIdx = blockIndex(":root[data-theme-style] .workbench-dock__tabs--wrap");
+  const wrapCellIdx = blockIndex(":root[data-theme-style] .workbench-dock__tabs--wrap .workbench-dock__tab");
+  const framelessToolsIdx = blockIndex(":root[data-theme-style] .app--windows-frameless.app--workbench .workbench-dock__tools");
+  const framelessWrapIdx = blockIndex(":root[data-theme-style] .app--windows-frameless.app--workbench .workbench-dock__tools--wrap");
+
+  eq(themeToolsIdx > 0 && themeTabsIdx > 0, true, "css: theme-layer base dock rules present");
+  eq(wrapToolsIdx > themeToolsIdx, true, "css: tools--wrap variant follows the theme tools rule (tie-break order)");
+  eq(wrapTabsIdx > themeTabsIdx, true, "css: tabs--wrap variant follows the theme tabs rule (tie-break order)");
+  eq(wrapCellIdx > wrapTabsIdx, true, "css: quarter-cell rule present after the tabs variant");
+
+  eq(finalDeclaration(":root[data-theme-style] .workbench-dock__tools--wrap", "height"), "auto",
+    "css: wrap tools row height is auto (was pinned at 45px by the theme layer)");
+  eq(finalDeclaration(":root[data-theme-style] .workbench-dock__tabs--wrap", "flex-wrap"), "wrap",
+    "css: wrap tab strip keeps flex-wrap");
+  eq(finalDeclaration(":root[data-theme-style] .workbench-dock__tabs--wrap", "width"), "100%",
+    "css: wrap tab strip spans the row (theme layer declares width:auto)");
+  eq(finalDeclaration(":root[data-theme-style] .workbench-dock__tabs--wrap .workbench-dock__tab", "flex"), "0 0 25%",
+    "css: quarter-width cells survive the theme layer (it declares flex: 0 0 auto)");
+  eq(finalDeclaration(":root[data-theme-style] .workbench-dock__tabs--wrap .workbench-dock__tab", "max-width"), "25%",
+    "css: quarter-width cap survive the theme layer (it declares max-width: none)");
+  eq(finalDeclaration(":root[data-theme-style] .workbench-dock__tabs--wrap .workbench-dock__tab-label", "text-overflow"), "ellipsis",
+    "css: label truncates inside a quarter cell (theme layer turns overflow off)");
+
+  // Windows frameless Workbench pins the same row to calc(40px + caption) at
+  // an equal 0-5-0 - its wrap variant must both exist and follow that rule.
+  eq(framelessToolsIdx > 0, true, "css: frameless workbench tools rule present");
+  eq(framelessWrapIdx > framelessToolsIdx, true, "css: frameless wrap variant follows its pinned-height rule");
+  eq(finalDeclaration(":root[data-theme-style] .app--windows-frameless.app--workbench .workbench-dock__tools--wrap", "height"), "auto",
+    "css: frameless wrap tools row height is auto");
 }
 
 console.log(`\ntodo sidebar dock: ${passed} passed, ${failed} failed`);
