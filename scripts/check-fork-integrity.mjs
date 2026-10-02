@@ -282,6 +282,12 @@ const CHECKS = [
   { feature: "任务245 面板键域级映射（global 单键 + cwd 兜底禁入）", file: "desktop/frontend/src/store/layout.ts", patterns: ["export function workspacePanelMemoryRoot(scope: string | undefined, workspaceRoot: string | undefined): string {", "if (scope === \"global\") return \"\";"] },
   { feature: "任务245 面板键归一接线（App 侧）", file: "desktop/frontend/src/App.tsx", patterns: ["workspacePanelMemoryRoot(activeTab?.scope, activeTab?.workspaceRoot)"] },
   { feature: "任务245 面板键归一接线（composition 侧）", file: "desktop/frontend/src/app-runtime/useAppSessionComposition.ts", patterns: ["workspacePanelMemoryRoot(activeTab?.scope, activeTab?.workspaceRoot)"] },
+  // 任务260 侧边栏「产物」「参考」两个 dock tab（复用任务114 聚合，挂 todoSidebar 实验族开关）：
+  // 锚点锁「dock 面板组件存在 + App 两 tab 接线经 dockTabVisible 门控 + 模式可持久化」，
+  // 上游若砍掉 tab 行或让模式被 normalize 吞掉，侧边栏扩展就静默缩回四 tab。
+  { feature: "任务260 会话产物/参考 dock 面板（单变体复用 114 聚合）", file: "desktop/frontend/src/components/SessionSideFilesPanel.tsx", patterns: ["export function SideFilesDockPanel", "collectSessionSideFiles(items)"] },
+  { feature: "任务260 App dock 两 tab 接线（门控+标签+体渲染）", file: "desktop/frontend/src/App.tsx", patterns: ["dockTabVisible(\"artifacts\")", "dockTabVisible(\"references\")", "SideFilesDockPanel"] },
+  { feature: "任务260 dock 模式域级扩展（artifacts/references 可持久化+开关门）", file: "desktop/frontend/src/store/layout.ts", patterns: ["export function dockModeWithinSidebarGates"] },
   // 任务128 会话自主创建新项目：工具（52=纯分配 / 128=创建+once 写授权+项目注册）+
   // host 注册接线（executeOne ctx stamping → desktop 注册项目并开后台 tab）。
   // 三处锚点锁住整条链——丢任何一环，agent 建的项目就静默退化为「仅返回路径」。
