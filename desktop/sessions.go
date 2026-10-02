@@ -888,16 +888,11 @@ func sessionPlannerDisplayPath(dir string) string {
 }
 
 func loadSessionPlannerDisplays(dir string) sessionPlannerDisplayMap {
-	m := sessionPlannerDisplayMap{}
-	if strings.TrimSpace(dir) == "" {
-		return m
-	}
-	b, err := readFileUTF8(sessionPlannerDisplayPath(dir))
-	if err != nil {
-		return m
-	}
-	_ = json.Unmarshal(b, &m)
-	return m
+	// 任务 451 方案 A：改为带 mtime+size 校验、写侧失效与并发单飞的侧车
+	// 缓存，消除每次切片对项目级 .planner-display.json 的整读+重解析
+	// （打点 planner-turns 相位，实测 38-41%）。外语义不变：文件缺席、读
+	// 失败、解析失败仍回非 nil 空 map；返回值共享只读。
+	return loadCachedSessionPlannerDisplays(dir)
 }
 
 func loadSessionPlannerDisplaysForUpdate(dir string) (sessionPlannerDisplayMap, error) {
@@ -926,7 +921,13 @@ func saveSessionPlannerDisplays(dir string, m sessionPlannerDisplayMap) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	return fileutil.AtomicWriteFile(sessionPlannerDisplayPath(dir), b, 0o600)
+	if err := fileutil.AtomicWriteFile(sessionPlannerDisplayPath(dir), b, 0o600); err != nil {
+		return err
+	}
+	// 任务 451 方案 A 写侧失效：写成功即删缓存条目，下一次装载重读，
+	// 不依赖 mtime 粒度。
+	invalidateSessionPlannerDisplayCache(dir)
+	return nil
 }
 
 func saveOrRemoveSessionPlannerDisplays(dir string, m sessionPlannerDisplayMap) error {
@@ -935,7 +936,13 @@ func saveOrRemoveSessionPlannerDisplays(dir string, m sessionPlannerDisplayMap) 
 		if os.IsNotExist(err) {
 			return nil
 		}
-		return err
+		if err != nil {
+			return err
+		}
+		// 删除成功同样失效缓存（条目可能是负缓存"文件缺席"，也可能
+		// 是过期数据）。
+		invalidateSessionPlannerDisplayCache(dir)
+		return nil
 	}
 	return saveSessionPlannerDisplays(dir, m)
 }

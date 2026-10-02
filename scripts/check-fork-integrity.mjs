@@ -583,6 +583,15 @@ const CHECKS = [
   // 「常驻底座」就退回「每 tab 一个底座进程」，S1 的内存/启动收益全部落空。
   { feature: "S1c 每视图自带 inline 回退面", file: "internal/baseproc/lifecycle.go", patterns: ["func (m *Manager) Acquire(opts Options)", "inline InlineBaseClient", "One critical section decides remote vs inline"] },
   { feature: "S1c boot 常驻单例（N boot → 1 子进程）", file: "internal/boot/base_client.go", patterns: ["func sharedBaseClient(", "baseproc.NewManager(ctx, opts)", "sharedBase = m"] },
+
+  // ── 任务 451：history 慢分相打点 + planner/尾读缓存（2026-10-02）──────
+  // 打点件是验收基建（phases 一行可 grep 重建）；A 缓存三道闸（校验命中 /
+  // 写侧失效 / 单飞+上限）与 C 单飞都要在 merge 后存活，否则 planner-turns
+  // 相位退回每请求整读 12MB。
+  { feature: "任务451 history 切片分相打点（historySliceTrace）", file: "desktop/history_slice_timing.go", patterns: ["historySliceSlowLogMs", "desktop: history slice timing", "func (t *historySliceTrace) run("] },
+  { feature: "任务451 A：planner 侧车缓存（mtime+size 校验+单飞+上限）", file: "desktop/sessions_planner_display_cache.go", patterns: ["loadCachedSessionPlannerDisplays", "plannerDisplayCacheMaxEntries", "plannerDisplayCacheInflight"] },
+  { feature: "任务451 A：写侧失效（save/remove 双出口清条目）", file: "desktop/sessions.go", patterns: ["invalidateSessionPlannerDisplayCache(dir)"] },
+  { feature: "任务451 C：尾读缓存单飞（inflight 共享冷读）", file: "desktop/history_time_overlay.go", patterns: ["historyTimeOverlayInflight", "delete(historyTimeOverlayCache.inflight, cacheKey)"] },
 ];
 
 let failed = 0;
