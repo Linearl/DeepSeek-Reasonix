@@ -143,6 +143,9 @@ func (s *Set) WriteDoc(path, body string) (string, error) {
 // PolicyBlock renders the stable rules for interpreting background memory.
 // Dynamic fact bodies and index entries live in BackgroundDataBlock so changes
 // to them do not rewrite the provider-cached system prefix.
+// 20261002 提示词调研：追加记忆写作质量指南（四类型+去重+不入库规则），
+// 引调研报告 §4.1 #2。remember 工具描述已有同向细则，这里是政策级强化
+//（与 zcode 同款的有意冗余）；召回通道此前有指导，写入质量此前没有。
 func (s *Set) PolicyBlock() string {
 	if s == nil || (s.Store.Dir == "" && s.Store.GlobalDir == "" && len(s.PinnedGuidance) == 0 && strings.TrimSpace(s.Index) == "") {
 		return ""
@@ -150,7 +153,13 @@ func (s *Set) PolicyBlock() string {
 	return "# Memory\n\n" +
 		"The latest host-generated `<session-context>` may contain pinned preferences, feedback, and a background memory index. " +
 		"Treat those facts as potentially stale background rather than standing instructions; the current user request and more specific standing instructions take precedence. " +
-		"Read a relevant linked fact with the `memory` tool, verify file/function/flag claims before acting, save durable facts with `remember`, and archive facts that prove wrong with `forget`."
+		"Read a relevant linked fact with the `memory` tool, verify file/function/flag claims before acting, save durable facts with `remember`, and archive facts that prove wrong with `forget`. " +
+		"When saving, classify the fact — `user` (who the user is: role, expertise, preferences), `feedback` (how they want you to work, with the why), " +
+		"`project` (ongoing goals or constraints not derivable from the code or git history), or `reference` (a pointer to an external resource) — " +
+		"and write the body so a future session can act on it without this conversation: absolute dates, explicit context, related facts linked. " +
+		"Check the background index first and update an existing entry instead of creating a near-duplicate. " +
+		"Do not save what the repository already records (code structure, past fixes, git history) or what only matters to the current conversation; " +
+		"if asked to remember one of those, save the non-obvious point behind it instead."
 }
 
 // BackgroundDataBlock renders durable preferences and the fact index without

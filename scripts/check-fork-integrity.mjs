@@ -125,6 +125,12 @@ const CHECKS = [
   // { feature: "#9521 TPS 采样", file: "internal/agent/subagent_progress.go", patterns: ["progressRateSampler", "TokensPerSec"] },
   { feature: "#9520 上下文预算行 + 任务 99 窗口状态措辞", file: "internal/agent/context_budget_block.go", patterns: ["context-state", "compaction cycles at", "no fixed total limit"] },
   { feature: "#9520 系统提示契约", file: "internal/config/config.go", patterns: ["ContextManagementPolicy"] },
+  // 20261002 提示词三项补充（调研报告 §4.1，wt-zcode-prompt）：沟通段/忠实汇报/
+  // 记忆写作指南。锚点选提示词正文语义句与符号（非注释），防止上游 merge
+  // 静默顶掉政策文本或把 appendCorePolicies 接线拆掉。
+  { feature: "20261002 提示词沟通段+忠实汇报", file: "internal/config/config.go", patterns: ["UserCommunicationPolicy", "with no tool calls after", "Report outcomes faithfully"] },
+  { feature: "20261002 核心政策接线含沟通段", file: "internal/boot/prompt_policy.go", patterns: ["config.UserCommunicationPolicy", "config.CompletionReportPolicy"] },
+  { feature: "20261002 记忆写作质量指南", file: "internal/memory/memory.go", patterns: ["instead of creating a near-duplicate", "not derivable from the code or git history"] },
   // parked: fork 分支不含该实现（1f8c3fe50 对齐时移除 / 上游另有设计）
   // { feature: "#9526 task 后台引导", file: "internal/agent/task.go", patterns: ["Do not sleep or poll for progress"] },
   { feature: "#9566 截断参数修复", file: "internal/agent/run_loop.go", patterns: ["repairTruncatedToolCallArgs"] },

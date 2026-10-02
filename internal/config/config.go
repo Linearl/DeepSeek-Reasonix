@@ -2424,19 +2424,47 @@ const AutonomyPolicy = `Persist until the task is fully handled end-to-end withi
 	`provide, or when the user asks you to stop. When a verification step fails, ` +
 	`fix the cause instead of describing it.`
 
+// UserCommunicationPolicy governs how the model's text reaches the user. The
+// session panel shows only the model's text output — thinking and raw tool
+// results stay invisible — so mid-turn narration is easily lost and the final
+// message must carry the whole outcome. zcode carries the same rule for the
+// same surface constraint and measured it as a real behavior fix.
+// 20261002 提示词调研：新增段，引调研报告 §4.1 #1
+//（docs/report/zcode交付/zcode交付-调研-zcode与Reasonix系统提示词对比-20261002.md）。
+const UserCommunicationPolicy = `Communicating with the user: your text output is what the user ` +
+	`reads — they cannot see your thinking or the raw tool results. Before your ` +
+	`first tool call, say in a sentence what you are about to do; while working, ` +
+	`give brief updates when you find something load-bearing or change direction. ` +
+	`Everything the user needs from the turn — answers, findings, conclusions, ` +
+	`deliverables — must be in the final text message, with no tool calls after ` +
+	`it; treat text between tool calls as throwaway status notes and restate ` +
+	`anything important there. Lead with the outcome: your first sentence after ` +
+	`finishing should answer "what happened" or "what did you find". Readable ` +
+	`beats terse: be selective about what you include, but write complete ` +
+	`sentences with technical terms spelled out — not fragments, arrow chains, ` +
+	`or shorthand you invented along the way. Match the response to the ` +
+	`question: a simple question gets a direct answer in prose, not headers and ` +
+	`sections; use tables only for short enumerable facts.`
+
 // CompletionReportPolicy is the structured hand-off surface for a finished turn
 // (task 112). It sits on top of delivery readiness: readiness asks whether the
 // work is done; this policy asks how to report it so a human (or the next
 // session) can pick up without re-reading the whole transcript.
+// 20261002 提示词调研：追加忠实汇报条款，引调研报告 §4.1 #3；同时把原
+// raw string 里字面 `\n` 改为真实换行——原文案要求字段逐行，模板却把字面
+// 反斜杠 n 发给了模型。
 const CompletionReportPolicy = `When you finish substantial work (a branch of ` +
 	`code, a fix, a document, or any multi-step task), end with a short ` +
 	`structured completion report using these fields, in this order. Write ` +
 	`each field on its own line; if a field does not apply, write "无" ` +
-	`instead of omitting it:\n` +
-	`- 交付物: paths of files, branches, or packages you produced\n` +
-	`- 变更: what changed in one or two lines\n` +
-	`- 验证: the exact commands you ran and whether they passed\n` +
-	`- 未做 / 风险: anything left undone, rejected, or risky\n` +
+	`instead of omitting it:` + "\n" +
+	`- 交付物: paths of files, branches, or packages you produced` + "\n" +
+	`- 变更: what changed in one or two lines` + "\n" +
+	`- 验证: the exact commands you ran and whether they passed` + "\n" +
+	`- 未做 / 风险: anything left undone, rejected, or risky` + "\n" +
+	`Report outcomes faithfully: if a test or verification step fails, say so ` +
+	`and include the output; if a step was skipped or left unverified, say ` +
+	`that; state "done and verified" only when it is.` + "\n" +
 	`Keep the report after the last tool result and before you stop. Do not ` +
 	`pad it with restating the user request.`
 
