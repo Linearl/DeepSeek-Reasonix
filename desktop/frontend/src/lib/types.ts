@@ -1998,6 +1998,22 @@ export interface JobView {
   tps?: number; // sub-agent streaming rate in tok/s (#9521 popover heartbeat); omitted when unknown
 }
 
+// SubagentArtifactView is one persisted sub-agent transcript owned by the
+// current session (desktop/subagents_app.go ListSubagentsByParent, task 447
+// capsule). Whitelisted projection of the on-disk sidecar metadata.
+export interface SubagentArtifactView {
+  ref: string;
+  createdAt: number; // unix milliseconds
+  updatedAt: number; // unix milliseconds
+  status: string; // "running" | "completed" | "failed" | "interrupted"
+  outcome?: string;
+  kind?: string; // "task" | "skill"
+  name?: string;
+  model?: string;
+  parentSession?: string;
+  hasTranscript: boolean; // false = meta survived without its jsonl; not openable
+}
+
 export interface ActiveWorkView {
   running: boolean;
   pendingPrompt: boolean;

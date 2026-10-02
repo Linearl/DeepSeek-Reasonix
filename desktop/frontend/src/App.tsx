@@ -1439,6 +1439,10 @@ export default function App() {
       [activeTabId]: { id: Date.now(), text, mode: "insert" },
     }));
   }, [activeTabId]);
+  // Task 447 capsule: stable wrappers so the panel's reload effects key on
+  // open/running state instead of a fresh proxy method identity per render.
+  const capsuleListSubagents = useCallback((sessionPath: string) => app.ListSubagentsByParent(sessionPath), []);
+  const capsuleReadSubagent = useCallback((sessionPath: string, ref: string) => app.ReadSubagentSession(sessionPath, ref), []);
   const composerSessionKey = useMemo(() => {
     return composerDraftKeyForTab(activeTab, activeTabId);
   }, [activeTab, activeTabId]);
@@ -5293,6 +5297,11 @@ export default function App() {
               imageInputEnabled={state.meta?.imageInputEnabled !== false}
               imageUnderstandingEnabled={state.meta?.visionFallbackEnabled === true}
               attachmentInputEnabled={!remoteSurfaceActive} pinnedFiles={state.meta?.pinnedFiles}
+              capsuleJobs={state.jobs}
+              onCapsuleCancelJob={cancelJob}
+              capsuleSessionPath={(activeTab?.sessionPath ?? state.meta?.sessionPath ?? "").trim()}
+              onCapsuleListSubagents={capsuleListSubagents}
+              onCapsuleReadSubagent={capsuleReadSubagent}
               tabId={activeTabId} turnId={remoteSurfaceActive ? undefined : state.activeTurnId}
               effort={remoteSurfaceActive ? remoteSession.effort : state.effort}
               onSend={remoteSurfaceActive ? remoteComposerSend : handleComposerSend}

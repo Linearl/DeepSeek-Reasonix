@@ -93,6 +93,7 @@ import type {
   HookConfigView,
   HooksSettingsView,
   JobView,
+  SubagentArtifactView,
   ActiveWorkView,
   BackgroundRuntimeView,
   JobCancelBatchView,
@@ -497,6 +498,12 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   SessionEventsInventory(): Promise<SessionEventsInventoryView>;
   CompactSessionEvents(path: string): Promise<SessionEventsCompactResult>;
   CompactAllSessionEvents(maxRounds: number): Promise<SessionEventsCompactResult[]>;
+  // Task 447 capsule: read-only directory of the persisted sub-agent
+  // transcripts owned by one parent session (newest first, capped).
+  ListSubagentsByParent(sessionPath: string): Promise<SubagentArtifactView[]>;
+  // Task 447 capsule: one sub-agent transcript through the same preview
+  // pipeline as PreviewSession (same HistoryMessage shape).
+  ReadSubagentSession(sessionPath: string, ref: string): Promise<HistoryMessage[]>;
 }
 
 export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings, SessionCatalogBindings, ProjectTreeOrganizationBindings, HistoryCatalogBindings, TaskCatalogBindings, BlankProjectBindings, QualityFloorBindings, SessionTitleBindings, ScrollDiagnosticBindings, RemoteProjectBindings, MCPAppBindings, PinnedContextBindings, FollowupBindings {
@@ -4138,6 +4145,17 @@ function makeMockApp(): AppBindings {
         },
         { role: "notice", level: "info", content: "Preview mode keeps the active conversation untouched." },
         { role: "compaction", content: "", trigger: "manual", messages: 3, summary: "Mock preview preserved the latest task, tool result, and answer summary." },
+      ];
+    },
+    // Task 447 capsule: browser dev mock has no persisted sub-agent store,
+    // so the ended-sub-agents directory is always empty here.
+    async ListSubagentsByParent() {
+      return [];
+    },
+    async ReadSubagentSession(_sessionPath: string, ref: string) {
+      return [
+        { role: "user", content: `(mock) sub-agent ${ref} transcript` },
+        { role: "assistant", content: "Mock transcript: the browser preview has no persisted sub-agent files." },
       ];
     },
     async DeleteSession(path: string) {
