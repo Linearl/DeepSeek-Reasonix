@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -247,5 +250,89 @@ func TestExecuteTargetNamesAnUnstagedCaller(t *testing.T) {
 		if p == caller {
 			t.Fatal("an attended caller under goal_autopilot must not be staged")
 		}
+	}
+}
+
+// syncBuffer is a mutex-guarded log sink: the resume submit runs in a
+// goroutine, so the refusal's Warn line races an unguarded buffer read.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.String()
+}
+
+// TestResumeSubmitRefusalWarnsUnderTheUnresumedMarker is task 435 note 3's
+// audit-2 判词③ face: when the rostered session's resume submit is REFUSED
+// (the restore point racing an already-running turn), the session idles with
+// no fence and no resume — the refusal must surface on the log at Warn under
+// the 未续跑 marker with a redacted error, and must NOT retry (task 263: a
+// refused resume does not resurrect).
+func TestResumeSubmitRefusalWarnsUnderTheUnresumedMarker(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	sink := &syncBuffer{}
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(sink, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(old) })
+
+	session := filepath.Join(t.TempDir(), "refused.session.jsonl")
+	app := &App{}
+	if !app.stageInterruptedByRestart(session) {
+		t.Fatal("precondition: staging under the default dial must succeed")
+	}
+
+	ctrl := &fenceProbeController{path: session, pending: []provider.ToolCallRecord{interruptedWriteRecord()}}
+	tab := &WorkspaceTab{ID: "t-refused", SessionPath: session, Ready: true, Ctrl: ctrl}
+
+	submits := make(chan string, 8)
+	oldSubmit := restartResumeSubmit
+	restartResumeSubmit = func(a *App, tabID, prompt string) error {
+		submits <- tabID + "|" + prompt
+		return errors.New("admission refused: provider api_key = sk-plantedinsecretkey1")
+	}
+	t.Cleanup(func() { restartResumeSubmit = oldSubmit })
+
+	app.maybeResumeAutonomousUpdateTab(tab)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && !strings.Contains(sink.String(), restartResumeSkippedMarker) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	select {
+	case got := <-submits:
+		if got != "t-refused|"+autonomousUpdateResumePrompt {
+			t.Fatalf("resume submit = %q, want the continue prompt on the refused tab", got)
+		}
+	default:
+		t.Fatal("the restore point must attempt the resume submit")
+	}
+	// No retry: the entry is consumed and the refusal is final (263 失败不复活).
+	time.Sleep(50 * time.Millisecond)
+	if len(submits) != 0 {
+		t.Fatalf("a refused resume must not retry, saw %d extra submits", len(submits))
+	}
+	if !strings.Contains(sink.String(), restartResumeSkippedMarker) || !strings.Contains(sink.String(), "t-refused") {
+		t.Fatalf("the refused resume must surface at Warn under %q with the tab named: %s", restartResumeSkippedMarker, sink.String())
+	}
+	if !strings.Contains(sink.String(), "admission refused") {
+		t.Fatalf("the refusal log must carry the redacted error text: %s", sink.String())
+	}
+	if strings.Contains(sink.String(), "sk-plantedinsecretkey1") {
+		t.Fatalf("the refusal log must not carry raw provider key text: %s", sink.String())
+	}
+	// The fence was settled BEFORE the submit (435 ordering), which is exactly
+	// why the Warn matters: the idle state is "no fence, no resume".
+	if left := ctrl.pendingNow(); len(left) != 0 {
+		t.Fatalf("the settled fence must stay settled after a refused submit: %+v", left)
 	}
 }

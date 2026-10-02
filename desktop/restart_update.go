@@ -245,6 +245,14 @@ const restartForcedMarker = "超时强制"
 // and the tool-facing note under this marker.
 const restartUnstagedMarker = "未入册"
 
+// restartResumeSkippedMarker is the greppable token for the rostered session
+// whose post-relaunch resume submit was REFUSED (task 435 note 3, audit-2
+// 判词③): it settles out of the fence yet never resumes, so it would idle
+// silently — the Warn face names it here, matching the 未入册 family's
+// greppable-token convention. Observation only; no retry (task 263: a refused
+// resume must not resurrect).
+const restartResumeSkippedMarker = "未续跑"
+
 // restartWindowReport summarizes what the grace window did: natural = the
 // other tabs settled (or none were busy); cancelled = sessions this path
 // cancelled (each staged for auto-resume); forcedPrompt = sessions pushed

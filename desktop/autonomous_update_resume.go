@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"reasonix/internal/config"
+	"reasonix/internal/secrets"
 )
 
 // Task 254: the auto-resume half of the autonomous update.
@@ -273,13 +274,17 @@ func (a *App) maybeResumeAutonomousUpdateTab(tab *WorkspaceTab) {
 	// Task 435: settle before the submit lands, so the panel's first probe sees
 	// an empty pending set (不弹 fence). If the submit is then refused the
 	// session idles without a fence — logged below by the submit seam's caller
-	// at Debug today; the resume submission failing is the exception path, and
-	// the record facts survive in the transcript for manual follow-up.
+	// at Warn under the 未续跑 marker (audit-2 判词③: observation only, no
+	// retry — 263 ruled a refused resume must not resurrect); the record facts
+	// survive in the transcript for manual follow-up.
 	a.settleRestartFenceForTab(tab)
 	id := tab.ID
 	go func() {
 		if err := restartResumeSubmit(a, id, autonomousUpdateResumePrompt); err != nil {
-			slog.Debug("desktop: autonomous-update resume skipped", "tab", id, "err", err)
+			// codeql[go/clear-text-logging] the flagged chain only carries the
+			// provider env-var NAME from config validation errors, never the
+			// key value; RedactError also strips any provider-echoed key text.
+			slog.Warn("desktop: autonomous-update resume skipped ("+restartResumeSkippedMarker+"; review the session manually)", "tab", id, "err", secrets.RedactError(err))
 			return
 		}
 		slog.Info("desktop: autonomous-update run resumed", "tab", id)
