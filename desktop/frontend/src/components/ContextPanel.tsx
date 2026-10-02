@@ -291,6 +291,26 @@ export function contextBreakdown(
 
 export { contextWindowStatus } from "../lib/contextPanelUtils";
 
+// Task 443: the Token composition rows are latest-turn shaped (prompt may be a
+// full 700K context while 回复/推理 cover only the last attempt), so a user
+// reading "推理 267" next to a 700K context suspects under-counting. The
+// session-cumulative reasoning counter was never surfaced to this panel.
+// reasoningScopeNote picks the honest footnote:
+//   - cumulative reasoning exists  -> "session reasoning total = X"
+//   - completion exists but no reasoning was ever reported -> the provider
+//     never returns reasoning_tokens_details (GLM/Anthropic-compatible paths)
+//     so the row is 0 by data source, not by aggregation loss
+//   - no session usage yet         -> no note (fresh session)
+export function reasoningScopeNote(
+  info?: Pick<ContextPanelInfo, "sessionCompletionTokens" | "sessionReasoningTokens"> | null,
+): { key: "context.typeNoteSessionReasoning" | "context.typeNoteReasoningMissing"; value?: number } | null {
+  const sessionCompletion = info?.sessionCompletionTokens ?? 0;
+  const sessionReasoning = info?.sessionReasoningTokens ?? 0;
+  if (sessionCompletion <= 0) return null;
+  if (sessionReasoning > 0) return { key: "context.typeNoteSessionReasoning", value: sessionReasoning };
+  return { key: "context.typeNoteReasoningMissing" };
+}
+
 const SOURCE_ORDER = ["executor", "planner", "subagent", "compaction", "classifier", "title"];
 
 function sourceTone(source: string): string {
@@ -566,6 +586,7 @@ export function ContextPanel({
     { key: "other", label: t("context.other"), value: breakdown.otherTokens },
   ];
   const tokenCompositionTotal = tokenTypeRows.reduce((sum, row) => sum + row.value, 0);
+  const scopeNote = reasoningScopeNote(info);
   const renderSourceRow = (row: ContextSourceRow) => {
     const inputMetric = formatMetricTokens(row.promptTokens, locale);
     const outputMetric = formatMetricTokens(row.completionTokens, locale);
@@ -746,6 +767,7 @@ export function ContextPanel({
                 <div className="context-panel__type-overview">
                   <div className="context-panel__type-overview-head">
                     <strong>{t("context.tokenBreakdown")}</strong>
+                    <span>{t("context.typeScopeTurn")}</span>
                   </div>
                   <div className="context-panel__type-sharebar" aria-hidden="true">
                     {tokenTypeRows.map((row) => row.value > 0 ? (
@@ -763,6 +785,11 @@ export function ContextPanel({
                         {row.label} {formatSharePercent(row.value, tokenCompositionTotal)}
                       </span>
                     ))}
+                  </div>
+                  <div className="context-panel__type-note">
+                    {scopeNote && (scopeNote.key === "context.typeNoteSessionReasoning"
+                      ? t(scopeNote.key, { value: formatTokens(scopeNote.value) })
+                      : t(scopeNote.key))}
                   </div>
                 </div>
                 <details className="context-panel__breakdown-details">

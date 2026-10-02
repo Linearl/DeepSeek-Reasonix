@@ -7408,10 +7408,14 @@ type ContextPanelInfo struct {
 	Estimated        bool `json:"estimated,omitempty"`
 	// Session-cumulative token counts (from telemetry, atomic snapshot).
 	// Separate from the per-turn fields above so existing consumers (status bar
-	// turn tokens, donut chart) are unaffected.
+	// turn tokens, donut chart) are unaffected. SessionReasoningTokens (task
+	// 443) is the cumulative reasoning subset of SessionCompletionTokens: the
+	// per-turn ReasoningTokens only reflects the latest attempt, so a 700K-
+	// context conversation otherwise reads as a few hundred "推理" tokens.
 	SessionCacheHitTokens   int                         `json:"sessionCacheHitTokens"`
 	SessionCacheMissTokens  int                         `json:"sessionCacheMissTokens"`
 	SessionCompletionTokens int                         `json:"sessionCompletionTokens"`
+	SessionReasoningTokens  int                         `json:"sessionReasoningTokens,omitempty"`
 	SessionEstimated        bool                        `json:"sessionEstimated,omitempty"`
 	RequestCount            int                         `json:"requestCount"`
 	ElapsedMs               int64                       `json:"elapsedMs"`
@@ -7535,6 +7539,7 @@ func (a *App) ContextPanel(tabID string) ContextPanelInfo {
 	info.SessionCacheHitTokens = usage.CacheHitTokens
 	info.SessionCacheMissTokens = usage.CacheMissTokens
 	info.SessionCompletionTokens = usage.CompletionTokens
+	info.SessionReasoningTokens = usage.ReasoningTokens
 	info.SessionEstimated = usage.Estimated
 	if ctrl != nil {
 		if snap := ctrl.ContextMaintenanceSnapshot(); snap.ContextBudget != nil {

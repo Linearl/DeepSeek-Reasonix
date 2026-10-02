@@ -28536,6 +28536,19 @@ body > .mermaid-diagram--fullscreen {
   border-radius: 999px;
 }
 
+/* Task 443: scope footnote under the Token composition legend (empty when the
+   session has no usage yet — :empty keeps the 0-height box out of the layout). */
+.context-panel__type-note {
+  margin: 0;
+  color: var(--fg-faint);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.context-panel__type-note:empty {
+  display: none;
+}
+
 @media (max-width: 430px) {
   .context-panel__source-legend,
   .context-panel__source-metrics {

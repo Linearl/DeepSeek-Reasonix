@@ -1,6 +1,6 @@
 // Run: tsx src/__tests__/context-panel-breakdown.test.ts
 
-import { cacheHitTone, contextBreakdown, contextCostDisplay, contextSessionCache, contextSourceRows, contextUsageRefreshKey, contextWindowStatus, formatCacheHitRate, formatMetricTokens, formatSharePercent, liveTurnUsageBreakdown } from "../components/ContextPanel";
+import { cacheHitTone, contextBreakdown, contextCostDisplay, contextSessionCache, contextSourceRows, contextUsageRefreshKey, contextWindowStatus, formatCacheHitRate, formatMetricTokens, formatSharePercent, liveTurnUsageBreakdown, reasoningScopeNote } from "../components/ContextPanel";
 import { contextWindowPercentages } from "../lib/contextWindow";
 import { currencySymbol, formatMoney, formatMoneyLocalized } from "../lib/money";
 import type { WireUsage } from "../lib/types";
@@ -432,6 +432,26 @@ eq(exactMetric.exact, "999,999", "sub-million exact metric title matches the dis
 const largeMetric = formatMetricTokens(123_456_789, "en");
 eq(largeMetric.display, "123,456,789", "large metric tokens keep exact comma formatting");
 eq(largeMetric.exact, "123,456,789", "large metric exact title matches the display");
+
+console.log("\ncontext panel reasoning scope note (task 443)");
+
+eq(
+  reasoningScopeNote({ sessionCompletionTokens: 1579963, sessionReasoningTokens: 559879 }),
+  { key: "context.typeNoteSessionReasoning", value: 559879 },
+  "cumulative reasoning surfaces the session total so 267 vs 700K reads as a scope split, not a loss",
+);
+eq(
+  reasoningScopeNote({ sessionCompletionTokens: 1117019, sessionReasoningTokens: 0 }),
+  { key: "context.typeNoteReasoningMissing" },
+  "completion without any reasoning count is reported as provider-missing, not as zero reasoning",
+);
+eq(
+  reasoningScopeNote({ sessionCompletionTokens: 0, sessionReasoningTokens: 0 }),
+  null,
+  "a fresh session with no usage shows no note",
+);
+eq(reasoningScopeNote(null), null, "absent panel info degrades to no note");
+eq(reasoningScopeNote(undefined), null, "undefined panel info degrades to no note");
 
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
 if (failed > 0) process.exit(1);
