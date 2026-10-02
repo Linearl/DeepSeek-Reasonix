@@ -774,6 +774,9 @@ export interface ContextPanelInfo {
   sessionCacheHitTokens: number;
   sessionCacheMissTokens: number;
   sessionCompletionTokens: number;
+  // Session-cumulative reasoning subset of sessionCompletionTokens (task 443).
+  // Absent on older hosts; consumers fall back to 0 = "not reported".
+  sessionReasoningTokens?: number;
   sessionEstimated?: boolean;
   requestCount?: number;
   elapsedMs?: number;

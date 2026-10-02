@@ -484,6 +484,14 @@ const CHECKS = [
   { feature: "任务442 Go 构成访问器", file: "internal/agent/context_composition.go", patterns: ["func (a *Agent) ContextComposition", "computeContextComposition", "skillToolNames"] },
   { feature: "任务442 ContextPanel 构成/ProviderName 接线", file: "desktop/tabs.go", patterns: ["Composition *ContextCompositionInfo", "ProviderName string", "ctrl.ContextComposition()"] },
   { feature: "任务442 浮层 CSS（分段条+额度卡+更多）", file: "desktop/frontend/src/styles.css", patterns: [".context-composition__bar", ".context-quota__card", ".context-ring-popover__more"] },
+  // 任务443：用量分析「推理」计数口径（267 vs 700K 疑似漏统计）。根因=面板 Token 构成
+  // 是最近一轮口径，会话累计推理从未暴露。锚点锁三层：
+  // Go 累计字段 → 前端口径选择器 → 三语文案/CSS。丢任何一层都会让
+  // 「推理 267」重新变成无解释的裸数字（或把数据源缺失误显示成 0 推理）。
+  { feature: "任务443 ContextPanel 会话累计推理字段", file: "desktop/tabs.go", patterns: ["SessionReasoningTokens", "info.SessionReasoningTokens = usage.ReasoningTokens"] },
+  { feature: "任务443 推理口径标注选择器", file: "desktop/frontend/src/components/ContextPanel.tsx", patterns: ["reasoningScopeNote", "context.typeNoteSessionReasoning", "context.typeNoteReasoningMissing", "context.typeScopeTurn"] },
+  { feature: "任务443 口径标注文案（三语）", file: "desktop/frontend/src/locales/zh.ts", patterns: ["context.typeScopeTurn", "context.typeNoteSessionReasoning", "context.typeNoteReasoningMissing"] },
+  { feature: "任务443 口径标注 CSS", file: "desktop/frontend/src/styles.css", patterns: [".context-panel__type-note", ".context-panel__type-note:empty"] },
   // ── S1 底座常驻子进程（设计 2026-09-30，§10 S1a 切片）──────────────────
   // 纯增量骨架：协议 v1 + 双实现（inline/remote）+ base serve 子命令 + 开关。
   // 任何一道被 merge 顶掉，后续 S1b/S1c 切片都会骑在断墙上施工。

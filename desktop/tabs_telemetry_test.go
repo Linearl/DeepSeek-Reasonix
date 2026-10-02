@@ -797,3 +797,55 @@ func TestSnapshotConflictRecoveryCarriesTelemetryToFork(t *testing.T) {
 		t.Fatalf("fork sidecar cost = %f, want %f", got, want)
 	}
 }
+
+// Task 443 — the usage panel's "推理" row is latest-turn shaped, so a long
+// conversation reads as a few hundred reasoning tokens against a 700K
+// context. The session-cumulative reasoning counter (telemetry total) must
+// reach ContextPanelInfo so the frontend can annotate the scope; without the
+// field the panel has no way to distinguish "cumulative exists" from
+// "provider never reported reasoning_tokens_details".
+func TestContextPanelExposesSessionCumulativeReasoning(t *testing.T) {
+	lastUsage := &provider.Usage{
+		PromptTokens:     670000,
+		CompletionTokens: 271,
+		TotalTokens:      670271,
+		ReasoningTokens:  264,
+	}
+	ag := agent.New(
+		usageProvider{usage: lastUsage},
+		tool.NewRegistry(),
+		agent.NewSession("system"),
+		agent.Options{},
+		event.Discard,
+	)
+	if err := ag.Run(context.Background(), "hello"); err != nil {
+		t.Fatal(err)
+	}
+	tab := &WorkspaceTab{
+		ID:    "tab",
+		Ctrl:  control.New(control.Options{Executor: ag, Sink: event.Discard}),
+		Scope: "global",
+		Ready: true,
+	}
+	tab.recordUsage(event.Event{
+		Usage: &provider.Usage{
+			PromptTokens:     7959592,
+			CompletionTokens: 1579963,
+			TotalTokens:      9539555,
+			ReasoningTokens:  559879,
+		},
+	})
+	app := &App{tabs: map[string]*WorkspaceTab{"tab": tab}}
+
+	panel := app.ContextPanel("tab")
+	if panel.SessionReasoningTokens != 559879 {
+		t.Fatalf("session reasoning tokens = %d, want telemetry cumulative 559879", panel.SessionReasoningTokens)
+	}
+	if panel.SessionCompletionTokens != 1579963 {
+		t.Fatalf("session completion tokens = %d, want telemetry cumulative 1579963", panel.SessionCompletionTokens)
+	}
+	// The cumulative counter must not leak into the per-turn breakdown.
+	if panel.ReasoningTokens != 264 {
+		t.Fatalf("per-turn reasoning tokens = %d, want latest attempt 264", panel.ReasoningTokens)
+	}
+}
