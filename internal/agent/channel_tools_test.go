@@ -177,3 +177,119 @@ func TestChannelToolsRejectInvalidCalls(t *testing.T) {
 		t.Fatalf("hourly cap must surface through the tool: %v", err)
 	}
 }
+
+// 取消消息工具（20261002 增量）：发送→取消→后台 drain 落空（邮箱无信）→
+// channel_read 显示墓碑；已投递后取消只报计数；越权/无身份/缺参全拒。
+func TestChannelCancelToolStopsPendingFanout(t *testing.T) {
+	cfg, _ := channelFixture(t)
+	ctx := context.Background()
+
+	var captured []func()
+	origSpawn := channelSpawn
+	channelSpawn = func(job func()) { captured = append(captured, job) }
+	defer func() { channelSpawn = origSpawn }()
+
+	// ① 发送 → 立即取消 → 跑捕获的 drain job：sc_m1 邮箱必须无信。
+	sendOut, err := NewChannelSendTool(cfg).Execute(ctx, json.RawMessage(`{"channel":"dev","message":"typo"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sendPayload struct {
+		MessageID string `json:"messageId"`
+	}
+	if err := json.Unmarshal([]byte(sendOut), &sendPayload); err != nil || sendPayload.MessageID == "" {
+		t.Fatalf("send: %s", sendOut)
+	}
+	cancelOut, err := NewChannelCancelTool(cfg).Execute(ctx,
+		json.RawMessage(`{"channel":"dev","messageId":"`+sendPayload.MessageID+`"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cancelPayload struct {
+		CancelledQueued  int  `json:"cancelledQueued"`
+		AlreadyDelivered int  `json:"alreadyDelivered"`
+		AlreadyCancelled bool `json:"alreadyCancelled"`
+	}
+	if err := json.Unmarshal([]byte(cancelOut), &cancelPayload); err != nil {
+		t.Fatal(err)
+	}
+	if cancelPayload.CancelledQueued != 1 || cancelPayload.AlreadyDelivered != 0 || cancelPayload.AlreadyCancelled {
+		t.Fatalf("cancel: %s", cancelOut)
+	}
+	captured[0]() // drain 空转：无 queued 行
+	mailRows, err := sessioncollab.NewMailStore(cfg.MailDir).Inbox("sc_m1")
+	if err != nil || len(mailRows) != 0 {
+		t.Fatalf("cancelled fan-out must not land in the mailbox: %v %+v", err, mailRows)
+	}
+
+	// ② channel_read 返回墓碑（cancelledAt > 0）。
+	readOut, err := NewChannelReadTool(cfg).Execute(ctx, json.RawMessage(`{"channel":"dev"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var readPayload struct {
+		Messages []struct {
+			ID          string `json:"id"`
+			CancelledAt int64  `json:"cancelledAt"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal([]byte(readOut), &readPayload); err != nil {
+		t.Fatal(err)
+	}
+	if len(readPayload.Messages) != 1 || readPayload.Messages[0].CancelledAt == 0 {
+		t.Fatalf("history must carry the tombstone: %s", readOut)
+	}
+
+	// ③ 已投递后取消：cancelledQueued=0，alreadyDelivered=1（副本不追回，如实报数）。
+	sendOut2, err := NewChannelSendTool(cfg).Execute(ctx, json.RawMessage(`{"channel":"dev","message":"too late"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var send2 struct {
+		MessageID string `json:"messageId"`
+	}
+	if err := json.Unmarshal([]byte(sendOut2), &send2); err != nil {
+		t.Fatal(err)
+	}
+	captured[1]() // 真投递
+	out2, err := NewChannelCancelTool(cfg).Execute(ctx,
+		json.RawMessage(`{"channel":"dev","messageId":"`+send2.MessageID+`"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cancel2 struct {
+		CancelledQueued  int `json:"cancelledQueued"`
+		AlreadyDelivered int `json:"alreadyDelivered"`
+	}
+	if err := json.Unmarshal([]byte(out2), &cancel2); err != nil {
+		t.Fatal(err)
+	}
+	if cancel2.CancelledQueued != 0 || cancel2.AlreadyDelivered != 1 {
+		t.Fatalf("post-delivery cancel must only report: %s", out2)
+	}
+
+	// ④ 越权拒：sc_m1 不能取消本会话发的消息。
+	other := cfg
+	other.CurrentContactID = "sc_m1"
+	_, err = NewChannelCancelTool(other).Execute(ctx,
+		json.RawMessage(`{"channel":"dev","messageId":"`+send2.MessageID+`"}`))
+	if err == nil || !strings.Contains(err.Error(), "only the sender") {
+		t.Fatalf("non-sender cancel must be rejected: %v", err)
+	}
+
+	// ⑤ 无身份/缺参/未知消息拒。
+	anon := cfg
+	anon.CurrentContactID = ""
+	anon.ResolveSessionPath = func() string { return "" }
+	if _, err := NewChannelCancelTool(anon).Execute(ctx,
+		json.RawMessage(`{"channel":"dev","messageId":"chm_x"}`)); err == nil {
+		t.Fatal("cancel without identity must be rejected")
+	}
+	if _, err := NewChannelCancelTool(cfg).Execute(ctx, json.RawMessage(`{"channel":"dev"}`)); err == nil {
+		t.Fatal("messageId is required")
+	}
+	if _, err := NewChannelCancelTool(cfg).Execute(ctx,
+		json.RawMessage(`{"channel":"dev","messageId":"chm_ghost"}`)); err == nil {
+		t.Fatal("unknown message must be rejected")
+	}
+}

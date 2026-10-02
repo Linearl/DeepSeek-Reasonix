@@ -2146,12 +2146,13 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// table the inbox panel shows. Read-only + hard-capped limit, so it
 		// registers unconditionally beside the other read verbs.
 		reg.Add(agent.NewQueryCollabMailTool(collab))
-		// Task 349: the three channel tools (0928 拍板 tool set) — list/read/
-		// send over the chat-channel entity; send expands to task-309 mailbox
-		// singles, never a second delivery path.
+		// Task 349: the channel tools (0928 拍板 tool set + 20261002 取消消息
+		// 增量) — list/read/send/cancel over the chat-channel entity; send
+		// expands to task-309 mailbox singles, never a second delivery path.
 		reg.Add(agent.NewChannelListTool(collab))
 		reg.Add(agent.NewChannelReadTool(collab))
 		reg.Add(agent.NewChannelSendTool(collab))
+		reg.Add(agent.NewChannelCancelTool(collab))
 		reg.Add(agent.NewTalkToSessionTool(collab))
 		// Task 284: cross-session subscriptions (the push half). Registered
 		// ONLY under task 230's experimental_event_trigger switch — 284 is

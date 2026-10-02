@@ -2,6 +2,7 @@ package collabchannel
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -321,5 +322,166 @@ func TestChannelEntitySurface(t *testing.T) {
 	// limit 上限：构造 >500? messages clamp at 500 — boundary is the clamp itself.
 	if _, err := s.Messages("dev", 0, 5000); err != nil {
 		t.Fatalf("limit clamp: %v", err)
+	}
+}
+
+// 取消消息（20261002 增量）：墓碑入史 + queued 行翻 cancelled + drain 落空 +
+// 仅发送方可取消 + 二次取消幂等。
+func TestCancelStopsPendingFanoutAndTombstonesHistory(t *testing.T) {
+	s, dir, advance := newStore(t)
+	if _, err := s.CreateChannel("dev", "", 0, "sc_a", "sc_b"); err != nil {
+		t.Fatal(err)
+	}
+	msg, err := s.Publish("dev", "sc_s", "wrong number")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 越权：发送方之外不能取消；未知消息 ErrNotFound。
+	if _, err := s.Cancel("dev", msg.ID, "sc_a"); !errors.Is(err, ErrNotSender) {
+		t.Fatalf("non-sender cancel must be ErrNotSender, got %v", err)
+	}
+	if _, err := s.Cancel("dev", "chm_nope", "sc_s"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown message must be ErrNotFound, got %v", err)
+	}
+
+	// 取消：两条 queued 行翻 cancelled，尚无已投递。
+	res, err := s.Cancel("dev", msg.ID, "sc_s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.CancelledQueued != 2 || res.AlreadyDelivered != 0 || res.AlreadyCancelled || res.CancelledAt == 0 {
+		t.Fatalf("cancel result: %+v", res)
+	}
+	rows, err := s.FanoutStates("dev")
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("fanout rows: %+v err=%v", rows, err)
+	}
+	for _, r := range rows {
+		if r.State != "cancelled" {
+			t.Fatalf("%s row must be cancelled: %+v", r.Member, r)
+		}
+	}
+
+	// 之后的 drain 落空（cancelled 行不领取），任何成员邮箱都无信。
+	stats, err := s.DrainFanout(context.Background())
+	if err != nil || stats.Queued != 0 || stats.Delivered != 0 {
+		t.Fatalf("drain after cancel must be a no-op: %+v err=%v", stats, err)
+	}
+	mail := sessioncollab.NewMailStore(dir)
+	for _, member := range []string{"sc_a", "sc_b"} {
+		inbox, err := mail.Inbox(member)
+		if err != nil || len(inbox) != 0 {
+			t.Fatalf("%s must not receive a cancelled message: %v %+v", member, err, inbox)
+		}
+	}
+
+	// 历史墓碑可读；md 导出渲染（已取消）且不再出正文。
+	advance(1000)
+	msgs, err := s.Messages("dev", 0, 10)
+	if err != nil || len(msgs) != 1 || msgs[0].CancelledAt == 0 {
+		t.Fatalf("tombstone must surface in Messages: %+v err=%v", msgs, err)
+	}
+	out := filepath.Join(dir, "exp.md")
+	if _, err := s.ExportMarkdown("dev", out); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "（已取消）") || strings.Contains(string(b), "wrong number") {
+		t.Fatalf("export must mark cancelled without the body:\n%s", b)
+	}
+
+	// 幂等：二次取消报告首次墓碑，不再动行。
+	advance(1000)
+	res2, err := s.Cancel("dev", msg.ID, "sc_s")
+	if err != nil || !res2.AlreadyCancelled || res2.CancelledQueued != 0 || res2.CancelledAt != res.CancelledAt {
+		t.Fatalf("second cancel must be idempotent: %+v err=%v", res2, err)
+	}
+}
+
+// 取消与在途 drain 竞态：领取发生在投递前，投递前重查让取消必赢——
+// pace 钩子在第二个成员投递前取消（模拟 drain 进行中收到取消）。
+func TestCancelWinsAgainstInFlightDrain(t *testing.T) {
+	s, dir, _ := newStore(t)
+	if _, err := s.CreateChannel("dev", "", 0, "sc_a", "sc_b"); err != nil {
+		t.Fatal(err)
+	}
+	msg, err := s.Publish("dev", "sc_s", "recall me")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.SetPace(func(i int) time.Duration {
+		if i == 1 { // 第二个成员投递前
+			if _, err := s.Cancel("dev", msg.ID, "sc_s"); err != nil {
+				t.Errorf("cancel mid-drain: %v", err)
+			}
+		}
+		return 0
+	})
+	stats, err := s.DrainFanout(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Delivered != 1 || stats.Cancelled != 1 {
+		t.Fatalf("one delivered one cancelled mid-drain: %+v", stats)
+	}
+	mail := sessioncollab.NewMailStore(dir)
+	if inbox, _ := mail.Inbox("sc_b"); len(inbox) != 0 {
+		t.Fatalf("cancel must stop the mid-drain member: %+v", inbox)
+	}
+	if inbox, _ := mail.Inbox("sc_a"); len(inbox) != 1 {
+		t.Fatalf("first member was delivered before the cancel: %+v", inbox)
+	}
+}
+
+// 旧库迁移：schema v1（无 cancelled_at 列）的库重新 Open 后补列可用——
+// 取消对历史消息照常生效。
+func TestMigrateV1DatabaseAddsCancelledAt(t *testing.T) {
+	dir := t.TempDir()
+	db, err := sql.Open("sqlite", diskFileDSN(filepath.Join(dir, "channels.db")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 手造 v1 schema：messages 无 cancelled_at。
+	for _, stmt := range []string{
+		`CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+		`CREATE TABLE channels (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, topic TEXT NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL, hourly_limit INTEGER NOT NULL DEFAULT 30)`,
+		`CREATE TABLE members (channel_id TEXT NOT NULL, contact TEXT NOT NULL, joined_at INTEGER NOT NULL,
+			PRIMARY KEY (channel_id, contact))`,
+		`CREATE TABLE messages (id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, at INTEGER NOT NULL,
+			sender TEXT NOT NULL, body TEXT NOT NULL)`,
+		`CREATE TABLE fanout (message_id TEXT NOT NULL, member TEXT NOT NULL, fanout_id TEXT NOT NULL,
+			state TEXT NOT NULL DEFAULT 'queued', error TEXT NOT NULL DEFAULT '', delivered_at INTEGER,
+			read_at INTEGER, PRIMARY KEY (message_id, member))`,
+		`INSERT INTO channels (id, name, created_at) VALUES ('chan_old', 'dev', 1)`,
+		`INSERT INTO messages (id, channel_id, at, sender, body) VALUES ('chm_old', 'chan_old', 1, 'sc_s', 'old line')`,
+		`INSERT INTO fanout (message_id, member, fanout_id, state) VALUES ('chm_old', 'sc_a', 'chf_old', 'queued')`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Open 走 v1→v2 迁移：列补上（重复列错误按已存在忽略），取消可用。
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	s.SetPace(func(int) time.Duration { return 0 })
+	res, err := s.Cancel("dev", "chm_old", "sc_s")
+	if err != nil || res.CancelledQueued != 1 {
+		t.Fatalf("cancel after migration: %+v err=%v", res, err)
+	}
+	stats, err := s.DrainFanout(context.Background())
+	if err != nil || stats.Queued != 0 {
+		t.Fatalf("migrated cancelled row must not deliver: %+v err=%v", stats, err)
 	}
 }
