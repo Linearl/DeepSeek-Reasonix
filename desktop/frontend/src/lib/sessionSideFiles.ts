@@ -11,6 +11,11 @@ export type SessionSideItem = {
   kind: string;
   name?: string;
   args?: string;
+  /** Task 452: stable collapsed subject persisted by the host for every
+   *  rehydrated tool card (desktop/app.go historyToolSubject). Hydrated items
+   *  carry no args (argumentsArchived), so for file tools the subject IS the
+   *  path — the only durable carrier after an app restart. */
+  subject?: string;
   fileDiff?: ToolItem["fileDiff"];
 };
 
@@ -57,6 +62,23 @@ function parsePathArgs(args: string | undefined): { path?: string; source?: stri
   }
 }
 
+// Task 452: hydrated tool items carry no args (the host archives tool
+// arguments for every persisted call except todo_write — desktop/app.go
+// historyToolCall), so args-only parsing made the lists permanently empty in
+// any rehydrated session. The host still persists a collapsed subject that,
+// for every path-bearing tool, IS the path (historyToolSubject default branch;
+// move_file encodes "source -> destination"). Args win when present; the
+// subject only fills the gaps.
+function subjectPaths(subject: string | undefined): { path?: string; source?: string; dest?: string } {
+  const value = subject?.trim();
+  if (!value) return {};
+  const arrow = value.indexOf(" -> ");
+  if (arrow > 0) {
+    return { source: value.slice(0, arrow).trim(), dest: value.slice(arrow + 4).trim() };
+  }
+  return { path: value };
+}
+
 function pushUnique(list: SessionSideFile[], path: string | undefined, via: string, seen: Set<string>) {
   if (!path || !path.trim()) return;
   const key = path.trim();
@@ -77,7 +99,12 @@ export function collectSessionSideFiles(items: readonly SessionSideItem[]): Sess
   for (const item of items) {
     if (item.kind !== "tool" || !item.name) continue;
     const name = item.name;
-    const { path, source, dest } = parsePathArgs(item.args);
+    const fromArgs = parsePathArgs(item.args);
+    const fromSubject = subjectPaths(item.subject);
+    // Task 452: args first (live sessions), subject fills the hydrated gaps.
+    const path = fromArgs.path ?? fromSubject.path;
+    const source = fromArgs.source ?? fromSubject.source;
+    const dest = fromArgs.dest ?? fromSubject.dest;
     if (READ_TOOLS.has(name)) {
       pushUnique(references, path ?? source, name, refSeen);
       continue;

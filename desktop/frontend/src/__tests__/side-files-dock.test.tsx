@@ -98,6 +98,38 @@ console.log("\nside-files dock tabs (task 260)");
   eq(markup.includes("No session file activity yet"), true, "references: empty state when nothing was read");
 }
 
+// 2b. Task 452: hydrated sessions carry NO args (the host archives tool
+// arguments for every persisted call — desktop/app.go historyToolCall) but DO
+// carry the collapsed subject, which for path-bearing tools IS the path.
+// The aggregation must fall back to it or every rehydrated session shows the
+// empty state forever.
+{
+  const HYD_WRITE = { kind: "tool", name: "write_file", args: "", subject: "C:/proj/out.txt" };
+  const HYD_READ = { kind: "tool", name: "read_file", args: "", subject: "C:/proj/in.txt" };
+  const HYD_EDIT = { kind: "tool", name: "edit_file", args: "", subject: "C:/proj/app.ts" };
+  const HYD_MOVE = { kind: "tool", name: "move_file", args: "", subject: "C:/proj/old.txt -> C:/proj/new.txt" };
+  const art = renderPanel("artifacts", [HYD_WRITE, HYD_READ, HYD_EDIT]);
+  eq(art.includes("out.txt"), true, "hydrated: write_file subject path lands in artifacts");
+  eq(art.includes("in.txt") || art.includes("app.ts"), false, "hydrated: read/edit subjects stay out of artifacts");
+  const refs = renderPanel("references", [HYD_READ, HYD_EDIT, HYD_WRITE]);
+  eq(refs.includes("in.txt"), true, "hydrated: read_file subject path lands in references");
+  eq(refs.includes("app.ts"), true, "hydrated: edit_file subject path lands in references");
+  eq(refs.includes("out.txt"), false, "hydrated: write subject stays out of references");
+  const movedRefs = renderPanel("references", [HYD_MOVE]);
+  eq(movedRefs.includes("old.txt"), true, "hydrated: move_file subject source lands in references");
+  const movedArt = renderPanel("artifacts", [HYD_MOVE]);
+  eq(movedArt.includes("new.txt"), true, "hydrated: move_file subject destination lands in artifacts");
+  // Args win when both are present (a rewritten subject must not shadow the
+  // live dispatch payload).
+  const BOTH = { kind: "tool", name: "write_file", args: JSON.stringify({ path: "C:/proj/live.txt" }), subject: "C:/proj/subject.txt" };
+  const both = renderPanel("artifacts", [BOTH]);
+  eq(both.includes("live.txt"), true, "hydrated: args path wins when args are present");
+  eq(both.includes("subject.txt"), false, "hydrated: subject path is not listed alongside a parsed args path");
+  // Non-path subjects (bash command, grep pattern) never leak into the lists.
+  const NOISE = { kind: "tool", name: "bash", args: "", subject: "pnpm build" };
+  eq(renderPanel("artifacts", [NOISE]).includes("pnpm build"), false, "hydrated: bash subject does not leak into artifacts");
+}
+
 // 3. Inject action payload (interactive).
 {
   let injected = "";
@@ -176,6 +208,10 @@ console.log("\nside-files dock tabs (task 260)");
   eq(app.includes("SideFilesDockPanel"), true, "app: dock body references the dock panel");
   eq(app.includes('t("workspace.artifactsTab")'), true, "app: artifacts tab label wired");
   eq(app.includes('t("workspace.referencesTab")'), true, "app: references tab label wired");
+  // Task 452: the workspace panel mount feeds the task-114 accordion the same
+  // live payload — before this it was mounted with no sessionItems at all and
+  // the accordion was permanently empty in the main path.
+  eq(/<WorkspacePanel[\s\S]{0,600}?sessionItems=\{exportItems\}/.test(app), true, "app: WorkspacePanel receives sessionItems (114 accordion fed)");
 }
 
 // 8. Locales: the two tab keys exist in all three languages.

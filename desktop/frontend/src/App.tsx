@@ -5567,6 +5567,10 @@ export default function App() {
                     cwd={state.meta?.cwd}
                     workspaceScopeKey={workspaceScopeKey}
                     workspaceMemoryKey={workspaceTreeMemoryKey}
+                    /* Task 452: the workspace panel's session side-files accordion
+                       (task 114) was mounted with no sessionItems in this main
+                       path — permanently empty. Same payload as the dock tabs. */
+                    sessionItems={exportItems}
                     dockTreeWidth={rightDockTreeWidth}
                     dockPreviewWidth={rightDockPreviewWidth}
                     onRestoreDockWidths={restoreWorkspaceDockWidths}
