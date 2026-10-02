@@ -5,6 +5,9 @@
 // detail states (loading/failed via stubbed ReadSubagentSession; the ready
 // branch mounts the shared Transcript and is asserted at source level,
 // matching the lifecycle-test precedent).
+// Task 447c2: the directory's event-driven refresh — a single job finishing
+// re-pulls the ended directory while the panel stays open (value-keyed on
+// the running identity); closed panels still never poll in the background.
 
 import { JSDOM } from "jsdom";
 import React from "react";
@@ -147,6 +150,25 @@ async function cleanup() {
   activeHost = null;
 }
 
+// rerenderIndicator pushes a new jobs snapshot into the SAME mounted root —
+// the way App feeds the panel on controller notice/turn_done events. Used by
+// the 447c2 event-driven refresh tests.
+async function rerenderIndicator(props: { jobs?: JobView[]; sessionPath?: string }) {
+  await act(async () => {
+    activeRoot?.render(
+      <LocaleProvider>
+        <CapsuleIndicator
+          jobs={props.jobs ?? []}
+          sessionPath={props.sessionPath}
+          onListSubagents={onListSubagents}
+          onReadSubagent={onReadSubagent}
+        />
+      </LocaleProvider>,
+    );
+    await flush();
+  });
+}
+
 function triggerButton(): HTMLButtonElement {
   const button = document.querySelector<HTMLButtonElement>(".capsule__trigger");
   if (!button) throw new Error("missing capsule trigger");
@@ -275,6 +297,56 @@ section("已结束子代理目录：过滤运行中、缺失转录禁点");
     await flush(200);
   });
   eq(triggerButton().querySelector(".capsule__badge")?.textContent, "3", "开合一次后空闲徽标显示已结束数（过滤运行中）");
+  await cleanup();
+}
+
+section("目录事件驱动刷新：面板常开期间单个任务结束即重拉（447c2）");
+{
+  listCalls.length = 0;
+  readCalls.length = 0;
+  const jobsTwo = [
+    job({ id: "task-2", kind: "task", label: "调研" }),
+    job({ id: "bash-1", kind: "bash", label: "serve" }),
+  ];
+  listResult = Promise.resolve([ended({ ref: "sa_old", name: "旧条目" })]);
+  await renderIndicator({ jobs: jobsTwo, sessionPath: "s.jsonl" });
+  await clickTrigger(30);
+  const callsAfterOpen = listCalls.length;
+  ok(callsAfterOpen > 0, "打开时目录已拉取");
+  ok(document.querySelector('[data-capsule-ended-id="sa_old"]') !== null, "既有条目在目录中");
+  // 部分排空：一个子代理任务结束（快照 2→1），面板保持打开。
+  // 完成事件会把 jobs 快照换成新数组——目录应当随之重拉。
+  listResult = Promise.resolve([
+    ended({ ref: "sa_old", name: "旧条目" }),
+    ended({ ref: "sa_new", name: "新条目" }),
+  ]);
+  await rerenderIndicator({ jobs: [jobsTwo[1]], sessionPath: "s.jsonl" });
+  eq(listCalls.length, callsAfterOpen + 1, "单个任务结束后目录自动重拉（无需重开面板）");
+  ok(document.querySelector('[data-capsule-ended-id="sa_new"]') !== null, "新结束的子代理即时进入目录");
+  ok(document.querySelector('[data-capsule-ended-id="sa_old"]') !== null, "既有条目保持");
+  // 值等价快照（新数组、同 id 集）不触发重拉：防控制器同集重渲染造成抖动。
+  await rerenderIndicator({ jobs: [{ ...jobsTwo[1] }], sessionPath: "s.jsonl" });
+  eq(listCalls.length, callsAfterOpen + 1, "值等价快照（新数组同 id）不触发重拉");
+  await cleanup();
+}
+
+section("面板关闭时不做后台目录轮询（一期口径保持，447c2 不越界）");
+{
+  listCalls.length = 0;
+  listResult = Promise.resolve([ended({ ref: "sa_idle", name: "空闲件" })]);
+  await renderIndicator({ jobs: [], sessionPath: "s.jsonl" });
+  await clickTrigger(30);
+  ok(document.querySelector(".capsule-panel") !== null, "面板已打开");
+  const callsOpen = listCalls.length;
+  ok(callsOpen > 0, "打开期间目录已拉取");
+  await clickTrigger(220); // 用户关闭面板
+  await act(async () => {
+    await flush(200); // closing phase elapses; the portal unmounts
+  });
+  ok(document.querySelector(".capsule-panel") === null, "面板已关闭");
+  const callsClosed = listCalls.length;
+  await rerenderIndicator({ jobs: [job({ id: "task-9", kind: "task" })], sessionPath: "s.jsonl" });
+  eq(listCalls.length, callsClosed, "关闭期间 jobs 变化不触发目录拉取（不后台轮询）");
   await cleanup();
 }
 

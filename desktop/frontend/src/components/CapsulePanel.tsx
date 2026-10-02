@@ -14,8 +14,10 @@
 // can stub them without loading the bridge module graph.
 //
 // This file is intentionally independent of task 440's unmerged
-// RunningTasksPanel: same design language, separate component/CSS names, so
-// the eventual merge/reconciliation stays a main-conversation decision.
+// RunningTasksPanel: same design language, separate component/CSS names. The
+// main conversation ruled (2026-10-02, option a) that this capsule absorbs
+// task 440 — it is a verified superset — so that panel stays retired instead
+// of merging.
 
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, ArrowLeft, Bot, Sparkles, Square, TerminalSquare } from "lucide-react";
@@ -121,10 +123,19 @@ export function CapsuleIndicator({
   const groups = useMemo(() => groupCapsuleJobs(jobs), [jobs]);
   const runningCount = jobs.length;
   const hasRunning = runningCount > 0;
+  // Task 447c2 event-driven refresh: the controller pushes a fresh jobs
+  // snapshot on notice/turn_done events, so the value-keyed running identity
+  // below changes exactly when a job enters or leaves the snapshot. Keying
+  // the directory reload on it (instead of the boolean "anything running")
+  // lets a single sub-agent that finishes move into the ended directory
+  // immediately while the panel stays open — previously it stayed invisible
+  // until every job drained or the panel was reopened. Value keying (joined
+  // ids, not array identity) keeps same-set re-renders from re-pulling.
+  const runningKey = useMemo(() => jobs.map((job) => job.id).join("\n"), [jobs]);
 
   // Load the ended directory every time the panel opens and whenever the
-  // running set drains (a just-finished batch writes its sidecars at
-  // completion). Read-only and cheap; a failure renders an empty directory.
+  // running set changes while open (a just-finished batch writes its sidecars
+  // at completion). Read-only and cheap; a failure renders an empty directory.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -144,8 +155,8 @@ export function CapsuleIndicator({
       cancelled = true;
     };
     // onListSubagents is a stable useCallback in App; re-listing keys on the
-    // open state and the running-set drain, not on callback identity.
-  }, [open, hasRunning, sessionPath, onListSubagents]);
+    // open state and the running-set identity, not on callback identity.
+  }, [open, runningKey, sessionPath, onListSubagents]);
 
   // Live elapsed clock only while the panel is open and something is still
   // running (same rule as the task-440 panel).
