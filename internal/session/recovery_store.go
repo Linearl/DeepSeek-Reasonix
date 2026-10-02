@@ -29,7 +29,12 @@ import (
 // commit. Version 1 checkpoints decode that field as empty, so accepting one
 // would incorrectly mark previously completed turns unverifiable until a full
 // replay. Rejecting the old projection rebuilds it from the durable log.
-const recoveryProjectionVersion = 2
+//
+// Version 3 carries the live stable message ids (task 398, upstream #10893).
+// A version 2 checkpoint has no such field, so accepting it would seed the
+// writer's duplicate refusal empty and re-open the durable-id blind spot the
+// set exists to close; older checkpoints rebuild from the unchanged log once.
+const recoveryProjectionVersion = 3
 
 const (
 	recoveryFormatVersion = 1
@@ -95,7 +100,10 @@ type recoveryCheckpoint struct {
 	Projection        Projection         `json:"projection"`
 	RecentMessages    []provider.Message `json:"recentMessages,omitempty"`
 	CatalogPreview    string             `json:"catalogPreview,omitempty"`
-	CreatedAt         time.Time          `json:"createdAt"`
+	// MessageIDs is the live stable-id set the writer refuses to reuse
+	// (task 398); projection.Messages is empty in these checkpoints.
+	MessageIDs []string  `json:"messageIds,omitempty"`
+	CreatedAt  time.Time `json:"createdAt"`
 }
 
 type recoveryOperation struct {
@@ -658,6 +666,7 @@ func checkpointFromStartup(manifest Manifest, identity storageIdentity, state *s
 		checkpoint.AnchorHash = state.tip.AnchorHash
 		checkpoint.RecentMessages = detachMessages(state.recentMessages)
 		checkpoint.CatalogPreview = state.catalogPreview
+		checkpoint.MessageIDs = state.messageIDs.list()
 	}
 	return checkpoint
 }
@@ -710,6 +719,7 @@ func tryRecoveryCheckpoint(ctx context.Context, dir string, file *os.File, info 
 		projection: cloneProjection(checkpoint.Projection), operations: map[string]operationRecord{},
 		durable: checkpoint.DurableSequence, catalogPreview: checkpoint.CatalogPreview,
 		recentMessages: detachMessages(checkpoint.RecentMessages),
+		messageIDs:     identitiesOf(checkpoint.MessageIDs),
 		tip: durableTip{LogOffset: checkpoint.LogOffset, AnchorOffset: checkpoint.AnchorOffset,
 			AnchorFirst: checkpoint.AnchorFirst, AnchorCommitID: checkpoint.AnchorCommitID, AnchorHash: checkpoint.AnchorHash},
 	}
@@ -724,6 +734,7 @@ func tryRecoveryCheckpoint(ctx context.Context, dir string, file *os.File, info 
 			projectionErr = err
 			return false
 		}
+		state.messageIDs.admit(commit)
 		state.operations[commit.OperationID] = compactOperationRecord(commit)
 		state.durable = commit.LastSequence()
 		state.tip.AnchorOffset = offset

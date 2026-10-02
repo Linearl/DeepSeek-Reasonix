@@ -539,6 +539,18 @@ const CHECKS = [
   { feature: "任务399 搜索条组件", file: "desktop/frontend/src/components/TranscriptFindBar.tsx", patterns: ["TranscriptFindBar", "focusSignal", "onPrev"] },
   { feature: "任务399 行高亮 context", file: "desktop/frontend/src/components/TranscriptBlockView.tsx", patterns: ["useTranscriptFindHighlight", "transcript__row--find-active", "data-find-active"] },
   { feature: "任务399 Ctrl+F 快捷键注册（代码块域隔离）", file: "desktop/frontend/src/App.tsx", patterns: ["transcript.find", "shouldIgnoreFindShortcutTarget", "setTranscriptFindPulse"] },
+  // 任务 398（上游 #11006 → #10893）：plan 执行消息 id 复用防护 + 损坏会话保持可打开。
+  // 锚点锁四处：写端 durable id 集拒绝（唯一权威，externalHistory 时投影为空）、
+  // 读端投影 keep-first（重复 complete 不再 damagedPayload 拒开）、
+  // history/search 索引 keep-first（重复不再中断索引重建）、
+  // checkpoint 携带 MessageIDs + 版本 3（旧 checkpoint 无此字段必须重建，
+  // 否则写端拒绝集被播成空 = 盲区复活）。丢任何一处，重复 id 日志重新不可打开
+  // 或写端重新放行复用。
+  { feature: "任务398 写端 durable id 集拒绝", file: "internal/session/session.go", patterns: ["identities := s.messageIDs.changeFor(commit)", "identities.duplicate != \"\"", "s.messageIDs.apply(identities)"] },
+  { feature: "任务398 身份集模型", file: "internal/session/message_identities.go", patterns: ["type messageIdentities map[string]struct{}", "func (ids messageIdentities) changeFor", "duplicateMessageError"] },
+  { feature: "任务398 读端投影 keep-first", file: "internal/session/projection.go", patterns: ["a repeat already on disk keeps the id's", "return nil"] },
+  { feature: "任务398 历史/搜索索引 keep-first", file: "internal/session/history_index.go", patterns: ["repeated message/complete keeps the id's first record", "state.positions[strings.TrimSpace(body.Message.ID)]"] },
+  { feature: "任务398 checkpoint 携带 id 集+版本3", file: "internal/session/recovery_store.go", patterns: ["MessageIDs []string", "recoveryProjectionVersion = 3", "state.messageIDs.admit(commit)"] },
 ];
 
 let failed = 0;

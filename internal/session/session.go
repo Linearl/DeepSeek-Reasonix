@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"sync"
@@ -38,9 +39,14 @@ type Session struct {
 	// externalHistory means durable UI messages live in HistoryQuery rather
 	// than this runtime projection. Messages then contains only the accepted,
 	// not-yet-durable tail; ModelMessages remains the exact provider workset.
-	externalHistory   bool
-	catalogPreview    string
-	recentMessages    []provider.Message
+	externalHistory bool
+	catalogPreview  string
+	recentMessages  []provider.Message
+	// messageIDs is every stable message id the log holds live. The projection
+	// alone cannot enforce durable-id uniqueness because an external-history
+	// session drops message bodies at open and after every recovery
+	// checkpoint; this set survives those drops (task 398, upstream #10893).
+	messageIDs        messageIdentities
 	durableRecent     []provider.Message
 	storageGeneration string
 	recovery          *recoveryStore
@@ -86,9 +92,16 @@ func newSession(id string, manifest Manifest, commits []Commit, projection Proje
 		operations[commit.OperationID] = compactOperationRecord(commit)
 		next = commit.LastSequence() + 1
 	}
+	ids := make([]string, 0, len(projection.Messages))
+	for _, message := range projection.Messages {
+		if message.ID != "" {
+			ids = append(ids, message.ID)
+		}
+	}
 	return &Session{
 		id: id, manifest: manifest, next: next,
 		operations: operations, projection: projection, binding: binding,
+		messageIDs: identitiesOf(ids),
 	}
 }
 
@@ -307,6 +320,17 @@ func (s *Session) CommitPrepared(prepared PreparedBatch) (Commit, error) {
 	for i := range commit.Events {
 		commit.Events[i].Sequence = commit.FirstSequence + uint64(i)
 	}
+	// Task 398 (upstream #11006 → #10893): refuse a completion whose stable id
+	// is already durable. The live id set — not projection.Messages, which an
+	// external-history session empties — is the authority, and the refused
+	// commit leaves both the set and the projection untouched.
+	identities := s.messageIDs.changeFor(commit)
+	if identities.duplicate != "" {
+		s.mu.Unlock()
+		slog.Error("session: refused message completion that reuses a durable message id",
+			"session", s.id, "operation", prepared.operationID, "messageId", identities.duplicate)
+		return Commit{}, duplicateMessageError(identities.duplicate)
+	}
 	storedCommit := commit
 	storedCommit.Events = prepared.storedEvents
 	for i := range storedCommit.Events {
@@ -328,6 +352,7 @@ func (s *Session) CommitPrepared(prepared PreparedBatch) (Commit, error) {
 	err := binding.accept(storedCommit, prepared.reservation, func() {
 		s.commits = append(s.commits, commit)
 		s.projection = projection
+		s.messageIDs.apply(identities)
 		_ = applyRecentCommit(&s.recentMessages, commit)
 		s.next = commit.LastSequence() + 1
 		s.operations[prepared.operationID] = compactOperationRecord(commit)

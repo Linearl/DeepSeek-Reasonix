@@ -183,7 +183,10 @@ func projectMessageComplete(projection *Projection, commit Commit, ev Event) err
 		return damagedPayload(ev, err)
 	}
 	if projectionMessageIndex(projection.Messages, body.Message.ID) >= 0 {
-		return damagedPayload(ev, fmt.Errorf("duplicate stable message id %q", body.Message.ID))
+		// Task 398 (upstream #10893): a repeat already on disk keeps the id's
+		// first message so a damaged log still opens; the writer refuses new
+		// repeats against the durable id set before they can be appended.
+		return nil
 	}
 	projection.Messages = append(projection.Messages, *body.Message)
 	projection.ModelMessages = append(projection.ModelMessages, provider.ModelMessages([]provider.Message{*body.Message})...)

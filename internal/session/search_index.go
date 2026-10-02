@@ -388,7 +388,10 @@ func indexSearchMessage(ctx context.Context, tx *sql.Tx, state *searchBuildState
 		position = state.nextPosition
 		state.positions[id] = position
 	} else if !upsert {
-		return fmt.Errorf("session: duplicate search message id %q", id)
+		// Task 398: a repeated message/complete keeps the id's first document
+		// (upstream #10893); refusing here made every search index build —
+		// and every session open behind it — fail on an already-written log.
+		return nil
 	}
 	if exists {
 		if _, err := tx.ExecContext(ctx, `UPDATE documents SET current=0,valid_to=? WHERE message_id=? AND current=1`, sequence, id); err != nil {

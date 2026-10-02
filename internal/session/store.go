@@ -53,9 +53,15 @@ var (
 	ErrOperationConflict    = errors.New("session operation id conflicts with an earlier batch")
 	ErrPersistenceUncertain = errors.New("session persistence result is uncertain")
 	ErrSessionNotFound      = errors.New("session not found")
-	ErrSessionExists        = errors.New("session already exists")
-	ErrWriterOwned          = errors.New("session writer is owned by another runtime")
-	ErrReadOnly             = errors.New("session handle is read-only")
+	// ErrDuplicateMessageID refuses a message/complete whose stable id is
+	// already durable (task 398, upstream #11006 → #10893). The projection
+	// alone cannot make that decision: an external-history session drops its
+	// message bodies at open and after every recovery checkpoint, so the
+	// writer keeps the live id set beside the projection.
+	ErrDuplicateMessageID = errors.New("session: message id is already durable")
+	ErrSessionExists      = errors.New("session already exists")
+	ErrWriterOwned        = errors.New("session writer is owned by another runtime")
+	ErrReadOnly           = errors.New("session handle is read-only")
 )
 
 type Manifest struct {
@@ -217,8 +223,12 @@ type Store struct {
 }
 
 type startupSessionState struct {
-	projection     Projection
-	operations     map[string]operationRecord
+	projection Projection
+	operations map[string]operationRecord
+	// messageIDs mirrors the projection's live message ids across every open
+	// path, including external history where projection.Messages is dropped.
+	// It seeds the writer's duplicate refusal (task 398).
+	messageIDs     messageIdentities
 	durable        uint64
 	catalogPreview string
 	recentMessages []provider.Message
@@ -488,6 +498,7 @@ func loadStartupSessionState(ctx context.Context, dir, eventsPath string, extern
 			projectionErr = applyErr
 			return false
 		}
+		state.messageIDs.admit(commit)
 		if externalHistory {
 			for _, message := range state.projection.Messages {
 				if message.Role == provider.RoleUser && state.catalogPreview == "" {
@@ -567,6 +578,10 @@ func loadBoundedStartupSessionState(ctx context.Context, dir string, file *os.Fi
 			projectionErr = err
 			return false
 		}
+		// The recent pass sees every message-affecting event from offset 0 in
+		// log order, which is exactly the identity set the writer needs even
+		// though the bounded projection drops the bodies (task 398).
+		state.messageIDs.admit(recent)
 		state.operations[commit.OperationID] = compactOperationRecord(commit)
 		state.durable = commit.LastSequence()
 		durableEnd, _ = file.Seek(0, io.SeekCurrent)
@@ -665,6 +680,11 @@ func bindSession(handle *Store, opts OpenOptions) (*Session, error) {
 	session.catalogPreview = state.catalogPreview
 	session.recentMessages = detachMessages(state.recentMessages)
 	session.durableRecent = detachMessages(state.recentMessages)
+	// The startup scan's admitted set is authoritative; only fall back to the
+	// projection-seeded set from newSession when the scan carried none.
+	if state.messageIDs != nil {
+		session.messageIDs = state.messageIDs
+	}
 	session.storageGeneration = handle.identity.Generation
 	session.recovery = handle.recovery
 	binding.metadataSource = session.metadataForDurable
