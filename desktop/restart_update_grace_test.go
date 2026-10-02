@@ -308,13 +308,16 @@ func TestGraceWindowExpiryCancelsAndStagesInterruptedSession(t *testing.T) {
 // TestStageInterruptedByRestartDial pins the staging rule directly: the
 // interruption bypasses the autopilot check, and the dial's explicit "off"
 // opt-out still wins (at off the restore gate skips every resume path, so
-// staging would only defer a surprise resume to a later restart).
+// staging would only defer a surprise resume to a later restart). The boolean
+// return (task 435) feeds the 1545 unstaged face, so both branches pin it.
 func TestStageInterruptedByRestartDial(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	session := filepath.Join(t.TempDir(), "interrupted.session.jsonl")
 	app := &App{}
 
-	app.stageInterruptedByRestart(session)
+	if !app.stageInterruptedByRestart(session) {
+		t.Fatal("staging under the default dial must report staged=true")
+	}
 	found := false
 	for _, p := range rosterPaths(t) {
 		if p == session {
@@ -328,7 +331,9 @@ func TestStageInterruptedByRestartDial(t *testing.T) {
 	if err := app.applyConfigOnly(func(c *config.Config) error { return c.SetAutonomousUpdateResume("off") }); err != nil {
 		t.Fatal(err)
 	}
-	app.stageInterruptedByRestart(filepath.Join(t.TempDir(), "second.session.jsonl"))
+	if app.stageInterruptedByRestart(filepath.Join(t.TempDir(), "second.session.jsonl")) {
+		t.Fatal("dial off must report staged=false")
+	}
 	for _, p := range rosterPaths(t) {
 		if strings.HasSuffix(p, "second.session.jsonl") {
 			t.Fatalf("dial off must stage nothing new: %v", rosterPaths(t))
