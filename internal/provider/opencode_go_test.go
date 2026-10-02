@@ -15,7 +15,7 @@ func TestOpenCodeGoChatModelsMatchPinnedLimits(t *testing.T) {
 		"deepseek-v4-flash-vision-exp": {Context: 1_000_000, MaxOutput: 384_000},
 		"mimo-v2.5-pro":                {Context: 1_048_576, MaxOutput: 128_000},
 		"mimo-v2.5":                    {Context: 1_000_000, MaxOutput: 128_000},
-		"hy3":                          {Context: 256_000, MaxOutput: 64_000},
+		"hy3":                          {Context: 256_000, MaxOutput: 128_000}, // pi 0.87 contract: hy3 MaxOutput 64k -> 128k (upstream pin change, PR #4)
 	}
 	got := OpenCodeGoChatModels()
 	for id, lim := range want {
