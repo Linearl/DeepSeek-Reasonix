@@ -71,19 +71,28 @@ func (a *App) stageAutonomousUpdateResume(callerSession string) bool {
 	}
 	entries := []autonomousUpdateResumeEntry{{Path: callerSession, StagedAt: time.Now().Unix()}}
 	if mode == "all" {
-		seen := map[string]bool{callerSession: true}
+		// Task 450 note2: dedupe on the runtime key, not the raw spelling —
+		// two tabs (or a tab and the caller) can hold the same session under
+		// different path spellings.
+		seen := map[string]bool{sessionRuntimeKey(callerSession): true}
 		for _, path := range a.sessionsWithActiveWork() {
-			if !seen[path] {
-				seen[path] = true
-				entries = append(entries, autonomousUpdateResumeEntry{Path: path, StagedAt: time.Now().Unix()})
+			key := sessionRuntimeKey(path)
+			if key == "" || seen[key] {
+				continue
 			}
+			seen[key] = true
+			entries = append(entries, autonomousUpdateResumeEntry{Path: path, StagedAt: time.Now().Unix()})
 		}
 	}
 	state := readAutonomousUpdateResumeFile()
 	for _, entry := range entries {
+		key := sessionRuntimeKey(entry.Path)
 		replaced := false
 		for i := range state.Sessions {
-			if state.Sessions[i].Path == entry.Path {
+			// Task 450 note2: fold both sides through sessionRuntimeKey so an
+			// entry written under another spelling of the same session is
+			// refreshed in place instead of duplicated.
+			if sessionRuntimeKey(state.Sessions[i].Path) == key {
 				state.Sessions[i] = entry
 				replaced = true
 				break
@@ -141,9 +150,15 @@ func (a *App) sessionsWithActiveWork() []string {
 // some much later restart with the dial flipped — staging then would be a
 // deferred surprise resume, not a repair. Returns whether the entry was
 // staged (a false return feeds the 1545 unstaged face).
+//
+// Task 450 note2: the dedupe folds both sides through sessionRuntimeKey — the
+// same session may already sit in the roster under another spelling (e.g. a
+// 254-path staging) and must be refreshed, not duplicated. The stored Path
+// keeps the trimmed spelling it was given; only comparisons normalize.
 func (a *App) stageInterruptedByRestart(sessionPath string) bool {
 	sessionPath = strings.TrimSpace(sessionPath)
-	if sessionPath == "" {
+	key := sessionRuntimeKey(sessionPath)
+	if key == "" {
 		return false
 	}
 	if a.autonomousUpdateResumeMode() == "off" {
@@ -153,7 +168,7 @@ func (a *App) stageInterruptedByRestart(sessionPath string) bool {
 	state := readAutonomousUpdateResumeFile()
 	replaced := false
 	for i := range state.Sessions {
-		if state.Sessions[i].Path == sessionPath {
+		if sessionRuntimeKey(state.Sessions[i].Path) == key {
 			state.Sessions[i].StagedAt = time.Now().Unix()
 			replaced = true
 			break
@@ -223,6 +238,13 @@ func (a *App) settleRestartFenceForTab(tab *WorkspaceTab) int {
 // session's pending effect records (settleRestartFenceForTab) — the roster
 // entry is the marker that separates a planned restart interruption from a
 // genuine crash, so only roster sessions skip the review panel.
+//
+// Task 450 note2 (audit-2): the entry was staged from the tab's
+// Ctrl.SessionPath() spelling before the restart, while this consumption side
+// reads tab.currentSessionPath() — which inside the two-phase recovery-handoff
+// window legitimately returns the lease-backed tab form, a different spelling
+// of the SAME session. A raw == comparison would miss it and silently drop the
+// resume, so both sides fold through sessionRuntimeKey before comparing.
 func (a *App) maybeResumeAutonomousUpdateTab(tab *WorkspaceTab) {
 	if a == nil || tab == nil {
 		return
@@ -237,6 +259,7 @@ func (a *App) maybeResumeAutonomousUpdateTab(tab *WorkspaceTab) {
 	if !ready || sessionPath == "" {
 		return
 	}
+	sessionKey := sessionRuntimeKey(sessionPath)
 	state := readAutonomousUpdateResumeFile()
 	if len(state.Sessions) == 0 {
 		return
@@ -244,7 +267,7 @@ func (a *App) maybeResumeAutonomousUpdateTab(tab *WorkspaceTab) {
 	matched := false
 	remaining := state.Sessions[:0]
 	for _, entry := range state.Sessions {
-		if entry.Path == sessionPath {
+		if sessionRuntimeKey(entry.Path) == sessionKey {
 			matched = true
 			continue
 		}
