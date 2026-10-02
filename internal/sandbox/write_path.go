@@ -65,26 +65,12 @@ func writePathHasGlob(raw string) bool {
 
 // ResolveAbsPath resolves path to an absolute, cleaned form. Because a write
 // target need not exist yet, it resolves the deepest existing ancestor with
-// EvalSymlinks and re-appends the not-yet-existing tail.
+// EvalSymlinks and re-appends the not-yet-existing tail. The walk is bounded
+// and cached process-wide (see canonical.go, task 455fix): a dead network
+// root costs at most one 250ms budget per 30s TTL instead of an unbounded
+// filesystem hang, and concurrent callers share one walk.
 func ResolveAbsPath(path string) (string, error) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return "", err
-	}
-	abs = filepath.Clean(abs)
-	tail := ""
-	cur := abs
-	for {
-		if real, err := filepath.EvalSymlinks(cur); err == nil {
-			return filepath.Join(real, tail), nil
-		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			return abs, nil
-		}
-		tail = filepath.Join(filepath.Base(cur), tail)
-		cur = parent
-	}
+	return resolveCanonicalPath(path)
 }
 
 // DisplayWritePath returns a user-facing form such as ~/.local when abs sits
@@ -344,7 +330,7 @@ func EnsureWriteDir(approved, stateRoot string) (string, error) {
 	if err := ValidateWriteDir(approved, stateRoot); err != nil {
 		return "", err
 	}
-	resolved, err := ResolveAbsPath(approved)
+	resolved, err := ResolveAbsPathFresh(approved)
 	if err != nil {
 		return "", fmt.Errorf("resolve approved write directory %q: %w", approved, err)
 	}
@@ -369,7 +355,7 @@ func EnsureWriteDir(approved, stateRoot string) (string, error) {
 		return "", fmt.Errorf("stat write directory %q: %w", approved, err)
 	}
 
-	resolved, err = ResolveAbsPath(approved)
+	resolved, err = ResolveAbsPathFresh(approved)
 	if err != nil {
 		return "", fmt.Errorf("re-resolve write directory %q: %w", approved, err)
 	}

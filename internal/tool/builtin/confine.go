@@ -269,25 +269,11 @@ func confinePreview(roots []string, guard SessionDataGuard, _ ManagedConfigPaths
 // target need not exist yet (write_file creates it), it resolves the deepest
 // existing ancestor with EvalSymlinks and re-appends the not-yet-existing tail.
 // This stops a symlinked directory from smuggling a write outside a root.
+// Delegates to the shared bounded+cached canonicalizer in package sandbox
+// (task 455fix): one walk implementation, one timeout budget, one TTL cache
+// shared with the boot write-root canonicalization.
 func realPath(path string) (string, error) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return "", err
-	}
-	abs = filepath.Clean(abs)
-	tail := ""
-	cur := abs
-	for {
-		if real, err := filepath.EvalSymlinks(cur); err == nil {
-			return filepath.Join(real, tail), nil
-		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			return abs, nil // nothing along the path exists; use the cleaned abs
-		}
-		tail = filepath.Join(filepath.Base(cur), tail)
-		cur = parent
-	}
+	return sandbox.ResolveAbsPath(path)
 }
 
 // within reports whether path is at or below root. Both must be absolute,
