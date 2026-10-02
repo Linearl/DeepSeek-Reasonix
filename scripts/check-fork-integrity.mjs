@@ -288,6 +288,12 @@ const CHECKS = [
   { feature: "任务260 会话产物/参考 dock 面板（单变体复用 114 聚合）", file: "desktop/frontend/src/components/SessionSideFilesPanel.tsx", patterns: ["export function SideFilesDockPanel", "collectSessionSideFiles(items)"] },
   { feature: "任务260 App dock 两 tab 接线（门控+标签+体渲染）", file: "desktop/frontend/src/App.tsx", patterns: ["dockTabVisible(\"artifacts\")", "dockTabVisible(\"references\")", "SideFilesDockPanel"] },
   { feature: "任务260 dock 模式域级扩展（artifacts/references 可持久化+开关门）", file: "desktop/frontend/src/store/layout.ts", patterns: ["export function dockModeWithinSidebarGates"] },
+  // 任务261 composer 历史导航安全化（上游 #10425，实验开关默认关）：锚点锁
+  // 「↑ 触发收窄选项存在 + Composer 双接线（收窄判定+时钟面板）+ 渲染表落键」。
+  // 上游若回退 ArrowUp 触发条件或砍掉渲染行，误触替换与开关自灭都会复发。
+  { feature: "任务261 ↑ 触发收窄选项（默认关=旧行为）", file: "desktop/frontend/src/lib/composerKeyboard.ts", patterns: ["upStartsOnlyFromEmpty"] },
+  { feature: "任务261 Composer 接线（收窄判定+时钟历史面板）", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["upStartsOnlyFromEmpty: historyPickerEnabled", "<PromptHistoryPicker"] },
+  { feature: "任务261 开关渲染表落键（防保存丢失）", file: "internal/config/render.go", patterns: ["experimental_prompt_history_picker"] },
   // 任务128 会话自主创建新项目：工具（52=纯分配 / 128=创建+once 写授权+项目注册）+
   // host 注册接线（executeOne ctx stamping → desktop 注册项目并开后台 tab）。
   // 三处锚点锁住整条链——丢任何一环，agent 建的项目就静默退化为「仅返回路径」。

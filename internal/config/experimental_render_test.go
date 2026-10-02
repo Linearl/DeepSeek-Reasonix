@@ -19,6 +19,7 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	c.Desktop.ExperimentalFeedback = true
 	c.Desktop.ExperimentalParallelFullAccess = true
 	c.Desktop.ExperimentalTodoSidebar = true
+	c.Desktop.ExperimentalPromptHistoryPicker = true
 	c.Desktop.ExperimentalPathRules = true
 	c.Desktop.ExperimentalTraceAsState = true
 	c.Desktop.ExperimentalDream = true
@@ -46,6 +47,7 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 		"experimental_feedback = true",
 		"experimental_parallel_full_access = true",
 		"experimental_todo_sidebar = true",
+		"experimental_prompt_history_picker = true",
 		"experimental_path_rules = true",
 		"experimental_trace_as_state = true",
 		"experimental_dream = true",
