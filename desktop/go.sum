@@ -125,6 +125,8 @@ github.com/segmentio/encoding v0.5.4 h1:OW1VRern8Nw6ITAtwSZ7Idrl3MXCFwXHPgqESYfv
 github.com/segmentio/encoding v0.5.4/go.mod h1:HS1ZKa3kSN32ZHVZ7ZLPLXWvOVIiZtyJnO1gPH1sKt0=
 github.com/sky-valley/pi v0.84.20 h1:SQfG1afz5TdTeX8ANM5Qx1yEt66ancDfP3+XWQnrRvs=
 github.com/sky-valley/pi v0.84.20/go.mod h1:JSHhfku7juhYGBXWtNN9VzqnKHTYLVGQrnIf+oYCfeQ=
+github.com/sky-valley/pi v0.87.24 h1:OjIGKwoq/7+tRvcYN00c8YnYwubSNKidXXflFKUJk1k=
+github.com/sky-valley/pi v0.87.24/go.mod h1:JSHhfku7juhYGBXWtNN9VzqnKHTYLVGQrnIf+oYCfeQ=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.5.2 h1:xuMeJ0Sdp5ZMRXx/aWO6RZxdr3beISkG5/G/aIRr3pY=
 github.com/stretchr/objx v0.5.2/go.mod h1:FRsXN1f5AsAjCGJKqEizvkpNtU+EGNCLh3NxZ/8L+MA=
