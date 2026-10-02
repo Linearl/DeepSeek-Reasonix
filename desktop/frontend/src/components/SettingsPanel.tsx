@@ -1844,7 +1844,9 @@ type ExperimentFeatureId =
   // Task 257: full access (yolo).
   | "fullAccess"
   // S1: resident base subprocess (design 2026-09-30 §7 R4).
-  | "baseProcess";
+  | "baseProcess"
+  // Task 377: crash-report lifecycle noise triage.
+  | "lifecycleNoiseGate";
 
 function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Set when a boot-time setting is saved: apply() reloads the view, so the fact that a
@@ -2047,6 +2049,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     // other infrastructure entries). Render table: a missing entry would
     // silently drop the save, 81/123 lesson.
     { id: "baseProcess", group: "misc", label: t("settings.baseProcess"), on: Boolean(s.experimentalBaseProcess) },
+    // Task 377: noise triage (misc beside the other infrastructure entries).
+    // Render table: a missing entry would silently drop the save, 81/123 lesson.
+    { id: "lifecycleNoiseGate", group: "misc", label: t("settings.lifecycleNoiseGate"), on: Boolean(s.experimentalLifecycleNoiseGate) },
   ];
 
   return (
@@ -2349,6 +2354,28 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                     })}
                   >
                     {t(on ? "settings.baseProcess.on" : "settings.baseProcess.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "lifecycleNoiseGate" && (
+            // Task 377: crash-report lifecycle noise triage. Startup
+            // diagnostics read the gate once per process, so the flip lands on
+            // restart — same boot-snapshot rule as the CDP endpoint above.
+            <SettingsField label={t("settings.lifecycleNoiseGate")} hint={t("settings.lifecycleNoiseGateHint")} icon={<Volume2 size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalLifecycleNoiseGate) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalLifecycleNoiseGate(on);
+                      setRestartNeeded(true);
+                    })}
+                  >
+                    {t(on ? "settings.lifecycleNoiseGate.on" : "settings.lifecycleNoiseGate.off")}
                   </button>
                 ))}
               </SettingsOptions>

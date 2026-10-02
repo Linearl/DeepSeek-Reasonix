@@ -2637,6 +2637,10 @@ export const zh: Record<DictKey, string> = {
 "settings.quickCommandsLab.on": "开",
 "settings.quickCommandsLab.off": "关",
 // 任务 342：WebView2 CDP 调试端口（实验室，调试组）。
+"settings.lifecycleNoiseGate": "崩溃 lifecycle 噪音分诊（实验）",
+"settings.lifecycleNoiseGateHint": "任务 377：开启后跳过正常关机残留（shutting_down/healthy 相位，clean()/exit 竞态所致）的崩溃报告。wedged（关机卡死被看门狗强杀）与未知相位永不抑制；每次抑制都计数落日志摘要与 metrics。开关在启动时读取一次，改动需重启生效。默认关闭：上报行为逐字节不变。",
+"settings.lifecycleNoiseGate.on": "开",
+"settings.lifecycleNoiseGate.off": "关",
 "settings.cdpDebugPort": "CDP 调试端口（实验）",
 "settings.cdpDebugPortHint": "重启后在内置 WebView2 浏览器上打开 Chrome DevTools Protocol 调试端口，供脚本化界面验证（connectOverCDP）驱动真实界面。仅绑定 127.0.0.1 回环地址并使用随机端口，其他机器无法访问。端口写入 logs/desktop/cdp-endpoint.txt。默认关闭：浏览器参数与网络行为与没有此功能的版本完全一致。",
 "settings.cdpDebugPort.on": "开",

@@ -3865,6 +3865,10 @@ export const zhTW: Record<DictKey, string> = {
 "settings.quickCommandsLab.on": "開",
 "settings.quickCommandsLab.off": "關",
 // 任務 342：WebView2 CDP 除錯連接埠（實驗室，除錯組）。
+"settings.lifecycleNoiseGate": "崩潰 lifecycle 噪音分診（實驗）",
+"settings.lifecycleNoiseGateHint": "任務 377：開啟後跳過正常關機殘留（shutting_down/healthy 相位，clean()/exit 競態所致）的崩潰報告。wedged（關機卡死被看門狗強殺）與未知相位永不抑制；每次抑制都計數落日誌摘要與 metrics。開關在啟動時讀取一次，改動需重啟生效。預設關閉：上報行為逐位元組不變。",
+"settings.lifecycleNoiseGate.on": "開",
+"settings.lifecycleNoiseGate.off": "關",
 "settings.cdpDebugPort": "CDP 除錯連接埠（實驗）",
 "settings.cdpDebugPortHint": "重啟後在內建 WebView2 瀏覽器上開啟 Chrome DevTools Protocol 除錯連接埠，供腳本化介面驗證（connectOverCDP）驅動真實介面。僅繫結 127.0.0.1 回環位址並使用隨機連接埠，其他機器無法存取。連接埠寫入 logs/desktop/cdp-endpoint.txt。預設關閉：瀏覽器參數與網路行為與沒有此功能的版本完全一致。",
 "settings.cdpDebugPort.on": "開",

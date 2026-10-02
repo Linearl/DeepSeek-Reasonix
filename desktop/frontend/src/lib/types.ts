@@ -2406,6 +2406,8 @@ export interface DesktopStartupSettingsView {
   experimentalFullAccess?: boolean;
   /** S1: resident-base-subprocess switch (design 2026-09-30 §7 R4); ships off (pure inline); restart to apply. */
   experimentalBaseProcess?: boolean;
+  /** Task 377: lifecycle noise triage (crash-pending residue); boot snapshot; restart to apply. */
+  experimentalLifecycleNoiseGate?: boolean;
   /** Local-server page experiment switch (task 130); off unless the user opts in. */
   experimentalLocalServer?: boolean;
   /** Path-scope rules experiment switch (task 134); off unless the user opts in. */
