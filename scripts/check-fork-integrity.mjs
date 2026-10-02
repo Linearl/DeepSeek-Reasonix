@@ -538,6 +538,9 @@ const CHECKS = [
   { feature: "S1c 心跳检测与退避重启", file: "internal/baseproc/lifecycle.go", patterns: ["REASONIX_BASE_HEALTH_INTERVAL", "func (m *Manager) healthTick(", "func (m *Manager) restartTick(", "func (m *Manager) backoffLocked("] },
   { feature: "S1c 托管视图（Mode 跟随状态）", file: "internal/baseproc/lifecycle.go", patterns: ["type ManagedClient struct", "func (c *ManagedClient) Mode()", "errClientClosed"] },
   { feature: "S1c Start 托管与生命周期阈值选项", file: "internal/baseproc/manager.go", patterns: ["NewManager(ctx, opts).Acquire()", "RestartMaxFailures", "gracefulCloseWait = 5 * time.Second"] },
+  { feature: "S1c 子进程日志面（F2 logs/base.log）", file: "internal/baseproc/baselog.go", patterns: ["baseLogFileName", "defaultBaseLogPath", "func openBaseLog(", "REASONIX_BASE_LOG"] },
+  { feature: "S1c spawn stderr 接线（F1 环境显式传递）", file: "internal/baseproc/manager.go", patterns: ["resolveStderr(opts)", "withBaseLogEnv(env, stderr.path)", "cmd.Stderr = stderr.w"] },
+  { feature: "S1c shutdown 前置与关闭可中止重启", file: "internal/baseproc/lifecycle.go", patterns: ["alreadySent := m.shutdownSent", "m.baseCancel()", "abort a restart attempt already in flight"] },
 ];
 
 let failed = 0;

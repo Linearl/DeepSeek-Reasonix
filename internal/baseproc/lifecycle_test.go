@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -545,5 +546,80 @@ func TestDisabledStartNeverBuildsAManager(t *testing.T) {
 	}
 	if _, ok := client.(*ManagedClient); ok {
 		t.Fatal("disabled start returned a managed view, want the bare inline client")
+	}
+}
+
+func TestManagerCloseAcknowledgesShutdownBeforeTeardown(t *testing.T) {
+	// 设计 §4：app 退出先发 base.shutdown（服务端据此 drain 在途），再拆进程。
+	// 顺序可观测于服务端：shutdown 处理过 == 其 quit 分支已触发。
+	h := newLifecycleHarness(t, nil)
+
+	if err := h.mgr.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	s := h.rec.server(1)
+	if s == nil {
+		t.Fatal("spawn 1 has no server handle")
+	}
+	if !s.ShutdownRequested() {
+		t.Fatal("base.shutdown was never processed: teardown ran without the graceful §4 path")
+	}
+	if _, teardowns := h.rec.counts(); teardowns != 1 {
+		t.Fatalf("teardowns = %d, want exactly 1", teardowns)
+	}
+	// Idempotent: a second Close must not re-send shutdown or re-teardown.
+	if err := h.mgr.Close(); err != nil {
+		t.Fatalf("second close: %v", err)
+	}
+	if _, teardowns := h.rec.counts(); teardowns != 1 {
+		t.Fatalf("teardowns = %d after the second Close, want still 1", teardowns)
+	}
+}
+
+func TestCloseBudgetMatchesServerDrainBudget(t *testing.T) {
+	// §4「在途 ≤5s 然后 kill」：客户端的宽限等待若短于服务端的 drain 预算，
+	// 在途工具永远等不到自己的 5s——两个常量必须等值。
+	if gracefulCloseWait != gracefulDrainBudget {
+		t.Fatalf("gracefulCloseWait = %s but the server drains for %s (design §4 wants one budget)",
+			gracefulCloseWait, gracefulDrainBudget)
+	}
+	if killCloseWait < gracefulCloseWait {
+		t.Fatalf("killCloseWait = %s must not be shorter than the graceful wait %s", killCloseWait, gracefulCloseWait)
+	}
+}
+
+func TestRunStdioServerExitsWhenTheParentVanishes(t *testing.T) {
+	// 决策 D4 的孤儿路径（设计 §4）：父进程消失即子进程 stdin EOF，serve 干净
+	// 返回、退出码 0——Windows 上不靠 pid 探测，靠管道本身。
+	stdinR, stdinW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("stdin pipe: %v", err)
+	}
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("stdout pipe: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = stdinR.Close()
+		_ = stdinW.Close()
+		_ = stdoutR.Close()
+		_ = stdoutW.Close()
+	})
+
+	exit := make(chan int, 1)
+	go func() {
+		exit <- RunStdioServer(context.Background(), "orphan-version", stdinR, stdoutW, io.Discard)
+	}()
+
+	// The parent side of the child's stdin disappears (crash/kill).
+	_ = stdinW.Close()
+
+	select {
+	case code := <-exit:
+		if code != 0 {
+			t.Fatalf("exit code = %d after the parent vanished, want 0", code)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("subprocess did not self-exit within 5s of the parent's end of the pipe")
 	}
 }
