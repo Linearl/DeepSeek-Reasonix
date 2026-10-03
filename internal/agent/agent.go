@@ -477,6 +477,12 @@ type Agent struct {
 	// steers are rejected so the caller can deliver them as a regular turn
 	// instead of leaving them in a queue no loop will ever consume.
 	steerRunActive bool
+	// toolRoundGap fires at the tool-round gap (任务461-P9: 工具执行完成→结果
+	// 回灌) — the one moment durable queued guidance can be pulled into the
+	// turn without interrupting a running tool. The host registers it
+	// (SetToolRoundGapHook) to extend the guidance injection point from the
+	// turn boundary to every round gap; nil = no host hook (no extra work).
+	toolRoundGap func()
 
 	// feedbackNudgeTurn counts Run entries (user message rounds) and
 	// feedbackNudgeLastTurn stores the round of the last task-172 nudge
@@ -835,6 +841,27 @@ func (a *Agent) SteerItem(itemID string, load func() (string, error)) bool {
 	a.steerQueue = append(a.steerQueue, steerEntry{itemID: itemID, load: load})
 	a.steerConsumed = false
 	return true
+}
+
+// SetToolRoundGapHook registers the host callback fired at every tool-round
+// gap (任务461-P9). Called on the run goroutine between rounds — never inside
+// a running tool — and must stay cheap; the durable queue's own gates decide
+// whether anything is pulled.
+func (a *Agent) SetToolRoundGapHook(fn func()) {
+	if a == nil {
+		return
+	}
+	a.toolRoundGap = fn
+}
+
+// SteerRunActive reports whether a run is executing and accepting steers.
+// 任务461-P9: the host's tool-gap injection uses it as the "a live turn can
+// consume guidance" signal — precise across every admission path (guarded,
+// synchronous, orchestrator), not just the ones that set the controller flag.
+func (a *Agent) SteerRunActive() bool {
+	a.steerMu.Lock()
+	defer a.steerMu.Unlock()
+	return a.steerRunActive
 }
 
 // SteerConsumed returns true when the steer queue became empty after the last consume.
