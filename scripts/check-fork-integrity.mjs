@@ -752,6 +752,11 @@ const CHECKS = [
   { feature: "任务461-P4 收件箱 from/to 过滤下拉", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["CollabSessionDirectory", "sessionHoverLabel"] },
   // P5：受管路径预授权双栏布局（介绍左/开关右；styles.css 是 merge 静默丢块高发区）。
   { feature: "任务461-P5 受管路径预授权双栏布局 CSS", file: "desktop/frontend/src/styles.css", patterns: [".autopilot-preapprove-subblock .set-seg {\n  justify-self: end;"] },
+  // P6：长 turn 中 send 被拒（ErrTurnRunning）自动降级——durable guidance 队列
+  // 兜底、不弹 Send failed、去向提示与 turn 状态对齐。merge 丢 reducer 或丢
+  // 拦截点都会退化回「失败弹窗 + 消息丢失」的 461-P6 原症状。
+  { feature: "任务461-P6 send 被拒自动降级（不弹失败面/去向提示/turn 状态对齐）", file: "desktop/frontend/src/lib/useController.ts", patterns: ["degradeRunningTurnSubmit", "composer.degradedSteer", "composer.degradedQueued"] },
+  { feature: "任务461-P6 降级 reducer（气泡不标失败+权威 running 对齐）", file: "desktop/frontend/src/lib/turnSubmissionFailure.ts", patterns: ["reduceSubmitDegraded"] },
 ];
 
 let failed = 0;
