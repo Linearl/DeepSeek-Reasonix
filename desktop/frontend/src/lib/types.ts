@@ -527,7 +527,10 @@ export interface SessionTakeoverView {
   available: boolean;
   reason?: string;
   sessionPath?: string;
-  holder?: "serve" | "external" | "other" | "free";
+  // "desktop-local" is the task-456 fallback: the local lease record names a
+  // runtime on this machine (this window's own leftover, or a dead holder)
+  // instead of a resident serve.
+  holder?: "serve" | "external" | "other" | "free" | "desktop-local";
   remoteAttached?: boolean;
   running?: boolean;
   mirrored?: boolean;

@@ -931,6 +931,16 @@ func (a *App) restoreOrBuildTabs() {
 	// Restore remote tabs as disconnected shells; activation performs the
 	// first network work so desktop startup remains offline-safe.
 	a.restoreRemoteTabShells(f)
+	// Task 456 ①: reconcile the persisted leftover records BEFORE any runtime
+	// is launched. Two persisted entries pointing at one session would come
+	// back as two builds racing for the same lease — the loser wedges in
+	// lease_blocked against its own sibling ("already open in another Reasonix
+	// window" with no other window). Collapse duplicates first, then retire
+	// stale lease records whose recorded holder process is dead, so the fresh
+	// runtime starts against a clean record. Live foreign holders and active
+	// handoff reservations are respected untouched.
+	f.Tabs = dedupeRestoredTabEntries(f.Tabs)
+	a.reconcileRestoredSessionKeys(f.Tabs)
 	if len(f.Tabs) > 0 {
 		toBuild := make([]*WorkspaceTab, 0, len(f.Tabs))
 		for _, entry := range f.Tabs {
@@ -10021,6 +10031,12 @@ func (a *App) ensureTabSessionLeaseForRebuild(tab *WorkspaceTab, path, setting s
 	if _, err := withSessionLeaseContentionRetry(func() (struct{}, error) {
 		if err := tab.ensureSessionLease(path); err != nil {
 			if a.canReclaimCurrentProcessSessionLease(tab, path, err) {
+				// Task 456: the reclaim decision may have passed because every
+				// same-key holder in this process is a zombie (bound lease, no
+				// controller, no build). Those zombies hold the OS lock the
+				// reclaim needs, so release them first; with none released the
+				// call is a no-op and the reclaim behaves exactly as before.
+				a.releaseZombieSessionLeaseHoldersForKey(sessionRuntimeKey(path), tab)
 				if lease, reclaimErr := agent.TryReclaimCurrentProcessSessionLease(path); reclaimErr == nil {
 					tab.adoptSessionLease(lease)
 					return struct{}{}, nil
@@ -10102,14 +10118,25 @@ func (a *App) canReclaimCurrentProcessSessionLease(tab *WorkspaceTab, path strin
 			continue
 		}
 		if candidate.sessionLeaseRuntimeKey() == key {
-			return false
+			// Task 456: a sibling that bound the lease but never published a
+			// controller and has no build in flight is a zombie holder — the
+			// incident's self-deadlock shape (this window's own runtime holds
+			// the lease while the visible tab is refused). It cannot release
+			// itself, so it must not veto the reclaim forever; the caller
+			// releases it via releaseZombieSessionLeaseHoldersForKey before
+			// reclaiming. A functional or still-building sibling vetoes.
+			if !a.zombieLeaseHolderLocked(candidate, key) {
+				return false
+			}
+			continue
 		}
 		if candidate.Ctrl != nil && sessionRuntimeKey(candidate.currentSessionPath()) == key {
 			return false
 		}
 	}
 	// A detached runtime's controller still holds the OS lock; refuse reclaim
-	// even when PID matches (#6955).
+	// even when PID matches (#6955). A detached zombie (no controller, no
+	// build) is handled by the same release as above.
 	if detached := a.detachedSessions[key]; detached != nil && detached.Ctrl != nil {
 		return false
 	}

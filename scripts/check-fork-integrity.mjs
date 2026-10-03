@@ -711,6 +711,16 @@ const CHECKS = [
   { feature: "任务451 A：写侧失效（save/remove 双出口清条目）", file: "desktop/sessions.go", patterns: ["invalidateSessionPlannerDisplayCache(dir)"] },
   { feature: "任务451 C：尾读缓存单飞（inflight 共享冷读）", file: "desktop/history_time_overlay.go", patterns: ["historyTimeOverlayInflight", "delete(historyTimeOverlayCache.inflight, cacheKey)"] },
 
+  // 任务456（20261003 P1 用户直令）：desktop 重启恢复链自死锁——自家 UI 与自家后台
+  // 运行时互不认识（租约同进程持有但 attach 被拒），接管只扫 serve 报「no resident
+  // serve」死局。三方向：①恢复先核销残留记录再拉起运行时；②接管扫本机租约可收编；
+  // ③报错带 pid 存活检测与清理指引。合并丢了任一环，重启后同款死锁会复发。
+  { feature: "456 ① 恢复去重+核销（拉起前清残留）", file: "desktop/session_lease_reconcile.go", patterns: ["func dedupeRestoredTabEntries", "func (a *App) reconcileRestoredSessionKeys", "reconcileRestoredSessionLeaseRecords"] },
+  { feature: "456 ① 原语（锁空闲才核销，双源清理）", file: "internal/agent/session_lease.go", patterns: ["func ClearStaleSessionLeaseInfo"] },
+  { feature: "456 ① 僵尸豁免接线（reclaim 前释放僵尸持有者）", file: "desktop/app.go", patterns: ["releaseZombieSessionLeaseHoldersForKey(sessionRuntimeKey(path), tab)", "zombieLeaseHolderLocked(candidate, key)"] },
+  { feature: "456 ② 接管本地租约回退（非 no resident serve）", file: "desktop/session_takeover.go", patterns: ["adoptLocalLeaseHeldSession(tab, path)", "desktop-local"] },
+  { feature: "456 ③ pid 存活指引", file: "desktop/session_lease_reconcile.go", patterns: ["func localLeaseHolderGuidance", "taskkill /PID", "(dead)", "(alive)"] },
+
   // 任务411（20261001 批十收尾）：快速切换版本治理——出包自动清理 + 面板删除历史版本。
   // 保留规则只实现一次（installlayout.PruneVersionTrees，含 current.json 指向硬跳过），
   // 出包脚本经 tools/prune-versions 调它；合并丢了任一环都会让 versions/ 重新堆积。

@@ -334,6 +334,59 @@ func SessionLeaseHeldByOtherRuntime(path string) bool {
 	return true
 }
 
+// ClearStaleSessionLeaseInfo retires a stale lease record for path: the
+// identity sources (.lease.lock payload and the legacy .lease.json sidecar)
+// are removed only while the OS lock is provably free, so a live holder is
+// never touched. Callers decide staleness (dead pid, self leftover) and pass
+// that judgment via the returned flag; this function is the atomic
+// "verify-free-then-remove" primitive both the restore reconcile (task 456 ①)
+// and the local-lease takeover adoption (task 456 ②) share.
+//
+// An active handoff reservation is a live protocol state even on a free lock
+// (the previous holder published it just before unlocking), so it is preserved
+// and reported as not cleared. No record at all also reports false: there is
+// nothing to clear.
+func ClearStaleSessionLeaseInfo(path string) (bool, error) {
+	path = canonicalSessionSavePath(path)
+	if strings.TrimSpace(path) == "" {
+		return false, fmt.Errorf("empty session path")
+	}
+	info, infoErr := LoadSessionLeaseInfo(path)
+	switch {
+	case infoErr == nil:
+		// Usable identity; the handoff check below decides.
+	case os.IsNotExist(infoErr):
+		// No identity source at all: nothing to retire. (A corrupt source
+		// still names no usable holder; fall through and let the lock
+		// decide, mirroring SessionLeaseHeldByOtherRuntime.)
+		return false, nil
+	case errors.Is(infoErr, errSessionLeaseInfoCorrupt):
+		info = nil
+	default:
+		return false, infoErr
+	}
+	leaseLock, err := tryTakeSessionLeaseLock(path)
+	if err != nil {
+		if errors.Is(err, ErrSessionLeaseHeld) {
+			// A live holder keeps the lock for its whole lifetime; its record
+			// is by definition not stale.
+			return false, nil
+		}
+		return false, err
+	}
+	if info != nil && handoffReservationActive(info, time.Now().UTC()) {
+		leaseLock.Unlock()
+		return false, nil
+	}
+	// Free-lock proof in hand: the record names nobody. Remove the sidecar
+	// first (Release does the same), then delete the lock file itself with the
+	// lock still held so its embedded stale identity cannot be read again.
+	// RemoveAndUnlock unlocks internally on every path.
+	_ = os.Remove(sessionLeaseInfoPath(path))
+	_ = leaseLock.RemoveAndUnlock()
+	return true, nil
+}
+
 // InspectSessionLease reports the published owner and whether the OS lock is
 // currently held. It never acquires ownership and preserves live handoff
 // reservations. Serve uses it to prove that /adopt callers really own the
