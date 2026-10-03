@@ -744,6 +744,16 @@ const CHECKS = [
   { feature: "任务455fix boot 两处 canonicalizer 收敛委托 + 审批复核旁路缓存", file: "internal/sandbox/write_path.go", patterns: ["resolveCanonicalPath(path)", "ResolveAbsPathFresh(approved)"] },
   { feature: "任务455fix builtin realPath 委托共享实现（消双实现）", file: "internal/tool/builtin/confine.go", patterns: ["sandbox.ResolveAbsPath(path)"] },
 
+  // 任务460（20261003）：会话打开与 boot 配置路径上残余的无界 walk 收敛到
+  // 455fix 有界引擎（internal/sandbox/canonical.go）或按同模式加 250ms 预算。
+  // workspacelease 身份解析每个 tab boot 必经；pathidentity.Canonical 是保存
+  // 路径键与桌面单实例身份；boot 三点覆盖附加目录授权、root 去重键、工作目录
+  // .git 走查。任一处被 merge 回退成无界 EvalSymlinks/Stat，死 NAS 就重新让
+  // 会话打开挂满一次 SMB 重连预算（~21s）。
+  { feature: "任务460 workspacelease 身份解析接有界引擎 + .git 走查预算回退", file: "internal/workspacelease/lease.go", patterns: ["sandbox.ResolveAbsPath(abs)", "boundedGitWorktreeRoot", "identityResolveBudget"] },
+  { feature: "任务460 pathidentity.Canonical 委托共享有界引擎", file: "internal/pathidentity/path.go", patterns: ["sandbox.ResolveAbsPath(key)"] },
+  { feature: "任务460 boot 附加目录校验/root 去重键/git-root 走查三项加界", file: "internal/boot/boot.go", patterns: ["boundedStat", "errStatTimeout", "sandbox.ResolveAbsPath(dir)", "sandbox.ResolveAbsPath(path)", "boundedNearestGitRoot"] },
+
   // ── 任务461 P2-P5（收件箱/工具体验四件，2026-10-03）──────────────────
   // P2：更新重启标记——只有更新驱动的重启才允许 auto-resume 家族开闸；
   // tabs.go 恢复点的门禁调用与标记文件本体都是 fork 特有接线，merge 丢任一
