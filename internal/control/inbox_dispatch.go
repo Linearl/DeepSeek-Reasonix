@@ -168,6 +168,51 @@ func (c *Controller) nextInboxDispatchItem() (sessioninbox.InboxItemMeta, bool, 
 	return meta, ok, nil
 }
 
+// bindAgentToolRoundGap wires the agent's tool-round gap (任务461-P9) to the
+// durable queue: at each gap the head queued item is attempted with the SAME
+// mid-turn admission the enqueue-time steer uses (TrySteerInboxItem), so user
+// guidance lands within one tool cycle instead of waiting for the turn
+// boundary. Rejections keep the item queued exactly as before (queue
+// semantics, dedup and the follow-up fallback unchanged), and the
+// turn-boundary pump stays the owner of idle-session delivery.
+func (c *Controller) bindAgentToolRoundGap() {
+	if c == nil || c.executor == nil {
+		return
+	}
+	c.executor.SetToolRoundGapHook(c.dispatchQueuedAtToolGap)
+}
+
+// dispatchQueuedAtToolGap is the 任务461-P9 injection attempt, fired by the
+// agent between tool rounds. Every gate mirrors dispatchInboxOnce (busy /
+// pending prompt / closed / rotating), the task-221 drain merge rides along,
+// and delivery goes through TrySteerInboxItem: an accepted item is consumed in
+// this very gap, a rejected one stays queued for the turn-boundary pump.
+func (c *Controller) dispatchQueuedAtToolGap() {
+	if c.SessionPath() == "" {
+		return
+	}
+	c.mu.Lock()
+	rotating, closed := c.rotating, c.closed
+	c.mu.Unlock()
+	// The live-run signal is the executor's own (任务461-P9): precise across
+	// every admission path (guarded, synchronous, orchestrator), not just the
+	// ones that set c.running.
+	if rotating || closed || c.executor == nil || !c.executor.SteerRunActive() {
+		return
+	}
+	if c.PendingPrompt() {
+		return
+	}
+	meta, ok, err := c.nextInboxDispatchItem()
+	if err != nil || !ok {
+		return
+	}
+	meta = c.maybeMergeInboxDispatchGroup(meta)
+	// Never blocks the loop for long: the body loads at consume, not here. A
+	// rejection is by design (paused / images / stale turn) and keeps the item.
+	_, _ = c.TrySteerInboxItem(meta.ID)
+}
+
 func (c *Controller) scheduleInboxDispatchRetry() {
 	c.inbox.mu.Lock()
 	if c.inbox.dispatchRetryScheduled || c.inbox.dispatchRetryAttempts >= maxInboxDispatchRetryAttempts {

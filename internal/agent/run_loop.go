@@ -207,6 +207,16 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 	ctx = a.withAgentContext(ctx)
 	truncatedRounds := 0
 	for step := 0; state.runMaxSteps <= 0 || step < state.runMaxSteps || state.graceRound || state.recoveryGraceRound || state.incompleteReads.hasPending(); step++ {
+		// 任务461-P9: the guidance injection point extends from the turn
+		// boundary to THIS gap (工具执行完成→结果回灌). The host hook pulls the
+		// durable queue's head into the steer queue here, and the consumeSteer
+		// right below lands it in this very gap — the model sees it in the
+		// next round's context, within one tool cycle. Only runs between
+		// rounds (never inside a running tool); cancellation unwinds the loop
+		// before the next gap, so the cancel/stop semantics are untouched.
+		if a.toolRoundGap != nil {
+			a.toolRoundGap()
+		}
 		// Consume a queued steer and persist it to the session so it
 		// survives tab switches and history replay. The model sees it as
 		// guidance (with a prefix), not a new task. One cache miss per

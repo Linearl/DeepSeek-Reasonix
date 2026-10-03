@@ -927,6 +927,8 @@ func New(opts Options) *Controller {
 	if c.executor != nil {
 		c.wireMutationObserver()
 		c.executor.SetMemoryQueue(c)
+		// 任务461-P9: durable guidance injection at every tool-round gap.
+		c.bindAgentToolRoundGap()
 	}
 	// Auto Guard is built into Auto. Ask and YOLO bypass it through the mode
 	// provider, so no separate enablement state is needed.

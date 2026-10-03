@@ -179,7 +179,11 @@ func (c *Controller) trySteerInboxItem(id, expectedTurnID string) (sessioninbox.
 			turnMatches = ledger.ActiveTurnID() == expectedTurnID
 		}
 	}
-	accepted := turnMatches && !c.closed && !c.rotating && c.running && c.executor != nil && len(env.FrozenImages) == 0 && c.executor.SteerItem(id, loader)
+	// 任务461-P9: the live-run half accepts the executor's own signal —
+	// precise across every admission path, so a steer (or a tool-gap pull)
+	// lands whenever an agent run is actually consuming guidance.
+	executorRunActive := c.executor != nil && c.executor.SteerRunActive()
+	accepted := turnMatches && !c.closed && !c.rotating && (c.running || executorRunActive) && c.executor != nil && len(env.FrozenImages) == 0 && c.executor.SteerItem(id, loader)
 	if accepted {
 		c.inbox.mu.Lock()
 		c.inbox.trackActive(id)
