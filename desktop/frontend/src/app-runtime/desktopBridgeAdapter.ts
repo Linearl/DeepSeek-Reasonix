@@ -6,6 +6,10 @@ export const desktopBridge = {
     app.SetRemoteTabComposerProfile(tabId, mode, approvalMode, goal),
   getTopicSummary: (request: Parameters<typeof app.GetTopicSummary>[0]) => app.GetTopicSummary(request),
   cancelJobForTab: (tabId: string, jobId: string) => app.CancelJobForTab(tabId, jobId),
+  cancelStopForTab: async (tabId: string) => {
+    if (typeof app.CancelStopForTab !== "function") return;
+    await app.CancelStopForTab(tabId);
+  },
   dismissTodoBatchForTab: (tabId: string, batchKey: string) => app.DismissTodoBatchForTab(tabId, batchKey),
   clearRemoteTabSession: (tabId: string) => app.ClearRemoteTabSession(tabId),
   terminalOutputForTab: (tabId: string, sessionId: string) => app.TerminalOutputForTab(tabId, sessionId),

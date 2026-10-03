@@ -263,7 +263,7 @@ export type ComposerSurfaceInput = {
   remoteGoal: ReturnType<typeof useRemoteComposerRuntimeActions>;
   modelSwitch: Pick<ReturnType<typeof useControllerProfileCommands>, "switchModelFromUi">;
   inserts: Pick<ReturnType<typeof useComposerInsertCommands>, "composerInsertRequest" | "selectedTextRequest">;
-  control: { handleCancelActive: ComposerProps["onCancel"] };
+  control: { handleCancelActive: ComposerProps["onCancel"]; escalateStopActive?: ComposerProps["onEscalateStop"] };
   remoteComposer: {
     send: ComposerProps["onSend"];
     cancel: ComposerProps["onCancel"];
@@ -304,6 +304,7 @@ export function buildComposerSurface(input: ComposerSurfaceInput): DecisionFoote
       onSteer: router.handleSteer,
       onQueueGuidanceBubble: router.handleQueueGuidanceBubble,
       onCancel: view.remote ? remoteComposer.cancel : control.handleCancelActive,
+      onEscalateStop: view.remote ? undefined : control.escalateStopActive,
       onCycleMode: input.onCycleMode,
       onSetMode: modes.applyMode,
       onSetCollaborationMode: goals.setCollaborationModeFromUi,

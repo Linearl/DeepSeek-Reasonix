@@ -5319,6 +5319,11 @@ export default function App() {
             )}
             <Composer
               running={state.running || rewindCommitting}
+              stopLevel={state.stopLevel}
+              stopDeadlineUnix={state.stopDeadlineUnix}
+              onEscalateStop={() => {
+                if (typeof app.CancelStopForTab === "function" && activeTabId) void app.CancelStopForTab(activeTabId);
+              }}
               // B3 finishing-followup fix: the durable-followup path keys
               // submitPendingKey on these (Composer.tsx inbox_not_submitted
               // guard). The unmounted AppRuntimeView tree supplied them via

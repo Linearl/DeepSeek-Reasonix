@@ -11,6 +11,8 @@ export type SessionControlCommandsInput = {
   ports: {
     cancel(queuedItemIDs: string[]): Promise<CancelOutcome>;
     cancelForTab(tabId: string, queuedItemIDs: string[]): Promise<CancelOutcome>;
+    /** 任务461-P7: advance the stop escalation one level (optional host). */
+    escalateStopForTab?(tabId: string): Promise<void>;
     acceptDelivery(tabId: string): Promise<unknown>;
     disconnectRemote(hostId: string): Promise<unknown>;
     cancelJobForTab(tabId: string, jobId: string): Promise<boolean>;
@@ -49,6 +51,15 @@ export function useSessionControlCommands(input: SessionControlCommandsInput) {
     return sourceTabId ? ports.cancelForTab(sourceTabId, queuedItemIDs) : ports.cancel(queuedItemIDs);
   });
 
+  // 任务461-P7 三级终止: escalation presses route to the host's CancelStop —
+  // each call advances one level (force grace → force). Hosts without it keep
+  // the plain cancel (single-level stop).
+  const escalateStopActive = useCommittedCommand(() => {
+    const sourceTabId = activeTabId;
+    if (!sourceTabId || typeof ports.escalateStopForTab !== "function") return;
+    void ports.escalateStopForTab(sourceTabId).catch(() => { /* the stop stays at its current level */ });
+  });
+
   // Capture the committed source tab at the event boundary. Presentation must
   // never read the active-tab mirror while an async delivery operation is in flight.
   const handleAcceptDelivery = useCommittedCommand(() => {
@@ -73,6 +84,7 @@ export function useSessionControlCommands(input: SessionControlCommandsInput) {
   return {
     cancelRuntimeJob,
     handleCancelActive,
+    escalateStopActive,
     handleAcceptDelivery,
     handleDisconnectRemote,
     cancelWorkspaceConflict,
