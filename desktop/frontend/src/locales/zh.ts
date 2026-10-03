@@ -2407,6 +2407,8 @@ export const zh: Record<DictKey, string> = {
 "settings.messageMerge": "消息合并",
   "settings.collabInboxMerge": "收件队列合并注入",
   "composer.guidanceWrongDraft": "引导发送失败：当前草稿已切换到其他会话，请重新点「引导」。",
+  "composer.degradedSteer": "turn 正在运行：消息已作为补充指示加入当前任务",
+  "composer.degradedQueued": "turn 正在运行：消息已排队，将在本轮结束后自动发出",
   "composer.guidanceNotWritable": "引导发送失败：当前会话不可写（禁用或只读）。",
   "composer.guidanceSendBusyRetry": "上一条引导仍在发送，已复位；请再点一次「引导」。",
   "composer.guidanceStructuredBusy": "运行中的会话暂不接受结构化引导，请等本轮结束后再发。",

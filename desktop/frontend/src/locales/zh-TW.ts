@@ -1925,6 +1925,8 @@ export const zhTW: Record<DictKey, string> = {
 "settings.messageMerge": "消息合併",
   "settings.collabInboxMerge": "收件佇列合併注入",
   "composer.guidanceWrongDraft": "引導發送失敗：當前草稿已切換到其他工作階段，請重新點「引導」。",
+  "composer.degradedSteer": "turn 執行中：訊息已作為補充指示加入目前任務",
+  "composer.degradedQueued": "turn 執行中：訊息已排隊，將在本輪結束後自動發出",
   "composer.guidanceNotWritable": "引導發送失敗：當前工作階段不可寫（停用或唯讀）。",
   "composer.guidanceSendBusyRetry": "上一條引導仍在發送，已復位；請再點一次「引導」。",
   "composer.guidanceStructuredBusy": "執行中的工作階段暫不接受結構化引導，請等本輪結束後再發。",

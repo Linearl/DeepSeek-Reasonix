@@ -16,7 +16,7 @@ import type { MessageActionScope, MessageActionState } from "./messageActions";
 import { mergeRateBand, type AggregatedRateBand } from "./costRateBand";
 import { requestSessionCancel, type CancelOutcome } from "./inboxCancel";
 import { answerPromptForActiveTurn, normalizeTurnSubmit, resolveActiveTurnId, resolvePromptForTab } from "./inboxSubmit";
-import { findTabAfterSubmitFailure, reduceManagementConfirmation, reduceSubmitFailure } from "./turnSubmissionFailure";
+import { findTabAfterSubmitFailure, reduceManagementConfirmation, reduceSubmitDegraded, reduceSubmitFailure } from "./turnSubmissionFailure";
 import { formatContextMaintenanceNotice, isNewMaintenanceOperation, rememberMaintenanceOperation } from "./contextMaintenanceTypes";
 import { formatGuardianAssessmentNotice } from "./guardianEvents";
 import { normalizeCompletionSummary } from "./completionSummary";
@@ -854,6 +854,10 @@ type Action =
   | { type: "turn_admitted"; turnId: string; submissionId: string }
   | { type: "turn_submit_rejected"; submissionId: string; error: string }
   | { type: "send_failed"; submissionId: string; error: string }
+  // 任务461-P6: a "turn already running" rejection degrades into the durable
+  // guidance queue — the bubble stays delivered, the notice names the
+  // destination, and the turn face keeps the authoritative running facts.
+  | { type: "submit_degraded"; submissionId: string; text: string; inboxItemId?: string; turnId?: string }
   | { type: "turn_interrupted" }
   | { type: "backend_status"; running: boolean; turnStartedAt?: number; pendingPrompt?: boolean; backgroundJobs?: number; cancelRequested?: boolean; cancellable?: boolean; turnId?: string; turnStatus?: string; snapshotAt?: number; runtimeEpoch?: string; turnEventSeq?: number }
   | { type: "cancel_requested" }
@@ -2257,6 +2261,7 @@ export function reducer(s: State, a: Action): State {
         : s;
     case "turn_submit_rejected":
     case "send_failed": return reduceSubmitFailure(s, a.submissionId, a.error, a.type === "turn_submit_rejected", promptEventClock());
+    case "submit_degraded": return reduceSubmitDegraded(s, a.submissionId, a.text, a.inboxItemId, a.turnId);
     case "turn_interrupted": {
       return withRemoteTurnInterrupted(s);
     }
@@ -4246,6 +4251,64 @@ export function useController() {
     void reconcileRuntimeAfterRejectedMutation(tabId);
   }, [dispatchTo, reconcileRuntimeAfterRejectedMutation]);
 
+  // 任务461-P6: a foreground submit bounced with ErrTurnRunning ("turn already
+  // running") no longer fails the message. The submission degrades into the
+  // durable guidance queue — exact-turn steer when the running turn can be
+  // fenced (ruling ①可注入→steer), session-level steer otherwise, and the
+  // durable follow-up queue when even the steer channel refuses (ruling ④:
+  // 排队持久化，消息不丢). Returns true when the degradation took over; false
+  // hands the error back to the ordinary Send-failed face (P3's resend).
+  // The destination notice (ruling ③) and the authoritative running facts
+  // (ruling ②) land through the submit_degraded reducer.
+  const degradeRunningTurnSubmit = useCallback(async (
+    tabId: string,
+    submissionId: string,
+    display: string,
+    submit: string,
+    error: unknown,
+  ): Promise<boolean> => {
+    if (statesRef.current.get(tabId)?.pendingSubmissionId !== submissionId) return false;
+    if (!/turn already running/i.test(errorMessage(error))) return false;
+    type DegradedReceipt = { itemId?: string; disposition?: string; error?: string };
+    let receipt: DegradedReceipt | undefined;
+    let steerError: unknown;
+    let turnId: string | undefined;
+    try {
+      const enqueueExactTurn = app.EnqueueInboxSteerForTurn;
+      turnId = typeof enqueueExactTurn === "function"
+        ? await resolveActiveTurnId(app, tabId, statesRef.current.get(tabId)?.activeTurnId)
+        : undefined;
+      receipt = turnId && enqueueExactTurn
+        ? await enqueueExactTurn(tabId, turnId, display, submit, "")
+        : await app.EnqueueInboxSteer(tabId, display, submit, "");
+    } catch (err) {
+      steerError = err;
+    }
+    if (!receipt || receipt.error) {
+      // The steer channel refused too — the durable follow-up queue keeps the
+      // text for automatic delivery at the next turn/idle boundary.
+      try {
+        receipt = await app.EnqueueInboxFollowup(tabId, display, submit, "");
+      } catch (followupError) {
+        reportFrontendLog("send", "degraded enqueue failed",
+          `tab=${tabId} submission=${submissionId}: steer=${errorMessage(steerError ?? receipt?.error)} followup=${errorMessage(followupError)}`, "error");
+        return false;
+      }
+    }
+    const disposition = receipt?.disposition ?? "";
+    const steered = disposition === "steer_accepted";
+    dispatchTo(tabId, {
+      type: "submit_degraded",
+      submissionId,
+      text: `${STEER_NOTICE_PREFIX}${steered ? t("composer.degradedSteer") : t("composer.degradedQueued")}`,
+      inboxItemId: receipt?.itemId,
+      turnId,
+    });
+    reportFrontendLog("send", "submit degraded to guidance queue",
+      `tab=${tabId} submission=${submissionId} disposition=${disposition}`);
+    return true;
+  }, [dispatchTo, t]);
+
   // Replay any pending approval/ask prompts when switching tabs, so a
   // plan-mode session left awaiting confirmation rebuilds its modal (#4275).
   useEffect(() => {
@@ -4315,13 +4378,22 @@ export function useController() {
           }
           dispatchTo(tabId, { type: "send_confirmed", submissionId });
         },
-        (error) => rejectTurnSubmission(tabId, submissionId, error),
+        (error) => {
+          // 任务461-P6: "turn already running" degrades to the guidance queue;
+          // every other rejection keeps the Send-failed face (P3 resend).
+          void degradeRunningTurnSubmit(tabId, submissionId, display, submit, error).then((degraded) => {
+            if (!degraded) rejectTurnSubmission(tabId, submissionId, error);
+          });
+        },
       );
     } catch (error) {
-      rejectTurnSubmission(tabId, submissionId, error);
-      throw error;
+      const degraded = await degradeRunningTurnSubmit(tabId, submissionId, display, submit, error);
+      if (!degraded) {
+        rejectTurnSubmission(tabId, submissionId, error);
+        throw error;
+      }
     }
-  }, [bumpCancelHydrateSeq, dispatchTo, rejectTurnSubmission]);
+  }, [bumpCancelHydrateSeq, degradeRunningTurnSubmit, dispatchTo, rejectTurnSubmission]);
 
   const recoverDeliveryToTab = useCallback(async (tabId: string, displayText: string, submitText = displayText) => {
     if (!tabId) throw new Error(t("composer.workspaceStarting"));

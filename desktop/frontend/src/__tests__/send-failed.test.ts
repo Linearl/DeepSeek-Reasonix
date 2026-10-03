@@ -465,5 +465,53 @@ eq(notReady.sends.length, 0, "delivery recovery waits for controller readiness")
 const noTab = await runContinueDelivery({ goal: undefined, tabId: null });
 eq(noTab.sends.length, 0, "delivery recovery without an active tab is a no-op");
 
+console.log("\nsubmit degraded to guidance queue (任务461-P6)");
+
+// A "turn already running" bounce degrades: the optimistic bubble stays
+// delivered (never failed), the destination notice is appended, and the turn
+// face keeps the authoritative running facts the rejection proved.
+const degraded = reducer(reducer({ ...initialState }, {
+  type: "user", text: "补充指示", seq: 0, submissionId: "degrade-1",
+}), {
+  type: "submit_degraded",
+  submissionId: "degrade-1",
+  text: "↪ turn 正在运行：消息已作为补充指示加入当前任务",
+  inboxItemId: "inbox-1",
+  turnId: "turn-live",
+});
+eq(degraded.items.some((item) => item.kind === "user" && item.text === "补充指示" && !item.failed), true, "degraded submission keeps the optimistic bubble delivered (no failed face)");
+eq(degraded.items.some((item) => item.kind === "user" && item.failed), false, "degraded submission never marks a bubble failed");
+eq(degraded.pendingSubmissionId, undefined, "degraded submission releases the pending slot");
+eq(degraded.pendingUser, undefined, "degraded submission releases the composer");
+eq(degraded.running, true, "degraded submission keeps the composer blocked — the turn IS running");
+eq(degraded.turnActive, true, "degraded submission keeps the turn face active");
+eq(degraded.cancellable, true, "degraded submission keeps the turn cancellable");
+eq(degraded.activeTurnId, "turn-live", "degraded submission adopts the freshly resolved authoritative turn id");
+const degradedNotice = degraded.items.find((item) => item.kind === "notice" && item.inboxItemId === "inbox-1");
+eq(Boolean(degradedNotice && degradedNotice.level === "info" && degradedNotice.text.includes("补充指示加入当前任务")), true, "the destination notice names steer injection");
+
+// A queued disposition renders the queued destination text.
+const degradedQueued = reducer(reducer({ ...initialState }, {
+  type: "user", text: "排队一句", seq: 0, submissionId: "degrade-2",
+}), {
+  type: "submit_degraded",
+  submissionId: "degrade-2",
+  text: "↪ turn 正在运行：消息已排队，将在本轮结束后自动发出",
+  inboxItemId: "inbox-2",
+});
+eq(degradedQueued.items.some((item) => item.kind === "user" && item.text === "排队一句" && !item.failed), true, "queued degradation keeps the bubble delivered");
+eq(degradedQueued.activeTurnId, undefined, "queued degradation without a resolved turn id keeps the current one");
+eq(degradedQueued.items.some((item) => item.kind === "notice" && item.text.includes("排队")), true, "queued degradation names the queue destination");
+
+// The agent's later consume event dedupes against the receipt-time notice.
+const consumedBubble = reducer(degraded, {
+  type: "guidance_bubble", text: "补充指示", inboxItemId: "inbox-1",
+});
+eq(consumedBubble.items.filter((item) => item.kind === "notice" && item.inboxItemId === "inbox-1").length, 1, "guidance consume event dedupes against the degradation notice");
+
+// Unknown submission ids are ignored (stale async degrade after a new send).
+const staleDegrade = reducer(degradedQueued, { type: "submit_degraded", submissionId: "degrade-2", text: "stale" });
+eq(staleDegrade, degradedQueued, "a stale degradation for a cleared slot is ignored");
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

@@ -2406,6 +2406,8 @@ export const en = {
 "settings.messageMerge": "Message Merge",
   "settings.collabInboxMerge": "Inbox merge on drain",
   "composer.guidanceWrongDraft": "Guidance not sent: the draft switched to another session. Tap \"Guide\" again.",
+  "composer.degradedSteer": "Turn in progress: your message joined the current task as mid-turn guidance",
+  "composer.degradedQueued": "Turn in progress: your message is queued and will be sent when the turn finishes",
   "composer.guidanceNotWritable": "Guidance not sent: this session is not writable (disabled or read-only).",
   "composer.guidanceSendBusyRetry": "A previous guidance send was still in flight; the latch was reset. Tap \"Guide\" again.",
   "composer.guidanceStructuredBusy": "A running session cannot take structured guidance yet; wait for this turn to finish.",
