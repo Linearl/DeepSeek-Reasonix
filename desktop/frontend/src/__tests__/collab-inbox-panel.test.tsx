@@ -118,12 +118,37 @@ const bindings: CollabInboxBindings = {
   },
 };
 
+// 任务461-P4: an injectable addressable roster backs the from/to dropdowns —
+// one project session (with group data seeded) + one global session.
+const directory = {
+  async ListAddressableSessions() {
+    calls.push({ name: "ListAddressableSessions", args: [] });
+    return [
+      {
+        contactId: "sc_alice",
+        title: "Alice · 调研",
+        sessionPath: "/tmp/projects/alpha/sessions/alice.session.jsonl",
+        scope: "project",
+        workspaceRoot: "/tmp/projects/alpha",
+        open: true,
+      },
+      {
+        contactId: "sc_main",
+        title: "主对话",
+        sessionPath: "/tmp/global/main.session.jsonl",
+        scope: "global",
+        open: true,
+      },
+    ];
+  },
+};
+
 const root = createRoot(document.getElementById("root")!);
 setCollabInboxOpen(true);
 await act(async () => {
   root.render(
     <LocaleProvider>
-      <CollabInboxPanel bindings={bindings} />
+      <CollabInboxPanel bindings={bindings} directory={directory} />
     </LocaleProvider>,
   );
 });
@@ -147,17 +172,42 @@ await act(async () => {
 let lastList = calls.filter((c) => c.name === "ListCollabMail").pop();
 assert.deepEqual(lastList?.args[0], "approval", "clicking the approvals tab queries bucket=approval");
 
-// 发信方筛选 → 透传后端。
-const [senderInput] = panel!.querySelectorAll<HTMLInputElement>(".collab-inbox-panel__filter");
+// 任务461-P4: from/to 过滤是下拉 —— 选项=会话名（值=contact_id），hover 标题
+// 是「项目 › 分组 › 会话名 › contact_id」，顶部「全部」= 不过滤；选中即透传后端。
+const directoryCalls = calls.filter((c) => c.name === "ListAddressableSessions");
+assert.equal(directoryCalls.length >= 1, true, "opening the panel loads the addressable roster");
+const [senderSelect, recipientSelect] = panel!.querySelectorAll<HTMLSelectElement>(".collab-inbox-panel__filter");
+assert.ok(senderSelect && recipientSelect, "the from/to filters render as dropdowns");
+const senderOptions = Array.from(senderSelect.querySelectorAll("option"));
+assert.equal(senderOptions[0].textContent, "All", "the top option is the 「全部」 catch-all");
+assert.equal(senderOptions[0].value, "", "the catch-all filters nothing off");
+const aliceOption = senderOptions.find((o) => o.value === "sc_alice");
+assert.ok(aliceOption, "each roster session renders an option keyed by contact_id");
+assert.equal(aliceOption!.textContent, "Alice · 调研", "the option label is the session name");
+assert.match(aliceOption!.title, /alpha/, "hover title names the project");
+assert.match(aliceOption!.title, /sc_alice/, "hover title ends with the contact_id");
+const mainOption = senderOptions.find((o) => o.value === "sc_main");
+assert.ok(mainOption, "the global session renders too");
+assert.ok(mainOption!.title.startsWith("Global"), "a scope-less session's breadcrumb leads with the global label");
 await act(async () => {
-  senderInput.focus();
-});
-await act(async () => {
-  Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, "value")!.set!.call(senderInput, "sc_alice");
-  senderInput.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+  Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype, "value")!.set!.call(senderSelect, "sc_alice");
+  senderSelect.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
 });
 lastList = calls.filter((c) => c.name === "ListCollabMail").pop();
 assert.deepEqual(lastList?.args[1], "sc_alice", "the sender filter reaches the backend query");
+assert.deepEqual(lastList?.args[2], "", "the untouched recipient filter stays the catch-all");
+await act(async () => {
+  Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype, "value")!.set!.call(recipientSelect, "sc_main");
+  recipientSelect.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+});
+lastList = calls.filter((c) => c.name === "ListCollabMail").pop();
+assert.deepEqual(lastList?.args[2], "sc_main", "the recipient filter reaches the backend query");
+await act(async () => {
+  Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype, "value")!.set!.call(senderSelect, "");
+  senderSelect.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+});
+lastList = calls.filter((c) => c.name === "ListCollabMail").pop();
+assert.deepEqual(lastList?.args[1], "", "switching back to 「全部」 clears the sender filter");
 
 // 日期排序切换（a）：默认最新在前（desc）；点「Oldest first」→ 透传 order=asc。
 // 排序本身的正确性由 Go 侧 TestFilterBySenderRecipientAndDateOrder 承担，

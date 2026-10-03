@@ -49,6 +49,19 @@ func (c *Controller) ToolRecoverySnapshot() ToolRecoverySnapshot {
 	return view
 }
 
+// HasPendingToolRecovery reports whether the session still carries unresolved
+// effect records (任务461-P2 兜底②): the session's last step was a tool call
+// whose outcome is unknown — the exact shape an auto-resume must not blindly
+// replay. The desktop reads this through a narrow type assertion
+// (restartInterruptedToolProbe), so older fakes without the method simply
+// never trigger the backstop.
+func (c *Controller) HasPendingToolRecovery() bool {
+	if c == nil || c.executor == nil {
+		return false
+	}
+	return len(c.executor.PendingToolRecovery()) > 0
+}
+
 // SettleRestartInterruptedEffects hands the session's pending effect records
 // to the restart resume chain (task 435): a session staged in the task-254
 // roster was interrupted by OUR planned restart, so when its restore point

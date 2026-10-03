@@ -48,6 +48,45 @@ export function reduceSubmitFailure(
   };
 }
 
+// 任务461-P6: a foreground submit bounced with "turn already running" degrades
+// into the durable guidance queue instead of failing. The optimistic bubble
+// stays delivered (NEVER marked failed — that face belongs to genuine send
+// failures and the manual resend), an info notice names the destination
+// (steer-injected now vs queued until the turn finishes), and the turn face
+// keeps the facts the rejection just proved authoritatively: the turn IS
+// running, so the composer stays blocked and live/turn state is not torn down
+// the way the failure path flattens it.
+export function reduceSubmitDegraded(
+  state: State,
+  submissionId: string,
+  text: string,
+  inboxItemId: string | undefined,
+  turnId: string | undefined,
+): State {
+  if (state.pendingSubmissionId !== submissionId) return state;
+  const index = state.items.findIndex((item) => item.kind === "user" && item.submissionId === submissionId);
+  const items = index < 0
+    ? state.items
+    : state.items.map((item, itemIndex) => itemIndex === index ? { ...item, submissionId: undefined } : item);
+  const notice: Item = { kind: "notice", id: `s${state.seq}`, level: "info", text, ...(inboxItemId ? { inboxItemId } : {}) } as Item;
+  return {
+    ...state,
+    items: [...items, notice],
+    pendingUser: undefined,
+    pendingSubmissionId: undefined,
+    deliveryRecoveryActive: false,
+    cancelRequested: false,
+    seq: state.seq + 1,
+    running: true,
+    turnActive: true,
+    cancellable: true,
+    pendingPrompt: Boolean(state.approval || state.ask || state.mcpInteraction),
+    // Adopt the freshly resolved authoritative turn id when the tab owner
+    // answered (turn-state alignment, ruling ②); keep the current one else.
+    ...(turnId ? { activeTurnId: turnId } : {}),
+  };
+}
+
 export function reduceManagementConfirmation(state: State, submissionId: string, observedAt: number): State {
   if (state.pendingSubmissionId !== submissionId) return state;
   return {

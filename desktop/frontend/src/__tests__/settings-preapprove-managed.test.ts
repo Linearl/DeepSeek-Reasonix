@@ -73,12 +73,25 @@ for (const key of keys) {
 ok(zh.includes("prompt injection") && zhTW.includes("prompt injection") && en.includes("prompt injection"),
   "the risk line names prompt injection in all three locales");
 
-// ── B1 (2026-10-03 night dispatch): vertical layout + simplified hooks copy ──
+// ── 任务461-P5 (2026-10-03 用户裁决，覆盖同日 B1 的垂直改法): header stays
+//    TWO-column (intro/title/hint left, on-off switch right); checkbox rows
+//    first, risk line last on its own row; narrow settings pages keep the
+//    shared single-column collapse. Simplified hooks copy stays. ──
 const styles = readFileSync(join(root, "styles.css"), "utf8").replace(/\n\s*/g, " ");
-ok(/\.autopilot-preapprove-subblock \.settings-field \{ grid-template-columns: minmax\(0, 1fr\);/.test(styles),
-  "the pre-approval field collapses to a single top-down column (vertical layout)");
-ok(/\.set-preapprove__row \{ \/\* B1[^]*?display: flex;/.test(styles) || /\.set-preapprove__row \{[^}]*display: flex;/.test(styles),
+ok(/\.autopilot-preapprove-subblock \.settings-field \{ grid-template-columns: minmax\(180px, 260px\) minmax\(320px, 1fr\);/.test(styles),
+  "the pre-approval field keeps the two-column header (intro left, switch right)");
+ok(/\.autopilot-preapprove-subblock \.set-seg \{ justify-self: end;/.test(styles),
+  "the on/off switch hugs the right edge of its column");
+ok(/@container settings-page \(max-width: 680px\) \{ \.autopilot-preapprove-subblock \.settings-field \{ grid-template-columns: minmax\(0, 1fr\);/.test(styles),
+  "narrow settings pages still collapse the field to one column");
+ok(/\.set-preapprove__row \{[^}]*display: flex;/.test(styles),
   "each category row is a block-level flex line (one category per line)");
+// P5 order: the risk line renders AFTER the checkbox rows (the panel source
+// is whitespace-collapsed into one string; first hit = the render site).
+const warningAt = panel.indexOf('className="set-preapprove__warning"');
+const rowsAt = panel.indexOf("<span>{row.label}</span>");
+ok(warningAt > rowsAt && rowsAt > 0,
+  "the risk line renders after the checkbox rows (checkboxes first, risk last)");
 for (const [name, text] of [["en", en], ["zh", zh], ["zh-TW", zhTW]] as const) {
   const hooks = text.match(/"settings\.preapproveManagedPaths\.hooks": "([^"]*)"/)?.[1] ?? "";
   const warn = text.match(/"settings\.preapproveManagedPaths\.warning": "([^"]*)"/)?.[1] ?? "";
