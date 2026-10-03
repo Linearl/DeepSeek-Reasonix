@@ -14,6 +14,14 @@ import (
 
 const retryInterval = 20 * time.Millisecond
 
+// DefaultWaitTimeout bounds every lock wait whose caller supplied neither a
+// deadline nor an explicit external budget (task 461 P1). 设计原则：可用性 >
+// 锁完整性——锁等待宁可超时返错，不可无限挂起。All Acquire/AcquireMode calls
+// are therefore bounded no matter what context they pass, including
+// context.Background(); callers that need a different budget use
+// AcquireWithExternalTimeout or pass their own deadline.
+const DefaultWaitTimeout = 5 * time.Second
+
 // ErrHeld reports that another file descriptor currently owns the lock.
 // Callers normally see their context error after Acquire's bounded retry loop.
 var ErrHeld = errors.New("file lock held")
@@ -38,20 +46,24 @@ var localRegistry = struct {
 
 // Acquire obtains an exclusive lock on path until the returned release
 // function is called. It serializes both goroutines in this process and other
-// Reasonix processes, and never waits past ctx's deadline.
+// Reasonix processes. The wait is always bounded: it ends at ctx's deadline,
+// ctx cancellation, or DefaultWaitTimeout when ctx has neither — it never
+// hangs forever (task 461 P1).
 func Acquire(ctx context.Context, path string) (func(), error) {
 	return acquire(ctx, path, 0, ModeExclusive)
 }
 
-// AcquireMode obtains a lock in exclusive or shared mode.
+// AcquireMode obtains a lock in exclusive or shared mode, under the same
+// bounded-wait contract as Acquire.
 func AcquireMode(ctx context.Context, path string, mode Mode) (func(), error) {
 	return acquire(ctx, path, 0, mode)
 }
 
 // AcquireWithExternalTimeout obtains an exclusive lock while keeping the
 // in-process queue and cross-process file-lock budgets separate. ctx bounds
-// only the wait for another goroutine in this process; externalTimeout starts
-// after that queue is acquired and bounds retries against other processes.
+// the wait for another goroutine in this process (and its cancellation ends
+// the whole acquire immediately); externalTimeout starts after that queue is
+// acquired and bounds retries against other processes.
 func AcquireWithExternalTimeout(ctx context.Context, path string, externalTimeout time.Duration) (func(), error) {
 	if externalTimeout <= 0 {
 		return nil, errors.New("external file lock timeout must be positive")
@@ -66,6 +78,14 @@ func acquire(ctx context.Context, path string, externalTimeout time.Duration, mo
 	lockPath, err := canonicalLockPath(path)
 	if err != nil {
 		return nil, err
+	}
+	// 可用性 > 锁完整性（task 461 P1）：任何锁等待都必须有界。调用方 ctx 没有
+	// deadline 时统一套 DefaultWaitTimeout——包括 context.Background()，否则
+	// 本地排队阶段仍可能无限等。已有 deadline 的 ctx 尊重调用方（更紧的）预算。
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, DefaultWaitTimeout)
+		defer cancel()
 	}
 	key := localRegistryKey(lockPath)
 	releaseLocal, err := acquireLocal(ctx, key, mode)
@@ -106,6 +126,17 @@ func acquire(ctx context.Context, path string, externalTimeout time.Duration, mo
 			}
 			releaseLocal()
 			return nil, fmt.Errorf("acquire file lock: %w", fileCtx.Err())
+		case <-ctx.Done():
+			// 终止随时生效（task 461 P1）：即使外部超时预算未用完，调用方
+			// ctx 一旦取消（用户点停止）也必须立即返回，不能继续等锁。
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			releaseLocal()
+			return nil, fmt.Errorf("acquire file lock: %w", ctx.Err())
 		}
 	}
 }
