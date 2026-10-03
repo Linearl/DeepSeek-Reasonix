@@ -984,6 +984,7 @@ func (p *sessionCollabPump) notifySenderOnce(msg sessioncollab.MailMessage, kind
 		Hop:      msg.Hop,
 		ThreadID: msg.ThreadID,
 		ReplyTo:  "",
+		Kind:     "system", // 任务461 P8 ②：平台状态通知自动已读，不顶未读数
 	}); err != nil {
 		log.Printf("[session-collab] %s notice to %s failed: %v", kind, msg.From, err)
 	}
@@ -1134,6 +1135,7 @@ func (p *sessionCollabPump) notifyDegradedSteer(msg sessioncollab.MailMessage, d
 		Body:    note,
 		Hop:     msg.Hop,
 		ReplyTo: "",
+		Kind:    "system", // 任务461 P8 ②：平台状态通知自动已读，不顶未读数
 	}); err != nil {
 		log.Printf("[session-collab] degraded-steer notice to %s failed: %v", msg.From, err)
 	}

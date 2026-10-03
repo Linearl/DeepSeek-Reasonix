@@ -355,6 +355,12 @@ func (s *Store) build(ctx context.Context) ([]Entry, error) {
 			Delivered:    true,
 			Read:         row.Read,
 		}
+		// 任务461 P8 ②：系统类邮件（回执、平台状态通知、投递失败说明——
+		// Kind 戳或 system 桶归类）自动视为已读，不计入「用户需处理的未读」。
+		// 面板仍可在系统桶查看它们；badge 与 Unread 过滤都不再被它们顶住。
+		if e.Bucket == BucketSystem {
+			e.Read = true
+		}
 		if at, ok := st.Dismissed[m.ID]; ok && at > 0 {
 			e.Dismissed = true
 		}
