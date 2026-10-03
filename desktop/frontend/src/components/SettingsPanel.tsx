@@ -3474,12 +3474,12 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   </SettingsOptions>
                   {/* Task 231: with the master switch on, the four categories check
                       independently — one write carries all five values so a save can
-                      never land half-applied. The risk line stays visible the whole
-                      time this card is open: checking a box accepts that a prompt
-                      injection could make the agent write that class unattended. */}
+                      never land half-applied. 任务461-P5 (user ruling): the block
+                      reads top-down as checkbox rows FIRST (one category per line),
+                      then the risk line on its own closing row — the warning no
+                      longer sits on top of the checkboxes it describes. */}
                   {Boolean(s.experimentalPreapproveManagedPaths) && (
                     <div className="set-preapprove">
-                      <p className="set-preapprove__warning">{t("settings.preapproveManagedPaths.warning")}</p>
                       {([
                         { key: "preapproveSkills", label: t("settings.preapproveManagedPaths.skills"), checked: Boolean(s.preapproveSkills) },
                         { key: "preapproveHooks", label: t("settings.preapproveManagedPaths.hooks"), checked: Boolean(s.preapproveHooks) },
@@ -3514,6 +3514,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                           <span>{row.label}</span>
                         </label>
                       ))}
+                      <p className="set-preapprove__warning">{t("settings.preapproveManagedPaths.warning")}</p>
                     </div>
                   )}
                 </SettingsField>
