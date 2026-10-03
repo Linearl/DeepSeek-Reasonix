@@ -65,6 +65,11 @@ const CHECKS = [
   // 无界等待；锚定默认上限常量与 ctx.Done 分支（终止 ≤1s 的实现载体）。
   { feature: "任务461 锁等待一律有界+取消即时生效", file: "internal/filelock/filelock.go", patterns: ["DefaultWaitTimeout", "case <-ctx.Done():"] },
   { feature: "任务461 收件箱锁 5s 外部超时（内层 ≤5s）", file: "internal/collabinbox/collabinbox.go", patterns: ["lockWaitTimeout", "AcquireWithExternalTimeout"] },
+  // 任务461 P8（收件箱重入污染）：投递层幂等与消费层折叠均为 fork 侧行为修复，
+  // 与上游共享文件可能被合并静默回退，逐条锚定。
+  { feature: "任务461-P8 投递层重发幂等（同 from+to+内容窗内返原 id）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["dedupeResend", "resendDedupWindowDefault", "resendDedupWindowSystem"] },
+  { feature: "任务461-P8 同内容折叠+批量已读（DuplicateCount/MarkRead）", file: "internal/collabinbox/collabinbox.go", patterns: ["DuplicateCount", "func (s *Store) MarkRead(", "duplicateFoldWindow"] },
+  { feature: "任务461-P8 面板折叠徽标+全部已读接线", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["duplicateCount", "MarkCollabMailRead"] },
   // 任务 90 链拼接：promote 时把落败链（当前 main）中 winner 缺失的头部 graft 到新主线。
   // 三个锚点按「顺序」登记——gap 在 rename 前算、graft 在侧车搬移后写、事件日志随即折叠；
   // 顺序错位造成的失败是静默的（文件对而读回旧），所以这里锁的是调用形状，不只是符号名。

@@ -116,6 +116,13 @@ func (a *App) UndismissCollabMail(ids []string) (collinboxSnapshot, error) {
 	return collabInboxStore().Undismiss(collabInboxCtx(), ids)
 }
 
+// MarkCollabMailRead advances the seen cursor for the given entries (任务
+// 461 P8 ③ 批量已读). A folded duplicate entry settles its whole cluster;
+// the returned snapshot refreshes the panel in one round trip.
+func (a *App) MarkCollabMailRead(ids []string) (collinboxSnapshot, error) {
+	return collabInboxStore().MarkRead(collabInboxCtx(), ids)
+}
+
 // MarkCollabMailDecided records an approval verdict with its decider ("human"
 // for a panel click; agent-driven decisions pass the contact id) — task 320 d
 // (已裁决条目必须记录裁决者).

@@ -101,6 +101,12 @@ const bindings: CollabInboxBindings = {
     snapshot = { ...snapshot, revision: "2.0.0", entries, total: entries.length };
     return snapshot;
   },
+  async MarkCollabMailRead(ids) {
+    calls.push({ name: "MarkCollabMailRead", args: [ids] });
+    const entries = snapshot.entries.map((e) => (ids.includes(e.id) ? { ...e, read: true } : e));
+    snapshot = { ...snapshot, revision: "6.0.0", entries };
+    return snapshot;
+  },
   async UndismissCollabMail(ids) {
     calls.push({ name: "UndismissCollabMail", args: [ids] });
     return snapshot;
@@ -317,6 +323,42 @@ assert.equal(
 );
 await act(async () => badgeRoot.unmount());
 badgeHost.remove();
+
+// ── 任务 461 P8 ③：折叠计数徽标 + 一键批量已读 ─────────────────────────
+// 完全同内容的 9 条折叠为 1 条并渲染 ×N 徽标（Go 侧 TestNineDuplicatesFold-
+// ToOneAndBatchMarkRead 承担存储契约；这里的接缝职责是徽标渲染与按钮接线）。
+const foldedFixture = entry({ id: "m_dup", preview: "heartbeat confirmation", duplicateCount: 9 });
+const consumedFixture = entry({ id: "m_consumed", preview: "already consumed", read: true });
+snapshot = { ...snapshot, revision: "5.0.0", entries: [foldedFixture, consumedFixture] };
+// 徽标节的收尾把面板关了，先重开；多轮重渲染后早前捕获的节点引用已脱离
+// 文档树（React 根上委托点击不再可达），一律现场重查。
+await act(async () => setCollabInboxOpen(true));
+const p8Panel = document.querySelector(".collab-inbox-panel");
+assert.ok(p8Panel, "the panel reopens for the P8 checks");
+// 早期测试把视图切到了 chains 且状态残留（reopen 后 refresh 走链视图查询，
+// 链视图不渲染折叠徽标）——先切回列表视图再选 All 桶。
+await act(async () => {
+  Array.from(p8Panel!.querySelectorAll<HTMLButtonElement>(".collab-inbox-panel__viewtoggle button"))
+    .find((b) => b.textContent === "List")!
+    .click();
+});
+await act(async () => {
+  Array.from(p8Panel!.querySelectorAll<HTMLButtonElement>(".collab-inbox-panel__bucket"))
+    .find((b) => b.textContent === "All")!
+    .click();
+});
+assert.match(p8Panel!.textContent ?? "", /×9/, "the folded cluster renders a ×N count chip");
+
+// 一键批量已读：把当前视图未读条目的 id 集合发到后端；折叠条目只带 primary
+// id，整簇展开由 Go 侧 MarkRead 完成（此处钉「未读集合到达后端」这一接缝）。
+await act(async () => {
+  Array.from(p8Panel!.querySelectorAll<HTMLButtonElement>(".collab-inbox-panel__actions button"))
+    .find((b) => b.textContent === "Mark all read")!
+    .click();
+});
+const readCall = calls.filter((c) => c.name === "MarkCollabMailRead").pop();
+assert.deepEqual(readCall?.args[0], ["m_dup"], "mark-all-read sends exactly the unread entry ids");
+assert.match(p8Panel!.textContent ?? "", /Snapshot 6\.0\.0/, "the mark-read snapshot refreshes the panel in place");
 
 await act(async () => root.unmount());
 dom.window.close();
