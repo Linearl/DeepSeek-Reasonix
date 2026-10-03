@@ -1816,12 +1816,14 @@ type ExperimentFeatureId =
   | "autopilot"
   // Task 265 lab intake (9 fork features) + task 262 quick commands.
   | "highSpeedModel"
-  // Task 318.2: configurable fold cooldown (storage group, task 297 family).
-  | "proactiveCompact"
-  | "coldCacheCompact"
+  // Task 318.2/297: storage "compaction" pair merged into ONE rail entry
+  // (task 427: compress-opt card, two independent switches — light reads
+  // either; config keys unchanged).
+  | "compressOpt"
   | "compactionParallel"
-  | "contextBudget"
-  | "researchBudget"
+  // Task 265 budget pair merged into ONE rail entry (task 427: budget-control
+  // card, two independent switches — light reads either).
+  | "budgetControl"
   // Task 231: managed-path pre-approval (master switch + four checkboxes).
   | "preapproveManagedPaths"
   // Task 192: active-tab residency policy.
@@ -2001,9 +2003,12 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "autoLoadOlder", group: "ui", label: t("settings.autoLoadOlder"), on: Boolean(s.experimentalAutoLoadOlder) },
     { id: "cacheTuning", group: "storage", label: t("settings.cacheTuning"), on: Boolean(s.experimentalCacheTuning) },
     { id: "sessionStorage", group: "storage", label: t("settings.sessionStorage"), on: (s.sessionStorage ?? "v3_only") !== "v3_only" },
-    // Task 318.2: configurable fold cooldown (task 297 cost family), storage group.
-    { id: "proactiveCompact", group: "storage", label: t("settings.proactiveCompact"), on: Boolean(s.experimentalProactiveCompact) },
-    { id: "coldCacheCompact", group: "storage", label: t("settings.coldCacheCompact"), on: Boolean(s.experimentalColdCacheCompact) },
+    // Task 427: the two storage "compaction" entries (proactiveCompact +
+    // coldCacheCompact) merge into one "compress optimization" card — the
+    // light reads either switch; the detail card keeps both switches
+    // independently saved (render table: a missing entry would silently drop
+    // the save, 81/123 lesson).
+    { id: "compressOpt", group: "storage", label: t("settings.compressOpt"), on: Boolean(s.experimentalProactiveCompact) || Boolean(s.experimentalColdCacheCompact) },
     // Task 333: rotation gate entry — the light reads any non-default mode so
     // the statistic card stays discoverable (render table: a missing entry
     // would silently drop the save, 81/123 lesson).
@@ -2013,8 +2018,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     // Task 318.1: highSpeedModel's light reads the new switch (default off).
     { id: "highSpeedModel", group: "efficiency", label: t("settings.highSpeedModel"), on: Boolean(s.experimentalHighSpeedModel) },
     { id: "compactionParallel", group: "efficiency", label: t("settings.compactionParallel"), on: Boolean(s.experimentalCompactionParallel) },
-    { id: "contextBudget", group: "efficiency", label: t("settings.contextBudget"), on: Boolean(s.experimentalContextBudget) },
-    { id: "researchBudget", group: "efficiency", label: t("settings.researchBudget"), on: Boolean(s.experimentalResearchBudget) },
+    // Task 427: the two budget entries (contextBudget + researchBudget) merge
+    // into one "budget control" card — light reads either switch; detail card
+    // keeps both switches independently saved (81/123 lost-save rule).
+    { id: "budgetControl", group: "efficiency", label: t("settings.budgetControl"), on: Boolean(s.experimentalContextBudget) || Boolean(s.experimentalResearchBudget) },
     // Task 318.3: draft persistence light reads the new switch (default off).
     { id: "draftPersistence", group: "ui", label: t("settings.draftPersistence"), on: Boolean(s.experimentalComposerDraft) },
     { id: "selectionActions", group: "ui", label: t("settings.selectionActions"), on: Boolean(s.experimentalSelectionActions) },
@@ -3542,7 +3549,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
               </SettingsOptions>
             </SettingsField>
           )}
-          {selected === "proactiveCompact" && (
+          {/* Task 427: proactive-cooldown + cold-cache compact merge into ONE
+              storage card — two switches, each saving through its own setter
+              (config keys and knob semantics unchanged). */}
+          {selected === "compressOpt" && (
             <>
               <SettingsField label={t("settings.proactiveCompact")} hint={t("settings.proactiveCompactHint")} icon={<Sparkles size={18} />}>
                 {/* Task 318.2: off (default) keeps the hard-coded 10-minute
@@ -3576,10 +3586,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   })}
                 />
               </SettingsField>
-            </>
-          )}
-          {selected === "coldCacheCompact" && (
-            <>
               <SettingsField label={t("settings.coldCacheCompact")} hint={t("settings.coldCacheCompactHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
@@ -3642,7 +3648,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
               </SettingsOptions>
             </SettingsField>
           )}
-          {selected === "contextBudget" && (
+          {/* Task 427: per-turn context budget + read-only round budget
+              merge into ONE efficiency card — two switches, each saving
+              through its own setter (config keys unchanged). */}
+          {selected === "budgetControl" && (
             <>
               <SettingsField label={t("settings.contextBudget")} hint={t("settings.contextBudgetHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
@@ -3661,23 +3670,21 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
               <SettingsField label={t("settings.contextBudgetCompress")} hint={t("settings.contextBudgetCompressHint")} icon={<Sparkles size={18} />}>
                 <span />
               </SettingsField>
+              <SettingsField label={t("settings.researchBudget")} hint={t("settings.researchBudgetHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalResearchBudget) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalResearchBudget(on))}
+                    >
+                      {t(on ? "settings.researchBudget.on" : "settings.researchBudget.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
             </>
-          )}
-          {selected === "researchBudget" && (
-            <SettingsField label={t("settings.researchBudget")} hint={t("settings.researchBudgetHint")} icon={<Sparkles size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalResearchBudget) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(() => app.SetExperimentalResearchBudget(on))}
-                  >
-                    {t(on ? "settings.researchBudget.on" : "settings.researchBudget.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
           )}
           {/* Task 364: the managed-path pre-approval block moved into the
               autopilot card (single entry — see the sub-block there). */}

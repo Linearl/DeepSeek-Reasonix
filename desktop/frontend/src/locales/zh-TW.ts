@@ -4592,6 +4592,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.highSpeedModel.on": "開啟",
   "settings.highSpeedModel.off": "關閉",
   "settings.monitoring": "監控（會話 + 性能）",
+  "settings.compressOpt": "壓縮優化",
+  "settings.budgetControl": "預算控制",
   "settings.proactiveCompact": "主動壓縮冷卻（可配）",
   "settings.proactiveCompactHint": "兩次模型驅動的壓縮（fold）之間強制冷卻，避免反覆重寫前綴擊穿提示快取。任務 318：預設關閉=沿用硬編碼 10 分鐘冷卻；開啟後按下方分鐘數生效（下次壓縮時即時讀取，無需重啟）。",
   "settings.proactiveCompact.on": "開啟",

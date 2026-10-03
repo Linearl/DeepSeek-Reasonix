@@ -23,25 +23,34 @@ function ok(condition: unknown, label: string) {
 }
 
 // Render table: mounted on the lab STORAGE group (the "cost optimization"
-// home per the task body), not scattered elsewhere.
+// home per the task body), not scattered elsewhere. Task 427: the cold-cache
+// entry merged into the shared compress-opt card (light reads either switch).
 ok(
-  panel.includes('{ id: "coldCacheCompact", group: "storage",') &&
+  panel.includes('{ id: "compressOpt", group: "storage",') &&
     panel.includes("Boolean(s.experimentalColdCacheCompact)"),
-  "render table carries the entry in the storage group",
+  "render table carries the merged entry in the storage group",
 );
-ok(panel.includes('| "coldCacheCompact"'), "the detail-card union includes the id");
+ok(panel.includes('| "compressOpt"'), "the detail-card union includes the merged id");
 
 // Detail card: switch + two knobs, each writing through its own setter.
 ok(panel.includes("app.SetExperimentalColdCacheCompact(on)"), "switch writes through its setter");
 ok(panel.includes("app.SetColdCacheCompactMinBytes(kb * 1024)"), "size floor converts KB -> bytes through its setter");
 ok(panel.includes("app.SetColdCacheCompactIdleMinutes(h * 60)"), "idle knob converts hours -> minutes through its setter");
 
-// The card lives inside the cache-tuning-adjacent detail area (mounted next
-// to proactiveCompact, its same-domain neighbour).
-ok(
-  panel.indexOf('selected === "coldCacheCompact"') > panel.indexOf('selected === "proactiveCompact"'),
-  "detail card mounts after the proactive-compact card",
-);
+// Task 427: both switches live inside ONE merged detail card; within the card
+// the proactive-compact block mounts before the cold-cache block (same order
+// as the former standalone cards).
+{
+  const start = panel.indexOf('{selected === "compressOpt" && (');
+  const next = panel.indexOf('{selected === "compactionParallel" && (');
+  ok(start >= 0 && next > start, "merged compress-opt card located in the detail area");
+  const card = panel.slice(start, next);
+  ok(
+    card.indexOf('app.SetExperimentalProactiveCompact(') < card.indexOf('app.SetExperimentalColdCacheCompact('),
+    "proactive-compact switch mounts before the cold-cache switch inside the merged card",
+  );
+  ok(card.includes('settings.coldCacheCompact') && card.includes('settings.proactiveCompact'), "both original label families render in the merged card");
+}
 
 // View fields (effective-value readout) + bridge surface.
 ok(viewTypes.includes("experimentalColdCacheCompact?: boolean;"), "view type declares the switch");
