@@ -369,6 +369,9 @@ func (a *App) installDebUpdate(requestID string, meta *cachedUpdate) error {
 	// Ensure installing was shown even if a phase line was missed (older helper).
 	a.emitProgress(requestID, meta.Channel, meta.Version, "installing", meta.Size, meta.Size, "")
 	a.emitProgress(requestID, meta.Channel, meta.Version, "done", meta.Size, meta.Size, "")
+	// 任务461-P2: the official update channel's relaunch is an update restart —
+	// record it before shutdown so the next launch's auto-resume gate opens.
+	writeUpdateRestartMarker("updater", meta.Version)
 	a.shutdown(a.ctx)
 	_ = relaunchThroughLauncher()
 	os.Exit(0)
@@ -437,6 +440,11 @@ func (a *App) installPortableUpdate(requestID string, meta *cachedUpdate, data [
 	}
 
 	a.emitProgress(requestID, meta.Channel, meta.Version, "done", meta.Size, meta.Size, "")
+
+	// 任务461-P2: this install succeeded and the handoff relaunches the new
+	// version (helper-driven on Windows/macOS, direct on Linux) — an update
+	// restart. Record it before shutdown so the next launch's resume gate opens.
+	writeUpdateRestartMarker("updater", meta.Version)
 
 	// Persist the conversation and stop subprocesses before handing off (same as
 	// shutdown). On Linux the binary is now replaced, so relaunch it; on Windows and

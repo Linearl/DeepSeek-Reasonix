@@ -29,6 +29,35 @@ import (
 // expectation without inventing work.
 const autonomousUpdateResumePrompt = "The app updated and restarted itself while this autopilot session was working. Continue from where it stopped; do not restate the plan or wait for input."
 
+// restartInterruptedToolMarker is the greppable token for the 任务461-P2 兜底②
+// face: an auto-resume that would replay a turn whose last step was an
+// interrupted tool call (unresolved effect records still on the session) is
+// skipped instead — the 「中断的工具需要核实」 review panel stays up for manual
+// review, and the skip is named here so an idling session is never silent
+// (same greppable-token convention as 未入册/未续跑).
+const restartInterruptedToolMarker = "中断工具不重放"
+
+// restartInterruptedToolProbe is the narrow controller surface for the 兜底②
+// check: does the session still carry unresolved tool-recovery records? The
+// real Controller implements it (internal/control); a fake or an older
+// controller without the capability simply never triggers the backstop —
+// the pre-461 resume behavior, byte for byte.
+type restartInterruptedToolProbe interface {
+	HasPendingToolRecovery() bool
+}
+
+// tabHasInterruptedToolCall reports whether the tab's session ended its last
+// run inside a tool call whose outcome is still unknown. Reading it through
+// the narrow probe keeps the restore point working against every controller
+// shape the tests already stub.
+func tabHasInterruptedToolCall(tab *WorkspaceTab) bool {
+	if tab == nil || tab.Ctrl == nil {
+		return false
+	}
+	probe, ok := tab.Ctrl.(restartInterruptedToolProbe)
+	return ok && probe.HasPendingToolRecovery()
+}
+
 // autonomousUpdateResumeFile lives under the user state dir; one entry per
 // session that asked for an update-driven restart and has not been resumed yet.
 type autonomousUpdateResumeFile struct {
@@ -278,6 +307,17 @@ func (a *App) maybeResumeAutonomousUpdateTab(tab *WorkspaceTab) {
 		return
 	}
 	_ = writeAutonomousUpdateResumeFile(autonomousUpdateResumeFile{Sessions: remaining})
+	// 任务461-P2 兜底②: the session's last step was an interrupted tool call
+	// (unresolved effect records) — do NOT replay "continue" into it, or a
+	// session stuck on a hung tool re-invokes the same tool and re-blocks. The
+	// roster entry stays consumed, the fence is NOT settled (the 「中断的工具需要
+	// 核实」 review panel is exactly the manual-review face this case wants),
+	// and the recovery pause stays up so the banner does not fight the review.
+	// Check runs BEFORE the pause-clear/settle/submit chain below.
+	if tabHasInterruptedToolCall(tab) {
+		slog.Warn("desktop: autonomous-update resume skipped — the session's last step was an interrupted tool call ("+restartInterruptedToolMarker+"; review the pending tools manually)", "tab", tab.ID, "session", sessionPath)
+		return
+	}
 	// Task 263 fix 2: the auto-resume decides "continue" for this session, so
 	// it also clears the recovery pause (and its banner data) here — otherwise
 	// the ForcePause notice and the automatic resume fight over the same

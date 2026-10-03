@@ -166,6 +166,11 @@ func (a *App) restartAndUpdateExempt(sourceDir, version, callerSession string) (
 		return "", fmt.Errorf("restart: publish version: %w", err)
 	}
 
+	// 任务461-P2: past the commit point this relaunch IS an update restart —
+	// record it so the next launch's auto-resume family may fire (a plain
+	// RestartDesktop deliberately writes no marker).
+	writeUpdateRestartMarker("publish", version)
+
 	slog.Info("restart: publish committed; relaunching", "version", version)
 	if err := restartStartLauncher(filepath.Join(installRoot, launcherName), os.Getpid()); err != nil {
 		slog.Error("restart: launcher start failed after commit", "version", version, "err", err)

@@ -216,6 +216,10 @@ func (a *App) switchToVersionExempt(version, callerSession string) (string, erro
 	slog.Info("restart: version switch only — live processes are not cleaned here; this process's serve pool closes now, foreign leftovers are reaped on next start")
 	a.closeServePool()
 
+	// 任务461-P2: the pointer swap committed — this relaunch continues an
+	// update (rollback counts). Record it for the next launch's resume gate.
+	writeUpdateRestartMarker("switch", version)
+
 	launcherPath := filepath.Join(installRoot, installlayout.LauncherBinaryName())
 	if info, statErr := os.Lstat(launcherPath); statErr != nil || !info.Mode().IsRegular() {
 		return "", fmt.Errorf("restart: the launcher %s is missing from %s (pointer already moved; run the launcher manually to boot %s)", installlayout.LauncherBinaryName(), installRoot, version)

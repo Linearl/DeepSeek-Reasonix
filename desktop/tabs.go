@@ -4263,7 +4263,15 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 	// takes the normal admission path, which refuses while a turn is already
 	// running, and the goal sidecar keeps the goal path idempotent across
 	// repeated launches.
-	if resumeGate := a.autonomousUpdateResumeMode(); resumeGate != "off" {
+	//
+	// 任务461-P2: the family additionally requires the update-restart marker
+	// (update_restart_marker.go): only a launch that continues an update-driven
+	// relaunch may auto-resume anything. A manual restart or an ordinary
+	// open leaves no marker, so this launch never wakes a session on its own —
+	// the gate is consumed once per process regardless of the dial, so the
+	// marker can never leak into a later unrelated launch.
+	resumeAllowed := updateRestartResumeAllowed()
+	if resumeGate := a.autonomousUpdateResumeMode(); resumeGate != "off" && resumeAllowed {
 		a.maybeResumeAutopilotTab(tab)
 		// Task 254: the same restore point for a session this process's
 		// predecessor restarted away from via the restart_update tool. No goal
@@ -4291,6 +4299,13 @@ func (a *App) maybeResumeAutopilotTab(tab *WorkspaceTab) {
 	id := tab.ID
 	a.mu.RUnlock()
 	if !eligible {
+		return
+	}
+	// 任务461-P2 兜底②: same non-replay rule as the roster path — a goal run
+	// interrupted inside a side-effectful tool call is handed to manual review
+	// (the fence panel), never auto-continued into a likely re-block.
+	if tabHasInterruptedToolCall(tab) {
+		slog.Warn("desktop: autopilot resume skipped — the session's last step was an interrupted tool call (" + restartInterruptedToolMarker + "; review the pending tools manually)", "tab", id)
 		return
 	}
 	go func() {
