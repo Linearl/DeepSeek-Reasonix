@@ -763,6 +763,10 @@ const CHECKS = [
   { feature: "任务461-P7 执行器强制放弃 watchdog（忽略取消的工具记录+隔离）", file: "internal/agent/execute_batch.go", patterns: ["executeOneWithForce", "forcedToolOutput"] },
   { feature: "任务461-P7 强制信号 ctx 通路（独立 force ctx）", file: "internal/agent/run_force.go", patterns: ["WithStopForce", "StopForceDone"] },
   { feature: "任务461-P7 停止按钮三态（强制停止/倒计时/hover 三档）", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["stopButtonView", "composer.stopCountdown", "composer.stopKillHint"] },
+  // P9：引导队列注入点扩展——工具间隙把队头 followup 以 steer 语义拉入当前
+  // turn（≤1 工具周期被模型看到）。丢任一半边都会退化回「等 turn 结束才投递」。
+  { feature: "任务461-P9 工具间隙注入 hook（agent 循环 gap 触发）", file: "internal/agent/run_loop.go", patterns: ["a.toolRoundGap()"] },
+  { feature: "任务461-P9 间隙派发（队头 TrySteerInboxItem 同路+合并组随行）", file: "internal/control/inbox_dispatch.go", patterns: ["bindAgentToolRoundGap", "dispatchQueuedAtToolGap", "maybeMergeInboxDispatchGroup(meta)"] },
 ];
 
 let failed = 0;
