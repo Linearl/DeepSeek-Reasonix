@@ -949,7 +949,12 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 	if _, _, terr := mail.ResolveReplyParent(msg); terr != nil {
 		return "", terr
 	}
-	delivered, derr := mail.Deliver(ctx, msg)
+	// task 461 P1: the send rides a cancel-free context — a cancelled turn
+	// must still settle the request on disk and report "wait ended early",
+	// never an NDR for mail that never left (send/wait are separate phases;
+	// the wait itself stays cancellable). The lock wait remains bounded by
+	// the filelock default budget (5s).
+	delivered, derr := mail.Deliver(cancelFreeCtx(ctx), msg)
 	if derr != nil {
 		// Task 309 NDR: a refused delivery reads like a mailbox bounce —
 		// recipient, reason, and a quoted excerpt of the original body, so
@@ -964,7 +969,7 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 	// Task 175: the sender keeps its own sent log — the inbox only shows what
 	// arrived, so a misdirected send used to be invisible on this side until a
 	// confused peer answered. Recorded after the real id/at are known.
-	mail.RecordSent(ctx, msg, target.Title)
+	mail.RecordSent(cancelFreeCtx(ctx), msg, target.Title)
 	// Task 175: put the recipient in the caller's face. The historical failure
 	// was a correct-looking "queued" for the WRONG peer; delivered_to carries
 	// the id plus its human-readable title so the mismatch reads at a glance.
@@ -1034,6 +1039,19 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 // traversing mailbox path here, and an unenrolled role stays ErrNotFound.
 // Matching is case-insensitive like the directory's own; the canonical
 // lower-case contact from the table wins.
+// cancelFreeCtx drops cancellation (and deadlines) from ctx while keeping it
+// non-nil: the sync send contract (task 156/158, pinned by
+// TestTalkToSessionSyncStopsWaitingWhenContextEnds) settles the request on
+// disk even when the turn ends mid-call, and reports the phase split in the
+// result instead of an NDR. Bounded waiting is preserved by the filelock
+// default budget, not by cancellation.
+func cancelFreeCtx(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return context.WithoutCancel(ctx)
+}
+
 func (t talkToSessionTool) resolveBusContact(ref string) (sessioncollab.Identity, bool) {
 	contacts := t.busContacts()
 	if len(contacts) == 0 {
