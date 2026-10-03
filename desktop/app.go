@@ -1576,6 +1576,20 @@ func (a *App) CancelTab(tabID string) {
 	}
 }
 
+// CancelStopForTab drives the 任务461-P7 three-level stop escalation for one
+// tab: each press advances one level (graceful cancel → force grace → force).
+// Controllers without the escalation half (older builds, fakes) fall back to
+// the ordinary cancel.
+func (a *App) CancelStopForTab(tabID string) {
+	if ctrl := a.ctrlByTabID(tabID); ctrl != nil {
+		if esc, ok := ctrl.(interface{ CancelStop() }); ok {
+			esc.CancelStop()
+			return
+		}
+		ctrl.Cancel()
+	}
+}
+
 // CancelTabResult reports what a session-level stop actually did, so the
 // frontend can distinguish "cancelled here", "another process owns the turn"
 // and "nothing was running" instead of showing a blanket failure.

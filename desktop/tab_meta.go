@@ -32,6 +32,10 @@ type TabMeta struct {
 	RemoteControlled  bool               `json:"remoteControlled,omitempty"`
 	BackgroundJobs    int                `json:"backgroundJobs,omitempty"`
 	CancelRequested   bool               `json:"cancelRequested,omitempty"`
+	// 任务461-P7 三级终止: the stop escalation mirror (1 normal / 2 force grace
+	// with StopDeadlineUnix as the countdown's authoritative end / 3 force).
+	StopLevel        int   `json:"stopLevel,omitempty"`
+	StopDeadlineUnix int64 `json:"stopDeadlineUnix,omitempty"`
 	Cancellable       bool               `json:"cancellable"`
 	TurnID            string             `json:"turnId,omitempty"`
 	TurnStatus        string             `json:"turnStatus,omitempty"`

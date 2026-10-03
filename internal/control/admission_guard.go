@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/event"
 	"reasonix/internal/extension"
 )
@@ -149,7 +150,14 @@ func (c *Controller) admitGuardedTurn(body func(ctx context.Context) error, park
 		return turnParked
 	}
 	ctx, cancel := context.WithCancel(extension.ContextWithRuntimeOwner(context.Background(), c.runtimeOwner))
+	// 任务461-P7 三级终止: the force half is an INDEPENDENT context (same base
+	// as the turn context). Firing it arms the executor's abandon watchdog
+	// without touching the tool's graceful-exit window; the force path fires
+	// both. Its Done channel travels on the turn context for the watchdog.
+	forceCtx, forceCancel := context.WithCancel(extension.ContextWithRuntimeOwner(context.Background(), c.runtimeOwner))
+	ctx = agent.WithStopForce(ctx, forceCtx.Done())
 	c.cancel = cancel
+	c.forceCancel = forceCancel
 	c.running = true
 	c.canceling = false
 	c.mu.Unlock()
