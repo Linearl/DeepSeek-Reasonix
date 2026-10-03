@@ -574,6 +574,10 @@ export interface TabMeta extends RemoteTabMetaFields {
   backgroundJobs?: number;
   cancelRequested?: boolean;
   cancellable?: boolean;
+  /** 任务461-P7 三级终止: escalation level (1 normal / 2 force grace / 3 force)
+   * and the grace countdown's authoritative end (unix seconds, 0 = none). */
+  stopLevel?: number;
+  stopDeadlineUnix?: number;
   turnId?: string;
   turnStatus?: TurnStatus;
   turnEventSeq?: number;

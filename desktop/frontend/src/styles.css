@@ -8315,6 +8315,15 @@ body > .mermaid-diagram--fullscreen {
   outline: none;
   box-shadow: var(--focus-ring);
 }
+/* 任务461-P7: the L2 grace renders the force countdown inside the stop
+   button ("14s 后强制结束") — same token palette, dark mode keeps contrast. */
+.composer__btn--stop .composer__stop-countdown {
+  font-size: var(--text-2xs, 11px);
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  padding: 0 2px;
+}
 .composer-meta {
   --composer-control-height: 32px;
   --composer-control-radius: 7px;

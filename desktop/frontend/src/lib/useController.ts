@@ -429,6 +429,10 @@ export interface State extends ReadStatusHost {
   backgroundJobs: number;
   cancelRequested: boolean;
   cancellable: boolean;
+  /** 任务461-P7 三级终止: escalation level (1 normal / 2 force grace / 3 force)
+   * and the grace countdown's authoritative end (unix seconds, 0 = none). */
+  stopLevel: number;
+  stopDeadlineUnix: number;
   /** Host turn phase from turn_phase events (working|checking|verifying|reviewing). */
   turnPhase?: TurnPhaseName;
   /** Latest content-free turn quality summary, shown on demand in the change panel. */
@@ -597,6 +601,8 @@ export const initialState: State = {
   backgroundJobs: 0,
   cancelRequested: false,
   cancellable: false,
+  stopLevel: 0,
+  stopDeadlineUnix: 0,
   activeTurnId: undefined,
   assistantSegmentOrdinal: 0,
   context: { used: 0, window: 0, sessionTokens: 0 },
@@ -859,7 +865,7 @@ type Action =
   // destination, and the turn face keeps the authoritative running facts.
   | { type: "submit_degraded"; submissionId: string; text: string; inboxItemId?: string; turnId?: string }
   | { type: "turn_interrupted" }
-  | { type: "backend_status"; running: boolean; turnStartedAt?: number; pendingPrompt?: boolean; backgroundJobs?: number; cancelRequested?: boolean; cancellable?: boolean; turnId?: string; turnStatus?: string; snapshotAt?: number; runtimeEpoch?: string; turnEventSeq?: number }
+  | { type: "backend_status"; running: boolean; turnStartedAt?: number; pendingPrompt?: boolean; backgroundJobs?: number; cancelRequested?: boolean; cancellable?: boolean; turnId?: string; turnStatus?: string; snapshotAt?: number; runtimeEpoch?: string; turnEventSeq?: number; stopLevel?: number; stopDeadlineUnix?: number }
   | { type: "cancel_requested" }
   | { type: "meta"; meta: Meta }
   | { type: "optimistic_meta"; meta: Meta }
@@ -917,6 +923,8 @@ function backendStatusFromRuntimeMeta(meta: RuntimeMetaSnapshot): Extract<Action
     turnId: meta.turnId,
     turnStatus: meta.turnStatus,
     runtimeEpoch: meta.runtime?.epoch, turnEventSeq: meta.turnEventSeq,
+    stopLevel: meta.stopLevel ?? 0,
+    stopDeadlineUnix: meta.stopDeadlineUnix ?? 0,
   };
 }
 
@@ -2275,6 +2283,10 @@ export function reducer(s: State, a: Action): State {
       const pendingPrompt = Boolean(a.pendingPrompt);
       const backgroundJobs = Math.max(0, a.backgroundJobs ?? s.backgroundJobs ?? 0);
       const cancelRequested = Boolean(a.cancelRequested);
+      // 任务461-P7 三级终止: the authoritative escalation mirror (undefined on
+      // older hosts falls back to the current mirror, never to level 0).
+      const stopLevel = a.stopLevel ?? s.stopLevel;
+      const stopDeadlineUnix = a.stopDeadlineUnix ?? s.stopDeadlineUnix;
       const foregroundRunning = foregroundRunningFromRuntimeMeta({ running: a.running, pendingPrompt, backgroundJobs, cancellable: a.cancellable });
       const turnStartedAt = foregroundRunning ? resolveSnapshotTurnStartedAt(s.running || s.turnActive ? s.turnStartAt : 0, a.turnStartedAt) : s.turnStartAt;
       const activeTurnId = foregroundRunning ? a.turnId ?? s.activeTurnId : undefined;
@@ -2289,6 +2301,8 @@ export function reducer(s: State, a: Action): State {
         pendingPrompt === s.pendingPrompt &&
         backgroundJobs === s.backgroundJobs &&
         cancelRequested === s.cancelRequested &&
+        stopLevel === s.stopLevel &&
+        stopDeadlineUnix === s.stopDeadlineUnix &&
         cancellable === s.cancellable &&
         turnStartedAt === s.turnStartAt &&
         activeTurnId === s.activeTurnId &&
@@ -2306,6 +2320,8 @@ export function reducer(s: State, a: Action): State {
           backgroundJobs,
           cancelRequested,
           cancellable,
+          stopLevel,
+          stopDeadlineUnix,
           activeTurnId,
           turnStartAt: turnStartedAt,
         };
@@ -2327,6 +2343,8 @@ export function reducer(s: State, a: Action): State {
         backgroundJobs,
         cancelRequested,
         cancellable,
+        stopLevel,
+        stopDeadlineUnix,
         activeTurnId: undefined,
         live: undefined,
         currentAssistant: undefined,
@@ -3732,6 +3750,8 @@ export function useController() {
       turnStatus: tab.turnStatus,
       runtimeEpoch,
       turnEventSeq: tab.turnEventSeq,
+      stopLevel: tab.stopLevel ?? 0,
+      stopDeadlineUnix: tab.stopDeadlineUnix ?? 0,
       snapshotAt,
     });
     // backend_status reconciliation can clear a live prompt from frontend state.

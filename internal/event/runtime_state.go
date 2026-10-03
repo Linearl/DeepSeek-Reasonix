@@ -24,6 +24,10 @@ type RuntimeStateSnapshot struct {
 	Cancellable     bool       `json:"cancellable"`
 	BackgroundJobs  int        `json:"backgroundJobs"`
 	Activity        string     `json:"activity"`
+	// 任务461-P7 三级终止: the stop escalation mirror — 1 normal, 2 force
+	// grace (StopDeadlineUnix is the countdown's authoritative end), 3 force.
+	StopLevel        int   `json:"stopLevel,omitempty"`
+	StopDeadlineUnix int64 `json:"stopDeadlineUnix,omitempty"`
 }
 
 func (s RuntimeStateSnapshot) ActiveWork() bool {

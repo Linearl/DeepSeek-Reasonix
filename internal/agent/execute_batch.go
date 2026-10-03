@@ -204,7 +204,7 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 		}
 		start := time.Now()
 		s.startedAt[i] = start.UnixMilli()
-		s.outcomes[i] = a.executeOne(ctx, turn, s.calls[i])
+		s.outcomes[i] = a.executeOneWithForce(ctx, turn, s.calls[i])
 		// Task 227 phase 1: fold the outcome into the per-tool error counters
 		// (observe only — no behavior change, no prompt injection).
 		a.recordToolErrorStats(s.calls[i].Name, s.outcomes[i])
@@ -610,6 +610,51 @@ func parallelisableCall(r *tool.Registry, call provider.ToolCall) bool {
 // their WaitDelay; past this the batch reports the effect as unknown instead
 // of keeping the whole turn wedged behind one call that ignores its context.
 var parallelStragglerGrace = 15 * time.Second
+
+// forcedToolOutput is the 任务461-P7 L3 abandon face, mirroring the parallel
+// batch's abandon: the executor stopped waiting after the termination
+// escalation fired, the call's effect is unknown, and the tool goroutine is
+// quarantined as a straggler (recorded, bounded at the next turn's drain,
+// never waited on here).
+const forcedToolOutput = "force-stopped: the executor stopped waiting because the tool ignored termination; its effect is unknown"
+
+// executeOneWithForce runs one tool call under the 任务461-P7 L3
+// force-abandon watchdog. The call executes on its own goroutine so the
+// executor can stop waiting the moment the host's force signal fires instead
+// of wedging the turn behind a tool that ignores cancellation. L1 (the
+// ordinary cancel) does NOT abandon: the tool keeps its graceful-exit window
+// and the escalation policy decides when force comes. Hosts without the
+// force half (WithStopForce absent) keep the pre-P7 wait-forever behavior
+// byte for byte.
+func (a *Agent) executeOneWithForce(ctx context.Context, turn *turnRuntime, call provider.ToolCall) toolOutcome {
+	forceDone := stopForceDone(ctx)
+	if forceDone == nil {
+		return a.executeOne(ctx, turn, call)
+	}
+	type execResult struct{ outcome toolOutcome }
+	done := make(chan execResult, 1)
+	go func() {
+		// The quarantined goroutine registers as a straggler for its whole
+		// life: the next turn's drain bounds its overlap instead of the turn
+		// (记录+隔离 — 执行器不等它，UI 立即释放).
+		a.stragglers.enter()
+		defer a.stragglers.leave()
+		done <- execResult{a.executeOne(ctx, turn, call)}
+	}()
+	select {
+	case r := <-done:
+		return r.outcome
+	default:
+	}
+	select {
+	case r := <-done:
+		return r.outcome
+	case <-forceDone:
+		slog.Warn("agent: forced stop abandoned a tool that ignored termination",
+			"tool", call.Name, "call", call.ID, "session", a.recoveryLogSessionName())
+		return toolOutcome{output: forcedToolOutput, errMsg: forcedToolOutput, executed: true}
+	}
+}
 
 // runParallel returns the launched prefix and which of those calls finished.
 // An unfinished index belongs to a straggler that still owns its private slot.

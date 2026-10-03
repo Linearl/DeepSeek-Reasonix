@@ -78,6 +78,9 @@ func (c *Controller) refreshRuntimeState(e event.Event) {
 	} // construction has not finished
 	c.mu.Lock()
 	running, finishing, closed, cancelling, path := c.running, c.finishing, c.closed, c.canceling, c.sessionPath
+	// 任务461-P7: mirror the stop escalation into the snapshot so the UI can
+	// render the level + countdown from the authoritative state.
+	stopLevel, stopDeadline := c.stopLevel, c.stopDeadline
 	c.mu.Unlock()
 	ledger := c.turnEventLedger()
 	initialized := r.snapshot.SchemaVersion == 1
@@ -101,6 +104,11 @@ func (c *Controller) refreshRuntimeState(e event.Event) {
 	next.CancelRequested = cancelling
 	next.PendingPrompt = c.approval.hasPending()
 	next.Cancellable = !finishing && (running || next.PendingPrompt || cancelling)
+	// 任务461-P7: the stop escalation mirror (level + countdown deadline).
+	next.StopLevel = stopLevel
+	if !stopDeadline.IsZero() {
+		next.StopDeadlineUnix = stopDeadline.Unix()
+	}
 	next.BackgroundJobs = 0
 	if c.jobs != nil {
 		next.BackgroundJobs = len(c.jobs.RunningForSession(agent.BranchID(path)))

@@ -1,6 +1,7 @@
 import { recoveryStatusText, type RecoveryRetry } from "../lib/recoveryStatus";
 import { labFlagEnabled } from "../lib/labFlags";
 import { useRuntimeSession } from "../lib/useRuntimeState";
+import { stopButtonView, type StopButtonPhase } from "../lib/stopButton";
 import { pendingFollowups, confirmFollowup, followupNotSubmitted, followupSessionKey, type PendingFollowup } from "../lib/pendingFollowup";
 import { useAppNavigationStore } from "../store/appNavigation";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -573,6 +574,9 @@ export function Composer({
   onQueueGuidanceBubble,
   localDurableGuidance = true,
   onCancel,
+  stopLevel,
+  stopDeadlineUnix,
+  onEscalateStop,
   onCycleMode,
   onSetMode,
   onSetCollaborationMode,
@@ -681,6 +685,12 @@ export function Composer({
   // Returns the un-sent text plus the exact durable queue IDs the backend
   // confirmed were withdrawn and are therefore safe to restore.
   onCancel: (queuedItemIDs?: string[]) => Promise<CancelOutcome>;
+  /** 任务461-P7 三级终止: the authoritative escalation mirror (0 none, 1 normal,
+   * 2 force grace, 3 force) + the grace countdown's authoritative end. */
+  stopLevel?: number;
+  stopDeadlineUnix?: number;
+  /** Escalation press (2nd+ click on stop): advances the backend level. */
+  onEscalateStop?: () => void | Promise<void>;
   onCycleMode: () => void;
   onSetMode: (mode: Mode) => void;
   onSetCollaborationMode: (mode: CollaborationMode) => void;
@@ -791,6 +801,42 @@ export function Composer({
   const yoloComboLabel = useShortcutComboLabel("toolApproval.yolo");
   const draftKey = sessionKey || tabId || DEFAULT_COMPOSER_DRAFT_KEY;
   const runtimeState = useRuntimeSession(tabId, inboxSessionPath);
+  // 任务461-P7 三级终止: the stop button mirrors the escalation level. The
+  // first click goes through handleCancel (guidance cleanup + L1); the mirror
+  // arms into 强制停止 after 1s of no response, and grace renders the
+  // countdown. Clicks past L1 route to the backend escalation entry.
+  const [stopInitiatedAt, setStopInitiatedAt] = useState<number | null>(null);
+  const [stopTickNow, setStopTickNow] = useState(() => Date.now());
+  const stopRunning = running && (stopInitiatedAt != null || (stopLevel ?? 0) >= 1);
+  useEffect(() => {
+    if (!stopRunning) {
+      setStopInitiatedAt(null);
+      return;
+    }
+    const timer = window.setInterval(() => setStopTickNow(Date.now()), 500);
+    return () => window.clearInterval(timer);
+  }, [stopRunning]);
+  useEffect(() => {
+    if (!running) setStopInitiatedAt(null);
+  }, [running]);
+  const stopView = stopButtonView({
+    stopLevel: stopLevel ?? 0,
+    stopDeadlineUnix: stopDeadlineUnix ?? 0,
+    stopInitiatedAt,
+    running,
+    now: stopTickNow,
+    armAfterMs: 1000,
+  });
+  const stopButtonLabel = (phase: StopButtonPhase, countdown: number | null): string => {
+    if (phase === "grace") return t("composer.stopCountdown", { n: countdown ?? 0 });
+    if (phase === "armed" || phase === "force") return t("composer.stopForce");
+    return t("composer.stop");
+  };
+  const stopButtonHover = (phase: StopButtonPhase): string => {
+    if (phase === "grace" || phase === "armed") return t("composer.stopForceHint");
+    if (phase === "force") return t("composer.stopKillHint");
+    return t("composer.stopNormal");
+  };
   const finishing = runtimeState.finishing;
   if (runtimeState.known) running = runtimeState.running ?? running;
   if (runtimeState.unknown) disabled = true;
@@ -3425,6 +3471,9 @@ export function Composer({
     const targetDraftKey = activeDraftKeyRef.current;
     if (cancelSettlingDraftsRef.current.has(targetDraftKey)) return;
     cancelSettlingDraftsRef.current.add(targetDraftKey);
+    // 任务461-P7: record this surface's L1 fire time — the button arms into
+    // 强制停止 once the turn outlives the graceful-exit window.
+    setStopInitiatedAt(Date.now());
     setCancelSettlingRevision((value) => value + 1);
     const ownedGuidance = pendingGuidanceRef.current.filter((item) => item.id.startsWith("local-") || item.source === "desktop");
     const durableItemIDs = ownedGuidance
@@ -5537,15 +5586,25 @@ export function Composer({
                 </div>
               )}
               {running && !finishing && !runtimeState.unknown && (
-                <Tooltip label={t("composer.stop")}>
+                <Tooltip label={stopButtonHover(stopView.phase)}>
                   <button
                     className="composer__btn composer__btn--stop"
                     type="button"
-                    onClick={() => void handleCancel()}
+                    onClick={() => {
+                      // 任务461-P7: the first press is the L1 stop (guidance
+                      // cleanup + graceful cancel); later presses escalate.
+                      if (stopView.phase === "idle" || stopView.phase === "normal") {
+                        void handleCancel();
+                        return;
+                      }
+                      void onEscalateStop?.();
+                    }}
                     disabled={runtimeState.cancellable === false || cancelSettlingDraftsRef.current.has(draftKey)}
-                    aria-label={t("composer.stop")}
+                    aria-label={stopButtonLabel(stopView.phase, stopView.countdownSeconds)}
                   >
-                    <Square size={12} fill="currentColor" />
+                    {stopView.phase === "grace" && stopView.countdownSeconds != null
+                      ? <span className="composer__stop-countdown">{t("composer.stopCountdown", { n: stopView.countdownSeconds })}</span>
+                      : <Square size={12} fill="currentColor" />}
                   </button>
                 </Tooltip>
               )}

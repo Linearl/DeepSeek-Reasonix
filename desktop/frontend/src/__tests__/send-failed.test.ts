@@ -513,5 +513,31 @@ eq(consumedBubble.items.filter((item) => item.kind === "notice" && item.inboxIte
 const staleDegrade = reducer(degradedQueued, { type: "submit_degraded", submissionId: "degrade-2", text: "stale" });
 eq(staleDegrade, degradedQueued, "a stale degradation for a cleared slot is ignored");
 
+console.log("\nstop escalation mirror (任务461-P7)");
+
+// The authoritative backend_status mirror drives the button state machine.
+const base = reducer(initialState, { type: "user", text: "长任务", seq: 0, submissionId: "p7-1" });
+const l1 = reducer(base, {
+  type: "backend_status", running: true, cancelRequested: true, cancellable: true,
+  stopLevel: 1, stopDeadlineUnix: 0, turnId: "turn-p7", turnStatus: "cancelling",
+});
+eq(l1.stopLevel, 1, "L1 mirror lands on the controller state");
+eq(l1.stopDeadlineUnix, 0, "L1 carries no countdown deadline");
+const l2 = reducer(l1, {
+  type: "backend_status", running: true, cancelRequested: true, cancellable: true,
+  stopLevel: 2, stopDeadlineUnix: Math.floor(Date.now() / 1000) + 14,
+});
+eq(l2.stopLevel, 2, "L2 mirror lands");
+eq(l2.stopDeadlineUnix > Math.floor(Date.now() / 1000), true, "L2 carries the future countdown deadline");
+const l3 = reducer(l2, {
+  type: "backend_status", running: true, cancelRequested: true, cancellable: true,
+  stopLevel: 3, stopDeadlineUnix: 0,
+});
+eq(l3.stopLevel, 3, "L3 mirror lands");
+eq(l3.stopDeadlineUnix, 0, "L3 clears the countdown");
+// Older hosts (no stopLevel on the snapshot) keep the current mirror.
+const legacy = reducer(l3, { type: "backend_status", running: true, cancelRequested: true, cancellable: true });
+eq(legacy.stopLevel, 3, "a snapshot without stopLevel keeps the current mirror");
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

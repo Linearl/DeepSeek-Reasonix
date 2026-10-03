@@ -324,7 +324,14 @@ type Controller struct {
 	// non-blocking.
 	mu                sync.Mutex
 	cancel            context.CancelFunc
-	running           bool
+	// 任务461-P7 三级终止: the force half of the running turn (independent of
+	// cancel — firing it arms the executor's abandon watchdog) plus the stop
+	// escalation state (L1 normal → L2 force grace → L3 force).
+	forceCancel  context.CancelFunc
+	stopLevel    int
+	stopDeadline time.Time
+	stopTimers   []*time.Timer
+	running      bool
 	finishing         bool // TurnDone is still being delivered; park a replacement turn
 	finishingBoundary turnFinishingBoundary
 	// subagentPolicy is the transient sub-agent delegation tier for
@@ -447,6 +454,10 @@ type RuntimeStatus struct {
 	Status          event.TurnStatus
 	TurnEventSeq    uint64
 	ReplayAfterSeq  uint64
+	// 任务461-P7 三级终止: the stop escalation mirror for the UI (L1 normal →
+	// L2 force grace with a countdown deadline → L3 force).
+	StopLevel        int
+	StopDeadlineUnix int64
 }
 
 const (
@@ -1248,6 +1259,10 @@ func (c *Controller) finishGuardedTurn(err error, completion *guardedTurnComplet
 	c.finishing = !c.closed
 	c.finishingBoundary.begin(c.finishing)
 	c.cancel = nil
+	c.forceCancel = nil
+	// 任务461-P7: the stop escalation state dies with its turn — the next stop
+	// starts fresh at L1 (a completed turn must not inherit a live countdown).
+	c.resetStopEscalationLocked()
 	// Task 303: the interrupt state dies with its turn — previously
 	// interrupting had no clear point at all, so any later stall check would
 	// have inherited a stale interrupt from a finished turn.
@@ -1282,7 +1297,10 @@ func (c *Controller) finishGuardedTurn(err error, completion *guardedTurnComplet
 		next := c.parkedTurns[0]
 		c.parkedTurns = c.parkedTurns[1:]
 		ctx, cancel := context.WithCancel(extension.ContextWithRuntimeOwner(context.Background(), c.runtimeOwner))
+		forceCtx, forceCancel := context.WithCancel(extension.ContextWithRuntimeOwner(context.Background(), c.runtimeOwner))
+		ctx = agent.WithStopForce(ctx, forceCtx.Done())
 		c.cancel = cancel
+		c.forceCancel = forceCancel
 		c.running = true
 		c.canceling = false
 		c.mu.Unlock()
@@ -2438,20 +2456,28 @@ func (c *Controller) RuntimeStatus() RuntimeStatus {
 	running := c.running
 	active := running || c.finishing
 	canceling := c.canceling
+	stopLevel := c.stopLevel
+	stopDeadline := c.stopDeadline
 	c.mu.Unlock()
 	pending := c.approval.hasPending()
 	backgroundJobs := len(c.Jobs())
 	turnID, status, turnEventSeq, replayAfterSeq := c.turnEventRuntimeStatus()
+	var stopDeadlineUnix int64
+	if !stopDeadline.IsZero() {
+		stopDeadlineUnix = stopDeadline.Unix()
+	}
 	return RuntimeStatus{
-		Running:         active,
-		PendingPrompt:   pending,
-		BackgroundJobs:  backgroundJobs,
-		CancelRequested: canceling,
-		Cancellable:     running || pending || canceling,
-		TurnID:          turnID,
-		Status:          status,
-		TurnEventSeq:    turnEventSeq,
-		ReplayAfterSeq:  replayAfterSeq,
+		Running:          active,
+		PendingPrompt:    pending,
+		BackgroundJobs:   backgroundJobs,
+		CancelRequested:  canceling,
+		Cancellable:      running || pending || canceling,
+		TurnID:           turnID,
+		Status:           status,
+		TurnEventSeq:     turnEventSeq,
+		ReplayAfterSeq:   replayAfterSeq,
+		StopLevel:        stopLevel,
+		StopDeadlineUnix: stopDeadlineUnix,
 	}
 }
 

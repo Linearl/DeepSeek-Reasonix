@@ -483,6 +483,7 @@ export function useAppSessionComposition(input: AppSessionCompositionInput) {
     ports: {
       cancel,
       cancelForTab,
+      escalateStopForTab: (tabId) => desktopBridge.cancelStopForTab(tabId),
       acceptDelivery: (tabId) => desktopBridge.acceptDeliveryToTab(tabId),
       disconnectRemote: (hostId) => desktopBridge.disconnectRemoteHost(hostId),
       cancelJobForTab: (tabId, jobId) => desktopBridge.cancelJobForTab(tabId, jobId),

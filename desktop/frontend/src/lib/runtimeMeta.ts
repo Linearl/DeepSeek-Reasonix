@@ -6,6 +6,9 @@ export type RuntimeMetaSnapshot = {
   backgroundJobs?: number;
   cancelRequested?: boolean;
   cancellable?: boolean;
+  /** 任务461-P7 三级终止: escalation mirror (1 normal / 2 grace / 3 force). */
+  stopLevel?: number;
+  stopDeadlineUnix?: number;
   turnId?: string;
   turnStatus?: string;
   turnEventSeq?: number;

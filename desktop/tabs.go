@@ -2213,6 +2213,10 @@ func (a *App) tabMeta(tab *WorkspaceTab, active bool) TabMeta {
 		m.PendingPrompt = status.PendingPrompt
 		m.BackgroundJobs = status.BackgroundJobs
 		m.CancelRequested = status.CancelRequested
+		m.StopLevel = status.StopLevel
+		if status.StopDeadlineUnix != 0 {
+			m.StopDeadlineUnix = status.StopDeadlineUnix
+		}
 		m.Cancellable = status.Cancellable
 		m.TurnID = status.TurnID
 		m.TurnStatus = string(status.Status)

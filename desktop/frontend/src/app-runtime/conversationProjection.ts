@@ -52,6 +52,9 @@ export function projectConversation({ local, remote, tab, activeTabId, backgroun
     composer: {
       ...timing,
       running: remote ? remote.running : local.running,
+      // 任务461-P7 三级终止: escalation mirror from the authoritative state.
+      stopLevel: remote ? 0 : local.stopLevel,
+      stopDeadlineUnix: remote ? 0 : local.stopDeadlineUnix,
       goalStatus: remote ? remote.composerProfile?.goalStatus : local.meta?.goalStatus,
       goalRuntime: remote ? remote.goalRuntime : local.meta?.goalRuntime,
       cwd: remote ? tab?.remote?.workspace : local.meta?.cwd,

@@ -614,6 +614,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   Cancel(): Promise<void>;
   CancelTab(tabID: string): Promise<void>;
   CancelTabWithResult(tabID: string): Promise<{ tabId: string; cancelled: boolean; ownerElsewhere: boolean; noRunningTurn: boolean }>;
+  /** 任务461-P7 三级终止: each press advances one level (graceful → force
+   * grace → force). Optional: hosts without it fall back to CancelTab. */
+  CancelStopForTab?(tabID: string): Promise<void>;
   // Fork: clear a heartbeat task's goal once it stops being goal-driven (#31).
   ClearGoalForHeartbeatTopic(topicID: string): Promise<void>;
   // Fork: connectivity probe plus TTFT/TPS measurements (#33).
