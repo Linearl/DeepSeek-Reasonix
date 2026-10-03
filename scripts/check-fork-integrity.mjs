@@ -61,6 +61,10 @@ const CHECKS = [
   { feature: "task 369 选区快捷操作 one-shot 通道", file: "internal/control/side_query.go", patterns: ["func (c *Controller) SideQuery(", "sideQueryMaxTextRunes", "boundedllm.Call"] },
   { feature: "task 369 选区快捷操作前端（开关两态+结果卡）", file: "desktop/frontend/src/components/TranscriptSelectionMenu.tsx", patterns: ["quickActionsEnabled", "transcript-selection-result-card", "runQuickAction"] },
   { feature: "task 369 选区快捷操作桥接线（App 设置回调）", file: "desktop/frontend/src/App.tsx", patterns: ["RunSelectionSideQuery(action, text, contextText)", "setSelectionActionsEnabled"] },
+  // 任务461 P1（收件箱锁挂起修复）：filelock.go 与上游共享，合并可能静默回退
+  // 无界等待；锚定默认上限常量与 ctx.Done 分支（终止 ≤1s 的实现载体）。
+  { feature: "任务461 锁等待一律有界+取消即时生效", file: "internal/filelock/filelock.go", patterns: ["DefaultWaitTimeout", "case <-ctx.Done():"] },
+  { feature: "任务461 收件箱锁 5s 外部超时（内层 ≤5s）", file: "internal/collabinbox/collabinbox.go", patterns: ["lockWaitTimeout", "AcquireWithExternalTimeout"] },
   // 任务 90 链拼接：promote 时把落败链（当前 main）中 winner 缺失的头部 graft 到新主线。
   // 三个锚点按「顺序」登记——gap 在 rename 前算、graft 在侧车搬移后写、事件日志随即折叠；
   // 顺序错位造成的失败是静默的（文件对而读回旧），所以这里锁的是调用形状，不只是符号名。

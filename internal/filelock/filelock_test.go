@@ -185,3 +185,79 @@ func TestLocalRegistryReclaimsReleasedEntries(t *testing.T) {
 		t.Fatalf("registry size after second cycle = %d, want %d", got, before)
 	}
 }
+
+// ── task 461 P1 acceptance ───────────────────────────────────────────────────
+// 验收（461 卡）：锁被外部进程持有时 ≤5s 返错而非挂起；锁等待期点「停止」
+// （ctx 取消）≤1s 生效。以下断言全部硬判定，无 SKIP。
+
+// TestAcquireLocalContentionReturnsWhenCallerCancels pins the stop SLA for the
+// in-process queue: a caller ctx cancelled mid-wait must end the acquire in
+// under a second, even though the local slot stays held.
+func TestAcquireLocalContentionReturnsWhenCallerCancels(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.lock")
+	release, err := Acquire(context.Background(), path)
+	if err != nil {
+		t.Fatalf("hold lock: %v", err)
+	}
+	defer release()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(100*time.Millisecond, cancel)
+	started := time.Now()
+	_, err = Acquire(ctx, path)
+	elapsed := time.Since(started)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("contended acquire error = %v, want context.Canceled", err)
+	}
+	if elapsed >= time.Second {
+		t.Fatalf("acquire returned after %v, want <1s after caller cancel (task 461 P1 停止 SLA)", elapsed)
+	}
+}
+
+// TestAcquireWithExternalTimeoutReturnsWhenCallerCancels pins the stop SLA for
+// the cross-process retry phase: even with a long external budget left, caller
+// cancellation ends the wait immediately (this is the phase that ignored ctx
+// before the fix).
+func TestAcquireWithExternalTimeoutReturnsWhenCallerCancels(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.lock")
+	releaseExternal, err := tryLockFile(path)
+	if err != nil {
+		t.Fatalf("hold external file lock: %v", err)
+	}
+	defer releaseExternal()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(100*time.Millisecond, cancel)
+	started := time.Now()
+	_, err = AcquireWithExternalTimeout(ctx, path, 30*time.Second)
+	elapsed := time.Since(started)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("acquire error = %v, want context.Canceled", err)
+	}
+	if elapsed >= time.Second {
+		t.Fatalf("acquire returned after %v, want <1s after caller cancel (task 461 P1 停止 SLA)", elapsed)
+	}
+}
+
+// TestAcquireWithBackgroundContextIsBounded pins the availability rule: a
+// caller that passes context.Background() (no deadline, no cancellation) must
+// still get a timeout error within DefaultWaitTimeout instead of retrying
+// forever while the lock stays held elsewhere.
+func TestAcquireWithBackgroundContextIsBounded(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.lock")
+	releaseExternal, err := tryLockFile(path)
+	if err != nil {
+		t.Fatalf("hold external file lock: %v", err)
+	}
+	defer releaseExternal()
+
+	started := time.Now()
+	_, err = Acquire(context.Background(), path)
+	elapsed := time.Since(started)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("unbounded caller error = %v, want deadline exceeded", err)
+	}
+	if elapsed > DefaultWaitTimeout+2*time.Second {
+		t.Fatalf("acquire waited %v, want ≤ DefaultWaitTimeout(%v)+slack", elapsed, DefaultWaitTimeout)
+	}
+}
