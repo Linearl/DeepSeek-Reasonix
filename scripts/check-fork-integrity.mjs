@@ -757,6 +757,12 @@ const CHECKS = [
   // 拦截点都会退化回「失败弹窗 + 消息丢失」的 461-P6 原症状。
   { feature: "任务461-P6 send 被拒自动降级（不弹失败面/去向提示/turn 状态对齐）", file: "desktop/frontend/src/lib/useController.ts", patterns: ["degradeRunningTurnSubmit", "composer.degradedSteer", "composer.degradedQueued"] },
   { feature: "任务461-P6 降级 reducer（气泡不标失败+权威 running 对齐）", file: "desktop/frontend/src/lib/turnSubmissionFailure.ts", patterns: ["reduceSubmitDegraded"] },
+  // P7：三级终止交互——L1 优雅/L2 宽限倒计时/L3 强制放弃。丢任一半边都会退化
+  // 回「卡死的 turn 永远占着 UI」或「点一下就把工具强杀」的单级世界。
+  { feature: "任务461-P7 控制层三级终止状态机（CancelStop 升级链+保底计时）", file: "internal/control/stop_escalation.go", patterns: ["func (c *Controller) CancelStop", "stopAutoGraceAfter", "stopForceGrace"] },
+  { feature: "任务461-P7 执行器强制放弃 watchdog（忽略取消的工具记录+隔离）", file: "internal/agent/execute_batch.go", patterns: ["executeOneWithForce", "forcedToolOutput"] },
+  { feature: "任务461-P7 强制信号 ctx 通路（独立 force ctx）", file: "internal/agent/run_force.go", patterns: ["WithStopForce", "StopForceDone"] },
+  { feature: "任务461-P7 停止按钮三态（强制停止/倒计时/hover 三档）", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["stopButtonView", "composer.stopCountdown", "composer.stopKillHint"] },
 ];
 
 let failed = 0;
