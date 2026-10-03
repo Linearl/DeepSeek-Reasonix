@@ -8,11 +8,12 @@
 // (contract ②), and dismissed/decided/retention state lives on disk, so a
 // restart keeps all of it (contract f).
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { app } from "../lib/bridge";
 import { reportFrontendLog } from "../lib/frontendLog";
 import { useT } from "../lib/i18n";
+import { groupForProject, loadProjectGroupAssign, loadProjectGroups } from "../lib/projectGroups";
 
 export type CollabMailEntry = {
   id: string;
@@ -78,6 +79,26 @@ export type CollabInboxBindings = {
   SetCollabMailRetention(retention: string): Promise<CollabMailSnapshot>;
 };
 
+/** 任务461-P4: one ListAddressableSessions row — the addressable roster that
+ * backs the from/to filter dropdowns (options read 会话名, hover shows
+ * 项目 › 分组 › 会话名 › contact_id). Kept as a separate seam so existing
+ * CollabInboxBindings fakes stay valid. */
+export type CollabSessionDirectoryRow = {
+  contactId: string;
+  purpose?: string;
+  title?: string;
+  topicId?: string;
+  sessionPath: string;
+  scope?: string;
+  workspaceRoot?: string;
+  open: boolean;
+  archived?: boolean;
+};
+
+export type CollabSessionDirectory = {
+  ListAddressableSessions(): Promise<CollabSessionDirectoryRow[]>;
+};
+
 let panelOpen = false;
 const openListeners = new Set<(open: boolean) => void>();
 
@@ -135,15 +156,49 @@ function formatTime(ms: number): string {
   return new Date(ms).toLocaleString();
 }
 
-export function CollabInboxPanel({ bindings }: { bindings?: CollabInboxBindings } = {}) {
+// 任务461-P4: the dropdown option label is the session name; the hover title is
+// the address breadcrumb 「项目 › 分组 › 会话名 › contact_id」. Missing segments
+// (no project, no group, no title) are dropped rather than guessed.
+function sessionHoverLabel(row: CollabSessionDirectoryRow, globalLabel: string): string {
+  const parts: string[] = [];
+  if (row.scope === "project" && row.workspaceRoot) {
+    parts.push(workspaceBasename(row.workspaceRoot));
+    const groupId = groupForProject(loadProjectGroupAssign(), row.workspaceRoot);
+    const group = groupId ? loadProjectGroups().find((g) => g.id === groupId) : undefined;
+    if (group?.title) parts.push(group.title);
+  } else if (row.scope !== "project") {
+    parts.push(globalLabel);
+  }
+  if (row.title) parts.push(row.title);
+  if (row.contactId) parts.push(row.contactId);
+  return parts.join(" › ");
+}
+
+function workspaceBasename(root: string): string {
+  return root.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || root;
+}
+
+export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInboxBindings; directory?: CollabSessionDirectory } = {}) {
   const t = useT();
   const b: CollabInboxBindings = bindings ?? app;
+  // 任务461-P4: the from/to dropdowns read the addressable roster. The
+  // directory seam is injectable; a bindings fake that also carries the method
+  // works, otherwise the real bridge does. A directory without the method
+  // degrades to an empty roster (the「全部」option still filters nothing-off).
+  const dir: CollabSessionDirectory | undefined = useMemo(() => {
+    if (directory) return directory;
+    if (bindings && typeof (bindings as Partial<CollabSessionDirectory>).ListAddressableSessions === "function") {
+      return bindings as unknown as CollabSessionDirectory;
+    }
+    return app as CollabSessionDirectory;
+  }, [bindings, directory]);
   const [open, setOpen] = useState(panelOpen);
   const [bucket, setBucket] = useState<Bucket>("all");
   const [state, setState] = useState<StateFilter>("all");
   const [order, setOrder] = useState<OrderFilter>("desc");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [sessions, setSessions] = useState<CollabSessionDirectoryRow[]>([]);
   const [view, setView] = useState<"list" | "chains">("list");
   const [showDismissed, setShowDismissed] = useState(false);
   const [snapshot, setSnapshot] = useState<CollabMailSnapshot | null>(null);
@@ -152,6 +207,23 @@ export function CollabInboxPanel({ bindings }: { bindings?: CollabInboxBindings 
   const [busy, setBusy] = useState(false);
 
   useEffect(() => onCollabInboxOpenChange((next) => setOpen(next)), []);
+
+  // 任务461-P4: the roster backs the from/to dropdowns — loaded while the
+  // panel is open, failures degrade to an empty roster (「全部」 keeps working).
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    dir.ListAddressableSessions()
+      .then((rows) => {
+        if (alive) setSessions(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => {
+        if (alive) setSessions([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [open, dir]);
 
   const refresh = useCallback(async () => {
     try {
@@ -175,6 +247,38 @@ export function CollabInboxPanel({ bindings }: { bindings?: CollabInboxBindings 
     void refresh();
   }, [open, refresh]);
 
+  // 任务461-P4: dropdown options — one addressable session per contact id,
+  // labeled by session name, hover showing 项目 › 分组 › 会话名 › contact_id.
+  // Rows without a contact id cannot reach the backend's exact-match filter,
+  // so they are not offered (「全部」 stays the honest catch-all).
+  const addressable = useMemo(() => {
+    const seen = new Set<string>();
+    const out: CollabSessionDirectoryRow[] = [];
+    for (const row of sessions) {
+      const contactId = (row.contactId || "").trim();
+      if (!contactId || seen.has(contactId)) continue;
+      seen.add(contactId);
+      out.push(row);
+    }
+    return out;
+  }, [sessions]);
+  const globalLabel = t("collabInbox.hover.global");
+  const renderFilterOptions = () => (
+    <>
+      <option value="">{t("collabInbox.bucket.all")}</option>
+      {addressable.map((row) => (
+        <option
+          key={row.contactId}
+          value={row.contactId}
+          title={sessionHoverLabel(row, globalLabel)}
+        >
+          {row.title || row.contactId}
+        </option>
+      ))}
+    </>
+  );
+
+
   if (!open) return null;
 
   const act = async (fn: () => Promise<CollabMailSnapshot>) => {
@@ -190,6 +294,7 @@ export function CollabInboxPanel({ bindings }: { bindings?: CollabInboxBindings 
   };
 
   const rows: CollabMailEntry[] = snapshot?.entries ?? [];
+
 
   return createPortal(
     <div className="collab-inbox-panel" role="dialog" aria-label={t("collabInbox.title")}>
@@ -245,18 +350,25 @@ export function CollabInboxPanel({ bindings }: { bindings?: CollabInboxBindings 
       )}
 
       <div className="collab-inbox-panel__filters">
-        <input
+        {/* 任务461-P4: from/to 过滤改下拉 —— 选项=会话名（值=contact_id，与后端
+            精确匹配口径一致），hover 显示 项目 › 分组 › 会话名 › contact_id，
+            顶部「全部」= 不过滤。消除「不知填会话名还是 id」的误导。 */}
+        <select
           className="collab-inbox-panel__filter"
-          placeholder={t("collabInbox.from")}
+          aria-label={t("collabInbox.from")}
           value={from}
           onChange={(event) => setFrom(event.target.value)}
-        />
-        <input
+        >
+          {renderFilterOptions()}
+        </select>
+        <select
           className="collab-inbox-panel__filter"
-          placeholder={t("collabInbox.to")}
+          aria-label={t("collabInbox.to")}
           value={to}
           onChange={(event) => setTo(event.target.value)}
-        />
+        >
+          {renderFilterOptions()}
+        </select>
         <div className="collab-inbox-panel__ordertoggle" role="group" aria-label={t("collabInbox.sortByDate")}>
           {ORDERS.map((name) => (
             <button
