@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -138,9 +139,10 @@ func TestDrainInboxLimitLeavesTailQueued(t *testing.T) {
 		CurrentContactID:   "sc_me",
 	}
 	mail := sessioncollab.NewMailStore(mailDir)
+	// 任务461 P8 ①：同内容新线程投递会折叠，limit 语义测试需要 5 条独立消息。
 	for i := 0; i < 5; i++ {
 		if _, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{
-			From: "sc_peer", To: "sc_me", Body: "m", ReplyTo: "sc_peer",
+			From: "sc_peer", To: "sc_me", Body: fmt.Sprintf("m-%d", i), ReplyTo: "sc_peer",
 		}); err != nil {
 			t.Fatal(err)
 		}

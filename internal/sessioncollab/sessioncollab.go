@@ -725,6 +725,60 @@ func (s *MailStore) inboxPath(contactID string) string {
 	return filepath.Join(s.root, contactID+".inbox.jsonl")
 }
 
+// 重发窗口（任务461 P8 ①）：普通邮件 30 分钟——窗内同内容重发按重试处理；
+// 带 system/automation 戳的邮件（回执、心跳确认、平台状态通知）24 小时——
+// 这类消息天然幂等，正文相同即视为同一条，无论隔多久重发。
+const (
+	resendDedupWindowDefault = 30 * time.Minute
+	resendDedupWindowSystem  = 24 * time.Hour
+)
+
+func resendDedupWindow(kind string) time.Duration {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "system", "automation":
+		return resendDedupWindowSystem
+	}
+	return resendDedupWindowDefault
+}
+
+// dedupeResend reports an existing inbox message that this delivery
+// duplicates: same sender, same recipient, byte-identical body, inside the
+// resend window. It only applies to mail that STARTS ITS OWN THREAD (empty
+// thread_id): dispatch/notice/confirmation resends open a fresh thread every
+// pass while carrying identical content, which is exactly the re-entry
+// pollution of 任务461 P8. Conversational replies (explicit thread_id) are
+// deliberate turns — identical bodies on a thread are legitimate and never
+// collapse here. The scan key is (from, to, content) among fresh-thread rows,
+// so a retry loop minting fresh ids every pass still collapses onto the
+// original. Metadata differences beyond from/to/body (receipt flag, card id,
+// hop) are treated as part of the retry and ride the ORIGINAL message's
+// metadata.
+func (s *MailStore) dedupeResend(msg MailMessage) (MailMessage, bool) {
+	if strings.TrimSpace(msg.ThreadID) != "" {
+		return MailMessage{}, false
+	}
+	all, err := s.readAll(msg.To)
+	if err != nil {
+		return MailMessage{}, false
+	}
+	window := resendDedupWindow(msg.Kind).Milliseconds()
+	now := time.Now().UnixMilli()
+	for _, m := range all {
+		if m.ID == "" || m.Body != msg.Body || m.From != msg.From || m.To != msg.To {
+			continue
+		}
+		// 只与同样「自成一线」的历史行比较：对话线程里的同内容回复是正常轮次。
+		if m.ThreadID != "" && m.ThreadID != m.ID {
+			continue
+		}
+		if m.At > 0 && now-m.At > window {
+			continue
+		}
+		return m, true
+	}
+	return MailMessage{}, false
+}
+
 // Deliver appends a message for the target contact. hop is the sender's chain
 // depth; the store's ceiling + 1 is refused. ctx is the sender's request
 // context: a user stop ends a contended lock wait immediately (task 461 P1).
@@ -748,6 +802,13 @@ func (s *MailStore) Deliver(ctx context.Context, msg MailMessage) (MailMessage, 
 		return MailMessage{}, err
 	}
 	msg.Delivery = string(delivery)
+	// 任务461 P8 ①：投递层内容幂等。同一发送方→同一收件方的完全同内容消息在
+	// 重发窗口内不再落新行，直接返回原消息（原 id/thread/at）——重入循环
+	// （同一内容反复投递、每次新 id）不再污染收件箱和未读数；工具文档长期
+	// 宣称的「重发返原 id」自此在投递层成立。窗口外的真实新消息不受影响。
+	if orig, ok := s.dedupeResend(msg); ok {
+		return orig, nil
+	}
 	if msg.ID == "" {
 		msg.ID = newID("msg_")
 	}

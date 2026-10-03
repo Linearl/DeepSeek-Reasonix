@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -31,8 +32,11 @@ func TestDrainInboxInteropWithHostPumpRace(t *testing.T) {
 		MailDir: mailDir, CurrentSessionPath: mePath, CurrentContactID: "sc_me",
 	}
 	mail := sessioncollab.NewMailStore(mailDir)
+	// 任务461 P8 ①：投递层同内容幂等会把同 from/to/body 的新线程投递折叠为
+	// 一条；本测试考察 drain 工具与宿主泵并发不双读，种子用差异化正文保持
+	// 20 条独立消息。
 	for i := 0; i < 20; i++ {
-		mail.Deliver(context.Background(), sessioncollab.MailMessage{From: "sc_creator", To: "sc_me", Body: "msg", Delivery: "steer", ReplyTo: "sc_creator"})
+		mail.Deliver(context.Background(), sessioncollab.MailMessage{From: "sc_creator", To: "sc_me", Body: fmt.Sprintf("msg-%d", i), Delivery: "steer", ReplyTo: "sc_creator"})
 	}
 
 	var mu sync.Mutex

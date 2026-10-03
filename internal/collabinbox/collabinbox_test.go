@@ -1,6 +1,7 @@
 package collabinbox
 
 import (
+	"fmt"
 	"context"
 	"os"
 	"path/filepath"
@@ -406,9 +407,11 @@ func TestChainViewGroupsThread(t *testing.T) {
 func TestLimitDefaultAndHardCap(t *testing.T) {
 	store, mail := fixtureStore(t)
 	now := store.now()
+	// 任务461 P8 ①：投递层同内容幂等会折叠同 from/to/body 的种子，分页测试
+	// 需要 60 条独立消息 → 正文带序号。
 	for i := 0; i < 60; i++ {
 		deliver(t, mail, sessioncollab.MailMessage{
-			From: "sc_a", To: "sc_b", Body: "m", At: now - int64(i),
+			From: "sc_a", To: "sc_b", Body: fmt.Sprintf("m-%d", i), At: now - int64(i),
 		})
 	}
 	snap, err := store.List(context.Background(), Query{}, false) // default
