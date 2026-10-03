@@ -97,7 +97,7 @@ func TestEndToEndInboxAndSend(t *testing.T) {
 
 	// The heartbeat side drops a message into the dev contact's mailbox
 	// directly on the shared store — the sending half of a real peer.
-	if _, err := s.mail.Deliver(sessioncollab.MailMessage{
+	if _, err := s.mail.Deliver(context.Background(), sessioncollab.MailMessage{
 		From: "zcode-heartbeat",
 		To:   "zcode-dev",
 		Body: "please take task 1",
@@ -125,7 +125,7 @@ func TestEndToEndInboxAndSend(t *testing.T) {
 	if len(second.Messages) != 0 {
 		t.Fatalf("second read: want empty, got %+v", second.Messages)
 	}
-	if _, err := s.mail.Deliver(sessioncollab.MailMessage{From: "zcode-heartbeat", To: "zcode-dev", Body: "again"}); err != nil {
+	if _, err := s.mail.Deliver(context.Background(), sessioncollab.MailMessage{From: "zcode-heartbeat", To: "zcode-dev", Body: "again"}); err != nil {
 		t.Fatal(err)
 	}
 	var peek inboxReadOut

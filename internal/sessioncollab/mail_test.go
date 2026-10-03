@@ -1,28 +1,31 @@
 package sessioncollab
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 // Delivery is two-phase: Claim reports what is pending without consuming it, and
 // only Ack settles it. This is what makes delivery at-least-once — a Claim that
 // advanced the cursor would drop every message that failed afterwards.
 func TestClaimDoesNotConsumeUntilAcked(t *testing.T) {
 	mail := NewMailStore(t.TempDir())
-	if _, err := mail.Deliver(MailMessage{To: "sc_a", Body: "one"}); err != nil {
+	if _, err := mail.Deliver(context.Background(), MailMessage{To: "sc_a", Body: "one"}); err != nil {
 		t.Fatal(err)
 	}
-	first, refused, err := mail.Claim("sc_a")
+	first, refused, err := mail.Claim(context.Background(), "sc_a")
 	if err != nil || len(first) != 1 || len(refused) != 0 {
 		t.Fatalf("first claim: %v %v %v", first, refused, err)
 	}
 	// An un-acked claim must come back: that is the retry that prevents a loss.
-	again, _, err := mail.Claim("sc_a")
+	again, _, err := mail.Claim(context.Background(), "sc_a")
 	if err != nil || len(again) != 1 {
 		t.Fatalf("un-acked message must be re-offered, got %d (%v)", len(again), err)
 	}
-	if err := mail.Ack("sc_a", first[0].ID); err != nil {
+	if err := mail.Ack(context.Background(), "sc_a", first[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	after, _, err := mail.Claim("sc_a")
+	after, _, err := mail.Claim(context.Background(), "sc_a")
 	if err != nil || len(after) != 0 {
 		t.Fatalf("acked message must not be re-offered, got %d (%v)", len(after), err)
 	}
@@ -32,12 +35,12 @@ func TestClaimDoesNotConsumeUntilAcked(t *testing.T) {
 // retry cannot turn into a duplicate turn.
 func TestRedeliveryKeepsMessageIdentity(t *testing.T) {
 	mail := NewMailStore(t.TempDir())
-	sent, err := mail.Deliver(MailMessage{To: "sc_a", Body: "one"})
+	sent, err := mail.Deliver(context.Background(), MailMessage{To: "sc_a", Body: "one"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, _, _ := mail.Claim("sc_a")
-	second, _, _ := mail.Claim("sc_a")
+	first, _, _ := mail.Claim(context.Background(), "sc_a")
+	second, _, _ := mail.Claim(context.Background(), "sc_a")
 	if len(first) != 1 || len(second) != 1 {
 		t.Fatalf("expected both claims to offer the message")
 	}
@@ -50,13 +53,13 @@ func TestRedeliveryKeepsMessageIdentity(t *testing.T) {
 // not steal the message from the delivery pass.
 func TestPeekDoesNotAdvanceCursor(t *testing.T) {
 	mail := NewMailStore(t.TempDir())
-	if _, err := mail.Deliver(MailMessage{To: "sc_a", Body: "one"}); err != nil {
+	if _, err := mail.Deliver(context.Background(), MailMessage{To: "sc_a", Body: "one"}); err != nil {
 		t.Fatal(err)
 	}
 	if unread, err := mail.Peek("sc_a"); err != nil || len(unread) != 1 {
 		t.Fatalf("peek: %v %v", unread, err)
 	}
-	if claimed, _, err := mail.Claim("sc_a"); err != nil || len(claimed) != 1 {
+	if claimed, _, err := mail.Claim(context.Background(), "sc_a"); err != nil || len(claimed) != 1 {
 		t.Fatalf("claim after peek must still deliver: %v %v", claimed, err)
 	}
 }
@@ -65,14 +68,14 @@ func TestPeekDoesNotAdvanceCursor(t *testing.T) {
 // it is written: a sender can always report hop=0.
 func TestClaimRefusesHopExhausted(t *testing.T) {
 	mail := NewMailStore(t.TempDir())
-	if _, err := mail.Deliver(MailMessage{To: "sc_a", Body: "deep", Hop: 0}); err != nil {
+	if _, err := mail.Deliver(context.Background(), MailMessage{To: "sc_a", Body: "deep", Hop: 0}); err != nil {
 		t.Fatal(err)
 	}
 	raw := mail.inboxPath("sc_a")
 	if err := appendJSONL(raw, MailMessage{ID: "msg_forced", To: "sc_a", Body: "too deep", Hop: MaxHop + 1}); err != nil {
 		t.Fatal(err)
 	}
-	delivered, refused, err := mail.Claim("sc_a")
+	delivered, refused, err := mail.Claim(context.Background(), "sc_a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,10 +87,10 @@ func TestClaimRefusesHopExhausted(t *testing.T) {
 	}
 	// Refused mail is settled by the caller's Ack, not by the claim itself; the
 	// caller reports it to the sender first, so it must survive that step.
-	if err := mail.Ack("sc_a", refused[0].ID, delivered[0].ID); err != nil {
+	if err := mail.Ack(context.Background(), "sc_a", refused[0].ID, delivered[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	again, _, err := mail.Claim("sc_a")
+	again, _, err := mail.Claim(context.Background(), "sc_a")
 	if err != nil || len(again) != 0 {
 		t.Fatalf("refused message redelivered: %v %v", again, err)
 	}
@@ -96,10 +99,10 @@ func TestClaimRefusesHopExhausted(t *testing.T) {
 // Deliver must reject an over-limit hop so the common path fails loudly.
 func TestDeliverRejectsOverLimitHop(t *testing.T) {
 	mail := NewMailStore(t.TempDir())
-	if _, err := mail.Deliver(MailMessage{To: "sc_a", Body: "x", Hop: MaxHop + 1}); err == nil {
+	if _, err := mail.Deliver(context.Background(), MailMessage{To: "sc_a", Body: "x", Hop: MaxHop + 1}); err == nil {
 		t.Fatal("want hop limit error")
 	}
-	if _, err := mail.Deliver(MailMessage{To: "sc_a", Body: "x", Hop: MaxHop}); err != nil {
+	if _, err := mail.Deliver(context.Background(), MailMessage{To: "sc_a", Body: "x", Hop: MaxHop}); err != nil {
 		t.Fatalf("boundary hop must pass: %v", err)
 	}
 }
@@ -110,7 +113,7 @@ func TestDeliverRejectsOverLimitHop(t *testing.T) {
 // which is where the original request was delivered.
 func TestParentThreadResolvesInReceiversMailbox(t *testing.T) {
 	mail := NewMailStore(t.TempDir())
-	parent, err := mail.Deliver(MailMessage{From: "sc_a", To: "sc_b", Body: "request"})
+	parent, err := mail.Deliver(context.Background(), MailMessage{From: "sc_a", To: "sc_b", Body: "request"})
 	if err != nil {
 		t.Fatal(err)
 	}

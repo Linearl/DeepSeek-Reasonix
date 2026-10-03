@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"path/filepath"
 	"sync"
@@ -31,7 +32,7 @@ func TestDrainInboxInteropWithHostPumpRace(t *testing.T) {
 	}
 	mail := sessioncollab.NewMailStore(mailDir)
 	for i := 0; i < 20; i++ {
-		mail.Deliver(sessioncollab.MailMessage{From: "sc_creator", To: "sc_me", Body: "msg", Delivery: "steer", ReplyTo: "sc_creator"})
+		mail.Deliver(context.Background(), sessioncollab.MailMessage{From: "sc_creator", To: "sc_me", Body: "msg", Delivery: "steer", ReplyTo: "sc_creator"})
 	}
 
 	var mu sync.Mutex
@@ -61,7 +62,7 @@ func TestDrainInboxInteropWithHostPumpRace(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			mail.Drain("sc_me", func(pending, _ []sessioncollab.MailMessage) []string {
+			mail.Drain(context.Background(), "sc_me", func(pending, _ []sessioncollab.MailMessage) []string {
 				mu.Lock()
 				pumpCount += len(pending)
 				mu.Unlock()

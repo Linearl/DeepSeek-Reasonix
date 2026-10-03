@@ -1,6 +1,7 @@
 package sessioncollab
 
 import (
+	"context"
 	"sync"
 	"testing"
 )
@@ -10,7 +11,7 @@ import (
 func TestConcurrentDrainNoDoubleConsumption(t *testing.T) {
 	mail := NewMailStore(t.TempDir())
 	for i := 0; i < 20; i++ {
-		if _, err := mail.Deliver(MailMessage{To: "sc_a", Body: "msg"}); err != nil {
+		if _, err := mail.Deliver(context.Background(), MailMessage{To: "sc_a", Body: "msg"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -21,7 +22,7 @@ func TestConcurrentDrainNoDoubleConsumption(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := mail.Drain("sc_a", func(pending, _ []MailMessage) []string {
+			err := mail.Drain(context.Background(), "sc_a", func(pending, _ []MailMessage) []string {
 				mu.Lock()
 				total += len(pending)
 				mu.Unlock()

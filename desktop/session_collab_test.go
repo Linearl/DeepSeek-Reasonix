@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -51,7 +52,7 @@ func collabTestDelivery(t *testing.T, mail *sessioncollab.MailStore, fail func(s
 			// Route notices through the real store so the "sender is told" claim
 			// is verified against the sender's actual inbox.
 			if strings.TrimSpace(msg.From) != "" {
-				_, _ = mail.Deliver(sessioncollab.MailMessage{
+				_, _ = mail.Deliver(context.Background(), sessioncollab.MailMessage{
 					To: msg.From, Body: text, Hop: msg.Hop, ThreadID: msg.ThreadID,
 				})
 			}
@@ -67,7 +68,7 @@ func collabTestDelivery(t *testing.T, mail *sessioncollab.MailStore, fail func(s
 // message that failed afterwards. A failed delivery must stay pending.
 func TestDeliveryFailureDoesNotLoseMessage(t *testing.T) {
 	mail, target := newCollabTestMail(t)
-	if _, err := mail.Deliver(sessioncollab.MailMessage{From: "sc_from", To: target, Body: "first"}); err != nil {
+	if _, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{From: "sc_from", To: target, Body: "first"}); err != nil {
 		t.Fatal(err)
 	}
 	d, _, notices := collabTestDelivery(t, mail, func(sessioncollab.MailMessage) error {
@@ -83,7 +84,7 @@ func TestDeliveryFailureDoesNotLoseMessage(t *testing.T) {
 	if len(*notices) != 1 {
 		t.Fatalf("the sender must be told once, got %d notices", len(*notices))
 	}
-	pending, _, claimErr := mail.Claim(target)
+	pending, _, claimErr := mail.Claim(context.Background(), target)
 	if claimErr != nil || len(pending) != 1 {
 		t.Fatalf("the message must still be pending for retry, got %d (%v)", len(pending), claimErr)
 	}
@@ -92,7 +93,7 @@ func TestDeliveryFailureDoesNotLoseMessage(t *testing.T) {
 // The retry must actually deliver, and only then settle the message.
 func TestDeliveryRetrySucceedsAfterTransientFailure(t *testing.T) {
 	mail, target := newCollabTestMail(t)
-	if _, err := mail.Deliver(sessioncollab.MailMessage{From: "sc_from", To: target, Body: "first"}); err != nil {
+	if _, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{From: "sc_from", To: target, Body: "first"}); err != nil {
 		t.Fatal(err)
 	}
 	attempts := 0
@@ -113,7 +114,7 @@ func TestDeliveryRetrySucceedsAfterTransientFailure(t *testing.T) {
 	if len(*bodies) != 1 {
 		t.Fatalf("exactly one delivery expected, got %d", len(*bodies))
 	}
-	after, _, _ := mail.Claim(target)
+	after, _, _ := mail.Claim(context.Background(), target)
 	if len(after) != 0 {
 		t.Fatalf("settled message must not be re-offered, got %d", len(after))
 	}
@@ -123,7 +124,7 @@ func TestDeliveryRetrySucceedsAfterTransientFailure(t *testing.T) {
 func TestOneFailedMessageDoesNotBlockTheRest(t *testing.T) {
 	mail, target := newCollabTestMail(t)
 	for _, body := range []string{"ok-1", "bad", "ok-2"} {
-		if _, err := mail.Deliver(sessioncollab.MailMessage{From: "sc_from", To: target, Body: body}); err != nil {
+		if _, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{From: "sc_from", To: target, Body: body}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -140,7 +141,7 @@ func TestOneFailedMessageDoesNotBlockTheRest(t *testing.T) {
 	if delivered != 2 || len(*bodies) != 2 {
 		t.Fatalf("the two good messages must land: delivered=%d bodies=%v", delivered, *bodies)
 	}
-	pending, _, _ := mail.Claim(target)
+	pending, _, _ := mail.Claim(context.Background(), target)
 	if len(pending) != 1 || pending[0].Body != "bad" {
 		t.Fatalf("only the failed message should remain pending, got %+v", pending)
 	}
@@ -150,7 +151,7 @@ func TestOneFailedMessageDoesNotBlockTheRest(t *testing.T) {
 // be re-reported forever.
 func TestHopExhaustedIsReportedAndSettled(t *testing.T) {
 	mail, target := newCollabTestMail(t)
-	if _, err := mail.Deliver(sessioncollab.MailMessage{From: "sc_from", To: target, Body: "ok"}); err != nil {
+	if _, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{From: "sc_from", To: target, Body: "ok"}); err != nil {
 		t.Fatal(err)
 	}
 	d, bodies, notices := collabTestDelivery(t, mail, nil)
@@ -174,7 +175,7 @@ func TestHopExhaustedIsReportedAndSettled(t *testing.T) {
 		t.Fatalf("the sender must be told, got %d notices", len(*notices))
 	}
 	// Both are settled, so a second pass is quiet.
-	again, _, _ := mail.Claim(target)
+	again, _, _ := mail.Claim(context.Background(), target)
 	if len(again) != 0 {
 		t.Fatalf("settled messages must not reappear: %+v", again)
 	}
@@ -184,7 +185,7 @@ func TestHopExhaustedIsReportedAndSettled(t *testing.T) {
 // still delivered as a queued follow-up.
 func TestDegradedSteerIsReported(t *testing.T) {
 	mail, target := newCollabTestMail(t)
-	if _, err := mail.Deliver(sessioncollab.MailMessage{
+	if _, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{
 		From: "sc_from", To: target, Body: "urgent", Delivery: string(sessioncollab.DeliverySteer),
 	}); err != nil {
 		t.Fatal(err)
@@ -206,7 +207,7 @@ func TestDegradedSteerIsReported(t *testing.T) {
 // parent is settled and reported rather than handed over.
 func TestUnverifiableProvenanceIsRefusedAndReported(t *testing.T) {
 	mail, target := newCollabTestMail(t)
-	if _, err := mail.Deliver(sessioncollab.MailMessage{
+	if _, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{
 		From: "sc_from", To: target, Body: "relay", ThreadID: "msg_ghost",
 	}); err != nil {
 		t.Fatal(err)
@@ -309,7 +310,7 @@ func TestDeriveHopRefusalsAreClassifiedByCause(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := mail.Deliver(sessioncollab.MailMessage{
+			if _, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{
 				From: "sc_from", To: target, Body: fmt.Sprintf("reply-%d", i), ThreadID: "msg_parent",
 			}); err != nil {
 				t.Fatal(err)

@@ -211,7 +211,7 @@ func TestEventWaitAnyMessageWakesOnMail(t *testing.T) {
 	go func() {
 		time.Sleep(200 * time.Millisecond)
 		mail := sessioncollab.NewMailStore(cfg.MailDir)
-		if _, err := mail.Deliver(sessioncollab.MailMessage{From: "sc_peer", To: "sc_a", Body: "done"}); err != nil {
+		if _, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{From: "sc_peer", To: "sc_a", Body: "done"}); err != nil {
 			t.Errorf("deliver: %v", err)
 		}
 	}()

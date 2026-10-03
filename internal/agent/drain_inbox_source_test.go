@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"testing"
 
 	"reasonix/internal/sessioncollab"
@@ -22,9 +23,9 @@ func TestDrainInboxSourceFilter(t *testing.T) {
 		CurrentContactID:   "sc_me",
 	}
 	mail := sessioncollab.NewMailStore(mailDir)
-	mail.Deliver(sessioncollab.MailMessage{From: "sc_alice", To: "sc_me", Body: "from alice"})
-	mail.Deliver(sessioncollab.MailMessage{From: "sc_bob", To: "sc_me", Body: "from bob"})
-	mail.Deliver(sessioncollab.MailMessage{From: "sc_alice", To: "sc_me", Body: "alice again"})
+	mail.Deliver(context.Background(), sessioncollab.MailMessage{From: "sc_alice", To: "sc_me", Body: "from alice"})
+	mail.Deliver(context.Background(), sessioncollab.MailMessage{From: "sc_bob", To: "sc_me", Body: "from bob"})
+	mail.Deliver(context.Background(), sessioncollab.MailMessage{From: "sc_alice", To: "sc_me", Body: "alice again"})
 
 	got := execDrain(t, cfg, `{"source":"sc_alice"}`)
 	if got.Took != 2 {

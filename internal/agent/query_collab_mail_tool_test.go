@@ -19,7 +19,7 @@ func TestQueryCollabMailLimitAndStatusFields(t *testing.T) {
 	now := time.Now().UnixMilli()
 	var ids []string
 	for i := 0; i < 60; i++ {
-		m, err := mail.Deliver(sessioncollab.MailMessage{
+		m, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{
 			From: "sc_a", To: "sc_b",
 			Body: fmt.Sprintf("history %d", i),
 			At:   now - int64(i)*1000,
@@ -30,7 +30,7 @@ func TestQueryCollabMailLimitAndStatusFields(t *testing.T) {
 		ids = append(ids, m.ID)
 	}
 	// One consumed message proves the read flag rides the seen cursor.
-	if err := mail.Ack("sc_b", ids[0]); err != nil {
+	if err := mail.Ack(context.Background(), "sc_b", ids[0]); err != nil {
 		t.Fatal(err)
 	}
 	unreadBefore, _ := mail.InboxStatus("sc_b")

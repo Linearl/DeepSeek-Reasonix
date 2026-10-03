@@ -50,7 +50,7 @@ func deliverTask(t *testing.T, w *Worker, cardID, prompt, from string) (mailID s
 	if err != nil {
 		t.Fatal(err)
 	}
-	msg, err := w.mail.Deliver(sessioncollab.MailMessage{
+	msg, err := w.mail.Deliver(context.Background(), sessioncollab.MailMessage{
 		From: from, To: w.contact, Body: string(body), CardID: cardID, RequireReply: true,
 	})
 	if err != nil {
@@ -61,7 +61,7 @@ func deliverTask(t *testing.T, w *Worker, cardID, prompt, from string) (mailID s
 
 func newCard(t *testing.T, w *Worker, assignee string) string {
 	t.Helper()
-	card, err := w.cards.Create(sessioncollab.Card{Title: "t", Initiator: "zcode-dev", Assignee: assignee})
+	card, err := w.cards.Create(context.Background(), sessioncollab.Card{Title: "t", Initiator: "zcode-dev", Assignee: assignee})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +265,7 @@ func TestPoolDropsMalformedMail(t *testing.T) {
 		probeCalled = true
 		return nil
 	}
-	if _, err := w.mail.Deliver(sessioncollab.MailMessage{
+	if _, err := w.mail.Deliver(context.Background(), sessioncollab.MailMessage{
 		From: "zcode-dev", To: w.contact, Body: "please look at this free-form text",
 	}); err != nil {
 		t.Fatal(err)
@@ -292,14 +292,14 @@ func TestPoolDropsMalformedMail(t *testing.T) {
 func TestReapStaleRunning(t *testing.T) {
 	w := newTestWorker(t, func(c *Config) { c.Timeout = "1ms" })
 	cardID := newCard(t, w, w.contact)
-	if _, err := w.cards.Update(cardID, func(c *sessioncollab.Card) error {
+	if _, err := w.cards.Update(context.Background(), cardID, func(c *sessioncollab.Card) error {
 		c.Status = sessioncollab.StatusRunning // Update stamps UpdatedAt=now
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(50 * time.Millisecond) // now the card is older than horizon = 2×timeout
-	w.reapStaleRunning()
+	w.reapStaleRunning(context.Background())
 	card, err := w.cards.Get(cardID)
 	if err != nil || card.Status != sessioncollab.StatusBlocked {
 		t.Fatalf("reap: %+v (%v)", card, err)

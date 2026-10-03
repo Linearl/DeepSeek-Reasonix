@@ -352,18 +352,20 @@ func (s *SubscribeService) EnsureStarted() {
 	deliver := s.Deliver
 	steerGate := s.cfg.AllowSteer
 	s.mu.Unlock()
+	ctx, cancel := context.WithCancel(context.Background())
 	if deliver == nil {
 		mailDir := s.cfg.MailDir
 		if mailDir == "" {
 			mailDir = config.SessionCollabMailDir()
 		}
 		mail := sessioncollab.NewMailStoreWithHopLimit(mailDir, s.cfg.hopLimit())
+		// task 461 P1: the push loop's lifecycle ctx rides into the lock wait —
+		// Stop() ends a contended acquire instead of leaving it to the budget.
 		deliver = func(msg sessioncollab.MailMessage) error {
-			_, err := mail.Deliver(msg)
+			_, err := mail.Deliver(ctx, msg)
 			return err
 		}
 	}
-	ctx, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
 	s.stop = cancel
 	s.mu.Unlock()

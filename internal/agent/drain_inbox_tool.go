@@ -212,7 +212,7 @@ func drainInboxFromSessionInbox(sessionPath, sourceFilter string, settle bool, l
 	return msgs, settledIDs
 }
 
-func (t drainInboxTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
+func (t drainInboxTool) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var p struct {
 		Settle *bool  `json:"settle"`
 		Limit  int    `json:"limit"`
@@ -263,7 +263,7 @@ func (t drainInboxTool) Execute(_ context.Context, args json.RawMessage) (string
 	if useMailbox && settle {
 		var taken []sessioncollab.MailMessage
 		var refused []sessioncollab.MailMessage
-		err := mail.Drain(me, func(pending, refusedBatch []sessioncollab.MailMessage) []string {
+		err := mail.Drain(ctx, me, func(pending, refusedBatch []sessioncollab.MailMessage) []string {
 			refused = refusedBatch
 			// H2: filter by source if specified; only return (and thus only Ack)
 			// the IDs actually taken. Non-matching IDs stay queued (not acked).

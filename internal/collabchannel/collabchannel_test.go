@@ -194,7 +194,7 @@ func TestFanoutReusesMailboxNoSecondDeliveryChannel(t *testing.T) {
 			t.Fatal(err)
 		}
 		src := string(b)
-		if strings.Contains(src, "sessioncollab.MailStore") && strings.Contains(src, "s.mail.Deliver(") {
+		if strings.Contains(src, "sessioncollab.MailStore") && strings.Contains(src, "s.mail.Deliver(ctx, ") {
 			sawMailstore = true
 		}
 		for _, banned := range []string{"net/http", "net.Dial", "websocket", "os/exec", "grpc"} {
@@ -512,7 +512,7 @@ func TestFanoutDeliveredMailCarriesChannelStamp(t *testing.T) {
 	}
 
 	// 对照：同邮箱直发一封点对点信，不得带群戳（戳是 fan-out 专属）。
-	if _, err := mail.Deliver(sessioncollab.MailMessage{From: "sc_s", To: "sc_a", Body: "direct line", At: 1}); err != nil {
+	if _, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{From: "sc_s", To: "sc_a", Body: "direct line", At: 1}); err != nil {
 		t.Fatal(err)
 	}
 	inbox, err := mail.Inbox("sc_a")

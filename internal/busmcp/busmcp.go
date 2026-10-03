@@ -224,7 +224,7 @@ func (s *Server) HandleEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	// Delivery stays empty so Deliver applies the mailbox default (steer with
 	// followup degradation): a push is "deliver as soon as someone reads".
-	msg, err := s.mail.Deliver(sessioncollab.MailMessage{
+	msg, err := s.mail.Deliver(r.Context(), sessioncollab.MailMessage{
 		From:   s.contact[role],
 		To:     s.eventTarget,
 		Body:   body,

@@ -28,7 +28,7 @@ func TestTalkToSessionRejectsUnresolvableThreadId(t *testing.T) {
 
 	store := sessioncollab.NewMailStore(mailDir)
 	// The id of a message this session itself sent: it lives in the peer's mailbox.
-	own, err := store.Deliver(sessioncollab.MailMessage{To: otherID, From: SessionContactID(self), Body: "hello"})
+	own, err := store.Deliver(context.Background(), sessioncollab.MailMessage{To: otherID, From: SessionContactID(self), Body: "hello"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestTalkToSessionAcceptsInboundThreadId(t *testing.T) {
 	}
 
 	store := sessioncollab.NewMailStore(mailDir)
-	inbound, err := store.Deliver(sessioncollab.MailMessage{To: selfID, From: otherID, Body: "ping"})
+	inbound, err := store.Deliver(context.Background(), sessioncollab.MailMessage{To: selfID, From: otherID, Body: "ping"})
 	if err != nil {
 		t.Fatal(err)
 	}

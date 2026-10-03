@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -411,7 +412,7 @@ func (a *App) queueCollabFirstMessage(result *agent.CreateCollabSessionResult, b
 			result.Failed = append(result.Failed, agent.CreateCollabSessionFailure{Title: item.Title, Reason: "the session has no contact_id, so it cannot receive the first message"})
 			continue
 		}
-		msg, derr := store.Deliver(sessioncollab.MailMessage{
+		msg, derr := store.Deliver(context.Background(), sessioncollab.MailMessage{
 			From:     from,
 			To:       item.ContactID,
 			Body:     body,
@@ -861,7 +862,7 @@ func (p *sessionCollabPump) deliverToTarget(target sessionCollabTarget) (deliver
 // anything that did not. Every exit path either acks a message or leaves it for
 // the next pass — there is no branch that silently drops it.
 func runCollabDelivery(mail *sessioncollab.MailStore, contactID string, d collabDelivery) (delivered, refused int, err error) {
-	pending, rejected, claimErr := mail.Claim(contactID)
+	pending, rejected, claimErr := mail.Claim(context.Background(), contactID)
 	if claimErr != nil {
 		return 0, 0, claimErr
 	}
@@ -913,7 +914,7 @@ func runCollabDelivery(mail *sessioncollab.MailStore, contactID string, d collab
 		}
 	}
 
-	if aerr := mail.Ack(contactID, acked...); aerr != nil {
+	if aerr := mail.Ack(context.Background(), contactID, acked...); aerr != nil {
 		note(aerr)
 	}
 	return delivered, refused, firstErr
@@ -977,7 +978,7 @@ func (p *sessionCollabPump) notifySenderOnce(msg sessioncollab.MailMessage, kind
 	log.Printf("[session-collab] %s for message %s from %s", kind, msg.ID, msg.From)
 	// A status note answers the original thread so a synchronous sender, which
 	// matches on threadId, sees it instead of waiting out its timeout.
-	if _, err := store.Deliver(sessioncollab.MailMessage{
+	if _, err := store.Deliver(context.Background(), sessioncollab.MailMessage{
 		To:       msg.From,
 		Body:     note,
 		Hop:      msg.Hop,
@@ -1128,7 +1129,7 @@ func (p *sessionCollabPump) notifyDegradedSteer(msg sessioncollab.MailMessage, d
 	}
 	note := "你发送的 steer 未能注入目标会话当轮（目标不可注入，disposition=" + disposition +
 		"），已自动降级为排队 follow-up，目标会在下一轮处理。"
-	if _, err := sessioncollab.NewMailStoreWithHopLimit(mailDir, sessionCollabHopLimit()).Deliver(sessioncollab.MailMessage{
+	if _, err := sessioncollab.NewMailStoreWithHopLimit(mailDir, sessionCollabHopLimit()).Deliver(context.Background(), sessioncollab.MailMessage{
 		To:      msg.From,
 		Body:    note,
 		Hop:     msg.Hop,

@@ -23,7 +23,7 @@ func fixtureStore(t *testing.T) (*Store, *sessioncollab.MailStore) {
 // deliver is the fixture shorthand: explicit At keeps the clock deterministic.
 func deliver(t *testing.T, mail *sessioncollab.MailStore, msg sessioncollab.MailMessage) sessioncollab.MailMessage {
 	t.Helper()
-	out, err := mail.Deliver(msg)
+	out, err := mail.Deliver(context.Background(), msg)
 	if err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestRevisionContractAndQueuedInvisible(t *testing.T) {
 
 	// 排队中：只写发送方 sent log，未投递收件箱 → 不产生条目。
 	queued := sessioncollab.MailMessage{ID: "msg_queued", From: "sc_a", To: "sc_b", Body: "queued", At: storeA.now()}
-	mail.RecordSent(queued, "B")
+	mail.RecordSent(context.Background(), queued, "B")
 
 	snapA, err := storeA.List(context.Background(), Query{}, false)
 	if err != nil {
@@ -438,7 +438,7 @@ func TestReadStateFollowsSeenCursor(t *testing.T) {
 	if snap.Entries[0].Read || !snap.Entries[0].Delivered {
 		t.Fatalf("before ack: %+v", snap.Entries[0])
 	}
-	if err := mail.Ack("sc_b", m.ID); err != nil {
+	if err := mail.Ack(context.Background(), "sc_b", m.ID); err != nil {
 		t.Fatal(err)
 	}
 	snap, _ = store.List(context.Background(), Query{}, false)

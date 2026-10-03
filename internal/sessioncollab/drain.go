@@ -11,10 +11,12 @@ import "context"
 //
 // Task 235: this is the batch settle primitive the drain_inbox tool wraps. It
 // deliberately does not dispatch turns — D1 is pure pull into a tool result.
+// ctx is the caller's request context; a user stop ends a contended lock wait
+// immediately (task 461 P1).
 // Host-side "pull then start a round" goes through the existing
 // maybeDispatchInbox / TryEnqueueAndSteer paths, never through here.
-func (s *MailStore) Drain(contactID string, fn func(pending, refused []MailMessage) []string) error {
-	unlock, err := s.lock(context.Background()) // slice 3 threads the request ctx
+func (s *MailStore) Drain(ctx context.Context, contactID string, fn func(pending, refused []MailMessage) []string) error {
+	unlock, err := s.lock(ctx)
 	if err != nil {
 		return err
 	}

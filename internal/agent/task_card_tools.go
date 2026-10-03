@@ -128,7 +128,7 @@ func (createTaskCardTool) Description() string {
 func (createTaskCardTool) Schema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"},"assignee":{"type":"string","description":"Optional assignee contact_id."}},"required":["title"]}`)
 }
-func (t createTaskCardTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
+func (t createTaskCardTool) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var p struct {
 		Title    string `json:"title"`
 		Body     string `json:"body"`
@@ -138,7 +138,7 @@ func (t createTaskCardTool) Execute(_ context.Context, args json.RawMessage) (st
 		return "", err
 	}
 	store := sessioncollab.NewCardStore(t.cfg.WorkspaceRoot)
-	c, err := store.Create(sessioncollab.Card{
+	c, err := store.Create(ctx, sessioncollab.Card{
 		Title:       strings.TrimSpace(p.Title),
 		Body:        p.Body,
 		Assignee:    strings.TrimSpace(p.Assignee),
@@ -163,7 +163,7 @@ func (updateTaskCardTool) Description() string {
 func (updateTaskCardTool) Schema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"},"status":{"type":"string","enum":["pending","running","blocked","done","failed"]},"result":{"type":"string"},"error":{"type":"string"},"note":{"type":"string"},"assignee":{"type":"string"},"role":{"type":"string","description":"Chain role for the appended node, e.g. secretariat|expert."}},"required":["id"]}`)
 }
-func (t updateTaskCardTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
+func (t updateTaskCardTool) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var p struct {
 		ID       string `json:"id"`
 		Status   string `json:"status"`
@@ -180,7 +180,7 @@ func (t updateTaskCardTool) Execute(_ context.Context, args json.RawMessage) (st
 		return "", fmt.Errorf("id is required")
 	}
 	store := sessioncollab.NewCardStore(t.cfg.WorkspaceRoot)
-	c, err := store.Update(p.ID, func(card *sessioncollab.Card) error {
+	c, err := store.Update(ctx, p.ID, func(card *sessioncollab.Card) error {
 		if p.Status != "" {
 			next := sessioncollab.CardStatus(p.Status)
 			if !sessioncollab.StatusAllowed(next) {

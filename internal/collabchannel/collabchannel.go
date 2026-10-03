@@ -640,7 +640,7 @@ func (s *Store) DrainFanout(ctx context.Context) (FanoutStats, error) {
 			stats.Skipped++
 			continue
 		}
-		_, err := s.mail.Deliver(sessioncollab.MailMessage{
+		_, err := s.mail.Deliver(ctx, sessioncollab.MailMessage{
 			ID: j.fanoutID,
 			// From is the original sender so the member can reply on-channel
 			// through the same address they always reply to.

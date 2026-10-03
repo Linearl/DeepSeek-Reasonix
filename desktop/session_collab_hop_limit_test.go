@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -51,7 +52,7 @@ func TestPumpDerivedHopExhaustionIsAHopRefusal(t *testing.T) {
 	pump := &sessionCollabPump{}
 
 	// Leg 1: the first message lands at hop 0.
-	start, err := mail.Deliver(sessioncollab.MailMessage{From: "sc_from", To: target, Body: "chain start"})
+	start, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{From: "sc_from", To: target, Body: "chain start"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +78,7 @@ func TestPumpDerivedHopExhaustionIsAHopRefusal(t *testing.T) {
 	// Leg 2: the sender replies on that thread — derived = 0+1 = 1, exactly
 	// at the ceiling, so the reply itself still delivers. The sender fills the
 	// derived hop into the record, the way the tool side does before Deliver.
-	reply, err := mail.Deliver(sessioncollab.MailMessage{
+	reply, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{
 		From: target, To: "sc_from", Body: "at the ceiling", ThreadID: start.ID, Hop: 1,
 	})
 	if err != nil {
@@ -90,7 +91,7 @@ func TestPumpDerivedHopExhaustionIsAHopRefusal(t *testing.T) {
 
 	// Leg 3: relaying onward derives 1+1 = 2, still inside the ceiling
 	// (MinHop clamps the configured 1 up to 3), so it delivers too.
-	relay, err := mail.Deliver(sessioncollab.MailMessage{
+	relay, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{
 		From: "sc_from", To: target, Body: "still inside", ThreadID: reply.ID, Hop: 2,
 	})
 	if err != nil {
@@ -104,7 +105,7 @@ func TestPumpDerivedHopExhaustionIsAHopRefusal(t *testing.T) {
 	// Leg 4: relaying once more derives 2+1 = 3... the ceiling itself, so one
 	// further relay is where the chain exhausts: 3+1 = 4 > 3. The refusal must
 	// be the hop text with the configured ceiling — never the provenance text.
-	deep, err := mail.Deliver(sessioncollab.MailMessage{
+	deep, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{
 		From: target, To: "sc_from", Body: "at the ceiling", ThreadID: relay.ID, Hop: 3,
 	})
 	if err != nil {
@@ -115,7 +116,7 @@ func TestPumpDerivedHopExhaustionIsAHopRefusal(t *testing.T) {
 		t.Fatalf("leg 4 must still deliver at the ceiling: %d/%d %q %q", delivered, refused, kind, text)
 	}
 
-	deep2, err := mail.Deliver(sessioncollab.MailMessage{
+	deep2, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{
 		From: "sc_from", To: target, Body: "one too deep", ThreadID: deep.ID, Hop: 4,
 	})
 	if err != nil {

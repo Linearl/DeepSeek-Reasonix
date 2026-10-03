@@ -460,11 +460,17 @@ func NewCardStore(workspaceRoot string) *CardStore {
 }
 
 // lock serializes one read-modify-write cycle across goroutines and processes.
-func (s *CardStore) lock() (func(), error) {
+// lock takes the card directory's cross-process lock. ctx bounds/cancels the
+// wait (task 461 P1: 内层 ≤5s, 取消即时生效).
+func (s *CardStore) lock(ctx context.Context) (func(), error) {
 	if err := os.MkdirAll(s.root, 0o755); err != nil {
 		return nil, err
 	}
-	return filelock.Acquire(context.Background(), filepath.Join(s.root, ".cards.lock"))
+	release, err := filelock.AcquireWithExternalTimeout(ctx, filepath.Join(s.root, ".cards.lock"), lockWaitTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("task card lock busy (held by another window or process?), gave up waiting: %w", err)
+	}
+	return release, nil
 }
 
 func (s *CardStore) path(id string) string {
@@ -475,8 +481,8 @@ func (s *CardStore) path(id string) string {
 	return filepath.Join(s.root, id+".json")
 }
 
-func (s *CardStore) Create(c Card) (Card, error) {
-	unlock, err := s.lock()
+func (s *CardStore) Create(ctx context.Context, c Card) (Card, error) {
+	unlock, err := s.lock(ctx)
 	if err != nil {
 		return Card{}, err
 	}
@@ -501,8 +507,8 @@ func (s *CardStore) Create(c Card) (Card, error) {
 	return c, nil
 }
 
-func (s *CardStore) Update(id string, mutate func(*Card) error) (Card, error) {
-	unlock, err := s.lock()
+func (s *CardStore) Update(ctx context.Context, id string, mutate func(*Card) error) (Card, error) {
+	unlock, err := s.lock(ctx)
 	if err != nil {
 		return Card{}, err
 	}
@@ -579,11 +585,19 @@ func NewPendingPurposeStore(mailboxDir string) *PendingPurposeStore {
 	return &PendingPurposeStore{path: filepath.Join(mailboxDir, "pending-purpose.json")}
 }
 
-func (s *PendingPurposeStore) lock() (func(), error) {
+// lock takes the pending-purpose file's cross-process lock, bounded by
+// lockWaitTimeout (task 461 P1). Called from the desktop purpose pump (no
+// request context), so callers pass context.Background() — the budget, not
+// cancellation, is what bounds these waits.
+func (s *PendingPurposeStore) lock(ctx context.Context) (func(), error) {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return nil, err
 	}
-	return filelock.Acquire(context.Background(), s.path+".lock")
+	release, err := filelock.AcquireWithExternalTimeout(ctx, s.path+".lock", lockWaitTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("pending purpose lock busy (held by another window or process?), gave up waiting: %w", err)
+	}
+	return release, nil
 }
 
 func (s *PendingPurposeStore) load() map[string]string {
@@ -604,7 +618,7 @@ func (s *PendingPurposeStore) Set(topicID, purpose string) error {
 	if topicID == "" || purpose == "" {
 		return errors.New("pending purpose: topic id and purpose are required")
 	}
-	unlock, err := s.lock()
+	unlock, err := s.lock(context.Background())
 	if err != nil {
 		return err
 	}
@@ -616,7 +630,7 @@ func (s *PendingPurposeStore) Set(topicID, purpose string) error {
 
 // List returns a copy of the pending map.
 func (s *PendingPurposeStore) List() map[string]string {
-	unlock, err := s.lock()
+	unlock, err := s.lock(context.Background())
 	if err != nil {
 		return nil
 	}
@@ -631,7 +645,7 @@ func (s *PendingPurposeStore) List() map[string]string {
 
 // Clear removes one topic's pending purpose after it was applied.
 func (s *PendingPurposeStore) Clear(topicID string) error {
-	unlock, err := s.lock()
+	unlock, err := s.lock(context.Background())
 	if err != nil {
 		return err
 	}
@@ -712,9 +726,10 @@ func (s *MailStore) inboxPath(contactID string) string {
 }
 
 // Deliver appends a message for the target contact. hop is the sender's chain
-// depth; the store's ceiling + 1 is refused.
-func (s *MailStore) Deliver(msg MailMessage) (MailMessage, error) {
-	unlock, err := s.lock(context.Background()) // slice 3 threads the request ctx
+// depth; the store's ceiling + 1 is refused. ctx is the sender's request
+// context: a user stop ends a contended lock wait immediately (task 461 P1).
+func (s *MailStore) Deliver(ctx context.Context, msg MailMessage) (MailMessage, error) {
+	unlock, err := s.lock(ctx)
 	if err != nil {
 		return MailMessage{}, err
 	}
@@ -772,8 +787,8 @@ func (s *MailStore) Deliver(msg MailMessage) (MailMessage, error) {
 // drain_inbox's same-lock Drain are mutually exclusive by the once-per-process
 // boot gate (internal/boot/collab_drain_gate.go, M-a). Any new consumer of
 // this cursor must join that exclusion, not assume Claim admits it.
-func (s *MailStore) Claim(contactID string) (pending []MailMessage, refused []MailMessage, err error) {
-	unlock, err := s.lock(context.Background()) // slice 3 threads the request ctx
+func (s *MailStore) Claim(ctx context.Context, contactID string) (pending []MailMessage, refused []MailMessage, err error) {
+	unlock, err := s.lock(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -804,11 +819,11 @@ func (s *MailStore) claimLocked(contactID string) (pending []MailMessage, refuse
 
 // Ack advances the cursor for IDs whose delivery is settled — delivered
 // successfully, or refused for good. Not acking leaves them for the next pass.
-func (s *MailStore) Ack(contactID string, ids ...string) error {
+func (s *MailStore) Ack(ctx context.Context, contactID string, ids ...string) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	unlock, err := s.lock(context.Background()) // slice 3 threads the request ctx
+	unlock, err := s.lock(ctx)
 	if err != nil {
 		return err
 	}
@@ -871,7 +886,7 @@ func (s *MailStore) AwaitReplyContext(ctx context.Context, contactID, threadID s
 			for _, m := range all {
 				if m.ThreadID == threadID {
 					// Best-effort: a failed ack costs a duplicate, not a loss.
-					_ = s.Ack(contactID, m.ID)
+					_ = s.Ack(ctx, contactID, m.ID)
 					return m, true
 				}
 			}
@@ -980,13 +995,13 @@ func (s *MailStore) CountSentFromToday(fromContact string) int {
 // misdirected send was invisible on the sender's side, which is how a batch
 // reply once crossed wires for hours. Best-effort: a sent-log failure must
 // never fail a delivery that already landed.
-func (s *MailStore) RecordSent(msg MailMessage, toTitle string) {
+func (s *MailStore) RecordSent(ctx context.Context, msg MailMessage, toTitle string) {
 	if strings.TrimSpace(msg.From) == "" || strings.TrimSpace(msg.ID) == "" {
 		return
 	}
 	entry := msg
 	entry.ToTitle = strings.TrimSpace(toTitle)
-	unlock, err := s.lock(context.Background()) // slice 3 threads the request ctx
+	unlock, err := s.lock(ctx)
 	if err != nil {
 		return
 	}

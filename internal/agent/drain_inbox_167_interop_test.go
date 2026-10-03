@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 
@@ -26,7 +27,7 @@ func TestDrainInboxConsumes167DeliveryExactlyOnce(t *testing.T) {
 
 	// 167 path: deliver a first message to the target's mailbox.
 	mail := sessioncollab.NewMailStore(mailDir)
-	sent, err := mail.Deliver(sessioncollab.MailMessage{
+	sent, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{
 		From:     "sc_creator",
 		To:       "sc_me",
 		Body:     "first message from create_collab_session",

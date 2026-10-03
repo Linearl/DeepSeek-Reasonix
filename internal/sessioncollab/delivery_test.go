@@ -1,6 +1,9 @@
 package sessioncollab
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 // Task 143 + task 309: delivery defaults to steer (mailbox semantics —
 // immediate injection, automatic follow-up degradation) and rejects garbage
@@ -37,15 +40,15 @@ func TestValidateDelivery(t *testing.T) {
 // rather than relying on every reader to default an empty value.
 func TestDeliverNormalizesDelivery(t *testing.T) {
 	mail := NewMailStore(t.TempDir())
-	msg, err := mail.Deliver(MailMessage{To: "sc_a", Body: "x"})
+	msg, err := mail.Deliver(context.Background(), MailMessage{To: "sc_a", Body: "x"})
 	if err != nil || msg.Delivery != string(DeliverySteer) {
 		t.Fatalf("empty delivery must normalize to steer (task 309 mailbox default): %+v %v", msg, err)
 	}
-	steer, err := mail.Deliver(MailMessage{To: "sc_a", Body: "y", Delivery: "steer"})
+	steer, err := mail.Deliver(context.Background(), MailMessage{To: "sc_a", Body: "y", Delivery: "steer"})
 	if err != nil || steer.Delivery != string(DeliverySteer) {
 		t.Fatalf("steer delivery must be preserved: %+v %v", steer, err)
 	}
-	if _, err := mail.Deliver(MailMessage{To: "sc_a", Body: "z", Delivery: "interrupt"}); err == nil {
+	if _, err := mail.Deliver(context.Background(), MailMessage{To: "sc_a", Body: "z", Delivery: "interrupt"}); err == nil {
 		t.Fatal("unknown delivery must be rejected")
 	}
 }

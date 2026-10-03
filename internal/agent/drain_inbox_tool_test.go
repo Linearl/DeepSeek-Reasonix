@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"path/filepath"
 	"strings"
@@ -74,7 +75,7 @@ func TestDrainInboxSettleZeroesUnreadPeekDoesNot(t *testing.T) {
 
 	mail := sessioncollab.NewMailStore(mailDir)
 	for i, body := range []string{"hello one", "hello two"} {
-		if _, err := mail.Deliver(sessioncollab.MailMessage{
+		if _, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{
 			From:        "sc_peer",
 			FromSession: filepath.Join(dir, "peer.jsonl"),
 			To:          "sc_me",
@@ -138,7 +139,7 @@ func TestDrainInboxLimitLeavesTailQueued(t *testing.T) {
 	}
 	mail := sessioncollab.NewMailStore(mailDir)
 	for i := 0; i < 5; i++ {
-		if _, err := mail.Deliver(sessioncollab.MailMessage{
+		if _, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{
 			From: "sc_peer", To: "sc_me", Body: "m", ReplyTo: "sc_peer",
 		}); err != nil {
 			t.Fatal(err)
@@ -175,12 +176,12 @@ func TestDrainInboxRefusedAreAcked(t *testing.T) {
 	// at Deliver. Claim under ClampHopLimit floor (MinHop=3) then refuses it
 	// because 4 > 3.
 	writer := sessioncollab.NewMailStoreWithHopLimit(mailDir, sessioncollab.MaxHop)
-	if _, err := writer.Deliver(sessioncollab.MailMessage{
+	if _, err := writer.Deliver(context.Background(), sessioncollab.MailMessage{
 		From: "sc_peer", To: "sc_me", Body: "too deep", Hop: 4, ReplyTo: "sc_peer",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := writer.Deliver(sessioncollab.MailMessage{
+	if _, err := writer.Deliver(context.Background(), sessioncollab.MailMessage{
 		From: "sc_peer", To: "sc_me", Body: "ok", Hop: 0, ReplyTo: "sc_peer",
 	}); err != nil {
 		t.Fatal(err)

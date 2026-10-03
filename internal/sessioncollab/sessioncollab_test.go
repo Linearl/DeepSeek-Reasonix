@@ -1,6 +1,7 @@
 package sessioncollab
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,14 +10,14 @@ import (
 func TestCardCreateUpdateList(t *testing.T) {
 	root := t.TempDir()
 	store := NewCardStore(root)
-	c, err := store.Create(Card{Title: "ship collab base", Body: "141+145"})
+	c, err := store.Create(context.Background(), Card{Title: "ship collab base", Body: "141+145"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if c.ID == "" || c.Status != StatusPending {
 		t.Fatalf("create: %+v", c)
 	}
-	c2, err := store.Update(c.ID, func(card *Card) error {
+	c2, err := store.Update(context.Background(), c.ID, func(card *Card) error {
 		card.Status = StatusRunning
 		card.Assignee = "sc_expert"
 		card.Nodes = append(card.Nodes, CardNode{ContactID: "sc_expert", Role: "expert", At: 1})
@@ -33,7 +34,7 @@ func TestCardCreateUpdateList(t *testing.T) {
 		t.Fatalf("list: %v %v", list, err)
 	}
 	// Atomic overwrite: concurrent create of second card must not clobber first.
-	if _, err := store.Create(Card{Title: "second"}); err != nil {
+	if _, err := store.Create(context.Background(), Card{Title: "second"}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := store.Get(c.ID)
@@ -45,17 +46,17 @@ func TestCardCreateUpdateList(t *testing.T) {
 func TestMailDeliverHopAndInbox(t *testing.T) {
 	root := t.TempDir()
 	mail := NewMailStore(root)
-	if _, err := mail.Deliver(MailMessage{To: "sc_a", Body: "hello", Hop: 1}); err != nil {
+	if _, err := mail.Deliver(context.Background(), MailMessage{To: "sc_a", Body: "hello", Hop: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := mail.Deliver(MailMessage{To: "sc_a", Body: "too deep", Hop: MaxHop + 1}); err == nil {
+	if _, err := mail.Deliver(context.Background(), MailMessage{To: "sc_a", Body: "too deep", Hop: MaxHop + 1}); err == nil {
 		t.Fatal("expected hop limit error")
 	}
 	box, err := mail.Inbox("sc_a")
 	if err != nil || len(box) != 1 || box[0].Delivery != "steer" {
 		t.Fatalf("inbox: %v %v", box, err)
 	}
-	if _, err := mail.Deliver(MailMessage{To: "", Body: "x"}); err == nil {
+	if _, err := mail.Deliver(context.Background(), MailMessage{To: "", Body: "x"}); err == nil {
 		t.Fatal("empty target must fail")
 	}
 }

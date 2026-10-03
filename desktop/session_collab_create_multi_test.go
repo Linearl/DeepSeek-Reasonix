@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -165,7 +166,7 @@ func TestCreateCollabSessionQueuesFirstMessage(t *testing.T) {
 	// cannot inject — the message must still be sitting in its mailbox, which is
 	// what "not lost while the target is closed" means (task 167 acceptance 3).
 	store := sessioncollab.NewMailStore(config.SessionCollabMailDir())
-	pending, refused, cerr := store.Claim(result.Created[0].ContactID)
+	pending, refused, cerr := store.Claim(context.Background(), result.Created[0].ContactID)
 	if cerr != nil {
 		t.Fatalf("read mailbox: %v", cerr)
 	}

@@ -949,7 +949,7 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 	if _, _, terr := mail.ResolveReplyParent(msg); terr != nil {
 		return "", terr
 	}
-	delivered, derr := mail.Deliver(msg)
+	delivered, derr := mail.Deliver(ctx, msg)
 	if derr != nil {
 		// Task 309 NDR: a refused delivery reads like a mailbox bounce —
 		// recipient, reason, and a quoted excerpt of the original body, so
@@ -964,7 +964,7 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 	// Task 175: the sender keeps its own sent log — the inbox only shows what
 	// arrived, so a misdirected send used to be invisible on this side until a
 	// confused peer answered. Recorded after the real id/at are known.
-	mail.RecordSent(msg, target.Title)
+	mail.RecordSent(ctx, msg, target.Title)
 	// Task 175: put the recipient in the caller's face. The historical failure
 	// was a correct-looking "queued" for the WRONG peer; delivered_to carries
 	// the id plus its human-readable title so the mismatch reads at a glance.

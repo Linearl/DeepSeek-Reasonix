@@ -1,6 +1,7 @@
 package sessioncollab
 
 import (
+	"context"
 	"strings"
 )
 
@@ -15,7 +16,7 @@ func SendReadReceipt(mailDir, originalSender, recipientContact, originalMsgID st
 	if strings.TrimSpace(mailDir) == "" || strings.TrimSpace(originalSender) == "" || strings.TrimSpace(recipientContact) == "" {
 		return nil // nothing to answer to — best-effort by contract
 	}
-	_, err := NewMailStore(mailDir).Deliver(MailMessage{
+	_, err := NewMailStore(mailDir).Deliver(context.Background(), MailMessage{
 		From:     recipientContact,
 		To:       originalSender,
 		Body:     "已读回执：你的消息 " + originalMsgID + " 已进入本会话上下文（task 309 read receipt）。本条为系统回执，无需回复。",

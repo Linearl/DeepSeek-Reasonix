@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -102,7 +103,7 @@ func TestGetSessionStatusFullSweepAndBatchTargets(t *testing.T) {
 
 	// Pending mail outranks idle: a peer with unconsumed inbox reads queued.
 	mail := sessioncollab.NewMailStore(cfg.MailDir)
-	if _, err := mail.Deliver(sessioncollab.MailMessage{From: "sc_other", To: "sc_b", Body: "work item"}); err != nil {
+	if _, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{From: "sc_other", To: "sc_b", Body: "work item"}); err != nil {
 		t.Fatal(err)
 	}
 	queued := execStatus(t, cfg, `{"targets":["sc_b"]}`)
@@ -187,7 +188,7 @@ func TestGetSessionStatusDoesNotTouchTheMailbox(t *testing.T) {
 	statusFixture(t, dir, "quiet", "Quiet", "sc_quiet", "")
 	mailDir := filepath.Join(t.TempDir(), "mail")
 	mail := sessioncollab.NewMailStore(mailDir)
-	if _, err := mail.Deliver(sessioncollab.MailMessage{From: "sc_other", To: "sc_quiet", Body: "pending"}); err != nil {
+	if _, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{From: "sc_other", To: "sc_quiet", Body: "pending"}); err != nil {
 		t.Fatal(err)
 	}
 	inboxPath := filepath.Join(mailDir, "sc_quiet.inbox.jsonl")

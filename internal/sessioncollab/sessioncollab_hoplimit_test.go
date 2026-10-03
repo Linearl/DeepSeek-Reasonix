@@ -1,6 +1,7 @@
 package sessioncollab
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -28,10 +29,10 @@ func TestDeliverHonorsConfiguredHopLimit(t *testing.T) {
 	dir := t.TempDir()
 
 	def := NewMailStore(filepath.Join(dir, "default"))
-	if _, err := def.Deliver(MailMessage{To: "c1", Body: "x", Hop: MaxHop}); err != nil {
+	if _, err := def.Deliver(context.Background(), MailMessage{To: "c1", Body: "x", Hop: MaxHop}); err != nil {
 		t.Fatalf("hop %d must be accepted by the default store: %v", MaxHop, err)
 	}
-	_, err := def.Deliver(MailMessage{To: "c1", Body: "x", Hop: MaxHop + 1})
+	_, err := def.Deliver(context.Background(), MailMessage{To: "c1", Body: "x", Hop: MaxHop + 1})
 	if !errors.Is(err, ErrHopLimit) {
 		t.Fatalf("hop %d must be refused, got %v", MaxHop+1, err)
 	}
@@ -40,19 +41,19 @@ func TestDeliverHonorsConfiguredHopLimit(t *testing.T) {
 	}
 
 	widened := NewMailStoreWithHopLimit(filepath.Join(dir, "wide"), 8)
-	if _, err := widened.Deliver(MailMessage{To: "c2", Body: "x", Hop: 8}); err != nil {
+	if _, err := widened.Deliver(context.Background(), MailMessage{To: "c2", Body: "x", Hop: 8}); err != nil {
 		t.Fatalf("hop 8 must be accepted at ceiling 8: %v", err)
 	}
-	_, err = widened.Deliver(MailMessage{To: "c2", Body: "x", Hop: 9})
+	_, err = widened.Deliver(context.Background(), MailMessage{To: "c2", Body: "x", Hop: 9})
 	if !errors.Is(err, ErrHopLimit) || !strings.Contains(err.Error(), "(max 8)") {
 		t.Fatalf("ceiling 8 must refuse hop 9 and say so: %v", err)
 	}
 
 	narrowed := NewMailStoreWithHopLimit(filepath.Join(dir, "narrow"), 3)
-	if _, err := narrowed.Deliver(MailMessage{To: "c3", Body: "x", Hop: 3}); err != nil {
+	if _, err := narrowed.Deliver(context.Background(), MailMessage{To: "c3", Body: "x", Hop: 3}); err != nil {
 		t.Fatalf("hop 3 must be accepted at ceiling 3: %v", err)
 	}
-	_, err = narrowed.Deliver(MailMessage{To: "c3", Body: "x", Hop: 4})
+	_, err = narrowed.Deliver(context.Background(), MailMessage{To: "c3", Body: "x", Hop: 4})
 	if !errors.Is(err, ErrHopLimit) || !strings.Contains(err.Error(), "(max 3)") {
 		t.Fatalf("ceiling 3 must refuse hop 4 and say so: %v", err)
 	}
@@ -63,10 +64,10 @@ func TestDeliverHonorsConfiguredHopLimit(t *testing.T) {
 func TestClaimHonorsConfiguredHopLimit(t *testing.T) {
 	dir := t.TempDir()
 	wide := NewMailStoreWithHopLimit(dir, 10)
-	if _, err := wide.Deliver(MailMessage{To: "c9", Body: "x", Hop: 9}); err != nil {
+	if _, err := wide.Deliver(context.Background(), MailMessage{To: "c9", Body: "x", Hop: 9}); err != nil {
 		t.Fatalf("wide deliver: %v", err)
 	}
-	pending, refused, err := NewMailStore(dir).Claim("c9")
+	pending, refused, err := NewMailStore(dir).Claim(context.Background(), "c9")
 	if err != nil {
 		t.Fatalf("claim: %v", err)
 	}

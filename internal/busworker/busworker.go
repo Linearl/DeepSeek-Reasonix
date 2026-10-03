@@ -207,7 +207,7 @@ func New(cfg Config) (*Worker, error) {
 // Run blocks until ctx is done: one poller, N lanes, per the concurrency
 // model in the package doc.
 func (w *Worker) Run(ctx context.Context) {
-	w.reapStaleRunning()
+	w.reapStaleRunning(ctx)
 	var lanes sync.WaitGroup
 	for i := 0; i < w.concur; i++ {
 		lanes.Add(1)
@@ -222,13 +222,13 @@ func (w *Worker) Run(ctx context.Context) {
 		defer close(w.lane)
 		ticker := time.NewTicker(w.poll)
 		defer ticker.Stop()
-		w.drainOnce() // first pass immediately so a queued task starts without waiting a tick
+		w.drainOnce(ctx) // first pass immediately so a queued task starts without waiting a tick
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				w.drainOnce()
+				w.drainOnce(ctx)
 			}
 		}
 	})
@@ -239,8 +239,8 @@ func (w *Worker) Run(ctx context.Context) {
 // is capacity; anything not accepted is NOT acked and stays in the mailbox
 // (lossless backpressure). Malformed mail is acked and dropped — the pool
 // never guesses at a body, and the audit line records it.
-func (w *Worker) drainOnce() {
-	_ = w.mail.Drain(w.contact, func(pending, refused []sessioncollab.MailMessage) []string {
+func (w *Worker) drainOnce(ctx context.Context) {
+	_ = w.mail.Drain(ctx, w.contact, func(pending, refused []sessioncollab.MailMessage) []string {
 		settled := make([]string, 0, len(pending)+len(refused))
 		for _, m := range refused {
 			settled = append(settled, m.ID) // over the hop ceiling: gone for good
@@ -293,7 +293,7 @@ func parseJob(m sessioncollab.MailMessage) (job, bool) {
 func (w *Worker) execute(ctx context.Context, j job) {
 	// Card CAS is the dedup point (package doc): only the lane that moves
 	// the card pending→running runs it; everyone else no-ops.
-	if err := w.claimCard(j.CardID); err != nil {
+	if err := w.claimCard(ctx, j.CardID); err != nil {
 		w.audit("skip", "card "+j.CardID+" not claimable: "+err.Error())
 		return
 	}
@@ -335,8 +335,8 @@ func (w *Worker) execute(ctx context.Context, j job) {
 	} else {
 		resultRef = path
 	}
-	w.finishCard(j, res, resultRef)
-	w.sendReceipt(j, res, resultRef)
+	w.finishCard(ctx, j, res, resultRef)
+	w.sendReceipt(ctx, j, res, resultRef)
 }
 
 // runChild is the process execution seam; tests replace it via w.probe.
@@ -356,8 +356,8 @@ func (w *Worker) runChild(ctx context.Context, cmd *exec.Cmd, j job) error {
 // claimCard CASes the card into running. pending→running is the only legal
 // entry; anything else (running/done/failed/blocked/missing) refuses so a
 // duplicate mail or a reaped card cannot double-execute.
-func (w *Worker) claimCard(cardID string) error {
-	_, err := w.cards.Update(cardID, func(c *sessioncollab.Card) error {
+func (w *Worker) claimCard(ctx context.Context, cardID string) error {
+	_, err := w.cards.Update(ctx, cardID, func(c *sessioncollab.Card) error {
 		if c.Status != sessioncollab.StatusPending {
 			return fmt.Errorf("status %s", c.Status)
 		}
@@ -374,8 +374,8 @@ func (w *Worker) claimCard(cardID string) error {
 }
 
 // finishCard settles the terminal state and stamps the result chain.
-func (w *Worker) finishCard(j job, res runResult, resultRef string) {
-	_, err := w.cards.Update(j.CardID, func(c *sessioncollab.Card) error {
+func (w *Worker) finishCard(ctx context.Context, j job, res runResult, resultRef string) {
+	_, err := w.cards.Update(ctx, j.CardID, func(c *sessioncollab.Card) error {
 		if c.Status != sessioncollab.StatusRunning {
 			return fmt.Errorf("card left running by another writer: %s", c.Status)
 		}
@@ -409,7 +409,7 @@ func (w *Worker) finishCard(j job, res runResult, resultRef string) {
 
 // sendReceipt answers the sender on the same thread. Receipts never demand
 // a reply (that would loop) and carry the result_ref, not the payload.
-func (w *Worker) sendReceipt(j job, res runResult, resultRef string) {
+func (w *Worker) sendReceipt(ctx context.Context, j job, res runResult, resultRef string) {
 	status := "done"
 	if !res.OK {
 		status = "failed"
@@ -430,7 +430,7 @@ func (w *Worker) sendReceipt(j job, res runResult, resultRef string) {
 	if strings.TrimSpace(target) == "" {
 		target = w.contact // sender unknown: keep the receipt on our own inbox for the record
 	}
-	if _, err := w.mail.Deliver(sessioncollab.MailMessage{
+	if _, err := w.mail.Deliver(ctx, sessioncollab.MailMessage{
 		From:     w.contact,
 		To:       target,
 		Body:     string(body),
@@ -444,7 +444,7 @@ func (w *Worker) sendReceipt(j job, res runResult, resultRef string) {
 // reapStaleRunning recovers cards the previous process died mid-run on.
 // Stale means: assigned to this contact, still "running", not updated within
 // two run timeouts. They go to blocked — reopenable, never silently lost.
-func (w *Worker) reapStaleRunning() {
+func (w *Worker) reapStaleRunning(ctx context.Context) {
 	cards, err := w.cards.List()
 	if err != nil {
 		return
@@ -454,7 +454,7 @@ func (w *Worker) reapStaleRunning() {
 		if c.Status != sessioncollab.StatusRunning || c.Assignee != w.contact || c.UpdatedAt > horizon {
 			continue
 		}
-		if _, err := w.cards.Update(c.ID, func(card *sessioncollab.Card) error {
+		if _, err := w.cards.Update(ctx, c.ID, func(card *sessioncollab.Card) error {
 			if card.Status != sessioncollab.StatusRunning {
 				return nil
 			}

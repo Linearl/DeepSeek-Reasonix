@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"path/filepath"
 	"strings"
@@ -63,7 +64,7 @@ func TestCrossWiredThreadIsRefusedAtSendTime(t *testing.T) {
 	}
 
 	// Peer B opens a chain; the message lands in the sender's own mailbox.
-	if _, err := mail.Deliver(sessioncollab.MailMessage{From: "sc_peer_b", To: fromID, Body: "b's chain"}); err != nil {
+	if _, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{From: "sc_peer_b", To: fromID, Body: "b's chain"}); err != nil {
 		t.Fatal(err)
 	}
 	bInbox, err := mail.Inbox(fromID)

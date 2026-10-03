@@ -50,11 +50,11 @@ type inboxReadOut struct {
 	Refused int `json:"refused"`
 }
 
-func (rt roleRuntime) inboxRead(_ context.Context, _ *mcp.CallToolRequest, in inboxReadIn) (*mcp.CallToolResult, inboxReadOut, error) {
+func (rt roleRuntime) inboxRead(ctx context.Context, _ *mcp.CallToolRequest, in inboxReadIn) (*mcp.CallToolResult, inboxReadOut, error) {
 	markRead := in.MarkRead == nil || *in.MarkRead
 	var out inboxReadOut
 	if markRead {
-		err := rt.bus.mail.Drain(rt.contact, func(pending, refused []sessioncollab.MailMessage) []string {
+		err := rt.bus.mail.Drain(ctx, rt.contact, func(pending, refused []sessioncollab.MailMessage) []string {
 			out.Messages = makeMailViews(pending)
 			out.Refused = len(refused)
 			ids := make([]string, 0, len(pending))
@@ -112,7 +112,7 @@ type sendOut struct {
 	To       string `json:"to"`
 }
 
-func (rt roleRuntime) send(_ context.Context, _ *mcp.CallToolRequest, in sendIn) (*mcp.CallToolResult, sendOut, error) {
+func (rt roleRuntime) send(ctx context.Context, _ *mcp.CallToolRequest, in sendIn) (*mcp.CallToolResult, sendOut, error) {
 	if strings.TrimSpace(in.To) == "" {
 		return nil, sendOut{}, fmt.Errorf("to is required")
 	}
@@ -121,7 +121,7 @@ func (rt roleRuntime) send(_ context.Context, _ *mcp.CallToolRequest, in sendIn)
 	}
 	// Hop starts at 0: bus runtimes are chain heads. Reply chains that run
 	// through Reasonix sessions pick up their own hop accounting there.
-	msg, err := rt.bus.mail.Deliver(sessioncollab.MailMessage{
+	msg, err := rt.bus.mail.Deliver(ctx, sessioncollab.MailMessage{
 		From:         rt.contact,
 		To:           in.To,
 		Body:         in.Body,
@@ -152,8 +152,8 @@ type taskCreateOut struct {
 	Status string `json:"status"`
 }
 
-func (rt roleRuntime) taskCreate(_ context.Context, _ *mcp.CallToolRequest, in taskCreateIn) (*mcp.CallToolResult, taskCreateOut, error) {
-	card, err := rt.bus.cards.Create(sessioncollab.Card{
+func (rt roleRuntime) taskCreate(ctx context.Context, _ *mcp.CallToolRequest, in taskCreateIn) (*mcp.CallToolResult, taskCreateOut, error) {
+	card, err := rt.bus.cards.Create(ctx, sessioncollab.Card{
 		Title:     in.Title,
 		Body:      in.Body,
 		Initiator: rt.contact,
@@ -181,7 +181,7 @@ type taskUpdateOut struct {
 	Status string `json:"status"`
 }
 
-func (rt roleRuntime) taskUpdate(_ context.Context, _ *mcp.CallToolRequest, in taskUpdateIn) (*mcp.CallToolResult, taskUpdateOut, error) {
+func (rt roleRuntime) taskUpdate(ctx context.Context, _ *mcp.CallToolRequest, in taskUpdateIn) (*mcp.CallToolResult, taskUpdateOut, error) {
 	if strings.TrimSpace(in.CardID) == "" {
 		return nil, taskUpdateOut{}, fmt.Errorf("card_id is required")
 	}
@@ -189,7 +189,7 @@ func (rt roleRuntime) taskUpdate(_ context.Context, _ *mcp.CallToolRequest, in t
 	if !sessioncollab.StatusAllowed(to) {
 		return nil, taskUpdateOut{}, fmt.Errorf("unknown status %q (want pending|running|blocked|done|failed)", in.Status)
 	}
-	card, err := rt.bus.cards.Update(in.CardID, func(c *sessioncollab.Card) error {
+	card, err := rt.bus.cards.Update(ctx, in.CardID, func(c *sessioncollab.Card) error {
 		if !sessioncollab.StatusTransitionAllowed(c.Status, to) {
 			return fmt.Errorf("illegal transition %s→%s (reopen terminal cards via pending)", c.Status, to)
 		}
@@ -239,7 +239,7 @@ type spawnOut struct {
 // for roles in spawn_roles and additionally capped by a per-role daily quota
 // (both fail-closed: an unlisted role never even sees the tool, and the
 // counters below make the cap exact under concurrency).
-func (rt roleRuntime) spawn(_ context.Context, _ *mcp.CallToolRequest, in spawnIn) (*mcp.CallToolResult, spawnOut, error) {
+func (rt roleRuntime) spawn(ctx context.Context, _ *mcp.CallToolRequest, in spawnIn) (*mcp.CallToolResult, spawnOut, error) {
 	if strings.TrimSpace(in.To) == "" {
 		return nil, spawnOut{}, fmt.Errorf("to is required")
 	}
@@ -267,7 +267,7 @@ func (rt roleRuntime) spawn(_ context.Context, _ *mcp.CallToolRequest, in spawnI
 	rt.bus.spawnUsed[rt.role]++
 	rt.bus.spawnMu.Unlock()
 
-	card, err := rt.bus.cards.Create(sessioncollab.Card{
+	card, err := rt.bus.cards.Create(ctx, sessioncollab.Card{
 		Title:     in.Title,
 		Body:      in.Body,
 		Initiator: rt.contact,
@@ -290,7 +290,7 @@ func (rt roleRuntime) spawn(_ context.Context, _ *mcp.CallToolRequest, in spawnI
 	if err != nil {
 		return nil, spawnOut{}, fmt.Errorf("encode assignment: %w", err)
 	}
-	msg, err := rt.bus.mail.Deliver(sessioncollab.MailMessage{
+	msg, err := rt.bus.mail.Deliver(ctx, sessioncollab.MailMessage{
 		From:         rt.contact,
 		To:           in.To,
 		Body:         string(body),

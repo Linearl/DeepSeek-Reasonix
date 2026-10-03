@@ -1,6 +1,9 @@
 package sessioncollab
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 // Task 221#6 claim bookkeeping: the desktop badge (UnreadMailCount) reads
 // InboxStatus, so the number a user sees must equal the inbox's ground truth
@@ -9,7 +12,7 @@ import "testing"
 func TestInboxStatusMatchesGroundTruthThroughConsumeCycle(t *testing.T) {
 	mail := NewMailStore(t.TempDir())
 	deliver := func(body string) MailMessage {
-		msg, err := mail.Deliver(MailMessage{To: "sc_a", From: "sc_b", Body: body})
+		msg, err := mail.Deliver(context.Background(), MailMessage{To: "sc_a", From: "sc_b", Body: body})
 		if err != nil {
 			t.Fatalf("deliver %q: %v", body, err)
 		}
@@ -30,7 +33,7 @@ func TestInboxStatusMatchesGroundTruthThroughConsumeCycle(t *testing.T) {
 
 	// Claim offers everything but must not move the badge: two-phase
 	// delivery keeps unread == unacked until the explicit Ack.
-	pending, _, err := mail.Claim("sc_a")
+	pending, _, err := mail.Claim(context.Background(), "sc_a")
 	if err != nil || len(pending) != 3 {
 		t.Fatalf("claim: %v %v", pending, err)
 	}
@@ -39,7 +42,7 @@ func TestInboxStatusMatchesGroundTruthThroughConsumeCycle(t *testing.T) {
 	}
 
 	// One ack: badge tracks the partial consume exactly.
-	if err := mail.Ack("sc_a", first.ID); err != nil {
+	if err := mail.Ack(context.Background(), "sc_a", first.ID); err != nil {
 		t.Fatal(err)
 	}
 	if got := status(); got != 2 {
@@ -48,7 +51,7 @@ func TestInboxStatusMatchesGroundTruthThroughConsumeCycle(t *testing.T) {
 
 	// "read all" is the remaining acks: the badge reaches zero and stays
 	// there across re-probes (no cursor regression).
-	if err := mail.Ack("sc_a", second.ID, third.ID); err != nil {
+	if err := mail.Ack(context.Background(), "sc_a", second.ID, third.ID); err != nil {
 		t.Fatal(err)
 	}
 	if got := status(); got != 0 {
@@ -63,7 +66,7 @@ func TestInboxStatusMatchesGroundTruthThroughConsumeCycle(t *testing.T) {
 	if got := status(); got != 1 {
 		t.Fatalf("new delivery must raise the badge to 1, got %d", got)
 	}
-	if err := mail.Ack("sc_a", fourth.ID); err != nil {
+	if err := mail.Ack(context.Background(), "sc_a", fourth.ID); err != nil {
 		t.Fatal(err)
 	}
 	if got := status(); got != 0 {

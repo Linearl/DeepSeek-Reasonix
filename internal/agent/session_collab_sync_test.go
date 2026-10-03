@@ -87,7 +87,7 @@ func TestTalkToSessionSyncReturnsReply(t *testing.T) {
 		for time.Now().Before(deadline) {
 			box, _ := mail.Inbox(toID)
 			if len(box) > 0 {
-				_, _ = mail.Deliver(sessioncollab.MailMessage{
+				_, _ = mail.Deliver(context.Background(), sessioncollab.MailMessage{
 					From:     toID,
 					To:       fromID,
 					Body:     "done: build is green",
@@ -170,7 +170,7 @@ func TestTalkToSessionSyncWaitsForLateReply(t *testing.T) {
 				// Answer LATE: an implementation that returns immediately
 				// cannot produce the reply below.
 				time.Sleep(replyDelay)
-				_, _ = mail.Deliver(sessioncollab.MailMessage{
+				_, _ = mail.Deliver(context.Background(), sessioncollab.MailMessage{
 					From:     toID,
 					To:       fromID,
 					Body:     "late answer",
@@ -217,7 +217,7 @@ func TestTalkToSessionSyncIgnoresUnrelatedThread(t *testing.T) {
 	fromID, _ := EnsureContactID(from)
 
 	mail := sessioncollab.NewMailStore(mailDir)
-	unrelated, err := mail.Deliver(sessioncollab.MailMessage{
+	unrelated, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{
 		From:     toID,
 		To:       fromID,
 		Body:     "unrelated chatter",
@@ -231,7 +231,7 @@ func TestTalkToSessionSyncIgnoresUnrelatedThread(t *testing.T) {
 		for time.Now().Before(deadline) {
 			box, _ := mail.Inbox(toID)
 			if len(box) > 0 {
-				_, _ = mail.Deliver(sessioncollab.MailMessage{
+				_, _ = mail.Deliver(context.Background(), sessioncollab.MailMessage{
 					From:     toID,
 					To:       fromID,
 					Body:     "the real answer",
@@ -262,7 +262,7 @@ func TestTalkToSessionSyncIgnoresUnrelatedThread(t *testing.T) {
 	// for the delivery pass, and the answer that resolved this wait does not.
 	// (Inbox() lists the file, so pending-ness is asked of Claim, which is the
 	// same query the delivery pump uses.)
-	pending, _, err := mail.Claim(fromID)
+	pending, _, err := mail.Claim(context.Background(), fromID)
 	if err != nil {
 		t.Fatal(err)
 	}

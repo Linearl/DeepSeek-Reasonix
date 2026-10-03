@@ -1,6 +1,7 @@
 package sessioncollab
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"sync"
@@ -19,7 +20,7 @@ func writeSession(t *testing.T, path string) {
 // one card must not lose a node.
 func TestCardStoreConcurrentUpdatesDoNotLoseNodes(t *testing.T) {
 	root := t.TempDir()
-	created, err := NewCardStore(root).Create(Card{Title: "concurrent"})
+	created, err := NewCardStore(root).Create(context.Background(), Card{Title: "concurrent"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +30,7 @@ func TestCardStoreConcurrentUpdatesDoNotLoseNodes(t *testing.T) {
 	for i := 0; i < writers; i++ {
 		go func(n int) {
 			defer wg.Done()
-			_, _ = NewCardStore(root).Update(created.ID, func(c *Card) error {
+			_, _ = NewCardStore(root).Update(context.Background(), created.ID, func(c *Card) error {
 				c.Nodes = append(c.Nodes, CardNode{Note: "n"})
 				return nil
 			})
