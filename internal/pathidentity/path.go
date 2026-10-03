@@ -3,8 +3,9 @@ package pathidentity
 import (
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
+
+	"reasonix/internal/sandbox"
 )
 
 // Canonical returns the physical, absolute path key used by session leases.
@@ -15,7 +16,18 @@ func Canonical(path string) string {
 	}
 	// Resolve physical identity, not just spelling. Otherwise a symlink or
 	// junction alias can acquire a second sidecar lock for the same transcript.
-	key = resolvePathThroughExistingAncestor(key)
+	//
+	// Task 460: the walk is delegated to the shared bounded canonical engine
+	// (internal/sandbox/canonical.go, task 455fix) instead of the previous
+	// unbounded per-request EvalSymlinks cascade. The engine performs the same
+	// deepest-existing-ancestor walk with the missing tail re-appended, so the
+	// key form is unchanged, but a dead network path now costs one 250ms
+	// budget per 30s TTL instead of a full SMB reconnect on every save-path
+	// canonicalization and every single-instance identity check — and
+	// concurrent callers share one walk.
+	if resolved, err := sandbox.ResolveAbsPath(key); err == nil && resolved != "" {
+		key = resolved
+	}
 	if runtime.GOOS == "windows" {
 		if strings.HasPrefix(strings.ToUpper(key), `\\?\UNC\`) {
 			key = `\\` + key[len(`\\?\UNC\`):]
@@ -25,27 +37,4 @@ func Canonical(path string) string {
 		key = strings.ToLower(key)
 	}
 	return key
-}
-
-// resolvePathThroughExistingAncestor resolves the deepest existing ancestor
-// and appends every still-missing component. Fresh sessions can be nested under
-// directories that have not been created yet; resolving only the immediate
-// parent leaves aliases above that directory split into different lease keys.
-func resolvePathThroughExistingAncestor(path string) string {
-	current := filepath.Clean(path)
-	missing := make([]string, 0, 4)
-	for {
-		if resolved, err := filepath.EvalSymlinks(current); err == nil {
-			for _, v := range slices.Backward(missing) {
-				resolved = filepath.Join(resolved, v)
-			}
-			return resolved
-		}
-		parent := filepath.Dir(current)
-		if parent == current {
-			return path
-		}
-		missing = append(missing, filepath.Base(current))
-		current = parent
-	}
 }

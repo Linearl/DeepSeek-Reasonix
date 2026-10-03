@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"reasonix/internal/filelock"
+	"reasonix/internal/sandbox"
 )
 
 const backgroundGrace = 30 * time.Second
@@ -197,6 +199,22 @@ func CanonicalWorkspace(root string) (string, error) {
 	return canonical, err
 }
 
+// identityResolveBudget bounds one workspace root's physical-identity
+// resolution (task 460). Both halves used to be unbounded: the EvalSymlinks
+// resolve and the upward .git walk each ate a full Windows SMB reconnect
+// budget (~21s observed; same signature as task 455) whenever the root sat on
+// a dead network share — and workspaceIdentities runs on every tab boot
+// (internal/boot boot.go workspacelease.New) and on every desktop lease-overlap
+// decision. The resolve now reuses the shared bounded canonical engine
+// (internal/sandbox/canonical.go, task 455fix) and the .git walk gets the same
+// budget shape; on timeout the cleaned path is kept so boot proceeds — a dead
+// root may cost the budget, never an SMB reconnect.
+var identityResolveBudget = 250 * time.Millisecond
+
+// gitWorktreeRootWalk is the test seam for boundedGitWorktreeRoot; production
+// code never reassigns it (same seam style as internal/sandbox/canonical.go).
+var gitWorktreeRootWalk = nearestGitWorktreeRoot
+
 func workspaceIdentities(root string) (canonical, compatibility string, err error) {
 	root = strings.TrimSpace(root)
 	if root == "" {
@@ -207,14 +225,38 @@ func workspaceIdentities(root string) (canonical, compatibility string, err erro
 		return "", "", fmt.Errorf("resolve workspace root: %w", err)
 	}
 	abs = filepath.Clean(abs)
-	if resolved, resolveErr := filepath.EvalSymlinks(abs); resolveErr == nil {
+	// Task 460: bounded resolve via the shared engine. It performs the same
+	// deepest-existing-ancestor walk the previous raw EvalSymlinks approximated
+	// and caches results (timeouts included), so repeated tab boots share one
+	// probe. A timeout returns the cleaned input — the same value the previous
+	// os.IsNotExist fallback kept — and non-timeout filesystem errors no longer
+	// fail the lease: the cleaned path stays a usable identity key.
+	if resolved, resolveErr := sandbox.ResolveAbsPath(abs); resolveErr == nil && resolved != "" {
 		abs = filepath.Clean(resolved)
-	} else if !os.IsNotExist(resolveErr) {
-		return "", "", fmt.Errorf("canonicalize workspace root: %w", resolveErr)
 	}
-	abs = nearestGitWorktreeRoot(abs)
+	abs = boundedGitWorktreeRoot(abs)
 	compatibility = compatibilityIdentityPath(abs)
 	return normalizeIdentityPath(compatibility), compatibility, nil
+}
+
+// boundedGitWorktreeRoot runs the upward .git walk under identityResolveBudget.
+// On timeout it returns the input unchanged (the identity then just skips
+// worktree-root folding) after one warning; the walker drains into a buffered
+// channel, so an abandoned syscall never blocks or leaks.
+func boundedGitWorktreeRoot(abs string) string {
+	type walkResult struct{ path string }
+	ch := make(chan walkResult, 1)
+	go func() { ch <- walkResult{gitWorktreeRootWalk(abs)} }()
+	timer := time.NewTimer(identityResolveBudget)
+	defer timer.Stop()
+	select {
+	case res := <-ch:
+		return res.path
+	case <-timer.C:
+		slog.Warn("workspace lease: git-root walk timed out; keeping unresolved root (network drive offline?)",
+			"root", abs, "budget", identityResolveBudget.String())
+		return abs
+	}
 }
 
 func caseInsensitivePlatform() bool {

@@ -2943,10 +2943,47 @@ func resolveWorkspaceRoot(explicit string) string {
 	if err != nil {
 		return ""
 	}
-	if root, ok := nearestGitRoot(wd); ok {
+	// Task 460: the upward .git walk stats one candidate per path level; with
+	// the working directory on a dead network share every level ate a full SMB
+	// reconnect budget (~21s, same signature as task 455). The walk is now
+	// budgeted: on timeout the working directory is used, which is exactly the
+	// no-git-root-found fallback.
+	if root, ok := boundedNearestGitRoot(wd); ok {
 		return root
 	}
 	return wd
+}
+
+// gitRootWalk is the test seam for boundedNearestGitRoot; production code
+// never reassigns it (same seam style as internal/sandbox/canonical.go).
+var (
+	gitRootWalk       = nearestGitRoot
+	gitRootWalkBudget = 250 * time.Millisecond
+)
+
+// boundedNearestGitRoot runs the whole upward .git walk under gitRootWalkBudget.
+// On timeout it reports no root after one warning; the walker drains into a
+// buffered channel, so an abandoned syscall never blocks or leaks.
+func boundedNearestGitRoot(start string) (string, bool) {
+	type walkResult struct {
+		root string
+		ok   bool
+	}
+	ch := make(chan walkResult, 1)
+	go func() {
+		root, ok := gitRootWalk(start)
+		ch <- walkResult{root, ok}
+	}()
+	timer := time.NewTimer(gitRootWalkBudget)
+	defer timer.Stop()
+	select {
+	case res := <-ch:
+		return res.root, res.ok
+	case <-timer.C:
+		slog.Warn("boot: git-root walk from working directory timed out; using working directory (network drive offline?)",
+			"start", start, "budget", gitRootWalkBudget.String())
+		return "", false
+	}
 }
 
 func normalizeAdditionalDirs(root string, dirs []string) ([]string, error) {
@@ -2978,12 +3015,25 @@ func normalizeAdditionalDirs(root string, dirs []string) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("resolve additional directory %q: %w", raw, err)
 		}
-		real, err := filepath.EvalSymlinks(dir)
+		// Task 460: bounded probes. The resolve goes through the shared
+		// canonical engine (internal/sandbox/canonical.go, task 455fix) and the
+		// directory check is budgeted separately; an additional directory on a
+		// dead network share used to eat a full SMB reconnect budget (~21s,
+		// same signature as task 455) here on every boot and then fail Build
+		// outright. A timed-out probe now skips the directory with one warning:
+		// the session grants no write access it could not verify (fail closed on
+		// the grant) while boot itself proceeds (fail open on availability).
+		real, err := sandbox.ResolveAbsPath(dir)
 		if err != nil {
 			return nil, fmt.Errorf("resolve additional directory %q: %w", raw, err)
 		}
-		info, err := os.Stat(real)
+		info, err := boundedStat(real)
 		if err != nil {
+			if errors.Is(err, errStatTimeout) {
+				slog.Warn("boot: additional directory probe timed out; skipping grant (network drive offline?)",
+					"dir", real, "budget", additionalDirStatTimeout.String())
+				continue
+			}
 			return nil, fmt.Errorf("inspect additional directory %q: %w", raw, err)
 		}
 		if !info.IsDir() {
@@ -2992,6 +3042,41 @@ func normalizeAdditionalDirs(root string, dirs []string) ([]string, error) {
 		out = appendUniquePaths(out, filepath.Clean(real))
 	}
 	return out, nil
+}
+
+// errStatTimeout marks a probe that exceeded its budget; callers distinguish it
+// from real filesystem errors via errors.Is.
+var errStatTimeout = errors.New("stat probe timed out")
+
+// Test seams and budget for boundedStat (task 460): production code never
+// reassigns the seam; tests swap it to simulate slow filesystems. Same seam
+// style as internal/sandbox/canonical.go.
+var (
+	additionalDirStat        = os.Stat
+	additionalDirStatTimeout = 250 * time.Millisecond
+)
+
+// boundedStat runs one os.Stat under additionalDirStatTimeout. On timeout it
+// returns errStatTimeout; the abandoned walker drains into a buffered channel,
+// so a syscall that outlives the budget never blocks or leaks.
+func boundedStat(path string) (fs.FileInfo, error) {
+	type statResult struct {
+		info fs.FileInfo
+		err  error
+	}
+	ch := make(chan statResult, 1)
+	go func() {
+		info, err := additionalDirStat(path)
+		ch <- statResult{info, err}
+	}()
+	timer := time.NewTimer(additionalDirStatTimeout)
+	defer timer.Stop()
+	select {
+	case res := <-ch:
+		return res.info, res.err
+	case <-timer.C:
+		return nil, errStatTimeout
+	}
 }
 
 func appendUniquePaths(base []string, extra ...string) []string {
@@ -3047,7 +3132,13 @@ func pathComparisonKey(path string) string {
 	if abs, err := filepath.Abs(path); err == nil {
 		path = abs
 	}
-	if real, err := filepath.EvalSymlinks(path); err == nil {
+	// Task 460: bounded resolve via the shared canonical engine instead of raw
+	// EvalSymlinks. Every boot dedups its configured allow/forbid roots through
+	// this key, so one dead network root in any root list used to eat a full
+	// SMB reconnect budget (~21s, same signature as task 455) per key; with the
+	// engine it costs one 250ms budget per TTL and the raw path is kept on
+	// timeout — the same fallback the previous EvalSymlinks failure path used.
+	if real, err := sandbox.ResolveAbsPath(path); err == nil && real != "" {
 		path = real
 	}
 	if runtime.GOOS == "windows" {
