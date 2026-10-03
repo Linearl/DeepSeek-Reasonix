@@ -4677,6 +4677,8 @@ export const en = {
   "collabInbox.decidedBy": "Decided by {by}",
   "collabInbox.read": "Read",
   "collabInbox.unread": "Unread",
+  "collabInbox.markAllRead": "Mark all read",
+  "collabInbox.duplicateCount": "Copies of identical content",
   "collabInbox.rounds": "{n} rounds",
   "collabInbox.revision": "Snapshot {rev}",
   "collabInbox.note": "Only delivered mail shows; dismissals survive restart",

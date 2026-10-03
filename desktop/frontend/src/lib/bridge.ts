@@ -1075,6 +1075,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // 任务 320 遗留 #1：图标行未读徽标的只读计数（不应用保留期，零副作用）。
   CountUnreadCollabMail(): Promise<number>;
   DismissCollabMail(ids: string[]): Promise<CollabMailSnapshotView>;
+  // 任务 461 P8 ③：批量已读——折叠条目结算整个重复簇，返回新快照。
+  MarkCollabMailRead(ids: string[]): Promise<CollabMailSnapshotView>;
   UndismissCollabMail(ids: string[]): Promise<CollabMailSnapshotView>;
   MarkCollabMailDecided(messageID: string, by: string): Promise<CollabMailSnapshotView>;
   SetCollabMailRetention(retention: string): Promise<CollabMailSnapshotView>;
@@ -5475,6 +5477,9 @@ function makeMockApp(): AppBindings {
       return 0; // dev shell has no mailbox — an honest empty badge
     },
     async DismissCollabMail() {
+      return { revision: "0.0.0", settings: { retention: "7d" }, total: 0, returned: 0, truncated: false, entries: [] };
+    },
+    async MarkCollabMailRead() {
       return { revision: "0.0.0", settings: { retention: "7d" }, total: 0, returned: 0, truncated: false, entries: [] };
     },
     async UndismissCollabMail() {

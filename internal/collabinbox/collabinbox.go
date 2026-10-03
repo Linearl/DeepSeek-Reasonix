@@ -115,7 +115,12 @@ type Entry struct {
 	Read bool `json:"read"`
 	// Dismissed marks an entry the viewer eliminated; it stays in the table
 	// (until retention removes it) so dismissal survives restart (f).
-	Dismissed bool   `json:"dismissed,omitempty"`
+	Dismissed bool `json:"dismissed,omitempty"`
+	// DuplicateCount is the 任务461 P8 ③ fold of fully identical mail (same
+	// sender+recipient+body within duplicateFoldWindow): the cluster shows as
+	// ONE entry carrying the number of copies. 0/1 = no duplicates; MarkRead
+	// settles the whole cluster from this entry's id alone.
+	DuplicateCount int `json:"duplicateCount,omitempty"`
 	DecidedBy string `json:"decidedBy,omitempty"`
 	DecidedAt int64  `json:"decidedAt,omitempty"`
 	PendingMe bool   `json:"pendingMe,omitempty"`
@@ -200,6 +205,10 @@ const (
 	// 占住时，操作在预算内返回明确错误，而不是把调用工具无限挂起——这是
 	// 「query_collab_mail 卡死 39 分钟」事故的根因修复。
 	lockWaitTimeout = 5 * time.Second
+	// duplicateFoldWindow bounds the consumer-side fold of byte-identical mail
+	// (任务461 P8 ③): copies older than this from the cluster primary stay
+	// separate entries — genuine repeated content across days never merges.
+	duplicateFoldWindow = 24 * time.Hour
 )
 
 // Store reads the mail directory through the sessioncollab MailStore and
@@ -307,8 +316,29 @@ func approverOf(m sessioncollab.MailMessage) string {
 	return m.From
 }
 
+// foldIndex is build's full output: the folded entry table plus what MarkRead
+// needs to settle a whole duplicate cluster (任务461 P8 ③).
+type foldIndex struct {
+	entries []Entry
+	// foldGroups maps a folded entry's id to every member id of its cluster
+	// (primary first). Unfolded entries have no entry in this map.
+	foldGroups map[string][]string
+	// foldPrimary maps any member id back to its cluster's primary id.
+	foldPrimary map[string]string
+	// mailboxes maps any mail id to its owning mailbox contact.
+	mailboxes map[string]string
+}
+
 // build reads the transport layer once and derives every entry.
 func (s *Store) build(ctx context.Context) ([]Entry, error) {
+	idx, err := s.buildIndex(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return idx.entries, nil
+}
+
+func (s *Store) buildIndex(ctx context.Context) (*foldIndex, error) {
 	rows := s.mail.History(ctx)
 	// Replies per thread drive the conversation-side decision derivation:
 	// a reply ON the approval's own thread FROM the expected approver is the
@@ -329,13 +359,24 @@ func (s *Store) build(ctx context.Context) ([]Entry, error) {
 
 	st := s.loadState()
 	seen := map[string]bool{}
-	out := make([]Entry, 0, len(rows))
+	mailboxes := map[string]string{}
+	readByID := map[string]bool{}
+	var uniq []sessioncollab.HistoryRow
 	for _, row := range rows {
 		m := row.Mail
 		if m.ID == "" || seen[m.ID] {
 			continue // contract ②: replayed ids collapse to one entry
 		}
 		seen[m.ID] = true
+		mailboxes[m.ID] = row.Mailbox
+		readByID[m.ID] = row.Read
+		uniq = append(uniq, row)
+	}
+	primaries, foldGroups, foldPrimary := foldRows(uniq)
+
+	out := make([]Entry, 0, len(primaries))
+	for _, row := range primaries {
+		m := row.Mail
 		e := Entry{
 			ID:           m.ID,
 			From:         m.From,
@@ -354,6 +395,18 @@ func (s *Store) build(ctx context.Context) ([]Entry, error) {
 			Preview:      previewOf(m.Body),
 			Delivered:    true,
 			Read:         row.Read,
+		}
+		// 任务461 P8 ③：折叠簇的整体已读口径——簇内任一副本未消费就仍算未读
+		//（MarkRead 会一次性结算整簇）。
+		if members := foldGroups[e.ID]; len(members) > 0 {
+			e.DuplicateCount = len(members)
+			for _, mid := range members {
+				if !readByID[mid] {
+					e.Read = false
+					break
+				}
+				e.Read = true
+			}
 		}
 		// 任务461 P8 ②：系统类邮件（回执、平台状态通知、投递失败说明——
 		// Kind 戳或 system 桶归类）自动视为已读，不计入「用户需处理的未读」。
@@ -376,7 +429,104 @@ func (s *Store) build(ctx context.Context) ([]Entry, error) {
 		}
 		out = append(out, e)
 	}
-	return out, nil
+	return &foldIndex{
+		entries:     out,
+		foldGroups:  foldGroups,
+		foldPrimary: foldPrimary,
+		mailboxes:   mailboxes,
+	}, nil
+}
+
+// foldRows clusters byte-identical mail (same sender, recipient, body) that
+// arrived within duplicateFoldWindow of the newest copy (任务461 P8 ③): the
+// delivery-layer resend windows block NEW duplicates, folding is the
+// consumer-side backstop for copies already on disk (the 9-duplicates
+// incident). The newest copy is the cluster primary; rows outside the window
+// start their own cluster. Input must be newest-first (History order).
+// Thread-continuation rows (explicit thread_id) never fold — identical bodies
+// on a conversation thread are legitimate turns (same rule as the delivery
+// layer's resend dedup).
+func foldRows(uniq []sessioncollab.HistoryRow) (primaries []sessioncollab.HistoryRow, groups map[string][]string, primaryOf map[string]string) {
+	type foldKey struct{ from, to, body string }
+	clusters := map[foldKey][]sessioncollab.HistoryRow{}
+	var keyOrder []foldKey
+	for _, row := range uniq {
+		if row.Mail.ThreadID != "" && row.Mail.ThreadID != row.Mail.ID {
+			primaries = append(primaries, row) // a conversational turn: always its own entry
+			continue
+		}
+		k := foldKey{row.Mail.From, row.Mail.To, row.Mail.Body}
+		if _, ok := clusters[k]; !ok {
+			keyOrder = append(keyOrder, k)
+		}
+		clusters[k] = append(clusters[k], row)
+	}
+	groups = map[string][]string{}
+	primaryOf = map[string]string{}
+	window := duplicateFoldWindow.Milliseconds()
+	for _, k := range keyOrder {
+		rowsInKey := clusters[k]
+		i := 0
+		for i < len(rowsInKey) {
+			primary := rowsInKey[i]
+			primaries = append(primaries, primary)
+			members := []string{primary.Mail.ID}
+			primaryOf[primary.Mail.ID] = primary.Mail.ID
+			j := i + 1
+			for ; j < len(rowsInKey); j++ {
+				if primary.Mail.At-rowsInKey[j].Mail.At > window {
+					break
+				}
+				members = append(members, rowsInKey[j].Mail.ID)
+				primaryOf[rowsInKey[j].Mail.ID] = primary.Mail.ID
+			}
+			if len(members) > 1 {
+				groups[primary.Mail.ID] = members
+			}
+			i = j
+		}
+	}
+	sort.SliceStable(primaries, func(a, b int) bool { return primaries[a].Mail.At > primaries[b].Mail.At })
+	return primaries, groups, primaryOf
+}
+
+// MarkRead advances the recipient seen cursor for the given entry ids (任务
+// 461 P8 ③ 批量已读). A folded entry's id expands to every copy in its
+// cluster, so one call settles the whole duplicate group. Returns a fresh
+// snapshot of the default view.
+func (s *Store) MarkRead(ctx context.Context, ids []string) (Snapshot, error) {
+	unlock, err := s.lock(ctx)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	idx, err := s.buildIndex(ctx)
+	if err != nil {
+		unlock()
+		return Snapshot{}, err
+	}
+	perMailbox := map[string][]string{}
+	for _, id := range ids {
+		primary := id
+		if p := idx.foldPrimary[id]; p != "" {
+			primary = p
+		}
+		members := append([]string{primary}, idx.foldGroups[primary]...)
+		for _, mid := range members {
+			mb, ok := idx.mailboxes[mid]
+			if !ok {
+				continue
+			}
+			perMailbox[mb] = append(perMailbox[mb], mid)
+		}
+	}
+	for mailbox, mids := range perMailbox {
+		if err := s.mail.Ack(ctx, mailbox, mids...); err != nil {
+			unlock()
+			return Snapshot{}, err
+		}
+	}
+	unlock()
+	return s.List(ctx, Query{}, false)
 }
 
 // decorate fills the viewer-dependent sub-states (task 320 d).

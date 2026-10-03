@@ -34,6 +34,8 @@ export type CollabMailEntry = {
   delivered: boolean;
   read: boolean;
   dismissed?: boolean;
+  /** 任务 461 P8 ③：完全同内容折叠计数（>1 时渲染 ×N 徽标）。 */
+  duplicateCount?: number;
   decidedBy?: string;
   decidedAt?: number;
   pendingMe?: boolean;
@@ -73,6 +75,7 @@ export type CollabInboxBindings = {
   ListCollabMailChains(bucket: string, limit: number): Promise<CollabMailChains>;
   CountUnreadCollabMail(): Promise<number>;
   DismissCollabMail(ids: string[]): Promise<CollabMailSnapshot>;
+  MarkCollabMailRead(ids: string[]): Promise<CollabMailSnapshot>;
   UndismissCollabMail(ids: string[]): Promise<CollabMailSnapshot>;
   MarkCollabMailDecided(messageID: string, by: string): Promise<CollabMailSnapshot>;
   SetCollabMailRetention(retention: string): Promise<CollabMailSnapshot>;
@@ -208,6 +211,16 @@ export function CollabInboxPanel({ bindings }: { bindings?: CollabInboxBindings 
               ))}
             </select>
           </label>
+          {rows.some((entry) => !entry.read) && (
+            <button
+              type="button"
+              className="btn btn--small"
+              disabled={busy}
+              onClick={() => void act(() => b.MarkCollabMailRead(rows.filter((entry) => !entry.read).map((entry) => entry.id)))}
+            >
+              {t("collabInbox.markAllRead")}
+            </button>
+          )}
           <button type="button" className="btn btn--small" onClick={() => setCollabInboxOpen(false)}>
             {t("collabInbox.close")}
           </button>
@@ -319,6 +332,11 @@ export function CollabInboxPanel({ bindings }: { bindings?: CollabInboxBindings 
                 <span className={`collab-inbox-panel__read${entry.read ? " collab-inbox-panel__read--on" : ""}`}>
                   {entry.read ? t("collabInbox.read") : t("collabInbox.unread")}
                 </span>
+                {!!entry.duplicateCount && entry.duplicateCount > 1 && (
+                  <span className="collab-inbox-panel__dupcount" title={t("collabInbox.duplicateCount")}>
+                    ×{entry.duplicateCount}
+                  </span>
+                )}
                 {entry.decidedBy && (
                   <span className="collab-inbox-panel__decided">
                     {t("collabInbox.decidedBy", { by: entry.decidedBy })}

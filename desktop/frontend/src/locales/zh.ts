@@ -4679,6 +4679,8 @@ export const zh: Record<DictKey, string> = {
   "collabInbox.decidedBy": "裁决：{by}",
   "collabInbox.read": "已读",
   "collabInbox.unread": "未读",
+  "collabInbox.markAllRead": "全部已读",
+  "collabInbox.duplicateCount": "相同内容重复条数",
   "collabInbox.rounds": "{n} 轮",
   "collabInbox.revision": "快照 {rev}",
   "collabInbox.note": "仅显示已落库信件；重启保留已消除状态",
