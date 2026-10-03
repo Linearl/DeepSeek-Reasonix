@@ -4513,6 +4513,8 @@ export const zh: Record<DictKey, string> = {
   "settings.highSpeedModel.on": "开启",
   "settings.highSpeedModel.off": "关闭",
   "settings.monitoring": "监控（会话 + 性能）",
+  "settings.compressOpt": "压缩优化",
+  "settings.budgetControl": "预算控制",
   "settings.proactiveCompact": "主动压缩冷却（可配）",
   "settings.proactiveCompactHint": "两次模型驱动的压缩（fold）之间强制冷却，避免反复重写前缀击穿提示缓存。任务 318：默认关闭=沿用硬编码 10 分钟冷却；开启后按下方分钟数生效（下次压缩时即时读取，无需重启）。",
   "settings.proactiveCompact.on": "开启",

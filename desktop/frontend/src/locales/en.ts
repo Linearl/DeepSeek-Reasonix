@@ -4510,6 +4510,8 @@ export const en = {
   "settings.highSpeedModel.on": "On",
   "settings.highSpeedModel.off": "Off",
   "settings.monitoring": "Monitoring (session + performance)",
+  "settings.compressOpt": "Compaction optimization",
+  "settings.budgetControl": "Budget control",
   "settings.proactiveCompact": "Proactive compact cooldown (configurable)",
   "settings.proactiveCompactHint": "Minimum gap between two model-driven folds so repeated prefix rewrites stop busting the prompt cache. Task 318: off by default = the hard-coded 10-minute cooldown applies; on makes the minutes below authoritative (live read on the next fold, no restart).",
   "settings.proactiveCompact.on": "On",
