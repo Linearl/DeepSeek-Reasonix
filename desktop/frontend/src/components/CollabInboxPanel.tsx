@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { app } from "../lib/bridge";
+import { reportFrontendLog } from "../lib/frontendLog";
 import { useT } from "../lib/i18n";
 
 export type CollabMailEntry = {
@@ -159,8 +160,13 @@ export function CollabInboxPanel({ bindings }: { bindings?: CollabInboxBindings 
       } else {
         setSnapshot(await b.ListCollabMail(bucket, from.trim(), to.trim(), state, 100, showDismissed, order));
       }
-    } catch {
-      // A closed gateway must not crash the panel — it simply shows no data.
+    } catch (err) {
+      // A closed gateway must not crash the panel — it keeps the last
+      // snapshot. But a silently swallowed failure made "badge says N unread,
+      // panel shows nothing" undiagnosable, so every failure now travels the
+      // frontend log channel (desktop.log) with its query context.
+      reportFrontendLog("collab-inbox", "list failed",
+        `view=${view} bucket=${bucket} state=${state} order=${order} from=${from.trim()} to=${to.trim()} dismissed=${showDismissed} err=${String(err)}`);
     }
   }, [b, bucket, from, to, state, order, showDismissed, view]);
 

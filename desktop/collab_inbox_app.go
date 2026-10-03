@@ -1,6 +1,8 @@
 package main
 
 import (
+	"log/slog"
+
 	"reasonix/internal/agent"
 	"reasonix/internal/collabinbox"
 	"reasonix/internal/config"
@@ -49,7 +51,7 @@ func (a *App) collabInboxViewer() string {
 // date sort, surfaced as a panel toggle (the index layer has always been
 // dual-order; the agent query tool exposes the same field).
 func (a *App) ListCollabMail(bucket, from, to, state string, limit int, includeDismissed bool, order string) (collabinbox.Snapshot, error) {
-	return collabInboxStore().List(collabinbox.Query{
+	snap, err := collabInboxStore().List(collabinbox.Query{
 		Bucket:           bucket,
 		From:             from,
 		To:               to,
@@ -59,6 +61,15 @@ func (a *App) ListCollabMail(bucket, from, to, state string, limit int, includeD
 		Limit:            limit,
 		IncludeDismissed: includeDismissed,
 	}, true) // panel calls may apply retention (the agent tool path never does)
+	if err != nil {
+		// The panel's frontend catch is intentionally silent (a closed gateway
+		// must not crash it), which turns backend failures into an empty list
+		// with no trace anywhere. Log it so a "N unread but empty panel"
+		// report has a reachable cause.
+		slog.Warn("collab inbox: ListCollabMail failed", "err", err,
+			"bucket", bucket, "state", state, "limit", limit, "order", order)
+	}
+	return snap, err
 }
 
 // ListCollabMailChains returns the thread-grouped view (task 320 g): one row
