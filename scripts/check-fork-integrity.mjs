@@ -739,6 +739,19 @@ const CHECKS = [
   { feature: "任务455fix 共享有界 canonical 引擎（250ms 超时+30s TTL 缓存含失败+并发单飞）", file: "internal/sandbox/canonical.go", patterns: ["func resolveCanonicalPath", "canonicalFlights", "canonicalCacheStore", "network drive offline?", "canonicalResolveTimeoutBudget = 250 * time.Millisecond"] },
   { feature: "任务455fix boot 两处 canonicalizer 收敛委托 + 审批复核旁路缓存", file: "internal/sandbox/write_path.go", patterns: ["resolveCanonicalPath(path)", "ResolveAbsPathFresh(approved)"] },
   { feature: "任务455fix builtin realPath 委托共享实现（消双实现）", file: "internal/tool/builtin/confine.go", patterns: ["sandbox.ResolveAbsPath(path)"] },
+
+  // ── 任务461 P2-P5（收件箱/工具体验四件，2026-10-03）──────────────────
+  // P2：更新重启标记——只有更新驱动的重启才允许 auto-resume 家族开闸；
+  // tabs.go 恢复点的门禁调用与标记文件本体都是 fork 特有接线，merge 丢任一
+  // 半边都会退化回「任何启动都自动唤醒会话」的 461 原症状。
+  { feature: "任务461-P2 更新重启标记（写点+消费门禁）", file: "desktop/update_restart_marker.go", patterns: ["func writeUpdateRestartMarker", "func updateRestartResumeAllowed", "update-restart-marker.json"] },
+  { feature: "任务461-P2 恢复点门禁 + 中断工具不重放兜底", file: "desktop/tabs.go", patterns: ["resumeAllowed := updateRestartResumeAllowed()", "tabHasInterruptedToolCall(tab)"] },
+  // P3：失败消息一键重发（复用 edit 的 rewind+submit 通道）。
+  { feature: "任务461-P3 失败消息重发按钮", file: "desktop/frontend/src/components/Message.tsx", patterns: ["onResend", "msg__resend"] },
+  // P4：收件箱 from/to 过滤下拉（选项=会话名，hover=项目›分组›会话名›contact_id）。
+  { feature: "任务461-P4 收件箱 from/to 过滤下拉", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["CollabSessionDirectory", "sessionHoverLabel"] },
+  // P5：受管路径预授权双栏布局（介绍左/开关右；styles.css 是 merge 静默丢块高发区）。
+  { feature: "任务461-P5 受管路径预授权双栏布局 CSS", file: "desktop/frontend/src/styles.css", patterns: [".autopilot-preapprove-subblock .set-seg {\n  justify-self: end;"] },
 ];
 
 let failed = 0;
