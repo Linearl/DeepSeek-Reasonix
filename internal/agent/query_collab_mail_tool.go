@@ -46,7 +46,7 @@ func (queryCollabMailTool) Schema() json.RawMessage {
 
 func (queryCollabMailTool) ReadOnly() bool { return true }
 
-func (t queryCollabMailTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
+func (t queryCollabMailTool) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var p struct {
 		From       string `json:"from"`
 		To         string `json:"to"`
@@ -98,7 +98,10 @@ func (t queryCollabMailTool) Execute(_ context.Context, args json.RawMessage) (s
 	}
 	resolver := func(contact string) string { return identityByContact[contact] }
 	store := collabinbox.New(mailDir, resolver)
-	snap, err := store.List(collabinbox.Query{
+	// task 461 P1: the request ctx rides all the way into the lock wait, so a
+	// user stop cancels a contended acquire immediately instead of hanging the
+	// tool for the whole 5s budget (or forever, before the fix).
+	snap, err := store.List(ctx, collabinbox.Query{
 		Bucket:   p.Bucket,
 		From:     p.From,
 		To:       p.To,

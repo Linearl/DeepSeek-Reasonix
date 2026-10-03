@@ -1,12 +1,20 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/collabinbox"
 	"reasonix/internal/config"
 )
+
+// collabInboxCtx is the context every panel method hands down. Wails bindings
+// carry no per-call request context, so this is Background on purpose — the
+// panel path is not a cancellable chain, and the inner lock budget
+// (collabinbox lockWaitTimeout, 5s) is what keeps these calls bounded
+// (task 461 P1: 内层 ≤5s 有界).
+func collabInboxCtx() context.Context { return context.Background() }
 
 // Task 320 — the cross-session inbox panel's Wails surface.
 //
@@ -51,7 +59,7 @@ func (a *App) collabInboxViewer() string {
 // date sort, surfaced as a panel toggle (the index layer has always been
 // dual-order; the agent query tool exposes the same field).
 func (a *App) ListCollabMail(bucket, from, to, state string, limit int, includeDismissed bool, order string) (collabinbox.Snapshot, error) {
-	snap, err := collabInboxStore().List(collabinbox.Query{
+	snap, err := collabInboxStore().List(collabInboxCtx(), collabinbox.Query{
 		Bucket:           bucket,
 		From:             from,
 		To:               to,
@@ -75,7 +83,7 @@ func (a *App) ListCollabMail(bucket, from, to, state string, limit int, includeD
 // ListCollabMailChains returns the thread-grouped view (task 320 g): one row
 // per conversation chain with its rounds expanded.
 func (a *App) ListCollabMailChains(bucket string, limit int) (collabinbox.ChainSnapshot, error) {
-	return collabInboxStore().Chains(collabinbox.Query{
+	return collabInboxStore().Chains(collabInboxCtx(), collabinbox.Query{
 		Bucket: bucket,
 		Viewer: a.collabInboxViewer(),
 		Limit:  limit,
@@ -90,7 +98,7 @@ func (a *App) ListCollabMailChains(bucket string, limit int) (collabinbox.ChainS
 // effect belongs to the panel path alone), and no entries travel the wire —
 // just the count.
 func (a *App) CountUnreadCollabMail() (int64, error) {
-	snap, err := collabInboxStore().List(collabinbox.Query{Unread: true, Limit: 1}, false)
+	snap, err := collabInboxStore().List(collabInboxCtx(), collabinbox.Query{Unread: true, Limit: 1}, false)
 	if err != nil {
 		return 0, err
 	}
@@ -100,12 +108,12 @@ func (a *App) CountUnreadCollabMail() (int64, error) {
 // DismissCollabMail eliminates entries from the default view and returns the
 // fresh snapshot (batch dismiss → new revision, e-①).
 func (a *App) DismissCollabMail(ids []string) (collinboxSnapshot, error) {
-	return collabInboxStore().Dismiss(ids)
+	return collabInboxStore().Dismiss(collabInboxCtx(), ids)
 }
 
 // UndismissCollabMail restores previously eliminated entries.
 func (a *App) UndismissCollabMail(ids []string) (collinboxSnapshot, error) {
-	return collabInboxStore().Undismiss(ids)
+	return collabInboxStore().Undismiss(collabInboxCtx(), ids)
 }
 
 // MarkCollabMailDecided records an approval verdict with its decider ("human"
@@ -115,13 +123,13 @@ func (a *App) MarkCollabMailDecided(messageID, by string) (collinboxSnapshot, er
 	if by == "" {
 		by = "human"
 	}
-	return collabInboxStore().Decide(messageID, by)
+	return collabInboxStore().Decide(collabInboxCtx(), messageID, by)
 }
 
 // SetCollabMailRetention switches the retention window (7d|30d|90d|forever)
 // and applies it immediately — task 320 c.
 func (a *App) SetCollabMailRetention(retention string) (collinboxSnapshot, error) {
-	return collabInboxStore().SetRetention(retention)
+	return collabInboxStore().SetRetention(collabInboxCtx(), retention)
 }
 
 // collinboxSnapshot pins the wire type name for the Wails bindings.

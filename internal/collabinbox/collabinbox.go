@@ -195,6 +195,11 @@ const (
 	maxLimit     = 500 // task 320 b: hard ceiling, no unbounded reads
 	stateName    = "collab-inbox-state.json"
 	lockName     = ".collab-inbox.lock"
+	// lockWaitTimeout bounds one cross-process lock wait for every inbox
+	// operation (task 461 P1, 内层 ≤5s). 可用性 > 锁完整性：锁被别的窗口/进程
+	// 占住时，操作在预算内返回明确错误，而不是把调用工具无限挂起——这是
+	// 「query_collab_mail 卡死 39 分钟」事故的根因修复。
+	lockWaitTimeout = 5 * time.Second
 )
 
 // Store reads the mail directory through the sessioncollab MailStore and
@@ -223,11 +228,18 @@ func (s *Store) Mail() *sessioncollab.MailStore { return s.mail }
 
 func (s *Store) statePath() string { return filepath.Join(s.mailDir, stateName) }
 
-func (s *Store) lock() (func(), error) {
+// lock takes the inbox's cross-process lock. ctx is the caller's request
+// context: cancellation (用户点停止) ends the wait immediately, and the wait
+// itself never exceeds lockWaitTimeout even when the holder never lets go.
+func (s *Store) lock(ctx context.Context) (func(), error) {
 	if err := os.MkdirAll(s.mailDir, 0o755); err != nil {
 		return nil, err
 	}
-	return filelock.Acquire(context.Background(), filepath.Join(s.mailDir, lockName))
+	release, err := filelock.AcquireWithExternalTimeout(ctx, filepath.Join(s.mailDir, lockName), lockWaitTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("collab inbox lock busy (held by another window or process?), gave up waiting: %w", err)
+	}
+	return release, nil
 }
 
 func (s *Store) loadState() stateFile {
@@ -296,8 +308,8 @@ func approverOf(m sessioncollab.MailMessage) string {
 }
 
 // build reads the transport layer once and derives every entry.
-func (s *Store) build() ([]Entry, error) {
-	rows := s.mail.History()
+func (s *Store) build(ctx context.Context) ([]Entry, error) {
+	rows := s.mail.History(ctx)
 	// Replies per thread drive the conversation-side decision derivation:
 	// a reply ON the approval's own thread FROM the expected approver is the
 	// verdict ("哪个对话批的"). Receipts never qualify — they start fresh
@@ -373,9 +385,9 @@ func decorate(entries []Entry, viewer string) {
 
 // ApplyRetention enforces the configured retention window against the
 // transport layer (task 320 c). Returns how many messages were physically
-// removed. forever → no-op.
-func (s *Store) ApplyRetention() (int, error) {
-	unlock, err := s.lock()
+// removed. forever → no-op. ctx bounds/cancels the lock wait.
+func (s *Store) ApplyRetention(ctx context.Context) (int, error) {
+	unlock, err := s.lock(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -385,7 +397,7 @@ func (s *Store) ApplyRetention() (int, error) {
 	if !ok {
 		return 0, nil
 	}
-	removed, err := s.mail.PruneInbox(cutoff)
+	removed, err := s.mail.PruneInbox(ctx, cutoff)
 	if err != nil {
 		return 0, err
 	}
@@ -393,7 +405,7 @@ func (s *Store) ApplyRetention() (int, error) {
 		// Dismissals/decisions die WITH their entries (task 320 设计要点 2):
 		// garbage-collect state keys whose message no longer exists, then bump
 		// the revision so every window resnapshots.
-		entries, berr := s.build()
+		entries, berr := s.build(ctx)
 		if berr == nil {
 			alive := make(map[string]bool, len(entries))
 			for _, e := range entries {
@@ -420,20 +432,20 @@ func (s *Store) ApplyRetention() (int, error) {
 
 // List answers one revision-stamped snapshot (task 320 a/e). applyRetention
 // should be true for panel calls and false for the read-only query tool — a
-// read must never mutate the transport layer.
-func (s *Store) List(q Query, applyRetention bool) (Snapshot, error) {
+// read must never mutate the transport layer. ctx bounds/cancels the lock wait.
+func (s *Store) List(ctx context.Context, q Query, applyRetention bool) (Snapshot, error) {
 	if applyRetention {
-		if _, err := s.ApplyRetention(); err != nil {
+		if _, err := s.ApplyRetention(ctx); err != nil {
 			return Snapshot{}, err
 		}
 	}
-	unlock, err := s.lock()
+	unlock, err := s.lock(ctx)
 	if err != nil {
 		return Snapshot{}, err
 	}
 	defer unlock()
 	st := s.loadState()
-	entries, err := s.build()
+	entries, err := s.build(ctx)
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -478,14 +490,14 @@ func (s *Store) List(q Query, applyRetention bool) (Snapshot, error) {
 
 // Chains groups the filtered table by threadId (task 320 g): one row per
 // conversation chain, newest chain first, entries chronological inside.
-func (s *Store) Chains(q Query) (ChainSnapshot, error) {
-	unlock, err := s.lock()
+func (s *Store) Chains(ctx context.Context, q Query) (ChainSnapshot, error) {
+	unlock, err := s.lock(ctx)
 	if err != nil {
 		return ChainSnapshot{}, err
 	}
 	defer unlock()
 	st := s.loadState()
-	entries, err := s.build()
+	entries, err := s.build(ctx)
 	if err != nil {
 		return ChainSnapshot{}, err
 	}
@@ -542,8 +554,8 @@ func (s *Store) Chains(q Query) (ChainSnapshot, error) {
 // Dismiss eliminates entries from the default view (task 320 e: 批量 dismiss
 // 后返回新快照). Returns the fresh list snapshot so the second window can
 // converge on the same revision.
-func (s *Store) Dismiss(ids []string) (Snapshot, error) {
-	return s.mutate(func(st *stateFile) {
+func (s *Store) Dismiss(ctx context.Context, ids []string) (Snapshot, error) {
+	return s.mutate(ctx, func(st *stateFile) {
 		now := s.now()
 		for _, id := range ids {
 			if id = strings.TrimSpace(id); id != "" {
@@ -554,8 +566,8 @@ func (s *Store) Dismiss(ids []string) (Snapshot, error) {
 }
 
 // Undismiss restores previously eliminated entries.
-func (s *Store) Undismiss(ids []string) (Snapshot, error) {
-	return s.mutate(func(st *stateFile) {
+func (s *Store) Undismiss(ctx context.Context, ids []string) (Snapshot, error) {
+	return s.mutate(ctx, func(st *stateFile) {
 		for _, id := range ids {
 			delete(st.Dismissed, strings.TrimSpace(id))
 		}
@@ -565,7 +577,7 @@ func (s *Store) Undismiss(ids []string) (Snapshot, error) {
 // Decide records an approval verdict WITH its decider (task 320 d:
 // decidedBy = "human" for a panel click, or the deciding conversation's
 // contact_id).
-func (s *Store) Decide(messageID, by string) (Snapshot, error) {
+func (s *Store) Decide(ctx context.Context, messageID, by string) (Snapshot, error) {
 	messageID = strings.TrimSpace(messageID)
 	by = strings.TrimSpace(by)
 	if messageID == "" {
@@ -574,33 +586,33 @@ func (s *Store) Decide(messageID, by string) (Snapshot, error) {
 	if by == "" {
 		return Snapshot{}, errors.New("collabinbox: decider is required (\"human\" or a contact id)")
 	}
-	return s.mutate(func(st *stateFile) {
+	return s.mutate(ctx, func(st *stateFile) {
 		st.Decided[messageID] = Decision{By: by, At: s.now()}
 	})
 }
 
 // SetRetention switches the retention window (7d|30d|90d|forever) and applies
 // it immediately, so the acceptance "切换 7→30 后超期条目被清理" is one call.
-func (s *Store) SetRetention(retention string) (Snapshot, error) {
+func (s *Store) SetRetention(ctx context.Context, retention string) (Snapshot, error) {
 	if !ValidRetention(retention) {
 		return Snapshot{}, fmt.Errorf("collabinbox: unknown retention %q (want 7d|30d|90d|forever)", retention)
 	}
-	snap, err := s.mutate(func(st *stateFile) {
+	snap, err := s.mutate(ctx, func(st *stateFile) {
 		st.Retention = retention
 	})
 	if err != nil {
 		return Snapshot{}, err
 	}
-	if _, err := s.ApplyRetention(); err != nil {
+	if _, err := s.ApplyRetention(ctx); err != nil {
 		return snap, err
 	}
-	return s.List(Query{Limit: 1}, false)
+	return s.List(ctx, Query{Limit: 1}, false)
 }
 
 // mutate runs one state write under the lock: load → apply → bump revision →
 // save, then returns a fresh snapshot of the default view.
-func (s *Store) mutate(apply func(*stateFile)) (Snapshot, error) {
-	unlock, err := s.lock()
+func (s *Store) mutate(ctx context.Context, apply func(*stateFile)) (Snapshot, error) {
+	unlock, err := s.lock(ctx)
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -612,12 +624,12 @@ func (s *Store) mutate(apply func(*stateFile)) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	unlock()
-	return s.List(Query{Limit: 1}, false)
+	return s.List(ctx, Query{Limit: 1}, false)
 }
 
 // Settings reads the persisted panel configuration without touching anything.
-func (s *Store) Settings() Settings {
-	unlock, err := s.lock()
+func (s *Store) Settings(ctx context.Context) Settings {
+	unlock, err := s.lock(ctx)
 	if err != nil {
 		return Settings{Retention: Retention7d}
 	}

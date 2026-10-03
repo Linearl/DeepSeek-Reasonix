@@ -441,6 +441,11 @@ func StatusTransitionAllowed(from, to CardStatus) bool {
 	}
 }
 
+// lockWaitTimeout bounds one cross-process lock wait for the collab stores
+// (task 461 P1, 内层 ≤5s). 可用性 > 锁完整性：锁被别的窗口/进程占住时，操作在
+// 预算内返回明确错误，而不是无限挂起。
+const lockWaitTimeout = 5 * time.Second
+
 // CardStore persists cards under <root>/.reasonix/taskcards/.
 //
 // Serialization is a cross-process file lock, not a struct field: every tool
@@ -676,11 +681,19 @@ func (s *MailStore) ceiling() int {
 	return s.hopLimit
 }
 
-func (s *MailStore) lock() (func(), error) {
+// lock takes the mail directory's cross-process lock. ctx is the caller's
+// request context where one exists (task 461 P1): cancellation ends the wait
+// immediately, and the wait itself never exceeds lockWaitTimeout even when the
+// holder never lets go (可用性 > 锁完整性).
+func (s *MailStore) lock(ctx context.Context) (func(), error) {
 	if err := os.MkdirAll(s.root, 0o755); err != nil {
 		return nil, err
 	}
-	return filelock.Acquire(context.Background(), filepath.Join(s.root, ".mail.lock"))
+	release, err := filelock.AcquireWithExternalTimeout(ctx, filepath.Join(s.root, ".mail.lock"), lockWaitTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("session collab mail lock busy (held by another window or process?), gave up waiting: %w", err)
+	}
+	return release, nil
 }
 
 // Dir is the mailbox root. Exposed so callers and tests can locate a contact's
@@ -701,7 +714,7 @@ func (s *MailStore) inboxPath(contactID string) string {
 // Deliver appends a message for the target contact. hop is the sender's chain
 // depth; the store's ceiling + 1 is refused.
 func (s *MailStore) Deliver(msg MailMessage) (MailMessage, error) {
-	unlock, err := s.lock()
+	unlock, err := s.lock(context.Background()) // slice 3 threads the request ctx
 	if err != nil {
 		return MailMessage{}, err
 	}
@@ -760,7 +773,7 @@ func (s *MailStore) Deliver(msg MailMessage) (MailMessage, error) {
 // boot gate (internal/boot/collab_drain_gate.go, M-a). Any new consumer of
 // this cursor must join that exclusion, not assume Claim admits it.
 func (s *MailStore) Claim(contactID string) (pending []MailMessage, refused []MailMessage, err error) {
-	unlock, err := s.lock()
+	unlock, err := s.lock(context.Background()) // slice 3 threads the request ctx
 	if err != nil {
 		return nil, nil, err
 	}
@@ -795,7 +808,7 @@ func (s *MailStore) Ack(contactID string, ids ...string) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	unlock, err := s.lock()
+	unlock, err := s.lock(context.Background()) // slice 3 threads the request ctx
 	if err != nil {
 		return err
 	}
@@ -909,7 +922,7 @@ func (s *MailStore) ParentThread(contactID, threadID string) (MailMessage, bool)
 // a status probe must never cost the target its own pending mail, and a caller
 // that cannot see the target's process still gets honest counters from here.
 func (s *MailStore) InboxStatus(contactID string) (unread int, lastDeliveryAt int64) {
-	unlock, err := s.lock()
+	unlock, err := s.lock(context.Background())
 	if err != nil {
 		return 0, 0
 	}
@@ -973,7 +986,7 @@ func (s *MailStore) RecordSent(msg MailMessage, toTitle string) {
 	}
 	entry := msg
 	entry.ToTitle = strings.TrimSpace(toTitle)
-	unlock, err := s.lock()
+	unlock, err := s.lock(context.Background()) // slice 3 threads the request ctx
 	if err != nil {
 		return
 	}
@@ -989,7 +1002,7 @@ func (s *MailStore) ListSent(fromContact string, limit int) []MailMessage {
 	if fromContact == "" {
 		return nil
 	}
-	unlock, err := s.lock()
+	unlock, err := s.lock(context.Background())
 	if err != nil {
 		return nil
 	}
@@ -1069,7 +1082,7 @@ func (s *MailStore) MarkNotified(contactID, key string) bool {
 	if strings.TrimSpace(contactID) == "" || strings.TrimSpace(key) == "" {
 		return false
 	}
-	unlock, err := s.lock()
+	unlock, err := s.lock(context.Background())
 	if err != nil {
 		return false
 	}
@@ -1106,7 +1119,7 @@ func (s *MailStore) readNotified(contactID string) map[string]bool {
 // with no open tab — delivery must not depend on the target already being on
 // screen.
 func (s *MailStore) PendingContacts() []string {
-	unlock, err := s.lock()
+	unlock, err := s.lock(context.Background())
 	if err != nil {
 		return nil
 	}
@@ -1248,8 +1261,10 @@ type HistoryRow struct {
 // History returns every delivered message across every inbox in the store,
 // newest first. One lock, one cursor read per mailbox — the task-320 index
 // consumer, so it must not re-read a cursor per message.
-func (s *MailStore) History() []HistoryRow {
-	unlock, err := s.lock()
+// History reads every mailbox into the unified table rows (task 320 read
+// side). ctx bounds/cancels the lock wait.
+func (s *MailStore) History(ctx context.Context) []HistoryRow {
+	unlock, err := s.lock(ctx)
 	if err != nil {
 		return nil
 	}
@@ -1285,8 +1300,11 @@ func (s *MailStore) History() []HistoryRow {
 // mail, never corrupt data. Returns how many messages were removed. The
 // sender-side sent logs are deliberately NOT pruned: they are the sender's own
 // audit trail, and the index never reads them (queued ≠ delivered).
-func (s *MailStore) PruneInbox(beforeUnixMilli int64) (int, error) {
-	unlock, err := s.lock()
+// PruneInbox physically removes every message older than beforeUnixMilli from
+// every inbox file in the store (task 320 retention). ctx bounds/cancels the
+// lock wait.
+func (s *MailStore) PruneInbox(ctx context.Context, beforeUnixMilli int64) (int, error) {
+	unlock, err := s.lock(ctx)
 	if err != nil {
 		return 0, err
 	}

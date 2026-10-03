@@ -1,6 +1,7 @@
 package collabinbox
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,14 +49,14 @@ func TestFilterBySenderRecipientAndDateOrder(t *testing.T) {
 		})
 	}
 
-	snap, err := store.List(Query{From: alice}, false)
+	snap, err := store.List(context.Background(), Query{From: alice}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if snap.Total != 4 { // i = 0,3,6,9
 		t.Fatalf("from=alice total = %d, want 4 (%s)", snap.Total, snap.Revision)
 	}
-	snap, err = store.List(Query{To: bob}, false)
+	snap, err = store.List(context.Background(), Query{To: bob}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,14 +65,14 @@ func TestFilterBySenderRecipientAndDateOrder(t *testing.T) {
 		t.Fatalf("to=bob total = %d, want 4", snap.Total)
 	}
 	// 排序：默认 desc（新在前），asc 反之。
-	desc, err := store.List(Query{}, false)
+	desc, err := store.List(context.Background(), Query{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(desc.Entries) != 10 || desc.Entries[0].At < desc.Entries[len(desc.Entries)-1].At {
 		t.Fatalf("default order must be date desc: %+v", desc.Entries)
 	}
-	asc, err := store.List(Query{Order: "asc"}, false)
+	asc, err := store.List(context.Background(), Query{Order: "asc"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +115,7 @@ func TestFiveBucketsClassifyPendingAndDecisions(t *testing.T) {
 		From: "sc_alice", To: "sc_main", Body: "已读回执：...", At: now - 3000, Kind: "system",
 	})
 
-	snap, err := s.List(Query{}, false)
+	snap, err := s.List(context.Background(), Query{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +144,7 @@ func TestFiveBucketsClassifyPendingAndDecisions(t *testing.T) {
 		BucketApproval: approval.ID, BucketMention: mention.ID,
 		BucketAutomation: automation.ID, BucketSystem: system.ID,
 	} {
-		got, err := s.List(Query{Bucket: bucket}, false)
+		got, err := s.List(context.Background(), Query{Bucket: bucket}, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -153,7 +154,7 @@ func TestFiveBucketsClassifyPendingAndDecisions(t *testing.T) {
 	}
 
 	// 待我审：viewer=sc_main 时审批条目 PendingMe。
-	pending, err := s.List(Query{Bucket: BucketApproval, State: StatePendingMe, Viewer: "sc_main"}, false)
+	pending, err := s.List(context.Background(), Query{Bucket: BucketApproval, State: StatePendingMe, Viewer: "sc_main"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,12 +163,12 @@ func TestFiveBucketsClassifyPendingAndDecisions(t *testing.T) {
 	}
 
 	// 裁决①：人工（面板点击）→ decidedBy=human。
-	decided, err := s.Decide(approval.ID, "human")
+	decided, err := s.Decide(context.Background(), approval.ID, "human")
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = decided
-	after, err := s.List(Query{Bucket: BucketApproval}, false)
+	after, err := s.List(context.Background(), Query{Bucket: BucketApproval}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +176,7 @@ func TestFiveBucketsClassifyPendingAndDecisions(t *testing.T) {
 		t.Fatalf("human decision must be recorded: %+v", after.Entries[0])
 	}
 	// 已裁决子态过滤命中。
-	decidedView, err := s.List(Query{Bucket: BucketApproval, State: StateDecided}, false)
+	decidedView, err := s.List(context.Background(), Query{Bucket: BucketApproval, State: StateDecided}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +192,7 @@ func TestFiveBucketsClassifyPendingAndDecisions(t *testing.T) {
 	deliver(t, mail, sessioncollab.MailMessage{
 		From: "sc_boss", To: "sc_child", Body: "批准", ThreadID: approval2.ID, At: now - 4000,
 	})
-	conv, err := s.List(Query{Bucket: BucketApproval}, false)
+	conv, err := s.List(context.Background(), Query{Bucket: BucketApproval}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,10 +223,10 @@ func TestRetentionSwitchPrunesAndForeverKeeps(t *testing.T) {
 	outside := deliver(t, mail, sessioncollab.MailMessage{From: "sc_a", To: "sc_b", Body: "40d old", At: now - 40*dayMs})
 
 	// 切到 30d：立即应用——超期条目物理移除，期内保留。
-	if _, err := store.SetRetention(Retention30d); err != nil {
+	if _, err := store.SetRetention(context.Background(), Retention30d); err != nil {
 		t.Fatal(err)
 	}
-	snap, err := store.List(Query{}, false)
+	snap, err := store.List(context.Background(), Query{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,10 +256,10 @@ func TestRetentionSwitchPrunesAndForeverKeeps(t *testing.T) {
 
 	// 永久：不清理。
 	deliver(t, mail, sessioncollab.MailMessage{From: "sc_a", To: "sc_b", Body: "ancient", At: now - 400*dayMs})
-	if _, err := store.SetRetention(RetentionForever); err != nil {
+	if _, err := store.SetRetention(context.Background(), RetentionForever); err != nil {
 		t.Fatal(err)
 	}
-	snap, err = store.List(Query{}, false)
+	snap, err = store.List(context.Background(), Query{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +278,7 @@ func TestRevisionContractAndQueuedInvisible(t *testing.T) {
 	queued := sessioncollab.MailMessage{ID: "msg_queued", From: "sc_a", To: "sc_b", Body: "queued", At: storeA.now()}
 	mail.RecordSent(queued, "B")
 
-	snapA, err := storeA.List(Query{}, false)
+	snapA, err := storeA.List(context.Background(), Query{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +288,7 @@ func TestRevisionContractAndQueuedInvisible(t *testing.T) {
 
 	// 真实落库 → 出现且仅一次。
 	deliver(t, mail, queued)
-	snapA, err = storeA.List(Query{}, false)
+	snapA, err = storeA.List(context.Background(), Query{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +299,7 @@ func TestRevisionContractAndQueuedInvisible(t *testing.T) {
 	// A 端 dismiss → 返回新 revision；B 端（独立 Store 实例=另一窗口）list
 	// 返回的 revision 变化且条目消失。
 	revBefore := snapA.Revision
-	dismissed, err := storeA.Dismiss([]string{queued.ID})
+	dismissed, err := storeA.Dismiss(context.Background(), []string{queued.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +310,7 @@ func TestRevisionContractAndQueuedInvisible(t *testing.T) {
 		t.Fatalf("dismissed entry must vanish from the default view: %+v", dismissed.Entries)
 	}
 	storeB := New(dir, nil)
-	snapB, err := storeB.List(Query{}, false)
+	snapB, err := storeB.List(context.Background(), Query{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +318,7 @@ func TestRevisionContractAndQueuedInvisible(t *testing.T) {
 		t.Fatalf("window B must converge on the new snapshot: rev=%s total=%d", snapB.Revision, snapB.Total)
 	}
 	// 已消除仍可显形（IncludeDismissed），供「已消除」视图。
-	withGone, err := storeB.List(Query{IncludeDismissed: true}, false)
+	withGone, err := storeB.List(context.Background(), Query{IncludeDismissed: true}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,15 +334,15 @@ func TestRestartKeepsEntriesDismissalsAndSettings(t *testing.T) {
 	mail := sessioncollab.NewMailStore(dir)
 	deliver(t, mail, sessioncollab.MailMessage{From: "sc_a", To: "sc_b", Body: "kept", At: first.now()})
 	gone := deliver(t, mail, sessioncollab.MailMessage{From: "sc_a", To: "sc_b", Body: "eliminated", At: first.now() - 1000})
-	if _, err := first.SetRetention(Retention90d); err != nil {
+	if _, err := first.SetRetention(context.Background(), Retention90d); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := first.Dismiss([]string{gone.ID}); err != nil {
+	if _, err := first.Dismiss(context.Background(), []string{gone.ID}); err != nil {
 		t.Fatal(err)
 	}
 
 	reborn := New(dir, nil) // restart: nothing in memory, everything on disk
-	snap, err := reborn.List(Query{}, false)
+	snap, err := reborn.List(context.Background(), Query{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,7 +373,7 @@ func TestChainViewGroupsThread(t *testing.T) {
 	// 另一封独立消息，自成一链。
 	deliver(t, mail, sessioncollab.MailMessage{From: "sc_x", To: "sc_y", Body: "另一链", At: now})
 
-	snap, err := store.Chains(Query{})
+	snap, err := store.Chains(context.Background(), Query{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -410,14 +411,14 @@ func TestLimitDefaultAndHardCap(t *testing.T) {
 			From: "sc_a", To: "sc_b", Body: "m", At: now - int64(i),
 		})
 	}
-	snap, err := store.List(Query{}, false) // default
+	snap, err := store.List(context.Background(), Query{}, false) // default
 	if err != nil {
 		t.Fatal(err)
 	}
 	if snap.Returned != 50 || snap.Total != 60 || !snap.Truncated {
 		t.Fatalf("default limit=50 + truncated: returned=%d total=%d truncated=%v", snap.Returned, snap.Total, snap.Truncated)
 	}
-	big, err := store.List(Query{Limit: 5000}, false)
+	big, err := store.List(context.Background(), Query{Limit: 5000}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -433,18 +434,18 @@ func TestLimitDefaultAndHardCap(t *testing.T) {
 func TestReadStateFollowsSeenCursor(t *testing.T) {
 	store, mail := fixtureStore(t)
 	m := deliver(t, mail, sessioncollab.MailMessage{From: "sc_a", To: "sc_b", Body: "x", At: store.now()})
-	snap, _ := store.List(Query{}, false)
+	snap, _ := store.List(context.Background(), Query{}, false)
 	if snap.Entries[0].Read || !snap.Entries[0].Delivered {
 		t.Fatalf("before ack: %+v", snap.Entries[0])
 	}
 	if err := mail.Ack("sc_b", m.ID); err != nil {
 		t.Fatal(err)
 	}
-	snap, _ = store.List(Query{}, false)
+	snap, _ = store.List(context.Background(), Query{}, false)
 	if !snap.Entries[0].Read {
 		t.Fatalf("after ack the entry must read as read: %+v", snap.Entries[0])
 	}
-	unread, _ := store.List(Query{Unread: true}, false)
+	unread, _ := store.List(context.Background(), Query{Unread: true}, false)
 	if unread.Total != 0 {
 		t.Fatalf("unread filter: %+v", unread)
 	}
@@ -454,7 +455,7 @@ func TestReadStateFollowsSeenCursor(t *testing.T) {
 func TestStateFileStaysBesideMail(t *testing.T) {
 	dir := t.TempDir()
 	s := New(dir, nil)
-	if _, err := s.Dismiss([]string{"msg_x"}); err != nil {
+	if _, err := s.Dismiss(context.Background(), []string{"msg_x"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := filepath.Abs(filepath.Join(dir, stateName)); err != nil {
@@ -477,7 +478,7 @@ func TestEntryCarriesChannelGroupStamp(t *testing.T) {
 	plain := deliver(t, mail, sessioncollab.MailMessage{
 		From: "sc_alice", To: "sc_main", Body: "点对点派活", At: now - 1000,
 	})
-	snap, err := s.List(Query{}, false)
+	snap, err := s.List(context.Background(), Query{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}

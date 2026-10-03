@@ -1,5 +1,7 @@
 package sessioncollab
 
+import "context"
+
 // Drain claims unread messages for contactID, hands the batch to fn, and acks
 // the IDs fn returns as settled — all under a single file lock (B1 fix:
 // same-lock Claim+Ack prevents two consumers from double-consuming). Refused
@@ -12,7 +14,7 @@ package sessioncollab
 // Host-side "pull then start a round" goes through the existing
 // maybeDispatchInbox / TryEnqueueAndSteer paths, never through here.
 func (s *MailStore) Drain(contactID string, fn func(pending, refused []MailMessage) []string) error {
-	unlock, err := s.lock()
+	unlock, err := s.lock(context.Background()) // slice 3 threads the request ctx
 	if err != nil {
 		return err
 	}
