@@ -58,6 +58,7 @@ export type ChatPaneRegionProps = {
     onOpenChanges: TranscriptProps["onOpenChanges"];
     onOpenVerification: TranscriptProps["onOpenVerification"];
     onEditPrompt: TranscriptProps["onEditPrompt"];
+    onResendPrompt: TranscriptProps["onResendPrompt"];
     onRewind: TranscriptProps["onRewind"];
     onLoadOlderHistory: TranscriptProps["onLoadOlderHistory"];
     onSurfacePaintReady: TranscriptProps["onSurfacePaintReady"];
@@ -123,6 +124,7 @@ export function ChatPaneRegion(props: ChatPaneRegionProps) {
                 onOpenChanges={commands.onOpenChanges}
                 onOpenVerification={commands.onOpenVerification}
                 onEditPrompt={commands.onEditPrompt}
+                onResendPrompt={commands.onResendPrompt}
                 onRewind={commands.onRewind}
                 checkpoints={state.checkpoints}
                 actionPending={state.messageAction != null}

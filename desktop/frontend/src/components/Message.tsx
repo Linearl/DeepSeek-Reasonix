@@ -260,6 +260,7 @@ export function UserMessage({
   id,
   createdAt,
   onEdit,
+  onResend,
   editDisabled = false,
 }: {
   text: string;
@@ -270,6 +271,10 @@ export function UserMessage({
   id?: string;
   createdAt?: number;
   onEdit?: (turn: number, displayText: string, submitText?: string) => boolean | void | Promise<boolean | void>;
+  /** 任务461-P3: one-click resend of a failed submission — the same channel as
+   * the edit-and-resend flow (rewind to the turn, re-submit the ORIGINAL
+   * payload), just without touching the text. */
+  onResend?: (turn: number, displayText: string, submitText?: string) => boolean | void | Promise<boolean | void>;
   editDisabled?: boolean;
 }) {
   const t = useT();
@@ -303,6 +308,9 @@ export function UserMessage({
   // from the same list.
   const [draftAttachments, setDraftAttachments] = useState<DisplayAttachment[]>(parsedAttachments);
   const [editSubmitting, setEditSubmitting] = useState(false);
+  // 任务461-P3: the resend button's in-flight flag — while set, the button is
+  // disabled so a double click can never queue two re-submissions.
+  const [resending, setResending] = useState(false);
   const editRef = useRef<HTMLTextAreaElement>(null);
   const [imagePreviews, setImagePreviews] = useState<Record<string, string>>({});
   const [imageViewer, setImageViewer] = useState<{ open: boolean; url: string; name: string }>({ open: false, url: "", name: "" });
@@ -459,6 +467,20 @@ export function UserMessage({
     }
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
       void submitEdit();
+    }
+  };
+
+  // 任务461-P3: resend a failed submission through the SAME rewind+submit
+  // channel the edit flow uses — the original display/submit payload travels
+  // unchanged (复用原投递参数), only the click differs from edit-and-resend.
+  const canResend = failed && turn !== undefined && onResend !== undefined && !editDisabled;
+  const handleResend = async () => {
+    if (!canResend || resending) return;
+    setResending(true);
+    try {
+      await onResend?.(turn as number, displayText, submitText);
+    } finally {
+      setResending(false);
     }
   };
 
@@ -622,7 +644,22 @@ export function UserMessage({
             )}
           </>
         )}
-        {failed && <div className="msg__send-failed" data-transcript-selection-ignore>{t("msg.sendFailed")}</div>}
+        {failed && (
+          <div className="msg__send-failed" data-transcript-selection-ignore>
+            <span>{t("msg.sendFailed")}</span>
+            {turn !== undefined && onResend !== undefined && (
+              <button
+                type="button"
+                className="msg__resend"
+                disabled={!canResend || resending}
+                title={resending ? t("msg.resending") : t("msg.resend")}
+                onClick={() => void handleResend()}
+              >
+                {resending ? t("msg.resending") : t("msg.resend")}
+              </button>
+            )}
+          </div>
+        )}
         {parsedAttachments.length > 0 && <Suspense fallback={null}><MessageAttachments attachments={parsedAttachments} /></Suspense>}
         {/* Task 234: restore the fork's edit-state image viewer render (the
             upstream move into MessageAttachments dropped this JSX while the

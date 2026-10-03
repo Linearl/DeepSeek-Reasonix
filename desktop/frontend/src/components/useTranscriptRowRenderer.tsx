@@ -37,6 +37,7 @@ export function useTranscriptRowRenderer({
   onConsolidateRecovery,
   onOpenVerification,
   onEditPrompt,
+  onResendPrompt,
   onRewind,
 }: {
   tabId?: string;
@@ -58,6 +59,8 @@ export function useTranscriptRowRenderer({
   onConsolidateRecovery?: () => void;
   onOpenVerification?: (summary: WireCompletionSummary) => void;
   onEditPrompt?: (turn: number, displayText: string, submitText?: string) => boolean | void | Promise<boolean | void>;
+  /** 任务461-P3: one-click resend for a failed submission (same channel as onEditPrompt). */
+  onResendPrompt?: (turn: number, displayText: string, submitText?: string) => boolean | void | Promise<boolean | void>;
   onRewind?: (turn: number, scope: string) => void;
 }): (row: TranscriptRow) => ReactNode {
   const t = useT();
@@ -82,6 +85,7 @@ export function useTranscriptRowRenderer({
           id={row.item.id} text={row.item.text} submitText={row.item.submitText}
           failed={row.item.failed} createdAt={row.item.createdAt} turn={row.turn}
           anchorId={questionAnchorId(row.item.id)} onEdit={onEditPrompt}
+          onResend={onResendPrompt}
           editDisabled={rewindDisabled || !checkpoint?.canConversation}
         />;
       }
@@ -133,7 +137,7 @@ export function useTranscriptRowRenderer({
     }
   }, [
     actionHoverMenus, actionPending, checkpointsByTurn, creationMode, lastTurn,
-    onAcceptDelivery, onDeliveryContinue, onEditPrompt, onFoldToggle, onOpenChanges,
+    onAcceptDelivery, onDeliveryContinue, onEditPrompt, onFoldToggle, onOpenChanges, onResendPrompt,
     onOpenVerification, onPrompt, onReasoningManualOpen, onRewind, openAction,
     rewindDisabled, running, subcallsByParent, t, tabId, turnStartAt,
   ]);

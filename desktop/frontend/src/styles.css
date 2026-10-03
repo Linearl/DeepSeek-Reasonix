@@ -5295,6 +5295,31 @@ a[href] {
   margin-top: 6px;
   font-size: var(--text-xs);
   color: var(--danger);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* 任务461-P3: the failed message's one-click resend — a small quiet button
+   beside the failure line; token colors only so dark mode keeps contrast. */
+.msg__resend {
+  border: 1px solid color-mix(in srgb, var(--danger) 55%, var(--border));
+  border-radius: 6px;
+  background: transparent;
+  color: var(--danger);
+  font: inherit;
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  padding: 1px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.msg__resend:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  border-color: var(--danger);
+}
+.msg__resend:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 .msg-attachments {
   display: flex;
@@ -19567,16 +19592,31 @@ body > .mermaid-diagram--fullscreen {
 .set-preapprove__row input {
   accent-color: var(--accent);
 }
-/* B1 (2026-10-03 night dispatch): the pre-approval field reads top-down in
-   one column — icon + title -> hint -> on/off switch row -> four category
-   lines -> risk line. The existing sub-block wrapper is the CSS hook (zero
-   TSX change); specificity (0,2,0) beats the later-loaded :where(...) two
-   -column rule (0,1,0) in SettingsPanel.css. Same precedent as the task 337
-   single-column collapse. */
+/* 任务461-P5 (2026-10-03 用户裁决，覆盖同日 B1 的垂直改法): the pre-approval
+   field reads as TWO columns — intro (icon + title + hint) LEFT, on/off switch
+   RIGHT (the default .settings-field grid); below the switch, the four
+   category checkboxes each own one line and the risk line closes the block on
+   its own row. The B1 single-column collapse is gone: it stacked the intro
+   above the switch, exactly the layout the ruling reversed. The doubled-class
+   specificity (0,2,0) is kept so the later-loaded :where(...) rule in
+   SettingsPanel.css cannot squeeze this field back. */
 .autopilot-preapprove-subblock .settings-field {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(180px, 260px) minmax(320px, 1fr);
   align-items: start;
-  gap: 10px;
+}
+.autopilot-preapprove-subblock .set-seg {
+  justify-self: end;
+  align-self: start;
+}
+/* Narrow settings page: fall back to the shared single-column collapse. */
+@container settings-page (max-width: 680px) {
+  .autopilot-preapprove-subblock .settings-field {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+  .autopilot-preapprove-subblock .set-seg {
+    justify-self: start;
+  }
 }
 /* Task 337 layout fix (user 0927 evening): the two-column settings-field
    grid squeezed the switch and the status copy into the card's top-right

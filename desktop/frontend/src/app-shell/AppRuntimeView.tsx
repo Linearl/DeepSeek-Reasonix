@@ -352,6 +352,7 @@ export function AppRuntimeView(props: AppRuntimeViewProps) {
               onOpenChanges: session.turnVerificationCommands.openTurnChanges,
               onOpenVerification: session.turnVerificationCommands.openTurnVerification,
               onEditPrompt: session.sessionUndo.handleEditPrompt,
+              onResendPrompt: session.sessionUndo.handleEditPrompt,
               onRewind: session.sessionUndo.handleMessageAction,
               onLoadOlderHistory: session.transcript.handleLoadOlderHistory,
               onSurfacePaintReady: session.transcript.handleSurfacePaintReady,

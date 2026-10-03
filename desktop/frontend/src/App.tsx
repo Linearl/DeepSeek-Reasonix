@@ -5053,6 +5053,7 @@ export default function App() {
                       }}
                       onOpenVerification={openTurnVerification}
                       onEditPrompt={handleEditPrompt}
+                      onResendPrompt={handleEditPrompt}
                       onRewind={handleMessageAction}
                       checkpoints={state.checkpoints}
                       actionPending={state.messageAction != null}
