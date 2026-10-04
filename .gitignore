@@ -57,6 +57,11 @@ node_modules/
 internal/**/.reasonix/
 desktop/**/.reasonix/
 
+# 收件箱 drain 测试（drain_inbox_*_test.go 的 sc_me 夹具）把 <contact>.inbox
+# 侧车落在包目录下（RealPath 解析到 CWD 的同一类残渣）。每个 worktree 跑完
+# 测试都会再生成，忽略即可；真正的路径修复另立任务。
+internal/**/*.inbox/
+
 # CodeGraph per-project index (rebuilt locally; never committed)
 .codegraph/
 
