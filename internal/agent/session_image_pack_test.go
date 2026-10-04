@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"bytes"
+	"log/slog"
 	"os"
 	"strings"
 	"testing"
@@ -190,5 +192,148 @@ func TestImageDedupAllModeZeroInlineBytes(t *testing.T) {
 	}
 	if seen != 2 {
 		t.Fatalf("materialized transcript in all mode carries the big image %d times, want 2", seen)
+	}
+}
+
+// --- Task P19: desktop-log noise governance -------------------------------
+
+// resetImageRefMissingCache clears the process-wide negative cache between
+// tests so a previous test's misses cannot silence this test's warnings.
+func resetImageRefMissingCache(t *testing.T) {
+	t.Helper()
+	imageRefMissingMu.Lock()
+	defer imageRefMissingMu.Unlock()
+	imageRefMissingSeen = make(map[string]struct{})
+}
+
+// TestImageRefResolvesFromSessionPackFallback is the task-P19 root-cause
+// proof. The save path (addAppends) receives the session transcript path, so
+// dedupe stores blobs in <id>.jsonl.imgpack; every reader replays the event
+// log and looked only in <id>.events.jsonl.imgpack. With ONLY the session
+// pack on disk — the state every pre-P19 schema-2 session is in — the
+// event-log reader must still restore the original bytes via the fallback.
+func TestImageRefResolvesFromSessionPackFallback(t *testing.T) {
+	dir := t.TempDir()
+	sessionPath := dir + "/s1.jsonl"
+	logPath := store.SessionEventLog(sessionPath) // dir/s1.events.jsonl
+
+	big := "data:image/png;base64," + strings.Repeat("P", 9000)
+	m := dagMsg(provider.RoleUser, "x", "U1")
+	m.Images = []string{big}
+	// Write-side transform exactly as the gated addAppends applies it: the
+	// pack is derived from the SESSION path, not the event-log path.
+	dedupeMessageImages(&m, sessionPath, imageDedupFirst)
+	if !imageBlobExists(sessionPath, imageHash(big)) {
+		t.Fatal("blob missing from the session-transcript pack after write-side dedupe")
+	}
+	if imageBlobExists(logPath, imageHash(big)) {
+		t.Fatal("test setup expected no events-log pack on disk")
+	}
+
+	// Reader side: resolve against the event-log path — what decodeOne and
+	// replaySessionEventLog both pass — with the events pack absent.
+	ref := provider.Message{Images: []string{imageRef(imageHash(big))}}
+	resetImageRefMissingCache(t)
+	resolveMessageImages(&ref, logPath)
+	if ref.Images[0] != big {
+		t.Fatalf("event-log reader failed to resolve via the session pack fallback: got %.40q", ref.Images[0])
+	}
+}
+
+// TestImageRefMissingWarnsOncePerRef is the task-P19 governance proof: one
+// replay of a vision-heavy log meets the same missing ref hundreds of times
+// and a long-lived runtime replays on every save. The first sighting warns;
+// every repeat of the same (log, ref) pair is silent (and skips the read).
+// Distinct refs each still get their own first-sighting warning.
+func TestImageRefMissingWarnsOncePerRef(t *testing.T) {
+	dir := t.TempDir()
+	logPath := store.SessionEventLog(dir + "/s1.jsonl")
+	refA := imageRef(strings.Repeat("a", 64)) // no blob anywhere
+	refB := imageRef(strings.Repeat("b", 64)) // no blob anywhere
+
+	var buf bytes.Buffer
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(old) })
+	resetImageRefMissingCache(t)
+
+	for i := 0; i < 300; i++ {
+		m := provider.Message{Images: []string{refA, refB}}
+		resolveMessageImages(&m, logPath)
+	}
+
+	warns := strings.Count(buf.String(), "level=WARN")
+	if warns != 2 {
+		t.Fatalf("unresolved-ref warnings after 300 replays = %d, want 2 (one per distinct ref)", warns)
+	}
+	if n := strings.Count(buf.String(), "image reference unresolved"); n != 2 {
+		t.Fatalf("warning message occurrences = %d, want 2", n)
+	}
+}
+
+// TestImageRefMissingNegativeCacheSkipsReread pins the skip semantics the
+// governance relies on: blobs are immutable and written before their
+// referencing entry, so a ref that resolved as missing once stays a miss for
+// the process lifetime — even if a blob file appears afterwards (that is a
+// manual repair; a restart re-reads). This assertion is what makes the
+// missing-read path a real negative cache, not just a log gate.
+func TestImageRefMissingNegativeCacheSkipsReread(t *testing.T) {
+	dir := t.TempDir()
+	logPath := store.SessionEventLog(dir + "/s1.jsonl")
+	hash := strings.Repeat("c", 64)
+	resetImageRefMissingCache(t)
+
+	first := provider.Message{Images: []string{imageRef(hash)}}
+	resolveMessageImages(&first, logPath)
+	if first.Images[0] == "" || !isImageRef(first.Images[0]) {
+		t.Fatal("expected the first resolve to leave an unresolved reference")
+	}
+
+	// Manual repair: the blob appears on disk after the first miss.
+	if err := putImageBlob(logPath, hash, []byte("repaired")); err != nil {
+		t.Fatalf("seed repaired blob: %v", err)
+	}
+	second := provider.Message{Images: []string{imageRef(hash)}}
+	resolveMessageImages(&second, logPath)
+	if !isImageRef(second.Images[0]) {
+		t.Fatal("negative cache did not skip the re-read (expected the ref to stay unresolved within the process)")
+	}
+
+	// A fresh "process" (cache cleared) sees the repair.
+	resetImageRefMissingCache(t)
+	third := provider.Message{Images: []string{imageRef(hash)}}
+	resolveMessageImages(&third, logPath)
+	if third.Images[0] != "repaired" {
+		t.Fatalf("fresh cache should resolve the repaired blob, got %.40q", third.Images[0])
+	}
+}
+
+// TestImageRefMalformedShortHashWarnsNotPanics pins the malformed-reference
+// path: pre-P19 the warn call sliced hashHex[:12] directly, so a ref shorter
+// than 12 chars panicked the loader mid-replay. It must degrade exactly like
+// any other missing blob — one warning, then the negative cache silences the
+// repeat — and leave the reference unresolved.
+func TestImageRefMalformedShortHashWarnsNotPanics(t *testing.T) {
+	dir := t.TempDir()
+	logPath := store.SessionEventLog(dir + "/s1.jsonl")
+
+	var buf bytes.Buffer
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(old) })
+	resetImageRefMissingCache(t)
+
+	for i := 0; i < 2; i++ {
+		m := provider.Message{Images: []string{imageRef("abc")}} // 3-char hash
+		resolveMessageImages(&m, logPath)
+		if !isImageRef(m.Images[0]) {
+			t.Fatal("malformed ref must degrade to an unresolved reference, never panic")
+		}
+	}
+	if n := strings.Count(buf.String(), "image reference unresolved"); n != 1 {
+		t.Fatalf("malformed-ref warnings after 2 passes = %d, want 1 (negative cache applies)", n)
+	}
+	if !strings.Contains(buf.String(), "ref=abc") {
+		t.Fatalf("warning should carry the full short hash, got: %s", buf.String())
 	}
 }

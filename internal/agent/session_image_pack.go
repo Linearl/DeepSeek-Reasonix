@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 
 	"reasonix/internal/config"
 	"reasonix/internal/provider"
@@ -137,13 +138,48 @@ func putImageBlob(logPath, hashHex string, data []byte) error {
 	return os.Rename(tmpName, final)
 }
 
-// getImageBlob loads the blob bytes for a hash from the pack directory.
+// getImageBlob loads the blob bytes for a hash, trying every pack directory
+// a reader of this log may resolve from (imagePackCandidates order). The
+// first candidate's error is returned so the message keeps naming the
+// primary sidecar, unchanged from the pre-P19 format.
 func getImageBlob(logPath, hashHex string) ([]byte, error) {
-	data, err := os.ReadFile(imageBlobPath(logPath, hashHex))
-	if err != nil {
-		return nil, fmt.Errorf("image blob %s: %w", hashHex[:12], err)
+	var firstErr error
+	for _, dir := range imagePackCandidates(logPath) {
+		data, err := os.ReadFile(dir + "/" + hashHex + ".imgblob")
+		if err == nil {
+			return data, nil
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
 	}
-	return data, nil
+	return nil, fmt.Errorf("image blob %s: %w", shortImageHash(hashHex), firstErr)
+}
+
+// imagePackCandidates lists the pack directories a reader of logPath may
+// resolve blobs from, in priority order (task P19). The save path stores
+// blobs next to the session transcript (addAppends receives <id>.jsonl, so
+// the pack lands at <id>.jsonl.imgpack), while every read side derives the
+// pack from the log it replays (<id>.events.jsonl → <id>.events.jsonl.imgpack).
+// That split left every reference in a schema-2 event log permanently
+// unresolvable — and each replay pass re-warned per occurrence. Readers now
+// try their own sidecar first (fixtures and hand-built packs keep working)
+// and fall back to the session transcript's sidecar, which is where the
+// write path actually puts blobs — including packs written before P19.
+func imagePackCandidates(logPath string) []string {
+	if base, ok := strings.CutSuffix(logPath, ".events.jsonl"); ok {
+		return []string{imagePackDir(logPath), imagePackDir(base + ".jsonl")}
+	}
+	return []string{imagePackDir(logPath)}
+}
+
+// shortImageHash clamps the hash prefix used in log fields and error strings;
+// a malformed reference shorter than 12 chars must not panic the loader.
+func shortImageHash(hashHex string) string {
+	if len(hashHex) < 12 {
+		return hashHex
+	}
+	return hashHex[:12]
 }
 
 // dedupeMessageImages rewrites m.Images in place per the signed design: the
@@ -195,11 +231,52 @@ func resolveMessageImages(m *provider.Message, logPath string) {
 		if !isImageRef(img) {
 			continue
 		}
-		data, err := getImageBlob(logPath, imageRefHash(img))
+		hash := imageRefHash(img)
+		if missingImageRef(logPath, hash) {
+			continue
+		}
+		data, err := getImageBlob(logPath, hash)
 		if err != nil {
-			slog.Warn("image reference unresolved", "ref", imageRefHash(img)[:12], "err", err)
+			rememberMissingImageRef(logPath, hash)
+			slog.Warn("image reference unresolved", "ref", shortImageHash(hash), "err", err)
 			continue
 		}
 		m.Images[i] = string(data)
 	}
+}
+
+// imageRefMissingCap bounds the process-wide negative cache. One replay of a
+// vision-heavy event log meets the same missing ref hundreds of times and a
+// long-lived runtime replays on every save/head-op (measured 2026-10-04: one
+// session produced 230k warnings in ~90 minutes, ≈66MB/h of desktop.log).
+// Blobs are immutable and written before their referencing entry, so a hash
+// that resolved as missing once stays missing for the process's lifetime —
+// repeats skip both the stat I/O and the log line.
+const imageRefMissingCap = 4096
+
+var (
+	imageRefMissingMu   sync.Mutex
+	imageRefMissingSeen = make(map[string]struct{})
+)
+
+// missingImageRef reports whether this (log, ref) pair already resolved as
+// missing in this process; callers skip the read entirely.
+func missingImageRef(logPath, hash string) bool {
+	imageRefMissingMu.Lock()
+	defer imageRefMissingMu.Unlock()
+	_, seen := imageRefMissingSeen[logPath+"\x00"+hash]
+	return seen
+}
+
+// rememberMissingImageRef records a first-sighting miss. When the cache is
+// full it is reset wholesale: the amortized cost is one extra warning per
+// cap distinct refs, and steady-state logs (blob count ≪ cap) stay silent
+// after the first pass.
+func rememberMissingImageRef(logPath, hash string) {
+	imageRefMissingMu.Lock()
+	defer imageRefMissingMu.Unlock()
+	if len(imageRefMissingSeen) >= imageRefMissingCap {
+		imageRefMissingSeen = make(map[string]struct{}, imageRefMissingCap)
+	}
+	imageRefMissingSeen[logPath+"\x00"+hash] = struct{}{}
 }
