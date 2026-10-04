@@ -3878,6 +3878,26 @@ func (c *Controller) SnapshotForShutdown() error {
 	return c.snapshot(false, false, true)
 }
 
+// errSavePathBusy marks a non-blocking snapshot that declined because the
+// save path was busy; SnapshotIfSavePathFree converts it to attempted=false.
+var errSavePathBusy = errors.New("session save path busy")
+
+// SnapshotIfSavePathFree snapshots the session only when the session's save
+// path is uncontended; it never queues on the save-path mutex. This is the
+// form latency-sensitive foreground paths (desktop tab switching) use instead
+// of Snapshot: same persistence semantics when the path is free, and a clean
+// decline — nothing written, transcript untouched — when another goroutine
+// holds it, so the caller can degrade to a background save. attempted is also
+// true for the quiet no-op cases (nothing to persist); false strictly means
+// "the save path was busy, the flush still owes the caller".
+func (c *Controller) SnapshotIfSavePathFree() (attempted bool, err error) {
+	_, err = c.snapshotWithDurability(false, false, false, true)
+	if errors.Is(err, errSavePathBusy) {
+		return false, nil
+	}
+	return true, err
+}
+
 // SnapshotActivity writes the active conversation and marks the session as
 // recently active. Use it only after a real user/model turn changes the
 // transcript; switch/close snapshots should call Snapshot so they do not reorder
@@ -3894,7 +3914,7 @@ func (c *Controller) SnapshotRewrite() error {
 }
 
 func (c *Controller) snapshot(markActivity, forceRewrite, shutdownRecovery bool) error {
-	_, err := c.snapshotWithDurability(markActivity, forceRewrite, shutdownRecovery)
+	_, err := c.snapshotWithDurability(markActivity, forceRewrite, shutdownRecovery, false)
 	return err
 }
 
@@ -3902,7 +3922,11 @@ func (c *Controller) snapshot(markActivity, forceRewrite, shutdownRecovery bool)
 // even when a later sidecar update failed. Callers that guard a crash marker
 // need this distinction: a metadata error must not make a complete transcript
 // look like an in-memory-only turn.
-func (c *Controller) snapshotWithDurability(markActivity, forceRewrite, shutdownRecovery bool) (bool, error) {
+//
+// nonBlocking (SnapshotIfSavePathFree) declines the save with errSavePathBusy
+// when the save path is busy instead of queueing on the save-path mutex; the
+// pre-persist no-op branches above are unaffected and still count as done.
+func (c *Controller) snapshotWithDurability(markActivity, forceRewrite, shutdownRecovery, nonBlocking bool) (bool, error) {
 	c.snapshotMu.Lock()
 	defer c.snapshotMu.Unlock()
 
@@ -3949,7 +3973,19 @@ func (c *Controller) snapshotWithDurability(markActivity, forceRewrite, shutdown
 	if strategyErr != nil {
 		return false, strategyErr
 	}
-	err, forceRewrite := persistSessionSnapshot(s, path, forceRewrite)
+	var err error
+	if nonBlocking {
+		attempted, persistErr := persistSessionSnapshotIfPathFree(s, path, forceRewrite)
+		if !attempted {
+			// Busy save path: nothing was written and the transcript is
+			// untouched. Recovery and projection are skipped on purpose — the
+			// caller's degraded path reruns a full-semantics save later.
+			return false, errSavePathBusy
+		}
+		err = persistErr
+	} else {
+		err, forceRewrite = persistSessionSnapshot(s, path, forceRewrite)
+	}
 	if authoritySaveError(err) {
 		// Missing/stale authority must not enter diverged/recovery. Frontends
 		// rebind the lease or surface the typed error.
@@ -4648,7 +4684,7 @@ func (c *Controller) snapshotActivityIfChanged(startMessages int) (bool, error) 
 	if c.messageCount() <= startMessages {
 		return true, nil
 	}
-	return c.snapshotWithDurability(true, false, false)
+	return c.snapshotWithDurability(true, false, false, false)
 }
 
 // SetSessionPath rebinds auto-save without changing the current session
