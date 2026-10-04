@@ -4416,6 +4416,7 @@ export const zhTW: Record<DictKey, string> = {
   "msg.mergedExpand": "展開 {n} 條",
   "msg.mergedCollapse": "收起",
   "msg.imSender": "傳送者 {id}",
+  "msg.collabRoute": "來自 {from} → 發至 {to}",
   "msg.resend": "重發",
   "msg.resending": "重發中…",
   "msg.sendFailed": "傳送失敗 — 訊息未送達",

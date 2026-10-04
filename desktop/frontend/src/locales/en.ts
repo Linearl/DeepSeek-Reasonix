@@ -3934,6 +3934,7 @@ export const en = {
   "msg.mergedExpand": "Show {n} messages",
   "msg.mergedCollapse": "Hide",
   "msg.imSender": "Sender {id}",
+  "msg.collabRoute": "From {from} → to {to}",
   "msg.resend": "Resend",
   "msg.resending": "Resending…",
   "msg.sendFailed": "Send failed — message was not delivered",

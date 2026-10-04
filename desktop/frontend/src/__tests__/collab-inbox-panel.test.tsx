@@ -178,6 +178,19 @@ await act(async () => {
 let lastList = calls.filter((c) => c.name === "ListCollabMail").pop();
 assert.deepEqual(lastList?.args[0], "approval", "clicking the approvals tab queries bucket=approval");
 
+// 任务462: 列表行的路由行显示双方会话名（名单里查得到的 id 用名字），
+// 完整 contact_id 降级为 hover（title 属性），不丢失。
+const routeSpans = Array.from(panel!.querySelectorAll(".collab-inbox-panel__row .collab-inbox-panel__route"));
+assert.ok(routeSpans.length >= 1, "at least one list row renders a route line");
+assert.match(
+  routeSpans[0].textContent ?? "",
+  /Alice · 调研 → 主对话/,
+  "the list route shows BOTH conversation names",
+);
+assert.doesNotMatch(routeSpans[0].textContent ?? "", /sc_alice/, "the raw sender contact_id is replaced by the name in visible text");
+assert.match(routeSpans[0].getAttribute("title") ?? "", /contact_id=sc_alice/, "hover keeps the full sender contact_id");
+assert.match(routeSpans[0].getAttribute("title") ?? "", /contact_id=sc_main/, "hover keeps the full recipient contact_id");
+
 // 任务461-P4: from/to 过滤是下拉 —— 选项=会话名（值=contact_id），hover 标题
 // 是「项目 › 分组 › 会话名 › contact_id」，顶部「全部」= 不过滤；选中即透传后端。
 const directoryCalls = calls.filter((c) => c.name === "ListAddressableSessions");
@@ -286,6 +299,16 @@ await act(async () => {
 });
 assert.match(document.body.textContent ?? "", /please investigate/, "expanding a chain reveals its rounds");
 assert.match(document.body.textContent ?? "", /#dev/, "the chain entry carries the channel chip too");
+
+// 任务462: 会话链的参与者与条目发方都显示会话名，完整 id 在 hover。
+const chainRoute = document.querySelector(".collab-inbox-panel__chainroute");
+assert.ok(chainRoute, "the chain head renders its route line");
+assert.match(chainRoute!.textContent ?? "", /Alice · 调研 ↔ 主对话/, "chain participants render as conversation names");
+assert.match(chainRoute!.getAttribute("title") ?? "", /contact_id=sc_alice/, "chain hover keeps the sender contact_id");
+const chainEntryRoute = document.querySelector(".collab-inbox-panel__chainentry .collab-inbox-panel__route");
+assert.ok(chainEntryRoute, "a chain entry renders its sender route");
+assert.equal(chainEntryRoute!.textContent, "Alice · 调研", "the chain entry's sender shows the conversation name");
+assert.match(chainEntryRoute!.getAttribute("title") ?? "", /contact_id=sc_alice/, "the chain entry hover keeps the contact_id");
 
 await act(async () => setCollabInboxOpen(false));
 assert.equal(document.querySelector(".collab-inbox-panel"), null, "closing unmounts the panel");

@@ -3936,6 +3936,7 @@ export const zh: Record<DictKey, string> = {
   "msg.mergedExpand": "展开 {n} 条",
   "msg.mergedCollapse": "收起",
   "msg.imSender": "发送者 {id}",
+  "msg.collabRoute": "来自 {from} → 发至 {to}",
   "msg.resend": "重发",
   "msg.resending": "重发中…",
   "msg.sendFailed": "发送失败 — 消息未送达",

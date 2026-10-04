@@ -788,6 +788,12 @@ const CHECKS = [
   // turn（≤1 工具周期被模型看到）。丢任一半边都会退化回「等 turn 结束才投递」。
   { feature: "任务461-P9 工具间隙注入 hook（agent 循环 gap 触发）", file: "internal/agent/run_loop.go", patterns: ["a.toolRoundGap()"] },
   { feature: "任务461-P9 间隙派发（队头 TrySteerInboxItem 同路+合并组随行）", file: "internal/control/inbox_dispatch.go", patterns: ["bindAgentToolRoundGap", "dispatchQueuedAtToolGap", "maybeMergeInboxDispatchGroup(meta)"] },
+  // 任务462：跨会话消息卡显示双方对话名（contact_id 降为 hover）。解析层丢
+  // 了会退回裸 sc_id；降级与 hover 断言丢了会掩盖「id 丢失/空白渲染」回归。
+  { feature: "任务462 contact_id→会话名 解析层（TTL 缓存+降级短 id）", file: "desktop/frontend/src/lib/collabContactNames.ts", patterns: ["refreshCollabContactNames", "collabDisplayLabel", "shortContactId"] },
+  { feature: "任务462 消息卡 meta 双方会话名（id 进 hover）", file: "desktop/frontend/src/components/Message.tsx", patterns: ["msg.collabRoute", "useCollabContactNames"] },
+  { feature: "任务462 收件箱路由/会话链会话名+hover id", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["contactDisplayName", "contactHoverLabel"] },
+  { feature: "任务462 测试（有名/降级/hover 保留 id/改名同步）", file: "desktop/frontend/src/__tests__/collab-contact-names.test.tsx", patterns: ["hover keeps the full sender contact_id", "degrades to the truncated id", "the label follows the new title"] },
 ];
 
 let failed = 0;
