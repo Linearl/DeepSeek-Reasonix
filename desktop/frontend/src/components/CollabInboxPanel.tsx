@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { app } from "../lib/bridge";
+import { collabTitleFor, rememberCollabContactNames, shortContactId } from "../lib/collabContactNames";
 import { reportFrontendLog } from "../lib/frontendLog";
 import { useT } from "../lib/i18n";
 import { groupForProject, loadProjectGroupAssign, loadProjectGroups } from "../lib/projectGroups";
@@ -181,6 +182,24 @@ function workspaceBasename(root: string): string {
   return root.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || root;
 }
 
+// 任务462: contact_id → 会话名（显示层）。优先级：名单现读名（改名后即新名）
+// > 邮件自带 ToTitle（发送时刻的时间戳快照，可能过期，仅在名单查不到时兜底）
+// > 截短 id —— 查不到名字绝不渲染空白。
+function contactDisplayName(contactId: string, staleTitle?: string): string {
+  const live = collabTitleFor(contactId);
+  if (live) return live;
+  const stale = (staleTitle ?? "").trim();
+  if (stale) return stale;
+  return shortContactId(contactId);
+}
+
+// 任务462: hover 保留完整 contact_id（id 降为次要信息但不丢失）。
+function contactHoverLabel(display: string, contactId: string): string {
+  const id = contactId.trim();
+  if (!id) return display;
+  return display === id ? `contact_id=${id}` : `${display}（contact_id=${id}）`;
+}
+
 export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInboxBindings; directory?: CollabSessionDirectory } = {}) {
   const t = useT();
   const b: CollabInboxBindings = bindings ?? app;
@@ -213,12 +232,17 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
 
   // 任务461-P4: the roster backs the from/to dropdowns — loaded while the
   // panel is open, failures degrade to an empty roster (「全部」 keeps working).
+  // 任务462: the same rows also feed the shared contact-id→会话名 cache, so
+  // transcript cards resolve names from data the panel already fetched.
   useEffect(() => {
     if (!open) return;
     let alive = true;
     dir.ListAddressableSessions()
       .then((rows) => {
-        if (alive) setSessions(Array.isArray(rows) ? rows : []);
+        if (alive) {
+          rememberCollabContactNames(rows);
+          setSessions(Array.isArray(rows) ? rows : []);
+        }
       })
       .catch(() => {
         if (alive) setSessions([]);
@@ -437,8 +461,13 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
                     #{entry.channel}
                   </span>
                 )}
-                <span className="collab-inbox-panel__route">
-                  {entry.from} → {entry.toTitle || entry.to}
+                {/* 任务462: 双方显示会话名（查不到降级截短 id），完整
+                    contact_id 保留在 hover 里。 */}
+                <span
+                  className="collab-inbox-panel__route"
+                  title={`${contactHoverLabel(contactDisplayName(entry.from), entry.from)} → ${contactHoverLabel(contactDisplayName(entry.to, entry.toTitle), entry.to)}`}
+                >
+                  {contactDisplayName(entry.from)} → {contactDisplayName(entry.to, entry.toTitle)}
                 </span>
                 <span className="collab-inbox-panel__time">{formatTime(entry.at)}</span>
                 <span className={`collab-inbox-panel__read${entry.read ? " collab-inbox-panel__read--on" : ""}`}>
@@ -507,7 +536,13 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
                 <span className="collab-inbox-panel__chaincount">
                   {t("collabInbox.rounds", { n: chain.count })}
                 </span>
-                <span className="collab-inbox-panel__chainroute">{chain.participants.join(" ↔ ")}</span>
+                {/* 任务462: 参与者显示会话名（降级截短 id），hover 留完整 id。 */}
+                <span
+                  className="collab-inbox-panel__chainroute"
+                  title={chain.participants.map((p) => contactHoverLabel(contactDisplayName(p), p)).join(" ↔ ")}
+                >
+                  {chain.participants.map((p) => contactDisplayName(p)).join(" ↔ ")}
+                </span>
                 <span className="collab-inbox-panel__time">{formatTime(chain.lastAt)}</span>
               </button>
               {expanded === chain.threadId && (
@@ -519,7 +554,13 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
                           #{entry.channel}
                         </span>
                       )}
-                      <span className="collab-inbox-panel__route">{entry.from}</span>
+                      {/* 任务462: 发方显示会话名，hover 留完整 contact_id。 */}
+                      <span
+                        className="collab-inbox-panel__route"
+                        title={contactHoverLabel(contactDisplayName(entry.from), entry.from)}
+                      >
+                        {contactDisplayName(entry.from)}
+                      </span>
                       <span className="collab-inbox-panel__preview">{entry.preview}</span>
                       <span className="collab-inbox-panel__time">{formatTime(entry.at)}</span>
                     </div>

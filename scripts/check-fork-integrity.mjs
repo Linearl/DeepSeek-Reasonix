@@ -801,6 +801,12 @@ const CHECKS = [
   { feature: "任务440 全运行面合并与来源停止（跨 tab+分离会话）", file: "desktop/frontend/src/components/CapsulePanel.tsx", patterns: ["mergeCapsuleWork", "splitCapsuleEntries", "onCancelRuntimeJob(entry.tabId, entry.job.id)"] },
   { feature: "任务440 面板接线（runtimes 过滤 active tab + per-tab 停止）", file: "desktop/frontend/src/App.tsx", patterns: ["capsuleRuntimes={backgroundRuntimes.filter(", "onCapsuleCancelRuntimeJob={cancelRuntimeJob}"] },
   { feature: "任务440 空态（无运行任务明确显示，不静默收缩）", file: "desktop/frontend/src/styles.css", patterns: [".capsule-panel__running-empty", ".capsule-panel__origin"] },
+  // 任务462：跨会话消息卡显示双方对话名（contact_id 降为 hover）。解析层丢
+  // 了会退回裸 sc_id；降级与 hover 断言丢了会掩盖「id 丢失/空白渲染」回归。
+  { feature: "任务462 contact_id→会话名 解析层（TTL 缓存+降级短 id）", file: "desktop/frontend/src/lib/collabContactNames.ts", patterns: ["refreshCollabContactNames", "collabDisplayLabel", "shortContactId"] },
+  { feature: "任务462 消息卡 meta 双方会话名（id 进 hover）", file: "desktop/frontend/src/components/Message.tsx", patterns: ["msg.collabRoute", "useCollabContactNames"] },
+  { feature: "任务462 收件箱路由/会话链会话名+hover id", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["contactDisplayName", "contactHoverLabel"] },
+  { feature: "任务462 测试（有名/降级/hover 保留 id/改名同步）", file: "desktop/frontend/src/__tests__/collab-contact-names.test.tsx", patterns: ["hover keeps the full sender contact_id", "degrades to the truncated id", "the label follows the new title"] },
 ];
 
 let failed = 0;

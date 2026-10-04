@@ -7,6 +7,7 @@ import { ComposerContextCard } from "./ComposerContextCard";
 import { formatAttachmentRefForDisplay, formatAttachmentRefForSubmit, parseAttachmentRefsForDisplay, sortDisplayAttachments } from "../lib/attachmentDisplay";
 import type { DisplayAttachment } from "../lib/attachmentDisplay";
 import { app } from "../lib/bridge";
+import { collabDisplayLabel, useCollabContactNames } from "../lib/collabContactNames";
 import { replaySubmitTextPreservingSelectedContext } from "../lib/editReplay";
 import { useT } from "../lib/i18n";
 import { Tooltip } from "./Tooltip";
@@ -280,6 +281,13 @@ export function UserMessage({
   const t = useT();
   const invocationMetadata = useContext(InvocationMetadataContext);
   const imSource = parseImSourceMessage(text) ?? collabAsImSource(text);
+  // 任务462: 跨会话卡的双方显示会话名（缓存改名后随订阅刷新）。
+  const contactNames = useCollabContactNames();
+  const isCollabSource = imSource?.provider === "collab";
+  const collabLabel = useCallback(
+    (id: string) => contactNames.get(id.trim()) || collabDisplayLabel(id),
+    [contactNames],
+  );
   const actionText = stripMemoryCompilerExecution(imSource?.text ?? text);
   const hasMemoryCompiler = Boolean(submitText?.includes("<memory-compiler-execution>"));
   const selectedTextEntries = useMemo(() => parseSelectedTextContext(submitText), [submitText]);
@@ -567,9 +575,28 @@ export function UserMessage({
             </div>
             {displayText && <div className="im-source-card__text">{displayText}</div>}
             {(imSource.sender || imSource.chat) && (
-              <div className="im-source-card__meta" data-transcript-selection-ignore>
-                {imSource.sender && <span>{t("msg.imSender", { id: imSource.sender })}</span>}
-                {imSource.chat && <span>{imSource.chat}</span>}
+              <div
+                className="im-source-card__meta"
+                data-transcript-selection-ignore
+                title={
+                  isCollabSource
+                    ? [imSource.sender, imSource.chat]
+                        .filter(Boolean)
+                        .map((id) => `contact_id=${id.trim()}`)
+                        .join(" → ")
+                    : undefined
+                }
+              >
+                {isCollabSource && imSource.sender && imSource.chat ? (
+                  // 任务462: 双方显示会话名（查不到降级截短 id，绝不空白），
+                  // 完整 contact_id 降为 hover（本行 title）。
+                  <span>{t("msg.collabRoute", { from: collabLabel(imSource.sender), to: collabLabel(imSource.chat) })}</span>
+                ) : (
+                  <>
+                    {imSource.sender && <span>{t("msg.imSender", { id: imSource.sender })}</span>}
+                    {imSource.chat && <span>{imSource.chat}</span>}
+                  </>
+                )}
               </div>
             )}
           </div>
