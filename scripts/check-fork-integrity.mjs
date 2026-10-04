@@ -196,6 +196,11 @@ const CHECKS = [
   { feature: "任务285 宿主探针（分组/谱系/切换）", file: "desktop/session_info_collab.go", patterns: ["func (a *App) collabSessionGroup", "func (a *App) collabSessionVersions", "SetActiveSessionVersion"] },
   { feature: "任务285 boot 探针接线", file: "internal/boot/boot.go", patterns: ["OnSessionGroup", "OnSessionVersions", "OnAdoptSessionVersion"] },
 
+  // ── 任务 454：list_addressable_sessions 分组 id 拼法（title/id 双寻址）──
+  { feature: "任务454 工具层 group id 过滤", file: "internal/agent/session_collab_tools.go", patterns: ["SessionGroupMatch func(topicID, group string) bool", "func topicInSessionGroup"] },
+  { feature: "任务454 宿主 id 归属探针", file: "desktop/session_info_collab.go", patterns: ["func (a *App) collabSessionGroupMatch"] },
+  { feature: "任务454 boot 探针接线", file: "internal/boot/boot.go", patterns: ["OnSessionGroupMatch"] },
+
   // ── 任务 155：会话存储四档 + bridge 健康债（2026-09-17）──────────
   { feature: "任务155 四档枚举与渐进校验", file: "internal/config/session_storage.go", patterns: ["SessionStorageDualWriteReadV3", "ValidateSessionStorageTransition", "ResolveSafeSessionStorageMode"] },
   { feature: "任务155 bridge 健康债修复（登记即用 + 同 root 接管 + 批 id 幂等）", file: "internal/control/session_v4_bridge.go", patterns: ["reclaimSession", "v4BridgePeers", "ErrLegacyReadOnly"] },
