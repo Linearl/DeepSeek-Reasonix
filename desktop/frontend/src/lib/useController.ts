@@ -11,6 +11,7 @@ import { addBreadcrumb } from "./breadcrumbs";
 import { app, onEvent, onReady, onRuntimeRebuilt, onTabMeta, onTopicActivation } from "./bridge";
 import { invalidateCache } from "./composerHistory";
 import { formatInboxCancelError } from "./inboxError";
+import { missingQueuedGuidanceBubbles } from "./inboxSurfaceReconcile";
 import { settleForkConversationForTab } from "./forkWorktree";
 import type { MessageActionScope, MessageActionState } from "./messageActions";
 import { mergeRateBand, type AggregatedRateBand } from "./costRateBand";
@@ -3073,6 +3074,25 @@ export function useController() {
     dispatchTo(tabId, { type: "checkpoints", checkpoints: asArray(checkpoints) });
   }, [bumpCheckpointRefreshSeq, dispatchTo]);
 
+  // P17: after every surface (re)build, re-render guidance that is still
+  // durable in the session inbox. A degraded submit's optimistic row and ↪
+  // bubble live only in tab state, so any replace drawing from a history page
+  // or transcript-store snapshot taken before the inbox drain (reset on tab
+  // switch, local-snapshot switch-back, session-changed reload) erases them
+  // with no event ever restoring them. The reducer dedupes by inboxItemId and
+  // the consume-time Steer event carries the same id, so this is idempotent.
+  const reconcileQueuedGuidanceForTab = useCallback((tabId: string) => {
+    if (typeof app.InboxSnapshot !== "function") return;
+    void (async () => {
+      const snapshot = await (app.InboxSnapshot as (id: string) => Promise<unknown>)(tabId).catch(() => undefined);
+      const current = statesRef.current.get(tabId);
+      if (!snapshot || !current) return;
+      for (const bubble of missingQueuedGuidanceBubbles(snapshot as import("./composerInboxQueue").InboxSnapshotLike, current.items)) {
+        dispatchTo(tabId, { type: "guidance_bubble", text: bubble.text, inboxItemId: bubble.inboxItemId });
+      }
+    })();
+  }, [dispatchTo]);
+
   const loadSessionDataForTab = useCallback(async (
     tabId: string,
     reset = false,
@@ -3293,6 +3313,7 @@ export function useController() {
 
       if (!stillCurrent()) return;
       dispatchTo(tabId, { type: "hydrate_done" });
+      reconcileQueuedGuidanceForTab(tabId);
       const hydrateElapsed = Date.now() - hydrateStartedAt;
       addBreadcrumb("tab.hydrate", `done ${reason} ${tabId} ms=${hydrateElapsed}`);
       reportStageTiming(tabId, `${reason}:total`, hydrateElapsed);
@@ -3425,7 +3446,7 @@ export function useController() {
         sessionLoadInFlight.current.delete(tabId);
       }
     }
-  }, [bumpSessionLoadSeq, cancelHydrateCurrent, dispatchTo, loadMetaForTab, refreshBalanceForTab, sessionLoadCurrent]);
+  }, [bumpSessionLoadSeq, cancelHydrateCurrent, dispatchTo, loadMetaForTab, refreshBalanceForTab, reconcileQueuedGuidanceForTab, sessionLoadCurrent]);
 
   const resetTurnEventProjection = useCallback(async (tabId: string, replay: TurnEventReplayView): Promise<boolean> => {
     const state = statesRef.current.get(tabId);
