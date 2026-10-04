@@ -174,6 +174,10 @@ type Snapshot struct {
 	Returned  int      `json:"returned"`
 	Truncated bool     `json:"truncated"`
 	Entries   []Entry  `json:"entries"`
+	// Degraded marks a snapshot read WITHOUT the inbox lock (任务461 P11):
+	// the lock was wedged, so the read proceeded unlocked rather than
+	// failing/emptying the panel. 可用性 > 锁完整性.
+	Degraded bool `json:"degraded,omitempty"`
 }
 
 // Chain is one thread aggregation (task 320 g: 对话链视图 — 每条 = 一个 thread).
@@ -209,6 +213,10 @@ const (
 	// (任务461 P8 ③): copies older than this from the cluster primary stay
 	// separate entries — genuine repeated content across days never merges.
 	duplicateFoldWindow = 24 * time.Hour
+	// readLockWaitTimeout is the SHORT shared-lock budget for read-only paths
+	// (任务461 P11): a reader never queues behind a wedged holder for the full
+	// write budget — 可用性 > 锁完整性, the user's standing ruling.
+	readLockWaitTimeout = 1500 * time.Millisecond
 )
 
 // Store reads the mail directory through the sessioncollab MailStore and
@@ -237,6 +245,33 @@ func (s *Store) Mail() *sessioncollab.MailStore { return s.mail }
 
 func (s *Store) statePath() string { return filepath.Join(s.mailDir, stateName) }
 
+func (s *Store) lockFilePath() string { return filepath.Join(s.mailDir, lockName) }
+
+// lockHolderPath is a SIDECAR, not the lock file itself: the lock file's byte
+// range is held via LockFileEx, and a second-handle write to that range fails
+// on Windows. The sidecar keeps the same diagnostics without touching it.
+func (s *Store) lockHolderPath() string { return filepath.Join(s.mailDir, lockName+".holder") }
+
+// writeLockHolderInfo stamps the sidecar with this process's identity right
+// after an exclusive acquire (任务461 P11 ①): a later waiter that times out can
+// read WHO held it last and since when, instead of a bare "busy". The content
+// survives release, so right after a release it reads as the previous holder —
+// informative, never authoritative.
+func (s *Store) writeLockHolderInfo() {
+	info := fmt.Sprintf("pid=%d held_since=%s", os.Getpid(), time.Now().Format(time.RFC3339))
+	_ = os.WriteFile(s.lockHolderPath(), []byte(info), 0o600)
+}
+
+// LockHolderInfo returns the last recorded holder identity from the sidecar
+// (may be empty or stale — it is a diagnostic, not a lease).
+func (s *Store) LockHolderInfo() string {
+	b, err := os.ReadFile(s.lockHolderPath())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
 // lock takes the inbox's cross-process lock. ctx is the caller's request
 // context: cancellation (用户点停止) ends the wait immediately, and the wait
 // itself never exceeds lockWaitTimeout even when the holder never lets go.
@@ -244,11 +279,34 @@ func (s *Store) lock(ctx context.Context) (func(), error) {
 	if err := os.MkdirAll(s.mailDir, 0o755); err != nil {
 		return nil, err
 	}
-	release, err := filelock.AcquireWithExternalTimeout(ctx, filepath.Join(s.mailDir, lockName), lockWaitTimeout)
+	release, err := filelock.AcquireWithExternalTimeout(ctx, s.lockFilePath(), lockWaitTimeout)
 	if err != nil {
+		holder := s.LockHolderInfo()
+		if holder != "" {
+			return nil, fmt.Errorf("collab inbox lock busy, gave up waiting (last holder: %s): %w", holder, err)
+		}
 		return nil, fmt.Errorf("collab inbox lock busy (held by another window or process?), gave up waiting: %w", err)
 	}
+	s.writeLockHolderInfo()
 	return release, nil
+}
+
+// lockRead takes the inbox lock in SHARED mode with a short budget (任务461
+// P11 ②): list/count are read-only, so a wedged exclusive holder must not
+// empty the panel — the reader degrades to an UNLOCKED read instead. The
+// transport reads stay bounded by their own budgets; a degraded read never
+// mutates (retention is skipped). Returns release==nil when degraded.
+func (s *Store) lockRead(ctx context.Context) (release func(), degraded bool, err error) {
+	if err := os.MkdirAll(s.mailDir, 0o755); err != nil {
+		return nil, false, err
+	}
+	readCtx, cancel := context.WithTimeout(ctx, readLockWaitTimeout)
+	defer cancel()
+	release, err = filelock.AcquireMode(readCtx, s.lockFilePath(), filelock.ModeShared)
+	if err != nil {
+		return nil, true, nil // degraded: unlocked read wins over a failed read
+	}
+	return release, false, nil
 }
 
 func (s *Store) loadState() stateFile {
@@ -589,17 +647,32 @@ func (s *Store) ApplyRetention(ctx context.Context) (int, error) {
 // List answers one revision-stamped snapshot (task 320 a/e). applyRetention
 // should be true for panel calls and false for the read-only query tool — a
 // read must never mutate the transport layer. ctx bounds/cancels the lock wait.
+//
+// 任务461 P11：读路径走共享锁 + 短预算（lockRead）；锁被楔住时降级为无锁读
+// （Degraded=true，保留期跳过——降级读绝不改动任何状态），面板有数据而非空。
 func (s *Store) List(ctx context.Context, q Query, applyRetention bool) (Snapshot, error) {
-	if applyRetention {
-		if _, err := s.ApplyRetention(ctx); err != nil {
-			return Snapshot{}, err
-		}
-	}
-	unlock, err := s.lock(ctx)
+	unlock, degraded, err := s.lockRead(ctx)
 	if err != nil {
 		return Snapshot{}, err
 	}
-	defer unlock()
+	if unlock != nil {
+		defer unlock()
+	}
+	if applyRetention && !degraded {
+		// 保留期是写操作：只在锁健康时执行（先释放共享锁再取写锁）。
+		unlock()
+		if _, rerr := s.ApplyRetention(ctx); rerr != nil {
+			return Snapshot{}, rerr
+		}
+		unlock2, d2, lerr := s.lockRead(ctx)
+		if lerr != nil {
+			return Snapshot{}, lerr
+		}
+		if unlock2 != nil {
+			defer unlock2()
+		}
+		degraded = d2
+	}
 	st := s.loadState()
 	entries, err := s.build(ctx)
 	if err != nil {
@@ -641,17 +714,20 @@ func (s *Store) List(ctx context.Context, q Query, applyRetention bool) (Snapsho
 		Returned:  len(page),
 		Truncated: offset+len(page) < total,
 		Entries:   page,
+		Degraded:  degraded,
 	}, nil
 }
 
 // Chains groups the filtered table by threadId (task 320 g): one row per
 // conversation chain, newest chain first, entries chronological inside.
 func (s *Store) Chains(ctx context.Context, q Query) (ChainSnapshot, error) {
-	unlock, err := s.lock(ctx)
+	unlock, _, err := s.lockRead(ctx)
 	if err != nil {
 		return ChainSnapshot{}, err
 	}
-	defer unlock()
+	if unlock != nil {
+		defer unlock()
+	}
 	st := s.loadState()
 	entries, err := s.build(ctx)
 	if err != nil {
