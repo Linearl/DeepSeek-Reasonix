@@ -9,6 +9,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -117,6 +118,12 @@ func TestAutopilotCollaborationModeMatrix(t *testing.T) {
 			if tab.autopilotMaxRuntime <= 0 {
 				t.Fatalf("mode %q: autopilot on must carry a runtime bound", mode)
 			}
+			// X4 断点 B: the applied flag must reach the composer's wire value —
+			// this used to render "normal" forever (view structurally incapable
+			// of "autopilot"), hiding the state the user just switched on.
+			if got := app.tabRuntimeSnapshot(tab).collaborationMode(); got != "autopilot" {
+				t.Fatalf("mode %q: collaboration mode = %q, want autopilot (applied)", mode, got)
+			}
 		} else {
 			got := app.tabRuntimeSnapshot(tab).collaborationMode()
 			if got != "normal" {
@@ -126,6 +133,59 @@ func TestAutopilotCollaborationModeMatrix(t *testing.T) {
 				t.Fatalf("mode %q: refusal notice %q not emitted, got %v", mode, NoticeCodeAutopilotRequiresYolo, *codes)
 			}
 		}
+	}
+}
+
+// X4 断点 B precedence pin: a running goal still wins the wire value (the
+// pre-existing trichotomy), and clearing the goal hands the view back to
+// autopilot — the bare-toggle shape the composer's indicator keys on.
+// TestInitialTabBuildCarriesAutopilotTriple (X4 断点 A): the initial build's
+// boot.Options literal is the one build path that historically dropped the
+// autopilot triple — every rebuild site carried it, so the flag silently died
+// on every fresh app start and restart restore until some later rebuild. The
+// literal is inline in buildTabControllerWithContextCore, so this pins it at
+// the source level: the Options block must name all three fields.
+func TestInitialTabBuildCarriesAutopilotTriple(t *testing.T) {
+	src, err := os.ReadFile("tabs.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const literal = "buildTabControllerBootFenced(buildCtx, extensionGen, boot.Options{"
+	start := strings.Index(string(src), literal)
+	if start < 0 {
+		t.Fatalf("initial build Options literal not found: %q", literal)
+	}
+	block := string(src[start:])
+	if end := strings.Index(block, "\n\t})"); end >= 0 {
+		block = block[:end]
+	}
+	for _, field := range []string{"Autopilot:", "MaxRuntime:", "AutopilotApprovalGrace:"} {
+		if !strings.Contains(block, field) {
+			t.Fatalf("initial build Options dropped the autopilot field %q — the flag would silently die on every fresh start", field)
+		}
+	}
+}
+
+func TestAutopilotViewYieldsToRunningGoalThenReturns(t *testing.T) {
+	app, tab, _ := autopilotGateTestApp(t, control.ToolApprovalYolo)
+	app.SetCollaborationModeForTab(tab.ID, "autopilot")
+	if !tab.autopilot {
+		t.Fatal("precondition failed — autopilot should be on under yolo")
+	}
+	if got := app.tabRuntimeSnapshot(tab).collaborationMode(); got != "autopilot" {
+		t.Fatalf("bare autopilot view = %q, want autopilot", got)
+	}
+	if err := app.SetGoalForTab(tab.ID, "unattended objective"); err != nil {
+		t.Fatal(err)
+	}
+	if got := app.tabRuntimeSnapshot(tab).collaborationMode(); got != "goal" {
+		t.Fatalf("autopilot+goal view = %q, want goal (documented precedence)", got)
+	}
+	if err := app.SetGoalForTab(tab.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := app.tabRuntimeSnapshot(tab).collaborationMode(); got != "autopilot" {
+		t.Fatalf("autopilot view after goal clear = %q, want autopilot", got)
 	}
 }
 

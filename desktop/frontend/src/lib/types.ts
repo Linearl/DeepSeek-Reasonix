@@ -1178,7 +1178,11 @@ export interface GoalRuntime {
   budgetExtensions: number; // Deprecated: resumes no longer extend a numeric quota.
 }
 export function normalizeCollaborationMode(mode?: string, goal?: string, legacyMode?: Mode): CollaborationMode {
-  if (mode === "plan" || mode === "goal" || mode === "normal") return mode;
+  // "autopilot" must survive normalization: the composer's autopilot indicator
+  // is derived from the profile value, and stripping it here (X4 断点 B, the
+  // frontend half) flipped every meta-driven profile rebuild back to "normal"
+  // even after the backend started reporting the flag.
+  if (mode === "plan" || mode === "goal" || mode === "autopilot" || mode === "normal") return mode;
   if (legacyMode && modeHasPlan(legacyMode)) return "plan";
   if ((goal ?? "").trim()) return "goal";
   return "normal";
