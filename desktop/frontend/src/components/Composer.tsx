@@ -4378,7 +4378,12 @@ export function Composer({
       : pendingAsk
         ? "ask"
         : null;
-  const showRunStrip = Boolean(retry || waitingPrompt || finishing || runtimeState.unknown || runtimeState.kind === "background_job" || runtimeState.kind === "cancelling");
+  // Q1 2026-10-04: ordinary running counts as a strip-visible state again.
+  // be45fd729 narrowed the strip to attention states and moved the run
+  // readings into the context-ring popover, leaving the composer without any
+  // throughput readout (user-reported regression). Following upstream
+  // 196dd3bae, the running strip returns and renders the readings inline.
+  const showRunStrip = Boolean((running && !suspendedByDecision) || retry || waitingPrompt || finishing || runtimeState.unknown || runtimeState.kind === "background_job" || runtimeState.kind === "cancelling");
   const effectiveComposerHeight = composerHeight === null
     ? null
     : resolveComposerContentSizing({
@@ -5227,7 +5232,12 @@ export function Composer({
         {(readStatusText || (showRunStrip && runStateText)) && (
           <div className={`composer-run-strip${waitingPrompt ? " composer-run-strip--waiting" : ""}`}>
             {!finishing && !runtimeState.unknown && <span className="composer-run-strip__dot" aria-hidden="true" />}
-            <span className="composer-run-strip__text">{readStatusText || runStateText}</span>
+            <span className="composer-run-strip__text">{readStatusText || runStateText}
+              {/* Q1 2026-10-04: inline run readings restored (elapsed · tokens ·
+                  tps) beside the state word; the ring popover keeps the same
+                  numbers for completed turns. */}
+              {runMetrics && (runMetrics.tps || runMetrics.tokens) && <span className="composer-run-strip__metrics">{` · ${runMetrics.elapsed}${runMetrics.tokens ? ` · ${runMetrics.tokens}` : ""}${runMetrics.tps ? ` · ${runMetrics.tps}` : ""}`}</span>}
+            </span>
           </div>
         )}
         <span className="sr-only" role="status">{readStatusText || runStateText}</span>

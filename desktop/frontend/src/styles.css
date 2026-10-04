@@ -7763,6 +7763,9 @@ body > .mermaid-diagram--fullscreen {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+.composer-run-strip__metrics {
+  color: var(--fg-dim);
+}
 .composer-run-strip--waiting {
   color: color-mix(in srgb, var(--warn) 74%, var(--fg));
 }
