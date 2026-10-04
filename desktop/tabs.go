@@ -4317,7 +4317,7 @@ func (a *App) maybeResumeAutopilotTab(tab *WorkspaceTab) {
 	// interrupted inside a side-effectful tool call is handed to manual review
 	// (the fence panel), never auto-continued into a likely re-block.
 	if tabHasInterruptedToolCall(tab) {
-		slog.Warn("desktop: autopilot resume skipped — the session's last step was an interrupted tool call (" + restartInterruptedToolMarker + "; review the pending tools manually)", "tab", id)
+		slog.Warn("desktop: autopilot resume skipped — the session's last step was an interrupted tool call ("+restartInterruptedToolMarker+"; review the pending tools manually)", "tab", id)
 		return
 	}
 	go func() {
@@ -5029,10 +5029,20 @@ func autoTitleTopicFromSession(workspaceRoot, topicID, sessionPath string) (stri
 	if sessionHasManualDisplayTitle(sessionPath) {
 		return "", false
 	}
+	// P18-R2: this runs on the tab autosave goroutine after every snapshot, and
+	// deriving the proposal re-reads the session's user turns. Skip the whole
+	// derivation while the session content identity is unchanged since the last
+	// pass — shouldApplyAutoTopicTitle would reject an identical BasisHash
+	// anyway, so the replay was pure cost. The identity is a sidecar read
+	// (revision + content digest), not a transcript decode.
+	if autoTitleIdentityUnchanged(sessionPath) {
+		return "", false
+	}
 	proposal := autoTopicTitleProposalFromSession(sessionPath)
 	if proposal.Title == "" {
 		return "", false
 	}
+	rememberAutoTitleIdentity(sessionPath)
 	if !shouldApplyAutoTopicTitle(workspaceRoot, topicID, proposal) {
 		return "", false
 	}
@@ -5053,6 +5063,43 @@ type autoTopicTitleProposal struct {
 	Stage     int
 	UserTurns int
 	BasisHash string
+}
+
+// autoTitleIdentityMu guards the P18-R2 derivation-skip memo below. In-process
+// only: after a restart the first pass per tab re-derives once (and the load
+// cache makes that cheap), so no persistence or invalidation protocol exists.
+var (
+	autoTitleIdentityMu   sync.Mutex
+	autoTitleIdentitySeen = map[string]string{}
+	autoTitleDerivations  atomic.Uint64
+)
+
+// autoTitleIdentityUnchanged reports whether the session content identity
+// matches the one recorded at the last derivation, meaning the BasisHash check
+// downstream can only reject the proposal again. Unknown identity (first pass,
+// missing sidecar) derives as before.
+func autoTitleIdentityUnchanged(sessionPath string) bool {
+	state, known, err := agent.SessionContentIdentity(sessionPath)
+	if err != nil || !known || state.DigestHex == "" {
+		return false
+	}
+	autoTitleIdentityMu.Lock()
+	defer autoTitleIdentityMu.Unlock()
+	last, ok := autoTitleIdentitySeen[sessionPath]
+	return ok && last == state.DigestHex
+}
+
+// rememberAutoTitleIdentity records the session content identity just derived
+// against, and counts one derivation for tests and on-device proof.
+func rememberAutoTitleIdentity(sessionPath string) {
+	state, known, err := agent.SessionContentIdentity(sessionPath)
+	if err != nil || !known || state.DigestHex == "" {
+		return
+	}
+	autoTitleIdentityMu.Lock()
+	autoTitleIdentitySeen[sessionPath] = state.DigestHex
+	autoTitleIdentityMu.Unlock()
+	autoTitleDerivations.Add(1)
 }
 
 func autoTopicTitleProposalFromSession(path string) autoTopicTitleProposal {

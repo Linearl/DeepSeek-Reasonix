@@ -1574,6 +1574,13 @@ func LoadSessionTail(path string) (*Session, error) {
 
 func loadSessionUnlocked(path string) (*Session, error) {
 	return loadSessionWithReader(path, func(hasher *sessionTranscriptHasher) (sessionLoadResult, error) {
+		// P18-R1: the save-path lock is held by LoadSession here, so a cached
+		// fully replayed graph can serve the load directly (guards in
+		// cachedSessionLoadResult mirror dagStateForSave's reuse checks); every
+		// guard failure falls through to the ordinary full replay.
+		if res, ok := cachedSessionLoadResult(path, hasher); ok {
+			return res, nil
+		}
 		return loadSessionTranscript(context.Background(), path, defaultSessionReplayLimits, hasher)
 	})
 }
