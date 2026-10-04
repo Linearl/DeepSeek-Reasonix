@@ -209,6 +209,37 @@ func (s *Session) SaveSnapshot(path string) error {
 	return s.saveObserved(path, sessionSaveSnapshot)
 }
 
+// SaveSnapshotIfPathFree is the non-blocking form of SaveSnapshot for
+// latency-sensitive foreground paths (desktop tab switching): it performs the
+// full snapshot only when the save path is uncontended, and reports
+// attempted=false — nothing written, session untouched — when another
+// goroutine holds the save-path mutex, so the caller can degrade to a
+// background save instead of queueing behind a long reader or writer
+// (measured p50 28s / max 69s on large-session loads, DAG research
+// 2026-10-04). attempted=false always pairs with err=nil; an attempted save
+// reports its failure exactly like SaveSnapshot would.
+func (s *Session) SaveSnapshotIfPathFree(path string) (attempted bool, err error) {
+	if path == "" {
+		return false, fmt.Errorf("empty session path")
+	}
+	// Advisory probe before the potentially expensive truncated-transcript
+	// upgrade: a busy path means the file is owned by someone else right now,
+	// so no speculative work should start. The authoritative gate is the
+	// try-lock in tryWithSessionSaveLocks, which holds the mutex through the
+	// locked save.
+	if !savePathLockFree(path) {
+		return false, nil
+	}
+	if err := s.upgradeTruncatedTranscriptForWrite(path); err != nil {
+		return true, err
+	}
+	return s.tryWithSessionSaveLocks(path, func() error {
+		return s.saveObservedAfterUpgrade(path, sessionSaveSnapshot, func() error {
+			return s.saveLocked(path, sessionSaveSnapshot)
+		})
+	})
+}
+
 // SaveRewrite writes an intentional non-append history rewrite only while this
 // Session still owns the current on-disk transcript baseline. It prevents a
 // stale controller from force-rewinding a newer transcript written elsewhere.
@@ -251,6 +282,38 @@ func (s *Session) withSessionSaveLocks(path string, fn func() error) error {
 	// first-class segment of the save total (196-family attribution).
 	s.lastSaveLockWaitMs.Store(time.Since(lockWaitStart).Milliseconds())
 	return fn()
+}
+
+// tryWithSessionSaveLocks is the non-blocking form of withSessionSaveLocks for
+// latency-sensitive foreground paths (desktop tab switching): the in-process
+// save-path mutex is taken only when immediately free, and attempted=false is
+// reported otherwise, so the caller can degrade to a later save instead of
+// queueing behind a long reader or writer. The cross-process compatibility
+// file lock keeps its normal bounded wait — only same-process queueing is
+// declined. attempted=false always pairs with err=nil and leaves the session
+// and the file untouched; once the attempt commits (path mutex held), a
+// failure surfaces as attempted=true plus the error, like the blocking form.
+func (s *Session) tryWithSessionSaveLocks(path string, fn func() error) (attempted bool, err error) {
+	if strings.TrimSpace(path) == "" {
+		return false, fmt.Errorf("empty session path")
+	}
+	unlockPath, ok := tryLockSessionSavePath(path)
+	if !ok {
+		return false, nil
+	}
+	defer unlockPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return true, fmt.Errorf("create session dir: %w", err)
+	}
+	unlockFile, err := lockSessionFile(path)
+	if err != nil {
+		return true, fmt.Errorf("lock session file: %w", err)
+	}
+	defer unlockFile()
+	// Same attribution contract as withSessionSaveLocks (Task 357): a
+	// try-lock that succeeded waited zero.
+	s.lastSaveLockWaitMs.Store(0)
+	return true, fn()
 }
 
 func sessionArtifactExists(path string) bool {
@@ -1333,6 +1396,33 @@ func tryLockSessionSavePath(path string) (func(), bool) {
 		return nil, false
 	}
 	return mu.Unlock, true
+}
+
+// savePathLockFree is an advisory, never-blocking probe of the in-process
+// save-path mutex: true means a save starting right now would not queue
+// behind anyone. The lock can change hands before a later try-lock, so this
+// must only be used to skip speculative work, never as authorization to
+// write.
+func savePathLockFree(path string) bool {
+	key := canonicalSessionSavePath(path)
+	v, ok := sessionSaveLocks.Load(key)
+	if !ok {
+		return true
+	}
+	mu := v.(*sync.Mutex)
+	if mu.TryLock() {
+		mu.Unlock()
+		return true
+	}
+	return false
+}
+
+// HoldSessionSavePathForTest acquires the in-process save-path mutex for path
+// and returns the release func, so other packages' tests can reproduce
+// save-path contention (the mutex itself is deliberately unexported). Tests
+// only — production code must use lockSessionSavePath / tryLockSessionSavePath.
+func HoldSessionSavePathForTest(path string) func() {
+	return lockSessionSavePath(path)
 }
 
 // lockSessionFile waits briefly for the cross-process compatibility save lock.

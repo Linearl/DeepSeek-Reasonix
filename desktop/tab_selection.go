@@ -64,7 +64,7 @@ func (a *App) SetActiveTab(tabID string) error {
 	a.mu.RLock()
 	active := a.tabs[a.activeTabID]
 	a.mu.RUnlock()
-	if err := a.snapshotTabForAction(active, "switching tabs"); err != nil {
+	if err := a.snapshotTabForSwitch(active); err != nil {
 		return err
 	}
 
@@ -105,5 +105,46 @@ func (a *App) SetActiveTab(tabID string) error {
 		a.emitTopicActivation(TopicActivationEvent{RequestID: supersededReq, TabID: supersededTab, Phase: topicActivationPhaseCancelled})
 	}
 	a.kickDeferredRebuildRetry()
+	return nil
+}
+
+// snapshotTabForSwitch is the SetActiveTab form of snapshotTabForAction. A tab
+// click must not queue on the session save-path mutex: behind a large
+// session's full-decode load that wait measured p50 28s / max 69s (DAG
+// research 2026-10-04) and is the whole "tab switch takes >10s" report. With
+// controller support, an uncontended path snapshots inline exactly as before;
+// a busy path skips the wait and hands the flush to the tab's background
+// snapshot loop (scheduleTabSnapshot), which writes once the lock frees —
+// append-only semantics make a seconds-late flush lossless. Close, shutdown,
+// and remote-takeover paths keep their synchronous snapshots.
+func (a *App) snapshotTabForSwitch(tab *WorkspaceTab) error {
+	if tab == nil {
+		return nil
+	}
+	a.mu.RLock()
+	readOnly := tab.ReadOnly
+	ctrl := tab.Ctrl
+	a.mu.RUnlock()
+	if readOnly || ctrl == nil {
+		return nil
+	}
+	free, ok := ctrl.(interface {
+		SnapshotIfSavePathFree() (bool, error)
+	})
+	if !ok {
+		// Controllers without the capability keep the previous blocking form.
+		return a.snapshotTabForAction(tab, "switching tabs")
+	}
+	attempted, err := free.SnapshotIfSavePathFree()
+	if err != nil {
+		a.reportTabSnapshotError(tab, "switching tabs", err)
+		return fmt.Errorf("save current session before switching tabs: %w", err)
+	}
+	if !attempted {
+		// Save path busy: switch now, flush in the background. The loop is
+		// single-flight per tab and refuses work once the tab closes, so it
+		// cannot race DeleteSession (#4384).
+		a.scheduleTabSnapshot(tab.ID)
+	}
 	return nil
 }

@@ -82,6 +82,17 @@ func (s *Session) saveObserved(path string, mode sessionSaveMode) error {
 	if err := s.upgradeTruncatedTranscriptForWrite(path); err != nil {
 		return err
 	}
+	return s.saveObservedAfterUpgrade(path, mode, func() error {
+		return s.save(path, mode)
+	})
+}
+
+// saveObservedAfterUpgrade is the observed-save body once the transcript is
+// known complete: one begin/end log pair (Task 196), the display-index peek
+// for the append projection, the save itself, and the persisted notification.
+// do performs the save; SaveSnapshotIfPathFree passes a form that runs under
+// an already-held save-path lock instead of acquiring one.
+func (s *Session) saveObservedAfterUpgrade(path string, mode sessionSaveMode, do func() error) error {
 	// Task 196: successful saves were entirely silent, so "was a write running while the
 	// UI froze?" had no answer in the log at all. One begin/end pair per save fixes that.
 	saveStart := time.Now()
@@ -98,7 +109,7 @@ func (s *Session) saveObserved(path string, mode sessionSaveMode) error {
 			appendFrom = index.MessageCount
 		}
 	}
-	err := s.save(path, mode)
+	err := do()
 	if err == nil && !mode.defersProjection() {
 		s.notifyPersisted(path, mode != sessionSaveSnapshot, appendFrom)
 	}

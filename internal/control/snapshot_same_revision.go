@@ -58,3 +58,21 @@ func retrySameRevisionDivergedRewrite(s *agent.Session, path string, err error) 
 	// process lease alone cannot claim the current bytes.
 	return s.SaveRewrite(path), true
 }
+
+// persistSessionSnapshotIfPathFree is the non-blocking form of
+// persistSessionSnapshot for foreground latency-sensitive paths (desktop tab
+// switching). It attempts only a plain snapshot-mode save through the
+// try-lock form; anything that would escalate — forced rewrite, mid-turn
+// reshape, conflict retry — is declined as attempted=false so the caller's
+// degraded path can run the full-semantics save later. This keeps the
+// non-blocking write strictly append-shaped and never deepens a rewrite out
+// of a UI path.
+func persistSessionSnapshotIfPathFree(s *agent.Session, path string, forceRewrite bool) (bool, error) {
+	if s == nil {
+		return true, nil
+	}
+	if forceRewrite || s.NeedsRewriteSave() {
+		return false, nil
+	}
+	return s.SaveSnapshotIfPathFree(path)
+}
