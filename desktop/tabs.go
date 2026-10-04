@@ -1650,6 +1650,7 @@ func (s *tabEventSink) emitRuntimeEvent(name string, payload ...any) {
 		env := runtimeEventEnvelope{
 			name:    name,
 			payload: append([]any(nil), payload...),
+			at:      time.Now(),
 		}
 		s.mu.Lock()
 		s.pendingRuntimeEvents = append(s.pendingRuntimeEvents, env)
@@ -1665,6 +1666,24 @@ type runtimeEventEnvelope struct {
 	ctx     context.Context
 	name    string
 	payload []any
+	// at stamps the enqueue (or #9601 buffer) time so the drain loop can
+	// report queue lag — 任务461-P16: the backend half of the ask-delivery
+	// latency trail (emit log → queue → webview post).
+	at time.Time
+}
+
+// runtimeEventLagWarnThreshold bounds how long an event may sit in the async
+// emitter queue before the drain loop logs the lag (任务461-P16). A lag here
+// means the single webview event channel backed up — every tab's events
+// (ask cards included) queue behind it, which is the shared-channel shape
+// behind "ask popup late / never". Var so tests can shrink it.
+var runtimeEventLagWarnThreshold = time.Second
+
+// runtimeEventLagWarnFunc is the lag report hook; production logs, tests
+// observe. Swapped as a var alongside the threshold.
+var runtimeEventLagWarnFunc = func(name string, age time.Duration, queued int) {
+	slog.Warn("desktop: runtime event lagged in the webview emit queue",
+		"event", name, "age_ms", age.Milliseconds(), "queued", queued)
 }
 
 // asyncRuntimeEmitter decouples Wails' runtime event bridge from agent emission.
@@ -1694,6 +1713,7 @@ func (e *asyncRuntimeEmitter) Emit(ctx context.Context, name string, payload ...
 		ctx:     ctx,
 		name:    name,
 		payload: append([]any(nil), payload...),
+		at:      time.Now(),
 	}
 	e.mu.Lock()
 	e.queue = append(e.queue, item)
@@ -1713,6 +1733,7 @@ func (e *asyncRuntimeEmitter) Clear() {
 }
 
 func (e *asyncRuntimeEmitter) run() {
+	lagWarned := false
 	for {
 		e.mu.Lock()
 		if e.head >= len(e.queue) {
@@ -1735,7 +1756,20 @@ func (e *asyncRuntimeEmitter) run() {
 		if emit == nil {
 			emit = runtimeEventsEmitFallback
 		}
+		queued := len(e.queue) - e.head
 		e.mu.Unlock()
+
+		// 任务461-P16: an event that sat in the queue past the threshold means
+		// the single webview event channel is the delivery bottleneck (all
+		// tabs share it). Warn once per congestion episode, not per item.
+		if age := time.Since(item.at); age >= runtimeEventLagWarnThreshold {
+			if !lagWarned {
+				lagWarned = true
+				runtimeEventLagWarnFunc(item.name, age, queued)
+			}
+		} else {
+			lagWarned = false
+		}
 
 		emit(item.ctx, item.name, item.payload...)
 	}
@@ -2112,6 +2146,7 @@ func toWireTab(e event.Event, tabID string, runtimeEpoch ...string) wireEventTab
 		Event:             w,
 		TabID:             tabID,
 		RuntimeEpoch:      epoch,
+		EmittedAt:         time.Now().UnixMilli(),
 		SessionHitTokens:  e.SessionHit,
 		SessionMissTokens: e.SessionMiss,
 		SessionCost:       0, // filled by frontend accumulator per tab
@@ -2128,6 +2163,13 @@ type wireEventTab struct {
 	RuntimeEpoch      string `json:"runtimeEpoch,omitempty"`
 	SessionGeneration uint64 `json:"sessionGeneration,omitempty"`
 	TurnStartedAt     int64  `json:"turnStartedAt,omitempty"`
+	// EmittedAt is the backend wall clock (unix ms) stamped at wire
+	// serialization — 任务461-P16: the anchor the frontend subtracts from its
+	// own receive time to quantify the backend→webview delivery lag behind
+	// every event kind (ask 不弹窗 / ask 弹窗延迟 / 用户消息不渲染 share this
+	// one channel). Additive omitempty field: older frontends ignore it; a
+	// replayed prompt carries its own (re)emit time.
+	EmittedAt int64 `json:"emittedAt,omitempty"`
 	// Session-cumulative tokens per tab.
 	SessionHitTokens  int `json:"sessionHitTokens,omitempty"`
 	SessionMissTokens int `json:"sessionMissTokens,omitempty"`

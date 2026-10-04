@@ -71,6 +71,15 @@ const CHECKS = [
   { feature: "任务461-P8 同内容折叠+批量已读（DuplicateCount/MarkRead）", file: "internal/collabinbox/collabinbox.go", patterns: ["DuplicateCount", "func (s *Store) MarkRead(", "duplicateFoldWindow"] },
   { feature: "任务461-P8 面板折叠徽标+全部已读接线", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["duplicateCount", "MarkCollabMailRead"] },
   { feature: "任务461-P10 幂等冲突判为重复已送达（不回错误不断根重投）", file: "desktop/session_collab.go", patterns: ["errCollabDuplicateDelivery", "collabAdmissionErr"] },
+  // 任务461-P16（0119「ask 不弹窗+终止无效」）：P7 三级终止 × ask 等待的交叉
+  // 回归钉——终止第一击必须打断 ask 等待并撤下挂起问题，丢了即现场复发。
+  { feature: "任务461-P16 P7×ask 交叉钉（终止打断 ask 等待+撤僵尸卡片）", file: "internal/control/stop_escalation_ask_test.go", patterns: ["TestCancelStopInterruptsAskWait", "TestCancelStopInterruptsQueuedAsk"] },
+  // 任务461-P16 投递链打点：三症状（ask 弹窗延迟/不弹/用户消息不渲染）共用
+  // 后端→webview 单通道；锚定 emittedAt 锚点、队列积压告警与前端收据/挂载行。
+  { feature: "任务461-P16 wire emittedAt 锚点（量化 emit→前端收到延迟）", file: "desktop/tabs.go", patterns: ["EmittedAt int64", "EmittedAt:         time.Now().UnixMilli()"] },
+  { feature: "任务461-P16 发射队列积压告警（一次拥塞一报）", file: "desktop/tabs.go", patterns: ["runtimeEventLagWarnThreshold", "runtime event lagged in the webview emit queue"] },
+  { feature: "任务461-P16 前端收据+挂载打点（ask received / card mounted）", file: "desktop/frontend/src/lib/useController.ts", patterns: ["reportAskPanelReceipt", "describeAskReceipt", "ask received"] },
+  { feature: "任务461-P16 AskCard 挂载打点", file: "desktop/frontend/src/components/AskCard.tsx", patterns: ["ask card mounted"] },
   // 任务439（zcode 任务总线内置化）：开关与内嵌宿主都是 fork 侧新面，
   // 上游没有对应物；逐文件登记，merge 丢锚点即 fail loudly。
   { feature: "任务439 实验开关 experimental_zcode_task_bus（铁律2默认关）", file: "internal/config/desktop_preferences.go", patterns: ["ExperimentalZcodeTaskBus", "experimental_zcode_task_bus"] },

@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useT } from "../lib/i18n";
+import { reportFrontendLog } from "../lib/frontendLog";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, X } from "lucide-react";
 import type { QuestionAnswer, WireAsk, WireAskQuestion } from "../lib/types";
 import {
@@ -91,6 +92,10 @@ function AskCardBody({ ask, onAnswer, onStop, draftKey }: AskCardProps & { draft
   const descriptionExpanded = selectedDescriptionId !== undefined && expandedDescriptionId === selectedDescriptionId;
 
   useEffect(() => {
+    // 任务461-P16: the mount is the last link of the ask trail — with the Go
+    // emit line and the reducer receipt line this pinpoints whether a
+    // "no popup" report died before the event, in the reducer, or at render.
+    reportFrontendLog("ask-panel", "ask card mounted", `ask=${ask.id}`);
     shelfRef.current?.focus();
   }, []);
 
