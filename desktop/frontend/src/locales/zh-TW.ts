@@ -12,6 +12,7 @@ export const zhTW: Record<DictKey, string> = {
   "toolRecovery.inspect": "檢查目前狀態",
   "toolRecovery.confirm": "我已核實操作生效",
   "toolRecovery.reject": "不重試",
+  "toolRecovery.dismiss": "忽略並不再提示",
   "toolRecovery.retry": "安全重試",
   "toolRecovery.resume": "繼續任務",
   "toolRecovery.resumePrompt": "繼續中斷的任務，保留已完成工作，並在進一步寫入前核實未知效果。",

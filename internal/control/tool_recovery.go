@@ -78,14 +78,32 @@ func (c *Controller) SettleRestartInterruptedEffects() int {
 
 // ResolveToolRecovery uses the same admission exclusion and session write
 // authority as model turns. No stale tab may resolve a replacement session.
+//
+// X3 guard split: the blanket ErrTurnRunning here used to swallow three very
+// different states behind one misleading message — a live turn (transient),
+// a session rotation (transient), and a closed controller (permanent for that
+// surface) — so a stuck review card reported "turn already running" even when
+// no turn existed. Each state now reports itself. The one deliberate gate
+// relaxation is the "dismiss" action: settling a leftover record is a
+// metadata-only mutation on the same setToolRecoveryRecord path the run loop
+// itself uses mid-turn, so it stays available while a turn runs (that is the
+// stuck-card escape hatch) and still refuses during rotation/teardown, where
+// the executor session may be swapped underneath the attempt id.
 func (c *Controller) ResolveToolRecovery(ctx context.Context, req ToolRecoveryRequest) (ToolRecoverySnapshot, error) {
 	if err := c.ensureWriteAuthorityReady(); err != nil {
 		return ToolRecoverySnapshot{}, err
 	}
 	c.mu.Lock()
-	if c.running || c.finishing || c.rotating || c.closed {
+	switch {
+	case c.closed:
 		c.mu.Unlock()
-		return ToolRecoverySnapshot{}, ErrTurnRunning
+		return ToolRecoverySnapshot{}, fmt.Errorf("tool recovery unavailable: session is closed — switch tabs or reopen the session")
+	case c.rotating:
+		c.mu.Unlock()
+		return ToolRecoverySnapshot{}, fmt.Errorf("session is switching — retry the review panel action in a moment")
+	case (c.running || c.finishing) && req.Action != "dismiss":
+		c.mu.Unlock()
+		return ToolRecoverySnapshot{}, fmt.Errorf("%w — stop the running turn or wait for it to finish, then resolve the interrupted tool", ErrTurnRunning)
 	}
 	c.rotating = true
 	c.mu.Unlock()
@@ -103,6 +121,8 @@ func (c *Controller) ResolveToolRecovery(ctx context.Context, req ToolRecoveryRe
 		_, err = c.executor.InspectToolRecovery(ctx, req.AttemptID)
 	case "confirm", "reject":
 		err = c.executor.ResolveToolRecovery(req.AttemptID, req.InspectionID, req.Action)
+	case "dismiss":
+		err = c.executor.ResolveToolRecoveryDismissed(req.AttemptID)
 	case "retry":
 		if !view.RetryEnabled {
 			return view, fmt.Errorf("tool recovery retry is disabled")

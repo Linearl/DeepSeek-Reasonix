@@ -81,6 +81,60 @@ func TestToolRecoveryConfirmationRollsBackOnStorageFailure(t *testing.T) {
 	}
 }
 
+// X3 显式清除: dismiss settles a pending record in one step, with no
+// inspection, and labels the resolution as user-sourced.
+func TestToolRecoveryDismissSettlesWithoutInspection(t *testing.T) {
+	a, _, _ := recoveryActionFixture(t)
+	if err := a.ResolveToolRecoveryDismissed("original"); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.PendingToolRecovery()) != 0 {
+		t.Fatal("dismiss left the record pending")
+	}
+	var settled *provider.ToolCallRecord
+	for _, m := range a.Session().Snapshot() {
+		for _, c := range m.ToolCalls {
+			if c.Recovery != nil && c.Recovery.Identity.AttemptID == "original" {
+				settled = c.Recovery
+			}
+		}
+	}
+	if settled == nil {
+		t.Fatal("settled record vanished from the transcript")
+	}
+	if settled.Resolution != "dismissed_by_user" || settled.ResolutionSource != "user" {
+		t.Fatalf("resolution=%q source=%q, want dismissed_by_user/user", settled.Resolution, settled.ResolutionSource)
+	}
+	if settled.State != provider.ToolRunNotStarted {
+		t.Fatalf("state=%v, want not_started", settled.State)
+	}
+	// A dismissed record stays dismissed: a second dismiss is a stale action.
+	if err := a.ResolveToolRecoveryDismissed("original"); err == nil {
+		t.Fatal("duplicate dismiss accepted")
+	}
+}
+
+// X3: a dismissal that fails to persist must not lift the barrier — same
+// rollback rule as confirm (an unpersisted dismissal must not remove a fence).
+func TestToolRecoveryDismissRollsBackOnStorageFailure(t *testing.T) {
+	a, _, sink := recoveryActionFixture(t)
+	sink.fail = true
+	if err := a.ResolveToolRecoveryDismissed("original"); err == nil {
+		t.Fatal("storage failure ignored")
+	}
+	if len(a.PendingToolRecovery()) != 1 {
+		t.Fatal("unpersisted dismissal removed the effect barrier")
+	}
+}
+
+// X3: dismissing an unknown/stale attempt id is an error, never a silent no-op.
+func TestToolRecoveryDismissStaleAttemptIsError(t *testing.T) {
+	a, _, _ := recoveryActionFixture(t)
+	if err := a.ResolveToolRecoveryDismissed("no-such-attempt"); err == nil {
+		t.Fatal("stale attempt dismissed without error")
+	}
+}
+
 func TestToolRecoveryRetryRequiresFencedAbsenceAndKeepsIdempotency(t *testing.T) {
 	a, probe, _ := recoveryActionFixture(t)
 	r, err := a.InspectToolRecovery(context.Background(), "original")

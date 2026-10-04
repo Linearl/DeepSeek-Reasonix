@@ -11,6 +11,7 @@ export const en = {
   "toolRecovery.inspect": "Inspect current state",
   "toolRecovery.confirm": "I verified the effect happened",
   "toolRecovery.reject": "Do not retry",
+  "toolRecovery.dismiss": "Ignore, stop asking",
   "toolRecovery.retry": "Retry safely",
   "toolRecovery.resume": "Continue task",
   "toolRecovery.resumePrompt": "Continue the interrupted task, preserving completed work and checking uncertain effects before any further writes.",

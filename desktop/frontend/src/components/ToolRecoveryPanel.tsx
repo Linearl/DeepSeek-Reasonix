@@ -78,6 +78,11 @@ export function ToolRecoveryPanel({ tabId, sessionKey, running, refreshKey, onRe
           <button type="button" className="btn btn--small" disabled={busy || running} onClick={() => void act(call, "inspect")}>{t("toolRecovery.inspect")}</button>
           <button type="button" className="btn btn--small" disabled={busy || running || !call.inspection_id} onClick={() => void act(call, "confirm")}>{t("toolRecovery.confirm")}</button>
           <button type="button" className="btn btn--small" disabled={busy || running || !call.inspection_id} onClick={() => void act(call, "reject")}>{t("toolRecovery.reject")}</button>
+          {/* X3 显式清除: one-step escape hatch that needs no inspection. This is
+              the only action the backend keeps accepting while a turn is running,
+              so it must not inherit the running disable here either — a card that
+              shows while the UI believes the tab idle must stay clearable. */}
+          <button type="button" className="btn btn--small" disabled={busy} onClick={() => void act(call, "dismiss")}>{t("toolRecovery.dismiss")}</button>
           {snapshot?.retryEnabled && <button type="button" className="btn btn--small" disabled={busy || running || !call.inspection_id || (!call.read_only && call.inspection_state !== "absent_fenced")} onClick={() => void act(call, "retry")}>{t("toolRecovery.retry")}</button>}
         </div>
       </div>)}

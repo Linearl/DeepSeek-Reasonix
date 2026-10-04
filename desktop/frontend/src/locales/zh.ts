@@ -12,6 +12,7 @@ export const zh: Record<DictKey, string> = {
   "toolRecovery.inspect": "检查当前状态",
   "toolRecovery.confirm": "我已核实操作生效",
   "toolRecovery.reject": "不重试",
+  "toolRecovery.dismiss": "忽略并不再提示",
   "toolRecovery.retry": "安全重试",
   "toolRecovery.resume": "继续任务",
   "toolRecovery.resumePrompt": "继续中断的任务，保留已完成工作，并在进一步写入前核实未知效果。",
