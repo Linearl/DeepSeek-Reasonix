@@ -60,6 +60,9 @@ export interface SettingsView {
   // Task 342: WebView2 CDP debug endpoint (loopback-only random port; ships
   // off; the WebView2 browser args are read at startup — restart to apply).
   experimentalCDPDebugPort?: boolean;
+  // Task 439: built-in zcode task bus (ships off; the listener arms at
+  // desktop boot — restart to apply).
+  experimentalZcodeTaskBus?: boolean;
   // Task 385a: lab 回答风格 gate (ships off) + the persisted [agent]
   // output_style the selector reads back ("" = default, no style).
   experimentalOutputStyleUI?: boolean;
@@ -234,4 +237,21 @@ export interface OutputStyleListView {
   options: OutputStyleOption[];
   issues: OutputStyleIssue[];
   dirs: string[]; // search path the list was built from
+}
+
+// Task 439: live state of the built-in zcode task bus, reported by the
+// desktop App binding for the lab card (serve 状态灯 + roles 可视化).
+export interface ZcodeTaskBusStatusView {
+  /** Config intent: the lab switch (a flip needs a restart to arm the listener). */
+  enabled: boolean;
+  /** Whether this process actually hosts the bus listener right now. */
+  running: boolean;
+  /** Actual bound loopback address (host:port), empty when not running. */
+  addr: string;
+  /** The MCP endpoint zcode connects to, e.g. http://127.0.0.1:8787/mcp. */
+  endpoint: string;
+  /** Enrolled role names (sorted), from the [serve.bus_mcp] table. */
+  roles: string[];
+  /** Bind/construct failure surfaced to the card; empty when healthy. */
+  err: string;
 }

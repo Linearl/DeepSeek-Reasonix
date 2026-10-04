@@ -328,6 +328,13 @@ func (a *App) SetExperimentalCDPDebugPort(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCDPDebugPort(enabled) })
 }
 
+// SetExperimentalZcodeTaskBus toggles the built-in zcode task bus (task 439).
+// Ships off; the listener arms at desktop boot, so a flip needs a restart —
+// the lab card communicates that.
+func (a *App) SetExperimentalZcodeTaskBus(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalZcodeTaskBus(enabled) })
+}
+
 // SetExperimentalCompactionParallel toggles parallel chunked compaction (265).
 func (a *App) SetExperimentalCompactionParallel(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCompactionParallel(enabled) })

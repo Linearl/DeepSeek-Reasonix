@@ -398,6 +398,10 @@ type App struct {
 	gatewaySrv             *http.Server
 	gatewayAddr            string
 	gatewayBind            string
+	// Task 439: the embedded zcode task bus (lab switch
+	// experimental_zcode_task_bus, 铁律 2 default off). Nil = not running,
+	// the only state a default install ever reaches.
+	zcodeTaskBus           *zcodeTaskBusHost
 	remoteWindowLifecycles remoteWindowLifecycleRegistry
 	remoteWindowOpener     func(remoteWindowLaunch) error // test-only injection
 	// Remote project tabs are in-app surfaces bound to a remote workspace.
@@ -613,6 +617,13 @@ func (a *App) startup(ctx context.Context) {
 	// start it on launch if the user previously enabled the toggle.
 	if servepoolEnabled() {
 		a.startServePool(ctx)
+	}
+	// Task 439: built-in zcode task bus, opt-in via the lab switch (铁律 2
+	// default off). With the flag off startZcodeTaskBus returns before
+	// touching the network; when on, the desktop hosts the bus MCP endpoint
+	// itself (127.0.0.1:8787) — no external `reasonix serve`/vbs needed.
+	if cfg, err := config.Load(); err == nil {
+		a.startZcodeTaskBus(cfg)
 	}
 	a.startTray()
 	a.enableDeferredRebuildRetry()

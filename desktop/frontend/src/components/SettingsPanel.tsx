@@ -1848,7 +1848,9 @@ type ExperimentFeatureId =
   // S1: resident base subprocess (design 2026-09-30 §7 R4).
   | "baseProcess"
   // Task 377: crash-report lifecycle noise triage.
-  | "lifecycleNoiseGate";
+  | "lifecycleNoiseGate"
+  // Task 439: built-in zcode task bus (embedded loopback bus MCP host).
+  | "zcodeTaskBus";
 
 function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Set when a boot-time setting is saved: apply() reloads the view, so the fact that a
@@ -1909,6 +1911,24 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
       alive = false;
     };
   }, [selected, s.outputStyle, s.experimentalOutputStyleUI]);
+  // Task 439: the built-in bus status loads on demand — only while its lab
+  // entry is open, and again after every apply() (which reloads s). The
+  // card renders the serve 状态灯 and the enrolled roles from it.
+  const [zcodeBusStatus, setZcodeBusStatus] = useState<Awaited<ReturnType<typeof app.ZcodeTaskBusStatus>> | null>(null);
+  useEffect(() => {
+    if (selected !== "zcodeTaskBus") return undefined;
+    let alive = true;
+    void app.ZcodeTaskBusStatus()
+      .then((st) => {
+        if (alive) setZcodeBusStatus(st);
+      })
+      .catch(() => {
+        if (alive) setZcodeBusStatus(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [selected, s.experimentalZcodeTaskBus]);
   // Task 359: lab navigation — collapsible groups, intro banner (collapsed by
   // default), and the "disabled sink" display-order switch. The order switch
   // is a pure display preference (localStorage, no experimental_* chain — it
@@ -2059,6 +2079,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     // Task 377: noise triage (misc beside the other infrastructure entries).
     // Render table: a missing entry would silently drop the save, 81/123 lesson.
     { id: "lifecycleNoiseGate", group: "misc", label: t("settings.lifecycleNoiseGate"), on: Boolean(s.experimentalLifecycleNoiseGate) },
+    // Task 439: built-in zcode task bus (misc beside the infrastructure
+    // entries). Render table: a missing entry would silently drop the save,
+    // 81/123 lesson.
+    { id: "zcodeTaskBus", group: "misc", label: t("settings.zcodeTaskBus"), on: Boolean(s.experimentalZcodeTaskBus) },
   ];
 
   return (
@@ -3844,6 +3868,56 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   </button>
                 ))}
               </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "zcodeTaskBus" && (
+            // Task 439: built-in zcode task bus. The listener arms at desktop
+            // boot, so a flip needs a restart — same banner pattern as the
+            // CDP endpoint. When on, the card doubles as the serve 状态灯:
+            // endpoint, live state, and the enrolled roles (`reasonix bus
+            // enroll` writes them; the mailbox itself stays the existing
+            // 跨会话信箱 surface).
+            <SettingsField
+              label={t("settings.zcodeTaskBus")}
+              hint={
+                zcodeBusStatus && zcodeBusStatus.err
+                  ? `${t("settings.zcodeTaskBus.notRunning")} ${zcodeBusStatus.err}`
+                  : zcodeBusStatus && zcodeBusStatus.running
+                    ? `${t("settings.zcodeTaskBus.running")} ${zcodeBusStatus.endpoint}`
+                    : Boolean(s.experimentalZcodeTaskBus) && zcodeBusStatus && !zcodeBusStatus.running
+                      ? t("settings.zcodeTaskBus.awaitRestart")
+                      : t("settings.zcodeTaskBusHint")
+              }
+              icon={<Server size={18} />}
+            >
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalZcodeTaskBus) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalZcodeTaskBus(on);
+                      setRestartNeeded(true);
+                    })}
+                  >
+                    {t(on ? "settings.zcodeTaskBus.on" : "settings.zcodeTaskBus.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+              {Boolean(s.experimentalZcodeTaskBus) && zcodeBusStatus && zcodeBusStatus.roles.length > 0 && (
+                // roles 可视化, same shape as the sessionCollab roster rows:
+                // each enrolled role and the bus contact it maps to.
+                <SettingsField label={t("settings.zcodeTaskBus.roles")} hint={t("settings.zcodeTaskBusRolesHint")} icon={<Server size={18} />} stacked>
+                  <ul className="set-rules">
+                    {zcodeBusStatus.roles.map((role) => (
+                      <li key={role}>
+                        <code>zcode-{role}</code>
+                      </li>
+                    ))}
+                  </ul>
+                </SettingsField>
+              )}
             </SettingsField>
           )}
           {selected === "outputStyle" && (

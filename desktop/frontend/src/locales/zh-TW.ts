@@ -3891,6 +3891,16 @@ export const zhTW: Record<DictKey, string> = {
 "settings.cdpDebugPortHint": "重啟後在內建 WebView2 瀏覽器上開啟 Chrome DevTools Protocol 除錯連接埠，供腳本化介面驗證（connectOverCDP）驅動真實介面。僅繫結 127.0.0.1 回環位址並使用隨機連接埠，其他機器無法存取。連接埠寫入 logs/desktop/cdp-endpoint.txt。預設關閉：瀏覽器參數與網路行為與沒有此功能的版本完全一致。",
 "settings.cdpDebugPort.on": "開",
 "settings.cdpDebugPort.off": "關",
+// 任務 439：zcode 任務匯流排內建化（實驗室，基礎設施組）。
+"settings.zcodeTaskBus": "zcode 任務匯流排（實驗）",
+"settings.zcodeTaskBusHint": "開啟後桌面啟動時在本程序內託管任務匯流排 MCP 端點（127.0.0.1:8787/mcp，取代外部 reasonix serve+vbs 常駐）。角色表沿用 [serve.bus_mcp]（reasonix bus enroll 寫入），zcode 側設定不變。開關在啟動時讀取一次，改動需重啟生效。預設關閉：不監聽任何連接埠，網路行為與沒有此功能的版本完全一致。",
+"settings.zcodeTaskBus.on": "開",
+"settings.zcodeTaskBus.off": "關",
+"settings.zcodeTaskBus.running": "匯流排執行中：",
+"settings.zcodeTaskBus.notRunning": "匯流排未執行：",
+"settings.zcodeTaskBus.awaitRestart": "已開啟，重啟桌面後生效。",
+"settings.zcodeTaskBus.roles": "已註冊角色",
+"settings.zcodeTaskBusRolesHint": "每個角色對應匯流排聯絡人 zcode-<角色>（token 配對見 reasonix bus enroll）。",
 // 任務 385a：回答風格選擇器（實驗室，提效組）。
 "settings.outputStyle": "回答風格（實驗）",
 "settings.outputStyleLabHint": "選擇折入 system prompt 的回答風格（Output Style）。開關僅控制本面板的選擇器顯示；切換後當前工作階段立即重建生效（正在執行的任務不會被打斷，本輪結束後自動套用）。僅影響主要工作階段，子工作階段不帶風格。預設關閉。",

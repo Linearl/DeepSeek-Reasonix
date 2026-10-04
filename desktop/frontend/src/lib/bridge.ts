@@ -5,7 +5,7 @@ import { mockProviderTemplate, mockPreset, mockBundlePreset, mockKimiAPIModels, 
 import type * as GeneratedApp from "../../wailsjs/go/main/App";
 import type { InvocationRequest } from "./invocationDisplay";
 import type { FollowupBindings } from "./pendingFollowup";
-import type { OutputStyleListView, QuickCommandEntry } from "./settingsViewTypes";
+import type { OutputStyleListView, QuickCommandEntry, ZcodeTaskBusStatusView } from "./settingsViewTypes";
 import { addBreadcrumb } from "./breadcrumbs";
 import { maybeShare } from "./queryCoalesce";
 import { makeMockSessionCatalogBindings } from "./sessionCatalogBridge";
@@ -958,6 +958,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 342: WebView2 CDP debug endpoint switch (loopback-only random port;
   // ships off; the browser args are read at startup — restart to apply).
   SetExperimentalCDPDebugPort(enabled: boolean): Promise<void>;
+  // Task 439: built-in zcode task bus (lab switch; listener arms at boot).
+  SetExperimentalZcodeTaskBus(enabled: boolean): Promise<void>;
+  ZcodeTaskBusStatus(): Promise<ZcodeTaskBusStatusView>;
   // Task 385a: lab 回答风格 — the UI gate, the persisted selection (validates
   // against outputstyle.List; unknown names reject), and the selector payload
   // (loadable styles + files that failed to load, surfaced never silent).
@@ -5387,6 +5390,10 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSubagentTps() {},
     async SetExperimentalCompletionSummary() {},
     async SetExperimentalCDPDebugPort() {},
+    async SetExperimentalZcodeTaskBus() {},
+    async ZcodeTaskBusStatus() {
+      return { enabled: false, running: false, addr: "", endpoint: "", roles: [] as string[], err: "" };
+    },
     async SetExperimentalOutputStyleUI() {},
     async SetOutputStyle() { return ""; },
     // Honest built-in-only payload: the dev shell discovers nothing on disk.

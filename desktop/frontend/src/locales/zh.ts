@@ -2663,6 +2663,16 @@ export const zh: Record<DictKey, string> = {
 "settings.cdpDebugPortHint": "重启后在内置 WebView2 浏览器上打开 Chrome DevTools Protocol 调试端口，供脚本化界面验证（connectOverCDP）驱动真实界面。仅绑定 127.0.0.1 回环地址并使用随机端口，其他机器无法访问。端口写入 logs/desktop/cdp-endpoint.txt。默认关闭：浏览器参数与网络行为与没有此功能的版本完全一致。",
 "settings.cdpDebugPort.on": "开",
 "settings.cdpDebugPort.off": "关",
+// 任务 439：zcode 任务总线内置化（实验室，基础设施组）。
+"settings.zcodeTaskBus": "zcode 任务总线（实验）",
+"settings.zcodeTaskBusHint": "开启后桌面启动时在本进程内托管任务总线 MCP 端点（127.0.0.1:8787/mcp，替代外部 reasonix serve+vbs 常驻）。角色表沿用 [serve.bus_mcp]（reasonix bus enroll 写入），zcode 侧配置不变。总线的收发与任务卡照常工作，跨会话信箱面板即信箱入口。开关在启动时读取一次，改动需重启生效。默认关闭：不监听任何端口，网络行为与没有此功能的版本完全一致。",
+"settings.zcodeTaskBus.on": "开",
+"settings.zcodeTaskBus.off": "关",
+"settings.zcodeTaskBus.running": "总线运行中：",
+"settings.zcodeTaskBus.notRunning": "总线未运行：",
+"settings.zcodeTaskBus.awaitRestart": "已开启，重启桌面后生效。",
+"settings.zcodeTaskBus.roles": "已注册角色",
+"settings.zcodeTaskBusRolesHint": "每个角色对应总线联系人 zcode-<角色>（token 配对见 reasonix bus enroll）。",
 // 任务 385a：回答风格选择器（实验室，提效组）。
 "settings.outputStyle": "回答风格（实验）",
 "settings.outputStyleLabHint": "选择折入 system prompt 的回答风格（Output Style）。开关仅控制本面板的选择器显示；切换后当前会话立即重建生效（正在执行的任务不会被打断，本轮结束后自动应用）。仅影响主会话，子会话不带风格。默认关闭。",

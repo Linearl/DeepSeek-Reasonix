@@ -256,6 +256,18 @@ type DesktopConfig struct {
 	// keeps reading [agent] output_style, so a hand-written toml entry still
 	// applies without this switch.
 	ExperimentalOutputStyleUI bool `toml:"experimental_output_style_ui"`
+	// ExperimentalZcodeTaskBus is the task-439 lab switch for the built-in
+	// zcode task bus. It ships OFF (铁律 2): with the zero value the desktop
+	// starts no listener at all and behaves byte-for-byte like a build
+	// without the feature — the pre-439 workflow (an externally launched
+	// `reasonix serve` kept alive by a startup-folder vbs) stays the only way
+	// the bus runs. When ON, the desktop hosts the bus MCP endpoint itself
+	// (127.0.0.1:8787, an embedded goroutine instead of the external
+	// process), mounting the same routes as [serve.bus_mcp] and reading the
+	// same role table, so `reasonix bus enroll` output keeps working
+	// unchanged. The listener is armed at boot: a flip applies on the next
+	// restart, and the lab card says so.
+	ExperimentalZcodeTaskBus bool `toml:"experimental_zcode_task_bus"`
 }
 
 // DesktopQuestionSearchEnabled reports whether the topic-bar question-search
