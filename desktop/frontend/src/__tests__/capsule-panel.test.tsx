@@ -17,7 +17,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { LocaleProvider } from "../lib/i18n";
-import type { HistoryMessage, JobView, SubagentArtifactView } from "../lib/types";
+import type { BackgroundRuntimeView, HistoryMessage, JobView, SubagentArtifactView } from "../lib/types";
 
 let passed = 0;
 let failed = 0;
@@ -84,7 +84,7 @@ const onReadSubagent = (sessionPath: string, ref: string) => {
   return readResult as Promise<HistoryMessage[]>;
 };
 
-const { formatCapsuleElapsed, groupCapsuleJobs, CapsuleIndicator } = await import("../components/CapsulePanel");
+const { formatCapsuleElapsed, groupCapsuleJobs, mergeCapsuleWork, splitCapsuleEntries, CapsuleIndicator } = await import("../components/CapsulePanel");
 
 // --- helpers ---
 
@@ -95,6 +95,18 @@ function job(overrides: Partial<JobView> = {}): JobView {
     label: "后台拉起 serve (8787)",
     status: "running",
     startedAt: Date.now() - 60_000,
+    ...overrides,
+  };
+}
+
+function runtime(overrides: Partial<BackgroundRuntimeView> = {}): BackgroundRuntimeView {
+  return {
+    tabId: "tab-detached-1",
+    title: "批十二C UI批量三件",
+    detached: true,
+    running: true,
+    pendingPrompt: false,
+    jobs: [],
     ...overrides,
   };
 }
@@ -121,7 +133,13 @@ async function flush(ms = 10) {
   await new Promise((resolve2) => setTimeout(resolve2, ms));
 }
 
-async function renderIndicator(props: { jobs?: JobView[]; onCancelJob?: (jobID: string) => Promise<boolean>; sessionPath?: string }) {
+async function renderIndicator(props: {
+  jobs?: JobView[];
+  runtimes?: BackgroundRuntimeView[];
+  onCancelJob?: (jobID: string) => Promise<boolean>;
+  onCancelRuntimeJob?: (tabId: string, jobID: string) => Promise<boolean>;
+  sessionPath?: string;
+}) {
   activeHost = document.createElement("div");
   document.body.appendChild(activeHost);
   activeRoot = createRoot(activeHost);
@@ -130,7 +148,9 @@ async function renderIndicator(props: { jobs?: JobView[]; onCancelJob?: (jobID: 
       <LocaleProvider>
         <CapsuleIndicator
           jobs={props.jobs ?? []}
+          runtimes={props.runtimes ?? []}
           onCancelJob={props.onCancelJob}
+          onCancelRuntimeJob={props.onCancelRuntimeJob}
           sessionPath={props.sessionPath}
           onListSubagents={onListSubagents}
           onReadSubagent={onReadSubagent}
@@ -153,12 +173,17 @@ async function cleanup() {
 // rerenderIndicator pushes a new jobs snapshot into the SAME mounted root —
 // the way App feeds the panel on controller notice/turn_done events. Used by
 // the 447c2 event-driven refresh tests.
-async function rerenderIndicator(props: { jobs?: JobView[]; sessionPath?: string }) {
+async function rerenderIndicator(props: {
+  jobs?: JobView[];
+  runtimes?: BackgroundRuntimeView[];
+  sessionPath?: string;
+}) {
   await act(async () => {
     activeRoot?.render(
       <LocaleProvider>
         <CapsuleIndicator
           jobs={props.jobs ?? []}
+          runtimes={props.runtimes ?? []}
           sessionPath={props.sessionPath}
           onListSubagents={onListSubagents}
           onReadSubagent={onReadSubagent}
@@ -209,9 +234,34 @@ section("groupCapsuleJobs");
   eq(groupCapsuleJobs([]).agents.length + groupCapsuleJobs([]).commands.length, 0, "空输入两组皆空");
 }
 
+// --- pure: mergeCapsuleWork / splitCapsuleEntries（任务 440 跨 tab 合并） ---
+
+section("mergeCapsuleWork：跨 tab 合并去重 + 当前会话优先");
+{
+  const activeJobs = [
+    job({ id: "bash-active", kind: "bash", label: "当前会话 serve" }),
+    job({ id: "task-shared", kind: "task", label: "同源重复" }),
+  ];
+  const runtimes = [
+    runtime({ tabId: "tab-a", title: "批十二C UI批量三件", jobs: [job({ id: "task-shared", kind: "task", label: "同源重复" }), job({ id: "task-a", kind: "task", label: "跨 tab 子代理" })] }),
+    runtime({ tabId: "tab-b", title: "", jobs: [job({ id: "bash-b", kind: "bash", label: "分离会话命令" })] }),
+  ];
+  const merged = mergeCapsuleWork(activeJobs, runtimes, "未知任务");
+  eq(merged.length, 4, "同 id 去重后共 4 条（2 当前 + 2 跨 tab）");
+  ok(merged[0].tabId === "" && merged[0].job.id === "bash-active", "当前会话条目排最前（tabId 空标记）");
+  ok(merged.some((entry) => entry.tabId === "" && entry.job.id === "task-shared"), "同源重复 job 以当前会话条目为准（App 已过滤 active tab 的 runtime，此处为防御性去重）");
+  eq(merged.filter((entry) => entry.job.id === "task-shared").length, 1, "重复 id 只出现一次");
+  const unlabeled = merged.find((entry) => entry.tabId === "tab-b");
+  eq(unlabeled?.origin, "未知任务", "无标题 runtime 回退到未知任务文案");
+  const split = splitCapsuleEntries(merged);
+  eq(split.commands.length, 2, "bash 条目归命令节");
+  eq(split.agents.length, 2, "task 条目归智能体节");
+  eq(mergeCapsuleWork([], [], "x").length, 0, "空输入合并为空");
+}
+
 // --- component ---
 
-section("空态：打开即自动收起（无运行且目录为空）");
+section("空态：用户点开空面板保持打开并显示空态（任务 440 ③）");
 {
   let resolveList: (views: SubagentArtifactView[]) => void = () => {};
   listResult = new Promise((res) => { resolveList = res; });
@@ -224,12 +274,126 @@ section("空态：打开即自动收起（无运行且目录为空）");
   ok(document.querySelector(".capsule-panel") !== null, "打开后渲染面板");
   await act(async () => {
     resolveList([]);
-    await flush(200); // auto-close fires; popover enters its 140ms closing phase
+    await flush(300);
+  });
+  const panel = document.querySelector(".capsule-panel");
+  ok(panel !== null, "用户明确点开的空面板保持打开（不自动收起）");
+  ok(document.querySelector("[data-capsule-empty]") !== null, "面板显示空态文案");
+  await clickTrigger(220);
+  await act(async () => {
+    await flush(200);
+  });
+  ok(document.querySelector(".capsule-panel") === null, "用户再次点击可关闭空面板");
+  await cleanup();
+}
+
+section("排空自动收起：打开时有内容、全部结束且目录为空才自动关（保留 447 防噪音）");
+{
+  listCalls.length = 0;
+  const jobsStart = [job({ id: "task-drain", kind: "task", label: "即将结束" })];
+  listResult = Promise.resolve([]);
+  await renderIndicator({ jobs: jobsStart, sessionPath: "s.jsonl" });
+  await clickTrigger(30);
+  ok(document.querySelector(".capsule-panel") !== null, "面板已打开且有运行条目");
+  await rerenderIndicator({ jobs: [], runtimes: [], sessionPath: "s.jsonl" });
+  await act(async () => {
+    await flush(300); // drain auto-close fires; popover enters its 140ms closing phase
   });
   await act(async () => {
-    await flush(200); // closing phase elapses; the portal unmounts
+    await flush(200);
   });
-  ok(document.querySelector(".capsule-panel") === null, "运行与目录皆空时面板自动收起");
+  ok(document.querySelector(".capsule-panel") === null, "内容排空且目录为空时面板自动收起");
+  await cleanup();
+}
+
+section("全部运行面：跨 tab/分离会话条目入列 + 徽标计数 + 来源标签");
+{
+  listResult = Promise.resolve([]);
+  const activeJobs = [job({ id: "bash-active", kind: "bash", label: "当前会话 serve" })];
+  const runtimes = [
+    runtime({ tabId: "tab-a", title: "批十二C UI批量三件", jobs: [job({ id: "task-a", kind: "task", label: "跨 tab 子代理", startedAt: Date.now() - 95 * 60_000 })] }),
+    runtime({ tabId: "tab-b", title: "", jobs: [job({ id: "bash-b", kind: "bash", label: "分离会话命令" })] }),
+  ];
+  await renderIndicator({ jobs: activeJobs, runtimes, sessionPath: "s.jsonl" });
+  const trigger = triggerButton();
+  ok(trigger.classList.contains("capsule__trigger--active"), "任一来源有任务时入口高亮");
+  eq(trigger.querySelector(".capsule__badge")?.textContent, "3", "徽标计数含跨 tab 条目（1 当前 + 2 跨 tab）");
+  await clickTrigger(30);
+  eq(document.querySelectorAll(".capsule-panel__row").length, 3, "面板列出全部来源的运行条目");
+  const crossRow = document.querySelector('[data-capsule-job-id="task-a"]');
+  ok(crossRow !== null, "跨 tab 条目渲染");
+  eq(crossRow?.getAttribute("data-capsule-job-tab"), "tab-a", "跨 tab 条目带来源 tab 标记");
+  ok((crossRow?.querySelector(".capsule-panel__origin")?.textContent ?? "").includes("批十二C UI批量三件"), "跨 tab 条目显示来源标题");
+  const currentRow = document.querySelector('[data-capsule-job-id="bash-active"]');
+  eq(currentRow?.querySelector(".capsule-panel__origin"), null, "当前会话条目无来源标签");
+  const unknownRow = document.querySelector('[data-capsule-job-id="bash-b"]');
+  ok((unknownRow?.querySelector(".capsule-panel__origin")?.textContent ?? "").length > 0, "无标题来源回退为未知任务文案");
+  await cleanup();
+}
+
+section("跨 tab 停止路由：按来源走 onCancelRuntimeJob(tabId, jobId)");
+{
+  const cancelledActive: string[] = [];
+  const cancelledRuntime: Array<[string, string]> = [];
+  let releaseRuntime: (() => void) | null = null;
+  const runtimes = [
+    runtime({ tabId: "tab-a", title: "批十二C UI批量三件", jobs: [job({ id: "task-a", kind: "task", label: "跨 tab 子代理" })] }),
+  ];
+  listResult = Promise.resolve([]);
+  await renderIndicator({
+    jobs: [job({ id: "bash-active", kind: "bash", label: "当前会话 serve" })],
+    runtimes,
+    onCancelJob: (id) => new Promise<boolean>((resolve) => { cancelledActive.push(id); resolve(true); }),
+    onCancelRuntimeJob: (tabId, id) => new Promise<boolean>((resolve) => { cancelledRuntime.push([tabId, id]); releaseRuntime = () => resolve(true); }),
+    sessionPath: "s.jsonl",
+  });
+  await clickTrigger();
+  const crossStop = document.querySelector<HTMLButtonElement>('[data-capsule-job-id="task-a"] .capsule-panel__stop');
+  const activeStop = document.querySelector<HTMLButtonElement>('[data-capsule-job-id="bash-active"] .capsule-panel__stop');
+  await act(async () => {
+    crossStop?.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+    await flush();
+  });
+  eq(cancelledRuntime.length, 1, "跨 tab 停止走 per-tab 链");
+  eq(cancelledRuntime[0]?.[0], "tab-a", "per-tab 停止携带来源 tabId");
+  eq(cancelledRuntime[0]?.[1], "task-a", "per-tab 停止携带 job id");
+  eq(crossStop?.disabled, true, "停止中按钮禁用防重复");
+  eq(cancelledActive.length, 0, "跨 tab 停止不误触 active 链");
+  await act(async () => {
+    releaseRuntime?.();
+    await flush();
+  });
+  await act(async () => {
+    activeStop?.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+    await flush();
+  });
+  eq(cancelledActive.length, 1, "当前会话条目仍走 onCancelJob 链");
+  eq(cancelledActive[0], "bash-active", "active 停止携带本tab job id");
+  await cleanup();
+}
+
+section("未接 per-tab 停止链时：跨 tab 条目不渲染说谎的停止按钮");
+{
+  listResult = Promise.resolve([]);
+  await renderIndicator({
+    jobs: [job({ id: "bash-active", kind: "bash", label: "当前会话 serve" })],
+    runtimes: [runtime({ tabId: "tab-a", title: "别的会话", jobs: [job({ id: "task-a", kind: "task" })] })],
+    onCancelJob: () => Promise.resolve(true),
+    sessionPath: "s.jsonl",
+  });
+  await clickTrigger();
+  eq(document.querySelector('[data-capsule-job-id="task-a"] .capsule-panel__stop'), null, "无 per-tab 链的跨 tab 行无停止按钮（不渲染无效按钮）");
+  ok(document.querySelector('[data-capsule-job-id="bash-active"] .capsule-panel__stop') !== null, "当前会话行停止按钮不受影响");
+  await cleanup();
+}
+
+section("运行区空态行：目录有条目但无运行任务时明确显示空态（任务 440 ③）");
+{
+  listResult = Promise.resolve([ended({ ref: "sa_only", name: "已结束件" })]);
+  await renderIndicator({ jobs: [], sessionPath: "s.jsonl" });
+  await clickTrigger(30);
+  ok(document.querySelector("[data-capsule-running-empty]") !== null, "无运行任务时运行区显示空态行");
+  ok(document.querySelector('[data-capsule-group="ended"]') !== null, "已结束目录同时可见");
   await cleanup();
 }
 

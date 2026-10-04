@@ -24,7 +24,7 @@ import { Activity, ArrowLeft, Bot, Sparkles, Square, TerminalSquare } from "luci
 import { AnchoredPopover } from "./AnchoredPopover";
 import { useT, type DictKey } from "../lib/i18n";
 import { historyMessagesToItems } from "../lib/useController";
-import type { HistoryMessage, JobView, SubagentArtifactView } from "../lib/types";
+import type { BackgroundRuntimeView, HistoryMessage, JobView, SubagentArtifactView } from "../lib/types";
 
 // Transcript loads lazily: the capsule only mounts it once a transcript is
 // actually opened, and the static import would drag the full transcript
@@ -54,6 +54,59 @@ export function groupCapsuleJobs(jobs: readonly JobView[]): { agents: JobView[];
   for (const job of jobs) {
     if (job.kind === "bash") commands.push(job);
     else agents.push(job);
+  }
+  return { agents, commands };
+}
+
+// CapsuleWorkEntry is one flattened running row: the job plus the runtime it
+// came from. A tabId of "" marks the active controller's own snapshot (the
+// legacy source) — those rows stop through onCancelJob; rows with a tabId stop
+// through onCancelRuntimeJob (App.CancelJobForTab), which reaches detached and
+// background tabs the active controller knows nothing about (task 440).
+export interface CapsuleWorkEntry {
+  job: JobView;
+  tabId: string;
+  origin: string;
+  detached: boolean;
+}
+
+// mergeCapsuleWork flattens the active controller's jobs plus every
+// process-local runtime's jobs (visible and detached tabs, from
+// App.BackgroundRuntimes) into one deduplicated running list. The active
+// snapshot leads (current session first); runtime rows keep their snapshot
+// order. Job ids seen in any runtime group are skipped in the active
+// snapshot — the same controller surfaces in both sources, and a duplicate
+// row would double-count the badge and render twice.
+export function mergeCapsuleWork(
+  jobs: readonly JobView[],
+  runtimes: readonly BackgroundRuntimeView[],
+  unknownOriginLabel: string,
+): CapsuleWorkEntry[] {
+  const entries: CapsuleWorkEntry[] = [];
+  const seen = new Set<string>();
+  for (const job of jobs) {
+    if (seen.has(job.id)) continue;
+    seen.add(job.id);
+    entries.push({ job, tabId: "", origin: "", detached: false });
+  }
+  for (const runtime of runtimes) {
+    for (const job of runtime.jobs) {
+      if (seen.has(job.id)) continue;
+      seen.add(job.id);
+      entries.push({ job, tabId: runtime.tabId, origin: runtime.title || unknownOriginLabel, detached: runtime.detached });
+    }
+  }
+  return entries;
+}
+
+// splitCapsuleEntries groups flattened running rows into the two sections,
+// same bash/agent rule as groupCapsuleJobs.
+export function splitCapsuleEntries(entries: readonly CapsuleWorkEntry[]): { agents: CapsuleWorkEntry[]; commands: CapsuleWorkEntry[] } {
+  const agents: CapsuleWorkEntry[] = [];
+  const commands: CapsuleWorkEntry[] = [];
+  for (const entry of entries) {
+    if (entry.job.kind === "bash") commands.push(entry);
+    else agents.push(entry);
   }
   return { agents, commands };
 }
@@ -94,15 +147,26 @@ const EMPTY_DETAIL: CapsuleDetailState = { loading: false, failed: false, messag
 
 export function CapsuleIndicator({
   jobs = [],
+  runtimes = [],
   onCancelJob,
+  onCancelRuntimeJob,
   sessionPath,
   onListSubagents,
   onReadSubagent,
 }: {
   jobs?: readonly JobView[];
+  // Task 440: every process-local runtime's running jobs (visible and
+  // detached tabs), from App.BackgroundRuntimes — the same source the
+  // status-bar jobs chip uses. The panel lists ALL running sub-agents and
+  // background commands, not just the active tab's.
+  runtimes?: readonly BackgroundRuntimeView[];
   // Existing stop chain (App.CancelJobForTab -> Controller.CancelJob ->
-  // jobs.KillForSession); shared with the status-bar jobs chip.
+  // jobs.KillForSession); shared with the status-bar jobs chip. Stops rows
+  // from the active snapshot (tabId "").
   onCancelJob?: (jobID: string) => Promise<boolean>;
+  // Per-tab stop chain (App.CancelJobForTab(tabId, jobId)) for rows that
+  // belong to another visible or detached runtime (task 440 stop wiring).
+  onCancelRuntimeJob?: (tabId: string, jobID: string) => Promise<boolean>;
   // Active tab's session path; owner filter for the ended sub-agents
   // directory. Empty (no bound session) simply yields an empty directory.
   sessionPath?: string;
@@ -120,8 +184,16 @@ export function CapsuleIndicator({
   const [detail, setDetail] = useState<CapsuleDetailState>(EMPTY_DETAIL);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const detailSeq = useRef(0);
-  const groups = useMemo(() => groupCapsuleJobs(jobs), [jobs]);
-  const runningCount = jobs.length;
+  // Task 440 empty state: a panel the user explicitly opened while idle stays
+  // open showing the empty state instead of snapping shut. The 447 anti-noise
+  // auto-close only applies to panels that HAD content and drained to empty.
+  const hadContentRef = useRef(false);
+  const runningEntries = useMemo(
+    () => mergeCapsuleWork(jobs, runtimes, t("runtime.unknownTask")),
+    [jobs, runtimes, t],
+  );
+  const groups = useMemo(() => splitCapsuleEntries(runningEntries), [runningEntries]);
+  const runningCount = runningEntries.length;
   const hasRunning = runningCount > 0;
   // Task 447c2 event-driven refresh: the controller pushes a fresh jobs
   // snapshot on notice/turn_done events, so the value-keyed running identity
@@ -131,7 +203,12 @@ export function CapsuleIndicator({
   // immediately while the panel stays open — previously it stayed invisible
   // until every job drained or the panel was reopened. Value keying (joined
   // ids, not array identity) keeps same-set re-renders from re-pulling.
-  const runningKey = useMemo(() => jobs.map((job) => job.id).join("\n"), [jobs]);
+  // Task 440: the identity spans every runtime's jobs, so a detached tab's
+  // job finishing also refreshes the directory while the panel is open.
+  const runningKey = useMemo(
+    () => runningEntries.map((entry) => `${entry.tabId}:${entry.job.id}`).join("\n"),
+    [runningEntries],
+  );
 
   // Load the ended directory every time the panel opens and whenever the
   // running set changes while open (a just-finished batch writes its sidecars
@@ -166,12 +243,15 @@ export function CapsuleIndicator({
     return () => window.clearInterval(timer);
   }, [open, hasRunning]);
 
-  // An empty panel nobody asked for is noise: auto-close once both the
-  // running sections and the ended directory are empty. Gated on
-  // endedLoaded so the async directory load can't race the closer.
+  // Track "this open session had content" for the drain auto-close: an
+  // explicitly opened idle panel keeps its empty state (task 440 ③); a panel
+  // whose running sections and directory drained closes itself (447 anti-noise).
+  useEffect(() => {
+    if (open && (hasRunning || ended.length > 0)) hadContentRef.current = true;
+  }, [open, hasRunning, ended.length]);
   useEffect(() => {
     if (!open || !endedLoaded) return;
-    if (!hasRunning && ended.length === 0) {
+    if (hadContentRef.current && !hasRunning && ended.length === 0) {
       setOpen(false);
       setSelected(null);
       setDetail(EMPTY_DETAIL);
@@ -180,19 +260,27 @@ export function CapsuleIndicator({
 
   const close = () => {
     setOpen(false);
+    hadContentRef.current = false;
     setSelected(null);
     setDetail(EMPTY_DETAIL);
   };
 
-  const stop = async (jobID: string) => {
-    if (!onCancelJob || stopping.has(jobID)) return;
-    setStopping((current) => new Set(current).add(jobID));
+  const stop = async (entry: CapsuleWorkEntry) => {
+    const key = `${entry.tabId}:${entry.job.id}`;
+    // Route by origin: active-snapshot rows go through the shared cancel
+    // chain; foreign-runtime rows must go through the per-tab chain —
+    // cancelling a foreign job id on the active controller would silently
+    // hit the wrong job manager and stop nothing.
+    const handler = entry.tabId ? onCancelRuntimeJob : onCancelJob;
+    if (!handler || stopping.has(key)) return;
+    setStopping((current) => new Set(current).add(key));
     try {
-      await onCancelJob(jobID);
+      if (entry.tabId && onCancelRuntimeJob) await onCancelRuntimeJob(entry.tabId, entry.job.id);
+      else if (onCancelJob) await onCancelJob(entry.job.id);
     } finally {
       setStopping((current) => {
         const next = new Set(current);
-        next.delete(jobID);
+        next.delete(key);
         return next;
       });
     }
@@ -213,31 +301,36 @@ export function CapsuleIndicator({
       });
   };
 
-  const renderRunningGroup = (title: string, rows: readonly JobView[], icon: "agent" | "terminal") => {
+  const renderRunningGroup = (title: string, rows: readonly CapsuleWorkEntry[], icon: "agent" | "terminal") => {
     if (rows.length === 0) return null;
     return (
       <div className="capsule-panel__group" data-capsule-group={icon}>
         <div className="capsule-panel__group-title">{title}</div>
-        {rows.map((job) => {
-          const pending = stopping.has(job.id);
+        {rows.map((entry) => {
+          const pending = stopping.has(`${entry.tabId}:${entry.job.id}`);
+          // A foreign-runtime row can only stop through the per-tab chain; if
+          // App didn't wire it, the button renders disabled rather than lying
+          // (cancelling a foreign id on the active controller stops nothing).
+          const canStop = entry.tabId ? Boolean(onCancelRuntimeJob) : Boolean(onCancelJob);
           return (
-            <div className="capsule-panel__row" key={job.id} data-capsule-job-id={job.id} data-capsule-job-kind={job.kind}>
+            <div className="capsule-panel__row" key={`${entry.tabId}:${entry.job.id}`} data-capsule-job-id={entry.job.id} data-capsule-job-kind={entry.job.kind} data-capsule-job-tab={entry.tabId}>
               <span className="capsule-panel__row-icon" aria-hidden="true">
                 {icon === "agent" ? <Bot size={14} /> : <TerminalSquare size={14} />}
               </span>
               <span className="capsule-panel__copy">
-                <strong title={job.label || job.kind}>{job.label || job.kind}</strong>
-                <small className="capsule-panel__elapsed" data-elapsed={formatCapsuleElapsed(job.startedAt, now)}>
-                  {formatCapsuleElapsed(job.startedAt, now)}
+                <strong title={entry.job.label || entry.job.kind}>{entry.job.label || entry.job.kind}</strong>
+                <small className="capsule-panel__elapsed" data-elapsed={formatCapsuleElapsed(entry.job.startedAt, now)}>
+                  {entry.origin && <span className="capsule-panel__origin">{entry.origin} · </span>}
+                  {formatCapsuleElapsed(entry.job.startedAt, now)}
                 </small>
               </span>
-              {onCancelJob && (
+              {canStop && (
                 <button
                   type="button"
                   className="capsule-panel__stop"
                   disabled={pending}
-                  aria-label={`${t("status.jobStop")} ${job.label || job.kind}`}
-                  onClick={() => void stop(job.id)}
+                  aria-label={`${t("status.jobStop")} ${entry.job.label || entry.job.kind}`}
+                  onClick={() => void stop(entry)}
                 >
                   <Square size={10} fill="currentColor" aria-hidden="true" />
                   {pending ? t("status.jobStopping") : t("status.jobStop")}
@@ -333,6 +426,14 @@ export function CapsuleIndicator({
               <header className="capsule-panel__header">{t("composer.capsuleTitle")}</header>
               {hasRunning || ended.length > 0 ? (
                 <div className="capsule-panel__list">
+                  {/* Task 440 ③: an open panel with nothing running states it
+                      explicitly instead of silently shrinking to the ended
+                      directory (or closing). */}
+                  {!hasRunning && (
+                    <div className="capsule-panel__running-empty" data-capsule-running-empty="true">
+                      {t("composer.capsuleNoRunning")}
+                    </div>
+                  )}
                   {renderRunningGroup(t("composer.capsuleAgents"), groups.agents, "agent")}
                   {renderRunningGroup(t("composer.capsuleCommands"), groups.commands, "terminal")}
                   {ended.length > 0 && (

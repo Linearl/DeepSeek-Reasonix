@@ -891,6 +891,8 @@ export const en = {
     // sub-agents directory + read-only sub-agent transcript view).
   "composer.capsuleTitle": "Tasks & sub-agents",
   "composer.capsuleEmpty": "No running tasks or ended sub-agents",
+  // Task 440: the running-sections empty line (ended directory may still list rows).
+  "composer.capsuleNoRunning": "No running tasks",
   "composer.capsuleAgents": "Agents",
   "composer.capsuleCommands": "Commands",
   "composer.capsuleEnded": "Ended sub-agents ({n})",

@@ -45,7 +45,7 @@ import {
 } from "../lib/invocationDisplay";
 import { formatTokens } from "../lib/format";
 import type { CancelOutcome } from "../lib/inboxCancel";
-import type { JobView } from "../lib/types";
+import type { JobView, BackgroundRuntimeView } from "../lib/types";
 import { CapsuleIndicator } from "./CapsulePanel";
 import type { ControllerLiveStore } from "../lib/useController";
 import { clearLayoutSize, loadOptionalLayoutSize, saveLayoutSize } from "../lib/layoutPreferences";
@@ -642,7 +642,9 @@ export function Composer({
   balance,
   pinnedFiles,
   capsuleJobs,
+  capsuleRuntimes,
   onCapsuleCancelJob,
+  onCapsuleCancelRuntimeJob,
   capsuleSessionPath,
   onCapsuleListSubagents,
   onCapsuleReadSubagent,
@@ -785,8 +787,13 @@ export function Composer({
   // Task 447 capsule: running background jobs snapshot feeding the capsule
   // floating panel, plus the existing stop chain and the active tab's
   // session path (owner filter for the ended sub-agents directory).
+  // Task 440: the panel lists ALL running work — capsuleRuntimes carries
+  // every process-local runtime's jobs (other tabs + detached), and
+  // onCapsuleCancelRuntimeJob stops a foreign-runtime row by tab id.
   capsuleJobs?: readonly JobView[];
+  capsuleRuntimes?: readonly BackgroundRuntimeView[];
   onCapsuleCancelJob?: (jobID: string) => Promise<boolean>;
+  onCapsuleCancelRuntimeJob?: (tabId: string, jobID: string) => Promise<boolean>;
   capsuleSessionPath?: string;
   // Stable wrappers over the read-only subagent Wails surface (task 447).
   onCapsuleListSubagents?: (sessionPath: string) => Promise<import("../lib/types").SubagentArtifactView[]>;
@@ -5354,10 +5361,13 @@ export function Composer({
           <div className="composer-meta__params">
             {!heroMode && (
               <div className="composer-meta__control composer-meta__control--capsule">
-                {/* 任务 447 胶囊：悬浮窗面板——运行中任务 + 已结束子代理目录 + 子代理历史查看。 */}
+                {/* 任务 447 胶囊：悬浮窗面板——运行中任务 + 已结束子代理目录 + 子代理历史查看。
+                    任务 440：面板列出全部运行中子代理/后台命令（跨 tab+分离会话）并按 tab 停止。 */}
                 <CapsuleIndicator
                   jobs={capsuleJobs}
+                  runtimes={capsuleRuntimes}
                   onCancelJob={onCapsuleCancelJob}
+                  onCancelRuntimeJob={onCapsuleCancelRuntimeJob}
                   sessionPath={capsuleSessionPath}
                   onListSubagents={onCapsuleListSubagents}
                   onReadSubagent={onCapsuleReadSubagent}

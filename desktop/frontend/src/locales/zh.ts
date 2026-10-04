@@ -891,6 +891,8 @@ export const zh: Record<DictKey, string> = {
   // 任务 447 胶囊：输入框旁悬浮窗（运行中任务 + 已结束子代理目录 + 子代理历史只读查看）。
   "composer.capsuleTitle": "任务与子代理",
   "composer.capsuleEmpty": "没有运行中的任务或已结束的子代理",
+  // 任务 440：运行区空态行（已结束目录可能仍有条目）。
+  "composer.capsuleNoRunning": "暂无运行中的任务",
   "composer.capsuleAgents": "智能体",
   "composer.capsuleCommands": "命令",
   "composer.capsuleEnded": "已结束子代理（{n}）",
