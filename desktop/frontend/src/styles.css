@@ -9538,6 +9538,15 @@ body > .mermaid-diagram--fullscreen {
   padding: 10px 5px 8px;
   color: var(--fg-faint);
 }
+/* 任务 440：运行区空态行（已结束目录仍在时，明确「暂无运行任务」而非静默收缩）。 */
+.capsule-panel__running-empty {
+  padding: 8px 5px 4px;
+  color: var(--fg-faint);
+}
+/* 任务 440：跨 tab/分离会话条目的来源标签（沿用状态栏 chip 的 runtime 标题口径）。 */
+.capsule-panel__origin {
+  color: var(--fg-faint);
+}
 .capsule-panel__group + .capsule-panel__group {
   margin-top: 6px;
   padding-top: 6px;

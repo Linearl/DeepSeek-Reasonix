@@ -788,6 +788,14 @@ const CHECKS = [
   // turn（≤1 工具周期被模型看到）。丢任一半边都会退化回「等 turn 结束才投递」。
   { feature: "任务461-P9 工具间隙注入 hook（agent 循环 gap 触发）", file: "internal/agent/run_loop.go", patterns: ["a.toolRoundGap()"] },
   { feature: "任务461-P9 间隙派发（队头 TrySteerInboxItem 同路+合并组随行）", file: "internal/control/inbox_dispatch.go", patterns: ["bindAgentToolRoundGap", "dispatchQueuedAtToolGap", "maybeMergeInboxDispatchGroup(meta)"] },
+
+  // ── 任务 440/447 运行面板（composer 胶囊）──────────────────────────
+  // 输入框下实时面板：447 胶囊（形态载体）+ 440 跨 tab 合并/停止/空态。
+  // 上游 merge 丢掉任一锚点都会让「看不到什么在跑」回归，逐文件登记。
+  { feature: "任务447 胶囊悬浮窗（运行两节+已结束目录+历史查看）", file: "desktop/frontend/src/components/CapsulePanel.tsx", patterns: ["CapsuleIndicator", "groupCapsuleJobs", "formatCapsuleElapsed"] },
+  { feature: "任务440 全运行面合并与来源停止（跨 tab+分离会话）", file: "desktop/frontend/src/components/CapsulePanel.tsx", patterns: ["mergeCapsuleWork", "splitCapsuleEntries", "onCancelRuntimeJob(entry.tabId, entry.job.id)"] },
+  { feature: "任务440 面板接线（runtimes 过滤 active tab + per-tab 停止）", file: "desktop/frontend/src/App.tsx", patterns: ["capsuleRuntimes={backgroundRuntimes.filter(", "onCapsuleCancelRuntimeJob={cancelRuntimeJob}"] },
+  { feature: "任务440 空态（无运行任务明确显示，不静默收缩）", file: "desktop/frontend/src/styles.css", patterns: [".capsule-panel__running-empty", ".capsule-panel__origin"] },
 ];
 
 let failed = 0;

@@ -5353,7 +5353,10 @@ export default function App() {
               imageUnderstandingEnabled={state.meta?.visionFallbackEnabled === true}
               attachmentInputEnabled={!remoteSurfaceActive} pinnedFiles={state.meta?.pinnedFiles}
               capsuleJobs={state.jobs}
+              // prettier-ignore
+              capsuleRuntimes={backgroundRuntimes.filter((runtime) => runtime.tabId !== activeTabId) /* 任务 440：面板列出全部运行中工作；当前 tab 的 runtime 条目由 capsuleJobs（当前控制器快照）代表，不过滤会同 id 双行 */}
               onCapsuleCancelJob={cancelJob}
+              onCapsuleCancelRuntimeJob={cancelRuntimeJob}
               capsuleSessionPath={(activeTab?.sessionPath ?? state.meta?.sessionPath ?? "").trim()}
               onCapsuleListSubagents={capsuleListSubagents}
               onCapsuleReadSubagent={capsuleReadSubagent}

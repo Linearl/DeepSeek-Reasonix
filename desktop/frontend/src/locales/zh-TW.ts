@@ -3514,6 +3514,8 @@ export const zhTW: Record<DictKey, string> = {
   // 任務 447 膠囊：輸入框旁懸浮窗（執行中任務 + 已結束子代理目錄 + 子代理歷史唯讀查看）。
   "composer.capsuleTitle": "任務與子代理",
   "composer.capsuleEmpty": "沒有執行中的任務或已結束的子代理",
+  // 任務 440：執行區空態行（已結束目錄可能仍有條目）。
+  "composer.capsuleNoRunning": "暫無執行中的任務",
   "composer.capsuleAgents": "智慧代理",
   "composer.capsuleCommands": "命令",
   "composer.capsuleEnded": "已結束子代理（{n}）",
