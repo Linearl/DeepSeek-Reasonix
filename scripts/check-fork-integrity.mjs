@@ -818,7 +818,7 @@ const CHECKS = [
   { feature: "任务462 测试（有名/降级/hover 保留 id/改名同步）", file: "desktop/frontend/src/__tests__/collab-contact-names.test.tsx", patterns: ["hover keeps the full sender contact_id", "degrades to the truncated id", "the label follows the new title"] },
   // P14 SetActiveTab 移出锁等待（2026-10-04）：切 tab 等锁 p50=28.1s → 锁忙立即切换
   { feature: "P14 锁忙哨兵（errSavePathBusy 零波及接口 + 锁忙立即切换）", file: "internal/control/controller.go", patterns: ["errSavePathBusy"] },
-  { feature: "P14 agent save try-lock（持锁贯穿保存临界区）", file: "internal/agent/save.go", patterns: ["SaveIfPathFree"] },
+  { feature: "P14 agent save try-lock（持锁贯穿保存临界区）", file: "internal/agent/save.go", patterns: ["SaveSnapshotIfPathFree", "tryLockSessionSavePath", "savePathLockFree"] },
 
 ];
 
