@@ -73,6 +73,7 @@ const CHECKS = [
   { feature: "任务461-P10 幂等冲突判为重复已送达（不回错误不断根重投）", file: "desktop/session_collab.go", patterns: ["errCollabDuplicateDelivery", "collabAdmissionErr"] },
   { feature: "任务461-P11 读路径降级直读+共享锁短预算", file: "internal/collabinbox/collabinbox.go", patterns: ["lockRead", "readLockWaitTimeout", "Degraded"] },
   { feature: "任务461-P13② 上下文增幅观测告警（维护间隔跳变有日志诊断入口）", file: "internal/agent/context_manager.go", patterns: ["observeContextGrowth", "contextGrowthWarnRatio"] },
+  { feature: "任务461-P13③ task309 幂等默认开（Default 钉 true，显式 false 仍可关）", file: "internal/config/config.go", patterns: ["SessionCollabMailIdempotentDefault: true"] },
   // 任务 90 链拼接：promote 时把落败链（当前 main）中 winner 缺失的头部 graft 到新主线。
   // 三个锚点按「顺序」登记——gap 在 rename 前算、graft 在侧车搬移后写、事件日志随即折叠；
   // 顺序错位造成的失败是静默的（文件对而读回旧），所以这里锁的是调用形状，不只是符号名。
