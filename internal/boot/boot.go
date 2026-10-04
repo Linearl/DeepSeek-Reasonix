@@ -2375,6 +2375,13 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			}
 			return sessioncollab.NewMailStore(config.SessionCollabMailDir()).Settled(from, msgID)
 		},
+		// P15: the transcript is the application receipt for desktop-source
+		// guidance — every injected steer persists there behind the mid-turn
+		// prefix. Residue rows in Uncertain whose body matches a receipt were
+		// applied before the restart and settle on store open instead of
+		// replaying onto the shelf (the composer-guidance twin of task 263's
+		// collab cursor drop).
+		InboxAppliedReceipts:           agent.AppliedSteerReceiptTexts,
 		SessionV4:                      sessionV4,
 		Host:                           pluginHost,
 		Commands:                       cmds,

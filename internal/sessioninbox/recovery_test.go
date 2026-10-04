@@ -22,39 +22,45 @@ func TestRecoverOrphanedInFlightPreservesOwnedAndPendingItems(t *testing.T) {
 	}
 	queued := enqueue("queued")
 	owned := enqueue("owned accepted")
-	orphanedAccepted := enqueue("orphaned accepted")
+	orphanedConsumed := enqueue("orphaned consumed")
 	orphanedRunning := enqueue("orphaned running")
 	if err := s.SetState(owned, StateSteerAccepted, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetState(orphanedAccepted, StateSteerConsumed, ""); err != nil {
+	if err := s.SetState(orphanedConsumed, StateSteerConsumed, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ClaimItem(orphanedRunning); err != nil {
 		t.Fatal(err)
 	}
 
+	// P15: the unowned consumed steer is applied residue — the durable consume
+	// boundary committed before the restart — so recovery drops it instead of
+	// rewriting it to Uncertain. Only the orphaned running item is recovered.
 	recovered, err := s.RecoverOrphanedInFlight([]string{owned})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if recovered != 2 {
-		t.Fatalf("recovered = %d, want 2", recovered)
+	if recovered != 1 {
+		t.Fatalf("recovered = %d, want 1 (consumed residue is dropped, not recovered)", recovered)
 	}
 	snap := s.Snapshot()
 	// Task 300: RecoveredN covers every surviving unowned pending item — the
-	// two in-flight orphans plus the live Queued one — so the banner agrees
-	// with loadOrInit's cross-process count and with what /queue shows.
-	if !snap.Paused || !snap.Recovered || snap.RecoveredN != 3 {
-		t.Fatalf("recovery metadata = %+v, want N=3 (2 orphans + 1 live pending)", snap)
+	// running orphan (now Uncertain) plus the live Queued one. The dropped
+	// consumed residue is uncounted.
+	if !snap.Paused || !snap.Recovered || snap.RecoveredN != 2 {
+		t.Fatalf("recovery metadata = %+v, want N=2 (running orphan + live pending)", snap)
 	}
 	states := make(map[string]InboxState, len(snap.Items))
 	for _, item := range snap.Items {
 		states[item.ID] = item.State
 	}
 	if states[queued] != StateQueued || states[owned] != StateSteerAccepted ||
-		states[orphanedAccepted] != StateUncertain || states[orphanedRunning] != StateUncertain {
+		states[orphanedRunning] != StateUncertain {
 		t.Fatalf("recovered states = %+v", states)
+	}
+	if _, ok := states[orphanedConsumed]; ok {
+		t.Fatal("orphaned consumed steer must be dropped as applied residue, not replayed onto the shelf")
 	}
 
 	if again, err := s.RecoverOrphanedInFlight([]string{owned}); err != nil || again != 0 {
@@ -62,8 +68,8 @@ func TestRecoverOrphanedInFlightPreservesOwnedAndPendingItems(t *testing.T) {
 	}
 	// The recount is idempotent too: the second pass finds nothing new and
 	// leaves RecoveredN at the same value.
-	if n := s.Snapshot().RecoveredN; n != 3 {
-		t.Fatalf("RecoveredN after idempotent pass = %d, want 3", n)
+	if n := s.Snapshot().RecoveredN; n != 2 {
+		t.Fatalf("RecoveredN after idempotent pass = %d, want 2", n)
 	}
 }
 

@@ -28,6 +28,12 @@ func (s *Store) RecoverOrphanedInFlight(ownedIDs []string) (int, error) {
 // its job before the restart — it is dropped along the normal completion path
 // instead of being resurrected as uncertain work, so consumed messages never
 // replay onto the guidance shelf after an update. nil keeps the old behaviour.
+//
+// P15: an orphaned StateSteerConsumed row is dropped unconditionally, probe or
+// not. The consume transition is the durable "instruction handed to the agent"
+// boundary, so the row is applied residue by definition — rewriting it to
+// Uncertain is what resurrected already-applied composer guidance as pending
+// work after every restart.
 func (s *Store) RecoverOrphanedInFlightOwnedBy(ownedBy func(string) bool, settledBy func(InboxItemMeta) bool) (int, error) {
 	if s == nil {
 		return 0, ErrClosed
@@ -96,9 +102,18 @@ func (s *Store) RecoverOrphanedInFlightOwnedBy(ownedBy func(string) bool, settle
 	for i := range next.Items {
 		item := next.Items[i]
 		if !isOwned(item.ID) && (inFlight(item) || isPendingState(item.State)) {
-			if isSettled(item) {
-				// Task 263 + 300: already consumed before the restart — drop it
-				// the way a completed item is dropped; it is not recovered work.
+			// P15: a consumed steer crossed the durable delivery boundary
+			// (MarkSteerConsumed commits before the instruction is handed to
+			// the agent), so an unowned consumed row was already applied when
+			// the previous run ended. Drop it the way a completed item is
+			// dropped — rewriting it to Uncertain is what replayed finished
+			// guidance onto the shelf after every update restart. Runs ahead
+			// of the settled probe so the drop holds for hosts that inject no
+			// probe at all.
+			if item.State == StateSteerConsumed || isSettled(item) {
+				// Task 263 + 300 + P15: already consumed before the restart —
+				// drop it the way a completed item is dropped; it is not
+				// recovered work.
 				if item.Idempotency != "" {
 					if droppedIDs == nil {
 						droppedIDs = map[string]string{}
