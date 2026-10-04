@@ -104,3 +104,28 @@ export function decideActivationPrompt(state: ActivationPromptView): ActivationP
   }
   return { preservePrompt: false, resetPromptAnchor: false };
 }
+
+/**
+ * 任务461-P16 收据打点（纯判定）：每一条到达前端的 ask 都落一行收据，与
+ * 后端 `[ask-panel] ask request emitted`（controller.go）按 prompt id +
+ * turn id 对表，量化 emit→前端收到 的投递延迟——「弹窗延迟大」「完全不弹」
+ * 「用户消息不渲染」（P17）共用这一条后端→webview 通道，收据行把断点二分
+ * 为「事件没到前端」与「到了但没呈现」。抽成纯函数与 428 的两个判定同住，
+ * reducer 调用与单测读同一份结论。
+ *
+ * emittedAt 来自 wire 的 emittedAt（后端序列化时刻，unix ms）；缺省（旧后
+ * 端或重放前的历史事件）时延迟留空，收据行仍然落——「收到」本身就是断点
+ * 证据。
+ */
+export function describeAskReceipt(
+  emittedAt: number | undefined,
+  askId: string | undefined,
+  turnId: string | undefined,
+  nowMs: number,
+): { latencyMs?: number; detail: string } {
+  const latencyMs = emittedAt && emittedAt > 0 ? Math.max(0, nowMs - emittedAt) : undefined;
+  const parts = [`ask=${askId ?? "-"}`, `turn=${turnId ?? "-"}`];
+  if (latencyMs !== undefined) parts.push(`delivery_ms=${latencyMs}`);
+  else parts.push("delivery_ms=absent");
+  return { latencyMs, detail: parts.join(" ") };
+}

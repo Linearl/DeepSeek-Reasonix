@@ -398,6 +398,10 @@ export interface WireEvent extends RecoveryEventFields {
 	receipt?: WireCompletionReceipt;
 	readPause?: import("./readPause").WireReadPause;
   kind: EventKind;
+  /** 任务461-P16: backend wall clock (unix ms) at wire serialization; the
+   * frontend subtracts it from receive time to log the delivery lag per
+   * ask receipt (shared channel: ask popup delay / no-popup / P17). */
+  emittedAt?: number;
   readStatus?: WireReadStatus;
   /** session_changed: the transcript was replaced under the same path (head switch, clear). */
   sessionReset?: boolean;

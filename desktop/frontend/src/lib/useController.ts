@@ -25,7 +25,7 @@ import { historicalResultNotice, withRunningChecks, withTurnResult } from "./com
 import { mergeTurnResult } from "./turnResult";
 import { invalidateSharedQuery } from "./queryCoalesce";
 import { replayPendingPromptsForActiveTab } from "./promptReplay";
-import { decideActivationPrompt, judgeAskArrival, type AskArrivalVerdict } from "./askPanelGate";
+import { decideActivationPrompt, describeAskReceipt, judgeAskArrival, type AskArrivalVerdict } from "./askPanelGate";
 import { createRafBatch } from "./rafBatch";
 import { foregroundRunningFromRuntimeMeta, type RuntimeMetaSnapshot } from "./runtimeMeta";
 import { aliasActivationRequest, noteActivationRequested, noteActivationSettled, noteActivationStarted } from "./sessionDiagnostics";
@@ -1546,6 +1546,18 @@ function reportAskPanelVerdict(verdict: AskArrivalVerdict, s: State, e: WireEven
   reportFrontendLog("ask-panel", "ask arrival judged", detail, verdict.action === "drop" ? "info" : "warn");
 }
 
+// 任务461-P16 diagnostic: a receipt line for EVERY arriving ask — the 428
+// verdict line only fires on the swallow paths, so a normal delivery left no
+// frontend-side trace and "backend emitted vs frontend received" could not be
+// told apart in desktop.log. Paired with the Go `[ask-panel] ask request
+// emitted` line by prompt id + turn id, the emittedAt anchor quantifies the
+// backend→webview delivery lag (three user-reported symptoms share this one
+// channel: popup late / popup never / P17 user message not rendered).
+function reportAskPanelReceipt(e: WireEvent): void {
+  const { detail } = describeAskReceipt(e.emittedAt, e.ask?.id, e.turnId, Date.now());
+  reportFrontendLog("ask-panel", "ask received", detail);
+}
+
 function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State {
   if (s.discardTurn) {
     if (e.kind === "turn_done") {
@@ -1983,6 +1995,10 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       });
     }
     case "ask_request": {
+      // 任务461-P16: receipt first — every arrival (surfaced or dropped) must
+      // leave the frontend-half trace, otherwise "never arrived" and
+      // "arrived but swallowed" are indistinguishable in desktop.log.
+      reportAskPanelReceipt(e);
       // Task 428 C1: the old blanket `cancelRequested → drop` turned a stale
       // cancel flag (Stop pressed earlier, turn kept running via steer/retry)
       // into a silent ask-panel swallow that left agent and user blocked on
