@@ -897,6 +897,16 @@ func runCollabDelivery(mail *sessioncollab.MailStore, contactID string, d collab
 		}
 		steered, derr := d.enqueue(msg, d.render(msg, effectiveHop))
 		if derr != nil {
+			// 判定放决策点：既识别 deliverOne 包装后的 sentinel，也兜住任何
+			// 直接漏出的原始冲突（生产两条路径同语义，测试夹具亦可直注）。
+			if errors.Is(derr, errCollabDuplicateDelivery) || errors.Is(derr, sessioninbox.ErrIdempotencyConflict) {
+				// 任务461 P10①：重发的同内容已在目标收件箱——静默结算（ack），
+				// 不给发送方任何「失败」通知：通知会喂养重试循环（实测每
+				// 5-6s 一次 conflict 重投风暴）。
+				acked = append(acked, msg.ID)
+				delivered++
+				continue
+			}
 			// Not acked: retried next pass. The sender hears about it once.
 			d.notify(msg, "delivery_failed", sessionCollabDeliveryFailedText(msg, derr))
 			note(derr)
@@ -1030,6 +1040,29 @@ func sessionCollabDeliveryFailedText(msg sessioncollab.MailMessage, cause error)
 		"）。消息仍在队列中，不会丢失。（messageId=" + msg.ID + "）"
 }
 
+// errCollabDuplicateDelivery marks an admission the target inbox already
+// holds under the same content key — a resend (任务461 P10①). From the
+// sender's perspective it is SUCCESS: nothing new is added and nothing failed.
+var errCollabDuplicateDelivery = errors.New("collab mail resend: target inbox already holds identical content (idempotent duplicate)")
+
+// collabAdmissionErr classifies one enqueue outcome. An idempotency conflict
+// under the pump's content key means the target inbox ALREADY admitted this
+// content — the stored envelope differs only by per-copy metadata (the fresh
+// msg id of the resend), not by intent. Treating it as a failure made the
+// pump leave the mail unacked (re-claimed every pass) and sent the sender a
+// "投递失败" note whose retry fed the loop — the 5-6s conflict storm of
+// 任务461 P10. A duplicate is settled silently instead.
+func collabAdmissionErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, sessioninbox.ErrIdempotencyConflict) {
+		log.Printf("[session-collab] duplicate delivery deduped at inbox admission (idempotency conflict treated as already-delivered)")
+		return errCollabDuplicateDelivery
+	}
+	return err
+}
+
 // deliverOne hands one message to the target. It reports whether a steer
 // actually injected, so the caller can tell the sender when it degraded. A
 // detached target is reached through its controller — there is no visible tab
@@ -1056,11 +1089,11 @@ func (p *sessionCollabPump) deliverOne(target sessionCollabTarget, msg sessionco
 		}
 		if msg.Delivery != string(sessioncollab.DeliverySteer) {
 			_, err := p.app.enqueueInboxWithControllerSource(target.tabID, target.ctrl, sessioninbox.IntentFollowup, body, body, nil, idem, false, "", "", source, msg.ReceiptRequested, msg.ID, msg.To)
-			return false, err
+			return false, collabAdmissionErr(err)
 		}
 		receipt, err := p.app.enqueueInboxWithControllerSource(target.tabID, target.ctrl, sessioninbox.IntentSteer, body, body, nil, idem, true, "", "", source, msg.ReceiptRequested, msg.ID, msg.To)
 		if err != nil {
-			return false, err
+			return false, collabAdmissionErr(err)
 		}
 		steered := sessionCollabReceiptSteered(receipt.Disposition)
 		if !steered {
@@ -1080,7 +1113,7 @@ func (p *sessionCollabPump) deliverOne(target sessionCollabTarget, msg sessionco
 	}
 	if msg.Delivery != string(sessioncollab.DeliverySteer) && !target.activeTab {
 		_, err := p.app.enqueueInboxWithControllerSource(target.tabID, ctrl, sessioninbox.IntentFollowup, body, body, nil, idem, false, "", "", source, msg.ReceiptRequested, msg.ID, msg.To)
-		return false, err
+		return false, collabAdmissionErr(err)
 	}
 	receipt, err := p.app.enqueueInboxWithControllerSource(target.tabID, ctrl, sessioninbox.IntentSteer, body, body, nil, idem, true, "", "", source, msg.ReceiptRequested, msg.ID, msg.To)
 	if err != nil {
@@ -1088,11 +1121,11 @@ func (p *sessionCollabPump) deliverOne(target sessionCollabTarget, msg sessionco
 		if msg.Delivery != string(sessioncollab.DeliverySteer) {
 			_, ferr := p.app.enqueueInboxWithControllerSource(target.tabID, ctrl, sessioninbox.IntentFollowup, body, body, nil, idem, false, "", "", source, msg.ReceiptRequested, msg.ID, msg.To)
 			if ferr != nil {
-				return false, ferr
+				return false, collabAdmissionErr(ferr)
 			}
 			return false, nil
 		}
-		return false, err
+		return false, collabAdmissionErr(err)
 	}
 	steered := sessionCollabReceiptSteered(receipt.Disposition)
 	if !steered {

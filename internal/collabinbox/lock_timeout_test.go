@@ -33,45 +33,9 @@ func newLockedStore(t *testing.T) (*Store, func()) {
 	return s, held
 }
 
-func TestListErrorsWithinBudgetWhenLockHeldElsewhere(t *testing.T) {
-	s, held := newLockedStore(t)
-	defer held()
-
-	started := time.Now()
-	_, err := s.List(context.Background(), Query{}, false)
-	elapsed := time.Since(started)
-	if err == nil {
-		t.Fatal("List must fail while the inbox lock is held elsewhere, got nil")
-	}
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("List error = %v, want deadline exceeded", err)
-	}
-	if !strings.Contains(err.Error(), "lock busy") {
-		t.Fatalf("error lacks lock-busy semantics (锁被占用): %v", err)
-	}
-	if elapsed > lockWaitTimeout+2*time.Second {
-		t.Fatalf("List waited %v, want ≤ lockWaitTimeout(%v)+slack", elapsed, lockWaitTimeout)
-	}
-}
-
-func TestListReturnsWhenRequestCancelledWhileLockHeld(t *testing.T) {
-	s, held := newLockedStore(t)
-	defer held()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	time.AfterFunc(150*time.Millisecond, cancel)
-
-	started := time.Now()
-	_, err := s.List(ctx, Query{}, false)
-	elapsed := time.Since(started)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("List error = %v, want context.Canceled", err)
-	}
-	if elapsed >= time.Second {
-		t.Fatalf("List returned after %v, want <1s after request cancel (task 461 P1 停止 SLA)", elapsed)
-	}
-}
-
+// 任务461 P11 升级了读路径语义：锁被楔住时 List 不再报错，而是降级无锁直读
+// （Degraded=true，数据不空）——该行为由 degraded_read_test.go 钉死。本文件
+// 保留写路径（ApplyRetention）的有界语义：锁被占 → 预算内返错。
 func TestApplyRetentionErrorsWithinBudgetWhenLockHeldElsewhere(t *testing.T) {
 	s, held := newLockedStore(t)
 	defer held()
@@ -82,7 +46,31 @@ func TestApplyRetentionErrorsWithinBudgetWhenLockHeldElsewhere(t *testing.T) {
 	if err == nil {
 		t.Fatal("ApplyRetention must fail while the inbox lock is held elsewhere, got nil")
 	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("ApplyRetention error = %v, want deadline exceeded", err)
+	}
+	if !strings.Contains(err.Error(), "lock busy") {
+		t.Fatalf("error lacks lock-busy semantics (锁被占用): %v", err)
+	}
 	if elapsed > lockWaitTimeout+2*time.Second {
 		t.Fatalf("ApplyRetention waited %v, want ≤ lockWaitTimeout(%v)+slack", elapsed, lockWaitTimeout)
+	}
+}
+
+func TestWritePathReturnsWhenRequestCancelledWhileLockHeld(t *testing.T) {
+	s, held := newLockedStore(t)
+	defer held()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(150*time.Millisecond, cancel)
+
+	started := time.Now()
+	_, err := s.ApplyRetention(ctx)
+	elapsed := time.Since(started)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("ApplyRetention error = %v, want context.Canceled", err)
+	}
+	if elapsed >= time.Second {
+		t.Fatalf("returned after %v, want <1s after request cancel (task 461 P1 停止 SLA)", elapsed)
 	}
 }

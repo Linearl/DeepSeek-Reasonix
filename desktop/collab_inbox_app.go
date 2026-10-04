@@ -59,7 +59,8 @@ func (a *App) collabInboxViewer() string {
 // date sort, surfaced as a panel toggle (the index layer has always been
 // dual-order; the agent query tool exposes the same field).
 func (a *App) ListCollabMail(bucket, from, to, state string, limit int, includeDismissed bool, order string) (collabinbox.Snapshot, error) {
-	snap, err := collabInboxStore().List(collabInboxCtx(), collabinbox.Query{
+	store := collabInboxStore()
+	snap, err := store.List(collabInboxCtx(), collabinbox.Query{
 		Bucket:           bucket,
 		From:             from,
 		To:               to,
@@ -69,6 +70,13 @@ func (a *App) ListCollabMail(bucket, from, to, state string, limit int, includeD
 		Limit:            limit,
 		IncludeDismissed: includeDismissed,
 	}, true) // panel calls may apply retention (the agent tool path never does)
+	if err == nil && snap.Degraded {
+		// 任务461 P11：读路径降级（锁被楔住、无锁直读）——面板有数据，但必须
+		// 留痕并指认最后持锁者，否则「面板空/数据旧」再次无从诊断。
+		slog.Warn("collab inbox: degraded unlocked read (lock busy)",
+			"last_holder", store.LockHolderInfo(),
+			"bucket", bucket, "state", state, "limit", limit, "order", order)
+	}
 	if err != nil {
 		// The panel's frontend catch is intentionally silent (a closed gateway
 		// must not crash it), which turns backend failures into an empty list
