@@ -2512,6 +2512,13 @@ func Default() *Config {
 			MaxSubagentDepth:       2,
 			MaxSubagentConcurrency: 6,
 			MaxParallelWriters:     3,
+			// 任务461-P13③: task 309 shipped as "idempotency default-on" (commit
+			// title, field comment and render copy all say on), but the zero
+			// value left it off — a fresh install resent mail under a fresh msg
+			// id and landed true duplicates (the guidance-replay tail P10 did
+			// not cover). Pin the documented default here; an explicit false in
+			// a user config still wins.
+			SessionCollabMailIdempotentDefault: true,
 		},
 		// Mode "ask" with no rules keeps `reasonix run` autonomous (no TTY → ask
 		// resolves to allow) while `reasonix` prompts before writers. Users add

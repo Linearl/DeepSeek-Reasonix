@@ -69,3 +69,22 @@ func TestRenderSessionCollabMailDefaults(t *testing.T) {
 }
 
 func strPtr(v string) *string { return &v }
+
+// TestDefaultSessionCollabMailIdempotentOn pins the task-309 documented
+// default: idempotency ships ON (commit 0df5fdb2b title, field comment and
+// render copy all say "default on"), so a fresh install dedups same-content
+// redeliveries even before any settings write. 任务461-P13③ found the zero
+// value had left it off — the guidance-replay tail P10 did not cover. An
+// explicit false in a rendered config must still win over the pinned default.
+func TestDefaultSessionCollabMailIdempotentOn(t *testing.T) {
+	if !Default().Agent.SessionCollabMailIdempotentDefault {
+		t.Fatal("Default() must carry SessionCollabMailIdempotentDefault=true (task 309 default-on)")
+	}
+	var decoded Config
+	if _, err := toml.Decode("session_collab_mail_idempotent_default = false\n", &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Agent.SessionCollabMailIdempotentDefault {
+		t.Fatal("an explicit false in config must decode as false, not be overridden")
+	}
+}

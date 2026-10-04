@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync/atomic"
+	"time"
 
 	"reasonix/internal/provider"
 )
@@ -23,6 +24,13 @@ type compactionProgress struct {
 	// lastTurn stops the post-turn observer and the pre-send preflight from
 	// paying for two summaries during one active tool loop.
 	lastTurn atomic.Int64
+	// 任务461-P13② growth watch: lastPrepareEst is the previous maintenance
+	// check's context estimate; growthWarnedTurn/lastGrowthWarnAt dedupe the
+	// sharp-growth warning. All three are only touched under compactionRunMu
+	// (prepareOnce → observeContextGrowth), so plain fields suffice.
+	lastPrepareEst   int64
+	growthWarnedTurn int64
+	lastGrowthWarnAt time.Time
 }
 
 // ContextManager is the sole owner of provider-visible context maintenance.
@@ -122,6 +130,11 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
 		prepared.InputTokens = est
 	}
 	inputHash := a.contextMaintenanceInputHash(visible)
+	// 任务461-P13② growth watch: record the estimate delta since the previous
+	// maintenance check BEFORE any early return, so a view that balloons inside
+	// one tool loop (replayed guidance, repeated sub-agent payloads) leaves a
+	// log trail even when it stays below the fold trigger.
+	a.observeContextGrowth(est)
 	// Receipts back off sub-critical retries only. A failed summary never
 	// fabricates a digest; at the ceiling the lossy truncation rescue is the
 	// last resort, so the turn still leaves with a view the provider accepts.
@@ -379,4 +392,51 @@ func (a *Agent) estimatedVisibleRequestTokens(visible []provider.Message) int {
 		MaxTokens:   a.maxOutputTokens,
 		Temperature: provider.OptionalTemperature(a.temperature),
 	})
+}
+
+// contextGrowthWarnRatio is the share of the model window one maintenance
+// interval may add before the growth watch speaks up (任务461-P13②). The
+// 0.80 compaction trigger already bounds steady growth; this catches the
+// pathological shape where a single tool loop injects a large fraction of the
+// window between two checks — exactly the replay-storm feeding the user saw.
+const contextGrowthWarnRatio = 0.40
+
+// contextGrowthWarnCooldown throttles repeat warnings inside one turn so a
+// continuously ballooning loop stays visible without spamming the log.
+const contextGrowthWarnCooldown = 5 * time.Minute
+
+// observeContextGrowth compares this maintenance check's context estimate with
+// the previous one. A delta of at least contextGrowthWarnRatio × window logs a
+// sharp-growth warning (deduped per turn, re-armed after the cooldown). It is
+// pure observation: no behavior changes, it only gives the diagnosis a named
+// entry point in the log alongside the existing maintenance receipts.
+func (a *Agent) observeContextGrowth(est int) bool {
+	if a == nil || est <= 0 {
+		return false
+	}
+	window := a.effectiveContextWindow()
+	if window <= 0 {
+		return false
+	}
+	prev := a.sess.compaction.lastPrepareEst
+	a.sess.compaction.lastPrepareEst = int64(est)
+	if prev <= 0 || est <= int(prev) {
+		return false
+	}
+	delta := est - int(prev)
+	if delta < int(float64(window)*contextGrowthWarnRatio) {
+		return false
+	}
+	now := time.Now()
+	turn := a.activeTurnCreatedAt.Load()
+	sameTurn := turn != 0 && turn == a.sess.compaction.growthWarnedTurn
+	if sameTurn && now.Sub(a.sess.compaction.lastGrowthWarnAt) < contextGrowthWarnCooldown {
+		return false
+	}
+	a.sess.compaction.growthWarnedTurn = turn
+	a.sess.compaction.lastGrowthWarnAt = now
+	slog.Warn("agent: context estimate grew sharply between maintenance checks",
+		"prev_tokens", prev, "now_tokens", est, "delta_tokens", delta,
+		"window", window, "turn", turn)
+	return true
 }
