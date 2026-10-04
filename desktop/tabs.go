@@ -4029,13 +4029,21 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 		OnCreateCollabSession:    a.createCollabSession,
 		OnSessionStatus:          a.collabSessionStatus,
 		OnSessionInfo:            a.collabSessionInfo,
-		OnSessionStop:            a.collabSessionStop,
-		OnSessionSetModel:        a.collabSessionSetModel,
-		OnSessionTurnStatus:      a.collabSessionTurnStatus,
-		OnCascadeDelegate:        cascadeDelegateFor,
-		OnDeleteSession:          a.deleteCollabSession,
-		OnRenameSession:          a.renameCollabSession,
-		OnMoveTopicToGroup:       a.moveCollabTopicToGroup,
+		// 任务 454: 补接任务 285 三个宿主探针 + 分组成员归属探针。此处是
+		// tab 会话的初始构建路径，漏接导致新会话里 list_addressable_sessions
+		// 的 group 过滤恒为空、行内永远没有 group 字段（仅 clear/rebind/
+		// 换模型/换 effort 的重建路径带探针，表现为查询能力时有时无）。
+		OnSessionGroup:        a.collabSessionGroup,
+		OnSessionGroupMatch:   a.collabSessionGroupMatch,
+		OnSessionVersions:     a.collabSessionVersions,
+		OnAdoptSessionVersion: a.collabAdoptSessionVersion,
+		OnSessionStop:         a.collabSessionStop,
+		OnSessionSetModel:     a.collabSessionSetModel,
+		OnSessionTurnStatus:   a.collabSessionTurnStatus,
+		OnCascadeDelegate:     cascadeDelegateFor,
+		OnDeleteSession:       a.deleteCollabSession,
+		OnRenameSession:       a.renameCollabSession,
+		OnMoveTopicToGroup:    a.moveCollabTopicToGroup,
 		// ReuseAssembly lives on the embedded RuntimeReload; promoted names
 		// cannot appear in the outer literal, so name the embedded struct
 		// (same shape as the rebind chain in app.go).

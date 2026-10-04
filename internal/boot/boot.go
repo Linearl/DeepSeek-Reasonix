@@ -237,7 +237,11 @@ type Options struct {
 	// （与 UI「查看版本」同源）、版本切换（宿主既有 recovery 选择路径）。
 	// Nil keeps the info fields absent and the version tools refusing
 	// actionably (CLI/tests).
-	OnSessionGroup        func(topicID string) (group string, known bool)
+	OnSessionGroup func(topicID string) (group string, known bool)
+	// 任务 454: id 拼法的分组归属探针——目录行只带组 title，group 参数传
+	// 侧栏组 id（如 collab-reasonix）时靠它判定成员归属；nil 退回仅 title
+	// 匹配（task 285 行为）。
+	OnSessionGroupMatch   func(topicID, group string) bool
 	OnSessionVersions     func(scope, workspaceRoot, topicID, sessionPath string) (members []agent.SessionVersionInfo, ok bool)
 	OnAdoptSessionVersion func(scope, workspaceRoot, topicID, sessionPath, versionID string) error
 	// OnCascadeDelegate (task 225) resolves the task-source parent's Ask
@@ -2109,6 +2113,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			SessionInfo: opts.OnSessionInfo,
 			// 任务 285: 会话信息面三探针（分组/版本谱系/版本切换）。
 			SessionGroup:        opts.OnSessionGroup,
+			SessionGroupMatch:   opts.OnSessionGroupMatch,
 			SessionVersions:     opts.OnSessionVersions,
 			AdoptSessionVersion: opts.OnAdoptSessionVersion,
 			// Task 274 ②③: controller hooks for stop/set_model (gated below).

@@ -52,6 +52,43 @@ func (a *App) collabSessionGroup(topicID string) (string, bool) {
 	return "", false
 }
 
+// collabSessionGroupMatch（任务 454）回答「这个 topic 是否属于 group 指名的
+// 分组」，group 接受组 title 或组 id 两种拼法（如 reasonix-for-ai 与
+// collab-reasonix 指同一个组）。目录行只带 title，id 拼法无法靠行内比较判定，
+// 必须回源 desktop-projects.json。扫描顺序与 collabSessionGroup 相同：先全局
+// 组，再各项目的组。
+func (a *App) collabSessionGroupMatch(topicID, group string) bool {
+	topicID = strings.TrimSpace(topicID)
+	group = strings.TrimSpace(group)
+	if topicID == "" || group == "" {
+		return false
+	}
+	inGroup := func(groups []desktopGroup) bool {
+		for _, g := range groups {
+			if !strings.EqualFold(strings.TrimSpace(g.ID), group) &&
+				!strings.EqualFold(strings.TrimSpace(g.Title), group) {
+				continue
+			}
+			for _, id := range g.TopicIDs {
+				if id == topicID {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	f := loadProjectsFile()
+	if inGroup(f.GlobalGroups) {
+		return true
+	}
+	for _, project := range f.Projects {
+		if inGroup(project.Groups) {
+			return true
+		}
+	}
+	return false
+}
+
 // collabSessionVersions reports a conversation's recovery lineage through the
 // exact view the UI version viewer consumes (GetSessionVersionState), sized by
 // plain stat. ok=false when the host knows no lineage for the topic (catalog

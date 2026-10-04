@@ -116,6 +116,13 @@ type SessionCollabConfig struct {
 	// nil（CLI/测试）时对应字段缺席或给出可操作拒绝，绝不猜。
 	// SessionGroup answers which sidebar session group a topic belongs to.
 	SessionGroup func(topicID string) (group string, known bool)
+	// 任务 454: SessionGroupMatch answers "is this topic a member of the group
+	// named by title OR flat group id" (e.g. both reasonix-for-ai and
+	// collab-reasonix address the same group). The directory rows carry only
+	// the title, so an id-typed group argument cannot match any row without
+	// this host-side membership probe. Nil keeps the title-only match of
+	// task 285.
+	SessionGroupMatch func(topicID, group string) bool
 	// SessionVersions reports a conversation's recovery lineage (the same data
 	// the UI version viewer shows). ok=false: single-version conversations
 	// have no lineage worth listing.
@@ -259,11 +266,11 @@ type listAddressableSessionsTool struct{ cfg SessionCollabConfig }
 func (listAddressableSessionsTool) Name() string { return "list_addressable_sessions" }
 
 func (listAddressableSessionsTool) Description() string {
-	return "List the contact directory (通讯录): metadata only — title, purpose, contact_id, topic_id, and the sidebar session group when the host knows it (task 285). Task 348: rows registered with structured fields also carry identityType (human|main|sub|heartbeat|system), identityDomain and duties[] — absent for purpose-only sessions. No transcript content (read_session_tail does that). Task 174 merged search in: omit query for the newest-first page; pass query for a keyword filter over title/purpose/contact_id/topic_id; pass group to keep only one session group. Task 175: pass sent=true to read YOUR OWN outgoing log — the misdirected-send check after a batch dispatch. Use contact_id, topic_id, or the exact title as `to` in talk_to_session. Entries frozen for over a week carry stale=true (task 175) — re-check before trusting the purpose. Experimental."
+	return "List the contact directory (通讯录): metadata only — title, purpose, contact_id, topic_id, and the sidebar session group when the host knows it (task 285). Task 348: rows registered with structured fields also carry identityType (human|main|sub|heartbeat|system), identityDomain and duties[] — absent for purpose-only sessions. No transcript content (read_session_tail does that). Task 174 merged search in: omit query for the newest-first page; pass query for a keyword filter over title/purpose/contact_id/topic_id; pass group to keep only one session group (task 454: the group title OR its flat id both work — e.g. reasonix-for-ai and collab-reasonix address the same group). Task 175: pass sent=true to read YOUR OWN outgoing log — the misdirected-send check after a batch dispatch. Use contact_id, topic_id, or the exact title as `to` in talk_to_session. Entries frozen for over a week carry stale=true (task 175) — re-check before trusting the purpose. Experimental."
 }
 
 func (listAddressableSessionsTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Max rows to return (directory: newest first, default 200, max 1000; sent: default 20)."},"archived":{"type":"boolean","description":"Include retired archive sessions (default false)."},"query":{"type":"string","description":"Keyword filter over title/purpose/ids (the old search_sessions). Omit for the unfiltered newest-first page."},"group":{"type":"string","description":"Keep only sessions in this sidebar session group (task 285; case-insensitive exact group title). Omit for all groups."},"sent":{"type":"boolean","description":"Return your OWN outgoing log instead of the directory (task 175) — id, recipient, thread, first line of each message you sent. Use it to catch a misdirected send."}},"required":[]}`)
+	return json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Max rows to return (directory: newest first, default 200, max 1000; sent: default 20)."},"archived":{"type":"boolean","description":"Include retired archive sessions (default false)."},"query":{"type":"string","description":"Keyword filter over title/purpose/ids (the old search_sessions). Omit for the unfiltered newest-first page."},"group":{"type":"string","description":"Keep only sessions in this sidebar session group (task 285/454; case-insensitive group title or flat group id — the returned rows name the title). Omit for all groups."},"sent":{"type":"boolean","description":"Return your OWN outgoing log instead of the directory (task 175) — id, recipient, thread, first line of each message you sent. Use it to catch a misdirected send."}},"required":[]}`)
 }
 
 func (listAddressableSessionsTool) ReadOnly() bool { return true }
@@ -630,7 +637,7 @@ func directoryPageFiltered(cfg SessionCollabConfig, limit int, archived *bool, q
 				rowGroup = g
 			}
 		}
-		if group != "" && !strings.EqualFold(rowGroup, group) {
+		if group != "" && !topicInSessionGroup(cfg, id.TopicID, rowGroup, group) {
 			continue
 		}
 		eligible++
@@ -679,6 +686,22 @@ func directoryPageFiltered(cfg SessionCollabConfig, limit int, archived *bool, q
 	}
 	out, _ := json.Marshal(payload)
 	return string(out), nil
+}
+
+// topicInSessionGroup applies the task-454 group filter: a row stays when the
+// group argument names its sidebar group by title (case-insensitive exact,
+// task 285) or by flat group id through the host membership probe — the rows
+// themselves only ever carry the title, so the id spelling is invisible to a
+// title-only compare. Without the probe (CLI/tests) the filter keeps the
+// title-only match of task 285; an empty topic id can only ever match by title.
+func topicInSessionGroup(cfg SessionCollabConfig, topicID, rowGroup, group string) bool {
+	if strings.EqualFold(rowGroup, group) {
+		return true
+	}
+	if cfg.SessionGroupMatch == nil || strings.TrimSpace(topicID) == "" {
+		return false
+	}
+	return cfg.SessionGroupMatch(topicID, group)
 }
 
 // NewReadSessionTailTool lets a session peek at another conversation's recent

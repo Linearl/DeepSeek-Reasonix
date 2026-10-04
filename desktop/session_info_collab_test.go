@@ -52,3 +52,52 @@ func TestCollabSessionVersionProbesWithoutCatalog(t *testing.T) {
 		t.Fatalf("no-catalog adopt err = %v, want the actionable refusal", err)
 	}
 }
+
+// 任务 454 验收（宿主侧）：collabSessionGroupMatch 回源 desktop-projects.json
+// （先全局组后各项目组），title/id 双拼法、大小写不敏感都命中；非成员、
+// 未知组、空参一律 false——绝不因为传的是组 id 就假阴性（任务 454 的实测
+// 双证正是 title 与 id 两个拼法都查不到）。
+func TestCollabSessionGroupMatchAcceptsTitleAndID(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	projRoot := t.TempDir()
+	if err := updateProjectsFile(func(f *desktopProjectFile) (bool, error) {
+		f.GlobalGroups = []desktopGroup{
+			{ID: "collab-reasonix", Title: "reasonix-for-ai", TopicIDs: []string{"topic-a", "topic-b"}},
+		}
+		f.Projects = []desktopProject{{
+			Root:   projRoot,
+			Title:  "示例项目",
+			Topics: []string{"topic-proj"},
+			Groups: []desktopGroup{{ID: "grp-proj", Title: "项目组", TopicIDs: []string{"topic-proj"}}},
+		}}
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	a := &App{}
+	for _, tc := range []struct {
+		name  string
+		topic string
+		group string
+		want  bool
+	}{
+		{"全局组 title 命中", "topic-a", "reasonix-for-ai", true},
+		{"全局组 id 命中", "topic-a", "collab-reasonix", true},
+		{"组 id 大小写不敏感", "topic-b", "Collab-Reasonix", true},
+		{"组 title 大小写不敏感", "topic-b", "Reasonix-For-AI", true},
+		{"多成员组的第二个成员", "topic-b", "reasonix-for-ai", true},
+		{"项目组 title 命中", "topic-proj", "项目组", true},
+		{"项目组 id 命中", "topic-proj", "grp-proj", true},
+		{"非成员", "topic-nowhere", "reasonix-for-ai", false},
+		{"成员对别的组为 false", "topic-a", "grp-proj", false},
+		{"未知组", "topic-a", "no-such-group", false},
+		{"空 topic", "   ", "reasonix-for-ai", false},
+		{"空 group", "topic-a", "  ", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := a.collabSessionGroupMatch(tc.topic, tc.group); got != tc.want {
+				t.Fatalf("collabSessionGroupMatch(%q, %q) = %v, want %v", tc.topic, tc.group, got, tc.want)
+			}
+		})
+	}
+}
