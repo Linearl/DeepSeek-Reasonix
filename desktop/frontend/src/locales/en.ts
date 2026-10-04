@@ -2659,6 +2659,16 @@ export const en = {
 "settings.cdpDebugPortHint": "Opens a Chrome DevTools Protocol debug endpoint on the embedded WebView2 browser after a restart, so scripted UI verification (connectOverCDP) can drive the real interface. Loopback (127.0.0.1) only with a random port — not reachable from other machines. The endpoint file is written to logs/desktop/cdp-endpoint.txt. Off (default) keeps the browser arguments and network behavior unchanged.",
 "settings.cdpDebugPort.on": "On",
 "settings.cdpDebugPort.off": "Off",
+// Task 439: built-in zcode task bus (lab, infrastructure group).
+"settings.zcodeTaskBus": "zcode task bus (experimental)",
+"settings.zcodeTaskBusHint": "When on, the desktop hosts the task-bus MCP endpoint itself at boot (127.0.0.1:8787/mcp), replacing the external reasonix serve + vbs resident process. The role table is the existing [serve.bus_mcp] section (written by reasonix bus enroll), so the zcode-side config stays unchanged. Bus mail, task cards and hook events work as before; the cross-session inbox panel remains the mailbox entry. The switch is read once at startup — restart to apply. Off (default) starts no listener and keeps network behavior byte-for-byte unchanged.",
+"settings.zcodeTaskBus.on": "On",
+"settings.zcodeTaskBus.off": "Off",
+"settings.zcodeTaskBus.running": "Bus running: ",
+"settings.zcodeTaskBus.notRunning": "Bus not running: ",
+"settings.zcodeTaskBus.awaitRestart": "Enabled — takes effect after the desktop restarts.",
+"settings.zcodeTaskBus.roles": "Enrolled roles",
+"settings.zcodeTaskBusRolesHint": "Each role maps to the bus contact zcode-<role> (token pairing via reasonix bus enroll).",
 // Task 385a: output style selector (lab, efficiency group).
 "settings.outputStyle": "Output style (experimental)",
 "settings.outputStyleLabHint": "Pick an output style folded into the system prompt. The switch only controls whether this panel's selector shows; switching rebuilds the current session so it applies immediately (a running turn is never interrupted — the change lands when the turn finishes). Main sessions only — sub-sessions never carry a style. Off by default.",
