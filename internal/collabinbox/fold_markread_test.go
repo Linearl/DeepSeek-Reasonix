@@ -98,6 +98,22 @@ func TestNineDuplicatesFoldToOneAndBatchMarkRead(t *testing.T) {
 	if got, _ := mail.InboxStatus("sc_b"); got != 1 {
 		t.Fatalf("transport unread = %d, want 1 (all 9 duplicates settled at the cursor)", got)
 	}
+
+	// 任务461 P10②：「全部已读」= 把当前视图全部未读 id 发给 MarkRead——
+	// 整表归零（含真消息），badge 口径与传输层口径一致。
+	if _, err := store.MarkRead(ctx, []string{after.Entries[0].ID}); err != nil {
+		t.Fatal(err)
+	}
+	final, err := store.List(ctx, Query{Unread: true}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if final.Total != 0 {
+		t.Fatalf("badge unread after mark-all-read = %d, want 0", final.Total)
+	}
+	if got, _ := mail.InboxStatus("sc_b"); got != 0 {
+		t.Fatalf("transport unread after mark-all-read = %d, want 0", got)
+	}
 }
 
 func TestFoldWindowKeepsOldCopiesSeparate(t *testing.T) {
