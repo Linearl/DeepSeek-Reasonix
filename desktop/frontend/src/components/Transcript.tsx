@@ -21,6 +21,7 @@ import { acquireMarkdownWorkerClient, releaseMarkdownWorkerClient } from "../lib
 import { onSessionExperienceWillChange, useSessionExperience } from "../lib/sessionExperience";
 import { cachedSubcallsByParent, cachedTranscriptRowBlocks, cachedTurnModels } from "../lib/transcriptDerivedCache";
 import {
+  allWorkProcessesCollapsed,
   EMPTY_FOLDS,
   foldMapWithReasoningOpen,
   foldMapWithToggle,
@@ -36,6 +37,10 @@ import {
   replaceTranscriptFoldOverrides,
   writeTranscriptFoldOverride,
 } from "../lib/transcriptFoldOverrides";
+import {
+  clearWorkProcessFoldState,
+  publishWorkProcessFoldState,
+} from "../lib/workProcessFoldState";
 import { useTranscriptCommand } from "../lib/useTranscriptCommand";
 import {
   EMPTY_FIND_INDEX,
@@ -221,6 +226,29 @@ export function Transcript(props: TranscriptProps) {
     });
   }, [experience, resolvedSessionKey, segmentStates]);
 
+  // 任务 463：「收起/展开全部工作过程」按钮是双向开关，方向必须跟随真实折叠
+  // 状态——这里把「当前是否全折叠」按 tabId 上报给共享 store，composer 据此
+  // 切换按钮外观。tabId 缺失的预览面（历史面板等）不上报，避免污染真实会话
+  // 的按钮方向。
+  const workProcessesHasFoldables = segmentStates.length > 0;
+  const workProcessesCollapsed = useMemo(
+    () => allWorkProcessesCollapsed(folds, segmentStates, experience),
+    [folds, segmentStates, experience],
+  );
+  useEffect(() => {
+    if (!tabId) return;
+    publishWorkProcessFoldState(tabId, {
+      hasFoldables: workProcessesHasFoldables,
+      allCollapsed: workProcessesCollapsed,
+    });
+  }, [tabId, workProcessesHasFoldables, workProcessesCollapsed]);
+  // 卸载（或换绑 tabId）时注销上报：陈旧表面不得让按钮停在「展开」。
+  useEffect(() => {
+    if (!tabId) return;
+    const boundTabId = tabId;
+    return () => clearWorkProcessFoldState(boundTabId);
+  }, [tabId]);
+
   const subcallsByParent = cachedSubcallsByParent(items);
   const checkpointsByTurn = useMemo(() => new Map(checkpoints.map((checkpoint) => [checkpoint.turn, checkpoint])), [checkpoints]);
   const blocks = cachedTranscriptRowBlocks(turnModels, {
@@ -396,11 +424,34 @@ export function Transcript(props: TranscriptProps) {
       return next;
     });
   });
+  // 任务 463：与收起对偶的「全部展开」。userOverridden=true 同样是承重件：
+  // 没有它，运行中的 reconcile tick 会把刚展开的块按默认规则改回去。
+  const handleExpandAll = useTranscriptCommand(() => {
+    beginStructural("display-change");
+    setFolds((previous) => {
+      const next = new Map(previous);
+      for (const segment of segmentStates) {
+        next.set(segment.key, {
+          open: true,
+          userOverridden: true,
+          running: segment.hasRunningWork,
+          keepReasoningExpanded: segment.keepReasoningExpanded,
+        });
+      }
+      replaceTranscriptFoldOverrides(resolvedSessionKey, next);
+      return next;
+    });
+  });
   useEffect(() => {
     const onCollapseAll = () => handleCollapseAll();
+    const onExpandAll = () => handleExpandAll();
     window.addEventListener("reasonix:collapse-all-folds", onCollapseAll);
-    return () => window.removeEventListener("reasonix:collapse-all-folds", onCollapseAll);
-  }, [handleCollapseAll]);
+    window.addEventListener("reasonix:expand-all-folds", onExpandAll);
+    return () => {
+      window.removeEventListener("reasonix:collapse-all-folds", onCollapseAll);
+      window.removeEventListener("reasonix:expand-all-folds", onExpandAll);
+    };
+  }, [handleCollapseAll, handleExpandAll]);
   const renderRow = useTranscriptRowRenderer({
     tabId, checkpoints, subcallsByParent, creationMode, running, actionPending,
     rewindDisabled, actionHoverMenus, turnStartAt, lastTurn,

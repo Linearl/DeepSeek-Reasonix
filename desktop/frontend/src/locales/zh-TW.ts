@@ -3484,6 +3484,7 @@ export const zhTW: Record<DictKey, string> = {
   "composer.qualityFloorStandard": "標準",
   "composer.qualityFloorDelivery": "交付",
   "composer.collapseAll": "全部收起工作過程",
+  "composer.expandAll": "全部展開工作過程",
   "composer.qualityFloorDeliveryTitle": "交付：寫入後必須全量驗證並通過專案檢查；可與目標模式並用。",
   "composer.taskModeGoalTooltipSummary": "持續推進，直到完成或阻塞",
   "composer.taskModeStopGoal": "結束目標",

@@ -480,6 +480,25 @@ export function foldMapWithReasoningOpen(prev: FoldMap, key: string, running: bo
   return next;
 }
 
+/**
+ * 任务 463：「收起/展开全部工作过程」按钮的方向依据——当前是否所有可折叠块
+ * 都处于关闭态。折叠表中缺失的块按默认规则（defaultFoldOpen）计入，这样
+ * 首帧（reconcile 前新块尚无条目）与手动混合态都不会误报全折叠。
+ * 没有可折叠块时返回 false：无可展开之物，按钮保持「收起」外观（点击无操作）。
+ */
+export function allWorkProcessesCollapsed(
+  folds: FoldMap,
+  segments: readonly FoldSegmentState[],
+  experience: ExperienceInput,
+): boolean {
+  if (segments.length === 0) return false;
+  const normalized = normalizeExperience(experience);
+  return segments.every((segment) => {
+    const entry = folds.get(segment.key);
+    return entry ? !entry.open : !defaultFoldOpen(segment, normalized);
+  });
+}
+
 // ── Virtual rows ──────────────────────────────────────────────────────────────
 
 type TranscriptRowContent =

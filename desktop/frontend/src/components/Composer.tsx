@@ -6,8 +6,9 @@ import { pendingFollowups, confirmFollowup, followupNotSubmitted, followupSessio
 import { useAppNavigationStore } from "../store/appNavigation";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
-import { ArrowRight, ArrowUp, ChevronsDown, Columns2, Brain, Check, Clock, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, Search, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, Users, X, Zap } from "lucide-react";
+import { ArrowRight, ArrowUp, ChevronsDown, ChevronsUp, Columns2, Brain, Check, Clock, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, Search, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, Users, X, Zap } from "lucide-react";
 import { useSessionExperience } from "../lib/sessionExperience";
+import { useWorkProcessFoldAggregate } from "../lib/workProcessFoldState";
 import { asArray } from "../lib/array";
 import { foldEffortCurrent, foldEffortMenu } from "../lib/effortTiers";
 import { filterAtMatches } from "../lib/atMatches";
@@ -4486,6 +4487,11 @@ export function Composer({
   // while running (running is exactly the pain scenario), and a brief
   // after-click gray-out reads as "already collapsed".
   const experience = useSessionExperience();
+  // 任务 463：按钮方向的唯一事实源——transcript 上报的真实折叠状态聚合。
+  // 全部折叠时按钮变「展开全部工作过程」+ 向上图标，否则保持原有「收起」。
+  const workProcessFoldAggregate = useWorkProcessFoldAggregate();
+  const allFoldsCollapsed = workProcessFoldAggregate.allCollapsed;
+  const foldToggleLabel = allFoldsCollapsed ? t("composer.expandAll") : t("composer.collapseAll");
   const [collapseFlashed, setCollapseFlashed] = useState(false);
   const localPauseSinceRef = useRef<number | null>(null);
   useEffect(() => {
@@ -5504,23 +5510,31 @@ export function Composer({
             )}
             {experience !== "deep" && (
               <div className="composer-meta__control composer-meta__control--fold">
-                <Tooltip label={t("composer.collapseAll")}>
+                <Tooltip label={foldToggleLabel}>
                   <button
                     type="button"
                     className="composer-meta__collapse-all"
-                    aria-label={t("composer.collapseAll")}
-                    title={t("composer.collapseAll")}
+                    aria-label={foldToggleLabel}
+                    title={foldToggleLabel}
+                    // 任务 463：双向开关。allCollapsed 来自 transcript 的真实折叠
+                    // 状态上报（workProcessFoldState store），手动折叠/展开部分块
+                    // 后按钮方向随之纠正，不出现「显示收起但已全折叠」的错位。
+                    data-fold-state={allFoldsCollapsed ? "collapsed" : "expanded"}
                     disabled={collapseFlashed}
                     onClick={() => {
-                      // Task 269 B: one window event; the transcript pins
-                      // every fold closed (userOverridden) so the running
-                      // reconcile tick cannot spring them back (R3 reset).
-                      window.dispatchEvent(new CustomEvent("reasonix:collapse-all-folds"));
+                      // Task 269 B + 任务 463：one window event; the transcript pins
+                      // every fold (userOverridden) so the running reconcile tick
+                      // cannot spring them back (R3 reset) — 展开方向同理。
+                      window.dispatchEvent(new CustomEvent(
+                        allFoldsCollapsed ? "reasonix:expand-all-folds" : "reasonix:collapse-all-folds",
+                      ));
                       setCollapseFlashed(true);
                       window.setTimeout(() => setCollapseFlashed(false), 1600);
                     }}
                   >
-                    <ChevronsDown size={16} aria-hidden="true" />
+                    {allFoldsCollapsed
+                      ? <ChevronsUp size={16} aria-hidden="true" />
+                      : <ChevronsDown size={16} aria-hidden="true" />}
                   </button>
                 </Tooltip>
               </div>
