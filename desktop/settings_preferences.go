@@ -818,3 +818,33 @@ func (a *App) SetDagGraphCacheCapacity(capacity int) error {
 	}
 	return nil
 }
+
+// SetDagGraphCacheMaxMB stores the task-499 total byte ceiling (MiB) and
+// pushes it into the agent save path immediately — no restart. The config
+// layer refuses out-of-range values (16..65536), same convention as the
+// capacity setter above.
+func (a *App) SetDagGraphCacheMaxMB(maxMB int64) error {
+	if err := a.applyConfigOnly(func(c *config.Config) error { return c.SetDagGraphCacheMaxMB(maxMB) }); err != nil {
+		return err
+	}
+	if cfg, err := config.Load(); err == nil {
+		agent.SetSessionGraphCacheMaxBytes(config.DagGraphCacheMaxMB(cfg) << 20)
+	} else {
+		slog.Warn("desktop: dag graph cache byte cap push skipped (config load failed)", "err", err)
+	}
+	return nil
+}
+
+// SetDagGraphCacheEntryMaxMB stores the task-499 per-entry admission ceiling
+// (MiB) and pushes it live; the agent reader clamps it under the total.
+func (a *App) SetDagGraphCacheEntryMaxMB(maxMB int64) error {
+	if err := a.applyConfigOnly(func(c *config.Config) error { return c.SetDagGraphCacheEntryMaxMB(maxMB) }); err != nil {
+		return err
+	}
+	if cfg, err := config.Load(); err == nil {
+		agent.SetSessionGraphCacheEntryMaxBytes(config.DagGraphCacheEntryMaxMB(cfg) << 20)
+	} else {
+		slog.Warn("desktop: dag graph cache entry cap push skipped (config load failed)", "err", err)
+	}
+	return nil
+}

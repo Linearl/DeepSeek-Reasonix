@@ -84,4 +84,6 @@ func resetGraphCacheForTest() {
 	sessionGraphCacheMu.Lock()
 	defer sessionGraphCacheMu.Unlock()
 	sessionGraphCache = map[string]*sessionGraphCacheEntry{}
+	// Task 499: the byte budget is derived from the map, so it resets with it.
+	sessionGraphCacheBytes = 0
 }

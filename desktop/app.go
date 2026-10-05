@@ -642,7 +642,11 @@ func (a *App) startup(ctx context.Context) {
 		// Task 196fix2: same load pushes the tunable graph-cache LRU capacity
 		// (0/unset reads as the built-in 3) — the save-path cache must reflect
 		// the configured value from the first save, not the first settings open.
+		// Task 499: the byte ceilings ride the same push (0/unset reads as the
+		// built-in 2048/1024 MiB) so the retained set is bounded from boot.
 		agent.SetSessionGraphCacheCapacity(config.DagGraphCacheCapacity(cfg))
+		agent.SetSessionGraphCacheMaxBytes(config.DagGraphCacheMaxMB(cfg) << 20)
+		agent.SetSessionGraphCacheEntryMaxBytes(config.DagGraphCacheEntryMaxMB(cfg) << 20)
 	} else {
 		// Without the push the gate stays on the pre-push default (manual =
 		// today's rotating gate): a config that says "off" would keep rotating
@@ -3429,6 +3433,13 @@ func (a *App) deleteSession(path string) error {
 	}
 	if err := botruntime.ForgetAutoSessionMappingsForPath(sessionPath); err != nil {
 		slog.Warn("desktop: failed to clear auto bot session mapping", "err", err)
+	}
+	// Task 499 ②: the session is gone — its replayed graph must not stay
+	// pinned in the process cache (the third never-invalidated path the
+	// 10-05 diagnosis named alongside tab close and detached release).
+	if freed, ok := agent.InvalidateSessionGraph(sessionPath); ok {
+		slog.Info("desktop: invalidated dag graph cache on session delete",
+			"path", sessionPath, "freed_bytes", freed)
 	}
 	if fallback.needs {
 		fallback = a.sessionDeleteFallbackTarget(fallback)

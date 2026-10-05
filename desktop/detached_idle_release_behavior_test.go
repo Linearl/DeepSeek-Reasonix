@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/control"
 )
 
@@ -19,6 +21,9 @@ type idleReleaseCtrl struct {
 	unsaved     bool
 	snapshotErr error
 	cancellable bool
+	// sessionPath feeds SessionPath() for the task-499 invalidate capture;
+	// empty keeps currentSessionPath on the tab-field fallback.
+	sessionPath string
 
 	snapshotCalls atomic.Int32
 	closeCalls    atomic.Int32
@@ -26,6 +31,8 @@ type idleReleaseCtrl struct {
 }
 
 func (c *idleReleaseCtrl) SessionHasUnsavedChanges() bool { return c.unsaved }
+
+func (c *idleReleaseCtrl) SessionPath() string { return c.sessionPath }
 
 func (c *idleReleaseCtrl) Snapshot() error {
 	c.snapshotCalls.Add(1)
@@ -185,3 +192,48 @@ func TestSessionActivityByPathEmpty(t *testing.T) {
 // compile-time: the mutex field stays guarded as written (releaseDetachedSession
 // takes a.mu around map reads/writes).
 var _ sync.Locker = &sync.Mutex{}
+
+// TestReleaseDetachedSessionInvalidatesGraphCache is the task-499 ② desktop
+// half: releasing a detached runtime must drop the process-wide replayed
+// graph for that session — the retention half of the 10-05 bloat (14.6 GB
+// heap) was exactly these never-invalidated entries. The cache is populated
+// the honest way (a real Save + LoadSession, the load path Puts the replayed
+// state), the release runs on the task-308 harness, and the assertion reads
+// the agent counters: the invalidation counter moves and a follow-up
+// Invalidate finds nothing left for that path.
+func TestReleaseDetachedSessionInvalidatesGraphCache(t *testing.T) {
+	t.Setenv("REASONIX_HOME", t.TempDir())
+	a := newIdleReleaseTestApp(t)
+
+	sessionPath := filepath.Join(t.TempDir(), "sess_499.jsonl")
+	sess := agent.NewSession("system")
+	if err := sess.Save(sessionPath); err != nil {
+		t.Fatalf("seed session save: %v", err)
+	}
+	if _, err := agent.LoadSession(sessionPath); err != nil {
+		t.Fatalf("seed session load (populates the graph cache): %v", err)
+	}
+	if _, ok := agent.InvalidateSessionGraph(sessionPath); !ok {
+		t.Fatal("precondition: the seeded session must be in the graph cache")
+	}
+	// Re-seed after the precondition probe consumed the entry.
+	if _, err := agent.LoadSession(sessionPath); err != nil {
+		t.Fatalf("re-seed session load: %v", err)
+	}
+	invalidationsBefore := agent.SessionGraphCacheInvalidations()
+
+	ctrl := &idleReleaseCtrl{sessionPath: sessionPath}
+	tab := &WorkspaceTab{ID: "invalidate_tab", Ctrl: ctrl, SessionPath: sessionPath}
+	key := sessionRuntimeKey(sessionPath)
+	a.detachedSessions[key] = tab
+
+	a.releaseDetachedSession(key, tab, 45*time.Minute)
+
+	if got := agent.SessionGraphCacheInvalidations(); got != invalidationsBefore+1 {
+		t.Fatalf("invalidations = %d, want exactly %d (the release must drop the graph once)",
+			got, invalidationsBefore+1)
+	}
+	if _, ok := agent.InvalidateSessionGraph(sessionPath); ok {
+		t.Fatal("the released session's graph must be gone from the cache")
+	}
+}

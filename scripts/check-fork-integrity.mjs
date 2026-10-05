@@ -926,6 +926,19 @@ const CHECKS = [
   { feature: "482 fence 退役：跨会话 recovery_required 分类保留", file: "internal/agent/session_subscribe.go", patterns: ["case \"recovery_required\":"] },
   { feature: "482 fence 退役：turn 终态常量保留", file: "internal/event/turn_status.go", patterns: ['TurnRecoveryRequired TurnStatus = "recovery_required"'] },
 
+  // ── 任务499（wt-499-memory-fix）──────────────────────────────────
+  // 桌面版内存膨胀（10-05 现场 14.6GB heap）的持有链两环：graph cache 无字节
+  // 上限 + 全仓无失效点。字节上限（总 2048MiB / 单体 1024MiB，账目=st.size）
+  // 与关闭失效（关 tab / detached 释放 / 删会话三钩子调 InvalidateSessionGraph）
+  // 是本件的全部特征。merge 若顶掉，闭会话图形重新无限滞留且无编译错误——
+  // 锚定逐出守卫、失效导出与三处钩子、配置键。
+  { feature: "499 cache 字节上限两层（LRU 逐出永不逐 just-put/单体超限拒绝入场）", file: "internal/agent/save_dag_graph_cache.go", patterns: ["func sessionGraphCacheEvictOverbudgetLocked", "sessionGraphCacheEntryRefusals.Add(1)", "func SessionGraphCacheByteStats"] },
+  { feature: "499 关会话即失效（InvalidateSessionGraph 导出）", file: "internal/agent/save_dag_graph_cache.go", patterns: ["func InvalidateSessionGraph(sessionPath string) (freedBytes int64, ok bool)", "func SessionGraphCacheInvalidations"] },
+  { feature: "499 失效钩子三落点（关tab/detached释放/删会话）", file: "desktop/tabs.go", patterns: ["invalidated dag graph cache on tab close"] },
+  { feature: "499 失效钩子 detached 释放", file: "desktop/detached_idle_release.go", patterns: ["invalidated dag graph cache on detached release"] },
+  { feature: "499 失效钩子删会话", file: "desktop/app.go", patterns: ["invalidated dag graph cache on session delete"] },
+  { feature: "499 配置键字节上限双键+渲染", file: "internal/config/config.go", patterns: ["dag_graph_cache_max_mb", "dag_graph_cache_entry_max_mb"] },
+
 ];
 
 let failed = 0;
