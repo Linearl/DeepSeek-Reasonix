@@ -25,6 +25,8 @@ type labIntakeSwitches interface {
 	SetExperimentalCompletionSummary(bool) error
 	// 任务 506: tab-strip adaptive compression (tiered tab width once >8 tabs).
 	SetExperimentalTabCompress(bool) error
+	// 任务 507: subagent detail view (row click → read-only in-dock detail + back).
+	SetExperimentalSubagentDetail(bool) error
 }
 
 var _ labIntakeSwitches = (*App)(nil)
@@ -61,6 +63,42 @@ func TestSetExperimentalTabCompressPersistsAndReadsBack(t *testing.T) {
 		t.Fatalf("reload user config after flip off: %v", err)
 	}
 	if cfg.Desktop.ExperimentalTabCompress {
+		t.Fatal("flipping the switch back off must persist (never spring back on)")
+	}
+}
+
+// 任务 507（铁律 2 双态开关）：App 层 setter 落盘、启动视图与设置视图都必须
+// 把保存后的开关值读回来——配置层往返由 internal/config 的 render 测试钉住，
+// 这里钉 Wails 暴露面与两个视图映射面。
+func TestSetExperimentalSubagentDetailPersistsAndReadsBack(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	app := &App{}
+
+	if err := app.SetExperimentalSubagentDetail(true); err != nil {
+		t.Fatalf("SetExperimentalSubagentDetail(true): %v", err)
+	}
+	cfg, err := config.LoadForEditReadOnlyStrict(config.UserConfigPath())
+	if err != nil {
+		t.Fatalf("load saved user config: %v", err)
+	}
+	if !cfg.Desktop.ExperimentalSubagentDetail {
+		t.Fatal("saved user config must carry experimental_subagent_detail = true")
+	}
+	if boot := app.DesktopStartupSettings(); !boot.ExperimentalSubagentDetail {
+		t.Fatal("DesktopStartupSettings view must read back the saved switch")
+	}
+	if view := app.Settings(); !view.ExperimentalSubagentDetail {
+		t.Fatal("Settings view must read back the saved switch")
+	}
+
+	if err := app.SetExperimentalSubagentDetail(false); err != nil {
+		t.Fatalf("SetExperimentalSubagentDetail(false): %v", err)
+	}
+	cfg, err = config.LoadForEditReadOnlyStrict(config.UserConfigPath())
+	if err != nil {
+		t.Fatalf("reload user config after flip off: %v", err)
+	}
+	if cfg.Desktop.ExperimentalSubagentDetail {
 		t.Fatal("flipping the switch back off must persist (never spring back on)")
 	}
 }
