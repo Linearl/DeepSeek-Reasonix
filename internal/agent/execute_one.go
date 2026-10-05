@@ -25,7 +25,9 @@ import (
 // parse → policy → prepare → finish.
 func (a *Agent) executeOne(ctx context.Context, turn *turnRuntime, call provider.ToolCall) (out toolOutcome) {
 	defer func() { out.runState = outcomeRunState(out) }()
-	ctx = withTurnState(withAgentSelf(a.withAgentContext(ctx), a), turn)
+	// Task 482（fence 退役）: withAgentSelf was only read by the tool_recovery
+	// self-diagnosis tool, which is withdrawn with the fence — the stamp is gone.
+	ctx = withTurnState(a.withAgentContext(ctx), turn)
 	plan := &toolCallPlan{call: call}
 	defer func() {
 		out.evidenceSource = cloneEvidenceTarget(plan.expectedWriteSource)

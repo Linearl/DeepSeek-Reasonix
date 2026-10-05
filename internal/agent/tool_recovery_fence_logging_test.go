@@ -3,7 +3,6 @@ package agent
 import (
 	"bytes"
 	"context"
-	"errors"
 	"log/slog"
 	"strings"
 	"testing"
@@ -45,7 +44,7 @@ func fenceFixtureRecord() *provider.ToolCallRecord {
 }
 
 // TestFenceCreationLogsInterruptedWrite pins log line 1: an interrupted write
-// that leaves an unresolved record emits "recovery fence created" with the
+// that leaves an unresolved record emits "recovery record created" with the
 // session, mode, tool, args digest and durations — and the record's state
 // transition is the original one (finishToolRecovery unchanged).
 func TestFenceCreationLogsInterruptedWrite(t *testing.T) {
@@ -58,7 +57,7 @@ func TestFenceCreationLogsInterruptedWrite(t *testing.T) {
 
 	got := buf.String()
 	for _, want := range []string{
-		"recovery fence created",
+		"recovery record created",
 		"mode=normal",
 		"tool=write_file",
 		"args_digest=digest-abc",
@@ -67,7 +66,7 @@ func TestFenceCreationLogsInterruptedWrite(t *testing.T) {
 		"turn_duration_ms=",
 	} {
 		if !strings.Contains(got, want) {
-			t.Fatalf("fence-created log missing %q\n---\n%s", want, got)
+			t.Fatalf("recovery-record log missing %q\n---\n%s", want, got)
 		}
 	}
 	// Log-only: the record still lands in the unresolved state the fence needs.
@@ -90,8 +89,8 @@ func TestResolvedWriteDoesNotLogFenceCreated(t *testing.T) {
 	a.finishToolRecovery(context.Background(), provider.ToolCall{ID: "call-1", Name: "write_file"},
 		toolOutcome{runState: provider.ToolRunCompleted, executed: true, output: "ok"})
 
-	if got := buf.String(); strings.Contains(got, "recovery fence created") {
-		t.Fatalf("a completed write must not log a fence:\n%s", got)
+	if got := buf.String(); strings.Contains(got, "recovery record created") {
+		t.Fatalf("a completed write must not log an unresolved record:\n%s", got)
 	}
 }
 
@@ -137,84 +136,18 @@ func TestRecoveryTimeoutContinuedLogsOnNextTurn(t *testing.T) {
 	}
 }
 
-// TestFinishRunRecoveryWaivedLogsMode pins log line 3: when a write fence is
-// standing and the turn is exempt, the join is still skipped (original
-// behavior) and "fence-waived" names the mode; ask (not exempt) still joins
-// and logs nothing.
-func TestFinishRunRecoveryWaivedLogsMode(t *testing.T) {
-	buf := captureFenceLogs(t)
-	s := recoverySessionWithCall("call-1", fenceFixtureRecord())
-	a := New(nil, tool.NewRegistry(), s, Options{}, event.Discard)
+// Task 482（fence 退役）: the "fence-waived" log line and its tests
+// (TestFinishRunRecoveryWaivedLogsMode / TestFenceWaivedNotLoggedWithoutPendingFence)
+// are withdrawn with finishRunRecovery — the run-tail join they described no
+// longer exists, so there is nothing to waive.
 
-	// auto/yolo exempt: no joined error, one waiver line.
-	var autoErr error
-	a.finishRunRecovery(WithToolApprovalMode(context.Background(), toolApprovalModeAuto), &autoErr)
-	if autoErr != nil {
-		t.Fatalf("exempt turn must not join the barrier error: %v", autoErr)
-	}
-	if got := buf.String(); !strings.Contains(got, "fence-waived") || !strings.Contains(got, "mode=auto") {
-		t.Fatalf("waiver log missing fence-waived/mode=auto\n---\n%s", got)
-	}
-
-	buf.Reset()
-	var yoloErr error
-	a.finishRunRecovery(WithToolApprovalMode(context.Background(), toolApprovalModeYolo), &yoloErr)
-	if yoloErr != nil {
-		t.Fatalf("yolo turn must not join the barrier error: %v", yoloErr)
-	}
-	if got := buf.String(); !strings.Contains(got, "mode=yolo") {
-		t.Fatalf("waiver log missing mode=yolo\n---\n%s", got)
-	}
-
-	// Autopilot posture wins over the unattended flag its controller sets.
-	s2 := recoverySessionWithCall("call-1", fenceFixtureRecord())
-	aAuto := New(nil, tool.NewRegistry(), s2, Options{Autopilot: true}, event.Discard)
-	var auto2Err error
-	aAuto.finishRunRecovery(WithUnattendedRun(context.Background()), &auto2Err)
-	if auto2Err != nil {
-		t.Fatalf("autopilot turn must not join the barrier error: %v", auto2Err)
-	}
-	if got := buf.String(); !strings.Contains(got, "mode=autopilot") {
-		t.Fatalf("waiver log missing mode=autopilot\n---\n%s", got)
-	}
-
-	// ask keeps the barrier: the join is untouched and no waiver line appears.
-	buf.Reset()
-	var askErr error
-	a.finishRunRecovery(context.Background(), &askErr)
-	if !errors.Is(askErr, ErrToolRecoveryRequired) {
-		t.Fatalf("ask must keep joining the barrier error, got %v", askErr)
-	}
-	if got := buf.String(); strings.Contains(got, "fence-waived") {
-		t.Fatalf("an exempt-only marker leaked into a non-exempt turn:\n%s", got)
-	}
-}
-
-// TestFenceWaivedNotLoggedWithoutPendingFence keeps the waiver line signal-
-// rich: exempt with no standing write fence logs nothing.
-func TestFenceWaivedNotLoggedWithoutPendingFence(t *testing.T) {
-	buf := captureFenceLogs(t)
-	s := NewSession("")
-	a := New(nil, tool.NewRegistry(), s, Options{}, event.Discard)
-
-	var err error
-	a.finishRunRecovery(WithToolApprovalMode(context.Background(), toolApprovalModeYolo), &err)
-	if err != nil {
-		t.Fatalf("clean exempt turn must stay error-free: %v", err)
-	}
-	if got := buf.String(); strings.Contains(got, "fence-waived") {
-		t.Fatalf("no standing fence means no waiver line:\n%s", got)
-	}
-}
-
-// TestRecoveryReleaseLogsManualAndAuto pins log line 4: both release paths
-// emit "recovery fence released" with the source (manual panel action vs host
-// auto-verify) and the wait durations, while lifting the barrier exactly as
-// before.
-func TestRecoveryReleaseLogsManualAndAuto(t *testing.T) {
+// TestRecoveryReleaseLogsManualAndAuto pinned log line 4 on both release paths.
+// Task 482 removed the host auto-release half (resolveHostVerifiableEffects)
+// with the barrier; the manual panel path below keeps its log and its record
+// settlement.
+func TestRecoveryReleaseLogsManual(t *testing.T) {
 	buf := captureFenceLogs(t)
 
-	// Manual: the panel confirm.
 	a, _, _ := recoveryActionFixture(t)
 	insp, err := a.InspectToolRecovery(context.Background(), "original")
 	if err != nil {
@@ -237,25 +170,6 @@ func TestRecoveryReleaseLogsManualAndAuto(t *testing.T) {
 		}
 	}
 	if len(a.PendingToolRecovery()) != 0 {
-		t.Fatal("manual release must lift the barrier as before")
-	}
-
-	// Auto: the host proves the effect absent by itself.
-	a2, probe, _ := recoveryActionFixture(t)
-	probe.inspection = tool.EffectInspection{State: "absent", Fenced: true}
-	buf.Reset()
-	a2.resolveHostVerifiableEffects(context.Background())
-	got = buf.String()
-	for _, want := range []string{
-		"recovery fence released",
-		"source=auto",
-		"resolution=host_verified_absent",
-	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("auto release log missing %q\n---\n%s", want, got)
-		}
-	}
-	if len(a2.PendingToolRecovery()) != 0 {
-		t.Fatal("auto release must lift the barrier as before")
+		t.Fatal("manual release must settle the record as before")
 	}
 }

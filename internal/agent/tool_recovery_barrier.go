@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"log/slog"
 
 	"reasonix/internal/event"
 	"reasonix/internal/provider"
@@ -24,40 +23,18 @@ func (a *Agent) emitToolStarted(c provider.ToolCall) error {
 	return event.EmitChecked(a.svc.sink, event.Event{Kind: event.ToolStarted, Tool: ev})
 }
 
-// finishRunRecovery keeps an unresolved effect from silently closing the run:
-// it joins the barrier error so callers see the turn ended on an unconfirmed
-// external effect. Task 299: exempt turns (auto/yolo/unattended — task 107
-// P0-0) must not take that error either. Joining here would end every turn of
-// an autopilot run with recovery_required even though the write fence already
-// exempts it, so the goal loop would stall on a barrier nobody can press.
-// The pending record itself is untouched: PendingToolRecovery still lists it
-// for the panel and for after-the-fact review.
-func (a *Agent) finishRunRecovery(ctx context.Context, err *error) {
-	if toolRecoveryExempt(ctx) {
-		// Task 406: the waiver is only worth a line when a write fence is
-		// actually standing - one scan of the pending records, log only; the
-		// early return below (no joined error) is the original behavior.
-		for _, r := range a.PendingToolRecovery() {
-			if !r.ReadOnly {
-				slog.Info("agent: fence-waived",
-					"session", a.recoveryLogSessionName(),
-					"mode", a.toolRecoveryModeLabel(ctx),
-					"tool", r.Identity.CanonicalTool)
-				break
-			}
-		}
-		return
-	}
-	for _, r := range a.PendingToolRecovery() {
-		if !r.ReadOnly {
-			*err = errors.Join(*err, ErrToolRecoveryRequired)
-			return
-		}
-	}
-}
+// finishRunRecovery kept an unresolved effect from silently closing the run by
+// joining ErrToolRecoveryRequired into the run error. Task 482（fence 退役）:
+// the join is removed — an unresolved effect record no longer ends the run or
+// blocks the next write. The record is still written (tool_recovery_records.go)
+// and stays visible to the review panel, cross-session classification and
+// statistics; only the turn-ending stop is lifted.
 func (a *Agent) checkToolRecoveryStart(ctx context.Context, p *toolCallPlan) (toolOutcome, bool) {
 	if err := a.beginToolRecovery(ctx, p); err != nil {
-		return toolOutcome{runState: provider.ToolRunNotStarted, blocked: true, output: "blocked: " + err.Error(), errMsg: err.Error()}, true
+		// Task 482: beginToolRecovery no longer raises the fence, so every error
+		// reaching here is a real start failure (cancelled ctx, bad arguments,
+		// sink identity unavailable, event write failure) — pass it through.
+		return toolOutcome{runState: provider.ToolRunNotStarted, blocked: true, output: err.Error(), errMsg: err.Error()}, true
 	}
 	return toolOutcome{}, false
 }

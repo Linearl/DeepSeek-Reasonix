@@ -2309,7 +2309,6 @@ func unifiedBootToolNames() []string {
 		"kill_shell",
 		"read_file",
 		"todo_write",
-		"tool_recovery",
 		"update_goal",
 		"use_capability",
 		"view_image",
