@@ -189,6 +189,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// Task 261: fixed-key-set rule - an unlisted key would be dropped on every
 		// save and the switch would flip itself back off (81/123 lesson).
 		fmt.Fprintf(&b, "experimental_prompt_history_picker = %v   # desktop: composer clock-icon history picker + narrowed ArrowUp trigger (task 261; boot snapshot)\n", c.Desktop.ExperimentalPromptHistoryPicker)
+		// Task 505: fixed-key-set rule - an unlisted key would be dropped on every
+		// save and the switch would flip itself back off (81/123 lesson).
+		fmt.Fprintf(&b, "experimental_session_wall = %v   # desktop: command-palette 跳转会话 entry + session grid wall (task 505; boot snapshot)\n", c.Desktop.ExperimentalSessionWall)
 		// Task 265 lab intake: render-surface features, nil-means-on pointers.
 		fmt.Fprintf(&b, "experimental_question_search = %v   # desktop: topic-bar search-my-questions entry (task 265; boot snapshot)\n", c.DesktopQuestionSearchEnabled())
 		fmt.Fprintf(&b, "experimental_subagent_tps = %v   # desktop: ~N tok/s readouts on sub-agent cards and the job table (task 265; boot snapshot)\n", c.DesktopSubagentTpsEnabled())

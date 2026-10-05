@@ -1793,6 +1793,8 @@ type ExperimentFeatureId =
   | "todoSidebar"
   // Task 495: subagent panel package (dock tab + ended-card collapse).
   | "subagentPanel"
+  // Task 505: session graph wall (palette 跳转会话 entry + grid wall).
+  | "sessionWall"
   | "promptHistoryPicker"
   | "feedback"
   | "localServer"
@@ -2019,6 +2021,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "todoSidebar", group: "ui", label: t("settings.todoSidebar"), on: Boolean(s.experimentalTodoSidebar) },
     // Task 495: subagent panel package (right-dock tab + ended-card collapse).
     { id: "subagentPanel", group: "ui", label: t("settings.subagentPanel"), on: Boolean(s.experimentalSubagentPanel) },
+    // Task 505: session graph wall (palette 跳转会话 entry + grid wall).
+    { id: "sessionWall", group: "ui", label: t("settings.sessionWall"), on: Boolean(s.experimentalSessionWall) },
     // Task 261: composer history picker + narrowed ArrowUp (upstream #10425).
     { id: "promptHistoryPicker", group: "ui", label: t("settings.promptHistoryPicker"), on: Boolean(s.experimentalPromptHistoryPicker) },
     { id: "autoLoadOlder", group: "ui", label: t("settings.autoLoadOlder"), on: Boolean(s.experimentalAutoLoadOlder) },
@@ -2683,6 +2687,28 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                 </div>
               </SettingsField>
             </>
+          )}
+          {selected === "sessionWall" && (
+            <SettingsField label={t("settings.sessionWall")} hint={t("settings.sessionWallHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalSessionWall) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      // Boot snapshot (task 505): the palette entry and the
+                      // wall read the flag once at startup, so saving raises
+                      // the restart banner.
+                      await app.SetExperimentalSessionWall(on);
+                      setRestartNeeded(true);
+                    })}
+                  >
+                    {t(on ? "settings.sessionWall.on" : "settings.sessionWall.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
           )}
               {selected === "promptHistoryPicker" && (
                 <SettingsField label={t("settings.promptHistoryPicker")} hint={t("settings.promptHistoryPickerHint")} icon={<Sparkles size={18} />}>

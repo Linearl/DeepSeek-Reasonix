@@ -310,6 +310,13 @@ func (a *App) SetExperimentalSubagentPanel(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSubagentPanel(enabled) })
 }
 
+// SetExperimentalSessionWall toggles the session graph wall (task 505): the
+// command-palette "跳转会话" entry plus the grid wall it opens. The frontend
+// snapshots the flag at boot, so the change shows up after a restart.
+func (a *App) SetExperimentalSessionWall(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSessionWall(enabled) })
+}
+
 // SetExperimentalPromptHistoryPicker toggles the composer history-navigation
 // safety rework (task 261, upstream #10425): clock-icon history picker plus
 // the narrowed plain-ArrowUp trigger. Boot snapshot, restart to apply.

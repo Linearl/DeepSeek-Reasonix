@@ -816,6 +816,15 @@ func (c *Config) SetExperimentalPromptHistoryPicker(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalSessionWall toggles the session graph wall (task 505): the
+// command-palette "跳转会话" entry plus the grid wall it opens. Opt-in: with
+// it off the palette keeps the exact legacy item list. The desktop snapshots
+// the flag at boot, so a change needs a restart to be seen.
+func (c *Config) SetExperimentalSessionWall(enabled bool) error {
+	c.Desktop.ExperimentalSessionWall = enabled
+	return nil
+}
+
 // SetExperimentalCompactionParallel toggles the parallel chunked-compaction
 // fragments (task 265). It ships on (existing behaviour given an off switch);
 // off falls back to the upstream serial summarizer.

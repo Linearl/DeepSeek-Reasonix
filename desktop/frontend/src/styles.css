@@ -13169,6 +13169,205 @@ body > .mermaid-diagram--fullscreen {
   padding: 2px 5px;
   margin-right: 3px;
 }
+/* ── Task 505: session graph wall ─────────────────────────────────────
+   Grid wall of session cards opened from the palette's gated "跳转会话"
+   entry. Shares the palette's backdrop treatment (centered, top-anchored);
+   the wall itself is wider so dozens of cards stay scannable. Cards use
+   content-visibility so a 200-session wall only paints what's on screen. */
+.session-wall-backdrop:has(> .session-wall) {
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 8vh;
+  background: rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+.session-wall {
+  --wails-draggable: no-drag;
+  width: min(960px, 94vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-2, var(--border));
+  border-radius: 14px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  animation: palette-in 0.16s cubic-bezier(0.34, 1.4, 0.5, 1);
+}
+.session-wall[data-state="closing"] {
+  animation: palette-out var(--dur-base) var(--ease-out) both;
+}
+.session-wall__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.session-wall__search-icon {
+  flex: none;
+  color: var(--fg-faint);
+}
+.session-wall__input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+}
+.session-wall__input::placeholder {
+  color: var(--fg-faint);
+}
+.session-wall__modes {
+  flex: none;
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.session-wall__mode {
+  border: none;
+  background: transparent;
+  color: var(--fg-faint);
+  font: inherit;
+  font-size: 11.5px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.session-wall__mode + .session-wall__mode {
+  border-left: 1px solid var(--border);
+}
+.session-wall__mode:hover {
+  color: var(--fg);
+  background: var(--bg-soft);
+}
+.session-wall__mode--on {
+  color: var(--fg);
+  background: var(--bg-soft);
+}
+.session-wall__meta {
+  flex: none;
+  padding: 6px 16px 0;
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+.session-wall__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 8px 10px;
+}
+.session-wall__empty {
+  padding: 40px 12px;
+  text-align: center;
+  color: var(--fg-faint);
+  font-size: 13px;
+}
+.session-wall__group + .session-wall__group {
+  margin-top: 10px;
+}
+.session-wall__group-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 10px 5px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  color: var(--fg-faint);
+}
+.session-wall__group-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-wall__group-count {
+  flex: none;
+  font-weight: 500;
+}
+.session-wall__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 8px;
+  padding: 0 8px 4px;
+}
+.session-wall__card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 74px;
+}
+.session-wall__card:hover {
+  border-color: var(--accent, var(--border));
+  background: var(--bg-soft);
+}
+.session-wall__card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.session-wall__card-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.session-wall__card-hint {
+  font-size: 11px;
+  color: var(--fg-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-wall__card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 10.5px;
+  color: var(--fg-faint);
+}
+.session-wall__card-open {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--fg-dim);
+}
+.session-wall__foot {
+  flex: none;
+  display: flex;
+  gap: 16px;
+  padding: 9px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+.session-wall__foot kbd {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 5px;
+  margin-right: 3px;
+}
 .drawer {
   position: relative;
   width: min(var(--drawer-width, 440px), 92vw);

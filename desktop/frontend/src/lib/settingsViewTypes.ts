@@ -47,6 +47,8 @@ export interface SettingsView {
   experimentalTodoSidebar?: boolean;
   // Task 495: subagent panel package (dock tab + ended-card collapse).
   experimentalSubagentPanel?: boolean;
+  // Task 505: session graph wall (palette 跳转会话 entry + grid wall).
+  experimentalSessionWall?: boolean;
   // Task 261: composer history picker + narrowed ArrowUp trigger; boot snapshot.
   experimentalPromptHistoryPicker?: boolean;
   // Task 265 lab intake: nil-means-on switches, resolved server-side.
