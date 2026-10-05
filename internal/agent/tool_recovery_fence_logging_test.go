@@ -44,7 +44,7 @@ func fenceFixtureRecord() *provider.ToolCallRecord {
 }
 
 // TestFenceCreationLogsInterruptedWrite pins log line 1: an interrupted write
-// that leaves an unresolved record emits "recovery fence created" with the
+// that leaves an unresolved record emits "recovery record created" with the
 // session, mode, tool, args digest and durations — and the record's state
 // transition is the original one (finishToolRecovery unchanged).
 func TestFenceCreationLogsInterruptedWrite(t *testing.T) {
@@ -57,7 +57,7 @@ func TestFenceCreationLogsInterruptedWrite(t *testing.T) {
 
 	got := buf.String()
 	for _, want := range []string{
-		"recovery fence created",
+		"recovery record created",
 		"mode=normal",
 		"tool=write_file",
 		"args_digest=digest-abc",
@@ -66,7 +66,7 @@ func TestFenceCreationLogsInterruptedWrite(t *testing.T) {
 		"turn_duration_ms=",
 	} {
 		if !strings.Contains(got, want) {
-			t.Fatalf("fence-created log missing %q\n---\n%s", want, got)
+			t.Fatalf("recovery-record log missing %q\n---\n%s", want, got)
 		}
 	}
 	// Log-only: the record still lands in the unresolved state the fence needs.
@@ -89,8 +89,8 @@ func TestResolvedWriteDoesNotLogFenceCreated(t *testing.T) {
 	a.finishToolRecovery(context.Background(), provider.ToolCall{ID: "call-1", Name: "write_file"},
 		toolOutcome{runState: provider.ToolRunCompleted, executed: true, output: "ok"})
 
-	if got := buf.String(); strings.Contains(got, "recovery fence created") {
-		t.Fatalf("a completed write must not log a fence:\n%s", got)
+	if got := buf.String(); strings.Contains(got, "recovery record created") {
+		t.Fatalf("a completed write must not log an unresolved record:\n%s", got)
 	}
 }
 

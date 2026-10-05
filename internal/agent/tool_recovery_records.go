@@ -21,6 +21,9 @@ import (
 	"reasonix/internal/tool"
 )
 
+// Task 482（fence 退役）: no longer produced anywhere — the run-tail join that
+// returned it was removed with the barrier. Kept as an exported symbol only for
+// source compatibility; do not new-code against it.
 var ErrToolRecoveryRequired = errors.New("recovery_required: an external tool effect has not been confirmed")
 
 // noticeCodeSideEffectFreeAutoResolved marks the task-433 auto-resolution
@@ -124,10 +127,11 @@ func toolRecoveryExempt(ctx context.Context) bool {
 }
 
 // toolRecoveryModeLabel names the turn's fence posture for the task-406 log
-// lines (fence created / waived). Read-only: it derives the label from the
-// same ctx bindings the exemption reads, with autopilot (an agent-level
-// posture) winning over the unattended flag its controller also sets. Anything
-// else - notably "ask" - is "normal", the posture that keeps the full fence.
+// lines (recovery record created / fence released). Read-only: it derives the
+// label from the same ctx bindings the exemption reads, with autopilot (an
+// agent-level posture) winning over the unattended flag its controller also
+// sets. Anything else - notably "ask" - is "normal", the posture that used to
+// keep the full fence.
 func (a *Agent) toolRecoveryModeLabel(ctx context.Context) string {
 	if a != nil && a.autopilot {
 		return "autopilot"
@@ -288,10 +292,12 @@ func (a *Agent) beginToolRecovery(ctx context.Context, p *toolCallPlan) error {
 }
 
 // finishToolRecovery closes one attempt's record. Task 406: when the outcome
-// leaves a write unresolved, the fence it raises is logged here - session,
-// mode, interrupted-call digest and durations - so a later stall report can be
-// checked against logs instead of inferred from a static tail snapshot. Log
-// only; the state transitions below are untouched.
+// leaves a write unresolved, that fact is logged here - session, mode,
+// interrupted-call digest and durations - so a later stall report can be
+// checked against logs instead of inferred from a static tail snapshot.
+// Task 482（fence 退役）: the line says "recovery record created", not "fence"
+// — nothing blocks anymore; it only reports an unresolved record. Log only;
+// the state transitions below are untouched.
 func (a *Agent) finishToolRecovery(ctx context.Context, call provider.ToolCall, out toolOutcome) {
 	r := a.sess.conversation.toolRecoveryRecord(call.ID)
 	if r == nil {
@@ -320,7 +326,7 @@ func (a *Agent) finishToolRecovery(ctx context.Context, call provider.ToolCall, 
 		if started := a.turn.budget.started; !started.IsZero() {
 			turnMs = time.Since(started).Milliseconds()
 		}
-		slog.Info("agent: recovery fence created",
+		slog.Info("agent: recovery record created",
 			"session", a.recoveryLogSessionName(),
 			"mode", a.toolRecoveryModeLabel(ctx),
 			"tool", call.Name,
