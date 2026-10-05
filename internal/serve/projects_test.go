@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,12 +13,19 @@ import (
 	"reasonix/internal/config"
 	"reasonix/internal/control"
 	"reasonix/internal/provider"
+	"reasonix/internal/stats"
 )
 
 func TestListProjectsEndpoint(t *testing.T) {
 	// Set up a temp REASONIX_HOME with desktop-projects.json and session files.
 	home := t.TempDir()
 	t.Setenv("REASONIX_HOME", home)
+	// serve.New opens the process-local usage catalog under the redirected
+	// REASONIX_HOME; on Windows its SQLite handle keeps the TempDir cache
+	// file locked past the test, reding t.TempDir's RemoveAll cleanup
+	// (2026-09-22 登记，任务496片5清零). Registered after t.TempDir so LIFO
+	// runs it before that cleanup.
+	t.Cleanup(func() { _ = stats.CloseUsageCatalogs(context.Background()) })
 
 	// Create a fake project workspace.
 	projRoot := filepath.Join(home, "test-project")

@@ -2,6 +2,7 @@ package serve
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"image"
@@ -16,6 +17,7 @@ import (
 
 	"reasonix/internal/config"
 	"reasonix/internal/control"
+	"reasonix/internal/stats"
 )
 
 // minimalPNG returns a valid 1x1 white PNG.
@@ -30,6 +32,12 @@ func minimalPNG() []byte {
 func TestUploadAttachmentJSON(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("REASONIX_HOME", home)
+	// serve.New opens the process-local usage catalog under the redirected
+	// REASONIX_HOME; on Windows its SQLite handle keeps the TempDir cache
+	// file locked past the test, reding t.TempDir's RemoveAll cleanup
+	// (2026-09-22 登记，任务496片5清零). Registered after t.TempDir so LIFO
+	// runs it before that cleanup.
+	t.Cleanup(func() { _ = stats.CloseUsageCatalogs(context.Background()) })
 
 	projRoot := filepath.Join(home, "project")
 	if err := os.MkdirAll(projRoot, 0o755); err != nil {
@@ -81,6 +89,7 @@ func TestUploadAttachmentJSON(t *testing.T) {
 func TestUploadAttachmentNoData(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("REASONIX_HOME", home)
+	t.Cleanup(func() { _ = stats.CloseUsageCatalogs(context.Background()) })
 
 	projRoot := filepath.Join(home, "project")
 	os.MkdirAll(projRoot, 0o755)
