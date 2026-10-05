@@ -903,6 +903,17 @@ const CHECKS = [
   { feature: "501 两池分离（定时池滚动不触 heap-high，每日清理接管 7 天保留）", file: "desktop/perf_monitor.go", patterns: ["perfMonitorHeapHighPrefix", "strings.HasPrefix(name, perfMonitorHeapHighPrefix)"] },
   { feature: "501 配置键双面开关+阈值钳制", file: "internal/config/config.go", patterns: ["experimental_heap_high_profile", "perf_monitor_heap_high_threshold_mb", "PerfMonitorHeapHighDefaultMB"] },
 
+  // ── 任务505（wt-505-session-wall）────────────────────────────────
+  // 会话图墙 = 铁律8双路径的增强路径：palette 保底「最近会话」切片(12行)
+  // 不动，「跳转会话」入口+网格卡片墙挂在 experimental_session_wall 后
+  // (默认关)。锚定调色板门（off=同数组引用/锚点缺失=追加不消失）、分组
+  // 排序纯函数（项目桶+时间桶+活跃降序）与开关渲染表——merge 若顶掉，
+  // 增强面静默消失且无编译错误。
+  { feature: "505 palette 门（off=同引用/on=重载运行时右侧/缺锚追加）", file: "desktop/frontend/src/lib/sessionWall.ts", patterns: ["export function insertSessionWallEntry", "if (!enabled) return cmds;", "cmds.findIndex((c) => c.id === \"cmd-reload-runtime\")"] },
+  { feature: "505 图墙分组排序（项目桶/时间桶/活跃降序）", file: "desktop/frontend/src/lib/sessionWall.ts", patterns: ["export function groupSessionsForWall", "export function applySessionWallQuery", "sessionActivityTime(b) - sessionActivityTime(a)"] },
+  { feature: "505 图墙面板（网格卡片墙+搜索+双分组模式）", file: "desktop/frontend/src/components/SessionWallPanel.tsx", patterns: ["session-wall__grid", "applySessionWallQuery(sessions, query)", "groupSessionsForWall(filtered, mode"] },
+  { feature: "505 开关渲染表行", file: "internal/config/render.go", patterns: ["experimental_session_wall"] },
+
 ];
 
 let failed = 0;

@@ -38,9 +38,11 @@ import {
   ListTodo,
   FilePlus2,
   Bot,
+  LayoutGrid,
 } from "lucide-react";
 import { loadHiddenDockTabs, onHiddenDockTabsChange, type DockTabId } from "./lib/dockTabs";
 import { buildSubagentDirectory } from "./lib/subagentDirectory";
+import { insertSessionWallEntry } from "./lib/sessionWall";
 import { applyLabFlags, labFlagEnabled, onLabFlagsChange } from "./lib/labFlags";
 import { useToast } from "./lib/toast";
 import { useGoalActionHandler } from "./lib/goalAction";
@@ -285,6 +287,9 @@ const RemotePanel = lazy(() => import("./components/RemotePanel").then((module) 
 const SideFilesDockPanel = lazy(() => import("./components/SessionSideFilesPanel").then((module) => ({ default: module.SideFilesDockPanel })));
 // Task 495: the right-dock subagent directory panel (own lazy chunk).
 const SubagentsDockPanel = lazy(() => import("./components/SubagentsDockPanel").then((module) => ({ default: module.SubagentsDockPanel })));
+// Task 505: the session graph wall is switch-gated (default off) and lazy —
+// the chunk only loads once the wall actually opens.
+const SessionWallPanel = lazy(() => import("./components/SessionWallPanel").then((module) => ({ default: module.SessionWallPanel })));
 const TerminalPanel = lazy(() => import("./components/TerminalPanel").then((module) => ({ default: module.TerminalPanel })));
 const TaskMonitorPanel = lazy(() => import("./components/TaskMonitorPanel").then((module) => ({ default: module.TaskMonitorPanel })));
 const WorkspacePanel = lazy(async () => {
@@ -752,6 +757,12 @@ export default function App() {
   // Task 265: the question-search entry hides while its lab flag is off.
   const [questionSearchEnabled, setQuestionSearchEnabled] = useState(labFlagEnabled("questionSearch"));
   useEffect(() => onLabFlagsChange(() => setQuestionSearchEnabled(labFlagEnabled("questionSearch"))), []);
+  // Task 505: the session wall (palette entry + grid) rides the same boot
+  // snapshot; the wall overlay itself is lazy so the closed-by-default switch
+  // costs the startup bundle nothing.
+  const [sessionWallEnabled, setSessionWallEnabled] = useState(labFlagEnabled("sessionWall"));
+  useEffect(() => onLabFlagsChange(() => setSessionWallEnabled(labFlagEnabled("sessionWall"))), []);
+  const [sessionWallOpen, setSessionWallOpen] = useState(false);
   // Task 399: in-session Ctrl+F find. Owned here (not per Transcript) so one
   // global shortcut can't double-fire in split view; pulse re-selects the
   // query when the chord repeats while the bar is already open.
@@ -1016,6 +1027,15 @@ export default function App() {
   const [workspaceInsertTarget, setWorkspaceInsertTarget] = useState<WorkspaceInsertTarget>("composer");
   const transientOverlayDismissSignal = useOverlayStore((s) => s.transientOverlayDismissSignal);
   const setTransientOverlayDismissSignal = useOverlayStore((s) => s.setTransientOverlayDismissSignal);
+  // Task 505: the session wall joins the transient-overlay family — any
+  // "dismiss transient overlays" pulse (e.g. the palette reopening) closes it.
+  const sessionWallSignalRef = useRef(transientOverlayDismissSignal);
+  useEffect(() => {
+    if (transientOverlayDismissSignal !== sessionWallSignalRef.current) {
+      sessionWallSignalRef.current = transientOverlayDismissSignal;
+      setSessionWallOpen(false);
+    }
+  }, [transientOverlayDismissSignal]);
   // Platform comes from the shared chrome store, which owns the same value AppRuntime
   // reads: one source, so the two surfaces cannot disagree (task 38).
   const desktopPlatform = useWindowChromeStore((s) => s.platform);
@@ -4245,8 +4265,25 @@ export default function App() {
           .catch((err) => showToast(err instanceof Error ? err.message : String(err), "error"));
       },
     }));
-    return [...cmds, ...extensionItems, ...remoteItems, ...sessionItems];
-  }, [t, paletteSessions, paletteExtensionActions, remoteHosts, remoteStatuses, activeTab?.id, handleNewTab, openTrash, onResumeSession, openRemoteWorkspaceFromStatus, connectAndOpenRemoteWorkspace, openRightDockMode, showToast]);
+    // Task 505: the session-wall entry rides the command grid to the right of
+    // "重载运行时" — but only while the lab switch is on. Off (the default)
+    // returns the cmds array unchanged, so the palette is byte-for-byte
+    // identical to the legacy behaviour.
+    const cmdsWithWall = insertSessionWallEntry(
+      cmds,
+      sessionWallEnabled,
+      {
+        id: "cmd-session-wall",
+        group: t("palette.group.commands"),
+        title: t("palette.cmd.sessionWall"),
+        icon: <LayoutGrid size={15} />,
+        compact: true,
+        keywords: ["session", "wall", "jump", "sessions", "跳转", "会话", "图墙"],
+        run: () => setSessionWallOpen(true),
+      },
+    );
+    return [...cmdsWithWall, ...extensionItems, ...remoteItems, ...sessionItems];
+  }, [t, paletteSessions, paletteExtensionActions, remoteHosts, remoteStatuses, activeTab?.id, handleNewTab, openTrash, onResumeSession, openRemoteWorkspaceFromStatus, connectAndOpenRemoteWorkspace, openRightDockMode, showToast, sessionWallEnabled]);
   // Delete / rename act on disk, then re-fetch so the panel reflects the change.
   const onDeleteSession = useCallback(
     async (path: string) => {
@@ -5829,6 +5866,22 @@ export default function App() {
         placeholder={t("palette.placeholder")}
         emptyText={t("palette.empty")}
       />
+
+      {/* Task 505: the session graph wall, reachable only through the gated
+          palette entry (switch off → never opens, chunk never loads). */}
+      {sessionWallOpen && (
+        <Suspense fallback={null}>
+          <SessionWallPanel
+            open={sessionWallOpen}
+            load={listSessions}
+            onClose={() => setSessionWallOpen(false)}
+            onResume={(session) => {
+              setSessionWallOpen(false);
+              void onResumeSession(session);
+            }}
+          />
+        </Suspense>
+      )}
 
       <ShortcutsCheatsheet
         open={shortcutsOpen}
