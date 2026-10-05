@@ -686,6 +686,9 @@ func (a *App) startup(ctx context.Context) {
 	a.startColdCacheCompactLoop()
 	// Task 308-O4: release detached/idle runtimes (gate: env minutes, default off).
 	a.startDetachedIdleReleaseLoop()
+	// Task 485 P1: release self-held orphan session leases (leaked-handle
+	// backstop — the lock itself cannot arbitrate a handle this process lost).
+	a.startSessionLeaseLeakSweeper()
 	// Task 308-O3: apply the soft memory limit from config (live-capable via
 	// SetGoMemLimitMB in settings; startup applies the stored value once).
 	if cfg, _, err := a.loadDesktopUserConfigForView(); err == nil {
@@ -9964,8 +9967,17 @@ func (e *sessionLeaseBusyError) Error() string {
 	base := "this session is already open in another Reasonix window or still running in the background; close the other window or open a copy"
 	var leaseErr *agent.SessionLeaseError
 	if errors.As(e.err, &leaseErr) && leaseErr != nil && leaseErr.Info != nil {
-		if holderPID := leaseErr.Info.PID; holderPID > 0 && holderPID != os.Getpid() {
-			base = fmt.Sprintf("this session is held by a leftover background process (pid %d); restart the desktop to reap it automatically, or run taskkill /PID %d, then reopen the session", holderPID, holderPID)
+		if holderPID := leaseErr.Info.PID; holderPID > 0 {
+			if holderPID == os.Getpid() {
+				// Task 485: the holder resolves to THIS process — "another
+				// Reasonix window" is a dead-end lead (the 2026-10-05 lease
+				// leak logged 568 of these with no second window in
+				// existence). The real owner is a tab or background runtime
+				// of this very instance; P0/P1 keep such holds transient.
+				base = fmt.Sprintf("this session is already open in this Reasonix instance (pid %d); switch to or close its tab, or wait for its background work to finish, then retry", holderPID)
+			} else {
+				base = fmt.Sprintf("this session is held by a leftover background process (pid %d); restart the desktop to reap it automatically, or run taskkill /PID %d, then reopen the session", holderPID, holderPID)
+			}
 		}
 	}
 	if setting == "" {

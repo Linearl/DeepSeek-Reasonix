@@ -152,6 +152,19 @@ func (a *App) releaseDetachedSession(key string, tab *WorkspaceTab, idle time.Du
 	if hostKey != "" {
 		a.releaseSharedHost(hostKey)
 	}
+	// Task 485 (P0): the runtime is gone but the tab can still hold the
+	// session lease from its last attach. Releasing the runtime without the
+	// lease leaked the OS lock handle: the lock stayed HELD by this very
+	// process (LockFileEx err=33 against our own PID), every later acquire
+	// failed with "refusing session access", and the three automatic cleanup
+	// paths (reclaim / clear-stale / held-by-other) all bail out because they
+	// require taking the leaked lock first. Drop the lease through the same
+	// swap helper the handoff paths use (session_lease_handoff.go) so the
+	// takeover watcher stops with it; Release runs after ctrl.Close, so any
+	// final authority-guarded save has drained before the lock unlocks.
+	if old := tab.swapSessionLease(nil); old != nil {
+		old.Release()
+	}
 	slog.Info("desktop: detached session released (idle)",
 		"key", key, "idleMinutes", int(idle.Minutes()))
 }

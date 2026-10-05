@@ -868,6 +868,20 @@ const CHECKS = [
   { feature: "469 fence 判定纯函数（规则逐字保留+prompt 丢弃带对账标记）", file: "desktop/frontend/src/lib/askPanelGate.ts", patterns: ["judgePromptFenceArrival", "reconcile: view.promptEvent"] },
   { feature: "469 fence 丢弃打点+权威对账（ask-panel 行+meta 刷新+重放）", file: "desktop/frontend/src/lib/useController.ts", patterns: ["prompt dropped by stale fence", "schedulePromptFenceReconcile"] },
   { feature: "469 projector 卡住 prompt 上报（gap 修复放弃不吞面板）", file: "desktop/frontend/src/lib/turnEventProjection.ts", patterns: ["onPromptsStranded", "reportStrandedPrompts", "turn-events-gap-repair-epoch-mismatch"] },
+  // ── 485（wt-485-lease-release）──────────────────────────────────
+  // detached/idle 释放链必须连 tab 的 session lease 一起放（2026-10-05 泄漏
+  // 根因）：merge 若顶掉这段，锁句柄随 runtime 释放泄漏、会话永久 busy，
+  // 且无冲突标记无编译错误。
+  { feature: "485 P0 detached 释放链补 lease 释放", file: "desktop/detached_idle_release.go", patterns: ["if old := tab.swapSessionLease(nil); old != nil {", "old.Release()"] },
+  // P1 兜底靠「tracker 在唯一汇合点登记 tab 租约」才成立：store 丢登记则兜
+  // 底失明，孤儿锁永远无人释放。
+  { feature: "485 P1 租约 tracker 汇合点接线", file: "desktop/tabs.go", patterns: ["syncSessionLeaseTracker(t, key)"] },
+  { feature: "485 P1 孤儿自持租约扫描器", file: "desktop/session_lease_leak_sweep.go", patterns: ["orphan in-process session lease released", "sessionLeaseLeakDecision", "agent.SessionLeaseActiveOwnerKeys()"] },
+  // agent 侧活动租约键快照是 P1 的数据源，静默回退会让扫描空转。
+  { feature: "485 P1 agent 活动租约键快照", file: "internal/agent/session_lease.go", patterns: ["func SessionLeaseActiveOwnerKeys()"] },
+  // collab 拒绝退避 + 自持文案：回退则拒绝日志风暴与「另一个窗口」误导复现。
+  { feature: "485 P2 collab 拒绝重试退避", file: "desktop/session_collab.go", patterns: ["collabRetryDelay", "deferContactRetry", "p.drain(true)"] },
+  { feature: "485 P2 自持 busy 文案去误导", file: "desktop/app.go", patterns: ["already open in this Reasonix instance"] },
 
 ];
 
