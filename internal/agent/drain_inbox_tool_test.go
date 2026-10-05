@@ -215,3 +215,33 @@ func TestDrainInboxNamedForAcceptance(t *testing.T) {
 		t.Fatal("drain_inbox must not be ReadOnly — settle advances the cursor")
 	}
 }
+
+// Task 487: mirror of desktop sessionCollabDeliveryText — a From-bearing
+// message without ReplyTo (a task-309 read receipt) must not be labelled
+// 「发送方未登记」; the trailer falls back to From as the reply address.
+func TestDrainInboxRenderTextReadReceiptSenderConsistent(t *testing.T) {
+	receipt := sessioncollab.MailMessage{
+		ID:   "msg_r",
+		From: "sc_main",
+		To:   "sc_worker",
+		Body: "已读回执：你的消息 msg_1 已进入本会话上下文。本条为系统回执，无需回复。",
+		Kind: "system",
+	}
+	text := drainInboxRenderText(receipt, 0)
+	if !strings.Contains(text, "来自 contact_id=sc_main") {
+		t.Fatalf("header must carry the sender id: %s", text)
+	}
+	if strings.Contains(text, "未登记") || strings.Contains(text, "无法回信") {
+		t.Fatalf("a From-bearing receipt must not be labelled unregistered: %s", text)
+	}
+	if strings.Count(text, "contact_id=sc_main") < 2 {
+		t.Fatalf("header and trailer must agree on the sender id: %s", text)
+	}
+
+	oneway := drainInboxRenderText(sessioncollab.MailMessage{
+		ID: "msg_2", To: "sc_worker", Body: "notice",
+	}, 0)
+	if !strings.Contains(oneway, "未登记") || !strings.Contains(oneway, "无法回信") {
+		t.Fatalf("an empty From must keep the one-way notice: %s", oneway)
+	}
+}

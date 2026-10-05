@@ -414,3 +414,41 @@ func TestConstraintStrippingHandlesRealDeliveryText(t *testing.T) {
 		t.Fatalf("the caller's own imperative must still bind: %+v", bound)
 	}
 }
+
+// Task 487: a read receipt (task 309) is delivered with From set but no
+// ReplyTo. The trailer used to key "replyable" off ReplyTo alone, so the same
+// message showed 「来自 contact_id=sc_main」 up top and 「发送方未登记 contact_id」
+// at the bottom — a self-contradiction that pointed the recipient at a
+// remediation (have the sender call talk_to_session) that had already
+// happened. The header is the contract: a From-bearing message is addressable.
+func TestSessionCollabDeliveryTextReadReceiptSenderConsistent(t *testing.T) {
+	receipt := sessioncollab.MailMessage{
+		ID:   "msg_r",
+		From: "sc_main",
+		To:   "sc_worker",
+		Body: "已读回执：你的消息 msg_1 已进入本会话上下文（task 309 read receipt）。本条为系统回执，无需回复。",
+		Kind: "system",
+	}
+	text := sessionCollabDeliveryText(receipt, 0)
+	if !strings.Contains(text, "来自 contact_id=sc_main") {
+		t.Fatalf("header must carry the sender id: %s", text)
+	}
+	if strings.Contains(text, "未登记") || strings.Contains(text, "无法回信") {
+		t.Fatalf("a From-bearing receipt must not be labelled unregistered: %s", text)
+	}
+	if strings.Count(text, "contact_id=sc_main") < 2 {
+		t.Fatalf("header and trailer must agree on the sender id: %s", text)
+	}
+	if !strings.Contains(text, "回复方式") {
+		t.Fatalf("a registered sender must get a usable reply path: %s", text)
+	}
+
+	// The truly unregistered case keeps the one-way notice — the remediation
+	// text is only true there.
+	oneway := sessionCollabDeliveryText(sessioncollab.MailMessage{
+		ID: "msg_2", To: "sc_worker", Body: "notice",
+	}, 0)
+	if !strings.Contains(oneway, "未登记") || !strings.Contains(oneway, "无法回信") {
+		t.Fatalf("an empty From must keep the one-way notice: %s", oneway)
+	}
+}

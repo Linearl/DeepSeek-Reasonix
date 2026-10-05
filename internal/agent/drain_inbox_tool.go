@@ -127,6 +127,15 @@ func drainInboxRenderText(msg sessioncollab.MailMessage, effectiveHop int) strin
 		if msg.RequireReply {
 			b.WriteString("\n⚠ 发件人要求回信（require_reply）：完成本信的工作后，必须按上面的回复方式回信；无法完成也请回信说明，不要只在本会话里写下结论。")
 		}
+	} else if msg.From != "" {
+		// Task 487: mirror of desktop/session_collab.go sessionCollabDeliveryText.
+		// An empty ReplyTo with a registered From is a system message (the
+		// task-309 read receipt looks exactly like this), not an unregistered
+		// sender. Fall back to From as the reply address; the one-way notice
+		// below stays reserved for a truly empty From.
+		b.WriteString("回复方式：完成后用 talk_to_session 回信到 contact_id=" + msg.From +
+			"，hop 传 " + strconv.Itoa(effectiveHop+1) +
+			"。（发送方未指定专用回信地址，回信到其登记的 contact_id 即可。）")
 	} else {
 		b.WriteString("这是一条单向通知：发送方未登记 contact_id，本消息无法回信。")
 	}
