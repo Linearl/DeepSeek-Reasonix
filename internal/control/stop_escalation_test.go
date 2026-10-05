@@ -101,9 +101,13 @@ func TestCancelStopThreePressEscalation(t *testing.T) {
 	default:
 		t.Fatal("L3 must fire the executor force signal")
 	}
+	// forceStarted is closed by the fixture goroutine after it observes
+	// ctx.Done — one scheduling step behind the force signal above. A bare
+	// default raced that goroutine red under the full-package CPU mix
+	// (0.00s FAIL, solo -count=5 green); wait instead of racing it.
 	select {
 	case <-forceStarted:
-	default:
+	case <-time.After(2 * time.Second):
 		t.Fatal("the force fixture must observe the turn context cancellation")
 	}
 }
