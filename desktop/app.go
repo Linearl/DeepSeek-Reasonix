@@ -657,11 +657,21 @@ func (a *App) startup(ctx context.Context) {
 		(cfg.Agent.ExperimentalPerfMonitor || cfg.Desktop.ExperimentalPerfMonitor) {
 		interval, retention, heapInterval, paths := perfMonitorSettings(cfg)
 		monitor := newPerfMonitor(a, perfMonitorDir(), interval, retention, heapInterval, paths)
+		// 任务 501: 高峰快照挂在同一采样循环上，随 monitor 的启停启停。开关
+		// 关着时这两个字段是零值，循环行为逐字节不变。
+		monitor.heapHighEnabled, monitor.heapHighThresholdMB = perfMonitorHeapHighSettings(cfg)
 		a.perfMonitor = monitor
 		monitor.Start()
 		slog.Info("desktop: perf monitor started",
 			"intervalSeconds", interval.Seconds(), "retentionHours", retention.Hours(),
-			"heapIntervalSeconds", heapInterval.Seconds(), "patterns", len(paths))
+			"heapIntervalSeconds", heapInterval.Seconds(), "patterns", len(paths),
+			"heapHighEnabled", monitor.heapHighEnabled,
+			"heapHighThresholdMB", int64(monitor.heapHighThresholdMB))
+	} else if err == nil &&
+		(cfg.Agent.ExperimentalHeapHighProfile || cfg.Desktop.ExperimentalHeapHighProfile) {
+		// 任务 501: 高峰开关开着但主监控关着——触发器骑在采样循环上，主监控
+		// 不跑它永远不会命中；把「下一步」直接写进日志（设置面板可开主监控）。
+		slog.Info("desktop: perf monitor heap-high armed but perf monitor off — the trigger rides the perf monitor's sampling loop; enable experimental_perf_monitor to activate it")
 	}
 	a.goSafe("repairDesktopIconIntegration", func() {
 		if err := repairDesktopIconIntegration(); err != nil {

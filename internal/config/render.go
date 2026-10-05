@@ -214,6 +214,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "experimental_session_collab = %v   # desktop: settings-view mirror of [agent] experimental_session_collab (task 19)\n", c.Desktop.ExperimentalSessionCollab)
 		fmt.Fprintf(&b, "experimental_auto_load_older = %v   # desktop: settings-view mirror of [agent] experimental_auto_load_older (fork task 160)\n", c.Desktop.ExperimentalAutoLoadOlder)
 		fmt.Fprintf(&b, "experimental_perf_monitor = %v   # desktop: settings-view mirror of [agent] experimental_perf_monitor (task 184)\n", c.Desktop.ExperimentalPerfMonitor)
+		fmt.Fprintf(&b, "experimental_heap_high_profile = %v   # desktop: settings-view mirror of [agent] experimental_heap_high_profile (task 501)\n", c.Desktop.ExperimentalHeapHighProfile)
 
 		fmt.Fprintf(&b, "experimental_autonomous_idle_terminate = %v   # desktop: settings-view mirror of [agent] experimental_autonomous_idle_terminate (task 244 B1)\n", c.Desktop.ExperimentalAutonomousIdleTerminate)
 		fmt.Fprintf(&b, "experimental_loop_streak_note = %v   # desktop: settings-view mirror of [agent] experimental_loop_streak_note (task 244 B2)\n", c.Desktop.ExperimentalLoopStreakNote)
@@ -468,6 +469,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// Unconditional render — omit-on-default would let a hand-added line vanish
 	// on the next save (same rule as its sampler sibling above).
 	fmt.Fprintf(&b, "perf_monitor_heap_interval_seconds = %d   # perf monitor heap-profile dump interval in seconds (0 = built-in default 60; explicit values clamped 10..3600)\n", c.Agent.PerfMonitorHeapIntervalSeconds)
+	// Task 501: heap-high snapshot. Unconditional render — omit-on-default
+	// would flip a hand-set switch back off on the next save (fixed-key-set rule).
+	fmt.Fprintf(&b, "experimental_heap_high_profile = %v   # task 501: threshold-triggered heap snapshot (workingSet/heapInuse >= threshold -> logs/perf/heap-high-<MB>MB-<ts>.pprof, 7-day retention, 30-min same-tier cooldown; rides experimental_perf_monitor)\n", c.Agent.ExperimentalHeapHighProfile)
+	fmt.Fprintf(&b, "perf_monitor_heap_high_threshold_mb = %d   # task 501: heap-high trigger threshold in MB (0 = built-in default 6144; explicit values clamped 1024..131072)\n", c.Agent.PerfMonitorHeapHighThresholdMB)
 	fmt.Fprintf(&b, "session_collab_hop_limit = %d   # task 204: cross-session chain ceiling (default 5, clamped 3..1000; 0 = default)\n", c.Agent.SessionCollabHopLimit)
 	// Task 308-O4: detached idle runtime release threshold. Unconditional
 	// render — omit-on-default would let a hand-added line vanish on the next save.

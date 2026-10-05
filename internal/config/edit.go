@@ -510,6 +510,35 @@ func (c *Config) SetPerfMonitorHeapIntervalSeconds(seconds int) error {
 	return nil
 }
 
+// SetExperimentalHeapHighProfile toggles the threshold-triggered heap snapshot
+// (task 501). It is opt-in because it writes a profile file whenever the host
+// crosses the configured watermark; the Desktop copy is the settings-view
+// mirror. Restart-scoped like the perf monitor itself: the trigger rides its
+// sampling loop, which is built once at boot.
+func (c *Config) SetExperimentalHeapHighProfile(enabled bool) error {
+	c.Desktop.ExperimentalHeapHighProfile = enabled
+	c.Agent.ExperimentalHeapHighProfile = enabled
+	return nil
+}
+
+// SetPerfMonitorHeapHighThresholdMB sets the heap-high trigger threshold
+// (task 501). 0 means "back to the built-in default (6GB)" and is stored
+// as-is; any explicit value is clamped into 1GB..128GB — a hand-edited config
+// must not arm a trigger that fires on every sample, nor set a bar no
+// realistic working set reaches.
+func (c *Config) SetPerfMonitorHeapHighThresholdMB(mb int) error {
+	if mb > 0 {
+		if mb < PerfMonitorHeapHighMinThresholdMB {
+			mb = PerfMonitorHeapHighMinThresholdMB
+		}
+		if mb > PerfMonitorHeapHighMaxThresholdMB {
+			mb = PerfMonitorHeapHighMaxThresholdMB
+		}
+	}
+	c.Agent.PerfMonitorHeapHighThresholdMB = mb
+	return nil
+}
+
 // SetSessionCollabHopLimit sets the cross-session chain ceiling (task 204). The value is
 // clamped rather than trusted: a hand-edited config must not leave an out-of-range
 // ceiling on disk, and the settings view writes through here.

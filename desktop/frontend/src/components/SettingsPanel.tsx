@@ -2485,6 +2485,24 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   {t("settings.perfMonitor.heapAction")}
                 </button>
               </SettingsField>
+              {/* Task 501: threshold-triggered heap snapshot — an experimental
+                  switch in the same lab section, off by default. */}
+              <SettingsField label={t("settings.perfMonitor.heapHigh")} hint={t("settings.perfMonitor.heapHighHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalHeapHighProfile) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalHeapHighProfile(on);
+                      })}
+                    >
+                      {t(on ? "settings.perfMonitorMode.on" : "settings.perfMonitorMode.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
               {/* Task 338: WS series + heap pie, read-only over the existing
                   samples (no new sampling cost; the switch stays authoritative). */}
               <PerfMemorySection busy={busy} apply={apply} />

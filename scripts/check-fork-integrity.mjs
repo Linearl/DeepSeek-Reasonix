@@ -894,6 +894,15 @@ const CHECKS = [
   { feature: "483 optimistic MarkOpaque 记录不拒绝", file: "internal/agent/scheduler.go", patterns: ["Under optimistic-parallel (task 483) the upgrade is recorded"] },
   { feature: "任务483 调度器并行矩阵测试", file: "internal/agent/scheduler_optimistic_parallel_test.go", patterns: ["TestOptimisticUndeclaredSubagentsRunInParallel", "TestConservativeUndeclaredSubagentsStillSerialize", "TestOptimisticDeclaredUndeclaredPairRuns", "TestOptimisticRealizeRecordsWithoutRefusal"] },
 
+  // ── 任务501（wt-501-heap-high）───────────────────────────────────
+  // 阈值高峰快照是 499 内存膨胀取证的先行件：60s 定时池滚动 3 份会冲掉膨胀
+  // 现场快照，高峰池（heap-high- 前缀、7 天保留）与防风暴门（单调新高水线 +
+  // 30 分钟冷却）是本任务的全部特征。merge 若顶掉，取证能力静默回退且无编译
+  // 错误——锚定触发判定形状、两池分离过滤与配置键。
+  { feature: "501 高峰快照触发与防风暴门（单调新高水线+冷却）", file: "desktop/perf_monitor.go", patterns: ["func (m *perfMonitor) maybeCaptureHeapHigh", "if tier <= m.heapHighPeakTier && now.Sub(m.lastHeapHighAt) < perfMonitorHeapHighCooldown {", "func (m *perfMonitor) writeHeapHighProfile"] },
+  { feature: "501 两池分离（定时池滚动不触 heap-high，每日清理接管 7 天保留）", file: "desktop/perf_monitor.go", patterns: ["perfMonitorHeapHighPrefix", "strings.HasPrefix(name, perfMonitorHeapHighPrefix)"] },
+  { feature: "501 配置键双面开关+阈值钳制", file: "internal/config/config.go", patterns: ["experimental_heap_high_profile", "perf_monitor_heap_high_threshold_mb", "PerfMonitorHeapHighDefaultMB"] },
+
 ];
 
 let failed = 0;

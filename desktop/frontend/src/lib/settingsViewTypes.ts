@@ -107,6 +107,8 @@ export interface SettingsView {
   // periodic heap profiles. Off by default.
   experimentalPerfMonitor?: boolean;
   perfMonitorIntervalSeconds?: number;
+  // Task 501: threshold-triggered heap snapshot (experimental, default off).
+  experimentalHeapHighProfile?: boolean;
   // Task 204: cross-session chain ceiling (3..1000, default 5).
   sessionCollabHopLimit?: number;
   // Task 308-O4: detached idle runtime release threshold (minutes; 0 = never).
