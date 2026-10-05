@@ -115,47 +115,91 @@ and a permanently red test swallows the next real regression.
 Confirm the failure is genuinely pre-existing first (`git stash` your change and
 re-run); that check decides the framing, not whether the failure gets fixed.
 
-### Current list (2026-09-22; updated 2026-10-05) — 8 open (serve upload/projects; agent map race; agent budget/guard assertions; torn-tail hang)
+### Current list (2026-10-05) — 1 open (desktop full-suite silent exit)
 
-* **`internal/serve`: `TestUploadAttachmentJSON`, `TestUploadAttachmentNoData`,
-  `TestListProjectsEndpoint`** — red on the pristine `9aa573921` baseline
-  (stash-verified during task 36 batch 1, 2026-09-22); unrelated to any
-  pending change. Management verdict: register and leave for a dedicated
-  cleanup pass; they do not block merges. Next owner must classify each as
-  stale/orphan/code-wrong per the rules above before closing.
-* **`internal/agent` full-suite `fatal error: concurrent map writes`** —
-  pre-existing data race, reproduced on the pristine `eb99da2a6` baseline
-  (2026-09-22, Block2 M-a baseline comparison: same fatal hit
-  `TestEventWaitAllIdleWakesOnTurnClose` there; timing-dependent which test
-  trips it). Verdict: **code-wrong** — the shared session/DAG structures are
-  mutated without their own guards (the audit H1-1/M5 family; Block2 m2 added
-  `sessionDAGState.mu`, and audit-2 major-1 extended its read side to the
-  whole rotate chain: `sessionDAGSingleWriterProof`, `sessionDAGLogOversized`,
-  and `buildRotatedSessionDAG` all run under one `st.mu.RLock`, and every
-  remaining `range st.nodes` reader goes through `snapshotNodes` — so the
-  "nodes map is protected" claim now matches the implementation).
-  The remaining unguarded maps need the same treatment in a dedicated pass.
-  Subset runs (SaveDag|SessionDAG|DAG|AdoptHead|Turn|DrainInbox) are green;
-  the fatal only appears in the full-suite concurrency mix.
-* **`internal/agent`: `TestWithContextBudgetPrefixesAndSkips`,
-  `TestReadOnlyWanderingTripsTheProgressGuard`,
-  `TestRepeatedReadTripsTheProgressGuard`** — red on the pristine
-  `141cf75e2` baseline (stash-verified during task 483, 2026-10-05);
-  deterministic assertion failures in 0.02–0.16s, not timing noise —
-  "budget block missing from turn: user text" (`context_budget_block_test.go:39`),
-  "wandering for 41 rounds never reached the no-progress ladder"
-  (`runaway_repro_test.go:103`), "repeating one read for 41 rounds never fired
-  the guard" (`runaway_repro_test.go:114`). Verdict not yet classified (stale
-  fixture vs code regression); registered and left for a dedicated cleanup
-  pass; they do not block merges. Repro:
-  `go test ./internal/agent/ -run 'TestWithContextBudgetPrefixesAndSkips|TestReadOnlyWanderingTripsTheProgressGuard|TestRepeatedReadTripsTheProgressGuard' -count=1`
-* **`internal/agent`: `TestAppendForShutdownWithoutLockAfterTornTail`** —
-  hangs, not flaky: killed by `-timeout 300s` with no assertion output even
-  when run alone, and held the pristine `141cf75e2` baseline run for 10m40s
-  inside the full suite (both stash-verified during task 483, 2026-10-05).
-  Verdict not yet classified (test-side hang or missing gate); registered and
-  left for a dedicated cleanup pass; does not block merges. Repro:
-  `go test ./internal/agent/ -run 'TestAppendForShutdownWithoutLockAfterTornTail' -count=1 -timeout 300s`
+Closed this pass, each driven to a verdict
+
+Every registered pre-existing failure is closed, each driven to a verdict
+(fix the code / update the stale test / delete the orphan / deflake the
+measurement), never closed as "pre-existing, not mine":
+
+* **`internal/serve` upload/projects trio (registered 2026-09-22, closed
+  2026-10-05 `a6f2ba980`)** — verdict: **missing process-level test cleanup**
+  (code-side). Each test redirects `REASONIX_HOME` into its TempDir and then
+  `serve.New` opens the process-local usage catalog there; nothing called
+  `stats.CloseUsageCatalogs`, so on Windows the open SQLite handle made
+  `t.TempDir`'s RemoveAll fail with "file in use". Fixed with a
+  `t.Cleanup(CloseUsageCatalogs)` in each test (the documented test-isolation
+  entry point); `internal/serve` full suite green for the first time since
+  registration.
+* **`internal/agent` full-suite `fatal error: concurrent map writes` +
+  600s/2400s full-suite timeouts** — the hang half was root-caused to a
+  **RWMutex non-reentrant self-deadlock** in the torn-line resume path
+  (`resumePastTornLine` re-entered `replayFrom` while holding its write lock),
+  fixed in `b4c01b286` with a minimal red-first repro (`402524a7f`); the full
+  agent suite now completes (446s) instead of timing out. The remaining
+  unguarded-map concern stays watch-listed: no `concurrent map writes` fatal
+  reproduced in the post-fix full run.
+* **`internal/control` `TestOrdinaryChatTurnRunsPastTheOldRoundCeiling` (121
+  rounds) + `TestCancelStopThreePressEscalation` (closed 2026-10-05
+  `b92773981`)** — verdict: **test criteria clocked the machine, not the
+  behavior** (no assertion weakened). The 121-round watchdog (5s no-progress)
+  measured per-round real session saves (200-500ms solo, spikes past 5s under
+  full-package CPU/disk contention); idle raised to 30s and total to 240s on
+  measured cost. The escalation test raced a fixture goroutine's `close` with
+  a bare `select`-`default`; it now waits instead of racing.
+* **`internal/agent` `TestRepairPathKeepsRecordBudgetUnderAdaptiveBytes`
+  (closed 2026-10-05 `96e241479`)** — verdict: **stale judging surface**. The
+  P18-R1 load-path DAG graph cache serves a byte-identical log without
+  replaying it, and the record budget is a *replay* budget (it guards a small
+  file expanding into a huge graph during decode — impossible when the graph
+  is already in memory). The test now takes the official
+  `REASONIX_DAG_LOAD_CACHE=0` rollback to pin the cold-path rejection, which
+  is where the threat model lives.
+* **`desktop/frontend` `tsc --noEmit` 18 errors (bridge.ts 9 /
+  TaskMonitorPanel 5 / BlankProjectFlow 2 / WorkspaceTreeMenu 1 /
+  useHistoryCatalog 1, recorded in the P16/469 reports)** — verdict:
+  **environment, not code**. All 18 were TS7006 implicit-any on mock-object
+  methods typed via `typeof GeneratedApp.*`; the `wailsjs/` generated bindings
+  were absent from the worktree, so the type reference dissolved. Junctioning
+  the main checkout's `wailsjs/` into the worktree (same remedy as
+  `node_modules`, see task 497) yields **0 errors** under the build config.
+  Remedy for any worktree: `cmd /c mklink /J <worktree>/desktop/frontend/wailsjs
+  <main>/desktop/frontend/wailsjs`.
+* **469 self-declared leftovers (closed 2026-10-05 `b59fb3e2f`)** — ① the
+  P16 instrumentation observation item is not a code defect (the trail is
+  delivered; desktop.log answers "where did the ask stall"); ②
+  `asyncRuntimeEmitter.Clear()` dropping queued events is the intended #5352
+  semantics, but `clearContext` also had to drop the #9601 context-less buffer
+  (fixed + red-first regression: a reused sink would have flushed the buffered
+  window onto the fresh context); ③ the `mcp_interaction` reducer still had
+  the pre-428 blanket `cancelRequested → drop` — it now shares
+  `judgeAskArrival` with the ask branch (tombstone first, stale-cancel +
+  live turn surfaces and clears the flag, settled-turn replays stay dropped)
+  with reducer-level regressions in `task428-ask-panel-gate.test.ts` (50/50).
+
+* **OPEN: `desktop` full suite exits silently mid-run with zero failing tests
+  (found 2026-10-05, task 496; 8/8 full runs red)** — the test binary dies
+  deterministically at a fixed execution-order point (the
+  `TestHistorySlice…` session-save loop at messages=226, 6/8 runs; shifted
+  with -json/-test.v output modes), with no `--- FAIL`, no panic, no stderr.
+  Excluded by experiment: output volume (redirect-to-NUL still dies),
+  parallelism (`-test.parallel=1` still dies), disk space (46GB free), the
+  webview2 `errorCallback` exit path (diagnostic slog planted before its
+  `os.Exit(1)` — the line never fires), the shutdown watchdog (its ERROR line
+  never fires), and the tests at the death point (each green solo and as a
+  run-range). The raw exit code reads 1 through MSYS `$?`, which truncates
+  Windows codes to 8 bits — a native `STATUS_UNSUCCESSFUL` (0xC0000001)
+  presents identically, so a native-layer termination is the leading suspect.
+  Every recent delivery verified desktop via subsets/slices only, and a
+  leftover log from 2026-10-02 shows the same run shape, so this predates
+  today. Needs a dedicated pass with native-grade tooling (full 32-bit exit
+  code capture outside MSYS, Windows Event Log / LocalDumps crash dumps,
+  go-webview2 callback audit). Targeted subsets — including every test named
+  above — are green; the four other touched packages
+  (agent/control/serve/tool) are fully green. A diagnostic slog line now
+  guards the one known silent exit path
+  (`third_party/go-webview2/pkg/edge/chromium.go` errorCallback).
 
 Empty, and kept empty.
 

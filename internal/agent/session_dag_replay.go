@@ -266,6 +266,16 @@ func (st *sessionDAGState) replayFrom(ctx context.Context, from int64, limits se
 	// entry set.
 	st.mu.Lock()
 	defer st.mu.Unlock()
+	return st.replayFromLocked(ctx, from, limits)
+}
+
+// replayFromLocked is the replayFrom body without the write lock, for callers
+// that already hold st.mu. The only one is resumePastTornLine: the decoder
+// hits an unreadable line mid-replay and continues past it inside the same
+// locked pass — going through replayFrom there would take st.mu a second time
+// and deadlock, because sync.RWMutex is not reentrant (P19 遗留③: any log with
+// complete entries behind a torn line hung the replay forever).
+func (st *sessionDAGState) replayFromLocked(ctx context.Context, from int64, limits sessionReplayLimits) error {
 	// Size the byte budget to the file before deciding anything about it. The budget exists so a
 	// damaged log cannot exhaust memory while decoding, and the size is known here - refusing an
 	// oversize log instead of sizing to it left sessions that were fractions of a percent over

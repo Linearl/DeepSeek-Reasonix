@@ -81,6 +81,13 @@ func (s *tabEventSink) setRuntimeEpoch(epoch string) {
 func (s *tabEventSink) clearContext() {
 	s.mu.Lock()
 	s.ctx = nil
+	// The #9601 context-less buffer is the second resting place for the same
+	// stale events the runtimeEvents.Clear() below drains: events that arrived
+	// in the ctx=nil window sit in pendingRuntimeEvents, and a reused sink's
+	// setContext flushes them onto the new context — the small window of the
+	// same #5352 "stale AI output bleeds into the visible session" shape this
+	// method exists to prevent. Drop the buffer with the queue.
+	s.pendingRuntimeEvents = nil
 	s.turn.submissionID = ""
 	s.mu.Unlock()
 	s.runtimeEvents.Clear()

@@ -34,6 +34,10 @@ func TestWithContextBudgetPrefixesAndSkips(t *testing.T) {
 	sess := foldableSessionOverForce(10)
 	prov := &overflowSummaryProvider{}
 	a := agentOverForceWindow(t, prov, sess, 60_000)
+	// Task 265 moved the line behind the context-budget lab switch (nil-means-on
+	// at the config layer, resolved into Options at boot); a directly built Agent
+	// starts with it off, so the injection under test has to be enabled here.
+	a.contextBudget = true
 	out := a.WithContextBudget("user text")
 	if !strings.HasPrefix(out, "<context-state>") || !strings.Contains(out, "user text") {
 		t.Fatalf("budget block missing from turn: %q", out)

@@ -133,25 +133,31 @@ func TestExplicitMaxStepsOwnsTheOrdinaryTurn(t *testing.T) {
 	}
 }
 
-// This is a round-ceiling regression, not a disk-throughput benchmark. Keep a
-// five-second no-progress watchdog while bounding the entire 121-round run.
+// This is a round-ceiling regression, not a disk-throughput benchmark. The
+// watchdogs only catch a wedged loop, so both sit well above measured cost:
+// solo, the 121 rounds finish in ~62s with per-round session saves at
+// 200-500ms; under the full-package mix (CPU + disk contention on Windows) a
+// single round's save can stall past five seconds without the turn being
+// stuck (实测 117.82s 总耗时时被 5s idle 误杀). 30s idle still reds a real
+// deadlock far faster than the total deadline; 240s total is ~2x the worst
+// measured mixed-run cost.
 func waitForChatBudgetProgress(t *testing.T, done <-chan event.Event, progress <-chan struct{}) {
 	t.Helper()
-	idle := time.NewTimer(5 * time.Second)
+	idle := time.NewTimer(30 * time.Second)
 	defer idle.Stop()
-	// idle is the real assertion: a turn that makes no progress for five
+	// idle is the real assertion: a turn that makes no progress for thirty
 	// seconds is stuck. total only bounds a runaway loop, so it stays generous
 	// enough that a slow machine's real session I/O cannot red the suite.
-	total := time.NewTimer(120 * time.Second)
+	total := time.NewTimer(240 * time.Second)
 	defer total.Stop()
 	for {
 		select {
 		case <-done:
 			return
 		case <-progress:
-			idle.Reset(5 * time.Second)
+			idle.Reset(30 * time.Second)
 		case <-idle.C:
-			t.Fatal("chat turn made no progress for five seconds")
+			t.Fatal("chat turn made no progress for thirty seconds")
 		case <-total.C:
 			t.Fatal("121-round chat turn exceeded its total test deadline")
 		}

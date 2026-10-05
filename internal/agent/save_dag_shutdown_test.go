@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"errors"
 	"os"
 	"strings"
@@ -226,6 +227,53 @@ func TestReplaySkipsTornLineBetweenEntries(t *testing.T) {
 	}
 	if repaired, err := repairSessionDAGTail(path, st, time.Now().Add(time.Hour)); repaired || err != nil {
 		t.Fatalf("a hole is not a torn tail: repaired=%v err=%v", repaired, err)
+	}
+}
+
+// TestReplayPastTornLineBetweenEntriesTerminates is the minimal repro of the
+// torn-family self-deadlock (P19 遗留③): a bad line that still has complete
+// entries after it sends the decoder into resumePastTornLine mid-replay. The
+// recovery used to re-enter replayFrom, which takes st.mu again — RWMutex is
+// not reentrant, so the replay hung forever (TestReplaySkipsTornLineBetweenEntries
+// timed out in isolation, TestAppendForShutdownWithoutLockAfterTornTail hung the
+// whole package run). The guard keeps the failure bounded instead of hanging the
+// test binary.
+func TestReplayPastTornLineBetweenEntriesTerminates(t *testing.T) {
+	path := dagTestSession(t)
+	ids, base := dagLinearLog(t, path)
+	logPath := store.SessionEventLog(path)
+	f, err := os.OpenFile(logPath, os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(`{"schema_version":2,"type":"message","id":"torn","head":"ma` + "\n"); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+	dagAppend(t, path, dagMessageEntry(t, SessionMainHead, ids[len(ids)-1], "t1", dagMsg(provider.RoleAssistant, "after the hole", "after"), base.Add(time.Minute)))
+
+	var (
+		st      *sessionDAGState
+		replErr error
+	)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		st, replErr = replaySessionDAG(context.Background(), logPath, defaultSessionReplayLimits)
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("replaySessionDAG did not return: resumePastTornLine re-entered replayFrom while st.mu was still write-locked (RWMutex 不可重入自死锁)")
+	}
+	if replErr != nil {
+		t.Fatalf("replay: %v", replErr)
+	}
+	if st.damaged || st.holes != 1 || len(st.nodes) != len(ids)+1 {
+		t.Fatalf("replay past a hole: damaged=%v holes=%d nodes=%d", st.damaged, st.holes, len(st.nodes))
+	}
+	if got := dagChain(st, SessionMainHead); got[len(got)-1] != "after the hole" {
+		t.Fatalf("chain after the hole = %v", got)
 	}
 }
 
