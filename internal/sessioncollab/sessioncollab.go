@@ -1376,10 +1376,22 @@ func (s *MailStore) History(ctx context.Context) []HistoryRow {
 // mail, never corrupt data. Returns how many messages were removed. The
 // sender-side sent logs are deliberately NOT pruned: they are the sender's own
 // audit trail, and the index never reads them (queued ≠ delivered).
-// PruneInbox physically removes every message older than beforeUnixMilli from
-// every inbox file in the store (task 320 retention). ctx bounds/cancels the
-// lock wait.
 func (s *MailStore) PruneInbox(ctx context.Context, beforeUnixMilli int64) (int, error) {
+	return s.PruneBy(ctx, func(_ string, m MailMessage) bool {
+		return m.At != 0 && m.At < beforeUnixMilli
+	})
+}
+
+// PruneBy is the predicate-shaped generalization of PruneInbox (任务 464): it
+// physically removes every inbox message for which remove returns true. The
+// first argument of the predicate is the owning mailbox contact (the recipient
+// whose inbox file holds the row — identical to m.To by construction). Same
+// guarantees as PruneInbox: cross-process lock, unparsable lines kept verbatim,
+// sent logs untouched. Returns how many messages were removed.
+func (s *MailStore) PruneBy(ctx context.Context, remove func(mailbox string, m MailMessage) bool) (int, error) {
+	if remove == nil {
+		return 0, nil
+	}
 	unlock, err := s.lock(ctx)
 	if err != nil {
 		return 0, err
@@ -1403,6 +1415,7 @@ func (s *MailStore) PruneInbox(ctx context.Context, beforeUnixMilli int64) (int,
 		if err != nil {
 			continue
 		}
+		mailbox := strings.TrimSuffix(name, ".inbox.jsonl")
 		var keep []string
 		fileRemoved := 0
 		for _, line := range strings.Split(string(b), "\n") {
@@ -1415,7 +1428,7 @@ func (s *MailStore) PruneInbox(ctx context.Context, beforeUnixMilli int64) (int,
 				keep = append(keep, trimmed) // never destroy an unparsable line
 				continue
 			}
-			if m.At != 0 && m.At < beforeUnixMilli {
+			if remove(mailbox, m) {
 				fileRemoved++
 				continue
 			}
