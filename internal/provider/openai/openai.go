@@ -548,7 +548,11 @@ func (c *client) openStream(ctx context.Context, targetURL string, wireReq chatR
 	}
 	resp, err := provider.SendWithRetry(requestCtx, c.http, c.sendOpts(), newReq)
 	if err != nil {
-		return nil, provider.AnnotateToolSchemaError(err, tools)
+		// Task 470: an opaque 400 on a request that carried data-URL images is
+		// the signature of endpoints that accept image parts only as public
+		// http(s) URLs (measured on MiMo). Annotate while the wire request is
+		// still in hand — the response body never names the image.
+		return nil, provider.AnnotateInlineImageRejection(provider.AnnotateToolSchemaError(err, tools), requestHasInlineDataImages(wireReq))
 	}
 	c.authed.Store(true)
 
@@ -1234,6 +1238,25 @@ func imageContentParts(text string, images []string, detail string) []chatConten
 		}
 	}
 	return parts
+}
+
+// requestHasInlineDataImages reports whether any message content part embeds
+// an image as a base64 data URL. chatMessage.Content is `any` — a string for
+// plain text turns, nil for pure tool-call assistant turns — so only the
+// []chatContentPart shape can carry images.
+func requestHasInlineDataImages(req chatRequest) bool {
+	for _, m := range req.Messages {
+		parts, ok := m.Content.([]chatContentPart)
+		if !ok {
+			continue
+		}
+		for _, p := range parts {
+			if p.ImageURL != nil && strings.HasPrefix(p.ImageURL.URL, "data:") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type chatTool struct {

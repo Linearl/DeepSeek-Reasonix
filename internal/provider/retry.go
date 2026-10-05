@@ -178,6 +178,7 @@ type APIError struct {
 	TraceID             string // provider trace identifier from the response headers, when present
 	RequestPath         string // path only; query and URL userinfo are never retained
 	ToolContext         string // resolved Reasonix/MCP identity for provider-indexed tool schema errors
+	Hint                string // actionable next step derived from request-side facts (e.g. task 470 inline-image rejection)
 }
 
 func (e *APIError) Error() string {
@@ -189,7 +190,10 @@ func (e *APIError) Error() string {
 		base = fmt.Sprintf("%s: status %d: %s", label, e.Status, e.Body)
 	}
 	if e.ToolContext != "" {
-		return base + "\n" + e.ToolContext
+		base += "\n" + e.ToolContext
+	}
+	if e.Hint != "" {
+		base += "\n" + e.Hint
 	}
 	return base
 }
