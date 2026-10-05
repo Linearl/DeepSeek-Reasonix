@@ -79,9 +79,8 @@ func HostControlToolNames() []string {
 		"update_goal",
 		"todo_write",
 		"complete_step",
-		// Task 107 P0-②: the model's read-only view of the recovery fence, so a
-		// `recovery_required` block can be reported instead of guessed at.
-		"tool_recovery",
+		// 任务482（fence 退役）: the former "tool_recovery" host-control entry is
+		// withdrawn with the fence — the tool no longer exists to point at.
 	}
 }
 

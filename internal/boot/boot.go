@@ -2243,9 +2243,8 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			reg.Add(agent.NewMoveTopicToGroupTool(collab, opts.OnMoveTopicToGroup))
 		}
 	}
-	// Task 107 P0-②: the model's read-only view of the recovery fence. It reads
-	// the executing agent through the call context that executeOne stamps.
-	reg.Add(agent.NewToolRecoveryTool())
+	// Task 482（fence 退役）: the tool_recovery self-diagnosis tool is withdrawn
+	// with the fence it served — no remaining error copy may point at it.
 
 	// Task 363A: split the agent stage for the timings line — the tool
 	// registration face above vs the runner/executor construction below. Same

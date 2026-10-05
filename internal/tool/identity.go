@@ -36,7 +36,9 @@ const (
 	HostSlashCommand               = "slash_command"
 	HostSubmitPlan                 = "submit_plan"
 	HostTask                       = "task"
-	HostToolRecovery               = "tool_recovery"
+	// 任务482（fence 退役）: HostToolRecovery ("tool_recovery") is withdrawn —
+	// the fence it served no longer exists. KnownToolNames must not keep
+	// advertising a name with no implementation.
 	HostUseCapability              = "use_capability"
 	HostWebSearch                  = "web_search"
 )
@@ -78,7 +80,6 @@ func KnownToolNames() []string {
 		HostSlashCommand,
 		HostSubmitPlan,
 		HostTask,
-		HostToolRecovery,
 		HostUseCapability,
 		HostWebSearch,
 	}
