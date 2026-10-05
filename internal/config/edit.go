@@ -816,6 +816,16 @@ func (c *Config) SetExperimentalPromptHistoryPicker(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalTabCompress toggles the tab-strip adaptive compression (task
+// 506): tiered tab-width reduction once more than 8 tabs are open, floor 84px,
+// with hover keeping the full annotated title. Opt-in: with it off the strip
+// keeps the exact fixed tab widths. Pure frontend gate: the settings save
+// re-applies the boot snapshot, so a change is visible without a restart.
+func (c *Config) SetExperimentalTabCompress(enabled bool) error {
+	c.Desktop.ExperimentalTabCompress = enabled
+	return nil
+}
+
 // SetExperimentalCompactionParallel toggles the parallel chunked-compaction
 // fragments (task 265). It ships on (existing behaviour given an off switch);
 // off falls back to the upstream serial summarizer.
