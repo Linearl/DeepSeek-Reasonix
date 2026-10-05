@@ -14,6 +14,10 @@ import (
 // so a tail another writer appended after a crash-torn line (or an unlocked
 // shutdown append behind one) stays readable; a bad region that runs to the
 // end of the file is the torn tail repairSessionDAGTail already handles.
+//
+// It runs inside replayFromLocked (st.mu held by the interrupted replay) and
+// re-enters the decoder through replayFromLocked: replayFrom here would lock
+// st.mu a second time and deadlock (P19 遗留③).
 func (st *sessionDAGState) resumePastTornLine(ctx context.Context, limits sessionReplayLimits) error {
 	badStart := st.lastGoodEnd
 	if badStart > 0 {
@@ -28,7 +32,7 @@ func (st *sessionDAGState) resumePastTornLine(ctx context.Context, limits sessio
 		return nil
 	}
 	records := st.records
-	if err := st.replayFrom(ctx, next, limits); err != nil {
+	if err := st.replayFromLocked(ctx, next, limits); err != nil {
 		return err
 	}
 	if st.records == records && st.damaged {
