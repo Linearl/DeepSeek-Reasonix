@@ -108,14 +108,10 @@ func TestInterruptedReadOnlyBashAutoResolvesAndContinues(t *testing.T) {
 	if strings.Contains(sink.notices[0].Text, "ls -la") {
 		t.Fatal("notice must not carry command text")
 	}
-	// 自动续轮：同一回合内后续写不再被围栏拦截，run 也不以 barrier 错误收尾。
+	// Task 482（fence 退役）: run 收尾不再 join barrier 错误（finishRunRecovery
+	// 已撤）；同一回合内后续写也不再被拦。
 	if err := a.beginToolRecovery(context.Background(), writePlanFor("next-write")); err != nil {
-		t.Fatalf("fence still blocked after side-effect-free auto-resolution: %v", err)
-	}
-	var runErr error
-	a.finishRunRecovery(WithToolApprovalMode(context.Background(), "ask"), &runErr)
-	if runErr != nil {
-		t.Fatalf("run must not end with the barrier error, got: %v", runErr)
+		t.Fatalf("write blocked after side-effect-free auto-resolution: %v", err)
 	}
 }
 
@@ -145,8 +141,8 @@ func TestInterruptedReadOnlyBashReclassifiedInPromptHandoff(t *testing.T) {
 	}
 }
 
-// 验收②（task 433）：模拟中断写 bash → 记录保持未决，围栏与人工面板全部
-// 维持现状：pending 不为空、run 以 ErrToolRecoveryRequired 收尾、后续写被拦。
+// 验收②（task 433 + 482 fence 退役）：中断写 bash → 记录保持未决（面板与
+// 跨会话分类的输入不受影响），但写不再被拦、run 也不再以 barrier 错误收尾。
 func TestInterruptedWriteBashKeepsManualReview(t *testing.T) {
 	a, sink, call := sideEffectFreeFixture(t, "bash", `{"command":"printf x >> tasklist.md"}`, false)
 	a.finishToolRecovery(context.Background(), call, unknownOutcome())
@@ -156,22 +152,14 @@ func TestInterruptedWriteBashKeepsManualReview(t *testing.T) {
 		t.Fatalf("write bash must stay undecided, got state=%s resolution=%q", r.State, r.Resolution)
 	}
 	if got := a.PendingToolRecovery(); len(got) != 1 {
-		t.Fatalf("pending effects = %d, want 1 (manual panel stays)", len(got))
+		t.Fatalf("pending effects = %d, want 1 (record stays visible to the panel)", len(got))
 	}
 	if len(sink.notices) != 0 {
 		t.Fatalf("write bash must not be auto-resolved, got %d notice(s)", len(sink.notices))
 	}
-	var runErr error
-	a.finishRunRecovery(WithToolApprovalMode(context.Background(), "ask"), &runErr)
-	if !errors.Is(runErr, ErrToolRecoveryRequired) {
-		t.Fatalf("run must end with the barrier error, got: %v", runErr)
-	}
-	err := a.beginToolRecovery(context.Background(), writePlanFor("blocked-write"))
-	if err == nil {
-		t.Fatal("write passed the barrier with an undecided write effect")
-	}
-	if !strings.Contains(err.Error(), "recovery_required") {
-		t.Fatalf("barrier error lost its kind: %v", err)
+	// Task 482（fence 退役）: the undecided record no longer blocks the next write.
+	if err := a.beginToolRecovery(context.Background(), writePlanFor("unblocked-write")); err != nil {
+		t.Fatalf("write blocked with an undecided effect after fence removal: %v", err)
 	}
 }
 
@@ -192,12 +180,7 @@ func TestInterruptedAskNeverEntersFence(t *testing.T) {
 		t.Fatalf("ask auto-resolution notices = %d, want 1", len(sink.notices))
 	}
 	if err := a.beginToolRecovery(context.Background(), writePlanFor("after-ask")); err != nil {
-		t.Fatalf("ask interruption must not fence the next write: %v", err)
-	}
-	var runErr error
-	a.finishRunRecovery(WithToolApprovalMode(context.Background(), "ask"), &runErr)
-	if runErr != nil {
-		t.Fatalf("ask turn must not end with the barrier error, got: %v", runErr)
+		t.Fatalf("ask interruption must not block the next write: %v", err)
 	}
 	addInterruptedHandoff(a, []provider.InterruptedToolSummary{{ID: "call-interrupted", Name: "ask"}})
 	view := a.pendingInterruptedRecovery()
