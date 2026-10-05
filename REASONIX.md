@@ -115,7 +115,7 @@ and a permanently red test swallows the next real regression.
 Confirm the failure is genuinely pre-existing first (`git stash` your change and
 re-run); that check decides the framing, not whether the failure gets fixed.
 
-### Current list (2026-09-22) — 4 open (serve upload/projects; agent map race)
+### Current list (2026-09-22; updated 2026-10-05) — 8 open (serve upload/projects; agent map race; agent budget/guard assertions; torn-tail hang)
 
 * **`internal/serve`: `TestUploadAttachmentJSON`, `TestUploadAttachmentNoData`,
   `TestListProjectsEndpoint`** — red on the pristine `9aa573921` baseline
@@ -137,6 +137,25 @@ re-run); that check decides the framing, not whether the failure gets fixed.
   The remaining unguarded maps need the same treatment in a dedicated pass.
   Subset runs (SaveDag|SessionDAG|DAG|AdoptHead|Turn|DrainInbox) are green;
   the fatal only appears in the full-suite concurrency mix.
+* **`internal/agent`: `TestWithContextBudgetPrefixesAndSkips`,
+  `TestReadOnlyWanderingTripsTheProgressGuard`,
+  `TestRepeatedReadTripsTheProgressGuard`** — red on the pristine
+  `141cf75e2` baseline (stash-verified during task 483, 2026-10-05);
+  deterministic assertion failures in 0.02–0.16s, not timing noise —
+  "budget block missing from turn: user text" (`context_budget_block_test.go:39`),
+  "wandering for 41 rounds never reached the no-progress ladder"
+  (`runaway_repro_test.go:103`), "repeating one read for 41 rounds never fired
+  the guard" (`runaway_repro_test.go:114`). Verdict not yet classified (stale
+  fixture vs code regression); registered and left for a dedicated cleanup
+  pass; they do not block merges. Repro:
+  `go test ./internal/agent/ -run 'TestWithContextBudgetPrefixesAndSkips|TestReadOnlyWanderingTripsTheProgressGuard|TestRepeatedReadTripsTheProgressGuard' -count=1`
+* **`internal/agent`: `TestAppendForShutdownWithoutLockAfterTornTail`** —
+  hangs, not flaky: killed by `-timeout 300s` with no assertion output even
+  when run alone, and held the pristine `141cf75e2` baseline run for 10m40s
+  inside the full suite (both stash-verified during task 483, 2026-10-05).
+  Verdict not yet classified (test-side hang or missing gate); registered and
+  left for a dedicated cleanup pass; does not block merges. Repro:
+  `go test ./internal/agent/ -run 'TestAppendForShutdownWithoutLockAfterTornTail' -count=1 -timeout 300s`
 
 Empty, and kept empty.
 
