@@ -1307,7 +1307,12 @@ type SandboxConfig struct {
 	// OptimisticWrite, when true, lets path-bound file writers skip the
 	// whole-path serialization wait and instead rely on write-if-unchanged
 	// ("expected") stale-content detection for parallel safety (see #9213).
-	// Default false keeps the pessimistic path-lock behavior.
+	// It also lifts the scheduler's write-claim gates entirely: parent writes
+	// gate no subagent (task 315) and subagents no longer serialize on
+	// overlapping or undeclared write_paths (task 483) — two subagents that
+	// both omit write_paths run in parallel, with overlap safety delegated to
+	// the expected-baseline checks. Default false keeps the pessimistic
+	// path-lock behavior.
 	OptimisticWrite bool `toml:"optimistic_write"`
 }
 

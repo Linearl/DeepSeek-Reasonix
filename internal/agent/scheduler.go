@@ -52,11 +52,16 @@ type SubagentScheduler struct {
 	// subagent concurrency slot (parent is not a subagent).
 	parentClaims []WritePathSet
 
-	// optimistic (task 315, linked to #9213 optimistic_write / task 280): when
-	// set, parent-write claims gate no subagent at all — the user has disabled
-	// the parallel-write safety check, so a parent write and a child slot are
-	// not mutually exclusive by choice. The conservative state keeps the #9688
-	// fail-fast. Atomic so a runtime toggle takes effect on the next dispatch.
+	// optimistic (task 315, linked to #9213 optimistic_write / task 280; the
+	// subagent-vs-subagent half is task 483): when set, write-path claims gate
+	// nothing — parent-write claims register no gate and two subagents no
+	// longer serialize on overlapping or undeclared write paths either. The
+	// user has disabled the parallel-write safety check, so overlap safety is
+	// delegated to the write-if-unchanged ("expected") stale-content checks
+	// inside path-bound tools; bash/MCP opaque writes carry no such guard and
+	// run unserialized by explicit choice. The conservative state keeps the
+	// #9688 fail-fast. Atomic so a runtime toggle takes effect on the next
+	// dispatch.
 	optimistic atomic.Bool
 
 	// waiters are FIFO waiters for non-nested acquires.
@@ -76,10 +81,11 @@ func NewSubagentScheduler(maxTotal, maxWriters int) *SubagentScheduler {
 	return &SubagentScheduler{maxTotal: maxTotal, maxWriters: maxWriters}
 }
 
-// SetOptimistic toggles the optimistic-parallel parent-claim gate (task 315,
-// the scheduler half of optimistic_write / task 280). On: parent writes
-// neither register nor enforce a claim, so no subagent — read-only or writer —
-// is gated by the parent turn's writes. Off: the conservative #9688 fail-fast.
+// SetOptimistic toggles the optimistic-parallel write-claim gate (task 315
+// parent half, task 483 subagent-vs-subagent half; optimistic_write / task
+// 280). On: no claim — parent or subagent — gates any dispatch, so two
+// subagents that both omitted write_paths no longer serialize either. Off:
+// the conservative #9688 fail-fast.
 func (s *SubagentScheduler) SetOptimistic(on bool) {
 	if s == nil {
 		return
@@ -187,7 +193,10 @@ func (s *SubagentScheduler) TryClaimWritePaths(paths WritePathSet) error {
 
 // Realize records path-bound writes against an active claim. Directory and
 // whole-workspace declarations shrink to the realized files when no opaque
-// mutation has occurred. Same-file realizes from two live writers fail.
+// mutation has occurred. Same-file realizes from two live writers fail in the
+// conservative state; under optimistic-parallel (task 483) the realize is
+// recorded for diagnostics but refuses nothing — the write-if-unchanged
+// baseline check inside the tool is the concurrency guard.
 func (s *SubagentScheduler) Realize(id int64, paths WritePathSet) error {
 	if s == nil || id == 0 || paths.Empty() {
 		return nil
@@ -204,16 +213,24 @@ func (s *SubagentScheduler) Realize(id int64, paths WritePathSet) error {
 	}
 	nextPaths := mergeRealized(claim.realized, paths)
 	next := fileReservation(claim.declared.WorkspaceRoot, nextPaths)
-	if err := s.conflictAgainstOthersLocked(id, next); err != nil {
-		return err
+	optimistic := s.optimistic.Load()
+	if !optimistic {
+		if err := s.conflictAgainstOthersLocked(id, next); err != nil {
+			return err
+		}
 	}
 	claim.realized = nextPaths
 	s.activeLive[idx] = claim
-	s.pumpWaitersLocked()
+	if !optimistic {
+		s.pumpWaitersLocked()
+	}
 	return nil
 }
 
 // MarkOpaque upgrades a live claim to a whole-workspace reservation (bash/MCP).
+// Under optimistic-parallel (task 483) the upgrade is recorded but refuses
+// nothing — opaque writes have no write-if-unchanged guard, so running one
+// concurrently with another writer is the user's explicit opt-out.
 func (s *SubagentScheduler) MarkOpaque(id int64) error {
 	if s == nil || id == 0 {
 		return nil
@@ -228,9 +245,11 @@ func (s *SubagentScheduler) MarkOpaque(id int64) error {
 	if claim.opaque {
 		return nil
 	}
-	next := wholeReservation(claim.declared.WorkspaceRoot)
-	if err := s.conflictAgainstOthersLocked(id, next); err != nil {
-		return err
+	if !s.optimistic.Load() {
+		next := wholeReservation(claim.declared.WorkspaceRoot)
+		if err := s.conflictAgainstOthersLocked(id, next); err != nil {
+			return err
+		}
 	}
 	claim.opaque = true
 	s.activeLive[idx] = claim
@@ -359,22 +378,30 @@ func (s *SubagentScheduler) canStartLocked(req AcquireRequest) (bool, string) {
 	if s.activeWriters >= s.maxWriters {
 		return false, fmt.Sprintf("writer concurrency %d/%d", s.activeWriters, s.maxWriters)
 	}
-	if req.WritePaths.WholeWorkspace {
-		for _, live := range s.activeLive {
-			if live.writer {
-				return false, "whole-workspace claim conflicts with a running writer"
+	// Task 483: optimistic-parallel mode lifts the subagent-vs-subagent
+	// write-path gate on top of the task-315 parent-claim lift. Two writers
+	// that both omitted write_paths (whole-workspace claims) no longer
+	// serialize, and declared/undeclared overlaps dispatch instead of queueing
+	// — overlap safety is delegated to the write-if-unchanged checks inside
+	// path-bound tools, same contract as the parent gate. Concurrency caps
+	// above stay in force in both states; flipping back restores the
+	// conservative #9688 fail-fast.
+	if !s.optimistic.Load() {
+		if req.WritePaths.WholeWorkspace {
+			for _, live := range s.activeLive {
+				if live.writer {
+					return false, "whole-workspace claim conflicts with a running writer"
+				}
 			}
 		}
-	}
-	for _, live := range s.activeLive {
-		if ScheduleOverlaps(req.WritePaths, live.reservation()) {
-			return false, "write path conflict with a running subagent"
+		for _, live := range s.activeLive {
+			if ScheduleOverlaps(req.WritePaths, live.reservation()) {
+				return false, "write path conflict with a running subagent"
+			}
 		}
-	}
-	// Task 315: optimistic-parallel mode lifts the parent-claim gate entirely,
-	// so a claim registered before the toggle stops gating too (dynamic switch);
-	// flipping back restores the conservative #9688 fail-fast.
-	if !s.optimistic.Load() {
+		// Task 315: optimistic-parallel mode lifts the parent-claim gate entirely,
+		// so a claim registered before the toggle stops gating too (dynamic switch);
+		// flipping back restores the conservative #9688 fail-fast.
 		for _, active := range s.parentClaims {
 			if ScheduleOverlaps(req.WritePaths, active) {
 				return false, parentHeldClaimReason
@@ -415,7 +442,12 @@ func (s *SubagentScheduler) pumpWaitersLocked() {
 	}
 	remaining := s.waiters[:0]
 	// A blocked whole-workspace writer is a FIFO barrier for later writers,
-	// while read-only work may still use otherwise available capacity.
+	// while read-only work may still use otherwise available capacity. Task
+	// 483: the barrier is conservative-only — under optimistic-parallel the
+	// write-path gate is lifted and canStartLocked refuses writers on the
+	// concurrency caps alone, so the barrier is left unset (a later writer
+	// then waits only because the caps are exhausted, not because of a path).
+	optimistic := s.optimistic.Load()
 	wholeWriterPending := false
 	for _, w := range s.waiters {
 		if wholeWriterPending && w.req.Writer {
@@ -428,7 +460,7 @@ func (s *SubagentScheduler) pumpWaitersLocked() {
 			continue
 		}
 		remaining = append(remaining, w)
-		if w.req.Writer && w.req.WritePaths.WholeWorkspace {
+		if w.req.Writer && w.req.WritePaths.WholeWorkspace && !optimistic {
 			wholeWriterPending = true
 		}
 	}
