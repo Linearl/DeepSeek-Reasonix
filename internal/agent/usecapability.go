@@ -753,14 +753,33 @@ func (t *UseCapabilityTool) ResolveCall(ctx context.Context, args json.RawMessag
 			!targetAcceptsArguments(resolved.Target, resolved.Args) {
 			if healed, herr := t.resolveCall(ctx, id, inner, base); herr == nil &&
 				targetAcceptsArguments(healed.Target, inner) {
-				t.noteDoubleEnvelopeSelfHeal(id)
+				t.noteArgumentSelfHeal(id, "unwrapped a double-enveloped arguments value one level before dispatch")
 				return healed, nil
 			}
 		}
 		if p.healedDoubleEnvelope {
 			// parseUseCapabilityArgs already unwrapped a stringified
 			// envelope for an MCP target; record it once it dispatched.
-			t.noteDoubleEnvelopeSelfHeal(id)
+			t.noteArgumentSelfHeal(id, "unwrapped a stringified call envelope one level before dispatch")
+		}
+		if p.healedStringified {
+			// Task 457: parseUseCapabilityArgs already parsed a JSON-string
+			// arguments value into an object for an MCP target.
+			t.noteArgumentSelfHeal(id, "parsed a JSON-string arguments value into an object before dispatch")
+		}
+		// Task 457: parameters spread across the envelope top level
+		// (message+to etc. with no arguments object) reach the target as
+		// empty arguments. When the received form cannot satisfy the target
+		// schema but merging the spread parameters into one object can,
+		// retry once with the merged object; otherwise keep the original
+		// resolution so the gate reports the arguments exactly as received.
+		if merged, keys, ok := p.mergedSpreadArguments(); ok &&
+			!targetAcceptsArguments(resolved.Target, resolved.Args) {
+			if healed, herr := t.resolveCall(ctx, id, merged, base); herr == nil &&
+				targetAcceptsArguments(healed.Target, merged) {
+				t.noteArgumentSelfHeal(id, fmt.Sprintf("merged top-level parameters [%s] into the arguments object before dispatch", strings.Join(keys, ", ")))
+				return healed, nil
+			}
 		}
 		return resolved, nil
 	default:
