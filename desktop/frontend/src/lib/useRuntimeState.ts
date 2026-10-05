@@ -4,9 +4,9 @@ import { runtimeStateStore, selectRuntime } from "./runtimeStateStore";
 
 export function useRuntimeSession(tabId?: string, sessionPath?: string) {
   const snapshot = useSyncExternalStore(runtimeStateStore.subscribe, runtimeStateStore.getSnapshot);
-  const failed = useSyncExternalStore(runtimeStateStore.subscribe, runtimeStateStore.getFailed);
+  // 任务510：不再订阅全局 failed——unknown 只由本会话 freshness 决定（b 收敛故障面）。
   const session = snapshot?.sessions.find(session => session.open && session.tabId === tabId && (!sessionPath || session.sessionPath === sessionPath));
-  return selectRuntime(session, failed);
+  return selectRuntime(session);
 }
 
 export function useRuntimeStateSync() {

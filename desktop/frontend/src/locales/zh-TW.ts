@@ -780,6 +780,7 @@ export const zhTW: Record<DictKey, string> = {
   "composer.stopForceHint": "強制停止（等 15 秒收尾，可再點立即結束）",
   "composer.stopKillHint": "立即強制終止（可能遺失未儲存狀態）",
   "composer.stopCountdown": "{n}s 後強制結束",
+  "composer.stopUnknownState": "狀態未知，仍可請求停止",
   "composer.stopShort": "停止",
   "composer.pastedLabel": "[已貼上文字 #{id} · {lines} 行]",
   "composer.pastedShowPreview": "預覽貼上文字",

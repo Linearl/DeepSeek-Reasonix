@@ -3475,7 +3475,11 @@ export function Composer({
   // handleCancel stops the in-flight turn; if it was cancelled before the server
   // replied, the just-sent text is handed back so we drop it back into the input.
   const handleCancel = async () => {
-    if (finishing || runtimeState.unknown || runtimeState.cancellable === false) return;
+    // 任务510（a 保出口）：unknown 不再硬早退。投影未知只说明快照可能过期，停止
+    // 请求走控制通道仍能送达；此前 unknown 把出口整个吞掉，turn 在远端继续跑而
+    // 用户无从停止。finishing 与「快照明确不可取消」的防误操作语义保持不变
+    // （P7 三级终止的阶梯语义未动：首按仍是 L1，超时后照常武装强制停止）。
+    if (finishing || (!runtimeState.unknown && runtimeState.cancellable === false)) return;
     const targetDraftKey = activeDraftKeyRef.current;
     if (cancelSettlingDraftsRef.current.has(targetDraftKey)) return;
     cancelSettlingDraftsRef.current.add(targetDraftKey);
@@ -5619,8 +5623,12 @@ export function Composer({
                   </Tooltip>
                 </div>
               )}
-              {running && !finishing && !runtimeState.unknown && (
-                <Tooltip label={stopButtonHover(stopView.phase)}>
+              {/* 任务510（a 保出口）：unknown 降级态不再隐藏停止按钮——降级提示
+                  （run strip「连接中断／状态待同步」+ 输入禁用）保留，但安全出口
+                  必须始终在场。unknown 下 tooltip/aria 明示状态未知，点击照常
+                  发出停止请求；disabled 只由「非 unknown 的明确不可取消」触发。 */}
+              {running && !finishing && (
+                <Tooltip label={runtimeState.unknown ? t("composer.stopUnknownState") : stopButtonHover(stopView.phase)}>
                   <button
                     className="composer__btn composer__btn--stop"
                     type="button"
@@ -5633,8 +5641,8 @@ export function Composer({
                       }
                       void onEscalateStop?.();
                     }}
-                    disabled={runtimeState.cancellable === false || cancelSettlingDraftsRef.current.has(draftKey)}
-                    aria-label={stopButtonLabel(stopView.phase, stopView.countdownSeconds)}
+                    disabled={(!runtimeState.unknown && runtimeState.cancellable === false) || cancelSettlingDraftsRef.current.has(draftKey)}
+                    aria-label={runtimeState.unknown ? t("composer.stopUnknownState") : stopButtonLabel(stopView.phase, stopView.countdownSeconds)}
                   >
                     {stopView.phase === "grace" && stopView.countdownSeconds != null
                       ? <span className="composer__stop-countdown">{t("composer.stopCountdown", { n: stopView.countdownSeconds })}</span>

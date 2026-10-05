@@ -18,8 +18,9 @@ export function remoteProjectKey(ref: RemoteTabRefView): string {
 
 export function useRemoteRuntimeTree(tree: ProjectNode[], sessions: Record<string, RemoteSessionView[]>, t: Translator) {
   const runtime = useSyncExternalStore(runtimeStateStore.subscribe, runtimeStateStore.getSnapshot);
-  const failed = useSyncExternalStore(runtimeStateStore.subscribe, runtimeStateStore.getFailed);
-  return useMemo(() => mergeRemoteSessionsIntoTree(tree, sessions, t, runtime, failed), [tree, sessions, t, runtime, failed]);
+  // 任务510：不再把全局 failed 传入合并——单会话/远端同步失败只影响它自己的
+  // freshness，其他 tab 与全局失败都不再把本会话标成 unknown（b 收敛故障面）。
+  return useMemo(() => mergeRemoteSessionsIntoTree(tree, sessions, t, runtime), [tree, sessions, t, runtime]);
 }
 
 export function activeRemoteProjectAncestorKeys(
@@ -44,14 +45,14 @@ export function mergeRemoteSessionsIntoTree(
   sessions: Record<string, RemoteSessionView[]>,
   t: Translator,
   runtime?: RuntimeProjection,
-  failed = false,
 ): ProjectNode[] {
   return tree.map((node) => {
     if (!node.remote) return node;
     const rows = sessions[remoteProjectKey(node.remote)] ?? [];
     const remoteChildren = rows.map((row): ProjectNode => {
       const session = runtime?.sessions.find(session => session.hostId === node.remote!.hostId && session.workspaceRoot === node.remote!.workspace && session.sessionPath === row.path);
-      const state = selectRuntime(session, failed);
+      // 任务510：unknown 只看本会话 freshness（selectRuntime 已去掉全局 failed 入参）。
+      const state = selectRuntime(session);
       const status = state.unknown ? "unknown" : state.known && state.kind !== "idle" && state.kind !== "legacy" ? state.kind : undefined;
       return ({
       key: `remote-session-${node.remote!.hostId}-${node.remote!.workspace}-${row.name}`,

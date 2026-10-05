@@ -7,6 +7,8 @@ import { projectTreeFolderHasActiveRuntime } from "./ProjectTreeOrganization";
 
 export default function ProjectTreeFolderActivity({ folder }: { folder: ProjectNode }) {
   const snapshot = useSyncExternalStore(runtimeStateStore.subscribe, runtimeStateStore.getSnapshot);
+  // 任务510：保留全局 failed 订阅——它只用于「连接中断」提示标签（第 26 行），
+  // 不再参与 unknown 判定（全局失败不把本会话拖成 unknown，b 收敛故障面）。
   const failed = useSyncExternalStore(runtimeStateStore.subscribe, runtimeStateStore.getFailed);
   const t = useT();
   const matched = snapshot?.sessions.filter(session => folder.remote
@@ -15,7 +17,7 @@ export default function ProjectTreeFolderActivity({ folder }: { folder: ProjectN
   const sessions = matched && [...new Map(matched.map(session => [`${session.hostId ?? "local"}\0${session.workspaceRoot}\0${session.sessionPath}`, session])).values()];
   if (sessions) {
     const active = sessions.filter(session => {
-      const view = selectRuntime(session, failed);
+      const view = selectRuntime(session);
       return view.unknown || (view.known && (view.kind !== "idle" || session.state.backgroundJobs > 0));
     });
     if (!active.length) return null;
@@ -31,7 +33,7 @@ export default function ProjectTreeFolderActivity({ folder }: { folder: ProjectN
       if (state.backgroundJobs) labels.push(t("runtime.background", { count: state.backgroundJobs }));
       return `${topic?.label || session.tabId}: ${labels.join(" · ")}`;
     }).join("; ");
-    const spinning = active.some(session => selectRuntime(session, failed).spinning);
+    const spinning = active.some(session => selectRuntime(session).spinning);
     return <span className={`project-tree__folder-active-indicator${spinning ? "" : " project-tree__folder-active-indicator--static"}`} style={spinning ? undefined : { animation: "none" }} role="status" aria-label={details} title={details} />;
   }
   if (!projectTreeFolderHasActiveRuntime(folder)) return null;
