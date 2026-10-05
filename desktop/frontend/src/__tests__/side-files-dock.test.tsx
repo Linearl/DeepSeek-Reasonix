@@ -203,7 +203,7 @@ console.log("\nside-files dock tabs (task 260)");
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   eq(app.includes('dockTabVisible("artifacts")'), true, "app: artifacts tab is gated by dockTabVisible");
   eq(app.includes('dockTabVisible("references")'), true, "app: references tab is gated by dockTabVisible");
-  eq(app.includes("dockModeWithinSidebarGates(rightDockMode, todoSidebarEnabled)"), true, "app: effective mode uses the shared gate helper");
+  eq(app.includes("dockModeWithinSidebarGates(rightDockMode, todoSidebarEnabled, subagentsPanelEnabled)"), true, "app: effective mode uses the shared gate helper (task 495 added the subagents switch argument)");
   eq(app.includes('effectiveRightDockMode === "artifacts" || effectiveRightDockMode === "references"'), true, "app: dock body branches for both modes");
   eq(app.includes("SideFilesDockPanel"), true, "app: dock body references the dock panel");
   eq(app.includes('t("workspace.artifactsTab")'), true, "app: artifacts tab label wired");
