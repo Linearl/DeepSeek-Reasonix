@@ -45,6 +45,8 @@ export interface SettingsView {
   experimentalFeedbackNudge?: boolean;
   // Task 259: exposes the right-dock todo tab plus tab visibility/wrap settings.
   experimentalTodoSidebar?: boolean;
+  // Task 495: subagent panel package (dock tab + ended-card collapse).
+  experimentalSubagentPanel?: boolean;
   // Task 261: composer history picker + narrowed ArrowUp trigger; boot snapshot.
   experimentalPromptHistoryPicker?: boolean;
   // Task 265 lab intake: nil-means-on switches, resolved server-side.

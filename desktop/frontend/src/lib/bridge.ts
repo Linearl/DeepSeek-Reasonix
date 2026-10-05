@@ -937,6 +937,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalSplitView(enabled: boolean): Promise<void>;
   // Task 259: right-dock todo tab + tab visibility/wrap settings (experimental; boot snapshot).
   SetExperimentalTodoSidebar(enabled: boolean): Promise<void>;
+  // Task 495: right-dock subagent tab + default-collapsed ended subagent cards
+  // in deep mode (experimental; boot snapshot).
+  SetExperimentalSubagentPanel(enabled: boolean): Promise<void>;
   // Task 261: composer history picker + narrowed ArrowUp trigger (experimental; boot snapshot).
   SetExperimentalPromptHistoryPicker(enabled: boolean): Promise<void>;
   // Task 265 lab intake: nil-means-on switches (experimental; boot snapshot).
@@ -5376,6 +5379,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSessionMonitor() {},
     async SetExperimentalSplitView() {},
     async SetExperimentalTodoSidebar() {},
+    async SetExperimentalSubagentPanel() {},
     async SetExperimentalPromptHistoryPicker() {},
     async SetExperimentalCompactionParallel() {},
     async SetExperimentalContextBudget() {},

@@ -1,6 +1,9 @@
 import type { ResolvedReasoningDisplayMode } from "./reasoningDisplayPreference";
 import type { SessionExperience, WorkProcessPresentation } from "./sessionExperience";
+import { labFlagEnabled } from "./labFlags";
 import { isGeometryFrameOpen, noteGeometrySample } from "./sessionMonitor";
+import { isSubagentToolName } from "./subagentDirectory";
+import { isTerminalSubagentPhase } from "./useController";
 import { estimateTranscriptTextHeight } from "./transcriptRowEstimates";
 import type { TranscriptRow, ToolItem } from "./transcriptRows";
 
@@ -84,7 +87,15 @@ export function resolveToolCardDefaultOpen(
   // Deep mode exposes the complete tool process by default. Cards without a
   // body remain visually unchanged, while body-bearing cards/groups can still
   // be manually collapsed by the user.
-  const keepSubagentReasoningExpanded = experience === "deep";
+  // Task 495: behind experimental_subagent_panel (default off — the deep-tier
+  // legacy semantics stay byte-for-byte with the switch off), an ENDED
+  // subagent card opts out of the unconditional deep expand: terminal phase on
+  // a live card, or a non-running status on a hydrated card whose in-memory
+  // progress preview is gone. Running cards keep every existing expand path
+  // below.
+  const subagentEnded = (item.subagentProgress !== undefined && isTerminalSubagentPhase(item.subagentProgress.phase))
+    || (isSubagentToolName(item.name) && item.status !== "running");
+  const keepSubagentReasoningExpanded = experience === "deep" && !(subagentEnded && labFlagEnabled("subagentPanel"));
   return (nestedCount > 0 && item.status === "running")
     || (liveFollow && Boolean(item.subagentProgress) && item.status === "running")
     || (liveFollow && subagentReasoningRunning)
