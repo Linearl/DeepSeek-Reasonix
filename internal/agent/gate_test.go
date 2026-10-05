@@ -36,7 +36,10 @@ func TestGateBlocksDeniedCall(t *testing.T) {
 	g := &stubGate{deny: map[string]bool{"bash": true}}
 	a := New(nil, reg, NewSession(""), Options{Gate: g}, event.Discard)
 
-	blocked := a.executeOne(context.Background(), &a.turn, provider.ToolCall{Name: "bash", Arguments: `{"command":"rm -rf /"}`})
+	// 样本用普通破坏性命令：`rm -rf /` 这类硬禁区形态会被 sentinel 固定前置
+	// 检查（任务410）在门咨询之前拦下——那是另一层的正确行为，会让本测试
+	// 的「门被咨询」断言失真。stubGate 按工具名拒绝，任意 bash 命令等价。
+	blocked := a.executeOne(context.Background(), &a.turn, provider.ToolCall{Name: "bash", Arguments: `{"command":"rm -rf build/artifacts"}`})
 	if !strings.HasPrefix(blocked.output, "blocked:") {
 		t.Errorf("denied call result = %q, want a 'blocked:' result", blocked.output)
 	}
