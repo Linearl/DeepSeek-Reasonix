@@ -27647,6 +27647,122 @@ body > .mermaid-diagram--fullscreen {
   font-size: 12px;
 }
 
+/* Task 495: right-dock subagent directory (running/ended sections, folded
+   rows, 20-per-page reveal). Theme-token contract: same variable set as the
+   sibling dock panels above. */
+.subagents-panel {
+  height: 100%;
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.subagents-panel__empty,
+.subagents-panel__section-empty {
+  padding: 6px 2px;
+  color: var(--fg-faint);
+  font-size: 12px;
+}
+
+.subagents-panel__section-title {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-dim);
+}
+
+.subagents-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.subagents-panel__row-wrap + .subagents-panel__row-wrap {
+  border-top: 1px solid var(--border-soft);
+}
+
+.subagents-panel__row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 9px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  font-size: 11px;
+  color: var(--fg);
+}
+
+.subagents-panel__row:hover {
+  background: var(--bg-soft);
+}
+
+.subagents-panel__icon--done { color: var(--ok, var(--fg-dim)); }
+.subagents-panel__icon--failed { color: var(--danger, var(--fg-dim)); }
+.subagents-panel__icon--cancelled { color: var(--fg-faint); }
+
+.subagents-panel__spin {
+  animation: spin 0.9s linear infinite;
+  color: var(--fg-dim);
+}
+
+.subagents-panel__row-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subagents-panel__row-status {
+  flex: 0 0 auto;
+  color: var(--fg-dim);
+  font-size: 10px;
+}
+
+.subagents-panel__chevron {
+  flex: 0 0 auto;
+  color: var(--fg-faint);
+  transition: transform 0.15s ease;
+}
+
+.subagents-panel__row--open .subagents-panel__chevron {
+  transform: rotate(90deg);
+}
+
+.subagents-panel__detail {
+  padding: 0 9px 8px 29px;
+}
+
+.subagents-panel__detail-summary {
+  margin: 0 0 4px;
+  font-size: 11px;
+  color: var(--fg-dim);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+}
+
+.subagents-panel__detail-meta {
+  margin: 0;
+  display: flex;
+  gap: 10px;
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+.subagents-panel__foot {
+  padding: 6px 0 0;
+}
+
 .workbench-dock__body {
   flex: 1 1 auto;
   min-height: 0;

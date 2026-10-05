@@ -37,8 +37,10 @@ import {
   TerminalSquare,
   ListTodo,
   FilePlus2,
+  Bot,
 } from "lucide-react";
 import { loadHiddenDockTabs, onHiddenDockTabsChange, type DockTabId } from "./lib/dockTabs";
+import { buildSubagentDirectory } from "./lib/subagentDirectory";
 import { applyLabFlags, labFlagEnabled, onLabFlagsChange } from "./lib/labFlags";
 import { useToast } from "./lib/toast";
 import { useGoalActionHandler } from "./lib/goalAction";
@@ -281,6 +283,8 @@ const loadSettingsPage = () => import("./components/SettingsPanelEntry").then((m
 const RemotePanel = lazy(() => import("./components/RemotePanel").then((module) => ({ default: module.RemotePanel })));
 // Task 260: the two session side-files dock tabs share one lazy chunk.
 const SideFilesDockPanel = lazy(() => import("./components/SessionSideFilesPanel").then((module) => ({ default: module.SideFilesDockPanel })));
+// Task 495: the right-dock subagent directory panel (own lazy chunk).
+const SubagentsDockPanel = lazy(() => import("./components/SubagentsDockPanel").then((module) => ({ default: module.SubagentsDockPanel })));
 const TerminalPanel = lazy(() => import("./components/TerminalPanel").then((module) => ({ default: module.TerminalPanel })));
 const TaskMonitorPanel = lazy(() => import("./components/TaskMonitorPanel").then((module) => ({ default: module.TaskMonitorPanel })));
 const WorkspacePanel = lazy(async () => {
@@ -737,6 +741,9 @@ export default function App() {
   // Task 259: todo-sidebar experiment, snapshotted at boot — a mid-session
   // config change only takes effect after a restart, same as the flag above.
   const [todoSidebarEnabled, setTodoSidebarEnabled] = useState(false);
+  // Task 495: subagent panel experiment (dock tab + ended-card collapse), its
+  // own boot-snapshot switch — not part of the todo-sidebar family.
+  const [subagentsPanelEnabled, setSubagentsPanelEnabled] = useState(false);
   // Task 261: composer history picker + narrowed ArrowUp (boot snapshot).
   const [promptHistoryPickerEnabled, setPromptHistoryPickerEnabled] = useState(false);
   // Task 259: per-tab visibility inside the right dock; applies live.
@@ -1198,7 +1205,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1220,6 +1227,9 @@ export default function App() {
       // Task 259: the todo sidebar is a boot snapshot — the flag read here is
       // the one this process runs with until the next restart.
       setTodoSidebarEnabled(Boolean(settings.experimentalTodoSidebar));
+      // Task 495: the subagent panel package rides the same boot snapshot
+      // (dock tab + ended-card collapse under one switch).
+      setSubagentsPanelEnabled(Boolean(settings.experimentalSubagentPanel));
       // Task 261: composer history picker + narrowed ArrowUp, same boot snapshot.
       setPromptHistoryPickerEnabled(Boolean(settings.experimentalPromptHistoryPicker));
       // Task 318.3: draft persistence gate — off (default) means no reads and
@@ -1235,10 +1245,13 @@ export default function App() {
         completionSummary: settings.experimentalCompletionSummary ?? true,
         quickCommands: settings.experimentalQuickCommands ?? false,
         subagentPolicy: settings.experimentalSubagentPolicy ?? true,
+        // Task 495: the transcript half of the subagent panel package reads
+        // this module gate (default-false, same boot snapshot).
+        subagentPanel: settings.experimentalSubagentPanel ?? false,
       });
       // One line per startup so a missing rail entry can be traced from desktop.log
       // instead of guessed at (the switches read back correctly in config.toml).
-      reportFrontendLog("desktop-prefs", "experiment flags", `restartUpdate=${Boolean(settings.experimentalRestartUpdate)} sessionMonitor=${Boolean(settings.experimentalSessionMonitor)} splitView=${Boolean(settings.experimentalSplitView)} feedback=${Boolean(settings.experimentalFeedback)} todoSidebar=${Boolean(settings.experimentalTodoSidebar)} historyPicker=${Boolean(settings.experimentalPromptHistoryPicker)}`);
+      reportFrontendLog("desktop-prefs", "experiment flags", `restartUpdate=${Boolean(settings.experimentalRestartUpdate)} sessionMonitor=${Boolean(settings.experimentalSessionMonitor)} splitView=${Boolean(settings.experimentalSplitView)} feedback=${Boolean(settings.experimentalFeedback)} todoSidebar=${Boolean(settings.experimentalTodoSidebar)} subagentPanel=${Boolean(settings.experimentalSubagentPanel)} historyPicker=${Boolean(settings.experimentalPromptHistoryPicker)}`);
       setStartupUpdateChecksEnabled(settings.checkUpdates !== false);
       setStatusBarStyle(settings.statusBarStyle === "text" ? "text" : "icon");
       // Task 262: with the quick-commands gate off the composer menu hides by
@@ -1413,16 +1426,26 @@ export default function App() {
   // files, so the dock never shows a selected tab it does not render. With the
   // experiment on the mode passes through unchanged.
   // Task 260: artifacts/references join the same gate (one shared pure helper).
-  const effectiveRightDockMode: RightDockMode = dockModeWithinSidebarGates(rightDockMode, todoSidebarEnabled);
+  // Task 495: "subagents" answers to its own switch (third argument).
+  const effectiveRightDockMode: RightDockMode = dockModeWithinSidebarGates(rightDockMode, todoSidebarEnabled, subagentsPanelEnabled);
   // Task 259: tab visibility applies live while the todo sidebar is on; with the
   // switch off the tab row is the original literal list.
   const dockTabVisible = (id: DockTabId) => todoSidebarEnabled && !hiddenDockTabs.includes(id);
+  // Task 495: the subagent tab visibility rides its own switch + the same
+  // per-tab hidden set.
+  const subagentsTabVisible = subagentsPanelEnabled && !hiddenDockTabs.includes("subagents");
 
   // Remote tab became ready: refresh the tab list so the spectator banner
   // (takenOver) renders. The agent:ready event only fires for local tabs;
   // remote tabs publish readiness via remote-tab:<id>:state, which
   const visibleRuntimeState = remoteSurfaceActive ? remoteSession.transcript : state;
   const exportItems = visibleRuntimeState.items;
+  // Task 495: the session's subagent directory (running/ended projections of
+  // the transcript's subagent cards) for the right-dock tab.
+  const subagentDirectory = useMemo(
+    () => buildSubagentDirectory(visibleRuntimeState.items),
+    [visibleRuntimeState.items],
+  );
   const exportLive = liveStore.getSnapshot(activeTabId) ?? state.live;
   const activePlanRevisionInsertRequest =
     planRevisionInsertRequest &&
@@ -5535,6 +5558,19 @@ export default function App() {
                     <span className="workbench-dock__tab-label">{t("workspace.referencesTab")}</span>
                   </button>
                 )}
+                {/* Task 495: subagent directory tab — its own switch, not the todo family. */}
+                {subagentsTabVisible && (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={effectiveRightDockMode === "subagents"}
+                    className={`workbench-dock__tab${effectiveRightDockMode === "subagents" ? " workbench-dock__tab--active" : ""}`}
+                    onClick={() => openRightDockMode("subagents")}
+                  >
+                    <Bot size={13} />
+                    <span className="workbench-dock__tab-label">{t("workspace.subagentsTab")}</span>
+                  </button>
+                )}
               </div>
             </div>
             <div className="workbench-dock__body">
@@ -5564,6 +5600,12 @@ export default function App() {
                 ) : (
                   <div className="workbench-dock__todo workbench-dock__todo--empty">{t("rightDock.todoEmpty")}</div>
                 )
+              ) : effectiveRightDockMode === "subagents" ? (
+                /* Task 495: the subagent directory panel; keyed per session so
+                   the 20-per-page reveal resets on a session switch. */
+                <Suspense fallback={null}>
+                  <SubagentsDockPanel key={activeTabId} directory={subagentDirectory} />
+                </Suspense>
               ) : effectiveRightDockMode === "remote" ? (
                 <Suspense fallback={null}>
                   <RemotePanel onClose={() => setWorkspacePanel(false)} />

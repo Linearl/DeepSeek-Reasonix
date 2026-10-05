@@ -145,7 +145,7 @@ export function saveRightDockPreviewWidth(width: number): void {
 // widths, the sidebar button-press flag) is session-local state on this store
 // so resize lifecycles and their consumers read one source of truth; measured
 // footer height and viewport width live in the windowChrome store.
-export type RightDockMode = "context" | "files" | "changed" | "remote" | "todos" | "artifacts" | "references";
+export type RightDockMode = "context" | "files" | "changed" | "remote" | "todos" | "artifacts" | "references" | "subagents";
 // Task 259: "todos" is the fifth dock tab behind the experimental todo-sidebar
 // switch. The mode itself stays persistable — loading a saved "todos" while the
 // switch is off falls back to "files" in App, not here, so normalization keeps
@@ -153,6 +153,9 @@ export type RightDockMode = "context" | "files" | "changed" | "remote" | "todos"
 // Task 260: "artifacts"/"references" (session write-path/read-path files) join
 // the same experimental sidebar family — persistable modes, gated in App by
 // dockModeWithinSidebarGates exactly like "todos".
+// Task 495: "subagents" (running/ended subagent directory) is persistable too,
+// but it answers to its own experimental switch (experimental_subagent_panel),
+// not to the todo-sidebar family switch.
 
 // terminalPanelOpen is independent from rightDockMode — the terminal is a
 // bottom drawer that coexists with the workspace panel, not a mode of it.
@@ -265,7 +268,7 @@ function rightDockModeStorageKey(workspaceRoot: string): string {
   return workspaceRoot ? `${RIGHT_DOCK_MODE_KEY}.${workspaceRoot}` : RIGHT_DOCK_MODE_KEY;
 }
 
-const RIGHT_DOCK_MODES: readonly RightDockMode[] = ["context", "files", "changed", "remote", "todos", "artifacts", "references"];
+const RIGHT_DOCK_MODES: readonly RightDockMode[] = ["context", "files", "changed", "remote", "todos", "artifacts", "references", "subagents"];
 
 function normalizeRightDockMode(raw: string | null): RightDockMode | null {
   if (!raw) return null;
@@ -277,8 +280,11 @@ function normalizeRightDockMode(raw: string | null): RightDockMode | null {
 // falls back to "files", so the dock never shows a selected tab it does not
 // render. With the switch on every mode passes through unchanged. Pure so the
 // fallback matrix is directly testable.
-export function dockModeWithinSidebarGates(mode: RightDockMode, sidebarExtended: boolean): RightDockMode {
+// Task 495: "subagents" answers to its own switch (third arg, optional so the
+// two-arg todo-family calls keep their meaning — off).
+export function dockModeWithinSidebarGates(mode: RightDockMode, sidebarExtended: boolean, subagentsPanel = false): RightDockMode {
   if (!sidebarExtended && (mode === "todos" || mode === "artifacts" || mode === "references")) return "files";
+  if (!subagentsPanel && mode === "subagents") return "files";
   return mode;
 }
 
