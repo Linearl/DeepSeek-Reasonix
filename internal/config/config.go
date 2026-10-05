@@ -1791,15 +1791,6 @@ type AgentConfig struct {
 	// per-request effort override). Off by default (fork rule 2): the current
 	// full-rebuild path stays byte-identical.
 	ExperimentalRuntimeReuse bool `toml:"experimental_runtime_reuse"`
-	// ExperimentalImageDedup is the task-373-R1/R1.1 three-position image
-	// dedup switch: "off" (default, byte-identical write path), "first"
-	// (first occurrence inline, later occurrences referenced) or "all"
-	// (every image above a 4KB floor referenced — zero image bytes in the
-	// events log; upstream readers see no images, the signed fork-only
-	// tradeoff). The read side de-references references regardless of this
-	// switch. Invalid values are clamped to "off" on edit; toml loads of
-	// unknown strings fall back to "off" at use time.
-	ExperimentalImageDedup string `toml:"experimental_image_dedup"`
 	// CollabInboxMerge controls how the durable inbox drains multiple queued
 	// items (task 221). "off" (default) keeps the current one-item-per-dispatch
 	// FIFO; "same_sender" merges queued items that share an envelope Source

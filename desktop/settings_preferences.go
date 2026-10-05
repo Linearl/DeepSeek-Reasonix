@@ -538,13 +538,6 @@ func (a *App) SetExperimentalRuntimeReuse(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalRuntimeReuse(enabled) })
 }
 
-// SetExperimentalImageDedup toggles the task-373-R1 image dedup write gate.
-// Read per append for new entries — no restart; already-written reference
-// files keep loading via the ungated read side.
-func (a *App) SetExperimentalImageDedup(mode string) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalImageDedup(mode) })
-}
-
 // SetExperimentalPerfMonitor toggles the host performance monitor (task 184).
 // Restart-scoped: interval and file table are read while the app starts.
 func (a *App) SetExperimentalPerfMonitor(enabled bool) error {

@@ -227,7 +227,6 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "experimental_recovery_orphan_sweep = %v   # desktop: legacy key (task 244 B4), migrated into experimental_orphan_handling (task 449)\n", c.Desktop.ExperimentalRecoveryOrphanSweep)
 		fmt.Fprintf(&b, "experimental_model_capability_filter = %v   # desktop: settings-view mirror of [agent] experimental_model_capability_filter (task 244 B9)\n", c.Desktop.ExperimentalModelCapabilityFilter)
 		fmt.Fprintf(&b, "experimental_runtime_reuse = %v   # desktop: settings-view mirror of [agent] experimental_runtime_reuse (task 363A)\n", c.Desktop.ExperimentalRuntimeReuse)
-		fmt.Fprintf(&b, "experimental_image_dedup = %q   # desktop: settings-view mirror of [agent] experimental_image_dedup (task 373-R1/R1.1: off|first|all)\n", c.Desktop.ExperimentalImageDedup)
 		fmt.Fprintf(&b, "perf_monitor_interval_seconds = %d   # desktop: settings-view mirror of [agent] perf_monitor_interval_seconds (task 184; 0 = 5s)\n", c.Desktop.PerfMonitorIntervalSeconds)
 		fmt.Fprintf(&b, "session_collab_hop_limit = %d   # desktop: settings-view mirror of [agent] session_collab_hop_limit (task 204)\n", c.Desktop.SessionCollabHopLimit)
 		fmt.Fprintf(&b, "detached_idle_release_minutes = %d   # desktop: settings-view mirror of [agent] detached_idle_release_minutes (task 308-O4; 0 = never release)\n", c.Desktop.DetachedIdleReleaseMinutes)
@@ -462,9 +461,6 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// Task 363A: runtime assembly reuse pool. Unconditional render —
 	// omit-on-default would let a hand-added line vanish on the next save.
 	fmt.Fprintf(&b, "experimental_runtime_reuse = %v   # task 363A: reuse the runtime assembly (prompt/skills/commands/hooks/registry) across tabs with the same root+model+effort instead of full rebuild\n", c.Agent.ExperimentalRuntimeReuse)
-	// Task 373-R1: image dedup write gate. Unconditional render —
-	// omit-on-default would let a hand-added line vanish on the next save.
-	fmt.Fprintf(&b, "experimental_image_dedup = %q   # task 373-R1/R1.1: image dedup switch (off|first|all) — \"first\" keeps the first copy inline, \"all\" moves every image above 4KB to the .imgpack sidecar (upstream readers see no images); read side always de-references\n", c.Agent.ExperimentalImageDedup)
 	fmt.Fprintf(&b, "perf_monitor_interval_seconds = %d   # task 184: sampler interval in seconds (default 5, clamped 1..300)\n", c.Agent.PerfMonitorIntervalSeconds)
 	// Unconditional render — omit-on-default would let a hand-added line vanish
 	// on the next save (same rule as its sampler sibling above).
