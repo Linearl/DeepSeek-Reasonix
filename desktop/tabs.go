@@ -4050,7 +4050,20 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 	}
 	assemblyKey := runtimeAssemblyKeyForTab(root, model, effortKey)
 	ctrl, assembly, err := a.buildTabControllerBootFenced(buildCtx, extensionGen, boot.Options{
-		Model:                    model,
+		Model: model,
+		// X4 断点 A（初始构建丢 autopilot）: this literal is the ONLY tab build
+		// path that never carried the autopilot triple — every clear-session,
+		// rebind, set-model and set-effort rebuild passes tab.autopilot*, but
+		// the initial build (new tab AND restart restore) silently built the
+		// controller attended. A tab whose flag was on from preferences or the
+		// restart sidecar therefore ran with c.autopilot=false until some later
+		// rebuild: ask waited forever (no autopilot timeout, reversible asks
+		// not self-answered) — the reported "autopilot 模式下 ask 阻塞".
+		// tab.autopilot is already gate-filtered (task 325 yolo precondition)
+		// at both write sites (new-tab defaults, restart sidecar restore).
+		Autopilot:                tab.autopilot,
+		MaxRuntime:               tab.autopilotMaxRuntime,
+		AutopilotApprovalGrace:   tab.autopilotApprovalGrace,
 		RequireKey:               false,
 		StatsSource:              "desktop",
 		TaskStore:                a.taskStore(),
@@ -7971,6 +7984,17 @@ func (s tabRuntimeSnapshot) collaborationMode() string {
 	}
 	if strings.TrimSpace(s.currentGoal()) != "" && s.currentGoalStatus() == control.GoalStatusRunning {
 		return "goal"
+	}
+	// X4 断点 B（视图丢失）: this is the ONLY wire value the composer derives
+	// its autopilot indicator from, and it used to be structurally incapable of
+	// saying "autopilot" — a tab with the flag toggled on always rendered as
+	// "normal" after the next meta refresh, so the user could never see the
+	// state they had just switched on. A running goal still wins (autopilot
+	// goal runs show as goal, the pre-existing trichotomy); the bare toggle —
+	// the path SetCollaborationModeForTab("autopilot") creates, goal cleared —
+	// now reports itself.
+	if s.autopilot {
+		return "autopilot"
 	}
 	return "normal"
 }

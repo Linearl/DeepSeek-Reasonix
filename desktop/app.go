@@ -2284,6 +2284,11 @@ func (a *App) SetCollaborationModeForTab(tabID, mode string) {
 		if !autopilotOn {
 			mode = "normal"
 		}
+		// X4 判据锚: every input and the outcome in one line, so "did my
+		// autopilot toggle actually land" is answerable from desktop.log alone
+		// (preference off and non-yolo refusals were both silent before).
+		slog.Info("desktop: autopilot toggle", "tab", tab.ID, "preference_on", prefOn, "approval_mode", approvalMode,
+			"applied", autopilotOn, "refused_requires_yolo", autopilotRefused, "max_runtime", autopilotRuntime.String())
 	default:
 		tab.mode = tabModeFromAxes(false, approvalMode == control.ToolApprovalYolo)
 		tab.goal = ""
@@ -2546,8 +2551,8 @@ func (a *App) clearActiveSessionRuntime(tab *WorkspaceTab, oldCtrl control.Sessi
 	newSink := &tabEventSink{tabID: tab.ID, app: a, ctx: a.ctx}
 	sharedHost := a.lookupSharedHost(snap.sharedHostKey)
 	runtimeBuildStart := time.Now()
-	slog.Info("desktop: runtime build begin", "tab", tab.ID, "trigger", "clear-session", "model", snap.model) // task 196: name who is building a runtime, so a startup burst can be attributed instead of inferred.
-	defer logRuntimeBuildEnd("clear-session", runtimeBuildStart, sharedHost != nil)                           // task 334: begin→end pair = begin → function exit.
+	slog.Info("desktop: runtime build begin", "tab", tab.ID, "trigger", "clear-session", "model", snap.model, "autopilot", snap.autopilot) // task 196: name who is building a runtime, so a startup burst can be attributed instead of inferred.
+	defer logRuntimeBuildEnd("clear-session", runtimeBuildStart, sharedHost != nil)                                                        // task 334: begin→end pair = begin → function exit.
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
 		RestartUpdater:             restartUpdaterAdapter{a},
 		AutonomousUpdateController: newAutonomousUpdateController(a),
@@ -4574,8 +4579,8 @@ func (a *App) buildSessionRebindCandidate(
 		return nil, err
 	}
 	runtimeBuildStart := time.Now()
-	slog.Info("desktop: runtime build begin", "trigger", "rebind", "model", model, "session", sessionPath) // task 196: name who is building a runtime, so a startup burst can be attributed instead of inferred.
-	defer logRuntimeBuildEnd("rebind", runtimeBuildStart, sharedHost != nil)                               // task 334: begin→end pair.
+	slog.Info("desktop: runtime build begin", "trigger", "rebind", "model", model, "session", sessionPath, "autopilot", source.autopilot) // task 196: name who is building a runtime, so a startup burst can be attributed instead of inferred.
+	defer logRuntimeBuildEnd("rebind", runtimeBuildStart, sharedHost != nil)                                                              // task 334: begin→end pair.
 	// Task 363A: feed the pooled assembly (same root+model+effort) so prompt/
 	// skills/commands/hooks discovery is skipped on the second same-key tab;
 	// store what this build assembled for the next one. Gate-off keeps the
@@ -10342,8 +10347,8 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 
 	stageStarted = time.Now()
 	runtimeBuildStart := time.Now()
-	slog.Info("desktop: runtime build begin", "tab", tabID, "trigger", "set-model", "model", name) // task 196: name who is building a runtime, so a startup burst can be attributed instead of inferred.
-	defer logRuntimeBuildEnd("set-model", runtimeBuildStart, sharedHost != nil)                    // task 334: begin→end pair (begin → function exit).
+	slog.Info("desktop: runtime build begin", "tab", tabID, "trigger", "set-model", "model", name, "autopilot", tab.autopilot) // task 196: name who is building a runtime, so a startup burst can be attributed instead of inferred.
+	defer logRuntimeBuildEnd("set-model", runtimeBuildStart, sharedHost != nil)                                                // task 334: begin→end pair (begin → function exit).
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
 		RestartUpdater:             restartUpdaterAdapter{a},
 		AutonomousUpdateController: newAutonomousUpdateController(a),
@@ -10605,8 +10610,8 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 	}
 	sharedHost := a.lookupSharedHost(snap.sharedHostKey)
 	runtimeBuildStart := time.Now()
-	slog.Info("desktop: runtime build begin", "tab", tabID, "trigger", "set-effort", "model", modelRef, "effort", level) // task 196: name who is building a runtime, so a startup burst can be attributed instead of inferred.
-	defer logRuntimeBuildEnd("set-effort", runtimeBuildStart, sharedHost != nil, "path", "fallback")                     // task 334: reaching the build = both fast paths declined; reason rides the agent: effort override declined line.
+	slog.Info("desktop: runtime build begin", "tab", tabID, "trigger", "set-effort", "model", modelRef, "effort", level, "autopilot", tab.autopilot) // task 196: name who is building a runtime, so a startup burst can be attributed instead of inferred.
+	defer logRuntimeBuildEnd("set-effort", runtimeBuildStart, sharedHost != nil, "path", "fallback")                                                 // task 334: reaching the build = both fast paths declined; reason rides the agent: effort override declined line.
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
 		RestartUpdater:             restartUpdaterAdapter{a},
 		AutonomousUpdateController: newAutonomousUpdateController(a),

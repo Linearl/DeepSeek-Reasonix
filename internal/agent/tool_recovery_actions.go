@@ -134,6 +134,54 @@ func (a *Agent) ResolveToolRecovery(attempt, inspection, action string) error {
 // confirmed anything.
 const restartResumeResolution = "interrupted_by_restart"
 
+// dismissResolution marks a record the user explicitly cleared from the review
+// panel (X3 显式清除入口). Like restartResumeResolution, dismissing is not
+// evidence: the effect's outcome stays unknown and nothing was executed. What
+// it changes is exactly one thing — the write fence stops standing, so the
+// session is usable again without demanding the two-step inspect→confirm flow
+// from a user who just wants the card gone. Source is "user": a human pressed
+// the button, unlike the host-sourced auto-resolutions.
+const dismissResolution = "dismissed_by_user"
+
+// ResolveToolRecoveryDismissed settles one pending effect record as
+// user-dismissed. No inspection is required: this is the one-step escape hatch
+// for a review card the user cannot or does not want to walk through. It only
+// ever touches recovery metadata (the same setToolRecoveryRecord path the run
+// loop itself uses mid-turn), so it stays safe to call while a turn is running
+// — the controller gate still refuses it during session rotation/teardown.
+func (a *Agent) ResolveToolRecoveryDismissed(attempt string) error {
+	call, err := a.recoveryCall(attempt)
+	if err != nil {
+		return err
+	}
+	r := *call.Recovery
+	if !unresolvedToolRecord(r) {
+		return fmt.Errorf("tool recovery is already resolved")
+	}
+	r.State = provider.ToolRunNotStarted
+	r.Resolution = dismissResolution
+	r.ResolutionSource = "user"
+	r.ResolvedAt = time.Now().UnixMilli()
+	if !a.Session().setToolRecoveryRecord(call.ID, r) {
+		return fmt.Errorf("recovery attempt changed")
+	}
+	slog.Info("agent: recovery fence released",
+		"session", a.recoveryLogSessionName(),
+		"source", "user",
+		"resolution", dismissResolution,
+		"tool", call.Name,
+		"wait_ms", r.ResolvedAt-r.StartedAt,
+		"fence_wait_ms", r.ResolvedAt-r.FinishedAt)
+	// Same rollback rule as confirm (see ResolveToolRecovery): an unpersisted
+	// dismissal must not lift a barrier, so the in-memory state reverts and the
+	// error surfaces.
+	if err := event.EmitChecked(a.svc.sink, event.Event{Kind: event.Notice, RecoveryCheckpoint: true}); err != nil {
+		a.Session().setToolRecoveryRecord(call.ID, *call.Recovery)
+		return err
+	}
+	return nil
+}
+
 // ResolveInterruptedByRestart settles every unresolved effect record this
 // session still carries (task 435). Called by the resume chain when a
 // restart-staged session is restored and its continue prompt is on its way —

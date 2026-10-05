@@ -838,6 +838,14 @@ const CHECKS = [
   // P14 SetActiveTab 移出锁等待（2026-10-04）：切 tab 等锁 p50=28.1s → 锁忙立即切换
   { feature: "P14 锁忙哨兵（errSavePathBusy 零波及接口 + 锁忙立即切换）", file: "internal/control/controller.go", patterns: ["errSavePathBusy"] },
   { feature: "P14 agent save try-lock（持锁贯穿保存临界区）", file: "internal/agent/save.go", patterns: ["SaveSnapshotIfPathFree", "tryLockSessionSavePath", "savePathLockFree"] },
+  // X3/X4（wt-zcode-x3，2026-10-04）：中断核实卡显式清除 + autopilot 传递链三断点
+  { feature: "X3 显式清除 agent 层（dismiss 结算+回滚规则）", file: "internal/agent/tool_recovery_actions.go", patterns: ["ResolveToolRecoveryDismissed", "dismissed_by_user"] },
+  { feature: "X3 guard 拆分 + dismiss 过行门（closed/rotating 分报，running 放行 dismiss）", file: "internal/control/tool_recovery.go", patterns: ["session is closed", "session is switching", 'req.Action != "dismiss"'] },
+  { feature: "X3 面板忽略按钮（不因 running 禁用）+ 三语文案", file: "desktop/frontend/src/components/ToolRecoveryPanel.tsx", patterns: ['act(call, "dismiss")'] },
+  { feature: "X4 断点 A 初始构建补传 autopilot 三元组", file: "desktop/tabs.go", patterns: ["Autopilot:                tab.autopilot", "AutopilotApprovalGrace:   tab.autopilotApprovalGrace"] },
+  { feature: "X4 断点 B 后端视图携带 autopilot", file: "desktop/tabs.go", patterns: ['if s.autopilot {\n\t\treturn "autopilot"'] },
+  { feature: "X4 断点 B 前端 normalize 放行 autopilot", file: "desktop/frontend/src/lib/types.ts", patterns: ['mode === "autopilot"'] },
+  { feature: "X4 toggle 判据锚（preference/approval/applied 一行）", file: "desktop/app.go", patterns: ["desktop: autopilot toggle"] },
 
 ];
 
