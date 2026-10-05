@@ -885,6 +885,15 @@ func TestRepairPathKeepsRecordBudgetUnderAdaptiveBytes(t *testing.T) {
 	defaultSessionReplayLimits.maxRecords = 1
 	t.Cleanup(func() { defaultSessionReplayLimits = original })
 
+	// 任务496片6 判定面更新（P18-R1 bb9d13367 之后）：load-path 图缓存对字节
+	// 一致的日志直接 materialize，不再 replay——record 预算是 replay 预算，防
+	// 的是「小文件解码时展开成大图」；图已在内存的缓存命中形态没有这个放大，
+	// 预算不适用是正确语义而非缺口（byte 版 sibling 断言自适应成功，所以不受
+	// 影响）。本契约的威胁模型在冷路径（他进程写下的日志），故取 P18 官方回
+	// 退开关走纯 replay，钉住的正是那条路上的 records 拒绝
+	// （session_dag_replay.go / session_events.go 两处检查点）。
+	t.Setenv("REASONIX_DAG_LOAD_CACHE", "0")
+
 	if _, err := LoadSession(path); err == nil {
 		t.Fatal("expected the record budget to still refuse this log")
 	}
