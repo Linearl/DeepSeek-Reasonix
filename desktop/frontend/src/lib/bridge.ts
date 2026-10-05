@@ -940,6 +940,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 495: right-dock subagent tab + default-collapsed ended subagent cards
   // in deep mode (experimental; boot snapshot).
   SetExperimentalSubagentPanel(enabled: boolean): Promise<void>;
+  // Task 505: command-palette 跳转会话 entry + session grid wall
+  // (experimental; boot snapshot).
+  SetExperimentalSessionWall(enabled: boolean): Promise<void>;
   // Task 261: composer history picker + narrowed ArrowUp trigger (experimental; boot snapshot).
   SetExperimentalPromptHistoryPicker(enabled: boolean): Promise<void>;
   // Task 265 lab intake: nil-means-on switches (experimental; boot snapshot).
@@ -5382,6 +5385,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSplitView() {},
     async SetExperimentalTodoSidebar() {},
     async SetExperimentalSubagentPanel() {},
+    async SetExperimentalSessionWall() {},
     async SetExperimentalPromptHistoryPicker() {},
     async SetExperimentalCompactionParallel() {},
     async SetExperimentalContextBudget() {},

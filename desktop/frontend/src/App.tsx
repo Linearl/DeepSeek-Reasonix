@@ -1248,6 +1248,9 @@ export default function App() {
         // Task 495: the transcript half of the subagent panel package reads
         // this module gate (default-false, same boot snapshot).
         subagentPanel: settings.experimentalSubagentPanel ?? false,
+        // Task 505: the session graph wall reads the same module gate
+        // (default-false, same boot snapshot; off = palette unchanged).
+        sessionWall: settings.experimentalSessionWall ?? false,
       });
       // One line per startup so a missing rail entry can be traced from desktop.log
       // instead of guessed at (the switches read back correctly in config.toml).

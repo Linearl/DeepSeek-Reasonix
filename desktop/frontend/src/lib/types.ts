@@ -2391,6 +2391,8 @@ export interface DesktopStartupSettingsView {
   experimentalTodoSidebar?: boolean;
   /** Subagent panel package (task 495); off unless the user opts in; boot snapshot. */
   experimentalSubagentPanel?: boolean;
+  /** Session graph wall (task 505); off unless the user opts in; boot snapshot. */
+  experimentalSessionWall?: boolean;
   /** Composer history picker + narrowed ArrowUp (task 261); off by default; boot snapshot. */
   experimentalPromptHistoryPicker?: boolean;
   /** Task 265 lab intake: nil-means-on switches resolved server-side; boot snapshots. */
