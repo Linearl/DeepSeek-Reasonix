@@ -2,6 +2,7 @@ package control
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -21,7 +22,10 @@ import (
 // touches credentials. Those pause for a human, because "the agent decided for
 // you" is exactly the wrong outcome there, and no prompt wording can make it right.
 // After DefaultAutopilotAskWait with no human, the run ends as a terminal
-// failure instead of hanging forever (task 109 B4).
+// failure instead of hanging forever (task 109 B4). The task-477 sub-option
+// (experimental, off by default) trades that terminal stop for an explicit
+// refusal: the wait shrinks to the configured seconds and the run answers the
+// ask with "refused, continue another way" so a goal-driven run keeps going.
 type askRiskClass int
 
 const (
@@ -36,6 +40,12 @@ const (
 // a phone notification; short enough that a long overnight run fails closed
 // rather than looking hung (task 109 B4).
 const DefaultAutopilotAskWait = 10 * time.Minute
+
+// DefaultAutopilotAskTimeoutWait is the wait the task-477 ask-timeout sub-option
+// uses when it is enabled but no duration was configured (user ruling 2026-10-05:
+// default 15s, configurable 1..3600s). It only applies while the sub-option is
+// on; the off state keeps the DefaultAutopilotAskWait terminal stop verbatim.
+const DefaultAutopilotAskTimeoutWait = 15 * time.Second
 
 // ErrAutopilotAskUnanswered is returned when a high-risk ask sat unanswered
 // past the unattended wait. The Goal FSM maps it to a terminal Blocked/Failed
@@ -169,6 +179,29 @@ func autopilotAnswers(questions []event.AskQuestion) []event.AskAnswer {
 	out := make([]event.AskAnswer, 0, len(questions))
 	for _, q := range questions {
 		out = append(out, event.AskAnswer{QuestionID: q.ID, Selected: []string{autopilotNoHumanAnswer}})
+	}
+	return out
+}
+
+// autopilotAskTimeoutRefusalFormat is what an unattended run answers with when
+// the task-477 ask-timeout sub-option let a high-risk ask time out. The action
+// is refused, never approved: the model is told why so it can record the
+// refusal and look for another way, which keeps the goal loop running instead
+// of parking it (the same safe direction as the task-109 B6 approval refusal).
+// It travels in Selected so the turn is not mistaken for the "no selection
+// means skip" path (#6869).
+const autopilotAskTimeoutRefusalFormat = "autopilot: no human answered within %s - this high-risk action is refused, not approved; record that it was declined and continue another way"
+
+// autopilotAskTimeoutRefusalAnswers builds the timeout reply: one explicit
+// refusal per question. The batch only reaches the wait when the classifier
+// marked it needs-human, so refusing the whole batch is the conservative
+// reading - the run never picks which question inside a refused batch was
+// "actually safe".
+func autopilotAskTimeoutRefusalAnswers(questions []event.AskQuestion, wait time.Duration) []event.AskAnswer {
+	refusal := fmt.Sprintf(autopilotAskTimeoutRefusalFormat, wait.String())
+	out := make([]event.AskAnswer, 0, len(questions))
+	for _, q := range questions {
+		out = append(out, event.AskAnswer{QuestionID: q.ID, Selected: []string{refusal}})
 	}
 	return out
 }
