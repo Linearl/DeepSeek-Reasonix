@@ -1004,6 +1004,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 115: dream/distill memory-curation tools (experimental).
   SetExperimentalDream(enabled: boolean): Promise<void>;
   SetExperimentalPerfMonitor(enabled: boolean): Promise<void>;
+  // Task 501: threshold-triggered heap snapshot (experimental, default off).
+  SetExperimentalHeapHighProfile(enabled: boolean): Promise<void>;
   SetPerfMonitorIntervalSeconds(seconds: number): Promise<void>;
   SaveHeapProfile(): Promise<string>;
   // Task 338: monitoring-panel memory pages (WS series + heap pie).
@@ -5425,6 +5427,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalTraceAsState() {},
     async SetExperimentalDream() {},
     async SetExperimentalPerfMonitor() {},
+    async SetExperimentalHeapHighProfile() {},
     async SetPerfMonitorIntervalSeconds() {},
     async SaveHeapProfile() { return ""; },
     // Task 338 mocks: honest empty states (the dev shell has no sampler).
