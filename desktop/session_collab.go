@@ -1230,10 +1230,21 @@ func sessionCollabDeliveryText(msg sessioncollab.MailMessage, effectiveHop int) 
 		if msg.RequireReply {
 			b.WriteString("\n⚠ 发件人要求回信（require_reply）：完成本信的工作后，必须按上面的回复方式回信；无法完成也请回信说明，不要只在本会话里写下结论。")
 		}
+	} else if msg.From != "" {
+		// Task 487: an empty ReplyTo with a registered From is a system
+		// message (the task-309 read receipt looks exactly like this), not an
+		// unregistered sender. The old catch-all called the sender "未登记"
+		// right under a header that printed its contact_id, and sent the
+		// recipient chasing a remediation that had already happened. The
+		// sender IS addressable: fall back to From as the reply address.
+		b.WriteString("回复方式：完成后用 talk_to_session 回信到 contact_id=" + msg.From +
+			"，hop 传 " + strconv.Itoa(effectiveHop+1) +
+			"。（发送方未指定专用回信地址，回信到其登记的 contact_id 即可。）")
 	} else {
 		// Task 156.D: the old wording ("请先让发送方登记") told the *recipient*
 		// to fix something only the sender can do. State the fact and what the
-		// recipient can actually do.
+		// recipient can actually do. Task 487: this branch is now reachable
+		// only when From is empty too, so 「未登记」 is finally true here.
 		b.WriteString("这是一条单向通知：发送方未登记 contact_id，本消息无法回信。如需联系发送方，请在发送方所在会话中让它先调用一次 talk_to_session（首次发信会自动登记身份）。")
 	}
 	return b.String()
