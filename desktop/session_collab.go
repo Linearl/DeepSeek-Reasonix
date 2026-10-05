@@ -38,12 +38,81 @@ import (
 // message id as the inbox idempotency key, so a retry cannot duplicate a turn.
 const sessionCollabPumpInterval = 4 * time.Second
 
+// Task 485 P2: per-contact retry backoff for failed delivery passes. A
+// refused pass is NOT acked, so without backoff the pump retried it every
+// tick forever (568 WARN lines in one morning during the lease leak). The
+// schedule doubles from collabRetryBackoffBase up to collabRetryBackoffMax;
+// on-demand "deliver now" passes bypass it entirely.
+const (
+	collabRetryBackoffBase = 5 * time.Second
+	collabRetryBackoffMax  = 5 * time.Minute
+)
+
+// collabRetryDelay is the wait after the failures-th consecutive failed pass
+// (failures >= 1): 5s, 10s, 20s, ... capped at 5 minutes. Pure so the
+// schedule is pinned by a table test.
+func collabRetryDelay(failures int) time.Duration {
+	if failures <= 1 {
+		return collabRetryBackoffBase
+	}
+	d := collabRetryBackoffBase
+	for i := 1; i < failures; i++ {
+		d *= 2
+		if d >= collabRetryBackoffMax {
+			return collabRetryBackoffMax
+		}
+	}
+	return d
+}
+
 type sessionCollabPump struct {
 	app *App
 
 	mu      sync.Mutex
 	started bool
 	stop    chan struct{}
+
+	// retryMu guards the per-contact backoff state (task 485 P2).
+	retryMu sync.Mutex
+	retry   map[string]*collabRetryState
+}
+
+// collabRetryState is one contact's consecutive-failure chain: the count
+// drives the doubling schedule, notBefore gates the next pump pass.
+type collabRetryState struct {
+	failures  int
+	notBefore time.Time
+}
+
+// contactRetryDue reports whether a pump pass may touch the contact. A
+// contact with no recorded failure is always due.
+func (p *sessionCollabPump) contactRetryDue(contactID string, now time.Time) bool {
+	p.retryMu.Lock()
+	defer p.retryMu.Unlock()
+	st, ok := p.retry[contactID]
+	return !ok || !now.Before(st.notBefore)
+}
+
+// deferContactRetry schedules the next attempt after another consecutive
+// failure: first failure waits 5s, then doubling up to the 5-minute cap.
+func (p *sessionCollabPump) deferContactRetry(contactID string, now time.Time) {
+	p.retryMu.Lock()
+	defer p.retryMu.Unlock()
+	failures := 1
+	if st, ok := p.retry[contactID]; ok {
+		failures = st.failures + 1
+	}
+	if p.retry == nil {
+		p.retry = map[string]*collabRetryState{}
+	}
+	p.retry[contactID] = &collabRetryState{failures: failures, notBefore: now.Add(collabRetryDelay(failures))}
+}
+
+// resetContactRetry clears a contact's backoff after a successful pass.
+func (p *sessionCollabPump) resetContactRetry(contactID string) {
+	p.retryMu.Lock()
+	defer p.retryMu.Unlock()
+	delete(p.retry, contactID)
 }
 
 func newSessionCollabPump(app *App) *sessionCollabPump {
@@ -183,18 +252,20 @@ type SessionCollabDrainTarget struct {
 
 // DrainSessionCollabMail performs one delivery pass on demand. Exposed for
 // tests and for a user-triggered "deliver now"; the pump calls the same code.
+// On-demand passes bypass the retry backoff (task 485 P2): an explicit
+// "deliver now" is the user saying try, not the pump hammering a busy lease.
 func (a *App) DrainSessionCollabMail() SessionCollabDrainResult {
 	if a.sessionCollab == nil {
 		return SessionCollabDrainResult{}
 	}
-	return a.sessionCollab.drain()
+	return a.sessionCollab.drain(false)
 }
 
 func (p *sessionCollabPump) drainOnce() {
 	// Task 221: re-arm the drain merge before any delivery, so a settings
 	// change lands with the next pass and the queued merge sees it.
 	syncCollabInboxMergeMode()
-	result := p.drain()
+	result := p.drain(true)
 	if result.Delivered == 0 && result.Refused == 0 {
 		return
 	}
@@ -714,7 +785,7 @@ func (p *sessionCollabPump) applyPendingPurposes() {
 	}
 }
 
-func (p *sessionCollabPump) drain() SessionCollabDrainResult {
+func (p *sessionCollabPump) drain(respectBackoff bool) SessionCollabDrainResult {
 	p.applyPendingPurposes()
 	// Task 224 redo (user ruling): when experimental_collab_background_delivery
 	// is on, the host pump does NOT stand up sessions or deliver — no new tab
@@ -738,10 +809,23 @@ func (p *sessionCollabPump) drain() SessionCollabDrainResult {
 	// does the message wait — never the other way round.
 	covered := map[string]bool{}
 	var result SessionCollabDrainResult
+	now := time.Now()
 
 	for _, target := range p.app.sessionCollabLiveTargets(pendingContacts) {
 		covered[target.contactID] = true
+		if respectBackoff && !p.contactRetryDue(target.contactID, now) {
+			continue
+		}
 		delivered, refused, err := p.deliverToTarget(target)
+		if err != nil {
+			// Task 485 P2: a failed pass used to retry every pump tick (4-5s),
+			// each attempt logging a WARN — the 2026-10-05 lease leak turned
+			// that into 568 refused lines in half an hour. Back the contact
+			// off (doubling, capped); a settled delivery resets it.
+			p.deferContactRetry(target.contactID, now)
+		} else {
+			p.resetContactRetry(target.contactID)
+		}
 		result.Delivered += delivered
 		result.Refused += refused
 		if delivered == 0 && refused == 0 && err == nil {
@@ -770,6 +854,9 @@ func (p *sessionCollabPump) drain() SessionCollabDrainResult {
 		if covered[contact] {
 			continue
 		}
+		if respectBackoff && !p.contactRetryDue(contact, now) {
+			continue
+		}
 		id, ok := roster[contact]
 		if !ok || id.Archived || strings.TrimSpace(id.SessionPath) == "" {
 			continue
@@ -789,6 +876,7 @@ func (p *sessionCollabPump) drain() SessionCollabDrainResult {
 			// codeql[go/clear-text-logging] the flagged chain only carries the
 			// provider env-var NAME from config validation errors, never the
 			// key value; RedactError also strips any provider-echoed key text.
+			p.deferContactRetry(contact, now)
 			log.Printf("[session-collab] cannot open session for contact %s (%s): %v", contact, id.Title, secrets.RedactError(err))
 			continue
 		}
