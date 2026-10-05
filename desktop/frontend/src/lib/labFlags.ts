@@ -5,7 +5,7 @@
 
 import { reportFrontendLog } from "./frontendLog";
 
-export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel";
+export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "tabCompress";
 
 const defaults: Record<LabFeatureFlag, boolean> = {
   questionSearch: true,
@@ -16,6 +16,9 @@ const defaults: Record<LabFeatureFlag, boolean> = {
   // Task 495: the subagent panel package (dock tab + ended-card collapse)
   // ships off — same boot-snapshot contract, plain default-false bool.
   subagentPanel: false,
+  // Task 506: tab-strip adaptive compression (tiered tab width once >8 tabs,
+  // floor 84px) ships off — with it off the strip keeps the exact fixed widths.
+  tabCompress: false,
 };
 
 const flags: Record<LabFeatureFlag, boolean> = { ...defaults };
@@ -29,7 +32,7 @@ export function applyLabFlags(next: Partial<Record<LabFeatureFlag, boolean>>): v
   reportFrontendLog(
     "desktop-prefs",
     "lab flags",
-    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel}`,
+    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} tabCompress=${flags.tabCompress}`,
   );
   for (const listener of listeners) listener();
 }

@@ -2393,6 +2393,8 @@ export interface DesktopStartupSettingsView {
   experimentalSubagentPanel?: boolean;
   /** Composer history picker + narrowed ArrowUp (task 261); off by default; boot snapshot. */
   experimentalPromptHistoryPicker?: boolean;
+  /** Tab-strip adaptive compression (task 506); off by default; tiered tab width once >8 tabs. */
+  experimentalTabCompress?: boolean;
   /** Task 265 lab intake: nil-means-on switches resolved server-side; boot snapshots. */
   experimentalCompactionParallel?: boolean;
   experimentalContextBudget?: boolean;

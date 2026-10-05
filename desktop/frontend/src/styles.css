@@ -43235,3 +43235,20 @@ body > .mermaid-diagram--fullscreen {
   padding: 0;
   border-radius: 8px;
 }
+
+/* 任务 506：标签栏自适应压缩（experimental_tab_compress，默认关）。
+   档位宽度由 TabBar 以行内 `--tabbar-tab-width` 注入 .tabbar 根节点
+   （行内样式压过 darwin/native-tabs/theme-style 五处消费块，含 ≤980px
+   窄窗口的 148px 覆盖）；此处只补行内变量表达不了的固定宽副调整：
+   tier 3（100px）起收窄内边距给标题让位。置于文件末尾，等特异性时
+   按源顺序压过前面的样式面。开关关闭时 data-tab-tier 不存在，以下
+   规则全部不命中。 */
+.tabbar[data-tab-tier="3"] .tabbar__tab,
+.tabbar[data-tab-tier="4"] .tabbar__tab {
+  padding: 0 20px 0 9px;
+}
+
+.tabbar[data-tab-tier="4"] .tabbar__tab {
+  padding: 0 18px 0 8px;
+  gap: 4px;
+}

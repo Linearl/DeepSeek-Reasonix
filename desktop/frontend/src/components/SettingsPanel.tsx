@@ -1794,6 +1794,8 @@ type ExperimentFeatureId =
   // Task 495: subagent panel package (dock tab + ended-card collapse).
   | "subagentPanel"
   | "promptHistoryPicker"
+  // 任务 506: tab-strip adaptive compression (tiered tab width once >8 tabs).
+  | "tabCompress"
   | "feedback"
   | "localServer"
   | "pathRules"
@@ -2021,6 +2023,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "subagentPanel", group: "ui", label: t("settings.subagentPanel"), on: Boolean(s.experimentalSubagentPanel) },
     // Task 261: composer history picker + narrowed ArrowUp (upstream #10425).
     { id: "promptHistoryPicker", group: "ui", label: t("settings.promptHistoryPicker"), on: Boolean(s.experimentalPromptHistoryPicker) },
+    // 任务 506：标签栏自适应压缩（>8 个标签逐级降宽，下限 84px）。
+    { id: "tabCompress", group: "ui", label: t("settings.tabCompress"), on: Boolean(s.experimentalTabCompress) },
     { id: "autoLoadOlder", group: "ui", label: t("settings.autoLoadOlder"), on: Boolean(s.experimentalAutoLoadOlder) },
     { id: "cacheTuning", group: "storage", label: t("settings.cacheTuning"), on: Boolean(s.experimentalCacheTuning) },
     { id: "sessionStorage", group: "storage", label: t("settings.sessionStorage"), on: (s.sessionStorage ?? "v3_only") !== "v3_only" },
@@ -2683,6 +2687,26 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                 </div>
               </SettingsField>
             </>
+          )}
+          {selected === "tabCompress" && (
+            <SettingsField label={t("settings.tabCompress")} hint={t("settings.tabCompressHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalTabCompress) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      // 任务 506：纯前端门——设置保存后的 onChanged 会重放
+                      // 快照（applyLabFlags），标签栏即时换档，无需重启。
+                      await app.SetExperimentalTabCompress(on);
+                    })}
+                  >
+                    {t(on ? "settings.tabCompress.on" : "settings.tabCompress.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
           )}
               {selected === "promptHistoryPicker" && (
                 <SettingsField label={t("settings.promptHistoryPicker")} hint={t("settings.promptHistoryPickerHint")} icon={<Sparkles size={18} />}>

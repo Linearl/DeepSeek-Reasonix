@@ -942,6 +942,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalSubagentPanel(enabled: boolean): Promise<void>;
   // Task 261: composer history picker + narrowed ArrowUp trigger (experimental; boot snapshot).
   SetExperimentalPromptHistoryPicker(enabled: boolean): Promise<void>;
+  // Task 506: tab-strip adaptive compression (tiered width once >8 tabs; re-applied on settings save).
+  SetExperimentalTabCompress(enabled: boolean): Promise<void>;
   // Task 265 lab intake: nil-means-on switches (experimental; boot snapshot).
   SetExperimentalCompactionParallel(enabled: boolean): Promise<void>;
   SetExperimentalContextBudget(enabled: boolean): Promise<void>;
@@ -5383,6 +5385,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalTodoSidebar() {},
     async SetExperimentalSubagentPanel() {},
     async SetExperimentalPromptHistoryPicker() {},
+    async SetExperimentalTabCompress() {},
     async SetExperimentalCompactionParallel() {},
     async SetExperimentalContextBudget() {},
     async SetExperimentalResearchBudget() {},
