@@ -75,6 +75,14 @@ func LoadSessionUserMessages(path string) ([]SessionUserMessage, error) {
 }
 
 func loadSessionUserMessagesWithLimits(path string, limits sessionReplayLimits) ([]SessionUserMessage, error) {
+	// P18-R1: serve the projection from the cached graph when it still matches
+	// the bytes on disk. This is the hot loop the DAG investigation measured
+	// (topic-title derivation re-decoding a 589MB log twice a minute); the hit
+	// window holds the save-path lock for an O(materialize) pass instead of a
+	// full decode. Every guard failure falls through to the replay below.
+	if users, ok := loadSessionUserMessagesCached(path); ok {
+		return users, nil
+	}
 	// Size the byte budget to the file before deciding anything about it. The budget exists so a
 	// damaged log cannot exhaust memory while decoding, and the size is known here - refusing an
 	// oversize log instead of sizing to it left sessions that were fractions of a percent over
