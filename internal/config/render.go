@@ -466,6 +466,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// omit-on-default would let a hand-added line vanish on the next save.
 	fmt.Fprintf(&b, "experimental_image_dedup = %q   # task 373-R1/R1.1: image dedup switch (off|first|all) — \"first\" keeps the first copy inline, \"all\" moves every image above 4KB to the .imgpack sidecar (upstream readers see no images); read side always de-references\n", c.Agent.ExperimentalImageDedup)
 	fmt.Fprintf(&b, "perf_monitor_interval_seconds = %d   # task 184: sampler interval in seconds (default 5, clamped 1..300)\n", c.Agent.PerfMonitorIntervalSeconds)
+	// Unconditional render — omit-on-default would let a hand-added line vanish
+	// on the next save (same rule as its sampler sibling above).
+	fmt.Fprintf(&b, "perf_monitor_heap_interval_seconds = %d   # perf monitor heap-profile dump interval in seconds (0 = built-in default 60; explicit values clamped 10..3600)\n", c.Agent.PerfMonitorHeapIntervalSeconds)
 	fmt.Fprintf(&b, "session_collab_hop_limit = %d   # task 204: cross-session chain ceiling (default 5, clamped 3..1000; 0 = default)\n", c.Agent.SessionCollabHopLimit)
 	// Task 308-O4: detached idle runtime release threshold. Unconditional
 	// render — omit-on-default would let a hand-added line vanish on the next save.

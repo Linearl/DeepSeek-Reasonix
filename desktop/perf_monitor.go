@@ -42,9 +42,15 @@ const (
 	// Heap profiles are the point of the memory investigation: one dump every
 	// minute while the monitor runs, keeping only the newest few, so the profile
 	// from the inflation moment is on disk without anyone having to act in time.
-	perfMonitorHeapInterval  = 60 * time.Second
-	perfMonitorHeapKept      = 3
-	perfMonitorPruneInterval = time.Hour
+	// The interval is configurable (perf_monitor_heap_interval_seconds): each
+	// dump is ~0.7MB of write churn, so 60s ≈ 40MB/h is the investigation tax —
+	// the knob lets a long-running host pay less, not more. 0 (unset) keeps the
+	// default; explicit values are clamped into 10..3600.
+	perfMonitorHeapDefaultSeconds = 60
+	perfMonitorHeapMinSeconds     = 10
+	perfMonitorHeapMaxSeconds     = 3600
+	perfMonitorHeapKept           = 3
+	perfMonitorPruneInterval      = time.Hour
 )
 
 // perfSample is one line of the time series. Field names are stable: the point
@@ -107,11 +113,12 @@ type perfSample struct {
 }
 
 type perfMonitor struct {
-	app       *App
-	dir       string
-	interval  time.Duration
-	retention time.Duration
-	paths     []string
+	app          *App
+	dir          string
+	interval     time.Duration
+	retention    time.Duration
+	heapInterval time.Duration
+	paths        []string
 
 	started time.Time
 	stop    chan struct{}
@@ -186,9 +193,10 @@ func (g *perfWarnGate) allow(metric string, value float64, now time.Time) (ok bo
 
 // perfMonitorSettings resolves the config into sampler settings, clamping the
 // same way the setters do so a hand-edited config cannot create a busy loop.
-func perfMonitorSettings(cfg *config.Config) (time.Duration, time.Duration, []string) {
+func perfMonitorSettings(cfg *config.Config) (time.Duration, time.Duration, time.Duration, []string) {
 	seconds := perfMonitorDefaultSeconds
 	retention := perfMonitorDefaultRetention
+	heapSeconds := perfMonitorHeapDefaultSeconds
 	var paths []string
 	if cfg != nil {
 		if cfg.Agent.PerfMonitorIntervalSeconds > 0 {
@@ -196,6 +204,9 @@ func perfMonitorSettings(cfg *config.Config) (time.Duration, time.Duration, []st
 		}
 		if cfg.Agent.PerfMonitorRetentionHours > 0 {
 			retention = cfg.Agent.PerfMonitorRetentionHours
+		}
+		if cfg.Agent.PerfMonitorHeapIntervalSeconds > 0 {
+			heapSeconds = cfg.Agent.PerfMonitorHeapIntervalSeconds
 		}
 		paths = append(paths, cfg.Agent.PerfMonitorPaths...)
 	}
@@ -205,7 +216,16 @@ func perfMonitorSettings(cfg *config.Config) (time.Duration, time.Duration, []st
 	if seconds > perfMonitorMaxSeconds {
 		seconds = perfMonitorMaxSeconds
 	}
-	return time.Duration(seconds) * time.Second, time.Duration(retention) * time.Hour, paths
+	if heapSeconds < perfMonitorHeapMinSeconds {
+		heapSeconds = perfMonitorHeapMinSeconds
+	}
+	if heapSeconds > perfMonitorHeapMaxSeconds {
+		heapSeconds = perfMonitorHeapMaxSeconds
+	}
+	return time.Duration(seconds) * time.Second,
+		time.Duration(retention) * time.Hour,
+		time.Duration(heapSeconds) * time.Second,
+		paths
 }
 
 // perfMonitorDir is where samples live: under the desktop logs, never inside a
@@ -215,16 +235,17 @@ func perfMonitorDir() string {
 	return filepath.Join(config.MemoryUserDir(), desktopLogDirName, perfMonitorDirName)
 }
 
-func newPerfMonitor(app *App, dir string, interval, retention time.Duration, paths []string) *perfMonitor {
+func newPerfMonitor(app *App, dir string, interval, retention, heapInterval time.Duration, paths []string) *perfMonitor {
 	return &perfMonitor{
-		app:       app,
-		dir:       dir,
-		interval:  interval,
-		retention: retention,
-		paths:     paths,
-		started:   time.Now(),
-		stop:      make(chan struct{}),
-		done:      make(chan struct{}),
+		app:          app,
+		dir:          dir,
+		interval:     interval,
+		retention:    retention,
+		heapInterval: heapInterval,
+		paths:        paths,
+		started:      time.Now(),
+		stop:         make(chan struct{}),
+		done:         make(chan struct{}),
 	}
 }
 
@@ -253,7 +274,7 @@ func (m *perfMonitor) loop() {
 	defer ticker.Stop()
 	prune := time.NewTicker(perfMonitorPruneInterval)
 	defer prune.Stop()
-	heap := time.NewTicker(perfMonitorHeapInterval)
+	heap := time.NewTicker(m.heapInterval)
 	defer heap.Stop()
 	m.sampleAndWrite(time.Now())
 	for {

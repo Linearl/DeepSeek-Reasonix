@@ -21,7 +21,7 @@ func TestPerfMonitorWritesSamplesThenStops(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	monitor := newPerfMonitor(nil, perfDir, 40*time.Millisecond, time.Hour, []string{watched})
+	monitor := newPerfMonitor(nil, perfDir, 40*time.Millisecond, time.Hour, time.Hour, []string{watched})
 	monitor.Start()
 	time.Sleep(180 * time.Millisecond)
 	monitor.Stop()
@@ -112,7 +112,7 @@ func TestPerfMonitorPruneDropsSamplesPastRetention(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	monitor := newPerfMonitor(nil, perfDir, time.Hour, 48*time.Hour, nil)
+	monitor := newPerfMonitor(nil, perfDir, time.Hour, 48*time.Hour, time.Hour, nil)
 	monitor.prune(time.Now())
 
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
@@ -143,7 +143,7 @@ func TestPerfMonitorHonoursConfiguredPatterns(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	monitor := newPerfMonitor(nil, filepath.Join(root, "perf"), time.Hour, time.Hour,
+	monitor := newPerfMonitor(nil, filepath.Join(root, "perf"), time.Hour, time.Hour, time.Hour,
 		[]string{filepath.Join(root, "*.jsonl"), filepath.Join(root, "missing-*.jsonl")})
 	files := monitor.collectFiles()
 	if _, ok := files[first]; !ok {

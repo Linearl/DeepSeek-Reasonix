@@ -330,10 +330,15 @@ func (t drainInboxTool) Execute(ctx context.Context, args json.RawMessage) (stri
 	}
 
 	// H1: pull from sessioninbox layer.
+	// P19 遗留修复：sessioninbox 层以「会话转录路径」为键（<stem>.inbox/
+	// 目录），不是以 contact id 为键。此前把 me（"sc_me"）当 sessionPath 传入，
+	// sessionStem 不剥后缀便解析出相对路径 "sc_me.inbox"，随进程 CWD 落盘——
+	// 测试里正好是包目录（每个 worktree 跑一遍测试就再生一份残渣），生产里则
+	// 永远读不到调用会话真正的收件箱。currentSessionPath 为空时层被跳过。
 	if useInbox {
 		remaining := limit - payload.Took
 		if remaining > 0 {
-			inboxMsgs, _ := drainInboxFromSessionInbox(me, p.Source, settle, remaining)
+			inboxMsgs, _ := drainInboxFromSessionInbox(t.cfg.currentSessionPath(), p.Source, settle, remaining)
 			payload.Took += len(inboxMsgs)
 			payload.Messages = append(payload.Messages, inboxMsgs...)
 		}

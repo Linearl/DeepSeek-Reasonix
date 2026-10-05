@@ -847,6 +847,13 @@ const CHECKS = [
   { feature: "X4 断点 B 前端 normalize 放行 autopilot", file: "desktop/frontend/src/lib/types.ts", patterns: ['mode === "autopilot"'] },
   { feature: "X4 toggle 判据锚（preference/approval/applied 一行）", file: "desktop/app.go", patterns: ["desktop: autopilot toggle"] },
 
+  // ── P19（wt-zcode-p19r）──────────────────────────────────────────
+  // drain_inbox 的 H1 层键是「会话转录路径」而非 contact id：上游若回退成传
+  // contact id，收件箱静默失联且 *.inbox 残渣重新落包目录。
+  { feature: "P19 drain_inbox 收件箱层传真实会话路径", file: "internal/agent/drain_inbox_tool.go", patterns: ["drainInboxFromSessionInbox(t.cfg.currentSessionPath(), p.Source, settle, remaining)"] },
+  // heap pprof 间隔可调键：上游无此键，merge 后丢失只会让间隔退回硬编码，静默。
+  { feature: "P19 heap pprof 间隔配置键接线", file: "desktop/perf_monitor.go", patterns: ["perfMonitorHeapDefaultSeconds", "PerfMonitorHeapIntervalSeconds", "time.NewTicker(m.heapInterval)"] },
+
 ];
 
 let failed = 0;
