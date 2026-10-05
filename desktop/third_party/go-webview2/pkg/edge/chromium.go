@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -181,6 +182,9 @@ func (e *Chromium) ShuttingDown() {
 
 func (e *Chromium) errorCallback(err error) {
 	e.globalErrorCallback(err)
+	// 任务496 诊断插桩：此前的 os.Exit(1) 零输出，desktop 全量静默死亡无法
+	// 归因（4/4 轮复现、死点随输出模式漂移）。退出前先留一行可检索证据。
+	slog.Error("webview2: chromium errorCallback exiting the process", "err", err)
 	os.Exit(1)
 }
 
