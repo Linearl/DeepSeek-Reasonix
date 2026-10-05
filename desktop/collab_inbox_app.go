@@ -28,8 +28,14 @@ func collabInboxCtx() context.Context { return context.Background() }
 // sender-identity resolver (task 348) reads the same BranchMeta the directory
 // scan uses, so heartbeat/system senders land in the right bucket; a session
 // outside the scanned dirs simply falls back to the mention bucket.
+//
+// 任务 464: the SAME scan feeds the cleanup rule's liveness oracle — a contact
+// is "alive" while its session exists in the addressable directory (live +
+// archived; archive is restorable, so it is NOT deletion). Trash is the only
+// delete that removes a session from the roster. No oracle installed on
+// stores built elsewhere (the query tool) — cleanup there is a no-op.
 func collabInboxStore() *collabinbox.Store {
-	return collabinbox.New(config.SessionCollabMailDir(), func(contact string) string {
+	store := collabinbox.New(config.SessionCollabMailDir(), func(contact string) string {
 		for _, id := range agent.ScanCollabIdentityDirectory(config.SessionDir(), "") {
 			if id.ContactID == contact {
 				return id.IdentityType
@@ -37,6 +43,16 @@ func collabInboxStore() *collabinbox.Store {
 		}
 		return ""
 	})
+	store.SetLiveContacts(func() map[string]bool {
+		live := map[string]bool{}
+		for _, id := range agent.ScanCollabIdentityDirectory(config.SessionDir(), "") {
+			if id.ContactID != "" {
+				live[id.ContactID] = true
+			}
+		}
+		return live
+	})
+	return store
 }
 
 // collabInboxViewer is the calling window's own contact id — it drives the
@@ -145,6 +161,15 @@ func (a *App) MarkCollabMailDecided(messageID, by string) (collinboxSnapshot, er
 // and applies it immediately — task 320 c.
 func (a *App) SetCollabMailRetention(retention string) (collinboxSnapshot, error) {
 	return collabInboxStore().SetRetention(collabInboxCtx(), retention)
+}
+
+// SetCollabMailCleanupRule switches the session-deletion cleanup rule (任务
+// 464: never|sender|receiver|both) and applies it immediately — never (the
+// default) keeps everything regardless of who deleted which conversation.
+// Orthogonal to the retention window: one keys on session existence, the other
+// on message age, and both are enforced in one sweep.
+func (a *App) SetCollabMailCleanupRule(rule string) (collinboxSnapshot, error) {
+	return collabInboxStore().SetCleanupRule(collabInboxCtx(), rule)
 }
 
 // collinboxSnapshot pins the wire type name for the Wails bindings.
