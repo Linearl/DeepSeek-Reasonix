@@ -1307,6 +1307,24 @@ type SandboxConfig struct {
 	// OptimisticWrite, when true, lets path-bound file writers skip the
 	// whole-path serialization wait and instead rely on write-if-unchanged
 	// ("expected") stale-content detection for parallel safety (see #9213).
+	// It also lifts the scheduler's write-claim gates entirely: parent writes
+	// gate no subagent (task 315) and subagents no longer serialize on
+	// overlapping or undeclared write_paths (task 483) — two subagents that
+	// both omit write_paths run in parallel, with overlap safety delegated to
+	// the expected-baseline checks.
+	//
+	// Coverage gaps accepted by turning this on (483-a M1): the expected
+	// baseline is an OPTIONAL field on write_file / edit_file / multi_edit /
+	// notebook_edit — a caller that omits "expected" gets no baseline
+	// protection (edit_file still refuses a non-matching old_string, and
+	// line_range edits require source_token — anchor headers are checked
+	// only when supplied — but neither is the expected mechanism). These
+	// writers expose no expected argument at all: move_file, delete_range,
+	// delete_symbol. bash, MCP tools and tool hooks run opaque with no
+	// content baseline either. For every write made without an explicit
+	// expected value the real safeguard under this mode is the model
+	// re-reading current content before writing.
+	//
 	// Default false keeps the pessimistic path-lock behavior.
 	OptimisticWrite bool `toml:"optimistic_write"`
 }
@@ -2431,7 +2449,7 @@ const ContextManagementPolicy = `This host maintains context automatically. When
 // it the model tends to announce what it is about to do and end the turn.
 // 20261002 提示词调研：末尾追加「用户提问/描述问题时交付评估而非修复」例外，
 // 引调研报告 §2 G1
-//（docs/report/zcode交付/zcode交付-调研-系统提示词区段细节差距-20261002.md）——
+// （docs/report/zcode交付/zcode交付-调研-系统提示词区段细节差距-20261002.md）——
 // 无此例外时「Persist until fully handled」会把纯提问当未完成任务、直接动手改码。
 const AutonomyPolicy = `Persist until the task is fully handled end-to-end within the current turn. ` +
 	`Do not stop at analysis, a plan, or a partial fix, and do not end the turn ` +
@@ -2450,7 +2468,7 @@ const AutonomyPolicy = `Persist until the task is fully handled end-to-end withi
 // message must carry the whole outcome. zcode carries the same rule for the
 // same surface constraint and measured it as a real behavior fix.
 // 20261002 提示词调研：新增段，引调研报告 §4.1 #1
-//（docs/report/zcode交付/zcode交付-调研-zcode与Reasonix系统提示词对比-20261002.md）。
+// （docs/report/zcode交付/zcode交付-调研-zcode与Reasonix系统提示词对比-20261002.md）。
 const UserCommunicationPolicy = `Communicating with the user: your text output is what the user ` +
 	`reads — they cannot see your thinking or the raw tool results. Before your ` +
 	`first tool call, say in a sentence what you are about to do; while working, ` +

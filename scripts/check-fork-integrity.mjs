@@ -882,6 +882,18 @@ const CHECKS = [
   // collab 拒绝退避 + 自持文案：回退则拒绝日志风暴与「另一个窗口」误导复现。
   { feature: "485 P2 collab 拒绝重试退避", file: "desktop/session_collab.go", patterns: ["collabRetryDelay", "deferContactRetry", "p.drain(true)"] },
   { feature: "485 P2 自持 busy 文案去误导", file: "desktop/app.go", patterns: ["already open in this Reasonix instance"] },
+  // ── 483（wt-483-optimistic-parallel）─────────────────────────────
+  // optimistic_write 的子代理间半边（上游提案 #12052 对照实现）：两处 gate
+  // 若被上游 merge 顶掉，双未声明 write_paths 的子代理重新互等串行（实测
+  // 干等 30 分钟），且无冲突标记无编译错误。
+  { feature: "483 optimistic 子代理间写路径 gate 整体抬升（canStartLocked）", file: "internal/agent/scheduler.go", patterns: ["Task 483: optimistic-parallel mode lifts the subagent-vs-subagent"] },
+  { feature: "483 排队 whole-writer 优先权仅保守态生效", file: "internal/agent/claim_live.go", patterns: ["if !s.optimistic.Load() && req.Writer {"] },
+  { feature: "483 pump FIFO barrier 仅保守态置位", file: "internal/agent/scheduler.go", patterns: ["the barrier is conservative-only"] },
+  // Realize/MarkOpaque 回退成无条件拒绝，则 optimistic 下先写者反被后跑者的
+  // whole 声明挡死（负值转移），且切回保守后记录 gate 失效。
+  { feature: "483 optimistic Realize 记录不拒绝", file: "internal/agent/scheduler.go", patterns: ["under optimistic-parallel (task 483) the realize is", "if !optimistic {"] },
+  { feature: "483 optimistic MarkOpaque 记录不拒绝", file: "internal/agent/scheduler.go", patterns: ["Under optimistic-parallel (task 483) the upgrade is recorded"] },
+  { feature: "任务483 调度器并行矩阵测试", file: "internal/agent/scheduler_optimistic_parallel_test.go", patterns: ["TestOptimisticUndeclaredSubagentsRunInParallel", "TestConservativeUndeclaredSubagentsStillSerialize", "TestOptimisticDeclaredUndeclaredPairRuns", "TestOptimisticRealizeRecordsWithoutRefusal"] },
 
 ];
 

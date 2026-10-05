@@ -77,8 +77,11 @@ func mergeRealized(existing []string, add WritePathSet) []string {
 // canStartIncomingLocked keeps a queued whole-workspace writer ahead of later
 // writers. Directory claims have an empty reservation before their first write,
 // so canStartLocked alone would otherwise let a steady stream bypass it.
+// Task 483: that priority is a write-path fairness rule, so under
+// optimistic-parallel the write-path gate is lifted and the priority must not
+// serialize later writers either — only the concurrency caps remain.
 func (s *SubagentScheduler) canStartIncomingLocked(req AcquireRequest) (bool, string) {
-	if req.Writer {
+	if !s.optimistic.Load() && req.Writer {
 		for _, waiter := range s.waiters {
 			if waiter.req.Writer && waiter.req.WritePaths.WholeWorkspace {
 				return false, "queued whole-workspace writer has priority"

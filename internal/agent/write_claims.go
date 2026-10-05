@@ -34,7 +34,8 @@ const (
 
 // WritePathSet is a normalized claim over workspace paths a sub-agent may write.
 // WholeWorkspace is true when a writer-capable task omitted write_paths and
-// therefore claims the entire workspace (forcing writer serialization).
+// therefore claims the entire workspace (forcing writer serialization under
+// the conservative scheduler; optimistic_write lifts that gate, task 483).
 type WritePathSet struct {
 	// Paths are absolute, cleaned, and symlink-resolved when possible.
 	Paths []string
