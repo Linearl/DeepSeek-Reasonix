@@ -126,6 +126,13 @@ type DesktopConfig struct {
 	// composer keeps the exact legacy ArrowUp/ArrowDown behaviour. The flag is
 	// snapshotted at boot, so changes take effect after a restart.
 	ExperimentalPromptHistoryPicker bool `toml:"experimental_prompt_history_picker"`
+	// ExperimentalSessionWall gates the session graph wall (task 505): a
+	// "跳转会话" command-palette entry that opens a grid wall of session cards
+	// (dozens at once, grouped by project or recent activity, searchable).
+	// It ships off (铁律 2): with it off the palette keeps the exact legacy
+	// item list (recent-sessions slice unchanged, no extra entry). The flag is
+	// snapshotted at boot, so changes take effect after a restart.
+	ExperimentalSessionWall bool `toml:"experimental_session_wall"`
 	// Task 265 (lab intake): three render-surface features ship ON via
 	// nil-means-on pointers — existing behaviour getting an off switch, so the
 	// default must not regress anyone. Each is a pure frontend gate.
