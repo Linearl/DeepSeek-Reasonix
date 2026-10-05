@@ -460,7 +460,7 @@ section("已结束子代理目录：过滤运行中、缺失转录禁点");
   await act(async () => {
     await flush(200);
   });
-  eq(triggerButton().querySelector(".capsule__badge")?.textContent, "3", "开合一次后空闲徽标显示已结束数（过滤运行中）");
+  eq(triggerButton().querySelector(".capsule__badge"), null, "开合一次后空闲（无运行任务）无徽标：已结束数不回填徽标（任务 497）");
   await cleanup();
 }
 
@@ -514,6 +514,38 @@ section("面板关闭时不做后台目录轮询（一期口径保持，447c2 �
   await cleanup();
 }
 
+section("任务 497：徽标只计运行中（混合态计数正确 + 全部结束归零）");
+{
+  listCalls.length = 0;
+  const jobsMixed = [
+    job({ id: "task-r1", kind: "task", label: "运行中调研" }),
+    job({ id: "bash-r1", kind: "bash", label: "运行中命令" }),
+  ];
+  listResult = Promise.resolve([
+    ended({ ref: "sa_e1", name: "已完成件", status: "completed" }),
+    ended({ ref: "sa_e2", name: "失败件", status: "failed" }),
+    ended({ ref: "sa_e3", name: "中断件", status: "interrupted" }),
+  ]);
+  await renderIndicator({ jobs: jobsMixed, sessionPath: "s.jsonl" });
+  const badge = triggerButton().querySelector(".capsule__badge");
+  eq(badge?.textContent, "2", "混合态徽标只计运行中（2 运行 + 3 已结束 → 2）");
+  eq(badge?.getAttribute("data-capsule-badge"), "running", "徽标只呈现 running 态（ended 态已移除）");
+  await clickTrigger(30);
+  const endedTitle = document.querySelector('[data-capsule-group="ended"] .capsule-panel__group-title')?.textContent ?? "";
+  ok(endedTitle.includes("3"), "面板内已结束节标题仍如实计已结束数（3）");
+  // 全部结束：运行快照排空，3 条进已结束目录；徽标必须归零消失，不回填已结束数。
+  await rerenderIndicator({ jobs: [], sessionPath: "s.jsonl" });
+  await act(async () => {
+    await flush(300); // directory re-pull settles while the panel stays open
+  });
+  await clickTrigger(220); // 用户关闭面板
+  await act(async () => {
+    await flush(200);
+  });
+  eq(triggerButton().querySelector(".capsule__badge"), null, "全部结束归零：无运行任务即无徽标");
+  await cleanup();
+}
+
 section("子代理历史：加载态与失败态");
 {
   listCalls.length = 0;
@@ -559,6 +591,8 @@ section("详情就绪分支：源级契约断言（Transcript 挂载）");
   ok(source.includes('historyMessagesToItems(detail.messages, "capsule")'), "历史消息走既有 historyMessagesToItems 管道");
   ok(source.includes("onReadSubagent?.(sessionPath ?? \"\", view.ref)"), "读取按 (sessionPath, ref) 走注入的 Wails 方法");
   ok(source.includes('view.status !== "running"'), "目录过滤 running 条目");
+  ok(source.includes('data-capsule-badge="running"'), "徽标只以 running 态渲染（任务 497）");
+  ok(!source.includes("data-capsule-badge={"), "徽标不再按运行/结束二态切换取值");
 }
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);

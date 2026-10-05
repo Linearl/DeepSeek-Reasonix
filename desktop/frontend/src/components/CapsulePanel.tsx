@@ -386,9 +386,12 @@ export function CapsuleIndicator({
         onClick={() => (open ? close() : setOpen(true))}
       >
         <Activity size={15} aria-hidden="true" />
-        {(hasRunning || ended.length > 0) && (
-          <span className="capsule__badge" data-capsule-badge={hasRunning ? "running" : "ended"}>
-            {hasRunning ? runningCount : ended.length}
+        {/* 任务 497：徽标只计运行中。已结束子代理数只出现在面板内的
+            「已结束子代理（n）」节标题里（自带口径），不再回填到这个无标注
+            的入口徽标——否则空闲时徽标显示已结束数，会被误读成仍在运行。 */}
+        {hasRunning && (
+          <span className="capsule__badge" data-capsule-badge="running">
+            {runningCount}
           </span>
         )}
       </button>
