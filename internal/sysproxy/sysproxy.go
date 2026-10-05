@@ -4,6 +4,7 @@
 package sysproxy
 
 import (
+	"net"
 	"net/url"
 	"strings"
 )
@@ -47,7 +48,9 @@ func hostProxyURL(hostport string) *url.URL {
 }
 
 // bypassed reports whether host matches a WinINET proxy-bypass entry. "<local>"
-// matches dotless (intranet) hosts; a leading "*" is a suffix wildcard.
+// matches dotless (intranet) hosts; a leading "*" is a suffix wildcard; a
+// trailing "*" is a prefix wildcard ("127.*" matches "127.0.0.1" and every
+// other 127.x host).
 func bypassed(host, bypass string) bool {
 	host = strings.ToLower(strings.TrimSpace(host))
 	if host == "" {
@@ -64,9 +67,29 @@ func bypassed(host, bypass string) bool {
 			if strings.HasSuffix(host, strings.TrimPrefix(e, "*")) {
 				return true
 			}
+		case strings.HasSuffix(e, "*"):
+			if strings.HasPrefix(host, strings.TrimSuffix(e, "*")) {
+				return true
+			}
 		case host == e:
 			return true
 		}
+	}
+	return false
+}
+
+// loopbackHost reports whether host is "localhost" or a loopback IP. The OS
+// proxy must never apply to them (task 491): a proxy client's own traffic or a
+// local provider endpoint (Ollama, llama.cpp, a test httptest server) routed
+// through the system proxy breaks cancellation semantics at best and wedges at
+// worst. x/net/http/httpproxy hardcodes the same exclusion for env proxies.
+func loopbackHost(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return true
 	}
 	return false
 }

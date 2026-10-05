@@ -15,6 +15,22 @@ import (
 	"reasonix/internal/provider"
 )
 
+// closeServerSoon bounds srv.Close so a regression that keeps the handler alive
+// forever (the server never observing the client close — the Windows hang of
+// task 491, where loopback traffic was routed into the system proxy) fails with
+// a readable message in seconds instead of wedging the test binary until the
+// global timeout.
+func closeServerSoon(t *testing.T, srv *httptest.Server) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() { srv.Close(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Errorf("srv.Close blocked for 10s: the server never observed the client close")
+	}
+}
+
 // rstAfter writes a 200 SSE head plus the given prelude, then forces a TCP RST
 // (SetLinger(0) + Close) so the client read fails like a proxy that idle-drops
 // the long-lived connection (wsarecv: forcibly closed), not a clean EOF.
@@ -90,7 +106,7 @@ func TestStreamCancelDoesNotReconnect(t *testing.T) {
 		}
 		<-r.Context().Done()
 	}))
-	defer srv.Close()
+	defer closeServerSoon(t, srv)
 
 	p, err := New(provider.Config{Name: "deepseek", BaseURL: srv.URL, Model: "deepseek-v4", APIKey: "k"})
 	if err != nil {

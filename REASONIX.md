@@ -140,6 +140,27 @@ re-run); that check decides the framing, not whether the failure gets fixed.
 
 Empty, and kept empty.
 
+One Windows flake was diagnosed and driven to zero on 2026-10-05 (task 491), verdict
+**the code was wrong**:
+
+* **`internal/provider/openai`: `TestStreamCancelDoesNotReconnect` randomly wedged until the
+  global test timeout on Windows** — reproduced on the pristine `051c90f8f` baseline, so
+  pre-existing. The provider http client resolves proxies through `sysproxy.ForURL` when the
+  env vars are empty; on a machine with the Windows system proxy enabled (v2rayN/Clash write
+  `ProxyServer=http://127.0.0.1:10808`), that resolution routed the test's `127.0.0.1`
+  httptest traffic into the proxy client: `bypassed()` never parsed WinINET's trailing-wildcard
+  bypass entries (`127.*`), and loopback was not hard-exempted (`<local>` only matches dotless
+  hosts, and `127.0.0.1` has a dot). Cancelling then only closed the client→proxy leg — the
+  proxy's upstream leg is beyond our control — so the test server's handler blocked on
+  `r.Context().Done()` forever and the deferred `httptest.Server.Close` waited on it
+  (goroutine dump + `netstat` ESTABLISHED client socket as evidence). Verdict: code-wrong —
+  a local provider endpoint (Ollama, llama.cpp, local gateways) must never ride the system
+  proxy. Fix: `sysproxy` hard-exempts localhost and loopback IPs (mirroring
+  x/net/http/httpproxy) and honors trailing-`*` bypass wildcards; `reconnect_test.go` bounds
+  the `srv.Close` wait so a future regression fails readable in seconds instead of wedging
+  the binary. Verified: target test `-count=30` green, `internal/provider/...`,
+  `internal/sysproxy`, `internal/netclient` full runs green.
+
 Thirteen desktop tests were red on this branch on 2026-09-18. All are green again, each
 diagnosed to one of the three verdicts above, and none were carried:
 
