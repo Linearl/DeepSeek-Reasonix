@@ -257,6 +257,10 @@ UI 入口** —— 所以对大部分 fork 特性，**日志是唯一的可观�
 ## 发布前检查清单（fork desktop）
 
 1. **代码**：`git status` 干净 → `go build ./...` → `cd desktop && go build ./...` → `cd desktop/frontend && npx tsc --noEmit` → `node scripts/check-fork-integrity.mjs`（须全绿）
+1b. **⚠️ 内存门禁（用户 2026-10-05 定为「出包阻塞项」）**：出包前必须核对**内存增长曲线** —— `%APPDATA%\reasonix\logs\perf\perf-sample-<YYYYMMDD>.jsonl`（5 分钟一条采样）中的 `workingSetMb` / `heapInuseMb`，在等量负载下**不得单调增长**：
+   - **健康基线（2026-10-03 / 10-04 实测）**：WS 峰值 ≈ **2.7GB**、heapInuse ≈ **2.6GB**、线程 ≤ 80、句柄 ≤ 1500；
+   - **不合格实例（2026-10-05 实测，用户被迫重启系统）**：WS **7637MB** / heapInuse **14573MB** / private 15135MB / 线程 **227** / 句柄 **2771** —— 6.5 小时单调增零回落（`sessionDAGState.applyMessage` 占堆 68.6%，全量 JSON 解码）⇒ **任务 499**；
+   - **门禁规则**：**任务 499 未闭环前不得出包**（闭环 = 根因修复 + **同等负载下峰值回到基线量级的实测曲线**）。用户原话：「这个内存泄漏问题下次出包前要解掉，否则我们的包就存在重大缺陷」。
 2. **文档**：`release-notes/FORK-vX.Y.Z.md` 含本版全部改动；`release-notes/FORK-vs-upstream.md` 台账同步；`desktop/wails.json` 的 `productVersion` 与 tag 版本一致
    - **在 `1.38.3` 上出带时间戳的包时**：notes 文件名与包版本同名（`FORK-v1.38.3-YYYYMMDD-HHMM.md`），
      **只写「本版新增」**（该包相对上一版包的差异）+ 升级提醒，**基线内容一律引用
