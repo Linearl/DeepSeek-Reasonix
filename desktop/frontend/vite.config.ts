@@ -28,6 +28,28 @@ function buildChannel(): string {
   return process.env.REASONIX_CHANNEL || "stable";
 }
 
+// 493 sourcemap 归档准入（2026-10-05）：sourcemaps/<commit>/ 是崩溃反解历史库，
+// 只对「主线内容的构建」入库存量——判据 = 当前 HEAD 是 main-v2-stable 的祖先
+// （主仓主线构建、已合并内容的最终构建 ⇒ 归档；worktree 任务分支的未合并内容 ⇒ 跳过，
+// map 留在 dist 随该树生命周期自然消亡，从源头止住任务树归档库无限增长，
+// 实测 2026-10-05 wt 侧已积 1.9GB）。git 不可用 / 非 git 环境 ⇒ 保守跳过（宁少归档）。
+// 显式覆盖：REASONIX_ARCHIVE_SOURCEMAPS=1 强制归档 / =0 强制跳过。
+function shouldArchiveSourcemaps(): boolean {
+  const forced = process.env.REASONIX_ARCHIVE_SOURCEMAPS;
+  if (forced === "1") return true;
+  if (forced === "0") return false;
+  try {
+    execSync("git rev-parse HEAD", { cwd: configDir, stdio: ["ignore", "ignore", "ignore"] });
+    execSync("git merge-base --is-ancestor HEAD main-v2-stable", {
+      cwd: configDir,
+      stdio: ["ignore", "ignore", "ignore"],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // On macOS ≤ 12 (Safari 15 WebKit) a crossorigin module/stylesheet fetched over the
 // wails:// scheme is CORS-blocked (no Access-Control-Allow-Origin from the handler),
 // so the bundle never loads and the window paints blank; newer WebKit tolerates it.
@@ -55,6 +77,8 @@ function archiveHiddenSourcemaps(commit: string): Plugin {
     name: "archive-hidden-sourcemaps",
     apply: "build",
     closeBundle: async () => {
+      // 493：非主线内容的构建跳过归档（见 shouldArchiveSourcemaps 注释）。
+      if (!shouldArchiveSourcemaps()) return;
       const distDir = resolve(configDir, "dist");
       const maps = await collectMapFiles(distDir);
       if (!maps.length) return;
