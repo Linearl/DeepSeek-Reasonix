@@ -8,6 +8,16 @@ type ResetHandler = (tabId: string, replay: TurnEventReplayView) => Promise<bool
 
 const MAX_REPLAY_PAGES = 32;
 
+// 任务469: a prompt-kind event stranded in the gap queue is a silently dead
+// ask/approval/mcp panel — the same "arrived at the webview but never
+// presented" shape the wire fences had. The stranded callback lets the owner
+// trigger the authoritative prompt replay (seq-less, so it bypasses this
+// projector entirely) instead of leaving the panel blocked on a stalled
+// sequence repair.
+function isPromptKindEvent(event: WireEvent): boolean {
+  return event.kind === "ask_request" || event.kind === "approval_request" || event.kind === "mcp_interaction";
+}
+
 // TurnEventProjector is the per-tab ordered projection boundary. While a gap or
 // checkpoint reset is being repaired, live events are held and applied only
 // after the durable page and transcript prefix agree.
@@ -19,6 +29,7 @@ export class TurnEventProjector {
   private readonly epochByTab = new Map<string, string>();
   private readonly generationByTab = new Map<string, number>();
   private readonly projectingReplayByTab = new Set<string>();
+  private strandedHandler?: (tabId: string) => void;
   private handler: WireHandler = () => {};
   private resetHandler?: ResetHandler;
 
@@ -26,6 +37,18 @@ export class TurnEventProjector {
   unbind(handler: WireHandler) { if (this.handler === handler) this.handler = () => {}; }
   bindReset(handler: ResetHandler) { this.resetHandler = handler; }
   unbindReset(handler: ResetHandler) { if (this.resetHandler === handler) this.resetHandler = undefined; }
+  onPromptsStranded(handler?: (tabId: string) => void) { this.strandedHandler = handler; }
+
+  // Runs at every repair terminal that can leave prompt-kind events sitting in
+  // the gap queue (failed/abandoned repair, page budget exhausted, epoch
+  // mismatch early-return). Firing the handler triggers the backend prompt
+  // replay, which re-presents the panel without depending on this projector.
+  private reportStrandedPrompts(tabId: string): void {
+    if (!this.strandedHandler) return;
+    const queued = this.gapQueueByTab.get(tabId);
+    if (!queued?.some(isPromptKindEvent)) return;
+    this.strandedHandler(tabId);
+  }
 
   release(tabId: string) {
     this.generationByTab.set(tabId, (this.generationByTab.get(tabId) ?? 0) + 1);
@@ -88,6 +111,11 @@ export class TurnEventProjector {
         if (this.repairByTab.get(tabId) !== repair) return;
         this.repairByTab.delete(tabId);
         const pending = this.pendingRepairByTab.get(tabId);
+        // 任务469: a repair that ended without draining the gap queue must not
+        // strand a pending ask/approval panel behind a stalled sequence. Only
+        // at the true terminal — a follow-up repair continuation gets first
+        // crack at the queue.
+        if (!pending) this.reportStrandedPrompts(tabId);
         if (!pending) return;
         this.pendingRepairByTab.delete(tabId);
         this.requestReplay(tabId, pending.afterSeq, pending.runtimeEpoch);
@@ -104,6 +132,16 @@ export class TurnEventProjector {
       const currentEpoch = this.epochByTab.get(tabId);
       if ((requestedEpoch && currentEpoch && requestedEpoch !== currentEpoch) ||
         (replay.runtimeEpoch && currentEpoch && replay.runtimeEpoch !== currentEpoch)) {
+        // 任务469: this early return used to be fully silent — the repair gave
+        // up and every queued event (prompt cards included) stayed stranded
+        // with no trace and no recovery. Name the stall; the repair's finally
+        // terminal reports stranded prompts (single reporting point).
+        recordFrontendDiagnostic("runtime", "turn-events-gap-repair-epoch-mismatch", {
+          afterSeq: cursor,
+          requestedEpoch: requestedEpoch ?? "",
+          currentEpoch: currentEpoch ?? "",
+          replayEpoch: replay.runtimeEpoch ?? "",
+        });
         return;
       }
 
@@ -154,6 +192,7 @@ export class TurnEventProjector {
     recordFrontendDiagnostic("runtime", "turn-events-gap-repair-incomplete", {
       afterSeq: this.sequenceByTab.get(tabId) ?? cursor,
     });
+    this.reportStrandedPrompts(tabId);
   }
 
   private projectEnvelope(tabId: string, envelope: TurnEventEnvelope, runtimeEpoch?: string) {

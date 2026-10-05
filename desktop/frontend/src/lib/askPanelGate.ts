@@ -106,6 +106,58 @@ export function decideActivationPrompt(state: ActivationPromptView): ActivationP
 }
 
 /**
+ * 任务469 fence 判定输入：handleWireEvent 在 P16 收据行（reducer 内）之前
+ * 有两道会静默丢事件的 fence——runtimeEpoch（本地锚过时，如 runtime:rebuilt
+ * 走 App 级后备队列与 sink 队列顺序倒挂）与 sessionGeneration（meta 尚未跟
+ * 上会话轮换后的新代）。ask/approval/mcp 卡片事件被这两道 fence 吞掉时：
+ * 「到了但被吞」与「根本没到」在 desktop.log 不可分辨，且不触发任何恢复——
+ * 人在场也无法处理，只能关闭重开。
+ *
+ * 判定抽成纯函数：丢弃决策、诊断打点与对账触发读同一份结论，永不漂移。
+ */
+export interface PromptFenceView {
+  /** 是否 prompt 卡片类事件（ask_request / approval_request / mcp_interaction）。 */
+  promptEvent: boolean;
+  /** 本地已采纳的 runtime epoch（runtimeEpochByTabRef）。 */
+  acceptedEpoch?: string;
+  /** 事件自带的 runtime epoch。 */
+  eventEpoch?: string;
+  /** 本地 meta 的会话代（statesRef meta.sessionGeneration）。 */
+  localGeneration?: number;
+  /** 事件自带的会话代（wire sessionGeneration）。 */
+  eventGeneration?: number;
+}
+
+export type PromptFenceVerdict =
+  | { action: "admit" }
+  | { action: "drop"; reason: "epoch-fence" | "generation-fence"; reconcile: boolean };
+
+/**
+ * 判定一条到来事件是否允许通过 fence 进入 projector/reducer。
+ *
+ * 语义分层：
+ * - fence 拒绝规则与既有行为逐字等价（epoch 双方非空且不同 → 丢；事件带
+ *   会话代而本地 meta 缺失/无代/代不同 → 丢）——本判定不放宽任何一道门，
+ *   跨会话/跨 runtime 的内容泄漏防护原样保留；
+ * - 唯一的差别在「丢」的后果：prompt 卡片类事件被丢时 reconcile=true——
+ *   调用方据此走权威对账（刷新 meta + 后端重放）。重放只重发当前
+ *   controller 真实挂起的 prompt（无僵尸风险），且重放事件不带 seq，
+ *   可绕开卡住的 projector 序列；普通事件维持纯丢弃（行为不变）。
+ */
+export function judgePromptFenceArrival(view: PromptFenceView): PromptFenceVerdict {
+  if (view.eventEpoch && view.acceptedEpoch && view.acceptedEpoch !== view.eventEpoch) {
+    return { action: "drop", reason: "epoch-fence", reconcile: view.promptEvent };
+  }
+  if (
+    view.eventGeneration !== undefined &&
+    (view.localGeneration === undefined || view.localGeneration !== view.eventGeneration)
+  ) {
+    return { action: "drop", reason: "generation-fence", reconcile: view.promptEvent };
+  }
+  return { action: "admit" };
+}
+
+/**
  * 任务461-P16 收据打点（纯判定）：每一条到达前端的 ask 都落一行收据，与
  * 后端 `[ask-panel] ask request emitted`（controller.go）按 prompt id +
  * turn id 对表，量化 emit→前端收到 的投递延迟——「弹窗延迟大」「完全不弹」

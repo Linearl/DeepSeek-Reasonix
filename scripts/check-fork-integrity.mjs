@@ -862,6 +862,13 @@ const CHECKS = [
   // heap pprof 间隔可调键：上游无此键，merge 后丢失只会让间隔退回硬编码，静默。
   { feature: "P19 heap pprof 间隔配置键接线", file: "desktop/perf_monitor.go", patterns: ["perfMonitorHeapDefaultSeconds", "PerfMonitorHeapIntervalSeconds", "time.NewTicker(m.heapInterval)"] },
 
+  // ── 任务469（wt-469-ask-reliability）─────────────────────────────
+  // fence/gap 队列位于 P16 收据行之前：ask 被吞必须「可见 + 可自愈」。锚钉
+  // 判定纯函数与打点行——合并丢失只会退回静默吞 ask 的断点形态。
+  { feature: "469 fence 判定纯函数（规则逐字保留+prompt 丢弃带对账标记）", file: "desktop/frontend/src/lib/askPanelGate.ts", patterns: ["judgePromptFenceArrival", "reconcile: view.promptEvent"] },
+  { feature: "469 fence 丢弃打点+权威对账（ask-panel 行+meta 刷新+重放）", file: "desktop/frontend/src/lib/useController.ts", patterns: ["prompt dropped by stale fence", "schedulePromptFenceReconcile"] },
+  { feature: "469 projector 卡住 prompt 上报（gap 修复放弃不吞面板）", file: "desktop/frontend/src/lib/turnEventProjection.ts", patterns: ["onPromptsStranded", "reportStrandedPrompts", "turn-events-gap-repair-epoch-mismatch"] },
+
 ];
 
 let failed = 0;

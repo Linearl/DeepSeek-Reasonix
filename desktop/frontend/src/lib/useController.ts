@@ -25,7 +25,7 @@ import { historicalResultNotice, withRunningChecks, withTurnResult } from "./com
 import { mergeTurnResult } from "./turnResult";
 import { invalidateSharedQuery } from "./queryCoalesce";
 import { replayPendingPromptsForActiveTab } from "./promptReplay";
-import { decideActivationPrompt, describeAskReceipt, judgeAskArrival, type AskArrivalVerdict } from "./askPanelGate";
+import { decideActivationPrompt, describeAskReceipt, judgeAskArrival, judgePromptFenceArrival, type AskArrivalVerdict } from "./askPanelGate";
 import { createRafBatch } from "./rafBatch";
 import { foregroundRunningFromRuntimeMeta, type RuntimeMetaSnapshot } from "./runtimeMeta";
 import { aliasActivationRequest, noteActivationRequested, noteActivationSettled, noteActivationStarted } from "./sessionDiagnostics";
@@ -813,6 +813,10 @@ const CANCEL_RECONCILE_DELAYS_MS = [0, 100, 300, 1_000] as const;
 // perceptible, long enough to let any other in-flight replay events land first
 // so the refetch reflects settled backend truth (#6432).
 const STALE_PROMPT_RECONCILE_MS = 150;
+// 任务469: debounce window for the fence-drop reconcile. Long enough to
+// collapse a burst of fenced prompt events into one reconcile, short enough
+// that the recovered panel beats the user's attention span.
+const PROMPT_FENCE_RECONCILE_MS = 300;
 const STARTUP_READY_META_RECONCILE_MS = 250;
 const STARTUP_READY_META_RECONCILE_ATTEMPTS = 60;
 
@@ -2740,6 +2744,9 @@ export function useController() {
   const composerProfileLifecycleByTabRef = useRef(new Map<string, number>());
   const cancelReconcileTimers = useRef(new Map<string, number>());
   const stalePromptReconcileTimers = useRef(new Map<string, number>());
+  // 任务469: per-tab debounce for the authoritative reconcile scheduled when a
+  // prompt-kind wire event is dropped by a stale epoch/generation fence.
+  const promptFenceReconcileTimers = useRef(new Map<string, number>());
   // Task 161: activation recency for the LRU tab-state prune. Bumped on every
   // tab switch/activation so commitSingleSurfaceNavigation keeps the newest
   // maxCachedTabs states and releases only the oldest beyond the limit.
@@ -2982,6 +2989,10 @@ export function useController() {
   const historyOlderInFlightByTab = useRef(new Map<string, Promise<boolean>>());
   const cancelHydrateSeq = useRef(new Map<string, number>());
   const turnEventProjector = useRef(new TurnEventProjector()).current;
+  // 任务469: a prompt stranded behind a stalled gap repair re-presents through
+  // the authoritative backend replay (seq-less events bypass the projector)
+  // instead of dying silently in the gap queue.
+  turnEventProjector.onPromptsStranded((tabId) => replayPendingPromptsForActiveTab(tabId));
   const sessionLoadInFlight = useRef(new Map<string, { sessionPath: string; revision?: number; digest?: string; promise: Promise<void> }>());
   const transcriptSubscriptions = useRef(new Map<string, () => void>());
   const bumpMetaRefreshSeq = useCallback((tabId: string): number => {
@@ -3065,6 +3076,27 @@ export function useController() {
     if (meta !== undefined) dispatchTo(tabId, { type: "meta", meta });
     return meta;
   }, [dispatchTo, loadMetaForTab]);
+  // 任务469: a prompt-kind event (ask/approval/mcp) dropped by a stale wire
+  // fence used to simply vanish — the fences sit upstream of the 428 gate and
+  // the P16 receipt row, so a swallowed popup left no trace and no recovery
+  // until the next navigation. One debounced authoritative reconcile per tab:
+  // refresh the tab meta first (it re-arms runtimeEpochByTabRef and
+  // meta.sessionGeneration so the replay can pass the fences), then ask the
+  // backend to replay whatever prompt is genuinely still pending there. The
+  // replay rides the binding channel (fenced by nothing) and only re-emits
+  // prompts the CURRENT controller actually holds — no zombie risk — while the
+  // #6432 tombstone still filters an already-answered one.
+  const schedulePromptFenceReconcile = useCallback((tabId: string) => {
+    if (promptFenceReconcileTimers.current.has(tabId)) return;
+    const timer = window.setTimeout(() => {
+      promptFenceReconcileTimers.current.delete(tabId);
+      void (async () => {
+        await refreshMetaOnlyForTab(tabId);
+        if (statesRef.current.has(tabId)) replayPendingPromptsForActiveTab(tabId);
+      })();
+    }, PROMPT_FENCE_RECONCILE_MS);
+    promptFenceReconcileTimers.current.set(tabId, timer);
+  }, [refreshMetaOnlyForTab]);
   const refreshMetaForTab = useCallback(async (tabId: string): Promise<void> => {
     const sessionSeq = sessionLoadSeq.current.get(tabId) ?? 0;
     const meta = await loadMetaForTab(tabId);
@@ -4085,12 +4117,41 @@ export function useController() {
       // leaks the previous session's approval/ask gate into the new composer.
       const targetTabId = e.tabId || backendActiveTabIdRef.current || activeTabIdRef.current;
       if (!targetTabId) return;
+      // 任务469: the epoch/generation fences sit upstream of the 428 gate and
+      // the P16 receipt row, so a prompt event swallowed here left no trace
+      // and no recovery — the exact "ask arrived at the webview but the panel
+      // never mounted" shape. judgePromptFenceArrival keeps every fence rule
+      // byte-for-byte (promptFenceReconcile report lines: Report 4.1) and adds
+      // one consequence for prompt-kind drops: a logged verdict plus one
+      // debounced authoritative reconcile (meta refresh + backend replay).
       const acceptedEpoch = runtimeEpochByTabRef.current.get(targetTabId);
-      if (e.runtimeEpoch) {
-        if (!acceptsRuntimeEventEpoch(acceptedEpoch, e.runtimeEpoch)) return;
-        if (!acceptedEpoch) runtimeEpochByTabRef.current.set(targetTabId, e.runtimeEpoch);
-      }
       const currentMeta = statesRef.current.get(targetTabId)?.meta;
+      const fence = judgePromptFenceArrival({
+        promptEvent: e.kind === "ask_request" || e.kind === "approval_request" || e.kind === "mcp_interaction",
+        acceptedEpoch,
+        eventEpoch: e.runtimeEpoch,
+        localGeneration: currentMeta?.sessionGeneration,
+        eventGeneration: e.sessionGeneration,
+      });
+      if (fence.action === "drop") {
+        // Pre-469 order preservation: the epoch adopt ran before the
+        // generation check, so a generation-fenced event still re-armed the
+        // epoch anchor when it carried one.
+        if (fence.reason === "generation-fence" && e.runtimeEpoch && !acceptedEpoch) {
+          runtimeEpochByTabRef.current.set(targetTabId, e.runtimeEpoch);
+        }
+        if (fence.reconcile) {
+          reportFrontendLog(
+            "ask-panel",
+            "prompt dropped by stale fence",
+            `reason=${fence.reason} tab=${targetTabId} kind=${e.kind} prompt=${e.promptId ?? e.ask?.id ?? e.approval?.id ?? e.mcpInteraction?.id ?? "-"} turn=${e.turnId ?? "-"} event_epoch=${e.runtimeEpoch ?? "-"} local_epoch=${acceptedEpoch ?? "-"} event_gen=${e.sessionGeneration ?? "-"} local_gen=${currentMeta?.sessionGeneration ?? "-"}`,
+            "warn",
+          );
+          schedulePromptFenceReconcile(targetTabId);
+        }
+        return;
+      }
+      if (e.runtimeEpoch && !acceptedEpoch) runtimeEpochByTabRef.current.set(targetTabId, e.runtimeEpoch);
       if (e.sessionGeneration !== undefined && (!currentMeta || currentMeta.sessionGeneration === undefined || e.sessionGeneration !== currentMeta.sessionGeneration)) return;
       if (!turnEventProjector.acceptLive(targetTabId, e, acceptedEpoch)) return;
       uiPerfTracker.onWireEvent(targetTabId, e.kind);
@@ -4192,13 +4253,17 @@ export function useController() {
         window.clearTimeout(timer);
       }
       stalePromptReconcileTimers.current.clear();
+      for (const timer of promptFenceReconcileTimers.current.values()) {
+        window.clearTimeout(timer);
+      }
+      promptFenceReconcileTimers.current.clear();
       off();
       offReady();
       offRebuilt();
       offTopicActivation();
       offTabMeta();
     };
-  }, [dispatchTo, handleTopicActivationEvent, loadSessionDataForTab, refreshBalanceForTab, refreshCheckpoints, refreshMetaForTab, syncActiveTabFromBackend, turnEventProjector]);
+  }, [dispatchTo, handleTopicActivationEvent, loadSessionDataForTab, refreshBalanceForTab, refreshCheckpoints, refreshMetaForTab, schedulePromptFenceReconcile, syncActiveTabFromBackend, turnEventProjector]);
 
   // Track the visible tab in the transcript store: the active tab is pinned
   // out of LRU eviction. (In-flight loads of background tabs still complete
