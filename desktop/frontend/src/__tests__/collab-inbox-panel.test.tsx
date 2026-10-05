@@ -122,6 +122,11 @@ const bindings: CollabInboxBindings = {
     snapshot = { ...snapshot, revision: "4.0.0", settings: { retention } };
     return snapshot;
   },
+  async SetCollabMailCleanupRule(rule) {
+    calls.push({ name: "SetCollabMailCleanupRule", args: [rule] });
+    snapshot = { ...snapshot, revision: "7.0.0", settings: { ...snapshot.settings, cleanupRule: rule } };
+    return snapshot;
+  },
 };
 
 // 任务461-P4: an injectable addressable roster backs the from/to dropdowns —
@@ -282,6 +287,18 @@ await act(async () => {
   retentionSelect.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
 });
 assert.deepEqual(calls.find((c) => c.name === "SetCollabMailRetention")?.args, ["30d"], "retention switch reaches the backend");
+
+// 任务 464：会话删除清理规则四选一 → SetCollabMailCleanupRule(both)。
+// 第一个 .collab-inbox-panel__retention 是保留期，第二个是清理规则。
+const cleanupSelect = panel!.querySelectorAll<HTMLSelectElement>(".collab-inbox-panel__retention select")[1];
+assert.ok(cleanupSelect, "the cleanup rule select renders next to retention");
+assert.equal(cleanupSelect.value, "never", "the cleanup rule defaults to never (keep everything)");
+await act(async () => {
+  const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype, "value")!.set!;
+  setter.call(cleanupSelect, "both");
+  cleanupSelect.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+});
+assert.deepEqual(calls.find((c) => c.name === "SetCollabMailCleanupRule")?.args, ["both"], "cleanup rule switch reaches the backend");
 
 // 对话链视图（g）。
 const chainToggle = Array.from(panel!.querySelectorAll<HTMLButtonElement>(".collab-inbox-panel__state"))

@@ -394,7 +394,8 @@ export interface CollabMailEntryView {
 /** Task 320: revision-stamped snapshot (collabinbox.Snapshot) — contract ①. */
 export interface CollabMailSnapshotView {
   revision: string;
-  settings: { retention: string };
+  /** 任务 464: cleanupRule = 会话删除时的清理语义（never|sender|receiver|both）。 */
+  settings: { retention: string; cleanupRule?: string };
   total: number;
   returned: number;
   truncated: boolean;
@@ -415,7 +416,8 @@ export interface CollabMailChainView {
 /** Task 320 g: the chain view snapshot (collabinbox.ChainSnapshot). */
 export interface CollabMailChainsView {
   revision: string;
-  settings: { retention: string };
+  /** 任务 464: cleanupRule = 会话删除时的清理语义（never|sender|receiver|both）。 */
+  settings: { retention: string; cleanupRule?: string };
   total: number;
   chains: CollabMailChainView[];
 }
@@ -1096,6 +1098,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   UndismissCollabMail(ids: string[]): Promise<CollabMailSnapshotView>;
   MarkCollabMailDecided(messageID: string, by: string): Promise<CollabMailSnapshotView>;
   SetCollabMailRetention(retention: string): Promise<CollabMailSnapshotView>;
+  /** 任务 464: 会话删除语义四选一（never|sender|receiver|both），设置即生效。 */
+  SetCollabMailCleanupRule(rule: string): Promise<CollabMailSnapshotView>;
   SetDefaultAutoRecoveryCheckpoint(enabled: boolean): Promise<void>;
 
   RenameProviderConnections: typeof GeneratedApp.RenameProviderConnections;
@@ -5515,6 +5519,9 @@ function makeMockApp(): AppBindings {
     },
     async SetCollabMailRetention() {
       return { revision: "0.0.0", settings: { retention: "7d" }, total: 0, returned: 0, truncated: false, entries: [] };
+    },
+    async SetCollabMailCleanupRule(rule: string) {
+      return { revision: "0.0.0", settings: { retention: "7d", cleanupRule: rule }, total: 0, returned: 0, truncated: false, entries: [] };
     },
     async SetDesktopAutopilot(enabled: boolean, maxRuntime: string, approvalGrace: string) {
       settings.autopilot = enabled;
