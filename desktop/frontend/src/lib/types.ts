@@ -2397,6 +2397,8 @@ export interface DesktopStartupSettingsView {
   experimentalPromptHistoryPicker?: boolean;
   /** Tab-strip adaptive compression (task 506); off by default; tiered tab width once >8 tabs. */
   experimentalTabCompress?: boolean;
+  /** Subagent detail view (task 507); off = inline preview + widen affordance, on = read-only in-dock detail view. */
+  experimentalSubagentDetail?: boolean;
   /** Task 265 lab intake: nil-means-on switches resolved server-side; boot snapshots. */
   experimentalCompactionParallel?: boolean;
   experimentalContextBudget?: boolean;

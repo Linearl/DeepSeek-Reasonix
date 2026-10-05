@@ -70,6 +70,19 @@ export function clampCreationRightDockTreeWidth(width: number, maxWidth = RIGHT_
   return Math.min(Math.max(maxWidth, CREATION_RIGHT_DOCK_TREE_MIN_WIDTH), Math.max(CREATION_RIGHT_DOCK_TREE_MIN_WIDTH, Math.round(width)));
 }
 
+// Task 507 (plan C widen affordance): one-click reading width for the
+// subagent dock tab. Sits clearly above the old tree-dock cap (560) but below
+// the preview dock default (660); the available width always wins, and the
+// dock's own minimum floors the result. Session-local: the widen toggle is
+// view layout, not a durable preference.
+export const SUBAGENTS_WIDE_TARGET_WIDTH = 620;
+
+export function clampSubagentsWideWidth(currentWidth: number, availableWidth: number): number {
+  const capped = Math.min(SUBAGENTS_WIDE_TARGET_WIDTH, Math.max(RIGHT_DOCK_TREE_MIN_WIDTH, Math.round(availableWidth)));
+  if (capped <= Math.max(RIGHT_DOCK_TREE_MIN_WIDTH, Math.round(currentWidth))) return currentWidth;
+  return capped;
+}
+
 function clampStoredRightDockTreeWidth(width: number): number {
   // Stored widths are validated again against the live viewport at load time
   // (resolveWorkspacePanelWidth clamps to the chat pane's 400px floor), so

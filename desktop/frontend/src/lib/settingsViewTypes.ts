@@ -53,6 +53,8 @@ export interface SettingsView {
   experimentalPromptHistoryPicker?: boolean;
   // Task 506: tab-strip adaptive compression (tiered width once >8 tabs).
   experimentalTabCompress?: boolean;
+  // Task 507: subagent detail view (row click → read-only in-dock detail + back).
+  experimentalSubagentDetail?: boolean;
   // Task 265 lab intake: nil-means-on switches, resolved server-side.
   experimentalCompactionParallel?: boolean;
   experimentalContextBudget?: boolean;
