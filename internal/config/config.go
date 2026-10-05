@@ -1600,6 +1600,18 @@ type AgentConfig struct {
 	// refuses them. Tunable because multi-session interleaved saves thrash any
 	// fixed small LRU — capacity 1 scored zero hits on the 0928 reading.
 	DagGraphCacheCapacity int `toml:"dag_graph_cache_capacity"`
+	// DagGraphCacheMaxMB is the task-499 total byte ceiling over the same
+	// cache, in MiB: the cached set is evicted LRU-until-under, so the worst
+	// retained set is exactly this cap (the 10-05 incident showed the count
+	// cap alone pinning multi-GB graphs of closed sessions). 0 keeps the
+	// built-in default (2048); the reader clamps outside 16..65536.
+	DagGraphCacheMaxMB int64 `toml:"dag_graph_cache_max_mb"`
+	// DagGraphCacheEntryMaxMB is the task-499 per-entry admission ceiling in
+	// MiB: a single state above it is refused admission so one monster
+	// session cannot pin the whole budget after its session closed. The known
+	// worst real log (728 MB, task 196) stays under the 1024 default. The
+	// reader clamps into 16..65536 and never above the total cap.
+	DagGraphCacheEntryMaxMB int64 `toml:"dag_graph_cache_entry_max_mb"`
 	// ExperimentalOpenCodeGoUsage is the task-163 subscription usage card:
 	// off (default) hides the card and issues no usage query at all (zero
 	// regression); on shows the three rolling windows with reset countdowns

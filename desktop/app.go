@@ -642,7 +642,11 @@ func (a *App) startup(ctx context.Context) {
 		// Task 196fix2: same load pushes the tunable graph-cache LRU capacity
 		// (0/unset reads as the built-in 3) — the save-path cache must reflect
 		// the configured value from the first save, not the first settings open.
+		// Task 499: the byte ceilings ride the same push (0/unset reads as the
+		// built-in 2048/1024 MiB) so the retained set is bounded from boot.
 		agent.SetSessionGraphCacheCapacity(config.DagGraphCacheCapacity(cfg))
+		agent.SetSessionGraphCacheMaxBytes(config.DagGraphCacheMaxMB(cfg) << 20)
+		agent.SetSessionGraphCacheEntryMaxBytes(config.DagGraphCacheEntryMaxMB(cfg) << 20)
 	} else {
 		// Without the push the gate stays on the pre-push default (manual =
 		// today's rotating gate): a config that says "off" would keep rotating

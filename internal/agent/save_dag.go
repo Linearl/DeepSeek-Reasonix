@@ -251,12 +251,16 @@ func (s *Session) dagStateForSave(ctx context.Context, path string, now time.Tim
 		}
 		// Task 196fix2: carry the process-cache counters so the next on-device
 		// reading proves the fix itself (hits>0) instead of inferring it.
+		// Task 499: cache_bytes/cache_bytes_cap make byte-pressure evictions
+		// attributable on the same line.
 		cacheHits, cacheMisses, cacheEvictions := SessionGraphCacheStats()
+		cacheBytes, _, cacheBytesCap, _, _ := SessionGraphCacheByteStats()
 		slog.Info("session: dag state for save", "path", canonicalSessionSavePath(path), "extended", extended,
 			"reason", reason, "ms", elapsed.Milliseconds(), "log_bytes", size,
 			"header_ms", headerMs, "decide_ms", decideMs, "replay_ms", replayMs,
 			"cache_hits", cacheHits, "cache_misses", cacheMisses, "cache_evictions", cacheEvictions,
-			"cache_capacity", currentSessionGraphCacheCapacity())
+			"cache_capacity", currentSessionGraphCacheCapacity(),
+			"cache_bytes", cacheBytes, "cache_bytes_cap", cacheBytesCap)
 	}
 	if st.damaged {
 		if err := settleDAGTail(ctx, path, st, now); err != nil {
