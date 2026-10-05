@@ -20,10 +20,6 @@ function eq(a: unknown, b: unknown, label: string) {
   }
 }
 
-function expect(condition: unknown, label: string) {
-  eq(Boolean(condition), true, label);
-}
-
 // ---------- C1：judgeAskArrival 纯判定 ----------
 
 const fresh = judgeAskArrival({ cancelRequested: false, turnLive: true }, "ask-1");
@@ -151,6 +147,34 @@ const idleWithAsk = { ...waitingAsk, running: false, turnActive: false };
 const staleWipe = reducer(idleWithAsk, { type: "backend_activation_start" });
 eq(staleWipe.ask, undefined, "C2 回归：turn 已落定的缓存 ask 仍被清空（原语义）");
 eq(staleWipe.running, false, "C2 回归：清空路径运行态归零不变");
+
+// ---------- 任务496片3（469 遗留③）：mcp_interaction 分支对齐 428 判定 ----------
+
+// 现场：turn 运行中，cancel 残留（Stop 后经 steer 继续跑），mcp 核实卡到达。
+// 旧样式 `cancelRequested → return s` 会把它静默吞掉，agent 干等到超时。
+const residueMcp = reducer(cancelledMidTurn, {
+  type: "event",
+  e: { kind: "mcp_interaction", turnId: "turn-1", itemId: "mcp-1", mcpInteraction: { id: "mcp-1" } } as WireEvent,
+});
+eq(residueMcp.mcpInteraction?.id, "mcp-1", "469③ 回归：残留 cancel 不再吞 mcp 核实卡");
+eq(residueMcp.cancelRequested, false, "469③ 回归：残留标志随新卡清除");
+eq(residueMcp.pendingPrompt, true, "469③ 回归：pendingPrompt 打开");
+
+// 旧行为保持：turn 落定后的迟到重放仍丢弃（僵尸卡不复活）。
+const lateMcpReplay = reducer(
+  { ...cancelledDone, cancelRequested: true },
+  { type: "event", e: { kind: "mcp_interaction", turnId: "turn-1", itemId: "mcp-1", mcpInteraction: { id: "mcp-1" } } as WireEvent },
+);
+eq(lateMcpReplay.mcpInteraction, undefined, "469③ 回归：turn 已落定后的迟到重放仍丢弃（原语义）");
+
+// 墓碑：mcp 卡已处置后，同 id 延迟重放不复活面板（与 ask 同规则）。
+const settledMcp = reducer(residueMcp, { type: "clearAsk" });
+eq(settledMcp.resolvedPromptId, "mcp-1", "469③ 前置：处置写入墓碑");
+const replayedSettledMcp = reducer(settledMcp, {
+  type: "event",
+  e: { kind: "mcp_interaction", turnId: "turn-1", itemId: "mcp-1", mcpInteraction: { id: "mcp-1" } } as WireEvent,
+});
+eq(replayedSettledMcp.mcpInteraction, undefined, "469③ 回归：已处置卡的延迟重放不复活");
 
 // ---------- 汇总 ----------
 

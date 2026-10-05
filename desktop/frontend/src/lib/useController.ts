@@ -1536,13 +1536,13 @@ function applyExtensionNotification(s: State, surface: WireExtensionSurface): St
 // interrupted-turn-recovery record via prompt id + turn id, so the
 // emit → frontend verdict → fence outcome chain is reconstructable from
 // desktop.log alone.
-function reportAskPanelVerdict(verdict: AskArrivalVerdict, s: State, e: WireEvent): void {
+function reportAskPanelVerdict(verdict: AskArrivalVerdict, s: State, e: WireEvent, promptId?: string): void {
   if (verdict.action === "surface" && !verdict.clearCancelResidue) return;
   if (verdict.action === "drop" && verdict.reason === "already-resolved") return;
   const label = verdict.action === "drop"
     ? `dropped:${verdict.reason}`
     : `residue-cleared`;
-  const detail = `verdict=${label} ask=${e.ask?.id ?? "-"} turn=${e.turnId ?? s.activeTurnId ?? "-"} resolved=${s.resolvedPromptId ?? "-"} running=${s.running} turnActive=${s.turnActive}`;
+  const detail = `verdict=${label} ask=${promptId ?? e.ask?.id ?? "-"} turn=${e.turnId ?? s.activeTurnId ?? "-"} resolved=${s.resolvedPromptId ?? "-"} running=${s.running} turnActive=${s.turnActive}`;
   reportFrontendLog("ask-panel", "ask arrival judged", detail, verdict.action === "drop" ? "info" : "warn");
 }
 
@@ -2027,13 +2027,24 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       });
     }
     case "mcp_interaction": {
-      if (s.cancelRequested) return s;
-      if (e.mcpInteraction?.id !== undefined && e.mcpInteraction.id === s.resolvedPromptId) return s;
+      // 任务496片3（469 遗留③）：此处曾保留 428 之前的旧样式
+      // `cancelRequested → 整体丢弃`——stale cancel 旗（Stop 后 turn 经
+      // steer/恢复继续跑）会把后续每一张 mcp 核实卡静默吞掉，agent 与用户
+      // 双向干等到超时。与 ask 分支共用 judgeAskArrival 同一份判定：已处置
+      // 墓碑优先，残留 + turn 存活 → 照常弹出并清残留，turn 落定后的迟到
+      // 重放维持丢弃（僵尸卡不复活）。
+      const verdict = judgeAskArrival(
+        { cancelRequested: s.cancelRequested, turnLive: s.running || s.turnActive, resolvedPromptId: s.resolvedPromptId },
+        e.mcpInteraction?.id,
+      );
+      reportAskPanelVerdict(verdict, s, e, e.mcpInteraction?.id);
+      if (verdict.action === "drop") return s;
+      const base = verdict.clearCancelResidue ? { ...s, cancelRequested: false } : s;
       return beginPromptWait({
-        ...s,
-        activeTurnId: e.turnId ?? s.activeTurnId,
+        ...base,
+        activeTurnId: e.turnId ?? base.activeTurnId,
         mcpInteraction: e.mcpInteraction ? { ...e.mcpInteraction, turnId: e.turnId ?? e.mcpInteraction.turnId, runtimeEpoch: e.runtimeEpoch ?? e.mcpInteraction.runtimeEpoch } : e.mcpInteraction,
-        promptArrivedAt: e.mcpInteraction?.id === s.promptArrivedId ? s.promptArrivedAt : promptEventClock(),
+        promptArrivedAt: e.mcpInteraction?.id === base.promptArrivedId ? base.promptArrivedAt : promptEventClock(),
         promptArrivedId: e.mcpInteraction?.id,
         pendingPrompt: true,
         running: true,
