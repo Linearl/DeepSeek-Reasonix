@@ -902,6 +902,14 @@ const CHECKS = [
   { feature: "501 高峰快照触发与防风暴门（单调新高水线+冷却）", file: "desktop/perf_monitor.go", patterns: ["func (m *perfMonitor) maybeCaptureHeapHigh", "if tier <= m.heapHighPeakTier && now.Sub(m.lastHeapHighAt) < perfMonitorHeapHighCooldown {", "func (m *perfMonitor) writeHeapHighProfile"] },
   { feature: "501 两池分离（定时池滚动不触 heap-high，每日清理接管 7 天保留）", file: "desktop/perf_monitor.go", patterns: ["perfMonitorHeapHighPrefix", "strings.HasPrefix(name, perfMonitorHeapHighPrefix)"] },
   { feature: "501 配置键双面开关+阈值钳制", file: "internal/config/config.go", patterns: ["experimental_heap_high_profile", "perf_monitor_heap_high_threshold_mb", "PerfMonitorHeapHighDefaultMB"] },
+  // ── 378B1（wt-378b1-recall-lazy）────────────────────────────────
+  // 召回索引懒构建+缓存是 378 基线内存治理的第一件：Load 去预构建、首召构建
+  // 缓存、失效即换快照。若被 merge 顶回「Load 预构建」，无编译错误、行为仍
+  // 正确，但 boot/压缩重建/每次记忆写入重新背上全量读取+分词（阶段 A 实测
+  // cum 289MB）——锚定懒构建时序、缓存门与两枚行为测试。
+  { feature: "378B1 召回索引懒构建（Load 不再预构建+首召缓存）", file: "internal/memory/memory.go", patterns: ["recallMu    sync.Mutex", "func (s *Set) recallIndex()", "378B1: Load no longer builds it eagerly"] },
+  { feature: "378B1 AutoRecall 走缓存索引（每轮召回零重建）", file: "internal/memory/recall_index.go", patterns: ["lazily on the first recall and cached on the Set (378B1)", "return autoRecallIndexed(s.recallIndex(), result, opts)"] },
+  { feature: "378B1 行为钉（懒构建时序+换快照失效）", file: "internal/memory/recall_index_test.go", patterns: ["TestLoadDefersRecallIndexBuildUntilFirstRecall", "TestRecallIndexInvalidationIsSnapshotSwap", "TestRecallIndexEmptyStoreBuildsOnce"] },
 
 ];
 
