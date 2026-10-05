@@ -59,6 +59,17 @@ func ForURL(target *url.URL) (*url.URL, error) {
 	if target == nil {
 		return nil, nil
 	}
+	// Loopback never goes through the OS proxy, regardless of the bypass list
+	// (task 491): a machine with a system proxy enabled (v2rayN, Clash, corporate
+	// WinINET) used to route 127.0.0.1 traffic into the proxy client because its
+	// bypass entry ("127.*") wasn't parsed — and when the peer of that proxied
+	// connection cancels, the proxy's own upstream socket is beyond our control,
+	// so a server waiting on context-done never wakes. <local> alone wouldn't
+	// save loopback IPs either: "127.0.0.1" contains a dot, so the dotless rule
+	// skips it.
+	if loopbackHost(target.Hostname()) {
+		return nil, nil
+	}
 	var ie ieProxyConfig
 	if r, _, callErr := procGetIEProxyConfig.Call(uintptr(unsafe.Pointer(&ie))); r == 0 {
 		// A service account or an RDP session with no per-user IE config fails

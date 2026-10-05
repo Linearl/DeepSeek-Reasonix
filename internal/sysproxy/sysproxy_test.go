@@ -41,9 +41,39 @@ func TestBypassed(t *testing.T) {
 		{"api.deepseek.com", "api.deepseek.com", true},
 		{"API.DeepSeek.com", "api.deepseek.com", true},
 		{"api.deepseek.com", "", false},
+		// Task 491: WinINET bypass lists use trailing-* prefix wildcards; the
+		// machine that reproduced the hang carries "127.*" and expects it to
+		// exempt loopback IPs. Note "<local>" alone must NOT match "127.0.0.1"
+		// (it has a dot) — that's why loopbackHost is a hard exemption.
+		{"127.0.0.1", "127.*", true},
+		{"127.0.0.1", "<local>;localhost;127.*;10.*", true},
+		{"127.0.0.1", "<local>", false},
+		{"www.127.example.com", "127.*", false},
+		{"10.20.30.40", "10.*", true},
 	} {
 		if got := bypassed(tc.host, tc.bypass); got != tc.want {
 			t.Errorf("bypassed(%q, %q) = %v, want %v", tc.host, tc.bypass, got, tc.want)
+		}
+	}
+}
+
+func TestLoopbackHost(t *testing.T) {
+	for _, tc := range []struct {
+		host string
+		want bool
+	}{
+		{"localhost", true},
+		{"LOCALHOST", true},
+		{"127.0.0.1", true},
+		{"127.8.8.8", true},
+		{"::1", true},
+		{"api.deepseek.com", false},
+		{"10.0.0.1", false},
+		{"::2", false},
+		{"", false},
+	} {
+		if got := loopbackHost(tc.host); got != tc.want {
+			t.Errorf("loopbackHost(%q) = %v, want %v", tc.host, got, tc.want)
 		}
 	}
 }
