@@ -862,6 +862,19 @@ const CHECKS = [
   // heap pprof 间隔可调键：上游无此键，merge 后丢失只会让间隔退回硬编码，静默。
   { feature: "P19 heap pprof 间隔配置键接线", file: "desktop/perf_monitor.go", patterns: ["perfMonitorHeapDefaultSeconds", "PerfMonitorHeapIntervalSeconds", "time.NewTicker(m.heapInterval)"] },
 
+  // ── 483（wt-483-optimistic-parallel）─────────────────────────────
+  // optimistic_write 的子代理间半边（上游提案 #12052 对照实现）：两处 gate
+  // 若被上游 merge 顶掉，双未声明 write_paths 的子代理重新互等串行（实测
+  // 干等 30 分钟），且无冲突标记无编译错误。
+  { feature: "483 optimistic 子代理间写路径 gate 整体抬升（canStartLocked）", file: "internal/agent/scheduler.go", patterns: ["Task 483: optimistic-parallel mode lifts the subagent-vs-subagent"] },
+  { feature: "483 排队 whole-writer 优先权仅保守态生效", file: "internal/agent/claim_live.go", patterns: ["if !s.optimistic.Load() && req.Writer {"] },
+  { feature: "483 pump FIFO barrier 仅保守态置位", file: "internal/agent/scheduler.go", patterns: ["the barrier is conservative-only"] },
+  // Realize/MarkOpaque 回退成无条件拒绝，则 optimistic 下先写者反被后跑者的
+  // whole 声明挡死（负值转移），且切回保守后记录 gate 失效。
+  { feature: "483 optimistic Realize 记录不拒绝", file: "internal/agent/scheduler.go", patterns: ["under optimistic-parallel (task 483) the realize is", "if !optimistic {"] },
+  { feature: "483 optimistic MarkOpaque 记录不拒绝", file: "internal/agent/scheduler.go", patterns: ["Under optimistic-parallel (task 483) the upgrade is recorded"] },
+  { feature: "任务483 调度器并行矩阵测试", file: "internal/agent/scheduler_optimistic_parallel_test.go", patterns: ["TestOptimisticUndeclaredSubagentsRunInParallel", "TestConservativeUndeclaredSubagentsStillSerialize", "TestOptimisticDeclaredUndeclaredPairRuns", "TestOptimisticRealizeRecordsWithoutRefusal"] },
+
 ];
 
 let failed = 0;
