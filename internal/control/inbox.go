@@ -103,7 +103,12 @@ type inboxState struct {
 	// along the completion path instead of resurrecting consumed work. Like
 	// ownsItem it is lock-free — Store recovery calls it under its own lock.
 	// nil keeps the pre-263 behaviour (everything in-flight is recovered).
-	settledItem     func(sessioninbox.InboxItemMeta) bool
+	settledItem func(sessioninbox.InboxItemMeta) bool
+	// P15: appliedReceipts lists the guidance texts the session transcript
+	// already injected as mid-turn steers. Residue rows in Uncertain whose
+	// body matches one of them were applied before the restart and settle on
+	// store open instead of replaying onto the shelf. nil disables settling.
+	appliedReceipts func(sessionPath string) map[string]struct{}
 	dispatching     bool
 	dispatchPending bool
 	// Retry bookkeeping is guarded by mu. Retries are bounded so a persistent
@@ -203,6 +208,50 @@ func (s *inboxState) settled(meta sessioninbox.InboxItemMeta) bool {
 	return s.settledItem(meta)
 }
 
+// residueMatcher builds the P15 body matcher for SettleAppliedResidue: exact
+// trim equality against the steer texts the transcript already injected. nil
+// receipts (host never injected the loader, or the transcript holds no steer)
+// return nil so nothing is auto-settled.
+func (s *inboxState) residueMatcher(sessionPath string) func(sessioninbox.PromptEnvelope) bool {
+	if s == nil || s.appliedReceipts == nil {
+		return nil
+	}
+	texts := s.appliedReceipts(sessionPath)
+	if len(texts) == 0 {
+		return nil
+	}
+	return func(env sessioninbox.PromptEnvelope) bool {
+		text := strings.TrimSpace(env.SubmitText)
+		if text == "" {
+			text = strings.TrimSpace(env.DisplayText)
+		}
+		if text == "" {
+			text = strings.TrimSpace(env.RawText)
+		}
+		if text == "" {
+			return false
+		}
+		_, ok := texts[text]
+		return ok
+	}
+}
+
+// settleAppliedResidue runs the P15 residue pass once per store open: applied
+// guidance must not replay onto the shelf as pending work after a restart.
+func (c *Controller) settleAppliedResidue(st *sessioninbox.Store, stage string) {
+	if c == nil || st == nil {
+		return
+	}
+	dropped, err := st.SettleAppliedResidue(c.inbox.residueMatcher(st.SessionPath()))
+	if err != nil {
+		slog.Warn("controller: settle applied inbox residue", "stage", stage, "err", err)
+		return
+	}
+	if dropped > 0 {
+		slog.Info("controller: settled applied inbox residue", "stage", stage, "count", dropped)
+	}
+}
+
 func (s *inboxState) activeIDs() []string {
 	if s == nil || len(s.activeItemIDs) == 0 {
 		return nil
@@ -253,6 +302,10 @@ func (c *Controller) ensureInbox() (*sessioninbox.Store, error) {
 	if _, recoverErr := st.RecoverOrphanedInFlightOwnedBy(c.inbox.ownsItem, c.inbox.settled); recoverErr != nil {
 		slog.Warn("controller: recover inbox on open", "err", recoverErr)
 	}
+	// P15: applied guidance must not replay onto the shelf — settle residue
+	// rows the transcript already injected before the snapshot feeds the
+	// recovered notice. Same ordering as rebindInbox.
+	c.settleAppliedResidue(st, "open")
 	snap := st.Snapshot()
 	if snap.Recovered && snap.RecoveredN > 0 {
 		c.sink.Emit(event.Event{
@@ -301,6 +354,9 @@ func (c *Controller) rebindInbox() {
 	if _, recoverErr := st.RecoverOrphanedInFlightOwnedBy(c.inbox.ownsItem, c.inbox.settled); recoverErr != nil {
 		slog.Warn("controller: recover inbox on rebind", "err", recoverErr, "path", path)
 	}
+	// P15: same ordering as ensureInbox — applied residue settles before the
+	// snapshot that feeds the recovered notice.
+	c.settleAppliedResidue(st, "rebind")
 	snap := st.Snapshot()
 	if snap.Recovered && snap.RecoveredN > 0 {
 		// Emit after unlock via deferred sink call would race; emit here.

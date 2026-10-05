@@ -557,6 +557,13 @@ type Options struct {
 	// the completion path instead of resurrecting consumed work onto the
 	// guidance shelf after an update restart. nil keeps the old behaviour.
 	InboxSettledProbe func(sessioninbox.InboxItemMeta) bool
+	// InboxAppliedReceipts (P15) reports the guidance texts the session
+	// transcript already injected as mid-turn steers — the durable application
+	// receipt for desktop-source inbox rows, which carry no collab mailbox
+	// cursor. On every store open, Uncertain residue rows whose body matches a
+	// receipt are settled instead of replaying onto the shelf. nil keeps the
+	// raw behaviour (nothing is auto-settled).
+	InboxAppliedReceipts func(sessionPath string) map[string]struct{}
 	// TaskBudget is the configured spend gate; unset leaves a turn unbounded.
 	TaskBudget agent.TaskBudget
 	// GoalTokenBudget bounds an unattended Goal loop by cumulative tokens.
@@ -818,6 +825,10 @@ func New(opts Options) *Controller {
 			// Task 263: the host injects the mailbox-cursor probe so recovery
 			// can drop already-consumed in-flight items.
 			settledItem: opts.InboxSettledProbe,
+			// P15: the host injects the transcript steer receipts so residue
+			// rows that were already applied settle on store open instead of
+			// replaying onto the shelf.
+			appliedReceipts: opts.InboxAppliedReceipts,
 		},
 		taskBudget:             opts.TaskBudget,
 		goalTokenBudget:        opts.GoalTokenBudget,

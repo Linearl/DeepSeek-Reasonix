@@ -107,12 +107,18 @@ func TestCancelWithInboxItemsResultRestoresOnlyUnconsumedItems(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The durable delivery fence is the point: the cancel must discard the
+	// unconsumed steer and refuse the consumed one.
 	if len(result.DiscardedItemIDs) != 1 || result.DiscardedItemIDs[0] != accepted.ItemID {
 		t.Fatalf("discarded ids = %v", result.DiscardedItemIDs)
 	}
+	// P15: the unowned consumed row is applied residue — the cancel fence
+	// refused to delete it (asserted above), and the next recovery pass
+	// settles it out of the queue instead of parking a finished steer in the
+	// manifest forever.
 	items := c.InboxSnapshot().Items
-	if len(items) != 1 || items[0].ID != consumed.ItemID {
-		t.Fatalf("remaining items = %+v", items)
+	if len(items) != 0 {
+		t.Fatalf("remaining items = %+v, want the consumed residue settled by recovery", items)
 	}
 }
 

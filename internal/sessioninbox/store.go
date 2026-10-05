@@ -214,10 +214,18 @@ func (s *Store) loadOrInitLocked() error {
 	if man.RunID != "" && man.RunID != s.runID {
 		for i := range man.Items {
 			switch man.Items[i].State {
-			case StateRunning, StateSteerAccepted, StateSteerConsumed:
+			case StateRunning, StateSteerAccepted:
 				man.Items[i].State = StateUncertain
 				man.Items[i].UpdatedAt = time.Now().UTC()
 				recovered++
+			case StateSteerConsumed:
+				// P15: a consumed steer crossed the durable delivery boundary
+				// before the previous run ended — the instruction was already
+				// handed to the agent. Rewriting it to Uncertain resurrected
+				// applied guidance onto the shelf after every update restart
+				// (the composer-guidance twin of task 263). The row is left in
+				// place for RecoverOrphanedInFlightOwnedBy, which drops it as
+				// applied residue instead of recovering it as pending work.
 			case StateQueued, StateBlocked, StateUncertain:
 				recovered++
 			}
