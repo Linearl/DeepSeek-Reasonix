@@ -1578,7 +1578,10 @@ func (a *Agent) noteRunTimeout(runErr error) {
 }
 
 func (a *Agent) Run(ctx context.Context, input string) (runErr error) {
-	defer func() { a.finishRunRecovery(ctx, &runErr) }()
+	// Task 482（fence 退役）: the run no longer ends on an unresolved tool
+	// effect — the finishRunRecovery join is gone. The effect record itself is
+	// still written and stays visible to the review panel and cross-session
+	// classification; only the turn-ending stop is lifted.
 	// Task 406: remember a deadline-ended Run so the next beginRunTurn can log
 	// recovery-timeout-continued (see noteRunTimeout). Log-only.
 	defer func() { a.noteRunTimeout(runErr) }()
