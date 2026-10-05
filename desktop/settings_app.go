@@ -333,6 +333,11 @@ type SettingsView struct {
 	Autopilot                bool   `json:"autopilot"`
 	AutopilotMaxRuntime      string `json:"autopilotMaxRuntime"`
 	AutopilotApprovalGrace   string `json:"autopilotApprovalGrace"`
+	// Task 477: the experimental ask-timeout sub-option — the switch (default
+	// off) and its wait in seconds (effective value, so the panel never shows
+	// a bare 0; unset reads as the built-in 15).
+	ExperimentalAutopilotAskTimeout bool `json:"experimentalAutopilotAskTimeout"`
+	AutopilotAskWaitSeconds         int  `json:"autopilotAskWaitSeconds"`
 	// Task 326: autopilot guard task dials — interval in minutes (effective
 	// value, so the panel never shows a bare 0) and the self-close policy for a
 	// watched session that goes quiet.
@@ -429,20 +434,20 @@ type SettingsView struct {
 	// Task 347: effective replayed-graph cache LRU capacity (task 196fix2
 	// tunable). The view reports the EFFECTIVE value: a 0 in the file is
 	// the built-in default, never shown as 0.
-	DagGraphCacheCapacity      int  `json:"dagGraphCacheCapacity"`
-	HistoryBodyBudgetMb        int  `json:"historyBodyBudgetMb"`
-	MarkdownBudgetMb           int  `json:"markdownBudgetMb"`
-	ExperimentalCacheTuning    bool `json:"experimentalCacheTuning"`
-	ExperimentalDream          bool `json:"experimentalDream"`
-	ExperimentalPerfMonitor    bool `json:"experimentalPerfMonitor"`
+	DagGraphCacheCapacity   int  `json:"dagGraphCacheCapacity"`
+	HistoryBodyBudgetMb     int  `json:"historyBodyBudgetMb"`
+	MarkdownBudgetMb        int  `json:"markdownBudgetMb"`
+	ExperimentalCacheTuning bool `json:"experimentalCacheTuning"`
+	ExperimentalDream       bool `json:"experimentalDream"`
+	ExperimentalPerfMonitor bool `json:"experimentalPerfMonitor"`
 	// Task 501: threshold-triggered heap snapshot switch readback.
 	ExperimentalHeapHighProfile bool `json:"experimentalHeapHighProfile"`
 	PerfMonitorIntervalSeconds  int  `json:"perfMonitorIntervalSeconds"`
-	SessionCollabHopLimit      int  `json:"sessionCollabHopLimit"`
-	DetachedIdleReleaseMinutes int  `json:"detachedIdleReleaseMinutes"`
-	GoMemLimitMB               int  `json:"goMemLimitMB"`
-	ExperimentalSessionCollab  bool `json:"experimentalSessionCollab"`
-	ExperimentalAutoLoadOlder  bool `json:"experimentalAutoLoadOlder"`
+	SessionCollabHopLimit       int  `json:"sessionCollabHopLimit"`
+	DetachedIdleReleaseMinutes  int  `json:"detachedIdleReleaseMinutes"`
+	GoMemLimitMB                int  `json:"goMemLimitMB"`
+	ExperimentalSessionCollab   bool `json:"experimentalSessionCollab"`
+	ExperimentalAutoLoadOlder   bool `json:"experimentalAutoLoadOlder"`
 	// Task 449: merged orphan switch (settings-view mirror of [agent]; folds
 	// the task 244 B5 lease reclaim + B4 recovery sweep into one key).
 	ExperimentalOrphanHandling        bool `json:"experimentalOrphanHandling"`
@@ -634,13 +639,13 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalTraceAsState exposes Trace-as-State compaction (task 60).
 	ExperimentalTraceAsState bool `json:"experimentalTraceAsState"`
 	// ExperimentalDream exposes dream/distill memory-curation tools (task 115).
-	ExperimentalDream          bool `json:"experimentalDream"`
-	ExperimentalPerfMonitor    bool `json:"experimentalPerfMonitor"`
+	ExperimentalDream       bool `json:"experimentalDream"`
+	ExperimentalPerfMonitor bool `json:"experimentalPerfMonitor"`
 	// Task 501: threshold-triggered heap snapshot switch readback.
 	ExperimentalHeapHighProfile bool `json:"experimentalHeapHighProfile"`
 	PerfMonitorIntervalSeconds  int  `json:"perfMonitorIntervalSeconds"`
-	SessionCollabHopLimit      int  `json:"sessionCollabHopLimit"`
-	DetachedIdleReleaseMinutes int  `json:"detachedIdleReleaseMinutes"`
+	SessionCollabHopLimit       int  `json:"sessionCollabHopLimit"`
+	DetachedIdleReleaseMinutes  int  `json:"detachedIdleReleaseMinutes"`
 	// GoMemLimitMB is the task-308-O3 soft memory limit in MB (0 = unbounded).
 	GoMemLimitMB int `json:"goMemLimitMB"`
 	// ExperimentalSessionCollab exposes multi-session collaboration (task 19).
@@ -1478,15 +1483,17 @@ func (a *App) Settings() SettingsView {
 	storageMode := config.SessionStorageMode(cfg)
 	storageEffective := a.sessionStorageBootMode(storageMode)
 	v := SettingsView{
-		ModelSettingsFingerprint: modelSettingsEditFingerprint(cfg),
-		DefaultModel:             cfg.DefaultModel,
-		PlannerModel:             cfg.Agent.PlannerModel,
-		GuardianModel:            cfg.Agent.GuardianModel,
-		Autopilot:                cfg.Desktop.Autopilot,
-		AutopilotMaxRuntime:      cfg.Desktop.AutopilotMaxRuntime,
-		AutopilotApprovalGrace:   cfg.Desktop.AutopilotApprovalGrace,
-		AutopilotGuardInterval:   cfg.AutopilotGuardIntervalMinutes(),
-		AutopilotGuardQuiescent:  cfg.AutopilotGuardQuiescentPolicy(),
+		ModelSettingsFingerprint:        modelSettingsEditFingerprint(cfg),
+		DefaultModel:                    cfg.DefaultModel,
+		PlannerModel:                    cfg.Agent.PlannerModel,
+		GuardianModel:                   cfg.Agent.GuardianModel,
+		Autopilot:                       cfg.Desktop.Autopilot,
+		AutopilotMaxRuntime:             cfg.Desktop.AutopilotMaxRuntime,
+		AutopilotApprovalGrace:          cfg.Desktop.AutopilotApprovalGrace,
+		ExperimentalAutopilotAskTimeout: cfg.Desktop.ExperimentalAutopilotAskTimeout,
+		AutopilotAskWaitSeconds:         cfg.AutopilotAskWaitSecondsEffective(),
+		AutopilotGuardInterval:          cfg.AutopilotGuardIntervalMinutes(),
+		AutopilotGuardQuiescent:         cfg.AutopilotGuardQuiescentPolicy(),
 		// The Settings panel reads these switches from this view (see the struct note).
 		ExperimentalRestartUpdate: cfg.Desktop.ExperimentalRestartUpdate,
 		StagingDir:                strings.TrimSpace(cfg.Desktop.StagingDir),
@@ -2881,6 +2888,24 @@ func (a *App) SetDesktopAutopilot(enabled bool, maxRuntime, approvalGrace string
 		c.Desktop.Autopilot = enabled
 		c.Desktop.AutopilotMaxRuntime = strings.TrimSpace(maxRuntime)
 		c.Desktop.AutopilotApprovalGrace = strings.TrimSpace(approvalGrace)
+		return nil
+	})
+}
+
+// SetDesktopAutopilotAskTimeout configures the task-477 ask-timeout
+// sub-option for newly-created desktop sessions. Off (the default) keeps the
+// task-109 B4 terminal stop on the built-in 10-minute wait; on answers a
+// timed-out high-risk ask with a refusal after `seconds` (1..3600, 0 = the
+// built-in 15s) and lets the run continue. Existing tabs keep their persisted
+// mode, exactly like the rest of the autopilot dials.
+func (a *App) SetDesktopAutopilotAskTimeout(enabled bool, seconds int) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		if err := c.SetExperimentalAutopilotAskTimeout(enabled); err != nil {
+			return err
+		}
+		if enabled && seconds != 0 {
+			return c.SetAutopilotAskWaitSeconds(seconds)
+		}
 		return nil
 	})
 }

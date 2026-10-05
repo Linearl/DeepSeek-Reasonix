@@ -910,6 +910,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetAutoPlan(mode: string): Promise<void>;
   SetDefaultToolApprovalMode(mode: string): Promise<void>;
   SetDesktopAutopilot(enabled: boolean, maxRuntime: string, approvalGrace: string): Promise<void>;
+  /** Task 477: the experimental ask-timeout sub-option (off = the built-in terminal stop). */
+  SetDesktopAutopilotAskTimeout(enabled: boolean, seconds: number): Promise<void>;
   // Task 326: autopilot guard task dials — interval in minutes, and the
   // self-close policy applied once the watched session goes quiet.
   SetDesktopAutopilotGuardInterval(minutes: number): Promise<void>;
@@ -2312,6 +2314,8 @@ function makeMockApp(): AppBindings {
     autopilot: false,
     autopilotMaxRuntime: "",
     autopilotApprovalGrace: "",
+    experimentalAutopilotAskTimeout: false,
+    autopilotAskWaitSeconds: 15,
     autopilotGuardInterval: 30,
     autopilotGuardQuiescent: "disable",
     visionModel: "",
@@ -5520,6 +5524,15 @@ function makeMockApp(): AppBindings {
       settings.autopilot = enabled;
       settings.autopilotMaxRuntime = maxRuntime;
       settings.autopilotApprovalGrace = approvalGrace;
+    },
+    async SetDesktopAutopilotAskTimeout(enabled: boolean, seconds: number) {
+      if (enabled && seconds !== 0 && (!Number.isFinite(seconds) || !Number.isInteger(seconds) || seconds < 1 || seconds > 3600)) {
+        throw new Error(`autopilot ask timeout must be between 1 and 3600 seconds, got ${seconds}`);
+      }
+      settings.experimentalAutopilotAskTimeout = enabled;
+      if (enabled && seconds !== 0) {
+        settings.autopilotAskWaitSeconds = Math.trunc(seconds);
+      }
     },
     async SetDesktopAutopilotGuardInterval(minutes: number) {
       if (!Number.isFinite(minutes) || minutes < 1 || minutes > 1440) {

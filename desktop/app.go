@@ -393,11 +393,11 @@ type App struct {
 	// disconnect/stop cannot miss a window that is still being spawned. Closing a
 	// window releases only its registration, while the remote Serve and the SSH
 	// connection keep running. The child deliberately skips local runtimes.
-	remoteWindows          *remoteWindowRegistry
-	servePool              *servepool.Manager
-	gatewaySrv             *http.Server
-	gatewayAddr            string
-	gatewayBind            string
+	remoteWindows *remoteWindowRegistry
+	servePool     *servepool.Manager
+	gatewaySrv    *http.Server
+	gatewayAddr   string
+	gatewayBind   string
 	// Task 439: the embedded zcode task bus (lab switch
 	// experimental_zcode_task_bus, 铁律 2 default off). Nil = not running,
 	// the only state a default install ever reaches.
@@ -1024,8 +1024,8 @@ func (a *App) restoreOrBuildTabs() {
 			// yolo, otherwise it stays interactive (the gate refuses silently
 			// here; the run is bounded as a normal goal instead).
 			if tabSessionAutopilot(tab.SessionPath) {
-				if on, maxRuntime, grace := desktopAutopilotDefaults(); on {
-					tab.autopilot, tab.autopilotMaxRuntime, tab.autopilotApprovalGrace = gateRestoredAutopilotDefaults(on, maxRuntime, grace, tab.toolApprovalMode)
+				if on, maxRuntime, grace, askEnabled, askWait := desktopAutopilotDefaults(); on {
+					tab.autopilot, tab.autopilotMaxRuntime, tab.autopilotApprovalGrace, tab.autopilotAskTimeoutEnabled, tab.autopilotAskWait = gateRestoredAutopilotDefaults(on, maxRuntime, grace, askEnabled, askWait, tab.toolApprovalMode)
 				}
 			}
 			tab.SessionPath = strings.TrimSpace(entry.SessionPath)
@@ -1088,15 +1088,17 @@ func (a *App) createTabEntry(scope, workspaceRoot, topicID string) *WorkspaceTab
 // desktop session starts with, read from the [desktop] preferences. Autopilot
 // without a wall-clock bound is the one combination the CLI refuses outright, so
 // it is refused here too rather than silently running a desktop session with no
-// limit: a missing or malformed bound leaves autopilot off.
-func desktopAutopilotDefaults() (bool, time.Duration, time.Duration) {
+// limit: a missing or malformed bound leaves autopilot off. The task-477 pair
+// rides along: the ask-timeout sub-option switch and its wait (0 = the
+// controller's built-in default — 15s under the sub-option, 10m without it).
+func desktopAutopilotDefaults() (bool, time.Duration, time.Duration, bool, time.Duration) {
 	cfg := config.LoadForEdit(config.UserConfigPath())
 	if !cfg.Desktop.Autopilot {
-		return false, 0, 0
+		return false, 0, 0, false, 0
 	}
 	maxRuntime, err := time.ParseDuration(strings.TrimSpace(cfg.Desktop.AutopilotMaxRuntime))
 	if err != nil || maxRuntime <= 0 {
-		return false, 0, 0
+		return false, 0, 0, false, 0
 	}
 	var grace time.Duration
 	if raw := strings.TrimSpace(cfg.Desktop.AutopilotApprovalGrace); raw != "" {
@@ -1104,7 +1106,17 @@ func desktopAutopilotDefaults() (bool, time.Duration, time.Duration) {
 			grace = d
 		}
 	}
-	return true, maxRuntime, grace
+	askEnabled := cfg.Desktop.ExperimentalAutopilotAskTimeout
+	var askWait time.Duration
+	if askEnabled {
+		// The config reader already clamps into 1..3600 and defaults to 15;
+		// a malformed value degrades to 0 (= the controller's built-in
+		// default) instead of arming an out-of-policy timeout.
+		if seconds := cfg.AutopilotAskWaitSecondsEffective(); seconds > 0 {
+			askWait = time.Duration(seconds) * time.Second
+		}
+	}
+	return true, maxRuntime, grace, askEnabled, askWait
 }
 
 func desktopNewSessionDefaults(scope, workspaceRoot string) (string, string, string) {
@@ -1147,24 +1159,26 @@ func (a *App) createTabEntryWithID(scope, workspaceRoot, topicID, id string) *Wo
 	model, toolApprovalMode, subagentPolicy := desktopNewSessionDefaults(scope, workspaceRoot)
 	// Task 325: a fresh tab may only start unattended when its approval default
 	// is yolo — otherwise desktopAutopilotDefaults is refused here too.
-	autopilot, maxRuntime, approvalGrace := desktopAutopilotDefaults()
-	autopilot, maxRuntime, approvalGrace = gateRestoredAutopilotDefaults(autopilot, maxRuntime, approvalGrace, toolApprovalMode)
+	autopilot, maxRuntime, approvalGrace, askEnabled, askWait := desktopAutopilotDefaults()
+	autopilot, maxRuntime, approvalGrace, askEnabled, askWait = gateRestoredAutopilotDefaults(autopilot, maxRuntime, approvalGrace, askEnabled, askWait, toolApprovalMode)
 	return &WorkspaceTab{
-		ID:                     id,
-		Scope:                  scope,
-		WorkspaceRoot:          workspaceRoot,
-		TopicID:                topicID,
-		TopicTitle:             topicTitleForTab(scope, workspaceRoot, topicID),
-		topicTitleSource:       loadTopicTitleSource(topicTitleRoot(scope, workspaceRoot), topicID),
-		model:                  model,
-		qualityFloor:           "",
-		mode:                   tabModeFromAxes(false, toolApprovalMode == control.ToolApprovalYolo),
-		toolApprovalMode:       toolApprovalMode,
-		subagentPolicy:         subagentPolicy,
-		autopilot:              autopilot,
-		autopilotMaxRuntime:    maxRuntime,
-		autopilotApprovalGrace: approvalGrace,
-		disabledMCP:            map[string]ServerView{},
+		ID:                         id,
+		Scope:                      scope,
+		WorkspaceRoot:              workspaceRoot,
+		TopicID:                    topicID,
+		TopicTitle:                 topicTitleForTab(scope, workspaceRoot, topicID),
+		topicTitleSource:           loadTopicTitleSource(topicTitleRoot(scope, workspaceRoot), topicID),
+		model:                      model,
+		qualityFloor:               "",
+		mode:                       tabModeFromAxes(false, toolApprovalMode == control.ToolApprovalYolo),
+		toolApprovalMode:           toolApprovalMode,
+		subagentPolicy:             subagentPolicy,
+		autopilot:                  autopilot,
+		autopilotMaxRuntime:        maxRuntime,
+		autopilotApprovalGrace:     approvalGrace,
+		autopilotAskTimeoutEnabled: askEnabled,
+		autopilotAskWait:           askWait,
+		disabledMCP:                map[string]ServerView{},
 	}
 }
 
@@ -2265,6 +2279,8 @@ func (a *App) SetCollaborationModeForTab(tabID, mode string) {
 	// Leaving autopilot must clear it: a tab that kept the flag would silently stay
 	// unattended after the user switched back to a normal mode.
 	autopilotOn, autopilotRuntime, autopilotGrace := false, time.Duration(0), time.Duration(0)
+	var autopilotAskEnabled bool
+	var autopilotAskWait time.Duration
 	// Task 326: remember the guard's owner identity and whether autopilot was on
 	// before this switch, so the guard is ensured/disabled right after the lock
 	// is released (the engine takes its own locks).
@@ -2288,10 +2304,10 @@ func (a *App) SetCollaborationModeForTab(tabID, mode string) {
 		// The bound comes from the [desktop] preferences; without one autopilot
 		// stays off - the same refusal the CLI makes - and the mode falls back to
 		// normal rather than starting an unbounded unattended run.
-		prefOn, prefRuntime, prefGrace := desktopAutopilotDefaults()
+		prefOn, prefRuntime, prefGrace, prefAskEnabled, prefAskWait := desktopAutopilotDefaults()
 		// Task 325: yolo is a hard precondition, not a hint — an unattended run
 		// under ask/auto would stack approval prompts nobody can answer.
-		autopilotOn, autopilotRuntime, autopilotGrace = gateRestoredAutopilotDefaults(prefOn, prefRuntime, prefGrace, approvalMode)
+		autopilotOn, autopilotRuntime, autopilotGrace, autopilotAskEnabled, autopilotAskWait = gateRestoredAutopilotDefaults(prefOn, prefRuntime, prefGrace, prefAskEnabled, prefAskWait, approvalMode)
 		if autopilotOn {
 			tab.mode = tabModeFromAxes(false, true)
 		} else {
@@ -2314,6 +2330,8 @@ func (a *App) SetCollaborationModeForTab(tabID, mode string) {
 	tab.autopilot = autopilotOn
 	tab.autopilotMaxRuntime = autopilotRuntime
 	tab.autopilotApprovalGrace = autopilotGrace
+	tab.autopilotAskTimeoutEnabled = autopilotAskEnabled
+	tab.autopilotAskWait = autopilotAskWait
 	ctrl := tab.Ctrl
 	goal := tab.goal
 	plan := tabModeHasPlan(tab.mode)
@@ -2579,6 +2597,8 @@ func (a *App) clearActiveSessionRuntime(tab *WorkspaceTab, oldCtrl control.Sessi
 		Autopilot:                  snap.autopilot,
 		MaxRuntime:                 snap.autopilotMaxRuntime,
 		AutopilotApprovalGrace:     snap.autopilotApprovalGrace,
+		AutopilotAskTimeoutEnabled: snap.autopilotAskTimeoutEnabled,
+		AutopilotAskWait:           snap.autopilotAskWait,
 		RequireKey:                 false,
 		StatsSource:                "desktop",
 		TaskStore:                  a.taskStore(),
@@ -4623,6 +4643,8 @@ func (a *App) buildSessionRebindCandidate(
 		Autopilot:                  source.autopilot,
 		MaxRuntime:                 source.autopilotMaxRuntime,
 		AutopilotApprovalGrace:     source.autopilotApprovalGrace,
+		AutopilotAskTimeoutEnabled: source.autopilotAskTimeoutEnabled,
+		AutopilotAskWait:           source.autopilotAskWait,
 		RequireKey:                 false,
 		StatsSource:                "desktop",
 		TaskStore:                  a.taskStore(),
@@ -10391,6 +10413,8 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 		Autopilot:                  tab.autopilot,
 		MaxRuntime:                 tab.autopilotMaxRuntime,
 		AutopilotApprovalGrace:     tab.autopilotApprovalGrace,
+		AutopilotAskTimeoutEnabled: tab.autopilotAskTimeoutEnabled,
+		AutopilotAskWait:           tab.autopilotAskWait,
 		RequireKey:                 false,
 		StatsSource:                "desktop",
 		TaskStore:                  a.taskStore(),
@@ -10654,6 +10678,8 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 		Autopilot:                  tab.autopilot,
 		MaxRuntime:                 tab.autopilotMaxRuntime,
 		AutopilotApprovalGrace:     tab.autopilotApprovalGrace,
+		AutopilotAskTimeoutEnabled: tab.autopilotAskTimeoutEnabled,
+		AutopilotAskWait:           tab.autopilotAskWait,
 		RequireKey:                 false,
 		StatsSource:                "desktop",
 		TaskStore:                  a.taskStore(),

@@ -3539,6 +3539,38 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   onBlur={(e) => void apply(() => app.SetDesktopAutopilot(Boolean(s.autopilot), String(s.autopilotMaxRuntime ?? ""), e.target.value))}
                 />
               </SettingsField>
+              {/* Task 477: the experimental ask-timeout sub-option. Off (the
+                  default) keeps the terminal stop after the built-in 10-minute
+                  wait; on answers a timed-out high-risk ask with a refusal
+                  after the configured seconds and lets the run continue.
+                  Attended sessions are never touched by either state. */}
+              <SettingsField label={t("settings.autopilotAskTimeout")} hint={t("settings.autopilotAskTimeoutHint")} icon={<ShieldCheck size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalAutopilotAskTimeout) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetDesktopAutopilotAskTimeout(on, Number(s.autopilotAskWaitSeconds ?? 0)))}
+                    >
+                      {t(on ? "settings.autopilotAskTimeout.on" : "settings.autopilotAskTimeout.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.autopilotAskWaitSeconds")} hint={t("settings.autopilotAskWaitSecondsHint")} icon={<ShieldCheck size={18} />}>
+                <input
+                  className="set-input"
+                  type="number"
+                  min={1}
+                  max={3600}
+                  defaultValue={String(s.autopilotAskWaitSeconds ?? 15)}
+                  disabled={busy || !Boolean(s.experimentalAutopilotAskTimeout)}
+                  placeholder="15"
+                  aria-label={t("settings.autopilotAskWaitSeconds")}
+                  onBlur={(e) => void apply(() => app.SetDesktopAutopilotAskTimeout(Boolean(s.experimentalAutopilotAskTimeout), Number(e.target.value)))}
+                />
+              </SettingsField>
               {/* Task 326: the guard task autopilot keeps watching its session.
                   The dial is in minutes and re-points guards that already
                   exist in place, so widening it can never grow a second guard
