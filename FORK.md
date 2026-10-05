@@ -257,16 +257,23 @@ UI 入口** —— 所以对大部分 fork 特性，**日志是唯一的可观�
 ## 发布前检查清单（fork desktop）
 
 1. **代码**：`git status` 干净 → `go build ./...` → `cd desktop && go build ./...` → `cd desktop/frontend && npx tsc --noEmit` → `node scripts/check-fork-integrity.mjs`（须全绿）
-1b. **⚠️ 内存门禁（用户 2026-10-05 定为「出包阻塞项」）**：出包前必须核对**内存增长曲线** —— `%APPDATA%\reasonix\logs\perf\perf-sample-<YYYYMMDD>.jsonl`（5 分钟一条采样）中的 `workingSetMb` / `heapInuseMb`，在等量负载下**不得单调增长**：
-   - **健康基线（2026-10-03 / 10-04 实测）**：WS 峰值 ≈ **2.7GB**、heapInuse ≈ **2.6GB**、线程 ≤ 80、句柄 ≤ 1500；
+1b. **⚠️ 内存门禁（用户 2026-10-05 立；2026-10-06 厘清「准入 / 后验」两段）**：
+   - **① 出包前（准入）**：**已知重大内存缺陷的修复必须已合并进包**（代码层面）—— 即「**不带着已定位的泄漏出包**」。判定依据 = 修复 commit 已在 `main-v2-stable`（`git merge-base --is-ancestor <sha> HEAD` 为真），**不是**核对运行曲线；
+   - **② 出包后（后验）**：**装机后核对内存增长曲线** —— `%APPDATA%\reasonix\logs\perf\perf-sample-<YYYYMMDD>.jsonl`（5 分钟一条采样）的 `workingSetMb` / `heapInuseMb`，在等量负载下**不得单调增长**：
+     - **健康基线（2026-10-03 / 10-04 实测）**：WS 峰值 ≈ **2.7GB**、heapInuse ≈ **2.6GB**、线程 ≤ 80、句柄 ≤ 1500；
    - **不合格实例（2026-10-05 实测，用户被迫重启系统）**：WS **7637MB** / heapInuse **14573MB** / private 15135MB / 线程 **227** / 句柄 **2771** —— 6.5 小时单调增零回落（`sessionDAGState.applyMessage` 占堆 68.6%，全量 JSON 解码）⇒ **任务 499**；
-   - **门禁规则**：**任务 499 未闭环前不得出包**（闭环 = 根因修复 + **同等负载下峰值回到基线量级的实测曲线**）。用户原话：「这个内存泄漏问题下次出包前要解掉，否则我们的包就存在重大缺陷」。
+   - **门禁规则（2026-10-06 修正表述）**：**出包前** = 「**任务 499 的修复已合并进 `main-v2-stable`**」（不带着已定位的泄漏出包）；**出包后** = 装机跑曲线核对基线，不达标 ⇒ 判定修复未生效、进入下一轮定位+修复。用户原话：「这个内存泄漏问题**下次出包前要解掉**，否则我们的包就存在重大缺陷」。
+   - **⚠️ 逻辑澄清（2026-10-06，用户指出）**：**运行曲线只能由「已装机的包」产生** ⇒ **不能当作「出包前」的通过条件**（否则是先有鸡还是先有蛋）。正确分工 = 「**修复进包**（前闸）」+「**曲线核对**（后验）」；后验不达标 ⇒ **判定修复未生效，进入下一轮定位+修复**，而不是"回滚出包"。
+
 2. **文档**：`release-notes/FORK-vX.Y.Z.md` 含本版全部改动；`release-notes/FORK-vs-upstream.md` 台账同步；`desktop/wails.json` 的 `productVersion` 与 tag 版本一致
    - **在 `1.38.3` 上出带时间戳的包时**：notes 文件名与包版本同名（`FORK-v1.38.3-YYYYMMDD-HHMM.md`），
      **只写「本版新增」**（该包相对上一版包的差异）+ 升级提醒，**基线内容一律引用
      [`FORK-v1.38.3.md`](release-notes/FORK-v1.38.3.md)**。**不要整份拷贝**——拷贝会把
      v1.38.2 ~ v1.38.3 的追齐内容重复到发布页，把本版真正改了什么埋掉（2026-09-16 修）。
-3. **本地包**（推荐先跑一遍）：`nohup bash scripts/build-local-installer.sh > /tmp/build.log 2>&1 & disown`（**加** `preserve_background_processes`；前台 115s 会被 SIGTERM，MSYS 无 `setsid`）→ 装后**逐项验证**（对应规则 4 的出包验证要求）：
+3. **⚠️ 前置硬检查（2026-10-06 踩坑沉淀）**：出包前**必须确认工作树干净** —— `git status --short` **输出为空**（**尤其不得有 `UU` 未解决冲突**）。
+   - **实测教训（2026-10-06 00:25）**：合并线正在解决 506 合并冲突（`UU`：`App.tsx` / `SettingsPanel.tsx` / `labFlags.ts`）时，主对话误以为"482/499 已入主线即可出包"而启动了 `build-local-installer.sh` —— 所幸在 `[1/3] rsrc` 阶段即被察觉并终止，**未进入 Go/前端编译**，无坏产物。
+   - **规则**：**看到树不干净（`M`/`A`/`UU`/`??`）就停下来**；若是合并进行中 ⇒ **等合并线给出"树净 + 合并后验证读数"再构建**。
+3b. **本地包**（推荐先跑一遍）：`nohup bash scripts/build-local-installer.sh > /tmp/build.log 2>&1 & disown`（**加** `preserve_background_processes`；前台 115s 会被 SIGTERM，MSYS 无 `setsid`）→ 装后**逐项验证**（对应规则 4 的出包验证要求）：
    - **安装**：覆盖安装成功，快捷方式/图标正常
    - **升级**：从上一包升级后数据完好（会话、配置、项目）
    - **回滚**：能退回上一版本继续用（对应规则 1「留退路」）
