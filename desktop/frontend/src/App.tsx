@@ -221,6 +221,7 @@ import {
   saveRightDockMode,
   workspacePanelMemoryRoot,
   dockModeWithinSidebarGates,
+  clampSubagentsWideWidth,
   useLayoutStore,
 } from "./store/layout";
 import { useOverlayStore } from "./store/overlays";
@@ -749,6 +750,14 @@ export default function App() {
   // Task 495: subagent panel experiment (dock tab + ended-card collapse), its
   // own boot-snapshot switch — not part of the todo-sidebar family.
   const [subagentsPanelEnabled, setSubagentsPanelEnabled] = useState(false);
+  // 任务 507: subagent detail view gate — off = plan C (inline preview +
+  // widen affordance), on = plan A (row click → read-only in-dock detail).
+  // Re-applied on every settings save, so a flip needs no restart.
+  const [subagentDetailEnabled, setSubagentDetailEnabled] = useState(false);
+  // 任务 507 (plan C widen affordance): the dock width to restore when the
+  // user toggles the widened reading width back off. Session-local view
+  // layout — kept in memory only, never persisted.
+  const [subagentsWideReturnWidth, setSubagentsWideReturnWidth] = useState<number | null>(null);
   // Task 261: composer history picker + narrowed ArrowUp (boot snapshot).
   const [promptHistoryPickerEnabled, setPromptHistoryPickerEnabled] = useState(false);
   // Task 259: per-tab visibility inside the right dock; applies live.
@@ -1225,7 +1234,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; experimentalSubagentDetail?: boolean }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1250,6 +1259,9 @@ export default function App() {
       // Task 495: the subagent panel package rides the same boot snapshot
       // (dock tab + ended-card collapse under one switch).
       setSubagentsPanelEnabled(Boolean(settings.experimentalSubagentPanel));
+      // 任务 507: subagent detail view gate (plan C off / plan A on),
+      // re-applied on every settings save — no restart needed.
+      setSubagentDetailEnabled(Boolean(settings.experimentalSubagentDetail));
       // Task 261: composer history picker + narrowed ArrowUp, same boot snapshot.
       setPromptHistoryPickerEnabled(Boolean(settings.experimentalPromptHistoryPicker));
       // Task 318.3: draft persistence gate — off (default) means no reads and
@@ -1274,10 +1286,13 @@ export default function App() {
         // Task 506: tab-strip adaptive compression (tiered width once >8 tabs,
         // floor 84px); default-false, re-applied on every settings save.
         tabCompress: settings.experimentalTabCompress ?? false,
+        // 任务 507: subagent detail view (plan A on / plan C off);
+        // default-false, re-applied on every settings save.
+        subagentDetail: settings.experimentalSubagentDetail ?? false,
       });
       // One line per startup so a missing rail entry can be traced from desktop.log
       // instead of guessed at (the switches read back correctly in config.toml).
-      reportFrontendLog("desktop-prefs", "experiment flags", `restartUpdate=${Boolean(settings.experimentalRestartUpdate)} sessionMonitor=${Boolean(settings.experimentalSessionMonitor)} splitView=${Boolean(settings.experimentalSplitView)} feedback=${Boolean(settings.experimentalFeedback)} todoSidebar=${Boolean(settings.experimentalTodoSidebar)} subagentPanel=${Boolean(settings.experimentalSubagentPanel)} historyPicker=${Boolean(settings.experimentalPromptHistoryPicker)}`);
+      reportFrontendLog("desktop-prefs", "experiment flags", `restartUpdate=${Boolean(settings.experimentalRestartUpdate)} sessionMonitor=${Boolean(settings.experimentalSessionMonitor)} splitView=${Boolean(settings.experimentalSplitView)} feedback=${Boolean(settings.experimentalFeedback)} todoSidebar=${Boolean(settings.experimentalTodoSidebar)} subagentPanel=${Boolean(settings.experimentalSubagentPanel)} historyPicker=${Boolean(settings.experimentalPromptHistoryPicker)} subagentDetail=${Boolean(settings.experimentalSubagentDetail)}`);
       setStartupUpdateChecksEnabled(settings.checkUpdates !== false);
       setStatusBarStyle(settings.statusBarStyle === "text" ? "text" : "icon");
       // Task 262: with the quick-commands gate off the composer menu hides by
@@ -2609,6 +2624,27 @@ export default function App() {
       saveRightDockTreeWidth(next);
     },
     [closeTransientOverlays, rightDockTreeWidthClamp, workspacePanelAvailableWidth],
+  );
+
+  // 任务 507 (plan C widen affordance): one-click reading width for the
+  // subagent dock tab, through the same clamp/persist chain as a drag. The
+  // pre-widen width is remembered only for the toggle-back (session-local
+  // view layout, never a durable preference).
+  const subagentsWide = subagentsWideReturnWidth !== null;
+  const toggleSubagentsWide = useCallback(
+    (next: boolean) => {
+      if (!next) {
+        if (subagentsWideReturnWidth !== null) {
+          setSavedWorkspacePanelWidth(subagentsWideReturnWidth);
+          setSubagentsWideReturnWidth(null);
+        }
+        return;
+      }
+      if (subagentsWideReturnWidth !== null) return;
+      setSubagentsWideReturnWidth(rightDockTreeWidth);
+      setSavedWorkspacePanelWidth(clampSubagentsWideWidth(rightDockTreeWidth, workspacePanelAvailableWidth));
+    },
+    [subagentsWideReturnWidth, rightDockTreeWidth, workspacePanelAvailableWidth, setSavedWorkspacePanelWidth],
   );
 
   const startWorkspacePanelResize = useCallback(
@@ -5645,9 +5681,18 @@ export default function App() {
                 )
               ) : effectiveRightDockMode === "subagents" ? (
                 /* Task 495: the subagent directory panel; keyed per session so
-                   the 20-per-page reveal resets on a session switch. */
+                   the 20-per-page reveal resets on a session switch.
+                   任务 507: detailEnabled flips the row click between the
+                   plan-C inline preview (off) and the plan-A read-only detail
+                   view (on); the widen toolbar rides the dock width commands. */
                 <Suspense fallback={null}>
-                  <SubagentsDockPanel key={activeTabId} directory={subagentDirectory} />
+                  <SubagentsDockPanel
+                    key={activeTabId}
+                    directory={subagentDirectory}
+                    detailEnabled={subagentDetailEnabled}
+                    wide={subagentsWide}
+                    onToggleWide={toggleSubagentsWide}
+                  />
                 </Suspense>
               ) : effectiveRightDockMode === "remote" ? (
                 <Suspense fallback={null}>

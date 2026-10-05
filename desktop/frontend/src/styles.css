@@ -27962,6 +27962,121 @@ body > .mermaid-diagram--fullscreen {
   padding: 6px 0 0;
 }
 
+/* Task 507: plan-C widen toolbar + plan-A read-only detail view. Same
+   theme-token set as the sibling subagents-panel rules above; the detail
+   blocks wrap long tokens so a narrow dock never scrolls sideways. */
+.subagents-panel__toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.subagents-panel__wide {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.subagents-panel__wide:hover {
+  background: var(--bg-soft);
+  color: var(--fg);
+}
+
+.subagents-panel__wide[aria-pressed="true"] {
+  color: var(--fg);
+  border-color: var(--fg-faint);
+}
+
+.subagents-panel__detailview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.subagents-panel__detailview-head {
+  display: flex;
+}
+
+.subagents-panel__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.subagents-panel__back:hover {
+  background: var(--bg-soft);
+  color: var(--fg);
+}
+
+.subagents-panel__detailview-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--fg);
+}
+
+.subagents-panel__detailview-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.subagents-panel__detailview-meta {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+.subagents-panel__detailview-block {
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 7px 9px;
+}
+
+.subagents-panel__detailview-block--error {
+  border-color: var(--danger, var(--border-soft));
+}
+
+.subagents-panel__detailview-label {
+  margin: 0 0 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--fg-dim);
+}
+
+.subagents-panel__detailview-text {
+  margin: 0;
+  font-size: 11px;
+  color: var(--fg-dim);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.subagents-panel__detailview-note,
+.subagents-panel__readonly {
+  margin: 0;
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
 .workbench-dock__body {
   flex: 1 1 auto;
   min-height: 0;
