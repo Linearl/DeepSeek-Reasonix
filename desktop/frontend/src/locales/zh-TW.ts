@@ -757,6 +757,7 @@ export const zhTW: Record<DictKey, string> = {
   "composer.guidanceSelect": "多選",
   "composer.guidanceSelectCancel": "取消多選",
   "composer.guidanceSelectOne": "選擇這條",
+  "composer.guidanceSelectAll": "全選",
   "composer.guidanceBatchBar": "批次操作",
   "composer.guidanceBatchSelected": "已選 {n} 條",
   "composer.guidanceBatchSend": "送出 {n} 條",

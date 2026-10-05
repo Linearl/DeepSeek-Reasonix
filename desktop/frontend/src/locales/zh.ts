@@ -994,6 +994,7 @@ export const zh: Record<DictKey, string> = {
   "composer.guidanceSelect": "多选",
   "composer.guidanceSelectCancel": "取消多选",
   "composer.guidanceSelectOne": "选择这条",
+  "composer.guidanceSelectAll": "全选",
   "composer.guidanceBatchBar": "批量操作",
   "composer.guidanceBatchSelected": "已选 {n} 条",
   "composer.guidanceBatchSend": "发送 {n} 条",

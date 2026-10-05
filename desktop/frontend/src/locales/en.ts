@@ -994,6 +994,7 @@ export const en = {
   "composer.guidanceSelect": "Select",
   "composer.guidanceSelectCancel": "Cancel select",
   "composer.guidanceSelectOne": "Select this entry",
+  "composer.guidanceSelectAll": "Select all",
   "composer.guidanceBatchBar": "Batch actions",
   "composer.guidanceBatchSelected": "{n} selected",
   "composer.guidanceBatchSend": "Send {n}",
