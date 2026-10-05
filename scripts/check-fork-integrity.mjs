@@ -202,11 +202,10 @@ const CHECKS = [
   { feature: "任务232 空surface LRU快照复用（审计m3补锚）", file: "desktop/frontend/src/lib/useController.ts", patterns: ["hasResidentSnapshotForEmptySurface"] },
   { feature: "任务232 hasResidentSnapshotForEmptySurface 定义", file: "desktop/frontend/src/lib/hydrateHistoryApply.ts", patterns: ["hasResidentSnapshotForEmptySurface"] },
   { feature: "任务95 promote sidecar 迁移（damaged 清理 + pinned 身份重写）", file: "internal/agent/recovery_consolidate.go", patterns: ["rewritePinnedContextSessionID", "SessionEventLogDamaged(winnerPath)"] },
-  // 任务 P19（2026-10-04）：.imgpack 写读侧车错位修复——读侧 fallback 到
-  // session pack + 缺失 ref 负缓存（首见 WARN，复见静默跳读）。上游没有
-  // reasonix-img:// 机制，merge 丢掉读侧解析会让 dedup 会话图片全部失联。
-  { feature: "P19 imgpack 读侧 fallback（events pack 缺失时回退 session pack）", file: "internal/agent/session_image_pack.go", patterns: ["imagePackCandidates", "CutSuffix(logPath, \".events.jsonl\")"] },
-  { feature: "P19 缺失 ref 负缓存（首见 WARN 复见静默）", file: "internal/agent/session_image_pack.go", patterns: ["missingImageRef", "rememberMissingImageRef", "imageRefMissingCap"] },
+  // 任务488（2026-10-05）：373-R1 图片去重存储整体移除（用户拍板：读图能力 > 体积优化）——
+  // P19 的两条 imgpack 锚随 session_image_pack.go 一并撤销（该文件已删除）。
+  // 机制留档：写侧引用化 → 读侧解引用失败静默留 reasonix-img:// 引用（仅 WARN）→
+  // provider imageContentParts 对非 data URL 静默丢弃 ⇒ 模型收不到图。
 
   // ── wt-zcode-285：会话信息面（ContextPanel）分组名 + recovery 副本状态 ──
   { feature: "285 信息面分组名+副本状态解析层", file: "desktop/frontend/src/lib/sessionInfoPanel.ts", patterns: ["resolveSessionGroupTitle", "sessionRecoveryDisplay", "recovery.role.covered_copy"] },

@@ -100,7 +100,7 @@ func (s *Session) planDAGWrite(path string, st *sessionDAGState, msgs []provider
 	if err := plan.addOverlays(view, diff, msgs, now); err != nil {
 		return nil, err
 	}
-	if err := plan.addAppends(st, path, msgs, diff.k, parent, now); err != nil {
+	if err := plan.addAppends(st, msgs, diff.k, parent, now); err != nil {
 		return nil, err
 	}
 	plan.pureAppend = !diff.systemChange && len(diff.patches) == 0 && len(diff.redacts) == 0 &&
@@ -223,17 +223,11 @@ func (p *dagWritePlan) addOverlays(view dagHeadView, diff dagDiff, msgs []provid
 // addAppends chains msgs[from:] behind parent. A message whose id already
 // names a node (a re-append after a rewind) gets a fresh id, recorded in
 // renames so the live session learns it.
-func (p *dagWritePlan) addAppends(st *sessionDAGState, logPath string, msgs []provider.Message, from int, parent string, now time.Time) error {
+func (p *dagWritePlan) addAppends(st *sessionDAGState, msgs []provider.Message, from int, parent string, now time.Time) error {
 	parentDigest := ""
 	if n := st.nodes[parent]; n != nil {
 		parentDigest = n.digest
 	}
-	// Task 373-R1/R1.1: per the three-position switch, collapse image bytes
-	// into content-addressed references backed by the .imgpack sidecar
-	// ("first": first copy inline; "all": zero image bytes). "off" (the
-	// default) short-circuits inside dedupeMessageImages — entry bytes
-	// unchanged.
-	dedupMode := imageDedupMode()
 	for j := from; j < len(msgs); j++ {
 		m := msgs[j]
 		if _, exists := st.nodes[m.ID]; exists || m.ID == "" {
@@ -243,9 +237,6 @@ func (p *dagWritePlan) addAppends(st *sessionDAGState, logPath string, msgs []pr
 			}
 			m.ID = fresh
 			msgs[j].ID = fresh
-		}
-		if dedupMode != imageDedupOff {
-			dedupeMessageImages(&m, logPath, dedupMode)
 		}
 		e, err := newSessionDAGMessageEntry(p.head, parent, parentDigest, "", m, now)
 		if err != nil {
