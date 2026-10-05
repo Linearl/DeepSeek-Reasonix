@@ -51,6 +51,8 @@ export interface SettingsView {
   experimentalSessionWall?: boolean;
   // Task 261: composer history picker + narrowed ArrowUp trigger; boot snapshot.
   experimentalPromptHistoryPicker?: boolean;
+  // Task 506: tab-strip adaptive compression (tiered width once >8 tabs).
+  experimentalTabCompress?: boolean;
   // Task 265 lab intake: nil-means-on switches, resolved server-side.
   experimentalCompactionParallel?: boolean;
   experimentalContextBudget?: boolean;

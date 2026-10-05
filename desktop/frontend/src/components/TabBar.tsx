@@ -14,6 +14,8 @@ import { WorktreeBadge } from "./WorktreeBadge";
 import { selectCloseInactiveIds, selectCloseOtherIds, selectCloseRightIds } from "../lib/tabClosePolicy";
 // wt-zcode-288：标签页右键「全部已读」——读档/写档与未读判定统一走 readActivity 存档。
 import { markTabsAllRead } from "../lib/readActivity";
+// 任务 506：标签栏自适应压缩开关（experimental_tab_compress，默认关）。
+import { labFlagEnabled, onLabFlagsChange } from "../lib/labFlags";
 
 interface TabBarProps {
   tabs: TabMeta[];
@@ -39,6 +41,37 @@ type DropSide = "before" | "after";
  * the pointer across the strip does not start speculative reads, short enough
  * that a real click still lands on a warm tab. */
 const HOVER_PREFETCH_DEBOUNCE_MS = 150;
+
+/**
+ * 任务 506 降宽档位（量级判断，实施前已报备）：
+ * - 176px 固定宽 × 8 个 ≈ 1.44k px，恰好放满 1536 逻辑 px 的最大化窗口
+ *   （1920@125% 常见开发环境），所以从第 9 个开始降；
+ * - 每档容纳 4 个（9/13/17/21 等差），避免频繁跳档重排；148px 即既有
+ *   窄窗口（≤980px）档宽，保持同一把尺子；
+ * - 下限 84px：状态点(7px) + 左右内边距压缩后仍剩 ~46px 标签文案
+ *   （约 3~4 个汉字），再低就只剩色点无法辨认——那之后是搜索/图墙（505）
+ *   的保底范围；
+ * - 17 个起隐藏 plan/goal/auto/yolo 文本徽章（宽度过小徽章挤掉标题），
+ *   模式信息始终保留在 hover title 里。
+ * 宽度以 inline `--tabbar-tab-width` 注入 `.tabbar` 根节点：行内样式压过
+ * 所有样式面（darwin/native-tabs/theme-style 共 5 处消费块），开关关闭时
+ * 不注入 = 逐像素等价旧行为。
+ */
+export const TAB_COMPRESS_TIERS = [
+  { minTabs: 9, widthPx: 148 },
+  { minTabs: 13, widthPx: 122 },
+  { minTabs: 17, widthPx: 100 },
+  { minTabs: 21, widthPx: 84 },
+] as const;
+
+/** 给定标签数返回档位：0=不压缩，1..4=TAB_COMPRESS_TIERS 下标+1。 */
+export function tabCompressTier(tabCount: number): number {
+  let tier = 0;
+  for (let index = 0; index < TAB_COMPRESS_TIERS.length; index += 1) {
+    if (tabCount >= TAB_COMPRESS_TIERS[index].minTabs) tier = index + 1;
+  }
+  return tier;
+}
 
 function tabDisplayTitle(tab: TabMeta): string {
   if (tab.tabType === "file" || tab.scope === "file") return tab.topicTitle?.trim() || tab.filePath?.split("/").filter(Boolean).pop() || "File";
@@ -73,6 +106,10 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
   // exactly the pre-split list.
   const [splitViewEnabled, setSplitViewEnabled] = useState(isSplitViewEnabled());
   useEffect(() => onSplitViewEnabledChange(setSplitViewEnabled), []);
+  // 任务 506：压缩开关走 lab 模块门（设置保存即重放快照，无需重启），
+  // 关闭时 tier 恒为 0，不注入任何行内样式。
+  const [tabCompressEnabled, setTabCompressEnabled] = useState(labFlagEnabled("tabCompress"));
+  useEffect(() => onLabFlagsChange(() => setTabCompressEnabled(labFlagEnabled("tabCompress"))), []);
   const t = useT();
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; side: DropSide } | null>(null);
@@ -295,8 +332,23 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
     return [...tabs.filter((tab) => tab.id !== splitTabId), secondary];
   }, [tabs, splitTabId]);
 
+  // 任务 506：开关开启且标签数过档时，把档位宽度写进行内 `--tabbar-tab-width`；
+  // tier 0（含开关关闭）不注入任何样式 = 与旧渲染逐像素等价。
+  const compressTier = tabCompressEnabled ? tabCompressTier(orderedTabs.length) : 0;
+  const compressStyle = compressTier > 0
+    ? ({ "--tabbar-tab-width": `${TAB_COMPRESS_TIERS[compressTier - 1].widthPx}px` } as CSSProperties)
+    : undefined;
+  // 17 个起（tier 3+）文本徽章不再渲染：宽度不足时徽章会挤掉标题，
+  // 模式信息由 hover title（stateTitle）完整承接。
+  const badgesVisible = compressTier > 0 && compressTier < 3;
+
   return (
-    <div className="tabbar">
+    <div
+      className="tabbar"
+      style={compressStyle}
+      data-tab-compress={tabCompressEnabled ? "on" : undefined}
+      data-tab-tier={compressTier > 0 ? compressTier : undefined}
+    >
       <div className="tabbar__tabs">
         {orderedTabs.map((tab) => {
           const displayTitle = tabDisplayTitle(tab);
@@ -368,10 +420,10 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
               )}
               <span className="tabbar__tab-label">{displayTitle}</span>
               {tab.isolatedWorktree && <WorktreeBadge size={11} />}
-              {planMode && <span className="tabbar__mode-badge tabbar__mode-badge--plan">plan</span>}
-              {goalMode && <span className="tabbar__mode-badge tabbar__mode-badge--plan">goal</span>}
-              {toolApprovalMode === "auto" && <span className="tabbar__mode-badge tabbar__mode-badge--plan">auto</span>}
-              {toolApprovalMode === "yolo" && <span className="tabbar__mode-badge tabbar__mode-badge--yolo">yolo</span>}
+              {badgesVisible && planMode && <span className="tabbar__mode-badge tabbar__mode-badge--plan">plan</span>}
+              {badgesVisible && goalMode && <span className="tabbar__mode-badge tabbar__mode-badge--plan">goal</span>}
+              {badgesVisible && toolApprovalMode === "auto" && <span className="tabbar__mode-badge tabbar__mode-badge--plan">auto</span>}
+              {badgesVisible && toolApprovalMode === "yolo" && <span className="tabbar__mode-badge tabbar__mode-badge--yolo">yolo</span>}
               <span
                 className="tabbar__tab-close"
                 onClick={(e) => {

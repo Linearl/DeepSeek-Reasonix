@@ -324,6 +324,14 @@ func (a *App) SetExperimentalPromptHistoryPicker(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalPromptHistoryPicker(enabled) })
 }
 
+// SetExperimentalTabCompress toggles the tab-strip adaptive compression (task
+// 506): tiered tab-width reduction once more than 8 tabs are open. The
+// frontend re-applies the snapshot on settings save, so the change is visible
+// without a restart.
+func (a *App) SetExperimentalTabCompress(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalTabCompress(enabled) })
+}
+
 // Task 262 install-fix: the Wails exposure layer for the intake batch was
 // missed while the config layer landed — the frontend's calls hit a missing
 // App method at runtime, so the switch clicked but never saved (the installed

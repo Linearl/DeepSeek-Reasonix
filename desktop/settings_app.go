@@ -380,6 +380,9 @@ type SettingsView struct {
 	// Task 261: composer history-navigation safety (clock picker + narrowed
 	// ArrowUp); boot snapshot, restart to apply.
 	ExperimentalPromptHistoryPicker bool `json:"experimentalPromptHistoryPicker"`
+	// Task 506: tab-strip adaptive compression (tiered width once >8 tabs);
+	// the settings save re-applies the snapshot, no restart needed.
+	ExperimentalTabCompress bool `json:"experimentalTabCompress"`
 	// Task 265 lab intake: nil-means-on switches resolved server-side.
 	ExperimentalCompactionParallel bool `json:"experimentalCompactionParallel"`
 	ExperimentalContextBudget      bool `json:"experimentalContextBudget"`
@@ -590,6 +593,9 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalPromptHistoryPicker gates the composer history picker plus
 	// the narrowed ArrowUp trigger (task 261); boot snapshot - restart to apply.
 	ExperimentalPromptHistoryPicker bool `json:"experimentalPromptHistoryPicker"`
+	// ExperimentalTabCompress gates the tab-strip adaptive compression (task
+	// 506); the frontend re-applies it on settings save, no restart needed.
+	ExperimentalTabCompress bool `json:"experimentalTabCompress"`
 	// Task 342: WebView2 CDP debug endpoint switch (default false; 铁律 2).
 	// Loopback-only random port, boot snapshot — restart to apply.
 	ExperimentalCDPDebugPort bool `json:"experimentalCDPDebugPort"`
@@ -1358,6 +1364,8 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalSubagentPanel = cfg.Desktop.ExperimentalSubagentPanel
 		view.ExperimentalSessionWall = cfg.Desktop.ExperimentalSessionWall
 		view.ExperimentalPromptHistoryPicker = cfg.Desktop.ExperimentalPromptHistoryPicker
+		// Task 506: tab-strip adaptive compression readback.
+		view.ExperimentalTabCompress = cfg.Desktop.ExperimentalTabCompress
 		// Task 265 lab intake: nil-means-on switches resolved here.
 		view.ExperimentalCompactionParallel = cfg.CompactionParallelEnabled()
 		view.ExperimentalContextBudget = cfg.ContextBudgetEnabled()
@@ -1500,6 +1508,8 @@ func (a *App) Settings() SettingsView {
 		ExperimentalSubagentPanel:       cfg.Desktop.ExperimentalSubagentPanel,
 		ExperimentalSessionWall:         cfg.Desktop.ExperimentalSessionWall,
 		ExperimentalPromptHistoryPicker: cfg.Desktop.ExperimentalPromptHistoryPicker,
+		// Task 506: tab-strip adaptive compression readback.
+		ExperimentalTabCompress: cfg.Desktop.ExperimentalTabCompress,
 		// Task 265 lab intake: nil-means-on switches resolved here.
 		ExperimentalCompactionParallel: cfg.CompactionParallelEnabled(),
 		ExperimentalContextBudget:      cfg.ContextBudgetEnabled(),

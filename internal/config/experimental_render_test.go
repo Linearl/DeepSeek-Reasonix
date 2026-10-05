@@ -115,6 +115,38 @@ func TestExperimentalDreamRoundTripThroughRender(t *testing.T) {
 	}
 }
 
+// 任务 506: tab-strip adaptive compression is a plain default-off desktop
+// bool. An untouched config must render false (ships off, 铁律 2), enabling
+// must render true, and flipping back off must stay recorded — otherwise the
+// next save re-renders the stale true and the switch springs back on.
+func TestTask506TabCompressRoundTrip(t *testing.T) {
+	out := RenderTOMLForScope(&Config{}, RenderScopeUser)
+	if !strings.Contains(out, "experimental_tab_compress = false") {
+		t.Fatalf("tab compress ships off: missing false render\n---\n%s", out)
+	}
+
+	on := &Config{}
+	if err := on.SetExperimentalTabCompress(true); err != nil {
+		t.Fatalf("set tab compress: %v", err)
+	}
+	if !on.Desktop.ExperimentalTabCompress {
+		t.Fatal("the setter must flip the desktop field")
+	}
+	out = RenderTOMLForScope(on, RenderScopeUser)
+	if !strings.Contains(out, "experimental_tab_compress = true") {
+		t.Fatalf("enable must render true\n---\n%s", out)
+	}
+
+	off := &Config{}
+	if err := off.SetExperimentalTabCompress(false); err != nil {
+		t.Fatalf("set tab compress off: %v", err)
+	}
+	out = RenderTOMLForScope(off, RenderScopeUser)
+	if !strings.Contains(out, "experimental_tab_compress = false") {
+		t.Fatalf("explicit off must survive the render\n---\n%s", out)
+	}
+}
+
 // Task 265 lab intake: the intake switches ship ON via nil-means-on pointers.
 // An untouched config must render true (existing behaviour, zero regression),
 // an explicit off must render false (and survive the next load), and an

@@ -5,7 +5,7 @@
 
 import { reportFrontendLog } from "./frontendLog";
 
-export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall";
+export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress";
 
 const defaults: Record<LabFeatureFlag, boolean> = {
   questionSearch: true,
@@ -19,6 +19,9 @@ const defaults: Record<LabFeatureFlag, boolean> = {
   // Task 505: the session graph wall (palette 跳转会话 entry + grid wall)
   // ships off — with it off the palette item list is byte-for-byte unchanged.
   sessionWall: false,
+  // Task 506: tab-strip adaptive compression (tiered tab width once >8 tabs,
+  // floor 84px) ships off — with it off the strip keeps the exact fixed widths.
+  tabCompress: false,
 };
 
 const flags: Record<LabFeatureFlag, boolean> = { ...defaults };
@@ -32,7 +35,7 @@ export function applyLabFlags(next: Partial<Record<LabFeatureFlag, boolean>>): v
   reportFrontendLog(
     "desktop-prefs",
     "lab flags",
-    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall}`,
+    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress}`,
   );
   for (const listener of listeners) listener();
 }

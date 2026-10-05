@@ -133,6 +133,15 @@ type DesktopConfig struct {
 	// item list (recent-sessions slice unchanged, no extra entry). The flag is
 	// snapshotted at boot, so changes take effect after a restart.
 	ExperimentalSessionWall bool `toml:"experimental_session_wall"`
+	// ExperimentalTabCompress gates the tab-strip adaptive compression (task
+	// 506): once more than 8 tabs are open the tab width steps down in tiers
+	// (9→148px, 13→122px, 17→100px with mode badges hidden, ≥21→84px floor) so
+	// the strip keeps fitting instead of scrolling, and hover keeps carrying
+	// the full annotated title. It ships off: with it off every tab keeps the
+	// exact fixed width (176px, 148px on narrow windows). Pure frontend gate:
+	// the settings save re-applies the boot snapshot, so a change is visible
+	// without a restart.
+	ExperimentalTabCompress bool `toml:"experimental_tab_compress"`
 	// Task 265 (lab intake): three render-surface features ship ON via
 	// nil-means-on pointers — existing behaviour getting an off switch, so the
 	// default must not regress anyone. Each is a pure frontend gate.
