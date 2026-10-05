@@ -686,6 +686,9 @@ func (a *App) startup(ctx context.Context) {
 	a.startColdCacheCompactLoop()
 	// Task 308-O4: release detached/idle runtimes (gate: env minutes, default off).
 	a.startDetachedIdleReleaseLoop()
+	// Task 485 P1: release self-held orphan session leases (leaked-handle
+	// backstop — the lock itself cannot arbitrate a handle this process lost).
+	a.startSessionLeaseLeakSweeper()
 	// Task 308-O3: apply the soft memory limit from config (live-capable via
 	// SetGoMemLimitMB in settings; startup applies the stored value once).
 	if cfg, _, err := a.loadDesktopUserConfigForView(); err == nil {

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -426,11 +427,41 @@ func SessionLeaseHeldByCurrentRuntime(path string) bool {
 	return ok
 }
 
+// SessionLeaseActiveOwnerKeys snapshots the canonical paths this process
+// currently holds an ACQUIRED lease for (task 485: the desktop leak sweeper
+// walks exactly these — a lease registered as active but owned by no live
+// in-process runtime is a leak candidate). Keys are the same canonical form
+// TryAcquireSessionLease publishes; the slice is sorted for stable logs.
+func SessionLeaseActiveOwnerKeys() []string {
+	var keys []string
+	sessionLeaseActiveOwners.Range(func(key, _ any) bool {
+		if path, ok := key.(string); ok && path != "" {
+			keys = append(keys, path)
+		}
+		return true
+	})
+	sort.Strings(keys)
+	return keys
+}
+
 func (l *SessionLease) Path() string {
 	if l == nil {
 		return ""
 	}
 	return l.path
+}
+
+// Released reports whether Release has already run (or begun retiring) this
+// lease. Task 485: the desktop leak sweeper uses it to skip stale tracker
+// entries instead of logging a phantom release. Release itself stays
+// idempotent regardless of what callers do with this.
+func (l *SessionLease) Released() bool {
+	if l == nil {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.released
 }
 
 // ReleaseForHandoff publishes a target-writer reservation while the current

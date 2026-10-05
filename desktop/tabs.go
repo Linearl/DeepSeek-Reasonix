@@ -467,6 +467,10 @@ func (t *WorkspaceTab) storeSessionLeaseRuntimeKey(key string) {
 			t.sessionLeaseKey.Store(nil)
 		}
 		t.stopTakeoverRequestWatcher()
+		// Task 485: every lease mutation funnels through here, so the leak
+		// sweeper's tracker converges at the same point. Callers hold
+		// sessionLeaseMu (see syncSessionLeaseTracker's contract).
+		syncSessionLeaseTracker(t, key)
 		return
 	}
 	// Single convergence point: every lease path (acquire, handoff, swap,
@@ -475,6 +479,7 @@ func (t *WorkspaceTab) storeSessionLeaseRuntimeKey(key string) {
 	t.startTakeoverRequestWatcher(key)
 	stored := key
 	t.sessionLeaseKey.Store(&stored)
+	syncSessionLeaseTracker(t, key)
 }
 
 // sessionLeaseRuntimeKey reports the runtime key of the currently held lease,
