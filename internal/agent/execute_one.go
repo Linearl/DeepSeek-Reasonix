@@ -17,6 +17,7 @@ import (
 	"reasonix/internal/planmode"
 	"reasonix/internal/provider"
 	"reasonix/internal/sandbox"
+	"reasonix/internal/sentinel"
 	"reasonix/internal/tool"
 )
 
@@ -390,9 +391,21 @@ func (a *Agent) proxyResolutionError(plan *toolCallPlan, err error) toolOutcome 
 	return toolOutcome{output: fmt.Sprintf("error: %v", err), errMsg: firstLine(err.Error())}
 }
 
-// applyRecoveryAndPermission runs Auto Guard then ordinary permission. Neitheracquires a write lease;
+// applyRecoveryAndPermission runs Sentinel, Auto Guard then ordinary
+// permission. Neitheracquires a write lease;
 // thathappens only after permission in prepare.
 func (a *Agent) applyRecoveryAndPermission(ctx context.Context, plan *toolCallPlan) (toolOutcome, bool) {
+	// Sentinel 固定前置检查（任务 410，降维版）：硬禁区底线规则 + 出口 secret
+	// 扫描。放在所有可被覆盖的审批阶段之前（Auto Guard、MCP 信任快路径、
+	// 普通审批门、扩展覆盖），因此任何审批模式——yolo 含内——和任何审批
+	// 结果都绕不开它。规则引擎零模型参与（纯规则 + 确定性 git 管道）。
+	if v := sentinel.CheckToolCall(plan.permName, plan.permArgs, a.svc.workspaceRoot); v.Blocked {
+		return toolOutcome{
+			output:  "blocked: " + v.Reason,
+			blocked: true,
+			errMsg:  "blocked by sentinel rule " + v.Rule,
+		}, true
+	}
 	// Auto Guard: after resolution/mutation classification,
 	// beforepermissionapprovalandworkspacewrite-lockacquisition, so a waitingrecovery cardneverholdsawritelease.
 	// Consult on mutations,
