@@ -183,6 +183,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "experimental_feedback_nudge = %v   # desktop: feedback touchpoints — invite after a completed turn (T1) + steer note (T2); parent experimental_feedback wins (task 172)\n", c.Desktop.ExperimentalFeedbackNudge)
 		fmt.Fprintf(&b, "experimental_parallel_full_access = %v   # desktop: trust managed worktree roots as write surfaces (task 127); env REASONIX_PARALLEL_FULL_ACCESS=1 also enables\n", c.Desktop.ExperimentalParallelFullAccess)
 		fmt.Fprintf(&b, "experimental_todo_sidebar = %v   # desktop: right-dock todo tab + tab visibility/wrap settings (task 259; boot snapshot)\n", c.Desktop.ExperimentalTodoSidebar)
+		// Task 495: fixed-key-set rule - an unlisted key would be dropped on every
+		// save and the switch would flip itself back off (81/123 lesson).
+		fmt.Fprintf(&b, "experimental_subagent_panel = %v   # desktop: right-dock subagent tab + default-collapsed ended subagent cards in deep mode (task 495; boot snapshot)\n", c.Desktop.ExperimentalSubagentPanel)
 		// Task 261: fixed-key-set rule - an unlisted key would be dropped on every
 		// save and the switch would flip itself back off (81/123 lesson).
 		fmt.Fprintf(&b, "experimental_prompt_history_picker = %v   # desktop: composer clock-icon history picker + narrowed ArrowUp trigger (task 261; boot snapshot)\n", c.Desktop.ExperimentalPromptHistoryPicker)

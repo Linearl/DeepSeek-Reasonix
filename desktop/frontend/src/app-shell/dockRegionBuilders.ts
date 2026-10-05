@@ -32,6 +32,10 @@ export function buildWorkspaceDockProps(input: {
   todoSidebar: boolean;
   /** Task 259: same payload the composer footer renders; undefined shows the empty state. */
   todo?: WorkspaceDockRegionProps["todo"];
+  /** Task 495: the subagent panel switch (own switch, not the todo family). */
+  subagentsPanel?: boolean;
+  /** Task 495: the session's subagent directory payload. */
+  subagents?: WorkspaceDockRegionProps["subagents"];
   t: Translator;
   context: ConversationView["context"];
   sessionTurns: number;
@@ -71,6 +75,8 @@ export function buildWorkspaceDockProps(input: {
     showContext: input.showContext,
     todoSidebar: input.todoSidebar,
     todo: input.todo,
+    subagentsPanel: input.subagentsPanel,
+    subagents: input.subagents,
     t: input.t,
     onMode: panels.openRightDockMode,
     onRemote: panels.openRemoteDock,

@@ -1791,6 +1791,8 @@ type ExperimentFeatureId =
   | "eventsRotation"
   | "splitView"
   | "todoSidebar"
+  // Task 495: subagent panel package (dock tab + ended-card collapse).
+  | "subagentPanel"
   | "promptHistoryPicker"
   | "feedback"
   | "localServer"
@@ -2015,6 +2017,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "restartUpdate", group: "debug", label: t("settings.restartUpdate"), on: Boolean(s.experimentalRestartUpdate) },
     { id: "splitView", group: "ui", label: t("settings.splitView"), on: Boolean(s.experimentalSplitView) },
     { id: "todoSidebar", group: "ui", label: t("settings.todoSidebar"), on: Boolean(s.experimentalTodoSidebar) },
+    // Task 495: subagent panel package (right-dock tab + ended-card collapse).
+    { id: "subagentPanel", group: "ui", label: t("settings.subagentPanel"), on: Boolean(s.experimentalSubagentPanel) },
     // Task 261: composer history picker + narrowed ArrowUp (upstream #10425).
     { id: "promptHistoryPicker", group: "ui", label: t("settings.promptHistoryPicker"), on: Boolean(s.experimentalPromptHistoryPicker) },
     { id: "autoLoadOlder", group: "ui", label: t("settings.autoLoadOlder"), on: Boolean(s.experimentalAutoLoadOlder) },
@@ -2590,6 +2594,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                     // the dock actually shows and end up with zero tabs.
                     const lastOn = isLastRenderableVisibleTab(tabId, {
                       todoSidebar: Boolean(s.experimentalTodoSidebar),
+                      subagentsPanel: Boolean(s.experimentalSubagentPanel),
                       remoteAvailable,
                       creation: desktopLayoutStyle === "creation",
                     });
@@ -2607,6 +2612,55 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   })}
                   {!Boolean(s.experimentalTodoSidebar) && (
                     <div className="set-gates__hint">{t("settings.dockTabsDisabledHint")}</div>
+                  )}
+                </div>
+              </SettingsField>
+            </>
+          )}
+          {selected === "subagentPanel" && (
+            <>
+              <SettingsField label={t("settings.subagentPanel")} hint={t("settings.subagentPanelHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalSubagentPanel) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        // Boot snapshot (task 495): the dock tab and the
+                        // ended-card collapse read the flag once at startup,
+                        // so saving raises the restart banner.
+                        await app.SetExperimentalSubagentPanel(on);
+                        setRestartNeeded(true);
+                      })}
+                    >
+                      {t(on ? "settings.subagentPanel.on" : "settings.subagentPanel.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField
+                label={t("workspace.subagentsTab")}
+                hint={Boolean(s.experimentalSubagentPanel) ? t("settings.dockTabVisibilityHint") : t("settings.subagentPanelTabDisabledHint")}
+                icon={<Sparkles size={18} />}
+              >
+                <div className="set-gates">
+                  <label className={`set-gates__item${busy || !Boolean(s.experimentalSubagentPanel) ? " set-gates__item--locked" : ""}`}>
+                    <input
+                      type="checkbox"
+                      checked={!isDockTabHidden("subagents")}
+                      disabled={busy || !Boolean(s.experimentalSubagentPanel) || isLastRenderableVisibleTab("subagents", {
+                        todoSidebar: Boolean(s.experimentalTodoSidebar),
+                        subagentsPanel: Boolean(s.experimentalSubagentPanel),
+                        remoteAvailable,
+                        creation: desktopLayoutStyle === "creation",
+                      })}
+                      onChange={(event) => setDockTabHidden("subagents", !event.target.checked)}
+                    />
+                    <span className="set-gates__label">{t("workspace.subagentsTab")}</span>
+                  </label>
+                  {!Boolean(s.experimentalSubagentPanel) && (
+                    <div className="set-gates__hint">{t("settings.subagentPanelTabDisabledHint")}</div>
                   )}
                 </div>
               </SettingsField>

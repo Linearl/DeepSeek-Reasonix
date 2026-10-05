@@ -371,6 +371,9 @@ type SettingsView struct {
 	// view that omits it would read the sub-switch as permanently off.
 	ExperimentalFeedbackNudge bool `json:"experimentalFeedbackNudge"`
 	ExperimentalTodoSidebar   bool `json:"experimentalTodoSidebar"`
+	// Task 495: subagent panel package (dock tab + ended-card collapse);
+	// boot snapshot, restart to apply.
+	ExperimentalSubagentPanel bool `json:"experimentalSubagentPanel"`
 	// Task 261: composer history-navigation safety (clock picker + narrowed
 	// ArrowUp); boot snapshot, restart to apply.
 	ExperimentalPromptHistoryPicker bool `json:"experimentalPromptHistoryPicker"`
@@ -573,6 +576,9 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalTodoSidebar moves the todo list into the right dock (task 259);
 	// the frontend snapshots it at boot, so a change needs a restart.
 	ExperimentalTodoSidebar bool `json:"experimentalTodoSidebar"`
+	// ExperimentalSubagentPanel gates the subagent panel package (task 495);
+	// the frontend snapshots it at boot, so a change needs a restart.
+	ExperimentalSubagentPanel bool `json:"experimentalSubagentPanel"`
 	// ExperimentalPromptHistoryPicker gates the composer history picker plus
 	// the narrowed ArrowUp trigger (task 261); boot snapshot - restart to apply.
 	ExperimentalPromptHistoryPicker bool `json:"experimentalPromptHistoryPicker"`
@@ -1339,6 +1345,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalFeedback = cfg.Desktop.ExperimentalFeedback
 		view.ExperimentalFeedbackNudge = cfg.Desktop.ExperimentalFeedbackNudge
 		view.ExperimentalTodoSidebar = cfg.Desktop.ExperimentalTodoSidebar
+		view.ExperimentalSubagentPanel = cfg.Desktop.ExperimentalSubagentPanel
 		view.ExperimentalPromptHistoryPicker = cfg.Desktop.ExperimentalPromptHistoryPicker
 		// Task 265 lab intake: nil-means-on switches resolved here.
 		view.ExperimentalCompactionParallel = cfg.CompactionParallelEnabled()
@@ -1478,6 +1485,7 @@ func (a *App) Settings() SettingsView {
 		ExperimentalFeedback:            cfg.Desktop.ExperimentalFeedback,
 		ExperimentalFeedbackNudge:       cfg.Desktop.ExperimentalFeedbackNudge,
 		ExperimentalTodoSidebar:         cfg.Desktop.ExperimentalTodoSidebar,
+		ExperimentalSubagentPanel:       cfg.Desktop.ExperimentalSubagentPanel,
 		ExperimentalPromptHistoryPicker: cfg.Desktop.ExperimentalPromptHistoryPicker,
 		// Task 265 lab intake: nil-means-on switches resolved here.
 		ExperimentalCompactionParallel: cfg.CompactionParallelEnabled(),

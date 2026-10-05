@@ -302,6 +302,14 @@ func (a *App) SetExperimentalTodoSidebar(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalTodoSidebar(enabled) })
 }
 
+// SetExperimentalSubagentPanel toggles the subagent panel package (task 495):
+// the right-dock subagent tab plus default-collapsed ended subagent cards in
+// deep mode. The frontend snapshots the flag at boot, so the change shows up
+// after a restart.
+func (a *App) SetExperimentalSubagentPanel(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSubagentPanel(enabled) })
+}
+
 // SetExperimentalPromptHistoryPicker toggles the composer history-navigation
 // safety rework (task 261, upstream #10425): clock-icon history picker plus
 // the narrowed plain-ArrowUp trigger. Boot snapshot, restart to apply.

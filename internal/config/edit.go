@@ -768,6 +768,16 @@ func (c *Config) SetExperimentalTodoSidebar(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalSubagentPanel toggles the subagent panel package (task 495):
+// the "子代理" right-dock tab plus default-collapsed ended subagent cards in
+// deep mode. Opt-in: with it off the transcript and dock keep the exact legacy
+// behaviour. The desktop snapshots the flag at boot, so a change needs a
+// restart to be seen.
+func (c *Config) SetExperimentalSubagentPanel(enabled bool) error {
+	c.Desktop.ExperimentalSubagentPanel = enabled
+	return nil
+}
+
 // SetExperimentalPromptHistoryPicker gates the composer history-navigation
 // safety rework (task 261): clock-icon history picker + narrowed ArrowUp
 // trigger. Opt-in: with it off the composer keeps the legacy behaviour. The

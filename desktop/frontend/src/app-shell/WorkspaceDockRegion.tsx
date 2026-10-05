@@ -1,12 +1,14 @@
 import { lazy, Suspense, useEffect, useState, type ComponentProps, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
-import { Activity, FileText, GitBranch, ListTodo, Server } from "lucide-react";
+import { Activity, Bot, FileText, GitBranch, ListTodo, Server } from "lucide-react";
 import type { Translator } from "../lib/i18n";
 import type { RightDockMode } from "../store/layout";
 import { loadHiddenDockTabs, onHiddenDockTabsChange, type DockTabId } from "../lib/dockTabs";
+import type { SubagentDirectory } from "../lib/subagentDirectory";
 
 const ContextPanel = lazy(() => import("../components/ContextPanel").then((module) => ({ default: module.ContextPanel })));
 const RemotePanel = lazy(() => import("../components/RemotePanel").then((module) => ({ default: module.RemotePanel })));
 const TodoDockPanel = lazy(() => import("../components/TodoPanel").then((module) => ({ default: module.TodoPanel })));
+const SubagentsDockPanel = lazy(() => import("../components/SubagentsDockPanel").then((module) => ({ default: module.SubagentsDockPanel })));
 const WorkspacePanel = lazy(async () => {
   const [module] = await Promise.all([
     import("../components/WorkspacePanel"),
@@ -28,6 +30,10 @@ export type WorkspaceDockRegionProps = {
   todoSidebar: boolean;
   /** Task 259: the same payload the composer footer would render; undefined shows the empty state. */
   todo?: { identity: string; props: TodoProps };
+  /** Task 495: the subagent panel switch (own switch, not the todo family). */
+  subagentsPanel?: boolean;
+  /** Task 495: the session's subagent directory payload; undefined keeps the tab away. */
+  subagents?: SubagentDirectory;
   t: Translator;
   onMode: (mode: RightDockMode) => void;
   onRemote: () => void;
@@ -75,6 +81,7 @@ export function WorkspaceDockRegion(props: WorkspaceDockRegionProps) {
                   {tabVisible("changed") && <DockTab active={mode === "changed"} onClick={() => onMode("changed")} icon={<GitBranch size={13} />} label={t("workspace.changedTab")} />}
                   {remoteAvailable && tabVisible("remote") && <DockTab active={mode === "remote"} onClick={onRemote} icon={<Server size={13} />} label={t("rightDock.remote")} />}
                   {tabVisible("todos") && <DockTab active={mode === "todos"} onClick={() => onMode("todos")} icon={<ListTodo size={13} />} label={t("workspace.todosTab")} />}
+                  {props.subagentsPanel && props.subagents && tabVisible("subagents") && <DockTab active={mode === "subagents"} onClick={() => onMode("subagents")} icon={<Bot size={13} />} label={t("workspace.subagentsTab")} />}
                 </>
               ) : (
                 <>
@@ -94,6 +101,13 @@ export function WorkspaceDockRegion(props: WorkspaceDockRegionProps) {
                 </div>
               ) : (
                 <div className="workbench-dock__todo workbench-dock__todo--empty">{t("rightDock.todoEmpty")}</div>
+              )
+            ) : mode === "subagents" && props.subagentsPanel ? (
+              /* Task 495: the subagent directory panel (own switch). */
+              props.subagents ? (
+                <Suspense fallback={null}><SubagentsDockPanel directory={props.subagents} /></Suspense>
+              ) : (
+                <div className="workbench-dock__todo workbench-dock__todo--empty">{t("subagentPanel.empty")}</div>
               )
             ) : mode === "remote" ? (
               <Suspense fallback={null}><RemotePanel {...props.remote} /></Suspense>
