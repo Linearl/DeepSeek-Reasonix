@@ -426,7 +426,9 @@ type SettingsView struct {
 	ExperimentalCacheTuning    bool `json:"experimentalCacheTuning"`
 	ExperimentalDream          bool `json:"experimentalDream"`
 	ExperimentalPerfMonitor    bool `json:"experimentalPerfMonitor"`
-	PerfMonitorIntervalSeconds int  `json:"perfMonitorIntervalSeconds"`
+	// Task 501: threshold-triggered heap snapshot switch readback.
+	ExperimentalHeapHighProfile bool `json:"experimentalHeapHighProfile"`
+	PerfMonitorIntervalSeconds  int  `json:"perfMonitorIntervalSeconds"`
 	SessionCollabHopLimit      int  `json:"sessionCollabHopLimit"`
 	DetachedIdleReleaseMinutes int  `json:"detachedIdleReleaseMinutes"`
 	GoMemLimitMB               int  `json:"goMemLimitMB"`
@@ -616,7 +618,9 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalDream exposes dream/distill memory-curation tools (task 115).
 	ExperimentalDream          bool `json:"experimentalDream"`
 	ExperimentalPerfMonitor    bool `json:"experimentalPerfMonitor"`
-	PerfMonitorIntervalSeconds int  `json:"perfMonitorIntervalSeconds"`
+	// Task 501: threshold-triggered heap snapshot switch readback.
+	ExperimentalHeapHighProfile bool `json:"experimentalHeapHighProfile"`
+	PerfMonitorIntervalSeconds  int  `json:"perfMonitorIntervalSeconds"`
 	SessionCollabHopLimit      int  `json:"sessionCollabHopLimit"`
 	DetachedIdleReleaseMinutes int  `json:"detachedIdleReleaseMinutes"`
 	// GoMemLimitMB is the task-308-O3 soft memory limit in MB (0 = unbounded).
@@ -1379,6 +1383,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalModelCapabilityFilter = cfg.Desktop.ExperimentalModelCapabilityFilter || cfg.Agent.ExperimentalModelCapabilityFilter
 		view.ExperimentalRuntimeReuse = cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse
 		view.ExperimentalPerfMonitor = cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor
+		view.ExperimentalHeapHighProfile = cfg.Desktop.ExperimentalHeapHighProfile || cfg.Agent.ExperimentalHeapHighProfile
 		view.PerfMonitorIntervalSeconds = cfg.Desktop.PerfMonitorIntervalSeconds
 		view.SessionCollabHopLimit = cfg.Desktop.SessionCollabHopLimit
 		view.DetachedIdleReleaseMinutes = cfg.Desktop.DetachedIdleReleaseMinutes
@@ -1518,6 +1523,7 @@ func (a *App) Settings() SettingsView {
 		ExperimentalModelCapabilityFilter: cfg.Desktop.ExperimentalModelCapabilityFilter || cfg.Agent.ExperimentalModelCapabilityFilter,
 		ExperimentalRuntimeReuse:          cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse,
 		ExperimentalPerfMonitor:           cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,
+		ExperimentalHeapHighProfile:       cfg.Desktop.ExperimentalHeapHighProfile || cfg.Agent.ExperimentalHeapHighProfile,
 		PerfMonitorIntervalSeconds:        cfg.Desktop.PerfMonitorIntervalSeconds,
 		SessionCollabHopLimit:             cfg.Desktop.SessionCollabHopLimit,
 		DetachedIdleReleaseMinutes:        cfg.Desktop.DetachedIdleReleaseMinutes,

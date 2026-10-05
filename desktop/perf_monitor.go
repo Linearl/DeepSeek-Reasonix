@@ -51,6 +51,15 @@ const (
 	perfMonitorHeapMaxSeconds     = 3600
 	perfMonitorHeapKept           = 3
 	perfMonitorPruneInterval      = time.Hour
+	// 任务 501: 两池分离。60s 定时池（heap-<ts>.pprof）滚动只留 3 份——高峰
+	// 快照被后续滚动冲掉正是 499 内存膨胀调查丢掉 14.6GB 现场的直接原因，所以
+	// 阈值高峰池用独立前缀 heap-high-，不进滚动、走 7 天保留期。
+	perfMonitorHeapFilePrefix = "heap-"
+	perfMonitorHeapHighPrefix = "heap-high-"
+	// 任务 501: 防风暴门。1GB 一档，只有越过本进程见过的最高档才立即再抓；
+	// 其余（同档维持、回落）走 30 分钟冷却——档边界震荡不能击穿冷却。
+	perfMonitorHeapHighCooldown = 30 * time.Minute
+	perfMonitorHeapHighTierMB   = 1024
 )
 
 // perfSample is one line of the time series. Field names are stable: the point
@@ -140,6 +149,18 @@ type perfMonitor struct {
 	// 重复告警；eventsTopFile 可注入（测试用），nil 时走真实扫描。
 	warnGate      *perfWarnGate
 	eventsTopFile func() (string, int64)
+
+	// 任务 501: 阈值高峰快照（experimental_heap_high_profile）。默认关；开着
+	// 时 workingSetMb 或 heapInuseMb 达阈值即落一份 heap-high profile 进 7 天
+	// 保留池。四个字段仅在采样循环 goroutine 上读写（sampleAndWrite 一条线），
+	// 与 warnGate 同一纪律，不加锁。
+	heapHighEnabled     bool
+	heapHighThresholdMB float64
+	// heapHighPeakTier 是本进程见过的最高 1GB 水位档（单调不降）：升到新高
+	// 峰立即再抓，回落、维持一律走 30 分钟冷却——水位在档边界震荡不能击穿
+	// 冷却（否则震荡波形每采样间隔抓一份，防风暴形同虚设）。
+	heapHighPeakTier int64
+	lastHeapHighAt   time.Time
 }
 
 // perfWarnGate 决定同一 metric 的超限 WARN 何时再发：首次必发；之后仅当
@@ -228,6 +249,29 @@ func perfMonitorSettings(cfg *config.Config) (time.Duration, time.Duration, time
 		paths
 }
 
+// perfMonitorHeapHighSettings resolves the heap-high trigger (task 501):
+// enabled mirrors the experimental switch (either face counts, same as the
+// monitor switch), threshold falls back to the built-in 6GB and clamps
+// explicit values into 1GB..128GB so a hand-edited config can neither arm a
+// trigger that fires on every sample nor set a bar nothing reaches.
+func perfMonitorHeapHighSettings(cfg *config.Config) (bool, float64) {
+	enabled := false
+	threshold := float64(config.PerfMonitorHeapHighDefaultMB)
+	if cfg != nil {
+		enabled = cfg.Agent.ExperimentalHeapHighProfile || cfg.Desktop.ExperimentalHeapHighProfile
+		if cfg.Agent.PerfMonitorHeapHighThresholdMB > 0 {
+			threshold = float64(cfg.Agent.PerfMonitorHeapHighThresholdMB)
+		}
+	}
+	if threshold < config.PerfMonitorHeapHighMinThresholdMB {
+		threshold = config.PerfMonitorHeapHighMinThresholdMB
+	}
+	if threshold > config.PerfMonitorHeapHighMaxThresholdMB {
+		threshold = config.PerfMonitorHeapHighMaxThresholdMB
+	}
+	return enabled, threshold
+}
+
 // perfMonitorDir is where samples live: under the desktop logs, never inside a
 // session directory (the session scanner adopts *.jsonl, so the suffix keeps
 // these files out of it, and the directory keeps them out of the way).
@@ -298,6 +342,7 @@ func (m *perfMonitor) sampleAndWrite(now time.Time) {
 		// The monitor must never be able to break the app it observes.
 		slog.Warn("desktop: perf monitor write sample failed", "err", err)
 	}
+	m.maybeCaptureHeapHigh(sample, now)
 }
 
 // warnThresholds turns a sample that left the observed band into a log line, so
@@ -704,29 +749,35 @@ func (m *perfMonitor) appendSample(now time.Time, sample perfSample) error {
 	return err
 }
 
+// dumpHeapProfile writes a Go heap profile to path (creating the directory as
+// needed). Errors go to the caller: an observer must never take the app down
+// with it, but the two pools log differently so a failure says which pool lost
+// a dump.
+func dumpHeapProfile(path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	if err := pprof.WriteHeapProfile(f); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
+}
+
 // writeHeapProfile dumps a Go heap profile next to the samples and keeps only the
 // newest perfMonitorHeapKept of them: the goal is the profile taken while memory
-// was inflated, not a history of profiles.
+// was inflated, not a history of profiles. 任务 501: 本函数只管 60s 定时池，滚动
+// 不触碰 heap-high- 高峰池（见 pruneHeapProfiles）。
 func (m *perfMonitor) writeHeapProfile(now time.Time) string {
 	if m == nil {
 		return ""
 	}
-	if err := os.MkdirAll(m.dir, 0o700); err != nil {
-		slog.Warn("desktop: perf monitor heap profile", "err", err)
-		return ""
-	}
-	path := filepath.Join(m.dir, "heap-"+now.Format("20060102-150405")+".pprof")
-	f, err := os.Create(path)
-	if err != nil {
-		slog.Warn("desktop: perf monitor heap profile", "err", err)
-		return ""
-	}
-	if err := pprof.WriteHeapProfile(f); err != nil {
-		_ = f.Close()
-		slog.Warn("desktop: perf monitor heap profile", "err", err)
-		return ""
-	}
-	if err := f.Close(); err != nil {
+	path := filepath.Join(m.dir, perfMonitorHeapFilePrefix+now.Format("20060102-150405")+".pprof")
+	if err := dumpHeapProfile(path); err != nil {
 		slog.Warn("desktop: perf monitor heap profile", "err", err)
 		return ""
 	}
@@ -734,6 +785,62 @@ func (m *perfMonitor) writeHeapProfile(now time.Time) string {
 	return path
 }
 
+// writeHeapHighProfile 落阈值高峰池快照（任务 501）：文件名带触发时的 MB 读数，
+// 量级不用打开文件就能辨认；只写文件，不做任何滚动——本池走 prune 的 7 天
+// 保留期，当天多份快照全部留到超期。
+func (m *perfMonitor) writeHeapHighProfile(now time.Time, levelMB float64) string {
+	if m == nil {
+		return ""
+	}
+	path := filepath.Join(m.dir, fmt.Sprintf("%s%dMB-%s.pprof",
+		perfMonitorHeapHighPrefix, int64(levelMB), now.Format("20060102-150405")))
+	if err := dumpHeapProfile(path); err != nil {
+		slog.Warn("desktop: perf monitor heap-high profile", "err", err)
+		return ""
+	}
+	return path
+}
+
+// maybeCaptureHeapHigh 是采样循环里的高峰快照分支（任务 501）。开关关着时第
+// 一行返回，采样循环逐字节保持原行为；开着时 workingSetMb / heapInuseMb 取
+// 大者达阈值即落盘（OS 计数不可用时 WorkingSetMB 为 0，此时只看堆）。防风暴：
+// 1GB 一档，只有越过本进程见过的最高水位档才立即再抓（新高峰 = 新现场）；
+// 同档维持、回落到旧档一律 30 分钟冷却——档边界震荡不能把冷却击穿。仅在
+// 采样循环 goroutine 上调用（档位状态不加锁，与 warnGate 同一纪律）。
+func (m *perfMonitor) maybeCaptureHeapHigh(sample perfSample, now time.Time) {
+	if m == nil || !m.heapHighEnabled {
+		return
+	}
+	level := sample.WorkingSetMB
+	if sample.HeapInuseMB > level {
+		level = sample.HeapInuseMB
+	}
+	if level < m.heapHighThresholdMB {
+		return
+	}
+	tier := int64(level) / perfMonitorHeapHighTierMB
+	if tier <= m.heapHighPeakTier && now.Sub(m.lastHeapHighAt) < perfMonitorHeapHighCooldown {
+		return
+	}
+	if tier > m.heapHighPeakTier {
+		m.heapHighPeakTier = tier
+	}
+	m.lastHeapHighAt = now
+	path := m.writeHeapHighProfile(now, level)
+	if path == "" {
+		return
+	}
+	slog.Warn("desktop: perf monitor heap-high captured",
+		"path", path,
+		"workingSetMb", sample.WorkingSetMB,
+		"heapInuseMb", sample.HeapInuseMB,
+		"thresholdMb", int64(m.heapHighThresholdMB),
+		"tierMb", tier*perfMonitorHeapHighTierMB)
+}
+
+// pruneHeapProfiles 只滚动 60s 定时池（heap-<ts>.pprof，保留最新 3 份）。
+// heap-high- 前缀的高峰池不在此列——高峰现场被后续滚动冲掉正是本池存在的
+// 动机；它的生命周期归 prune 的保留期管（任务 501 两池分离）。
 func (m *perfMonitor) pruneHeapProfiles() {
 	entries, err := os.ReadDir(m.dir)
 	if err != nil {
@@ -745,7 +852,10 @@ func (m *perfMonitor) pruneHeapProfiles() {
 			continue
 		}
 		name := entry.Name()
-		if strings.HasPrefix(name, "heap-") && strings.HasSuffix(name, ".pprof") {
+		if strings.HasPrefix(name, perfMonitorHeapHighPrefix) {
+			continue
+		}
+		if strings.HasPrefix(name, perfMonitorHeapFilePrefix) && strings.HasSuffix(name, ".pprof") {
 			names = append(names, name)
 		}
 	}
@@ -770,7 +880,9 @@ func (a *App) SaveHeapProfile() (string, error) {
 }
 
 // prune drops sample files older than the retention window; the monitor must not
-// become the growth it was built to find.
+// become the growth it was built to find. 任务 501: heap-high- 高峰池同走本
+// 循环，按 mtime 对齐 perf-sample 的保留期（同一 retention 配置，默认 7 天）
+// ——只删超期者，同日多份快照全部保留。
 func (m *perfMonitor) prune(now time.Time) {
 	entries, err := os.ReadDir(m.dir)
 	if err != nil {
@@ -779,7 +891,12 @@ func (m *perfMonitor) prune(now time.Time) {
 	cutoff := now.Add(-m.retention)
 	for _, entry := range entries {
 		name := entry.Name()
-		if entry.IsDir() || !strings.HasPrefix(name, perfMonitorFilePrefix) {
+		if entry.IsDir() {
+			continue
+		}
+		isSample := strings.HasPrefix(name, perfMonitorFilePrefix)
+		isHeapHigh := strings.HasPrefix(name, perfMonitorHeapHighPrefix) && strings.HasSuffix(name, ".pprof")
+		if !isSample && !isHeapHigh {
 			continue
 		}
 		if info, statErr := entry.Info(); statErr == nil && info.ModTime().After(cutoff) {

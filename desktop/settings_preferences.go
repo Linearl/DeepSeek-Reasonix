@@ -550,6 +550,13 @@ func (a *App) SetPerfMonitorIntervalSeconds(seconds int) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetPerfMonitorIntervalSeconds(seconds) })
 }
 
+// SetExperimentalHeapHighProfile toggles the threshold-triggered heap snapshot
+// (task 501). Restart-scoped like the perf monitor itself: the trigger rides
+// its sampling loop, which is built once at boot.
+func (a *App) SetExperimentalHeapHighProfile(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalHeapHighProfile(enabled) })
+}
+
 // SetSessionCollabHopLimit sets the cross-session chain ceiling (task 204); the config
 // layer clamps it, so an out-of-range entry never reaches the file.
 func (a *App) SetSessionCollabHopLimit(limit int) error {
