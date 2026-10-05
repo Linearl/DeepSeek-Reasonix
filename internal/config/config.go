@@ -1812,6 +1812,13 @@ type AgentConfig struct {
 	// resolved on every sample (empty keeps the built-in table of v4 recovery
 	// caches, the desktop log and the live transcripts).
 	PerfMonitorPaths []string `toml:"perf_monitor_paths"`
+	// PerfMonitorHeapIntervalSeconds is the heap-profile dump interval of the
+	// perf monitor; 0 keeps the built-in default (60s). Lowering it multiplies
+	// the ~0.7MB-per-dump write churn, so explicit values are clamped into
+	// 10..3600 (see SetPerfMonitorHeapIntervalSeconds). No settings-view
+	// mirror: this knob exists for hand-edited configs during memory
+	// investigations only.
+	PerfMonitorHeapIntervalSeconds int `toml:"perf_monitor_heap_interval_seconds"`
 	// StalledIntentNudge enables the "you announced the next step instead of
 	// taking it" repair for ordinary sessions (task 117). Off by default:
 	// upstream only fires this under ContinuationExplicitFlow (Goal/review).

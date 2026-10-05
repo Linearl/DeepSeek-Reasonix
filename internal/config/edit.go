@@ -491,6 +491,25 @@ func (c *Config) SetPerfMonitorIntervalSeconds(seconds int) error {
 	return nil
 }
 
+// SetPerfMonitorHeapIntervalSeconds sets the perf monitor's heap-profile dump
+// interval. 0 means "back to the built-in default (60s)" and is stored as-is;
+// any explicit value is clamped into 10..3600 — a hand-edited config must not
+// turn the ~0.7MB-per-dump churn into a busy loop, nor stretch the gap past an
+// hour. Single-writes Agent: the knob has no settings-view mirror (see the
+// config comment), so a Desktop copy would be a value nobody reads.
+func (c *Config) SetPerfMonitorHeapIntervalSeconds(seconds int) error {
+	if seconds > 0 {
+		if seconds < 10 {
+			seconds = 10
+		}
+		if seconds > 3600 {
+			seconds = 3600
+		}
+	}
+	c.Agent.PerfMonitorHeapIntervalSeconds = seconds
+	return nil
+}
+
 // SetSessionCollabHopLimit sets the cross-session chain ceiling (task 204). The value is
 // clamped rather than trusted: a hand-edited config must not leave an out-of-range
 // ceiling on disk, and the settings view writes through here.

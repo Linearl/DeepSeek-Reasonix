@@ -655,12 +655,13 @@ func (a *App) startup(ctx context.Context) {
 	// block does nothing at all.
 	if cfg, err := config.Load(); err == nil &&
 		(cfg.Agent.ExperimentalPerfMonitor || cfg.Desktop.ExperimentalPerfMonitor) {
-		interval, retention, paths := perfMonitorSettings(cfg)
-		monitor := newPerfMonitor(a, perfMonitorDir(), interval, retention, paths)
+		interval, retention, heapInterval, paths := perfMonitorSettings(cfg)
+		monitor := newPerfMonitor(a, perfMonitorDir(), interval, retention, heapInterval, paths)
 		a.perfMonitor = monitor
 		monitor.Start()
 		slog.Info("desktop: perf monitor started",
-			"intervalSeconds", interval.Seconds(), "retentionHours", retention.Hours(), "patterns", len(paths))
+			"intervalSeconds", interval.Seconds(), "retentionHours", retention.Hours(),
+			"heapIntervalSeconds", heapInterval.Seconds(), "patterns", len(paths))
 	}
 	a.goSafe("repairDesktopIconIntegration", func() {
 		if err := repairDesktopIconIntegration(); err != nil {
