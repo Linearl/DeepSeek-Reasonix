@@ -82,6 +82,20 @@ eq(finalDeclaration(".transcript-navigation-content", "min-width"), "0", "chat c
 eq(finalDeclaration(".md", "overflow-wrap"), "anywhere", "completed markdown wraps the same long tokens as the stream tail");
 eq(finalDeclaration(".reasoning__body", "overflow-wrap"), "anywhere", "reasoning wraps long tokens");
 eq(finalDeclaration(".turn-collapse__inline-reasoning", "overflow-wrap"), "anywhere", "inline reasoning wraps long tokens");
+// 任务467：思考过程两条渲染路径都强制断行——流式纯文本 + 完成 markdown 内代码块。
+eq(finalDeclaration(".reasoning__stream-text", "white-space"), "pre-wrap", "streaming reasoning wraps long lines");
+eq(finalDeclaration(".reasoning__stream-text", "overflow-wrap"), "anywhere", "streaming reasoning breaks long tokens and URLs");
+eq(finalDeclaration(".reasoning__stream-text", "word-break"), "break-word", "streaming reasoning keeps the break-word fallback");
+for (const selector of [
+  ".reasoning__body .code",
+  ".turn-collapse__inline-reasoning .code",
+  ".tool__subagent-preview-text--markdown .code",
+]) {
+  eq(finalDeclaration(selector, "white-space"), "pre-wrap", selector + " wraps long lines inside reasoning");
+  eq(finalDeclaration(selector, "overflow-wrap"), "anywhere", selector + " breaks long tokens and URLs inside reasoning");
+  eq(finalDeclaration(selector, "overflow-x"), "hidden", selector + " never shows a nested horizontal scrollbar inside reasoning");
+}
+eq(finalDeclaration(".reasoning__body .code code", "white-space"), "pre-wrap", "reasoning code content shares the body wrapping contract");
 for (const selector of [".md pre", ".md pre code", ".md table", ".md .katex"]) {
   eq(finalDeclaration(selector, "overflow-wrap"), "normal", selector + " retains its own wrapping contract");
 }

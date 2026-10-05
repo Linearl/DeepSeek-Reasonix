@@ -68,6 +68,38 @@ async function render(item: ReasoningItem, props: { defaultExpanded?: boolean } 
       </LocaleProvider>,
     );
   });
+  // 任务467：reasoning 面板经 lazy 导入挂载。裸 tsx/node 解析动态导入要跨
+  // 多个宏任务，单轮 act 只清微任务——首渲染会停在 Suspense 兜底
+  // （.reasoning--loading）上，造成首批断言随机的假红。这里循环 flush 直到
+  // 兜底消失并连续稳定一轮（有上限，防御真实渲染错误导致的死循环）。
+  for (let tick = 0; tick < 100; tick += 1) {
+    if (!document.querySelector(".reasoning--loading")) break;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+  if (!document.querySelector(".reasoning--loading")) return;
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  if (document.querySelector(".reasoning--loading")) {
+    throw new Error("reasoning panel never left its Suspense fallback");
+  }
+  await settleMarkdownBody();
+}
+
+// 任务467：markdown 是第二层异步——Markdown/MarkdownRenderer/MarkdownHistory
+// 全部 lazy，worker 不可用时还要经 onError 落到 legacyMode 主线程解析。已解析
+// 的判据是 .md 体出现元素子节点（兜底态只有纯文本节点）。无 .md（折叠/流式
+// 纯文本）时立即返回；有界轮询，超时静默放行交给具体断言报错。
+async function settleMarkdownBody() {
+  for (let tick = 0; tick < 100; tick += 1) {
+    const body = document.querySelector(".reasoning__body .md");
+    if (!body || body.firstElementChild) return;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
 }
 
 async function click(el: Element | null | undefined) {
@@ -75,6 +107,7 @@ async function click(el: Element | null | undefined) {
     el?.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
+  await settleMarkdownBody();
 }
 
 // Completed reasoning: collapsed to a one-line summary, Markdown stays
@@ -112,6 +145,26 @@ ok(!document.querySelector(".reasoning__body"), "clicking the header collapses t
 await click(document.querySelector(".reasoning__head"));
 ok(document.querySelector(".reasoning__body")?.textContent?.includes("line two") ?? false, "clicking the header expands the reasoning body");
 
+// 任务467：长句/长 token/长 URL 三形态 × 两条渲染路径的挂点断言。
+// 断行本身是 CSS 行为（jsdom 不做排版），由 typography-overflow-contract
+// 的声明契约保证；这里验证两条路径的 DOM 挂点真实存在、内容不被截断。
+const wrapLongUrl = "https://example.invalid/" + "y".repeat(200);
+const wrapLongToken = "x".repeat(240);
+await render({
+  kind: "assistant",
+  id: "a-wrap",
+  text: "",
+  reasoning: `先给结论，再附依据链接：${wrapLongUrl}\n\n\`\`\`\nconst token = "${wrapLongToken}";\n\`\`\``,
+  streaming: false,
+  reasoningComplete: true,
+});
+ok(Boolean(document.querySelector(".reasoning-summary")), "long-content reasoning still collapses to a summary");
+await click(document.querySelector(".reasoning-summary"));
+ok(Boolean(document.querySelector(".reasoning__body .md")), "completed long-content reasoning mounts the markdown path");
+ok(document.querySelector(".reasoning__body .md")?.textContent?.includes(wrapLongUrl) ?? false, "long URL survives intact in the markdown body");
+ok(Boolean(document.querySelector(".reasoning__body .code")), "fenced code inside reasoning mounts the code path the wrap rules target");
+ok(document.querySelector(".reasoning__body .code")?.textContent?.includes(wrapLongToken) ?? false, "long token survives intact inside reasoning code");
+
 // Standard shows the complete process while it is running.
 const streamingLine = "a".repeat(220);
 await render({
@@ -126,6 +179,7 @@ ok(Boolean(document.querySelector(".reasoning__body")), "standard experience exp
 ok(!document.querySelector(".reasoning-summary"), "running reasoning never substitutes a collapsed summary");
 ok(document.querySelector(".reasoning__body")?.textContent?.endsWith("LATEST_TOKEN") ?? false, "streaming body retains the newest tail of a long line");
 ok(document.querySelector(".reasoning__head")?.hasAttribute("data-running") ?? false, "header keeps the running state");
+ok(Boolean(document.querySelector(".reasoning__body .reasoning__stream-text")), "streaming body renders the plain-text wrap path element");
 
 await render({
   kind: "assistant",
