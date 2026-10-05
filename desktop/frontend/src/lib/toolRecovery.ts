@@ -18,7 +18,7 @@ export interface ToolRecoverySnapshot {
 export interface ToolRecoveryRequest {
   sessionPath: string; runtimeEpoch: string; revision: string;
   attemptId: string; inspectionId: string;
-  action: "inspect" | "confirm" | "reject" | "retry";
+  action: "inspect" | "confirm" | "reject" | "retry" | "dismiss";
 }
 export interface ToolRecoveryBindings {
   GetToolRecoveryForTab?(tabId: string): Promise<ToolRecoverySnapshot>;
