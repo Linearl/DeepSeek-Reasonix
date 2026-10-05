@@ -862,6 +862,18 @@ const CHECKS = [
   // heap pprof 间隔可调键：上游无此键，merge 后丢失只会让间隔退回硬编码，静默。
   { feature: "P19 heap pprof 间隔配置键接线", file: "desktop/perf_monitor.go", patterns: ["perfMonitorHeapDefaultSeconds", "PerfMonitorHeapIntervalSeconds", "time.NewTicker(m.heapInterval)"] },
 
+  // 任务482（wt-482-fence-removal，2026-10-05）：tool recovery fence 拦截已退役。
+  // 这些锚保护的 NOT 是 fence 本体（已删），而是「删除后必须继续存活」的共用面：
+  // 上游 merge 若把 fence 拦截带回来、或把下面的保留件当死代码删掉，都会静默破坏
+  // unattended 判定 / 老会话加载 / 跨会话分类。
+  { feature: "482 fence 退役：unattended 判定仍依赖豁免函数（拆留件）", file: "internal/agent/run_loop.go", patterns: ["a.turn.unattended = a.autopilot || toolRecoveryExempt(ctx)"] },
+  { feature: "482 fence 退役：豁免函数与 ctx 载体保留", file: "internal/agent/tool_recovery_records.go", patterns: ["func toolRecoveryExempt(ctx context.Context) bool", "func WithToolApprovalMode(", "func WithUnattendedRun(", "a.resolveSideEffectFreeInterruptedCalls()"] },
+  { feature: "482 fence 退役：tool_recovery 不在 host 白名单（铁律3）", file: "internal/boot/agent_preset.go", patterns: ["the former \"tool_recovery\" host-control entry"] },
+  { feature: "482 fence 退役：记录态类型保留（老会话加载依赖）", file: "internal/event/recovery.go", patterns: ["type RecoveryStatus struct", "RequiresUserDecision"] },
+  { feature: "482 fence 退役：老会话 runtime/recovery 投影保留", file: "internal/session/projection.go", patterns: ["func projectRuntimeRecovery"] },
+  { feature: "482 fence 退役：跨会话 recovery_required 分类保留", file: "internal/agent/session_subscribe.go", patterns: ["case \"recovery_required\":"] },
+  { feature: "482 fence 退役：turn 终态常量保留", file: "internal/event/turn_status.go", patterns: ['TurnRecoveryRequired TurnStatus = "recovery_required"'] },
+
 ];
 
 let failed = 0;
