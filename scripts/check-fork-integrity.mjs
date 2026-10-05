@@ -149,6 +149,14 @@ const CHECKS = [
   { feature: "任务149 预览内容/翻转纯函数", file: "desktop/frontend/src/lib/jumpPreview.ts", patterns: ["buildJumpPreviewContent", "jumpPreviewPlacement", "JUMP_PREVIEW_MAX_TOOLS"] },
 
   // ── Go 后端 ─────────────────────────────────────────────────────
+  // 任务 470：data-URL 图片被端点拒收的诊断链。openai client 在 400 时凭
+  // 「请求含内联图」这一请求侧事实给 APIError 追加可操作提示（响应体从不点名
+  // 图片），上游 merge 若拆掉任一环都会让 mimo 类端点的图片失败回到哑 400。
+  { feature: "任务470 内联图拒收诊断（APIError.Hint + 注解器）", file: "internal/provider/image_rejection.go", patterns: ["func AnnotateInlineImageRejection", "vision = false", "image-understanding"] },
+  { feature: "任务470 APIError.Hint 渲染", file: "internal/provider/retry.go", patterns: ["Hint                string", "if e.Hint != \"\" {"] },
+  { feature: "任务470 openai 接线+请求侧判定", file: "internal/provider/openai/openai.go", patterns: ["AnnotateInlineImageRejection", "func requestHasInlineDataImages"] },
+  { feature: "任务470 注解器测试", file: "internal/provider/image_rejection_test.go", patterns: ["TestAnnotateInlineImageRejection"] },
+  { feature: "任务470 openai 集成测试", file: "internal/provider/openai/image_rejection_test.go", patterns: ["TestStreamAnnotatesInlineImageRejection", "TestRequestHasInlineDataImages"] },
   { feature: "#9572 摘要安全前缀", file: "internal/agent/compact_projection.go", patterns: ["trigger != CompactionTriggerManual", "maximumSafeSummaryPrefixEnd"] },
   // parked: fork 分支不含该实现（1f8c3fe50 对齐时移除 / 上游另有设计）
   // { feature: "#9572 Unknown 网关回退", file: "internal/agent/compact_projection.go", patterns: ["a.lastAdmission().ObservedWindow > 0 || a.contextWindow > 0"] },
