@@ -7929,8 +7929,12 @@ url = %q
 	}
 	defer ctrl.Close()
 
-	deadline := time.Now().Add(3 * time.Second)
-	for !sharedHost.HasClient("h") && time.Now().Before(deadline) {
+	// The connect itself is loopback HTTP to an in-process server; the poll
+	// only has to outlast scheduler starvation under a loaded test run, not
+	// any network or spawn — three seconds was measured red-flagging machine
+	// speed there, so match the boot context's own bound.
+	clientDeadline := time.Now().Add(10 * time.Second)
+	for !sharedHost.HasClient("h") && time.Now().Before(clientDeadline) {
 		time.Sleep(25 * time.Millisecond)
 	}
 	if !sharedHost.HasClient("h") {
@@ -8518,18 +8522,28 @@ func newDesktopMCPStartGate(t *testing.T, handle func(attempt int, conn net.Conn
 	return listener.Addr().String(), attempts
 }
 
+// waitForDesktopMCPStartAttempt waits for the gated helper's n-th connection.
+// The bound exists to fail a genuine "never (re)started" bug, not to measure
+// the host: each attempt is a fresh spawn of the desktop test binary, and on
+// Windows a first-execution spawn (Defender scan, cold image) has been measured
+// spiking well past five seconds on otherwise idle machines — the serialization
+// contracts these gates pin are ordering properties, so the deadline only has
+// to be longer than any legitimate spawn. The elapsed log keeps the real spawn
+// cost visible when it does regress.
 func waitForDesktopMCPStartAttempt(t *testing.T, attempts <-chan int, want int) {
 	t.Helper()
-	deadline := time.NewTimer(5 * time.Second)
+	start := time.Now()
+	deadline := time.NewTimer(30 * time.Second)
 	defer deadline.Stop()
 	for {
 		select {
 		case got := <-attempts:
 			if got == want {
+				t.Logf("[timing] MCP start attempt %d arrived after %v", want, time.Since(start))
 				return
 			}
 		case <-deadline.C:
-			t.Fatalf("timed out waiting for MCP start attempt %d", want)
+			t.Fatalf("timed out waiting for MCP start attempt %d (waited %v)", want, time.Since(start))
 		}
 	}
 }
@@ -8924,23 +8938,27 @@ func TestBeginTabTurnWorkspaceRepairStaysOutsideLifecycleAdmission(t *testing.T)
 	case <-writerAdmissionLocked:
 		// The repair is still blocked on reconcileMu; acquiring the lifecycle
 		// writer here proves no slow repair/build I/O owns the read side.
-	case <-time.After(5 * time.Second):
+	case <-time.After(15 * time.Second):
 		fixture.tab.reconcileMu.Unlock()
 		t.Fatal("workspace repair held runtimeAdmissionMu while waiting")
 	}
 	fixture.tab.reconcileMu.Unlock()
 
+	// Completing the turn means a full controller rebuild, and on Windows that
+	// build's prompt stage alone has been measured at ~5.8s on an idle machine
+	// (instruction/skill scan), so the bound must clear a loaded-run rebuild
+	// while still failing a turn that never completes.
 	select {
 	case err := <-turnDone:
 		if err != nil {
 			t.Fatalf("beginTabTurn after workspace repair: %v", err)
 		}
-	case <-time.After(10 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("workspace repair did not complete after lifecycle writer released")
 	}
 	select {
 	case <-writerDone:
-	case <-time.After(5 * time.Second):
+	case <-time.After(15 * time.Second):
 		t.Fatal("lifecycle writer did not complete after repaired turn admission")
 	}
 }
@@ -9193,9 +9211,13 @@ func TestAuthorizeAndConnectMCPServerBlocksLateControllerBuild(t *testing.T) {
 	if err := <-authorizeDone; err != nil {
 		t.Fatalf("AuthorizeAndConnectMCPServer(h): %v", err)
 	}
+	// Completing the build means a full controller build, whose prompt stage
+	// alone has been measured at ~5.8s on an idle Windows machine and longer
+	// beside other boot-heavy tests in the same process — the bound must clear
+	// that while still failing a build that never runs.
 	select {
 	case <-buildDone:
-	case <-time.After(10 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("late controller build never ran after the authorization released the barrier")
 	}
 	if !fixture.sharedHost.HasClient("h") {
@@ -10371,8 +10393,14 @@ func TestRunShellForTabRoutesToRequestedTab(t *testing.T) {
 
 	activeEvents := make(chan event.Event, 16)
 	inactiveEvents := make(chan event.Event, 16)
-	activeCtrl := control.New(control.Options{Sink: event.FuncSink(func(e event.Event) { activeEvents <- e })})
-	inactiveCtrl := control.New(control.Options{Sink: event.FuncSink(func(e event.Event) { inactiveEvents <- e })})
+	// Pin the interpreter: the contract under test is tab routing, not host
+	// shell discovery. Leaving Shell zero makes RunShell resolve it inside the
+	// measured window, and on Windows that discovery (probe spawns) plus the
+	// first bash spawn alone has been measured at ~3.3s — over the turn
+	// deadline on an idle machine, so the test red-flagged machine speed.
+	shell := sandbox.ResolveShell("", "", nil)
+	activeCtrl := control.New(control.Options{Sink: event.FuncSink(func(e event.Event) { activeEvents <- e }), Shell: shell})
+	inactiveCtrl := control.New(control.Options{Sink: event.FuncSink(func(e event.Event) { inactiveEvents <- e }), Shell: shell})
 	defer activeCtrl.Close()
 	defer inactiveCtrl.Close()
 
@@ -10388,7 +10416,11 @@ func TestRunShellForTabRoutesToRequestedTab(t *testing.T) {
 	app.RunShellForTab("inactive", "echo route-test")
 
 	sawDispatch := false
-	deadline := time.After(3 * time.Second)
+	// The bound catches a turn that never completes (a routing bug), not the
+	// host's process-spawn speed: a bash spawn on Windows can legitimately take
+	// seconds under a Defender scan, so the deadline must clear that variance
+	// while still failing a hung turn quickly.
+	deadline := time.After(10 * time.Second)
 	for {
 		select {
 		case e := <-inactiveEvents:
