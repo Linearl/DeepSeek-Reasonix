@@ -1793,6 +1793,8 @@ type ExperimentFeatureId =
   | "todoSidebar"
   // Task 495: subagent panel package (dock tab + ended-card collapse).
   | "subagentPanel"
+  // 任务 507: subagent detail view (plan C off / plan A on).
+  | "subagentDetail"
   // Task 505: session graph wall (palette 跳转会话 entry + grid wall).
   | "sessionWall"
   | "promptHistoryPicker"
@@ -2023,6 +2025,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     { id: "todoSidebar", group: "ui", label: t("settings.todoSidebar"), on: Boolean(s.experimentalTodoSidebar) },
     // Task 495: subagent panel package (right-dock tab + ended-card collapse).
     { id: "subagentPanel", group: "ui", label: t("settings.subagentPanel"), on: Boolean(s.experimentalSubagentPanel) },
+    { id: "subagentDetail", group: "ui", label: t("settings.subagentDetail"), on: Boolean(s.experimentalSubagentDetail) },
     // Task 505: session graph wall (palette 跳转会话 entry + grid wall).
     { id: "sessionWall", group: "ui", label: t("settings.sessionWall"), on: Boolean(s.experimentalSessionWall) },
     // Task 261: composer history picker + narrowed ArrowUp (upstream #10425).
@@ -2691,6 +2694,26 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                 </div>
               </SettingsField>
             </>
+          )}
+          {selected === "subagentDetail" && (
+            <SettingsField label={t("settings.subagentDetail")} hint={t("settings.subagentDetailHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalSubagentDetail) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      // 任务 507：纯前端门——设置保存后的 onChanged 会重放
+                      // 快照（applyLabFlags），面板交互即时换态，无需重启。
+                      await app.SetExperimentalSubagentDetail(on);
+                    })}
+                  >
+                    {t(on ? "settings.subagentDetail.on" : "settings.subagentDetail.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
           )}
           {selected === "sessionWall" && (
             <SettingsField label={t("settings.sessionWall")} hint={t("settings.sessionWallHint")} icon={<Sparkles size={18} />}>
