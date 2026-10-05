@@ -939,6 +939,20 @@ const CHECKS = [
   { feature: "499 失效钩子删会话", file: "desktop/app.go", patterns: ["invalidated dag graph cache on session delete"] },
   { feature: "499 配置键字节上限双键+渲染", file: "internal/config/config.go", patterns: ["dag_graph_cache_max_mb", "dag_graph_cache_entry_max_mb"] },
 
+  // ── 任务463（wt-zcode-463 已合入；本锚 wt-463-collapse-all 补登记）──
+  // 「收起全部工作过程」折叠/展开双向开关：composer 按钮方向由 transcript
+  // 经 workProcessFoldState store 上报的真实折叠状态驱动。merge 若顶掉
+  // store 或上报接线，按钮静默退回单向（只收起不展开）且无编译错误——
+  // 锚定 store 三导出、聚合纯函数、双向渲染与事件、上报/注销接线、三语。
+  { feature: "463 折叠状态 store（上报/注销/订阅三导出）", file: "desktop/frontend/src/lib/workProcessFoldState.ts", patterns: ["export function publishWorkProcessFoldState", "export function clearWorkProcessFoldState", "export function useWorkProcessFoldAggregate"] },
+  { feature: "463 全折叠聚合纯函数（手动混合态不误报）", file: "desktop/frontend/src/lib/transcriptRows.ts", patterns: ["export function allWorkProcessesCollapsed("] },
+  { feature: "463 composer 双向按钮（方向标记+事件分叉+文案切换）", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["data-fold-state={allFoldsCollapsed ? \"collapsed\" : \"expanded\"}", "allFoldsCollapsed ? \"reasonix:expand-all-folds\" : \"reasonix:collapse-all-folds\"", "const foldToggleLabel = allFoldsCollapsed ? t(\"composer.expandAll\") : t(\"composer.collapseAll\");"] },
+  { feature: "463 transcript 状态上报+注销+展开接线", file: "desktop/frontend/src/components/Transcript.tsx", patterns: ["publishWorkProcessFoldState(tabId, {", "return () => clearWorkProcessFoldState(boundTabId);", "const handleExpandAll = useTranscriptCommand(() => {", "window.addEventListener(\"reasonix:expand-all-folds\", onExpandAll);"] },
+  { feature: "463 三语文案 zh", file: "desktop/frontend/src/locales/zh.ts", patterns: ["\"composer.expandAll\": \"展开全部工作过程\""] },
+  { feature: "463 三语文案 zh-TW", file: "desktop/frontend/src/locales/zh-TW.ts", patterns: ["\"composer.expandAll\": \"全部展開工作過程\""] },
+  { feature: "463 三语文案 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["\"composer.expandAll\": \"Expand all work processes\""] },
+  { feature: "463 双向开关测试存续", file: "desktop/frontend/src/__tests__/fold-toggle-button.test.tsx", patterns: ["allWorkProcessesCollapsed", "reasonix:expand-all-folds"] },
+
 ];
 
 let failed = 0;
