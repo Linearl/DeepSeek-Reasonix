@@ -109,6 +109,13 @@ type DesktopConfig struct {
 	// the extra tab plus the tab-visibility and wrap settings stay opt-in. The
 	// flag is snapshotted at boot, so changes take effect after a restart.
 	ExperimentalTodoSidebar bool `toml:"experimental_todo_sidebar"`
+	// ExperimentalSubagentPanel gates the subagent panel package (task 495):
+	// a persistent "子代理" right-dock tab (running/ended sections, 20-per-page
+	// ended list) plus default-collapsed transcript cards for ended subagents
+	// in deep mode. It ships off: with it off ended subagent cards keep the
+	// deep-mode expanded default and the dock has no extra tab. The flag is
+	// snapshotted at boot, so changes take effect after a restart.
+	ExperimentalSubagentPanel bool `toml:"experimental_subagent_panel"`
 	// ExperimentalPromptHistoryPicker gates the composer history-navigation
 	// safety rework (task 261, upstream #10425): the clock-icon history picker
 	// plus the narrowed plain-ArrowUp trigger (up enters history only from an
