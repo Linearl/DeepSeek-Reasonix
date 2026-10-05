@@ -136,7 +136,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// together. Writing the flag without the limit used to lose both: this renderer
 		// writes a fixed set of keys, so an unlisted one was dropped and the settings
 		// switch flipped straight back to off.
-		if c.Desktop.Autopilot || strings.TrimSpace(c.Desktop.AutopilotMaxRuntime) != "" || strings.TrimSpace(c.Desktop.AutopilotApprovalGrace) != "" || c.Desktop.AutopilotGuardInterval != 0 || strings.TrimSpace(c.Desktop.AutopilotGuardQuiescent) != "" {
+		if c.Desktop.Autopilot || strings.TrimSpace(c.Desktop.AutopilotMaxRuntime) != "" || strings.TrimSpace(c.Desktop.AutopilotApprovalGrace) != "" || c.Desktop.AutopilotGuardInterval != 0 || strings.TrimSpace(c.Desktop.AutopilotGuardQuiescent) != "" || c.Desktop.ExperimentalAutopilotAskTimeout || c.Desktop.AutopilotAskWaitSeconds != 0 {
 			fmt.Fprintf(&b, "autopilot = %v   # desktop: start new sessions unattended (requires autopilot_max_runtime)\n", c.Desktop.Autopilot)
 			if runtime := strings.TrimSpace(c.Desktop.AutopilotMaxRuntime); runtime != "" {
 				fmt.Fprintf(&b, "autopilot_max_runtime = %q   # desktop: wall-clock bound for an unattended run, e.g. 8h\n", runtime)
@@ -152,6 +152,15 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 			}
 			if policy := strings.TrimSpace(c.Desktop.AutopilotGuardQuiescent); policy != "" {
 				fmt.Fprintf(&b, "autopilot_guard_quiescent = %q   # desktop: guard self-close policy once the watched session goes quiet: disable | standby | destroy (task 326)\n", policy)
+			}
+			// Task 477: the ask-timeout sub-option rides the same block — the
+			// switch is opt-in (default off) and the seconds dial is only
+			// meaningful while it is on; 0/absent keeps the built-in 15s.
+			if c.Desktop.ExperimentalAutopilotAskTimeout || c.Desktop.AutopilotAskWaitSeconds != 0 {
+				fmt.Fprintf(&b, "experimental_autopilot_ask_timeout = %v   # desktop: an unattended run answers a timed-out high-risk ask with a refusal and continues, instead of the terminal stop (task 477)\n", c.Desktop.ExperimentalAutopilotAskTimeout)
+				if c.Desktop.AutopilotAskWaitSeconds != 0 {
+					fmt.Fprintf(&b, "autopilot_ask_wait_seconds = %d   # desktop: ask-timeout wait in seconds, 1..3600; 0/absent = 15 (task 477)\n", c.Desktop.AutopilotAskWaitSeconds)
+				}
 			}
 		}
 		fmt.Fprintf(&b, "check_updates = %v   # desktop: check for new versions on startup\n", c.DesktopCheckUpdates())

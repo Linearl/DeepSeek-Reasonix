@@ -98,3 +98,47 @@ func TestAutopilotGuardDialsRoundTripThroughRender(t *testing.T) {
 		}
 	}
 }
+
+// Task 477: the ask-timeout sub-option rides the same fixed-key autopilot
+// block — a key the renderer drops is a switch that flips itself back off.
+func TestAutopilotAskTimeoutRoundTripsThroughRender(t *testing.T) {
+	c := &Config{}
+	c.Desktop.ExperimentalAutopilotAskTimeout = true
+	c.Desktop.AutopilotAskWaitSeconds = 90
+
+	out := RenderTOMLForScope(c, RenderScopeUser)
+	for _, want := range []string{
+		"experimental_autopilot_ask_timeout = true",
+		"autopilot_ask_wait_seconds = 90",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("rendered user config is missing %q\n---\n%s", want, out)
+		}
+	}
+
+	// The off state must be recorded too, and a configured dial survives the
+	// switch going off.
+	off := &Config{}
+	off.Desktop.ExperimentalAutopilotAskTimeout = false
+	off.Desktop.AutopilotAskWaitSeconds = 90
+	out = RenderTOMLForScope(off, RenderScopeUser)
+	if !strings.Contains(out, "experimental_autopilot_ask_timeout = false") {
+		t.Fatalf("disabled ask timeout should still render its flag\n---\n%s", out)
+	}
+	if !strings.Contains(out, "autopilot_ask_wait_seconds = 90") {
+		t.Fatalf("the wait dial should survive while it is set\n---\n%s", out)
+	}
+}
+
+func TestAutopilotAskTimeoutUnsetStaysOutOfTheConfig(t *testing.T) {
+	c := &Config{}
+	out := RenderTOMLForScope(c, RenderScopeUser)
+	for _, key := range []string{
+		"experimental_autopilot_ask_timeout",
+		"autopilot_ask_wait_seconds",
+	} {
+		if strings.Contains(out, key) {
+			t.Fatalf("untouched config should not write the ask-timeout key %q\n---\n%s", key, out)
+		}
+	}
+}
