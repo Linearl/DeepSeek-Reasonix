@@ -80,6 +80,9 @@ type DesktopConfig struct {
 	// ExperimentalPerfMonitor is the settings-view mirror for
 	// Agent.ExperimentalPerfMonitor (task 184).
 	ExperimentalPerfMonitor bool `toml:"experimental_perf_monitor"`
+	// ExperimentalHeapHighProfile is the settings-view mirror for
+	// Agent.ExperimentalHeapHighProfile (task 501).
+	ExperimentalHeapHighProfile bool `toml:"experimental_heap_high_profile"`
 	// PerfMonitorIntervalSeconds is the settings-view mirror for the sampler
 	// interval (task 184). 0 = default 5s.
 	PerfMonitorIntervalSeconds int `toml:"perf_monitor_interval_seconds"`

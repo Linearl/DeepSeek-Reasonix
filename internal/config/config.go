@@ -1828,6 +1828,25 @@ type AgentConfig struct {
 	// mirror: this knob exists for hand-edited configs during memory
 	// investigations only.
 	PerfMonitorHeapIntervalSeconds int `toml:"perf_monitor_heap_interval_seconds"`
+	// ExperimentalHeapHighProfile arms the perf monitor's threshold-triggered
+	// heap snapshot (task 501): while the monitor samples, a workingSetMb or
+	// heapInuseMb reading at or above the threshold immediately writes
+	// logs/perf/heap-high-<MB>MB-<ts>.pprof (30-min same-tier cooldown, 1GB
+	// watermark tiers, 7-day retention). The 60s rolling heap pool keeps only
+	// the newest 3, so the profile of the inflation moment was being overwritten
+	// before anyone could collect it (the 499 investigation lost the 14.6GB
+	// scene this way) — the high-water pool exists so that cannot happen again.
+	// Off by default (fork rule 2): with it off the sampler is byte-for-byte
+	// today's behavior. It rides the perf monitor's sampling loop, so
+	// experimental_perf_monitor stays the master switch.
+	ExperimentalHeapHighProfile bool `toml:"experimental_heap_high_profile"`
+	// PerfMonitorHeapHighThresholdMB is the heap-high trigger threshold in MB
+	// (task 501); 0 keeps the built-in default (PerfMonitorHeapHighDefaultMB).
+	// Explicit values are clamped into 1024..131072 (see
+	// SetPerfMonitorHeapHighThresholdMB). No settings-view mirror: like
+	// perf_monitor_heap_interval_seconds, this knob exists for hand-edited
+	// configs during memory investigations only.
+	PerfMonitorHeapHighThresholdMB int `toml:"perf_monitor_heap_high_threshold_mb"`
 	// StalledIntentNudge enables the "you announced the next step instead of
 	// taking it" repair for ordinary sessions (task 117). Off by default:
 	// upstream only fires this under ContinuationExplicitFlow (Goal/review).
@@ -2211,6 +2230,16 @@ type ToolsConfig struct {
 	Search                   SearchConfig         `toml:"search"`
 	Shell                    ShellConfig          `toml:"shell"`
 }
+
+// Perf monitor heap-high trigger thresholds (task 501), shared by the
+// config-layer setter clamp and the desktop sampler so the two faces of the
+// knob cannot drift: default 6 GB (the band where the 14.9GB incident lived),
+// explicit values clamped into 1 GB..128 GB.
+const (
+	PerfMonitorHeapHighDefaultMB      = 6144
+	PerfMonitorHeapHighMinThresholdMB = 1024
+	PerfMonitorHeapHighMaxThresholdMB = 131072
+)
 
 const (
 	// defaultBashTimeoutSeconds is the foreground bash safety cap. The fork
