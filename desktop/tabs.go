@@ -3315,6 +3315,9 @@ func (a *App) closeTabRuntime(tabID string, allowDetach bool) error {
 		slog.Warn("desktop: session metadata before closing tab failed", "tab", tabID, "err", err)
 		return fmt.Errorf("save current session metadata before closing tab: %w", err)
 	}
+	// Task 499 ②: captured while the binding is still present — the controller
+	// path is blanked below before the runtime teardown this feeds.
+	closingSessionPath := tab.currentSessionPath()
 	// A terminal belongs to the visible chat tab, even when another tab points
 	// at the same project. Reap its PTY before removing the tab binding.
 	if a.terminals != nil {
@@ -3392,6 +3395,15 @@ func (a *App) closeTabRuntime(tabID string, allowDetach bool) error {
 		// on the last release the host is closed and its subprocesses exit.
 		a.releaseTabSharedHost(tab)
 		tab.releaseSessionLease()
+		// Task 499 ②: the runtime is gone — drop the process-wide replayed
+		// graph so a closed session stops pinning its (possibly hundreds-of-MB)
+		// DAG state. A live Session keeps its own reference; a reopen replays
+		// fresh. The detach branch above returned early: detached runtimes
+		// keep saving and must keep their cache entry.
+		if freed, ok := agent.InvalidateSessionGraph(closingSessionPath); ok {
+			slog.Info("desktop: invalidated dag graph cache on tab close",
+				"tab", tabID, "freed_bytes", freed)
+		}
 	}
 	if closeSink != nil {
 		closeSink.clearContext() // stop further emissions (nil ctx -> Emit becomes no-op)

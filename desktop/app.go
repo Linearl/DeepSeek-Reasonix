@@ -3434,6 +3434,13 @@ func (a *App) deleteSession(path string) error {
 	if err := botruntime.ForgetAutoSessionMappingsForPath(sessionPath); err != nil {
 		slog.Warn("desktop: failed to clear auto bot session mapping", "err", err)
 	}
+	// Task 499 ②: the session is gone — its replayed graph must not stay
+	// pinned in the process cache (the third never-invalidated path the
+	// 10-05 diagnosis named alongside tab close and detached release).
+	if freed, ok := agent.InvalidateSessionGraph(sessionPath); ok {
+		slog.Info("desktop: invalidated dag graph cache on session delete",
+			"path", sessionPath, "freed_bytes", freed)
+	}
 	if fallback.needs {
 		fallback = a.sessionDeleteFallbackTarget(fallback)
 		if err := a.openFallbackRuntime(fallback); err != nil {

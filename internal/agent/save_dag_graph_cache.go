@@ -5,6 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"reasonix/internal/store"
 )
 
 // Task 196: an in-process cache of fully replayed session graphs, keyed by the
@@ -278,4 +280,44 @@ func SessionGraphCacheByteStats() (bytesNow, totalCap, entryCap int64, entries i
 		currentSessionGraphCacheMaxBytes(), currentSessionGraphCacheEntryMaxBytes(),
 		len(sessionGraphCache),
 		sessionGraphCacheEntryRefusals.Load()
+}
+
+// Task 499 ②: the cache had no invalidation point anywhere — a closed tab, a
+// detached runtime release, a deleted session all left the fully replayed
+// graph pinned here forever, which is the retention half of the 10-05 memory
+// bloat (14.6 GB heap). Hosts call InvalidateSessionGraph when a session's
+// runtime is torn down; the next open replays fresh, which is exactly the
+// pre-cache behaviour for a session nobody holds.
+var sessionGraphCacheInvalidations atomic.Uint64
+
+// InvalidateSessionGraph drops the cached graph for one session (the session
+// path, not the log path — the same input the save path takes). It reports
+// the accounted bytes freed and whether an entry existed. Dropping an entry
+// is always correct: a live Session keeps its own state reference, and any
+// fresh reader falls through to a full replay (the memory/time trade the
+// task prescribes for closed sessions).
+func InvalidateSessionGraph(sessionPath string) (freedBytes int64, ok bool) {
+	logPath := store.SessionEventLog(sessionPath)
+	key := sessionGraphCacheKey(logPath)
+	if key == "" {
+		return 0, false
+	}
+	sessionGraphCacheMu.Lock()
+	defer sessionGraphCacheMu.Unlock()
+	entry, exists := sessionGraphCache[key]
+	if !exists || entry == nil {
+		return 0, false
+	}
+	freed := entry.approxBytes
+	delete(sessionGraphCache, key)
+	sessionGraphCacheBytes -= freed
+	sessionGraphCacheInvalidations.Add(1)
+	return freed, true
+}
+
+// SessionGraphCacheInvalidations reports the cumulative invalidate calls that
+// dropped an entry (task 499 on-device evidence: desktop close paths must
+// move this counter).
+func SessionGraphCacheInvalidations() uint64 {
+	return sessionGraphCacheInvalidations.Load()
 }

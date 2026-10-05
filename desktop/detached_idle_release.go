@@ -5,6 +5,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"reasonix/internal/agent"
 )
 
 // Task 308-O4: detached/idle runtime release. Closing a tab moves its live
@@ -136,6 +138,9 @@ func (a *App) releaseDetachedSession(key string, tab *WorkspaceTab, idle time.Du
 	}
 
 	hostKey := takeTabSharedHostKey(tab)
+	// Task 499 ②: captured before the teardown — ctrl.Close() and the lease
+	// swap below blank both sources currentSessionPath reads.
+	closingSessionPath := tab.currentSessionPath()
 	a.mu.Lock()
 	if a.detachedSessions[key] != tab {
 		// Lost a race (reattach or removal) — the runtime has an owner again.
@@ -164,6 +169,13 @@ func (a *App) releaseDetachedSession(key string, tab *WorkspaceTab, idle time.Du
 	// final authority-guarded save has drained before the lock unlocks.
 	if old := tab.swapSessionLease(nil); old != nil {
 		old.Release()
+	}
+	// Task 499 ②: the runtime is released — drop the process-wide replayed
+	// graph with it. The save above (save-chain alignment) already made the
+	// durable file current, so a reopen replays fresh with nothing lost.
+	if freed, ok := agent.InvalidateSessionGraph(closingSessionPath); ok {
+		slog.Info("desktop: invalidated dag graph cache on detached release",
+			"key", key, "freed_bytes", freed)
 	}
 	slog.Info("desktop: detached session released (idle)",
 		"key", key, "idleMinutes", int(idle.Minutes()))
