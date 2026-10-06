@@ -3458,6 +3458,9 @@ export default function App() {
   // the lease silently. The Go watcher now prompts here; timeout inside the
   // Go watcher (9s, matching serve's poll) resolves as a refusal, so the
   // dialog itself stays purely manual with explicit allow/deny.
+  // Task 539: the deadline note used to be a static line — the dialog now
+  // runs a real 9s countdown on the 拒绝 button and resolves false at zero,
+  // matching the Go gate's refusal instead of the user reading a frozen "9".
   const { confirm: confirmTakeover, dialog: takeoverDialog } = useConfirmDialog();
   useEffect(() => {
     if (typeof window === "undefined" || !window.runtime) return;
@@ -3473,12 +3476,13 @@ export default function App() {
             影响范围：接管后本机会话进入只读（重启不会残留），下一条本地消息可重新获取控制权；若当前正在生成，
             <b>接受会先中断本轮回复</b>再交权。
             <br />
-            9 秒内未作处理将自动拒绝该请求。
+            倒计时结束未作处理将自动拒绝该请求。
           </span>
         ),
         confirmLabel: "允许接管",
         cancelLabel: "拒绝",
         tone: "danger",
+        autoCancelAfterMs: 9000,
       });
       try {
         await app.ResolveTakeoverDecision(d.marker, accept);

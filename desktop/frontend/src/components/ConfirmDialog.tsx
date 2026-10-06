@@ -17,6 +17,15 @@ export type ConfirmDialogRequest = {
    * resolves true (auto-continue). Set to 0/omit for a pure manual dialog.
    */
   autoConfirmAfterMs?: number;
+  /**
+   * Task 539: countdown then auto-CANCEL — the mirror of autoConfirmAfterMs
+   * for prompts whose deadline means refusal (remote takeover: the Go gate
+   * already refuses an unanswered prompt after 9s, so the dialog must resolve
+   * false on its own deadline instead of showing a static "9s" note).
+   * Mutually exclusive with autoConfirmAfterMs; the countdown renders on the
+   * cancel button.
+   */
+  autoCancelAfterMs?: number;
 };
 
 type PendingConfirmation = ConfirmDialogRequest & {
@@ -29,7 +38,10 @@ function ConfirmDialog({ request, onResolve }: { request: ConfirmDialogRequest; 
   const cancelRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
-  const autoMs = Math.max(0, request.autoConfirmAfterMs ?? 0);
+  const autoMs = Math.max(0, request.autoConfirmAfterMs ?? request.autoCancelAfterMs ?? 0);
+  // Deadline semantics: autoCancelAfterMs resolves false (refusal), the
+  // classic autoConfirmAfterMs resolves true (continue).
+  const autoResolvesConfirm = request.autoCancelAfterMs == null;
   const [remainingMs, setRemainingMs] = useState(autoMs);
   const resolveRef = useRef(onResolve);
   resolveRef.current = onResolve;
@@ -51,13 +63,14 @@ function ConfirmDialog({ request, onResolve }: { request: ConfirmDialogRequest; 
       if (left <= 0) {
         setRemainingMs(0);
         window.clearInterval(timer);
-        // Auto-confirm on timeout: user did not cancel in time.
-        resolveRef.current(true);
+        // Deadline hit: auto-confirm (task 129) or auto-cancel (task 539).
+        resolveRef.current(autoResolvesConfirm);
         return;
       }
       setRemainingMs(left);
     }, 200);
     return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoMs]);
 
   useEffect(() => {
@@ -85,9 +98,13 @@ function ConfirmDialog({ request, onResolve }: { request: ConfirmDialogRequest; 
   }, [onResolve]);
 
   const secondsLeft = Math.ceil(remainingMs / 1000);
-  const confirmText = remainingMs > 0
+  const confirmText = remainingMs > 0 && request.autoConfirmAfterMs != null
     ? `${request.confirmLabel} (${secondsLeft}s)`
     : request.confirmLabel;
+  // Task 539: in auto-cancel mode the countdown lives on the cancel button.
+  const cancelText = remainingMs > 0 && request.autoCancelAfterMs != null
+    ? `${request.cancelLabel} (${secondsLeft}s)`
+    : request.cancelLabel;
 
   return createPortal(
     <div
@@ -108,7 +125,7 @@ function ConfirmDialog({ request, onResolve }: { request: ConfirmDialogRequest; 
         <div className="reasonix-confirm-dialog__message" id={messageId}>{request.message}</div>
         <div className="modal__actions reasonix-confirm-dialog__actions">
           <button ref={cancelRef} className="btn btn--small" type="button" onClick={() => onResolve(false)}>
-            {request.cancelLabel}
+            {cancelText}
           </button>
           <button
             ref={confirmRef}
