@@ -102,7 +102,9 @@ func TestDeliverRejectsOverLimitHop(t *testing.T) {
 	if _, err := mail.Deliver(context.Background(), MailMessage{To: "sc_a", Body: "x", Hop: MaxHop + 1}); err == nil {
 		t.Fatal("want hop limit error")
 	}
-	if _, err := mail.Deliver(context.Background(), MailMessage{To: "sc_a", Body: "x", Hop: MaxHop}); err != nil {
+	// 任务548 P0-1: the shape check (hop>0 needs a parent threadId) sits before
+	// the ceiling check for well-formed mail, so the boundary probe names a thread.
+	if _, err := mail.Deliver(context.Background(), MailMessage{To: "sc_a", Body: "x", Hop: MaxHop, ThreadID: "msg_parent"}); err != nil {
 		t.Fatalf("boundary hop must pass: %v", err)
 	}
 }

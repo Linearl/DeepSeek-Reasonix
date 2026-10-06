@@ -138,3 +138,98 @@ func TestTalkToSessionSchemaNamesOwnInboundThreadId(t *testing.T) {
 		t.Fatalf("old ambiguous thread_id copy must be gone (task 535), got: %s", s)
 	}
 }
+
+// TestTalkToSessionRefusesHopWithoutThreadId: 任务548 P0-1（源头拒发）——
+// hop>0 却不带 thread_id 的组合曾在发送侧被静默接受，落盘后被消费泵的溯源
+// 门丢弃：发送方只看到 "queued"（事后核查 seen 还命中——拒收也结算游标），
+// 目标永远收不到（2026-10-06 事故四封派单）。修复后发送即拒、错误可见，
+// 模型能自纠重发；任何情况下对端收件箱都不得出现这封信。
+func TestTalkToSessionRefusesHopWithoutThreadId(t *testing.T) {
+	dir := t.TempDir()
+	mailDir := filepath.Join(dir, "mail")
+	self := filepath.Join(dir, "self.jsonl")
+	other := filepath.Join(dir, "other.jsonl")
+	writeEmpty(t, self)
+	writeEmpty(t, other)
+	otherID, err := EnsureContactID(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selfID, err := EnsureContactID(self)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	store := sessioncollab.NewMailStore(mailDir)
+	sendTool := NewTalkToSessionTool(SessionCollabConfig{
+		Enabled:            true,
+		SessionDir:         dir,
+		WorkspaceRoot:      dir,
+		MailDir:            mailDir,
+		ResolveSessionPath: func() string { return self },
+	})
+
+	// 事故形态：hop=2、无 thread_id——发送即拒，错误里给出可执行的下一步。
+	args, err := json.Marshal(map[string]any{"to": otherID, "message": "3 支待合并", "hop": 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = sendTool.Execute(context.Background(), args)
+	if err == nil {
+		t.Fatal("hop>0 without thread_id must be refused at send time")
+	}
+	if !strings.Contains(err.Error(), "thread_id") || !strings.Contains(err.Error(), "hop") {
+		t.Fatalf("the refusal must name hop and thread_id so the model can self-correct: %v", err)
+	}
+	box, err := store.Inbox(otherID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(box) != 0 {
+		t.Fatalf("a refused send must not be written: peer inbox holds %d messages", len(box))
+	}
+
+	// 合法路径零回归一：hop=0 新链照常通过。
+	args, err = json.Marshal(map[string]any{"to": otherID, "message": "new chain", "hop": 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := sendTool.Execute(context.Background(), args); err != nil {
+		t.Fatalf("hop=0 new chain must keep working: %v (%s)", err, out)
+	}
+
+	// 合法路径零回归二：hop>0 + 收到的入向消息 id 照常通过（对端先来一封，
+	// 本端按其 thread 回信）。
+	inbound, err := store.Deliver(context.Background(), sessioncollab.MailMessage{To: selfID, From: otherID, Body: "ping"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	args, err = json.Marshal(map[string]any{"to": otherID, "message": "pong", "thread_id": inbound.ID, "hop": 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := sendTool.Execute(context.Background(), args); err != nil {
+		t.Fatalf("hop>0 with the inbound thread_id must keep working: %v (%s)", err, out)
+	}
+	box, err = store.Inbox(otherID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(box) != 2 {
+		t.Fatalf("legal sends must land exactly once each: peer inbox holds %d", len(box))
+	}
+}
+
+// TestTalkToSessionSchemaHopRequiresThreadId: 任务548 —— hop 参数文档必须写明
+// 「hop>0 必须携带父 thread_id，否则发送时即拒」，让模型在读文档阶段就能避坑
+// （关闭态零行为：schema 为静态文本，不得依赖开关状态）。
+func TestTalkToSessionSchemaHopRequiresThreadId(t *testing.T) {
+	on := NewTalkToSessionTool(SessionCollabConfig{Enabled: true}).Schema()
+	off := NewTalkToSessionTool(SessionCollabConfig{Enabled: false}).Schema()
+	if string(on) != string(off) {
+		t.Fatalf("schema must not depend on the gate state: on=%s off=%s", on, off)
+	}
+	if !strings.Contains(string(on), "hop>0 REQUIRES thread_id") {
+		t.Fatalf("schema must pin the hop/thread_id coupling (task 548), got: %s", on)
+	}
+}

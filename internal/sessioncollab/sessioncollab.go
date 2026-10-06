@@ -779,6 +779,16 @@ func (s *MailStore) dedupeResend(msg MailMessage) (MailMessage, bool) {
 	return MailMessage{}, false
 }
 
+// ErrHopWithoutParentThread marks a send that claims chain depth (hop>0)
+// without naming a parent thread. Task 548 P0-1: such mail used to be accepted
+// at write time, its empty threadId silently stamped to its own id, and only
+// then dropped by the consuming pump's provenance gate ("hop=N claimed but
+// threadId does not name a parent") — with the refusal still settling the seen
+// cursor, so the sender auditing "SEEN" measured its own dead letter. Deliver
+// now refuses the combination outright: the error rides the caller's return
+// value (the model can self-correct and resend) and nothing reaches disk.
+var ErrHopWithoutParentThread = errors.New("hop claimed without a parent thread")
+
 // Deliver appends a message for the target contact. hop is the sender's chain
 // depth; the store's ceiling + 1 is refused. ctx is the sender's request
 // context: a user stop ends a contended lock wait immediately (task 461 P1).
@@ -811,6 +821,15 @@ func (s *MailStore) Deliver(ctx context.Context, msg MailMessage) (MailMessage, 
 	}
 	if msg.ID == "" {
 		msg.ID = newID("msg_")
+	}
+	// 任务548 P0-1（源头拒发）：「声称链深（hop>0）却无可解析父线程」在这里
+	// 即拒，与消费泵 verifyHop 的判据精确对偶（threadId 为空或自指 ⇒ 盖章后
+	// isReply=false，而 hop>0 的 isReply=false 必被溯源门拒收）。历史上这类
+	// 消息被静默盖章落盘、随后被泵丢弃且拒收仍结算 seen——发送方看到的
+	// "queued"+"SEEN" 全部失真。拒绝必须发生在写盘之前。
+	if msg.Hop > 0 && (strings.TrimSpace(msg.ThreadID) == "" || msg.ThreadID == msg.ID) {
+		return MailMessage{}, fmt.Errorf("%w: hop=%d claimed but threadId does not name a parent — pass the thread_id of the inbound message you are answering, or omit hop (hop=0) to start a new chain",
+			ErrHopWithoutParentThread, msg.Hop)
 	}
 	// A message that does not continue an existing thread starts one, so a
 	// synchronous waiter always has an id to match its answer against.
