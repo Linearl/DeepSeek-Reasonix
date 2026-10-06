@@ -1,7 +1,9 @@
-// The session recall index: the recall pool read and tokenized once per
-// memory snapshot, so each user turn's automatic recall costs zero disk IO.
-// Markdown files stay the source of truth — every write path reloads the
-// snapshot through memory.Load, which rebuilds this index with it.
+// The session recall index: the recall pool is read and tokenized once per
+// memory snapshot, lazily on the first recall and cached on the Set (378B1) —
+// boot and memory writes no longer pay for a recall that may never fire.
+// Markdown files stay the source of truth — every write path swaps the
+// snapshot through memory.Load, and the replacement snapshot builds its index
+// from the latest pool on its own first recall.
 package memory
 
 import (
@@ -44,8 +46,10 @@ func BuildRecallIndex(store Store) *RecallIndex {
 	return index
 }
 
-// AutoRecall runs automatic recall against this snapshot's prebuilt index —
-// the per-turn path. Semantics are identical to the package-level AutoRecall.
+// AutoRecall runs automatic recall against this snapshot's lazily built index —
+// the per-turn path. The first call builds and caches the index (see
+// Set.recallIndex); subsequent turns serve from the cache with zero disk IO.
+// Semantics are identical to the package-level AutoRecall.
 func (s *Set) AutoRecall(query string, opts RecallOptions) RecallResult {
 	result := RecallResult{Query: strings.TrimSpace(query), CharBudget: recallCharBudget(opts.MaxChars)}
 	if genericRecallQuery(result.Query) {
@@ -56,11 +60,5 @@ func (s *Set) AutoRecall(query string, opts RecallOptions) RecallResult {
 		result.Suppressed = "memory store is empty"
 		return result
 	}
-	index := s.recall
-	if index == nil {
-		// Hand-built sets (tests, embedders) carry no prebuilt index; the
-		// Load path always does, so per-turn recall stays disk-free there.
-		index = BuildRecallIndex(s.Store)
-	}
-	return autoRecallIndexed(index, result, opts)
+	return autoRecallIndexed(s.recallIndex(), result, opts)
 }

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"reasonix/internal/instruction"
 )
@@ -23,9 +24,15 @@ type Set struct {
 	UserDir                string   // user config root (may be "")
 	InstructionDiagnostics []instruction.Diagnostic
 
-	// recall is the snapshot's prebuilt retrieval index (nil when memory is
-	// hidden or empty); Set.AutoRecall serves each turn from it without disk.
-	recall *RecallIndex
+	// recall is the snapshot's lazily built retrieval index; recallBuilt
+	// distinguishes "not built yet" from "built, memory store is empty".
+	// 378B1: Load no longer builds it eagerly — boot, compaction reloads, and
+	// every memory write used to pay a full pool read + tokenize (measured
+	// 5.7MB/49k allocs per build on a 200-fact pool) even when no recall ever
+	// fires. The first Set.AutoRecall builds it once and caches it here.
+	recallMu    sync.Mutex
+	recall      *RecallIndex
+	recallBuilt bool
 }
 
 // Options configures discovery. CWD defaults to "." and UserDir is the user
@@ -61,8 +68,26 @@ func Load(opts Options) *Set {
 		CWD:                    cwd,
 		UserDir:                opts.UserDir,
 		InstructionDiagnostics: resolved.Diagnostics,
-		recall:                 BuildRecallIndex(store),
 	}
+}
+
+// recallIndex returns this snapshot's recall index, building and caching it on
+// the first call. Invalidation is the snapshot swap itself: every memory write
+// path replaces the Set through Load, so a stale index never survives a write —
+// the replacement snapshot builds its own index from the latest disk state on
+// its first recall. The built flag keeps an empty store from rescanning disk on
+// every recall.
+func (s *Set) recallIndex() *RecallIndex {
+	if s == nil {
+		return nil
+	}
+	s.recallMu.Lock()
+	defer s.recallMu.Unlock()
+	if !s.recallBuilt {
+		s.recall = BuildRecallIndex(s.Store)
+		s.recallBuilt = true
+	}
+	return s.recall
 }
 
 // DocPath returns the doc-memory file a given scope writes to. To avoid splitting
