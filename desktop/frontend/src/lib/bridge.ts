@@ -1028,6 +1028,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 501: threshold-triggered heap snapshot (experimental, default off).
   SetExperimentalHeapHighProfile(enabled: boolean): Promise<void>;
   SetPerfMonitorIntervalSeconds(seconds: number): Promise<void>;
+  // Task 528: heap-high trigger threshold in MiB (config layer clamps
+  // explicit values into 1024..131072; 0 restores the 6GB default).
+  SetPerfMonitorHeapHighThresholdMB(mb: number): Promise<void>;
   SaveHeapProfile(): Promise<string>;
   // Task 338: monitoring-panel memory pages (WS series + heap pie).
   PerfTimeSeries(windowMinutes: number): Promise<PerfTimeSeriesView>;
@@ -5471,6 +5474,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalPerfMonitor() {},
     async SetExperimentalHeapHighProfile() {},
     async SetPerfMonitorIntervalSeconds() {},
+    async SetPerfMonitorHeapHighThresholdMB() {},
     async SaveHeapProfile() { return ""; },
     // Task 338 mocks: honest empty states (the dev shell has no sampler).
     async PerfTimeSeries() { return { enabled: false, available: false, intervalSeconds: 5, points: [] }; },

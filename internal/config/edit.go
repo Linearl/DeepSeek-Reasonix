@@ -525,7 +525,9 @@ func (c *Config) SetExperimentalHeapHighProfile(enabled bool) error {
 // (task 501). 0 means "back to the built-in default (6GB)" and is stored
 // as-is; any explicit value is clamped into 1GB..128GB — a hand-edited config
 // must not arm a trigger that fires on every sample, nor set a bar no
-// realistic working set reaches.
+// realistic working set reaches. Task 528: the settings panel gained a numeric
+// input for this knob, so the setter now also maintains the settings-view
+// mirror under [desktop]; the monitor itself keeps reading the [agent] copy.
 func (c *Config) SetPerfMonitorHeapHighThresholdMB(mb int) error {
 	if mb > 0 {
 		if mb < PerfMonitorHeapHighMinThresholdMB {
@@ -535,6 +537,7 @@ func (c *Config) SetPerfMonitorHeapHighThresholdMB(mb int) error {
 			mb = PerfMonitorHeapHighMaxThresholdMB
 		}
 	}
+	c.Desktop.PerfMonitorHeapHighThresholdMB = mb
 	c.Agent.PerfMonitorHeapHighThresholdMB = mb
 	return nil
 }

@@ -86,6 +86,11 @@ type DesktopConfig struct {
 	// PerfMonitorIntervalSeconds is the settings-view mirror for the sampler
 	// interval (task 184). 0 = default 5s.
 	PerfMonitorIntervalSeconds int `toml:"perf_monitor_interval_seconds"`
+	// PerfMonitorHeapHighThresholdMB is the settings-view mirror for
+	// Agent.PerfMonitorHeapHighThresholdMB (task 528): the settings panel's
+	// numeric input reads this copy, while the monitor itself keeps reading the
+	// [agent] value at boot. 0 = built-in default 6GB.
+	PerfMonitorHeapHighThresholdMB int `toml:"perf_monitor_heap_high_threshold_mb"`
 	// ExperimentalFeedback exposes the agent submit_feedback tool and the desktop
 	// "意见箱" panel (task 121). It ships off: feedback is a local inbox, not a
 	// product surface, so both the tool and the viewer stay behind an opt-in.

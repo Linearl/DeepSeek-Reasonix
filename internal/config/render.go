@@ -264,6 +264,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "experimental_recovery_orphan_sweep = %v   # desktop: legacy key (task 244 B4), migrated into experimental_orphan_handling (task 449)\n", c.Desktop.ExperimentalRecoveryOrphanSweep)
 		fmt.Fprintf(&b, "experimental_runtime_reuse = %v   # desktop: settings-view mirror of [agent] experimental_runtime_reuse (task 363A)\n", c.Desktop.ExperimentalRuntimeReuse)
 		fmt.Fprintf(&b, "perf_monitor_interval_seconds = %d   # desktop: settings-view mirror of [agent] perf_monitor_interval_seconds (task 184; 0 = 5s)\n", c.Desktop.PerfMonitorIntervalSeconds)
+		fmt.Fprintf(&b, "perf_monitor_heap_high_threshold_mb = %d   # desktop: settings-view mirror of [agent] perf_monitor_heap_high_threshold_mb (task 528; 0 = built-in default 6144)\n", c.Desktop.PerfMonitorHeapHighThresholdMB)
 		fmt.Fprintf(&b, "session_collab_hop_limit = %d   # desktop: settings-view mirror of [agent] session_collab_hop_limit (task 204)\n", c.Desktop.SessionCollabHopLimit)
 		fmt.Fprintf(&b, "detached_idle_release_minutes = %d   # desktop: settings-view mirror of [agent] detached_idle_release_minutes (task 308-O4; 0 = never release)\n", c.Desktop.DetachedIdleReleaseMinutes)
 		fmt.Fprintf(&b, "go_mem_limit_mb = %d   # desktop: settings-view mirror of [agent] go_mem_limit_mb (task 308-O3; 0 = unbounded)\n", c.Desktop.GoMemLimitMB)

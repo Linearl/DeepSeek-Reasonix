@@ -975,6 +975,15 @@ const CHECKS = [
   { feature: "501 高峰快照触发与防风暴门（单调新高水线+冷却）", file: "desktop/perf_monitor.go", patterns: ["func (m *perfMonitor) maybeCaptureHeapHigh", "if tier <= m.heapHighPeakTier && now.Sub(m.lastHeapHighAt) < perfMonitorHeapHighCooldown {", "func (m *perfMonitor) writeHeapHighProfile"] },
   { feature: "501 两池分离（定时池滚动不触 heap-high，每日清理接管 7 天保留）", file: "desktop/perf_monitor.go", patterns: ["perfMonitorHeapHighPrefix", "strings.HasPrefix(name, perfMonitorHeapHighPrefix)"] },
   { feature: "501 配置键双面开关+阈值钳制", file: "internal/config/config.go", patterns: ["experimental_heap_high_profile", "perf_monitor_heap_high_threshold_mb", "PerfMonitorHeapHighDefaultMB"] },
+  // ── 任务528（wt-528-heap-threshold-ui）──────────────────────────
+  // 501 的阈值原本只能手改 config.toml（提示文案却写「可调」）。本任务补 UI
+  // 链路：setter 双写 [desktop] mirror、渲染表 mirror 行、设置面板数值输入
+  // （关闭态禁用）。若 merge 顶掉任一环，保存会被静默丢弃或输入框消失且无
+  // 编译错误——锚定双写、mirror 渲染行、视图回读与前端输入。
+  { feature: "528 heap 阈值 setter 双写（[agent] + [desktop] mirror）", file: "internal/config/edit.go", patterns: ["c.Desktop.PerfMonitorHeapHighThresholdMB = mb", "c.Agent.PerfMonitorHeapHighThresholdMB = mb"] },
+  { feature: "528 heap 阈值渲染表 mirror 行", file: "internal/config/render.go", patterns: ["perf_monitor_heap_high_threshold_mb = %d   # desktop: settings-view mirror of [agent] perf_monitor_heap_high_threshold_mb (task 528; 0 = built-in default 6144)"] },
+  { feature: "528 heap 阈值视图回读+App setter", file: "desktop/settings_preferences.go", patterns: ["func perfMonitorHeapHighThresholdForView", "func (a *App) SetPerfMonitorHeapHighThresholdMB"] },
+  { feature: "528 heap 阈值前端输入（关闭态禁用+重启提示）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["await app.SetPerfMonitorHeapHighThresholdMB(perfHeapHighThreshold)", "disabled={busy || !Boolean(s.experimentalHeapHighProfile)}"] },
   // ── 378B1（wt-378b1-recall-lazy）────────────────────────────────
   // 召回索引懒构建+缓存是 378 基线内存治理的第一件：Load 去预构建、首召构建
   // 缓存、失效即换快照。若被 merge 顶回「Load 预构建」，无编译错误、行为仍

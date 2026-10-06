@@ -123,6 +123,9 @@ export interface SettingsView {
   perfMonitorIntervalSeconds?: number;
   // Task 501: threshold-triggered heap snapshot (experimental, default off).
   experimentalHeapHighProfile?: boolean;
+  // Task 528: heap-high trigger threshold in MiB (0 = built-in default 6144;
+  // explicit values clamped into 1024..131072 by the config layer).
+  perfMonitorHeapHighThresholdMB?: number;
   // Task 204: cross-session chain ceiling (3..1000, default 5).
   sessionCollabHopLimit?: number;
   // Task 308-O4: detached idle runtime release threshold (minutes; 0 = never).

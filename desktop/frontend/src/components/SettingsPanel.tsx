@@ -1869,6 +1869,10 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Task 184: the sampler interval is a number the user can edit; the config layer
   // clamps it, so the box can hold an intermediate value while typing.
   const [perfInterval, setPerfInterval] = useState<number>(s.perfMonitorIntervalSeconds ?? 5);
+  // Task 528: the heap-high trigger threshold is a number the user can edit
+  // (MiB); the config layer clamps into 1024..131072. A 0 readback means the
+  // built-in 6GB default, so the box starts there.
+  const [perfHeapHighThreshold, setPerfHeapHighThreshold] = useState<number>(s.perfMonitorHeapHighThresholdMB ?? 6144);
   // Task 318.2: the fold-cooldown minutes only matter while the switch is on;
   // the config layer normalizes 0 → 10, so the box may hold an intermediate
   // value while typing.
@@ -2510,6 +2514,24 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                     </button>
                   ))}
                 </SettingsOptions>
+              </SettingsField>
+              {/* Task 528: the trigger threshold gets a real input (MiB). It only
+                  matters while the 501 switch is on, so the box stays disabled
+                  otherwise (zero behaviour when off); the config layer clamps
+                  into 1024..131072, and a change needs a restart to arm. */}
+              <SettingsField label={t("settings.perfMonitor.heapHighThreshold")} hint={t("settings.perfMonitor.heapHighThresholdHint")} icon={<Sparkles size={18} />}>
+                <input
+                  type="number"
+                  min={1024}
+                  max={131072}
+                  step={1024}
+                  value={perfHeapHighThreshold}
+                  disabled={busy || !Boolean(s.experimentalHeapHighProfile)}
+                  onChange={(event) => setPerfHeapHighThreshold(Number(event.target.value))}
+                  onBlur={() => void apply(async () => {
+                    await app.SetPerfMonitorHeapHighThresholdMB(perfHeapHighThreshold);
+                  })}
+                />
               </SettingsField>
               {/* Task 338: WS series + heap pie, read-only over the existing
                   samples (no new sampling cost; the switch stays authoritative). */}
