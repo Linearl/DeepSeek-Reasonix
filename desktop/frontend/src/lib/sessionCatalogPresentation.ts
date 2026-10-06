@@ -10,7 +10,13 @@ export function sessionCatalogNotice(s: SessionCatalogStatus): SessionCatalogNot
       ? (s.canRebuild ? "rebuild" : "failed")
       : (s.unindexedTargetCount ?? 0) > 0
         ? "indexing"
-        : (repairActive ?? (repairDeferred === undefined && repairBlocked === undefined ? s.repairPending : 0)) > 0
+        // Task 550 ①: only the precise per-state repair counters may raise a
+        // repair notice. The legacy repairPending field counts every
+        // unknown-turn session whether or not a repair is queued, so a missing
+        // repairActive must read as 0 — the old fallback manufactured a stuck
+        // "repairing history" banner from a stale field, and two renders of the
+        // same catalog could disagree about the banner (the flash).
+        : (repairActive ?? 0) > 0
           ? "repair-active"
           : (repairDeferred ?? 0) > 0
             ? "repair-deferred"
