@@ -406,6 +406,14 @@ const CHECKS = [
   { feature: "任务549 桌面桥接 projectionValid", file: "desktop/context_maintenance.go", patterns: ["json:\"projectionValid\""] },
   { feature: "任务549 面板主读数 projected+失效徽标", file: "desktop/frontend/src/components/ContextPanel.tsx", patterns: ["context-panel__projection-stale", "context?.maintenance?.projectedTokens ?? 0"] },
   { feature: "任务549 失效标注三语文案", file: "desktop/frontend/src/locales/zh.ts", patterns: ["context.projectionInvalid", "context.projectionInvalidTitle"] },
+  // ── 任务 545：会话 cwd 跟随会话（2026-10-06）────────────────────
+  // 共享解析（546 同源）+ 实验开关（默认关，渲染表防静默丢）+ CLI/serve 两处接线。
+  { feature: "任务545 会话项目根解析（meta.WorkspaceRoot，546 共用语义）", file: "internal/agent/session_workspace.go", patterns: ["func SessionWorkspaceRoot", "meta.WorkspaceRoot"] },
+  { feature: "任务545 开关全链（config 字段 + 渲染表显式渲染）", file: "internal/config/config.go", patterns: ["experimental_session_cwd_follow"] },
+  { feature: "任务545 渲染表（81/123 防丢：关态也渲染）", file: "internal/config/render.go", patterns: ["experimental_session_cwd_follow"] },
+  { feature: "任务545 CLI resume 接线（显式 --dir 优先，关态零行为）", file: "internal/cli/session_cwd.go", patterns: ["func resumeWorkspaceRootOverride", "ExperimentalSessionCwdFollow"] },
+  { feature: "任务545 serve 忙碌换绑接线（目标会话项目根 pin）", file: "internal/serve/session_cwd.go", patterns: ["func sessionCwdFollowRootOverride"] },
+  { feature: "任务545 serve 构建缝（rootOverride 覆盖继承根）", file: "internal/serve/multisession.go", patterns: ["buildTaggedWithOptions", "sessionCwdFollowRootOverride(targetPath)"] },
   // ── 任务 152：todo 树状任务系统（2026-09-30）────────────────────
   // schema/校验在 evidence（树状状态机 + 终态 + 层级 ID），工具面在 builtin/todo，
   // agent 侧树列表跳过扁平 normalizer，前端树渲染 + 归档区——五处都要在。

@@ -1834,6 +1834,15 @@ type AgentConfig struct {
 	// per-request effort override). Off by default (fork rule 2): the current
 	// full-rebuild path stays byte-identical.
 	ExperimentalRuntimeReuse bool `toml:"experimental_runtime_reuse"`
+	// ExperimentalSessionCwdFollow makes a resumed session run against its own
+	// persisted project root (branch meta workspace_root) instead of the
+	// process working directory (task 545): relative paths and git commands in
+	// the session then resolve against the project the session belongs to.
+	// An explicit --dir still wins, and sessions without a usable persisted
+	// root (fresh, global-scope, root deleted) fall back exactly as before.
+	// Off by default (fork rule 2): the closed state keeps the process-cwd
+	// fallback byte-identical.
+	ExperimentalSessionCwdFollow bool `toml:"experimental_session_cwd_follow"`
 	// CollabInboxMerge controls how the durable inbox drains multiple queued
 	// items (task 221). "off" (default) keeps the current one-item-per-dispatch
 	// FIFO; "same_sender" merges queued items that share an envelope Source

@@ -735,7 +735,7 @@ func runAgent(args []string, version string) int {
 		Effort:               effortOverride,
 		PermissionAllow:      allowedTools,
 		AdditionalDirs:       additionalDirs,
-		WorkspaceRoot:        workspaceRoot,
+		WorkspaceRoot:        resumeWorkspaceRootOverride(workspaceRoot, resumePath, cfg),
 		HeadlessApprovalMode: permissions.approval,
 		OnSessionRecovered:   cliSessionRecoveredHandler(leases),
 		Ablation:             ablated,
@@ -996,7 +996,7 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 	// Keep the browser reachable when the selected provider has no saved key.
 	// The loopback-only provider setup surface stores the missing credential and
 	// rebuilds this controller in place before the normal web UI is exposed.
-	ctrl, serveBuildOpts, err := setupCLIMultiSessionProfile(ctx, *model, *maxSteps, deprecatedMode, sessionTag, leases)
+	ctrl, serveBuildOpts, err := setupCLIMultiSessionProfile(ctx, *model, *maxSteps, deprecatedMode, sessionTag, leases, resumeWorkspaceRootOverride("", *resume, cfg))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		return 1
@@ -1214,7 +1214,7 @@ func chatREPL(args []string, version string) int {
 		Effort:             effortOverride,
 		PermissionAllow:    allowedTools,
 		AdditionalDirs:     additionalDirs,
-		WorkspaceRoot:      workspaceRoot,
+		WorkspaceRoot:      resumeWorkspaceRootOverride(workspaceRoot, resumePath, cfg),
 		InteractiveHost:    true,
 		Stderr:             diagnostics.Writer(),
 		OnSessionRecovered: cliSessionRecoveredHandler(leases),
