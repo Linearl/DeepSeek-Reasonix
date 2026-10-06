@@ -69,6 +69,13 @@ try {
   ok(harness.container.textContent?.includes("Turn result"), "result stays visible outside the process fold");
   ok(harness.container.textContent?.includes("Change statistics unavailable"), "legacy mutations do not become file counts");
   ok(!harness.container.textContent?.includes("balanced"), "compact notice exposes no internal enum values");
+  // 任务524: the notices default to a collapsed one-line summary; the actions
+  // live behind the toggle, so expand both before exercising the entry points.
+  const toggles = Array.from(harness.container.querySelectorAll<HTMLButtonElement>(".notice-line__summary-toggle"));
+  ok(toggles.length === 2, "each completion notice renders a collapsible summary line");
+  ok(toggles.every((node) => node.getAttribute("aria-expanded") === "false"), "completion notices start collapsed");
+  for (const toggle of toggles) toggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await harness.flush();
   const button = Array.from(harness.container.querySelectorAll("button")).find((node) => node.textContent?.includes("View changes"));
   ok(button, "completion notice offers a View changes action");
   button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
