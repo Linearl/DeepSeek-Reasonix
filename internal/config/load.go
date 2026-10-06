@@ -942,6 +942,9 @@ func mergeFileSnapshotWithRead(cfg *Config, path string, readFile func(string) (
 			cfg.Providers[i].persistedOfficialCurrency = markers[providerMergeKey(cfg.Providers[i])]
 		}
 	}
+	// Task 321: sense retired and unrecognized keys after every successful
+	// decode. Warn-level only; loading stays non-blocking and never rewrites.
+	warnUnknownConfigKeys(meta, path)
 	return meta, nil
 }
 
