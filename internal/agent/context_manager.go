@@ -31,6 +31,10 @@ type compactionProgress struct {
 	lastPrepareEst   int64
 	growthWarnedTurn int64
 	lastGrowthWarnAt time.Time
+	// 任务516④ fallback watch: fallbackWarnAt throttles the "view fell back to
+	// the full canonical transcript" warning to one line per cooldown. Same
+	// compactionRunMu discipline as the growth-watch fields.
+	fallbackWarnAt time.Time
 }
 
 // ContextManager is the sole owner of provider-visible context maintenance.
@@ -135,6 +139,7 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
 	// one tool loop (replayed guidance, repeated sub-agent payloads) leaves a
 	// log trail even when it stays below the fold trigger.
 	a.observeContextGrowth(est)
+	a.observeProjectionFallback(est)
 	// Receipts back off sub-critical retries only. A failed summary never
 	// fabricates a digest; at the ceiling the lossy truncation rescue is the
 	// last resort, so the turn still leaves with a view the provider accepts.
@@ -302,6 +307,9 @@ func (m ContextManager) summaryFailed(policy ContextPreparePolicy, inputHash str
 	// on the first rejection: truncation is the same recovery overflow uses.
 	// Manual compaction never reaches this branch (the ceiling check skips
 	// manual triggers) and keeps its fail-visible semantics.
+	// Task 516: the acceptance path now installs partial progress instead of
+	// producing this rejection, so the branch is defensive only — it stays so a
+	// re-introduced ceiling rejection can never regress into the 17:50 loop.
 	if errors.Is(err, errCheckpointCeiling) && policy.Trigger != CompactionTriggerManual {
 		return m.rescueByTruncation(policy, hard, err)
 	}
@@ -439,4 +447,63 @@ func (a *Agent) observeContextGrowth(est int) bool {
 		"prev_tokens", prev, "now_tokens", est, "delta_tokens", delta,
 		"window", window, "turn", turn)
 	return true
+}
+
+// projectionFallbackWarnCooldown throttles the invalid-projection warning so a
+// stuck episode stays visible without spamming every maintenance check.
+const projectionFallbackWarnCooldown = 5 * time.Minute
+
+// 任务516④ fallback watch: after a lineage change (model switch, resume
+// rebuild) or a history rewrite, a stale-or-missing projection legitimately
+// serves the whole canonical transcript; the view can then dwarf the window
+// while compaction looks healthy, and diagnosis had to infer the fallback from
+// compaction source spikes. observeProjectionFallback names the reason once per
+// cooldown. Pure observation: no behavior reads it.
+//
+// Gates keep normal states quiet: a body-less projection below the hard input
+// ceiling is the ordinary fresh-session shape, and a valid projection re-arms
+// the throttle so the next episode warns immediately.
+func (a *Agent) observeProjectionFallback(est int) {
+	if a == nil || a.sess.conversation == nil || est <= 0 {
+		return
+	}
+	a.sess.compactionMu.Lock()
+	st := a.sess.compactionState
+	a.sess.compactionMu.Unlock()
+	window := a.effectiveContextWindow()
+	if len(st.Projection.Messages) == 0 {
+		// Fresh or invalidated session: only worth a line once the full
+		// canonical view itself is past the physical ceiling (the 2.7M/1M shape).
+		if est < a.hardInputCeiling() {
+			return
+		}
+		a.warnProjectionFallback("no_projection", st, est, window)
+		return
+	}
+	msgs, _ := a.sess.conversation.snapshotMessagesVersion()
+	key := a.currentPromptCacheKeyLocked()
+	if key != "" {
+		if _, ok := lineageKeyCompatible(st.PromptCacheKey, key); !ok {
+			a.warnProjectionFallback("lineage_key_mismatch", st, est, window)
+			return
+		}
+	}
+	if projectionContentValid(st, msgs) {
+		// Valid projection: re-arm so a later episode warns on its first check.
+		a.sess.compaction.fallbackWarnAt = time.Time{}
+		return
+	}
+	a.warnProjectionFallback("content_mismatch", st, est, window)
+}
+
+// warnProjectionFallback emits the throttled fallback warning.
+func (a *Agent) warnProjectionFallback(reason string, st CompactionState, est, window int) {
+	if !a.sess.compaction.fallbackWarnAt.IsZero() && time.Since(a.sess.compaction.fallbackWarnAt) < projectionFallbackWarnCooldown {
+		return
+	}
+	a.sess.compaction.fallbackWarnAt = time.Now()
+	slog.Warn("agent: context view fell back to the full canonical transcript",
+		"reason", reason, "view_tokens", est, "window", window,
+		"projection_version", st.Projection.ProjectionVersion,
+		"prompt_cache_key", st.PromptCacheKey)
 }

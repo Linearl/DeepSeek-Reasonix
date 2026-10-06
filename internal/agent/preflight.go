@@ -82,6 +82,10 @@ func (a *Agent) InvalidateProjection() {
 	a.sess.compaction.consecutive = 0
 	a.sess.compaction.failedTurn.Store(0)
 	a.sess.compaction.lastTurn.Store(0)
+	// 任务516④: a lineage change starts a new fallback episode — let its
+	// first maintenance check warn immediately instead of waiting out the
+	// previous episode's throttle.
+	a.sess.compaction.fallbackWarnAt = time.Time{}
 	if path != "" {
 		if err := RemoveCompactionState(path); err != nil {
 			slog.Warn("agent: remove context projection", "err", err)
@@ -255,6 +259,7 @@ func (a *Agent) BindSessionPath(path string, loadSidecar bool) {
 	a.sess.compaction.consecutive = 0
 	a.sess.compaction.failedTurn.Store(0)
 	a.sess.compaction.lastTurn.Store(0)
+	a.sess.compaction.fallbackWarnAt = time.Time{}
 }
 
 // SetSessionPath binds the transcript path used for projection persistence.
