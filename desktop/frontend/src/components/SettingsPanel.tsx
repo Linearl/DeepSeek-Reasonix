@@ -3364,6 +3364,23 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   )}
                 </div>
               </SettingsField>
+              {/* Task 530: turn-closure reply reminder. One visible host
+                  reminder per require_reply mail still unanswered at a clean
+                  turn close; off (default) keeps turns untouched. */}
+              <SettingsField label={t("settings.sessionCollabReplyNudge")} hint={t("settings.sessionCollabReplyNudgeHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.sessionCollabReplyNudge) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetSessionCollabReplyNudge(on))}
+                    >
+                      {t(on ? "settings.sessionCollab.on" : "settings.sessionCollab.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
               <SettingsField label={t("settings.sessionCollabDailySendLimit")} hint={t("settings.sessionCollabDailySendLimitHint")} icon={<Sparkles size={18} />}>
                 <DailySendLimitInput
                   value={s.sessionCollabDailySendLimit ?? 0}

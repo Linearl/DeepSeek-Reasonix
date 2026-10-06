@@ -276,6 +276,16 @@ func (a *App) SetSessionCollabBackground(enabled bool) error {
 	})
 }
 
+// SetSessionCollabReplyNudge toggles the task-530 turn-closure reply reminder
+// (settings → 实验特性 → 跨会话通信). The runtime reads it as a boot snapshot
+// (agent construction), so a change shows up after a restart — same contract
+// as the other agent-behavior dials.
+func (a *App) SetSessionCollabReplyNudge(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetSessionCollabReplyNudge(enabled)
+	})
+}
+
 // SetExperimentalSplitView toggles the tab-bar split view (task 70-1): with it off the
 // right-click menu keeps exactly the pre-split item list.
 func (a *App) SetExperimentalSplitView(enabled bool) error {

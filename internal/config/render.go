@@ -517,6 +517,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "session_collab_allow_read_tail = %v   # task 173: expose read_session_tail\n", c.Agent.SessionCollabAllowReadTail)
 	fmt.Fprintf(&b, "session_collab_allow_create = %v   # task 173: expose create_collab_session\n", c.Agent.SessionCollabAllowCreate)
 	fmt.Fprintf(&b, "session_collab_allow_steer = %v   # task 173: allow delivery=steer on talk_to_session\n", c.Agent.SessionCollabAllowSteer)
+	fmt.Fprintf(&b, "session_collab_reply_nudge = %v   # task 530: remind once at turn close when require_reply mail is still unanswered (default off; needs cross-session collaboration on)\n", c.Agent.SessionCollabReplyNudge)
 	fmt.Fprintf(&b, "session_collab_background = %v   # task 264: background-woken sessions stay out of the tab bar (detached stand-up; delivery unchanged)\n", c.Agent.SessionCollabBackground)
 	fmt.Fprintf(&b, "session_collab_daily_send_limit = %d   # task 173: per-session daily outgoing cap (0 = no cap)\n", c.Agent.SessionCollabDailySendLimit)
 	fmt.Fprintf(&b, "experimental_cascade_approval = %v   # task 225: forward a dispatched session's approvals to its task source (off by default)\n", c.Agent.ExperimentalCascadeApproval)

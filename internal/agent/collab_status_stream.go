@@ -44,6 +44,9 @@ const (
 	CollabStatusBlockingWait  = "blocking_wait"
 	CollabStatusNeedsDecision = "needs_decision"
 	CollabStatusManual        = "manual"
+	// CollabStatusReplyNudge (task 530): a turn closed with unanswered
+	// require_reply mail and the host injected a visible reply reminder.
+	CollabStatusReplyNudge = "reply_nudge"
 )
 
 const (

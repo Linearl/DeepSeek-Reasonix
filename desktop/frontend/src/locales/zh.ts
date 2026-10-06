@@ -2419,6 +2419,8 @@ export const zh: Record<DictKey, string> = {
 "settings.collabGuidanceMerge": "引导「合并下条」按钮",
   "settings.collabGuidanceMergeHint": "任务 153：引导队列 ≥2 条时，每条出现「合并下条」按钮，点一次将当前条与紧随的下一条合并（文本原样拼接，不丢信息）；仅改队列、不触发发送。默认关闭。",
 
+  "settings.sessionCollabReplyNudge": "未回信时回合结束提醒",
+  "settings.sessionCollabReplyNudgeHint": "任务 530：一次对话干净收尾时，若收到的要求回信（require_reply）跨会话消息仍未回复，宿主注入一轮用户可见的回信提醒（每封信只提醒一次，已回信不提醒）。默认关闭；改动重启后生效。",
   "settings.sessionCollabGates": "能力门控",
   "settings.sessionCollabGatesHint": "任务 173：按能力收放协作工具——删除其他会话 / 配置回信要求 / 读他会话内容 / AI 自建会话 / steer 注入。关闭的工具不暴露给模型（参数类关闭时返回可操作错误）。默认全部关闭。",
   "settings.sessionCollabGates.allowDelete": "允许删除其他会话",

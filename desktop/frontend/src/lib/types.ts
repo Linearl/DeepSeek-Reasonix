@@ -2473,6 +2473,8 @@ export interface DesktopStartupSettingsView {
   sessionCollabAllowSteer?: boolean;
   sessionCollabBackground?: boolean;
   sessionCollabDailySendLimit?: number;
+  // Task 530: the turn-closure reply reminder dial (boot snapshot).
+  sessionCollabReplyNudge?: boolean;
   // Task 309: mailbox defaults for talk_to_session.
   sessionCollabMailIdempotentDefault?: boolean;
   sessionCollabMailReceiptDefault?: boolean;

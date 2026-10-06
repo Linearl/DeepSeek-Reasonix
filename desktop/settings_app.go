@@ -471,6 +471,9 @@ type SettingsView struct {
 	SessionCollabAllowSteer        bool `json:"sessionCollabAllowSteer"`
 	SessionCollabBackground        bool `json:"sessionCollabBackground"`
 	SessionCollabDailySendLimit    int  `json:"sessionCollabDailySendLimit"`
+	// Task 530: the turn-closure reply reminder dial (single source = [agent];
+	// boot snapshot, restart to apply).
+	SessionCollabReplyNudge bool `json:"sessionCollabReplyNudge"`
 	// Task 309: mailbox defaults for talk_to_session.
 	SessionCollabMailIdempotentDefault bool   `json:"sessionCollabMailIdempotentDefault"`
 	SessionCollabMailReceiptDefault    bool   `json:"sessionCollabMailReceiptDefault"`
@@ -683,6 +686,9 @@ type DesktopStartupSettingsView struct {
 	SessionCollabAllowSteer        bool `json:"sessionCollabAllowSteer"`
 	SessionCollabBackground        bool `json:"sessionCollabBackground"`
 	SessionCollabDailySendLimit    int  `json:"sessionCollabDailySendLimit"`
+	// Task 530: the turn-closure reply reminder dial (single source = [agent];
+	// boot snapshot, restart to apply).
+	SessionCollabReplyNudge bool `json:"sessionCollabReplyNudge"`
 	// Task 309: mailbox defaults for talk_to_session.
 	SessionCollabMailIdempotentDefault bool   `json:"sessionCollabMailIdempotentDefault"`
 	SessionCollabMailReceiptDefault    bool   `json:"sessionCollabMailReceiptDefault"`
@@ -1589,6 +1595,8 @@ func (a *App) Settings() SettingsView {
 		SessionCollabAllowSteer:        cfg.Agent.SessionCollabAllowSteer,
 		SessionCollabBackground:        cfg.Agent.SessionCollabBackground,
 		SessionCollabDailySendLimit:    cfg.Agent.SessionCollabDailySendLimit,
+		// Task 530: the turn-closure reply reminder dial (single source = [agent]).
+		SessionCollabReplyNudge: cfg.Agent.SessionCollabReplyNudge,
 		// Task 309: mailbox defaults for talk_to_session.
 		SessionCollabMailIdempotentDefault: cfg.Agent.SessionCollabMailIdempotentDefault,
 		SessionCollabMailReceiptDefault:    cfg.Agent.SessionCollabMailReceiptDefault,

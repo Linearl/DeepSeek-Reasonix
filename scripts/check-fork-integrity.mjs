@@ -386,6 +386,14 @@ const CHECKS = [
   { feature: "任务172 App 绑定 GetFeedbackInboxPath（先建目录再回路径）", file: "desktop/feedback.go", patterns: ["func (a *App) GetFeedbackInboxPath", "builtin.FeedbackInboxDir()"] },
   { feature: "任务172 面板打开目录按钮（清空左侧，复用 RevealPath）", file: "desktop/frontend/src/components/FeedbackPanel.tsx", patterns: ["feedbackInbox.openDir", "app.RevealPath(dir)"] },
   { feature: "任务172 设置页触达子项+开销说明文案", file: "desktop/frontend/src/locales/zh.ts", patterns: ["settings.feedbackNudge", "settings.feedbackNudgeHint"] },
+  // ── 任务 530：turn 闭合回信提醒钩子（173 的覆盖件）──────────────
+  { feature: "任务530 提醒本体（扫描+MarkNotified 一次性+可见注入）", file: "internal/agent/collab_reply_nudge.go", patterns: ["CollabReplyNudgeMarker", "owedRequireReplies", "MarkNotified(me, m.ID+\":\"+collabReplyNudgeKind)", "HostGeneratedUserMessage(a.withTurnPreferences(collabReplyNudgeMessage(due)))"] },
+  { feature: "任务530 run_loop 注入点（172 T1 之前，欠回信优先拿轮次）", file: "internal/agent/run_loop.go", patterns: ["maybeNudgeCollabReply"] },
+  { feature: "任务530 Options→svc 接线（nil=逐字零行为）", file: "internal/agent/services.go", patterns: ["collabReplyNudge:      opts.CollabReplyNudge"] },
+  { feature: "任务530 开关全链（config 字段+渲染表+setter）", file: "internal/config/config.go", patterns: ["session_collab_reply_nudge"] },
+  { feature: "任务530 boot 接线（父开关 AND，executor 后补 resolver）", file: "internal/boot/boot.go", patterns: ["collabReplyNudge.ResolveSessionPath = executor.SessionPath", "sessionCollabEnabled(cfg) && cfg.Agent.SessionCollabReplyNudge"] },
+  { feature: "任务530 已读未回扫描的存储读口（settled 不消失）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["func (s *MailStore) InboxMessages"] },
+  { feature: "任务530 面板开关+三语文案", file: "desktop/frontend/src/locales/zh.ts", patterns: ["settings.sessionCollabReplyNudge", "settings.sessionCollabReplyNudgeHint"] },
   // ── 任务 152：todo 树状任务系统（2026-09-30）────────────────────
   // schema/校验在 evidence（树状状态机 + 终态 + 层级 ID），工具面在 builtin/todo，
   // agent 侧树列表跳过扁平 normalizer，前端树渲染 + 归档区——五处都要在。

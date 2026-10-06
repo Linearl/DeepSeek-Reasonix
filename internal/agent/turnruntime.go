@@ -197,6 +197,10 @@ type terminalProtocolState struct {
 	// completion invitation, T2 steer note). Hard-capped at 1: the turn a nudge
 	// produced must never produce a second one (anti-loop gate 1).
 	feedbackNudges int
+	// replyNudges counts task-530 turn-closure reply reminders sent this run.
+	// Hard-capped at 1: the reminder round's own closure must not stack a
+	// second one (MarkNotified keys stay the durable once-guard).
+	replyNudges int
 }
 
 // pendingTurn is what someone outside the Run arms for the next one: a
