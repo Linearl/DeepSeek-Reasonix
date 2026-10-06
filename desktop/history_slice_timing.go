@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -21,14 +22,41 @@ type historySliceTrace struct {
 	startedAt time.Time
 	parts     []string
 	source    string // 命中的读路径分支：index/scan/event-log/live-index/…
+	tabID     string // 任务 560：阶段名发布键（空串=不发布）
 }
+
+// historyLoadPhases 是任务 560 加载分阶段文案的发布注册表：tabID → 正在执行
+// 的阶段名（既有埋点名：live-index-load / cold-eventlog / …）。前端在会话
+// 加载期间轮询 HistoryLoadPhase(tabID) 取值，把加载横幅主标题分成「读取会话
+// 索引」「还原消息历史」两态。约定：
+//   - 只发布 run/runErr 已有的阶段名：不新增计数、不预扫；
+//   - 纯内存 sync.Map 读写，零 IO；锁内读路径增量仅为一次 map store，守住
+//     任务 196 的「锁内不加 IO」红线；
+//   - 切片调用结束（clearPhase）即清键，前端轮询到空串回落通用文案。
+var historyLoadPhases sync.Map // tabID -> string
 
 // historySliceSlowLogMs 与前端时机线的 slowTabSwitchLogMs（150ms）对齐：低于
 // 阈值的切片调用不值得一行 desktop.log，用户感知为"慢"的才会出现。
 const historySliceSlowLogMs = 150
 
-func newHistorySliceTrace() *historySliceTrace {
-	return &historySliceTrace{startedAt: time.Now()}
+func newHistorySliceTrace(tabID string) *historySliceTrace {
+	return &historySliceTrace{startedAt: time.Now(), tabID: tabID}
+}
+
+// publishPhase 把 name 标记为该 tab 正在执行的阶段（任务 560）。纯内存写。
+func (t *historySliceTrace) publishPhase(name string) {
+	if t == nil || t.tabID == "" {
+		return
+	}
+	historyLoadPhases.Store(t.tabID, name)
+}
+
+// clearPhase 在一次切片调用结束时抹掉该 tab 的阶段名。nil 接收者安全。
+func (t *historySliceTrace) clearPhase() {
+	if t == nil || t.tabID == "" {
+		return
+	}
+	historyLoadPhases.Delete(t.tabID)
 }
 
 // step 记录一个已完成阶段的耗时。
@@ -40,11 +68,14 @@ func (t *historySliceTrace) step(name string, d time.Duration) {
 }
 
 // run 计时执行 fn 并把耗时记为名为 name 的阶段。fn 返回值经闭包捕获带出。
+// 执行前把 name 发布为该 tab 的当前阶段（任务 560，纯内存）；嵌套 run 时
+// 注册表始终指向最近开始的阶段。
 func (t *historySliceTrace) run(name string, fn func()) {
 	if t == nil {
 		fn()
 		return
 	}
+	t.publishPhase(name)
 	startedAt := time.Now()
 	fn()
 	t.step(name, time.Since(startedAt))
@@ -55,6 +86,7 @@ func (t *historySliceTrace) runErr(name string, fn func() error) error {
 	if t == nil {
 		return fn()
 	}
+	t.publishPhase(name)
 	startedAt := time.Now()
 	err := fn()
 	t.step(name, time.Since(startedAt))
@@ -96,4 +128,17 @@ func (t *historySliceTrace) emit(tabID string) {
 	} else {
 		slog.Debug("desktop: history slice timing", attrs...)
 	}
+}
+
+// HistoryLoadPhase 返回指定 tab 当前正在执行的 history 读阶段名（既有埋点
+// 名，如 live-index-load / cold-eventlog）；空串表示没有进行中的读或阶段
+// 未知。任务 560 加载分阶段文案的取数口：前端在会话加载期间轮询本绑定，
+// 纯内存读（sync.Map），无任何 IO。
+func (a *App) HistoryLoadPhase(tabID string) string {
+	if v, ok := historyLoadPhases.Load(strings.TrimSpace(tabID)); ok {
+		if name, _ := v.(string); name != "" {
+			return name
+		}
+	}
+	return ""
 }
