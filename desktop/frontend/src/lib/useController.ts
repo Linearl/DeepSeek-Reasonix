@@ -21,7 +21,7 @@ import { findTabAfterSubmitFailure, reduceManagementConfirmation, reduceSubmitDe
 import { formatContextMaintenanceNotice, isNewMaintenanceOperation, rememberMaintenanceOperation } from "./contextMaintenanceTypes";
 import { formatGuardianAssessmentNotice } from "./guardianEvents";
 import { normalizeCompletionSummary } from "./completionSummary";
-import { historicalResultNotice, withRunningChecks, withTurnResult } from "./completionResultState";
+import { historicalResultNotice, withLiveTurnResult, withRunningChecks, withTurnResult } from "./completionResultState";
 import { mergeTurnResult } from "./turnResult";
 import { invalidateSharedQuery } from "./queryCoalesce";
 import { replayPendingPromptsForActiveTab } from "./promptReplay";
@@ -1642,6 +1642,14 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       if (fresh.items.some((it) => it.id === "provider-unreachable")) {
         fresh.items = fresh.items.filter((it) => it.id !== "provider-unreachable");
       }
+      // 任务522: a new round unmounts the previous round's terminal panel —
+      // "本轮结果" may only be on screen while no turn is running. Auto-
+      // continued turns (readiness retry / inbox followup / feedback nudge)
+      // start without a new user bubble, so the stale notice would otherwise
+      // render as the footer of the turn that is now working.
+      if (startsNewTurn) {
+        fresh.items = fresh.items.filter((it) => !(it.kind === "notice" && it.variant === "completion"));
+      }
       const active = startsNewTurn || fresh.currentAssistant ? ensureActiveAssistant(fresh) : fresh;
       return {
         ...active,
@@ -1663,7 +1671,7 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       const phase = (e.phase ?? e.text ?? "").trim();
       if (!phase) return s;
       const next = { ...s, turnPhase: phase, running: true, turnActive: true, cancellable: true };
-      if (phase === "verifying" || phase === "checking") return withTurnResult(next, { ...mergeTurnResult(s.completionSummary, undefined, e.turnId), checking: true });
+      if (phase === "verifying" || phase === "checking") return withLiveTurnResult(next, { ...mergeTurnResult(s.completionSummary, undefined, e.turnId), checking: true });
       return withRunningChecks(next);
     }
     case "turn_status": {
@@ -1707,7 +1715,9 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
     case "completion_summary": {
       if (!e.completion) return s;
       if (e.turnId && s.activeTurnId && e.turnId !== s.activeTurnId) return s;
-      return withTurnResult(s, normalizeCompletionSummary({ ...s.completionSummary, ...e.completion, turnId: e.turnId ?? s.activeTurnId }));
+      // 任务522: while the turn is still running this only feeds the state
+      // (dock entry points); the transcript panel mounts at turn_done.
+      return withLiveTurnResult(s, normalizeCompletionSummary({ ...s.completionSummary, ...e.completion, turnId: e.turnId ?? s.activeTurnId }));
     }
     case "text":
     case "reasoning": {
