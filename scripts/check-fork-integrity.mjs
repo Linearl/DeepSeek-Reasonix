@@ -1018,6 +1018,19 @@ const CHECKS = [
   { feature: "463 三语文案 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["\"composer.expandAll\": \"Expand all work processes\""] },
   { feature: "463 双向开关测试存续", file: "desktop/frontend/src/__tests__/fold-toggle-button.test.tsx", patterns: ["allWorkProcessesCollapsed", "reasonix:expand-all-folds"] },
 
+  // ── 任务 552:标签页概览面板（放大镜左侧入口:搜索 + 打开的标签页 + 最近关闭）──
+  // 锚定搜索算法五档加权、最近关闭栈上限与去重、行内关闭防误触、三套 chrome
+  // 入口接线、App 关闭漏斗入栈与 topic 导航重开、三语文案。
+  { feature: "552 搜索算法（AND 过滤+五档加权+稳定排序）", file: "desktop/frontend/src/lib/tabOverviewSearch.ts", patterns: ["export function filterAndRankTabSearchItems", "return score + 120;", "return score + 90;", "return score + 70;", "return score + 40;", "return score + 20;"] },
+  { feature: "552 最近关闭栈（上限8/同身份去重置顶/重开即剪除）", file: "desktop/frontend/src/lib/tabOverviewModel.ts", patterns: ["export const RECENT_CLOSED_TAB_LIMIT = 8", "export function pushRecentClosedTab", "export function pruneRecentClosedTabs", "export function tabReopenIdentity"] },
+  { feature: "552 面板组件（两组+行内×防误触+60s 相对时间刷新）", file: "desktop/frontend/src/components/TabOverviewPanel.tsx", patterns: ["tab-overview__item-close", "event.stopPropagation();", "window.setInterval(() => setNow(Date.now()), 60_000)", "tabOverview.searchPlaceholder"] },
+  { feature: "552 三套 chrome 入口接线（放大镜左侧）", file: "desktop/frontend/src/components/AppChrome.tsx", patterns: ["{tabOverview}", "tabOverview?: ReactNode"] },
+  { feature: "552 App 接线（关闭漏斗入栈+topic 导航重开）", file: "desktop/frontend/src/App.tsx", patterns: ["pushRecentClosedTab(current, closedTabSnapshot, Date.now())", "pruneRecentClosedTabs(current, tabMetas)", "kind: \"topic\", scope, workspaceRoot, topicId, sessionPath"] },
+  { feature: "552 测试存续（搜索加权+面板行为）", file: "desktop/frontend/src/__tests__/tab-overview-model.test.ts", patterns: ["filterAndRankTabSearchItems", "pushRecentClosedTab", "stopPropagation"] },
+  { feature: "552 三语文案 zh", file: "desktop/frontend/src/locales/zh.ts", patterns: ["\"tabOverview.searchPlaceholder\": \"搜索标签页…\"", "\"tabOverview.recentlyClosed\": \"最近关闭的标签页\""] },
+  { feature: "552 三语文案 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["\"tabOverview.searchPlaceholder\": \"Search tabs…\"", "\"tabOverview.recentlyClosed\": \"Recently closed\""] },
+  { feature: "552 三语文案 zh-TW", file: "desktop/frontend/src/locales/zh-TW.ts", patterns: ["\"tabOverview.searchPlaceholder\": \"搜尋標籤頁…\"", "\"tabOverview.recentlyClosed\": \"最近關閉的標籤頁\""] },
+
 ];
 
 let failed = 0;

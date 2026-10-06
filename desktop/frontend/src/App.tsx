@@ -99,6 +99,8 @@ import { StartupSplash } from "./components/StartupSplash";
 import { OnboardingOverlay } from "./components/OnboardingOverlay";
 import { dismissOnboarding, shouldOpenOnboarding } from "./lib/onboarding";
 import { AppChrome } from "./components/AppChrome";
+import { TabOverviewPanel } from "./components/TabOverviewPanel";
+import { pruneRecentClosedTabs, pushRecentClosedTab, type RecentClosedTab } from "./lib/tabOverviewModel";
 import { ShortcutsCheatsheet } from "./components/ShortcutsCheatsheet";
 import { WorktreeBadge } from "./components/WorktreeBadge";
 import { CopyButton } from "./components/CopyButton";
@@ -674,6 +676,9 @@ export default function App() {
   const yoloRestoreToolApprovalModesRef = useRef<Record<string, RestorableToolApprovalMode>>({});
   const userPlanModeByTabRef = useRef<UserPlanModeIntents>({});
   const [tabMetas, setTabMetas] = useState<TabMeta[]>([]);
+  // 任务 552:最近关闭标签页——内存栈(上限 8、同身份去重置顶、重开即剪除),
+  // 不持久化:后端没有最近关闭记录,重启即清与 zcode 行为一致。
+  const [recentClosedTabs, setRecentClosedTabs] = useState<RecentClosedTab[]>([]);
   // Split view (task 70). Closed by default: while secondaryTabId is null the layout
   // renders exactly one transcript, byte-for-byte as before.
   const [splitState, setSplitState] = useState<SplitState>(loadSplitState);
@@ -3173,10 +3178,16 @@ export default function App() {
     policy: "keep_running" | "stop_and_close",
   ): Promise<boolean> => {
     closeTransientOverlays();
+    // 任务 552:关闭前留快照——所有关闭路径(单个 ×/停止并关闭/批量关闭)都
+    // 汇入本函数,关闭成功后进「最近关闭」栈,供概览面板重开。
+    const closedTabSnapshot = tabMetas.find((tab) => tab.id === id);
     const closed = await closeTab(id, policy);
     if (!closed) {
       showToast(t("runtime.closeFailed"), "error");
       return false;
+    }
+    if (closedTabSnapshot) {
+      setRecentClosedTabs((current) => pushRecentClosedTab(current, closedTabSnapshot, Date.now()));
     }
     setComposerProfilesByTab((current) => {
       if (!(id in current)) return current;
@@ -3199,7 +3210,17 @@ export default function App() {
     await refreshBackgroundRuntimes();
     setTabRevealSignal((signal) => signal + 1);
     return true;
-  }, [activeTabId, closeTab, closeTransientOverlays, refreshBackgroundRuntimes, refreshTabMetas, showToast, t]);
+  }, [activeTabId, closeTab, closeTransientOverlays, refreshBackgroundRuntimes, refreshTabMetas, showToast, t, tabMetas]);
+
+  // 任务 552:tab 集合变化后剪除「最近关闭」里已被重开的条目(按重开四元组
+  // scope+workspaceRoot+topicId+sessionPath 判定,与 OpenTopicSession 的重开
+  // 入参一致)。
+  useEffect(() => {
+    setRecentClosedTabs((current) => {
+      const pruned = pruneRecentClosedTabs(current, tabMetas);
+      return pruned.length === current.length ? current : pruned;
+    });
+  }, [tabMetas]);
 
   // Task 162: closing a tab never blocks. Active work is detached to the
   // background runtime instead of forcing a decision; "stop and close" is an
@@ -4036,6 +4057,13 @@ export default function App() {
     return enqueueNavigationWithIntent(input, navigationIntentSeq);
   }, [enqueueNavigationWithIntent, noteNavigationIntent, enterConversation]);
 
+  // 任务 552:重开「最近关闭」的标签页——走既有 "topic" 导航(带关闭前快照的
+  // sessionPath,与历史/项目树入口同源),成功后剪除由 tabMetas 副作用完成。
+  const reopenRecentClosedTab = useCallback((entry: RecentClosedTab) => {
+    const { scope, workspaceRoot, topicId, sessionPath } = entry.tab;
+    void enqueueNavigation({ kind: "topic", scope, workspaceRoot, topicId, sessionPath });
+  }, [enqueueNavigation]);
+
   // B3 remote product fix: the value RemoteNavigationContext consumers resolve
   // (ProjectTree remote topics, RemoteConnectWizard, RemoteSessionSurface).
   // The unmounted AppRuntimeView Provider serves session.desktopNavigation
@@ -4581,6 +4609,17 @@ export default function App() {
             onTabsReorder={(ids) => void handleTabsReorder(ids)}
             onNewTab={() => void handleNewTab()}
             onOpenPalette={() => void openPalette()}
+            tabOverview={
+              <TabOverviewPanel
+                tabs={visibleTabs}
+                activeTabId={visibleTabId}
+                recentClosedTabs={recentClosedTabs}
+                onActivateTab={(id) => void handleTabChange(id)}
+                onCloseTab={(id) => void handleTabClose(id)}
+                onReopenClosedTab={reopenRecentClosedTab}
+                variant={sidebarWorkbench ? "workbench" : "tools"}
+              />
+            }
             splitTabId={splitTabId}
             onToggleSplit={toggleSplitForTab}
           />

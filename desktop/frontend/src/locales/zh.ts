@@ -85,6 +85,17 @@ export const zh: Record<DictKey, string> = {
   "tabBar.commandSearch": "搜索 · 命令 · 打开文件",
   "tabBar.commandSearchCompact": "搜索",
 
+  // 任务 552:标签页概览面板（放大镜左侧入口）
+  "tabOverview.title": "标签页概览",
+  "tabOverview.searchPlaceholder": "搜索标签页…",
+  "tabOverview.openTabs": "打开的标签页",
+  "tabOverview.recentlyClosed": "最近关闭的标签页",
+  "tabOverview.noResults": "没有匹配的标签页",
+  "tabOverview.close": "关闭",
+  "tabOverview.closeTabTitle": "关闭「{title}」",
+  "tabOverview.scopeProject": "项目",
+  "tabOverview.scopeGlobal": "全局",
+
   // 侧边栏
   "sidebar.conversations": "会话",
   "sidebar.trash": "回收站",
