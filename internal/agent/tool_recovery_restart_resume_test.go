@@ -37,7 +37,9 @@ func restartResumeSession(records ...provider.ToolCallRecord) (*Session, *Agent)
 func TestResolveInterruptedByRestartSettlesPendingEffects(t *testing.T) {
 	write := provider.ToolCallRecord{Identity: provider.ActionIdentity{AttemptID: "a1", CallID: "call-w", CanonicalTool: "write_file"}, State: provider.ToolRunUnknown, ReadOnly: false, Arguments: json.RawMessage(`{"path":"x"}`), IdempotencyKey: "k1"}
 	failed := provider.ToolCallRecord{Identity: provider.ActionIdentity{AttemptID: "a2", CallID: "call-f", CanonicalTool: "bash"}, State: provider.ToolRunFailed, ReadOnly: false, EffectSummary: "effect_unknown", Arguments: json.RawMessage(`{"command":"deploy"}`)}
-	readonly := provider.ToolCallRecord{Identity: provider.ActionIdentity{AttemptID: "a3", CallID: "call-r", CanonicalTool: "grep"}, State: provider.ToolRunUnknown, ReadOnly: true}
+	// task 519: agent.New settles whitelisted leftovers at construction, so the
+	// read-only straggler here uses a whitelist-excluded tool to stay pending.
+	readonly := provider.ToolCallRecord{Identity: provider.ActionIdentity{AttemptID: "a3", CallID: "call-r", CanonicalTool: "web_fetch"}, State: provider.ToolRunUnknown, ReadOnly: true}
 	s, a := restartResumeSession(write, failed, readonly)
 
 	if got := a.ResolveInterruptedByRestart(); got != 3 {

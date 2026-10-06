@@ -1460,6 +1460,14 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 				Detail: "Harness-style compaction now retains only the newest 16% of the context window; legacy retention fields are preserved in configuration but ignored at runtime."})
 		})
 	}
+	// Task 519（核实卡移除，X5 a1 结算前移）: settle leftover whitelisted
+	// records at construction, not at the first tool call. A session reloaded
+	// after a crash used to keep its interrupted read-only records pending
+	// until the next turn's beginToolRecovery; with the review card retired to
+	// a passive record line, construction is the moment those records lose
+	// their only remaining surface. Write-capable records are untouched here —
+	// they stay pending as audit facts.
+	a.resolveSideEffectFreeInterruptedCalls()
 	return a
 }
 
