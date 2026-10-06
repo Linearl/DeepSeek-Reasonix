@@ -44,7 +44,11 @@ export type CollabMailEntry = {
   mine?: boolean;
 };
 
-export type CollabMailSettings = { retention: string };
+export type CollabMailSettings = {
+  retention: string;
+  /** 任务 464：会话删除时的清理规则（never 默认 | sender | receiver | both）。 */
+  cleanupRule?: string;
+};
 
 export type CollabMailSnapshot = {
   revision: string;
@@ -81,6 +85,8 @@ export type CollabInboxBindings = {
   UndismissCollabMail(ids: string[]): Promise<CollabMailSnapshot>;
   MarkCollabMailDecided(messageID: string, by: string): Promise<CollabMailSnapshot>;
   SetCollabMailRetention(retention: string): Promise<CollabMailSnapshot>;
+  /** 任务 464：会话删除语义四选一，设置即生效并返回新快照。 */
+  SetCollabMailCleanupRule(rule: string): Promise<CollabMailSnapshot>;
 };
 
 /** 任务461-P4: one ListAddressableSessions row — the addressable roster that
@@ -149,6 +155,8 @@ export function useCollabInboxUnreadCount(bindings?: CollabInboxBindings): numbe
 const BUCKETS = ["all", "approval", "mention", "automation", "system"] as const;
 const STATES = ["all", "pendingMe", "mine", "decided"] as const;
 const RETENTIONS = ["7d", "30d", "90d", "forever"] as const;
+// 任务 464：会话删除时的清理规则，四选一，与保留期正交。
+const CLEANUP_RULES = ["never", "sender", "receiver", "both"] as const;
 const ORDERS = ["desc", "asc"] as const;
 
 type Bucket = (typeof BUCKETS)[number];
@@ -337,6 +345,19 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
             >
               {RETENTIONS.map((r) => (
                 <option key={r} value={r}>{t(`collabInbox.retention.${r}` as "collabInbox.retention.7d")}</option>
+              ))}
+            </select>
+          </label>
+          {/* 任务 464：会话删除时的清理语义（四选一，与保留期正交）。 */}
+          <label className="collab-inbox-panel__retention">
+            <span>{t("collabInbox.cleanupRule")}</span>
+            <select
+              value={snapshot?.settings?.cleanupRule ?? "never"}
+              disabled={busy}
+              onChange={(event) => void act(() => b.SetCollabMailCleanupRule(event.target.value))}
+            >
+              {CLEANUP_RULES.map((rule) => (
+                <option key={rule} value={rule}>{t(`collabInbox.cleanup.${rule}` as "collabInbox.cleanup.never")}</option>
               ))}
             </select>
           </label>

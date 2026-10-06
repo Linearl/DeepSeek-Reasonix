@@ -76,6 +76,34 @@ func ValidRetention(v string) bool {
 	return false
 }
 
+// Cleanup rules (任务 464): when a SESSION is deleted, what happens to the
+// mail it exchanged? Four choices, orthogonal to the retention window — the
+// rule keys on session existence, retention keys on message age. Default is
+// CleanupNever: mail always survives (current behavior, now pinned by test).
+// 「已删除」= the contact no longer appears in the addressable directory scan
+// (live sessions + archived ones) — i.e. the session was moved to trash.
+// Archived sessions stay addressable (restorable, still receive mail), so
+// archive is NOT deletion for this purpose.
+const (
+	// CleanupNever keeps everything (default) — rule ④.
+	CleanupNever = "never"
+	// CleanupSender removes a message when the SENDER's session is deleted — rule ①.
+	CleanupSender = "sender"
+	// CleanupReceiver removes a message when the RECIPIENT's session is deleted — rule ②.
+	CleanupReceiver = "receiver"
+	// CleanupBoth removes a message only when BOTH ends' sessions are deleted — rule ③.
+	CleanupBoth = "both"
+)
+
+// ValidCleanupRule reports whether v is one of the four cleanup rules.
+func ValidCleanupRule(v string) bool {
+	switch v {
+	case CleanupNever, CleanupSender, CleanupReceiver, CleanupBoth:
+		return true
+	}
+	return false
+}
+
 // Sub-state filters over the approval bucket (task 320 d: 待我审 / 我发起的 / 已裁决).
 const (
 	StateAll       = "all"
@@ -127,9 +155,13 @@ type Entry struct {
 	Mine      bool   `json:"mine,omitempty"`
 }
 
-// Settings is the persisted panel configuration (task 320 c/f).
+// Settings is the persisted panel configuration (task 320 c/f + 任务 464).
 type Settings struct {
 	Retention string `json:"retention"` // 7d | 30d | 90d | forever
+	// CleanupRule is the session-deletion semantics (任务 464): never (default)
+	// | sender | receiver | both. Orthogonal to Retention — one keys on session
+	// existence, the other on message age.
+	CleanupRule string `json:"cleanupRule,omitempty"`
 }
 
 // Decision is a recorded approval verdict (task 320 d: 裁决者必须记录).
@@ -138,12 +170,14 @@ type Decision struct {
 	At int64  `json:"at"`
 }
 
-// stateFile is the on-disk view state: dismissals, decisions, retention.
+// stateFile is the on-disk view state: dismissals, decisions, retention,
+// cleanup rule (任务 464).
 type stateFile struct {
-	Revision  int64               `json:"revision"`
-	Dismissed map[string]int64    `json:"dismissed,omitempty"`
-	Decided   map[string]Decision `json:"decided,omitempty"`
-	Retention string              `json:"retention,omitempty"`
+	Revision    int64               `json:"revision"`
+	Dismissed   map[string]int64    `json:"dismissed,omitempty"`
+	Decided     map[string]Decision `json:"decided,omitempty"`
+	Retention   string              `json:"retention,omitempty"`
+	CleanupRule string              `json:"cleanupRule,omitempty"`
 }
 
 // Query filters and pages one list/chain call (task 320 a/b).
@@ -222,23 +256,39 @@ const (
 // Store reads the mail directory through the sessioncollab MailStore and
 // keeps the view state beside it. resolver (optional) maps a sender contact
 // to its registered identity type (task 348) so heartbeat/system senders
-// classify into the right bucket without a body sniff.
+// classify into the right bucket without a body sniff. liveContacts (optional,
+// 任务 464) reports which contact ids still belong to an existing session —
+// the cleanup rule needs it to tell "deleted" from "elsewhere"; nil disables
+// cleanup entirely (the honest no-op).
 type Store struct {
-	mailDir  string
-	mail     *sessioncollab.MailStore
-	resolver func(contact string) string
-	now      func() int64 // injectable clock for tests (ms)
+	mailDir      string
+	mail         *sessioncollab.MailStore
+	resolver     func(contact string) string
+	liveContacts func() map[string]bool
+	now          func() int64 // injectable clock for tests (ms)
+	// sweep is the write-side maintenance ran by panel reads (retention +
+	// session-deletion cleanup). A seam so tests can inject a failure and pin
+	// the "a failed sweep must not empty the panel" contract (320 运行时复盘).
+	sweep func(ctx context.Context) (int, error)
 }
 
 // New builds a store over mailDir. resolver may be nil.
 func New(mailDir string, resolver func(contact string) string) *Store {
-	return &Store{
+	s := &Store{
 		mailDir:  mailDir,
 		mail:     sessioncollab.NewMailStore(mailDir),
 		resolver: resolver,
 		now:      func() int64 { return time.Now().UnixMilli() },
 	}
+	s.sweep = s.ApplyRetention
+	return s
 }
+
+// SetLiveContacts installs the liveness oracle used by the cleanup rule
+// (任务 464): the function returns every contact id whose session still
+// exists (live AND archived — archive is not deletion). nil (the default)
+// turns cleanup into a no-op even when a rule is configured.
+func (s *Store) SetLiveContacts(fn func() map[string]bool) { s.liveContacts = fn }
 
 // Mail exposes the underlying transport store (retention / test seams).
 func (s *Store) Mail() *sessioncollab.MailStore { return s.mail }
@@ -310,7 +360,7 @@ func (s *Store) lockRead(ctx context.Context) (release func(), degraded bool, er
 }
 
 func (s *Store) loadState() stateFile {
-	st := stateFile{Dismissed: map[string]int64{}, Decided: map[string]Decision{}, Retention: Retention7d}
+	st := stateFile{Dismissed: map[string]int64{}, Decided: map[string]Decision{}, Retention: Retention7d, CleanupRule: CleanupNever}
 	b, err := os.ReadFile(s.statePath())
 	if err != nil {
 		return st
@@ -327,6 +377,12 @@ func (s *Store) loadState() stateFile {
 	}
 	if !ValidRetention(loaded.Retention) {
 		loaded.Retention = Retention7d
+	}
+	// 任务 464: states written before the cleanup rule existed lack the key —
+	// empty normalizes to the default (never = keep everything), so existing
+	// state files silently carry today's semantics forward.
+	if !ValidCleanupRule(loaded.CleanupRule) {
+		loaded.CleanupRule = CleanupNever
 	}
 	return loaded
 }
@@ -597,9 +653,12 @@ func decorate(entries []Entry, viewer string) {
 	}
 }
 
-// ApplyRetention enforces the configured retention window against the
-// transport layer (task 320 c). Returns how many messages were physically
-// removed. forever → no-op. ctx bounds/cancels the lock wait.
+// ApplyRetention enforces the write-side maintenance against the transport
+// layer under one lock hold (task 320 c + 任务 464): the configured retention
+// window prunes by AGE, the session-deletion cleanup rule prunes by session
+// existence — two independent dimensions, both applied here. Returns how many
+// messages were physically removed (both halves combined). forever + never →
+// no-op. ctx bounds/cancels the lock wait.
 func (s *Store) ApplyRetention(ctx context.Context) (int, error) {
 	unlock, err := s.lock(ctx)
 	if err != nil {
@@ -607,14 +666,19 @@ func (s *Store) ApplyRetention(ctx context.Context) (int, error) {
 	}
 	defer unlock()
 	st := s.loadState()
-	cutoff, ok := retentionCutoff(st.Retention, s.now())
-	if !ok {
-		return 0, nil
+	removed := 0
+	if cutoff, ok := retentionCutoff(st.Retention, s.now()); ok {
+		pruned, perr := s.mail.PruneInbox(ctx, cutoff)
+		if perr != nil {
+			return 0, perr
+		}
+		removed += pruned
 	}
-	removed, err := s.mail.PruneInbox(ctx, cutoff)
-	if err != nil {
-		return 0, err
+	cleaned, cerr := s.applyCleanupLocked(ctx, st)
+	if cerr != nil {
+		return removed, cerr
 	}
+	removed += cleaned
 	if removed > 0 {
 		// Dismissals/decisions die WITH their entries (task 320 设计要点 2):
 		// garbage-collect state keys whose message no longer exists, then bump
@@ -644,12 +708,65 @@ func (s *Store) ApplyRetention(ctx context.Context) (int, error) {
 	return removed, nil
 }
 
+// applyCleanupLocked enforces the session-deletion cleanup rule (任务 464).
+// Caller holds the store lock. Rule semantics per message:
+//
+//	sender   — remove when the SENDING session is deleted
+//	receiver — remove when the RECEIVING session (the mailbox owner) is deleted
+//	both     — remove only when BOTH ends' sessions are deleted
+//	never    — keep everything (default; the pre-464 behavior, now pinned)
+//
+// A contact counts as 「已删除」 only when it is a real sc_ contact absent from
+// the liveContacts oracle: empty senders (system mail — 603 such rows observed
+// at runtime) and pseudo-identities are NEVER treated as deleted, so platform
+// mail cannot be mass-deleted by a sender-side rule. liveContacts==nil (no
+// oracle installed) keeps everything — cleanup needs an authoritative roster,
+// and guessing would be worse than skipping.
+func (s *Store) applyCleanupLocked(ctx context.Context, st stateFile) (int, error) {
+	if st.CleanupRule == "" || st.CleanupRule == CleanupNever {
+		return 0, nil
+	}
+	if s.liveContacts == nil {
+		return 0, nil
+	}
+	live := s.liveContacts()
+	if live == nil {
+		return 0, nil
+	}
+	deleted := func(contact string) bool {
+		contact = strings.TrimSpace(contact)
+		if !strings.HasPrefix(contact, "sc_") {
+			return false // empty / pseudo identity: never "deleted"
+		}
+		return !live[contact]
+	}
+	remove := func(mailbox string, m sessioncollab.MailMessage) bool {
+		switch st.CleanupRule {
+		case CleanupSender:
+			return deleted(m.From)
+		case CleanupReceiver:
+			return deleted(mailbox)
+		case CleanupBoth:
+			return deleted(m.From) && deleted(mailbox)
+		default:
+			return false
+		}
+	}
+	return s.mail.PruneBy(ctx, remove)
+}
+
 // List answers one revision-stamped snapshot (task 320 a/e). applyRetention
 // should be true for panel calls and false for the read-only query tool — a
 // read must never mutate the transport layer. ctx bounds/cancels the lock wait.
 //
 // 任务461 P11：读路径走共享锁 + 短预算（lockRead）；锁被楔住时降级为无锁读
 // （Degraded=true，保留期跳过——降级读绝不改动任何状态），面板有数据而非空。
+//
+// 320 运行时复盘（2026-10-06）：保留期/清理的写锁在 00:59 与 01:13 被楔住的
+// 持有者卡死 5s 超时，旧实现把该错误原样上抛 → 整个 List 失败 → 面板空
+// （磁盘上明明有 58 个非空信箱）。现在写侧维护（sweep）失败只跳过本次维护、
+// 照常完成读，并把快照标记 Degraded 让桌面端留痕指认最后持锁者——
+// 可用性 > 锁完整性。
 func (s *Store) List(ctx context.Context, q Query, applyRetention bool) (Snapshot, error) {
 	unlock, degraded, err := s.lockRead(ctx)
 	if err != nil {
@@ -659,10 +776,12 @@ func (s *Store) List(ctx context.Context, q Query, applyRetention bool) (Snapsho
 		defer unlock()
 	}
 	if applyRetention && !degraded {
-		// 保留期是写操作：只在锁健康时执行（先释放共享锁再取写锁）。
+		// 保留期/清理是写操作：只在锁健康时执行（先释放共享锁再取写锁）。
 		unlock()
-		if _, rerr := s.ApplyRetention(ctx); rerr != nil {
-			return Snapshot{}, rerr
+		sweepFailed := false
+		if _, rerr := s.sweep(ctx); rerr != nil {
+			// 写侧维护失败 ≠ 读失败：跳过本次维护继续读（上抛会把面板打成空）。
+			sweepFailed = true
 		}
 		unlock2, d2, lerr := s.lockRead(ctx)
 		if lerr != nil {
@@ -671,7 +790,7 @@ func (s *Store) List(ctx context.Context, q Query, applyRetention bool) (Snapsho
 		if unlock2 != nil {
 			defer unlock2()
 		}
-		degraded = d2
+		degraded = d2 || sweepFailed
 	}
 	st := s.loadState()
 	entries, err := s.build(ctx)
@@ -709,7 +828,7 @@ func (s *Store) List(ctx context.Context, q Query, applyRetention bool) (Snapsho
 	}
 	return Snapshot{
 		Revision:  revisionOf(st.Revision, filtered),
-		Settings:  Settings{Retention: st.Retention},
+		Settings:  Settings{Retention: st.Retention, CleanupRule: st.CleanupRule},
 		Total:     total,
 		Returned:  len(page),
 		Truncated: offset+len(page) < total,
@@ -777,7 +896,7 @@ func (s *Store) Chains(ctx context.Context, q Query) (ChainSnapshot, error) {
 	}
 	return ChainSnapshot{
 		Revision: revisionOf(st.Revision, filtered),
-		Settings: Settings{Retention: st.Retention},
+		Settings: Settings{Retention: st.Retention, CleanupRule: st.CleanupRule},
 		Total:    total,
 		Chains:   chains,
 	}, nil
@@ -841,6 +960,25 @@ func (s *Store) SetRetention(ctx context.Context, retention string) (Snapshot, e
 	return s.List(ctx, Query{Limit: 1}, false)
 }
 
+// SetCleanupRule switches the session-deletion cleanup rule (任务 464:
+// never|sender|receiver|both) and applies it immediately, so switching to a
+// stricter rule cleans in the same call. never (the default) keeps everything.
+func (s *Store) SetCleanupRule(ctx context.Context, rule string) (Snapshot, error) {
+	if !ValidCleanupRule(rule) {
+		return Snapshot{}, fmt.Errorf("collabinbox: unknown cleanup rule %q (want never|sender|receiver|both)", rule)
+	}
+	snap, err := s.mutate(ctx, func(st *stateFile) {
+		st.CleanupRule = rule
+	})
+	if err != nil {
+		return Snapshot{}, err
+	}
+	if _, err := s.ApplyRetention(ctx); err != nil {
+		return snap, err
+	}
+	return s.List(ctx, Query{Limit: 1}, false)
+}
+
 // mutate runs one state write under the lock: load → apply → bump revision →
 // save, then returns a fresh snapshot of the default view.
 func (s *Store) mutate(ctx context.Context, apply func(*stateFile)) (Snapshot, error) {
@@ -863,10 +1001,11 @@ func (s *Store) mutate(ctx context.Context, apply func(*stateFile)) (Snapshot, e
 func (s *Store) Settings(ctx context.Context) Settings {
 	unlock, err := s.lock(ctx)
 	if err != nil {
-		return Settings{Retention: Retention7d}
+		return Settings{Retention: Retention7d, CleanupRule: CleanupNever}
 	}
 	defer unlock()
-	return Settings{Retention: s.loadState().Retention}
+	st := s.loadState()
+	return Settings{Retention: st.Retention, CleanupRule: st.CleanupRule}
 }
 
 // filterEntries applies query filters to a decorated table.
