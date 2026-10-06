@@ -1018,6 +1018,11 @@ const CHECKS = [
   { feature: "463 三语文案 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["\"composer.expandAll\": \"Expand all work processes\""] },
   { feature: "463 双向开关测试存续", file: "desktop/frontend/src/__tests__/fold-toggle-button.test.tsx", patterns: ["allWorkProcessesCollapsed", "reasonix:expand-all-folds"] },
 
+  // ── 任务567 ask 链路读数埋点 + 工具卡占位态 ──
+  // 后端三处 slog 检查点（entry/prompt_lock/ask_emit）支撑弹窗延时的桌面端
+  // 二分归因；merge 若顶掉：埋点静默消失，84s 归因重新不可做。
+  { feature: "567 ask 链路三检查点 slog（entry/prompt_lock/ask_emit）", file: "internal/control/controller.go", patterns: ["[ask-panel] ask chain checkpoint", "\"stage\", \"entry\"", "\"stage\", \"prompt_lock\"", "\"stage\", \"ask_emit\""] },
+
 ];
 
 let failed = 0;
