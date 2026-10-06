@@ -9582,6 +9582,66 @@ body > .mermaid-diagram--fullscreen {
   color: var(--fg-faint);
   font-size: var(--font-status, 11px);
 }
+/* 任务 558 限高：面板列表最高约 46% 视口（封顶 430px），超出内部滚动而非撑满
+   整屏。列表只在有内容时渲染（空态走 .capsule-panel__empty 分支），不会出现大空块。 */
+.capsule-panel__list {
+  max-height: min(46vh, 430px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* 任务 558 折叠头：已结束目录的开关行（计数标题 + 清空入口）。 */
+.capsule-panel__ended-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+.capsule-panel__ended-toggle {
+  display: inline-flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 2px 4px 4px;
+  background: transparent;
+  color: var(--fg-faint);
+  font-size: var(--font-status, 11px);
+  text-align: left;
+  transition: color 0.12s;
+}
+.capsule-panel__ended-toggle:hover,
+.capsule-panel__ended-toggle:focus-visible {
+  outline: none;
+  color: var(--fg);
+}
+.capsule-panel__ended-chevron {
+  flex: 0 0 auto;
+  transition: transform 0.12s;
+}
+.capsule-panel__group[data-capsule-ended-expanded="true"] .capsule-panel__ended-chevron {
+  transform: rotate(180deg);
+}
+/* 任务 558：面板内的就地确认按钮（单条删除/清空）沿用停止按钮的紧凑规格。 */
+.capsule-panel__row .inline-confirm,
+.capsule-panel__ended-head .inline-confirm {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+.capsule-panel__row .inline-confirm .btn,
+.capsule-panel__ended-head .inline-confirm .btn {
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: var(--font-status, 11px);
+}
+/* 任务 558：删除/清空失败的行内错误（记录仍在，不静默消失）。 */
+.capsule-panel__record-error {
+  padding: 2px 4px 6px;
+  color: var(--danger, #c0392b);
+  font-size: var(--font-status, 11px);
+  overflow-wrap: anywhere;
+}
 .capsule-panel__row {
   display: flex;
   align-items: center;
@@ -9594,19 +9654,34 @@ body > .mermaid-diagram--fullscreen {
   color: inherit;
   text-align: left;
 }
+/* 任务 558：已结束行改为 div 容器（行内含删除按钮，按钮不能嵌按钮），
+   打开转录的交互面收敛到 .capsule-panel__row-main。 */
 .capsule-panel__row--ended {
-  cursor: pointer;
-  transition: color 0.12s, border-color 0.12s, background 0.12s;
+  gap: 4px;
 }
-.capsule-panel__row--ended:hover:not(:disabled),
-.capsule-panel__row--ended:focus-visible {
+.capsule-panel__row--ended:hover,
+.capsule-panel__row--ended:focus-within {
   outline: none;
   border-color: var(--border);
   background: var(--bg-soft);
 }
-.capsule-panel__row--ended:disabled {
+.capsule-panel__row-main {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.capsule-panel__row-main:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+.capsule-panel__row-main:focus-visible {
+  outline: none;
 }
 .capsule-panel__row-icon {
   display: inline-flex;

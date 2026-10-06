@@ -8,6 +8,14 @@
 // pipeline the history drawer uses — and renders it read-only with the
 // shared Transcript component.
 //
+// Task 558: the ended directory defaults to collapsed (failed/interrupted
+// count as ended; running sections stay expanded), the list is height-capped
+// with internal scrolling (styles.css), and records can be deleted singly or
+// cleared when ended — DeleteSubagentRecord / ClearEndedSubagents remove the
+// persisted transcript, sidecars, and metadata, not just the row. The panel
+// height cap and the collapse state keep the panel from wallpapering the
+// screen as the ended directory grows.
+//
 // The two bridge calls are injected as props (onListSubagents /
 // onReadSubagent) instead of importing lib/bridge here — the same pattern as
 // onCancelJob — so the panel stays a pure component and the tsx test harness
@@ -20,8 +28,9 @@
 // of merging.
 
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, ArrowLeft, Bot, Sparkles, Square, TerminalSquare } from "lucide-react";
+import { Activity, ArrowLeft, Bot, ChevronDown, Sparkles, Square, TerminalSquare } from "lucide-react";
 import { AnchoredPopover } from "./AnchoredPopover";
+import { InlineConfirmButton } from "./InlineConfirmButton";
 import { useT, type DictKey } from "../lib/i18n";
 import { historyMessagesToItems } from "../lib/useController";
 import type { BackgroundRuntimeView, HistoryMessage, JobView, SubagentArtifactView } from "../lib/types";
@@ -153,6 +162,8 @@ export function CapsuleIndicator({
   sessionPath,
   onListSubagents,
   onReadSubagent,
+  onDeleteSubagent,
+  onClearEndedSubagents,
 }: {
   jobs?: readonly JobView[];
   // Task 440: every process-local runtime's running jobs (visible and
@@ -173,6 +184,13 @@ export function CapsuleIndicator({
   // Read-only Wails surface (desktop/subagents_app.go), injected by App.
   onListSubagents?: (sessionPath: string) => Promise<SubagentArtifactView[]>;
   onReadSubagent?: (sessionPath: string, ref: string) => Promise<HistoryMessage[]>;
+  // Task 558 delete surface. onDeleteSubagent removes one ended record
+  // (transcript + sidecars + meta); onClearEndedSubagents removes every ended
+  // record and resolves how many went. Both re-list through onListSubagents
+  // afterwards — the directory reload is the source of truth, not a local
+  // optimistic splice.
+  onDeleteSubagent?: (sessionPath: string, ref: string) => Promise<void>;
+  onClearEndedSubagents?: (sessionPath: string) => Promise<number>;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -184,6 +202,21 @@ export function CapsuleIndicator({
   const [detail, setDetail] = useState<CapsuleDetailState>(EMPTY_DETAIL);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const detailSeq = useRef(0);
+  // Task 558 default collapse rule: ended sub-agents start collapsed (a
+  // finished directory must not wallpaper the panel — the screenshot that
+  // motivated this task showed 12 flat rows filling the screen), running
+  // sections stay expanded. A manual toggle is remembered for the app session
+  // via this state — the CapsuleIndicator stays mounted across panel
+  // open/close, so re-opening keeps the user's choice — and deliberately NOT
+  // persisted: a restart returns to the default. failed/interrupted count as
+  // ended: a failed run does not deserve a permanently expanded row either.
+  const [endedExpanded, setEndedExpanded] = useState(false);
+  // Bumped after a successful delete/clear so the directory reload effect
+  // re-pulls without re-opening the panel.
+  const [listNonce, setListNonce] = useState(0);
+  const [deletingRef, setDeletingRef] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const [recordError, setRecordError] = useState<string | null>(null);
   // Task 440 empty state: a panel the user explicitly opened while idle stays
   // open showing the empty state instead of snapping shut. The 447 anti-noise
   // auto-close only applies to panels that HAD content and drained to empty.
@@ -213,6 +246,8 @@ export function CapsuleIndicator({
   // Load the ended directory every time the panel opens and whenever the
   // running set changes while open (a just-finished batch writes its sidecars
   // at completion). Read-only and cheap; a failure renders an empty directory.
+  // Task 558: listNonce also re-pulls after a delete/clear resolves — the
+  // fresh listing is the source of truth for what remains.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -232,8 +267,9 @@ export function CapsuleIndicator({
       cancelled = true;
     };
     // onListSubagents is a stable useCallback in App; re-listing keys on the
-    // open state and the running-set identity, not on callback identity.
-  }, [open, runningKey, sessionPath, onListSubagents]);
+    // open state, the running-set identity, and the post-delete nonce — not
+    // on callback identity.
+  }, [open, runningKey, sessionPath, onListSubagents, listNonce]);
 
   // Live elapsed clock only while the panel is open and something is still
   // running (same rule as the task-440 panel).
@@ -263,6 +299,7 @@ export function CapsuleIndicator({
     hadContentRef.current = false;
     setSelected(null);
     setDetail(EMPTY_DETAIL);
+    setRecordError(null);
   };
 
   const stop = async (entry: CapsuleWorkEntry) => {
@@ -299,6 +336,38 @@ export function CapsuleIndicator({
         if (seq !== detailSeq.current) return;
         setDetail({ loading: false, failed: true, messages: [] });
       });
+  };
+
+  // Task 558: remove one ended record (files included) or every ended record
+  // at once. Success re-lists through the nonce; failure surfaces inline —
+  // the row stays, so nothing silently vanishes on an error. (The detail view
+  // replaces the list, so a delete always originates from the list view.)
+  const deleteRecord = async (view: SubagentArtifactView) => {
+    if (!onDeleteSubagent || deletingRef !== null || clearing) return;
+    setDeletingRef(view.ref);
+    setRecordError(null);
+    try {
+      await onDeleteSubagent(sessionPath ?? "", view.ref);
+      setListNonce((n) => n + 1);
+    } catch (e) {
+      setRecordError(String((e as Error)?.message ?? e));
+    } finally {
+      setDeletingRef(null);
+    }
+  };
+
+  const clearEnded = async () => {
+    if (!onClearEndedSubagents || clearing || deletingRef !== null) return;
+    setClearing(true);
+    setRecordError(null);
+    try {
+      await onClearEndedSubagents(sessionPath ?? "");
+      setListNonce((n) => n + 1);
+    } catch (e) {
+      setRecordError(String((e as Error)?.message ?? e));
+    } finally {
+      setClearing(false);
+    }
   };
 
   const renderRunningGroup = (title: string, rows: readonly CapsuleWorkEntry[], icon: "agent" | "terminal") => {
@@ -343,31 +412,50 @@ export function CapsuleIndicator({
     );
   };
 
+  // Task 558: an ended row is a div holding the open button (transcript
+  // preview) plus its own delete button — a button inside a button is invalid
+  // HTML, so the open affordance moved to `.capsule-panel__row-main`. A record
+  // without a transcript keeps its open button disabled but can still be
+  // deleted: removing a junk meta-only entry is exactly what the user wants.
   const endedRows = ended.map((view) => {
     const statusKey = endedCapsuleStatusKey(view.status);
     const statusLabel = statusKey ? t(statusKey) : view.status;
     const metaBits = [statusLabel, view.model, capsuleTimeLabel(view.createdAt)].filter(Boolean);
     return (
-      <button
-        type="button"
+      <div
         className="capsule-panel__row capsule-panel__row--ended"
         key={view.ref}
         data-capsule-ended-id={view.ref}
         data-capsule-ended-status={view.status}
         data-capsule-ended-openable={view.hasTranscript}
-        disabled={!view.hasTranscript}
-        title={view.hasTranscript ? view.name || view.ref : t("composer.capsuleNotOpenable")}
-        onClick={() => openEnded(view)}
       >
-        <span className="capsule-panel__row-icon" aria-hidden="true">
-          {view.kind === "skill" ? <Sparkles size={14} /> : <Bot size={14} />}
-        </span>
-        <span className="capsule-panel__copy">
-          <strong>{view.name || view.kind || view.ref}</strong>
-          <small>{metaBits.join(" · ")}</small>
-        </span>
-        {view.outcome && <span className="capsule-panel__outcome">{view.outcome}</span>}
-      </button>
+        <button
+          type="button"
+          className="capsule-panel__row-main"
+          disabled={!view.hasTranscript}
+          title={view.hasTranscript ? view.name || view.ref : t("composer.capsuleNotOpenable")}
+          onClick={() => openEnded(view)}
+        >
+          <span className="capsule-panel__row-icon" aria-hidden="true">
+            {view.kind === "skill" ? <Sparkles size={14} /> : <Bot size={14} />}
+          </span>
+          <span className="capsule-panel__copy">
+            <strong>{view.name || view.kind || view.ref}</strong>
+            <small>{metaBits.join(" · ")}</small>
+          </span>
+          {view.outcome && <span className="capsule-panel__outcome">{view.outcome}</span>}
+        </button>
+        {onDeleteSubagent && (
+          <InlineConfirmButton
+            label={t("composer.capsuleDelete")}
+            confirmLabel={t("composer.capsuleDeleteConfirm")}
+            cancelLabel={t("common.cancel")}
+            disabled={deletingRef !== null || clearing}
+            danger
+            onConfirm={() => void deleteRecord(view)}
+          />
+        )}
+      </div>
     );
   });
 
@@ -440,9 +528,38 @@ export function CapsuleIndicator({
                   {renderRunningGroup(t("composer.capsuleAgents"), groups.agents, "agent")}
                   {renderRunningGroup(t("composer.capsuleCommands"), groups.commands, "terminal")}
                   {ended.length > 0 && (
-                    <div className="capsule-panel__group" data-capsule-group="ended">
-                      <div className="capsule-panel__group-title">{t("composer.capsuleEnded", { n: ended.length })}</div>
-                      {endedRows}
+                    <div className="capsule-panel__group" data-capsule-group="ended" data-capsule-ended-expanded={endedExpanded}>
+                      {/* 任务 558 折叠规则：已结束目录默认折叠（failed/interrupted 也算已结束），
+                          运行区不受影响永远展开；手动展开会话内记住、不持久化。 */}
+                      <div className="capsule-panel__group-title capsule-panel__ended-head">
+                        <button
+                          type="button"
+                          className="capsule-panel__ended-toggle"
+                          aria-expanded={endedExpanded}
+                          title={endedExpanded ? t("composer.capsuleEndedCollapse") : t("composer.capsuleEndedExpand")}
+                          onClick={() => setEndedExpanded((v) => !v)}
+                        >
+                          <ChevronDown size={11} aria-hidden="true" className="capsule-panel__ended-chevron" />
+                          {t("composer.capsuleEnded", { n: ended.length })}
+                        </button>
+                        {onClearEndedSubagents && (
+                          <InlineConfirmButton
+                            label={t("composer.capsuleClear")}
+                            confirmLabel={t("composer.capsuleClearConfirm")}
+                            cancelLabel={t("common.cancel")}
+                            disabled={clearing || deletingRef !== null}
+                            danger
+                            onConfirm={() => void clearEnded()}
+                          />
+                        )}
+                      </div>
+                      {recordError && (
+                        <div className="capsule-panel__record-error" role="alert" data-capsule-record-error="true">
+                          {t("composer.capsuleRecordError")}
+                          {recordError}
+                        </div>
+                      )}
+                      {endedExpanded && endedRows}
                     </div>
                   )}
                 </div>
