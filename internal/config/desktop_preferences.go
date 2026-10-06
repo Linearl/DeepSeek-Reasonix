@@ -211,8 +211,9 @@ type DesktopConfig struct {
 	ExperimentalOrphanLeaseReclaim  bool `toml:"experimental_orphan_lease_reclaim"`
 	ExperimentalRecoveryOrphanSweep bool `toml:"experimental_recovery_orphan_sweep"`
 
-	// ExperimentalModelCapabilityFilter is the settings-view mirror for the
-	// [agent] runtime flag of task 244 B9.
+	// ExperimentalModelCapabilityFilter is the legacy task-244 B9 mirror key,
+	// kept READ-ONLY so old configs still load (task 551; the [agent] gate is
+	// removed). Never rendered or written back.
 	ExperimentalModelCapabilityFilter bool `toml:"experimental_model_capability_filter"`
 	// ExperimentalRuntimeReuse is the settings-view mirror for the [agent]
 	// runtime flag of task 363A (runtime assembly reuse pool).

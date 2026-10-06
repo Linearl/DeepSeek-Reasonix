@@ -35,6 +35,10 @@ var desktopRenderOmissions = map[string]string{
 	"session_experience":                 "rendered by renderDesktopSessionExperience",
 	"reasoning_display_mode":             "rendered by renderDesktopReasoningDisplayMode",
 	"conversation_width":                 "rendered with the session-experience block",
+	// Task 551: the B9 gate is removed; the legacy key is READ-ONLY for load
+	// compatibility and deliberately never written back (a stale true is inert
+	// and vanishes on the next save).
+	"experimental_model_capability_filter": "task 551: legacy task-244 B9 key, accepted on read, never rendered (gate removed)",
 }
 
 // TestDesktopRenderTableCoversEveryKey is the single guard against that class of bug:

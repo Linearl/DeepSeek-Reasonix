@@ -568,12 +568,6 @@ func (a *App) SetExperimentalRecoveryOrphanSweep(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalRecoveryOrphanSweep(enabled) })
 }
 
-// SetExperimentalModelCapabilityFilter toggles the per-task model capability
-// filter (task 244 B9). Read at call time by the dispatch probe — no restart.
-func (a *App) SetExperimentalModelCapabilityFilter(enabled bool) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalModelCapabilityFilter(enabled) })
-}
-
 // SetExperimentalRuntimeReuse toggles the task-363A runtime assembly reuse
 // pool. Read at Build time per new tab — no restart needed for new tabs.
 func (a *App) SetExperimentalRuntimeReuse(enabled bool) error {

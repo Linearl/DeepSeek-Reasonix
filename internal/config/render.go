@@ -250,7 +250,6 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "experimental_orphan_lease_reclaim = %v   # desktop: legacy key (task 244 B5), migrated into experimental_orphan_handling (task 449)\n", c.Desktop.ExperimentalOrphanLeaseReclaim)
 
 		fmt.Fprintf(&b, "experimental_recovery_orphan_sweep = %v   # desktop: legacy key (task 244 B4), migrated into experimental_orphan_handling (task 449)\n", c.Desktop.ExperimentalRecoveryOrphanSweep)
-		fmt.Fprintf(&b, "experimental_model_capability_filter = %v   # desktop: settings-view mirror of [agent] experimental_model_capability_filter (task 244 B9)\n", c.Desktop.ExperimentalModelCapabilityFilter)
 		fmt.Fprintf(&b, "experimental_runtime_reuse = %v   # desktop: settings-view mirror of [agent] experimental_runtime_reuse (task 363A)\n", c.Desktop.ExperimentalRuntimeReuse)
 		fmt.Fprintf(&b, "perf_monitor_interval_seconds = %d   # desktop: settings-view mirror of [agent] perf_monitor_interval_seconds (task 184; 0 = 5s)\n", c.Desktop.PerfMonitorIntervalSeconds)
 		fmt.Fprintf(&b, "session_collab_hop_limit = %d   # desktop: settings-view mirror of [agent] session_collab_hop_limit (task 204)\n", c.Desktop.SessionCollabHopLimit)
@@ -486,7 +485,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "experimental_orphan_lease_reclaim = %v   # task 244 B5: legacy key, migrated into experimental_orphan_handling (task 449)\n", c.Agent.ExperimentalOrphanLeaseReclaim)
 
 	fmt.Fprintf(&b, "experimental_recovery_orphan_sweep = %v   # task 244 B4: legacy key, migrated into experimental_orphan_handling (task 449)\n", c.Agent.ExperimentalRecoveryOrphanSweep)
-	fmt.Fprintf(&b, "experimental_model_capability_filter = %v   # task 244 B9: reject a per-task model that lacks a capability the task needs (explained rejection instead of silent degradation)\n", c.Agent.ExperimentalModelCapabilityFilter)
+	// Task 551: the legacy experimental_model_capability_filter line is gone —
+	// the B9 gate was removed (it misjudged turn-level attachment candidates as
+	// the subagent's own inputs). The toml field stays READ-ONLY so old configs
+	// still load; a stale true is inert and vanishes on the next save.
 	// Task 363A: runtime assembly reuse pool. Unconditional render —
 	// omit-on-default would let a hand-added line vanish on the next save.
 	fmt.Fprintf(&b, "experimental_runtime_reuse = %v   # task 363A: reuse the runtime assembly (prompt/skills/commands/hooks/registry) across tabs with the same root+model+effort instead of full rebuild\n", c.Agent.ExperimentalRuntimeReuse)

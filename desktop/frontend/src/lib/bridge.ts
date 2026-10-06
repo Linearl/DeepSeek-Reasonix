@@ -1039,7 +1039,6 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalOrphanHandling(enabled: boolean): Promise<void>;
   SetExperimentalOrphanLeaseReclaim(enabled: boolean): Promise<void>;
   SetExperimentalRecoveryOrphanSweep(enabled: boolean): Promise<void>;
-  SetExperimentalModelCapabilityFilter(enabled: boolean): Promise<void>;
   // Task 363A: runtime assembly reuse pool (same root+model+effort tabs).
   SetExperimentalRuntimeReuse(enabled: boolean): Promise<void>;
   SetSessionCollabHopLimit(limit: number): Promise<void>;
@@ -5482,7 +5481,6 @@ function makeMockApp(): AppBindings {
     async SetExperimentalOrphanHandling() {},
     async SetExperimentalOrphanLeaseReclaim() {},
     async SetExperimentalRecoveryOrphanSweep() {},
-    async SetExperimentalModelCapabilityFilter() {},
     async SetExperimentalRuntimeReuse() {},
     async SetSessionCollabHopLimit() {},
     async SetDetachedIdleReleaseMinutes() {},
