@@ -4,21 +4,13 @@
 // it at compile time), so adding a key here makes the build fail until zh has it.
 
 export const en = {
-  "toolRecovery.title": "Interrupted tool needs review",
-  "toolRecovery.unknown": "Outcome not confirmed",
+  "toolRecovery.title": "Interrupted tool calls (record only)",
+  "toolRecovery.unknown": "Outcome unknown (recorded)",
   "toolRecovery.details": "View action details",
-  "toolRecovery.inspectFirst": "Inspect the current state first: confirm and do-not-retry become available once it succeeds.",
-  "toolRecovery.inspect": "Inspect current state",
-  "toolRecovery.confirm": "I verified the effect happened",
-  "toolRecovery.reject": "Do not retry",
-  "toolRecovery.dismiss": "Ignore, stop asking",
-  "toolRecovery.retry": "Retry safely",
-  "toolRecovery.resume": "Continue task",
-  "toolRecovery.resumePrompt": "Continue the interrupted task, preserving completed work and checking uncertain effects before any further writes.",
   "toolRecovery.present": "The current effect or file postcondition is present. This does not establish the original execution result.",
   "toolRecovery.absent": "The tool verified the effect is absent and the previous attempt cannot commit.",
   "toolRecovery.unproven": "Automatic inspection cannot establish the outcome. Check the affected workspace or external service before confirming.",
-  "toolRecovery.rejected": "Retry declined. The uncertain effect remains recorded and continues to block further writes.",
+  "toolRecovery.rejected": "Retry declined. The uncertain effect remains recorded.",
   // shared verbs / chrome
   "common.close": "Close",
   "settings.providerProtocolMismatch": "The endpoint does not match the selected API format.",
