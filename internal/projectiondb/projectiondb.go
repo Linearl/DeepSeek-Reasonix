@@ -425,7 +425,9 @@ func PathLooksRemote(path string) bool {
 }
 
 // Rebuild constructs and validates a replacement beside the live database,
-// then swaps it into place. The old projection remains untouched if building,
+// then swaps it into place. Validation re-reads the folded replacement from
+// disk through a fresh connection so builder page cache cannot mask corruption.
+// The old projection remains untouched if building,
 // validation, or the platform rename fails (notably an open database on
 // Windows). Rebuild never touches authoritative business files.
 //
@@ -488,17 +490,16 @@ func Rebuild(ctx context.Context, opts OpenOptions, populate func(context.Contex
 			return fmt.Errorf("populate projection replacement: %w", err)
 		}
 	}
-	var integrity string
-	if err := handle.DB.QueryRowContext(ctx, `PRAGMA integrity_check`).Scan(&integrity); err != nil || integrity != "ok" {
-		_ = handle.DB.Close()
-		cleanupTemporary()
-		if err != nil {
-			return fmt.Errorf("validate projection replacement: %w", err)
-		}
-		return fmt.Errorf("validate projection replacement: %s", integrity)
-	}
 	_, _ = handle.DB.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`)
 	if err := handle.DB.Close(); err != nil {
+		cleanupTemporary()
+		return err
+	}
+	// Validate through a fresh read-only connection after folding the WAL:
+	// the builder's pooled connections could satisfy integrity_check from
+	// their page cache and mask on-disk corruption, so the verdict must be
+	// re-read from the file that is about to be swapped in.
+	if err := validateReplacementFile(ctx, temporary); err != nil {
 		cleanupTemporary()
 		return err
 	}
@@ -542,6 +543,26 @@ func Rebuild(ctx context.Context, opts OpenOptions, populate func(context.Contex
 		_ = os.Remove(backup + "-shm")
 	}
 	cleanupTemporary()
+	return nil
+}
+
+// validateReplacementFile runs integrity_check on a folded replacement file
+// through a fresh read-only connection, mirroring Inspect. It is called after
+// the builder pool is closed so the verdict reflects the on-disk bytes rather
+// than the writer's page cache.
+func validateReplacementFile(ctx context.Context, path string) error {
+	verifier, err := sql.Open("sqlite", diskFileDSN(path)+"&mode=ro&immutable=1")
+	if err != nil {
+		return fmt.Errorf("validate projection replacement: %w", err)
+	}
+	defer verifier.Close()
+	var integrity string
+	if err := verifier.QueryRowContext(ctx, `PRAGMA integrity_check`).Scan(&integrity); err != nil {
+		return fmt.Errorf("validate projection replacement: %w", err)
+	}
+	if integrity != "ok" {
+		return fmt.Errorf("validate projection replacement: %s", integrity)
+	}
 	return nil
 }
 
