@@ -203,6 +203,10 @@ func (o *turnOrchestrator) runSubagentSkillTurns(ctx context.Context, skills []s
 
 func (o *turnOrchestrator) runOrchestratedTurn(ctx context.Context, turn orchestratedTurn) (err error) {
 	c := o.c
+	// Task 544: the answered-ask marker covers exactly one turn — clear it at
+	// every turn start so a marker left by a previous turn can never fire a
+	// continuation for this one.
+	c.clearTurnAskAnswered()
 	c.maybeSessionStart(ctx)
 	parentSession := c.parentSessionID()
 	ctx = agent.WithParentSession(ctx, parentSession)
@@ -447,6 +451,11 @@ func (o *turnOrchestrator) runGoalLoopWithPreparedTurn(ctx context.Context, turn
 			// Goal stays running so the next ordinary user message keeps the
 			// scope; an unattended one only absorbs pauses nobody can lift.
 			o.c.goalUsageTee.setActiveRecorder(nil)
+			// Task 544: an answered ask followed by this stop is the one
+			// shape the host resumes by itself (experimental, default off).
+			if handled, contErr := o.maybeAskAutoContinueTurn(ctx, err); handled {
+				return contErr
+			}
 			return err
 		}
 		if !o.c.goals.active() {
@@ -481,6 +490,10 @@ func (o *turnOrchestrator) runEditedGoalLoopWithImageRefsRawDisplay(ctx context.
 		}
 		if !o.goalTurnErrorAbsorbableFor(err) {
 			o.c.goalUsageTee.setActiveRecorder(nil)
+			// Task 544: same resumed-after-answer shape as the plain loop.
+			if handled, contErr := o.maybeAskAutoContinueTurn(ctx, err); handled {
+				return contErr
+			}
 			return err
 		}
 		if !o.c.goals.active() {
