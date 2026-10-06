@@ -177,8 +177,6 @@ export interface SettingsView {
   // Task 449: merged orphan switch (folds task 244 B5 lease reclaim + B4
   // recovery sweep into one key).
   experimentalOrphanHandling?: boolean;
-  // Task 244 B9: per-task model capability filter.
-  experimentalModelCapabilityFilter?: boolean;
   // Task 363A: runtime assembly reuse pool (same root+model+effort tabs).
   experimentalRuntimeReuse?: boolean;
   visionModel: string;

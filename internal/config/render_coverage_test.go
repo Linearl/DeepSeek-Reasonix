@@ -39,12 +39,13 @@ var desktopRenderOmissions = map[string]string{
 	// on; off/absent = autopilot never creates guard tasks (byte-identical
 	// config for a user who never touched the switch).
 	"experimental_autopilot_guard_autocreate": "task 547: rendered inside the autopilot block, only when the guard auto-creation opt-in is on",
-	"session_experience":                      "rendered by renderDesktopSessionExperience",
-	"reasoning_display_mode":                  "rendered by renderDesktopReasoningDisplayMode",
-	"conversation_width":                      "rendered with the session-experience block",
-	"session_experience":                      "rendered by renderDesktopSessionExperience",
-	"reasoning_display_mode":                  "rendered by renderDesktopReasoningDisplayMode",
-	"conversation_width":                      "rendered with the session-experience block",
+	// Task 551: the B9 gate is removed; the legacy key is READ-ONLY for load
+	// compatibility and deliberately never written back (a stale true is inert
+	// and vanishes on the next save).
+	"experimental_model_capability_filter": "task 551: legacy task-244 B9 key, accepted on read, never rendered (gate removed)",
+	"session_experience":                   "rendered by renderDesktopSessionExperience",
+	"reasoning_display_mode":               "rendered by renderDesktopReasoningDisplayMode",
+	"conversation_width":                   "rendered with the session-experience block",
 }
 
 // TestDesktopRenderTableCoversEveryKey is the single guard against that class of bug:

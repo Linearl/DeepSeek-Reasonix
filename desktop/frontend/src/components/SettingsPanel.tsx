@@ -1814,8 +1814,6 @@ type ExperimentFeatureId =
   | "eventWaitRecheck"
   // Task 244 B5/B4, merged into one switch by task 449.
   | "orphanHandling"
-  // Task 244 B9 (batch 4, final).
-  | "modelCapabilityFilter"
   // Task 363A: runtime assembly reuse pool.
   | "runtimeReuse"
   | "messageMerge"
@@ -2011,7 +2009,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     // Task 449: the task-244 B5 lease reclaim + B4 recovery sweep are one
     // switch now — the entry light reads the single merged key.
     { id: "orphanHandling", group: "misc", label: t("settings.orphanHandling"), on: Boolean(s.experimentalOrphanHandling) },
-    { id: "modelCapabilityFilter", group: "misc", label: t("settings.modelCapabilityFilter"), on: Boolean(s.experimentalModelCapabilityFilter) },
     { id: "runtimeReuse", group: "misc", label: t("settings.runtimeReuse"), on: Boolean(s.experimentalRuntimeReuse) },
     { id: "messageMerge", group: "efficiency", label: t("settings.messageMerge"), on: (s.collabInboxMerge || "off") !== "off" || Boolean(s.collabGuidanceMerge) },
     { id: "localServer", group: "efficiency", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
@@ -3138,26 +3135,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
             </>
           )}
 
-          {selected === "modelCapabilityFilter" && (
-            <>
-              <SettingsField label={t("settings.modelCapabilityFilter")} hint={t("settings.modelCapabilityFilterHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalModelCapabilityFilter) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalModelCapabilityFilter(on);
-                      })}
-                    >
-                      {t(on ? "settings.modelCapabilityFilter.on" : "settings.modelCapabilityFilter.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-            </>
-          )}
           {selected === "runtimeReuse" && (
             <>
               <SettingsField label={t("settings.runtimeReuse")} hint={t("settings.runtimeReuseHint")} icon={<Sparkles size={18} />}>

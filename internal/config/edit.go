@@ -1178,15 +1178,6 @@ func (c *Config) SetExperimentalRecoveryOrphanSweep(enabled bool) error {
 	return c.SetExperimentalOrphanHandling(enabled)
 }
 
-// SetExperimentalModelCapabilityFilter toggles the per-task model capability
-// filter with explained rejections (task 244 B9). Desktop keeps the
-// settings-view mirror; Agent carries the runtime flag.
-func (c *Config) SetExperimentalModelCapabilityFilter(enabled bool) error {
-	c.Desktop.ExperimentalModelCapabilityFilter = enabled
-	c.Agent.ExperimentalModelCapabilityFilter = enabled
-	return nil
-}
-
 // SetExperimentalRuntimeReuse toggles the task-363A runtime assembly reuse
 // pool (settings → 实验特性). Desktop keeps the settings-view mirror; Agent
 // carries the runtime flag.

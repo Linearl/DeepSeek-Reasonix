@@ -462,7 +462,6 @@ type SettingsView struct {
 	// Task 449: merged orphan switch (settings-view mirror of [agent]; folds
 	// the task 244 B5 lease reclaim + B4 recovery sweep into one key).
 	ExperimentalOrphanHandling        bool `json:"experimentalOrphanHandling"`
-	ExperimentalModelCapabilityFilter bool `json:"experimentalModelCapabilityFilter"`
 	ExperimentalRuntimeReuse          bool `json:"experimentalRuntimeReuse"`
 	// Task 244 B1/B2/B3: settings-view mirrors of the [agent] runtime flags.
 	ExperimentalAutonomousIdleTerminate bool   `json:"experimentalAutonomousIdleTerminate"`
@@ -673,7 +672,6 @@ type DesktopStartupSettingsView struct {
 	// Task 449: merged orphan switch (mirror of [agent]; folds the task 244
 	// B5 lease reclaim + B4 recovery sweep into one key).
 	ExperimentalOrphanHandling        bool `json:"experimentalOrphanHandling"`
-	ExperimentalModelCapabilityFilter bool `json:"experimentalModelCapabilityFilter"`
 	ExperimentalRuntimeReuse          bool `json:"experimentalRuntimeReuse"`
 	// Task 244 B1/B2/B3: settings-view mirrors of the [agent] runtime flags.
 	ExperimentalAutonomousIdleTerminate bool `json:"experimentalAutonomousIdleTerminate"`
@@ -1434,7 +1432,6 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalEventWaitRecheck = cfg.Desktop.ExperimentalEventWaitRecheck || cfg.Agent.ExperimentalEventWaitRecheck
 		view.ExperimentalOrphanHandling = cfg.Desktop.ExperimentalOrphanHandling || cfg.Agent.ExperimentalOrphanHandling
 
-		view.ExperimentalModelCapabilityFilter = cfg.Desktop.ExperimentalModelCapabilityFilter || cfg.Agent.ExperimentalModelCapabilityFilter
 		view.ExperimentalRuntimeReuse = cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse
 		view.ExperimentalPerfMonitor = cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor
 		view.ExperimentalHeapHighProfile = cfg.Desktop.ExperimentalHeapHighProfile || cfg.Agent.ExperimentalHeapHighProfile
@@ -1587,9 +1584,7 @@ func (a *App) Settings() SettingsView {
 		ExperimentalOpenCodeGoUsage: cfg.Agent.ExperimentalOpenCodeGoUsage,
 		// Task 449: merged orphan switch readback (folds task 244 B5 + B4).
 		ExperimentalOrphanHandling: cfg.Desktop.ExperimentalOrphanHandling || cfg.Agent.ExperimentalOrphanHandling,
-		// Task 244 batch 4: B9 model capability filter.
-		ExperimentalModelCapabilityFilter: cfg.Desktop.ExperimentalModelCapabilityFilter || cfg.Agent.ExperimentalModelCapabilityFilter,
-		ExperimentalRuntimeReuse:          cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse,
+		ExperimentalRuntimeReuse:   cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse,
 		ExperimentalPerfMonitor:           cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,
 		ExperimentalHeapHighProfile:       cfg.Desktop.ExperimentalHeapHighProfile || cfg.Agent.ExperimentalHeapHighProfile,
 		PerfMonitorIntervalSeconds:        cfg.Desktop.PerfMonitorIntervalSeconds,

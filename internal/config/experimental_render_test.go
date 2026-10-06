@@ -35,7 +35,6 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	c.Desktop.ExperimentalRecoveryOrphanSweep = true
 	c.Desktop.ExperimentalLifecycleNoiseGate = true
 
-		c.Desktop.ExperimentalModelCapabilityFilter = true
 	c.Agent.ExperimentalModelCapabilityFilter = true
 	c.Desktop.ExperimentalSessionCollab = true
 	// Task 439: the built-in zcode task bus switch must survive the render.
@@ -62,7 +61,6 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 		"experimental_event_wait_recheck = true",
 		"experimental_orphan_lease_reclaim = true",
 		"experimental_recovery_orphan_sweep = true",
-		"experimental_model_capability_filter = true",
 		"experimental_zcode_task_bus = true",
 		"experimental_session_cwd_follow = true",
 	} {
@@ -95,7 +93,6 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 		"experimental_event_wait_recheck = false",
 		"experimental_orphan_lease_reclaim = false",
 		"experimental_recovery_orphan_sweep = false",
-		"experimental_model_capability_filter = false",
 		"experimental_zcode_task_bus = false",
 		"experimental_session_cwd_follow = false",
 		"trace_as_state = false",
@@ -378,5 +375,21 @@ func TestSubagentPolicySurvivesRenderWhenIntakeOff(t *testing.T) {
 	}
 	if got := c.DefaultSubagentPolicy(); got != "balanced" {
 		t.Fatalf("stored tier must come back after re-enabling, got %q", got)
+	}
+}
+
+// Task 551: the task-244 B9 gate is removed (it misjudged turn-level
+// attachment candidates as the subagent's own inputs). The legacy key stays
+// READ-ONLY for load compatibility but must stop rendering, so a stale true in
+// an old config vanishes on the next save instead of springing the retired
+// behaviour back on.
+func TestLegacyModelCapabilityFilterStopsRendering(t *testing.T) {
+	c := &Config{}
+	c.Desktop.ExperimentalModelCapabilityFilter = true
+	c.Agent.ExperimentalModelCapabilityFilter = true
+	for _, scope := range []RenderScope{RenderScopeUser, RenderScopeProject} {
+		if out := RenderTOMLForScope(c, scope); strings.Contains(out, "experimental_model_capability_filter") {
+			t.Fatalf("scope %v still renders the retired B9 key\n---\n%s", scope, out)
+		}
 	}
 }

@@ -1821,11 +1821,12 @@ type AgentConfig struct {
 	// carries only the merged key (task 449).
 	ExperimentalOrphanLeaseReclaim  bool `toml:"experimental_orphan_lease_reclaim"`
 	ExperimentalRecoveryOrphanSweep bool `toml:"experimental_recovery_orphan_sweep"`
-	// ExperimentalModelCapabilityFilter turns a per-task model that lacks a
-	// capability the task needs into an explicit, explained rejection instead
-	// of a silent degradation (task 244 B9; today an image-bearing subagent on
-	// a text-only model just drops the image parts and runs blind). Off by
-	// default (fork rule 2): the current silent path stays byte-identical.
+	// ExperimentalModelCapabilityFilter is the legacy task-244 B9 key, kept
+	// READ-ONLY so old configs still load (task 551): the B9 rejection gate
+	// itself is removed because it judged the turn-level attachment candidates
+	// instead of the subagent's own inputs and blocked every image-bearing
+	// dispatch. No longer rendered or writable; a stale true in an old config
+	// is inert and vanishes on the next save.
 	ExperimentalModelCapabilityFilter bool `toml:"experimental_model_capability_filter"`
 	// ExperimentalRuntimeReuse lets a new conversation tab reuse the runtime
 	// assembly (system prompt, skills/commands/hooks discovery, static tool
