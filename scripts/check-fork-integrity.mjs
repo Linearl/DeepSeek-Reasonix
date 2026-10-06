@@ -962,6 +962,19 @@ const CHECKS = [
   { feature: "任务410 零模型参与源码断言（import 白名单）", file: "internal/sentinel/zero_model_test.go", patterns: ["TestSentinelPackageImportsAreModelFree", "allowedImports"] },
   { feature: "任务410 [sentinel] 用户全局配置段（hard_forbidden 默认开+exit_scan 实验开关）", file: "internal/config/config.go", patterns: ["SentinelConfig", "hard_forbidden", "exit_scan"] },
   { feature: "任务410 boot 装配（开关+保护路径+审计 JSONL）", file: "internal/boot/boot.go", patterns: ["sentinel.SetHardForbidden", "sentinel.SetAuditPath"] },
+  // ── 任务463（wt-zcode-463 已合入；本锚 wt-463-collapse-all 补登记）──
+  // 「收起全部工作过程」折叠/展开双向开关：composer 按钮方向由 transcript
+  // 经 workProcessFoldState store 上报的真实折叠状态驱动。merge 若顶掉
+  // store 或上报接线，按钮静默退回单向（只收起不展开）且无编译错误——
+  // 锚定 store 三导出、聚合纯函数、双向渲染与事件、上报/注销接线、三语。
+  { feature: "463 折叠状态 store（上报/注销/订阅三导出）", file: "desktop/frontend/src/lib/workProcessFoldState.ts", patterns: ["export function publishWorkProcessFoldState", "export function clearWorkProcessFoldState", "export function useWorkProcessFoldAggregate"] },
+  { feature: "463 全折叠聚合纯函数（手动混合态不误报）", file: "desktop/frontend/src/lib/transcriptRows.ts", patterns: ["export function allWorkProcessesCollapsed("] },
+  { feature: "463 composer 双向按钮（方向标记+事件分叉+文案切换）", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["data-fold-state={allFoldsCollapsed ? \"collapsed\" : \"expanded\"}", "allFoldsCollapsed ? \"reasonix:expand-all-folds\" : \"reasonix:collapse-all-folds\"", "const foldToggleLabel = allFoldsCollapsed ? t(\"composer.expandAll\") : t(\"composer.collapseAll\");"] },
+  { feature: "463 transcript 状态上报+注销+展开接线", file: "desktop/frontend/src/components/Transcript.tsx", patterns: ["publishWorkProcessFoldState(tabId, {", "return () => clearWorkProcessFoldState(boundTabId);", "const handleExpandAll = useTranscriptCommand(() => {", "window.addEventListener(\"reasonix:expand-all-folds\", onExpandAll);"] },
+  { feature: "463 三语文案 zh", file: "desktop/frontend/src/locales/zh.ts", patterns: ["\"composer.expandAll\": \"展开全部工作过程\""] },
+  { feature: "463 三语文案 zh-TW", file: "desktop/frontend/src/locales/zh-TW.ts", patterns: ["\"composer.expandAll\": \"全部展開工作過程\""] },
+  { feature: "463 三语文案 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["\"composer.expandAll\": \"Expand all work processes\""] },
+  { feature: "463 双向开关测试存续", file: "desktop/frontend/src/__tests__/fold-toggle-button.test.tsx", patterns: ["allWorkProcessesCollapsed", "reasonix:expand-all-folds"] },
 
 ];
 
