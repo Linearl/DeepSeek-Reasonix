@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -126,6 +127,12 @@ func TestAutopilotGuardEnsureIsIdempotentSingleton(t *testing.T) {
 
 func TestAutopilotGuardReconcileCleanup(t *testing.T) {
 	app, engine := newGuardTestApp(t)
+	// Task 547: the sweep's create half is gated behind the auto-creation
+	// sub-option (default off), so this pre-547-behavior test opts in. The
+	// off state's "never create + converge legacy" is covered by
+	// TestAutopilotGuardAutocreateOffNewSessionCreatesNothing /
+	// TestAutopilotGuardAutocreateOffConvergesLegacyGuards.
+	setGuardAutocreate(t, app, true)
 
 	// (a) The owner tab is open but autopilot is off → the guard is disabled.
 	if err := engine.EnsureAutopilotGuard(autopilotGuardOwner{TopicID: "owner-off", Scope: "global"}, 30); err != nil {
@@ -497,5 +504,185 @@ func TestAutopilotGuardIntervalDefaults(t *testing.T) {
 	}
 	if got := autopilotGuardInterval(7); got != "7m" {
 		t.Fatalf("interval for 7 minutes = %q, want 7m", got)
+	}
+}
+
+// ── Task 547 — guard auto-creation is an opt-in sub-option (default off) ────
+//
+// The sub-option gates the task-326 creation edge; the off semantics are "do
+// not create", never "create then disable". Six combinations (off/on × new
+// autopilot session / restart restore / leaving autopilot) plus legacy-task
+// convergence live in the four tests below. Off-state criterion: no
+// `autoguard-*` row may appear in a fresh state — not in engine memory and
+// not in heartbeat-tasks.json on disk (零命中判据). Zero SKIP.
+
+// setGuardAutocreate flips the sub-option through the real Settings chain so
+// a fixture exercises the same path the panel uses.
+func setGuardAutocreate(t *testing.T, app *App, enabled bool) {
+	t.Helper()
+	if err := app.SetDesktopAutopilotGuardAutocreate(enabled); err != nil {
+		t.Fatalf("set guard auto-create %v: %v", enabled, err)
+	}
+	if got := app.autopilotGuardAutocreate(); got != enabled {
+		t.Fatalf("guard auto-create read back %v, want %v", got, enabled)
+	}
+}
+
+// setAutopilotTab plants one workspace tab in (or out of) autopilot mode.
+func setAutopilotTab(t *testing.T, app *App, tabID, topicID string, autopilot bool) {
+	t.Helper()
+	app.mu.Lock()
+	if app.tabs == nil {
+		app.tabs = map[string]*WorkspaceTab{}
+	}
+	app.tabs[tabID] = &WorkspaceTab{ID: tabID, TopicID: topicID, Scope: "global", autopilot: autopilot}
+	app.mu.Unlock()
+}
+
+// heartbeatTasksFileHasNoGuards reads the JSON the engine persists and fails
+// the test when any autoguard task id is present — the on-disk zero-hit
+// criterion for the off state.
+func heartbeatTasksFileHasNoGuards(t *testing.T, engine *HeartbeatEngine) {
+	t.Helper()
+	b, err := os.ReadFile(engine.configPath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return // no file at all: trivially zero hits
+		}
+		t.Fatalf("read %s: %v", engine.configPath(), err)
+	}
+	if strings.Contains(string(b), autopilotGuardIDPrefix) {
+		t.Fatalf("heartbeat-tasks.json must not contain any %q task in a fresh off state:\n%s", autopilotGuardIDPrefix, b)
+	}
+}
+
+// Off × 新建 autopilot 会话 — the mode-selector edge fires, then the sweep
+// runs as the backstop; neither entry may write a guard.
+func TestAutopilotGuardAutocreateOffNewSessionCreatesNothing(t *testing.T) {
+	app, engine := newGuardTestApp(t)
+	setGuardAutocreate(t, app, false)
+	setAutopilotTab(t, app, "tab-off-new", "ac-off-new", true)
+
+	app.ensureAutopilotGuard(autopilotGuardOwner{TopicID: "ac-off-new", Scope: "global"})
+	if n := len(guardTasks(engine.ListTasks())); n != 0 {
+		t.Fatalf("the creation edge grew %d guards with the sub-option off, want 0", n)
+	}
+	engine.ReconcileAutopilotGuards()
+	if n := len(guardTasks(engine.ListTasks())); n != 0 {
+		t.Fatalf("the sweep grew %d guards with the sub-option off, want 0: %+v", n, guardTasks(engine.ListTasks()))
+	}
+	heartbeatTasksFileHasNoGuards(t, engine)
+}
+
+// Off × (重启恢复, 退出 autopilot) with a guard an older version left behind —
+// the sweep converges it to the new setting (disabled) and never adds rows;
+// flipping the sub-option back on revives the SAME task in place.
+func TestAutopilotGuardAutocreateOffConvergesLegacyGuards(t *testing.T) {
+	app, engine := newGuardTestApp(t)
+	// The legacy guard bypasses the App gate on purpose: it was created by a
+	// previous binary that had no gate. Its owner tab is already restored in
+	// autopilot — the upgrade moment, before the first sweep runs.
+	if err := engine.EnsureAutopilotGuard(autopilotGuardOwner{TopicID: "ac-legacy", Scope: "global"}, 30); err != nil {
+		t.Fatalf("plant legacy guard: %v", err)
+	}
+	setAutopilotTab(t, app, "tab-legacy", "ac-legacy", true)
+	setGuardAutocreate(t, app, false)
+
+	// 重启恢复: the tab is in autopilot; the legacy guard must end up disabled
+	// (关闭 ⇒ disable — the setter's immediate reconcile did it), and it must
+	// stay the only row.
+	guards := guardTasks(engine.ListTasks())
+	if len(guards) != 1 {
+		t.Fatalf("guards = %d after convergence, want exactly the planted row: %+v", len(guards), guards)
+	}
+	if guards[0].Enabled {
+		t.Fatal("a legacy guard must converge to disabled while the sub-option is off")
+	}
+	engine.ReloadConfig()
+	if g := findGuard(t, engine, "ac-legacy"); g.Enabled {
+		t.Fatal("the on-disk converged guard must read back disabled")
+	}
+
+	// 退出 autopilot: still exactly one row, still disabled, nothing new.
+	setAutopilotTab(t, app, "tab-legacy", "ac-legacy", false)
+	engine.ReconcileAutopilotGuards()
+	guards = guardTasks(engine.ListTasks())
+	if len(guards) != 1 || guards[0].Enabled {
+		t.Fatalf("after leaving autopilot: rows=%d enabled=%v, want 1 row, disabled", len(guards), len(guards) == 1 && guards[0].Enabled)
+	}
+
+	// Re-checking the sub-option revives the same task in place — the
+	// idempotent singleton grows no second guard (task 326 design intact).
+	setGuardAutocreate(t, app, true)
+	setAutopilotTab(t, app, "tab-legacy", "ac-legacy", true)
+	engine.ReconcileAutopilotGuards()
+	guards = guardTasks(engine.ListTasks())
+	if len(guards) != 1 {
+		t.Fatalf("guards = %d after re-enabling, want the same single row: %+v", len(guards), guards)
+	}
+	if guards[0].ID != autopilotGuardID("ac-legacy") || !guards[0].Enabled {
+		t.Fatalf("revived guard = id %q enabled %v, want %q enabled", guards[0].ID, guards[0].Enabled, autopilotGuardID("ac-legacy"))
+	}
+}
+
+// On × (新建 autopilot 会话, 重启恢复, 退出 autopilot) — every moment behaves
+// exactly as the pre-547 behavior: create exactly one enabled guard, revive a
+// disabled one in place on restore, disable on exit.
+func TestAutopilotGuardAutocreateOnMatchesLegacyBehavior(t *testing.T) {
+	app, engine := newGuardTestApp(t)
+	setGuardAutocreate(t, app, true)
+
+	// 新建 autopilot 会话: the edge creates one enabled guard.
+	setAutopilotTab(t, app, "tab-on-new", "ac-on-new", true)
+	app.ensureAutopilotGuard(autopilotGuardOwner{TopicID: "ac-on-new", Scope: "global"})
+	g := findGuard(t, engine, "ac-on-new")
+	if !g.Enabled || g.Interval != "30m" || g.ApprovalMode != "ask" || !g.ReuseSession {
+		t.Fatalf("created guard template wrong: %+v", g)
+	}
+
+	// 重启恢复: a guard a previous run left disabled comes back armed in
+	// place (same id), and the sweep is the backstop that does it.
+	if err := engine.DisableAutopilotGuard(autopilotGuardID("ac-on-new")); err != nil {
+		t.Fatalf("simulate persisted disable: %v", err)
+	}
+	engine.ReconcileAutopilotGuards()
+	guards := guardTasks(engine.ListTasks())
+	if len(guards) != 1 || guards[0].ID != autopilotGuardID("ac-on-new") || !guards[0].Enabled {
+		t.Fatalf("restart restore must revive the same single guard, got %+v", guards)
+	}
+
+	// 退出 autopilot: the guard is disabled, still exactly one row.
+	setAutopilotTab(t, app, "tab-on-new", "ac-on-new", false)
+	engine.ReconcileAutopilotGuards()
+	guards = guardTasks(engine.ListTasks())
+	if len(guards) != 1 || guards[0].Enabled {
+		t.Fatalf("leaving autopilot must disable the one guard, got %+v", guards)
+	}
+}
+
+// The Settings chain persists both states and takes effect immediately (the
+// same immediacy the interval dial has): on ⇒ the missing guard appears at
+// once, off ⇒ an armed guard is disabled at once.
+func TestSetDesktopAutopilotGuardAutocreatePersistsAndConverges(t *testing.T) {
+	app, engine := newGuardTestApp(t)
+	setAutopilotTab(t, app, "tab-set", "ac-set", true)
+
+	setGuardAutocreate(t, app, true)
+	if !config.LoadForEdit(config.UserConfigPath()).AutopilotGuardAutocreateEnabled() {
+		t.Fatal("enable did not persist to the user config")
+	}
+	if g := findGuard(t, engine, "ac-set"); !g.Enabled {
+		t.Fatal("enabling must reconcile immediately: the guard is missing")
+	}
+
+	setGuardAutocreate(t, app, false)
+	if config.LoadForEdit(config.UserConfigPath()).AutopilotGuardAutocreateEnabled() {
+		t.Fatal("disable did not persist to the user config")
+	}
+	if g := findGuard(t, engine, "ac-set"); g.Enabled {
+		t.Fatal("disabling must converge the armed guard immediately")
+	}
+	if n := len(guardTasks(engine.ListTasks())); n != 1 {
+		t.Fatalf("guards = %d after disable, want the single disabled row (no deletes): %+v", n, guardTasks(engine.ListTasks()))
 	}
 }

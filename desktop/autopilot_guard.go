@@ -164,9 +164,15 @@ func (a *App) ownerTabAutopilot(topicID string) (found, autopilot bool) {
 
 // ensureAutopilotGuard creates or refreshes the guard for one autopilot
 // session. Safe to call from every entry point: the task is keyed by topic, so
-// the tenth call is a no-op rather than a tenth task.
+// the tenth call is a no-op rather than a tenth task. Task 547 gates the
+// whole call behind the auto-creation sub-option (default off): with the
+// sub-option off this is a no-op — the off semantics are "do not create",
+// never "create then disable".
 func (a *App) ensureAutopilotGuard(owner autopilotGuardOwner) {
 	if a == nil || a.heartbeat == nil || strings.TrimSpace(owner.TopicID) == "" {
+		return
+	}
+	if !a.autopilotGuardAutocreate() {
 		return
 	}
 	if err := a.heartbeat.EnsureAutopilotGuard(owner, a.autopilotGuardIntervalMinutes()); err != nil {
@@ -192,6 +198,13 @@ func (a *App) autopilotGuardIntervalMinutes() int {
 	return cfg.AutopilotGuardIntervalMinutes()
 }
 
+// autopilotGuardAutocreate reports whether autopilot may auto-create guard
+// tasks (task 547 sub-option, default off).
+func (a *App) autopilotGuardAutocreate() bool {
+	cfg := config.LoadForEdit(config.UserConfigPath())
+	return cfg.AutopilotGuardAutocreateEnabled()
+}
+
 func (a *App) autopilotGuardQuiescentPolicy() string {
 	cfg := config.LoadForEdit(config.UserConfigPath())
 	return cfg.AutopilotGuardQuiescentPolicy()
@@ -205,6 +218,16 @@ func (e *HeartbeatEngine) autopilotGuardQuiescentPolicy() string {
 		return autopilotGuardQuiescentDisable
 	}
 	return e.app.autopilotGuardQuiescentPolicy()
+}
+
+// autopilotGuardAutocreate is the engine-side read of the task-547 sub-option;
+// it fails closed to "off" when no App is wired (tests, early startup), so a
+// missing config can never re-arm guard creation.
+func (e *HeartbeatEngine) autopilotGuardAutocreate() bool {
+	if e == nil || e.app == nil {
+		return false
+	}
+	return e.app.autopilotGuardAutocreate()
 }
 
 // resyncAutopilotGuardInterval re-points every existing guard at the new dial
@@ -396,14 +419,25 @@ func (e *HeartbeatEngine) SyncAutopilotGuardInterval(intervalMinutes int) error 
 // session is missing, disables one whose owner tab left autopilot, and deletes
 // one whose owner conversation is gone. It runs on the mode-switch edge and
 // once per scheduler tick, so any enable or close path that forgets to notify
-// still converges.
+// still converges. Task 547 gates the create half behind the auto-creation
+// sub-option (default off): with the sub-option off nothing is ever created,
+// and guards a previous version already created converge to the new setting —
+// an enabled guard is disabled wherever its owner stands. The cleanup half
+// (orphan removal, disable-after-exit) runs in both states so an upgrade can
+// never leave a running guard the user opted out of.
 func (e *HeartbeatEngine) ReconcileAutopilotGuards() {
 	if e == nil || e.app == nil {
 		return
 	}
+	autocreate := e.autopilotGuardAutocreate()
 	owners := e.app.autopilotGuardOwners()
 	intervalMinutes := e.app.autopilotGuardIntervalMinutes()
 	for _, owner := range owners {
+		if !autocreate {
+			// Task 547: off means never create — the sweep's create half is a
+			// no-op, the disable below converges what already exists.
+			continue
+		}
 		if err := e.EnsureAutopilotGuard(owner, intervalMinutes); err != nil {
 			log.Printf("[autopilot-guard] reconcile ensure for topic %q failed: %s", owner.TopicID, secrets.RedactError(err))
 		}
@@ -440,9 +474,26 @@ func (e *HeartbeatEngine) ReconcileAutopilotGuards() {
 			}
 			continue
 		}
-		if found && !autopilotOn && g.Enabled {
+		if !g.Enabled {
+			continue
+		}
+		if found && !autopilotOn {
 			if err := e.DisableAutopilotGuard(g.ID); err != nil {
 				log.Printf("[autopilot-guard] disable of %q failed: %s", g.ID, secrets.RedactError(err))
+			}
+			continue
+		}
+		if !autocreate {
+			// Task 547 convergence: the sub-option is off but a guard a
+			// previous version created is still armed (its owner may still be
+			// in autopilot, or the tab is just not open). Disable it — the
+			// row survives so its history and the manual re-enable path do
+			// too, and re-checking the sub-option revives the same task
+			// in place instead of growing a second one.
+			slog.Info("autopilot guard disabled — guard auto-creation sub-option is off (task 547)",
+				"guard", g.ID, "topic", owner)
+			if err := e.DisableAutopilotGuard(g.ID); err != nil {
+				log.Printf("[autopilot-guard] opt-out disable of %q failed: %s", g.ID, secrets.RedactError(err))
 			}
 		}
 	}
