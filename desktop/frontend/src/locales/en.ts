@@ -4265,6 +4265,7 @@ export const en = {
   "tool.stepOne": "{n} step",
   "tool.stepOther": "{n} steps",
   "tool.error": "error",
+  "tool.askWaiting": "waiting for your answer…",
   "tool.receivingArgs": "receiving arguments ↓ {chars}…",
   "tool.errorReceiptMismatch": "verification command has no matching successful receipt",
   "tool.command": "Command",

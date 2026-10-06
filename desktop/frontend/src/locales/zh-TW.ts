@@ -3140,6 +3140,7 @@ export const zhTW: Record<DictKey, string> = {
   "tool.stepOne": "{n} 步",
   "tool.stepOther": "{n} 步",
   "tool.error": "錯誤",
+  "tool.askWaiting": "等待使用者確認…",
   "tool.receivingArgs": "接收參數中 ↓ {chars}…",
   "tool.errorReceiptMismatch": "證據命令沒有匹配的成功執行記錄",
   "tool.command": "命令",

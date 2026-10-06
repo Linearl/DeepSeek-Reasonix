@@ -4267,6 +4267,7 @@ export const zh: Record<DictKey, string> = {
   "tool.stepOne": "{n} 步",
   "tool.stepOther": "{n} 步",
   "tool.error": "错误",
+  "tool.askWaiting": "等待用户确认…",
   "tool.receivingArgs": "接收参数中 ↓ {chars}…",
   "tool.errorReceiptMismatch": "证据命令没有匹配的成功执行记录",
   "tool.command": "命令",

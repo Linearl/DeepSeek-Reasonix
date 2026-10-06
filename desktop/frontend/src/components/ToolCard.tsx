@@ -230,6 +230,12 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId, displayN
   const nested = subcalls ?? [];
   const hasNested = nested.length > 0;
   const isSubagent = SUBAGENT_TOOLS.has(item.name);
+  // Task 567: between dispatch and the user's answer an `ask` call is not
+  // "working" — it is waiting on a human decision. Raw JSON args plus a
+  // running stopwatch read as a hung tool (ask 弹窗延时链路调研 20261007 §7),
+  // so a pending ask card shows a waiting placeholder instead; the original
+  // rendering returns untouched once the ToolResult settles the card.
+  const askPending = item.name === "ask" && item.status === "running";
   const profileText =
     isSubagent && item.profile
       ? [item.profile.model, item.profile.effort ? `effort ${item.profile.effort}` : ""].filter(Boolean).join(" · ")
@@ -238,7 +244,7 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId, displayN
   // One 1s ticker per live card feeds both the sub-agent chip and the plain
   // running-elapsed label; terminal cards show the final duration instead.
   const sp = item.subagentProgress;
-  const ticking = sp ? !isTerminalSubagentPhase(sp.phase) : item.status === "running" && item.startedAt !== undefined;
+  const ticking = sp ? !isTerminalSubagentPhase(sp.phase) : item.status === "running" && item.startedAt !== undefined && !askPending;
   const [nowTick, setNowTick] = useState(() => Date.now());
   useEffect(() => {
     if (!ticking) return;
@@ -357,7 +363,7 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId, displayN
   // else folds its args/output away by default.  Open while running so the
   // user sees progress; closed by default once settled.
   const hasArchivedOnDemandBody = Boolean(item.dataArchived && tabId);
-  const hasArgsOrOutput = !previewDiff && diffs.length === 0 && (isWebSearch
+  const hasArgsOrOutput = !askPending && !previewDiff && diffs.length === 0 && (isWebSearch
     ? Boolean(effectiveArgs || searchVisibleCount || searchHiddenCount || searchSourcesMissing || searchSummary || hasArchivedOnDemandBody)
     : Boolean(effectiveArgs || displayOutput || hasArchivedOnDemandBody));
 
@@ -389,14 +395,16 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId, displayN
   const quiet =
     item.readOnly && item.name !== "web_search" && !hasNested && item.status !== "error" && item.status !== "stopped";
 
-  const duration = item.status === "running" ? liveElapsed : (shellSummary || formatToolDuration(item.durationMs));
+  const duration = askPending ? "" : (item.status === "running" ? liveElapsed : (shellSummary || formatToolDuration(item.durationMs)));
   // While the model is still streaming this call's arguments (partial
   // dispatch), show the received volume as the live subject so a long
   // write_file body reads as progress instead of a silent stall.
   const streamingArgs = item.status === "running" && !item.args && (item.argChars ?? 0) > 0
     ? t("tool.receivingArgs", { chars: formatArgChars(item.argChars ?? 0) })
     : "";
-  const summary = item.status === "running"
+  const summary = askPending
+    ? t("tool.askWaiting")
+    : item.status === "running"
     ? streamingArgs
     : (isWebSearch
       ? (item.error ? (tailSummary || errorSummary) : searchResultLabel)
