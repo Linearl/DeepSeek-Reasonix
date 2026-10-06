@@ -19,6 +19,24 @@ export function historicalResultNotice(message: HistoryMessage, id: string): Ext
   return presentation ? { kind: "notice", id, variant: "completion", action: "open_changes", level: presentation.level, title: presentation.title, text: presentation.body, completionSummary: summary } : undefined;
 }
 
+/**
+ * 任务522: mid-turn result updates (turn_phase verifying/checking, the
+ * completion_summary event of a still-running turn, running tool checks) feed
+ * only the state — the dock entry points and the CLI receipt stay alive, but
+ * the transcript notice ("本轮结果" title + 终态按钮) must not mount while a
+ * turn is running. While the turn is live, any mounted panel (left over from
+ * the previous round, e.g. an auto-continued turn that started without a new
+ * user bubble) is unmounted, so "工作中" and "本轮结果" never share the screen.
+ * A late event after the turn settled keeps the turn_done mounting semantics.
+ */
+export function withLiveTurnResult(s: State, summary: WireCompletionSummary): State {
+  if (!s.turnActive) return withTurnResult(s, summary);
+  const items = s.items.some((item) => item.kind === "notice" && item.variant === "completion")
+    ? s.items.filter((item) => !(item.kind === "notice" && item.variant === "completion"))
+    : s.items;
+  return { ...s, completionSummary: summary, items };
+}
+
 /** Replace only the current user turn's result, keeping its mounted identity. */
 export function withTurnResult(s: State, summary: WireCompletionSummary): State {
   const boundary = lastUserIndex(s.items);
@@ -45,5 +63,5 @@ export function withRunningChecks(s: State): State {
     return { toolCallId: tool.id, command, output: tool.output?.slice(-65536) };
   });
   const summary = mergeTurnResult(s.completionSummary, undefined, s.activeTurnId);
-  return withTurnResult(s, { ...summary, checking: tools.length > 0, liveChecks });
+  return withLiveTurnResult(s, { ...summary, checking: tools.length > 0, liveChecks });
 }
