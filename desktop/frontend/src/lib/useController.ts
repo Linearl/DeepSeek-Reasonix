@@ -328,6 +328,11 @@ export type Item =
       archive: string;
       done?: number; // fork: chunked-compaction progress
       total?: number;
+      // 任务 556: live readout while pending (backend CompactionProgress).
+      // Present only on the pending card; compaction_done replaces the item
+      // wholesale, so the finished card never carries a stale estimate.
+      tokens?: number;
+      tokensPerSec?: number;
     }
   | {
       kind: "tool";
@@ -2078,6 +2083,20 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "phase", id: `p${s.seq}`, text: e.text ?? "" }] };
     case "compaction_started":
       return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "compaction", id: `c${s.seq}`, pending: true, trigger: e.compaction?.trigger ?? "", messages: 0, summary: "", archive: "" }] };
+    case "compaction_progress": {
+      // 任务 556: live tokens/throughput + chunked-fold N/M on the pending
+      // card. Bounded to ≤1 event/second by the backend throttle gate; a
+      // progress event with no pending card (late arrival after Done/abort)
+      // must be dropped — it would otherwise resurrect a stale readout.
+      const c = e.compaction;
+      if (!c) return s;
+      const idx = [...s.items].reverse().findIndex((it) => it.kind === "compaction" && it.pending);
+      if (idx < 0) return s;
+      const at = s.items.length - 1 - idx;
+      const cur = s.items[at] as Extract<Item, { kind: "compaction" }>;
+      const updated: Item = { ...cur, done: c.done ?? cur.done, total: c.total ?? cur.total, tokens: c.tokens ?? cur.tokens, tokensPerSec: c.tokensPerSec ?? cur.tokensPerSec };
+      return { ...s, seq: s.seq + 1, items: s.items.map((it, i) => (i === at ? updated : it)) };
+    }
     case "compaction_done": {
       const c = e.compaction;
       const idx = [...s.items].reverse().findIndex((it) => it.kind === "compaction" && it.pending);

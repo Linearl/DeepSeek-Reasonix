@@ -4768,6 +4768,8 @@ export const zhTW: Record<DictKey, string> = {
   "performanceReport.privacyNote": "上傳前桌面端會移除路徑與密鑰；診斷資訊只用於記錄耗時、記憶體、網路狀態、取樣到的應用函式名、近期 breadcrumbs、應用版本和作業系統。",
   "mock.topicSysException": "異常處理與恢復演練",
   "compaction.progress": "分塊壓縮中 {done}/{total}",
+  // 任務 556: 壓縮進行中的即時讀數（run-strip 同款觀感）
+  "compaction.liveReadout": "{tokens} tokens · {tps} tokens/s",
   "composer.subagentPolicyTrigger": "子代理委派",
   "composer.quickCommandsTitle": "快捷指令",
   "heartbeat.fieldModelOverride": "模型覆蓋",

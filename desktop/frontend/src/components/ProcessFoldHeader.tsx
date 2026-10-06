@@ -6,6 +6,7 @@
 import { useContext } from "react";
 import { ChevronRight } from "lucide-react";
 import { useT } from "../lib/i18n";
+import { formatTokens } from "../lib/format";
 import type { CompactionItem, SegmentModel } from "../lib/transcriptRows";
 import { useTick, resolveRunningDurationMs, workStatusLabel } from "../lib/workStatus";
 import { LiveStreamContext } from "./LiveStreamContext";
@@ -57,6 +58,19 @@ export function ProcessFoldHeader({
         : t("compaction.working")
       : t("compaction.title")
     : workStatusLabel(effectiveDurationMs, hasRunningWork, t);
+  // 任务 556: live "12.3k tokens · 45 tokens/s" readout while the pass is
+  // pending, fed by throttled backend CompactionProgress events. Same shape
+  // as the composer run-strip's readout (formatTokens + status.tokens unit +
+  // "<n> tokens/s") so a compacting session reads like a working one. tps
+  // stays hidden until the backend's 500ms noise floor passes (it sends 0).
+  const liveTokens = compactionItem?.pending ? (compactionItem.tokens ?? 0) : 0;
+  const liveTps = compactionItem?.pending ? (compactionItem.tokensPerSec ?? 0) : 0;
+  const readout =
+    liveTokens > 0
+      ? liveTps > 0
+        ? ` · ${t("compaction.liveReadout", { tokens: formatTokens(liveTokens), tps: liveTps })}`
+        : ` · ${formatTokens(liveTokens)} ${t("status.tokens")}`
+      : "";
   // Surface what the closed fold hides — a bare duration reads as pure timing
   // and users have no way to know process detail sits behind it.
   const toolCount = displayItems.reduce((n, it) => n + (it.kind === "tool" ? 1 : 0), 0);
@@ -67,7 +81,7 @@ export function ProcessFoldHeader({
     if (thoughtCount > 0) countParts.push(t("transcript.thoughtCount", { n: thoughtCount }));
   }
   const label = hasCompaction
-    ? baseLabel
+    ? baseLabel + readout
     : segment.labelStyle === "counts"
       ? (countParts.length > 0 ? countParts.join(" · ") : t("transcript.processed"))
       : countParts.length > 0
