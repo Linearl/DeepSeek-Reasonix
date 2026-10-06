@@ -96,6 +96,11 @@ func ToWire(e event.Event) Event {
 			w.PromptKind = "mcp"
 		case event.PromptAnswered:
 			promptEvent = true
+		case event.PromptClosed:
+			// 任务536: the close signal must reach frontends with the same
+			// promptId/promptKind correlation the opener carried, so a panel
+			// can be closed by id no matter which surface opened it.
+			promptEvent = true
 		}
 		if promptEvent {
 			w.PromptID = e.ItemID
@@ -587,6 +592,7 @@ var kindNames = map[event.Kind]string{
 	event.SessionChanged:          "session_changed",
 	event.ReadStatus:              "read_status",
 	event.ToolStarted:             "tool_started",
+	event.PromptClosed:            "prompt_closed",
 }
 
 // ContextMaintenance is the JSON form of event.ContextMaintenance.

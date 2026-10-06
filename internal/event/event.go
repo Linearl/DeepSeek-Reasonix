@@ -144,6 +144,15 @@ const (
 	// ReadStatus upserts one logical read's delivery state instead of per page.
 	ReadStatus
 	ToolStarted // Persisted after policy/validation and before execution.
+	// PromptClosed records that a pending prompt was dropped backend-side
+	// without an answer (user cancel, prompt timeout, controller teardown).
+	// ItemID carries the prompt id and PromptKind the surface ("ask",
+	// "approval", "mcp", ...). A frontend must close any panel it still shows
+	// for that id: further submissions are refused with "prompt is not
+	// pending". Frontends that answer first never see it — the answered path
+	// emits PromptAnswered instead. Appended last to keep the Kind values
+	// before it wire-stable; older clients ignore unknown kinds.
+	PromptClosed
 	KindCount // Follows all real event kinds.
 )
 

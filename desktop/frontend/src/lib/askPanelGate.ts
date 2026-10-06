@@ -158,6 +158,17 @@ export function judgePromptFenceArrival(view: PromptFenceView): PromptFenceVerdi
 }
 
 /**
+ * 任务536 提交报错判定（纯判定）：后端已弃置的 prompt（取消/超时/autopilot
+ * 拒绝/controller 重建）会把残留面板的提交拒回 `prompt is not pending`
+ * （或双击后的 `prompt is already resolved`）。这两类报错对用户的正确呈现是
+ * 「面板关掉」，不是一段英文报错——用户被坑 3 次的现场就是面板开着、报错
+ * 弹了 3 次。判定与 UI 后果分离：submit 路径读同一份结论，永不漂移。
+ */
+export function judgePromptGoneError(message: string): boolean {
+  return /not pending|already resolved/i.test(message);
+}
+
+/**
  * 任务461-P16 收据打点（纯判定）：每一条到达前端的 ask 都落一行收据，与
  * 后端 `[ask-panel] ask request emitted`（controller.go）按 prompt id +
  * turn id 对表，量化 emit→前端收到 的投递延迟——「弹窗延迟大」「完全不弹」

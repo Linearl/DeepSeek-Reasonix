@@ -512,6 +512,34 @@ func (a *App) clearRemotePendingEvent(tabID, kind, callID string) {
 	}
 }
 
+// expireRemotePendingPromptEvent drops the cached ask/approval panel frame a
+// prompt_closed signal names (任务536). The prompt is gone backend-side, so a
+// reconnecting remote tab must not replay a dead panel whose submissions are
+// refused with "prompt is not pending". The frame carries promptKind ("ask" |
+// "approval" | ...) and the prompt id in promptId/itemId; an unparsable frame
+// clears nothing (fail-safe: a stale cache is the pre-536 behavior).
+func (a *App) expireRemotePendingPromptEvent(tabID string, gen uint64, frame json.RawMessage) {
+	var probe struct {
+		PromptKind string `json:"promptKind"`
+		PromptID   string `json:"promptId"`
+		ItemID     string `json:"itemId"`
+	}
+	_ = json.Unmarshal(frame, &probe)
+	id := strings.TrimSpace(probe.PromptID)
+	if id == "" {
+		id = strings.TrimSpace(probe.ItemID)
+	}
+	if id == "" {
+		return
+	}
+	switch strings.TrimSpace(probe.PromptKind) {
+	case "ask":
+		a.clearRemotePendingEvent(tabID, "ask_request", id)
+	case "approval", "plan", "recovery":
+		a.clearRemotePendingEvent(tabID, "approval_request", id)
+	}
+}
+
 // serveGet fetches a JSON member of the tab snapshot, returning the raw
 // payload for verbatim passthrough.
 func serveGet(ctx context.Context, client *http.Client, url string) (json.RawMessage, error) {
