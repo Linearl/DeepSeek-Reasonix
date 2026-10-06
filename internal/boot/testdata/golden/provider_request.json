@@ -510,30 +510,6 @@
       }
     },
     {
-      "name": "tool_recovery",
-      "description": "Read the recovery fence: which earlier tool calls left an unconfirmed external effect, and what state one of them is in. Use it after a `recovery_required` block so you can state exactly what is pending instead of guessing, then hand the decision to the user. Read-only: it never confirms, rejects, or retries an effect.",
-      "parameters": {
-        "properties": {
-          "action": {
-            "description": "list = every unresolved effect (attempt id, tool, state); inspect = record an inspection of one attempt and report what it found.",
-            "enum": [
-              "list",
-              "inspect"
-            ],
-            "type": "string"
-          },
-          "attempt": {
-            "description": "Attempt id reported by list. Required for inspect.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "action"
-        ],
-        "type": "object"
-      }
-    },
-    {
       "name": "update_goal",
       "description": "Report this turn's disposition for the active goal. Call it at the end of every goal turn instead of using prose markers: `continue` (work is ongoing — give a concrete next_action), `complete` (the request is fully done, output format and constraints satisfied, and verification was attempted or reported unavailable), or `blocked` (only the user can unblock: missing user-only information, an irreversible/externally visible operation, or changed scope). The host validates your claim against Delivery acceptance criteria and decides whether to continue automatically. Fields: `status` (required, one of continue|complete|blocked), `reason` (required for continue and blocked, optional for complete), `next_action` (optional concrete next step; recommended for continue), `completion` (recommended with complete: `verified` is checked against real receipts, while `unverified` and `risks` are yours to declare and never count against you).",
       "parameters": {
