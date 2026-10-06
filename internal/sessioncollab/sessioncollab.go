@@ -73,6 +73,11 @@ type Identity struct {
 	IdentityType   string   `json:"identityType,omitempty"`
 	IdentityDomain string   `json:"identityDomain,omitempty"`
 	Duties         []string `json:"duties,omitempty"`
+	// Turns is the sidecar-persisted turn count (task 508), copied through the
+	// scan so stat consumers never re-read the meta. Zero-migration like task
+	// 348: desktop's roster scans via ScanDir (four-field loader) and never
+	// sets it, so its wire is unchanged; 0 omits the key.
+	Turns int `json:"turns,omitempty"`
 	// Archived marks a session found in the archive: it still has an address,
 	// but it is no longer an active participant, and callers must say so rather
 	// than reporting it as never registered.
@@ -323,7 +328,11 @@ type MetaInfo struct {
 	IdentityType   string
 	IdentityDomain string
 	Duties         []string
-	OK             bool
+	// Turns is the persisted transcript turn count stamped by the writer into
+	// the meta sidecar (task 508). It rides the same sidecar read as every
+	// field above — no second file access — and 0 means unknown, never empty.
+	Turns int
+	OK    bool
 }
 
 // ScanDir walks one sessions directory for BranchMeta contact fields.
@@ -381,6 +390,7 @@ func ScanDirMeta(dir, workspaceRoot string, loadMeta func(sessionPath string) Me
 			IdentityType:   info.IdentityType,
 			IdentityDomain: info.IdentityDomain,
 			Duties:         info.Duties,
+			Turns:          info.Turns,
 			UpdatedAt:      updated,
 		})
 	}
