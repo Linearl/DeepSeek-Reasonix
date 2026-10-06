@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"strings"
@@ -66,6 +67,13 @@ func (a *Agent) currentPromptCacheKeyLocked() string {
 // InvalidateProjection drops the in-memory and on-disk projection after
 // lineage-changing operations (rewind, branch, fork, system/model change).
 func (a *Agent) InvalidateProjection() {
+	a.invalidateProjection("explicit")
+}
+
+// invalidateProjection is InvalidateProjection with the trigger recorded for
+// the drop log (task 549): invalidation is the moment the model-visible view
+// falls back to the full canonical transcript, so the drop must leave a trail.
+func (a *Agent) invalidateProjection(reason string) {
 	if a == nil {
 		return
 	}
@@ -75,8 +83,22 @@ func (a *Agent) InvalidateProjection() {
 	a.sess.clearReasoningReplayStrongProjection()
 	a.sess.compactionMu.Lock()
 	path := a.sess.path
+	hadProjection := len(a.sess.compactionState.Projection.Messages) > 0
 	a.sess.compactionState = CompactionState{}
 	a.sess.compactionMu.Unlock()
+	if hadProjection {
+		var msgs []provider.Message
+		if a.sess.conversation != nil {
+			msgs, _ = a.sess.conversation.snapshotMessagesVersion()
+		}
+		slog.Info("agent: context projection invalidated",
+			"writer", SessionWriterID(), "reason", reason,
+			"msgs", len(msgs),
+			"canonical_tokens", estimateMessagesTokens(modelInputMessages(msgs)))
+	} else {
+		slog.Debug("agent: context projection already absent on invalidation",
+			"writer", SessionWriterID(), "reason", reason)
+	}
 	a.sess.compaction.stuck = false
 	a.sess.compaction.stuckInputHash = ""
 	a.sess.compaction.consecutive = 0
@@ -87,6 +109,46 @@ func (a *Agent) InvalidateProjection() {
 			slog.Warn("agent: remove context projection", "err", err)
 		}
 	}
+	a.kickProjectionRebuild(reason)
+}
+
+// projectionRebuildTimeout bounds the background rebuild so a wedged summary
+// stream cannot pin a goroutine (and the singleflight slot) indefinitely.
+const projectionRebuildTimeout = 5 * time.Minute
+
+// kickProjectionRebuild restores a projection in the background right after an
+// invalidation or sidecar drop left the session without one (task 549). The
+// old behavior waited for the next sampling round, so any request or readout
+// in the meantime measured the FULL canonical transcript — on a large session
+// that is the canonical-level spike the context panel showed. The rebuild is
+// gated to sessions already at or above the compaction trigger: below it the
+// canonical view is what the next request carries anyway, and folding would be
+// unforced work. Prepare single-flights on compactionRunMu, and
+// rebuildPending deduplicates the kicks themselves so a burst of rewrites
+// (multi-writer rewind storms) cannot queue one summary per invalidation.
+func (a *Agent) kickProjectionRebuild(reason string) {
+	if a == nil || a.svc.prov == nil {
+		return
+	}
+	fold := a.compactTrigger()
+	if fold <= 0 || a.ContextUsedTokens() < fold {
+		return
+	}
+	if !a.sess.rebuildPending.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		defer a.sess.rebuildPending.Store(false)
+		ctx, cancel := context.WithTimeout(context.Background(), projectionRebuildTimeout)
+		defer cancel()
+		slog.Info("agent: rebuilding context projection after invalidation",
+			"writer", SessionWriterID(), "reason", reason)
+		if _, err := a.contextManager().Prepare(ctx, ContextPreparePolicy{Trigger: CompactionTriggerPressure}); err != nil {
+			slog.Warn("agent: post-invalidation projection rebuild failed", "reason", reason, "err", err)
+			return
+		}
+		slog.Info("agent: post-invalidation projection rebuilt", "reason", reason)
+	}()
 }
 
 // InvalidateProjectionIfStale keeps the projection when it still matches the
@@ -110,7 +172,7 @@ func (a *Agent) InvalidateProjectionIfStale() {
 		}
 	}
 	a.sess.compactionMu.Unlock()
-	a.InvalidateProjection()
+	a.invalidateProjection("stale_history_rewrite")
 }
 
 // LoadProjectionSidecar loads the context sidecar into the agent. Corrupt or
@@ -135,10 +197,12 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 		slog.Warn("agent: load context projection", "err", err)
 		_ = RemoveCompactionState(sessionPath)
 		a.resetCompactionState()
+		a.kickProjectionRebuild("sidecar_corrupt")
 		return
 	}
 	if !ok {
 		a.resetCompactionState()
+		a.kickProjectionRebuild("sidecar_missing")
 		return
 	}
 	var msgs, preRepair []provider.Message
@@ -171,6 +235,20 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 		a.sess.compactionState = CompactionState{}
 		a.sess.checkpointState = "none"
 		a.sess.compactionMu.Unlock()
+		// Task 549: record every drop that forces the full-canonical fallback —
+		// a lineage change (model/workspace switch, upgrade) or a sidecar with
+		// no usable projection body. This was invisible before: the panel then
+		// showed canonical-level numbers with no trail to explain them.
+		reason := "no_maintenance_signal"
+		if !keyOK {
+			reason = "lineage_key_changed"
+		}
+		slog.Info("agent: context projection not restored",
+			"writer", SessionWriterID(), "reason", reason,
+			"stored_key", st.PromptCacheKey != "", "key_matched", keyOK,
+			"msgs", len(msgs),
+			"canonical_tokens", estimateMessagesTokens(modelInputMessages(msgs)))
+		a.kickProjectionRebuild(reason)
 		return
 	}
 	// Only rewrite legacy native-editing lineage keys; exact matches stay pure-read.
@@ -199,6 +277,11 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 		a.sess.checkpointState = "none"
 	}
 	a.sess.compactionMu.Unlock()
+	if !valid && len(st.Projection.Messages) == 0 {
+		// The sidecar carried receipts only (or an unusable body that was just
+		// dropped): the next view is full canonical until something folds.
+		a.kickProjectionRebuild("projection_body_invalid")
+	}
 }
 
 // lineageKeyCompatible reports whether a stored PromptCacheKey still belongs to

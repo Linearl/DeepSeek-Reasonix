@@ -44,6 +44,10 @@ type sessionRuntime struct {
 	// compactionRunMu singleflights the expensive summary transaction without
 	// holding the session lock during network I/O.
 	compactionRunMu sync.Mutex
+	// rebuildPending deduplicates the post-invalidation background rebuild
+	// (task 549): a burst of history rewrites must not queue one summary per
+	// invalidation. CAS false→true arms exactly one rebuild goroutine.
+	rebuildPending  atomic.Bool
 	compaction      compactionProgress
 	compactionState CompactionState
 	cacheState      string // legacy resume telemetry; never provider-visible
@@ -90,6 +94,7 @@ func (r *sessionRuntime) reset(s *Session) {
 	r.compaction.consecutive = 0
 	r.compaction.failedTurn.Store(0)
 	r.compaction.lastTurn.Store(0)
+	r.rebuildPending.Store(false)
 }
 
 // clearReasoningReplayStrongProjection drops the process-local repair overlay.

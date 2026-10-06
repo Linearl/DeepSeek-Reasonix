@@ -161,7 +161,9 @@ func (p *dagWritePlan) moveHead(path string, st *sessionDAGState, view dagHeadVi
 	case (behind || diverged) && owned:
 		parent := view.parentFor(diff.k)
 		p.rewound = true
-		p.entries = append(p.entries, sessionDAGEntry{Type: sessionDAGTypeRewind, Head: view.id, To: parent, Cause: rewindCause(mode, diff.rewriteAt >= 0), At: now})
+		// 任务549: stamp the writer so every rewind — especially the automated
+		// content_edit kind — is attributable to the process that produced it.
+		p.entries = append(p.entries, sessionDAGEntry{Type: sessionDAGTypeRewind, Head: view.id, To: parent, Cause: rewindCause(mode, diff.rewriteAt >= 0), Writer: SessionWriterID(), At: now})
 		return parent, nil
 	case behind || diverged:
 		p.head = NewHeadID()

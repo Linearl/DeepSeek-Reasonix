@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -152,6 +153,43 @@ func TestDAGSaveSystemPromptRefreshKeepsLaterIDs(t *testing.T) {
 		if loaded.Messages[i].ID != before[i].ID {
 			t.Fatalf("message %d id changed across system refresh", i)
 		}
+	}
+}
+
+// 任务549: every rewind entry — especially the automated content_edit kind —
+// must carry the writer id, so a multi-writer storm is attributable per event.
+func TestDAGSaveContentEditRewindCarriesWriter(t *testing.T) {
+	path := dagTestSession(t)
+	s := dagSavedSession(t, path, "q1", "a1")
+	msgs := s.Snapshot()
+	msgs[2].Content = "a1-edited" // provider-visible edit inside the prefix
+	s.Rewrite(msgs, "test_edit")
+	if err := s.SaveRewrite(path); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(store.SessionEventLog(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var entry sessionDAGEntry
+	found := false
+	for line := range strings.SplitSeq(strings.TrimSpace(string(b)), "\n") {
+		if !strings.Contains(line, `"type":"rewind"`) {
+			continue
+		}
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatal(err)
+		}
+		found = true
+	}
+	if !found {
+		t.Fatal("no rewind entry appended for the content edit")
+	}
+	if entry.Cause != "content_edit" {
+		t.Fatalf("cause = %q, want content_edit", entry.Cause)
+	}
+	if entry.Writer == "" || entry.Writer != SessionWriterID() {
+		t.Fatalf("writer = %q, want the current session writer %q", entry.Writer, SessionWriterID())
 	}
 }
 
