@@ -144,6 +144,11 @@ type HistorySlice struct {
 	// invalidated after another process advances or rewrites the session.
 	RevisionKnown bool   `json:"revisionKnown,omitempty"`
 	Digest        string `json:"digest,omitempty"`
+	// Epoch is the rewrite epoch the page was cut under (0 for never-rewritten
+	// or unknown). 任务 523: the frontend store compares it across pages so an
+	// append-only save (same epoch, higher revision) keeps older-page cursors
+	// valid instead of forcing a full latest-page reload mid-turn.
+	Epoch int `json:"epoch,omitempty"`
 	// Source: index|scan|live-index|live-fallback. Error marks a failed read
 	// (empty Entries alone means a genuinely empty session).
 	Source string `json:"source,omitempty"`
@@ -219,12 +224,18 @@ func normalizeHistorySliceRequest(req HistorySliceRequest) HistorySliceRequest {
 }
 
 // historySliceCursor is the opaque page position toward older history.
+// 任务 523: v2 adds Epoch (the rewrite epoch the page was cut under). An
+// append-only save keeps the epoch, so a v2 cursor survives tail growth; only
+// a rewrite (compaction, rewind — the paths that bump rewriteVersion) or a
+// cross-lineage identity change still voids it. v1 cursors keep the strict
+// pre-save semantics.
 type historySliceCursor struct {
 	V        int    `json:"v"`
 	Revision int64  `json:"revision"`
 	RevKnown bool   `json:"revKnown"`
 	Digest   string `json:"digest"`
 	Before   int    `json:"before"` // next page covers messages/rows with index < Before
+	Epoch    int    `json:"epoch,omitempty"`
 }
 
 func encodeHistorySliceCursor(c historySliceCursor) string {
@@ -248,7 +259,7 @@ func decodeHistorySliceCursor(s string) (historySliceCursor, error) {
 	if err := json.Unmarshal(b, &c); err != nil {
 		return historySliceCursor{}, err
 	}
-	if c.V != 1 || c.Before < 0 {
+	if c.V != 1 && c.V != 2 || c.Before < 0 {
 		return historySliceCursor{}, fmt.Errorf("unsupported history cursor")
 	}
 	return c, nil
@@ -266,6 +277,12 @@ type historySliceSource struct {
 	revKnown   bool
 	digest     string
 	epoch      int
+	// appendOnly reports that the source is the persisted baseline plus
+	// appends only (agent PersistedState.AppendOnlyTail): the prefix below any
+	// cursor's Before index is byte-stable, so a same-epoch cursor stays valid
+	// across tail growth (任务 523). Cold sources and ps-less fallbacks leave
+	// it false and keep the strict identity match.
+	appendOnly bool
 	// cacheKey is non-empty only when revision+digest describe the complete
 	// source (no unsaved live tail). Derived cross-page state may then be reused
 	// without risking a stale completion against newly appended messages.
@@ -382,6 +399,25 @@ func (src *historySliceSource) identityMatches(revision int64, revKnown bool, di
 		revision = 0
 	}
 	return src.revKnown == revKnown && src.revision == revision && src.digest == digest
+}
+
+// cursorMatchesPrefix reports whether a cursor still names a stable prefix of
+// this source. Strict identity (same revision + digest) always matches. 任务
+// 523 adds the append-only tolerance: a v2 cursor cut under the same rewrite
+// epoch stays valid when only the tail grew — the persisted prefix below the
+// cursor's Before index (and therefore the older page) is byte-identical, so
+// failing it was what made every mid-turn "load earlier" request die with a
+// stale marker. The guard set mirrors the lineage argument: same epoch (no
+// rewrite landed), source is baseline+appends, and the ledger revision only
+// moved forward. Cross-lineage replacements at the same path (lease handoff,
+// takeover, session clear) bump the tab's session generation and rebind the
+// store cursor, so they never reach this gate with a foreign cursor.
+func (src *historySliceSource) cursorMatchesPrefix(cursor historySliceCursor) bool {
+	if src.identityMatches(cursor.Revision, cursor.RevKnown, cursor.Digest) {
+		return true
+	}
+	return cursor.V >= 2 && src.appendOnly && cursor.Epoch == src.epoch &&
+		(!cursor.RevKnown || src.revision >= cursor.Revision)
 }
 
 // historyWindowController is the slice of *control.Controller the windowed
@@ -513,6 +549,7 @@ func (a *App) liveHistorySliceSource(ctrl control.SessionAPI, sessionPath string
 				revKnown:   ps.RevisionKnown,
 				digest:     ps.DigestHex,
 				epoch:      ps.RewriteEpoch,
+				appendOnly: true, // the index path is gated on ps.AppendOnlyTail above
 				fetch: func(lo, hi int) ([]provider.Message, error) {
 					return wc.HistoryWindow(lo, hi), nil
 				},
@@ -577,6 +614,7 @@ func newInMemoryHistorySliceSource(sessionID string, msgs []provider.Message, re
 		src.revKnown = ps.RevisionKnown
 		src.digest = ps.DigestHex
 		src.epoch = ps.RewriteEpoch
+		src.appendOnly = ps.AppendOnlyTail
 	}
 	return src
 }
@@ -952,7 +990,7 @@ func (a *App) pageHistorySliceSource(src *historySliceSource, req HistorySliceRe
 	cursor, err := decodeHistorySliceCursor(req.Cursor)
 	// An undecodable cursor is treated like a request for the latest page.
 	hasCursor := req.Cursor != "" && err == nil
-	if hasCursor && !src.identityMatches(cursor.Revision, cursor.RevKnown, cursor.Digest) {
+	if hasCursor && !src.cursorMatchesPrefix(cursor) {
 		return staleHistorySlice(src.revision, src.revKnown, src.digest), nil
 	}
 	hi := src.total
@@ -965,6 +1003,7 @@ func (a *App) pageHistorySliceSource(src *historySliceSource, req HistorySliceRe
 		Revision:      src.revision,
 		RevisionKnown: src.revKnown,
 		Digest:        src.digest,
+		Epoch:         src.epoch,
 	}
 	if hi <= 0 || src.total == 0 {
 		return page, nil
@@ -1082,11 +1121,12 @@ func (a *App) pageHistorySliceSource(src *historySliceSource, req HistorySliceRe
 	page.HasOlder = pageStart > 0
 	if page.HasOlder {
 		page.NextCursor = encodeHistorySliceCursor(historySliceCursor{
-			V:        1,
+			V:        2,
 			Revision: src.revision,
 			RevKnown: src.revKnown,
 			Digest:   src.digest,
 			Before:   pageStart,
+			Epoch:    src.epoch,
 		})
 	}
 	return page, nil

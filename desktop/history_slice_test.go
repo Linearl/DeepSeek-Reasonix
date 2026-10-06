@@ -570,14 +570,20 @@ func TestHistorySliceColdContentRefUsesAuthoritativeEventTail(t *testing.T) {
 
 // --- cursor staleness -------------------------------------------------------
 
-func TestHistorySliceCursorStaleOnRevisionBump(t *testing.T) {
+// 任务 523: an append-only save keeps a same-epoch (v2) cursor valid — the
+// persisted prefix below the cursor's Before index is byte-stable, so the
+// older page must be served instead of a stale marker. This is the backend
+// half of "mid-turn scroll-up loads history": every save used to void the
+// cursor, and the frontend's reload-then-reject chain turned that into the
+// guaranteed "earlier conversation could not be loaded" failure.
+func TestHistorySliceCursorSurvivesAppendOnlySave(t *testing.T) {
 	app := historySliceTestApp(t)
 	dir := t.TempDir()
 	var msgs []provider.Message
 	for i := range 20 {
 		msgs = append(msgs, historySliceUser(i, fmt.Sprintf("q%d", i)), historySliceAssistant(i, fmt.Sprintf("a%d", i)))
 	}
-	sess, path := saveHistorySliceSession(t, dir, "stale.jsonl", msgs)
+	sess, path := saveHistorySliceSession(t, dir, "append.jsonl", msgs)
 	newLiveHistoryTab(t, app, dir, path, sess)
 
 	page1 := app.HistorySliceForTab("test", HistorySliceRequest{Turns: 5})
@@ -588,24 +594,91 @@ func TestHistorySliceCursorStaleOnRevisionBump(t *testing.T) {
 		t.Fatalf("page 1 identity = known:%v revision:%d digest:%q, want canonical fingerprint", page1.RevisionKnown, page1.Revision, page1.Digest)
 	}
 
+	// Append-only save: revision and digest advance, the rewrite epoch does not.
 	sess.Add(historySliceUser(20, "q20"))
 	sess.Add(historySliceAssistant(20, "a20"))
 	if err := sess.Save(path); err != nil {
 		t.Fatalf("save: %v", err)
 	}
+	waitHistoryIndexRebuilds(t, app)
+
+	page2 := app.HistorySliceForTab("test", HistorySliceRequest{Turns: 5, Cursor: page1.NextCursor})
+	if page2.Stale {
+		t.Fatal("an append-only save must not void a same-epoch (v2) cursor")
+	}
+	if len(page2.Entries) == 0 {
+		t.Fatal("append-only continuation returned no older entries")
+	}
+	if page2.StartTurn >= page1.StartTurn {
+		t.Fatalf("page 2 start turn %d must sit below page 1's %d", page2.StartTurn, page1.StartTurn)
+	}
+	if page2.Revision <= page1.Revision {
+		t.Fatalf("page 2 revision %d must have advanced past %d", page2.Revision, page1.Revision)
+	}
+	if page2.Epoch != page1.Epoch {
+		t.Fatalf("append-only save changed the rewrite epoch: %d -> %d", page1.Epoch, page2.Epoch)
+	}
+}
+
+// A content rewrite (compaction/rewind family — the saves that bump the
+// rewrite epoch) still voids the cursor, and legacy v1 cursors keep the
+// strict pre-save semantics (acceptance: the correctness protection survives).
+func TestHistorySliceCursorStaleOnRewriteOrLegacyCursor(t *testing.T) {
+	app := historySliceTestApp(t)
+	dir := t.TempDir()
+	var msgs []provider.Message
+	for i := range 20 {
+		msgs = append(msgs, historySliceUser(i, fmt.Sprintf("q%d", i)), historySliceAssistant(i, fmt.Sprintf("a%d", i)))
+	}
+	sess, path := saveHistorySliceSession(t, dir, "rewrite.jsonl", msgs)
+	newLiveHistoryTab(t, app, dir, path, sess)
+
+	page1 := app.HistorySliceForTab("test", HistorySliceRequest{Turns: 5})
+	if !page1.HasOlder || page1.NextCursor == "" {
+		t.Fatalf("page 1 HasOlder=%v cursor=%q", page1.HasOlder, page1.NextCursor)
+	}
+
+	// Rewrite save: the epoch advances, so the cursor must go stale.
+	sess.Rewrite(msgs[:6], "test rewrite")
+	if err := sess.Save(path); err != nil {
+		t.Fatalf("rewrite save: %v", err)
+	}
+	waitHistoryIndexRebuilds(t, app)
+
 	page2 := app.HistorySliceForTab("test", HistorySliceRequest{Turns: 5, Cursor: page1.NextCursor})
 	if !page2.Stale {
-		t.Fatal("continuing with a pre-save cursor must be stale")
+		t.Fatal("continuing with a pre-rewrite cursor must be stale")
 	}
 	if page2.Entries == nil || len(page2.Entries) != 0 {
 		t.Fatalf("stale page entries = %v, want empty non-nil", page2.Entries)
 	}
-	if !page2.RevisionKnown || page2.Revision <= page1.Revision || page2.Digest == "" || page2.Digest == page1.Digest {
-		t.Fatalf("stale page identity = known:%v revision:%d digest:%q, want advanced canonical fingerprint", page2.RevisionKnown, page2.Revision, page2.Digest)
+	if !page2.RevisionKnown || page2.Revision <= 0 || page2.Digest == "" {
+		t.Fatalf("stale page identity = known:%v revision:%d digest:%q, want canonical fingerprint", page2.RevisionKnown, page2.Revision, page2.Digest)
 	}
 	encoded, _ := json.Marshal(page2)
 	if !strings.Contains(string(encoded), `"entries":[]`) {
 		t.Fatalf("stale page JSON must encode entries as []: %s", encoded)
+	}
+
+	// Legacy v1 cursors keep the strict semantics: append-only growth voids them.
+	sess2, path2 := saveHistorySliceSession(t, dir, "legacy.jsonl", msgs)
+	newLiveHistoryTab(t, app, dir, path2, sess2)
+	pageA := app.HistorySliceForTab("test", HistorySliceRequest{Turns: 5})
+	cursor, err := decodeHistorySliceCursor(pageA.NextCursor)
+	if err != nil || cursor.V != 2 {
+		t.Fatalf("page cursor = v%d err %v, want v2", cursor.V, err)
+	}
+	cursor.V = 1
+	cursor.Epoch = 0
+	sess2.Add(historySliceUser(20, "q20"))
+	sess2.Add(historySliceAssistant(20, "a20"))
+	if err := sess2.Save(path2); err != nil {
+		t.Fatalf("append save: %v", err)
+	}
+	waitHistoryIndexRebuilds(t, app)
+	pageB := app.HistorySliceForTab("test", HistorySliceRequest{Turns: 5, Cursor: encodeHistorySliceCursor(cursor)})
+	if !pageB.Stale {
+		t.Fatal("a legacy v1 cursor must keep the strict pre-save semantics")
 	}
 }
 

@@ -59,8 +59,11 @@ console.log("\ntask 384 running-state history unlock");
   const body = controller.slice(fnIdx, fnIdx + 9000);
   const protections: Array<[string, string]> = [
     ["historyOlderSeq.current.get(targetTabId) !== requestSeq", "request-seq staleness discard"],
-    ["fingerprintMatches(sessionRevision, currentRevision)", "revision fingerprint"],
-    ["digestMatches(sessionDigest, currentDigest)", "digest fingerprint"],
+    // 任务 523: the whole-session revision/digest equality gate became a
+    // monotonic-revision tolerance (tail growth) + session-generation equality
+    // (rebase/swap still reject) — same position, safer dimension.
+    ["revisionCompat(sessionRevision, currentRevision)", "revision monotonic-compat fingerprint"],
+    ["current.meta.sessionGeneration === sessionGeneration", "session-generation identity"],
     ["loadOlder(targetTabId, targetTurn, trigger, true)", "identity-retry (task 101)"],
     ['"history_older_exhausted"', "exhausted single source (task 255)"],
   ];

@@ -97,7 +97,7 @@ try {
   await harness.render(turns(20), {
     geometrySessionKey: "load-older-error",
     hasOlderHistory: true,
-    olderHistoryError: "history identity changed",
+    olderHistoryError: "会话内容已变化，请重试",
     onLoadOlderHistory,
   });
   await harness.settle();

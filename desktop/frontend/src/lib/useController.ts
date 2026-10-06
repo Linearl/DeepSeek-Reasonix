@@ -3665,7 +3665,11 @@ export function useController() {
     if (!state?.historyHasOlder) return false;
     const sessionPath = state.meta?.sessionPath ?? "";
     const sessionRevision = state.meta?.sessionRevision ?? state.historyRevision;
-    const sessionDigest = state.meta?.sessionDigest ?? state.historyDigest;
+    // 任务 523: the session generation is the request-time identity token — a
+    // rebase/rewind, session clear, or lease handoff bumps it while plain tail
+    // growth leaves it alone, which is exactly the distinction the old
+    // whole-session revision/digest equality could not make on a live turn.
+    const sessionGeneration = state.meta?.sessionGeneration;
     const pageBudget = historyPageRequestBudget(state.historyStartTurn, state.historyTotalTurns, targetTurn);
     const requestSeq = (historyOlderSeq.current.get(targetTabId) ?? 0) + 1;
     historyOlderSeq.current.set(targetTabId, requestSeq);
@@ -3689,21 +3693,28 @@ export function useController() {
       const current = statesRef.current.get(targetTabId);
       if (!current) return false;
       const currentRevision = current?.meta?.sessionRevision ?? current?.historyRevision;
-      const currentDigest = current?.meta?.sessionDigest ?? current?.historyDigest;
-      const fingerprintMatches = (expected: number | undefined, actual: number | undefined) =>
-        expected === undefined || expected <= 0 ? true : actual === expected;
-      const digestMatches = (expected: string | undefined, actual: string | undefined) =>
-        !expected || actual === expected;
+      // 任务 523: history is append-only at the tail, so "same revision/digest
+      // as at request time" was a criterion a live turn always broke — every
+      // tool call rewrites the transcript, the captured fingerprint never
+      // matched on response, and the page died as "history identity changed"
+      // (26× in desktop.log). The gate now reads the dimension that actually
+      // distinguishes safe from unsafe: a monotonic ledger revision means tail
+      // growth over an unchanged prefix (rewrites are rejected upstream — the
+      // epoch-bound cursor comes back stale, or the store returns a fresh
+      // reload page), and the session generation still rejects rebases and
+      // transcript swaps. Digest equality is gone: any append changes it.
+      const revisionCompat = (expected: number | undefined, actual: number | undefined) =>
+        expected === undefined || expected <= 0 ? true : actual !== undefined && actual >= expected;
       // A replace-level hydrate while the page was in flight clears
       // historyOlderLoading; a metadata or canonical-identity change also
       // makes the page belong to a different transcript generation.
       const sameTranscript = (current.meta?.sessionPath ?? "") === sessionPath;
+      const sameGeneration = sessionGeneration === undefined ||
+        current.meta?.sessionGeneration === undefined || current.meta.sessionGeneration === sessionGeneration;
       const pageMatchesGeneration = result === undefined ||
-        (fingerprintMatches(sessionRevision, result.revisionKnown ? result.revision : undefined) &&
-          digestMatches(sessionDigest, result.digest));
-      if (!current.historyOlderLoading || !sameTranscript ||
-        !fingerprintMatches(sessionRevision, currentRevision) || !digestMatches(sessionDigest, currentDigest) ||
-        !pageMatchesGeneration) {
+        revisionCompat(sessionRevision, result.revisionKnown ? result.revision : undefined);
+      if (!current.historyOlderLoading || !sameTranscript || !sameGeneration ||
+        !revisionCompat(sessionRevision, currentRevision) || !pageMatchesGeneration) {
         // A turn-event replay that rebased the transcript while this page was in flight
         // discards it by design; the same transcript then simply asks again, once, rather
         // than showing "earlier conversation could not be loaded" for a recoverable
@@ -3711,7 +3722,7 @@ export function useController() {
         // the retry bypasses the loading gate above — the outer call owns the
         // spinner, so the gate used to bounce the re-ask into a silent drop.)
         if (sameTranscript && !isRetry) return await loadOlder(targetTabId, targetTurn, trigger, true);
-        dispatchTo(targetTabId, { type: "history_older_error", error: "history identity changed" });
+        dispatchTo(targetTabId, { type: "history_older_error", error: "会话内容已变化，请重试" });
         reportFrontendLog("history-paging", "older page rejected", `tab=${targetTabId} reason=identity-changed`, "warn");
         return false;
       }
