@@ -43,13 +43,24 @@ func NormalizeSubagentPolicy(v string) (SubagentPolicy, error) {
 
 // SubagentPolicyGuidance returns the transient per-turn guidance block for a
 // tier. The light tier injects nothing, preserving current behavior exactly.
-// Parallelism is intentionally NOT part of the guidance: concurrency is the
-// scheduler's guardrail (decoupled from the delegation strategy).
+//
+// Task 531: each non-light tier carries the positive half of the delegation
+// decision — when to dispatch, what dispatching buys, and that the costs are
+// bounded — alongside the negative thresholds, so the model sees a complete
+// decision basis instead of only a "dispatching is not worth it" list. The
+// balanced tier keeps concurrency out of the prompt (scheduler guardrail,
+// decoupled from the delegation strategy); the aggressive tier additionally
+// carries the write_paths hint (declaring non-overlapping write_paths is what
+// unlocks parallel writers) — the hint points at the mechanism, while the
+// scheduler cap still governs actual concurrency.
 func SubagentPolicyGuidance(p SubagentPolicy) string {
 	switch p {
 	case SubagentPolicyBalanced:
 		return "<subagent-policy>balanced\n" +
 			"Delegation guidance for this turn:\n" +
+			"- When to dispatch (a positive list, not a fallback): broad read-only investigation across many files; self-contained sub-tasks with a concrete deliverable; exploratory work whose intermediate output would otherwise flood the main context.\n" +
+			"- What dispatching buys: the main context stays clean — only the sub-agent's final answer returns — and each sub-agent works in its own fresh, isolated context.\n" +
+			"- Dispatching is affordable: the sub-agent step cap defaults to two-thirds of the parent's cap (min 12), enough runway for a focused deliverable.\n" +
 			"- Delegate self-contained sub-tasks that benefit from isolated context: deep research across many files, focused code generation, independent verification or review.\n" +
 			"- Identify delegable sub-tasks when you start a task, not only when you get stuck.\n" +
 			"- Keep delegated tasks single-purpose with a concrete deliverable; the sub-agent returns only its final answer.\n" +
@@ -57,6 +68,10 @@ func SubagentPolicyGuidance(p SubagentPolicy) string {
 	case SubagentPolicyAggressive:
 		return "<subagent-policy>aggressive\n" +
 			"Delegation guidance for this turn:\n" +
+			"- When to dispatch (a positive list, not a fallback): broad read-only investigation across many files; independent sub-tasks that can run at the same time; exploratory work whose intermediate output would otherwise flood the main context.\n" +
+			"- What dispatching buys: the main context stays clean — only the sub-agent's final answer returns — independent sub-tasks progress at the same time so wall-clock time shrinks, and each sub-agent works in its own fresh, isolated context.\n" +
+			"- Dispatching is affordable: the sub-agent step cap defaults to two-thirds of the parent's cap (min 12), long sub-tasks can run in the background instead of blocking (wherever the tool offers run_in_background), and write conflicts are avoided by declaring non-overlapping write_paths.\n" +
+			"- When delegating a writing sub-task, fill in write_paths: non-overlapping write_paths are what unlock parallel writers (up to max_parallel_writers); omitting write_paths claims the whole workspace and serializes every writer behind it.\n" +
 			"- Prefer delegation: any independent sub-task (research, codegen, review, parallel exploration) goes to a sub-agent instead of being inlined serially in the main chain.\n" +
 			"- Decompose up front: split the task into sub-tasks before executing, and dispatch early — delegation is the default strategy, not a fallback.\n" +
 			"- Explicitly trade token cost for wall-clock time: sub-agent context is isolated, keeping the main chain short and cache-friendly.\n" +
