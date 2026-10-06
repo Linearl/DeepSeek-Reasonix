@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"reasonix/internal/sessioncollab"
@@ -113,5 +114,27 @@ func TestTalkToSessionAcceptsInboundThreadId(t *testing.T) {
 	}
 	if len(box) != 1 || box[0].ThreadID != inbound.ID {
 		t.Fatalf("reply must carry the thread it answers: %+v", box)
+	}
+}
+
+// TestTalkToSessionSchemaNamesOwnInboundThreadId: task 535 — the schema text must
+// say the reply id is the INBOUND id from the caller's own mailbox (task 187 实测：
+// 用自己发出的 id 会落库后被链路校验丢弃), and the old ambiguous copy
+// ("the threadId it carried") must be gone. The schema is static text: it must be
+// byte-identical with the panel switch on or off (关闭态零行为 — the copy cannot
+// leak gate state).
+func TestTalkToSessionSchemaNamesOwnInboundThreadId(t *testing.T) {
+	on := NewTalkToSessionTool(SessionCollabConfig{Enabled: true}).Schema()
+	off := NewTalkToSessionTool(SessionCollabConfig{Enabled: false}).Schema()
+	if string(on) != string(off) {
+		t.Fatalf("schema must not depend on the gate state (关闭态零行为): on=%s off=%s", on, off)
+	}
+
+	s := string(on)
+	if !strings.Contains(s, "message id you RECEIVED") || !strings.Contains(s, "never the id of a message you sent") {
+		t.Fatalf("schema must name the own-inbound id (task 535), got: %s", s)
+	}
+	if strings.Contains(s, "pass the threadId it carried") {
+		t.Fatalf("old ambiguous thread_id copy must be gone (task 535), got: %s", s)
 	}
 }
