@@ -5562,6 +5562,7 @@ function makeMockApp(): AppBindings {
     },
     async SetDesktopAutopilotAskAutoContinue(enabled: boolean) {
       settings.experimentalAutopilotAskAutoContinue = enabled;
+    },
     async SetDesktopAutopilotGuardAutocreate(enabled: boolean) {
       settings.experimentalAutopilotGuardAutocreate = enabled;
     },

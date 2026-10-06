@@ -3625,10 +3625,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
               {/* Task 326: the guard task autopilot keeps watching its session.
                   The dial is in minutes and re-points guards that already
                   exist in place, so widening it can never grow a second guard
