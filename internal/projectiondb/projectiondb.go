@@ -425,9 +425,22 @@ func PathLooksRemote(path string) bool {
 }
 
 // Rebuild constructs and validates a replacement beside the live database,
-// then swaps it into place. The old projection remains untouched if building,
-// validation, or the platform rename fails (notably an open database on
-// Windows). Rebuild never touches authoritative business files.
+// then swaps it into place. Validation re-reads the folded replacement from
+// disk through a fresh connection so builder page cache cannot mask corruption.
+// The old projection remains untouched if building, validation, or the
+// platform rename fails (notably an open database on Windows). Rebuild never
+// touches authoritative business files.
+//
+// Interruption semantics: "discard on interrupt, idempotent rerun". A canceled
+// or failed build removes its temporary sibling and swaps nothing. A rebuild
+// interrupted by a process crash can only leave unopened sibling debris beside
+// an intact live database, because the live file is moved aside only after the
+// validated replacement exists; a hard kill inside the narrow backup window
+// loses nothing but this disposable projection itself (authoritative data
+// lives outside), and the next rerun recreates it. Whatever debris a crashed
+// run left behind is swept under the lifecycle lock before the next build
+// starts, so rerunning after any interruption reproduces a complete database
+// with no data loss and no residue accumulation.
 func Rebuild(ctx context.Context, opts OpenOptions, populate func(context.Context, *sql.DB) error) error {
 	if strings.TrimSpace(opts.Path) == "" || opts.InMemory {
 		return errors.New("projection rebuild requires a disk path")
@@ -440,6 +453,10 @@ func Rebuild(ctx context.Context, opts OpenOptions, populate func(context.Contex
 		return fmt.Errorf("lock projection rebuild: %w", err)
 	}
 	defer release()
+	// Sweep debris a previously crashed rebuild left beside this projection.
+	// The lifecycle lock is held, so no concurrent rebuild owns these files;
+	// readers only ever open the live path, never sibling leftovers.
+	cleanOrphanRebuildResidues(opts.Path, opts.RetainBackup)
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
@@ -473,17 +490,16 @@ func Rebuild(ctx context.Context, opts OpenOptions, populate func(context.Contex
 			return fmt.Errorf("populate projection replacement: %w", err)
 		}
 	}
-	var integrity string
-	if err := handle.DB.QueryRowContext(ctx, `PRAGMA integrity_check`).Scan(&integrity); err != nil || integrity != "ok" {
-		_ = handle.DB.Close()
-		cleanupTemporary()
-		if err != nil {
-			return fmt.Errorf("validate projection replacement: %w", err)
-		}
-		return fmt.Errorf("validate projection replacement: %s", integrity)
-	}
 	_, _ = handle.DB.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`)
 	if err := handle.DB.Close(); err != nil {
+		cleanupTemporary()
+		return err
+	}
+	// Validate through a fresh read-only connection after folding the WAL:
+	// the builder's pooled connections could satisfy integrity_check from
+	// their page cache and mask on-disk corruption, so the verdict must be
+	// re-read from the file that is about to be swapped in.
+	if err := validateReplacementFile(ctx, temporary); err != nil {
 		cleanupTemporary()
 		return err
 	}
@@ -528,4 +544,46 @@ func Rebuild(ctx context.Context, opts OpenOptions, populate func(context.Contex
 	}
 	cleanupTemporary()
 	return nil
+}
+
+// validateReplacementFile runs integrity_check on a folded replacement file
+// through a fresh read-only connection, mirroring Inspect. It is called after
+// the builder pool is closed so the verdict reflects the on-disk bytes rather
+// than the writer's page cache.
+func validateReplacementFile(ctx context.Context, path string) error {
+	verifier, err := sql.Open("sqlite", diskFileDSN(path)+"&mode=ro&immutable=1")
+	if err != nil {
+		return fmt.Errorf("validate projection replacement: %w", err)
+	}
+	defer verifier.Close()
+	var integrity string
+	if err := verifier.QueryRowContext(ctx, `PRAGMA integrity_check`).Scan(&integrity); err != nil {
+		return fmt.Errorf("validate projection replacement: %w", err)
+	}
+	if integrity != "ok" {
+		return fmt.Errorf("validate projection replacement: %s", integrity)
+	}
+	return nil
+}
+
+// cleanOrphanRebuildResidues removes crash debris from a previous rebuild of
+// the same projection: interrupted temporary siblings (.rebuild-*) and, for
+// callers that do not retain rollback backups, rolled-aside old databases
+// (.replaced-*). Retained backups are deliberate rollback points and are
+// never touched. The caller must hold the rebuild lifecycle lock so no
+// concurrent rebuild can be creating these files.
+func cleanOrphanRebuildResidues(path string, retainBackup bool) {
+	leftovers, _ := filepath.Glob(path + ".rebuild-*")
+	if !retainBackup {
+		replaced, _ := filepath.Glob(path + ".replaced-*")
+		leftovers = append(leftovers, replaced...)
+	}
+	for _, leftover := range leftovers {
+		// The lock file itself matches the rebuild-* glob; it belongs to the
+		// live lifecycle, not to a crashed run.
+		if leftover == path+".rebuild.lock" {
+			continue
+		}
+		_ = os.Remove(leftover)
+	}
 }

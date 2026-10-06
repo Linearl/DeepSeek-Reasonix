@@ -420,3 +420,180 @@ func TestCheckpointedWALShrinksToLimit(t *testing.T) {
 		t.Fatalf("WAL after close checkpoint=%d", size)
 	}
 }
+
+// rebuildDebris lists rebuild sibling leftovers beside the live projection,
+// excluding the lifecycle lock file that permanently matches the glob.
+func rebuildDebris(t *testing.T, path string) []string {
+	t.Helper()
+	matches, err := filepath.Glob(path + ".rebuild-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	debris := matches[:0]
+	for _, match := range matches {
+		if match == path+".rebuild.lock" {
+			continue
+		}
+		debris = append(debris, match)
+	}
+	return debris
+}
+
+func mustSeedProjection(t *testing.T, opts OpenOptions, value string) {
+	t.Helper()
+	seed, err := Open(context.Background(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := seed.DB.Exec(`INSERT INTO values_table(value) VALUES(?)`, value); err != nil {
+		t.Fatal(err)
+	}
+	if err := seed.DB.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mustReadValue(t *testing.T, opts OpenOptions) string {
+	t.Helper()
+	handle, err := Open(context.Background(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.DB.Close()
+	var value string
+	if err := handle.DB.QueryRow(`SELECT value FROM values_table`).Scan(&value); err != nil {
+		t.Fatal(err)
+	}
+	return value
+}
+
+// 任务498：构建中途取消 = 优雅中断路径。主库必须完好，兄弟库必须被
+// cleanupTemporary 清空，且重跑（幂等）成功——「中断即弃、幂等重跑」。
+func TestRebuildCancellationKeepsOldDatabaseAndCleansSibling(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "catalog.sqlite")
+	opts := OpenOptions{Path: path, MemoryName: "rebuild-cancel", Migrations: testMigrations()}
+	mustSeedProjection(t, opts, "old")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- Rebuild(ctx, opts, func(ctx context.Context, db *sql.DB) error {
+			close(started)
+			<-ctx.Done()
+			return ctx.Err()
+		})
+	}()
+	<-started
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled rebuild error = %v, want context.Canceled", err)
+	}
+	if value := mustReadValue(t, opts); value != "old" {
+		t.Fatalf("live value after cancel = %q, want old", value)
+	}
+	if debris := rebuildDebris(t, path); len(debris) != 0 {
+		t.Fatalf("canceled rebuild left sibling debris: %v", debris)
+	}
+	// 幂等重跑：同样的 Rebuild 再跑一次必须得到完整新库。
+	if err := Rebuild(context.Background(), opts, func(ctx context.Context, db *sql.DB) error {
+		_, err := db.ExecContext(ctx, `INSERT INTO values_table(value) VALUES('new')`)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if value := mustReadValue(t, opts); value != "new" {
+		t.Fatalf("value after idempotent rerun = %q, want new", value)
+	}
+}
+
+// 任务498：硬杀（进程崩溃）中断路径。残留只能是未打开的兄弟垃圾文件；
+// 下次 Rebuild 持锁清扫后照常构建，主库从不被残留影响。
+func TestRebuildSweepsCrashResidueBeforeRebuilding(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "catalog.sqlite")
+	opts := OpenOptions{Path: path, MemoryName: "rebuild-sweep", Migrations: testMigrations()}
+	mustSeedProjection(t, opts, "old")
+	// 伪装一次崩溃遗留：临时兄弟库三件 + 非 retain 模式的被移开旧库。
+	for _, name := range []string{".rebuild-123", ".rebuild-123-wal", ".rebuild-123-shm", ".replaced-456"} {
+		if err := os.WriteFile(path+name, []byte("crash debris"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Rebuild(context.Background(), opts, func(ctx context.Context, db *sql.DB) error {
+		_, err := db.ExecContext(ctx, `INSERT INTO values_table(value) VALUES('new')`)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if debris := rebuildDebris(t, path); len(debris) != 0 {
+		t.Fatalf("rebuild left crash debris unswept: %v", debris)
+	}
+	if backups, _ := filepath.Glob(path + ".replaced-*"); len(backups) != 0 {
+		t.Fatalf("non-retain rebuild left .replaced-* orphans: %v", backups)
+	}
+	if value := mustReadValue(t, opts); value != "new" {
+		t.Fatalf("live value after sweep = %q, want new", value)
+	}
+}
+
+// 任务498：RetainBackup 调用方（sessioncatalog）的回滚点是刻意保留物，
+// 清扫只清兄弟垃圾，永不触碰 .replaced-* 备份。
+func TestRebuildKeepsRetainedBackupsWhileSweepingSiblings(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "catalog.sqlite")
+	opts := OpenOptions{Path: path, MemoryName: "rebuild-retain-sweep", Migrations: testMigrations(), RetainBackup: true}
+	mustSeedProjection(t, opts, "old")
+	if err := os.WriteFile(path+".rebuild-123", []byte("crash debris"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path+".replaced-456", []byte("deliberate rollback point"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Rebuild(context.Background(), opts, func(ctx context.Context, db *sql.DB) error {
+		_, err := db.ExecContext(ctx, `INSERT INTO values_table(value) VALUES('new')`)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if debris := rebuildDebris(t, path); len(debris) != 0 {
+		t.Fatalf("rebuild left sibling debris: %v", debris)
+	}
+	backups, _ := filepath.Glob(path + ".replaced-*")
+	if len(backups) != 2 {
+		t.Fatalf("retained backups = %v, want the pre-existing one plus this run's", backups)
+	}
+	if value := mustReadValue(t, opts); value != "new" {
+		t.Fatalf("live value = %q, want new", value)
+	}
+}
+
+// 任务498：校验失败（integrity_check 不过）不替换——兄弟库被清空、主库完好。
+func TestRebuildValidationFailureDoesNotSwap(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "catalog.sqlite")
+	opts := OpenOptions{Path: path, MemoryName: "rebuild-invalid", Migrations: testMigrations()}
+	mustSeedProjection(t, opts, "old")
+	err := Rebuild(context.Background(), opts, func(ctx context.Context, db *sql.DB) error {
+		// 通过 writable_schema 把 values_table 的 rootpage 指向不存在的页，
+		// 让替换库的 integrity_check 报告损坏（黑盒注入校验失败）。
+		if _, err := db.ExecContext(ctx, `PRAGMA writable_schema=ON`); err != nil {
+			return err
+		}
+		if _, err := db.ExecContext(ctx, `UPDATE sqlite_master SET rootpage=999999 WHERE name='values_table'`); err != nil {
+			return err
+		}
+		_, err := db.ExecContext(ctx, `PRAGMA writable_schema=OFF`)
+		return err
+	})
+	if err == nil || !strings.Contains(err.Error(), "validate projection replacement") {
+		t.Fatalf("invalidated rebuild error = %v, want validation failure", err)
+	}
+	if value := mustReadValue(t, opts); value != "old" {
+		t.Fatalf("live value after failed validation = %q, want old", value)
+	}
+	if debris := rebuildDebris(t, path); len(debris) != 0 {
+		t.Fatalf("failed validation left sibling debris: %v", debris)
+	}
+}

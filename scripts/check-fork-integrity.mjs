@@ -1091,6 +1091,14 @@ const CHECKS = [
   { feature: "550③ 项目树可见性单一稳定判据（运行时行+目录行）", file: "desktop/session_catalog_runtime.go", patterns: ["func runtimeTopicRowIsBlank", "func (a *App) ordinaryTreeHidesBlankShell"] },
   { feature: "550① 修复横幅只信精确字段（去掉 repairPending 回退）", file: "desktop/frontend/src/lib/sessionCatalogPresentation.ts", patterns: ["(repairActive ?? 0) > 0"] },
   { feature: "550 横幅回退链对立输入测试存续", file: "desktop/frontend/src/__tests__/session-catalog-notice.test.ts", patterns: ["must never resurrect the legacy repairPending"] },
+  // ── 任务498（wt-498-projectiondb-v2）：projectiondb v2 路线收口——
+  // 「验证式单次原子替换 + 中断即弃、幂等重跑」。v1 三件基建
+  // （integrity/rebuild_resume/rebuild_validation）fork 从未拥有，
+  // 此处锚定 v2 语义三件套：中断语义成文、崩溃残留清扫、
+  // 校验实质化（新连接从磁盘重读，页缓存不得掩盖损坏）。
+  { feature: "498 中断语义成文 + 崩溃残留清扫", file: "internal/projectiondb/projectiondb.go", patterns: ["cleanOrphanRebuildResidues", "discard on interrupt, idempotent rerun"] },
+  { feature: "498 校验实质化（新连接磁盘重读判决）", file: "internal/projectiondb/projectiondb.go", patterns: ["func validateReplacementFile", "mode=ro&immutable=1", "mask on-disk corruption"] },
+  { feature: "498 中断注入测试四件（取消/残留清扫/备份保留/校验失败不替换）", file: "internal/projectiondb/projectiondb_test.go", patterns: ["TestRebuildCancellationKeepsOldDatabaseAndCleansSibling", "TestRebuildSweepsCrashResidueBeforeRebuilding", "TestRebuildKeepsRetainedBackupsWhileSweepingSiblings", "TestRebuildValidationFailureDoesNotSwap"] },
 
 ];
 
