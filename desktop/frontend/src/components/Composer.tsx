@@ -2764,6 +2764,17 @@ export function Composer({
     setGuidanceSelectedIds((ids) =>
       ids.includes(item.id) ? ids.filter((id) => id !== item.id) : [...ids, item.id]);
   };
+  // Task 466: select-all sweep / clear (the shelf's tri-state checkbox). The
+  // all-or-none decision reads the same selectable list the checkbox renders
+  // from, so the box's checked state and this handler can never disagree:
+  // fully selected (or indeterminate) → clear; otherwise → select every
+  // selectable row, hidden ones included.
+  const toggleGuidanceSelectAll = (selectable: PendingGuidance[]) => {
+    setGuidanceSelectedIds((ids) => {
+      const allSelected = selectable.length > 0 && selectable.every((item) => ids.includes(item.id));
+      return allSelected ? [] : selectable.map((item) => item.id);
+    });
+  };
   const batchSendGuidance = async (batch: PendingGuidance[]) => {
     for (const item of batch) {
       await sendQueuedGuidance(item);
@@ -5063,6 +5074,7 @@ export function Composer({
             selectedIds={guidanceSelectedIds}
             onToggleSelectMode={toggleGuidanceSelectMode}
             onToggleSelect={toggleGuidanceSelect}
+            onToggleSelectAll={toggleGuidanceSelectAll}
             onBatchSend={(batch) => void batchSendGuidance(batch)}
             onBatchDismiss={(batch) => void batchDismissGuidance(batch)}
             onMove={(item, toIndex) => void moveGuidance(item, toIndex)}

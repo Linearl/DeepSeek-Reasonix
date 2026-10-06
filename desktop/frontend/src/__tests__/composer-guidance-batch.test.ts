@@ -30,8 +30,13 @@ const bridge = readFileSync(join(root, "lib/bridge.ts"), "utf8").replace(/\n\s*/
 
 // ── 221#6 batch selection gate ─────────────────────────────────────────────
 {
-  ok(/const selectable = !editing && !inFlight && !delivering && !unknownState && !item\.paused/.test(shelf),
+  // Task 466: the gate moved into a `rowSelectable` helper so the select-all
+  // sweep shares the exact same predicate — still ONE shared gate, now by
+  // construction (row checkbox, select-all and reorder all call it).
+  ok(/const rowSelectable = \(item: PendingGuidance\): boolean => { const editing = editingId === item\.id; const inFlight = guidanceIsInFlight\(item\.state\); const delivering = guidanceIsDelivering\(item\.state\); const unknownState = !guidanceHasKnownPendingState\(item\.state\); return !editing && !inFlight && !delivering && !unknownState && !item\.paused; }/.test(shelf),
     "batch-selectable excludes editing, in-flight, delivering, unknown and paused rows (one shared gate)");
+  ok(/const selectableItems = items\.filter\(rowSelectable\)/.test(shelf) && /const selectable = rowSelectable\(item\)/.test(shelf),
+    "the row checkbox and the select-all sweep call the same gate (task 466)");
   ok(/batchSendable = batchSelected\.filter\( \(item\) => !\(running && !guidanceNeedsRetry\(item\.state\) && Boolean\(item\.structured\)\)/.test(shelf),
     "batch send skips structured entries on an active turn instead of counting a silent no-op");
   ok(/onBatchSend\(batchSendable\)/.test(shelf) && /onBatchDismiss\(batchSelected\)/.test(shelf),
@@ -40,6 +45,22 @@ const bridge = readFileSync(join(root, "lib/bridge.ts"), "utf8").replace(/\n\s*/
     "batch send disables while nothing is sendable or a single send is in flight");
   ok(/selectMode && selectable && onToggleSelect/.test(shelf),
     "checkbox renders only in select mode on selectable rows");
+}
+
+// ── 466 select-all (head tri-state) + batch bar dismiss layout ─────────────
+{
+  ok(/selectMode && onToggleSelectAll && selectableItems\.length > 0/.test(shelf)
+    && /onChange=\{\(\) => onToggleSelectAll\(selectableItems\)\}/.test(shelf),
+    "the head select-all hands back exactly the gate-admitted rows (hidden ones included)");
+  ok(/checked=\{allSelected\}/.test(shelf) && /el\.indeterminate = someSelected/.test(shelf),
+    "the select-all checkbox mirrors the row checks (checked = all, indeterminate = some)");
+  ok(/const toggleGuidanceSelectAll = \(selectable: PendingGuidance\[\]\) => {/.test(composer)
+    && /const allSelected = selectable\.length > 0 && selectable\.every\(\(item\) => ids\.includes\(item\.id\)\); return allSelected \? \[\] : selectable\.map\(\(item\) => item\.id\);/.test(composer),
+    "the composer resolves all-or-none from the same list the checkbox renders from");
+  ok(/onToggleSelectAll=\{toggleGuidanceSelectAll\}/.test(composer),
+    "the composer wires the select-all handler into the shelf");
+  ok(/className="composer-guidance-batchbar__dismiss"/.test(shelf) && !/composer-guidance-batchbar[^"]*composer-guidance-item__action/.test(shelf),
+    "the batch dismiss button stopped reusing the fixed-24px row icon class (task 466 vertical-wrap fix)");
 }
 
 // ── 221#6 batch handlers in the composer ───────────────────────────────────
@@ -107,6 +128,7 @@ const bridge = readFileSync(join(root, "lib/bridge.ts"), "utf8").replace(/\n\s*/
     "composer.guidanceSelect",
     "composer.guidanceSelectCancel",
     "composer.guidanceSelectOne",
+    "composer.guidanceSelectAll",
     "composer.guidanceBatchBar",
     "composer.guidanceBatchSelected",
     "composer.guidanceBatchSend",

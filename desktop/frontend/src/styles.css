@@ -23232,6 +23232,26 @@ body > .mermaid-diagram--fullscreen {
   color: var(--fg);
 }
 
+/* Task 466: head select-all — a tri-state checkbox that mirrors the row
+   checkboxes (checked = every selectable row selected, indeterminate = some).
+   Sits in the head's right-hand cluster so it stays reachable at a zero
+   selection, where the batch bar is not mounted yet. */
+.composer-guidance-head__selectall {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  color: var(--fg-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.composer-guidance-head__selectall input {
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 /* Task 221#6: batch action bar (only while a selection exists). */
 .composer-guidance-batchbar {
   display: flex;
@@ -23247,6 +23267,42 @@ body > .mermaid-diagram--fullscreen {
   color: var(--fg-dim);
   font-size: 11px;
   font-weight: 620;
+}
+
+/* Task 466: the batch dismiss is a TEXT button — it reused the row-level
+   __action class, a fixed 24px icon-only button, so 「丢弃 N 条」 wrapped one
+   character per line into a vertical stack (the user report). Own class:
+   auto width + nowrap, same pill metrics as the batch send button. */
+.composer-guidance-batchbar__dismiss {
+  flex: 0 0 auto;
+  min-width: 0;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.composer-guidance-batchbar__dismiss:not(:disabled):hover,
+.composer-guidance-batchbar__dismiss:not(:disabled):focus-visible {
+  background: color-mix(in srgb, var(--bg-elev-2) 80%, transparent);
+  color: var(--fg);
+}
+
+.composer-guidance-batchbar__dismiss:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 /* Task 221#6 / 181: row checkbox and the drag affordance.

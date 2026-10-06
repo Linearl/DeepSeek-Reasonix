@@ -429,6 +429,10 @@ const CHECKS = [
   { feature: "任务446 估行器轻量抽出（lib/messageFold）", file: "desktop/frontend/src/lib/messageFold.ts", patterns: ["USER_MSG_FOLD_LINE_THRESHOLD", "estimateUserMessageLines", "0x2e7f"] },
   { feature: "任务446 排队引导 hover 浮层（组件）", file: "desktop/frontend/src/components/ComposerGuidanceShelf.tsx", patterns: ["guidanceRowIsTruncated", "GUIDANCE_ROW_VISIBLE_LINES", "openHoverCard", "guidance-hover-preview"] },
   { feature: "任务446 排队引导 hover 浮层 CSS", file: "desktop/frontend/src/styles.css", patterns: [".guidance-hover-preview", "data-clipped"] },
+  // 任务466（20261006）：引导队列全选（头栏三态勾选，与单选同一闸门）+ 批量栏丢弃按钮横排修复。
+  { feature: "任务466 引导队列全选（头栏三态+共享闸门）", file: "desktop/frontend/src/components/ComposerGuidanceShelf.tsx", patterns: ["onToggleSelectAll", "composer-guidance-head__selectall", "rowSelectable"] },
+  { feature: "任务466 批量丢弃按钮横排（专用文本按钮类）", file: "desktop/frontend/src/styles.css", patterns: [".composer-guidance-batchbar__dismiss", "white-space: nowrap"] },
+  { feature: "任务466 全选接线（composer 全/无切换）", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["toggleGuidanceSelectAll"] },
   // 任务 339（上游 #10970 并用）：replay 预算双保险的第二道——触顶有出路。
   // 锚点锁「所有权证明→内存折叠→失败原样透出」的形状：fold 只在 ledger 仍
   // 等于本 runtime 基线时触发（防丢别的 writer 的新 turn），DAG 日志与非

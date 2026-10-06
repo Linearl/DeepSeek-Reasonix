@@ -72,6 +72,7 @@ export function ComposerGuidanceShelf({
   selectedIds,
   onToggleSelectMode,
   onToggleSelect,
+  onToggleSelectAll,
   onBatchSend,
   onBatchDismiss,
   onMove,
@@ -104,6 +105,12 @@ export function ComposerGuidanceShelf({
   selectedIds?: string[];
   onToggleSelectMode?: () => void;
   onToggleSelect?: (item: PendingGuidance) => void;
+  /**
+   * Task 466: select-all / clear (one toggle). The shelf hands back exactly the
+   * rows the row-checkbox gate admits (hidden rows included — the batch bar
+   * already counts them); the composer owns the all-or-none decision.
+   */
+  onToggleSelectAll?: (selectable: PendingGuidance[]) => void;
   onBatchSend?: (items: PendingGuidance[]) => void;
   onBatchDismiss?: (items: PendingGuidance[]) => void;
   /** Task 181 reorder: move this durable entry to an absolute 0-based index. */
@@ -159,6 +166,25 @@ export function ComposerGuidanceShelf({
   // action can still land on it — never an in-flight/delivering/unknown row,
   // never the row being edited into the composer.
   const selectedSet = new Set(selectedIds ?? []);
+  // Task 221#6 / 466: ONE shared gate for the row checkbox AND the select-all
+  // sweep — an in-flight/delivering/unknown/paused row or the row being edited
+  // can be neither selected nor moved. (Reorder additionally requires a durable
+  // row: a local (unsent) row has no queue position to persist — see `movable`.)
+  const rowSelectable = (item: PendingGuidance): boolean => {
+    const editing = editingId === item.id;
+    const inFlight = guidanceIsInFlight(item.state);
+    const delivering = guidanceIsDelivering(item.state);
+    const unknownState = !guidanceHasKnownPendingState(item.state);
+    return !editing && !inFlight && !delivering && !unknownState && !item.paused;
+  };
+  // Task 466: the select-all sweep covers EVERY selectable row, including the
+  // ones a collapsed queue keeps out of sight — the batch bar counts them too
+  // (batchSelected maps over all items, not the visible slice).
+  const selectableItems = items.filter(rowSelectable);
+  // Task 466: tri-state mirror of the row checkboxes — checked only when every
+  // selectable row is selected, indeterminate when some but not all are.
+  const allSelected = selectableItems.length > 0 && selectableItems.every((item) => selectedSet.has(item.id));
+  const someSelected = !allSelected && selectableItems.some((item) => selectedSet.has(item.id));
   // Task 441: dragId is set ONLY by a handle dragstart (task 181 had the whole
   // card draggable plus up/down arrows; both are gone — the six-dot handle is
   // the single reorder affordance now).
@@ -387,6 +413,28 @@ export function ComposerGuidanceShelf({
                 {selectMode ? t("composer.guidanceSelectCancel") : t("composer.guidanceSelect")}
               </button>
             )}
+            {/* Task 466: select-all lives in the head so it stays reachable at a
+                zero selection (the batch bar only mounts once something is
+                selected). Tri-state checkbox mirroring the row checks: checked
+                when every selectable row is selected, indeterminate when some
+                are; one click sweeps all selectable rows in, a second click
+                clears (indeterminate resolves to all, the standard checkbox
+                group behavior). Hidden rows are included — same set the batch
+                bar counts. */}
+            {selectMode && onToggleSelectAll && selectableItems.length > 0 && (
+              <label className="composer-guidance-head__selectall">
+                <input
+                  ref={(el) => {
+                    if (el) el.indeterminate = someSelected;
+                  }}
+                  type="checkbox"
+                  aria-label={t("composer.guidanceSelectAll")}
+                  checked={allSelected}
+                  onChange={() => onToggleSelectAll(selectableItems)}
+                />
+                <span>{t("composer.guidanceSelectAll")}</span>
+              </label>
+            )}
           </div>
           {selectMode && batchSelected.length > 0 && (
             <div className="composer-guidance-batchbar" role="toolbar" aria-label={t("composer.guidanceBatchBar")}>
@@ -405,7 +453,7 @@ export function ComposerGuidanceShelf({
               )}
               {onBatchDismiss && (
                 <button
-                  className="composer-guidance-item__action"
+                  className="composer-guidance-batchbar__dismiss"
                   type="button"
                   aria-label={t("composer.guidanceBatchDismiss", { n: batchSelected.length })}
                   disabled={sendingId !== null}
@@ -434,11 +482,10 @@ export function ComposerGuidanceShelf({
               const editing = editingId === item.id;
               const canEdit = Boolean(onEdit) && !readOnly && !disabled && guidanceEditableInComposer(item) && !waitingForEarlier && sendingId === null && !editing;
               const previewing = previewId === item.id;
-              // Task 221#6 / 181: one gate for both batch selection and reorder —
-              // an in-flight/delivering/unknown/paused row or the row being edited
-              // can be neither selected nor moved. Reorder additionally requires a
-              // durable row: a local (unsent) row has no queue position to persist.
-              const selectable = !editing && !inFlight && !delivering && !unknownState && !item.paused;
+              // Task 221#6 / 181 / 466: the shared gate (rowSelectable above) —
+              // reorder additionally requires a durable row: a local (unsent)
+              // row has no queue position to persist.
+              const selectable = rowSelectable(item);
               const movable = Boolean(onMove) && !item.id.startsWith("local-") && selectable;
               const actionLabel = inFlight
                 ? t("composer.guidanceInFlight")
