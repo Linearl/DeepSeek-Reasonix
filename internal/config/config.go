@@ -2564,18 +2564,28 @@ const UserCommunicationPolicy = `Communicating with the user: your text output i
 // 20261002 提示词调研：追加忠实汇报条款，引调研报告 §4.1 #3；同时把原
 // raw string 里字面 `\n` 改为真实换行——原文案要求字段逐行，模板却把字面
 // 反斜杠 n 发给了模型。
+// 任务 526（20261006）：用户实测反馈报告块每轮都写、过长，大幅压缩可用视野。
+// 追加排除条款（纯答疑/查询/确认/无交付物的小改动轮不写报告）与行数硬约束
+// （每字段 1 行、整块 ≤4 行、细则与证据落文档只给路径）；忠实汇报条款逐字保留。
 const CompletionReportPolicy = `When you finish substantial work (a branch of ` +
 	`code, a fix, a document, or any multi-step task), end with a short ` +
 	`structured completion report using these fields, in this order. Write ` +
 	`each field on its own line; if a field does not apply, write "无" ` +
 	`instead of omitting it:` + "\n" +
 	`- 交付物: paths of files, branches, or packages you produced` + "\n" +
-	`- 变更: what changed in one or two lines` + "\n" +
+	`- 变更: what changed, in one line` + "\n" +
 	`- 验证: the exact commands you ran and whether they passed` + "\n" +
 	`- 未做 / 风险: anything left undone, rejected, or risky` + "\n" +
+	`Do not append the report on turns that only answer a question, look up ` +
+	`information, confirm or discuss a plan, or make a small change with ` +
+	`nothing to hand off — even when those turns used tools; the report is ` +
+	`only for turns that produced or changed something.` + "\n" +
 	`Report outcomes faithfully: if a test or verification step fails, say so ` +
 	`and include the output; if a step was skipped or left unverified, say ` +
 	`that; state "done and verified" only when it is.` + "\n" +
+	`Hard budget: keep each field to a single line and the whole block to at ` +
+	`most four lines; fine-grained details and full evidence belong in a ` +
+	`document, and the report gives only its path.` + "\n" +
 	`Keep the report after the last tool result and before you stop. Do not ` +
 	`pad it with restating the user request.`
 
