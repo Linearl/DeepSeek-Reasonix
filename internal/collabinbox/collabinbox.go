@@ -434,6 +434,11 @@ func approverOf(m sessioncollab.MailMessage) string {
 // needs to settle a whole duplicate cluster (任务461 P8 ③).
 type foldIndex struct {
 	entries []Entry
+	// degraded carries the transport read's lock-busy flag (任务511): when
+	// MailStore.History could not take .mail.lock in budget, the row set is
+	// empty BECAUSE of the lock, not because the mailboxes are — the panel
+	// snapshot must say so instead of rendering an honest-looking empty state.
+	degraded bool
 	// foldGroups maps a folded entry's id to every member id of its cluster
 	// (primary first). Unfolded entries have no entry in this map.
 	foldGroups map[string][]string
@@ -453,7 +458,7 @@ func (s *Store) build(ctx context.Context) ([]Entry, error) {
 }
 
 func (s *Store) buildIndex(ctx context.Context) (*foldIndex, error) {
-	rows := s.mail.History(ctx)
+	rows, historyDegraded := s.mail.History(ctx)
 	// Replies per thread drive the conversation-side decision derivation:
 	// a reply ON the approval's own thread FROM the expected approver is the
 	// verdict ("哪个对话批的"). Receipts never qualify — they start fresh
@@ -545,6 +550,7 @@ func (s *Store) buildIndex(ctx context.Context) (*foldIndex, error) {
 	}
 	return &foldIndex{
 		entries:     out,
+		degraded:    historyDegraded,
 		foldGroups:  foldGroups,
 		foldPrimary: foldPrimary,
 		mailboxes:   mailboxes,
@@ -793,10 +799,17 @@ func (s *Store) List(ctx context.Context, q Query, applyRetention bool) (Snapsho
 		degraded = d2 || sweepFailed
 	}
 	st := s.loadState()
-	entries, err := s.build(ctx)
+	idx, err := s.buildIndex(ctx)
 	if err != nil {
 		return Snapshot{}, err
 	}
+	// 任务511：mail 锁繁忙时 History 返回空行集，若不向上传递，面板会把这个
+	// 「锁导致的空」渲染成「暂无信件」——与 320 复盘修掉的空面板同形。锁层
+	// 降级必须一路带到快照上（排查报告 §4 缺口 1）。
+	if idx.degraded {
+		degraded = true
+	}
+	entries := idx.entries
 	decorate(entries, q.Viewer)
 	filtered := filterEntries(entries, q)
 

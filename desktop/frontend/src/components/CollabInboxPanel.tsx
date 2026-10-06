@@ -57,6 +57,9 @@ export type CollabMailSnapshot = {
   returned: number;
   truncated: boolean;
   entries: CollabMailEntry[];
+  /** 任务511：锁繁忙时后端照常返回快照但标 degraded——空面板此时是「读取
+   * 受限」而非「真的没信」，展示位必须区分（排查报告 §4 缺口 1）。 */
+  degraded?: boolean;
 };
 
 export type CollabMailChain = {
@@ -468,7 +471,13 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
 
       <div className="collab-inbox-panel__rows">
         {view === "list" && rows.length === 0 && (
-          <div className="collab-inbox-panel__empty">{t("collabInbox.empty")}</div>
+          <div
+            className={`collab-inbox-panel__empty${snapshot?.degraded ? " collab-inbox-panel__empty--degraded" : ""}`}
+          >
+            {/* 任务511：锁繁忙导致的空必须与「真空」可区分——降级提示代替
+                「暂无信件」，否则空面板依旧无从诊断。 */}
+            {snapshot?.degraded ? t("collabInbox.degraded") : t("collabInbox.empty")}
+          </div>
         )}
         {view === "list" &&
           rows.map((entry) => (

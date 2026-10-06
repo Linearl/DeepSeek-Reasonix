@@ -4719,6 +4719,7 @@ export const zh: Record<DictKey, string> = {
   "collabInbox.title": "跨会话收件箱",
   "collabInbox.close": "关闭",
   "collabInbox.empty": "暂无信件",
+  "collabInbox.degraded": "收件箱暂时不可用（锁繁忙）",
   "collabInbox.retention": "保留期",
   "collabInbox.retention.7d": "7 天",
   "collabInbox.retention.30d": "30 天",

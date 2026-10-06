@@ -4717,6 +4717,7 @@ export const en = {
   "collabInbox.title": "Cross-session inbox",
   "collabInbox.close": "Close",
   "collabInbox.empty": "No mail yet",
+  "collabInbox.degraded": "Inbox temporarily unavailable (lock busy)",
   "collabInbox.retention": "Retention",
   "collabInbox.retention.7d": "7 days",
   "collabInbox.retention.30d": "30 days",
