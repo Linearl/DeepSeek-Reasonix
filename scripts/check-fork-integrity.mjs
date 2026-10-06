@@ -665,7 +665,7 @@ const CHECKS = [
   // 锁三处——闸门本体、四个开启入口的接线、前端按码本地化。merge 丢掉接线
   // 会重新出现「autopilot 挂着但审批是 ask/auto」的无人值守中间态。
   { feature: "任务325 autopilot yolo 闸门（判定+反向联动+通知码）", file: "desktop/autopilot_gate.go", patterns: ["func autopilotGateAllowed", "func gateRestoredAutopilotDefaults", "func closeAutopilotForOffYolo", "\"autopilot_requires_yolo\"", "\"autopilot_closed_off_yolo\""] },
-  { feature: "任务325 开启入口接线（恢复/新标签/选择器/审批切换；477 起为五元组含 ask 超时对）", file: "desktop/app.go", patterns: ["gateRestoredAutopilotDefaults(on, maxRuntime, grace, askEnabled, askWait, tab.toolApprovalMode)", "gateRestoredAutopilotDefaults(autopilot, maxRuntime, approvalGrace, askEnabled, askWait, toolApprovalMode)", "gateRestoredAutopilotDefaults(prefOn, prefRuntime, prefGrace, prefAskEnabled, prefAskWait, approvalMode)", "closeAutopilotForOffYolo(tab, mode)"] },
+  { feature: "任务325 开启入口接线（恢复/新标签/选择器/审批切换；477 起为五元组含 ask 超时对；465 起选择器档位以 effectiveApproval 自动满足前置，门仍在此落点）", file: "desktop/app.go", patterns: ["gateRestoredAutopilotDefaults(on, maxRuntime, grace, askEnabled, askWait, tab.toolApprovalMode)", "gateRestoredAutopilotDefaults(autopilot, maxRuntime, approvalGrace, askEnabled, askWait, toolApprovalMode)", "gateRestoredAutopilotDefaults(prefOn, prefRuntime, prefGrace, prefAskEnabled, prefAskWait, effectiveApproval)", "closeAutopilotForOffYolo(tab, mode)"] },
   { feature: "任务325 设置默认值前置校验（拒绝非 yolo）", file: "desktop/settings_app.go", patterns: ["autopilot requires the yolo approval mode"] },
   { feature: "任务325 拒绝/关闭提示按码本地化", file: "desktop/frontend/src/lib/controllerNotices.ts", patterns: ["autopilot_requires_yolo: \"notice.autopilotRequiresYolo\"", "autopilot_closed_off_yolo: \"notice.autopilotClosedOffYolo\""] },
   // 任务 327：自动化任务运行次数上限 maxRuns（单次 = N 的特例、跑满自动禁用）。
@@ -1017,6 +1017,31 @@ const CHECKS = [
   { feature: "463 三语文案 zh-TW", file: "desktop/frontend/src/locales/zh-TW.ts", patterns: ["\"composer.expandAll\": \"全部展開工作過程\""] },
   { feature: "463 三语文案 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["\"composer.expandAll\": \"Expand all work processes\""] },
   { feature: "463 双向开关测试存续", file: "desktop/frontend/src/__tests__/fold-toggle-button.test.tsx", patterns: ["allWorkProcessesCollapsed", "reasonix:expand-all-folds"] },
+  // ── 任务465（wt-465-autopilot-4th；两维矩阵 + X4 断点 C）──
+  // 第一维【询问/自动/Yolo/autopilot】×第二维【常规/计划/目标】：autopilot
+  // 隐含 yolo，档位切换自动满足 325 前置并留痕（assumed_yolo）；goal×autopilot
+  // 合法同开，合成标签不再承载全部状态（wire 裸旗）；「+」菜单运行中不可点的
+  // 缺口由模式条第四档承接；desktopTabEntry 补 autopilot 列，重启忠实保留。
+  // merge 若顶掉任一环：档位静默失效 / 重启丢旗 / goal 被清——均无编译错误。
+  { feature: "465 断点C desktopTabEntry autopilot 列（持久化+恢复写入）", file: "desktop/tabs_persistence_types.go", patterns: ["Autopilot bool `json:\"autopilot,omitempty\"`", "Autopilot:   tab.autopilot,"] },
+  { feature: "465 恢复路径双源+325 再过门", file: "desktop/app.go", patterns: ["if entry.Autopilot || tabSessionAutopilot(tab.SessionPath)", "gateRestoredAutopilotDefaults(on, maxRuntime, grace, askEnabled, askWait, tab.toolApprovalMode)"] },
+  { feature: "465 档位自动满足 yolo+双留痕（slog assumed_yolo+notice）", file: "desktop/app.go", patterns: ["effectiveApproval = control.ToolApprovalYolo", "\"assumed_yolo\", assumedYolo", "NoticeCodeAutopilotAssumedYolo, autopilotAssumedYoloText"] },
+  { feature: "465 两维独立：dim-2 播种不清旗+守卫仅真实边触发", file: "desktop/app.go", patterns: ["autopilotOn, autopilotRuntime, autopilotGrace := tab.autopilot, tab.autopilotMaxRuntime, tab.autopilotApprovalGrace", "if autopilotOn && !wasAutopilot {"] },
+  { feature: "465 门文件新 notice 码（决策记录）", file: "desktop/autopilot_gate.go", patterns: ["NoticeCodeAutopilotAssumedYolo = \"autopilot_assumed_yolo\"", "autopilotAssumedYoloText"] },
+  { feature: "465 wire 裸旗（Meta/TabMeta autopilot 字段+赋值）", file: "desktop/app.go", patterns: ["Autopilot             bool               `json:\"autopilot,omitempty\"`", "Autopilot:             snap.autopilot,"] },
+  { feature: "465 TabMeta 裸旗赋值", file: "desktop/tabs.go", patterns: ["Autopilot:         tab.autopilot,"] },
+  { feature: "465 profile 裸旗（两维底层状态同时在）", file: "desktop/frontend/src/lib/composerProfile.ts", patterns: ["autopilot: boolean", "function profileAutopilot(raw: boolean | undefined, label: CollaborationMode): boolean", "autopilot: profileAutopilot(meta.autopilot, collaborationMode)"] },
+  { feature: "465 模式条第四档（按钮+滑块跟随裸旗）", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["composer-modebar__item--autopilot", "data-mode={autopilotModeOn ? \"autopilot\" : toolApprovalMode}", "onClick={() => chooseTaskMode(\"autopilot\")}"] },
+  { feature: "465 徽章只承载第二维+菜单 autopilot 撤出", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["(planModeOn || goalModeOn)", "任务 465 两维矩阵：autopilot 移入模式条第四档（第一维）"] },
+  { feature: "465 四格布局（网格+滑块四等分+yolo 配色）", file: "desktop/frontend/src/styles.css", patterns: ['.composer-modebar--approval[data-autopilot="on"] {', "width: calc((100% - 4px) / 4);", '.composer-modebar[data-mode="autopilot"] {'] },
+  { feature: "465 owner 分支（autopilot 档不清 goal+离 yolo 镜像联动）", file: "desktop/frontend/src/app-runtime/composerModeOwner.ts", patterns: ["request.kind === \"collaboration\" && request.mode === \"autopilot\"", "patch.autopilot = false;"] },
+  { feature: "465 档位排干对账（普通工具卡精确清卡）", file: "desktop/frontend/src/lib/useController.ts", patterns: ['(visible.kind ?? "tool") === "tool"'] },
+  { feature: "465 三语文案 zh", file: "desktop/frontend/src/locales/zh.ts", patterns: ["\"notice.autopilotAssumedYolo\": \"Autopilot 已开启：审批自动切到 Yolo（决策已记录）。\""] },
+  { feature: "465 三语文案 zh-TW", file: "desktop/frontend/src/locales/zh-TW.ts", patterns: ["\"notice.autopilotAssumedYolo\": \"Autopilot 已開啟：審批自動切到 Yolo（決策已記錄）。\""] },
+  { feature: "465 三语文案 en", file: "desktop/frontend/src/locales/en.ts", patterns: ['"notice.autopilotAssumedYolo": "Autopilot on: approval switched to YOLO automatically (decision recorded)."'] },
+  { feature: "465 notice 按码本地化映射", file: "desktop/frontend/src/lib/controllerNotices.ts", patterns: ["autopilot_assumed_yolo: \"notice.autopilotAssumedYolo\""] },
+  { feature: "465 两维矩阵测试存续", file: "desktop/frontend/src/__tests__/task465-two-axis-matrix.test.ts", patterns: ["goalAutopilotProfile.autopilot", "不得清 goal", "executeComposerMode"] },
+  { feature: "465 Go 门矩阵测试存续（四档自动满足/两维独立/断点C）", file: "desktop/autopilot_gate_test.go", patterns: ["TestAutopilotTierPreservesTaskDimension", "TestRestoreTabEntryCarriesAutopilotFlag", "NoticeCodeAutopilotAssumedYolo"] },
 
 ];
 

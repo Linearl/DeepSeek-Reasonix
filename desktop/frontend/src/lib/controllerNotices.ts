@@ -47,6 +47,8 @@ const noticeCodeKeys: Record<string, DictKey> = {
   // instead of falling through to the backend's bilingual fallback string.
   autopilot_requires_yolo: "notice.autopilotRequiresYolo",
   autopilot_closed_off_yolo: "notice.autopilotClosedOffYolo",
+  // 任务 465 两维矩阵：档位切换自动满足 yolo 前置的决策留痕（用户可见半）。 
+  autopilot_assumed_yolo: "notice.autopilotAssumedYolo",
 };
 
 const streamInterruptReasonCodeKeys: Record<string, DictKey> = {

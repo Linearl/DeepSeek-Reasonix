@@ -1780,12 +1780,27 @@ export default function App() {
         patchActiveComposerProfile({ collaborationMode: "normal", goalDraftMode: true, goal: "" }, ["collaborationMode", "goal"]);
         return setControllerCollaborationMode("normal");
       }
+      if (m === "autopilot") {
+        // 任务 465 两维矩阵：autopilot 在第一维（审批姿态），隐含 yolo——
+        // 后端 SetCollaborationModeForTab 自动满足 yolo 前置并留痕
+        // （desktop.log assumed_yolo + notice），第二维（计划/目标）保持不动：
+        // goal × autopilot 合法同开，不再走旧的清 goal 互斥路径。
+        const nextLabel: CollaborationMode = collaborationMode === "plan" ? "plan" : goal.trim() ? "goal" : "autopilot";
+        await setControllerCollaborationMode("autopilot");
+        patchActiveComposerProfile({
+          collaborationMode: nextLabel,
+          toolApprovalMode: "yolo",
+          autopilot: true,
+          goalDraftMode: false,
+        }, ["collaborationMode", "toolApprovalMode", "autopilot"]);
+        return;
+      }
       if (goal.trim()) await clearControllerGoal();
       await setControllerCollaborationMode(m);
       userPlanModeByTabRef.current = updateUserPlanModeIntent(userPlanModeByTabRef.current, activeTabId, m === "plan");
       patchActiveComposerProfile({ collaborationMode: m, goalDraftMode: false, goal: "" }, ["collaborationMode", "goal"]);
     },
-    [activeTabId, clearControllerGoal, goal, patchActiveComposerProfile, setControllerCollaborationMode],
+    [activeTabId, clearControllerGoal, collaborationMode, goal, patchActiveComposerProfile, setControllerCollaborationMode],
   );
   const applyToolApprovalMode = useCallback(
     (m: ToolApprovalMode) => {
@@ -1797,10 +1812,16 @@ export default function App() {
       } else {
         yoloRestoreToolApprovalModesRef.current[activeTabId] = restorableToolApprovalMode(m);
       }
-      patchActiveComposerProfile({ toolApprovalMode: m }, ["toolApprovalMode"]);
+      // 任务 465：审批离开 yolo 而 autopilot 在开 → 325 反向联动后端会自动关
+      // autopilot；乐观 profile 同步落旗，模式条立即掉档。
+      const autopilotDrops = m !== "yolo" && composerProfile.autopilot;
+      patchActiveComposerProfile(
+        autopilotDrops ? { toolApprovalMode: m, autopilot: false } : { toolApprovalMode: m },
+        autopilotDrops ? ["toolApprovalMode", "autopilot"] : ["toolApprovalMode"],
+      );
       void setControllerToolApprovalMode(m);
     },
-    [activeTabId, patchActiveComposerProfile, setControllerToolApprovalMode, toolApprovalMode],
+    [activeTabId, composerProfile.autopilot, patchActiveComposerProfile, setControllerToolApprovalMode, toolApprovalMode],
   );
   // Fork: sub-agent delegation tier is a per-tab setting; the + menu is the
   // only entry point now (it needs no frequent switching).
@@ -5436,6 +5457,7 @@ export default function App() {
               inboxWorkspace={activeTab?.remote?.workspace}
               collaborationMode={collaborationMode}
               toolApprovalMode={toolApprovalMode}
+              autopilotOn={composerProfile.autopilot}
               qualityFloor={composerProfile.qualityFloor}
               floorInferred={(activeTab?.floorInferred ?? false) && !composerProfile.pending.qualityFloor}
               onSetQualityFloor={applyQualityFloor}

@@ -90,6 +90,9 @@ export function useRemoteComposerProfileSync(options: {
         collaborationMode: remoteProfile.collaborationMode,
         goalDraftMode: false,
         toolApprovalMode: remoteProfile.toolApprovalMode,
+        // 远端 wire 不携带第一维裸旗（任务 465）：远端主机的合成标签是唯一
+        // 来源，与 composerProfileFromMeta 的 legacy 回退一致。
+        autopilot: remoteProfile.collaborationMode === "autopilot",
         goal: remoteProfile.goal,
         qualityFloor: remoteProfile.qualityFloor,
         pending: {},

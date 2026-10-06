@@ -4806,8 +4806,20 @@ export function useController() {
   const setCollaborationModeForTab = useCallback(async (tabId: string, mode: CollaborationMode): Promise<void> => {
     if (!tabId) return;
     await app.SetCollaborationModeForTab(tabId, mode).catch(() => {});
+    // 任务 465：切到 autopilot 档时后端自动满足 yolo 前置并即时排干普通工具
+    // 审批；该 void 调用没有 drained ids 回传通道，这里按卡种对账——只有普通
+    // 工具卡（kind 缺省/"tool"）会被 yolo 排干；plan/recovery/write_access 卡
+    // 在 yolo 下从不排干（#6432），必须继续可见。与 SetToolApprovalModeForTab
+    // 的 approval_drained 语义对齐。
+    if (mode === "autopilot") {
+      const state = statesRef.current.get(tabId);
+      const visible = state?.approval;
+      if (visible && (visible.kind ?? "tool") === "tool") {
+        dispatchTo(tabId, { type: "approval_drained", ids: [visible.id], epoch: state.promptEpoch });
+      }
+    }
     await refreshMetaForTab(tabId);
-  }, [refreshMetaForTab]);
+  }, [dispatchTo, refreshMetaForTab]);
 
   const setCollaborationMode = useCallback(async (mode: CollaborationMode): Promise<void> => {
     if (!activeTabId) return;

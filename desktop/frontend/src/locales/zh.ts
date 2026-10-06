@@ -4207,6 +4207,7 @@ export const zh: Record<DictKey, string> = {
   "notice.contextEditingFallback": "改用本地维护。",
   "notice.autopilotRequiresYolo": "autopilot 需要 yolo 审批模式：请先把审批模式切换到 yolo 再开启。",
   "notice.autopilotClosedOffYolo": "审批模式已离开 yolo，autopilot 已自动关闭。",
+  "notice.autopilotAssumedYolo": "Autopilot 已开启：审批自动切到 Yolo（决策已记录）。",
   "notice.turnStalled": "已经有一段时间没有任何进展。回合仍在运行；如果看起来卡住了，请点击停止。",
   "questionNav.label": "问题导航",
   "questionNav.progress": "问题 {current} / {total}",

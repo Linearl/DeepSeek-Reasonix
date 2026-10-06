@@ -8371,7 +8371,8 @@ body > .mermaid-diagram--fullscreen {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 8px;
+  /* 任务 465 布局收敛：中段空白缩小（8→6），给审批条第四档让宽度。 */
+  gap: 6px;
   min-width: 0;
   flex: 1 1 auto;
   margin-left: 0;
@@ -8507,7 +8508,9 @@ body > .mermaid-diagram--fullscreen {
 
 .composer-meta__control--approval {
   flex: 0 1 auto;
-  min-width: 216px;
+  /* 任务 465 布局收敛：四档后审批条加宽（232→264），所加宽度由中段弹性
+     空白吸收（params gap 8→6），单行不换行。 */
+  min-width: 224px;
   max-width: min(420px, 48vw);
   margin-inline-start: 2px;
   display: flex;
@@ -8516,9 +8519,15 @@ body > .mermaid-diagram--fullscreen {
 }
 
 .composer-meta__control--approval .composer-modebar--approval {
-  flex: 0 0 232px;
-  min-width: 200px;
-  max-width: 232px;
+  flex: 0 0 264px;
+  min-width: 208px;
+  max-width: 264px;
+}
+
+/* 任务 465：四档下压缩档位内边距与图标间距，保证 "Autopilot" 档名不截断。 */
+.composer-modebar--approval[data-autopilot="on"] .composer-modebar__item {
+  gap: 3px;
+  padding-inline: 3px;
 }
 
 .composer-modebar {
@@ -8550,6 +8559,11 @@ body > .mermaid-diagram--fullscreen {
 .composer-modebar[data-mode="yolo"],
 .composer-modebar[data-mode="goal"] {
   --composer-modebar-index: 2;
+}
+
+/* 任务 465 两维矩阵：第四档 autopilot（滑块落到第 4 格）。 */
+.composer-modebar[data-mode="autopilot"] {
+  --composer-modebar-index: 3;
 }
 
 .composer-modebar--approval {
@@ -8590,6 +8604,24 @@ body > .mermaid-diagram--fullscreen {
   --composer-modebar-active-bg: var(--mode-yolo-bg);
   --composer-modebar-active-border: var(--mode-yolo-border);
   --composer-modebar-active-fg: var(--mode-yolo-fg);
+}
+
+/* 任务 465：autopilot 隐含 yolo，点亮配色沿用 yolo 面板（无人值守=全自动放行
+   的同一姿态），避免再造一套语义色。 */
+.composer-modebar--approval[data-mode="autopilot"] {
+  --composer-modebar-active-bg: var(--mode-yolo-bg);
+  --composer-modebar-active-border: var(--mode-yolo-border);
+  --composer-modebar-active-fg: var(--mode-yolo-fg);
+}
+
+/* 任务 465：autopilot 档开启时审批条为四格（325 关掉的旧「+」菜单入口由
+   此承接），滑块按四等分步进；偏好未开时保持三格布局。 */
+.composer-modebar--approval[data-autopilot="on"] {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.composer-modebar--approval[data-autopilot="on"] .composer-modebar__thumb {
+  width: calc((100% - 4px) / 4);
 }
 
 .composer-modebar__thumb {
@@ -8844,9 +8876,10 @@ body > .mermaid-diagram--fullscreen {
   }
 
   .composer-meta__control--approval {
-    flex-basis: 178px;
-    min-width: 164px;
-    max-width: 178px;
+    /* 任务 465：四档宽度（178→200），仍是容器断点内单行。 */
+    flex-basis: 200px;
+    min-width: 184px;
+    max-width: 200px;
   }
 
   .composer-meta__control--approval .composer-modebar--approval {
@@ -8910,9 +8943,10 @@ body > .mermaid-diagram--fullscreen {
   }
 
   .composer-meta__control--approval {
-    flex-basis: 92px;
-    min-width: 86px;
-    max-width: 92px;
+    /* 任务 465：窄断点四档（92→104，档名隐藏只留图标）。 */
+    flex-basis: 104px;
+    min-width: 96px;
+    max-width: 104px;
   }
 
   .composer-meta__control--floor {
