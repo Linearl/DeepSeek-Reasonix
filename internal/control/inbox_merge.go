@@ -57,15 +57,88 @@ func NormalizeCollabInboxMergeMode(mode string) string {
 // original stays addressable from the merged body (task 221: 原文留痕).
 func mergeSegmentHeader(meta sessioninbox.InboxItemMeta) string {
 	var b strings.Builder
-	b.WriteString("── 合并自 inbox 条目 ")
+	b.WriteString(mergedSegmentHeaderPrefix)
 	b.WriteString(meta.ID)
 	if meta.Source != "" {
 		b.WriteString("（来源 ")
 		b.WriteString(meta.Source)
 		b.WriteString("）")
 	}
-	b.WriteString(" ──")
+	b.WriteString(mergedSegmentHeaderSuffix)
 	return b.String()
+}
+
+// Task 543: the settle-side inverse of the writer above. P15's residue matcher
+// compared a manifest row's single body against receipt texts by exact
+// equality — but a merged consumption injects one "[合并消息 ×N]" body while
+// each member row still holds its own single text, so merged-consumed residue
+// could never match and replayed after every restart. Parsing the segment
+// headers recovers the authoritative member ids (plus each segment body as a
+// text fallback), so the matcher can settle member rows again.
+
+const (
+	// mergedSegmentHeaderPrefix/Suffix bracket one mergeSegmentHeader line;
+	// writer and reader share these literals so the format cannot drift.
+	mergedSegmentHeaderPrefix = "── 合并自 inbox 条目 "
+	mergedSegmentHeaderSuffix = " ──"
+	// mergedSegmentSourceSep introduces the optional provenance part the
+	// writer adds only when the member row had a Source.
+	mergedSegmentSourceSep = "（来源 "
+)
+
+// parseMergedSegmentHeader decodes one mergeSegmentHeader line into the member
+// item id: "── 合并自 inbox 条目 <id>（来源 <src>） ──" or, when the member had
+// no source, "── 合并自 inbox 条目 <id> ──".
+func parseMergedSegmentHeader(line string) (id string, ok bool) {
+	rest, found := strings.CutPrefix(line, mergedSegmentHeaderPrefix)
+	if !found {
+		return "", false
+	}
+	rest, found = strings.CutSuffix(rest, mergedSegmentHeaderSuffix)
+	if !found {
+		return "", false
+	}
+	if before, _, hasSource := strings.Cut(rest, mergedSegmentSourceSep); hasSource {
+		rest = before
+	}
+	id = strings.TrimSpace(rest)
+	return id, id != ""
+}
+
+// parseMergedSteerSegments splits a merged steer body (task 221 format, see
+// mergeInboxEnvelope) back into its member segments. ids lists every member
+// item id found in a segment header; bodies lists each segment's trimmed body
+// text (everything between one header and the next — the "[合并消息 ×N]" title
+// line belongs to no segment). ok reports whether at least one segment header
+// was recognised — a plain, never-merged steer body yields nil, nil, false.
+// The title line is not required: the segment header literal is distinctive
+// enough on its own and being lenient keeps older or hand-reassembled
+// receipts settleable.
+func parseMergedSteerSegments(text string) (ids []string, bodies []string, ok bool) {
+	var body strings.Builder
+	flush := func() {
+		if trimmed := strings.TrimSpace(body.String()); trimmed != "" {
+			bodies = append(bodies, trimmed)
+		}
+		body.Reset()
+	}
+	for _, line := range strings.Split(text, "\n") {
+		if id, isHeader := parseMergedSegmentHeader(strings.TrimSpace(line)); isHeader {
+			flush()
+			ids = append(ids, id)
+			ok = true
+			continue
+		}
+		if ok { // lines before the first header belong to no segment
+			body.WriteString(line)
+			body.WriteByte('\n')
+		}
+	}
+	flush()
+	if !ok {
+		return nil, nil, false
+	}
+	return ids, bodies, ok
 }
 
 // mergeInboxEnvelope concatenates the members' submit bodies in dispatch order.
