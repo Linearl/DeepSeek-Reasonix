@@ -50,8 +50,9 @@ type DiscoveryAudit struct {
 }
 
 // ArgumentAudit is host-side schema validation without argument values.
-// SelfHealed counts double-enveloped arguments values the host unwrapped
-// before dispatch (task 212 defense in depth); it never increments for
+// SelfHealed counts arguments values the host corrected before dispatch —
+// double-enveloped unwraps (task 212), stringified JSON objects (task 457),
+// and spread top-level parameter merges (task 457); it never increments for
 // plainly valid calls.
 type ArgumentAudit struct {
 	Validations, Fail, Skip, RemoteDispatch int
@@ -129,9 +130,10 @@ func (a *Audit) RecordArgumentValidation(failed, skipped, remoteDispatched bool)
 	}
 }
 
-// RecordArgumentSelfHeal counts a double-enveloped arguments value the host
-// unwrapped itself before dispatch (task 212). It is observable on purpose:
-// self-healing must stay visible in the audit, never silent.
+// RecordArgumentSelfHeal counts an arguments value the host corrected itself
+// before dispatch (task 212 unwrap, task 457 stringified-JSON parse and
+// spread-parameter merge). It is observable on purpose: self-healing must
+// stay visible in the audit, never silent.
 func (a *Audit) RecordArgumentSelfHeal() {
 	if a == nil {
 		return
