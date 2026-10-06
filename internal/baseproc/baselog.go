@@ -3,6 +3,7 @@ package baseproc
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -110,4 +111,47 @@ func withBaseLogEnv(env []string, path string) []string {
 		out = append(out, kv)
 	}
 	return append(out, baseLogEnv+"="+path)
+}
+
+// serveLogger writes the subprocess's liveness into its own stderr — which the
+// parent has pointed at logs/base/base.log (F2). 任务 478：接线后的健康底座
+// 此前在 base.log 里一字不落（就绪/退出都静默），文件只在出错或 panic 时才有
+// 内容，「0 字节」因此无法区分「没跑起来」与「跑着但安静」。就绪一行、退出
+// 一行把这两者分开；健康 ping（15s 间隔）与普通请求不落盘，文件只回答
+// 「进程何时起、何时退、为何退」。
+type serveLogger struct {
+	l *slog.Logger
+}
+
+func newServeLogger(errw io.Writer) serveLogger {
+	return serveLogger{l: slog.New(slog.NewTextHandler(errw, nil))}
+}
+
+// ready 记录服务循环就绪。log_path 是父进程经 REASONIX_BASE_LOG 传来的
+// F1 断言：子进程被显式告知自己的日志位置，而不是靠 cwd 猜。
+func (s serveLogger) ready(version string) {
+	attrs := []any{
+		"pid", os.Getpid(),
+		"ppid", os.Getppid(),
+		"version", version,
+	}
+	if path := os.Getenv(baseLogEnv); path != "" {
+		attrs = append(attrs, "log_path", path)
+	}
+	s.l.Info("base serve: ready", attrs...)
+}
+
+// exit 记录服务循环如何收场：shutdown（base.shutdown 应答后受控退场）、
+// parent_eof（stdin EOF，D4 孤儿路径的干净形态）或 error。
+func (s serveLogger) exit(err error, shutdown bool) {
+	attrs := []any{"pid", os.Getpid()}
+	switch {
+	case err != nil:
+		attrs = append(attrs, "reason", "error", "err", err.Error())
+	case shutdown:
+		attrs = append(attrs, "reason", "shutdown")
+	default:
+		attrs = append(attrs, "reason", "parent_eof")
+	}
+	s.l.Info("base serve: exit", attrs...)
 }

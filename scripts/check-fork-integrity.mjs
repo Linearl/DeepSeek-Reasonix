@@ -678,6 +678,14 @@ const CHECKS = [
   { feature: "S1b agent 工具调用闸", file: "internal/agent/base_toolcall.go", patterns: ["baseToolCall", "ModeRemote", "ErrNotWired"] },
   { feature: "S1b boot 消费点（Start 接线）", file: "internal/boot/base_client.go", patterns: ["startBaseClient", "ExperimentalBaseProcess", "RegistrySurface"] },
   { feature: "S1b boot 消费点（注入与拆除）", file: "internal/boot/boot.go", patterns: ["startBaseClient(ctx, cfg, reg)", "_ = baseClient.Close()"] },
+  // 任务 478：S1 消费面接线的桌面侧——D4 spawn 契约的另一半。baseproc 默认
+  // spawn「当前可执行文件 base serve --stdio」，桌面 exe 不认这段 argv = 底座
+  // 100% 空转（握手失败循环、base.log 0 字节、每 5min degraded 探测把窗口拉
+  // 到前台）。被 merge 顶掉就回退到那个状态，且无编译错误。
+  { feature: "任务478 桌面 exe 分发 base serve（拦截+分发体）", file: "desktop/base_serve.go", patterns: ["maybeRunBaseServe", "classifyBaseServeArgs", "baseproc.RunStdioServer"] },
+  { feature: "任务478 main 抢位次序（先于 installDesktopLogging，保 fd2=base.log）", file: "desktop/main.go", patterns: ["maybeRunBaseServe(os.Args[1:])"] },
+  { feature: "任务478 base.log 存活行（就绪/退出，F2 落地）", file: "internal/baseproc/baselog.go", patterns: ["base serve: ready", "base serve: exit"] },
+  { feature: "任务478 验收探针（真 Manager 对桌面 exe）", file: "cmd/probe478/main.go", patterns: ["remote_ready", "base serve", "RestartBaseDelay"] },
   // 任务 399：会话内 Ctrl+F 搜索（对照上游 #11230→#11236）。四件套锁：
   // 行级检索纯逻辑（数据面搜索，虚拟滚动下 DOM 搜索会漏未挂载行）、
   // 搜索条 UI、行高亮 context 接线、快捷键注册 + 代码块域隔离——

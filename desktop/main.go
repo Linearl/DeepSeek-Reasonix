@@ -115,6 +115,14 @@ func preparePrimaryDesktopRuntime(app *App) {
 }
 
 func main() {
+	// 任务 478（S1 底座接线）：baseproc 默认 spawn「当前可执行文件 base serve
+	// --stdio」当底座子进程（决策 D4）。分发必须发生在任何 GUI 机制之前：
+	// fd 2 此刻仍是父进程传入的 base.log 句柄（F2），单实例锁也未被触碰——
+	// 此前桌面 exe 不认这段 argv，被 spawn 后照常走 GUI，正是开关开启下
+	// 「每 5min 拉窗口前台」副作用与握手失败循环的来源。见 base_serve.go。
+	if code, handled := maybeRunBaseServe(os.Args[1:]); handled {
+		os.Exit(code)
+	}
 	// Rolling file logging first: every later goroutine, http.Server, and
 	// slog line lands in logs\desktop\desktop.log instead of a console the
 	// GUI subsystem does not have (fd=2 writes are lost on Windows GUI).

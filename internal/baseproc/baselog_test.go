@@ -1,8 +1,10 @@
 package baseproc
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -152,5 +154,50 @@ func TestSubprocessStderrLandsInTheLogFile(t *testing.T) {
 	}
 	if got := client.Mode(); got != ModeInline {
 		t.Fatalf("mode = %q after a child that never served, want inline (R1)", got)
+	}
+}
+
+// 任务 478：接线后的底座必须在 base.log 留存活痕迹——就绪一行、退出一行。
+// 「0 字节」此前无法区分「没跑起来」与「跑着但安静」；这两行把两者分开。
+// stdin 立即关闭即 parent_eof（D4 孤儿路径），退出码 0。
+func TestRunStdioServerLogsLivenessToErrw(t *testing.T) {
+	t.Setenv(baseLogEnv, filepath.Join(t.TempDir(), "base.log"))
+	stdinR, stdinW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("stdin pipe: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = stdinR.Close()
+		_ = stdinW.Close()
+	})
+	var errBuf bytes.Buffer
+
+	exit := make(chan int, 1)
+	go func() {
+		exit <- RunStdioServer(context.Background(), "stdio-version", stdinR, io.Discard, &errBuf)
+	}()
+	_ = stdinW.Close() // parent EOF
+
+	select {
+	case code := <-exit:
+		if code != 0 {
+			t.Fatalf("exit code = %d after parent EOF, want 0", code)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("RunStdioServer did not exit within 10s of parent EOF")
+	}
+
+	log := errBuf.String()
+	if !strings.Contains(log, "base serve: ready") {
+		t.Fatalf("log = %q, want the ready line", log)
+	}
+	if !strings.Contains(log, "version=stdio-version") {
+		t.Fatalf("log = %q, want the build identity on the ready line", log)
+	}
+	if !strings.Contains(log, "log_path="+os.Getenv(baseLogEnv)) {
+		t.Fatalf("log = %q, want the F1 log_path the parent passed in", log)
+	}
+	if !strings.Contains(log, `reason=parent_eof`) {
+		t.Fatalf("log = %q, want the parent_eof exit reason", log)
 	}
 }

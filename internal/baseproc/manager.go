@@ -269,9 +269,16 @@ func RunStdioServer(ctx context.Context, version string, in io.Reader, out io.Wr
 	// accounting (design §6, C3/C4) is what tells the base which workspace
 	// roots are live. Tests that want the bare S1a core use NewServer directly.
 	s.AttachSessionAccounting()
+	// 任务 478（F2 落地）：base.log 成为存活记录——就绪一行、退出一行；健康
+	// ping 与普通请求不落盘。接线前「0 字节」无法区分「没跑起来」与「跑着但
+	// 安静」，这两行把两者分开。
+	log := newServeLogger(errw)
+	log.ready(version)
 	if err := s.Serve(ctx, in, out); err != nil {
+		log.exit(err, s.ShutdownRequested())
 		fmt.Fprintf(errw, "base serve: %v\n", err)
 		return 1
 	}
+	log.exit(nil, s.ShutdownRequested())
 	return 0
 }
