@@ -54,7 +54,10 @@ export async function verifyStaleHistoryFingerprint({
   const state = getState();
   equal(state?.items.some((item) => item.kind === "user" && item.text === "stale older L") ?? false, false, "stale older page is discarded after session fingerprint changes");
   equal(state?.historyOlderLoading, false, "stale older page releases its loading state");
-  equal(state?.historyOlderError, "history identity changed", "stale older page enters the explicit retry state instead of silently auto-retrying");
+  // 任务 523: the rejection copy is user-understandable now; the explicit
+  // retry state itself is unchanged (a stale fingerprint still never
+  // auto-retries past the one same-transcript re-ask).
+  equal(state?.historyOlderError, "会话内容已变化，请重试", "stale older page enters the explicit retry state instead of silently auto-retrying");
 }
 
 export async function verifyDeferredHistoryCloseRace({

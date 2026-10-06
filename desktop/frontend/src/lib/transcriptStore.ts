@@ -192,6 +192,10 @@ interface SessionTranscript {
   revision: number;
   revisionKnown: boolean;
   digest: string;
+  /** Rewrite epoch the resident records were cut under (任务 523): equality
+   *  across pages proves the persisted prefix is unchanged, so a revision bump
+   *  is append-only tail growth and an older-page cursor stays valid. */
+  epoch: number;
   generation: number;
   bodyBytes: number;
   olderInFlight: boolean;
@@ -515,6 +519,7 @@ export class TranscriptStore {
       revision: 0,
       revisionKnown: false,
       digest: "",
+      epoch: 0,
       generation: 0,
       bodyBytes: 0,
       olderInFlight: false,
@@ -1052,6 +1057,7 @@ export class TranscriptStore {
     session.revision = slice.revision ?? 0;
     session.revisionKnown = sliceRevisionKnown(slice);
     session.digest = slice.digest ?? "";
+    session.epoch = slice.epoch ?? session.epoch;
     this.autoFetchRefs(session);
     this.enforceBudgets();
     if (this.sessions.get(key) !== session) return undefined; // evicted by the budget
@@ -1108,6 +1114,7 @@ export class TranscriptStore {
       session.revision = slice.revision ?? session.revision;
       session.revisionKnown = sliceRevisionKnown(slice);
       session.digest = slice.digest ?? session.digest;
+      session.epoch = slice.epoch ?? session.epoch;
       this.enforceBudgets();
       if (this.sessions.get(key) !== session) return undefined;
       return { ...this.projectionOf(session), kind: "prepend", prependItems: items, removeIds };
@@ -1117,6 +1124,16 @@ export class TranscriptStore {
   }
 
   private sameFingerprint(session: SessionTranscript, slice: HistorySlice): boolean {
+    // 任务 523: history is append-only at the tail. A same-epoch slice whose
+    // ledger revision moved forward is tail growth over an unchanged prefix —
+    // the backend already re-validated the cursor against it (v2 epoch check;
+    // a rewrite bumps the epoch and comes back stale or reloaded) — so it
+    // prepends instead of collapsing into a latest-page reload. That collapse
+    // is what made every mid-turn "load earlier" request fail. Equal
+    // revisions fall through to the strict check below, which still compares
+    // the digest: same revision + different digest stays a rewrite.
+    const sliceEpoch = slice.epoch ?? 0;
+    if (session.epoch === sliceEpoch && (slice.revision ?? 0) > session.revision) return true;
     return session.revision === (slice.revision ?? 0) &&
       session.revisionKnown === sliceRevisionKnown(slice) &&
       session.digest === (slice.digest ?? "");

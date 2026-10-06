@@ -985,6 +985,10 @@ export interface HistorySlice {
   revision: number;
   revisionKnown?: boolean;
   digest?: string;
+  // 任务 523: rewrite epoch the page was cut under. Equality across pages
+  // proves the persisted prefix is unchanged, so a revision bump is tail
+  // growth and older-page cursors stay valid (absent = 0, strict legacy).
+  epoch?: number;
   // Diagnostic read path: index|scan|event-log|live-index|live-fallback.
   source?: string;
   error?: string; // failed read; empty entries alone are not an error
