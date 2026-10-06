@@ -25,7 +25,7 @@ import { historicalResultNotice, withLiveTurnResult, withRunningChecks, withTurn
 import { mergeTurnResult } from "./turnResult";
 import { invalidateSharedQuery } from "./queryCoalesce";
 import { replayPendingPromptsForActiveTab } from "./promptReplay";
-import { decideActivationPrompt, describeAskReceipt, judgeAskArrival, judgePromptFenceArrival, type AskArrivalVerdict } from "./askPanelGate";
+import { decideActivationPrompt, describeAskReceipt, judgeAskArrival, judgePromptFenceArrival, judgePromptGoneError, type AskArrivalVerdict } from "./askPanelGate";
 import { createRafBatch } from "./rafBatch";
 import { foregroundRunningFromRuntimeMeta, type RuntimeMetaSnapshot } from "./runtimeMeta";
 import { aliasActivationRequest, noteActivationRequested, noteActivationSettled, noteActivationStarted } from "./sessionDiagnostics";
@@ -406,12 +406,27 @@ function isStalePromptError(error: unknown): boolean {
 }
 
 function handlePromptFailure(dispatchTo: (tabId: string, action: Action) => void, tabId: string, id: string, epoch: number, error: unknown, kind?: "approval" | "ask" | "mcp") {
-  if (isStalePromptError(error) && kind) dispatchTo(tabId, { type: "expire_prompt", id, epoch, kind });
-  else if (kind) dispatchTo(tabId, { type: "submit_prompt_failed", id, epoch });
+  // 任务536: "prompt is not pending" / "already resolved" mean the backend
+  // dropped the prompt (cancel/timeout/refusal) while a panel was still up.
+  // The user-facing outcome is a closed panel — the same expire_prompt route
+  // a stale error takes — never a raw English error toast the user would
+  // retry against (they did, three times). The message still lands in
+  // desktop.log at info so the 469-style trail keeps its evidence.
+  if (kind && (isStalePromptError(error) || judgePromptGoneError(errorMessage(error)))) {
+    dispatchTo(tabId, { type: "expire_prompt", id, epoch, kind });
+  } else if (kind) {
+    dispatchTo(tabId, { type: "submit_prompt_failed", id, epoch });
+  }
   // Task 272 G5: the "cannot send" incident had zero frontend-side logs —
   // the channel existed (frontendLog.ts) but the send chain never used it.
   // Stale errors are normal tab-switch noise; everything else is real.
-  if (!isStalePromptError(error)) {
+  // A prompt-gone error is a real (expected) event, so it keeps a log line —
+  // just at info, because the panel close is the intended handling.
+  if (isStalePromptError(error)) {
+    // tab-switch noise: no log.
+  } else if (judgePromptGoneError(errorMessage(error))) {
+    reportFrontendLog("ask-panel", "submit raced a closed prompt; panel expired", `tab=${tabId} kind=${kind ?? "turn"} id=${id}: ${errorMessage(error)}`);
+  } else {
     reportFrontendLog("send", "prompt resolution failed", `tab=${tabId} kind=${kind ?? "turn"} id=${id}: ${errorMessage(error)}`, "error");
   }
   replayPendingPromptsForActiveTab(tabId);
@@ -1710,6 +1725,28 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         turnActive: true,
         cancellable: true,
         resolvedPromptId: e.itemId ?? s.resolvedPromptId,
+      });
+    }
+    case "prompt_closed": {
+      // 任务536: the backend dropped the prompt without an answer (user cancel,
+      // prompt timeout, autopilot refusal, controller teardown). Any panel still
+      // open for that id is dead — every submission would come back as
+      // "prompt is not pending" — so close it and tombstone the id so a delayed
+      // replay cannot revive the panel. Unlike prompt_answered this is not a
+      // turn resumption: running/turnActive stay as they are (the run may keep
+      // going after an autopilot refusal, or settle via its own turn_done).
+      const id = e.promptId ?? e.itemId;
+      if (!id) return s;
+      if (s.approval?.id !== id && s.ask?.id !== id && s.mcpInteraction?.id !== id) return s;
+      return endPromptWaitIfIdle({
+        ...s,
+        approval: s.approval?.id === id ? undefined : s.approval,
+        ask: s.ask?.id === id ? undefined : s.ask,
+        mcpInteraction: s.mcpInteraction?.id === id ? undefined : s.mcpInteraction,
+        pendingPrompt: Boolean(
+          (s.approval && s.approval.id !== id) || (s.ask && s.ask.id !== id) || (s.mcpInteraction && s.mcpInteraction.id !== id),
+        ),
+        resolvedPromptId: id,
       });
     }
     case "completion_summary": {
@@ -4744,8 +4781,20 @@ export function useController() {
     return answerPromptForActiveTurn(app, tabId, id, answers, state?.ask?.turnId ?? state?.activeTurnId, state?.ask?.runtimeEpoch ?? runtimeEpochByTabRef.current.get(tabId)).then(
       () => dispatchTo(tabId, { type: "ask_submit_succeeded", id, epoch }),
       (error) => {
-        if (isStalePromptError(error)) dispatchTo(tabId, { type: "expire_prompt", id, epoch, kind: "ask" });
-        else dispatchTo(tabId, { type: "local_notice", level: "warn", text: t("notice.askSubmitFailed", { error: errorMessage(error) }), preserveRuntime: true });
+        // 任务536: a "prompt is not pending" / "already resolved" refusal means
+        // the backend dropped the ask (timeout/cancel/refusal) while the panel
+        // was still up. Close the panel like a stale error would — showing the
+        // raw error only invited the user to refill a dead form. A log line at
+        // info keeps the ask-panel trail; the reconcile below pulls the
+        // authoritative prompt state so nothing else lingers.
+        if (isStalePromptError(error) || judgePromptGoneError(errorMessage(error))) {
+          if (judgePromptGoneError(errorMessage(error)) && !isStalePromptError(error)) {
+            reportFrontendLog("ask-panel", "submit raced a closed prompt; panel expired", `tab=${tabId} kind=ask id=${id}: ${errorMessage(error)}`);
+          }
+          dispatchTo(tabId, { type: "expire_prompt", id, epoch, kind: "ask" });
+        } else {
+          dispatchTo(tabId, { type: "local_notice", level: "warn", text: t("notice.askSubmitFailed", { error: errorMessage(error) }), preserveRuntime: true });
+        }
         void reconcileRuntimeAfterRejectedMutation(tabId);
         throw error;
       },
