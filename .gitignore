@@ -57,6 +57,15 @@ node_modules/
 internal/**/.reasonix/
 desktop/**/.reasonix/
 
+# Stray artifacts observed 2026-10-06 (task 550 cleanup; both were untracked):
+#   desktop/desktop.exe   — wails build leftover (/desktop/desktop covers the
+#                           extensionless binary, but not the .exe)
+#   internal/**/*.inbox/  — session-inbox dir written under a package dir when a
+#                           caller passed "sc_me" as sessionPath; the path is
+#                           resolved relative to CWD (drain_inbox_tool.go:343)
+/desktop/desktop.exe
+internal/**/*.inbox/
+
 # CodeGraph per-project index (rebuilt locally; never committed)
 .codegraph/
 
