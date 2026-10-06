@@ -136,6 +136,12 @@ type Options struct {
 	// its default (the 15s sub-option default when enabled, else the 10m
 	// task-109 B4 default).
 	AutopilotAskWait time.Duration
+	// AutopilotAskAutoContinue is the task-544 experimental ask
+	// auto-continue sub-option: when on, a turn that stops on a terminal
+	// error right after one of its asks was answered gets exactly one host
+	// continuation turn carrying the recorded decision. Zero (off) keeps the
+	// idle stop verbatim (default-off experimental, 铁律 2).
+	AutopilotAskAutoContinue bool
 	// ApprovalTier selects who decides reversible unattended approvals
 	// (task 52): guardian | parent | human. Empty uses cfg.Agent.approval_tier,
 	// which itself defaults to guardian.
@@ -2383,6 +2389,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		AutopilotApprovalGrace:     opts.AutopilotApprovalGrace,
 		AutopilotAskTimeoutEnabled: opts.AutopilotAskTimeoutEnabled,
 		AutopilotAskWait:           opts.AutopilotAskWait,
+		AutopilotAskAutoContinue:   opts.AutopilotAskAutoContinue,
 		// Task 231: the managed-path pre-approval snapshot. All five flags ship
 		// false (default-off experimental); the two home-derived dirs give the
 		// classifier its skills/stores boundaries, and hooks classify by the

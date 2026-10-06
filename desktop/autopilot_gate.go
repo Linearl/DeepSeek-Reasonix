@@ -53,14 +53,14 @@ func autopilotGateAllowed(mode string) bool {
 // gateRestoredAutopilotDefaults applies the task-325 yolo precondition to the
 // desktopAutopilotDefaults result for one concrete approval mode. It is the
 // single gate shared by the new-tab and restore paths so those two entries
-// cannot drift apart. The task-477 ask-timeout pair travels with the triple:
-// an attended session never carries an ask timeout, so a refused autopilot
-// clears it too.
-func gateRestoredAutopilotDefaults(on bool, maxRuntime, approvalGrace time.Duration, askEnabled bool, askWait time.Duration, approvalMode string) (bool, time.Duration, time.Duration, bool, time.Duration) {
+// cannot drift apart. The task-477 ask-timeout pair and the task-544 ask
+// auto-continue switch travel with the triple: an attended session never
+// carries either ask sub-option, so a refused autopilot clears them too.
+func gateRestoredAutopilotDefaults(on bool, maxRuntime, approvalGrace time.Duration, askEnabled bool, askWait time.Duration, askAutoContinue bool, approvalMode string) (bool, time.Duration, time.Duration, bool, time.Duration, bool) {
 	if !on || !autopilotGateAllowed(approvalMode) {
-		return false, 0, 0, false, 0
+		return false, 0, 0, false, 0, false
 	}
-	return on, maxRuntime, approvalGrace, askEnabled, askWait
+	return on, maxRuntime, approvalGrace, askEnabled, askWait, askAutoContinue
 }
 
 // closeAutopilotForOffYolo clears the autopilot fields on tab when the tab is
@@ -76,6 +76,7 @@ func closeAutopilotForOffYolo(tab *WorkspaceTab, approvalMode string) bool {
 	tab.autopilotApprovalGrace = 0
 	tab.autopilotAskTimeoutEnabled = false
 	tab.autopilotAskWait = 0
+	tab.autopilotAskAutoContinue = false
 	return true
 }
 

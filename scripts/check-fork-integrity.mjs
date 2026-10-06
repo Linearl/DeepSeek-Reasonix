@@ -663,7 +663,15 @@ const CHECKS = [
   // 锁三处——闸门本体、四个开启入口的接线、前端按码本地化。merge 丢掉接线
   // 会重新出现「autopilot 挂着但审批是 ask/auto」的无人值守中间态。
   { feature: "任务325 autopilot yolo 闸门（判定+反向联动+通知码）", file: "desktop/autopilot_gate.go", patterns: ["func autopilotGateAllowed", "func gateRestoredAutopilotDefaults", "func closeAutopilotForOffYolo", "\"autopilot_requires_yolo\"", "\"autopilot_closed_off_yolo\""] },
-  { feature: "任务325 开启入口接线（恢复/新标签/选择器/审批切换；477 起为五元组含 ask 超时对）", file: "desktop/app.go", patterns: ["gateRestoredAutopilotDefaults(on, maxRuntime, grace, askEnabled, askWait, tab.toolApprovalMode)", "gateRestoredAutopilotDefaults(autopilot, maxRuntime, approvalGrace, askEnabled, askWait, toolApprovalMode)", "gateRestoredAutopilotDefaults(prefOn, prefRuntime, prefGrace, prefAskEnabled, prefAskWait, approvalMode)", "closeAutopilotForOffYolo(tab, mode)"] },
+  { feature: "任务325 开启入口接线（恢复/新标签/选择器/审批切换；477/544 起为六元组含 ask 超时对+自动续跑开关）", file: "desktop/app.go", patterns: ["gateRestoredAutopilotDefaults(on, maxRuntime, grace, askEnabled, askWait, askAutoContinue, tab.toolApprovalMode)", "gateRestoredAutopilotDefaults(autopilot, maxRuntime, approvalGrace, askEnabled, askWait, askAutoContinue, toolApprovalMode)", "gateRestoredAutopilotDefaults(prefOn, prefRuntime, prefGrace, prefAskEnabled, prefAskWait, prefAskAutoContinue, approvalMode)", "closeAutopilotForOffYolo(tab, mode)"] },
+  // 任务 544：ask 答复后自动续跑（实验子选项，默认关）。锁四处——控制层触发
+  // 与排除集、每回合标记、boot 透传、desktop 六元组接线与设置面。merge 丢掉
+  // 任何一环都会退回「答复后停等用户连发两次继续」的现场形态。
+  { feature: "任务544 ask 答复后自动续跑（控制层触发+排除集+一次性标记）", file: "internal/control/ask_auto_continue.go", patterns: ["func (o *turnOrchestrator) maybeAskAutoContinueTurn", "askAutoContinueNoticeCode = \"ask_auto_continue\"", "consumeTurnAskAnswered", "ErrAutopilotAskUnanswered", "RecoveryPauseError", "FinalReadinessError"] },
+  { feature: "任务544 三处答复置位点（人工/477 拒绝/低风险自答）", file: "internal/control/controller.go", patterns: ["c.markTurnAskAnswered(askDecisionSummary(questions, answers))", "c.markTurnAskAnswered(askDecisionSummary(pending.questions, answers))", "AutopilotAskAutoContinue bool"] },
+  { feature: "任务544 回合起点清标记（标记恰好覆盖一个回合）", file: "internal/control/turn_orchestrator.go", patterns: ["c.clearTurnAskAnswered()", "maybeAskAutoContinueTurn(ctx, err)"] },
+  { feature: "任务544 desktop 六元组接线（默认快照+闸门+反向联动）", file: "desktop/autopilot_gate.go", patterns: ["askAutoContinue bool, approvalMode string", "tab.autopilotAskAutoContinue = false"] },
+  { feature: "任务544 设置面+三语（开关读写）", file: "desktop/settings_app.go", patterns: ["ExperimentalAutopilotAskAutoContinue bool `json:\"experimentalAutopilotAskAutoContinue\"`", "func (a *App) SetDesktopAutopilotAskAutoContinue(enabled bool) error"] },
   { feature: "任务325 设置默认值前置校验（拒绝非 yolo）", file: "desktop/settings_app.go", patterns: ["autopilot requires the yolo approval mode"] },
   { feature: "任务325 拒绝/关闭提示按码本地化", file: "desktop/frontend/src/lib/controllerNotices.ts", patterns: ["autopilot_requires_yolo: \"notice.autopilotRequiresYolo\"", "autopilot_closed_off_yolo: \"notice.autopilotClosedOffYolo\""] },
   // 任务 327：自动化任务运行次数上限 maxRuns（单次 = N 的特例、跑满自动禁用）。
