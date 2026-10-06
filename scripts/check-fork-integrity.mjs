@@ -291,6 +291,8 @@ const CHECKS = [
   { feature: "任务330 429 专用等待 lane（主路径+段级）", file: "internal/agent/compact_projection.go", patterns: ["summaryRateLimited", "waiting to resume"] },
   { feature: "任务196fix 注记 path_mismatch 判定归一+226 Info canonical", file: "internal/agent/save_dag.go", patterns: ["sameSessionLogPath", "canonicalSessionSavePath(path), \"extended\""] },
   { feature: "任务307 physical ceiling 拒当轮 truncation 兜底", file: "internal/agent/context_manager.go", patterns: ["errors.Is(err, errCheckpointCeiling)", "End the loop"] },
+  { feature: "任务516 ceiling 拒绝改接受部分进度（解 307 同尺寸反复被拒死锁）", file: "internal/agent/compact_projection.go", patterns: ["installing partial fold progress", "candidateTokens >= sourceTokens"] },
+  { feature: "任务516④ 投影失效回退全量显式日志（冷却节流+原因分类）", file: "internal/agent/context_manager.go", patterns: ["observeProjectionFallback", "projectionFallbackWarnCooldown"] },
   { feature: "任务357 save 链毫秒分段打点（phases+dag 三段+锁等待）", file: "internal/agent/save.go", patterns: ["session: save phases", "lastSaveLockWaitMs.Store"] },
   { feature: "任务221#6 unread 计数与 inbox 真值对账（claim 背书+渲染面）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["InboxStatus reports, read-only", "seen[m.ID]"] },
   { feature: "任务297 冷缓存压缩 tick 判据与防循环", file: "desktop/cold_cache_compact.go", patterns: ["coldCacheCompactDecision", "already compacted this cooling window", "cold cache compact completed"] },
