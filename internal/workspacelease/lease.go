@@ -25,6 +25,19 @@ import (
 
 const backgroundGrace = 30 * time.Second
 
+// pathHoldWaitBudget bounds HoldWrite's in-process wait phases (waiting for
+// another in-flight acquisition and for same-owner path holds to clear) when
+// the caller passes a context without deadline — task 472 增补 / task 474
+// 切片 3。Same availability-over-completeness philosophy as filelock 461-P1：
+// 锁等待宁可超时返错，不可无限挂起（set_target 55.4s 无界等待事故面的收口）。
+// 已有 deadline 的 ctx 尊重调用方（更紧）预算。Tests may shrink it.
+var pathHoldWaitBudget = filelock.DefaultWaitTimeout
+
+// pathHoldWaitLogThreshold is the queueing time above which the in-process
+// wait is worth a log line — 472 报告 §4.3「租约等待留痕」，照 save-path
+// 「lock waited」先例（250ms）。无争用路径保持静默。
+const pathHoldWaitLogThreshold = 250 * time.Millisecond
+
 // WaitNotice is called once when an acquisition cannot complete immediately.
 // It must return quickly and must not call back into Owner.
 type WaitNotice func()
@@ -331,6 +344,24 @@ func (o *Owner) HoldWrite(ctx context.Context) (func(), error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	// task 472 增补（474 切片 3）：同进程等待面此前无界——ctx 无 deadline 时可被
+	// 同进程其他写者或在途获取挂起任意久。与跨进程 filelock 同哲学统一套
+	// DefaultWaitTimeout；取消经 waitForSignal 随时生效（停止 SLA 不变）。
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, pathHoldWaitBudget)
+		defer cancel()
+	}
+	started := time.Now()
+	// 472 留痕（defer 覆盖全部退出路径）：进程内等待 ≥250ms 才值得一行日志
+	// （照 save-path lock waited 先例），供下次「工具跨度远大于实作」类事故
+	// 直接归因；预算耗尽返错路径同样留痕。
+	defer func() {
+		if waited := time.Since(started); waited >= pathHoldWaitLogThreshold {
+			slog.Warn("workspacelease: workspace hold waited on in-process holders",
+				"workspace", o.canonical, "wait_ms", waited.Milliseconds())
+		}
+	}()
 	for {
 		o.mu.Lock()
 		if id, hold := o.exclusiveHoldLocked(); hold != nil {

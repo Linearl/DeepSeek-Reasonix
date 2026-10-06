@@ -41,8 +41,10 @@ func TestBackoffBaseLadder(t *testing.T) {
 
 // TestNextRetryDelayBudgetAdaptiveCap pins the budget-adaptive cap: with a
 // large budget the ladder is untouched; a 750ms sidecar budget caps the deep
-// steps at remaining/8 (≈94ms); a nearly drained budget shrinks further so
-// roughly eight chances always remain.
+// steps at budget/8 (≈94ms); a tiny budget shrinks further so roughly eight
+// chances always remain. The budget is the retry-phase budget, measured once
+// when the loop starts (NOT recomputed from the shrinking remainder — that
+// would add a geometric decay tail that inflates the attempt count).
 func TestNextRetryDelayBudgetAdaptiveCap(t *testing.T) {
 	stubJitter(t, func() float64 { return 0.5 }) // 无抖动
 
@@ -60,7 +62,7 @@ func TestNextRetryDelayBudgetAdaptiveCap(t *testing.T) {
 	if got := nextRetryDelay(9, 750*time.Millisecond); got != 750*time.Millisecond/8 {
 		t.Fatalf("deep step with 750ms budget = %v, want %v (750/8)", got, 750*time.Millisecond/8)
 	}
-	// 预算接近耗尽：退避压到剩余/8，保证还有后续尝试机会。
+	// 预算极小：退避压到预算/8，保证还有后续尝试机会。
 	if got := nextRetryDelay(9, 80*time.Millisecond); got != 10*time.Millisecond {
 		t.Fatalf("deep step with 80ms budget = %v, want 10ms (80/8)", got)
 	}
@@ -95,7 +97,7 @@ func TestNextRetryDelayJitterBounds(t *testing.T) {
 			t.Fatalf("jitterNext=%v attempt=%d: delay = %v, want %v", tc.f, tc.attempt, got, tc.want)
 		}
 	}
-	// 最大抖动下仍不得突破剩余预算/8。
+	// 最大抖动下仍不得突破段预算/8。
 	stubJitter(t, func() float64 { return 1 })
 	if got := nextRetryDelay(9, 750*time.Millisecond); got != 750*time.Millisecond/8 {
 		t.Fatalf("max jitter must not exceed budget cap: got %v, want %v", got, 750*time.Millisecond/8)
@@ -104,24 +106,23 @@ func TestNextRetryDelayJitterBounds(t *testing.T) {
 
 // TestRetryScheduleFitsAnyBudget pins the availability promise of the
 // budget-adaptive cap: no matter how small the budget, the schedule always
-// leaves room for roughly eight or more tries. The simulation mirrors the
-// real loop: each step consumes remaining/8 at most, and a zero delay means
-// the deadline is effectively reached (in acquire() the select exits
-// immediately at that point — no busy spin).
+// leaves room for roughly eight or more tries within the phase budget. The
+// simulation mirrors the real loop: the budget is fixed when the loop starts
+// and every step is capped at budget/8.
 func TestRetryScheduleFitsAnyBudget(t *testing.T) {
 	stubJitter(t, func() float64 { return 0.5 })
 	for _, budget := range []time.Duration{
 		60 * time.Millisecond, 200 * time.Millisecond, 750 * time.Millisecond,
 		1500 * time.Millisecond, 5 * time.Second,
 	} {
-		remaining := budget
+		spent := time.Duration(0)
 		attempts := 0
-		for remaining > 0 {
-			d := nextRetryDelay(attempts, remaining)
+		for spent <= budget {
+			d := nextRetryDelay(attempts, budget)
 			if d <= 0 {
-				break
+				t.Fatalf("budget %v: zero delay at attempt %d", budget, attempts)
 			}
-			remaining -= d
+			spent += d
 			attempts++
 			if attempts > 100000 {
 				t.Fatalf("budget %v: schedule did not converge", budget)
