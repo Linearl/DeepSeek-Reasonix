@@ -147,6 +147,45 @@ func TestTask506TabCompressRoundTrip(t *testing.T) {
 	}
 }
 
+// 任务 507: subagent detail view is a plain default-off desktop bool (dual
+// state: off = plan C inline preview + widen affordance, on = plan A read-only
+// in-dock detail view). An untouched config must render false (ships off,
+// 铁律 2), enabling must render true, and flipping back off must stay
+// recorded — the fixed-key-set renderer would otherwise drop the key on the
+// next save and the switch would spring back off (81/123 lesson).
+func TestTask507SubagentDetailRoundTrip(t *testing.T) {
+	out := RenderTOMLForScope(&Config{}, RenderScopeUser)
+	if !strings.Contains(out, "experimental_subagent_detail = false") {
+		t.Fatalf("subagent detail ships off: missing false render\n---\n%s", out)
+	}
+	// The sibling task-495 key must stay rendered too — inserting the new
+	// line must not displace its neighbours.
+	if !strings.Contains(out, "experimental_subagent_panel = false") {
+		t.Fatalf("rendering the 507 key displaced the 495 panel key\n---\n%s", out)
+	}
+
+	on := &Config{}
+	if err := on.SetExperimentalSubagentDetail(true); err != nil {
+		t.Fatalf("set subagent detail: %v", err)
+	}
+	if !on.Desktop.ExperimentalSubagentDetail {
+		t.Fatal("the setter must flip the desktop field")
+	}
+	out = RenderTOMLForScope(on, RenderScopeUser)
+	if !strings.Contains(out, "experimental_subagent_detail = true") {
+		t.Fatalf("enable must render true\n---\n%s", out)
+	}
+
+	off := &Config{}
+	if err := off.SetExperimentalSubagentDetail(false); err != nil {
+		t.Fatalf("set subagent detail off: %v", err)
+	}
+	out = RenderTOMLForScope(off, RenderScopeUser)
+	if !strings.Contains(out, "experimental_subagent_detail = false") {
+		t.Fatalf("explicit off must survive the render\n---\n%s", out)
+	}
+}
+
 // Task 265 lab intake: the intake switches ship ON via nil-means-on pointers.
 // An untouched config must render true (existing behaviour, zero regression),
 // an explicit off must render false (and survive the next load), and an

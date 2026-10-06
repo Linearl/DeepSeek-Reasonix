@@ -332,6 +332,15 @@ func (a *App) SetExperimentalTabCompress(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalTabCompress(enabled) })
 }
 
+// SetExperimentalSubagentDetail toggles the subagent detail view (task 507):
+// a dock row click opens the read-only in-dock detail view with a back
+// button; off keeps the inline preview expansion plus the widen affordance.
+// The frontend re-applies the snapshot on settings save, so the change is
+// visible without a restart.
+func (a *App) SetExperimentalSubagentDetail(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSubagentDetail(enabled) })
+}
+
 // Task 262 install-fix: the Wails exposure layer for the intake batch was
 // missed while the config layer landed — the frontend's calls hit a missing
 // App method at runtime, so the switch clicked but never saved (the installed

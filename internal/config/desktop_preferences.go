@@ -142,6 +142,14 @@ type DesktopConfig struct {
 	// the settings save re-applies the boot snapshot, so a change is visible
 	// without a restart.
 	ExperimentalTabCompress bool `toml:"experimental_tab_compress"`
+	// ExperimentalSubagentDetail gates the subagent detail view (task 507):
+	// with it off (default, plan C) a dock row click keeps the legacy inline
+	// preview expansion plus the widen/narrow dock-width affordance; with it
+	// on (plan A) a row click switches the dock to a read-only detail view
+	// with a back button — no input surface, width still follows the persisted
+	// dock width. It ships off (铁律 2). Pure frontend gate: the settings save
+	// re-applies the boot snapshot, so a change is visible without a restart.
+	ExperimentalSubagentDetail bool `toml:"experimental_subagent_detail"`
 	// Task 265 (lab intake): three render-surface features ship ON via
 	// nil-means-on pointers — existing behaviour getting an off switch, so the
 	// default must not regress anyone. Each is a pure frontend gate.

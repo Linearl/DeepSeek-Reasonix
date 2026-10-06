@@ -884,6 +884,17 @@ func (c *Config) SetExperimentalTabCompress(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalSubagentDetail toggles the subagent detail view (task 507):
+// off keeps the plan-C fallback (row click expands the inline preview plus
+// the widen/narrow dock-width affordance), on switches a row click to the
+// read-only in-dock detail view with a back button. Opt-in: with it off the
+// dock keeps the plan-C interaction. Pure frontend gate: the settings save
+// re-applies the boot snapshot, so a change is visible without a restart.
+func (c *Config) SetExperimentalSubagentDetail(enabled bool) error {
+	c.Desktop.ExperimentalSubagentDetail = enabled
+	return nil
+}
+
 // SetExperimentalCompactionParallel toggles the parallel chunked-compaction
 // fragments (task 265). It ships on (existing behaviour given an off switch);
 // off falls back to the upstream serial summarizer.
