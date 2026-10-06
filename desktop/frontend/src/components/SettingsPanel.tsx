@@ -3261,19 +3261,16 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
             </SettingsField>
           )}
           {selected === "pathRules" && (
-            <SettingsField label={t("settings.pathRules")} hint={t("settings.pathRulesHint")} icon={<FolderLock size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalPathRules) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(() => app.SetExperimentalPathRules(on))}
-                  >
-                    {t(on ? "settings.pathRules.on" : "settings.pathRules.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
+            /* Task 564: retired (task 551 paradigm, UI side) — the structured
+               path-scope evaluation never wired into the runtime (zero
+               consumers; production keeps confine + allow_write + write
+               approval). Read-only display like the M2 modelCapabilityFilter
+               block: stored value shows, no setter, config key still renders
+               (nothing silently dropped on save). */
+            <SettingsField label={t("settings.pathRules")} hint={t("settings.pathRules.retired")} icon={<FolderLock size={18} />} stacked>
+              <p className="settings-field__hint-line">
+                {t("settings.pathRules.value", { value: t(Boolean(s.experimentalPathRules) ? "settings.pathRules.on" : "settings.pathRules.off") })}
+              </p>
             </SettingsField>
           )}
                     {selected === "traceAsState" && (
