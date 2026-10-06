@@ -948,6 +948,10 @@ export function Composer({
   const [historyPickerEntries, setHistoryPickerEntries] = useState<PromptHistoryEntry[]>([]);
   const [historyPickerHasMore, setHistoryPickerHasMore] = useState(false);
   const [historyPickerLoading, setHistoryPickerLoading] = useState(false);
+  // 任务529：时钟按钮即弹层锚点。面板经 AnchoredPopover portal 到 body 渲染，
+  // 不再受 .composer-meta（overflow:hidden）裁剪——此前 absolute 定位面板被
+  // 裁成不可见，点击看似无反应。
+  const historyPickerAnchorRef = useRef<HTMLButtonElement | null>(null);
   const savedTextRef = useRef("");
   const taRef = useRef<HTMLTextAreaElement>(null);
   const measureTaRef = useRef<HTMLTextAreaElement>(null);
@@ -5608,31 +5612,41 @@ export function Composer({
                   unsent draft (insert-at-caret), unlike the legacy ArrowUp path. */}
               {historyPickerEnabled && (
                 <div className="composer-history-picker">
-                  {historyPickerOpen && (
-                    <>
-                      <div className="composer-history-picker__backdrop" onMouseDown={closeHistoryPicker} />
-                      <PromptHistoryPicker
-                        entries={historyPickerEntries}
-                        hasMore={historyPickerHasMore}
-                        loading={historyPickerLoading}
-                        onPick={pickHistoryEntry}
-                        onLoadMore={() => void loadHistoryPickerPage()}
-                        onClose={closeHistoryPicker}
-                        t={t}
-                      />
-                    </>
-                  )}
                   <Tooltip label={t("composer.historyPicker")}>
                     <button
+                      ref={historyPickerAnchorRef}
                       className={`composer__btn${historyPickerOpen ? " composer__btn--on" : ""}`}
                       type="button"
                       onClick={() => (historyPickerOpen ? closeHistoryPicker() : openHistoryPicker())}
                       aria-label={t("composer.historyPicker")}
+                      aria-haspopup="dialog"
                       aria-expanded={historyPickerOpen}
                     >
                       <Clock size={14} />
                     </button>
                   </Tooltip>
+                  {/* 任务529：面板经 AnchoredPopover portal 到 body（与同区
+                      effort/model 弹层同路）。原先的 absolute 定位面板被
+                      .composer-meta 的 overflow:hidden 裁剪成不可见，点击看似
+                      无反应；portal 后脱离该裁剪上下文。外点/Esc 关闭由
+                      AnchoredPopover 统一承接，backdrop 随之移除。 */}
+                  <AnchoredPopover
+                    open={historyPickerOpen}
+                    anchorRef={historyPickerAnchorRef}
+                    onClose={closeHistoryPicker}
+                    className="composer-history-menu composer-menu-surface"
+                    align="end"
+                  >
+                    <PromptHistoryPicker
+                      entries={historyPickerEntries}
+                      hasMore={historyPickerHasMore}
+                      loading={historyPickerLoading}
+                      onPick={pickHistoryEntry}
+                      onLoadMore={() => void loadHistoryPickerPage()}
+                      onClose={closeHistoryPicker}
+                      t={t}
+                    />
+                  </AnchoredPopover>
                 </div>
               )}
               {/* 任务510（a 保出口）：unknown 降级态不再隐藏停止按钮——降级提示

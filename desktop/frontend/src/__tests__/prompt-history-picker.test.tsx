@@ -12,6 +12,11 @@
 //   ellipsis, empty state, load-more wiring, pick returns the entry text,
 //   Escape closes. Picking inserts at the caret (host side) and never
 //   replaces the unsent draft.
+// - 任务529 host chain: the clock button click MUST toggle the panel open
+//   (never a silent no-op); the panel renders through AnchoredPopover (portaled
+//   to body — .composer-meta has overflow:hidden and clipped the old
+//   absolutely-positioned panel into invisibility); empty history still shows
+//   a visible empty-state hint.
 // - Wiring (source-shape): Composer gates the trigger + the button on
 //   historyPickerEnabled; App passes the boot-snapshot flag; SettingsPanel
 //   flips the config through the new bridge method; locales carry the keys
@@ -19,13 +24,30 @@
 
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
+import { useState, useRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { JSDOM } from "jsdom";
 
-const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/" });
+const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/", pretendToBeVisual: true });
+// jsdom ships no matchMedia; AnchoredPopover consults prefers-reduced-motion.
+(dom.window as unknown as { matchMedia: (query: string) => MediaQueryList }).matchMedia = (query: string) => ({
+  matches: false,
+  media: query,
+  onchange: null,
+  addListener: () => {},
+  removeListener: () => {},
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  dispatchEvent: () => false,
+}) as MediaQueryList;
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.window = dom.window as unknown as Window & typeof globalThis;
 globalThis.document = dom.window.document;
+// AnchoredPopover's outside-close guard does `target instanceof Node` — jsdom
+// type globals must be exposed for the test process.
+(globalThis as unknown as { Node: unknown }).Node = dom.window.Node;
+(globalThis as unknown as { Element: unknown }).Element = dom.window.Element;
+(globalThis as unknown as { HTMLElement: unknown }).HTMLElement = dom.window.HTMLElement;
 Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
 
 let passed = 0;
@@ -42,9 +64,34 @@ function eq(actual: unknown, expected: unknown, label: string) {
 
 const { canUsePromptHistory } = await import("../lib/composerKeyboard");
 const { PromptHistoryPicker } = await import("../components/PromptHistoryPicker");
+const { AnchoredPopover } = await import("../components/AnchoredPopover");
 const { LocaleProvider } = await import("../lib/i18n");
 const { createRoot } = await import("react-dom/client");
 const { act } = await import("react");
+
+// 任务529 host probe: the exact wiring Composer uses — clock button toggles
+// open, the panel renders inside an AnchoredPopover portaled to document.body.
+function HistoryHostProbe({ entries }: { entries: readonly { text: string; at: number }[] }) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  return createElement(LocaleProvider, { locale: "en" },
+    createElement("div", null,
+      createElement("button", { id: "probe-clock", ref: anchorRef, onClick: () => setOpen((v) => !v) }, "clock"),
+      createElement(AnchoredPopover, {
+        open,
+        anchorRef,
+        onClose: () => setOpen(false),
+        className: "composer-history-menu composer-menu-surface",
+        align: "end",
+      },
+        createElement(PromptHistoryPicker, {
+          entries, hasMore: false, loading: false,
+          onPick: () => {}, onLoadMore: () => {}, onClose: () => setOpen(false),
+          t: (key: string) => key,
+        } as never)),
+    ),
+  );
+}
 
 const base = {
   direction: "up" as const,
@@ -112,6 +159,7 @@ const entries = [
     onPick: () => {}, onLoadMore: () => {}, onClose: () => {}, t,
   } as never)));
   eq(markup.includes("composer.historyPickerEmpty"), true, "panel: friendly empty state");
+  eq(markup.includes('class="composer-history-menu__empty"'), true, "panel: the empty state is a visible dedicated row (任务529)");
   eq(markup.includes("composer.historyPickerMore"), false, "panel: no load-more when the tape is exhausted");
 }
 
@@ -147,7 +195,42 @@ const entries = [
   container.remove();
 }
 
-// 6. Wiring (source-shape; Composer is too heavy to mount here).
+// 6. 任务529 host chain: click opens the portaled panel, outside click closes,
+//    and EMPTY history still opens with a visible hint (never a silent no-op).
+{
+  const container = dom.window.document.createElement("div");
+  dom.window.document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => { root.render(createElement(HistoryHostProbe, { entries } as never)); });
+  eq(dom.window.document.querySelector(".composer-history-menu"), null, "host: panel absent before any click");
+
+  const clock = container.querySelector<HTMLButtonElement>("#probe-clock")!;
+  await act(async () => { clock.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true })); });
+  const opened = dom.window.document.querySelector(".composer-history-menu");
+  eq(opened !== null, true, "host: clock click opens the panel (portaled to body, outside overflow clips)");
+  eq(opened?.textContent?.includes("most recent prompt") ?? false, true, "host: opened panel lists the history entries");
+
+  await act(async () => { dom.window.document.body.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true })); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 220)); });
+  eq(dom.window.document.querySelector(".composer-history-menu"), null, "host: outside click closes the panel");
+  await act(async () => root.unmount());
+  container.remove();
+}
+{
+  const container = dom.window.document.createElement("div");
+  dom.window.document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => { root.render(createElement(HistoryHostProbe, { entries: [] } as never)); });
+  await act(async () => { container.querySelector<HTMLButtonElement>("#probe-clock")!.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true })); });
+  const opened = dom.window.document.querySelector(".composer-history-menu");
+  eq(opened !== null, true, "host: click with EMPTY history still opens the panel (no silent no-op)");
+  eq(opened?.querySelector(".composer-history-menu__empty") !== null, true, "host: empty panel renders the dedicated empty-state row");
+  eq(opened?.textContent?.includes("composer.historyPickerEmpty") ?? false, true, "host: empty-state row carries the localized hint");
+  await act(async () => root.unmount());
+  container.remove();
+}
+
+// 7. Wiring (source-shape; Composer is too heavy to mount here).
 {
   const composer = readFileSync(new URL("../components/Composer.tsx", import.meta.url), "utf8");
   eq(composer.includes("upStartsOnlyFromEmpty: historyPickerEnabled"), true, "wiring: ArrowUp trigger follows the switch");
@@ -155,7 +238,13 @@ const entries = [
   eq(composer.includes("<PromptHistoryPicker"), true, "wiring: the popup is the shared panel component");
   eq(composer.includes("textRef.current = next;\n    setText(next);"), true, "wiring: pick path goes through the draft setters");
   eq(/pickHistoryEntry[\s\S]{0,900}setHistoryPickerOpen\(false\)/.test(composer), true, "wiring: picking closes the popup");
-  eq(composer.includes("setHistoryPickerOpen(false);\n  };\n\n  // Picking inserts"), false || composer.includes("const closeHistoryPicker"), true, "wiring: close helper exists");
+  eq(composer.includes("const closeHistoryPicker"), true, "wiring: close helper exists");
+  eq(/const openHistoryPicker = \(\) => \{\s*if \(!historyPickerEnabled\) return;\s*setHistoryPickerOpen\(true\);/.test(composer), true, "wiring: the click handler sets the panel open (任务529 钉死)");
+  eq(composer.includes("onClick={() => (historyPickerOpen ? closeHistoryPicker() : openHistoryPicker())}"), true, "wiring: the clock button toggles open/close");
+  eq(composer.includes("ref={historyPickerAnchorRef}"), true, "wiring: the clock button is the popover anchor");
+  eq(composer.includes("<AnchoredPopover"), true, "wiring: the panel renders through AnchoredPopover (portaled past overflow:hidden)");
+  eq(composer.includes("className=\"composer-history-menu composer-menu-surface\""), true, "wiring: the surface spec rides the portal container");
+  eq(composer.includes("composer-history-picker__backdrop"), false, "wiring: the clipped-era backdrop is gone (AnchoredPopover owns outside-close)");
   eq(composer.includes("historyPickerEnabled = false"), true, "wiring: the prop defaults to OFF (legacy behaviour)");
 
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
@@ -175,7 +264,7 @@ const entries = [
   eq(keyboard.includes("upStartsOnlyFromEmpty?: boolean;"), true, "wiring: the eligibility option is optional (callers untouched)");
 }
 
-// 7. Locales: every new key exists in all three languages.
+// 8. Locales: every new key exists in all three languages.
 {
   const keys = [
     '"settings.promptHistoryPicker"',
