@@ -1008,6 +1008,22 @@ const CHECKS = [
   { feature: "463 三语文案 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["\"composer.expandAll\": \"Expand all work processes\""] },
   { feature: "463 双向开关测试存续", file: "desktop/frontend/src/__tests__/fold-toggle-button.test.tsx", patterns: ["allWorkProcessesCollapsed", "reasonix:expand-all-folds"] },
 
+  // ── 任务546 新建会话「沿用最近会话的目录」──
+  // cwd 语义必须单源：选取可用性判定走 545 的 SessionWorkspaceRoot，merge
+  // 若另起炉灶（自写 stat/绝对性判断）即为两套机制。菜单无候选不出现、
+  // 失效回落必须带可见提示（不静默）、主 + 按钮行为不变。
+  { feature: "任务546 最近活动会话 cwd 选取（复用545共用解析）", file: "internal/agent/session_workspace.go", patterns: ["func LatestSessionWorkspaceRoot", "SessionWorkspaceRoot(info.Path)"] },
+  { feature: "任务546 Wails 绑定（本机会话目录枚举，不跨设备）", file: "desktop/latest_session_workspace.go", patterns: ["func (a *App) LatestSessionWorkspace", "lastSessionWorkspaceInfo", "a.knownSessionDirs()"] },
+  { feature: "任务546 TabBar 下拉（主按钮不变+无候选不出现）", file: "desktop/frontend/src/components/TabBar.tsx", patterns: ["onFetchLastSessionWorkspace", "tabbar__new-caret", "last-session-workspace"] },
+  { feature: "任务546 失效回落可见提示", file: "desktop/frontend/src/App.tsx", patterns: ["tabBar.lastCwdFallback"] },
+  { feature: "任务546 AppRuntime 挂载点接线", file: "desktop/frontend/src/app-shell/AppRuntimeView.tsx", patterns: ["onNewTabInWorkspace"] },
+  { feature: "任务546 桥接声明", file: "desktop/frontend/src/lib/bridge.ts", patterns: ["LatestSessionWorkspace(): Promise<LastSessionWorkspaceInfo>"] },
+  { feature: "任务546 locale zh", file: "desktop/frontend/src/locales/zh.ts", patterns: ["tabBar.lastCwd"] },
+  { feature: "任务546 locale zh-TW", file: "desktop/frontend/src/locales/zh-TW.ts", patterns: ["tabBar.lastCwd"] },
+  { feature: "任务546 locale en", file: "desktop/frontend/src/locales/en.ts", patterns: ["tabBar.lastCwd"] },
+  { feature: "任务546 下拉样式", file: "desktop/frontend/src/styles.css", patterns: [".tabbar__new-caret", ".tabbar__newmenu-path"] },
+  { feature: "任务546 测试存续（含失效对立输入）", file: "internal/agent/session_workspace_test.go", patterns: ["TestLatestSessionWorkspaceRootStaleDirectoryReportedNotSilentlySkipped"] },
+
 ];
 
 let failed = 0;
