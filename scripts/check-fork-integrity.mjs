@@ -96,6 +96,11 @@ const CHECKS = [
   { feature: "任务439 前端实验室卡+状态/角色可视化", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["selected === \"zcodeTaskBus\"", "app.SetExperimentalZcodeTaskBus(on)", "app.ZcodeTaskBusStatus()"] },
   { feature: "任务439 前端契约测试", file: "desktop/frontend/src/__tests__/settings-zcode-task-bus.test.ts", patterns: ["lab rail hosts the zcodeTaskBus entry", "flag-off path returns before any network work"] },
   { feature: "任务461-P11 读路径降级直读+共享锁短预算", file: "internal/collabinbox/collabinbox.go", patterns: ["lockRead", "readLockWaitTimeout", "Degraded"] },
+  { feature: "任务511 History 锁繁忙降级（Warn+Degraded 贯穿到快照）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["degraded history read (lock busy)", "last_holder", "wait_ms"] },
+  { feature: "任务511 快照降级传递（mail 锁繁忙 ≠ 暂无信件）", file: "internal/collabinbox/collabinbox.go", patterns: ["idx.degraded"] },
+  { feature: "任务511 sweep 节流闸（面板读不再每次全库重写）", file: "internal/collabinbox/collabinbox.go", patterns: ["sweepThrottleWindow", "func (s *Store) sweepDue("] },
+  { feature: "任务511 面板降级提示（锁繁忙 ≠ 暂无信件）", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["collabInbox.degraded", "collab-inbox-panel__empty--degraded"] },
+  { feature: "任务511 降级提示三语 locale", file: "desktop/frontend/src/locales/zh.ts", patterns: ["collabInbox.degraded"] },
   { feature: "任务461-P13② 上下文增幅观测告警（维护间隔跳变有日志诊断入口）", file: "internal/agent/context_manager.go", patterns: ["observeContextGrowth", "contextGrowthWarnRatio"] },
   { feature: "任务461-P13③ task309 幂等默认开（Default 钉 true，显式 false 仍可关）", file: "internal/config/config.go", patterns: ["SessionCollabMailIdempotentDefault: true"] },
   // base_toolcall 远程门：不可比较的值类型工具（内置写工具族）在接口 == 前必须先挡，

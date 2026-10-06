@@ -401,6 +401,8 @@ export interface CollabMailSnapshotView {
   returned: number;
   truncated: boolean;
   entries: CollabMailEntryView[];
+  /** 任务511: 锁繁忙时的降级读标记（degraded read）——空面板此时不是「没信」。 */
+  degraded?: boolean;
 }
 
 /** Task 320 g: one conversation chain (collabinbox.Chain). */

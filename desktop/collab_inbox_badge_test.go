@@ -46,8 +46,8 @@ func TestCountUnreadCollabMailBadge(t *testing.T) {
 		t.Fatalf("unread = %d, want 3 (two fresh + one aged)", n)
 	}
 	// 只读证明：计数后超保留期的信件仍在传输层（panel 路径此时已把它 prune 掉）。
-	if rows := len(mail.History(context.Background(), )); rows != 3 {
-		t.Fatalf("history rows after count = %d, want 3 — the badge path must never prune", rows)
+	if rows, degraded := mail.History(context.Background()); degraded || len(rows) != 3 {
+		t.Fatalf("history rows after count = %d (degraded=%v), want 3 healthy — the badge path must never prune", len(rows), degraded)
 	}
 
 	// 收件方 Ack（seen 游标盖上）→ 不再计数。

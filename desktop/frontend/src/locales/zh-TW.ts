@@ -4728,6 +4728,7 @@ export const zhTW: Record<DictKey, string> = {
   "collabInbox.title": "跨會話收件匣",
   "collabInbox.close": "關閉",
   "collabInbox.empty": "暫無信件",
+  "collabInbox.degraded": "收件匣暫時無法使用（鎖忙碌中）",
   "collabInbox.retention": "保留期",
   "collabInbox.retention.7d": "7 天",
   "collabInbox.retention.30d": "30 天",

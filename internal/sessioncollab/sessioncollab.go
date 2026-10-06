@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -695,6 +696,29 @@ func (s *MailStore) ceiling() int {
 	return s.hopLimit
 }
 
+// lockHolderPath is a SIDECAR beside .mail.lock (任务511): the lock file's byte
+// range is held via LockFileEx, so diagnostics live in a separate file — same
+// shape as the collab-inbox lock's holder sidecar. Content survives release:
+// informative about the LAST holder, never authoritative.
+func (s *MailStore) lockHolderPath() string { return filepath.Join(s.root, ".mail.lock.holder") }
+
+// writeLockHolderInfo stamps the sidecar right after an exclusive acquire, so a
+// later waiter that gives up can name WHO held it last and since when.
+func (s *MailStore) writeLockHolderInfo() {
+	info := fmt.Sprintf("pid=%d held_since=%s", os.Getpid(), time.Now().Format(time.RFC3339))
+	_ = os.WriteFile(s.lockHolderPath(), []byte(info), 0o600)
+}
+
+// LockHolderInfo returns the last recorded holder identity from the sidecar
+// (may be empty or stale — it is a diagnostic, not a lease).
+func (s *MailStore) LockHolderInfo() string {
+	b, err := os.ReadFile(s.lockHolderPath())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
 // lock takes the mail directory's cross-process lock. ctx is the caller's
 // request context where one exists (task 461 P1): cancellation ends the wait
 // immediately, and the wait itself never exceeds lockWaitTimeout even when the
@@ -707,6 +731,7 @@ func (s *MailStore) lock(ctx context.Context) (func(), error) {
 	if err != nil {
 		return nil, fmt.Errorf("session collab mail lock busy (held by another window or process?), gave up waiting: %w", err)
 	}
+	s.writeLockHolderInfo()
 	return release, nil
 }
 
@@ -1354,15 +1379,26 @@ type HistoryRow struct {
 // consumer, so it must not re-read a cursor per message.
 // History reads every mailbox into the unified table rows (task 320 read
 // side). ctx bounds/cancels the lock wait.
-func (s *MailStore) History(ctx context.Context) []HistoryRow {
+//
+// 任务511：拿不到 .mail.lock 时不再静默返回 nil——那会让收件箱面板在锁繁忙时
+// 渲染成「暂无信件」且零痕迹（排查报告 §4 缺口 1）。现在留一条 slog.Warn
+// （锁路径 + last_holder + wait_ms，对齐桌面端 degraded unlocked read 的日志
+// 形态），并把 degraded=true 返回给索引层，快照据此带 Degraded，前端显示
+// 「收件箱暂时不可用」而非空态。可用性 > 锁完整性。
+func (s *MailStore) History(ctx context.Context) ([]HistoryRow, bool) {
+	start := time.Now()
 	unlock, err := s.lock(ctx)
 	if err != nil {
-		return nil
+		slog.Warn("session collab mail: degraded history read (lock busy)",
+			"lock", filepath.Join(s.root, ".mail.lock"),
+			"last_holder", s.LockHolderInfo(),
+			"wait_ms", time.Since(start).Milliseconds())
+		return nil, true
 	}
 	defer unlock()
 	entries, err := os.ReadDir(s.root)
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	var out []HistoryRow
 	for _, e := range entries {
@@ -1381,7 +1417,7 @@ func (s *MailStore) History(ctx context.Context) []HistoryRow {
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Mail.At > out[j].Mail.At })
-	return out
+	return out, false
 }
 
 // PruneInbox physically removes every message older than beforeUnixMilli from
