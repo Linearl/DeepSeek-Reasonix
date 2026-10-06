@@ -733,6 +733,55 @@ func (c *Config) AutopilotGuardQuiescentPolicy() string {
 	}
 }
 
+// AutopilotAskWaitDefaultSeconds is the task-477 ask-timeout sub-option's wait
+// when the switch is on but desktop.autopilot_ask_wait_seconds is unset (user
+// ruling 2026-10-05: default 15s).
+const AutopilotAskWaitDefaultSeconds = 15
+
+// AutopilotAskWaitMinSeconds / AutopilotAskWaitMaxSeconds bound the
+// sub-option's wait: 1s keeps the timeout real (0 would disable waiting
+// entirely), 3600s is the approved ceiling (an hour covers a
+// nearby-human-answering-by-phone run without reopening the indefinite-hang
+// shape the sub-option exists to close).
+const (
+	AutopilotAskWaitMinSeconds = 1
+	AutopilotAskWaitMaxSeconds = 3600
+)
+
+// SetExperimentalAutopilotAskTimeout toggles the task-477 ask-timeout
+// sub-option. The flag alone changes nothing unless the run is autopilot; the
+// off state keeps the task-109 B4 terminal stop byte-for-byte.
+func (c *Config) SetExperimentalAutopilotAskTimeout(enabled bool) error {
+	c.Desktop.ExperimentalAutopilotAskTimeout = enabled
+	return nil
+}
+
+// SetAutopilotAskWaitSeconds sets the sub-option's wait in seconds. Values
+// outside 1..3600 are refused rather than clamped — the settings input allows
+// an honest retry, and a silently rewritten number is harder to notice than a
+// named rejection.
+func (c *Config) SetAutopilotAskWaitSeconds(seconds int) error {
+	if seconds < AutopilotAskWaitMinSeconds || seconds > AutopilotAskWaitMaxSeconds {
+		return fmt.Errorf("autopilot_ask_wait_seconds must be between %d and %d, got %d", AutopilotAskWaitMinSeconds, AutopilotAskWaitMaxSeconds, seconds)
+	}
+	c.Desktop.AutopilotAskWaitSeconds = seconds
+	return nil
+}
+
+// AutopilotAskWaitSecondsEffective returns the sub-option's wait in seconds.
+// 0 and negative values read as the default (15s); anything above the ceiling
+// clamps down to it so a hand-edited config cannot reopen the hang shape. Only
+// meaningful while ExperimentalAutopilotAskTimeout is on.
+func (c *Config) AutopilotAskWaitSecondsEffective() int {
+	if c == nil || c.Desktop.AutopilotAskWaitSeconds <= 0 {
+		return AutopilotAskWaitDefaultSeconds
+	}
+	if c.Desktop.AutopilotAskWaitSeconds > AutopilotAskWaitMaxSeconds {
+		return AutopilotAskWaitMaxSeconds
+	}
+	return c.Desktop.AutopilotAskWaitSeconds
+}
+
 // AutonomousUpdateResumeMode returns the normalized resume scope. Empty and
 // unknown values read as "goal_autopilot": the pre-task-254 behavior plus the
 // autopilot marker chain, never a silent opt-out.

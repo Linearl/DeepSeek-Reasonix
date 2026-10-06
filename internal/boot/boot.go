@@ -126,6 +126,16 @@ type Options struct {
 	// AutopilotApprovalGrace is how long an unattended run waits for a human on an
 	// approval prompt before the reviewer decides. Zero uses the control default.
 	AutopilotApprovalGrace time.Duration
+	// AutopilotAskTimeoutEnabled is the task-477 experimental ask-timeout
+	// sub-option: when on together with Autopilot, an expired high-risk ask
+	// wait answers with an explicit refusal and the run continues, instead of
+	// the task-109 B4 terminal stop. Zero (off) keeps that stop verbatim
+	// (default-off experimental, 铁律 2).
+	AutopilotAskTimeoutEnabled bool
+	// AutopilotAskWait is the sub-option's wait. Zero lets the controller pick
+	// its default (the 15s sub-option default when enabled, else the 10m
+	// task-109 B4 default).
+	AutopilotAskWait time.Duration
 	// ApprovalTier selects who decides reversible unattended approvals
 	// (task 52): guardian | parent | human. Empty uses cfg.Agent.approval_tier,
 	// which itself defaults to guardian.
@@ -2344,15 +2354,17 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	}
 	imageSnapshot := config.ModelCapabilitySnapshot(cfg, modelCapabilities)
 	ctrlOpts := control.Options{
-		ModelSettingsRevision:  cfg.ModelRuntimeFingerprint(modelRef),
-		ModelSettingsCurrent:   runtimeModelSettingsReader(root, modelName, modelRef, opts.ModelSettings),
-		FrozenImageInput:       &imageEnabled,
-		ImageCapabilityChanged: runtimeImageCapabilityReader(root, modelName, imageSnapshot, opts.ModelSettings),
-		TaskBudget:             taskBudgetFromConfig(cfg),
-		GoalTokenBudget:        cfg.Agent.GoalTokenBudget,
-		Autopilot:              opts.Autopilot,
-		AutopilotMaxRuntime:    opts.MaxRuntime,
-		AutopilotApprovalGrace: opts.AutopilotApprovalGrace,
+		ModelSettingsRevision:      cfg.ModelRuntimeFingerprint(modelRef),
+		ModelSettingsCurrent:       runtimeModelSettingsReader(root, modelName, modelRef, opts.ModelSettings),
+		FrozenImageInput:           &imageEnabled,
+		ImageCapabilityChanged:     runtimeImageCapabilityReader(root, modelName, imageSnapshot, opts.ModelSettings),
+		TaskBudget:                 taskBudgetFromConfig(cfg),
+		GoalTokenBudget:            cfg.Agent.GoalTokenBudget,
+		Autopilot:                  opts.Autopilot,
+		AutopilotMaxRuntime:        opts.MaxRuntime,
+		AutopilotApprovalGrace:     opts.AutopilotApprovalGrace,
+		AutopilotAskTimeoutEnabled: opts.AutopilotAskTimeoutEnabled,
+		AutopilotAskWait:           opts.AutopilotAskWait,
 		// Task 231: the managed-path pre-approval snapshot. All five flags ship
 		// false (default-off experimental); the two home-derived dirs give the
 		// classifier its skills/stores boundaries, and hooks classify by the

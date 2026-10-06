@@ -218,6 +218,20 @@ type DesktopConfig struct {
 	CollabGuidanceMerge    bool   `toml:"collab_guidance_merge"`
 	AutopilotMaxRuntime    string `toml:"autopilot_max_runtime"`    // Go duration; required when autopilot is on
 	AutopilotApprovalGrace string `toml:"autopilot_approval_grace"` // wait for a human before the reviewer decides; empty = 15s
+	// ExperimentalAutopilotAskTimeout is the task-477 ask-timeout sub-option
+	// (user ruling 2026-10-05, 铁律 2 default off): when on AND the run is
+	// autopilot, a high-risk `ask` that sits unanswered for
+	// AutopilotAskWaitSeconds is answered with an explicit refusal and the run
+	// continues (the goal loop keeps going), instead of the task-109 B4
+	// terminal stop. Off keeps that stop byte-for-byte; attended sessions are
+	// never touched by either state.
+	ExperimentalAutopilotAskTimeout bool `toml:"experimental_autopilot_ask_timeout"`
+	// AutopilotAskWaitSeconds is the ask-timeout sub-option's wait in seconds.
+	// 0 = the built-in default (15s); explicit values are clamped into
+	// 1..3600 by the reader and refused outside that range by the setter, so
+	// a hand-edited config can neither spin the timeout down to zero nor
+	// stretch it past an hour.
+	AutopilotAskWaitSeconds int `toml:"autopilot_ask_wait_seconds"`
 	// AutopilotGuardInterval is the autopilot guard task's default run interval
 	// in minutes (task 326). 0 = autopilotGuardDefaultIntervalMinutes. Changing
 	// it re-points the interval of guards that already exist instead of

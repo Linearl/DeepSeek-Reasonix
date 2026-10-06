@@ -647,7 +647,7 @@ const CHECKS = [
   // 锁三处——闸门本体、四个开启入口的接线、前端按码本地化。merge 丢掉接线
   // 会重新出现「autopilot 挂着但审批是 ask/auto」的无人值守中间态。
   { feature: "任务325 autopilot yolo 闸门（判定+反向联动+通知码）", file: "desktop/autopilot_gate.go", patterns: ["func autopilotGateAllowed", "func gateRestoredAutopilotDefaults", "func closeAutopilotForOffYolo", "\"autopilot_requires_yolo\"", "\"autopilot_closed_off_yolo\""] },
-  { feature: "任务325 开启入口接线（恢复/新标签/选择器/审批切换）", file: "desktop/app.go", patterns: ["gateRestoredAutopilotDefaults(on, maxRuntime, grace, tab.toolApprovalMode)", "gateRestoredAutopilotDefaults(autopilot, maxRuntime, approvalGrace, toolApprovalMode)", "gateRestoredAutopilotDefaults(prefOn, prefRuntime, prefGrace, approvalMode)", "closeAutopilotForOffYolo(tab, mode)"] },
+  { feature: "任务325 开启入口接线（恢复/新标签/选择器/审批切换；477 起为五元组含 ask 超时对）", file: "desktop/app.go", patterns: ["gateRestoredAutopilotDefaults(on, maxRuntime, grace, askEnabled, askWait, tab.toolApprovalMode)", "gateRestoredAutopilotDefaults(autopilot, maxRuntime, approvalGrace, askEnabled, askWait, toolApprovalMode)", "gateRestoredAutopilotDefaults(prefOn, prefRuntime, prefGrace, prefAskEnabled, prefAskWait, approvalMode)", "closeAutopilotForOffYolo(tab, mode)"] },
   { feature: "任务325 设置默认值前置校验（拒绝非 yolo）", file: "desktop/settings_app.go", patterns: ["autopilot requires the yolo approval mode"] },
   { feature: "任务325 拒绝/关闭提示按码本地化", file: "desktop/frontend/src/lib/controllerNotices.ts", patterns: ["autopilot_requires_yolo: \"notice.autopilotRequiresYolo\"", "autopilot_closed_off_yolo: \"notice.autopilotClosedOffYolo\""] },
   // 任务 327：自动化任务运行次数上限 maxRuns（单次 = N 的特例、跑满自动禁用）。
@@ -861,7 +861,7 @@ const CHECKS = [
   { feature: "X3 显式清除 agent 层（dismiss 结算+回滚规则）", file: "internal/agent/tool_recovery_actions.go", patterns: ["ResolveToolRecoveryDismissed", "dismissed_by_user"] },
   { feature: "X3 guard 拆分 + dismiss 过行门（closed/rotating 分报，running 放行 dismiss）", file: "internal/control/tool_recovery.go", patterns: ["session is closed", "session is switching", 'req.Action != "dismiss"'] },
   { feature: "X3 面板忽略按钮（不因 running 禁用）+ 三语文案", file: "desktop/frontend/src/components/ToolRecoveryPanel.tsx", patterns: ['act(call, "dismiss")'] },
-  { feature: "X4 断点 A 初始构建补传 autopilot 三元组", file: "desktop/tabs.go", patterns: ["Autopilot:                tab.autopilot", "AutopilotApprovalGrace:   tab.autopilotApprovalGrace"] },
+  { feature: "X4 断点 A 初始构建补传 autopilot 三元组（477 起四/五元组含 ask 超时对）", file: "desktop/tabs.go", patterns: ["Autopilot:                  tab.autopilot", "AutopilotApprovalGrace:     tab.autopilotApprovalGrace", "AutopilotAskTimeoutEnabled: tab.autopilotAskTimeoutEnabled"] },
   { feature: "X4 断点 B 后端视图携带 autopilot", file: "desktop/tabs.go", patterns: ['if s.autopilot {\n\t\treturn "autopilot"'] },
   { feature: "X4 断点 B 前端 normalize 放行 autopilot", file: "desktop/frontend/src/lib/types.ts", patterns: ['mode === "autopilot"'] },
   { feature: "X4 toggle 判据锚（preference/approval/applied 一行）", file: "desktop/app.go", patterns: ["desktop: autopilot toggle"] },

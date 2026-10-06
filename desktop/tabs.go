@@ -160,10 +160,15 @@ type WorkspaceTab struct {
 	autopilot              bool
 	autopilotMaxRuntime    time.Duration
 	autopilotApprovalGrace time.Duration
-	subagentPolicy         string // per-session sub-agent delegation tier (light|balanced|aggressive, fork)
-	disabledMCP            map[string]ServerView
-	mcpOrder               []string
-	lastBuildResult        *boot.BuildResult // incremental extension reload
+	// Task 477: the experimental ask-timeout sub-option this tab runs with —
+	// the switch plus its wait, fixed at toggle/creation time like the triple
+	// above so a rebuild cannot silently change the run's semantics.
+	autopilotAskTimeoutEnabled bool
+	autopilotAskWait           time.Duration
+	subagentPolicy             string // per-session sub-agent delegation tier (light|balanced|aggressive, fork)
+	disabledMCP                map[string]ServerView
+	mcpOrder                   []string
+	lastBuildResult            *boot.BuildResult // incremental extension reload
 
 	PinnedFiles              []string
 	pendingLegacyPinnedFiles []string // round-tripped until the session sidecar publishes
@@ -4078,29 +4083,31 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 		// not self-answered) — the reported "autopilot 模式下 ask 阻塞".
 		// tab.autopilot is already gate-filtered (task 325 yolo precondition)
 		// at both write sites (new-tab defaults, restart sidecar restore).
-		Autopilot:                tab.autopilot,
-		MaxRuntime:               tab.autopilotMaxRuntime,
-		AutopilotApprovalGrace:   tab.autopilotApprovalGrace,
-		RequireKey:               false,
-		StatsSource:              "desktop",
-		TaskStore:                a.taskStore(),
-		OnConfigLoadWarnings:     a.configLoadWarningsHandler(),
-		Sink:                     sink,
-		WorkspaceRoot:            root,
-		SessionDir:               sessionDir,
-		EffortOverride:           cloneStringPtr(buildEffort),
-		SharedHost:               sharedHost,
-		CleanupPendingReconciler: reconcileDesktopCleanupPending,
-		SubagentParentLive:       a.subagentParentProbeForBuild(tab),
-		SessionRecoveryMeta:      a.tabSessionRecoveryMeta(tab),
-		PinnedContextLoader:      pinnedContextLoader(root),
-		OnSessionRecovered:       a.handleTabSessionRecovered(tab),
-		OnSessionTransition:      a.handleTabSessionTransition(tab),
-		BeforeInboxDispatch:      a.beforeInboxDispatch,
-		OnSessionTitleChanged:    a.onSessionTitleChanged,
-		OnCreateCollabSession:    a.createCollabSession,
-		OnSessionStatus:          a.collabSessionStatus,
-		OnSessionInfo:            a.collabSessionInfo,
+		Autopilot:                  tab.autopilot,
+		MaxRuntime:                 tab.autopilotMaxRuntime,
+		AutopilotApprovalGrace:     tab.autopilotApprovalGrace,
+		AutopilotAskTimeoutEnabled: tab.autopilotAskTimeoutEnabled,
+		AutopilotAskWait:           tab.autopilotAskWait,
+		RequireKey:                 false,
+		StatsSource:                "desktop",
+		TaskStore:                  a.taskStore(),
+		OnConfigLoadWarnings:       a.configLoadWarningsHandler(),
+		Sink:                       sink,
+		WorkspaceRoot:              root,
+		SessionDir:                 sessionDir,
+		EffortOverride:             cloneStringPtr(buildEffort),
+		SharedHost:                 sharedHost,
+		CleanupPendingReconciler:   reconcileDesktopCleanupPending,
+		SubagentParentLive:         a.subagentParentProbeForBuild(tab),
+		SessionRecoveryMeta:        a.tabSessionRecoveryMeta(tab),
+		PinnedContextLoader:        pinnedContextLoader(root),
+		OnSessionRecovered:         a.handleTabSessionRecovered(tab),
+		OnSessionTransition:        a.handleTabSessionTransition(tab),
+		BeforeInboxDispatch:        a.beforeInboxDispatch,
+		OnSessionTitleChanged:      a.onSessionTitleChanged,
+		OnCreateCollabSession:      a.createCollabSession,
+		OnSessionStatus:            a.collabSessionStatus,
+		OnSessionInfo:              a.collabSessionInfo,
 		// 任务 454: 补接任务 285 三个宿主探针 + 分组成员归属探针。此处是
 		// tab 会话的初始构建路径，漏接导致新会话里 list_addressable_sessions
 		// 的 group 过滤恒为空、行内永远没有 group 字段（仅 clear/rebind/
@@ -7916,6 +7923,10 @@ type tabRuntimeSnapshot struct {
 	autopilot              bool
 	autopilotMaxRuntime    time.Duration
 	autopilotApprovalGrace time.Duration
+	// Task 477: the ask-timeout sub-option travels with the snapshot so the
+	// rebuild paths cannot drift from the toggle that set it.
+	autopilotAskTimeoutEnabled bool
+	autopilotAskWait           time.Duration
 }
 
 // normalizedTabRuntime is the internal, orthogonal runtime profile restored
@@ -7933,29 +7944,31 @@ func snapshotTabRuntimeLocked(tab *WorkspaceTab) tabRuntimeSnapshot {
 		return tabRuntimeSnapshot{}
 	}
 	return tabRuntimeSnapshot{
-		ctrl:                   tab.Ctrl,
-		sink:                   tab.sink,
-		label:                  tab.Label,
-		ready:                  tab.Ready,
-		readOnly:               tab.ReadOnly,
-		startupErr:             tab.StartupErr,
-		scope:                  tab.Scope,
-		workspaceRoot:          tab.WorkspaceRoot,
-		sessionPath:            tab.SessionPath,
-		topicID:                tab.TopicID,
-		topicTitle:             tab.TopicTitle,
-		sharedHostKey:          tab.SharedHostKey,
-		model:                  tab.model,
-		effort:                 cloneStringPtr(tab.effort),
-		tokenMode:              currentTabTokenMode(tab),
-		qualityFloor:           tab.qualityFloor,
-		mode:                   tab.mode,
-		goal:                   tab.goal,
-		toolApprovalMode:       tab.toolApprovalMode,
-		subagentPolicy:         currentTabSubagentPolicy(tab),
-		autopilot:              tab.autopilot,
-		autopilotMaxRuntime:    tab.autopilotMaxRuntime,
-		autopilotApprovalGrace: tab.autopilotApprovalGrace,
+		ctrl:                       tab.Ctrl,
+		sink:                       tab.sink,
+		label:                      tab.Label,
+		ready:                      tab.Ready,
+		readOnly:                   tab.ReadOnly,
+		startupErr:                 tab.StartupErr,
+		scope:                      tab.Scope,
+		workspaceRoot:              tab.WorkspaceRoot,
+		sessionPath:                tab.SessionPath,
+		topicID:                    tab.TopicID,
+		topicTitle:                 tab.TopicTitle,
+		sharedHostKey:              tab.SharedHostKey,
+		model:                      tab.model,
+		effort:                     cloneStringPtr(tab.effort),
+		tokenMode:                  currentTabTokenMode(tab),
+		qualityFloor:               tab.qualityFloor,
+		mode:                       tab.mode,
+		goal:                       tab.goal,
+		toolApprovalMode:           tab.toolApprovalMode,
+		subagentPolicy:             currentTabSubagentPolicy(tab),
+		autopilot:                  tab.autopilot,
+		autopilotMaxRuntime:        tab.autopilotMaxRuntime,
+		autopilotApprovalGrace:     tab.autopilotApprovalGrace,
+		autopilotAskTimeoutEnabled: tab.autopilotAskTimeoutEnabled,
+		autopilotAskWait:           tab.autopilotAskWait,
 	}
 }
 

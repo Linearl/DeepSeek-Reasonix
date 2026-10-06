@@ -135,6 +135,11 @@ type Controller struct {
 	// autopilotAskWait is how long an unattended run waits for a human on a
 	// high-risk question before stopping (task 109 B4). 0 uses the default.
 	autopilotAskWait time.Duration
+	// autopilotAskTimeoutEnabled is the task-477 experimental sub-option: when
+	// on, an unattended run whose high-risk ask wait expires answers the ask
+	// with an explicit refusal and keeps going, instead of the task-109 B4
+	// terminal stop. Off (the zero value) keeps that stop byte-for-byte.
+	autopilotAskTimeoutEnabled bool
 	// preapproveManaged is the task-231 snapshot (master switch + four
 	// checkboxes + home paths) fixed at construction; see preapprove_managed.go.
 	preapproveManaged PreapproveManagedOptions
@@ -322,16 +327,16 @@ type Controller struct {
 
 	// mu guards the run state; every critical section under it is short and
 	// non-blocking.
-	mu                sync.Mutex
-	cancel            context.CancelFunc
+	mu     sync.Mutex
+	cancel context.CancelFunc
 	// 任务461-P7 三级终止: the force half of the running turn (independent of
 	// cancel — firing it arms the executor's abandon watchdog) plus the stop
 	// escalation state (L1 normal → L2 force grace → L3 force).
-	forceCancel  context.CancelFunc
-	stopLevel    int
-	stopDeadline time.Time
-	stopTimers   []*time.Timer
-	running      bool
+	forceCancel       context.CancelFunc
+	stopLevel         int
+	stopDeadline      time.Time
+	stopTimers        []*time.Timer
+	running           bool
 	finishing         bool // TurnDone is still being delivered; park a replacement turn
 	finishingBoundary turnFinishingBoundary
 	// subagentPolicy is the transient sub-agent delegation tier for
@@ -581,6 +586,13 @@ type Options struct {
 	// high-risk question before it stops with a terminal failure. Zero uses
 	// DefaultAutopilotAskWait; tests set it short to exercise that path.
 	AutopilotAskWait time.Duration
+	// AutopilotAskTimeoutEnabled is the task-477 experimental ask-timeout
+	// sub-option (default off, 铁律 2): when on together with Autopilot, an
+	// expired ask wait answers the questions with an explicit refusal and the
+	// run continues (the goal loop keeps going), and a zero AutopilotAskWait
+	// means DefaultAutopilotAskTimeoutWait (15s). Off keeps the task-109 B4
+	// terminal stop on DefaultAutopilotAskWait byte-for-byte.
+	AutopilotAskTimeoutEnabled bool
 	// PreapproveManaged carries the task-231 master switch, its four category
 	// checkboxes, and the three home-derived paths the classifier matches on.
 	// Boot resolves it from config; the zero value keeps every approval prompt
@@ -830,13 +842,14 @@ func New(opts Options) *Controller {
 			// replaying onto the shelf.
 			appliedReceipts: opts.InboxAppliedReceipts,
 		},
-		taskBudget:             opts.TaskBudget,
-		goalTokenBudget:        opts.GoalTokenBudget,
-		autopilot:              opts.Autopilot && opts.AutopilotMaxRuntime > 0,
-		autopilotApprovalGrace: autopilotApprovalGrace(opts),
-		approvalTier:           NormalizeApprovalTier(opts.ApprovalTier),
-		autopilotAskWait:       opts.AutopilotAskWait,
-		preapproveManaged:      opts.PreapproveManaged,
+		taskBudget:                 opts.TaskBudget,
+		goalTokenBudget:            opts.GoalTokenBudget,
+		autopilot:                  opts.Autopilot && opts.AutopilotMaxRuntime > 0,
+		autopilotApprovalGrace:     autopilotApprovalGrace(opts),
+		approvalTier:               NormalizeApprovalTier(opts.ApprovalTier),
+		autopilotAskWait:           opts.AutopilotAskWait,
+		autopilotAskTimeoutEnabled: opts.AutopilotAskTimeoutEnabled,
+		preapproveManaged:          opts.PreapproveManaged,
 		goals: goalMachine{
 			tokenBudget: opts.GoalTokenBudget,
 			autopilot:   opts.Autopilot && opts.AutopilotMaxRuntime > 0,
@@ -2820,6 +2833,21 @@ func (c *Controller) lockPromptFor(ctx context.Context, kind string) bool {
 	}
 }
 
+// autopilotAskWaitFor resolves the effective high-risk ask wait for this run:
+// the configured duration, else the task-477 sub-option default (15s) when the
+// sub-option is on, else the task-109 B4 terminal-stop default (10m). A method
+// rather than inline logic so the resolution is unit-testable without sleeping
+// on the timer; Ask() is its only caller.
+func (c *Controller) autopilotAskWaitFor() time.Duration {
+	if c.autopilotAskWait > 0 {
+		return c.autopilotAskWait
+	}
+	if c.autopilotAskTimeoutEnabled {
+		return DefaultAutopilotAskTimeoutWait
+	}
+	return DefaultAutopilotAskWait
+}
+
 // Ask implements agent.Asker: it emits an AskRequest and blocks until
 // AnswerQuestion(ID, …) answers or ctx is cancelled. promptMu serialises it
 // against tool-approval prompts so at most one user prompt is outstanding.
@@ -2835,6 +2863,9 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// destructive, outward-facing, or credential-touching still waits for a human,
 	// but not forever — after DefaultAutopilotAskWait the run ends with a terminal
 	// error so the safety valve is a real stop, not an invisible hang (task 109 B4).
+	// The task-477 experimental sub-option (default off) replaces that terminal
+	// stop with an explicit refusal answer, so a goal-driven unattended run
+	// keeps going after the timeout instead of dying on the dialog.
 	if c.autopilot && askRiskOfQuestions(askQuestionTexts(questions)) == askRiskReversible {
 		return autopilotAnswers(questions), nil
 	}
@@ -2907,14 +2938,15 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// A question only a human may answer has no unattended substitute, so
 	// waiting for one forever is exactly the stall this run cannot afford: stop
 	// with an explicit failure, which the Goal turns into a reported terminal
-	// state (task 109 B4).
+	// state (task 109 B4). The task-477 experimental sub-option trades that
+	// terminal stop for an explicit refusal: after the (shorter) configured
+	// wait the run answers "refused, continue another way" so a goal-driven
+	// run keeps going instead of dying on one unanswered dialog.
 	var askTimeout <-chan time.Time
+	var askWait time.Duration
 	if c.autopilot {
-		wait := c.autopilotAskWait
-		if wait <= 0 {
-			wait = DefaultAutopilotAskWait
-		}
-		t := time.NewTimer(wait)
+		askWait = c.autopilotAskWaitFor()
+		t := time.NewTimer(askWait)
 		defer t.Stop()
 		askTimeout = t.C
 	}
@@ -2924,10 +2956,26 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 		return ans, nil
 	case <-askTimeout:
 		c.cancelOwnedPrompt(id)
+		if c.autopilotAskTimeoutEnabled {
+			// Task 477 判据锚: one grep-able log line plus one notice, so
+			// "did the ask timeout fire and what did it decide" is answerable
+			// from the log and the transcript alone. The refusal travels as
+			// the ask's answers, so this turn ends like any other answered
+			// ask and the goal loop keeps driving the run forward.
+			log.Printf("[autopilot-ask] high-risk question unanswered after %s; refused and the run continues (task 477) turn=%s item=%s", askWait, turnID, id)
+			c.sink.Emit(event.Event{
+				Kind:   event.Notice,
+				Level:  event.LevelWarn,
+				Code:   "autopilot_ask_timeout",
+				Text:   "autopilot · ask — no human answered within " + askWait.String() + "; high-risk question refused, run continues with the safe default",
+				Detail: "the unattended run declines destructive/outward-facing/credential actions instead of deciding them; it keeps working on the rest of the goal (task 477)",
+			})
+			return autopilotAskTimeoutRefusalAnswers(questions, askWait), nil
+		}
 		c.sink.Emit(event.Event{
 			Kind:   event.Notice,
 			Level:  event.LevelWarn,
-			Text:   "autopilot · ask — refused: high-risk question unanswered after " + DefaultAutopilotAskWait.String(),
+			Text:   "autopilot · ask — refused: high-risk question unanswered after " + askWait.String(),
 			Detail: "the unattended run stopped instead of deciding destructive/outward-facing/credential actions for the user",
 		})
 		return nil, ErrAutopilotAskUnanswered

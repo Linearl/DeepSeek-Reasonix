@@ -267,19 +267,68 @@ func TestAutopilotGateOnNewTabDefaults(t *testing.T) {
 }
 
 func TestGateRestoredAutopilotDefaultsPure(t *testing.T) {
-	on, runtime, grace := gateRestoredAutopilotDefaults(true, 8*time.Hour, 15*time.Second, control.ToolApprovalYolo)
+	on, runtime, grace, askEnabled, askWait := gateRestoredAutopilotDefaults(true, 8*time.Hour, 15*time.Second, true, 15*time.Second, control.ToolApprovalYolo)
 	if !on || runtime != 8*time.Hour || grace != 15*time.Second {
 		t.Fatalf("yolo passes through: on=%v runtime=%v grace=%v", on, runtime, grace)
 	}
+	if !askEnabled || askWait != 15*time.Second {
+		t.Fatalf("yolo passes the task-477 pair through: askEnabled=%v askWait=%v", askEnabled, askWait)
+	}
 	for _, mode := range []string{control.ToolApprovalAsk, control.ToolApprovalAuto, ""} {
-		on, runtime, grace := gateRestoredAutopilotDefaults(true, 8*time.Hour, 15*time.Second, mode)
+		on, runtime, grace, askEnabled, askWait := gateRestoredAutopilotDefaults(true, 8*time.Hour, 15*time.Second, true, 15*time.Second, mode)
 		if on || runtime != 0 || grace != 0 {
 			t.Fatalf("mode %q must be refused with zeroed bounds, got on=%v runtime=%v grace=%v", mode, on, runtime, grace)
 		}
+		if askEnabled || askWait != 0 {
+			t.Fatalf("mode %q must clear the task-477 pair too, got askEnabled=%v askWait=%v", mode, askEnabled, askWait)
+		}
 	}
 	// A preference that is already off stays off regardless of the mode.
-	if on, _, _ = gateRestoredAutopilotDefaults(false, 8*time.Hour, 0, control.ToolApprovalYolo); on {
+	if on, _, _, _, _ = gateRestoredAutopilotDefaults(false, 8*time.Hour, 0, false, 0, control.ToolApprovalYolo); on {
 		t.Fatal("off preference must stay off")
+	}
+}
+
+// Task 477: the ask-timeout sub-option is a plain desktop preference — no yolo
+// precondition of its own (it only ever bites while the run is unattended),
+// and the seconds dial is validated by the config setter.
+func TestSetDesktopAutopilotAskTimeoutPersistsAndBounds(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	app := NewApp()
+	app.ctx = context.Background()
+	app.readyHook = func() {}
+
+	if err := app.SetDesktopAutopilotAskTimeout(true, 0); err != nil {
+		t.Fatalf("on with the built-in default (0) must be accepted: %v", err)
+	}
+	cfg := config.LoadForEdit(config.UserConfigPath())
+	if !cfg.Desktop.ExperimentalAutopilotAskTimeout {
+		t.Fatal("enable did not persist")
+	}
+	if got := cfg.AutopilotAskWaitSecondsEffective(); got != 15 {
+		t.Fatalf("unset dial reads as %d, want the built-in 15", got)
+	}
+
+	if err := app.SetDesktopAutopilotAskTimeout(true, 7200); err == nil {
+		t.Fatal("7200s must be refused (ceiling 3600)")
+	}
+	if err := app.SetDesktopAutopilotAskTimeout(true, 90); err != nil {
+		t.Fatalf("90s must be accepted: %v", err)
+	}
+	cfg = config.LoadForEdit(config.UserConfigPath())
+	if got := cfg.AutopilotAskWaitSecondsEffective(); got != 90 {
+		t.Fatalf("dial persisted as %d, want 90", got)
+	}
+
+	if err := app.SetDesktopAutopilotAskTimeout(false, 0); err != nil {
+		t.Fatalf("disable must always be allowed: %v", err)
+	}
+	cfg = config.LoadForEdit(config.UserConfigPath())
+	if cfg.Desktop.ExperimentalAutopilotAskTimeout {
+		t.Fatal("disable did not persist")
+	}
+	if cfg.Desktop.AutopilotAskWaitSeconds != 90 {
+		t.Fatalf("the dial must survive the switch going off, got %d", cfg.Desktop.AutopilotAskWaitSeconds)
 	}
 }
 

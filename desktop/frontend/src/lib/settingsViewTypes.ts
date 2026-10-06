@@ -9,6 +9,10 @@ export interface SettingsView {
   autopilot: boolean;
   autopilotMaxRuntime: string;
   autopilotApprovalGrace: string;
+  /** Task 477: the experimental ask-timeout sub-option switch (default off). */
+  experimentalAutopilotAskTimeout?: boolean;
+  /** Task 477: the ask-timeout wait in seconds (effective value; unset = built-in 15). */
+  autopilotAskWaitSeconds?: number;
   /** Task 326: the autopilot guard task's run interval, in minutes (effective value). */
   autopilotGuardInterval?: number;
   /** Task 326: what happens to the guard once the watched session goes quiet. */
