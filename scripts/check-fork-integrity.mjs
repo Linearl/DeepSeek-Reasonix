@@ -325,6 +325,12 @@ const CHECKS = [
   // 任务561 M7：eventsRotation 并入 sessionStore 卡，灯改为双成员 OR——
   // 轮转模式语义原样保留在 OR 的右支（manual/auto 点亮仅 off 置灰）。
   { feature: "任务362 修复会话菜单入口=开关态（任务561 后随 sessionStore 卡灯）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["on: (s.sessionStorage ?? \"v3_only\") !== \"v3_only\" || (s.eventsAutoRotation ?? \"manual\") !== \"off\""] },
+  // 任务564：A 级文案修正 + 退役键只读保留（551 范式 UI 侧）。
+  // pathRules 零消费点退役：rail 行保留、面板只读展示、全面板零 setter——
+  // 三者缺一，「看得见却改不动」或「又变回死开关」都算 merge 丢块。
+  { feature: "任务564 pathRules 退役只读（rail 保留+零 setter+retired 键）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["{ id: \"pathRules\", group: \"infra\"", "t(\"settings.pathRules.retired\")", "t(\"settings.pathRules.value\""] },
+  { feature: "任务564 opencodeGoUsage 关闭态零网络（后端开关门控）", file: "desktop/opencode_go_usage.go", patterns: ["openCodeGoUsageSwitchOn", "cfg.Agent.ExperimentalOpenCodeGoUsage"] },
+  { feature: "任务564 守卫测试（A 级文案↔代码对照 + 退役只读负断言）", file: "desktop/frontend/src/__tests__/task564-a-copy.test.tsx", patterns: ["task 551 paradigm", "SetExperimentalPathRules", "always available|始终可用|始終可用"] },
   { feature: "任务365 级联审批断链：create 首信即挂 grant（C5）+ 15s 超时再评转父（C6）", file: "desktop/session_collab.go", patterns: ["Task 365 C5", "registerCascadeGrant(item.ContactID, from)"] },
   { feature: "任务365 C6 unattended 超时 cascade 再评", file: "internal/control/autopilot_approval.go", patterns: ["cascade re-evaluation missed", "cascaded to task source"] },
   { feature: "任务367 C1 hop 单跳恒放行钉死（对照表入码）", file: "internal/agent/cascade_hop.go", patterns: ["single-hop delegation is always allowed", "depth <= 1"] },
