@@ -40,3 +40,39 @@ func TestCompletionReportPolicyRealNewlines(t *testing.T) {
 		t.Fatalf("CompletionReportPolicy contains literal backslash-n: %q", CompletionReportPolicy)
 	}
 }
+
+// TestCompletionReportPolicyExclusion pins the task-526 exclusion clause:
+// turns that only answer a question, look something up, confirm a plan, or
+// make a small change with nothing to hand off must not emit a report block
+// (user feedback 2026-10-06: the model was appending one to every turn).
+func TestCompletionReportPolicyExclusion(t *testing.T) {
+	for _, want := range []string{
+		"Do not append the report on turns",
+		"only answer a question",
+		"look up information",
+		"confirm or discuss a plan",
+		"small change with nothing to hand off",
+		"only for turns that produced or changed something",
+	} {
+		if !strings.Contains(CompletionReportPolicy, want) {
+			t.Fatalf("CompletionReportPolicy missing %q", want)
+		}
+	}
+}
+
+// TestCompletionReportPolicyLineBudget pins the task-526 hard budget: one line
+// per field, the whole block within four lines, and fine-grained detail or
+// evidence left to a document with only its path in the report.
+func TestCompletionReportPolicyLineBudget(t *testing.T) {
+	for _, want := range []string{
+		"Hard budget",
+		"each field to a single line",
+		"at most four lines",
+		"belong in a document",
+		"only its path",
+	} {
+		if !strings.Contains(CompletionReportPolicy, want) {
+			t.Fatalf("CompletionReportPolicy missing %q", want)
+		}
+	}
+}
