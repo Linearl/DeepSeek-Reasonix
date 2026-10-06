@@ -976,6 +976,14 @@ const CHECKS = [
   { feature: "519 构造期结算白名单遗留记录（agent.New 收尾调用）", file: "internal/agent/agent.go", patterns: ["Task 519（核实卡移除，X5 a1 结算前移）", "a.resolveSideEffectFreeInterruptedCalls()"] },
   { feature: "519 行为钉（构造即结算+写类保持未决）", file: "internal/agent/tool_recovery_side_effect_free_test.go", patterns: ["TestNewSettlesLeftoverSideEffectFreeRecords", "write-capable leftover must stay pending"] },
 
+  // 任务531（wt-531-dispatch-positive，2026-10-06）：派遣正面说明。<subagent-policy>
+  // 文本块无编译依赖，merge 顶掉只会静默退回「只有负面清单」。锚定正面三件套
+  // （何时该派/派了得到什么/成本可控）+ write_paths 解锁写并行的引导句 +
+  // 文案钉测试（含步数公式措辞与工具 schema 的防漂移同步钉）。
+  { feature: "531 派遣正面说明（balanced/aggressive 正面三件套）", file: "internal/agent/subagent_policy.go", patterns: ["When to dispatch (a positive list", "What dispatching buys", "Dispatching is affordable"] },
+  { feature: "531 write_paths 解锁写并行引导（aggressive）", file: "internal/agent/subagent_policy.go", patterns: ["unlock parallel writers", "serializes every writer behind it"] },
+  { feature: "531 文案钉测试（正面存在+write_paths 引导+公式措辞同步）", file: "internal/agent/subagent_policy_test.go", patterns: ["TestSubagentPolicyGuidancePositiveGuidance", "TestSubagentPolicyGuidanceStepCapWordingMatchesSchema"] },
+
   // ── 任务499（wt-499-memory-fix）──────────────────────────────────
   // 桌面版内存膨胀（10-05 现场 14.6GB heap）的持有链两环：graph cache 无字节
   // 上限 + 全仓无失效点。字节上限（总 2048MiB / 单体 1024MiB，账目=st.size）
