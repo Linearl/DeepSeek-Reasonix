@@ -51,6 +51,12 @@ func (a *App) publishRemoteTabFrameForRouteLocked(tabID string, tab, expectedTab
 		refreshRuntime = a.cacheRemotePendingExtensionForm(tabID, gen, frame)
 	case "turn_done":
 		a.completeRemoteTabTurn(tabID, gen)
+	case "prompt_closed":
+		// 任务536: the prompt is gone backend-side (cancel/timeout/refusal), so
+		// the cached panel frame must not survive a reconnect replay — a remote
+		// tab would otherwise re-show a dead ask/approval panel whose every
+		// submission is refused with "prompt is not pending".
+		a.expireRemotePendingPromptEvent(tabID, gen, frame)
 	}
 	a.emitRemoteEvent(fmt.Sprintf("remote-tab:%s:event", tabID), frame)
 	if refreshRuntime {
