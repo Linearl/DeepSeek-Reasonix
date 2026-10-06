@@ -707,6 +707,9 @@ export function Transcript(props: TranscriptProps) {
             questions={questions}
             totalQuestions={totalQuestions}
             onJump={jumpToLoadedQuestion}
+            hasOlderHistory={hasOlderHistory}
+            loadingOlderHistory={loadingOlderHistory}
+            onReachTop={onLoadOlderHistory ? () => void requestOlder(undefined, "viewport-user") : undefined}
           />
         </Suspense>
       )}
