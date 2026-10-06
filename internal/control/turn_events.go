@@ -83,7 +83,7 @@ func (s *turnEventSink) observe(e event.Event) {
 func turnEventSynchronousBarrier(kind event.Kind) bool {
 	switch kind {
 	case event.ToolDispatch, event.ToolStarted, event.ToolResult, event.AskRequest, event.ApprovalRequest,
-		event.MCPInteractionRequest, event.PromptAnswered, event.TurnStatusChanged,
+		event.MCPInteractionRequest, event.PromptAnswered, event.PromptClosed, event.TurnStatusChanged,
 		event.TurnStarted, event.TurnDone:
 		return true
 	default:

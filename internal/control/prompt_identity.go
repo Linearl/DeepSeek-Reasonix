@@ -273,12 +273,28 @@ func (c *Controller) cancelOwnedPrompt(id string) {
 }
 
 func (c *Controller) cancelOwnedPromptLocked(id string) {
-	if prompt, ok := c.promptOwner.Prompt(id); ok && prompt.Cancel != nil {
+	prompt, ok := c.promptOwner.Prompt(id)
+	if ok && prompt.Cancel != nil {
 		_ = prompt.Cancel()
 	} else {
 		c.approval.cancel(id)
 		c.approval.cancelAsk(id)
 		c.approval.cancelMCPInteraction(id)
+	}
+	if ok {
+		// 任务536: the prompt just left the pending set, so any panel a
+		// frontend still shows for it is dead — every submission would be
+		// refused with "prompt is not pending". Emit the close signal while
+		// the registration is still in place so emitTurnEventChecked can
+		// stamp TurnID/PromptKind from the owner; the id tombstone on the
+		// frontend also keeps a delayed replay from reviving the panel.
+		// Cancel/timeout/autopilot-refusal/teardown all funnel through this
+		// one choke point, so "面板必须关" holds on every abandon path.
+		_ = c.emitTurnEventChecked(event.Event{
+			Kind:       event.PromptClosed,
+			ItemID:     id,
+			PromptKind: string(prompt.Identity.Kind),
+		})
 	}
 	c.promptOwner.Remove(id)
 }
