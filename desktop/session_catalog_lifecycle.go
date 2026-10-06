@@ -81,6 +81,11 @@ func (a *App) runSessionCatalog(ctx context.Context) {
 		catalog.MarkRepairReason("generation_upgrade")
 	}
 	a.retargetOpenTabsToContinuations()
+	// Task 550 ②: three-source topic inventory reconcile at load time. Tabs
+	// are restored and the catalog projection is open, so tab ↔ topic-index ↔
+	// session-file disagreements are now listable; the summary is logged once
+	// and the full list stays queryable via GetTopicInventoryMismatches.
+	logTopicInventorySummary(a.reconcileTopicInventory(ctx))
 	a.runSessionCatalogRefreshLoop(ctx, catalog)
 }
 

@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -296,6 +298,16 @@ func (a *App) runtimeProjectTopicNodes(scope, workspaceRoot string, snapshots []
 		if node.SessionPath == "" {
 			node.SessionPath = sessionPath
 		}
+		// Task 550 ③: one stable visibility rule for unnamed tabs. A
+		// default-titled idle topic with no transcript content renders only in
+		// the tab bar — in every snapshot, whatever the render timing and
+		// whatever the catalog repair state. Emitting it only inside some
+		// windows (fresh index, repair churn) was the "ghost new session"
+		// flash; skipping it here keeps every downstream channel (runtime
+		// events, page merge, metadata fallback) consistent from one rule.
+		if runtimeTopicRowIsBlank(node, sessions) {
+			continue
+		}
 		out = append(out, node)
 	}
 	return out, sessionsByTopic
@@ -444,7 +456,7 @@ func (a *App) projectNodeFromCatalogTopic(topic sessioncatalog.TopicRecord, topi
 	})) {
 		return ProjectNode{Children: []ProjectNode{}}, false
 	}
-	if a.ordinaryTreeHidesUnindexedBlank(topic) {
+	if a.ordinaryTreeHidesBlankShell(topic, overlay.running || node.Running) {
 		return ProjectNode{Children: []ProjectNode{}}, false
 	}
 	// After filtering non-preferred recovery forks, a topic may have nothing
@@ -479,8 +491,69 @@ func (a *App) projectNodeFromCatalogTopic(topic sessioncatalog.TopicRecord, topi
 	return node, true
 }
 
-func (a *App) ordinaryTreeHidesUnindexedBlank(topic sessioncatalog.TopicRecord) bool {
-	if topic.Pinned || topic.Turns > 0 {
+// runtimeTopicRowIsBlank reports whether a runtime topic row is an unnamed
+// tab: default-or-empty title, no runtime work, and no conversation content
+// in any of its transcripts. The rule is a pure function of the snapshot and
+// the transcript files, so the same data yields the same row set on every
+// re-render (task 550 ③). Runtime-only rows never carry Pinned, but the
+// check keeps the guard total.
+func runtimeTopicRowIsBlank(node ProjectNode, sessions []catalogRuntimeSnapshot) bool {
+	if node.Pinned || node.Running || strings.TrimSpace(node.Status) != "" {
+		return false
+	}
+	if !isDefaultTopicTitle(node.Label) && strings.TrimSpace(node.Label) != "" {
+		return false
+	}
+	for _, session := range sessions {
+		if path := strings.TrimSpace(session.sessionPath); path != "" && !runtimeSessionTranscriptBlank(path) {
+			return false
+		}
+	}
+	return true
+}
+
+// runtimeSessionTranscriptBlank reports whether one transcript holds no
+// conversation. Missing and zero-byte files are blank — a freshly rotated
+// session has no file yet and a never-used tab persists a zero-byte stub —
+// so both read as blank no matter when the snapshot runs. An existing file
+// that cannot be decoded keeps the row: render filtering stays conservative,
+// and only the discard path owns the strict sessionPathHasNoContent
+// semantics.
+func runtimeSessionTranscriptBlank(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return true
+	}
+	resolved, ok := pinnedTabSessionPath(filepath.Dir(path), path)
+	if !ok {
+		return false
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return true
+	}
+	if info.IsDir() {
+		return false
+	}
+	if info.Size() == 0 {
+		return true
+	}
+	session, err := agent.LoadSession(resolved)
+	if err != nil {
+		return false
+	}
+	return !session.HasContent()
+}
+
+// ordinaryTreeHidesBlankShell is the one stable visibility rule for unnamed
+// catalog topics (task 550 ③). A default-titled topic holding no conversation
+// content — no turns and no preview in any of its sessions — is a blank tab:
+// it renders only in the tab bar, regardless of render timing, catalog
+// repair state, or whether a tab currently holds it open. Renaming (the
+// auto title after the first turn) is the single visible transition, and a
+// pinned topic stays an explicit user row.
+func (a *App) ordinaryTreeHidesBlankShell(topic sessioncatalog.TopicRecord, running bool) bool {
+	if topic.Pinned || topic.Turns > 0 || running {
 		return false
 	}
 	if !isDefaultTopicTitle(topic.Title) && strings.TrimSpace(topic.Title) != "" {
@@ -491,7 +564,7 @@ func (a *App) ordinaryTreeHidesUnindexedBlank(topic sessioncatalog.TopicRecord) 
 			return false
 		}
 	}
-	return !topicIndexedInRegistry(topic.Scope, topic.WorkspaceRoot, topic.TopicID)
+	return true
 }
 
 func topicSummaryFromCatalogTopic(topic sessioncatalog.TopicRecord, visible []sessioncatalog.SessionRecord) topicSummary {

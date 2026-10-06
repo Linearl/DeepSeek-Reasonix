@@ -2548,11 +2548,13 @@ export function ProjectTree({
     ? (catalogStatus.total <= 0 ? t("projectTree.indexing")
       : t("projectTree.indexingProgress", { done: catalogStatus.indexed, total: catalogStatus.total }))
     : catalogNotice === "repair-active"
-      ? t("projectTree.repairActive", { count: catalogStatus.repairActive ?? catalogStatus.repairPending })
+      // Task 550 ①: the banner only shows when repairActive > 0, so the count
+      // reads the same precise field — no legacy repairPending fallback.
+      ? t("projectTree.repairActive", { count: catalogStatus.repairActive ?? 0 })
       : catalogNotice === "repair-deferred"
         ? t("projectTree.repairDeferred")
         : catalogNotice === "repair-blocked"
-          ? t("projectTree.repairBlocked", { count: catalogStatus.repairBlocked ?? catalogStatus.repairPending })
+          ? t("projectTree.repairBlocked", { count: catalogStatus.repairBlocked ?? 0 })
           : `${t("projectTree.indexing")} — ${t("task.state.failed")}`;
 
   return (

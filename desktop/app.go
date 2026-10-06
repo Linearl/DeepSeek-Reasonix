@@ -159,6 +159,15 @@ type App struct {
 	catalogRebuild     *sessionCatalogRebuildFlight
 	catalogRebuilding  atomic.Bool
 	shuttingDown       atomic.Bool
+	// topicIndexWriteFailures counts best-effort topic-index writes that
+	// failed (task 550 ①): a swallowed error here used to produce a session
+	// whose tab and sidebar could disagree with the persisted index with no
+	// trace. Every failure is logged (slog warn) and counted so the
+	// topic-inventory reconcile can treat the topic as suspect instead of
+	// silently trusting the index.
+	topicIndexWriteFailures atomic.Uint64
+	// topicInventory caches the three-source reconcile result (task 550 ②).
+	topicInventory topicInventoryState
 	// perfMonitor is the opt-in host performance sampler (task 184). Nil unless
 	// the experiment is on: "off" means no ticker, goroutine or file handle.
 	perfMonitor *perfMonitor
@@ -2498,7 +2507,14 @@ func (a *App) assignFreshSessionTopic(tab *WorkspaceTab) {
 	// topic index repair fails here, keep the session usable and let persisted
 	// session metadata repair the topic index later instead of surfacing a false
 	// "new session failed" error to the frontend.
-	_ = ensureTopicIndexedWithCreatedAt(scope, workspaceRoot, topicID, defaultTopicTitle, topicTitleSourceAuto, time.Now().UnixMilli())
+	// Task 550 ①: the failure is no longer silent — it is logged with the
+	// structured identity of the topic and counted, so a tab whose sidebar row
+	// later disagrees with the index has a retrievable cause.
+	if err := ensureTopicIndexedWithCreatedAt(scope, workspaceRoot, topicID, defaultTopicTitle, topicTitleSourceAuto, time.Now().UnixMilli()); err != nil {
+		a.topicIndexWriteFailures.Add(1)
+		slog.Warn("desktop: new-session topic index write failed; sidebar row waits for session metadata repair",
+			"topic_id", topicID, "scope", scope, "workspace_root", workspaceRoot, "err", err)
+	}
 }
 
 func (a *App) ensureTabTopicIndexedForUserTurn(tab *WorkspaceTab) {
@@ -2528,7 +2544,12 @@ func (a *App) ensureTabTopicIndexedForUserTurn(tab *WorkspaceTab) {
 		workspaceRoot = normalizeProjectRoot(workspaceRoot)
 	}
 
-	_ = ensureTopicIndexedWithCreatedAt(scope, workspaceRoot, topicID, defaultTopicTitle, topicTitleSourceAuto, time.Now().UnixMilli())
+	// Task 550 ①: same no-silent-failure contract as assignFreshSessionTopic.
+	if err := ensureTopicIndexedWithCreatedAt(scope, workspaceRoot, topicID, defaultTopicTitle, topicTitleSourceAuto, time.Now().UnixMilli()); err != nil {
+		a.topicIndexWriteFailures.Add(1)
+		slog.Warn("desktop: first-turn topic index write failed; sidebar row waits for session metadata repair",
+			"topic_id", topicID, "scope", scope, "workspace_root", workspaceRoot, "err", err)
+	}
 	path := a.currentSessionPathFor(tab)
 	a.persistTabSessionPath(tab, path)
 	a.emitProjectTreeChangedForSessionDirs(sessionDirectoryForPath(path))

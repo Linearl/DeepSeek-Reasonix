@@ -1071,6 +1071,17 @@ const CHECKS = [
   { feature: "任务546 locale en", file: "desktop/frontend/src/locales/en.ts", patterns: ["tabBar.lastCwd"] },
   { feature: "任务546 下拉样式", file: "desktop/frontend/src/styles.css", patterns: [".tabbar__new-caret", ".tabbar__newmenu-path"] },
   { feature: "任务546 测试存续（含失效对立输入）", file: "internal/agent/session_workspace_test.go", patterns: ["TestLatestSessionWorkspaceRootStaleDirectoryReportedNotSilentlySkipped"] },
+  // ── 任务550（wt-550-ghost-topic）侧栏闪现与修复横幅（机制验收 2026-10-06 修订版）──
+  // 四个锚各护一条机制：merge 丢掉任何一条，「半持久化幽灵」就会复发——
+  // 索引写失败重新被 `_ =` 吞掉（①）、三源失配重新不可查询（②）、可见性
+  // 判据重新依赖时序/修复态（③）、横幅重新回退旧字段 repairPending（①）。
+  { feature: "550① 索引写失败不吞（计数+结构化日志，两处写入点）", file: "desktop/app.go", patterns: ["topicIndexWriteFailures.Add(1)", "new-session topic index write failed", "first-turn topic index write failed"] },
+  { feature: "550② 三源对账（tabs↔topic-state↔会话文件，失配可查询不自动删）", file: "desktop/topic_inventory.go", patterns: ["func (a *App) ReconcileTopicInventory", "func (a *App) GetTopicInventoryMismatches", "topicInventoryIndexTopicWithoutSessions"] },
+  { feature: "550② 启动加载时对账接线", file: "desktop/session_catalog_lifecycle.go", patterns: ["logTopicInventorySummary(a.reconcileTopicInventory(ctx))"] },
+  { feature: "550② catalog 零会话 tombstone 可分离读（对账依赖）", file: "internal/sessioncatalog/catalog.go", patterns: ["func (c *Catalog) GetTopicWithSessionCount"] },
+  { feature: "550③ 项目树可见性单一稳定判据（运行时行+目录行）", file: "desktop/session_catalog_runtime.go", patterns: ["func runtimeTopicRowIsBlank", "func (a *App) ordinaryTreeHidesBlankShell"] },
+  { feature: "550① 修复横幅只信精确字段（去掉 repairPending 回退）", file: "desktop/frontend/src/lib/sessionCatalogPresentation.ts", patterns: ["(repairActive ?? 0) > 0"] },
+  { feature: "550 横幅回退链对立输入测试存续", file: "desktop/frontend/src/__tests__/session-catalog-notice.test.ts", patterns: ["must never resurrect the legacy repairPending"] },
 
 ];
 

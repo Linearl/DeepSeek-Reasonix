@@ -591,6 +591,25 @@ func (c *Catalog) listTopicSessionsByRootKey(ctx context.Context, key TopicKey, 
 }
 
 func (c *Catalog) GetTopic(ctx context.Context, key TopicKey) (TopicRecord, bool, error) {
+	item, sessionCount, ok, err := c.GetTopicWithSessionCount(ctx, key)
+	if err != nil || !ok {
+		return item, false, err
+	}
+	if sessionCount == 0 {
+		// Tombstone overlay: topic rows may lag behind RemoveSession while the
+		// durable DELETE waits on locks or a short caller context.
+		return TopicRecord{Sessions: []SessionRecord{}}, false, nil
+	}
+	return item, true, nil
+}
+
+// GetTopicWithSessionCount reads one catalog topic row plus its session
+// records and reports the count, without the zero-session tombstone overlay
+// GetTopic applies. The desktop topic-inventory reconcile needs exactly the
+// rows GetTopic reports as not-found — indexed topics that hold no session
+// file are the task 550 orphan class. The session list comes from the same
+// pager GetTopic uses so the removed-path overlay stays authoritative.
+func (c *Catalog) GetTopicWithSessionCount(ctx context.Context, key TopicKey) (TopicRecord, int, bool, error) {
 	key.Scope, key.WorkspaceRoot = normalizeScope(key.Scope, key.WorkspaceRoot)
 	key.TopicID = strings.TrimSpace(key.TopicID)
 	rootKey := c.workspaceRootKey(key.Scope, key.WorkspaceRoot)
@@ -606,22 +625,17 @@ func (c *Catalog) GetTopic(ctx context.Context, key TopicKey) (TopicRecord, bool
 		&item.CreatedAt, &item.LastActivityAt, &item.RecoveryState, &item.RecoveryBranchCount,
 		&item.RecoveryUnresolvedCount, &item.RecoveryCleanupEligibleCount, &item.Health)
 	if errors.Is(err, sql.ErrNoRows) {
-		return item, false, nil
+		return item, 0, false, nil
 	}
 	if err != nil {
-		return item, false, err
+		return item, 0, false, err
 	}
 	item.Sessions, err = c.listTopicSessionsByRootKey(ctx, key, rootKey)
 	if err != nil {
-		return TopicRecord{Sessions: []SessionRecord{}}, false, err
-	}
-	// Tombstone overlay: topic rows may lag behind RemoveSession while the
-	// durable DELETE waits on locks or a short caller context.
-	if len(item.Sessions) == 0 {
-		return TopicRecord{Sessions: []SessionRecord{}}, false, nil
+		return TopicRecord{Sessions: []SessionRecord{}}, 0, false, err
 	}
 	hydrateTopicDisplay(&item)
-	return item, true, nil
+	return item, len(item.Sessions), true, nil
 }
 
 func topicRepresentativePath(sessions []SessionRecord) string {
