@@ -627,30 +627,71 @@ type ManagedClient struct {
 // target resolves the client one call delegates to. The pointer is captured
 // once per call so an in-flight call keeps talking to the connection it
 // started on (a mid-call swap would risk a double execution).
+//
+// 任务521 nil 防线：任何 nil 组合都不得 panic，且一律 fail-closed 回落
+// inline/本地路径。逐组合矩阵（inline = c.inline，各态指 manager 字段）：
+//
+//	 #  receiver  m       done   state          remote    返回
+//	 1  nil       —       —      —              —         (nil, errClientClosed)：无本地面可回落，错误向上传播
+//	 2  非 nil    nil     false  —              —         (inline, nil)：半构造视图回落本地（修复前 panic）
+//	 3  非 nil    nil     true   —              —         (nil, errClientClosed)
+//	 4  非 nil    非 nil  true   —              —         (nil, errClientClosed)
+//	 5  非 nil    非 nil  false  remote_ready   非 nil    (remote, nil)：正常远端
+//	 6  非 nil    非 nil  false  remote_ready   nil       (inline, nil)：markDead 竞态窗口，回落本地
+//	 7  非 nil    非 nil  false  其余任意态      任意      (inline, nil)
+//
+// 回落语义：inline 为值类型，装箱后接口恒非 nil——target() 绝不返回
+// (nil, nil)。零值 inline（Surface nil）的工具面答 ErrNotWired，消费方
+// （agent baseToolCall / control baseCatalogEntries）经既有 ErrNotWired
+// 分支转本地注册表路径；带 Surface 就地本地执行。不设 recover：确定性
+// 守卫逐组合可证，recover 会把未来真实缺陷静默成降级。
 func (c *ManagedClient) target() (BaseClient, error) {
+	if c == nil {
+		return nil, errClientClosed
+	}
 	c.mu.Lock()
 	closed := c.done
+	inline := c.inline
 	c.mu.Unlock()
 	if closed {
 		return nil, errClientClosed
 	}
+	m := c.m
+	if m == nil {
+		// 任务521：半构造视图（manager 缺失）——fail-closed 回落本地面，
+		// 绝不 panic（修复前此处 c.m.mu.Lock() nil 解引用）。
+		return inline, nil
+	}
 	// One critical section decides remote vs inline so the answer cannot go
 	// stale between the check and the hand-off.
-	c.m.mu.Lock()
-	if c.m.state == stateRemoteReady && c.m.remote != nil {
-		remote := c.m.remote
-		c.m.mu.Unlock()
+	m.mu.Lock()
+	if m.state == stateRemoteReady && m.remote != nil {
+		remote := m.remote
+		m.mu.Unlock()
 		return remote, nil
 	}
-	c.m.mu.Unlock()
-	return c.inline, nil
+	m.mu.Unlock()
+	return inline, nil
 }
 
 // Mode implements BaseClient (delegates to the manager's D5 state).
-func (c *ManagedClient) Mode() Mode { return c.m.Mode() }
+// 任务521：nil receiver / nil manager 答 inline——消费门（先 Mode 后调用）
+// 在第一个接触点就 fail-closed 走本地路径，而非 panic。
+func (c *ManagedClient) Mode() Mode {
+	if c == nil || c.m == nil {
+		return ModeInline
+	}
+	return c.m.Mode()
+}
 
 // State exposes the manager state for logs/tests.
-func (c *ManagedClient) State() string { return c.m.State() }
+// 任务521：nil receiver / nil manager 答 inline_warming（读数面，不 panic）。
+func (c *ManagedClient) State() string {
+	if c == nil || c.m == nil {
+		return stateWarming.String()
+	}
+	return c.m.State()
+}
 
 // Hello implements BaseClient.
 func (c *ManagedClient) Hello(ctx context.Context, params HelloParams) (HelloResult, error) {
@@ -727,18 +768,28 @@ func (c *ManagedClient) Shutdown(ctx context.Context) error {
 	if err := t.Shutdown(ctx); err != nil {
 		return err
 	}
-	c.m.markShutdownSent()
+	// 任务521：nil manager 视图无记账可做（记账依赖 manager 存活）——跳过，
+	// 不解引用（修复 target 后此处会暴露为新的 panic 点）。
+	if c.m != nil {
+		c.m.markShutdownSent()
+	}
 	return nil
 }
 
 // Close implements BaseClient: idempotent release of this view. The
 // subprocess is torn down when the last view closes.
+// 任务521：nil receiver / nil manager 视图无引用可释放——幂等空操作。
 func (c *ManagedClient) Close() error {
+	if c == nil {
+		return nil
+	}
 	c.once.Do(func() {
 		c.mu.Lock()
 		c.done = true
 		c.mu.Unlock()
-		c.m.release()
+		if c.m != nil {
+			c.m.release()
+		}
 	})
 	return nil
 }
