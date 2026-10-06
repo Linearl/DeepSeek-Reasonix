@@ -696,7 +696,7 @@ const CHECKS = [
   // 锁三处——闸门本体、四个开启入口的接线、前端按码本地化。merge 丢掉接线
   // 会重新出现「autopilot 挂着但审批是 ask/auto」的无人值守中间态。
   { feature: "任务325 autopilot yolo 闸门（判定+反向联动+通知码）", file: "desktop/autopilot_gate.go", patterns: ["func autopilotGateAllowed", "func gateRestoredAutopilotDefaults", "func closeAutopilotForOffYolo", "\"autopilot_requires_yolo\"", "\"autopilot_closed_off_yolo\""] },
-  { feature: "任务325 开启入口接线（恢复/新标签/选择器/审批切换；477/544 起为六元组含 ask 超时对+自动续跑开关；465 起选择器档位以 effectiveApproval 自动满足 yolo 前置（assumed_yolo 记录决策），门仍在此落点）", file: "desktop/app.go", patterns: ["gateRestoredAutopilotDefaults(on, maxRuntime, grace, askEnabled, askWait, askAutoContinue, tab.toolApprovalMode)", "gateRestoredAutopilotDefaults(autopilot, maxRuntime, approvalGrace, askEnabled, askWait, askAutoContinue, toolApprovalMode)", "gateRestoredAutopilotDefaults(prefOn, prefRuntime, prefGrace, prefAskEnabled, prefAskWait, prefAskAutoContinue, approvalMode)", "closeAutopilotForOffYolo(tab, mode)"] },
+  { feature: "任务325 开启入口接线（恢复/新标签/选择器/审批切换；477/544 起为六元组含 ask 超时对+自动续跑开关；465 起选择器档位以 effectiveApproval 自动满足 yolo 前置（assumed_yolo 记录决策），门仍在此落点）", file: "desktop/app.go", patterns: ["gateRestoredAutopilotDefaults(on, maxRuntime, grace, askEnabled, askWait, askAutoContinue, tab.toolApprovalMode)", "gateRestoredAutopilotDefaults(autopilot, maxRuntime, approvalGrace, askEnabled, askWait, askAutoContinue, toolApprovalMode)", "gateRestoredAutopilotDefaults(prefOn, prefRuntime, prefGrace, prefAskEnabled, prefAskWait, prefAskAutoContinue, effectiveApproval)", "closeAutopilotForOffYolo(tab, mode)"] },
   // 任务 544：ask 答复后自动续跑（实验子选项，默认关）。锁四处——控制层触发
   // 与排除集、每回合标记、boot 透传、desktop 六元组接线与设置面。merge 丢掉
   // 任何一环都会退回「答复后停等用户连发两次继续」的现场形态。
@@ -1084,7 +1084,7 @@ const CHECKS = [
   { feature: "465 档位自动满足 yolo+双留痕（slog assumed_yolo+notice）", file: "desktop/app.go", patterns: ["effectiveApproval = control.ToolApprovalYolo", "\"assumed_yolo\", assumedYolo", "NoticeCodeAutopilotAssumedYolo, autopilotAssumedYoloText"] },
   { feature: "465 两维独立：dim-2 播种不清旗+守卫仅真实边触发", file: "desktop/app.go", patterns: ["autopilotOn, autopilotRuntime, autopilotGrace := tab.autopilot, tab.autopilotMaxRuntime, tab.autopilotApprovalGrace", "if autopilotOn && !wasAutopilot {"] },
   { feature: "465 门文件新 notice 码（决策记录）", file: "desktop/autopilot_gate.go", patterns: ["NoticeCodeAutopilotAssumedYolo = \"autopilot_assumed_yolo\"", "autopilotAssumedYoloText"] },
-  { feature: "465 wire 裸旗（Meta/TabMeta autopilot 字段+赋值）", file: "desktop/app.go", patterns: ["Autopilot             bool               `json:\"autopilot,omitempty\"`", "Autopilot:             snap.autopilot,"] },
+  { feature: "465 wire 裸旗（Meta/TabMeta autopilot 字段+赋值）", file: "desktop/app.go", patterns: ["Autopilot      bool   `json:\"autopilot,omitempty\"`", "Autopilot:             snap.autopilot,"] },
   { feature: "465 TabMeta 裸旗赋值", file: "desktop/tabs.go", patterns: ["Autopilot:         tab.autopilot,"] },
   { feature: "465 profile 裸旗（两维底层状态同时在）", file: "desktop/frontend/src/lib/composerProfile.ts", patterns: ["autopilot: boolean", "function profileAutopilot(raw: boolean | undefined, label: CollaborationMode): boolean", "autopilot: profileAutopilot(meta.autopilot, collaborationMode)"] },
   { feature: "465 模式条第四档（按钮+滑块跟随裸旗）", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["composer-modebar__item--autopilot", "data-mode={autopilotModeOn ? \"autopilot\" : toolApprovalMode}", "onClick={() => chooseTaskMode(\"autopilot\")}"] },
