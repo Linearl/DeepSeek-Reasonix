@@ -194,6 +194,15 @@ func (s *Server) setControllerPath(ctrl *control.Controller, path string) {
 // two-argument test builder remains supported; tests that need to assert the
 // complete boot contract can inject buildControllerWithOptions.
 func (s *Server) buildTagged(ctx context.Context, ref string, inheritTemp bool) (*control.Controller, *sessionTagSink, error) {
+	return s.buildTaggedWithOptions(ctx, ref, inheritTemp, "")
+}
+
+// buildTaggedWithOptions is buildTagged with an optional workspace-root pin
+// (task 545). rootOverride, when non-empty, replaces the current controller's
+// workspace root so the replacement runs against the bound session's own
+// project directory instead of the foreground's inherited process cwd. Empty
+// keeps the inherit behavior byte-identical.
+func (s *Server) buildTaggedWithOptions(ctx context.Context, ref string, inheritTemp bool, rootOverride string) (*control.Controller, *sessionTagSink, error) {
 	tag := newSessionTagSink(s.bc)
 	opts := s.buildOptions
 	if s.managedModels != nil {
@@ -213,6 +222,9 @@ func (s *Server) buildTagged(ctx context.Context, ref string, inheritTemp bool) 
 		if inheritTemp {
 			opts.SessionTemp = cur.SessionTemp()
 		}
+	}
+	if rootOverride != "" {
+		opts.WorkspaceRoot = rootOverride
 	}
 
 	var (
@@ -417,7 +429,7 @@ func (s *Server) busyDetach(ctx context.Context, cur *control.Controller, target
 	if s.tagFor(cur) == nil {
 		return errSessionTagUnavailable
 	}
-	newCtrl, tag, err := s.buildTagged(ctx, currentModelRef(cur), false)
+	newCtrl, tag, err := s.buildTaggedWithOptions(ctx, currentModelRef(cur), false, sessionCwdFollowRootOverride(targetPath))
 	if err != nil {
 		return err
 	}
