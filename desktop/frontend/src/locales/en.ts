@@ -2528,7 +2528,7 @@ export const en = {
 "settings.subagentPanel.on": "On",
 "settings.subagentPanel.off": "Off",
 "settings.tabCompress": "Adaptive tab compression",
-"settings.tabCompressHint": "Once more than 8 sessions are open, tab widths step down in tiers: 9 tabs to 148px, 13 to 122px, 17 to 100px (plan/goal/auto/yolo badges hidden), 21 or more to the 84px floor - the strip keeps fitting instead of scrolling sideways. Hovering any tab still shows the full annotated title (state - workspace / topic). Experimental, off by default - with it off tabs keep their fixed width (176px wide windows, 148px narrow ones). Applies immediately on save, no restart. Search and recent-session jumps are unaffected and remain the fallback.",
+"settings.tabCompressHint": "Tabs adapt to the actual space available: when the strip runs out of room, widths step down tier by tier (176 - 148 - 122 - 100 - 84px floor); if everything fits, nothing changes - a narrow window compresses even with a couple of tabs, a wide window keeps full width even with many. From the 100px tier on, plan/goal/auto/yolo badges are hidden, and the strip keeps fitting instead of scrolling sideways. Hovering any tab still shows the full annotated title (state - workspace / topic). Experimental, off by default - with it off tabs keep their fixed width (176px wide windows, 148px narrow ones). Applies immediately on save, no restart. Search and recent-session jumps are unaffected and remain the fallback.",
 "settings.tabCompress.on": "On",
 "settings.tabCompress.off": "Off",
 "settings.subagentDetail": "Subagent detail view",

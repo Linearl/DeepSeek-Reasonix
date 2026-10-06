@@ -1,7 +1,7 @@
 // TabBar renders the browser-like workspace tab strip. Each tab represents one
 // open project/global topic, so switching tabs switches the active conversation.
 import { crossGroupDropIntent, isSplitViewEnabled, onSplitViewEnabledChange } from "../lib/splitView";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, DragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { CheckCheck, FileText, Plus, Search, X } from "lucide-react";
 import { normalizeCollaborationMode, normalizeMode, normalizeToolApprovalMode, type Mode, type TabMeta } from "../lib/types";
@@ -43,16 +43,17 @@ type DropSide = "before" | "after";
 const HOVER_PREFETCH_DEBOUNCE_MS = 150;
 
 /**
- * 任务 506 降宽档位（量级判断，实施前已报备）：
- * - 176px 固定宽 × 8 个 ≈ 1.44k px，恰好放满 1536 逻辑 px 的最大化窗口
- *   （1920@125% 常见开发环境），所以从第 9 个开始降；
- * - 每档容纳 4 个（9/13/17/21 等差），避免频繁跳档重排；148px 即既有
- *   窄窗口（≤980px）档宽，保持同一把尺子；
+ * 任务 506 降宽档位（溢出驱动判据，修订自按标签数量分档的首版）：
+ * - 触发条件是「放不下」而不是「数量多」：容器可用宽度装得下就保持
+ *   176px 不动（宽窗口 20+ 个标签也不降），装不下才逐级降——窄窗口
+ *   两三个标签该降也降。档宽 176→148→122→100→84 逐级收，取「最小的
+ *   放得下的档位」（见 tabCompressTierForWidth）；
+ * - 148px 即既有窄窗口（≤980px）档宽，保持同一把尺子；
  * - 下限 84px：状态点(7px) + 左右内边距压缩后仍剩 ~46px 标签文案
  *   （约 3~4 个汉字），再低就只剩色点无法辨认——那之后是搜索/图墙（505）
  *   的保底范围；
- * - 17 个起隐藏 plan/goal/auto/yolo 文本徽章（宽度过小徽章挤掉标题），
- *   模式信息始终保留在 hover title 里。
+ * - tier 3（100px 档）起隐藏 plan/goal/auto/yolo 文本徽章（宽度过小徽章
+ *   挤掉标题），模式信息始终保留在 hover title 里。
  * 宽度以 inline `--tabbar-tab-width` 注入 `.tabbar` 根节点：行内样式压过
  * 所有样式面（darwin/native-tabs/theme-style 共 5 处消费块），开关关闭时
  * 不注入 = 逐像素等价旧行为。
@@ -64,13 +65,66 @@ export const TAB_COMPRESS_TIERS = [
   { minTabs: 21, widthPx: 84 },
 ] as const;
 
-/** 给定标签数返回档位：0=不压缩，1..4=TAB_COMPRESS_TIERS 下标+1。 */
+/** 未压缩档的基础宽度，对应 styles.css `.tabbar { --tabbar-tab-width: 176px }`。 */
+export const TAB_COMPRESS_BASE_WIDTH_PX = 176;
+
+/**
+ * 数量档位：仅作测量不可用时的初始档位参考（首帧前 / jsdom 等无布局
+ * 环境），溢出判据（tabCompressTierForWidth）优先于它。
+ * 给定标签数返回档位：0=不压缩，1..4=TAB_COMPRESS_TIERS 下标+1。
+ */
 export function tabCompressTier(tabCount: number): number {
   let tier = 0;
   for (let index = 0; index < TAB_COMPRESS_TIERS.length; index += 1) {
     if (tabCount >= TAB_COMPRESS_TIERS[index].minTabs) tier = index + 1;
   }
   return tier;
+}
+
+/**
+ * 溢出驱动档位（纯函数）：给定标签条可用宽度与标签数，返回「最小的
+ * 放得下的档位」。宽度 ≤0（测量不可用）时回退到数量档位。档宽差
+ * 22~26px，可用宽度误差几个像素不会引起跳档抖动。
+ */
+export function tabCompressTierForWidth(availableWidth: number, tabCount: number): number {
+  if (tabCount <= 0) return 0;
+  if (!(availableWidth > 0)) return tabCompressTier(tabCount);
+  if (tabCount * TAB_COMPRESS_BASE_WIDTH_PX <= availableWidth) return 0;
+  for (let index = 0; index < TAB_COMPRESS_TIERS.length; index += 1) {
+    if (tabCount * TAB_COMPRESS_TIERS[index].widthPx <= availableWidth) return index + 1;
+  }
+  return TAB_COMPRESS_TIERS.length;
+}
+
+/**
+ * 测量标签条的可用宽度：`.tabbar` 内容宽，减去除标签条外的兄弟项占宽
+ * 与列间距。可伸缩兄弟（spacer/命令框）按其 min-width 计——剩余空间本来
+ * 就是留给标签条的空隙；固定兄弟（新建按钮等）按实际占宽计。最后与
+ * `.tabbar__tabs` 的 max-width 上限（calc(100% - 36px)）取小。测量值与
+ * 当前档位无关（可伸缩项恒按 min-width 计），所以档位变化不会反过来
+ * 改变测量值，无反馈回路。
+ */
+const TABBAR_TABS_MAX_WIDTH_RESERVE_PX = 36;
+
+function measureTabStripAvailWidth(bar: HTMLElement, strip: HTMLElement): number {
+  const barStyle = window.getComputedStyle(bar);
+  const barInner =
+    bar.clientWidth - (Number.parseFloat(barStyle.paddingLeft) || 0) - (Number.parseFloat(barStyle.paddingRight) || 0);
+  if (!(barInner > 0)) return 0;
+  const gap = Number.parseFloat(barStyle.columnGap) || Number.parseFloat(barStyle.gap) || 0;
+  const children = Array.from(bar.children);
+  let availFlex = barInner - gap * Math.max(0, children.length - 1);
+  for (const child of children) {
+    if (child === strip) continue;
+    const style = window.getComputedStyle(child);
+    const rect = child.getBoundingClientRect();
+    const margins = (Number.parseFloat(style.marginLeft) || 0) + (Number.parseFloat(style.marginRight) || 0);
+    const grow = Number.parseFloat(style.flexGrow) || 0;
+    const minWidth = Number.parseFloat(style.minWidth) || 0;
+    availFlex -= grow > 0 && minWidth > 0 ? minWidth : rect.width + margins;
+  }
+  const avail = Math.min(availFlex, barInner - TABBAR_TABS_MAX_WIDTH_RESERVE_PX);
+  return Math.max(0, Math.round(avail));
 }
 
 function tabDisplayTitle(tab: TabMeta): string {
@@ -110,6 +164,18 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
   // 关闭时 tier 恒为 0，不注入任何行内样式。
   const [tabCompressEnabled, setTabCompressEnabled] = useState(labFlagEnabled("tabCompress"));
   useEffect(() => onLabFlagsChange(() => setTabCompressEnabled(labFlagEnabled("tabCompress"))), []);
+  // 任务 506 溢出驱动：测量标签条可用宽度（0=测量不可用，档位退回数量
+  // 分档参考）。useLayoutEffect 在首帧绘制前完成首次测量，避免先按回退
+  // 档位画一帧再跳档的闪动；窗口/面板尺寸变化由 ResizeObserver 跟随。
+  const barRef = useRef<HTMLDivElement>(null);
+  const tabsStripRef = useRef<HTMLDivElement>(null);
+  const [measuredAvailWidth, setMeasuredAvailWidth] = useState(0);
+  const measureAvailWidth = useCallback(() => {
+    const bar = barRef.current;
+    const strip = tabsStripRef.current;
+    if (!bar || !strip) return;
+    setMeasuredAvailWidth(measureTabStripAvailWidth(bar, strip));
+  }, []);
   const t = useT();
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; side: DropSide } | null>(null);
@@ -332,24 +398,42 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
     return [...tabs.filter((tab) => tab.id !== splitTabId), secondary];
   }, [tabs, splitTabId]);
 
-  // 任务 506：开关开启且标签数过档时，把档位宽度写进行内 `--tabbar-tab-width`；
-  // tier 0（含开关关闭）不注入任何样式 = 与旧渲染逐像素等价。
-  const compressTier = tabCompressEnabled ? tabCompressTier(orderedTabs.length) : 0;
+  // 任务 506 溢出驱动：开关开启时测量标签条可用宽度（0=测量不可用，档位
+  // 退回数量分档参考）。useLayoutEffect 在首帧绘制前完成首次测量，避免先
+  // 按回退档位画一帧再跳档的闪动；窗口/面板尺寸变化由 ResizeObserver 跟随
+  // （仓内既有守卫模式：环境不提供时跳过，靠依赖变化重测兜底）。
+  const tabCount = orderedTabs.length;
+  useLayoutEffect(() => {
+    if (!tabCompressEnabled) return;
+    measureAvailWidth();
+    if (typeof ResizeObserver === "undefined") return;
+    const strip = tabsStripRef.current;
+    if (!strip) return;
+    const observer = new ResizeObserver(() => measureAvailWidth());
+    observer.observe(strip);
+    return () => observer.disconnect();
+  }, [measureAvailWidth, tabCompressEnabled, tabCount, commandCompact]);
+
+  // 任务 506：开关开启时按溢出判据（可用宽度 vs 标签需求宽度）取最小够用
+  // 档位，把档位宽度写进行内 `--tabbar-tab-width`；tier 0（含开关关闭、
+  // 放得下的场景）不注入任何样式 = 与旧渲染逐像素等价。
+  const compressTier = tabCompressEnabled ? tabCompressTierForWidth(measuredAvailWidth, tabCount) : 0;
   const compressStyle = compressTier > 0
     ? ({ "--tabbar-tab-width": `${TAB_COMPRESS_TIERS[compressTier - 1].widthPx}px` } as CSSProperties)
     : undefined;
-  // 17 个起（tier 3+）文本徽章不再渲染：宽度不足时徽章会挤掉标题，
+  // tier 3（100px 档）起文本徽章不再渲染：宽度不足时徽章会挤掉标题，
   // 模式信息由 hover title（stateTitle）完整承接。
   const badgesVisible = compressTier > 0 && compressTier < 3;
 
   return (
     <div
+      ref={barRef}
       className="tabbar"
       style={compressStyle}
       data-tab-compress={tabCompressEnabled ? "on" : undefined}
       data-tab-tier={compressTier > 0 ? compressTier : undefined}
     >
-      <div className="tabbar__tabs">
+      <div ref={tabsStripRef} className="tabbar__tabs">
         {orderedTabs.map((tab) => {
           const displayTitle = tabDisplayTitle(tab);
           const fullTitle = tabFullTitle(tab);

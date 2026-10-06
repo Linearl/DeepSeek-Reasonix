@@ -2531,7 +2531,7 @@ export const zh: Record<DictKey, string> = {
 "settings.subagentPanel.on": "开",
 "settings.subagentPanel.off": "关",
 "settings.tabCompress": "标签栏自适应压缩",
-"settings.tabCompressHint": "打开的会话超过 8 个后，标签按档位逐级降宽：9 个→148px、13 个→122px、17 个→100px（并隐藏 plan/goal/auto/yolo 徽章）、21 个起→84px 下限，标签栏保持放得下而不再横向滚动；鼠标悬停任意标签仍显示「状态 · 工作区 / 完整标题」。实验特性，默认关闭——关闭时标签保持固定宽度（宽窗口 176px、窄窗口 148px），保存后立即生效、无需重启。搜索与最近对话跳转不受影响，仍是保底入口。",
+"settings.tabCompressHint": "标签栏按实际空间自适应压缩：放不下时逐级降宽（176→148→122→100→84px 下限），放得下就不动——窄窗口少几个标签也会降，宽窗口标签多也不降；100px 档起隐藏 plan/goal/auto/yolo 徽章，标签栏保持放得下而不再横向滚动；鼠标悬停任意标签仍显示「状态 · 工作区 / 完整标题」。实验特性，默认关闭——关闭时标签保持固定宽度（宽窗口 176px、窄窗口 148px），保存后立即生效、无需重启。搜索与最近对话跳转不受影响，仍是保底入口。",
 "settings.tabCompress.on": "开",
 "settings.tabCompress.off": "关",
 "settings.subagentDetail": "子代理详情视图",
