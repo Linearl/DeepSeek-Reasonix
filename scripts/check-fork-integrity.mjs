@@ -396,6 +396,16 @@ const CHECKS = [
   { feature: "任务530 boot 接线（父开关 AND，executor 后补 resolver）", file: "internal/boot/boot.go", patterns: ["collabReplyNudge.ResolveSessionPath = executor.SessionPath", "sessionCollabEnabled(cfg) && cfg.Agent.SessionCollabReplyNudge"] },
   { feature: "任务530 已读未回扫描的存储读口（settled 不消失）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["func (s *MailStore) InboxMessages"] },
   { feature: "任务530 面板开关+三语文案", file: "desktop/frontend/src/locales/zh.ts", patterns: ["settings.sessionCollabReplyNudge", "settings.sessionCollabReplyNudgeHint"] },
+  // ── 任务 549：投影失效窗口治理（观测补口 + 失效即重建 + 面板语义）──
+  // 三条都是行为修正：失效日志+重建 kick 被「函数还在但逻辑被顶掉」式 merge
+  // 静默回退时，canonical 级读数暴涨会无痕复发，故逐条登记。
+  { feature: "任务549 失效观测（带原因的结构化丢弃日志）", file: "internal/agent/preflight.go", patterns: ["func (a *Agent) invalidateProjection(reason string)", "agent: context projection invalidated", "agent: context projection not restored"] },
+  { feature: "任务549 失效即重建（kick 门控+单飞）", file: "internal/agent/preflight.go", patterns: ["func (a *Agent) kickProjectionRebuild", "a.sess.rebuildPending.CompareAndSwap(false, true)", "projectionRebuildTimeout"] },
+  { feature: "任务549 content_edit rewind 触发者字段", file: "internal/agent/save_dag_plan.go", patterns: ["Writer: SessionWriterID()"] },
+  { feature: "任务549 面板失效标注（后端字段）", file: "internal/agent/context_status.go", patterns: ["ProjectionValid bool"] },
+  { feature: "任务549 桌面桥接 projectionValid", file: "desktop/context_maintenance.go", patterns: ["json:\"projectionValid\""] },
+  { feature: "任务549 面板主读数 projected+失效徽标", file: "desktop/frontend/src/components/ContextPanel.tsx", patterns: ["context-panel__projection-stale", "context?.maintenance?.projectedTokens ?? 0"] },
+  { feature: "任务549 失效标注三语文案", file: "desktop/frontend/src/locales/zh.ts", patterns: ["context.projectionInvalid", "context.projectionInvalidTitle"] },
   // ── 任务 152：todo 树状任务系统（2026-09-30）────────────────────
   // schema/校验在 evidence（树状状态机 + 终态 + 层级 ID），工具面在 builtin/todo，
   // agent 侧树列表跳过扁平 normalizer，前端树渲染 + 归档区——五处都要在。

@@ -33,6 +33,8 @@ export interface ContextMaintenanceReceipt extends WireContextMaintenance {
 export interface ContextMaintenanceInfo {
   canonicalTokens?: number;
   projectedTokens?: number;
+  /** False while the view is the full-canonical fallback (task 549). Older backends omit it. */
+  projectionValid?: boolean;
   summaryTokens?: number;
   lastSavedTokens?: number;
   /** @deprecated always 0; use triggerTokens */

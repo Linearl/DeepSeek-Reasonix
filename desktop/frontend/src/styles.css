@@ -28392,6 +28392,34 @@ body > .mermaid-diagram--fullscreen {
   gap: 10px;
 }
 
+/* 任务549: status pill + projection-stale badge grouped on the left so the
+   right-aligned used/window figure stays a single flex child. */
+.context-panel__capacity-flags {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.context-panel__projection-stale {
+  flex: 0 1 auto;
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--warn) 24%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warn) 11%, transparent);
+  color: var(--warn);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: help;
+}
+
 .context-panel__capacity-top strong {
   min-width: 0;
   overflow: hidden;

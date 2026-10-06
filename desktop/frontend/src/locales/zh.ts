@@ -4400,6 +4400,8 @@ export const zh: Record<DictKey, string> = {
   "context.windowUsageSummary": "{pct}% 已用",
   "context.windowCompactRemaining": "{used} / {window} · 距压缩还剩 {tokens}",
   "context.windowCompactDistance": "距压缩",
+  "context.projectionInvalid": "投影失效 · 全量回退中",
+  "context.projectionInvalidTitle": "投影失效中：读数为未投影的全量记录（{canonical}），下轮自动重建",
   "context.windowUsedLabel": "已用",
   "context.windowUsed": "已用上下文",
   "context.windowCompactThreshold": "压缩阈值",

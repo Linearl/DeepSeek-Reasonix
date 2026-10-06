@@ -30,6 +30,9 @@ var sessionReset = map[string]bool{
 	"compactionState":                       true,
 	"cacheState":                            true,
 	"compaction":                            true,
+	// 任务549: a new conversation has no rebuild in flight; the flag belongs to
+	// the replaced lineage's invalidation window.
+	"rebuildPending": true,
 }
 
 // sessionCarryOver names the fields reset deliberately leaves alone, each with

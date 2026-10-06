@@ -29,8 +29,12 @@ type ContextInfo struct {
 // ContextMaintenanceInfo is the Wails-safe current-view snapshot. Optional
 // fields preserve compatibility with older desktop/front-end combinations.
 type ContextMaintenanceInfo struct {
-	CanonicalTokens   int                            `json:"canonicalTokens,omitempty"`
-	ProjectedTokens   int                            `json:"projectedTokens,omitempty"`
+	CanonicalTokens int  `json:"canonicalTokens,omitempty"`
+	ProjectedTokens int  `json:"projectedTokens,omitempty"`
+	// ProjectionValid is false while the panel is looking at the full-canonical
+	// fallback (task 549): the frontend labels the readout instead of letting a
+	// whole-transcript size present as normal usage.
+	ProjectionValid   bool                           `json:"projectionValid"`
 	SummaryTokens     int                            `json:"summaryTokens,omitempty"`
 	LastSavedTokens   int                            `json:"lastSavedTokens,omitempty"`
 	SnipTrigger       int                            `json:"snipTrigger,omitempty"`  // always 0; legacy compatibility
@@ -96,6 +100,7 @@ func contextMaintenanceInfo(snapshot agent.ContextMaintenanceSnapshot) *ContextM
 	}
 	info := &ContextMaintenanceInfo{
 		CanonicalTokens: snapshot.CanonicalTokens, ProjectedTokens: snapshot.ProjectedTokens,
+		ProjectionValid: snapshot.ProjectionValid,
 		SummaryTokens: snapshot.SummaryTokens, LastSavedTokens: snapshot.LastSavedTokens,
 		// Snip/Force remain zero for one-version compatibility with older frontends.
 		FoldTrigger: snapshot.TriggerTokens, TriggerTokens: snapshot.TriggerTokens,
