@@ -240,6 +240,16 @@ type DesktopConfig struct {
 	// a hand-edited config can neither spin the timeout down to zero nor
 	// stretch it past an hour.
 	AutopilotAskWaitSeconds int `toml:"autopilot_ask_wait_seconds"`
+	// ExperimentalAutopilotAskAutoContinue is the task-544 ask
+	// auto-continue sub-option (铁律 2 default off): when on, a turn that
+	// stops on a terminal error right after one of its asks was answered —
+	// a human reply or a host auto-answer — gets exactly one host
+	// continuation turn carrying the recorded decision, instead of idling
+	// until the user sends "continue". Off keeps that idle stop
+	// byte-for-byte. Independent of the task-477 pair above: 477 owns when a
+	// timed-out ask counts as a refusal, this owns what happens after an
+	// answer.
+	ExperimentalAutopilotAskAutoContinue bool `toml:"experimental_autopilot_ask_auto_continue"`
 	// AutopilotGuardInterval is the autopilot guard task's default run interval
 	// in minutes (task 326). 0 = autopilotGuardDefaultIntervalMinutes. Changing
 	// it re-points the interval of guards that already exist instead of

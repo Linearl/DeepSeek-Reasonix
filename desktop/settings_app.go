@@ -338,6 +338,10 @@ type SettingsView struct {
 	// a bare 0; unset reads as the built-in 15).
 	ExperimentalAutopilotAskTimeout bool `json:"experimentalAutopilotAskTimeout"`
 	AutopilotAskWaitSeconds         int  `json:"autopilotAskWaitSeconds"`
+	// Task 544: the experimental ask auto-continue sub-option (default off) —
+	// after an ask was answered, a turn that stops anyway is resumed once with
+	// the recorded decision instead of waiting for the user's "continue".
+	ExperimentalAutopilotAskAutoContinue bool `json:"experimentalAutopilotAskAutoContinue"`
 	// Task 326: autopilot guard task dials — interval in minutes (effective
 	// value, so the panel never shows a bare 0) and the self-close policy for a
 	// watched session that goes quiet.
@@ -1510,9 +1514,10 @@ func (a *App) Settings() SettingsView {
 		Autopilot:                       cfg.Desktop.Autopilot,
 		AutopilotMaxRuntime:             cfg.Desktop.AutopilotMaxRuntime,
 		AutopilotApprovalGrace:          cfg.Desktop.AutopilotApprovalGrace,
-		ExperimentalAutopilotAskTimeout: cfg.Desktop.ExperimentalAutopilotAskTimeout,
-		AutopilotAskWaitSeconds:         cfg.AutopilotAskWaitSecondsEffective(),
-		AutopilotGuardInterval:          cfg.AutopilotGuardIntervalMinutes(),
+		ExperimentalAutopilotAskTimeout:      cfg.Desktop.ExperimentalAutopilotAskTimeout,
+		AutopilotAskWaitSeconds:              cfg.AutopilotAskWaitSecondsEffective(),
+		ExperimentalAutopilotAskAutoContinue: cfg.Desktop.ExperimentalAutopilotAskAutoContinue,
+		AutopilotGuardInterval:               cfg.AutopilotGuardIntervalMinutes(),
 		AutopilotGuardQuiescent:         cfg.AutopilotGuardQuiescentPolicy(),
 		// The Settings panel reads these switches from this view (see the struct note).
 		ExperimentalRestartUpdate: cfg.Desktop.ExperimentalRestartUpdate,
@@ -2931,6 +2936,19 @@ func (a *App) SetDesktopAutopilotAskTimeout(enabled bool, seconds int) error {
 			return c.SetAutopilotAskWaitSeconds(seconds)
 		}
 		return nil
+	})
+}
+
+// SetDesktopAutopilotAskAutoContinue configures the task-544 ask
+// auto-continue sub-option for newly-created desktop sessions. Off (the
+// default) keeps the idle stop after an answered ask byte-for-byte; on resumes
+// a turn that stopped right after the answer with exactly one host
+// continuation turn carrying the recorded decision. It is independent of the
+// task-477 timeout pair, and existing tabs keep their persisted mode, exactly
+// like the rest of the autopilot dials.
+func (a *App) SetDesktopAutopilotAskAutoContinue(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetExperimentalAutopilotAskAutoContinue(enabled)
 	})
 }
 

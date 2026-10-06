@@ -136,7 +136,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// together. Writing the flag without the limit used to lose both: this renderer
 		// writes a fixed set of keys, so an unlisted one was dropped and the settings
 		// switch flipped straight back to off.
-		if c.Desktop.Autopilot || strings.TrimSpace(c.Desktop.AutopilotMaxRuntime) != "" || strings.TrimSpace(c.Desktop.AutopilotApprovalGrace) != "" || c.Desktop.AutopilotGuardInterval != 0 || strings.TrimSpace(c.Desktop.AutopilotGuardQuiescent) != "" || c.Desktop.ExperimentalAutopilotAskTimeout || c.Desktop.AutopilotAskWaitSeconds != 0 {
+		if c.Desktop.Autopilot || strings.TrimSpace(c.Desktop.AutopilotMaxRuntime) != "" || strings.TrimSpace(c.Desktop.AutopilotApprovalGrace) != "" || c.Desktop.AutopilotGuardInterval != 0 || strings.TrimSpace(c.Desktop.AutopilotGuardQuiescent) != "" || c.Desktop.ExperimentalAutopilotAskTimeout || c.Desktop.AutopilotAskWaitSeconds != 0 || c.Desktop.ExperimentalAutopilotAskAutoContinue {
 			fmt.Fprintf(&b, "autopilot = %v   # desktop: start new sessions unattended (requires autopilot_max_runtime)\n", c.Desktop.Autopilot)
 			if runtime := strings.TrimSpace(c.Desktop.AutopilotMaxRuntime); runtime != "" {
 				fmt.Fprintf(&b, "autopilot_max_runtime = %q   # desktop: wall-clock bound for an unattended run, e.g. 8h\n", runtime)
@@ -161,6 +161,12 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 				if c.Desktop.AutopilotAskWaitSeconds != 0 {
 					fmt.Fprintf(&b, "autopilot_ask_wait_seconds = %d   # desktop: ask-timeout wait in seconds, 1..3600; 0/absent = 15 (task 477)\n", c.Desktop.AutopilotAskWaitSeconds)
 				}
+			}
+			// Task 544: the ask auto-continue sub-option rides the same block.
+			// Opt-in (default off) and independent of the 477 pair: it renders
+			// whenever it is on, even with the timeout pair absent.
+			if c.Desktop.ExperimentalAutopilotAskAutoContinue {
+				fmt.Fprintf(&b, "experimental_autopilot_ask_auto_continue = %v   # desktop: a turn that stops right after an ask was answered is resumed once with the recorded decision (task 544)\n", c.Desktop.ExperimentalAutopilotAskAutoContinue)
 			}
 		}
 		fmt.Fprintf(&b, "check_updates = %v   # desktop: check for new versions on startup\n", c.DesktopCheckUpdates())

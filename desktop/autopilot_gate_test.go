@@ -267,24 +267,30 @@ func TestAutopilotGateOnNewTabDefaults(t *testing.T) {
 }
 
 func TestGateRestoredAutopilotDefaultsPure(t *testing.T) {
-	on, runtime, grace, askEnabled, askWait := gateRestoredAutopilotDefaults(true, 8*time.Hour, 15*time.Second, true, 15*time.Second, control.ToolApprovalYolo)
+	on, runtime, grace, askEnabled, askWait, askAutoContinue := gateRestoredAutopilotDefaults(true, 8*time.Hour, 15*time.Second, true, 15*time.Second, true, control.ToolApprovalYolo)
 	if !on || runtime != 8*time.Hour || grace != 15*time.Second {
 		t.Fatalf("yolo passes through: on=%v runtime=%v grace=%v", on, runtime, grace)
 	}
 	if !askEnabled || askWait != 15*time.Second {
 		t.Fatalf("yolo passes the task-477 pair through: askEnabled=%v askWait=%v", askEnabled, askWait)
 	}
+	if !askAutoContinue {
+		t.Fatal("yolo passes the task-544 ask auto-continue switch through")
+	}
 	for _, mode := range []string{control.ToolApprovalAsk, control.ToolApprovalAuto, ""} {
-		on, runtime, grace, askEnabled, askWait := gateRestoredAutopilotDefaults(true, 8*time.Hour, 15*time.Second, true, 15*time.Second, mode)
+		on, runtime, grace, askEnabled, askWait, askAutoContinue := gateRestoredAutopilotDefaults(true, 8*time.Hour, 15*time.Second, true, 15*time.Second, true, mode)
 		if on || runtime != 0 || grace != 0 {
 			t.Fatalf("mode %q must be refused with zeroed bounds, got on=%v runtime=%v grace=%v", mode, on, runtime, grace)
 		}
 		if askEnabled || askWait != 0 {
 			t.Fatalf("mode %q must clear the task-477 pair too, got askEnabled=%v askWait=%v", mode, askEnabled, askWait)
 		}
+		if askAutoContinue {
+			t.Fatalf("mode %q must clear the task-544 switch too", mode)
+		}
 	}
 	// A preference that is already off stays off regardless of the mode.
-	if on, _, _, _, _ = gateRestoredAutopilotDefaults(false, 8*time.Hour, 0, false, 0, control.ToolApprovalYolo); on {
+	if on, _, _, _, _, _ = gateRestoredAutopilotDefaults(false, 8*time.Hour, 0, false, 0, false, control.ToolApprovalYolo); on {
 		t.Fatal("off preference must stay off")
 	}
 }
@@ -365,5 +371,36 @@ func TestSetDesktopAutopilotRequiresYoloDefault(t *testing.T) {
 	// Disabling never requires yolo.
 	if err := app.SetDesktopAutopilot(false, "", ""); err != nil {
 		t.Fatalf("disabling must always be allowed: %v", err)
+	}
+}
+
+// Task 544: the ask auto-continue sub-option is a plain desktop preference —
+// the setter persists both states and it stays independent of the task-477
+// timeout pair (flipping one never moves the other).
+func TestSetDesktopAutopilotAskAutoContinuePersists(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	app := NewApp()
+	app.ctx = context.Background()
+	app.readyHook = func() {}
+
+	if err := app.SetDesktopAutopilotAskAutoContinue(true); err != nil {
+		t.Fatalf("enable = %v, want nil", err)
+	}
+	cfg := config.LoadForEdit(config.UserConfigPath())
+	if !cfg.Desktop.ExperimentalAutopilotAskAutoContinue {
+		t.Fatal("enable did not persist")
+	}
+	if err := app.SetDesktopAutopilotAskTimeout(true, 0); err != nil {
+		t.Fatalf("enabling the 477 pair = %v", err)
+	}
+	if err := app.SetDesktopAutopilotAskAutoContinue(false); err != nil {
+		t.Fatalf("disable = %v, want nil", err)
+	}
+	cfg = config.LoadForEdit(config.UserConfigPath())
+	if cfg.Desktop.ExperimentalAutopilotAskAutoContinue {
+		t.Fatal("disable did not persist")
+	}
+	if !cfg.Desktop.ExperimentalAutopilotAskTimeout {
+		t.Fatal("disabling 544 must not touch the independent 477 switch")
 	}
 }

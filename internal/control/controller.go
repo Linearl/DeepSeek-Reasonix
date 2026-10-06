@@ -140,6 +140,17 @@ type Controller struct {
 	// with an explicit refusal and keeps going, instead of the task-109 B4
 	// terminal stop. Off (the zero value) keeps that stop byte-for-byte.
 	autopilotAskTimeoutEnabled bool
+	// autopilotAskAutoContinue is the task-544 experimental sub-option: when
+	// on, a turn that stops on a terminal error right after one of its asks
+	// was answered gets exactly one host continuation turn carrying the
+	// recorded decision, instead of idling until the user sends "continue".
+	// Off (the zero value) keeps the idle stop byte-for-byte.
+	autopilotAskAutoContinue bool
+	// turnAskAnsweredSummary is the per-turn marker (guarded by mu) that an
+	// ask of the running turn was answered, carrying the one-line decision
+	// summary for the task-544 continuation prompt. Cleared at orchestrated
+	// turn start; consumed one-shot by the task-544 continuation trigger.
+	turnAskAnsweredSummary string
 	// preapproveManaged is the task-231 snapshot (master switch + four
 	// checkboxes + home paths) fixed at construction; see preapprove_managed.go.
 	preapproveManaged PreapproveManagedOptions
@@ -593,6 +604,16 @@ type Options struct {
 	// means DefaultAutopilotAskTimeoutWait (15s). Off keeps the task-109 B4
 	// terminal stop on DefaultAutopilotAskWait byte-for-byte.
 	AutopilotAskTimeoutEnabled bool
+	// AutopilotAskAutoContinue is the task-544 experimental ask
+	// auto-continue sub-option (default off, 铁律 2): when on, a turn that
+	// stops on a terminal error right after one of its asks was answered —
+	// a human reply, the 477 timeout refusal, or the reversible
+	// self-answer — gets exactly one host continuation turn carrying the
+	// recorded decision, instead of idling until the user sends "continue".
+	// Off keeps that idle stop byte-for-byte. Independent of
+	// AutopilotAskTimeoutEnabled: that sub-option owns when a timeout counts
+	// as a refusal, this one owns what happens after an answer.
+	AutopilotAskAutoContinue bool
 	// PreapproveManaged carries the task-231 master switch, its four category
 	// checkboxes, and the three home-derived paths the classifier matches on.
 	// Boot resolves it from config; the zero value keeps every approval prompt
@@ -849,6 +870,7 @@ func New(opts Options) *Controller {
 		approvalTier:               NormalizeApprovalTier(opts.ApprovalTier),
 		autopilotAskWait:           opts.AutopilotAskWait,
 		autopilotAskTimeoutEnabled: opts.AutopilotAskTimeoutEnabled,
+		autopilotAskAutoContinue:   opts.AutopilotAskAutoContinue,
 		preapproveManaged:          opts.PreapproveManaged,
 		goals: goalMachine{
 			tokenBudget: opts.GoalTokenBudget,
@@ -2867,7 +2889,11 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// stop with an explicit refusal answer, so a goal-driven unattended run
 	// keeps going after the timeout instead of dying on the dialog.
 	if c.autopilot && askRiskOfQuestions(askQuestionTexts(questions)) == askRiskReversible {
-		return autopilotAnswers(questions), nil
+		answers := autopilotAnswers(questions)
+		// Task 544: this host auto-answer counts as an answered ask of the
+		// running turn, so a terminal stop right after it can be resumed.
+		c.markTurnAskAnswered(askDecisionSummary(questions, answers))
+		return answers, nil
 	}
 
 	// Task 225: a session working on a task dispatched by an autopilot parent
@@ -2970,7 +2996,11 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 				Text:   "autopilot · ask — no human answered within " + askWait.String() + "; high-risk question refused, run continues with the safe default",
 				Detail: "the unattended run declines destructive/outward-facing/credential actions instead of deciding them; it keeps working on the rest of the goal (task 477)",
 			})
-			return autopilotAskTimeoutRefusalAnswers(questions, askWait), nil
+			answers := autopilotAskTimeoutRefusalAnswers(questions, askWait)
+			// Task 544: the timeout refusal is a host auto-answer, so a
+			// terminal stop later in the same turn can still be resumed.
+			c.markTurnAskAnswered(askDecisionSummary(questions, answers))
+			return answers, nil
 		}
 		c.sink.Emit(event.Event{
 			Kind:   event.Notice,
@@ -3012,7 +3042,8 @@ func (c *Controller) answerQuestionCheckedLocked(id string, answers []event.AskA
 		// An answer batch with no selections is the explicit "skip and continue
 		// chat" path. End the current turn instead of feeding a prose dismissal
 		// back to the model and trusting it not to ask again (#6869).
-		if !askAnswersHaveSelection(answers) {
+		hasSelection := askAnswersHaveSelection(answers)
+		if !hasSelection {
 			c.mu.Lock()
 			activeTurn := c.cancel != nil
 			c.mu.Unlock()
@@ -3022,6 +3053,11 @@ func (c *Controller) answerQuestionCheckedLocked(id string, answers []event.AskA
 			}
 		}
 		c.recordAskDecisionReceipt(id, pending, answers)
+		if hasSelection {
+			// Task 544: a human answer counts as an answered ask of the
+			// running turn, so a terminal stop right after it can be resumed.
+			c.markTurnAskAnswered(askDecisionSummary(pending.questions, answers))
+		}
 		pending.reply <- answers // buffered, never blocks
 	}
 	return nil
@@ -3031,29 +3067,10 @@ func (c *Controller) recordAskDecisionReceipt(id string, pending pendingAsk, ans
 	if c == nil || c.executor == nil {
 		return
 	}
-	selected := make(map[string][]string, len(answers))
-	for _, answer := range answers {
-		selected[answer.QuestionID] = append([]string(nil), answer.Selected...)
-	}
-	parts := make([]string, 0, len(pending.questions))
-	for _, question := range pending.questions {
-		answer := strings.TrimSpace(strings.Join(selected[question.ID], ", "))
-		if answer == "" {
-			answer = "—"
-		}
-		prompt := strings.TrimSpace(question.Prompt)
-		if prompt == "" {
-			prompt = strings.TrimSpace(question.Header)
-		}
-		if prompt == "" {
-			prompt = question.ID
-		}
-		parts = append(parts, prompt+": "+answer)
-	}
 	receipt := &provider.DecisionReceipt{
 		ID:      id,
 		Kind:    "ask",
-		Subject: clipUTF8(strings.Join(parts, " · "), 240),
+		Subject: clipUTF8(askDecisionSummary(pending.questions, answers), 240),
 		Outcome: "answered",
 	}
 	c.executor.Session().AddDecisionReceipt(receipt)

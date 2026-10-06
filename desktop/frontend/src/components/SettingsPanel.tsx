@@ -3611,6 +3611,25 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   onBlur={(e) => void apply(() => app.SetDesktopAutopilotAskTimeout(Boolean(s.experimentalAutopilotAskTimeout), Number(e.target.value)))}
                 />
               </SettingsField>
+              {/* Task 544: the experimental ask auto-continue sub-option. Off
+                  (the default) keeps the idle stop after an answered ask; on
+                  resumes a turn that stopped right after the answer with one
+                  host continuation turn carrying the recorded decision.
+                  Independent of the ask-timeout pair above. */}
+              <SettingsField label={t("settings.autopilotAskAutoContinue")} hint={t("settings.autopilotAskAutoContinueHint")} icon={<ShieldCheck size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalAutopilotAskAutoContinue) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetDesktopAutopilotAskAutoContinue(on))}
+                    >
+                      {t(on ? "settings.autopilotAskAutoContinue.on" : "settings.autopilotAskAutoContinue.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
               {/* Task 326: the guard task autopilot keeps watching its session.
                   The dial is in minutes and re-points guards that already
                   exist in place, so widening it can never grow a second guard

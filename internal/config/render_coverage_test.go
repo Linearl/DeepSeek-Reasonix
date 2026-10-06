@@ -32,9 +32,12 @@ var desktopRenderOmissions = map[string]string{
 	// leaves its default (switch off, wait 0 = built-in 15s).
 	"experimental_autopilot_ask_timeout": "task 477: rendered inside the autopilot block, only when the sub-option is configured",
 	"autopilot_ask_wait_seconds":         "task 477: rendered inside the autopilot block, only when the wait dial is set; 0/absent = 15",
-	"session_experience":                 "rendered by renderDesktopSessionExperience",
-	"reasoning_display_mode":             "rendered by renderDesktopReasoningDisplayMode",
-	"conversation_width":                 "rendered with the session-experience block",
+	// Task 544: rendered inside the autopilot block only while the ask
+	// auto-continue sub-option is on (default off).
+	"experimental_autopilot_ask_auto_continue": "task 544: rendered inside the autopilot block, only when the sub-option is on",
+	"session_experience":                       "rendered by renderDesktopSessionExperience",
+	"reasoning_display_mode":                   "rendered by renderDesktopReasoningDisplayMode",
+	"conversation_width":                       "rendered with the session-experience block",
 }
 
 // TestDesktopRenderTableCoversEveryKey is the single guard against that class of bug:

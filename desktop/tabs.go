@@ -165,6 +165,9 @@ type WorkspaceTab struct {
 	// above so a rebuild cannot silently change the run's semantics.
 	autopilotAskTimeoutEnabled bool
 	autopilotAskWait           time.Duration
+	// Task 544: the experimental ask auto-continue sub-option this tab runs
+	// with, fixed at toggle/creation time for the same reason.
+	autopilotAskAutoContinue bool
 	subagentPolicy             string // per-session sub-agent delegation tier (light|balanced|aggressive, fork)
 	disabledMCP                map[string]ServerView
 	mcpOrder                   []string
@@ -4088,6 +4091,7 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 		AutopilotApprovalGrace:     tab.autopilotApprovalGrace,
 		AutopilotAskTimeoutEnabled: tab.autopilotAskTimeoutEnabled,
 		AutopilotAskWait:           tab.autopilotAskWait,
+		AutopilotAskAutoContinue:   tab.autopilotAskAutoContinue,
 		RequireKey:                 false,
 		StatsSource:                "desktop",
 		TaskStore:                  a.taskStore(),
@@ -7927,6 +7931,8 @@ type tabRuntimeSnapshot struct {
 	// rebuild paths cannot drift from the toggle that set it.
 	autopilotAskTimeoutEnabled bool
 	autopilotAskWait           time.Duration
+	// Task 544: the ask auto-continue switch travels with the snapshot too.
+	autopilotAskAutoContinue bool
 }
 
 // normalizedTabRuntime is the internal, orthogonal runtime profile restored
