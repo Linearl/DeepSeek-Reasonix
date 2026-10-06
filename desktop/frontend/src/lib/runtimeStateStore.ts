@@ -35,10 +35,14 @@ export interface RuntimeProjection {
   topics: ProjectRuntimeTopic[];
 }
 
-export function selectRuntime(session?: RuntimeSession, failed = false) {
+// 任务510（b 收敛故障面）：`failed` 参数已移除。全局同步失败（store.fail）曾把
+// 所有会话一起拖成 unknown——任一 tab 的同步异常就能让全部 composer 一起丢掉停
+// 止按钮（用户反馈「运行中无终止按钮」的成因之一）。unknown 现在只由本会话
+// freshness 决定；全局失败仍可经 store.getFailed 供项目树等消费方整体降级。
+export function selectRuntime(session?: RuntimeSession) {
   const state = session?.state;
   const known = state?.schemaVersion === 1;
-  const unknown = Boolean(session && (failed || session.freshness !== "synced"));
+  const unknown = Boolean(session && session.freshness !== "synced");
   const finishing = known && state.phase === "finishing";
   const kind = unknown ? "unknown" : !known ? "legacy" : finishing ? "finishing"
     : state.cancelRequested ? "cancelling" : state.pendingPrompt ? "waiting_confirmation"
@@ -46,7 +50,9 @@ export function selectRuntime(session?: RuntimeSession, failed = false) {
     : state.backgroundJobs > 0 ? "background_job" : "idle";
   return { kind, known, unknown, finishing, state,
     running: known ? state.running : undefined,
-    cancellable: known ? !unknown && !finishing && state.cancellable && !state.cancelRequested : undefined,
+    // 任务510（a 保出口）：cancellable 不再因 unknown 强制 false。unknown 只说明
+    // 投影可能过期；停止请求走控制通道，与投影通道分离，过期数据不该锁死安全出口。
+    cancellable: known ? !finishing && state.cancellable && !state.cancelRequested : undefined,
     spinning: !unknown && (kind === "thinking" || kind === "streaming" || kind === "cancelling" || kind === "background_job"),
   };
 }

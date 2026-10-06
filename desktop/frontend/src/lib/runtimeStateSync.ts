@@ -1,4 +1,5 @@
 import { app } from "./bridge";
+import { reportFrontendLog } from "./frontendLog";
 import { acceptRuntimeState } from "./runtimeStateReducer";
 import { runtimeStateStore, type RuntimeProjection } from "./runtimeStateStore";
 export interface RuntimeSyncPorts {
@@ -8,6 +9,16 @@ export interface RuntimeSyncPorts {
   clearTimer: (timer: unknown) => void;
   focus: (callback: () => void) => () => void;
   diagnostic?: (data: { reason: string; revision?: number; stale: number; conflicts: number; failures: number }) => void;
+}
+// 任务510（诊断可观测）：同步诊断此前只进 console.debug——webview 控制台不落盘，
+// 「unknown 吞停止按钮」复发时没有现场。接 ReportFrontendLog 进 desktop.log，
+// 降级记 warn、恢复记 info；note 只在转换点触发，不会逐帧刷 4MB 滚动日志。
+export function runtimeSyncDiagnostic(data: { reason: string; revision?: number; stale: number; conflicts: number; failures: number }) {
+  console.debug("runtime synchronization", { source: "desktop-runtime", ...data });
+  const degraded = data.failures > 0 || data.stale > 0 || data.conflicts > 0;
+  reportFrontendLog("runtime-sync", degraded ? "runtime state sync degraded" : "runtime state sync recovered",
+    `reason=${data.reason} revision=${data.revision ?? "-"} stale=${data.stale} conflicts=${data.conflicts} failures=${data.failures}`,
+    degraded ? "warn" : "info");
 }
 export function startRuntimeStateSync(ports: RuntimeSyncPorts, store = runtimeStateStore) {
   let disposed = false, inFlight = false, failures = 0;
@@ -19,18 +30,29 @@ export function startRuntimeStateSync(ports: RuntimeSyncPorts, store = runtimeSt
     inFlight = true;
     ports.clearTimer(timer);
     const before = store.getSnapshot();
+    // 任务510（c 恢复可测）：记录本轮开始时是否处于降级态，结束时对比——
+    // 降级↔恢复的转换点各补一条诊断（fail→recovered 成对，现场可推恢复时长）。
+    const wasDegraded = store.getFailed() || failures > 0;
+    let noted = false;
     try {
       const snapshot = await ports.read();
       if (disposed) return;
       const result = acceptRuntimeState(store, snapshot, before === store.getSnapshot());
-      if (result === "stale") { stale++; note("stale-read", snapshot.revision); }
+      if (result === "stale") { stale++; noted = true; note("stale-read", snapshot.revision); }
       if (result === "conflict") { conflicts++; throw new Error("Runtime snapshot version conflict"); }
       failures = snapshot.sessions.some(session => session.remote && session.freshness !== "synced") ? failures + 1 : 0;
     } catch {
-      if (!disposed) { failures++; store.fail(); note(reason); }
+      if (!disposed) { failures++; store.fail(); noted = true; note(reason); }
     } finally {
       inFlight = false;
-      if (!disposed) timer = ports.timer(() => { void sync("periodic"); }, failures ? [5000, 10000, 20000, 30000][Math.min(failures - 1, 3)] : 30000);
+      if (!disposed) {
+        const degraded = store.getFailed() || failures > 0;
+        if (!noted && degraded !== wasDegraded) note(degraded ? "degraded" : "recovered");
+        // 降级态的重试阶梯从 5s 起步（5000/10000/20000/30000 封顶）：unknown
+        // 的兜底恢复上界受它约束，不依赖单一 30s 周期轮询；事件通道（后端
+        // 补发）仍是主恢复通路。
+        timer = ports.timer(() => { void sync("periodic"); }, failures ? [5000, 10000, 20000, 30000][Math.min(failures - 1, 3)] : 30000);
+      }
     }
   };
   const off = ports.subscribe(snapshot => {
@@ -46,7 +68,7 @@ export function startRuntimeStateSync(ports: RuntimeSyncPorts, store = runtimeSt
 
 export function startAppRuntimeStateSync() {
   return startRuntimeStateSync({
-      diagnostic: data => console.debug("runtime synchronization", { source: "desktop-runtime", ...data }),
+      diagnostic: runtimeSyncDiagnostic,
       subscribe: accept => window.runtime?.EventsOn("runtime-state:changed", (snapshot: unknown) => accept(snapshot as RuntimeProjection)) ?? (() => {}),
       read: async () => {
         if (!app.SyncRuntimeState) return app.GetRuntimeStateSnapshot!();

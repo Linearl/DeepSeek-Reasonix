@@ -1020,6 +1020,7 @@ export const zh: Record<DictKey, string> = {
   "composer.stopForceHint": "强制停止（等 15 秒收尾，可再点立即结束）",
   "composer.stopKillHint": "立即强制终止（可能丢失未保存状态）",
   "composer.stopCountdown": "{n}s 后强制结束",
+  "composer.stopUnknownState": "状态未知，仍可请求停止",
   "composer.stopShort": "停止",
   "composer.pastedLabel": "[已粘贴文本 #{id} · {lines} 行]",
   "composer.pastedShowPreview": "预览粘贴文本",

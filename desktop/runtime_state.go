@@ -246,9 +246,12 @@ func (s *tabEventSink) RuntimeStateChanged(snapshot event.RuntimeStateSnapshot) 
 	if ctrl == nil {
 		return
 	}
-	current := controllerRuntimeState(ctrl)
-	if current.RuntimeEpoch != snapshot.RuntimeEpoch || current.Revision > snapshot.Revision {
-		return
-	}
+	// 任务510: 落后修订/换纪元的事件曾在此被静默丢弃——若最新状态从未推给前端，
+	// turn 开始态就只能等周期 sync 兜底（用户实测约 40s 才恢复，期间 composer 处于
+	// unknown 降级态、停止按钮整个消失）。改为统一补发当前投影：
+	// emitProjectTreeRuntimeChangedWithLegacy 重新采样控制器现状，事件本身过期与
+	// 否不影响投影正确性；投影内容不变时后端 revision 不前移、前端 reducer 判
+	// duplicate 不通知，重复事件不会形成风暴。上游合并器（event.coalescer）已把
+	// 高频状态事件收敛过一轮，此处不再有额外放大。
 	app.emitProjectTreeRuntimeChangedWithLegacy()
 }

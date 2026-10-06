@@ -1020,6 +1020,7 @@ export const en = {
   "composer.stopForceHint": "Force stop (waits up to 15s for a clean finish; press again to end now)",
   "composer.stopKillHint": "Force terminate now (unsaved state may be lost)",
   "composer.stopCountdown": "Force stop in {n}s",
+  "composer.stopUnknownState": "State unknown — a stop can still be requested",
   "composer.stopShort": "Stop",
   "composer.pastedLabel": "[Pasted text #{id} · {lines} lines]",
   "composer.pastedShowPreview": "Preview pasted text",
