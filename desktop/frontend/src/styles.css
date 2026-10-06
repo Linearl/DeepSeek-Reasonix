@@ -28215,6 +28215,16 @@ body > .mermaid-diagram--fullscreen {
   font-size: 13px;
 }
 
+/* Task 403: first-read loading row. It takes the exact spot where rows will
+   appear, so the sidebar never paints the "no projects yet" empty state while
+   the first project-tree read is still in flight. */
+.project-tree__loading {
+  padding: 10px 12px;
+  color: var(--fg-faint);
+  font-size: 13px;
+  font-style: italic;
+}
+
 .project-tree__catalog-progress {
 	display: flex;
 	align-items: center;
