@@ -32,13 +32,40 @@ func jankDayPath(now time.Time) string {
 	return filepath.Join(perfMonitorDir(), jankFilePrefix+now.Format("20060102")+jankFileSuffix)
 }
 
+// scrubJankStrings rewrites every string value in the decoded record with the
+// same scrubbers the crash upload path applies (crash_app.go scrubSensitiveText),
+// so the local dump keeps the dialog's privacy promise ("paths and secrets are
+// removed") without depending on the frontend to pre-clean. Breadcrumbs carry
+// raw console.error/bridge text and are the realistic carrier of user paths or
+// tokens; map keys are the record's own field names from crash.ts and stay
+// untouched. Same false-positive budget as the upload path (e.g. a 32+ hex id
+// becomes [redacted-hex]).
+func scrubJankStrings(value any) any {
+	switch v := value.(type) {
+	case string:
+		return scrubSensitiveText(v)
+	case map[string]any:
+		for key, item := range v {
+			v[key] = scrubJankStrings(item)
+		}
+		return v
+	case []any:
+		for i, item := range v {
+			v[i] = scrubJankStrings(item)
+		}
+		return v
+	default:
+		return value
+	}
+}
+
 // ReportJankRecord appends one frontend jank event to logs/perf/jank-YYYYMMDD.jsonl.
 // The record arrives as a JSON object string built by crash.ts (reason + label +
 // performance snapshot + sampled long-task frames + recent breadcrumbs); this
-// side validates the envelope, stamps server-side arrival time (same clock as
-// the perf samples), caps the size, and appends. Fire-and-forget from the
-// frontend: a failing diagnostic must never surface as user-visible errors, so
-// failures only log.
+// side validates the envelope, scrubs paths/secrets with the upload path's
+// scrubbers, stamps server-side arrival time (same clock as the perf samples),
+// caps the size, and appends. Fire-and-forget from the frontend: a failing
+// diagnostic must never surface as user-visible errors, so failures only log.
 func (a *App) ReportJankRecord(record string) {
 	record = strings.TrimSpace(record)
 	if record == "" {
@@ -52,6 +79,7 @@ func (a *App) ReportJankRecord(record string) {
 		slog.Warn("desktop: jank record rejected", "reason", "invalid json", "bytes", len(record))
 		return
 	}
+	scrubJankStrings(payload)
 	payload["ts"] = now.UTC().Format(time.RFC3339Nano)
 	compact, err := json.Marshal(payload)
 	if err != nil {
