@@ -4398,6 +4398,8 @@ export const en = {
   "context.windowUsageSummary": "{pct}% used",
   "context.windowCompactRemaining": "{used} / {window} · {tokens} until compression",
   "context.windowCompactDistance": "To compact",
+  "context.projectionInvalid": "Projection invalid · full transcript",
+  "context.projectionInvalidTitle": "Projection invalid: the readout is the unprojected full transcript ({canonical}); it rebuilds automatically",
   "context.windowUsedLabel": "Used",
   "context.windowUsed": "Used context",
   "context.windowCompactThreshold": "Compression threshold",

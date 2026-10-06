@@ -494,7 +494,13 @@ export function ContextPanel({
     }
   }, [usageRefreshKey, usageSeq, refresh]);
 
-  const usedTokens = context?.used && context.used > 0 ? context.used : info?.usedTokens ?? 0;
+  // 任务549: 主读数以 projected（实际发送量）为准。投影有效时它就是真实发送
+  // 视图；投影失效时它等于 canonical 全量——由下方「投影失效中」标注表达语义，
+  // 而不是把全量记录的体积当作正常用量静默展示。
+  const projectedTokens = context?.maintenance?.projectedTokens ?? 0;
+  const usedTokens = projectedTokens > 0
+    ? projectedTokens
+    : context?.used && context.used > 0 ? context.used : info?.usedTokens ?? 0;
   const windowTokens = context?.window && context.window > 0 ? context.window : info?.windowTokens ?? 0;
   // Prefer live usage props (updated in real-time by the reducer during streaming)
   // over the async-fetched info snapshot (only refreshed on turn_done). Multi-
@@ -540,6 +546,15 @@ export function ContextPanel({
       : 0;
   const compactTokens = triggerTokens > 0 ? triggerTokens : (windowTokens > 0 ? Math.round(windowTokens * compactRatio) : 0);
   const tokensUntilCompact = compactTokens > usedTokens ? compactTokens - usedTokens : 0;
+  // 任务549: canonical 超限且投影未生效时单独标注，让「全量回退」的读数可见。
+  // 旧后端不带 projectionValid 字段（undefined），保持无标注的旧行为。
+  const projectionStale = context?.maintenance != null
+    && context.maintenance.projectionValid === false
+    && triggerTokens > 0
+    && usedTokens > triggerTokens;
+  const projectionStaleTitle = projectionStale && (context?.maintenance?.canonicalTokens ?? 0) > 0
+    ? t("context.projectionInvalidTitle", { canonical: formatTokens(context.maintenance?.canonicalTokens ?? 0) })
+    : undefined;
   const breakdown = contextBreakdown(usedTokens, windowTokens, promptTokens, completionTokens, reasoningTokens);
   const eventTimes = [
     ...readFiles.map((file) => file.time),
@@ -652,7 +667,14 @@ export function ContextPanel({
             <SectionHeading title={t("context.windowTitle")} />
             <div className={`context-panel__capacity-card context-panel__capacity-card--${windowStatus.tone}`}>
               <div className="context-panel__capacity-top">
-                <span className="context-panel__capacity-status">{t(windowStatus.key)}</span>
+                <span className="context-panel__capacity-flags">
+                  <span className="context-panel__capacity-status">{t(windowStatus.key)}</span>
+                  {projectionStale && (
+                    <span className="context-panel__projection-stale" title={projectionStaleTitle}>
+                      {t("context.projectionInvalid")}
+                    </span>
+                  )}
+                </span>
                 <strong>{usedLabel}/{windowLabel}</strong>
               </div>
               <div className="context-panel__usage-progress context-panel__capacity-meter" aria-label={`${t(windowStatus.key)}. ${usageSummary}. ${compactSummary}`}>

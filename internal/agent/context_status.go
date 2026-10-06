@@ -5,17 +5,23 @@ import "reasonix/internal/provider"
 // ContextMaintenanceSnapshot is a read-only view of the current provider-bound
 // context. It separates present composition from cumulative summary-call cost.
 type ContextMaintenanceSnapshot struct {
-	CanonicalTokens   int
-	ProjectedTokens   int
-	SummaryTokens     int
-	LastSavedTokens   int
-	SnipTrigger       int
-	FoldTrigger       int
-	ForceTrigger      int
-	TriggerTokens     int
-	CheckpointState   string
-	HardInputCeiling  int
-	Headroom          int
+	CanonicalTokens int
+	ProjectedTokens int
+	// ProjectionValid reports whether the projected view is actually bound to
+	// the current transcript and lineage (task 549). When false the projected
+	// figure equals the canonical one — the fallback view — and a frontend can
+	// label the readout instead of presenting a full-transcript size as normal
+	// usage.
+	ProjectionValid bool
+	SummaryTokens   int
+	LastSavedTokens int
+	SnipTrigger     int
+	FoldTrigger     int
+	ForceTrigger    int
+	TriggerTokens   int
+	CheckpointState string
+	HardInputCeiling int
+	Headroom         int
 	ProjectionVersion uint64
 	Blocked           bool
 	LastReceipt       *ContextMaintenanceReceipt
@@ -69,6 +75,7 @@ func (a *Agent) ContextMaintenanceSnapshot() ContextMaintenanceSnapshot {
 	snapshot := ContextMaintenanceSnapshot{
 		CanonicalTokens:   a.estimatedVisibleRequestTokens(canonical),
 		ProjectedTokens:   a.estimatedVisibleRequestTokens(visible),
+		ProjectionValid:   valid,
 		FoldTrigger:       trigger,
 		TriggerTokens:     trigger,
 		CheckpointState:   uiCheckpoint,

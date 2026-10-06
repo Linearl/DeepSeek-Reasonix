@@ -80,19 +80,28 @@ const dom = installDom();
 };
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error("missing root");
-const root = createRoot(rootEl);
 
-await act(async () => {
-  root.render(
-    <LocaleProvider>
-      <ContextPanel
-        tabId="tab-capacity"
-        context={{ used: 1_001, window: 1_000, sessionTokens: 1_001, compactRatio: 0.8 }}
-      />
-    </LocaleProvider>,
-  );
-  await wait();
-});
+// React 19: an unmounted root is final, so each scenario mounts a fresh one.
+async function renderScenario(context: ContextInfo): Promise<ReturnType<typeof createRoot>> {
+  const scenarioRoot = createRoot(rootEl);
+  await act(async () => {
+    scenarioRoot.render(
+      <LocaleProvider>
+        <ContextPanel tabId="tab-capacity" context={context} />
+      </LocaleProvider>,
+    );
+    await wait();
+  });
+  return scenarioRoot;
+}
+
+async function unmountScenario(scenarioRoot: ReturnType<typeof createRoot>) {
+  await act(async () => {
+    scenarioRoot.unmount();
+  });
+}
+
+const root = await renderScenario({ used: 1_001, window: 1_000, sessionTokens: 1_001, compactRatio: 0.8 });
 
 const capacity = document.querySelector(".context-panel__capacity-card");
 const meter = capacity?.querySelector(".context-panel__capacity-meter");
@@ -107,9 +116,42 @@ eq(meter?.querySelectorAll(".context-panel__progress-segment").length, 0, "capac
 eq(compactMarker?.style.left, "80%", "compression threshold marker stays at the configured ratio");
 ok(meter?.getAttribute("aria-label")?.includes("101% used") === true, "accessible summary reports the over-limit ratio");
 
-await act(async () => {
-  root.unmount();
+await unmountScenario(root);
+
+// 任务549: while the projection is INVALID the panel must say so — the huge
+// unprojected readout may not present as normal usage (acceptance ④).
+const staleRoot = await renderScenario({
+  used: 3_700_000, window: 1_000_000, sessionTokens: 3_700_000, compactRatio: 0.8,
+  maintenance: { canonicalTokens: 3_700_000, projectedTokens: 3_700_000, projectionValid: false, triggerTokens: 800_000 },
 });
+
+const staleCapacity = document.querySelector(".context-panel__capacity-card");
+const staleBadge = staleCapacity?.querySelector(".context-panel__projection-stale");
+const staleBadgeText = staleBadge?.textContent ?? "";
+// Locale detection follows the OS and dictionaries load async, so accept any
+// shipped translation — the point is that the badge renders its label.
+ok(["Projection invalid · full transcript", "投影失效 · 全量回退中"].includes(staleBadgeText),
+  `projection-invalid state is labelled explicitly (got ${JSON.stringify(staleBadgeText)})`);
+ok((staleBadge as HTMLElement | null)?.getAttribute("title")?.includes("3.7M") === true, "badge tooltip carries the canonical figure");
+const staleStrong = staleCapacity?.querySelector(".context-panel__capacity-top strong")?.textContent ?? "";
+ok(staleStrong.startsWith("3.7"), "fallback readout stays the actual next-send size while invalid");
+
+await unmountScenario(staleRoot);
+
+// 任务549: with a VALID projection the main readout is the projected (actual
+// send) figure — 264k, not the 3.7M canonical bulk — and no badge shows.
+const validRoot = await renderScenario({
+  used: 264_000, window: 1_000_000, sessionTokens: 264_000, compactRatio: 0.8,
+  maintenance: { canonicalTokens: 3_700_000, projectedTokens: 264_000, projectionValid: true, triggerTokens: 800_000 },
+});
+
+const validCapacity = document.querySelector(".context-panel__capacity-card");
+eq(validCapacity?.querySelector(".context-panel__projection-stale"), null, "valid projection shows no invalid badge");
+const validStrong = validCapacity?.querySelector(".context-panel__capacity-top strong")?.textContent ?? "";
+ok(validStrong.startsWith("264"), "main readout prefers the projected (actual send) figure over canonical");
+ok(!validStrong.includes("3.7"), "valid projection never surfaces the canonical bulk in the main readout");
+
+await unmountScenario(validRoot);
 dom.window.close();
 
 console.log(`\n${passed} passed, ${failed} failed`);
