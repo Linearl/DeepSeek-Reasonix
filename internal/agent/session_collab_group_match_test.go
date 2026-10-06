@@ -142,7 +142,7 @@ func TestDirectoryGroupFilterAcceptsTitleAndFlatID(t *testing.T) {
 
 func mustDirectoryPage(t *testing.T, cfg SessionCollabConfig, group string) string {
 	t.Helper()
-	raw, err := directoryPageFiltered(cfg, 10, nil, "", group)
+	raw, err := directoryPageFiltered(cfg, 10, nil, "", group, false)
 	if err != nil {
 		t.Fatalf("directoryPageFiltered(group=%q): %v", group, err)
 	}
