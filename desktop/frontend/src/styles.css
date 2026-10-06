@@ -27616,6 +27616,108 @@ body > .mermaid-diagram--fullscreen {
   }
 }
 
+/*
+ * Task 525: the quick-action result card (task 369) portals to <body> after
+ * #root. Without position:fixed the inline left/top are inert and the card
+ * lands below the viewport, where body{overflow:hidden} clips it — rendered
+ * in the DOM but never visible. Anchor it at the selection point like the
+ * action toolbar above, and scroll long results inside the card.
+ */
+.transcript-selection-result-card {
+  --wails-draggable: no-drag;
+  position: fixed;
+  z-index: var(--z-floating-menu);
+  display: flex;
+  flex-direction: column;
+  width: min(420px, calc(100vw - 16px));
+  max-height: min(320px, calc(100vh - 16px));
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-elev) 94%, transparent);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(12px);
+  animation: menu-pop-in var(--dur-base) var(--ease-out) both;
+}
+
+.transcript-selection-result-card__head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.transcript-selection-result-card__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transcript-selection-result-card__pin,
+.transcript-selection-result-card__close {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-faint);
+  cursor: pointer;
+  font: inherit;
+}
+
+.transcript-selection-result-card__pin:hover,
+.transcript-selection-result-card__close:hover,
+.transcript-selection-result-card__pin:focus-visible,
+.transcript-selection-result-card__close:focus-visible {
+  background: var(--sidebar-hover);
+  outline: none;
+}
+
+.transcript-selection-result-card__pin:focus-visible,
+.transcript-selection-result-card__close:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.transcript-selection-result-card__pin[aria-pressed="true"] {
+  color: var(--accent);
+}
+
+.transcript-selection-result-card__body {
+  flex: 1 1 auto;
+  min-height: 1.5em;
+  overflow-y: auto;
+  color: var(--fg);
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.transcript-selection-result-card__body[data-state="loading"] {
+  color: var(--fg-faint);
+}
+
+.transcript-selection-result-card__body[data-state="error"] {
+  color: var(--danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transcript-selection-result-card {
+    animation: none;
+  }
+}
+
 .project-tree__color-option {
   min-width: 0;
   display: flex;

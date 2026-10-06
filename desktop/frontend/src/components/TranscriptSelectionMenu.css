@@ -28,3 +28,19 @@
   transform: none;
   isolation: isolate;
 }
+
+/*
+ * The quick-action result card (task 525) is the same class of surface — a
+ * translucent body portal appearing during native selection churn — so it
+ * gets the identical WebView2 stale-pixel treatment as the toolbar above.
+ */
+:root[data-platform="windows"] .transcript-selection-result-card {
+  background-color: Canvas;
+  background-image: linear-gradient(var(--bg-elev), var(--bg-elev));
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  animation: none;
+  transition: none;
+  transform: none;
+  isolation: isolate;
+}
