@@ -42498,11 +42498,10 @@ body > .mermaid-diagram--fullscreen {
   max-width: 48%;
 }
 .composer-toolbar-send { order: 5; display: flex; gap: 6px; flex-shrink: 0; margin-left: auto; }
-/* Task 261: clock-icon prompt history picker (experimental). The popup anchors
-   above the send row; picking inserts at the caret and never replaces the draft. */
+/* Task 261: clock-icon prompt history picker (experimental). 任务529：面板经
+   AnchoredPopover portal 到 body（.composer-meta overflow:hidden 会裁剪
+   absolute 定位面板），surface 规格类挂在 portal 容器上，本处只留按钮容器。 */
 .composer-history-picker { position: relative; display: flex; align-items: center; }
-.composer-history-picker__backdrop { position: fixed; inset: 0; z-index: var(--z-local-backdrop); }
-.composer-history-picker .composer-history-menu { position: absolute; right: 0; bottom: calc(100% + 10px); z-index: var(--z-local-popover); }
 .composer-history-menu.composer-menu-surface { width: min(460px, calc(100vw - 48px)); max-width: none; display: flex; flex-direction: column; gap: 6px; }
 .composer-history-menu__head { display: flex; align-items: center; gap: 6px; padding: 2px 8px; font-size: 11px; font-weight: 600; color: var(--fg-dim); }
 .composer-history-menu__hint { margin-left: auto; font-weight: 400; font-size: 10px; }

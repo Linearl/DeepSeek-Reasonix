@@ -50,7 +50,9 @@ export function PromptHistoryPicker({ entries, hasMore, loading, onPick, onLoadM
   return (
     <div
       ref={listRef}
-      className="composer-history-menu composer-menu-surface"
+      // 任务529：surface 规格类移到宿主 AnchoredPopover（portal 容器）上，
+      // 本根只保留语义/样式钩子类 composer-history-menu。
+      className="composer-history-menu"
       role="dialog"
       aria-label={t("composer.historyPicker")}
       tabIndex={-1}
