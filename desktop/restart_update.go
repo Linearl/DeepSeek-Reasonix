@@ -473,47 +473,90 @@ func (r restartUpdaterAdapter) RestartAndUpdate(_ context.Context, sourceDir, ve
 // installation, and the settings that need it are ordinary switches rather than
 // experiments, so requiring an unrelated experiment to be enabled would be backwards.
 func (a *App) RestartDesktop() error {
+	// callerSession "" and markerReason "": the settings-page restart scopes the
+	// whole workspace and writes no update-restart marker (a manual restart must
+	// not open the auto-resume gate, task 461-P2).
+	_, err := a.restartActiveVersionExempt("", "")
+	return err
+}
+
+// restartActiveVersionExempt is the shared core of the plain-restart family
+// (task 520): one reload logic for both faces — the settings-page button
+// (RestartDesktop) and the restart_update tool's restart action
+// (autonomousUpdateController.RestartOnly). Sequence: launchability checks
+// first, then the task-450 grace window (stop the heartbeat, bounded wait,
+// cancel-with-resume-marker), then the launcher handoff and the delayed quit.
+//
+// callerSession (a session path) is exempt from the window's busy scope — the
+// tool face runs inside the very turn the restart ends (task 254); the UI face
+// passes "" and scopes the whole workspace.
+//
+// markerReason "" writes no update-restart marker (the settings face keeps the
+// task-461-P2 behavior: a manual restart never opens the auto-resume gate). A
+// non-empty reason records a planned update-family relaunch — the restart
+// tool's "continue" promise needs the marker, because a launch without it
+// closes the resume gate AND drops the staged roster (update_restart_marker.go).
+//
+// The returned report feeds the tool face's forced-through note; the UI face
+// logs it instead.
+func (a *App) restartActiveVersionExempt(callerSession, markerReason string) (restartWindowReport, error) {
 	if a == nil {
-		return fmt.Errorf("restart: no app")
+		return restartWindowReport{}, fmt.Errorf("restart: no app")
 	}
 	executable, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("restart: locate executable: %w", err)
+		return restartWindowReport{}, fmt.Errorf("restart: locate executable: %w", err)
 	}
 	installRoot, err := restartResolveInstallRoot(executable)
 	if err != nil || installRoot == "" {
-		return fmt.Errorf("restart: this build is not a versioned install, so there is no launcher to hand off to: %w", err)
+		return restartWindowReport{}, fmt.Errorf("restart: this build is not a versioned install, so there is no launcher to hand off to: %w", err)
 	}
 	launcherPath := filepath.Join(installRoot, installlayout.LauncherBinaryName())
 	if info, statErr := os.Lstat(launcherPath); statErr != nil || !info.Mode().IsRegular() {
-		return fmt.Errorf("restart: the launcher %s is missing from %s", installlayout.LauncherBinaryName(), installRoot)
+		return restartWindowReport{}, fmt.Errorf("restart: the launcher %s is missing from %s", installlayout.LauncherBinaryName(), installRoot)
 	}
 
 	// Task 450 (user ruling 2026-10-02): the plain restart shares the update
 	// path's grace window — one restart family, one semantics, no dual-track.
-	// No caller session exists on this path, so every busy tab is inside the
-	// window's scope: given the grace to finish, cancelled with a resume
-	// marker if they don't, pending prompts never vetoed. Audit-2 major fix:
-	// the window is side-effectful (heartbeat stop + cancels), so it runs only
-	// after the launchability checks — a portable build or a missing launcher
-	// must refuse without paying those costs (nothing restores them).
-	report := a.clearRestartPath("")
+	// Audit-2 major fix: the window is side-effectful (heartbeat stop + cancels),
+	// so it runs only after the launchability checks — a portable build or a
+	// missing launcher must refuse without paying those costs (nothing restores
+	// them).
+	report := a.clearRestartPath(callerSession)
 	if note := report.forcedNote(); note != "" {
-		slog.Warn("restart: plain restart " + note)
+		face := "plain restart"
+		if markerReason != "" {
+			face = "restart (" + markerReason + ")"
+		}
+		slog.Warn("restart: " + face + " " + note)
 	}
 
 	// A silent restart reads as a dead button, so log the milestone the way the
 	// restart-and-update path does.
 	slog.Info("restart: relaunching the active version", "installRoot", installRoot)
+	if markerReason != "" {
+		version := ""
+		if ptr, ptrErr := installlayout.ReadCurrent(installRoot); ptrErr == nil {
+			version = ptr.ActiveVersion
+		}
+		writeUpdateRestartMarker(markerReason, version)
+	}
 	if err := restartStartLauncher(launcherPath, os.Getpid()); err != nil {
 		slog.Error("restart: launcher start failed", "err", err)
-		return fmt.Errorf("restart: start launcher: %w", err)
+		return restartWindowReport{}, fmt.Errorf("restart: start launcher: %w", err)
 	}
 
-	// Answer first, exit after: the caller is a UI action that has to get a result.
+	// Answer first, exit after: the caller is a UI action or a tool call that
+	// has to get a result. The tool path (task 254) grants a longer grace: the
+	// calling turn is still streaming and its transcript tail needs the seconds
+	// to reach disk before the process exits.
+	grace := 750 * time.Millisecond
+	if callerSession != "" {
+		grace = autonomousUpdateQuitGrace
+	}
 	go func() {
-		time.Sleep(750 * time.Millisecond)
+		time.Sleep(grace)
 		restartQuit(a)
 	}()
-	return nil
+	return report, nil
 }

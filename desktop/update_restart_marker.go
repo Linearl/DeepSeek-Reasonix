@@ -13,11 +13,14 @@ package main
 // 1545 反静默丢失原则），使手动重启登记的会话永远不会在日后某次无关的更新重启
 // 里延迟复活（与 task 254/263「不得在无关重启里复活」同一原则）。
 //
-// 标记是一次性凭据：启动时读后即删。写入点（本包内三处，均为换版提交成功之后、
+// 标记是一次性凭据：启动时读后即删。写入点（本包内四处，均为提交成功之后、
 // 拉起 launcher 之前）：
 //   - restart_update.go restartAndUpdateExempt（发布 staging 构建，reason=publish）
 //   - version_switch.go switchToVersionExempt（回退已装版本，reason=switch）
 //   - updater_app.go installDebUpdate / installPortableUpdate（官方更新通道，reason=updater）
+//   - restart_update.go restartActiveVersionExempt（restart_update 工具的纯重启
+//     action，任务 520：不换版本但承诺「重启并继续」，reason=restart）。普通重启
+//     RestartDesktop 仍不写——手动重启不得打开自动恢复门禁。
 //
 // 状态判据（验收）：update-restart-marker.json 存在 = 上一次退出是更新重启；
 // 不存在 = 普通启动。消费后文件必删，标记不跨两次启动生效。

@@ -213,6 +213,55 @@ func (c autonomousUpdateController) ExecuteTarget(_ context.Context, callerSessi
 	return msg, nil
 }
 
+// restartMarkerReasonToolRestart is the update-restart marker reason for the
+// restart_update tool's plain restart (task 520) — the fourth write point next
+// to publish/switch/updater. The marker is what makes the restart "planned":
+// without it the next launch closes the auto-resume gate and drops the staged
+// roster, and the promised continuation could never happen.
+const restartMarkerReasonToolRestart = "restart"
+
+// RestartOnly relaunches the running version WITHOUT switching (task 520): no
+// staging publish, no pointer move — the same reload core as the settings
+// page's RestartDesktop (restartActiveVersionExempt), with the tool-face
+// additions that make the restart "restart AND continue":
+//   - callerSession is exempt from the grace window's busy scope (task 254:
+//     the tool runs inside the very turn the restart ends) and gets the longer
+//     transcript-flush grace;
+//   - the update-restart marker is written, so the fresh process opens the
+//     auto-resume gate (a plain RestartDesktop deliberately writes none);
+//   - the caller is staged for auto-resume exactly like execute
+//     (stageAutonomousUpdateResume), honoring the task-254 dial.
+//
+// The install is untouched, so — like RestartDesktop — this does not require
+// the restart-and-update experiment; the tool itself only exists behind
+// experimental_autonomous_update. Returns once the relaunch is committed; a
+// success must never be retried (that would be another restart).
+func (c autonomousUpdateController) RestartOnly(_ context.Context, callerSession string) (string, error) {
+	a := c.app
+	if a == nil {
+		return "", fmt.Errorf("restart: no app")
+	}
+	report, err := a.restartActiveVersionExempt(callerSession, restartMarkerReasonToolRestart)
+	if err != nil {
+		return "", err
+	}
+	// After the relaunch is committed: stage the calling session for
+	// auto-resume so the fresh process continues the work — the same 1545
+	// anti-silent-loss shape as execute (a declined staging must be named on
+	// the tool text, never silent).
+	callerStaged := a.stageAutonomousUpdateResume(callerSession)
+	msg := "restart scheduled: the app relaunches shortly on the CURRENT version — nothing was switched or published — do not retry"
+	if note := report.forcedNote(); note != "" {
+		// Task 450 acceptance 4: a forced pass through someone else's work is
+		// part of the result the model sees, not a silent side effect.
+		msg += "\n" + note
+	}
+	if !callerStaged && strings.TrimSpace(callerSession) != "" {
+		msg += "\nthis session is interrupted by the restart but NOT staged for auto-resume (" + restartUnstagedMarker + "): it will not continue by itself after the relaunch"
+	}
+	return msg, nil
+}
+
 // versionTreeHealthy reports whether versions/<version> carries the desktop and
 // CLI binaries. The CLI is the servepool-critical member (task 248).
 func versionTreeHealthy(installRoot, version string) bool {
