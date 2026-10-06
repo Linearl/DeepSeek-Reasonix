@@ -1018,6 +1018,15 @@ const CHECKS = [
   { feature: "463 三语文案 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["\"composer.expandAll\": \"Expand all work processes\""] },
   { feature: "463 双向开关测试存续", file: "desktop/frontend/src/__tests__/fold-toggle-button.test.tsx", patterns: ["allWorkProcessesCollapsed", "reasonix:expand-all-folds"] },
 
+  // ── 任务498（wt-498-projectiondb-v2）：projectiondb v2 路线收口——
+  // 「验证式单次原子替换 + 中断即弃、幂等重跑」。v1 三件基建
+  // （integrity/rebuild_resume/rebuild_validation）fork 从未拥有，
+  // 此处锚定 v2 语义三件套：中断语义成文、崩溃残留清扫、
+  // 校验实质化（新连接从磁盘重读，页缓存不得掩盖损坏）。
+  { feature: "498 中断语义成文 + 崩溃残留清扫", file: "internal/projectiondb/projectiondb.go", patterns: ["cleanOrphanRebuildResidues", "discard on interrupt, idempotent rerun"] },
+  { feature: "498 校验实质化（新连接磁盘重读判决）", file: "internal/projectiondb/projectiondb.go", patterns: ["func validateReplacementFile", "mode=ro&immutable=1", "mask on-disk corruption"] },
+  { feature: "498 中断注入测试四件（取消/残留清扫/备份保留/校验失败不替换）", file: "internal/projectiondb/projectiondb_test.go", patterns: ["TestRebuildCancellationKeepsOldDatabaseAndCleansSibling", "TestRebuildSweepsCrashResidueBeforeRebuilding", "TestRebuildKeepsRetainedBackupsWhileSweepingSiblings", "TestRebuildValidationFailureDoesNotSwap"] },
+
 ];
 
 let failed = 0;
