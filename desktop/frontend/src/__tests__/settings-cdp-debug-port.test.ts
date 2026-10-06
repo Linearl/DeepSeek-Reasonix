@@ -44,7 +44,7 @@ const render = fs.readFileSync(
 
 // 1. Render table: the entry exists and reads the boot-snapshot switch.
 ok(
-  panel.includes('{ id: "cdpDebugPort", group: "debug"'),
+  panel.includes('{ id: "cdpDebugPort", group: "dev-debug"'),
   "lab rail hosts the cdpDebugPort entry in the debug group",
 );
 ok(

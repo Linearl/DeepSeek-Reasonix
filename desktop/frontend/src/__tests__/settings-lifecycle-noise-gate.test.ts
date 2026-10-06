@@ -47,7 +47,7 @@ const edit = fs.readFileSync(path.join(repoRoot, "internal/config/edit.go"), "ut
 
 // 1. Render table: the entry exists and reads the boot-snapshot switch.
 ok(
-  panel.includes('{ id: "lifecycleNoiseGate", group: "misc"'),
+  panel.includes('{ id: "lifecycleNoiseGate", group: "dev-debug"'),
   "lab rail hosts the lifecycleNoiseGate entry in the misc group",
 );
 ok(

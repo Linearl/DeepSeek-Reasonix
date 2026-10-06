@@ -38,7 +38,7 @@ const CHECKS = [
   // ── 前端 TS ─────────────────────────────────────────────────────
   { feature: "task 163 OpenCode Go 用量查询（后端）", file: "desktop/opencode_go_usage.go", patterns: ["isOfficialOpenCodeGoBase", "no-subscription", "Bearer ", "parseOpenCodeGoUsage"] },
   { feature: "task 163 OpenCode Go 用量卡（前端）", file: "desktop/frontend/src/components/SettingsOpenCodeGoUsageCard.tsx", patterns: ["GetOpenCodeGoUsage", "opencode-go-usage__row", "resetCountdown"] },
-  { feature: "task 280 乐观并行（实验室改名迁址，同键取反绑定）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["optimisticParallel", "SetOptimisticWrite(e.target.checked)", "group: \"efficiency\""] },
+  { feature: "task 280 乐观并行（实验室改名迁址，同键取反绑定；任务561 归 automation 组）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["optimisticParallel", "SetOptimisticWrite(e.target.checked)", "group: \"automation\""] },
   { feature: "task 192 驻留豁免开关（store 策略）", file: "desktop/frontend/src/lib/transcriptStore.ts", patterns: ["setResidentPolicy", "shouldRetainOnSwitch", "ResidentExemptLimit", "noteResidentBudgetOver"] },
   { feature: "#9221 颜色筛选 TSX", file: "desktop/frontend/src/components/ProjectTree.tsx", patterns: ["colorFilter", "renderColorFilterControl", "project-tree__action-btn"] },
   { feature: "#9222 分组 TSX + 持久化（上游等价实现）", file: "desktop/frontend/src/components/ProjectTreeOrganization.tsx", patterns: ["ProjectTreeGroupRows", "useProjectTreeOrganization", "persistSessionGroupCollapsed"] },
@@ -780,7 +780,7 @@ const CHECKS = [
   // ── S1 开关 UI 入口（任务 450 并入小件：experimental_base_process 实验室控件）──
   // 开关注册（S1a）已进 render 表但没有 UI 面，用户无法打开开关；四处接线
   // 缺一，开关就「看得见配置改不了」或「改了读不回」。
-  { feature: "S1 开关实验室入口（rail 行+详情卡+重启横幅）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["| \"baseProcess\"", "{ id: \"baseProcess\", group: \"misc\"", "selected === \"baseProcess\" && (", "app.SetExperimentalBaseProcess(on)"] },
+  { feature: "S1 开关实验室入口（rail 行+详情卡+重启横幅；任务561 misc→infra）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["| \"baseProcess\"", "{ id: \"baseProcess\", group: \"infra\"", "selected === \"baseProcess\" && (", "app.SetExperimentalBaseProcess(on)"] },
   { feature: "S1 开关桥接线（接口声明+mock 桩）", file: "desktop/frontend/src/lib/bridge.ts", patterns: ["SetExperimentalBaseProcess(enabled: boolean): Promise<void>;", "async SetExperimentalBaseProcess() {}"] },
   { feature: "S1 开关 Go 侧读写链（setter+视图字段）", file: "desktop/settings_app.go", patterns: ["ExperimentalBaseProcess bool `json:\"experimentalBaseProcess\"`", "view.ExperimentalBaseProcess = cfg.Agent.ExperimentalBaseProcess", "ExperimentalBaseProcess:             cfg.Agent.ExperimentalBaseProcess"] },
   // ── 任务 451：history 慢分相打点 + planner/尾读缓存（2026-10-02）──────

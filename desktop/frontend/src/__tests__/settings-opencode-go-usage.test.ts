@@ -34,7 +34,7 @@ const zh = readFileSync(join(root, "locales/zh.ts"), "utf8");
 const zhTW = readFileSync(join(root, "locales/zh-TW.ts"), "utf8");
 
 // ── render table + union + detail wiring ────────────────────────────────────
-ok(panel.includes('{ id: "opencodeGoUsage", group: "misc",'), "render table carries the entry (81/123)");
+ok(panel.includes('{ id: "opencodeGoUsage", group: "ui",'), "render table carries the entry (81/123)");
 // Task 346 (0928 second-pass layout): the control stacks vertically - the
 // default flex-row control squeezed the switch and the three window rows
 // into one line. Pure CSS, asserted at the source level.

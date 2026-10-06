@@ -31,7 +31,8 @@ const zhTW = src("../locales/zh-TW.ts");
 console.log("\ntask 427 lab merge (compressOpt + budgetControl)");
 
 // ① render table + union + pane branches move together.
-ok(panel.includes('{ id: "compressOpt", group: "storage",'), "storage group carries the merged compressOpt entry");
+// Task 561: the audit table re-homes compressOpt from storage to efficiency.
+ok(panel.includes('{ id: "compressOpt", group: "efficiency",'), "efficiency group carries the merged compressOpt entry");
 ok(panel.includes('{ id: "budgetControl", group: "efficiency",'), "efficiency group carries the merged budgetControl entry");
 ok(!panel.includes('{ id: "proactiveCompact", group:'), "no standalone proactiveCompact rail entry remains");
 ok(!panel.includes('{ id: "coldCacheCompact", group:'), "no standalone coldCacheCompact rail entry remains");

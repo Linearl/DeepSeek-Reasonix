@@ -26,7 +26,7 @@ function ok(condition: unknown, label: string) {
 // home per the task body), not scattered elsewhere. Task 427: the cold-cache
 // entry merged into the shared compress-opt card (light reads either switch).
 ok(
-  panel.includes('{ id: "compressOpt", group: "storage",') &&
+  panel.includes('{ id: "compressOpt", group: "efficiency",') &&
     panel.includes("Boolean(s.experimentalColdCacheCompact)"),
   "render table carries the merged entry in the storage group",
 );

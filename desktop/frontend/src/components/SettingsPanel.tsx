@@ -1885,7 +1885,11 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Task 19: the addressable roster is read on demand, not on every settings
   // load — a session only appears once it has registered a purpose.
   const [sessionCollabRoster, setSessionCollabRoster] = useState<Awaited<ReturnType<typeof app.ListAddressableSessions>>>([]);
-  type LabGroupKey = "efficiency" | "debug" | "ui" | "storage" | "misc";
+  // 任务 561: the lab regroups into 7 domains — efficiency splits out
+  // automation, misc renames to infra, debug splits into observability +
+  // dev-debug. Membership follows the 2026-10-06 audit table (46 items,
+  // 8/10/15/2/2/2/7).
+  type LabGroupKey = "automation" | "efficiency" | "ui" | "observability" | "dev-debug" | "storage" | "infra";
   // Task 257: turning full access ON passes one danger confirmation first —
   // the same one-shot gate shape as Claude Code / MiMo's yolo mode. Turning
   // it OFF never asks.
@@ -1990,111 +1994,120 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     }
   }, []);
 
-  // 任务 250（用户裁决 2026-09-22）：实验室分组重划为 5 组——组顺序即 rail 渲染顺序。
+  // 任务 561（用户裁定 2026-10-06）：实验室分组重划为 7 组——组顺序即 rail 渲染顺序。
   const labGroups = [
+    { key: "automation", labelKey: "settings.labGroup.automation" },
     { key: "efficiency", labelKey: "settings.labGroup.efficiency" },
-    { key: "debug", labelKey: "settings.labGroup.debug" },
     { key: "ui", labelKey: "settings.labGroup.ui" },
+    { key: "observability", labelKey: "settings.labGroup.observability" },
+    { key: "dev-debug", labelKey: "settings.labGroup.devDebug" },
     { key: "storage", labelKey: "settings.labGroup.storage" },
-    { key: "misc", labelKey: "settings.labGroup.misc" },
+    { key: "infra", labelKey: "settings.labGroup.infra" },
   ] as const;
+  // 任务 561: the features array is the lab render table — every entry below
+  // must keep its own `on` read and its own setter wiring in the pane (81/123
+  // lost-save rule). Group membership follows the 2026-10-06 audit table
+  // (46 items: automation 8 / efficiency 10 / ui 15 / observability 2 /
+  // dev-debug 2 / storage 2 / infra 7).
   const features: Array<{ id: ExperimentFeatureId; label: string; on: boolean; group: LabGroupKey }> = [
-    { id: "autopilot", group: "efficiency", label: t("settings.autopilot"), on: Boolean(s.autopilot) },
-    { id: "dream", group: "efficiency", label: t("settings.dream"), on: Boolean(s.experimentalDream) },
-    { id: "sessionCollab", group: "efficiency", label: t("settings.sessionCollab"), on: Boolean(s.experimentalSessionCollab) },
-    { id: "autonomousIdleTerminate", group: "efficiency", label: t("settings.autonomousIdleTerminate"), on: Boolean(s.experimentalAutonomousIdleTerminate) },
-    { id: "loopStreakNote", group: "efficiency", label: t("settings.loopStreakNote"), on: Boolean(s.experimentalLoopStreakNote) },
-    { id: "eventWaitRecheck", group: "efficiency", label: t("settings.eventWaitRecheck"), on: Boolean(s.experimentalEventWaitRecheck) },
+    // ── automation（自动化，8 项）──────────────────────────────────
+    { id: "autopilot", group: "automation", label: t("settings.autopilot"), on: Boolean(s.autopilot) },
+    { id: "sessionCollab", group: "automation", label: t("settings.sessionCollab"), on: Boolean(s.experimentalSessionCollab) },
+    // Task 257: full access (yolo) — it widens permissions to cut approvals.
+    // Task 364/561: a permission-shape switch, re-homed beside the other
+    // autonomy switches (task 561 audit table).
+    { id: "fullAccess", group: "automation", label: t("settings.fullAccess"), on: Boolean(s.experimentalFullAccess) },
     // Task 280: re-homed from the permissions area (task 280; inverted bind —
     // `on` here means optimistic ON = safety check OFF, default off).
-    { id: "optimisticParallel", group: "efficiency", label: t("settings.optimisticParallel"), on: Boolean(s.sandbox?.optimisticWrite) },
-    // Task 449: the task-244 B5 lease reclaim + B4 recovery sweep are one
-    // switch now — the entry light reads the single merged key.
-    { id: "orphanHandling", group: "misc", label: t("settings.orphanHandling"), on: Boolean(s.experimentalOrphanHandling) },
-    { id: "modelCapabilityFilter", group: "misc", label: t("settings.modelCapabilityFilter"), on: Boolean(s.experimentalModelCapabilityFilter) },
-    { id: "runtimeReuse", group: "misc", label: t("settings.runtimeReuse"), on: Boolean(s.experimentalRuntimeReuse) },
-    { id: "messageMerge", group: "efficiency", label: t("settings.messageMerge"), on: (s.collabInboxMerge || "off") !== "off" || Boolean(s.collabGuidanceMerge) },
-    { id: "localServer", group: "efficiency", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
-    { id: "traceAsState", group: "efficiency", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
-    // Task 318.5: one lab entry for both monitors — the entry light is on when
-    // either switch is on; the page keeps two independent switches.
-    { id: "monitoring", group: "debug", label: t("settings.monitoring"), on: Boolean(s.experimentalSessionMonitor) || Boolean(s.experimentalPerfMonitor) },
-    { id: "feedback", group: "debug", label: t("settings.feedback"), on: Boolean(s.experimentalFeedback) },
-    { id: "restartUpdate", group: "debug", label: t("settings.restartUpdate"), on: Boolean(s.experimentalRestartUpdate) },
-    { id: "splitView", group: "ui", label: t("settings.splitView"), on: Boolean(s.experimentalSplitView) },
-    { id: "todoSidebar", group: "ui", label: t("settings.todoSidebar"), on: Boolean(s.experimentalTodoSidebar) },
-    // Task 495: subagent panel package (right-dock tab + ended-card collapse).
-    { id: "subagentPanel", group: "ui", label: t("settings.subagentPanel"), on: Boolean(s.experimentalSubagentPanel) },
-    { id: "subagentDetail", group: "ui", label: t("settings.subagentDetail"), on: Boolean(s.experimentalSubagentDetail) },
-    // Task 505: session graph wall (palette 跳转会话 entry + grid wall).
-    { id: "sessionWall", group: "ui", label: t("settings.sessionWall"), on: Boolean(s.experimentalSessionWall) },
-    // Task 261: composer history picker + narrowed ArrowUp (upstream #10425).
-    { id: "promptHistoryPicker", group: "ui", label: t("settings.promptHistoryPicker"), on: Boolean(s.experimentalPromptHistoryPicker) },
-    // 任务 506：标签栏自适应压缩（>8 个标签逐级降宽，下限 84px）。
-    { id: "tabCompress", group: "ui", label: t("settings.tabCompress"), on: Boolean(s.experimentalTabCompress) },
-    { id: "autoLoadOlder", group: "ui", label: t("settings.autoLoadOlder"), on: Boolean(s.experimentalAutoLoadOlder) },
-    { id: "cacheTuning", group: "storage", label: t("settings.cacheTuning"), on: Boolean(s.experimentalCacheTuning) },
-    { id: "sessionStorage", group: "storage", label: t("settings.sessionStorage"), on: (s.sessionStorage ?? "v3_only") !== "v3_only" },
+    { id: "optimisticParallel", group: "automation", label: t("settings.optimisticParallel"), on: Boolean(s.sandbox?.optimisticWrite) },
+    { id: "dream", group: "automation", label: t("settings.dream"), on: Boolean(s.experimentalDream) },
+    { id: "autonomousIdleTerminate", group: "automation", label: t("settings.autonomousIdleTerminate"), on: Boolean(s.experimentalAutonomousIdleTerminate) },
+    { id: "loopStreakNote", group: "automation", label: t("settings.loopStreakNote"), on: Boolean(s.experimentalLoopStreakNote) },
+    { id: "subagentPolicy", group: "automation", label: t("settings.subagentPolicy"), on: Boolean(s.experimentalSubagentPolicy) },
+    // ── efficiency（提效，10 项）──────────────────────────────────
+    // Task 427: the two budget entries (contextBudget + researchBudget) merge
+    // into one "budget control" card — light reads either switch; detail card
+    // keeps both switches independently saved (81/123 lost-save rule).
+    { id: "budgetControl", group: "efficiency", label: t("settings.budgetControl"), on: Boolean(s.experimentalContextBudget) || Boolean(s.experimentalResearchBudget) },
     // Task 427: the two storage "compaction" entries (proactiveCompact +
     // coldCacheCompact) merge into one "compress optimization" card — the
     // light reads either switch; the detail card keeps both switches
     // independently saved (render table: a missing entry would silently drop
     // the save, 81/123 lesson).
-    { id: "compressOpt", group: "storage", label: t("settings.compressOpt"), on: Boolean(s.experimentalProactiveCompact) || Boolean(s.experimentalColdCacheCompact) },
-    // Task 333: rotation gate entry — the light reads any non-default mode so
-    // the statistic card stays discoverable (render table: a missing entry
-    // would silently drop the save, 81/123 lesson).
-    { id: "eventsRotation", group: "storage", label: t("settings.eventsRotation"), on: (s.eventsAutoRotation ?? "manual") !== "off" },
-    { id: "pathRules", group: "misc", label: t("settings.pathRules"), on: Boolean(s.experimentalPathRules) },
+    { id: "compressOpt", group: "efficiency", label: t("settings.compressOpt"), on: Boolean(s.experimentalProactiveCompact) || Boolean(s.experimentalColdCacheCompact) },
+    { id: "compactionParallel", group: "efficiency", label: t("settings.compactionParallel"), on: Boolean(s.experimentalCompactionParallel) },
+    { id: "cacheTuning", group: "efficiency", label: t("settings.cacheTuning"), on: Boolean(s.experimentalCacheTuning) },
     // Task 265 lab intake: 9 fork features (efficiency 5 / ui 2 / debug 2).
     // Task 318.1: highSpeedModel's light reads the new switch (default off).
     { id: "highSpeedModel", group: "efficiency", label: t("settings.highSpeedModel"), on: Boolean(s.experimentalHighSpeedModel) },
-    { id: "compactionParallel", group: "efficiency", label: t("settings.compactionParallel"), on: Boolean(s.experimentalCompactionParallel) },
-    // Task 427: the two budget entries (contextBudget + researchBudget) merge
-    // into one "budget control" card — light reads either switch; detail card
-    // keeps both switches independently saved (81/123 lost-save rule).
-    { id: "budgetControl", group: "efficiency", label: t("settings.budgetControl"), on: Boolean(s.experimentalContextBudget) || Boolean(s.experimentalResearchBudget) },
-    // Task 318.3: draft persistence light reads the new switch (default off).
-    { id: "draftPersistence", group: "ui", label: t("settings.draftPersistence"), on: Boolean(s.experimentalComposerDraft) },
-    { id: "selectionActions", group: "ui", label: t("settings.selectionActions"), on: Boolean(s.experimentalSelectionActions) },
-    { id: "questionSearch", group: "ui", label: t("settings.questionSearch"), on: Boolean(s.experimentalQuestionSearch) },
-    { id: "subagentPolicy", group: "efficiency", label: t("settings.subagentPolicy"), on: Boolean(s.experimentalSubagentPolicy) },
-    { id: "subagentTps", group: "debug", label: t("settings.subagentTps"), on: Boolean(s.experimentalSubagentTps) },
-    // Task 318.4: completion summary moves from debug to the ui group.
-    { id: "completionSummary", group: "ui", label: t("settings.completionSummary"), on: Boolean(s.experimentalCompletionSummary) },
+    { id: "messageMerge", group: "efficiency", label: t("settings.messageMerge"), on: (s.collabInboxMerge || "off") !== "off" || Boolean(s.collabGuidanceMerge) },
     // Task 262: quick commands move here from the general page.
     { id: "quickCommands", group: "efficiency", label: t("settings.quickCommands"), on: Boolean(s.experimentalQuickCommands) },
+    { id: "traceAsState", group: "efficiency", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
+    { id: "eventWaitRecheck", group: "efficiency", label: t("settings.eventWaitRecheck"), on: Boolean(s.experimentalEventWaitRecheck) },
     // Task 385a: 回答风格 (output style) — 提效类, efficiency group; render
     // table: a missing entry would silently drop the save, 81/123 lesson.
     // The light also reads a configured style: it stays discoverable after
     // the panel is closed, same shape as the storage entries below.
     { id: "outputStyle", group: "efficiency", label: t("settings.outputStyle"), on: Boolean(s.experimentalOutputStyleUI) || (s.outputStyle ?? "") !== "" },
-    // Task 342: CDP debug endpoint (debug group) — render table: a missing
-    // entry would silently drop the save, 81/123 lesson.
-    { id: "cdpDebugPort", group: "debug", label: t("settings.cdpDebugPort"), on: Boolean(s.experimentalCDPDebugPort) },
-    // Task 257: full access (yolo) lands in misc beside path rules — it is a
-    // permission-shape switch, not a plain productivity toggle.
-    // Task 364: full access (YOLO) re-homed from misc to efficiency — it
-    // widens permissions to cut approvals, which is productivity semantics.
-    { id: "fullAccess", group: "efficiency", label: t("settings.fullAccess"), on: Boolean(s.experimentalFullAccess) },
-    // Task 364: managed-path pre-approval no longer has its own rail entry —
-    // it renders as a sub-block inside the autopilot card (single entry; the
-    // render-table rule above still holds for every entry that remains).
-    // Task 192: residency policy entry (render table — a missing entry would
-    // silently drop the save, 81/123 lesson).
+    // ── ui（界面，15 项）─────────────────────────────────────────
+    // 任务 506：标签栏自适应压缩（>8 个标签逐级降宽，下限 84px）。
+    { id: "tabCompress", group: "ui", label: t("settings.tabCompress"), on: Boolean(s.experimentalTabCompress) },
+    { id: "todoSidebar", group: "ui", label: t("settings.todoSidebar"), on: Boolean(s.experimentalTodoSidebar) },
+    // Task 261: composer history picker + narrowed ArrowUp (upstream #10425).
+    { id: "promptHistoryPicker", group: "ui", label: t("settings.promptHistoryPicker"), on: Boolean(s.experimentalPromptHistoryPicker) },
+    // Task 505: session graph wall (palette 跳转会话 entry + grid wall).
+    { id: "sessionWall", group: "ui", label: t("settings.sessionWall"), on: Boolean(s.experimentalSessionWall) },
+    // Task 495: subagent panel package (right-dock tab + ended-card collapse).
+    { id: "subagentPanel", group: "ui", label: t("settings.subagentPanel"), on: Boolean(s.experimentalSubagentPanel) },
+    { id: "subagentDetail", group: "ui", label: t("settings.subagentDetail"), on: Boolean(s.experimentalSubagentDetail) },
+    // Task 318.4: completion summary moves from debug to the ui group.
+    { id: "completionSummary", group: "ui", label: t("settings.completionSummary"), on: Boolean(s.experimentalCompletionSummary) },
+    { id: "autoLoadOlder", group: "ui", label: t("settings.autoLoadOlder"), on: Boolean(s.experimentalAutoLoadOlder) },
+    { id: "splitView", group: "ui", label: t("settings.splitView"), on: Boolean(s.experimentalSplitView) },
+    // Task 318.3: draft persistence light reads the new switch (default off).
+    { id: "draftPersistence", group: "ui", label: t("settings.draftPersistence"), on: Boolean(s.experimentalComposerDraft) },
+    { id: "selectionActions", group: "ui", label: t("settings.selectionActions"), on: Boolean(s.experimentalSelectionActions) },
+    { id: "questionSearch", group: "ui", label: t("settings.questionSearch"), on: Boolean(s.experimentalQuestionSearch) },
     // Task 163: usage card entry (render table — same 81/123 lost-save rule).
-    { id: "opencodeGoUsage", group: "misc", label: t("settings.opencodeGoUsage"), on: Boolean(s.experimentalOpenCodeGoUsage) },
-    // S1: resident base subprocess (infrastructure switch; misc beside the
+    { id: "opencodeGoUsage", group: "ui", label: t("settings.opencodeGoUsage"), on: Boolean(s.experimentalOpenCodeGoUsage) },
+    { id: "restartUpdate", group: "ui", label: t("settings.restartUpdate"), on: Boolean(s.experimentalRestartUpdate) },
+    { id: "feedback", group: "ui", label: t("settings.feedback"), on: Boolean(s.experimentalFeedback) },
+    // ── observability（可观测性，2 项）────────────────────────────
+    // Task 318.5: one lab entry for both monitors — the entry light is on when
+    // either switch is on; the page keeps two independent switches.
+    { id: "monitoring", group: "observability", label: t("settings.monitoring"), on: Boolean(s.experimentalSessionMonitor) || Boolean(s.experimentalPerfMonitor) },
+    { id: "subagentTps", group: "observability", label: t("settings.subagentTps"), on: Boolean(s.experimentalSubagentTps) },
+    // ── dev-debug（开发调试，2 项）────────────────────────────────
+    // Task 342: CDP debug endpoint — render table: a missing entry would
+    // silently drop the save, 81/123 lesson.
+    { id: "cdpDebugPort", group: "dev-debug", label: t("settings.cdpDebugPort"), on: Boolean(s.experimentalCDPDebugPort) },
+    // Task 377: noise triage. Render table: a missing entry would silently
+    // drop the save, 81/123 lesson.
+    { id: "lifecycleNoiseGate", group: "dev-debug", label: t("settings.lifecycleNoiseGate"), on: Boolean(s.experimentalLifecycleNoiseGate) },
+    // ── storage（存储，2 项）─────────────────────────────────────
+    { id: "sessionStorage", group: "storage", label: t("settings.sessionStorage"), on: (s.sessionStorage ?? "v3_only") !== "v3_only" },
+    // Task 333: rotation gate entry — the light reads any non-default mode so
+    // the statistic card stays discoverable (render table: a missing entry
+    // would silently drop the save, 81/123 lesson).
+    { id: "eventsRotation", group: "storage", label: t("settings.eventsRotation"), on: (s.eventsAutoRotation ?? "manual") !== "off" },
+    // ── infra（基础设施，7 项）───────────────────────────────────
+    // Task 363A: runtime assembly reuse pool.
+    { id: "runtimeReuse", group: "infra", label: t("settings.runtimeReuse"), on: Boolean(s.experimentalRuntimeReuse) },
+    // S1: resident base subprocess (infrastructure switch; infra beside the
     // other infrastructure entries). Render table: a missing entry would
     // silently drop the save, 81/123 lesson.
-    { id: "baseProcess", group: "misc", label: t("settings.baseProcess"), on: Boolean(s.experimentalBaseProcess) },
-    // Task 377: noise triage (misc beside the other infrastructure entries).
-    // Render table: a missing entry would silently drop the save, 81/123 lesson.
-    { id: "lifecycleNoiseGate", group: "misc", label: t("settings.lifecycleNoiseGate"), on: Boolean(s.experimentalLifecycleNoiseGate) },
-    // Task 439: built-in zcode task bus (misc beside the infrastructure
+    { id: "baseProcess", group: "infra", label: t("settings.baseProcess"), on: Boolean(s.experimentalBaseProcess) },
+    // Task 439: built-in zcode task bus (infra beside the infrastructure
     // entries). Render table: a missing entry would silently drop the save,
     // 81/123 lesson.
-    { id: "zcodeTaskBus", group: "misc", label: t("settings.zcodeTaskBus"), on: Boolean(s.experimentalZcodeTaskBus) },
+    { id: "zcodeTaskBus", group: "infra", label: t("settings.zcodeTaskBus"), on: Boolean(s.experimentalZcodeTaskBus) },
+    { id: "pathRules", group: "infra", label: t("settings.pathRules"), on: Boolean(s.experimentalPathRules) },
+    // Task 449: the task-244 B5 lease reclaim + B4 recovery sweep are one
+    // switch now — the entry light reads the single merged key.
+    { id: "orphanHandling", group: "infra", label: t("settings.orphanHandling"), on: Boolean(s.experimentalOrphanHandling) },
+    { id: "localServer", group: "infra", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
+    { id: "modelCapabilityFilter", group: "infra", label: t("settings.modelCapabilityFilter"), on: Boolean(s.experimentalModelCapabilityFilter) },
   ];
 
   return (

@@ -31,7 +31,8 @@ console.log("\ntask 364 lab regroup");
 // ① single entry: no rail feature, no standalone pane branch.
 ok(!panel.includes('{ id: "preapproveManagedPaths", group:'), "rail has no preapprove entry (feature removed from the array)");
 ok(!panel.includes('{selected === "preapproveManagedPaths" &&'), "no standalone pane branch for preapprove (single entry)");
-ok(panel.includes('id: "autopilot", group: "efficiency"'), "autopilot stays in the efficiency group (the merge target)");
+// Task 561: the audit table re-homes autopilot into the automation group.
+ok(panel.includes('id: "autopilot", group: "automation"'), "autopilot stays put as the automation-group merge target");
 
 // ① sub-block inside the autopilot card, full anatomy preserved.
 {
@@ -49,7 +50,8 @@ ok(panel.includes('id: "autopilot", group: "efficiency"'), "autopilot stays in t
 // ② full access re-homed.
 {
   const m = panel.match(/\{ id: "fullAccess", group: "([a-z]+)"/);
-  ok(Boolean(m) && m![1] === "efficiency", `full access group = efficiency (got ${m ? m[1] : "missing"})`);
+  // Task 561: full access re-homes to automation (permission-shape switch beside the autonomy entries).
+  ok(Boolean(m) && m![1] === "automation", `full access group = automation (got ${m ? m[1] : "missing"})`);
 }
 
 // ③ zero behaviour by scope: the moved block still uses the same bridge

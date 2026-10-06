@@ -41,7 +41,7 @@ const edit = fs.readFileSync(path.join(repoRoot, "internal/config/edit.go"), "ut
 
 // 1. Render table: the entry exists and reads the boot-snapshot switch.
 ok(
-  panel.includes('{ id: "baseProcess", group: "misc"'),
+  panel.includes('{ id: "baseProcess", group: "infra"'),
   "lab rail hosts the baseProcess entry in the misc group",
 );
 ok(
