@@ -250,6 +250,14 @@ type DesktopConfig struct {
 	// timed-out ask counts as a refusal, this owns what happens after an
 	// answer.
 	ExperimentalAutopilotAskAutoContinue bool `toml:"experimental_autopilot_ask_auto_continue"`
+	// ExperimentalAutopilotGuardAutocreate is the task-547 sub-option of the
+	// autopilot experiment feature (user ruling 2026-10-06, 铁律 2 default
+	// off): when on, an autopilot session keeps the auto-created guard task of
+	// task 326. Off — the default — means autopilot never creates a guard:
+	// the off semantics are "do not create", never "create then disable", and
+	// guards a previous version already created converge to off (disabled) at
+	// the next sweep. Turning it back on revives the same task in place.
+	ExperimentalAutopilotGuardAutocreate bool `toml:"experimental_autopilot_guard_autocreate"`
 	// AutopilotGuardInterval is the autopilot guard task's default run interval
 	// in minutes (task 326). 0 = autopilotGuardDefaultIntervalMinutes. Changing
 	// it re-points the interval of guards that already exist instead of

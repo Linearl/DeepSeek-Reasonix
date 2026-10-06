@@ -35,9 +35,16 @@ var desktopRenderOmissions = map[string]string{
 	// Task 544: rendered inside the autopilot block only while the ask
 	// auto-continue sub-option is on (default off).
 	"experimental_autopilot_ask_auto_continue": "task 544: rendered inside the autopilot block, only when the sub-option is on",
-	"session_experience":                       "rendered by renderDesktopSessionExperience",
-	"reasoning_display_mode":                   "rendered by renderDesktopReasoningDisplayMode",
-	"conversation_width":                       "rendered with the session-experience block",
+	// Task 547: rendered inside the autopilot block only while the opt-in is
+	// on; off/absent = autopilot never creates guard tasks (byte-identical
+	// config for a user who never touched the switch).
+	"experimental_autopilot_guard_autocreate": "task 547: rendered inside the autopilot block, only when the guard auto-creation opt-in is on",
+	"session_experience":                      "rendered by renderDesktopSessionExperience",
+	"reasoning_display_mode":                  "rendered by renderDesktopReasoningDisplayMode",
+	"conversation_width":                      "rendered with the session-experience block",
+	"session_experience":                      "rendered by renderDesktopSessionExperience",
+	"reasoning_display_mode":                  "rendered by renderDesktopReasoningDisplayMode",
+	"conversation_width":                      "rendered with the session-experience block",
 }
 
 // TestDesktopRenderTableCoversEveryKey is the single guard against that class of bug:

@@ -733,6 +733,25 @@ func (c *Config) AutopilotGuardQuiescentPolicy() string {
 	}
 }
 
+// AutopilotGuardAutocreateEnabled reports whether autopilot may auto-create
+// its guard task at all (task 547 sub-option of the autopilot experiment
+// feature). Off — the default, and the read for a nil config — fails closed:
+// no config means no guard creation, matching the "do not create" off
+// semantics rather than "create then disable".
+func (c *Config) AutopilotGuardAutocreateEnabled() bool {
+	return c != nil && c.Desktop.ExperimentalAutopilotGuardAutocreate
+}
+
+// SetExperimentalAutopilotGuardAutocreate toggles the task-547 guard
+// auto-creation sub-option. The flag alone gates creation; convergence of
+// guards a previous version already created is the sweep's job (desktop
+// side), so the off state keeps the config file byte-identical to never
+// having touched the switch.
+func (c *Config) SetExperimentalAutopilotGuardAutocreate(enabled bool) error {
+	c.Desktop.ExperimentalAutopilotGuardAutocreate = enabled
+	return nil
+}
+
 // AutopilotAskWaitDefaultSeconds is the task-477 ask-timeout sub-option's wait
 // when the switch is on but desktop.autopilot_ask_wait_seconds is unset (user
 // ruling 2026-10-05: default 15s).

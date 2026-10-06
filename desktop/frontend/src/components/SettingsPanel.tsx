@@ -3630,10 +3630,34 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* Task 547: guard auto-creation is an opt-in sub-option (default
+                  off). Off means autopilot never creates a guard; guards an
+                  older version already created are disabled at the next sweep.
+                  The dials below only matter while this is on. */}
+              <SettingsField label={t("settings.autopilotGuardAutocreate")} hint={t("settings.autopilotGuardAutocreateHint")} icon={<ShieldCheck size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalAutopilotGuardAutocreate) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetDesktopAutopilotGuardAutocreate(on))}
+                    >
+                      {t(on ? "settings.autopilotGuardAutocreate.on" : "settings.autopilotGuardAutocreate.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
               {/* Task 326: the guard task autopilot keeps watching its session.
                   The dial is in minutes and re-points guards that already
                   exist in place, so widening it can never grow a second guard
-                  for the same session. */}
+                  for the same session. Meaningless while auto-creation is off
+                  (task 547), so it follows the ask-timeout dial's rule and
+                  disables with its switch. */}
               <SettingsField label={t("settings.autopilotGuardInterval")} hint={t("settings.autopilotGuardIntervalHint")} icon={<ShieldCheck size={18} />}>
                 <input
                   className="set-input"
@@ -3641,7 +3665,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   min={1}
                   max={1440}
                   defaultValue={String(s.autopilotGuardInterval ?? 30)}
-                  disabled={busy}
+                  disabled={busy || !Boolean(s.experimentalAutopilotGuardAutocreate)}
                   placeholder="30"
                   aria-label={t("settings.autopilotGuardInterval")}
                   onBlur={(e) => void apply(() => app.SetDesktopAutopilotGuardInterval(Number(e.target.value)))}
@@ -3659,7 +3683,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                     <button
                       key={policy}
                       className={`set-seg__btn${(s.autopilotGuardQuiescent ?? "disable") === policy ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
+                      disabled={busy || !Boolean(s.experimentalAutopilotGuardAutocreate)}
                       onClick={() => void apply(() => app.SetDesktopAutopilotGuardQuiescent(policy))}
                     >
                       {label}

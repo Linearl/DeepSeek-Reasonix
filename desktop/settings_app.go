@@ -344,9 +344,12 @@ type SettingsView struct {
 	ExperimentalAutopilotAskAutoContinue bool `json:"experimentalAutopilotAskAutoContinue"`
 	// Task 326: autopilot guard task dials — interval in minutes (effective
 	// value, so the panel never shows a bare 0) and the self-close policy for a
-	// watched session that goes quiet.
-	AutopilotGuardInterval  int    `json:"autopilotGuardInterval"`
-	AutopilotGuardQuiescent string `json:"autopilotGuardQuiescent"`
+	// watched session that goes quiet. Task 547 gates them behind the
+	// auto-creation opt-in: off (the default) means autopilot never creates a
+	// guard, and guards a previous version created are disabled at the sweep.
+	ExperimentalAutopilotGuardAutocreate bool   `json:"experimentalAutopilotGuardAutocreate"`
+	AutopilotGuardInterval               int    `json:"autopilotGuardInterval"`
+	AutopilotGuardQuiescent              string `json:"autopilotGuardQuiescent"`
 	// Task 81 / 123: the Settings panel renders these two experiment switches from
 	// this view; carrying them only on DesktopStartupSettingsView left both switches
 	// permanently reading "off" and impossible to turn on (fixed 2026-09-15).
@@ -1507,18 +1510,23 @@ func (a *App) Settings() SettingsView {
 	storageMode := config.SessionStorageMode(cfg)
 	storageEffective := a.sessionStorageBootMode(storageMode)
 	v := SettingsView{
-		ModelSettingsFingerprint:        modelSettingsEditFingerprint(cfg),
-		DefaultModel:                    cfg.DefaultModel,
-		PlannerModel:                    cfg.Agent.PlannerModel,
-		GuardianModel:                   cfg.Agent.GuardianModel,
-		Autopilot:                       cfg.Desktop.Autopilot,
-		AutopilotMaxRuntime:             cfg.Desktop.AutopilotMaxRuntime,
-		AutopilotApprovalGrace:          cfg.Desktop.AutopilotApprovalGrace,
+		ModelSettingsFingerprint:             modelSettingsEditFingerprint(cfg),
+		DefaultModel:                         cfg.DefaultModel,
+		PlannerModel:                         cfg.Agent.PlannerModel,
+		GuardianModel:                        cfg.Agent.GuardianModel,
+		Autopilot:                            cfg.Desktop.Autopilot,
+		AutopilotMaxRuntime:                  cfg.Desktop.AutopilotMaxRuntime,
+		AutopilotApprovalGrace:               cfg.Desktop.AutopilotApprovalGrace,
 		ExperimentalAutopilotAskTimeout:      cfg.Desktop.ExperimentalAutopilotAskTimeout,
 		AutopilotAskWaitSeconds:              cfg.AutopilotAskWaitSecondsEffective(),
 		ExperimentalAutopilotAskAutoContinue: cfg.Desktop.ExperimentalAutopilotAskAutoContinue,
 		AutopilotGuardInterval:               cfg.AutopilotGuardIntervalMinutes(),
-		AutopilotGuardQuiescent:         cfg.AutopilotGuardQuiescentPolicy(),
+		AutopilotGuardQuiescent:              cfg.AutopilotGuardQuiescentPolicy(),
+		ExperimentalAutopilotAskTimeout:      cfg.Desktop.ExperimentalAutopilotAskTimeout,
+		AutopilotAskWaitSeconds:              cfg.AutopilotAskWaitSecondsEffective(),
+		ExperimentalAutopilotGuardAutocreate: cfg.Desktop.ExperimentalAutopilotGuardAutocreate,
+		AutopilotGuardInterval:               cfg.AutopilotGuardIntervalMinutes(),
+		AutopilotGuardQuiescent:              cfg.AutopilotGuardQuiescentPolicy(),
 		// The Settings panel reads these switches from this view (see the struct note).
 		ExperimentalRestartUpdate: cfg.Desktop.ExperimentalRestartUpdate,
 		StagingDir:                strings.TrimSpace(cfg.Desktop.StagingDir),
@@ -2967,6 +2975,28 @@ func (a *App) SetDesktopAutopilotGuardInterval(minutes int) error {
 		return err
 	}
 	a.resyncAutopilotGuardInterval(minutes)
+	return nil
+}
+
+// SetDesktopAutopilotGuardAutocreate toggles the task-547 sub-option: whether
+// an autopilot session auto-creates its guard task (task 326). Off — the
+// default — means autopilot never creates a guard; guards a previous version
+// already created are disabled immediately and the sweep keeps them disabled,
+// so an upgrade converges to the new setting instead of leaving the feature
+// running (the panel keeps the disabled row; deleting the conversation
+// deletes it). Turning it back on revives the same task in place — the
+// idempotent singleton grows no second guard.
+func (a *App) SetDesktopAutopilotGuardAutocreate(enabled bool) error {
+	if err := a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetExperimentalAutopilotGuardAutocreate(enabled)
+	}); err != nil {
+		return err
+	}
+	if a.heartbeat != nil {
+		// Same immediacy as the interval dial: one reconcile right away, so
+		// flipping the switch does not wait up to a tick to take effect.
+		a.heartbeat.ReconcileAutopilotGuards()
+	}
 	return nil
 }
 

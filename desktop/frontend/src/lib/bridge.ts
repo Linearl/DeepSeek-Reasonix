@@ -918,7 +918,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   /** Task 544: the experimental ask auto-continue sub-option (off = the idle stop after an answered ask). */
   SetDesktopAutopilotAskAutoContinue(enabled: boolean): Promise<void>;
   // Task 326: autopilot guard task dials — interval in minutes, and the
-  // self-close policy applied once the watched session goes quiet.
+  // self-close policy applied once the watched session goes quiet. Task 547
+  // gates both behind the auto-creation opt-in (off = never create).
+  SetDesktopAutopilotGuardAutocreate(enabled: boolean): Promise<void>;
   SetDesktopAutopilotGuardInterval(minutes: number): Promise<void>;
   SetDesktopAutopilotGuardQuiescent(policy: string): Promise<void>;
   // Task 81: the Settings switch for the restart-and-update action. Same preference the
@@ -2333,6 +2335,7 @@ function makeMockApp(): AppBindings {
     experimentalAutopilotAskTimeout: false,
     autopilotAskWaitSeconds: 15,
     experimentalAutopilotAskAutoContinue: false,
+    experimentalAutopilotGuardAutocreate: false,
     autopilotGuardInterval: 30,
     autopilotGuardQuiescent: "disable",
     visionModel: "",
@@ -5561,6 +5564,8 @@ function makeMockApp(): AppBindings {
     },
     async SetDesktopAutopilotAskAutoContinue(enabled: boolean) {
       settings.experimentalAutopilotAskAutoContinue = enabled;
+    async SetDesktopAutopilotGuardAutocreate(enabled: boolean) {
+      settings.experimentalAutopilotGuardAutocreate = enabled;
     },
     async SetDesktopAutopilotGuardInterval(minutes: number) {
       if (!Number.isFinite(minutes) || minutes < 1 || minutes > 1440) {

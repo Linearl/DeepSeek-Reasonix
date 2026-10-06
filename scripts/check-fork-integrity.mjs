@@ -718,6 +718,14 @@ const CHECKS = [
   { feature: "任务326 守护面板档位进 render 表", file: "internal/config/render.go", patterns: ["autopilot_guard_interval", "autopilot_guard_quiescent"] },
   { feature: "任务326 守护面板档位 UI", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["settings.autopilotGuardInterval", "settings.autopilotGuardQuiescent.destroy"] },
 
+  // 任务 547：守护自动创建改为自动驾驶实验特性的子选项（默认不勾选）。
+  // 关闭语义 = 不创建（非"创建后禁用"），旧任务按新设置收敛；漏 render 表行
+  // 会让开关保存后被静默丢弃（81/123 教训），四处链路都要有锚。
+  { feature: "任务547 守护创建门控与旧任务收敛（默认关=不创建）", file: "desktop/autopilot_guard.go", patterns: ["autopilotGuardAutocreate() {", "guard auto-creation sub-option is off (task 547)"] },
+  { feature: "任务547 子选项进 render 表", file: "internal/config/render.go", patterns: ["experimental_autopilot_guard_autocreate"] },
+  { feature: "任务547 设置视图与 setter（翻转即对账收敛）", file: "desktop/settings_app.go", patterns: ["SetDesktopAutopilotGuardAutocreate", "experimentalAutopilotGuardAutocreate"] },
+  { feature: "任务547 面板 UI（子选项开关+档位随开关禁用）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["settings.autopilotGuardAutocreate", "SetDesktopAutopilotGuardAutocreate"] },
+
   // ── S1 底座常驻子进程（设计 2026-09-30，§10 S1b 工具面迁移）────────────
   // 工具目录/工具调用经 base 通道 + 进度流 + sink 适配器 + boot 消费点；
   // 开关默认 off，任一道被顶掉都会让「开关关=现行为」的对照失去支点。

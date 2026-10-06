@@ -15,6 +15,8 @@ export interface SettingsView {
   autopilotAskWaitSeconds?: number;
   /** Task 544: the experimental ask auto-continue sub-option switch (default off). */
   experimentalAutopilotAskAutoContinue?: boolean;
+  /** Task 547: whether autopilot auto-creates its guard task at all (default off; off = never create). */
+  experimentalAutopilotGuardAutocreate?: boolean;
   /** Task 326: the autopilot guard task's run interval, in minutes (effective value). */
   autopilotGuardInterval?: number;
   /** Task 326: what happens to the guard once the watched session goes quiet. */
