@@ -1,6 +1,6 @@
 import { PanelLeft, PanelRight, Search } from "lucide-react";
 import { TabBar } from "./TabBar";
-import type { TabMeta } from "../lib/types";
+import type { LastSessionWorkspaceInfo, TabMeta } from "../lib/types";
 import { useT } from "../lib/i18n";
 
 type DesktopPlatform = "darwin" | "windows" | "linux";
@@ -32,6 +32,9 @@ export interface AppChromeProps {
   /** Split view (task 70): the tab in the secondary pane, and its toggle. */
   splitTabId?: string | null;
   onToggleSplit?: (tabId: string) => void;
+  /** 任务546：新建会话「沿用最近会话的目录」（透传 TabBar；缺省则不渲染下拉）。 */
+  onFetchLastSessionWorkspace?: () => Promise<LastSessionWorkspaceInfo | null>;
+  onNewTabInWorkspace?: (hint: LastSessionWorkspaceInfo) => void;
 }
 
 export function AppChrome({
@@ -60,6 +63,8 @@ export function AppChrome({
   onOpenPalette,
   splitTabId = null,
   onToggleSplit,
+  onFetchLastSessionWorkspace,
+  onNewTabInWorkspace,
 }: AppChromeProps) {
   const t = useT();
   const darwinChrome = platform === "darwin";
@@ -87,6 +92,8 @@ export function AppChrome({
       commandCompact={commandCompact}
       splitTabId={splitTabId}
       onToggleSplit={onToggleSplit}
+      onFetchLastSessionWorkspace={onFetchLastSessionWorkspace}
+      onNewTabInWorkspace={onNewTabInWorkspace}
     />
   );
 

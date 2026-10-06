@@ -135,6 +135,7 @@ import {
   type RewindResultView,
   type RemoteHostView,
   type RemoteTabOpenOptions,
+  type LastSessionWorkspaceInfo,
   type RemoteTabRefView,
   type SessionMeta,
   type SettingsView,
@@ -4071,6 +4072,29 @@ export default function App() {
     await openBlankSession(target.scope, target.workspaceRoot);
   }, [activeTab, blankSessionTarget, closeTransientOverlays, openBlankSession, openRemoteProjectCommand, showToast]);
 
+  // 任务546：新建会话「沿用最近会话的目录」。菜单打开时拉取一次候选；
+  // 目录失效 ⇒ 回落默认 cwd（等同点「+」）+ 可见 toast 提示，不静默。
+  const fetchLastSessionWorkspace = useCallback(async (): Promise<LastSessionWorkspaceInfo | null> => {
+    try {
+      const info = await app.LatestSessionWorkspace();
+      return info?.path ? info : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const handleNewTabInWorkspace = useCallback(async (hint: LastSessionWorkspaceInfo) => {
+    closeTransientOverlays();
+    setSidebarImDetailConnectionId("");
+    if (!hint.usable) {
+      showToast(t("tabBar.lastCwdFallback", { path: hint.path }), "warn", { durationMs: 7000 });
+      const target = blankSessionTarget();
+      await openBlankSession(target.scope, target.workspaceRoot);
+      return;
+    }
+    await openBlankSession("project", hint.path);
+  }, [blankSessionTarget, closeTransientOverlays, openBlankSession, setSidebarImDetailConnectionId, showToast, t]);
+
   const handleOpenTopic = useCallback((scope: string, workspaceRoot: string, topicId: string, sessionPath?: string): Promise<void> => {
     closeTransientOverlays();
     setSidebarImDetailConnectionId("");
@@ -4583,6 +4607,8 @@ export default function App() {
             onOpenPalette={() => void openPalette()}
             splitTabId={splitTabId}
             onToggleSplit={toggleSplitForTab}
+            onFetchLastSessionWorkspace={fetchLastSessionWorkspace}
+            onNewTabInWorkspace={(hint) => void handleNewTabInWorkspace(hint)}
           />
         )}
         <a className="skip-to-composer" href="#composer-input">

@@ -3,8 +3,8 @@
 import { crossGroupDropIntent, isSplitViewEnabled, onSplitViewEnabledChange } from "../lib/splitView";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, DragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
-import { CheckCheck, FileText, Plus, Search, X } from "lucide-react";
-import { normalizeCollaborationMode, normalizeMode, normalizeToolApprovalMode, type Mode, type TabMeta } from "../lib/types";
+import { CheckCheck, ChevronDown, FileText, FolderSymlink, Plus, Search, X } from "lucide-react";
+import { normalizeCollaborationMode, normalizeMode, normalizeToolApprovalMode, type LastSessionWorkspaceInfo, type Mode, type TabMeta } from "../lib/types";
 import { projectColorValue } from "../lib/projectColors";
 import { prefetchTabTranscript } from "../lib/transcriptPrefetch";
 import { useT } from "../lib/i18n";
@@ -33,6 +33,11 @@ interface TabBarProps {
   splitTabId?: string | null;
   /** Toggle the split for this tab; the secondary pane holds one other tab. */
   onToggleSplit?: (tabId: string) => void;
+  /** 任务546：拉取「最近一次活动会话的 cwd」载荷；path 为空表示无候选。
+   * 两个回调都提供时才渲染「新建」下拉，主按钮行为不受影响。 */
+  onFetchLastSessionWorkspace?: () => Promise<LastSessionWorkspaceInfo | null>;
+  /** 任务546：用户选择「沿用最近会话的目录」（含失效回落，由挂载点处理提示）。 */
+  onNewTabInWorkspace?: (hint: LastSessionWorkspaceInfo) => void;
 }
 
 type DropSide = "before" | "after";
@@ -155,7 +160,7 @@ function projectAccentStyle(color?: string): CSSProperties | undefined {
   return { "--project-accent": value } as CSSProperties;
 }
 
-export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose, onTabStopAndClose, onTabsReorder, onNewTab, onOpenPalette, commandCompact = false, revealActiveSignal = 0, splitTabId = null, onToggleSplit }: TabBarProps) {
+export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose, onTabStopAndClose, onTabsReorder, onNewTab, onOpenPalette, commandCompact = false, revealActiveSignal = 0, splitTabId = null, onToggleSplit, onFetchLastSessionWorkspace, onNewTabInWorkspace }: TabBarProps) {
   // Task 70-1: the split is an experiment - with the switch off the menu below is
   // exactly the pre-split list.
   const [splitViewEnabled, setSplitViewEnabled] = useState(isSplitViewEnabled());
@@ -181,6 +186,12 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
   const [dropTarget, setDropTarget] = useState<{ id: string; side: DropSide } | null>(null);
   const [menuTabId, setMenuTabId] = useState<string | null>(null);
   const [menuPoint, setMenuPoint] = useState<ContextMenuPoint | null>(null);
+  // 任务546：「新建」旁的下拉——沿用最近一次活动会话的目录。拉取到候选才
+  // 弹菜单（无候选/桥接失败时不出现入口项），主按钮（左侧 +）行为逐字不变。
+  const [newMenuOpen, setNewMenuOpen] = useState(false);
+  const [newMenuPoint, setNewMenuPoint] = useState<ContextMenuPoint | null>(null);
+  const [lastWorkspace, setLastWorkspace] = useState<LastSessionWorkspaceInfo | null>(null);
+  const lastMenuEnabled = Boolean(onFetchLastSessionWorkspace && onNewTabInWorkspace);
   const suppressClickRef = useRef(false);
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
   const hoverPrefetchTimer = useRef<number | null>(null);
@@ -310,6 +321,25 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
     setMenuPoint(contextMenuPointFromEvent(event));
   };
 
+  const closeNewMenu = useCallback(() => {
+    setNewMenuOpen(false);
+    setNewMenuPoint(null);
+  }, []);
+  const openNewMenu = useCallback(async (event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (!onFetchLastSessionWorkspace) return;
+    const point = contextMenuPointFromEvent(event);
+    let hint: LastSessionWorkspaceInfo | null = null;
+    try {
+      hint = await onFetchLastSessionWorkspace();
+    } catch {
+      return;
+    }
+    if (!hint?.path) return;
+    setLastWorkspace(hint);
+    setNewMenuPoint(point);
+    setNewMenuOpen(true);
+  }, [onFetchLastSessionWorkspace]);
+
   const closeTabMenu = () => {
     setMenuTabId(null);
     setMenuPoint(null);
@@ -425,6 +455,30 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
   // 模式信息由 hover title（stateTitle）完整承接。
   const badgesVisible = compressTier > 0 && compressTier < 3;
 
+  // 任务546：菜单项文案与路径副标题；失效态在标签上直说（将用默认目录），
+  // 选择后的回落与提示由挂载点的 onNewTabInWorkspace 处理。
+  const newMenuItems: ContextMenuItem[] = useMemo(() => {
+    if (!lastWorkspace?.path || !onNewTabInWorkspace) return [];
+    return [
+      {
+        key: "last-session-workspace",
+        icon: <FolderSymlink size={13} className="context-menu__item-icon" aria-hidden="true" />,
+        label: (
+          <span className="tabbar__newmenu">
+            <span className="tabbar__newmenu-title">
+              {lastWorkspace.usable ? t("tabBar.lastCwd") : t("tabBar.lastCwdStale")}
+            </span>
+            <span className="tabbar__newmenu-path" title={lastWorkspace.path}>{lastWorkspace.path}</span>
+            {lastWorkspace.sessionTitle
+              ? <span className="tabbar__newmenu-source">{t("tabBar.lastCwdFrom", { title: lastWorkspace.sessionTitle })}</span>
+              : null}
+          </span>
+        ),
+        onSelect: () => onNewTabInWorkspace(lastWorkspace),
+      },
+    ];
+  }, [lastWorkspace, onNewTabInWorkspace, t]);
+
   return (
     <div
       ref={barRef}
@@ -527,6 +581,18 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
           <Plus size={13} />
         </button>
       </Tooltip>
+      {lastMenuEnabled && (
+        <button
+          className="tabbar__new-caret"
+          type="button"
+          aria-label={t("tabBar.newSessionMore")}
+          aria-haspopup="menu"
+          aria-expanded={newMenuOpen}
+          onClick={(event) => void openNewMenu(event)}
+        >
+          <ChevronDown size={9} />
+        </button>
+      )}
       {onOpenPalette && <span className="tabbar__spacer" aria-hidden="true" />}
       {onOpenPalette && (
         <button
@@ -553,6 +619,14 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
         minWidth={170}
         ariaLabel={t("tabBar.tabActions")}
         onClose={closeTabMenu}
+      />
+      <ContextMenu
+        open={newMenuOpen}
+        point={newMenuPoint}
+        items={newMenuItems}
+        minWidth={240}
+        ariaLabel={t("tabBar.newSessionMore")}
+        onClose={closeNewMenu}
       />
     </div>
   );

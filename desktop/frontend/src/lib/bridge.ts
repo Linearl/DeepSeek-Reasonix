@@ -156,6 +156,7 @@ import type {
   GitCommitDetailView,
   WorkspaceView,
   SessionClearResult,
+  LastSessionWorkspaceInfo,
 } from "./types";
 import { browserPreviewShellSupport } from "./shellSupportPreview";
 export * from "./remoteTabEvents";
@@ -1273,6 +1274,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   ReorderProjects(workspaceRoots: string[]): Promise<void>;
   RequestOwnershipFromRemote(workspaceRoot: string, topicID: string): Promise<void>;
   CreateTopic(scope: string, workspaceRoot: string, title: string): Promise<TopicMeta>;
+  /** 任务546：最近一次活动会话的工作目录（新建会话「沿用最近会话的目录」）。
+   * path 为空 = 无候选；usable=false = 目录已失效，调用方须可见回落。 */
+  LatestSessionWorkspace(): Promise<LastSessionWorkspaceInfo>;
   RenameTopic(topicID: string, title: string): Promise<void>;
   DeleteTopic(topicID: string): Promise<void>;
   TrashTopic(topicID: string): Promise<void>;
@@ -6494,6 +6498,10 @@ function makeMockApp(): AppBindings {
     },
     async RequestOwnershipFromRemote(_workspaceRoot: string, _topicID: string) {
       // mock: no-op
+    },
+    async LatestSessionWorkspace() {
+      // mock: browser dev has no session stores; the option stays hidden.
+      return { path: "", usable: false, sessionTitle: "", lastActivityAt: 0 };
     },
     async CreateTopic(_scope: string, _workspaceRoot: string, title: string) {
       const now = Date.now();
