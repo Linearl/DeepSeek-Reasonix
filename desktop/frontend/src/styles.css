@@ -19848,7 +19848,13 @@ body > .mermaid-diagram--fullscreen {
   font-weight: 650;
 }
 /* Task 231: the four-category block under the pre-approval master switch —
-   a visible risk line plus independent checkboxes (tokens only). */
+   a visible risk line plus independent checkboxes (tokens only).
+   Task 527: the block is a SIBLING of .settings-field inside
+   .autopilot-preapprove-subblock (not a child of the field's control
+   column) — a plain block fills the card content width, so the checkbox
+   rows and the risk line start at the same left edge as the hint text and
+   can no longer be sized by the warning's max-content width (which used to
+   spill past the panel edge). */
 .set-preapprove {
   display: flex;
   flex-direction: column;
@@ -19881,7 +19887,10 @@ body > .mermaid-diagram--fullscreen {
    its own row. The B1 single-column collapse is gone: it stacked the intro
    above the switch, exactly the layout the ruling reversed. The doubled-class
    specificity (0,2,0) is kept so the later-loaded :where(...) rule in
-   SettingsPanel.css cannot squeeze this field back. */
+   SettingsPanel.css cannot squeeze this field back.
+   Task 527: since the checkbox block moved out of the control column, only
+   the header row (intro | switch) is two-column; the checkbox block below
+   spans the full card content width, left-aligned with the hint text. */
 .autopilot-preapprove-subblock .settings-field {
   grid-template-columns: minmax(180px, 260px) minmax(320px, 1fr);
   align-items: start;

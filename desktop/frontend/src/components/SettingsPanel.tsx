@@ -3691,7 +3691,12 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   inside this card as a sub-block. Config keys, persistence and
                   the approval semantics are byte-identical (moved, not
                   rewritten); the switch + four category checkboxes + risk line
-                  render as-is. */}
+                  render as-is. Task 527: the checkbox block + risk line moved
+                  OUT of the field's control column (they used to sit in the
+                  same flex row as the switch, sized by the warning's
+                  max-content width and spilling past the panel edge); they now
+                  render below the field as a full-width block whose left edge
+                  matches the hint text above. */}
               <div className="autopilot-preapprove-subblock">
                 <SettingsField label={t("settings.preapproveManagedPaths")} hint={t("settings.preapproveManagedPathsHint")} icon={<ShieldAlert size={18} />}>
                   <SettingsOptions layout="field" className="set-seg">
@@ -3712,52 +3717,56 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                       </button>
                     ))}
                   </SettingsOptions>
-                  {/* Task 231: with the master switch on, the four categories check
-                      independently — one write carries all five values so a save can
-                      never land half-applied. 任务461-P5 (user ruling): the block
-                      reads top-down as checkbox rows FIRST (one category per line),
-                      then the risk line on its own closing row — the warning no
-                      longer sits on top of the checkboxes it describes. */}
-                  {Boolean(s.experimentalPreapproveManagedPaths) && (
-                    <div className="set-preapprove">
-                      {([
-                        { key: "preapproveSkills", label: t("settings.preapproveManagedPaths.skills"), checked: Boolean(s.preapproveSkills) },
-                        { key: "preapproveHooks", label: t("settings.preapproveManagedPaths.hooks"), checked: Boolean(s.preapproveHooks) },
-                        { key: "preapproveSessionStores", label: t("settings.preapproveManagedPaths.sessionStores"), checked: Boolean(s.preapproveSessionStores) },
-                        { key: "preapproveBashEscape", label: t("settings.preapproveManagedPaths.bashEscape"), checked: Boolean(s.preapproveBashEscape) },
-                      ]).map((row) => (
-                        <label key={row.key} className="set-preapprove__row">
-                          <input
-                            type="checkbox"
-                            checked={row.checked}
-                            disabled={busy}
-                            onChange={(event) => {
-                              const next = {
-                                skills: Boolean(s.preapproveSkills),
-                                hooks: Boolean(s.preapproveHooks),
-                                stores: Boolean(s.preapproveSessionStores),
-                                bash: Boolean(s.preapproveBashEscape),
-                              };
-                              if (row.key === "preapproveSkills") next.skills = event.target.checked;
-                              else if (row.key === "preapproveHooks") next.hooks = event.target.checked;
-                              else if (row.key === "preapproveSessionStores") next.stores = event.target.checked;
-                              else next.bash = event.target.checked;
-                              void apply(() => app.SetPreapproveManagedPaths(
-                                Boolean(s.experimentalPreapproveManagedPaths),
-                                next.skills,
-                                next.hooks,
-                                next.stores,
-                                next.bash,
-                              ));
-                            }}
-                          />
-                          <span>{row.label}</span>
-                        </label>
-                      ))}
-                      <p className="set-preapprove__warning">{t("settings.preapproveManagedPaths.warning")}</p>
-                    </div>
-                  )}
                 </SettingsField>
+                {/* Task 231: with the master switch on, the four categories check
+                    independently — one write carries all five values so a save can
+                    never land half-applied. 任务461-P5 (user ruling): the block
+                    reads top-down as checkbox rows FIRST (one category per line),
+                    then the risk line on its own closing row — the warning no
+                    longer sits on top of the checkboxes it describes. Task 527:
+                    the block sits BELOW the field (not inside its control
+                    column), so its left edge lines up with the hint text and its
+                    width is the card content width instead of the warning's
+                    max-content spill. */}
+                {Boolean(s.experimentalPreapproveManagedPaths) && (
+                  <div className="set-preapprove">
+                    {([
+                      { key: "preapproveSkills", label: t("settings.preapproveManagedPaths.skills"), checked: Boolean(s.preapproveSkills) },
+                      { key: "preapproveHooks", label: t("settings.preapproveManagedPaths.hooks"), checked: Boolean(s.preapproveHooks) },
+                      { key: "preapproveSessionStores", label: t("settings.preapproveManagedPaths.sessionStores"), checked: Boolean(s.preapproveSessionStores) },
+                      { key: "preapproveBashEscape", label: t("settings.preapproveManagedPaths.bashEscape"), checked: Boolean(s.preapproveBashEscape) },
+                    ]).map((row) => (
+                      <label key={row.key} className="set-preapprove__row">
+                        <input
+                          type="checkbox"
+                          checked={row.checked}
+                          disabled={busy}
+                          onChange={(event) => {
+                            const next = {
+                              skills: Boolean(s.preapproveSkills),
+                              hooks: Boolean(s.preapproveHooks),
+                              stores: Boolean(s.preapproveSessionStores),
+                              bash: Boolean(s.preapproveBashEscape),
+                            };
+                            if (row.key === "preapproveSkills") next.skills = event.target.checked;
+                            else if (row.key === "preapproveHooks") next.hooks = event.target.checked;
+                            else if (row.key === "preapproveSessionStores") next.stores = event.target.checked;
+                            else next.bash = event.target.checked;
+                            void apply(() => app.SetPreapproveManagedPaths(
+                              Boolean(s.experimentalPreapproveManagedPaths),
+                              next.skills,
+                              next.hooks,
+                              next.stores,
+                              next.bash,
+                            ));
+                          }}
+                        />
+                        <span>{row.label}</span>
+                      </label>
+                    ))}
+                    <p className="set-preapprove__warning">{t("settings.preapproveManagedPaths.warning")}</p>
+                  </div>
+                )}
               </div>
             </>
           )}
