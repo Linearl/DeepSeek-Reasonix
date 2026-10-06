@@ -447,11 +447,14 @@ type SettingsView struct {
 	// Task 501: threshold-triggered heap snapshot switch readback.
 	ExperimentalHeapHighProfile bool `json:"experimentalHeapHighProfile"`
 	PerfMonitorIntervalSeconds  int  `json:"perfMonitorIntervalSeconds"`
-	SessionCollabHopLimit       int  `json:"sessionCollabHopLimit"`
-	DetachedIdleReleaseMinutes  int  `json:"detachedIdleReleaseMinutes"`
-	GoMemLimitMB                int  `json:"goMemLimitMB"`
-	ExperimentalSessionCollab   bool `json:"experimentalSessionCollab"`
-	ExperimentalAutoLoadOlder   bool `json:"experimentalAutoLoadOlder"`
+	// Task 528: heap-high trigger threshold readback (MiB; 0 = built-in
+	// default 6GB) for the settings-panel numeric input. Boot snapshot.
+	PerfMonitorHeapHighThresholdMB int  `json:"perfMonitorHeapHighThresholdMB"`
+	SessionCollabHopLimit          int  `json:"sessionCollabHopLimit"`
+	DetachedIdleReleaseMinutes     int  `json:"detachedIdleReleaseMinutes"`
+	GoMemLimitMB                   int  `json:"goMemLimitMB"`
+	ExperimentalSessionCollab      bool `json:"experimentalSessionCollab"`
+	ExperimentalAutoLoadOlder      bool `json:"experimentalAutoLoadOlder"`
 	// Task 449: merged orphan switch (settings-view mirror of [agent]; folds
 	// the task 244 B5 lease reclaim + B4 recovery sweep into one key).
 	ExperimentalOrphanHandling        bool `json:"experimentalOrphanHandling"`
@@ -654,8 +657,11 @@ type DesktopStartupSettingsView struct {
 	// Task 501: threshold-triggered heap snapshot switch readback.
 	ExperimentalHeapHighProfile bool `json:"experimentalHeapHighProfile"`
 	PerfMonitorIntervalSeconds  int  `json:"perfMonitorIntervalSeconds"`
-	SessionCollabHopLimit       int  `json:"sessionCollabHopLimit"`
-	DetachedIdleReleaseMinutes  int  `json:"detachedIdleReleaseMinutes"`
+	// Task 528: heap-high trigger threshold readback (MiB; 0 = built-in
+	// default 6GB). Boot snapshot: the trigger is built once at monitor boot.
+	PerfMonitorHeapHighThresholdMB int  `json:"perfMonitorHeapHighThresholdMB"`
+	SessionCollabHopLimit          int  `json:"sessionCollabHopLimit"`
+	DetachedIdleReleaseMinutes     int  `json:"detachedIdleReleaseMinutes"`
 	// GoMemLimitMB is the task-308-O3 soft memory limit in MB (0 = unbounded).
 	GoMemLimitMB int `json:"goMemLimitMB"`
 	// ExperimentalSessionCollab exposes multi-session collaboration (task 19).
@@ -1432,6 +1438,10 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalPerfMonitor = cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor
 		view.ExperimentalHeapHighProfile = cfg.Desktop.ExperimentalHeapHighProfile || cfg.Agent.ExperimentalHeapHighProfile
 		view.PerfMonitorIntervalSeconds = cfg.Desktop.PerfMonitorIntervalSeconds
+		// Task 528: read the settings-view mirror, falling back to the
+		// hand-edited [agent] value so a manual config.toml edit still shows
+		// the threshold the monitor will actually arm with.
+		view.PerfMonitorHeapHighThresholdMB = perfMonitorHeapHighThresholdForView(cfg)
 		view.SessionCollabHopLimit = cfg.Desktop.SessionCollabHopLimit
 		view.DetachedIdleReleaseMinutes = cfg.Desktop.DetachedIdleReleaseMinutes
 		view.GoMemLimitMB = cfg.Desktop.GoMemLimitMB
@@ -1580,6 +1590,7 @@ func (a *App) Settings() SettingsView {
 		ExperimentalPerfMonitor:           cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,
 		ExperimentalHeapHighProfile:       cfg.Desktop.ExperimentalHeapHighProfile || cfg.Agent.ExperimentalHeapHighProfile,
 		PerfMonitorIntervalSeconds:        cfg.Desktop.PerfMonitorIntervalSeconds,
+		PerfMonitorHeapHighThresholdMB:    perfMonitorHeapHighThresholdForView(cfg),
 		SessionCollabHopLimit:             cfg.Desktop.SessionCollabHopLimit,
 		DetachedIdleReleaseMinutes:        cfg.Desktop.DetachedIdleReleaseMinutes,
 		GoMemLimitMB:                      cfg.Desktop.GoMemLimitMB,

@@ -599,6 +599,28 @@ func (a *App) SetExperimentalHeapHighProfile(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalHeapHighProfile(enabled) })
 }
 
+// perfMonitorHeapHighThresholdForView resolves the heap-high threshold for the
+// settings views (task 528): the [desktop] settings-view mirror wins, a 0 there
+// falls back to the hand-edited [agent] value, and two zeros mean "built-in
+// default 6GB" (the frontend renders that default).
+func perfMonitorHeapHighThresholdForView(cfg *config.Config) int {
+	if cfg == nil {
+		return 0
+	}
+	if cfg.Desktop.PerfMonitorHeapHighThresholdMB != 0 {
+		return cfg.Desktop.PerfMonitorHeapHighThresholdMB
+	}
+	return cfg.Agent.PerfMonitorHeapHighThresholdMB
+}
+
+// SetPerfMonitorHeapHighThresholdMB sets the heap-high trigger threshold in MiB
+// (task 528 UI); the config layer clamps explicit values into 1024..131072 and
+// 0 restores the built-in 6GB default. Restart-scoped: the trigger is built
+// once at monitor boot.
+func (a *App) SetPerfMonitorHeapHighThresholdMB(mb int) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetPerfMonitorHeapHighThresholdMB(mb) })
+}
+
 // SetSessionCollabHopLimit sets the cross-session chain ceiling (task 204); the config
 // layer clamps it, so an out-of-range entry never reaches the file.
 func (a *App) SetSessionCollabHopLimit(limit int) error {

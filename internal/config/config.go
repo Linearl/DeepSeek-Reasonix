@@ -1886,9 +1886,9 @@ type AgentConfig struct {
 	// PerfMonitorHeapHighThresholdMB is the heap-high trigger threshold in MB
 	// (task 501); 0 keeps the built-in default (PerfMonitorHeapHighDefaultMB).
 	// Explicit values are clamped into 1024..131072 (see
-	// SetPerfMonitorHeapHighThresholdMB). No settings-view mirror: like
-	// perf_monitor_heap_interval_seconds, this knob exists for hand-edited
-	// configs during memory investigations only.
+	// SetPerfMonitorHeapHighThresholdMB). Task 528 added the settings-panel
+	// numeric input, so the setter now also writes the [desktop] settings-view
+	// mirror (like perf_monitor_interval_seconds).
 	PerfMonitorHeapHighThresholdMB int `toml:"perf_monitor_heap_high_threshold_mb"`
 	// StalledIntentNudge enables the "you announced the next step instead of
 	// taking it" repair for ordinary sessions (task 117). Off by default:
