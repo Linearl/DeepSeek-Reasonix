@@ -702,6 +702,14 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 	if !a.closeSteerIntakeIfIdle() {
 		return true, nil
 	}
+	// Task 530: a clean closure with settled-but-unanswered require_reply
+	// cross-session mail injects ONE visible reply reminder round (mailbox
+	// state decides; MarkNotified keeps it once per mail). An owed reply
+	// outranks the feedback invitation for the extra round.
+	if a.maybeNudgeCollabReply(state) {
+		a.contextManager().ObserveUsage(usage)
+		return true, nil
+	}
 	// Task 172 T1: the turn reached a clean final answer with steer intake
 	// closed — this is "AI completed work". Append ONE feedback-inbox
 	// invitation round; the per-turn cap plus the shared cooldown make the

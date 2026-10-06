@@ -1164,6 +1164,13 @@ type Options struct {
 	// already ANDs the nudge dial with the parent feedback switch. Off (default)
 	// keeps turns byte-for-byte free of any extra host message or model round.
 	FeedbackNudge bool
+	// CollabReplyNudge, when non-nil, arms the task-530 turn-closure reply
+	// reminder: at a clean final answer the host scans the session's collab
+	// mailbox for settled-but-unanswered require_reply mail and injects ONE
+	// visible reminder round (HostGeneratedUserMessage + status-stream audit
+	// + Notice; never a hidden model message). Nil (default) keeps turns
+	// byte-for-byte free — no mailbox read, no event, no extra round.
+	CollabReplyNudge *CollabReplyNudgeConfig
 	// SessionTemp owns the exact private scratch root for delivery accounting.
 	SessionTemp *sessiontemp.Manager
 	// WriteRoots is the session-scoped writable directory manager.

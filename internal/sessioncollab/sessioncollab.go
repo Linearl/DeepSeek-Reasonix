@@ -1190,6 +1190,21 @@ func (s *MailStore) readNotified(contactID string) map[string]bool {
 	return out
 }
 
+// InboxMessages returns every message ever delivered to contactID's mailbox
+// file — the settled (already consumed into a turn) ones included, unlike
+// Peek which reads only the un-consumed remainder. Task 530's reply-reminder
+// scan needs exactly this: a require_reply mail stays answerable — and stays
+// owed — after its delivery ack, so the reminder pass must still see it.
+// Read-only; newest last (file order).
+func (s *MailStore) InboxMessages(contactID string) ([]MailMessage, error) {
+	unlock, err := s.lock(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	return s.readAll(contactID)
+}
+
 // PendingContacts lists contacts that have at least one un-acked message.
 // It is what lets a host discover *which* sessions need waking, including ones
 // with no open tab — delivery must not depend on the target already being on
