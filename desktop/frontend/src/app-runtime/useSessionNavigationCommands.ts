@@ -4,7 +4,8 @@ import { resolveTaskMonitorSession } from "../lib/taskMonitorNavigation";
 import { taskSessionIDFromPath, type SidebarImConnection } from "./sidebarImProjection";
 import type { useDesktopNavigation } from "./useDesktopNavigation";
 import type { WorkspaceNavigationPorts } from "./navigationOwner";
-import type { ControlResult, SessionMeta, TabMeta } from "../lib/types";
+import { app } from "../lib/bridge";
+import type { ControlResult, LastSessionWorkspaceInfo, SessionMeta, TabMeta } from "../lib/types";
 import type { TopicShortcutEntry } from "../lib/topicShortcuts";
 import type { Translator } from "../lib/i18n";
 import type { Dispatch, SetStateAction } from "react";
@@ -16,7 +17,7 @@ export type SessionNavigationCommandsInput = {
   running: boolean;
   singleSurface: boolean;
   t: Translator;
-  showToast: (message: string, level: "error") => void;
+  showToast: (message: string, level: "error" | "warn", options?: { durationMs?: number }) => void;
   closeTransientOverlays: () => void;
   clearImDetail: () => void;
   prepareBlankWorkspace: (workspaceRoot?: string) => void;
@@ -71,6 +72,29 @@ export function useSessionNavigationCommands(input: SessionNavigationCommandsInp
     }
     const target = blankSessionTarget();
     await openBlankSession(target.scope, target.workspaceRoot);
+  });
+
+  // 任务546：新建会话「沿用最近会话的目录」。path 空 = 无候选（菜单不出现）；
+  // 失效 ⇒ 回落默认 cwd + 可见 toast，不静默。
+  const fetchLastSessionWorkspace = useCommittedCommand(async (): Promise<LastSessionWorkspaceInfo | null> => {
+    try {
+      const info = await app.LatestSessionWorkspace();
+      return info?.path ? info : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const handleNewTabInWorkspace = useCommittedCommand(async (hint: LastSessionWorkspaceInfo) => {
+    input.closeTransientOverlays();
+    input.clearImDetail();
+    if (!hint.usable) {
+      showToast(t("tabBar.lastCwdFallback", { path: hint.path }), "warn", { durationMs: 7000 });
+      const target = blankSessionTarget();
+      await openBlankSession(target.scope, target.workspaceRoot);
+      return;
+    }
+    await openBlankSession("project", hint.path);
   });
 
   const handleOpenTopic = useCommittedCommand((scope: string, workspaceRoot: string, topicId: string, sessionPath?: string): Promise<void> => {
@@ -154,6 +178,8 @@ export function useSessionNavigationCommands(input: SessionNavigationCommandsInp
   return {
     openBlankSession,
     handleNewTab,
+    fetchLastSessionWorkspace,
+    handleNewTabInWorkspace,
     handleOpenTopic,
     openSidebarImConnectionSession,
     onResumeSession,

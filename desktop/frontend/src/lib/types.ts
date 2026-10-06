@@ -732,6 +732,16 @@ export interface TopicMeta {
   createdAt: number;
 }
 
+/** 任务546：最近一次活动会话的工作目录（新建会话「沿用最近会话的目录」选项载荷）。
+ * path 为空 = 没有可沿用的会话（前端不显示选项）；usable=false = 目录已失效
+ * （被删/移动/他机同步路径），选择后须回落默认目录并可见提示。 */
+export interface LastSessionWorkspaceInfo {
+  path: string;
+  usable: boolean;
+  sessionTitle: string;
+  lastActivityAt: number;
+}
+
 export interface SessionRecoveryEvent {
 	conversationId?: string;
 	activeVersionId?: string;

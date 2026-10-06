@@ -26165,6 +26165,57 @@ body > .mermaid-diagram--fullscreen {
   color: var(--fg);
 }
 
+/* 任务546：新建旁的下拉 caret——「沿用最近会话的目录」。缺省不渲染
+   （挂载点未提供回调时），主 + 按钮样式与行为不变。 */
+.tabbar__new-caret {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fg-dim);
+}
+
+.tabbar__new-caret:hover {
+  background: var(--button-bg);
+  color: var(--fg);
+}
+
+/* 菜单项的三行结构：动作标题 / 具体路径 / 来源会话。 */
+.tabbar__newmenu {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 2px 0;
+  text-align: left;
+}
+
+.tabbar__newmenu-title {
+  font-weight: 600;
+}
+
+.tabbar__newmenu-path {
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  opacity: 0.75;
+  direction: rtl;
+  text-align: left;
+}
+
+.tabbar__newmenu-source {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
 /* L1: command-search bar — opens the ⌘K palette. Sits after the new-tab
 /* L1: command-search bar — opens the ⌘K palette. Sits after the new-tab
    button and fills the remaining strip width like the prototype. */
