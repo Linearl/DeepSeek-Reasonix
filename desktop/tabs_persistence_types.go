@@ -16,6 +16,14 @@ type desktopTabEntry struct {
 	Mode              string  `json:"mode,omitempty"`
 	Goal              string  `json:"goal,omitempty"`
 	ToolApprovalMode  string  `json:"toolApprovalMode,omitempty"`
+	// Autopilot persists the bare-tab unattended flag (task 465, X4 断点 C).
+	// The goal-state sidecar only covers autopilot WITH a running goal; the
+	// bare toggle (SetCollaborationModeForTab("autopilot") with no goal) had
+	// no persistence at all, so every restart silently demoted the tab back
+	// to attended. The restore path re-gates through the task-325 yolo
+	// precondition, so a stale true can never resurrect unattended under
+	// ask/auto.
+	Autopilot bool `json:"autopilot,omitempty"`
 	// PinnedFiles is read-only upgrade input from the unmerged tab-scoped
 	// implementation. New writers persist pins beside the owning session.
 	PinnedFiles []string `json:"pinnedFiles,omitempty"`
@@ -46,6 +54,10 @@ func persistedDesktopTabEntry(tab *WorkspaceTab) desktopTabEntry {
 		Mode:              persistedTabMode(currentTabMode(tab)),
 		Goal:              persistedTabGoal(tab),
 		ToolApprovalMode:  persistedToolApprovalMode(currentTabToolApprovalMode(tab)),
-		PinnedFiles:       tab.pendingLegacyPinnedFilesForPersistence(),
+		// tab.autopilot is gate-filtered at every write site (task 325), so
+		// the persisted flag is already yolo-consistent; restore re-gates
+		// anyway (X4 断点 C, task 465).
+		Autopilot:   tab.autopilot,
+		PinnedFiles: tab.pendingLegacyPinnedFilesForPersistence(),
 	}
 }

@@ -4216,6 +4216,7 @@ export const en = {
   "notice.contextEditingFallback": "Using local context maintenance.",
   "notice.autopilotRequiresYolo": "Autopilot requires the YOLO approval mode (需要 yolo 审批模式); switch approval to YOLO first.",
   "notice.autopilotClosedOffYolo": "Approval mode left YOLO, so autopilot was switched off automatically (审批离开 yolo，autopilot 已自动关闭).",
+  "notice.autopilotAssumedYolo": "Autopilot on: approval switched to YOLO automatically (decision recorded).",
   "notice.turnStalled": "No progress for a while. The turn is still running; if it looks stuck, press Stop.",
   "questionNav.label": "Question navigation",
   "questionNav.progress": "Question {current} / {total}",

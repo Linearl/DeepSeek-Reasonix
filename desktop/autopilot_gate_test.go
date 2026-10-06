@@ -105,34 +105,161 @@ func waitForNoticeCode(t *testing.T, codes *[]string, want string) bool {
 }
 
 func TestAutopilotCollaborationModeMatrix(t *testing.T) {
-	// 3 approval modes × autopilot switch: ask/auto refuse the enable and fall
-	// back to normal; yolo turns autopilot on.
+	// Task 465 two-axis matrix (user ruling 2026-10-05): the composer tier
+	// switch AUTO-SATISFIES the task-325 yolo precondition — ask/auto move to
+	// yolo with the decision recorded (assumed_yolo notice), yolo passes
+	// through unchanged. The refusal path itself only survives on the
+	// settings-default entry (TestSetDesktopAutopilotRequiresYoloDefault).
 	for _, mode := range []string{control.ToolApprovalAsk, control.ToolApprovalAuto, control.ToolApprovalYolo} {
 		app, tab, codes := autopilotGateTestApp(t, mode)
 		app.SetCollaborationModeForTab(tab.ID, "autopilot")
-		wantAutopilot := mode == control.ToolApprovalYolo
-		if tab.autopilot != wantAutopilot {
-			t.Fatalf("mode %q: tab.autopilot = %v, want %v", mode, tab.autopilot, wantAutopilot)
+		if !tab.autopilot {
+			t.Fatalf("mode %q: tab.autopilot = false, want true (the tier switch auto-satisfies yolo)", mode)
 		}
-		if wantAutopilot {
-			if tab.autopilotMaxRuntime <= 0 {
-				t.Fatalf("mode %q: autopilot on must carry a runtime bound", mode)
-			}
-			// X4 断点 B: the applied flag must reach the composer's wire value —
-			// this used to render "normal" forever (view structurally incapable
-			// of "autopilot"), hiding the state the user just switched on.
-			if got := app.tabRuntimeSnapshot(tab).collaborationMode(); got != "autopilot" {
-				t.Fatalf("mode %q: collaboration mode = %q, want autopilot (applied)", mode, got)
-			}
-		} else {
-			got := app.tabRuntimeSnapshot(tab).collaborationMode()
-			if got != "normal" {
-				t.Fatalf("mode %q: collaboration mode = %q, want normal (refused)", mode, got)
-			}
-			if !waitForNoticeCode(t, codes, NoticeCodeAutopilotRequiresYolo) {
-				t.Fatalf("mode %q: refusal notice %q not emitted, got %v", mode, NoticeCodeAutopilotRequiresYolo, *codes)
-			}
+		if tab.autopilotMaxRuntime <= 0 {
+			t.Fatalf("mode %q: autopilot on must carry a runtime bound", mode)
 		}
+		// Autopilot implies yolo: the tab posture must land there in the same
+		// switch, whatever it was before.
+		if tab.toolApprovalMode != control.ToolApprovalYolo {
+			t.Fatalf("mode %q: tab.toolApprovalMode = %q, want yolo (assumed)", mode, tab.toolApprovalMode)
+		}
+		// X4 断点 B: the applied flag must reach the composer's wire value —
+		// this used to render "normal" forever (view structurally incapable
+		// of "autopilot"), hiding the state the user just switched on.
+		if got := app.tabRuntimeSnapshot(tab).collaborationMode(); got != "autopilot" {
+			t.Fatalf("mode %q: collaboration mode = %q, want autopilot (applied)", mode, got)
+		}
+		if mode == control.ToolApprovalYolo {
+			// Straight yolo entry is not an assumption — no decision record.
+			if len(*codes) > 0 {
+				t.Fatalf("mode %q: unexpected notices %v (yolo entry must not record an assumption)", mode, *codes)
+			}
+			continue
+		}
+		// ask/auto: the assumption decision is recorded user-visibly.
+		if !waitForNoticeCode(t, codes, NoticeCodeAutopilotAssumedYolo) {
+			t.Fatalf("mode %q: assumed-yolo notice %q not emitted, got %v", mode, NoticeCodeAutopilotAssumedYolo, *codes)
+		}
+	}
+}
+
+// Task 465: the two-axis matrix keeps the second axis (task dimension) intact
+// across a first-axis (approval/autopilot) switch, and vice versa — a
+// plan/goal/normal switch must not clear the autopilot flag, and switching to
+// the autopilot tier must not clear a running goal (goal × autopilot is a
+// legal product state).
+func TestAutopilotTierPreservesTaskDimension(t *testing.T) {
+	app, tab, _ := autopilotGateTestApp(t, control.ToolApprovalAsk)
+	// goal × autopilot: the goal survives the tier switch.
+	if err := app.SetGoalForTab(tab.ID, "unattended objective"); err != nil {
+		t.Fatal(err)
+	}
+	app.SetCollaborationModeForTab(tab.ID, "autopilot")
+	if !tab.autopilot {
+		t.Fatal("tier switch must turn autopilot on")
+	}
+	if got := app.tabRuntimeSnapshot(tab).currentGoal(); got != "unattended objective" {
+		t.Fatalf("goal after autopilot tier switch = %q, want it preserved (goal × autopilot)", got)
+	}
+	if got := app.tabRuntimeSnapshot(tab).collaborationMode(); got != "goal" {
+		t.Fatalf("view = %q, want goal (label precedence goal>autopilot; raw flag is the first axis)", got)
+	}
+	// dim-2 switches must not clear the first axis.
+	for _, dim2 := range []string{"goal", "plan", "normal"} {
+		app.SetCollaborationModeForTab(tab.ID, dim2)
+		if !tab.autopilot {
+			t.Fatalf("dim-2 switch %q cleared the autopilot flag (axes must be independent)", dim2)
+		}
+		if tab.toolApprovalMode != control.ToolApprovalYolo {
+			t.Fatalf("dim-2 switch %q moved approval off yolo while autopilot is on", dim2)
+		}
+	}
+	// plan survives the autopilot tier switch too (plan × autopilot = plan-yolo
+	// posture, a pre-existing legal tab mode).
+	app.SetCollaborationModeForTab(tab.ID, "plan")
+	app.SetCollaborationModeForTab(tab.ID, "autopilot")
+	if !tabModeHasPlan(tab.mode) || !tab.autopilot {
+		t.Fatalf("plan × autopilot: plan=%v autopilot=%v, want both preserved", tabModeHasPlan(tab.mode), tab.autopilot)
+	}
+	// The reverse linkage stays the only dim-1 way off autopilot.
+	app.SetToolApprovalModeForTab(tab.ID, control.ToolApprovalAsk)
+	if tab.autopilot {
+		t.Fatal("approval leaving yolo must still turn autopilot off (325 reverse linkage)")
+	}
+}
+
+// Task 465 X4 断点 C: the bare autopilot toggle (no goal, hence no goal-state
+// sidecar) must survive a restart via the desktopTabEntry column — gate-
+// filtered, so a stale true under ask/auto restores attended.
+func TestRestoreTabEntryCarriesAutopilotFlag(t *testing.T) {
+	app, tab, _ := autopilotGateTestApp(t, control.ToolApprovalAsk)
+	app.SetCollaborationModeForTab(tab.ID, "autopilot")
+	if !tab.autopilot {
+		t.Fatal("precondition failed — tier switch should enable autopilot")
+	}
+	entry := persistedDesktopTabEntry(tab)
+	if !entry.Autopilot {
+		t.Fatal("persisted entry lost the autopilot flag (X4 断点 C would drop it on restart)")
+	}
+	if entry.ToolApprovalMode != control.ToolApprovalYolo {
+		t.Fatalf("persisted approval = %q, want yolo (flag and posture persist together)", entry.ToolApprovalMode)
+	}
+	// Restore-side gate (same call the restore path makes): under yolo the
+	// flag comes back with its bounds; under ask/auto it must refuse with
+	// zeroed bounds so a stale entry can never resurrect unattended.
+	prefOn, prefRuntime, prefGrace, prefAskEnabled, prefAskWait := desktopAutopilotDefaults()
+	if !prefOn {
+		t.Fatal("precondition failed — the test config turns the autopilot preference on")
+	}
+	on, runtime, grace, askEnabled, askWait := gateRestoredAutopilotDefaults(entry.Autopilot, prefRuntime, prefGrace, prefAskEnabled, prefAskWait, control.ToolApprovalYolo)
+	if !on || runtime <= 0 {
+		t.Fatalf("restore under yolo must carry the flag with its runtime bound, got on=%v runtime=%v", on, runtime)
+	}
+	if grace != prefGrace || askEnabled != prefAskEnabled || askWait != prefAskWait {
+		t.Fatalf("restore under yolo must pass the preference dials through, got grace=%v askEnabled=%v askWait=%v (want %v/%v/%v)", grace, askEnabled, askWait, prefGrace, prefAskEnabled, prefAskWait)
+	}
+	on, runtime, grace, askEnabled, askWait = gateRestoredAutopilotDefaults(entry.Autopilot, prefRuntime, prefGrace, prefAskEnabled, prefAskWait, control.ToolApprovalAsk)
+	if on || runtime != 0 || grace != 0 || askEnabled || askWait != 0 {
+		t.Fatalf("restore under ask must refuse with zeroed bounds, got on=%v runtime=%v grace=%v askEnabled=%v askWait=%v", on, runtime, grace, askEnabled, askWait)
+	}
+}
+
+// X4 断点 C file-format pin: the desktopTabsFile JSON round-trip must carry
+// the autopilot column — a renamed tag would silently restore every bare
+// unattended tab as attended (the flag lost on disk, no compile error).
+func TestDesktopTabsFileRoundTripsAutopilotColumn(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	app := NewApp()
+	app.ctx = context.Background()
+	app.readyHook = func() {}
+	tab := testTab("ap-persist", t.TempDir())
+	tab.toolApprovalMode = control.ToolApprovalYolo
+	// The live controller is the persistence read's first source — keep it in
+	// sync or the entry persists an empty approval and the flag would come
+	// back gate-refused.
+	if tab.Ctrl != nil {
+		tab.Ctrl.SetToolApprovalMode(tab.toolApprovalMode)
+	}
+	tab.autopilot = true
+	tab.autopilotMaxRuntime = 8 * time.Hour
+	app.tabs = map[string]*WorkspaceTab{tab.ID: tab}
+	app.tabOrder = []string{tab.ID}
+	app.activeTabID = tab.ID
+	a := app
+	a.mu.Lock()
+	a.saveTabsLocked()
+	a.mu.Unlock()
+
+	f := loadTabsFile()
+	if len(f.Tabs) != 1 {
+		t.Fatalf("tabs file holds %d entries, want 1", len(f.Tabs))
+	}
+	if !f.Tabs[0].Autopilot {
+		t.Fatal("tabs file lost the autopilot column on round-trip (X4 断点 C)")
+	}
+	if f.Tabs[0].ToolApprovalMode != control.ToolApprovalYolo {
+		t.Fatalf("tabs file approval = %q, want yolo", f.Tabs[0].ToolApprovalMode)
 	}
 }
 

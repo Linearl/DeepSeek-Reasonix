@@ -6,7 +6,7 @@ import { pendingFollowups, confirmFollowup, followupNotSubmitted, followupSessio
 import { useAppNavigationStore } from "../store/appNavigation";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
-import { ArrowRight, ArrowUp, ChevronsDown, ChevronsUp, Columns2, Brain, Check, Clock, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, Search, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, Users, X, Zap } from "lucide-react";
+import { ArrowUp, ChevronsDown, ChevronsUp, Columns2, Brain, Check, Clock, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, Search, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, Users, X, Zap } from "lucide-react";
 import { useSessionExperience } from "../lib/sessionExperience";
 import { useWorkProcessFoldAggregate } from "../lib/workProcessFoldState";
 import { asArray } from "../lib/array";
@@ -595,6 +595,7 @@ export function Composer({
   historyPickerEnabled = false,
   onInsertQuickCommand,
   autopilotEnabled = false,
+  autopilotOn = false,
   insertRequest,
   selectedTextRequest,
   disabled,
@@ -654,6 +655,9 @@ export function Composer({
   running: boolean;
   collaborationMode: CollaborationMode;
   toolApprovalMode: ToolApprovalMode;
+  /** 任务 465 两维矩阵：第一维 autopilot 裸旗（collaborationMode 是合成标签，
+   *  goal × autopilot 时标签为 "goal"，第四档点亮只能看这面旗）。 */
+  autopilotOn?: boolean;
   qualityFloor?: QualityFloor;
   floorInferred?: boolean;
   /** Host turn phase: working | checking | verifying | reviewing */
@@ -2403,7 +2407,9 @@ export function Composer({
   const planModeOn = collaborationMode === "plan";
   const activeGoal = (goal ?? "").trim();
   const goalModeOn = collaborationMode === "goal";
-  const autopilotModeOn = collaborationMode === "autopilot";
+  // 任务 465 两维矩阵：autopilot 是第一维裸旗，不再从合成标签推导——
+  // goal × autopilot 同开时标签是 "goal"，只有这面旗能点亮模式条第四档。
+  const autopilotModeOn = Boolean(autopilotOn);
   const warnImageInputFallback = useCallback((message?: string) => {
     const text = message ?? t("composer.imageInputUnsupported");
     showToast(text, "warn");
@@ -4454,20 +4460,14 @@ export function Composer({
     () => (quickCommands ?? []).filter((entry) => entry.enabled !== false),
     [quickCommands],
   );
+  // 任务 465 两维矩阵：徽章只承载第二维（计划/目标）；autopilot 由模式条
+  // 第四档呈现，两个维度同开时互不遮蔽。
   const taskModeShortKey = collaborationMode === "plan"
     ? "composer.taskModePlanShort"
-    : collaborationMode === "goal"
-      ? "composer.taskModeGoalShort"
-      : collaborationMode === "autopilot"
-        ? "composer.taskModeAutopilotShort"
-        : "composer.taskModeDirectShort";
+    : "composer.taskModeGoalShort";
   const TaskModeIcon = collaborationMode === "plan"
     ? Lightbulb
-    : collaborationMode === "goal"
-      ? Target
-      : collaborationMode === "autopilot"
-        ? Zap
-        : ArrowRight;
+    : Target;
   const taskModeTriggerLabel = `${t("common.close")} ${t(taskModeShortKey)}`;
   const taskModeTooltipLabel = taskModeTriggerLabel;
   const effortOptions = asArray(effort?.options);
@@ -4780,23 +4780,9 @@ export function Composer({
             </span>
             {goalModeOn && <Check className="composer-intent-menu__check" size={16} aria-hidden="true" />}
           </button>
-          {autopilotEnabled ? (
-            <button
-              type="button"
-              role="menuitemradio"
-              aria-checked={autopilotModeOn}
-              className={`composer-access-menu__item composer-intent-menu__item${autopilotModeOn ? " composer-access-menu__item--active" : ""}`}
-              onClick={() => chooseTaskMode(autopilotModeOn ? "normal" : "autopilot")}
-              disabled={disabled || running}
-              title={t("composer.taskModeAutopilotHint")}
-            >
-              <Zap size={16} />
-              <span className="composer-access-menu__copy">
-                <span className="composer-access-menu__title">{t("composer.taskModeAutopilot")}</span>
-              </span>
-              {autopilotModeOn && <Check className="composer-intent-menu__check" size={16} aria-hidden="true" />}
-            </button>
-          ) : null}
+          {/* 任务 465 两维矩阵：autopilot 移入模式条第四档（第一维），执行方式
+              菜单只承载第二维（计划/目标）。原菜单 autopilot 项的关闭路径走
+              "normal" 档，两维独立后不再关旗，故整个入口撤出避免静默失效。 */}
             {goalModeOn && activeGoal && (
             <div className="composer-intent-menu__goal-actions">
               <div className="composer-intent-menu__goal-runtime">
@@ -5428,7 +5414,9 @@ export function Composer({
                 </Tooltip>
               </div>
             )}
-            {!heroMode && collaborationMode !== "normal" && (
+            {/* 任务 465 两维矩阵：徽章只标第二维（计划/目标）。第一维 autopilot
+                在右侧模式条第四档呈现；两维同开时徽章与档位同时可见。 */}
+            {!heroMode && (planModeOn || goalModeOn) && (
               <div className="composer-meta__control composer-meta__control--intent">
                 <Tooltip label={taskModeTooltipLabel} disabled={intentMenuOpen || intentMenuClosing}>
                   <button
@@ -5454,16 +5442,17 @@ export function Composer({
                     an explicit decision. */}
                 <div
                   className="composer-modebar composer-modebar--approval"
-                  data-mode={toolApprovalMode}
+                  data-mode={autopilotModeOn ? "autopilot" : toolApprovalMode}
+                  data-autopilot={autopilotEnabled ? "on" : "off"}
                   title={t("composer.accessMenuTitle", { shortcut: yoloComboLabel })}
                 >
                   <span className="composer-modebar__thumb" aria-hidden="true" />
                   <button
                     type="button"
-                    className={`composer-modebar__item composer-modebar__item--ask${toolApprovalMode === "ask" ? " composer-modebar__item--active" : ""}`}
+                    className={`composer-modebar__item composer-modebar__item--ask${!autopilotModeOn && toolApprovalMode === "ask" ? " composer-modebar__item--active" : ""}`}
                     onClick={() => chooseApprovalMode("ask")}
                     disabled={approvalBarDisabled}
-                    aria-pressed={toolApprovalMode === "ask"}
+                    aria-pressed={!autopilotModeOn && toolApprovalMode === "ask"}
                     title={t("composer.accessAskTitle")}
                   >
                     <Shield size={14} />
@@ -5471,10 +5460,10 @@ export function Composer({
                   </button>
                   <button
                     type="button"
-                    className={`composer-modebar__item composer-modebar__item--auto${toolApprovalMode === "auto" ? " composer-modebar__item--active" : ""}`}
+                    className={`composer-modebar__item composer-modebar__item--auto${!autopilotModeOn && toolApprovalMode === "auto" ? " composer-modebar__item--active" : ""}`}
                     onClick={() => chooseApprovalMode("auto")}
                     disabled={approvalBarDisabled}
-                    aria-pressed={toolApprovalMode === "auto"}
+                    aria-pressed={!autopilotModeOn && toolApprovalMode === "auto"}
                     title={t("composer.accessAutoTitle")}
                   >
                     <ShieldCheck size={14} />
@@ -5482,15 +5471,32 @@ export function Composer({
                   </button>
                   <button
                     type="button"
-                    className={`composer-modebar__item composer-modebar__item--yolo${toolApprovalMode === "yolo" ? " composer-modebar__item--active" : ""}`}
+                    className={`composer-modebar__item composer-modebar__item--yolo${!autopilotModeOn && toolApprovalMode === "yolo" ? " composer-modebar__item--active" : ""}`}
                     onClick={() => chooseApprovalMode("yolo")}
                     disabled={approvalBarDisabled}
-                    aria-pressed={toolApprovalMode === "yolo"}
+                    aria-pressed={!autopilotModeOn && toolApprovalMode === "yolo"}
                     title={t("composer.accessYoloTitle", { shortcut: yoloComboLabel })}
                   >
                     <ShieldAlert size={14} />
                     <span>{t("composer.modeYolo")}</span>
                   </button>
+                  {/* 任务 465 两维矩阵：第四档 autopilot（第一维）。审批姿态档位
+                      运行中可切（审批条在待批时仍可用），补上「+」菜单运行中
+                      不可点导致的中途开 autopilot 缺口。autopilot 隐含 yolo：
+                      后端自动满足 325 前置并留痕，此处只发档位切换。 */}
+                  {autopilotEnabled && (
+                    <button
+                      type="button"
+                      className={`composer-modebar__item composer-modebar__item--autopilot${autopilotModeOn ? " composer-modebar__item--active" : ""}`}
+                      onClick={() => chooseTaskMode("autopilot")}
+                      disabled={approvalBarDisabled}
+                      aria-pressed={autopilotModeOn}
+                      title={t("composer.taskModeAutopilotHint")}
+                    >
+                      <Zap size={14} />
+                      <span>{t("composer.taskModeAutopilot")}</span>
+                    </button>
+                  )}
                 </div>
               </div>
             )}

@@ -19,7 +19,7 @@ import { makeMockWorktreeMergeBindings } from "./worktreeMergeMock";
 import { providerIsConfigured, providerRequiresKey, removeProviderAccessesForMock } from "./providerModels";
 import { DEFAULT_STATUS_BAR_ITEMS } from "./statusBarItems";
 import { registerTrustedThemeBackgroundURLs } from "./themePack";
-import { modeHasAutoApproveTools, modeWithAutoApproveTools, modeWithPlan, normalizeCollaborationMode, normalizeMode, normalizeToolApprovalMode } from "./types";
+import { modeHasAutoApproveTools, modeHasPlan, modeWithAutoApproveTools, modeWithPlan, normalizeCollaborationMode, normalizeMode, normalizeToolApprovalMode } from "./types";
 import { makeMockProjectTreeOrganizationBindings } from "./mockProjectTreeOrganization";
 import { decisionSurfaceMockFromInput, isLongDecisionOptionsMockInput } from "./decisionSurfaceMock";
 import { mockWorkspaceFile } from "./mockWorkspaceFile";
@@ -3985,11 +3985,24 @@ function makeMockApp(): AppBindings {
           mockTabs = mockTabs.map((tab) => {
             if (tab.id !== tabID) return tab;
             const toolMode = normalizeToolApprovalMode(tab.toolApprovalMode, normalizeMode(tab.mode));
+            // 任务 465 两维矩阵（镜像 Go 侧语义）：autopilot 档自动满足 yolo、
+            // 保留 goal；第二维切换（plan/goal/normal）不动 autopilot 旗。
+            if (next === "autopilot") {
+              const plan = modeHasPlan(normalizeMode(tab.mode));
+              return {
+                ...tab,
+                collaborationMode: plan ? "plan" : tab.goal ? "goal" : "autopilot",
+                toolApprovalMode: "yolo" as ToolApprovalMode,
+                autopilot: true,
+                goal: tab.goal,
+                mode: modeWithPlan(modeWithAutoApproveTools(normalizeMode(tab.mode), true), plan),
+              };
+            }
             return {
               ...tab,
               collaborationMode: next,
               goal: next === "normal" || next === "plan" ? "" : tab.goal,
-              mode: modeWithPlan(modeWithAutoApproveTools(normalizeMode(tab.mode), toolMode === "yolo"), next === "plan"),
+              mode: modeWithPlan(modeWithAutoApproveTools(normalizeMode(tab.mode), toolMode === "yolo" || Boolean(tab.autopilot)), next === "plan"),
             };
           });
         },
@@ -4006,6 +4019,8 @@ function makeMockApp(): AppBindings {
               ? {
                   ...tab,
                   toolApprovalMode: next,
+                  // 任务 465：325 反向联动——审批离开 yolo 即关 autopilot。
+                  autopilot: tab.autopilot && next === "yolo",
                   mode: modeWithAutoApproveTools(normalizeMode(tab.mode), next === "yolo"),
                 }
               : tab,
@@ -4021,10 +4036,14 @@ function makeMockApp(): AppBindings {
           mockTabs = mockTabs.map((tab) => {
             if (tab.id !== tabID) return tab;
             const plan = !nextGoal && nextCollaboration === "plan";
+            // 任务 465：镜像 SetComposerProfileForTab 的 325 反向联动——
+            // profile 审批离开 yolo 即关 autopilot（fail-closed）。
+            const autopilot = tab.autopilot && nextToolApproval === "yolo";
             return {
               ...tab,
               collaborationMode: nextGoal ? "goal" : plan ? "plan" : "normal",
               toolApprovalMode: nextToolApproval,
+              autopilot,
               goal: nextGoal,
               goalStatus: nextGoal ? "running" : "stopped",
               mode: modeWithAutoApproveTools(modeWithPlan(normalizeMode(tab.mode), plan), nextToolApproval === "yolo"),
@@ -4423,6 +4442,7 @@ function makeMockApp(): AppBindings {
             bypass: autoApproveTools,
             collaborationMode,
             toolApprovalMode,
+            autopilot: Boolean(active?.autopilot),
             goal: active?.goal ?? "",
             goalStatus: active?.goalStatus ?? (active?.goal ? "running" : "stopped"),
           };
@@ -4447,6 +4467,7 @@ function makeMockApp(): AppBindings {
             bypass: autoApproveTools,
             collaborationMode,
             toolApprovalMode,
+            autopilot: Boolean(tab?.autopilot),
             goal: tab?.goal ?? "",
             goalStatus: tab?.goalStatus ?? (tab?.goal ? "running" : "stopped"),
           };

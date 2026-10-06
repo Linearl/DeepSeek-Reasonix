@@ -3086,6 +3086,7 @@ export const zhTW: Record<DictKey, string> = {
   "notice.contextEditingFallback": "改用本機維護。",
   "notice.autopilotRequiresYolo": "autopilot 需要 yolo 審批模式：請先把審批模式切換到 yolo 再開啟。",
   "notice.autopilotClosedOffYolo": "審批模式已離開 yolo，autopilot 已自動關閉。",
+  "notice.autopilotAssumedYolo": "Autopilot 已開啟：審批自動切到 Yolo（決策已記錄）。",
   "notice.turnStalled": "已經有一段時間沒有任何進展。回合仍在執行；如果看起來卡住了，請點擊停止。",
   "questionNav.label": "問題導航",
   "questionNav.progress": "問題 {current} / {total}",

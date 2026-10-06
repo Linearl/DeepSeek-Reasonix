@@ -294,6 +294,8 @@ export function buildComposerSurface(input: ComposerSurfaceInput): DecisionFoote
       running: base.running || (!view.remote && view.rewindCommitting),
       collaborationMode: profile.collaborationMode,
       toolApprovalMode: profile.toolApprovalMode,
+      // 任务 465 两维矩阵：第一维裸旗单独下发，模式条据此点亮第四档。
+      autopilotOn: profile.composerProfile.autopilot,
       qualityFloor: profile.composerProfile.qualityFloor,
       floorInferred: (input.tab?.floorInferred ?? false) && !profile.composerProfile.pending.qualityFloor,
       onSetQualityFloor: profile.applyQualityFloor,

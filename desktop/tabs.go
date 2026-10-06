@@ -2243,6 +2243,7 @@ func (a *App) tabMeta(tab *WorkspaceTab, active bool) TabMeta {
 		Mode:              currentTabMode(tab),
 		CollaborationMode: currentTabCollaborationMode(tab),
 		ToolApprovalMode:  currentTabToolApprovalMode(tab),
+		Autopilot:         tab.autopilot,
 		SubagentPolicy:    currentTabSubagentPolicy(tab),
 		QualityFloor:      floor.floor,
 		FloorInferred:     floor.inferred,

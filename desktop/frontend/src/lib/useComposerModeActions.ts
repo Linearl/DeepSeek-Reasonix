@@ -10,6 +10,8 @@ type ComposerModeActionsOptions = {
   remote: boolean;
   collaborationMode: CollaborationMode;
   toolApprovalMode: ToolApprovalMode;
+  /** Raw first-axis autopilot flag (task 465 two-axis matrix). */
+  autopilot: boolean;
   goal: string;
   operations: ReturnType<typeof useSessionOperations>;
   ports: Omit<ComposerModePorts, "rememberPlan" | "rememberApproval">;
@@ -29,7 +31,7 @@ export function useComposerModeActions(options: ComposerModeActionsOptions) {
   });
 
   const run = useCommittedCommand(async (request: ComposerModeRequest): Promise<void> => {
-    const { target, remote, collaborationMode, toolApprovalMode, goal, operations } = options;
+    const { target, remote, collaborationMode, toolApprovalMode, autopilot, goal, operations } = options;
     // All axes share the backend profile transaction; stop/send have other channels.
     const ports: ComposerModePorts = {
       ...options.ports,
@@ -37,7 +39,7 @@ export function useComposerModeActions(options: ComposerModeActionsOptions) {
       rememberApproval: rememberApprovalForTab,
     };
     const result = await operations(target, "composer-profile", {
-      target, remote, collaborationMode, toolApprovalMode, goal, ports, request,
+      target, remote, collaborationMode, toolApprovalMode, autopilot, goal, ports, request,
     }, executeComposerMode);
     if (result.status === "failed") throw result.error;
   });

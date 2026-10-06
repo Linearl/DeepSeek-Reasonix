@@ -14,7 +14,7 @@ import {
   type ToolApprovalMode,
 } from "./types";
 
-export type ComposerProfileField = "collaborationMode" | "toolApprovalMode" | "goal" | "qualityFloor";
+export type ComposerProfileField = "collaborationMode" | "toolApprovalMode" | "autopilot" | "goal" | "qualityFloor";
 
 export type ComposerProfilePending = Partial<Record<ComposerProfileField, true>>;
 
@@ -22,6 +22,10 @@ export interface ComposerProfile {
   collaborationMode: CollaborationMode;
   goalDraftMode: boolean;
   toolApprovalMode: ToolApprovalMode;
+  /** Raw first-axis autopilot flag (task 465 two-axis matrix). collaborationMode
+   *  stays the synthesized display label (plan>goal>autopilot>normal); this flag
+   *  is the first-axis state so a goal × autopilot tab keeps both visible. */
+  autopilot: boolean;
   goal: string;
   qualityFloor: QualityFloor;
   pending: ComposerProfilePending;
@@ -30,12 +34,13 @@ export interface ComposerProfile {
 export type ComposerProfilesByTab = Record<string, ComposerProfile>;
 export type UserPlanModeIntents = Record<string, true>;
 
-const profileFields: ComposerProfileField[] = ["collaborationMode", "toolApprovalMode", "goal", "qualityFloor"];
+const profileFields: ComposerProfileField[] = ["collaborationMode", "toolApprovalMode", "autopilot", "goal", "qualityFloor"];
 
 export const defaultComposerProfile: ComposerProfile = Object.freeze({
   collaborationMode: "normal",
   goalDraftMode: false,
   toolApprovalMode: "ask",
+  autopilot: false,
   goal: "",
   qualityFloor: "standard",
   pending: {},
@@ -57,12 +62,20 @@ function fallbackToolApprovalMode(rawMode: string | undefined, fallback?: ToolAp
   return fallback === "auto" ? "auto" : undefined;
 }
 
+// Task 465 two-axis matrix: the raw autopilot flag comes from the wire flag;
+// the synthesized label ("autopilot", set by pre-465 hosts on a bare toggle)
+// is the legacy fallback. A label of plan/goal never implies the flag.
+function profileAutopilot(raw: boolean | undefined, label: CollaborationMode): boolean {
+  return Boolean(raw) || label === "autopilot";
+}
+
 export function composerProfileFromTab(tab?: TabMeta | null, fallback?: ToolApprovalMode | null): ComposerProfile {
   if (!tab) return { ...defaultComposerProfile, pending: {} };
   const legacyMode = normalizeMode(tab.mode);
   const goal = activeGoal(tab.goal, tab.goalStatus);
+  const collaborationMode = normalizeCollaborationMode(tab.collaborationMode, goal, legacyMode);
   return profileWithPending({
-    collaborationMode: normalizeCollaborationMode(tab.collaborationMode, goal, legacyMode),
+    collaborationMode,
     goalDraftMode: false,
     toolApprovalMode: normalizeToolApprovalMode(
       tab.toolApprovalMode,
@@ -70,6 +83,7 @@ export function composerProfileFromTab(tab?: TabMeta | null, fallback?: ToolAppr
       tab.toolApprovalMode === "yolo",
       fallbackToolApprovalMode(tab.toolApprovalMode, fallback),
     ),
+    autopilot: profileAutopilot(tab.autopilot, collaborationMode),
     goal,
     qualityFloor: tab.qualityFloor ?? "standard",
   });
@@ -85,17 +99,19 @@ export function composerProfileFromMeta(meta?: Meta | null, legacyMode?: Mode, f
     meta.autoApproveTools ?? meta.bypass,
     fallbackToolApprovalMode(meta.toolApprovalMode, fallback),
   );
+  const collaborationMode = normalizeCollaborationMode(meta.collaborationMode, goal, fallbackMode);
   return profileWithPending({
-    collaborationMode: normalizeCollaborationMode(meta.collaborationMode, goal, fallbackMode),
+    collaborationMode,
     goalDraftMode: false,
     toolApprovalMode,
+    autopilot: profileAutopilot(meta.autopilot, collaborationMode),
     goal,
     qualityFloor: meta.qualityFloor ?? "standard",
   });
 }
 
 function fieldValue(profile: ComposerProfile, field: ComposerProfileField): string {
-  return profile[field];
+  return field === "autopilot" ? String(profile.autopilot) : profile[field];
 }
 
 function assignField(profile: ComposerProfile, field: ComposerProfileField, value: string) {
@@ -105,6 +121,9 @@ function assignField(profile: ComposerProfile, field: ComposerProfileField, valu
       return;
     case "toolApprovalMode":
       profile.toolApprovalMode = value as ToolApprovalMode;
+      return;
+    case "autopilot":
+      profile.autopilot = value === "true";
       return;
     case "goal":
       profile.goal = value;
@@ -120,6 +139,7 @@ function profilesEqual(a: ComposerProfile | undefined, b: ComposerProfile | unde
   return a.collaborationMode === b.collaborationMode
     && a.goalDraftMode === b.goalDraftMode
     && a.toolApprovalMode === b.toolApprovalMode
+    && a.autopilot === b.autopilot
     && a.goal === b.goal
     && a.qualityFloor === b.qualityFloor
     && profileFields.every((field) => Boolean(a.pending[field]) === Boolean(b.pending[field]));

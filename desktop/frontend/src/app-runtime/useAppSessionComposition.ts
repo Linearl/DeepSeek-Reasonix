@@ -437,6 +437,9 @@ export function useAppSessionComposition(input: AppSessionCompositionInput) {
   const modeActions = useComposerModeActions({
     target: { tabId: activeTabId ?? "", sessionKey: activeSessionIdentity },
     remote: remoteSurfaceActive, collaborationMode, toolApprovalMode, goal,
+    // Task 465 two-axis matrix: the raw first-axis flag rides with every
+    // mode request so the optimistic patch can mirror the 325 reverse linkage.
+    autopilot: composerProfile.autopilot,
     operations: sessionOperations,
     planIntentsRef: userPlanModeByTabRef,
     yoloRestoreRef: yoloRestoreToolApprovalModesRef,

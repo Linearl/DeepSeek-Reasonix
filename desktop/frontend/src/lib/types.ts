@@ -589,6 +589,11 @@ export interface TabMeta extends RemoteTabMetaFields {
   mode: Mode;
   collaborationMode?: CollaborationMode;
   toolApprovalMode?: ToolApprovalMode;
+  /** Raw first-axis autopilot flag (task 465 two-axis matrix) — the synthesized
+   *  collaborationMode label orders plan>goal>(autopilot)>normal, so a
+   *  goal × autopilot tab reports "goal" and only this flag keeps the
+   *  unattended state visible. Absent on old hosts. */
+  autopilot?: boolean;
   subagentPolicy?: SubagentPolicy;
   tokenMode?: TokenMode;
   agentPreset?: AgentPreset; // canonical role; prefer qualityFloor
@@ -1148,6 +1153,8 @@ export interface Meta extends RemoteSessionMetaFields {
   bypass?: boolean; // legacy JSON key for YOLO/full-access tool auto-approval
   collaborationMode?: CollaborationMode;
   toolApprovalMode?: ToolApprovalMode;
+  /** Raw first-axis autopilot flag (task 465); see TabMeta.autopilot. */
+  autopilot?: boolean;
   subagentPolicy?: SubagentPolicy;
   tokenMode?: TokenMode;
   agentPreset?: AgentPreset; // canonical role; prefer qualityFloor

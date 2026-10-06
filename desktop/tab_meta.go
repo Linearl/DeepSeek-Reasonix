@@ -44,6 +44,11 @@ type TabMeta struct {
 	Mode              string             `json:"mode"`
 	CollaborationMode string             `json:"collaborationMode"`
 	ToolApprovalMode  string             `json:"toolApprovalMode"`
+	// Autopilot is the RAW first-axis flag (task 465 two-axis matrix) — the
+	// synthesized CollaborationMode label never says "autopilot" on this wire
+	// (plan>goal>normal), so the composer profile rebuild needs the flag to
+	// keep a goal × autopilot tab's unattended state visible.
+	Autopilot         bool               `json:"autopilot,omitempty"`
 	SubagentPolicy    string             `json:"subagentPolicy"`
 	TokenMode         string             `json:"tokenMode"`
 	AgentPreset       string             `json:"agentPreset,omitempty"`
