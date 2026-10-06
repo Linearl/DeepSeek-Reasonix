@@ -22,10 +22,15 @@ func newServeBootstrap() (*serve.Broadcaster, *serve.SessionTagSink, *config.Con
 	return bc, serve.NewSessionTagSink(bc), cfg
 }
 
-func setupCLIMultiSessionProfile(ctx context.Context, model string, maxSteps int, preset string, tag *serve.SessionTagSink, leases *control.SessionLeaseKeeper) (*control.Controller, boot.Options, error) {
+// setupCLIMultiSessionProfile builds the serve foreground controller.
+// workspaceRoot pins the process workspace when non-empty (task 545: a
+// `serve --resume` startup resolves it from the resumed session's own project
+// root via resumeWorkspaceRootOverride; empty keeps the process-cwd fallback).
+func setupCLIMultiSessionProfile(ctx context.Context, model string, maxSteps int, preset string, tag *serve.SessionTagSink, leases *control.SessionLeaseKeeper, workspaceRoot string) (*control.Controller, boot.Options, error) {
 	migrateMCPConfigForCLIWorkspace()
 	opts := cliProfileBuildOptions(model, maxSteps, false, tag, cliBuildOverrides{
 		Preset: preset, OnSessionRecovered: cliSessionRecoveredHandler(leases),
+		WorkspaceRoot: workspaceRoot,
 	})
 	ctrl, err := boot.Build(ctx, opts)
 	return ctrl, opts, err
