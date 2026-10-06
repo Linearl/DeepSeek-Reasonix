@@ -136,6 +136,12 @@ const CHECKS = [
   { feature: "#9521 TPS chip", file: "desktop/frontend/src/components/ToolCard.tsx", patterns: ["tok/s"] },
   { feature: "#9521 TPS 状态字段", file: "desktop/frontend/src/lib/useController.ts", patterns: ["tokensPerSec"] },
   { feature: "#9468 reload fallback", file: "desktop/frontend/src/lib/useController.ts", patterns: ["loadOlderHistory"] },
+  // 任务533（wt-533-panel-ux，2026-10-07）：前台子代理/组卡的结果事件即权威
+  // 终态——终态进度事件丢失/乱序时卡片不再永久挂「运行中」；后台
+  // run_in_background 派发仍只由终态进度结算（规则分叉见
+  // isBackgroundSubagentDispatch）。上游无此分叉，merge 顶掉时无编译错误、
+  // 只有完成态显示退化，故钉符号+语义注释锚。
+  { feature: "533 前台子代理结果权威结算（丢终态不挂运行中）", file: "desktop/frontend/src/lib/useController.ts", patterns: ["isBackgroundSubagentDispatch", "任务 533: the completed-children-stuck-in-running"] },
   // 任务 160：顶部上滚加载更早 + 「加载更早」按钮都是 fork 独有交互（上游已改为纯按钮
   // 驱动，无同类实现），且滚动触发受 experimental_auto_load_older 开关门控——整段被上游
   // 版顶掉时不会有冲突标记，故登记语义锚点（含开关参数名与顶部守卫常量）。

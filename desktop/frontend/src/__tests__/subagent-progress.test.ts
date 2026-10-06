@@ -136,7 +136,10 @@ console.log("\nsubagent progress reducer");
 
 {
   let s = initialState;
-  s = dispatch(s, { id: "bg-1", name: "task", args: "{}", readOnly: true });
+  // A real background dispatch carries run_in_background in the call args
+  // (the engine's isBackgroundTaskCall reads the same flag); its result is a
+  // job id, not the child's answer.
+  s = dispatch(s, { id: "bg-1", name: "task", args: '{"prompt":"x","run_in_background":true}', readOnly: true });
   s = result(s, { id: "bg-1", name: "task", readOnly: true, output: "Started background task \"bg\" (job-1)." });
   eq(toolById(s, "bg-1").status, "running", "job id result keeps the card running");
   s = progress(s, progressTool("bg-1", SUBAGENT_PROGRESS_STATUS, "queued"));
@@ -166,7 +169,7 @@ console.log("\nsubagent progress reducer");
 
 {
   let s = initialState;
-  s = dispatch(s, { id: "fl-1", name: "fleet", args: "{}", readOnly: true });
+  s = dispatch(s, { id: "fl-1", name: "fleet", args: '{"run_in_background":true}', readOnly: true });
   s = dispatch(s, { id: "fl-1/fleet-1", name: "task", args: "{}", readOnly: true, parentId: "fl-1" });
   s = dispatch(s, { id: "fl-1/fleet-2", name: "task", args: "{}", readOnly: true, parentId: "fl-1" });
 
@@ -188,7 +191,7 @@ console.log("\nsubagent progress reducer");
 
 {
   let s = initialState;
-  s = dispatch(s, { id: "fl-0", name: "fleet", args: "{}", readOnly: true });
+  s = dispatch(s, { id: "fl-0", name: "fleet", args: '{"run_in_background":true}', readOnly: true });
   // Background order: job-id result, then child-1 dispatches and finishes
   // while later children have not dispatched yet.
   s = result(s, { id: "fl-0", name: "fleet", readOnly: true, output: "Started background fleet (job-3)." });
@@ -214,7 +217,7 @@ console.log("\nsubagent progress reducer");
   // A background fleet cancelled before any child dispatched still receives
   // its explicit cancelled terminal from the backend.
   let s = initialState;
-  s = dispatch(s, { id: "zc-1", name: "fleet", args: "{}", readOnly: true });
+  s = dispatch(s, { id: "zc-1", name: "fleet", args: '{"run_in_background":true}', readOnly: true });
   s = progress(s, progressTool("zc-1", SUBAGENT_PROGRESS_STATUS, "cancelled"));
   s = result(s, { id: "zc-1", name: "fleet", readOnly: true, err: "cancelled: context canceled" });
   eq(toolById(s, "zc-1").status, "stopped", "zero-child cancelled fleet shows stopped");
@@ -317,6 +320,53 @@ console.log("\nsubagent progress reducer");
   const archived = toolById(s, "outcome-1");
   eq(JSON.stringify(archived.subagentOutcome), JSON.stringify(["sa_child", "partial", "completion_uncertain", true]), "terminal outcome is normalized once at the result boundary");
   eq(archived.output, undefined, "outcome metadata survives without retaining archived tool output");
+}
+
+// --- 12. 任务 533: a foreground result settles the card even when the -------
+// terminal status progress event was lost or reordered (the completed
+// children stuck in "运行中" screenshot). The directory projection must move
+// them to the ended section at the completion moment.
+
+{
+  let s = initialState;
+  s = dispatch(s, { id: "g-1", name: "parallel_tasks", args: "{}", readOnly: true });
+  for (let i = 1; i <= 3; i += 1) {
+    s = dispatch(s, { id: `g-1/sub-${i}`, name: "task", args: `{"prompt":"t${i}"}`, readOnly: true, parentId: "g-1" });
+    s = progress(s, progressTool(`g-1/sub-${i}`, SUBAGENT_PROGRESS_STATUS, "running"));
+  }
+  // Every terminal status progress event is lost; only the results arrive.
+  for (let i = 1; i <= 3; i += 1) {
+    s = result(s, { id: `g-1/sub-${i}`, name: "task", readOnly: true, output: `answer ${i}`, parentId: "g-1" });
+    eq(toolById(s, `g-1/sub-${i}`).status, "done", `lost terminal: child ${i} settles done on its result`);
+  }
+  // The group's own result settles it too (parallel_tasks has no background form).
+  s = result(s, { id: "g-1", name: "parallel_tasks", readOnly: true, output: "Completed 3 parallel tasks:" });
+  eq(toolById(s, "g-1").status, "done", "lost terminal: foreground group settles on its result");
+
+  // Dock projection (lib/subagentDirectory): nothing left running, the batch
+  // is listed in the ended section.
+  const { buildSubagentDirectory } = await import("../lib/subagentDirectory");
+  const dir = buildSubagentDirectory(s.items);
+  eq(dir.running.length, 0, "lost terminal: directory running section empty");
+  eq(dir.ended.length, 4, "lost terminal: directory ended section lists the batch");
+
+  // A failed foreground child still shows error semantics without a terminal.
+  s = dispatch(s, { id: "g-2/sub-1", name: "task", args: "{}", readOnly: true, parentId: "g-2" });
+  s = result(s, { id: "g-2/sub-1", name: "task", readOnly: true, err: "child exploded", parentId: "g-2" });
+  eq(toolById(s, "g-2/sub-1").status, "error", "lost terminal: failed child settles error on its result");
+
+  // An intact cancelled terminal keeps its stopped semantics (unchanged rule).
+  s = dispatch(s, { id: "g-2/sub-2", name: "task", args: "{}", readOnly: true, parentId: "g-2" });
+  s = progress(s, progressTool("g-2/sub-2", SUBAGENT_PROGRESS_STATUS, "cancelled"));
+  s = result(s, { id: "g-2/sub-2", name: "task", readOnly: true, err: "cancelled: context canceled", parentId: "g-2" });
+  eq(toolById(s, "g-2/sub-2").status, "stopped", "intact cancelled terminal keeps stopped semantics");
+
+  // Background dispatches keep the legacy rule: a job-id result never settles.
+  s = dispatch(s, { id: "g-3", name: "fleet", args: '{"run_in_background":true}', readOnly: true });
+  s = result(s, { id: "g-3", name: "fleet", readOnly: true, output: "Started background fleet (job-9)." });
+  eq(toolById(s, "g-3").status, "running", "background fleet result keeps the card running");
+  s = progress(s, progressTool("g-3", SUBAGENT_PROGRESS_STATUS, "completed", { durationMs: 5 }));
+  eq(toolById(s, "g-3").status, "done", "background fleet settles only on its terminal");
 }
 
 console.log(`\nsubagent progress: ${passed} passed, ${failed} failed`);
