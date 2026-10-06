@@ -208,11 +208,20 @@ func (s *inboxState) settled(meta sessioninbox.InboxItemMeta) bool {
 	return s.settledItem(meta)
 }
 
-// residueMatcher builds the P15 body matcher for SettleAppliedResidue: exact
-// trim equality against the steer texts the transcript already injected. nil
-// receipts (host never injected the loader, or the transcript holds no steer)
-// return nil so nothing is auto-settled.
-func (s *inboxState) residueMatcher(sessionPath string) func(sessioninbox.PromptEnvelope) bool {
+// residueMatcher builds the P15 body matcher for SettleAppliedResidue. A row
+// counts as already applied when any of these holds, most authoritative first:
+//   - its item id appears in a merged receipt's segment header (task 543:
+//     mergeInboxEnvelope stamps every member id, and ids are unique per row —
+//     an id hit survives trim/line-ending drift that defeats text comparison);
+//   - its body equals one receipt text exactly (the P15 single-steer path,
+//     which also settles a merged carrier row: the carrier holds the merged
+//     full text verbatim);
+//   - its body equals one merged segment body (task 543 text fallback for
+//     member rows whose id is no longer recoverable from the receipt).
+//
+// nil receipts (host never injected the loader, or the transcript holds no
+// steer) return nil so nothing is auto-settled.
+func (s *inboxState) residueMatcher(sessionPath string) func(sessioninbox.InboxItemMeta, sessioninbox.PromptEnvelope) bool {
 	if s == nil || s.appliedReceipts == nil {
 		return nil
 	}
@@ -220,7 +229,24 @@ func (s *inboxState) residueMatcher(sessionPath string) func(sessioninbox.Prompt
 	if len(texts) == 0 {
 		return nil
 	}
-	return func(env sessioninbox.PromptEnvelope) bool {
+	memberIDs := make(map[string]struct{})
+	segmentBodies := make(map[string]struct{})
+	for text := range texts {
+		ids, bodies, merged := parseMergedSteerSegments(text)
+		if !merged {
+			continue
+		}
+		for _, id := range ids {
+			memberIDs[id] = struct{}{}
+		}
+		for _, body := range bodies {
+			segmentBodies[body] = struct{}{}
+		}
+	}
+	return func(meta sessioninbox.InboxItemMeta, env sessioninbox.PromptEnvelope) bool {
+		if _, ok := memberIDs[meta.ID]; ok {
+			return true
+		}
 		text := strings.TrimSpace(env.SubmitText)
 		if text == "" {
 			text = strings.TrimSpace(env.DisplayText)
@@ -231,7 +257,10 @@ func (s *inboxState) residueMatcher(sessionPath string) func(sessioninbox.Prompt
 		if text == "" {
 			return false
 		}
-		_, ok := texts[text]
+		if _, ok := texts[text]; ok {
+			return true
+		}
+		_, ok := segmentBodies[text]
 		return ok
 	}
 }

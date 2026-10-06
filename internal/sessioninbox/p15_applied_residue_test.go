@@ -166,8 +166,8 @@ func TestSettleAppliedResidueDropsMatchingUncertainOnly(t *testing.T) {
 	envelope := func(text, idem string) EnqueueRequest {
 		return EnqueueRequest{Envelope: PromptEnvelope{SubmitText: text}, Idempotency: idem}
 	}
-	applied := func(text string) func(PromptEnvelope) bool {
-		return func(env PromptEnvelope) bool {
+	applied := func(text string) func(InboxItemMeta, PromptEnvelope) bool {
+		return func(_ InboxItemMeta, env PromptEnvelope) bool {
 			return env.SubmitText == text
 		}
 	}
@@ -243,7 +243,7 @@ func TestSettleAppliedResidueUnpausesEmptyQueue(t *testing.T) {
 	if err := s.ForcePause(true, 1); err != nil {
 		t.Fatal(err)
 	}
-	dropped, err := s.SettleAppliedResidue(func(env PromptEnvelope) bool { return env.SubmitText == "applied residue" })
+	dropped, err := s.SettleAppliedResidue(func(_ InboxItemMeta, env PromptEnvelope) bool { return env.SubmitText == "applied residue" })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -307,7 +307,7 @@ func TestSettleAppliedResidueKeepsUnreadableBlob(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	dropped, err := reopened.SettleAppliedResidue(func(env PromptEnvelope) bool {
+	dropped, err := reopened.SettleAppliedResidue(func(_ InboxItemMeta, env PromptEnvelope) bool {
 		return env.SubmitText == "unreadable residue"
 	})
 	if err != nil {
@@ -336,7 +336,7 @@ func TestSettleAppliedResidueGuards(t *testing.T) {
 		t.Fatalf("nil matcher = (%d, %v), want (0, nil)", dropped, err)
 	}
 	s.Close()
-	if _, err := s.SettleAppliedResidue(func(PromptEnvelope) bool { return true }); !errors.Is(err, ErrClosed) {
+	if _, err := s.SettleAppliedResidue(func(InboxItemMeta, PromptEnvelope) bool { return true }); !errors.Is(err, ErrClosed) {
 		t.Fatalf("closed store err = %v, want %v", err, ErrClosed)
 	}
 }
