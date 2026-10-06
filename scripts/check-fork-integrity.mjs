@@ -1018,6 +1018,17 @@ const CHECKS = [
   { feature: "463 三语文案 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["\"composer.expandAll\": \"Expand all work processes\""] },
   { feature: "463 双向开关测试存续", file: "desktop/frontend/src/__tests__/fold-toggle-button.test.tsx", patterns: ["allWorkProcessesCollapsed", "reasonix:expand-all-folds"] },
 
+  // ── 任务 512 提示音速率/截断/曲目 ──────────────────────────────────────
+  { feature: "512 1.25× 速率 + 3 秒截断常量", file: "desktop/frontend/src/lib/sound.ts", patterns: ["UPDATE_CHIME_PLAYBACK_RATE = 1.25", "UPDATE_CHIME_INTERRUPT_DELAY_MS = 3000", "UPDATE_CHIME_FADE_OUT_S = 0.2", "UPDATE_CHIME_MOVE_THRESHOLD_PX = 12"] },
+  { feature: "512 马里奥资产版权守卫（公开构建条件导入）", file: "desktop/frontend/src/lib/sound.ts", patterns: ["__CHIME_LOCAL_ASSETS__", "../assets/sounds/mario-theme.wav?url"] },
+  { feature: "512 曲目下拉（公开构建仅 Nokia）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["SetUpdateChimeTune(value)", "settings.updateChimeTune"] },
+  { feature: "512 曲目配置字段+归一化（Go）", file: "internal/config/desktop_preferences.go", patterns: ["update_chime_tune"] },
+  { feature: "512 曲目 setter（Go）", file: "internal/config/edit.go", patterns: ["func (c *Config) SetUpdateChimeTune", "func (c *Config) UpdateChimeTuneMode"] },
+  { feature: "512 三语文案 zh", file: "desktop/frontend/src/locales/zh.ts", patterns: ["\"settings.updateChimeTune\": \"提示音曲目\"", "\"settings.updateChimeTune.mario\": \"超级马里奥\""] },
+  { feature: "512 三语文案 zh-TW", file: "desktop/frontend/src/locales/zh-TW.ts", patterns: ["\"settings.updateChimeTune\": \"提示音曲目\"", "\"settings.updateChimeTune.mario\": \"超級瑪利歐\""] },
+  { feature: "512 三语文案 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["\"settings.updateChimeTune\": \"Chime melody\"", "\"settings.updateChimeTune.mario\": \"Super Mario\""] },
+  { feature: "512 速率/截断测试存续", file: "desktop/frontend/src/__tests__/task512-chime-rate-interrupt.test.ts", patterns: ["UPDATE_CHIME_PLAYBACK_RATE", "UPDATE_CHIME_INTERRUPT_DELAY_MS"] },
+
 ];
 
 let failed = 0;
