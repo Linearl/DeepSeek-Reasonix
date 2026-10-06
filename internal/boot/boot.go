@@ -61,6 +61,7 @@ import (
 	"reasonix/internal/rules"
 	"reasonix/internal/sandbox"
 	"reasonix/internal/secrets"
+	"reasonix/internal/sentinel"
 	"reasonix/internal/sessioncollab"
 	"reasonix/internal/sessioncontext"
 	"reasonix/internal/sessioninbox"
@@ -345,6 +346,30 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	secrets.SetFilterSubprocessEnv(cfg.Secrets.FilterSubprocessEnv)
 	secrets.SetProtectSensitiveFiles(cfg.Secrets.ProtectSensitiveFiles)
 	secrets.RegisterCredentialEnvKeys(cfg.CredentialEnvNames())
+
+	// Arm the Sentinel bottom lines (task 410) from the user-global [sentinel]
+	// section, same scoping rationale as [secrets]: hard-forbidden defaults ON
+	// (protection is not a feature), the exit scan starts behind an
+	// experimental switch, and the protected system paths resolve here so the
+	// rules stay pure string matching at call time. Interception records land
+	// beside the other per-user state (stats/archive) as JSONL.
+	hardForbiddenDefault := true
+	if cfg.Sentinel.HardForbidden != nil {
+		hardForbiddenDefault = *cfg.Sentinel.HardForbidden
+	}
+	sentinel.SetHardForbidden(hardForbiddenDefault)
+	sentinel.SetExitScan(cfg.Sentinel.ExitScan)
+	sentinel.SetProtectedBranches(cfg.Sentinel.ProtectedBranches)
+	sentinel.SetDisabledRules(cfg.Sentinel.DisabledRules)
+	sentinel.SetHomeDir(config.ReasonixHomeDir())
+	sentinelPaths := append([]string(nil), config.ReasonixManagedConfigPaths()...)
+	if creds := config.UserCredentialsPath(); creds != "" {
+		sentinelPaths = append(sentinelPaths, creds)
+	}
+	sentinel.SetProtectedPaths(sentinelPaths)
+	if stateRoot := config.MemoryUserDir(); stateRoot != "" {
+		sentinel.SetAuditPath(filepath.Join(stateRoot, "sentinel", "intercepts.jsonl"))
+	}
 
 	// Serialize the frontend's sink once: background jobs (below) emit from their
 	// own goroutines, which can overlap a running turn's emission, so every emitter

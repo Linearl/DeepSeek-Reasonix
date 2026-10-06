@@ -994,6 +994,32 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		b.WriteString("\n")
 	}
 
+	// [sentinel] is user/global only, same class as [secrets] (task 410): the
+	// bottom lines must not be weakenable by a project reasonix.toml, and
+	// rendering the section here is what lets a user's saved toggles survive
+	// config rewrites.
+	if scope != RenderScopeProject {
+		b.WriteString("[sentinel]   # 硬禁区底线 + 出口 secret 扫描；user/global only, ./reasonix.toml cannot override\n")
+		if c.Sentinel.HardForbidden != nil && !*c.Sentinel.HardForbidden {
+			b.WriteString("hard_forbidden = false   # 默认开（保护非功能）；仅显式关闭才渲染这一行\n")
+		} else {
+			b.WriteString("# hard_forbidden = false   # 默认开：force push 保护分支/删 .git/外发凭据/改系统配置，yolo 下也拦截\n")
+		}
+		if c.Sentinel.ExitScan {
+			b.WriteString("exit_scan = true   # 实验开关：git commit/push 等外发内容做 secret 形态扫描，命中即阻断\n")
+		} else {
+			b.WriteString("# exit_scan = false   # opt-in 实验开关；默认关，误杀面待实测\n")
+		}
+		if len(c.Sentinel.ProtectedBranches) > 0 {
+			quoted := make([]string, 0, len(c.Sentinel.ProtectedBranches))
+			for _, branch := range c.Sentinel.ProtectedBranches {
+				quoted = append(quoted, fmt.Sprintf("%q", branch))
+			}
+			fmt.Fprintf(&b, "protected_branches = [%s]\n", strings.Join(quoted, ", "))
+		}
+		b.WriteString("\n")
+	}
+
 	// [serve] is user/global only: it carries the serve frontend auth settings
 	// and the bus bearer tokens, which must never land in a shared project
 	// reasonix.toml. Rendered via renderServeConfig (task 432): before that the

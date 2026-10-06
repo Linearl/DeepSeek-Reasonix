@@ -955,6 +955,14 @@ const CHECKS = [
   { feature: "499 失效钩子删会话", file: "desktop/app.go", patterns: ["invalidated dag graph cache on session delete"] },
   { feature: "499 配置键字节上限双键+渲染", file: "internal/config/config.go", patterns: ["dag_graph_cache_max_mb", "dag_graph_cache_entry_max_mb"] },
 
+  // 任务410 Sentinel 降维版（硬禁区底线+出口 secret 扫描，yolo 下也生效）。
+  // 三个锚各护一面：前置检查调用点（被顶掉=底线失效）、零模型参与源码断言
+  // （被顶掉=LLM 依赖可能静默回流）、用户全局配置段（被顶掉=开关无法持久）。
+  { feature: "任务410 审批链固定前置检查（Auto Guard/MCP 快路径/普通门之前）", file: "internal/agent/execute_one.go", patterns: ["sentinel.CheckToolCall(plan.permName, plan.permArgs, a.svc.workspaceRoot)"] },
+  { feature: "任务410 零模型参与源码断言（import 白名单）", file: "internal/sentinel/zero_model_test.go", patterns: ["TestSentinelPackageImportsAreModelFree", "allowedImports"] },
+  { feature: "任务410 [sentinel] 用户全局配置段（hard_forbidden 默认开+exit_scan 实验开关）", file: "internal/config/config.go", patterns: ["SentinelConfig", "hard_forbidden", "exit_scan"] },
+  { feature: "任务410 boot 装配（开关+保护路径+审计 JSONL）", file: "internal/boot/boot.go", patterns: ["sentinel.SetHardForbidden", "sentinel.SetAuditPath"] },
+
 ];
 
 let failed = 0;

@@ -85,6 +85,7 @@ type Config struct {
 	Bot                 BotConfig           `toml:"bot"`
 	Serve               ServeConfig         `toml:"serve"`
 	Secrets             SecretsConfig       `toml:"secrets"`
+	Sentinel            SentinelConfig      `toml:"sentinel"`
 	Remote              RemoteConfig        `toml:"remote"`
 
 	systemPromptFileSource     promptFileSource
@@ -264,6 +265,29 @@ type SecretsConfig struct {
 	// as invisible. Default off because hiding the files breaks legitimate
 	// "edit my .env" workflows.
 	ProtectSensitiveFiles bool `toml:"protect_sensitive_files"`
+}
+
+// SentinelConfig controls the fixed bottom-line protections (task 410,
+// Sentinel 降维版): the hard-forbidden rules that apply in every approval
+// mode including yolo, and the outbound secret scan. User-global like
+// [secrets]: project reasonix.toml values are ignored (see LoadForRoot), so a
+// cloned repository cannot weaken or silently retarget the user's bottom
+// lines.
+type SentinelConfig struct {
+	// HardForbidden keeps the hard-forbidden rules on. Default ON — this is a
+	// protection, not a feature (铁律 2). Pointer so an absent section never
+	// disables it; only an explicit `hard_forbidden = false` does.
+	HardForbidden *bool `toml:"hard_forbidden"`
+	// ExitScan enables the outbound secret scan before git commit/push and
+	// other outbound commands. Experimental switch, default off (误杀面待实测).
+	ExitScan bool `toml:"exit_scan"`
+	// ProtectedBranches are the git branches force-push must never rewrite.
+	// Empty = built-in defaults (main, master, main-v2-stable).
+	ProtectedBranches []string `toml:"protected_branches"`
+	// DisabledRules opts out of individual hard-forbidden rules by id
+	// (force_push_protected, delete_critical_path, exfil_credentials,
+	// write_system_config).
+	DisabledRules []string `toml:"disabled_rules"`
 }
 
 type providerSourceScope string

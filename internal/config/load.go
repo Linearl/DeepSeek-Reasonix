@@ -147,6 +147,7 @@ func loadForRoot(root string, opts loadForRootOptions) (*Config, error) {
 	userDefaultModel := cfg.DefaultModel
 	globalCLI := cfg.CLI
 	globalSecrets := cfg.Secrets
+	globalSentinel := cfg.Sentinel
 	globalRemote := cfg.Remote.Clone()
 	globalDesktopLanguage := cfg.Desktop.Language
 	globalPricingCurrency := cfg.Desktop.Currency
@@ -179,6 +180,11 @@ func loadForRoot(root string, opts loadForRootOptions) (*Config, error) {
 	// reasonix.toml must not be able to flip on the workflow-breaking env/path
 	// protections.
 	cfg.Secrets = globalSecrets
+	// Sentinel bottom lines are the same class of user-global security
+	// control (task 410): a repository cannot weaken the hard-forbidden
+	// rules, retarget the protected branches, or opt itself into the exit
+	// scan.
+	cfg.Sentinel = globalSentinel
 	// Remote SSH hosts are equally user-global: a cloned repo's reasonix.toml
 	// must not be able to inject hosts, jump chains, or port forwards that
 	// steer where Reasonix opens connections.
