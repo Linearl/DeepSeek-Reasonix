@@ -461,8 +461,8 @@ type SettingsView struct {
 	ExperimentalAutoLoadOlder   bool `json:"experimentalAutoLoadOlder"`
 	// Task 449: merged orphan switch (settings-view mirror of [agent]; folds
 	// the task 244 B5 lease reclaim + B4 recovery sweep into one key).
-	ExperimentalOrphanHandling        bool `json:"experimentalOrphanHandling"`
-	ExperimentalRuntimeReuse          bool `json:"experimentalRuntimeReuse"`
+	ExperimentalOrphanHandling bool `json:"experimentalOrphanHandling"`
+	ExperimentalRuntimeReuse   bool `json:"experimentalRuntimeReuse"`
 	// Task 244 B1/B2/B3: settings-view mirrors of the [agent] runtime flags.
 	ExperimentalAutonomousIdleTerminate bool   `json:"experimentalAutonomousIdleTerminate"`
 	ExperimentalLoopStreakNote          bool   `json:"experimentalLoopStreakNote"`
@@ -671,8 +671,8 @@ type DesktopStartupSettingsView struct {
 	ExperimentalAutoLoadOlder bool `json:"experimentalAutoLoadOlder"`
 	// Task 449: merged orphan switch (mirror of [agent]; folds the task 244
 	// B5 lease reclaim + B4 recovery sweep into one key).
-	ExperimentalOrphanHandling        bool `json:"experimentalOrphanHandling"`
-	ExperimentalRuntimeReuse          bool `json:"experimentalRuntimeReuse"`
+	ExperimentalOrphanHandling bool `json:"experimentalOrphanHandling"`
+	ExperimentalRuntimeReuse   bool `json:"experimentalRuntimeReuse"`
 	// Task 244 B1/B2/B3: settings-view mirrors of the [agent] runtime flags.
 	ExperimentalAutonomousIdleTerminate bool `json:"experimentalAutonomousIdleTerminate"`
 	ExperimentalLoopStreakNote          bool `json:"experimentalLoopStreakNote"`
@@ -1517,10 +1517,6 @@ func (a *App) Settings() SettingsView {
 		ExperimentalAutopilotAskTimeout:      cfg.Desktop.ExperimentalAutopilotAskTimeout,
 		AutopilotAskWaitSeconds:              cfg.AutopilotAskWaitSecondsEffective(),
 		ExperimentalAutopilotAskAutoContinue: cfg.Desktop.ExperimentalAutopilotAskAutoContinue,
-		AutopilotGuardInterval:               cfg.AutopilotGuardIntervalMinutes(),
-		AutopilotGuardQuiescent:              cfg.AutopilotGuardQuiescentPolicy(),
-		ExperimentalAutopilotAskTimeout:      cfg.Desktop.ExperimentalAutopilotAskTimeout,
-		AutopilotAskWaitSeconds:              cfg.AutopilotAskWaitSecondsEffective(),
 		ExperimentalAutopilotGuardAutocreate: cfg.Desktop.ExperimentalAutopilotGuardAutocreate,
 		AutopilotGuardInterval:               cfg.AutopilotGuardIntervalMinutes(),
 		AutopilotGuardQuiescent:              cfg.AutopilotGuardQuiescentPolicy(),
@@ -1583,18 +1579,18 @@ func (a *App) Settings() SettingsView {
 		// Task 163: usage card switch readback.
 		ExperimentalOpenCodeGoUsage: cfg.Agent.ExperimentalOpenCodeGoUsage,
 		// Task 449: merged orphan switch readback (folds task 244 B5 + B4).
-		ExperimentalOrphanHandling: cfg.Desktop.ExperimentalOrphanHandling || cfg.Agent.ExperimentalOrphanHandling,
-		ExperimentalRuntimeReuse:   cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse,
-		ExperimentalPerfMonitor:           cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,
-		ExperimentalHeapHighProfile:       cfg.Desktop.ExperimentalHeapHighProfile || cfg.Agent.ExperimentalHeapHighProfile,
-		PerfMonitorIntervalSeconds:        cfg.Desktop.PerfMonitorIntervalSeconds,
-		SessionCollabHopLimit:             cfg.Desktop.SessionCollabHopLimit,
-		DetachedIdleReleaseMinutes:        cfg.Desktop.DetachedIdleReleaseMinutes,
-		GoMemLimitMB:                      cfg.Desktop.GoMemLimitMB,
-		ExperimentalSessionCollab:         cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
-		ExperimentalAutoLoadOlder:         cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
-		CollabInboxMerge:                  config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge),
-		CollabGuidanceMerge:               cfg.Desktop.CollabGuidanceMerge || cfg.Agent.CollabGuidanceMerge,
+		ExperimentalOrphanHandling:  cfg.Desktop.ExperimentalOrphanHandling || cfg.Agent.ExperimentalOrphanHandling,
+		ExperimentalRuntimeReuse:    cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse,
+		ExperimentalPerfMonitor:     cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,
+		ExperimentalHeapHighProfile: cfg.Desktop.ExperimentalHeapHighProfile || cfg.Agent.ExperimentalHeapHighProfile,
+		PerfMonitorIntervalSeconds:  cfg.Desktop.PerfMonitorIntervalSeconds,
+		SessionCollabHopLimit:       cfg.Desktop.SessionCollabHopLimit,
+		DetachedIdleReleaseMinutes:  cfg.Desktop.DetachedIdleReleaseMinutes,
+		GoMemLimitMB:                cfg.Desktop.GoMemLimitMB,
+		ExperimentalSessionCollab:   cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
+		ExperimentalAutoLoadOlder:   cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
+		CollabInboxMerge:            config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge),
+		CollabGuidanceMerge:         cfg.Desktop.CollabGuidanceMerge || cfg.Agent.CollabGuidanceMerge,
 		// Task 173: the collaboration panel gates (single source = [agent]).
 		SessionCollabAllowDelete:       cfg.Agent.SessionCollabAllowDelete,
 		SessionCollabAllowRequireReply: cfg.Agent.SessionCollabAllowRequireReply,
