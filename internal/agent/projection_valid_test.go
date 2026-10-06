@@ -447,9 +447,13 @@ func TestModelVisibleFromProjectionCarriesLiveSystem(t *testing.T) {
 	}
 }
 
-func TestForceThresholdNoopReturnsCompactionRequired(t *testing.T) {
-	// Huge tool result is entirely in the recent tail → no fold region, but
-	// estimate exceeds force; preflight must refuse (not mid-turn).
+func TestForceThresholdOverHardCeilingConvergesByFold(t *testing.T) {
+	// 任务516 前，本夹具的 ErrCompactionRequired 其实来自 307 ceiling 死锁：
+	// 折叠成功，但在 hardInputCeiling=1（200 窗口小于 256 协议预留的退化
+	// 窗口）下整单被拒，截断救援又因视图仍 ≥ hard 报错。516 改为安装部分
+	// 进度后，同一夹具正常收敛：折叠安装、视图回到触发线以下、不再报错。
+	// 「无可折叠区域 → ErrCompactionRequired」的契约不受影响，由
+	// TestSummaryNoopForceCarriesNoFoldableRegion 直接钉住（summaryNoop 分支）。
 	huge := strings.Repeat("word ", 5000)
 	sess := &Session{Messages: []provider.Message{
 		{Role: provider.RoleSystem, Content: "sys"},
@@ -464,12 +468,14 @@ func TestForceThresholdNoopReturnsCompactionRequired(t *testing.T) {
 		RecentKeep:        2,
 	}, event.Discard)
 
-	_, err := a.contextManager().Prepare(context.Background(), ContextPreparePolicy{Trigger: CompactionTriggerPressure})
-	if err == nil {
-		t.Fatal("expected ErrCompactionRequired when force threshold has no fold region")
+	if _, err := a.contextManager().Prepare(context.Background(), ContextPreparePolicy{Trigger: CompactionTriggerPressure}); err != nil {
+		t.Fatalf("prepare = %v, want the fold to install as partial progress and converge", err)
 	}
-	if !errors.Is(err, ErrCompactionRequired) {
-		t.Fatalf("err = %v, want ErrCompactionRequired", err)
+	if final := a.ContextUsedTokens(); final >= a.compactTrigger() {
+		t.Fatalf("view stayed at %d tokens, at/above the fold trigger %d", final, a.compactTrigger())
+	}
+	if latestDigest(a.sess.compactionState.Projection.Messages) == "" {
+		t.Fatal("converged without installing a digest")
 	}
 }
 

@@ -935,15 +935,26 @@ func checkpointProjectionMessages(msgs []provider.Message, head int, kept []prov
 	return provider.ProjectionMessages(projMsgs)
 }
 
-// acceptCheckpointCandidate requires real savings and, for automatic
-// maintenance, a result below the physical input ceiling.
+// acceptCheckpointCandidate requires real savings: a candidate that would not
+// shrink the view is rejected because installing it cannot help. Task 516: a
+// candidate below source but still at or above the physical input ceiling is
+// real progress and is installed — the summary cost is already spent, the
+// smaller view is what the next fold starts from, and the maintenance ladder
+// keeps folding while the truncation rescue stays the below-ceiling guarantee.
+// The old whole-candidate rejection here was a dead end: the #9572 summary
+// input cap bounds one fold well below the window, so a view several times the
+// window could never reach the ceiling in one fold, and the same oversized
+// candidate was re-summarized and re-rejected every round (the 00:55 event:
+// candidate 2.09M vs ceiling 999,744, fold_installed=false, loop).
 func (a *Agent) acceptCheckpointCandidate(trigger string, sourceTokens, candidateTokens int) error {
 	if candidateTokens >= sourceTokens {
 		return fmt.Errorf("%w: candidate would not reduce tokens (%d >= %d)", errCheckpointRejected, candidateTokens, sourceTokens)
 	}
 	hard := a.hardInputCeiling()
 	if trigger != CompactionTriggerManual && hard > 0 && candidateTokens >= hard {
-		return fmt.Errorf("%w: candidate %d still at or above physical ceiling %d", errCheckpointCeiling, candidateTokens, hard)
+		slog.Warn("agent: checkpoint candidate still above physical ceiling — installing partial fold progress",
+			"trigger", trigger, "source_tokens", sourceTokens,
+			"candidate_tokens", candidateTokens, "ceiling", hard)
 	}
 	return nil
 }
