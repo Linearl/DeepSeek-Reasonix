@@ -20,11 +20,18 @@ func TestProjectTreeRuntimeSnapshotWailsArraysAreNonNil(t *testing.T) {
 }
 
 func TestProjectTreeRuntimeSnapshotLocalizesAutoTopicTitle(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	// Task 550 ③: a blank default-titled tab never reaches the runtime
+	// projection, so the localization fixture carries a transcript with real
+	// content — the window between the first turn and the auto rename.
+	dir := t.TempDir()
+	sessionPath := writeTopicSessionWithPrompt(t, dir, "auto-title.jsonl", "topic-auto", defaultTopicTitle, "", "first user turn", time.Now())
 	app := NewApp()
 	app.setDesktopLocale("en-US")
 	app.tabs["auto"] = &WorkspaceTab{
 		ID: "auto", Scope: "global", TopicID: "topic-auto",
 		TopicTitle: defaultTopicTitle, topicTitleSource: topicTitleSourceAuto,
+		SessionPath: sessionPath,
 	}
 
 	snapshot := app.GetProjectTreeRuntimeSnapshot()
