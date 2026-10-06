@@ -1018,6 +1018,16 @@ const CHECKS = [
   { feature: "463 三语文案 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["\"composer.expandAll\": \"Expand all work processes\""] },
   { feature: "463 双向开关测试存续", file: "desktop/frontend/src/__tests__/fold-toggle-button.test.tsx", patterns: ["allWorkProcessesCollapsed", "reasonix:expand-all-folds"] },
 
+  // 任务560（wt-560-loading-copy，2026-10-07）：会话加载分阶段文案 + 预期时长。
+  // 后端只发布既有埋点阶段名（纯内存 sync.Map，锁内零 IO）；前端轮询映射为
+  // 「读取会话索引 / 还原消息历史」两态主标题，未知阶段回落通用文案。
+  { feature: "任务560 阶段名→文案映射与兜底", file: "desktop/frontend/src/lib/sessionLoadPhase.ts", patterns: ["live-index-load", "cold-eventlog", "sessionRecovery.loadingHistory"] },
+  { feature: "任务560 横幅分阶段主标题+等待行+loadingHint", file: "desktop/frontend/src/components/SessionRecoveryBanner.tsx", patterns: ["historyLoadPhaseKey(phase)", "sessionRecovery.waitedSeconds", "sessionRecovery.loadingHint", "session-recovery__wait"] },
+  { feature: "任务560 后端阶段发布注册表（纯内存零 IO）", file: "desktop/history_slice_timing.go", patterns: ["historyLoadPhases", "func (a *App) HistoryLoadPhase"] },
+  { feature: "任务560 三语文案 zh", file: "desktop/frontend/src/locales/zh.ts", patterns: ["\"sessionRecovery.loadingIndex\": \"正在读取会话索引…\""] },
+  { feature: "任务560 三语文案 zh-TW", file: "desktop/frontend/src/locales/zh-TW.ts", patterns: ["\"sessionRecovery.loadingIndex\": \"正在讀取會話索引…\""] },
+  { feature: "任务560 三语文案 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["\"sessionRecovery.loadingIndex\": \"Reading session index…\""] },
+
 ];
 
 let failed = 0;
