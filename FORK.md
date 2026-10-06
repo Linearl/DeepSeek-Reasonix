@@ -265,6 +265,12 @@ UI 入口** —— 所以对大部分 fork 特性，**日志是唯一的可观�
    - **门禁规则（2026-10-06 修正表述）**：**出包前** = 「**任务 499 的修复已合并进 `main-v2-stable`**」（不带着已定位的泄漏出包）；**出包后** = 装机跑曲线核对基线，不达标 ⇒ 判定修复未生效、进入下一轮定位+修复。用户原话：「这个内存泄漏问题**下次出包前要解掉**，否则我们的包就存在重大缺陷」。
    - **⚠️ 逻辑澄清（2026-10-06，用户指出）**：**运行曲线只能由「已装机的包」产生** ⇒ **不能当作「出包前」的通过条件**（否则是先有鸡还是先有蛋）。正确分工 = 「**修复进包**（前闸）」+「**曲线核对**（后验）」；后验不达标 ⇒ **判定修复未生效，进入下一轮定位+修复**，而不是"回滚出包"。
 
+1c. **config.toml 键一致性抽查（任务 321 新增，2026-10-07）**：出包前用构建产物做一次启动冒烟——
+   ```bash
+   REASONIX_HOME=<临时目录> ./reasonix doctor 2>&1 | grep -E "unknown key|deprecated key"
+   ```
+   必须**无输出**（加载链的键感知零误报 = config.toml 键面与 render 表/example.toml 一致）；再抽查本版**新增或改名的 2~3 个键**：`reasonix.example.toml` 中的注释行、render 渲染值、`config --help` 文案三者能对上（防「render 表改了 example 没跟 / help 没跟」两类漂移）。感知机制本体见 `internal/config/config_key_warn.go`（未知/废弃键 warn，不阻断不改写）。
+
 2. **文档**：`release-notes/FORK-vX.Y.Z.md` 含本版全部改动；`release-notes/FORK-vs-upstream.md` 台账同步；`desktop/wails.json` 的 `productVersion` 与 tag 版本一致
    - **在 `1.38.3` 上出带时间戳的包时**：notes 文件名与包版本同名（`FORK-v1.38.3-YYYYMMDD-HHMM.md`），
      **只写「本版新增」**（该包相对上一版包的差异）+ 升级提醒，**基线内容一律引用
