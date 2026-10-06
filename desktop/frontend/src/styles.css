@@ -6194,7 +6194,29 @@ button.reasoning-summary:focus-visible {
   font-size: inherit;
   line-height: inherit;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   word-break: break-word;
+}
+/* 任务467：思考体内的代码块与思考体同一断行契约——长句/长 token/长 URL
+   一律折行，不再依赖 .code 默认的 white-space:pre + overflow-x:auto
+   （那会在思考体内留下嵌套横向滚动条并截断行尾）。只改换行/溢出布局，
+   不涉配色，theme pack 的 code 配色不受影响。 */
+.reasoning__body .code,
+.turn-collapse__inline-reasoning .code,
+.tool__subagent-preview-text--markdown .code,
+.reasoning__body .code code,
+.turn-collapse__inline-reasoning .code code,
+.tool__subagent-preview-text--markdown .code code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.reasoning__body .code,
+.turn-collapse__inline-reasoning .code,
+.tool__subagent-preview-text--markdown .code {
+  overflow-x: hidden;
+  min-width: 0;
+  max-width: 100%;
 }
 .reasoning__body > .md p,
 .turn-collapse__inline-reasoning > .md p,
