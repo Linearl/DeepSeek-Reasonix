@@ -98,6 +98,34 @@ export interface SessionCatalogBindings {
   GetTopicSummary(key: ProjectTopicKey): Promise<ProjectNode>;
   GetSessionCatalogStatus(): Promise<SessionCatalogStatus>;
   RebuildSessionCatalog(): Promise<void>;
+  /** desktop topic inventory 对账（desktop/topic_inventory.go）。可选方法：
+   *  wails 生成物已含这两个绑定，TS 侧声明此前缺失，bridge.ts 的
+   *  _CheckGenToApp 自检（AssertNever<Exclude<GeneratedAppKeys, keyof AppBindings>>）
+   *  在重新生成 wailsjs 后会报 never 约束错误——2026-10-06 任务 539 批次补齐。 */
+  GetTopicInventoryMismatches?(): Promise<TopicInventoryReconcileResult>;
+  ReconcileTopicInventory?(): Promise<TopicInventoryReconcileResult>;
+}
+
+/** desktop/topic_inventory.go TopicInventoryMismatch 的 TS 镜像 */
+export interface TopicInventoryMismatch {
+  kind: string;
+  scope: string;
+  workspaceRoot?: string;
+  topicId?: string;
+  tabId?: string;
+  sessionPath?: string;
+  detail: string;
+  handling: string;
+}
+
+/** desktop/topic_inventory.go TopicInventoryReconcileResult 的 TS 镜像 */
+export interface TopicInventoryReconcileResult {
+  reconciledAt: number;
+  scannedTabs: number;
+  scannedTopics: number;
+  sessionCatalogOpen: boolean;
+  indexWriteFailures: number;
+  mismatches: TopicInventoryMismatch[];
 }
 
 export interface ProjectTreeOrganizationBindings {
