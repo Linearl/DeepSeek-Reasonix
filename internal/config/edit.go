@@ -756,6 +756,16 @@ func (c *Config) SetExperimentalAutopilotAskTimeout(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalAutopilotAskAutoContinue toggles the task-544 ask
+// auto-continue sub-option. The flag alone changes nothing; the off state
+// keeps the idle stop after an answered ask byte-for-byte. It is independent
+// of the task-477 timeout pair: that pair owns when a timed-out ask counts as
+// a refusal, this owns what happens after an answer.
+func (c *Config) SetExperimentalAutopilotAskAutoContinue(enabled bool) error {
+	c.Desktop.ExperimentalAutopilotAskAutoContinue = enabled
+	return nil
+}
+
 // SetAutopilotAskWaitSeconds sets the sub-option's wait in seconds. Values
 // outside 1..3600 are refused rather than clamped — the settings input allows
 // an honest retry, and a silently rewritten number is harder to notice than a
