@@ -71,6 +71,9 @@ const CHECKS = [
   // 无界等待；锚定默认上限常量与 ctx.Done 分支（终止 ≤1s 的实现载体）。
   { feature: "任务461 锁等待一律有界+取消即时生效", file: "internal/filelock/filelock.go", patterns: ["DefaultWaitTimeout", "case <-ctx.Done():"] },
   { feature: "任务461 收件箱锁 5s 外部超时（内层 ≤5s）", file: "internal/collabinbox/collabinbox.go", patterns: ["lockWaitTimeout", "AcquireWithExternalTimeout"] },
+  // 任务474（X8 方案 B）：filelock 固定 20ms 轮询升级为阶梯退避+抖动+预算自适应
+  // 封顶；锚定阶梯函数、预算自适应除数与抖动源，合并静默回退固定轮询时报警。
+  { feature: "任务474 锁等待阶梯退避+抖动（预算自适应封顶）", file: "internal/filelock/filelock.go", patterns: ["backoffBase", "backoffBudgetDivisor", "jitterNext"] },
   // 任务461 P8（收件箱重入污染）：投递层幂等与消费层折叠均为 fork 侧行为修复，
   // 与上游共享文件可能被合并静默回退，逐条锚定。
   { feature: "任务461-P8 投递层重发幂等（同 from+to+内容窗内返原 id）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["dedupeResend", "resendDedupWindowDefault", "resendDedupWindowSystem"] },

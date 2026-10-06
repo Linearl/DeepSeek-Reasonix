@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"math/rand/v2"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -12,7 +14,98 @@ import (
 	"time"
 )
 
-const retryInterval = 20 * time.Millisecond
+// 跨进程锁重试节奏（task 474 / X8 方案 B）：阶梯退避 + 抖动 + 预算自适应封顶。
+// 前 backoffFloorRuns 次保持 20ms 现状节奏——短临界区（<100ms，占绝大多数）行为
+// 与固定轮询完全一致，锁释放后 ≤20ms 内被发现（零回归）；随后阶梯爬升
+// （50ms×2 → 100ms×2），封顶 backoffCap，长等待稳态探测率较固定 20ms 网格降约
+// 5-10 倍，±25% 抖动打散多进程固定网格的同步惊群。锁原语、预算分层
+// （DefaultWaitTimeout + externalTimeout + ctx 三层）、错误类型与取消语义不动。
+const (
+	backoffFloor     = 20 * time.Millisecond
+	backoffFloorRuns = 5
+	backoffStep2     = 50 * time.Millisecond
+	backoffStep2Runs = 2
+	backoffStep3     = 100 * time.Millisecond
+	backoffStep3Runs = 2
+	backoffCap       = 200 * time.Millisecond
+
+	// 预算自适应封顶：单次退避不超过剩余预算的 1/8，任何预算下保证约 8 次以上
+	// 尝试机会（750ms sidecar 路径封顶 ≈94ms，5s 路径 200ms）。
+	backoffBudgetDivisor = 8
+	// 抖动幅度 ±25%（对齐 opencode ±30% 抖动先例）。
+	backoffJitterFraction = 0.25
+)
+
+// jitterNext is the randomness source for retry jitter; tests replace it for
+// determinism.
+var jitterNext = rand.Float64
+
+// backoffBase returns the nominal (pre-jitter) sleep after the attempt-th
+// (0-based) failed try: 20ms×5 → 50ms×2 → 100ms×2 → 200ms.
+func backoffBase(attempt int) time.Duration {
+	switch {
+	case attempt < backoffFloorRuns:
+		return backoffFloor
+	case attempt < backoffFloorRuns+backoffStep2Runs:
+		return backoffStep2
+	case attempt < backoffFloorRuns+backoffStep2Runs+backoffStep3Runs:
+		return backoffStep3
+	default:
+		return backoffCap
+	}
+}
+
+// nextRetryDelay caps the ladder step at min(backoffCap, remaining/
+// backoffBudgetDivisor), applies ±backoffJitterFraction jitter, and clamps the
+// result back under the cap so a single sleep never exceeds one eighth of the
+// remaining budget.
+func nextRetryDelay(attempt int, remaining time.Duration) time.Duration {
+	limit := backoffCap
+	if remaining > 0 {
+		if budgetLimit := remaining / backoffBudgetDivisor; budgetLimit < limit {
+			limit = budgetLimit
+		}
+	}
+	d := backoffBase(attempt)
+	if d > limit {
+		d = limit
+	}
+	d = applyJitter(d)
+	if d > limit {
+		d = limit
+	}
+	if d < 0 {
+		d = 0
+	}
+	return d
+}
+
+// applyJitter scales d into [d*(1-f), d*(1+f)] with f = backoffJitterFraction.
+func applyJitter(d time.Duration) time.Duration {
+	if d <= 0 {
+		return d
+	}
+	factor := 1 + (2*jitterNext()-1)*backoffJitterFraction
+	return time.Duration(float64(d) * factor)
+}
+
+// remainingWaitBudget reports the time left until the earliest deadline among
+// ctxs (math.MaxInt64 when none has one; acquire() always installs a deadline
+// so this is a defensive fallback only).
+func remainingWaitBudget(ctxs ...context.Context) time.Duration {
+	remaining := time.Duration(math.MaxInt64)
+	for _, c := range ctxs {
+		if c == nil {
+			continue
+		}
+		if deadline, ok := c.Deadline(); ok {
+			if left := time.Until(deadline); left < remaining {
+				remaining = left
+			}
+		}
+	}
+	return remaining
+}
 
 // DefaultWaitTimeout bounds every lock wait whose caller supplied neither a
 // deadline nor an explicit external budget (task 461 P1). 设计原则：可用性 >
@@ -99,7 +192,7 @@ func acquire(ctx context.Context, path string, externalTimeout time.Duration, mo
 	}
 	defer cancel()
 
-	for {
+	for attempt := 0; ; attempt++ {
 		releaseFile, err := tryLockFileMode(lockPath, mode)
 		if err == nil {
 			var once sync.Once
@@ -114,7 +207,10 @@ func acquire(ctx context.Context, path string, externalTimeout time.Duration, mo
 			releaseLocal()
 			return nil, fmt.Errorf("acquire file lock: %w", err)
 		}
-		timer := time.NewTimer(retryInterval)
+		// 阶梯退避 + 抖动（task 474）：短等待维持 20ms 节奏，长等待降频探测；
+		// 睡眠期间 fileCtx/ctx 任一到点或取消仍经下方 select 即时退出，
+		// 461-P1 的 ≤1s 停止 SLA 不变。
+		timer := time.NewTimer(nextRetryDelay(attempt, remainingWaitBudget(ctx, fileCtx)))
 		select {
 		case <-timer.C:
 		case <-fileCtx.Done():
