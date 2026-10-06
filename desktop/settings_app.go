@@ -698,6 +698,11 @@ type DesktopStartupSettingsView struct {
 	ExperimentalProactiveCompact    bool `json:"experimentalProactiveCompact"`
 	ProactiveCompactCooldownMinutes int  `json:"proactiveCompactCooldownMinutes"`
 	ExperimentalComposerDraft       bool `json:"experimentalComposerDraft"`
+	// Task 514: selection quick-actions gate (task 369) rides the same boot
+	// snapshot. This view missing the field is the "开不了" root cause: every
+	// restart fed the frontend store an undefined flag (= off) while the
+	// settings switch — reading the full Settings() view — still showed on.
+	ExperimentalSelectionActions bool `json:"experimentalSelectionActions"`
 	// Task 297: cold-cache compact pass knobs (lab storage cost card).
 	ExperimentalColdCacheCompact bool  `json:"experimentalColdCacheCompact"`
 	ColdCacheCompactMinBytes     int64 `json:"coldCacheCompactMinBytes"`

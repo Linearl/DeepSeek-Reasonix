@@ -1224,6 +1224,24 @@ func TestDesktopStartupSettingsUsesUserDesktopPreferencesWithoutFullSettingsPayl
 	}
 }
 
+// Task 514: the boot snapshot must carry the task-369 selection quick-actions
+// gate. The view missing the field made every restart reset the frontend
+// preference store to off while the settings switch (full Settings() view)
+// still read on — the "选区快捷操作开不了" user report.
+func TestDesktopStartupSettingsCarriesSelectionActionsGate(t *testing.T) {
+	isolateDesktopUserDirs(t)
+
+	userCfg := config.LoadForEdit(config.UserConfigPath())
+	userCfg.Agent.ExperimentalSelectionActions = true
+	if err := userCfg.SaveTo(config.UserConfigPath()); err != nil {
+		t.Fatalf("save user config: %v", err)
+	}
+
+	if got := NewApp().DesktopStartupSettings(); !got.ExperimentalSelectionActions {
+		t.Fatalf("DesktopStartupSettings.ExperimentalSelectionActions = false, want true (boot snapshot must carry the task-369 gate)")
+	}
+}
+
 func BenchmarkDesktopSettingsPayloads(b *testing.B) {
 	home := b.TempDir()
 	xdg := filepath.Join(home, ".config")

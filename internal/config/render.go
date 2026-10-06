@@ -170,7 +170,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// back to off. Both experiment switches shipped broken until 2026-09-15 (task
 		// 81's restart-and-update and task 123's session monitor could never be enabled).
 		fmt.Fprintf(&b, "experimental_restart_update = %v   # desktop: show the restart-and-update action (task 81)\n", c.Desktop.ExperimentalRestartUpdate)
-		fmt.Fprintf(&b, "experimental_selection_actions = %v   # desktop: selection quick-actions (translate/explain floating card) (task 369)\n", c.Agent.ExperimentalSelectionActions)
+		// Task 514: the selection quick-actions key moved to the [agent] block
+		// below. It used to render here under [desktop] while the field lives
+		// on the Agent struct, so the decoder silently dropped the line and the
+		// settings switch flipped straight back to off on every reload.
 		if dir := strings.TrimSpace(c.Desktop.StagingDir); dir != "" {
 			fmt.Fprintf(&b, "staging_dir = %q   # desktop: fast-switch staging override (task 381); empty = the default staging directory\n", dir)
 		}
@@ -526,6 +529,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "cold_cache_compact_min_bytes = %d   # task 297: visible-context size floor in bytes (0 = built-in 614400 = 600 KiB)\n", c.Agent.ColdCacheCompactMinBytes)
 	fmt.Fprintf(&b, "cold_cache_compact_idle_minutes = %d   # task 297: idle minutes before the cold-cache pass fires (0 = built-in 300 = 5h)\n", c.Agent.ColdCacheCompactIdleMinutes)
 	fmt.Fprintf(&b, "experimental_composer_draft = %v   # task 318.3: persist composer drafts across restarts (off by default)\n", c.Agent.ExperimentalComposerDraft)
+	// Task 514: task-369 selection quick-actions gate. Must render under
+	// [agent] — the field lives on the Agent struct, and the [desktop] line it
+	// shipped with was silently dropped on load (switch could never stay on).
+	fmt.Fprintf(&b, "experimental_selection_actions = %v   # task 369: selection quick-actions (translate/explain floating card)\n", c.Agent.ExperimentalSelectionActions)
 	fmt.Fprintf(&b, "collab_inbox_merge = %q   # task 221: inbox drain merge mode (off | same_sender | all; default off)\n", NormalizeCollabInboxMerge(c.Agent.CollabInboxMerge))
 	fmt.Fprintf(&b, "collab_guidance_merge = %v   # task 153: guidance shelf manual merge-next button\n", c.Agent.CollabGuidanceMerge)
 	fmt.Fprintf(&b, "experimental_collab_background_delivery = %v   # task 224: collab delivery opens tabs inactive (woken conversation runs in background)\n", c.Agent.ExperimentalCollabBackgroundDelivery)

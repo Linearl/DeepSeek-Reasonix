@@ -2487,6 +2487,10 @@ export interface DesktopStartupSettingsView {
   experimentalProactiveCompact?: boolean;
   proactiveCompactCooldownMinutes?: number;
   experimentalComposerDraft?: boolean;
+  // Task 514: task-369 selection quick-actions gate on the boot snapshot —
+  // without it the preference store resets to off on every restart while the
+  // settings switch (full Settings() view) still reads on.
+  experimentalSelectionActions?: boolean;
   bot: BotSettingsView;
   desktopLanguage: string; // "" | "en" | "zh"; empty = auto
   desktopLayoutStyle: string; // "classic" | "workbench" | "creation"
