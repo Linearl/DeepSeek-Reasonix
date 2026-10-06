@@ -41,6 +41,12 @@ agent. It is the Reasonix analog of Claude Code's CLAUDE.md.
   the move this blocks — group by lifetime into a named sub-state instead
   (`agent.perTurnState` is the pattern), which costs one field and removes the
   whole product.
+- Desktop UI work is gated by the frontend design system: read
+  `desktop/frontend/DESIGN.md` **before** inventing visual rules when generating
+  or editing UI. It concentrates the font-scale ladder, theme-token discipline
+  (enforced by `check:theme-token`), radius/spacing tiers, popup/menu language,
+  and the 383 three-layout verdict whitelist. Violations are design-system
+  defects, not stylistic preferences (task 391).
 
 ## Comments
 
