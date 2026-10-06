@@ -2825,6 +2825,14 @@ var promptQueueNoticeDelay = 3 * time.Second
 // long enough to look like a hang. It reports false only when ctx ended first;
 // the lock is held on true.
 func (c *Controller) lockPromptFor(ctx context.Context, kind string) bool {
+	// Task 567 read-only instrumentation: how long the prompt lock itself took
+	// to acquire separates "queued behind an earlier prompt" from a slow emit
+	// path. No locking or ordering change — one structured log line on acquire.
+	lockStart := time.Now()
+	logLockWait := func() {
+		slog.Info("[ask-panel] ask chain checkpoint", "stage", "prompt_lock", "kind", kind,
+			"waitMs", time.Since(lockStart).Milliseconds())
+	}
 	acquired := make(chan struct{})
 	go func() {
 		c.approval.promptMu.Lock()
@@ -2832,6 +2840,7 @@ func (c *Controller) lockPromptFor(ctx context.Context, kind string) bool {
 	}()
 	select {
 	case <-acquired:
+		logLockWait()
 		return true
 	case <-ctx.Done():
 	case <-time.After(promptQueueNoticeDelay):
@@ -2843,6 +2852,7 @@ func (c *Controller) lockPromptFor(ctx context.Context, kind string) bool {
 	}
 	select {
 	case <-acquired:
+		logLockWait()
 		return true
 	case <-ctx.Done():
 		// The lock may still be handed to the goroutine above; release it so the
@@ -2888,6 +2898,10 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// The task-477 experimental sub-option (default off) replaces that terminal
 	// stop with an explicit refusal answer, so a goal-driven unattended run
 	// keeps going after the timeout instead of dying on the dialog.
+	// Task 567 read-only instrumentation: this entry stamp pairs with the
+	// prompt_lock and ask_emit checkpoints below (same [ask-panel] tag) to
+	// bisect a slow panel; it adds no locking and changes no ordering.
+	slog.Info("[ask-panel] ask chain checkpoint", "stage", "entry", "questions", len(questions))
 	if c.autopilot && askRiskOfQuestions(askQuestionTexts(questions)) == askRiskReversible {
 		answers := autopilotAnswers(questions)
 		// Task 544: this host auto-answer counts as an answered ask of the
@@ -2942,7 +2956,14 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	if identity := c.bindOwnedPromptRouting(id, turnID, runtimeEpoch); identity.TurnID != "" {
 		turnID = identity.TurnID
 	}
-	if err := event.EmitChecked(c.sink, event.Event{Kind: event.AskRequest, TurnID: turnID, ItemID: id, Ask: event.Ask{ID: id, Questions: questions, TurnID: turnID}}); err != nil {
+	// Task 567 read-only instrumentation: AskRequest is a synchronous barrier
+	// (coalescer → ledger persist), so this duration is where I/O contention
+	// shows up. Logging after the emit keeps the timed section unmodified.
+	emitStart := time.Now()
+	emitErr := event.EmitChecked(c.sink, event.Event{Kind: event.AskRequest, TurnID: turnID, ItemID: id, Ask: event.Ask{ID: id, Questions: questions, TurnID: turnID}})
+	slog.Info("[ask-panel] ask chain checkpoint", "stage", "ask_emit", "turnID", turnID, "itemID", id,
+		"durationMs", time.Since(emitStart).Milliseconds())
+	if emitErr != nil {
 		c.approval.promptEmitMu.Unlock()
 		c.cancelOwnedPrompt(id)
 		// Task 428 instrumentation: the backend half of the ask-panel trail.
@@ -2950,8 +2971,8 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 		// the 406 recovery record closes the chain, all joinable by prompt id +
 		// turn id — an ask that never showed a panel is now reconstructable
 		// from desktop.log alone.
-		log.Printf("[ask-panel] ask request emit failed turn=%s item=%s err=%v", turnID, id, err)
-		return nil, fmt.Errorf("persist ask request: %w", err)
+		log.Printf("[ask-panel] ask request emit failed turn=%s item=%s err=%v", turnID, id, emitErr)
+		return nil, fmt.Errorf("persist ask request: %w", emitErr)
 	}
 	c.approval.markAskEmitted(id)
 	c.approval.promptEmitMu.Unlock()

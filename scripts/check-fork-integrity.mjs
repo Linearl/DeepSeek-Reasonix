@@ -1108,6 +1108,17 @@ const CHECKS = [
   { feature: "498 中断语义成文 + 崩溃残留清扫", file: "internal/projectiondb/projectiondb.go", patterns: ["cleanOrphanRebuildResidues", "discard on interrupt, idempotent rerun"] },
   { feature: "498 校验实质化（新连接磁盘重读判决）", file: "internal/projectiondb/projectiondb.go", patterns: ["func validateReplacementFile", "mode=ro&immutable=1", "mask on-disk corruption"] },
   { feature: "498 中断注入测试四件（取消/残留清扫/备份保留/校验失败不替换）", file: "internal/projectiondb/projectiondb_test.go", patterns: ["TestRebuildCancellationKeepsOldDatabaseAndCleansSibling", "TestRebuildSweepsCrashResidueBeforeRebuilding", "TestRebuildKeepsRetainedBackupsWhileSweepingSiblings", "TestRebuildValidationFailureDoesNotSwap"] },
+  // ── 任务567 ask 链路读数埋点 + 工具卡占位态 ──
+  // 后端三处 slog 检查点（entry/prompt_lock/ask_emit）支撑弹窗延时的桌面端
+  // 二分归因；merge 若顶掉：埋点静默消失，84s 归因重新不可做。
+  { feature: "567 ask 链路三检查点 slog（entry/prompt_lock/ask_emit）", file: "internal/control/controller.go", patterns: ["[ask-panel] ask chain checkpoint", "\"stage\", \"entry\"", "\"stage\", \"prompt_lock\"", "\"stage\", \"ask_emit\""] },
+  // 前端 ask 卡 pending 占位替换「JSON 入参原文+跑秒」的误导呈现（567 调研
+  // 报告第七节）；merge 若顶掉：占位回退成「看起来像卡死」的工具卡。
+  { feature: "567 ask 卡 pending 占位判据", file: "desktop/frontend/src/components/ToolCard.tsx", patterns: ["const askPending = item.name === \"ask\" && item.status === \"running\";"] },
+  { feature: "567 占位三语文案 zh", file: "desktop/frontend/src/locales/zh.ts", patterns: ["\"tool.askWaiting\": \"等待用户确认…\""] },
+  { feature: "567 占位三语文案 zh-TW", file: "desktop/frontend/src/locales/zh-TW.ts", patterns: ["\"tool.askWaiting\": \"等待使用者確認…\""] },
+  { feature: "567 占位三语文案 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["\"tool.askWaiting\": \"waiting for your answer…\""] },
+  { feature: "567 占位态测试存续", file: "desktop/frontend/src/__tests__/tool-card-ask-pending.test.tsx", patterns: ["pending ask card shows the waiting placeholder", "pending ask card does not render the raw args JSON"] },
 
 ];
 
