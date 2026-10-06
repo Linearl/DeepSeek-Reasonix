@@ -462,7 +462,7 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
     return [
       {
         key: "last-session-workspace",
-        icon: <FolderSymlink size={13} className="context-menu__item-icon" aria-hidden="true" />,
+        icon: <FolderSymlink size={13} />,
         label: (
           <span className="tabbar__newmenu">
             <span className="tabbar__newmenu-title">
