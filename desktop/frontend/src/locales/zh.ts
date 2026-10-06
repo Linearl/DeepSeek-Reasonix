@@ -2528,6 +2528,8 @@ export const zh: Record<DictKey, string> = {
 "settings.tabCompressHint": "标签栏按实际空间自适应压缩：放不下时逐级降宽（176→148→122→100→84px 下限），放得下就不动——窄窗口少几个标签也会降，宽窗口标签多也不降；100px 档起隐藏 plan/goal/auto/yolo 徽章，标签栏保持放得下而不再横向滚动；鼠标悬停任意标签仍显示「状态 · 工作区 / 完整标题」。实验特性，默认关闭——关闭时标签保持固定宽度（宽窗口 176px、窄窗口 148px），保存后立即生效、无需重启。搜索与最近对话跳转不受影响，仍是保底入口。",
 "settings.tabCompress.on": "开",
 "settings.tabCompress.off": "关",
+"settings.tabModeTint": "标签模式色调",
+"settings.tabModeTintHint": "以标签底色（低透明度）代替 plan/goal/auto/yolo 徽章：autopilot 紫、yolo 红、auto 蓝、goal 青、plan 琥珀，默认态不着色；悬停仍显示完整标题。实验特性，默认关闭——关闭时标签外观不变，保存后立即生效。",
 "settings.subagentDetail": "子代理详情视图",
 "settings.subagentDetailHint": "控制右栏「子代理」面板里点击一行的行为（双态实验特性，默认关闭）：关闭时为保底形态——点击行在面板内展开内联预览，另加「加宽预览 / 还原宽度」按钮可一键把右栏调宽（拖拽调宽与双击复位不受影响）；开启时为增强形态——点击行切换到右栏内整页只读详情（含「返回列表」按钮），宽度沿用右栏记忆宽度，详情不提供任何输入框、仅供查看。保存后立即生效，无需重启。",
 "settings.subagentDetail.on": "开",

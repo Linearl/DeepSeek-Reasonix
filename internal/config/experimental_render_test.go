@@ -186,6 +186,46 @@ func TestTask507SubagentDetailRoundTrip(t *testing.T) {
 	}
 }
 
+// 任务504: tab mode tint is a plain default-off desktop bool (低透明度模式
+// 底色代替 plan/goal/auto/yolo 文本徽章). An untouched config must render
+// false (ships off, 铁律 2), enabling must render true, and flipping back off
+// must stay recorded — same fixed-key-set round trip as the 506/507 siblings.
+func TestTask504TabModeTintRoundTrip(t *testing.T) {
+	out := RenderTOMLForScope(&Config{}, RenderScopeUser)
+	if !strings.Contains(out, "experimental_tab_mode_tint = false") {
+		t.Fatalf("tab mode tint ships off: missing false render\n---\n%s", out)
+	}
+	// The task-506/507 sibling keys must stay rendered too — inserting the new
+	// line must not displace its neighbours.
+	if !strings.Contains(out, "experimental_tab_compress = false") {
+		t.Fatalf("rendering the 504 key displaced the 506 compress key\n---\n%s", out)
+	}
+	if !strings.Contains(out, "experimental_subagent_detail = false") {
+		t.Fatalf("rendering the 504 key displaced the 507 detail key\n---\n%s", out)
+	}
+
+	on := &Config{}
+	if err := on.SetExperimentalTabModeTint(true); err != nil {
+		t.Fatalf("set tab mode tint: %v", err)
+	}
+	if !on.Desktop.ExperimentalTabModeTint {
+		t.Fatal("the setter must flip the desktop field")
+	}
+	out = RenderTOMLForScope(on, RenderScopeUser)
+	if !strings.Contains(out, "experimental_tab_mode_tint = true") {
+		t.Fatalf("enable must render true\n---\n%s", out)
+	}
+
+	off := &Config{}
+	if err := off.SetExperimentalTabModeTint(false); err != nil {
+		t.Fatalf("set tab mode tint off: %v", err)
+	}
+	out = RenderTOMLForScope(off, RenderScopeUser)
+	if !strings.Contains(out, "experimental_tab_mode_tint = false") {
+		t.Fatalf("explicit off must survive the render\n---\n%s", out)
+	}
+}
+
 // Task 265 lab intake: the intake switches ship ON via nil-means-on pointers.
 // An untouched config must render true (existing behaviour, zero regression),
 // an explicit off must render false (and survive the next load), and an

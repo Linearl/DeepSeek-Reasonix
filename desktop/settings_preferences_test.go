@@ -27,6 +27,8 @@ type labIntakeSwitches interface {
 	SetExperimentalTabCompress(bool) error
 	// 任务 507: subagent detail view (row click → read-only in-dock detail + back).
 	SetExperimentalSubagentDetail(bool) error
+	// 任务 504: tab mode tint (低透明度模式底色代替审批/协作模式文本徽章).
+	SetExperimentalTabModeTint(bool) error
 }
 
 var _ labIntakeSwitches = (*App)(nil)
@@ -63,6 +65,42 @@ func TestSetExperimentalTabCompressPersistsAndReadsBack(t *testing.T) {
 		t.Fatalf("reload user config after flip off: %v", err)
 	}
 	if cfg.Desktop.ExperimentalTabCompress {
+		t.Fatal("flipping the switch back off must persist (never spring back on)")
+	}
+}
+
+// 任务 504（铁律 2 第 4/5 段，同 506 形状）：App 层 setter 落盘、启动视图
+// 与设置视图都必须把保存后的开关值读回来——配置层往返由 internal/config 的
+// render 测试钉住，这里钉 Wails 暴露面与两个视图映射面。
+func TestSetExperimentalTabModeTintPersistsAndReadsBack(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	app := &App{}
+
+	if err := app.SetExperimentalTabModeTint(true); err != nil {
+		t.Fatalf("SetExperimentalTabModeTint(true): %v", err)
+	}
+	cfg, err := config.LoadForEditReadOnlyStrict(config.UserConfigPath())
+	if err != nil {
+		t.Fatalf("load saved user config: %v", err)
+	}
+	if !cfg.Desktop.ExperimentalTabModeTint {
+		t.Fatal("saved user config must carry experimental_tab_mode_tint = true")
+	}
+	if boot := app.DesktopStartupSettings(); !boot.ExperimentalTabModeTint {
+		t.Fatal("DesktopStartupSettings view must read back the saved switch")
+	}
+	if view := app.Settings(); !view.ExperimentalTabModeTint {
+		t.Fatal("Settings view must read back the saved switch")
+	}
+
+	if err := app.SetExperimentalTabModeTint(false); err != nil {
+		t.Fatalf("SetExperimentalTabModeTint(false): %v", err)
+	}
+	cfg, err = config.LoadForEditReadOnlyStrict(config.UserConfigPath())
+	if err != nil {
+		t.Fatalf("reload user config after flip off: %v", err)
+	}
+	if cfg.Desktop.ExperimentalTabModeTint {
 		t.Fatal("flipping the switch back off must persist (never spring back on)")
 	}
 }

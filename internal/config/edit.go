@@ -895,6 +895,18 @@ func (c *Config) SetExperimentalSubagentDetail(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalTabModeTint toggles the tab mode tint (task 504): the strip
+// paints a low-opacity (~30%) per-mode background instead of the
+// plan/goal/auto/yolo text badges — ladder autopilot > yolo > auto > goal >
+// plan, ask+normal stays untinted, hover keeps the full annotated title.
+// Opt-in: with it off no tint attribute is written and the badge rendering is
+// byte-identical. Pure frontend gate: the settings save re-applies the boot
+// snapshot, so a change is visible without a restart.
+func (c *Config) SetExperimentalTabModeTint(enabled bool) error {
+	c.Desktop.ExperimentalTabModeTint = enabled
+	return nil
+}
+
 // SetExperimentalCompactionParallel toggles the parallel chunked-compaction
 // fragments (task 265). It ships on (existing behaviour given an off switch);
 // off falls back to the upstream serial summarizer.

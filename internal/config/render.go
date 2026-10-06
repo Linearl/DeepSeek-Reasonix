@@ -210,6 +210,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// Task 507: same fixed-key-set rule — an unlisted key is dropped on
 		// every save and the switch would flip itself back off (81/123 lesson).
 		fmt.Fprintf(&b, "experimental_subagent_detail = %v   # desktop: subagent dock row click opens the read-only detail view; off keeps the inline preview + widen affordance (task 507; settings save re-applies, no restart)\n", c.Desktop.ExperimentalSubagentDetail)
+		// Task 504: same fixed-key-set rule — an unlisted key is dropped on
+		// every save and the switch would flip itself back off (81/123 lesson).
+		fmt.Fprintf(&b, "experimental_tab_mode_tint = %v   # desktop: low-opacity per-mode tab background instead of plan/goal/auto/yolo badges (task 504; settings save re-applies, no restart)\n", c.Desktop.ExperimentalTabModeTint)
 		// Task 265 lab intake: render-surface features, nil-means-on pointers.
 		fmt.Fprintf(&b, "experimental_question_search = %v   # desktop: topic-bar search-my-questions entry (task 265; boot snapshot)\n", c.DesktopQuestionSearchEnabled())
 		fmt.Fprintf(&b, "experimental_subagent_tps = %v   # desktop: ~N tok/s readouts on sub-agent cards and the job table (task 265; boot snapshot)\n", c.DesktopSubagentTpsEnabled())

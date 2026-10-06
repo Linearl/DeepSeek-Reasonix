@@ -4,7 +4,7 @@ import { crossGroupDropIntent, isSplitViewEnabled, onSplitViewEnabledChange } fr
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, DragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { CheckCheck, FileText, Plus, Search, X } from "lucide-react";
-import { normalizeCollaborationMode, normalizeMode, normalizeToolApprovalMode, type Mode, type TabMeta } from "../lib/types";
+import { normalizeCollaborationMode, normalizeMode, normalizeToolApprovalMode, type CollaborationMode, type Mode, type TabMeta, type ToolApprovalMode } from "../lib/types";
 import { projectColorValue } from "../lib/projectColors";
 import { prefetchTabTranscript } from "../lib/transcriptPrefetch";
 import { useT } from "../lib/i18n";
@@ -149,6 +149,28 @@ function tabMode(tab: TabMeta): Mode {
   return normalizeMode(tab.mode);
 }
 
+/**
+ * 任务 504 色调阶梯（纯函数）：给定协作模式与审批模式，返回该标签的
+ * 模式色调档位（写在 data-mode-tint 上，由 styles.css 的任务504 独立段
+ * 映射为 ~30% 低透明底色）；null = 不着色（ask + normal 默认态）。
+ *
+ * 优先级（高→低）：autopilot > yolo > auto > goal > plan。审批档位压过
+ * 协作档位——用户点名的四档（询问/自动/YOLO/autopilot）以审批为轴；
+ * autopilot 恒含 yolo 审批，是最自主的状态故居首。一签一色，四档各自
+ * 色相可辨：询问=无色（基线）、自动=蓝、YOLO=红、autopilot=紫；
+ * goal=青、plan=琥珀为协作档补充。模式全文仍由 hover title 承接。
+ */
+export type TabModeTint = "autopilot" | "yolo" | "auto" | "goal" | "plan";
+
+export function tabModeTintFor(collaborationMode: CollaborationMode, toolApprovalMode: ToolApprovalMode): TabModeTint | null {
+  if (collaborationMode === "autopilot") return "autopilot";
+  if (toolApprovalMode === "yolo") return "yolo";
+  if (toolApprovalMode === "auto") return "auto";
+  if (collaborationMode === "goal") return "goal";
+  if (collaborationMode === "plan") return "plan";
+  return null;
+}
+
 function projectAccentStyle(color?: string): CSSProperties | undefined {
   const value = projectColorValue(color);
   if (!value) return undefined;
@@ -164,6 +186,12 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
   // 关闭时 tier 恒为 0，不注入任何行内样式。
   const [tabCompressEnabled, setTabCompressEnabled] = useState(labFlagEnabled("tabCompress"));
   useEffect(() => onLabFlagsChange(() => setTabCompressEnabled(labFlagEnabled("tabCompress"))), []);
+  // 任务 504：模式色调开关（experimental_tab_mode_tint，默认关）。开启时
+  // 标签以 ~30% 低透明模式底色代替 plan/goal/auto/yolo 文本徽章（同走
+  // lab 模块门，设置保存即重放快照）；关闭时不写 data-mode-tint，徽章
+  // 渲染与旧路径逐字一致（铁律 2 零行为）。
+  const [tabModeTintEnabled, setTabModeTintEnabled] = useState(labFlagEnabled("tabModeTint"));
+  useEffect(() => onLabFlagsChange(() => setTabModeTintEnabled(labFlagEnabled("tabModeTint"))), []);
   // 任务 506 溢出驱动：测量标签条可用宽度（0=测量不可用，档位退回数量
   // 分档参考）。useLayoutEffect 在首帧绘制前完成首次测量，避免先按回退
   // 档位画一帧再跳档的闪动；窗口/面板尺寸变化由 ResizeObserver 跟随。
@@ -422,8 +450,10 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
     ? ({ "--tabbar-tab-width": `${TAB_COMPRESS_TIERS[compressTier - 1].widthPx}px` } as CSSProperties)
     : undefined;
   // tier 3（100px 档）起文本徽章不再渲染：宽度不足时徽章会挤掉标题，
-  // 模式信息由 hover title（stateTitle）完整承接。
-  const badgesVisible = compressTier > 0 && compressTier < 3;
+  // 模式信息由 hover title（stateTitle）完整承接。任务 504 开启时底色
+  // 代替徽章（「代替」语义：可着色的档位集合 ⊇ 徽章集合），徽章一律
+  // 不渲染；关闭时不参与本判据，徽章路径逐字不变。
+  const badgesVisible = compressTier > 0 && compressTier < 3 && !tabModeTintEnabled;
 
   return (
     <div
@@ -450,6 +480,9 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
             toolApprovalMode === "yolo" ? "YOLO approval" : "",
           ].filter(Boolean).join(" · ");
           const annotatedTitle = stateTitle ? `${stateTitle} · ${fullTitle}` : fullTitle;
+          // 任务 504：开关开启时按色调阶梯取本签档位；关闭（或默认态
+          // ask+normal）恒为 null → 不写 data-mode-tint，样式零匹配。
+          const modeTint = tabModeTintEnabled ? tabModeTintFor(collaborationMode, toolApprovalMode) : null;
           return (
             <Fragment key={tab.id}>
               {splitTabId === tab.id && <span className="tabbar__split-divider" aria-hidden="true" />}
@@ -472,6 +505,7 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
               ].filter(Boolean).join(" ")}
               title={annotatedTitle}
               aria-label={annotatedTitle}
+              data-mode-tint={modeTint ?? undefined}
               style={projectAccentStyle(tab.projectColor)}
               onClick={() => handleTabClick(tab.id)}
               onAuxClick={(event) => handleTabAuxClick(event, tab.id)}
