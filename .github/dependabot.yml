@@ -51,3 +51,32 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+
+  # 任务 555（2026-10-06 用户裁断）：workers/{accounts,crash-report,forum} 三目录不在维护范围，
+  # 显式登记并禁用其全部依赖更新（open-pull-requests-limit: 0 禁版本/安全更新 PR；
+  # ignore "*" 忽略所有依赖），不留 Dependabot 更新入口。
+  # 注意：security alerts 由仓库依赖图扫描产生，本配置不能移除已存在的 alerts；
+  # 如需清除现存告警需在 GitHub UI 逐条 dismiss（任务纪律禁止脚本 dismiss）。
+  - package-ecosystem: "npm"
+    directory: "/workers/accounts"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: "*"
+
+  - package-ecosystem: "npm"
+    directory: "/workers/crash-report"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: "*"
+
+  - package-ecosystem: "npm"
+    directory: "/workers/forum"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: "*"
