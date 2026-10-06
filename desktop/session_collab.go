@@ -1074,15 +1074,22 @@ func (p *sessionCollabPump) notifySenderOnce(msg sessioncollab.MailMessage, kind
 		return
 	}
 	log.Printf("[session-collab] %s for message %s from %s", kind, msg.ID, msg.From)
-	// A status note answers the original thread so a synchronous sender, which
-	// matches on threadId, sees it instead of waiting out its timeout.
+	// 任务548 P0-2（死信可达）：状态通知必须走「新链形态」——不拷回原消息的
+	// Hop/ThreadID。历史形态把 Hop+ThreadID 原样拷回且 From 留空，通知自身在
+	// 发送方的泵会被 verifyHop 二次拒收（threadId 非空 ⇒ 视为 reply，而 reply
+	// 无 From ⇒ "reply has no sender"；threadId 为空而 hop>0 ⇒ "claimed but
+	// no parent"）——2026-10-06 事故里四封拒收通知全数如此，派活方对「消息
+	// 被拒」永久失聪。新链形态（Hop=0、threadId 留空、From=目标 contact）
+	// isReply=false 且 hop=0，必过溯源门；原 messageId 与拒因已在正文里。
+	// 代价：同步 wait 不再按 threadId 提前命中状态通知，会等满超时后在本通知
+	// 落邮箱时读到——换来的是死信信号在一切拒收场景下可达。
 	if _, err := store.Deliver(context.Background(), sessioncollab.MailMessage{
-		To:       msg.From,
-		Body:     note,
-		Hop:      msg.Hop,
-		ThreadID: msg.ThreadID,
-		ReplyTo:  "",
-		Kind:     "system", // 任务461 P8 ②：平台状态通知自动已读，不顶未读数
+		From:    msg.To, // 目标会话（泵所在方）是通知的真实来源
+		To:      msg.From,
+		Body:    note,
+		Hop:     0,
+		ReplyTo: "",
+		Kind:    "system", // 任务461 P8 ②：平台状态通知自动已读，不顶未读数
 	}); err != nil {
 		log.Printf("[session-collab] %s notice to %s failed: %v", kind, msg.From, err)
 	}
@@ -1238,9 +1245,13 @@ func sessionCollabReceiptSteered(disposition string) bool {
 }
 
 // notifyDegradedSteer writes a status note back to the sender's mailbox. It
-// keeps the original hop so a status note never inflates the collaboration
-// chain, and it is best-effort: a failure here must not drop the message that
-// was already delivered.
+// is best-effort: a failure here must not drop the message that was already
+// delivered.
+//
+// 当前无调用点（降级通知实际经 collabDelivery.notify → notifySenderOnce 发出，
+// 同为新链形态）；保留实现并同修为 Hop=0 新链形态（任务548 P0-2）：拷回原
+// 消息的 hop 会让通知在发送方的泵被溯源门拒收（hop>0 且无父 threadId），
+// 「降级」信号对发送方不可达。
 func (p *sessionCollabPump) notifyDegradedSteer(msg sessioncollab.MailMessage, disposition string) {
 	if strings.TrimSpace(msg.From) == "" {
 		return
@@ -1252,9 +1263,10 @@ func (p *sessionCollabPump) notifyDegradedSteer(msg sessioncollab.MailMessage, d
 	note := "你发送的 steer 未能注入目标会话当轮（目标不可注入，disposition=" + disposition +
 		"），已自动降级为排队 follow-up，目标会在下一轮处理。"
 	if _, err := sessioncollab.NewMailStoreWithHopLimit(mailDir, sessionCollabHopLimit()).Deliver(context.Background(), sessioncollab.MailMessage{
+		From:    msg.To,
 		To:      msg.From,
 		Body:    note,
-		Hop:     msg.Hop,
+		Hop:     0,
 		ReplyTo: "",
 		Kind:    "system", // 任务461 P8 ②：平台状态通知自动已读，不顶未读数
 	}); err != nil {
