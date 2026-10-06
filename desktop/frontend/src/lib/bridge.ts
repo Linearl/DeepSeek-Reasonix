@@ -5302,6 +5302,9 @@ function makeMockApp(): AppBindings {
         statusBarItems,
         checkUpdates,
         conversationWidth,
+        // Task 514: boot snapshot carries the task-369 gate like the real
+        // backend, so the preference store does not reset on a mock reload.
+        experimentalSelectionActions: settings.experimentalSelectionActions === true,
       })) as DesktopStartupSettingsView;
     },
     ...makeMockModelSettingsBindings(settings, loadMockProviderCatalog, mockProviderPresetViews),

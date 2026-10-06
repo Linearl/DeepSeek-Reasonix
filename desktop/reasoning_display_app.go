@@ -32,7 +32,11 @@ func desktopStartupSettingsFromConfig(cfg *config.Config) DesktopStartupSettings
 		// Task 318.3: the draft-persistence gate is read at startup so a
 		// restart with the switch off never rehydrates old drafts.
 		ExperimentalComposerDraft: cfg.Agent.ExperimentalComposerDraft,
-		ConfigWarnings:            cfg.LoadWarnings(), ConfigPath: config.UserConfigPath(),
+		// Task 514: the task-369 selection quick-actions gate must ride the
+		// same boot snapshot — without it the frontend store resets to off on
+		// every restart while the settings switch keeps reading on.
+		ExperimentalSelectionActions: cfg.Agent.ExperimentalSelectionActions,
+		ConfigWarnings:               cfg.LoadWarnings(), ConfigPath: config.UserConfigPath(),
 	}
 }
 

@@ -61,6 +61,12 @@ const CHECKS = [
   { feature: "task 369 选区快捷操作 one-shot 通道", file: "internal/control/side_query.go", patterns: ["func (c *Controller) SideQuery(", "sideQueryMaxTextRunes", "boundedllm.Call"] },
   { feature: "task 369 选区快捷操作前端（开关两态+结果卡）", file: "desktop/frontend/src/components/TranscriptSelectionMenu.tsx", patterns: ["quickActionsEnabled", "transcript-selection-result-card", "runQuickAction"] },
   { feature: "task 369 选区快捷操作桥接线（App 设置回调）", file: "desktop/frontend/src/App.tsx", patterns: ["RunSelectionSideQuery(action, text, contextText)", "setSelectionActionsEnabled"] },
+  // 任务514（选区开关"开不了"修复）：369 把渲染行写进 [desktop] 段而字段在
+  // Agent struct，读回即丢（开关弹回关）；启动快照又缺字段（重启即失效）。
+  // 三处锚定防上游合并静默回退，段落归属由 internal/config 往返测试把守。
+  { feature: "任务514 选区开关渲染行落 [agent] 段", file: "internal/config/render.go", patterns: ["experimental_selection_actions = %v   # task 369: selection quick-actions"] },
+  { feature: "任务514 启动快照 struct 携带选区开关", file: "desktop/settings_app.go", patterns: ["ExperimentalSelectionActions bool `json:\"experimentalSelectionActions\"`"] },
+  { feature: "任务514 启动快照 builder 回填选区开关", file: "desktop/reasoning_display_app.go", patterns: ["ExperimentalSelectionActions: cfg.Agent.ExperimentalSelectionActions"] },
   // 任务461 P1（收件箱锁挂起修复）：filelock.go 与上游共享，合并可能静默回退
   // 无界等待；锚定默认上限常量与 ctx.Done 分支（终止 ≤1s 的实现载体）。
   { feature: "任务461 锁等待一律有界+取消即时生效", file: "internal/filelock/filelock.go", patterns: ["DefaultWaitTimeout", "case <-ctx.Done():"] },

@@ -429,20 +429,20 @@ type SettingsView struct {
 	// Task 347: effective replayed-graph cache LRU capacity (task 196fix2
 	// tunable). The view reports the EFFECTIVE value: a 0 in the file is
 	// the built-in default, never shown as 0.
-	DagGraphCacheCapacity      int  `json:"dagGraphCacheCapacity"`
-	HistoryBodyBudgetMb        int  `json:"historyBodyBudgetMb"`
-	MarkdownBudgetMb           int  `json:"markdownBudgetMb"`
-	ExperimentalCacheTuning    bool `json:"experimentalCacheTuning"`
-	ExperimentalDream          bool `json:"experimentalDream"`
-	ExperimentalPerfMonitor    bool `json:"experimentalPerfMonitor"`
+	DagGraphCacheCapacity   int  `json:"dagGraphCacheCapacity"`
+	HistoryBodyBudgetMb     int  `json:"historyBodyBudgetMb"`
+	MarkdownBudgetMb        int  `json:"markdownBudgetMb"`
+	ExperimentalCacheTuning bool `json:"experimentalCacheTuning"`
+	ExperimentalDream       bool `json:"experimentalDream"`
+	ExperimentalPerfMonitor bool `json:"experimentalPerfMonitor"`
 	// Task 501: threshold-triggered heap snapshot switch readback.
 	ExperimentalHeapHighProfile bool `json:"experimentalHeapHighProfile"`
 	PerfMonitorIntervalSeconds  int  `json:"perfMonitorIntervalSeconds"`
-	SessionCollabHopLimit      int  `json:"sessionCollabHopLimit"`
-	DetachedIdleReleaseMinutes int  `json:"detachedIdleReleaseMinutes"`
-	GoMemLimitMB               int  `json:"goMemLimitMB"`
-	ExperimentalSessionCollab  bool `json:"experimentalSessionCollab"`
-	ExperimentalAutoLoadOlder  bool `json:"experimentalAutoLoadOlder"`
+	SessionCollabHopLimit       int  `json:"sessionCollabHopLimit"`
+	DetachedIdleReleaseMinutes  int  `json:"detachedIdleReleaseMinutes"`
+	GoMemLimitMB                int  `json:"goMemLimitMB"`
+	ExperimentalSessionCollab   bool `json:"experimentalSessionCollab"`
+	ExperimentalAutoLoadOlder   bool `json:"experimentalAutoLoadOlder"`
 	// Task 449: merged orphan switch (settings-view mirror of [agent]; folds
 	// the task 244 B5 lease reclaim + B4 recovery sweep into one key).
 	ExperimentalOrphanHandling        bool `json:"experimentalOrphanHandling"`
@@ -634,13 +634,13 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalTraceAsState exposes Trace-as-State compaction (task 60).
 	ExperimentalTraceAsState bool `json:"experimentalTraceAsState"`
 	// ExperimentalDream exposes dream/distill memory-curation tools (task 115).
-	ExperimentalDream          bool `json:"experimentalDream"`
-	ExperimentalPerfMonitor    bool `json:"experimentalPerfMonitor"`
+	ExperimentalDream       bool `json:"experimentalDream"`
+	ExperimentalPerfMonitor bool `json:"experimentalPerfMonitor"`
 	// Task 501: threshold-triggered heap snapshot switch readback.
 	ExperimentalHeapHighProfile bool `json:"experimentalHeapHighProfile"`
 	PerfMonitorIntervalSeconds  int  `json:"perfMonitorIntervalSeconds"`
-	SessionCollabHopLimit      int  `json:"sessionCollabHopLimit"`
-	DetachedIdleReleaseMinutes int  `json:"detachedIdleReleaseMinutes"`
+	SessionCollabHopLimit       int  `json:"sessionCollabHopLimit"`
+	DetachedIdleReleaseMinutes  int  `json:"detachedIdleReleaseMinutes"`
 	// GoMemLimitMB is the task-308-O3 soft memory limit in MB (0 = unbounded).
 	GoMemLimitMB int `json:"goMemLimitMB"`
 	// ExperimentalSessionCollab exposes multi-session collaboration (task 19).
@@ -686,6 +686,11 @@ type DesktopStartupSettingsView struct {
 	ExperimentalProactiveCompact    bool `json:"experimentalProactiveCompact"`
 	ProactiveCompactCooldownMinutes int  `json:"proactiveCompactCooldownMinutes"`
 	ExperimentalComposerDraft       bool `json:"experimentalComposerDraft"`
+	// Task 514: selection quick-actions gate (task 369) rides the same boot
+	// snapshot. This view missing the field is the "开不了" root cause: every
+	// restart fed the frontend store an undefined flag (= off) while the
+	// settings switch — reading the full Settings() view — still showed on.
+	ExperimentalSelectionActions bool `json:"experimentalSelectionActions"`
 	// Task 297: cold-cache compact pass knobs (lab storage cost card).
 	ExperimentalColdCacheCompact bool  `json:"experimentalColdCacheCompact"`
 	ColdCacheCompactMinBytes     int64 `json:"coldCacheCompactMinBytes"`
