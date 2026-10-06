@@ -1825,6 +1825,11 @@ type ExperimentFeatureId =
   // Task 163: OpenCode Go subscription usage card.
   | "quickCommands"
   | "opencodeGoUsage"
+  // Task 231: managed-path pre-approval (master switch + four checkboxes).
+  // Task 364 folded the entry into the autopilot card but the id stays in
+  // this union (561 did NOT fold it — restored by the 561 follow-up after
+  // settings-preapprove-managed.test.ts caught the accidental drop).
+  | "preapproveManagedPaths"
   // Task 280: the former permissions-area safety checkbox, re-homed here as
   // "optimistic parallel writes" (same underlying key, inverted checkbox).
   | "optimisticParallel"
