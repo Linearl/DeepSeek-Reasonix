@@ -37,7 +37,8 @@ ok(panel.includes('id: "autopilot", group: "automation"'), "autopilot stays put 
 // ① sub-block inside the autopilot card, full anatomy preserved.
 {
   const start = panel.indexOf('{selected === "autopilot" && (');
-  const next = panel.indexOf('{selected === "highSpeedModel" && (');
+  // Task 561: the pane after autopilot is the modelStrategy family card.
+  const next = panel.indexOf('{selected === "modelStrategy" && (');
   ok(start >= 0 && next > start, "autopilot pane branch located");
   const card = panel.slice(start, next);
   ok(card.includes("autopilot-preapprove-subblock"), "pre-approval renders as a named sub-block INSIDE the autopilot card");

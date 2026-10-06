@@ -181,9 +181,11 @@ async function threeLiveTabs(store: TranscriptStore): Promise<void> {
   ok(!panel.includes('| "activeTabResident"'), "the standalone detail-card union id is gone (task 347)");
   ok(panel.includes("app.SetExperimentalActiveTabResident(on)"), "the cache-tuning detail card writes through the setter");
   ok(
-    panel.includes('selected === "cacheTuning"') &&
-      panel.slice(panel.indexOf('selected === "cacheTuning"')).includes("SetExperimentalActiveTabResident"),
-    "the switch renders inside the cache-tuning detail (fourth block)",
+    // Task 561 M3: the cache-tuning detail moved into the contextGovernance
+    // card — the switch renders inside it (fourth block).
+    panel.includes('selected === "contextGovernance"') &&
+      panel.slice(panel.indexOf('selected === "contextGovernance"')).includes("SetExperimentalActiveTabResident"),
+    "the switch renders inside the context-governance detail (cache-tuning block)",
   );
   // LRU capacity field (task 347 half 2, task 196fix2 contract).
   ok(panel.includes("app.SetDagGraphCacheCapacity(v)"), "capacity field writes through the 196fix2 setter");

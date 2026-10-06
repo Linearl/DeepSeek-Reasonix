@@ -2053,6 +2053,17 @@ export const en = {
   "settings.labGroup.storage": "Storage",
   "settings.labGroup.infra": "Infrastructure",
   "settings.labGroup.onCount": "{n} on",
+  // Task 561: merged family cards (entry-level merge only — every member
+  // switch still saves through its own setter).
+  "settings.autonomousRunGuard": "Autonomous-run guards",
+  "settings.modelStrategy": "Model strategy",
+  "settings.contextGovernance": "Context governance",
+  "settings.subagentSuite": "Subagents",
+  "settings.devDebug": "Developer debugging",
+  "settings.updateFeedback": "Update & feedback",
+  "settings.sessionStore": "Session storage",
+  "settings.modelCapabilityFilter.retired": "Retired (task 551): the capability rejection gate is gone and image forwarding to subagents is now unconditional; this read-only line shows the historical value only.",
+  "settings.modelCapabilityFilter.value": "Stored value: {value} (read-only; the key is retired)",
   "settings.lab.enabledFirst.on": "Disabled items last: on (enabled first)",
   "settings.lab.enabledFirst.off": "Disabled items last: off (source order)",
   "settings.lab.tocLabel": "Group directory",

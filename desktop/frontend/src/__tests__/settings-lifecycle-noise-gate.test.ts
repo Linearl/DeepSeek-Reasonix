@@ -45,21 +45,23 @@ const preferences = fs.readFileSync(path.join(repoRoot, "desktop/settings_prefer
 const render = fs.readFileSync(path.join(repoRoot, "internal/config/render.go"), "utf8");
 const edit = fs.readFileSync(path.join(repoRoot, "internal/config/edit.go"), "utf8");
 
-// 1. Render table: the entry exists and reads the boot-snapshot switch.
+// 1. Render table: task 561 M5 folds the entry into the devDebug card; the
+// family light still reads the boot-snapshot switch.
 ok(
-  panel.includes('{ id: "lifecycleNoiseGate", group: "dev-debug"'),
-  "lab rail hosts the lifecycleNoiseGate entry in the misc group",
+  panel.includes('{ id: "devDebug", group: "dev-debug"'),
+  "lab rail hosts the devDebug family entry in the dev-debug group",
 );
 ok(
-  panel.includes("on: Boolean(s.experimentalLifecycleNoiseGate)"),
-  "entry light reads s.experimentalLifecycleNoiseGate",
+  panel.includes("on: Boolean(s.experimentalCDPDebugPort) || Boolean(s.experimentalLifecycleNoiseGate)"),
+  "devDebug entry light reads s.experimentalLifecycleNoiseGate",
 );
 
-// 2. The detail card wires the toggle to the backend setter and raises the
-// restart banner (startup diagnostics read the gate once per process).
+// 2. The devDebug detail card wires the toggle to the backend setter and
+// raises the restart banner (startup diagnostics read the gate once per
+// process).
 ok(
-  panel.includes('selected === "lifecycleNoiseGate" && ('),
-  "detail card renders for lifecycleNoiseGate",
+  panel.includes('selected === "devDebug" && ('),
+  "detail card renders for the devDebug family",
 );
 ok(
   panel.includes("app.SetExperimentalLifecycleNoiseGate(on)") &&

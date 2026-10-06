@@ -42,21 +42,22 @@ const render = fs.readFileSync(
   "utf8",
 );
 
-// 1. Render table: the entry exists and reads the boot-snapshot switch.
+// 1. Render table: task 561 M5 folds the entry into the devDebug card; the
+// family light still reads the boot-snapshot switch.
 ok(
-  panel.includes('{ id: "cdpDebugPort", group: "dev-debug"'),
-  "lab rail hosts the cdpDebugPort entry in the debug group",
+  panel.includes('{ id: "devDebug", group: "dev-debug"'),
+  "lab rail hosts the devDebug family entry in the dev-debug group",
 );
 ok(
-  panel.includes("on: Boolean(s.experimentalCDPDebugPort)"),
-  "entry light reads s.experimentalCDPDebugPort",
+  panel.includes("on: Boolean(s.experimentalCDPDebugPort) || Boolean(s.experimentalLifecycleNoiseGate)"),
+  "devDebug entry light reads s.experimentalCDPDebugPort",
 );
 
-// 2. The detail card wires the toggle to the backend setter and raises the
-// restart banner (the WebView2 env is created once per process).
+// 2. The devDebug detail card wires the toggle to the backend setter and
+// raises the restart banner (the WebView2 env is created once per process).
 ok(
-  panel.includes('selected === "cdpDebugPort" && ('),
-  "detail card renders for cdpDebugPort",
+  panel.includes('selected === "devDebug" && ('),
+  "detail card renders for the devDebug family",
 );
 ok(
   panel.includes("app.SetExperimentalCDPDebugPort(on)") &&
