@@ -1,92 +1,54 @@
 import { useEffect, useRef, useState } from "react";
 import { app } from "../lib/bridge";
 import { useT } from "../lib/i18n";
-import type { RecoveryCall, ToolRecoveryBindings, ToolRecoveryRequest, ToolRecoverySnapshot } from "../lib/toolRecovery";
+import type { ToolRecoveryBindings, ToolRecoverySnapshot } from "../lib/toolRecovery";
 import "./ToolRecoveryPanel.css";
 
-export function ToolRecoveryPanel({ tabId, sessionKey, running, refreshKey, onResume, bindings = app }: {
+// Task 519（核实卡移除）：本面板不再是「中断的工具需要核实」交互卡片。人工
+// 复核实际不靠谱（复核率低且曾长期阻塞）；482 已去掉拦截，本件撤掉全部交互
+// ——自动判定（433 无副作用白名单 + 519 构造期结算）把能判的判掉，判不了的
+// 只记录：每条中断调用渲染为不可交互的一行记录（可展开查看操作详情），不提
+// 供检查/核实/忽略/重试等任何按钮。记录事实与审计链（session 记录 + 事件留
+// 痕）不受影响；后端 ResolveToolRecovery 动作面保留供 serve API 兼容。
+export function ToolRecoveryPanel({ tabId, sessionKey, running, refreshKey, bindings = app }: {
   tabId: string; sessionKey: string; running: boolean; refreshKey: number;
-  onResume?: () => void; bindings?: ToolRecoveryBindings;
+  bindings?: ToolRecoveryBindings;
 }) {
   const t = useT();
   const generation = useRef(0);
   const [snapshot, setSnapshot] = useState<ToolRecoverySnapshot | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [resolved, setResolved] = useState(false);
   useEffect(() => {
     const own = ++generation.current;
-    setSnapshot(null); setError(""); setBusy(false); setResolved(false);
+    setSnapshot(null);
     if (!running && bindings.GetToolRecoveryForTab) {
       void bindings.GetToolRecoveryForTab(tabId).then(next => {
         if (generation.current === own) setSnapshot(next);
       }).catch(() => {
         // A failed probe is not a failed recovery (task 103): the tab may be mid-switch, or its
         // controller mid-rebuild. Rendering an error for it produced a panel the user could only
-        // dismiss. Action failures below still surface.
+        // dismiss — and this panel no longer asks the user to do anything at all.
       });
     }
     return () => { generation.current++; };
   }, [bindings, tabId, sessionKey, running, refreshKey]);
 
-  const act = async (call: RecoveryCall, action: ToolRecoveryRequest["action"]) => {
-    if (!snapshot || busy || running || !bindings.ResolveToolRecoveryForTab) return;
-    const own = generation.current;
-    setBusy(true); setError("");
-    try {
-      const next = await bindings.ResolveToolRecoveryForTab(tabId, {
-        sessionPath: snapshot.sessionPath, runtimeEpoch: snapshot.runtimeEpoch, revision: snapshot.revision,
-        attemptId: call.identity.attempt_id ?? "", inspectionId: call.inspection_id ?? "", action,
-      });
-      if (generation.current === own) { setSnapshot(next); setResolved((next.calls ?? []).length === 0); }
-    } catch (err) {
-      if (generation.current === own) {
-        setError(String(err));
-        // Read back after a lost response or stale revision; never replay a
-        // potentially committed action automatically.
-        try {
-          const fresh = await bindings.GetToolRecoveryForTab?.(tabId);
-          if (fresh && fresh.sessionPath === snapshot.sessionPath && generation.current === own) {
-            setSnapshot(fresh); setResolved((fresh.calls ?? []).length === 0);
-          }
-        } catch { /* Keep the original error and its action identity visible. */ }
-      }
-    } finally { if (generation.current === own) setBusy(false); }
-  };
-  // `error` deliberately does not appear here: it can now only come from an action the user
-  // started, and the panel is already open in that case. Probing failures stay silent.
-  // Optional-chained on calls as well: a snapshot whose calls arrived as JSON null (a Go
+  // Optional-chained on calls: a snapshot whose calls arrived as JSON null (a Go
   // nil slice) used to throw here and take the whole transcript down. Defensive on the
   // client because the payload is remote data.
-  if (!snapshot?.calls?.length && !snapshot?.silent && !resolved) return null;
-  return <section className="notice-line notice-line--warn tool-recovery-panel" aria-label={t("toolRecovery.title")} aria-busy={busy}>
-    <details open>
+  if (!snapshot?.calls?.length) return null;
+  return <section className="notice-line tool-recovery-panel" aria-label={t("toolRecovery.title")}>
+    <details>
     <summary className="notice-line__title">{t("toolRecovery.title")}</summary>
     <div className="notice-line__text">
-      {error && <p role="alert">{error}</p>}
-      {(snapshot?.calls ?? []).map(call => <div key={call.identity.attempt_id}>
+      {snapshot.calls.map(call => <div key={call.identity.attempt_id}>
         <p>{call.identity.canonical_tool} · {t("toolRecovery.unknown")}</p>
         <details><summary>{t("toolRecovery.details")}</summary>
           <p>{call.identity.resource_scope}</p>
           <p>{call.identity.argument_digest}</p>
-          {call.arguments !== undefined && <pre>{JSON.stringify(call.arguments, null, 2)}</pre>}
         </details>
         {call.inspection_state && <p>{t(call.inspection_state === "present" || call.inspection_state === "postcondition_satisfied" ? "toolRecovery.present" : call.inspection_state === "absent_fenced" ? "toolRecovery.absent" : "toolRecovery.unproven")}</p>}
         {call.resolution === "reject" && <p>{t("toolRecovery.rejected")}</p>}
-        {!call.inspection_id && <p>{t("toolRecovery.inspectFirst")}</p>}
-        <div className="notice-line__actions">
-          <button type="button" className="btn btn--small" disabled={busy || running} onClick={() => void act(call, "inspect")}>{t("toolRecovery.inspect")}</button>
-          <button type="button" className="btn btn--small" disabled={busy || running || !call.inspection_id} onClick={() => void act(call, "confirm")}>{t("toolRecovery.confirm")}</button>
-          <button type="button" className="btn btn--small" disabled={busy || running || !call.inspection_id} onClick={() => void act(call, "reject")}>{t("toolRecovery.reject")}</button>
-          {/* X3 显式清除: one-step escape hatch that needs no inspection. This is
-              the only action the backend keeps accepting while a turn is running,
-              so it must not inherit the running disable here either — a card that
-              shows while the UI believes the tab idle must stay clearable. */}
-          <button type="button" className="btn btn--small" disabled={busy} onClick={() => void act(call, "dismiss")}>{t("toolRecovery.dismiss")}</button>
-          {snapshot?.retryEnabled && <button type="button" className="btn btn--small" disabled={busy || running || !call.inspection_id || (!call.read_only && call.inspection_state !== "absent_fenced")} onClick={() => void act(call, "retry")}>{t("toolRecovery.retry")}</button>}
-        </div>
       </div>)}
-      {(resolved || snapshot?.silent) && onResume && <button type="button" className="btn btn--small" disabled={busy || running} onClick={onResume}>{t("toolRecovery.resume")}</button>}
     </div>
     </details>
   </section>;

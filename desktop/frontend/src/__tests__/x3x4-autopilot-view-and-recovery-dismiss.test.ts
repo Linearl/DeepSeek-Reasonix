@@ -1,11 +1,13 @@
 // Run: tsx src/__tests__/x3x4-autopilot-view-and-recovery-dismiss.test.ts
 //
-// X3/X4 修复的两块前端锚：
+// X4 断点 B（前端半）+ 任务 519 核实卡移除的两块前端锚：
 // 1. X4 断点 B（前端半）：normalizeCollaborationMode 必须放行 "autopilot"——
 //    此前它把后端（修复后）报来的 autopilot 归一成 normal，composer 的
 //    autopilot 指示永远点不亮。
-// 2. X3 显式清除：toolRecovery.dismiss 键三语齐全，ToolRecoveryPanel 渲染的
-//    忽略按钮有本地化文案可用。
+// 2. 任务 519（核实卡移除）：ToolRecoveryPanel 降级为不可交互记录行——
+//    X3 的「忽略并不再提示」按钮随交互面整体退役（后端 dismiss 结算语义
+//    保留，由 scripts/check-fork-integrity.mjs 的 X3 锚保护），面板不再
+//    渲染任何按钮、不再出现「需要核实」措辞。
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -30,20 +32,28 @@ assert.equal(normalizeCollaborationMode(undefined), "normal");
 assert.equal(normalizeCollaborationMode("autopilot", "objective"), "autopilot",
   "an explicit autopilot wire value wins over the goal fallback (backend already ordered plan>goal>autopilot)");
 
-// 2. X3 忽略按钮三语文案。
+// 2. 任务 519：核实交互键三语退役（dismiss/inspect/confirm/reject/retry/resume）。
 for (const [name, dict] of [["en", en], ["zh", zh], ["zh-TW", zhTW]] as const) {
-  const text = (dict as Record<string, string>)["toolRecovery.dismiss"];
-  assert.ok(typeof text === "string" && text.length > 0, `${name} must localize toolRecovery.dismiss`);
+  for (const key of ["toolRecovery.dismiss", "toolRecovery.inspect", "toolRecovery.confirm",
+    "toolRecovery.reject", "toolRecovery.retry", "toolRecovery.resume", "toolRecovery.resumePrompt"]) {
+    assert.ok(!(key in dict), `${name} must no longer carry the review-interaction key ${key} (task 519)`);
+  }
+  // 记录行措辞不再是「需要核实」。
+  const title = (dict as Record<string, string>)["toolRecovery.title"];
+  assert.ok(typeof title === "string" && !title.includes("核实") && !title.includes("review"),
+    `${name} panel title must read as a passive record, not a review request`);
 }
 
-// 3. 面板源码含 dismiss 动作按钮，且它是唯一不因 running 禁用的动作。
+// 3. 面板源码不再含任何动作按钮 / resolve 调用（519 降级为不可交互记录行）。
 const testDir = dirname(fileURLToPath(import.meta.url));
 const panel = readFileSync(resolve(testDir, "../components/ToolRecoveryPanel.tsx"), "utf-8");
-assert.match(panel, /act\(call, "dismiss"\)/, "panel must wire the dismiss action");
-assert.match(
-  panel,
-  /disabled=\{busy\} onClick=\{\(\) => void act\(call, "dismiss"\)\}/,
-  "dismiss must stay clickable while the UI believes the tab idle (the stuck-card escape hatch)",
-);
+assert.doesNotMatch(panel, /act\(call/, "panel must not wire any per-call action (task 519)");
+assert.doesNotMatch(panel, /<button/, "panel must render no buttons (task 519)");
+assert.doesNotMatch(panel, /ResolveToolRecoveryForTab/, "panel must not call the resolve action API (task 519)");
+assert.doesNotMatch(panel, /onResume/, "panel must not take an onResume prop (task 519)");
+// 记录行的只读展示件仍在：标题、结果未知行、操作详情展开。
+for (const part of ['t("toolRecovery.title")', 't("toolRecovery.unknown")', 't("toolRecovery.details")']) {
+  assert.ok(panel.includes(part), `panel must keep the passive record part ${part}`);
+}
 
 console.log("x3x4-autopilot-view-and-recovery-dismiss: all assertions passed");

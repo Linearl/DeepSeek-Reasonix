@@ -639,7 +639,7 @@ export function Transcript(props: TranscriptProps) {
     <TranscriptScrollWriteProvider value={writeOffset}>
     <TranscriptFindContext.Provider value={findHighlight}>
       <div className="transcript-shell" aria-busy={loadingOlderHistory || undefined} data-protected-blocks={protectedBlockKeys.size}>
-        {tabId && <Suspense fallback={null}><ToolRecoveryPanel key={resolvedSessionKey} tabId={tabId} sessionKey={resolvedSessionKey} running={running} refreshKey={items.length} onResume={() => onPrompt?.(t("toolRecovery.resumePrompt"))} /></Suspense>}
+        {tabId && <Suspense fallback={null}><ToolRecoveryPanel key={resolvedSessionKey} tabId={tabId} sessionKey={resolvedSessionKey} running={running} refreshKey={items.length} /></Suspense>}
         {empty ? (
           <div className={`transcript transcript--empty${creationMode ? " transcript--creation-scrollbar" : ""}`} ref={setScroller} aria-busy={hydrating || undefined}>
             {hydrating ? <div className="transcript__loading" role="status" aria-live="polite"><Loader2 className="transcript__loading-icon" aria-hidden="true" /><span>{t("common.loading")}</span></div>

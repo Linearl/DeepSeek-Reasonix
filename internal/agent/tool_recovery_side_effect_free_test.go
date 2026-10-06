@@ -61,6 +61,26 @@ func unknownOutcome() toolOutcome {
 	return toolOutcome{executed: true, errMsg: "context cancelled", runState: provider.ToolRunUnknown}
 }
 
+// refreezeInterruptedRecord restores the fixture record to its unresolved
+// stored shape (started, verdict pending) and drops the construction-time
+// settle notice. Task 519: agent.New settles leftover whitelisted records at
+// construction, so the finishToolRecovery tests re-freeze the record (and the
+// notice counter) afterwards to exercise the on-interruption path in
+// isolation: "this interruption left exactly one trace".
+func refreezeInterruptedRecord(t *testing.T, a *Agent, sink *sideEffectTraceSink, call provider.ToolCall) {
+	t.Helper()
+	frozen := provider.ToolCallRecord{
+		Identity:  call.Recovery.Identity,
+		State:     provider.ToolRunStarted,
+		ReadOnly:  call.Recovery.ReadOnly,
+		Arguments: append(json.RawMessage(nil), call.Recovery.Arguments...),
+	}
+	if !a.Session().setToolRecoveryRecord(call.ID, frozen) {
+		t.Fatal("could not refreeze the interrupted record")
+	}
+	sink.notices = nil
+}
+
 func writePlanFor(id string) *toolCallPlan {
 	return &toolCallPlan{
 		call:     provider.ToolCall{ID: id, Name: "write_file", Arguments: `{}`},
@@ -81,6 +101,7 @@ func addInterruptedHandoff(a *Agent, unknown []provider.InterruptedToolSummary) 
 // 把它归入 not_started（可立即重发，自动续轮）。
 func TestInterruptedReadOnlyBashAutoResolvesAndContinues(t *testing.T) {
 	a, sink, call := sideEffectFreeFixture(t, "bash", `{"command":"ls -la"}`, false)
+	refreezeInterruptedRecord(t, a, sink, call)
 	a.finishToolRecovery(context.Background(), call, unknownOutcome())
 
 	if got := a.PendingToolRecovery(); len(got) != 0 {
@@ -118,7 +139,8 @@ func TestInterruptedReadOnlyBashAutoResolvesAndContinues(t *testing.T) {
 // 验收①续：中断打包（outcome_unknown_tools）里的只读 bash 被重分类为
 // not_started —— 模型被告知可以立即重发，而不是先去核实不可能存在的外部效果。
 func TestInterruptedReadOnlyBashReclassifiedInPromptHandoff(t *testing.T) {
-	a, _, call := sideEffectFreeFixture(t, "bash", `{"command":"grep -rn todo ."}`, false)
+	a, sink, call := sideEffectFreeFixture(t, "bash", `{"command":"grep -rn todo ."}`, false)
+	refreezeInterruptedRecord(t, a, sink, call)
 	a.finishToolRecovery(context.Background(), call, unknownOutcome())
 	handoff := addInterruptedHandoff(a, []provider.InterruptedToolSummary{{ID: "call-interrupted", Name: "bash"}})
 
@@ -167,6 +189,7 @@ func TestInterruptedWriteBashKeepsManualReview(t *testing.T) {
 // 自动判「未生效」：不进围栏、面板判据为空、prompt 收尾可立即重发。
 func TestInterruptedAskNeverEntersFence(t *testing.T) {
 	a, sink, call := sideEffectFreeFixture(t, "ask", `{"questions":[{"question":"which?","header":"h","options":[{"label":"a"},{"label":"b"}]}]}`, true)
+	refreezeInterruptedRecord(t, a, sink, call)
 	a.finishToolRecovery(context.Background(), call, unknownOutcome())
 
 	if got := a.PendingToolRecovery(); len(got) != 0 {
@@ -189,21 +212,26 @@ func TestInterruptedAskNeverEntersFence(t *testing.T) {
 	}
 }
 
-// 重载场景：记录从存储加载进来仍是未决态（进程内没跑过 finish），第一次
-// 工具调用前的围栏判定先就地把白名单记录判「未生效」，写不再被拦。
-func TestBeginToolRecoverySettlesLeftoverSideEffectFreeRecords(t *testing.T) {
+// 重载场景（task 519 结算前移）：记录从存储加载进来仍是未决态（进程内没跑过
+// finish），agent 构造（会话加载）时就地把白名单记录判「未生效」——降级后的
+// 记录行不再为只读遗留记录停留，写也不被拦（beginToolRecovery 里的结算调用
+// 保留作兜底，构造后的新注入仍由它接住）。
+func TestNewSettlesLeftoverSideEffectFreeRecords(t *testing.T) {
 	a, sink, _ := sideEffectFreeFixture(t, "bash", `{"command":"git status --short"}`, false)
-	if got := a.PendingToolRecovery(); len(got) != 1 {
-		t.Fatalf("precondition: leftover record must be pending, got %d", len(got))
-	}
-	if err := a.beginToolRecovery(context.Background(), writePlanFor("post-reload-write")); err != nil {
-		t.Fatalf("leftover read-only probe must not fence the write: %v", err)
-	}
 	if got := a.PendingToolRecovery(); len(got) != 0 {
-		t.Fatalf("leftover record was not settled, pending = %d", len(got))
+		t.Fatalf("construction must settle leftover whitelisted records, pending = %d", len(got))
+	}
+	r := a.Session().toolRecoveryRecord("call-interrupted")
+	if r == nil || r.Resolution != sideEffectFreeResolution || r.State != provider.ToolRunNotStarted {
+		t.Fatalf("leftover verdict = state=%s resolution=%q, want not_started/%s", r.State, r.Resolution, sideEffectFreeResolution)
 	}
 	if len(sink.notices) != 1 {
 		t.Fatalf("settle notices = %d, want 1", len(sink.notices))
+	}
+	// 遗留写类记录不受构造结算影响：仍保持未决（审计事实）。
+	wa, _, _ := sideEffectFreeFixture(t, "bash", `{"command":"rm -rf build"}`, false)
+	if got := wa.PendingToolRecovery(); len(got) != 1 {
+		t.Fatalf("write-capable leftover must stay pending, got %d", len(got))
 	}
 }
 
@@ -211,6 +239,7 @@ func TestBeginToolRecoverySettlesLeftoverSideEffectFreeRecords(t *testing.T) {
 // 任何真实效果的屏障），只降级为告警 —— 与 host-verified-absent 路径同约。
 func TestSideEffectFreeResolutionSurvivesStorageFailure(t *testing.T) {
 	a, sink, call := sideEffectFreeFixture(t, "read_file", `{"path":"a.txt"}`, true)
+	refreezeInterruptedRecord(t, a, sink, call)
 	sink.fail = true
 	a.finishToolRecovery(context.Background(), call, unknownOutcome())
 	if got := a.PendingToolRecovery(); len(got) != 0 {

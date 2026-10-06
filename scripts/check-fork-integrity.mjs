@@ -868,7 +868,12 @@ const CHECKS = [
   // X3/X4（wt-zcode-x3，2026-10-04）：中断核实卡显式清除 + autopilot 传递链三断点
   { feature: "X3 显式清除 agent 层（dismiss 结算+回滚规则）", file: "internal/agent/tool_recovery_actions.go", patterns: ["ResolveToolRecoveryDismissed", "dismissed_by_user"] },
   { feature: "X3 guard 拆分 + dismiss 过行门（closed/rotating 分报，running 放行 dismiss）", file: "internal/control/tool_recovery.go", patterns: ["session is closed", "session is switching", 'req.Action != "dismiss"'] },
-  { feature: "X3 面板忽略按钮（不因 running 禁用）+ 三语文案", file: "desktop/frontend/src/components/ToolRecoveryPanel.tsx", patterns: ['act(call, "dismiss")'] },
+  // 任务519（wt-519-recovery-card，2026-10-06）撤销 X3 前端半：核实卡降级为
+  // 不可交互记录行，dismiss 按钮随交互面整体退役（后端 dismiss 结算语义由上
+  // 面两条 X3 锚继续保护，serve API 兼容不破坏）。merge 若把按钮带回来，前端
+  // 会重新出现「需要人工核实」的交互卡——519 测试与锚会一起拦。
+  { feature: "519 面板降级：无按钮/无 resolve 调用（前端测试钉死）", file: "desktop/frontend/src/__tests__/x3x4-autopilot-view-and-recovery-dismiss.test.ts", patterns: ["panel must render no buttons (task 519)", "panel must not wire any per-call action (task 519)", "must no longer carry the review-interaction key"] },
+  { feature: "519 记录行三语中性文案（不再出现「需要核实」标题）", file: "desktop/frontend/src/locales/zh.ts", patterns: ['"toolRecovery.title": "中断的工具调用记录"'] },
   { feature: "X4 断点 A 初始构建补传 autopilot 三元组（477 起四/五元组含 ask 超时对）", file: "desktop/tabs.go", patterns: ["Autopilot:                  tab.autopilot", "AutopilotApprovalGrace:     tab.autopilotApprovalGrace", "AutopilotAskTimeoutEnabled: tab.autopilotAskTimeoutEnabled"] },
   { feature: "X4 断点 B 后端视图携带 autopilot", file: "desktop/tabs.go", patterns: ['if s.autopilot {\n\t\treturn "autopilot"'] },
   { feature: "X4 断点 B 前端 normalize 放行 autopilot", file: "desktop/frontend/src/lib/types.ts", patterns: ['mode === "autopilot"'] },
@@ -953,6 +958,13 @@ const CHECKS = [
   { feature: "482 fence 退役：老会话 runtime/recovery 投影保留", file: "internal/session/projection.go", patterns: ["func projectRuntimeRecovery"] },
   { feature: "482 fence 退役：跨会话 recovery_required 分类保留", file: "internal/agent/session_subscribe.go", patterns: ["case \"recovery_required\":"] },
   { feature: "482 fence 退役：turn 终态常量保留", file: "internal/event/turn_status.go", patterns: ['TurnRecoveryRequired TurnStatus = "recovery_required"'] },
+
+  // 任务519（wt-519-recovery-card，2026-10-06）：核实卡移除（X5 a1 结算前移）。
+  // agent 构造（会话加载）即结算无副作用白名单遗留记录——降级后的记录行不再
+  // 为只读遗留记录停留；写类记录保持未决（审计事实，S9 勿动）。merge 若顶掉
+  // 构造期结算，崩溃重启后的只读记录会重新挂进记录行直到下一轮对话。
+  { feature: "519 构造期结算白名单遗留记录（agent.New 收尾调用）", file: "internal/agent/agent.go", patterns: ["Task 519（核实卡移除，X5 a1 结算前移）", "a.resolveSideEffectFreeInterruptedCalls()"] },
+  { feature: "519 行为钉（构造即结算+写类保持未决）", file: "internal/agent/tool_recovery_side_effect_free_test.go", patterns: ["TestNewSettlesLeftoverSideEffectFreeRecords", "write-capable leftover must stay pending"] },
 
   // ── 任务499（wt-499-memory-fix）──────────────────────────────────
   // 桌面版内存膨胀（10-05 现场 14.6GB heap）的持有链两环：graph cache 无字节
