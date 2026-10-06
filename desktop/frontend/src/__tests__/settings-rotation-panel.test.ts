@@ -32,11 +32,13 @@ function ok(condition: boolean, label: string) {
 console.log("\ntask 333 rotation gate contract");
 
 // Render table (81/123 lesson: a missing entry silently drops the save).
+// Task 561 M7: the entry folds into the sessionStore family card (storage).
 ok(
-  /\{ id: "eventsRotation", group: "storage", label: t\("settings\.eventsRotation"\)/.test(settings),
-  "Render table carries the eventsRotation entry in the storage group",
+  /\{ id: "sessionStore", group: "storage", label: t\("settings\.sessionStore"\)/.test(settings),
+  "Render table carries the sessionStore family entry in the storage group",
 );
-ok(settings.includes('| "eventsRotation"'), "ExperimentFeatureId union exposes eventsRotation");
+ok(settings.includes('| "sessionStore"'), "ExperimentFeatureId union exposes sessionStore");
+ok(!settings.includes('| "eventsRotation"'), "union drops the standalone eventsRotation id (folded into sessionStore)");
 // Task 345: the repair list must answer "which session, is it safe" before the
 // click — display name with the path demoted to the hover title, a status
 // badge, and a disabled repair on busy rows.
@@ -58,7 +60,7 @@ ok(
   panel.includes('window.confirm(t("settings.eventsRotation.card.busyConfirm"))'),
   "manual clicks on an in-use session confirm the collision risk first",
 );
-ok(settings.includes('selected === "eventsRotation"') && settings.includes("<SessionEventsPanel"), "Storage detail card mounts the panel");
+ok(settings.includes('selected === "sessionStore"') && settings.includes("<SessionEventsPanel"), "sessionStore detail card mounts the rotation panel");
 ok(settings.includes('import { SessionEventsPanel, type RotationMode }'), "SettingsPanel imports the panel with its literal mode type");
 
 // Bridge contract: three views + two setters, declared and mocked.
@@ -107,8 +109,8 @@ ok(panel.includes("settings.eventsRotation.desc.${mode}") && panel.includes("set
 // manual/auto). The old gate treated "manual" as off AND let "off" light up —
 // both wrong against the three-state mode.
 ok(
-  settings.includes('on: (s.eventsAutoRotation ?? "manual") !== "off"'),
-  "menu entry lights for manual/auto and grays ONLY on off (switch state, task 362)",
+  settings.includes('on: (s.sessionStorage ?? "v3_only") !== "v3_only" || (s.eventsAutoRotation ?? "manual") !== "off"'),
+  "sessionStore entry light reads the rotation mode (manual/auto lit, off gray, task 362 shape)",
 );
 ok(
   !settings.includes('on: (s.eventsAutoRotation ?? "manual") !== "manual"'),

@@ -112,7 +112,8 @@ async function runCase(
 
   const panel = read("../components/SettingsPanel.tsx");
   ok(panel.includes("app.SetUpdateChime(on)"), "lab switch calls SetUpdateChime");
-  ok(panel.includes('selected === "restartUpdate"'), "switch lives in the automatic-update group");
+  // Task 561 M6: the update family folded into the updateFeedback card.
+  ok(panel.includes('selected === "updateFeedback"'), "switch lives in the updateFeedback family card");
 
   const bridge = read("../lib/bridge.ts");
   ok(bridge.includes("SetUpdateChime(enabled: boolean)"), "bridge interface carries SetUpdateChime");

@@ -34,7 +34,7 @@ const zhTW = readFileSync(join(root, "locales/zh-TW.ts"), "utf8");
 
 // ── old entry removed, new entry present (no double入口) ────────────────────
 ok(!panelRaw.includes("settings.optimisticWrite"), "the permissions-area entry no longer references the old label key");
-ok(panel.includes('{ id: "optimisticParallel", group: "efficiency",'),
+ok(panel.includes('{ id: "optimisticParallel", group: "automation",'),
   "the lab entry lives in the efficiency group (render table)");
 ok(panel.includes('| "optimisticParallel"'), "the detail union includes the id");
 

@@ -22,15 +22,16 @@ function ok(condition: unknown, label: string) {
   passed++;
 }
 
-// Render table: mounted on the lab STORAGE group (the "cost optimization"
-// home per the task body), not scattered elsewhere. Task 427: the cold-cache
-// entry merged into the shared compress-opt card (light reads either switch).
+// Render table: task 427 merged the cold-cache entry into the compress-opt
+// card; task 561 M3 folds that card into contextGovernance (efficiency) —
+// the family light still reads the switch.
 ok(
-  panel.includes('{ id: "compressOpt", group: "storage",') &&
+  panel.includes('{ id: "contextGovernance", group: "efficiency",') &&
     panel.includes("Boolean(s.experimentalColdCacheCompact)"),
-  "render table carries the merged entry in the storage group",
+  "render table carries the contextGovernance family entry in the efficiency group",
 );
-ok(panel.includes('| "compressOpt"'), "the detail-card union includes the merged id");
+ok(panel.includes('| "contextGovernance"'), "the detail-card union includes the family id");
+ok(!panel.includes('| "compressOpt"'), "the standalone compressOpt union id is gone (task 561 M3)");
 
 // Detail card: switch + two knobs, each writing through its own setter.
 ok(panel.includes("app.SetExperimentalColdCacheCompact(on)"), "switch writes through its setter");
@@ -41,9 +42,9 @@ ok(panel.includes("app.SetColdCacheCompactIdleMinutes(h * 60)"), "idle knob conv
 // the proactive-compact block mounts before the cold-cache block (same order
 // as the former standalone cards).
 {
-  const start = panel.indexOf('{selected === "compressOpt" && (');
-  const next = panel.indexOf('{selected === "compactionParallel" && (');
-  ok(start >= 0 && next > start, "merged compress-opt card located in the detail area");
+  const start = panel.indexOf('{selected === "contextGovernance" && (');
+  const next = panel.indexOf('{selected === "devDebug" && (');
+  ok(start >= 0 && next > start, "merged context-governance card located in the detail area");
   const card = panel.slice(start, next);
   ok(
     card.indexOf('app.SetExperimentalProactiveCompact(') < card.indexOf('app.SetExperimentalColdCacheCompact('),

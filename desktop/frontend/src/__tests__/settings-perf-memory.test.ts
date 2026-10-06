@@ -51,7 +51,7 @@ ok(settings.includes("import { PerfMemorySection } from \"./PerfMemorySection\""
 ok(
   settings.includes("<PerfMemorySection busy={busy} apply={apply} />") &&
     settings.indexOf("<PerfMemorySection") > settings.indexOf('selected === "monitoring"') &&
-    settings.indexOf("<PerfMemorySection") < settings.indexOf('selected === "sessionStorage"'),
+    settings.indexOf("<PerfMemorySection") < settings.indexOf('selected === "sessionStore"'),
   "Section mounts inside the monitoring detail card",
 );
 ok(settings.includes("await app.SaveHeapProfile();"), "Original export-only heap button is preserved");

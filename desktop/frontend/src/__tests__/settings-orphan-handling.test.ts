@@ -29,7 +29,7 @@ function ok(condition: unknown, label: string) {
 
 // Render table: exactly one misc-group entry, reading the merged view field.
 ok(
-  panel.includes('{ id: "orphanHandling", group: "misc",') &&
+  panel.includes('{ id: "orphanHandling", group: "infra",') &&
     panel.includes("Boolean(s.experimentalOrphanHandling)"),
   "render table carries the single merged entry in the misc group",
 );

@@ -46,7 +46,7 @@ const render = fs.readFileSync(
 
 // 1. Render table: the entry exists and reads the boot-snapshot switch.
 ok(
-  panel.includes('{ id: "zcodeTaskBus", group: "misc"'),
+  panel.includes('{ id: "zcodeTaskBus", group: "infra"'),
   "lab rail hosts the zcodeTaskBus entry in the misc group",
 );
 ok(

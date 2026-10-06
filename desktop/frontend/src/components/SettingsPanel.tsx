@@ -1782,79 +1782,77 @@ function asSessionStorageMode(value: string | undefined): SessionStorageMode {
 }
 
 type ExperimentFeatureId =
-  | "restartUpdate"
+  // Task 561 merged family cards — the merge is entry/card level only: every
+  // member switch below keeps its own config key and its own setter (task
+  // 427/318.5 precedent). Family map:
+  //   autonomousRunGuard = M1 自动化族   (autonomousIdleTerminate + loopStreakNote)
+  //   modelStrategy      = M2 模型策略族 (highSpeedModel + retired
+  //                        modelCapabilityFilter shown read-only inside the card)
+  //   contextGovernance  = M3 压缩/预算族 (compactionParallel + budgetControl +
+  //                        compressOpt + cacheTuning)
+  //   subagentSuite      = M4 子代理族   (subagentPanel + subagentDetail +
+  //                        subagentPolicy + subagentTps)
+  //   devDebug           = M5 开发调试族 (cdpDebugPort + lifecycleNoiseGate)
+  //   updateFeedback     = M6 更新/反馈族 (restartUpdate + feedback)
+  //   sessionStore       = M7 会话存储族 (sessionStorage + eventsRotation)
+  // M8 keeps standalone entries: autopilot / sessionCollab / monitoring /
+  // fullAccess / optimisticParallel.
+  | "autopilot"
   // Task 318.5: session + performance monitoring merge into one lab entry
   // (the two underlying switches stay independent inside the page).
   | "monitoring"
-  | "sessionStorage"
-  // Task 333: event-log rotation gate + storage statistic card (lab → storage).
-  | "eventsRotation"
   | "splitView"
   | "todoSidebar"
-  // Task 495: subagent panel package (dock tab + ended-card collapse).
-  | "subagentPanel"
-  // 任务 507: subagent detail view (plan C off / plan A on).
-  | "subagentDetail"
   // Task 505: session graph wall (palette 跳转会话 entry + grid wall).
   | "sessionWall"
   | "promptHistoryPicker"
   // 任务 506: tab-strip adaptive compression (tiered tab width once >8 tabs).
   | "tabCompress"
-  | "feedback"
   | "localServer"
   | "pathRules"
-  | "cacheTuning"
   | "traceAsState"
+  // Task 244 B3 (batch 1 of the MiMo-inspired experiment switches).
+  | "eventWaitRecheck"
   | "dream"
   | "autoLoadOlder"
   | "sessionCollab"
-  // Task 244 B1/B2/B3 (batch 1 of the MiMo-inspired experiment switches).
-  | "autonomousIdleTerminate"
-  | "loopStreakNote"
-  | "eventWaitRecheck"
-  // Task 244 B5/B4, merged into one switch by task 449.
+  // Task 244 B4/B5, merged into one switch by task 449.
   | "orphanHandling"
   // Task 363A: runtime assembly reuse pool.
   | "runtimeReuse"
   | "messageMerge"
-  | "autopilot"
   // Task 265 lab intake (9 fork features) + task 262 quick commands.
-  | "highSpeedModel"
-  // Task 318.2/297: storage "compaction" pair merged into ONE rail entry
-  // (task 427: compress-opt card, two independent switches — light reads
-  // either; config keys unchanged).
-  | "compressOpt"
-  | "compactionParallel"
-  // Task 265 budget pair merged into ONE rail entry (task 427: budget-control
-  // card, two independent switches — light reads either).
-  | "budgetControl"
-  // Task 231: managed-path pre-approval (master switch + four checkboxes).
-  | "preapproveManagedPaths"
-  // Task 192: active-tab residency policy.
   // Task 163: OpenCode Go subscription usage card.
+  | "quickCommands"
   | "opencodeGoUsage"
+  // Task 231: managed-path pre-approval (master switch + four checkboxes).
+  // Task 364 folded the entry into the autopilot card but the id stays in
+  // this union (561 did NOT fold it — restored by the 561 follow-up after
+  // settings-preapprove-managed.test.ts caught the accidental drop).
+  | "preapproveManagedPaths"
   // Task 280: the former permissions-area safety checkbox, re-homed here as
   // "optimistic parallel writes" (same underlying key, inverted checkbox).
   | "optimisticParallel"
   | "draftPersistence"
   | "selectionActions"
   | "questionSearch"
-  | "subagentPolicy"
-  | "subagentTps"
   | "completionSummary"
-  | "quickCommands"
-  // Task 342: WebView2 CDP debug endpoint.
-  | "cdpDebugPort"
   // Task 385a: lab 回答风格 (output style selector + persistence).
   | "outputStyle"
   // Task 257: full access (yolo).
   | "fullAccess"
   // S1: resident base subprocess (design 2026-09-30 §7 R4).
   | "baseProcess"
-  // Task 377: crash-report lifecycle noise triage.
-  | "lifecycleNoiseGate"
   // Task 439: built-in zcode task bus (embedded loopback bus MCP host).
-  | "zcodeTaskBus";
+  | "zcodeTaskBus"
+  // Task 561: the seven merged family-card ids.
+  | "autonomousRunGuard"
+  | "modelStrategy"
+  | "contextGovernance"
+  | "subagentSuite"
+  | "devDebug"
+  | "updateFeedback"
+  | "sessionStore";
 
 function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Set when a boot-time setting is saved: apply() reloads the view, so the fact that a
@@ -1887,13 +1885,19 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Task 19: the addressable roster is read on demand, not on every settings
   // load — a session only appears once it has registered a purpose.
   const [sessionCollabRoster, setSessionCollabRoster] = useState<Awaited<ReturnType<typeof app.ListAddressableSessions>>>([]);
-  type LabGroupKey = "efficiency" | "debug" | "ui" | "storage" | "misc";
+  // 任务 561: the lab regroups into 7 domains — efficiency splits out
+  // automation, misc renames to infra, debug splits into observability +
+  // dev-debug. Membership follows the 2026-10-06 audit table (46 items,
+  // 8/10/15/2/2/2/7).
+  type LabGroupKey = "automation" | "efficiency" | "ui" | "observability" | "dev-debug" | "storage" | "infra";
   // Task 257: turning full access ON passes one danger confirmation first —
   // the same one-shot gate shape as Claude Code / MiMo's yolo mode. Turning
   // it OFF never asks.
   const { confirm: confirmFullAccess, dialog: fullAccessDialog } = useConfirmDialog();
 
-const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
+// Task 561: the default selection follows the first rail entry (autopilot;
+// the old default restartUpdate folded into the updateFeedback card).
+const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
   const [labFilter, setLabFilter] = useState<LabGroupKey | "all">("all");
   // Task 385a: the 回答风格 selector payload loads on demand — only while its
   // lab entry is open, and again after every save that can change the active
@@ -1992,110 +1996,111 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
     }
   }, []);
 
-  // 任务 250（用户裁决 2026-09-22）：实验室分组重划为 5 组——组顺序即 rail 渲染顺序。
+  // 任务 561（用户裁定 2026-10-06）：实验室分组重划为 7 组——组顺序即 rail 渲染顺序。
   const labGroups = [
+    { key: "automation", labelKey: "settings.labGroup.automation" },
     { key: "efficiency", labelKey: "settings.labGroup.efficiency" },
-    { key: "debug", labelKey: "settings.labGroup.debug" },
     { key: "ui", labelKey: "settings.labGroup.ui" },
+    { key: "observability", labelKey: "settings.labGroup.observability" },
+    { key: "dev-debug", labelKey: "settings.labGroup.devDebug" },
     { key: "storage", labelKey: "settings.labGroup.storage" },
-    { key: "misc", labelKey: "settings.labGroup.misc" },
+    { key: "infra", labelKey: "settings.labGroup.infra" },
   ] as const;
+  // 任务 561: the features array is the lab render table — every entry below
+  // must keep its own `on` read and its own setter wiring in the pane (81/123
+  // lost-save rule). Group membership follows the 2026-10-06 audit table
+  // (46 items: automation 8 / efficiency 10 / ui 15 / observability 2 /
+  // dev-debug 2 / storage 2 / infra 7).
   const features: Array<{ id: ExperimentFeatureId; label: string; on: boolean; group: LabGroupKey }> = [
-    { id: "autopilot", group: "efficiency", label: t("settings.autopilot"), on: Boolean(s.autopilot) },
-    { id: "dream", group: "efficiency", label: t("settings.dream"), on: Boolean(s.experimentalDream) },
-    { id: "sessionCollab", group: "efficiency", label: t("settings.sessionCollab"), on: Boolean(s.experimentalSessionCollab) },
-    { id: "autonomousIdleTerminate", group: "efficiency", label: t("settings.autonomousIdleTerminate"), on: Boolean(s.experimentalAutonomousIdleTerminate) },
-    { id: "loopStreakNote", group: "efficiency", label: t("settings.loopStreakNote"), on: Boolean(s.experimentalLoopStreakNote) },
-    { id: "eventWaitRecheck", group: "efficiency", label: t("settings.eventWaitRecheck"), on: Boolean(s.experimentalEventWaitRecheck) },
+    // ── automation（自动化，8 项）──────────────────────────────────
+    { id: "autopilot", group: "automation", label: t("settings.autopilot"), on: Boolean(s.autopilot) },
+    { id: "sessionCollab", group: "automation", label: t("settings.sessionCollab"), on: Boolean(s.experimentalSessionCollab) },
+    // Task 257: full access (yolo) — it widens permissions to cut approvals.
+    // Task 364/561: a permission-shape switch, re-homed beside the other
+    // autonomy switches (task 561 audit table).
+    { id: "fullAccess", group: "automation", label: t("settings.fullAccess"), on: Boolean(s.experimentalFullAccess) },
     // Task 280: re-homed from the permissions area (task 280; inverted bind —
     // `on` here means optimistic ON = safety check OFF, default off).
-    { id: "optimisticParallel", group: "efficiency", label: t("settings.optimisticParallel"), on: Boolean(s.sandbox?.optimisticWrite) },
-    // Task 449: the task-244 B5 lease reclaim + B4 recovery sweep are one
-    // switch now — the entry light reads the single merged key.
-    { id: "orphanHandling", group: "misc", label: t("settings.orphanHandling"), on: Boolean(s.experimentalOrphanHandling) },
-    { id: "runtimeReuse", group: "misc", label: t("settings.runtimeReuse"), on: Boolean(s.experimentalRuntimeReuse) },
+    { id: "optimisticParallel", group: "automation", label: t("settings.optimisticParallel"), on: Boolean(s.sandbox?.optimisticWrite) },
+    { id: "dream", group: "automation", label: t("settings.dream"), on: Boolean(s.experimentalDream) },
+    // Task 561 M1 自动化族: one card for the two autonomous-run guards — the
+    // light reads either switch; each switch keeps its own setter below
+    // (81/123 lost-save rule).
+    { id: "autonomousRunGuard", group: "automation", label: t("settings.autonomousRunGuard"), on: Boolean(s.experimentalAutonomousIdleTerminate) || Boolean(s.experimentalLoopStreakNote) },
+    // ── efficiency（提效，10 项）──────────────────────────────────
+    // Task 561 M3 压缩/预算族: the four context/cache governance entries
+    // (compactionParallel + budgetControl + compressOpt + cacheTuning) fold
+    // into ONE card — the light reads any of the six underlying switches;
+    // every switch keeps its own setter in the card (81/123 lost-save rule).
+    { id: "contextGovernance", group: "efficiency", label: t("settings.contextGovernance"), on: Boolean(s.experimentalCompactionParallel) || Boolean(s.experimentalContextBudget) || Boolean(s.experimentalResearchBudget) || Boolean(s.experimentalProactiveCompact) || Boolean(s.experimentalColdCacheCompact) || Boolean(s.experimentalCacheTuning) },
+    // Task 561 M2 模型策略族: highSpeedModel keeps its writable switch;
+    // modelCapabilityFilter (retired, task 551/564 domain) renders read-only
+    // inside the card — no setter call, the stored value only displays.
+    { id: "modelStrategy", group: "efficiency", label: t("settings.modelStrategy"), on: Boolean(s.experimentalHighSpeedModel) },
     { id: "messageMerge", group: "efficiency", label: t("settings.messageMerge"), on: (s.collabInboxMerge || "off") !== "off" || Boolean(s.collabGuidanceMerge) },
-    { id: "localServer", group: "efficiency", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
-    { id: "traceAsState", group: "efficiency", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
-    // Task 318.5: one lab entry for both monitors — the entry light is on when
-    // either switch is on; the page keeps two independent switches.
-    { id: "monitoring", group: "debug", label: t("settings.monitoring"), on: Boolean(s.experimentalSessionMonitor) || Boolean(s.experimentalPerfMonitor) },
-    { id: "feedback", group: "debug", label: t("settings.feedback"), on: Boolean(s.experimentalFeedback) },
-    { id: "restartUpdate", group: "debug", label: t("settings.restartUpdate"), on: Boolean(s.experimentalRestartUpdate) },
-    { id: "splitView", group: "ui", label: t("settings.splitView"), on: Boolean(s.experimentalSplitView) },
-    { id: "todoSidebar", group: "ui", label: t("settings.todoSidebar"), on: Boolean(s.experimentalTodoSidebar) },
-    // Task 495: subagent panel package (right-dock tab + ended-card collapse).
-    { id: "subagentPanel", group: "ui", label: t("settings.subagentPanel"), on: Boolean(s.experimentalSubagentPanel) },
-    { id: "subagentDetail", group: "ui", label: t("settings.subagentDetail"), on: Boolean(s.experimentalSubagentDetail) },
-    // Task 505: session graph wall (palette 跳转会话 entry + grid wall).
-    { id: "sessionWall", group: "ui", label: t("settings.sessionWall"), on: Boolean(s.experimentalSessionWall) },
-    // Task 261: composer history picker + narrowed ArrowUp (upstream #10425).
-    { id: "promptHistoryPicker", group: "ui", label: t("settings.promptHistoryPicker"), on: Boolean(s.experimentalPromptHistoryPicker) },
-    // 任务 506：标签栏自适应压缩（>8 个标签逐级降宽，下限 84px）。
-    { id: "tabCompress", group: "ui", label: t("settings.tabCompress"), on: Boolean(s.experimentalTabCompress) },
-    { id: "autoLoadOlder", group: "ui", label: t("settings.autoLoadOlder"), on: Boolean(s.experimentalAutoLoadOlder) },
-    { id: "cacheTuning", group: "storage", label: t("settings.cacheTuning"), on: Boolean(s.experimentalCacheTuning) },
-    { id: "sessionStorage", group: "storage", label: t("settings.sessionStorage"), on: (s.sessionStorage ?? "v3_only") !== "v3_only" },
-    // Task 427: the two storage "compaction" entries (proactiveCompact +
-    // coldCacheCompact) merge into one "compress optimization" card — the
-    // light reads either switch; the detail card keeps both switches
-    // independently saved (render table: a missing entry would silently drop
-    // the save, 81/123 lesson).
-    { id: "compressOpt", group: "storage", label: t("settings.compressOpt"), on: Boolean(s.experimentalProactiveCompact) || Boolean(s.experimentalColdCacheCompact) },
-    // Task 333: rotation gate entry — the light reads any non-default mode so
-    // the statistic card stays discoverable (render table: a missing entry
-    // would silently drop the save, 81/123 lesson).
-    { id: "eventsRotation", group: "storage", label: t("settings.eventsRotation"), on: (s.eventsAutoRotation ?? "manual") !== "off" },
-    { id: "pathRules", group: "misc", label: t("settings.pathRules"), on: Boolean(s.experimentalPathRules) },
-    // Task 265 lab intake: 9 fork features (efficiency 5 / ui 2 / debug 2).
-    // Task 318.1: highSpeedModel's light reads the new switch (default off).
-    { id: "highSpeedModel", group: "efficiency", label: t("settings.highSpeedModel"), on: Boolean(s.experimentalHighSpeedModel) },
-    { id: "compactionParallel", group: "efficiency", label: t("settings.compactionParallel"), on: Boolean(s.experimentalCompactionParallel) },
-    // Task 427: the two budget entries (contextBudget + researchBudget) merge
-    // into one "budget control" card — light reads either switch; detail card
-    // keeps both switches independently saved (81/123 lost-save rule).
-    { id: "budgetControl", group: "efficiency", label: t("settings.budgetControl"), on: Boolean(s.experimentalContextBudget) || Boolean(s.experimentalResearchBudget) },
-    // Task 318.3: draft persistence light reads the new switch (default off).
-    { id: "draftPersistence", group: "ui", label: t("settings.draftPersistence"), on: Boolean(s.experimentalComposerDraft) },
-    { id: "selectionActions", group: "ui", label: t("settings.selectionActions"), on: Boolean(s.experimentalSelectionActions) },
-    { id: "questionSearch", group: "ui", label: t("settings.questionSearch"), on: Boolean(s.experimentalQuestionSearch) },
-    { id: "subagentPolicy", group: "efficiency", label: t("settings.subagentPolicy"), on: Boolean(s.experimentalSubagentPolicy) },
-    { id: "subagentTps", group: "debug", label: t("settings.subagentTps"), on: Boolean(s.experimentalSubagentTps) },
-    // Task 318.4: completion summary moves from debug to the ui group.
-    { id: "completionSummary", group: "ui", label: t("settings.completionSummary"), on: Boolean(s.experimentalCompletionSummary) },
     // Task 262: quick commands move here from the general page.
     { id: "quickCommands", group: "efficiency", label: t("settings.quickCommands"), on: Boolean(s.experimentalQuickCommands) },
+    { id: "traceAsState", group: "efficiency", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
+    { id: "eventWaitRecheck", group: "efficiency", label: t("settings.eventWaitRecheck"), on: Boolean(s.experimentalEventWaitRecheck) },
     // Task 385a: 回答风格 (output style) — 提效类, efficiency group; render
     // table: a missing entry would silently drop the save, 81/123 lesson.
     // The light also reads a configured style: it stays discoverable after
     // the panel is closed, same shape as the storage entries below.
     { id: "outputStyle", group: "efficiency", label: t("settings.outputStyle"), on: Boolean(s.experimentalOutputStyleUI) || (s.outputStyle ?? "") !== "" },
-    // Task 342: CDP debug endpoint (debug group) — render table: a missing
-    // entry would silently drop the save, 81/123 lesson.
-    { id: "cdpDebugPort", group: "debug", label: t("settings.cdpDebugPort"), on: Boolean(s.experimentalCDPDebugPort) },
-    // Task 257: full access (yolo) lands in misc beside path rules — it is a
-    // permission-shape switch, not a plain productivity toggle.
-    // Task 364: full access (YOLO) re-homed from misc to efficiency — it
-    // widens permissions to cut approvals, which is productivity semantics.
-    { id: "fullAccess", group: "efficiency", label: t("settings.fullAccess"), on: Boolean(s.experimentalFullAccess) },
-    // Task 364: managed-path pre-approval no longer has its own rail entry —
-    // it renders as a sub-block inside the autopilot card (single entry; the
-    // render-table rule above still holds for every entry that remains).
-    // Task 192: residency policy entry (render table — a missing entry would
-    // silently drop the save, 81/123 lesson).
+    // ── ui（界面，15 项）─────────────────────────────────────────
+    // 任务 506：标签栏自适应压缩（>8 个标签逐级降宽，下限 84px）。
+    { id: "tabCompress", group: "ui", label: t("settings.tabCompress"), on: Boolean(s.experimentalTabCompress) },
+    { id: "todoSidebar", group: "ui", label: t("settings.todoSidebar"), on: Boolean(s.experimentalTodoSidebar) },
+    // Task 261: composer history picker + narrowed ArrowUp (upstream #10425).
+    { id: "promptHistoryPicker", group: "ui", label: t("settings.promptHistoryPicker"), on: Boolean(s.experimentalPromptHistoryPicker) },
+    // Task 505: session graph wall (palette 跳转会话 entry + grid wall).
+    { id: "sessionWall", group: "ui", label: t("settings.sessionWall"), on: Boolean(s.experimentalSessionWall) },
+    // Task 561 M4 子代理族: panel + detail + policy + tps fold into ONE card
+    // (members used to sit in ui / automation / observability) — the light
+    // reads any of the four switches; each keeps its own setter (81/123).
+    { id: "subagentSuite", group: "ui", label: t("settings.subagentSuite"), on: Boolean(s.experimentalSubagentPanel) || Boolean(s.experimentalSubagentDetail) || Boolean(s.experimentalSubagentPolicy) || Boolean(s.experimentalSubagentTps) },
+    // Task 318.4: completion summary moves from debug to the ui group.
+    { id: "completionSummary", group: "ui", label: t("settings.completionSummary"), on: Boolean(s.experimentalCompletionSummary) },
+    { id: "autoLoadOlder", group: "ui", label: t("settings.autoLoadOlder"), on: Boolean(s.experimentalAutoLoadOlder) },
+    { id: "splitView", group: "ui", label: t("settings.splitView"), on: Boolean(s.experimentalSplitView) },
+    // Task 318.3: draft persistence light reads the new switch (default off).
+    { id: "draftPersistence", group: "ui", label: t("settings.draftPersistence"), on: Boolean(s.experimentalComposerDraft) },
+    { id: "selectionActions", group: "ui", label: t("settings.selectionActions"), on: Boolean(s.experimentalSelectionActions) },
+    { id: "questionSearch", group: "ui", label: t("settings.questionSearch"), on: Boolean(s.experimentalQuestionSearch) },
     // Task 163: usage card entry (render table — same 81/123 lost-save rule).
-    { id: "opencodeGoUsage", group: "misc", label: t("settings.opencodeGoUsage"), on: Boolean(s.experimentalOpenCodeGoUsage) },
-    // S1: resident base subprocess (infrastructure switch; misc beside the
+    { id: "opencodeGoUsage", group: "ui", label: t("settings.opencodeGoUsage"), on: Boolean(s.experimentalOpenCodeGoUsage) },
+    // Task 561 M6 更新/反馈族: restartUpdate + feedback fold into ONE card —
+    // the light reads either switch; each keeps its own setter (81/123).
+    { id: "updateFeedback", group: "ui", label: t("settings.updateFeedback"), on: Boolean(s.experimentalRestartUpdate) || Boolean(s.experimentalFeedback) },
+    // ── observability（可观测性，2 项）────────────────────────────
+    // Task 318.5: one lab entry for both monitors — the entry light is on when
+    // either switch is on; the page keeps two independent switches.
+    { id: "monitoring", group: "observability", label: t("settings.monitoring"), on: Boolean(s.experimentalSessionMonitor) || Boolean(s.experimentalPerfMonitor) },
+    // ── dev-debug（开发调试，2 项）────────────────────────────────
+    // Task 561 M5 开发调试族: cdpDebugPort + lifecycleNoiseGate fold into ONE
+    // card — the light reads either switch; each keeps its own setter.
+    { id: "devDebug", group: "dev-debug", label: t("settings.devDebug"), on: Boolean(s.experimentalCDPDebugPort) || Boolean(s.experimentalLifecycleNoiseGate) },
+    // ── storage（存储，2 项）─────────────────────────────────────
+    // Task 561 M7 会话存储族: sessionStorage + eventsRotation fold into ONE
+    // card — the light reads either non-default value; each keeps its own
+    // setter (81/123 lost-save rule).
+    { id: "sessionStore", group: "storage", label: t("settings.sessionStore"), on: (s.sessionStorage ?? "v3_only") !== "v3_only" || (s.eventsAutoRotation ?? "manual") !== "off" },
+    // ── infra（基础设施，7 项）───────────────────────────────────
+    // Task 363A: runtime assembly reuse pool.
+    { id: "runtimeReuse", group: "infra", label: t("settings.runtimeReuse"), on: Boolean(s.experimentalRuntimeReuse) },
+    // S1: resident base subprocess (infrastructure switch; infra beside the
     // other infrastructure entries). Render table: a missing entry would
     // silently drop the save, 81/123 lesson.
-    { id: "baseProcess", group: "misc", label: t("settings.baseProcess"), on: Boolean(s.experimentalBaseProcess) },
-    // Task 377: noise triage (misc beside the other infrastructure entries).
-    // Render table: a missing entry would silently drop the save, 81/123 lesson.
-    { id: "lifecycleNoiseGate", group: "misc", label: t("settings.lifecycleNoiseGate"), on: Boolean(s.experimentalLifecycleNoiseGate) },
-    // Task 439: built-in zcode task bus (misc beside the infrastructure
+    { id: "baseProcess", group: "infra", label: t("settings.baseProcess"), on: Boolean(s.experimentalBaseProcess) },
+    // Task 439: built-in zcode task bus (infra beside the infrastructure
     // entries). Render table: a missing entry would silently drop the save,
     // 81/123 lesson.
-    { id: "zcodeTaskBus", group: "misc", label: t("settings.zcodeTaskBus"), on: Boolean(s.experimentalZcodeTaskBus) },
+    { id: "zcodeTaskBus", group: "infra", label: t("settings.zcodeTaskBus"), on: Boolean(s.experimentalZcodeTaskBus) },
+    { id: "pathRules", group: "infra", label: t("settings.pathRules"), on: Boolean(s.experimentalPathRules) },
+    // Task 449: the task-244 B5 lease reclaim + B4 recovery sweep are one
+    // switch now — the entry light reads the single merged key.
+    { id: "orphanHandling", group: "infra", label: t("settings.orphanHandling"), on: Boolean(s.experimentalOrphanHandling) },
+    { id: "localServer", group: "infra", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
   ];
 
   return (
@@ -2268,116 +2273,568 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
               </SettingsOptions>
             </SettingsField>
           )}
-          {selected === "restartUpdate" && (
-            <SettingsField label={t("settings.restartUpdate")} hint={t("settings.restartUpdateHint")} icon={<RefreshCw size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalRestartUpdate) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(() => app.SetExperimentalRestartUpdate(on))}
-                  >
-                    {t(on ? "settings.restartUpdate.on" : "settings.restartUpdate.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
-          )}
-          {selected === "restartUpdate" && (
+          {/* Task 561 M6 更新/反馈族: the restart-and-update family and the feedback
+              family fold into ONE card; every switch below keeps its own
+              setter and its own config key (81/123 lost-save rule; task
+              427/318.5 merge precedent). */}
+          {selected === "updateFeedback" && (
             <>
-              {/*
-               * Task 381: the fast-switch staging directory. Empty = the
-               * historical default under the install root; the restart-and-
-               * update path names the exact directory in its error when the
-               * artifacts are missing, so a wrong path is never a silent
-               * failure. The reset button clears the override back to the
-               * default semantics. Rendered as a sibling block (not nested)
-               * so it gets its own full-width row.
-               */}
-              <SettingsField label={t("settings.stagingDir")} hint={t("settings.stagingDirHint")} icon={<RefreshCw size={18} />}>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", width: "100%" }}>
-                  <input
-                    key={`staging-${s.stagingDir ?? ""}`}
-                    className="set-input"
-                    type="text"
-                    defaultValue={String(s.stagingDir ?? "")}
-                    disabled={busy}
-                    placeholder="<installRoot>/staging"
-                    aria-label={t("settings.stagingDir")}
-                    onBlur={(e) => void apply(() => app.SetStagingDir(e.target.value))}
-                  />
-                  <button
-                    className="set-seg__btn"
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void apply(() => app.SetStagingDir(""))}
-                  >
-                    {t("settings.stagingDirReset")}
-                  </button>
-                </div>
+              <SettingsField label={t("settings.restartUpdate")} hint={t("settings.restartUpdateHint")} icon={<RefreshCw size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalRestartUpdate) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalRestartUpdate(on))}
+                    >
+                      {t(on ? "settings.restartUpdate.on" : "settings.restartUpdate.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
               </SettingsField>
+              <>
+                {/*
+                 * Task 381: the fast-switch staging directory. Empty = the
+                 * historical default under the install root; the restart-and-
+                 * update path names the exact directory in its error when the
+                 * artifacts are missing, so a wrong path is never a silent
+                 * failure. The reset button clears the override back to the
+                 * default semantics. Rendered as a sibling block (not nested)
+                 * so it gets its own full-width row.
+                 */}
+                <SettingsField label={t("settings.stagingDir")} hint={t("settings.stagingDirHint")} icon={<RefreshCw size={18} />}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", width: "100%" }}>
+                    <input
+                      key={`staging-${s.stagingDir ?? ""}`}
+                      className="set-input"
+                      type="text"
+                      defaultValue={String(s.stagingDir ?? "")}
+                      disabled={busy}
+                      placeholder="<installRoot>/staging"
+                      aria-label={t("settings.stagingDir")}
+                      onBlur={(e) => void apply(() => app.SetStagingDir(e.target.value))}
+                    />
+                    <button
+                      className="set-seg__btn"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetStagingDir(""))}
+                    >
+                      {t("settings.stagingDirReset")}
+                    </button>
+                  </div>
+                </SettingsField>
+              </>
+              // Task 254: the agent-facing half of the restart-and-update lab. The
+              // restart_update tool registers at boot only, so saving sets
+              // restartNeeded — the same signal that raises the restart banner.
+              <SettingsField label={t("settings.autonomousUpdate")} hint={t("settings.autonomousUpdateHint")} icon={<RefreshCw size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalAutonomousUpdate) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalAutonomousUpdate(on);
+                        setRestartNeeded(true);
+                      })}
+                    >
+                      {t(on ? "settings.autonomousUpdate.on" : "settings.autonomousUpdate.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              // Task 254 (user ruling): the auto-resume scope dial. Unlike the
+              // tool toggle this takes effect live — execute reads it when it
+              // fires and restore reads it when the new process boots — so no
+              // restartNeeded here.
+              <SettingsField label={t("settings.autonomousUpdateResume")} hint={t("settings.autonomousUpdateResumeHint")} icon={<RefreshCw size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {(["off", "goal_autopilot", "all"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      className={`set-seg__btn${(s.autonomousUpdateResume ?? "goal_autopilot") === mode ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetAutonomousUpdateResume(mode))}
+                    >
+                      {t(`settings.autonomousUpdateResume.${mode}`)}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              // Task 277: update-complete chime. The one-shot gate lives in the
+              // frontend (last-chimed version), so the flip applies immediately.
+              <SettingsField label={t("settings.updateChime")} hint={t("settings.updateChimeHint")} icon={<Volume2 size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.updateChime) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetUpdateChime(on))}
+                    >
+                      {t(on ? "settings.updateChime.on" : "settings.updateChime.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.restartUpdate")} hint={t("settings.restartUpdateHint")} icon={<RefreshCw size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalRestartUpdate) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalRestartUpdate(on))}
+                    >
+                      {t(on ? "settings.restartUpdate.on" : "settings.restartUpdate.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <>
+                {/*
+                 * Task 381: the fast-switch staging directory. Empty = the
+                 * historical default under the install root; the restart-and-
+                 * update path names the exact directory in its error when the
+                 * artifacts are missing, so a wrong path is never a silent
+                 * failure. The reset button clears the override back to the
+                 * default semantics. Rendered as a sibling block (not nested)
+                 * so it gets its own full-width row.
+                 */}
+                <SettingsField label={t("settings.stagingDir")} hint={t("settings.stagingDirHint")} icon={<RefreshCw size={18} />}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", width: "100%" }}>
+                    <input
+                      key={`staging-${s.stagingDir ?? ""}`}
+                      className="set-input"
+                      type="text"
+                      defaultValue={String(s.stagingDir ?? "")}
+                      disabled={busy}
+                      placeholder="<installRoot>/staging"
+                      aria-label={t("settings.stagingDir")}
+                      onBlur={(e) => void apply(() => app.SetStagingDir(e.target.value))}
+                    />
+                    <button
+                      className="set-seg__btn"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetStagingDir(""))}
+                    >
+                      {t("settings.stagingDirReset")}
+                    </button>
+                  </div>
+                </SettingsField>
+              </>
+              // Task 254: the agent-facing half of the restart-and-update lab. The
+              // restart_update tool registers at boot only, so saving sets
+              // restartNeeded — the same signal that raises the restart banner.
+              <SettingsField label={t("settings.autonomousUpdate")} hint={t("settings.autonomousUpdateHint")} icon={<RefreshCw size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalAutonomousUpdate) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalAutonomousUpdate(on);
+                        setRestartNeeded(true);
+                      })}
+                    >
+                      {t(on ? "settings.autonomousUpdate.on" : "settings.autonomousUpdate.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              // Task 254 (user ruling): the auto-resume scope dial. Unlike the
+              // tool toggle this takes effect live — execute reads it when it
+              // fires and restore reads it when the new process boots — so no
+              // restartNeeded here.
+              <SettingsField label={t("settings.autonomousUpdateResume")} hint={t("settings.autonomousUpdateResumeHint")} icon={<RefreshCw size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {(["off", "goal_autopilot", "all"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      className={`set-seg__btn${(s.autonomousUpdateResume ?? "goal_autopilot") === mode ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetAutonomousUpdateResume(mode))}
+                    >
+                      {t(`settings.autonomousUpdateResume.${mode}`)}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              // Task 277: update-complete chime. The one-shot gate lives in the
+              // frontend (last-chimed version), so the flip applies immediately.
+              <SettingsField label={t("settings.updateChime")} hint={t("settings.updateChimeHint")} icon={<Volume2 size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.updateChime) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetUpdateChime(on))}
+                    >
+                      {t(on ? "settings.updateChime.on" : "settings.updateChime.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.restartUpdate")} hint={t("settings.restartUpdateHint")} icon={<RefreshCw size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalRestartUpdate) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalRestartUpdate(on))}
+                    >
+                      {t(on ? "settings.restartUpdate.on" : "settings.restartUpdate.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <>
+                {/*
+                 * Task 381: the fast-switch staging directory. Empty = the
+                 * historical default under the install root; the restart-and-
+                 * update path names the exact directory in its error when the
+                 * artifacts are missing, so a wrong path is never a silent
+                 * failure. The reset button clears the override back to the
+                 * default semantics. Rendered as a sibling block (not nested)
+                 * so it gets its own full-width row.
+                 */}
+                <SettingsField label={t("settings.stagingDir")} hint={t("settings.stagingDirHint")} icon={<RefreshCw size={18} />}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", width: "100%" }}>
+                    <input
+                      key={`staging-${s.stagingDir ?? ""}`}
+                      className="set-input"
+                      type="text"
+                      defaultValue={String(s.stagingDir ?? "")}
+                      disabled={busy}
+                      placeholder="<installRoot>/staging"
+                      aria-label={t("settings.stagingDir")}
+                      onBlur={(e) => void apply(() => app.SetStagingDir(e.target.value))}
+                    />
+                    <button
+                      className="set-seg__btn"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetStagingDir(""))}
+                    >
+                      {t("settings.stagingDirReset")}
+                    </button>
+                  </div>
+                </SettingsField>
+              </>
+              // Task 254: the agent-facing half of the restart-and-update lab. The
+              // restart_update tool registers at boot only, so saving sets
+              // restartNeeded — the same signal that raises the restart banner.
+              <SettingsField label={t("settings.autonomousUpdate")} hint={t("settings.autonomousUpdateHint")} icon={<RefreshCw size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalAutonomousUpdate) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalAutonomousUpdate(on);
+                        setRestartNeeded(true);
+                      })}
+                    >
+                      {t(on ? "settings.autonomousUpdate.on" : "settings.autonomousUpdate.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              // Task 254 (user ruling): the auto-resume scope dial. Unlike the
+              // tool toggle this takes effect live — execute reads it when it
+              // fires and restore reads it when the new process boots — so no
+              // restartNeeded here.
+              <SettingsField label={t("settings.autonomousUpdateResume")} hint={t("settings.autonomousUpdateResumeHint")} icon={<RefreshCw size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {(["off", "goal_autopilot", "all"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      className={`set-seg__btn${(s.autonomousUpdateResume ?? "goal_autopilot") === mode ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetAutonomousUpdateResume(mode))}
+                    >
+                      {t(`settings.autonomousUpdateResume.${mode}`)}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              // Task 277: update-complete chime. The one-shot gate lives in the
+              // frontend (last-chimed version), so the flip applies immediately.
+              <SettingsField label={t("settings.updateChime")} hint={t("settings.updateChimeHint")} icon={<Volume2 size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.updateChime) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetUpdateChime(on))}
+                    >
+                      {t(on ? "settings.updateChime.on" : "settings.updateChime.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.restartUpdate")} hint={t("settings.restartUpdateHint")} icon={<RefreshCw size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalRestartUpdate) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalRestartUpdate(on))}
+                    >
+                      {t(on ? "settings.restartUpdate.on" : "settings.restartUpdate.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <>
+                {/*
+                 * Task 381: the fast-switch staging directory. Empty = the
+                 * historical default under the install root; the restart-and-
+                 * update path names the exact directory in its error when the
+                 * artifacts are missing, so a wrong path is never a silent
+                 * failure. The reset button clears the override back to the
+                 * default semantics. Rendered as a sibling block (not nested)
+                 * so it gets its own full-width row.
+                 */}
+                <SettingsField label={t("settings.stagingDir")} hint={t("settings.stagingDirHint")} icon={<RefreshCw size={18} />}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", width: "100%" }}>
+                    <input
+                      key={`staging-${s.stagingDir ?? ""}`}
+                      className="set-input"
+                      type="text"
+                      defaultValue={String(s.stagingDir ?? "")}
+                      disabled={busy}
+                      placeholder="<installRoot>/staging"
+                      aria-label={t("settings.stagingDir")}
+                      onBlur={(e) => void apply(() => app.SetStagingDir(e.target.value))}
+                    />
+                    <button
+                      className="set-seg__btn"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetStagingDir(""))}
+                    >
+                      {t("settings.stagingDirReset")}
+                    </button>
+                  </div>
+                </SettingsField>
+              </>
+              // Task 254: the agent-facing half of the restart-and-update lab. The
+              // restart_update tool registers at boot only, so saving sets
+              // restartNeeded — the same signal that raises the restart banner.
+              <SettingsField label={t("settings.autonomousUpdate")} hint={t("settings.autonomousUpdateHint")} icon={<RefreshCw size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalAutonomousUpdate) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalAutonomousUpdate(on);
+                        setRestartNeeded(true);
+                      })}
+                    >
+                      {t(on ? "settings.autonomousUpdate.on" : "settings.autonomousUpdate.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              // Task 254 (user ruling): the auto-resume scope dial. Unlike the
+              // tool toggle this takes effect live — execute reads it when it
+              // fires and restore reads it when the new process boots — so no
+              // restartNeeded here.
+              <SettingsField label={t("settings.autonomousUpdateResume")} hint={t("settings.autonomousUpdateResumeHint")} icon={<RefreshCw size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {(["off", "goal_autopilot", "all"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      className={`set-seg__btn${(s.autonomousUpdateResume ?? "goal_autopilot") === mode ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetAutonomousUpdateResume(mode))}
+                    >
+                      {t(`settings.autonomousUpdateResume.${mode}`)}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              // Task 277: update-complete chime. The one-shot gate lives in the
+              // frontend (last-chimed version), so the flip applies immediately.
+              <SettingsField label={t("settings.updateChime")} hint={t("settings.updateChimeHint")} icon={<Volume2 size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.updateChime) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetUpdateChime(on))}
+                    >
+                      {t(on ? "settings.updateChime.on" : "settings.updateChime.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.restartUpdate")} hint={t("settings.restartUpdateHint")} icon={<RefreshCw size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalRestartUpdate) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalRestartUpdate(on))}
+                    >
+                      {t(on ? "settings.restartUpdate.on" : "settings.restartUpdate.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <>
+                {/*
+                 * Task 381: the fast-switch staging directory. Empty = the
+                 * historical default under the install root; the restart-and-
+                 * update path names the exact directory in its error when the
+                 * artifacts are missing, so a wrong path is never a silent
+                 * failure. The reset button clears the override back to the
+                 * default semantics. Rendered as a sibling block (not nested)
+                 * so it gets its own full-width row.
+                 */}
+                <SettingsField label={t("settings.stagingDir")} hint={t("settings.stagingDirHint")} icon={<RefreshCw size={18} />}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", width: "100%" }}>
+                    <input
+                      key={`staging-${s.stagingDir ?? ""}`}
+                      className="set-input"
+                      type="text"
+                      defaultValue={String(s.stagingDir ?? "")}
+                      disabled={busy}
+                      placeholder="<installRoot>/staging"
+                      aria-label={t("settings.stagingDir")}
+                      onBlur={(e) => void apply(() => app.SetStagingDir(e.target.value))}
+                    />
+                    <button
+                      className="set-seg__btn"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetStagingDir(""))}
+                    >
+                      {t("settings.stagingDirReset")}
+                    </button>
+                  </div>
+                </SettingsField>
+              </>
+              // Task 254: the agent-facing half of the restart-and-update lab. The
+              // restart_update tool registers at boot only, so saving sets
+              // restartNeeded — the same signal that raises the restart banner.
+              <SettingsField label={t("settings.autonomousUpdate")} hint={t("settings.autonomousUpdateHint")} icon={<RefreshCw size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalAutonomousUpdate) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalAutonomousUpdate(on);
+                        setRestartNeeded(true);
+                      })}
+                    >
+                      {t(on ? "settings.autonomousUpdate.on" : "settings.autonomousUpdate.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              // Task 254 (user ruling): the auto-resume scope dial. Unlike the
+              // tool toggle this takes effect live — execute reads it when it
+              // fires and restore reads it when the new process boots — so no
+              // restartNeeded here.
+              <SettingsField label={t("settings.autonomousUpdateResume")} hint={t("settings.autonomousUpdateResumeHint")} icon={<RefreshCw size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {(["off", "goal_autopilot", "all"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      className={`set-seg__btn${(s.autonomousUpdateResume ?? "goal_autopilot") === mode ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetAutonomousUpdateResume(mode))}
+                    >
+                      {t(`settings.autonomousUpdateResume.${mode}`)}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              // Task 277: update-complete chime. The one-shot gate lives in the
+              // frontend (last-chimed version), so the flip applies immediately.
+              <SettingsField label={t("settings.updateChime")} hint={t("settings.updateChimeHint")} icon={<Volume2 size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.updateChime) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetUpdateChime(on))}
+                    >
+                      {t(on ? "settings.updateChime.on" : "settings.updateChime.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <>
+                <SettingsField label={t("settings.feedback")} hint={t("settings.feedbackHint")} icon={<Sparkles size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.experimentalFeedback) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(async () => {
+                          await app.SetExperimentalFeedback(on);
+                          setFeedbackEnabled(on);
+                        })}
+                      >
+                        {t(on ? "settings.feedback.on" : "settings.feedback.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+                {/* Task 172: the touchpoint sub-switch lives under the feedback
+                    entry. The parent switch wins at runtime (config gate); the
+                    agent reads the dial at boot, so a change raises the restart
+                    banner instead of flipping behavior mid-session. */}
+                <SettingsField label={t("settings.feedbackNudge")} hint={t("settings.feedbackNudgeHint")} icon={<Sparkles size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.experimentalFeedbackNudge) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(async () => {
+                          await app.SetExperimentalFeedbackNudge(on);
+                          setRestartNeeded(true);
+                        })}
+                      >
+                        {t(on ? "settings.feedbackNudge.on" : "settings.feedbackNudge.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+                <SettingsField label={t("settings.feedbackOpen")} hint={t("settings.feedbackOpenHint")} icon={<Sparkles size={18} />}>
+                  <button
+                    type="button"
+                    className="btn btn--small"
+                    disabled={busy || !Boolean(s.experimentalFeedback)}
+                    onClick={() => setFeedbackOpen(true)}
+                  >
+                    {t("settings.feedbackOpenAction")}
+                  </button>
+                </SettingsField>
+              </>
             </>
-          )}
-          {selected === "restartUpdate" && (
-            // Task 254: the agent-facing half of the restart-and-update lab. The
-            // restart_update tool registers at boot only, so saving sets
-            // restartNeeded — the same signal that raises the restart banner.
-            <SettingsField label={t("settings.autonomousUpdate")} hint={t("settings.autonomousUpdateHint")} icon={<RefreshCw size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalAutonomousUpdate) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(async () => {
-                      await app.SetExperimentalAutonomousUpdate(on);
-                      setRestartNeeded(true);
-                    })}
-                  >
-                    {t(on ? "settings.autonomousUpdate.on" : "settings.autonomousUpdate.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
-          )}
-          {selected === "restartUpdate" && (
-            // Task 254 (user ruling): the auto-resume scope dial. Unlike the
-            // tool toggle this takes effect live — execute reads it when it
-            // fires and restore reads it when the new process boots — so no
-            // restartNeeded here.
-            <SettingsField label={t("settings.autonomousUpdateResume")} hint={t("settings.autonomousUpdateResumeHint")} icon={<RefreshCw size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {(["off", "goal_autopilot", "all"] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    className={`set-seg__btn${(s.autonomousUpdateResume ?? "goal_autopilot") === mode ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(() => app.SetAutonomousUpdateResume(mode))}
-                  >
-                    {t(`settings.autonomousUpdateResume.${mode}`)}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
-          )}
-          {selected === "restartUpdate" && (
-            // Task 277: update-complete chime. The one-shot gate lives in the
-            // frontend (last-chimed version), so the flip applies immediately.
-            <SettingsField label={t("settings.updateChime")} hint={t("settings.updateChimeHint")} icon={<Volume2 size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.updateChime) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(() => app.SetUpdateChime(on))}
-                  >
-                    {t(on ? "settings.updateChime.on" : "settings.updateChime.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
           )}
           {selected === "baseProcess" && (
             // S1: resident base subprocess (design 2026-09-30 §7 R4). Boot
@@ -2403,29 +2860,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
               </SettingsOptions>
             </SettingsField>
           )}
-          {selected === "lifecycleNoiseGate" && (
-            // Task 377: crash-report lifecycle noise triage. Startup
-            // diagnostics read the gate once per process, so the flip lands on
-            // restart — same boot-snapshot rule as the CDP endpoint above.
-            <SettingsField label={t("settings.lifecycleNoiseGate")} hint={t("settings.lifecycleNoiseGateHint")} icon={<Volume2 size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalLifecycleNoiseGate) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(async () => {
-                      await app.SetExperimentalLifecycleNoiseGate(on);
-                      setRestartNeeded(true);
-                    })}
-                  >
-                    {t(on ? "settings.lifecycleNoiseGate.on" : "settings.lifecycleNoiseGate.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
-          )}
-          {/* Task 318.5: one entry hosts both monitors. The two switches stay
+                    {/* Task 318.5: one entry hosts both monitors. The two switches stay
               fully independent — enabling one never flips the other. */}
           {selected === "monitoring" && (
             <>
@@ -2538,42 +2973,45 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
               <PerfMemorySection busy={busy} apply={apply} />
             </>
           )}
-          {selected === "sessionStorage" && (
-            <SettingsField label={t("settings.sessionStorage")} hint={t("settings.sessionStorageHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
-              <SettingsOptions layout="field" className="set-seg">
-                {SESSION_STORAGE_MODES.map((mode) => (
-                  <button
-                    key={mode}
-                    className={`set-seg__btn${storageMode === mode ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(async () => {
-                      // Stage skipping is refused by the backend, so the stage
-                      // banner below always describes the mode that is stored.
-                      await app.SetSessionStorage(mode);
+          {/* Task 561 M7 会话存储族: storage-version + event-rotation fold into ONE
+              card — each keeps its own setter and config key (81/123
+              lost-save rule). */}
+          {selected === "sessionStore" && (
+            <>
+              <SettingsField label={t("settings.sessionStorage")} hint={t("settings.sessionStorageHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
+                <SettingsOptions layout="field" className="set-seg">
+                  {SESSION_STORAGE_MODES.map((mode) => (
+                    <button
+                      key={mode}
+                      className={`set-seg__btn${storageMode === mode ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        // Stage skipping is refused by the backend, so the stage
+                        // banner below always describes the mode that is stored.
+                        await app.SetSessionStorage(mode);
+                      })}
+                    >
+                      {t(`settings.sessionStorage.mode.${mode}`)}
+                    </button>
+                  ))}
+                </SettingsOptions>
+                <p className="settings-field__hint-line">{t(`settings.sessionStorage.stage.${storageMode}`)}</p>
+                <p className="settings-field__hint-line">{t(`settings.sessionStorage.risk.${storageMode}`)}</p>
+                {s.sessionStorageRestartPending ? (
+                  <p className="settings-field__hint-line">
+                    {t("settings.sessionStorage.restartPending", {
+                      mode: t(`settings.sessionStorage.mode.${asSessionStorageMode(s.sessionStorageEffective)}`),
                     })}
-                  >
-                    {t(`settings.sessionStorage.mode.${mode}`)}
-                  </button>
-                ))}
-              </SettingsOptions>
-              <p className="settings-field__hint-line">{t(`settings.sessionStorage.stage.${storageMode}`)}</p>
-              <p className="settings-field__hint-line">{t(`settings.sessionStorage.risk.${storageMode}`)}</p>
-              {s.sessionStorageRestartPending ? (
-                <p className="settings-field__hint-line">
-                  {t("settings.sessionStorage.restartPending", {
-                    mode: t(`settings.sessionStorage.mode.${asSessionStorageMode(s.sessionStorageEffective)}`),
-                  })}
-                </p>
-              ) : null}
-            </SettingsField>
-          )}
-          {selected === "eventsRotation" && (
-            <SettingsField label={t("settings.eventsRotation")} hint={t("settings.eventsRotationHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
-              {/* The backend normalizes the stored mode to off|manual|auto
-                  (config helper falls back to manual), so the cast cannot name
-                  a value the locales lack. */}
-              <SessionEventsPanel mode={(s.eventsAutoRotation ?? "manual") as RotationMode} busy={busy} apply={apply} />
-            </SettingsField>
+                  </p>
+                ) : null}
+              </SettingsField>
+              <SettingsField label={t("settings.eventsRotation")} hint={t("settings.eventsRotationHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
+                {/* The backend normalizes the stored mode to off|manual|auto
+                    (config helper falls back to manual), so the cast cannot name
+                    a value the locales lack. */}
+                <SessionEventsPanel mode={(s.eventsAutoRotation ?? "manual") as RotationMode} busy={busy} apply={apply} />
+              </SettingsField>
+            </>
           )}
           {selected === "splitView" && (
             <SettingsField label={t("settings.splitView")} hint={t("settings.splitViewHint")} icon={<Sparkles size={18} />}>
@@ -2665,74 +3103,105 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
               </SettingsField>
             </>
           )}
-          {selected === "subagentPanel" && (
+          {/* Task 561 M4 子代理族: panel + detail + policy + tps fold into ONE card
+              (the members used to sit in ui / automation / observability);
+              every switch keeps its own setter (81/123 lost-save rule). */}
+          {selected === "subagentSuite" && (
             <>
-              <SettingsField label={t("settings.subagentPanel")} hint={t("settings.subagentPanelHint")} icon={<Sparkles size={18} />}>
+              <>
+                <SettingsField label={t("settings.subagentPanel")} hint={t("settings.subagentPanelHint")} icon={<Sparkles size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.experimentalSubagentPanel) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(async () => {
+                          // Boot snapshot (task 495): the dock tab and the
+                          // ended-card collapse read the flag once at startup,
+                          // so saving raises the restart banner.
+                          await app.SetExperimentalSubagentPanel(on);
+                          setRestartNeeded(true);
+                        })}
+                      >
+                        {t(on ? "settings.subagentPanel.on" : "settings.subagentPanel.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+                <SettingsField
+                  label={t("workspace.subagentsTab")}
+                  hint={Boolean(s.experimentalSubagentPanel) ? t("settings.dockTabVisibilityHint") : t("settings.subagentPanelTabDisabledHint")}
+                  icon={<Sparkles size={18} />}
+                >
+                  <div className="set-gates">
+                    <label className={`set-gates__item${busy || !Boolean(s.experimentalSubagentPanel) ? " set-gates__item--locked" : ""}`}>
+                      <input
+                        type="checkbox"
+                        checked={!isDockTabHidden("subagents")}
+                        disabled={busy || !Boolean(s.experimentalSubagentPanel) || isLastRenderableVisibleTab("subagents", {
+                          todoSidebar: Boolean(s.experimentalTodoSidebar),
+                          subagentsPanel: Boolean(s.experimentalSubagentPanel),
+                          remoteAvailable,
+                          creation: desktopLayoutStyle === "creation",
+                        })}
+                        onChange={(event) => setDockTabHidden("subagents", !event.target.checked)}
+                      />
+                      <span className="set-gates__label">{t("workspace.subagentsTab")}</span>
+                    </label>
+                    {!Boolean(s.experimentalSubagentPanel) && (
+                      <div className="set-gates__hint">{t("settings.subagentPanelTabDisabledHint")}</div>
+                    )}
+                  </div>
+                </SettingsField>
+              </>
+              <SettingsField label={t("settings.subagentDetail")} hint={t("settings.subagentDetailHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
                       key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalSubagentPanel) === on ? " set-seg__btn--on" : ""}`}
+                      className={`set-seg__btn${Boolean(s.experimentalSubagentDetail) === on ? " set-seg__btn--on" : ""}`}
                       disabled={busy}
                       onClick={() => void apply(async () => {
-                        // Boot snapshot (task 495): the dock tab and the
-                        // ended-card collapse read the flag once at startup,
-                        // so saving raises the restart banner.
-                        await app.SetExperimentalSubagentPanel(on);
-                        setRestartNeeded(true);
+                        // 任务 507：纯前端门——设置保存后的 onChanged 会重放
+                        // 快照（applyLabFlags），面板交互即时换态，无需重启。
+                        await app.SetExperimentalSubagentDetail(on);
                       })}
                     >
-                      {t(on ? "settings.subagentPanel.on" : "settings.subagentPanel.off")}
+                      {t(on ? "settings.subagentDetail.on" : "settings.subagentDetail.off")}
                     </button>
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              <SettingsField
-                label={t("workspace.subagentsTab")}
-                hint={Boolean(s.experimentalSubagentPanel) ? t("settings.dockTabVisibilityHint") : t("settings.subagentPanelTabDisabledHint")}
-                icon={<Sparkles size={18} />}
-              >
-                <div className="set-gates">
-                  <label className={`set-gates__item${busy || !Boolean(s.experimentalSubagentPanel) ? " set-gates__item--locked" : ""}`}>
-                    <input
-                      type="checkbox"
-                      checked={!isDockTabHidden("subagents")}
-                      disabled={busy || !Boolean(s.experimentalSubagentPanel) || isLastRenderableVisibleTab("subagents", {
-                        todoSidebar: Boolean(s.experimentalTodoSidebar),
-                        subagentsPanel: Boolean(s.experimentalSubagentPanel),
-                        remoteAvailable,
-                        creation: desktopLayoutStyle === "creation",
-                      })}
-                      onChange={(event) => setDockTabHidden("subagents", !event.target.checked)}
-                    />
-                    <span className="set-gates__label">{t("workspace.subagentsTab")}</span>
-                  </label>
-                  {!Boolean(s.experimentalSubagentPanel) && (
-                    <div className="set-gates__hint">{t("settings.subagentPanelTabDisabledHint")}</div>
-                  )}
-                </div>
+              <SettingsField label={t("settings.subagentPolicy")} hint={t("settings.subagentPolicyHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalSubagentPolicy) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalSubagentPolicy(on))}
+                    >
+                      {t(on ? "settings.subagentPolicy.on" : "settings.subagentPolicy.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.subagentTps")} hint={t("settings.subagentTpsHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalSubagentTps) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalSubagentTps(on))}
+                    >
+                      {t(on ? "settings.subagentTps.on" : "settings.subagentTps.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
               </SettingsField>
             </>
-          )}
-          {selected === "subagentDetail" && (
-            <SettingsField label={t("settings.subagentDetail")} hint={t("settings.subagentDetailHint")} icon={<Sparkles size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalSubagentDetail) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(async () => {
-                      // 任务 507：纯前端门——设置保存后的 onChanged 会重放
-                      // 快照（applyLabFlags），面板交互即时换态，无需重启。
-                      await app.SetExperimentalSubagentDetail(on);
-                    })}
-                  >
-                    {t(on ? "settings.subagentDetail.on" : "settings.subagentDetail.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
           )}
           {selected === "sessionWall" && (
             <SettingsField label={t("settings.sessionWall")} hint={t("settings.sessionWallHint")} icon={<Sparkles size={18} />}>
@@ -2797,59 +3266,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
                   </SettingsOptions>
                 </SettingsField>
               )}
-          {selected === "feedback" && (
-            <>
-              <SettingsField label={t("settings.feedback")} hint={t("settings.feedbackHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalFeedback) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalFeedback(on);
-                        setFeedbackEnabled(on);
-                      })}
-                    >
-                      {t(on ? "settings.feedback.on" : "settings.feedback.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              {/* Task 172: the touchpoint sub-switch lives under the feedback
-                  entry. The parent switch wins at runtime (config gate); the
-                  agent reads the dial at boot, so a change raises the restart
-                  banner instead of flipping behavior mid-session. */}
-              <SettingsField label={t("settings.feedbackNudge")} hint={t("settings.feedbackNudgeHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalFeedbackNudge) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalFeedbackNudge(on);
-                        setRestartNeeded(true);
-                      })}
-                    >
-                      {t(on ? "settings.feedbackNudge.on" : "settings.feedbackNudge.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              <SettingsField label={t("settings.feedbackOpen")} hint={t("settings.feedbackOpenHint")} icon={<Sparkles size={18} />}>
-                <button
-                  type="button"
-                  className="btn btn--small"
-                  disabled={busy || !Boolean(s.experimentalFeedback)}
-                  onClick={() => setFeedbackOpen(true)}
-                >
-                  {t("settings.feedbackOpenAction")}
-                </button>
-              </SettingsField>
-            </>
-          )}
-          {selected === "localServer" && (
+                    {selected === "localServer" && (
             <SettingsField label={t("settings.localServer")} hint={t("settings.localServerHint")} icon={<Server size={18} />}>
               <SettingsOptions layout="field" className="set-seg">
                 {[false, true].map((on) => (
@@ -2866,164 +3283,19 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
             </SettingsField>
           )}
           {selected === "pathRules" && (
-            <SettingsField label={t("settings.pathRules")} hint={t("settings.pathRulesHint")} icon={<FolderLock size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalPathRules) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(() => app.SetExperimentalPathRules(on))}
-                  >
-                    {t(on ? "settings.pathRules.on" : "settings.pathRules.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
+            /* Task 564: retired (task 551 paradigm, UI side) — the structured
+               path-scope evaluation never wired into the runtime (zero
+               consumers; production keeps confine + allow_write + write
+               approval). Read-only display like the M2 modelCapabilityFilter
+               block: stored value shows, no setter, config key still renders
+               (nothing silently dropped on save). */
+            <SettingsField label={t("settings.pathRules")} hint={t("settings.pathRules.retired")} icon={<FolderLock size={18} />} stacked>
+              <p className="settings-field__hint-line">
+                {t("settings.pathRules.value", { value: t(Boolean(s.experimentalPathRules) ? "settings.pathRules.on" : "settings.pathRules.off") })}
+              </p>
             </SettingsField>
           )}
-          {selected === "cacheTuning" && (
-            <>
-              <SettingsField label={t("settings.cacheTuning")} hint={t("settings.cacheTuningHint")} icon={<FolderLock size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalCacheTuning) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(() => app.SetExperimentalCacheTuning(on))}
-                    >
-                      {t(on ? "settings.cacheTuning.on" : "settings.cacheTuning.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              {/* Task 191: the memory-governance panel is the entry surface, so it stays
-                  visible with the switch off (entry visible ≠ feature on). The controls
-                  keep saving; the boot loader simply ignores the values (see
-                  useDesktopPreferences) until the switch is turned on. */}
-              {!Boolean(s.experimentalCacheTuning) && (
-                <p className="settings-field__hint-line">{t("settings.cacheTuning.inactiveHint")}</p>
-              )}
-              <>
-                <SettingsField label={t("settings.cacheTuning.tabs")} hint={t("settings.cacheTuning.tabsHint")}>
-                    <input
-                      type="number"
-                      min={0}
-                      max={64}
-                      defaultValue={s.maxCachedTabs || 0}
-                      disabled={busy}
-                      onBlur={(e) => {
-                        const v = Math.max(0, Math.min(64, Math.floor(Number(e.target.value) || 0)));
-                        e.target.value = String(v);
-                        void apply(() => app.SetTranscriptCacheTuning(v, s.historyBodyBudgetMb || 192, s.markdownBudgetMb || 256));
-                      }}
-                    />
-                  </SettingsField>
-                  <SettingsField label={t("settings.cacheTuning.body")} hint={t("settings.cacheTuning.bodyHint")}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <input
-                        type="range"
-                        min={32}
-                        max={512}
-                        step={16}
-                        defaultValue={s.historyBodyBudgetMb || 192}
-                        disabled={busy}
-                        style={{ flex: 1 }}
-                        onChange={(e) => { const n = e.target.parentElement!.querySelector("input[type=number]") as HTMLInputElement | null; if (n) n.value = e.target.value; }}
-                        onMouseUp={(e) => {
-                          const v = Math.max(32, Math.min(512, Math.floor(Number((e.target as HTMLInputElement).value))));
-                          void apply(() => app.SetTranscriptCacheTuning(s.maxCachedTabs || 0, v, s.markdownBudgetMb || 256));
-                        }}
-                      />
-                      <input
-                        type="number"
-                        min={32}
-                        max={512}
-                        defaultValue={s.historyBodyBudgetMb || 192}
-                        disabled={busy}
-                        style={{ width: 90 }}
-                        onBlur={(e) => {
-                          const v = Math.max(32, Math.min(512, Math.floor(Number(e.target.value) || 192)));
-                          e.target.value = String(v);
-                          void apply(() => app.SetTranscriptCacheTuning(s.maxCachedTabs || 0, v, s.markdownBudgetMb || 256));
-                        }}
-                      />
-                      <span>MB</span>
-                    </div>
-                  </SettingsField>
-                  <SettingsField label={t("settings.cacheTuning.markdown")} hint={t("settings.cacheTuning.markdownHint")}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <input
-                        type="range"
-                        min={64}
-                        max={2048}
-                        step={64}
-                        defaultValue={s.markdownBudgetMb || 256}
-                        disabled={busy}
-                        style={{ flex: 1 }}
-                        onChange={(e) => { const n = e.target.parentElement!.querySelector("input[type=number]") as HTMLInputElement | null; if (n) n.value = e.target.value; }}
-                        onMouseUp={(e) => {
-                          const v = Math.max(64, Math.min(2048, Math.floor(Number((e.target as HTMLInputElement).value))));
-                          void apply(() => app.SetTranscriptCacheTuning(s.maxCachedTabs || 0, s.historyBodyBudgetMb || 192, v));
-                        }}
-                      />
-                      <input
-                        type="number"
-                        min={64}
-                        max={2048}
-                        defaultValue={s.markdownBudgetMb || 256}
-                        disabled={busy}
-                        style={{ width: 90 }}
-                        onBlur={(e) => {
-                          const v = Math.max(64, Math.min(2048, Math.floor(Number(e.target.value) || 256)));
-                          e.target.value = String(v);
-                          void apply(() => app.SetTranscriptCacheTuning(s.maxCachedTabs || 0, s.historyBodyBudgetMb || 192, v));
-                        }}
-                      />
-                      <span>MB</span>
-                    </div>
-                  </SettingsField>
-
-                  {/* Task 347: same-domain switches move in from misc. The
-                      resident exemption is NOT the tabs pool limit above:
-                      pool = total resident LRU line, this = active/running
-                      exemption quota (two parameters, two hints). */}
-                  <SettingsField label={t("settings.activeTabResident")} hint={t("settings.activeTabResidentHint")}>
-                    <SettingsOptions layout="field" className="set-seg">
-                      {[false, true].map((on) => (
-                        <button
-                          key={String(on)}
-                          className={`set-seg__btn${Boolean(s.experimentalActiveTabResident) === on ? " set-seg__btn--on" : ""}`}
-                          disabled={busy}
-                          onClick={() => void apply(() => app.SetExperimentalActiveTabResident(on))}
-                        >
-                          {t(on ? "settings.activeTabResident.on" : "settings.activeTabResident.off")}
-                        </button>
-                      ))}
-                    </SettingsOptions>
-                  </SettingsField>
-                  {/* Task 347: tunable replayed-graph cache LRU (task 196fix2
-                      contract: 1..16, write pushes immediately, the view
-                      reports the effective value so 0-in-file shows 3). */}
-                  <SettingsField label={t("settings.cacheTuning.dagCache")} hint={t("settings.cacheTuning.dagCacheHint")}>
-                    <input
-                      type="number"
-                      min={1}
-                      max={16}
-                      defaultValue={s.dagGraphCacheCapacity || 3}
-                      disabled={busy}
-                      onBlur={(e) => {
-                        const v = Math.max(1, Math.min(16, Math.floor(Number(e.target.value) || 3)));
-                        e.target.value = String(v);
-                        void apply(() => app.SetDagGraphCacheCapacity(v));
-                      }}
-                    />
-                  </SettingsField>
-                  <p style={{ opacity: 0.7, fontSize: 12 }}>{t("settings.cacheTuning.restartHint")}</p>
-                </>
-            </>
-          )}
-          {selected === "traceAsState" && (
+                    {selected === "traceAsState" && (
             <SettingsField label={t("settings.traceAsState")} hint={t("settings.traceAsStateHint")} icon={<Sparkles size={18} />}>
               <SettingsOptions layout="field" className="set-seg">
                 {[false, true].map((on) => (
@@ -3157,7 +3429,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
             </>
           )}
 
-          {selected === "runtimeReuse" && (
+                    {selected === "runtimeReuse" && (
             <>
               <SettingsField label={t("settings.runtimeReuse")} hint={t("settings.runtimeReuseHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
@@ -3177,45 +3449,48 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
               </SettingsField>
             </>
           )}
-          {selected === "autonomousIdleTerminate" && (
+          {/* Task 561 M1 自动化族: the two autonomous-run guards fold into ONE card —
+              each switch saves through its own setter (config keys unchanged;
+              81/123 lost-save rule). */}
+          {selected === "autonomousRunGuard" && (
             <>
-              <SettingsField label={t("settings.autonomousIdleTerminate")} hint={t("settings.autonomousIdleTerminateHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalAutonomousIdleTerminate) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalAutonomousIdleTerminate(on);
-                      })}
-                    >
-                      {t(on ? "settings.autonomousIdleTerminate.on" : "settings.autonomousIdleTerminate.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-            </>
-          )}
-          {selected === "loopStreakNote" && (
-            <>
-              <SettingsField label={t("settings.loopStreakNote")} hint={t("settings.loopStreakNoteHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalLoopStreakNote) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalLoopStreakNote(on);
-                        setRestartNeeded(true);
-                      })}
-                    >
-                      {t(on ? "settings.loopStreakNote.on" : "settings.loopStreakNote.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
+              <>
+                <SettingsField label={t("settings.autonomousIdleTerminate")} hint={t("settings.autonomousIdleTerminateHint")} icon={<Sparkles size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.experimentalAutonomousIdleTerminate) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(async () => {
+                          await app.SetExperimentalAutonomousIdleTerminate(on);
+                        })}
+                      >
+                        {t(on ? "settings.autonomousIdleTerminate.on" : "settings.autonomousIdleTerminate.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+              </>
+              <>
+                <SettingsField label={t("settings.loopStreakNote")} hint={t("settings.loopStreakNoteHint")} icon={<Sparkles size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.experimentalLoopStreakNote) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(async () => {
+                          await app.SetExperimentalLoopStreakNote(on);
+                          setRestartNeeded(true);
+                        })}
+                      >
+                        {t(on ? "settings.loopStreakNote.on" : "settings.loopStreakNote.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+              </>
             </>
           )}
           {selected === "eventWaitRecheck" && (
@@ -3771,161 +4046,313 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
             </>
           )}
           {/* ── Task 265 lab intake: 9 fork features + task 262 quick commands ── */}
-          {selected === "highSpeedModel" && (
-            <SettingsField label={t("settings.highSpeedModel")} hint={t("settings.highSpeedModelLabHint")} icon={<Sparkles size={18} />}>
-              {/* Task 318.1: the lane arms from the next boot (boot-snapshot
-                  read in Go); the light above reflects the stored switch. */}
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalHighSpeedModel) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(async () => {
-                      await app.SetExperimentalHighSpeedModel(on);
-                    })}
-                  >
-                    {t(on ? "settings.highSpeedModel.on" : "settings.highSpeedModel.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
+          {/* Task 561 M2 模型策略族: highSpeedModel keeps its writable switch;
+              modelCapabilityFilter is retired (task 551/564 domain) and
+              renders read-only below — stored value displays, no setter. */}
+          {selected === "modelStrategy" && (
+            <>
+              <SettingsField label={t("settings.highSpeedModel")} hint={t("settings.highSpeedModelLabHint")} icon={<Sparkles size={18} />}>
+                {/* Task 318.1: the lane arms from the next boot (boot-snapshot
+                    read in Go); the light above reflects the stored switch. */}
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalHighSpeedModel) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalHighSpeedModel(on);
+                      })}
+                    >
+                      {t(on ? "settings.highSpeedModel.on" : "settings.highSpeedModel.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              {/* Task 551/564: retired key — read-only display only (task 561
+                  M2 keeps it visible without a setter; 564 owns the copy). */}
+              <SettingsField label={t("settings.modelCapabilityFilter")} hint={t("settings.modelCapabilityFilter.retired")} icon={<Sparkles size={18} />} stacked>
+                <p className="settings-field__hint-line">
+                  {t("settings.modelCapabilityFilter.value", { value: t(Boolean(s.experimentalModelCapabilityFilter) ? "settings.modelCapabilityFilter.on" : "settings.modelCapabilityFilter.off") })}
+                </p>
+              </SettingsField>
+            </>
           )}
           {/* Task 427: proactive-cooldown + cold-cache compact merge into ONE
               storage card — two switches, each saving through its own setter
               (config keys and knob semantics unchanged). */}
-          {selected === "compressOpt" && (
+          {/* Task 561 M3 压缩/预算族: the four context/cache governance cards
+              (compactionParallel + budgetControl + compressOpt + cacheTuning)
+              fold into ONE card — every switch and knob below keeps its own
+              setter and config key (81/123 lost-save rule; task 427
+              merge precedent). */}
+          {selected === "contextGovernance" && (
             <>
-              <SettingsField label={t("settings.proactiveCompact")} hint={t("settings.proactiveCompactHint")} icon={<Sparkles size={18} />}>
-                {/* Task 318.2: off (default) keeps the hard-coded 10-minute
-                    fold cooldown byte-for-byte; on makes the minutes below
-                    authoritative (live read on the next fold). */}
+              <SettingsField label={t("settings.compactionParallel")} hint={t("settings.compactionParallelHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
                       key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalProactiveCompact) === on ? " set-seg__btn--on" : ""}`}
+                      className={`set-seg__btn${Boolean(s.experimentalCompactionParallel) === on ? " set-seg__btn--on" : ""}`}
                       disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalProactiveCompact(on);
-                      })}
+                      onClick={() => void apply(() => app.SetExperimentalCompactionParallel(on))}
                     >
-                      {t(on ? "settings.proactiveCompact.on" : "settings.proactiveCompact.off")}
+                      {t(on ? "settings.compactionParallel.on" : "settings.compactionParallel.off")}
                     </button>
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              <SettingsField label={t("settings.proactiveCompact.cooldown")} hint={t("settings.proactiveCompact.cooldownHint")} icon={<Sparkles size={18} />}>
-                <input
-                  type="number"
-                  min={1}
-                  max={720}
-                  value={proactiveCooldownMinutes}
-                  disabled={busy || !Boolean(s.experimentalProactiveCompact)}
-                  onChange={(event) => setProactiveCooldownMinutes(Number(event.target.value))}
-                  onBlur={() => void apply(async () => {
-                    await app.SetProactiveCompactCooldownMinutes(proactiveCooldownMinutes);
-                  })}
-                />
-              </SettingsField>
-              <SettingsField label={t("settings.coldCacheCompact")} hint={t("settings.coldCacheCompactHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalColdCacheCompact) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(() => app.SetExperimentalColdCacheCompact(on))}
-                    >
-                      {t(on ? "settings.coldCacheCompact.on" : "settings.coldCacheCompact.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              <SettingsField label={t("settings.coldCacheCompact.minBytes")} hint={t("settings.coldCacheCompact.minBytesHint")} icon={<Sparkles size={18} />}>
-                <input
-                  type="number"
-                  min={1}
-                  max={64384}
-                  defaultValue={Math.round((s.coldCacheCompactMinBytes || 614400) / 1024)}
-                  disabled={busy}
-                  onBlur={(e) => {
-                    const kb = Math.max(1, Math.min(64384, Math.floor(Number(e.target.value) || 600)));
-                    e.target.value = String(kb);
-                    void apply(() => app.SetColdCacheCompactMinBytes(kb * 1024));
-                  }}
-                />
-                <span> KB</span>
-              </SettingsField>
-              <SettingsField label={t("settings.coldCacheCompact.idleHours")} hint={t("settings.coldCacheCompact.idleHoursHint")} icon={<Sparkles size={18} />}>
-                <input
-                  type="number"
-                  min={1}
-                  max={168}
-                  defaultValue={Math.max(1, Math.round((s.coldCacheCompactIdleMinutes || 300) / 60))}
-                  disabled={busy}
-                  onBlur={(e) => {
-                    const h = Math.max(1, Math.min(168, Math.floor(Number(e.target.value) || 5)));
-                    e.target.value = String(h);
-                    void apply(() => app.SetColdCacheCompactIdleMinutes(h * 60));
-                  }}
-                />
-                <span> h</span>
-              </SettingsField>
-            </>
-          )}
-          {selected === "compactionParallel" && (
-            <SettingsField label={t("settings.compactionParallel")} hint={t("settings.compactionParallelHint")} icon={<Sparkles size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalCompactionParallel) === on ? " set-seg__btn--on" : ""}`}
+              <>
+                <SettingsField label={t("settings.contextBudget")} hint={t("settings.contextBudgetHint")} icon={<Sparkles size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.experimentalContextBudget) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(() => app.SetExperimentalContextBudget(on))}
+                      >
+                        {t(on ? "settings.contextBudget.on" : "settings.contextBudget.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+                <SettingsField label={t("settings.contextBudgetCompress")} hint={t("settings.contextBudgetCompressHint")} icon={<Sparkles size={18} />}>
+                  <span />
+                </SettingsField>
+                <SettingsField label={t("settings.researchBudget")} hint={t("settings.researchBudgetHint")} icon={<Sparkles size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.experimentalResearchBudget) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(() => app.SetExperimentalResearchBudget(on))}
+                      >
+                        {t(on ? "settings.researchBudget.on" : "settings.researchBudget.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+              </>
+              <>
+                <SettingsField label={t("settings.proactiveCompact")} hint={t("settings.proactiveCompactHint")} icon={<Sparkles size={18} />}>
+                  {/* Task 318.2: off (default) keeps the hard-coded 10-minute
+                      fold cooldown byte-for-byte; on makes the minutes below
+                      authoritative (live read on the next fold). */}
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.experimentalProactiveCompact) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(async () => {
+                          await app.SetExperimentalProactiveCompact(on);
+                        })}
+                      >
+                        {t(on ? "settings.proactiveCompact.on" : "settings.proactiveCompact.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+                <SettingsField label={t("settings.proactiveCompact.cooldown")} hint={t("settings.proactiveCompact.cooldownHint")} icon={<Sparkles size={18} />}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={720}
+                    value={proactiveCooldownMinutes}
+                    disabled={busy || !Boolean(s.experimentalProactiveCompact)}
+                    onChange={(event) => setProactiveCooldownMinutes(Number(event.target.value))}
+                    onBlur={() => void apply(async () => {
+                      await app.SetProactiveCompactCooldownMinutes(proactiveCooldownMinutes);
+                    })}
+                  />
+                </SettingsField>
+                <SettingsField label={t("settings.coldCacheCompact")} hint={t("settings.coldCacheCompactHint")} icon={<Sparkles size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.experimentalColdCacheCompact) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(() => app.SetExperimentalColdCacheCompact(on))}
+                      >
+                        {t(on ? "settings.coldCacheCompact.on" : "settings.coldCacheCompact.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+                <SettingsField label={t("settings.coldCacheCompact.minBytes")} hint={t("settings.coldCacheCompact.minBytesHint")} icon={<Sparkles size={18} />}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={64384}
+                    defaultValue={Math.round((s.coldCacheCompactMinBytes || 614400) / 1024)}
                     disabled={busy}
-                    onClick={() => void apply(() => app.SetExperimentalCompactionParallel(on))}
-                  >
-                    {t(on ? "settings.compactionParallel.on" : "settings.compactionParallel.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
-          )}
-          {/* Task 427: per-turn context budget + read-only round budget
-              merge into ONE efficiency card — two switches, each saving
-              through its own setter (config keys unchanged). */}
-          {selected === "budgetControl" && (
-            <>
-              <SettingsField label={t("settings.contextBudget")} hint={t("settings.contextBudgetHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalContextBudget) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(() => app.SetExperimentalContextBudget(on))}
-                    >
-                      {t(on ? "settings.contextBudget.on" : "settings.contextBudget.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              <SettingsField label={t("settings.contextBudgetCompress")} hint={t("settings.contextBudgetCompressHint")} icon={<Sparkles size={18} />}>
-                <span />
-              </SettingsField>
-              <SettingsField label={t("settings.researchBudget")} hint={t("settings.researchBudgetHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalResearchBudget) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(() => app.SetExperimentalResearchBudget(on))}
-                    >
-                      {t(on ? "settings.researchBudget.on" : "settings.researchBudget.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
+                    onBlur={(e) => {
+                      const kb = Math.max(1, Math.min(64384, Math.floor(Number(e.target.value) || 600)));
+                      e.target.value = String(kb);
+                      void apply(() => app.SetColdCacheCompactMinBytes(kb * 1024));
+                    }}
+                  />
+                  <span> KB</span>
+                </SettingsField>
+                <SettingsField label={t("settings.coldCacheCompact.idleHours")} hint={t("settings.coldCacheCompact.idleHoursHint")} icon={<Sparkles size={18} />}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={168}
+                    defaultValue={Math.max(1, Math.round((s.coldCacheCompactIdleMinutes || 300) / 60))}
+                    disabled={busy}
+                    onBlur={(e) => {
+                      const h = Math.max(1, Math.min(168, Math.floor(Number(e.target.value) || 5)));
+                      e.target.value = String(h);
+                      void apply(() => app.SetColdCacheCompactIdleMinutes(h * 60));
+                    }}
+                  />
+                  <span> h</span>
+                </SettingsField>
+              </>
+              <>
+                <SettingsField label={t("settings.cacheTuning")} hint={t("settings.cacheTuningHint")} icon={<FolderLock size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.experimentalCacheTuning) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(() => app.SetExperimentalCacheTuning(on))}
+                      >
+                        {t(on ? "settings.cacheTuning.on" : "settings.cacheTuning.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+                {/* Task 191: the memory-governance panel is the entry surface, so it stays
+                    visible with the switch off (entry visible ≠ feature on). The controls
+                    keep saving; the boot loader simply ignores the values (see
+                    useDesktopPreferences) until the switch is turned on. */}
+                {!Boolean(s.experimentalCacheTuning) && (
+                  <p className="settings-field__hint-line">{t("settings.cacheTuning.inactiveHint")}</p>
+                )}
+                <>
+                  <SettingsField label={t("settings.cacheTuning.tabs")} hint={t("settings.cacheTuning.tabsHint")}>
+                      <input
+                        type="number"
+                        min={0}
+                        max={64}
+                        defaultValue={s.maxCachedTabs || 0}
+                        disabled={busy}
+                        onBlur={(e) => {
+                          const v = Math.max(0, Math.min(64, Math.floor(Number(e.target.value) || 0)));
+                          e.target.value = String(v);
+                          void apply(() => app.SetTranscriptCacheTuning(v, s.historyBodyBudgetMb || 192, s.markdownBudgetMb || 256));
+                        }}
+                      />
+                    </SettingsField>
+                    <SettingsField label={t("settings.cacheTuning.body")} hint={t("settings.cacheTuning.bodyHint")}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <input
+                          type="range"
+                          min={32}
+                          max={512}
+                          step={16}
+                          defaultValue={s.historyBodyBudgetMb || 192}
+                          disabled={busy}
+                          style={{ flex: 1 }}
+                          onChange={(e) => { const n = e.target.parentElement!.querySelector("input[type=number]") as HTMLInputElement | null; if (n) n.value = e.target.value; }}
+                          onMouseUp={(e) => {
+                            const v = Math.max(32, Math.min(512, Math.floor(Number((e.target as HTMLInputElement).value))));
+                            void apply(() => app.SetTranscriptCacheTuning(s.maxCachedTabs || 0, v, s.markdownBudgetMb || 256));
+                          }}
+                        />
+                        <input
+                          type="number"
+                          min={32}
+                          max={512}
+                          defaultValue={s.historyBodyBudgetMb || 192}
+                          disabled={busy}
+                          style={{ width: 90 }}
+                          onBlur={(e) => {
+                            const v = Math.max(32, Math.min(512, Math.floor(Number(e.target.value) || 192)));
+                            e.target.value = String(v);
+                            void apply(() => app.SetTranscriptCacheTuning(s.maxCachedTabs || 0, v, s.markdownBudgetMb || 256));
+                          }}
+                        />
+                        <span>MB</span>
+                      </div>
+                    </SettingsField>
+                    <SettingsField label={t("settings.cacheTuning.markdown")} hint={t("settings.cacheTuning.markdownHint")}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <input
+                          type="range"
+                          min={64}
+                          max={2048}
+                          step={64}
+                          defaultValue={s.markdownBudgetMb || 256}
+                          disabled={busy}
+                          style={{ flex: 1 }}
+                          onChange={(e) => { const n = e.target.parentElement!.querySelector("input[type=number]") as HTMLInputElement | null; if (n) n.value = e.target.value; }}
+                          onMouseUp={(e) => {
+                            const v = Math.max(64, Math.min(2048, Math.floor(Number((e.target as HTMLInputElement).value))));
+                            void apply(() => app.SetTranscriptCacheTuning(s.maxCachedTabs || 0, s.historyBodyBudgetMb || 192, v));
+                          }}
+                        />
+                        <input
+                          type="number"
+                          min={64}
+                          max={2048}
+                          defaultValue={s.markdownBudgetMb || 256}
+                          disabled={busy}
+                          style={{ width: 90 }}
+                          onBlur={(e) => {
+                            const v = Math.max(64, Math.min(2048, Math.floor(Number(e.target.value) || 256)));
+                            e.target.value = String(v);
+                            void apply(() => app.SetTranscriptCacheTuning(s.maxCachedTabs || 0, s.historyBodyBudgetMb || 192, v));
+                          }}
+                        />
+                        <span>MB</span>
+                      </div>
+                    </SettingsField>
+
+                    {/* Task 347: same-domain switches move in from misc. The
+                        resident exemption is NOT the tabs pool limit above:
+                        pool = total resident LRU line, this = active/running
+                        exemption quota (two parameters, two hints). */}
+                    <SettingsField label={t("settings.activeTabResident")} hint={t("settings.activeTabResidentHint")}>
+                      <SettingsOptions layout="field" className="set-seg">
+                        {[false, true].map((on) => (
+                          <button
+                            key={String(on)}
+                            className={`set-seg__btn${Boolean(s.experimentalActiveTabResident) === on ? " set-seg__btn--on" : ""}`}
+                            disabled={busy}
+                            onClick={() => void apply(() => app.SetExperimentalActiveTabResident(on))}
+                          >
+                            {t(on ? "settings.activeTabResident.on" : "settings.activeTabResident.off")}
+                          </button>
+                        ))}
+                      </SettingsOptions>
+                    </SettingsField>
+                    {/* Task 347: tunable replayed-graph cache LRU (task 196fix2
+                        contract: 1..16, write pushes immediately, the view
+                        reports the effective value so 0-in-file shows 3). */}
+                    <SettingsField label={t("settings.cacheTuning.dagCache")} hint={t("settings.cacheTuning.dagCacheHint")}>
+                      <input
+                        type="number"
+                        min={1}
+                        max={16}
+                        defaultValue={s.dagGraphCacheCapacity || 3}
+                        disabled={busy}
+                        onBlur={(e) => {
+                          const v = Math.max(1, Math.min(16, Math.floor(Number(e.target.value) || 3)));
+                          e.target.value = String(v);
+                          void apply(() => app.SetDagGraphCacheCapacity(v));
+                        }}
+                      />
+                    </SettingsField>
+                    <p style={{ opacity: 0.7, fontSize: 12 }}>{t("settings.cacheTuning.restartHint")}</p>
+                  </>
+              </>
             </>
           )}
           {/* Task 364: the managed-path pre-approval block moved into the
@@ -3997,39 +4424,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
               </SettingsOptions>
             </SettingsField>
           )}
-          {selected === "subagentPolicy" && (
-            <SettingsField label={t("settings.subagentPolicy")} hint={t("settings.subagentPolicyHint")} icon={<Sparkles size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalSubagentPolicy) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(() => app.SetExperimentalSubagentPolicy(on))}
-                  >
-                    {t(on ? "settings.subagentPolicy.on" : "settings.subagentPolicy.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
-          )}
-          {selected === "subagentTps" && (
-            <SettingsField label={t("settings.subagentTps")} hint={t("settings.subagentTpsHint")} icon={<Sparkles size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalSubagentTps) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(() => app.SetExperimentalSubagentTps(on))}
-                  >
-                    {t(on ? "settings.subagentTps.on" : "settings.subagentTps.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
-          )}
-          {selected === "completionSummary" && (
+                    {selected === "completionSummary" && (
             <SettingsField label={t("settings.completionSummary")} hint={t("settings.completionSummaryHint")} icon={<Sparkles size={18} />}>
               <SettingsOptions layout="field" className="set-seg">
                 {[false, true].map((on) => (
@@ -4066,27 +4461,52 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("restartUpdate");
               )}
             </>
           )}
-          {selected === "cdpDebugPort" && (
-            // Task 342: WebView2 CDP debug endpoint. The WebView2 browser
-            // environment is created once at startup, so a flip needs a
-            // restart — same banner pattern as the full-access boot snapshot.
-            <SettingsField label={t("settings.cdpDebugPort")} hint={t("settings.cdpDebugPortHint")} icon={<Terminal size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalCDPDebugPort) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(async () => {
-                      await app.SetExperimentalCDPDebugPort(on);
-                      setRestartNeeded(true);
-                    })}
-                  >
-                    {t(on ? "settings.cdpDebugPort.on" : "settings.cdpDebugPort.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
+          {/* Task 561 M5 开发调试族: CDP endpoint + lifecycle noise triage fold into
+              ONE card — both are developer-facing diagnostics; each switch
+              keeps its own setter (81/123 lost-save rule). */}
+          {selected === "devDebug" && (
+            <>
+              // Task 342: WebView2 CDP debug endpoint. The WebView2 browser
+              // environment is created once at startup, so a flip needs a
+              // restart — same banner pattern as the full-access boot snapshot.
+              <SettingsField label={t("settings.cdpDebugPort")} hint={t("settings.cdpDebugPortHint")} icon={<Terminal size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalCDPDebugPort) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalCDPDebugPort(on);
+                        setRestartNeeded(true);
+                      })}
+                    >
+                      {t(on ? "settings.cdpDebugPort.on" : "settings.cdpDebugPort.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              // Task 377: crash-report lifecycle noise triage. Startup
+              // diagnostics read the gate once per process, so the flip lands on
+              // restart — same boot-snapshot rule as the CDP endpoint above.
+              <SettingsField label={t("settings.lifecycleNoiseGate")} hint={t("settings.lifecycleNoiseGateHint")} icon={<Volume2 size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalLifecycleNoiseGate) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalLifecycleNoiseGate(on);
+                        setRestartNeeded(true);
+                      })}
+                    >
+                      {t(on ? "settings.lifecycleNoiseGate.on" : "settings.lifecycleNoiseGate.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+            </>
           )}
           {selected === "zcodeTaskBus" && (
             // Task 439: built-in zcode task bus. The listener arms at desktop
