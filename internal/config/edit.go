@@ -1219,6 +1219,15 @@ func (c *Config) SetSessionCollabGates(allowDelete, allowRequireReply, allowRead
 	return nil
 }
 
+// SetSessionCollabReplyNudge toggles the task-530 turn-closure reply reminder
+// (settings → 实验特性 → 跨会话通信). The runtime reads it as a boot snapshot
+// (agent construction), so a change shows up after a restart — same contract
+// as the other agent-behavior dials (task 172 shape).
+func (c *Config) SetSessionCollabReplyNudge(enabled bool) error {
+	c.Agent.SessionCollabReplyNudge = enabled
+	return nil
+}
+
 // SetExperimentalCascadeApproval toggles task 225: a dispatched session
 // forwards its approval prompts to its autopilot parent's Ask channel. Off by
 // default; the settings-panel checkbox lands with the 173 panel.

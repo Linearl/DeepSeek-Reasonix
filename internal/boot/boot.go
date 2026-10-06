@@ -2026,6 +2026,14 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// messaging off, the stream still lets a batch manager decide from file
 	// evidence alone (decoupling acceptance).
 	collabStatusPath := agent.ResolveCollabStatusPath("", config.SessionCollabMailDir(), root)
+	// Task 530: the turn-closure reply reminder arms only when the collab
+	// master switch AND the dial are both on (parent wins, 172 pre-AND
+	// shape); the session-path resolver fills in below once the executor
+	// exists. nil keeps the hook byte-for-byte silent.
+	var collabReplyNudge *agent.CollabReplyNudgeConfig
+	if sessionCollabEnabled(cfg) && cfg.Agent.SessionCollabReplyNudge {
+		collabReplyNudge = &agent.CollabReplyNudgeConfig{StatusPath: collabStatusPath}
+	}
 	executor := agent.New(execProv, reg, execSess, agent.Options{
 		ImageInput:                 imageConfig,
 		MaxSteps:                   maxSteps,
@@ -2060,7 +2068,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// Task 172: feedback touchpoints — FeedbackNudgeEnabled ANDs the nudge
 		// dial with the parent feedback switch, so the agent sees one dial that
 		// already respects the parent-wins rule. Boot snapshot: restart to apply.
-		FeedbackNudge:                cfg.FeedbackNudgeEnabled(),
+		FeedbackNudge: cfg.FeedbackNudgeEnabled(),
+		// Task 530: nil unless the collab master switch AND the reply-nudge
+		// dial are both on (see above). Boot snapshot: restart to apply.
+		CollabReplyNudge:             collabReplyNudge,
 		SessionTemp:                  sessionTemp,
 		WriteRoots:                   writeRootSet,
 		HomeDir:                      userHomeDir(),
@@ -2117,6 +2128,13 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			if id, err := agent.EnsureContactID(sessionPath); err == nil {
 				currentContact = id
 			}
+		}
+		// Task 530: the reply-nudge scan shares the collab toolset's identity
+		// resolution — boot-minted contact id first, live transcript path
+		// (bound after boot for desktop sessions) as the call-time fallback.
+		if collabReplyNudge != nil {
+			collabReplyNudge.ContactID = currentContact
+			collabReplyNudge.ResolveSessionPath = executor.SessionPath
 		}
 		collab := agent.SessionCollabConfig{
 			Enabled:            true,

@@ -2426,6 +2426,8 @@ export const en = {
 "settings.collabGuidanceMerge": "Guidance merge-next button",
   "settings.collabGuidanceMergeHint": "Task 153: with two or more queued guidance entries, each gains a merge-next button that joins the entry with the one right after it (bodies concatenated verbatim; nothing lost). Changes the queue only, never sends. Default off.",
 
+  "settings.sessionCollabReplyNudge": "Reply reminder at turn close",
+  "settings.sessionCollabReplyNudgeHint": "Task 530: when a turn closes cleanly while a received require_reply cross-session message is still unanswered, the host injects one visible reply reminder (once per mail; answered threads are never reminded). Default off; changes apply after a restart.",
   "settings.sessionCollabGates": "Capability gates",
   "settings.sessionCollabGatesHint": "Task 173: gate collaboration tools by capability - delete other sessions / require-reply config / reading other sessions / agent-created sessions / steer injection. Gated-off tools are never exposed to the model (parameter-level gates return actionable errors instead). All default off.",
   "settings.sessionCollabGates.allowDelete": "Allow deleting other sessions",

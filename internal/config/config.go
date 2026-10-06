@@ -1669,6 +1669,13 @@ type AgentConfig struct {
 	SessionCollabAllowReadTail     bool `toml:"session_collab_allow_read_tail"`
 	SessionCollabAllowCreate       bool `toml:"session_collab_allow_create"`
 	SessionCollabAllowSteer        bool `toml:"session_collab_allow_steer"`
+	// SessionCollabReplyNudge enables the task-530 turn-closure reply reminder:
+	// when a turn closes with settled-but-unanswered require_reply mail, the
+	// host injects ONE visible reminder round. Off (the default) keeps turns
+	// byte-for-byte unchanged. Boot-time snapshot: flipping it applies from the
+	// next session start, and the collaboration master switch
+	// (ExperimentalSessionCollab) stays the precondition — parent wins.
+	SessionCollabReplyNudge bool `toml:"session_collab_reply_nudge"`
 	// SessionCollabBackground keeps background-woken collaboration sessions
 	// OUT of the tab bar (task 264, user final ruling): on, a stand-up builds
 	// a detached runtime with no visible tab — mail still lands and is

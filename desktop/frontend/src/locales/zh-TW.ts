@@ -1942,6 +1942,8 @@ export const zhTW: Record<DictKey, string> = {
 "settings.collabGuidanceMerge": "引導「合併下條」按鈕",
   "settings.collabGuidanceMergeHint": "任務 153：引導佇列 ≥2 條時，每條出現「合併下條」按鈕，點一次將當前條與緊隨的下一條合併（文字原樣拼接，不丟資訊）；僅改佇列、不觸發發送。預設關閉。",
 
+  "settings.sessionCollabReplyNudge": "未回信時回合結束提醒",
+  "settings.sessionCollabReplyNudgeHint": "任務 530：一次對話乾淨收尾時，若收到的要求回信（require_reply）跨會話訊息仍未回覆，宿主注入一輪使用者可見的回信提醒（每封信只提醒一次，已回信不提醒）。預設關閉；變更重啟後生效。",
   "settings.sessionCollabGates": "能力門控",
   "settings.sessionCollabGatesHint": "任務 173：按能力收放協作工具——刪除其他會話 / 配置回信要求 / 讀他會話內容 / AI 自建會話 / steer 注入。關閉的工具不暴露給模型（參數類關閉時返回可操作錯誤）。預設全部關閉。",
   "settings.sessionCollabGates.allowDelete": "允許刪除其他會話",

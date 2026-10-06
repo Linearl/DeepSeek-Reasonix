@@ -1052,6 +1052,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 264: background-woken sessions stay out of the tab bar (detached
   // stand-up; delivery unchanged). Live per drain pass — no restart needed.
   SetSessionCollabBackground(enabled: boolean): Promise<void>;
+  // Task 530: turn-closure reply reminder dial (boot snapshot; restart to
+  // apply). Reminds once per require_reply mail still unanswered at a clean
+  // turn close.
+  SetSessionCollabReplyNudge(enabled: boolean): Promise<void>;
   // Task 309: mailbox defaults for talk_to_session (idempotency default,
   // read-receipt default, default delivery channel).
   SetSessionCollabMailDefaults(idempotent: boolean, receiptDefault: boolean, defaultDelivery: string): Promise<void>;
@@ -5485,6 +5489,7 @@ function makeMockApp(): AppBindings {
     async SetGoMemLimitMB() {},
     async SetSessionCollabGates() {},
     async SetSessionCollabBackground() {},
+    async SetSessionCollabReplyNudge() {},
     async SetSessionCollabMailDefaults() {},
     async SetExperimentalCascadeApproval() {},
     async SetExperimentalFallbackModel() {},
