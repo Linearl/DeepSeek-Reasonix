@@ -261,6 +261,10 @@ func (a *Agent) compressVisibleRange(
 	}
 
 	a.svc.sink.Emit(event.Event{Kind: event.CompactionStarted, Compaction: event.Compaction{Trigger: trigger}})
+	// 任务 556: meter the pass from Started to every exit (defer covers Done,
+	// aborts, panics) so live readout events never outlive the pending card.
+	a.compactionLiveBegin(trigger)
+	defer a.compactionLiveStop()
 	prepared, reason, err := a.prepareVisibleCompression(ctx, trigger, plan.fold, instructions, inputMode)
 	if err != nil {
 		a.emitCompactionAborted(trigger)
@@ -515,7 +519,15 @@ func (a *Agent) foldSummaryWithChunkedFallback(ctx context.Context, trigger stri
 	if err == nil || !chunkedFallbackApplies(err, inputMode) {
 		return res, tele, err
 	}
-	chunked, chunkedErr := a.chunkedFoldSummary(ctx, fold, instructions, nil)
+	// 任务 556: stream the fragment progress (and the live token readout) to
+	// the frontend. The #9082 wiring was lost when the chunked path moved to
+	// session_extract.go — the callback went back to nil and the live card
+	// regressed to a bare "compacting…". Feed the pass meter instead of
+	// emitting directly: fold transitions emit on every change (bounded by
+	// maxChunkedSummaryCalls), chunk deltas go through the 1s throttle gate.
+	chunked, chunkedErr := a.chunkedFoldSummary(ctx, fold, instructions, func(done, total int) {
+		a.compactionLiveFoldProgress(done, total)
+	})
 	chunked.Usage = mergeSamplingUsage(res.Usage, chunked.Usage)
 	chunked.Spans += res.Spans
 	if chunked.FoldTokens <= 0 {
@@ -821,6 +833,10 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 	}
 
 	a.svc.sink.Emit(event.Event{Kind: event.CompactionStarted, Compaction: event.Compaction{Trigger: trigger}})
+	// 任务 556: meter the pass from Started to every exit (defer covers Done,
+	// aborts, panics) so live readout events never outlive the pending card.
+	a.compactionLiveBegin(trigger)
+	defer a.compactionLiveStop()
 	// Task 303: phase 1/3 of the compaction slog trail (start → fold/summary →
 	// done). Token fields live in the done log where the counters exist.
 	slog.Info("agent: compaction started", "trigger", trigger, "stage", "start")

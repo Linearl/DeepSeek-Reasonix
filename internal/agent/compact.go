@@ -502,8 +502,15 @@ func (a *Agent) runSummaryRequest(ctx context.Context, req provider.Request) (su
 			switch chunk.Type {
 			case provider.ChunkText:
 				b.WriteString(chunk.Text)
+				// 任务 556: feed the live compaction readout. runSummaryRequest
+				// is the single stream-consumption point shared by every
+				// summarizer shape (replay, slim transcript, chunked fragments
+				// and merges), so this one hook covers all compaction paths;
+				// with no active pass the meter no-ops.
+				a.compactionLiveAddOutput(chunk.Text)
 			case provider.ChunkReasoning:
 				reasoning.WriteString(chunk.Text)
+				a.compactionLiveAddOutput(chunk.Text)
 			case provider.ChunkToolCall, provider.ChunkToolCallStart:
 				toolCalls++
 			case provider.ChunkUsage:
