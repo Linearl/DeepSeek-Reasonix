@@ -2,10 +2,11 @@
 // decision receipts, and compaction cards.
 
 import { useState } from "react";
-import { CheckCheck, ChevronRight, CirclePlay, ClipboardCheck, FileSearch, Info, TriangleAlert } from "lucide-react";
+import { CheckCheck, ChevronDown, ChevronRight, CirclePlay, ClipboardCheck, FileSearch, Info, TriangleAlert } from "lucide-react";
 import { useT } from "../lib/i18n";
 import type { CompactionItem, NoticeItem } from "../lib/transcriptRows";
 import type { WireCompletionSummary } from "../lib/types";
+import { turnChangeText, turnCheckState, turnCheckText } from "../lib/turnResult";
 import { TurnResultSummary } from "./TurnResultSummary";
 import { TurnEditList } from "./TurnEditList";
 import { STEER_NOTICE_PREFIX } from "../lib/useController";
@@ -73,13 +74,67 @@ export function NoticeCard({ item, onAction, onAccept, onOpenVerification, onUnd
   const ActionIcon = item.action === "open_changes" ? FileSearch : CirclePlay;
   const showVerification = item.variant === "completion" && Boolean(item.completionSummary && onOpenVerification);
   const result = item.variant === "completion" ? item.completionSummary : undefined;
+  // 任务524: the turn-result notice must not squat on the conversation
+  // viewport. It defaults to a one-line summary (title + files/± + checks);
+  // expanding is an explicit click, the verdict actions (undo/review) stay
+  // hidden while collapsed, and a newer result (different key) starts
+  // collapsed again.
+  const resultKey = result ? `${result.turnId ?? ""}:${result.checkpointTurn ?? ""}:${result.receipt?.diff?.id ?? ""}` : "";
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const resultExpanded = Boolean(result) && expandedKey === resultKey;
   const showActions = Boolean((item.action && onAction) || onAccept || showVerification);
   const turn = result?.checkpointTurn;
+  const actionsRow = showActions ? (
+    <div className="notice-line__actions">
+      {item.action && onAction ? (
+        <button className="btn btn--small" type="button" onClick={onAction} disabled={actionDisabled}>
+          <ActionIcon size={13} aria-hidden="true" />
+          <span>{item.action === "manual_continue" ? t("notice.manualContinue") : item.action === "recover_context" ? t("notice.protocolRecoveryAction") : item.action === "open_changes" ? t("notice.completionViewChanges") : t("notice.deliveryIncompleteContinue")}</span>
+        </button>
+      ) : null}
+      {showVerification ? (
+        <button className="btn btn--small" type="button" onClick={() => item.completionSummary && onOpenVerification?.(item.completionSummary)}>
+          <ClipboardCheck size={13} aria-hidden="true" />
+          <span>{t("notice.completionViewVerification")}</span>
+        </button>
+      ) : null}
+      {onAccept ? (
+        <button className="btn btn--small" type="button" onClick={onAccept}>
+          <CheckCheck size={13} aria-hidden="true" />
+          <span>{t("notice.deliveryIncompleteAccept")}</span>
+        </button>
+      ) : null}
+    </div>
+  ) : null;
   return (
     <div className={`notice-line notice-line--${item.level}${item.variant ? ` notice-line--${item.variant}` : ""}`} data-entrance={item.id} role={item.code === "incomplete_read" ? "status" : undefined}>
       {!result && <StatusIcon className="notice-line__icon" size={14} aria-hidden="true" />}
       <div className="notice-line__text">
-        {result ? <><div className="notice-line__title">{t("notice.completionChangesTitle")}</div><TurnResultSummary summary={result} /></> : item.decisionReceipt ? (
+        {result ? (
+          <>
+            <button type="button" className="notice-line__summary-toggle" aria-expanded={resultExpanded} onClick={() => setExpandedKey(resultExpanded ? null : resultKey)}>
+              {resultExpanded ? <ChevronDown className="notice-line__chevron" size={14} aria-hidden="true" /> : <ChevronRight className="notice-line__chevron" size={14} aria-hidden="true" />}
+              <span className="notice-line__title">{t("notice.completionChangesTitle")}</span>
+              <span className="notice-line__summary-change">{turnChangeText(result, t)}</span>
+              <span className={`notice-line__summary-checks turn-result-summary__checks--${turnCheckState(result).status}`}>{turnCheckText(result, t)}</span>
+            </button>
+            {resultExpanded && (
+              <div className="notice-line__expanded">
+                <TurnResultSummary summary={result} />
+                {result.receipt?.diff && result.receipt.diff.files.length > 0 && (
+                  <TurnEditList
+                    diff={result.receipt.diff}
+                    turn={turn}
+                    onReview={onAction || (showVerification ? () => result && onOpenVerification?.(result) : undefined)}
+                    onUndoCode={onUndoCode}
+                    undoDisabled={actionDisabled}
+                  />
+                )}
+                {actionsRow}
+              </div>
+            )}
+          </>
+        ) : item.decisionReceipt ? (
           <DecisionReceiptLine receipt={item.decisionReceipt} />
         ) : (
           <>
@@ -87,37 +142,7 @@ export function NoticeCard({ item, onAction, onAccept, onOpenVerification, onUnd
             <div className="notice-line__body">{item.text}</div>
           </>
         )}
-        {result?.receipt?.diff && result.receipt.diff.files.length > 0 && (
-          <TurnEditList
-            diff={result.receipt.diff}
-            turn={turn}
-            onReview={onAction || (showVerification ? () => result && onOpenVerification?.(result) : undefined)}
-            onUndoCode={onUndoCode}
-            undoDisabled={actionDisabled}
-          />
-        )}
-        {showActions ? (
-          <div className="notice-line__actions">
-            {item.action && onAction ? (
-              <button className="btn btn--small" type="button" onClick={onAction} disabled={actionDisabled}>
-                <ActionIcon size={13} aria-hidden="true" />
-                <span>{item.action === "manual_continue" ? t("notice.manualContinue") : item.action === "recover_context" ? t("notice.protocolRecoveryAction") : item.action === "open_changes" ? t("notice.completionViewChanges") : t("notice.deliveryIncompleteContinue")}</span>
-              </button>
-            ) : null}
-            {showVerification ? (
-              <button className="btn btn--small" type="button" onClick={() => item.completionSummary && onOpenVerification?.(item.completionSummary)}>
-                <ClipboardCheck size={13} aria-hidden="true" />
-                <span>{t("notice.completionViewVerification")}</span>
-              </button>
-            ) : null}
-            {onAccept ? (
-              <button className="btn btn--small" type="button" onClick={onAccept}>
-                <CheckCheck size={13} aria-hidden="true" />
-                <span>{t("notice.deliveryIncompleteAccept")}</span>
-              </button>
-            ) : null}
-          </div>
-        ) : null}
+        {!result && actionsRow}
         {item.detail ? (
           <details className="notice-line__details">
             <summary>{t("notice.details")}</summary>
