@@ -356,6 +356,7 @@ type SettingsView struct {
 	// UpdateChime exposes the update-complete chime switch (task 277) — same
 	// render-table rule as the switches above (a missing entry silently reads off).
 	UpdateChime                bool   `json:"updateChime"`
+	UpdateChimeTune            string `json:"updateChimeTune"`
 	ExperimentalSessionMonitor bool   `json:"experimentalSessionMonitor"`
 	ExperimentalSplitView      bool   `json:"experimentalSplitView"`
 	SessionStorage             string `json:"sessionStorage"`
@@ -577,7 +578,8 @@ type DesktopStartupSettingsView struct {
 	AutonomousUpdateResume string `json:"autonomousUpdateResume"`
 	// UpdateChime exposes the update-complete chime switch (task 277).
 	UpdateChime bool `json:"updateChime"`
-	// ExperimentalSessionMonitor exposes the left-rail "session monitor" board (task 123).
+	// UpdateChimeTune is the chime melody dial (task 512): nokia | mario (normalized).
+	UpdateChimeTune            string `json:"updateChimeTune"`
 	ExperimentalSessionMonitor bool   `json:"experimentalSessionMonitor"`
 	ExperimentalSplitView      bool   `json:"experimentalSplitView"`
 	SessionStorage             string `json:"sessionStorage"`
@@ -1376,6 +1378,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalAutonomousUpdate = cfg.Desktop.ExperimentalAutonomousUpdate
 		view.AutonomousUpdateResume = cfg.AutonomousUpdateResumeMode()
 		view.UpdateChime = cfg.Desktop.UpdateChime
+		view.UpdateChimeTune = cfg.UpdateChimeTuneMode()
 		view.ExperimentalSessionMonitor = cfg.Desktop.ExperimentalSessionMonitor
 		view.ExperimentalSplitView = cfg.Desktop.ExperimentalSplitView
 		view.SessionStorage = config.SessionStorageMode(cfg)
@@ -1521,6 +1524,7 @@ func (a *App) Settings() SettingsView {
 		ExperimentalAutonomousUpdate:    cfg.Desktop.ExperimentalAutonomousUpdate,
 		AutonomousUpdateResume:          cfg.AutonomousUpdateResumeMode(),
 		UpdateChime:                     cfg.Desktop.UpdateChime,
+		UpdateChimeTune:                 cfg.UpdateChimeTuneMode(),
 		ExperimentalSessionMonitor:      cfg.Desktop.ExperimentalSessionMonitor,
 		ExperimentalSplitView:           cfg.Desktop.ExperimentalSplitView,
 		SessionStorage:                  storageMode,

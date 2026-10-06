@@ -69,6 +69,11 @@ type DesktopConfig struct {
 	// versions (task 277). Opt-in (fork rule 2); the frontend gates one-shot
 	// playback by the last-chimed version, so an off switch is zero-behaviour.
 	UpdateChime bool `toml:"update_chime"`
+	// UpdateChimeTune picks the update-chime melody (task 512): "nokia" or
+	// "mario". Reads via UpdateChimeTuneMode, which normalizes empty/unknown
+	// values to "nokia"; the frontend additionally falls back from "mario" to
+	// "nokia" in public builds, where the Nintendo-owned asset is compiled out.
+	UpdateChimeTune string `toml:"update_chime_tune"`
 	// ExperimentalSessionMonitor exposes the left-rail "session monitor" board
 	// (task 123). It ships off: the board is a diagnostics surface for cache
 	// residency and switch cost, so it stays behind an explicit opt-in.

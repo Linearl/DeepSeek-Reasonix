@@ -27,6 +27,8 @@ export interface SettingsView {
   autonomousUpdateResume?: string;
   // Task 277: update-complete chime (first launch after a version swap).
   updateChime?: boolean;
+  // Task 512: update-chime melody dial ("nokia" | "mario", normalized server-side).
+  updateChimeTune?: string;
   // Task 123: exposes the left-rail session monitor board (experimental).
   experimentalSessionMonitor?: boolean;
   // Task 70-1: exposes the tab-bar split view (experimental).

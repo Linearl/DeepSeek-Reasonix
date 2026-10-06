@@ -201,6 +201,13 @@ func (a *App) SetUpdateChime(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetUpdateChime(enabled) })
 }
 
+// SetUpdateChimeTune picks the update-chime melody (task 512): "nokia" or
+// "mario". The frontend owns playback, so this is a live config flip — the
+// next chime reads the new tune.
+func (a *App) SetUpdateChimeTune(tune string) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetUpdateChimeTune(tune) })
+}
+
 // SetExperimentalFullAccess toggles the full-access (yolo) lab switch
 // (task 257). Boot resolves it into the writable-root set and the bash spec,
 // so the flip applies on the next restart — the settings pane says so.
