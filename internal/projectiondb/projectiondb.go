@@ -428,6 +428,17 @@ func PathLooksRemote(path string) bool {
 // then swaps it into place. The old projection remains untouched if building,
 // validation, or the platform rename fails (notably an open database on
 // Windows). Rebuild never touches authoritative business files.
+//
+// Interruption semantics: "discard on interrupt, idempotent rerun". A canceled
+// or failed build removes its temporary sibling and swaps nothing. A rebuild
+// interrupted by a process crash can only leave unopened sibling debris beside
+// an intact live database, because the live file is moved aside only after the
+// validated replacement exists; a hard kill inside the narrow backup window
+// loses nothing but this disposable projection itself (authoritative data
+// lives outside), and the next rerun recreates it. Whatever debris a crashed
+// run left behind is swept under the lifecycle lock before the next build
+// starts, so rerunning after any interruption reproduces a complete database
+// with no data loss and no residue accumulation.
 func Rebuild(ctx context.Context, opts OpenOptions, populate func(context.Context, *sql.DB) error) error {
 	if strings.TrimSpace(opts.Path) == "" || opts.InMemory {
 		return errors.New("projection rebuild requires a disk path")
@@ -440,6 +451,10 @@ func Rebuild(ctx context.Context, opts OpenOptions, populate func(context.Contex
 		return fmt.Errorf("lock projection rebuild: %w", err)
 	}
 	defer release()
+	// Sweep debris a previously crashed rebuild left beside this projection.
+	// The lifecycle lock is held, so no concurrent rebuild owns these files;
+	// readers only ever open the live path, never sibling leftovers.
+	cleanOrphanRebuildResidues(opts.Path, opts.RetainBackup)
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
@@ -528,4 +543,26 @@ func Rebuild(ctx context.Context, opts OpenOptions, populate func(context.Contex
 	}
 	cleanupTemporary()
 	return nil
+}
+
+// cleanOrphanRebuildResidues removes crash debris from a previous rebuild of
+// the same projection: interrupted temporary siblings (.rebuild-*) and, for
+// callers that do not retain rollback backups, rolled-aside old databases
+// (.replaced-*). Retained backups are deliberate rollback points and are
+// never touched. The caller must hold the rebuild lifecycle lock so no
+// concurrent rebuild can be creating these files.
+func cleanOrphanRebuildResidues(path string, retainBackup bool) {
+	leftovers, _ := filepath.Glob(path + ".rebuild-*")
+	if !retainBackup {
+		replaced, _ := filepath.Glob(path + ".replaced-*")
+		leftovers = append(leftovers, replaced...)
+	}
+	for _, leftover := range leftovers {
+		// The lock file itself matches the rebuild-* glob; it belongs to the
+		// live lifecycle, not to a crashed run.
+		if leftover == path+".rebuild.lock" {
+			continue
+		}
+		_ = os.Remove(leftover)
+	}
 }
