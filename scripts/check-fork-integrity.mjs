@@ -98,6 +98,7 @@ const CHECKS = [
   { feature: "任务461-P11 读路径降级直读+共享锁短预算", file: "internal/collabinbox/collabinbox.go", patterns: ["lockRead", "readLockWaitTimeout", "Degraded"] },
   { feature: "任务511 History 锁繁忙降级（Warn+Degraded 贯穿到快照）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["degraded history read (lock busy)", "last_holder", "wait_ms"] },
   { feature: "任务511 快照降级传递（mail 锁繁忙 ≠ 暂无信件）", file: "internal/collabinbox/collabinbox.go", patterns: ["idx.degraded"] },
+  { feature: "任务511 sweep 节流闸（面板读不再每次全库重写）", file: "internal/collabinbox/collabinbox.go", patterns: ["sweepThrottleWindow", "func (s *Store) sweepDue("] },
   { feature: "任务511 面板降级提示（锁繁忙 ≠ 暂无信件）", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["collabInbox.degraded", "collab-inbox-panel__empty--degraded"] },
   { feature: "任务511 降级提示三语 locale", file: "desktop/frontend/src/locales/zh.ts", patterns: ["collabInbox.degraded"] },
   { feature: "任务461-P13② 上下文增幅观测告警（维护间隔跳变有日志诊断入口）", file: "internal/agent/context_manager.go", patterns: ["observeContextGrowth", "contextGrowthWarnRatio"] },

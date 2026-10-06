@@ -171,13 +171,18 @@ type Decision struct {
 }
 
 // stateFile is the on-disk view state: dismissals, decisions, retention,
-// cleanup rule (任务 464).
+// cleanup rule (任务 464), last successful sweep stamp (任务 511 节流闸).
 type stateFile struct {
 	Revision    int64               `json:"revision"`
 	Dismissed   map[string]int64    `json:"dismissed,omitempty"`
 	Decided     map[string]Decision `json:"decided,omitempty"`
 	Retention   string              `json:"retention,omitempty"`
 	CleanupRule string              `json:"cleanupRule,omitempty"`
+	// LastSweepAt is when the write-side maintenance last completed
+	// successfully (ms epoch). It is what makes the panel read's sweep a
+	// low-frequency maintenance instead of a full-library rewrite on every
+	// open — 任务 511 节流闸. 0/absent = never swept = due.
+	LastSweepAt int64 `json:"lastSweepAt,omitempty"`
 }
 
 // Query filters and pages one list/chain call (task 320 a/b).
@@ -251,6 +256,13 @@ const (
 	// (任务461 P11): a reader never queues behind a wedged holder for the full
 	// write budget — 可用性 > 锁完整性, the user's standing ruling.
 	readLockWaitTimeout = 1500 * time.Millisecond
+	// sweepThrottleWindow is the 任务511 throttle: a panel read skips the
+	// retention sweep when the last SUCCESSFUL sweep is younger than this.
+	// 排查实证（任务 511 报告 §4 缺口 2）：面板每开一次就对全库 inbox 做一遍
+	// 读-改-写（独占锁横跨两把锁），连点桶即自碰撞降级。5 分钟把「读一次=全库
+	// 重写一遍」降为低频维护，同时保留期变更仍即时生效（SetRetention 走
+	// ApplyRetention，不受此闸约束）。非配置常量：改窗口 = 改这一行。
+	sweepThrottleWindow = 5 * time.Minute
 )
 
 // Store reads the mail directory through the sessioncollab MailStore and
@@ -707,11 +719,25 @@ func (s *Store) ApplyRetention(ctx context.Context) (int, error) {
 			}
 		}
 		st.Revision++
-		if err := s.saveState(st); err != nil {
-			return removed, err
-		}
+	}
+	// 任务511 节流闸：成功的 sweep 盖时间戳（含「无事可做」的 sweep——那正是
+	// 常态），节流窗口内的下一次面板读据此跳过这次全库重写。失败不盖时间戳，
+	// 下一次读会重试。
+	st.LastSweepAt = s.now()
+	if err := s.saveState(st); err != nil {
+		return removed, err
 	}
 	return removed, nil
+}
+
+// sweepDue reports whether the panel read's retention sweep should run now
+// (任务511 节流闸): the state file stamps the last successful sweep, and a
+// younger one means the next open skips the full-library rewrite. Best-effort
+// by design — two windows racing inside the same window may both sweep once,
+// which is still a 5-minute frequency, not a per-click one.
+func (s *Store) sweepDue() bool {
+	last := s.loadState().LastSweepAt
+	return last <= 0 || s.now()-last >= sweepThrottleWindow.Milliseconds()
 }
 
 // applyCleanupLocked enforces the session-deletion cleanup rule (任务 464).
@@ -785,9 +811,13 @@ func (s *Store) List(ctx context.Context, q Query, applyRetention bool) (Snapsho
 		// 保留期/清理是写操作：只在锁健康时执行（先释放共享锁再取写锁）。
 		unlock()
 		sweepFailed := false
-		if _, rerr := s.sweep(ctx); rerr != nil {
-			// 写侧维护失败 ≠ 读失败：跳过本次维护继续读（上抛会把面板打成空）。
-			sweepFailed = true
+		// 任务511 节流闸：距上次成功 sweep 不足一个窗口时直接跳过——面板每开
+		// 一次全库重写一遍是排查实证的自碰撞源。跳过是健康快路径，不算降级。
+		if s.sweepDue() {
+			if _, rerr := s.sweep(ctx); rerr != nil {
+				// 写侧维护失败 ≠ 读失败：跳过本次维护继续读（上抛会把面板打成空）。
+				sweepFailed = true
+			}
 		}
 		unlock2, d2, lerr := s.lockRead(ctx)
 		if lerr != nil {

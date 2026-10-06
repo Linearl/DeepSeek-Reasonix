@@ -286,6 +286,10 @@ func Test464_SweepFailureDoesNotEmptyPanel(t *testing.T) {
 	if _, err := store.SetRetention(context.Background(), RetentionForever); err != nil {
 		t.Fatal(err)
 	}
+	// 任务511 节流闸：上面的 SetRetention 已成功 sweep 并盖了 lastSweepAt，
+	// 前推时钟一个窗口让本次 sweep「到期」，才能测到失败注入的降级路径。
+	base := store.now()
+	store.now = func() int64 { return base + sweepThrottleWindow.Milliseconds() }
 	store.sweep = func(context.Context) (int, error) { return 0, errors.New("collab inbox lock busy (wedged holder)") }
 	snap, err := store.List(context.Background(), Query{}, true)
 	if err != nil {
