@@ -39,6 +39,16 @@ function eq(actual: unknown, expected: unknown, label: string) {
   }
 }
 
+function ok(cond: boolean, label: string) {
+  if (cond) {
+    process.stdout.write(`  PASS  ${label}\n`);
+    passed += 1;
+  } else {
+    process.stdout.write(`  FAIL  ${label}\n`);
+    failed += 1;
+  }
+}
+
 const { resolveToolCardDefaultOpen } = await import("../lib/transcriptRowGeometry");
 const labFlags = await import("../lib/labFlags");
 const layout = await import("../store/layout");
@@ -185,6 +195,53 @@ console.log("\nsubagent panel dock (task 495)");
   await act(async () => { (moreButton as HTMLButtonElement).click(); });
   eq(countRows(), 22, "panel: one click reveals the remaining page (+1 here)");
   eq(container.querySelectorAll(".subagents-panel__foot button").length, 0, "panel: foot disappears when everything is revealed");
+  await act(async () => { root.unmount(); });
+  container.remove();
+}
+
+// 6. 任务 533 ③: opening the read-only detail view and going back must not
+// change the status display — list rows and the detail project the SAME entry
+// state, and the directory data itself is never mutated by viewing.
+{
+  const runningCard = subagentTool({
+    id: "d-running", status: "running", startedAt: 5_000, subject: "运行中子代理",
+    subagentProgress: { phase: "reasoning", reasoning: "", text: "", notice: "", lastActivityAt: 5_000, truncated: false, startedAt: 5_000 },
+  });
+  const endedCard = subagentTool({
+    id: "d-ended", status: "done", startedAt: 1_000, subject: "已完成子代理",
+    subagentProgress: { phase: "completed", reasoning: "", text: "", notice: "", lastActivityAt: 1_000, truncated: false, startedAt: 1_000 },
+  });
+  const directory = buildSubagentDirectory([runningCard, endedCard]);
+  const directorySnapshot = JSON.stringify(directory);
+
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(createElement(LocaleProvider, null,
+      createElement(SubagentsDockPanel, { directory, detailEnabled: true })));
+  });
+  const rowStatuses = () =>
+    Array.from(container.querySelectorAll(".subagents-panel__row-status")).map((el) => el.textContent);
+  const statusesBefore = rowStatuses();
+  eq(statusesBefore.length, 2, "detail: both rows render a status label");
+
+  // Open the ended row's detail: the body switches to the read-only view…
+  const endedRow = Array.from(container.querySelectorAll<HTMLButtonElement>(".subagents-panel__row"))
+    .find((el) => el.textContent?.includes("已完成子代理"));
+  ok(endedRow !== undefined, "detail: ended row rendered");
+  await act(async () => { endedRow!.click(); });
+  eq(container.querySelectorAll(".subagents-panel__detailview").length, 1, "detail: read-only detail view opens");
+  ok(container.querySelector(".subagents-panel__detailview-meta")?.textContent?.includes(statusesBefore[1] ?? "##missing##"), "detail: meta carries the SAME status the row showed");
+
+  // …and going back restores the list with byte-identical status labels.
+  const back = container.querySelector<HTMLButtonElement>(".subagents-panel__back");
+  ok(back !== null, "detail: back button rendered");
+  await act(async () => { back!.click(); });
+  eq(rowStatuses().join("|"), statusesBefore.join("|"), "detail: back restores identical status display");
+  eq(container.querySelectorAll(".subagents-panel__detailview").length, 0, "detail: detail view closed");
+  eq(JSON.stringify(directory), directorySnapshot, "detail: viewing never mutates the directory data");
+
   await act(async () => { root.unmount(); });
   container.remove();
 }
