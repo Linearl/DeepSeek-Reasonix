@@ -7,7 +7,7 @@ import { useContext } from "react";
 import { ChevronRight } from "lucide-react";
 import { useT } from "../lib/i18n";
 import type { CompactionItem, SegmentModel } from "../lib/transcriptRows";
-import { useTick, workStatusLabel } from "../lib/workStatus";
+import { useTick, resolveRunningDurationMs, workStatusLabel } from "../lib/workStatus";
 import { LiveStreamContext } from "./LiveStreamContext";
 
 export function ProcessFoldHeader({
@@ -27,14 +27,18 @@ export function ProcessFoldHeader({
 
   const hasRunningWork = segment.hasRunningWork;
   const now = useTick(hasRunningWork);
-  const runningDurationMs = hasRunningWork
-    ? turnStartAt
-      ? Math.max(0, now - turnStartAt)
-      : live?.reasoningStartedAt
-        ? Math.max(0, now - live.reasoningStartedAt)
-        : 0
-    : 0;
-  const effectiveDurationMs = hasRunningWork ? Math.max(segment.durationMs, runningDurationMs) : segment.durationMs;
+  // Task 341: with no start timestamp the resolver anchors the count at the
+  // first render that saw this segment running and grows from the static
+  // snapshot, so the duration keeps ticking through long quiet stretches
+  // instead of freezing on a stale segment.durationMs.
+  const effectiveDurationMs = resolveRunningDurationMs({
+    now,
+    running: hasRunningWork,
+    segmentKey: segment.key,
+    staticDurationMs: segment.durationMs,
+    turnStartAt,
+    reasoningStartedAt: live?.reasoningStartedAt,
+  });
 
   // A process fold that coalesces context-compaction events must not show a
   // bare "worked Xm" label — the chunked /compact fallback (over-length
