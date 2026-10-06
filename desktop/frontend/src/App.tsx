@@ -5992,7 +5992,10 @@ export default function App() {
           resetKey={activeTabId ?? ""}
           onAddToChat={addSelectedTextToComposer}
           onQuickAction={(action, text, contextText) =>
-            app.RunSelectionSideQuery(action, text, contextText).catch(() => "")}
+            // Task 525: rejections must reach the result card's error branch
+            // ("请求失败，请重试") — swallowing them into "" showed a misleading
+            // "(no result)" instead of the visible failure the spec requires.
+            app.RunSelectionSideQuery(action, text, contextText)}
         />
       </Suspense>
       {worktreeMergeTabId && (

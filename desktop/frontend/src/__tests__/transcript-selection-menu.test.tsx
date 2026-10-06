@@ -17,6 +17,9 @@
 // - the add-to-chat shortcut lives in the shared registry: rebinding it in
 //   settings remaps both the handler and the visible hint
 
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
 import React from "react";
 import { act } from "react";
@@ -633,6 +636,12 @@ console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
   const card = document.querySelector(".transcript-selection-result-card");
   ok(card != null, "result card appears after the action");
   ok(card?.textContent?.includes("RESULT:explain") === true, "card renders the side-query result");
+  // Task 525: the card anchors at the selection point via inline left/top —
+  // inert unless the stylesheet positions the card (contract block below).
+  ok(
+    (card?.getAttribute("style") ?? "").includes("left") && (card?.getAttribute("style") ?? "").includes("top"),
+    "card carries the inline selection-point anchor",
+  );
   eq(calls.length, 1, "bridge called exactly once");
   eq(calls[0]?.action, "explain", "bridge received the explain action");
   eq(calls[0]?.text, "assistant reply text", "bridge received the selected text");
@@ -693,6 +702,51 @@ console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
 
   await act(async () => { root3.unmount(); });
   dom.window.close();
+}
+
+{
+  // Task 525 visibility contract: jsdom has no layout engine, so the DOM
+  // assertions above pass even if the card is never painted. Task 369
+  // shipped the component with zero CSS for .transcript-selection-result-card
+  // — the portal landed after #root in body flow and body{overflow:hidden}
+  // clipped it: "clicked, no floating window". Pin the stylesheet rules that
+  // make the card actually visible so this cannot regress silently.
+  const testDir = dirname(fileURLToPath(import.meta.url));
+  const styles = readFileSync(resolve(testDir, "../styles.css"), "utf8");
+  const menuCss = readFileSync(resolve(testDir, "../components/TranscriptSelectionMenu.css"), "utf8");
+  function cssBlock(source: string, selector: string): string | null {
+    const at = source.indexOf(selector);
+    if (at < 0) return null;
+    const open = source.indexOf("{", at + selector.length - 1);
+    if (open < 0) return null;
+    let depth = 0;
+    for (let i = open; i < source.length; i += 1) {
+      if (source[i] === "{") depth += 1;
+      else if (source[i] === "}") {
+        depth -= 1;
+        if (depth === 0) return source.slice(open + 1, i);
+      }
+    }
+    return null;
+  }
+
+  const cardBlock = cssBlock(styles, ".transcript-selection-result-card");
+  ok(cardBlock != null, "stylesheet defines .transcript-selection-result-card");
+  ok(cardBlock?.includes("position: fixed") === true, "result card is position:fixed (inline left/top become live)");
+  ok(cardBlock?.includes("z-index: var(--z-floating-menu)") === true, "result card layers with the action toolbar via the z token");
+  ok(cardBlock?.includes("max-height:") === true, "result card caps its height");
+
+  const bodyBlock = cssBlock(styles, ".transcript-selection-result-card__body");
+  ok(bodyBlock != null, "stylesheet defines the card body");
+  ok(bodyBlock?.includes("overflow-y: auto") === true, "long results scroll inside the card");
+
+  const errorBlock = cssBlock(styles, '.transcript-selection-result-card__body[data-state="error"]');
+  ok(errorBlock != null && errorBlock.includes("var(--danger)"), "error state paints with the danger token");
+
+  ok(
+    menuCss.includes(':root[data-platform="windows"] .transcript-selection-result-card'),
+    "windows override keeps the card opaque (WebView2 stale-pixel treatment)",
+  );
 }
 
 if (failed > 0) process.exit(1);
