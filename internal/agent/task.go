@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -289,9 +290,6 @@ type TaskTool struct {
 	contextBudget      bool
 	researchBudget     bool
 
-	// Task 244 B9 capability filter (nil = off; boot injects call-time probes).
-	modelCapabilityFilter func() bool
-	visionForModel        func(modelRef string) (vision bool, known bool)
 	// mutationObserver is shared with spawned sub-agents for checkpoint capture.
 	mutationObserver *checkpoint.MutationObserver
 	// recoveryGate is the shared Auto Guard boundary for
@@ -337,8 +335,6 @@ func NewTaskToolWithOptions(opts TaskToolOptions) *TaskTool {
 		compactionParallel:    opts.CompactionParallel,
 		contextBudget:         opts.ContextBudget,
 		researchBudget:        opts.ResearchBudget,
-		modelCapabilityFilter: opts.ModelCapabilityFilterEnabled,
-		visionForModel:        opts.VisionForModel,
 	}
 }
 
@@ -1543,25 +1539,37 @@ func FilterReadOnlyRegistry(parent *tool.Registry, exclude ...string) *tool.Regi
 	return sub
 }
 
-// checkModelImageCapability enforces task 244 B9: with the filter on, an
-// image-bearing dispatch to an explicit per-task model without vision is an
-// explained rejection instead of silently dropping the image parts (the child
-// would run blind on the text-only model). modelRef=="" inherits the parent's
-// model — nothing per-task to filter. An unknown ref passes: uncertainty never
-// refuses (same degrade-not-refuse shape as resolveProvider).
-func (t *TaskTool) checkModelImageCapability(ctx context.Context, modelRef string) error {
-	images := SubagentImageCandidates(ctx)
-	if len(images) == 0 || modelRef == "" {
-		return nil
+// subagentSessionName picks the most specific identifier available for a
+// dispatch log line: the child session's ephemeral transport identity when one
+// exists, else the recovery task ref ("subagent:<id>").
+func subagentSessionName(sess *Session, recoveryTaskID string) string {
+	if sess != nil && sess.cacheSessionID != "" {
+		return sess.cacheSessionID
 	}
-	if t == nil || t.modelCapabilityFilter == nil || t.visionForModel == nil || !t.modelCapabilityFilter() {
-		return nil
+	return recoveryTaskID
+}
+
+// forwardTurnAttachments opts the child in to the parent turn's resolved
+// attachment candidates (task 551: the task-244 B9 rejection gate is removed —
+// it judged the turn-level candidates instead of the subagent's own inputs and
+// blocked every image-bearing dispatch with a misleading message). The child
+// provider owns the final vision decision: text-only providers retain the
+// attachment metadata but omit image parts during serialization. Because this
+// opt-in rides an inherited ctx criterion, it is logged with structured fields
+// — before task 551 nothing recorded who received which attachments, and the
+// misattribution cost two wrong diagnoses. Standing rule: any branch that
+// rejects or degrades on an inherited ctx criterion must slog.Warn with the
+// same fields (criterion source, value, decision).
+func forwardTurnAttachments(ctx context.Context, modelRef, session string) context.Context {
+	candidates := SubagentImageCandidates(ctx)
+	if len(candidates) == 0 {
+		return ctx
 	}
-	vision, known := t.visionForModel(modelRef)
-	if !known || vision {
-		return nil
-	}
-	return fmt.Errorf("blocked: model %q has no vision capability but this task carries %d image(s) (task 244 B9 capability filter, experimental_model_capability_filter): dispatch with a vision-capable per-task model, or drop the images from the task", modelRef, len(images))
+	slog.Info("subagent: forwarding turn attachments",
+		"modelRef", modelRef,
+		"count", len(candidates),
+		"session", session)
+	return WithUserImages(ctx, candidates)
 }
 
 func (t *TaskTool) resolveSubSessionRuntime(modelRef, effort string) (provider.Provider, *provider.Pricing, int, error) {
@@ -1586,12 +1594,10 @@ func (t *TaskTool) runSubSession(ctx context.Context, prompt string, subReg *too
 	// intent classification must judge the task, not the wrapper.
 	opts.ClassifierTaskText = prompt
 	prompt = t.withWorkspaceContext(prompt) + "\n\n" + completeSubtaskContract
-	// The child provider owns the final vision decision. Text-only providers
-	// retain the attachment metadata but omit image parts during serialization.
-	if err := t.checkModelImageCapability(ctx, modelRef); err != nil {
-		return "", err
-	}
-	ctx = WithUserImages(ctx, SubagentImageCandidates(ctx))
+	// The child provider owns the final vision decision (task 551: the B9
+	// rejection gate is gone). Text-only providers retain the attachment
+	// metadata but omit image parts during serialization.
+	ctx = forwardTurnAttachments(ctx, modelRef, subagentSessionName(sess, recoveryTaskID))
 	return RunSubAgentWithSession(ctx, prov, subReg, sess, prompt, opts, sink)
 }
 
@@ -1602,10 +1608,7 @@ func (t *TaskTool) runReadOnlySubSession(ctx context.Context, prompt string, sub
 	// intent classification must judge the task, not the wrapper.
 	opts.ClassifierTaskText = prompt
 	prompt = t.withWorkspaceContext(prompt)
-	if err := t.checkModelImageCapability(ctx, modelRef); err != nil {
-		return "", err
-	}
-	ctx = WithUserImages(ctx, SubagentImageCandidates(ctx))
+	ctx = forwardTurnAttachments(ctx, modelRef, subagentSessionName(sess, recoveryTaskID))
 	return RunReadOnlySubAgentWithSession(ctx, prov, subReg, sess, prompt, opts, sink)
 }
 

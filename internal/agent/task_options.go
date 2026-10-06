@@ -99,9 +99,4 @@ type TaskToolOptions struct {
 	CompactionParallel bool
 	ContextBudget      bool
 	ResearchBudget     bool
-	// Task 244 B9: the capability filter reads its switch at call time (S4)
-	// and asks the config-resolved vision capability of an explicit per-task
-	// model. Nil funcs (direct unit construction) keep the filter off.
-	ModelCapabilityFilterEnabled func() bool
-	VisionForModel               func(modelRef string) (vision bool, known bool)
 }
