@@ -1010,20 +1010,23 @@ func (a *App) restoreOrBuildTabs() {
 			// from re-seeding the cleared goal into the rotated session. A
 			// session without a sidecar keeps the persisted goal (legacy).
 			tab.goal = runningTabSessionGoal(strings.TrimSpace(entry.SessionPath), strings.TrimSpace(entry.Goal))
-			// Task 49 A2: an unattended run continues across a restart. The sidecar
-			// decides whether this run was unattended; the current preferences only
-			// supply the bound, because the previous deadline died with the process.
-			// Without a usable bound the run stays interactive - the same refusal the
-			// CLI makes - rather than resuming with no limit at all.
 			tab.toolApprovalMode = normalizeToolApprovalMode(entry.ToolApprovalMode)
 			if tab.toolApprovalMode == control.ToolApprovalAsk && tabModeHasAutoApproveTools(entry.Mode) {
 				tab.toolApprovalMode = control.ToolApprovalYolo
 			}
-			// Task 325: the approval posture must be resolved before autopilot
-			// is restored — a persisted unattended run may only come back under
-			// yolo, otherwise it stays interactive (the gate refuses silently
-			// here; the run is bounded as a normal goal instead).
-			if tabSessionAutopilot(tab.SessionPath) {
+			// Task 49 A2 + task 465 (X4 断点 C): an unattended run continues
+			// across a restart. Two persistence sources feed the flag — the
+			// tab entry column (task 465; covers the bare autopilot toggle
+			// that has no goal sidecar) and the goal-state sidecar (task 49;
+			// covers a running unattended goal) — then the task-325 gate has
+			// the final say: a persisted unattended run may only come back
+			// under yolo, otherwise it stays interactive (the gate refuses
+			// silently here; the run is bounded as a normal goal instead).
+			// The sidecar decides whether THIS run was unattended; the
+			// preferences only supply the bound, because the previous
+			// deadline died with the process. Without a usable bound the run
+			// stays interactive rather than resuming with no limit at all.
+			if entry.Autopilot || tabSessionAutopilot(tab.SessionPath) {
 				if on, maxRuntime, grace, askEnabled, askWait := desktopAutopilotDefaults(); on {
 					tab.autopilot, tab.autopilotMaxRuntime, tab.autopilotApprovalGrace, tab.autopilotAskTimeoutEnabled, tab.autopilotAskWait = gateRestoredAutopilotDefaults(on, maxRuntime, grace, askEnabled, askWait, tab.toolApprovalMode)
 				}
@@ -2276,11 +2279,13 @@ func (a *App) SetCollaborationModeForTab(tabID, mode string) {
 		a.mu.Unlock()
 		return
 	}
-	// Leaving autopilot must clear it: a tab that kept the flag would silently stay
-	// unattended after the user switched back to a normal mode.
-	autopilotOn, autopilotRuntime, autopilotGrace := false, time.Duration(0), time.Duration(0)
-	var autopilotAskEnabled bool
-	var autopilotAskWait time.Duration
+	// Task 465 two-axis matrix: plan/goal/normal are the SECOND axis (task
+	// dimension 常规/计划/目标) and no longer touch the first axis (approval
+	// posture + autopilot flag) — the axes are independent, so a dim-2 switch
+	// seeds the autopilot fields from the tab's current values instead of
+	// zeros. Only the "autopilot" tier and the 325 reverse linkage rewrite them.
+	autopilotOn, autopilotRuntime, autopilotGrace := tab.autopilot, tab.autopilotMaxRuntime, tab.autopilotApprovalGrace
+	autopilotAskEnabled, autopilotAskWait := tab.autopilotAskTimeoutEnabled, tab.autopilotAskWait
 	// Task 326: remember the guard's owner identity and whether autopilot was on
 	// before this switch, so the guard is ensured/disabled right after the lock
 	// is released (the engine takes its own locks).
@@ -2290,10 +2295,13 @@ func (a *App) SetCollaborationModeForTab(tabID, mode string) {
 		Scope:         tab.Scope,
 		WorkspaceRoot: tab.WorkspaceRoot,
 	}
-	// Task 325: when the autopilot request is refused (approval mode not yolo)
-	// the mode falls back to normal and the notice is emitted after the lock
-	// below is released (noticeCodeForTab re-enters the App lock).
+	// Task 325 legacy refusal flag: the tier switch no longer refuses (task 465
+	// auto-satisfies), so this stays false on the composer path; the field
+	// remains in the X4 判据锚 log line for schema stability.
 	autopilotRefused := false
+	// Task 465: the tier switch auto-satisfied the yolo precondition instead of
+	// refusing; assumedYolo marks that decision for the log/notice record.
+	assumedYolo := false
 	switch mode {
 	case "plan":
 		tab.mode = tabModeFromAxes(true, approvalMode == control.ToolApprovalYolo)
@@ -2302,27 +2310,42 @@ func (a *App) SetCollaborationModeForTab(tabID, mode string) {
 		tab.mode = tabModeFromAxes(false, approvalMode == control.ToolApprovalYolo)
 	case "autopilot":
 		// The bound comes from the [desktop] preferences; without one autopilot
-		// stays off - the same refusal the CLI makes - and the mode falls back to
-		// normal rather than starting an unbounded unattended run.
+		// stays off - the same refusal the CLI makes - and the tier falls back
+		// rather than starting an unbounded unattended run.
 		prefOn, prefRuntime, prefGrace, prefAskEnabled, prefAskWait := desktopAutopilotDefaults()
-		// Task 325: yolo is a hard precondition, not a hint — an unattended run
-		// under ask/auto would stack approval prompts nobody can answer.
-		autopilotOn, autopilotRuntime, autopilotGrace, autopilotAskEnabled, autopilotAskWait = gateRestoredAutopilotDefaults(prefOn, prefRuntime, prefGrace, prefAskEnabled, prefAskWait, approvalMode)
-		if autopilotOn {
-			tab.mode = tabModeFromAxes(false, true)
-		} else {
-			tab.mode = tabModeFromAxes(false, approvalMode == control.ToolApprovalYolo)
-			autopilotRefused = prefOn && !autopilotGateAllowed(approvalMode)
+		// Task 325 made yolo a hard precondition; task 465 (two-axis matrix,
+		// user ruling 2026-10-05) made the tier switch satisfy it itself:
+		// "no human is available — decide for yourself, record the decision,
+		// and continue". The decision is recorded below (assumed_yolo notice +
+		// this line) instead of refusing with autopilot_requires_yolo. The
+		// gate remains the invariant keeper for every other enable path
+		// (new-tab defaults, restart restore, settings default).
+		effectiveApproval := approvalMode
+		if prefOn && !autopilotGateAllowed(approvalMode) {
+			effectiveApproval = control.ToolApprovalYolo
+			assumedYolo = true
 		}
-		tab.goal = ""
-		if !autopilotOn {
-			mode = "normal"
+		autopilotOn, autopilotRuntime, autopilotGrace, autopilotAskEnabled, autopilotAskWait = gateRestoredAutopilotDefaults(prefOn, prefRuntime, prefGrace, prefAskEnabled, prefAskWait, effectiveApproval)
+		if autopilotOn {
+			// dim-2 (plan/goal) survives the tier switch: goal × autopilot is a
+			// legal product state (the goal guard works unattended too), so the
+			// old "autopilot clears goal/plan" behavior is gone. approval is
+			// pinned to yolo (autopilot implies yolo).
+			tab.mode = tabModeFromAxes(tabModeHasPlan(tab.mode), true)
+			tab.toolApprovalMode = control.ToolApprovalYolo
+		} else {
+			// Preference off: leave the posture untouched and drop back out of
+			// the tier (bounds stay zeroed — an unbounded unattended run is
+			// never started implicitly).
+			tab.mode = tabModeFromAxes(tabModeHasPlan(tab.mode), approvalMode == control.ToolApprovalYolo)
+			autopilotOn, autopilotRuntime, autopilotGrace = false, 0, 0
+			autopilotAskEnabled, autopilotAskWait = false, 0
 		}
 		// X4 判据锚: every input and the outcome in one line, so "did my
-		// autopilot toggle actually land" is answerable from desktop.log alone
-		// (preference off and non-yolo refusals were both silent before).
+		// autopilot toggle actually land" is answerable from desktop.log alone.
+		// assumed_yolo is the task-465 decision record.
 		slog.Info("desktop: autopilot toggle", "tab", tab.ID, "preference_on", prefOn, "approval_mode", approvalMode,
-			"applied", autopilotOn, "refused_requires_yolo", autopilotRefused, "max_runtime", autopilotRuntime.String())
+			"applied", autopilotOn, "refused_requires_yolo", autopilotRefused, "assumed_yolo", assumedYolo, "max_runtime", autopilotRuntime.String())
 	default:
 		tab.mode = tabModeFromAxes(false, approvalMode == control.ToolApprovalYolo)
 		tab.goal = ""
@@ -2337,17 +2360,30 @@ func (a *App) SetCollaborationModeForTab(tabID, mode string) {
 	plan := tabModeHasPlan(tab.mode)
 	tabIDForSave := tab.ID
 	a.mu.Unlock()
-	// Task 326: this is the one real edge (autopilot off→on). Creation is
-	// idempotent and keyed by topic, so the periodic sweep covers every other
-	// entry (new-session defaults, restart restore) without duplicating.
-	if autopilotOn {
+	// Task 326: only the real edges fire — autopilot off→on creates the guard
+	// (idempotent, keyed by topic), on→off clears it. Task 465 dim-2 switches
+	// seed autopilotOn from the tab, so they are no-ops here by construction.
+	if autopilotOn && !wasAutopilot {
 		a.ensureAutopilotGuard(guardOwner)
-	} else if wasAutopilot && guardOwner.TopicID != "" {
+	} else if !autopilotOn && wasAutopilot && guardOwner.TopicID != "" {
 		a.clearAutopilotGuard(guardOwner.TopicID)
 	}
 	if autopilotRefused {
 		// Task 325: the refusal tells the user exactly which switch to flip.
 		a.noticeCodeForTab(tabIDForSave, event.LevelWarn, NoticeCodeAutopilotRequiresYolo, autopilotRequiresYoloText)
+	}
+	if assumedYolo && autopilotOn {
+		// Task 465 decision record, user-visible half: the tier switch moved
+		// approval to yolo by itself, so the user is told that happened (the
+		// slog line above is the desktop.log half of the record).
+		a.noticeCodeForTab(tabIDForSave, event.LevelInfo, NoticeCodeAutopilotAssumedYolo, autopilotAssumedYoloText)
+		// The live controller must carry the posture the tab now promises,
+		// or the current turn keeps stacking ask prompts under an unattended
+		// flag. Drained ids have no return channel on this void wire call:
+		// plain tool cards are dismissed frontend-side (the composer only had
+		// a kind=="tool" card if the posture just moved off yolo), and
+		// plan/sandbox-escape cards never drain under yolo (#6432).
+		_ = applyTabToolApprovalModeToController(ctrl, control.ToolApprovalYolo)
 	}
 	if ctrl != nil {
 		ctrl.SetPlanMode(plan)
@@ -7124,6 +7160,12 @@ type Meta struct {
 	Bypass                bool               `json:"bypass"` // legacy JSON key for YOLO/full-access tool auto-approval
 	CollaborationMode     string             `json:"collaborationMode"`
 	ToolApprovalMode      string             `json:"toolApprovalMode"`
+	// Autopilot is the RAW first-axis flag (task 465 two-axis matrix). The
+	// synthesized CollaborationMode label orders plan>goal>autopilot, so a
+	// goal × autopilot tab reports "goal" and the composer could no longer
+	// see the unattended state it must show; the raw flag keeps both axes
+	// visible at once.
+	Autopilot             bool               `json:"autopilot,omitempty"`
 	SubagentPolicy        string             `json:"subagentPolicy,omitempty"`
 	// TokenMode and AgentPreset are deprecated dual-write wire values pinned to
 	// their safe defaults; one-version-old frontends still parse them.
@@ -7263,6 +7305,7 @@ func (a *App) MetaForTab(tabID string) Meta {
 		TokenMode:             tokenMode,
 		AgentPreset:           agentPreset,
 		ToolApprovalMode:      toolApprovalMode,
+		Autopilot:             snap.autopilot,
 		SubagentPolicy:        snap.subagentPolicy,
 		Goal:                  goal,
 		GoalStatus:            goalStatus,
