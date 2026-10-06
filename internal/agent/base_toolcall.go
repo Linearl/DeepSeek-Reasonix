@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"reflect"
 
 	"reasonix/internal/baseproc"
 	"reasonix/internal/tool"
@@ -30,6 +31,9 @@ type baseToolOutcome struct {
 //   - runTool is not the registry's own instance (wrapped by path-binding,
 //     plan gating, read shadowing, ...) → local: those wrappers are
 //     client-side behaviour a subprocess cannot replay;
+//   - the registry entry has an uncomparable dynamic type (the built-in
+//     write tools register value structs carrying slice fields) → local
+//     before comparing: an interface == on such values is a runtime panic;
 //   - a rich executor (Read/Detailed/Image) → local: its structured results
 //     (read envelopes, shell execution records, image attachments) do not fit
 //     v1 ToolCallResult{content, error};
@@ -63,7 +67,16 @@ func (a *Agent) baseToolCall(ctx context.Context, plan *toolCallPlan) (baseToolO
 	if a.svc.tools == nil || plan.call.ID == "" {
 		return baseToolOutcome{}, false
 	}
-	if owned, ok := a.svc.tools.Get(runTool.Name()); !ok || owned != runTool {
+	owned, ok := a.svc.tools.Get(runTool.Name())
+	// The Comparable check must precede the identity comparison: the built-in
+	// write tools register value structs carrying slice fields, and comparing
+	// two interface values of such a dynamic type panics at runtime
+	// ("comparing uncomparable type") — a Go-runtime fatal no recover can
+	// catch. Uncomparable ⇒ fail closed to the local path, exactly like the
+	// wrapped/foreign case below (those tools are structured and not meant
+	// for the v1 wire anyway). Short-circuiting keeps the == unreachable for
+	// every uncomparable entry.
+	if !ok || !reflect.TypeOf(owned).Comparable() || owned != runTool {
 		return baseToolOutcome{}, false // wrapped or foreign instance: client-side semantics
 	}
 	res, err := bc.ToolCall(ctx, baseproc.ToolCallParams{

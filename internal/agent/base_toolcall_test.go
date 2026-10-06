@@ -54,6 +54,29 @@ func (t *gateWrappedTool) Execute(ctx context.Context, args json.RawMessage) (st
 	return t.inner.Execute(ctx, args)
 }
 
+// gateValueTool is registered as a VALUE with a slice field — the exact
+// registration shape of the built-in write family (writeFile{roots []string},
+// editFile, multiEdit, ...). Two interface values of this dynamic type make
+// `owned != runTool` panic at runtime ("comparing uncomparable type"), which
+// is what baseToolCall did on every remote-mode dispatch before the guard.
+type gateValueTool struct {
+	name  string
+	roots []string
+	runs  *atomic.Int32
+	label string
+}
+
+func (t gateValueTool) Name() string            { return t.name }
+func (t gateValueTool) Description() string     { return "value stub " + t.name }
+func (t gateValueTool) Schema() json.RawMessage { return json.RawMessage(`{"type":"object"}`) }
+func (t gateValueTool) ReadOnly() bool          { return false }
+func (t gateValueTool) Execute(ctx context.Context, args json.RawMessage) (string, error) {
+	if t.runs != nil {
+		t.runs.Add(1)
+	}
+	return t.label + ":" + string(args), nil
+}
+
 // gateDetailedTool carries structured execution metadata (bash's shape) and
 // must stay on the local path — v1 ToolCallResult cannot carry it.
 type gateDetailedTool struct {
@@ -312,6 +335,30 @@ func TestBaseToolCallGateMatrix(t *testing.T) {
 		res, _, _, err := a.invokeResolvedTool(ctx, plan)
 		if err != nil || res != `local:{}` || innerRuns.Load() != 1 {
 			t.Fatalf("res=%q err=%v local=%d", res, err, innerRuns.Load())
+		}
+	})
+
+	t.Run("uncomparable value tool runs local without panicking", func(t *testing.T) {
+		// Regression guard for the 10-06 crash triple: the built-in write
+		// tools register value structs with slice fields, so the gate's
+		// identity comparison panicked on the FIRST remote-mode dispatch
+		// (experimental_base_process on). The guard must fail closed to the
+		// local path instead — the gate is unreachable in CI with the switch
+		// off, hence this explicit ModeRemote test.
+		var localRuns atomic.Int32
+		reg := tool.NewRegistry()
+		reg.Add(gateValueTool{name: "write_stub", roots: []string{"a", "b"}, runs: &localRuns, label: "local"})
+		remote := newAgentRemoteBase(t, &baseproc.RegistrySurface{Reg: tool.NewRegistry()})
+		a := &Agent{svc: agentServices{tools: reg, base: remote}}
+		plan := gateCall("c1", "write_stub", json.RawMessage(`{}`))
+		plan.runTool = gateMustGet(t, reg, "write_stub") // the same interface value the gate compares against
+
+		if _, handled := a.baseToolCall(ctx, plan); handled {
+			t.Fatal("uncomparable value tool took the gate (fail-closed broken)")
+		}
+		res, _, _, err := a.invokeResolvedTool(ctx, plan)
+		if err != nil || res != `local:{}` || localRuns.Load() != 1 {
+			t.Fatalf("res=%q err=%v local=%d, want the local path executed once", res, err, localRuns.Load())
 		}
 	})
 

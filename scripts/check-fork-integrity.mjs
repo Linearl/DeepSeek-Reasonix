@@ -98,6 +98,10 @@ const CHECKS = [
   { feature: "任务461-P11 读路径降级直读+共享锁短预算", file: "internal/collabinbox/collabinbox.go", patterns: ["lockRead", "readLockWaitTimeout", "Degraded"] },
   { feature: "任务461-P13② 上下文增幅观测告警（维护间隔跳变有日志诊断入口）", file: "internal/agent/context_manager.go", patterns: ["observeContextGrowth", "contextGrowthWarnRatio"] },
   { feature: "任务461-P13③ task309 幂等默认开（Default 钉 true，显式 false 仍可关）", file: "internal/config/config.go", patterns: ["SessionCollabMailIdempotentDefault: true"] },
+  // base_toolcall 远程门：不可比较的值类型工具（内置写工具族）在接口 == 前必须先挡，
+  // 否则 experimental_base_process 开启后首次派发即 Go runtime fatal（10-06 三连崩）。
+  { feature: "base_toolcall 不可比较类型防崩守卫（Comparable 先于 ==）", file: "internal/agent/base_toolcall.go", patterns: ["!reflect.TypeOf(owned).Comparable() || owned != runTool"] },
+  { feature: "base_toolcall 防崩守卫回归测试（ModeRemote 值类型工具）", file: "internal/agent/base_toolcall_test.go", patterns: ["uncomparable value tool runs local without panicking", "gateValueTool"] },
   // 任务 90 链拼接：promote 时把落败链（当前 main）中 winner 缺失的头部 graft 到新主线。
   // 三个锚点按「顺序」登记——gap 在 rename 前算、graft 在侧车搬移后写、事件日志随即折叠；
   // 顺序错位造成的失败是静默的（文件对而读回旧），所以这里锁的是调用形状，不只是符号名。
