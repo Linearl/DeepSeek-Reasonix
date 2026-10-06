@@ -77,6 +77,12 @@ const CHECKS = [
   { feature: "任务461-P8 同内容折叠+批量已读（DuplicateCount/MarkRead）", file: "internal/collabinbox/collabinbox.go", patterns: ["DuplicateCount", "func (s *Store) MarkRead(", "duplicateFoldWindow"] },
   { feature: "任务461-P8 面板折叠徽标+全部已读接线", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["duplicateCount", "MarkCollabMailRead"] },
   { feature: "任务461-P10 幂等冲突判为重复已送达（不回错误不断根重投）", file: "desktop/session_collab.go", patterns: ["errCollabDuplicateDelivery", "collabAdmissionErr"] },
+  // 任务548（跨会话投递链 P0 修复，2026-10-07）：源头拒发与死信可达均为 fork
+  // 侧行为修复且与上游共享文件——merge 丢任一半边会复发「SEEN 但没做」事故
+  //（hop>0 无父 threadId 的消息被溯源门静默丢弃，拒收还结算 seen，失败信号不可达）。
+  { feature: "任务548 P0-1 投递层源头拒发（hop>0 无父 threadId 写前即拒）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["ErrHopWithoutParentThread", "hop=%d claimed but threadId does not name a parent"] },
+  { feature: "任务548 P0-1 工具面预校验（发送前拒绝，模型可自纠重发）", file: "internal/agent/session_collab_tools.go", patterns: ["p.Hop > 0 && !isReply", "hop=%d 需要可解析的父 thread_id"] },
+  { feature: "任务548 P0-2 死信通知新链形态（必过发送方溯源门）", file: "desktop/session_collab.go", patterns: ["任务548 P0-2（死信可达）", "死信信号在一切拒收场景下可达"] },
   // 任务461-P16（0119「ask 不弹窗+终止无效」）：P7 三级终止 × ask 等待的交叉
   // 回归钉——终止第一击必须打断 ask 等待并撤下挂起问题，丢了即现场复发。
   { feature: "任务461-P16 P7×ask 交叉钉（终止打断 ask 等待+撤僵尸卡片）", file: "internal/control/stop_escalation_ask_test.go", patterns: ["TestCancelStopInterruptsAskWait", "TestCancelStopInterruptsQueuedAsk"] },
