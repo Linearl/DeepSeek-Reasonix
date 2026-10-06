@@ -427,9 +427,9 @@ func PathLooksRemote(path string) bool {
 // Rebuild constructs and validates a replacement beside the live database,
 // then swaps it into place. Validation re-reads the folded replacement from
 // disk through a fresh connection so builder page cache cannot mask corruption.
-// The old projection remains untouched if building,
-// validation, or the platform rename fails (notably an open database on
-// Windows). Rebuild never touches authoritative business files.
+// The old projection remains untouched if building, validation, or the
+// platform rename fails (notably an open database on Windows). Rebuild never
+// touches authoritative business files.
 //
 // Interruption semantics: "discard on interrupt, idempotent rerun". A canceled
 // or failed build removes its temporary sibling and swaps nothing. A rebuild
