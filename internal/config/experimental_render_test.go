@@ -35,11 +35,13 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	c.Desktop.ExperimentalRecoveryOrphanSweep = true
 	c.Desktop.ExperimentalLifecycleNoiseGate = true
 
-	c.Desktop.ExperimentalModelCapabilityFilter = true
+		c.Desktop.ExperimentalModelCapabilityFilter = true
 	c.Agent.ExperimentalModelCapabilityFilter = true
 	c.Desktop.ExperimentalSessionCollab = true
 	// Task 439: the built-in zcode task bus switch must survive the render.
 	c.Desktop.ExperimentalZcodeTaskBus = true
+	// Task 545: the session-cwd follow switch must survive the render.
+	c.Agent.ExperimentalSessionCwdFollow = true
 
 	out := RenderTOMLForScope(c, RenderScopeUser)
 	for _, want := range []string{
@@ -62,6 +64,7 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 		"experimental_recovery_orphan_sweep = true",
 		"experimental_model_capability_filter = true",
 		"experimental_zcode_task_bus = true",
+		"experimental_session_cwd_follow = true",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("rendered user config is missing %q\n---\n%s", want, out)
@@ -94,6 +97,7 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 		"experimental_recovery_orphan_sweep = false",
 		"experimental_model_capability_filter = false",
 		"experimental_zcode_task_bus = false",
+		"experimental_session_cwd_follow = false",
 		"trace_as_state = false",
 		"stalled_intent_nudge = false",
 		"readiness_catch_up = false",

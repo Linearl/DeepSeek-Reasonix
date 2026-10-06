@@ -446,6 +446,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "experimental_research_budget = %v   # task 265: read-only soft-budget extension via extend_research_budget (#10054)\n", c.ResearchBudgetEnabled())
 	fmt.Fprintf(&b, "experimental_subagent_policy = %v   # task 265: delegation-tier entry points (off forces new sessions to light)\n", c.SubagentPolicyIntakeEnabled())
 	fmt.Fprintf(&b, "experimental_full_access = %v   # task 257: full access (yolo) — all declared write dirs pass preflight, bash runs unwrapped (restart to apply)\n", c.Agent.ExperimentalFullAccess)
+	// Task 545: explicit render — omit-on-off would silently spring a saved-on
+	// switch back off on the next render (81/123 lost-save lesson).
+	fmt.Fprintf(&b, "experimental_session_cwd_follow = %v   # task 545: resuming a session without --dir runs it in the session's own project root (branch meta) instead of the process cwd (restart to apply)\n", c.Agent.ExperimentalSessionCwdFollow)
 	// Task 231: the master switch and its four independent checkboxes all render
 	// explicitly — omit-on-off would silently spring a saved checkmark back off
 	// on the next render (the 81/123 lost-save lesson).
