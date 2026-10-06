@@ -142,3 +142,39 @@ func TestAutopilotAskTimeoutUnsetStaysOutOfTheConfig(t *testing.T) {
 		}
 	}
 }
+
+// Task 547: guard auto-creation is an opt-in sub-option riding the same
+// fixed-key autopilot block. On writes its key; off — the default — writes
+// nothing, so a config untouched in this respect stays byte-identical.
+func TestAutopilotGuardAutocreateRoundTripsThroughRender(t *testing.T) {
+	c := &Config{}
+	c.Desktop.ExperimentalAutopilotGuardAutocreate = true
+	out := RenderTOMLForScope(c, RenderScopeUser)
+	if !strings.Contains(out, "experimental_autopilot_guard_autocreate = true") {
+		t.Fatalf("rendered user config is missing the guard auto-create opt-in\n---\n%s", out)
+	}
+	if !c.AutopilotGuardAutocreateEnabled() {
+		t.Fatal("an explicit on must read back on")
+	}
+
+	// Off — the default — must keep the key out of the file entirely, and a
+	// nil config fails closed to "never create".
+	off := &Config{}
+	if off.AutopilotGuardAutocreateEnabled() {
+		t.Fatal("the default must read as off (never create)")
+	}
+	var nilCfg *Config
+	if nilCfg.AutopilotGuardAutocreateEnabled() {
+		t.Fatal("a nil config must fail closed to off")
+	}
+	out = RenderTOMLForScope(off, RenderScopeUser)
+	if strings.Contains(out, "experimental_autopilot_guard_autocreate") {
+		t.Fatalf("an untouched config must not write the guard auto-create key\n---\n%s", out)
+	}
+	if err := off.SetExperimentalAutopilotGuardAutocreate(false); err != nil {
+		t.Fatalf("setter must accept off: %v", err)
+	}
+	if off.Desktop.ExperimentalAutopilotGuardAutocreate {
+		t.Fatal("setter must store off as off")
+	}
+}
