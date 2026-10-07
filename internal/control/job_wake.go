@@ -188,6 +188,10 @@ func (c *Controller) fireWakeTurn() {
 
 	parent := c.parentSessionID()
 	admitted := c.runGuarded(func(ctx context.Context) error {
+		// Task 299 fence: bound inside the closure over the guard's fresh ctx
+		// (idempotent). The wake turn runs unattended — it must never reach the
+		// orchestrator with an unbound barrier.
+		ctx = c.withRecoveryFenceBindings(ctx)
 		return newTurnOrchestrator(c).runSyntheticTurnWithRawDisplay(
 			ctx, backgroundWakeTurnPrompt, backgroundWakeTurnPrompt, backgroundWakeTurnDisplay)
 	})
