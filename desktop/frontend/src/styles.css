@@ -44214,6 +44214,43 @@ body > .mermaid-diagram--fullscreen {
   font-size: 12px;
   padding: 8px 0;
 }
+/* 任务587 失败态与空态分离：读取失败显式报错（绝不渲染成「暂无信件」）。
+   __error = 无数据时的失败块（错误原文 + 重试）；__errorstrip = 有旧数据时的
+   顶部细条（旧数据优先渲染，如实声明不是最新结果）。 */
+.collab-inbox-panel__error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.collab-inbox-panel__error-label {
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 600;
+}
+.collab-inbox-panel__error-detail {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+.collab-inbox-panel__errorstrip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  color: var(--danger);
+  font-size: 11px;
+}
 .collab-inbox-panel__row {
   display: flex;
   flex-direction: column;

@@ -86,6 +86,12 @@ const CHECKS = [
   { feature: "任务511 复发 面板读取 INFO 留痕（静默通道哨兵）", file: "internal/collabinbox/collabinbox.go", patterns: ["collab inbox: panel read"] },
   { feature: "任务511 复发 ListCollabMail 入口 INFO", file: "desktop/collab_inbox_app.go", patterns: ["collab inbox: ListCollabMail"] },
   { feature: "任务511 复发 History ReadDir 静默空分支诚实化（degraded 非 nil,false）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["cannot list the mail directory", "listDirOrDefault"] },
+  // 任务587（收件箱面板「后端正常前端空」断裂，2026-10-07）：失败/读取中与健康空
+  // 三态分离 + catch 全链路上报 + 失败退避自动恢复，均为前端面行为修复——merge
+  // 静默回退任一半边，「失败冒充暂无信件」即复发，逐条锚定。
+  { feature: "任务587 面板失败态与空态分离（错误块/重试/读取中，禁冒充暂无信件）", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["collab-inbox-panel__error", "collabInbox.retry", "collabInbox.loading"] },
+  { feature: "任务587 失败退避自动恢复刷新（网关重连无需重开面板）", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["collabInboxRetryDelaysMs", "scheduleRetry"] },
+  { feature: "任务587 前端日志本地兜底（console+ring buffer，网关断连不静默）", file: "desktop/frontend/src/lib/frontendLog.ts", patterns: ["drainFrontendLogRing", "RING_MAX"] },
   // 任务461 P8（收件箱重入污染）：投递层幂等与消费层折叠均为 fork 侧行为修复，
   // 与上游共享文件可能被合并静默回退，逐条锚定。
   { feature: "任务461-P8 投递层重发幂等（同 from+to+内容窗内返原 id）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["dedupeResend", "resendDedupWindowDefault", "resendDedupWindowSystem"] },
