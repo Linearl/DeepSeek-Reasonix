@@ -2384,6 +2384,21 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* Task 512: chime melody dial under the switch card. Mario lists
+                  only in local builds — the Nintendo-owned asset is compiled out
+                  of public builds, which also fall back to Nokia at playback time. */}
+              <SettingsField label={t("settings.updateChimeTune")} hint={t("settings.updateChimeTuneHint")} icon={<Volume2 size={18} />}>
+                <SettingsSelect
+                  className="mem-select"
+                  value={chimeLocalAssetsEnabled() ? normalizeUpdateChimeTune(s.updateChimeTune) : "nokia"}
+                  disabled={busy}
+                  onValueChange={(value) => void apply(() => app.SetUpdateChimeTune(value))}
+                >
+                  {(chimeLocalAssetsEnabled() ? UPDATE_CHIME_TUNES : ["nokia"] as const).map((tune) => (
+                    <option key={tune} value={tune}>{t(`settings.updateChimeTune.${tune}` as DictKey)}</option>
+                  ))}
+                </SettingsSelect>
+              </SettingsField>
               <SettingsField label={t("settings.restartUpdate")} hint={t("settings.restartUpdateHint")} icon={<RefreshCw size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
