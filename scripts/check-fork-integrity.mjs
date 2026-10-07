@@ -1248,6 +1248,15 @@ const CHECKS = [
   { feature: "512 三语文案 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["\"settings.updateChimeTune\": \"Chime melody\"", "\"settings.updateChimeTune.mario\": \"Super Mario\""] },
   { feature: "512 速率/截断测试存续", file: "desktop/frontend/src/__tests__/task512-chime-rate-interrupt.test.ts", patterns: ["UPDATE_CHIME_PLAYBACK_RATE", "UPDATE_CHIME_INTERRUPT_DELAY_MS"] },
 
+  // ── 任务562 实验室三档徽章（推荐/可选/未稳定/已退役，表A 46 项）──
+  { feature: "任务562 Go 档位注册表（渲染表同源，含已退役项）", file: "internal/config/render.go", patterns: ["var labFeatureTiers = []labFeatureTier{", "\"modelCapabilityFilter\", LabTierRetired", "labNonFeatureKeys", "labSpecialKeys"] },
+  { feature: "任务562 门禁测试（新增实验项不标档位⇒失败 + 表A 计数钉）", file: "internal/config/render_lab_tiers_test.go", patterns: ["TestLabRenderKeysAllTaggedWithTier", "TestLabFeatureTierCountsMatchTableA", "门禁失败（任务562）"] },
+  { feature: "任务562 前端档位镜像（单一展示事实源）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["LAB_TIER_COUNTS", "unstable: 10", "LAB_WALL_PICKS", "railTiersFor"] },
+  { feature: "任务562 徽章组件（纯展示）", file: "desktop/frontend/src/components/TierBadge.tsx", patterns: ["LAB_TIER_LABEL_KEYS", "lab-tier-badge--"] },
+  { feature: "任务562 设置页 rail+成员开关接线", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["railTiersFor(feature.id).map((tier) => (", "labLabel(\"autopilot\"", "labLabel(\"modelCapabilityFilter\""] },
+  { feature: "任务562 图墙精选区（16 项同源徽章，563 再扩卡片）", file: "desktop/frontend/src/components/LabPicksWall.tsx", patterns: ["LAB_WALL_PICKS.map", "<TierBadge", "satisfies Readonly<Record<LabWallPickId, string>>"] },
+  { feature: "任务562 图墙挂载于引导弹窗", file: "desktop/frontend/src/components/ForkFeaturesIntroDialog.tsx", patterns: ["<LabPicksWall t={t} />"] },
+  { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale）", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["15/20/10/1", "identical feature ids", "registers agree on every tier"] },
 ];
 
 let failed = 0;

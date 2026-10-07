@@ -4105,6 +4105,90 @@ a[href] {
   flex-shrink: 0;
 }
 
+/* Task 562: lab three-tier badges (推荐 / 可选 / 未稳定 / 已退役). Pure
+   display pills; tier data comes from lib/experimentTiers (xlsx 表A mirror).
+   Colors follow the tier semantics: green = core recommendation, neutral =
+   optional, amber = unstable, gray = retired. */
+.lab-tier-badge {
+  display: inline-block;
+  padding: 0 7px;
+  margin-left: 6px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  vertical-align: middle;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.lab-tier-badge--recommended {
+  background: color-mix(in srgb, var(--ok, #3fb26f) 15%, transparent);
+  border-color: color-mix(in srgb, var(--ok, #3fb26f) 45%, transparent);
+  color: var(--ok, #3fb26f);
+}
+.lab-tier-badge--optional {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--accent);
+}
+.lab-tier-badge--unstable {
+  background: color-mix(in srgb, var(--warn, #d9a03f) 16%, transparent);
+  border-color: color-mix(in srgb, var(--warn, #d9a03f) 45%, transparent);
+  color: var(--warn, #d9a03f);
+}
+.lab-tier-badge--retired {
+  background: color-mix(in srgb, var(--fg-faint, #8a8f98) 14%, transparent);
+  border-color: color-mix(in srgb, var(--fg-faint, #8a8f98) 40%, transparent);
+  color: var(--fg-faint, #8a8f98);
+  text-decoration: line-through;
+}
+/* Rail rows: the badge rides at the row's right edge, off rows keep it dim. */
+.experimental-rail__item .lab-tier-badge {
+  margin-left: auto;
+}
+.experimental-rail__item--off .lab-tier-badge {
+  opacity: 0.55;
+}
+/* 图墙 cards (ForkFeaturesIntroDialog "实验室精选" section, task 562; 任务
+   563 grows each card with 效果/状态/详情). */
+.lab-picks-wall {
+  margin-top: 18px;
+}
+.lab-picks-wall__title {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0 0 10px;
+}
+.lab-picks-wall__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.lab-picks-wall__card {
+  border: 1px solid color-mix(in srgb, var(--fg-faint, #8a8f98) 25%, transparent);
+  border-radius: 10px;
+  padding: 10px 12px;
+  min-width: 0;
+}
+.lab-picks-wall__card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.lab-picks-wall__card-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lab-picks-wall__card-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 /* Task 132: experimental features left rail + detail pane. */
 .experimental-layout {
   display: grid;

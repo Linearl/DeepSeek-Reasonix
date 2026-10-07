@@ -11,6 +11,8 @@ import {
 } from "../lib/opencodeGoUsage";
 import { SettingsField } from "./SettingsForm";
 import { SettingsOptions } from "./SettingsOptions";
+import { TierBadge } from "./TierBadge";
+import { EXPERIMENT_FEATURE_TIERS } from "../lib/experimentTiers";
 
 // Task 163 — the OpenCode Go usage detail card (experimental, default off).
 //
@@ -82,7 +84,13 @@ export function SettingsOpenCodeGoUsageCard({
 
   return (
     <SettingsField
-      label={t("settings.opencodeGoUsage")}
+      label={
+        <>
+          {t("settings.opencodeGoUsage")}
+          {/* 任务 562: same tier source as the settings lab tab. */}
+          <TierBadge tier={EXPERIMENT_FEATURE_TIERS.opencodeGoUsage} translator={t} />
+        </>
+      }
       hint={t("settings.opencodeGoUsageHint")}
       icon={<Activity size={18} />}
       className="settings-field--opencode-usage"

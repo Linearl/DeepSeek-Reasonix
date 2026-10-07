@@ -2083,6 +2083,11 @@ export const zh: Record<DictKey, string> = {
   "settings.labGroup.storage": "存储",
   "settings.labGroup.infra": "基础设施",
   "settings.labGroup.onCount": "{n} 开",
+  "settings.labTier.recommended": "推荐",
+  "settings.labTier.optional": "可选",
+  "settings.labTier.unstable": "未稳定",
+  "settings.labTier.retired": "已退役",
+  "settings.labPicks.title": "实验室精选",
   // 任务 561：合并卡（合入口不合键——成员开关仍各自独立保存）。
   "settings.autonomousRunGuard": "自主运行防护",
   "settings.modelStrategy": "模型策略",

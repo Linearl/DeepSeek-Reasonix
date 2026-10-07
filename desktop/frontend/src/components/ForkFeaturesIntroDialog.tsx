@@ -8,6 +8,7 @@
 import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import ForkFeaturesIntro from "./ForkFeaturesIntro";
+import LabPicksWall from "./LabPicksWall";
 import type { Translator } from "../lib/i18n";
 
 interface ForkFeaturesIntroDialogProps {
@@ -48,6 +49,10 @@ export default function ForkFeaturesIntroDialog({ t, onClose }: ForkFeaturesIntr
         </div>
         <div className="fork-features-dialog__body">
           <ForkFeaturesIntro t={t} />
+          {/* 任务 562: the lab picks wall — 16 curated cards with tier badges,
+              sourced from lib/experimentTiers exactly like the settings lab
+              tab (two views, one source). 任务 563 grows the cards. */}
+          <LabPicksWall t={t} />
         </div>
       </div>
     </div>,

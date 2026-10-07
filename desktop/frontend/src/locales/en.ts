@@ -2082,6 +2082,11 @@ export const en = {
   "settings.labGroup.storage": "Storage",
   "settings.labGroup.infra": "Infrastructure",
   "settings.labGroup.onCount": "{n} on",
+  "settings.labTier.recommended": "Recommended",
+  "settings.labTier.optional": "Optional",
+  "settings.labTier.unstable": "Unstable",
+  "settings.labTier.retired": "Retired",
+  "settings.labPicks.title": "Lab picks",
   // Task 561: merged family cards (entry-level merge only — every member
   // switch still saves through its own setter).
   "settings.autonomousRunGuard": "Autonomous-run guards",
