@@ -597,6 +597,11 @@ const CHECKS = [
   { feature: "任务401 侧栏 logo 强调色 mask（App.tsx 渲染点）", file: "desktop/frontend/src/App.tsx", patterns: ["<span role=\"img\" aria-label=\"Reasonix\" className=\"sidebar__brand-logo sidebar__brand-logo--workbench\" />", "<span role=\"img\" aria-label=\"Reasonix\" className=\"sidebar__brand-logo\" />"] },
   { feature: "任务401 侧栏 logo 强调色 mask（SidebarRegion 渲染点）", file: "desktop/frontend/src/app-shell/SidebarRegion.tsx", patterns: ["<span role=\"img\" aria-label=\"Reasonix\" className=\"sidebar__brand-logo sidebar__brand-logo--workbench\" />", "<span role=\"img\" aria-label=\"Reasonix\" className=\"sidebar__brand-logo\" />"] },
   { feature: "任务401 侧栏 logo 强调色 mask（CSS 上色与暗色规则解绑）", file: "desktop/frontend/src/styles.css", patterns: ["background-color: var(--accent);", "-webkit-mask-image: url(\"./assets/logo-wordmark.svg\");", ":root[data-theme=\"dark\"] .welcome__brand-logo {"] },
+  // 任务 358（上游 #11168 同源）：新建对话按钮随主题色。实现本就走 --grad /
+  // --accent-text 主题变量派生（零 CSS 改动），锚点锁合同测试存续——测试钉住
+  // 按钮五个变体块零硬编码色 + 深浅主题对照矩阵（light 蓝 #2f5fa8 / dark 默认
+  // 橙 #d97757 / graphite 橙 #ff6a3d/#ff5a2c），测试被删或断言松动即红。
+  { feature: "任务358 新建对话按钮主题随动合同测试", file: "desktop/frontend/src/__tests__/sidebar-new-button-theme.test.ts", patterns: ["base button paints var(--grad)", "no sidebar__new block carries the retired fixed blue #0153e5", ":root derives --grad from var(--accent) (theme flow-through)"] },
   // 任务 400（上游 #11272 → #11282）：会话历史加载失败显示原因。固定文案升级为
   // 「摘要 + 读端自身错误」——锚点锁四处：hydrateFailureDetail 纯函数（无因不拼、
   // 同文不重）、loadTimed 错误入参 historyLoadCause 接线、hydrate_error 走 detail
