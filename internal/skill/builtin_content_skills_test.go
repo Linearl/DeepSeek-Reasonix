@@ -81,4 +81,19 @@ func TestLlUpdateRegistered(t *testing.T) {
 	if !strings.Contains(sk.Body, "scripts/switch-version.sh") {
 		t.Fatal("ll-update body missing switch-version.sh reference")
 	}
+	// Task 520 enhancement: the skill must also carry the plain-restart face —
+	// the boot-settings "restart and continue" action, its switch difference
+	// (restart needs only the autonomous-update experiment, the install is not
+	// touched), and the taskkill anti-pattern it replaces (the 2026-10-06
+	// incident that motivated the action). A missing section here would send
+	// the agent back to taskkill + manual launcher start.
+	if !strings.Contains(sk.Body, `"action": "restart"`) {
+		t.Fatal("ll-update body missing the plain-restart action guidance (task 520)")
+	}
+	if !strings.Contains(sk.Body, "taskkill") {
+		t.Fatal("ll-update body missing the taskkill anti-pattern warning (task 520)")
+	}
+	if !strings.Contains(sk.Body, "不触碰安装") {
+		t.Fatal("ll-update body must state restart touches no install (the switch difference)")
+	}
 }

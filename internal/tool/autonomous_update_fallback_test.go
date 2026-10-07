@@ -17,6 +17,9 @@ func (s stubController) SetTarget(context.Context, string) (string, error) {
 func (s stubController) ExecuteTarget(context.Context, string) (string, error) {
 	return "", s.err
 }
+func (s stubController) RestartOnly(context.Context, string) (string, error) {
+	return "", s.err
+}
 
 type stubUpdater struct{ err error }
 

@@ -17,9 +17,11 @@ import (
 //
 // The destructive work stays in the host's existing restart paths
 // (RestartAndUpdate / SwitchToVersion, tasks 81/210) and their guards; this
-// tool only lists, stages a target, and triggers them. execute needs BOTH
-// switches on: autonomous_update registers the tool, restart_update lets the
-// host swap the version — the host's error names the missing switch.
+// tool only lists, stages a target, triggers them, or asks for a plain
+// relaunch (task 520's restart action — no install change, so it does not
+// require the restart-and-update experiment). execute needs BOTH switches on:
+// autonomous_update registers the tool, restart_update lets the host swap the
+// version — the host's error names the missing switch.
 type restartUpdate struct {
 	// callerSession, when set, resolves the calling session at call time
 	// (task 254 third face, S4 call-time evaluation): capability-routed
@@ -49,7 +51,7 @@ func (restartUpdate) Name() string { return "restart_update" }
 func (restartUpdate) ReadOnly() bool { return false }
 
 func (restartUpdate) Description() string {
-	return "Inspect and switch this app's install version (desktop only). Actions: list_versions shows the published versions plus the staged build, each with a health bit (missing CLI means the version must not be switched to — servepool would 503) and which one is active; set_target stages an update target — \"staging\" publishes the staged build, an installed version name rolls back to it — and reports what execute will do; execute performs the staged target and relaunches the app. Execute returns once the swap is committed: the restart follows a moment later and a success must never be retried. Requires the autonomous-update AND restart-and-update experiments; refuse politely when the user has not asked for a version change."
+	return "Inspect and switch this app's install version, or restart it without switching (desktop only). Actions: list_versions shows the published versions plus the staged build, each with a health bit (missing CLI means the version must not be switched to — servepool would 503) and which one is active; set_target stages an update target — \"staging\" publishes the staged build, an installed version name rolls back to it — and reports what execute will do; execute performs the staged target and relaunches the app; restart relaunches the CURRENT version without switching anything — no staging publish, no pointer move — use it to apply settings that only take effect at boot (for example after editing config), never for a version change. execute and restart return once the relaunch is committed: the restart follows a moment later and a success must never be retried. set_target and execute require the autonomous-update AND restart-and-update experiments; restart requires only the autonomous-update experiment (the install is not touched). Refuse politely when the user has not asked for a version change or a restart."
 }
 
 func (restartUpdate) Schema() json.RawMessage {
@@ -58,7 +60,7 @@ func (restartUpdate) Schema() json.RawMessage {
 "additionalProperties":false,
 "required":["action"],
 "properties":{
-  "action":{"type":"string","enum":["list_versions","set_target","execute"],"description":"list_versions: report installed versions + staging with health bits. set_target: stage the update target (target required). execute: perform the staged target and relaunch."},
+  "action":{"type":"string","enum":["list_versions","set_target","execute","restart"],"description":"list_versions: report installed versions + staging with health bits. set_target: stage the update target (target required). execute: perform the staged target and relaunch. restart: relaunch the current version WITHOUT switching (applies boot-time settings; no target needed)."},
   "target":{"type":"string","maxLength":128,"description":"set_target only: \"staging\" to publish the staged build, or an installed version name from list_versions to roll back to."}
 }
 }`)
@@ -95,10 +97,12 @@ func (r restartUpdate) Execute(ctx context.Context, args json.RawMessage) (strin
 		return controller.SetTarget(ctx, strings.TrimSpace(request.Target))
 	case "execute":
 		return controller.ExecuteTarget(ctx, caller)
+	case "restart":
+		return controller.RestartOnly(ctx, caller)
 	case "":
-		return "", fmt.Errorf("restart_update needs action: list_versions, set_target, or execute")
+		return "", fmt.Errorf("restart_update needs action: list_versions, set_target, execute, or restart")
 	default:
-		return "", fmt.Errorf("unknown restart_update action %q; use list_versions, set_target, or execute", request.Action)
+		return "", fmt.Errorf("unknown restart_update action %q; use list_versions, set_target, execute, or restart", request.Action)
 	}
 }
 

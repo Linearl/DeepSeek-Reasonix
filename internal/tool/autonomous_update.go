@@ -33,6 +33,14 @@ type AutonomousUpdateController interface {
 	// committed; the restart follows shortly after and a success must not be
 	// retried.
 	ExecuteTarget(ctx context.Context, callerSession string) (string, error)
+	// RestartOnly relaunches the running version WITHOUT switching — no
+	// staging publish, no pointer move (task 520). callerSession carries the
+	// same busy-guard exemption as ExecuteTarget. The restart is planned: the
+	// host records the update-restart marker and stages the caller for
+	// auto-resume, so the session continues after the relaunch. Like
+	// ExecuteTarget it returns once the relaunch is committed; a success must
+	// never be retried (that would be another restart).
+	RestartOnly(ctx context.Context, callerSession string) (string, error)
 }
 
 // VersionHealth is one row of the restart_update list_versions report.

@@ -907,7 +907,9 @@ const CHECKS = [
   // 会话却不补偿续跑（450 变 435 放大器）。
   { feature: "450 宽限窗主体（停心跳/轮询/到期取消/有界收束）", file: "desktop/restart_update.go", patterns: ["func (a *App) clearRestartPath", "restartGraceWait = 10 * time.Second", "restartStopHeartbeat(a)", "restartForcedMarker = \"超时强制\""] },
   { feature: "450 不替用户否决（pending prompt 永不 Cancel）", file: "desktop/restart_update.go", patterns: ["RuntimeStatus().PendingPrompt", "forcedPrompt"] },
-  { feature: "450 三入口同窗（发布+回滚+普通重启）", file: "desktop/restart_update.go", patterns: ["report := a.clearRestartPath(\"\")", "forced := a.clearRestartPath(callerSession)", "restartStartLauncher", "restartQuit"] },
+  { feature: "450 三入口同窗（发布+回滚+普通重启；任务520起普通重启核心=restartActiveVersionExempt，四入口：+工具纯重启）", file: "desktop/restart_update.go", patterns: ["func (a *App) restartActiveVersionExempt", "report := a.clearRestartPath(callerSession)", "forced := a.clearRestartPath(callerSession)", "restartStartLauncher", "restartQuit"] },
+  { feature: "520 纯重启动作（工具面重启并继续：marker+名册+豁免，不换版本不发布）", file: "desktop/autonomous_update.go", patterns: ["restartMarkerReasonToolRestart = \"restart\"", "func (c autonomousUpdateController) RestartOnly", "stageAutonomousUpdateResume(callerSession)", "restartActiveVersionExempt(callerSession, restartMarkerReasonToolRestart)"] },
+  { feature: "520 工具面 schema/接口（restart action 进枚举，接口补 RestartOnly）", file: "internal/tool/builtin/autonomous_update.go", patterns: ["\"list_versions\",\"set_target\",\"execute\",\"restart\"", "controller.RestartOnly(ctx, caller)"] },
   { feature: "450 回滚入口共窗", file: "desktop/version_switch.go", patterns: ["forced := a.clearRestartPath(callerSession)", "forced.forcedNote()"] },
   { feature: "450 工具面结果显形强制说明", file: "desktop/autonomous_update.go", patterns: ["forcedNote"] },
   { feature: "450 谁断谁续（被打断会话无条件入 254 名册）", file: "desktop/autonomous_update_resume.go", patterns: ["func (a *App) stageInterruptedByRestart", "whoever we interrupted, we resume"] },

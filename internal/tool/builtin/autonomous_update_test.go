@@ -12,13 +12,14 @@ import (
 // fakeUpdateController records which action ran and returns canned answers, so
 // the tool's dispatch and rendering can be tested without a host.
 type fakeUpdateController struct {
-	versions      []tool.VersionHealth
-	active        string
-	staging       string
-	listErr       error
-	setTargetArgs []string
-	setTargetResp string
-	execCallers   []string
+	versions       []tool.VersionHealth
+	active         string
+	staging        string
+	listErr        error
+	setTargetArgs  []string
+	setTargetResp  string
+	execCallers    []string
+	restartCallers []string
 }
 
 func (f *fakeUpdateController) ListVersions(context.Context) ([]tool.VersionHealth, string, string, error) {
@@ -32,6 +33,10 @@ func (f *fakeUpdateController) ExecuteTarget(_ context.Context, callerSession st
 	f.execCallers = append(f.execCallers, callerSession)
 	return "restart scheduled", nil
 }
+func (f *fakeUpdateController) RestartOnly(_ context.Context, callerSession string) (string, error) {
+	f.restartCallers = append(f.restartCallers, callerSession)
+	return "restart scheduled: same version", nil
+}
 
 func restartUpdateWithContext(t *testing.T, controller tool.AutonomousUpdateController, args string) (string, error) {
 	t.Helper()
@@ -42,7 +47,7 @@ func restartUpdateWithContext(t *testing.T, controller tool.AutonomousUpdateCont
 	return NewRestartUpdate().Execute(ctx, json.RawMessage(args))
 }
 
-func TestRestartUpdateDispatchesThreeActions(t *testing.T) {
+func TestRestartUpdateDispatchesActions(t *testing.T) {
 	controller := &fakeUpdateController{
 		versions: []tool.VersionHealth{
 			{Version: "v1.38.3-2", Active: true, Healthy: true},
@@ -87,6 +92,55 @@ func TestRestartUpdateDispatchesThreeActions(t *testing.T) {
 	}
 	if len(controller.execCallers) != 1 || controller.execCallers[0] != `C:\sessions\caller.jsonl` {
 		t.Fatalf("execute callers = %v", controller.execCallers)
+	}
+
+	// Task 520: restart forwards the SAME exemption to RestartOnly — the
+	// busy-guard semantics are identical to execute (acceptance ⑤), recorded
+	// separately so the two actions can never blur into each other.
+	if _, err := NewRestartUpdate().Execute(ctx, json.RawMessage(`{"action":"restart"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if len(controller.restartCallers) != 1 || controller.restartCallers[0] != `C:\sessions\caller.jsonl` {
+		t.Fatalf("restart callers = %v", controller.restartCallers)
+	}
+	if len(controller.execCallers) != 1 {
+		t.Fatalf("restart must not touch the staged-target path: %v", controller.execCallers)
+	}
+}
+
+// TestRestartUpdateRestartActionSurface pins the task-520 surface: the schema
+// enum carries restart (and nothing else changed), the description explains
+// restart-and-continue vs restart-and-update (acceptance ④), and the
+// refusal messages name the new action so a mistyped call is self-correcting.
+func TestRestartUpdateRestartActionSurface(t *testing.T) {
+	var schema struct {
+		Properties struct {
+			Action struct {
+				Enum []string `json:"enum"`
+			} `json:"action"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(NewRestartUpdate().Schema(), &schema); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"list_versions", "set_target", "execute", "restart"}
+	if strings.Join(schema.Properties.Action.Enum, ",") != strings.Join(want, ",") {
+		t.Fatalf("action enum = %v, want %v", schema.Properties.Action.Enum, want)
+	}
+	if desc := NewRestartUpdate().Description(); !strings.Contains(desc, "restart relaunches the CURRENT version without switching") {
+		t.Fatalf("description must explain the restart-and-continue action: %s", desc)
+	}
+
+	controller := &fakeUpdateController{}
+	// Unknown action: the message must name restart.
+	_, err := restartUpdateWithContext(t, controller, `{"action":"reboot"}`)
+	if err == nil || !strings.Contains(err.Error(), "restart") {
+		t.Fatalf("unknown-action refusal must name the new action, got: %v", err)
+	}
+	// Missing action: same.
+	_, err = restartUpdateWithContext(t, controller, `{}`)
+	if err == nil || !strings.Contains(err.Error(), "restart") {
+		t.Fatalf("missing-action refusal must name the new action, got: %v", err)
 	}
 }
 
