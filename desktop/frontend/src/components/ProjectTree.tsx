@@ -9,7 +9,7 @@ import { onProjectTreeChangedV2 } from "../lib/sessionCatalogBridge";
 import { sessionCatalogNotice } from "../lib/sessionCatalogPresentation";
 import { isRuntimeSessionNode, isTopicNode, loadWorkbenchOrganizeMode, loadWorkbenchSortMode, mergeIncompleteProjectTopicPage, mergeProjectTopicPage, projectTreeDedupedExactTime, projectTreeEventAffectsFolder, projectTreeFolderDisclosure, projectTreeReadActivityKey, projectTreeRevisionIsFresh, projectTreeShellChildren, projectTreeShellSignature, projectTreeShouldApplyShellSnapshot, projectTreeShouldRenderTopicActions, projectTreeShouldSuppressOpenForRename, projectTreeTopicArchiveBlocked, projectTreeTopicHasUnreadActivity, projectTreeTopicHoverCardModel, projectTreeTopicMenuOffersPin, projectTreeTopicMetaLine, projectTreeTopicOpenRequest, projectTreeTopicPageIsFresh, projectTreeTopicPageSignature, projectTreeWithoutTopic, projectTreeWithTopicTitle, topicActivityAt, topicActivityDateLabel, topicActivityLabel, topicIsActive, topicStatus, topicStatusLabel, topicUnknownTimeLabel, WORKBENCH_ORGANIZE_KEY, WORKBENCH_SORT_KEY, type ProjectTreePendingTopicOpen, type ProjectTreeReadActivity, type ProjectTreeTopicHoverCard, type WorkbenchOrganizeMode, type WorkbenchSortMode } from "../lib/projectTreeTopic";
 export * from "../lib/projectTreeTopic";
-import { arrangeClassicProjectTree, arrangeWorkbenchTree, classicTopicWindow, CLASSIC_TOPIC_PREVIEW_LIMIT, projectTreeWithoutBuiltinWorkspaceNodes, splitPinnedProjectTree, type PinnedTreeSections } from "../lib/projectTreePresentation";
+import { arrangeClassicProjectTree, arrangeWorkbenchTree, classicTopicWindow, CLASSIC_TOPIC_PREVIEW_LIMIT, projectTreeBodyState, projectTreeWithoutBuiltinWorkspaceNodes, splitPinnedProjectTree, type PinnedTreeSections } from "../lib/projectTreePresentation";
 export * from "../lib/projectTreePresentation";
 import type { ProjectNode, SessionCatalogStatus } from "../lib/types";
 import { topicActivityTime } from "../lib/session";
@@ -216,6 +216,10 @@ export function ProjectTree({
   const compactTopics = variant === "workbench";
   const creationTopics = variant === "creation";
   const [tree, setTree] = useState<ProjectNode[]>([]);
+  // Task 403 (upstream #10957→#10963): stays false until the first project-tree
+  // read settles, so the sidebar paints a loading row instead of the "no
+  // projects yet" empty state — which is visually identical to "data lost".
+  const [initialTreeReadSettled, setInitialTreeReadSettled] = useState(false);
   const treeRef = useRef<ProjectNode[]>([]);
   const latestRevisionRef = useRef(0);
   const [organizationRevision, setOrganizationRevision] = useState(0);
@@ -443,6 +447,11 @@ export function ProjectTree({
       // A shell snapshot is metadata-only. If it fails, the resident folder
       // identity can still drive the requested canonical topic reload.
       await reloadRequestedProjects(treeRef.current);
+    } finally {
+      // Task 403: every exit path settles the first read. A failed snapshot
+      // must fall through to the empty state rather than a perpetual loading
+      // row (later events still refresh the tree via project-tree:changed-v2).
+      setInitialTreeReadSettled(true);
     }
   }, [applyRuntimeProjection]);
   refreshRef.current = refresh;
@@ -2533,6 +2542,13 @@ export function ProjectTree({
   };
 
   const hasTreeRows = pinnedTreeSections.pinned.length > 0 || pinnedTreeSections.projects.length > 0;
+  // Task 403 (upstream #10957→#10963): tri-state body. Before the first
+  // project-tree read settles, show a "reading folders" row; the "no projects
+  // yet" empty state only appears once a settled read came back empty.
+  const treeBody = projectTreeBodyState({ initialReadSettled: initialTreeReadSettled, hasRows: hasTreeRows });
+  const renderTreeLoadingState = () => (
+    <div className="project-tree__empty project-tree__loading" role="status">{t("projectTree.readingFolders")}</div>
+  );
 
   // Report visible topics to parent after render so shortcuts match sidebar order.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2584,7 +2600,9 @@ export function ProjectTree({
         <>
           {renderProjectHeader("workbench")}
           <div className="project-tree__list project-tree__list--workbench">
-            {!hasTreeRows ? (
+            {treeBody === "loading" ? (
+              renderTreeLoadingState()
+            ) : treeBody === "empty" ? (
               renderEmptyState()
             ) : (
               <>
@@ -2606,7 +2624,9 @@ export function ProjectTree({
         <>
           {renderProjectHeader("classic")}
           <div className="project-tree__list" onScroll={cancelHoverCard}>
-            {!hasTreeRows ? (
+            {treeBody === "loading" ? (
+              renderTreeLoadingState()
+            ) : treeBody === "empty" ? (
               renderEmptyState()
             ) : (
               <>

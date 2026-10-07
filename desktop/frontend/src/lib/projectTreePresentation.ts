@@ -166,3 +166,15 @@ export function projectTreeWithoutBuiltinWorkspaceNodes(projects: ProjectNode[])
   if (!globalRoot) return projects;
   return projects.filter((node) => node.kind !== "project" || node.root !== globalRoot);
 }
+
+// Task 403 (upstream #10957→#10963): while the first project-tree read is in
+// flight the sidebar must not paint the "no projects yet" empty state — it is
+// visually identical to "data lost". Tri-state body: a loading row until the
+// first read settles, then rows, and only a settled empty read shows the
+// empty state.
+export type ProjectTreeBodyState = "loading" | "rows" | "empty";
+
+export function projectTreeBodyState(options: { initialReadSettled: boolean; hasRows: boolean }): ProjectTreeBodyState {
+  if (!options.initialReadSettled) return "loading";
+  return options.hasRows ? "rows" : "empty";
+}

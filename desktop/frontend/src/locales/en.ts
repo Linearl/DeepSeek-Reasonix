@@ -1709,6 +1709,7 @@ export const en = {
   "projectTree.colorPink": "Pink",
   "projectTree.emptyNoMatch": "No matching projects or sessions",
   "projectTree.emptyNoProjects": "No projects yet",
+  "projectTree.readingFolders": "Reading folders…",
   "projectTree.newTopicTooltip": "New session",
   "projectTree.addProjectTooltip": "Add new project",
     "projectTree.remoteNewSession": "New remote session",
