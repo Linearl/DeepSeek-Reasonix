@@ -9,8 +9,9 @@
 //  ③ M8 keeps standalone entries: autopilot / sessionCollab / monitoring /
 //     fullAccess / optimisticParallel each still has its own rail entry and
 //     its own pane branch;
-//  ④ the rail carries exactly 35 entries in 7 groups
-//     (6/7/13/1/1/1/6); the 11 folded member ids are gone from the union,
+//  ④ the rail carries exactly 36 entries in 7 groups
+//     (6/7/14/1/1/1/6); the 11 folded member ids are gone from the union,
+//     and task 504 adds tabModeTint to the ui group (36th entry).
 //     the features array and the pane branches.
 
 import { readFileSync } from "node:fs";
@@ -48,13 +49,13 @@ ok(
 ok(panel.includes('labelKey: "settings.labGroup.automation"') && panel.includes('labelKey: "settings.labGroup.infra"'),
   "new groups carry locale label keys");
 
-// ① rail census: exactly 35 feature entries, 6/7/13/1/1/1/6 per group.
+// ① rail census: exactly 36 feature entries, 6/7/14/1/1/1/6 per group.
 {
   const entries = [...panel.matchAll(/\{ id: "([a-zA-Z]+)", group: "([a-z-]+)",/g)];
   const groups: Record<string, number> = {};
   for (const [, , g] of entries) groups[g] = (groups[g] ?? 0) + 1;
-  ok(entries.length === 35, `rail carries exactly 35 entries (got ${entries.length})`);
-  ok(groups["automation"] === 6 && groups["efficiency"] === 7 && groups["ui"] === 13 &&
+  ok(entries.length === 36, `rail carries exactly 36 entries (got ${entries.length})`);
+  ok(groups["automation"] === 6 && groups["efficiency"] === 7 && groups["ui"] === 14 &&
      groups["observability"] === 1 && groups["dev-debug"] === 1 && groups["storage"] === 1 && groups["infra"] === 6,
     `group counts are 6/7/13/1/1/1/6 (got ${JSON.stringify(groups)})`);
   const ids = entries.map(([, id]) => id);
