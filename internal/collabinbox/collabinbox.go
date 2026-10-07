@@ -306,6 +306,16 @@ func (s *Store) SetLiveContacts(fn func() map[string]bool) { s.liveContacts = fn
 // Mail exposes the underlying transport store (retention / test seams).
 func (s *Store) Mail() *sessioncollab.MailStore { return s.mail }
 
+// LiveContacts returns the liveness oracle installed by SetLiveContacts as a
+// plain map (task 600 test seam, same spirit as Mail): callers can assert what
+// roster the cleanup rule would consult. nil when no oracle was installed.
+func (s *Store) LiveContacts() map[string]bool {
+	if s.liveContacts == nil {
+		return nil
+	}
+	return s.liveContacts()
+}
+
 func (s *Store) statePath() string { return filepath.Join(s.mailDir, stateName) }
 
 func (s *Store) lockFilePath() string { return filepath.Join(s.mailDir, lockName) }
