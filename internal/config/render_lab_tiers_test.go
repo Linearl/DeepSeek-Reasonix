@@ -172,8 +172,11 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 	want := map[LabTier]int{
 		LabTierRecommended: 15,
 		LabTierOptional:    20,
-		LabTierUnstable:    10,
-		LabTierRetired:     1,
+		// 任务 545（sessionCwdFollow）+ 任务 504（tabModeTint）为 562 表A 快照后
+		// 新增的默认关实验项，按未稳定档登记；任务 551 将 B9
+		// （modelCapabilityFilter）退役移出表A——xlsx 侧待同步。
+		LabTierUnstable: 12,
+		LabTierRetired:  0,
 	}
 	got := map[LabTier]int{}
 	seen := map[string]bool{}
@@ -194,7 +197,7 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 			t.Errorf("tier %q count = %d, xlsx 表A says %d (任务562 验收：档位数量与表A完全一致)", tier, got[tier], n)
 		}
 	}
-	if len(labFeatureTiers) != 46 {
-		t.Errorf("labFeatureTiers has %d entries, 表A has 46", len(labFeatureTiers))
+	if len(labFeatureTiers) != 47 {
+		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 47", len(labFeatureTiers))
 	}
 }

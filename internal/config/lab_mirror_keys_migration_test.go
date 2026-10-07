@@ -255,7 +255,7 @@ func TestLabMirrorKeysRenderExactlyOnce(t *testing.T) {
 		"experimental_loop_streak_note = false",
 		"experimental_event_wait_recheck = false",
 		"experimental_orphan_handling = false",
-		"experimental_model_capability_filter = false",
+		// (experimental_model_capability_filter absent: task 551 never renders it.)
 		"experimental_runtime_reuse = false",
 		"collab_guidance_merge = false",
 	} {

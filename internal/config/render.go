@@ -62,7 +62,7 @@ var labFeatureTiers = []labFeatureTier{
 	{"quickCommands", LabTierRecommended, []string{"experimental_quick_commands"}},
 	{"highSpeedModel", LabTierOptional, []string{"experimental_high_speed_model"}},
 	{"compactionParallel", LabTierOptional, []string{"experimental_compaction_parallel"}},
-	{"traceAsState", LabTierOptional, []string{"trace_as_state", "experimental_trace_as_state"}}, // desktop 键为设置视图镜像
+	{"traceAsState", LabTierOptional, []string{"trace_as_state"}}, // 任务 473 单键化：[desktop] 旧拼写已退役
 	{"eventWaitRecheck", LabTierOptional, []string{"experimental_event_wait_recheck"}},
 	{"outputStyle", LabTierOptional, []string{"experimental_output_style_ui"}},
 	{"cacheTuning", LabTierOptional, []string{"experimental_cache_tuning", "experimental_active_tab_resident"}}, // resident 为 task 192/347 家族子键
@@ -95,7 +95,8 @@ var labFeatureTiers = []labFeatureTier{
 	{"runtimeReuse", LabTierOptional, []string{"experimental_runtime_reuse"}},
 	{"baseProcess", LabTierUnstable, []string{"experimental_base_process"}},
 	{"zcodeTaskBus", LabTierUnstable, []string{"experimental_zcode_task_bus"}},
-	{"modelCapabilityFilter", LabTierRetired, []string{"experimental_model_capability_filter"}}, // 任务 551 退役，只读镜像
+	{"sessionCwdFollow", LabTierUnstable, []string{"experimental_session_cwd_follow"}}, // 任务 545：会话 cwd 跟随，默认关新实验
+	{"tabModeTint", LabTierUnstable, []string{"experimental_tab_mode_tint"}},           // 任务 504：标签模式色调，默认关新实验
 	{"pathRules", LabTierUnstable, []string{"experimental_path_rules"}},
 	{"orphanHandling", LabTierUnstable, []string{"experimental_orphan_handling", "experimental_orphan_lease_reclaim", "experimental_recovery_orphan_sweep"}}, // 后两个为 task 449 迁移遗留键
 	{"localServer", LabTierUnstable, []string{"experimental_local_server"}},

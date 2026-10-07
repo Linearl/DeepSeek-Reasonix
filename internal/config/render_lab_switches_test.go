@@ -38,7 +38,7 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Agent.CollabInboxMerge = "same_sender"               // messageMerge light half 1
 	orig.Agent.CollabGuidanceMerge = true                     // messageMerge light half 2
 	orig.Desktop.ExperimentalQuickCommands = true             // quickCommands
-	orig.Desktop.ExperimentalTraceAsState = true              // traceAsState (desktop mirror)
+	orig.Agent.TraceAsState = true                            // traceAsState ([agent] authoritative; task-60 field has no Experimental prefix)
 	orig.Agent.TraceAsState = true                            // traceAsState (agent side)
 	orig.Agent.ExperimentalEventWaitRecheck = true            // eventWaitRecheck
 	orig.Desktop.ExperimentalOutputStyleUI = true             // outputStyle
@@ -51,7 +51,7 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Desktop.ExperimentalSubagentPanel = true       // M4
 	orig.Desktop.ExperimentalSubagentDetail = true      // M4
 	orig.Desktop.ExperimentalCompletionSummary = boolPtr(true) // completionSummary (*bool, nil means on)
-	orig.Desktop.ExperimentalAutoLoadOlder = true       // autoLoadOlder
+	orig.Agent.ExperimentalAutoLoadOlder = true         // autoLoadOlder ([agent] authoritative after task 473)
 	orig.Desktop.ExperimentalSplitView = true           // splitView
 	orig.Agent.ExperimentalComposerDraft = true         // draftPersistence
 	orig.Agent.ExperimentalSelectionActions = true      // selectionActions
@@ -63,7 +63,7 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	// observability（可观测性）/ dev-debug（开发调试）
 	orig.Desktop.ExperimentalSessionMonitor = true   // monitoring (M8 standalone, member 1)
 	orig.Agent.ExperimentalPerfMonitor = true        // monitoring (M8 standalone, member 2)
-	orig.Desktop.ExperimentalPerfMonitor = true      // monitoring (desktop mirror key)
+	orig.Agent.ExperimentalPerfMonitor = true        // monitoring ([agent] authoritative after task 473)
 	orig.Desktop.ExperimentalCDPDebugPort = true     // M5
 	orig.Desktop.ExperimentalLifecycleNoiseGate = true // M5
 
@@ -113,7 +113,7 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_path_rules = true",
 		"experimental_local_server = true",
 		"experimental_cache_tuning = true",
-		"experimental_trace_as_state = true",
+		"trace_as_state = true", // task 473: [agent] spelling (renamed from experimental_trace_as_state)
 		"experimental_dream = true",
 		"experimental_session_collab = true",
 		"experimental_auto_load_older = true",
@@ -122,7 +122,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_loop_streak_note = true",
 		"experimental_event_wait_recheck = true",
 		"experimental_orphan_handling = true",
-		"experimental_model_capability_filter = true",
+		// (task 551: experimental_model_capability_filter retired from the render
+		// face — accepted on read, never rendered; see render_coverage_test.)
 		"experimental_runtime_reuse = true",
 		"experimental_full_access = true",
 		"experimental_subagent_policy = true",
@@ -166,8 +167,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	if !got.Agent.CollabGuidanceMerge {
 		t.Error("collab_guidance_merge did not round-trip")
 	}
-	if !got.Agent.TraceAsState || !got.Desktop.ExperimentalTraceAsState {
-		t.Error("trace_as_state (agent or desktop mirror) did not round-trip")
+	if !got.Agent.TraceAsState {
+		t.Error("trace_as_state (agent, post-473 single key) did not round-trip")
 	}
 	for name, ok := range map[string]bool{
 		"agent.experimental_session_collab":      got.Agent.ExperimentalSessionCollab,
@@ -194,11 +195,11 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"desktop.experimental_session_wall":      got.Desktop.ExperimentalSessionWall,
 		"desktop.experimental_subagent_panel":    got.Desktop.ExperimentalSubagentPanel,
 		"desktop.experimental_subagent_detail":   got.Desktop.ExperimentalSubagentDetail,
-		"desktop.experimental_auto_load_older":   got.Desktop.ExperimentalAutoLoadOlder,
+		// (retired from render — task 473 single-key fold.)
 		"desktop.experimental_split_view":        got.Desktop.ExperimentalSplitView,
 		"desktop.experimental_session_monitor":   got.Desktop.ExperimentalSessionMonitor,
 		"agent.experimental_perf_monitor":        got.Agent.ExperimentalPerfMonitor,
-		"desktop.experimental_perf_monitor":      got.Desktop.ExperimentalPerfMonitor,
+		// (retired from render — task 473 single-key fold.)
 		"desktop.experimental_restart_update":    got.Desktop.ExperimentalRestartUpdate,
 		"desktop.experimental_feedback":          got.Desktop.ExperimentalFeedback,
 		"desktop.experimental_cdp_debug_port":    got.Desktop.ExperimentalCDPDebugPort,
@@ -206,7 +207,7 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"desktop.experimental_zcode_task_bus":    got.Desktop.ExperimentalZcodeTaskBus,
 		"desktop.experimental_path_rules":        got.Desktop.ExperimentalPathRules,
 		"desktop.experimental_local_server":      got.Desktop.ExperimentalLocalServer,
-		"desktop.experimental_model_capability_filter": got.Desktop.ExperimentalModelCapabilityFilter,
+		// (desktop.experimental_model_capability_filter retired from render — task 551.)
 	} {
 		if !ok {
 			t.Errorf("%s did not round-trip through the render table (81/123 lesson)", name)
