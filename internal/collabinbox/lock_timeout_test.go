@@ -115,6 +115,24 @@ func TestListClearsStaleHolderSidecarAndReturnsNormally(t *testing.T) {
 	if holder := store.LockHolderInfo(); strings.Contains(holder, fmt.Sprintf("pid=%d", stalePID)) {
 		t.Fatalf("stale holder sidecar must be recycled on the next read, got %q", holder)
 	}
+
+	// 验收③（连续 3 次点开正常）：同一现场连开三次——回收一次性完成不复活，
+	// 节流闸下快路径照常，数据恒在、恒不降级。
+	for i := 1; i <= 3; i++ {
+		snap, err := store.List(context.Background(), Query{}, true)
+		if err != nil {
+			t.Fatalf("panel open #%d: %v", i, err)
+		}
+		if snap.Degraded {
+			t.Fatalf("panel open #%d must not degrade", i)
+		}
+		if snap.Total != 1 {
+			t.Fatalf("panel open #%d must show the letter, got total=%d", i, snap.Total)
+		}
+		if holder := store.LockHolderInfo(); strings.Contains(holder, fmt.Sprintf("pid=%d", stalePID)) {
+			t.Fatalf("panel open #%d: stale holder resurfaced: %q", i, holder)
+		}
+	}
 }
 
 // 任务511 复发断根（单元面）：回收契约三分支——死 pid ⇒ 删除并上报；活 pid
