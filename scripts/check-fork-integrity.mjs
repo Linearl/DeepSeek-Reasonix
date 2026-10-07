@@ -866,6 +866,9 @@ const CHECKS = [
   { feature: "任务440 全运行面合并与来源停止（跨 tab+分离会话）", file: "desktop/frontend/src/components/CapsulePanel.tsx", patterns: ["mergeCapsuleWork", "splitCapsuleEntries", "onCancelRuntimeJob(entry.tabId, entry.job.id)"] },
   { feature: "任务440 面板接线（runtimes 过滤 active tab + per-tab 停止）", file: "desktop/frontend/src/App.tsx", patterns: ["capsuleRuntimes={backgroundRuntimes.filter(", "onCapsuleCancelRuntimeJob={cancelRuntimeJob}"] },
   { feature: "任务440 空态（无运行任务明确显示，不静默收缩）", file: "desktop/frontend/src/styles.css", patterns: [".capsule-panel__running-empty", ".capsule-panel__origin"] },
+  // 任务440 时长实时跳动行为钉：丢了会让「已运行时长」退化成静态快照（打开
+  // 时刻的值不再推进），用户无法判断任务是否仍在推进。
+  { feature: "任务440 时长实时跳动行为钉（打开注册秒级定时器/触发推进/关闭清理）", file: "desktop/frontend/src/__tests__/capsule-panel.test.tsx", patterns: ["时长实时跳动：面板打开且运行中每秒刷新（任务 440 ①）", "定时器触发后时长标签实时跳动（+3s）", "面板关闭时清理秒级刷新定时器"] },
   // 任务462：跨会话消息卡显示双方对话名（contact_id 降为 hover）。解析层丢
   // 了会退回裸 sc_id；降级与 hover 断言丢了会掩盖「id 丢失/空白渲染」回归。
   { feature: "任务462 contact_id→会话名 解析层（TTL 缓存+降级短 id）", file: "desktop/frontend/src/lib/collabContactNames.ts", patterns: ["refreshCollabContactNames", "collabDisplayLabel", "shortContactId"] },
