@@ -2142,6 +2142,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			// Task 309: mailbox defaults from [agent] config.
 			MailReceiptDefault: cfg.Agent.SessionCollabMailReceiptDefault,
 			DefaultDelivery:    cfg.Agent.SessionCollabDefaultDelivery,
+			// 任务 509: pre-archive unconsumed-mail gate for delete_session
+			// (软开关 default off; boot-time snapshot — a flip applies on
+			// restart, like the other collab gates).
+			DeleteUnreadGate: cfg.Agent.SessionCollabDeleteUnreadGate,
 			// Task 158.B: the transcript path is bound by the control layer
 			// AFTER boot, so `sessionPath` above is empty for a fresh desktop
 			// session. Resolving at call time keeps a self-directed call

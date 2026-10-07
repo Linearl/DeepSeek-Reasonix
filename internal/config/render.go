@@ -645,6 +645,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "session_collab_reply_nudge = %v   # task 530: remind once at turn close when require_reply mail is still unanswered (default off; needs cross-session collaboration on)\n", c.Agent.SessionCollabReplyNudge)
 	fmt.Fprintf(&b, "session_collab_background = %v   # task 264: background-woken sessions stay out of the tab bar (detached stand-up; delivery unchanged)\n", c.Agent.SessionCollabBackground)
 	fmt.Fprintf(&b, "session_collab_daily_send_limit = %d   # task 173: per-session daily outgoing cap (0 = no cap)\n", c.Agent.SessionCollabDailySendLimit)
+	// 任务 509: pre-archive unconsumed-mail gate (软开关 default off). Rendered
+	// unconditionally like the gates above — omit-on-default would let a
+	// hand-added line vanish on the next config rewrite (task 321's lesson).
+	fmt.Fprintf(&b, "session_collab_delete_unread_gate = %v   # task 509: delete_session refuses while the target has unconsumed inbox mail (queued≠read; default off)\n", c.Agent.SessionCollabDeleteUnreadGate)
 	fmt.Fprintf(&b, "experimental_cascade_approval = %v   # task 225: forward a dispatched session's approvals to its task source (off by default)\n", c.Agent.ExperimentalCascadeApproval)
 	fmt.Fprintf(&b, "experimental_fallback_model = %v   # task 242: switch to fallback_model after quota-class exhaustion (off by default)\n", c.Agent.ExperimentalFallbackModel)
 	fmt.Fprintf(&b, "fallback_model = %q   # task 242: provider/model pair used when the primary is quota-exhausted (empty = keep primary)\n", c.Agent.FallbackModel)
