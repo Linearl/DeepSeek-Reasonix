@@ -649,6 +649,11 @@ type DesktopStartupSettingsView struct {
 	ExperimentalSubagentTps        bool `json:"experimentalSubagentTps"`
 	ExperimentalCompletionSummary  bool `json:"experimentalCompletionSummary"`
 	ExperimentalQuickCommands      bool `json:"experimentalQuickCommands"`
+	// Task 588: the snippets ride the boot snapshot alongside the gate —
+	// without them applyDesktopPreferences re-filled the composer state with
+	// an empty list on every restart (gate on, entry gone) until a settings
+	// save happened to refill it from the full Settings view.
+	QuickCommands []config.QuickCommandEntry `json:"quickCommands,omitempty"`
 	// Task 231: managed-path pre-approval — master switch + four independent
 	// checkboxes (all default false; autopilot-only effect, 铁律 2).
 	ExperimentalPreapproveManagedPaths bool `json:"experimentalPreapproveManagedPaths"`
