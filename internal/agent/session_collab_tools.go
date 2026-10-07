@@ -820,7 +820,7 @@ func (talkToSessionTool) Description() string {
 }
 
 func (talkToSessionTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target: contact_id, topic_id, the exact title from list_addressable_sessions, or an enrolled task-bus contact (zcode-<role>, e.g. zcode-worker)."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain. The system derives the real depth from the thread."},"delivery":{"type":"string","enum":["followup","steer"],"description":"steer (default, task 309) injects mid-turn, degrading to followup when it cannot; followup explicitly queues for the next turn."},"receipt":{"type":"boolean","description":"Task 309: request a read receipt — the target sends back a system receipt message when this mail enters its context (turn injection / drain consumption). Default off; delivery-level confirmation already rides the return value."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."},"thread_id":{"type":"string","description":"When answering a message, pass the message id you RECEIVED — the inbound id from your own mailbox (drain_inbox / delivery text), never the id of a message you sent yourself; a self-sent id fails the thread check (task 194). The requester matches your reply against it."},"require_reply":{"type":"boolean","description":"Set true when the sender needs an answer on this thread (task 173). Requires the panel switch session_collab_allow_require_reply."},"approver":{"type":"string","description":"contact_id (or resolvable title) of the session that answers THIS task's approval prompts (task 225). Default: the sender. Must be a registered session."},"wait":{"type":"boolean","description":"Set true to wait — bounded — for a reply on this thread instead of returning queued at once (the old talk_to_session_sync behavior)."},"timeout_ms":{"type":"integer","description":"wait: how long to wait for the reply (default 30000, max 120000)."}},"required":["to","message"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target: contact_id, topic_id, the exact title from list_addressable_sessions, or an enrolled task-bus contact (zcode-<role>, e.g. zcode-worker)."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain (omit it unless replying). hop>0 REQUIRES thread_id naming the inbound message you are answering — hop>0 without thread_id is refused at send time (task 548). The system derives the real depth from the thread."},"delivery":{"type":"string","enum":["followup","steer"],"description":"steer (default, task 309) injects mid-turn, degrading to followup when it cannot; followup explicitly queues for the next turn."},"receipt":{"type":"boolean","description":"Task 309: request a read receipt — the target sends back a system receipt message when this mail enters its context (turn injection / drain consumption). Default off; delivery-level confirmation already rides the return value."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."},"thread_id":{"type":"string","description":"When answering a message, pass the message id you RECEIVED — the inbound id from your own mailbox (drain_inbox / delivery text), never the id of a message you sent yourself; a self-sent id fails the thread check (task 194). The requester matches your reply against it."},"require_reply":{"type":"boolean","description":"Set true when the sender needs an answer on this thread (task 173). Requires the panel switch session_collab_allow_require_reply."},"approver":{"type":"string","description":"contact_id (or resolvable title) of the session that answers THIS task's approval prompts (task 225). Default: the sender. Must be a registered session."},"wait":{"type":"boolean","description":"Set true to wait — bounded — for a reply on this thread instead of returning queued at once (the old talk_to_session_sync behavior)."},"timeout_ms":{"type":"integer","description":"wait: how long to wait for the reply (default 30000, max 120000)."}},"required":["to","message"]}`)
 }
 
 func (talkToSessionTool) ReadOnly() bool { return false }
@@ -969,8 +969,17 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 	// Task 194-P0: an unresolvable thread_id used to be accepted here, written into
 	// the peer's inbox and only then dropped by the delivery pump, so the sender saw
 	// "queued" and learned nothing. Validate before writing: the call reports it.
-	if _, _, terr := mail.ResolveReplyParent(msg); terr != nil {
+	_, isReply, terr := mail.ResolveReplyParent(msg)
+	if terr != nil {
 		return "", terr
+	}
+	// 任务548 P0-1（源头拒发）：hop>0 却不带父 thread_id 的组合曾被静默接受，
+	// 落盘后被消费泵的溯源门丢弃——发送方只看到 "queued"，目标永远收不到，
+	// 且拒收仍结算 seen（派活方把「已拒收」误读为「已读」）。发送前即拒并
+	// 给出可执行的下一步：模型能自纠重发，不再产生死信。与投递层
+	// Deliver 的 ErrHopWithoutParentThread 校验互为双保险。
+	if p.Hop > 0 && !isReply {
+		return "", fmt.Errorf("hop=%d 需要可解析的父 thread_id：回信请把你收到的入向消息的 thread_id 原样传回；新起一条链请省略 hop（hop=0）", p.Hop)
 	}
 	// task 461 P1: the send rides a cancel-free context — a cancelled turn
 	// must still settle the request on disk and report "wait ended early",

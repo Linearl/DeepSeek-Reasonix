@@ -46,7 +46,9 @@ func TestCardCreateUpdateList(t *testing.T) {
 func TestMailDeliverHopAndInbox(t *testing.T) {
 	root := t.TempDir()
 	mail := NewMailStore(root)
-	if _, err := mail.Deliver(context.Background(), MailMessage{To: "sc_a", Body: "hello", Hop: 1}); err != nil {
+	// 任务548 P0-1: hop>0 without a parent threadId is refused at write time now,
+	// so this basic-delivery probe rides a new chain (hop=0) instead.
+	if _, err := mail.Deliver(context.Background(), MailMessage{To: "sc_a", Body: "hello", Hop: 0}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := mail.Deliver(context.Background(), MailMessage{To: "sc_a", Body: "too deep", Hop: MaxHop + 1}); err == nil {

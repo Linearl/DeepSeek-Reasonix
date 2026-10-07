@@ -176,10 +176,11 @@ func TestDrainInboxRefusedAreAcked(t *testing.T) {
 	}
 	// Write under the package default ceiling (MaxHop=5) so hop=4 is accepted
 	// at Deliver. Claim under ClampHopLimit floor (MinHop=3) then refuses it
-	// because 4 > 3.
+	// because 4 > 3. 任务548 P0-1: the write side now also requires a parent
+	// threadId for hop>0, so the probe names one to stay write-acceptable.
 	writer := sessioncollab.NewMailStoreWithHopLimit(mailDir, sessioncollab.MaxHop)
 	if _, err := writer.Deliver(context.Background(), sessioncollab.MailMessage{
-		From: "sc_peer", To: "sc_me", Body: "too deep", Hop: 4, ReplyTo: "sc_peer",
+		From: "sc_peer", To: "sc_me", Body: "too deep", Hop: 4, ReplyTo: "sc_peer", ThreadID: "msg_chain",
 	}); err != nil {
 		t.Fatal(err)
 	}

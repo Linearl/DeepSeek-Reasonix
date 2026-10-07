@@ -8,6 +8,10 @@ import (
 	"testing"
 )
 
+// 任务548 P0-1: hop>0 now requires a parent threadId at write time, so the
+// ceiling probes below name a thread — these tests pin the CEILING semantics,
+// not the provenance shape.
+//
 // TestClampHopLimitBounds: a configured ceiling is normalized, never trusted, so a
 // hand-edited config always yields a usable value (task 204).
 func TestClampHopLimitBounds(t *testing.T) {
@@ -29,7 +33,7 @@ func TestDeliverHonorsConfiguredHopLimit(t *testing.T) {
 	dir := t.TempDir()
 
 	def := NewMailStore(filepath.Join(dir, "default"))
-	if _, err := def.Deliver(context.Background(), MailMessage{To: "c1", Body: "x", Hop: MaxHop}); err != nil {
+	if _, err := def.Deliver(context.Background(), MailMessage{To: "c1", Body: "x", Hop: MaxHop, ThreadID: "msg_parent"}); err != nil {
 		t.Fatalf("hop %d must be accepted by the default store: %v", MaxHop, err)
 	}
 	_, err := def.Deliver(context.Background(), MailMessage{To: "c1", Body: "x", Hop: MaxHop + 1})
@@ -41,7 +45,7 @@ func TestDeliverHonorsConfiguredHopLimit(t *testing.T) {
 	}
 
 	widened := NewMailStoreWithHopLimit(filepath.Join(dir, "wide"), 8)
-	if _, err := widened.Deliver(context.Background(), MailMessage{To: "c2", Body: "x", Hop: 8}); err != nil {
+	if _, err := widened.Deliver(context.Background(), MailMessage{To: "c2", Body: "x", Hop: 8, ThreadID: "msg_parent"}); err != nil {
 		t.Fatalf("hop 8 must be accepted at ceiling 8: %v", err)
 	}
 	_, err = widened.Deliver(context.Background(), MailMessage{To: "c2", Body: "x", Hop: 9})
@@ -50,7 +54,7 @@ func TestDeliverHonorsConfiguredHopLimit(t *testing.T) {
 	}
 
 	narrowed := NewMailStoreWithHopLimit(filepath.Join(dir, "narrow"), 3)
-	if _, err := narrowed.Deliver(context.Background(), MailMessage{To: "c3", Body: "x", Hop: 3}); err != nil {
+	if _, err := narrowed.Deliver(context.Background(), MailMessage{To: "c3", Body: "x", Hop: 3, ThreadID: "msg_parent"}); err != nil {
 		t.Fatalf("hop 3 must be accepted at ceiling 3: %v", err)
 	}
 	_, err = narrowed.Deliver(context.Background(), MailMessage{To: "c3", Body: "x", Hop: 4})
@@ -64,7 +68,7 @@ func TestDeliverHonorsConfiguredHopLimit(t *testing.T) {
 func TestClaimHonorsConfiguredHopLimit(t *testing.T) {
 	dir := t.TempDir()
 	wide := NewMailStoreWithHopLimit(dir, 10)
-	if _, err := wide.Deliver(context.Background(), MailMessage{To: "c9", Body: "x", Hop: 9}); err != nil {
+	if _, err := wide.Deliver(context.Background(), MailMessage{To: "c9", Body: "x", Hop: 9, ThreadID: "msg_parent"}); err != nil {
 		t.Fatalf("wide deliver: %v", err)
 	}
 	pending, refused, err := NewMailStore(dir).Claim(context.Background(), "c9")

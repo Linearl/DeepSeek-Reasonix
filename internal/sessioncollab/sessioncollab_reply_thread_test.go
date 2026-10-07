@@ -13,7 +13,7 @@ func threeStateStore(t *testing.T) (*MailStore, MailMessage, MailMessage, MailMe
 	store := NewMailStore(t.TempDir())
 
 	// The inbound message A is answering: sent by peer, sitting in A's mailbox.
-	inbound, err := store.Deliver(context.Background(), MailMessage{To: "A", From: "peer", Body: "ping", Hop: 2})
+	inbound, err := store.Deliver(context.Background(), MailMessage{To: "A", From: "peer", Body: "ping", Hop: 0})
 	if err != nil {
 		t.Fatalf("seed inbound: %v", err)
 	}
@@ -23,7 +23,7 @@ func threeStateStore(t *testing.T) (*MailStore, MailMessage, MailMessage, MailMe
 		t.Fatalf("seed outbound: %v", err)
 	}
 	// An unrelated conversation with a third session, also in A's mailbox.
-	thirdParty, err := store.Deliver(context.Background(), MailMessage{To: "A", From: "third", Body: "other thread", Hop: 1})
+	thirdParty, err := store.Deliver(context.Background(), MailMessage{To: "A", From: "third", Body: "other thread", Hop: 0})
 	if err != nil {
 		t.Fatalf("seed third party: %v", err)
 	}
