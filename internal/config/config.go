@@ -1854,6 +1854,16 @@ type AgentConfig struct {
 	// "background sessions stay out of the tab bar" see session_collab
 	// background (task 264), which keeps delivery exactly as it was.
 	ExperimentalCollabBackgroundDelivery bool `toml:"experimental_collab_background_delivery"`
+	// ExperimentalCollabIdleTurn enables the task-569 idle-turn bridge: when a
+	// session has been idle for sessionCollabIdleTurnDelay and its durable
+	// inbox holds a queued follow-up (typically a steer that degraded because
+	// the target could not inject mid-turn), the desktop pump opens one turn
+	// through the same RunInboxTurn path Bot and ACP already use. Off by
+	// default (iron rule 2): the pump keeps its delivery-only scope and the
+	// controller's own dispatcher stays the only auto-start surface, so off is
+	// behaviourally identical to the pre-569 baseline. Live read per pump
+	// pass: a flip applies on the next 4s tick without a restart.
+	ExperimentalCollabIdleTurn bool `toml:"experimental_collab_idle_turn"`
 	// PerfMonitorIntervalSeconds is the sampler interval; 0 keeps the built-in
 	// default (5s) and values outside 1..300 are clamped.
 	PerfMonitorIntervalSeconds int `toml:"perf_monitor_interval_seconds"`
