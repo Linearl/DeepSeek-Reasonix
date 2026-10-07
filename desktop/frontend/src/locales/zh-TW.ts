@@ -1634,6 +1634,11 @@ export const zhTW: Record<DictKey, string> = {
   "settings.labGroup.storage": "儲存",
   "settings.labGroup.infra": "基礎設施",
   "settings.labGroup.onCount": "{n} 開",
+  "settings.labTier.recommended": "推薦",
+  "settings.labTier.optional": "可選",
+  "settings.labTier.unstable": "未穩定",
+  "settings.labTier.retired": "已退役",
+  "settings.labPicks.title": "實驗室精選",
   // 任務 561：合併卡（合入口不合鍵——成員開關仍各自獨立保存）。
   "settings.autonomousRunGuard": "自主執行防護",
   "settings.modelStrategy": "模型策略",
