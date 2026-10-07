@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useT, type Translator } from "../lib/i18n";
 import type { CommandInfo } from "../lib/types";
+import type { QuickCommandEntry } from "../lib/settingsViewTypes";
 import { VirtualMenu } from "./VirtualMenu";
 
 export function slashCommandKindTag(command: CommandInfo, t: Translator): string {
@@ -117,6 +118,62 @@ export function SlashMenu({
             {isDisabled?.(row.command) ? disabledReason : row.command.description}
           </span>
           {slashCommandKindTag(row.command, t) && <span className="slashmenu__kind">{slashCommandKindTag(row.command, t)}</span>}
+        </button>
+      )}
+    />
+  );
+}
+
+// QuickCommandMenu is the "!!" autocomplete dropdown above the composer
+// (task 593): same listbox contract as SlashMenu, backed by the stored
+// quick-command snippets instead of the command catalog. Snippets are capped
+// at 50 by config validation, so plain rows beat virtualization concerns and
+// the trigger hint rides along as a leading separator row (same pattern as
+// the slash group headers). The mousedown-pick keeps focus in the composer.
+type QuickCommandRow =
+  | { type: "hint"; label: string }
+  | { type: "entry"; entry: QuickCommandEntry; entryIndex: number };
+
+export function QuickCommandMenu({
+  items,
+  activeIndex,
+  onPick,
+  onHover,
+}: {
+  items: QuickCommandEntry[];
+  activeIndex: number;
+  onPick: (text: string) => void;
+  onHover: (i: number) => void;
+}) {
+  const t = useT();
+  const rows = useMemo<QuickCommandRow[]>(() => [
+    { type: "hint", label: t("composer.quickCommandsBangHint") },
+    ...items.map((entry, entryIndex) => ({ type: "entry" as const, entry, entryIndex })),
+  ], [items, t]);
+  const activeRowIndex = rows.findIndex((row) => row.type === "entry" && row.entryIndex === activeIndex);
+  return (
+    <VirtualMenu
+      items={rows}
+      activeIndex={activeRowIndex}
+      itemKey={(row) => row.type === "hint" ? "quick-command-hint" : `quick-command:${row.entryIndex}`}
+      estimateSize={(row) => row.type === "hint" ? 26 : 34}
+      renderItem={(row) => row.type === "hint" ? (
+        <div className="slashmenu__item slashmenu__item--empty" role="presentation">
+          <span className="slashmenu__hint">{row.label}</span>
+        </div>
+      ) : (
+        <button
+          role="option"
+          aria-selected={row.entryIndex === activeIndex}
+          className={`slashmenu__item ${row.entryIndex === activeIndex ? "slashmenu__item--active" : ""}`}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            onPick(row.entry.text);
+          }}
+          onMouseMove={() => onHover(row.entryIndex)}
+        >
+          <span className="slashmenu__name">{row.entry.title}</span>
+          <span className="slashmenu__desc">{row.entry.text}</span>
         </button>
       )}
     />

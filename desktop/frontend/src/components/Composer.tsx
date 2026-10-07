@@ -63,7 +63,7 @@ import {
   readWorkspaceReferenceDrag,
   WORKSPACE_REF_DRAG_TYPE,
 } from "../lib/workspaceDrag";
-import { SlashMenu, sortSlashCommandsForMenu } from "./SlashMenu";
+import { QuickCommandMenu, SlashMenu, sortSlashCommandsForMenu } from "./SlashMenu";
 import { ArgMenu } from "./ArgMenu";
 import { ANCHORED_POPOVER_CLOSE_MS, AnchoredPopover } from "./AnchoredPopover";
 import { ComposerChoice } from "./ComposerChoice";
@@ -1610,6 +1610,39 @@ export function Composer({
     ? `${activeSlashQuery.from}:${activeSlashQuery.to}:${activeSlashQuery.query}`
     : "";
 
+  // Disabled snippets stay in Settings but never reach the composer menu.
+  const enabledQuickCommands = useMemo(
+    () => (quickCommands ?? []).filter((entry) => entry.enabled !== false),
+    [quickCommands],
+  );
+
+  // Task 593: "!!" at the very head of the input summons the quick-command
+  // picker — the same dropdown interaction as "/" but backed by the stored
+  // snippets. Line-head only: the token must start at index 0 of the input,
+  // so any "!!" elsewhere in the text never triggers.
+  const activeBangSelection = invocations.length > 0 ? richSelection : plainSelection;
+  const quickCommandToken = useMemo(() => {
+    if (activeBangSelection.start !== activeBangSelection.end) return null;
+    const before = slashText.slice(0, Math.min(activeBangSelection.start, slashText.length));
+    const match = /^!!([^\n]*)$/.exec(before);
+    if (!match) return null;
+    const newlineAt = slashText.indexOf("\n");
+    return {
+      from: 0,
+      to: newlineAt === -1 ? slashText.length : newlineAt,
+      query: match[1].trim().toLowerCase(),
+    };
+  }, [activeBangSelection, slashText]);
+  const quickCommandMatches = useMemo(() => {
+    if (!quickCommandToken) return [];
+    const query = quickCommandToken.query;
+    if (!query) return enabledQuickCommands;
+    return enabledQuickCommands.filter((entry) => `${entry.title} ${entry.text}`.toLowerCase().includes(query));
+  }, [quickCommandToken, enabledQuickCommands]);
+  const quickCommandQueryKey = quickCommandToken
+    ? `${quickCommandToken.to}:${quickCommandToken.query}`
+    : "";
+
   // --- slash argument completion ("/cmd <args>") --- mirrors the CLI: once past
   // the command word, the backend suggests sub-commands (/skill → list/show/…,
   // /mcp → add/remove, /model → refs). Fetched from app.SlashArgs. Debounced
@@ -1777,10 +1810,12 @@ export function Composer({
 
   // --- which menu (if any) is open --- (slash command names win; then slash
   // arguments; then @-refs — they're rarely valid at once)
-  const menuMode: "slash" | "slasharg" | "at" | "pastChats" | null =
+  const menuMode: "slash" | "slasharg" | "at" | "pastChats" | "quickCommands" | null =
     directPastChats
       ? "pastChats"
-      : slashMatches.length > 0 && !dismissed
+      : quickCommandMatches.length > 0 && !dismissed
+        ? "quickCommands"
+        : slashMatches.length > 0 && !dismissed
         ? "slash"
         : argRes && argRes.items.length > 0 && !dismissed
           ? "slasharg"
@@ -1803,13 +1838,15 @@ export function Composer({
           ? atMenuItems.length
           : menuMode === "pastChats"
             ? pastChats.length
-            : 0;
+            : menuMode === "quickCommands"
+              ? quickCommandMatches.length
+              : 0;
 
   // Reset highlight + un-dismiss whenever the active query changes.
   useEffect(() => {
     setActive(0);
     setDismissed(false);
-  }, [slashQueryKey, atRaw, pastChatTokenQuery]);
+  }, [slashQueryKey, atRaw, pastChatTokenQuery, quickCommandQueryKey]);
 
   useEffect(() => {
     if (transientDismissSignal === undefined || transientDismissSignal === lastTransientDismissSignal.current) return;
@@ -4068,6 +4105,34 @@ export function Composer({
     setTextCaretEnd(slashText.slice(0, argRes.from) + it.insert);
   };
 
+  // Task 593: choosing a snippet from the "!!" picker consumes the whole
+  // line-head token — the "!!" prefix never reaches the model. Same edit
+  // recording contract as pickCommand so undo steps over the substitution.
+  const pickQuickCommandToken = (snippet: string) => {
+    const token = quickCommandToken;
+    if (!token) return;
+    const targetDraftKey = activeDraftKeyRef.current;
+    const beforeEdit = composerEditSnapshot(targetDraftKey, { start: token.from, end: token.to });
+    const next = replaceInvocationTextRange(
+      textRef.current,
+      invocationsRef.current,
+      token.from,
+      token.to,
+      snippet,
+    );
+    const caret = token.from + snippet.length;
+    textRef.current = next.text;
+    invocationsRef.current = next.invocations;
+    setText(next.text);
+    setInvocations(next.invocations);
+    setComposerSelection(caret);
+    recordComposerEdit(
+      targetDraftKey,
+      beforeEdit,
+      composerEditSnapshot(targetDraftKey, { start: caret, end: caret }),
+    );
+  };
+
   const pickActive = () => {
     if (menuMode === "slash") {
       const item = slashMatches[active];
@@ -4077,6 +4142,11 @@ export function Composer({
     if (menuMode === "slasharg" && argRes) {
       const item = argRes.items[active];
       if (item) pickArg(item);
+      return;
+    }
+    if (menuMode === "quickCommands") {
+      const entry = quickCommandMatches[active];
+      if (entry) pickQuickCommandToken(entry.text);
       return;
     }
     if (menuMode === "at" || menuMode === "pastChats") {
@@ -4460,11 +4530,6 @@ export function Composer({
       requestActiveDraftFrame(focusComposerInput);
     });
   };
-  // Disabled snippets stay in Settings but never reach the composer menu.
-  const enabledQuickCommands = useMemo(
-    () => (quickCommands ?? []).filter((entry) => entry.enabled !== false),
-    [quickCommands],
-  );
   // 任务 465 两维矩阵：徽章只承载第二维（计划/目标）；autopilot 由模式条
   // 第四档呈现，两个维度同开时互不遮蔽。
   const taskModeShortKey = collaborationMode === "plan"
@@ -4884,6 +4949,14 @@ export function Composer({
       )}
       {menuMode === "slasharg" && argRes && (
         <ArgMenu items={argRes.items} activeIndex={active} onPick={pickArg} onHover={setActive} />
+      )}
+      {menuMode === "quickCommands" && (
+        <QuickCommandMenu
+          items={quickCommandMatches}
+          activeIndex={active}
+          onPick={pickQuickCommandToken}
+          onHover={setActive}
+        />
       )}
       {(menuMode === "at" || menuMode === "pastChats") && (
         showPastChats ? (

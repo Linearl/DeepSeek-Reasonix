@@ -45,6 +45,8 @@ export function ComposerContentMenuActions({
           placeholder={t("composer.contentQuickCommandsSearch")}
           onChange={(event) => setQuery(event.target.value)}
         />
+        {/* Task 593: surface the "!!" line-head trigger next to the snippets. */}
+        <div className="composer-access-menu__hint">{t("composer.quickCommandsBangHint")}</div>
         {matches.length === 0 ? (
           <div className="composer-access-menu__hint">{t("composer.contentQuickCommandsEmpty")}</div>
         ) : (
