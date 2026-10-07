@@ -30,6 +30,27 @@ func (c *client) requestEffort(req provider.Request) string {
 	return c.effort
 }
 
+// admitsGLMStrengthOverride reports whether an effort override that the
+// restricted binary capability rejects is nonetheless one of the fork's GLM
+// thinking strengths (task 601). GLM carries low..max through reasoning_effort
+// on top of the binary thinking.type knob, and the resolved capability is
+// clipped to enabled|disabled (upstream's binary contract), so the request
+// gate must bypass that clip for exactly the strengths the wire mapping
+// applies — the same fork exception configuredEffort already applies at boot.
+// MiniMax and LongCat have no strength knob and keep the hard rejection, so a
+// wrong level still fails before I/O instead of degrading silently on the
+// wire.
+func (c *client) admitsGLMStrengthOverride(effort string) bool {
+	if !c.zhipu {
+		return false
+	}
+	switch effort {
+	case "low", "medium", "high", "max":
+		return true
+	}
+	return false
+}
+
 func (c *client) deepSeekRequestThinking(req provider.Request) string {
 	if req.EffortOverride != "" && !c.thinkingLocked {
 		if req.EffortOverride == "disabled" {

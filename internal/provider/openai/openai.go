@@ -506,7 +506,7 @@ var bufPool = sync.Pool{
 }
 
 func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
-	if err := c.reasoning.Validate(c.model, req.EffortOverride); err != nil {
+	if err := c.reasoning.Validate(c.model, req.EffortOverride); err != nil && !c.admitsGLMStrengthOverride(req.EffortOverride) {
 		return nil, err
 	}
 	stream, err := c.openStream(ctx, c.chatURL, c.buildRequest(req), req.Tools)
